@@ -1,0 +1,17 @@
+{
+  "name": "mashenstein",
+  "version": "0.1.0",
+  "description": "MASHENSTEIN: THE UNPLUGGENING — a game stitched together from parts of other games.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.js",
+    "dev": "node build/build.js --watch",
+    "test": "node tests/run-all.js",
+    "sim": "node tools/fairness-sim.js",
+    "sim:economy": "node tools/economy-sim.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}

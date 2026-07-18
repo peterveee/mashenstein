@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>MASHENSTEIN: The Unpluggening</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none;
+         -webkit-touch-callout: none; overscroll-behavior: none; }
+  #game { position: absolute; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #boot-error { position: absolute; inset: 0; color: #e0e0e8; font: 14px monospace;
+                padding: 2em; display: none; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="boot-error"></div>
+<script>
+window.addEventListener('error', function (e) {
+  var el = document.getElementById('boot-error');
+  if (el && !window.__mash_booted) {
+    el.style.display = 'block';
+    el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + (e.message || e.error);
+  }
+});
+</script>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>
