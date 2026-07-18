@@ -38,6 +38,8 @@ class InputSys {
       if (e.repeat) return;
       if (this.textHandler && /^Key[A-Z]$|^Enter$|^Backspace$/.test(e.code)) {
         this.textHandler(e.code);
+        e.preventDefault();
+        return; // consumed by typing — don't also fire the mapped action
       }
       const act = this.actionForKey(e.code);
       if (act) { this.press(act); e.preventDefault(); }

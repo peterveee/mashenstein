@@ -53,8 +53,8 @@ dom.keyDown('ArrowRight'); frames(20); dom.keyUp('ArrowRight');
 dom.key('Enter'); frames(40); // powers on cabinet -> a minigame starts
 assert(globalThis.window.__mash_state === 'MinigameState', `minigame powers cabinet (got ${globalThis.window.__mash_state})`);
 
-// Whatever minigame appeared, let its timer run out (25-45s), then continue.
-frames(60 * 50, 16.7);
+// Whatever minigame appeared, let its timer run out (35-90s), then continue.
+frames(60 * 95, 16.7);
 frames(60 * 3);
 assert(globalThis.window.__mash_state === 'StageSelectState', `stage select after power-on (got ${globalThis.window.__mash_state})`);
 

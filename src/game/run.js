@@ -46,7 +46,7 @@ export class RunState {
     this.team = o.team && o.team.length ? o.team : ['lorenzo', 'gnash', 'mochi'];
     if (this.corrupted.includes('randomswap')) this.team = this.rng.shuffle(this.team);
     this.relay = new Relay(this.team, this.bench, slot.stats);
-    if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 18;
+    if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
     this.player = new Player(this.relay.current, this.modIds);
     // NO JUMPING: the jump button is on strike; it provides a contractual minimum hop.
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;

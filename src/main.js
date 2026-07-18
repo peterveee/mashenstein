@@ -10,7 +10,7 @@ import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
 import { BossState } from './game/boss.js';
 import { MinigameState, MINIGAMES } from './game/minigames/index.js';
-import { TitleState, DifficultyState, IntroState, ResultsState, FinaleState, SettingsState } from './game/menus.js';
+import { TitleState, DifficultyState, IntroState, ResultsState, FinaleState, SettingsState, HowToPlayState } from './game/menus.js';
 import { HubState, StageSelectState, TeamSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
 
@@ -44,6 +44,7 @@ const Flow = {
       if (slotIdx >= 0) { save.selectSlot(slotIdx); Flow.startOvertime(); }
     },
     onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } })),
+    onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toTitle() })),
   })); },
 
   toHub() { setState(new HubState({ save, flow: Flow })); },

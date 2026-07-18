@@ -28,7 +28,7 @@ for (const game of MINIGAMES) {
   let t = 0;
   const actions = ['left', 'right', 'jump', 'duck'];
   let i = 0;
-  while (!ended && t < 60) {
+  while (!ended && t < 95) {
     t += TICK;
     // mash some inputs to exercise logic
     if (Math.floor(t * 10) % 7 === 0) {

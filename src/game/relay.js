@@ -13,8 +13,8 @@ export class Relay {
     this.meter = 0;                 // 0..1
     this.combo = 0;
     this.bestCombo = 0;
-    this.portalTimer = 24;          // first portal comes a bit sooner
-    this.portalEvery = 40;
+    this.portalTimer = 10;          // first portal comes a bit sooner
+    this.portalEvery = 18;
     this.lastTagLine = null;
     this.lastTagLineT = 0;
   }

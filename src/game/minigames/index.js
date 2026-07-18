@@ -1,5 +1,5 @@
-// BREAKER BOX minigames: 7 tiny genre parodies. Shared framework: 25s timer
-// (TURDLE gets 45 — the turtle insists words cannot be rushed), success/fail
+// BREAKER BOX minigames: 7 tiny genre parodies. Shared framework: 35s timer
+// (TURDLE gets 90 — the turtle insists words cannot be rushed), success/fail
 // reported to onEnd. All are keyboard + touch playable.
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
@@ -20,7 +20,7 @@ export class MinigameState {
 
   enter() {
     this.game = makeGame(this.o.game, new Rng(this.o.seed ?? 1), this.o.settings || {});
-    this.timer = this.o.game === 'turdle' ? 45 : 25;
+    this.timer = this.o.game === 'turdle' ? 90 : 35;
     this.result = null;
     this.resultT = 0;
     Audio.setBank(null);
@@ -63,7 +63,7 @@ export class MinigameState {
     ctx.strokeRect(4.5, 4.5, W - 9, H - 9);
     drawTextCentered(ctx, `BREAKER BOX: ${MINIGAME_NAMES[this.o.game]}`, W / 2, 10, '#48e0c8');
     // timer bar
-    const tmax = this.o.game === 'turdle' ? 45 : 25;
+    const tmax = this.o.game === 'turdle' ? 90 : 35;
     ctx.fillStyle = '#20242c';
     ctx.fillRect(40, 22, W - 80, 4);
     ctx.fillStyle = this.timer < 6 ? '#e04848' : '#f6d33c';
@@ -145,13 +145,13 @@ function blockSurge(rng) {
               Audio.sfx('coin');
             }
           }
-          if (lines >= 3) return true;
+          if (lines >= 2) return true;
           if (!spawn()) return false;
         }
       }
     },
     draw(ctx) {
-      drawTextCentered(ctx, `CLEAR 3 LINES: ${lines}/3`, W / 2, 30, '#c8e0ff');
+      drawTextCentered(ctx, `CLEAR 2 LINES: ${lines}/2`, W / 2, 30, '#c8e0ff');
       ctx.strokeStyle = '#48e0c8';
       ctx.strokeRect(ox - 1.5, oy - 1.5, COLS * CS + 3, ROWS * CS + 3);
       for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
@@ -449,11 +449,11 @@ function brickBonk(rng) {
         }
       }
       const smashed = bricks.filter((b) => !b.live).length;
-      if (smashed / total >= 0.7) return true;
+      if (smashed / total >= 0.4) return true;
     },
     draw(ctx) {
       const smashed = bricks.filter((b) => !b.live).length;
-      drawTextCentered(ctx, `SMASH 70% OF THE MUSTACHE: ${Math.floor((smashed / total) * 100)}%`, W / 2, 34, '#c8e0ff');
+      drawTextCentered(ctx, `SMASH 40% OF THE MUSTACHE: ${Math.floor((smashed / total) * 100)}%`, W / 2, 34, '#c8e0ff');
       for (const b of bricks) {
         if (!b.live) continue;
         ctx.fillStyle = b.hp > 1 ? '#8a2020' : '#c83030';

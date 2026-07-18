@@ -2,8 +2,10 @@
 
 export const WORLD_SPRITES = {
   // -- obstacles ------------------------------------------------------------
+  // Thorn shrubs: warm red-orange so they pop against every cabinet's ground
+  // (the old greens matched the plumber turf exactly and vanished into it).
   shrub: {
-    pal: { g: '#3a9c48', d: '#2a7038', s: '#8a5a2a', w: '#5ac460' },
+    pal: { g: '#d84828', d: '#8a2018', s: '#7a4a24', w: '#f8a048' },
     grid: [
       '....gg..gg....',
       '..g.gggggg.g..',
@@ -20,7 +22,7 @@ export const WORLD_SPRITES = {
     ],
   },
   shrubBig: {
-    pal: { g: '#3a9c48', d: '#2a7038', s: '#8a5a2a', w: '#5ac460' },
+    pal: { g: '#d84828', d: '#8a2018', s: '#7a4a24', w: '#f8a048' },
     grid: [
       '...gg..ggg..gg....',
       '..gggggggggggg....',

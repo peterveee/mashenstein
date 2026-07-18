@@ -9,13 +9,14 @@ const coreCost = BENCH_UPGRADES
 
 // Income model for a straightforward campaign clear:
 // every stage cleared once, ~60% of challenges, ~50% of appliances,
-// avg 55 coins picked up per stage, 3 bosses, ~6 minigame power-on bonuses won.
+// avg 35 coins picked up per stage (60-120s stages), 3 bosses, ~6 minigame
+// power-on bonuses won.
 const stages = STAGES.length;
 const income =
   stages * REWARDS.stageClear +
   Math.round(stages * 0.6) * REWARDS.challengeBonus +
   Math.round(stages * 0.5) * REWARDS.applianceBonus +
-  stages * 55 +
+  stages * 35 +
   3 * REWARDS.bossClear +
   6 * REWARDS.minigameWin;
 

@@ -46,8 +46,8 @@ function stitchLogo(ctx, t, reducedFlashing) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings }) {
-    this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
+  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo }) {
+    this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings; this.onHowTo = onHowTo;
   }
   enter() {
     this.idx = 0;
@@ -66,6 +66,7 @@ export class TitleState {
     });
     const anyOvertime = this.save.data.slots.some((s) => s && s.campaign.storyFlags.sawEnding);
     if (anyOvertime) opts.push({ id: 'overtime', label: 'OVERTIME (ENDLESS)', act: () => this.onOvertime() });
+    opts.push({ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() });
     opts.push({ id: 'settings', label: 'SETTINGS (SINCERE)', act: () => this.onSettings() });
     return opts;
   }
@@ -282,6 +283,46 @@ export class FinaleState {
     drawTextCentered(ctx, shown.slice(0, mid), W / 2, 150, '#e8e8f0');
     if (mid < shown.length) drawTextCentered(ctx, shown.slice(mid + 1), W / 2, 164, '#e8e8f0');
     drawTextCentered(ctx, `${this.beat + 1}/${FINALE_BEATS.length}`, W / 2, H - 20, '#5a5a68');
+  }
+}
+
+export class HowToPlayState {
+  constructor({ onDone }) { this.onDone = onDone; }
+  enter() { this.t = 0; Input.setButtons([]); }
+  update(dt) {
+    this.t += dt;
+    if (this.t > 0.3 && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
+      Audio.sfx('ui');
+      this.onDone();
+    }
+    Input.endFrame();
+  }
+  draw(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, 'HOW TO PLAY', W / 2, 22, '#fff', 2);
+    drawTextCentered(ctx, 'ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.', W / 2, 44, '#8a8a98');
+    let y = 64;
+    const line = (a, b, c) => {
+      drawText(ctx, a, 46, y, c || '#f6d33c');
+      drawText(ctx, b, 170, y, '#c8c8d8');
+      y += 15;
+    };
+    line('JUMP', 'SPACE / W / UP -- TAP. HOLD FOR HIGHER.');
+    line('DUCK / ROLL', 'S / DOWN (HOLD) -- SWIPE DOWN.');
+    line('ABILITY', 'X / SHIFT -- PWR BUTTON.');
+    line('TAG', 'C / E -- TAG BUTTON. SWAP HEROES AT PORTALS.');
+    line('PERFECT TAG', 'TAG RIGHT BEFORE AN OBSTACLE. SLOW-MO + BONUS.', '#48e0c8');
+    line('TEAM MOVE', 'FULL RELAY METER + TAG BUTTON. CLEARS THE SCREEN.', '#48e0c8');
+    y += 4;
+    line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
+    line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
+    line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
+    line('PLUGS', 'UNLOCK NEW CABINETS. COINS BUY UPGRADES.', '#f890b8');
+    y += 4;
+    line('PAUSE / MUTE', 'P OR ESC / M.');
+    drawTextCentered(ctx, 'JUMP THE RED THORN SHRUBS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
+    drawTextCentered(ctx, 'TAP/ENTER: BACK', W / 2, H - 16, '#5a5a68');
   }
 }
 

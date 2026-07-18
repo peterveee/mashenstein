@@ -1,5 +1,5 @@
 // Entity + hero drawing (logic-free; style packs may decorate).
-import { getSprite, buildSprite, scaled2x } from '../engine/sprites.js';
+import { getSprite, buildSprite } from '../engine/sprites.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { GROUND_Y } from './run.js';
@@ -23,25 +23,25 @@ export function buildAllSprites() {
 }
 
 export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse) {
-  // Heroes render at 2x via Scale2x — bigger and smoother, same hitbox
-  // (visual overhang beyond the hitbox is deliberate: it plays forgiving).
+  // Heroes render at native 1x — same scale as the world; the sprite still
+  // overhangs the 8px hitbox by 2px per side (deliberate: it plays forgiving).
   let frame;
   if (player.headless > 0) frame = `hero_${heroId}_headless`;
   else if (player.ducking) frame = `hero_${heroId}_duck`;
   else if (!player.grounded) frame = `hero_${heroId}_jump`;
   else frame = `hero_${heroId}_${Math.floor(player.anim * 2) % 2 === 0 ? 'run1' : 'run2'}`;
-  let spr = scaled2x(frame) || scaled2x(`hero_${heroId}_run1`);
+  let spr = getSprite(frame) || getSprite(`hero_${heroId}_run1`);
   if (player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
-  const x = Math.round(PLAYER_X) - 6;                    // center 24px sprite on the 12px slot
-  const y = Math.round(GROUND_Y - player.y - 32);        // feet stay planted
+  const x = Math.round(PLAYER_X);                        // 12px sprite fills the 12px slot
+  const y = Math.round(GROUND_Y - player.y - 16);        // feet stay planted
   if (spr) ctx.drawImage(spr, x, y);
   if (carryingFuse) {
     const f = getSprite('fuse');
-    if (f) ctx.drawImage(f, x + 20, y - 4);
+    if (f) ctx.drawImage(f, x + 10, y - 3);
   }
   if (player.dashT > 0) {
     ctx.globalAlpha = 0.35;
-    if (spr) { ctx.drawImage(spr, x - 10, y); ctx.drawImage(spr, x - 19, y); }
+    if (spr) { ctx.drawImage(spr, x - 6, y); ctx.drawImage(spr, x - 12, y); }
     ctx.globalAlpha = 1;
   }
 }
