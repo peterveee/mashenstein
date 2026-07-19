@@ -69,6 +69,15 @@ export function pushOverlaySprite(img, x, y, w, h) {
   overlaySprites.push({ img, x, y, w, h });
 }
 
+// Callback variant: fn(dctx) runs inside blit with the logical-coordinate
+// transform already set, so vector paths rasterize at device resolution.
+// Used for the toon heroes. Consumed (and cleared) every blit.
+const overlayDraws = [];
+export function pushOverlayDraw(fn) {
+  if (!dctx) return;
+  overlayDraws.push(fn);
+}
+
 export function blit() {
   const dpr = window.devicePixelRatio || 1;
   dctx.setTransform(screen.scale * dpr, 0, 0, screen.scale * dpr, 0, 0);
@@ -82,6 +91,15 @@ export function blit() {
     }
     dctx.imageSmoothingEnabled = false;
     overlaySprites.length = 0;
+  }
+  if (overlayDraws.length) {
+    for (const fn of overlayDraws) {
+      dctx.save();
+      dctx.translate(Math.round(shakeX), Math.round(shakeY));
+      fn(dctx);
+      dctx.restore();
+    }
+    overlayDraws.length = 0;
   }
 }
 

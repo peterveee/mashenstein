@@ -37,6 +37,7 @@ export class Player {
     this.hazardEaten = false; // Chompo mastery
     this.grounded = true;
     this.slideT = 0;      // ice landing slide (visual/control feel)
+    this.landedT = 0;     // landing squash timer (visual only)
   }
 
   setHero(heroId) {
@@ -86,6 +87,7 @@ export class Player {
       this.iframes = Math.max(this.iframes, 0.05);
     }
     if (this.slideT > 0) this.slideT -= dt;
+    if (this.landedT > 0) this.landedT -= dt;
 
     const holdJump = input.held('jump');
     const holdDuck = input.held('duck');
@@ -113,6 +115,7 @@ export class Player {
         const wasStomp = this.stomping;
         this.stomping = false;
         this.vy = 0;
+        this.landedT = 0.12;
         if (world && world.ice) this.slideT = 0.35;
         return { landed: true, stompLand: wasStomp };
       }

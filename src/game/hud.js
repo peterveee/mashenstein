@@ -2,6 +2,7 @@
 // mission progress, world progress bar, speech bubbles.
 import { W, H } from '../engine/renderer.js';
 import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
+import { toonFaceSprite } from '../sprites/toons.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
@@ -73,9 +74,14 @@ export function drawHud(ctx, run) {
     const ex = run.relay.exhaust[id] > 0;
     ctx.fillStyle = cur ? '#48e0c8' : ex ? '#3a3a48' : '#8a8a98';
     ctx.fillRect(teamX + i * 24, 11, 20, 14);
-    const spr = getSprite(`hero_${id}_face`);
-    if (spr) { ctx.globalAlpha = ex && !cur ? 0.4 : 1; ctx.drawImage(spr, teamX + i * 24 + 4, 12); ctx.globalAlpha = 1; }
-    else drawText(ctx, HERO_BY_ID[id].short[0], teamX + i * 24 + 7, 15, cur ? '#0b0b14' : '#fff');
+    const spr = toonFaceSprite(id, 12, 9);
+    if (spr) {
+      ctx.globalAlpha = ex && !cur ? 0.4 : 1;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(spr, teamX + i * 24 + 4, 12, 12, 9);
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = 1;
+    } else drawText(ctx, HERO_BY_ID[id].short[0], teamX + i * 24 + 7, 15, cur ? '#0b0b14' : '#fff');
   });
   // Meter bar.
   ctx.fillStyle = '#20242c';

@@ -3,7 +3,8 @@
 import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, textWidth, getSprite, smoothed } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
+import { drawToon } from '../sprites/toons.js';
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
 import { CABINETS, HUB_THEME } from '../data/cabinets.js';
 import { totalPlugs } from './progress.js';
@@ -198,12 +199,7 @@ export class IntroState {
     if (this.panel === 2 || this.panel === 3) {
       const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos'];
       heroes.forEach((h, i) => {
-        const s = smoothed(`hero_${h}_run1`);
-        if (s) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(s, 90 + i * 38, 84, 18, 24);
-          ctx.imageSmoothingEnabled = false;
-        }
+        drawToon(ctx, h, { kind: 'idle', time: this.chars * 0.05 + i * 0.8, grounded: true }, 90 + i * 38 + 9, 108, 24);
       });
     }
     const text = INTRO_PANELS[this.panel].text;

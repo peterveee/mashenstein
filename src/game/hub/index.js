@@ -3,7 +3,8 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, smoothed } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite } from '../../engine/sprites.js';
+import { drawToon, toonStandSprite } from '../../sprites/toons.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
@@ -165,8 +166,10 @@ export class HubState {
         ctx.fillStyle = s.type === 'shop' ? '#5a3a5a' : s.type === 'socket' ? '#f6d33c' : '#3a4a5a';
         ctx.fillRect(x - 22, 130, 44, 62);
         if (s.type === 'shop') {
-          const gs = getSprite('hero_gary_run1');
-          if (gs) ctx.drawImage(gs, x - 6, 148);
+          const gs = toonStandSprite('gary', 12, 16);
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(gs, x - 6, 148, 12, 16);
+          ctx.imageSmoothingEnabled = false;
         }
         if (s.type === 'socket') {
           ctx.fillStyle = '#0b0b14';
@@ -178,8 +181,10 @@ export class HubState {
     for (const n of this.npcs()) {
       const x = Math.round(n.x - cam);
       if (x < -20 || x > W + 20) continue;
-      const spr = getSprite(`hero_${n.id}_run1`);
-      if (spr) ctx.drawImage(spr, x - 6, 176);
+      const spr = toonStandSprite(n.id, 12, 16);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(spr, x - 6, 176, 12, 16);
+      ctx.imageSmoothingEnabled = false;
     }
     // DUST DEVIL cleaning something impossible (varies by act)
     const ddSpots = [[300, 178, 'THE FLOOR'], [520, 40, 'THE CEILING'], [720, 120, 'THE INSIDE OF A CRT']];
@@ -188,12 +193,14 @@ export class HubState {
     if (dd) ctx.drawImage(dd, Math.round(dx - cam + Math.sin(this.t) * 8), dy);
     // player walks
     const heroId = slot.mods.equipped.includes('coupon') ? 'gary' : (this.flow.lastTeam && this.flow.lastTeam[0]) || 'lorenzo';
-    const spr = smoothed(`hero_${heroId}_${Math.floor(this.t * 6) % 2 === 0 || (!Input.held('left') && !Input.held('right')) ? 'run1' : 'run2'}`);
-    if (spr) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(spr, Math.round(this.px - cam) - 9, 168, 18, 24);
-      ctx.imageSmoothingEnabled = false;
-    }
+    const moving = Input.held('left') || Input.held('right');
+    drawToon(ctx, heroId, {
+      kind: moving ? 'run' : 'idle',
+      phase: (this.t * 1.6) % 1,
+      time: this.t,
+      grounded: true,
+      facing: this.facing || 1,
+    }, Math.round(this.px - cam), 192, 24);
     // header
     drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, 8, '#48e0c8');
     drawText(ctx, `PLUGS: ${totalPlugs(slot)}   COINS: ${slot.coins}   ACT ${act}`, 8, 20, '#c8c8d8');
@@ -291,8 +298,10 @@ export class TeamSelectState {
   enter() {
     this.picked = (this.flow.lastTeam || ['lorenzo', 'gnash', 'mochi']).slice(0, 3);
     this.idx = 0;
+    this.t = 0;
   }
   update(dt) {
+    this.t += dt;
     const cols = 4;
     if (Input.pressed('right')) { this.idx = (this.idx + 1) % 8; Audio.sfx('ui'); }
     if (Input.pressed('left')) { this.idx = (this.idx + 7) % 8; Audio.sfx('ui'); }
@@ -330,12 +339,12 @@ export class TeamSelectState {
       ctx.fillRect(x, y, 68, 64);
       ctx.strokeStyle = sel ? '#f6d33c' : inTeam ? '#48e0c8' : '#30303f';
       ctx.strokeRect(x + 0.5, y + 0.5, 68, 64);
-      const spr = smoothed(`hero_${h.id}_run1`);
-      if (spr) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(spr, x + 6, y + 6, 24, 32);
-        ctx.imageSmoothingEnabled = false;
-      }
+      drawToon(ctx, h.id, {
+        kind: 'idle',
+        time: (this.t || 0) + i * 0.7,
+        grounded: true,
+        squash: sel ? 0.05 + 0.05 * Math.sin((this.t || 0) * 6) : 0,
+      }, x + 18, y + 38, 32);
       drawText(ctx, h.short, x + 4, y + 42, inTeam ? '#48e0c8' : '#c8c8d8');
       if (inTeam) drawText(ctx, `#${order + 1}`, x + 52, y + 4, '#f6d33c');
       const m = slot.mastery[h.id];

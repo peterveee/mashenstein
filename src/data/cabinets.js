@@ -2,11 +2,12 @@
 // music banks. Patterns are data: cells of {t: obstacleType, dx, y?, n?}.
 // dx is px from pattern origin; the spawner enforces fairness gaps between
 // action-required cells at spawn time, so patterns describe intent, not exact spacing.
-import { seq } from '../engine/audio.js';
+import { seq, chordSeq } from '../engine/audio.js';
 
 // Shared pattern helpers -----------------------------------------------------
 const P = (tier, cells, opts = {}) => ({ tier, cells, ...opts });
 const coinArc = (dx, n = 4) => ({ t: 'coinArc', dx, n });
+const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
 const BASE_PATTERNS = [
   P(0, [{ t: 'shrub', dx: 0 }]),
@@ -30,7 +31,49 @@ export const CABINETS = [
     mechanic: 'qcrates', // breakable ?-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
-    music: { bpm: 112, bass: seq('A2 . A2 . F2 . F2 . C3 . C3 . G2 . G2 .'), lead: seq('A4 . C5 E5 . A4 . . F4 A4 C5 . E5 . D5 C5 | A4 . C5 E5 . G5 . . F5 E5 D5 . C5 . B4 A4'), kick: seq('C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v), hats: seq('. . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v) },
+    // ONE harmonic bed (the original A-F-C-G loop) for the whole song — no
+    // section-to-section progressions. Movement comes from melodic variations
+    // that keep the exact same rhythm with different notes, and from chords
+    // creeping in gradually. Arc: main melody alone for 8 bars (v1 then v2),
+    // then 1 stab -> 2 stabs -> 4 -> stabs on every beat with full echo, and
+    // the wrap drops back to the lone melody.
+    music: {
+      bpm: 112,
+      bass: seq('A2 . A2 . F2 . F2 . C3 . C3 . G2 . G2 .'),
+      lead: seq('A4 . C5 E5 . A4 . . F4 A4 C5 . E5 . D5 C5 | A4 . C5 E5 . G5 . . F5 E5 D5 . C5 . B4 A4'),
+      leadHarm: seq('F4 . A4 C5 . F4 . . D4 F4 A4 . C5 . B4 A4 | F4 . A4 C5 . E5 . . D5 C5 B4 . A4 . G4 F4'),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      hats: seq('. C1 . C1').map((v) => !!v),
+      ohats: seq('. . C1 .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      sections: [
+        { leadHarm: null, snare: PERC_OFF, clap: PERC_OFF, ohats: PERC_OFF, echoLevel: 0 }, // 1: main melody alone, bone dry
+        { leadHarm: null, clap: PERC_OFF, echoLevel: 0.08, // 2: melody variation (same rhythm, new notes), snare in
+          lead: seq('E5 . C5 A4 . E5 . . G5 E5 C5 . D5 . B4 D5 | E5 . C5 A4 . A5 . . G5 F5 E5 . D5 . C5 B4') },
+        { echoLevel: 0.14, // 3: harmony + first stab, quiet keyboard run at the turn
+          keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . E5 . . .'),
+          keyGlissGain: 0.035,
+          shout: seq('. . . . . . . . . . . . . . . . A3 . . . . . . . . . . . . . . .'),
+          shoutGain: 0.35,
+          chords: chordSeq('. . . A3min7 . . . . . . . . . . . . . . . . . . . . . . . . . . . .') },
+        { lead: seq('A5 . E5 C5 . A4 . . G4 C5 E5 . D5 . D5 B4 | A5 . E5 C5 . C5 . . G4 C5 E5 . B4 . G4 A4'),
+          leadHarm: seq('F5 . C5 A4 . F4 . . E4 A4 C5 . B4 . B4 G4 | F5 . C5 A4 . A4 . . E4 A4 C5 . G4 . E4 F4'),
+          echoLevel: 0.2, // 4: high variation, two stabs
+          chords: chordSeq('. . . A3min7 . . . . . . . . . . . . . . . . . . . F3maj7 . . . . . . . .') },
+        { lead: seq('E5 . C5 A4 . E5 . . G5 E5 C5 . D5 . B4 D5 | E5 . C5 A4 . A5 . . G5 F5 E5 . D5 . C5 B4'),
+          leadHarm: seq('C5 . A4 F4 . C5 . . E5 C5 A4 . B4 . G4 B4 | C5 . A4 F4 . F5 . . E5 D5 C5 . B4 . A4 G4'),
+          echoLevel: 0.27, // 5: stabs every half-bar, keyboard run lifts into the payoff
+          keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . A5 . . .'),
+          keyGlissGain: 0.035,
+          chords: chordSeq('. . . A3min7 . . . . . . . C4maj7 . . . . . . . A3min7 . . . . . . . C4maj7 . . . .') },
+        { echoLevel: 0.35, // 6: home melody + echoing stabs, opening shout
+          shout: seq('A3 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .'),
+          shoutGain: 0.35,
+          chords: chordSeq('. . . A3min7 . . . F3maj7 . . . C4maj7 . . . G3maj') },
+      ],
+      order: [0, 0, 1, 1, 2, 3, 4, 5],
+    },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
@@ -46,7 +89,7 @@ export const CABINETS = [
     mechanic: 'boost',
     sky: ['#f08048', '#f8c060'], ground: '#c88848', groundDark: '#a06830',
     far: '#d09858', hills: '#b07840',
-    music: { bpm: 128, bass: seq('E2 E2 . E2 . E2 . . G2 G2 . G2 . G2 . . A2 A2 . A2 . A2 . . B2 . D3 . B2 . G2 .'), lead: seq('E5 . . B4 . E5 . G5 . E5 . B4 . A4 . B4'), kick: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v), hats: seq('C1 C1 . C1 C1 C1 . C1').map((v) => !!v) },
+    music: { bpm: 128, bass: seq('E2 E2 . E2 . E2 . . G2 G2 . G2 . G2 . . A2 A2 . A2 . A2 . . B2 . D3 . B2 . G2 .'), lead: seq('E5 . . B4 . E5 . G5 . E5 . B4 . A4 . B4'), kick: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v), hats: seq('C1 C1 . C1 C1 C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60, 6)]),
@@ -63,7 +106,7 @@ export const CABINETS = [
     mechanic: 'pellets',
     sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
     far: '#302868', hills: '#282050',
-    music: { bpm: 120, bass: seq('A2 . E2 . A2 . E2 . F2 . C2 . F2 . C2 . D2 . A1 . D2 . A1 . E2 . E2 . G2 . B2 .'), lead: seq('A5 . . E5 . C5 . E5 A5 . . G5 . E5 . C5'), leadType: 'sawtooth', kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('. C1 . C1').map((v) => !!v) },
+    music: { bpm: 120, bass: seq('A2 . E2 . A2 . E2 . F2 . C2 . F2 . C2 . D2 . A1 . D2 . A1 . E2 . E2 . G2 . B2 .'), lead: seq('A5 . . E5 . C5 . E5 A5 . . G5 . E5 . C5'), leadType: 'sawtooth', kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('. C1 . C1').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'drone', dx: 0, y: 26 }]),
@@ -81,7 +124,7 @@ export const CABINETS = [
     mechanic: 'ice', // slidey landings + icicles + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
-    music: { bpm: 100, bass: seq('D2 . . . A2 . . . B1 . . . F2 . . . G1 . . . D2 . . . G2 . . . A2 . . .'), lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 .'), leadType: 'triangle', kick: seq('C1 . . . . . . . C1 . . . . . . .').map((v) => !!v), hats: seq('. . C1 . C1 . . .').map((v) => !!v) },
+    music: { bpm: 100, bass: seq('D2 . . . A2 . . . B1 . . . F2 . . . G1 . . . D2 . . . G2 . . . A2 . . .'), lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 .'), leadType: 'triangle', kick: seq('C1 . . . . . . . C1 . . . . . . .').map((v) => !!v), hats: seq('. . C1 . C1 . . .').map((v) => !!v), snare: seq('. . . . . . . . C1 . . . . . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'icicle', dx: 0 }]),
@@ -98,7 +141,7 @@ export const CABINETS = [
     mechanic: 'darkness', // light radius; cursed shortcuts
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
-    music: { bpm: 90, bass: seq('A1 . . . A1 . . . A1 . . . C2 . B1 . A1 . . . A1 . . . F1 . . . E1 . . .'), lead: seq('A4 . . . . . C5 . . . B4 . . . . .'), leadType: 'triangle', kick: seq('C1 . . . . . . .').map((v) => !!v), hats: seq('. . . C1').map((v) => !!v) },
+    music: { bpm: 90, bass: seq('A1 . . . A1 . . . A1 . . . C2 . B1 . A1 . . . A1 . . . F1 . . . E1 . . .'), lead: seq('A4 . . . . . C5 . . . B4 . . . . .'), leadType: 'triangle', kick: seq('C1 . . . . . . .').map((v) => !!v), hats: seq('. . . C1').map((v) => !!v), clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'tombstone', dx: 0 }]),
@@ -116,7 +159,7 @@ export const CABINETS = [
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
     sky: ['#202018', '#383828'], ground: '#484838', groundDark: '#303024',
     far: '#404030', hills: '#383828',
-    music: { bpm: 124, bass: seq('C2 . C2 . G2 . E2 . C2 . C2 . A2 . G2 . F2 . F2 . C2 . A1 . G1 . G2 . B2 . D3 .'), lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . .'), kick: seq('C1 . . . C1 . . . C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('. . C1 . . . C1 . . . C1 . . C1 . C1').map((v) => !!v) },
+    music: { bpm: 124, bass: seq('C2 . C2 . G2 . E2 . C2 . C2 . A2 . G2 . F2 . F2 . C2 . A1 . G1 . G2 . B2 . D3 .'), lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . .'), kick: seq('C1 . . . C1 . . . C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('. . C1 . . . C1 . . . C1 . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . C1 .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier < 2),
       P(1, [{ t: 'beatBar', dx: 0 }]),
@@ -132,7 +175,7 @@ export const CABINETS = [
     mechanic: 'collapse', // scenery collapses behind; fake perspective props
     sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
     far: '#b89058', hills: '#a88448',
-    music: { bpm: 108, bass: seq('C2 . G1 . C2 . G1 . F1 . C2 . F1 . C2 . G1 . D2 . G1 . D2 . C2 . E2 . G2 . C3 .'), lead: seq('E5 D5 C5 . . G4 . . E5 D5 C5 . D5 . . .'), leadType: 'triangle', kick: seq('C1 . . . C1 . . .').map((v) => !!v), hats: seq('. C1 . . . C1 . C1').map((v) => !!v) },
+    music: { bpm: 108, bass: seq('C2 . G1 . C2 . G1 . F1 . C2 . F1 . C2 . G1 . D2 . G1 . D2 . C2 . E2 . G2 . C3 .'), lead: seq('E5 D5 C5 . . G4 . . E5 D5 C5 . D5 . . .'), leadType: 'triangle', kick: seq('C1 . . . C1 . . .').map((v) => !!v), hats: seq('. C1 . . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'cardboardMonster', dx: 0 }]),
@@ -149,7 +192,7 @@ export const CABINETS = [
     mechanic: 'meetings', // printers, chairs, paperwork
     sky: ['#e8e8f0', '#f4f4f8'], ground: '#b0b0c0', groundDark: '#8a8a98',
     far: '#c8c8d8', hills: '#b8b8c8',
-    music: { bpm: 116, bass: seq('G1 . G1 . B1 . B1 . C2 . C2 . D2 . D2 . E2 . E2 . C2 . C2 . D2 . B1 . G1 . . .'), lead: seq('G4 . B4 D5 . . B4 . C5 . E5 . D5 . B4 .'), kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('C1 . C1 . C1 . C1 .').map((v) => !!v) },
+    music: { bpm: 116, bass: seq('G1 . G1 . B1 . B1 . C2 . C2 . D2 . D2 . E2 . E2 . C2 . C2 . D2 . B1 . G1 . . .'), lead: seq('G4 . B4 D5 . . B4 . C5 . E5 . D5 . B4 .'), kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('C1 . C1 . C1 . C1 .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'chair', dx: 0 }]),
@@ -167,18 +210,64 @@ export const CABINETS = [
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',
     far: '#404050', hills: '#383848',
-    music: { bpm: 132, bass: seq('A1 A2 . A1 . A2 A1 . F1 F2 . F1 . F2 F1 . G1 G2 . G1 . G2 G1 . E2 . E2 E2 . B2 . .'), lead: seq('A5 G5 E5 . A5 . G5 E5 D5 . E5 . C5 . E5 .'), leadType: 'sawtooth', kick: seq('C1 . C1 C1 . C1 C1 .').map((v) => !!v), hats: seq('C1 C1 C1 C1').map((v) => !!v) },
+    music: { bpm: 132, bass: seq('A1 A2 . A1 . A2 A1 . F1 F2 . F1 . F2 F1 . G1 G2 . G1 . G2 G1 . E2 . E2 E2 . B2 . .'), lead: seq('A5 G5 E5 . A5 . G5 E5 D5 . E5 . C5 . E5 .'), leadType: 'sawtooth', kick: seq('C1 . C1 C1 . C1 C1 .').map((v) => !!v), hats: seq('C1 C1 C1 C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . C1 . . . . C1 . . .').map((v) => !!v) },
     patterns: [], // filled at runtime by the remix engine from cabinets 1-8
     taunt: 'BEHOLD. EVERY GAME AT ONCE. MY MASTERPIECE. MY MASHTERPIECE.',
   },
 ];
 
 // The arcade hub's loitering theme (also playable from the SOUND TEST menu).
+// A slow build: starts as the bare loiter groove and adds a layer every two
+// bars — firmer pulse, backbeat, arpeggio, chord stabs, grit — peaking in a
+// double-arp crescendo with a snare roll, then wrapping back to the bare
+// start. Harmony: Am Em G D | Am Em G B-dim/E7, which pulls home to Am.
+const HT_KICK4 = seq('C1 . . .').map((v) => !!v);
+const HT_HATS_OFF = seq('. . C1 .').map((v) => !!v);
+const HT_SNARE = seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v);
+const HT_ARP = seq('A3 C4 E4 C4 E3 G3 B3 G3 G3 B3 D4 B3 D3 F#3 A3 F#3 | A3 C4 E4 C4 E3 G3 B3 G3 G3 B3 D4 B3 B2 D3 F3 D3');
+const HT_ARP_HI = seq('A4 C5 E5 C5 E4 G4 B4 G4 G4 B4 D5 B4 D4 F#4 A4 F#4 | A4 C5 E5 C5 E4 G4 B4 G4 G4 B4 D5 B4 B3 D4 F4 D4');
 export const HUB_THEME = {
   bpm: 90,
-  bass: [110, null, null, null, 82, null, null, null, 98, null, null, null, 73, null, null, null, 110, null, null, null, 82, null, null, null, 98, null, null, null, 123, null, null, null],
-  kick: Array.from({ length: 32 }, (_, i) => i % 8 === 0),
-  hats: Array.from({ length: 32 }, (_, i) => i % 8 === 4),
+  bass: seq('A2 . . . E2 . . . G2 . . . D2 . . . A2 . . . E2 . . . G2 . . . B2 . . .'),
+  kick: seq('C1 . . . . . . .').map((v) => !!v),
+  hats: seq('. . . . C1 . . .').map((v) => !!v),
+  clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v),
+  sections: [
+    {}, // 1: bare loiter groove
+    { kick: HT_KICK4, hats: HT_HATS_OFF }, // 2: the pulse firms up
+    { kick: HT_KICK4, hats: HT_HATS_OFF, snare: HT_SNARE,
+      ohats: seq('. . . . . . C1 .').map((v) => !!v),
+      keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . A4 . . .') }, // 3: backbeat arrives, keyboard run announces the arp
+    { kick: HT_KICK4, hats: HT_HATS_OFF, snare: HT_SNARE,
+      ohats: seq('. . . . . . C1 .').map((v) => !!v), lead: HT_ARP }, // 4: arpeggio in
+    { kick: HT_KICK4, hats: HT_HATS_OFF, snare: HT_SNARE,
+      ohats: HT_HATS_OFF, lead: HT_ARP,
+      gliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . E5 . . .'),
+      chords: chordSeq('A3min7 . . . . . . . G3maj7 . . . . . . . A3min7 . . . . . . . G3maj7 . . . . . . .') }, // 5: stabs join, gliss lifts into the grit
+    { kick: HT_KICK4, hats: seq('C1 .').map((v) => !!v), snare: HT_SNARE,
+      ohats: HT_HATS_OFF, lead: HT_ARP, bassType: 'sawtooth',
+      clap: HT_SNARE,
+      vox: seq('. . . . . . A3 . . . . . . . . .'),
+      chords: chordSeq('A3min7 . . . . . . . G3maj7 . . . . . . . A3min7 . . . . . . . G3maj7 . . . . . . .') }, // 6: grit, doubled claps, first "hey!"
+    { kick: seq('C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('C1 .').map((v) => !!v),
+      snare: HT_SNARE,
+      ohats: HT_HATS_OFF, lead: HT_ARP_HI, leadHarm: HT_ARP, bassType: 'sawtooth',
+      clap: HT_SNARE,
+      vox: seq('. . . . A3 . . . . . C4 . . . . . | . . . . A3 . . . . . E4 . . . . .'), // rising vocal hits
+      shout: seq('. . . . . . . . . . . . . . . . A3 . . . . . . . . . . . . . . .'), // "yeah!" mid-peak
+      gliss: seq('A5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .'), // announce the peak
+      chords: chordSeq('A3min7 . . . E3min7 . . . G3maj7 . . . D3maj . . . A3min7 . . . E3min7 . . . G3maj7 . . . E37 . . .') }, // 7: crescendo, E7 pulls home
+    { kick: seq('C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('C1 .').map((v) => !!v),
+      snare: HT_SNARE.map((v, i) => v || i >= 26), // 8: crescendo tail — roll into the drop
+      ohats: HT_HATS_OFF, lead: HT_ARP_HI, leadHarm: HT_ARP, bassType: 'sawtooth',
+      clap: HT_SNARE,
+      vox: seq('. . . . A3 . . . . . C4 . . . . . | . . . . A3 . . . . . E4 . . . . .'),
+      keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . A5 . . . . . . .'), // final keyboard sweep into the drop
+      chords: chordSeq('A3min7 . . . E3min7 . . . G3maj7 . . . D3maj . . . A3min7 . . . E3min7 . . . G3maj7 . . . E37 . . .') },
+  ],
+  // each build stage holds for 4 bars (two 2-bar blocks); the roll variant is
+  // its own final block so the snare roll only fires right before the drop
+  order: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7],
 };
 
 export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
