@@ -1,10 +1,21 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H } from '../engine/renderer.js';
+import { W, H, setFancyFx } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
+import { drawProp, hasProp } from '../sprites/props.js';
+
+// Field-guide icon sizes (logical px) for vector props.
+const GUIDE_ICON_SIZES = {
+  shrub: [13, 12], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
+  tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
+  icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
+  battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
+  capMagnet: [9, 9], capSlow: [9, 9], appliance: [12, 9], fuse: [9, 7],
+  eggshell: [24, 20], target: [9, 9],
+};
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
 import { CABINETS, HUB_THEME } from '../data/cabinets.js';
 import { totalPlugs } from './progress.js';
@@ -15,6 +26,21 @@ function menuNav(input, idx, len) {
   if (input.pressed('left')) { Audio.sfx('ui'); return (idx + len - 1) % len; }
   return idx;
 }
+
+const TAGLINES = [
+  'NOW WITH 40% MORE UNPLUGGING',
+  'THE ARCADE SMELLS LIKE VICTORY AND OLD NACHOS',
+  'NO REFUNDS. THE MACHINE ATE YOUR QUARTER HONESTLY',
+  'RATED E FOR EGGSHELL',
+  'CONTAINS TRACE AMOUNTS OF PLUMBER',
+  'THE TOASTER IS NOT A METAPHOR',
+  'A HEDGEHOG LAWYER REVIEWED THIS TITLE SCREEN',
+  'BATTERIES NOT INCLUDED. BATTERIES ARE THE PLOT',
+  'THE CLOUD IS LAUGHING AT YOU SPECIFICALLY',
+  'ESTABLISHED 198X. RENOVATED NEVER',
+  'FLOOR MOPPED HOURLY BY A HAUNTED VACUUM',
+  'EVERY PIXEL LOVINGLY REPLACED WITH MATH',
+];
 
 function stitchLogo(ctx, t, reducedFlashing) {
   const cx = W / 2;
@@ -48,13 +74,17 @@ function stitchLogo(ctx, t, reducedFlashing) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest }) {
+  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onAttract, attractDelay }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest;
+    this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
   }
   enter() {
     this.idx = 0;
     this.t = 0;
+    this.idleT = 0;
+    this.actTok = Input.activity;
+    this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     Audio.setBank(null);
     Input.setMenuButtons();
   }
@@ -77,6 +107,10 @@ export class TitleState {
   }
   update(dt) {
     this.t += dt;
+    // Attract mode: fire after attractDelay seconds of zero HUMAN input.
+    if (Input.activity !== this.actTok) { this.actTok = Input.activity; this.idleT = 0; this.attractDelay = 60; }
+    this.idleT += dt;
+    if (this.onAttract && this.idleT >= this.attractDelay) { this.onAttract(); return; }
     const opts = this.options();
     if (Input.pressed('duck') || Input.pressed('right')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
     if (Input.pressed('left')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
@@ -101,7 +135,10 @@ export class TitleState {
       drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 116 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
     });
     drawTextCentered(ctx, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, H - 30, '#5a5a68');
-    drawTextCentered(ctx, 'A GAME STITCHED TOGETHER FROM PARTS OF OTHER GAMES', W / 2, H - 16, '#30303f');
+    drawTextCentered(ctx, this.tagline, W / 2, H - 16, '#30303f');
+    if (this.onAttract && this.attractDelay <= 10) {
+      drawTextCentered(ctx, `NEXT DEMO IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, H - 44, '#8858c8');
+    }
   }
 }
 
@@ -186,8 +223,7 @@ export class IntroState {
     // panel art: minimal pixel scenes
     ctx.strokeStyle = '#30303f';
     ctx.strokeRect(60.5, 30.5, W - 121, 120);
-    const spr = getSprite('eggshell');
-    if (this.panel === 1 && spr) ctx.drawImage(spr, W / 2 - 24, 60, 48, 32);
+    if (this.panel === 1) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
     if (this.panel === 0) {
       for (let i = 0; i < 6; i++) {
         ctx.fillStyle = ['#3a9c48', '#c88848', '#282858', '#c8e0f0', '#3a3048', '#c8a068'][i];
@@ -246,7 +282,6 @@ export class ResultsState {
         if (osha) line('* THE BINDER IS DISAPPOINTED.', '#5a5a68');
       }
     }
-    if (r.bestCombo > 1) line(`BEST RELAY COMBO: ${r.bestCombo}`);
     for (const m of this.gains.mastery || []) line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8');
     drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 20, '#5a5a68');
   }
@@ -276,10 +311,8 @@ export class FinaleState {
     if (this.beat >= FINALE_BEATS.length) return;
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    const spr = getSprite('eggshell');
-    if (this.beat >= 1 && this.beat <= 5 && spr) ctx.drawImage(spr, W / 2 - 24, 60, 48, 32);
-    const dd = getSprite('dustdevil');
-    if (this.beat === 6 && dd) ctx.drawImage(dd, W / 2 - 12, 60, 24, 20);
+    if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
+    if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 12, 60, 24, 20);
     if (this.beat === 8) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2);
     const text = FINALE_BEATS[this.beat];
     const shown = text.slice(0, Math.floor(this.chars));
@@ -323,11 +356,11 @@ const GUIDE_PAGES = [
     title: 'TOUCH THESE ON PURPOSE', color: '#48e0c8', hint: 'TEAL = RUN INTO IT. IT IS FINE.',
     rows: [
       { s: '_qcrate', name: '?-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
-      { s: 'capStar', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
+      { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
-      { s: '_portal', name: 'TAG PORTAL', desc: 'SWAP HERO HERE. TAG NEAR DANGER = PERFECT.' },
+      { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO CHANGE HERO. 3RD SWITCH = BLAST.' },
       { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
     ],
   },
@@ -343,6 +376,7 @@ const GUIDE_PAGES = [
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
       { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
       { s: 'zombieWalk', name: 'RESIDENT', desc: 'FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
+      { s: '_unpeel', name: 'UNPEELABLE', desc: 'BREAKER-BOX PRIZE. HITS BOUNCE OFF. PITS DO NOT.' },
     ],
   },
 ];
@@ -389,20 +423,28 @@ export class FieldGuideState {
     }
     if (key === '_portal') {
       const pulse = Math.round(Math.sin(this.t * 5) * 2);
-      const spr = getSprite('portal');
-      if (spr) ctx.drawImage(spr, cx - 6, yBottom - 20 - pulse, 12, 20 + pulse);
-      else { ctx.fillStyle = '#48e0c8'; ctx.fillRect(cx - 6, yBottom - 20, 12, 20); }
+      drawProp(ctx, 'portal', cx - 6, yBottom - 20 - pulse, 12, 20 + pulse);
       return;
     }
-    if (key === '_pipe') {
-      const spr = getSprite('crate');
-      if (spr) { ctx.drawImage(spr, cx - 6, yBottom - 11); ctx.drawImage(spr, cx - 6, yBottom - 18); }
+    if (key === '_pipe') { drawProp(ctx, 'pipe', cx - 7, yBottom - 18, 14, 18); return; }
+    if (key === '_unpeel') {
+      // the potato that cannot be peeled: humble spud, unreasonable aura
+      ctx.strokeStyle = '#e8e8f0';
+      ctx.beginPath(); ctx.ellipse(cx, yBottom - 7, 9, 7, 0.3, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#c89058';
+      ctx.beginPath(); ctx.ellipse(cx, yBottom - 7, 7, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8a6038';
+      ctx.fillRect(cx - 3, yBottom - 9, 2, 2); ctx.fillRect(cx + 2, yBottom - 6, 2, 2);
       return;
     }
     if (key === '_qcrate') {
       const bob = Math.round(Math.sin(this.t * 3) * 2);
-      const spr = getSprite('crate');
-      if (spr) ctx.drawImage(spr, cx - 6, yBottom - 16 + bob);
+      drawProp(ctx, 'qcrate', cx - 6, yBottom - 16 + bob, 12, 11);
+      return;
+    }
+    if (hasProp(key)) {
+      const d = GUIDE_ICON_SIZES[key] || [12, 11];
+      drawProp(ctx, key, cx - d[0] / 2, yBottom - d[1], d[0], d[1]);
       return;
     }
     const spr = getSprite(key);
@@ -415,7 +457,7 @@ export class FieldGuideState {
     drawTextCentered(ctx, 'FIELD GUIDE', W / 2, 14, '#fff', 2);
     drawTextCentered(ctx, p.title, W / 2, 36, p.color, 1);
     drawTextCentered(ctx, p.hint, W / 2, 48, '#5a5a68');
-    const rh = p.rows.length > 8 ? 20 : 22; // 9-row pages tighten up a touch
+    const rh = p.rows.length > 9 ? 18 : p.rows.length > 8 ? 20 : 22; // long pages tighten up a touch
     p.rows.forEach((r, i) => {
       const y = 62 + i * rh;
       this.drawIcon(ctx, r.s, 44, y + 18);
@@ -504,14 +546,14 @@ export class HowToPlayState {
     line('JUMP', 'SPACE / W / UP -- TAP. HOLD FOR HIGHER.');
     line('DUCK / ROLL', 'S / DOWN (HOLD) -- SWIPE DOWN.');
     line('ABILITY', 'X / SHIFT -- PWR BUTTON.');
-    line('TAG', 'C / E -- TAG BUTTON. SWAP HEROES AT PORTALS.');
-    line('PERFECT TAG', 'TAG RIGHT BEFORE AN OBSTACLE. SLOW-MO + BONUS.', '#48e0c8');
-    line('TEAM MOVE', 'FULL RELAY METER + TAG BUTTON. CLEARS THE SCREEN.', '#48e0c8');
+    line('PORTALS', 'RUN THROUGH TO BECOME THE PREVIEWED HERO.', '#48e0c8');
+    line('RELAY BLAST', 'EVERY 3RD SWITCH AUTO-CLEARS NEARBY HAZARDS.', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
     line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
     line('PLUGS', 'UNLOCK NEW CABINETS. COINS BUY UPGRADES.', '#f890b8');
+    line('BREAKER BOX', 'WIN A CABINET\'S FIRST MINIGAME: BONUS POWERUP.', '#f890b8');
     y += 4;
     line('PAUSE / MUTE', 'P OR ESC / M.');
     drawTextCentered(ctx, 'JUMP THE RED THORN SHRUBS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
@@ -530,6 +572,7 @@ export class SettingsState {
       { label: `REDUCED FLASHING: ${s.reducedFlashing ? 'ON' : 'OFF'}`, act: () => { s.reducedFlashing = !s.reducedFlashing; } },
       { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
       { label: `HIGH CONTRAST OUTLINES: ${s.highContrast ? 'ON' : 'OFF'}`, act: () => { s.highContrast = !s.highContrast; } },
+      { label: `GLOW EFFECTS: ${s.fancyFx ? 'ON' : 'OFF'}`, act: () => { s.fancyFx = !s.fancyFx; setFancyFx(s.fancyFx); } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
       { label: 'DONE', act: () => { this.save.persist(); this.onDone(); } },
     ];

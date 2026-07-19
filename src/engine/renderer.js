@@ -1,4 +1,8 @@
-// 480x270 logical backbuffer, blitted at integer scale with letterboxing.
+// Device-resolution renderer. Game code always draws in a fixed 480x270
+// logical coordinate space, but the backbuffer is ALLOCATED at full device
+// resolution and pre-scaled, so vector art (heroes, props, text, UI) is
+// rasterized natively with true antialiasing. Nothing is magnified after
+// the fact, which is what used to make menus look blurry.
 export const W = 480;
 export const H = 270;
 
@@ -11,14 +15,27 @@ export const back = (() => {
 })();
 
 export const bctx = back ? back.getContext('2d') : null;
+import { glfx } from './glfx.js';
 
-export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, smooth: true };
+// Device-density 2D overlay layer (hero, demo banners). Under WebGL it is a
+// texture; under the 2D fallback it draws straight onto the display canvas.
+const overlayLayer = (() => {
+  const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  if (c) { c.width = W; c.height = H; }
+  return c;
+})();
+const octx = overlayLayer ? overlayLayer.getContext('2d') : null;
+
+export function setFancyFx(on) { glfx.fx = on ? 1 : 0; }
+
+// px = device pixels per logical pixel (what everything is pre-scaled by).
+export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
 
 let dctx = null;
 
 export function initRenderer() {
-  dctx = canvas.getContext('2d');
-  bctx.imageSmoothingEnabled = false;
+  // WebGL post pipeline when available; otherwise the classic 2D blit.
+  if (!glfx.init(canvas)) dctx = canvas.getContext('2d');
   resize();
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
@@ -29,26 +46,41 @@ function resize() {
   const viewport = window.visualViewport;
   const winW = viewport ? viewport.width : window.innerWidth;
   const winH = viewport ? viewport.height : window.innerHeight;
-  const fitScale = Math.min(winW / W, winH / H);
-  const touchScreen = (navigator.maxTouchPoints || 0) > 0 ||
-    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-  // Whole-number scaling keeps desktop pixels razor sharp. On phones it can
-  // waste almost half the display (a 1.8x fit used to become 1x), so use every
-  // available CSS pixel there and let image-rendering preserve the pixel look.
-  let scale = touchScreen ? fitScale : Math.max(1, Math.floor(fitScale));
-  if (winW < W || winH < H) scale = Math.min(winW / W, winH / H); // tiny window: non-integer fit
+  // Art is resolution-independent now, so fill the viewport at any fractional
+  // scale — no integer-snapping needed, on desktop or phone.
+  const scale = Math.min(winW / W, winH / H);
   const cssW = Math.round(W * scale), cssH = Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
+  const pxW = Math.round(cssW * dpr), pxH = Math.round(cssH * dpr);
+  canvas.width = pxW;
+  canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
   canvas.style.imageRendering = 'auto';
   const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
-  Object.assign(screen, { scale, ox, oy, cssW, cssH, smooth: true });
-  dctx.imageSmoothingEnabled = true; // resizing resets context state
+  // Backbuffer density is capped: 3 device pixels per logical pixel keeps
+  // vector art smooth while quartering fill cost on Retina displays (the
+  // hero overlay still rasterizes at FULL device resolution in blit).
+  const px = Math.min(pxW / W, 4);
+  const bw = Math.round(W * px), bh = Math.round(H * px);
+  if (back.width !== bw || back.height !== bh) { back.width = bw; back.height = bh; }
+  bctx.setTransform(px, 0, 0, bh / H, 0, 0);
+  bctx.imageSmoothingEnabled = true;
+  // Overlay layer (heroes, banners) stays at FULL device resolution — it is
+  // composited pin-sharp in the final shader pass, never resampled.
+  if (overlayLayer && (overlayLayer.width !== pxW || overlayLayer.height !== pxH)) {
+    overlayLayer.width = pxW;
+    overlayLayer.height = pxH;
+  }
+  if (octx) {
+    octx.setTransform(pxW / W, 0, 0, pxH / H, 0, 0);
+    octx.imageSmoothingEnabled = true;
+  }
+  Object.assign(screen, { scale, ox, oy, cssW, cssH, px, dpx: pxW / W });
+  if (glfx.active) glfx.resize(bw, bh);
+  if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
 }
 
 let shakeX = 0, shakeY = 0, shakePower = 0, shakeTime = 0;
@@ -75,7 +107,7 @@ export function updateShake(dt, rand) {
 // The queue is consumed (and cleared) every blit; no-op when headless.
 const overlaySprites = [];
 export function pushOverlaySprite(img, x, y, w, h) {
-  if (!dctx) return;
+  if (!dctx && !glfx.active) return;
   overlaySprites.push({ img, x, y, w, h });
 }
 
@@ -84,33 +116,43 @@ export function pushOverlaySprite(img, x, y, w, h) {
 // Used for the toon heroes. Consumed (and cleared) every blit.
 const overlayDraws = [];
 export function pushOverlayDraw(fn) {
-  if (!dctx) return;
+  if (!dctx && !glfx.active) return;
   overlayDraws.push(fn);
 }
 
 export function blit() {
-  const dpr = window.devicePixelRatio || 1;
-  dctx.setTransform(screen.scale * dpr, 0, 0, screen.scale * dpr, 0, 0);
-  dctx.imageSmoothingEnabled = true;
-  dctx.clearRect(0, 0, W, H);
-  dctx.drawImage(back, Math.round(shakeX), Math.round(shakeY));
-  if (overlaySprites.length) {
-    dctx.imageSmoothingEnabled = true;
+  const px = screen.px || 1;
+  // Draw queued overlays (hero, banners) into the overlay layer in logical
+  // coordinates at backbuffer density.
+  const paintOverlays = (ctx2) => {
+    ctx2.clearRect(0, 0, W, H);
     for (const o of overlaySprites) {
-      dctx.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
+      ctx2.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
     }
-    dctx.imageSmoothingEnabled = true;
-    overlaySprites.length = 0;
-  }
-  if (overlayDraws.length) {
     for (const fn of overlayDraws) {
-      dctx.save();
-      dctx.translate(Math.round(shakeX), Math.round(shakeY));
-      fn(dctx);
-      dctx.restore();
+      ctx2.save();
+      ctx2.translate(Math.round(shakeX), Math.round(shakeY));
+      fn(ctx2);
+      ctx2.restore();
     }
+    overlaySprites.length = 0;
     overlayDraws.length = 0;
+  };
+
+  if (glfx.active) {
+    paintOverlays(octx);
+    glfx.render(back, overlayLayer, Math.round(shakeX * px), Math.round(shakeY * px), canvas.width, canvas.height);
+    return;
   }
+
+  // 2D fallback: stretch the density-capped backbuffer to the display.
+  dctx.setTransform(1, 0, 0, 1, 0, 0);
+  dctx.imageSmoothingEnabled = back.width !== canvas.width;
+  dctx.clearRect(0, 0, canvas.width, canvas.height);
+  dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
+  dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
+  dctx.imageSmoothingEnabled = true;
+  if (overlaySprites.length || overlayDraws.length) paintOverlays(dctx);
 }
 
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.

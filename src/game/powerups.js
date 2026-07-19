@@ -6,6 +6,8 @@ export const POWER_DEFS = {
   magnet:  { name: 'MAGNET', color: '#e04848' },
   star:    { name: 'STAR', color: '#f6d33c' },
   slowmo:  { name: 'SLOW-MO', color: '#48c8c8' },
+  // Reward-only (breaker-box bonus): never in the DripSpawner capsule pool.
+  unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
 };
 
 export class Powerups {
@@ -21,7 +23,7 @@ export class Powerups {
 
   shieldCap() { return [2, 2, 3, 3][this.levelOf('shield')] || 2; }
 
-  grab(id) {
+  grab(id, opts = {}) {
     if (id === 'shield') {
       this.shieldStack = Math.min(this.shieldCap(), this.shieldStack + 1);
       return { overcharged: false };
@@ -30,7 +32,9 @@ export class Powerups {
     let level = this.levelOf(id);
     let overcharged = false;
     if (cur) { level = Math.min(this.levelOf(id) + 1, 4); overcharged = level > this.levelOf(id); }
-    this.active[id] = { t: this.durationFor(id, level), level };
+    let t = this.durationFor(id, level);
+    if (opts.minDuration) t = Math.max(t, opts.minDuration);
+    this.active[id] = { t, level };
     return { overcharged };
   }
 
@@ -39,6 +43,7 @@ export class Powerups {
       magnet: [0, 8, 12, 16, 20][level] || 8,
       star: [0, 10, 10, 10, 12][level] || 10,
       slowmo: [0, 6, 8, 10, 12][level] || 6,
+      unpeel: [0, 8, 10, 12, 14][level] || 8,
     }[id] || 8;
     return base * this.durMult();
   }
@@ -60,6 +65,8 @@ export class Powerups {
     if (!a) return 1;
     return a.level >= 3 ? 0.55 : 0.65;
   }
+
+  isInvincible() { return !!this.active.unpeel; }
 
   absorbHit() {
     if (this.shieldStack > 0) {

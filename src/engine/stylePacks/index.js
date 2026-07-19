@@ -20,25 +20,247 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
   }
 }
 
+// Hills render ONCE into a seamlessly-tiling strip (|sin| has period pi*wl),
+// then scroll as GPU texture blits instead of re-tracing a 60-segment path
+// on the CPU every frame.
+const hillCache = new Map();
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(0, H);
-  for (let x = 0; x <= W; x += 8) {
-    const wx = (x + camX * factor);
-    const y = yBase - Math.abs(Math.sin(wx / wl)) * amp;
-    ctx.lineTo(x, y);
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const top = yBase - amp;
+  const key = `${color}|${yBase}|${amp}|${wl}`;
+  let tile = hillCache.get(key);
+  if (!tile) {
+    const SS = 3;
+    tile = document.createElement('canvas');
+    tile.width = period * SS;
+    tile.height = Math.max(1, (H - top) * SS);
+    const x = tile.getContext('2d');
+    x.scale(SS, SS);
+    x.translate(0, -top);
+    x.fillStyle = color;
+    x.beginPath();
+    x.moveTo(0, H);
+    for (let px = 0; px <= period; px += 2) {
+      x.lineTo(px, yBase - Math.abs(Math.sin(px / wl)) * amp);
+    }
+    x.lineTo(period, H);
+    x.closePath();
+    x.fill();
+    hillCache.set(key, tile);
   }
-  ctx.lineTo(W, H);
-  ctx.closePath();
-  ctx.fill();
+  const off = ((camX * factor) % period + period) % period;
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
+  for (let x0 = -off; x0 < W; x0 += period) {
+    ctx.drawImage(tile, x0, top, period, H - top);
+  }
+  ctx.imageSmoothingEnabled = prev;
 }
 
+// Per-frame gradient construction is surprisingly costly at device res —
+// cache gradients by their color stops (they are reusable frame to frame).
+const gradCache = new Map();
 function skyGrad(ctx, c0, c1) {
-  const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-  g.addColorStop(0, c0); g.addColorStop(1, c1);
+  const key = c0 + '|' + c1;
+  let g = gradCache.get(key);
+  if (!g) {
+    g = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+    g.addColorStop(0, c0);
+    g.addColorStop(1, c1);
+    gradCache.set(key, g);
+  }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, GROUND_Y);
+}
+
+// Full-screen textures (scanlines, dot lattices) as tiny repeating patterns:
+// one GPU-tiled fill instead of thousands of per-frame fillRects.
+const patCache = new Map();
+function patternFill(ctx, key, tw, th, paint) {
+  let pat = patCache.get(key);
+  if (!pat) {
+    const c = document.createElement('canvas');
+    c.width = tw;
+    c.height = th;
+    paint(c.getContext('2d'));
+    pat = ctx.createPattern(c, 'repeat');
+    patCache.set(key, pat);
+  }
+  if (pat) {
+    ctx.fillStyle = pat;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// --- level-1 sky pals: a plain, dignified sun (suns don't bop) and a nosy
+// cartoon cloud that wanders the whole sky, drifts in and out of view, looks
+// around with big eyes, and reacts to hero hits — gasping in sympathy or,
+// just as often, laughing. Game code pings sunShock() from takeHit.
+let cloudShockT = 0, cloudLaughT = 0, cloudLastT = 0;
+export function sunShock() {
+  if (Math.random() < 0.55) cloudLaughT = 1.7;
+  else cloudShockT = 1.4;
+}
+
+function drawStaticSun(ctx, t) {
+  // Animated but dignified: it slowly arcs across the sky like a day passing,
+  // its rays rotate and breathe, and its halo pulses. It does not bop.
+  const sx = (t * 3.2) % (W + 150);
+  const x = W + 60 - sx;                              // drifts right to left
+  const u = (x - W / 2) / (W / 2);
+  const y = 32 + 26 * u * u;                          // shallow day-arc
+  const breathe = 1 + 0.06 * Math.sin(t * 1.1);
+  ctx.save();
+  ctx.translate(x, y);
+  // halo
+  ctx.beginPath();
+  ctx.arc(0, 0, 30 * breathe, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(248,200,64,${0.14 + 0.05 * Math.sin(t * 1.7)})`;
+  ctx.fill();
+  // rays: slow rotation, alternating lengths that shimmer
+  ctx.fillStyle = '#f8c840';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + t * 0.18;
+    const r2 = (23 + (i % 2) * 4 + 1.6 * Math.sin(t * 2.3 + i)) * breathe;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a - 0.1) * 17, Math.sin(a - 0.1) * 17);
+    ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+    ctx.lineTo(Math.cos(a + 0.1) * 17, Math.sin(a + 0.1) * 17);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 15 * breathe, 0, Math.PI * 2);
+  ctx.fillStyle = '#f6d33c';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(26,16,40,0.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCloudPal(ctx, t, reduced) {
+  if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
+  const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
+  cloudLastT = t;
+  if (cloudShockT > 0) cloudShockT -= dt;
+  if (cloudLaughT > 0) cloudLaughT -= dt;
+  const laughing = cloudLaughT > 0;
+  const shocked = !laughing && cloudShockT > 0;
+
+  // Wandering path: crosses the whole sky slowly, then exits and stays gone
+  // for a stretch before floating back in from the left.
+  const x = ((t * 13) % (W + 190)) - 95;
+  if (x < -45 || x > W + 45) return; // off having a private moment
+  let y = 48 + Math.sin(t * 0.33) * 20 + Math.sin(t * 0.9) * 4;
+  let jx = 0;
+  if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
+  if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;
+
+  ctx.save();
+  ctx.translate(x + jx, y);
+  // puffy body
+  ctx.beginPath();
+  for (const [px, py, rx, ry] of [[-15, 3, 10, 8], [0, -5, 13, 10], [15, 3, 10, 8], [0, 4, 17, 9]]) {
+    ctx.moveTo(px + rx, py);
+    ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = '#f8f8ff';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(26,16,40,0.2)';
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+
+  // idle micro-expressions: every ~8s slot, briefly giggle or doze
+  const slot = Math.floor(t / 8);
+  const hash = Math.abs(Math.sin(slot * 127.13));
+  const inSlot = t - slot * 8 < 1.6;
+  const idle = (!laughing && !shocked && inSlot) ? (hash < 0.25 ? 'giggle' : hash < 0.45 ? 'sleepy' : 'normal') : 'normal';
+
+  // eyes
+  ctx.lineCap = 'round';
+  const gx = shocked || laughing ? 0 : Math.sin(t * 0.6) * 1.7 - 1.1;
+  const gy = shocked || laughing ? 0 : Math.cos(t * 0.45) * 1.3 + 1.0;
+  const blink = !laughing && !shocked && idle === 'normal' && Math.sin(t * 1.3) > 0.995;
+  for (const sx of [-1, 1]) {
+    const ex = sx * 6.5, ey = -4;
+    if (laughing) {
+      // happy closed arcs: ^ ^
+      ctx.strokeStyle = '#1a1028';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ex, ey + 2, 3.4, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      continue;
+    }
+    const er = shocked ? 5.4 : 4.2;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, er * 0.85, blink ? 0.8 : idle === 'sleepy' ? er * 0.55 : er, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(26,16,40,0.3)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    if (!blink) {
+      ctx.beginPath();
+      ctx.arc(ex + gx, ey + gy + (idle === 'sleepy' ? 1.2 : 0), shocked ? 1.1 : 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1028';
+      ctx.fill();
+    }
+    if (idle === 'sleepy') { // heavy lid
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - er * 0.45, er * 0.9, er * 0.45, 0, Math.PI, 0);
+      ctx.fillStyle = '#f8f8ff';
+      ctx.fill();
+    }
+  }
+  // brows
+  if (shocked) {
+    ctx.strokeStyle = '#1a1028';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-10, -11); ctx.lineTo(-4, -13.5);
+    ctx.moveTo(10, -11); ctx.lineTo(4, -13.5);
+    ctx.stroke();
+  }
+  // mouth
+  if (laughing) {
+    // wide-open cackle + tongue + a squeezed-out tear
+    ctx.beginPath();
+    ctx.ellipse(0, 4.5, 4.6, 4 + Math.abs(Math.sin(t * 15)) * 1.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7a3020';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, 6.8, 2.6, 1.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#f890b8';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-10.5, -1 + Math.sin(t * 7) * 1.2, 1.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#8ac8f0';
+    ctx.fill();
+  } else if (shocked) {
+    ctx.beginPath();
+    ctx.ellipse(0, 5.5, 3.4, 4.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7a3020';
+    ctx.fill();
+  } else if (idle === 'giggle') {
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 3.2, 2.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7a3020';
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 2.5, 6.5, 0.25 * Math.PI, 0.75 * Math.PI);
+    ctx.strokeStyle = '#1a1028';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(248,120,80,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-9.5, 2, 2.4, 1.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(9.5, 2, 2.4, 1.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +269,11 @@ function pixelPack(settings) {
     name: 'pixel',
     bg(ctx, t, camX, cab) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
-      // clouds
+      if (cab.id === 'plumber') {
+        drawStaticSun(ctx, t);
+        drawCloudPal(ctx, t, settings && settings.reducedMotion);
+      }
+      // clouds (drift across the sun — it doesn't mind)
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       for (let i = 0; i < 5; i++) {
         const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
@@ -213,11 +439,12 @@ function watercolorPack(settings) {
       ctx.globalAlpha = 1;
     },
     post(ctx, t) {
-      // paper grain: sparse dot lattice
-      ctx.fillStyle = 'rgba(120,100,80,0.06)';
-      for (let y = 0; y < H; y += 4) {
-        for (let x = (y % 8 === 0 ? 0 : 2); x < W; x += 6) ctx.fillRect(x, y, 1, 1);
-      }
+      // paper grain: sparse dot lattice (tiled pattern — one fill)
+      patternFill(ctx, 'paperGrain', 6, 8, (c) => {
+        c.fillStyle = 'rgba(120,100,80,0.06)';
+        c.fillRect(0, 0, 1, 1);
+        c.fillRect(2, 4, 1, 1);
+      });
       ctx.fillStyle = 'rgba(255,250,240,0.05)';
       ctx.fillRect(0, 0, W, H);
     },
@@ -245,9 +472,11 @@ function vhsPack(settings) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
     },
     post(ctx, t) {
-      // scanlines
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+      // scanlines (tiled pattern — one fill)
+      patternFill(ctx, 'vhsScan', 1, 3, (c) => {
+        c.fillStyle = 'rgba(0,0,0,0.18)';
+        c.fillRect(0, 0, 1, 1);
+      });
       // chroma edges
       ctx.fillStyle = 'rgba(255,0,80,0.05)';
       ctx.fillRect(1, 0, W, H);

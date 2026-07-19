@@ -183,7 +183,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod) {
 
 // ---------------------------------------------------------------- rigs
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
-  if (pose.kind === 'duck' && spec.rollDuck) return drawRoll(ctx, p, pose, u, ow);
+  if (pose.kind === 'duck') return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
   const headR = (heavy ? 0.19 : 0.21) * u;
   const torsoHalf = (heavy ? 0.23 : 0.17) * u;
@@ -297,16 +297,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 }
 
-function drawRoll(ctx, p, pose, u, ow) {
+function drawRoll(ctx, spec, p, pose, u, ow) {
   const r = 0.26 * u;
+  const band = p.p === p.b ? p.h : p.p; // contrast stripe in the hero's palette
   ctx.save();
   ctx.translate(0, -r - 0.01 * u);
   ctx.rotate((pose.time || 0) * 14);
-  outlined(ctx, p.h, ow, (c) => c.arc(0, 0, r, 0, Math.PI * 2));
-  ctx.strokeStyle = p.a;
+  outlined(ctx, p.b, ow, (c) => c.arc(0, 0, r, 0, Math.PI * 2));
+  ctx.strokeStyle = band;
   ctx.lineWidth = 0.07 * u;
   ctx.beginPath();
   ctx.moveTo(-r * 0.8, 0); ctx.lineTo(r * 0.8, 0);
+  ctx.moveTo(0, -r * 0.8); ctx.lineTo(0, r * 0.8);
   ctx.stroke();
   ctx.restore();
   // speed arcs trailing behind
@@ -323,8 +325,20 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const duck = pose.kind === 'duck';
   let rx = 0.36 * u, ry = 0.34 * u, cy = -0.4 * u;
-  if (duck) { rx = 0.42 * u; ry = 0.24 * u; cy = -0.26 * u; }
-  else if (pose.kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
+  if (duck) {
+    // mochi ducks by ROLLING: the whole puffball spins, face and all
+    ctx.save();
+    ctx.translate(0, -0.27 * u);
+    ctx.rotate((t || 0) * 12);
+    outlined(ctx, p.b, ow, (c) => c.arc(0, 0, 0.29 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+    drawEyes(ctx, p, u, 0, -0.05 * u, lod);
+    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0, 0.09 * u, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+    ctx.restore();
+    return;
+  }
+  if (pose.kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
   ctx.save();
   if (pose.float) {
     ctx.rotate(0.08 * Math.sin(t * 5));
@@ -350,10 +364,24 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const duck = pose.kind === 'duck';
   const r = (duck ? 0.3 : 0.34) * u;
-  const cy = duck ? -0.32 * u : -0.44 * u;
+  const cy = duck ? -0.31 * u : -0.44 * u;
+  if (duck) {
+    // chompo ducks by rolling on his own mouth like a wheel
+    ctx.save();
+    ctx.translate(0, cy);
+    ctx.rotate((pose.time || 0) * 13);
+    const half = 0.16 * Math.PI;
+    outlined(ctx, p.b, ow, (c) => {
+      c.arc(0, 0, r, half, Math.PI * 2 - half);
+      c.lineTo(0, 0);
+      c.closePath();
+    });
+    dot(ctx, r * 0.35, -r * 0.45, 0.035 * u, p.e);
+    ctx.restore();
+    return;
+  }
   let open = 0.35;
   if (pose.kind === 'run') open = 0.5 + 0.5 * Math.sin(2 * ph);
-  if (duck) open = 0.15;
   const half = 0.1 * Math.PI + open * 0.2 * Math.PI;
   // tiny legs under the disc, feet on the gait path so they lift naturally
   const p01 = pose.phase || 0;

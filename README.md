@@ -36,7 +36,6 @@ For phone testing on your LAN: `python3 -m http.server -d dist` and open
 | Jump (hold = higher) | Space / W / Up | Tap (or swipe up) |
 | Duck / roll / air-stomp | S / Down (hold) | Swipe down (hold) |
 | Ability | X / Shift | PWR button |
-| Tag / Team Move | C / E | TAG button |
 | Pause | P / Esc | ▐▐ icon |
 | Mute | M | speaker icon |
 | Menus | Arrows + Enter | Tap |
@@ -54,7 +53,8 @@ patient. The turtle is not impressed.
 - **8 heroes** with distinct kits (stomp, spin-dash, shield-roll, pellet cannon,
   double-jump float, coin magnet, detachable head, returning axe). Pick a
   3-hero relay team per mission; tag through co-op cable portals; Perfect Tags
-  slow time; a full Relay Meter powers Team Moves and Duo Moves.
+  slow time. Portals swap you to the next hero automatically, and every
+  third switch fires a screen-clearing Relay Blast on its own.
 - **Missions & plugs:** reach / targets / fragile fuse / chase / relay combo /
   cord recovery / blackout / rescue / escape. Each stage awards up to 3 plugs
   (mission, challenge, hidden GOLDEN APPLIANCE — it is a toaster). Plugs unlock

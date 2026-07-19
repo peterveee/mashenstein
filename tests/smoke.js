@@ -58,11 +58,8 @@ frames(60 * 95, 16.7);
 frames(60 * 3);
 assert(globalThis.window.__mash_state === 'StageSelectState', `stage select after power-on (got ${globalThis.window.__mash_state})`);
 
-// Stage select: pick stage 1 -> team select.
-dom.key('Enter'); frames(30);
-assert(globalThis.window.__mash_state === 'TeamSelectState', `team select (got ${globalThis.window.__mash_state})`);
-// Team select: default team is picked; press X (ability) to start.
-dom.key('KeyX'); frames(40);
+// Stage select: pick stage 1 -> the run starts immediately (no team select).
+dom.key('Enter'); frames(40);
 assert(globalThis.window.__mash_state === 'RunState', `stage run started (got ${globalThis.window.__mash_state})`);
 
 // We should be inside a Run now: simulate 30 seconds of play with periodic jumps.

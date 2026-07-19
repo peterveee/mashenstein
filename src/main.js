@@ -1,5 +1,5 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
-import { initRenderer, bctx, blit, setShakeScale } from './engine/renderer.js';
+import { initRenderer, bctx, blit, setShakeScale, setFancyFx } from './engine/renderer.js';
 import { startLoop } from './engine/loop.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
@@ -10,9 +10,11 @@ import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
 import { BossState } from './game/boss.js';
 import { MinigameState, MINIGAMES } from './game/minigames/index.js';
+import { POWER_DEFS } from './game/powerups.js';
 import { TitleState, DifficultyState, IntroState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
-import { HubState, StageSelectState, TeamSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
+import { HubState, StageSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
+import { AttractState } from './game/attract.js';
 
 save.load();
 setShakeScale(save.settings.screenShake);
@@ -24,8 +26,10 @@ const Flow = {
   pendingCorrupted: [],
   pendingBoss: false,
 
-  toTitle() { setState(new TitleState({
+  toTitle(opts = {}) { setState(new TitleState({
     save,
+    attractDelay: opts.attractDelay,
+    onAttract: () => Flow.startAttract(),
     onSlotChosen: (i, isNew) => {
       if (isNew) {
         save.newSlot(i, Date.now());
@@ -51,22 +55,35 @@ const Flow = {
 
   toHub() { setState(new HubState({ save, flow: Flow })); },
 
+  startAttract() {
+    setState(new AttractState({
+      realSettings: save.settings,
+      onExit: (auto) => Flow.toTitle(auto ? { attractDelay: 10 } : {}),
+    }));
+  },
+
   openCabinet(cab) {
     // First power-on: a breaker-box minigame powers the cabinet.
     const flags = save.slot.campaign.storyFlags;
     flags.minigamesSeen = flags.minigamesSeen || [];
     if (!flags['powered_' + cab.id]) {
+      const rr = new Rng(cab.id + save.slot.stats.runs);
       const unseen = MINIGAMES.filter((m) => !flags.minigamesSeen.includes(m));
       const pool = unseen.length ? unseen : MINIGAMES;
-      const game = pool[new Rng(cab.id + save.slot.stats.runs).int(0, pool.length - 1)];
+      const game = pool[rr.int(0, pool.length - 1)];
+      const reward = rr.pick(Object.keys(POWER_DEFS));
       flags.minigamesSeen.push(game);
       setState(new MinigameState({
         game,
         seed: (Date.now() & 0xffff) ^ 17,
         settings: save.settings,
+        bonusText: `BONUS: ${POWER_DEFS[reward].name} ON YOUR NEXT RUN`,
         onEnd: (success) => {
           flags['powered_' + cab.id] = true;
-          if (success) { save.slot.coins += 300; }
+          if (success) {
+            save.slot.coins += 300;
+            flags.pendingPowerup = reward;
+          }
           save.persist();
           setState(new StageSelectState({ save, cab, flow: Flow }));
         },
@@ -76,20 +93,19 @@ const Flow = {
     setState(new StageSelectState({ save, cab, flow: Flow }));
   },
 
+  // Team select is gone: stages start immediately with the full cast in play.
   pickTeam(cab, stage, corrupted, boss = false) {
-    this.pendingCab = cab; this.pendingStage = stage; this.pendingCorrupted = corrupted || []; this.pendingBoss = boss;
-    setState(new TeamSelectState({
-      save, flow: Flow,
-      onGo: (team) => {
-        if (this.pendingBoss) Flow.startBoss(cab.id, team);
-        else Flow.startStage(cab, this.pendingStage, team, this.pendingCorrupted);
-      },
-    }));
+    if (boss) Flow.startBoss(cab.id);
+    else Flow.startStage(cab, stage, this.pendingCorrupted = corrupted || []);
   },
 
-  startStage(cab, stage, team, corrupted) {
+  startStage(cab, stage, corrupted) {
+    // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
+    const flags = save.slot.campaign.storyFlags;
+    const startingPowerup = flags.pendingPowerup || null;
+    if (startingPowerup) { delete flags.pendingPowerup; save.persist(); }
     setState(new RunState({
-      stage, team, save,
+      stage, save, startingPowerup,
       seed: (Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0,
       difficulty: save.slot.difficulty,
       corrupted,
@@ -100,9 +116,9 @@ const Flow = {
     }));
   },
 
-  startBoss(cabId, team) {
+  startBoss(cabId) {
     setState(new BossState({
-      bossCab: cabId, team, save,
+      bossCab: cabId, save,
       seed: (Date.now() ^ 0xb055) >>> 0,
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
@@ -126,7 +142,6 @@ const Flow = {
   startOvertime(seedOverride) {
     setState(new RunState({
       overtime: true, save,
-      team: Flow.lastTeam || ['lorenzo', 'gnash', 'mochi'],
       seed: seedOverride ?? dailySeed(),
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
@@ -155,6 +170,7 @@ const Flow = {
 
 function boot() {
   initRenderer();
+  setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
   Input.onAnyGesture = () => {

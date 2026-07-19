@@ -5,6 +5,7 @@ import { W, H, shake } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, getSprite } from '../engine/sprites.js';
+import { drawProp } from '../sprites/props.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
@@ -170,8 +171,8 @@ export class BossState extends RunState {
     // Boss sprite + health bars.
     const x = Math.round(this.bossX - this.camX);
     const y = Math.round(GROUND_Y - this.bossAlt - 24);
-    const spr = getSprite(this.boss.sprite);
-    if (spr) ctx.drawImage(spr, x - 12, y, spr.width * (this.boss.sprite === 'dustdevil' ? 2 : 1), spr.height * (this.boss.sprite === 'dustdevil' ? 2 : 1));
+    const big = this.boss.sprite === 'dustdevil';
+    drawProp(ctx, this.boss.sprite, x - 12, y, big ? 28 : 24, big ? 24 : 20);
     ctx.fillStyle = 'rgba(200,200,216,0.6)';
     ctx.fillRect(x - 8 + Math.round(Math.sin(this.tRun * 40) * 3), y - 4, 24, 1);
 

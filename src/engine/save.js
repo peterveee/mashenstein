@@ -13,6 +13,7 @@ export function defaultSettings() {
     screenShake: 1,
     highContrast: false,
     assistSpeed: 100, // 80 | 90 | 100
+    fancyFx: true,    // WebGL bloom/vignette (when available)
   };
 }
 
@@ -31,9 +32,10 @@ export function defaultSlot() {
       ngPlus: false,
     },
     coins: 0,
-    bench: { shield: 1, magnet: 1, star: 1, slowmo: 1, tuneup: 0, tagWindow: 0, meterRate: 0 },
+    bench: { shield: 1, magnet: 1, star: 1, slowmo: 1, tuneup: 0 },
     mastery: {},      // heroId -> {xp, level, equipped: []}
     mods: { found: [], equipped: [], slots: 2 },
+    tutor: {},        // one-time teaching prompts already shown
     hub: { roomsOpen: 1, manualsFound: [], npcSeen: {} },
     overtime: { best: 0, bestRelay: 0, seedBests: {} },
     stats: { runs: 0, tags: 0, perfectTags: 0, deaths: 0, coinsEarned: 0 },
@@ -73,6 +75,18 @@ export class Save {
     // Deep-default each present slot so new fields appear on old saves.
     data.settings = { ...defaultSettings(), ...data.settings };
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
+    // Relay simplification: refund the retired PERFECT TAG WINDOW and RELAY
+    // METER upgrades exactly once, then drop their bench entries.
+    for (const s of data.slots) {
+      if (!s || s.relayRefunded) continue;
+      let refund = 0;
+      if (s.bench && s.bench.tagWindow >= 1) refund += 1500;
+      if (s.bench && s.bench.meterRate >= 1) refund += 1200;
+      if (s.bench && s.bench.meterRate >= 2) refund += 2400;
+      if (s.bench) { delete s.bench.tagWindow; delete s.bench.meterRate; }
+      s.coins = (s.coins || 0) + refund;
+      s.relayRefunded = true; // migration flag: never refund twice
+    }
     this.data = data;
     return this;
   }

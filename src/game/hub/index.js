@@ -1,10 +1,11 @@
-// THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select, team select,
+// THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, getSprite } from '../../engine/sprites.js';
 import { drawToon, toonStandSprite } from '../../sprites/toons.js';
+import { drawProp } from '../../sprites/props.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
@@ -16,7 +17,7 @@ import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
 const CORRUPTED_MODIFIERS = [
   { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. IT PROVIDES A CONTRACTUAL MINIMUM HOP.' },
   { id: 'maxspeed', name: 'MAXIMUM SPEED', desc: 'EVERYTHING IS FASTER. NOTHING IS CALMER.' },
-  { id: 'randomswap', name: 'RANDOM SWAPS', desc: 'YOUR TEAM ORDER IS A SUGGESTION.' },
+  { id: 'randomswap', name: 'RANDOM SWAPS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
   { id: 'narration', name: 'INACCURATE NARRATION', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
 ];
 export { CORRUPTED_MODIFIERS };
@@ -189,8 +190,7 @@ export class HubState {
     // DUST DEVIL cleaning something impossible (varies by act)
     const ddSpots = [[300, 178, 'THE FLOOR'], [520, 40, 'THE CEILING'], [720, 120, 'THE INSIDE OF A CRT']];
     const [dx, dy] = ddSpots[Math.min(act - 1, 2)];
-    const dd = getSprite('dustdevil');
-    if (dd) ctx.drawImage(dd, Math.round(dx - cam + Math.sin(this.t) * 8), dy);
+    drawProp(ctx, 'dustdevil', Math.round(dx - cam + Math.sin(this.t) * 8), dy, 14, 12);
     // player walks
     const heroId = slot.mods.equipped.includes('coupon') ? 'gary' : (this.flow.lastTeam && this.flow.lastTeam[0]) || 'lorenzo';
     const moving = Input.held('left') || Input.held('right');
@@ -293,74 +293,6 @@ export class StageSelectState {
   }
 }
 
-export class TeamSelectState {
-  constructor({ save, flow, onGo }) { this.save = save; this.flow = flow; this.onGo = onGo; }
-  enter() {
-    this.picked = (this.flow.lastTeam || ['lorenzo', 'gnash', 'mochi']).slice(0, 3);
-    this.idx = 0;
-    this.t = 0;
-    Input.setMenuButtons();
-  }
-  update(dt) {
-    this.t += dt;
-    const cols = 4;
-    if (Input.pressed('right')) { this.idx = (this.idx + 1) % 8; Audio.sfx('ui'); }
-    if (Input.pressed('left')) { this.idx = (this.idx + 7) % 8; Audio.sfx('ui'); }
-    if (Input.pressed('duck')) { this.idx = (this.idx + cols) % 8; Audio.sfx('ui'); }
-    if (Input.pressed('jump')) { this.idx = (this.idx + 8 - cols) % 8; Audio.sfx('ui'); }
-    let toggled = null;
-    if (Input.pressed('confirm')) toggled = HEROES[this.idx].id;
-    if (Input.pressed('pointer')) {
-      const p = Input.pointer;
-      const gx = Math.floor((p.x - (W / 2 - 152)) / 76), gy = Math.floor((p.y - 60) / 74);
-      if (gx >= 0 && gx < 4 && gy >= 0 && gy < 2) { this.idx = gy * 4 + gx; toggled = HEROES[this.idx].id; }
-      if (p.y > H - 40 && this.picked.length === 3) { this.go(); toggled = null; }
-    }
-    if (toggled) {
-      Audio.sfx('uiConfirm');
-      if (this.picked.includes(toggled)) this.picked = this.picked.filter((h) => h !== toggled);
-      else if (this.picked.length < 3) this.picked.push(toggled);
-    }
-    if (Input.pressed('ability') && this.picked.length === 3) this.go();
-    if (Input.pressed('back')) this.flow.toHub();
-    Input.endFrame();
-  }
-  go() { this.flow.lastTeam = this.picked.slice(); this.onGo(this.picked.slice()); }
-  draw(ctx) {
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'CHOOSE YOUR RELAY TEAM (3)', W / 2, 16, '#fff', 2);
-    const slot = this.save.slot;
-    HEROES.forEach((h, i) => {
-      const x = W / 2 - 152 + (i % 4) * 76, y = 60 + Math.floor(i / 4) * 74;
-      const sel = i === this.idx;
-      const inTeam = this.picked.includes(h.id);
-      const order = this.picked.indexOf(h.id);
-      ctx.fillStyle = inTeam ? '#1c3a34' : '#14141c';
-      ctx.fillRect(x, y, 68, 64);
-      ctx.strokeStyle = sel ? '#f6d33c' : inTeam ? '#48e0c8' : '#30303f';
-      ctx.strokeRect(x + 0.5, y + 0.5, 68, 64);
-      drawToon(ctx, h.id, {
-        kind: 'idle',
-        time: (this.t || 0) + i * 0.7,
-        grounded: true,
-        squash: sel ? 0.05 + 0.05 * Math.sin((this.t || 0) * 6) : 0,
-      }, x + 18, y + 38, 32);
-      drawText(ctx, h.short, x + 4, y + 42, inTeam ? '#48e0c8' : '#c8c8d8');
-      if (inTeam) drawText(ctx, `#${order + 1}`, x + 52, y + 4, '#f6d33c');
-      const m = slot.mastery[h.id];
-      if (m && m.level > 0) drawText(ctx, `M${m.level}`, x + 4, y + 54, '#f890b8');
-    });
-    const h = HEROES[this.idx];
-    drawTextCentered(ctx, `${h.name} - ${h.tagline}`, W / 2, 208, '#f6d33c');
-    drawTextCentered(ctx, h.abilityDesc, W / 2, 220, '#c8c8d8');
-    if (this.picked.length === 3) {
-      drawTextCentered(ctx, '>>> START (X / SHIFT / TAP HERE) <<<', W / 2, H - 26, '#48c848');
-    } else {
-      drawTextCentered(ctx, `PICK ${3 - this.picked.length} MORE`, W / 2, H - 26, '#8a8a98');
-    }
-  }
-}
 
 export class BenchState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 20; }

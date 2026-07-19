@@ -3,6 +3,7 @@
 import { W, H } from '../engine/renderer.js';
 import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
+import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
@@ -33,8 +34,7 @@ export function drawHud(ctx, run) {
 
   // Score + coins.
   drawText(ctx, `${Math.floor(run.score)}`, 6, 12, '#fff', 2);
-  const cs = getSprite('coin');
-  if (cs) ctx.drawImage(cs, 6, 30);
+  drawProp(ctx, 'coin', 6, 30, 8, 8);
   drawText(ctx, `${run.coins}`, 18, 30, '#f6d33c');
 
   // Battery cells (campaign) — sincere and always visible.
@@ -49,10 +49,7 @@ export function drawHud(ctx, run) {
     drawText(ctx, 'ONE HIT. GOOD LUCK.', 6, 44, '#e04848');
   }
   // Shields.
-  for (let i = 0; i < run.powerups.shieldStack; i++) {
-    const s = getSprite('capShield');
-    if (s) ctx.drawImage(s, 6 + i * 10, 56);
-  }
+  for (let i = 0; i < run.powerups.shieldStack; i++) drawProp(ctx, 'capShield', 6 + i * 10, 56, 8, 8);
 
   // Power-up timers, top-right under buttons.
   let py = 20;
@@ -67,26 +64,26 @@ export function drawHud(ctx, run) {
     py += 18;
   }
 
-  // Relay: team faces + meter. Portals rotate through the team in order.
-  const teamX = W / 2 - run.team.length * 12;
-  run.team.forEach((id, i) => {
-    const cur = id === run.relay.current;
-    ctx.fillStyle = cur ? '#48e0c8' : '#8a8a98';
-    ctx.fillRect(teamX + i * 24, 11, 20, 14);
-    const spr = toonFaceSprite(id, 12, 9);
-    if (spr) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(spr, teamX + i * 24 + 4, 12, 12, 9);
-      ctx.imageSmoothingEnabled = false;
-    } else drawText(ctx, HERO_BY_ID[id].short[0], teamX + i * 24 + 7, 15, cur ? '#0b0b14' : '#fff');
-  });
-  // Meter bar.
-  ctx.fillStyle = '#20242c';
-  ctx.fillRect(teamX, 27, run.team.length * 24 - 4, 4);
-  ctx.fillStyle = run.relay.meter >= 1 ? '#f6d33c' : '#48e0c8';
-  ctx.fillRect(teamX, 27, (run.team.length * 24 - 4) * Math.min(1, run.relay.meter), 4);
-  if (run.relay.meter >= 1) drawTextCentered(ctx, Input.usingTouch ? 'TAG BTN: TEAM MOVE' : 'C: TEAM MOVE', W / 2, 34, '#f6d33c');
-  if (run.relay.combo > 1) drawTextCentered(ctx, `COMBO x${run.relay.combo}`, W / 2, 43, '#c8e0ff');
+  // Relay: current hero + Relay Blast pips (the 3rd switch blasts, automatically).
+  const cx0 = W / 2 - 30;
+  ctx.fillStyle = '#48e0c8';
+  ctx.fillRect(cx0, 11, 20, 14);
+  const face = toonFaceSprite(run.relay.current, 12, 9);
+  if (face) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(face, cx0 + 4, 13, 12, 9);
+    ctx.imageSmoothingEnabled = false;
+  }
+  drawText(ctx, HERO_BY_ID[run.relay.current].short, cx0 + 24, 13, '#c8e0ff');
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(cx0 + 27 + i * 9, 26, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = i < run.relay.pips ? '#f6d33c' : '#20242c';
+    ctx.fill();
+    ctx.strokeStyle = '#5a5a68';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
 
   // Mission line + progress.
   if (!run.overtime && run.stage) {
@@ -108,19 +105,14 @@ export function drawHud(ctx, run) {
     drawText(ctx, 'OVERTIME', 6, H - 14, '#8858c8');
   }
 
-  // Persistent desktop cheat sheet with hero-specific ability wording.
+  // One small, dim controls line tucked in the corner (full map lives in pause).
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
     const ability = hero.ability
-      ? `X ${hero.ability.type === 'shoot' ? 'SHOOT' : hero.ability.type === 'dash' ? 'SPEED BOOST' : 'THROW AXE'}`
-      : null;
-    ctx.fillStyle = 'rgba(11,11,20,0.78)';
-    ctx.fillRect(4, 68, 174, 36);
-    ctx.strokeStyle = 'rgba(72,224,200,0.35)';
-    ctx.strokeRect(4.5, 68.5, 173, 35);
-    drawText(ctx, 'KEYBOARD CONTROLS', 10, 74, '#48e0c8');
-    drawText(ctx, 'SPACE JUMP   DOWN DUCK/ROLL', 10, 84, '#c8c8d8');
-    drawText(ctx, ability ? `${ability}   C TAG   P PAUSE` : 'C TAG   P PAUSE', 10, 94, '#f6d33c');
+      ? `  X ${hero.ability.type === 'shoot' ? 'SHOOT' : hero.ability.type === 'dash' ? 'BOOST' : 'AXE'}`
+      : '';
+    const line = `SPACE JUMP  DOWN DUCK${ability}  P PAUSE`;
+    drawText(ctx, line, W - textWidth(line) - 6, H - 9, 'rgba(200,200,216,0.4)');
   }
 
   // Touch buttons.

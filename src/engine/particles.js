@@ -31,13 +31,16 @@ export function updateParticles(dt) {
 }
 
 export function drawParticles(ctx, camX = 0) {
+  // round, antialiased puffs — they shrink and fade as they die
   for (const p of pool) {
     if (!p.live) continue;
     const a = p.life / p.maxLife;
     ctx.globalAlpha = a > 0.5 ? 1 : a * 2;
     ctx.fillStyle = p.color;
-    const s = Math.max(1, Math.round(p.size * (0.5 + a * 0.5)));
-    ctx.fillRect(Math.round(p.x - camX), Math.round(p.y), s, s);
+    const r = Math.max(0.4, p.size * (0.5 + a * 0.5) * 0.6);
+    ctx.beginPath();
+    ctx.arc(p.x - camX + r, p.y + r, r, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.globalAlpha = 1;
 }

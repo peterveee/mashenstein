@@ -5,6 +5,7 @@ import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, getSprite } from '../../engine/sprites.js';
+import { drawProp } from '../../sprites/props.js';
 import { Rng } from '../../engine/rng.js';
 import { TURDLE_WORDS } from '../../data/words.js';
 
@@ -74,6 +75,7 @@ export class MinigameState {
       ctx.fillRect(0, H / 2 - 24, W, 48);
       drawTextCentered(ctx, this.result ? 'POWER RESTORED' : 'THE BREAKER REMAINS UNIMPRESSED', W / 2, H / 2 - 8, this.result ? '#48c848' : '#e04848', 1);
       if (!this.result) drawTextCentered(ctx, 'A CHILD COULD REWIRE THAT. A CHILD.', W / 2, H / 2 + 6, '#8a8a98');
+      else if (this.o.bonusText) drawTextCentered(ctx, this.o.bonusText, W / 2, H / 2 + 6, '#f6d33c');
     }
     // touch buttons
     for (const b of Input.buttons) {
@@ -392,11 +394,9 @@ function mashInvaders(rng) {
     },
     draw(ctx) {
       drawTextCentered(ctx, 'CLEAR THE WAVE OF DUST DEVILS.', W / 2, 34, '#c8e0ff');
-      const spr = getSprite('dustdevil');
       for (const v of inv) {
         if (!v.live) continue;
-        if (spr) ctx.drawImage(spr, Math.round(v.x - 6), Math.round(v.y - 5));
-        else { ctx.fillStyle = '#c83030'; ctx.fillRect(v.x - 6, v.y - 5, 12, 10); }
+        drawProp(ctx, 'dustdevil', Math.round(v.x - 7), Math.round(v.y - 6), 14, 12);
       }
       ctx.fillStyle = '#48e0c8';
       ctx.fillRect(px - 8, H - 36, 16, 8);
@@ -464,9 +464,7 @@ function brickBonk(rng) {
       ctx.fillStyle = '#48e0c8';
       ctx.fillRect(px - 24, H - 42, 48, 6);
       // the ball is a coin
-      const c = getSprite('coin');
-      if (c) ctx.drawImage(c, Math.round(bx - 4), Math.round(by - 4));
-      else { ctx.fillStyle = '#f6d33c'; ctx.fillRect(bx - 3, by - 3, 6, 6); }
+      drawProp(ctx, 'coin', Math.round(bx - 4), Math.round(by - 4), 8, 8);
     },
   };
 }

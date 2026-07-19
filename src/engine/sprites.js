@@ -166,21 +166,49 @@ function glyphCanvas(ch, color) {
 
 export function textWidth(str, scale = 1) { return str.length * 6 * scale - scale; }
 
+// Smooth vector lettering on the old font's fixed six-unit grid, so every
+// existing menu layout still lines up. Each glyph is centred in its cell
+// (the pixel font was fixed-width), and it rasterizes at device resolution.
+const FONT_STACK = '"Trebuchet MS", "Avenir Next", "Segoe UI", system-ui, sans-serif';
+
+// Glyphs are rasterized ONCE into supersampled canvases and then blitted —
+// drawImage is a GPU texture copy, while per-frame fillText re-rasterizes
+// vector outlines on the CPU. Menus are wall-to-wall text, so this matters.
+const glyphCache = new Map();
+const GLYPH_SS = 4;
+function glyphSprite(ch, color, scale) {
+  const key = ch + '|' + color + '|' + scale;
+  let g = glyphCache.get(key);
+  if (!g) {
+    g = document.createElement('canvas');
+    g.width = Math.ceil(8 * scale * GLYPH_SS);
+    g.height = Math.ceil(12 * scale * GLYPH_SS);
+    const x = g.getContext('2d');
+    x.scale(GLYPH_SS, GLYPH_SS);
+    x.fillStyle = color;
+    x.font = `600 ${8.2 * scale}px ${FONT_STACK}`;
+    x.textBaseline = 'top';
+    x.textAlign = 'center';
+    x.fillText(ch, 4 * scale, 1 * scale);
+    glyphCache.set(key, g);
+  }
+  return g;
+}
+
 export function drawText(ctx, str, x, y, color = '#fff', scale = 1) {
   const s = String(str);
   let cx = x;
-  // Smooth compact lettering replaces the old 5x7 block font while retaining
-  // its fixed six-unit layout, so existing menus do not need to be redesigned.
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.font = `${Math.max(8, 9 * scale)}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
-  ctx.textBaseline = 'top';
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch !== ' ') ctx.fillText(ch, cx, y);
+    if (ch !== ' ') {
+      const g = glyphSprite(ch, color, scale);
+      ctx.drawImage(g, cx - 1.5 * scale, y - 1 * scale, 8 * scale, 12 * scale);
+    }
     cx += 6 * scale;
   }
-  ctx.restore();
+  ctx.imageSmoothingEnabled = prev;
   return cx;
 }
 

@@ -1,12 +1,11 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
-// Actions: jump, duck, ability, tag, left, right, confirm, back, pause, mute.
+// Actions: jump, duck, ability, left, right, confirm, back, pause, mute.
 import { clientToLogical } from './renderer.js';
 
 const DEFAULT_KEYS = {
   jump: ['Space', 'ArrowUp', 'KeyW'],
   duck: ['ArrowDown', 'KeyS'],
   ability: ['KeyX', 'ShiftLeft', 'ShiftRight'],
-  tag: ['KeyC', 'KeyE'],
   left: ['ArrowLeft', 'KeyA'],
   right: ['ArrowRight', 'KeyD'],
   confirm: ['Enter', 'Space'],
@@ -16,12 +15,13 @@ const DEFAULT_KEYS = {
   debug: ['Backquote'],
 };
 
-const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'tag', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };
+const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };
 
 class InputSys {
   constructor() {
     this.keys = JSON.parse(JSON.stringify(DEFAULT_KEYS));
     this.down = new Set();      // currently held actions
+    this.activity = 0;          // raw HUMAN input counter (bots never bump it)
     this.hit = new Set();       // pressed this frame
     this.up = new Set();        // released this frame
     this.pointer = { x: 0, y: 0, down: false };
@@ -36,6 +36,7 @@ class InputSys {
   init() {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
+      this.activity++;
       if (this.textHandler && /^Key[A-Z]$|^Enter$|^Backspace$/.test(e.code)) {
         this.textHandler(e.code);
         e.preventDefault();
@@ -51,6 +52,7 @@ class InputSys {
     });
     const el = document.getElementById('game');
     el.addEventListener('pointerdown', (e) => {
+      this.activity++;
       this.usingTouch = e.pointerType === 'touch';
       this.onAnyGesture && this.onAnyGesture();
       const p = clientToLogical(e.clientX, e.clientY);
@@ -114,6 +116,16 @@ class InputSys {
   }
 
   press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }
+
+  // Drop every held/pending input (attract mode consumes the exit press so it
+  // can never navigate a menu).
+  clearAll() {
+    this.down.clear();
+    this.hit.clear();
+    if (this.up) this.up.clear();
+    this.touches.clear();
+    this.padPrev = new Set();
+  }
   release(a) { if (this.down.has(a)) { this.down.delete(a); this.up.add(a); } }
 
   pollGamepad() {
@@ -122,6 +134,7 @@ class InputSys {
     for (const pad of pads) {
       if (!pad) continue;
       pad.buttons.forEach((b, i) => { if (b.pressed && GAMEPAD_MAP[i]) now.add(GAMEPAD_MAP[i]); });
+      pad.buttons.forEach((b, i) => { if (b.pressed && GAMEPAD_MAP[i] && !this.padPrev.has(GAMEPAD_MAP[i])) this.activity++; });
       if (pad.axes[0] < -0.5) now.add('left');
       if (pad.axes[0] > 0.5) now.add('right');
       if (pad.axes[1] > 0.5) now.add('duck');

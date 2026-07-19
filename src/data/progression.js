@@ -1,4 +1,4 @@
-// Progression & economy data: Repair Bench, Hero Mastery, Cabinet Mods, duo moves.
+// Progression & economy data: Repair Bench, Hero Mastery, Cabinet Mods.
 
 export const BENCH_UPGRADES = [
   { id: 'shield', name: 'SHIELD', levels: [0, 800, 2400], max: 3, desc: ['ABSORBS 1 HIT. STACKS TO 2.', 'STACKS TO 3.', 'BREAKING EMITS A SHOCKWAVE THAT CLEARS THE NEAREST OBSTACLE.'] },
@@ -6,8 +6,6 @@ export const BENCH_UPGRADES = [
   { id: 'star', name: 'SCORE STAR', levels: [0, 800, 2400], max: 3, desc: ['2X SCORE. 10 SECONDS.', '2.5X SCORE.', '3X SCORE.'] },
   { id: 'slowmo', name: 'SLOW-MO', levels: [0, 800, 2400], max: 3, desc: ['WORLD AT 65%. 6 SECONDS.', '8 SECONDS.', '10 SECONDS AT 55%.'] },
   { id: 'tuneup', name: 'HERO TUNE-UP', levels: [1000, 2000, 3000], max: 3, desc: ['ABILITY COOLDOWNS -10%.', '-20%.', '-30%.'] },
-  { id: 'tagWindow', name: 'PERFECT TAG WINDOW', levels: [1500], max: 1, desc: ['PERFECT TAG WINDOW +50%.'] },
-  { id: 'meterRate', name: 'RELAY METER', levels: [1200, 2400], max: 2, desc: ['METER CHARGES +25% FASTER.', '+50% FASTER.'] },
 ];
 
 export const MODS = [
@@ -32,31 +30,10 @@ export const MOD_BY_ID = Object.fromEntries(MODS.map((m) => [m.id, m]));
 // Mastery: XP thresholds for levels 1-5.
 export const MASTERY_LEVELS = [0, 100, 300, 700, 1400];
 
-export const DUO_MOVES = [
-  {
-    id: 'headlaunch', pair: ['gary', 'chompo'], name: 'HEAD DELIVERY',
-    desc: 'GARY THROWS HIS HEAD. CHOMPO EATS AND LAUNCHES IT. THE HEAD APOLOGIZES TO EACH OBSTACLE.',
-    effect: 'pierce',
-  },
-  {
-    id: 'plumberthrow', pair: ['grumpos', 'lorenzo'], name: 'STANDARD PROCEDURE',
-    desc: 'GRUMPOS THROWS LORENZO. LORENZO INSISTS THIS IS STANDARD PLUMBING PROCEDURE.',
-    effect: 'smash',
-  },
-  {
-    id: 'inhale', pair: ['mochi', 'b33p'], name: 'TECHNICAL DIFFICULTIES',
-    desc: 'MOCHI INHALES B-33P\'S PROJECTILE AND PRODUCES SOMETHING DEEPLY INCORRECT.',
-    effect: 'screenclear',
-  },
-  {
-    id: 'prophecy', pair: ['gnash', 'fernwick'], name: 'PROPHECY UPDATE',
-    desc: 'GNASH RUNS CIRCLES AROUND FERNWICK FAST ENOUGH TO UPDATE HIS SACRED PROPHECY.',
-    effect: 'reroll',
-  },
-];
+// (Duo Moves retired with the relay simplification.)
 
 // Coin rewards.
 export const REWARDS = {
   stageClear: 250, bossClear: 500, challengeBonus: 100, applianceBonus: 150,
-  corruptedClear: 400, minigameWin: 300, perfectTagCoin: 5,
+  corruptedClear: 400, minigameWin: 300,
 };

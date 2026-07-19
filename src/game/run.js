@@ -10,29 +10,39 @@ import { drawText, drawTextCentered } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
-import { Powerups } from './powerups.js';
+import { Powerups, POWER_DEFS } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '../data/jokes.js';
-import { getStylePack } from '../engine/stylePacks/index.js';
+import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech } from './hud.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export const GROUND_Y = 232;
+
+// What each hero is FOR, in three words or fewer — shown on portal previews
+// and right after a switch.
+export const HERO_CALLOUT = {
+  lorenzo: 'AIR STOMP', gnash: 'SPEED BOOST', fernwick: 'ROLL + SHIELD',
+  b33p: 'SHOOT', mochi: 'DOUBLE JUMP', chompo: 'COIN MAGNET',
+  gary: 'SURVIVES BEHEADING', grumpos: 'THROW AXE',
+};
 const BASE_SPEED = 160;
 
 export class RunState {
-  // opts: {stage, team, seed, save, progress, overtime, corrupted:[], onEnd(result)}
+  // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
   constructor(opts) {
     this.o = opts;
     this.stage = opts.stage || null;
     this.cabinet = opts.cabinet || (this.stage ? CABINET_BY_ID[this.stage.cabinet] : CABINETS[0]);
     this.overtime = !!opts.overtime;
+    this.demo = !!opts.demo;   // attract mode: first death ends the clip, no teaching
     this.corrupted = opts.corrupted || [];
     this.oneHit = this.overtime || opts.difficulty === 5 || this.corrupted.length > 0;
     this.unplugged = opts.difficulty === 5;
+    this.startingPowerup = opts.startingPowerup || null;
   }
 
   groundYAt(worldX) {
@@ -55,10 +65,9 @@ export class RunState {
     const slot = this.save.slot;
     this.bench = slot.bench;
     this.modIds = slot.mods.equipped.slice();
-    this.team = o.team && o.team.length ? o.team : ['lorenzo', 'gnash', 'mochi'];
-    if (this.corrupted.includes('randomswap')) this.team = this.rng.shuffle(this.team);
-    this.relay = new Relay(this.team, this.bench, slot.stats);
+    this.relay = new Relay(this.rng.stream('relay'), slot.stats);
     if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
+    this.usedHeroes = new Set([this.relay.current]);
     this.player = new Player(this.relay.current, this.modIds);
     // NO JUMPING: the jump button is on strike; it provides a contractual minimum hop.
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
@@ -75,7 +84,7 @@ export class RunState {
     this.battery = this.maxBattery();
     this.damageTaken = 0;
     this.hitstop = 0;
-    this.perfectSlow = 0;
+    this.briefSlow = 0;
     this.dead = false;
     this.deadT = 0;
     this.failMsg = null;
@@ -130,6 +139,14 @@ export class RunState {
     Audio.setDetune(1);
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
     this.setButtons();
+    // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
+    if (this.startingPowerup) {
+      const id = this.startingPowerup;
+      this.startingPowerup = null;
+      this.powerups.grab(id, { minDuration: 30 });
+      Audio.sfx('power');
+      this.floatText(`BREAKER BONUS: ${POWER_DEFS[id].name}`, PLAYER_X - 20, 70, POWER_DEFS[id].color);
+    }
     clearParticles();
   }
 
@@ -143,7 +160,6 @@ export class RunState {
     ];
     if (Input.usingTouch) {
       if (hero.ability) btns.push({ id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' });
-      btns.push({ id: 'tag', x: W - 106, y: H - 52, w: 44, h: 40, action: 'tag', label: 'TAG' });
     }
     Input.setButtons(btns);
   }
@@ -182,8 +198,8 @@ export class RunState {
     if (this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
 
-    const ts = this.powerups.timescale() * (this.perfectSlow > 0 ? 0.35 : 1);
-    if (this.perfectSlow > 0) this.perfectSlow -= dt;
+    const ts = this.powerups.timescale() * (this.briefSlow > 0 ? 0.35 : 1);
+    if (this.briefSlow > 0) this.briefSlow -= dt;
     Audio.setDetune(this.powerups.active.slowmo ? 0.94 : 1);
     const wdt = dt * ts;   // world time (slow-mo affects world, not score accrual)
 
@@ -208,7 +224,6 @@ export class RunState {
     }
     if (Input.pressed('duck') && this.challenge && this.challenge.type === 'onbeat') this.checkOnBeat();
     if (Input.pressed('ability')) this.useAbility();
-    if (Input.pressed('tag')) this.tryManualTag();
 
     // Player physics. (jumpScale survives hero swaps)
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
@@ -263,7 +278,6 @@ export class RunState {
       // don't exist at all on one-hit runs), so carrying them across the
       // finish must satisfy the mission or late pickups soft-lock the run.
       case 'rescue': return m.count + this.pickups.filter((p) => p.live && p.def.resident && p.following).length >= m.n;
-      case 'combo': return m.done || this.relay.bestCombo >= m.n;
       default: return true; // reach/fuse/blackout/escape: surviving to the end is the win
     }
   }
@@ -271,7 +285,6 @@ export class RunState {
   // ------------------------------------------------------------------ ability
   useAbility() {
     const hero = HERO_BY_ID[this.relay.current];
-    // Team move: full meter + no ability hero OR double-purpose via tag button handled in tryManualTag.
     if (!hero.ability) return;
     const cdMult = 1 - 0.1 * (this.bench.tuneup || 0);
     if (this.player.abilityCd > 0) return;
@@ -307,8 +320,20 @@ export class RunState {
   }
 
   scatterCoins(x) {
-    for (let i = 0; i < 3; i++) {
-      const p = makePickup('coin', x + this.fxRng.range(-30, 50), this.fxRng.range(10, 40));
+    this.tossCoins(x, 3);
+  }
+
+  // Spray coins up and FORWARD so they land in your path instead of sitting
+  // where the block was (which the runner has already passed). Speeds are
+  // tuned so every coin settles ~30-140px AHEAD of the player, then gets run
+  // through about half a second later.
+  tossCoins(x, n, alt = 14) {
+    const sp = this.speed;
+    for (let i = 0; i < n; i++) {
+      const p = makePickup('coin', x + this.fxRng.range(0, 6), alt);
+      p.toss = true;
+      p.vx = sp * (1.55 + 0.16 * i) + this.fxRng.range(0, 40); // fans out ahead
+      p.vy = this.fxRng.range(110, 165);
       this.pickups.push(p);
     }
   }
@@ -320,7 +345,7 @@ export class RunState {
       shake(2, 0.12);
       burst(ob.x + ob.w / 2, GROUND_Y - ob.alt - ob.h / 2, 10, 60, 0.5, '#c8a068', 1, 160, () => this.fxRng.float());
     }
-    if (ob.def.bonusCoins) for (let i = 0; i < ob.def.bonusCoins; i++) this.pickups.push(makePickup('coin', ob.x + i * 12, ob.alt + 14));
+    if (ob.def.bonusCoins) this.tossCoins(ob.x + ob.w / 2, ob.def.bonusCoins, ob.alt + ob.h);
     if (ob.def.isTarget && this.mission.type === 'targets' && (!this.mission.targetType || this.mission.targetType === ob.type)) {
       this.mission.count++;
       this.floatText(`${this.mission.count}/${this.mission.n}`, ob.x, GROUND_Y - ob.alt - ob.h - 8, '#48e0c8');
@@ -339,103 +364,69 @@ export class RunState {
   // ------------------------------------------------------------------ relay
   updatePortal(dt) {
     if (this.portal) {
-      if (this.portal.x < this.camX - 30) { this.portal = null; this.relay.breakCombo(); }
+      if (this.portal.x < this.camX - 30) this.portal = null;
     } else if (this.relay.portalDue()) {
-      const nextIdx = this.relay.nextHero();
-      this.portal = { x: this.camX + W + 40, hero: this.team[nextIdx] };
+      const hero = this.relay.next;
+      this.portal = { x: this.camX + W + 40, hero, label: `${HERO_BY_ID[hero].short} - ${HERO_CALLOUT[hero]}` };
       this.relay.portalSpawned();
+      this.tutor('firstPortal', 'RUN THROUGH THE PORTAL TO CHANGE HERO.');
     }
     if (this.portal) {
       const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - 40, w: 12, h: 40 };
       if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox)) {
-        this.doTag();
+        this.doSwitch();
         this.portal = null;
       }
     }
   }
 
-  tryManualTag() {
-    // Tag button: use portal if close, else Team Move if meter full.
-    if (this.portal && Math.abs(this.portal.x - (this.camX + PLAYER_X)) < 60) return; // let overlap handle it
-    if (this.relay.teamMoveReady()) {
-      this.relay.spendMeter();
-      Audio.sfx('power');
-      shake(4, 0.3);
-      this.floatText('TEAM MOVE. THE NARRATOR APOLOGIZES FOR THE BUDGET.', this.camX + PLAYER_X - 40, 80, '#f6d33c');
-      for (const ob of this.obstacles) {
-        if (ob.live && ob.x > this.camX + PLAYER_X && ob.x < this.camX + W && ob.def.breakable !== false && !ob.def.isGap) this.breakObstacle(ob, true);
-      }
-      burst(this.camX + PLAYER_X + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
-    }
+  // One-time contextual teaching prompts (stored per save slot).
+  tutor(flag, text) {
+    if (this.demo) return; // the bot needs no education
+    const t = this.save.slot.tutor || (this.save.slot.tutor = {});
+    if (t[flag]) return;
+    t[flag] = true;
+    this.save.persist();
+    this.speech = { text, t: 2.8, who: null };
+    this.briefSlow = Math.max(this.briefSlow, 0.55); // brief slow, never a stop
   }
 
-  doTag() {
-    // Perfect if an action obstacle is imminent.
+  doSwitch() {
     const px = this.camX + PLAYER_X;
-    const windowPx = this.speed * this.relay.perfectWindow();
-    let perfect = false;
-    for (const ob of this.obstacles) {
-      if (ob.live && ob.def.action !== 'none' && ob.x > px && ob.x < px + windowPx) { perfect = true; break; }
-    }
-    const slot = this.save.slot;
-    const result = this.relay.tag(perfect, Object.fromEntries(Object.entries(slot.mastery).map(([k, v]) => [k, v.level || 0])));
-    if (!result) return;
+    const result = this.relay.switchHero();
     this.player.setHero(result.to);
+    this.usedHeroes.add(result.to);
     this.setButtons();
-    Audio.sfx(perfect ? 'perfect' : 'tag');
-    if (perfect) {
-      this.perfectSlow = 0.4;
-      this.player.iframes = Math.max(this.player.iframes, 1);
-      this.score += 250 * this.relay.combo;
-      this.coins += 5;
-      this.floatText(`PERFECT TAG x${this.relay.combo}`, px, GROUND_Y - 60, '#48e0c8');
-      if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
-    } else {
-      this.score += 100 * Math.max(1, this.relay.combo);
-      this.floatText(`TAG x${this.relay.combo}`, px, GROUND_Y - 60, '#c8e0ff');
-    }
+    Audio.sfx('tag');
+    this.score += 100;
     burst(px + 6, GROUND_Y - this.player.y - 8, 14, 80, 0.5, '#48e0c8', 1, 80, () => this.fxRng.float());
-    // Entrance moves.
     const hero = HERO_BY_ID[result.to];
     if (hero.stomp) this.stompBreak();
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
-    this.speech = { text: TAG_LINES[result.to], t: 1.6, who: result.to };
-    if (result.duo) this.fireDuo(result.duo);
-    if (this.mission.type === 'combo' && this.relay.bestCombo >= this.mission.n) this.mission.done = true;
-    if (this.challenge) {
-      if (this.challenge.type === 'tags') this.challenge.count++;
-      if (this.challenge.type === 'perfects' && perfect) this.challenge.count++;
-    }
+    if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
+    // say what this hero DOES, right now, in the player's control scheme
+    const btn = Input.usingTouch ? 'PWR' : 'X';
+    this.speech = hero.ability
+      ? { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: result.to }
+      : { text: `${HERO_CALLOUT[result.to]} - AUTOMATIC`, t: 2, who: result.to };
+    this.tutor('firstSwitch', 'SWITCH 3 TIMES FOR A RELAY BLAST.');
+    if (hero.ability) this.tutor('firstAbility', `THIS HERO HAS A MOVE. PRESS ${btn}.`);
+    else this.tutor('firstPassive', 'THIS HERO WORKS AUTOMATICALLY. NO EXTRA BUTTON.');
+    if (result.blast) this.relayBlast();
   }
 
-  fireDuo(duo) {
+  // Every third switch: automatic screen-clearing Relay Blast.
+  relayBlast() {
     Audio.sfx('power');
-    shake(3, 0.25);
-    this.floatText(duo.name, this.camX + PLAYER_X - 20, 70, '#f890b8');
-    this.speech = { text: duo.desc, t: 2.5, who: null };
-    switch (duo.effect) {
-      case 'pierce':
-        this.projectiles.push({ type: 'head', x: this.camX + PLAYER_X + 12, alt: 14, vx: this.speed + 300, live: true, pierce: true });
-        break;
-      case 'smash':
-        for (const ob of this.obstacles) {
-          if (ob.live && ob.def.ground && ob.def.breakable && ob.x > this.camX + PLAYER_X && ob.x < this.camX + PLAYER_X + 160) this.breakObstacle(ob);
-        }
-        break;
-      case 'screenclear':
-        for (const ob of this.obstacles) {
-          if (ob.live && ob.x > this.camX && ob.x < this.camX + W && ob.def.breakable !== false && !ob.def.isGap) this.breakObstacle(ob, true);
-        }
-        burst(this.camX + PLAYER_X + 80, GROUND_Y - 60, 50, 140, 0.9, '#f890b8', 2, 80, () => this.fxRng.float());
-        break;
-      case 'reroll': {
-        const cap = this.pickups.find((p) => p.live && p.def.power && p.x > this.camX);
-        const want = this.battery < this.maxBattery() / 2 ? 'capShield' : 'capStar';
-        if (cap) { cap.type = want; cap.def = { ...cap.def }; Object.assign(cap.def, { sprite: want === 'capShield' ? 'capShield' : 'capStar', power: want === 'capShield' ? 'shield' : 'star' }); }
-        break;
-      }
+    shake(4, 0.3);
+    this.floatText('RELAY BLAST', this.camX + PLAYER_X - 10, 70, '#f6d33c');
+    for (const ob of this.obstacles) {
+      if (ob.live && ob.x > this.camX && ob.x < this.camX + W && ob.def.breakable !== false && !ob.def.isGap) this.breakObstacle(ob, true);
     }
+    burst(this.camX + PLAYER_X + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
+    this.tutor('firstBlast', 'RELAY BLAST: EVERY 3RD SWITCH. AUTOMATIC.');
   }
+
 
   // ------------------------------------------------------------------ entities
   updateEntities(dt, sp) {
@@ -462,6 +453,20 @@ export class RunState {
           this.projectiles.push({ type: 'enemyShot', x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
           Audio.sfx('shoot');
         }
+      }
+    }
+    // Tossed loot: arcs forward out of whatever dropped it, bounces once or
+    // twice, then settles on the ground ahead so you run through it.
+    for (const p of this.pickups) {
+      if (!p.live || !p.toss) continue;
+      p.x += p.vx * dt;
+      p.alt += p.vy * dt;
+      p.vy -= 700 * dt;
+      if (p.alt <= 8) {
+        p.alt = 8;
+        p.vy = -p.vy * 0.35;
+        p.vx *= 0.9;
+        if (p.vy < 40) { p.vy = 0; p.vx = 0; p.toss = false; }
       }
     }
     this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x > this.camX - 80);
@@ -639,7 +644,7 @@ export class RunState {
       battery: this.maxBattery(),
       mission: JSON.parse(JSON.stringify(this.mission)),
       challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
-      relayIdx: this.relay.currentIdx, combo: this.relay.combo,
+      relayState: { current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(), pips: this.relay.pips },
       spawnerX: this.spawner.nextX,
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
       escapeWall: this.escapeWall,
@@ -652,7 +657,12 @@ export class RunState {
     this.battery = s.battery;
     this.mission = JSON.parse(JSON.stringify(s.mission));
     this.challenge = s.challenge ? JSON.parse(JSON.stringify(s.challenge)) : null;
-    this.relay.currentIdx = s.relayIdx; this.relay.combo = 0;
+    if (s.relayState) {
+      this.relay.current = s.relayState.current;
+      this.relay.next = s.relayState.next;
+      this.relay.bag = s.relayState.bag.slice();
+      this.relay.pips = s.relayState.pips;
+    }
     this.player = new Player(this.relay.current, this.modIds);
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
     this.spawner.lastActionX = s.camX;
@@ -698,8 +708,8 @@ export class RunState {
       if (!overlaps(pbox, box)) continue;
       // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
       if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
-      if (this.player.invincible) {
-        if (this.player.dashT > 0 && ob.def.breakable) this.breakObstacle(ob);
+      if (this.player.invincible || this.powerups.isInvincible()) {
+        if ((this.player.dashT > 0 || this.powerups.isInvincible()) && ob.def.breakable) this.breakObstacle(ob);
         continue;
       }
       // Stomping THROUGH a breakable is the move working, not a hit.
@@ -776,15 +786,26 @@ export class RunState {
     }
   }
 
-  powerNameOf(id) { return { shield: 'SHIELD', magnet: 'MAGNET', star: 'SCORE STAR', slowmo: 'SLOW-MO' }[id] || id.toUpperCase(); }
+  powerNameOf(id) { return id === 'star' ? 'SCORE STAR' : (POWER_DEFS[id]?.name || id.toUpperCase()); }
 
   // ------------------------------------------------------------------ damage
   takeHit(msg, isPit = false) {
     if (this.player.iframes > 0) return;
+    // UNPEELABLE deflects hits; gravity remains undefeated (pits still hurt).
+    if (!isPit && this.powerups.isInvincible()) {
+      this.player.iframes = 0.35;   // debounce repeated same-frame contact
+      Audio.sfx('shield');
+      this.floatText('UNPEELABLE.', this.camX + PLAYER_X - 10, GROUND_Y - this.player.y - 40, '#e8e8f0');
+      return;
+    }
     const absorb = this.powerups.absorbHit();
+    sunShock(); // the level-1 sun gasps at any real impact (shielded or not)
     if (absorb.absorbed) {
       Audio.sfx('shield');
       shake(3, 0.2);
+      // the orb shatters into glass shards
+      burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 12, 18, 140, 0.5, '#a8e6ff', 1, 120, () => this.fxRng.float());
+      this.floatText('SHIELD BROKE. IT DID ITS JOB.', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 40, '#a8e6ff');
       this.player.iframes = 1.2;
       if (this.modIds.includes('coupon') || (this.relay.current === 'fernwick' && this.modIds.includes('coupon'))) { this.coins += 50; }
       if (absorb.shockwave) {
@@ -814,7 +835,6 @@ export class RunState {
     Audio.sfx('hit');
     shake(5, 0.3);
     this.hitstop = 0.12;
-    this.relay.breakCombo();
     burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 16, 90, 0.6, '#e04848', 2, 140, () => this.fxRng.float());
     if (this.battery <= 0) {
       this.die(msg);
@@ -843,7 +863,9 @@ export class RunState {
     this.player.vy -= this.gravityForDeath() * dt;
     this.player.y += this.player.vy * dt;
     if (this.deadT > 1.4) {
-      if (this.snapshot && !this.oneHit) {
+      if (this.demo) {
+        this.endRun(false); // demos die once and end — no checkpoint recovery
+      } else if (this.snapshot && !this.oneHit) {
         this.restoreSnapshot(this.snapshot);
       } else if (!this.oneHit && !this.overtime) {
         // restart stage from the top with a new seed
@@ -871,10 +893,10 @@ export class RunState {
       stage: this.stage, overtime: this.overtime, corrupted: this.corrupted,
       score: Math.floor(this.score), coins: this.coins,
       damageTaken: this.damageTaken,
-      bestCombo: this.relay.bestCombo,
+      bestCombo: 0,
       challengeDone: this.challenge ? (!this.challenge.failed && (this.challenge.type === 'noDamage' ? this.damageTaken === 0 : this.challenge.count >= this.challenge.n)) : false,
       applianceGot: this.applianceGot,
-      team: this.team,
+      team: [...this.usedHeroes],
       failMsg: this.failMsg,
       distance: Math.floor(this.distance),
       time: this.tRun,
@@ -957,18 +979,22 @@ export class RunState {
 
     // Player.
     drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, flat: this.paused || this.dead, groundY: this.groundYAt(cam + PLAYER_X) });
+      { mirror: this.mirror, flat: this.paused || this.dead, groundY: this.groundYAt(cam + PLAYER_X),
+        shield: this.powerups.shieldStack });
 
     drawParticles(ctx, cam);
     this.style.post(ctx, this.tRun);
 
     // Blackout overlay (mission).
     if (this.mission.type === 'blackout') {
+      // A brown-out, not a blackout: the edges dim hard but hazards stay
+      // readable — the tension is squinting, not guessing.
       const px = PLAYER_X + 6, py = this.groundYAt(cam + PLAYER_X) - this.player.y - 8;
-      const r = this.perfectSlow > 0 ? 200 : 70;
-      const g = ctx.createRadialGradient(px, py, r * 0.4, px, py, r);
+      const r = this.briefSlow > 0 ? 260 : 130;
+      const g = ctx.createRadialGradient(px, py, r * 0.35, px, py, r);
       g.addColorStop(0, 'rgba(8,6,12,0)');
-      g.addColorStop(1, 'rgba(8,6,12,0.93)');
+      g.addColorStop(0.6, 'rgba(8,6,12,0.28)');
+      g.addColorStop(1, 'rgba(8,6,12,0.58)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
     }
@@ -984,9 +1010,15 @@ export class RunState {
     if (this.paused) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, H);
-      drawTextCentered(ctx, 'PAUSED', W / 2, 100, '#fff', 2);
-      drawTextCentered(ctx, 'DIFFICULTY: FORGIVING. GENUINELY.', W / 2, 130, '#8a8a98');
-      drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 150, '#c8c8d8');
+      drawTextCentered(ctx, 'PAUSED', W / 2, 84, '#fff', 2);
+      const pHero = HERO_BY_ID[this.relay.current];
+      const pBtn = Input.usingTouch ? 'PWR' : 'X';
+      drawTextCentered(ctx, pHero.name, W / 2, 112, '#48e0c8');
+      drawTextCentered(ctx, pHero.ability ? `${pBtn}: ${HERO_CALLOUT[this.relay.current]}` : `PASSIVE: ${HERO_CALLOUT[this.relay.current]}`, W / 2, 124, '#f6d33c');
+      drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 140, '#c8e0ff');
+      drawTextCentered(ctx, `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 152, '#f890b8');
+      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR ABILITY' : 'SPACE JUMP   DOWN DUCK   X ABILITY', W / 2, 170, '#c8c8d8');
+      drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 184, '#8a8a98');
     }
     if (this.dead) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
