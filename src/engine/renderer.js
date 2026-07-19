@@ -12,7 +12,7 @@ export const back = (() => {
 
 export const bctx = back ? back.getContext('2d') : null;
 
-export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H };
+export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, smooth: false };
 
 let dctx = null;
 
@@ -22,11 +22,20 @@ export function initRenderer() {
   resize();
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
+  window.visualViewport && window.visualViewport.addEventListener('resize', resize);
 }
 
 function resize() {
-  const winW = window.innerWidth, winH = window.innerHeight;
-  let scale = Math.max(1, Math.floor(Math.min(winW / W, winH / H)));
+  const viewport = window.visualViewport;
+  const winW = viewport ? viewport.width : window.innerWidth;
+  const winH = viewport ? viewport.height : window.innerHeight;
+  const fitScale = Math.min(winW / W, winH / H);
+  const touchScreen = (navigator.maxTouchPoints || 0) > 0 ||
+    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  // Whole-number scaling keeps desktop pixels razor sharp. On phones it can
+  // waste almost half the display (a 1.8x fit used to become 1x), so use every
+  // available CSS pixel there and let image-rendering preserve the pixel look.
+  let scale = touchScreen ? fitScale : Math.max(1, Math.floor(fitScale));
   if (winW < W || winH < H) scale = Math.min(winW / W, winH / H); // tiny window: non-integer fit
   const cssW = Math.round(W * scale), cssH = Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
@@ -34,10 +43,12 @@ function resize() {
   canvas.height = Math.round(cssH * dpr);
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
+  const smooth = touchScreen && Math.abs(scale - Math.round(scale)) > 0.01;
+  canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
   const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
-  Object.assign(screen, { scale, ox, oy, cssW, cssH });
+  Object.assign(screen, { scale, ox, oy, cssW, cssH, smooth });
   dctx.imageSmoothingEnabled = false; // resizing resets context state
 }
 
@@ -81,7 +92,7 @@ export function pushOverlayDraw(fn) {
 export function blit() {
   const dpr = window.devicePixelRatio || 1;
   dctx.setTransform(screen.scale * dpr, 0, 0, screen.scale * dpr, 0, 0);
-  dctx.imageSmoothingEnabled = false;
+  dctx.imageSmoothingEnabled = screen.smooth;
   dctx.clearRect(0, 0, W, H);
   dctx.drawImage(back, Math.round(shakeX), Math.round(shakeY));
   if (overlaySprites.length) {
@@ -89,7 +100,7 @@ export function blit() {
     for (const o of overlaySprites) {
       dctx.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
     }
-    dctx.imageSmoothingEnabled = false;
+    dctx.imageSmoothingEnabled = screen.smooth;
     overlaySprites.length = 0;
   }
   if (overlayDraws.length) {

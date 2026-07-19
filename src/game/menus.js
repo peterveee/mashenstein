@@ -56,7 +56,7 @@ export class TitleState {
     this.idx = 0;
     this.t = 0;
     Audio.setBank(null);
-    Input.setButtons([]);
+    Input.setMenuButtons();
   }
   options() {
     const opts = [];
@@ -107,7 +107,7 @@ export class TitleState {
 
 export class DifficultyState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.idx = 0; this.confirming = false; }
+  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
   update(dt) {
     const n = DIFFICULTIES.length;
     if (this.confirming) {
@@ -167,7 +167,7 @@ export class DifficultyState {
 
 export class IntroState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.panel = 0; this.chars = 0; }
+  enter() { this.panel = 0; this.chars = 0; Input.setMenuButtons(); }
   update(dt) {
     if (this.panel >= INTRO_PANELS.length) { Input.endFrame(); return; }
     this.chars += dt * 40;
@@ -216,7 +216,7 @@ export class ResultsState {
   constructor({ result, gains, save, onDone }) {
     this.result = result; this.gains = gains; this.save = save; this.onDone = onDone;
   }
-  enter() { this.t = 0; this.shown = 0; Audio.sfx(this.result.success ? 'win' : 'lose'); }
+  enter() { this.t = 0; this.shown = 0; Input.setMenuButtons(); Audio.sfx(this.result.success ? 'win' : 'lose'); }
   update(dt) {
     this.t += dt;
     this.shown = Math.min(this.result.score, this.shown + dt * Math.max(500, this.result.score));
@@ -254,7 +254,7 @@ export class ResultsState {
 
 export class FinaleState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.beat = 0; this.chars = 0; Audio.setBank(null); }
+  enter() { this.beat = 0; this.chars = 0; Input.setMenuButtons(); Audio.setBank(null); }
   update(dt) {
     if (this.beat >= FINALE_BEATS.length) { Input.endFrame(); return; }
     this.chars += dt * 34;
@@ -349,7 +349,7 @@ const GUIDE_PAGES = [
 
 export class FieldGuideState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.page = 0; this.t = 0; Input.setButtons([]); }
+  enter() { this.page = 0; this.t = 0; Input.setMenuButtons(); }
   update(dt) {
     this.t += dt;
     const n = GUIDE_PAGES.length;
@@ -434,7 +434,7 @@ const JUKEBOX = [
 
 export class SoundTestState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setButtons([]); }
+  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(); }
   exit() { Audio.setBank(null); }
   play(i) {
     this.playing = i;
@@ -481,7 +481,7 @@ export class SoundTestState {
 
 export class HowToPlayState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.t = 0; Input.setButtons([]); }
+  enter() { this.t = 0; Input.setMenuButtons(); }
   update(dt) {
     this.t += dt;
     if (this.t > 0.3 && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
@@ -521,7 +521,7 @@ export class HowToPlayState {
 
 export class SettingsState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.idx = 0; }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
     const s = this.save.settings;
     return [

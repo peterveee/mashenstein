@@ -111,6 +111,21 @@ export function drawHud(ctx, run) {
     drawText(ctx, 'OVERTIME', 6, H - 14, '#8858c8');
   }
 
+  // Persistent desktop cheat sheet with hero-specific ability wording.
+  if (!Input.usingTouch) {
+    const hero = HERO_BY_ID[run.relay.current];
+    const ability = hero.ability
+      ? `X ${hero.ability.type === 'shoot' ? 'SHOOT' : hero.ability.type === 'dash' ? 'SPEED BOOST' : 'THROW AXE'}`
+      : null;
+    ctx.fillStyle = 'rgba(11,11,20,0.78)';
+    ctx.fillRect(4, 68, 174, 36);
+    ctx.strokeStyle = 'rgba(72,224,200,0.35)';
+    ctx.strokeRect(4.5, 68.5, 173, 35);
+    drawText(ctx, 'KEYBOARD CONTROLS', 10, 74, '#48e0c8');
+    drawText(ctx, 'SPACE JUMP   DOWN DUCK/ROLL', 10, 84, '#c8c8d8');
+    drawText(ctx, ability ? `${ability}   C TAG   P PAUSE` : 'C TAG   P PAUSE', 10, 94, '#f6d33c');
+  }
+
   // Touch buttons.
   for (const b of Input.buttons) {
     if (b.id === 'pause' || b.id === 'mute') {

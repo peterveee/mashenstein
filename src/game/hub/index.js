@@ -241,7 +241,7 @@ function listMenu(state, opts) {
 
 export class StageSelectState {
   constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = 74; this.rowH = 26; }
-  enter() { this.idx = 0; this.corrupt = null; }
+  enter() { this.idx = 0; this.corrupt = null; Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = stagesForCabinet(this.cab.id).map((s) => ({ kind: 'stage', stage: s }));
@@ -299,6 +299,7 @@ export class TeamSelectState {
     this.picked = (this.flow.lastTeam || ['lorenzo', 'gnash', 'mochi']).slice(0, 3);
     this.idx = 0;
     this.t = 0;
+    Input.setMenuButtons();
   }
   update(dt) {
     this.t += dt;
@@ -363,7 +364,7 @@ export class TeamSelectState {
 
 export class BenchState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 20; }
-  enter() { this.idx = 0; }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = BENCH_UPGRADES.map((u) => {
@@ -415,7 +416,7 @@ export class BenchState {
 
 export class ShopState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; }
+  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {
@@ -477,7 +478,7 @@ export class ShopState {
 
 export class ArcadeState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  enter() { this.idx = 0; }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
     const seen = this.save.slot.campaign.storyFlags.minigamesSeen || [];
     const opts = MINIGAMES.filter((m) => seen.includes(m)).map((m) => ({ game: m }));

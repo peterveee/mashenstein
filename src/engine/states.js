@@ -1,5 +1,7 @@
 // State machine with a pixel-dissolve transition between states.
 import { W, H } from './renderer.js';
+import { Input } from './input.js';
+import { drawTextCentered } from './sprites.js';
 
 let current = null;
 let pending = null;
@@ -39,6 +41,16 @@ export function updateState(dt) {
 
 export function drawState(ctx) {
   current && current.draw && current.draw(ctx);
+  // Shared touch-only menu control, identical on every menu screen.
+  if (Input.usingTouch) {
+    for (const b of Input.buttons.filter((button) => button.global)) {
+      ctx.fillStyle = 'rgba(11,11,20,0.9)';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.strokeStyle = '#48e0c8';
+      ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + 10, '#48e0c8');
+    }
+  }
   if (fade > 0) {
     // chunky 8px dissolve columns
     ctx.fillStyle = '#000';

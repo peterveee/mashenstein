@@ -108,6 +108,11 @@ class InputSys {
 
   setButtons(list) { this.buttons = list || []; }
 
+  // Menu states call this before the first touch so ENTER is immediately ready.
+  setMenuButtons() {
+    this.setButtons([{ id: 'menuConfirm', x: 396, y: 232, w: 72, h: 28, action: 'confirm', label: 'ENTER', global: true }]);
+  }
+
   press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }
   release(a) { if (this.down.has(a)) { this.down.delete(a); this.up.add(a); } }
 
