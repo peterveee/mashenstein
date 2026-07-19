@@ -1,11 +1,22 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
 
+// Layered and harmonically dense cues sum much louder than a single oscillator
+// at the same nominal gain. These trims keep their perceived peaks close to the
+// everyday jump/coin/UI family while preserving their internal balance.
+const SFX_TRIM = {
+  blockBreak: 0.58, boom: 0.68, coinSpray: 0.7, hit: 0.74,
+  shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
+  crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+};
+
 class AudioSys {
   constructor() {
     this.ctx = null;
     this.master = null; this.sfxGain = null; this.musicGain = null;
     this.muted = false;
+    this.levels = { master: 1, music: 0.7, sfx: 0.9 };
+    this.cueGain = 1;
     this.noiseBuf = null;
     // sequencer
     this.bpm = 112;
@@ -14,6 +25,8 @@ class AudioSys {
     this.timer = null;
     this.bank = null;      // current pattern bank
     this.detune = 1;       // slow-mo music warp
+    this.starMode = false; // invincibility layer on/off
+    this.starRoot = 110;   // last bass note the song played (arpeggio follows it)
     this.beatListeners = [];
     this.songTime = 0;
   }
@@ -23,11 +36,24 @@ class AudioSys {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
+    // Some engines create a suspended context even when autoplay is allowed,
+    // and require an explicit resume request. Try immediately; browsers with
+    // a gesture requirement reject/hold it harmlessly, then the existing
+    // gesture path calls ensure() again and resumes for real.
+    if (this.ctx.state === 'suspended') {
+      const resumed = this.ctx.resume();
+      if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
+    }
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 1;
+    this.master.gain.value = this.muted ? 0 : this.levels.master;
     this.master.connect(this.ctx.destination);
-    this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.9; this.sfxGain.connect(this.master);
-    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.7; this.musicGain.connect(this.master);
+    this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.levels.sfx; this.sfxGain.connect(this.master);
+    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.levels.music; this.musicGain.connect(this.master);
+    // The song proper rides on musicBus; the invincibility arpeggio rides on
+    // starBus. Two buses so the theme can duck under the star layer without
+    // the star layer ducking itself. Both feed musicGain (and so the echo).
+    this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.musicGain);
+    this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
     // YMCK-style space: tempo-synced dotted-eighth echo on the music bus.
     // High-passed on the way in (kick/snare stay dry), low-passed in the
     // feedback loop so repeats melt into the background instead of cluttering.
@@ -52,7 +78,18 @@ class AudioSys {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.02);
+    if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.levels.master, this.ctx.currentTime, 0.02);
+  }
+
+  setVolumes(volumes = {}) {
+    for (const key of ['master', 'music', 'sfx']) {
+      if (Number.isFinite(volumes[key])) this.levels[key] = Math.max(0, Math.min(1, volumes[key]));
+    }
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
+    this.musicGain.gain.setTargetAtTime(this.levels.music, t, 0.02);
+    this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
   }
 
   // ---- SFX ------------------------------------------------------------------
@@ -65,7 +102,7 @@ class AudioSys {
     o.frequency.setValueAtTime(Math.max(1, f0), t);
     if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
@@ -80,41 +117,198 @@ class AudioSys {
     f.type = filterType; f.frequency.value = freq;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f); f.connect(g); g.connect(this.sfxGain);
     src.start(t); src.stop(t + dur + 0.02);
   }
 
+  // The title sign shorting out: a mains hum plus the crackle of the contact
+  // arcing, gone in a tenth of a second. Routed through the music bus like the
+  // comet — it's ambience the title theme sits around, not a cue the player
+  // caused, and on the SFX bus it read as a UI blip every few seconds.
+  // It used to fire twice every 0.21s, so it had to be almost inaudible to
+  // avoid becoming a tic. The sign now stutters twice per 5.4s cycle instead —
+  // roughly one buzz every three seconds rather than nine a second — so it can
+  // carry real level and land as an event you notice.
+  neonBuzz() {
+    if (!this.ctx || !this.musicBus) return;
+    const t = this.ctx.currentTime;
+    // 120Hz: the second harmonic of mains, which is what a failing ballast
+    // actually sings at — 60 alone is felt more than heard on small speakers.
+    const o = this.ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(120, t);
+    const of = this.ctx.createBiquadFilter(); of.type = 'lowpass'; of.frequency.value = 900;
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.02, t + 0.012);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(of); of.connect(og); og.connect(this.musicBus);
+    o.start(t); o.stop(t + 0.12);
+    // The arc itself: a thin band of noise up where the spark lives.
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf; src.loop = true;
+    const nf = this.ctx.createBiquadFilter();
+    nf.type = 'bandpass'; nf.frequency.value = 3200; nf.Q.value = 1.6;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(0.012, t + 0.006);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    src.connect(nf); nf.connect(ng); ng.connect(this.musicBus);
+    src.start(t); src.stop(t + 0.09);
+  }
+
+  // A breathy shooting-star gesture routed through the music bus, so it sits
+  // inside the title theme's echo and volume rather than behaving like an SFX.
+  cometSwoop() {
+    if (!this.ctx || !this.musicBus) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.exponentialRampToValueAtTime(920, t + 0.52);
+    o.frequency.exponentialRampToValueAtTime(610, t + 1.25);
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1900; f.Q.value = 0.8;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.026, t + 0.2);
+    g.gain.exponentialRampToValueAtTime(0.013, t + 0.72);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    o.connect(f); f.connect(g);
+    if (this.ctx.createStereoPanner) {
+      const pan = this.ctx.createStereoPanner();
+      pan.pan.setValueAtTime(-0.65, t); pan.pan.linearRampToValueAtTime(0.55, t + 1.2);
+      g.connect(pan); pan.connect(this.musicBus);
+    } else g.connect(this.musicBus);
+    o.start(t); o.stop(t + 1.34);
+  }
+
+  // A jump you can actually hear rising: one square wave gliding up over two
+  // and a half octaves, with the envelope HELD through the climb so the sweep
+  // is still loud when it reaches the top. A plain decaying osc() swallows the
+  // top of the glide, which is what made the old one feel flat.
+  jumpTone(when = 0, pitch = 1, gain = 0.2) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const dur = 0.17;
+    const o = this.ctx.createOscillator();
+    const f = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    o.type = 'square';
+    // A bare square puts harmonics at 3.4k/5.7k by the top of the sweep —
+    // right where the ear is most sensitive — so this read as louder than
+    // cues sitting at the same gain. Roll them off instead of only pulling
+    // the level down. Non-resonant, so the shape of the sweep is untouched.
+    f.type = 'lowpass';
+    f.Q.value = 0.7;
+    f.frequency.setValueAtTime(2200 * pitch, t);
+    o.frequency.setValueAtTime(200 * pitch, t);
+    o.frequency.exponentialRampToValueAtTime(1150 * pitch, t + dur * 0.82);
+    g.gain.setValueAtTime(0.0001, t);
+    const peak = gain * this.cueGain;
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+    g.gain.setValueAtTime(peak, t + dur * 0.45); // shorter hold: a blip, not a blast
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.03);
+    o.connect(f); f.connect(g); g.connect(this.sfxGain);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  // One PAC-style bite: pitch and filter glide down as the mouth closes and
+  // back up as it opens. The glide is what makes it read as "waka" rather
+  // than a beep — a square through a resonant lowpass keeps the mouthy timbre.
+  waka(when = 0, pitch = 1, gain = 0.13) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const dur = 0.12;
+    const o = this.ctx.createOscillator();
+    const f = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    o.type = 'square';
+    f.type = 'lowpass';
+    f.Q.value = 6;
+    o.frequency.setValueAtTime(1000 * pitch, t);
+    o.frequency.linearRampToValueAtTime(280 * pitch, t + dur * 0.5);
+    o.frequency.linearRampToValueAtTime(940 * pitch, t + dur);
+    f.frequency.setValueAtTime(2600 * pitch, t);
+    f.frequency.linearRampToValueAtTime(700 * pitch, t + dur * 0.5);
+    f.frequency.linearRampToValueAtTime(2400 * pitch, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    const peak = gain * this.cueGain;
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+    g.gain.setValueAtTime(peak, t + dur * 0.75);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.01);
+    o.connect(f); f.connect(g); g.connect(this.sfxGain);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+
   sfx(name, opt = {}) {
     if (!this.ctx) return;
+    this.cueGain = SFX_TRIM[name] ?? 1;
     const combo = opt.combo || 0;
     const pitch = Math.pow(1.06, combo);
     switch (name) {
-      case 'jump': this.osc('square', 300, 600, 0.12, 0.18); break;
-      case 'jump2': this.osc('square', 400, 900, 0.1, 0.16); break;
+      // Quieter than 'coin' on purpose: it's a square wave (loud for its
+      // amplitude) and it fires more often than any other cue in the game.
+      case 'jump': this.jumpTone(0, 1, 0.055); break;
+      case 'jump2': this.jumpTone(0, 1.5, 0.045); break; // double jump: same shape, a fifth up
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
       case 'coin': this.osc('square', 988 * pitch, 988 * pitch, 0.06, 0.12); this.osc('square', 1319 * pitch, 1319 * pitch, 0.07, 0.12, 0.06); break;
       case 'power': [523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.15, i * 0.07)); break;
       case 'shield': this.noise(0.2, 0.2, 'highpass', 2000); this.osc('sawtooth', 220, 80, 0.25, 0.18); break;
+      // Invincibility on: a fast rising run that lands on an octave shimmer.
+      case 'star': [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => this.osc('square', f, f, 0.07, 0.13, i * 0.045)); break;
+      // ...and off: the same run walking back down, quieter.
+      case 'starEnd': [1568, 1319, 1047, 784].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.1, i * 0.06)); break;
       case 'hit': this.osc('sawtooth', 200, 40, 0.4, 0.25); this.noise(0.15, 0.2, 'lowpass', 900); break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
+      // A ?-box giving way overhead: a hard ceramic crack on top of a gut
+      // thump, then splinters raining down. 'crunch' was too polite for a hit
+      // you are meant to go out of your way to land.
+      case 'blockBreak':
+        this.noise(0.05, 0.34, 'highpass', 3200);        // the crack
+        this.noise(0.22, 0.26, 'bandpass', 950);         // the body letting go
+        this.osc('sine', 190, 45, 0.2, 0.32);            // thump
+        this.osc('square', 620, 300, 0.09, 0.12, 0.01);  // splintering edge
+        [0.07, 0.13, 0.19].forEach((d, i) => this.noise(0.05, 0.11 - i * 0.03, 'bandpass', 2400 - i * 500, d));
+        break;
+      // Coins spilling out of it: one blip per coin, staggered and climbing,
+      // with a shimmer over the top so a big payout sounds like a big payout.
+      case 'coinSpray': {
+        const nCoins = Math.max(1, Math.min(10, opt.count || 3));
+        for (let i = 0; i < nCoins; i++) {
+          const p = Math.pow(1.07, i);
+          const when = 0.045 + i * 0.055;
+          const g = 0.13 - i * 0.006;
+          this.osc('square', 988 * p, 988 * p, 0.05, g, when);
+          this.osc('square', 1319 * p, 1319 * p, 0.07, g, when + 0.045);
+        }
+        this.noise(0.3, 0.06, 'highpass', 6500, 0.05);
+        break;
+      }
       case 'tag': this.osc('sine', 500, 1000, 0.12, 0.16); this.osc('sine', 750, 1500, 0.12, 0.1, 0.03); break;
       case 'perfect': [660, 880, 1320].forEach((f, i) => this.osc('sine', f, f, 0.08, 0.14, i * 0.05)); break;
       case 'ui': this.osc('sine', 1200, 1200, 0.05, 0.1); break;
       case 'uiConfirm': this.osc('sine', 900, 900, 0.05, 0.1); this.osc('sine', 1350, 1350, 0.06, 0.1, 0.05); break;
       case 'uiBad': this.osc('square', 200, 150, 0.15, 0.12); break;
-      case 'waka': this.osc('square', 500, 300, 0.05, 0.12); this.osc('square', 300, 500, 0.05, 0.12, 0.05); break;
+      // One bite per coin, exactly like eating dots; combos ride the pitch up.
+      case 'waka': this.waka(0, pitch); break;
+      // The hazard bite gets the full waka-waka plus something giving way.
+      case 'chomp':
+        this.waka(0, 0.92, 0.15);
+        this.waka(0.135, 0.84, 0.15);
+        this.noise(0.06, 0.10, 'lowpass', 520, 0.25);
+        break;
       case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.osc('square', f, f, 0.11, 0.14, i * 0.09)); break;
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
       case 'boom': this.noise(0.5, 0.3, 'lowpass', 300); this.osc('sine', 100, 30, 0.5, 0.3); break;
       case 'plop': this.osc('sine', 300, 120, 0.15, 0.2); break;
       case 'type': this.osc('square', 800, 800, 0.02, 0.05); break;
+      case 'comet': this.cometSwoop(); break;
+      case 'neonBuzz': this.neonBuzz(); break;
     }
   }
 
@@ -132,6 +326,18 @@ class AudioSys {
   }
 
   setDetune(d) { this.detune = d; }
+
+  // Invincibility: duck the theme and bring up the star arpeggio over it, so
+  // it still reads as the same song — just electrified.
+  setInvincible(on) {
+    on = !!on;
+    if (on === this.starMode) return;
+    this.starMode = on;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.musicBus.gain.setTargetAtTime(on ? 0.32 : 1, t, 0.08);
+    this.starBus.gain.setTargetAtTime(on ? 1.5 : 0, t, 0.08);
+  }
 
   onBeat(fn) { this.beatListeners.push(fn); }
 
@@ -155,7 +361,7 @@ class AudioSys {
         const sec = b.sections[order[Math.floor(this.step / 32) % order.length] % b.sections.length];
         if (sec) b = { ...this.bank, ...sec };
       }
-      const play = (freq, type, dur, gain) => {
+      const play = (freq, type, dur, gain, attack = 0.01) => {
         if (freq == null) return;
         const t = this.nextTime;
         const o = this.ctx.createOscillator();
@@ -163,16 +369,48 @@ class AudioSys {
         o.type = type;
         o.frequency.setValueAtTime(freq * this.detune, t);
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(gain, t + Math.min(attack, dur * 0.45));
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(g); g.connect(this.musicGain);
+        o.connect(g); g.connect(this.musicBus);
         o.start(t); o.stop(t + dur + 0.02);
       };
       // Sections may push the echo send harder (e.g. an "echoing chords" payoff).
       if (this.echoSend) this.echoSend.gain.setTargetAtTime(b.echoLevel != null ? b.echoLevel : 0.28, this.nextTime, 0.08);
-      if (b.bass) play(b.bass[s], b.bassType || 'square', spb * 1.8, 0.1);
-      if (b.lead) play(b.lead[s], b.leadType || 'square', spb * 1.2, 0.06);
-      if (b.leadHarm) play(b.leadHarm[s], b.leadType || 'square', spb * 1.2, 0.04); // parallel-3rds partner voice
+      if (b.bass) {
+        play(b.bass[s], b.bassType || 'square', spb * (b.bassDur || 1.8), b.bassGain ?? 0.1, b.bassAttack || 0.01);
+        if (b.bass[s] != null) this.starRoot = b.bass[s]; // the star arpeggio follows the song's key
+      }
+      if (b.lead) play(b.lead[s], b.leadType || 'square', spb * (b.leadDur || 1.2), b.leadGain ?? 0.06, b.leadAttack || 0.01);
+      if (b.leadHarm) play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * (b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01); // parallel-3rds partner voice
+      if (b.twinkle && b.twinkle[s]) {
+        play(b.twinkle[s], 'sine', spb * (b.twinkleDur || 6), b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
+        play(b.twinkle[s] * 2, 'sine', spb * (b.twinkleDur || 6) * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
+      }
+      if (b.sweeps && b.sweeps[s] && this.noiseBuf) {
+        // Heavily filtered air: a narrow band slowly opens and closes beneath
+        // a low-pass ceiling. It should be felt as motion, not heard as hiss.
+        const t = this.nextTime;
+        const dur = spb * (b.sweepDur || 10);
+        const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+        const band = this.ctx.createBiquadFilter(); band.type = 'bandpass'; band.Q.value = 1.45;
+        band.frequency.setValueAtTime(340, t);
+        band.frequency.exponentialRampToValueAtTime(1350, t + dur * 0.55);
+        band.frequency.exponentialRampToValueAtTime(460, t + dur);
+        const low = this.ctx.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = 1800; low.Q.value = 0.5;
+        const g = this.ctx.createGain();
+        const gain = b.sweepGain ?? 0.022;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.32);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        src.connect(band); band.connect(low); low.connect(g);
+        if (this.ctx.createStereoPanner) {
+          const pan = this.ctx.createStereoPanner();
+          const from = s % 2 ? 0.35 : -0.35;
+          pan.pan.setValueAtTime(from, t); pan.pan.linearRampToValueAtTime(-from, t + dur);
+          g.connect(pan); pan.connect(this.musicBus);
+        } else g.connect(this.musicBus);
+        src.start(t); src.stop(t + dur + 0.03);
+      }
       if (b.keyGliss && b.keyGliss[s]) {
         // keyboard-sweep glissando: discrete scale notes (a hand dragged up
         // the white keys) running an octave up into the target, cresc. slightly
@@ -188,7 +426,7 @@ class AudioSys {
           g.gain.setValueAtTime(0.0001, t);
           g.gain.exponentialRampToValueAtTime(gv * (0.6 + 0.4 * ((i + 1) / steps.length)), t + 0.006);
           g.gain.exponentialRampToValueAtTime(0.0001, t + dt * 1.7);
-          o.connect(g); g.connect(this.musicGain);
+          o.connect(g); g.connect(this.musicBus);
           o.start(t); o.stop(t + dt * 1.7 + 0.02);
         });
       }
@@ -206,7 +444,7 @@ class AudioSys {
         g.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
         g.gain.setValueAtTime(0.05, t + spb * 3);
         g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 4);
-        o.connect(g); g.connect(this.musicGain);
+        o.connect(g); g.connect(this.musicBus);
         const pans = [-0.8, 0.1, 0.8];
         pans.forEach((pv, e) => {
           const d = this.ctx.createDelay(2); d.delayTime.value = spb * 2 * (e + 1);
@@ -214,16 +452,16 @@ class AudioSys {
           g.connect(d); d.connect(eg);
           if (this.ctx.createStereoPanner) {
             const p = this.ctx.createStereoPanner(); p.pan.value = pv;
-            eg.connect(p); p.connect(this.musicGain);
+            eg.connect(p); p.connect(this.musicBus);
           } else {
-            eg.connect(this.musicGain);
+            eg.connect(this.musicBus);
           }
         });
         o.start(t); o.stop(t + spb * 4 + 0.02);
       }
       if (b.chords && b.chords[s]) {
         // stab: all chord tones at once, short and punchy
-        for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * 2.6, 0.05);
+        for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * (b.chordDur || 2.6), b.chordGain ?? 0.05, b.chordAttack || 0.01);
       }
       if (b.kick && b.kick[s]) {
         // tight thump: fast pitch drop, short tail — punch without boom
@@ -234,7 +472,7 @@ class AudioSys {
         o.frequency.exponentialRampToValueAtTime(50, t + 0.06);
         g.gain.setValueAtTime(0.34, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-        o.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t + 0.11);
+        o.connect(g); g.connect(this.musicBus); o.start(t); o.stop(t + 0.11);
       }
       if (b.hats && b.hats[s]) {
         const t = this.nextTime;
@@ -243,7 +481,7 @@ class AudioSys {
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.14, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-        src.connect(f); f.connect(g); g.connect(this.musicGain);
+        src.connect(f); f.connect(g); g.connect(this.musicBus);
         src.start(t); src.stop(t + 0.07);
       }
       if (b.vox && b.vox[s]) {
@@ -264,7 +502,7 @@ class AudioSys {
         const fa = this.ctx.createBiquadFilter(); fa.type = 'bandpass'; fa.frequency.value = fm1; fa.Q.value = 5;
         const fb2 = this.ctx.createBiquadFilter(); fb2.type = 'bandpass'; fb2.frequency.value = fm2; fb2.Q.value = 8;
         o.connect(env); env.connect(fa); env.connect(fb2);
-        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicGain);
+        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
         o.start(t); o.stop(t + 0.2);
       }
       if (b.shout && b.shout[s]) {
@@ -306,7 +544,7 @@ class AudioSys {
           fb2.frequency.linearRampToValueAtTime(F2, t + tt);
         }
         o.connect(env); env.connect(fa); env.connect(fb2);
-        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicGain);
+        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
         o.start(t); o.stop(t + dur + 0.02);
       }
       if (b.ohats && b.ohats[s]) {
@@ -317,7 +555,7 @@ class AudioSys {
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.12, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-        src.connect(f); f.connect(g); g.connect(this.musicGain);
+        src.connect(f); f.connect(g); g.connect(this.musicBus);
         src.start(t); src.stop(t + 0.24);
       }
       if (b.snare && b.snare[s]) {
@@ -328,7 +566,7 @@ class AudioSys {
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.32, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-        src.connect(f); f.connect(g); g.connect(this.musicGain);
+        src.connect(f); f.connect(g); g.connect(this.musicBus);
         src.start(t); src.stop(t + 0.11);
         const o = this.ctx.createOscillator(); const og = this.ctx.createGain();
         o.type = 'triangle';
@@ -336,7 +574,7 @@ class AudioSys {
         o.frequency.exponentialRampToValueAtTime(140, t + 0.05);
         og.gain.setValueAtTime(0.12, t);
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        o.connect(og); og.connect(this.musicGain); o.start(t); o.stop(t + 0.08);
+        o.connect(og); og.connect(this.musicBus); o.start(t); o.stop(t + 0.08);
       }
       if (b.clap && b.clap[s]) {
         // three staggered high-passed bursts read as a clap
@@ -347,8 +585,35 @@ class AudioSys {
           const g = this.ctx.createGain();
           g.gain.setValueAtTime(ci === 2 ? 0.26 : 0.16, t);
           g.gain.exponentialRampToValueAtTime(0.001, t + (ci === 2 ? 0.12 : 0.03));
-          src.connect(f); f.connect(g); g.connect(this.musicGain);
+          src.connect(f); f.connect(g); g.connect(this.musicBus);
           src.start(t); src.stop(t + 0.15);
+        }
+      }
+      // Invincibility layer: a relentless 16th-note arpeggio over the ducked
+      // theme, plus a ride tick on the offbeats. The notes are root/fifth/
+      // octave/twelfth off whatever bass note the song last played, so it sits
+      // in key over any cabinet's bank instead of needing a fixed-key bank.
+      if (this.starMode && this.starBus) {
+        const t = this.nextTime;
+        const ratios = [1, 1.5, 2, 3];
+        const f = this.starRoot * 4 * ratios[s % ratios.length] * this.detune;
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = 'square';
+        o.frequency.setValueAtTime(f, t);
+        const peak = s % 4 === 0 ? 0.14 : 0.09; // accent the downbeat of each group
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 0.9);
+        o.connect(g); g.connect(this.starBus);
+        o.start(t); o.stop(t + spb + 0.02);
+        if (s % 2 === 1) {
+          const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+          const hf = this.ctx.createBiquadFilter(); hf.type = 'highpass'; hf.frequency.value = 7000;
+          const hg = this.ctx.createGain();
+          hg.gain.setValueAtTime(0.11, t);
+          hg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+          src.connect(hf); hf.connect(hg); hg.connect(this.starBus);
+          src.start(t); src.stop(t + 0.06);
         }
       }
       if (s % 4 === 0) {

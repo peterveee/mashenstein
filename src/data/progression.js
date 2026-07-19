@@ -21,7 +21,7 @@ export const MODS = [
   { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
   { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery', desc: 'FLOATS MORE SLOWLY BUT BECOMES WIDER WHILE FLOATING.' },
   { id: 'eat', name: 'HAZARD DIET', hero: 'chompo', source: 'mastery', desc: 'THE FIRST HAZARD BITE EACH STAGE HAS NO COOLDOWN.' },
-  { id: 'head', name: 'INDEPENDENT HEAD', hero: 'gary', source: 'mastery', desc: 'THE THROWN HEAD COLLECTS COINS BEFORE RETURNING.' },
+  { id: 'head', name: 'FREELANCE FIST', hero: 'raymn', source: 'mastery', desc: 'THE ROCKET FIST COLLECTS COINS BEFORE RETURNING.' },
   { id: 'ricochet', name: 'RICOCHET AXE', hero: 'grumpos', source: 'mastery', desc: 'THE AXE CAN HIT A SECOND TARGET BEFORE RETURNING.' },
 ];
 

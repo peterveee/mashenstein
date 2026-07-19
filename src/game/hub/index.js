@@ -3,7 +3,7 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, wrapText } from '../../engine/sprites.js';
 import { drawToon, toonStandSprite } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
@@ -48,7 +48,10 @@ export class HubState {
   }
 
   enter() {
-    this.px = this.px ?? 40;
+    Input.setContext('default');
+    const returning = this.flow.hubPosition;
+    this.px = this.px ?? returning?.px ?? 40;
+    this.facing = this.facing ?? returning?.facing ?? 1;
     this.t = 0;
     this.talk = null;
     Audio.setBank(HUB_THEME);
@@ -58,7 +61,10 @@ export class HubState {
       { id: 'use', x: W - 52, y: H - 48, w: 44, h: 40, action: 'confirm', label: 'USE' },
     ] : []);
   }
-  exit() { Input.setButtons([]); }
+  exit() {
+    this.flow.hubPosition = { px: this.px, facing: this.facing || 1 };
+    Input.setButtons([]);
+  }
 
   update(dt) {
     this.t += dt;
@@ -83,7 +89,6 @@ export class HubState {
     if (this.talk && (this.talk.t -= dt) <= 0) this.talk = null;
     if (Input.pressed('back')) this.flow.toTitle();
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); }
-    Input.pollGamepad();
     Input.endFrame();
   }
 
@@ -212,9 +217,15 @@ export class HubState {
     } else if (this.nearNpc) {
       drawTextCentered(ctx, `${HERO_BY_ID[this.nearNpc.id].short} - PRESS DOWN TO TALK`, W / 2, H - 60, '#8a8a98');
     }
+    else drawTextCentered(ctx, 'WALK UP TO A CABINET OR COUNTER TO USE IT', W / 2, H - 60, '#5a5a68');
+    // controls legend: the hub is a walk-around, so say so out loud
+    drawTextCentered(ctx, Input.usingTouch
+      ? 'TAP < > TO WALK   USE TO ENTER   BACK BUTTON FOR TITLE'
+      : 'LEFT/RIGHT WALK   ENTER USE   DOWN TALK   ESC TITLE', W / 2, H - 16, '#8a8a98');
     if (this.talk) {
       const who = this.talk.who ? HERO_BY_ID[this.talk.who]?.short || '' : '';
-      drawTextCentered(ctx, `${who ? who + ': ' : ''}${this.talk.text}`, W / 2, 60, '#d0f0e8');
+      const lines = wrapText(`${who ? who + ': ' : ''}${this.talk.text}`, W - 48, 1, 2);
+      lines.forEach((line, i) => drawTextCentered(ctx, line, W / 2, 55 + i * 11, '#d0f0e8'));
     }
     for (const b of Input.buttons) {
       ctx.fillStyle = 'rgba(72,224,200,0.12)';
@@ -226,8 +237,8 @@ export class HubState {
 
 // --------------------------------------------------------------------------
 function listMenu(state, opts) {
-  if (Input.pressed('duck') || Input.pressed('right')) { state.idx = (state.idx + 1) % opts.length; Audio.sfx('ui'); }
-  if (Input.pressed('jump') || Input.pressed('left')) { state.idx = (state.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+  if (Input.pressed('down') || Input.pressed('right')) { state.idx = (state.idx + 1) % opts.length; Audio.sfx('ui'); }
+  if (Input.pressed('up') || Input.pressed('left')) { state.idx = (state.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
   if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); return opts[state.idx]; }
   if (Input.pressed('pointer')) {
     const i = Math.floor((Input.pointer.y - state.listY) / state.rowH);
@@ -237,6 +248,11 @@ function listMenu(state, opts) {
     }
   }
   return null;
+}
+
+// Every hub sub-menu is arrow-driven; spell it out at the bottom of the screen.
+function drawMenuHint(ctx, extra) {
+  drawText(ctx, `UP/DOWN SELECT   ENTER ${extra || 'CONFIRM'}   ESC BACK`, 12, H - 12, '#5a5a68');
 }
 
 export class StageSelectState {
@@ -267,7 +283,7 @@ export class StageSelectState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2);
+    drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2, 'title');
     drawTextCentered(ctx, `${this.cab.genre} CABINET - STYLE: ${this.cab.style.toUpperCase()}`, W / 2, 44, '#8a8a98');
     const slot = this.save.slot;
     this.options().forEach((o, i) => {
@@ -290,6 +306,7 @@ export class StageSelectState {
         drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, c);
       }
     });
+    drawMenuHint(ctx, 'PLAY');
   }
 }
 
@@ -330,7 +347,7 @@ export class BenchState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'THE REPAIR BENCH', W / 2, 16, '#f6d33c', 2);
+    drawTextCentered(ctx, 'THE REPAIR BENCH', W / 2, 16, '#f6d33c', 2, 'title');
     drawTextCentered(ctx, `COINS: ${this.save.slot.coins}`, W / 2, 40, '#f6d33c');
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
@@ -341,8 +358,9 @@ export class BenchState {
       drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} [${lvlText}]`, 40, y, c);
       if (o.maxed || o.cost === undefined) drawText(ctx, 'MAX', W - 90, y, '#48c848');
       else drawText(ctx, `${o.cost}`, W - 90, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68');
-      if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 20, '#8a8a98');
+      if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 26, '#8a8a98');
     });
+    drawMenuHint(ctx, 'BUY');
   }
 }
 
@@ -403,8 +421,9 @@ export class ShopState {
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       drawText(ctx, `${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, 30, y, c);
       if (!o.owned) drawText(ctx, `${o.price}`, W - 70, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68');
-      if (sel) drawTextCentered(ctx, (o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.').slice(0, 70), W / 2, H - 18, '#8a8a98');
+      if (sel) drawTextCentered(ctx, (o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.').slice(0, 70), W / 2, H - 26, '#8a8a98');
     });
+    drawMenuHint(ctx, 'BUY/EQUIP');
   }
 }
 
@@ -430,7 +449,7 @@ export class ArcadeState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2);
+    drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2, 'title');
     drawTextCentered(ctx, 'REPLAY BREAKER-BOX GAMES. WIN: +100 COINS.', W / 2, 40, '#8a8a98');
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
@@ -438,5 +457,6 @@ export class ArcadeState {
       const label = o.back ? 'BACK' : o.none ? 'NOTHING UNLOCKED YET. POWER ON A CABINET.' : MINIGAME_NAMES[o.game];
       drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');
     });
+    drawMenuHint(ctx, 'PLAY');
   }
 }

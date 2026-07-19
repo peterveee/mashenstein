@@ -20,10 +20,12 @@ export class MinigameState {
   constructor(opts) { this.o = opts; }
 
   enter() {
+    Input.setContext('minigame');
     this.game = makeGame(this.o.game, new Rng(this.o.seed ?? 1), this.o.settings || {});
     this.timer = this.o.game === 'turdle' ? 90 : 35;
     this.result = null;
     this.resultT = 0;
+    this.reported = false;
     Audio.setBank(null);
     Input.setButtons(this.game.buttons ? this.game.buttons() : [
       { id: 'left', x: 8, y: H - 52, w: 40, h: 40, action: 'left', label: '<' },
@@ -34,12 +36,22 @@ export class MinigameState {
     if (this.o.game === 'turdle') Input.textHandler = (code) => this.game.onKey && this.game.onKey(code);
   }
 
-  exit() { Input.setButtons([]); Input.textHandler = null; }
+  exit() { Input.setContext('default'); Input.setButtons([]); Input.textHandler = null; }
 
   update(dt) {
     if (this.result != null) {
       this.resultT += dt;
-      if (this.resultT > 1.6) this.o.onEnd(this.result);
+      if (!this.reported && (this.resultT > 0.8 || Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('back'))) {
+        this.reported = true;
+        this.o.onEnd(this.result);
+      }
+      Input.endFrame();
+      return;
+    }
+    if (Input.pressed('back')) {
+      this.result = false;
+      this.resultT = 0;
+      Audio.sfx('lose');
       Input.endFrame();
       return;
     }
@@ -52,7 +64,6 @@ export class MinigameState {
       this.result = false;
       Audio.sfx('lose');
     }
-    Input.pollGamepad();
     Input.endFrame();
   }
 

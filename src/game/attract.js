@@ -42,7 +42,7 @@ function clipSeed(id) {
 // go nowhere. persist() is a no-op by design.
 function demoSave(realSettings) {
   const slot = defaultSlot();
-  slot.tutor = { firstPortal: 1, firstSwitch: 1, firstBlast: 1, firstAbility: 1, firstPassive: 1 };
+  slot.tutor = { firstPortal: 1, firstSwitch: 1, firstBlast: 1, firstAbility: 1 };
   const settings = { ...defaultSettings(), ...JSON.parse(JSON.stringify(realSettings || {})) };
   return { data: { version: 2, settings, slots: [slot] }, slot, settings, persist() {} };
 }

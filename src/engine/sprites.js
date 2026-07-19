@@ -164,38 +164,132 @@ function glyphCanvas(ch, color) {
   return c;
 }
 
-export function textWidth(str, scale = 1) { return str.length * 6 * scale - scale; }
+export function textWidth(str, scale = 1, style = 'ui') {
+  const s = String(str);
+  let w = 0;
+  for (let i = 0; i < s.length; i++) w += advance(s[i], scale, style);
+  return w > 0 ? w - trackingFor(style, scale) : 0; // no trailing tracking on the last glyph
+}
 
-// Smooth vector lettering on the old font's fixed six-unit grid, so every
-// existing menu layout still lines up. Each glyph is centred in its cell
-// (the pixel font was fixed-width), and it rasterizes at device resolution.
-const FONT_STACK = '"Trebuchet MS", "Avenir Next", "Segoe UI", system-ui, sans-serif';
+export function wrapText(str, maxWidth, scale = 1, maxLines = 2, style = 'ui') {
+  const words = String(str).split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && textWidth(next, scale, style) > maxWidth) { lines.push(line); line = word; }
+    else line = next;
+    if (lines.length === maxLines - 1) break;
+  }
+  if (line && lines.length < maxLines) {
+    const consumed = lines.join(' ').split(/\s+/).filter(Boolean).length;
+    const rest = words.slice(consumed).join(' ');
+    let last = rest;
+    while (last.length > 1 && textWidth(last, scale, style) > maxWidth) last = `${last.slice(0, -2).trim()}…`;
+    lines.push(last);
+  }
+  return lines;
+}
+
+// Smooth vector lettering, proportionally spaced: each glyph advances by its
+// own measured width. The old fixed six-unit cell monospaced what is really a
+// proportional face, which left rivers around narrow letters like I and L.
+const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
+const TITLE_FONT = "'Lilita One', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
+
+// Text styles the game draws in. 'ui' is the default everywhere; 'bold' is the
+// highlighted menu row; 'title' is the marquee and every screen header.
+// 'marquee' and 'subtitle' are the title screen's own cuts: fixed letter-spacing
+// and, for the marquee, a dark outline baked into each glyph.
+const TEXT_STYLES = {
+  ui: { font: BODY_FONT, weight: 500 },
+  bold: { font: BODY_FONT, weight: 600 },
+  title: { font: TITLE_FONT, weight: 400 },
+  marquee: { font: TITLE_FONT, weight: 400, tracking: 0.5, stroke: { width: 1, color: '#2a1e05' } },
+  subtitle: { font: BODY_FONT, weight: 600, tracking: 3 },
+};
+const GLYPH_PX = 8.2;   // em size, unchanged — only the spacing moved
+const TRACKING = 0.5;   // a hair of letter-spacing; pure metric fit reads tight here
+
+function fontString(style, scale) {
+  const st = TEXT_STYLES[style] || TEXT_STYLES.ui;
+  return `${st.weight} ${GLYPH_PX * scale}px ${st.font}`;
+}
+
+// Default tracking rides the scale so big text keeps its proportions; a style
+// that names its own tracking means it literally, in canvas units, because the
+// title screen's spacing was chosen against the finished size on screen.
+function trackingFor(style, scale) {
+  const st = TEXT_STYLES[style] || TEXT_STYLES.ui;
+  return st.tracking !== undefined ? st.tracking : TRACKING * scale;
+}
+
+let measureCtx = null;
+const advCache = new Map();
+function advance(ch, scale, style) {
+  const key = ch + '|' + scale + '|' + style;
+  let w = advCache.get(key);
+  if (w === undefined) {
+    if (!measureCtx && typeof document !== 'undefined') {
+      measureCtx = document.createElement('canvas').getContext('2d');
+    }
+    if (measureCtx) {
+      measureCtx.font = fontString(style, scale);
+      w = measureCtx.measureText(ch).width + trackingFor(style, scale);
+    }
+    // Headless (no canvas, or a stub that measures 0) falls back to the old
+    // fixed grid so layout maths stays sane outside a browser.
+    if (!w || !isFinite(w)) w = 6 * scale;
+    advCache.set(key, w);
+  }
+  return w;
+}
 
 // Glyphs are rasterized ONCE into supersampled canvases and then blitted —
 // drawImage is a GPU texture copy, while per-frame fillText re-rasterizes
 // vector outlines on the CPU. Menus are wall-to-wall text, so this matters.
 const glyphCache = new Map();
 const GLYPH_SS = 8;
-function glyphSprite(ch, color, scale) {
-  const key = ch + '|' + color + '|' + scale;
+function glyphSprite(ch, color, scale, style) {
+  const key = ch + '|' + color + '|' + scale + '|' + style;
   let g = glyphCache.get(key);
   if (!g) {
+    // Pad the cell so round/italic overhang isn't clipped at the advance edge.
+    const pad = 2 * scale;
+    const boxW = advance(ch, scale, style) + pad * 2;
     g = document.createElement('canvas');
-    g.width = Math.ceil(8 * scale * GLYPH_SS);
+    g.width = Math.ceil(boxW * GLYPH_SS);
     g.height = Math.ceil(12 * scale * GLYPH_SS);
     const x = g.getContext('2d');
     x.scale(GLYPH_SS, GLYPH_SS);
     x.fillStyle = color;
-    x.font = `600 ${8.2 * scale}px ${FONT_STACK}`;
+    x.font = fontString(style, scale);
     x.textBaseline = 'top';
-    x.textAlign = 'center';
-    x.fillText(ch, 4 * scale, 1 * scale);
+    x.textAlign = 'left';
+    // Outline first, fill over it: a centred stroke would otherwise eat into the
+    // letterform. Only the outer half shows, so the width is doubled to match.
+    const st = TEXT_STYLES[style] || TEXT_STYLES.ui;
+    if (st.stroke) {
+      x.strokeStyle = st.stroke.color;
+      x.lineWidth = st.stroke.width * 2;
+      x.lineJoin = 'round';
+      x.strokeText(ch, pad, 1 * scale);
+    }
+    x.fillText(ch, pad, 1 * scale);
+    g.pad = pad;
+    g.boxW = boxW;
     glyphCache.set(key, g);
   }
   return g;
 }
 
-export function drawText(ctx, str, x, y, color = '#fff', scale = 1) {
+// The webfonts arrive after first paint, so anything measured or rasterized
+// against the fallback stack has to be thrown away once they land.
+if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => { glyphCache.clear(); advCache.clear(); });
+}
+
+export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui') {
   const s = String(str);
   let cx = x;
   const prev = ctx.imageSmoothingEnabled;
@@ -203,15 +297,15 @@ export function drawText(ctx, str, x, y, color = '#fff', scale = 1) {
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch !== ' ') {
-      const g = glyphSprite(ch, color, scale);
-      ctx.drawImage(g, cx - 1.5 * scale, y - 1 * scale, 8 * scale, 12 * scale);
+      const g = glyphSprite(ch, color, scale, style);
+      ctx.drawImage(g, cx - g.pad, y - 1 * scale, g.boxW, 12 * scale);
     }
-    cx += 6 * scale;
+    cx += advance(ch, scale, style);
   }
   ctx.imageSmoothingEnabled = prev;
   return cx;
 }
 
-export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1) {
-  drawText(ctx, str, cx - textWidth(String(str), scale) / 2, y, color, scale);
+export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui') {
+  drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style);
 }

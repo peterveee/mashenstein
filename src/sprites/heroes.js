@@ -61,7 +61,7 @@ lorenzo.duck = [
 ];
 lorenzo.pal = { h: '#7b4bd0', a: '#f6d33c', s: '#f2c9a0', e: '#1a1028', n: '#e8a878', m: '#5a3212', b: '#2ea8a0', p: '#22608c', f: '#5a3212', w: '#fff' };
 
-// --- Gnash: cobalt quills, red hi-tops, smirk --------------------------------
+// --- Gnash: cobalt jackal creature, red hi-tops, smirk ------------------------
 const gnash = humanoid([
   '..hh.h.h....',
   '.hhhhhhhh...',
@@ -89,7 +89,7 @@ gnash.duck = [
   '..ff..ff....',
   '............',
 ];
-gnash.pal = { h: '#2050d8', s: '#f2c9a0', e: '#1a1028', m: '#a03020', b: '#f2c9a0', p: '#2050d8', f: '#d83030', w: '#fff' };
+gnash.pal = { h: '#4a50d2', s: '#efbd83', e: '#1a1028', m: '#a03020', b: '#4a50d2', p: '#3036a8', f: '#d83030', w: '#fff' };
 
 // --- Fernwick: green tunic, floppy cap, blond bowl cut, tiny shield ---------
 const fernwick = humanoid([
@@ -119,7 +119,7 @@ fernwick.duck = [
   '..ff...ff...',
   '............',
 ];
-fernwick.pal = { h: '#2e8c3c', a: '#e8c860', s: '#f2c9a0', e: '#1a1028', b: '#2e8c3c', p: '#8c6432', f: '#5a3212', w: '#b0793a' };
+fernwick.pal = { h: '#65b83f', a: '#f0d46c', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#7d6032', f: '#51351f', w: '#b0793a' };
 
 // --- B-33P: cyan dome, arm cannon, dot eyes ----------------------------------
 const b33p = humanoid([
@@ -184,9 +184,9 @@ mochi.duck = [
   '..ff....ff..',
   '............',
 ];
-mochi.pal = { b: '#f890b8', e: '#1a1028', m: '#d84860', a: '#f8b8d0', f: '#d83030', w: '#fff' };
+mochi.pal = { b: '#ad78dc', e: '#1a1028', m: '#7040a8', a: '#d5a8f0', f: '#7040a8', w: '#fff' };
 
-// --- Chompo: yellow wedge-mouth disc WITH LEGS -------------------------------
+// --- Miss Chomp: yellow wedge-mouth heroine WITH LEGS ------------------------
 const chompo = {
   run1: [
     '............', '............',
@@ -225,7 +225,7 @@ chompo.duck = [
   '..ff....ff..',
   '............',
 ];
-chompo.pal = { b: '#f6d33c', e: '#1a1028', p: '#c8a020', f: '#e07820', w: '#fff' };
+chompo.pal = { b: '#ee9a32', e: '#1a1028', p: '#b96525', f: '#d94f78', a: '#ed5c86', m: '#b93f62', w: '#fff' };
 
 // --- Gary: zombie in a fast-food uniform, detachable head --------------------
 const gary = humanoid([
@@ -286,6 +286,9 @@ grumpos.duck = [
   '..ff....ff..',
   '............',
 ];
-grumpos.pal = { s: '#e8b890', a: '#c83030', e: '#1a1028', m: '#7a5a40', b: '#b89878', p: '#6a4a38', f: '#4a3228', w: '#8a6a4a' };
+grumpos.pal = { s: '#ded9d2', a: '#c92f3b', e: '#17131a', m: '#352523', b: '#ded9d2', p: '#4a3029', f: '#2b2426', w: '#765238', g: '#d69224' };
 
-export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, grumpos };
+// Ray M'N is vector-drawn in play; these grids provide palette/fallback data.
+const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d85050', b: '#28a8a0', p: '#7048a8', f: '#f06038', w: '#f5f2e8' } };
+
+export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos };

@@ -1,11 +1,11 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, setFancyFx, setSceneGlow, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
-import { drawProp, hasProp } from '../sprites/props.js';
+import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
@@ -13,17 +13,16 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capSlow: [9, 9], appliance: [12, 9], fuse: [9, 7],
+  capMagnet: [9, 9], capSlow: [9, 9], capUnpeel: [9, 9], appliance: [12, 9], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
-import { CABINETS, HUB_THEME } from '../data/cabinets.js';
-import { totalPlugs } from './progress.js';
+import { CABINETS, HUB_THEME, TITLE_THEME } from '../data/cabinets.js';
+import { totalPlugs, formatCoins } from './progress.js';
 
 function menuNav(input, idx, len) {
-  if (input.pressed('duck') || input.pressed('right')) { Audio.sfx('ui'); return (idx + 1) % len; }
-  if (input.pressed('jump') && !input.pressed('confirm')) { /* jump==confirm conflict handled below */ }
-  if (input.pressed('left')) { Audio.sfx('ui'); return (idx + len - 1) % len; }
+  if (input.pressed('down') || input.pressed('right')) { Audio.sfx('ui'); return (idx + 1) % len; }
+  if (input.pressed('up') || input.pressed('left')) { Audio.sfx('ui'); return (idx + len - 1) % len; }
   return idx;
 }
 
@@ -43,6 +42,130 @@ const TAGLINES = [
 ];
 
 let titleGrad = null;
+function drawParadeAccent(ctx, id, x, feetY, p) {
+  const fade = Math.sin(p * Math.PI);
+  if (fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= fade * 0.9;
+  if (id === 'lorenzo') {
+    ctx.fillStyle = '#f6d33c';
+    ctx.fillRect(x + 8, feetY - 24, 2, 5); ctx.fillRect(x + 6, feetY - 22, 6, 2);
+  } else if (id === 'gnash') {
+    ctx.strokeStyle = '#9ca8ff'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - 12, feetY - 8); ctx.lineTo(x - 5, feetY - 8); ctx.moveTo(x - 10, feetY - 12); ctx.lineTo(x - 4, feetY - 12); ctx.stroke();
+  } else if (id === 'fernwick') {
+    ctx.fillStyle = '#d7ff83';
+    ctx.fillRect(x - 11, feetY - 5, 3, 2); ctx.fillRect(x - 14, feetY - 3, 2, 2);
+  } else if (id === 'b33p') {
+    ctx.fillStyle = '#e8f8ff';
+    ctx.fillRect(x + 10, feetY - 16, 5, 1); ctx.fillRect(x + 12, feetY - 18, 1, 5);
+  } else if (id === 'mochi') {
+    const yy = feetY - 27 - p * 5;
+    ctx.fillStyle = '#edb8ff';
+    ctx.fillRect(x - 4, yy, 2, 2); ctx.fillRect(x, yy, 2, 2);
+    ctx.fillRect(x - 3, yy + 2, 4, 2); ctx.fillRect(x - 2, yy + 4, 2, 2);
+  } else if (id === 'chompo') {
+    ctx.fillStyle = '#ffd184';
+    ctx.fillRect(x + 11, feetY - 13, 2, 2); ctx.fillRect(x + 15, feetY - 17, 2, 2);
+  } else if (id === 'raymn') {
+    ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x + 14, feetY - 18, 5, -1.1, 0.8); ctx.stroke();
+  } else if (id === 'grumpos') {
+    ctx.strokeStyle = '#f4d08a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - 10, feetY - 23); ctx.lineTo(x - 14, feetY - 27);
+    ctx.moveTo(x + 10, feetY - 23); ctx.lineTo(x + 14, feetY - 27); ctx.stroke();
+  }
+  ctx.restore();
+}
+// A space-invader wanders across the sky every so often, waggling its legs in
+// the classic two-frame march. It is not part of any joke; it is just up there.
+const INVADER_FRAMES = [
+  ['..#.....#..', '...#...#...', '..#######..', '.##.###.##.',
+   '###########', '#.#######.#', '#.#.....#.#', '...##.##...'],
+  ['..#.....#..', '#..#...#..#', '#.#######.#', '###.###.###',
+   '###########', '.#########.', '..#.....#..', '.#.......#.'],
+];
+// It keeps to the very top of the sky, well clear of the logo, and on every
+// other pass it drops a bolt on whoever happens to be walking underneath.
+// Everything below is a pure function of the clock: no state to keep in sync.
+const INV_FIRST = 24;      // the sky stays empty for the first half-minute
+const INV_PERIOD = 46;     // ...and between fly-bys after that
+const INV_CROSS = 9;       // seconds to cross
+const INV_DROP_P = 0.42;   // fly-by progress at which the bolt is released
+const INV_SPAN = W + 44;
+const BOLT_G = 260;        // px/s^2
+const BOLT_HEAD_Y = 238;   // where the parade's heads are
+const KNOCK_T = 1.9;       // how long a clobbered hero stays airborne
+
+const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * INV_SPAN);
+const invY = (trip, t) => 7 + (trip % 3) * 4 + Math.sin(t * 2.3) * 1.6;
+const heroX = (i, t) => ((t * 42 + i * 66) % (W + 140)) - 70;
+
+// Which fly-by (if any) is on screen right now.
+function invaderPass(t) {
+  if (t < INV_FIRST) return null;
+  const e = t - INV_FIRST;
+  const trip = Math.floor(e / INV_PERIOD);
+  const p = (e % INV_PERIOD) / INV_CROSS;
+  return p <= 1 ? { trip, p } : null;
+}
+
+// The bolt for the current pass, plus who it lands on. Every other trip only,
+// so the gag stays rare enough to be a surprise.
+function invaderStrike(t) {
+  const pass = invaderPass(t);
+  if (!pass || pass.trip % 2 !== 0) return null;
+  const tDrop = INV_FIRST + pass.trip * INV_PERIOD + INV_DROP_P * INV_CROSS;
+  if (t < tDrop) return null;
+  const x = invX(pass.trip, INV_DROP_P) + 5;
+  const y0 = invY(pass.trip, tDrop) + 8;
+  const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
+  if (t < tHit) return { x, y: y0 + 0.5 * BOLT_G * (t - tDrop) * (t - tDrop), tHit };
+  // landed: nearest hero within arm's reach takes it, otherwise it just fizzles
+  let victim = -1, best = 26;
+  for (let i = 0; i < HERO_PARADE.length; i++) {
+    const d = Math.abs(heroX(i, tHit) - x);
+    if (d < best) { best = d; victim = i; }
+  }
+  return { x, y: BOLT_HEAD_Y, tHit, kt: t - tHit, victim, dir: pass.trip % 2 === 0 ? 1 : -1 };
+}
+
+function drawInvader(ctx, t) {
+  const pass = invaderPass(t);
+  if (!pass) return;
+  const x = invX(pass.trip, pass.p), y = invY(pass.trip, t);
+  const rows = INVADER_FRAMES[Math.floor(t * 3.5) % 2];
+  ctx.fillStyle = '#a8ffc0';
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] === '#') ctx.fillRect(Math.round(x) + c, Math.round(y) + r, 1, 1);
+    }
+  }
+}
+
+// The bolt itself: the classic wiggling bar, then a flat little starburst
+// where it lands.
+function drawBolt(ctx, t, strike) {
+  if (!strike) return;
+  if (strike.kt === undefined) {
+    ctx.fillStyle = '#fff6a8';
+    for (let r = 0; r < 5; r++) {
+      ctx.fillRect(Math.round(strike.x + Math.sin(t * 22 + r * 1.6)), Math.round(strike.y) + r, 1, 1);
+    }
+    return;
+  }
+  if (strike.kt > 0.32) return;
+  const p = strike.kt / 0.32;
+  ctx.globalAlpha = 1 - p;
+  ctx.fillStyle = '#fff6a8';
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    ctx.fillRect(Math.round(strike.x + Math.cos(a) * (3 + p * 12)), Math.round(strike.y + Math.sin(a) * (2 + p * 8)), 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function titleScene(ctx, t, reduced) {
   // night sky over the last functioning food court
   if (!titleGrad) {
@@ -51,18 +174,27 @@ function titleScene(ctx, t, reduced) {
     titleGrad.addColorStop(0.65, '#141026');
     titleGrad.addColorStop(1, '#1c1430');
   }
-  ctx.fillStyle = titleGrad;
-  ctx.fillRect(0, 0, W, H);
-  // twinkling stars (the bright ones catch the bloom)
-  for (let i = 0; i < 26; i++) {
-    const sx = (i * 97 + 23) % W;
-    const sy = (i * 53 + 11) % 110;
-    const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (1.1 + (i % 5) * 0.3) + i));
-    ctx.globalAlpha = tw;
-    ctx.fillStyle = i % 4 === 0 ? '#fff' : '#b8c8e8';
-    ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1, i % 4 === 0 ? 2 : 1);
+  // Under WebGL the sky is generated on the GPU — gradient, drifting nebula,
+  // parallax twinkle and the odd shooting star — so we leave a transparent
+  // hole for it. Reduced flashing freezes its clock instead of animating.
+  // Without WebGL, the old hand-drawn sky stands in.
+  const gpuSky = setSkyFx(true, reduced ? 0 : t);
+  ctx.clearRect(0, 0, W, H);
+  if (!gpuSky) {
+    ctx.fillStyle = titleGrad;
+    ctx.fillRect(0, 0, W, H);
+    // twinkling stars (the bright ones catch the bloom)
+    for (let i = 0; i < 26; i++) {
+      const sx = (i * 97 + 23) % W;
+      const sy = (i * 53 + 11) % 110;
+      const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (1.1 + (i % 5) * 0.3) + i));
+      ctx.globalAlpha = tw;
+      ctx.fillStyle = i % 4 === 0 ? '#fff' : '#b8c8e8';
+      ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1, i % 4 === 0 ? 2 : 1);
+    }
+    ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = 1;
+  if (!reduced) drawInvader(ctx, t);
 
   // the cabinet row: nine machines humming their own colors in the dark
   CABINETS.forEach((cab, i) => {
@@ -97,79 +229,216 @@ function titleScene(ctx, t, reduced) {
     }
   }
 
-  // the whole cast jogs across the bottom, forever, because heroes gotta run
+  // The cast still crosses the arcade, but each hero occasionally breaks into
+  // a small personality beat. Cycles are offset so the parade stays readable.
+  const strike = reduced ? null : invaderStrike(t);
+  drawBolt(ctx, t, strike);
   for (let i = 0; i < HERO_PARADE.length; i++) {
-    const hx = ((t * 42 + i * 66) % (W + 140)) - 70;
-    drawToon(ctx, HERO_PARADE[i], {
-      kind: 'run', grounded: true, time: t,
+    const hx = heroX(i, t);
+    const id = HERO_PARADE[i];
+    // Clobbered: launched into a spin and tumbled off the side of the screen,
+    // fading out before the parade loop would have wrapped them around.
+    if (strike && strike.victim === i && strike.kt < KNOCK_T) {
+      const kt = strike.kt;
+      const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
+      const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5);
+      ctx.translate(kx, ky - 13);
+      ctx.rotate(strike.dir * kt * 7);
+      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 13, 26);
+      ctx.restore();
+      continue;
+    }
+    const actionLength = 1.35;
+    const beat = (t + i * 0.71) % 4.9;
+    const acting = !reduced && beat < actionLength;
+    const actionP = acting ? beat / actionLength : 0;
+    const lift = acting ? Math.sin(actionP * Math.PI) : 0;
+    const pose = {
+      kind: 'run', grounded: true, time: t, menu: true,
       phase: (t * 1.5 + i * 0.37) % 1,
-    }, hx, 258, 28);
+    };
+    let feetY = 268;
+    if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3; }
+    if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7; }
+    if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
+    if (acting && id === 'b33p') { pose.squash = lift * 0.35; pose.menuAction = 'aim'; }
+    if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8; }
+    if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2; }
+    if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
+    if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
+    drawToon(ctx, id, pose, hx, feetY, 26);
+    if (acting) drawParadeAccent(ctx, id, hx, feetY, actionP);
   }
 
-  // the marquee: MASHENSTEIN in failing neon, stitched together, of course
-  const flicker = reduced ? 1 : (Math.sin(t * 30) > -0.96 ? 1 : 0.45);
-  ctx.globalAlpha = flicker;
-  drawTextCentered(ctx, 'MASHENSTEIN', W / 2, 40, '#ffd94a', 4);
-  ctx.strokeStyle = 'rgba(8,6,14,0.8)';
+  // The marquee: MASHENSTEIN in warm cartoon gold, outlined, stitched together
+  // out of parts, and wired to a sign that has seen better decades. It stutters
+  // twice in quick succession, then holds steady for a few seconds before the
+  // next fit — a constant strobe reads as broken rather than characterful.
+  ctx.globalAlpha = flickerAlpha(t, reduced);
+  drawTextCentered(ctx, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#a8791f', TITLE_SCALE, 'marquee');
+  drawTextCentered(ctx, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#ffcf33', TITLE_SCALE, 'marquee');
+  // The seams: six stitched joins where the letters were sewn back together.
+  // Spread across the measured width of the logo rather than a fixed span, so
+  // they stay on the lettering instead of dangling off the ends.
+  ctx.strokeStyle = 'rgba(42,30,5,0.85)';
   ctx.lineWidth = 1.4;
+  const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
+  const seamK = TITLE_SCALE / 4;   // seam band tracks the logo's size
+  const seamTop = TITLE_MARQUEE_Y + 4 * seamK, seamBot = TITLE_MARQUEE_Y + 22 * seamK;
   for (let i = 0; i < 6; i++) {
-    const sx = W / 2 - 120 + i * 48;
-    ctx.beginPath(); ctx.moveTo(sx, 44); ctx.lineTo(sx + 8, 62); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(sx + 8, 44); ctx.lineTo(sx, 62); ctx.stroke();
+    const sx = W / 2 - logoW / 2 + (logoW * (i + 0.5)) / 6 - 4;
+    ctx.beginPath(); ctx.moveTo(sx, seamTop); ctx.lineTo(sx + 8, seamBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx + 8, seamTop); ctx.lineTo(sx, seamBot); ctx.stroke();
   }
-  drawTextCentered(ctx, 'THE UNPLUGGENING', W / 2, 76, '#48e0c8', 1);
+  drawTextCentered(ctx, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#5fd6c8', 1, 'subtitle');
   ctx.globalAlpha = 1;
 
-  // a live power cord dangles off the logo, swinging, occasionally sparking
-  const ax = W / 2 + 128, ay = 58;
-  const sway = reduced ? 0 : Math.sin(t * 1.15) * 16;
-  const px2 = ax + sway, py2 = 108;
+  // A live power cord dangles off the logo, swinging, occasionally sparking.
+  // The anchor tracks the measured width so the cord stays bolted to the last
+  // letter — hardcoding it left the cord dangling in mid air once the marquee's
+  // letter-spacing changed and the lettering shrank away from under it.
+  // It hangs straight down from the corner of the sign and swings as one piece.
+  // Anchoring the top to the letter while leaving the bottom where it used to be
+  // turned the cord into a permanent diagonal, which read as a mistake.
+  // The anchor sits INSIDE the last letter's ink, near its foot: the measured
+  // advance includes the N's right side bearing, so parking the cord at the raw
+  // logoW edge floated it in the gap beside the letter, and starting it halfway
+  // up the letterform read as a wire crossing the sign rather than leaving it.
+  const ax = W / 2 + logoW / 2 - 5 * seamK, ay = TITLE_MARQUEE_Y + 24 * seamK;
+  const sway = reduced ? 0 : Math.sin(t * 1.15) * 9;
+  // Stops short of the panel so the plug swings in open air at any phase of the
+  // swing, instead of disappearing behind the menu at one end of its arc.
+  const px2 = ax + sway, py2 = TITLE_PANEL_Y - 16;
   ctx.strokeStyle = '#241c30';
   ctx.lineWidth = 2.4;
   ctx.beginPath();
   ctx.moveTo(ax, ay);
   ctx.quadraticCurveTo(ax + sway * 0.4, (ay + py2) / 2 + 8, px2, py2);
   ctx.stroke();
+  // A grommet where the cord leaves the sign, so the join reads as deliberate
+  // hardware instead of a line that happens to end on a letter.
+  ctx.fillStyle = '#241c30';
+  ctx.beginPath();
+  ctx.arc(ax, ay, 2.2, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = '#3a3a48';
   ctx.fillRect(px2 - 3, py2, 6, 8);
   ctx.fillStyle = '#8a8a98';
   ctx.fillRect(px2 - 2, py2 + 8, 1.6, 3);
   ctx.fillRect(px2 + 0.6, py2 + 8, 1.6, 3);
-  if (!reduced && Math.sin(t * 0.9 + 2) > 0.985) {
-    // zap
+  if (flickerDark(t, reduced)) {
+    // Zap: sparks plus the same cached radial glow the power capsules use. A
+    // flat translucent rectangle read as a yellow card sitting behind the plug
+    // — a radial falloff has no edge to mistake for a background.
+    const glow = glowSprite('rgba(246,211,60,0.5)', 6);
+    ctx.drawImage(glow, px2 - 9, py2 + 1, 18, 18);
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 4; i++) {
       ctx.fillRect(px2 - 5 + ((i * 37 + Math.floor(t * 60)) % 10), py2 + 9 + (i % 3) * 2, 2, 2);
     }
-    ctx.fillStyle = 'rgba(246,211,60,0.5)';
-    ctx.fillRect(px2 - 8, py2 + 4, 16, 12);
   }
 }
-const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos'];
+const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+
+// Title menu geometry, shared by the renderer and the touch hit-test so a tap
+// always lands on the row it looks like it lands on.
+// The stack is tight: marquee, subtitle, panel, then the two footer lines, all
+// of which have to finish above the cast's heads at y=233.
+const TITLE_SCALE = 4.4;        // sized so the logo spans about the panel's width
+const TITLE_MARQUEE_Y = 30;     // a little top margin so the logo isn't on the edge
+const TITLE_SUBTITLE_Y = 71;
+const TITLE_PANEL_Y = 92;
+const TITLE_PANEL_PAD = 10;     // panel height beyond the rows themselves
+const TITLE_ROW_H = 14;
+const TITLE_ROW_INSET = 7;      // first row's offset inside the panel
+// The footer hangs off the bottom of the panel rather than sitting at a fixed
+// y, because the panel grows with the number of save files — pinning it would
+// leave the gap different on a 7-row menu than an 8-row one. The gap matches
+// the one above the panel, so the subtitle and the footer frame it evenly.
+const TITLE_FOOTER_GAP = 12;
+const TITLE_FOOTER_LINE_H = 11;
+// Unlocking OVERTIME adds an eighth row, and at full row height that pushes the
+// footer down into the cast. Rather than let the text collide, the rows tighten
+// just enough to keep the whole stack clear. Both the renderer and the touch
+// hit-test read this, so a tap always lands on the row it looks like it does.
+const TITLE_PANEL_MAX_BOTTOM = 202;
+function titleRowH(count) {
+  const fits = Math.floor((TITLE_PANEL_MAX_BOTTOM - TITLE_PANEL_Y - TITLE_PANEL_PAD) / count);
+  return Math.min(TITLE_ROW_H, fits);
+}
+
+// JavaScript twin of the starfield shader's hash21. This lets the audio fire
+// only on 6.5-second cycles where the shader actually draws a shooting star.
+function shaderHash21(x, y) {
+  let px = ((x * 123.34) % 1 + 1) % 1;
+  let py = ((y * 456.21) % 1 + 1) % 1;
+  const d = px * (px + 45.32) + py * (py + 45.32);
+  px += d; py += d;
+  const v = px * py;
+  return v - Math.floor(v);
+}
+
+// A tired neon sign: two fast blinks at the top of the cycle, then it holds
+// steady for the rest of the ~5s period. reducedFlashing pins it fully lit.
+const FLICKER_PERIOD = 5.4;
+const FLICKER_BLINK = 0.21;   // one blink slot
+const FLICKER_DARK = 0.09;    // how much of that slot is dimmed
+// The sign doesn't stutter on its own — the cord shorting out is what does it.
+// Both the marquee and the plug read this one phase, so the spark lands on the
+// exact frames the lettering drops out and the two read as cause and effect.
+// On their own clocks they drifted, and the sign looked merely broken.
+function flickerDark(t, reduced) {
+  if (reduced) return false;
+  const phase = t % FLICKER_PERIOD;
+  if (phase >= FLICKER_BLINK * 2) return false;
+  return (phase % FLICKER_BLINK) < FLICKER_DARK;
+}
+function flickerAlpha(t, reduced) {
+  return flickerDark(t, reduced) ? 0.45 : 1;
+}
+
+// Built by hand rather than via ctx.roundRect, which the headless test stub
+// and older canvas implementations don't provide.
+function roundRect(ctx, x, y, w, h, r) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onAttract, attractDelay }) {
+  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onAttract, attractDelay, attractLabel }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
+    this.attractLabel = attractLabel || 'DEMO';
   }
   enter() {
     this.idx = 0;
+    this.erase = null;
     this.t = 0;
     this.idleT = 0;
+    this.lastCometCycle = -1;
+    this.wasDark = false;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
-    Audio.setBank(null);
+    Audio.setBank(TITLE_THEME);
     Input.setMenuButtons();
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
-  exit() { setSceneGlow(false); }
+  exit() { setSceneGlow(false); setSkyFx(false); }
   options() {
     const opts = [];
     this.save.data.slots.forEach((s, i) => {
       opts.push({
         id: 'slot' + i,
-        label: s ? `FILE ${i + 1}: ${totalPlugs(s)} PLUGS, ${s.coins} COINS` : `FILE ${i + 1}: NEW GAME`,
+        label: s ? `FILE ${i + 1}: ${totalPlugs(s)} PLUGS, ${formatCoins(s.coins)} COINS` : `FILE ${i + 1}: NEW GAME`,
         act: () => this.onSlotChosen(i, !s),
       });
     });
@@ -178,50 +447,167 @@ export class TitleState {
     opts.push({ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() });
     opts.push({ id: 'guide', label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
     opts.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
-    opts.push({ id: 'settings', label: 'SETTINGS (SINCERE)', act: () => this.onSettings() });
+    if (this.save.data.slots.some(Boolean)) opts.push({ id: 'erase', label: 'ERASE A FILE', act: () => this.beginErase() });
+    opts.push({ id: 'settings', label: 'SETTINGS', act: () => this.onSettings() });
     return opts;
+  }
+  beginErase() {
+    const slots = this.save.data.slots.map((slot, i) => slot ? i : -1).filter((i) => i >= 0);
+    if (!slots.length) return;
+    this.erase = { step: 'choose', slots, idx: 0, slot: null };
+  }
+  eraseChoices() {
+    if (this.erase.step === 'choose') {
+      return [
+        ...this.erase.slots.map((i) => ({ label: `FILE ${i + 1}: ${totalPlugs(this.save.data.slots[i])} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
+        { label: 'CANCEL', cancel: true },
+      ];
+    }
+    return this.erase.step === 'confirm'
+      ? [{ label: 'NO, KEEP IT', cancel: true }, { label: 'YES, CONTINUE' }]
+      : [{ label: 'NO, GO BACK', cancel: true }, { label: 'ERASE IT' }];
+  }
+  updateErase() {
+    const choices = this.eraseChoices();
+    if (Input.pressed('down') || Input.pressed('right')) { this.erase.idx = (this.erase.idx + 1) % choices.length; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.erase.idx = (this.erase.idx + choices.length - 1) % choices.length; Audio.sfx('ui'); }
+    if (Input.pressed('back')) { this.erase = null; Audio.sfx('ui'); return; }
+    let chosen = Input.pressed('confirm') ? this.erase.idx : -1;
+    if (Input.pressed('pointer')) {
+      const p = Input.pointer;
+      const firstY = 124;
+      const i = Math.floor((p.y - (firstY - 4)) / 15);
+      if (p.x >= 100 && p.x <= W - 100 && i >= 0 && i < choices.length) chosen = i;
+    }
+    if (chosen < 0) return;
+    this.erase.idx = chosen;
+    const choice = choices[chosen];
+    if (choice.cancel) { this.erase = null; Audio.sfx('ui'); return; }
+    if (this.erase.step === 'choose') {
+      this.erase = { step: 'confirm', slots: this.erase.slots, slot: choice.slot, idx: 0 };
+      Audio.sfx('uiBad');
+    } else if (this.erase.step === 'confirm') {
+      this.erase = { ...this.erase, step: 'final', idx: 0 };
+      Audio.sfx('uiBad');
+    } else {
+      const erased = this.erase.slot;
+      this.save.eraseSlot(erased);
+      const next = this.save.data.slots.findIndex(Boolean);
+      this.save.selectSlot(next >= 0 ? next : 0);
+      this.erase = null;
+      this.idx = Math.min(this.idx, this.options().length - 1);
+      Audio.sfx('uiConfirm');
+    }
   }
   update(dt) {
     this.t += dt;
+    const cometCycle = Math.floor(this.t / 6.5);
+    const cometPhase = this.t - cometCycle * 6.5;
+    if (!this.save.settings.reducedFlashing && cometPhase >= 0.4 && this.lastCometCycle !== cometCycle && shaderHash21(cometCycle, 3) >= 0.55) {
+      this.lastCometCycle = cometCycle;
+      Audio.sfx('comet');
+    }
+    // The buzz reads off the same phase as the dropout and the spark, so all
+    // three land on one frame. Edge-triggered: the dark window spans several
+    // frames and re-firing every one of them stacks into a rasp.
+    const dark = flickerDark(this.t, this.save.settings.reducedFlashing);
+    if (dark && !this.wasDark) Audio.sfx('neonBuzz');
+    this.wasDark = dark;
     // Attract mode: fire after attractDelay seconds of zero HUMAN input.
     if (Input.activity !== this.actTok) { this.actTok = Input.activity; this.idleT = 0; this.attractDelay = 60; }
+    if (this.erase) {
+      this.idleT = 0;
+      this.updateErase();
+      Input.endFrame();
+      return;
+    }
     this.idleT += dt;
     if (this.onAttract && this.idleT >= this.attractDelay) { this.onAttract(); return; }
     const opts = this.options();
-    if (Input.pressed('duck') || Input.pressed('right')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
-    if (Input.pressed('left')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
-    if (Input.pressed('jump')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); } // jump scrolls too (menus: confirm = Enter/tap)
+    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const p = Input.pointer;
-      const y0 = 116;
-      const i = Math.floor((p.y - y0) / 16);
+      const rowH = titleRowH(opts.length);
+      const i = Math.floor((p.y - (TITLE_PANEL_Y + TITLE_ROW_INSET - 4)) / rowH);
       if (i >= 0 && i < opts.length) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
     }
-    Input.pollGamepad();
     Input.endFrame();
   }
   draw(ctx) {
     titleScene(ctx, this.t, this.save.settings.reducedFlashing);
     const opts = this.options();
     const ui = (d) => {
-      // translucent panel so the list reads over the glowing arcade
-      const panelW = 250, panelX = W / 2 - panelW / 2;
-      d.fillStyle = 'rgba(8,7,16,0.72)';
-      d.fillRect(panelX, 106, panelW, opts.length * 16 + 12);
-      d.strokeStyle = 'rgba(72,224,200,0.25)';
-      d.strokeRect(panelX + 0.5, 106.5, panelW - 1, opts.length * 16 + 11);
+      // The cast owns the bottom strip, so every line of text sits above it:
+      // panel under the logo, then the controls and the flavour line as a footer.
+      const panelW = 220, panelX = W / 2 - panelW / 2;
+      const rowH = titleRowH(opts.length);
+      const panelY = TITLE_PANEL_Y, panelH = opts.length * rowH + TITLE_PANEL_PAD;
+      // solid backing so the crates behind don't bleed through the list
+      d.fillStyle = 'rgba(8,10,20,0.86)';
+      roundRect(d, panelX, panelY, panelW, panelH, 3);
+      d.fill();
+      d.strokeStyle = '#2f6f68';
+      d.lineWidth = 1;
+      roundRect(d, panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1, 3);
+      d.stroke();
       opts.forEach((o, i) => {
         const sel = i === this.idx;
-        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 116 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
+        const rowY = panelY + TITLE_ROW_INSET + i * rowH;
+        if (sel) {
+          // Centred on the lettering's optical middle, not the glyph box: the
+          // box carries ascender leading above the caps, so matching it hangs
+          // the highlight low. Ink sits between rowY+0.7 and rowY+7.7.
+          d.fillStyle = 'rgba(255,207,51,0.12)';
+          roundRect(d, panelX + 4, rowY - 1.5, panelW - 8, 11, 3);
+          d.fill();
+        }
+        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, rowY, sel ? '#ffcf33' : '#c3cede', 1, sel ? 'bold' : 'ui');
       });
-      drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, H - 30, '#5a5a68');
-      drawTextCentered(d, this.tagline, W / 2, H - 16, '#8a8a98');
+      const controlsY = panelY + panelH + TITLE_FOOTER_GAP;
+      const flavorY = controlsY + TITLE_FOOTER_LINE_H;
+      drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, controlsY, '#6b7d95');
+      d.globalAlpha = 0.85;
       if (this.onAttract && this.attractDelay <= 10) {
-        drawTextCentered(d, `NEXT DEMO IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, H - 44, '#8858c8');
+        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, flavorY, '#8858c8', 0.875);
+      } else {
+        drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', 0.875);
       }
+      d.globalAlpha = 1;
+      if (this.erase) this.drawEraseModal(d);
     };
     if (!pushOverlayDraw(ui)) ui(ctx);
+  }
+  drawEraseModal(d) {
+    const choices = this.eraseChoices();
+    d.fillStyle = 'rgba(2,3,10,0.78)';
+    d.fillRect(0, 0, W, H);
+    const x = 88, y = 82, w = W - 176, h = 92;
+    d.fillStyle = 'rgba(11,10,20,0.98)';
+    roundRect(d, x, y, w, h, 4); d.fill();
+    d.strokeStyle = '#e05a62'; d.lineWidth = 1;
+    roundRect(d, x + 0.5, y + 0.5, w - 1, h - 1, 4); d.stroke();
+    let title = 'ERASE WHICH FILE?';
+    let warning = 'CHOOSE CAREFULLY. BACK CANCELS.';
+    if (this.erase.step === 'confirm') {
+      title = `ERASE FILE ${this.erase.slot + 1}?`;
+      warning = 'ALL PROGRESS IN THIS FILE WILL BE LOST.';
+    } else if (this.erase.step === 'final') {
+      title = `FINAL WARNING: ERASE FILE ${this.erase.slot + 1}?`;
+      warning = 'THIS CANNOT BE UNDONE.';
+    }
+    drawTextCentered(d, title, W / 2, 94, '#ff727c', 1.25, 'bold');
+    drawTextCentered(d, warning, W / 2, 110, '#aab4c6', 0.875);
+    choices.forEach((choice, i) => {
+      const selected = i === this.erase.idx;
+      const rowY = 124 + i * 15;
+      if (selected) {
+        d.fillStyle = 'rgba(255,207,51,0.12)';
+        roundRect(d, x + 7, rowY - 2, w - 14, 12, 3); d.fill();
+      }
+      drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}${selected ? ' <' : ''}`, W / 2, rowY, selected ? '#ffcf33' : '#d3d9e5', 1, selected ? 'bold' : 'ui');
+    });
   }
 }
 
@@ -236,8 +622,8 @@ export class DifficultyState {
       Input.endFrame();
       return;
     }
-    if (Input.pressed('duck') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('jump') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer')) {
       const i = Math.floor((Input.pointer.y - 90) / 24);
       if (i >= 0 && i < n) {
@@ -261,7 +647,7 @@ export class DifficultyState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2);
+    drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
     drawTextCentered(ctx, '(THE PAUSE MENU WILL ALWAYS TELL YOU THE TRUTH)', W / 2, 64, '#5a5a68');
     DIFFICULTIES.forEach((d, i) => {
       const sel = i === this.idx;
@@ -316,7 +702,7 @@ export class IntroState {
       }
     }
     if (this.panel === 2 || this.panel === 3) {
-      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos'];
+      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
       heroes.forEach((h, i) => {
         drawToon(ctx, h, { kind: 'idle', time: this.chars * 0.05 + i * 0.8, grounded: true }, 90 + i * 38 + 9, 108, 24);
       });
@@ -349,7 +735,7 @@ export class ResultsState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const r = this.result;
-    drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 34, r.success ? '#48c848' : '#e04848', 2);
+    drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 34, r.success ? '#48c848' : '#e04848', 2, 'title');
     drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 70, '#fff', 1);
     let y = 90;
     const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 13; };
@@ -396,7 +782,7 @@ export class FinaleState {
     ctx.fillRect(0, 0, W, H);
     if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
     if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 12, 60, 24, 20);
-    if (this.beat === 8) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2);
+    if (this.beat === 8) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2, 'title');
     const text = FINALE_BEATS[this.beat];
     const shown = text.slice(0, Math.floor(this.chars));
     const mid = shown.length > 58 ? shown.lastIndexOf(' ', 58) : shown.length;
@@ -425,7 +811,7 @@ const GUIDE_PAGES = [
   {
     title: 'HAZARDS: AIRBORNE + WEIRD', color: '#e04848', hint: 'RED = AVOID. DUCK OR DODGE THESE.',
     rows: [
-      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. DUCK OR ROLL UNDER IT.' },
+      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. DUCK; FERNWICK CAN SHIELD-ROLL.' },
       { s: 'drone', name: 'SHOOTER DRONE', desc: 'STAYS HIGH. DODGE ITS SHOTS INSTEAD.' },
       { s: '_shot', name: 'ENEMY SHOT', desc: 'RED MEANS DODGE. YELLOW MEANS ABOUT TO FIRE.' },
       { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
@@ -459,7 +845,7 @@ const GUIDE_PAGES = [
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
       { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
       { s: 'zombieWalk', name: 'RESIDENT', desc: 'FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
-      { s: '_unpeel', name: 'UNPEELABLE', desc: 'BREAKER-BOX PRIZE. HITS BOUNCE OFF. PITS DO NOT.' },
+      { s: 'capUnpeel', name: 'UNPEELABLE CAPSULE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
     ],
   },
 ];
@@ -470,8 +856,8 @@ export class FieldGuideState {
   update(dt) {
     this.t += dt;
     const n = GUIDE_PAGES.length;
-    if (Input.pressed('right') || Input.pressed('duck')) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('left') || Input.pressed('jump')) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('right') || Input.pressed('down')) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('left') || Input.pressed('up')) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer') && this.t > 0.3) {
       if (Input.pointer.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
       else { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
@@ -480,70 +866,69 @@ export class FieldGuideState {
     if (Input.pressed('back')) { Audio.sfx('ui'); this.onDone(); }
     Input.endFrame();
   }
-  drawIcon(ctx, key, cx, yBottom) {
+  // yMid is the row text's optical centre. Icons are centred on it rather than
+  // sharing one bottom edge — bottom-aligning left the short ones (boost pad,
+  // coin, fuse) sitting entirely below their own label.
+  drawIcon(ctx, key, cx, yMid) {
+    const top = (h) => Math.round(yMid - h / 2);
     // custom composites for things without a single sprite
     if (key === '_gap') {
-      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 10, yBottom - 6, 20, 6);
-      ctx.fillStyle = '#30303f'; ctx.fillRect(cx - 12, yBottom - 8, 3, 8); ctx.fillRect(cx + 9, yBottom - 8, 3, 8);
+      const t0 = top(8);
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 10, t0 + 2, 20, 6);
+      ctx.fillStyle = '#30303f'; ctx.fillRect(cx - 12, t0, 3, 8); ctx.fillRect(cx + 9, t0, 3, 8);
       return;
     }
     if (key === '_beatBar') {
-      ctx.fillStyle = '#e04898'; ctx.fillRect(cx - 4, yBottom - 10, 8, 10);
-      ctx.fillStyle = '#f890c8'; ctx.fillRect(cx - 4, yBottom - 10, 8, 2);
+      const t0 = top(10);
+      ctx.fillStyle = '#e04898'; ctx.fillRect(cx - 4, t0, 8, 10);
+      ctx.fillStyle = '#f890c8'; ctx.fillRect(cx - 4, t0, 8, 2);
       return;
     }
     if (key === '_paper') {
-      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 5, yBottom - 8, 10, 8);
-      ctx.fillStyle = '#f0f0f8'; ctx.fillRect(cx - 4, yBottom - 7, 8, 6);
-      ctx.fillStyle = '#8a8a98'; ctx.fillRect(cx - 3, yBottom - 5, 6, 1);
+      const t0 = top(8);
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 5, t0, 10, 8);
+      ctx.fillStyle = '#f0f0f8'; ctx.fillRect(cx - 4, t0 + 1, 8, 6);
+      ctx.fillStyle = '#8a8a98'; ctx.fillRect(cx - 3, t0 + 3, 6, 1);
       return;
     }
     if (key === '_shot') {
-      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 3, yBottom - 7, 6, 6);
-      ctx.fillStyle = '#e04848'; ctx.fillRect(cx - 2, yBottom - 6, 4, 4);
-      ctx.fillStyle = '#fff'; ctx.fillRect(cx - 1, yBottom - 5, 2, 2);
+      const t0 = top(6);
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 3, t0, 6, 6);
+      ctx.fillStyle = '#e04848'; ctx.fillRect(cx - 2, t0 + 1, 4, 4);
+      ctx.fillStyle = '#fff'; ctx.fillRect(cx - 1, t0 + 2, 2, 2);
       return;
     }
     if (key === '_portal') {
       const pulse = Math.round(Math.sin(this.t * 5) * 2);
-      drawProp(ctx, 'portal', cx - 6, yBottom - 20 - pulse, 12, 20 + pulse);
+      const h = 20 + pulse;
+      drawProp(ctx, 'portal', cx - 6, top(h), 12, h);
       return;
     }
-    if (key === '_pipe') { drawProp(ctx, 'pipe', cx - 7, yBottom - 18, 14, 18); return; }
-    if (key === '_unpeel') {
-      // the potato that cannot be peeled: humble spud, unreasonable aura
-      ctx.strokeStyle = '#e8e8f0';
-      ctx.beginPath(); ctx.ellipse(cx, yBottom - 7, 9, 7, 0.3, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#c89058';
-      ctx.beginPath(); ctx.ellipse(cx, yBottom - 7, 7, 5, 0.3, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#8a6038';
-      ctx.fillRect(cx - 3, yBottom - 9, 2, 2); ctx.fillRect(cx + 2, yBottom - 6, 2, 2);
-      return;
-    }
+    if (key === '_pipe') { drawProp(ctx, 'pipe', cx - 7, top(18), 14, 18); return; }
     if (key === '_qcrate') {
       const bob = Math.round(Math.sin(this.t * 3) * 2);
-      drawProp(ctx, 'qcrate', cx - 6, yBottom - 16 + bob, 12, 11);
+      drawProp(ctx, 'qcrate', cx - 6, top(11) + bob, 12, 11);
       return;
     }
     if (hasProp(key)) {
       const d = GUIDE_ICON_SIZES[key] || [12, 11];
-      drawProp(ctx, key, cx - d[0] / 2, yBottom - d[1], d[0], d[1]);
+      drawProp(ctx, key, cx - d[0] / 2, top(d[1]), d[0], d[1]);
       return;
     }
     const spr = getSprite(key);
-    if (spr) ctx.drawImage(spr, cx - Math.floor(spr.width / 2), yBottom - spr.height);
+    if (spr) ctx.drawImage(spr, cx - Math.floor(spr.width / 2), top(spr.height));
   }
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const p = GUIDE_PAGES[this.page];
-    drawTextCentered(ctx, 'FIELD GUIDE', W / 2, 14, '#fff', 2);
+    drawTextCentered(ctx, 'FIELD GUIDE', W / 2, 14, '#fff', 2, 'title');
     drawTextCentered(ctx, p.title, W / 2, 36, p.color, 1);
     drawTextCentered(ctx, p.hint, W / 2, 48, '#5a5a68');
     const rh = p.rows.length > 9 ? 18 : p.rows.length > 8 ? 20 : 22; // long pages tighten up a touch
     p.rows.forEach((r, i) => {
       const y = 62 + i * rh;
-      this.drawIcon(ctx, r.s, 44, y + 18);
+      this.drawIcon(ctx, r.s, 44, y + 9);
       drawText(ctx, r.name, 70, y + 6, p.color);
       drawText(ctx, r.desc, 190, y + 6, '#c8c8d8');
     });
@@ -553,9 +938,13 @@ export class FieldGuideState {
 
 // SOUND TEST: the classic arcade jukebox. Every cabinet track + the hub theme.
 const JUKEBOX = [
+  { name: 'EMPTY ARCADE (TITLE THEME)', bank: TITLE_THEME },
   { name: 'THE FOOD COURT (HUB THEME)', bank: HUB_THEME },
   ...CABINETS.map((c) => ({ name: `${c.name} (${c.genre})`, bank: c.music })),
 ];
+// Track list sits above the visualizer bars so the two never collide.
+const JUKEBOX_TOP = 58;
+const JUKEBOX_ROW = 14;
 
 export class SoundTestState {
   constructor({ onDone }) { this.onDone = onDone; }
@@ -569,11 +958,11 @@ export class SoundTestState {
   update(dt) {
     this.t += dt;
     const n = JUKEBOX.length;
-    if (Input.pressed('duck') || Input.pressed('right') || Input.pressed('jump')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('confirm')) this.play(this.idx);
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - 64) / 16);
+      const i = Math.floor((Input.pointer.y - JUKEBOX_TOP) / JUKEBOX_ROW);
       if (i >= 0 && i < n) {
         if (this.idx === i) this.play(i); else { this.idx = i; Audio.sfx('ui'); }
       }
@@ -584,20 +973,20 @@ export class SoundTestState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'SOUND TEST', W / 2, 16, '#fff', 2);
+    drawTextCentered(ctx, 'SOUND TEST', W / 2, 16, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL CHIPTUNES ARE PLAYED LIVE BY A VERY SMALL ORCHESTRA.', W / 2, 40, '#5a5a68');
     JUKEBOX.forEach((tr, i) => {
       const sel = i === this.idx;
       const on = i === this.playing;
       const label = `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)`;
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, 64 + i * 16, on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
+      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, JUKEBOX_TOP + i * JUKEBOX_ROW, on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
     });
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
         const hgt = 3 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 10;
         ctx.fillStyle = '#48e0c8';
-        ctx.fillRect(W / 2 - bars * 5 + i * 10, H - 34 - hgt, 6, hgt);
+        ctx.fillRect(W / 2 - bars * 5 + i * 10, H - 24 - hgt, 6, hgt);
       }
     }
     drawTextCentered(ctx, 'ENTER/TAP: PLAY   ESC: BACK', W / 2, H - 14, '#5a5a68');
@@ -618,7 +1007,7 @@ export class HowToPlayState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'HOW TO PLAY', W / 2, 22, '#fff', 2);
+    drawTextCentered(ctx, 'HOW TO PLAY', W / 2, 22, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ONE HERO RENDERS AT A TIME. BUDGET CUTS. RUN ANYWAY.', W / 2, 44, '#8a8a98');
     let y = 64;
     const line = (a, b, c) => {
@@ -627,8 +1016,8 @@ export class HowToPlayState {
       y += 15;
     };
     line('JUMP', 'SPACE / W / UP -- TAP. HOLD FOR HIGHER.');
-    line('DUCK / ROLL', 'S / DOWN (HOLD) -- SWIPE DOWN.');
-    line('ABILITY', 'X / SHIFT -- PWR BUTTON.');
+    line('DUCK', 'S / DOWN (HOLD) -- SWIPE DOWN.');
+    line('HERO POWER', 'RIGHT / D -- PWR. X / SHIFT ALSO WORK.');
     line('PORTALS', 'RUN THROUGH TO BECOME THE PREVIEWED HERO.', '#48e0c8');
     line('RELAY BLAST', 'EVERY 3RD SWITCH AUTO-CLEARS NEARBY HAZARDS.', '#48e0c8');
     y += 4;
@@ -638,7 +1027,7 @@ export class HowToPlayState {
     line('PLUGS', 'UNLOCK NEW CABINETS. COINS BUY UPGRADES.', '#f890b8');
     line('BREAKER BOX', 'WIN A CABINET\'S FIRST MINIGAME: BONUS POWERUP.', '#f890b8');
     y += 4;
-    line('PAUSE / MUTE', 'P OR ESC / M.');
+    line('PAUSE / MUTE', 'P OR ESC / M. ESC AGAIN QUITS.');
     drawTextCentered(ctx, 'JUMP THE RED THORN SHRUBS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, 'TAP/ENTER: BACK', W / 2, H - 16, '#5a5a68');
   }
@@ -647,10 +1036,27 @@ export class HowToPlayState {
 export class SettingsState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
   enter() { this.idx = 0; Input.setMenuButtons(); }
+  volumeOption(key, name) {
+    const s = this.save.settings;
+    const adjust = (dir) => {
+      const current = Number.isFinite(s.volumes[key]) ? s.volumes[key] : (key === 'music' ? 0.7 : 0.9);
+      s.volumes[key] = Math.max(0, Math.min(1, Math.round((current + dir * 0.1) * 10) / 10));
+      Audio.setVolumes(s.volumes);
+    };
+    const value = Number.isFinite(s.volumes[key]) ? s.volumes[key] : 1;
+    const filled = Math.round(value * 10);
+    return {
+      label: `${name}: ${Math.round(value * 100)}%  [${'|'.repeat(filled)}${'.'.repeat(10 - filled)}]`,
+      act: () => adjust(value >= 1 ? -10 : 1),
+      adjust,
+    };
+  }
   options() {
     const s = this.save.settings;
     return [
       { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
+      this.volumeOption('music', 'MUSIC VOLUME'),
+      this.volumeOption('sfx', 'SFX VOLUME'),
       { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },
       { label: `REDUCED FLASHING: ${s.reducedFlashing ? 'ON' : 'OFF'}`, act: () => { s.reducedFlashing = !s.reducedFlashing; } },
       { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
@@ -662,8 +1068,10 @@ export class SettingsState {
   }
   update(dt) {
     const opts = this.options();
-    if (Input.pressed('duck') || Input.pressed('right') || Input.pressed('jump')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
-    if (Input.pressed('left')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+    if (Input.pressed('down')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
+    if (Input.pressed('up')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+    if (Input.pressed('left')) { if (opts[this.idx].adjust) opts[this.idx].adjust(-1); else opts[this.idx].act(); Audio.sfx('ui'); }
+    if (Input.pressed('right')) { if (opts[this.idx].adjust) opts[this.idx].adjust(1); else opts[this.idx].act(); Audio.sfx('ui'); }
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const i = Math.floor((Input.pointer.y - 70) / 18);
@@ -677,11 +1085,12 @@ export class SettingsState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2);
+    drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
     this.options().forEach((o, i) => {
       const sel = i === this.idx;
       drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2, 70 + i * 18, sel ? '#f6d33c' : '#c8c8d8');
     });
+    drawTextCentered(ctx, 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68', 0.875);
   }
 }

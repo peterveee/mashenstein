@@ -35,8 +35,91 @@ const FS_FINAL = `
 precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uBack, uBloom, uOv;
-uniform float uFx, uGlow;
+uniform float uFx, uGlow, uSky, uTime;
 uniform vec2 uShake;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i), b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + 7.1; a *= 0.5; }
+  return s;
+}
+
+// One grid of stars: each cell may hold a star with its own color, phase and
+// twinkle rate. Core + halo + a faint diffraction cross, so bright ones read
+// as points of light rather than dots.
+vec3 starGrid(vec2 uv, float scale, float seed, float t) {
+  vec2 g = uv * scale + seed * 13.7;
+  vec2 id = floor(g), f = fract(g) - 0.5;
+  float h = hash21(id + seed);
+  float present = step(0.74, h);
+  vec2 off = (vec2(hash21(id + 3.13), hash21(id + 7.77)) - 0.5) * 0.66;
+  vec2 dv = f - off;
+  float d = length(dv);
+  float tw = 0.30 + 0.70 * pow(0.5 + 0.5 * sin(t * (1.1 + 4.0 * fract(h * 17.0)) + h * 44.0), 2.0);
+  float core = smoothstep(0.055, 0.004, d);
+  float halo = smoothstep(0.34, 0.0, d);
+  halo = halo * halo * halo;
+  float mag = fract(h * 91.0);
+  float spike = smoothstep(0.26, 0.0, abs(dv.x) * 9.0 + d * 1.4)
+              + smoothstep(0.26, 0.0, abs(dv.y) * 9.0 + d * 1.4);
+  vec3 tint = mix(vec3(0.70, 0.80, 1.0), vec3(1.0, 0.85, 0.60), mag);
+  return present * tw * (core + halo * 0.34 + spike * 0.16 * step(0.72, mag)) * tint;
+}
+
+// The whole deep-space backdrop, generated on the GPU wherever the 2D layer
+// left a hole: gradient, drifting nebula, three parallax star grids, and a
+// shooting star that crosses every few seconds.
+vec3 skyColor(vec2 uv, float t) {
+  float sy = 1.0 - uv.y;                       // 0 at the top of the screen
+  vec3 col = mix(vec3(0.027, 0.027, 0.059), vec3(0.078, 0.062, 0.149), smoothstep(0.0, 0.65, sy));
+  col = mix(col, vec3(0.110, 0.078, 0.188), smoothstep(0.65, 1.0, sy));
+
+  vec2 p = vec2(uv.x * 1.778, uv.y);           // square up the aspect
+  float depth = smoothstep(0.85, 0.05, sy);    // everything fades toward the floor
+
+  // nebula: two counter-drifting noise fields, tinted teal and violet
+  float n1 = fbm(p * 3.1 + vec2(t * 0.012, t * 0.005));
+  float n2 = fbm(p * 5.3 - vec2(t * 0.008, 0.0) + 21.0);
+  float neb = smoothstep(0.45, 0.95, n1 * 0.65 + n2 * 0.45);
+  col += neb * depth * mix(vec3(0.05, 0.16, 0.20), vec3(0.16, 0.05, 0.22), n2) * 0.85;
+
+  // three parallax layers: far and faint, near and bright
+  vec3 s = starGrid(p, 34.0, 0.0, t) * 0.40
+         + starGrid(p + vec2(t * 0.004, 0.0), 22.0, 1.0, t) * 0.75
+         + starGrid(p + vec2(t * 0.009, 0.0), 13.0, 2.0, t) * 1.15;
+  col += s * depth;
+
+  // shooting star: one streak per 6.5s window, only in the upper sky
+  float cyc = floor(t / 6.5);
+  float ph = fract(t / 6.5) * 6.5;
+  float sh = hash21(vec2(cyc, 3.0));
+  vec2 a = vec2(-0.15 + sh * 0.5, 0.12 + hash21(vec2(cyc, 9.0)) * 0.22);
+  vec2 dir = normalize(vec2(1.0, 0.42));
+  float travel = (ph - 0.4) * 1.5;
+  vec2 head = a + dir * travel;
+  vec2 rel = p - head;
+  float along = dot(rel, -dir);
+  float across = abs(dot(rel, vec2(-dir.y, dir.x)));
+  float trail = smoothstep(0.22, 0.0, along) * step(0.0, along) * smoothstep(0.010, 0.0, across);
+  trail += smoothstep(0.03, 0.0, length(rel)) * 1.6;
+  float alive = step(0.0, travel) * step(travel, 1.6) * step(0.55, sh);
+  col += trail * alive * depth * vec3(0.85, 0.92, 1.0);
+
+  return col;
+}
+
 void main() {
   vec2 d = vUv - 0.5;
   float r = length(d);
@@ -44,10 +127,15 @@ void main() {
   // aberration + bloom soften only the BACKGROUND; the full-resolution
   // overlay (heroes, banners) composites on top pin-sharp.
   vec2 buv = clamp(vUv - uShake, 0.0, 1.0);
+  vec4 bsrc = texture2D(uBack, buv);
   vec3 bg;
   bg.r = texture2D(uBack, buv + ab).r;
-  bg.g = texture2D(uBack, buv).g;
+  bg.g = bsrc.g;
   bg.b = texture2D(uBack, buv - ab).b;
+  // Wherever the 2D layer left a hole (the title screen's sky), the GPU fills
+  // it in procedurally. Backbuffer colors are premultiplied, so this slots in
+  // underneath without any extra blending math.
+  if (uSky > 0.5) bg += skyColor(vUv, uTime) * (1.0 - bsrc.a);
   vec3 bl = texture2D(uBloom, vUv).rgb;
   vec4 ov = texture2D(uOv, vUv);
   vec3 col = ov.rgb + (bg + bl * 0.45 * uFx * uGlow) * (1.0 - ov.a);
@@ -94,6 +182,8 @@ export const glfx = {
   active: false,
   fx: 1,    // GLOW FX setting: 1 on, 0 off
   glow: 0,  // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
+  sky: 0,   // procedural starfield gate: 1 on the title screen only
+  time: 0,  // sky animation clock (seconds); frozen when flashing is reduced
 
   init(canvas) {
     let gl = null;
@@ -189,6 +279,8 @@ export const glfx = {
       g.uniform1i(g.getUniformLocation(p, 'uOv'), 2);
       g.uniform1f(g.getUniformLocation(p, 'uFx'), this.fx);
       g.uniform1f(g.getUniformLocation(p, 'uGlow'), this.glow);
+      g.uniform1f(g.getUniformLocation(p, 'uSky'), this.sky);
+      g.uniform1f(g.getUniformLocation(p, 'uTime'), this.time);
       g.uniform2f(g.getUniformLocation(p, 'uShake'), shakeX / this.srcW, -shakeY / this.srcH);
     });
   },

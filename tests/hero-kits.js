@@ -82,7 +82,7 @@ run.collide();
 assert(!crate.live && run.player.stumbleT > 0 && !run.player.rolling, 'Shield Bash breaks one ground hazard and ends in a stumble');
 
 // Every hero definition is now active and Tune-Up applies through shared cooldown setup.
-for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos']) {
+for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos']) {
   run.relay.current = id;
   run.player.setHero(id);
   assert(!!run.player.hero.ability, `${id} has an active power definition`);
@@ -117,10 +117,10 @@ assert(run.player.compressT === 1 && run.player.hitH < 14, 'Mochi power compress
 selectHero('chompo');
 const snack = makeObstacle('crate', run.camX + PLAYER_X + 30);
 run.obstacles = [snack]; run.useAbility();
-assert(!snack.live, 'Chompo power eats a nearby breakable hazard');
+assert(!snack.live, 'Miss Chomp power eats a nearby breakable hazard');
 
-selectHero('gary'); run.useAbility();
-assert(run.projectiles.some((p) => p.type === 'head'), 'Gary power throws his head');
+selectHero('raymn'); run.useAbility();
+assert(run.projectiles.some((p) => p.type === 'fist'), "Ray M'N power throws his rocket fist");
 
 selectHero('grumpos'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'axe'), 'Grumpos power throws his axe');

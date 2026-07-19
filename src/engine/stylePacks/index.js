@@ -2,6 +2,7 @@
 // Every pack draws: bg(ctx,t,camX,cab), ground(ctx,camX,cab,obstacles), post(ctx,t).
 // Hitboxes/timings are style-independent; reduced motion/flashing tame effects.
 import { W, H } from '../renderer.js';
+import { glowSprite } from '../../sprites/props.js';
 
 const GROUND_Y = 232;
 
@@ -404,9 +405,15 @@ function neonPack(settings) {
       ctx.fillRect(0, 0, W, H);
     },
     decorate(ctx, e, x, y) {
-      // glow outline
-      ctx.strokeStyle = e.kind === 'pickup' ? 'rgba(246,211,60,0.8)' : 'rgba(232,56,248,0.8)';
-      ctx.strokeRect(x - 1.5, y - 1.5, e.w + 3, e.h + 3);
+      // Additive bloom around the art rather than a rectangle around the
+      // hitbox — round props stay round, and the light still reads as neon.
+      const color = e.kind === 'pickup' ? 'rgba(246,211,60,0.5)' : 'rgba(232,56,248,0.45)';
+      const r = Math.max(e.w, e.h) * 0.85 + 5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(glowSprite(color, r), x + e.w / 2 - r, y + e.h / 2 - r, r * 2, r * 2);
+      ctx.restore();
     },
   };
 }
@@ -616,10 +623,17 @@ function doodlePack(settings) {
     },
     post(ctx, t) {},
     decorate(ctx, e, x, y) {
-      const jitterSeed = Math.floor(performance.now() / 333);
-      const j = Math.sin((e.id * 31 + jitterSeed * 77) * 12.9898) * 1;
-      ctx.strokeStyle = 'rgba(58,58,88,0.9)';
-      ctx.strokeRect(x - 1.5 + j, y - 1.5 - j, e.w + 3, e.h + 3);
+      // A biro underline instead of a box: still reads as margin-doodle
+      // annotation, but never cages the art. Jitter is per-entity, so it
+      // sits still instead of twitching every frame.
+      const j = Math.sin(e.id * 12.9898) * 1.2;
+      const by = y + e.h + 2;
+      ctx.strokeStyle = 'rgba(58,58,88,0.75)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x - 1, by + j * 0.3);
+      ctx.quadraticCurveTo(x + e.w / 2, by + 2.5 - j, x + e.w + 1, by + j * 0.3);
+      ctx.stroke();
     },
   };
 }

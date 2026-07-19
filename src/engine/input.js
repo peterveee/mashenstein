@@ -1,5 +1,5 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
-// Actions: jump, duck, ability, left, right, confirm, back, pause, mute.
+// Actions: jump, duck, ability, left, right, confirm, back, escape, pause, mute.
 import { clientToLogical } from './renderer.js';
 
 const DEFAULT_KEYS = {
@@ -9,8 +9,8 @@ const DEFAULT_KEYS = {
   left: ['ArrowLeft', 'KeyA'],
   right: ['ArrowRight', 'KeyD'],
   confirm: ['Enter', 'Space'],
-  back: ['Escape', 'Backspace'],
-  pause: ['KeyP', 'Escape'],
+  back: ['Backspace'],
+  pause: ['KeyP'],
   mute: ['KeyM'],
   debug: ['Backquote'],
 };
@@ -98,7 +98,13 @@ class InputSys {
   }
 
   actionForKey(code) {
+    if (code === 'Escape') return this.context === 'run' ? 'escape' : 'back';
     if (this.context === 'run' && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
+    if (this.context === 'menu') {
+      if (code === 'ArrowUp' || code === 'KeyW') return 'up';
+      if (code === 'ArrowDown' || code === 'KeyS') return 'down';
+      if (code === 'Space' || code === 'Enter') return 'confirm';
+    }
     for (const [act, codes] of Object.entries(this.keys)) if (codes.includes(code)) return act;
     return null;
   }
@@ -119,6 +125,7 @@ class InputSys {
 
   // Menu states call this before the first touch so ENTER is immediately ready.
   setMenuButtons() {
+    this.setContext('menu');
     this.setButtons([{ id: 'menuConfirm', x: 396, y: 232, w: 72, h: 28, action: 'confirm', label: 'ENTER', global: true }]);
   }
 
@@ -142,17 +149,26 @@ class InputSys {
       if (!pad) continue;
       pad.buttons.forEach((b, i) => {
         if (!b.pressed || !GAMEPAD_MAP[i]) return;
-        const action = this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
+        const action = this.context === 'menu' && i === 12 ? 'up'
+          : this.context === 'menu' && i === 13 ? 'down'
+          : this.context === 'menu' && i === 0 ? 'confirm'
+          : this.context === 'menu' && (i === 1 || i === 9) ? 'back'
+          : this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
         now.add(action);
       });
       pad.buttons.forEach((b, i) => {
         if (!b.pressed || !GAMEPAD_MAP[i]) return;
-        const action = this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
+        const action = this.context === 'menu' && i === 12 ? 'up'
+          : this.context === 'menu' && i === 13 ? 'down'
+          : this.context === 'menu' && i === 0 ? 'confirm'
+          : this.context === 'menu' && (i === 1 || i === 9) ? 'back'
+          : this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
         if (!this.padPrev.has(action)) this.activity++;
       });
       if (pad.axes[0] < -0.5) now.add('left');
       if (pad.axes[0] > 0.5) now.add(this.context === 'run' ? 'ability' : 'right');
-      if (pad.axes[1] > 0.5) now.add('duck');
+      if (pad.axes[1] < -0.5) now.add(this.context === 'menu' ? 'up' : 'jump');
+      if (pad.axes[1] > 0.5) now.add(this.context === 'menu' ? 'down' : 'duck');
     }
     for (const a of now) if (!this.padPrev.has(a)) this.press(a);
     for (const a of this.padPrev) if (!now.has(a)) this.release(a);

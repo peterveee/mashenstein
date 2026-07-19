@@ -103,7 +103,10 @@ export class DripSpawner {
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
       this.capsuleTimer = this.rng.range(12, 18);
-      const type = this.rng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
+      // UNPEELABLE joins the drip, a touch rarer than the four staples.
+      const type = this.rng.chance(0.12)
+        ? 'capUnpeel'
+        : this.rng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
       pickups.push(makePickup(type, worldX + 480 + 60, 34));
     }
     if (!oneHit && this.batteryTimer <= 0) {

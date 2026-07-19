@@ -14,10 +14,16 @@ import { POWER_DEFS } from './game/powerups.js';
 import { TitleState, DifficultyState, IntroState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
 import { HubState, StageSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
+import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
 
 save.load();
 setShakeScale(save.settings.screenShake);
+
+// Idle attract cycle: meet the cast, then two playable demos, then round again.
+const ATTRACT_CYCLE = ['cast', 'demo', 'demo'];
+let attractStep = 0;
+const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 
 const Flow = {
   lastTeam: null,
@@ -29,8 +35,10 @@ const Flow = {
   toTitle(opts = {}) { setState(new TitleState({
     save,
     attractDelay: opts.attractDelay,
+    attractLabel: nextAttract() === 'cast' ? 'CAST ROLL' : 'DEMO',
     onAttract: () => Flow.startAttract(),
     onSlotChosen: (i, isNew) => {
+      Flow.hubPosition = null;
       if (isNew) {
         save.newSlot(i, Date.now());
         setState(new DifficultyState({ save, onDone: () => setState(new IntroState({ onDone: () => {
@@ -56,10 +64,13 @@ const Flow = {
   toHub() { setState(new HubState({ save, flow: Flow })); },
 
   startAttract() {
-    setState(new AttractState({
+    const kind = nextAttract();
+    attractStep++;
+    const opts = {
       realSettings: save.settings,
       onExit: (auto) => Flow.toTitle(auto ? { attractDelay: 10 } : {}),
-    }));
+    };
+    setState(kind === 'cast' ? new CastState(opts) : new AttractState(opts));
   },
 
   openCabinet(cab) {
@@ -173,8 +184,16 @@ function boot() {
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
+  // Prime Web Audio before the title state is installed. Browsers/builds that
+  // permit autoplay now begin the menu theme immediately; stricter browsers
+  // leave the context suspended and the first gesture resumes this same
+  // already-configured sequencer instead of creating it late.
+  Audio.setVolumes(save.settings.volumes);
+  Audio.ensure();
+  Audio.setMuted(save.settings.muted);
   Input.onAnyGesture = () => {
     Audio.ensure();
+    Audio.setVolumes(save.settings.volumes);
     Audio.setMuted(save.settings.muted);
   };
   Flow.toTitle();

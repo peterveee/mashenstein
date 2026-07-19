@@ -30,6 +30,15 @@ export function setFancyFx(on) { glfx.fx = on ? 1 : 0; }
 // Scene bloom is a GAMEPLAY effect: menus and pause screens get none.
 export function setSceneGlow(on) { glfx.glow = on ? 1 : 0; }
 
+// Procedural GPU sky (title screen). Returns true when it is actually live,
+// so the caller can leave the sky transparent instead of painting its own —
+// on the 2D fallback it returns false and the caller draws the plain version.
+export function setSkyFx(on, time) {
+  glfx.sky = on && glfx.active ? 1 : 0;
+  glfx.time = time || 0;
+  return glfx.sky === 1;
+}
+
 // px = device pixels per logical pixel (what everything is pre-scaled by).
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
 

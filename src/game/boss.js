@@ -116,9 +116,12 @@ export class BossState extends RunState {
     // so ground-level pellets and axes connect. Forgiving by design.
     const bossBox = { x: this.bossX - 12, y: GROUND_Y - this.bossAlt - 28, w: 28, h: this.bossAlt + 28 };
     for (const pr of this.projectiles) {
-      if (!pr.live || (pr.type !== 'pellet' && pr.type !== 'axe' && pr.type !== 'head')) continue;
+      if (!pr.live || (pr.type !== 'pellet' && pr.type !== 'axe' && pr.type !== 'fist')) continue;
       const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 6, w: 8, h: 10 };
       if (pbox.x < bossBox.x + bossBox.w && pbox.x + pbox.w > bossBox.x && pbox.y < bossBox.y + bossBox.h && pbox.y + pbox.h > bossBox.y) {
+        pr.hitIds ||= new Set();
+        if (pr.hitIds.has('boss')) continue;
+        pr.hitIds.add('boss');
         if (pr.type === 'axe') pr.returning = true; else if (!pr.pierce) pr.live = false;
         this.bossHp--;
         shake(3, 0.2);
@@ -156,12 +159,14 @@ export class BossState extends RunState {
   }
 
   endRun(success) {
+    if (this.finished) return;
+    this.finished = true;
     Audio.setDetune(1);
     this.o.onEnd({
       success, boss: this.bossCab,
       score: Math.floor(this.score), coins: this.coins + (success ? 500 : 0),
-      damageTaken: this.damageTaken, bestCombo: this.relay.bestCombo,
-      team: this.team, time: this.tRun, overtime: false, stage: null,
+      damageTaken: this.damageTaken, bestCombo: 0,
+      team: [...this.usedHeroes], time: this.tRun, overtime: false, stage: null,
       challengeDone: false, applianceGot: false, failMsg: this.failMsg,
     });
   }

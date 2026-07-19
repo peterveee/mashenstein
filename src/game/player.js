@@ -36,9 +36,14 @@ export class Player {
     this.compressT = 0;
     this.stumbleT = 0;
     this.rollBashed = false;
+    this.rollDeflectUsed = false;
+    this.deflectFlashT = 0;
+    this.powerPoseT = 0;
+    this.powerType = null;
+    this.fistThrown = false;
     this.headless = 0;    // Gary
-    this.headGraceUsed = 0;
-    this.hazardEaten = false; // Chompo mastery
+    this.assemblyGraceUsed = 0;
+    this.hazardEaten = false; // Miss Chomp mastery
     this.grounded = true;
     this.slideT = 0;      // ice landing slide (visual/control feel)
     this.landedT = 0;     // landing squash timer (visual only)
@@ -53,6 +58,11 @@ export class Player {
     this.compressT = 0;
     this.stumbleT = 0;
     this.rollBashed = false;
+    this.rollDeflectUsed = false;
+    this.deflectFlashT = 0;
+    this.powerPoseT = 0;
+    this.powerType = null;
+    this.fistThrown = false;
     this.ducking = false;
   }
 
@@ -103,6 +113,8 @@ export class Player {
     }
     if (this.compressT > 0) this.compressT -= dt;
     if (this.stumbleT > 0) this.stumbleT -= dt;
+    if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
+    if (this.powerPoseT > 0) this.powerPoseT -= dt;
     if (this.headless > 0) {
       this.headless -= dt;
       this.iframes = Math.max(this.iframes, 0.05);
@@ -122,10 +134,6 @@ export class Player {
     const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : -520);
 
     if (!this.grounded) {
-      // Stomp: hold duck in air with stomp hero = fast fall attack.
-      if (holdDuck && this.hero.stomp && this.vy < 100) {
-        this.stomping = true;
-      }
       this.vy -= this.gravity * dt * (this.stomping ? 2.2 : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;

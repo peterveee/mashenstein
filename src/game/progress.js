@@ -3,6 +3,14 @@ import { REWARDS, MASTERY_LEVELS } from '../data/progression.js';
 import { UNLOCKS, STAGES } from '../data/stages.js';
 import { CABINETS } from '../data/cabinets.js';
 
+// Coin totals reach six figures late on, where an unbroken run of digits is
+// hard to read at a glance. Grouped by hand rather than via toLocaleString so
+// the separator never changes with the player's locale — the glyph cache keys
+// on the character, and a stray space or dot would render inconsistently.
+export function formatCoins(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 export function totalPlugs(slot) {
   let n = 0;
   for (const arr of Object.values(slot.campaign.plugs)) n += arr.filter(Boolean).length;

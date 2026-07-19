@@ -6,6 +6,10 @@ installDom();
 const { Powerups, POWER_DEFS } = await import('../src/game/powerups.js');
 const { RunState } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
+const { DripSpawner } = await import('../src/game/spawner.js');
+const { PICKUPS } = await import('../src/game/entities.js');
+const { Rng } = await import('../src/engine/rng.js');
+const { hasProp } = await import('../src/sprites/props.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -26,6 +30,10 @@ p.grab('magnet', { minDuration: 30 });
 assert(p.active.magnet.t === 30, `minDuration floors magnet to 30 (${p.active.magnet.t})`);
 
 assert(POWER_DEFS.unpeel && POWER_DEFS.unpeel.name === 'UNPEELABLE', 'unpeel is defined in POWER_DEFS');
+p = new Powerups(bench);
+p.grab('unpeel');
+assert(p.active.unpeel.t === 20, `capsule unpeel lasts 20s (${p.active.unpeel.t})`);
+
 p = new Powerups(bench);
 assert(!p.isInvincible(), 'not invincible before grabbing unpeel');
 p.grab('unpeel', { minDuration: 30 });
@@ -78,6 +86,21 @@ run.player.iframes = 0;
 run.powerups.shieldStack = 0; // isolate the pit hit from shield absorbs
 run.takeHit('TEST PIT', true);
 assert(run.battery === cells - 1, `pit still costs a cell under unpeel (${run.battery}/${cells})`);
+
+// --- UNPEELABLE also drips mid-stage, rarer than the staples ---------------
+assert(PICKUPS.capUnpeel && PICKUPS.capUnpeel.power === 'unpeel', 'capUnpeel pickup grants unpeel');
+assert(hasProp('capUnpeel'), 'capUnpeel has capsule art');
+
+const counts = {};
+const drip = new DripSpawner(new Rng(4242), bench);
+const drops = [];
+for (let i = 0; i < 60000; i++) drip.update(1, i * 240, drops, false); // 1s steps: ~4000 capsules
+for (const d of drops) if (d.def.power) counts[d.def.power] = (counts[d.def.power] || 0) + 1;
+const total = Object.values(counts).reduce((a, b) => a + b, 0);
+const unpeelShare = (counts.unpeel || 0) / total;
+const staples = ['shield', 'magnet', 'star', 'slowmo'].map((k) => (counts[k] || 0) / total);
+assert(unpeelShare > 0.05 && unpeelShare < 0.2, `unpeel drops sometimes (${(unpeelShare * 100).toFixed(1)}% of ${total})`);
+assert(staples.every((s) => s > unpeelShare), `every staple is more common than unpeel (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 
 console.log(failed ? 'BREAKER-BONUS: FAILED' : 'BREAKER-BONUS: PASSED');
 process.exit(failed ? 1 : 0);

@@ -10,13 +10,14 @@ const pal = (id) => HERO_SPRITES[id].pal;
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
 export const TOON_SPECS = {
-  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true },
-  gnash: { rig: 'humanoid', head: 'quills', mouth: 'smirk' },
+  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true },
+  gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true },
   fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', rollDuck: true },
   b33p: { rig: 'humanoid', head: 'dome', mouth: 'line', cannon: true },
   mochi: { rig: 'blob' },
   chompo: { rig: 'disc' },
   gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true },
+  raymn: { rig: 'ray' },
   grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe' },
 };
 
@@ -87,9 +88,51 @@ function gaitFoot(p, stride, lift) {
   return [Math.cos(th) * stride, -Math.max(0, -Math.sin(th)) * lift];
 }
 
+// Softer variant for Ray M'N's disconnected shoes. Squaring the lift curve
+// gives it zero velocity at takeoff/landing, avoiding a visible pop.
+function floatingFoot(p, stride, lift) {
+  const th = p * Math.PI * 2;
+  const airborne = Math.max(0, -Math.sin(th));
+  return [Math.cos(th) * stride, -(airborne * airborne) * lift];
+}
+
 // ---------------------------------------------------------------- faces
-function drawEyes(ctx, p, u, cx, cy, lod) {
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7 };
+
+function expressionFor(id, pose = {}) {
+  const t = pose.time || 0;
+  const seed = FACE_SEED[id] || 0;
+  // Two quick frames roughly every four seconds, offset per hero so the cast
+  // never blinks in eerie unison. Action faces override the idle blink.
+  const blinkGap = pose.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
+  const blinkPhase = (t + seed) % blinkGap;
+  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.stomp || pose.roll || pose.float;
+  return {
+    blink: !active && blinkPhase < (pose.menu ? 0.2 : 0.13),
+    focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
+    surprise: pose.kind === 'jump' && !pose.stomp,
+    effort: !!(pose.stomp || pose.roll || pose.headless),
+    mood: id === 'gnash' || id === 'raymn' ? 'cocky'
+      : id === 'fernwick' ? 'bright'
+      : id === 'b33p' ? 'robot'
+      : id === 'grumpos' ? 'gruff'
+      : id === 'lorenzo' ? 'worried' : 'soft',
+  };
+}
+
+function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   const sep = 0.075 * u;
+  if (ex.blink) {
+    ctx.strokeStyle = p.e;
+    ctx.lineWidth = Math.max(0.8, 0.025 * u);
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + sx * sep - 0.035 * u, cy);
+      ctx.quadraticCurveTo(cx + sx * sep, cy + 0.018 * u, cx + sx * sep + 0.035 * u, cy);
+      ctx.stroke();
+    }
+    return;
+  }
   if (lod) {
     dot(ctx, cx - sep, cy, 0.032 * u, p.e);
     dot(ctx, cx + sep, cy, 0.032 * u, p.e);
@@ -97,14 +140,31 @@ function drawEyes(ctx, p, u, cx, cy, lod) {
   }
   for (const sx of [-1, 1]) {
     outlined(ctx, '#fff', Math.max(0.75, 0.02 * u), (c) => c.ellipse(cx + sx * sep, cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
-    dot(ctx, cx + sx * sep, cy + 0.012 * u, 0.026 * u, p.e);
+    const lookX = ex.focus ? 0.012 * u : 0;
+    const lookY = ex.surprise ? -0.005 * u : 0.012 * u;
+    dot(ctx, cx + sx * sep + lookX, cy + lookY, 0.026 * u, p.e);
+  }
+  if (!lod && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.7, 0.018 * u);
+    ctx.beginPath();
+    ctx.moveTo(cx - sep - 0.05 * u, cy - 0.08 * u);
+    ctx.lineTo(cx - sep + 0.045 * u, cy - (ex.mood === 'worried' ? 0.055 : 0.045) * u);
+    ctx.moveTo(cx + sep - 0.045 * u, cy - 0.045 * u);
+    ctx.lineTo(cx + sep + 0.05 * u, cy - 0.08 * u);
+    ctx.stroke();
   }
 }
-function drawMouth(ctx, spec, p, u, cx, cy, ow) {
+function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = Math.max(1, ow * 0.7);
   ctx.beginPath();
-  if (spec.mouth === 'smile') ctx.arc(cx, cy - 0.02 * u, 0.06 * u, 0.25 * Math.PI, 0.75 * Math.PI);
+  if (ex.surprise) {
+    ctx.stroke();
+    outlined(ctx, p.m || p.e, Math.max(0.5, ow * 0.45), (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    return;
+  } else if (ex.effort) {
+    ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u); ctx.lineTo(cx + 0.055 * u, cy - 0.005 * u);
+  } else if (spec.mouth === 'smile') ctx.arc(cx, cy - 0.02 * u, 0.06 * u, 0.25 * Math.PI, 0.75 * Math.PI);
   else if (spec.mouth === 'smirk') { ctx.moveTo(cx, cy + 0.01 * u); ctx.quadraticCurveTo(cx + 0.05 * u, cy + 0.02 * u, cx + 0.08 * u, cy - 0.02 * u); }
   else if (spec.mouth === 'line') { ctx.moveTo(cx - 0.045 * u, cy); ctx.lineTo(cx + 0.045 * u, cy); }
   else if (spec.mouth === 'flat') { ctx.moveTo(cx - 0.05 * u, cy + 0.01 * u); ctx.lineTo(cx + 0.05 * u, cy + 0.01 * u); }
@@ -114,37 +174,78 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow) {
 
 // Head + hat + face, anchored at head center (hx, hy). Shared by the body
 // rig and the face-crop sprites.
-function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod) {
-  const R = (spec.heavy ? 0.19 : 0.21) * u;
+function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
+  const R = (spec.heavy ? 0.22 : 0.21) * u;
   // hair/hat layers that sit BEHIND the head
-  if (spec.head === 'quills') {
-    for (const [dx, dy] of [[-0.05, -0.16], [-0.09, -0.04], [-0.07, 0.09]]) {
+  if (spec.head === 'jackal') {
+    // Tall uneven ears and cheek fur make Gnash a jackal-like speed creature,
+    // deliberately avoiding the familiar hedgehog/quill silhouette.
+    for (const [side, lean, height] of [[-1, -0.12, 1.55], [1, 0.08, 1.35]]) {
       outlined(ctx, p.h, ow, (c) => {
-        c.moveTo(hx + dx * u, hy + dy * u);
-        c.lineTo(hx + (dx - 0.17) * u, hy + (dy + 0.03) * u);
-        c.lineTo(hx + dx * u, hy + (dy + 0.1) * u);
+        c.moveTo(hx + side * R * 0.62, hy - R * 0.35);
+        c.lineTo(hx + side * R * (0.58 + lean), hy - R * height);
+        c.lineTo(hx + side * R * 0.12, hy - R * 0.66);
         c.closePath();
       });
     }
-  }
-  if (spec.head === 'floppy') {
-    // droopy cap tip hanging behind
     outlined(ctx, p.h, ow, (c) => {
-      c.moveTo(hx - R * 0.3, hy - R * 0.75);
-      c.quadraticCurveTo(hx - R * 1.7, hy - R * 0.9, hx - R * 1.45, hy + R * 0.15);
-      c.quadraticCurveTo(hx - R * 1.1, hy - R * 0.35, hx - R * 0.45, hy - R * 0.4);
+      c.moveTo(hx - R * 0.8, hy + R * 0.05);
+      c.lineTo(hx - R * 1.22, hy + R * 0.38);
+      c.lineTo(hx - R * 0.66, hy + R * 0.52);
       c.closePath();
     });
   }
-  // the head ball (robot dome is hat-colored)
-  outlined(ctx, spec.head === 'dome' ? p.h : p.s, ow, (c) => c.arc(hx, hy, R, 0, Math.PI * 2));
+  if (spec.head === 'floppy') {
+    // Long pointed cap streaming behind him. The tip lags and bobs slightly
+    // with motion, giving Fernwick a distinct silhouette at gameplay scale.
+    const motion = pose.kind === 'run' || pose.kind === 'jump';
+    const wave = motion ? Math.sin((pose.time || 0) * 7) * R * 0.2 : 0;
+    const tipX = hx - R * (motion ? 2.1 : 1.75);
+    const tipY = hy + R * (motion ? 0.02 : 0.32) + wave;
+    outlined(ctx, p.h, ow, (c) => {
+      c.moveTo(hx - R * 0.2, hy - R * 0.82);
+      c.quadraticCurveTo(hx - R * 1.15, hy - R * 0.95, tipX, tipY);
+      c.quadraticCurveTo(hx - R * 1.25, hy - R * 0.12, hx - R * 0.48, hy - R * 0.36);
+      c.closePath();
+    });
+    if (!lod) dot(ctx, tipX, tipY, R * 0.13, p.a);
+  }
+  // Grumpos gets a broad chibi block-head; the softer cast keeps round heads.
+  if (id === 'grumpos') {
+    outlined(ctx, p.s, ow, (c) => {
+      c.moveTo(hx - R, hy + R * 0.18);
+      c.quadraticCurveTo(hx - R * 1.02, hy - R * 0.68, hx - R * 0.46, hy - R * 0.98);
+      c.quadraticCurveTo(hx, hy - R * 1.22, hx + R * 0.46, hy - R * 0.98);
+      c.quadraticCurveTo(hx + R * 1.02, hy - R * 0.68, hx + R, hy + R * 0.18);
+      c.lineTo(hx + R * 0.88, hy + R * 0.72);
+      c.quadraticCurveTo(hx + R * 0.58, hy + R, hx, hy + R);
+      c.quadraticCurveTo(hx - R * 0.58, hy + R, hx - R * 0.88, hy + R * 0.72);
+      c.closePath();
+    });
+  } else {
+    outlined(ctx, spec.head === 'dome' || spec.head === 'jackal' ? p.h : p.s, ow, (c) => c.arc(hx, hy, R, 0, Math.PI * 2));
+  }
   // hats / hair ON the head
   if (spec.head === 'cap') {
     outlined(ctx, p.h, ow, (c) => { c.arc(hx, hy - R * 0.12, R * 1.02, Math.PI, 0); c.closePath(); });
     outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * 0.8, hy - R * 0.28, R * 0.5, R * 0.16, 0, 0, Math.PI * 2));
-    if (!lod) outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, hy - R * 0.55, R * 0.22, 0, Math.PI * 2));
-  } else if (spec.head === 'quills') {
-    outlined(ctx, p.h, ow, (c) => { c.arc(hx, hy - R * 0.1, R * 1.02, Math.PI * 0.95, Math.PI * 0.05); c.closePath(); });
+    if (!lod) {
+      outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, hy - R * 0.55, R * 0.22, 0, Math.PI * 2));
+      // Tiny crossed-tool mark instead of a familiar letter emblem.
+      ctx.strokeStyle = p.h; ctx.lineWidth = Math.max(0.6, ow * 0.55);
+      ctx.beginPath();
+      ctx.moveTo(hx + R * 0.02, hy - R * 0.65); ctx.lineTo(hx + R * 0.22, hy - R * 0.45);
+      ctx.moveTo(hx + R * 0.22, hy - R * 0.65); ctx.lineTo(hx + R * 0.02, hy - R * 0.45);
+      ctx.stroke();
+    }
+  } else if (spec.head === 'jackal') {
+    // A small windswept brow tuft, not a bank of rear-facing spines.
+    outlined(ctx, p.h, ow, (c) => {
+      c.moveTo(hx - R * 0.45, hy - R * 0.78);
+      c.lineTo(hx - R * 0.05, hy - R * 1.18);
+      c.lineTo(hx + R * 0.12, hy - R * 0.82);
+      c.closePath();
+    });
   } else if (spec.head === 'floppy') {
     // blond bowl cut peeking under a green cap
     outlined(ctx, p.a, ow, (c) => { c.arc(hx, hy + R * 0.02, R * 1.04, Math.PI, 0); c.closePath(); });
@@ -162,23 +263,73 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod) {
       c.closePath();
     });
   } else if (spec.head === 'bald') {
-    ctx.strokeStyle = p.a;
-    ctx.lineWidth = 0.06 * u;
-    ctx.beginPath();
-    ctx.arc(hx, hy, R * 0.86, Math.PI * 1.2, Math.PI * 1.8);
-    ctx.stroke();
+    // Intentionally bare: Grumpos's asymmetric war-paint streak is drawn
+    // below. A curved crown stripe reads too easily as a hat at tiny scale.
+  }
+  if (spec.head === 'jackal') {
+    // Front-facing muzzle matches the paired eyes; the ears, cheek tuft and
+    // tail carry the animal silhouette without mixing profile/front views.
+    outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx + R * 0.08, hy + R * 0.4, R * 0.7, R * 0.46, 0, 0, Math.PI * 2));
+    dot(ctx, hx + R * 0.08, hy + R * 0.16, R * 0.17, p.e);
   }
   if (spec.beard) {
-    outlined(ctx, p.m, ow, (c) => c.ellipse(hx, hy + R * 0.62, R * 0.95, R * 0.7, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, ow, (c) => {
+      c.moveTo(hx - R * 0.92, hy + R * 0.35);
+      c.quadraticCurveTo(hx - R * 0.86, hy + R * 1.02, hx, hy + R * 1.3);
+      c.quadraticCurveTo(hx + R * 0.86, hy + R * 1.02, hx + R * 0.92, hy + R * 0.35);
+      c.quadraticCurveTo(hx, hy + R * 0.72, hx - R * 0.92, hy + R * 0.35);
+      c.closePath();
+    });
+  }
+  if (spec.plumber) {
+    // Ear and sideburn break up the perfect head circle and add a little age.
+    outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx - R * 0.94, hy + R * 0.08, R * 0.22, R * 0.3, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, hx - R * 0.93, hy - R * 0.2, R * 0.2, R * 0.45, R * 0.08));
+  }
+  if (id === 'grumpos') {
+    // Thick face paint crosses the brow and eye before continuing down the
+    // body, remaining legible even when the head is rendered very small.
+    ctx.strokeStyle = p.a; ctx.lineWidth = Math.max(1.2, R * 0.22);
+    ctx.beginPath();
+    ctx.moveTo(hx - R * 0.72, hy - R * 0.88);
+    ctx.lineTo(hx - R * 0.42, hy - R * 0.12);
+    ctx.lineTo(hx - R * 0.18, hy + R * 0.72);
+    ctx.stroke();
   }
   // face
+  const ex = expressionFor(id, pose);
   const eyeY = hy - 0.015 * u;
-  drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod);
+  drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, ex);
   if (spec.nose) outlined(ctx, p.n, Math.max(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
   if (spec.mustache && !lod) {
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.6), (c) => roundRectPath(c, hx - 0.1 * u, hy + 0.085 * u, 0.24 * u, 0.055 * u, 0.03 * u));
+    // Two buoyant lobes give Lorenzo a readable expression instead of a flat
+    // strip pasted beneath the nose.
+    outlined(ctx, p.m, Math.max(0.6, ow * 0.6), (c) => {
+      c.moveTo(hx + 0.015 * u, hy + 0.075 * u);
+      c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u, hx - 0.13 * u, hy + 0.105 * u);
+      c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u, hx + 0.015 * u, hy + 0.1 * u);
+      c.quadraticCurveTo(hx + 0.08 * u, hy + 0.13 * u, hx + 0.145 * u, hy + 0.09 * u);
+      c.quadraticCurveTo(hx + 0.06 * u, hy + 0.035 * u, hx + 0.015 * u, hy + 0.075 * u);
+      c.closePath();
+    });
   }
-  if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow);
+  if (id === 'grumpos' && !lod) {
+    // A pale mouth gap cut into the dark beard keeps the face readable. It
+    // opens during surprise and tightens into a stern Dad-of-War frown.
+    const mouthY = hy + R * 0.58;
+    if (ex.surprise) {
+      outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
+      dot(ctx, hx, mouthY + R * 0.04, R * 0.11, p.e);
+    } else {
+      outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
+      ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.75, ow * 0.65);
+      ctx.beginPath();
+      ctx.moveTo(hx - R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
+      ctx.quadraticCurveTo(hx, mouthY - R * 0.08, hx + R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
+      ctx.stroke();
+    }
+  }
+  if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow, ex);
 }
 
 // ---------------------------------------------------------------- rigs
@@ -186,8 +337,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
   const headR = (heavy ? 0.19 : 0.21) * u;
-  const torsoHalf = (heavy ? 0.23 : 0.17) * u;
-  const legL = (heavy ? 0.24 : 0.3) * u;
+  const torsoHalf = (heavy ? 0.23 : spec.stout ? 0.2 : 0.17) * u;
+  const legL = (heavy ? 0.24 : spec.stout ? 0.27 : 0.3) * u;
   const armL = 0.26 * u;
   const legW = (heavy ? 0.11 : 0.09) * u;
   const armW = (heavy ? 0.09 : 0.075) * u;
@@ -228,7 +379,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const armSeg = armL * 0.55;
   const shF = torsoHalf * 0.55 + leanX, shB = -torsoHalf * 0.55 + leanX;
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
-  if (pose.headless || pose.stomp) {
+  if (pose.menuAction === 'wave') {
+    handF = [shF + 0.15 * u, shoulderY - armL * 0.72]; elbF = 1;
+    handB = [shB - 0.03 * u, shoulderY + armL * 0.8]; elbB = -1;
+  } else if (pose.menuAction === 'flex') {
+    handF = [shF + 0.2 * u, shoulderY - armL * 0.45]; elbF = 1;
+    handB = [shB - 0.2 * u, shoulderY - armL * 0.45]; elbB = -1;
+  } else if (pose.headless || pose.stomp) {
     handF = [shF + 0.16 * u, shoulderY - armL * 0.5]; elbF = 1;
     handB = [shB - 0.16 * u, shoulderY - armL * 0.5]; elbB = -1;
   } else if (run) {
@@ -247,25 +404,61 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 
   // back accessories
+  if (spec.tail) {
+    const wag = Math.sin((pose.time || 0) * (run ? 8 : 2.6)) * 0.045 * u;
+    const baseX = -torsoHalf * 0.65, baseY = hipY - 0.02 * u;
+    const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
+    outlined(ctx, p.h, ow, (c) => {
+      c.moveTo(baseX, baseY - 0.065 * u);
+      c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
+      c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
+      c.closePath();
+    });
+    // A small cream tip helps the tapered tail read separately from the body.
+    outlined(ctx, p.s, Math.max(0.5, ow * 0.65), (c) => {
+      c.moveTo(tipX, tipY);
+      c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
+      c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
+      c.closePath();
+    });
+  }
   if (spec.back === 'shield') {
     outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
     dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
   } else if (spec.back === 'axe') {
-    limb(ctx, 0.04 * u, shoulderY + 0.04 * u, -0.26 * u, headY - 0.18 * u, 0.05 * u, p.w, ow);
+    limb(ctx, 0.08 * u, shoulderY + 0.12 * u, -0.31 * u, headY - 0.27 * u, 0.06 * u, p.w, ow);
     outlined(ctx, '#b8d8f0', ow, (c) => {
-      c.moveTo(-0.26 * u, headY - 0.26 * u);
-      c.quadraticCurveTo(-0.4 * u, headY - 0.14 * u, -0.26 * u, headY - 0.02 * u);
+      c.moveTo(-0.32 * u, headY - 0.39 * u);
+      c.quadraticCurveTo(-0.52 * u, headY - 0.25 * u, -0.39 * u, headY - 0.06 * u);
+      c.lineTo(-0.25 * u, headY - 0.13 * u);
+      c.lineTo(-0.22 * u, headY - 0.34 * u);
       c.closePath();
     });
+    if (!lod) {
+      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = Math.max(0.6, ow * 0.55);
+      ctx.beginPath(); ctx.moveTo(-0.42 * u, headY - 0.25 * u); ctx.lineTo(-0.28 * u, headY - 0.19 * u); ctx.stroke();
+    }
   }
 
   // back limbs
-  limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, armW, p.b, ow);
+  limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, armW, heavy ? p.s : p.b, ow);
   limb2(ctx, leanX * 0.3, hipY, footB[0], footB[1], legSeg, kneeB, legW, p.p, ow);
   outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + 0.02 * u, footB[1] - 0.01 * u, 0.075 * u, 0.045 * u, 0, 0, Math.PI * 2));
 
   // torso
   outlined(ctx, p.b, ow, (c) => roundRectPath(c, -torsoHalf + leanX * 0.5, torsoTop, torsoHalf * 2, (hipY + 0.05 * u) - torsoTop, torsoHalf * 0.7));
+  if (id === 'grumpos' && !duck) {
+    // Bright one-sided pauldron, belt and crossed straps sell the toy-like
+    // Dad-of-War silhouette more clearly than a field of muddy leather.
+    outlined(ctx, p.a, Math.max(0.6, ow * 0.7), (c) => c.arc(-torsoHalf * 0.78, shoulderY + 0.02 * u, 0.115 * u, 0, Math.PI * 2));
+    outlined(ctx, p.s, Math.max(0.5, ow * 0.55), (c) => c.arc(-torsoHalf * 0.78, shoulderY + 0.02 * u, 0.052 * u, 0, Math.PI * 2));
+    ctx.strokeStyle = p.a; ctx.lineWidth = 0.065 * u;
+    ctx.beginPath(); ctx.moveTo(-torsoHalf * 0.55, torsoTop + 0.01 * u); ctx.lineTo(torsoHalf * 0.2, hipY); ctx.stroke();
+    ctx.strokeStyle = p.w; ctx.lineWidth = 0.035 * u;
+    ctx.beginPath(); ctx.moveTo(torsoHalf * 0.55, torsoTop); ctx.lineTo(-torsoHalf * 0.15, hipY); ctx.stroke();
+    outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, -torsoHalf * 0.95, hipY - 0.025 * u, torsoHalf * 1.9, 0.065 * u, 0.02 * u));
+    dot(ctx, 0, hipY + 0.005 * u, 0.034 * u, p.w);
+  }
   if (spec.straps && !lod && !duck) {
     ctx.strokeStyle = p.p;
     ctx.lineWidth = 0.045 * u;
@@ -273,6 +466,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.moveTo(-torsoHalf * 0.5, torsoTop + 0.01 * u); ctx.lineTo(-torsoHalf * 0.4, torsoTop + 0.12 * u);
     ctx.moveTo(torsoHalf * 0.5, torsoTop + 0.01 * u); ctx.lineTo(torsoHalf * 0.4, torsoTop + 0.12 * u);
     ctx.stroke();
+    // Tool belt and brass buckle anchor the overalls at tiny scale.
+    ctx.strokeStyle = p.m; ctx.lineWidth = 0.055 * u;
+    ctx.beginPath(); ctx.moveTo(-torsoHalf * 0.82, hipY - 0.035 * u); ctx.lineTo(torsoHalf * 0.82, hipY - 0.035 * u); ctx.stroke();
+    outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => roundRectPath(c, -0.035 * u, hipY - 0.068 * u, 0.07 * u, 0.06 * u, 0.012 * u));
   }
   if (spec.nameTag && !lod && !duck) {
     outlined(ctx, p.w, Math.max(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
@@ -283,17 +480,35 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + 0.02 * u, footF[1] - 0.01 * u, 0.075 * u, 0.045 * u, 0, 0, Math.PI * 2));
   if (spec.cannon) {
     // the cannon aims dead ahead — no elbow on ordnance
-    limb(ctx, shF, shoulderY, shF + armL * 0.72, shoulderY + armL * 0.28, 0.12 * u, p.a, ow);
-    outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(shF + armL * 0.72, shoulderY + armL * 0.28, 0.045 * u, 0, Math.PI * 2));
+    const recoil = pose.menuAction === 'aim' ? Math.abs(Math.sin((pose.time || 0) * 12)) * 0.05 * u : 0;
+    const muzzleX = shF + armL * 0.72 - recoil;
+    const muzzleY = shoulderY + armL * 0.28;
+    limb(ctx, shF, shoulderY, muzzleX, muzzleY, 0.12 * u, p.a, ow);
+    outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, 0.045 * u, 0, Math.PI * 2));
+    if (pose.menuAction === 'aim' && Math.sin((pose.time || 0) * 12) > 0.72) {
+      dot(ctx, muzzleX + 0.08 * u, muzzleY, 0.045 * u, p.w);
+    }
   } else {
-    limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, armW, p.b, ow);
+    limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, armW, heavy ? p.s : p.b, ow);
+  }
+
+  if (id === 'grumpos') {
+    // Chunky gold-bound bracers make the tiny hands readable.
+    outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => c.arc(handB[0], handB[1], 0.058 * u, 0, Math.PI * 2));
+    outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => c.arc(handF[0], handF[1], 0.058 * u, 0, Math.PI * 2));
+    dot(ctx, handB[0], handB[1], 0.028 * u, p.s);
+    dot(ctx, handF[0], handF[1], 0.028 * u, p.s);
+  } else if (spec.plumber) {
+    // Cream work gloves make the swinging hands distinct from the sleeves.
+    outlined(ctx, p.w, Math.max(0.5, ow * 0.6), (c) => c.arc(handB[0], handB[1], 0.052 * u, 0, Math.PI * 2));
+    outlined(ctx, p.w, Math.max(0.5, ow * 0.6), (c) => c.arc(handF[0], handF[1], 0.052 * u, 0, Math.PI * 2));
   }
 
   // head (or the stump of one)
   if (pose.headless) {
     outlined(ctx, p.s, Math.max(0.6, ow * 0.8), (c) => c.ellipse(leanX * 0.5, torsoTop, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
   } else {
-    drawHead(ctx, id, spec, p, u, ow, 0.01 * u + leanX, headY, lod);
+    drawHead(ctx, id, spec, p, u, ow, 0.01 * u + leanX, headY, lod, pose);
   }
 }
 
@@ -332,7 +547,7 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
     outlined(ctx, p.b, ow, (c) => c.arc(0, 0, 0.29 * u, 0, Math.PI * 2));
     outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
     outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
-    drawEyes(ctx, p, u, 0, -0.05 * u, lod);
+    drawEyes(ctx, p, u, 0, -0.05 * u, lod, expressionFor(id, { ...pose, effort: true }));
     outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0, 0.09 * u, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
     ctx.restore();
     return;
@@ -355,8 +570,16 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-rx - 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
   outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(rx + 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
   // face lives on the body
-  drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod);
-  outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+  const ex = expressionFor(id, pose);
+  drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod, ex);
+  if (ex.surprise || pose.float) {
+    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.045 * u, 0.055 * u, 0, 0, Math.PI * 2));
+  } else if (ex.blink) {
+    ctx.strokeStyle = p.m; ctx.lineWidth = Math.max(0.8, ow * 0.65);
+    ctx.beginPath(); ctx.arc(0.01 * u, cy + ry * 0.25, 0.05 * u, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  } else {
+    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+  }
   ctx.restore();
 }
 
@@ -376,11 +599,17 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
       c.closePath();
     });
     dot(ctx, r * 0.35, -r * 0.45, 0.035 * u, p.e);
+    if (id === 'chompo') {
+      outlined(ctx, p.a, ow, (c) => c.ellipse(-0.13 * u, -r * 0.75, 0.1 * u, 0.06 * u, -0.5, 0, Math.PI * 2));
+      outlined(ctx, p.a, ow, (c) => c.ellipse(0.02 * u, -r * 0.82, 0.1 * u, 0.06 * u, 0.5, 0, Math.PI * 2));
+    }
     ctx.restore();
     return;
   }
-  let open = 0.35;
-  if (pose.kind === 'run') open = 0.5 + 0.5 * Math.sin(2 * ph);
+  const ex = expressionFor(id, pose);
+  let open = pose.kind === 'jump' ? 0.72 : pose.kind === 'duck' ? 0.18 : 0.35;
+  if (pose.menuAction === 'chomp') open = 0.2 + 0.8 * Math.abs(Math.sin((pose.time || 0) * 10));
+  else if (pose.kind === 'run') open = 0.5 + 0.5 * Math.sin(2 * ph);
   const half = 0.1 * Math.PI + open * 0.2 * Math.PI;
   // tiny legs under the disc, feet on the gait path so they lift naturally
   const p01 = pose.phase || 0;
@@ -397,10 +626,78 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     c.closePath();
   });
   // one big eye
-  if (lod) dot(ctx, 0.06 * u, cy - r * 0.45, 0.035 * u, p.e);
+  if (ex.blink) {
+    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.8, ow);
+    ctx.beginPath(); ctx.moveTo(0.02 * u, cy - r * 0.45); ctx.lineTo(0.13 * u, cy - r * 0.45); ctx.stroke();
+  } else if (lod) dot(ctx, 0.06 * u, cy - r * 0.45, 0.035 * u, p.e);
   else {
     outlined(ctx, '#fff', Math.max(0.75, 0.02 * u), (c) => c.ellipse(0.07 * u, cy - r * 0.45, 0.06 * u, 0.07 * u, 0, 0, Math.PI * 2));
     dot(ctx, 0.08 * u, cy - r * 0.43, 0.028 * u, p.e);
+    if (id === 'chompo') {
+      ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.7, ow);
+      ctx.beginPath(); ctx.moveTo(0.105 * u, cy - r * 0.5); ctx.lineTo(0.14 * u, cy - r * 0.57); ctx.stroke();
+    }
+  }
+  if (id === 'chompo') {
+    const by = cy - r * 0.92;
+    outlined(ctx, p.a, ow, (c) => c.ellipse(-0.07 * u, by, 0.1 * u, 0.06 * u, -0.45, 0, Math.PI * 2));
+    outlined(ctx, p.a, ow, (c) => c.ellipse(0.07 * u, by, 0.1 * u, 0.06 * u, 0.45, 0, Math.PI * 2));
+    dot(ctx, 0, by, 0.04 * u, p.m);
+  }
+}
+
+function drawRay(ctx, id, p, pose, u, ow, lod) {
+  const ph = (pose.phase || 0) * Math.PI * 2;
+  const run = pose.kind === 'run';
+  const duck = pose.kind === 'duck';
+  // Two distinct footfalls per cycle: each shoe travels backward along the
+  // floor, then lifts and swings forward. The torso settles on contact.
+  const footF = run ? floatingFoot(pose.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
+  const footB = run ? floatingFoot((pose.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
+  const bob = run ? -Math.abs(Math.sin(ph)) * 0.028 * u : 0;
+  const cy = (duck ? -0.3 : -0.5) * u + bob;
+  const handSwing = run ? Math.cos(ph) * 0.075 * u : 0;
+  const handLift = run ? Math.sin(ph) * 0.035 * u : 0;
+  // Floating shoes—no connecting legs.
+  const backShoeX = -0.13 * u + footB[0], backShoeY = -0.04 * u + footB[1];
+  const frontShoeX = 0.13 * u + footF[0], frontShoeY = -0.04 * u + footF[1];
+  const backTilt = -0.08 - (run ? Math.sin(ph) * 0.1 : 0);
+  const frontTilt = 0.08 + (run ? Math.sin(ph) * 0.1 : 0);
+  outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
+  outlined(ctx, p.f, ow, (c) => c.ellipse(backShoeX, backShoeY, 0.125 * u, 0.063 * u, backTilt, 0, Math.PI * 2));
+  outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));
+  outlined(ctx, p.f, ow, (c) => c.ellipse(frontShoeX, frontShoeY, 0.125 * u, 0.063 * u, frontTilt, 0, Math.PI * 2));
+  // Torso and scarf.
+  outlined(ctx, p.b, ow, (c) => roundRectPath(c, -0.2 * u, cy - 0.16 * u, 0.4 * u, 0.32 * u, 0.1 * u));
+  outlined(ctx, p.m, ow, (c) => roundRectPath(c, -0.23 * u, cy - 0.12 * u, 0.46 * u, 0.07 * u, 0.03 * u));
+  const scarfLag = run ? Math.sin(ph + 0.7) * 0.035 * u : 0;
+  ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.18 * u, cy - 0.08 * u); ctx.quadraticCurveTo(-0.31 * u, cy - 0.01 * u + scarfLag, -0.4 * u, cy + 0.01 * u + scarfLag); ctx.lineTo(-0.18 * u, cy + 0.04 * u); ctx.fill();
+  // Head with an oversized, windswept parody quiff. Its broad silhouette is
+  // intentional: it must remain recognizable even in the menu parade.
+  const hy = cy - 0.31 * u;
+  const hairFlop = Math.sin((pose.time || 0) * (run ? 8 : 2.5)) * 0.025 * u;
+  outlined(ctx, p.s, ow, (c) => c.arc(0, hy, 0.17 * u, 0, Math.PI * 2));
+  outlined(ctx, p.a, ow, (c) => {
+    c.moveTo(-0.17 * u, hy - 0.02 * u);
+    c.quadraticCurveTo(-0.31 * u, hy - 0.09 * u, -0.28 * u, hy + 0.13 * u + hairFlop);
+    c.quadraticCurveTo(-0.21 * u, hy + 0.03 * u + hairFlop, -0.09 * u, hy - 0.34 * u);
+    c.quadraticCurveTo(-0.05 * u, hy - 0.38 * u, -0.015 * u, hy - 0.17 * u);
+    c.quadraticCurveTo(0.08 * u, hy - 0.31 * u, 0.21 * u, hy - 0.29 * u);
+    c.quadraticCurveTo(0.23 * u, hy - 0.23 * u, 0.14 * u, hy - 0.16 * u);
+    c.quadraticCurveTo(0.23 * u, hy - 0.1 * u, 0.19 * u, hy - 0.025 * u + hairFlop * 0.3);
+    c.quadraticCurveTo(0.02 * u, hy - 0.15 * u, -0.18 * u, hy - 0.07 * u);
+    c.closePath();
+  });
+  const ex = expressionFor(id, pose);
+  drawEyes(ctx, p, u, 0.02 * u, hy - 0.01 * u, lod, ex);
+  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, 0.02 * u, hy + 0.08 * u, ow, ex);
+  // Floating gloves—hide the throwing glove until it returns.
+  const handY = cy + 0.02 * u;
+  outlined(ctx, p.w, ow, (c) => c.ellipse(-0.32 * u - handSwing, handY + handLift, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+  if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(0.32 * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+  else if (pose.menu) {
+    const orbit = (pose.time || 0) * 8;
+    outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
   }
 }
 
@@ -430,6 +727,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   ctx.lineCap = 'round';
   if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'disc') drawDisc(ctx, heroId, p, pose, u, ow, lod);
+  else if (spec.rig === 'ray') drawRay(ctx, heroId, p, pose, u, ow, lod);
   else drawHumanoid(ctx, heroId, spec, p, pose, u, ow, lod);
   ctx.restore();
 }
@@ -489,7 +787,7 @@ export function poseFromPlayer(player, t) {
     roll: !!player.rolling,
     float: !!player.floating,
     stomp: !!player.stomping,
-    headless: player.headless > 0,
+    headless: player.headless > 0 || player.fistThrown,
     facing: 1,
   };
 }

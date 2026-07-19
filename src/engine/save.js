@@ -87,6 +87,12 @@ export class Save {
       s.coins = (s.coins || 0) + refund;
       s.relayRefunded = true; // migration flag: never refund twice
     }
+    for (const s of data.slots) {
+      if (!s) continue;
+      if (s.tutor) delete s.tutor.firstPassive;
+      if (s.mastery && s.mastery.gary && !s.mastery.raymn) s.mastery.raymn = s.mastery.gary;
+      if (s.mastery) delete s.mastery.gary;
+    }
     this.data = data;
     return this;
   }

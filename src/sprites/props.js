@@ -249,6 +249,16 @@ export const PROP_PAINTERS = {
     plain(ctx, '#3a2a5a', (c) => c.arc(w / 2, h / 2, w * 0.3, 0, Math.PI * 2));
     stroke(ctx, '#fff', Math.max(0.5, w * 0.08), (c) => { c.moveTo(w / 2, h / 2); c.lineTo(w / 2, h * 0.28); c.moveTo(w / 2, h / 2); c.lineTo(w * 0.7, h * 0.56); });
   },
+  capUnpeel(ctx, w, h) {
+    // the potato that cannot be peeled: humble spud, unreasonable aura
+    const u = Math.max(w, h);
+    stroke(ctx, '#e8e8f0', Math.max(0.5, w * 0.09), (c) => c.ellipse(w * 0.5, h * 0.5, w * 0.45, h * 0.45, 0, 0, Math.PI * 2));
+    shape(ctx, '#c89058', u, (c) => c.ellipse(w * 0.5, h * 0.54, w * 0.34, h * 0.28, 0.3, 0, Math.PI * 2));
+    plain(ctx, '#8a6038', (c) => {
+      c.ellipse(w * 0.38, h * 0.46, w * 0.07, h * 0.06, 0, 0, Math.PI * 2);
+      c.ellipse(w * 0.62, h * 0.62, w * 0.06, h * 0.05, 0, 0, Math.PI * 2);
+    });
+  },
   appliance(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.08, h * 0.22, w * 0.84, h * 0.72, w * 0.16));

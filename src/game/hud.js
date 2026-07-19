@@ -1,7 +1,7 @@
 // HUD: score, coins, battery cells, power-up timers, relay meter + team faces,
 // mission progress, world progress bar, speech bubbles.
 import { W, H } from '../engine/renderer.js';
-import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, getSprite } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
@@ -9,6 +9,14 @@ import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
 
 export function drawHud(ctx, run) {
+  const bottomRow1 = H - 25;
+  const bottomRow2 = H - 13;
+  const leftColumnMax = 248;
+  const fitLeft = (text) => {
+    let out = text;
+    while (out.length > 3 && textWidth(out) > leftColumnMax) out = out.slice(0, -1);
+    return out === text ? out : out.slice(0, -2) + '..';
+  };
   // Chunky world progress bar across the top: you are the yellow tick, the
   // socket at the right end is the goal.
   if (!run.overtime && run.stage) {
@@ -92,25 +100,30 @@ export function drawHud(ctx, run) {
     if (m.n) prog = ` ${m.count ?? 0}/${m.n}`;
     if (m.type === 'chase' && run.copter) prog = ` ${run.copter.caught}/${m.n}`;
     if (m.type === 'combo') prog = ` BEST ${run.relay.bestCombo}/${m.n}`;
-    drawText(ctx, `${m.type.toUpperCase()}${prog}`, 6, H - 24, '#c8e0ff');
+    drawText(ctx, fitLeft(`${m.type.toUpperCase()}${prog}`), 6, bottomRow1, '#c8e0ff');
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
-      drawText(ctx, `${c.desc} ${done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`}`, 6, H - 14, done ? '#48c848' : '#8a8a98');
+      drawText(ctx, fitLeft(`${c.desc} ${done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`}`), 6, bottomRow2, done ? '#48c848' : '#8a8a98');
     } else if (run.challenge) {
-      drawText(ctx, `${run.challenge.desc} - NOT THIS TIME`, 6, H - 14, '#5a5a68');
+      drawText(ctx, fitLeft(`${run.challenge.desc} - NOT THIS TIME`), 6, bottomRow2, '#5a5a68');
     }
-    if (run.applianceGot) drawText(ctx, 'TOASTER: YES', W - 78, H - 14, '#f6d33c');
+    if (run.applianceGot) drawText(ctx, 'TOASTER: YES', W - 78, bottomRow2, '#f6d33c');
   } else {
-    drawText(ctx, 'OVERTIME', 6, H - 14, '#8858c8');
+    drawText(ctx, 'OVERTIME', 6, bottomRow2, '#8858c8');
   }
 
-  // One small, dim controls line tucked in the corner (full map lives in pause).
+  // Two aligned HUD rows: mission and power status above, challenge and
+  // controls below. READY needs no meter; cooldown uses an explicit number so
+  // the old full-width "underline" cannot be mistaken for decoration.
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
-    const ready = run.player.abilityCd <= 0 ? 'READY' : `${run.player.abilityCd.toFixed(1)}S`;
-    const line = `SPC JUMP  DN DUCK  RT/D ${hero.ability.label} ${ready}  P PAUSE`;
-    drawText(ctx, line, W - textWidth(line) - 6, H - 9, 'rgba(200,200,216,0.4)');
+    const line = `SPC JUMP  DN DUCK  RT/D ${hero.ability.label}  P PAUSE`;
+    drawText(ctx, line, W - textWidth(line) - 6, bottomRow2, 'rgba(200,200,216,0.4)');
+    const powerStatus = run.player.abilityCd <= 0
+      ? `PWR ${hero.ability.label}: READY`
+      : `PWR ${hero.ability.label}: CD ${run.player.abilityCd.toFixed(1)}S`;
+    drawText(ctx, powerStatus, W - textWidth(powerStatus) - 6, bottomRow1, run.player.abilityCd <= 0 ? '#48e0c8' : '#8a8a98');
   }
 
   // Touch buttons.
@@ -130,12 +143,13 @@ export function drawHud(ctx, run) {
 }
 
 export function drawSpeech(ctx, speech) {
-  const text = speech.text;
-  const tw = Math.min(textWidth(text), W - 40);
+  const lines = wrapText(speech.text, W - 56, 1, 2);
+  const tw = Math.max(...lines.map((line) => textWidth(line)));
   const x = W / 2 - tw / 2, y = 46;
+  const h = 8 + lines.length * 11;
   ctx.fillStyle = 'rgba(10,10,20,0.85)';
-  ctx.fillRect(x - 6, y - 4, tw + 12, 15);
+  ctx.fillRect(x - 6, y - 4, tw + 12, h);
   ctx.strokeStyle = speech.who === 'eggshell' ? '#c83030' : '#48e0c8';
-  ctx.strokeRect(x - 5.5, y - 3.5, tw + 11, 14);
-  drawText(ctx, text, x, y, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8');
+  ctx.strokeRect(x - 5.5, y - 3.5, tw + 11, h - 1);
+  lines.forEach((line, i) => drawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
 }

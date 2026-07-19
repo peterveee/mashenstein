@@ -54,32 +54,106 @@ function drawShieldOrb(c, cx, feetY, h, t, stack) {
   c.restore();
 }
 
+// Star power: a hue-cycling aura behind the hero plus rainbow afterimages.
+// `left` is the time remaining — under two seconds the whole thing strobes so
+// you can hear AND see the clock running out.
+function drawStarAura(c, cx, feetY, h, t, left, reduced) {
+  const hue = (t * 420) % 360;
+  const pulse = reduced ? 0.85 : 0.7 + 0.3 * Math.sin(t * 18);
+  const fade = left < 2 ? (reduced ? 0.6 : 0.35 + 0.65 * (Math.floor(t * 10) % 2)) : 1;
+  const cy = feetY - h * 0.5;
+  c.save();
+  c.globalCompositeOperation = 'lighter';
+  const r = h * 0.95;
+  const grad = c.createRadialGradient(cx, cy, h * 0.12, cx, cy, r);
+  grad.addColorStop(0, `hsla(${hue},100%,72%,${0.5 * pulse * fade})`);
+  grad.addColorStop(0.55, `hsla(${(hue + 60) % 360},100%,60%,${0.22 * pulse * fade})`);
+  grad.addColorStop(1, 'hsla(0,0%,0%,0)');
+  c.fillStyle = grad;
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill();
+  // sparkle ring: four points chasing around the hero
+  if (!reduced) {
+    for (let i = 0; i < 4; i++) {
+      const a = t * 3.4 + (i * Math.PI) / 2;
+      const px = cx + Math.cos(a) * h * 0.5;
+      const py = cy + Math.sin(a) * h * 0.42;
+      const s = (1.1 + 0.5 * Math.sin(t * 12 + i)) * fade;
+      c.fillStyle = `hsla(${(hue + i * 90) % 360},100%,80%,${0.9 * fade})`;
+      c.beginPath();
+      c.moveTo(px, py - s * 2); c.lineTo(px + s, py); c.lineTo(px, py + s * 2); c.lineTo(px - s, py);
+      c.closePath(); c.fill();
+    }
+  }
+  c.restore();
+  return fade;
+}
+
 export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts = {}) {
   // Heroes are procedurally animated vector toons (sprites/toons.js).
   // During normal play they render ABOVE the low-res backbuffer at device
   // resolution (pushOverlayDraw) so curves stay smooth; on paused/dead/
   // mirrored frames they bake into the backbuffer instead so dim overlays
   // and the mirror transform still apply to them.
-  if (player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
+  // Star power outranks the i-frame blink: while it is up the hero is always
+  // on screen (the aura, not a flicker, is what says "you can't be hurt").
+  const starLeft = opts.invincible || 0;
+  if (!starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
   const pose = poseFromPlayer(player, t);
   const cx = Math.round(PLAYER_X) + 6;                 // center of the 12px slot
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;
+  const reducedMotion = !!(opts.settings && opts.settings.reducedMotion);
   const paint = (c) => {
+    let starFade = 1;
+    if (starLeft > 0) starFade = drawStarAura(c, cx, feetY, HERO_DRAW_H, t, starLeft, reducedMotion);
     if (ghosts) {
       drawToon(c, heroId, pose, cx - 7, feetY, HERO_DRAW_H, { alpha: 0.35 });
       drawToon(c, heroId, pose, cx - 13, feetY, HERO_DRAW_H, { alpha: 0.35 });
     }
+    // Afterimages: the hero smears like they are moving faster than they are.
+    if (starLeft > 0 && !reducedMotion) {
+      for (let i = 1; i <= 2; i++) {
+        drawToon(c, heroId, pose, cx - i * 5, feetY, HERO_DRAW_H, { alpha: 0.2 * starFade / i });
+      }
+    }
     drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
+    // ...and the hero themself burns brighter, in time with the aura pulse.
+    if (starLeft > 0) {
+      const pulse = reducedMotion ? 0.3 : 0.22 + 0.24 * Math.sin(t * 18);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H, { alpha: pulse * starFade });
+      c.restore();
+    }
     if (shield > 0) drawShieldOrb(c, cx, feetY, HERO_DRAW_H, t, shield);
+    if (player.deflectFlashT > 0) {
+      c.strokeStyle = `rgba(168,230,255,${Math.min(1, player.deflectFlashT * 4)})`;
+      c.lineWidth = 2; c.beginPath(); c.arc(cx + 4, feetY - 12, 14, -1.2, 1.2); c.stroke(); c.lineWidth = 1;
+    }
+    if (player.powerPoseT > 0) {
+      const reduced = opts.settings && opts.settings.reducedMotion;
+      const a = reduced ? 0.8 : Math.min(1, player.powerPoseT * 5);
+      c.save(); c.globalAlpha *= a; c.strokeStyle = '#f6d33c'; c.lineWidth = 1.5;
+      if (player.powerType === 'stomp') {
+        c.beginPath(); c.moveTo(cx + 1, feetY - 14); c.lineTo(cx + 14, feetY - 22); c.stroke();
+        c.fillStyle = '#a8b0b8'; c.fillRect(cx + 11, feetY - 25, 7, 4);
+      } else if (player.powerType === 'eat') {
+        c.beginPath(); c.arc(cx + 10, feetY - 11, 9, -0.7, 0.7); c.stroke();
+      } else if (player.powerType === 'compress') {
+        c.strokeStyle = '#f8c0d8'; c.beginPath(); c.arc(cx, feetY - 7, 11 + (1 - a) * 8, 0, Math.PI * 2); c.stroke();
+      } else if (player.powerType === 'shoot') {
+        c.strokeStyle = '#f6d33c'; c.beginPath(); c.moveTo(cx + 8, feetY - 11); c.lineTo(cx + 18, feetY - 11); c.stroke();
+      }
+      c.restore();
+    }
   };
   if (opts.flat || opts.mirror) paint(ctx);
   else pushOverlayDraw(paint);
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
 
-export function drawWorldEntity(ctx, e, camX, t, style) {
+export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const x = Math.round(e.x - camX);
   if (x < -40 || x > 520) return;
   const bottom = GROUND_Y - e.alt;
@@ -88,6 +162,15 @@ export function drawWorldEntity(ctx, e, camX, t, style) {
   if (e.kind === 'pickup' && e.def.power) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
+  if (e.kind === 'obstacle' && e.def.ground) {
+    ctx.fillStyle = 'rgba(8,6,12,0.28)';
+    ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = settings.highContrast ? 'rgba(224,72,72,0.85)' : 'rgba(224,72,72,0.32)';
+    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+  } else if (e.kind === 'obstacle' && e.def.action === 'duck') {
+    ctx.strokeStyle = settings.highContrast ? 'rgba(224,72,72,0.9)' : 'rgba(224,72,72,0.3)';
+    ctx.strokeRect(x - 1.5, y - 1.5, e.w + 3, e.h + 3);
+  }
   if (e.def && e.def.beatSync) {
     drawProp(ctx, 'beatBar', x, Math.round(GROUND_Y - e.h), e.w, e.h);
     return;

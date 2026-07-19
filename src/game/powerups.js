@@ -6,7 +6,7 @@ export const POWER_DEFS = {
   magnet:  { name: 'MAGNET', color: '#e04848' },
   star:    { name: 'STAR', color: '#f6d33c' },
   slowmo:  { name: 'SLOW-MO', color: '#48c8c8' },
-  // Reward-only (breaker-box bonus): never in the DripSpawner capsule pool.
+  // Rarer than the four staples in the drip; also the breaker-box bonus prize.
   unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
 };
 
@@ -43,7 +43,7 @@ export class Powerups {
       magnet: [0, 8, 12, 16, 20][level] || 8,
       star: [0, 10, 10, 10, 12][level] || 10,
       slowmo: [0, 6, 8, 10, 12][level] || 6,
-      unpeel: [0, 8, 10, 12, 14][level] || 8,
+      unpeel: [0, 20, 22, 24, 26][level] || 20,
     }[id] || 8;
     return base * this.durMult();
   }
