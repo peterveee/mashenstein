@@ -31,7 +31,7 @@ export function defaultSlot() {
       ngPlus: false,
     },
     coins: 0,
-    bench: { shield: 1, magnet: 1, star: 1, slowmo: 1, tuneup: 0, tagWindow: 0, meterRate: 0, exhaustRec: 0 },
+    bench: { shield: 1, magnet: 1, star: 1, slowmo: 1, tuneup: 0, tagWindow: 0, meterRate: 0 },
     mastery: {},      // heroId -> {xp, level, equipped: []}
     mods: { found: [], equipped: [], slots: 2 },
     hub: { roomsOpen: 1, manualsFound: [], npcSeen: {} },

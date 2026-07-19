@@ -8,12 +8,11 @@ export const BENCH_UPGRADES = [
   { id: 'tuneup', name: 'HERO TUNE-UP', levels: [1000, 2000, 3000], max: 3, desc: ['ABILITY COOLDOWNS -10%.', '-20%.', '-30%.'] },
   { id: 'tagWindow', name: 'PERFECT TAG WINDOW', levels: [1500], max: 1, desc: ['PERFECT TAG WINDOW +50%.'] },
   { id: 'meterRate', name: 'RELAY METER', levels: [1200, 2400], max: 2, desc: ['METER CHARGES +25% FASTER.', '+50% FASTER.'] },
-  { id: 'exhaustRec', name: 'EXHAUSTION RECOVERY', levels: [1200, 2400], max: 2, desc: ['HEROES RECOVER +25% FASTER.', '+50% FASTER.'] },
 ];
 
 export const MODS = [
   { id: 'storebrand', name: 'STORE-BRAND BATTERIES', desc: '+1 BATTERY CELL. POWER-UPS 20% SHORTER.', source: 'shop', price: 1200 },
-  { id: 'cape', name: 'LEGALLY DISTINCT CAPE', desc: 'ONE EXTRA AIR-JUMP FOR EVERYONE. EXHAUSTION +20%.', source: 'shop', price: 1500 },
+  { id: 'cape', name: 'LEGALLY DISTINCT CAPE', desc: 'ONE EXTRA AIR-JUMP FOR EVERYONE.', source: 'shop', price: 1500 },
   { id: 'osha', name: 'OSHA COMPLIANCE BINDER', desc: 'CHECKPOINTS RESTORE +1 CELL. RANKS DISPLAY A SMALL DISAPPOINTED ASTERISK.', source: 'shop', price: 900 },
   { id: 'crayon', name: "EGGSHELL'S CRAYON", desc: 'SCORE POPUPS ONE RANK MORE ENTHUSIASTIC. ACTUAL SCORE -5%. WE ARE BEING HONEST WITH YOU.', source: 'shop', price: 400 },
   { id: 'coupon', name: 'HAUNTED COUPON', desc: 'PAWN SHOP PRICES -25%. GARY\'S HEAD FOLLOWS YOU IN THE HUB.', source: 'shop', price: 600 },

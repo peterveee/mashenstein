@@ -67,20 +67,17 @@ export function drawHud(ctx, run) {
     py += 18;
   }
 
-  // Relay: team faces + meter + exhaustion.
+  // Relay: team faces + meter. Portals rotate through the team in order.
   const teamX = W / 2 - run.team.length * 12;
   run.team.forEach((id, i) => {
     const cur = id === run.relay.current;
-    const ex = run.relay.exhaust[id] > 0;
-    ctx.fillStyle = cur ? '#48e0c8' : ex ? '#3a3a48' : '#8a8a98';
+    ctx.fillStyle = cur ? '#48e0c8' : '#8a8a98';
     ctx.fillRect(teamX + i * 24, 11, 20, 14);
     const spr = toonFaceSprite(id, 12, 9);
     if (spr) {
-      ctx.globalAlpha = ex && !cur ? 0.4 : 1;
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(spr, teamX + i * 24 + 4, 12, 12, 9);
       ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = 1;
     } else drawText(ctx, HERO_BY_ID[id].short[0], teamX + i * 24 + 7, 15, cur ? '#0b0b14' : '#fff');
   });
   // Meter bar.

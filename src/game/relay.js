@@ -1,4 +1,4 @@
-// Three-hero relay: portals, tags, Perfect Tag, Relay Meter, Exhaustion, Duo Moves.
+// Three-hero relay: portals, tags, Perfect Tag, Relay Meter, Duo Moves.
 import { DUO_MOVES } from '../data/progression.js';
 import { TAG_LINES } from '../data/jokes.js';
 
@@ -8,8 +8,6 @@ export class Relay {
     this.bench = bench;             // bench upgrade levels
     this.stats = stats;
     this.currentIdx = 0;
-    this.exhaust = {};              // heroId -> seconds remaining
-    for (const id of team) this.exhaust[id] = 0;
     this.meter = 0;                 // 0..1
     this.combo = 0;
     this.bestCombo = 0;
@@ -22,23 +20,10 @@ export class Relay {
   get current() { return this.team[this.currentIdx]; }
 
   nextHero() {
-    // Next non-exhausted in rotation; if all exhausted, least exhausted.
-    for (let i = 1; i <= this.team.length; i++) {
-      const idx = (this.currentIdx + i) % this.team.length;
-      if (idx !== this.currentIdx && this.exhaust[this.team[idx]] <= 0) return idx;
-    }
-    let best = null, bestT = Infinity;
-    for (let i = 0; i < this.team.length; i++) {
-      if (i === this.currentIdx) continue;
-      const t = this.exhaust[this.team[i]];
-      if (t < bestT) { bestT = t; best = i; }
-    }
-    return best ?? this.currentIdx;
+    return (this.currentIdx + 1) % this.team.length;
   }
 
   update(dt) {
-    const rec = 1 + 0.25 * (this.bench.exhaustRec || 0);
-    for (const id of this.team) if (this.exhaust[id] > 0) this.exhaust[id] -= dt * rec;
     this.portalTimer -= dt;
     if (this.lastTagLineT > 0) this.lastTagLineT -= dt;
   }
@@ -54,7 +39,6 @@ export class Relay {
     const nextIdx = this.nextHero();
     const to = this.team[nextIdx];
     if (to === from) return null;
-    this.exhaust[from] = 12 * (this.mods && this.mods.includes('cape') ? 1.2 : 1);
     this.currentIdx = nextIdx;
     this.combo++;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
