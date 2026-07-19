@@ -12,6 +12,7 @@ const suites = [
   'tests/reliability.js',
   'tests/breaker-bonus.js',
   'tests/star-power.js',
+  'tests/title-sign.js',
   'tests/minigames.js',
   'tests/boss.js',
   'tests/attract.js',

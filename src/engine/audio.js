@@ -123,39 +123,88 @@ class AudioSys {
     src.start(t); src.stop(t + dur + 0.02);
   }
 
-  // The title sign shorting out: a mains hum plus the crackle of the contact
-  // arcing, gone in a tenth of a second. Routed through the music bus like the
-  // comet — it's ambience the title theme sits around, not a cue the player
-  // caused, and on the SFX bus it read as a UI blip every few seconds.
-  // It used to fire twice every 0.21s, so it had to be almost inaudible to
-  // avoid becoming a tic. The sign now stutters twice per 5.4s cycle instead —
-  // roughly one buzz every three seconds rather than nine a second — so it can
-  // carry real level and land as an event you notice.
+  // The title sign shorting out.
+  //
+  // Runs on the SFX bus, NOT the music bus, and that routing is the whole point
+  // of where it sits: the echo send is fed from musicGain, so anything on the
+  // music bus is echoed whether it wants to be or not. A buzzing sign is a
+  // physical object a few feet away, not something ringing around the arcade,
+  // so it has to bypass that send entirely. sfxGain connects straight to master.
+  //
+  // Three things make this read as a BUZZ rather than the thud it used to be:
+  // it lasts long enough to hear (a 0.1s blip is a click, the ear needs a few
+  // cycles of stutter to call something a buzz); the tone keeps its harmonics
+  // instead of being lowpassed down to a bare sine; and the whole thing is
+  // chopped by a stutter gate, which is the actual sound of a contact
+  // chattering rather than a tube humming.
+  //
+  // Level: deliberately way down at the threshold of hearing. This is a room
+  // detail — the sign you only notice once you have stopped reading the menu —
+  // not a cue, and it repeats forever on the title screen, so anything that
+  // announces itself becomes a tic. Scale the whole thing from `q` rather than
+  // editing four envelope points to change how loud it is.
+  //
+  // Unlike osc()/noise(), this authors its own nodes, so it has to apply
+  // cueGain itself or an SFX_TRIM entry for it would silently do nothing.
   neonBuzz() {
-    if (!this.ctx || !this.musicBus) return;
+    if (!this.ctx || !this.sfxGain) return;
     const t = this.ctx.currentTime;
-    // 120Hz: the second harmonic of mains, which is what a failing ballast
-    // actually sings at — 60 alone is felt more than heard on small speakers.
+    const DUR = 0.34;
+    const q = this.cueGain * 0.4;   // master level for the whole buzz
+
+    // The stutter gate everything runs through: the contact chattering, slowing
+    // down as the arc gives up. Multiplies rather than replaces the envelopes,
+    // so the buzz and its crackle break up together.
+    const gate = this.ctx.createGain(); gate.gain.value = 0.6;
+    const lfo = this.ctx.createOscillator(); lfo.type = 'square';
+    lfo.frequency.setValueAtTime(46, t);
+    lfo.frequency.linearRampToValueAtTime(29, t + DUR);
+    const lfoDepth = this.ctx.createGain(); lfoDepth.gain.value = 0.4;
+    lfo.connect(lfoDepth); lfoDepth.connect(gate.gain);
+    gate.connect(this.sfxGain);
+
+    // Pitched up near the sixth harmonic of mains: the low version sat in the
+    // theme's bass and read as a thump, and even at the third it still had body.
+    // A tiny failing tube sings high and thin, so it can sit quietly on top of
+    // the music instead of competing with it.
     const o = this.ctx.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(120, t);
-    const of = this.ctx.createBiquadFilter(); of.type = 'lowpass'; of.frequency.value = 900;
+    o.frequency.setValueAtTime(720, t);
+    o.frequency.linearRampToValueAtTime(676, t + DUR);   // sags as it dies
+    // A detuned partial roughly an octave up beats against the fundamental,
+    // which is what sours a clean hum into a rasp.
+    const o2 = this.ctx.createOscillator(); o2.type = 'square';
+    o2.frequency.setValueAtTime(1455, t);
+    const o2g = this.ctx.createGain(); o2g.gain.value = 0.24;
+    // Highpassed as well as lowpassed now: with the fundamental this high, what
+    // little bottom the saw has left is all thump and no sizzle.
+    const ohp = this.ctx.createBiquadFilter(); ohp.type = 'highpass';
+    ohp.frequency.value = 520;
+    const of = this.ctx.createBiquadFilter(); of.type = 'lowpass';
+    of.frequency.value = 5200; of.Q.value = 0.9;
     const og = this.ctx.createGain();
     og.gain.setValueAtTime(0.0001, t);
-    og.gain.exponentialRampToValueAtTime(0.02, t + 0.012);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(of); of.connect(og); og.connect(this.musicBus);
-    o.start(t); o.stop(t + 0.12);
-    // The arc itself: a thin band of noise up where the spark lives.
+    og.gain.exponentialRampToValueAtTime(0.006 * q, t + 0.014);
+    og.gain.exponentialRampToValueAtTime(0.0034 * q, t + 0.16);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + DUR);
+    o.connect(ohp); o2.connect(o2g); o2g.connect(ohp);
+    ohp.connect(of); of.connect(og); og.connect(gate);
+    o.start(t); o.stop(t + DUR + 0.02);
+    o2.start(t); o2.stop(t + DUR + 0.02);
+    lfo.start(t); lfo.stop(t + DUR + 0.02);
+
+    // The arc itself: a thin band of noise up where the spark lives, riding on
+    // through the buzz rather than snapping shut after one frame.
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuf; src.loop = true;
     const nf = this.ctx.createBiquadFilter();
-    nf.type = 'bandpass'; nf.frequency.value = 3200; nf.Q.value = 1.6;
+    nf.type = 'bandpass'; nf.frequency.value = 4600; nf.Q.value = 1.2;
     const ng = this.ctx.createGain();
     ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.exponentialRampToValueAtTime(0.012, t + 0.006);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-    src.connect(nf); nf.connect(ng); ng.connect(this.musicBus);
-    src.start(t); src.stop(t + 0.09);
+    ng.gain.exponentialRampToValueAtTime(0.003 * q, t + 0.008);
+    ng.gain.exponentialRampToValueAtTime(0.0009 * q, t + 0.13);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + DUR * 0.85);
+    src.connect(nf); nf.connect(ng); ng.connect(gate);
+    src.start(t); src.stop(t + DUR);
   }
 
   // A breathy shooting-star gesture routed through the music bus, so it sits
@@ -624,6 +673,19 @@ class AudioSys {
       this.nextTime += spb;
       this.step++;
     }
+  }
+
+  // Fractional beat position of what is being HEARD right now, counted from
+  // the top of the bank (setBank resets step to 0, so beat 0 is the downbeat).
+  // The sequencer schedules ahead of the playhead, so `step` is the future —
+  // back it off by the outstanding lookahead or visuals sync to notes that
+  // have not sounded yet. Returns null when there is no song to lock to, so
+  // callers can fall back to a wall clock.
+  songBeat() {
+    if (!this.ctx || !this.bank) return null;
+    const spb = (60 / (this.bpm * this.detune)) / 4;
+    const ahead = (this.nextTime - this.ctx.currentTime) / spb;
+    return (this.step - ahead) / 4;
   }
 
   // Beat phase for rhythm cabinet: 0..1 within the current beat.

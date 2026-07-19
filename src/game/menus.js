@@ -101,6 +101,95 @@ const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * IN
 const invY = (trip, t) => 7 + (trip % 3) * 4 + Math.sin(t * 2.3) * 1.6;
 const heroX = (i, t) => ((t * 42 + i * 66) % (W + 140)) - 70;
 
+// Rare, legally-distinct maze-wisp cameos. They share the heroes' floor line
+// but are visitors rather than roster members: a small gang crosses once, then
+// leaves the parade alone for long enough that the next appearance surprises.
+const PARADE_SPEED = 42;
+const PARADE_SPAN = W + 140;
+// Start when Lorenzo is 30px ahead of the left edge, then repeat only every
+// third parade lap. This aligns the guests with the reserved tail behind him.
+const WISP_FIRST = PARADE_SPAN / PARADE_SPEED + 76 / PARADE_SPEED;
+const WISP_PERIOD = (PARADE_SPAN / PARADE_SPEED) * 3;
+const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
+
+function mazeWispPass(t) {
+  if (t < WISP_FIRST) return null;
+  const elapsed = t - WISP_FIRST;
+  const trip = Math.floor(elapsed / WISP_PERIOD);
+  const local = elapsed % WISP_PERIOD;
+  const count = 2 + (trip % 3);
+  // From the lead wisp touching the left edge until the final trailing wisp
+  // has completely cleared the right. No alpha fade and no mid-screen cutoff.
+  const cross = (W + 48 + (count - 1) * 26) / PARADE_SPEED;
+  if (local > cross) return null;
+  return { trip, local, count };
+}
+
+function drawMazeWisp(ctx, x, feetY, color, phase, mood) {
+  const bob = Math.sin(phase * Math.PI * 2) * 1.3;
+  const swish = Math.sin(phase * Math.PI * 1.35 + mood) * 1.2;
+  const face = (Math.floor(phase * 0.42) + mood) % 4;
+  const blinkClock = ((phase + mood * 1.31) % 6 + 6) % 6;
+  const blinking = blinkClock > 5.68;
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(feetY + bob));
+  ctx.scale(0.68, 0.68);
+  ctx.lineJoin = 'round';
+  // Rounded hood, tapered sides and three uneven little skirt points make a
+  // soft floating mascot rather than a literal arcade-ghost sprite.
+  ctx.beginPath();
+  ctx.moveTo(-9, 0); ctx.lineTo(-9, -16);
+  ctx.bezierCurveTo(-9, -23, -4, -27, 0, -27);
+  ctx.bezierCurveTo(5, -27, 9, -22, 9, -16);
+  ctx.lineTo(9, swish * 0.35); ctx.lineTo(5, -4 - swish); ctx.lineTo(1, swish * 0.45);
+  ctx.lineTo(-3, -4 + swish); ctx.lineTo(-7, -swish * 0.25); ctx.closePath();
+  ctx.fillStyle = color; ctx.fill();
+  ctx.strokeStyle = 'rgba(25,16,40,0.42)'; ctx.lineWidth = 1; ctx.stroke();
+  // Each visitor scans the room on its own rhythm; the small vertical glance
+  // keeps the pupils from looking like they merely slide on rails.
+  const glanceX = Math.sin(phase * 0.83 + mood * 2.1) * 1.25;
+  const glanceY = Math.cos(phase * 0.57 + mood) * 0.65;
+  ctx.fillStyle = '#fff8e8';
+  if (blinking) {
+    ctx.strokeStyle = '#30204a'; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.moveTo(-5.8, -16); ctx.quadraticCurveTo(-3.3, -14.8, -0.8, -16);
+    ctx.moveTo(0.8, -16); ctx.quadraticCurveTo(3.3, -14.8, 5.8, -16); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.ellipse(-3.3, -16, 2.7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(3.3, -16, 2.7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#30204a';
+    ctx.beginPath(); ctx.arc(-3.3 + glanceX, -16 + glanceY, 1.15, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(3.3 + glanceX, -16 + glanceY, 1.15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath(); ctx.arc(-3.65 + glanceX, -16.35 + glanceY, 0.32, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(2.95 + glanceX, -16.35 + glanceY, 0.32, 0, Math.PI * 2); ctx.fill();
+  }
+  // Expressions turn over at a leisurely pace rather than flickering with the
+  // walk cycle: happy, surprised, doubtful, then determined.
+  ctx.strokeStyle = '#6f3555'; ctx.lineWidth = 0.9; ctx.beginPath();
+  if (face === 0) { ctx.arc(0, -11, 2.5, 0.15, Math.PI - 0.15); ctx.stroke(); }
+  else if (face === 1) { ctx.ellipse(0, -9.5, 1.55, 2, 0, 0, Math.PI * 2); ctx.fillStyle = '#6f3555'; ctx.fill(); }
+  else if (face === 2) { ctx.arc(0, -8, 2.3, Math.PI + 0.2, Math.PI * 2 - 0.2); ctx.stroke(); }
+  else { ctx.moveTo(-2.3, -10); ctx.lineTo(2.3, -10.5); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawMazeWispCameo(ctx, t, reduced) {
+  if (reduced) return;
+  const pass = mazeWispPass(t);
+  if (!pass) return;
+  // All visitors share the parade's exact speed. Starting this traversal at
+  // the aligned WISP_FIRST time places the leader 30px behind Lorenzo; the
+  // remaining guests follow in the rest of the cast's reserved tail space.
+  for (let i = 0; i < pass.count; i++) {
+    const x = -24 + pass.local * PARADE_SPEED - i * 26;
+    if (x < -24 || x > W + 24) continue;
+    ctx.fillStyle = 'rgba(4,3,9,0.25)';
+    ctx.beginPath(); ctx.ellipse(x, 268, 5.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+    drawMazeWisp(ctx, x, 267, WISP_COLORS[(pass.trip + i) % WISP_COLORS.length], t * 1.8 + i * 0.24, (pass.trip + i) % 3);
+  }
+}
+
 // Which fly-by (if any) is on screen right now.
 function invaderPass(t) {
   if (t < INV_FIRST) return null;
@@ -233,6 +322,7 @@ function titleScene(ctx, t, reduced) {
   // a small personality beat. Cycles are offset so the parade stays readable.
   const strike = reduced ? null : invaderStrike(t);
   drawBolt(ctx, t, strike);
+  drawMazeWispCameo(ctx, t, reduced);
   for (let i = 0; i < HERO_PARADE.length; i++) {
     const hx = heroX(i, t);
     const id = HERO_PARADE[i];
@@ -332,11 +422,11 @@ function titleScene(ctx, t, reduced) {
     // Zap: sparks plus the same cached radial glow the power capsules use. A
     // flat translucent rectangle read as a yellow card sitting behind the plug
     // — a radial falloff has no edge to mistake for a background.
-    const glow = glowSprite('rgba(246,211,60,0.5)', 6);
-    ctx.drawImage(glow, px2 - 9, py2 + 1, 18, 18);
-    ctx.fillStyle = '#fff';
-    for (let i = 0; i < 4; i++) {
-      ctx.fillRect(px2 - 5 + ((i * 37 + Math.floor(t * 60)) % 10), py2 + 9 + (i % 3) * 2, 2, 2);
+    const glow = glowSprite('rgba(246,211,60,0.3)', 6);
+    ctx.drawImage(glow, px2 - 7, py2 + 2, 14, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(px2 - 4 + ((i * 37 + Math.floor(t * 60)) % 8), py2 + 9 + (i % 3) * 2, 1.6, 1.6);
     }
   }
 }
@@ -380,23 +470,49 @@ function shaderHash21(x, y) {
   return v - Math.floor(v);
 }
 
-// A tired neon sign: two fast blinks at the top of the cycle, then it holds
-// steady for the rest of the ~5s period. reducedFlashing pins it fully lit.
-const FLICKER_PERIOD = 5.4;
-const FLICKER_BLINK = 0.21;   // one blink slot
-const FLICKER_DARK = 0.09;    // how much of that slot is dimmed
+// A tired neon sign: two fast blinks, then it holds steady until the next
+// short-out. reducedFlashing pins it fully lit.
+//
+// The stutter runs on the SONG's clock, not a wall clock — one short-out on the
+// downbeat of every two-bar block, blinking on 32nds. A sign shorting out in
+// time with the music reads as part of the arcade rather than a loose timer
+// ticking over the top of it, and locking to the block means it lands where the
+// bank's own phrase turns over. Audio.songBeat() is null before the context
+// exists (or in headless tests), so the old free-running period is the fallback.
+const FLICKER_BEATS = 8;      // one short-out per two-bar block
+const FLICKER_SLOT = 0.25;    // blink slot, in beats
+const FLICKER_DARK_BEATS = 0.125;
+const FLICKER_PERIOD = 9;     // fallback wall clock, matched to the musical rate
+const FLICKER_BLINK = 0.21;
+const FLICKER_DARK = 0.09;
 // The sign doesn't stutter on its own — the cord shorting out is what does it.
 // Both the marquee and the plug read this one phase, so the spark lands on the
 // exact frames the lettering drops out and the two read as cause and effect.
 // On their own clocks they drifted, and the sign looked merely broken.
 function flickerDark(t, reduced) {
   if (reduced) return false;
-  const phase = t % FLICKER_PERIOD;
-  if (phase >= FLICKER_BLINK * 2) return false;
-  return (phase % FLICKER_BLINK) < FLICKER_DARK;
+  const beat = Audio.songBeat();
+  if (beat == null) {
+    const phase = t % FLICKER_PERIOD;
+    if (phase >= FLICKER_BLINK * 2) return false;
+    return (phase % FLICKER_BLINK) < FLICKER_DARK;
+  }
+  const phase = ((beat % FLICKER_BEATS) + FLICKER_BEATS) % FLICKER_BEATS;
+  if (phase >= FLICKER_SLOT * 2) return false;
+  return (phase % FLICKER_SLOT) < FLICKER_DARK_BEATS;
 }
+// Softer than a full dropout: the sign browns out and recovers, rather than
+// switching off. A hard blink at this size read as a fault in the renderer.
 function flickerAlpha(t, reduced) {
-  return flickerDark(t, reduced) ? 0.45 : 1;
+  return flickerDark(t, reduced) ? 0.62 : 1;
+}
+// Which two-bar block we're in, off whichever clock flickerDark is using. The
+// audible short-out is gated per block, so it has to be counted on the same
+// clock as the blinks or the gate lands between them.
+function flickerBlock(t) {
+  const beat = Audio.songBeat();
+  if (beat == null) return Math.floor(t / FLICKER_PERIOD);
+  return Math.floor(beat / FLICKER_BEATS);
 }
 
 // Built by hand rather than via ctx.roundRect, which the headless test stub
@@ -426,6 +542,7 @@ export class TitleState {
     this.idleT = 0;
     this.lastCometCycle = -1;
     this.wasDark = false;
+    this.lastBuzzCycle = -1;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     Audio.setBank(TITLE_THEME);
@@ -507,11 +624,22 @@ export class TitleState {
       this.lastCometCycle = cometCycle;
       Audio.sfx('comet');
     }
-    // The buzz reads off the same phase as the dropout and the spark, so all
-    // three land on one frame. Edge-triggered: the dark window spans several
+    // The buzz reads off the same phase as the dropout and the spark, so it
+    // lands on the same frame. Edge-triggered: the dark window spans several
     // frames and re-firing every one of them stacks into a rasp.
+    //
+    // It deliberately does NOT follow every blink. At most one buzz per block
+    // (the first blink only — the second is close enough to overlap its tail),
+    // and only on blocks the hash picks out, so the sign mostly stutters in
+    // silence and every so often you actually hear it go. A sound tied 1:1 to a
+    // repeating animation stops being ambience and turns into a metronome; the
+    // hash keeps the gaps uneven, which reads as a fault rather than a rhythm.
     const dark = flickerDark(this.t, this.save.settings.reducedFlashing);
-    if (dark && !this.wasDark) Audio.sfx('neonBuzz');
+    const block = flickerBlock(this.t);
+    if (dark && !this.wasDark && this.lastBuzzCycle !== block && shaderHash21(block, 11) >= 0.45) {
+      this.lastBuzzCycle = block;
+      Audio.sfx('neonBuzz');
+    }
     this.wasDark = dark;
     // Attract mode: fire after attractDelay seconds of zero HUMAN input.
     if (Input.activity !== this.actTok) { this.actTok = Input.activity; this.idleT = 0; this.attractDelay = 60; }

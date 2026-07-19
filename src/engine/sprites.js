@@ -194,8 +194,11 @@ export function wrapText(str, maxWidth, scale = 1, maxLines = 2, style = 'ui') {
 // Smooth vector lettering, proportionally spaced: each glyph advances by its
 // own measured width. The old fixed six-unit cell monospaced what is really a
 // proportional face, which left rivers around narrow letters like I and L.
-const BODY_FONT = "'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
-const TITLE_FONT = "'Lilita One', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
+const BODY_FAMILY = "'Fredoka'";
+const TITLE_FAMILY = "'Lilita One'";
+const FALLBACK = "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
+const BODY_FONT = `${BODY_FAMILY}, ${FALLBACK}`;
+const TITLE_FONT = `${TITLE_FAMILY}, ${FALLBACK}`;
 
 // Text styles the game draws in. 'ui' is the default everywhere; 'bold' is the
 // highlighted menu row; 'title' is the marquee and every screen header.
@@ -285,8 +288,29 @@ function glyphSprite(ch, color, scale, style) {
 
 // The webfonts arrive after first paint, so anything measured or rasterized
 // against the fallback stack has to be thrown away once they land.
-if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => { glyphCache.clear(); advCache.clear(); });
+//
+// document.fonts.ready alone is NOT enough. A @font-face is only fetched once
+// something renders with it, and this game renders only to canvas, which does
+// not reliably trigger that fetch. With no load pending, the font set reports
+// status='loaded' and ready resolves on the next microtask — measurably before
+// the faces exist (status=loaded while check() is false for both). This module
+// evaluates before the first frame, so it captures ready at exactly that
+// moment, clears an empty cache, and never fires again; whatever the first
+// frame then rasterizes in Trebuchet is cached for the life of the page.
+//
+// So ask for the faces by name. That both starts the download and gives a
+// promise that resolves when they are genuinely usable.
+if (typeof document !== 'undefined' && document.fonts) {
+  const drop = () => { glyphCache.clear(); advCache.clear(); };
+  if (document.fonts.load) {
+    const faces = [
+      `400 32px ${TITLE_FAMILY}`,
+      `500 12px ${BODY_FAMILY}`,
+      `600 12px ${BODY_FAMILY}`,
+    ];
+    Promise.all(faces.map((f) => document.fonts.load(f).catch(() => {}))).then(drop);
+  }
+  if (document.fonts.ready) document.fonts.ready.then(drop);
 }
 
 export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui') {

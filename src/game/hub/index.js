@@ -54,6 +54,19 @@ export class HubState {
     this.facing = this.facing ?? returning?.facing ?? 1;
     this.t = 0;
     this.talk = null;
+    // Give every loitering hero a tiny patch of food court to inhabit. Their
+    // deterministic offsets keep return visits lively without letting anyone
+    // wander into a cabinet doorway or disappear down the concourse.
+    this.npcActors = HEROES.map((h, i) => {
+      const home = 110 + i * 90 + (i % 3) * 22;
+      const walking = i % 3 !== 0;
+      return {
+        id: h.id, home, x: home, facing: i % 2 ? -1 : 1,
+        state: walking ? 'walk' : 'idle',
+        timer: 0.75 + (i % 4) * 0.33,
+        duration: 1, cycles: i,
+      };
+    });
     Audio.setBank(HUB_THEME);
     Input.setButtons(Input.usingTouch ? [
       { id: 'left', x: 8, y: H - 48, w: 44, h: 40, action: 'left', label: '<' },
@@ -68,6 +81,7 @@ export class HubState {
 
   update(dt) {
     this.t += dt;
+    this.updateNpcs(dt);
     const st = this.stations();
     if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; }
     if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; }
@@ -115,8 +129,41 @@ export class HubState {
   }
 
   npcs() {
-    // Heroes loiter in the hub, spread by index; DUST DEVIL cleans impossible things.
-    return HEROES.map((h, i) => ({ id: h.id, x: 110 + i * 90 + (i % 3) * 22 }));
+    // Heroes loiter in the hub; DUST DEVIL cleans impossible things.
+    return this.npcActors || HEROES.map((h, i) => ({ id: h.id, x: 110 + i * 90 + (i % 3) * 22, facing: 1, state: 'idle' }));
+  }
+
+  updateNpcs(dt) {
+    for (const n of this.npcs()) {
+      // Conversation wins over wandering, and the speaker turns toward the
+      // player instead of strolling away halfway through a punchline.
+      if (this.talk?.who === n.id) {
+        n.state = 'idle';
+        n.facing = this.px < n.x ? -1 : 1;
+        n.timer = Math.max(n.timer, 0.35);
+        continue;
+      }
+      n.timer -= dt;
+      if (n.state === 'walk') {
+        n.x += n.facing * 10 * dt;
+        if (Math.abs(n.x - n.home) >= 17) {
+          n.x = n.home + Math.sign(n.x - n.home) * 17;
+          n.state = 'idle'; n.timer = 0.9 + (n.cycles % 3) * 0.3;
+        }
+      }
+      if (n.timer > 0) continue;
+      n.cycles++;
+      if (n.state === 'walk') {
+        n.state = 'idle'; n.timer = 0.8 + (n.cycles % 4) * 0.25;
+      } else if (n.state === 'hop') {
+        n.state = 'idle'; n.timer = 0.7 + (n.cycles % 3) * 0.3;
+      } else if (n.cycles % 4 === 0) {
+        n.state = 'hop'; n.duration = 0.5; n.timer = n.duration;
+      } else {
+        n.state = 'walk'; n.facing = n.x > n.home + 5 ? -1 : n.x < n.home - 5 ? 1 : (n.cycles % 2 ? -1 : 1);
+        n.timer = 1.1 + (n.cycles % 3) * 0.35;
+      }
+    }
   }
 
   draw(ctx) {
@@ -187,10 +234,17 @@ export class HubState {
     for (const n of this.npcs()) {
       const x = Math.round(n.x - cam);
       if (x < -20 || x > W + 20) continue;
-      const spr = toonStandSprite(n.id, 12, 16);
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(spr, x - 6, 176, 12, 16);
-      ctx.imageSmoothingEnabled = false;
+      const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * 5 : 0;
+      ctx.fillStyle = 'rgba(4,3,9,0.28)';
+      ctx.beginPath(); ctx.ellipse(x, 192, n.state === 'hop' ? 5 : 7, 2, 0, 0, Math.PI * 2); ctx.fill();
+      drawToon(ctx, n.id, {
+        kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
+        phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
+        time: this.t + n.cycles * 0.41,
+        grounded: n.state !== 'hop',
+        vy: n.state === 'hop' ? -40 : 0,
+        facing: n.facing || 1,
+      }, x, 192 - hop, 19);
     }
     // DUST DEVIL cleaning something impossible (varies by act)
     const ddSpots = [[300, 178, 'THE FLOOR'], [520, 40, 'THE CEILING'], [720, 120, 'THE INSIDE OF A CRT']];

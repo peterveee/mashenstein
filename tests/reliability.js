@@ -93,6 +93,11 @@ const oldHub = new HubState({ save, flow: hubFlow });
 oldHub.px = 438; oldHub.facing = -1; oldHub.exit();
 const returnedHub = new HubState({ save, flow: hubFlow }); returnedHub.enter();
 assert(returnedHub.px === 438 && returnedHub.facing === -1, 'food-court position and facing survive a state round trip');
+const npcStart = returnedHub.npcs()[1].x;
+returnedHub.update(0.5);
+assert(returnedHub.npcs()[1].x !== npcStart, 'food-court heroes stroll during their loiter cycle');
+for (let i = 0; i < 200; i++) returnedHub.update(0.1);
+assert(returnedHub.npcs().every((n) => Math.abs(n.x - n.home) <= 17.01), 'wandering heroes stay inside their safe food-court patch');
 returnedHub.exit();
 
 run = makeRun(); run.enter();

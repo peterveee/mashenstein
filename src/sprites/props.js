@@ -53,22 +53,46 @@ function stroke(ctx, col, w, pathFn) {
 // Each: (ctx, w, h) drawing inside [0..w] x [0..h]. Ground props sit on h.
 export const PROP_PAINTERS = {
   // --- ground hazards ---------------------------------------------------
+  // A thorn bush has to read as a low mass GROWING OUT OF THE GROUND with
+  // spines on it. The old painter was a closed star polygon floating above a
+  // stem, which at 13x12 collapsed into a lumpy pennant with a mushroom cap.
+  // What fixes it: a flat bottom sitting on the ground line, a wide silhouette,
+  // and thorns that spike off a crown rather than radiating in a full circle.
   shrub(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#7a4a24', u, (c) => rr(c, w * 0.42, h * 0.72, w * 0.16, h * 0.3, w * 0.05));
-    // spiky red-orange bush: overlapping lobes with thorn tips
-    shape(ctx, '#d84828', u, (c) => {
-      const cx = w / 2, cy = h * 0.46, R = w * 0.46;
-      for (let i = 0; i < 9; i++) {
-        const a = (i / 9) * Math.PI * 2 - Math.PI / 2;
-        const rad = i % 2 ? R * 1.16 : R * 0.72;
-        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad * 0.85;
-        i ? c.lineTo(x, y) : c.moveTo(x, y);
+    const base = h * 0.99, cy = h * 0.7;
+    // Foliage line: three TANGENT circular humps, low and wide, drawn as one
+    // path so the mass has a single outline and the joins fall as cusps —
+    // that V between clumps is what reads as a bush. Everything else tried
+    // here (a star polygon, separate lobes, quadratic arches) came out as a
+    // pennant, a bowl of berries, and a campfire respectively.
+    const humps = [[0.17, 0.17], [0.56, 0.22], [0.89, 0.11]];
+    // Thorns go behind the foliage, so only their tips clear the humps and
+    // there is no seam where they attach. Short: spikes the height of the mass
+    // are what made it a campfire.
+    shape(ctx, '#a83020', u, (c) => {
+      for (const [tx, ty] of [[0.14, 0.36], [0.43, 0.28], [0.73, 0.33]]) {
+        c.moveTo(w * (tx - 0.08), cy);
+        c.lineTo(w * tx, h * ty);
+        c.lineTo(w * (tx + 0.08), cy);
+        c.closePath();
       }
+    });
+    shape(ctx, '#d84828', u, (c) => {
+      // Sides slope in toward the ground: square corners under the humps read
+      // as a planter box the bush is sitting in.
+      c.moveTo(w * 0.08, base);
+      c.lineTo(0, cy);
+      // PI -> 0 with counterclockwise FALSE sweeps through 3PI/2, which is the
+      // TOP in canvas's y-down angles. Passing true here traces the underside
+      // and flattens the whole bush.
+      for (const [hx, hr] of humps) c.arc(w * hx, cy, w * hr, Math.PI, 0, false);
+      c.lineTo(w * 0.92, base);
       c.closePath();
     });
-    plain(ctx, '#f8a048', (c) => c.ellipse(w * 0.38, h * 0.34, w * 0.13, h * 0.1, -0.4, 0, Math.PI * 2));
-    plain(ctx, '#8a2018', (c) => c.ellipse(w * 0.63, h * 0.58, w * 0.12, h * 0.1, 0.3, 0, Math.PI * 2));
+    // Depth: a shadow along the underside, and a lit leaf on the tallest clump.
+    plain(ctx, '#a83020', (c) => c.ellipse(w * 0.5, h * 0.97, w * 0.36, h * 0.05, 0, 0, Math.PI * 2));
+    plain(ctx, '#f8a048', (c) => c.ellipse(w * 0.42, h * 0.58, w * 0.07, h * 0.05, -0.5, 0, Math.PI * 2));
   },
   shrubBig(ctx, w, h) { PROP_PAINTERS.shrub(ctx, w, h); },
   crate(ctx, w, h) {
