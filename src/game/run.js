@@ -18,6 +18,7 @@ import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '.
 import { getStylePack } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech } from './hud.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
+import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export const GROUND_Y = 232;
 const BASE_SPEED = 160;
@@ -32,6 +33,17 @@ export class RunState {
     this.corrupted = opts.corrupted || [];
     this.oneHit = this.overtime || opts.difficulty === 5 || this.corrupted.length > 0;
     this.unplugged = opts.difficulty === 5;
+  }
+
+  groundYAt(worldX) {
+    return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
+  }
+
+  drawAtGround(ctx, worldX, fn) {
+    ctx.save();
+    ctx.translate(0, this.groundYAt(worldX) - GROUND_Y);
+    fn();
+    ctx.restore();
   }
 
   enter() {
@@ -334,8 +346,8 @@ export class RunState {
       this.relay.portalSpawned();
     }
     if (this.portal) {
-      const pbox = { x: this.portal.x, y: GROUND_Y - 40, w: 12, h: 40 };
-      if (overlaps(this.player.box(this.camX, GROUND_Y), pbox)) {
+      const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - 40, w: 12, h: 40 };
+      if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox)) {
         this.doTag();
         this.portal = null;
       }
@@ -510,8 +522,8 @@ export class RunState {
             if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') { pr.live = false; Audio.sfx('ui'); }
             continue;
           }
-          const box = entityBox(ob, GROUND_Y);
-          const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 4, w: 8, h: 8 };
+          const box = entityBox(ob, this.groundYAt(ob.x));
+          const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
           if (overlaps(box, pbox)) {
             this.breakObstacle(ob);
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0) pr.returning = true; }
@@ -521,8 +533,8 @@ export class RunState {
       }
       // Enemy shot vs player.
       if (pr.type === 'enemyShot' && pr.telegraph <= 0) {
-        const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 3, w: 5, h: 5 };
-        if (overlaps(this.player.box(this.camX, GROUND_Y), pbox) && !this.player.invincible) {
+        const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 3, w: 5, h: 5 };
+        if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox) && !this.player.invincible) {
           pr.live = false;
           this.takeHit('SHOT BY A DRONE WITH A GRUDGE');
         }
@@ -656,7 +668,7 @@ export class RunState {
 
   // ------------------------------------------------------------------ collision
   collide() {
-    const pbox = this.player.box(this.camX, GROUND_Y);
+    const pbox = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
     // Obstacles.
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
@@ -669,7 +681,7 @@ export class RunState {
         continue;
       }
       if (ob.def.isBoost) {
-        const box = entityBox(ob, GROUND_Y);
+        const box = entityBox(ob, this.groundYAt(ob.x));
         if (overlaps(pbox, box) && this.player.grounded) {
           if (!ob.used) {
             ob.used = true;
@@ -682,7 +694,7 @@ export class RunState {
         }
         continue;
       }
-      const box = entityBox(ob, GROUND_Y);
+      const box = entityBox(ob, this.groundYAt(ob.x));
       if (!overlaps(pbox, box)) continue;
       // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
       if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
@@ -721,7 +733,7 @@ export class RunState {
     for (const p of this.pickups) {
       if (!p.live) continue;
       if (p.def.resident && p.following) { p.x = this.camX + PLAYER_X - 16; continue; }
-      const box = { x: p.x, y: GROUND_Y - p.alt - p.h, w: p.w, h: p.h };
+      const box = { x: p.x, y: this.groundYAt(p.x) - p.alt - p.h, w: p.w, h: p.h };
       if (!overlaps(pbox, box)) continue;
       p.live = false;
       this.onPickup(p);
@@ -884,12 +896,13 @@ export class RunState {
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
+    if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y);
 
     // Entities.
-    for (const p of this.pickups) if (p.live) drawWorldEntity(ctx, p, cam, this.tRun, this.style);
-    for (const ob of this.obstacles) if (ob.live) drawWorldEntity(ctx, ob, cam, this.tRun, this.style);
+    for (const p of this.pickups) if (p.live) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style));
+    for (const ob of this.obstacles) if (ob.live) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style));
     for (const pr of this.projectiles) {
-      const x = Math.round(pr.x - cam), y = Math.round(GROUND_Y - pr.alt - 4);
+      const x = Math.round(pr.x - cam), y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {
         ctx.fillStyle = '#101018';
         ctx.fillRect(x - 1, y - 1, 6, 6);
@@ -908,8 +921,8 @@ export class RunState {
         ctx.fillStyle = '#f6d33c'; ctx.fillRect(x, y, 5, 4);
       }
     }
-    if (this.portal) drawPortal(ctx, this.portal, cam, this.tRun);
-    if (this.copter) drawCopter(ctx, this.copter, cam, this.tRun);
+    if (this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun));
+    if (this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
     if (this.escapeWall != null) {
       const x = Math.round(this.escapeWall - cam);
       ctx.fillStyle = 'rgba(20,10,30,0.85)';
@@ -923,19 +936,20 @@ export class RunState {
       const remaining = this.totalDist - this.distance;
       if (remaining < 560) {
         const fx = Math.round(remaining + PLAYER_X);
+        const finishGround = this.groundYAt(this.camX + fx);
         for (let i = 0; i < 10; i++) {
           ctx.fillStyle = i % 2 === 0 ? '#f6d33c' : '#0b0b14';
-          ctx.fillRect(fx, GROUND_Y - 80 + i * 8, 5, 8);
+          ctx.fillRect(fx, finishGround - 80 + i * 8, 5, 8);
         }
         // the breaker box
         ctx.fillStyle = '#3a4a5a';
-        ctx.fillRect(fx + 7, GROUND_Y - 34, 18, 34);
+        ctx.fillRect(fx + 7, finishGround - 34, 18, 34);
         ctx.fillStyle = '#f6d33c';
-        ctx.fillRect(fx + 13, GROUND_Y - 28, 6, 10);
+        ctx.fillRect(fx + 13, finishGround - 28, 6, 10);
         ctx.fillStyle = '#0b0b14';
-        ctx.fillRect(fx + 15, GROUND_Y - 26, 2, 3);
-        ctx.fillRect(fx + 12, GROUND_Y - 25, 2, 3);
-        drawText(ctx, 'THE BREAKER', fx - 14, GROUND_Y - 94, '#f6d33c');
+        ctx.fillRect(fx + 15, finishGround - 26, 2, 3);
+        ctx.fillRect(fx + 12, finishGround - 25, 2, 3);
+        drawText(ctx, 'THE BREAKER', fx - 14, finishGround - 94, '#f6d33c');
       } else if (remaining < this.speed * 5) {
         if (Math.floor(this.tRun * 2) % 2 === 0) drawTextCentered(ctx, 'FINISH AHEAD', W / 2, 70, '#f6d33c');
       }
@@ -943,14 +957,14 @@ export class RunState {
 
     // Player.
     drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, flat: this.paused || this.dead });
+      { mirror: this.mirror, flat: this.paused || this.dead, groundY: this.groundYAt(cam + PLAYER_X) });
 
     drawParticles(ctx, cam);
     this.style.post(ctx, this.tRun);
 
     // Blackout overlay (mission).
     if (this.mission.type === 'blackout') {
-      const px = PLAYER_X + 6, py = GROUND_Y - this.player.y - 8;
+      const px = PLAYER_X + 6, py = this.groundYAt(cam + PLAYER_X) - this.player.y - 8;
       const r = this.perfectSlow > 0 ? 200 : 70;
       const g = ctx.createRadialGradient(px, py, r * 0.4, px, py, r);
       g.addColorStop(0, 'rgba(8,6,12,0)');
@@ -984,12 +998,12 @@ export class RunState {
 
   drawDebug(ctx) {
     ctx.strokeStyle = '#0f0';
-    const pb = this.player.box(this.camX, GROUND_Y);
+    const pb = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
     ctx.strokeRect(pb.x - this.camX, pb.y, pb.w, pb.h);
     ctx.strokeStyle = '#f00';
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
-      const b = entityBox(ob, GROUND_Y);
+      const b = entityBox(ob, this.groundYAt(ob.x));
       ctx.strokeRect(b.x - this.camX, b.y, b.w, b.h);
     }
     drawText(ctx, `SEED ${this.seed} SPD ${Math.round(this.speed)} X ${Math.round(this.camX)}`, 4, H - 10, '#0f0');
