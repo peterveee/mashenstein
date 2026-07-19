@@ -50,7 +50,7 @@ for (const cab of CABINETS) {
   }
 }
 
-console.log(`fairness: ${checks} transitions checked across ${SEEDS} seeds x ${SPEEDS.length} speeds x ${CABINETS.length - 1} cabinets`);
+console.log(`fairness: ${checks} transitions checked across ${SEEDS} seeds x ${SPEEDS.length} speeds x ${CABINETS.filter((c) => c.patterns.length).length} cabinets`);
 if (failures) {
   console.error(`FAIRNESS SIM FAILED: ${failures} unfair transitions`);
   process.exit(1);

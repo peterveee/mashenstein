@@ -173,4 +173,22 @@ export const CABINETS = [
   },
 ];
 
+// The arcade hub's loitering theme (also playable from the SOUND TEST menu).
+export const HUB_THEME = {
+  bpm: 90,
+  bass: [110, null, null, null, 82, null, null, null, 98, null, null, null, 73, null, null, null, 110, null, null, null, 82, null, null, null, 98, null, null, null, 123, null, null, null],
+  kick: Array.from({ length: 32 }, (_, i) => i % 8 === 0),
+  hats: Array.from({ length: 32 }, (_, i) => i % 8 === 4),
+};
+
 export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
+
+// THE SURGE remixes every other cabinet: its bank is the union of all their
+// patterns (BASE_PATTERNS included once, not nine times). Without this the
+// bank stays empty and surge stages spawn no obstacles and no coins at all,
+// which makes its coin challenge impossible.
+CABINET_BY_ID.surge.patterns = [
+  ...BASE_PATTERNS,
+  ...CABINETS.filter((c) => c.id !== 'surge')
+    .flatMap((c) => c.patterns.filter((p) => !BASE_PATTERNS.includes(p))),
+];

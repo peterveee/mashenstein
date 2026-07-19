@@ -3,8 +3,8 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, scaled2x } from '../../engine/sprites.js';
-import { CABINETS, CABINET_BY_ID } from '../../data/cabinets.js';
+import { drawText, drawTextCentered, getSprite, smoothed } from '../../engine/sprites.js';
+import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, MODS, MOD_BY_ID } from '../../data/progression.js';
@@ -49,7 +49,7 @@ export class HubState {
     this.px = this.px ?? 40;
     this.t = 0;
     this.talk = null;
-    Audio.setBank({ bpm: 90, bass: [110, null, null, null, 82, null, null, null, 98, null, null, null, 73, null, null, null, 110, null, null, null, 82, null, null, null, 98, null, null, null, 123, null, null, null], hats: Array.from({ length: 32 }, (_, i) => i % 8 === 4) });
+    Audio.setBank(HUB_THEME);
     Input.setButtons(Input.usingTouch ? [
       { id: 'left', x: 8, y: H - 48, w: 44, h: 40, action: 'left', label: '<' },
       { id: 'right', x: 60, y: H - 48, w: 44, h: 40, action: 'right', label: '>' },
@@ -188,8 +188,12 @@ export class HubState {
     if (dd) ctx.drawImage(dd, Math.round(dx - cam + Math.sin(this.t) * 8), dy);
     // player walks
     const heroId = slot.mods.equipped.includes('coupon') ? 'gary' : (this.flow.lastTeam && this.flow.lastTeam[0]) || 'lorenzo';
-    const spr = getSprite(`hero_${heroId}_${Math.floor(this.t * 6) % 2 === 0 || (!Input.held('left') && !Input.held('right')) ? 'run1' : 'run2'}`);
-    if (spr) ctx.drawImage(spr, Math.round(this.px - cam) - 6, 176);
+    const spr = smoothed(`hero_${heroId}_${Math.floor(this.t * 6) % 2 === 0 || (!Input.held('left') && !Input.held('right')) ? 'run1' : 'run2'}`);
+    if (spr) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(spr, Math.round(this.px - cam) - 9, 168, 18, 24);
+      ctx.imageSmoothingEnabled = false;
+    }
     // header
     drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, 8, '#48e0c8');
     drawText(ctx, `PLUGS: ${totalPlugs(slot)}   COINS: ${slot.coins}   ACT ${act}`, 8, 20, '#c8c8d8');
@@ -326,8 +330,12 @@ export class TeamSelectState {
       ctx.fillRect(x, y, 68, 64);
       ctx.strokeStyle = sel ? '#f6d33c' : inTeam ? '#48e0c8' : '#30303f';
       ctx.strokeRect(x + 0.5, y + 0.5, 68, 64);
-      const spr = scaled2x(`hero_${h.id}_run1`);
-      if (spr) ctx.drawImage(spr, x + 6, y + 6);
+      const spr = smoothed(`hero_${h.id}_run1`);
+      if (spr) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(spr, x + 6, y + 6, 24, 32);
+        ctx.imageSmoothingEnabled = false;
+      }
       drawText(ctx, h.short, x + 4, y + 42, inTeam ? '#48e0c8' : '#c8c8d8');
       if (inTeam) drawText(ctx, `#${order + 1}`, x + 52, y + 4, '#f6d33c');
       const m = slot.mastery[h.id];

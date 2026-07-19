@@ -247,7 +247,10 @@ export class RunState {
       case 'targets': return m.count >= m.n;
       case 'cords': return m.count >= m.n;
       case 'chase': return this.copter && this.copter.caught >= m.n;
-      case 'rescue': return m.count >= m.n;
+      // Residents still in tow count: checkpoints stop at 2/3 distance (and
+      // don't exist at all on one-hit runs), so carrying them across the
+      // finish must satisfy the mission or late pickups soft-lock the run.
+      case 'rescue': return m.count + this.pickups.filter((p) => p.live && p.def.resident && p.following).length >= m.n;
       case 'combo': return m.done || this.relay.bestCombo >= m.n;
       default: return true; // reach/fuse/blackout/escape: surviving to the end is the win
     }
@@ -452,13 +455,16 @@ export class RunState {
     this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x > this.camX - 80);
     this.pickups = this.pickups.filter((p) => p.live && p.x > this.camX - 40);
 
-    // Chase copter.
+    // Chase copter: swoops between far ahead and just in front of the player
+    // so it periodically enters catch range (dx < 40); it must dip below
+    // camX + PLAYER_X + 40 or chase missions are unwinnable.
     if (this.copter) {
       const c = this.copter;
-      c.x = this.camX + 300 + Math.sin(this.tRun * 0.8) * 60;
+      c.x = this.camX + 80 + (Math.sin(this.tRun * 0.55) * 0.5 + 0.5) * 240;
       c.alt = 50 + Math.sin(this.tRun * 1.7) * 20;
       if (c.cooldown > 0) c.cooldown -= dt;
       const dx = c.x - (this.camX + PLAYER_X);
+      c.inRange = this.mission.type === 'chase' && dx < 90 && c.cooldown <= 0;
       if (this.mission.type === 'chase' && dx < 40 && c.cooldown <= 0 && this.player.y > c.alt - 30) {
         c.caught++;
         c.cooldown = 8;
@@ -692,6 +698,14 @@ export class RunState {
         shake(2, 0.15);
         continue;
       }
+      // Targets and switches are objectives, not hazards: contact breaks them.
+      // (Without this, jumping into a ?-crate Mario-style dealt damage and the
+      // break-N-targets missions read as impossible to anyone without an
+      // offensive ability equipped.)
+      if (ob.def.isTarget || ob.def.isSwitch) {
+        this.breakObstacle(ob);
+        continue;
+      }
       // Chompo mastery: eat one hazard per stage.
       if (this.modIds.includes('eat') && this.relay.current === 'chompo' && !this.player.hazardEaten && ob.def.breakable) {
         this.player.hazardEaten = true;
@@ -834,6 +848,12 @@ export class RunState {
 
   endRun(success, reason) {
     Audio.setDetune(1);
+    if (success && this.mission.type === 'rescue') {
+      // Residents carried across the finish line are delivered.
+      for (const p of this.pickups) {
+        if (p.live && p.def.resident && p.following) { p.live = false; this.mission.count++; }
+      }
+    }
     const result = {
       success, reason,
       stage: this.stage, overtime: this.overtime, corrupted: this.corrupted,
@@ -871,8 +891,12 @@ export class RunState {
     for (const pr of this.projectiles) {
       const x = Math.round(pr.x - cam), y = Math.round(GROUND_Y - pr.alt - 4);
       if (pr.type === 'enemyShot') {
+        ctx.fillStyle = '#101018';
+        ctx.fillRect(x - 1, y - 1, 6, 6);
         ctx.fillStyle = pr.telegraph > 0 ? '#f6d33c' : '#e04848';
         ctx.fillRect(x, y, 4, 4);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x + 1, y + 1, 2, 2);
         if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
       } else if (pr.type === 'axe') {
         ctx.fillStyle = '#b8d8f0';
@@ -918,7 +942,8 @@ export class RunState {
     }
 
     // Player.
-    drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse');
+    drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
+      { mirror: this.mirror, flat: this.paused || this.dead });
 
     drawParticles(ctx, cam);
     this.style.post(ctx, this.tRun);

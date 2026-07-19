@@ -148,7 +148,7 @@ class AudioSys {
         o.type = 'sine';
         o.frequency.setValueAtTime(120, t);
         o.frequency.exponentialRampToValueAtTime(45, t + 0.1);
-        g.gain.setValueAtTime(0.25, t);
+        g.gain.setValueAtTime(0.4, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
         o.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t + 0.15);
       }
@@ -157,7 +157,7 @@ class AudioSys {
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 6000;
         const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.05, t);
+        g.gain.setValueAtTime(0.09, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
         src.connect(f); f.connect(g); g.connect(this.musicGain);
         src.start(t); src.stop(t + 0.05);

@@ -3,8 +3,9 @@
 import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, smoothed } from '../engine/sprites.js';
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
+import { CABINETS, HUB_THEME } from '../data/cabinets.js';
 import { totalPlugs } from './progress.js';
 
 function menuNav(input, idx, len) {
@@ -46,8 +47,9 @@ function stitchLogo(ctx, t, reducedFlashing) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo }) {
-    this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings; this.onHowTo = onHowTo;
+  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest }) {
+    this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
+    this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest;
   }
   enter() {
     this.idx = 0;
@@ -67,6 +69,8 @@ export class TitleState {
     const anyOvertime = this.save.data.slots.some((s) => s && s.campaign.storyFlags.sawEnding);
     if (anyOvertime) opts.push({ id: 'overtime', label: 'OVERTIME (ENDLESS)', act: () => this.onOvertime() });
     opts.push({ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() });
+    opts.push({ id: 'guide', label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
+    opts.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
     opts.push({ id: 'settings', label: 'SETTINGS (SINCERE)', act: () => this.onSettings() });
     return opts;
   }
@@ -79,7 +83,7 @@ export class TitleState {
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const p = Input.pointer;
-      const y0 = 130;
+      const y0 = 116;
       const i = Math.floor((p.y - y0) / 16);
       if (i >= 0 && i < opts.length) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
     }
@@ -93,7 +97,7 @@ export class TitleState {
     const opts = this.options();
     opts.forEach((o, i) => {
       const sel = i === this.idx;
-      drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 130 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
+      drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 116 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
     });
     drawTextCentered(ctx, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, H - 30, '#5a5a68');
     drawTextCentered(ctx, 'A GAME STITCHED TOGETHER FROM PARTS OF OTHER GAMES', W / 2, H - 16, '#30303f');
@@ -194,8 +198,12 @@ export class IntroState {
     if (this.panel === 2 || this.panel === 3) {
       const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos'];
       heroes.forEach((h, i) => {
-        const s = getSprite(`hero_${h}_run1`);
-        if (s) ctx.drawImage(s, 90 + i * 38, 90);
+        const s = smoothed(`hero_${h}_run1`);
+        if (s) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(s, 90 + i * 38, 84, 18, 24);
+          ctx.imageSmoothingEnabled = false;
+        }
       });
     }
     const text = INTRO_PANELS[this.panel].text;
@@ -283,6 +291,195 @@ export class FinaleState {
     drawTextCentered(ctx, shown.slice(0, mid), W / 2, 150, '#e8e8f0');
     if (mid < shown.length) drawTextCentered(ctx, shown.slice(mid + 1), W / 2, 164, '#e8e8f0');
     drawTextCentered(ctx, `${this.beat + 1}/${FINALE_BEATS.length}`, W / 2, H - 20, '#5a5a68');
+  }
+}
+
+// FIELD GUIDE: every enemy, object, and pickup with its sprite and one line
+// of truth. Color legend: red = avoid, teal = touch it, gold = collect.
+const GUIDE_PAGES = [
+  {
+    title: 'HAZARDS: GROUND FLOOR', color: '#e04848', hint: 'RED = AVOID. JUMP THESE.',
+    rows: [
+      { s: 'shrub', name: 'THORN SHRUB', desc: 'RED AND SPIKY. JUMP IT. BREAKABLE.' },
+      { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
+      { s: '_pipe', name: 'PIPE', desc: 'TALL AND SMUG. JUMP IT.' },
+      { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
+      { s: 'chair', name: 'OFFICE CHAIR', desc: 'ALSO ROLLS AT YOU. FASTER. JUMP IT.' },
+      { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },
+      { s: 'tombstone', name: 'TOMBSTONE', desc: 'JUMP IT. RESPECTFULLY.' },
+      { s: 'zombieWalk', name: 'ZOMBIE', desc: 'SHAMBLES TOWARD YOU. JUMP IT.' },
+    ],
+  },
+  {
+    title: 'HAZARDS: AIRBORNE + WEIRD', color: '#e04848', hint: 'RED = AVOID. DUCK OR DODGE THESE.',
+    rows: [
+      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. DUCK OR ROLL UNDER IT.' },
+      { s: 'drone', name: 'SHOOTER DRONE', desc: 'STAYS HIGH. DODGE ITS SHOTS INSTEAD.' },
+      { s: '_shot', name: 'ENEMY SHOT', desc: 'RED MEANS DODGE. YELLOW MEANS ABOUT TO FIRE.' },
+      { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
+      { s: 'icicle', name: 'ICICLE', desc: 'FALLS WHEN YOU GET CLOSE. WATCH ITS SHADOW.' },
+      { s: '_beatBar', name: 'BEAT BAR', desc: 'POPS UP ON THE BEAT. JUMP ON TIME.' },
+      { s: '_paper', name: 'PAPERWORK', desc: 'FLIES LOW. DUCK. DO NOT SIGN IT.' },
+      { s: 'cardboardMonster', name: 'BOX MONSTER', desc: 'CARDBOARD. STILL COUNTS. JUMP IT.' },
+    ],
+  },
+  {
+    title: 'TOUCH THESE ON PURPOSE', color: '#48e0c8', hint: 'TEAL = RUN INTO IT. IT IS FINE.',
+    rows: [
+      { s: '_qcrate', name: '?-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
+      { s: 'capStar', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
+      { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
+      { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
+      { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
+      { s: '_portal', name: 'TAG PORTAL', desc: 'SWAP HERO HERE. TAG NEAR DANGER = PERFECT.' },
+      { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
+    ],
+  },
+  {
+    title: 'PICKUPS', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
+    rows: [
+      { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
+      { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
+      { s: 'capShield', name: 'SHIELD CAPSULE', desc: 'ABSORBS ONE HIT. POLITELY.' },
+      { s: 'capMagnet', name: 'MAGNET CAPSULE', desc: 'PULLS NEARBY COINS TO YOU.' },
+      { s: 'capStar', name: 'STAR CAPSULE', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
+      { s: 'capSlow', name: 'SLOW-MO CAPSULE', desc: 'SLOWS THE WHOLE WORLD DOWN BRIEFLY.' },
+      { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
+      { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
+      { s: 'zombieWalk', name: 'RESIDENT', desc: 'FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
+    ],
+  },
+];
+
+export class FieldGuideState {
+  constructor({ onDone }) { this.onDone = onDone; }
+  enter() { this.page = 0; this.t = 0; Input.setButtons([]); }
+  update(dt) {
+    this.t += dt;
+    const n = GUIDE_PAGES.length;
+    if (Input.pressed('right') || Input.pressed('duck')) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('left') || Input.pressed('jump')) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('pointer') && this.t > 0.3) {
+      if (Input.pointer.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
+      else { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
+    }
+    if (Input.pressed('confirm') && this.t > 0.3) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('back')) { Audio.sfx('ui'); this.onDone(); }
+    Input.endFrame();
+  }
+  drawIcon(ctx, key, cx, yBottom) {
+    // custom composites for things without a single sprite
+    if (key === '_gap') {
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 10, yBottom - 6, 20, 6);
+      ctx.fillStyle = '#30303f'; ctx.fillRect(cx - 12, yBottom - 8, 3, 8); ctx.fillRect(cx + 9, yBottom - 8, 3, 8);
+      return;
+    }
+    if (key === '_beatBar') {
+      ctx.fillStyle = '#e04898'; ctx.fillRect(cx - 4, yBottom - 10, 8, 10);
+      ctx.fillStyle = '#f890c8'; ctx.fillRect(cx - 4, yBottom - 10, 8, 2);
+      return;
+    }
+    if (key === '_paper') {
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 5, yBottom - 8, 10, 8);
+      ctx.fillStyle = '#f0f0f8'; ctx.fillRect(cx - 4, yBottom - 7, 8, 6);
+      ctx.fillStyle = '#8a8a98'; ctx.fillRect(cx - 3, yBottom - 5, 6, 1);
+      return;
+    }
+    if (key === '_shot') {
+      ctx.fillStyle = '#101018'; ctx.fillRect(cx - 3, yBottom - 7, 6, 6);
+      ctx.fillStyle = '#e04848'; ctx.fillRect(cx - 2, yBottom - 6, 4, 4);
+      ctx.fillStyle = '#fff'; ctx.fillRect(cx - 1, yBottom - 5, 2, 2);
+      return;
+    }
+    if (key === '_portal') {
+      const pulse = Math.round(Math.sin(this.t * 5) * 2);
+      const spr = getSprite('portal');
+      if (spr) ctx.drawImage(spr, cx - 6, yBottom - 20 - pulse, 12, 20 + pulse);
+      else { ctx.fillStyle = '#48e0c8'; ctx.fillRect(cx - 6, yBottom - 20, 12, 20); }
+      return;
+    }
+    if (key === '_pipe') {
+      const spr = getSprite('crate');
+      if (spr) { ctx.drawImage(spr, cx - 6, yBottom - 11); ctx.drawImage(spr, cx - 6, yBottom - 18); }
+      return;
+    }
+    if (key === '_qcrate') {
+      const bob = Math.round(Math.sin(this.t * 3) * 2);
+      const spr = getSprite('crate');
+      if (spr) ctx.drawImage(spr, cx - 6, yBottom - 16 + bob);
+      return;
+    }
+    const spr = getSprite(key);
+    if (spr) ctx.drawImage(spr, cx - Math.floor(spr.width / 2), yBottom - spr.height);
+  }
+  draw(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    const p = GUIDE_PAGES[this.page];
+    drawTextCentered(ctx, 'FIELD GUIDE', W / 2, 14, '#fff', 2);
+    drawTextCentered(ctx, p.title, W / 2, 36, p.color, 1);
+    drawTextCentered(ctx, p.hint, W / 2, 48, '#5a5a68');
+    const rh = p.rows.length > 8 ? 20 : 22; // 9-row pages tighten up a touch
+    p.rows.forEach((r, i) => {
+      const y = 62 + i * rh;
+      this.drawIcon(ctx, r.s, 44, y + 18);
+      drawText(ctx, r.name, 70, y + 6, p.color);
+      drawText(ctx, r.desc, 190, y + 6, '#c8c8d8');
+    });
+    drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
+  }
+}
+
+// SOUND TEST: the classic arcade jukebox. Every cabinet track + the hub theme.
+const JUKEBOX = [
+  { name: 'THE FOOD COURT (HUB THEME)', bank: HUB_THEME },
+  ...CABINETS.map((c) => ({ name: `${c.name} (${c.genre})`, bank: c.music })),
+];
+
+export class SoundTestState {
+  constructor({ onDone }) { this.onDone = onDone; }
+  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setButtons([]); }
+  exit() { Audio.setBank(null); }
+  play(i) {
+    this.playing = i;
+    Audio.setBank(JUKEBOX[i].bank);
+    Audio.sfx('uiConfirm');
+  }
+  update(dt) {
+    this.t += dt;
+    const n = JUKEBOX.length;
+    if (Input.pressed('duck') || Input.pressed('right') || Input.pressed('jump')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
+    if (Input.pressed('confirm')) this.play(this.idx);
+    if (Input.pressed('pointer')) {
+      const i = Math.floor((Input.pointer.y - 64) / 16);
+      if (i >= 0 && i < n) {
+        if (this.idx === i) this.play(i); else { this.idx = i; Audio.sfx('ui'); }
+      }
+    }
+    if (Input.pressed('back')) { Audio.setBank(null); this.onDone(); }
+    Input.endFrame();
+  }
+  draw(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, 'SOUND TEST', W / 2, 16, '#fff', 2);
+    drawTextCentered(ctx, 'ALL CHIPTUNES ARE PLAYED LIVE BY A VERY SMALL ORCHESTRA.', W / 2, 40, '#5a5a68');
+    JUKEBOX.forEach((tr, i) => {
+      const sel = i === this.idx;
+      const on = i === this.playing;
+      const label = `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)`;
+      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, 64 + i * 16, on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
+    });
+    if (this.playing >= 0) {
+      const bars = 12;
+      for (let i = 0; i < bars; i++) {
+        const hgt = 3 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 10;
+        ctx.fillStyle = '#48e0c8';
+        ctx.fillRect(W / 2 - bars * 5 + i * 10, H - 34 - hgt, 6, hgt);
+      }
+    }
+    drawTextCentered(ctx, 'ENTER/TAP: PLAY   ESC: BACK', W / 2, H - 14, '#5a5a68');
   }
 }
 

@@ -130,6 +130,7 @@ function faux3dPack(settings) {
 function neonPack(settings) {
   return {
     name: 'neon',
+    dark: true,
     bg(ctx, t, camX, cab) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // starfield
@@ -231,6 +232,7 @@ function vhsPack(settings) {
   const reduced = settings && settings.reducedFlashing;
   return {
     name: 'vhs',
+    dark: true,
     bg(ctx, t, camX, cab) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       parallaxHills(ctx, camX, cab.far, GROUND_Y, 55, 100, 0.15);
@@ -399,6 +401,7 @@ function surgePack(settings) {
   function pick(t) { return packs[Math.floor(t / period) % packs.length]; }
   return {
     name: 'surge',
+    dark: true,
     bg(ctx, t, camX, cab) { pick(t).bg(ctx, t, camX, cab); },
     ground(ctx, camX, cab, obstacles) { pick(this._t || 0).ground(ctx, camX, cab, obstacles); },
     post(ctx, t) {

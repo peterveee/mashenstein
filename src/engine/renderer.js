@@ -60,12 +60,29 @@ export function updateShake(dt, rand) {
   }
 }
 
+// Sprites queued here draw above the backbuffer at device resolution with
+// bilinear smoothing — used for the hero so it reads clean, not chunky.
+// The queue is consumed (and cleared) every blit; no-op when headless.
+const overlaySprites = [];
+export function pushOverlaySprite(img, x, y, w, h) {
+  if (!dctx) return;
+  overlaySprites.push({ img, x, y, w, h });
+}
+
 export function blit() {
   const dpr = window.devicePixelRatio || 1;
   dctx.setTransform(screen.scale * dpr, 0, 0, screen.scale * dpr, 0, 0);
   dctx.imageSmoothingEnabled = false;
   dctx.clearRect(0, 0, W, H);
   dctx.drawImage(back, Math.round(shakeX), Math.round(shakeY));
+  if (overlaySprites.length) {
+    dctx.imageSmoothingEnabled = true;
+    for (const o of overlaySprites) {
+      dctx.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
+    }
+    dctx.imageSmoothingEnabled = false;
+    overlaySprites.length = 0;
+  }
 }
 
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.
