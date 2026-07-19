@@ -45,9 +45,21 @@ export class RunState {
     return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
   }
 
-  drawAtGround(ctx, worldX, fn) {
+  // Translate a draw callback down to the terrain. Sampling ONE point floats
+  // things on rolling ground: the art has a flat base up to 1.33x wider than
+  // the hitbox, so on any slope part of that base hangs in the air. Instead,
+  // seat on the LOWEST ground across the drawn footprint (max y — every part
+  // of the base touches or embeds), and sink ground-sitters a further pixel so
+  // their bottom edge reads as planted rather than resting on a tangent.
+  drawAtGround(ctx, worldX, fn, footW = 0, sink = 0) {
+    let gy = this.groundYAt(worldX + footW / 2);
+    if (footW > 0) {
+      const over = footW * (4 / 3) / 2; // drawn half-width, centered on the box
+      const cx = worldX + footW / 2;
+      gy = Math.max(gy, this.groundYAt(cx - over), this.groundYAt(cx + over));
+    }
     ctx.save();
-    ctx.translate(0, this.groundYAt(worldX) - GROUND_Y);
+    ctx.translate(0, gy - GROUND_Y + sink);
     fn();
     ctx.restore();
   }
@@ -1089,8 +1101,8 @@ export class RunState {
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y);
 
     // Entities.
-    for (const p of this.pickups) if (p.live) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings));
-    for (const ob of this.obstacles) if (ob.live) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings));
+    for (const p of this.pickups) if (p.live) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
+    for (const ob of this.obstacles) if (ob.live) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
     for (const pr of this.projectiles) {
       const x = Math.round(pr.x - cam), y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {

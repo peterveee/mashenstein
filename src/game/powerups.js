@@ -43,7 +43,7 @@ export class Powerups {
       magnet: [0, 8, 12, 16, 20][level] || 8,
       star: [0, 10, 10, 10, 12][level] || 10,
       slowmo: [0, 6, 8, 10, 12][level] || 6,
-      unpeel: [0, 20, 22, 24, 26][level] || 20,
+      unpeel: [0, 12, 13, 14, 15][level] || 12,
     }[id] || 8;
     return base * this.durMult();
   }

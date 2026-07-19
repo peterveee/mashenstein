@@ -43,9 +43,12 @@ assert(buzzes > 0, 'the sign still shorts out');
 assert(buzzes <= 16, `the cord fires well below the old 22-a-minute rate (${buzzes})`);
 // The sign keeps blinking on every block, but it is only AUDIBLE on some of
 // them: one cue per block at most (the first blink; the second falls inside its
-// tail), and only on blocks the hash selects. At 56bpm a block is 8.6s, so 7 a
-// minute, of which roughly half speak — about 4, with the gaps left uneven on
-// purpose so it reads as a fault rather than a metronome.
+// tail), and only on blocks the hash selects. At 56bpm a block is one bar, 4.3s,
+// so 14 a minute — the hash lets under a third of them speak, with the gaps left
+// uneven on purpose so it reads as a fault rather than a metronome. The visible
+// blink rate and the audible rate are tuned separately for exactly this reason:
+// the sign has to stutter often enough to be noticed without the buzz becoming
+// a tic.
 assert(buzzes >= 2 && buzzes <= 8, `only some blocks are audible, unevenly spaced (${buzzes})`);
 
 assert(buzzesPerMinute({ reducedFlashing: true }) === 0, 'reduced flashing pins the sign lit and silent');

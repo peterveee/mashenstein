@@ -2,42 +2,44 @@
 
 export const WORLD_SPRITES = {
   // -- obstacles ------------------------------------------------------------
-  // Thorn shrubs: warm red-orange so they pop against every cabinet's ground
-  // (the old greens matched the plumber turf exactly and vanished into it).
-  shrub: {
-    pal: { g: '#d84828', d: '#8a2018', s: '#7a4a24', w: '#f8a048' },
+  // Thorn cactus: warm red-orange so it pops against every cabinet's ground
+  // (greens matched the plumber turf exactly and vanished into it). Only the
+  // fallback for when the vector painters are unavailable — sprites/props.js
+  // draws the version the game actually shows.
+  cactus: {
+    pal: { g: '#d84828', d: '#8a2018', w: '#f8d0a0' },
     grid: [
-      '....gg..gg....',
-      '..g.gggggg.g..',
-      '.gggwgggwggg..',
-      '.gggggggggggg.',
-      'ggggwggggwgggg',
-      'gggdggddggdggg',
-      '.ggggdggdgggg.',
-      '.gggggggggggg.',
-      '..ggdggggdgg..',
-      '...gggggggg...',
-      '.....ssss.....',
-      '.....ssss.....',
+      '.....wggw.....',
+      '.....gdgg.....',
+      '.w...gdgg...w.',
+      '.gw.wgdggw.wg.',
+      '.gg..gdgg..gg.',
+      '.gg..gdgg..gg.',
+      'wggggggggggggw',
+      '..ggwgdggwgg..',
+      '.....gdgg.....',
+      '....wgdggw....',
+      '.....gdgg.....',
+      '...dddddddd...',
     ],
   },
-  shrubBig: {
-    pal: { g: '#d84828', d: '#8a2018', s: '#7a4a24', w: '#f8a048' },
+  cactusBig: {
+    pal: { g: '#d84828', d: '#8a2018', w: '#f8d0a0' },
     grid: [
-      '...gg..ggg..gg....',
-      '..gggggggggggg....',
-      '.ggwgggwgggwggg...',
-      '.ggggggggggggggg..',
-      'ggggwggggggwggggg.',
-      'gggggggddggggggg..',
-      'ggggdggggggdgggg..',
-      '.ggggggddgggggg...',
-      '.gggggggggggggg...',
-      '..ggdgggggggdg....',
-      '...gggggggggg.....',
-      '....gggggggg......',
-      '......ssss........',
-      '......ssss........',
+      '.......wggw.......',
+      '.......gdgg.......',
+      '..w....gdgg....w..',
+      '..gw..wgdggw..wg..',
+      '..gg...gdgg...gg..',
+      '..gg...gdgg...gg..',
+      '..gg...gdgg...gg..',
+      'wgggggggdggggggggw',
+      '...ggwggdggwgg....',
+      '.......gdgg.......',
+      '......wgdggw......',
+      '.......gdgg.......',
+      '.......gdgg.......',
+      '....dddddddddd....',
     ],
   },
   crate: {

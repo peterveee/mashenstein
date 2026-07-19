@@ -159,5 +159,34 @@ localStorage.setItem('mashenstein.v2', JSON.stringify({ version: 2, settings: de
 const migratedSave = new Save(); migratedSave.load(); migratedSave.selectSlot(0);
 assert(migratedSave.slot.mastery.raymn?.xp === 345 && !migratedSave.slot.mastery.gary, "playable Gary mastery migrates to Ray M'N");
 
+// Rolling terrain seating: an obstacle's draw translate must seat it on the
+// LOWEST ground under its drawn footprint (the art is wider than the hitbox,
+// so single-point sampling floats one side on any slope), plus its sink.
+{
+  const run = makeRun(); run.enter();
+  const { terrainGroundY } = await import('../src/game/terrain.js');
+  const { GROUND_Y } = await import('../src/game/run.js');
+  // pick a world x on a slope: ground at left and right of a 13px-wide box differ
+  let wx = 400;
+  for (; wx < 2000; wx += 10) {
+    if (Math.abs(terrainGroundY(run.cabinet, wx, GROUND_Y) - terrainGroundY(run.cabinet, wx + 17, GROUND_Y)) > 1.5) break;
+  }
+  const w = 13, sink = 1.5;
+  const over = w * (4 / 3) / 2, cx = wx + w / 2;
+  const lowest = Math.max(
+    terrainGroundY(run.cabinet, cx, GROUND_Y),
+    terrainGroundY(run.cabinet, cx - over, GROUND_Y),
+    terrainGroundY(run.cabinet, cx + over, GROUND_Y));
+  let ty = null;
+  const ctx = { save() {}, restore() {}, translate(_, y) { ty = y; } };
+  run.drawAtGround(ctx, wx, () => {}, w, sink);
+  assert(ty !== null && Math.abs(ty - (lowest - GROUND_Y + sink)) < 1e-9,
+    `sloped ground seats the sprite on the lowest footprint point (${ty})`);
+  ctx.translate(0, 0);
+  run.drawAtGround(ctx, wx, () => {});
+  assert(Math.abs(ty - (terrainGroundY(run.cabinet, wx, GROUND_Y) - GROUND_Y)) < 1e-9,
+    'width-less callers (portal, copter) keep single-point seating');
+}
+
 console.log(failed ? 'RELIABILITY: FAILED' : 'RELIABILITY: PASSED');
 process.exit(failed ? 1 : 0);

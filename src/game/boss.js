@@ -14,7 +14,7 @@ export const BOSSES = {
   neon: {
     name: 'THE UNDERINSURED CLOWN-COPTER',
     hp: 6, sprite: 'eggshell',
-    drops: ['barrel', 'crate', 'shrub'],
+    drops: ['barrel', 'crate', 'cactus'],
     dropEvery: [2.6, 2.0, 1.5],
     jokeAt: 0.5,
     jokeText: 'LOW BATTERY. THE COPTER PAUSES. EGGSHELL DISPUTES ALL DAMAGE SO FAR.',

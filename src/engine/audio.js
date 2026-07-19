@@ -8,6 +8,12 @@ const SFX_TRIM = {
   blockBreak: 0.58, boom: 0.68, coinSpray: 0.7, hit: 0.74,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  // Miss Chomp's coin bite. Measured against 'coin': it peaks ~5dB hotter at
+  // the same nominal gain (the resonant lowpass), but the real problem was
+  // sustain — it holds its peak where 'coin' is a fast-decaying blip, putting
+  // it ~23dB up on total energy. Trim plus a shorter hold (see the cue) lands
+  // it just under 'coin' on peak and a few dB over on energy.
+  waka: 0.45,
 };
 
 class AudioSys {
@@ -264,7 +270,10 @@ class AudioSys {
   // One PAC-style bite: pitch and filter glide down as the mouth closes and
   // back up as it opens. The glide is what makes it read as "waka" rather
   // than a beep — a square through a resonant lowpass keeps the mouthy timbre.
-  waka(when = 0, pitch = 1, gain = 0.13) {
+  // `hold` is the fraction of the note spent at full level before the release.
+  // The coin bite uses a shorter one than the hazard chomp: it fires on every
+  // pickup, and it's the sustain — not the peak — that made it wearing.
+  waka(when = 0, pitch = 1, gain = 0.13, hold = 0.75) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + when;
     const dur = 0.12;
@@ -283,7 +292,7 @@ class AudioSys {
     g.gain.setValueAtTime(0.0001, t);
     const peak = gain * this.cueGain;
     g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
-    g.gain.setValueAtTime(peak, t + dur * 0.75);
+    g.gain.setValueAtTime(peak, t + dur * hold);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.01);
     o.connect(f); f.connect(g); g.connect(this.sfxGain);
     o.start(t); o.stop(t + dur + 0.03);
@@ -343,7 +352,7 @@ class AudioSys {
       case 'uiConfirm': this.osc('sine', 900, 900, 0.05, 0.1); this.osc('sine', 1350, 1350, 0.06, 0.1, 0.05); break;
       case 'uiBad': this.osc('square', 200, 150, 0.15, 0.12); break;
       // One bite per coin, exactly like eating dots; combos ride the pitch up.
-      case 'waka': this.waka(0, pitch); break;
+      case 'waka': this.waka(0, pitch, 0.13, 0.4); break;
       // The hazard bite gets the full waka-waka plus something giving way.
       case 'chomp':
         this.waka(0, 0.92, 0.15);

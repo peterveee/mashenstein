@@ -3,8 +3,8 @@
 // Action classes drive fairness: 'jump' | 'duck' | 'none' (avoidable by running).
 
 export const OBSTACLES = {
-  shrub:      { w: 13, h: 12, sprite: 'shrub', ground: true, breakable: true, action: 'jump' },
-  shrubBig:   { w: 17, h: 14, sprite: 'shrubBig', ground: true, breakable: true, action: 'jump' },
+  cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump' },
+  cactusBig:   { w: 17, h: 14, sprite: 'cactusBig', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
   barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true },
   drone:      { w: 12, h: 7,  sprite: 'drone', alt: 11, armored: true, action: 'duck', bob: true },

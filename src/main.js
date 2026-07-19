@@ -57,7 +57,7 @@ const Flow = {
     },
     onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } })),
     onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toTitle() })),
-    onGuide: () => setState(new FieldGuideState({ onDone: () => Flow.toTitle() })),
+    onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toTitle() })),
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toTitle() })),
   })); },
 

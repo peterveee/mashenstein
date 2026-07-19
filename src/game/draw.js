@@ -4,7 +4,7 @@ import { pushOverlayDraw } from '../engine/renderer.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite } from '../sprites/toons.js';
-import { hasProp, propSprite, propTinted, propRimPair, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
+import { hasProp, propSprite, propTinted, propRimPair, propFrames, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
 
 const POWER_GLOW = { capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)', capSlow: 'rgba(200,184,232,0.5)' };
 import { GROUND_Y } from './run.js';
@@ -220,21 +220,34 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const bw = propName ? e.def.w : spr.width;
   const bh = propName ? e.def.h : spr.height;
   const src = propName ? null : (danger ? (scaled2x(sprName) || spr) : spr);
+  // Animated props cycle cached frames. bobPhase offsets each instance so a row
+  // of fires licks independently instead of flickering in lockstep; reduced
+  // motion holds frame 0. ~11fps is fast enough to read as fire and slow enough
+  // to stay a flicker rather than a strobe.
+  const frameCount = propName ? propFrames(propName) : 1;
+  const frame = frameCount > 1 && !settings.reducedMotion
+    ? Math.floor(t * 11 + e.bobPhase * 4) % frameCount
+    : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;
   const rimLite = danger ? (propName ? null : tinted(sprName, '#f0f0f8')) : null;
   const prevSmooth = ctx.imageSmoothingEnabled;
   // plain: natural size (stacked crates / pipes tile edge-to-edge);
   // anchor 'center' for rotating rollers, 'bottom' otherwise.
   const draw1 = (dx, dy, anchor = 'bottom', natural = false, sw = bw, sh = bh) => {
+    // propTall stretches the ART above the def box (bottom-anchored), leaving
+    // the hitbox alone — the rasters are painted at the stretched height so
+    // nothing is distorted, just drawn with more stature.
+    const tall = propName ? propTall(propName) : 1;
+    const shT = sh * tall;
     const w0 = natural ? sw : Math.round(sw * 4 / 3);
-    const h0 = natural ? sh : Math.round(sh * 4 / 3);
+    const h0 = natural ? sh : Math.round(sh * 4 / 3 * tall);
     const ox = dx - Math.floor((w0 - sw) / 2);
     const oy = anchor === 'center' ? dy - Math.floor((h0 - sh) / 2) : dy - (h0 - sh);
     ctx.imageSmoothingEnabled = true;
     if (danger && propName) {
       // precomposed rim rings: one draw per color instead of two
-      const rl = propRimPair(propName, sw, sh, '#f0f0f8', 'x');
-      const rd = propRimPair(propName, sw, sh, '#101018', 'y');
+      const rl = propRimPair(propName, sw, shT, '#f0f0f8', 'x', frame);
+      const rd = propRimPair(propName, sw, shT, '#101018', 'y', frame);
       ctx.globalAlpha = 0.12 + 0.08 * Math.sin(t * 5 + e.bobPhase);
       if (rl) ctx.drawImage(rl, ox - 1, oy - 1, w0 + 2, h0 + 2);
       ctx.globalAlpha = 0.22;
@@ -247,7 +260,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
       ctx.drawImage(rimDark, ox, oy - 1, w0, h0); ctx.drawImage(rimDark, ox, oy + 1, w0, h0);
       ctx.globalAlpha = 1;
     }
-    ctx.drawImage(propName ? propSprite(propName, sw, sh) : (natural ? spr : src), ox, oy, w0, h0);
+    ctx.drawImage(propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src), ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;
   };
   if (danger) {

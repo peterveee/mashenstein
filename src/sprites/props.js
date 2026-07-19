@@ -53,48 +53,77 @@ function stroke(ctx, col, w, pathFn) {
 // Each: (ctx, w, h) drawing inside [0..w] x [0..h]. Ground props sit on h.
 export const PROP_PAINTERS = {
   // --- ground hazards ---------------------------------------------------
-  // A thorn bush has to read as a low mass GROWING OUT OF THE GROUND with
-  // spines on it. The old painter was a closed star polygon floating above a
-  // stem, which at 13x12 collapsed into a lumpy pennant with a mushroom cap.
-  // What fixes it: a flat bottom sitting on the ground line, a wide silhouette,
-  // and thorns that spike off a crown rather than radiating in a full circle.
-  shrub(ctx, w, h) {
+  // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
+  // bristling with pale spines. This slot cycled through shrub drawings and a
+  // fire before landing here; a cactus is the one desert prop whose silhouette
+  // survives 13x12, because everyone already knows the shape.
+  //
+  // Red-orange, not green, ON PURPOSE: the guide teaches RED = AVOID, and the
+  // plumber cabinet's turf is #3a9c48 — a green cactus vanishes into exactly
+  // the ground it spawns on. (A red shrub was where this art began, for the
+  // same reason.)
+  cactus(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    const base = h * 0.99, cy = h * 0.7;
-    // Foliage line: three TANGENT circular humps, low and wide, drawn as one
-    // path so the mass has a single outline and the joins fall as cusps —
-    // that V between clumps is what reads as a bush. Everything else tried
-    // here (a star polygon, separate lobes, quadratic arches) came out as a
-    // pennant, a bowl of berries, and a campfire respectively.
-    const humps = [[0.17, 0.17], [0.56, 0.22], [0.89, 0.11]];
-    // Thorns go behind the foliage, so only their tips clear the humps and
-    // there is no seam where they attach. Short: spikes the height of the mass
-    // are what made it a campfire.
-    shape(ctx, '#a83020', u, (c) => {
-      for (const [tx, ty] of [[0.14, 0.36], [0.43, 0.28], [0.73, 0.33]]) {
-        c.moveTo(w * (tx - 0.08), cy);
-        c.lineTo(w * tx, h * ty);
-        c.lineTo(w * (tx + 0.08), cy);
-        c.closePath();
+    const base = h * 0.995;
+    // A slow sway, like the whole plant is grooving to the cabinet music: the
+    // body shears about its base (feet planted, top swinging) while each arm
+    // bobs on its own offset of the same cycle. Shear rather than rotation so
+    // the base never lifts off the ground line.
+    const p = (frame % 6) * (Math.PI / 3);
+    const k = 0.045 * Math.sin(p);
+    ctx.save();
+    ctx.transform(1, 0, -k, 1, k * base, 0);
+    const armBobL = h * 0.02 * Math.sin(p + 1.1);
+    const armBobR = h * 0.02 * Math.sin(p + 3.9);
+    const arm = (c, x0, y0, aw, rise, dir) => {
+      // an elbow: out sideways, then up, rounded at both turns
+      c.moveTo(x0, y0 + aw);
+      c.lineTo(x0 + dir * (aw * 1.7), y0 + aw);
+      c.arcTo(x0 + dir * (aw * 2.6), y0 + aw, x0 + dir * (aw * 2.6), y0, aw * 0.9);
+      c.lineTo(x0 + dir * (aw * 2.6), y0 - rise);
+      c.arcTo(x0 + dir * (aw * 2.6), y0 - rise - aw, x0 + dir * (aw * 1.6), y0 - rise - aw, aw);
+      c.arcTo(x0 + dir * (aw * 0.8), y0 - rise - aw, x0 + dir * (aw * 0.8), y0 - rise, aw * 0.8);
+      c.lineTo(x0 + dir * (aw * 0.8), y0 - aw * 0.2);
+      c.closePath();
+    };
+    shape(ctx, '#d84828', u, (c) => {
+      // trunk: slightly waisted, domed top
+      c.moveTo(w * 0.38, base);
+      c.lineTo(w * 0.38, h * 0.3);
+      c.arc(w * 0.5, h * 0.3, w * 0.12, Math.PI, 0, false);
+      c.lineTo(w * 0.62, base);
+      c.closePath();
+      arm(c, w * 0.38, h * 0.52 + armBobL, w * 0.1, h * 0.16 - armBobL, -1); // left arm, lower
+      arm(c, w * 0.62, h * 0.4 + armBobR, w * 0.1, h * 0.1 - armBobR, 1);    // right arm, higher
+    });
+    // Ribs: two darker grooves down the trunk, one per arm.
+    stroke(ctx, '#a83020', Math.max(0.5, w * 0.045), (c) => {
+      c.moveTo(w * 0.46, h * 0.26); c.lineTo(w * 0.46, base - h * 0.04);
+      c.moveTo(w * 0.55, h * 0.28); c.lineTo(w * 0.55, base - h * 0.04);
+      c.moveTo(w * 0.16, h * 0.42); c.lineTo(w * 0.16, h * 0.56);
+      c.moveTo(w * 0.85, h * 0.32); c.lineTo(w * 0.85, h * 0.44);
+    });
+    // Spines: short pale ticks angling off the trunk and arm edges. These are
+    // the "thorn" in thorn cactus — without them it is a red glove.
+    stroke(ctx, '#f8d0a0', Math.max(0.45, w * 0.04), (c) => {
+      const ticks = [
+        [0.38, 0.34, -1, -0.2], [0.38, 0.62, -1, 0.15], [0.38, 0.86, -1, -0.1],
+        [0.62, 0.5, 1, -0.15], [0.62, 0.74, 1, 0.2], [0.62, 0.92, 1, -0.1],
+        [0.44, 0.2, -0.5, -1], [0.58, 0.2, 0.5, -1],
+        [0.09, 0.38, -0.8, -0.6], [0.24, 0.38, 0.6, -0.8],
+        [0.78, 0.28, -0.6, -0.8], [0.92, 0.28, 0.8, -0.6],
+      ];
+      for (const [tx, ty, dx, dy] of ticks) {
+        c.moveTo(w * tx, h * ty);
+        c.lineTo(w * (tx + dx * 0.06), h * (ty + dy * 0.06));
       }
     });
-    shape(ctx, '#d84828', u, (c) => {
-      // Sides slope in toward the ground: square corners under the humps read
-      // as a planter box the bush is sitting in.
-      c.moveTo(w * 0.08, base);
-      c.lineTo(0, cy);
-      // PI -> 0 with counterclockwise FALSE sweeps through 3PI/2, which is the
-      // TOP in canvas's y-down angles. Passing true here traces the underside
-      // and flattens the whole bush.
-      for (const [hx, hr] of humps) c.arc(w * hx, cy, w * hr, Math.PI, 0, false);
-      c.lineTo(w * 0.92, base);
-      c.closePath();
-    });
-    // Depth: a shadow along the underside, and a lit leaf on the tallest clump.
-    plain(ctx, '#a83020', (c) => c.ellipse(w * 0.5, h * 0.97, w * 0.36, h * 0.05, 0, 0, Math.PI * 2));
-    plain(ctx, '#f8a048', (c) => c.ellipse(w * 0.42, h * 0.58, w * 0.07, h * 0.05, -0.5, 0, Math.PI * 2));
+    ctx.restore();
+    // A little sand mound so it grows out of the ground rather than standing
+    // on it. Outside the sway shear: the ground does not dance.
+    plain(ctx, '#8a2018', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.04, 0, 0, Math.PI * 2));
   },
-  shrubBig(ctx, w, h) { PROP_PAINTERS.shrub(ctx, w, h); },
+  cactusBig(ctx, w, h, frame = 0) { PROP_PAINTERS.cactus(ctx, w, h, frame); },
   crate(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#c89858', u, (c) => rr(c, w * 0.04, h * 0.06, w * 0.92, h * 0.88, w * 0.12));
@@ -369,9 +398,24 @@ const SS = 8; // supersample factor for the offscreen rasterization
 
 export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 
+// Props that animate: name -> how many frames the painter cycles through.
+// Anything absent is static. Frames are rasterized and cached individually, so
+// an animated prop costs one canvas per frame per size and still draws with a
+// single drawImage — no per-frame vector work in the hot loop.
+export const PROP_FRAMES = { cactus: 6, cactusBig: 6 };
+
+// Visual overdraw: props drawn taller than their def box, bottom-anchored, so
+// the art gains stature without touching the hitbox (hazards already render
+// 1.33x their box — bigger art is generous, never unfair).
+export const PROP_TALL = { cactus: 1.55, cactusBig: 1.4 };
+export function propTall(name) { return PROP_TALL[name] || 1; }
+
+export function propFrames(name) { return PROP_FRAMES[name] || 1; }
+
 // Cached vector prop rasterized at SS x its logical size.
-export function propSprite(name, w, h) {
-  const key = `${name}|${w}x${h}`;
+export function propSprite(name, w, h, frame = 0) {
+  const f = frame % propFrames(name);
+  const key = `${name}|${w}x${h}|${f}`;
   if (cache.has(key)) return cache.get(key);
   const paint = PROP_PAINTERS[name];
   if (!paint) return null;
@@ -382,16 +426,17 @@ export function propSprite(name, w, h) {
   x.scale(SS, SS);
   x.lineJoin = 'round';
   x.lineCap = 'round';
-  paint(x, w, h);
+  paint(x, w, h, f);
   cache.set(key, c);
   return c;
 }
 
 // Flat silhouette of a prop in one color — used for hazard rim outlines.
-export function propTinted(name, w, h, color) {
-  const key = `${name}|${w}x${h}|${color}`;
+export function propTinted(name, w, h, color, frame = 0) {
+  const f = frame % propFrames(name);
+  const key = `${name}|${w}x${h}|${color}|${f}`;
   if (cache.has(key)) return cache.get(key);
-  const src = propSprite(name, w, h);
+  const src = propSprite(name, w, h, f);
   if (!src) return null;
   const c = document.createElement('canvas');
   c.width = src.width; c.height = src.height;
@@ -406,10 +451,11 @@ export function propTinted(name, w, h, color) {
 
 // Union of two offset silhouettes in one cached canvas — the hazard rim
 // becomes a single drawImage per color instead of two.
-export function propRimPair(name, w, h, color, axis) {
-  const key = `${name}|${w}x${h}|rim|${color}|${axis}`;
+export function propRimPair(name, w, h, color, axis, frame = 0) {
+  const f = frame % propFrames(name);
+  const key = `${name}|${w}x${h}|rim|${color}|${axis}|${f}`;
   if (cache.has(key)) return cache.get(key);
-  const sil = propTinted(name, w, h, color);
+  const sil = propTinted(name, w, h, color, f);
   if (!sil) return null;
   const c = document.createElement('canvas');
   c.width = sil.width + 2 * SS;
@@ -468,8 +514,8 @@ export function sparkSprite(color) {
 }
 
 // Convenience: draw a vector prop smoothly into a logical-coordinate box.
-export function drawProp(ctx, name, x, y, w, h) {
-  const spr = propSprite(name, w, h);
+export function drawProp(ctx, name, x, y, w, h, frame = 0) {
+  const spr = propSprite(name, w, h, frame);
   if (!spr) return false;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;

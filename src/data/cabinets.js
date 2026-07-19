@@ -10,18 +10,18 @@ const coinArc = (dx, n = 4) => ({ t: 'coinArc', dx, n });
 const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
 const BASE_PATTERNS = [
-  P(0, [{ t: 'shrub', dx: 0 }]),
-  P(0, [{ t: 'shrub', dx: 0 }, coinArc(60)]),
+  P(0, [{ t: 'cactus', dx: 0 }]),
+  P(0, [{ t: 'cactus', dx: 0 }, coinArc(60)]),
   P(0, [{ t: 'crate', dx: 0 }]),
   P(0, [coinArc(0, 5)]),
-  P(1, [{ t: 'shrub', dx: 0 }, { t: 'shrub', dx: 26 }]),
-  P(1, [{ t: 'shrubBig', dx: 0 }, coinArc(80)]),
+  P(1, [{ t: 'cactus', dx: 0 }, { t: 'cactus', dx: 26 }]),
+  P(1, [{ t: 'cactusBig', dx: 0 }, coinArc(80)]),
   P(1, [{ t: 'buzzbird', dx: 0, y: 60 }]),
   P(1, [{ t: 'drone', dx: 0, y: 26 }]), // low flyer: duck under
   P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
-  P(2, [{ t: 'shrub', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
+  P(2, [{ t: 'cactus', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
   P(2, [{ t: 'barrel', dx: 0 }]),
-  P(2, [{ t: 'shrubBig', dx: 0 }, { t: 'shrub', dx: 100 }, coinArc(50)]),
+  P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }, coinArc(50)]),
 ];
 
 export const CABINETS = [
@@ -77,7 +77,7 @@ export const CABINETS = [
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
-      P(1, [{ t: 'qcrate', dx: 0, y: 54 }, { t: 'qcrate', dx: 16, y: 54 }, { t: 'shrub', dx: 90 }]),
+      P(1, [{ t: 'qcrate', dx: 0, y: 54 }, { t: 'qcrate', dx: 16, y: 54 }, { t: 'cactus', dx: 90 }]),
       P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
       P(2, [{ t: 'qcrate', dx: 0, y: 70 }, { t: 'qcrate', dx: 16, y: 70 }, { t: 'qcrate', dx: 32, y: 70 }]),
     ],
@@ -93,7 +93,7 @@ export const CABINETS = [
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60, 6)]),
-      P(1, [{ t: 'boostPad', dx: 0 }, { t: 'shrub', dx: 120 }]),
+      P(1, [{ t: 'boostPad', dx: 0 }, { t: 'cactus', dx: 120 }]),
       P(2, [{ t: 'gap', dx: 0, w: 56 }]),           // collapsing road: a pit
       P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100, 5)]),
       P(2, [{ t: 'barrel', dx: 0 }, { t: 'barrel', dx: 140 }]),
@@ -114,7 +114,7 @@ export const CABINETS = [
       P(1, [{ t: 'shooterDrone', dx: 0, y: 60 }]),
       P(1, [{ t: 'target', dx: 0, y: 50 }, { t: 'target', dx: 30, y: 70 }]),
       P(2, [{ t: 'shooterDrone', dx: 0, y: 60 }, { t: 'drone', dx: 110, y: 26 }]),
-      P(2, [{ t: 'shooterDrone', dx: 0, y: 44 }, { t: 'shrub', dx: 130 }]),
+      P(2, [{ t: 'shooterDrone', dx: 0, y: 44 }, { t: 'cactus', dx: 130 }]),
     ],
     taunt: 'THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY.',
   },
@@ -130,7 +130,7 @@ export const CABINETS = [
       P(0, [{ t: 'icicle', dx: 0 }]),
       P(1, [{ t: 'icicle', dx: 0 }, { t: 'icicle', dx: 60 }]),
       P(1, [{ t: 'switch', dx: 0, y: 50 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
-      P(2, [{ t: 'icicle', dx: 0 }, { t: 'shrub', dx: 70 }, coinArc(120)]),
+      P(2, [{ t: 'icicle', dx: 0 }, { t: 'cactus', dx: 70 }, coinArc(120)]),
       P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'icicle', dx: 120 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
@@ -165,7 +165,7 @@ export const CABINETS = [
       P(1, [{ t: 'beatBar', dx: 0 }]),
       P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 90 }]),
       P(2, [{ t: 'beatBar', dx: 0 }, { t: 'drone', dx: 100, y: 26 }]),
-      P(2, [{ t: 'shrub', dx: 0 }, { t: 'beatBar', dx: 80 }, coinArc(140)]),
+      P(2, [{ t: 'cactus', dx: 0 }, { t: 'beatBar', dx: 80 }, coinArc(140)]),
     ],
     taunt: 'I OWN THE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP.',
   },

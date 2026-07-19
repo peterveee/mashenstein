@@ -32,7 +32,7 @@ assert(p.active.magnet.t === 30, `minDuration floors magnet to 30 (${p.active.ma
 assert(POWER_DEFS.unpeel && POWER_DEFS.unpeel.name === 'UNPEELABLE', 'unpeel is defined in POWER_DEFS');
 p = new Powerups(bench);
 p.grab('unpeel');
-assert(p.active.unpeel.t === 20, `capsule unpeel lasts 20s (${p.active.unpeel.t})`);
+assert(p.active.unpeel.t === 12, `capsule unpeel lasts 12s (${p.active.unpeel.t})`);
 
 p = new Powerups(bench);
 assert(!p.isInvincible(), 'not invincible before grabbing unpeel');

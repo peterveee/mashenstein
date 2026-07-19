@@ -8,6 +8,7 @@ let current = null;
 let pending = null;
 let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
+const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
 const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
 let transitionHero = TRANSITION_HEROES[0];
 let transitionHeroIndex = -1;
@@ -39,7 +40,7 @@ export function updateState(dt) {
   // state update cleared one-frame gamepad presses before they could be read.
   Input.pollGamepad();
   if (fading !== 0) {
-    fade += fading * dt * 4;
+    fade += fading * dt * TRANSITION_SPEED;
     if (fade >= 1 && pending) {
       fade = 1;
       Input.clearAll();

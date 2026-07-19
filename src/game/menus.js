@@ -9,7 +9,7 @@ import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
-  shrub: [13, 12], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
+  cactus: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
   tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
@@ -479,10 +479,10 @@ function shaderHash21(x, y) {
 // ticking over the top of it, and locking to the block means it lands where the
 // bank's own phrase turns over. Audio.songBeat() is null before the context
 // exists (or in headless tests), so the old free-running period is the fallback.
-const FLICKER_BEATS = 8;      // one short-out per two-bar block
+const FLICKER_BEATS = 4;      // one short-out per bar
 const FLICKER_SLOT = 0.25;    // blink slot, in beats
 const FLICKER_DARK_BEATS = 0.125;
-const FLICKER_PERIOD = 9;     // fallback wall clock, matched to the musical rate
+const FLICKER_PERIOD = 4.5;   // fallback wall clock, matched to the musical rate
 const FLICKER_BLINK = 0.21;
 const FLICKER_DARK = 0.09;
 // The sign doesn't stutter on its own — the cord shorting out is what does it.
@@ -503,8 +503,11 @@ function flickerDark(t, reduced) {
 }
 // Softer than a full dropout: the sign browns out and recovers, rather than
 // switching off. A hard blink at this size read as a fault in the renderer.
+// But 0.62 over ~8 frames was below the threshold of noticing — against the
+// bloom pass, which smears the dip further, the sign just looked lit. This is
+// the deepest brownout that still reads as a sag rather than a dropped frame.
 function flickerAlpha(t, reduced) {
-  return flickerDark(t, reduced) ? 0.62 : 1;
+  return flickerDark(t, reduced) ? 0.45 : 1;
 }
 // Which two-bar block we're in, off whichever clock flickerDark is using. The
 // audible short-out is gated per block, so it has to be counted on the same
@@ -636,7 +639,7 @@ export class TitleState {
     // hash keeps the gaps uneven, which reads as a fault rather than a rhythm.
     const dark = flickerDark(this.t, this.save.settings.reducedFlashing);
     const block = flickerBlock(this.t);
-    if (dark && !this.wasDark && this.lastBuzzCycle !== block && shaderHash21(block, 11) >= 0.45) {
+    if (dark && !this.wasDark && this.lastBuzzCycle !== block && shaderHash21(block, 11) >= 0.72) {
       this.lastBuzzCycle = block;
       Audio.sfx('neonBuzz');
     }
@@ -926,7 +929,7 @@ const GUIDE_PAGES = [
   {
     title: 'HAZARDS: GROUND FLOOR', color: '#e04848', hint: 'RED = AVOID. JUMP THESE.',
     rows: [
-      { s: 'shrub', name: 'THORN SHRUB', desc: 'RED AND SPIKY. JUMP IT. BREAKABLE.' },
+      { s: 'cactus', name: 'THORN CACTUS', desc: 'RED AND PRICKLY. JUMP IT. BREAKABLE.' },
       { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
       { s: '_pipe', name: 'PIPE', desc: 'TALL AND SMUG. JUMP IT.' },
       { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
@@ -979,7 +982,7 @@ const GUIDE_PAGES = [
 ];
 
 export class FieldGuideState {
-  constructor({ onDone }) { this.onDone = onDone; }
+  constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
   enter() { this.page = 0; this.t = 0; Input.setMenuButtons(); }
   update(dt) {
     this.t += dt;
@@ -1040,7 +1043,10 @@ export class FieldGuideState {
     }
     if (hasProp(key)) {
       const d = GUIDE_ICON_SIZES[key] || [12, 11];
-      drawProp(ctx, key, cx - d[0] / 2, top(d[1]), d[0], d[1]);
+      // Animated props (fire) keep flickering in the guide — a still frame of
+      // something the player only ever sees moving is a worse likeness.
+      const frame = this.settings.reducedMotion ? 0 : Math.floor(this.t * 11);
+      drawProp(ctx, key, cx - d[0] / 2, top(d[1]), d[0], d[1], frame);
       return;
     }
     const spr = getSprite(key);
@@ -1156,7 +1162,7 @@ export class HowToPlayState {
     line('BREAKER BOX', 'WIN A CABINET\'S FIRST MINIGAME: BONUS POWERUP.', '#f890b8');
     y += 4;
     line('PAUSE / MUTE', 'P OR ESC / M. ESC AGAIN QUITS.');
-    drawTextCentered(ctx, 'JUMP THE RED THORN SHRUBS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
+    drawTextCentered(ctx, 'JUMP THE RED CACTI. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, 'TAP/ENTER: BACK', W / 2, H - 16, '#5a5a68');
   }
 }
