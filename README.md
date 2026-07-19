@@ -14,6 +14,10 @@ works offline from `file://`.
 
 ## Play
 
+Play the latest version at **https://peterveee.github.io/mashenstein/**.
+
+To run it locally:
+
 ```
 npm install        # once (esbuild only, dev-time)
 npm run build      # writes dist/index.html
