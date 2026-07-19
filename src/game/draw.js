@@ -100,14 +100,13 @@ export function drawWorldEntity(ctx, e, camX, t, style) {
     const h0 = plain ? bh : Math.round(bh * 4 / 3);
     const ox = dx - Math.floor((w0 - bw) / 2);
     const oy = anchor === 'center' ? dy - Math.floor((h0 - bh) / 2) : dy - (h0 - bh);
+    ctx.imageSmoothingEnabled = true;
     if (danger) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.globalAlpha = 0.4 + 0.25 * Math.sin(t * 5 + e.bobPhase);
-      ctx.drawImage(rimLite, ox - 2, oy, w0, h0); ctx.drawImage(rimLite, ox + 2, oy, w0, h0);
-      ctx.drawImage(rimLite, ox, oy - 2, w0, h0); ctx.drawImage(rimLite, ox, oy + 2, w0, h0);
-      ctx.globalAlpha = 1;
-      ctx.drawImage(rimDark, ox - 1, oy, w0, h0); ctx.drawImage(rimDark, ox + 1, oy, w0, h0);
+      ctx.globalAlpha = 0.12 + 0.08 * Math.sin(t * 5 + e.bobPhase);
+      ctx.drawImage(rimLite, ox - 1, oy, w0, h0); ctx.drawImage(rimLite, ox + 1, oy, w0, h0);
+      ctx.globalAlpha = 0.22;
       ctx.drawImage(rimDark, ox, oy - 1, w0, h0); ctx.drawImage(rimDark, ox, oy + 1, w0, h0);
+      ctx.globalAlpha = 1;
     }
     ctx.drawImage(plain ? spr : src, ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;

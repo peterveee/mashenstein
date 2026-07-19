@@ -12,7 +12,7 @@ export const back = (() => {
 
 export const bctx = back ? back.getContext('2d') : null;
 
-export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, smooth: false };
+export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, smooth: true };
 
 let dctx = null;
 
@@ -43,13 +43,12 @@ function resize() {
   canvas.height = Math.round(cssH * dpr);
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  const smooth = touchScreen && Math.abs(scale - Math.round(scale)) > 0.01;
-  canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
+  canvas.style.imageRendering = 'auto';
   const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
-  Object.assign(screen, { scale, ox, oy, cssW, cssH, smooth });
-  dctx.imageSmoothingEnabled = false; // resizing resets context state
+  Object.assign(screen, { scale, ox, oy, cssW, cssH, smooth: true });
+  dctx.imageSmoothingEnabled = true; // resizing resets context state
 }
 
 let shakeX = 0, shakeY = 0, shakePower = 0, shakeTime = 0;
@@ -92,7 +91,7 @@ export function pushOverlayDraw(fn) {
 export function blit() {
   const dpr = window.devicePixelRatio || 1;
   dctx.setTransform(screen.scale * dpr, 0, 0, screen.scale * dpr, 0, 0);
-  dctx.imageSmoothingEnabled = screen.smooth;
+  dctx.imageSmoothingEnabled = true;
   dctx.clearRect(0, 0, W, H);
   dctx.drawImage(back, Math.round(shakeX), Math.round(shakeY));
   if (overlaySprites.length) {
@@ -100,7 +99,7 @@ export function blit() {
     for (const o of overlaySprites) {
       dctx.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
     }
-    dctx.imageSmoothingEnabled = screen.smooth;
+    dctx.imageSmoothingEnabled = true;
     overlaySprites.length = 0;
   }
   if (overlayDraws.length) {

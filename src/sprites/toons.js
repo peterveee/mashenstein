@@ -5,7 +5,7 @@
 // Colors come from HERO_SPRITES palettes so pixel and toon stay in sync.
 import { HERO_SPRITES } from './heroes.js';
 
-const OUTLINE = 'rgba(26,16,40,0.58)';
+const OUTLINE = 'rgba(26,16,40,0.32)';
 const pal = (id) => HERO_SPRITES[id].pal;
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
@@ -383,7 +383,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   if (!spec) return;
   const p = pal(heroId);
   const u = h;
-  const ow = Math.max(0.4, 0.022 * h); // faint contour, not a marker pen
+  const ow = Math.max(0.3, 0.016 * h); // whisper-light contour
   const lod = h < 16;
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {

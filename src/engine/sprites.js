@@ -167,19 +167,20 @@ function glyphCanvas(ch, color) {
 export function textWidth(str, scale = 1) { return str.length * 6 * scale - scale; }
 
 export function drawText(ctx, str, x, y, color = '#fff', scale = 1) {
-  let cx = x;
   const s = String(str);
+  let cx = x;
+  // Smooth compact lettering replaces the old 5x7 block font while retaining
+  // its fixed six-unit layout, so existing menus do not need to be redesigned.
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `${Math.max(8, 9 * scale)}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+  ctx.textBaseline = 'top';
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch !== ' ') {
-      const g = glyphCanvas(ch, color);
-      if (g) {
-        if (scale === 1) ctx.drawImage(g, Math.round(cx), Math.round(y));
-        else ctx.drawImage(g, Math.round(cx), Math.round(y), 5 * scale, 7 * scale);
-      }
-    }
+    if (ch !== ' ') ctx.fillText(ch, cx, y);
     cx += 6 * scale;
   }
+  ctx.restore();
   return cx;
 }
 
