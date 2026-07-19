@@ -1,6 +1,6 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
@@ -22,13 +22,9 @@ import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export const GROUND_Y = 232;
 
-// What each hero is FOR, in three words or fewer — shown on portal previews
-// and right after a switch.
-export const HERO_CALLOUT = {
-  lorenzo: 'AIR STOMP', gnash: 'SPEED BOOST', fernwick: 'ROLL + SHIELD',
-  b33p: 'SHOOT', mochi: 'DOUBLE JUMP', chompo: 'COIN MAGNET',
-  gary: 'SURVIVES BEHEADING', grumpos: 'THROW AXE',
-};
+export const HERO_CALLOUT = Object.fromEntries(
+  Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
+);
 const BASE_SPEED = 160;
 
 export class RunState {
@@ -57,6 +53,7 @@ export class RunState {
   }
 
   enter() {
+    Input.setContext('run');
     const o = this.o;
     this.seed = o.seed ?? ((Math.floor(performance.now()) ^ 0x5eed) >>> 0);
     this.rng = new Rng(this.seed);
@@ -147,10 +144,11 @@ export class RunState {
       Audio.sfx('power');
       this.floatText(`BREAKER BONUS: ${POWER_DEFS[id].name}`, PLAYER_X - 20, 70, POWER_DEFS[id].color);
     }
+    setSceneGlow(true);
     clearParticles();
   }
 
-  exit() { Input.setButtons([]); Audio.setDetune(1); }
+  exit() { setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Audio.setDetune(1); }
 
   setButtons() {
     const hero = HERO_BY_ID[this.relay.current];
@@ -159,7 +157,7 @@ export class RunState {
       { id: 'mute', x: W - 36, y: 11, w: 14, h: 12, action: 'mute', label: 'M' },
     ];
     if (Input.usingTouch) {
-      if (hero.ability) btns.push({ id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' });
+      btns.push({ id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' });
     }
     Input.setButtons(btns);
   }
@@ -182,7 +180,7 @@ export class RunState {
       : 1 + 0.03 * Math.sqrt(this.tRun);
     const capped = Math.min(this.overtime ? 2.4 : 1.6, ramp);
     return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) *
-      (this.player.dashT > 0 ? 1.8 : 1);
+      (this.player.dashT > 0 ? 1.8 : this.player.rollT > 0 ? 1.25 : this.player.stumbleT > 0 ? 0.72 : 1);
   }
 
   // ------------------------------------------------------------------ update
@@ -190,6 +188,7 @@ export class RunState {
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
     if (Input.pressed('pause')) this.paused = !this.paused;
+    setSceneGlow(!this.paused && !this.dead);
     if (this.paused) {
       if (Input.pressed('back')) this.endRun(false, 'QUIT');
       Input.endFrame();
@@ -285,19 +284,61 @@ export class RunState {
   // ------------------------------------------------------------------ ability
   useAbility() {
     const hero = HERO_BY_ID[this.relay.current];
-    if (!hero.ability) return;
     const cdMult = 1 - 0.1 * (this.bench.tuneup || 0);
     if (this.player.abilityCd > 0) return;
+    const type = hero.ability.type;
+    if (type === 'roll' && !this.player.grounded) return;
     this.player.abilityCd = hero.ability.cooldown * cdMult;
-    if (hero.ability.type === 'dash') {
+    if (type === 'stomp') {
+      if (this.player.grounded) {
+        const px = this.camX + PLAYER_X;
+        const target = this.obstacles
+          .filter((ob) => ob.live && ob.def.ground && ob.def.breakable && ob.x + ob.w >= px - 8 && ob.x <= px + 46)
+          .sort((a, b) => Math.abs(a.x - px) - Math.abs(b.x - px))[0];
+        if (target) this.breakObstacle(target);
+        Audio.sfx('crunch');
+        shake(2, 0.12);
+        this.floatText(target ? 'WRENCH SMASH' : 'CLANG', px, GROUND_Y - 28, '#f6d33c');
+      } else {
+        this.player.stomping = true;
+        this.player.vy = Math.min(this.player.vy, -180);
+        Audio.sfx('dash');
+      }
+    } else if (type === 'dash') {
       this.player.dashT = 0.4;
       Audio.sfx('dash');
       for (let i = 0; i < 5; i++) spawn(this.camX + PLAYER_X - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
-    } else if (hero.ability.type === 'shoot') {
+    } else if (type === 'roll') {
+      this.player.rollT = 0.65;
+      this.player.rollBashed = false;
+      this.player.ducking = false;
+      Audio.sfx('dash');
+    } else if (type === 'shoot') {
       Audio.sfx('shoot');
       this.projectiles.push({ type: 'pellet', x: this.camX + PLAYER_X + 12, alt: this.player.y + 8, vx: this.speed + 260, live: true, pierce: this.modIds.includes('charge') });
       this.floatText('PEW', this.camX + PLAYER_X, GROUND_Y - this.player.y - 24, '#f6d33c');
-    } else if (hero.ability.type === 'axe') {
+    } else if (type === 'compress') {
+      this.player.compressT = 1;
+      Audio.sfx('power');
+      this.floatText('PROBABLY NORMAL PHYSICS', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
+    } else if (type === 'eat') {
+      const px = this.camX + PLAYER_X;
+      const target = this.obstacles
+        .filter((ob) => ob.live && ob.def.breakable && !ob.def.isGap && ob.x + ob.w >= px - 4 && ob.x <= px + 80)
+        .sort((a, b) => a.x - b.x)[0];
+      Audio.sfx('waka');
+      if (target) {
+        this.breakObstacle(target, true);
+        this.floatText('CHOMPO ATE IT.', target.x, GROUND_Y - target.alt - target.h - 10, '#f6d33c');
+      } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', px, GROUND_Y - 36, '#f6d33c');
+      if (this.modIds.includes('eat') && !this.player.hazardEaten) {
+        this.player.hazardEaten = true;
+        this.player.abilityCd = 0;
+      }
+    } else if (type === 'head') {
+      Audio.sfx('plop');
+      this.projectiles.push({ type: 'head', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false });
+    } else if (type === 'axe') {
       Audio.sfx('axe');
       this.projectiles.push({ type: 'axe', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, live: true, returning: false, hits: this.modIds.includes('ricochet') ? 2 : 1 });
       if (this.fxRng.chance(0.25)) this.floatText('BOY.', this.camX + PLAYER_X, GROUND_Y - this.player.y - 26, '#e8b890');
@@ -405,13 +446,10 @@ export class RunState {
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
     if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
     // say what this hero DOES, right now, in the player's control scheme
-    const btn = Input.usingTouch ? 'PWR' : 'X';
-    this.speech = hero.ability
-      ? { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: result.to }
-      : { text: `${HERO_CALLOUT[result.to]} - AUTOMATIC`, t: 2, who: result.to };
+    const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    this.speech = { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: result.to };
     this.tutor('firstSwitch', 'SWITCH 3 TIMES FOR A RELAY BLAST.');
-    if (hero.ability) this.tutor('firstAbility', `THIS HERO HAS A MOVE. PRESS ${btn}.`);
-    else this.tutor('firstPassive', 'THIS HERO WORKS AUTOMATICALLY. NO EXTRA BUTTON.');
+    this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
     if (result.blast) this.relayBlast();
   }
 
@@ -504,13 +542,14 @@ export class RunState {
   updateProjectiles(dt, sp) {
     for (const pr of this.projectiles) {
       if (!pr.live) continue;
-      if (pr.type === 'axe') {
+      if (pr.type === 'axe' || pr.type === 'head') {
         pr.t += dt;
-        if (!pr.returning && pr.t > 0.55) pr.returning = true;
-        pr.x += (pr.returning ? -(sp + 300) : pr.vx) * dt;
+        const returnAfter = pr.type === 'head' ? 0.42 : 0.55;
+        if (!pr.returning && pr.t > returnAfter) pr.returning = true;
+        pr.x += (pr.returning ? -(sp + (pr.type === 'head' ? 240 : 300)) : pr.vx) * dt;
         if (pr.returning && pr.x < this.camX + PLAYER_X) {
           pr.live = false;
-          if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', this.camX + PLAYER_X, GROUND_Y - 70, '#e8b890');
+          if (pr.type === 'axe' && this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', this.camX + PLAYER_X, GROUND_Y - 70, '#e8b890');
         }
       } else {
         pr.x += pr.vx * dt;
@@ -521,7 +560,9 @@ export class RunState {
       if (pr.type === 'pellet' || pr.type === 'axe' || pr.type === 'head') {
         for (const ob of this.obstacles) {
           if (!ob.live || ob.def.isGap || ob.def.isBoost) continue;
-          const canHit = pr.type === 'axe' || pr.type === 'head' ? true : (ob.def.ground || ob.def.isTarget) && !ob.def.armored;
+          const canHit = pr.type === 'axe' || pr.type === 'head' || pr.pierce
+            ? true
+            : (ob.def.ground || ob.def.isTarget) && !ob.def.armored;
           if (!canHit) {
             // pellet pings off armored flyers
             if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') { pr.live = false; Audio.sfx('ui'); }
@@ -534,6 +575,15 @@ export class RunState {
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0) pr.returning = true; }
             else if (!pr.pierce) pr.live = false;
           }
+        }
+      }
+      // Gary mastery: the independent thrown head picks up coins in flight.
+      if (pr.type === 'head' && this.modIds.includes('head')) {
+        const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
+        for (const pickup of this.pickups) {
+          if (!pickup.live || !pickup.def.coin) continue;
+          const box = { x: pickup.x, y: this.groundYAt(pickup.x) - pickup.alt - pickup.h, w: pickup.w, h: pickup.h };
+          if (overlaps(pbox, box)) { pickup.live = false; this.onPickup(pickup); }
         }
       }
       // Enemy shot vs player.
@@ -645,6 +695,7 @@ export class RunState {
       mission: JSON.parse(JSON.stringify(this.mission)),
       challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
       relayState: { current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(), pips: this.relay.pips },
+      abilityCooldowns: { ...this.player.abilityCooldowns },
       spawnerX: this.spawner.nextX,
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
       escapeWall: this.escapeWall,
@@ -664,6 +715,7 @@ export class RunState {
       this.relay.pips = s.relayState.pips;
     }
     this.player = new Player(this.relay.current, this.modIds);
+    this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
     this.spawner.lastActionX = s.camX;
     this.obstacles = []; this.pickups = []; this.projectiles = [];
@@ -720,20 +772,22 @@ export class RunState {
         shake(2, 0.15);
         continue;
       }
+      // Fernwick mastery: one breakable ground hazard ends the finite roll in
+      // a stumble. The base roll is low and fast, never general invincibility.
+      if (this.player.rolling && this.modIds.includes('bash') && !this.player.rollBashed && ob.def.ground && ob.def.breakable) {
+        this.player.rollBashed = true;
+        this.breakObstacle(ob);
+        this.player.rollT = 0;
+        this.player.stumbleT = 0.3;
+        this.floatText('SHIELD BASH. EARS RINGING.', pbox.x, box.y - 12, '#a8e6ff');
+        continue;
+      }
       // Targets and switches are objectives, not hazards: contact breaks them.
       // (Without this, jumping into a ?-crate Mario-style dealt damage and the
       // break-N-targets missions read as impossible to anyone without an
       // offensive ability equipped.)
       if (ob.def.isTarget || ob.def.isSwitch) {
         this.breakObstacle(ob);
-        continue;
-      }
-      // Chompo mastery: eat one hazard per stage.
-      if (this.modIds.includes('eat') && this.relay.current === 'chompo' && !this.player.hazardEaten && ob.def.breakable) {
-        this.player.hazardEaten = true;
-        this.breakObstacle(ob, true);
-        Audio.sfx('waka');
-        this.floatText('CHOMPO ATE THE HAZARD. HE IS VISIBLY PROUD.', pbox.x, box.y - 12, '#f6d33c');
         continue;
       }
       this.takeHit(null);
@@ -1000,24 +1054,30 @@ export class RunState {
     }
     ctx.restore();
 
-    // Floaties + speech + HUD (never mirrored).
-    for (const f of this.floaties) {
-      drawText(ctx, f.text, Math.round(f.x - cam), Math.round(f.y), f.color, 1);
-    }
-    if (this.speech) drawSpeech(ctx, this.speech);
-    drawHud(ctx, this);
+    // Floaties + speech + HUD render on the OVERLAY layer: full resolution,
+    // above the hero, and excluded from the bloom pass — bright popup text
+    // must never glow itself into an unreadable smear. (Headless runs have no
+    // overlay; the fallback draws them straight onto the backbuffer.)
+    const drawUi = (d) => {
+      for (const f of this.floaties) {
+        drawText(d, f.text, Math.round(f.x - cam), Math.round(f.y), f.color, 1);
+      }
+      if (this.speech) drawSpeech(d, this.speech);
+      drawHud(d, this);
+    };
+    if (!pushOverlayDraw(drawUi)) drawUi(ctx);
 
     if (this.paused) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, H);
       drawTextCentered(ctx, 'PAUSED', W / 2, 84, '#fff', 2);
       const pHero = HERO_BY_ID[this.relay.current];
-      const pBtn = Input.usingTouch ? 'PWR' : 'X';
+      const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
       drawTextCentered(ctx, pHero.name, W / 2, 112, '#48e0c8');
-      drawTextCentered(ctx, pHero.ability ? `${pBtn}: ${HERO_CALLOUT[this.relay.current]}` : `PASSIVE: ${HERO_CALLOUT[this.relay.current]}`, W / 2, 124, '#f6d33c');
+      drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 124, '#f6d33c');
       drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 140, '#c8e0ff');
       drawTextCentered(ctx, `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 152, '#f890b8');
-      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR ABILITY' : 'SPACE JUMP   DOWN DUCK   X ABILITY', W / 2, 170, '#c8c8d8');
+      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 170, '#c8c8d8');
       drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 184, '#8a8a98');
     }
     if (this.dead) {

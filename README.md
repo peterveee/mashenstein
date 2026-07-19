@@ -34,8 +34,8 @@ For phone testing on your LAN: `python3 -m http.server -d dist` and open
 | Action | Keyboard | Touch |
 |---|---|---|
 | Jump (hold = higher) | Space / W / Up | Tap (or swipe up) |
-| Duck / roll / air-stomp | S / Down (hold) | Swipe down (hold) |
-| Ability | X / Shift | PWR button |
+| Duck | S / Down (hold) | Swipe down (hold) |
+| Hero power | Right / D (X / Shift also work) | PWR button |
 | Pause | P / Esc | ▐▐ icon |
 | Mute | M | speaker icon |
 | Menus | Arrows + Enter | Tap |
@@ -50,8 +50,8 @@ patient. The turtle is not impressed.
   genre parody in a different visual style (pixel, faux-3D, neon vector,
   watercolor, VHS, LCD handheld, cardboard, notebook doodle; THE SURGE mashes
   all eight). The heroes stay defiantly pixel-art everywhere.
-- **8 heroes** with distinct kits (stomp, spin-dash, shield-roll, pellet cannon,
-  double-jump float, coin magnet, detachable head, returning axe). Pick a
+- **8 heroes** with distinct kits (stomp/smash, spin-dash, finite shield-roll,
+  pellet cannon, cosmic squish, hazard bite, head toss, returning axe). Pick a
   3-hero relay team per mission; tag through co-op cable portals; Perfect Tags
   slow time. Portals swap you to the next hero automatically, and every
   third switch fires a screen-clearing Relay Blast on its own.

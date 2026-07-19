@@ -175,7 +175,7 @@ const FONT_STACK = '"Trebuchet MS", "Avenir Next", "Segoe UI", system-ui, sans-s
 // drawImage is a GPU texture copy, while per-frame fillText re-rasterizes
 // vector outlines on the CPU. Menus are wall-to-wall text, so this matters.
 const glyphCache = new Map();
-const GLYPH_SS = 4;
+const GLYPH_SS = 8;
 function glyphSprite(ch, color, scale) {
   const key = ch + '|' + color + '|' + scale;
   let g = glyphCache.get(key);

@@ -108,10 +108,8 @@ export function drawHud(ctx, run) {
   // One small, dim controls line tucked in the corner (full map lives in pause).
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
-    const ability = hero.ability
-      ? `  X ${hero.ability.type === 'shoot' ? 'SHOOT' : hero.ability.type === 'dash' ? 'BOOST' : 'AXE'}`
-      : '';
-    const line = `SPACE JUMP  DOWN DUCK${ability}  P PAUSE`;
+    const ready = run.player.abilityCd <= 0 ? 'READY' : `${run.player.abilityCd.toFixed(1)}S`;
+    const line = `SPC JUMP  DN DUCK  RT/D ${hero.ability.label} ${ready}  P PAUSE`;
     drawText(ctx, line, W - textWidth(line) - 6, H - 9, 'rgba(200,200,216,0.4)');
   }
 
@@ -120,11 +118,13 @@ export function drawHud(ctx, run) {
     if (b.id === 'pause' || b.id === 'mute') {
       drawText(ctx, b.label, b.x + 4, b.y + 3, '#8a8a98');
     } else {
-      ctx.fillStyle = 'rgba(72,224,200,0.15)';
+      const cd = b.id === 'ability' ? run.player.abilityCd : 0;
+      ctx.fillStyle = cd > 0 ? 'rgba(90,90,104,0.2)' : 'rgba(72,224,200,0.15)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.strokeStyle = 'rgba(72,224,200,0.5)';
       ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
       drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
+      if (cd > 0) drawTextCentered(ctx, `${cd.toFixed(1)}`, b.x + b.w / 2, b.y + b.h - 9, '#8a8a98');
     }
   }
 }

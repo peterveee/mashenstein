@@ -15,14 +15,14 @@ export const MODS = [
   { id: 'crayon', name: "EGGSHELL'S CRAYON", desc: 'SCORE POPUPS ONE RANK MORE ENTHUSIASTIC. ACTUAL SCORE -5%. WE ARE BEING HONEST WITH YOU.', source: 'shop', price: 400 },
   { id: 'coupon', name: 'HAUNTED COUPON', desc: 'PAWN SHOP PRICES -25%. GARY\'S HEAD FOLLOWS YOU IN THE HUB.', source: 'shop', price: 600 },
   { id: 'thirdslot', name: 'A THIRD POCKET', desc: 'EQUIP A THIRD MOD. THE POCKET WAS THERE ALL ALONG.', source: 'shop', price: 2500 },
-  { id: 'shockwave', name: 'SHOCK STOMP', hero: 'lorenzo', source: 'mastery' },
-  { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'gnash', source: 'mastery' },
-  { id: 'bash', name: 'SHIELD BASH', hero: 'fernwick', source: 'mastery' },
-  { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery' },
-  { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery' },
-  { id: 'eat', name: 'HAZARD DIET', hero: 'chompo', source: 'mastery' },
-  { id: 'head', name: 'INDEPENDENT HEAD', hero: 'gary', source: 'mastery' },
-  { id: 'ricochet', name: 'RICOCHET AXE', hero: 'grumpos', source: 'mastery' },
+  { id: 'shockwave', name: 'SHOCK STOMP', hero: 'lorenzo', source: 'mastery', desc: 'STOMP SHOCKWAVE BREAKS NEARBY OBSTACLES BUT SCATTERS NEARBY COINS.' },
+  { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'gnash', source: 'mastery', desc: 'GNASH GAINS STACKING SPEED AFTER EVERY TAG.' },
+  { id: 'bash', name: 'SHIELD BASH', hero: 'fernwick', source: 'mastery', desc: 'ROLL BREAKS ONE GROUND HAZARD BUT ENDS IN A BRIEF STUMBLE.' },
+  { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
+  { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery', desc: 'FLOATS MORE SLOWLY BUT BECOMES WIDER WHILE FLOATING.' },
+  { id: 'eat', name: 'HAZARD DIET', hero: 'chompo', source: 'mastery', desc: 'THE FIRST HAZARD BITE EACH STAGE HAS NO COOLDOWN.' },
+  { id: 'head', name: 'INDEPENDENT HEAD', hero: 'gary', source: 'mastery', desc: 'THE THROWN HEAD COLLECTS COINS BEFORE RETURNING.' },
+  { id: 'ricochet', name: 'RICOCHET AXE', hero: 'grumpos', source: 'mastery', desc: 'THE AXE CAN HIT A SECOND TARGET BEFORE RETURNING.' },
 ];
 
 export const MOD_BY_ID = Object.fromEntries(MODS.map((m) => [m.id, m]));

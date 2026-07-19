@@ -196,10 +196,12 @@ function drawCloudPal(ctx, t, reduced) {
     const er = shocked ? 5.4 : 4.2;
     ctx.beginPath();
     ctx.ellipse(ex, ey, er * 0.85, blink ? 0.8 : idle === 'sleepy' ? er * 0.55 : er, 0, 0, Math.PI * 2);
+    // white-on-white-cloud: the eye whites need a REAL outline or only the
+    // pupils read and the gaze looks unmoored
     ctx.fillStyle = '#fff';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(26,16,40,0.3)';
-    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = 'rgba(26,16,40,0.85)';
+    ctx.lineWidth = 1.25;
     ctx.stroke();
     if (!blink) {
       ctx.beginPath();

@@ -216,7 +216,7 @@ export function drawPortal(ctx, portal, camX, t) {
   ctx.fillStyle = '#48e0c8';
   ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
   // who you are about to become, and what they do
-  if (portal.label) drawTextCentered(ctx, portal.label, x + 6, GROUND_Y - 68 - pulse, '#c8e0ff');
+  if (portal.label) drawTextCentered(ctx, portal.label, x + 6, GROUND_Y - 68 - pulse, '#9db8d2');
 }
 
 export function drawCopter(ctx, copter, camX, t) {

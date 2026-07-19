@@ -8,6 +8,7 @@ const suites = [
   'tests/migration.js',
   'tests/difficulty-identity.js',
   'tests/run-complete.js',
+  'tests/hero-kits.js',
   'tests/breaker-bonus.js',
   'tests/minigames.js',
   'tests/boss.js',

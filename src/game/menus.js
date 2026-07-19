@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, setFancyFx } from '../engine/renderer.js';
+import { W, H, setFancyFx, setSceneGlow, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
@@ -42,36 +42,110 @@ const TAGLINES = [
   'EVERY PIXEL LOVINGLY REPLACED WITH MATH',
 ];
 
-function stitchLogo(ctx, t, reducedFlashing) {
-  const cx = W / 2;
-  // sutured biome patches behind the logo
-  const patches = ['#3a9c48', '#c88848', '#282858', '#c8e0f0', '#3a3048', '#484838', '#c8a068', '#b0b0c0'];
-  patches.forEach((c, i) => {
-    ctx.fillStyle = c;
-    ctx.globalAlpha = 0.25;
-    ctx.fillRect(40 + i * 50, 30 + (i % 2) * 24, 52, 48);
-    ctx.globalAlpha = 1;
-    // crude stitches between patches
-    ctx.strokeStyle = '#181820';
-    for (let s = 0; s < 4; s++) {
-      const sx = 40 + i * 50 + 48;
-      ctx.beginPath(); ctx.moveTo(sx - 3, 38 + s * 10 + (i % 2) * 24); ctx.lineTo(sx + 5, 42 + s * 10 + (i % 2) * 24); ctx.stroke();
-    }
-  });
-  const flicker = reducedFlashing ? 1 : (Math.sin(t * 30) > -0.92 ? 1 : 0.6);
-  ctx.globalAlpha = flicker;
-  drawTextCentered(ctx, 'MASHENSTEIN', cx, 44, '#f6d33c', 4);
-  // stitches across the letters
-  ctx.strokeStyle = '#0b0b14';
-  for (let i = 0; i < 6; i++) {
-    const sx = cx - 120 + i * 48;
-    ctx.beginPath(); ctx.moveTo(sx, 48); ctx.lineTo(sx + 8, 66); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(sx + 8, 48); ctx.lineTo(sx, 66); ctx.stroke();
+let titleGrad = null;
+function titleScene(ctx, t, reduced) {
+  // night sky over the last functioning food court
+  if (!titleGrad) {
+    titleGrad = ctx.createLinearGradient(0, 0, 0, H);
+    titleGrad.addColorStop(0, '#07070f');
+    titleGrad.addColorStop(0.65, '#141026');
+    titleGrad.addColorStop(1, '#1c1430');
   }
-  drawTextCentered(ctx, 'THE UNPLUGGENING', cx, 80, '#48e0c8', 1);
+  ctx.fillStyle = titleGrad;
+  ctx.fillRect(0, 0, W, H);
+  // twinkling stars (the bright ones catch the bloom)
+  for (let i = 0; i < 26; i++) {
+    const sx = (i * 97 + 23) % W;
+    const sy = (i * 53 + 11) % 110;
+    const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (1.1 + (i % 5) * 0.3) + i));
+    ctx.globalAlpha = tw;
+    ctx.fillStyle = i % 4 === 0 ? '#fff' : '#b8c8e8';
+    ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1, i % 4 === 0 ? 2 : 1);
+  }
   ctx.globalAlpha = 1;
-  drawTextCentered(ctx, "IT'S ALIVE... AND UNPLUGGED", cx, 94, '#5a5a68');
+
+  // the cabinet row: nine machines humming their own colors in the dark
+  CABINETS.forEach((cab, i) => {
+    const x = 22 + i * 49;
+    ctx.fillStyle = '#100c18';
+    ctx.fillRect(x, 128, 42, 76);
+    ctx.fillStyle = cab.ground;
+    ctx.fillRect(x, 124, 42, 7); // marquee
+    // glowing screen with a lazy attract shimmer
+    const flick = reduced ? 1 : 0.82 + 0.18 * Math.sin(t * (2 + i * 0.7) + i * 9);
+    ctx.globalAlpha = flick;
+    ctx.fillStyle = cab.sky[0];
+    ctx.fillRect(x + 5, 136, 32, 38);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillRect(x + 5, 136 + (Math.floor(t * 2.4 + i) % 5) * 8, 32, 2);
+    // light pooling on the floor below each screen
+    ctx.globalAlpha = 0.12 * flick;
+    ctx.fillStyle = cab.sky[0];
+    ctx.fillRect(x - 2, 204, 46, 20);
+    ctx.globalAlpha = 1;
+  });
+
+  // checkered floor
+  ctx.fillStyle = '#171222';
+  ctx.fillRect(0, 204, W, H - 204);
+  for (let row = 0; row < 3; row++) {
+    for (let x = -32; x < W; x += 32) {
+      if ((Math.floor(x / 32) + row) % 2 === 0) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(x, 208 + row * 21, 32, 21);
+    }
+  }
+
+  // the whole cast jogs across the bottom, forever, because heroes gotta run
+  for (let i = 0; i < HERO_PARADE.length; i++) {
+    const hx = ((t * 42 + i * 66) % (W + 140)) - 70;
+    drawToon(ctx, HERO_PARADE[i], {
+      kind: 'run', grounded: true, time: t,
+      phase: (t * 1.5 + i * 0.37) % 1,
+    }, hx, 258, 28);
+  }
+
+  // the marquee: MASHENSTEIN in failing neon, stitched together, of course
+  const flicker = reduced ? 1 : (Math.sin(t * 30) > -0.96 ? 1 : 0.45);
+  ctx.globalAlpha = flicker;
+  drawTextCentered(ctx, 'MASHENSTEIN', W / 2, 40, '#ffd94a', 4);
+  ctx.strokeStyle = 'rgba(8,6,14,0.8)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 6; i++) {
+    const sx = W / 2 - 120 + i * 48;
+    ctx.beginPath(); ctx.moveTo(sx, 44); ctx.lineTo(sx + 8, 62); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx + 8, 44); ctx.lineTo(sx, 62); ctx.stroke();
+  }
+  drawTextCentered(ctx, 'THE UNPLUGGENING', W / 2, 76, '#48e0c8', 1);
+  ctx.globalAlpha = 1;
+
+  // a live power cord dangles off the logo, swinging, occasionally sparking
+  const ax = W / 2 + 128, ay = 58;
+  const sway = reduced ? 0 : Math.sin(t * 1.15) * 16;
+  const px2 = ax + sway, py2 = 108;
+  ctx.strokeStyle = '#241c30';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.quadraticCurveTo(ax + sway * 0.4, (ay + py2) / 2 + 8, px2, py2);
+  ctx.stroke();
+  ctx.fillStyle = '#3a3a48';
+  ctx.fillRect(px2 - 3, py2, 6, 8);
+  ctx.fillStyle = '#8a8a98';
+  ctx.fillRect(px2 - 2, py2 + 8, 1.6, 3);
+  ctx.fillRect(px2 + 0.6, py2 + 8, 1.6, 3);
+  if (!reduced && Math.sin(t * 0.9 + 2) > 0.985) {
+    // zap
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(px2 - 5 + ((i * 37 + Math.floor(t * 60)) % 10), py2 + 9 + (i % 3) * 2, 2, 2);
+    }
+    ctx.fillStyle = 'rgba(246,211,60,0.5)';
+    ctx.fillRect(px2 - 8, py2 + 4, 16, 12);
+  }
 }
+const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'gary', 'grumpos'];
 
 export class TitleState {
   constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onAttract, attractDelay }) {
@@ -87,7 +161,9 @@ export class TitleState {
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     Audio.setBank(null);
     Input.setMenuButtons();
+    setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
+  exit() { setSceneGlow(false); }
   options() {
     const opts = [];
     this.save.data.slots.forEach((s, i) => {
@@ -126,19 +202,26 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
-    stitchLogo(ctx, this.t, this.save.settings.reducedFlashing);
+    titleScene(ctx, this.t, this.save.settings.reducedFlashing);
     const opts = this.options();
-    opts.forEach((o, i) => {
-      const sel = i === this.idx;
-      drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 116 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
-    });
-    drawTextCentered(ctx, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, H - 30, '#5a5a68');
-    drawTextCentered(ctx, this.tagline, W / 2, H - 16, '#30303f');
-    if (this.onAttract && this.attractDelay <= 10) {
-      drawTextCentered(ctx, `NEXT DEMO IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, H - 44, '#8858c8');
-    }
+    const ui = (d) => {
+      // translucent panel so the list reads over the glowing arcade
+      const panelW = 250, panelX = W / 2 - panelW / 2;
+      d.fillStyle = 'rgba(8,7,16,0.72)';
+      d.fillRect(panelX, 106, panelW, opts.length * 16 + 12);
+      d.strokeStyle = 'rgba(72,224,200,0.25)';
+      d.strokeRect(panelX + 0.5, 106.5, panelW - 1, opts.length * 16 + 11);
+      opts.forEach((o, i) => {
+        const sel = i === this.idx;
+        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, 116 + i * 16, sel ? '#f6d33c' : '#c8c8d8');
+      });
+      drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, H - 30, '#5a5a68');
+      drawTextCentered(d, this.tagline, W / 2, H - 16, '#8a8a98');
+      if (this.onAttract && this.attractDelay <= 10) {
+        drawTextCentered(d, `NEXT DEMO IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, H - 44, '#8858c8');
+      }
+    };
+    if (!pushOverlayDraw(ui)) ui(ctx);
   }
 }
 

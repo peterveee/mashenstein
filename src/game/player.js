@@ -21,6 +21,7 @@ export function airtimeFor(hero) {
 export class Player {
   constructor(heroId, mods = []) {
     this.mods = mods;
+    this.abilityCooldowns = Object.create(null);
     this.setHero(heroId);
     this.y = 0;           // height of feet above ground (positive = up)
     this.vy = 0;
@@ -31,7 +32,10 @@ export class Player {
     this.anim = 0;
     this.stomping = false;
     this.dashT = 0;
-    this.abilityCd = 0;
+    this.rollT = 0;
+    this.compressT = 0;
+    this.stumbleT = 0;
+    this.rollBashed = false;
     this.headless = 0;    // Gary
     this.headGraceUsed = 0;
     this.hazardEaten = false; // Chompo mastery
@@ -45,8 +49,15 @@ export class Player {
     this.hero = HERO_BY_ID[heroId];
     this.stomping = false;
     this.dashT = 0;
-    this.abilityCd = 0;
+    this.rollT = 0;
+    this.compressT = 0;
+    this.stumbleT = 0;
+    this.rollBashed = false;
+    this.ducking = false;
   }
+
+  get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
+  set abilityCd(value) { this.abilityCooldowns[this.heroId] = Math.max(0, value); }
 
   get gravity() { return this.hero.heavy ? GRAVITY * 1.25 : GRAVITY; }
   get maxJumps() {
@@ -55,16 +66,18 @@ export class Player {
     if (this.mods.includes('triple') && this.heroId === 'mochi') m += 1;
     return m;
   }
-  get hitH() { return this.ducking ? DUCK_H : PLAYER_H; }
+  get hitH() { return (this.ducking || this.rollT > 0 || this.compressT > 0) ? DUCK_H : PLAYER_H; }
   get hitW() {
     let w = PLAYER_W;
+    if (this.compressT > 0) w = 5;
     if (this.mods.includes('wide') && this.heroId === 'mochi' && this.floating) w += 4;
     return w;
   }
-  get rolling() { return this.ducking && this.hero.duckIsRoll; }
+  get rolling() { return this.rollT > 0; }
   get invincible() { return this.iframes > 0 || this.dashT > 0; }
 
   jumpPressed(audio) {
+    if (this.rollT > 0 || this.stumbleT > 0) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
       this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? 0.85 : 1);
@@ -80,8 +93,16 @@ export class Player {
   update(dt, input, world) {
     this.anim += dt * (world ? world.speed / 40 : 8);
     if (this.iframes > 0) this.iframes -= dt;
-    if (this.abilityCd > 0) this.abilityCd -= dt;
+    for (const id of Object.keys(this.abilityCooldowns)) {
+      this.abilityCooldowns[id] = Math.max(0, this.abilityCooldowns[id] - dt);
+    }
     if (this.dashT > 0) this.dashT -= dt;
+    if (this.rollT > 0) {
+      this.rollT -= dt;
+      if (this.rollT <= 0 && this.mods.includes('bash')) this.stumbleT = 0.3;
+    }
+    if (this.compressT > 0) this.compressT -= dt;
+    if (this.stumbleT > 0) this.stumbleT -= dt;
     if (this.headless > 0) {
       this.headless -= dt;
       this.iframes = Math.max(this.iframes, 0.05);
@@ -98,7 +119,7 @@ export class Player {
     // Float (Mochi): hold jump while falling caps fall speed.
     const floatCap = this.mods.includes('wide') ? -45 : -60;
     this.floating = !this.grounded && holdJump && this.hero.canFloat && this.vy < 0;
-    const minVy = this.floating ? floatCap : -520;
+    const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : -520);
 
     if (!this.grounded) {
       // Stomp: hold duck in air with stomp hero = fast fall attack.
@@ -120,7 +141,7 @@ export class Player {
         return { landed: true, stompLand: wasStomp };
       }
     } else {
-      this.ducking = holdDuck;
+      this.ducking = holdDuck && this.rollT <= 0;
     }
     return { landed: false, stompLand: false };
   }

@@ -26,6 +26,7 @@ export function updateState(dt) {
     fade += fading * dt * 4;
     if (fade >= 1 && pending) {
       fade = 1;
+      Input.clearAll();
       current && current.exit && current.exit();
       current = pending.next;
       current.enter && current.enter(...pending.args);

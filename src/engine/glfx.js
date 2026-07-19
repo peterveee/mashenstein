@@ -9,17 +9,6 @@ attribute vec2 aP;
 varying vec2 vUv;
 void main() { vUv = aP * 0.5 + 0.5; gl_Position = vec4(aP, 0.0, 1.0); }`;
 
-const FS_COMBINE = `
-precision mediump float;
-varying vec2 vUv;
-uniform sampler2D uBack, uOv;
-uniform vec2 uShake;
-void main() {
-  vec4 b = texture2D(uBack, clamp(vUv - uShake, 0.0, 1.0));
-  vec4 o = texture2D(uOv, vUv);
-  gl_FragColor = vec4(o.rgb + b.rgb * (1.0 - o.a), 1.0);
-}`;
-
 const FS_BRIGHT = `
 precision mediump float;
 varying vec2 vUv;
@@ -27,7 +16,7 @@ uniform sampler2D uT;
 void main() {
   vec3 c = texture2D(uT, vUv).rgb;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
-  gl_FragColor = vec4(c * smoothstep(0.74, 0.96, l), 1.0);
+  gl_FragColor = vec4(c * smoothstep(0.8, 0.97, l), 1.0);
 }`;
 
 const FS_BLUR = `
@@ -46,7 +35,7 @@ const FS_FINAL = `
 precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uBack, uBloom, uOv;
-uniform float uFx;
+uniform float uFx, uGlow;
 uniform vec2 uShake;
 void main() {
   vec2 d = vUv - 0.5;
@@ -61,7 +50,7 @@ void main() {
   bg.b = texture2D(uBack, buv - ab).b;
   vec3 bl = texture2D(uBloom, vUv).rgb;
   vec4 ov = texture2D(uOv, vUv);
-  vec3 col = ov.rgb + (bg + bl * 0.6 * uFx) * (1.0 - ov.a);
+  vec3 col = ov.rgb + (bg + bl * 0.45 * uFx * uGlow) * (1.0 - ov.a);
   float vig = 1.0 - smoothstep(0.55, 0.98, r) * (0.1 + 0.14 * uFx);
   gl_FragColor = vec4(col * vig, 1.0);
 }`;
@@ -103,7 +92,8 @@ function makeFbo(gl, w, h) {
 export const glfx = {
   gl: null,
   active: false,
-  fx: 1, // GLOW FX setting: 1 on, 0 off (effects only; compositing still runs)
+  fx: 1,    // GLOW FX setting: 1 on, 0 off
+  glow: 0,  // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
 
   init(canvas) {
     let gl = null;
@@ -111,7 +101,6 @@ export const glfx = {
     if (!gl) return false;
     try {
       this.gl = gl;
-      this.pCombine = compile(gl, VS, FS_COMBINE);
       this.pBright = compile(gl, VS, FS_BRIGHT);
       this.pBlur = compile(gl, VS, FS_BLUR);
       this.pFinal = compile(gl, VS, FS_FINAL);
@@ -133,7 +122,7 @@ export const glfx = {
     const gl = this.gl;
     if (!gl) return;
     this.srcW = srcW; this.srcH = srcH;
-    this.scene = makeFbo(gl, srcW, srcH);
+    this.ready = true;
     const bw = Math.max(1, srcW >> 2), bh = Math.max(1, srcH >> 2);
     this.bloomA = makeFbo(gl, bw, bh);
     this.bloomB = makeFbo(gl, bw, bh);
@@ -153,31 +142,28 @@ export const glfx = {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // KEEP canvas data premultiplied: the compositing formula assumes it.
+    // Without this, every anti-aliased edge (text, hero outlines) gets its
+    // color un-premultiplied to full strength and composites as a bright
+    // fringe — "glowing outlines" on all overlay art.
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
   },
 
   render(backCanvas, overlayCanvas, shakeX, shakeY, outW, outH) {
     const gl = this.gl;
-    if (!gl || !this.scene) return;
+    if (!gl || !this.ready) return;
     this.upload(this.texBack, backCanvas);
     this.upload(this.texOv, overlayCanvas);
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
-    // 1) composite back + overlay into the scene FBO
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fb);
-    gl.viewport(0, 0, this.scene.w, this.scene.h);
-    this.draw(this.pCombine, (g, p) => {
-      bind(0, this.texBack); bind(1, this.texOv);
-      g.uniform1i(g.getUniformLocation(p, 'uBack'), 0);
-      g.uniform1i(g.getUniformLocation(p, 'uOv'), 1);
-      g.uniform2f(g.getUniformLocation(p, 'uShake'), shakeX / this.srcW, -shakeY / this.srcH);
-    });
-
-    // 2) bright-pass into quarter-res, then two blur passes
+    // 1) bright-pass the WORLD ONLY into quarter-res, then two blur passes.
+    //    The overlay (heroes, HUD, popup text) is deliberately excluded:
+    //    world glows, UI reads.
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
     gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
     this.draw(this.pBright, (g, p) => {
-      bind(0, this.scene.tex);
+      bind(0, this.texBack);
       g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomB.fb);
@@ -193,7 +179,7 @@ export const glfx = {
       g.uniform2f(g.getUniformLocation(p, 'uDir'), 0, 1 / this.bloomB.h);
     });
 
-    // 3) final: scene + bloom + vignette + edge aberration to the screen
+    // 2) final: world + bloom + vignette + aberration, crisp overlay on top
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, outW, outH);
     this.draw(this.pFinal, (g, p) => {
@@ -202,6 +188,7 @@ export const glfx = {
       g.uniform1i(g.getUniformLocation(p, 'uBloom'), 1);
       g.uniform1i(g.getUniformLocation(p, 'uOv'), 2);
       g.uniform1f(g.getUniformLocation(p, 'uFx'), this.fx);
+      g.uniform1f(g.getUniformLocation(p, 'uGlow'), this.glow);
       g.uniform2f(g.getUniformLocation(p, 'uShake'), shakeX / this.srcW, -shakeY / this.srcH);
     });
   },

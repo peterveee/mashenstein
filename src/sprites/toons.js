@@ -183,7 +183,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod) {
 
 // ---------------------------------------------------------------- rigs
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
-  if (pose.kind === 'duck') return drawRoll(ctx, spec, p, pose, u, ow);
+  if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
   const headR = (heavy ? 0.19 : 0.21) * u;
   const torsoHalf = (heavy ? 0.23 : 0.17) * u;
@@ -325,8 +325,7 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const duck = pose.kind === 'duck';
   let rx = 0.36 * u, ry = 0.34 * u, cy = -0.4 * u;
-  if (duck) {
-    // mochi ducks by ROLLING: the whole puffball spins, face and all
+  if (duck && pose.roll) {
     ctx.save();
     ctx.translate(0, -0.27 * u);
     ctx.rotate((t || 0) * 12);
@@ -338,6 +337,7 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
     ctx.restore();
     return;
   }
+  if (duck) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
   if (pose.kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
   ctx.save();
   if (pose.float) {
@@ -365,8 +365,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   const duck = pose.kind === 'duck';
   const r = (duck ? 0.3 : 0.34) * u;
   const cy = duck ? -0.31 * u : -0.44 * u;
-  if (duck) {
-    // chompo ducks by rolling on his own mouth like a wheel
+  if (duck && pose.roll) {
     ctx.save();
     ctx.translate(0, cy);
     ctx.rotate((pose.time || 0) * 13);
@@ -480,14 +479,14 @@ export function toonStandSprite(heroId, w, h) {
 export function poseFromPlayer(player, t) {
   const hero = player.hero || {};
   return {
-    kind: player.ducking ? 'duck' : (!player.grounded ? 'jump' : 'run'),
+    kind: (player.ducking || player.rolling || player.compressT > 0) ? 'duck' : (!player.grounded ? 'jump' : 'run'),
     phase: player.anim % 1,
     time: t,
     vy: player.vy,
     grounded: player.grounded,
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / 0.12)),
     lean: player.dashT > 0 ? 0.26 * Math.min(1, player.dashT / 0.2) : 0,
-    roll: player.ducking && !!hero.duckIsRoll,
+    roll: !!player.rolling,
     float: !!player.floating,
     stomp: !!player.stomping,
     headless: player.headless > 0,

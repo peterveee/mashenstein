@@ -31,6 +31,7 @@ class InputSys {
     this.padPrev = new Set();
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
+    this.context = 'default';
   }
 
   init() {
@@ -97,6 +98,7 @@ class InputSys {
   }
 
   actionForKey(code) {
+    if (this.context === 'run' && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
     for (const [act, codes] of Object.entries(this.keys)) if (codes.includes(code)) return act;
     return null;
   }
@@ -109,6 +111,11 @@ class InputSys {
   }
 
   setButtons(list) { this.buttons = list || []; }
+
+  setContext(context) {
+    this.context = context || 'default';
+    this.clearAll();
+  }
 
   // Menu states call this before the first touch so ENTER is immediately ready.
   setMenuButtons() {
@@ -133,10 +140,18 @@ class InputSys {
     const now = new Set();
     for (const pad of pads) {
       if (!pad) continue;
-      pad.buttons.forEach((b, i) => { if (b.pressed && GAMEPAD_MAP[i]) now.add(GAMEPAD_MAP[i]); });
-      pad.buttons.forEach((b, i) => { if (b.pressed && GAMEPAD_MAP[i] && !this.padPrev.has(GAMEPAD_MAP[i])) this.activity++; });
+      pad.buttons.forEach((b, i) => {
+        if (!b.pressed || !GAMEPAD_MAP[i]) return;
+        const action = this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
+        now.add(action);
+      });
+      pad.buttons.forEach((b, i) => {
+        if (!b.pressed || !GAMEPAD_MAP[i]) return;
+        const action = this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
+        if (!this.padPrev.has(action)) this.activity++;
+      });
       if (pad.axes[0] < -0.5) now.add('left');
-      if (pad.axes[0] > 0.5) now.add('right');
+      if (pad.axes[0] > 0.5) now.add(this.context === 'run' ? 'ability' : 'right');
       if (pad.axes[1] > 0.5) now.add('duck');
     }
     for (const a of now) if (!this.padPrev.has(a)) this.press(a);

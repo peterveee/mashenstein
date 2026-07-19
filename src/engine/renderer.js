@@ -27,6 +27,8 @@ const overlayLayer = (() => {
 const octx = overlayLayer ? overlayLayer.getContext('2d') : null;
 
 export function setFancyFx(on) { glfx.fx = on ? 1 : 0; }
+// Scene bloom is a GAMEPLAY effect: menus and pause screens get none.
+export function setSceneGlow(on) { glfx.glow = on ? 1 : 0; }
 
 // px = device pixels per logical pixel (what everything is pre-scaled by).
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
@@ -116,8 +118,9 @@ export function pushOverlaySprite(img, x, y, w, h) {
 // Used for the toon heroes. Consumed (and cleared) every blit.
 const overlayDraws = [];
 export function pushOverlayDraw(fn) {
-  if (!dctx && !glfx.active) return;
+  if (!dctx && !glfx.active) return false;
   overlayDraws.push(fn);
+  return true;
 }
 
 export function blit() {
