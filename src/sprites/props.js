@@ -49,6 +49,31 @@ function stroke(ctx, col, w, pathFn) {
   ctx.stroke();
 }
 
+// One HUD battery cell, laid out on a 28x18 grid and scaled into the box:
+// rounded body, terminal nub on the right, lightning bolt through the middle.
+// A spent cell keeps the full silhouette in outline rather than vanishing, so
+// the row's length always states the maximum and the fill states what is left.
+function hudCell(ctx, w, h, charged) {
+  const X = (n) => (w * n) / 28, Y = (n) => (h * n) / 18;
+  const body = (c) => rr(c, X(1.5), Y(2.5), X(21), Y(13), X(3.5));
+  const nub = (c) => rr(c, X(23), Y(6), X(3.5), Y(6), X(1.5));
+  const bolt = (c) => {
+    c.moveTo(X(14), Y(5)); c.lineTo(X(10), Y(10.5)); c.lineTo(X(13), Y(10.5));
+    c.lineTo(X(12), Y(14)); c.lineTo(X(16), Y(8.5)); c.lineTo(X(13), Y(8.5));
+    c.closePath();
+  };
+  if (charged) {
+    plain(ctx, '#74c947', body);
+    stroke(ctx, '#4d9433', X(1.5), body);
+    plain(ctx, '#74c947', nub);
+    plain(ctx, '#fff', bolt);
+  } else {
+    stroke(ctx, 'rgba(255,255,255,0.3)', X(1.5), body);
+    plain(ctx, 'rgba(255,255,255,0.18)', nub);
+    plain(ctx, 'rgba(255,255,255,0.18)', bolt);
+  }
+}
+
 // ------------------------------------------------------------- painters
 // Each: (ctx, w, h) drawing inside [0..w] x [0..h]. Ground props sit on h.
 export const PROP_PAINTERS = {
@@ -280,6 +305,34 @@ export const PROP_PAINTERS = {
     shape(ctx, '#48c848', u, (c) => rr(c, w * 0.16, h * 0.14, w * 0.68, h * 0.82, w * 0.14));
     plain(ctx, '#2a8a2a', (c) => rr(c, w * 0.34, h * 0.02, w * 0.32, h * 0.14, w * 0.05));
     plain(ctx, '#eaffea', (c) => { c.moveTo(w * 0.56, h * 0.28); c.lineTo(w * 0.36, h * 0.56); c.lineTo(w * 0.5, h * 0.56); c.lineTo(w * 0.44, h * 0.86); c.lineTo(w * 0.66, h * 0.5); c.lineTo(w * 0.5, h * 0.5); c.closePath(); });
+  },
+  // --- HUD-only art -----------------------------------------------------
+  // The status-pill battery cells. These are NOT the `battery` pickup above:
+  // that one is a chunky upright cell drawn to read as a thing lying in the
+  // world, and four of them in a row at HUD size turn into a picket fence. The
+  // HUD wants a lozenge — wide, low, with the bolt reading at 11 units across —
+  // so it gets its own art in the panel's colour language.
+  //
+  // Full and empty are separate painters rather than one with a flag because
+  // the sprite cache is keyed by name; a flag would collide on one entry.
+  cellFull(ctx, w, h) { hudCell(ctx, w, h, true); },
+  cellEmpty(ctx, w, h) { hudCell(ctx, w, h, false); },
+  // The coin beside them. The world `coin` is a flat disc with a stamped
+  // centre, which at 12 units in a dark panel reads as a washer; this one is a
+  // lit sphere — gradient plus a warm rim — so it holds its shape and stays
+  // legibly gold against the slate fill.
+  hudCoin(ctx, w, h) {
+    const r = Math.min(w, h) / 2;
+    const g = ctx.createRadialGradient(w * 0.36, h * 0.32, r * 0.15, w * 0.5, h * 0.5, r);
+    g.addColorStop(0, '#ffe07a');
+    g.addColorStop(1, '#f0b419');
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, r - r / 12, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = '#d99a10';
+    ctx.lineWidth = r / 6;
+    ctx.stroke();
   },
   capShield(ctx, w, h) {
     const u = Math.max(w, h);

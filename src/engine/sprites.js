@@ -333,26 +333,52 @@ function paintGlyphs(ctx, s, x, y, color, scale, style) {
 // text sitting slightly forward, not as a labelled box.
 export const UI_PLATE = 'rgba(12,10,22,0.22)';
 
-// The opaque backing for UI that owns its own box — the hero name badge, the
-// speech bubble. A soft charcoal rather than true black: at full strength a
-// pure black rect punches a hole in the scene, where this still reads as a
-// panel laid over it.
-export const UI_PANEL = 'rgba(46,43,68,0.82)';
+// The backing for UI that owns its own box — the status pill, the hero name
+// badge, the objective panels, the speech bubble. A cool translucent slate
+// rather than true black: at full strength a pure black rect punches a hole in
+// the scene, where this still reads as a panel laid over it.
+export const UI_PANEL = 'rgba(28,32,48,0.72)';
 
-// A UI box that owns its own backing. No border: a coloured outline competes
-// with the gauges and icons around it, and the fill alone already separates
-// the text from the scene. What it gets instead is a catch-light along the top
-// inside edge — without it an unbordered dark rect reads as a hole punched in
-// the art rather than a panel laid over it. Clipped to the rounded path so the
-// highlight stops short of the corners instead of squaring them off.
-export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL) {
+// The hairline every HUD panel is edged with. Weak enough to read as the lit
+// edge of a piece of glass rather than as a drawn outline.
+export const UI_PANEL_BORDER = 'rgba(255,255,255,0.14)';
+
+// A UI box that owns its own backing. Every panel in the HUD comes through
+// here, which is what makes the whole overlay read as one set of objects
+// rather than a pile of unrelated widgets.
+//
+// `opts.border` strokes a hairline edge and `opts.shadow` lifts the box off
+// the scene. Without a border the box instead gets a catch-light along the top
+// inside edge — an unbordered dark rect reads as a hole punched in the art, and
+// it needs *something* to say "laid over" instead. The two are alternatives,
+// not a pair: run both and the top edge doubles into a visible bright seam.
+// Clipped to the rounded path so the highlight stops short of the corners
+// instead of squaring them off.
+export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL, opts = null) {
   ctx.save();
+  if (opts && opts.shadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1;
+  }
   platePath(ctx, x, y, w, h, r);
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.clip();
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
-  ctx.fillRect(x, y, w, 1);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  if (opts && opts.border) {
+    // Inset by half the stroke so the hairline sits inside the fill instead of
+    // straddling its edge, where it would fringe against the scene.
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = opts.border;
+    platePath(ctx, x + 0.25, y + 0.25, w - 0.5, h - 0.5, r);
+    ctx.stroke();
+  } else {
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(x, y, w, 1);
+  }
   ctx.restore();
 }
 
