@@ -8,6 +8,7 @@ const { RunState } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { DripSpawner } = await import('../src/game/spawner.js');
 const { PICKUPS } = await import('../src/game/entities.js');
+const { Player } = await import('../src/game/player.js');
 const { Rng } = await import('../src/engine/rng.js');
 const { hasProp } = await import('../src/sprites/props.js');
 
@@ -33,6 +34,38 @@ assert(POWER_DEFS.unpeel && POWER_DEFS.unpeel.name === 'UNPEELABLE', 'unpeel is 
 p = new Powerups(bench);
 p.grab('unpeel');
 assert(p.active.unpeel.t === 12, `capsule unpeel lasts 12s (${p.active.unpeel.t})`);
+
+for (const [id, name] of [['airjump', 'AIR JUMP'], ['speed', 'SPEED BURST'], ['lowgrav', 'LOW GRAVITY']]) {
+  assert(POWER_DEFS[id] && POWER_DEFS[id].name === name, `${name} is defined as a power-up`);
+}
+p = new Powerups(bench);
+p.grab('airjump');
+assert(p.bonusJumps() === 1 && p.active.airjump.t === 14, 'Air Jump grants one jump for 14 seconds');
+p.grab('airjump');
+assert(p.bonusJumps() === 1 && p.active.airjump.level === 2 && p.active.airjump.t === 20, 'Air Jump overcharge refreshes without granting another jump');
+p.grab('speed');
+assert(p.speedMultiplier() === 1.15, 'Speed Burst increases run speed by 15%');
+p.grab('speed');
+assert(p.speedMultiplier() === 1.25 && p.active.speed.t === 13, 'overcharged Speed Burst increases run speed by 25%');
+p.grab('lowgrav');
+assert(p.gravityMultiplier() === 0.65, 'Low Gravity reduces gravity to 65%');
+p.grab('lowgrav');
+assert(p.gravityMultiplier() === 0.5 && p.active.lowgrav.t === 16, 'overcharged Low Gravity reduces gravity to 50%');
+
+const normalJumper = new Player('lorenzo');
+const mochiJumper = new Player('mochi');
+const capeJumper = new Player('lorenzo', ['cape']);
+const fullJumper = new Player('mochi', ['cape']);
+for (const jumper of [normalJumper, mochiJumper, capeJumper, fullJumper]) jumper.powerJumpBonus = 1;
+assert(normalJumper.maxJumps === 2 && mochiJumper.maxJumps === 3 && capeJumper.maxJumps === 3 && fullJumper.maxJumps === 4,
+  'Air Jump stacks once with Mochi and the Cape');
+normalJumper.grounded = false; normalJumper.y = 30; normalJumper.vy = 0; normalJumper.jumps = 2; normalJumper.powerJumpBonus = 0;
+normalJumper.update(1 / 60, { held: () => false }, { speed: 160 });
+assert(normalJumper.y > 0 && !normalJumper.grounded, 'Air Jump expiry never interrupts an airborne player');
+const lowGravityJumper = new Player('lorenzo');
+lowGravityJumper.grounded = false; lowGravityJumper.y = 30; lowGravityJumper.vy = 0;
+lowGravityJumper.update(0.1, { held: () => false }, { speed: 160, gravityScale: 0.65 });
+assert(lowGravityJumper.vy === -58.5, 'Low Gravity scales player physics after hero gravity');
 
 p = new Powerups(bench);
 assert(!p.isInvincible(), 'not invincible before grabbing unpeel');
@@ -72,9 +105,20 @@ run.enter();
 assert(run.powerups.shieldStack >= 1 && run.powerups.shieldStack <= run.powerups.shieldCap(),
   `starting shield stacks within cap (${run.powerups.shieldStack})`);
 
+run = makeRun('lowgrav');
+run.enter();
+assert(run.powerups.active.lowgrav && run.powerups.active.lowgrav.t === 30, 'starting Low Gravity lasts at least 30 seconds');
+
 run = makeRun(null);
 run.enter();
 assert(Object.keys(run.powerups.active).length === 0, 'no starting powerup → nothing active');
+const baseRunSpeed = run.speed;
+run.powerups.grab('speed');
+assert(Math.abs(run.speed - baseRunSpeed * 1.15) < 0.001, 'Speed Burst feeds the shared run speed used by spawning');
+run.powerups.grab('airjump');
+run.relay.current = 'mochi'; run.player.setHero('mochi');
+run.player.powerJumpBonus = run.powerups.bonusJumps();
+assert(run.player.maxJumps === 3, 'active Air Jump survives a hero portal swap');
 
 // UNPEELABLE deflects hits but not pits.
 run = makeRun('unpeel');
@@ -90,6 +134,10 @@ assert(run.battery === cells - 1, `pit still costs a cell under unpeel (${run.ba
 // --- UNPEELABLE also drips mid-stage, rarer than the staples ---------------
 assert(PICKUPS.capUnpeel && PICKUPS.capUnpeel.power === 'unpeel', 'capUnpeel pickup grants unpeel');
 assert(hasProp('capUnpeel'), 'capUnpeel has capsule art');
+for (const [pickup, power] of [['capAirJump', 'airjump'], ['capSpeed', 'speed'], ['capLowGrav', 'lowgrav']]) {
+  assert(PICKUPS[pickup] && PICKUPS[pickup].power === power, `${pickup} grants ${power}`);
+  assert(hasProp(pickup), `${pickup} has capsule art`);
+}
 
 const counts = {};
 const drip = new DripSpawner(new Rng(4242), bench);
@@ -99,8 +147,11 @@ for (const d of drops) if (d.def.power) counts[d.def.power] = (counts[d.def.powe
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 const unpeelShare = (counts.unpeel || 0) / total;
 const staples = ['shield', 'magnet', 'star', 'slowmo'].map((k) => (counts[k] || 0) / total);
+const traits = ['airjump', 'speed', 'lowgrav'].map((k) => (counts[k] || 0) / total);
 assert(unpeelShare > 0.05 && unpeelShare < 0.2, `unpeel drops sometimes (${(unpeelShare * 100).toFixed(1)}% of ${total})`);
 assert(staples.every((s) => s > unpeelShare), `every staple is more common than unpeel (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
+assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
+assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');
 
 console.log(failed ? 'BREAKER-BONUS: FAILED' : 'BREAKER-BONUS: PASSED');
 process.exit(failed ? 1 : 0);

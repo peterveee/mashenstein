@@ -6,9 +6,21 @@ export const POWER_DEFS = {
   magnet:  { name: 'MAGNET', color: '#e04848' },
   star:    { name: 'STAR', color: '#f6d33c' },
   slowmo:  { name: 'SLOW-MO', color: '#48c8c8' },
+  airjump: { name: 'AIR JUMP', color: '#72d8f0' },
+  speed:   { name: 'SPEED BURST', color: '#f89048' },
+  lowgrav: { name: 'LOW GRAVITY', color: '#b888f0' },
   // Rarer than the four staples in the drip; also the breaker-box bonus prize.
   unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
 };
+
+// Shared by drip spawns and ?-crate prizes. The borrowed traits are exciting
+// finds without crowding out the established staple capsules.
+export function randomPowerPickup(rng) {
+  const roll = rng.float();
+  if (roll < 0.12) return 'capUnpeel';
+  if (roll < 0.42) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.12) / 0.10)];
+  return rng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
+}
 
 export class Powerups {
   constructor(benchLevels, modIds = []) {
@@ -43,6 +55,9 @@ export class Powerups {
       magnet: [0, 8, 12, 16, 20][level] || 8,
       star: [0, 10, 10, 10, 12][level] || 10,
       slowmo: [0, 6, 8, 10, 12][level] || 6,
+      airjump: [0, 14, 20][level] || 14,
+      speed: [0, 10, 13][level] || 10,
+      lowgrav: [0, 12, 16][level] || 12,
       unpeel: [0, 12, 13, 14, 15][level] || 12,
     }[id] || 8;
     return base * this.durMult();
@@ -64,6 +79,18 @@ export class Powerups {
     const a = this.active.slowmo;
     if (!a) return 1;
     return a.level >= 3 ? 0.55 : 0.65;
+  }
+
+  bonusJumps() { return this.active.airjump ? 1 : 0; }
+
+  speedMultiplier() {
+    const a = this.active.speed;
+    return !a ? 1 : (a.level >= 2 ? 1.25 : 1.15);
+  }
+
+  gravityMultiplier() {
+    const a = this.active.lowgrav;
+    return !a ? 1 : (a.level >= 2 ? 0.5 : 0.65);
   }
 
   isInvincible() { return !!this.active.unpeel; }

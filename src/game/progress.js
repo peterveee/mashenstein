@@ -11,6 +11,10 @@ export function formatCoins(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// Every stage carries the same three plugs (mission, challenge, toaster), so
+// the campaign ceiling follows the stage list rather than a hand-kept number.
+export const MAX_PLUGS = STAGES.length * 3;
+
 export function totalPlugs(slot) {
   let n = 0;
   for (const arr of Object.values(slot.campaign.plugs)) n += arr.filter(Boolean).length;

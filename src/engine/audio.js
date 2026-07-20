@@ -30,7 +30,8 @@ class AudioSys {
     this.nextTime = 0;
     this.timer = null;
     this.bank = null;      // current pattern bank
-    this.detune = 1;       // slow-mo music warp
+    this.tempo = 1;        // song speed multiplier (slow-mo drags it down)
+    this.detune = 1;       // song pitch multiplier
     this.starMode = false; // invincibility layer on/off
     this.starRoot = 110;   // last bass note the song played (arpeggio follows it)
     this.beatListeners = [];
@@ -383,7 +384,10 @@ class AudioSys {
     }
   }
 
-  setDetune(d) { this.detune = d; }
+  // Tempo and pitch warp independently: slow-mo drags the tempo without
+  // dropping the key, invincibility winds both up a whole tone.
+  setWarp(tempo, pitch = tempo) { this.tempo = tempo; this.detune = pitch; }
+  setDetune(d) { this.setWarp(d, d); }
 
   // Invincibility: duck the theme and bring up the star arpeggio over it, so
   // it still reads as the same song — just electrified.
@@ -407,7 +411,7 @@ class AudioSys {
 
   schedule() {
     if (!this.ctx || !this.bank) return;
-    const spb = (60 / (this.bpm * this.detune)) / 4; // seconds per 16th step
+    const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
     while (this.nextTime < this.ctx.currentTime + 0.12) {
       const s = this.step % 32;
       // Song form: bank.sections is a list of partial banks (lane overrides)
@@ -692,7 +696,7 @@ class AudioSys {
   // callers can fall back to a wall clock.
   songBeat() {
     if (!this.ctx || !this.bank) return null;
-    const spb = (60 / (this.bpm * this.detune)) / 4;
+    const spb = (60 / (this.bpm * this.tempo)) / 4;
     const ahead = (this.nextTime - this.ctx.currentTime) / spb;
     return (this.step - ahead) / 4;
   }
@@ -700,7 +704,7 @@ class AudioSys {
   // Beat phase for rhythm cabinet: 0..1 within the current beat.
   beatPhase() {
     if (!this.ctx || !this.bank) return 0;
-    const spb = (60 / (this.bpm * this.detune));
+    const spb = (60 / (this.bpm * this.tempo));
     return ((this.ctx.currentTime % spb) / spb);
   }
 }

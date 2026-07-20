@@ -31,7 +31,8 @@ assert(Audio.detune > 1, `invincibility winds the song up (detune ${Audio.detune
 // Slow-mo and star power stack rather than one clobbering the other.
 run.powerups.grab('slowmo');
 run.update(1 / 60);
-assert(Audio.detune > 1 && Audio.detune < 1.08, `slow-mo drags the sped-up song back down (detune ${Audio.detune.toFixed(3)})`);
+assert(Audio.tempo > 1 && Audio.tempo < 1.08, `slow-mo drags the sped-up tempo back down (tempo ${Audio.tempo.toFixed(3)})`);
+assert(Audio.detune === 1.08, `slow-mo leaves the key alone (detune ${Audio.detune.toFixed(3)})`);
 
 run.powerups.active.unpeel.t = 0.001;
 run.update(1 / 60);

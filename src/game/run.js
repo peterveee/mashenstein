@@ -10,7 +10,7 @@ import { drawText, drawTextCentered, textWidth, wrapText } from '../engine/sprit
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
-import { Powerups, POWER_DEFS } from './powerups.js';
+import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
@@ -160,7 +160,7 @@ export class RunState {
       Audio.sfx('power');
       this.floatText(`BREAKER BONUS: ${POWER_DEFS[id].name}`, PLAYER_X - 20, 70, POWER_DEFS[id].color);
     }
-    setSceneGlow(true);
+    setSceneGlow(!this.style.lightBg);
     clearParticles();
   }
 
@@ -195,7 +195,7 @@ export class RunState {
       ? 1 + 0.045 * Math.sqrt(this.tRun)
       : 1 + 0.03 * Math.sqrt(this.tRun);
     const capped = Math.min(this.overtime ? 2.4 : 1.6, ramp);
-    return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) *
+    return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) * this.powerups.speedMultiplier() *
       (this.player.dashT > 0 ? 1.8 : this.player.rollT > 0 ? 1.25 : this.player.stumbleT > 0 ? 0.72 : 1);
   }
 
@@ -209,7 +209,10 @@ export class RunState {
       this.paused = true;
     }
     if (Input.pressed('pause')) this.paused = !this.paused;
-    setSceneGlow(!this.paused && !this.dead);
+    // Scene bloom brightens anything above ~0.8 luma. On paper-white packs
+    // that is the WHOLE background, so the bloom clips it to pure white and
+    // erases the linework. Those packs opt out.
+    setSceneGlow(!this.paused && !this.dead && !this.style.lightBg);
     if (this.paused) {
       Input.endFrame();
       return;
@@ -219,9 +222,12 @@ export class RunState {
 
     const ts = this.powerups.timescale() * (this.briefSlow > 0 ? 0.35 : 1);
     if (this.briefSlow > 0) this.briefSlow -= dt;
-    // Slow-mo drags the song down; invincibility winds it up a whole tone
-    // (detune moves tempo and pitch together, which is the point).
-    Audio.setDetune((this.powerups.active.slowmo ? 0.94 : 1) * (this.powerups.isInvincible() ? 1.08 : 1));
+    // Slow-mo drags the tempo down but stays in key — a pitch drop reads as a
+    // tape stall, not a slowdown. Invincibility still winds both up a whole
+    // tone, where the pitch shift is the point.
+    const slow = this.powerups.active.slowmo ? 0.94 : 1;
+    const star = this.powerups.isInvincible() ? 1.08 : 1;
+    Audio.setWarp(slow * star, star);
     const wdt = dt * ts;   // world time (slow-mo affects world, not score accrual)
 
     this.tRun += wdt;
@@ -237,7 +243,9 @@ export class RunState {
     const sMult = hero.scoreMult * this.powerups.scoreMult() * (this.modIds.includes('crayon') ? 0.95 : 1);
     this.score += 10 * (sp / BASE_SPEED) * sMult * dt;
 
-    // Inputs.
+    // Inputs. The borrowed Air Jump applies before the button edge is read so
+    // a capsule caught while airborne is useful on the very next frame.
+    this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump')) {
       const ok = this.player.jumpPressed(Audio);
       if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#f8c0d8', 1, 60, () => this.fxRng.float());
@@ -248,7 +256,9 @@ export class RunState {
 
     // Player physics. (jumpScale survives hero swaps)
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
-    const res = this.player.update(wdt, Input, { speed: sp, ice: this.cabinet.mechanic === 'ice' });
+    const res = this.player.update(wdt, Input, {
+      speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
+    });
     if (res.landed) {
       Audio.sfx('land');
       burst(this.camX + PLAYER_X + 6, this.groundYAt(this.camX + PLAYER_X), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
@@ -281,9 +291,14 @@ export class RunState {
 
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
-    // Stage complete?
-    if (!this.overtime && this.distance >= this.totalDist && this.missionSatisfied()) {
-      this.endRun(true);
+    // The finish is a full-height plane, not a physical doorway: jumping must
+    // never let the player sail past it. Crossing always ends the attempt;
+    // missions that are still incomplete fail here instead of leaving the
+    // finish marker behind while the run continues indefinitely.
+    if (!this.overtime && this.distance >= this.totalDist) {
+      const missionDone = this.missionSatisfied();
+      if (!missionDone) this.failMsg = 'MISSION INCOMPLETE';
+      this.endRun(missionDone, missionDone ? undefined : 'MISSION INCOMPLETE');
     }
     Input.endFrame();
   }
@@ -431,14 +446,12 @@ export class RunState {
     burst(cx, cy, 6, 46, 0.7, '#a8791f', 1, 210, r);     // dark splinters falling
   }
 
-  // Sometimes the box coughs up a capsule instead of loose change. Same rarity
-  // weighting as the spawner's drip, so UNPEELABLE stays the rare one.
+  // Sometimes the box coughs up a capsule instead of loose change. It shares
+  // the drip's weighted pool, so every source has the same odds.
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const type = this.fxRng.chance(0.12)
-      ? 'capUnpeel'
-      : this.fxRng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
+    const type = randomPowerPickup(this.fxRng);
     const p = makePickup(type, x, alt);
     p.toss = true;
     p.vx = this.speed * 1.45;
@@ -551,6 +564,12 @@ export class RunState {
     const beat = Audio.beatPhase();
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      // Shamblers lurch rather than glide: each step surges then nearly stalls.
+      // The surge never flips sign, so they only ever close on the player.
+      if (ob.def.shamble) {
+        ob.gait += dt * 5;
+        ob.vx = ob.def.vx * (1.6 + 0.9 * Math.sin(ob.gait));
+      }
       if (ob.vx) ob.x += ob.vx * dt;
       if (ob.def.falls && !ob.fell) {
         // Telegraph, then drop when the player approaches.
@@ -576,7 +595,9 @@ export class RunState {
     // Tossed loot: arcs forward out of whatever dropped it, bounces once or
     // twice, then settles on the ground ahead so you run through it.
     for (const p of this.pickups) {
-      if (!p.live || !p.toss) continue;
+      if (!p.live) continue;
+      if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
+      if (!p.toss) continue;
       p.x += p.vx * dt;
       p.alt += p.vy * dt;
       p.vy -= 700 * dt;
@@ -877,7 +898,23 @@ export class RunState {
         continue;
       }
       const box = entityBox(ob, this.groundYAt(ob.x));
+      // Crates are solid enough to land on, but still hurt when run into.
+      // Once a descending player has made a clean top contact, keep that crate
+      // harmless until it passes behind them instead of turning the next frame
+      // of the same landing into a side hit.
+      if (ob.landedOn) {
+        if (pbox.x > box.x + box.w) ob.landedOn = false;
+        else continue;
+      }
       if (!overlaps(pbox, box)) continue;
+      const playerBottom = pbox.y + pbox.h;
+      const landedOnCrate = ob.type === 'crate' && this.player.vy <= 0 &&
+        pbox.x >= box.x && pbox.x + pbox.w <= box.x + box.w &&
+        playerBottom <= box.y + 10;
+      if (landedOnCrate) {
+        ob.landedOn = true;
+        continue;
+      }
       // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
       if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
       if (this.player.invincible || this.powerups.isInvincible()) {
@@ -1094,13 +1131,16 @@ export class RunState {
     const cam = this.camX;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-    this.style.bg(ctx, this.tRun, cam, this.cabinet);
+    this.style.bg(ctx, this.tRun, cam, this.cabinet, this.totalDist);
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y);
 
-    // Entities.
+    // Entities. On a converting style (lcd) the whole cast is held back past
+    // post() with the hero, so enemies and pickups stay in colour against the
+    // monochrome panel — they are the things you have to read at a glance.
+    const drawActors = () => {
     for (const p of this.pickups) if (p.live) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
     for (const ob of this.obstacles) if (ob.live) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
     for (const pr of this.projectiles) {
@@ -1126,6 +1166,8 @@ export class RunState {
         ctx.fillStyle = '#fff0a0'; ctx.fillRect(x + 2, y, 2, 1);
       }
     }
+    };
+    if (!this.style.actorsAbovePost) drawActors();
     if (this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun));
     if (this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
     if (this.escapeWall != null) {
@@ -1174,13 +1216,23 @@ export class RunState {
     }
 
     // Player.
-    drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
+    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, flat: this.paused || this.dead, groundY: this.groundYAt(cam + PLAYER_X),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 
+    // A style whose post() *converts* the frame rather than tinting it (lcd)
+    // takes the cast after the pass, so hero, enemies and pickups stay in
+    // colour against a monochrome background — on a two-tone panel an unlit
+    // hazard is indistinguishable from printed backplate art. Normal
+    // frames queue the hero to the overlay layer and are unaffected either way;
+    // this is what keeps paused/dead and mirrored frames — which bake the hero
+    // into the backbuffer — consistent with them. Still ahead of the blackout
+    // overlay and inside the mirror transform, so both continue to apply.
+    if (!this.style.actorsAbovePost) drawHero();
     drawParticles(ctx, cam);
     this.style.post(ctx, this.tRun);
+    if (this.style.actorsAbovePost) { drawActors(); drawHero(); }
 
     // Blackout overlay (mission).
     if (this.mission.type === 'blackout') {

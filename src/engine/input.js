@@ -109,6 +109,13 @@ class InputSys {
     return null;
   }
 
+  // True on touch-first devices (or once a touch has actually happened).
+  // Used to bypass keyboard-finicky content like the breaker-box minigames.
+  isTouchDevice() {
+    if (this.usingTouch) return true;
+    return !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  }
+
   buttonAt(x, y) {
     for (const b of this.buttons) {
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;

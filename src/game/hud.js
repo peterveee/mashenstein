@@ -7,6 +7,54 @@ import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
+import { drawPlugRow } from './plugs.js';
+
+// Plug tally for the stage you are in: which of its three plugs are already
+// banked from earlier attempts, and which are on track this run. Same icons as
+// the stage select list, so the row means one thing across both screens.
+// The mission plug is never "live" — it only lands when you reach the socket.
+function drawPlugTally(ctx, run, y) {
+  if (run.overtime || !run.stage) return;
+  const banked = run.save.slot.campaign.plugs[run.stage.id] || [false, false, false];
+  const c = run.challenge;
+  const live = [
+    false,
+    !!(c && !c.failed && (c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n)),
+    run.applianceGot,
+  ];
+  drawPlugRow(ctx, 6, y, banked, live);
+}
+
+// A twinkle riding the HUD coin. Two four-point stars a half-cycle apart, each
+// lit for only part of its swing, so the icon catches the light now and then
+// instead of strobing — a constant sparkle next to a live score reads as an
+// alert.
+function drawCoinGlitter(ctx, x, y, size, t) {
+  const spots = [[0.72, 0.24, 0], [0.26, 0.7, 0.55]];
+  ctx.save();
+  ctx.fillStyle = '#fffce0';
+  for (const [fx, fy, phase] of spots) {
+    const p = (((t || 0) / 1.9 + phase) % 1 + 1) % 1;
+    if (p > 0.4) continue;
+    const k = Math.sin((p / 0.4) * Math.PI);
+    // The star overhangs the coin rim at full swell — a sparkle contained
+    // inside the disc just reads as a chipped highlight.
+    const r = size * 0.55 * k;
+    const cx = x + size * fx, cy = y + size * fy;
+    ctx.globalAlpha = k;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.quadraticCurveTo(cx, cy, cx + r, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy + r);
+    ctx.quadraticCurveTo(cx, cy, cx - r, cy);
+    ctx.quadraticCurveTo(cx, cy, cx, cy - r);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
 export function drawHud(ctx, run) {
   const bottomRow1 = H - 25;
@@ -40,24 +88,42 @@ export function drawHud(ctx, run) {
     ctx.strokeRect(0.5, 0.5, W - 1, 8);
   }
 
-  // Score + coins.
-  drawText(ctx, `${Math.floor(run.score)}`, 6, 12, '#fff', 2);
-  drawProp(ctx, 'coin', 6, 30, 8, 8);
-  drawText(ctx, `${run.coins}`, 18, 30, '#f6d33c');
+  // Left status column: score, coins, cells, shields, plugs. A cursor rather
+  // than fixed rows — a shieldless run used to leave an empty band between the
+  // cells and the plugs, which read as a missing HUD element.
+  const COL_X = 6;
+  const ROW_GAP = 5;
+  let ly = 12;
+  drawText(ctx, `${Math.floor(run.score)}`, COL_X, ly, '#fff', 2);
+  ly += 16 + ROW_GAP;
 
-  // Battery cells (campaign) — sincere and always visible.
+  drawProp(ctx, 'coin', COL_X, ly, 8, 8);
+  drawCoinGlitter(ctx, COL_X, ly, 8, run.tRun);
+  drawText(ctx, `${run.coins}`, COL_X + 12, ly, '#f6d33c');
+  ly += 8 + ROW_GAP;
+
+  // Battery cells (campaign) — drawn as the pickup itself, so a cell and the
+  // thing that refills it are visibly the same object. Spent cells hold their
+  // slot at low alpha, the same idiom the unearned plugs use.
   if (!run.oneHit) {
+    const prevAlpha = ctx.globalAlpha;
     for (let i = 0; i < run.maxBattery(); i++) {
-      ctx.fillStyle = i < run.battery ? '#48c848' : '#2a3a2a';
-      ctx.fillRect(6 + i * 8, 44, 6, 8);
-      ctx.strokeStyle = '#1a241a';
-      ctx.strokeRect(6.5 + i * 8, 44.5, 6, 8);
+      ctx.globalAlpha = i < run.battery ? 1 : 0.22;
+      drawProp(ctx, 'battery', COL_X + i * 10, ly, 8, 8);
     }
+    ctx.globalAlpha = prevAlpha;
   } else {
-    drawText(ctx, 'ONE HIT. GOOD LUCK.', 6, 44, '#e04848');
+    drawText(ctx, 'ONE HIT. GOOD LUCK.', COL_X, ly, '#e04848');
   }
-  // Shields.
-  for (let i = 0; i < run.powerups.shieldStack; i++) drawProp(ctx, 'capShield', 6 + i * 10, 56, 8, 8);
+  ly += 8 + ROW_GAP;
+
+  // Shields, only when you have any.
+  if (run.powerups.shieldStack > 0) {
+    for (let i = 0; i < run.powerups.shieldStack; i++) drawProp(ctx, 'capShield', COL_X + i * 10, ly, 8, 8);
+    ly += 8 + ROW_GAP;
+  }
+
+  drawPlugTally(ctx, run, ly);
 
   // Power-up timers, top-right under buttons.
   let py = 20;
@@ -92,6 +158,7 @@ export function drawHud(ctx, run) {
     ctx.lineWidth = 0.8;
     ctx.stroke();
   }
+  ctx.lineWidth = 1; // the pips' hairline must not leak into later strokes
 
   // Mission line + progress.
   if (!run.overtime && run.stage) {
@@ -108,7 +175,6 @@ export function drawHud(ctx, run) {
     } else if (run.challenge) {
       drawText(ctx, fitLeft(`${run.challenge.desc} - NOT THIS TIME`), 6, bottomRow2, '#5a5a68');
     }
-    if (run.applianceGot) drawText(ctx, 'TOASTER: YES', W - 78, bottomRow2, '#f6d33c');
   } else {
     drawText(ctx, 'OVERTIME', 6, bottomRow2, '#8858c8');
   }

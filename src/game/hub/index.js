@@ -3,7 +3,7 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, wrapText } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, wrapText, textWidth } from '../../engine/sprites.js';
 import { drawToon, toonStandSprite } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
@@ -11,7 +11,8 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, MODS, MOD_BY_ID } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot } from '../progress.js';
+import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
 
 const CORRUPTED_MODIFIERS = [
@@ -128,9 +129,19 @@ export class HubState {
     }
   }
 
+  // Whoever the player is currently wearing. Gary shows up on the coupon mod;
+  // otherwise it's the last team's lead, and Lorenzo before there is one.
+  avatarId() {
+    const slot = this.save.slot;
+    return slot.mods.equipped.includes('coupon') ? 'gary' : (this.flow.lastTeam && this.flow.lastTeam[0]) || 'lorenzo';
+  }
+
   npcs() {
-    // Heroes loiter in the hub; DUST DEVIL cleans impossible things.
-    return this.npcActors || HEROES.map((h, i) => ({ id: h.id, x: 110 + i * 90 + (i % 3) * 22, facing: 1, state: 'idle' }));
+    // Heroes loiter in the hub; DUST DEVIL cleans impossible things. The hero
+    // the player is currently wearing stays out of the crowd -- one Lorenzo.
+    const actors = this.npcActors || HEROES.map((h, i) => ({ id: h.id, x: 110 + i * 90 + (i % 3) * 22, facing: 1, state: 'idle' }));
+    const avatar = this.avatarId();
+    return actors.filter((n) => n.id !== avatar);
   }
 
   updateNpcs(dt) {
@@ -251,7 +262,7 @@ export class HubState {
     const [dx, dy] = ddSpots[Math.min(act - 1, 2)];
     drawProp(ctx, 'dustdevil', Math.round(dx - cam + Math.sin(this.t) * 8), dy, 14, 12);
     // player walks
-    const heroId = slot.mods.equipped.includes('coupon') ? 'gary' : (this.flow.lastTeam && this.flow.lastTeam[0]) || 'lorenzo';
+    const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right');
     drawToon(ctx, heroId, {
       kind: moving ? 'run' : 'idle',
@@ -262,7 +273,7 @@ export class HubState {
     }, Math.round(this.px - cam), 192, 24);
     // header
     drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, 8, '#48e0c8');
-    drawText(ctx, `PLUGS: ${totalPlugs(slot)}   COINS: ${slot.coins}   ACT ${act}`, 8, 20, '#c8c8d8');
+    drawText(ctx, `PLUGS: ${totalPlugs(slot)}/${MAX_PLUGS}   COINS: ${slot.coins}   ACT ${act}`, 8, 20, '#c8c8d8');
     // prompts
     if (this.near) {
       const label = this.near.type === 'cabinet' && !this.near.unlocked
@@ -309,6 +320,17 @@ function drawMenuHint(ctx, extra) {
   drawText(ctx, `UP/DOWN SELECT   ENTER ${extra || 'CONFIRM'}   ESC BACK`, 12, H - 12, '#5a5a68');
 }
 
+// Mission blurbs used to be cut at a fixed character count, which clipped the
+// longer ones mid-word even when they had room left. Measure instead, and only
+// trim when the string genuinely overflows.
+function fitText(str, maxWidth, scale = 1, style = 'ui') {
+  const s = String(str);
+  if (textWidth(s, scale, style) <= maxWidth) return s;
+  let out = s;
+  while (out.length > 1 && textWidth(out + '...', scale, style) > maxWidth) out = out.slice(0, -1);
+  return out.replace(/[\s.,]+$/, '') + '...';
+}
+
 export class StageSelectState {
   constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = 74; this.rowH = 26; }
   enter() { this.idx = 0; this.corrupt = null; Input.setMenuButtons(); }
@@ -340,6 +362,19 @@ export class StageSelectState {
     drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2, 'title');
     drawTextCentered(ctx, `${this.cab.genre} CABINET - STYLE: ${this.cab.style.toUpperCase()}`, W / 2, 44, '#8a8a98');
     const slot = this.save.slot;
+    // Plugs are one-time per stage, so a running count tells you what is still
+    // out there — a cleared cabinet reads 9/9 and never moves again.
+    const cabStages = stagesForCabinet(this.cab.id);
+    const cabGot = cabStages.reduce((n, s) => n + (slot.campaign.plugs[s.id] || []).filter(Boolean).length, 0);
+    const cabMax = cabStages.length * 3;
+    // Column headers sit above the list so the plug pips and the rank letter
+    // read as labelled columns rather than loose glyphs at the end of a row.
+    const plugX = W - 130, rankX = plugX + PLUG_ROW_W() + 4;
+    // The rank letter is one glyph under a four-glyph header, so both hang off a
+    // shared column centre rather than a shared left edge.
+    const rankCx = rankX + textWidth('RANK') / 2;
+    drawTextCentered(ctx, 'PLUGS', plugX + PLUG_ROW_W() / 2, this.listY - 12, '#5a5a68');
+    drawTextCentered(ctx, 'RANK', rankCx, this.listY - 12, '#5a5a68');
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
@@ -348,8 +383,11 @@ export class StageSelectState {
         const plugs = slot.campaign.plugs[o.stage.id] || [];
         const rank = slot.campaign.ranks[o.stage.id];
         drawText(ctx, `${sel ? '> ' : '  '}${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`, 40, y, c);
-        drawText(ctx, `${plugs[0] ? 'M' : '-'}${plugs[1] ? 'C' : '-'}${plugs[2] ? 'T' : '-'}  ${rank || ''}`, W - 120, y, '#48e0c8');
-        drawText(ctx, o.stage.mission.desc.slice(0, 52), 52, y + 10, '#5a5a68');
+        // The pip row already says how many plugs you have, so the n/3 counter
+        // that used to sit here was the same fact twice.
+        drawPlugRow(ctx, plugX, y - 2, plugs);
+        if (rank) drawTextCentered(ctx, rank, rankCx, y, '#48e0c8');
+        drawText(ctx, fitText(o.stage.mission.desc, W - 8 - 52), 52, y + 10, '#5a5a68');
       } else if (o.kind === 'boss') {
         drawText(ctx, `${sel ? '> ' : '  '}BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050');
       } else if (o.kind === 'corrupt') {
@@ -360,6 +398,10 @@ export class StageSelectState {
         drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, c);
       }
     });
+    // The tally is reference, not a headline: it rides the bottom status row
+    // opposite the controls hint instead of crowding the title block.
+    const tally = `PLUGS HERE: ${cabGot}/${cabMax}   TOTAL: ${totalPlugs(slot)}/${MAX_PLUGS}`;
+    drawText(ctx, tally, W - 12 - textWidth(tally), H - 12, cabGot >= cabMax ? '#f6d33c' : '#48e0c8');
     drawMenuHint(ctx, 'PLAY');
   }
 }
@@ -485,6 +527,8 @@ export class ArcadeState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
   enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
+    // Breaker-box games are keyboard-shaped; on touch the corner is shuttered.
+    if (Input.isTouchDevice()) return [{ none: true }, { back: true }];
     const seen = this.save.slot.campaign.storyFlags.minigamesSeen || [];
     const opts = MINIGAMES.filter((m) => seen.includes(m)).map((m) => ({ game: m }));
     if (!opts.length) opts.push({ none: true });
@@ -505,10 +549,13 @@ export class ArcadeState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2, 'title');
     drawTextCentered(ctx, 'REPLAY BREAKER-BOX GAMES. WIN: +100 COINS.', W / 2, 40, '#8a8a98');
+    const touch = Input.isTouchDevice();
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
-      const label = o.back ? 'BACK' : o.none ? 'NOTHING UNLOCKED YET. POWER ON A CABINET.' : MINIGAME_NAMES[o.game];
+      const label = o.back ? 'BACK'
+        : o.none ? (touch ? 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.' : 'NOTHING UNLOCKED YET. POWER ON A CABINET.')
+        : MINIGAME_NAMES[o.game];
       drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');
     });
     drawMenuHint(ctx, 'PLAY');

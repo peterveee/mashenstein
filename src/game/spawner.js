@@ -2,6 +2,7 @@
 // fairness sim can import it directly.
 import { OBSTACLES, makeObstacle, makePickup } from './entities.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
+import { randomPowerPickup } from './powerups.js';
 
 export const REACT_FLOOR = 0.25;      // seconds of reaction after previous action
 export const REACT_FLOOR_MAX = 0.2;   // at highest tiers / UNPLUGGED
@@ -103,10 +104,7 @@ export class DripSpawner {
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
       this.capsuleTimer = this.rng.range(12, 18);
-      // UNPEELABLE joins the drip, a touch rarer than the four staples.
-      const type = this.rng.chance(0.12)
-        ? 'capUnpeel'
-        : this.rng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
+      const type = randomPowerPickup(this.rng);
       pickups.push(makePickup(type, worldX + 480 + 60, 34));
     }
     if (!oneHit && this.batteryTimer <= 0) {

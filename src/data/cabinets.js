@@ -13,9 +13,11 @@ const BASE_PATTERNS = [
   P(0, [{ t: 'cactus', dx: 0 }]),
   P(0, [{ t: 'cactus', dx: 0 }, coinArc(60)]),
   P(0, [{ t: 'crate', dx: 0 }]),
+  P(0, [{ t: 'crate', dx: 0, n: 2 }]), // a double stack reads as a real wall even at tier 0
   P(0, [coinArc(0, 5)]),
   P(1, [{ t: 'cactus', dx: 0 }, { t: 'cactus', dx: 26 }]),
   P(1, [{ t: 'cactusBig', dx: 0 }, coinArc(80)]),
+  P(1, [{ t: 'crate', dx: 0 }, { t: 'crate', dx: 40, n: 2 }]), // low then high: a two-beat read
   P(1, [{ t: 'buzzbird', dx: 0, y: 60 }]),
   P(1, [{ t: 'drone', dx: 0, y: 26 }]), // low flyer: duck under
   P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
@@ -77,6 +79,8 @@ export const CABINETS = [
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
+      P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0, y: 54 }]), // stack as a stepping stone to the prize
+      P(1, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
       P(1, [{ t: 'qcrate', dx: 0, y: 54 }, { t: 'qcrate', dx: 16, y: 54 }, { t: 'cactus', dx: 90 }]),
       P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
       P(2, [{ t: 'qcrate', dx: 0, y: 70 }, { t: 'qcrate', dx: 16, y: 70 }, { t: 'qcrate', dx: 32, y: 70 }]),

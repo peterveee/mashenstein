@@ -33,10 +33,13 @@ export const PICKUPS = {
   capMagnet: { w: 8, h: 8, sprite: 'capMagnet', power: 'magnet' },
   capStar:   { w: 8, h: 8, sprite: 'capStar', power: 'star' },
   capSlow:   { w: 8, h: 8, sprite: 'capSlow', power: 'slowmo' },
+  capAirJump:{ w: 8, h: 8, sprite: 'capAirJump', power: 'airjump' },
+  capSpeed:  { w: 8, h: 8, sprite: 'capSpeed', power: 'speed' },
+  capLowGrav:{ w: 8, h: 8, sprite: 'capLowGrav', power: 'lowgrav' },
   capUnpeel: { w: 8, h: 8, sprite: 'capUnpeel', power: 'unpeel' },
   appliance: { w: 12, h: 8, sprite: 'appliance', appliance: true },
   cord:      { w: 8, h: 6, sprite: 'fuse', cord: true },
-  resident:  { w: 10, h: 12, sprite: 'zombieWalk', resident: true },
+  resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
 };
 
 let idCounter = 1;
@@ -55,6 +58,7 @@ export function makeObstacle(type, worldX, opts = {}) {
     shootT: def.shoots ? 1.2 : 0,
     hp: opts.hp || 1,
     bobPhase: (worldX * 0.05) % (Math.PI * 2),
+    gait: (worldX * 0.11) % (Math.PI * 2), // shamblers step out of lockstep with each other
   };
 }
 

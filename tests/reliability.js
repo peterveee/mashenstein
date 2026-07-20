@@ -31,6 +31,25 @@ let run = makeRun(() => completions++); run.enter();
 run.endRun(true); run.endRun(true); run.update(1 / 60);
 assert(completions === 1, 'run completion callback is one-shot');
 
+let airborneFinish = null;
+run = makeRun((result) => { airborneFinish = result; }); run.enter();
+run.player.y = 80;
+run.player.grounded = false;
+run.camX = run.totalDist;
+run.update(1 / 60);
+assert(airborneFinish && airborneFinish.success, 'jumping cannot clear the stage finish plane');
+
+const targetStage = { ...stage, mission: { type: 'targets', n: 1, desc: 'TEST' } };
+let incompleteFinish = null;
+run = new RunState({ stage: targetStage, save, seed: 45, difficulty: 1, onEnd: (result) => { incompleteFinish = result; } });
+run.enter();
+run.player.y = 80;
+run.player.grounded = false;
+run.camX = run.totalDist;
+run.update(1 / 60);
+assert(incompleteFinish && !incompleteFinish.success && incompleteFinish.failMsg === 'MISSION INCOMPLETE',
+  'the finish ends an attempt whose mission is incomplete');
+
 let miniEnds = 0;
 const mini = new MinigameState({ game: 'blocksurge', seed: 2, settings: save.settings, onEnd: () => miniEnds++ });
 mini.enter(); mini.result = false;
@@ -113,6 +132,19 @@ run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 const pitCells = run.battery; run.collide();
 assert(run.battery === pitCells - 1, 'pit damages through dash and UNPEELABLE');
 
+// Crates are hazards from the side, but a clean descending top contact is safe.
+run = makeRun(); run.enter();
+const sideCrate = makeObstacle('crate', run.camX + PLAYER_X);
+run.obstacles = [sideCrate]; run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.iframes = 0;
+const sideCells = run.battery; run.collide();
+assert(run.battery === sideCells - 1, 'walking into a crate still damages the player');
+
+run = makeRun(); run.enter();
+const topCrate = makeObstacle('crate', run.camX + PLAYER_X);
+run.obstacles = [topCrate]; run.player.grounded = false; run.player.y = topCrate.h - 1; run.player.vy = -120; run.player.iframes = 0;
+const topCells = run.battery; run.collide(); run.collide();
+assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is safe for the full contact');
+
 // Unbreakables reject every player projectile family.
 for (const type of ['pellet', 'axe', 'fist']) {
   const pipe = makeObstacle('pipe', run.camX + PLAYER_X + 20);
@@ -123,7 +155,7 @@ for (const type of ['pellet', 'axe', 'fist']) {
 }
 
 // Fernwick consumes one enemy shot per roll, without becoming invincible.
-run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.abilityCd = 0; run.useAbility();
+run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.abilityCd = 0; run.useAbility();
 run.projectiles = [{ type: 'enemyShot', x: run.camX + PLAYER_X + 2, alt: 4, vx: 0, live: true, telegraph: 0 }];
 run.updateProjectiles(0, 160);
 assert(!run.projectiles.length && run.player.rollDeflectUsed, 'Fernwick roll deflects one enemy shot');

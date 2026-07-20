@@ -15,16 +15,33 @@ const options = {
   target: ['es2020'],
   minify: !watch,
   sourcemap: watch ? 'inline' : false,
+  // We inline the bundle into template.html ourselves, so nothing is written
+  // by esbuild -- but ctx.serve() still refuses an entry point that has no
+  // output path to map requests onto, so name one it will never write to.
+  outdir: join(root, 'dist'),
   write: false,
   logLevel: 'info',
 };
+
+// Dev-only build stamp. Computed inside emit() so every watch rebuild carries a
+// fresh time, and omitted entirely from `npm run build` — the published
+// dist/index.html has no stamp, so the title screen draws nothing.
+function buildStamp() {
+  if (!watch) return '';
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const s = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `window.__MASH_BUILD__=${JSON.stringify(s)};\n`;
+}
 
 function emit(result) {
   const js = result.outputFiles[0].text;
   const template = readFileSync(join(root, 'build/template.html'), 'utf8');
   // Inline safely: </script> inside the bundle would terminate the tag early.
   const safe = js.replace(/<\/script/gi, '<\\/script');
-  const html = template.replace('/*__BUNDLE__*/', () => safe);
+  // Stamp goes ahead of the bundle so it is set before any module code reads it.
+  const html = template.replace('/*__BUNDLE__*/', () => buildStamp() + safe);
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/index.html'), html);
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB)`);

@@ -10,15 +10,15 @@ import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
   cactus: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
-  tombstone: [11, 8], zombieWalk: [10, 14], drone: [13, 8], buzzbird: [13, 8],
+  tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capSlow: [9, 9], capUnpeel: [9, 9], appliance: [12, 9], fuse: [9, 7],
+  capMagnet: [9, 9], capSlow: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], appliance: [12, 9], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
 import { CABINETS, HUB_THEME, TITLE_THEME } from '../data/cabinets.js';
-import { totalPlugs, formatCoins } from './progress.js';
+import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
 
 function menuNav(input, idx, len) {
   if (input.pressed('down') || input.pressed('right')) { Audio.sfx('ui'); return (idx + 1) % len; }
@@ -437,6 +437,9 @@ const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 
 // The stack is tight: marquee, subtitle, panel, then the two footer lines, all
 // of which have to finish above the cast's heads at y=233.
 const TITLE_SCALE = 4.4;        // sized so the logo spans about the panel's width
+// Set by build.js ahead of the bundle, and only for `npm run dev` — the
+// published build never defines it, so this is '' and the title draws no stamp.
+const BUILD_STAMP = (typeof window !== 'undefined' && window.__MASH_BUILD__) || '';
 const TITLE_MARQUEE_Y = 30;     // a little top margin so the logo isn't on the edge
 const TITLE_SUBTITLE_Y = 71;
 const TITLE_PANEL_Y = 92;
@@ -558,7 +561,7 @@ export class TitleState {
     this.save.data.slots.forEach((s, i) => {
       opts.push({
         id: 'slot' + i,
-        label: s ? `FILE ${i + 1}: ${totalPlugs(s)} PLUGS, ${formatCoins(s.coins)} COINS` : `FILE ${i + 1}: NEW GAME`,
+        label: s ? `FILE ${i + 1}: ${totalPlugs(s)}/${MAX_PLUGS} PLUGS, ${formatCoins(s.coins)} COINS` : `FILE ${i + 1}: NEW GAME`,
         act: () => this.onSlotChosen(i, !s),
       });
     });
@@ -579,7 +582,7 @@ export class TitleState {
   eraseChoices() {
     if (this.erase.step === 'choose') {
       return [
-        ...this.erase.slots.map((i) => ({ label: `FILE ${i + 1}: ${totalPlugs(this.save.data.slots[i])} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
+        ...this.erase.slots.map((i) => ({ label: `FILE ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
         { label: 'CANCEL', cancel: true },
       ];
     }
@@ -706,6 +709,11 @@ export class TitleState {
         drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', 0.875);
       }
       d.globalAlpha = 1;
+      if (BUILD_STAMP) {
+        d.globalAlpha = 0.55;
+        drawText(d, `BUILD ${BUILD_STAMP}`, 4, 4, '#55647a', 0.75);
+        d.globalAlpha = 1;
+      }
       if (this.erase) this.drawEraseModal(d);
     };
     if (!pushOverlayDraw(ui)) ui(ctx);
@@ -965,7 +973,7 @@ const GUIDE_PAGES = [
     ],
   },
   {
-    title: 'PICKUPS', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
+    title: 'PICKUPS: ESSENTIALS', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
     rows: [
       { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
       { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
@@ -973,10 +981,18 @@ const GUIDE_PAGES = [
       { s: 'capMagnet', name: 'MAGNET CAPSULE', desc: 'PULLS NEARBY COINS TO YOU.' },
       { s: 'capStar', name: 'STAR CAPSULE', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
       { s: 'capSlow', name: 'SLOW-MO CAPSULE', desc: 'SLOWS THE WHOLE WORLD DOWN BRIEFLY.' },
+      { s: 'capUnpeel', name: 'UNPEELABLE CAPSULE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
+    ],
+  },
+  {
+    title: 'PICKUPS: HERO TRAITS', color: '#72d8f0', hint: 'BORROW A PASSIVE. KEEP THE SPECIAL MOVE TO YOURSELF.',
+    rows: [
+      { s: 'capAirJump', name: 'AIR JUMP CAPSULE', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH MOCHI AND THE CAPE.' },
+      { s: 'capSpeed', name: 'SPEED BURST CAPSULE', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
+      { s: 'capLowGrav', name: 'LOW GRAVITY CAPSULE', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
       { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
-      { s: 'zombieWalk', name: 'RESIDENT', desc: 'FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
-      { s: 'capUnpeel', name: 'UNPEELABLE CAPSULE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
+      { s: 'resident', name: 'RESIDENT', desc: 'ALIVE. WAVES. FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
     ],
   },
 ];
@@ -1158,8 +1174,8 @@ export class HowToPlayState {
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
     line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
-    line('PLUGS', 'UNLOCK NEW CABINETS. COINS BUY UPGRADES.', '#f890b8');
-    line('BREAKER BOX', 'WIN A CABINET\'S FIRST MINIGAME: BONUS POWERUP.', '#f890b8');
+    line('PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8');
+    line('BREAKER BOX', 'WIN IT: BONUS POWERUP. ESC OR SKIP TO BAIL OUT.', '#f890b8');
     y += 4;
     line('PAUSE / MUTE', 'P OR ESC / M. ESC AGAIN QUITS.');
     drawTextCentered(ctx, 'JUMP THE RED CACTI. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');

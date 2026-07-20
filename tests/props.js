@@ -5,7 +5,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { propFrames, propSprite, propTinted, propRimPair, PROP_FRAMES, PROP_PAINTERS } = await import('../src/sprites/props.js');
-const { OBSTACLES } = await import('../src/game/entities.js');
+const { OBSTACLES, PICKUPS } = await import('../src/game/entities.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -18,6 +18,8 @@ assert(OBSTACLES.cactus && OBSTACLES.cactus.sprite === 'cactus', 'the ground haz
 assert(OBSTACLES.cactusBig && OBSTACLES.cactusBig.sprite === 'cactusBig', 'the big variant too');
 assert(!OBSTACLES.shrub && !OBSTACLES.flames, 'no shrub or flames obstacle survives the renames');
 assert(typeof PROP_PAINTERS.cactus === 'function', 'cactus has a vector painter');
+assert(PICKUPS.resident.sprite === 'resident' && typeof PROP_PAINTERS.resident === 'function',
+  'residents use distinct friendly art instead of the zombie hazard sprite');
 
 assert(propFrames('cactus') === 6, 'the cactus sways over six frames');
 const c0 = propSprite('crate', 12, 11, 0);

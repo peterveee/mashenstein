@@ -74,9 +74,14 @@ const Flow = {
   },
 
   openCabinet(cab) {
-    // First power-on: a breaker-box minigame powers the cabinet.
+    // First power-on: a breaker-box minigame powers the cabinet. Touch devices
+    // skip it — the minigames want a keyboard and are miserable on glass.
     const flags = save.slot.campaign.storyFlags;
     flags.minigamesSeen = flags.minigamesSeen || [];
+    if (!flags['powered_' + cab.id] && Input.isTouchDevice()) {
+      flags['powered_' + cab.id] = true;
+      save.persist();
+    }
     if (!flags['powered_' + cab.id]) {
       const rr = new Rng(cab.id + save.slot.stats.runs);
       const unseen = MINIGAMES.filter((m) => !flags.minigamesSeen.includes(m));
@@ -121,6 +126,7 @@ const Flow = {
       difficulty: save.slot.difficulty,
       corrupted,
       onEnd: (result) => {
+        Flow.lastTeam = result.team;
         const gains = applyResult(save, result);
         setState(new ResultsState({ result, gains, save, onDone: () => Flow.toHub() }));
       },
@@ -133,6 +139,7 @@ const Flow = {
       seed: (Date.now() ^ 0xb055) >>> 0,
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
+        Flow.lastTeam = result.team;
         if (result.success) {
           save.slot.campaign.bossesDown[cabId] = true;
           save.persist();
@@ -156,6 +163,7 @@ const Flow = {
       seed: seedOverride ?? dailySeed(),
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
+        Flow.lastTeam = result.team;
         const gains = applyResult(save, result);
         setState(new ResultsState({ result, gains, save, onDone: () => Flow.toHub() }));
       },

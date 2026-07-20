@@ -15,10 +15,12 @@ const suites = [
   'tests/star-power.js',
   'tests/title-sign.js',
   'tests/minigames.js',
+  'tests/plug-tally.js',
   'tests/boss.js',
   'tests/attract.js',
   'tests/cast.js',
   'tests/smoke.js',
+  'tests/touch-smoke.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
 ];

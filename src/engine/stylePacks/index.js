@@ -1,6 +1,15 @@
 // Style packs: renderer-only modules. One draw interface, zero game logic.
 // Every pack draws: bg(ctx,t,camX,cab), ground(ctx,camX,cab,obstacles), post(ctx,t).
 // Hitboxes/timings are style-independent; reduced motion/flashing tame effects.
+//
+// `lightBg: true` opts a pack out of the GPU scene bloom. The bloom bright-pass
+// (glfx.js FS_BRIGHT) keeps anything above ~0.8 luma, and the final composite
+// adds it back at 0.45 — so a pale sky or paper background qualifies almost
+// everywhere, gets ~1.4x its own value, and clips to flat white, erasing the
+// linework and parallax layers drawn on it. Bloom cannot be threshold-tuned out
+// of this: a coin (#f6d33c) sits at 0.80 luma, BELOW a pastel sky at 0.92, so no
+// cutoff separates "bright detail" from "bright background". Light packs opt out
+// wholesale instead; their art carries its own drawn highlights.
 import { W, H } from '../renderer.js';
 import { glowSprite } from '../../sprites/props.js';
 
@@ -25,37 +34,261 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
 // then scroll as GPU texture blits instead of re-tracing a 60-segment path
 // on the CPU every frame.
 const hillCache = new Map();
-function parallaxHills(ctx, camX, color, yBase, amp, wl, factor) {
+// `opts.peak` swaps the rounded |sin| ridge for a triangular one with a lower
+// shoulder — hills become mountains. `opts.rock` and `opts.snow` then band them:
+// each fills everything above its own altitude line, clipped to the ridge
+// silhouette, so only crests rising through a line pick up that color (the
+// shoulders reach rock but not snow). Both lines wobble at integer multiples of
+// the tile period, so they meet themselves at the seam.
+//
+// OVER (below) is why there is no seam line: a path edge landing exactly on
+// x=0/x=period antialiases into a half-covered column, and two abutting tiles
+// put two of those together — a translucent gap showing sky. Overdrawing past
+// both edges (the fill clips to the canvas) keeps the edge columns fully
+// opaque. Rounded hills never showed it because ridge(0) sits at ground level,
+// hidden behind the near layer; a triangular shoulder crest lands at the tile
+// edge and lifts that seam into open sky.
+// Blits at a fractional x antialias their own dest-rect edge against the sky,
+// and two abutting tiles composite that boundary pixel twice at partial alpha
+// (0.5 over sky, then 0.5 over that = 0.75) — a fine translucent seam that
+// appears only at some scroll offsets. So the tile carries MARGIN px of its
+// neighbours' content on each side and blits MARGIN wider on both sides: the
+// ridge is periodic, so the overlap agrees exactly and covers the boundary
+// with opaque pixels instead of blending toward it. OVER (the path overdraw)
+// must stay clear of the margin so those columns are solid too.
+const MARGIN = 2;
+const OVER = MARGIN + 4;
+const TREE_MAX = 18; // tallest crown, reserved as tile headroom
+const VOLCANO_PLX = 0.15; // must match the far hill layer's parallax factor
+function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
-  const key = `${color}|${yBase}|${amp}|${wl}`;
+  const peak = !!(opts && opts.peak);
+  const snow = (opts && opts.snow) || null;
+  const rock = (opts && opts.rock) || null;
+  const trees = (opts && opts.trees) || null;
+  // A tree standing on a crest has its base at `top`, so its crown would reach
+  // above the tile and get sliced flat by the canvas edge. Give the tile that
+  // much headroom and blit from there.
+  const tileTop = top - (trees ? TREE_MAX : 0);
+  const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${rock || ''}|${snow || ''}|`
+    + (trees ? trees.leaf + trees.trunk : '');
   let tile = hillCache.get(key);
   if (!tile) {
     const SS = 3;
     tile = document.createElement('canvas');
-    tile.width = period * SS;
-    tile.height = Math.max(1, (H - top) * SS);
+    tile.width = (period + MARGIN * 2) * SS;
+    tile.height = Math.max(1, (H - tileTop) * SS);
     const x = tile.getContext('2d');
     x.scale(SS, SS);
-    x.translate(0, -top);
+    x.translate(MARGIN, -tileTop); // tile-local 0 is ridge x 0; the margin sits left of it
+    const ridge = (px) => {
+      if (!peak) return yBase - Math.abs(Math.sin(px / wl)) * amp;
+      const u = (((px % period) + period) % period) / period; // px may go negative
+      const main = 1 - Math.abs(u * 2 - 1);               // /\ centered in the tile
+      const v = (u * 2 + 0.5) % 1;
+      const side = (1 - Math.abs(v * 2 - 1)) * 0.55;      // smaller shoulder peaks
+      return yBase - Math.max(main, side) * amp;
+    };
+    const ridgePath = () => {
+      x.beginPath();
+      x.moveTo(-OVER, H);
+      for (let px = -OVER; px <= period + OVER; px += 2) x.lineTo(px, ridge(px));
+      x.lineTo(period + OVER, H);
+      x.closePath();
+    };
+    ridgePath();
     x.fillStyle = color;
-    x.beginPath();
-    x.moveTo(0, H);
-    for (let px = 0; px <= period; px += 2) {
-      x.lineTo(px, yBase - Math.abs(Math.sin(px / wl)) * amp);
-    }
-    x.lineTo(period, H);
-    x.closePath();
     x.fill();
+    // Altitude bands, low to high. Each re-traces the ridge to clip against:
+    // restore() rolls back the clip but NOT the current path, so a second band
+    // would otherwise clip itself to the first band's polygon.
+    const band = (col, frac, h1, a1, h2, a2) => {
+      const lineY = yBase - amp * frac;
+      x.save();
+      ridgePath();
+      x.clip();
+      x.fillStyle = col;
+      x.beginPath();
+      x.moveTo(-OVER, top);
+      x.lineTo(period + OVER, top);
+      for (let px = period + OVER; px >= -OVER; px -= 2) {
+        const a = (px / period) * Math.PI * 2;
+        x.lineTo(px, lineY + Math.sin(a * h1) * a1 + Math.sin(a * h2) * a2);
+      }
+      x.closePath();
+      x.fill();
+      x.restore();
+    };
+    if (rock) band(rock, 0.46, 2, 3.5, 5, 2);
+    if (snow) band(snow, 0.62, 3, 2.5, 5, 1.5);
+    // Trunk-and-crown trees along the ridge, baked in so they cost nothing per
+    // frame. Each is drawn at tx-period and tx+period too: the ridge is
+    // periodic, so one straddling the tile edge shows its other half on the
+    // neighbouring copy. The crown is three overlapping circles rather than one
+    // — a lone circle reads as a lollipop at this size.
+    if (trees) {
+      const n = Math.max(2, Math.round(period / 38));
+      for (let i = 0; i < n; i++) {
+        const j = Math.sin(i * 12.9898) * 43758.5453;
+        const f = j - Math.floor(j);                    // stable 0..1 per index
+        const k = Math.sin(i * 78.233 + 1.7) * 24634.6345;
+        const g = k - Math.floor(k);                    // second stream: type + jitter
+        const tx = ((i + 0.2 + g * 0.6) / n) * period;
+        const th = 9 + f * 5;
+        const by = ridge(tx) + 1;                       // bite into the hill
+        for (const dx of [-period, 0, period]) {
+          const cx = tx + dx;
+          x.fillStyle = trees.trunk;
+          x.fillRect(cx - th * 0.07, by - th * 0.55, th * 0.14, th * 0.55);
+          x.fillStyle = trees.leaf;
+          if (g < 0.45) {
+            // pine: two stacked tiers, narrowing to a point
+            const w = th * 0.34;
+            x.beginPath();
+            x.moveTo(cx, by - th);
+            x.lineTo(cx + w * 0.72, by - th * 0.52);
+            x.lineTo(cx - w * 0.72, by - th * 0.52);
+            x.closePath();
+            x.fill();
+            x.beginPath();
+            x.moveTo(cx, by - th * 0.78);
+            x.lineTo(cx + w, by - th * 0.22);
+            x.lineTo(cx - w, by - th * 0.22);
+            x.closePath();
+            x.fill();
+          } else {
+            // broadleaf: three overlapping circles — one alone reads as a lollipop
+            const r = th * 0.30;
+            x.beginPath();
+            x.arc(cx, by - th * 0.72, r, 0, Math.PI * 2);
+            x.arc(cx - r * 0.85, by - th * 0.52, r * 0.78, 0, Math.PI * 2);
+            x.arc(cx + r * 0.85, by - th * 0.52, r * 0.78, 0, Math.PI * 2);
+            x.fill();
+          }
+        }
+      }
+    }
     hillCache.set(key, tile);
   }
   const off = ((camX * factor) % period + period) % period;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   for (let x0 = -off; x0 < W; x0 += period) {
-    ctx.drawImage(tile, x0, top, period, H - top);
+    ctx.drawImage(tile, x0 - MARGIN, tileTop, period + MARGIN * 2, H - tileTop);
   }
   ctx.imageSmoothingEnabled = prev;
+}
+
+// A single volcano, pinned to one spot in the level rather than tiled: it lives
+// in the far range's parallax, so its background x is chosen to put it at screen
+// centre exactly when the camera reaches `atCam`. Drawn between the far and near
+// hill layers, so the near hills cut off its base and it sits *in* the range.
+// `pal` is the far range's own green/rock, so the volcano is built from the
+// same three-band recipe as its neighbours (green lower slopes -> slate -> cap)
+// with a scorched summit where they carry snow. Reading as one of the range
+// rather than a separate prop matters more than volcano detail at this scale,
+// so the flows stay narrow and haze-desaturated instead of bright orange.
+function drawVolcano(ctx, t, camX, atCam, pal, reduced) {
+  const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
+  const hgt = 112, halfBase = 88, notch = 11;
+  if (cx + halfBase < -20 || cx - halfBase > W + 20) return; // off screen
+  const apex = GROUND_Y - hgt;
+  const lip = apex + 4;
+  const cone = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - halfBase, GROUND_Y);
+    ctx.lineTo(cx - notch, apex);
+    ctx.lineTo(cx - notch * 0.42, lip);   // crater dip, so the summit is not flat
+    ctx.lineTo(cx + notch * 0.42, lip);
+    ctx.lineTo(cx + notch, apex);
+    ctx.lineTo(cx + halfBase, GROUND_Y);
+    ctx.closePath();
+  };
+  cone();
+  ctx.fillStyle = pal.green;
+  ctx.fill();
+  const band = (col, frac, h1, a1) => {
+    const lineY = GROUND_Y - hgt * frac;
+    ctx.save();
+    cone();
+    ctx.clip();
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(cx - halfBase, apex - 2);
+    ctx.lineTo(cx + halfBase, apex - 2);
+    for (let px = halfBase; px >= -halfBase; px -= 3) {
+      ctx.lineTo(cx + px, lineY + Math.sin(px / halfBase * Math.PI * h1) * a1);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  band(pal.rock, 0.46, 2, 3.5);
+  band('#41485a', 0.74, 3, 2.2); // basalt cap where the range wears snow
+  // Crater glow, then a single flow down each flank. The bright band travels on
+  // `t`, so the lava reads as creeping without the silhouette moving.
+  ctx.fillStyle = '#33313f';                 // dark crater mouth
+  ctx.beginPath();
+  ctx.ellipse(cx, lip, notch * 0.46, 2.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c4552c';                 // lava sitting in it
+  ctx.beginPath();
+  ctx.ellipse(cx, lip + 0.4, notch * 0.3, 1.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Flows are clipped to the cone (otherwise they run off the silhouette and
+  // across the green hills as taut wires) and wander as they descend, so they
+  // read as molten rather than as cable.
+  ctx.save();
+  cone();
+  ctx.clip();
+  // Each flow is a tapering ribbon rather than a column of fillRects — stacked
+  // rects stair-step visibly at this scale. Three nested ribbons (cooled crust,
+  // body, hot core) share one centreline; the core's width rides a wave that
+  // travels on `t`, which is what makes the lava look like it is running.
+  const flow = (dir, seed, len) => {
+    const slope = halfBase / hgt;
+    const pts = [];
+    for (let s = 0; s <= len; s += 1.5) {
+      const f = s / hgt;
+      const drift = dir * (notch * 0.25 + s * slope * 0.38 * Math.pow(f, 0.7));
+      const wander = Math.sin(f * 5.5 + seed) * 4 + Math.sin(f * 13 + seed * 2) * 1.8;
+      const w = 3.8 - (s / len) * 2.2;                 // taper to a tip
+      const pulse = reduced ? 0.55 : 0.40 + 0.32 * (Math.sin(f * 9 - t * 2 + seed) + 1) / 2;
+      pts.push({ x: cx + drift + wander, y: lip + s, w, cw: w * pulse });
+    }
+    const ribbon = (key, scale, col) => {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const half = (p[key] * scale) / 2;
+        if (i === 0) ctx.moveTo(p.x - half, p.y); else ctx.lineTo(p.x - half, p.y);
+      }
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        ctx.lineTo(p.x + (p[key] * scale) / 2, p.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    };
+    ribbon('w', 1, '#8f3f26');      // cooled crust
+    ribbon('w', 0.7, '#c4552c');    // body
+    ribbon('cw', 1, '#e89a4e');     // hot core
+  };
+  flow(1, 1.2, hgt * 0.46);
+  flow(-1, 3.1, hgt * 0.3);
+  ctx.restore();
+  // smoke: pale and thin, tinted toward the sky so it sits back in the haze
+  if (!reduced) {
+    for (let i = 0; i < 4; i++) {
+      const p = (t * 0.14 + i * 0.25) % 1;
+      ctx.fillStyle = `rgba(168,174,186,${(1 - p) * 0.26})`;
+      ctx.beginPath();
+      ctx.arc(cx + p * 24, apex - 5 - p * 44, 4 + p * 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 // Per-frame gradient construction is surprisingly costly at device res —
@@ -91,6 +324,33 @@ function patternFill(ctx, key, tw, th, paint) {
     ctx.fillStyle = pat;
     ctx.fillRect(0, 0, W, H);
   }
+}
+
+// A repeating texture that covers the WHOLE screen every frame is cheaper
+// baked once into a backbuffer-sized layer and blitted than re-tiled by the
+// rasterizer each frame (measured: 3.3ms -> 0.4ms per fill). Re-bakes only
+// when the backbuffer is resized.
+const bakeCache = new Map();
+function bakedFill(ctx, key, tw, th, paint) {
+  const cv = ctx.canvas;
+  let baked = bakeCache.get(key);
+  if (!baked || baked.width !== cv.width || baked.height !== cv.height) {
+    baked = document.createElement('canvas');
+    baked.width = cv.width;
+    baked.height = cv.height;
+    const c = baked.getContext('2d');
+    c.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    const tile = document.createElement('canvas');
+    tile.width = tw;
+    tile.height = th;
+    paint(tile.getContext('2d'));
+    const pat = c.createPattern(tile, 'repeat');
+    if (!pat) return;
+    c.fillStyle = pat;
+    c.fillRect(0, 0, W, H);
+    bakeCache.set(key, baked);
+  }
+  ctx.drawImage(baked, 0, 0, W, H);
 }
 
 // --- level-1 sky pals: a plain, dignified sun (suns don't bop) and a nosy
@@ -270,7 +530,7 @@ function drawCloudPal(ctx, t, reduced) {
 function pixelPack(settings) {
   return {
     name: 'pixel',
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber') {
         drawStaticSun(ctx, t);
@@ -284,8 +544,27 @@ function pixelPack(settings) {
         ctx.fillRect(Math.round(cx), cy, 34, 8);
         ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
       }
-      parallaxHills(ctx, camX, cab.far, GROUND_Y, 60, 90, 0.15);
-      parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35);
+      // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
+      // stay rounded so the two layers read as distance, not repetition. It gets
+      // extra amplitude because the near layer eats the bottom third of it —
+      // at the shared amp of 60 the caps barely cleared the green.
+      if (cab.id === 'plumber') {
+        // Rock and snow are haze-desaturated toward the sky rather than true
+        // brown/white: distance reads better, and it keeps the cap under the
+        // bloom bright-pass. Pure white snow (#eef6ff, luma .96) sailed past
+        // the smoothstep(0.8, 0.97) cutoff in glfx.js and glowed like neon.
+        parallaxHills(ctx, camX, cab.far, GROUND_Y, 96, 90, 0.15,
+          { peak: true, rock: '#5e6e7c', snow: '#b9c8d8' });
+      } else {
+        parallaxHills(ctx, camX, cab.far, GROUND_Y, 60, 90, 0.15);
+      }
+      // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
+      if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
+        drawVolcano(ctx, t, camX, totalDist * 0.5,
+          { green: cab.far, rock: '#5e6e7c' }, settings && settings.reducedMotion);
+      }
+      parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35,
+        cab.id === 'plumber' ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' } } : null);
     },
     ground(ctx, camX, cab, obstacles) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
@@ -421,6 +700,7 @@ function neonPack(settings) {
 function watercolorPack(settings) {
   return {
     name: 'watercolor',
+    lightBg: true,
     bg(ctx, t, camX, cab) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // soft wash blobs
@@ -456,10 +736,6 @@ function watercolorPack(settings) {
       });
       ctx.fillStyle = 'rgba(255,250,240,0.05)';
       ctx.fillRect(0, 0, W, H);
-    },
-    decorate(ctx, e, x, y) {
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fillRect(x, y, e.w, 2);
     },
   };
 }
@@ -506,41 +782,109 @@ function vhsPack(settings) {
   };
 }
 
+// Game & Watch. The whole illusion is that there is no renderer — just ink
+// segments switching on and off behind a green polarizer. Tinting colored
+// sprites gets you mud; the panel has to actually *convert* the frame, which
+// post() does with blend modes (no per-pixel readback, so it stays cheap).
+const LCD_PANEL = '#96a479';   // backlit pea-green
+const LCD_INK = '#242a1a';     // switched-on segment
 function lcdPack(settings) {
+  const reduced = settings && settings.reducedFlashing;
   return {
     name: 'lcd',
+    // The panel converts the *background* to two tones; the cast — hero,
+    // hazards, pickups — draws on top of it in colour, as the lit things you
+    // are meant to track.
+    actorsAbovePost: true,
     bg(ctx, t, camX, cab) {
-      ctx.fillStyle = '#9aa88a';
-      ctx.fillRect(0, 0, W, H);
-      // faint fixed segment lattice (ghost positions)
-      ctx.fillStyle = 'rgba(40,48,32,0.08)';
-      for (let x = 8; x < W; x += 24) for (let y = 30; y < GROUND_Y; y += 30) ctx.fillRect(x, y, 14, 10);
+      // Bright backlight. post() only ever darkens, so the panel has to start
+      // near-white or the whole screen lands in mud.
+      skyGrad(ctx, '#e8eede', '#d2dcc2');
+      ctx.fillStyle = '#d2dcc2';
+      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+      // Printed backplate art — silkscreened on the glass, so it does NOT
+      // scroll. That stillness is most of what reads as "LCD handheld".
+      // Kept as thin outlines: printed art must never mass up enough to be
+      // mistaken for a lit segment (i.e. for something that can kill you).
+      // Alphas are tuned against post()'s contrast curve: printed art has to
+      // land in the greys, well clear of the black a lit segment goes to.
+      ctx.strokeStyle = 'rgba(40,48,30,0.5)';
+      ctx.fillStyle = 'rgba(40,48,30,0.4)';
+      for (let i = 0; i < 7; i++) {
+        const bx = 22 + i * 68, bh = 26 + (i % 3) * 14;
+        ctx.strokeRect(bx + 0.5, GROUND_Y - bh + 0.5, 29, bh);
+        for (let wy = GROUND_Y - bh + 6; wy < GROUND_Y - 6; wy += 9) ctx.fillRect(bx + 6, wy, 4, 3);
+      }
+      ctx.fillStyle = 'rgba(40,48,30,0.42)';
+      for (let i = 0; i < 5; i++) { // cloud + sun segments, unlit
+        ctx.fillRect(40 + i * 96, 26, 26, 9);
+        ctx.fillRect(46 + i * 96, 21, 14, 5);
+      }
+      ctx.strokeStyle = 'rgba(40,48,30,0.55)';
+      ctx.beginPath(); ctx.arc(W - 54, 40, 13, 0, Math.PI * 2); ctx.stroke();
+      // Bezel: printed frame around the active area.
+      ctx.strokeStyle = 'rgba(40,48,30,0.6)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(5, 5, W - 10, H - 10);
+      ctx.lineWidth = 1;
     },
     ground(ctx, camX, cab, obstacles) {
-      ctx.fillStyle = 'rgba(40,48,32,0.85)';
-      ctx.fillRect(0, GROUND_Y, W, 2);
-      ctx.fillStyle = 'rgba(40,48,32,0.2)';
-      for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(Math.round(x), GROUND_Y + 6, 12, 2);
+      ctx.fillStyle = LCD_INK;
+      ctx.fillRect(0, GROUND_Y, W, 3);
+      // Motion has to quantize to segment pitch — smooth scroll is the one
+      // thing a segment display physically cannot do.
+      const PITCH = 16;
+      const step = Math.round(camX / PITCH) * PITCH;
+      ctx.fillStyle = 'rgba(36,42,26,0.5)';
+      for (let x = -(step % PITCH); x < W; x += PITCH) ctx.fillRect(Math.round(x), GROUND_Y + 7, 8, 3);
       for (const ob of obstacles || []) {
         if (ob.live && ob.def && ob.def.isGap) {
-          ctx.fillStyle = '#9aa88a';
-          ctx.fillRect(Math.round(ob.x - camX), GROUND_Y, ob.w, 4);
-          ctx.fillStyle = 'rgba(40,48,32,0.5)';
-          for (let gx = 0; gx < ob.w; gx += 6) ctx.fillRect(Math.round(ob.x - camX) + gx, GROUND_Y + 8, 3, 2);
+          const x = Math.round(ob.x - camX);
+          ctx.fillStyle = '#8d9b70';
+          ctx.fillRect(x, GROUND_Y, ob.w, 5);
+          ctx.fillStyle = LCD_INK;
+          ctx.fillRect(x, GROUND_Y, 2, 16);
+          ctx.fillRect(x + ob.w - 2, GROUND_Y, 2, 16);
         }
       }
     },
     post(ctx, t) {
-      // two-tone: darken everything toward LCD ink (cheap: translucent olive overlay)
-      ctx.fillStyle = 'rgba(60,68,44,0.18)';
+      // The conversion. A segment is on or off, so the frame has to be pushed
+      // toward two tones — a translucent tint just mutes colour into mud, it
+      // never removes it.
+      // 1. strip hue. This pass is non-negotiable and there is no cheap
+      // substitute: multiplying by the olive panel alone leaves saturated
+      // sprites saturated (a blue hero just becomes a navy hero).
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.fillStyle = '#808080';
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = 'rgba(154,168,138,0.12)';
+      // 2. crush the midtones: color-burn against a light grey plunges them
+      // while leaving the backlight untouched — a segment display's S-curve.
+      ctx.globalCompositeOperation = 'color-burn';
+      ctx.fillStyle = '#cfcfcf';
       ctx.fillRect(0, 0, W, H);
+      // 3. tint: whites become glass, blacks become ink.
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = LCD_PANEL;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'source-over';
+      // Cell gaps: the dark lattice between liquid-crystal segments.
+      bakedFill(ctx, 'lcdCells', 3, 3, (c) => {
+        c.fillStyle = 'rgba(30,36,20,0.16)';
+        c.fillRect(2, 0, 1, 3);
+        c.fillRect(0, 2, 3, 1);
+      });
+      if (!reduced) {
+        // 1Hz backlight flicker — tiny, but it stops the panel looking printed.
+        ctx.fillStyle = `rgba(255,255,255,${0.012 + Math.sin(t * 6.3) * 0.012})`;
+        ctx.fillRect(0, 0, W, H);
+      }
     },
     decorate(ctx, e, x, y) {
-      // segment ghost trail
-      ctx.fillStyle = 'rgba(40,48,32,0.15)';
-      ctx.fillRect(x + 12, y, e.w, e.h);
+      // Segment ghosting: the cell the shape just left hasn't fully relaxed.
+      // An outline, not a filled box — it trails, it doesn't duplicate.
+      ctx.strokeStyle = 'rgba(36,42,26,0.18)';
+      ctx.strokeRect(Math.round(x) - 8.5, Math.round(y) + 0.5, e.w, e.h);
     },
   };
 }
@@ -549,6 +893,7 @@ function cardboardPack(settings) {
   const reducedMotion = settings && settings.reducedMotion;
   return {
     name: 'cardboard',
+    lightBg: true,
     bg(ctx, t, camX, cab) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       const wob = reducedMotion ? 0 : Math.sin(t * 2) * 1.5;
@@ -586,17 +931,26 @@ function cardboardPack(settings) {
 function doodlePack(settings) {
   return {
     name: 'doodle',
+    lightBg: true,
     bg(ctx, t, camX, cab) {
-      // graph paper
-      ctx.fillStyle = '#f4f4f8';
+      // graph paper — a warm off-white, not near-#fff, so blue ink reads
+      ctx.fillStyle = '#eceadf';
       ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = 'rgba(120,160,220,0.25)';
-      for (let x = -(camX * 0.5 % 16); x < W; x += 16) { ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke(); }
-      for (let y = 0; y < H; y += 16) { ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke(); }
+      ctx.lineWidth = 1;
+      // Minor cells, then a heavier rule every 4th to give the page structure.
+      const ox = camX * 0.5 % 16;
+      for (let i = 0, x = -ox; x < W; i++, x += 16) {
+        ctx.strokeStyle = Math.round((camX * 0.5 - ox) / 16 + i) % 4 === 0 ? 'rgba(88,132,200,0.55)' : 'rgba(88,132,200,0.3)';
+        ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke();
+      }
+      for (let y = 0, i = 0; y < H; y += 16, i++) {
+        ctx.strokeStyle = i % 4 === 0 ? 'rgba(88,132,200,0.55)' : 'rgba(88,132,200,0.3)';
+        ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+      }
       // margin line + coffee ring
-      ctx.strokeStyle = 'rgba(220,80,80,0.3)';
+      ctx.strokeStyle = 'rgba(210,70,70,0.55)';
       ctx.beginPath(); ctx.moveTo(30.5, 0); ctx.lineTo(30.5, H); ctx.stroke();
-      ctx.strokeStyle = 'rgba(160,110,60,0.2)';
+      ctx.strokeStyle = 'rgba(150,100,50,0.35)';
       ctx.beginPath(); ctx.arc(((400 - camX * 0.2) % (W + 100)), 60, 18, 0, Math.PI * 2); ctx.stroke();
     },
     ground(ctx, camX, cab, obstacles) {
@@ -614,7 +968,7 @@ function doodlePack(settings) {
       for (const ob of obstacles || []) {
         if (ob.live && ob.def && ob.def.isGap) {
           const x = Math.round(ob.x - camX);
-          ctx.fillStyle = '#f4f4f8';
+          ctx.fillStyle = '#eceadf';
           ctx.fillRect(x, GROUND_Y - 4, ob.w, 10);
           ctx.strokeStyle = '#3a3a58';
           ctx.strokeRect(x + 0.5, GROUND_Y + 2.5, ob.w, 20); // a pit, annotated
@@ -647,7 +1001,13 @@ function surgePack(settings) {
   return {
     name: 'surge',
     dark: true,
-    bg(ctx, t, camX, cab) { pick(t).bg(ctx, t, camX, cab); },
+    // Read fresh each frame by the run's draw, so the cast is held back past
+    // post() only while the cycle is sitting on a pack that converts the frame.
+    get actorsAbovePost() { return pick(this._t || 0).actorsAbovePost === true; },
+    // Same deal for the bloom gate: the cycle passes through the light packs,
+    // and their backgrounds clip just as hard here as they do standalone.
+    get lightBg() { return pick(this._t || 0).lightBg === true; },
+    bg(ctx, t, camX, cab, totalDist) { pick(t).bg(ctx, t, camX, cab, totalDist); },
     ground(ctx, camX, cab, obstacles) { pick(this._t || 0).ground(ctx, camX, cab, obstacles); },
     post(ctx, t) {
       this._t = t;

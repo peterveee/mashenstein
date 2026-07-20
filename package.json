@@ -8,6 +8,7 @@
     "build": "node build/build.js",
     "dev": "node build/build.js --watch",
     "test": "node tests/run-all.js",
+    "gallery": "node tools/build-gallery.js",
     "sim": "node tools/fairness-sim.js",
     "sim:economy": "node tools/economy-sim.js"
   },

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MASHENSTEIN — Asset Gallery</title>
+<style>
+  :root { --bg:#0b0b14; --panel:#15151f; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e; --accent:#f6d33c; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink);
+               font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { position:sticky; top:0; z-index:10; background:rgba(11,11,20,0.94);
+           backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 20px; }
+  h1 { margin:0 0 8px; font-size:15px; letter-spacing:0.08em; color:var(--accent); }
+  h1 small { color:var(--dim); font-weight:normal; letter-spacing:0; margin-left:10px; }
+  .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+  .controls label { display:flex; gap:6px; align-items:center; color:var(--dim); cursor:pointer; }
+  .controls input[type=range] { width:110px; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  nav a { color:var(--dim); text-decoration:none; padding:2px 8px; border:1px solid var(--line); border-radius:99px; }
+  nav a:hover { color:var(--accent); border-color:var(--accent); }
+  main { padding:20px; }
+  section { margin-bottom:34px; }
+  section > h2 { font-size:13px; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent);
+                 border-bottom:1px solid var(--line); padding-bottom:6px; margin:0 0 4px; scroll-margin-top:120px; }
+  section > p.note { color:var(--dim); margin:0 0 12px; }
+  .grid { display:flex; flex-wrap:wrap; gap:10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px;
+          display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .card canvas { display:block; image-rendering:pixelated; border-radius:3px; cursor:pointer; }
+  .card .name { color:var(--dim); font-size:11px; text-align:center; max-width:100%; word-break:break-word; }
+  .card .name b { color:var(--ink); font-weight:normal; }
+  .card.wide { width:100%; }
+  .card.err { border-color:#e04848; }
+  .card.err .name { color:#e04848; }
+  /* Swatch backdrops behind transparent art. */
+  .bg-dark canvas   { background:#12121c; }
+  .bg-light canvas  { background:#d8d8e4; }
+  .bg-checker canvas{ background-color:#7a7a8a;
+    background-image:linear-gradient(45deg,#5a5a6a 25%,transparent 25%,transparent 75%,#5a5a6a 75%),
+                     linear-gradient(45deg,#5a5a6a 25%,transparent 25%,transparent 75%,#5a5a6a 75%);
+    background-size:12px 12px; background-position:0 0, 6px 6px; }
+  .bg-none canvas   { background:transparent; }
+  #err { color:#e04848; white-space:pre-wrap; padding:20px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MASHENSTEIN — ASSET GALLERY <small>dev build · click any tile to save a PNG</small></h1>
+  <div class="controls">
+    <label>zoom <input id="zoom" type="range" min="1" max="8" step="1" value="3"><span id="zoomv">3x</span></label>
+    <label>backdrop
+      <select id="backdrop">
+        <option value="checker">checker</option>
+        <option value="dark" selected>dark</option>
+        <option value="light">light</option>
+        <option value="none">none</option>
+      </select>
+    </label>
+    <label><input id="animate" type="checkbox" checked> animate</label>
+    <label>filter <input id="filter" type="search" placeholder="name…" size="14"></label>
+  </div>
+  <nav id="nav"></nav>
+</header>
+<main id="root"></main>
+<div id="err"></div>
+<script>
+window.addEventListener('error', function (e) {
+  document.getElementById('err').textContent =
+    'Gallery failed to boot:\n\n' + (e.error && e.error.stack || e.message);
+});
+</script>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

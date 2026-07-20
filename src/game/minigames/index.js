@@ -1,6 +1,8 @@
 // BREAKER BOX minigames: 7 tiny genre parodies. Shared framework: 35s timer
 // (TURDLE gets 90 — the turtle insists words cannot be rushed), success/fail
-// reported to onEnd. All are keyboard + touch playable.
+// reported to onEnd. Skippable via ESC or the SKIP button (counts as no-bonus,
+// not as a mocked failure). Touch-first devices bypass them entirely upstream
+// (Flow.openCabinet / ArcadeState) — they are too finicky without a keyboard.
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
@@ -26,13 +28,16 @@ export class MinigameState {
     this.result = null;
     this.resultT = 0;
     this.reported = false;
+    this.skipped = false;
     Audio.setBank(null);
-    Input.setButtons(this.game.buttons ? this.game.buttons() : [
+    const buttons = this.game.buttons ? this.game.buttons() : [
       { id: 'left', x: 8, y: H - 52, w: 40, h: 40, action: 'left', label: '<' },
       { id: 'right', x: 56, y: H - 52, w: 40, h: 40, action: 'right', label: '>' },
       { id: 'jump', x: W - 96, y: H - 52, w: 40, h: 40, action: 'jump', label: 'A' },
       { id: 'duck', x: W - 48, y: H - 52, w: 40, h: 40, action: 'duck', label: 'B' },
-    ]);
+    ];
+    buttons.push({ id: 'skip', x: W - 52, y: 6, w: 44, h: 16, action: 'back', label: 'SKIP' });
+    Input.setButtons(buttons);
     if (this.o.game === 'turdle') Input.textHandler = (code) => this.game.onKey && this.game.onKey(code);
   }
 
@@ -48,10 +53,11 @@ export class MinigameState {
       Input.endFrame();
       return;
     }
-    if (Input.pressed('back')) {
+    if (Input.pressed('back')) { // ESC maps to back outside the 'run' context
       this.result = false;
+      this.skipped = true;
       this.resultT = 0;
-      Audio.sfx('lose');
+      Audio.sfx('uiBad');
       Input.endFrame();
       return;
     }
@@ -84,16 +90,20 @@ export class MinigameState {
     if (this.result != null) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, H / 2 - 24, W, 48);
-      drawTextCentered(ctx, this.result ? 'POWER RESTORED' : 'THE BREAKER REMAINS UNIMPRESSED', W / 2, H / 2 - 8, this.result ? '#48c848' : '#e04848', 1);
-      if (!this.result) drawTextCentered(ctx, 'A CHILD COULD REWIRE THAT. A CHILD.', W / 2, H / 2 + 6, '#8a8a98');
+      const title = this.result ? 'POWER RESTORED' : this.skipped ? 'SKIPPED. THE BREAKER SHRUGS.' : 'THE BREAKER REMAINS UNIMPRESSED';
+      drawTextCentered(ctx, title, W / 2, H / 2 - 8, this.result ? '#48c848' : this.skipped ? '#f6d33c' : '#e04848', 1);
+      if (this.skipped) drawTextCentered(ctx, 'FINE. WE WILL POWER IT THE BORING WAY.', W / 2, H / 2 + 6, '#8a8a98');
+      else if (!this.result) drawTextCentered(ctx, 'A CHILD COULD REWIRE THAT. A CHILD.', W / 2, H / 2 + 6, '#8a8a98');
       else if (this.o.bonusText) drawTextCentered(ctx, this.o.bonusText, W / 2, H / 2 + 6, '#f6d33c');
     }
-    // touch buttons
+    // touch buttons (SKIP reads as amber so it isn't mistaken for a d-pad key)
     for (const b of Input.buttons) {
-      ctx.fillStyle = 'rgba(72,224,200,0.12)';
+      const skip = b.id === 'skip';
+      ctx.fillStyle = skip ? 'rgba(246,211,60,0.12)' : 'rgba(72,224,200,0.12)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
-      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
+      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, skip ? '#f6d33c' : '#48e0c8');
     }
+    if (!Input.usingTouch) drawText(ctx, 'ESC SKIP', 8, 12, '#5a5a68');
   }
 }
 

@@ -6,7 +6,10 @@ import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite } from '../sprites/toons.js';
 import { hasProp, propSprite, propTinted, propRimPair, propFrames, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
 
-const POWER_GLOW = { capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)', capSlow: 'rgba(200,184,232,0.5)' };
+const POWER_GLOW = {
+  capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)', capSlow: 'rgba(200,184,232,0.5)',
+  capAirJump: 'rgba(114,216,240,0.5)', capSpeed: 'rgba(248,144,72,0.5)', capLowGrav: 'rgba(184,136,240,0.5)',
+};
 import { GROUND_Y } from './run.js';
 import { PLAYER_X } from './player.js';
 
@@ -167,9 +170,6 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = settings.highContrast ? 'rgba(224,72,72,0.85)' : 'rgba(224,72,72,0.32)';
     ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
-  } else if (e.kind === 'obstacle' && e.def.action === 'duck') {
-    ctx.strokeStyle = settings.highContrast ? 'rgba(224,72,72,0.9)' : 'rgba(224,72,72,0.3)';
-    ctx.strokeRect(x - 1.5, y - 1.5, e.w + 3, e.h + 3);
   }
   if (e.def && e.def.beatSync) {
     drawProp(ctx, 'beatBar', x, Math.round(GROUND_Y - e.h), e.w, e.h);
@@ -278,7 +278,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   }
 
   if (e.def.stack && e.n > 1) {
-    for (let i = 0; i < e.n; i++) draw1(x, Math.round(GROUND_Y - (i + 1) * 11), 'bottom', true, bw, 11);
+    // Each box gets the same 4/3 inflation a lone crate does, so a stack reads
+    // as two of the SAME crate, and they're stepped by that DRAWN height so
+    // they sit edge-to-edge instead of overlapping. The art then stands taller
+    // than the n*11 hitbox — the same direction of slack a lone crate already
+    // has, i.e. erring toward letting the player through.
+    // dy is the nominal 11px box top; the inflated art hangs 4px above it and
+    // ends at dy + 11, so stepping dy by the drawn height stacks bottom-to-top.
+    const step = Math.round(11 * 4 / 3);
+    for (let i = 0; i < e.n; i++) draw1(x, Math.round(GROUND_Y - 11 - i * step), 'bottom', false, bw, 11);
   } else if (e.def.tall) {
     // one tall piece of art rather than two stacked tiles
     if (propName) draw1(x, Math.round(GROUND_Y), 'bottom', true, bw, 18);
@@ -287,6 +295,16 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     // telegraph: hang from "ceiling" with a warning shimmer
     draw1(x, Math.round(GROUND_Y - e.alt - e.h));
     if (Math.floor(t * 8) % 2 === 0) { ctx.fillStyle = 'rgba(246,211,60,0.6)'; ctx.fillRect(x + 2, GROUND_Y - 3, 4, 3); }
+  } else if (e.def.shamble && !settings.reducedMotion) {
+    // Shuffling gait: weight rocks side to side, the torso lists after it, and
+    // the body lifts on each step. Pivot is the feet so they stay planted.
+    // Art only — the hitbox never leaves e.x.
+    const ph = (e.gait ?? e.bobPhase);
+    ctx.save();
+    ctx.translate(x + bw / 2 + Math.sin(ph) * 1.5, y + bh - Math.abs(Math.cos(ph)) * 1.5);
+    ctx.rotate(Math.sin(ph) * 0.09);
+    draw1(-bw / 2, -bh);
+    ctx.restore();
   } else if (e.roll || (e.def.roll)) {
     ctx.save();
     ctx.translate(x + e.w / 2, y + e.h / 2);

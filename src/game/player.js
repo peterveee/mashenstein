@@ -26,6 +26,7 @@ export class Player {
     this.y = 0;           // height of feet above ground (positive = up)
     this.vy = 0;
     this.jumps = 0;
+    this.powerJumpBonus = 0;
     this.ducking = false;
     this.floating = false;
     this.iframes = 0;
@@ -74,6 +75,7 @@ export class Player {
     let m = this.hero.maxJumps;
     if (this.mods.includes('cape')) m += 1;
     if (this.mods.includes('triple') && this.heroId === 'mochi') m += 1;
+    m += this.powerJumpBonus;
     return m;
   }
   get hitH() { return (this.ducking || this.rollT > 0 || this.compressT > 0) ? DUCK_H : PLAYER_H; }
@@ -134,7 +136,7 @@ export class Player {
     const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : -520);
 
     if (!this.grounded) {
-      this.vy -= this.gravity * dt * (this.stomping ? 2.2 : 1);
+      this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt * (this.stomping ? 2.2 : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
       if (this.y <= 0) {
