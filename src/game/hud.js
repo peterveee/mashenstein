@@ -3,7 +3,7 @@
 import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, getSprite, platePath, UI_PLATE,
+  textWidth, wrapText, getSprite, platePath, UI_PLATE, UI_PANEL,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
@@ -200,34 +200,41 @@ export function drawHud(ctx, run) {
 
   // Relay: current hero. In 'charge' mode the ability ring is the only charge
   // readout — it goes gold when a charge is banked — so there are no pips here.
-  // A teal pill: face on the left, name inside the badge beside it. The pill
-  // is sized to the name and centred on screen, so it grows symmetrically
-  // instead of drifting as hero names change width. Face and text are both
-  // placed off HERO_CY, unrounded, so they share one midline exactly.
-  const HERO_CY = 17;
-  const PILL_H = 16;
+  // A rounded badge: face on the left, name inside beside it. Same dark fill,
+  // teal border and light text as the speech bubble below it, so the two read
+  // as one family. Sized to the name and centred on screen, so it grows
+  // symmetrically instead of drifting as hero names change width. Face and
+  // text are both placed off HERO_CY, unrounded, so they share one midline.
+  // Centred on the ability ring (cy 12) and the coin icon beside it, so the
+  // whole top row shares one midline instead of the badge hanging below it.
+  const HERO_CY = 12;
+  const BADGE_H = 14;
+  const BADGE_R = 3; // matches the corner radius drawText uses for its plates
   const FACE_W = 12, FACE_H = 9;
   const PAD_L = 4, GAP = 4, PAD_R = 7;
   const name = HERO_BY_ID[run.relay.current].short;
-  const pillW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
-  const pillX = Math.round(W / 2 - pillW / 2);
+  const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
+  const badgeX = Math.round(W / 2 - badgeW / 2);
+  const badgeY = HERO_CY - BADGE_H / 2;
   ctx.save();
-  platePath(ctx, pillX, HERO_CY - PILL_H / 2, pillW, PILL_H, PILL_H / 2);
-  ctx.fillStyle = '#48e0c8';
+  platePath(ctx, badgeX, badgeY, badgeW, BADGE_H, BADGE_R);
+  ctx.fillStyle = UI_PANEL;
   ctx.fill();
+  // stroke inset by half a pixel so the 1px border lands on the pixel grid
+  platePath(ctx, badgeX + 0.5, badgeY + 0.5, badgeW - 1, BADGE_H - 1, BADGE_R);
   ctx.lineWidth = 1;
-  ctx.strokeStyle = '#10141c';
+  ctx.strokeStyle = '#48e0c8';
   ctx.stroke();
   ctx.restore();
   const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
   if (face) {
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, pillX + PAD_L, HERO_CY - FACE_H / 2, FACE_W, FACE_H);
+    ctx.drawImage(face, badgeX + PAD_L, HERO_CY - FACE_H / 2, FACE_W, FACE_H);
     ctx.imageSmoothingEnabled = false;
   }
-  // Raw text: the pill is already the backing, so it must not carry a plate of
-  // its own, and it reads dark-on-teal now that it sits inside the badge.
-  rawDrawText(ctx, name, pillX + PAD_L + FACE_W + GAP, HERO_CY - 4.5, '#10141c');
+  // Raw text: the badge is already the backing, so it must not carry a plate
+  // of its own.
+  rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, HERO_CY - 4.5, '#d0f0e8');
   // The legacy 'blast' mode has no other readout for its automatic screen
   // clear, so it keeps the pips it was designed around, now under the name.
   if (RELAY_MODE === 'blast') {
@@ -300,9 +307,15 @@ export function drawSpeech(ctx, speech) {
   const tw = Math.max(...lines.map((line) => textWidth(line)));
   const x = W / 2 - tw / 2, y = 46;
   const h = 8 + lines.length * 11;
-  ctx.fillStyle = 'rgba(10,10,20,0.85)';
-  ctx.fillRect(x - 6, y - 4, tw + 12, h);
+  // Rounded like the name badge above it (same radius drawText plates use), so
+  // every box the HUD puts on screen shares one silhouette.
+  const R = 3;
+  ctx.fillStyle = UI_PANEL;
+  platePath(ctx, x - 6, y - 4, tw + 12, h, R);
+  ctx.fill();
   ctx.strokeStyle = speech.who === 'eggshell' ? '#c83030' : '#48e0c8';
-  ctx.strokeRect(x - 5.5, y - 3.5, tw + 11, h - 1);
+  ctx.lineWidth = 1;
+  platePath(ctx, x - 5.5, y - 3.5, tw + 11, h - 1, R);
+  ctx.stroke();
   lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
 }

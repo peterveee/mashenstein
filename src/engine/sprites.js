@@ -333,6 +333,12 @@ function paintGlyphs(ctx, s, x, y, color, scale, style) {
 // text sitting slightly forward, not as a labelled box.
 export const UI_PLATE = 'rgba(12,10,22,0.22)';
 
+// The opaque backing for UI that owns its own box — the hero name badge, the
+// speech bubble. A soft charcoal rather than true black: at full strength a
+// pure black rect punches a hole in the scene, where this still reads as a
+// panel laid over it.
+export const UI_PANEL = 'rgba(26,24,40,0.86)';
+
 // `plate` (a css colour) fills a soft rounded rect behind the string, sized
 // from the same metrics the glyphs use. Glyphs occupy y-1*scale .. y+11*scale
 // but the ink sits well inside that box, so the plate hugs a tighter band —

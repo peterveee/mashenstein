@@ -240,7 +240,7 @@ const V_BLUR = 1.15;
 // module-level because the composite layer must reserve headroom for whatever
 // they add up to — a hardcoded margin silently crops the plume the moment
 // either is raised.
-const V_SMOKE_SC = 0.36, V_SMOKE_RISE = 2.5;
+const V_SMOKE_SC = 0.85, V_SMOKE_RISE = 1.6;
 // tallest puff centre above the vent, plus its own radius, plus slack
 const V_SMOKE_TOP = Math.ceil((8 + 92 * V_SMOKE_RISE + 28) * V_SMOKE_SC) + 16;
 const volcLayer = { c: null, g: null, w: 0, h: 0 };
@@ -253,13 +253,22 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // also follow a power curve instead of a straight line — `flankX` widens
   // fastest near the summit, which blunts the apex the way a real massif is
   // blunt. A straight-sided triangle is what made it read as pointy.
-  const hgt = 20, halfBase = 35, notch = 8;
-  // Distant things sit nearer the horizon. Standing the volcano on GROUND_Y
-  // like everything else was what stopped it shrinking: drop its scale with the
-  // base pinned to the groundline and the summit sinks behind the range before
-  // it ever looks far away. Lifting the base puts it further back, so it can be
-  // genuinely small and still clear the ridge.
-  const baseY = GROUND_Y - 91;
+  const hgt = 82, halfBase = 104, notch = 15;
+  // GROUNDED: the volcano stands on the same groundline as everything else.
+  //
+  // An earlier version lifted its base toward the horizon so it could be shrunk
+  // and still clear the 96px range in front of it. That bought smallness at the
+  // cost of looking unanchored, and it made the cone read as pointy — with the
+  // summit only just clearing the crests, the sole visible part was the steep
+  // tip, whatever the overall ratio said.
+  //
+  // Standing on the groundline means it CANNOT out-rise the range at this size,
+  // and that is the accepted trade: the peaks hide it, it shows through the
+  // valleys between them, and the plume carries it the rest of the time. Size
+  // is therefore chosen against the range's SHOULDER peaks (~0.55 * 96 = 53)
+  // rather than its main crests — high enough to clear the shoulders, low
+  // enough that the main peaks still cut across it.
+  const baseY = GROUND_Y;
   const apex = baseY - hgt;
 
   const flankX = (f) => halfBase * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
@@ -310,7 +319,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // halfway to its control point, so the control goes 2x the wanted depth down.
   const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the rim
   const rimY = apex + hgt * fT;
-  const craterD = 0.8;   // shallow dish across a wide rim, not a notch in a point
+  const craterD = 1.9;   // shallow dish across a wide rim, not a notch in a point
   // `baseY` sets the volcano's PROPORTIONS, but the silhouette still runs all
   // the way down to GROUND_Y. Ending the polygon at baseY left a flat cut edge
   // hanging in mid-air wherever the range dipped below it — the cone has to
@@ -373,7 +382,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // The cap has to END ABOVE the far range's crests (~96) or the drips — the
   // most recognisable part of the silhouette — sit behind the ridgeline and
   // never show. That is what pins this fraction, not the look of the cone.
-  const capBot = baseY - hgt * 0.50;
+  const capBot = baseY - hgt * 0.70;
   const capEdge = () => {
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, apex - 6);
@@ -382,9 +391,9 @@ function drawVolcano(out, t, camX, atCam, reduced) {
       // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns
       // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
       // each lobe is a rounded tongue with a rounded notch beside it.
-      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.26 + 0.7));
-      const drip = (0.5 - 0.5 * Math.cos(px * 0.7)) * 6 * envelope
-        + (0.5 - 0.5 * Math.cos(px * 1.5 + 1.4)) * 1.5;
+      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
+      const drip = (0.5 - 0.5 * Math.cos(px * 0.38)) * 10 * envelope
+        + (0.5 - 0.5 * Math.cos(px * 0.8 + 1.4)) * 2.5;
       ctx.lineTo(cx + px, capBot + drip);
     }
     ctx.closePath();
@@ -397,7 +406,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // fills instead and stepped visibly — at this size the cap is only ~40px
   // tall, so any band count coarse enough to animate is also coarse enough to
   // read as stripes. A gradient sidesteps the tradeoff entirely.
-  const lavaBot = capBot + 6;
+  const lavaBot = capBot + 10;
   const grad = ctx.createLinearGradient(0, rimY - 2, 0, lavaBot);
   for (let i = 0; i < V_LAVA.length; i++) {
     grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
