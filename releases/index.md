@@ -22,3 +22,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-20 | `c148db8` | [2026-07-20-c148db8.html](2026-07-20-c148db8.html) | Add plug rendering and testing functionality |
 | 2026-07-20 | `f7a1420` | [2026-07-20-f7a1420.html](2026-07-20-f7a1420.html) | feat: implement archiving tools for game releases and asset galleries |
 | 2026-07-20 | `71e11e2` | [2026-07-20-71e11e2.html](2026-07-20-71e11e2.html) | Merge branch 'main' of https://github.com/peterveee/mashenstein |
+| 2026-07-20 | `d66f214` | [2026-07-20-d66f214.html](2026-07-20-d66f214.html) | Adjust volcano crater depth and HUD progress bar dimensions for improved visuals |
