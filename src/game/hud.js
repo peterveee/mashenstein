@@ -125,41 +125,47 @@ export function drawHud(ctx, run) {
 
   drawPlugTally(ctx, run, ly);
 
-  // Ability recharge gauge, top-right. The bar refilling IS the countdown —
-  // no ticking number. Same visual idiom as the world progress bar: dark
-  // trough, deep fill, bright cap strip; the whole bar lights up when ready.
-  // Touch play skips it: that corner holds pause/mute, and the PWR button
-  // shows its own recharge.
+  // Ability recharge ring, top-right beside the skill name. A donut sweeping
+  // shut from red to green: one glanceable token instead of a bar that ate the
+  // whole corner. Touch play skips it — that corner holds pause/mute, and the
+  // PWR button shows its own recharge.
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
     const cd = run.player.abilityCd;
     const ready = cd <= 0;
     const frac = ready ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    const gx = W - 66, gw = 60;
-    const label = hero.ability.label;
-    drawText(ctx, label, W - 6 - textWidth(label), 12, ready ? '#48e0c8' : '#8a8a98');
-    const by = 22, bh = 7;
-    ctx.fillStyle = '#10141c';
-    ctx.fillRect(gx, by, gw, bh);
-    const fw = Math.round(gw * frac);
-    if (ready) {
-      ctx.fillStyle = '#48e0c8';
-      ctx.fillRect(gx, by, gw, bh);
-      // a highlight tick sweeps the full bar so READY reads at a glance
-      ctx.fillStyle = '#eafff8';
-      ctx.fillRect(gx + ((run.tRun * 45) % gw), by, 2, bh);
-    } else if (fw > 0) {
-      ctx.fillStyle = '#1e4a44';
-      ctx.fillRect(gx, by, fw, bh);
-      ctx.fillStyle = '#48e0c8';
-      ctx.fillRect(gx, by, fw, 2);
+    const cx = W - 12, cy = 15, rOuter = 6, rInner = 3.2;
+    const color = ready ? '#48c848' : '#e04848';
+    ctx.save();
+    // trough
+    ctx.strokeStyle = '#10141c';
+    ctx.lineWidth = rOuter - rInner;
+    ctx.beginPath();
+    ctx.arc(cx, cy, (rOuter + rInner) / 2, 0, Math.PI * 2);
+    ctx.stroke();
+    // fill sweeps clockwise from twelve o'clock
+    if (frac > 0) {
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, (rOuter + rInner) / 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+      ctx.stroke();
     }
-    ctx.strokeStyle = '#20242c';
-    ctx.strokeRect(gx + 0.5, by + 0.5, gw - 1, bh - 1);
+    // a soft pulse marks the moment it comes back up
+    if (ready) {
+      ctx.globalAlpha = 0.3 + 0.3 * Math.sin(run.tRun * 4);
+      ctx.strokeStyle = '#a8f0a8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rOuter + 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const label = hero.ability.label;
+    drawText(ctx, label, cx - rOuter - 4 - textWidth(label), 12, ready ? '#48e0c8' : '#8a8a98');
   }
 
-  // Power-up timers, top-right under the ability gauge.
-  let py = 36;
+  // Power-up timers, top-right under the ability ring.
+  let py = 26;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;

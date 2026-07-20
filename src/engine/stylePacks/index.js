@@ -272,13 +272,21 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ctx.clearRect(bx, by, volcLayer.w, volcLayer.h);
 
   const ink = (w) => { ctx.strokeStyle = V_INK; ctx.lineWidth = w; ctx.stroke(); };
+  // The crater is a dip in the SILHOUETTE, not a shape painted on the summit.
+  // Drawing an ellipse on a peak whose top edge stays convex always reads as a
+  // disc resting on the mountain, because nothing occludes it and the outline
+  // still bulges upward behind it. Sinking the top edge into a shallow arc —
+  // rim, down through the low point, back up to the far rim — is what makes it
+  // a hole. A quadratic's midpoint sits halfway to its control point, so the
+  // control goes 2x the wanted depth below the rim.
+  const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the notch
+  const rimY = apex + hgt * fT;
+  const craterD = 5.5;
   const cone = () => {
-    const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the notch
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, GROUND_Y);
     for (let f = 1; f >= fT; f -= 0.03) ctx.lineTo(cx - flankX(f), apex + hgt * f);
-    ctx.lineTo(cx - notch * 0.42, lip);   // crater dip, so the summit is not flat
-    ctx.lineTo(cx + notch * 0.42, lip);
+    ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
     for (let f = fT; f <= 1; f += 0.03) ctx.lineTo(cx + flankX(f), apex + hgt * f);
     ctx.lineTo(cx + halfBase, GROUND_Y);
     ctx.closePath();
@@ -385,23 +393,22 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ink(1.1);
   ctx.restore();
 
-  // Crater: a shallow dark notch, NOT a lit vent. The previous version put a
-  // bright lava ellipse inside the dark one, and at this scale plus the
-  // depth-of-field blur those two small stacked ellipses merged into a single
-  // red dot reading as a ball resting on the summit. The reference summit is
-  // just a dark recess with the cone's own rim around it, so that is all this
-  // draws — the eruption is carried by the smoke plume, not by the mouth.
-  ctx.fillStyle = '#4a2f33';
+  // Inner wall: a crescent hugging the underside of the crater dip, which is
+  // the far wall of the bowl seen from slightly below. Two arcs of the same
+  // span, the lower one deeper, filled between. This is all the crater needs
+  // now that the silhouette carries it — an opaque shape here would put the
+  // disc back.
+  ctx.save();
+  cone();
+  ctx.clip();
   ctx.beginPath();
-  ctx.ellipse(cx, lip + 0.4, notch * 0.62, 2.8, 0, 0, Math.PI * 2);
+  ctx.moveTo(cx - notch, rimY);
+  ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
+  ctx.quadraticCurveTo(cx, rimY + (craterD + 3.4) * 2, cx - notch, rimY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(58,32,38,0.72)';
   ctx.fill();
-  // Near rim catches light, so the recess reads as concave rather than as a
-  // flat spot painted on.
-  ctx.strokeStyle = 'rgba(255,190,120,0.5)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(cx, lip + 1.1, notch * 0.62, 2.8, 0, 0.15 * Math.PI, 0.85 * Math.PI);
-  ctx.stroke();
+  ctx.restore();
 
   // Flatten back to the scene through the depth-of-field blur.
   const prevFilter = out.filter;
