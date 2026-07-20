@@ -281,7 +281,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // control goes 2x the wanted depth below the rim.
   const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the notch
   const rimY = apex + hgt * fT;
-  const craterD = 5.5;
+  const craterD = 2.6;   // shallow: a light dip, not a bite out of the summit
   const cone = () => {
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, GROUND_Y);
@@ -404,9 +404,9 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ctx.beginPath();
   ctx.moveTo(cx - notch, rimY);
   ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
-  ctx.quadraticCurveTo(cx, rimY + (craterD + 3.4) * 2, cx - notch, rimY);
+  ctx.quadraticCurveTo(cx, rimY + (craterD + 1.7) * 2, cx - notch, rimY);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(58,32,38,0.72)';
+  ctx.fillStyle = 'rgba(58,32,38,0.34)';
   ctx.fill();
   ctx.restore();
 

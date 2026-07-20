@@ -172,8 +172,8 @@ export class RunState {
     // corner holds the ability gauge instead.
     this.touchButtons = Input.usingTouch;
     Input.setButtons(Input.usingTouch ? [
-      { id: 'pause', x: W - 18, y: 11, w: 14, h: 12, action: 'pause', label: '=' },
-      { id: 'mute', x: W - 36, y: 11, w: 14, h: 12, action: 'mute', label: 'M' },
+      { id: 'pause', x: W - 18, y: 8, w: 14, h: 12, action: 'pause', label: '=' },
+      { id: 'mute', x: W - 36, y: 8, w: 14, h: 12, action: 'mute', label: 'M' },
       { id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' },
     ] : []);
   }

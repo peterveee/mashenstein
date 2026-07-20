@@ -65,27 +65,17 @@ export function drawHud(ctx, run) {
     while (out.length > 3 && textWidth(out) > leftColumnMax) out = out.slice(0, -1);
     return out === text ? out : out.slice(0, -2) + '..';
   };
-  // Chunky world progress bar across the top: you are the yellow tick, the
-  // socket at the right end is the goal.
+  // Slim world progress line across the top: teal fills toward the right edge,
+  // the yellow tick is you. Reaching the end is the goal, so the end needs no
+  // icon of its own — the finish line is drawn in-world as you approach it.
   if (!run.overtime && run.stage) {
     const frac = Math.min(1, run.distance / run.totalDist);
     ctx.fillStyle = '#10141c';
-    ctx.fillRect(0, 0, W, 8);
-    ctx.fillStyle = '#1e4a44';
-    ctx.fillRect(0, 0, W * frac, 8);
+    ctx.fillRect(0, 0, W, 3);
     ctx.fillStyle = '#48e0c8';
     ctx.fillRect(0, 0, W * frac, 3);
-    // the runner tick
     ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(Math.min(W - 4, W * frac) - 1, 0, 4, 8);
-    // the socket goal at the right end
-    ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(W - 10, 1, 9, 7);
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(W - 8, 3, 2, 3);
-    ctx.fillRect(W - 5, 3, 2, 3);
-    ctx.strokeStyle = '#20242c';
-    ctx.strokeRect(0.5, 0.5, W - 1, 8);
+    ctx.fillRect(Math.min(W - 3, W * frac) - 1, 0, 3, 3);
   }
 
   // Left status column: score, coins, cells, shields, plugs. A cursor rather
@@ -93,7 +83,7 @@ export function drawHud(ctx, run) {
   // cells and the plugs, which read as a missing HUD element.
   const COL_X = 6;
   const ROW_GAP = 5;
-  let ly = 12;
+  let ly = 7;
   drawText(ctx, `${Math.floor(run.score)}`, COL_X, ly, '#fff', 2);
   ly += 16 + ROW_GAP;
 
@@ -134,7 +124,7 @@ export function drawHud(ctx, run) {
     const cd = run.player.abilityCd;
     const ready = cd <= 0;
     const frac = ready ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    const cx = W - 12, cy = 15, rOuter = 6, rInner = 3.2;
+    const cx = W - 12, cy = 12, rOuter = 6, rInner = 3.2;
     const color = ready ? '#48c848' : '#e04848';
     ctx.save();
     // trough
@@ -161,11 +151,11 @@ export function drawHud(ctx, run) {
     }
     ctx.restore();
     const label = hero.ability.label;
-    drawText(ctx, label, cx - rOuter - 4 - textWidth(label), 12, ready ? '#48e0c8' : '#8a8a98');
+    drawText(ctx, label, cx - rOuter - 4 - textWidth(label), 9, ready ? '#48e0c8' : '#8a8a98');
   }
 
   // Power-up timers, top-right under the ability ring.
-  let py = 26;
+  let py = 23;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
