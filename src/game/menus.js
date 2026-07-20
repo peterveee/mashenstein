@@ -936,11 +936,12 @@ const BURST_SFX = ['popSmall', 'popBig', 'crackle'];
 // sprites, fireworks and falling streamers; a fifth moving layer behind the
 // most information-dense part of the frame is exactly what a starfield would
 // have been, and it would fight the burst shrapnel dot for dot.
-// Asymmetric: a tube is wider than it is tall, so the mask has to eat more
-// top and bottom than it does at the sides or the glass reads as full-bleed.
+// The glass is inset on all four sides — a tube sits inside its housing, and
+// bleeding to the canvas edge on any side breaks that read. Slightly more top
+// and bottom than at the sides, since the screen is wider than it is tall.
 // The results layout below is pinned to these — change one, check the other.
-const TUBE_INSET_X = 5;
-const TUBE_INSET_Y = 17;
+const TUBE_INSET_X = 16;
+const TUBE_INSET_Y = 19;
 const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
 let tubeGlow = null;
 let tubeWash = null;
@@ -1152,8 +1153,11 @@ export class ResultsState {
     // H - TUBE_INSET_Y, and the title and footer sit a margin inside that.
     drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 38, r.success ? '#48c848' : '#e04848', 2, 'title');
     drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 72, '#fff', 1);
-    let y = 91;
-    const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 13; };
+    let y = 90;
+    // 12 rather than 13: the inset tube costs 38px of height, and the worst
+    // case here is nine rows (coins, plugs, new plugs, rank, flavour, the OSHA
+    // asterisk, two named mastery-ups and their summary).
+    const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 12; };
     line(`COINS BANKED: +${this.gains.coins}`, '#f6d33c');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
@@ -1171,6 +1175,11 @@ export class ResultsState {
     const mastery = this.gains.mastery || [];
     mastery.slice(0, 2).forEach((m) => line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8'));
     if (mastery.length > 2) line(`+${mastery.length - 2} MORE MASTERY-UPS. THE BENCH IS IMPRESSED.`, '#f890b8');
+    // The row follows the text rather than sitting at a fixed y: a long run
+    // (full team, OSHA equipped, several mastery-ups) used to drive the last
+    // line straight through the heroes' heads. Clamped at the top so a short
+    // result still centres well, and at the bottom to clear the footer.
+    const heroY = Math.min(232, Math.max(216, y + 34));
     if (r.success && r.team && r.team.length) {
       // The relay team takes a bow — each hero in their own celebrate pose,
       // slightly out of phase so the line reads as a crowd, not a metronome.
@@ -1179,9 +1188,9 @@ export class ResultsState {
       // call after the stage clears is the one moment they can share a frame.
       r.team.forEach((id, i) => drawToon(ctx, id,
         { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
-        W / 2 + (i - (r.team.length - 1) / 2) * 48, 218, 32));
+        W / 2 + (i - (r.team.length - 1) / 2) * 48, heroY, 32));
     }
-    drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 34, '#5a5a68');
+    drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 30, '#5a5a68');
   }
 }
 

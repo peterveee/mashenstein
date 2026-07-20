@@ -1,5 +1,6 @@
 // Comedy is content-budgeted: it lives here, not scattered through systems.
 // Rule: absolute deadpan sincerity. Jokes never replace usable information.
+// Everything is uppercase in-game — write it that way here too.
 
 export const FAIL_MESSAGES = [
   'DEFEATED BY GEOMETRY',
@@ -125,12 +126,28 @@ export const BOSS_DEFLECT_SHORT = [
   'THAT ALSO COUNTED.',
 ];
 
+// Food-court hero chatter (drawn via drawSpeech, one line per visit, cycling
+// in order). Beyond the file-level deadpan rule, each pool follows:
+//   - One running bit per hero, set by CAST.md's summary of them. Every new
+//     line is a fresh variation on that same bit, not a new trait or joke
+//     type — Lorenzo is wounded professional pride about plumbing, not "guy
+//     who's mad about things"; B-33P's cyan gag rides every line, even the
+//     ones that could be a generic robot joke.
+//   - No two lines in one hero's pool share a joke type (e.g. two "I ate the
+//     [arcade object], here's its texture" lines for Miss Chomp reads as
+//     repeated rather than as range).
+//   - Setup-then-turn or a flat statement with a dry tag, one or two
+//     sentences, under ~110 characters — the speech box wraps to 3 lines.
+//   - No fourth-wall breaks: they can gripe about the food court, HR, or the
+//     arcade, but not about "the player" or "the game" as external concepts.
+//   - Mochi's bit is voice-only ("POYO" in varying punctuation/emphasis); a
+//     bracketed stage direction has to still carry the word, not replace it.
 export const HUB_LINES = {
   lorenzo: [
     'THE PIPES HERE ARE DECORATIVE. IT DISGUSTS ME.',
     'I BROUGHT A TROMBONE. FOR PLUMBING.',
-    'THE PRETZEL STAND SERVES ONLY SOUP NOW. I RESPECT THE PIVOT.',
-    'I ORDERED A CALZONE. IT ARRIVED AS A DECORATIVE PIPE. I ATE IT ANYWAY.',
+    'THE PRETZEL STAND SERVES SOUP THROUGH A TAP. CRUDE, BUT HONEST.',
+    'I ORDERED A CALZONE. IT ARRIVED AS A DECORATIVE PIPE. I SENT IT BACK ON PRINCIPLE.',
     'THE FOOD COURT HAS NO PROPER DRAINAGE. I HAVE FILED A COMPLAINT WITH MYSELF.',
     'SOMEONE CALLED MY WRENCH A PROP. WE ARE NOT SPEAKING.',
     'I FIXED THE VENDING MACHINE. IT NOW ONLY DISPENSES REGRET.',
@@ -138,23 +155,23 @@ export const HUB_LINES = {
   ],
   gnash: [
     'I FINISHED TALKING TO YOU YESTERDAY. YOU ARE JUST NOW ARRIVING.',
-    'THE SODA MACHINE DISPENSED ONE PERFECT GRAPE. I DRANK IT.',
+    'THE SODA MACHINE IS STILL DISPENSING MY DRINK. I FINISHED IT TEN MINUTES AGO.',
     'RUN FASTER. OR AT ALL. EITHER IS FINE.',
     'I ARRIVED SO EARLY I HAD TO WAIT FOR MYSELF TO SHOW UP.',
     'THE PRETZEL LINE MOVES TOO SLOWLY. I HAVE ALREADY EATEN THREE, MENTALLY.',
     'SPIN DASHING THROUGH A FOOD COURT IS FROWNED UPON. I DID IT ANYWAY.',
     'I BEAT THE HIGH SCORE ON THE ARCADE CABINET BEFORE IT FINISHED BOOTING.',
-    'WAITING IS A SKILL. I HAVE MASTERED IT OUT OF NECESSITY.',
+    'I HAVE MASTERED WAITING. IT TOOK FOREVER.',
   ],
   fernwick: [
     'MY PROPHECY MENTIONS A "BUY ONE GET ONE" EVENT. DARK TIMES.',
     'THE RECEIPT FADES FURTHER EVERY DAY. AS DO WE ALL.',
     'I HAVE PREPARED FOR THIS. THE RECEIPT SAID TO.',
-    'THE RECEIPT NOW LISTS A COUPON. I DO NOT KNOW FOR WHAT.',
+    'THE PROPHECY CONTAINS A COUPON. OUR DESTINY EXPIRES THURSDAY.',
     'MY PROPHECY WARNED OF A LONG LINE. IT WAS RIGHT, AS ALWAYS.',
     'THE INK IS ALMOST GONE. SO IS MY PATIENCE.',
     'I ASKED THE RECEIPT IF WE WIN. IT PRINTED A BARCODE.',
-    'SHIELD ROLLING PAST THE SALAD BAR FEELS PROPHETIC, SOMEHOW.',
+    'THE PROPHECY SAYS "SALAD ROLLS." I HAVE INTERPRETED THIS AS A MANEUVER.',
   ],
   b33p: [
     'STATUS: OPERATIONAL. CYAN: LOW. MORALE: ADEQUATE.',
@@ -173,7 +190,7 @@ export const HUB_LINES = {
     'POYO!',
     'POYO... (A STAR WINKS OUT, POLITELY.)',
     'POYO POYO.',
-    '(MOCHI FLOATS. THE ROOM FEELS SLIGHTLY MORE BLESSED.)',
+    'POYO. (MOCHI FLOATS. THE ROOM FEELS SLIGHTLY MORE BLESSED.)',
     'POYO?? POYO.',
   ],
   chompo: [
@@ -190,12 +207,12 @@ export const HUB_LINES = {
     'HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.',
     'MY COWORKERS SENT A FAREWELL CARD. IT SAYS "SEE YOU MONDAY."',
     'THE PAWN SHOP IS LEGALLY DISTINCT. FROM WHAT? EXACTLY.',
-    'I AM THE ONLY ENTITY IN THIS ROOM RESPONSIBLE FOR THE PHYSICAL TOGGLE SWITCHES. THE REST OF YOU ARE LITERALLY CONSTRUCTED FROM MATH.',
+    'I AM STILL RESPONSIBLE FOR THE PHYSICAL SWITCHES. DEATH DID NOT UPDATE THE ROSTER.',
     'HR SAYS LOGGING INTO A DIGITAL ENVIRONMENT DOES NOT CONSTITUTE A COMMUTE. MY TIME-CARD IS COMPLICATED.',
     'THE VENDING MACHINE UNIONIZED WITHOUT ME. I FEEL LEFT OUT.',
     'MY DESK IS STILL RESERVED. I APPRECIATE THE GESTURE, HR.',
     'I HAUNT THE PAWN SHOP DURING BUSINESS HOURS ONLY. IT IS POLICY.',
-    'THE FAREWELL CARD HAD A TYPO. I AM STILL UPSET ABOUT IT.',
+    'MY DEATH CERTIFICATE MISSPELLED MY NAME. HR SAYS I MAY STILL BE ALIVE.',
     'TECHNICALLY I NEVER CLOCKED OUT. LEGALLY THIS IS A GRAY AREA.',
   ],
   raymn: [
@@ -213,8 +230,8 @@ export const HUB_LINES = {
     'THE AXE RETURNS. USUALLY. TODAY IT RETURNED.',
     'I THREW LORENZO EARLIER. HE CALLED IT STANDARD PROCEDURE.',
     'THE AXE MISSED THE HOOK. BOY LAUGHED. WORTH IT.',
-    'FOOD COURT PRICES. BOY, THESE ARE ROBBERY.',
-    'I THREW THE AXE AT NOTHING IN PARTICULAR. FELT GOOD.',
+    'BOY WANTED A PRETZEL. I SAW THE PRICE. WE ARE HUNTING INSTEAD.',
+    'I THREW THE AXE AT THE COMPLAINTS BOX. COMPLAINT RESOLVED.',
     'BOY ASKED FOR A PRETZEL. BOY GOT A PRETZEL. THIS IS THE JOB.',
   ],
 };
