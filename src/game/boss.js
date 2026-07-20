@@ -126,7 +126,7 @@ export class BossState extends RunState {
         this.bossHp--;
         shake(3, 0.2);
         Audio.sfx('boom');
-        this.floatText(this.rng.chance(0.35) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : 'DIRECT HIT', this.bossX - 40, GROUND_Y - this.bossAlt - 34, '#f6d33c');
+        this.floatText(this.rng.chance(0.35) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : 'DIRECT HIT', '#f6d33c');
       }
     }
 
@@ -154,7 +154,7 @@ export class BossState extends RunState {
       this.bossHp--;
       shake(3, 0.2);
       Audio.sfx('boom');
-      this.floatText(this.rng.chance(0.3) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : 'REDIRECTED', this.bossX - 40, GROUND_Y - this.bossAlt - 30, '#f6d33c');
+      this.floatText(this.rng.chance(0.3) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : 'REDIRECTED', '#f6d33c');
     }
   }
 

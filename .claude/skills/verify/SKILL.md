@@ -40,6 +40,9 @@ Useful handles the bundle exposes on `window`:
 - `__mash_booted` — true once boot() finished; wait on this before driving.
 - `__mash_state` — current state class name (`HubState`, `StageSelectState`,
   `RunState`, `MinigameState`, ...). Only readable in an unminified build.
+- `__mash_cur` — the live state instance itself. In a RunState you can force
+  UI deterministically instead of waiting for gameplay: call `floatText(...)`,
+  assign `speech = {text, t, who}`, and stretch `t` so nothing fades mid-shot.
 
 Screenshot `page.locator('#game')`, not the viewport, to get just the canvas.
 

@@ -300,10 +300,33 @@ export function drawSpeech(ctx, speech) {
   const x = W / 2 - tw / 2, y = 46;
   const h = 8 + lines.length * 11;
   // Rounded like the name badge above it (same radius drawText plates use), so
-  // every box the HUD puts on screen shares one silhouette. The bubble used to
-  // border red for Eggshell and teal for a teammate; with the border gone the
-  // ink carries that on its own — Eggshell talks in pink-red, allies in the
-  // same pale teal as the badge.
+  // every box the HUD puts on screen shares one silhouette. Eggshell talks in
+  // pink-red ink, allies in the same pale teal as the badge.
+  const isEgg = speech.who === 'eggshell';
+  const hero = !isEgg && speech.who ? HERO_BY_ID[speech.who] : null;
+  const ink = isEgg ? '#f0a0a0' : '#d0f0e8';
   drawPanel(ctx, x - 6, y - 4, tw + 12, h, 3);
-  lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
+  // Named speakers get a face-and-name tag hung off the bubble's top-left —
+  // the badge idiom again, so "who is talking" reads the same way everywhere.
+  // A null who is the game itself talking (tutorials, station notes): no tag.
+  if (isEgg || hero) {
+    const TAG_H = 14, FACE_W = 12, FACE_H = 9, PAD_L = 4, GAP = 4, PAD_R = 7;
+    const name = isEgg ? 'EGGSHELL' : hero.short;
+    const tagW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
+    const tagX = x - 6, tagCy = y - 4 - TAG_H / 2 - 1;
+    drawPanel(ctx, tagX, tagCy - TAG_H / 2, tagW, TAG_H, 3);
+    // Eggshell has no toon rig — his prop painter plays the portrait.
+    if (isEgg) {
+      drawProp(ctx, 'eggshell', tagX + PAD_L, tagCy - FACE_H / 2, FACE_W, FACE_H);
+    } else {
+      const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
+      if (face) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(face, tagX + PAD_L, tagCy - FACE_H / 2, FACE_W, FACE_H);
+        ctx.imageSmoothingEnabled = false;
+      }
+    }
+    rawDrawText(ctx, name, tagX + PAD_L + FACE_W + GAP, tagCy - 4.5, ink);
+  }
+  lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, ink));
 }

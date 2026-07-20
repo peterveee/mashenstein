@@ -23,6 +23,9 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export const GROUND_Y = 232;
+// Floatie stack anchor: above the standing hero's head (~202) with clearance,
+// below the speech bubble's reach — risen text fades out before ~y 90.
+const FLOAT_BASE_Y = 150;
 
 export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
@@ -164,7 +167,7 @@ export class RunState {
       this.startingPowerup = null;
       this.powerups.grab(id, { minDuration: 30 });
       Audio.sfx('power');
-      this.floatText(`BREAKER BONUS: ${POWER_DEFS[id].name}`, PLAYER_X - 20, 70, POWER_DEFS[id].color);
+      this.floatText(`BREAKER BONUS: ${POWER_DEFS[id].name}`, POWER_DEFS[id].color);
     }
     setSceneGlow(!this.style.lightBg);
     clearParticles();
@@ -414,7 +417,7 @@ export class RunState {
       this.player.relayCharge = false;
       this.player.chargeFlashT = 0.5;
       shake(3, 0.2);
-      this.floatText(hero.ability.label, this.camX + PLAYER_X - 10, 62, '#f6d33c');
+      this.floatText(hero.ability.label, '#f6d33c');
     }
     this.player.abilityCd = hero.ability.cooldown * cdMult;
     this.player.powerType = type;
@@ -436,7 +439,7 @@ export class RunState {
         if (target) this.breakObstacle(target);
         Audio.sfx('crunch');
         shake(2, 0.12);
-        this.floatText(target ? 'WRENCH SMASH' : 'CLANG', px, GROUND_Y - 28, '#f6d33c');
+        this.floatText(target ? 'WRENCH SMASH' : 'CLANG', '#f6d33c');
       } else {
         this.player.stomping = true;
         this.player.vy = Math.min(this.player.vy, -180);
@@ -463,11 +466,11 @@ export class RunState {
       for (const alt of alts) {
         this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + 260, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
       }
-      this.floatText(charged ? 'FULL CYAN' : 'PEW', this.playerWorldX(), GROUND_Y - this.player.y - 24, '#f6d33c');
+      this.floatText(charged ? 'FULL CYAN' : 'PEW', '#f6d33c');
     } else if (type === 'compress') {
       this.player.compressT = charged ? 2.6 : 1;
       Audio.sfx('power');
-      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', this.playerWorldX() - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
+      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', '#f8c0d8');
     } else if (type === 'eat') {
       const px = this.playerWorldX();
       Audio.sfx('chomp');
@@ -478,13 +481,13 @@ export class RunState {
           if (ob.live && ob.def.breakable !== false && !ob.def.isGap
               && ob.x > this.camX && ob.x < this.camX + W) { this.breakObstacle(ob, true); ate++; }
         }
-        this.floatText(ate ? 'MISS CHOMP ATE ALL OF IT. POLITELY.' : 'NOTHING ON THE MENU.', px, GROUND_Y - 48, '#f6d33c');
+        this.floatText(ate ? 'MISS CHOMP ATE ALL OF IT. POLITELY.' : 'NOTHING ON THE MENU.', '#f6d33c');
       } else {
         const target = this.powerTarget(type);
         if (target) {
           this.breakObstacle(target, true);
-          this.floatText('MISS CHOMP ATE IT. POLITELY.', target.x, GROUND_Y - target.alt - target.h - 10, '#f6d33c');
-        } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', px, GROUND_Y - 36, '#f6d33c');
+          this.floatText('MISS CHOMP ATE IT. POLITELY.', '#f6d33c');
+        } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', '#f6d33c');
       }
       if (this.modIds.includes('eat') && !this.player.hazardEaten) {
         this.player.hazardEaten = true;
@@ -501,7 +504,7 @@ export class RunState {
       // Charged: the axe works the whole screen before coming home.
       const hits = charged ? 99 : (this.modIds.includes('ricochet') ? 2 : 1);
       this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set() });
-      if (this.fxRng.chance(0.25)) this.floatText('BOY.', this.camX + PLAYER_X, GROUND_Y - this.player.y - 26, '#e8b890');
+      if (this.fxRng.chance(0.25)) this.floatText('BOY.', '#e8b890');
     }
   }
 
@@ -568,7 +571,7 @@ export class RunState {
     this.pickups.push(p);
     if (!quiet) {
       Audio.sfx('power');
-      this.floatText('PRIZE!', x, GROUND_Y - alt - 16, '#f6d33c');
+      this.floatText('PRIZE!', '#f6d33c');
     }
   }
 
@@ -609,7 +612,7 @@ export class RunState {
     }
     if (ob.def.isTarget && this.mission.type === 'targets' && (!this.mission.targetType || this.mission.targetType === ob.type)) {
       this.mission.count++;
-      this.floatText(`${this.mission.count}/${this.mission.n}`, ob.x, GROUND_Y - ob.alt - ob.h - 8, '#48e0c8');
+      this.floatText(`${this.mission.count}/${this.mission.n}`, '#48e0c8');
     }
     if (ob.def.isSwitch) this.openGates(ob.x);
   }
@@ -618,7 +621,7 @@ export class RunState {
     // Frozen switch: remove the next gap (a bridge slides in).
     Audio.sfx('checkpoint');
     for (const ob of this.obstacles) {
-      if (ob.live && ob.def.isGap && ob.x > x) { ob.live = false; this.floatText('BRIDGE. YOU EARNED IT.', ob.x, GROUND_Y - 30, '#b8e0f8'); break; }
+      if (ob.live && ob.def.isGap && ob.x > x) { ob.live = false; this.floatText('BRIDGE. YOU EARNED IT.', '#b8e0f8'); break; }
     }
   }
 
@@ -665,9 +668,12 @@ export class RunState {
     if (hero.stomp) this.stompBreak();
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
     if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
-    // say what this hero DOES, right now, in the player's control scheme
+    // say what this hero DOES, right now, in the player's control scheme.
+    // Deliberately unattributed (no who): the name badge above the bubble
+    // already names the hero, and this is the game explaining a button, not
+    // the hero talking — a nameplate here would just echo the badge.
     const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
-    this.speech = { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: result.to };
+    this.speech = { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: null };
     this.tutor('firstSwitch', RELAY_MODE === 'charge'
       ? 'SWITCH 3 TIMES TO CHARGE YOUR POWER.'
       : 'SWITCH 3 TIMES FOR A RELAY BLAST.');
@@ -684,7 +690,7 @@ export class RunState {
     this.player.relayCharge = true;
     Audio.sfx('power');
     shake(2, 0.15);
-    this.floatText('POWER CHARGED', this.camX + PLAYER_X - 10, 70, '#f6d33c');
+    this.floatText('POWER CHARGED', '#f6d33c');
     burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 20, 90, 0.6, '#f6d33c', 2, 70, () => this.fxRng.float());
     this.tutor('firstCharge', `CHARGED. YOUR NEXT ${btn} IS SUPERCHARGED.`);
   }
@@ -693,7 +699,7 @@ export class RunState {
   relayBlast() {
     Audio.sfx('power');
     shake(4, 0.3);
-    this.floatText('RELAY BLAST', this.camX + PLAYER_X - 10, 70, '#f6d33c');
+    this.floatText('RELAY BLAST', '#f6d33c');
     for (const ob of this.obstacles) {
       if (ob.live && ob.x > this.camX && ob.x < this.camX + W && ob.def.breakable !== false && !ob.def.isGap) this.breakObstacle(ob, true);
     }
@@ -768,7 +774,7 @@ export class RunState {
         c.caught++;
         c.cooldown = 8;
         Audio.sfx('power');
-        this.floatText(`CAUGHT ${c.caught}/${this.mission.n}. IT FILED A COMPLAINT.`, c.x - 40, GROUND_Y - c.alt - 30, '#f6d33c');
+        this.floatText(`CAUGHT ${c.caught}/${this.mission.n}. IT FILED A COMPLAINT.`, '#f6d33c');
         shake(3, 0.2);
       }
     }
@@ -796,7 +802,7 @@ export class RunState {
           if (pr.type === 'fist') this.player.fistThrown = false;
           if (pr.type === 'axe') {
             this.player.axeThrown = false;
-            if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', this.camX + PLAYER_X, GROUND_Y - 70, '#e8b890');
+            if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', '#e8b890');
           }
         }
       } else {
@@ -855,7 +861,7 @@ export class RunState {
           this.player.deflectFlashT = 0.25;
           Audio.sfx('shield');
           this.score += 25;
-          this.floatText('DEFLECTED', playerX, this.groundYAt(playerX) - 32, '#a8e6ff');
+          this.floatText('DEFLECTED', '#a8e6ff');
         } else if (overlaps(playerBox, pbox) && !this.player.invincible) {
           pr.live = false;
           this.takeHit('SHOT BY A DRONE WITH A GRUDGE');
@@ -916,7 +922,9 @@ export class RunState {
       this.narrateT -= dt;
       if (this.narrateT <= 0) {
         this.narrateT = 18 + this.fxRng.range(0, 10);
-        this.floatText(this.fxRng.pick(EGGSHELL_NARRATION), this.camX + 120, 50, '#c8b8e8');
+        // Narration is Eggshell speaking, so it comes out of his mouth — the
+        // speech bubble — not the feedback stack, where it read as a game event.
+        this.speech = { text: this.fxRng.pick(EGGSHELL_NARRATION), t: 3.2, who: 'eggshell' };
       }
     }
   }
@@ -946,7 +954,7 @@ export class RunState {
     if (phase < 0.18 || phase > 0.82) {
       this.challenge.count++;
       this.score += 20;
-      this.floatText('ON BEAT', this.camX + PLAYER_X, GROUND_Y - this.player.y - 30, '#f6d33c');
+      this.floatText('ON BEAT', '#f6d33c');
     }
   }
 
@@ -967,13 +975,13 @@ export class RunState {
       Audio.sfx('checkpoint');
       const restored = this.modIds.includes('osha') ? 2 : 1;
       this.battery = Math.min(this.maxBattery(), this.battery + restored);
-      this.floatText(`CHECKPOINT. +${restored} CELL${restored > 1 ? 'S' : ''}. SINCERELY.`, this.camX + PLAYER_X - 30, 60, '#48c848');
+      this.floatText(`CHECKPOINT. +${restored} CELL${restored > 1 ? 'S' : ''}. SINCERELY.`, '#48c848');
       this.snapshot = this.makeSnapshot();
       // Rescue delivery.
       if (this.mission.type === 'rescue') {
         const carried = this.pickups.filter((p) => p.following);
         for (const p of carried) { p.live = false; this.mission.count++; }
-        if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.mission.count}/${this.mission.n}`, this.camX + PLAYER_X, 80, '#48e0c8');
+        if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.mission.count}/${this.mission.n}`, '#48e0c8');
       }
     }
   }
@@ -1093,7 +1101,7 @@ export class RunState {
         this.breakObstacle(ob);
         this.player.rollT = 0;
         this.player.stumbleT = 0.3;
-        this.floatText('SHIELD BASH. EARS RINGING.', pbox.x, box.y - 12, '#a8e6ff');
+        this.floatText('SHIELD BASH. EARS RINGING.', '#a8e6ff');
         continue;
       }
       // Targets and switches are objectives, not hazards: contact breaks them.
@@ -1132,25 +1140,25 @@ export class RunState {
     } else if (p.def.heal) {
       this.battery = Math.min(this.maxBattery(), this.battery + 1);
       Audio.sfx('power');
-      this.floatText('+1 CELL', p.x, GROUND_Y - p.alt - 16, '#48c848');
+      this.floatText('+1 CELL', '#48c848');
     } else if (p.def.power) {
       const res = this.powerups.grab(p.def.power);
       Audio.sfx('power');
-      this.floatText(res.overcharged ? 'OVERCHARGED' : this.powerNameOf(p.def.power), p.x, GROUND_Y - p.alt - 16, res.overcharged ? '#f6d33c' : '#c8e0ff');
+      this.floatText(res.overcharged ? 'OVERCHARGED' : this.powerNameOf(p.def.power), res.overcharged ? '#f6d33c' : '#c8e0ff');
     } else if (p.def.appliance) {
       this.applianceGot = true;
       Audio.sfx('win');
       this.score += 500;
       this.coins += 20;
-      this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', p.x - 60, GROUND_Y - p.alt - 20, '#f6d33c');
+      this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', '#f6d33c');
     } else if (p.def.cord) {
       this.mission.count++;
       Audio.sfx('checkpoint');
-      this.floatText(`CORD PIECE ${this.mission.count}/${this.mission.n}`, p.x, GROUND_Y - p.alt - 16, '#48e0c8');
+      this.floatText(`CORD PIECE ${this.mission.count}/${this.mission.n}`, '#48e0c8');
     } else if (p.def.resident) {
       p.live = true; p.following = true;
       Audio.sfx('ui');
-      this.floatText('A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME.', p.x, GROUND_Y - 40, '#9ec89e');
+      this.floatText('A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME.', '#9ec89e');
     }
   }
 
@@ -1163,7 +1171,7 @@ export class RunState {
     if (!isPit && this.powerups.isInvincible()) {
       this.player.iframes = 0.35;   // debounce repeated same-frame contact
       Audio.sfx('shield');
-      this.floatText('UNPEELABLE.', this.camX + PLAYER_X - 10, GROUND_Y - this.player.y - 40, '#e8e8f0');
+      this.floatText('UNPEELABLE.', '#e8e8f0');
       return;
     }
     const absorb = this.powerups.absorbHit();
@@ -1173,7 +1181,7 @@ export class RunState {
       shake(3, 0.2);
       // the orb shatters into glass shards
       burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 12, 18, 140, 0.5, '#a8e6ff', 1, 120, () => this.fxRng.float());
-      this.floatText('SHIELD BROKE. IT DID ITS JOB.', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 40, '#a8e6ff');
+      this.floatText('SHIELD BROKE. IT DID ITS JOB.', '#a8e6ff');
       this.player.iframes = 1.2;
       if (this.relay.current === 'fernwick' && this.modIds.includes('prophecyCoupon')) this.coins += 50;
       if (absorb.shockwave) {
@@ -1192,14 +1200,14 @@ export class RunState {
       this.player.headless = 3;
       this.player.iframes = 3;
       Audio.sfx('plop');
-      this.floatText("RAY M'N SCATTERED. REASSEMBLY IS IN PROGRESS.", this.camX + PLAYER_X - 40, GROUND_Y - 60, '#48e0c8');
+      this.floatText("RAY M'N SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
       if (isPit) this.hopOutOfPit();
       return;
     }
     this.battery--;
     this.damageTaken++;
     if (this.challenge && this.challenge.type === 'noDamage') this.challenge.failed = true;
-    if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', this.camX + PLAYER_X - 30, 70, '#e04848');
+    if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848');
     Audio.sfx('hit');
     shake(5, 0.3);
     this.hitstop = 0.12;
@@ -1276,10 +1284,18 @@ export class RunState {
     this.o.onEnd(result);
   }
 
-  floatText(text, x, y, color) {
+  // Feedback popups all rise from one place: a stack above the hero's column.
+  // They used to spawn at whatever world object triggered them, which scattered
+  // text across the screen — and in a runner everything that matters happens to
+  // the hero anyway, so the hero's column is where the eye already is.
+  floatText(text, color) {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
-    this.floaties.push({ text, x, y, color, t: readingTime });
+    // Newest lands at the base; if a recent one is still near it, slot in below
+    // so simultaneous popups (pickup + power name) never overprint.
+    let y = FLOAT_BASE_Y;
+    for (const f of this.floaties) if (f.y + 11 > y) y = f.y + 11;
+    this.floaties.push({ text, color, t: readingTime, y });
     if (this.floaties.length > 8) this.floaties.shift();
   }
 
@@ -1410,14 +1426,15 @@ export class RunState {
     // must never glow itself into an unreadable smear. (Headless runs have no
     // overlay; the fallback draws them straight onto the backbuffer.)
     const drawUi = (d) => {
+      // The overlay draws outside the mirror transform, so the anchor flips by
+      // hand to stay over the hero. Wide lines clamp on their rendered width,
+      // so long comic asides settle toward center instead of running offscreen.
+      const floatX = this.mirror ? W - PLAYER_X - 6 : PLAYER_X + 6;
       for (const f of this.floaties) {
         const lines = wrapText(f.text, W - 32, 1, 2);
         const widest = Math.max(...lines.map((line) => textWidth(line)));
         const halfW = widest / 2;
-        // Clamp using the actual rendered width, not merely the anchor point.
-        // Very long comments naturally settle at screen center as the world
-        // scrolls, while short impact words can still follow their target.
-        const centerX = Math.max(8 + halfW, Math.min(W - 8 - halfW, Math.round(f.x - cam)));
+        const centerX = Math.max(8 + halfW, Math.min(W - 8 - halfW, floatX));
         const topY = Math.max(38, Math.min(H - 48 - lines.length * 10, Math.round(f.y)));
         lines.forEach((line, i) => drawTextCentered(d, line, centerX, topY + i * 10, f.color, 1, 'ui', UI_PLATE));
       }
