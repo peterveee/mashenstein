@@ -246,10 +246,16 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // also follow a power curve instead of a straight line — `flankX` widens
   // fastest near the summit, which blunts the apex the way a real massif is
   // blunt. A straight-sided triangle is what made it read as pointy.
-  const hgt = 122, halfBase = 132, notch = 13;
+  const hgt = 100, halfBase = 88, notch = 23;
   if (cx + halfBase < -40 || cx - halfBase > W + 40) return; // off screen
-  const apex = GROUND_Y - hgt;
-  const lip = apex + 4;
+  // Distant things sit nearer the horizon. Standing the volcano on GROUND_Y
+  // like everything else was what stopped it shrinking: drop its scale with the
+  // base pinned to the groundline and the summit sinks behind the range before
+  // it ever looks far away. Lifting the base 40px puts it further back, so it
+  // can be genuinely small and still clear the ridge.
+  const baseY = GROUND_Y - 40;
+  const apex = baseY - hgt;
+
   const flankX = (f) => halfBase * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
 
   // Layer bounds. The plume climbs well above the summit and is part of the
@@ -272,29 +278,44 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ctx.clearRect(bx, by, volcLayer.w, volcLayer.h);
 
   const ink = (w) => { ctx.strokeStyle = V_INK; ctx.lineWidth = w; ctx.stroke(); };
-  // The crater is a dip in the SILHOUETTE, not a shape painted on the summit.
-  // Drawing an ellipse on a peak whose top edge stays convex always reads as a
-  // disc resting on the mountain, because nothing occludes it and the outline
-  // still bulges upward behind it. Sinking the top edge into a shallow arc —
-  // rim, down through the low point, back up to the far rim — is what makes it
-  // a hole. A quadratic's midpoint sits halfway to its control point, so the
-  // control goes 2x the wanted depth below the rim.
-  const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the notch
+  // The cone is TRUNCATED: `notch` is wide enough (~1/4 of the base) that the
+  // flanks stop well short of `apex` and the top is cut off, leaving a real
+  // rim-to-rim crater. Earlier passes kept a near-pointed peak and took a small
+  // nick out of it, and no depth of nick ever read as a volcano — a pointed
+  // mountain with a dent is still a pointed mountain. Widening the mouth is
+  // what does the work; the dish between the rims can then stay very shallow.
+  //
+  // `apex` is now virtual — the tip the flanks are aimed at, not a place on the
+  // silhouette. `rimY` is the real summit, so everything that used to hang off
+  // apex (lava gradient, smoke origin) hangs off rimY instead.
+  //
+  // The crater is still a dip in the SILHOUETTE rather than a shape painted on
+  // top: an ellipse drawn on a convex outline always reads as a disc resting on
+  // the mountain, because nothing occludes it. A quadratic's midpoint sits
+  // halfway to its control point, so the control goes 2x the wanted depth down.
+  const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the rim
   const rimY = apex + hgt * fT;
-  const craterD = 2.6;   // shallow: a light dip, not a bite out of the summit
+  const craterD = 2.6;   // shallow dish across a wide rim, not a notch in a point
+  // `baseY` sets the volcano's PROPORTIONS, but the silhouette still runs all
+  // the way down to GROUND_Y. Ending the polygon at baseY left a flat cut edge
+  // hanging in mid-air wherever the range dipped below it — the cone has to
+  // keep descending until something covers it. So the flanks are extrapolated
+  // past f=1 to whatever fraction lands on the groundline; that extra skirt is
+  // always hidden behind the hills.
+  const fBase = (GROUND_Y - apex) / hgt;
   const cone = () => {
     ctx.beginPath();
-    ctx.moveTo(cx - halfBase, GROUND_Y);
-    for (let f = 1; f >= fT; f -= 0.03) ctx.lineTo(cx - flankX(f), apex + hgt * f);
+    ctx.moveTo(cx - flankX(fBase), GROUND_Y);
+    for (let f = fBase; f >= fT; f -= 0.03) ctx.lineTo(cx - flankX(f), apex + hgt * f);
     ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
-    for (let f = fT; f <= 1; f += 0.03) ctx.lineTo(cx + flankX(f), apex + hgt * f);
-    ctx.lineTo(cx + halfBase, GROUND_Y);
+    for (let f = fT; f <= fBase; f += 0.03) ctx.lineTo(cx + flankX(f), apex + hgt * f);
+    ctx.lineTo(cx + flankX(fBase), GROUND_Y);
     ctx.closePath();
   };
 
   // Smoke goes down first so the plume passes BEHIND the summit — puffs that
   // overlap the crater lip read as sitting on top of it otherwise.
-  drawVolcanoSmoke(ctx, t, cx, apex, reduced);
+  drawVolcanoSmoke(ctx, t, cx, rimY + craterD, reduced);
 
   cone();
   ctx.fillStyle = V_ROCK;
@@ -308,9 +329,9 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ctx.fillStyle = V_ROCK_DK;
   ctx.beginPath();
   ctx.moveTo(cx + notch * 0.3, apex);
-  ctx.lineTo(cx + halfBase + 4, GROUND_Y);
+  ctx.lineTo(cx + halfBase * 1.4, GROUND_Y);
   ctx.lineTo(cx + halfBase * 0.28, GROUND_Y);
-  ctx.lineTo(cx + notch * 0.1, GROUND_Y - hgt * 0.44);
+  ctx.lineTo(cx + notch * 0.1, baseY - hgt * 0.44);
   ctx.closePath();
   ctx.fill();
   ctx.beginPath();                             // small gully on the lit face
@@ -338,7 +359,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // The cap has to END ABOVE the far range's crests (~96) or the drips — the
   // most recognisable part of the silhouette — sit behind the ridgeline and
   // never show. That is what pins this fraction, not the look of the cone.
-  const capBot = GROUND_Y - hgt * 0.78;
+  const capBot = baseY - hgt * 0.76;
   const capEdge = () => {
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, apex - 6);
@@ -348,7 +369,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
       // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
       // each lobe is a rounded tongue with a rounded notch beside it.
       const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
-      const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 19 * envelope
+      const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 14 * envelope
         + (0.5 - 0.5 * Math.cos(px * 0.9 + 1.4)) * 3;
       ctx.lineTo(cx + px, capBot + drip);
     }
@@ -362,8 +383,8 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // fills instead and stepped visibly — at this size the cap is only ~40px
   // tall, so any band count coarse enough to animate is also coarse enough to
   // read as stripes. A gradient sidesteps the tradeoff entirely.
-  const lavaBot = capBot + 19;
-  const grad = ctx.createLinearGradient(0, lip - 2, 0, lavaBot);
+  const lavaBot = capBot + 14;
+  const grad = ctx.createLinearGradient(0, rimY - 2, 0, lavaBot);
   for (let i = 0; i < V_LAVA.length; i++) {
     grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
   }
@@ -375,7 +396,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // at the mouth and out at the fringe rather than popping when it wraps.
   if (!reduced) {
     const u = (t * 0.15) % 1;
-    const hy = lip + (lavaBot - lip) * u;
+    const hy = rimY + (lavaBot - rimY) * u;
     const band = 13;
     const hg = ctx.createLinearGradient(0, hy - band, 0, hy + band);
     const a = 0.3 * Math.sin(Math.PI * u);
@@ -404,9 +425,9 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   ctx.beginPath();
   ctx.moveTo(cx - notch, rimY);
   ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
-  ctx.quadraticCurveTo(cx, rimY + (craterD + 1.7) * 2, cx - notch, rimY);
+  ctx.quadraticCurveTo(cx, rimY + (craterD + 1.1) * 2, cx - notch, rimY);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(58,32,38,0.34)';
+  ctx.fillStyle = 'rgba(58,32,38,0.24)';
   ctx.fill();
   ctx.restore();
 

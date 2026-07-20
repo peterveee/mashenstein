@@ -6,13 +6,14 @@ import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, UI_PLATE } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
+import { RELAY_MODE } from '../data/flags.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
@@ -337,14 +338,32 @@ export class RunState {
   useAbility() {
     const hero = HERO_BY_ID[this.relay.current];
     const cdMult = 1 - 0.1 * (this.bench.tuneup || 0);
-    if (this.player.abilityCd > 0) return;
     const type = hero.ability.type;
+    // A banked relay charge fires through the cooldown; it is the reward.
+    const charged = !!this.player.relayCharge;
+    if (this.player.abilityCd > 0 && !charged) return;
     if (type === 'roll' && !this.player.grounded) return;
+    if (charged) {
+      this.player.relayCharge = false;
+      this.player.chargeFlashT = 0.5;
+      shake(3, 0.2);
+      this.floatText(hero.ability.label, this.camX + PLAYER_X - 10, 62, '#f6d33c');
+    }
     this.player.abilityCd = hero.ability.cooldown * cdMult;
     this.player.powerType = type;
     this.player.powerPoseT = 0.3;
     if (type === 'stomp') {
-      if (this.player.grounded) {
+      if (charged) {
+        // Screen-wide shockwave: the old blast, but Lorenzo swings it.
+        const px = this.camX + PLAYER_X;
+        this.player.stomping = false;
+        for (const ob of this.obstacles) {
+          if (ob.live && ob.def.ground && ob.def.breakable !== false && !ob.def.isGap
+              && ob.x > this.camX && ob.x < this.camX + W) this.breakObstacle(ob, true);
+        }
+        Audio.sfx('crunch');
+        burst(px + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
+      } else if (this.player.grounded) {
         const px = this.camX + PLAYER_X;
         const target = this.powerTarget(type);
         if (target) this.breakObstacle(target);
@@ -357,31 +376,48 @@ export class RunState {
         Audio.sfx('dash');
       }
     } else if (type === 'dash') {
-      this.player.dashT = 0.4;
+      this.player.dashT = charged ? 1.1 : 0.4;
+      this.player.dashPlows = charged; // charged: shears through what it passes
       Audio.sfx('dash');
-      for (let i = 0; i < 5; i++) spawn(this.camX + PLAYER_X - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
+      for (let i = 0; i < (charged ? 10 : 5); i++) spawn(this.camX + PLAYER_X - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
     } else if (type === 'roll') {
-      this.player.rollT = 0.65;
+      this.player.rollT = charged ? 1.4 : 0.65;
       this.player.rollBashed = false;
       this.player.rollDeflectUsed = false;
+      this.player.rollPlows = charged; // charged: bash without the sidegrade
       this.player.ducking = false;
       Audio.sfx('dash');
     } else if (type === 'shoot') {
       Audio.sfx('shoot');
-      this.projectiles.push({ type: 'pellet', x: this.camX + PLAYER_X + 12, alt: this.player.y + 8, vx: this.speed + 260, live: true, pierce: this.modIds.includes('charge'), hitIds: new Set() });
-      this.floatText('PEW', this.camX + PLAYER_X, GROUND_Y - this.player.y - 24, '#f6d33c');
+      const px = this.camX + PLAYER_X + 12;
+      // Charged: a three-round spread, every pellet piercing.
+      const alts = charged ? [this.player.y - 6, this.player.y + 8, this.player.y + 22] : [this.player.y + 8];
+      for (const alt of alts) {
+        this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + 260, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
+      }
+      this.floatText(charged ? 'FULL CYAN' : 'PEW', this.camX + PLAYER_X, GROUND_Y - this.player.y - 24, '#f6d33c');
     } else if (type === 'compress') {
-      this.player.compressT = 1;
+      this.player.compressT = charged ? 2.6 : 1;
       Audio.sfx('power');
-      this.floatText('PROBABLY NORMAL PHYSICS', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
+      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
     } else if (type === 'eat') {
       const px = this.camX + PLAYER_X;
-      const target = this.powerTarget(type);
       Audio.sfx('chomp');
-      if (target) {
-        this.breakObstacle(target, true);
-        this.floatText('MISS CHOMP ATE IT. POLITELY.', target.x, GROUND_Y - target.alt - target.h - 10, '#f6d33c');
-      } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', px, GROUND_Y - 36, '#f6d33c');
+      if (charged) {
+        // Charged: clears the plate. Everything on screen, still politely.
+        let ate = 0;
+        for (const ob of this.obstacles) {
+          if (ob.live && ob.def.breakable !== false && !ob.def.isGap
+              && ob.x > this.camX && ob.x < this.camX + W) { this.breakObstacle(ob, true); ate++; }
+        }
+        this.floatText(ate ? 'MISS CHOMP ATE ALL OF IT. POLITELY.' : 'NOTHING ON THE MENU.', px, GROUND_Y - 48, '#f6d33c');
+      } else {
+        const target = this.powerTarget(type);
+        if (target) {
+          this.breakObstacle(target, true);
+          this.floatText('MISS CHOMP ATE IT. POLITELY.', target.x, GROUND_Y - target.alt - target.h - 10, '#f6d33c');
+        } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', px, GROUND_Y - 36, '#f6d33c');
+      }
       if (this.modIds.includes('eat') && !this.player.hazardEaten) {
         this.player.hazardEaten = true;
         this.player.abilityCd = 0;
@@ -389,11 +425,14 @@ export class RunState {
     } else if (type === 'fist') {
       Audio.sfx('plop');
       this.player.fistThrown = true;
-      this.projectiles.push({ type: 'fist', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, hitIds: new Set() });
+      // Charged: the fist keeps going instead of turning back at the first hit.
+      this.projectiles.push({ type: 'fist', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set() });
     } else if (type === 'axe') {
       Audio.sfx('axe');
       this.player.axeThrown = true;
-      this.projectiles.push({ type: 'axe', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, live: true, returning: false, hits: this.modIds.includes('ricochet') ? 2 : 1, hitIds: new Set() });
+      // Charged: the axe works the whole screen before coming home.
+      const hits = charged ? 99 : (this.modIds.includes('ricochet') ? 2 : 1);
+      this.projectiles.push({ type: 'axe', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set() });
       if (this.fxRng.chance(0.25)) this.floatText('BOY.', this.camX + PLAYER_X, GROUND_Y - this.player.y - 26, '#e8b890');
     }
   }
@@ -469,8 +508,11 @@ export class RunState {
   // tumble, then land on the ground it was standing on and skid to a stop.
   // Reduced-motion keeps the dust puff but skips the flying debris.
   debris(ob, cx, cy) {
-    if (this.save.settings.reducedMotion) return;
     const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
+    // The scatter plays either way: it describes the break, and reduced-motion
+    // is a setting about movement, not about hearing what you just hit.
+    Audio.sfx('debris', { mat: d.mat });
+    if (this.save.settings.reducedMotion) return;
     const r = () => this.fxRng.float();
     const bulk = Math.min(2, (ob.w * ob.h) / 140); // a stacked crate throws more than a switch
     shardBurst(cx, cy, Math.round((d.count || 9) * (0.7 + bulk * 0.3)), 78, 0.75, d.colors, {
@@ -558,9 +600,25 @@ export class RunState {
     // say what this hero DOES, right now, in the player's control scheme
     const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
     this.speech = { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: result.to };
-    this.tutor('firstSwitch', 'SWITCH 3 TIMES FOR A RELAY BLAST.');
+    this.tutor('firstSwitch', RELAY_MODE === 'charge'
+      ? 'SWITCH 3 TIMES TO CHARGE YOUR POWER.'
+      : 'SWITCH 3 TIMES FOR A RELAY BLAST.');
     this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
-    if (result.blast) this.relayBlast();
+    if (result.blast) {
+      if (RELAY_MODE === 'charge') this.grantRelayCharge(btn);
+      else this.relayBlast();
+    }
+  }
+
+  // 'charge' mode: bank an empowered ability instead of firing automatically.
+  // An unspent charge rides along through later switches rather than vanishing.
+  grantRelayCharge(btn) {
+    this.player.relayCharge = true;
+    Audio.sfx('power');
+    shake(2, 0.15);
+    this.floatText('POWER CHARGED', this.camX + PLAYER_X - 10, 70, '#f6d33c');
+    burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 20, 90, 0.6, '#f6d33c', 2, 70, () => this.fxRng.float());
+    this.tutor('firstCharge', `CHARGED. YOUR NEXT ${btn} IS SUPERCHARGED.`);
   }
 
   // Every third switch: automatic screen-clearing Relay Blast.
@@ -1213,9 +1271,9 @@ export class RunState {
         ctx.fillStyle = '#0b0b14';
         ctx.fillRect(fx + 15, finishGround - 26, 2, 3);
         ctx.fillRect(fx + 12, finishGround - 25, 2, 3);
-        drawText(ctx, 'THE BREAKER', fx - 14, finishGround - 94, '#f6d33c');
+        drawText(ctx, 'THE BREAKER', fx - 14, finishGround - 94, '#f6d33c', 1, 'ui', UI_PLATE);
       } else if (remaining < this.speed * 5) {
-        if (Math.floor(this.tRun * 2) % 2 === 0) drawTextCentered(ctx, 'FINISH AHEAD', W / 2, 70, '#f6d33c');
+        if (Math.floor(this.tRun * 2) % 2 === 0) drawTextCentered(ctx, 'FINISH AHEAD', W / 2, 70, '#f6d33c', 1, 'ui', UI_PLATE);
       }
     }
 
@@ -1280,7 +1338,7 @@ export class RunState {
         // scrolls, while short impact words can still follow their target.
         const centerX = Math.max(8 + halfW, Math.min(W - 8 - halfW, Math.round(f.x - cam)));
         const topY = Math.max(38, Math.min(H - 48 - lines.length * 10, Math.round(f.y)));
-        lines.forEach((line, i) => drawTextCentered(d, line, centerX, topY + i * 10, f.color, 1));
+        lines.forEach((line, i) => drawTextCentered(d, line, centerX, topY + i * 10, f.color, 1, 'ui', UI_PLATE));
       }
       if (this.speech) drawSpeech(d, this.speech);
       drawHud(d, this);

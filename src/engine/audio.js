@@ -8,12 +8,26 @@ const SFX_TRIM = {
   blockBreak: 0.58, boom: 0.68, coinSpray: 0.7, hit: 0.74,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  // A tail layer, not an event: it should colour the break, never top it.
+  debris: 0.65,
   // Miss Chomp's coin bite. Measured against 'coin': it peaks ~5dB hotter at
   // the same nominal gain (the resonant lowpass), but the real problem was
   // sustain — it holds its peak where 'coin' is a fast-decaying blip, putting
   // it ~23dB up on total energy. Trim plus a shorter hold (see the cue) lands
   // it just under 'coin' on peak and a few dB over on energy.
   waka: 0.45,
+};
+
+// Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
+// Exported so the obstacle table's `mat` values can be checked against it.
+export const DEBRIS_MATS = {
+  wood:  { type: 'bandpass', freq: 1100, gain: 0.10, ticks: 4, dur: 0.045 },
+  stone: { type: 'bandpass', freq: 2300, gain: 0.09, ticks: 4, dur: 0.03 },
+  metal: { type: 'highpass', freq: 3800, gain: 0.07, ticks: 3, dur: 0.035, ping: [1860, 2490] },
+  soft:  { type: 'lowpass',  freq: 520,  gain: 0.11, ticks: 3, dur: 0.06 },
+  // The ?-box: a light tinkle that sits *under* the coinSpray already firing
+  // over it, rather than competing with it for the same ear.
+  gold:  { type: 'highpass', freq: 5200, gain: 0.05, ticks: 3, dur: 0.025, ping: [2637, 3136] },
 };
 
 class AudioSys {
@@ -323,6 +337,20 @@ class AudioSys {
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
+      // The chunks landing, a beat after the thing came apart. Deliberately a
+      // separate cue from the break itself: it starts ~0.1s late (roughly the
+      // shards' flight time) and thins out, so a break reads as impact-then-
+      // scatter instead of one flat noise burst. Material picks the timbre.
+      case 'debris': {
+        const m = DEBRIS_MATS[opt.mat] || DEBRIS_MATS.wood;
+        for (let i = 0; i < m.ticks; i++) {
+          // uneven spacing — evenly spaced ticks read as a machine, not rubble
+          const when = 0.1 + i * 0.062 + (i % 2) * 0.021;
+          this.noise(m.dur, m.gain * (1 - i * 0.22), m.type, m.freq * (1 - i * 0.12), when);
+        }
+        if (m.ping) m.ping.forEach((f, i) => this.osc('triangle', f, f * 0.94, 0.07, 0.035, 0.12 + i * 0.08));
+        break;
+      }
       // A ?-box giving way overhead: a hard ceramic crack on top of a gut
       // thump, then splinters raining down. 'crunch' was too polite for a hit
       // you are meant to go out of your way to land.

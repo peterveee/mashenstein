@@ -4,7 +4,7 @@
 import { W, H, shake } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, getSprite } from '../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, UI_PLATE } from '../engine/sprites.js';
 import { drawProp } from '../sprites/props.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
@@ -184,7 +184,7 @@ export class BossState extends RunState {
     // Health bars: 1 real + N fake labeled PRESENTATION ERROR.
     const bw = 160;
     const bx = W / 2 - bw / 2, by = H - 40;
-    drawTextCentered(ctx, this.boss.name, W / 2, by - 10, '#f0a0a0');
+    drawTextCentered(ctx, this.boss.name, W / 2, by - 10, '#f0a0a0', 1, 'ui', UI_PLATE);
     ctx.fillStyle = '#20242c';
     ctx.fillRect(bx, by, bw, 6);
     const realOrAllReal = this.unpluggedReal && this.boss.fakeBars ? (this.bossHp / this.bossMax) : (this.bossHp / this.bossMax);
@@ -196,14 +196,14 @@ export class BossState extends RunState {
         ctx.fillRect(bx, by + 8 + i * 7, bw, 4);
         ctx.fillStyle = this.unpluggedReal ? '#e04848' : '#5a3a3a';
         ctx.fillRect(bx, by + 8 + i * 7, bw * (this.unpluggedReal ? realOrAllReal : 1), 4);
-        drawText(ctx, this.unpluggedReal ? 'REAL NOW' : 'PRESENTATION ERROR', bx + bw + 6, by + 6 + i * 7, '#5a5a68');
+        drawText(ctx, this.unpluggedReal ? 'REAL NOW' : 'PRESENTATION ERROR', bx + bw + 6, by + 6 + i * 7, '#5a5a68', 1, 'ui', UI_PLATE);
       }
     }
     if (this.jokeT > 0) {
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.fillRect(0, 0, W, H);
-      drawTextCentered(ctx, 'LOW BATTERY', W / 2, H / 2 - 20, '#f6d33c', 2);
-      drawTextCentered(ctx, '(THE BOSS FIGHT WILL RESUME SHORTLY)', W / 2, H / 2 + 4, '#8a8a98');
+      drawTextCentered(ctx, 'LOW BATTERY', W / 2, H / 2 - 20, '#f6d33c', 2, 'ui', UI_PLATE);
+      drawTextCentered(ctx, '(THE BOSS FIGHT WILL RESUME SHORTLY)', W / 2, H / 2 + 4, '#8a8a98', 1, 'ui', UI_PLATE);
     }
   }
 }

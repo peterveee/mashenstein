@@ -127,7 +127,7 @@ assert(!run.player.stomping, 'Down no longer triggers Lorenzo air stomp');
 
 // Gravity bypasses dash and power-up invulnerability.
 run.player.grounded = true; run.player.y = 0; run.player.dashT = 0.4; run.player.iframes = 0;
-run.powerups.shieldStack = 0; run.powerups.active.unpeel = { t: 10, level: 1 };
+run.powerups.shieldStack = 0; run.powerups.active.unpeel = { t: 10, t0: 10, level: 1 };
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 const pitCells = run.battery; run.collide();
 assert(run.battery === pitCells - 1, 'pit damages through dash and UNPEELABLE');

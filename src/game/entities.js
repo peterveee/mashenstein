@@ -28,28 +28,28 @@ export const OBSTACLES = {
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
 // from each prop painter so the chunks read as pieces of the sprite that just
-// left. `heavy` shards land and skid; light ones (paper, sparks) drift off.
+// left; `mat` picks the timbre of the scatter they make when they land.
 export const DEBRIS = {
-  cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6 },
-  cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14 },
-  crate:       { colors: ['#c89858', '#8a6432', '#5a4020'], size: 3 },
-  qcrate:      { colors: ['#f6d33c', '#c89858', '#8a6432'], size: 3 },
-  barrel:      { colors: ['#b07840', '#7a4c22', '#d09858'], size: 3.2 },
-  tombstone:   { colors: ['#9a9ab0', '#6a6a80'], size: 3 },
-  cardboardMonster: { colors: ['#c8a068', '#8a6a3a', '#fff'], size: 3 },
-  chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8 },
-  printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6 },
-  zombie:      { colors: ['#9ec89e', '#5a6a8a', '#4a6a4a'], size: 2.4, count: 12 },
-  drone:       { colors: ['#8858c8', '#5a3890', '#c8b8e8'], size: 2.4, spark: '#f6d33c' },
-  shooterDrone:{ colors: ['#8858c8', '#5a3890', '#e04848'], size: 2.4, spark: '#f6d33c' },
-  buzzbird:    { colors: ['#f0a860', '#d87830', '#f6d33c'], size: 2.2, grav: 190 },
-  icicle:      { colors: ['#b8e0f8', '#fff', '#8ab8d8'], size: 2.6 },
-  target:      { colors: ['#f6d33c', '#fff8d0'], size: 2.4 },
-  switch:      { colors: ['#48e0c8', '#f6d33c', '#3a4a5a'], size: 2.4 },
-  paperwork:   { colors: ['#fff', '#e8e8f0'], size: 3, grav: 60, count: 10 },
+  cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
+  cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },
+  crate:       { colors: ['#c89858', '#8a6432', '#5a4020'], size: 3, mat: 'wood' },
+  qcrate:      { colors: ['#f6d33c', '#c89858', '#8a6432'], size: 3, mat: 'gold' },
+  barrel:      { colors: ['#b07840', '#7a4c22', '#d09858'], size: 3.2, mat: 'wood' },
+  tombstone:   { colors: ['#9a9ab0', '#6a6a80'], size: 3, mat: 'stone' },
+  cardboardMonster: { colors: ['#c8a068', '#8a6a3a', '#fff'], size: 3, mat: 'soft' },
+  chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8, mat: 'wood' },
+  printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6, mat: 'metal' },
+  zombie:      { colors: ['#9ec89e', '#5a6a8a', '#4a6a4a'], size: 2.4, count: 12, mat: 'soft' },
+  drone:       { colors: ['#8858c8', '#5a3890', '#c8b8e8'], size: 2.4, spark: '#f6d33c', mat: 'metal' },
+  shooterDrone:{ colors: ['#8858c8', '#5a3890', '#e04848'], size: 2.4, spark: '#f6d33c', mat: 'metal' },
+  buzzbird:    { colors: ['#f0a860', '#d87830', '#f6d33c'], size: 2.2, grav: 190, mat: 'soft' },
+  icicle:      { colors: ['#b8e0f8', '#fff', '#8ab8d8'], size: 2.6, mat: 'stone' },
+  target:      { colors: ['#f6d33c', '#fff8d0'], size: 2.4, mat: 'metal' },
+  switch:      { colors: ['#48e0c8', '#f6d33c', '#3a4a5a'], size: 2.4, mat: 'metal' },
+  paperwork:   { colors: ['#fff', '#e8e8f0'], size: 3, grav: 60, count: 10, mat: 'soft' },
 };
 
-export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8 };
+export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };
 
 export const PICKUPS = {
   coin:      { w: 8, h: 8, sprite: 'coin', score: 50, coin: true },

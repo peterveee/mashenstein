@@ -1,13 +1,34 @@
 // HUD: score, coins, battery cells, power-up timers, relay meter + team faces,
 // mission progress, world progress bar, speech bubbles.
 import { W, H } from '../engine/renderer.js';
-import { drawText, drawTextCentered, textWidth, wrapText, getSprite } from '../engine/sprites.js';
+import {
+  drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
+  textWidth, wrapText, getSprite, UI_PLATE,
+} from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
 import { drawPlugRow } from './plugs.js';
+
+// Every string in the HUD is drawn straight onto the scene with no plate behind
+// it, so its contrast depends on whatever happens to be scrolling past. Over the
+// light packs (watercolor, cardboard, doodle — the ones that opt out of bloom)
+// the paler colours here, the teal ability labels and the dimmed control hints
+// especially, wash out to nearly nothing.
+//
+// So HUD text carries its own plate rather than each caller opting in: these
+// wrappers plate the whole module, and the call sites below stay unchanged.
+// Anything drawn over gameplay should go through them. Text that already sits
+// on its own backing — the speech bubble, the touch buttons — calls the raw
+// functions instead, or it gets a second plate inside the first.
+function drawText(ctx, str, x, y, color, scale, style) {
+  return rawDrawText(ctx, str, x, y, color, scale, style, UI_PLATE);
+}
+function drawTextCentered(ctx, str, cx, y, color, scale, style) {
+  return rawDrawTextCentered(ctx, str, cx, y, color, scale, style, UI_PLATE);
+}
 
 // Plug tally for the stage you are in: which of its three plugs are already
 // banked from earlier attempts, and which are on track this run. Same icons as
@@ -52,6 +73,26 @@ function drawCoinGlitter(ctx, x, y, size, t) {
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.22, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A donut gauge: `frac` of the ring stroked clockwise from twelve o'clock over
+// a dark trough. The ability ring fills as it recharges, power-up rings drain
+// as they expire — one shape, read in opposite directions.
+function drawRingGauge(ctx, cx, cy, rOuter, rInner, frac, color) {
+  const r = (rOuter + rInner) / 2;
+  ctx.save();
+  ctx.lineWidth = rOuter - rInner;
+  ctx.strokeStyle = '#10141c';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  if (frac > 0) {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, frac));
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -119,52 +160,41 @@ export function drawHud(ctx, run) {
   // shut from red to green: one glanceable token instead of a bar that ate the
   // whole corner. Touch play skips it — that corner holds pause/mute, and the
   // PWR button shows its own recharge.
+  const RING_X = W - 12;
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
     const cd = run.player.abilityCd;
     const ready = cd <= 0;
     const frac = ready ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    const cx = W - 12, cy = 12, rOuter = 6, rInner = 3.2;
-    const color = ready ? '#48c848' : '#e04848';
-    ctx.save();
-    // trough
-    ctx.strokeStyle = '#10141c';
-    ctx.lineWidth = rOuter - rInner;
-    ctx.beginPath();
-    ctx.arc(cx, cy, (rOuter + rInner) / 2, 0, Math.PI * 2);
-    ctx.stroke();
-    // fill sweeps clockwise from twelve o'clock
-    if (frac > 0) {
-      ctx.strokeStyle = color;
-      ctx.beginPath();
-      ctx.arc(cx, cy, (rOuter + rInner) / 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-      ctx.stroke();
-    }
+    drawRingGauge(ctx, RING_X, 12, 6, 3.2, frac, ready ? '#48c848' : '#e04848');
     // a soft pulse marks the moment it comes back up
     if (ready) {
+      ctx.save();
       ctx.globalAlpha = 0.3 + 0.3 * Math.sin(run.tRun * 4);
       ctx.strokeStyle = '#a8f0a8';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(cx, cy, rOuter + 1.5, 0, Math.PI * 2);
+      ctx.arc(RING_X, 12, 7.5, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
     const label = hero.ability.label;
-    drawText(ctx, label, cx - rOuter - 4 - textWidth(label), 9, ready ? '#48e0c8' : '#8a8a98');
+    drawText(ctx, label, RING_X - 10 - textWidth(label), 9, ready ? '#48e0c8' : '#8a8a98');
   }
 
-  // Power-up timers, top-right under the ability ring.
-  let py = 23;
+  // Power-up timers stack under the ability ring as smaller donuts in each
+  // power's own colour, draining as they expire. The last second and a half
+  // blinks, the same warning the old bars gave.
+  let py = 26;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
     if (!blink) {
-      ctx.fillStyle = def.color;
-      ctx.fillRect(W - 60, py, Math.max(2, 40 * Math.min(1, a.t / 10)), 5);
-      drawText(ctx, `${def.name}${a.level > run.powerups.levelOf(id) ? '+' : ''}`, W - 60, py + 7, def.color);
+      drawRingGauge(ctx, RING_X, py, 5, 2.7, a.t / a.t0, def.color);
+      const label = `${def.name}${a.level > run.powerups.levelOf(id) ? '+' : ''}`;
+      drawText(ctx, label, RING_X - 9 - textWidth(label), py - 3, def.color);
     }
-    py += 18;
+    py += 14;
   }
 
   // Relay: current hero + Relay Blast pips (the 3rd switch blasts, automatically).
@@ -218,7 +248,7 @@ export function drawHud(ctx, run) {
   // Touch buttons.
   for (const b of Input.buttons) {
     if (b.id === 'pause' || b.id === 'mute') {
-      drawText(ctx, b.label, b.x + 4, b.y + 3, '#8a8a98');
+      rawDrawText(ctx, b.label, b.x + 4, b.y + 3, '#8a8a98');
     } else {
       const cd = b.id === 'ability' ? run.player.abilityCd : 0;
       ctx.fillStyle = cd > 0 ? 'rgba(90,90,104,0.2)' : 'rgba(72,224,200,0.15)';
@@ -232,7 +262,7 @@ export function drawHud(ctx, run) {
       }
       ctx.strokeStyle = 'rgba(72,224,200,0.5)';
       ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
-      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
+      rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
     }
   }
 }
@@ -246,5 +276,5 @@ export function drawSpeech(ctx, speech) {
   ctx.fillRect(x - 6, y - 4, tw + 12, h);
   ctx.strokeStyle = speech.who === 'eggshell' ? '#c83030' : '#48e0c8';
   ctx.strokeRect(x - 5.5, y - 3.5, tw + 11, h - 1);
-  lines.forEach((line, i) => drawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
+  lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
 }

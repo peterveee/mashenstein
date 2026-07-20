@@ -313,11 +313,8 @@ if (typeof document !== 'undefined' && document.fonts) {
   if (document.fonts.ready) document.fonts.ready.then(drop);
 }
 
-export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui') {
-  const s = String(str);
+function paintGlyphs(ctx, s, x, y, color, scale, style) {
   let cx = x;
-  const prev = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = true;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch !== ' ') {
@@ -326,10 +323,47 @@ export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui'
     }
     cx += advance(ch, scale, style);
   }
+  return cx;
+}
+
+// Shared plate for any text drawn straight onto the scene — HUD, floaties,
+// boss labels. A soft translucent backing separates text from whatever is
+// scrolling past without touching the glyphs themselves, which is what a
+// shadow or an outline would do. Deliberately weak: it should register as the
+// text sitting slightly forward, not as a labelled box.
+export const UI_PLATE = 'rgba(12,10,22,0.22)';
+
+// `plate` (a css colour) fills a soft rounded rect behind the string, sized
+// from the same metrics the glyphs use. Glyphs occupy y-1*scale .. y+11*scale
+// but the ink sits well inside that box, so the plate hugs a tighter band —
+// the full box reads as a tall bar with the text floating in it.
+function platePath(ctx, x, y, w, h, r) {
+  const k = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + k, y);
+  ctx.arcTo(x + w, y, x + w, y + h, k);
+  ctx.arcTo(x + w, y + h, x, y + h, k);
+  ctx.arcTo(x, y + h, x, y, k);
+  ctx.arcTo(x, y, x + w, y, k);
+  ctx.closePath();
+}
+
+export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  const s = String(str);
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
+  if (plate && s.trim()) {
+    const w = textWidth(s, scale, style);
+    const padX = 2.2 * scale, padY = 1.2 * scale;
+    ctx.fillStyle = plate;
+    platePath(ctx, x - padX, y - padY, w + padX * 2, 9 * scale + padY * 2, 3 * scale);
+    ctx.fill();
+  }
+  const cx = paintGlyphs(ctx, s, x, y, color, scale, style);
   ctx.imageSmoothingEnabled = prev;
   return cx;
 }
 
-export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui') {
-  drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style);
+export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
+  drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style, plate);
 }

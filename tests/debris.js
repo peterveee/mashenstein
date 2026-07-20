@@ -5,6 +5,7 @@ installDom();
 
 const { spawnShard, shardBurst, updateParticles, clearParticles, burst } = await import('../src/engine/particles.js');
 const { OBSTACLES, DEBRIS, DEBRIS_DEFAULT } = await import('../src/game/entities.js');
+const { DEBRIS_MATS, Audio } = await import('../src/engine/audio.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -25,7 +26,13 @@ for (const [type, def] of Object.entries(OBSTACLES)) {
   assert(Array.isArray(d.colors) && d.colors.length > 0, `${type} debris declares colours`);
   assert(d.colors.every((c) => /^#[0-9a-f]{3,6}$/i.test(c)), `${type} debris colours are all hex`);
   assert(d.size > 0, `${type} debris has a positive chunk size`);
+  // A typo here would fall back to wood silently — a stone slab landing with a
+  // wooden clatter is exactly the kind of bug nobody files.
+  assert(DEBRIS_MATS[d.mat], `${type} debris names a material the audio cue knows (${d.mat})`);
 }
+assert(DEBRIS_MATS[DEBRIS_DEFAULT.mat], 'the fallback material is a real one too');
+assert(DEBRIS.qcrate.mat === 'gold', 'the ?-box scatters with its own coin-flavoured tinkle');
+assert(Audio.sfx('debris', { mat: 'stone' }) === undefined, 'the cue is safe to fire with no audio context');
 assert(DEBRIS.zombie && DEBRIS.drone && DEBRIS.crate, 'the common enemies and blocks all have their own material');
 assert(Array.isArray(DEBRIS_DEFAULT.colors), 'unlisted types fall back to a valid default');
 

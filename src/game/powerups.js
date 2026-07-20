@@ -46,7 +46,9 @@ export class Powerups {
     if (cur) { level = Math.min(this.levelOf(id) + 1, 4); overcharged = level > this.levelOf(id); }
     let t = this.durationFor(id, level);
     if (opts.minDuration) t = Math.max(t, opts.minDuration);
-    this.active[id] = { t, level };
+    // t0 is what the HUD ring drains from: durations vary by power and level,
+    // so remaining time alone cannot say how much of the effect is left.
+    this.active[id] = { t, t0: t, level };
     return { overcharged };
   }
 
