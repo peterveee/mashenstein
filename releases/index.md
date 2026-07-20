@@ -26,3 +26,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-20 | `a5a97ef` | [2026-07-20-a5a97ef.html](2026-07-20-a5a97ef.html) | feat: update relay mode and enhance player abilities |
 | 2026-07-20 | `f64a550` | [2026-07-20-f64a550.html](2026-07-20-f64a550.html) | feat: enhance UI elements with new panel styles for improved readability |
 | 2026-07-20 | `3d1d6ba` | [2026-07-20-3d1d6ba.html](2026-07-20-3d1d6ba.html) | feat: enhance UI panel styling and add drawPanel function for improved HUD elements |
+| 2026-07-20 | `b36945b` | [2026-07-20-b36945b.html](2026-07-20-b36945b.html) | feat: simplify floatText function and improve HUD text positioning for better readability |
