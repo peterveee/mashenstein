@@ -24,3 +24,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-20 | `71e11e2` | [2026-07-20-71e11e2.html](2026-07-20-71e11e2.html) | Merge branch 'main' of https://github.com/peterveee/mashenstein |
 | 2026-07-20 | `d66f214` | [2026-07-20-d66f214.html](2026-07-20-d66f214.html) | Adjust volcano crater depth and HUD progress bar dimensions for improved visuals |
 | 2026-07-20 | `a5a97ef` | [2026-07-20-a5a97ef.html](2026-07-20-a5a97ef.html) | feat: update relay mode and enhance player abilities |
+| 2026-07-20 | `f64a550` | [2026-07-20-f64a550.html](2026-07-20-f64a550.html) | feat: enhance UI elements with new panel styles for improved readability |
