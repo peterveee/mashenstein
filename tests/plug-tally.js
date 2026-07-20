@@ -1,42 +1,22 @@
-// The in-run HUD must show which of the stage's three plugs are already banked
-// from earlier attempts (gold) versus on track right now (green), so a replay
-// makes it obvious what is still worth chasing.
+// A stage's three plugs: which are already banked from earlier attempts, and
+// which are on track right now. The in-run HUD no longer draws a standing
+// tally — the pause screen counts them and mid-run toasts announce the
+// transitions — so what has to hold is the RULE, in one place, agreeing with
+// what endRun actually banks. Stage select still draws the row, and still has
+// to render for every cabinet and plug state.
 import { installDom } from './dom-stub.js';
 installDom();
 
 const { drawHud } = await import('../src/game/hud.js');
 const { STAGES, UNLOCKS } = await import('../src/data/stages.js');
 const { HERO_BY_ID } = await import('../src/data/heroes.js');
-const { PLUG_FRAME_LW, ALPHA_BANKED, ALPHA_LIVE, ALPHA_EMPTY } = await import('../src/game/plugs.js');
+const { goalsDone, ALPHA_BANKED, ALPHA_LIVE, ALPHA_EMPTY } = await import('../src/game/plugs.js');
 const anyHero = Object.keys(HERO_BY_ID)[0];
 
 let failed = false;
 function assert(cond, msg) {
   if (!cond) { console.error('FAIL:', msg); failed = true; }
   else console.log('ok:', msg);
-}
-
-// Plug state is carried by each icon box's frame, stroked as a rounded hairline.
-// The frame width is used nowhere else in the game, so it identifies the three
-// frames unambiguously and they arrive in mission/challenge/toaster order. It
-// comes from the source rather than a literal so art tuning cannot break this.
-function recordingCtx() {
-  const real = globalThis.document.createElement('canvas').getContext('2d');
-  const strokes = [];
-  return {
-    ctx: new Proxy(real, {
-      get(t, k) {
-        if (k === 'stroke') return (...a) => { strokes.push({ c: t.strokeStyle, lw: t.lineWidth }); return real.stroke(...a); };
-        const v = t[k];
-        return typeof v === 'function' ? v.bind(t) : v;
-      },
-      set(t, k, v) { t[k] = v; return true; },
-    }),
-    tally: () => {
-      const frames = strokes.filter((s) => s.lw === PLUG_FRAME_LW).map((s) => s.c);
-      return [0, 1, 2].map((i) => frames[i]);
-    },
-  };
 }
 
 const stage = STAGES[0];
@@ -49,53 +29,77 @@ function mkRun(banked, over = {}) {
     mission: { type: 'targets', n: 3, count: 0 },
     challenge: { type: 'coins', n: 5, count: 0, failed: false, desc: 'GET COINS' },
     applianceGot: false,
+    goalToasts: [],
     player: { abilityCd: 0 },
     save: { slot: { campaign: { plugs: { [stage.id]: banked } } }, settings: {} },
     ...over,
   };
 }
 
-const GOLD = '#f6d33c', GREEN = '#48c848', DARK = '#3a3a48';
+const done = (banked, over = {}) => goalsDone(mkRun(banked, over));
 
-function tallyFor(banked, over = {}) {
-  const r = recordingCtx();
-  drawHud(r.ctx, mkRun(banked, over));
-  return r.tally();
+let t = done(undefined);
+assert(t.join() === [false, false, false].join(), `a fresh stage holds no plugs (got ${t})`);
+
+t = done([true, false, false]);
+assert(t.join() === [true, false, false].join(), `a banked mission plug counts (got ${t})`);
+
+t = done([true, true, true]);
+assert(t.join() === [true, true, true].join(), `a fully plugged stage counts three (got ${t})`);
+
+// Grabbing the toaster this run puts T in hand before it is banked.
+t = done([true, false, false], { applianceGot: true });
+assert(t[2] === true, `toaster grabbed this run counts (got ${t})`);
+
+// Already banked stays counted whether or not it is also live this run.
+t = done([true, false, true], { applianceGot: true });
+assert(t[2] === true, `an already-banked toaster stays counted (got ${t})`);
+
+// Meeting the challenge target this run counts C.
+t = done([false, false, false], { challenge: { type: 'coins', n: 5, count: 5, failed: false, desc: 'GET COINS' } });
+assert(t[1] === true, `challenge target met this run counts (got ${t})`);
+
+// A failed challenge must not count, however full its counter got.
+t = done([false, false, false], { challenge: { type: 'coins', n: 5, count: 5, failed: true, desc: 'GET COINS' } });
+assert(t[1] === false, `a failed challenge does not count (got ${t})`);
+
+// noDamage is on track from the first frame and only banks by surviving.
+t = done([false, false, false], { challenge: { type: 'noDamage', n: 1, count: 0, failed: false, desc: 'NO DAMAGE' }, damageTaken: 0 });
+assert(t[1] === true, `an unbroken no-damage challenge counts (got ${t})`);
+t = done([false, false, false], { challenge: { type: 'noDamage', n: 1, count: 0, failed: false, desc: 'NO DAMAGE' }, damageTaken: 2 });
+assert(t[1] === false, `a no-damage challenge with damage taken does not count (got ${t})`);
+
+// The mission plug is never in hand mid-run — it only lands at the socket.
+t = done([false, false, false], { mission: { type: 'targets', n: 3, count: 3 } });
+assert(t[0] === false, `mission stays unearned mid-run even when its counter is full (got ${t})`);
+
+// Overtime has no stage and so has no plugs to hold.
+t = done([true, true, true], { overtime: true, stage: null, challenge: null });
+assert(t.every((v) => v === false), 'overtime holds no plugs');
+
+// The HUD must render across the states it now has to cover. The mock carries
+// no tRun, which is exactly the case the animated bits have to survive.
+{
+  const ctx = globalThis.document.createElement('canvas').getContext('2d');
+  const cases = {
+    'normal run': mkRun([true, false, false]),
+    'one-hit run': mkRun(undefined, { oneHit: true, maxBattery: () => 1, battery: 1 }),
+    'overtime': mkRun(undefined, { overtime: true, stage: null, challenge: null, mission: { type: 'endless', desc: 'RUN' } }),
+    'failed challenge': mkRun(undefined, { challenge: { type: 'coins', n: 5, count: 1, failed: true, desc: 'GET COINS' } }),
+    'goal toast up': mkRun(undefined, { goalToasts: [{ text: 'BONUS: GET COINS', t: 2.4, t0: 2.4 }] }),
+  };
+  let threw = null;
+  for (const [name, run] of Object.entries(cases)) {
+    try { drawHud(ctx, run); } catch (e) { threw = `${name}: ${e.message}`; }
+  }
+  assert(!threw, `the HUD draws in every run state without a clock (${threw || 'no throw'})`);
 }
 
-let t = tallyFor(undefined);
-assert(t.join() === [DARK, DARK, DARK].join(), `fresh stage shows three empty plugs (got ${t})`);
-
-t = tallyFor([true, false, false]);
-assert(t[0] === GOLD && t[1] === DARK && t[2] === DARK, `a banked mission plug reads gold (got ${t})`);
-
-t = tallyFor([true, true, true]);
-assert(t.join() === [GOLD, GOLD, GOLD].join(), `a fully plugged stage reads all gold (got ${t})`);
-
-// Grabbing the toaster this run lights T green while it is still unbanked.
-t = tallyFor([true, false, false], { applianceGot: true });
-assert(t[2] === GREEN, `toaster grabbed this run reads green (got ${t})`);
-
-// Already-banked wins over on-track: it stays gold, not green.
-t = tallyFor([true, false, true], { applianceGot: true });
-assert(t[2] === GOLD, `an already-banked toaster stays gold (got ${t})`);
-
-// Meeting the challenge target this run lights C green.
-t = tallyFor([false, false, false], { challenge: { type: 'coins', n: 5, count: 5, failed: false, desc: 'GET COINS' } });
-assert(t[1] === GREEN, `challenge target met this run reads green (got ${t})`);
-
-// A failed challenge must not read as on track.
-t = tallyFor([false, false, false], { challenge: { type: 'coins', n: 5, count: 5, failed: true, desc: 'GET COINS' } });
-assert(t[1] === DARK, `a failed challenge does not read green (got ${t})`);
-
-// The mission plug is never green mid-run — it only lands at the socket.
-t = tallyFor([false, false, false], { mission: { type: 'targets', n: 3, count: 3 } });
-assert(t[0] === DARK, `mission stays unlit mid-run even when its counter is full (got ${t})`);
-
 // The frame is a third-of-a-pixel hairline, so colour alone cannot carry
-// banked-vs-live: the icon brightness has to differ too, or an on-track plug
-// looks exactly like one you already own. drawProp composites each icon with a
-// single drawImage, so the alpha in force at that call is the pip's tier.
+// banked-vs-live in the stage select row: the icon brightness has to differ
+// too, or an on-track plug looks exactly like one you already own. drawProp
+// composites each icon with a single drawImage, so the alpha in force at that
+// call is the pip's tier.
 {
   const { drawPlugRow } = await import('../src/game/plugs.js');
   const real = globalThis.document.createElement('canvas').getContext('2d');
@@ -116,10 +120,6 @@ assert(t[0] === DARK, `mission stays unlit mid-run even when its counter is full
   assert(ALPHA_EMPTY < ALPHA_LIVE && ALPHA_LIVE < ALPHA_BANKED,
     'the three plug tiers stay visually ordered empty < live < banked');
 }
-
-// Overtime has no stage and must draw no tally at all.
-t = tallyFor([true, true, true], { overtime: true, stage: null, challenge: null });
-assert(t.every((c) => c === undefined), 'overtime draws no plug tally');
 
 // Stage select shows per-stage and per-cabinet counts; it must render for every
 // cabinet across empty / partial / complete plug states without throwing.

@@ -4,9 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0' # weekly archive run on Sundays at 03:00 UTC
 
 permissions:
-  contents: write # archive step pushes the published build back to main
+  contents: write
   pages: write
   id-token: write
 
@@ -53,9 +55,10 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      # Runs after Deploy so a git conflict can never block publishing. Pushes
-      # made with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
+      # Keep archive snapshots for occasional manual or scheduled runs only.
+      # Normal pushes to main will still deploy without generating extra commits.
       - name: Archive published build
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: |
           npm run archive
           git config user.name 'github-actions[bot]'
@@ -69,6 +72,7 @@ jobs:
       # itself moves. Gating on these paths keeps galleries/ occasional rather
       # than one ~230KB copy per push, the way releases/ works.
       - name: Check for art changes
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         id: art
         run: |
           BASE='${{ github.event.before }}'
@@ -94,7 +98,7 @@ jobs:
           fi
 
       - name: Archive asset gallery
-        if: steps.art.outputs.changed == 'true'
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && steps.art.outputs.changed == 'true'
         run: |
           npm run gallery
           npm run archive:gallery

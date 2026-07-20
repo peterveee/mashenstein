@@ -18,6 +18,7 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech } from './hud.js';
+import { goalsDone } from './plugs.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
@@ -114,6 +115,8 @@ export class RunState {
     this.pickups = [];
     this.projectiles = [];
     this.floaties = [];
+    this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
+    this.goalSeen = { mission: false, challenge: false };
     this.portal = null;         // active portal entity
     this.speech = null;         // {text, t, who}
     this.copter = null;         // chase mission / taunt flyby
@@ -301,6 +304,10 @@ export class RunState {
     if (this.coinComboT > 0) { this.coinComboT -= dt; if (this.coinComboT <= 0) this.coinCombo = 0; }
     for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
     this.floaties = this.floaties.filter((f) => f.t > 0);
+    if (this.goalToasts.length) {
+      this.goalToasts[0].t -= dt;
+      if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
+    }
     if (this.speech && (this.speech.t -= dt) <= 0) this.speech = null;
 
     updateParticles(dt);
@@ -947,6 +954,40 @@ export class RunState {
     }
     if (this.challenge && this.challenge.type === 'coins') this.challenge.count = this.coins;
     if (this.challenge && this.challenge.type === 'onbeat') { /* counted on input */ }
+    this.checkGoalsMet();
+  }
+
+  // The HUD no longer carries a standing plug tally, so the moment a plug comes
+  // within reach has to announce itself or it passes unremarked — you would
+  // learn you had banked the challenge on the results screen. Checked here, at
+  // the end of updateMission, because every counter has settled for the frame
+  // by this point; hooking each increment site instead would mean remembering
+  // to do it again the next time a challenge type is added.
+  //
+  // Fires once per goal. A noDamage challenge is deliberately silent: it is "on
+  // track" from the first frame and only becomes true by surviving, so there is
+  // no moment to announce — congratulating you at 0:00 for taking no damage yet
+  // would be both meaningless and a jinx.
+  checkGoalsMet() {
+    if (this.overtime || !this.stage) return;
+    const c = this.challenge;
+    if (c && !this.goalSeen.challenge && !c.failed && c.type !== 'noDamage' && c.count >= c.n) {
+      this.goalSeen.challenge = true;
+      this.goalToast(`BONUS: ${c.desc}`);
+    }
+    // Only counted missions have a moment to catch. reach/fuse/blackout/escape
+    // are satisfied by surviving to the socket, which is the run ending anyway.
+    if (this.mission.n && !this.goalSeen.mission && this.missionSatisfied()) {
+      this.goalSeen.mission = true;
+      this.goalToast('GOAL MET. GET TO THE BREAKER.');
+    }
+  }
+
+  // One at a time, queued: two plugs landing together (a coin challenge topping
+  // out as you grab the toaster) would otherwise print over each other.
+  goalToast(text, quiet = false) {
+    this.goalToasts.push({ text, t: 2.4, t0: 2.4 });
+    if (!quiet) Audio.sfx('perfect');
   }
 
   checkOnBeat() {
@@ -1151,6 +1192,9 @@ export class RunState {
       this.score += 500;
       this.coins += 20;
       this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', '#f6d33c');
+      // Quiet: the 'win' jingle above is already this plug's sound. The floatie
+      // carries the joke, the toast carries the fact that you banked something.
+      this.goalToast('BONUS: THE GOLDEN APPLIANCE', true);
     } else if (p.def.cord) {
       this.mission.count++;
       Audio.sfx('checkpoint');
@@ -1427,16 +1471,21 @@ export class RunState {
     // overlay; the fallback draws them straight onto the backbuffer.)
     const drawUi = (d) => {
       // The overlay draws outside the mirror transform, so the anchor flips by
-      // hand to stay over the hero. Wide lines clamp on their rendered width,
-      // so long comic asides settle toward center instead of running offscreen.
+      // hand to stay over the hero. Impact words (PEW, BOY.) center over the
+      // hero's head; anything longer shares one left edge at the hero column
+      // and rags rightward into the direction of travel — centering long lines
+      // on a hero this near the screen edge just shoved each one to its own x.
+      // In mirror mode the shared edge is on the right and text rags leftward.
       const floatX = this.mirror ? W - PLAYER_X - 6 : PLAYER_X + 6;
+      const edgeX = this.mirror ? W - PLAYER_X : PLAYER_X;
       for (const f of this.floaties) {
-        const lines = wrapText(f.text, W - 32, 1, 2);
-        const widest = Math.max(...lines.map((line) => textWidth(line)));
-        const halfW = widest / 2;
-        const centerX = Math.max(8 + halfW, Math.min(W - 8 - halfW, floatX));
+        const short = f.text.length <= 5;
+        const lines = wrapText(f.text, short ? W - 32 : W - PLAYER_X - 8, 1, 2);
         const topY = Math.max(38, Math.min(H - 48 - lines.length * 10, Math.round(f.y)));
-        lines.forEach((line, i) => drawTextCentered(d, line, centerX, topY + i * 10, f.color, 1, 'ui', UI_PLATE));
+        lines.forEach((line, i) => {
+          if (short) drawTextCentered(d, line, floatX, topY + i * 10, f.color, 1, 'ui', UI_PLATE);
+          else drawText(d, line, this.mirror ? edgeX - textWidth(line) : edgeX, topY + i * 10, f.color, 1, 'ui', UI_PLATE);
+        });
       }
       if (this.speech) drawSpeech(d, this.speech);
       drawHud(d, this);
@@ -1451,12 +1500,19 @@ export class RunState {
       const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
       drawTextCentered(ctx, pHero.name, W / 2, 112, '#48e0c8');
       drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 124, '#f6d33c');
-      drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 140, '#c8e0ff');
+      drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 138, '#c8e0ff');
+      // Plug standing lives here now rather than in the HUD: it is a "how am I
+      // doing" question, which is the question you paused to ask, and it does
+      // not belong in the corner of your eye while you are dodging.
+      if (!this.overtime && this.stage) {
+        const got = goalsDone(this).filter(Boolean).length;
+        drawTextCentered(ctx, `GOALS ${got}/3`, W / 2, 150, got ? '#f6d33c' : '#8a8a98');
+      }
       drawTextCentered(ctx, RELAY_MODE === 'charge'
         ? (this.player.relayCharge ? 'POWER CHARGED: SPEND IT' : `POWER CHARGE: ${this.relay.pips}/3 SWITCHES`)
-        : `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 152, '#f890b8');
-      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 170, '#c8c8d8');
-      drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 184, '#8a8a98');
+        : `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 162, '#f890b8');
+      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 178, '#c8c8d8');
+      drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
     }
     if (this.dead) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';

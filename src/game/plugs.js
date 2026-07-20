@@ -21,6 +21,26 @@ export const ALPHA_EMPTY = 0.22;
 
 export const PLUG_ROW_W = (size = 11) => size * 3 + 4;
 
+// Which of the run's three plugs are in hand right now: already banked from an
+// earlier attempt, or on track this one. The pause screen counts these and the
+// mid-run goal toasts fire off the transitions, so both read the same rule —
+// and it is the same rule endRun banks by, or the pause screen would promise a
+// plug the results screen then withheld.
+//
+// The mission plug is never live mid-run: it only lands when you reach the
+// socket, so a full counter is not yet a plug.
+export function goalsDone(run) {
+  if (run.overtime || !run.stage) return [false, false, false];
+  const banked = run.save.slot.campaign.plugs[run.stage.id] || [false, false, false];
+  const c = run.challenge;
+  const live = [
+    false,
+    !!(c && !c.failed && (c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n)),
+    run.applianceGot,
+  ];
+  return [0, 1, 2].map((i) => !!banked[i] || live[i]);
+}
+
 // Frame hairline weight. Exported so tests can pick the three frame strokes out
 // of the draw stream by width without hardcoding a number that gets art-tuned.
 export const PLUG_FRAME_LW = 0.35;
