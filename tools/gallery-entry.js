@@ -76,6 +76,7 @@ function paint(entry, t) {
   try {
     entry.draw(ctx, t);
   } catch (err) {
+    entry.stack = err.stack;
     entry.card.classList.add('err');
     entry.card.querySelector('.name').innerHTML = `<b>${entry.name}</b><br>${err.message}`;
     entry.draw = () => {}; // don't spam the same throw every frame
@@ -221,7 +222,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   for (const type of Object.keys(OBSTACLES)) {
     const def = OBSTACLES[type];
     const e = makeObstacle(type, 100);
-    entityTile(grid, type, `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`, e, style);
+    // Gaps are holes in the ground, not art: drawWorldEntity skips them and the
+    // pack's ground() cuts them. An empty tile here is correct, so say so.
+    const sub = def.isGap
+      ? `${def.w}x${def.h} · no art — cut by ground()`
+      : `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`;
+    entityTile(grid, type, sub, e, style);
   }
 }
 
@@ -280,11 +286,18 @@ for (const t of tiles) paint(t, 0);
 
 let start = performance.now();
 function frame(now) {
-  const t = (now - start) / 1000;
+  // Clamp: a rAF timestamp is the frame's start time and can predate a
+  // performance.now() sampled after it, so `now - start` goes slightly
+  // negative on the first frame. surgePack.pick() indexes packs[] by
+  // floor(t/period) % len, and a negative t lands on packs[-1] === undefined.
+  const t = Math.max(0, (now - start) / 1000);
   if (animate) for (const e of tiles) if (e.animated && e.visible) paint(e, t);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Poke at tiles from the devtools console: __gallery.tiles[0].stack, repaint(), etc.
+window.__gallery = { tiles, paint, get errors() { return tiles.filter((t) => t.stack); } };
 
 // ---------------------------------------------------------------- controls
 function applyZoom() {

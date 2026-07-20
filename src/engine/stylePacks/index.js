@@ -59,7 +59,9 @@ const hillCache = new Map();
 const MARGIN = 2;
 const OVER = MARGIN + 4;
 const TREE_MAX = 18; // tallest crown, reserved as tile headroom
-const VOLCANO_PLX = 0.15; // must match the far hill layer's parallax factor
+// Slower than the far hill layer's 0.15: the volcano sits behind that range,
+// so it must drift more slowly than the crests occluding it.
+const VOLCANO_PLX = 0.09;
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
@@ -181,20 +183,45 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
 }
 
 // A single volcano, pinned to one spot in the level rather than tiled: it lives
-// in the far range's parallax, so its background x is chosen to put it at screen
-// centre exactly when the camera reaches `atCam`. Drawn between the far and near
-// hill layers, so the near hills cut off its base and it sits *in* the range.
-// `pal` is the far range's own green/rock, so the volcano is built from the
-// same three-band recipe as its neighbours (green lower slopes -> slate -> cap)
-// with a scorched summit where they carry snow. Reading as one of the range
-// rather than a separate prop matters more than volcano detail at this scale,
-// so the flows stay narrow and haze-desaturated instead of bright orange.
-function drawVolcano(ctx, t, camX, atCam, pal, reduced) {
+// in the background parallax, so its screen x is chosen to put it at centre
+// exactly when the camera reaches `atCam`.
+//
+// It sits BEHIND the far hill range — drawn before that layer, so the range's
+// crests cut across its flanks and only the summit clears the ridgeline. That
+// occlusion is the depth cue doing the work; scale alone cannot sell distance
+// against flat silhouettes. Two things follow from being back there:
+//
+//   - Its height is set against its occluder, not chosen freely: the far crests
+//     reach ~96px, so the cone must clear that to exist at all, but only by
+//     enough to show its molten cap. Overshoot it and the volcano towers over
+//     the range instead of standing behind it, which reads as foreground again.
+//   - It parallaxes SLOWER than the far layer, so it drifts behind the range
+//     as the camera moves rather than travelling locked to it.
+//
+// It is drawn in the same flat-cartoon language as the props (sprites/props.js):
+// flat fills, one dark outline, no gradients — a mauve-slate cone with a lit
+// face and a shadow face, a molten cap that has overflowed the crater and
+// congealed in drips down the upper slopes, flows running the rest of the way,
+// and billowing smoke off the summit. The palette is pulled toward the sky
+// (hazier rock, softer ink) so it recedes, but the lava stays saturated: it is
+// self-lit, and haze on the cap kills the landmark entirely.
+//
+// Palette note: the lava yellow tops out around 0.75 luma, under the glfx.js
+// bloom bright-pass cutoff (~0.8). Pushing it to a true cartoon #ffd400 (0.84)
+// makes the summit clip to flat white through the bloom composite.
+const V_ROCK = '#8b8391';        // lit face
+const V_ROCK_DK = '#6f6579';     // shadow face
+const V_LAVA_HI = '#e0bb55';     // molten cap
+const V_LAVA_MD = '#d8994a';     // flow body
+const V_LAVA_LO = '#c4744a';     // cooled flow tail
+const V_INK = 'rgba(28,20,38,0.4)';
+function drawVolcano(ctx, t, camX, atCam, reduced) {
   const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
-  const hgt = 112, halfBase = 88, notch = 11;
-  if (cx + halfBase < -20 || cx - halfBase > W + 20) return; // off screen
+  const hgt = 130, halfBase = 78, notch = 11;
+  if (cx + halfBase < -40 || cx - halfBase > W + 40) return; // off screen
   const apex = GROUND_Y - hgt;
   const lip = apex + 4;
+  const ink = (w) => { ctx.strokeStyle = V_INK; ctx.lineWidth = w; ctx.stroke(); };
   const cone = () => {
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, GROUND_Y);
@@ -205,59 +232,103 @@ function drawVolcano(ctx, t, camX, atCam, pal, reduced) {
     ctx.lineTo(cx + halfBase, GROUND_Y);
     ctx.closePath();
   };
+
+  // Smoke goes down first so the plume passes BEHIND the summit — puffs that
+  // overlap the crater lip read as sitting on top of it otherwise.
+  drawVolcanoSmoke(ctx, t, cx, apex, reduced);
+
   cone();
-  ctx.fillStyle = pal.green;
+  ctx.fillStyle = V_ROCK;
   ctx.fill();
-  const band = (col, frac, h1, a1) => {
-    const lineY = GROUND_Y - hgt * frac;
-    ctx.save();
-    cone();
-    ctx.clip();
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.moveTo(cx - halfBase, apex - 2);
-    ctx.lineTo(cx + halfBase, apex - 2);
-    for (let px = halfBase; px >= -halfBase; px -= 3) {
-      ctx.lineTo(cx + px, lineY + Math.sin(px / halfBase * Math.PI * h1) * a1);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  };
-  band(pal.rock, 0.46, 2, 3.5);
-  band('#41485a', 0.74, 3, 2.2); // basalt cap where the range wears snow
-  // Crater glow, then a single flow down each flank. The bright band travels on
-  // `t`, so the lava reads as creeping without the silhouette moving.
-  ctx.fillStyle = '#33313f';                 // dark crater mouth
-  ctx.beginPath();
-  ctx.ellipse(cx, lip, notch * 0.46, 2.4, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#c4552c';                 // lava sitting in it
-  ctx.beginPath();
-  ctx.ellipse(cx, lip + 0.4, notch * 0.3, 1.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Flows are clipped to the cone (otherwise they run off the silhouette and
-  // across the green hills as taut wires) and wander as they descend, so they
-  // read as molten rather than as cable.
+  ink(1.4);
+  // Shadow face: the right flank plus a wedge down the middle, which is what
+  // gives the reference cone its two-plane look at a glance.
   ctx.save();
   cone();
   ctx.clip();
-  // Each flow is a tapering ribbon rather than a column of fillRects — stacked
-  // rects stair-step visibly at this scale. Three nested ribbons (cooled crust,
-  // body, hot core) share one centreline; the core's width rides a wave that
-  // travels on `t`, which is what makes the lava look like it is running.
+  ctx.fillStyle = V_ROCK_DK;
+  ctx.beginPath();
+  ctx.moveTo(cx + notch * 0.3, apex);
+  ctx.lineTo(cx + halfBase + 4, GROUND_Y);
+  ctx.lineTo(cx + halfBase * 0.28, GROUND_Y);
+  ctx.lineTo(cx + notch * 0.1, GROUND_Y - hgt * 0.44);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();                             // small gully on the lit face
+  ctx.moveTo(cx - notch * 0.5, apex + 6);
+  ctx.lineTo(cx - halfBase * 0.46, GROUND_Y);
+  ctx.lineTo(cx - halfBase * 0.74, GROUND_Y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Molten cap: the lava has overflowed and set into a scalloped fringe of
+  // drips over the upper third, exactly as in the reference. The fringe is one
+  // path — a sine-scalloped lower edge whose scallop depth varies per lobe, so
+  // it reads as poured rather than as a cut band.
+  // `envelope` is what stops the fringe reading as a scalloped ribbon: it makes
+  // a few lobes run much longer than their neighbours, so the edge is a row of
+  // uneven tongues (the reference's silhouette) rather than even scallops.
+  //
+  // The drip waves are keyed to PIXELS, not to px/halfBase. At the cap's
+  // altitude the cone is only ~30px half-wide, so a wave with a period in
+  // base-widths spans a third of a cycle across everything visible and the
+  // fringe flattens into a straight band. Pixel frequencies put ~5 tongues
+  // across the width that is actually on-cone.
+  const capBot = GROUND_Y - hgt * 0.66;
+  ctx.save();
+  cone();
+  ctx.clip();
+  ctx.beginPath();
+  ctx.moveTo(cx - halfBase, apex - 6);
+  ctx.lineTo(cx + halfBase, apex - 6);
+  for (let px = halfBase; px >= -halfBase; px -= 1.5) {
+    // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns the
+    // fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so each
+    // lobe is a rounded tongue with a rounded notch beside it.
+    const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
+    const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 21 * envelope
+      + (0.5 - 0.5 * Math.cos(px * 0.9 + 1.4)) * 3;
+    ctx.lineTo(cx + px, capBot + drip);
+  }
+  ctx.closePath();
+  ctx.fillStyle = V_LAVA_HI;
+  ctx.fill();
+  ink(1.1);
+  ctx.restore();
+
+  // Crater mouth, sunk into the cap.
+  ctx.fillStyle = '#33313f';
+  ctx.beginPath();
+  ctx.ellipse(cx, lip, notch * 0.5, 2.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = V_LAVA_LO;
+  ctx.beginPath();
+  ctx.ellipse(cx, lip + 0.5, notch * 0.32, 1.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Flows are clipped to the cone (otherwise they run off the silhouette and
+  // across the green hills as taut wires) and wander as they descend, so they
+  // read as molten rather than as cable. Each is a tapering ribbon rather than
+  // a column of fillRects — stacked rects stair-step visibly at this scale.
+  // Three nested ribbons (cooled edge, body, hot core) share one centreline;
+  // the core's width rides a wave travelling on `t`, which is what makes the
+  // lava look like it is running.
+  ctx.save();
+  cone();
+  ctx.clip();
   const flow = (dir, seed, len) => {
     const slope = halfBase / hgt;
     const pts = [];
     for (let s = 0; s <= len; s += 1.5) {
       const f = s / hgt;
       const drift = dir * (notch * 0.25 + s * slope * 0.38 * Math.pow(f, 0.7));
-      const wander = Math.sin(f * 5.5 + seed) * 4 + Math.sin(f * 13 + seed * 2) * 1.8;
-      const w = 3.8 - (s / len) * 2.2;                 // taper to a tip
+      const wander = Math.sin(f * 5.5 + seed) * 5 + Math.sin(f * 13 + seed * 2) * 2.2;
+      const w = 8.5 - (s / len) * 4.6;                 // taper to a tip
       const pulse = reduced ? 0.55 : 0.40 + 0.32 * (Math.sin(f * 9 - t * 2 + seed) + 1) / 2;
       pts.push({ x: cx + drift + wander, y: lip + s, w, cw: w * pulse });
     }
-    const ribbon = (key, scale, col) => {
+    const ribbon = (key, scale, col, outline) => {
       ctx.fillStyle = col;
       ctx.beginPath();
       for (let i = 0; i < pts.length; i++) {
@@ -271,24 +342,66 @@ function drawVolcano(ctx, t, camX, atCam, pal, reduced) {
       }
       ctx.closePath();
       ctx.fill();
+      if (outline) ink(1);
     };
-    ribbon('w', 1, '#8f3f26');      // cooled crust
-    ribbon('w', 0.7, '#c4552c');    // body
-    ribbon('cw', 1, '#e89a4e');     // hot core
+    ribbon('w', 1, V_LAVA_LO, true);   // cooled edge, carries the outline
+    ribbon('w', 0.72, V_LAVA_MD);      // body
+    ribbon('cw', 1, V_LAVA_HI);        // hot core
   };
-  flow(1, 1.2, hgt * 0.46);
-  flow(-1, 3.1, hgt * 0.3);
+  // Both flows have to outrun the molten cap's drip fringe (which reaches to
+  // roughly 0.5*hgt below the lip) or they finish inside the yellow and vanish.
+  flow(1, 1.2, hgt * 0.92);
+  flow(-1, 3.1, hgt * 0.7);
   ctx.restore();
-  // smoke: pale and thin, tinted toward the sky so it sits back in the haze
-  if (!reduced) {
-    for (let i = 0; i < 4; i++) {
-      const p = (t * 0.14 + i * 0.25) % 1;
-      ctx.fillStyle = `rgba(168,174,186,${(1 - p) * 0.26})`;
-      ctx.beginPath();
-      ctx.arc(cx + p * 24, apex - 5 - p * 44, 4 + p * 12, 0, Math.PI * 2);
-      ctx.fill();
+}
+
+// Billowing cartoon smoke off the summit: each puff is a cluster of lobes (a
+// single circle reads as a bubble, not smoke) that rises, expands and fades on
+// its own phase of a shared cycle, so the column is continuous rather than
+// pulsing in lockstep. Lobe offsets come from index hashes, not RNG, so the
+// plume is identical frame to frame at a given `t` — nothing here is stateful.
+const V_PUFFS = 5;
+function drawVolcanoSmoke(ctx, t, cx, apex, reduced) {
+  if (reduced) {
+    // Reduced motion still gets a plume, just a static one: the summit reads as
+    // wrong without it, and a frozen cloud is not a motion trigger.
+    for (let i = 0; i < 3; i++) {
+      const p = 0.2 + i * 0.3;
+      smokePuff(ctx, cx + Math.sin(i * 2.1) * 12 * p, apex - 8 - p * 64,
+        6 + p * 18, (1 - p * 0.55) * 0.6, i);
     }
+    return;
   }
+  for (let i = 0; i < V_PUFFS; i++) {
+    const p = (t * 0.13 + i / V_PUFFS) % 1;
+    // Drift widens as it climbs, and each puff leans a different way, so the
+    // column spreads into a head instead of rising as a straight pipe.
+    const lean = Math.sin(i * 2.7) * 0.9 + 0.35;
+    const x = cx + lean * 34 * Math.pow(p, 1.3) + Math.sin(t * 0.6 + i) * 3 * p;
+    const y = apex - 8 - p * 74 - Math.pow(p, 2) * 18;
+    const r = 6 + p * 22;
+    // Fade in fast off the crater, out slowly at the top.
+    const a = Math.min(1, p * 6) * (1 - p * 0.85) * 0.8;
+    smokePuff(ctx, x, y, r, a, i);
+  }
+}
+function smokePuff(ctx, x, y, r, alpha, seed) {
+  if (alpha <= 0.01) return;
+  ctx.fillStyle = `rgba(178,180,190,${alpha})`;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  for (let k = 0; k < 4; k++) {
+    const a = seed * 1.9 + k * 1.7;
+    ctx.moveTo(x + Math.cos(a) * r * 0.8 + r * 0.62, y + Math.sin(a) * r * 0.55);
+    ctx.arc(x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.55, r * 0.62, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  // A lighter cap on the upper lobes keeps the cluster from reading as a flat
+  // blob — the reference clouds are shaded the same way.
+  ctx.fillStyle = `rgba(206,207,215,${alpha * 0.7})`;
+  ctx.beginPath();
+  ctx.arc(x - r * 0.25, y - r * 0.42, r * 0.55, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Per-frame gradient construction is surprisingly costly at device res —
@@ -548,6 +661,12 @@ function pixelPack(settings) {
       // stay rounded so the two layers read as distance, not repetition. It gets
       // extra amplitude because the near layer eats the bottom third of it —
       // at the shared amp of 60 the caps barely cleared the green.
+      // The volcano goes down BEFORE the far range, so those crests overlap its
+      // flanks and it reads as standing behind them.
+      // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
+      if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
+        drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion);
+      }
       if (cab.id === 'plumber') {
         // Rock and snow are haze-desaturated toward the sky rather than true
         // brown/white: distance reads better, and it keeps the cap under the
@@ -557,11 +676,6 @@ function pixelPack(settings) {
           { peak: true, rock: '#5e6e7c', snow: '#b9c8d8' });
       } else {
         parallaxHills(ctx, camX, cab.far, GROUND_Y, 60, 90, 0.15);
-      }
-      // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
-      if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
-        drawVolcano(ctx, t, camX, totalDist * 0.5,
-          { green: cab.far, rock: '#5e6e7c' }, settings && settings.reducedMotion);
       }
       parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35,
         cab.id === 'plumber' ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' } } : null);
@@ -950,6 +1064,23 @@ function doodlePack(settings) {
       // margin line + coffee ring
       ctx.strokeStyle = 'rgba(210,70,70,0.55)';
       ctx.beginPath(); ctx.moveTo(30.5, 0); ctx.lineTo(30.5, H); ctx.stroke();
+      // Loose-leaf punches: the page came out of a binder. Fixed to the screen,
+      // not the world — the sheet IS the viewport, so these never scroll.
+      // Spaced down the band between the HUD's left column (which runs to ~y80)
+      // and the highest the terrain crest reaches, so nothing is ever drawn on
+      // top of a hole — ink over a punch would give the illusion away.
+      for (const hy of [86, 140, 194]) {
+        ctx.fillStyle = 'rgba(122,120,112,0.55)';      // the desk, seen through
+        ctx.beginPath(); ctx.arc(15, hy, 4.6, 0, Math.PI * 2); ctx.fill();
+        // Inner shadow up top, lit cut-edge along the bottom: without the pair
+        // the disc reads as a sticker sitting on the page, not a hole in it.
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(70,68,62,0.45)';
+        ctx.beginPath(); ctx.arc(15, hy, 4.1, Math.PI * 1.15, Math.PI * 1.95); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,254,250,0.85)';
+        ctx.beginPath(); ctx.arc(15, hy, 4.3, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+        ctx.lineWidth = 1;
+      }
       ctx.strokeStyle = 'rgba(150,100,50,0.35)';
       ctx.beginPath(); ctx.arc(((400 - camX * 0.2) % (W + 100)), 60, 18, 0, Math.PI * 2); ctx.stroke();
     },

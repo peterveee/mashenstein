@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # archive step pushes the published build back to main
   pages: write
   id-token: write
 
@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # archive index resolves the subject of every past release
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -50,3 +52,55 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # Runs after Deploy so a git conflict can never block publishing. Pushes
+      # made with GITHUB_TOKEN do not trigger workflows, so this cannot loop.
+      - name: Archive published build
+        run: |
+          npm run archive
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add releases
+          git diff --staged --quiet && echo 'nothing to archive' && exit 0
+          git commit -m "Archive published build ${GITHUB_SHA::7}"
+          git push origin HEAD:main
+
+      # The gallery is a visual record, so it only earns a snapshot when the art
+      # itself moves. Gating on these paths keeps galleries/ occasional rather
+      # than one ~230KB copy per push, the way releases/ works.
+      - name: Check for art changes
+        id: art
+        run: |
+          BASE='${{ github.event.before }}'
+          # workflow_dispatch has no before-SHA, and a branch's first push
+          # reports all-zeros. Either way there is no diff base -- snapshot
+          # rather than silently skip, so a manual run is also the escape hatch.
+          if [ -z "$BASE" ] || [ "$BASE" = "$(printf '0%.0s' $(seq 40))" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo 'no usable diff base -- archiving'
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}" -- \
+            src/sprites src/engine/stylePacks src/engine/sprites.js \
+            src/game/draw.js src/game/entities.js src/game/plugs.js \
+            src/data/cabinets.js tools/gallery-entry.js tools/gallery-shell.html)
+          if [ -n "$CHANGED" ]; then
+            echo "art changed:"; echo "$CHANGED"
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'no art changes -- skipping gallery snapshot'
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Archive asset gallery
+        if: steps.art.outputs.changed == 'true'
+        run: |
+          npm run gallery
+          npm run archive:gallery
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add galleries
+          git diff --staged --quiet && echo 'nothing to archive' && exit 0
+          git commit -m "Archive asset gallery ${GITHUB_SHA::7}"
+          git push origin HEAD:main
