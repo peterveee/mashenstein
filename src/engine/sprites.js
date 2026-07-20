@@ -337,7 +337,7 @@ export const UI_PLATE = 'rgba(12,10,22,0.22)';
 // from the same metrics the glyphs use. Glyphs occupy y-1*scale .. y+11*scale
 // but the ink sits well inside that box, so the plate hugs a tighter band —
 // the full box reads as a tall bar with the text floating in it.
-function platePath(ctx, x, y, w, h, r) {
+export function platePath(ctx, x, y, w, h, r) {
   const k = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + k, y);

@@ -38,9 +38,12 @@ export class Player {
     this.stumbleT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
+    this.rollPlows = false;
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
+    this.relayCharge = false; // banked supercharged ability ('charge' relay mode)
+    this.chargeFlashT = 0;
     this.fistThrown = false;
     this.axeThrown = false;
     this.headless = 0;    // Gary
@@ -61,12 +64,15 @@ export class Player {
     this.stumbleT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
+    this.rollPlows = false;
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
     this.fistThrown = false;
     this.axeThrown = false;
     this.ducking = false;
+    // relayCharge deliberately survives: an unspent charge follows the player
+    // to the next hero rather than evaporating at the portal.
   }
 
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
@@ -113,10 +119,13 @@ export class Player {
     if (this.dashT > 0) this.dashT -= dt;
     if (this.rollT > 0) {
       this.rollT -= dt;
-      if (this.rollT <= 0 && this.mods.includes('bash')) this.stumbleT = 0.3;
+      // A charged roll ends clean: no ringing ears.
+      if (this.rollT <= 0 && this.mods.includes('bash') && !this.rollPlows) this.stumbleT = 0.3;
+      if (this.rollT <= 0) this.rollPlows = false;
     }
     if (this.compressT > 0) this.compressT -= dt;
     if (this.stumbleT > 0) this.stumbleT -= dt;
+    if (this.chargeFlashT > 0) this.chargeFlashT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
     if (this.headless > 0) {

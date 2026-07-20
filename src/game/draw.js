@@ -102,7 +102,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   const starLeft = opts.invincible || 0;
   if (!starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
   const pose = poseFromPlayer(player, t);
-  const cx = Math.round(PLAYER_X) + 6;                 // center of the 12px slot
+  const cx = Math.round(opts.screenX ?? PLAYER_X) + 6; // center of the 12px slot
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;

@@ -37,7 +37,20 @@ run.player.y = 80;
 run.player.grounded = false;
 run.camX = run.totalDist;
 run.update(1 / 60);
+const finishCam = run.camX;
+for (let i = 0; i < 30; i++) run.update(1 / 60);
+assert(run.finishing && run.camX === finishCam && run.finishPlayerX > PLAYER_X && !airborneFinish,
+  'finish locks the camera while the playable hero run-in crosses the screen');
+for (let i = 0; i < 240 && !airborneFinish; i++) run.update(1 / 60);
 assert(airborneFinish && airborneFinish.success, 'jumping cannot clear the stage finish plane');
+
+run = makeRun(); run.enter();
+const finalEnemy = makeObstacle('zombie', run.finishWorldX() - 24);
+const postFinishEnemy = makeObstacle('zombie', run.finishWorldX() + 24);
+run.obstacles = [finalEnemy, postFinishEnemy];
+run.startFinishRun();
+assert(run.obstacles.includes(finalEnemy) && !run.obstacles.includes(postFinishEnemy),
+  'the final stretch keeps enemies before the finish but clears anything beyond it');
 
 const targetStage = { ...stage, mission: { type: 'targets', n: 1, desc: 'TEST' } };
 let incompleteFinish = null;

@@ -3,11 +3,12 @@
 import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, getSprite, UI_PLATE,
+  textWidth, wrapText, getSprite, platePath, UI_PLATE,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
+import { RELAY_MODE } from '../data/flags.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
 import { drawPlugRow } from './plugs.js';
@@ -119,15 +120,13 @@ export function drawHud(ctx, run) {
     ctx.fillRect(Math.min(W - 3, W * frac) - 1, 0, 3, 3);
   }
 
-  // Left status column: score, coins, cells, shields, plugs. A cursor rather
-  // than fixed rows — a shieldless run used to leave an empty band between the
-  // cells and the plugs, which read as a missing HUD element.
+  // Left status column: coins, cells, plugs — kept on a cursor rather than
+  // fixed rows so a row that stops drawing never leaves a gap behind it. The
+  // live score used to head this column; the top progress line covers "how far
+  // along am I" during play, and the score still lands on the run summary.
   const COL_X = 6;
   const ROW_GAP = 5;
   let ly = 7;
-  drawText(ctx, `${Math.floor(run.score)}`, COL_X, ly, '#fff', 2);
-  ly += 16 + ROW_GAP;
-
   drawProp(ctx, 'coin', COL_X, ly, 8, 8);
   drawCoinGlitter(ctx, COL_X, ly, 8, run.tRun);
   drawText(ctx, `${run.coins}`, COL_X + 12, ly, '#f6d33c');
@@ -148,11 +147,8 @@ export function drawHud(ctx, run) {
   }
   ly += 8 + ROW_GAP;
 
-  // Shields, only when you have any.
-  if (run.powerups.shieldStack > 0) {
-    for (let i = 0; i < run.powerups.shieldStack; i++) drawProp(ctx, 'capShield', COL_X + i * 10, ly, 8, 8);
-    ly += 8 + ROW_GAP;
-  }
+  // No shield row: the glass orb around the hero already shows both that a
+  // shield is held and how many, one ring per stack.
 
   drawPlugTally(ctx, run, ly);
 
@@ -164,22 +160,27 @@ export function drawHud(ctx, run) {
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
     const cd = run.player.abilityCd;
-    const ready = cd <= 0;
-    const frac = ready ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    drawRingGauge(ctx, RING_X, 12, 6, 3.2, frac, ready ? '#48c848' : '#e04848');
-    // a soft pulse marks the moment it comes back up
+    const charged = !!run.player.relayCharge;
+    // A banked relay charge fires through the cooldown, so it reads as ready.
+    const ready = cd <= 0 || charged;
+    const frac = charged || cd <= 0 ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
+    drawRingGauge(ctx, RING_X, 12, 6, 3.2, frac, charged ? '#f6d33c' : ready ? '#48c848' : '#e04848');
+    // a soft pulse marks the moment it comes back up; charged pulses gold,
+    // faster and wider, because it is worth interrupting the player for
     if (ready) {
       ctx.save();
-      ctx.globalAlpha = 0.3 + 0.3 * Math.sin(run.tRun * 4);
-      ctx.strokeStyle = '#a8f0a8';
-      ctx.lineWidth = 1;
+      ctx.globalAlpha = charged
+        ? 0.45 + 0.4 * Math.sin(run.tRun * 8)
+        : 0.3 + 0.3 * Math.sin(run.tRun * 4);
+      ctx.strokeStyle = charged ? '#f6d33c' : '#a8f0a8';
+      ctx.lineWidth = charged ? 1.6 : 1;
       ctx.beginPath();
-      ctx.arc(RING_X, 12, 7.5, 0, Math.PI * 2);
+      ctx.arc(RING_X, 12, charged ? 9 : 7.5, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
     const label = hero.ability.label;
-    drawText(ctx, label, RING_X - 10 - textWidth(label), 9, ready ? '#48e0c8' : '#8a8a98');
+    drawText(ctx, label, RING_X - 10 - textWidth(label), 9, charged ? '#f6d33c' : ready ? '#48e0c8' : '#8a8a98');
   }
 
   // Power-up timers stack under the ability ring as smaller donuts in each
@@ -197,27 +198,51 @@ export function drawHud(ctx, run) {
     py += 14;
   }
 
-  // Relay: current hero + Relay Blast pips (the 3rd switch blasts, automatically).
-  const cx0 = W / 2 - 30;
+  // Relay: current hero. In 'charge' mode the ability ring is the only charge
+  // readout — it goes gold when a charge is banked — so there are no pips here.
+  // A teal pill: face on the left, name inside the badge beside it. The pill
+  // is sized to the name and centred on screen, so it grows symmetrically
+  // instead of drifting as hero names change width. Face and text are both
+  // placed off HERO_CY, unrounded, so they share one midline exactly.
+  const HERO_CY = 17;
+  const PILL_H = 16;
+  const FACE_W = 12, FACE_H = 9;
+  const PAD_L = 4, GAP = 4, PAD_R = 7;
+  const name = HERO_BY_ID[run.relay.current].short;
+  const pillW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
+  const pillX = Math.round(W / 2 - pillW / 2);
+  ctx.save();
+  platePath(ctx, pillX, HERO_CY - PILL_H / 2, pillW, PILL_H, PILL_H / 2);
   ctx.fillStyle = '#48e0c8';
-  ctx.fillRect(cx0, 11, 20, 14);
-  const face = toonFaceSprite(run.relay.current, 12, 9);
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#10141c';
+  ctx.stroke();
+  ctx.restore();
+  const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
   if (face) {
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, cx0 + 4, 13, 12, 9);
+    ctx.drawImage(face, pillX + PAD_L, HERO_CY - FACE_H / 2, FACE_W, FACE_H);
     ctx.imageSmoothingEnabled = false;
   }
-  drawText(ctx, HERO_BY_ID[run.relay.current].short, cx0 + 24, 13, '#c8e0ff');
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(cx0 + 27 + i * 9, 26, 2.6, 0, Math.PI * 2);
-    ctx.fillStyle = i < run.relay.pips ? '#f6d33c' : '#20242c';
-    ctx.fill();
-    ctx.strokeStyle = '#5a5a68';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
+  // Raw text: the pill is already the backing, so it must not carry a plate of
+  // its own, and it reads dark-on-teal now that it sits inside the badge.
+  rawDrawText(ctx, name, pillX + PAD_L + FACE_W + GAP, HERO_CY - 4.5, '#10141c');
+  // The legacy 'blast' mode has no other readout for its automatic screen
+  // clear, so it keeps the pips it was designed around, now under the name.
+  if (RELAY_MODE === 'blast') {
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(W / 2 - 9 + i * 9, HERO_CY + 14, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = i < run.relay.pips ? '#f6d33c' : '#20242c';
+      ctx.fill();
+      ctx.strokeStyle = '#5a5a68';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.restore();
   }
-  ctx.lineWidth = 1; // the pips' hairline must not leak into later strokes
 
   // Mission line + progress.
   if (!run.overtime && run.stage) {
@@ -250,8 +275,11 @@ export function drawHud(ctx, run) {
     if (b.id === 'pause' || b.id === 'mute') {
       rawDrawText(ctx, b.label, b.x + 4, b.y + 3, '#8a8a98');
     } else {
-      const cd = b.id === 'ability' ? run.player.abilityCd : 0;
-      ctx.fillStyle = cd > 0 ? 'rgba(90,90,104,0.2)' : 'rgba(72,224,200,0.15)';
+      // A banked charge overrides the cooldown fill: the button reads gold and
+      // full, because it is usable right now.
+      const charged = b.id === 'ability' && run.player.relayCharge;
+      const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
+      ctx.fillStyle = charged ? 'rgba(246,211,60,0.28)' : cd > 0 ? 'rgba(90,90,104,0.2)' : 'rgba(72,224,200,0.15)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
       if (cd > 0) {
         // recharge rises from the bottom of the button — no ticking number
@@ -260,9 +288,9 @@ export function drawHud(ctx, run) {
         ctx.fillStyle = 'rgba(72,224,200,0.28)';
         ctx.fillRect(b.x, b.y + b.h - fh, b.w, fh);
       }
-      ctx.strokeStyle = 'rgba(72,224,200,0.5)';
+      ctx.strokeStyle = charged ? 'rgba(246,211,60,0.9)' : 'rgba(72,224,200,0.5)';
       ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
-      rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
+      rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, charged ? '#f6d33c' : '#48e0c8');
     }
   }
 }

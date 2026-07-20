@@ -11,4 +11,4 @@ function pick(name, fallback, allowed) {
 
 // 'blast'  — every 3rd switch auto-clears the screen (original).
 // 'charge' — every 3rd switch banks an empowered ability the player spends.
-export const RELAY_MODE = pick('relay', 'blast', ['blast', 'charge']);
+export const RELAY_MODE = pick('relay', 'charge', ['blast', 'charge']);

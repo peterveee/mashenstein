@@ -236,6 +236,13 @@ const V_INK_SOLID = '#3a3040';
 // ctx.filter is unsupported in a few older engines; there it silently no-ops
 // and the volcano simply draws sharp, which is a fine degradation.
 const V_BLUR = 1.15;
+// Plume shape: `sc` scales the puffs, `rise` how far the column climbs. Kept
+// module-level because the composite layer must reserve headroom for whatever
+// they add up to — a hardcoded margin silently crops the plume the moment
+// either is raised.
+const V_SMOKE_SC = 0.36, V_SMOKE_RISE = 2.5;
+// tallest puff centre above the vent, plus its own radius, plus slack
+const V_SMOKE_TOP = Math.ceil((8 + 92 * V_SMOKE_RISE + 28) * V_SMOKE_SC) + 16;
 const volcLayer = { c: null, g: null, w: 0, h: 0 };
 const V_SS = 2;
 function drawVolcano(out, t, camX, atCam, reduced) {
@@ -246,24 +253,32 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // also follow a power curve instead of a straight line — `flankX` widens
   // fastest near the summit, which blunts the apex the way a real massif is
   // blunt. A straight-sided triangle is what made it read as pointy.
-  const hgt = 100, halfBase = 88, notch = 23;
-  if (cx + halfBase < -40 || cx - halfBase > W + 40) return; // off screen
+  const hgt = 20, halfBase = 35, notch = 8;
   // Distant things sit nearer the horizon. Standing the volcano on GROUND_Y
   // like everything else was what stopped it shrinking: drop its scale with the
   // base pinned to the groundline and the summit sinks behind the range before
-  // it ever looks far away. Lifting the base 40px puts it further back, so it
-  // can be genuinely small and still clear the ridge.
-  const baseY = GROUND_Y - 40;
+  // it ever looks far away. Lifting the base puts it further back, so it can be
+  // genuinely small and still clear the ridge.
+  const baseY = GROUND_Y - 91;
   const apex = baseY - hgt;
 
   const flankX = (f) => halfBase * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
+  // The silhouette does NOT stop at halfBase. `baseY` only sets proportions —
+  // the cone keeps descending to GROUND_Y, so the flanks are extrapolated past
+  // f=1 and the true half-width at the groundline is flankX(fBase), which is
+  // wider than halfBase and grows every time the base is lifted. Sizing the
+  // layer or the cull off halfBase slices that skirt off at a hard vertical
+  // edge, so both use the real extent.
+  const fBase = (GROUND_Y - apex) / hgt;
+  const maxHalf = flankX(fBase);
+  if (cx + maxHalf < -40 || cx - maxHalf > W + 40) return; // off screen
 
   // Layer bounds. The plume climbs well above the summit and is part of the
   // same image, so it has to fit inside the blurred layer too — clipping it at
   // the summit would leave a hard cut where the smoke crosses the edge.
   const pad = 6;
-  const bx = cx - halfBase - pad, by = apex - 152;
-  const lw = Math.ceil(halfBase * 2 + pad * 2), lh = Math.ceil(GROUND_Y + 2 - by);
+  const bx = cx - maxHalf - pad, by = apex - V_SMOKE_TOP;
+  const lw = Math.ceil(maxHalf * 2 + pad * 2), lh = Math.ceil(GROUND_Y + 2 - by);
   if (!volcLayer.c || volcLayer.w < lw || volcLayer.h < lh) {
     volcLayer.c = document.createElement('canvas');
     volcLayer.c.width = lw * V_SS;
@@ -295,14 +310,13 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // halfway to its control point, so the control goes 2x the wanted depth down.
   const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the rim
   const rimY = apex + hgt * fT;
-  const craterD = 2.6;   // shallow dish across a wide rim, not a notch in a point
+  const craterD = 0.8;   // shallow dish across a wide rim, not a notch in a point
   // `baseY` sets the volcano's PROPORTIONS, but the silhouette still runs all
   // the way down to GROUND_Y. Ending the polygon at baseY left a flat cut edge
   // hanging in mid-air wherever the range dipped below it — the cone has to
   // keep descending until something covers it. So the flanks are extrapolated
   // past f=1 to whatever fraction lands on the groundline; that extra skirt is
   // always hidden behind the hills.
-  const fBase = (GROUND_Y - apex) / hgt;
   const cone = () => {
     ctx.beginPath();
     ctx.moveTo(cx - flankX(fBase), GROUND_Y);
@@ -315,7 +329,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
 
   // Smoke goes down first so the plume passes BEHIND the summit — puffs that
   // overlap the crater lip read as sitting on top of it otherwise.
-  drawVolcanoSmoke(ctx, t, cx, rimY + craterD, reduced);
+  drawVolcanoSmoke(ctx, t, cx, rimY + craterD, reduced, V_SMOKE_SC, V_SMOKE_RISE);
 
   cone();
   ctx.fillStyle = V_ROCK;
@@ -359,7 +373,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // The cap has to END ABOVE the far range's crests (~96) or the drips — the
   // most recognisable part of the silhouette — sit behind the ridgeline and
   // never show. That is what pins this fraction, not the look of the cone.
-  const capBot = baseY - hgt * 0.76;
+  const capBot = baseY - hgt * 0.50;
   const capEdge = () => {
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, apex - 6);
@@ -368,9 +382,9 @@ function drawVolcano(out, t, camX, atCam, reduced) {
       // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns
       // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
       // each lobe is a rounded tongue with a rounded notch beside it.
-      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
-      const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 14 * envelope
-        + (0.5 - 0.5 * Math.cos(px * 0.9 + 1.4)) * 3;
+      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.26 + 0.7));
+      const drip = (0.5 - 0.5 * Math.cos(px * 0.7)) * 6 * envelope
+        + (0.5 - 0.5 * Math.cos(px * 1.5 + 1.4)) * 1.5;
       ctx.lineTo(cx + px, capBot + drip);
     }
     ctx.closePath();
@@ -383,7 +397,7 @@ function drawVolcano(out, t, camX, atCam, reduced) {
   // fills instead and stepped visibly — at this size the cap is only ~40px
   // tall, so any band count coarse enough to animate is also coarse enough to
   // read as stripes. A gradient sidesteps the tradeoff entirely.
-  const lavaBot = capBot + 14;
+  const lavaBot = capBot + 6;
   const grad = ctx.createLinearGradient(0, rimY - 2, 0, lavaBot);
   for (let i = 0; i < V_LAVA.length; i++) {
     grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
@@ -444,14 +458,14 @@ function drawVolcano(out, t, camX, atCam, reduced) {
 // pulsing in lockstep. Lobe offsets come from index hashes, not RNG, so the
 // plume is identical frame to frame at a given `t` — nothing here is stateful.
 const V_PUFFS = 5;
-function drawVolcanoSmoke(ctx, t, cx, apex, reduced) {
+function drawVolcanoSmoke(ctx, t, cx, apex, reduced, sc = 1, rise = 1) {
   if (reduced) {
     // Reduced motion still gets a plume, just a static one: the summit reads as
     // wrong without it, and a frozen cloud is not a motion trigger.
     for (let i = 0; i < 3; i++) {
       const p = 0.2 + i * 0.3;
-      smokePuff(ctx, cx + Math.sin(i * 2.1) * 12 * p, apex - 8 - p * 64,
-        6 + p * 18, (1 - p * 0.55) * 0.6, i);
+      smokePuff(ctx, cx + Math.sin(i * 2.1) * 12 * sc * p, apex - (8 + p * 64 * rise) * sc,
+        (6 + p * 18) * sc, (1 - p * 0.55) * 0.6, i);
     }
     return;
   }
@@ -460,9 +474,9 @@ function drawVolcanoSmoke(ctx, t, cx, apex, reduced) {
     // Drift widens as it climbs, and each puff leans a different way, so the
     // column spreads into a head instead of rising as a straight pipe.
     const lean = Math.sin(i * 2.7) * 0.9 + 0.35;
-    const x = cx + lean * 34 * Math.pow(p, 1.3) + Math.sin(t * 0.6 + i) * 3 * p;
-    const y = apex - 8 - p * 74 - Math.pow(p, 2) * 18;
-    const r = 6 + p * 22;
+    const x = cx + (lean * 34 * Math.pow(p, 1.3) + Math.sin(t * 0.6 + i) * 3 * p) * sc;
+    const y = apex - (8 + (p * 74 + Math.pow(p, 2) * 18) * rise) * sc;
+    const r = (6 + p * 22) * sc;
     // Fade in fast off the crater, out slowly at the top.
     const a = Math.min(1, p * 6) * (1 - p * 0.85) * 0.8;
     smokePuff(ctx, x, y, r, a, i);
@@ -774,15 +788,6 @@ function pixelPack(settings) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber') {
         drawStaticSun(ctx, t);
-        drawCloudPal(ctx, t, settings && settings.reducedMotion);
-      }
-      // clouds (drift across the sun — it doesn't mind)
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      for (let i = 0; i < 5; i++) {
-        const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
-        const cy = 30 + (i * 37) % 60;
-        ctx.fillRect(Math.round(cx), cy, 34, 8);
-        ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
       }
       // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
       // stay rounded so the two layers read as distance, not repetition. It gets
@@ -793,6 +798,17 @@ function pixelPack(settings) {
       // Overtime runs have no midpoint (totalDist is Infinity), so no volcano.
       if (cab.id === 'plumber' && Number.isFinite(totalDist) && totalDist > 0) {
         drawVolcano(ctx, t, camX, totalDist * 0.5, settings && settings.reducedMotion);
+      }
+      // Clouds go down AFTER the volcano so they drift in front of its smoke —
+      // the plume is far-off background, the clouds are nearer sky. Still before
+      // the hill layers, so the ranges keep occluding them as they always did.
+      if (cab.id === 'plumber') drawCloudPal(ctx, t, settings && settings.reducedMotion);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      for (let i = 0; i < 5; i++) {
+        const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
+        const cy = 30 + (i * 37) % 60;
+        ctx.fillRect(Math.round(cx), cy, 34, 8);
+        ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
       }
       if (cab.id === 'plumber') {
         // Rock and snow are haze-desaturated toward the sky rather than true

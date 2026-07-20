@@ -28,6 +28,7 @@ export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
 );
 const BASE_SPEED = 160;
+const FINISH_LINE_X = W - 58;
 
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
@@ -98,6 +99,9 @@ export class RunState {
     this.briefSlow = 0;
     this.dead = false;
     this.finished = false;
+    this.finishing = false;
+    this.finishT = 0;
+    this.finishPlayerX = PLAYER_X;
     this.deadT = 0;
     this.failMsg = null;
     this.paused = false;
@@ -203,6 +207,7 @@ export class RunState {
   // ------------------------------------------------------------------ update
   update(dt) {
     if (this.finished) { Input.endFrame(); return; }
+    if (this.finishing) { this.updateFinish(dt); Input.endFrame(); return; }
     if (Input.usingTouch !== this.touchButtons) this.setButtons(); // first touch mid-run
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
@@ -280,8 +285,12 @@ export class RunState {
     this.updateMission(wdt);
     this.updateCoinMagnet(wdt);
     this.updateTaunts(wdt);
-    this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
-    this.drip.update(wdt, this.camX, this.pickups, this.oneHit);
+    // Leave the final approach clean: nothing new is allowed to appear past
+    // the breaker, and the finish run itself has no hazards or pickups.
+    if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
+      this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
+      this.drip.update(wdt, this.camX, this.pickups, this.oneHit);
+    }
     this.spawnApplianceMaybe();
     this.checkCheckpoints();
     this.collide();
@@ -297,10 +306,11 @@ export class RunState {
     // never let the player sail past it. Crossing always ends the attempt;
     // missions that are still incomplete fail here instead of leaving the
     // finish marker behind while the run continues indefinitely.
-    if (!this.overtime && this.distance >= this.totalDist) {
-      const missionDone = this.missionSatisfied();
-      if (!missionDone) this.failMsg = 'MISSION INCOMPLETE';
-      this.endRun(missionDone, missionDone ? undefined : 'MISSION INCOMPLETE');
+    if (!this.overtime && this.distance >= this.finishCameraX() && this.missionSatisfied()) {
+      this.startFinishRun();
+    } else if (!this.overtime && this.distance >= this.totalDist) {
+      this.failMsg = 'MISSION INCOMPLETE';
+      this.endRun(false, 'MISSION INCOMPLETE');
     }
     Input.endFrame();
   }
@@ -316,6 +326,53 @@ export class RunState {
       // finish must satisfy the mission or late pickups soft-lock the run.
       case 'rescue': return m.count + this.pickups.filter((p) => p.live && p.def.resident && p.following).length >= m.n;
       default: return true; // reach/fuse/blackout/escape: surviving to the end is the win
+    }
+  }
+
+  finishWorldX() { return this.totalDist + PLAYER_X; }
+  finishCameraX() { return this.finishWorldX() - FINISH_LINE_X; }
+
+  startFinishRun() {
+    if (this.finishing) return;
+    this.finishing = true;
+    this.finishT = 0;
+    this.finishPlayerX = PLAYER_X;
+    // The final stretch remains part of the level. Keep anything the player
+    // can still reach before the tape, but never show content beyond it.
+    const finishX = this.finishWorldX();
+    this.obstacles = this.obstacles.filter((ob) => ob.x < finishX);
+    this.pickups = this.pickups.filter((p) => p.x < finishX);
+    this.projectiles = [];
+    this.portal = null;
+    this.copter = null;
+    this.floaties = [];
+  }
+
+  updateFinish(dt) {
+    const ts = this.powerups.timescale();
+    const wdt = dt * ts;
+    this.finishT += wdt;
+    this.tRun += wdt;
+    const sp = this.speed;
+    this.powerups.update(dt);
+    this.updateInvincibility(dt);
+    this.player.powerJumpBonus = this.powerups.bonusJumps();
+    if (Input.pressed('jump')) this.player.jumpPressed(Audio);
+    if (Input.pressed('ability')) this.useAbility();
+    const res = this.player.update(wdt, Input, {
+      speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
+    });
+    if (res.landed) Audio.sfx('land');
+    // The world and goal are stationary; the player alone runs across the
+    // screen. It is still playable — jump, float and power inputs all work.
+    this.finishPlayerX += sp * wdt;
+    updateParticles(dt);
+    updateShake(dt, () => this.fxRng.float());
+    if (this.finishPlayerX + 6 >= FINISH_LINE_X) {
+      // The frozen camera is deliberately short of the goal; the hero's
+      // screen-space run completes the remaining distance.
+      this.distance = this.totalDist;
+      this.endRun(true);
     }
   }
 
@@ -376,8 +433,9 @@ export class RunState {
         Audio.sfx('dash');
       }
     } else if (type === 'dash') {
+      // The dash already shatters breakables while active, so the charged
+      // version just runs much longer.
       this.player.dashT = charged ? 1.1 : 0.4;
-      this.player.dashPlows = charged; // charged: shears through what it passes
       Audio.sfx('dash');
       for (let i = 0; i < (charged ? 10 : 5); i++) spawn(this.camX + PLAYER_X - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
     } else if (type === 'roll') {
@@ -762,7 +820,7 @@ export class RunState {
             }
             this.breakObstacle(ob);
             if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0) pr.returning = true; }
-            else if (pr.type === 'fist') pr.returning = true;
+            else if (pr.type === 'fist' && !pr.pierce) pr.returning = true;
             else if (!pr.pierce) pr.live = false;
           }
         }
@@ -916,6 +974,7 @@ export class RunState {
       challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
       relayState: { current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(), pips: this.relay.pips },
       abilityCooldowns: { ...this.player.abilityCooldowns },
+      relayCharge: this.player.relayCharge,
       spawnerX: this.spawner.nextX,
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
       escapeWall: this.escapeWall,
@@ -936,6 +995,7 @@ export class RunState {
     }
     this.player = new Player(this.relay.current, this.modIds);
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
+    this.player.relayCharge = !!s.relayCharge;
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
     this.spawner.lastActionX = s.camX;
     this.obstacles = []; this.pickups = []; this.projectiles = [];
@@ -1010,6 +1070,11 @@ export class RunState {
       }
       // Fernwick mastery: one breakable ground hazard ends the finite roll in
       // a stumble. The base roll is low and fast, never general invincibility.
+      // A charged roll plows through every breakable without the stumble.
+      if (this.player.rolling && this.player.rollPlows && ob.def.breakable) {
+        this.breakObstacle(ob);
+        continue;
+      }
       if (this.player.rolling && this.modIds.includes('bash') && !this.player.rollBashed && ob.def.ground && ob.def.breakable) {
         this.player.rollBashed = true;
         this.breakObstacle(ob);
@@ -1220,8 +1285,9 @@ export class RunState {
     // post() with the hero, so enemies and pickups stay in colour against the
     // monochrome panel — they are the things you have to read at a glance.
     const drawActors = () => {
-    for (const p of this.pickups) if (p.live) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
-    for (const ob of this.obstacles) if (ob.live) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
+    const finishX = this.overtime ? Infinity : this.finishWorldX();
+    for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
+    for (const ob of this.obstacles) if (ob.live && ob.x < finishX) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
     for (const pr of this.projectiles) {
       const x = Math.round(pr.x - cam), y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {
@@ -1243,8 +1309,8 @@ export class RunState {
     }
     };
     if (!this.style.actorsAbovePost) drawActors();
-    if (this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun));
-    if (this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
+    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun));
+    if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
     if (this.escapeWall != null) {
       const x = Math.round(this.escapeWall - cam);
       ctx.fillStyle = 'rgba(20,10,30,0.85)';
@@ -1257,8 +1323,8 @@ export class RunState {
     if (!this.overtime && Number.isFinite(this.totalDist)) {
       const remaining = this.totalDist - this.distance;
       if (remaining < 560) {
-        const fx = Math.round(remaining + PLAYER_X);
-        const finishGround = this.groundYAt(this.camX + fx);
+        const fx = this.finishing ? FINISH_LINE_X : Math.round(remaining + PLAYER_X);
+        const finishGround = this.finishing ? this.groundYAt(this.finishWorldX()) : this.groundYAt(this.camX + fx);
         for (let i = 0; i < 10; i++) {
           ctx.fillStyle = i % 2 === 0 ? '#f6d33c' : '#0b0b14';
           ctx.fillRect(fx, finishGround - 80 + i * 8, 5, 8);
@@ -1279,7 +1345,7 @@ export class RunState {
 
     // A soft reticle communicates which nearby obstacle the contextual power
     // will affect without adding another HUD instruction.
-    if (this.player.abilityCd <= 0 && (this.relay.current === 'lorenzo' || this.relay.current === 'chompo')) {
+    if (!this.finishing && this.player.abilityCd <= 0 && (this.relay.current === 'lorenzo' || this.relay.current === 'chompo')) {
       const target = this.powerTarget();
       if (target) {
         const tx = Math.round(target.x - cam + target.w / 2);
@@ -1291,8 +1357,10 @@ export class RunState {
     }
 
     // Player.
+    const heroScreenX = this.finishing ? this.finishPlayerX : PLAYER_X;
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, flat: this.paused || this.dead, groundY: this.groundYAt(cam + PLAYER_X),
+      { mirror: this.mirror, flat: this.paused || this.dead, screenX: heroScreenX,
+      groundY: this.groundYAt(cam + heroScreenX),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 
@@ -1354,7 +1422,9 @@ export class RunState {
       drawTextCentered(ctx, pHero.name, W / 2, 112, '#48e0c8');
       drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 124, '#f6d33c');
       drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 140, '#c8e0ff');
-      drawTextCentered(ctx, `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 152, '#f890b8');
+      drawTextCentered(ctx, RELAY_MODE === 'charge'
+        ? (this.player.relayCharge ? 'POWER CHARGED: SPEND IT' : `POWER CHARGE: ${this.relay.pips}/3 SWITCHES`)
+        : `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 152, '#f890b8');
       drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 170, '#c8c8d8');
       drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 184, '#8a8a98');
     }
