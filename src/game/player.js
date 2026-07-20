@@ -42,6 +42,7 @@ export class Player {
     this.powerPoseT = 0;
     this.powerType = null;
     this.fistThrown = false;
+    this.axeThrown = false;
     this.headless = 0;    // Gary
     this.assemblyGraceUsed = 0;
     this.hazardEaten = false; // Miss Chomp mastery
@@ -64,6 +65,7 @@ export class Player {
     this.powerPoseT = 0;
     this.powerType = null;
     this.fistThrown = false;
+    this.axeThrown = false;
     this.ducking = false;
   }
 

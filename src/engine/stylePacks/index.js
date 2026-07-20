@@ -202,33 +202,84 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
 // flat fills, one dark outline, no gradients — a mauve-slate cone with a lit
 // face and a shadow face, a molten cap that has overflowed the crater and
 // congealed in drips down the upper slopes, flows running the rest of the way,
-// and billowing smoke off the summit. The palette is pulled toward the sky
-// (hazier rock, softer ink) so it recedes, but the lava stays saturated: it is
-// self-lit, and haze on the cap kills the landmark entirely.
+// and billowing smoke off the summit.
+//
+// Distance here is carried ENTIRELY by occlusion, scale and parallax — not by
+// haze. An earlier pass also desaturated the palette and thinned the outline,
+// which is the usual way to push something back, but it made the volcano read
+// as atmosphere rather than as art: the whole point is that it is a drawn
+// cartoon object in the reference's style, and bold linework is what says so.
+// So the ink and fills stay at reference weight even back here.
 //
 // Palette note: the lava yellow tops out around 0.75 luma, under the glfx.js
 // bloom bright-pass cutoff (~0.8). Pushing it to a true cartoon #ffd400 (0.84)
 // makes the summit clip to flat white through the bloom composite.
-const V_ROCK = '#8b8391';        // lit face
-const V_ROCK_DK = '#6f6579';     // shadow face
-const V_LAVA_HI = '#e0bb55';     // molten cap
-const V_LAVA_MD = '#d8994a';     // flow body
-const V_LAVA_LO = '#c4744a';     // cooled flow tail
-const V_INK = 'rgba(28,20,38,0.4)';
-function drawVolcano(ctx, t, camX, atCam, reduced) {
+const V_ROCK = '#7a6b76';        // lit face
+const V_ROCK_DK = '#5f515f';     // shadow face
+// Lava ramp, hottest first. Index 0 sits at the crater mouth and the ramp
+// cools outward down the cap, so the vent reads as the source. Note this is
+// upside down physically — real lava is yellow-white at the vent and reddens
+// as it cools — but red-at-the-mouth is the cartoon convention the reference
+// and every arcade volcano use, and it is what makes the crater legible.
+const V_LAVA = ['#b8352a', '#c8452a', '#d55b2c', '#de742f', '#e58c34', '#e5a23c'];
+const V_INK = 'rgba(22,14,30,0.72)';
+// Opaque twin of V_INK, for the smoke layer: that puff is composited solid and
+// faded once at the blit, so an alpha ink there would double up.
+const V_INK_SOLID = '#3a3040';
+// Depth of field. The volcano composites into its own layer and blits back
+// through a blur, which is the one distance cue that does not fight the bold
+// reference palette: it recedes without desaturating anything. Blurring each
+// shape as it is drawn would be wrong — every internal edge would soften
+// separately and the overlaps would go muddy — so the whole thing is flattened
+// first and blurred once, as a single image.
+//
+// ctx.filter is unsupported in a few older engines; there it silently no-ops
+// and the volcano simply draws sharp, which is a fine degradation.
+const V_BLUR = 1.15;
+const volcLayer = { c: null, g: null, w: 0, h: 0 };
+const V_SS = 2;
+function drawVolcano(out, t, camX, atCam, reduced) {
   const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
-  const hgt = 130, halfBase = 78, notch = 11;
+  // Proportioned against the far range rather than as a standalone cone: those
+  // crests are ~96 tall over a ~141 half-width (ratio ~0.7), so a tall narrow
+  // spire reads as a different kind of landform sitting among them. The flanks
+  // also follow a power curve instead of a straight line — `flankX` widens
+  // fastest near the summit, which blunts the apex the way a real massif is
+  // blunt. A straight-sided triangle is what made it read as pointy.
+  const hgt = 122, halfBase = 132, notch = 13;
   if (cx + halfBase < -40 || cx - halfBase > W + 40) return; // off screen
   const apex = GROUND_Y - hgt;
   const lip = apex + 4;
+  const flankX = (f) => halfBase * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
+
+  // Layer bounds. The plume climbs well above the summit and is part of the
+  // same image, so it has to fit inside the blurred layer too — clipping it at
+  // the summit would leave a hard cut where the smoke crosses the edge.
+  const pad = 6;
+  const bx = cx - halfBase - pad, by = apex - 152;
+  const lw = Math.ceil(halfBase * 2 + pad * 2), lh = Math.ceil(GROUND_Y + 2 - by);
+  if (!volcLayer.c || volcLayer.w < lw || volcLayer.h < lh) {
+    volcLayer.c = document.createElement('canvas');
+    volcLayer.c.width = lw * V_SS;
+    volcLayer.c.height = lh * V_SS;
+    volcLayer.g = volcLayer.c.getContext('2d');
+    volcLayer.w = lw; volcLayer.h = lh;
+  }
+  const ctx = volcLayer.g;
+  // Absolute screen coords keep working inside the layer: the transform maps
+  // the layer's origin onto (bx, by).
+  ctx.setTransform(V_SS, 0, 0, V_SS, -bx * V_SS, -by * V_SS);
+  ctx.clearRect(bx, by, volcLayer.w, volcLayer.h);
+
   const ink = (w) => { ctx.strokeStyle = V_INK; ctx.lineWidth = w; ctx.stroke(); };
   const cone = () => {
+    const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the notch
     ctx.beginPath();
     ctx.moveTo(cx - halfBase, GROUND_Y);
-    ctx.lineTo(cx - notch, apex);
+    for (let f = 1; f >= fT; f -= 0.03) ctx.lineTo(cx - flankX(f), apex + hgt * f);
     ctx.lineTo(cx - notch * 0.42, lip);   // crater dip, so the summit is not flat
     ctx.lineTo(cx + notch * 0.42, lip);
-    ctx.lineTo(cx + notch, apex);
+    for (let f = fT; f <= 1; f += 0.03) ctx.lineTo(cx + flankX(f), apex + hgt * f);
     ctx.lineTo(cx + halfBase, GROUND_Y);
     ctx.closePath();
   };
@@ -271,88 +322,92 @@ function drawVolcano(ctx, t, camX, atCam, reduced) {
   // uneven tongues (the reference's silhouette) rather than even scallops.
   //
   // The drip waves are keyed to PIXELS, not to px/halfBase. At the cap's
-  // altitude the cone is only ~30px half-wide, so a wave with a period in
+  // altitude the cone is only ~43px half-wide, so a wave with a period in
   // base-widths spans a third of a cycle across everything visible and the
   // fringe flattens into a straight band. Pixel frequencies put ~5 tongues
   // across the width that is actually on-cone.
-  const capBot = GROUND_Y - hgt * 0.66;
+  //
+  // The cap has to END ABOVE the far range's crests (~96) or the drips — the
+  // most recognisable part of the silhouette — sit behind the ridgeline and
+  // never show. That is what pins this fraction, not the look of the cone.
+  const capBot = GROUND_Y - hgt * 0.78;
+  const capEdge = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - halfBase, apex - 6);
+    ctx.lineTo(cx + halfBase, apex - 6);
+    for (let px = halfBase; px >= -halfBase; px -= 1.5) {
+      // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns
+      // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
+      // each lobe is a rounded tongue with a rounded notch beside it.
+      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
+      const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 19 * envelope
+        + (0.5 - 0.5 * Math.cos(px * 0.9 + 1.4)) * 3;
+      ctx.lineTo(cx + px, capBot + drip);
+    }
+    ctx.closePath();
+  };
   ctx.save();
   cone();
   ctx.clip();
-  ctx.beginPath();
-  ctx.moveTo(cx - halfBase, apex - 6);
-  ctx.lineTo(cx + halfBase, apex - 6);
-  for (let px = halfBase; px >= -halfBase; px -= 1.5) {
-    // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns the
-    // fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so each
-    // lobe is a rounded tongue with a rounded notch beside it.
-    const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
-    const drip = (0.5 - 0.5 * Math.cos(px * 0.42)) * 21 * envelope
-      + (0.5 - 0.5 * Math.cos(px * 0.9 + 1.4)) * 3;
-    ctx.lineTo(cx + px, capBot + drip);
+  // The lava is ONE continuous gradient, reddest at the crater mouth and
+  // cooling to orange down the fringe. An earlier pass stacked discrete flat
+  // fills instead and stepped visibly — at this size the cap is only ~40px
+  // tall, so any band count coarse enough to animate is also coarse enough to
+  // read as stripes. A gradient sidesteps the tradeoff entirely.
+  const lavaBot = capBot + 19;
+  const grad = ctx.createLinearGradient(0, lip - 2, 0, lavaBot);
+  for (let i = 0; i < V_LAVA.length; i++) {
+    grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
   }
-  ctx.closePath();
-  ctx.fillStyle = V_LAVA_HI;
+  ctx.fillStyle = grad;
+  capEdge();
   ctx.fill();
+  // Motion comes from a soft highlight travelling down the slope instead of
+  // from moving the colour fronts. Its alpha follows sin(pi*u), so it fades in
+  // at the mouth and out at the fringe rather than popping when it wraps.
+  if (!reduced) {
+    const u = (t * 0.15) % 1;
+    const hy = lip + (lavaBot - lip) * u;
+    const band = 13;
+    const hg = ctx.createLinearGradient(0, hy - band, 0, hy + band);
+    const a = 0.3 * Math.sin(Math.PI * u);
+    hg.addColorStop(0, 'rgba(255,198,96,0)');
+    hg.addColorStop(0.5, `rgba(255,198,96,${a})`);
+    hg.addColorStop(1, 'rgba(255,198,96,0)');
+    ctx.save();
+    capEdge();
+    ctx.clip();
+    ctx.fillStyle = hg;
+    ctx.fillRect(cx - halfBase, hy - band, halfBase * 2, band * 2);
+    ctx.restore();
+  }
+  capEdge();
   ink(1.1);
   ctx.restore();
 
-  // Crater mouth, sunk into the cap.
-  ctx.fillStyle = '#33313f';
+  // Crater: a shallow dark notch, NOT a lit vent. The previous version put a
+  // bright lava ellipse inside the dark one, and at this scale plus the
+  // depth-of-field blur those two small stacked ellipses merged into a single
+  // red dot reading as a ball resting on the summit. The reference summit is
+  // just a dark recess with the cone's own rim around it, so that is all this
+  // draws — the eruption is carried by the smoke plume, not by the mouth.
+  ctx.fillStyle = '#4a2f33';
   ctx.beginPath();
-  ctx.ellipse(cx, lip, notch * 0.5, 2.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, lip + 0.4, notch * 0.62, 2.8, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = V_LAVA_LO;
+  // Near rim catches light, so the recess reads as concave rather than as a
+  // flat spot painted on.
+  ctx.strokeStyle = 'rgba(255,190,120,0.5)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.ellipse(cx, lip + 0.5, notch * 0.32, 1.5, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.ellipse(cx, lip + 1.1, notch * 0.62, 2.8, 0, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
 
-  // Flows are clipped to the cone (otherwise they run off the silhouette and
-  // across the green hills as taut wires) and wander as they descend, so they
-  // read as molten rather than as cable. Each is a tapering ribbon rather than
-  // a column of fillRects — stacked rects stair-step visibly at this scale.
-  // Three nested ribbons (cooled edge, body, hot core) share one centreline;
-  // the core's width rides a wave travelling on `t`, which is what makes the
-  // lava look like it is running.
-  ctx.save();
-  cone();
-  ctx.clip();
-  const flow = (dir, seed, len) => {
-    const slope = halfBase / hgt;
-    const pts = [];
-    for (let s = 0; s <= len; s += 1.5) {
-      const f = s / hgt;
-      const drift = dir * (notch * 0.25 + s * slope * 0.38 * Math.pow(f, 0.7));
-      const wander = Math.sin(f * 5.5 + seed) * 5 + Math.sin(f * 13 + seed * 2) * 2.2;
-      const w = 8.5 - (s / len) * 4.6;                 // taper to a tip
-      const pulse = reduced ? 0.55 : 0.40 + 0.32 * (Math.sin(f * 9 - t * 2 + seed) + 1) / 2;
-      pts.push({ x: cx + drift + wander, y: lip + s, w, cw: w * pulse });
-    }
-    const ribbon = (key, scale, col, outline) => {
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      for (let i = 0; i < pts.length; i++) {
-        const p = pts[i];
-        const half = (p[key] * scale) / 2;
-        if (i === 0) ctx.moveTo(p.x - half, p.y); else ctx.lineTo(p.x - half, p.y);
-      }
-      for (let i = pts.length - 1; i >= 0; i--) {
-        const p = pts[i];
-        ctx.lineTo(p.x + (p[key] * scale) / 2, p.y);
-      }
-      ctx.closePath();
-      ctx.fill();
-      if (outline) ink(1);
-    };
-    ribbon('w', 1, V_LAVA_LO, true);   // cooled edge, carries the outline
-    ribbon('w', 0.72, V_LAVA_MD);      // body
-    ribbon('cw', 1, V_LAVA_HI);        // hot core
-  };
-  // Both flows have to outrun the molten cap's drip fringe (which reaches to
-  // roughly 0.5*hgt below the lip) or they finish inside the yellow and vanish.
-  flow(1, 1.2, hgt * 0.92);
-  flow(-1, 3.1, hgt * 0.7);
-  ctx.restore();
+  // Flatten back to the scene through the depth-of-field blur.
+  const prevFilter = out.filter;
+  out.filter = `blur(${V_BLUR}px)`;
+  out.drawImage(volcLayer.c, 0, 0, lw * V_SS, lh * V_SS, bx, by, lw, lh);
+  out.filter = prevFilter || 'none';
 }
 
 // Billowing cartoon smoke off the summit: each puff is a cluster of lobes (a
@@ -385,23 +440,67 @@ function drawVolcanoSmoke(ctx, t, cx, apex, reduced) {
     smokePuff(ctx, x, y, r, a, i);
   }
 }
-function smokePuff(ctx, x, y, r, alpha, seed) {
-  if (alpha <= 0.01) return;
-  ctx.fillStyle = `rgba(178,180,190,${alpha})`;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+// One reusable scratch layer for compositing a puff. Sized on demand and never
+// shrunk, so steady-state costs no allocation.
+const smokeLayer = { c: null, g: null, size: 0 };
+const SMOKE_SS = 2; // supersample, so the blit is not soft at device res
+
+// The outline is a DILATED SILHOUETTE, not a stroke. Stroking the cluster path
+// would trace every circle in full, including the arcs buried inside the union,
+// so the puff would read as a clump of bubbles instead of one cloud. Filling
+// the same cluster at radius+ow in ink and then the normal radii on top leaves
+// exactly the union's outer ring showing.
+//
+// That requires the body fill to be OPAQUE — a translucent body would let the
+// ink layer beneath it darken the whole interior. So the puff is composited
+// opaque into a scratch layer and the fade is applied once, at the blit. Doing
+// it per-fill instead is what produced the previous soft-blob look.
+function puffCluster(g, cx, cy, r, seed, grow) {
+  g.beginPath();
+  g.arc(cx, cy, r + grow, 0, Math.PI * 2);
   for (let k = 0; k < 4; k++) {
     const a = seed * 1.9 + k * 1.7;
-    ctx.moveTo(x + Math.cos(a) * r * 0.8 + r * 0.62, y + Math.sin(a) * r * 0.55);
-    ctx.arc(x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.55, r * 0.62, 0, Math.PI * 2);
+    const lx = cx + Math.cos(a) * r * 0.8, ly = cy + Math.sin(a) * r * 0.55;
+    const lr = r * 0.62 + grow;
+    g.moveTo(lx + lr, ly);
+    g.arc(lx, ly, lr, 0, Math.PI * 2);
   }
-  ctx.fill();
-  // A lighter cap on the upper lobes keeps the cluster from reading as a flat
-  // blob — the reference clouds are shaded the same way.
-  ctx.fillStyle = `rgba(206,207,215,${alpha * 0.7})`;
-  ctx.beginPath();
-  ctx.arc(x - r * 0.25, y - r * 0.42, r * 0.55, 0, Math.PI * 2);
-  ctx.fill();
+}
+function smokePuff(ctx, x, y, r, alpha, seed) {
+  if (alpha <= 0.01) return;
+  const ow = Math.max(0.9, r * 0.085);
+  const half = Math.ceil(r * 1.55 + ow + 2);
+  const size = half * 2;
+  if (!smokeLayer.c || smokeLayer.size < size) {
+    smokeLayer.c = document.createElement('canvas');
+    smokeLayer.c.width = smokeLayer.c.height = size * SMOKE_SS;
+    smokeLayer.g = smokeLayer.c.getContext('2d');
+    smokeLayer.size = size;
+  }
+  const g = smokeLayer.g, S = smokeLayer.size;
+  g.setTransform(SMOKE_SS, 0, 0, SMOKE_SS, 0, 0);
+  g.clearRect(0, 0, S, S);
+  const c = S / 2;
+  puffCluster(g, c, c, r, seed, ow);
+  g.fillStyle = V_INK_SOLID;
+  g.fill();
+  puffCluster(g, c, c, r, seed, 0);
+  g.fillStyle = '#b9bcc6';
+  g.fill();
+  // Lighter cap on the upper lobes so the cloud is shaded rather than flat —
+  // clipped to the cluster, or it spills past the outline.
+  g.save();
+  puffCluster(g, c, c, r, seed, 0);
+  g.clip();
+  g.fillStyle = '#d4d6de';
+  g.beginPath();
+  g.arc(c - r * 0.3, c - r * 0.5, r * 0.72, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = prev * alpha;
+  ctx.drawImage(smokeLayer.c, 0, 0, S * SMOKE_SS, S * SMOKE_SS, x - c, y - c, S, S);
+  ctx.globalAlpha = prev;
 }
 
 // Per-frame gradient construction is surprisingly costly at device res —
@@ -1042,19 +1141,73 @@ function cardboardPack(settings) {
   };
 }
 
+// A dried coffee ring. The previous attempt stroked an uneven circle, which
+// still read as a drawn O — because a stain has no edges at all. What actually
+// identifies one:
+//   - it is SOAKED IN, so it multiplies the page rather than covering it, and
+//     the rules stay visible through it, darkened;
+//   - the rim is a soft band, not a line — liquid wicks into paper fibre, so
+//     both sides of it fade out;
+//   - the mug got set down more than once.
+// So it is built from soft radial-gradient annuli instead of strokes. Three
+// near-coincident passes make the rim uneven where they overlap, which beats
+// any deliberate wobble, and a fourth offset pass is the second placement.
+function coffeeRing(ctx, cx, cy, r, a2) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  const blot = (x, y, rr, a, squash) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, squash); // a mug is never set down square on
+    const R = rr * 1.18;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+    g.addColorStop(0.00, `rgba(158,112,64,${(a * 0.05).toFixed(3)})`); // barely-tinted centre
+    g.addColorStop(0.60, `rgba(150,104,58,${(a * 0.12).toFixed(3)})`);
+    g.addColorStop(0.82, `rgba(132,88,46,${(a * 0.45).toFixed(3)})`);
+    g.addColorStop(0.90, `rgba(112,72,34,${a.toFixed(3)})`);          // solids pile up here
+    g.addColorStop(0.97, `rgba(126,84,42,${(a * 0.22).toFixed(3)})`); // wicked into the fibre
+    g.addColorStop(1.00, 'rgba(126,84,42,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+  blot(cx, cy, r, 0.30, 0.94);
+  blot(cx + r * 0.05, cy - r * 0.03, r * 0.98, 0.24, 0.96);
+  blot(cx - r * 0.04, cy + r * 0.05, r * 1.03, 0.20, 0.92);
+  // The mug was set down, lifted, and put back a little off its own print —
+  // so the second ring nearly covers the first and is much fainter, being one
+  // pass of liquid rather than the pile-up of the cup that sat there.
+  const d = r * 0.36;
+  blot(cx + Math.cos(a2) * d, cy + Math.sin(a2) * d * 0.9, r * 0.95, 0.10, 0.95);
+  ctx.restore();
+}
+
 function doodlePack(settings) {
+  // Which way the mug shifted when it was put back down. Rolled once here, in
+  // the factory — getStylePack() runs on run entry, so this is fixed for the
+  // whole run (the sheet cannot change while you are looking at it) and fresh
+  // on the next one. Cosmetic only, so it takes Math.random rather than the
+  // seeded gameplay rng; nothing about the run may depend on it.
+  const a2 = Math.random() * Math.PI * 2;
   return {
     name: 'doodle',
     lightBg: true,
+    // The sheet IS the screen: one page, held still, with the action drawn on
+    // it like a flipbook. So NOTHING in the paper layer takes camX — not the
+    // rules, not the margin, not the stain, not the punches. A scrolling grid
+    // under a fixed margin line reads as two sheets sliding over each other,
+    // and the punches made that contradiction impossible to miss. Speed is
+    // carried by the terrain and obstacles, which are the ink, not the paper.
     bg(ctx, t, camX, cab) {
       // graph paper — a warm off-white, not near-#fff, so blue ink reads
       ctx.fillStyle = '#eceadf';
       ctx.fillRect(0, 0, W, H);
       ctx.lineWidth = 1;
       // Minor cells, then a heavier rule every 4th to give the page structure.
-      const ox = camX * 0.5 % 16;
-      for (let i = 0, x = -ox; x < W; i++, x += 16) {
-        ctx.strokeStyle = Math.round((camX * 0.5 - ox) / 16 + i) % 4 === 0 ? 'rgba(88,132,200,0.55)' : 'rgba(88,132,200,0.3)';
+      for (let x = 0, i = 0; x < W; x += 16, i++) {
+        ctx.strokeStyle = i % 4 === 0 ? 'rgba(88,132,200,0.55)' : 'rgba(88,132,200,0.3)';
         ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke();
       }
       for (let y = 0, i = 0; y < H; y += 16, i++) {
@@ -1064,25 +1217,18 @@ function doodlePack(settings) {
       // margin line + coffee ring
       ctx.strokeStyle = 'rgba(210,70,70,0.55)';
       ctx.beginPath(); ctx.moveTo(30.5, 0); ctx.lineTo(30.5, H); ctx.stroke();
-      // Loose-leaf punches: the page came out of a binder. Fixed to the screen,
-      // not the world — the sheet IS the viewport, so these never scroll.
+      // Loose-leaf punches: the page came out of a binder.
       // Spaced down the band between the HUD's left column (which runs to ~y80)
       // and the highest the terrain crest reaches, so nothing is ever drawn on
       // top of a hole — ink over a punch would give the illusion away.
-      for (const hy of [86, 140, 194]) {
-        ctx.fillStyle = 'rgba(122,120,112,0.55)';      // the desk, seen through
+      // Solid, not translucent: a punch is an absence of page, so no rule line
+      // may show through it.
+      ctx.fillStyle = '#000';
+      for (const hy of [110, 170]) {
         ctx.beginPath(); ctx.arc(15, hy, 4.6, 0, Math.PI * 2); ctx.fill();
-        // Inner shadow up top, lit cut-edge along the bottom: without the pair
-        // the disc reads as a sticker sitting on the page, not a hole in it.
-        ctx.lineWidth = 1.4;
-        ctx.strokeStyle = 'rgba(70,68,62,0.45)';
-        ctx.beginPath(); ctx.arc(15, hy, 4.1, Math.PI * 1.15, Math.PI * 1.95); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,254,250,0.85)';
-        ctx.beginPath(); ctx.arc(15, hy, 4.3, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
-        ctx.lineWidth = 1;
       }
-      ctx.strokeStyle = 'rgba(150,100,50,0.35)';
-      ctx.beginPath(); ctx.arc(((400 - camX * 0.2) % (W + 100)), 60, 18, 0, Math.PI * 2); ctx.stroke();
+      // Parked upper-right, clear of the HUD's left column and the name plate.
+      coffeeRing(ctx, 392, 76, 28, a2);
     },
     ground(ctx, camX, cab, obstacles) {
       // wobbly ballpoint ground line, re-jittered at ~3fps

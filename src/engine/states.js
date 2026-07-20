@@ -47,7 +47,7 @@ export function updateState(dt) {
       current && current.exit && current.exit();
       current = pending.next;
       current.enter && current.enter(...pending.args);
-      if (typeof window !== 'undefined') window.__mash_state = current.constructor.name;
+      if (typeof window !== 'undefined') { window.__mash_state = current.constructor.name; window.__mash_cur = current; }
       pending = null;
       fading = -1;
     } else if (fade <= 0) {

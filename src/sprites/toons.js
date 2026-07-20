@@ -425,7 +425,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (spec.back === 'shield') {
     outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
     dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
-  } else if (spec.back === 'axe') {
+  } else if (spec.back === 'axe' && !pose.axeThrown) {
     limb(ctx, 0.08 * u, shoulderY + 0.12 * u, -0.31 * u, headY - 0.27 * u, 0.06 * u, p.w, ow);
     outlined(ctx, '#b8d8f0', ow, (c) => {
       c.moveTo(-0.32 * u, headY - 0.39 * u);
@@ -646,6 +646,28 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   }
 }
 
+// Raymn's head, drawn about (hx, hy): an oversized, windswept parody quiff.
+// Its broad silhouette is intentional — it must remain recognizable even in
+// the menu parade. Split out of drawRay so face crops can show the head alone.
+function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
+  const hairFlop = Math.sin((pose.time || 0) * (run ? 8 : 2.5)) * 0.025 * u;
+  outlined(ctx, p.s, ow, (c) => c.arc(hx, hy, 0.17 * u, 0, Math.PI * 2));
+  outlined(ctx, p.a, ow, (c) => {
+    c.moveTo(hx - 0.17 * u, hy - 0.02 * u);
+    c.quadraticCurveTo(hx - 0.31 * u, hy - 0.09 * u, hx - 0.28 * u, hy + 0.13 * u + hairFlop);
+    c.quadraticCurveTo(hx - 0.21 * u, hy + 0.03 * u + hairFlop, hx - 0.09 * u, hy - 0.34 * u);
+    c.quadraticCurveTo(hx - 0.05 * u, hy - 0.38 * u, hx - 0.015 * u, hy - 0.17 * u);
+    c.quadraticCurveTo(hx + 0.08 * u, hy - 0.31 * u, hx + 0.21 * u, hy - 0.29 * u);
+    c.quadraticCurveTo(hx + 0.23 * u, hy - 0.23 * u, hx + 0.14 * u, hy - 0.16 * u);
+    c.quadraticCurveTo(hx + 0.23 * u, hy - 0.1 * u, hx + 0.19 * u, hy - 0.025 * u + hairFlop * 0.3);
+    c.quadraticCurveTo(hx + 0.02 * u, hy - 0.15 * u, hx - 0.18 * u, hy - 0.07 * u);
+    c.closePath();
+  });
+  const ex = expressionFor(id, pose);
+  drawEyes(ctx, p, u, hx + 0.02 * u, hy - 0.01 * u, lod, ex);
+  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, hx + 0.02 * u, hy + 0.08 * u, ow, ex);
+}
+
 function drawRay(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const run = pose.kind === 'run';
@@ -672,25 +694,7 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   outlined(ctx, p.m, ow, (c) => roundRectPath(c, -0.23 * u, cy - 0.12 * u, 0.46 * u, 0.07 * u, 0.03 * u));
   const scarfLag = run ? Math.sin(ph + 0.7) * 0.035 * u : 0;
   ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.18 * u, cy - 0.08 * u); ctx.quadraticCurveTo(-0.31 * u, cy - 0.01 * u + scarfLag, -0.4 * u, cy + 0.01 * u + scarfLag); ctx.lineTo(-0.18 * u, cy + 0.04 * u); ctx.fill();
-  // Head with an oversized, windswept parody quiff. Its broad silhouette is
-  // intentional: it must remain recognizable even in the menu parade.
-  const hy = cy - 0.31 * u;
-  const hairFlop = Math.sin((pose.time || 0) * (run ? 8 : 2.5)) * 0.025 * u;
-  outlined(ctx, p.s, ow, (c) => c.arc(0, hy, 0.17 * u, 0, Math.PI * 2));
-  outlined(ctx, p.a, ow, (c) => {
-    c.moveTo(-0.17 * u, hy - 0.02 * u);
-    c.quadraticCurveTo(-0.31 * u, hy - 0.09 * u, -0.28 * u, hy + 0.13 * u + hairFlop);
-    c.quadraticCurveTo(-0.21 * u, hy + 0.03 * u + hairFlop, -0.09 * u, hy - 0.34 * u);
-    c.quadraticCurveTo(-0.05 * u, hy - 0.38 * u, -0.015 * u, hy - 0.17 * u);
-    c.quadraticCurveTo(0.08 * u, hy - 0.31 * u, 0.21 * u, hy - 0.29 * u);
-    c.quadraticCurveTo(0.23 * u, hy - 0.23 * u, 0.14 * u, hy - 0.16 * u);
-    c.quadraticCurveTo(0.23 * u, hy - 0.1 * u, 0.19 * u, hy - 0.025 * u + hairFlop * 0.3);
-    c.quadraticCurveTo(0.02 * u, hy - 0.15 * u, -0.18 * u, hy - 0.07 * u);
-    c.closePath();
-  });
-  const ex = expressionFor(id, pose);
-  drawEyes(ctx, p, u, 0.02 * u, hy - 0.01 * u, lod, ex);
-  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, 0.02 * u, hy + 0.08 * u, ow, ex);
+  drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.31 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
   const handY = cy + 0.02 * u;
   outlined(ctx, p.w, ow, (c) => c.ellipse(-0.32 * u - handSwing, handY + handLift, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
@@ -699,6 +703,59 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
     const orbit = (pose.time || 0) * 8;
     outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
   }
+}
+
+// ------------------------------------------------- thrown-ability projectiles
+// The in-flight fist and axe reuse the on-body art — same palette, same
+// two-pass outline — so the weapon stays the same object once it leaves the
+// hero instead of morphing into a generic projectile.
+export function drawRocketFist(ctx, x, y, t, returning = false) {
+  const p = pal('raymn');
+  const u = 40;
+  const ow = Math.max(0.5, 0.016 * u);
+  ctx.save();
+  ctx.translate(x, y);
+  if (returning) ctx.scale(-1, 1);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  // a flicker of rocket exhaust off the wrist
+  const flick = 1 + 0.35 * Math.sin((t || 0) * 40);
+  outlined(ctx, p.f, Math.max(0.4, ow * 0.5), (c) => {
+    c.moveTo(-0.09 * u, -0.045 * u);
+    c.lineTo(-0.2 * u * flick, 0);
+    c.lineTo(-0.09 * u, 0.045 * u);
+    c.closePath();
+  });
+  // the glove itself: the same ellipse the ray rig wears on the body
+  outlined(ctx, p.w, ow, (c) => c.ellipse(0, 0, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+  ctx.restore();
+}
+
+export function drawThrownAxe(ctx, x, y, rot) {
+  const p = pal('grumpos');
+  const u = 24;
+  const ow = Math.max(0.5, 0.03 * u);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot || 0);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  // the shoulder axe's handle and blade, re-centered on its spin axis
+  limb(ctx, 0.26 * u, 0.41 * u, -0.13 * u, -0.24 * u, 0.06 * u, p.w, ow);
+  outlined(ctx, '#b8d8f0', ow, (c) => {
+    c.moveTo(-0.14 * u, -0.36 * u);
+    c.quadraticCurveTo(-0.34 * u, -0.22 * u, -0.21 * u, -0.03 * u);
+    c.lineTo(-0.07 * u, -0.1 * u);
+    c.lineTo(-0.04 * u, -0.31 * u);
+    c.closePath();
+  });
+  ctx.strokeStyle = '#eaf8ff';
+  ctx.lineWidth = Math.max(0.6, ow * 0.55);
+  ctx.beginPath();
+  ctx.moveTo(-0.24 * u, -0.22 * u);
+  ctx.lineTo(-0.1 * u, -0.16 * u);
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------- API
@@ -732,23 +789,89 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   ctx.restore();
 }
 
-// Head-and-face render fitted to a w-by-h box (HUD cells, portal crops).
-export function drawToonFace(ctx, heroId, x, y, w, h) {
-  const spec = TOON_SPECS[heroId];
-  if (!spec) return;
+// The raw face paint: nominal framing per rig. Extents vary a lot between
+// heroes (hats, ears, whiskers), so drawToonFace measures this and refits.
+function paintFace(ctx, heroId, spec, x, y, w, h) {
   const p = pal(heroId);
-  ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  // head+hat spans ~0.5u; fit that span to the box height
+  const u = (h * 0.92) / 0.5;
+  const ow = Math.max(0.6, 0.032 * (h * 2));
   if (spec.rig === 'humanoid') {
-    // head+hat spans ~0.5u; fit that span to the box height
-    const u = (h * 0.92) / 0.5;
-    const ow = Math.max(0.6, 0.032 * (h * 2));
     drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false);
+  } else if (spec.rig === 'ray') {
+    // ray has a real head on a floating body — crop to the head like a humanoid
+    drawRayHead(ctx, heroId, p, { kind: 'idle', time: 0 }, u, ow, x + w / 2, y + h * 0.62, false, false);
   } else {
     // blob/disc: the body IS the face — draw the whole toon fitted
     drawToon(ctx, heroId, { kind: 'idle', time: 0 }, x + w / 2, y + h * 1.18, h * 1.45);
   }
+}
+
+// Ink bounds of paintFace, in fractions of its own w-by-h box. Measured once
+// per hero on an oversized scratch canvas (so anything spilling past the box
+// still registers) and cached; falls back to the nominal box if pixels can't
+// be read (headless stubs).
+const FACE_FIT = new Map();
+const FIT_R = 64; // nominal box size used for the measurement render
+function faceFit(heroId, spec) {
+  if (FACE_FIT.has(heroId)) return FACE_FIT.get(heroId);
+  const nominal = { x: 0, y: 0, w: 1, h: 1 };
+  let fit = nominal;
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = FIT_R * 3;
+    const x = c.getContext('2d');
+    x.save();
+    paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R);
+    x.restore();
+    const { data } = x.getImageData(0, 0, c.width, c.height);
+    if (data.length === c.width * c.height * 4) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let py = 0; py < c.height; py++) {
+        for (let px = 0; px < c.width; px++) {
+          if (data[(py * c.width + px) * 4 + 3] < 8) continue; // ignore AA dust
+          if (px < x0) x0 = px;
+          if (px > x1) x1 = px;
+          if (py < y0) y0 = py;
+          if (py > y1) y1 = py;
+        }
+      }
+      if (x1 >= x0) {
+        fit = {
+          x: (x0 - FIT_R) / FIT_R,
+          y: (y0 - FIT_R) / FIT_R,
+          w: (x1 - x0 + 1) / FIT_R,
+          h: (y1 - y0 + 1) / FIT_R,
+        };
+      }
+    }
+  } catch { /* no canvas: keep nominal framing */ }
+  FACE_FIT.set(heroId, fit);
+  return fit;
+}
+
+// Head-and-face render fitted to a w-by-h box (HUD cells, portal crops).
+// Every hero is scaled and centered so its whole silhouette lands inside the
+// box with a hair of breathing room — no clipped hats, ears, or chins.
+const FACE_PAD = 0.04; // fraction of the box left empty on each side
+export function drawToonFace(ctx, heroId, x, y, w, h) {
+  const spec = TOON_SPECS[heroId];
+  if (!spec) return;
+  const fit = faceFit(heroId, spec);
+  // paintFace scales everything off h and centers on w/2, so the ink lands at
+  // this size and offset regardless of how wide the box is.
+  const inkW = fit.w * h, inkH = fit.h * h;
+  const cx = w / 2 + (fit.x + fit.w / 2 - 0.5) * h;
+  const cy = (fit.y + fit.h / 2) * h;
+  const s = Math.min((1 - FACE_PAD * 2) * w / inkW, (1 - FACE_PAD * 2) * h / inkH);
+  ctx.save();
+  // put the measured ink center on the box center, then scale it to fit
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.scale(s, s);
+  ctx.translate(-cx, -cy);
+  paintFace(ctx, heroId, spec, 0, 0, w, h);
   ctx.restore();
 }
 
@@ -788,6 +911,7 @@ export function poseFromPlayer(player, t) {
     float: !!player.floating,
     stomp: !!player.stomping,
     headless: player.headless > 0 || player.fistThrown,
+    axeThrown: !!player.axeThrown,
     facing: 1,
   };
 }

@@ -125,8 +125,41 @@ export function drawHud(ctx, run) {
 
   drawPlugTally(ctx, run, ly);
 
-  // Power-up timers, top-right under buttons.
-  let py = 20;
+  // Ability recharge gauge, top-right. The bar refilling IS the countdown —
+  // no ticking number. Same visual idiom as the world progress bar: dark
+  // trough, deep fill, bright cap strip; the whole bar lights up when ready.
+  // Touch play skips it: that corner holds pause/mute, and the PWR button
+  // shows its own recharge.
+  if (!Input.usingTouch) {
+    const hero = HERO_BY_ID[run.relay.current];
+    const cd = run.player.abilityCd;
+    const ready = cd <= 0;
+    const frac = ready ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
+    const gx = W - 66, gw = 60;
+    const label = hero.ability.label;
+    drawText(ctx, label, W - 6 - textWidth(label), 12, ready ? '#48e0c8' : '#8a8a98');
+    const by = 22, bh = 7;
+    ctx.fillStyle = '#10141c';
+    ctx.fillRect(gx, by, gw, bh);
+    const fw = Math.round(gw * frac);
+    if (ready) {
+      ctx.fillStyle = '#48e0c8';
+      ctx.fillRect(gx, by, gw, bh);
+      // a highlight tick sweeps the full bar so READY reads at a glance
+      ctx.fillStyle = '#eafff8';
+      ctx.fillRect(gx + ((run.tRun * 45) % gw), by, 2, bh);
+    } else if (fw > 0) {
+      ctx.fillStyle = '#1e4a44';
+      ctx.fillRect(gx, by, fw, bh);
+      ctx.fillStyle = '#48e0c8';
+      ctx.fillRect(gx, by, fw, 2);
+    }
+    ctx.strokeStyle = '#20242c';
+    ctx.strokeRect(gx + 0.5, by + 0.5, gw - 1, bh - 1);
+  }
+
+  // Power-up timers, top-right under the ability gauge.
+  let py = 36;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
@@ -179,17 +212,11 @@ export function drawHud(ctx, run) {
     drawText(ctx, 'OVERTIME', 6, bottomRow2, '#8858c8');
   }
 
-  // Two aligned HUD rows: mission and power status above, challenge and
-  // controls below. READY needs no meter; cooldown uses an explicit number so
-  // the old full-width "underline" cannot be mistaken for decoration.
+  // Keyboard controls hint; the power status lives in the top-right gauge.
   if (!Input.usingTouch) {
     const hero = HERO_BY_ID[run.relay.current];
     const line = `SPC JUMP  DN DUCK  RT/D ${hero.ability.label}  P PAUSE`;
     drawText(ctx, line, W - textWidth(line) - 6, bottomRow2, 'rgba(200,200,216,0.4)');
-    const powerStatus = run.player.abilityCd <= 0
-      ? `PWR ${hero.ability.label}: READY`
-      : `PWR ${hero.ability.label}: CD ${run.player.abilityCd.toFixed(1)}S`;
-    drawText(ctx, powerStatus, W - textWidth(powerStatus) - 6, bottomRow1, run.player.abilityCd <= 0 ? '#48e0c8' : '#8a8a98');
   }
 
   // Touch buttons.
@@ -200,10 +227,16 @@ export function drawHud(ctx, run) {
       const cd = b.id === 'ability' ? run.player.abilityCd : 0;
       ctx.fillStyle = cd > 0 ? 'rgba(90,90,104,0.2)' : 'rgba(72,224,200,0.15)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
+      if (cd > 0) {
+        // recharge rises from the bottom of the button — no ticking number
+        const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
+        const fh = Math.round(b.h * Math.max(0, Math.min(1, 1 - cd / maxCd)));
+        ctx.fillStyle = 'rgba(72,224,200,0.28)';
+        ctx.fillRect(b.x, b.y + b.h - fh, b.w, fh);
+      }
       ctx.strokeStyle = 'rgba(72,224,200,0.5)';
       ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
       drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
-      if (cd > 0) drawTextCentered(ctx, `${cd.toFixed(1)}`, b.x + b.w / 2, b.y + b.h - 9, '#8a8a98');
     }
   }
 }

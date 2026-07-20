@@ -5,18 +5,19 @@ import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
-import { burst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
+import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, wrapText } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
-import { entityBox, overlaps, makePickup, makeObstacle } from './entities.js';
+import { entityBox, overlaps, makePickup, makeObstacle, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech } from './hud.js';
+import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
@@ -167,15 +168,14 @@ export class RunState {
   exit() { setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Audio.setDetune(1); Audio.setInvincible(false); }
 
   setButtons() {
-    const hero = HERO_BY_ID[this.relay.current];
-    const btns = [
+    // Touch only: keyboard players have P/M keys, and the freed top-right
+    // corner holds the ability gauge instead.
+    this.touchButtons = Input.usingTouch;
+    Input.setButtons(Input.usingTouch ? [
       { id: 'pause', x: W - 18, y: 11, w: 14, h: 12, action: 'pause', label: '=' },
       { id: 'mute', x: W - 36, y: 11, w: 14, h: 12, action: 'mute', label: 'M' },
-    ];
-    if (Input.usingTouch) {
-      btns.push({ id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' });
-    }
-    Input.setButtons(btns);
+      { id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' },
+    ] : []);
   }
 
   maxBattery() {
@@ -202,6 +202,7 @@ export class RunState {
   // ------------------------------------------------------------------ update
   update(dt) {
     if (this.finished) { Input.endFrame(); return; }
+    if (Input.usingTouch !== this.touchButtons) this.setButtons(); // first touch mid-run
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
     if (Input.pressed('escape')) {
@@ -391,6 +392,7 @@ export class RunState {
       this.projectiles.push({ type: 'fist', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 210, t: 0, live: true, returning: false, hitIds: new Set() });
     } else if (type === 'axe') {
       Audio.sfx('axe');
+      this.player.axeThrown = true;
       this.projectiles.push({ type: 'axe', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + 220, t: 0, live: true, returning: false, hits: this.modIds.includes('ricochet') ? 2 : 1, hitIds: new Set() });
       if (this.fxRng.chance(0.25)) this.floatText('BOY.', this.camX + PLAYER_X, GROUND_Y - this.player.y - 26, '#e8b890');
     }
@@ -463,6 +465,20 @@ export class RunState {
     }
   }
 
+  // The object comes apart into chunks of itself: they scatter from the centre,
+  // tumble, then land on the ground it was standing on and skid to a stop.
+  // Reduced-motion keeps the dust puff but skips the flying debris.
+  debris(ob, cx, cy) {
+    if (this.save.settings.reducedMotion) return;
+    const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
+    const r = () => this.fxRng.float();
+    const bulk = Math.min(2, (ob.w * ob.h) / 140); // a stacked crate throws more than a switch
+    shardBurst(cx, cy, Math.round((d.count || 9) * (0.7 + bulk * 0.3)), 78, 0.75, d.colors, {
+      size: d.size, grav: d.grav ?? 340, floor: this.groundYAt(ob.x), rand: r,
+    });
+    if (d.spark) burst(cx, cy, 5, 110, 0.22, d.spark, 1, 30, r); // machines throw sparks too
+  }
+
   breakObstacle(ob, silent) {
     ob.live = false;
     const cx = ob.x + ob.w / 2;
@@ -474,6 +490,7 @@ export class RunState {
         shake(0.8, 0.08);
         burst(cx, cy, 10, 60, 0.5, '#c8a068', 1, 160, () => this.fxRng.float());
       }
+      this.debris(ob, cx, cy);
     }
     if (ob.def.bonusCoins) {
       const alt = ob.alt + ob.h;
@@ -651,7 +668,10 @@ export class RunState {
         if (pr.returning && pr.x < this.camX + PLAYER_X) {
           pr.live = false;
           if (pr.type === 'fist') this.player.fistThrown = false;
-          if (pr.type === 'axe' && this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', this.camX + PLAYER_X, GROUND_Y - 70, '#e8b890');
+          if (pr.type === 'axe') {
+            this.player.axeThrown = false;
+            if (this.fxRng.chance(0.15)) this.floatText('THE AXE LODGED IN THE SCENERY. INTENDED.', this.camX + PLAYER_X, GROUND_Y - 70, '#e8b890');
+          }
         }
       } else {
         pr.x += pr.vx * dt;
@@ -715,6 +735,7 @@ export class RunState {
       }
     }
     if (!this.projectiles.some((p) => p.live && p.type === 'fist')) this.player.fistThrown = false;
+    if (!this.projectiles.some((p) => p.live && p.type === 'axe')) this.player.axeThrown = false;
     this.projectiles = this.projectiles.filter((p) => p.live);
   }
 
@@ -1154,13 +1175,9 @@ export class RunState {
         ctx.fillRect(x + 1, y + 1, 2, 2);
         if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
       } else if (pr.type === 'axe') {
-        ctx.save(); ctx.translate(x + 4, y + 4); ctx.rotate(pr.t * 12);
-        ctx.fillStyle = '#7a4c2e'; ctx.fillRect(-6, -1, 10, 2);
-        ctx.fillStyle = '#b8d8f0'; ctx.beginPath(); ctx.moveTo(2, -5); ctx.lineTo(7, -3); ctx.lineTo(7, 3); ctx.lineTo(2, 5); ctx.closePath(); ctx.fill();
-        ctx.restore();
+        drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
       } else if (pr.type === 'fist') {
-        ctx.fillStyle = '#f5f2e8'; ctx.beginPath(); ctx.arc(x + 4, y + 2, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#7048a8'; ctx.strokeRect(x + 1.5, y - 1.5, 6, 7);
+        drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
       } else {
         ctx.fillStyle = '#f6d33c'; ctx.beginPath(); ctx.arc(x + 3, y + 2, 3, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff0a0'; ctx.fillRect(x + 2, y, 2, 1);
