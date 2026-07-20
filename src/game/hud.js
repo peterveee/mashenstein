@@ -3,7 +3,7 @@
 import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, getSprite, platePath, UI_PLATE, UI_PANEL,
+  textWidth, wrapText, getSprite, drawPanel, UI_PLATE,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
@@ -200,9 +200,10 @@ export function drawHud(ctx, run) {
 
   // Relay: current hero. In 'charge' mode the ability ring is the only charge
   // readout — it goes gold when a charge is banked — so there are no pips here.
-  // A rounded badge: face on the left, name inside beside it. Same dark fill,
-  // teal border and light text as the speech bubble below it, so the two read
-  // as one family. Sized to the name and centred on screen, so it grows
+  // A rounded badge: face on the left, name inside beside it. Same panel and
+  // light text as the speech bubble below it, so the two read as one family
+  // — see drawPanel for why neither carries a border. Sized to the name and
+  // centred on screen, so it grows
   // symmetrically instead of drifting as hero names change width. Face and
   // text are both placed off HERO_CY, unrounded, so they share one midline.
   // Centred on the ability ring (cy 12) and the coin icon beside it, so the
@@ -216,16 +217,7 @@ export function drawHud(ctx, run) {
   const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
   const badgeX = Math.round(W / 2 - badgeW / 2);
   const badgeY = HERO_CY - BADGE_H / 2;
-  ctx.save();
-  platePath(ctx, badgeX, badgeY, badgeW, BADGE_H, BADGE_R);
-  ctx.fillStyle = UI_PANEL;
-  ctx.fill();
-  // stroke inset by half a pixel so the 1px border lands on the pixel grid
-  platePath(ctx, badgeX + 0.5, badgeY + 0.5, badgeW - 1, BADGE_H - 1, BADGE_R);
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = '#48e0c8';
-  ctx.stroke();
-  ctx.restore();
+  drawPanel(ctx, badgeX, badgeY, badgeW, BADGE_H, BADGE_R);
   const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
   if (face) {
     ctx.imageSmoothingEnabled = true;
@@ -308,14 +300,10 @@ export function drawSpeech(ctx, speech) {
   const x = W / 2 - tw / 2, y = 46;
   const h = 8 + lines.length * 11;
   // Rounded like the name badge above it (same radius drawText plates use), so
-  // every box the HUD puts on screen shares one silhouette.
-  const R = 3;
-  ctx.fillStyle = UI_PANEL;
-  platePath(ctx, x - 6, y - 4, tw + 12, h, R);
-  ctx.fill();
-  ctx.strokeStyle = speech.who === 'eggshell' ? '#c83030' : '#48e0c8';
-  ctx.lineWidth = 1;
-  platePath(ctx, x - 5.5, y - 3.5, tw + 11, h - 1, R);
-  ctx.stroke();
+  // every box the HUD puts on screen shares one silhouette. The bubble used to
+  // border red for Eggshell and teal for a teammate; with the border gone the
+  // ink carries that on its own — Eggshell talks in pink-red, allies in the
+  // same pale teal as the badge.
+  drawPanel(ctx, x - 6, y - 4, tw + 12, h, 3);
   lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, speech.who === 'eggshell' ? '#f0a0a0' : '#d0f0e8'));
 }

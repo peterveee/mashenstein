@@ -52,6 +52,22 @@ run.startFinishRun();
 assert(run.obstacles.includes(finalEnemy) && !run.obstacles.includes(postFinishEnemy),
   'the final stretch keeps enemies before the finish but clears anything beyond it');
 
+run.player.iframes = 0;
+run.obstacles = [makeObstacle('zombie', run.playerWorldX())];
+const cellsBeforeFinishHit = run.battery;
+run.collide();
+assert(run.battery === cellsBeforeFinishHit - 1,
+  'hazards can still damage the player while the finish camera is locked');
+
+run.relay.current = 'b33p';
+const shotTarget = makeObstacle('cactus', run.playerWorldX() + 52);
+run.obstacles = [shotTarget];
+run.player.abilityCd = 0;
+run.useAbility();
+run.updateProjectiles(0.12, run.speed);
+assert(!shotTarget.live,
+  'hero attacks still hit final-stretch obstacles while the finish camera is locked');
+
 const targetStage = { ...stage, mission: { type: 'targets', n: 1, desc: 'TEST' } };
 let incompleteFinish = null;
 run = new RunState({ stage: targetStage, save, seed: 45, difficulty: 1, onEnd: (result) => { incompleteFinish = result; } });

@@ -337,7 +337,24 @@ export const UI_PLATE = 'rgba(12,10,22,0.22)';
 // speech bubble. A soft charcoal rather than true black: at full strength a
 // pure black rect punches a hole in the scene, where this still reads as a
 // panel laid over it.
-export const UI_PANEL = 'rgba(26,24,40,0.86)';
+export const UI_PANEL = 'rgba(46,43,68,0.82)';
+
+// A UI box that owns its own backing. No border: a coloured outline competes
+// with the gauges and icons around it, and the fill alone already separates
+// the text from the scene. What it gets instead is a catch-light along the top
+// inside edge — without it an unbordered dark rect reads as a hole punched in
+// the art rather than a panel laid over it. Clipped to the rounded path so the
+// highlight stops short of the corners instead of squaring them off.
+export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL) {
+  ctx.save();
+  platePath(ctx, x, y, w, h, r);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(x, y, w, 1);
+  ctx.restore();
+}
 
 // `plate` (a css colour) fills a soft rounded rect behind the string, sized
 // from the same metrics the glyphs use. Glyphs occupy y-1*scale .. y+11*scale

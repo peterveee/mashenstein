@@ -331,6 +331,11 @@ export class RunState {
 
   finishWorldX() { return this.totalDist + PLAYER_X; }
   finishCameraX() { return this.finishWorldX() - FINISH_LINE_X; }
+  playerWorldX() { return this.camX + (this.finishing ? this.finishPlayerX : PLAYER_X); }
+  playerBox() {
+    const screenX = this.finishing ? this.finishPlayerX : PLAYER_X;
+    return this.player.box(this.camX, this.groundYAt(this.playerWorldX()), screenX);
+  }
 
   startFinishRun() {
     if (this.finishing) return;
@@ -364,8 +369,13 @@ export class RunState {
     });
     if (res.landed) Audio.sfx('land');
     // The world and goal are stationary; the player alone runs across the
-    // screen. It is still playable — jump, float and power inputs all work.
+    // screen. The final stretch remains live: hazards, pickups and attacks
+    // use this moving world position just as they do during normal scrolling.
     this.finishPlayerX += sp * wdt;
+    this.updateEntities(wdt, sp);
+    this.updateProjectiles(wdt, sp);
+    this.collide();
+    if (this.dead) return;
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
     if (this.finishPlayerX + 6 >= FINISH_LINE_X) {
@@ -378,7 +388,7 @@ export class RunState {
 
   // ------------------------------------------------------------------ ability
   powerTarget(type = HERO_BY_ID[this.relay.current].ability.type) {
-    const px = this.camX + PLAYER_X;
+    const px = this.playerWorldX();
     if (type === 'stomp' && this.player.grounded) {
       return this.obstacles
         .filter((ob) => ob.live && ob.def.ground && ob.def.breakable && ob.x + ob.w >= px - 8 && ob.x <= px + 46)
@@ -412,7 +422,7 @@ export class RunState {
     if (type === 'stomp') {
       if (charged) {
         // Screen-wide shockwave: the old blast, but Lorenzo swings it.
-        const px = this.camX + PLAYER_X;
+        const px = this.playerWorldX();
         this.player.stomping = false;
         for (const ob of this.obstacles) {
           if (ob.live && ob.def.ground && ob.def.breakable !== false && !ob.def.isGap
@@ -421,7 +431,7 @@ export class RunState {
         Audio.sfx('crunch');
         burst(px + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
       } else if (this.player.grounded) {
-        const px = this.camX + PLAYER_X;
+        const px = this.playerWorldX();
         const target = this.powerTarget(type);
         if (target) this.breakObstacle(target);
         Audio.sfx('crunch');
@@ -437,7 +447,7 @@ export class RunState {
       // version just runs much longer.
       this.player.dashT = charged ? 1.1 : 0.4;
       Audio.sfx('dash');
-      for (let i = 0; i < (charged ? 10 : 5); i++) spawn(this.camX + PLAYER_X - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
+      for (let i = 0; i < (charged ? 10 : 5); i++) spawn(this.playerWorldX() - i * 6, GROUND_Y - this.player.y - 8, -40, 0, 0.3, '#2050d8', 2, 0);
     } else if (type === 'roll') {
       this.player.rollT = charged ? 1.4 : 0.65;
       this.player.rollBashed = false;
@@ -447,19 +457,19 @@ export class RunState {
       Audio.sfx('dash');
     } else if (type === 'shoot') {
       Audio.sfx('shoot');
-      const px = this.camX + PLAYER_X + 12;
+      const px = this.playerWorldX() + 12;
       // Charged: a three-round spread, every pellet piercing.
       const alts = charged ? [this.player.y - 6, this.player.y + 8, this.player.y + 22] : [this.player.y + 8];
       for (const alt of alts) {
         this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + 260, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
       }
-      this.floatText(charged ? 'FULL CYAN' : 'PEW', this.camX + PLAYER_X, GROUND_Y - this.player.y - 24, '#f6d33c');
+      this.floatText(charged ? 'FULL CYAN' : 'PEW', this.playerWorldX(), GROUND_Y - this.player.y - 24, '#f6d33c');
     } else if (type === 'compress') {
       this.player.compressT = charged ? 2.6 : 1;
       Audio.sfx('power');
-      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', this.camX + PLAYER_X - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
+      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', this.playerWorldX() - 30, GROUND_Y - this.player.y - 30, '#f8c0d8');
     } else if (type === 'eat') {
-      const px = this.camX + PLAYER_X;
+      const px = this.playerWorldX();
       Audio.sfx('chomp');
       if (charged) {
         // Charged: clears the plate. Everything on screen, still politely.
@@ -484,13 +494,13 @@ export class RunState {
       Audio.sfx('plop');
       this.player.fistThrown = true;
       // Charged: the fist keeps going instead of turning back at the first hit.
-      this.projectiles.push({ type: 'fist', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set() });
+      this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set() });
     } else if (type === 'axe') {
       Audio.sfx('axe');
       this.player.axeThrown = true;
       // Charged: the axe works the whole screen before coming home.
       const hits = charged ? 99 : (this.modIds.includes('ricochet') ? 2 : 1);
-      this.projectiles.push({ type: 'axe', x: this.camX + PLAYER_X + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set() });
+      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set() });
       if (this.fxRng.chance(0.25)) this.floatText('BOY.', this.camX + PLAYER_X, GROUND_Y - this.player.y - 26, '#e8b890');
     }
   }
@@ -706,7 +716,7 @@ export class RunState {
       if (ob.vx) ob.x += ob.vx * dt;
       if (ob.def.falls && !ob.fell) {
         // Telegraph, then drop when the player approaches.
-        if (ob.x - (this.camX + PLAYER_X) < sp * (ob.fallT + 0.35)) {
+        if (ob.x - this.playerWorldX() < sp * (ob.fallT + 0.35)) {
           ob.fallT -= dt;
           if (ob.fallT <= 0) { ob.fell = true; }
         }
@@ -717,7 +727,7 @@ export class RunState {
       if (ob.def.beatSync) ob.h = 10 + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
       if (ob.def.shoots) {
         ob.shootT -= dt;
-        if (ob.shootT <= 0 && ob.x > this.camX + PLAYER_X + 60 && ob.x < this.camX + W + 40) {
+        if (ob.shootT <= 0 && ob.x > this.playerWorldX() + 60 && ob.x < this.camX + W + 40) {
           ob.shootT = 2.2;
           const alt = ob.def.ground ? 8 : ob.alt;
           this.projectiles.push({ type: 'enemyShot', x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
@@ -781,7 +791,7 @@ export class RunState {
         const returnAfter = pr.type === 'fist' ? 0.42 : 0.55;
         if (!pr.returning && pr.t > returnAfter) pr.returning = true;
         pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 240 : 300)) : pr.vx) * dt;
-        if (pr.returning && pr.x < this.camX + PLAYER_X) {
+        if (pr.returning && pr.x < this.playerWorldX()) {
           pr.live = false;
           if (pr.type === 'fist') this.player.fistThrown = false;
           if (pr.type === 'axe') {
@@ -837,14 +847,16 @@ export class RunState {
       // Enemy shot vs player.
       if (pr.type === 'enemyShot' && pr.telegraph <= 0) {
         const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 3, w: 5, h: 5 };
-        if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox) && this.player.rolling && this.relay.current === 'fernwick' && !this.player.rollDeflectUsed) {
+        const playerX = this.playerWorldX();
+        const playerBox = this.playerBox();
+        if (overlaps(playerBox, pbox) && this.player.rolling && this.relay.current === 'fernwick' && !this.player.rollDeflectUsed) {
           pr.live = false;
           this.player.rollDeflectUsed = true;
           this.player.deflectFlashT = 0.25;
           Audio.sfx('shield');
           this.score += 25;
-          this.floatText('DEFLECTED', this.camX + PLAYER_X, this.groundYAt(this.camX + PLAYER_X) - 32, '#a8e6ff');
-        } else if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox) && !this.player.invincible) {
+          this.floatText('DEFLECTED', playerX, this.groundYAt(playerX) - 32, '#a8e6ff');
+        } else if (overlaps(playerBox, pbox) && !this.player.invincible) {
           pr.live = false;
           this.takeHit('SHOT BY A DRONE WITH A GRUDGE');
         }
@@ -1010,7 +1022,8 @@ export class RunState {
 
   // ------------------------------------------------------------------ collision
   collide() {
-    const pbox = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
+    const playerX = this.playerWorldX();
+    const pbox = this.playerBox();
     // Obstacles.
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
@@ -1097,7 +1110,7 @@ export class RunState {
     // Pickups.
     for (const p of this.pickups) {
       if (!p.live) continue;
-      if (p.def.resident && p.following) { p.x = this.camX + PLAYER_X - 16; continue; }
+      if (p.def.resident && p.following) { p.x = playerX - 16; continue; }
       const box = { x: p.x, y: this.groundYAt(p.x) - p.alt - p.h, w: p.w, h: p.h };
       if (!overlaps(pbox, box)) continue;
       p.live = false;

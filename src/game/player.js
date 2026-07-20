@@ -168,8 +168,8 @@ export class Player {
   }
 
   // World-space hitbox (bottom at groundY - y).
-  box(camX, groundY) {
-    const x = camX + PLAYER_X;
+  box(camX, groundY, screenX = PLAYER_X) {
+    const x = camX + screenX;
     const bottom = groundY - this.y;
     return { x: x + (12 - this.hitW) / 2, y: bottom - this.hitH, w: this.hitW, h: this.hitH };
   }
