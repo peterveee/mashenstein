@@ -21,7 +21,10 @@ function pickTransitionHero() {
   return TRANSITION_HEROES[pick];
 }
 
+let cameo = true;
+
 export function setState(next, ...args) {
+  cameo = true;
   transitionHero = pickTransitionHero();
   pending = { next, args };
   fading = 1;
@@ -31,6 +34,14 @@ export function setState(next, ...args) {
     next.enter && next.enter(...args);
     pending = null;
   }
+}
+
+// Same shutter, no cast cameo. For the run-to-results hand-off: the results
+// screen opens on the whole team celebrating, so a single hero waving one beat
+// earlier steps on that reveal.
+export function setStateNoCameo(next, ...args) {
+  setState(next, ...args);
+  cameo = false;
 }
 
 export function currentState() { return current; }
@@ -87,7 +98,7 @@ function drawTransition(ctx, amount) {
 
   // Once the sticker is large enough, introduce a rotating cast cameo. Each
   // hero gets a tiny personality pose, turning loading time into a roll call.
-  if (a > 0.52) {
+  if (cameo && a > 0.52) {
     const show = Math.min(1, (a - 0.52) / 0.2);
     const bounce = Math.sin(show * Math.PI) * 5;
     const sy = 0.78 + show * 0.22;

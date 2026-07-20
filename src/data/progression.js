@@ -4,7 +4,6 @@ export const BENCH_UPGRADES = [
   { id: 'shield', name: 'SHIELD', levels: [0, 800, 2400], max: 3, desc: ['ABSORBS 1 HIT. STACKS TO 2.', 'STACKS TO 3.', 'BREAKING EMITS A SHOCKWAVE THAT CLEARS THE NEAREST OBSTACLE.'] },
   { id: 'magnet', name: 'MAGNET', levels: [0, 800, 2400], max: 3, desc: ['PULLS COINS. 8 SECONDS.', '12 SECONDS. BIGGER PULL.', '16 SECONDS. COINS HAVE NO CHANCE.'] },
   { id: 'star', name: 'SCORE STAR', levels: [0, 800, 2400], max: 3, desc: ['2X SCORE. 10 SECONDS.', '2.5X SCORE.', '3X SCORE.'] },
-  { id: 'slowmo', name: 'SLOW-MO', levels: [0, 800, 2400], max: 3, desc: ['WORLD AT 65%. 6 SECONDS.', '8 SECONDS.', '10 SECONDS AT 55%.'] },
   { id: 'tuneup', name: 'HERO TUNE-UP', levels: [1000, 2000, 3000], max: 3, desc: ['ABILITY COOLDOWNS -10%.', '-20%.', '-30%.'] },
 ];
 
@@ -35,5 +34,9 @@ export const MASTERY_LEVELS = [0, 100, 300, 700, 1400];
 // Coin rewards.
 export const REWARDS = {
   stageClear: 250, bossClear: 500, challengeBonus: 100, applianceBonus: 150,
-  corruptedClear: 400, minigameWin: 300,
+  corruptedClear: 400, minigameWin: 300, arcadeWin: 200,
 };
+
+// Arcade Corner is opt-in: every breaker-box game is available from the start,
+// but a play costs coins. Winning nets +150; losing is the price of curiosity.
+export const ARCADE_PLAY_COST = 50;

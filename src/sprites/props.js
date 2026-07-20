@@ -362,12 +362,6 @@ export const PROP_PAINTERS = {
     shape(ctx, '#f6d33c', u, (c) => star(c, w / 2, h * 0.52, w * 0.48, w * 0.2, 5));
     plain(ctx, '#fff8c0', (c) => star(c, w / 2, h * 0.5, w * 0.22, w * 0.09, 5));
   },
-  capSlow(ctx, w, h) {
-    const u = Math.max(w, h);
-    shape(ctx, '#c8b8e8', u, (c) => c.arc(w / 2, h / 2, w * 0.44, 0, Math.PI * 2));
-    plain(ctx, '#3a2a5a', (c) => c.arc(w / 2, h / 2, w * 0.3, 0, Math.PI * 2));
-    stroke(ctx, '#fff', Math.max(0.5, w * 0.08), (c) => { c.moveTo(w / 2, h / 2); c.lineTo(w / 2, h * 0.28); c.moveTo(w / 2, h / 2); c.lineTo(w * 0.7, h * 0.56); });
-  },
   capAirJump(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#72d8f0', u, (c) => { c.moveTo(w * 0.5, h * 0.04); c.lineTo(w * 0.92, h * 0.84); c.lineTo(w * 0.5, h * 0.68); c.lineTo(w * 0.08, h * 0.84); c.closePath(); });
@@ -393,6 +387,15 @@ export const PROP_PAINTERS = {
       c.ellipse(w * 0.38, h * 0.46, w * 0.07, h * 0.06, 0, 0, Math.PI * 2);
       c.ellipse(w * 0.62, h * 0.62, w * 0.06, h * 0.05, 0, 0, Math.PI * 2);
     });
+  },
+  capRelay(ctx, w, h) {
+    // A relay baton, lit. Pink body rather than gold so it cannot be mistaken
+    // for the score star at 8px; the gold spark at the tip is the tell that it
+    // is a charge and not just another capsule.
+    const u = Math.max(w, h);
+    shape(ctx, '#f890b8', u, (c) => rr(c, w * 0.24, h * 0.12, w * 0.52, h * 0.62, w * 0.26));
+    plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
+    plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
   appliance(ctx, w, h) {
     const u = Math.max(w, h);
@@ -455,12 +458,31 @@ export const PROP_PAINTERS = {
     });
   },
   dustdevil(ctx, w, h) {
+    // Upright stick vacuum — the silhouette has to say "vacuum" at 14px:
+    // wide floor head, canister on top, slanted handle, and a power cord
+    // floating up to a visible plug (nothing is holding it; it is haunted).
     const u = Math.max(w, h);
-    shape(ctx, '#c83030', u, (c) => rr(c, w * 0.16, h * 0.28, w * 0.68, h * 0.54, w * 0.2));
-    plain(ctx, '#8a1c1c', (c) => rr(c, w * 0.3, h * 0.82, w * 0.4, h * 0.16, w * 0.06)); // nozzle
-    plain(ctx, '#c8d8e8', (c) => c.ellipse(w * 0.5, h * 0.48, w * 0.16, h * 0.16, 0, 0, Math.PI * 2)); // dust window
-    plain(ctx, '#8a8a98', (c) => c.ellipse(w * 0.5, h * 0.48, w * 0.07, h * 0.07, 0, 0, Math.PI * 2));
-    stroke(ctx, '#3a3a48', Math.max(0.5, w * 0.06), (c) => { c.moveTo(w * 0.74, h * 0.34); c.quadraticCurveTo(w * 0.96, h * 0.16, w * 0.86, h * 0.02); });
+    stroke(ctx, '#3a3a48', Math.max(0.5, w * 0.055), (c) => {
+      c.moveTo(w * 0.52, h * 0.66);
+      c.quadraticCurveTo(w * 0.92, h * 0.6, w * 0.84, h * 0.26);
+    });
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.78, h * 0.1, w * 0.13, h * 0.14, w * 0.03)); // the plug
+    stroke(ctx, '#f6d33c', Math.max(0.5, w * 0.045), (c) => {
+      c.moveTo(w * 0.81, h * 0.1); c.lineTo(w * 0.81, h * 0.02);
+      c.moveTo(w * 0.88, h * 0.1); c.lineTo(w * 0.88, h * 0.02);
+    });
+    stroke(ctx, '#8a8a98', Math.max(0.6, w * 0.07), (c) => { c.moveTo(w * 0.36, h * 0.34); c.lineTo(w * 0.6, h * 0.05); }); // handle
+    plain(ctx, '#8a8a98', (c) => c.arc(w * 0.62, h * 0.05, w * 0.06, 0, Math.PI * 2)); // grip knob
+    shape(ctx, '#8a1c1c', u, (c) => rr(c, w * 0.04, h * 0.82, w * 0.74, h * 0.16, w * 0.07)); // floor head
+    plain(ctx, '#601414', (c) => rr(c, w * 0.04, h * 0.93, w * 0.74, h * 0.05, w * 0.02)); // brush lip
+    shape(ctx, '#c83030', u, (c) => rr(c, w * 0.16, h * 0.3, w * 0.42, h * 0.56, w * 0.12)); // canister
+    plain(ctx, '#c8d8e8', (c) => c.ellipse(w * 0.37, h * 0.62, w * 0.13, h * 0.13 * (w / h), 0, 0, Math.PI * 2)); // dust window
+    plain(ctx, '#8a8a98', (c) => c.ellipse(w * 0.37, h * 0.62, w * 0.055, h * 0.055 * (w / h), 0, 0, Math.PI * 2)); // swirl
+    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.37, h * 0.4, w * 0.05, 0, Math.PI * 2)); // the apologetic LED
+    plain(ctx, 'rgba(200,216,232,0.75)', (c) => { // dust it is politely raising
+      c.arc(w * 0.88, h * 0.9, w * 0.045, 0, Math.PI * 2);
+      c.arc(w * 0.97, h * 0.82, w * 0.03, 0, Math.PI * 2);
+    });
   },
   goldTrophy(ctx, w, h) {
     const u = Math.max(w, h);

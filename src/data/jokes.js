@@ -38,7 +38,64 @@ export const EGGSHELL_TAUNTS = [
   'THIS COPTER IS FINE. THE BEEPING IS DECORATIVE.',
   'A CHILD COULD DO THIS. A CHILD DID. I FIRED HIM.',
   'THE FOURTH HEALTH BAR IS REAL. PROBABLY.',
+  'I HAVE BEEN LOSING TO PLUMBERS SINCE 1986. THE STATISTICAL PROBABILITY OF YOU WINNING THIS STAGE IS AN INSULT TO MY DOCTORATE.',
+  'DO YOU KNOW WHAT IT IS LIKE TO SIT IN A CLOWN-COPTER FOR FOUR DECADES? THE ERGONOMICS ARE ATROCIOUS.',
 ];
+
+// Relay exit lines: the departing hero's parting shot at a portal swap, keyed
+// by who is LEAVING. This used to be a two-hander — the outgoing hero set up,
+// the incoming hero replied, and the button callout followed — three bubbles
+// deep in a stack you are reading while dodging. The reply was the one to cut:
+// the incoming hero's actual news is the callout right behind it, and by the
+// time the bubbles play the player sprite has already become them, so the
+// outgoing hero was talking out of someone else's body.
+//
+// So every line here has to stand alone — no setups waiting for a punchline.
+// Each hero speaks the first time they tag out in a run and is quiet after
+// that: everyone gets their moment, and a swap-heavy run does not turn into a
+// conversation.
+export const EXIT_LINES = {
+  lorenzo: [
+    'THE VALVE IS SEALED. THE REST IS YOUR PROBLEM.',
+    'APPLYING INDUSTRIAL THREAD SEALANT AND LEAVING.',
+    'I AM CLOCKING OUT. THE DUCTWORK KNOWS WHAT IT DID.',
+  ],
+  gnash: [
+    'ALREADY AT THE NEXT CORNER. CATCH UP.',
+    'TOO SLOW. I ALREADY PASSED THE VALVE.',
+    'I FINISHED THIS SHIFT BEFORE IT STARTED.',
+  ],
+  fernwick: [
+    'THE RECEIPT SAYS SOMEONE ELSE HANDLES THIS PART.',
+    'MY PROPHECY ENDS HERE. IT WAS A SHORT PROPHECY.',
+    'THE RECEIPT EXPRESSLY FORBIDS RUNNING. I GO.',
+  ],
+  b33p: [
+    'CHASSIS POWERING DOWN. CYAN LEVEL: CRITICAL.',
+    'HANDING OFF. LOGGING THIS AS A SUCCESS. IT WAS NOT.',
+    'SHIFT COMPLETE. UPDATE STILL WILL NOT INSTALL.',
+  ],
+  mochi: [
+    'POYO. (THE PIXELS WARP SLIGHTLY.)',
+    'POYO.',
+    'POYO? (IT IS A GOODBYE. PROBABLY.)',
+  ],
+  chompo: [
+    'I ATE THE SCORE COUNTER. IT WAS CHEWY. GOODBYE.',
+    'I HAVE POSTURE TO MAINTAIN ELSEWHERE, DARLING.',
+    'THE FOOD COURT CALLS. IT ALWAYS CALLS.',
+  ],
+  raymn: [
+    'HANDS OFF. LITERALLY. THEY ARE UNSECURED.',
+    'MY HAND IS SELF-EMPLOYED. IT LEAVES WHEN IT WANTS.',
+    'THE SHOES DID MOST OF THAT. I PROVIDED LEADERSHIP.',
+  ],
+  grumpos: [
+    'BOY. TAKE THE FIELD.',
+    'PREPARE FOR BALLISTIC DISPATCH. I AM LEAVING.',
+    'THE AXE STAYS WITH ME. BOY.',
+  ],
+};
 
 export const EGGSHELL_NARRATION = [ // inaccurate, for corrupted mode + UNPLUGGED
   'HE JUMPS. HE DOES NOT. I AM NOT WATCHING.',
@@ -83,6 +140,8 @@ export const HUB_LINES = {
     'HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.',
     'MY COWORKERS SENT A FAREWELL CARD. IT SAYS "SEE YOU MONDAY."',
     'THE PAWN SHOP IS LEGALLY DISTINCT. FROM WHAT? EXACTLY.',
+    'I AM THE ONLY ENTITY IN THIS ROOM RESPONSIBLE FOR THE PHYSICAL TOGGLE SWITCHES. THE REST OF YOU ARE LITERALLY CONSTRUCTED FROM MATH.',
+    'HR SAYS LOGGING INTO A DIGITAL ENVIRONMENT DOES NOT CONSTITUTE A COMMUTE. MY TIME-CARD IS COMPLICATED.',
   ],
   raymn: [
     'THE LIMB INSPECTOR LEFT WITHOUT COMPLETING THE FORM.',

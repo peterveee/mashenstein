@@ -3,9 +3,10 @@
 import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, textWidth, getSprite } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
+import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
@@ -13,10 +14,11 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capSlow: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], appliance: [12, 9], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [12, 9], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
+import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME } from '../data/cabinets.js';
 import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
 
@@ -856,23 +858,258 @@ export class IntroState {
   }
 }
 
+// THE BRIEFING MANIFEST: a full-black establishment screen before every
+// stage. The MISSION line carries the real information; the memo blocks are
+// letterhead comedy. One input completes the typewriter, a second proceeds.
+export class BriefingState {
+  constructor({ cab, stage, onDone }) { this.cab = cab; this.stage = stage; this.onDone = onDone; }
+  enter() {
+    this.chars = 0;
+    this.t = 0;
+    Input.setMenuButtons();
+    this.pieces = [
+      { head: null, text: `MISSION: ${this.stage.mission.desc}` },
+      ...(BRIEFINGS[this.stage.id] || []),
+    ];
+    this.total = this.pieces.reduce((n, p) => n + p.text.length, 0);
+  }
+  update(dt) {
+    this.t += dt;
+    this.chars += dt * 70; // brisker than the finale's 34 — this screen is read often
+    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
+      if (this.chars < this.total) { this.chars = this.total; Audio.sfx('ui'); }
+      else { Audio.sfx('uiConfirm'); this.onDone(); }
+    }
+    if (Input.pressed('back')) { Audio.sfx('uiConfirm'); this.onDone(); }
+    Input.endFrame();
+  }
+  draw(ctx) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    const cabNo = CABINETS.findIndex((c) => c.id === this.cab.id) + 1;
+    drawTextCentered(ctx, `STAGE ${cabNo}-${this.stage.index} BRIEFING`, W / 2, 26, '#e8e8f0', 2, 'title');
+    let budget = Math.floor(this.chars);
+    let y = 58;
+    for (const piece of this.pieces) {
+      if (budget <= 0) break;
+      // Letterhead pops in whole the moment its memo starts typing.
+      if (piece.head) {
+        const isEgg = piece.head.startsWith('INTERRUPTION');
+        wrapText(piece.head, W - 64, 1, 2).forEach((line) => {
+          drawTextCentered(ctx, line, W / 2, y, isEgg ? '#f0a0a0' : '#48e0c8');
+          y += 11;
+        });
+        y += 1;
+      }
+      const shown = piece.text.slice(0, budget);
+      budget -= piece.text.length;
+      wrapText(shown, W - 64, 1, 8).forEach((line) => {
+        drawTextCentered(ctx, line, W / 2, y, piece.head ? '#c8c8d8' : '#f6d33c');
+        y += 11;
+      });
+      y += 8;
+    }
+    const done = this.chars >= this.total;
+    if (!done || Math.floor(this.t * 2) % 2 === 0) {
+      drawTextCentered(ctx, `${Input.usingTouch ? '[TAP]' : '[ENTER]'}: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`,
+        W / 2, H - 20, done ? '#c8c8d8' : '#5a5a68');
+    }
+  }
+}
+
+// Party colors for the results screen: the game's own gold/teal/pink/purple,
+// so the confetti reads as MASHENSTEIN and not as generic stock celebration.
+const PARTY_COLORS = ['#f6d33c', '#48e0c8', '#f890b8', '#8858c8', '#48c848', '#ffffff'];
+
+// The results screen is the one place we admit where the game physically is:
+// inside the tube. Act III says so literally, so the frame here is the CRT
+// itself seen from within — the rounded corners of the glass, the dark mask
+// where the tube stops, and the phosphor glow banked at the bottom.
+//
+// The renderer already supplies the optics — glfx applies vignette and
+// chromatic aberration to the whole canvas — so what was missing was never a
+// filter, it was the *shape*. Rounded corners are what makes a screen read as
+// a CRT rather than as a rectangle that happens to be dark.
+//
+// Deliberately static. The screen already carries dense text, up to eight hero
+// sprites, fireworks and falling streamers; a fifth moving layer behind the
+// most information-dense part of the frame is exactly what a starfield would
+// have been, and it would fight the burst shrapnel dot for dot.
+const TUBE_INSET = 5;    // mask thickness where the glass stops
+const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
+let tubeGlow = null;
+let tubeWash = null;
+
+// Traced by hand rather than roundRect() — the corner is a quadratic through
+// the actual corner point, which gives the slightly-inflated curve of real
+// tube glass instead of a perfect quarter circle.
+function tubePath(ctx) {
+  const x0 = TUBE_INSET, y0 = TUBE_INSET, x1 = W - TUBE_INSET, y1 = H - TUBE_INSET;
+  ctx.beginPath();
+  ctx.moveTo(x0 + TUBE_R, y0);
+  ctx.lineTo(x1 - TUBE_R, y0);
+  ctx.quadraticCurveTo(x1, y0, x1, y0 + TUBE_R);
+  ctx.lineTo(x1, y1 - TUBE_R);
+  ctx.quadraticCurveTo(x1, y1, x1 - TUBE_R, y1);
+  ctx.lineTo(x0 + TUBE_R, y1);
+  ctx.quadraticCurveTo(x0, y1, x0, y1 - TUBE_R);
+  ctx.lineTo(x0, y0 + TUBE_R);
+  ctx.quadraticCurveTo(x0, y0, x0 + TUBE_R, y0);
+  ctx.closePath();
+}
+
+// Speckle: fixed positions, so it reads as grain in the glass rather than as
+// a sixth animated layer. Seeded by index — no Math.random, so the pattern is
+// identical every visit and never crawls between frames.
+const TUBE_SPECKLE = Array.from({ length: 520 }, (_, i) => {
+  const r = Math.sin(i * 12.9898) * 43758.5453;
+  const s = Math.sin(i * 78.233) * 24634.6345;
+  return { x: Math.abs(r) % W | 0, y: Math.abs(s) % H | 0, a: 0.03 + (Math.abs(r * 3) % 1) * 0.05 };
+});
+
+function drawTubeFace(ctx) {
+  ctx.fillStyle = '#07070c';           // the dark beyond the glass
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  tubePath(ctx);
+  ctx.clip();
+  ctx.fillStyle = '#0b0b14';
+  ctx.fillRect(0, 0, W, H);
+  // The tube has to actually EMIT before any of the texture below can read.
+  // Scanlines and speckle are modulation — they need luminance to modulate,
+  // and dark lines over a near-black field are simply invisible. This wash is
+  // what everything else is drawn against.
+  if (!tubeWash) {
+    tubeWash = ctx.createRadialGradient(W / 2, H * 0.40, 8, W / 2, H * 0.40, W * 0.60);
+    tubeWash.addColorStop(0, 'rgba(104,132,214,0.30)');
+    tubeWash.addColorStop(0.55, 'rgba(78,96,168,0.14)');
+    tubeWash.addColorStop(1, 'rgba(60,70,140,0)');
+  }
+  ctx.fillStyle = tubeWash;
+  ctx.fillRect(0, 0, W, H);
+  // Phosphor banked along the bottom of the tube, warm where the beam has
+  // been working hardest. Lands under the hero row, so the curtain call reads
+  // as standing in the glow rather than floating on black.
+  if (!tubeGlow) {
+    tubeGlow = ctx.createLinearGradient(0, H, 0, H - 110);
+    tubeGlow.addColorStop(0, 'rgba(255,168,88,0.22)');
+    tubeGlow.addColorStop(1, 'rgba(255,168,88,0)');
+  }
+  ctx.fillStyle = tubeGlow;
+  ctx.fillRect(0, H - 110, W, 110);
+  ctx.restore();
+}
+
+// Draws AFTER the party, so streamers tumble away behind the curve instead of
+// running off a square edge. That occlusion is most of what sells the glass.
+function drawTubeGlass(ctx) {
+  ctx.save();
+  // Mask: everything outside the tube. evenodd against a full-screen rect.
+  ctx.fillStyle = '#07070c';
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  tubePath(ctx);
+  ctx.fill('evenodd');
+  // Scanlines and speckle, only on the glass. Now that the face is lit these
+  // have something to cut into; at 0.09 over bare #0b0b14 they were invisible.
+  ctx.save();
+  tubePath(ctx);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  // Every third line gets a lit companion — the beam edge. Bright-on-dark is
+  // what reads as a scanline; dark-on-dark just dims the screen.
+  ctx.fillStyle = 'rgba(150,180,255,0.05)';
+  for (let y = 1; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  for (const s of TUBE_SPECKLE) {
+    ctx.fillStyle = `rgba(190,205,255,${s.a})`;
+    ctx.fillRect(s.x, s.y, 1, 1);
+  }
+  ctx.restore();
+  // The lit edge of the glass, brightest along the top where a tube catches
+  // the room. lineWidth is set explicitly: it persists across frames.
+  ctx.lineWidth = 1;
+  tubePath(ctx);
+  ctx.strokeStyle = 'rgba(150,190,255,0.10)';
+  ctx.stroke();
+  ctx.restore();
+}
+
 export class ResultsState {
   constructor({ result, gains, save, onDone }) {
     this.result = result; this.gains = gains; this.save = save; this.onDone = onDone;
   }
-  enter() { this.t = 0; this.shown = 0; Input.setMenuButtons(); Audio.sfx(this.result.success ? 'win' : 'lose'); }
+  enter() {
+    this.t = 0; this.shown = 0;
+    this.shells = [];       // rising mortars; they burst at the top of their arc
+    this.shellT = 0.25;     // first one goes up almost immediately
+    this.streamerT = 0;
+    clearParticles();
+    Input.setMenuButtons();
+    Audio.sfx(this.result.success ? 'win' : 'lose');
+  }
+  // Fireworks over the celebration row, plus streamers tumbling down the
+  // frame. Losses get neither — a quiet screen is part of the joke.
+  updateParty(dt) {
+    if (!this.result.success || this.save.settings.reducedMotion) return;
+    this.shellT -= dt;
+    if (this.shellT <= 0) {
+      this.shellT = 0.55 + Math.random() * 0.7;
+      const x = 40 + Math.random() * (W - 80);
+      this.shells.push({
+        x, y: H + 6, vx: (Math.random() - 0.5) * 24, vy: -(230 + Math.random() * 50),
+        fuse: 0.85 + Math.random() * 0.3, color: PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
+      });
+      Audio.sfx('ui');
+    }
+    for (let i = this.shells.length - 1; i >= 0; i--) {
+      const s = this.shells[i];
+      s.fuse -= dt; s.vy += 120 * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+      // a thin trail of sparks so the shell reads as climbing, not floating
+      if (Math.random() < 0.5) burst(s.x, s.y, 1, 12, 0.28, s.color, 1.1, 40);
+      if (s.fuse <= 0) {
+        // low gravity on the shrapnel: the ring hangs, then drifts down
+        burst(s.x, s.y, 26, 115, 1.3, s.color, 4.5, 30);
+        burst(s.x, s.y, 6, 40, 0.3, '#ffffff', 3, 18); // white core flash
+        this.shells.splice(i, 1);
+        Audio.sfx('coin');
+      }
+    }
+    // Streamers: paper ribbons that fall past the whole screen, spinning.
+    this.streamerT -= dt;
+    if (this.streamerT <= 0) {
+      this.streamerT = 0.12 + Math.random() * 0.1;
+      spawnShard(
+        Math.random() * W, -6,
+        (Math.random() - 0.5) * 30, 26 + Math.random() * 34,
+        4.5, PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
+        2 + Math.random() * 2, 5 + Math.random() * 4,
+        (Math.random() - 0.5) * 9, 14,
+      );
+    }
+  }
   update(dt) {
     this.t += dt;
+    this.updateParty(dt);
+    updateParticles(dt);
     this.shown = Math.min(this.result.score, this.shown + dt * Math.max(500, this.result.score));
-    if ((Input.pressed('confirm') || Input.pressed('pointer') || Input.pressed('jump')) && this.t > 0.6) {
+    // Short enough to only swallow a stray input carried in from the run; the
+    // screen is fully drawn on frame one, so a longer lock just reads as stuck.
+    if ((Input.pressed('confirm') || Input.pressed('pointer') || Input.pressed('jump')) && this.t > 0.15) {
       Audio.sfx('uiConfirm');
       this.onDone();
     }
     Input.endFrame();
   }
   draw(ctx) {
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
+    drawTubeFace(ctx);
+    // Party behind the text: sparks never fight the score for legibility.
+    drawParticles(ctx);
+    for (const s of this.shells) {
+      ctx.fillStyle = s.color;
+      ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 3);
+    }
+    drawTubeGlass(ctx);
     const r = this.result;
     drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 34, r.success ? '#48c848' : '#e04848', 2, 'title');
     drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 70, '#fff', 1);
@@ -890,7 +1127,21 @@ export class ResultsState {
         if (osha) line('* THE BINDER IS DISAPPOINTED.', '#5a5a68');
       }
     }
-    for (const m of this.gains.mastery || []) line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8');
+    // Two named mastery-ups, then a summary — a full-cast run would otherwise
+    // stack eight lines straight through the celebration row below.
+    const mastery = this.gains.mastery || [];
+    mastery.slice(0, 2).forEach((m) => line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8'));
+    if (mastery.length > 2) line(`+${mastery.length - 2} MORE MASTERY-UPS. THE BENCH IS IMPRESSED.`, '#f890b8');
+    if (r.success && r.team && r.team.length) {
+      // The relay team takes a bow — each hero in their own celebrate pose,
+      // slightly out of phase so the line reads as a crowd, not a metronome.
+      // Only one hero is ever inside a level at a time, but the cast all exist
+      // together OUTSIDE the cabinets (the food court, the hub), so a curtain
+      // call after the stage clears is the one moment they can share a frame.
+      r.team.forEach((id, i) => drawToon(ctx, id,
+        { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
+        W / 2 + (i - (r.team.length - 1) / 2) * 48, 226, 32));
+    }
     drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 20, '#5a5a68');
   }
 }
@@ -980,8 +1231,8 @@ const GUIDE_PAGES = [
       { s: 'capShield', name: 'SHIELD CAPSULE', desc: 'ABSORBS ONE HIT. POLITELY.' },
       { s: 'capMagnet', name: 'MAGNET CAPSULE', desc: 'PULLS NEARBY COINS TO YOU.' },
       { s: 'capStar', name: 'STAR CAPSULE', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
-      { s: 'capSlow', name: 'SLOW-MO CAPSULE', desc: 'SLOWS THE WHOLE WORLD DOWN BRIEFLY.' },
       { s: 'capUnpeel', name: 'UNPEELABLE CAPSULE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
+      { s: 'capRelay', name: 'RELAY BATON', desc: 'VERY RARE. BANKS ONE SUPERCHARGED POWER. SPEND IT WELL.' },
     ],
   },
   {

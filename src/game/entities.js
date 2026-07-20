@@ -57,11 +57,13 @@ export const PICKUPS = {
   capShield: { w: 8, h: 8, sprite: 'capShield', power: 'shield' },
   capMagnet: { w: 8, h: 8, sprite: 'capMagnet', power: 'magnet' },
   capStar:   { w: 8, h: 8, sprite: 'capStar', power: 'star' },
-  capSlow:   { w: 8, h: 8, sprite: 'capSlow', power: 'slowmo' },
   capAirJump:{ w: 8, h: 8, sprite: 'capAirJump', power: 'airjump' },
   capSpeed:  { w: 8, h: 8, sprite: 'capSpeed', power: 'speed' },
   capLowGrav:{ w: 8, h: 8, sprite: 'capLowGrav', power: 'lowgrav' },
   capUnpeel: { w: 8, h: 8, sprite: 'capUnpeel', power: 'unpeel' },
+  // Not a timed power: banks one supercharged ability, so it carries its own
+  // flag instead of a `power` the Powerups clock would try to run down.
+  capRelay:  { w: 8, h: 8, sprite: 'capRelay', relayCharge: true },
   appliance: { w: 12, h: 8, sprite: 'appliance', appliance: true },
   cord:      { w: 8, h: 6, sprite: 'fuse', cord: true },
   resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },

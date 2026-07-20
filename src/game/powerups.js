@@ -5,7 +5,6 @@ export const POWER_DEFS = {
   shield:  { name: 'SHIELD', color: '#4890f0' },
   magnet:  { name: 'MAGNET', color: '#e04848' },
   star:    { name: 'STAR', color: '#f6d33c' },
-  slowmo:  { name: 'SLOW-MO', color: '#48c8c8' },
   airjump: { name: 'AIR JUMP', color: '#72d8f0' },
   speed:   { name: 'SPEED BURST', color: '#f89048' },
   lowgrav: { name: 'LOW GRAVITY', color: '#b888f0' },
@@ -14,12 +13,18 @@ export const POWER_DEFS = {
 };
 
 // Shared by drip spawns and ?-crate prizes. The borrowed traits are exciting
-// finds without crowding out the established staple capsules.
+// finds without crowding out the established staple capsules. Three staples
+// share the 52% tail since Slow-Mo was retired — the reduced variety is the
+// point: nothing left in the common pool fights the player for control.
 export function randomPowerPickup(rng) {
   const roll = rng.float();
-  if (roll < 0.12) return 'capUnpeel';
-  if (roll < 0.42) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.12) / 0.10)];
-  return rng.pick(['capShield', 'capMagnet', 'capStar', 'capSlow']);
+  // The relay charge is deliberately the rarest thing in the table. Capsules
+  // drip every 12-18s, so 8% works out to roughly one charge every three or
+  // four stages: rare enough to feel like a find rather than a rotation.
+  if (roll < 0.08) return 'capRelay';
+  if (roll < 0.18) return 'capUnpeel';
+  if (roll < 0.48) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.18) / 0.10)];
+  return rng.pick(['capShield', 'capMagnet', 'capStar']);
 }
 
 export class Powerups {
@@ -56,7 +61,6 @@ export class Powerups {
     const base = {
       magnet: [0, 8, 12, 16, 20][level] || 8,
       star: [0, 10, 10, 10, 12][level] || 10,
-      slowmo: [0, 6, 8, 10, 12][level] || 6,
       airjump: [0, 14, 20][level] || 14,
       speed: [0, 10, 13][level] || 10,
       lowgrav: [0, 12, 16][level] || 12,
@@ -77,17 +81,13 @@ export class Powerups {
     return [1, 2, 2.5, 3, 3.5][a.level] || 2;
   }
 
-  timescale() {
-    const a = this.active.slowmo;
-    if (!a) return 1;
-    return a.level >= 3 ? 0.55 : 0.65;
-  }
-
   bonusJumps() { return this.active.airjump ? 1 : 0; }
 
+  // The run already ramps to 1.6x on its own, so a timid boost here reads as
+  // nothing at all. These clear that ramp by enough to be felt on grab.
   speedMultiplier() {
     const a = this.active.speed;
-    return !a ? 1 : (a.level >= 2 ? 1.25 : 1.15);
+    return !a ? 1 : (a.level >= 2 ? 1.4 : 1.25);
   }
 
   gravityMultiplier() {

@@ -30,6 +30,7 @@ export const BOSSES = {
     jokeText: 'IT STOPS TO EMPTY ITS BAG. IT IS VISIBLY ASHAMED. IT APOLOGIZES VIA LED.',
     pull: true,
     intro: 'IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS.',
+    subtitle: 'HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.',
   },
   surge: {
     name: 'EGGSHELL & THE ABSOLUTELY FINAL POWER STRIP',
@@ -70,6 +71,8 @@ export class BossState extends RunState {
     this.bossX = 330;
     this.bossAlt = 60;
     this.speech = { text: this.boss.intro, t: 4, who: 'eggshell' };
+    // The Dust Devil's tragedy gets a narrator card after Eggshell's pitch.
+    if (this.boss.subtitle) this.speechQueue = [{ text: this.boss.subtitle, t: 4.5, who: null }];
     this.checkpoints = [];
     this.snapshot = this.makeSnapshot();
     this.switchesFlipped = 0;
@@ -89,7 +92,7 @@ export class BossState extends RunState {
     super.update(dt);
     if (this.dead || this.paused || this.hitstop > 0) return;
 
-    const wdt = dt * this.powerups.timescale();
+    const wdt = dt;
     // Boss hovers ahead.
     this.bossX = this.camX + 300 + Math.sin(this.tRun * 0.9) * 50;
     this.bossAlt = 55 + Math.sin(this.tRun * 1.6) * (this.boss.pull ? 32 : 18);

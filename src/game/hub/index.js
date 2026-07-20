@@ -9,17 +9,17 @@ import { drawProp } from '../../sprites/props.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
-import { BENCH_UPGRADES, MODS, MOD_BY_ID } from '../../data/progression.js';
+import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
 import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
 
 const CORRUPTED_MODIFIERS = [
-  { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. IT PROVIDES A CONTRACTUAL MINIMUM HOP.' },
+  { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
   { id: 'maxspeed', name: 'MAXIMUM SPEED', desc: 'EVERYTHING IS FASTER. NOTHING IS CALMER.' },
   { id: 'randomswap', name: 'RANDOM SWAPS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
-  { id: 'narration', name: 'INACCURATE NARRATION', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
+  { id: 'narration', name: 'INACCURATE LORE', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
 ];
 export { CORRUPTED_MODIFIERS };
 
@@ -257,10 +257,20 @@ export class HubState {
         facing: n.facing || 1,
       }, x, 192 - hop, 19);
     }
-    // DUST DEVIL cleaning something impossible (varies by act)
-    const ddSpots = [[300, 178, 'THE FLOOR'], [520, 40, 'THE CEILING'], [720, 120, 'THE INSIDE OF A CRT']];
-    const [dx, dy] = ddSpots[Math.min(act - 1, 2)];
-    drawProp(ctx, 'dustdevil', Math.round(dx - cam + Math.sin(this.t) * 8), dy, 14, 12);
+    // THE DUST DEVIL drifts through occasionally, cleaning something
+    // impossible (varies by act). ~9s of every ~48, unannounced, then gone.
+    // Nobody addresses this.
+    const ddCyc = (this.t + 39) % 48; // first visit ~9s after entering
+    if (ddCyc < 9) {
+      const [ddY, onCeiling] = [[178, false], [36, true], [118, false]][Math.min(act - 1, 2)];
+      // Screen-relative glide, right to left — whenever it visits, you see it.
+      const ddX = Math.round(W + 20 - (ddCyc / 9) * (W + 60));
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
+      if (onCeiling) { ctx.translate(ddX + 8, ddY + 7); ctx.rotate(Math.PI); ctx.translate(-8, -7); }
+      drawProp(ctx, 'dustdevil', onCeiling ? 0 : ddX, onCeiling ? 0 : ddY, 16, 14);
+      ctx.restore();
+    }
     // player walks
     const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right');
@@ -415,7 +425,7 @@ export class BenchState {
     const opts = BENCH_UPGRADES.map((u) => {
       const cur = slot.bench[u.id] || 0;
       // Power-up tracks start at level 1 (owned); relay tracks start at 0.
-      const baseLevel = ['shield', 'magnet', 'star', 'slowmo'].includes(u.id) ? 1 : 0;
+      const baseLevel = ['shield', 'magnet', 'star'].includes(u.id) ? 1 : 0;
       const lvl = Math.max(cur, baseLevel);
       const nextIdx = lvl - baseLevel;
       const cost = u.levels[nextIdx];
@@ -529,9 +539,8 @@ export class ArcadeState {
   options() {
     // Breaker-box games are keyboard-shaped; on touch the corner is shuttered.
     if (Input.isTouchDevice()) return [{ none: true }, { back: true }];
-    const seen = this.save.slot.campaign.storyFlags.minigamesSeen || [];
-    const opts = MINIGAMES.filter((m) => seen.includes(m)).map((m) => ({ game: m }));
-    if (!opts.length) opts.push({ none: true });
+    // Every game is on the floor from day one — the coin slot is the only gate.
+    const opts = MINIGAMES.map((m) => ({ game: m }));
     opts.push({ back: true });
     return opts;
   }
@@ -539,7 +548,8 @@ export class ArcadeState {
     const sel = listMenu(this, this.options());
     if (sel) {
       if (sel.back || sel.none) return this.flow.toHub();
-      this.flow.playMinigame(sel.game, true);
+      if (this.save.slot.coins < ARCADE_PLAY_COST) { Audio.sfx('uiBad'); }
+      else this.flow.playMinigame(sel.game);
     }
     if (Input.pressed('back')) this.flow.toHub();
     Input.endFrame();
@@ -548,16 +558,22 @@ export class ArcadeState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'ARCADE CORNER', W / 2, 16, '#48e0c8', 2, 'title');
-    drawTextCentered(ctx, 'REPLAY BREAKER-BOX GAMES. WIN: +100 COINS.', W / 2, 40, '#8a8a98');
+    drawTextCentered(ctx, `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`, W / 2, 40, '#8a8a98');
     const touch = Input.isTouchDevice();
+    const broke = this.save.slot.coins < ARCADE_PLAY_COST;
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
-      const label = o.back ? 'BACK'
-        : o.none ? (touch ? 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.' : 'NOTHING UNLOCKED YET. POWER ON A CABINET.')
-        : MINIGAME_NAMES[o.game];
-      drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');
+      if (o.back || o.none) {
+        const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';
+        drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');
+        return;
+      }
+      const c = broke ? '#5a5a68' : sel ? '#f6d33c' : '#c8c8d8';
+      drawText(ctx, `${sel ? '> ' : '  '}${MINIGAME_NAMES[o.game]}`, 40, y, c);
+      drawText(ctx, `${ARCADE_PLAY_COST}`, W - 70, y, broke ? '#5a5a68' : '#f6d33c');
     });
+    if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 26, '#8a8a98');
     drawMenuHint(ctx, 'PLAY');
   }
 }

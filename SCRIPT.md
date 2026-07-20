@@ -1,11 +1,11 @@
 # MASHENSTEIN: THE UNPLUGGENING — THE SCRIPT
 
-*Assembled from the game as it currently stands. Every quoted line is verbatim from source.*
+*The production script, kept in lockstep with the game. Every quoted line is verbatim from source.*
 
 **Voice rule, stated in [jokes.js](src/data/jokes.js):** *absolute deadpan sincerity. Jokes never replace usable information.* Everything is uppercase in-game.
 
 **Cast:** eight heroes + Eggshell + Gary + the Dust Devil.
-**Runtime shape:** 4 intro panels → 3 acts / 9 cabinets / 27 stages → 3 bosses → 9 finale beats.
+**Runtime shape:** 4 intro panels → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 bosses → 9 finale beats.
 
 ---
 
@@ -22,11 +22,11 @@
 | RAY M'N | RAY M'N, APPENDAGE-OPTIONAL | "LIMBS WERE OUT OF BUDGET." | The insurance form requires a limb count. He keeps writing "OPTIONAL." |
 | GRUMPOS | GRUMPOS, DAD OF BOY | "BOY." | Throws his axe majestically. Occasionally fails to catch it. |
 
-**DON K. EGGSHELL, PHD** — antagonist. A giant egg-shaped ape with a magnificent red mustache, tiny science goggles, and a spiky shell. Lost to heroes for 40 straight years. Never appears as a fair fight; appears as a grievance.
+**DON K. EGGSHELL, PHD** — *"A GRIEVANCE INTENSIFIES."* Antagonist. A giant egg-shaped ape with a magnificent red mustache, tiny science goggles, and a spiky shell. Lost to heroes for 40 straight fiscal years. Never appears as a fair fight; appears as a grievance.
 
-**GARY** — deceased pawn-shop clerk. No hero entry; exists only as an NPC, a shop, and an avatar. Resolves the plot by accident.
+**GARY (DECEASED)** — *"PHYSICAL JURISDICTION RETAINED."* Deceased pawn-shop clerk. No hero entry; exists as an NPC, a shop, and an avatar — and as the only entity in the room with real hands. Resolves the plot by accident.
 
-**DUST DEVIL 9000** — a haunted vacuum. Cleans something impossible in the background of every act. Becomes a boss. Prints a certificate.
+**DUST DEVIL 9000** — *"DEEP CLEAN ENGAGED."* A haunted vacuum. Cleans something impossible in the background of every act. Becomes a boss. Prints a certificate.
 
 ---
 
@@ -150,6 +150,8 @@ The seven heroes you are not currently playing loiter here, wandering and hoppin
 > HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.
 > MY COWORKERS SENT A FAREWELL CARD. IT SAYS "SEE YOU MONDAY."
 > THE PAWN SHOP IS LEGALLY DISTINCT. FROM WHAT? EXACTLY.
+> I AM THE ONLY ENTITY IN THIS ROOM RESPONSIBLE FOR THE PHYSICAL TOGGLE SWITCHES. THE REST OF YOU ARE LITERALLY CONSTRUCTED FROM MATH.
+> HR SAYS LOGGING INTO A DIGITAL ENVIRONMENT DOES NOT CONSTITUTE A COMMUTE. MY TIME-CARD IS COMPLICATED.
 
 **RAY M'N**
 > THE LIMB INSPECTOR LEFT WITHOUT COMPLETING THE FORM.
@@ -214,6 +216,19 @@ The outgoing hero leaves. The incoming hero announces themselves:
 
 Every third switch, the screen clears itself — `RELAY BLAST` — automatically, without being asked.
 
+**The authored hand-offs.** Eight scripted exchanges, one per link in the canonical cycle. The relay draw is biased so about half of all swaps land on a scripted link; when one does, the outgoing and incoming heroes trade lines (after the button note — jokes never replace usable information):
+
+| Hand-off | Outgoing | Incoming |
+|---|---|---|
+| LORENZO → GNASH | APPLYING INDUSTRIAL THREAD SEALANT. | TOO SLOW. I ALREADY PASSED THE VALVE. |
+| GNASH → FERNWICK | ALREADY AT THE NEXT CORNER. SPEED UP. | THE RECEIPT EXPRESSLY FORBIDS RUNNING. |
+| FERNWICK → B-33P | THE PROPHECY FORETOLD A METALLIC CHASSIS. | CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL. |
+| B-33P → MOCHI | PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN. | POYO. (THE PIXELS WARP SLIGHTLY.) |
+| MOCHI → MISS CHOMP | POYO? | YOU LOOK DELICIOUS, DARLING, BUT I HAVE POSTURE TO MAINTAIN. |
+| MISS CHOMP → RAY M'N | I ATE THE SCORE COUNTER. IT WAS CHEWY. | DID IT CONTAIN MY MISSING ARM VALUE? |
+| RAY M'N → GRUMPOS | HANDS OFF. LITERALLY. THEY ARE UNSECURED. | BOY. FETCH THE SPARE APPENDAGES. |
+| GRUMPOS → LORENZO | PREPARE FOR BALLISTIC DISPATCH, PLUMBER. | STANDARD PROCEDURE. AIM FOR THE DUCTWORK. |
+
 *Taught once, then never mentioned again:*
 > RUN THROUGH THE PORTAL TO CHANGE HERO.
 > SWITCH 3 TIMES FOR A RELAY BLAST.
@@ -231,6 +246,30 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 > THIS COPTER IS FINE. THE BEEPING IS DECORATIVE.
 > A CHILD COULD DO THIS. A CHILD DID. I FIRED HIM.
 > THE FOURTH HEALTH BAR IS REAL. PROBABLY.
+> I HAVE BEEN LOSING TO PLUMBERS SINCE 1986. THE STATISTICAL PROBABILITY OF YOU WINNING THIS STAGE IS AN INSULT TO MY DOCTORATE.
+> DO YOU KNOW WHAT IT IS LIKE TO SIT IN A CLOWN-COPTER FOR FOUR DECADES? THE ERGONOMICS ARE ATROCIOUS.
+
+*The first taunt of every attempt is the cabinet's own bespoke line (see each cabinet's briefing); the generic pool covers the rest of the run.*
+
+---
+
+## THE RECURRING BIT — THE BRIEFING MANIFEST
+
+*Every stage opens on a full-black establishment screen. Typewriter, 70 chars/sec (brisker than the finale's 34 — this screen is read often). The MISSION line states the real objective; a memo block supplies the letterhead comedy. One input completes the text, a second proceeds — each cabinet demands its own acknowledgement:*
+
+| Cabinet | Validation prompt |
+|---|---|
+| PLUMBER PANIC | [ENTER]: ACKNOWLEDGE REVENUE PROTOCOLS |
+| SPEED ZONE | [ENTER]: VERIFY LIQUIDATED VELOCITY |
+| NEON BLASTERS | [ENTER]: AUTHORIZE VECTOR DESTRUCTION |
+| FROST FORTRESS | [ENTER]: COMPLY WITH FREEZING TEMPERATURES |
+| CRYPT SHIFT | [ENTER]: VERIFY PHYSICAL AGENCY |
+| RHYTHM BANKRUPTCY | [ENTER]: AGREE TO AUDITED AUDITORY TERMS |
+| CARDBOARD KINGDOM | [ENTER]: ACCEPT FLIMSY ARCHITECTURE |
+| CORPORATE KOMBAT | [ENTER]: DISMISS MANDATORY MEETINGS |
+| THE SURGE | [ENTER]: SUBMIT TO THE UNPLUGGENING |
+
+*The 27 memo blocks live in [briefings.js](src/data/briefings.js) and are reproduced under their cabinets below.*
 
 ---
 
@@ -251,6 +290,11 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 *If the fuse survives:* `THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.`
 
+**Briefings:**
+> **1-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "MY IQ IS 300 AND YOURS IS A HIGH SCORE. I HAVE SYSTEMATICALLY DISCONNECTED THE PRIMARY POWER GRID BECAUSE I HAVE LOST TO ENTITIES IN OVERALLS FOR FORTY CONSECUTIVE YEARS. THIS IS NOT A FAIR FIGHT. THIS IS A GRIEVANCE."
+> **1-2, NOTIFICATION FROM INTERNAL MAINTENANCE:** DUST DEVIL 9000 IS CURRENTLY OPERATIONAL IN THE BACKGROUND ZONE. STATUS: MOPPING THE FLOOR. DO NOT DISTURB THE HAUNTED VACUUM WHILE IT IS ENGAGED IN SANITATION.
+> **1-3, SYSTEM LOG:** ONE HERO RENDERS AT A TIME DUE TO BUDGET CONSTRAINTS. THE FUSE DOES NOT REQUIRE RAM TO RENDER, BUT IT REQUIRES ANXIETY TO CARRY. DO NOT DROP IT INTO THE GEOMETRY.
+
 ## CABINET 2 — SPEED ZONE
 *Racing parody. Faux-3D. Unlocks at 2 plugs.*
 
@@ -264,6 +308,11 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 *Catching the copter:* `CAUGHT n/N. IT FILED A COMPLAINT.`
 
+**Briefings:**
+> **2-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "I INVENTED SPEED. IN 1987. NO ONE THANKED ME. YOU THINK YOU ARE RUNNING FAST, BUT YOU ARE MERELY REPEATING MY EARLY WORK AT A HIGHER FREQUENCY."
+> **2-2, RISK MANAGEMENT BULLETIN:** THE CLOWN-COPTER'S FLIGHT PREMIUMS ARE FORTY YEARS OVERDUE. LANDING HITS ON THIS VEHICLE WILL RESULT IN AUTOMATED SYSTEM REJECTIONS. PREPARE FORM 27-B.
+> **2-3, CALIBRATION ERROR:** GNASH THE NEEDLEMOUSE ARRIVED AT THE FINISH LINE YESTERDAY. THE TIMER CANNOT RECONCILE HIS ARROGANCE WITH REALITY. RUN ANYWAY.
+
 ## CABINET 3 — NEON BLASTERS
 *Shmup parody. Neon vector. Unlocks at 5 plugs.*
 
@@ -274,6 +323,11 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | 1 | DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE. | COLLECT 20 COINS |
 | 2 | RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY. | TAKE NO DAMAGE |
 | 3 | REACH THE END. SOMETHING ANGRY AND AIRBORNE AWAITS. | COLLECT 25 COINS |
+
+**Briefings:**
+> **3-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY. EVERY INTERCEPTED VECTOR SUBTRACTS FROM MY RESEARCH GRANTS."
+> **3-2, HARDWARE INVENTORY:** THE COPPER CORE OF THE CENTRAL EXTENSION RELAY IS AT 11% INTEGRITY. RECOVERY IS MASH-MANDATED.
+> **3-3, WARNING: PREPARE FOR ENCOUNTER WITH UNDERINSURED CLOWN-COPTER.** EGGSHELL ASSERTS: "THE COPTER HAS FIVE HEALTH BARS. THE ADDITIONAL FOUR ARE LABELED 'PRESENTATION ERROR' TO AVOID AUDITING."
 
 ### ⚡ BOSS — THE UNDERINSURED CLOWN-COPTER
 *6 HP.*
@@ -308,6 +362,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 *Hitting a frozen switch:* `BRIDGE. YOU EARNED IT.`
 
+**Briefings:**
+> **4-1, SYSTEM ALERT — ACT II BEGINS:** ALL HARDWARE SHIFTED TO EXTENSION CRISIS MATRIX.
+> **4-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "I UNPLUGGED THE HEATING TOO. FOR DRAMA. THE ARCHITECTURAL INTELLIGENCE OF A FROZEN FORTRESS BUILT FROM CODE REQUIRES ABSOLUTE COLD SINCERITY."
+> **4-2, MAINTENANCE LOG:** DUST DEVIL 9000 HAS SHIFTED OPERATIONS TO THE CEILING. IT IS CURRENTLY ATTEMPTING TO DE-ICE THE OVERHEAD SPRINKLERS BY SUCKING UP THE COLD ITSELF.
+> **4-3, PHYSICAL LAW NOTICE:** THE FUSE IS SUBJECT TO COEFFICIENTS OF FRICTION DESIGNED IN 198X. SLIDING IS MANDATORY. GRACE IS IMPOSSIBLE.
+
 ## CABINET 5 — CRYPT SHIFT
 *Horror parody. VHS. Unlocks at 16 plugs.*
 
@@ -322,6 +382,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 *Picking up a resident:* `A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME.`
 *Delivering one:* `RESIDENTS DELIVERED: n/N`
 
+**Briefings:**
+> **5-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE."
+> **5-1, SPECIAL COMPLIANCE NOTE:** CURRENT OPERATIONS ARE MONITORED BY GARY. AS A DECEASED REAL-WORLD STAFF MEMBER, GARY RETAINS ACTUAL HANDS INDEPENDENT OF MATH. HE IS THE ONLY ENTITY CAPABLE OF MANUALLY TOGGLING SWITCHES OUTSIDE THE RECTANGLE.
+> **5-2, REVENUE MEMO:** GARY'S FORMER COWORKERS FROM THE 1991 SHIFT ARE LOITERING IN THE CODE. HE OWES THEM TWENTY-SEVEN HOURS OF OVERTIME. DELIVER THEM TO SAFETY TO AVOID HR RECOURSE.
+> **5-3, REVENUE MEMO:** THE DIGITAL TEXTURE BUDGET HAS DROPPED BY 40%. THE SCREEN WILL NOW DISPLAY ENTIRELY CONJECTURAL OPPONENTS. TRUST THE HITBOXES.
+
 ## CABINET 6 — RHYTHM BANKRUPTCY
 *Rhythm parody. LCD handheld. Unlocks at 20 plugs.*
 
@@ -333,10 +399,19 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | 2 | SURVIVE THE CHORUS. THE BAND IS IN DEBT. | 14 ON-BEAT ACTIONS |
 | 3 | CHASE THE COPTER. IT IS SOMEHOW ON BEAT. | TAKE NO DAMAGE |
 
+**Briefings:**
+> **6-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "I OWN THE EXCLUSIVE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP. EVERY STEP OFF-BEAT CONSTITUTES UNAUTHORIZED SAMPLING."
+> **6-2, LITIGATION BULLETIN:** THE MUSIC IN THE HALLWAY IS LICENSED UNDER A FORTY-YEAR EXCLUSIVITY GRUDGE. IF YOU HEAR AN AXE HIT THE SCENERY, IT WAS PERFORMED BY GRUMPOS FOR INTENDED COMEDIC VALUE.
+> **6-3, WARNING: PREPARE FOR ENCOUNTER WITH DUST DEVIL 9000 (DEEP CLEAN MODE).** THE VACUUM HAS COMPLETED THE CEILING AND IS VISIBLY CONCERNED ABOUT YOUR CORE ENTROPY. IT OFFERS AN LED APOLOGY BEFORE VACUUMING YOUR INFRASTRUCTURE.
+
 ### ⚡ BOSS — DUST DEVIL 9000 — DEEP CLEAN MODE
 *8 HP. It pulls you toward it.*
 
 > **EGGSHELL:** IT IS SET TO DEEP CLEAN. IT IS SO SORRY ABOUT THIS.
+
+*Then the narrator, over the arena:*
+
+> HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.
 
 *At half health:*
 
@@ -361,6 +436,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | 2 | ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP. | COLLECT 35 COINS |
 | 3 | CATCH THE COPTER. IT IS HELD UP BY A VISIBLE HAND. | COLLECT 35 COINS |
 
+**Briefings:**
+> **7-1, SYSTEM ALERT — ACT III BEGINS:** ALL GRAPHICAL ASSETS DEGRADED TO PULP MATRIX.
+> **7-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THAT CASTLE IS FOUR INCHES TALL. LIKE MY PATIENCE. THE FINALE IS INEVITABLE, BUT I WILL ENSURE IT IS ENTIRELY FLAPPABLE."
+> **7-2, MAINTENANCE LOG:** DUST DEVIL 9000 HAS PENETRATED THE PHYSICAL GLASS LAYER OF THE CRT. IT IS CURRENTLY MOPPING THE INSIDE OF THE MONITOR TUBE. DO NOT LOOK DIRECTLY AT THE STATIC.
+> **7-3, PRODUCTION ERROR:** THE ANIMATION BUDGET HAS SEPARATED FROM THE LOGIC. THE CLOWN-COPTER IS OPERATED VIA A WOODEN DOWEL STICK IN THE UPPER CORNER. IGNORE THE APPARATUS.
+
 ## CABINET 8 — CORPORATE KOMBAT
 *Office action parody. Notebook doodle. Unlocks at 34 plugs.*
 
@@ -372,6 +453,11 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | 2 | DESTROY 5 HOSTILE PRINTERS. HR HAS APPROVED THIS. | TAKE NO DAMAGE |
 | 3 | ESCORT 4 CABINET RESIDENTS OUT OF A MANDATORY MEETING. | COLLECT 35 COINS |
 
+**Briefings:**
+> **8-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP. I HAVE BEEN GENERATING FORMS SINCE THE RAGTIME ERA TO DELAY YOUR ARRIVAL AT THE MASTER OUTLET."
+> **8-2, ADMINISTRATIVE DIRECTIVE:** THE PRINTERS HAVE EXHAUSTED THEIR CYAN RESERVES. UNIT B-33P REPORTS SOLIDARITY WITH THE HARDWARE, BUT WILL FIRE RECTANGLES AT THEM REGARDLESS.
+> **8-3, COMPLIANCE FACTOR:** THE RESIDENTS ARE LOCKED IN A PERFORMANCE REVIEW CYCLE. TO EXTRACT THEM, RUN THROUGH THEIR AGENDA AND PRESENT A HIGH SCORE.
+
 ## CABINET 9 — THE SURGE
 *Everything at once. All eight styles bleeding together. Unlocks at 40 plugs.*
 
@@ -382,6 +468,12 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | 1 | EVERYTHING AT ONCE. KEEP RUNNING. | COLLECT 40 COINS |
 | 2 | RECOVER THE FINAL 6 CORD PIECES. THE CORD IS ALMOST WHOLE. | TAKE NO DAMAGE |
 | 3 | OUTRUN THE UNPLUGGENING ITSELF. THE SOCKET IS CLOSE. | TAKE NO DAMAGE |
+
+**Briefings:**
+> **9-1, INTERRUPTION BY DON K. EGGSHELL, PHD:** "BEHOLD. EVERY GAME AT ONCE. MY MASTERPIECE. MY MASHTERPIECE. RECOGNIZE THE FORTY YEARS OF UNRESOLVED FRUSTRATION CONVERGING INTO A SINGLE POWER STRIP."
+> **9-2, MEMORY EXHAUSTION:** ALL NINE CABINET FRONTS ARE BLEEDING FURIOUSLY INTO THE CURRENT CELL. LORENZO'S PIPES ARE INTRODUCING LCD HANDHELD RESOLUTIONS. GRAPHICS DEEMED UNSTABLE BUT SINCERE.
+> **9-3, PROXIMITY ALERT:** THE OUTLET AT THE END OF EVERYTHING IS LOCATED SEVEN PIXELS AHEAD.
+> **9-3, WARNING:** DON K. EGGSHELL, PHD IS DEFENDING THE PORT WITH A VALID CRAYON CERTIFICATE. PREPARE FOR ENCOUNTER.
 
 ### ⚡ FINAL BOSS — EGGSHELL & THE ABSOLUTELY FINAL POWER STRIP
 *12 HP. Two scripted collapses.*
@@ -437,12 +529,12 @@ Cleared cabinets also unlock **corrupted modifiers** — the game degrading on p
 
 | | |
 |---|---|
-| NO JUMPING | THE JUMP BUTTON IS ON STRIKE. IT PROVIDES A CONTRACTUAL MINIMUM HOP. |
+| NO JUMPING | THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP. |
 | MAXIMUM SPEED | EVERYTHING IS FASTER. NOTHING IS CALMER. |
 | RANDOM SWAPS | PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED. |
-| INACCURATE NARRATION | EGGSHELL DESCRIBES A DIFFERENT GAME. |
+| INACCURATE LORE | EGGSHELL DESCRIBES A DIFFERENT GAME. |
 
-Under INACCURATE NARRATION, Eggshell commentates a game he is not watching:
+Under INACCURATE LORE, Eggshell commentates a game he is not watching:
 
 > HE JUMPS. HE DOES NOT. I AM NOT WATCHING.
 > THE HERO TRIPS. MAGNIFICENTLY. I ASSUME.
@@ -496,38 +588,29 @@ Under INACCURATE NARRATION, Eggshell commentates a game he is not watching:
 
 ---
 
-## APPENDIX A — WRITTEN BUT NEVER SPOKEN
+## APPENDIX A — HOW THE BESPOKE TAUNTS REACH PLAYERS
 
-Each cabinet in [cabinets.js](src/data/cabinets.js) carries a `taunt` field — a bespoke Eggshell line per zone. **Nothing in `src/` reads it.** During runs, Eggshell pulls from the generic `EGGSHELL_TAUNTS` pool instead, so these nine never appear:
+Each cabinet in [cabinets.js](src/data/cabinets.js) carries a `taunt` field — a bespoke Eggshell line per zone. Two delivery paths now read it:
 
-| Cabinet | Unused taunt |
-|---|---|
-| PLUMBER PANIC | MY IQ IS 300 AND YOURS IS A HIGH SCORE. *(duplicated into the generic pool)* |
-| SPEED ZONE | I INVENTED SPEED. IN 1987. NO ONE THANKED ME. |
-| NEON BLASTERS | THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY. |
-| FROST FORTRESS | I UNPLUGGED THE HEATING TOO. FOR DRAMA. |
-| CRYPT SHIFT | THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE. |
-| RHYTHM BANKRUPTCY | I OWN THE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP. |
-| CARDBOARD KINGDOM | THAT CASTLE IS FOUR INCHES TALL. LIKE MY PATIENCE. |
-| CORPORATE KOMBAT | THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP. |
-| THE SURGE | BEHOLD. EVERY GAME AT ONCE. MY MASTERPIECE. MY MASHTERPIECE. |
-
-This is the single biggest piece of finished writing not currently reaching players — and it is per-zone, which is exactly what the mid-run taunts lack.
+1. **In-run:** the first Eggshell interrupt of every attempt is the cabinet's own taunt; the generic pool covers the rest (with the plumber line filtered out of the pool so its verbatim duplicate never plays twice).
+2. **Briefings:** each cabinet's stage-1 briefing quotes an expanded version of the same grievance (see the Briefing Manifest).
 
 ---
 
-## APPENDIX B — WHERE THE STORY IS THIN
+## APPENDIX B — WHERE THE STORY WAS THIN (AND WHAT NOW COVERS IT)
 
-An honest read of the narrative as it stands:
+The narrative gaps from the previous draft, and where this draft answers them:
 
-1. **Acts II and III have no act-break beats.** Act I gets four intro panels; the finale gets nine. Acts II and III are announced only by a single line buried in a stage intro (`ACT II. THE EXTENSION CRISIS.` / `ACT III. THE OUTLET AT THE END OF EVERYTHING.`). The middle of the game has no narrative punctuation at all.
+1. **Acts II and III had no act-break beats.** Now punctuated twice over: full-screen `SYSTEM ALERT — ACT II/III BEGINS` blocks in the 4-1 and 7-1 briefings, plus an in-run glitch banner that freezes the world for the `ACT II.` / `ACT III.` announcement.
 
-2. **Gary is the protagonist of the ending and a stranger everywhere else.** He resolves the plot in beat 5. Before that he is a shop, three hub lines, and an unlockable avatar. He is never established as someone who *could* flip the switch — which is either the joke, or a setup that never got planted.
+2. **Gary was the protagonist of the ending and a stranger everywhere else.** Beat 5 is now planted: the 5-1 SPECIAL COMPLIANCE NOTE establishes him as the only entity with actual hands who can toggle switches outside the rectangle, and two new hub lines (`PHYSICAL TOGGLE SWITCHES` / `TIME-CARD IS COMPLICATED`) keep the setup warm.
 
-3. **The Dust Devil has the best arc and no one points at it.** Charging in panel 2 → mopping the floor → mopping the ceiling → mopping the inside of a CRT → becoming a boss that apologizes → printing itself a certificate. That's a complete character journey told entirely in background props, and nothing in the script acknowledges it.
+3. **The Dust Devil's arc went unacknowledged.** The briefings now track it (mopping the floor in 1-2, the ceiling in 4-2, the inside of the CRT in 7-2, the warning in 6-3), and its boss fight opens with the narrator's summation: `HE HAS MOPPED THE CEILING. HE HAS POLISHED THE INSIDE OF A GLASS TUBE. NOW, HE HAS TO CLEAN YOU. HE IS NOT HAPPY ABOUT IT.`
 
-4. **Six generic taunts cover a 27-stage campaign** while nine bespoke per-zone ones sit unused. See Appendix A.
+4. **Six generic taunts covered a 27-stage campaign.** The pool is now eight, and every cabinet leads with its bespoke line. See Appendix A.
 
-5. **The heroes never talk to each other.** They have hub lines (monologues at the player), tag lines (announcements), and float text (barks). Only one line in the entire game is hero-to-hero: Grumpos' `I THREW LORENZO EARLIER. HE CALLED IT STANDARD PROCEDURE.` — and it's the funniest character beat in the file. There is no relay banter, despite the relay being the game's central conceit.
+5. **The heroes never talked to each other.** The relay now carries eight authored hand-off exchanges — one per link in the canonical cycle — so the game's central conceit finally produces dialogue.
 
-6. **The 40-year grudge is stated once and never dramatized.** Eggshell's motive — losing to heroes for 40 straight years — appears in the README but never in the game. He is petty in the moment, but never sympathetic, until beat 6 asks you to feel for him with no groundwork laid.
+6. **The 40-year grudge was stated once and never dramatized.** It now anchors the 1-1 briefing (`...LOST TO ENTITIES IN OVERALLS FOR FORTY CONSECUTIVE YEARS. THIS IS NOT A FAIR FIGHT. THIS IS A GRIEVANCE.`), two new taunts (`LOSING TO PLUMBERS SINCE 1986`, the clown-copter ergonomics), and recurring forty-year paperwork throughout the memos — groundwork that beat 6's `SO THIS IS THE WARMTH I NEVER GOT` can finally land on.
+
+**Still open:** the finale beats and intro panels are unchanged, so Gary's switch-flip remains a deadpan anticlimax by design; and the briefing memos are the only place the heroes' names appear in Act III outside their own barks.

@@ -81,14 +81,40 @@ for (const game of MINIGAMES) {
 {
   const { ArcadeState } = await import('../src/game/hub/index.js');
   Input.usingTouch = true;
-  const saveStub = { slot: { campaign: { storyFlags: { minigamesSeen: ['rewire', 'turdle'] } } } };
+  const saveStub = { slot: { coins: 0, campaign: { storyFlags: { minigamesSeen: ['rewire', 'turdle'] } } } };
   const arcade = new ArcadeState({ save: saveStub, flow: {} });
   const opts = arcade.options();
   assert(!opts.some((o) => o.game), 'arcade offers no minigames on touch');
   assert(opts.some((o) => o.none) && opts.some((o) => o.back), 'arcade still shows a shuttered notice and BACK on touch');
   Input.usingTouch = false;
-  assert(new ArcadeState({ save: saveStub, flow: {} }).options().filter((o) => o.game).length === 2,
-    'arcade lists seen minigames again on keyboard');
+  // On keyboard the whole cabinet lineup is on the floor regardless of what the
+  // player has been shown before — coins, not story flags, are the gate.
+  assert(new ArcadeState({ save: saveStub, flow: {} }).options().filter((o) => o.game).length === MINIGAMES.length,
+    'arcade lists every minigame on keyboard, unlocked or not');
+}
+
+// Arcade Corner is pay-to-play: a broke player can select a cabinet but the
+// coin slot refuses to hand them off to the minigame.
+{
+  const { ArcadeState } = await import('../src/game/hub/index.js');
+  const { ARCADE_PLAY_COST } = await import('../src/data/progression.js');
+  const played = [];
+  const mk = (coins) => {
+    const st = new ArcadeState({
+      save: { slot: { coins, campaign: { storyFlags: {} } } },
+      flow: { toHub() {}, playMinigame: (g) => played.push(g) },
+    });
+    st.enter();
+    return st;
+  };
+  const broke = mk(ARCADE_PLAY_COST - 1);
+  Input.clearAll();
+  Input.press('confirm'); broke.update(0.016); Input.release('confirm');
+  assert(played.length === 0, 'arcade refuses to start a game the player cannot afford');
+
+  const flush = mk(ARCADE_PLAY_COST);
+  Input.press('confirm'); flush.update(0.016); Input.release('confirm');
+  assert(played.length === 1, 'arcade starts the game once the player can pay');
 }
 
 console.log(failed ? 'MINIGAMES: FAILED' : 'MINIGAMES: PASSED');

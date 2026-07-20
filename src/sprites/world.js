@@ -238,19 +238,6 @@ export const WORLD_SPRITES = {
       '........',
     ],
   },
-  capSlow: {
-    pal: { c: '#48c8c8', w: '#e0ffff', k: '#1a1a24' },
-    grid: [
-      '..cccc..',
-      '.cwwwwc.',
-      'cwwkwwwc',
-      'cwwkwwwc',
-      'cwwkkwwc',
-      'cwwwwwwc',
-      '.cwwwwc.',
-      '..cccc..',
-    ],
-  },
   appliance: { // the Highly Necessary Golden Appliance (a toaster)
     pal: { g: '#f6d33c', d: '#c8a020', w: '#fff8d0', k: '#5a4020' },
     grid: [

@@ -4,14 +4,15 @@ import { startLoop } from './engine/loop.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, updateState, drawState } from './engine/states.js';
+import { setState, setStateNoCameo, updateState, drawState } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
 import { BossState } from './game/boss.js';
-import { MinigameState, MINIGAMES } from './game/minigames/index.js';
+import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
-import { TitleState, DifficultyState, IntroState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
+import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
+import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
 import { HubState, StageSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
@@ -61,7 +62,12 @@ const Flow = {
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toTitle() })),
   })); },
 
-  toHub() { setState(new HubState({ save, flow: Flow })); },
+  // cameo=false for the results hand-off: the run already ended on a cast
+  // celebration, so neither shutter on the way out needs a hero in it.
+  toHub(cameo = true) {
+    const go = cameo ? setState : setStateNoCameo;
+    go(new HubState({ save, flow: Flow }));
+  },
 
   startAttract() {
     const kind = nextAttract();
@@ -74,38 +80,8 @@ const Flow = {
   },
 
   openCabinet(cab) {
-    // First power-on: a breaker-box minigame powers the cabinet. Touch devices
-    // skip it — the minigames want a keyboard and are miserable on glass.
-    const flags = save.slot.campaign.storyFlags;
-    flags.minigamesSeen = flags.minigamesSeen || [];
-    if (!flags['powered_' + cab.id] && Input.isTouchDevice()) {
-      flags['powered_' + cab.id] = true;
-      save.persist();
-    }
-    if (!flags['powered_' + cab.id]) {
-      const rr = new Rng(cab.id + save.slot.stats.runs);
-      const unseen = MINIGAMES.filter((m) => !flags.minigamesSeen.includes(m));
-      const pool = unseen.length ? unseen : MINIGAMES;
-      const game = pool[rr.int(0, pool.length - 1)];
-      const reward = rr.pick(Object.keys(POWER_DEFS));
-      flags.minigamesSeen.push(game);
-      setState(new MinigameState({
-        game,
-        seed: (Date.now() & 0xffff) ^ 17,
-        settings: save.settings,
-        bonusText: `BONUS: ${POWER_DEFS[reward].name} ON YOUR NEXT RUN`,
-        onEnd: (success) => {
-          flags['powered_' + cab.id] = true;
-          if (success) {
-            save.slot.coins += 300;
-            flags.pendingPowerup = reward;
-          }
-          save.persist();
-          setState(new StageSelectState({ save, cab, flow: Flow }));
-        },
-      }));
-      return;
-    }
+    // Cabinets open straight onto their stages. The breaker box used to gate
+    // this door; it now lives in Arcade Corner, where playing it is a choice.
     setState(new StageSelectState({ save, cab, flow: Flow }));
   },
 
@@ -116,6 +92,11 @@ const Flow = {
   },
 
   startStage(cab, stage, corrupted) {
+    // The Briefing Manifest: every stage opens on its establishment screen.
+    setState(new BriefingState({ cab, stage, onDone: () => Flow.launchStage(cab, stage, corrupted) }));
+  },
+
+  launchStage(cab, stage, corrupted) {
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
@@ -128,7 +109,7 @@ const Flow = {
       onEnd: (result) => {
         Flow.lastTeam = result.team;
         const gains = applyResult(save, result);
-        setState(new ResultsState({ result, gains, save, onDone: () => Flow.toHub() }));
+        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
       },
     }));
   },
@@ -145,9 +126,9 @@ const Flow = {
           save.persist();
         }
         const gains = applyResult(save, result);
-        setState(new ResultsState({ result, gains, save, onDone: () => {
+        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => {
           if (result.success && cabId === 'surge') Flow.startFinale();
-          else Flow.toHub();
+          else Flow.toHub(false);
         } }));
       },
     }));
@@ -165,7 +146,7 @@ const Flow = {
       onEnd: (result) => {
         Flow.lastTeam = result.team;
         const gains = applyResult(save, result);
-        setState(new ResultsState({ result, gains, save, onDone: () => Flow.toHub() }));
+        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
       },
     }));
   },
@@ -174,13 +155,24 @@ const Flow = {
   openShop() { setState(new ShopState({ save, flow: Flow })); },
   openArcade() { setState(new ArcadeState({ save, flow: Flow })); },
 
-  playMinigame(game, replay) {
+  playMinigame(game) {
+    // Arcade Corner takes its coin up front, so a bail-out still costs the play.
+    const flags = save.slot.campaign.storyFlags;
+    save.slot.coins -= ARCADE_PLAY_COST;
+    save.persist();
+    const rr = new Rng(game + save.slot.stats.runs + save.slot.coins);
+    const reward = rr.pick(Object.keys(POWER_DEFS));
     setState(new MinigameState({
       game,
       seed: Date.now() & 0xffff,
       settings: save.settings,
+      bonusText: `BONUS: ${POWER_DEFS[reward].name} ON YOUR NEXT RUN`,
       onEnd: (success) => {
-        if (success && replay) { save.slot.coins += 100; save.persist(); }
+        if (success) {
+          save.slot.coins += REWARDS.arcadeWin;
+          flags.pendingPowerup = reward;
+          save.persist();
+        }
         Flow.openArcade();
       },
     }));

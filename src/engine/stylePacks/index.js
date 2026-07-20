@@ -226,16 +226,22 @@ const V_INK = 'rgba(22,14,30,0.72)';
 // Opaque twin of V_INK, for the smoke layer: that puff is composited solid and
 // faded once at the blit, so an alpha ink there would double up.
 const V_INK_SOLID = '#3a3040';
-// Depth of field. The volcano composites into its own layer and blits back
-// through a blur, which is the one distance cue that does not fight the bold
-// reference palette: it recedes without desaturating anything. Blurring each
-// shape as it is drawn would be wrong — every internal edge would soften
-// separately and the overlaps would go muddy — so the whole thing is flattened
-// first and blurred once, as a single image.
+// Depth of field. The volcano is flattened and blurred ONCE, as a single image,
+// which is the one distance cue that does not fight the bold reference palette:
+// it recedes without desaturating anything. Blurring each shape as it is drawn
+// would be wrong — every internal edge would soften separately and the overlaps
+// would go muddy.
+//
+// Held to the point where the cap's scalloped drips still read as separate
+// tongues. That fringe is the most recognisable thing in the silhouette, and it
+// is only ~40px tall on screen, so it is the first detail the blur eats: at the
+// 1.15 this used to sit at, the tongues smeared into one soft band and the cap
+// stopped looking poured. Anything below ~0.3 loses the recession entirely and
+// the ink outline starts to alias against the sky.
 //
 // ctx.filter is unsupported in a few older engines; there it silently no-ops
 // and the volcano simply draws sharp, which is a fine degradation.
-const V_BLUR = 1.15;
+const V_BLUR = 0.6;
 // Plume shape: `sc` scales the puffs, `rise` how far the column climbs. Kept
 // module-level because the composite layer must reserve headroom for whatever
 // they add up to — a hardcoded margin silently crops the plume the moment
@@ -243,183 +249,275 @@ const V_BLUR = 1.15;
 const V_SMOKE_SC = 0.85, V_SMOKE_RISE = 1.6;
 // tallest puff centre above the vent, plus its own radius, plus slack
 const V_SMOKE_TOP = Math.ceil((8 + 92 * V_SMOKE_RISE + 28) * V_SMOKE_SC) + 16;
-const volcLayer = { c: null, g: null, w: 0, h: 0 };
 const V_SS = 2;
-function drawVolcano(out, t, camX, atCam, reduced) {
-  const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
-  // Proportioned against the far range rather than as a standalone cone: those
-  // crests are ~96 tall over a ~141 half-width (ratio ~0.7), so a tall narrow
-  // spire reads as a different kind of landform sitting among them. The flanks
-  // also follow a power curve instead of a straight line — `flankX` widens
-  // fastest near the summit, which blunts the apex the way a real massif is
-  // blunt. A straight-sided triangle is what made it read as pointy.
-  const hgt = 82, halfBase = 104, notch = 15;
-  // GROUNDED: the volcano stands on the same groundline as everything else.
-  //
-  // An earlier version lifted its base toward the horizon so it could be shrunk
-  // and still clear the 96px range in front of it. That bought smallness at the
-  // cost of looking unanchored, and it made the cone read as pointy — with the
-  // summit only just clearing the crests, the sole visible part was the steep
-  // tip, whatever the overall ratio said.
-  //
-  // Standing on the groundline means it CANNOT out-rise the range at this size,
-  // and that is the accepted trade: the peaks hide it, it shows through the
-  // valleys between them, and the plume carries it the rest of the time. Size
-  // is therefore chosen against the range's SHOULDER peaks (~0.55 * 96 = 53)
-  // rather than its main crests — high enough to clear the shoulders, low
-  // enough that the main peaks still cut across it.
-  const baseY = GROUND_Y;
-  const apex = baseY - hgt;
 
-  const flankX = (f) => halfBase * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
-  // The silhouette does NOT stop at halfBase. `baseY` only sets proportions —
-  // the cone keeps descending to GROUND_Y, so the flanks are extrapolated past
-  // f=1 and the true half-width at the groundline is flankX(fBase), which is
-  // wider than halfBase and grows every time the base is lifted. Sizing the
-  // layer or the cull off halfBase slices that skirt off at a hard vertical
-  // edge, so both use the real extent.
-  const fBase = (GROUND_Y - apex) / hgt;
-  const maxHalf = flankX(fBase);
-  if (cx + maxHalf < -40 || cx - maxHalf > W + 40) return; // off screen
+// The volcano is expensive to draw and almost entirely STATIC. Every path in
+// it — the cone, the shadow faces, the scalloped lava fringe, the crater
+// crescent — is fixed geometry, and horizontal parallax is pure translation:
+// it changes where the layer lands on screen, not one pixel of what is inside
+// it. Rebuilding all of that per frame cost ~1.1ms of the ~2.3ms this function
+// used to spend, for an image identical to the previous frame's.
+//
+// So the fixed stack is rasterised ONCE into bake canvases, and the layer is
+// composed at a FIXED subpixel phase (`CXB`) instead of at the live `cx`. The
+// fractional parallax offset moves to the final blit — which is where it
+// already was — so motion is unchanged; only the interior stops being rebuilt.
+// A side benefit: the interior no longer re-rasterises at a different subpixel
+// phase every frame, which is what made the ink edges shimmer as it drifted.
+//
+// TWO bakes rather than one, because the animated highlight sweep composites
+// in the MIDDLE of the stack: over the lava gradient, under the cap's ink
+// outline and the crater crescent. `under` is everything below the sweep,
+// `over` everything above it.
 
-  // Layer bounds. The plume climbs well above the summit and is part of the
-  // same image, so it has to fit inside the blurred layer too — clipping it at
-  // the summit would leave a hard cut where the smoke crosses the edge.
-  const pad = 6;
-  const bx = cx - maxHalf - pad, by = apex - V_SMOKE_TOP;
-  const lw = Math.ceil(maxHalf * 2 + pad * 2), lh = Math.ceil(GROUND_Y + 2 - by);
-  if (!volcLayer.c || volcLayer.w < lw || volcLayer.h < lh) {
-    volcLayer.c = document.createElement('canvas');
-    volcLayer.c.width = lw * V_SS;
-    volcLayer.c.height = lh * V_SS;
-    volcLayer.g = volcLayer.c.getContext('2d');
-    volcLayer.w = lw; volcLayer.h = lh;
+// ---- fixed geometry (none of it depends on camera position) ----
+// Proportioned against the far range rather than as a standalone cone: those
+// crests are ~96 tall over a ~141 half-width (ratio ~0.7), so a tall narrow
+// spire reads as a different kind of landform sitting among them. The flanks
+// also follow a power curve instead of a straight line — `flankX` widens
+// fastest near the summit, which blunts the apex the way a real massif is
+// blunt. A straight-sided triangle is what made it read as pointy.
+const V_HGT = 82, V_HALF_BASE = 104, V_NOTCH = 15;
+// GROUNDED: the volcano stands on the same groundline as everything else.
+//
+// An earlier version lifted its base toward the horizon so it could be shrunk
+// and still clear the 96px range in front of it. That bought smallness at the
+// cost of looking unanchored, and it made the cone read as pointy — with the
+// summit only just clearing the crests, the sole visible part was the steep
+// tip, whatever the overall ratio said.
+//
+// Standing on the groundline means it CANNOT out-rise the range at this size,
+// and that is the accepted trade: the peaks hide it, it shows through the
+// valleys between them, and the plume carries it the rest of the time. Size
+// is therefore chosen against the range's SHOULDER peaks (~0.55 * 96 = 53)
+// rather than its main crests — high enough to clear the shoulders, low
+// enough that the main peaks still cut across it.
+const V_BASE_Y = GROUND_Y;
+const V_APEX = V_BASE_Y - V_HGT;
+const vFlankX = (f) => V_HALF_BASE * Math.pow(f, 0.72); // f: 0 at apex, 1 at base
+// The silhouette does NOT stop at V_HALF_BASE. `V_BASE_Y` only sets
+// proportions — the cone keeps descending to GROUND_Y, so the flanks are
+// extrapolated past f=1 and the true half-width at the groundline is
+// vFlankX(V_F_BASE), which is wider than V_HALF_BASE and grows every time the
+// base is lifted. Sizing the layer or the cull off V_HALF_BASE slices that
+// skirt off at a hard vertical edge, so both use the real extent.
+const V_F_BASE = (GROUND_Y - V_APEX) / V_HGT;
+const V_MAX_HALF = vFlankX(V_F_BASE);
+// Layer bounds. The plume climbs well above the summit and is part of the same
+// image, so it has to fit inside the blurred layer too — clipping it at the
+// summit would leave a hard cut where the smoke crosses the edge.
+const V_PAD = 6;
+const V_LY = V_APEX - V_SMOKE_TOP;                                  // layer top, absolute y
+const V_LW = Math.ceil(V_MAX_HALF * 2 + V_PAD * 2);
+const V_LH = Math.ceil(GROUND_Y + 2 - V_LY);
+// Where the summit sits inside the layer. Everything below is drawn against
+// this instead of the live `cx`, which is what makes the bake reusable.
+const CXB = V_MAX_HALF + V_PAD;
+// The cone is TRUNCATED: `V_NOTCH` is wide enough (~1/4 of the base) that the
+// flanks stop well short of `V_APEX` and the top is cut off, leaving a real
+// rim-to-rim crater. Earlier passes kept a near-pointed peak and took a small
+// nick out of it, and no depth of nick ever read as a volcano — a pointed
+// mountain with a dent is still a pointed mountain. Widening the mouth is
+// what does the work; the dish between the rims can then stay very shallow.
+//
+// `V_APEX` is therefore virtual — the tip the flanks are aimed at, not a place
+// on the silhouette. `V_RIM_Y` is the real summit, so everything that used to
+// hang off the apex (lava gradient, smoke origin) hangs off the rim instead.
+const V_F_T = Math.pow(V_NOTCH / V_HALF_BASE, 1 / 0.72); // where the flank meets the rim
+const V_RIM_Y = V_APEX + V_HGT * V_F_T;
+const V_CRATER_D = 1.9;  // shallow dish across a wide rim, not a notch in a point
+// The cap has to END ABOVE the far range's crests (~96) or the drips — the
+// most recognisable part of the silhouette — sit behind the ridgeline and
+// never show. That is what pins this fraction, not the look of the cone.
+const V_CAP_BOT = V_BASE_Y - V_HGT * 0.70;
+const V_LAVA_BOT = V_CAP_BOT + 10;
+
+// The crater is a dip in the SILHOUETTE rather than a shape painted on top: an
+// ellipse drawn on a convex outline always reads as a disc resting on the
+// mountain, because nothing occludes it. A quadratic's midpoint sits halfway
+// to its control point, so the control goes 2x the wanted depth down.
+//
+// `V_BASE_Y` sets the volcano's PROPORTIONS, but the silhouette still runs all
+// the way down to GROUND_Y. Ending the polygon at V_BASE_Y left a flat cut
+// edge hanging in mid-air wherever the range dipped below it — the cone has to
+// keep descending until something covers it. So the flanks are extrapolated
+// past f=1 to whatever fraction lands on the groundline; that extra skirt is
+// always hidden behind the hills.
+function vConePath() {
+  const p = new Path2D();
+  p.moveTo(CXB - vFlankX(V_F_BASE), GROUND_Y);
+  for (let f = V_F_BASE; f >= V_F_T; f -= 0.03) p.lineTo(CXB - vFlankX(f), V_APEX + V_HGT * f);
+  p.quadraticCurveTo(CXB, V_RIM_Y + V_CRATER_D * 2, CXB + V_NOTCH, V_RIM_Y);
+  for (let f = V_F_T; f <= V_F_BASE; f += 0.03) p.lineTo(CXB + vFlankX(f), V_APEX + V_HGT * f);
+  p.lineTo(CXB + vFlankX(V_F_BASE), GROUND_Y);
+  p.closePath();
+  return p;
+}
+// Molten cap: the lava has overflowed and set into a scalloped fringe of drips
+// over the upper third, exactly as in the reference. The fringe is one path —
+// a sine-scalloped lower edge whose scallop depth varies per lobe, so it reads
+// as poured rather than as a cut band.
+//
+// `envelope` is what stops the fringe reading as a scalloped ribbon: it makes
+// a few lobes run much longer than their neighbours, so the edge is a row of
+// uneven tongues (the reference's silhouette) rather than even scallops.
+//
+// The drip waves are keyed to PIXELS, not to px/V_HALF_BASE. At the cap's
+// altitude the cone is only ~43px half-wide, so a wave with a period in
+// base-widths spans a third of a cycle across everything visible and the
+// fringe flattens into a straight band. Pixel frequencies put ~5 tongues
+// across the width that is actually on-cone.
+function vCapPath() {
+  const p = new Path2D();
+  p.moveTo(CXB - V_HALF_BASE, V_APEX - 6);
+  p.lineTo(CXB + V_HALF_BASE, V_APEX - 6);
+  for (let px = V_HALF_BASE; px >= -V_HALF_BASE; px -= 1.5) {
+    // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns
+    // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
+    // each lobe is a rounded tongue with a rounded notch beside it.
+    const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
+    const drip = (0.5 - 0.5 * Math.cos(px * 0.38)) * 10 * envelope
+      + (0.5 - 0.5 * Math.cos(px * 0.8 + 1.4)) * 2.5;
+    p.lineTo(CXB + px, V_CAP_BOT + drip);
   }
-  const ctx = volcLayer.g;
-  // Absolute screen coords keep working inside the layer: the transform maps
-  // the layer's origin onto (bx, by).
-  ctx.setTransform(V_SS, 0, 0, V_SS, -bx * V_SS, -by * V_SS);
-  ctx.clearRect(bx, by, volcLayer.w, volcLayer.h);
+  p.closePath();
+  return p;
+}
 
-  const ink = (w) => { ctx.strokeStyle = V_INK; ctx.lineWidth = w; ctx.stroke(); };
-  // The cone is TRUNCATED: `notch` is wide enough (~1/4 of the base) that the
-  // flanks stop well short of `apex` and the top is cut off, leaving a real
-  // rim-to-rim crater. Earlier passes kept a near-pointed peak and took a small
-  // nick out of it, and no depth of nick ever read as a volcano — a pointed
-  // mountain with a dent is still a pointed mountain. Widening the mouth is
-  // what does the work; the dish between the rims can then stay very shallow.
-  //
-  // `apex` is now virtual — the tip the flanks are aimed at, not a place on the
-  // silhouette. `rimY` is the real summit, so everything that used to hang off
-  // apex (lava gradient, smoke origin) hangs off rimY instead.
-  //
-  // The crater is still a dip in the SILHOUETTE rather than a shape painted on
-  // top: an ellipse drawn on a convex outline always reads as a disc resting on
-  // the mountain, because nothing occludes it. A quadratic's midpoint sits
-  // halfway to its control point, so the control goes 2x the wanted depth down.
-  const fT = Math.pow(notch / halfBase, 1 / 0.72); // where the flank meets the rim
-  const rimY = apex + hgt * fT;
-  const craterD = 1.9;   // shallow dish across a wide rim, not a notch in a point
-  // `baseY` sets the volcano's PROPORTIONS, but the silhouette still runs all
-  // the way down to GROUND_Y. Ending the polygon at baseY left a flat cut edge
-  // hanging in mid-air wherever the range dipped below it — the cone has to
-  // keep descending until something covers it. So the flanks are extrapolated
-  // past f=1 to whatever fraction lands on the groundline; that extra skirt is
-  // always hidden behind the hills.
-  const cone = () => {
-    ctx.beginPath();
-    ctx.moveTo(cx - flankX(fBase), GROUND_Y);
-    for (let f = fBase; f >= fT; f -= 0.03) ctx.lineTo(cx - flankX(f), apex + hgt * f);
-    ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
-    for (let f = fT; f <= fBase; f += 0.03) ctx.lineTo(cx + flankX(f), apex + hgt * f);
-    ctx.lineTo(cx + flankX(fBase), GROUND_Y);
-    ctx.closePath();
-  };
+// `cone` and `cap` are kept for the per-frame highlight clip — it needs BOTH,
+// see the note where it is drawn. `under`/`over` are the baked halves of the
+// static stack.
+const volcBake = { under: null, over: null, cone: null, cap: null };
+// Layer-local drawing happens in ABSOLUTE y and CXB-relative x, so every
+// context that touches the volcano wants the same transform.
+function volcCtx(canvas) {
+  const g = canvas.getContext('2d');
+  g.setTransform(V_SS, 0, 0, V_SS, 0, -V_LY * V_SS);
+  return g;
+}
+// Rasterise `paint` into a supersampled full-layer scratch, then resolve the
+// band [y0, y1) down to 1x THROUGH the depth-of-field blur.
+//
+// Baking the blur is the point. The volcano used to composite into a layer and
+// blit it back under `ctx.filter = blur(...)` every frame, and that one
+// filtered, downscaling blit was the single most expensive thing in the whole
+// background — more than every path in the cone put together. A filter on a
+// static image is a constant, so it belongs in the bake; the per-frame blit is
+// then an ordinary unfiltered one.
+//
+// The band is tight in Y for the same reason: `under` only needs the cone's
+// own ~94 rows, `over` only the ~40 around the cap. Blitting the full layer
+// height would drag the plume's 172 rows of empty headroom along with it.
+function bakeSlice(paint, y0, y1) {
+  const sc = document.createElement('canvas');
+  sc.width = V_LW * V_SS;
+  sc.height = V_LH * V_SS;
+  paint(volcCtx(sc));
+  const h = Math.ceil(y1 - y0);
+  const c = document.createElement('canvas');
+  c.width = V_LW;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.filter = `blur(${V_BLUR}px)`;
+  g.drawImage(sc, 0, (y0 - V_LY) * V_SS, V_LW * V_SS, h * V_SS, 0, 0, V_LW, h);
+  return { c, y: y0, h };
+}
+function bakeVolcano() {
+  if (volcBake.under) return;
+  const cone = vConePath(), cap = vCapPath();
+  volcBake.cone = cone;
+  volcBake.cap = cap;
 
-  // Smoke goes down first so the plume passes BEHIND the summit — puffs that
-  // overlap the crater lip read as sitting on top of it otherwise.
-  drawVolcanoSmoke(ctx, t, cx, rimY + craterD, reduced, V_SMOKE_SC, V_SMOKE_RISE);
-
-  cone();
-  ctx.fillStyle = V_ROCK;
-  ctx.fill();
-  ink(1.4);
+  // ---- under: rock, ink outline, shadow faces, lava gradient ----
+  volcBake.under = bakeSlice((g) => {
+  g.fillStyle = V_ROCK;
+  g.fill(cone);
+  g.strokeStyle = V_INK;
+  g.lineWidth = 1.4;
+  g.stroke(cone);
   // Shadow face: the right flank plus a wedge down the middle, which is what
   // gives the reference cone its two-plane look at a glance.
-  ctx.save();
-  cone();
-  ctx.clip();
-  ctx.fillStyle = V_ROCK_DK;
-  ctx.beginPath();
-  ctx.moveTo(cx + notch * 0.3, apex);
-  ctx.lineTo(cx + halfBase * 1.4, GROUND_Y);
-  ctx.lineTo(cx + halfBase * 0.28, GROUND_Y);
-  ctx.lineTo(cx + notch * 0.1, baseY - hgt * 0.44);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();                             // small gully on the lit face
-  ctx.moveTo(cx - notch * 0.5, apex + 6);
-  ctx.lineTo(cx - halfBase * 0.46, GROUND_Y);
-  ctx.lineTo(cx - halfBase * 0.74, GROUND_Y);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  // Molten cap: the lava has overflowed and set into a scalloped fringe of
-  // drips over the upper third, exactly as in the reference. The fringe is one
-  // path — a sine-scalloped lower edge whose scallop depth varies per lobe, so
-  // it reads as poured rather than as a cut band.
-  // `envelope` is what stops the fringe reading as a scalloped ribbon: it makes
-  // a few lobes run much longer than their neighbours, so the edge is a row of
-  // uneven tongues (the reference's silhouette) rather than even scallops.
-  //
-  // The drip waves are keyed to PIXELS, not to px/halfBase. At the cap's
-  // altitude the cone is only ~43px half-wide, so a wave with a period in
-  // base-widths spans a third of a cycle across everything visible and the
-  // fringe flattens into a straight band. Pixel frequencies put ~5 tongues
-  // across the width that is actually on-cone.
-  //
-  // The cap has to END ABOVE the far range's crests (~96) or the drips — the
-  // most recognisable part of the silhouette — sit behind the ridgeline and
-  // never show. That is what pins this fraction, not the look of the cone.
-  const capBot = baseY - hgt * 0.70;
-  const capEdge = () => {
-    ctx.beginPath();
-    ctx.moveTo(cx - halfBase, apex - 6);
-    ctx.lineTo(cx + halfBase, apex - 6);
-    for (let px = halfBase; px >= -halfBase; px -= 1.5) {
-      // Raised cosine, not |sin|: |sin| has a cusp at every zero, which turns
-      // the fringe into a row of sawteeth. (1-cos)/2 is smooth at both ends, so
-      // each lobe is a rounded tongue with a rounded notch beside it.
-      const envelope = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(px * 0.16 + 0.7));
-      const drip = (0.5 - 0.5 * Math.cos(px * 0.38)) * 10 * envelope
-        + (0.5 - 0.5 * Math.cos(px * 0.8 + 1.4)) * 2.5;
-      ctx.lineTo(cx + px, capBot + drip);
-    }
-    ctx.closePath();
-  };
-  ctx.save();
-  cone();
-  ctx.clip();
+  g.save();
+  g.clip(cone);
+  g.fillStyle = V_ROCK_DK;
+  g.beginPath();
+  g.moveTo(CXB + V_NOTCH * 0.3, V_APEX);
+  g.lineTo(CXB + V_HALF_BASE * 1.4, GROUND_Y);
+  g.lineTo(CXB + V_HALF_BASE * 0.28, GROUND_Y);
+  g.lineTo(CXB + V_NOTCH * 0.1, V_BASE_Y - V_HGT * 0.44);
+  g.closePath();
+  g.fill();
+  g.beginPath();                             // small gully on the lit face
+  g.moveTo(CXB - V_NOTCH * 0.5, V_APEX + 6);
+  g.lineTo(CXB - V_HALF_BASE * 0.46, GROUND_Y);
+  g.lineTo(CXB - V_HALF_BASE * 0.74, GROUND_Y);
+  g.closePath();
+  g.fill();
+  g.restore();
   // The lava is ONE continuous gradient, reddest at the crater mouth and
   // cooling to orange down the fringe. An earlier pass stacked discrete flat
   // fills instead and stepped visibly — at this size the cap is only ~40px
   // tall, so any band count coarse enough to animate is also coarse enough to
   // read as stripes. A gradient sidesteps the tradeoff entirely.
-  const lavaBot = capBot + 10;
-  const grad = ctx.createLinearGradient(0, rimY - 2, 0, lavaBot);
+  g.save();
+  g.clip(cone);
+  const grad = g.createLinearGradient(0, V_RIM_Y - 2, 0, V_LAVA_BOT);
   for (let i = 0; i < V_LAVA.length; i++) {
     grad.addColorStop(i / (V_LAVA.length - 1), V_LAVA[i]);
   }
-  ctx.fillStyle = grad;
-  capEdge();
-  ctx.fill();
+  g.fillStyle = grad;
+  g.fill(cap);
+  g.restore();
+  // The cone's own band: the ink stroke's half-width above the summit, down to
+  // just past the groundline. Everything above is plume, which is drawn live.
+  }, V_RIM_Y - 2, GROUND_Y + 2);
+
+  // ---- over: the cap's ink outline and the crater's inner wall ----
+  volcBake.over = bakeSlice((h) => {
+  h.save();
+  h.clip(cone);
+  h.strokeStyle = V_INK;
+  h.lineWidth = 1.1;
+  h.stroke(cap);
+  // Inner wall: a crescent hugging the underside of the crater dip, which is
+  // the far wall of the bowl seen from slightly below. Two arcs of the same
+  // span, the lower one deeper, filled between. This is all the crater needs
+  // now that the silhouette carries it — an opaque shape here would put the
+  // disc back.
+  h.beginPath();
+  h.moveTo(CXB - V_NOTCH, V_RIM_Y);
+  h.quadraticCurveTo(CXB, V_RIM_Y + V_CRATER_D * 2, CXB + V_NOTCH, V_RIM_Y);
+  h.quadraticCurveTo(CXB, V_RIM_Y + (V_CRATER_D + 1.1) * 2, CXB - V_NOTCH, V_RIM_Y);
+  h.closePath();
+  h.fillStyle = 'rgba(58,32,38,0.24)';
+  h.fill();
+  h.restore();
+  // Rim to the bottom of the longest drip, plus slack for the blur.
+  }, V_RIM_Y - 3, V_CAP_BOT + 18);
+}
+
+function drawVolcano(ctx, t, camX, atCam, reduced) {
+  const cx = W / 2 + (atCam - camX) * VOLCANO_PLX;
+  if (cx + V_MAX_HALF < -40 || cx - V_MAX_HALF > W + 40) return; // off screen
+  bakeVolcano();
+  // Straight onto the scene, no intermediate layer: the bakes already carry the
+  // depth blur, so there is nothing left that has to be flattened before it can
+  // be filtered. `translate` puts the parallax offset on the context, which
+  // means the cached cone/cap paths keep working as clips without rebuilding.
+  ctx.save();
+  ctx.translate(cx - CXB, 0);
+
+  // Smoke goes down first so the plume passes BEHIND the summit — puffs that
+  // overlap the crater lip read as sitting on top of it otherwise.
+  drawVolcanoSmoke(ctx, t, CXB, V_RIM_Y + V_CRATER_D, reduced, V_SMOKE_SC, V_SMOKE_RISE);
+  const under = volcBake.under;
+  ctx.drawImage(under.c, 0, under.y, V_LW, under.h);
   // Motion comes from a soft highlight travelling down the slope instead of
   // from moving the colour fronts. Its alpha follows sin(pi*u), so it fades in
   // at the mouth and out at the fringe rather than popping when it wraps.
   if (!reduced) {
     const u = (t * 0.15) % 1;
-    const hy = rimY + (lavaBot - rimY) * u;
+    const hy = V_RIM_Y + (V_LAVA_BOT - V_RIM_Y) * u;
     const band = 13;
     const hg = ctx.createLinearGradient(0, hy - band, 0, hy + band);
     const a = 0.3 * Math.sin(Math.PI * u);
@@ -427,38 +525,20 @@ function drawVolcano(out, t, camX, atCam, reduced) {
     hg.addColorStop(0.5, `rgba(255,198,96,${a})`);
     hg.addColorStop(1, 'rgba(255,198,96,0)');
     ctx.save();
-    capEdge();
-    ctx.clip();
+    // BOTH clips, in this order. The cap path spans the full base width, but at
+    // the cap's altitude the cone is only ~43px half-wide — the cone clip is
+    // what trims the fringe back to the silhouette. Clipping to the cap alone
+    // lets the sweep run out into open sky as a warm smear either side of the
+    // summit, which is exactly what it did until this line was fixed.
+    ctx.clip(volcBake.cone);
+    ctx.clip(volcBake.cap);
     ctx.fillStyle = hg;
-    ctx.fillRect(cx - halfBase, hy - band, halfBase * 2, band * 2);
+    ctx.fillRect(CXB - V_HALF_BASE, hy - band, V_HALF_BASE * 2, band * 2);
     ctx.restore();
   }
-  capEdge();
-  ink(1.1);
+  const over = volcBake.over;
+  ctx.drawImage(over.c, 0, over.y, V_LW, over.h);
   ctx.restore();
-
-  // Inner wall: a crescent hugging the underside of the crater dip, which is
-  // the far wall of the bowl seen from slightly below. Two arcs of the same
-  // span, the lower one deeper, filled between. This is all the crater needs
-  // now that the silhouette carries it — an opaque shape here would put the
-  // disc back.
-  ctx.save();
-  cone();
-  ctx.clip();
-  ctx.beginPath();
-  ctx.moveTo(cx - notch, rimY);
-  ctx.quadraticCurveTo(cx, rimY + craterD * 2, cx + notch, rimY);
-  ctx.quadraticCurveTo(cx, rimY + (craterD + 1.1) * 2, cx - notch, rimY);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(58,32,38,0.24)';
-  ctx.fill();
-  ctx.restore();
-
-  // Flatten back to the scene through the depth-of-field blur.
-  const prevFilter = out.filter;
-  out.filter = `blur(${V_BLUR}px)`;
-  out.drawImage(volcLayer.c, 0, 0, lw * V_SS, lh * V_SS, bx, by, lw, lh);
-  out.filter = prevFilter || 'none';
 }
 
 // Billowing cartoon smoke off the summit: each puff is a cluster of lobes (a
@@ -491,10 +571,26 @@ function drawVolcanoSmoke(ctx, t, cx, apex, reduced, sc = 1, rise = 1) {
     smokePuff(ctx, x, y, r, a, i);
   }
 }
-// One reusable scratch layer for compositing a puff. Sized on demand and never
-// shrunk, so steady-state costs no allocation.
-const smokeLayer = { c: null, g: null, size: 0 };
+// One baked sprite per puff seed, drawn once and then scaled.
+//
+// A puff's cluster is SELF-SIMILAR in `r` — the lobe offsets and radii are all
+// fractions of it, and the seed only picks lobe angles — so the shape a puff
+// has at r=28 is the shape it has at r=8, scaled. Compositing it from arcs on
+// every frame (which is what this used to do, five times a frame) rebuilds an
+// image that differs from the baked one only by a scale factor.
+//
+// The one term that is NOT proportional is the outline width's `max(0.9, …)`
+// floor, which only bites below r≈10.6 — the freshly-emerged puffs at the vent,
+// still fading in, under a 1.15px blur. Their ink runs a hair thinner than it
+// used to; nothing else changes.
 const SMOKE_SS = 2; // supersample, so the blit is not soft at device res
+// Bake radius. Set to the largest a puff actually reaches — (6 + 22) * V_SMOKE_SC
+// — so sprites are only ever scaled DOWN (never blown up past their raster) and
+// the biggest, most visible puffs draw at ~1:1, where the baked blur is exactly
+// the blur they would have got. Overshooting this shrinks every puff's effective
+// blur for nothing.
+const PUFF_R0 = Math.ceil((6 + 22) * V_SMOKE_SC);
+const puffSprites = [];
 
 // The outline is a DILATED SILHOUETTE, not a stroke. Stroking the cluster path
 // would trace every circle in full, including the arcs buried inside the union,
@@ -517,40 +613,56 @@ function puffCluster(g, cx, cy, r, seed, grow) {
     g.arc(lx, ly, lr, 0, Math.PI * 2);
   }
 }
-function smokePuff(ctx, x, y, r, alpha, seed) {
-  if (alpha <= 0.01) return;
+function puffSprite(seed) {
+  let s = puffSprites[seed];
+  if (s) return s;
+  const r = PUFF_R0;
   const ow = Math.max(0.9, r * 0.085);
   const half = Math.ceil(r * 1.55 + ow + 2);
   const size = half * 2;
-  if (!smokeLayer.c || smokeLayer.size < size) {
-    smokeLayer.c = document.createElement('canvas');
-    smokeLayer.c.width = smokeLayer.c.height = size * SMOKE_SS;
-    smokeLayer.g = smokeLayer.c.getContext('2d');
-    smokeLayer.size = size;
-  }
-  const g = smokeLayer.g, S = smokeLayer.size;
+  const sc = document.createElement('canvas');
+  sc.width = sc.height = size * SMOKE_SS;
+  const g = sc.getContext('2d');
   g.setTransform(SMOKE_SS, 0, 0, SMOKE_SS, 0, 0);
-  g.clearRect(0, 0, S, S);
-  const c = S / 2;
-  puffCluster(g, c, c, r, seed, ow);
+  const m = size / 2;
+  puffCluster(g, m, m, r, seed, ow);
   g.fillStyle = V_INK_SOLID;
   g.fill();
-  puffCluster(g, c, c, r, seed, 0);
+  puffCluster(g, m, m, r, seed, 0);
   g.fillStyle = '#b9bcc6';
   g.fill();
   // Lighter cap on the upper lobes so the cloud is shaded rather than flat —
   // clipped to the cluster, or it spills past the outline.
   g.save();
-  puffCluster(g, c, c, r, seed, 0);
+  puffCluster(g, m, m, r, seed, 0);
   g.clip();
   g.fillStyle = '#d4d6de';
   g.beginPath();
-  g.arc(c - r * 0.3, c - r * 0.5, r * 0.72, 0, Math.PI * 2);
+  g.arc(m - r * 0.3, m - r * 0.5, r * 0.72, 0, Math.PI * 2);
   g.fill();
   g.restore();
+  // Resolve to 1x through the same depth blur the cone is baked with, so the
+  // plume still recedes with the rest of the volcano now that nothing is
+  // filtered at draw time. The blur is baked at the sprite's full size and
+  // therefore shrinks with it — a puff at the vent ends up crisper than one at
+  // the top of the column. Under a translucent grey cloud that reads as the
+  // near end of the plume being slightly sharper, which is not wrong.
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const o = c.getContext('2d');
+  o.filter = `blur(${V_BLUR}px)`;
+  o.drawImage(sc, 0, 0, size * SMOKE_SS, size * SMOKE_SS, 0, 0, size, size);
+  s = { c, half };
+  puffSprites[seed] = s;
+  return s;
+}
+function smokePuff(ctx, x, y, r, alpha, seed) {
+  if (alpha <= 0.01) return;
+  const s = puffSprite(seed);
+  const half = s.half * (r / PUFF_R0);
   const prev = ctx.globalAlpha;
   ctx.globalAlpha = prev * alpha;
-  ctx.drawImage(smokeLayer.c, 0, 0, S * SMOKE_SS, S * SMOKE_SS, x - c, y - c, S, S);
+  ctx.drawImage(s.c, x - half, y - half, half * 2, half * 2);
   ctx.globalAlpha = prev;
 }
 

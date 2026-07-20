@@ -99,6 +99,56 @@ function floatingFoot(p, stride, lift) {
 // ---------------------------------------------------------------- faces
 const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7 };
 
+// ------------------------------------------------------ victory routines
+// The results screen holds for a while, so a single looping wiggle reads as a
+// freeze-frame. Every hero runs a two-beat routine instead: their own bouncy
+// signature, then a bigger move (hop / turn / bow / shimmy). Cycles are offset
+// per hero by the face seed so the line-up looks like a crowd rather than one
+// animation played nine times.
+const CELEBRATE_MOVE = {
+  lorenzo: 'hop', gnash: 'spin', fernwick: 'spin', b33p: 'shimmy', mochi: 'hop',
+  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'bow',
+};
+// How high the signature bounce carries each hero. The light ones leave the
+// floor; Grumpos and the robot mostly rock in place.
+const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035 };
+const CEL_CYCLE = 2.6, CEL_SIG = 0.6; // seconds per loop; fraction on the signature
+
+function celebrateMotion(id, t) {
+  const seed = FACE_SEED[id] || 0;
+  const c = ((t + seed * 0.4) % CEL_CYCLE) / CEL_CYCLE;
+  const amp = CELEBRATE_BOUNCE[id] != null ? CELEBRATE_BOUNCE[id] : 0.055;
+  const m = { lift: 0, x: 0, tilt: 0, spin: 1, squash: 0, peak: false, move: null, q: 0 };
+  if (c < CEL_SIG) {
+    const b = Math.sin(c * CEL_CYCLE * 6);
+    m.lift = Math.abs(b) * amp;
+    m.tilt = Math.sin(c * CEL_CYCLE * 3) * 0.06;
+    m.squash = Math.max(0, -b) * 0.25;      // land into a knee-bend, then spring
+    m.peak = b > 0.3;
+    return m;
+  }
+  const q = (c - CEL_SIG) / (1 - CEL_SIG);  // 0..1 through the big move
+  const move = CELEBRATE_MOVE[id] || 'hop';
+  m.move = move; m.q = q;
+  if (move === 'spin') {
+    m.lift = Math.sin(q * Math.PI) * 0.17;
+    m.spin = Math.cos(q * Math.PI * 2);     // squeeze through zero: a flat turn
+    m.peak = true;
+  } else if (move === 'bow') {
+    const d = Math.sin(q * Math.PI);
+    m.tilt = d * 0.26; m.x = d * 0.05; m.squash = d * 0.3; m.peak = d < 0.5;
+  } else if (move === 'shimmy') {
+    const w = Math.sin(q * Math.PI * 8);
+    m.x = w * 0.06; m.tilt = Math.sin(q * Math.PI * 8 + 1) * 0.1;
+    m.lift = Math.abs(w) * 0.05; m.peak = true;
+  } else {                                   // hop: two big airborne bounds
+    const arc = Math.abs(Math.sin(q * Math.PI * 2));
+    m.lift = arc * 0.26; m.tilt = Math.sin(q * Math.PI * 2) * 0.09;
+    m.squash = Math.max(0, 0.3 - arc) * 0.8; m.peak = arc > 0.4;
+  }
+  return m;
+}
+
 function expressionFor(id, pose = {}) {
   const t = pose.time || 0;
   const seed = FACE_SEED[id] || 0;
@@ -106,11 +156,17 @@ function expressionFor(id, pose = {}) {
   // never blinks in eerie unison. Action faces override the idle blink.
   const blinkGap = pose.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
   const blinkPhase = (t + seed) % blinkGap;
-  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.stomp || pose.roll || pose.float;
+  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate' || pose.stomp || pose.roll || pose.float;
+  const joy = pose.kind === 'celebrate';
+  // Celebrating faces ride the routine: at the top of a bounce the grin opens
+  // into a full cheer, and between beats the eyes squeeze shut, delighted.
+  const cheer = joy && celebrateMotion(id, t).peak;
   return {
     blink: !active && blinkPhase < (pose.menu ? 0.2 : 0.13),
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
     surprise: pose.kind === 'jump' && !pose.stomp,
+    joy,
+    cheer,
     effort: !!(pose.stomp || pose.roll || pose.headless),
     mood: id === 'gnash' || id === 'raymn' ? 'cocky'
       : id === 'fernwick' ? 'bright'
@@ -133,6 +189,18 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     }
     return;
   }
+  // Happy-arc eyes: squeezed shut between cheers, the classic ^ ^ of delight.
+  if (ex.joy && !ex.cheer) {
+    ctx.strokeStyle = p.e;
+    ctx.lineWidth = Math.max(0.9, 0.028 * u);
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + sx * sep - 0.04 * u, cy + 0.02 * u);
+      ctx.quadraticCurveTo(cx + sx * sep, cy - 0.055 * u, cx + sx * sep + 0.04 * u, cy + 0.02 * u);
+      ctx.stroke();
+    }
+    return;
+  }
   if (lod) {
     dot(ctx, cx - sep, cy, 0.032 * u, p.e);
     dot(ctx, cx + sep, cy, 0.032 * u, p.e);
@@ -141,7 +209,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   for (const sx of [-1, 1]) {
     outlined(ctx, '#fff', Math.max(0.75, 0.02 * u), (c) => c.ellipse(cx + sx * sep, cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
     const lookX = ex.focus ? 0.012 * u : 0;
-    const lookY = ex.surprise ? -0.005 * u : 0.012 * u;
+    const lookY = ex.surprise || ex.cheer ? -0.005 * u : 0.012 * u;
     dot(ctx, cx + sx * sep + lookX, cy + lookY, 0.026 * u, p.e);
   }
   if (!lod && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
@@ -158,6 +226,17 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   ctx.strokeStyle = OUTLINE;
   ctx.lineWidth = Math.max(1, ow * 0.7);
   ctx.beginPath();
+  if (ex.joy) {
+    // An actual smile: a filled D-grin that widens into a whoop on the peaks.
+    const w = (ex.cheer ? 0.085 : 0.065) * u, d = (ex.cheer ? 0.075 : 0.038) * u;
+    ctx.stroke();
+    outlined(ctx, p.m || p.e, Math.max(0.5, ow * 0.45), (c) => {
+      c.moveTo(cx - w, cy - 0.012 * u);
+      c.quadraticCurveTo(cx, cy + d * 1.9, cx + w, cy - 0.012 * u);
+      c.closePath();
+    });
+    return;
+  }
   if (ex.surprise) {
     ctx.stroke();
     outlined(ctx, p.m || p.e, Math.max(0.5, ow * 0.45), (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
@@ -347,7 +426,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const duck = pose.kind === 'duck';
   const ph = (pose.phase || 0) * Math.PI * 2;
   const s = Math.sin(ph);
+  // The victory hop itself is applied to the whole rig in drawToon; here the
+  // torso only lags a beat behind it, so the head trails the body.
+  const cm = pose.kind === 'celebrate' ? celebrateMotion(id, pose.time || 0) : null;
   const bob = run ? -Math.abs(Math.cos(ph)) * 0.03 * u
+    : cm ? Math.sin((pose.time || 0) * 6 + 1.2) * 0.016 * u
     : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.012 * u : 0;
 
   let hipY = -legL * 0.92;                 // knees carry a slight standing bend
@@ -371,6 +454,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     else { footF = [0.15 * u, hipY + legL * 0.5]; footB = [-0.12 * u, hipY + legL * 0.85]; }
   } else if (duck) {
     footF = [0.19 * u, 0]; footB = [-0.19 * u, 0]; kneeB = -1;
+  } else if (cm) {
+    // Airborne, the legs tuck and split; grounded, they bend into the bounce.
+    const air = Math.min(1, cm.lift / 0.1);
+    footF = [(0.07 + 0.1 * air) * u, -air * 0.34 * legL];
+    footB = [(-0.07 - 0.07 * air) * u, -air * 0.52 * legL];
+    kneeB = -1;
   } else {
     footF = [0.07 * u, 0]; footB = [-0.07 * u, 0]; kneeB = -1;
   }
@@ -379,7 +468,49 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const armSeg = armL * 0.55;
   const shF = torsoHalf * 0.55 + leanX, shB = -torsoHalf * 0.55 + leanX;
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
-  if (pose.menuAction === 'wave') {
+  if (pose.kind === 'celebrate') {
+    // Victory choreography, one flavor per hero.
+    const ct = pose.time || 0;
+    const pump = Math.sin(ct * 6) * 0.05 * u;
+    if (id === 'fernwick') {
+      // champion's clasp: both hands meet overhead
+      handF = [0.05 * u, shoulderY - armL * 0.95 + pump]; elbF = 1;
+      handB = [-0.05 * u, shoulderY - armL * 0.95 + pump]; elbB = -1;
+    } else if (id === 'gnash') {
+      // one cool point at the sky, the other hand on the hip
+      handF = [shF + 0.12 * u, shoulderY - armL * 0.98 + pump]; elbF = 1;
+      handB = [shB - 0.13 * u, shoulderY + armL * 0.4]; elbB = -1;
+    } else if (id === 'grumpos') {
+      // applause, dad-tempo: hands part and meet at chest height
+      const sep = (0.04 + 0.15 * Math.abs(Math.sin(ct * 7))) * u;
+      handF = [leanX + sep, shoulderY - armL * 0.4]; elbF = 1;
+      handB = [leanX - sep, shoulderY - armL * 0.4]; elbB = -1;
+    } else if (id === 'gary') {
+      // a big overhead wave; the other hand stays professionally at his side
+      handF = [shF + 0.08 * u + Math.sin(ct * 8) * 0.11 * u, shoulderY - armL * 0.95]; elbF = 1;
+      handB = [shB - 0.04 * u, shoulderY + armL * 0.5]; elbB = -1;
+    } else {
+      // double fist pump, alternating (lorenzo mid-hop, b33p's free arm)
+      handF = [shF + 0.15 * u, shoulderY - armL * 0.9 + pump]; elbF = 1;
+      handB = [shB - 0.15 * u, shoulderY - armL * 0.9 - pump]; elbB = -1;
+    }
+    // On the big beat the signature gives way to the move: arms fly out for a
+    // turn, sweep low for a bow, swing loose for a shimmy, punch up on a hop.
+    if (cm.move === 'spin') {
+      handF = [shF + 0.3 * u, shoulderY - armL * 0.25]; elbF = 1;
+      handB = [shB - 0.3 * u, shoulderY - armL * 0.25]; elbB = -1;
+    } else if (cm.move === 'bow') {
+      handF = [shF + 0.18 * u, shoulderY + armL * 0.75]; elbF = 1;
+      handB = [shB - 0.22 * u, shoulderY + armL * 0.55]; elbB = -1;
+    } else if (cm.move === 'shimmy') {
+      const sw = Math.sin(cm.q * Math.PI * 8) * 0.14 * u;
+      handF = [shF + 0.14 * u + sw, shoulderY - armL * 0.55]; elbF = 1;
+      handB = [shB - 0.14 * u + sw, shoulderY - armL * 0.55]; elbB = -1;
+    } else if (cm.move === 'hop') {
+      handF = [shF + 0.1 * u, shoulderY - armL * 1.05]; elbF = 1;
+      handB = [shB - 0.1 * u, shoulderY - armL * 1.05]; elbB = -1;
+    }
+  } else if (pose.menuAction === 'wave') {
     handF = [shF + 0.15 * u, shoulderY - armL * 0.72]; elbF = 1;
     handB = [shB - 0.03 * u, shoulderY + armL * 0.8]; elbB = -1;
   } else if (pose.menuAction === 'flex') {
@@ -479,14 +610,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   limb2(ctx, leanX * 0.3, hipY, footF[0], footF[1], legSeg, kneeF, legW, p.p, ow);
   outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + 0.02 * u, footF[1] - 0.01 * u, 0.075 * u, 0.045 * u, 0, 0, Math.PI * 2));
   if (spec.cannon) {
-    // the cannon aims dead ahead — no elbow on ordnance
+    // the cannon aims dead ahead — no elbow on ordnance. Celebrating, it
+    // points at the sky and pops a little victory flash instead.
+    const cheer = pose.kind === 'celebrate';
     const recoil = pose.menuAction === 'aim' ? Math.abs(Math.sin((pose.time || 0) * 12)) * 0.05 * u : 0;
-    const muzzleX = shF + armL * 0.72 - recoil;
-    const muzzleY = shoulderY + armL * 0.28;
+    const muzzleX = cheer ? shF + armL * 0.22 : shF + armL * 0.72 - recoil;
+    const muzzleY = cheer ? shoulderY - armL * 0.85 : shoulderY + armL * 0.28;
     limb(ctx, shF, shoulderY, muzzleX, muzzleY, 0.12 * u, p.a, ow);
     outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, 0.045 * u, 0, Math.PI * 2));
-    if (pose.menuAction === 'aim' && Math.sin((pose.time || 0) * 12) > 0.72) {
-      dot(ctx, muzzleX + 0.08 * u, muzzleY, 0.045 * u, p.w);
+    if ((pose.menuAction === 'aim' || cheer) && Math.sin((pose.time || 0) * 12) > 0.72) {
+      dot(ctx, muzzleX + (cheer ? 0 : 0.08 * u), muzzleY - (cheer ? 0.09 * u : 0), 0.045 * u, p.w);
     }
   } else {
     limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, armW, heavy ? p.s : p.b, ow);
@@ -554,6 +687,8 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   }
   if (duck) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
   if (pose.kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
+  // celebrate: a joyful squash-and-stretch jiggle, arms up like the float pose
+  if (pose.kind === 'celebrate') { const b = Math.sin(t * 7); ry *= 1 + 0.1 * b; rx *= 1 - 0.08 * b; cy -= 0.03 * u * Math.max(0, b); }
   ctx.save();
   if (pose.float) {
     ctx.rotate(0.08 * Math.sin(t * 5));
@@ -566,13 +701,21 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   // body
   outlined(ctx, p.b, ow, (c) => c.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2));
   // arm nubs (rotate up while floating)
-  const nubY = pose.float ? cy - ry * 0.55 : cy + ry * 0.15;
+  const nubY = pose.float || pose.kind === 'celebrate' ? cy - ry * 0.55 : cy + ry * 0.15;
   outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-rx - 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
   outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(rx + 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
   // face lives on the body
   const ex = expressionFor(id, pose);
   drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod, ex);
-  if (ex.surprise || pose.float) {
+  if (ex.joy) {
+    // Mochi grins with her whole face; the grin widens on every peak.
+    const w = (ex.cheer ? 0.085 : 0.06) * u, d = (ex.cheer ? 0.08 : 0.04) * u;
+    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => {
+      c.moveTo(0.01 * u - w, cy + ry * 0.28);
+      c.quadraticCurveTo(0.01 * u, cy + ry * 0.28 + d * 1.9, 0.01 * u + w, cy + ry * 0.28);
+      c.closePath();
+    });
+  } else if (ex.surprise || pose.float) {
     outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.045 * u, 0.055 * u, 0, 0, Math.PI * 2));
   } else if (ex.blink) {
     ctx.strokeStyle = p.m; ctx.lineWidth = Math.max(0.8, ow * 0.65);
@@ -609,6 +752,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   const ex = expressionFor(id, pose);
   let open = pose.kind === 'jump' ? 0.72 : pose.kind === 'duck' ? 0.18 : 0.35;
   if (pose.menuAction === 'chomp') open = 0.2 + 0.8 * Math.abs(Math.sin((pose.time || 0) * 10));
+  else if (pose.kind === 'celebrate') open = 0.35 + 0.6 * Math.abs(Math.sin((pose.time || 0) * 7)); // chomping the air in triumph
   else if (pose.kind === 'run') open = 0.5 + 0.5 * Math.sin(2 * ph);
   const half = 0.1 * Math.PI + open * 0.2 * Math.PI;
   // tiny legs under the disc, feet on the gait path so they lift naturally
@@ -697,8 +841,15 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.31 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
   const handY = cy + 0.02 * u;
-  outlined(ctx, p.w, ow, (c) => c.ellipse(-0.32 * u - handSwing, handY + handLift, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
-  if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(0.32 * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+  const cheer = pose.kind === 'celebrate';
+  // Celebrating, both gloves go up and the front one waves — being floating
+  // hands, they wave with the whole glove.
+  const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
+  outlined(ctx, p.w, ow, (c) => c.ellipse(-0.32 * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+  if (cheer) {
+    const waveX = Math.sin((pose.time || 0) * 8) * 0.1 * u;
+    outlined(ctx, p.w, ow, (c) => c.ellipse(0.28 * u + waveX, cy - 0.62 * u, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+  } else if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(0.32 * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
   else if (pose.menu) {
     const orbit = (pose.time || 0) * 8;
     outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
@@ -777,8 +928,18 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   ctx.save();
   if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
   ctx.translate(cx, feetY);
+  // The victory routine drives the whole rig — hop, sway, turn and squash —
+  // so humanoid, blob, disc and ray all dance off the same clock.
+  const cm = pose.kind === 'celebrate' ? celebrateMotion(heroId, pose.time || 0) : null;
+  if (cm) ctx.translate(cm.x * u, -cm.lift * u);
   if (pose.facing === -1) ctx.scale(-1, 1);
   if (pose.lean) ctx.rotate(pose.lean);
+  if (cm) {
+    if (cm.tilt) ctx.rotate(cm.tilt);
+    // a flat turn-around: squeeze the sprite through zero width and back
+    if (cm.spin !== 1) sx *= (cm.spin < 0 ? -1 : 1) * Math.max(0.12, Math.abs(cm.spin));
+    if (cm.squash) { sy *= 1 - 0.24 * cm.squash; sx *= 1 + 0.2 * cm.squash; }
+  }
   ctx.scale(sx, sy);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';

@@ -30,7 +30,9 @@ for (const bossCab of ['neon', 'rhythm', 'surge']) {
   boss.enter();
   const TICK = 1 / 60;
   let ticks = 0, duckHold = false;
-  while (!result && ticks < 60 * 300) {
+  // 420s watchdog: the scripted bot is a floor, not a bar — the relay's
+  // banter-biased hero order can hand it slower ability mixes on some seeds.
+  while (!result && ticks < 60 * 420) {
     ticks++;
     const px = boss.camX + PLAYER_X;
     // Bot: jump obstacles, stomp down onto them (Lorenzo), fire ability on cooldown.

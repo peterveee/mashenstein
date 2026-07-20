@@ -14,7 +14,6 @@ import {
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
-import { RELAY_MODE } from '../data/flags.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
 
@@ -26,15 +25,23 @@ const PANEL_GOLD = { border: 'rgba(246,201,69,0.3)', shadow: true };
 
 // Every string this module draws now sits on a panel, so none of them carry a
 // plate: the panel is the backing, and a plate inside it prints a second,
-// darker box around the words. (The plate itself still earns its keep for text
-// drawn straight onto the scene — the floaties in run.js — where contrast
-// depends on whatever is scrolling past and pale ink washes out over the light
-// packs. That is why UI_PLATE exists; it just no longer belongs here.)
+// darker box around the words. (The floaties in run.js ride the same panel
+// chrome now; UI_PLATE survives only for text stamped into the scene itself —
+// boss signage and the finish-line callouts.)
 //
 // Glyphs occupy y-1*scale .. y+11*scale but the ink sits well inside that box,
 // so centring on a panel means offsetting from the midline by this rather than
 // by half the box. Every panel in this file places its text through it.
 function textY(cy, scale = 1) { return cy - 4.5 * scale; }
+
+// Blend two '#rrggbb' literals. Only the progress bar needs this — it is the
+// one piece of HUD chrome that changes colour continuously rather than
+// switching between authored states.
+function mix(a, b, k) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = (sh) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * k);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
 
 // The status pill: cells on the left, coins on the right, one panel.
 //
@@ -88,17 +95,26 @@ function drawStatusPill(ctx, run) {
 // Goal toasts: a plug landing is the one mid-run event worth interrupting for,
 // and it used to arrive as a floatie in the same stack as PEW and PICKED UP A
 // POTATO. This says it once, in its own gold-edged panel, with a tick.
+//
+// It hangs off the bottom-left of the status pill rather than centre screen:
+// centred, it landed in the same band as the dialog bubbles and the two
+// overlapped. Under the pill it joins the left column of readouts, which is
+// where the run's state already lives, and nothing else wants that space.
 function drawGoalToast(ctx, run) {
   const g = run.goalToasts && run.goalToasts[0];
   if (!g) return;
   // Fade in over the first quarter second and back out over the last, riding a
-  // few units of vertical travel so it arrives rather than blinks on.
+  // few units of travel so it arrives rather than blinks on — leftward now, so
+  // it slides out from under the pill instead of dropping onto it.
   const age = g.t0 - g.t;
   const k = Math.max(0, Math.min(1, Math.min(age, g.t) / 0.25));
   const e = k * k * (3 - 2 * k);
   const TICK = 9, PAD = 6, GAP = 4, TH = 15;
   const w = PAD * 2 + TICK + GAP + textWidth(g.text, 1, 'bold');
-  const x = Math.round(W / 2 - w / 2), y = 24 + (1 - e) * 4;
+  // Clears the one-hit warning when that row is present — the two stack rather
+  // than land on each other.
+  const top = PILL_Y + PILL_H + 3 + (run.oneHit ? 16 : 0);
+  const x = Math.round(PILL_X - (1 - e) * 4), y = top;
   ctx.save();
   ctx.globalAlpha = e;
   drawPanel(ctx, x, y, w, TH, 6, undefined, PANEL_GOLD);
@@ -182,26 +198,38 @@ function drawRingGauge(ctx, cx, cy, rOuter, rInner, frac, color) {
 }
 
 export function drawHud(ctx, run) {
-  // The top row's shared midline: the status pill, the hero badge, the ability
-  // ring and its label all centre on it, so the whole strip sits level instead
-  // of each piece hanging at its own height.
+  // The top row's shared midline: the status pill and the hero badge centre on
+  // it, so the strip sits level instead of each piece hanging at its own
+  // height. (The ability ring used to share it; it lives in the bottom band
+  // now — see the gauge row below.)
   const HERO_CY = 12;
-  const leftColumnMax = 248;
-  const fitLeft = (text) => {
-    let out = text;
-    while (out.length > 3 && textWidth(out) > leftColumnMax) out = out.slice(0, -1);
-    return out === text ? out : out.slice(0, -2) + '..';
-  };
   // Slim world progress line across the top: teal fills toward the right edge,
   // the yellow tick is you. Reaching the end is the goal, so the end needs no
   // icon of its own — the finish line is drawn in-world as you approach it.
+  //
+  // The bar also calls the approach now. A blinking FINISH AHEAD used to sit
+  // centre-screen for about two seconds, in the same band as the dialog
+  // bubbles, announcing a breaker pole that scrolls on and labels itself
+  // moments later. Instead the fill warms teal -> gold over that last stretch
+  // and finishes turning exactly as the pole appears: the same warning, in
+  // peripheral vision, over nobody's words.
   if (!run.overtime && run.stage) {
     const frac = Math.min(1, run.distance / run.totalDist);
+    // FINISH_WARM out to FINISH_HOT, where FINISH_HOT is the distance at which
+    // run.js starts drawing the pole — the two signals meet rather than
+    // overlap.
+    const FINISH_WARM = 900, FINISH_HOT = 560;
+    const remaining = run.totalDist - run.distance;
+    const k = Number.isFinite(run.totalDist)
+      ? Math.max(0, Math.min(1, (FINISH_WARM - remaining) / (FINISH_WARM - FINISH_HOT)))
+      : 0;
     ctx.fillStyle = '#10141c';
     ctx.fillRect(0, 0, W, 3);
-    ctx.fillStyle = '#48e0c8';
+    ctx.fillStyle = mix('#48e0c8', '#f6d33c', k);
     ctx.fillRect(0, 0, W * frac, 3);
-    ctx.fillStyle = '#f6d33c';
+    // Once the fill is gold the gold tick would vanish into it, so the tick
+    // rides the other way, to white — it stays the brightest thing on the line.
+    ctx.fillStyle = mix('#f6d33c', '#ffffff', k);
     ctx.fillRect(Math.min(W - 3, W * frac) - 1, 0, 3, 3);
   }
 
@@ -213,69 +241,118 @@ export function drawHud(ctx, run) {
   drawStatusPill(ctx, run);
   drawGoalToast(ctx, run);
 
-  // Ability recharge ring, top-right beside the skill name. A donut sweeping
-  // shut from red to green: one glanceable token instead of a bar that ate the
-  // whole corner. Touch play skips it — that corner holds pause/mute, and the
-  // PWR button shows its own recharge.
-  const RING_X = W - 12;
+  // The live gauges, bottom-left: the ability ring with its name beside it,
+  // and any running power-up timers stacked above with theirs.
+  //
+  // They are down here because the cooldown is the only readout in the game
+  // with sub-second value: "can I fire yet" is asked mid-dodge, continuously,
+  // while cells, coins and goals are between-hazard glances. The eye lives at
+  // the player (x=64, on the ground), so the most-consulted gauge belongs in
+  // the nearest corner, not the furthest one. The goals, which are read once,
+  // took the trip to the far corner instead.
+  //
+  // The stack grows UP from the ability rather than down: the ability sits in
+  // the band below the ground line and there is no screen left underneath it.
+  // Power-ups are the transient half of this group, so they are the half that
+  // moves.
+  const GAUGE_X = 14;
+  // Shares the keyboard hint line's midline (hy = H - 17, 12 tall) so the two
+  // bottom-edge readouts sit level across the screen instead of each hanging at
+  // its own height — and it puts the ability panel directly opposite the hint
+  // that names the same button.
+  const GAUGE_CY = H - 11;
+  // Each entry: a donut, a name panel hung off its right at the same midline —
+  // the ring is the gauge, the panel is its label, the pairing the top-right
+  // corner used before this moved. Returns the panel's right edge, so a row of
+  // them can be laid end to end. `show` false measures without drawing, which
+  // is how a blinking entry holds its slot instead of collapsing the row.
+  const gauge = (cx, cy, r, thick, frac, color, label, ink, scale, halo, show = true) => {
+    const LP = 5, LH = scale < 1 ? 12 : 14;
+    const lx = cx + r + 5;
+    const lw = LP * 2 + textWidth(label, scale, 'bold');
+    if (show) {
+      drawRingGauge(ctx, cx, cy, r, thick, frac, color);
+      if (halo) {
+        ctx.save();
+        ctx.globalAlpha = halo.alpha;
+        ctx.strokeStyle = halo.color;
+        ctx.lineWidth = halo.width;
+        ctx.beginPath();
+        ctx.arc(cx, cy, halo.r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawPanel(ctx, lx, cy - LH / 2, lw, LH, 4, undefined, PANEL);
+      rawDrawText(ctx, label, lx + LP, textY(cy, scale), ink, scale, 'bold');
+    }
+    return lx + lw;
+  };
+
   if (!Input.usingTouch) {
+    // Touch play skips the ability ring — the PWR button shows its own recharge
+    // and would be reporting the same thing twice.
     const hero = HERO_BY_ID[run.relay.current];
     const cd = run.player.abilityCd;
     const charged = !!run.player.relayCharge;
     // A banked relay charge fires through the cooldown, so it reads as ready.
     const ready = cd <= 0 || charged;
     const frac = charged || cd <= 0 ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    drawRingGauge(ctx, RING_X, 12, 6, 3.2, frac, charged ? '#f6d33c' : ready ? '#48c848' : '#e04848');
-    // a soft pulse marks the moment it comes back up; charged pulses gold,
-    // faster and wider, because it is worth interrupting the player for
-    if (ready) {
-      ctx.save();
-      ctx.globalAlpha = charged
-        ? 0.45 + 0.4 * Math.sin(run.tRun * 8)
-        : 0.3 + 0.3 * Math.sin(run.tRun * 4);
-      ctx.strokeStyle = charged ? '#f6d33c' : '#a8f0a8';
-      ctx.lineWidth = charged ? 1.6 : 1;
-      ctx.beginPath();
-      ctx.arc(RING_X, 12, charged ? 9 : 7.5, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-    // The ability name rides its own panel, hung off the ring and sharing the
-    // badge's midline — the ring is the gauge, this is its label, and the two
-    // read as one instrument rather than a donut with a caption floating near
-    // it. Right-anchored, so a long ability name grows leftward into empty sky
-    // instead of pushing the ring off the corner.
-    const label = hero.ability.label;
-    const LP = 5, LH = 14;
-    const lw = LP * 2 + textWidth(label, 1, 'bold');
-    const lx = RING_X - 11 - lw;
-    drawPanel(ctx, lx, HERO_CY - LH / 2, lw, LH, 4, undefined, PANEL);
-    rawDrawText(ctx, label, lx + LP, textY(HERO_CY), charged ? '#f6d33c' : ready ? '#48e0c8' : '#8a8a98', 1, 'bold');
+    // Recharging is grey, not red. Red is MAGNET's colour (#e04848), and with
+    // the power-up timers sitting directly above this ring, red-above-red read
+    // as one pair of related things rather than "my power is down" above
+    // "magnet is running". Grey says the right thing anyway: not a warning,
+    // just not yet.
+    gauge(
+      GAUGE_X, GAUGE_CY, 6, 3.2, frac,
+      charged ? '#f6d33c' : ready ? '#48c848' : '#7a7a88',
+      hero.ability.label,
+      charged ? '#f6d33c' : ready ? '#48e0c8' : '#8a8a98', 1,
+      // a soft pulse marks the moment it comes back up; charged pulses gold,
+      // faster and wider, because it is worth interrupting the player for
+      ready && {
+        alpha: charged ? 0.45 + 0.4 * Math.sin(run.tRun * 8) : 0.3 + 0.3 * Math.sin(run.tRun * 4),
+        color: charged ? '#f6d33c' : '#a8f0a8',
+        width: charged ? 1.6 : 1,
+        r: charged ? 9 : 7.5,
+      },
+    );
   }
 
-  // Power-up timers stack under the ability ring as smaller donuts in each
-  // power's own colour, draining as they expire. The last second and a half
-  // blinks, the same warning the old bars gave.
-  let py = 26;
+  // Power-up timers sit in a single row on the shelf above the ability, each in
+  // its own colour, draining as it expires. A size down from the ability ring
+  // and its label, because they are the same kind of thing one rank lower. The
+  // last second and a half blinks, the same warning the old bars gave.
+  //
+  // A row rather than a column, because there is width to spare and no height:
+  // the band below the ground line is 38px and the ability already spends most
+  // of it, so a second stacked entry had to climb into the play field and land
+  // on the player. Laid end to end instead, three entries reach x~270 — clear
+  // of the keyboard hints on the right — and nothing ever leaves the band.
+  //
+  // Width is affordable because the row is short in practice: simulating the
+  // drip spawner against the real durations, one timer runs about half the
+  // time, two is a few percent, and three never came up in 400 stage-length
+  // runs. Capsules arrive every 12-18s against 8-20s effects, ~8% of the table
+  // is the relay charge and ~17% is SHIELD (which is orb rings, not an entry),
+  // and grabbing a duplicate refreshes its timer rather than adding one. A
+  // brief third is possible off a breaker bonus or a ?-crate; past that the row
+  // would reach the hints, which the sim says does not happen.
+  const SHELF_CY = GAUGE_CY - 15;
+  let px = GAUGE_X;
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
-    if (!blink) {
-      drawRingGauge(ctx, RING_X, py, 5, 2.7, a.t / a.t0, def.color);
-      // Same panel-and-ring pairing as the ability label above, a size down —
-      // these are the same kind of thing, so they are the same shape.
-      const label = `${def.name}${a.level > run.powerups.levelOf(id) ? '+' : ''}`;
-      const PP = 4, PH = 12;
-      const pw = PP * 2 + textWidth(label, 0.85, 'bold');
-      const pxL = RING_X - 9 - pw;
-      drawPanel(ctx, pxL, py - PH / 2, pw, PH, 4, undefined, PANEL);
-      rawDrawText(ctx, label, pxL + PP, textY(py, 0.85), def.color, 0.85, 'bold');
-    }
-    py += 14;
+    const over = a.level > run.powerups.levelOf(id);
+    // Blinking measures but does not draw, so the entry keeps its slot and the
+    // rest of the row does not shuffle sideways twice a second.
+    const right = gauge(px, SHELF_CY, 5, 2.7, a.t / a.t0, def.color,
+      `${def.name}${over ? '+' : ''}`, def.color, 0.8,
+      over && { alpha: 0.5, color: def.color, width: 1, r: 7.5 }, !blink);
+    px = right + 11;   // panel edge, a gap, then the next donut's radius
   }
 
-  // Relay: current hero. In 'charge' mode the ability ring is the only charge
-  // readout — it goes gold when a charge is banked — so there are no pips here.
+  // Relay: current hero. The ability ring is the only charge readout — it goes
+  // gold when a charge is banked — so there are no pips here.
   // A rounded badge: face on the left, name inside beside it. Same panel and
   // light text as the speech bubble below it, so the two read as one family.
   // Sized to the name and centred on screen, so it grows symmetrically instead
@@ -301,38 +378,41 @@ export function drawHud(ctx, run) {
   // Raw text: the badge is already the backing, so it must not carry a plate
   // of its own.
   rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, HERO_CY - 4.5, '#d0f0e8');
-  // The legacy 'blast' mode has no other readout for its automatic screen
-  // clear, so it keeps the pips it was designed around, now under the name.
-  if (RELAY_MODE === 'blast') {
-    ctx.save();
-    for (let i = 0; i < 3; i++) {
-      ctx.beginPath();
-      ctx.arc(W / 2 - 9 + i * 9, HERO_CY + 14, 2.6, 0, Math.PI * 2);
-      ctx.fillStyle = i < run.relay.pips ? '#f6d33c' : '#20242c';
-      ctx.fill();
-      ctx.strokeStyle = '#5a5a68';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
 
-  // What you are here to do, bottom-left. Two panels, deliberately unequal:
-  // the mission is the run's win condition and the challenge is an optional
-  // extra, and as two identical grey lines they read as a list of two equal
-  // chores. So the mission gets a GOAL tab and a full-size panel in white, and
-  // the challenge sits under it smaller, dimmer, tagged BONUS — the hierarchy
-  // is in the chrome, not in wording the player has to stop and parse.
-  const OBJ_X = 8;
+  // What you are here to do, top-right. Two panels, deliberately unequal: the
+  // mission is the run's win condition and the challenge is an optional extra,
+  // and as two identical grey lines they read as a list of two equal chores. So
+  // the mission gets a GOAL tab and a full-size panel in white, and the
+  // challenge sits under it smaller, dimmer, tagged BONUS — the hierarchy is in
+  // the chrome, not in wording the player has to stop and parse.
+  //
+  // Up here rather than bottom-left because this is the read-once half of the
+  // HUD: the briefing states the mission before the stage starts, and mid-run
+  // you are checking a count, not re-reading a sentence. The corner nearest the
+  // player went to the gauges, which are read continuously.
+  //
+  // Right-anchored, so the panels grow leftward into empty sky as the text gets
+  // longer instead of pushing off the screen edge.
+  const OBJ_R = W - 8;
   const objective = (tag, tagColor, text, ink, y, scale) => {
     const TP = 5, GAP = 5;
     const h = scale < 1 ? 12 : 14;
     const cy = y + h / 2;
     const tw = textWidth(tag, 0.8, 'bold');
-    const bodyW = textWidth(text, scale);
-    drawPanel(ctx, OBJ_X, y, TP * 2 + tw + GAP + bodyW, h, 4, undefined, PANEL);
-    rawDrawText(ctx, tag, OBJ_X + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
-    rawDrawText(ctx, text, OBJ_X + TP + tw + GAP, textY(cy, scale), ink, scale);
+    const w = TP * 2 + tw + GAP + textWidth(text, scale);
+    const x = OBJ_R - w;
+    drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
+    rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
+    rawDrawText(ctx, text, x + TP + tw + GAP, textY(cy, scale), ink, scale);
+  };
+  // Clear of the hero badge, which is centred and 14 tall on HERO_CY.
+  const OBJ_Y = 3;
+  // Long challenge descriptions have to fit beside the badge, not through it.
+  const fitRight = (text) => {
+    const max = W / 2 - 44;
+    let out = text;
+    while (out.length > 3 && textWidth(out) > max) out = out.slice(0, -1);
+    return out === text ? out : out.slice(0, -2) + '..';
   };
   if (!run.overtime && run.stage) {
     const m = run.mission;
@@ -340,19 +420,19 @@ export function drawHud(ctx, run) {
     if (m.n) prog = ` ${m.count ?? 0}/${m.n}`;
     if (m.type === 'chase' && run.copter) prog = ` ${run.copter.caught}/${m.n}`;
     if (m.type === 'combo') prog = ` BEST ${run.relay.bestCombo}/${m.n}`;
-    objective('GOAL', '#74c947', fitLeft(`${m.type.toUpperCase()}${prog}`), '#ffffff', H - 33, 1);
+    objective('GOAL', '#74c947', fitRight(`${m.type.toUpperCase()}${prog}`), '#ffffff', OBJ_Y, 1);
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
       const tail = done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`;
-      objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)', fitLeft(`${c.desc} ${tail}`),
-        done ? '#74c947' : 'rgba(255,255,255,0.72)', H - 17, 0.85);
+      objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)', fitRight(`${c.desc} ${tail}`),
+        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y + 16, 0.85);
     } else if (run.challenge) {
-      objective('BONUS', 'rgba(255,255,255,0.3)', fitLeft(`${run.challenge.desc} - NOT THIS TIME`),
-        'rgba(255,255,255,0.35)', H - 17, 0.85);
+      objective('BONUS', 'rgba(255,255,255,0.3)', fitRight(`${run.challenge.desc} - NOT THIS TIME`),
+        'rgba(255,255,255,0.35)', OBJ_Y + 16, 0.85);
     }
   } else {
-    objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', H - 33, 1);
+    objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
   }
 
   // Keyboard controls hint; the power status lives in the top-right gauge.
@@ -414,38 +494,46 @@ export function drawHud(ctx, run) {
 }
 
 export function drawSpeech(ctx, speech) {
-  const lines = wrapText(speech.text, W - 56, 1, 2);
-  const tw = Math.max(...lines.map((line) => textWidth(line)));
-  const x = W / 2 - tw / 2, y = 46;
-  const h = 8 + lines.length * 11;
-  // Rounded like the name badge above it (same radius drawText plates use), so
-  // every box the HUD puts on screen shares one silhouette. Eggshell talks in
-  // pink-red ink, allies in the same pale teal as the badge.
+  // Eggshell talks in pink-red ink, allies in the same pale teal as the badge.
   const isEgg = speech.who === 'eggshell';
   const hero = !isEgg && speech.who ? HERO_BY_ID[speech.who] : null;
   const ink = isEgg ? '#f0a0a0' : '#d0f0e8';
-  drawPanel(ctx, x - 6, y - 4, tw + 12, h, 3);
-  // Named speakers get a face-and-name tag hung off the bubble's top-left —
-  // the badge idiom again, so "who is talking" reads the same way everywhere.
-  // A null who is the game itself talking (tutorials, station notes): no tag.
-  if (isEgg || hero) {
-    const TAG_H = 14, FACE_W = 12, FACE_H = 9, PAD_L = 4, GAP = 4, PAD_R = 7;
-    const name = isEgg ? 'EGGSHELL' : hero.short;
-    const tagW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
-    const tagX = x - 6, tagCy = y - 4 - TAG_H / 2 - 1;
-    drawPanel(ctx, tagX, tagCy - TAG_H / 2, tagW, TAG_H, 3);
-    // Eggshell has no toon rig — his prop painter plays the portrait.
-    if (isEgg) {
-      drawProp(ctx, 'eggshell', tagX + PAD_L, tagCy - FACE_H / 2, FACE_W, FACE_H);
-    } else {
-      const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
-      if (face) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(face, tagX + PAD_L, tagCy - FACE_H / 2, FACE_W, FACE_H);
-        ctx.imageSmoothingEnabled = false;
-      }
-    }
-    rawDrawText(ctx, name, tagX + PAD_L + FACE_W + GAP, tagCy - 4.5, ink);
+  const y = 46;
+  // A null who is the game itself talking (tutorials, station notes): a plain
+  // centered plate, no portrait.
+  if (!isEgg && !hero) {
+    // Three lines, not two: Eggshell's longest grievances need the room.
+    const lines = wrapText(speech.text, W - 56, 1, 3);
+    const tw = Math.max(...lines.map((line) => textWidth(line)));
+    drawPanel(ctx, W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * 11, 3);
+    lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, ink));
+    return;
   }
-  lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, ink));
+  // Named speakers: one block — portrait on the left, name as a header over
+  // the words. Face, name, and text read as a single card per speaker.
+  const name = isEgg ? 'EGGSHELL' : hero.short;
+  const FACE_W = 20, FACE_H = 15, PAD = 7, GAP = 6;
+  const lines = wrapText(speech.text, W - 100, 1, 3);
+  const tw = Math.max(textWidth(name), ...lines.map((line) => textWidth(line)));
+  const textH = (lines.length + 1) * 11; // name row + body rows
+  const h = Math.max(FACE_H + 6, textH + 8);
+  const w = PAD + FACE_W + GAP + tw + PAD;
+  const x = Math.round(W / 2 - w / 2);
+  drawPanel(ctx, x, y - 4, w, h, 3);
+  const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
+  // Eggshell has no toon rig — his prop painter plays the portrait.
+  if (isEgg) {
+    drawProp(ctx, 'eggshell', x + PAD, faceY, FACE_W, FACE_H);
+  } else {
+    const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
+    if (face) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(face, x + PAD, faceY, FACE_W, FACE_H);
+      ctx.imageSmoothingEnabled = false;
+    }
+  }
+  const tx = x + PAD + FACE_W + GAP;
+  const ty = y - 4 + Math.round((h - textH) / 2) + 3;
+  rawDrawText(ctx, name, tx, ty, '#fff');
+  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + 11 + i * 11, ink));
 }

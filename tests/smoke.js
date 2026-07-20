@@ -50,16 +50,15 @@ assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.
 
 // Walk right to the first cabinet (x=70, start px=40, 90 px/s) and interact.
 dom.keyDown('ArrowRight'); frames(20); dom.keyUp('ArrowRight');
-dom.key('Enter'); frames(40); // powers on cabinet -> a minigame starts
-assert(globalThis.window.__mash_state === 'MinigameState', `minigame powers cabinet (got ${globalThis.window.__mash_state})`);
-
-// Whatever minigame appeared, let its timer run out (35-90s), then continue.
-frames(60 * 95, 16.7);
-frames(60 * 3);
-assert(globalThis.window.__mash_state === 'StageSelectState', `stage select after power-on (got ${globalThis.window.__mash_state})`);
-
-// Stage select: pick stage 1 -> the run starts immediately (no team select).
 dom.key('Enter'); frames(40);
+// No breaker box in the doorway any more — cabinets open straight onto stages.
+assert(globalThis.window.__mash_state === 'StageSelectState', `cabinet opens to stage select (got ${globalThis.window.__mash_state})`);
+
+// Stage select: pick stage 1 -> the briefing manifest, then the run.
+dom.key('Enter'); frames(40);
+assert(globalThis.window.__mash_state === 'BriefingState', `stage briefing shown (got ${globalThis.window.__mash_state})`);
+dom.key('Enter'); frames(30); // complete the typewriter
+dom.key('Enter'); frames(30); // acknowledge revenue protocols
 assert(globalThis.window.__mash_state === 'RunState', `stage run started (got ${globalThis.window.__mash_state})`);
 
 // We should be inside a Run now: simulate 30 seconds of play with periodic jumps.

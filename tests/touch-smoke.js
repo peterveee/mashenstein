@@ -1,6 +1,6 @@
-// Touch-device boot: same flow as tests/smoke.js, but on a simulated
-// coarse-pointer device the breaker-box minigame must be bypassed entirely —
-// opening a cabinet goes straight to stage select.
+// Touch-device boot: same flow as tests/smoke.js on a simulated coarse-pointer
+// device. Arcade Corner shutters itself on touch (the breaker-box games want a
+// keyboard), but the hub and cabinets must work exactly as they do on desktop.
 import esbuild from 'esbuild';
 import { installDom } from './dom-stub.js';
 import { join, dirname } from 'node:path';
@@ -41,11 +41,7 @@ assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.
 dom.keyDown('ArrowRight'); frames(20); dom.keyUp('ArrowRight');
 dom.key('Enter'); frames(40);
 assert(globalThis.window.__mash_state === 'StageSelectState',
-  `touch skips the breaker box straight to stage select (got ${globalThis.window.__mash_state})`);
-
-// The bypass must persist, so returning to the cabinet never re-prompts.
-const flags = JSON.parse(dom.store['mashenstein.v2']).slots[0].campaign.storyFlags;
-assert(Object.keys(flags).some((k) => k.startsWith('powered_')), 'cabinet recorded as powered on in the save');
+  `cabinet opens straight onto stage select (got ${globalThis.window.__mash_state})`);
 
 console.log(failed ? 'TOUCH SMOKE: FAILED' : 'TOUCH SMOKE: PASSED');
 process.exit(failed ? 1 : 0);

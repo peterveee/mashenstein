@@ -1,10 +1,10 @@
 // Economy simulation: campaign income must cover the core power-up track
-// (Shield/Magnet/Star/Slow-Mo to III) by the finale, within ±15%.
+// (Shield/Magnet/Star to III) by the finale, within ±15%.
 import { REWARDS, BENCH_UPGRADES } from '../src/data/progression.js';
 import { STAGES } from '../src/data/stages.js';
 
 const coreCost = BENCH_UPGRADES
-  .filter((u) => ['shield', 'magnet', 'star', 'slowmo'].includes(u.id))
+  .filter((u) => ['shield', 'magnet', 'star'].includes(u.id))
   .reduce((sum, u) => sum + u.levels.reduce((a, b) => a + b, 0), 0);
 
 // Income model for a straightforward campaign clear:

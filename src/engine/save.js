@@ -32,7 +32,7 @@ export function defaultSlot() {
       ngPlus: false,
     },
     coins: 0,
-    bench: { shield: 1, magnet: 1, star: 1, slowmo: 1, tuneup: 0 },
+    bench: { shield: 1, magnet: 1, star: 1, tuneup: 0 },
     mastery: {},      // heroId -> {xp, level, equipped: []}
     mods: { found: [], equipped: [], slots: 2 },
     tutor: {},        // one-time teaching prompts already shown
@@ -86,6 +86,19 @@ export class Save {
       if (s.bench) { delete s.bench.tagWindow; delete s.bench.meterRate; }
       s.coins = (s.coins || 0) + refund;
       s.relayRefunded = true; // migration flag: never refund twice
+    }
+    // SLOW-MO retired: it fought the player for control of the run. Refund the
+    // levels actually paid for (its old track was [0, 800, 2400] over a free
+    // base level 1), then drop the bench entry.
+    for (const s of data.slots) {
+      if (!s || s.slowmoRefunded) continue;
+      const lvl = (s.bench && s.bench.slowmo) || 0;
+      let refund = 0;
+      if (lvl >= 3) refund += 800;
+      if (lvl >= 4) refund += 2400;
+      if (s.bench) delete s.bench.slowmo;
+      s.coins = (s.coins || 0) + refund;
+      s.slowmoRefunded = true;
     }
     for (const s of data.slots) {
       if (!s) continue;

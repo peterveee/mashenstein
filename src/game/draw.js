@@ -7,7 +7,7 @@ import { drawToon, poseFromPlayer, toonFaceSprite } from '../sprites/toons.js';
 import { hasProp, propSprite, propTinted, propRimPair, propFrames, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
 
 const POWER_GLOW = {
-  capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)', capSlow: 'rgba(200,184,232,0.5)',
+  capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)',
   capAirJump: 'rgba(114,216,240,0.5)', capSpeed: 'rgba(248,144,72,0.5)', capLowGrav: 'rgba(184,136,240,0.5)',
 };
 import { GROUND_Y } from './run.js';

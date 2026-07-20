@@ -19,14 +19,13 @@ function assert(cond, msg) {
 }
 
 // --- Powerups unit checks -------------------------------------------------
-const bench = { shield: 1, magnet: 1, star: 1, slowmo: 1 };
+const bench = { shield: 1, magnet: 1, star: 1 };
 
 let p = new Powerups(bench);
-p.grab('slowmo');
-assert(p.active.slowmo.t === 6, `plain slowmo grab uses normal duration (${p.active.slowmo.t})`);
+p.grab('magnet');
+assert(p.active.magnet.t === 8, `plain magnet grab uses normal duration (${p.active.magnet.t})`);
 p = new Powerups(bench);
-p.grab('slowmo', { minDuration: 30 });
-assert(p.active.slowmo.t === 30, `minDuration floors slowmo to 30 (${p.active.slowmo.t})`);
+assert(!POWER_DEFS.slowmo && !p.timescale, 'SLOW-MO is gone: no def, no timescale hook');
 p.grab('magnet', { minDuration: 30 });
 assert(p.active.magnet.t === 30, `minDuration floors magnet to 30 (${p.active.magnet.t})`);
 
@@ -44,9 +43,9 @@ assert(p.bonusJumps() === 1 && p.active.airjump.t === 14, 'Air Jump grants one j
 p.grab('airjump');
 assert(p.bonusJumps() === 1 && p.active.airjump.level === 2 && p.active.airjump.t === 20, 'Air Jump overcharge refreshes without granting another jump');
 p.grab('speed');
-assert(p.speedMultiplier() === 1.15, 'Speed Burst increases run speed by 15%');
+assert(p.speedMultiplier() === 1.25, 'Speed Burst increases run speed by 25%');
 p.grab('speed');
-assert(p.speedMultiplier() === 1.25 && p.active.speed.t === 13, 'overcharged Speed Burst increases run speed by 25%');
+assert(p.speedMultiplier() === 1.4 && p.active.speed.t === 13, 'overcharged Speed Burst increases run speed by 40%');
 p.grab('lowgrav');
 assert(p.gravityMultiplier() === 0.65, 'Low Gravity reduces gravity to 65%');
 p.grab('lowgrav');
@@ -114,7 +113,7 @@ run.enter();
 assert(Object.keys(run.powerups.active).length === 0, 'no starting powerup → nothing active');
 const baseRunSpeed = run.speed;
 run.powerups.grab('speed');
-assert(Math.abs(run.speed - baseRunSpeed * 1.15) < 0.001, 'Speed Burst feeds the shared run speed used by spawning');
+assert(Math.abs(run.speed - baseRunSpeed * 1.25) < 0.001, 'Speed Burst feeds the shared run speed used by spawning');
 run.powerups.grab('airjump');
 run.relay.current = 'mochi'; run.player.setHero('mochi');
 run.player.powerJumpBonus = run.powerups.bonusJumps();
@@ -143,12 +142,24 @@ const counts = {};
 const drip = new DripSpawner(new Rng(4242), bench);
 const drops = [];
 for (let i = 0; i < 60000; i++) drip.update(1, i * 240, drops, false); // 1s steps: ~4000 capsules
-for (const d of drops) if (d.def.power) counts[d.def.power] = (counts[d.def.power] || 0) + 1;
+// The relay charge banks an ability instead of running a timer, so it has no
+// `power` — count it by its own flag or it vanishes from the denominator and
+// every other share reads high.
+for (const d of drops) {
+  const key = d.def.power || (d.def.relayCharge ? 'relayCharge' : null);
+  if (key) counts[key] = (counts[key] || 0) + 1;
+}
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 const unpeelShare = (counts.unpeel || 0) / total;
-const staples = ['shield', 'magnet', 'star', 'slowmo'].map((k) => (counts[k] || 0) / total);
+const relayShare = (counts.relayCharge || 0) / total;
+const staples = ['shield', 'magnet', 'star'].map((k) => (counts[k] || 0) / total);
+assert(!counts.slowmo, 'SLOW-MO never drips');
 const traits = ['airjump', 'speed', 'lowgrav'].map((k) => (counts[k] || 0) / total);
 assert(unpeelShare > 0.05 && unpeelShare < 0.2, `unpeel drops sometimes (${(unpeelShare * 100).toFixed(1)}% of ${total})`);
+assert(PICKUPS.capRelay && PICKUPS.capRelay.relayCharge === true, 'capRelay pickup banks a relay charge');
+assert(hasProp('capRelay'), 'capRelay has capsule art');
+// The rarest thing in the table, and rarer than unpeel: it is a free power.
+assert(relayShare > 0.04 && relayShare < unpeelShare, `relay charge is the rarest drop (${(relayShare * 100).toFixed(1)}%)`);
 assert(staples.every((s) => s > unpeelShare), `every staple is more common than unpeel (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');

@@ -6,16 +6,15 @@ import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText, UI_PLATE } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, UI_PLATE } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
-import { Relay } from './relay.js';
+import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
-import { RELAY_MODE } from '../data/flags.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
-import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES } from '../data/jokes.js';
+import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech } from './hud.js';
 import { goalsDone } from './plugs.js';
@@ -24,9 +23,17 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export const GROUND_Y = 232;
+// Stage-clear: a short beat on the finish frame so the tape-cross registers.
+// The scene change itself is the CRT shutter in states.js — this used to close
+// an iris to black first, which meant fading out twice back to back.
+const FINALE_HOLD = 0.25;
 // Floatie stack anchor: above the standing hero's head (~202) with clearance,
 // below the speech bubble's reach — risen text fades out before ~y 90.
 const FLOAT_BASE_Y = 150;
+// Floatie chrome: one step lighter than the standard HUD panel, so in-world
+// barks read as their own species without leaving the design system.
+const FLOAT_PANEL = 'rgba(58,64,88,0.72)';
+const FLOAT_BORDER = 'rgba(255,255,255,0.22)';
 
 export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
@@ -46,6 +53,7 @@ export class RunState {
     this.oneHit = this.overtime || opts.difficulty === 5 || this.corrupted.length > 0;
     this.unplugged = opts.difficulty === 5;
     this.startingPowerup = opts.startingPowerup || null;
+    this.introDone = false; // constructor, not enter(): death-restarts must not replay the intro stall
   }
 
   groundYAt(worldX) {
@@ -77,13 +85,19 @@ export class RunState {
     this.seed = o.seed ?? ((Math.floor(performance.now()) ^ 0x5eed) >>> 0);
     this.rng = new Rng(this.seed);
     this.fxRng = this.rng.stream('fx');
+    this.speechRng = this.rng.stream('speech');
     this.save = o.save;
     const slot = this.save.slot;
     this.bench = slot.bench;
     this.modIds = slot.mods.equipped.slice();
-    this.relay = new Relay(this.rng.stream('relay'), slot.stats);
+    // OVERTIME has no known length, and RANDOMSWAP corruption is *supposed* to
+    // feel unscheduled — both fall back to the endless portal cadence.
+    const scheduled = o.stage && !this.overtime && !this.corrupted.includes('randomswap');
+    this.relay = new Relay(this.rng.stream('relay'), slot.stats,
+      scheduled ? portalSchedule(o.stage.durationSec) : null);
     if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
     this.usedHeroes = new Set([this.relay.current]);
+    this.exitSpoken = new Set();   // heroes who have already said their goodbye
     this.player = new Player(this.relay.current, this.modIds);
     // NO JUMPING: the jump button is on strike; it provides a contractual minimum hop.
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
@@ -103,6 +117,7 @@ export class RunState {
     this.briefSlow = 0;
     this.dead = false;
     this.finished = false;
+    this.finaleT = null;        // finish-line hold timer; null = not crossed yet
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
@@ -119,6 +134,17 @@ export class RunState {
     this.goalSeen = { mission: false, challenge: false };
     this.portal = null;         // active portal entity
     this.speech = null;         // {text, t, who}
+    this.speechQueue = [];      // follow-up bubbles (relay banter, boss subtitles)
+    // Stage intro: ACT announcements get a full-screen banner + world freeze,
+    // other authored intros ride the speech bubble. Once per RunState instance.
+    const intro = (!this.demo && !this.overtime && this.stage && !this.introDone) ? this.stage.intro : null;
+    this.introDone = true;
+    const isAct = !!intro && intro.startsWith('ACT ');
+    this.introFreeze = isAct ? 2.0 : 0;
+    this.introText = isAct ? intro : null;
+    this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
+    if (intro && !isAct) this.speech = { text: intro, t: 4.0, who: 'intro' };
+    if (isAct && !this.save.settings.reducedMotion) shake(3, 0.3);
     this.copter = null;         // chase mission / taunt flyby
     this.tauntT = 30;
 
@@ -213,6 +239,15 @@ export class RunState {
   // ------------------------------------------------------------------ update
   update(dt) {
     if (this.finished) { Input.endFrame(); return; }
+    // Finish-tape beat: the world holds while the stage-clear card plays,
+    // then the attempt resolves. Sits above the finishing dispatch — the
+    // tape-cross in updateFinish arms it.
+    if (this.finaleT != null) {
+      this.finaleT -= dt;
+      updateShake(dt, () => this.fxRng.float());
+      if (this.finaleT <= 0) this.endRun(true);
+      Input.endFrame(); return;
+    }
     if (this.finishing) { this.updateFinish(dt); Input.endFrame(); return; }
     if (Input.usingTouch !== this.touchButtons) this.setButtons(); // first touch mid-run
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
@@ -230,18 +265,23 @@ export class RunState {
       Input.endFrame();
       return;
     }
+    // ACT banner: hold the world still so the milestone lands before the run.
+    // Shake still ticks — the glitch jolt belongs to the banner, not after it.
+    if (this.introFreeze > 0) {
+      this.introFreeze -= dt; this.introT += dt;
+      updateShake(dt, () => this.fxRng.float());
+      Input.endFrame(); return;
+    }
     if (this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
 
-    const ts = this.powerups.timescale() * (this.briefSlow > 0 ? 0.35 : 1);
+    const ts = this.briefSlow > 0 ? 0.35 : 1;
     if (this.briefSlow > 0) this.briefSlow -= dt;
-    // Slow-mo drags the tempo down but stays in key — a pitch drop reads as a
-    // tape stall, not a slowdown. Invincibility still winds both up a whole
-    // tone, where the pitch shift is the point.
-    const slow = this.powerups.active.slowmo ? 0.94 : 1;
+    // Invincibility winds tempo and pitch up a whole tone together, where the
+    // pitch shift is the point.
     const star = this.powerups.isInvincible() ? 1.08 : 1;
-    Audio.setWarp(slow * star, star);
-    const wdt = dt * ts;   // world time (slow-mo affects world, not score accrual)
+    Audio.setWarp(star, star);
+    const wdt = dt * ts;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
     const hero = HERO_BY_ID[this.relay.current];
@@ -308,7 +348,7 @@ export class RunState {
       this.goalToasts[0].t -= dt;
       if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
     }
-    if (this.speech && (this.speech.t -= dt) <= 0) this.speech = null;
+    if (this.speech && (this.speech.t -= dt) <= 0) this.speech = this.speechQueue.shift() || null;
 
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
@@ -364,8 +404,7 @@ export class RunState {
   }
 
   updateFinish(dt) {
-    const ts = this.powerups.timescale();
-    const wdt = dt * ts;
+    const wdt = dt;
     this.finishT += wdt;
     this.tRun += wdt;
     const sp = this.speed;
@@ -392,7 +431,13 @@ export class RunState {
       // The frozen camera is deliberately short of the goal; the hero's
       // screen-space run completes the remaining distance.
       this.distance = this.totalDist;
-      this.endRun(true);
+      if (this.demo) { this.endRun(true); return; } // attract clips stay snappy
+      // A beat on the finish frame, then results. Transient chatter would
+      // clutter the held frame — clear it.
+      this.speech = null;
+      this.speechQueue = [];
+      this.floaties = [];
+      this.finaleT = FINALE_HOLD;
     }
   }
 
@@ -675,43 +720,38 @@ export class RunState {
     if (hero.stomp) this.stompBreak();
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
     if (this.modIds.includes('tagspeed') && result.to === 'gnash') this.speedBoost = Math.min(1.2, this.speedBoost + 0.15);
-    // say what this hero DOES, right now, in the player's control scheme.
-    // Deliberately unattributed (no who): the name badge above the bubble
-    // already names the hero, and this is the game explaining a button, not
-    // the hero talking — a nameplate here would just echo the badge.
+    // No per-swap button callout: the HUD's ability panel top-right already
+    // names this hero's power and shows whether it is ready, so repeating it in
+    // a bubble every swap is the same fact twice. The one-time firstAbility
+    // tutor below still teaches the button once.
     const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
-    this.speech = { text: `${btn}: ${HERO_CALLOUT[result.to]}`, t: 2, who: null };
-    this.tutor('firstSwitch', RELAY_MODE === 'charge'
-      ? 'SWITCH 3 TIMES TO CHARGE YOUR POWER.'
-      : 'SWITCH 3 TIMES FOR A RELAY BLAST.');
-    this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
-    if (result.blast) {
-      if (RELAY_MODE === 'charge') this.grantRelayCharge(btn);
-      else this.relayBlast();
+    // The departing hero gets a parting shot. Only the first time each hero
+    // tags out in a run: everyone gets their moment without a swap-heavy run
+    // turning into a conversation you read instead of playing. (Only one voice
+    // per swap — see EXIT_LINES.)
+    const exit = !this.demo && !this.exitSpoken.has(result.from) && EXIT_LINES[result.from];
+    if (exit) {
+      this.exitSpoken.add(result.from);
+      this.speech = { text: this.speechRng.pick(exit), t: 1.8, who: result.from };
+    } else {
+      this.speech = null;
     }
+    this.speechQueue = [];
+    this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
   }
 
-  // 'charge' mode: bank an empowered ability instead of firing automatically.
-  // An unspent charge rides along through later switches rather than vanishing.
-  grantRelayCharge(btn) {
+  // The banked supercharged ability. It used to be handed out automatically on
+  // every third switch, which meant a free power every run whether you'd earned
+  // it or not; it is now a rare capsule, so it lands as a treat. An unspent
+  // charge rides along through later switches rather than vanishing.
+  grantRelayCharge() {
+    const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
     this.player.relayCharge = true;
     Audio.sfx('power');
     shake(2, 0.15);
     this.floatText('POWER CHARGED', '#f6d33c');
     burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 20, 90, 0.6, '#f6d33c', 2, 70, () => this.fxRng.float());
     this.tutor('firstCharge', `CHARGED. YOUR NEXT ${btn} IS SUPERCHARGED.`);
-  }
-
-  // Every third switch: automatic screen-clearing Relay Blast.
-  relayBlast() {
-    Audio.sfx('power');
-    shake(4, 0.3);
-    this.floatText('RELAY BLAST', '#f6d33c');
-    for (const ob of this.obstacles) {
-      if (ob.live && ob.x > this.camX && ob.x < this.camX + W && ob.def.breakable !== false && !ob.def.isGap) this.breakObstacle(ob, true);
-    }
-    burst(this.camX + PLAYER_X + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
-    this.tutor('firstBlast', 'RELAY BLAST: EVERY 3RD SWITCH. AUTOMATIC.');
   }
 
 
@@ -923,6 +963,8 @@ export class RunState {
     this.tauntT -= dt;
     if (this.tauntT <= 0) {
       this.tauntT = 55 + this.fxRng.range(0, 20);
+      // In-run taunts are ambient texture only. The cabinet's authored line is
+      // not played here — the stage-1 briefing already delivers it, expanded.
       this.speech = { text: this.fxRng.pick(EGGSHELL_TAUNTS), t: 3.2, who: 'eggshell' };
     }
     if (this.narrateT > 0) {
@@ -1033,7 +1075,12 @@ export class RunState {
       battery: this.maxBattery(),
       mission: JSON.parse(JSON.stringify(this.mission)),
       challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
-      relayState: { current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(), pips: this.relay.pips },
+      // elapsed + spawned together: restoring one without the other either
+      // replays portals already passed or skips the ones still owed.
+      relayState: {
+        current: this.relay.current, next: this.relay.next, bag: this.relay.bag.slice(),
+        spawned: this.relay.spawned, elapsed: this.relay.elapsed,
+      },
       abilityCooldowns: { ...this.player.abilityCooldowns },
       relayCharge: this.player.relayCharge,
       spawnerX: this.spawner.nextX,
@@ -1052,7 +1099,8 @@ export class RunState {
       this.relay.current = s.relayState.current;
       this.relay.next = s.relayState.next;
       this.relay.bag = s.relayState.bag.slice();
-      this.relay.pips = s.relayState.pips;
+      this.relay.spawned = s.relayState.spawned || 0;
+      this.relay.elapsed = s.relayState.elapsed || 0;
     }
     this.player = new Player(this.relay.current, this.modIds);
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
@@ -1066,6 +1114,7 @@ export class RunState {
     if (this.copter) { this.copter.caught = s.copterCaught; this.copter.cooldown = 2; }
     this.dead = false;
     this.player.iframes = 1.5;
+    this.speechQueue = []; // pre-death banter does not survive the respawn
     clearParticles();
   }
 
@@ -1182,6 +1231,8 @@ export class RunState {
       this.battery = Math.min(this.maxBattery(), this.battery + 1);
       Audio.sfx('power');
       this.floatText('+1 CELL', '#48c848');
+    } else if (p.def.relayCharge) {
+      this.grantRelayCharge();
     } else if (p.def.power) {
       const res = this.powerups.grab(p.def.power);
       Audio.sfx('power');
@@ -1336,11 +1387,43 @@ export class RunState {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
     // Newest lands at the base; if a recent one is still near it, slot in below
-    // so simultaneous popups (pickup + power name) never overprint.
+    // so simultaneous popups (pickup + power name) never overprint. The gap is
+    // a full panel height now that each floatie carries its own card.
     let y = FLOAT_BASE_Y;
-    for (const f of this.floaties) if (f.y + 11 > y) y = f.y + 11;
+    for (const f of this.floaties) if (f.y + 19 > y) y = f.y + 19;
     this.floaties.push({ text, color, t: readingTime, y });
     if (this.floaties.length > 8) this.floaties.shift();
+  }
+
+  // ACT announcement: full-screen corporate-glitch card over the frozen world.
+  // Only authored stage.intro text is shown — split at the first sentence so
+  // the act number slams as a title and the subtitle sits under it.
+  drawActBanner(d) {
+    const a = Math.min(1, this.introFreeze / 0.3); // fade out over the last beat
+    const dot = this.introText.indexOf('. ');
+    const head = dot > 0 ? this.introText.slice(0, dot) : this.introText;
+    const tail = dot > 0 ? this.introText.slice(dot + 2) : '';
+    const still = this.save.settings.reducedMotion;
+    const jx = (i) => (still ? 0 : Math.round(Math.sin(this.introT * 47 + i * 13) * 1.5));
+    d.save();
+    d.globalAlpha = a;
+    d.fillStyle = 'rgba(0,0,0,0.78)';
+    d.fillRect(0, 0, W, H);
+    // Chromatic ghosts under a white core: a memo shot through a bad signal.
+    drawTextCentered(d, head, W / 2 - 1 + jx(1), 92, '#c83030', 2, 'title');
+    drawTextCentered(d, head, W / 2 + 1 - jx(2), 92, '#48e0c8', 2, 'title');
+    drawTextCentered(d, head, W / 2, 92, '#fff', 2, 'title');
+    wrapText(tail, W - 48, 1, 3).forEach((line, i) =>
+      drawTextCentered(d, line, W / 2, 128 + i * 12, '#c8c8d8'));
+    if (!still) {
+      // Tracking slices: thin bars drifting like a mistracked tape.
+      d.fillStyle = 'rgba(200,48,48,0.3)';
+      for (let i = 0; i < 4; i++) {
+        const y = (i * 67 + Math.floor(this.introT * 140)) % H;
+        d.fillRect(jx(i) * 2, y, W, 1);
+      }
+    }
+    d.restore();
   }
 
   // ------------------------------------------------------------------ draw
@@ -1411,9 +1494,11 @@ export class RunState {
         ctx.fillRect(fx + 15, finishGround - 26, 2, 3);
         ctx.fillRect(fx + 12, finishGround - 25, 2, 3);
         drawText(ctx, 'THE BREAKER', fx - 14, finishGround - 94, '#f6d33c', 1, 'ui', UI_PLATE);
-      } else if (remaining < this.speed * 5) {
-        if (Math.floor(this.tRun * 2) % 2 === 0) drawTextCentered(ctx, 'FINISH AHEAD', W / 2, 70, '#f6d33c', 1, 'ui', UI_PLATE);
       }
+      // No FINISH AHEAD blink before this. It sat centre-screen in the dialog
+      // band for about two seconds, warning about a pole that arrives labelled
+      // moments later — the HUD progress bar warms to gold across that same
+      // stretch instead.
     }
 
     // A soft reticle communicates which nearby obstacle the contextual power
@@ -1482,13 +1567,24 @@ export class RunState {
         const short = f.text.length <= 5;
         const lines = wrapText(f.text, short ? W - 32 : W - PLAYER_X - 8, 1, 2);
         const topY = Math.max(38, Math.min(H - 48 - lines.length * 10, Math.round(f.y)));
+        // Each floatie rides its own HUD panel — the bare text plate washed
+        // out over light packs. Fade out at end of life so cards don't blink off.
+        const tw = Math.max(...lines.map((line) => textWidth(line)));
+        const PADX = 5;
+        const bx = short ? floatX - tw / 2 - PADX : (this.mirror ? edgeX - tw - PADX : edgeX - PADX);
+        d.save();
+        d.globalAlpha = Math.max(0, Math.min(1, f.t / 0.25));
+        drawPanel(d, Math.round(bx), topY - 4, tw + PADX * 2, lines.length * 10 + 8, 4, FLOAT_PANEL,
+          { border: FLOAT_BORDER, shadow: true });
         lines.forEach((line, i) => {
-          if (short) drawTextCentered(d, line, floatX, topY + i * 10, f.color, 1, 'ui', UI_PLATE);
-          else drawText(d, line, this.mirror ? edgeX - textWidth(line) : edgeX, topY + i * 10, f.color, 1, 'ui', UI_PLATE);
+          if (short) drawTextCentered(d, line, floatX, topY + i * 10, f.color);
+          else drawText(d, line, this.mirror ? edgeX - textWidth(line) : edgeX, topY + i * 10, f.color);
         });
+        d.restore();
       }
       if (this.speech) drawSpeech(d, this.speech);
       drawHud(d, this);
+      if (this.introFreeze > 0 && this.introText) this.drawActBanner(d);
     };
     if (!pushOverlayDraw(drawUi)) drawUi(ctx);
 
@@ -1508,9 +1604,7 @@ export class RunState {
         const got = goalsDone(this).filter(Boolean).length;
         drawTextCentered(ctx, `GOALS ${got}/3`, W / 2, 150, got ? '#f6d33c' : '#8a8a98');
       }
-      drawTextCentered(ctx, RELAY_MODE === 'charge'
-        ? (this.player.relayCharge ? 'POWER CHARGED: SPEND IT' : `POWER CHARGE: ${this.relay.pips}/3 SWITCHES`)
-        : `RELAY BLAST: ${this.relay.pips}/3 SWITCHES`, W / 2, 162, '#f890b8');
+      if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 162, '#f890b8');
       drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 178, '#c8c8d8');
       drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
     }

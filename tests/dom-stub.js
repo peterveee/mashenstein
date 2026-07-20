@@ -51,6 +51,13 @@ export function installDom() {
     removeEventListener: noop,
     AudioContext: undefined, // audio engine no-ops without it
   };
+  // Path2D only ever gets built and handed straight back to ctx.fill/clip/stroke,
+  // which are themselves no-ops here, so an object that swallows every method is
+  // enough. The style packs cache these at module level to avoid rebuilding
+  // paths per frame, so the constructor has to exist for the bundle to boot.
+  globalThis.Path2D = function Path2D() {
+    return new Proxy({}, { get: () => noop, set: () => true });
+  };
   globalThis.requestAnimationFrame = (fn) => { rafQueue.push(fn); return rafQueue.length; };
   let now = 0;
   globalThis.performance = { now: () => now };
