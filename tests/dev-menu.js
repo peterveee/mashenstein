@@ -119,15 +119,32 @@ const bundle = outputFiles[0].text;
       'objective stage still fails unpiloted when the mission is not forced');
   }
 
-  // Iframe clamp: the normal 1.4s of post-hit mercy would swallow most of a
-  // level's hazards. Hits should land closer together than that.
+  // Iframe clamp. The normal 1.4s of post-hit mercy would ghost the hero
+  // through most of a dense level. Re-run an identical seed with the mercy
+  // restored and compare: the clamp should surface substantially more hazards.
+  // Measured at 1.6x (plumber-1) to 1.96x (surge-1) when this was written.
+  {
+    const withClamp = crash('office-1').run.devHits.length;
+    let result = null;
+    const run = new RunState({
+      stage: STAGE_BY_ID['office-1'], save, seed: 777, difficulty: 1,
+      devInvuln: true, devForceMission: true, onEnd: (r) => { result = r; },
+    });
+    run.enter();
+    const orig = run.takeHit.bind(run);
+    run.takeHit = (m, p, s) => {
+      const n = run.devHits.length;
+      orig(m, p, s);
+      if (run.devHits.length > n) run.player.iframes = 1.4;
+    };
+    let t = 0;
+    while (!result && t < 60 * 400) { t++; run.update(1 / 60); run.draw(ctx); }
+    assert(withClamp > run.devHits.length * 1.3,
+      `iframe clamp surfaces far more hazards (${withClamp} vs ${run.devHits.length} with 1.4s mercy)`);
+  }
+
   {
     const { run } = crash('frost-2');
-    const times = run.devHits.map((h) => h.worldX).sort((a, b) => a - b);
-    let tight = 0;
-    for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] < 160) tight++;
-    assert(tight > 0,
-      `hits land inside the old 1.4s mercy window (${tight} close pairs of ${times.length})`);
     assert(Object.keys(run.devHitTally()).length > 1,
       `tally distinguishes hazard types (${JSON.stringify(run.devHitTally())})`);
   }

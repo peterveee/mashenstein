@@ -12,9 +12,9 @@ import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
 import { MINIGAMES } from '../game/minigames/index.js';
-import { applyResult, totalPlugs, MAX_PLUGS } from '../game/progress.js';
+import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progress.js';
 import { AttractState } from '../game/attract.js';
-import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState } from '../game/menus.js';
+import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 
 const GOLD = '#f6d33c';
@@ -122,6 +122,55 @@ function bossesMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
+// The new-file opening — difficulty select, then the intro panels — is
+// otherwise reachable only by starting a genuine new save, which makes it the
+// hardest sequence in the game to iterate on.
+//
+// REPLAY is non-destructive: it runs the same two screens against the current
+// slot, so wording and pacing can be checked without losing progress. Note
+// DifficultyState does commit its pick to the slot, so the difficulty may
+// change — reset it under SAVE. FRESH SLOT is the honest end-to-end version
+// and says so in the label, because it erases.
+function newFileSequence(dev, { wipe }) {
+  const { Flow, save } = dev.ctx;
+  dev.close();
+  if (wipe) save.newSlot(save.slotIndex, Date.now());
+  setState(new DifficultyState({
+    save,
+    onDone: () => setState(new IntroState({
+      onDone: () => {
+        save.slot.campaign.storyFlags.sawIntro = true;
+        save.persist();
+        Flow.toHub();
+      },
+    })),
+  }));
+}
+
+function newFileMenu(dev) {
+  const { Flow, save } = dev.ctx;
+  const go = (fn) => () => { dev.close(); fn(); };
+  const build = () => ({
+    title: 'NEW FILE',
+    items: [
+      { label: 'REPLAY OPENING (keeps save)', act: () => newFileSequence(dev, { wipe: false }) },
+      { label: `FRESH SLOT ${save.slotIndex + 1} — ERASES IT`, act: () => newFileSequence(dev, { wipe: true }) },
+      { label: 'DIFFICULTY SELECT only', act: go(() => setState(new DifficultyState({ save, onDone: () => Flow.toHub() }))) },
+      { label: 'INTRO PANELS only', act: go(() => setState(new IntroState({ onDone: () => Flow.toHub() }))) },
+      {
+        label: 'REARM INTRO (clear sawIntro)',
+        act: () => {
+          if (!save.slot) return dev.say('NO SLOT');
+          save.slot.campaign.storyFlags.sawIntro = false;
+          save.persist();
+          dev.say('INTRO WILL REPLAY FROM TITLE');
+        },
+      },
+    ],
+  });
+  return { ...build(), rebuild: build };
+}
+
 function scenesMenu(dev) {
   const { Flow, save } = dev.ctx;
   const go = (fn) => () => { dev.close(); fn(); };
@@ -130,6 +179,7 @@ function scenesMenu(dev) {
     items: [
       { label: 'HUB', act: go(() => Flow.toHub()) },
       { label: 'TITLE', act: go(() => Flow.toTitle()) },
+      { label: 'NEW FILE ▸', submenu: () => newFileMenu(dev) },
       { label: 'BENCH', act: go(() => Flow.openBench()) },
       { label: 'SHOP', act: go(() => Flow.openShop()) },
       { label: 'ARCADE', act: go(() => Flow.openArcade()) },
@@ -184,7 +234,7 @@ function saveMenu(dev) {
         },
         { label: `PLUGS: ${totalPlugs(s)}/${MAX_PLUGS}`, act: null },
         {
-          label: `COINS: ${s.coins}`,
+          label: `COINS: ${formatCoins(s.coins)}`,
           adjust: (d) => { s.coins = Math.max(0, s.coins + d * 500); save.persist(); },
         },
         {
@@ -277,7 +327,7 @@ function infoMenu(dev) {
     const s = dev.ctx.save.slot;
     const items = [
       { label: `STATE: ${cur}`, act: null },
-      { label: `SLOT: ${s ? `plugs ${totalPlugs(s)}/${MAX_PLUGS}  coins ${s.coins}  diff ${s.difficulty}` : 'none'}`, act: null },
+      { label: `SLOT: ${s ? `plugs ${totalPlugs(s)}/${MAX_PLUGS}  coins ${formatCoins(s.coins)}  diff ${s.difficulty}` : 'none'}`, act: null },
     ];
     if (r) {
       items.push(

@@ -16,6 +16,7 @@ import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { Input } from '../engine/input.js';
+import { formatCoins } from './progress.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
@@ -61,7 +62,7 @@ const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 function drawStatusPill(ctx, run) {
   const cells = run.oneHit ? 0 : run.maxBattery();
   const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
-  const count = `${run.coins}`;
+  const count = formatCoins(run.coins);
   // A floor of two digits: a lone '0' left the coin sitting in a pocket of
   // dead panel, and the pill twitched wider the moment it hit 10.
   const countW = Math.max(textWidth(count, 1, 'bold'), textWidth('00', 1, 'bold'));

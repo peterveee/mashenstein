@@ -11,7 +11,7 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -284,7 +284,7 @@ export class HubState {
     }, Math.round(this.px - cam), 192, 24);
     // header
     drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, 8, '#48e0c8');
-    drawText(ctx, `PLUGS: ${totalPlugs(slot)}/${MAX_PLUGS}   COINS: ${slot.coins}   ACT ${act}`, 8, 20, '#c8c8d8');
+    drawText(ctx, `PLUGS: ${totalPlugs(slot)}/${MAX_PLUGS}   COINS: ${formatCoins(slot.coins)}   ACT ${act}`, 8, 20, '#c8c8d8');
     // prompts
     if (this.near) {
       const label = this.near.type === 'cabinet' && !this.near.unlocked
@@ -455,7 +455,7 @@ export class BenchState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'THE REPAIR BENCH', W / 2, 16, '#f6d33c', 2, 'title');
-    drawTextCentered(ctx, `COINS: ${this.save.slot.coins}`, W / 2, 40, '#f6d33c');
+    drawTextCentered(ctx, `COINS: ${formatCoins(this.save.slot.coins)}`, W / 2, 40, '#f6d33c');
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
@@ -464,7 +464,7 @@ export class BenchState {
       const lvlText = 'I'.repeat(Math.max(1, o.lvl));
       drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} [${lvlText}]`, 40, y, c);
       if (o.maxed || o.cost === undefined) drawText(ctx, 'MAX', W - 90, y, '#48c848');
-      else drawText(ctx, `${o.cost}`, W - 90, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68');
+      else drawText(ctx, `${formatCoins(o.cost)}`, W - 90, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68');
       if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 26, '#8a8a98');
     });
     drawMenuHint(ctx, 'BUY');
@@ -520,14 +520,14 @@ export class ShopState {
     drawTextCentered(ctx, "GARY'S LEGALLY DISTINCT PAWN SHOP", W / 2, 14, '#f890b8', 1);
     drawTextCentered(ctx, this.line, W / 2, 28, '#5a5a68');
     const slot = this.save.slot;
-    drawTextCentered(ctx, `COINS: ${slot.coins}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');
+    drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
       if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 30, y, sel ? '#f6d33c' : '#c8c8d8'); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       drawText(ctx, `${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, 30, y, c);
-      if (!o.owned) drawText(ctx, `${o.price}`, W - 70, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68');
+      if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, W - 70, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68');
       if (sel) drawTextCentered(ctx, (o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.').slice(0, 70), W / 2, H - 26, '#8a8a98');
     });
     drawMenuHint(ctx, 'BUY/EQUIP');

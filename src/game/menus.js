@@ -1158,7 +1158,7 @@ export class ResultsState {
     // case here is nine rows (coins, plugs, new plugs, rank, flavour, the OSHA
     // asterisk, two named mastery-ups and their summary).
     const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 12; };
-    line(`COINS BANKED: +${this.gains.coins}`, '#f6d33c');
+    line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
       line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');

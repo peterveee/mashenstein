@@ -20,6 +20,7 @@ const suites = [
   'tests/plug-tally.js',
   'tests/boss.js',
   'tests/attract.js',
+  'tests/dev-menu.js',
   'tests/cast.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
