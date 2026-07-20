@@ -12,7 +12,7 @@ const DEFAULT_KEYS = {
   back: ['Backspace'],
   pause: ['KeyP'],
   mute: ['KeyM'],
-  debug: ['Backquote'],
+  debug: ['F2'],   // Backquote now opens the dev menu (dev builds only)
 };
 
 const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };

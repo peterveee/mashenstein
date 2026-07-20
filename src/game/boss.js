@@ -9,6 +9,12 @@ import { drawProp } from '../sprites/props.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
+import { BOSS_HIT_SHORT, BOSS_DEFLECT_SHORT } from '../data/jokes.js';
+
+// How often a boss hit spends its floatie on the long line instead of a short
+// one. Low on purpose: in a sustained fight the long variants stack into a wall
+// of text over the boss you are trying to read.
+const BOSS_LONG_CHANCE = 0.1;
 
 export const BOSSES = {
   neon: {
@@ -129,7 +135,7 @@ export class BossState extends RunState {
         this.bossHp--;
         shake(3, 0.2);
         Audio.sfx('boom');
-        this.floatText(this.rng.chance(0.35) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : 'DIRECT HIT', '#f6d33c');
+        this.floatText(this.rng.chance(BOSS_LONG_CHANCE) ? 'FORM 27-B: DAMAGE DISPUTE. DENIED.' : this.rng.pick(BOSS_HIT_SHORT), '#f6d33c');
       }
     }
 
@@ -157,7 +163,7 @@ export class BossState extends RunState {
       this.bossHp--;
       shake(3, 0.2);
       Audio.sfx('boom');
-      this.floatText(this.rng.chance(0.3) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : 'REDIRECTED', '#f6d33c');
+      this.floatText(this.rng.chance(BOSS_LONG_CHANCE) ? 'THAT ONE DIDN\'T COUNT. - EGGSHELL' : this.rng.pick(BOSS_DEFLECT_SHORT), '#f6d33c');
     }
   }
 

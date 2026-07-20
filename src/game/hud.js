@@ -50,7 +50,11 @@ function mix(a, b, k) {
 // left and every gain would shove the cells sideways — the one readout you
 // check by shape, in motion, at a glance, would never be in the same place
 // twice.
-const PILL_X = 8, PILL_Y = 3, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
+// The pill is the tallest panel in the top row, so its inset is the one the
+// whole strip is judged by: at y=3 it read as flush against the screen edge
+// while its shorter neighbours looked correctly inset. 5 gives the row air
+// without shrinking the pill around its 12px coin.
+const PILL_X = 8, PILL_Y = 5, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
 const CELL_W = 10, CELL_H = 6.8, CELL_GAP = 2;
 const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 
@@ -201,8 +205,9 @@ export function drawHud(ctx, run) {
   // The top row's shared midline: the status pill and the hero badge centre on
   // it, so the strip sits level instead of each piece hanging at its own
   // height. (The ability ring used to share it; it lives in the bottom band
-  // now — see the gauge row below.)
-  const HERO_CY = 12;
+  // now — see the gauge row below.) Taken from the pill rather than restated,
+  // so moving the row's inset moves all of it.
+  const HERO_CY = PILL_CY;
   // Slim world progress line across the top: teal fills toward the right edge,
   // the yellow tick is you. Reaching the end is the goal, so the end needs no
   // icon of its own — the finish line is drawn in-world as you approach it.
@@ -405,8 +410,12 @@ export function drawHud(ctx, run) {
     rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
     rawDrawText(ctx, text, x + TP + tw + GAP, textY(cy, scale), ink, scale);
   };
-  // Clear of the hero badge, which is centred and 14 tall on HERO_CY.
-  const OBJ_Y = 3;
+  // Centred on HERO_CY, the midline the status pill and the hero badge already
+  // share, so all three top-row panels sit level instead of GOAL riding high.
+  const OBJ_Y = HERO_CY - 7;   // 14-tall panel
+  // The BONUS line hangs below with a real gap, not flush: the two panels are a
+  // hierarchy, not one block, and 4px of sky says so.
+  const OBJ_Y2 = OBJ_Y + 18;
   // Long challenge descriptions have to fit beside the badge, not through it.
   const fitRight = (text) => {
     const max = W / 2 - 44;
@@ -426,10 +435,10 @@ export function drawHud(ctx, run) {
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
       const tail = done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`;
       objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)', fitRight(`${c.desc} ${tail}`),
-        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y + 16, 0.85);
+        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85);
     } else if (run.challenge) {
       objective('BONUS', 'rgba(255,255,255,0.3)', fitRight(`${run.challenge.desc} - NOT THIS TIME`),
-        'rgba(255,255,255,0.35)', OBJ_Y + 16, 0.85);
+        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85);
     }
   } else {
     objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
@@ -493,10 +502,16 @@ export function drawHud(ctx, run) {
   }
 }
 
+// Cast who talk but are not playable, so are absent from HERO_BY_ID. They still
+// have a toon rig, so the portrait path works — only the name needs supplying.
+const EXTRA_SPEAKERS = { gary: { short: 'GARY' } };
+
 export function drawSpeech(ctx, speech) {
   // Eggshell talks in pink-red ink, allies in the same pale teal as the badge.
   const isEgg = speech.who === 'eggshell';
-  const hero = !isEgg && speech.who ? HERO_BY_ID[speech.who] : null;
+  const hero = !isEgg && speech.who
+    ? (HERO_BY_ID[speech.who] || EXTRA_SPEAKERS[speech.who] || null)
+    : null;
   const ink = isEgg ? '#f0a0a0' : '#d0f0e8';
   const y = 46;
   // A null who is the game itself talking (tutorials, station notes): a plain

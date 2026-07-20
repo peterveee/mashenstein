@@ -11,7 +11,7 @@ import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
-import { entityBox, overlaps, makePickup, makeObstacle, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
+import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
@@ -54,6 +54,11 @@ export class RunState {
     this.unplugged = opts.difficulty === 5;
     this.startingPowerup = opts.startingPowerup || null;
     this.introDone = false; // constructor, not enter(): death-restarts must not replay the intro stall
+    // Dev-only inspection flags. Constructor, not enter(): a death-restart must
+    // not silently drop them and turn a crash test back into a lethal run.
+    this.devInvuln = !!opts.devInvuln;
+    this.devForceMission = !!opts.devForceMission;
+    this.devHits = [];
   }
 
   groundYAt(worldX) {
@@ -143,7 +148,9 @@ export class RunState {
     this.introFreeze = isAct ? 2.0 : 0;
     this.introText = isAct ? intro : null;
     this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
-    if (intro && !isAct) this.speech = { text: intro, t: 4.0, who: 'intro' };
+    // Authored intros can be spoken by a named cast member — including one who
+    // is not on this run's team. Ringside commentary still gets a face.
+    if (intro && !isAct) this.speech = { text: intro, t: 4.0, who: this.stage.introBy || 'intro' };
     if (isAct && !this.save.settings.reducedMotion) shake(3, 0.3);
     this.copter = null;         // chase mission / taunt flyby
     this.tauntT = 30;
@@ -366,6 +373,9 @@ export class RunState {
   }
 
   missionSatisfied() {
+    // Crash test runs the level with no input at all, so objective missions
+    // could never clear and would fail at the line instead of showing a finish.
+    if (this.devForceMission) return true;
     const m = this.mission;
     switch (m.type) {
       case 'targets': return m.count >= m.n;
@@ -621,10 +631,9 @@ export class RunState {
     p.vx = this.speed * 1.45;
     p.vy = 205; // arcs higher than a coin — you should see this one coming
     this.pickups.push(p);
-    if (!quiet) {
-      Audio.sfx('power');
-      this.floatText('PRIZE!', '#f6d33c');
-    }
+    // No floatie: the capsule arcs high on its own and the catch announces
+    // itself. Calling the toss and the catch is announcing one capsule twice.
+    if (!quiet) Audio.sfx('power');
   }
 
   // The object comes apart into chunks of itself: they scatter from the centre,
@@ -1035,9 +1044,10 @@ export class RunState {
   checkOnBeat() {
     const phase = Audio.beatPhase();
     if (phase < 0.18 || phase > 0.82) {
+      // Silent: this can fire several times a second for a whole stage. The
+      // challenge counter in the HUD is the readout.
       this.challenge.count++;
       this.score += 20;
-      this.floatText('ON BEAT', '#f6d33c');
     }
   }
 
@@ -1202,7 +1212,7 @@ export class RunState {
         this.breakObstacle(ob);
         continue;
       }
-      this.takeHit(null);
+      this.takeHit(null, false, ob.type);
       break;
     }
     // Pickups.
@@ -1228,15 +1238,18 @@ export class RunState {
       Audio.sfx(hero.id === 'chompo' ? 'waka' : 'coin', { combo: Math.min(12, this.coinCombo) });
       spawn(p.x, this.groundYAt(p.x) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
     } else if (p.def.heal) {
+      // No floatie: the status pill fills the cell on the same frame and the
+      // 'power' sting lands with it. Saying it a third time is noise.
       this.battery = Math.min(this.maxBattery(), this.battery + 1);
       Audio.sfx('power');
-      this.floatText('+1 CELL', '#48c848');
     } else if (p.def.relayCharge) {
       this.grantRelayCharge();
     } else if (p.def.power) {
+      // Only overcharge speaks. The plain grab already shows up as a timer in
+      // the power row; overcharging is rare and the HUD states it only faintly.
       const res = this.powerups.grab(p.def.power);
       Audio.sfx('power');
-      this.floatText(res.overcharged ? 'OVERCHARGED' : this.powerNameOf(p.def.power), res.overcharged ? '#f6d33c' : '#c8e0ff');
+      if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
     } else if (p.def.appliance) {
       this.applianceGot = true;
       Audio.sfx('win');
@@ -1257,11 +1270,10 @@ export class RunState {
     }
   }
 
-  powerNameOf(id) { return id === 'star' ? 'SCORE STAR' : (POWER_DEFS[id]?.name || id.toUpperCase()); }
-
   // ------------------------------------------------------------------ damage
-  takeHit(msg, isPit = false) {
+  takeHit(msg, isPit = false, src = null) {
     if (this.player.iframes > 0) return;
+    if (this.devInvuln) this.devHits.push({ type: src || (isPit ? 'pit' : 'hazard'), worldX: Math.floor(this.playerWorldX()) });
     // UNPEELABLE deflects hits; gravity remains undefeated (pits still hurt).
     if (!isPit && this.powerups.isInvincible()) {
       this.player.iframes = 0.35;   // debounce repeated same-frame contact
@@ -1299,7 +1311,11 @@ export class RunState {
       if (isPit) this.hopOutOfPit();
       return;
     }
-    this.battery--;
+    // Crash test absorbs the consequence only. Everything below — sfx, shake,
+    // hitstop, the particle burst — still plays, because seeing the reaction is
+    // the entire point. Guarding at the top of takeHit instead would render
+    // nothing at all.
+    if (!this.devInvuln) this.battery--;
     this.damageTaken++;
     if (this.challenge && this.challenge.type === 'noDamage') this.challenge.failed = true;
     if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848');
@@ -1310,9 +1326,45 @@ export class RunState {
     if (this.battery <= 0) {
       this.die(msg);
     } else {
-      this.player.iframes = 1.4;
+      // The normal 1.4s of mercy would ghost the hero straight through the next
+      // several obstacles. Crash test drops to the same-frame debounce so every
+      // hazard in the level actually registers.
+      this.player.iframes = this.devInvuln ? 0.35 : 1.4;
       if (isPit) this.hopOutOfPit();
     }
+  }
+
+  // ------------------------------------------------------------------- dev
+  // Force a clean win from wherever the run currently is. Satisfies the mission
+  // and challenge rather than fabricating a result, so the real endRun/rank/
+  // reward pipeline is what gets exercised.
+  devPerfect() {
+    if (this.finished) return;
+    this.devForceMission = true;
+    if (this.mission && this.mission.n) this.mission.count = this.mission.n;
+    if (this.challenge) {
+      this.challenge.failed = false;
+      if (this.challenge.n) this.challenge.count = this.challenge.n;
+    }
+    this.applianceGot = true;
+    this.damageTaken = 0;
+    this.endRun(true);
+  }
+
+  // Drop an obstacle just ahead of the player for a close look at one hazard.
+  devSpawn(type) {
+    if (!OBSTACLES[type]) return null;
+    const ob = makeObstacle(type, this.camX + PLAYER_X + 150);
+    this.obstacles.push(ob);
+    return ob;
+  }
+
+  // Rolled-up tally of what the level actually threw at us. The spawner builds
+  // patterns procedurally, so this is not derivable from data/stages.js.
+  devHitTally() {
+    const counts = {};
+    for (const h of this.devHits) counts[h.type] = (counts[h.type] || 0) + 1;
+    return counts;
   }
 
   hopOutOfPit() {

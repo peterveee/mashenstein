@@ -17,6 +17,7 @@ import { HubState, StageSelectState, BenchState, ShopState, ArcadeState } from '
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
+import { Dev } from './dev/index.js';
 
 save.load();
 setShakeScale(save.settings.screenShake);
@@ -96,14 +97,16 @@ const Flow = {
     setState(new BriefingState({ cab, stage, onDone: () => Flow.launchStage(cab, stage, corrupted) }));
   },
 
-  launchStage(cab, stage, corrupted) {
+  // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
+  // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
+  launchStage(cab, stage, corrupted, seedOverride) {
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
     if (startingPowerup) { delete flags.pendingPowerup; save.persist(); }
     setState(new RunState({
       stage, save, startingPowerup,
-      seed: (Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0,
+      seed: seedOverride ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0),
       difficulty: save.slot.difficulty,
       corrupted,
       onEnd: (result) => {
@@ -114,10 +117,10 @@ const Flow = {
     }));
   },
 
-  startBoss(cabId) {
+  startBoss(cabId, seedOverride) {
     setState(new BossState({
       bossCab: cabId, save,
-      seed: (Date.now() ^ 0xb055) >>> 0,
+      seed: seedOverride ?? ((Date.now() ^ 0xb055) >>> 0),
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
@@ -196,10 +199,15 @@ function boot() {
     Audio.setVolumes(save.settings.volumes);
     Audio.setMuted(save.settings.muted);
   };
+  // Dev menu: local builds only. __MASH_BUILD__ is emitted by build/build.js
+  // under --watch and is absent from a published bundle, so install() never
+  // runs there and no listener is ever registered.
+  Dev.enabled = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
+  if (Dev.enabled) Dev.install({ Flow, save });
   Flow.toTitle();
   startLoop({
-    update: (dt) => updateState(dt),
-    draw: () => { drawState(bctx); blit(); },
+    update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
+    draw: () => { drawState(bctx); Dev.draw(bctx); blit(); },
   });
   window.__mash_booted = true;
 }

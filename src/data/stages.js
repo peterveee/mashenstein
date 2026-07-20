@@ -19,6 +19,7 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   applianceAt: opts.applianceAt ?? (0.55 + 0.1 * ((idx * 7) % 3)), // fraction of distance
   applianceHigh: opts.applianceHigh ?? (idx % 2 === 0),
   intro: opts.intro || null,
+  introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
 });
 
 export const STAGES = [
@@ -26,7 +27,7 @@ export const STAGES = [
   S('plumber', 1,
     { type: 'reach', desc: 'REACH THE BREAKER. FLIP IT. SAVE EVERYTHING.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
-    { intro: 'THE FIRST CABINET FLICKERS. LORENZO SAYS THE PIPES "KNOW HIM."' }),
+    { introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.' }),
   S('plumber', 2,
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 ?-CRATES. THE ? IS RHETORICAL.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
@@ -36,7 +37,7 @@ export const STAGES = [
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
-    { intro: 'GNASH HAS ALREADY FINISHED THIS LEVEL. HE IS WAITING AT THE END. SMUG.' }),
+    { introBy: 'gnash', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.' }),
   S('speed', 2,
     { type: 'chase', n: 2, desc: 'CATCH THE CLOWN-COPTER 2 TIMES. IT IS UNDERINSURED.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' }),
@@ -46,7 +47,7 @@ export const STAGES = [
   S('neon', 1,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
-    { intro: 'B-33P FEELS AT HOME HERE. HE IS STILL LOW ON CYAN.' }),
+    { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.' }),
   S('neon', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
@@ -67,7 +68,7 @@ export const STAGES = [
   S('crypt', 1,
     { type: 'blackout', desc: 'SURVIVE THE BLACKOUT. THE DARK IS BUDGETARY.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { intro: 'GARY\'S FORMER COWORKERS WAVE. HE OWES SEVERAL OF THEM SHIFTS.' }),
+    { introBy: 'gary', intro: 'MY FORMER COWORKERS ARE WAVING. I OWE SEVERAL OF THEM SHIFTS.' }),
   S('crypt', 2,
     { type: 'rescue', n: 3, desc: 'ESCORT 3 CONFUSED CABINET RESIDENTS TO SAFETY.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' }),

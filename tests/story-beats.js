@@ -54,8 +54,18 @@ function makeRun(stage, onEnd = () => {}) {
 {
   const run = makeRun(STAGE_BY_ID['plumber-1']);
   assert(run.introFreeze === 0, 'plumber-1 intro does not freeze the world');
-  assert(run.speech && run.speech.text === STAGE_BY_ID['plumber-1'].intro && run.speech.who === 'intro',
-    'plumber-1 intro shows as a narrator speech bubble');
+  assert(run.speech && run.speech.text === STAGE_BY_ID['plumber-1'].intro,
+    'plumber-1 intro shows as a speech bubble');
+  // Authored speaker wins over the narrator sentinel, so the bubble gets a face
+  // and a name — even though Lorenzo need not be on this run's team.
+  assert(run.speech.who === 'lorenzo', 'plumber-1 intro is attributed to Lorenzo');
+}
+
+// --- An unattributed intro still falls back to the narrator sentinel -------
+{
+  const run = makeRun(STAGE_BY_ID['office-1']);
+  assert(run.speech && run.speech.who === 'intro',
+    'office-1 has no authored speaker, so it stays a narrator bubble');
 }
 
 // --- Death-restart does not replay the intro stall -------------------------

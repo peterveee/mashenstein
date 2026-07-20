@@ -23,3 +23,4 @@ Do not edit by hand.
 | 2026-07-20 | `40bb9eb` | [2026-07-20-40bb9eb.html](2026-07-20-40bb9eb.html) | Archive published build 3d1d6ba |
 | 2026-07-20 | `f6e89f6` | [2026-07-20-f6e89f6.html](2026-07-20-f6e89f6.html) | Archive published build b2ae843 |
 | 2026-07-20 | `6dadc66` | [2026-07-20-6dadc66.html](2026-07-20-6dadc66.html) | Add goal tracking and HUD updates for plug states during gameplay |
+| 2026-07-21 | `c0543fa` | [2026-07-21-c0543fa.html](2026-07-21-c0543fa.html) | Add briefing manifest and story beats tests |

@@ -920,6 +920,7 @@ export class BriefingState {
 // Party colors for the results screen: the game's own gold/teal/pink/purple,
 // so the confetti reads as MASHENSTEIN and not as generic stock celebration.
 const PARTY_COLORS = ['#f6d33c', '#48e0c8', '#f890b8', '#8858c8', '#48c848', '#ffffff'];
+const BURST_SFX = ['popSmall', 'popBig', 'crackle'];
 
 // The results screen is the one place we admit where the game physically is:
 // inside the tube. Act III says so literally, so the frame here is the CRT
@@ -935,7 +936,11 @@ const PARTY_COLORS = ['#f6d33c', '#48e0c8', '#f890b8', '#8858c8', '#48c848', '#f
 // sprites, fireworks and falling streamers; a fifth moving layer behind the
 // most information-dense part of the frame is exactly what a starfield would
 // have been, and it would fight the burst shrapnel dot for dot.
-const TUBE_INSET = 5;    // mask thickness where the glass stops
+// Asymmetric: a tube is wider than it is tall, so the mask has to eat more
+// top and bottom than it does at the sides or the glass reads as full-bleed.
+// The results layout below is pinned to these — change one, check the other.
+const TUBE_INSET_X = 5;
+const TUBE_INSET_Y = 17;
 const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
 let tubeGlow = null;
 let tubeWash = null;
@@ -943,9 +948,12 @@ let tubeWash = null;
 // Traced by hand rather than roundRect() — the corner is a quadratic through
 // the actual corner point, which gives the slightly-inflated curve of real
 // tube glass instead of a perfect quarter circle.
-function tubePath(ctx) {
-  const x0 = TUBE_INSET, y0 = TUBE_INSET, x1 = W - TUBE_INSET, y1 = H - TUBE_INSET;
-  ctx.beginPath();
+// `fresh` false appends the tube as a second subpath to whatever is already
+// being built — the mask needs it inside a full-screen rect for an evenodd
+// fill, and an unconditional beginPath() here silently threw that rect away.
+function tubePath(ctx, fresh = true) {
+  const x0 = TUBE_INSET_X, y0 = TUBE_INSET_Y, x1 = W - TUBE_INSET_X, y1 = H - TUBE_INSET_Y;
+  if (fresh) ctx.beginPath();
   ctx.moveTo(x0 + TUBE_R, y0);
   ctx.lineTo(x1 - TUBE_R, y0);
   ctx.quadraticCurveTo(x1, y0, x1, y0 + TUBE_R);
@@ -990,42 +998,52 @@ function drawTubeFace(ctx) {
   // Phosphor banked along the bottom of the tube, warm where the beam has
   // been working hardest. Lands under the hero row, so the curtain call reads
   // as standing in the glow rather than floating on black.
+  // Anchored to the bottom of the GLASS, not the canvas — anchored to the
+  // canvas, its brightest stop sat under the mask and never showed.
+  const gy = H - TUBE_INSET_Y;
   if (!tubeGlow) {
-    tubeGlow = ctx.createLinearGradient(0, H, 0, H - 110);
-    tubeGlow.addColorStop(0, 'rgba(255,168,88,0.22)');
+    tubeGlow = ctx.createLinearGradient(0, gy, 0, gy - 100);
+    // Modest: this now sits on a lit face rather than on black, and any more
+    // washes out the grey footer line drawn over it.
+    tubeGlow.addColorStop(0, 'rgba(255,168,88,0.13)');
     tubeGlow.addColorStop(1, 'rgba(255,168,88,0)');
   }
   ctx.fillStyle = tubeGlow;
-  ctx.fillRect(0, H - 110, W, 110);
+  ctx.fillRect(0, gy - 100, W, 100);
   ctx.restore();
 }
 
-// Draws AFTER the party, so streamers tumble away behind the curve instead of
-// running off a square edge. That occlusion is most of what sells the glass.
-function drawTubeGlass(ctx) {
-  ctx.save();
-  // Mask: everything outside the tube. evenodd against a full-screen rect.
-  ctx.fillStyle = '#07070c';
-  ctx.beginPath();
-  ctx.rect(0, 0, W, H);
-  tubePath(ctx);
-  ctx.fill('evenodd');
-  // Scanlines and speckle, only on the glass. Now that the face is lit these
-  // have something to cut into; at 0.09 over bare #0b0b14 they were invisible.
+// Scanlines and speckle: the glass texture, drawn onto the empty face BEFORE
+// the party. Confetti sits on top of the glass rather than under it — with
+// the party underneath, the scanline pass dimmed every ribbon by a third and
+// the confetti effectively vanished.
+function drawTubeTexture(ctx) {
   ctx.save();
   tubePath(ctx);
   ctx.clip();
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
   for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
   // Every third line gets a lit companion — the beam edge. Bright-on-dark is
   // what reads as a scanline; dark-on-dark just dims the screen.
-  ctx.fillStyle = 'rgba(150,180,255,0.05)';
+  ctx.fillStyle = 'rgba(150,180,255,0.07)';
   for (let y = 1; y < H; y += 3) ctx.fillRect(0, y, W, 1);
   for (const s of TUBE_SPECKLE) {
     ctx.fillStyle = `rgba(190,205,255,${s.a})`;
     ctx.fillRect(s.x, s.y, 1, 1);
   }
   ctx.restore();
+}
+
+// Runs LAST, so streamers tumble away behind the curve instead of running off
+// a square edge. That occlusion is most of what sells the glass.
+function drawTubeMask(ctx) {
+  ctx.save();
+  // Everything outside the tube. evenodd against a full-screen rect.
+  ctx.fillStyle = '#07070c';
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  tubePath(ctx, false);
+  ctx.fill('evenodd');
   // The lit edge of the glass, brightest along the top where a tube catches
   // the room. lineWidth is set explicitly: it persists across frames.
   ctx.lineWidth = 1;
@@ -1044,6 +1062,7 @@ export class ResultsState {
     this.shells = [];       // rising mortars; they burst at the top of their arc
     this.shellT = 0.25;     // first one goes up almost immediately
     this.streamerT = 0;
+    this.lastBurst = null;
     clearParticles();
     Input.setMenuButtons();
     Audio.sfx(this.result.success ? 'win' : 'lose');
@@ -1060,7 +1079,10 @@ export class ResultsState {
         x, y: H + 6, vx: (Math.random() - 0.5) * 24, vy: -(230 + Math.random() * 50),
         fuse: 0.85 + Math.random() * 0.3, color: PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
       });
+      // The original blip stays as the tonal layer — it's the part that reads
+      // as "a thing launched" — with the new air underneath it for body.
       Audio.sfx('ui');
+      Audio.sfx('fizzUp', { pitch: 0.9 + Math.random() * 0.3 });
     }
     for (let i = this.shells.length - 1; i >= 0; i--) {
       const s = this.shells[i];
@@ -1072,7 +1094,15 @@ export class ResultsState {
         burst(s.x, s.y, 26, 115, 1.3, s.color, 4.5, 30);
         burst(s.x, s.y, 6, 40, 0.3, '#ffffff', 3, 18); // white core flash
         this.shells.splice(i, 1);
-        Audio.sfx('coin');
+        // 'coin' is the sparkle on top and always plays — it's the cue the
+        // burst is recognisable by. Detuned per shot so a run of them varies.
+        Audio.sfx('coin', { pitch: 0.9 + Math.random() * 0.35 });
+        // Underneath it, never the same crack twice running: pick a different
+        // shape from the last one, then detune that too.
+        let pick = (Math.random() * BURST_SFX.length) | 0;
+        if (BURST_SFX[pick] === this.lastBurst) pick = (pick + 1) % BURST_SFX.length;
+        this.lastBurst = BURST_SFX[pick];
+        Audio.sfx(this.lastBurst, { pitch: 0.85 + Math.random() * 0.4 });
       }
     }
     // Streamers: paper ribbons that fall past the whole screen, spinning.
@@ -1103,17 +1133,26 @@ export class ResultsState {
   }
   draw(ctx) {
     drawTubeFace(ctx);
+    drawTubeTexture(ctx);
     // Party behind the text: sparks never fight the score for legibility.
+    // Clipped to the glass so ribbons leave through the curve, but drawn over
+    // the scanlines so they keep their colour.
+    ctx.save();
+    tubePath(ctx);
+    ctx.clip();
     drawParticles(ctx);
     for (const s of this.shells) {
       ctx.fillStyle = s.color;
       ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 3);
     }
-    drawTubeGlass(ctx);
+    ctx.restore();
+    drawTubeMask(ctx);
     const r = this.result;
-    drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 34, r.success ? '#48c848' : '#e04848', 2, 'title');
-    drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 70, '#fff', 1);
-    let y = 90;
+    // Everything below is pinned to the tube: the glass runs TUBE_INSET_Y to
+    // H - TUBE_INSET_Y, and the title and footer sit a margin inside that.
+    drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 38, r.success ? '#48c848' : '#e04848', 2, 'title');
+    drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 72, '#fff', 1);
+    let y = 91;
     const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 13; };
     line(`COINS BANKED: +${this.gains.coins}`, '#f6d33c');
     if (r.stage) {
@@ -1140,9 +1179,9 @@ export class ResultsState {
       // call after the stage clears is the one moment they can share a frame.
       r.team.forEach((id, i) => drawToon(ctx, id,
         { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
-        W / 2 + (i - (r.team.length - 1) / 2) * 48, 226, 32));
+        W / 2 + (i - (r.team.length - 1) / 2) * 48, 218, 32));
     }
-    drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 20, '#5a5a68');
+    drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 34, '#5a5a68');
   }
 }
 
@@ -1223,24 +1262,27 @@ const GUIDE_PAGES = [
       { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
     ],
   },
+  // All eight capsules live on one page. They come from the same drip table and
+  // behave identically, so splitting them by flavour ("essentials" vs "hero
+  // traits") only made players think the missing half did not exist.
   {
-    title: 'PICKUPS: ESSENTIALS', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
+    title: 'PICKUPS: CAPSULES', color: '#72d8f0', hint: 'BLUE = A TIMED POWER. GRAB A DUPLICATE TO OVERCHARGE IT.',
     rows: [
-      { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
-      { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
-      { s: 'capShield', name: 'SHIELD CAPSULE', desc: 'ABSORBS ONE HIT. POLITELY.' },
-      { s: 'capMagnet', name: 'MAGNET CAPSULE', desc: 'PULLS NEARBY COINS TO YOU.' },
-      { s: 'capStar', name: 'STAR CAPSULE', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
-      { s: 'capUnpeel', name: 'UNPEELABLE CAPSULE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
+      { s: 'capShield', name: 'SHIELD', desc: 'ABSORBS ONE HIT. POLITELY.' },
+      { s: 'capMagnet', name: 'MAGNET', desc: 'PULLS NEARBY COINS TO YOU.' },
+      { s: 'capStar', name: 'STAR', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
+      { s: 'capAirJump', name: 'AIR JUMP', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH MOCHI AND THE CAPE.' },
+      { s: 'capSpeed', name: 'SPEED BURST', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
+      { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
+      { s: 'capUnpeel', name: 'UNPEELABLE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
       { s: 'capRelay', name: 'RELAY BATON', desc: 'VERY RARE. BANKS ONE SUPERCHARGED POWER. SPEND IT WELL.' },
     ],
   },
   {
-    title: 'PICKUPS: HERO TRAITS', color: '#72d8f0', hint: 'BORROW A PASSIVE. KEEP THE SPECIAL MOVE TO YOURSELF.',
+    title: 'PICKUPS: ESSENTIALS + MISSION', color: '#f6d33c', hint: 'GOLD = COLLECT. NO DOWNSIDES. PROBABLY.',
     rows: [
-      { s: 'capAirJump', name: 'AIR JUMP CAPSULE', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH MOCHI AND THE CAPE.' },
-      { s: 'capSpeed', name: 'SPEED BURST CAPSULE', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
-      { s: 'capLowGrav', name: 'LOW GRAVITY CAPSULE', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
+      { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
+      { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
       { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
       { s: 'resident', name: 'RESIDENT', desc: 'ALIVE. WAVES. FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },

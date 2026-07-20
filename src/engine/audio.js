@@ -10,6 +10,10 @@ const SFX_TRIM = {
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // A tail layer, not an event: it should colour the break, never top it.
   debris: 0.65,
+  // Fireworks. These layer UNDER 'ui' and 'coin' rather than replacing them,
+  // so they are the body of the sound while those two carry the tone. First
+  // pass was mixed as background texture and read as too faint.
+  fizzUp: 0.75, popSmall: 0.95, popBig: 0.9, crackle: 0.85,
   // Miss Chomp's coin bite. Measured against 'coin': it peaks ~5dB hotter at
   // the same nominal gain (the resonant lowpass), but the real problem was
   // sustain — it holds its peak where 'coin' is a fast-decaying blip, putting
@@ -317,7 +321,9 @@ class AudioSys {
     if (!this.ctx) return;
     this.cueGain = SFX_TRIM[name] ?? 1;
     const combo = opt.combo || 0;
-    const pitch = Math.pow(1.06, combo);
+    // opt.pitch is the direct form, for cues that want spread rather than a
+    // combo ladder — the fireworks detune every shot so no two bursts twin.
+    const pitch = opt.pitch ?? Math.pow(1.06, combo);
     switch (name) {
       // Quieter than 'coin' on purpose: it's a square wave (loud for its
       // amplitude) and it fires more often than any other cue in the game.
@@ -392,6 +398,27 @@ class AudioSys {
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
       case 'boom': this.noise(0.5, 0.3, 'lowpass', 300); this.osc('sine', 100, 30, 0.5, 0.3); break;
+      // ---- Fireworks. Three burst shapes so a long results screen never
+      // repeats the same crack twice in a row; the caller also detunes each.
+      // The mortar going up: air, not tone. Rising sine underneath it only to
+      // give the ear something to track to the top of the arc.
+      case 'fizzUp':
+        this.noise(0.3, 0.09, 'bandpass', 1500);
+        this.osc('sine', 260 * pitch, 880 * pitch, 0.3, 0.045);
+        break;
+      case 'popSmall':
+        this.noise(0.09, 0.22, 'highpass', 2200);
+        this.osc('triangle', 820 * pitch, 190 * pitch, 0.1, 0.09);
+        break;
+      case 'popBig':
+        this.noise(0.32, 0.24, 'lowpass', 760);
+        this.osc('sine', 190 * pitch, 48 * pitch, 0.3, 0.15);
+        break;
+      // The one with a tail: a crack, then glitter falling out of it.
+      case 'crackle':
+        this.noise(0.08, 0.2, 'highpass', 1800);
+        for (let i = 1; i < 6; i++) this.noise(0.04, 0.1, 'highpass', 3200, 0.05 + i * 0.055);
+        break;
       case 'plop': this.osc('sine', 300, 120, 0.15, 0.2); break;
       case 'type': this.osc('square', 800, 800, 0.02, 0.05); break;
       case 'comet': this.cometSwoop(); break;

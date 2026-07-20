@@ -3,7 +3,7 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, wrapText, textWidth } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth } from '../../engine/sprites.js';
 import { drawToon, toonStandSprite } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
@@ -13,6 +13,7 @@ import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../.
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
 import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
+import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
 
 const CORRUPTED_MODIFIERS = [
@@ -297,11 +298,11 @@ export class HubState {
     drawTextCentered(ctx, Input.usingTouch
       ? 'TAP < > TO WALK   USE TO ENTER   BACK BUTTON FOR TITLE'
       : 'LEFT/RIGHT WALK   ENTER USE   DOWN TALK   ESC TITLE', W / 2, H - 16, '#8a8a98');
-    if (this.talk) {
-      const who = this.talk.who ? HERO_BY_ID[this.talk.who]?.short || '' : '';
-      const lines = wrapText(`${who ? who + ': ' : ''}${this.talk.text}`, W - 48, 1, 2);
-      lines.forEach((line, i) => drawTextCentered(ctx, line, W / 2, 55 + i * 11, '#d0f0e8'));
-    }
+    // The same speech card the stages use — portrait, name header, words —
+    // rather than a "NAME: line" of centred text. Talking to a hero in the food
+    // court is the same act as a hero talking mid-stage, so it gets the same
+    // chrome; the null-speaker path handles the cabinet and shelf notes.
+    if (this.talk) drawSpeech(ctx, this.talk);
     for (const b of Input.buttons) {
       ctx.fillStyle = 'rgba(72,224,200,0.12)';
       ctx.fillRect(b.x, b.y, b.w, b.h);
