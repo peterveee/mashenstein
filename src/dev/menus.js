@@ -12,6 +12,7 @@ import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
 import { MINIGAMES } from '../game/minigames/index.js';
+import { HEROES } from '../data/heroes.js';
 import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progress.js';
 import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
@@ -63,10 +64,21 @@ function instantClear(dev, stage) {
 function stageActions(dev, stage) {
   const cab = CABINET_BY_ID[stage.cabinet];
   const scenario = { kind: 'stage', id: stage.id };
+  const playAsMenu = () => ({
+    title: 'PLAY AS',
+    items: HEROES.map((hero) => ({
+      label: hero.short,
+      act: () => {
+        dev.close();
+        dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined, hero.id);
+      },
+    })),
+  });
   const build = () => ({
     title: stage.id.toUpperCase(),
     items: [
       { label: 'PLAY', act: () => { dev.close(); dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined); } },
+      { label: 'PLAY AS ▸', submenu: playAsMenu },
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
       { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
@@ -186,7 +198,6 @@ function scenesMenu(dev) {
       { label: 'STAGE SELECT', act: go(() => Flow.openCabinet(CABINETS[0])) },
       { label: 'RESULTS (fake S-rank)', act: () => instantClear(dev, STAGES[0]) },
       { label: 'FINALE', act: go(() => Flow.startFinale()) },
-      { label: 'CAST ROLL', act: go(() => setState(new CastState({ realSettings: save.settings, onExit: () => Flow.toTitle() }))) },
       { label: 'ATTRACT (real)', act: go(() => Flow.startAttract()) },
       { label: 'FIELD GUIDE', act: go(() => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toHub() }))) },
       { label: 'SOUND TEST', act: go(() => setState(new SoundTestState({ onDone: () => Flow.toHub() }))) },
@@ -351,6 +362,10 @@ export function rootMenu(dev) {
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },
+      { label: 'CAST ROLL', act: () => {
+        dev.close();
+        setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
+      } },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },

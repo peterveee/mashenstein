@@ -99,7 +99,7 @@ export class RunState {
     // feel unscheduled — both fall back to the endless portal cadence.
     const scheduled = o.stage && !this.overtime && !this.corrupted.includes('randomswap');
     this.relay = new Relay(this.rng.stream('relay'), slot.stats,
-      scheduled ? portalSchedule(o.stage.durationSec) : null);
+      scheduled ? portalSchedule(o.stage.durationSec) : null, o.initialHeroId);
     if (this.corrupted.includes('randomswap')) this.relay.portalEvery = 10;
     this.usedHeroes = new Set([this.relay.current]);
     this.exitSpoken = new Set();   // heroes who have already said their goodbye
@@ -308,7 +308,7 @@ export class RunState {
     this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump')) {
       const ok = this.player.jumpPressed(Audio);
-      if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#f8c0d8', 1, 60, () => this.fxRng.float());
+      if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#ffa8b6', 1, 60, () => this.fxRng.float());
       if (this.mission.type && this.challenge && this.challenge.type === 'onbeat') this.checkOnBeat();
     }
     if (Input.pressed('duck') && this.challenge && this.challenge.type === 'onbeat') this.checkOnBeat();
@@ -342,7 +342,7 @@ export class RunState {
     // the breaker, and the finish run itself has no hazards or pickups.
     if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
-      this.drip.update(wdt, this.camX, this.pickups, this.oneHit);
+      this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery());
     }
     this.spawnApplianceMaybe();
     this.checkCheckpoints();
@@ -532,7 +532,7 @@ export class RunState {
     } else if (type === 'compress') {
       this.player.compressT = charged ? 2.6 : 1;
       Audio.sfx('power');
-      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', '#f8c0d8');
+      this.floatText(charged ? 'DEFINITELY NOT NORMAL PHYSICS' : 'PROBABLY NORMAL PHYSICS', '#ffa8b6');
     } else if (type === 'eat') {
       const px = this.playerWorldX();
       Audio.sfx('chomp');
@@ -544,11 +544,13 @@ export class RunState {
               && ob.x > this.camX && ob.x < this.camX + W) { this.breakObstacle(ob, true); ate++; }
         }
         this.floatText(ate ? 'MISS CHOMP ATE ALL OF IT. POLITELY.' : 'NOTHING ON THE MENU.', '#f6d33c');
+        if (ate) this.chompFlourish(px + 30, GROUND_Y - this.player.y - 18);
       } else {
         const target = this.powerTarget(type);
         if (target) {
           this.breakObstacle(target, true);
           this.floatText('MISS CHOMP ATE IT. POLITELY.', '#f6d33c');
+          this.chompFlourish(target.x + target.w / 2, this.groundYAt(target.x) - target.alt - target.h / 2);
         } else this.floatText('AIR: SURPRISINGLY LOW CALORIE.', '#f6d33c');
       }
       if (this.modIds.includes('eat') && !this.player.hazardEaten) {
@@ -651,6 +653,23 @@ export class RunState {
       size: d.size, grav: d.grav ?? 340, floor: this.groundYAt(ob.x), rand: r,
     });
     if (d.spark) burst(cx, cy, 5, 110, 0.22, d.spark, 1, 30, r); // machines throw sparks too
+  }
+
+  // Miss Chomp's signature send-off after a HAZARD BITE: a dainty pink kiss-poof
+  // that drifts up (her "thank-you note" made visible) plus a few white sparkle
+  // flecks and a short aside in her own pink voice. Purely cosmetic -- the bite
+  // itself already happened in breakObstacle; this is the flourish on top.
+  chompFlourish(cx, cy) {
+    const PINK = '#ed5c86', BLUSH = '#ffd0e0';
+    if (!this.save.settings.reducedMotion) {
+      const r = () => this.fxRng.float();
+      burst(cx, cy, 6, 55, 0.5, PINK, 1.2, -20, r);   // negative grav: the kiss rises
+      burst(cx, cy, 4, 40, 0.6, BLUSH, 1, -30, r);
+      for (let i = 0; i < 3; i++) {                    // white sparkle flecks
+        spawn(cx + (r() - 0.5) * 16, cy - r() * 8, (r() - 0.5) * 24, -24 - r() * 30, 0.7, '#fff', 1.4, 46);
+      }
+    }
+    this.floatText(this.fxRng.pick(['MWAH. — DARLING', 'RETURNED WITH A NOTE. XOXO', 'WAKA, DARLING.', 'DEE-LIGHTFUL. THANK YOU.']), PINK);
   }
 
   breakObstacle(ob, silent) {

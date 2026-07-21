@@ -47,7 +47,31 @@ for (const h of HEROES) {
     `${h.short} has name, tagline and ability copy`);
 }
 
-// 3) first human input exits immediately and is consumed
+// 3) Right/D advances and Left/A retreats through the roll call
+let exited3 = null;
+const st3 = new CastState({ realSettings: save.settings, onExit: (auto) => { exited3 = auto; } });
+st3.enter();
+dom.key('ArrowRight');
+st3.update(TICK);
+assert(exited3 === null && st3.i === 1 && st3.slotT === 0,
+  'Right advances the roll call without exiting');
+dom.key('ArrowLeft');
+st3.update(TICK);
+assert(exited3 === null && st3.i === 0 && st3.slotT === 0,
+  'Left retreats the roll call without exiting');
+dom.key('ArrowLeft');
+st3.update(TICK);
+assert(exited3 === null && st3.i === 0,
+  'Left at the first character stays in the roll call');
+dom.fire('win:keydown', {
+  code: 'KeyP', repeat: false, metaKey: true, shiftKey: true, preventDefault() {},
+});
+st3.update(TICK);
+assert(exited3 === null && st3.i === 0,
+  'screenshot shortcut does not exit the roll call');
+st3.exit();
+
+// 4) first other human input exits immediately and is consumed
 let exited2 = null;
 const st2 = new CastState({ realSettings: save.settings, onExit: (auto) => { exited2 = auto; } });
 st2.enter();

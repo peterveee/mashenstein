@@ -19,7 +19,7 @@ const GUIDE_ICON_SIZES = {
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
-import { CABINETS, HUB_THEME, TITLE_THEME } from '../data/cabinets.js';
+import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
 
 function menuNav(input, idx, len) {
@@ -63,7 +63,7 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
     ctx.fillRect(x + 10, feetY - 16, 5, 1); ctx.fillRect(x + 12, feetY - 18, 1, 5);
   } else if (id === 'mochi') {
     const yy = feetY - 27 - p * 5;
-    ctx.fillStyle = '#edb8ff';
+    ctx.fillStyle = '#c9a3f0';
     ctx.fillRect(x - 4, yy, 2, 2); ctx.fillRect(x, yy, 2, 2);
     ctx.fillRect(x - 3, yy + 2, 4, 2); ctx.fillRect(x - 2, yy + 4, 2, 2);
   } else if (id === 'chompo') {
@@ -108,9 +108,10 @@ const heroX = (i, t) => ((t * 42 + i * 66) % (W + 140)) - 70;
 // leaves the parade alone for long enough that the next appearance surprises.
 const PARADE_SPEED = 42;
 const PARADE_SPAN = W + 140;
-// Start when Lorenzo is 30px ahead of the left edge, then repeat only every
-// third parade lap. This aligns the guests with the reserved tail behind him.
-const WISP_FIRST = PARADE_SPAN / PARADE_SPEED + 76 / PARADE_SPEED;
+const WISP_GAP = 38;
+// Start when the lead wisp trails Lorenzo by 46px, then repeat only every
+// third parade lap. This leaves a little breathing room before the guests.
+const WISP_FIRST = PARADE_SPAN / PARADE_SPEED + 92 / PARADE_SPEED;
 const WISP_PERIOD = (PARADE_SPAN / PARADE_SPEED) * 3;
 const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
 
@@ -122,7 +123,7 @@ function mazeWispPass(t) {
   const count = 2 + (trip % 3);
   // From the lead wisp touching the left edge until the final trailing wisp
   // has completely cleared the right. No alpha fade and no mid-screen cutoff.
-  const cross = (W + 48 + (count - 1) * 26) / PARADE_SPEED;
+  const cross = (W + 48 + (count - 1) * WISP_GAP) / PARADE_SPEED;
   if (local > cross) return null;
   return { trip, local, count };
 }
@@ -181,10 +182,10 @@ function drawMazeWispCameo(ctx, t, reduced) {
   const pass = mazeWispPass(t);
   if (!pass) return;
   // All visitors share the parade's exact speed. Starting this traversal at
-  // the aligned WISP_FIRST time places the leader 30px behind Lorenzo; the
+  // the aligned WISP_FIRST time places the leader 46px behind Lorenzo; the
   // remaining guests follow in the rest of the cast's reserved tail space.
   for (let i = 0; i < pass.count; i++) {
-    const x = -24 + pass.local * PARADE_SPEED - i * 26;
+    const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
     if (x < -24 || x > W + 24) continue;
     ctx.fillStyle = 'rgba(4,3,9,0.25)';
     ctx.beginPath(); ctx.ellipse(x, 268, 5.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
@@ -432,7 +433,16 @@ function titleScene(ctx, t, reduced) {
     }
   }
 }
+// Shuffled each time we enter the title so the cast doesn't always cross in the
+// same order. Mutated in place (Fisher-Yates) so every reader that indexes into
+// it — the parade draw, heroX, the invader strike — stays in agreement.
 const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+function shuffleParade() {
+  for (let i = HERO_PARADE.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [HERO_PARADE[i], HERO_PARADE[j]] = [HERO_PARADE[j], HERO_PARADE[i]];
+  }
+}
 
 // Title menu geometry, shared by the renderer and the touch hit-test so a tap
 // always lands on the row it looks like it lands on.
@@ -544,6 +554,7 @@ export class TitleState {
     this.attractLabel = attractLabel || 'DEMO';
   }
   enter() {
+    shuffleParade();
     this.idx = 0;
     this.erase = null;
     this.t = 0;
@@ -1135,19 +1146,14 @@ export class ResultsState {
   draw(ctx) {
     drawTubeFace(ctx);
     drawTubeTexture(ctx);
-    // Party behind the text: sparks never fight the score for legibility.
-    // Clipped to the glass so ribbons leave through the curve, but drawn over
-    // the scanlines so they keep their colour.
-    ctx.save();
-    tubePath(ctx);
-    ctx.clip();
+    drawTubeMask(ctx);
+    // Party drawn last, unclipped: the celebration spills past the glass
+    // and over the bezel instead of being cut off at the tube's curve.
     drawParticles(ctx);
     for (const s of this.shells) {
       ctx.fillStyle = s.color;
       ctx.fillRect(Math.round(s.x) - 1, Math.round(s.y) - 1, 2, 3);
     }
-    ctx.restore();
-    drawTubeMask(ctx);
     const r = this.result;
     // Everything below is pinned to the tube: the glass runs TUBE_INSET_Y to
     // H - TUBE_INSET_Y, and the title and footer sit a margin inside that.
@@ -1179,7 +1185,7 @@ export class ResultsState {
     // (full team, OSHA equipped, several mastery-ups) used to drive the last
     // line straight through the heroes' heads. Clamped at the top so a short
     // result still centres well, and at the bottom to clear the footer.
-    const heroY = Math.min(232, Math.max(216, y + 34));
+    const heroY = Math.min(248, Math.max(232, y + 34));
     if (r.success && r.team && r.team.length) {
       // The relay team takes a bow — each hero in their own celebrate pose,
       // slightly out of phase so the line reads as a crowd, not a metronome.
@@ -1196,7 +1202,7 @@ export class ResultsState {
 
 export class FinaleState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.beat = 0; this.chars = 0; Input.setMenuButtons(); Audio.setBank(null); }
+  enter() { this.beat = 0; this.chars = 0; Input.setMenuButtons(); Audio.setBank(FINALE_THEME); }
   update(dt) {
     if (this.beat >= FINALE_BEATS.length) { Input.endFrame(); return; }
     this.chars += dt * 34;
@@ -1267,7 +1273,7 @@ const GUIDE_PAGES = [
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
-      { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO CHANGE HERO. 3RD SWITCH = BLAST.' },
+      { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO BECOME THE PREVIEWED HERO.' },
       { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
     ],
   },
@@ -1393,6 +1399,7 @@ const JUKEBOX = [
   { name: 'EMPTY ARCADE (TITLE THEME)', bank: TITLE_THEME },
   { name: 'THE FOOD COURT (HUB THEME)', bank: HUB_THEME },
   ...CABINETS.map((c) => ({ name: `${c.name} (${c.genre})`, bank: c.music })),
+  { name: 'ONE MORE SWITCH (FINALE THEME)', bank: FINALE_THEME },
 ];
 // Track list sits above the visualizer bars so the two never collide.
 const JUKEBOX_TOP = 58;
@@ -1471,7 +1478,7 @@ export class HowToPlayState {
     line('DUCK', 'S / DOWN (HOLD) -- SWIPE DOWN.');
     line('HERO POWER', 'RIGHT / D -- PWR. X / SHIFT ALSO WORK.');
     line('PORTALS', 'RUN THROUGH TO BECOME THE PREVIEWED HERO.', '#48e0c8');
-    line('RELAY BLAST', 'EVERY 3RD SWITCH AUTO-CLEARS NEARBY HAZARDS.', '#48e0c8');
+    line('RELAY BATON', 'VERY RARE CAPSULE. BANKS ONE SUPERCHARGED POWER.', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');

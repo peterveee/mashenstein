@@ -1,14 +1,15 @@
 // Title attract: a roll call of the cast, one hero at a time, each announced
 // by name with their tagline and what they actually do. Replaces the playable
-// demo as the idle screen. Any HUMAN input exits immediately and is consumed
-// so it can never fall through into a menu selection.
+// demo as the idle screen. Any HUMAN input exits immediately, except Left/A
+// and Right/D which navigate the roll call and are consumed so they cannot
+// fall through into a menu selection.
 import { W, H } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { drawText, drawTextCentered, textWidth, wrapText } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { HEROES } from '../data/heroes.js';
 
-const SLOT_T = 5.2;        // seconds per hero
+const SLOT_T = 8.0;        // seconds per hero; gives players time to read the full card
 const FADE_T = 0.45;       // slide/fade in at the start of each slot
 // Every hero but the last is covered by the next one fading in over them. The
 // last has nothing following it, so without a tail the roll call cuts to the
@@ -47,9 +48,21 @@ export class CastState {
   slotLen() { return SLOT_T + (this.isLast() ? TAIL_T : 0); }
 
   update(dt) {
-    // Human input: consume it and bail to the title (no interlude).
+    // Left/A and Right/D: navigate without leaving the roll call.
     if (Input.activity !== this.actTok) {
+      const advance = Input.pressed('right');
+      const retreat = Input.pressed('left');
       Input.clearAll();
+      this.actTok = Input.activity;
+      if (advance) {
+        if (!this.isLast()) { this.i++; this.slotT = 0; }
+        return;
+      }
+      if (retreat) {
+        if (this.i > 0) { this.i--; this.slotT = 0; }
+        return;
+      }
+      // Other human input: bail to the title (no interlude).
       this.o.onExit(false);
       return;
     }

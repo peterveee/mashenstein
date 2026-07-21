@@ -99,7 +99,7 @@ export class DripSpawner {
     this.capsuleTimer = this.rng.range(12, 18);
     this.batteryTimer = this.rng.range(20, 30);
   }
-  update(dt, worldX, pickups, oneHit) {
+  update(dt, worldX, pickups, oneHit, batteryFull = false) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
@@ -109,7 +109,7 @@ export class DripSpawner {
     }
     if (!oneHit && this.batteryTimer <= 0) {
       this.batteryTimer = this.rng.range(20, 30);
-      pickups.push(makePickup('battery', worldX + 480 + 100, 10));
+      if (!batteryFull) pickups.push(makePickup('battery', worldX + 480 + 100, 10));
     }
   }
 }

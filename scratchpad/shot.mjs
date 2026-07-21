@@ -1,0 +1,11 @@
+import { chromium } from '/Users/Peter/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1100, height: 1400 }, deviceScaleFactor: 2 });
+const errs = [];
+p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+p.on('pageerror', e => errs.push('PAGEERR ' + e.message));
+await p.goto('file:///Users/Peter/mashenstein/galleries/poyo-pikachu-concept.html');
+await p.waitForTimeout(1200);
+await p.screenshot({ path: 'scratchpad/poyo-pika.png', fullPage: true });
+console.log('errors:', errs.length ? errs : 'none');
+await b.close();

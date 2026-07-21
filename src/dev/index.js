@@ -15,7 +15,7 @@
 // Input.textHandler swallows every letter during TURDLE — the menu must behave
 // identically wherever it was opened from.
 import { Input } from '../engine/input.js';
-import { H, pushOverlayDraw } from '../engine/renderer.js';
+import { H, pushOverlayDraw, saveScreenshot } from '../engine/renderer.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
 import { rootMenu, drawMenu } from './menus.js';
 
@@ -36,12 +36,20 @@ export const Dev = {
   install(ctx) {
     if (!this.enabled || this.ctx) return;
     this.ctx = ctx;
-    window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('keydown', (e) => this.onKey(e), { capture: true });
     if (typeof window !== 'undefined') window.__mash_dev = this;
   },
 
   // ---------------------------------------------------------------- helpers
   say(msg) { this.toast = msg; this.toastT = 2.5; },
+
+  screenshot() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const name = `mashenstein-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
+      + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
+    this.say(saveScreenshot(name) ? `SAVED ${name}` : 'SCREENSHOT UNAVAILABLE');
+  },
 
   run() {
     // The live RunState, if one is on screen. BossState extends RunState, and
@@ -93,6 +101,14 @@ export const Dev = {
 
     if (e.code === 'Backquote') {
       this.open ? this.close() : this.openMenu();
+      e.preventDefault();
+      return;
+    }
+
+    // Cmd/Ctrl+Shift+P captures the currently visible game canvas.
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyP') {
+      this.screenshot();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
       e.preventDefault();
       return;
     }

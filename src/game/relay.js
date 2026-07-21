@@ -26,11 +26,11 @@ export function portalSchedule(durationSec) {
 export class Relay {
   // schedule: array of seconds to spawn portals at. Null means the endless
   // cadence below, which is what OVERTIME runs on — they have no known length.
-  constructor(rng, stats, schedule = null) {
+  constructor(rng, stats, schedule = null, initialHeroId = null) {
     this.rng = rng;              // seeded stream: runs replay identically
     this.stats = stats;
     this.bag = [];
-    this.current = this.drawHero();
+    this.current = HEROES.some((h) => h.id === initialHeroId) ? initialHeroId : this.drawHero();
     this.next = this.drawHero(this.current); // every portal previews this hero
     this.schedule = schedule;
     this.spawned = 0;

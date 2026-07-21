@@ -11,6 +11,8 @@ const { MinigameState } = await import('../src/game/minigames/index.js');
 const { HubState } = await import('../src/game/hub/index.js');
 const { TitleState, SettingsState } = await import('../src/game/menus.js');
 const { makeObstacle } = await import('../src/game/entities.js');
+const { DripSpawner } = await import('../src/game/spawner.js');
+const { Rng } = await import('../src/engine/rng.js');
 const { PLAYER_X } = await import('../src/game/player.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
 const { save } = await import('../src/engine/save.js');
@@ -58,6 +60,19 @@ const cellsBeforeFinishHit = run.battery;
 run.collide();
 assert(run.battery === cellsBeforeFinishHit - 1,
   'hazards can still damage the player while the finish camera is locked');
+
+const fullDrip = new DripSpawner(new Rng(1), {});
+fullDrip.batteryTimer = 0;
+const fullPickups = [];
+fullDrip.update(0, 0, fullPickups, false, true);
+assert(!fullPickups.some((p) => p.type === 'battery'),
+  'full health suppresses an unnecessary battery pickup');
+const hurtDrip = new DripSpawner(new Rng(1), {});
+hurtDrip.batteryTimer = 0;
+const hurtPickups = [];
+hurtDrip.update(0, 0, hurtPickups, false, false);
+assert(hurtPickups.some((p) => p.type === 'battery'),
+  'battery pickup still spawns when health is not full');
 
 run.relay.current = 'b33p';
 const shotTarget = makeObstacle('cactus', run.playerWorldX() + 52);

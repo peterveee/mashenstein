@@ -171,5 +171,20 @@ const bundle = outputFiles[0].text;
   assert(sample() === sample(), 'a fixed seed reproduces the same obstacle layout');
 }
 
+// ---------------------------------------------------------- starting hero
+{
+  const { RunState } = await import('../src/game/run.js');
+  const { save } = await import('../src/engine/save.js');
+  const { STAGE_BY_ID } = await import('../src/data/stages.js');
+  const run = new RunState({
+    stage: STAGE_BY_ID['plumber-1'], save, seed: 4242, difficulty: 1,
+    initialHeroId: 'fernwick', onEnd: () => {},
+  });
+  run.enter();
+  assert(run.relay.current === 'fernwick', 'dev run can start as a selected hero');
+  assert(run.player.heroId === 'fernwick', 'selected starting hero is applied to the player');
+  assert(run.powerups.shieldStack === 1, 'selected hero keeps its starting shield');
+}
+
 console.log(failed ? 'DEV MENU: FAILED' : 'DEV MENU: PASSED');
 process.exit(failed ? 1 : 0);

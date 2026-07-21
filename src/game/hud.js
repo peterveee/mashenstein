@@ -20,6 +20,18 @@ import { formatCoins } from './progress.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
+
+// GOAL-panel display labels. The counted missions (targets/cords/chase/rescue/
+// combo) fall through to the raw type name because the count printed beside it
+// carries the meaning. The four survive-to-the-end types have no count, so a
+// bare "REACH"/"FUSE"/"BLACKOUT"/"ESCAPE" reads as an incomplete instruction —
+// spell out what "done" is instead.
+const GOAL_LABELS = {
+  reach: 'REACH END',
+  fuse: 'CARRY FUSE',
+  blackout: 'SURVIVE',
+  escape: 'ESCAPE',
+};
 // The goal toast's own edge: gold, because it is the only panel that appears
 // to announce something rather than to report state.
 const PANEL_GOLD = { border: 'rgba(246,201,69,0.3)', shadow: true };
@@ -430,7 +442,7 @@ export function drawHud(ctx, run) {
     if (m.n) prog = ` ${m.count ?? 0}/${m.n}`;
     if (m.type === 'chase' && run.copter) prog = ` ${run.copter.caught}/${m.n}`;
     if (m.type === 'combo') prog = ` BEST ${run.relay.bestCombo}/${m.n}`;
-    objective('GOAL', '#74c947', fitRight(`${m.type.toUpperCase()}${prog}`), '#ffffff', OBJ_Y, 1);
+    objective('GOAL', '#74c947', fitRight(`${GOAL_LABELS[m.type] ?? m.type.toUpperCase()}${prog}`), '#ffffff', OBJ_Y, 1);
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;

@@ -93,11 +93,11 @@ gnash.pal = { h: '#4a50d2', s: '#efbd83', e: '#1a1028', m: '#a03020', b: '#4a50d
 
 // --- Fernwick: green tunic, floppy cap, blond bowl cut, tiny shield ---------
 const fernwick = humanoid([
-  '....hhhh....',
-  '...hhhhhh...',
+  '.....aa.....', // tuft of blond hair out the top
+  '...hhhhhh...', // hat crown
   '..hhhhhhhh..',
-  '...aaaaaa...', // blond hair
-  '..asessesa..',
+  '.hhhhhhhhhh.', // floppy brim (widest)
+  '..ssessess..', // forehead + eyes, clear of the hat
   '..ssssssss..',
   '...ssssss...',
 ], [
@@ -110,18 +110,19 @@ const fernwick = humanoid([
 fernwick.duck = [
   '............', '............', '............', '............',
   '............', '............', '............', '............',
-  '....hhhh....',
-  '..aaaaaaaa..',
-  '..asessesa..',
+  '..hhhhhhhh..',
+  '.hhhhhhhhhh.',
+  '..ssessess..',
   '..wbbbbbb...',
   '.wwbbbbbbb..',
   '..bbbbbbb...',
   '..ff...ff...',
   '............',
 ];
-fernwick.pal = { h: '#65b83f', a: '#f0d46c', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#7d6032', f: '#51351f', w: '#b0793a' };
+fernwick.pal = { h: '#65b83f', a: '#e8bc46', s: '#f2c9a0', e: '#1a1028', b: '#65b83f', p: '#7d6032', f: '#51351f', w: '#b0793a' };
 
-// --- B-33P: cyan dome, arm cannon, dot eyes ----------------------------------
+// --- B-33P: silver dome, arm cannon, LED eyes — the only cyan left on him is
+// the LEDs, which is exactly what "LOW ON CYAN" should look like -------------
 const b33p = humanoid([
   '...hhhhhh...',
   '..hhhhhhhh..',
@@ -149,7 +150,11 @@ b33p.duck = [
   '..ff...ff...',
   '............',
 ];
-b33p.pal = { h: '#30b8d8', s: '#f2c9a0', e: '#1a1028', b: '#2078c8', p: '#185890', f: '#30b8d8', w: '#e8f8ff', a: '#f6d33c' };
+// s doubles as the screen/faceplate color: dark hull navy with glowing eyes,
+// not flesh — b33p is a robot, and the toon faceplate inherits this directly.
+// Silver hull: reads tin-toy robot, frees blue for gnash, and lets the gold
+// cannon act as the accent color.
+b33p.pal = { h: '#c9ced8', s: '#12203a', e: '#7ef0ff', m: '#7ef0ff', b: '#9aa3b2', p: '#69727f', f: '#c9ced8', w: '#e8f8ff', a: '#f6d33c' };
 
 // --- Mochi: pink puffball, stubby arms, red feet -----------------------------
 const mochi = {
@@ -184,7 +189,10 @@ mochi.duck = [
   '..ff....ff..',
   '............',
 ];
-mochi.pal = { b: '#ad78dc', e: '#1a1028', m: '#7040a8', a: '#d5a8f0', f: '#7040a8', w: '#fff' };
+// Coral electric-mascot Poyo: coral body, purple accents (ears/cowlick/star
+// tail), pink cheeks. b/e/m/a/f/w feed the pixel grid; belly/ear/cheek/star feed
+// the vector 'pika' rig in toons.js.
+mochi.pal = { b: '#ff6f5e', e: '#2a1622', m: '#8e2f42', a: '#ffc4b8', f: '#ff6f5e', w: '#fff', belly: '#ffc4b8', ear: '#7a4bb0', cheek: '#ff4d7d', star: '#7a4bb0' };
 
 // --- Miss Chomp: yellow wedge-mouth heroine WITH LEGS ------------------------
 const chompo = {
@@ -225,7 +233,13 @@ chompo.duck = [
   '..ff....ff..',
   '............',
 ];
-chompo.pal = { b: '#ee9a32', e: '#1a1028', p: '#b96525', f: '#d94f78', a: '#ed5c86', m: '#b93f62', w: '#fff' };
+// Tokens per the Miss Chomp v8a design spec: body gradient (hi->b->sh), red
+// flow hair (hair/hairShade/hairLight), pink bow (a/aDark), ink eyes (e).
+chompo.pal = {
+  b: '#f79a2b', e: '#20140a', p: '#c25e14', f: '#f0609f', a: '#f0609f', m: '#c63c77', w: '#fff',
+  hi: '#ffcb63', sh: '#c25e14', hair: '#d8382f', hairShade: '#8e1d1a', hairLight: '#f58a78', aDark: '#c63c77',
+  lip: '#d81f3f', lipShade: '#9e1230',
+};
 
 // --- Gary: zombie in a fast-food uniform, detachable head --------------------
 const gary = humanoid([
@@ -286,7 +300,9 @@ grumpos.duck = [
   '..ff....ff..',
   '............',
 ];
-grumpos.pal = { s: '#ded9d2', a: '#c92f3b', e: '#17131a', m: '#352523', b: '#ded9d2', p: '#4a3029', f: '#2b2426', w: '#765238', g: '#d69224' };
+// Bare legs and sandal-skin feet (a shade off the torso so limbs still read);
+// the toon layer straps the sandals in leather on top.
+grumpos.pal = { s: '#ded9d2', a: '#c92f3b', e: '#17131a', m: '#352523', b: '#ded9d2', p: '#cfc8bd', f: '#d6d0c8', w: '#765238', g: '#d69224' };
 
 // Ray M'N is vector-drawn in play; these grids provide palette/fallback data.
 const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d85050', b: '#28a8a0', p: '#7048a8', f: '#f06038', w: '#f5f2e8' } };

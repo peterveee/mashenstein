@@ -79,25 +79,45 @@ class AudioSys {
     // the star layer ducking itself. Both feed musicGain (and so the echo).
     this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.musicGain);
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
-    // YMCK-style space: tempo-synced dotted-eighth echo on the music bus.
-    // High-passed on the way in (kick/snare stay dry), low-passed in the
-    // feedback loop so repeats melt into the background instead of cluttering.
+    // YMCK-style space: tempo-synced dotted-eighth echo. echoBus is a parallel
+    // wet send — only melodic lanes (bass/lead/leadHarm/twinkle/chords, via
+    // play()'s echo flag) route into it, so percussion and vocal one-shots
+    // (kick/hats/snare/clap/vox/shout) stay dry regardless of echoLevel,
+    // instead of relying on the highpass below to filter them out after the
+    // fact (it doesn't — clap/vox sit well above 500Hz and used to leak
+    // through). The highpass still keeps stray low end from muddying repeats.
+    //
+    // Gain staging: the send used to tap musicGain (post-fader), so echo was
+    // implicitly scaled by the music volume. echoBus taps the lane gains
+    // pre-fader instead, so the return runs back through musicGain rather
+    // than straight to master — same net level as before, and the echo still
+    // follows the music volume setting. (No cycle: musicGain doesn't feed
+    // echoBus.)
+    this.echoBus = this.ctx.createGain(); this.echoBus.gain.value = 1;
     this.echoSend = this.ctx.createGain(); this.echoSend.gain.value = 0.28;
     this.echoHp = this.ctx.createBiquadFilter(); this.echoHp.type = 'highpass'; this.echoHp.frequency.value = 500;
     this.delay = this.ctx.createDelay(1.0); this.delay.delayTime.value = 0.32;
     this.delayLp = this.ctx.createBiquadFilter(); this.delayLp.type = 'lowpass'; this.delayLp.frequency.value = 2800;
     this.delayFb = this.ctx.createGain(); this.delayFb.gain.value = 0.35;
-    this.musicGain.connect(this.echoSend);
+    this.echoBus.connect(this.echoSend);
     this.echoSend.connect(this.echoHp);
     this.echoHp.connect(this.delay);
     this.delay.connect(this.delayLp);
     this.delayLp.connect(this.delayFb);
     this.delayFb.connect(this.delay);
-    this.delayLp.connect(this.master);
+    this.delayLp.connect(this.musicGain);
     const len = Math.floor(this.ctx.sampleRate * 0.5);
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    // Crashes outlast the 0.5s one-shot buffer, and looping it drops a seam
+    // partway through the hit — an audible bump at a fixed 0.5s offset that
+    // has nothing to do with the tempo, so it reads as out of time. A longer
+    // dedicated buffer lets a crash play straight through, seam-free.
+    const clen = Math.floor(this.ctx.sampleRate * 2.5);
+    this.crashBuf = this.ctx.createBuffer(1, clen, this.ctx.sampleRate);
+    const cd = this.crashBuf.getChannelData(0);
+    for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
     this.startSequencer();
   }
 
@@ -478,9 +498,9 @@ class AudioSys {
         const sec = b.sections[order[Math.floor(this.step / 32) % order.length] % b.sections.length];
         if (sec) b = { ...this.bank, ...sec };
       }
-      const play = (freq, type, dur, gain, attack = 0.01) => {
+      const play = (freq, type, dur, gain, attack = 0.01, echo = true, delay = 0) => {
         if (freq == null) return;
-        const t = this.nextTime;
+        const t = this.nextTime + delay;
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();
         o.type = type;
@@ -489,12 +509,27 @@ class AudioSys {
         g.gain.exponentialRampToValueAtTime(gain, t + Math.min(attack, dur * 0.45));
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
         o.connect(g); g.connect(this.musicBus);
+        if (echo) g.connect(this.echoBus);
         o.start(t); o.stop(t + dur + 0.02);
       };
       // Sections may push the echo send harder (e.g. an "echoing chords" payoff).
       if (this.echoSend) this.echoSend.gain.setTargetAtTime(b.echoLevel != null ? b.echoLevel : 0.28, this.nextTime, 0.08);
       if (b.bass) {
-        play(b.bass[s], b.bassType || 'square', spb * (b.bassDur || 1.8), b.bassGain ?? 0.1, b.bassAttack || 0.01);
+        // Dry by default (the highpass strips most bass fundamentals anyway,
+        // so echo there is usually just wasted CPU) — a bank can opt in with
+        // bassEcho: true to catch the sawtooth/square harmonics in the echo,
+        // or echoEverything: true to send every lane (percussion included).
+        const bassDur = spb * (b.bassDur || 1.8);
+        const bassGain = b.bassGain ?? 0.1;
+        const bassEcho = !!b.bassEcho || !!b.echoEverything;
+        play(b.bass[s], b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+        // bassRepeat: one softer restatement of the note N steps later — a
+        // written-in slapback, not a delay tap, so it has no feedback tail and
+        // stays locked to the grid. Always dry: echoing a ghost note doubles it.
+        if (b.bassRepeat) {
+          play(b.bass[s], b.bassType || 'square', bassDur * (b.bassRepeatDur ?? 0.8),
+            bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false, spb * b.bassRepeat);
+        }
         if (b.bass[s] != null) this.starRoot = b.bass[s]; // the star arpeggio follows the song's key
       }
       if (b.lead) play(b.lead[s], b.leadType || 'square', spb * (b.leadDur || 1.2), b.leadGain ?? 0.06, b.leadAttack || 0.01);
@@ -515,7 +550,7 @@ class AudioSys {
         band.frequency.exponentialRampToValueAtTime(460, t + dur);
         const low = this.ctx.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = 1800; low.Q.value = 0.5;
         const g = this.ctx.createGain();
-        const gain = b.sweepGain ?? 0.022;
+        const gain = b.sweepGain ?? 0.013;
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.32);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -534,7 +569,7 @@ class AudioSys {
         const fT = b.keyGliss[s] * this.detune;
         const steps = [-12, -10, -9, -7, -5, -4, -2, 0]; // natural-minor run
         const dt = (spb * 3) / steps.length;
-        const gv = b.keyGlissGain != null ? b.keyGlissGain : 0.06;
+        const gv = b.keyGlissGain != null ? b.keyGlissGain : 0.035;
         steps.forEach((semi, i) => {
           const t = this.nextTime + i * dt;
           const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
@@ -557,9 +592,10 @@ class AudioSys {
         o.frequency.setValueAtTime(fT * 0.5, t);
         o.frequency.exponentialRampToValueAtTime(fT, t + spb * 3);
         const g = this.ctx.createGain();
+        const gv = b.glissGain != null ? b.glissGain : 0.03;
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
-        g.gain.setValueAtTime(0.05, t + spb * 3);
+        g.gain.exponentialRampToValueAtTime(gv, t + 0.02);
+        g.gain.setValueAtTime(gv, t + spb * 3);
         g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 4);
         o.connect(g); g.connect(this.musicBus);
         const pans = [-0.8, 0.1, 0.8];
@@ -581,15 +617,57 @@ class AudioSys {
         for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * (b.chordDur || 2.6), b.chordGain ?? 0.05, b.chordAttack || 0.01);
       }
       if (b.kick && b.kick[s]) {
-        // tight thump: fast pitch drop, short tail — punch without boom
+        // 808 kick: a long sine "boooom" that pitch-drops into a sub
+        // fundamental for the thump, with a short noise click on the front so
+        // it still reads as a hit on small speakers where the sub is felt more
+        // than heard. Body + click, the way an 808 actually stacks — nothing
+        // in between. crashDur-style bank overrides (kickGain/kickTail) let a
+        // sparser track lean on the boom or a busy one tighten it up.
         const t = this.nextTime;
+        const kg = b.kickGain ?? 1;
+        const tail = b.kickTail ?? 0.2;      // how long the sub rings out
+        // Body: near-instant punch, pitch envelope from a snappy attack pitch
+        // down to ~48Hz, then a long amplitude decay. The short gain ramp (vs
+        // the old hard setValueAtTime) keeps the envelope itself from clicking —
+        // the click is authored separately below, so it can be shaped on its own.
         const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
         o.type = 'sine';
-        o.frequency.setValueAtTime(150, t);
-        o.frequency.exponentialRampToValueAtTime(50, t + 0.06);
-        g.gain.setValueAtTime(0.34, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-        o.connect(g); g.connect(this.musicBus); o.start(t); o.stop(t + 0.11);
+        o.frequency.setValueAtTime(165, t);
+        o.frequency.exponentialRampToValueAtTime(48, t + 0.05);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.42 * kg, t + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.001, t + tail);
+        o.connect(g); g.connect(this.musicBus);
+        if (b.echoEverything) g.connect(this.echoBus);
+        o.start(t); o.stop(t + tail + 0.04);
+        // Click: a couple of ms of high-passed noise — the beater attack. Kept
+        // very short and quiet so it's a transient "tk", not a hat on top.
+        const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+        const cf = this.ctx.createBiquadFilter(); cf.type = 'highpass'; cf.frequency.value = 1900;
+        const cg = this.ctx.createGain();
+        cg.gain.setValueAtTime(0.13 * kg, t);
+        cg.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
+        src.connect(cf); cf.connect(cg); cg.connect(this.musicBus);
+        if (b.echoEverything) cg.connect(this.echoBus);
+        src.start(t); src.stop(t + 0.03);
+        // Knock: a short mid punch (~200-300Hz) between the click and the sub.
+        // The bass owns the low fundamentals and the sub boom competes with it
+        // there; this transient lives in a band the bass mostly leaves open, so
+        // it gives the kick a defined attack that cuts through the low end
+        // instead of masking into it. kickKnock scales it per-track (0 = off).
+        const knock = b.kickKnock ?? 1;
+        if (knock > 0) {
+          const k = this.ctx.createOscillator(); const kgn = this.ctx.createGain();
+          k.type = 'triangle';
+          k.frequency.setValueAtTime(300, t);
+          k.frequency.exponentialRampToValueAtTime(180, t + 0.04);
+          kgn.gain.setValueAtTime(0.0001, t);
+          kgn.gain.exponentialRampToValueAtTime(0.17 * kg * knock, t + 0.004);
+          kgn.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+          k.connect(kgn); kgn.connect(this.musicBus);
+          if (b.echoEverything) kgn.connect(this.echoBus);
+          k.start(t); k.stop(t + 0.07);
+        }
       }
       if (b.hats && b.hats[s]) {
         const t = this.nextTime;
@@ -599,6 +677,7 @@ class AudioSys {
         g.gain.setValueAtTime(0.14, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
+        if (b.echoEverything) g.connect(this.echoBus);
         src.start(t); src.stop(t + 0.07);
       }
       if (b.vox && b.vox[s]) {
@@ -620,6 +699,7 @@ class AudioSys {
         const fb2 = this.ctx.createBiquadFilter(); fb2.type = 'bandpass'; fb2.frequency.value = fm2; fb2.Q.value = 8;
         o.connect(env); env.connect(fa); env.connect(fb2);
         fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
+        if (b.echoEverything) mix.connect(this.echoBus);
         o.start(t); o.stop(t + 0.2);
       }
       if (b.shout && b.shout[s]) {
@@ -662,6 +742,7 @@ class AudioSys {
         }
         o.connect(env); env.connect(fa); env.connect(fb2);
         fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
+        if (b.echoEverything) mix.connect(this.echoBus);
         o.start(t); o.stop(t + dur + 0.02);
       }
       if (b.ohats && b.ohats[s]) {
@@ -673,6 +754,7 @@ class AudioSys {
         g.gain.setValueAtTime(0.12, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
+        if (b.echoEverything) g.connect(this.echoBus);
         src.start(t); src.stop(t + 0.24);
       }
       if (b.snare && b.snare[s]) {
@@ -684,6 +766,7 @@ class AudioSys {
         g.gain.setValueAtTime(0.32, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
+        if (b.echoEverything) g.connect(this.echoBus);
         src.start(t); src.stop(t + 0.11);
         const o = this.ctx.createOscillator(); const og = this.ctx.createGain();
         o.type = 'triangle';
@@ -691,7 +774,86 @@ class AudioSys {
         o.frequency.exponentialRampToValueAtTime(140, t + 0.05);
         og.gain.setValueAtTime(0.12, t);
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        o.connect(og); og.connect(this.musicBus); o.start(t); o.stop(t + 0.08);
+        o.connect(og); og.connect(this.musicBus); if (b.echoEverything) og.connect(this.echoBus); o.start(t); o.stop(t + 0.08);
+      }
+      if (b.crash && b.crash[s]) {
+        // Filtered crash: looped noise, bright on the transient and darkening
+        // as it falls away — a lowpass envelope closes from crashOpen down to
+        // crashClose across the hit, which is what makes it read as a cymbal
+        // decaying rather than a burst of static. The fixed highpass keeps the
+        // low end out so it stays snarey and thin. Longer than the snare's
+        // 90ms crack, short enough not to wash over the downbeat it leads to.
+        const t = this.nextTime;
+        const dur = spb * (b.crashDur || 5);
+        const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
+        const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1200;
+        const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+        lp.frequency.setValueAtTime(b.crashOpen ?? 9000, t);
+        lp.frequency.exponentialRampToValueAtTime(b.crashClose ?? 1100, t + dur);
+        const g = this.ctx.createGain();
+        const gain = b.crashGain ?? 0.15;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.005); // near-instant transient so it reads as on the beat
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.musicBus);
+        // Percussion is dry on the echo bus by default; crashEcho opts this
+        // lane in on its own, so a crash can trail off into the delay without
+        // dragging the rest of the kit in with it.
+        if (b.crashEcho || b.echoEverything) g.connect(this.echoBus);
+        src.start(t); src.stop(t + dur + 0.03);
+      }
+      if (b.rim && b.rim[s]) {
+        // Rimshot: a stick cracking off the rim. The old version was two square
+        // tones dead in 40ms — a bare click. This stacks three layers so it
+        // reads as a struck object with a little tail: a noise SNAP for the
+        // stick attack, a cluster of detuned square partials for the metallic
+        // RING (pitch sagging slightly as it decays), and a low woody TONK
+        // underneath for body. Two-stage decay out to ~75ms — a fast transient
+        // then a brief ring, instead of one flat drop to silence.
+        const t = this.nextTime;
+        const lvl = b.rimGain ?? 0.21;
+        // Metallic ring: three inharmonic partials through a narrow bandpass.
+        const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1750; f.Q.value = 3.6;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(lvl, t);
+        g.gain.exponentialRampToValueAtTime(lvl * 0.16, t + 0.02); // fast initial transient
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.075);     // short ring-out tail
+        for (const fr of [1720, 2630, 3350]) {
+          const o = this.ctx.createOscillator();
+          o.type = 'square';
+          o.frequency.setValueAtTime(fr, t);
+          o.frequency.exponentialRampToValueAtTime(fr * 0.94, t + 0.06); // slight pitch sag as it rings
+          o.connect(f);
+          o.start(t); o.stop(t + 0.09);
+        }
+        f.connect(g); g.connect(this.musicBus);
+        // Only the ring trails into the echo, and softly — a dedicated low-gain
+        // send taps it below the melodic lanes' level so it's a faint repeat,
+        // not a wash. rimEcho scales it per-track (0 = dry); the snap and tonk
+        // stay dry so the echo doesn't smear their transients.
+        const re = this.ctx.createGain(); re.gain.value = b.rimEcho ?? 0.3;
+        g.connect(re); re.connect(this.echoBus);
+        // Stick snap: a few ms of high-passed noise — the attack transient that
+        // gives the click its bite before the ring takes over.
+        const sn = this.ctx.createBufferSource(); sn.buffer = this.noiseBuf;
+        const nf = this.ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 3200;
+        const ng = this.ctx.createGain();
+        ng.gain.setValueAtTime(lvl * 0.45, t);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
+        sn.connect(nf); nf.connect(ng); ng.connect(this.musicBus);
+        if (b.echoEverything) ng.connect(this.echoBus);
+        sn.start(t); sn.stop(t + 0.03);
+        // Woody body: a low resonant "tonk" the click sits on, so the rimshot
+        // has some weight instead of being pure top end.
+        const bo = this.ctx.createOscillator(); const bg = this.ctx.createGain();
+        bo.type = 'triangle';
+        bo.frequency.setValueAtTime(430, t);
+        bo.frequency.exponentialRampToValueAtTime(300, t + 0.05);
+        bg.gain.setValueAtTime(lvl * 0.38, t);
+        bg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        bo.connect(bg); bg.connect(this.musicBus);
+        if (b.echoEverything) bg.connect(this.echoBus);
+        bo.start(t); bo.stop(t + 0.08);
       }
       if (b.clap && b.clap[s]) {
         // three staggered high-passed bursts read as a clap
@@ -703,6 +865,7 @@ class AudioSys {
           g.gain.setValueAtTime(ci === 2 ? 0.26 : 0.16, t);
           g.gain.exponentialRampToValueAtTime(0.001, t + (ci === 2 ? 0.12 : 0.03));
           src.connect(f); f.connect(g); g.connect(this.musicBus);
+          if (b.echoEverything) g.connect(this.echoBus);
           src.start(t); src.stop(t + 0.15);
         }
       }

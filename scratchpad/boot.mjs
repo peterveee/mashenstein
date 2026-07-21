@@ -1,0 +1,13 @@
+import { chromium } from '/Users/Peter/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 2 });
+const errs = [];
+p.on('pageerror', e => errs.push('PAGEERR ' + e.message));
+p.on('console', m => { if (m.type()==='error') errs.push('CONSOLE ' + m.text()); });
+await p.goto('file:///Users/Peter/mashenstein/scratchpad/debug.html');
+await p.waitForFunction(() => window.__mash_booted === true, { timeout: 8000 }).catch(()=>{});
+await p.waitForTimeout(1500);
+await p.locator('#game').screenshot({ path: 'scratchpad/title.png' });
+console.log('state:', await p.evaluate(()=>window.__mash_state));
+console.log('errors:', errs.length ? errs : 'none');
+await b.close();

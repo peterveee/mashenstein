@@ -167,6 +167,19 @@ export function blit() {
   if (overlaySprites.length || overlayDraws.length) paintOverlays(dctx);
 }
 
+// Dev/build tooling hook: capture exactly what the player sees, including the
+// final WebGL/2D composite and any queued overlays already rendered to screen.
+// The browser handles the actual file save through a temporary download link.
+export function saveScreenshot(filename = 'mashenstein.png') {
+  if (!canvas || typeof canvas.toDataURL !== 'function' || typeof document === 'undefined') return false;
+  const link = document.createElement('a');
+  if (!link || typeof link.click !== 'function') return false;
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  return true;
+}
+
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.
 export function clientToLogical(cx, cy) {
   return { x: (cx - screen.ox) / screen.scale, y: (cy - screen.oy) / screen.scale };

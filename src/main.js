@@ -99,7 +99,7 @@ const Flow = {
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
-  launchStage(cab, stage, corrupted, seedOverride) {
+  launchStage(cab, stage, corrupted, seedOverride, initialHeroId) {
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
@@ -109,6 +109,7 @@ const Flow = {
       seed: seedOverride ?? ((Date.now() ^ (stage ? stage.id.length * 7919 : 0)) >>> 0),
       difficulty: save.slot.difficulty,
       corrupted,
+      initialHeroId,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
         const gains = applyResult(save, result);

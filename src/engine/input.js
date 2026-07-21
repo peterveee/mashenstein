@@ -37,6 +37,13 @@ class InputSys {
   init() {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
+      // Reserved for the dev screenshot shortcut. Keep it out of the game's
+      // activity counter so attract/cast scenes do not treat the combo as an
+      // exit press before the dev listener handles it.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyP') {
+        e.preventDefault();
+        return;
+      }
       this.activity++;
       if (this.textHandler && /^Key[A-Z]$|^Enter$|^Backspace$/.test(e.code)) {
         this.textHandler(e.code);

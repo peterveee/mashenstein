@@ -775,6 +775,27 @@ function drawStaticSun(ctx, t) {
   ctx.restore();
 }
 
+// The one puffy silhouette every sky cloud shares — the cloud pal wears it
+// with a face, the background clouds wear it plain. Draw at origin; callers
+// translate/scale first.
+function drawCloudBody(ctx, fill) {
+  ctx.beginPath();
+  for (const [px, py, rx, ry] of [[-15, 3, 10, 8], [0, -5, 13, 10], [15, 3, 10, 8], [0, 4, 17, 9]]) {
+    ctx.moveTo(px + rx, py);
+    ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+  }
+  // Stroke BEFORE fill: the fill then covers every stroke segment inside the
+  // union, leaving only the outer silhouette outlined — otherwise each lobe's
+  // full ellipse shows and the puff reads as a clump of bubbles on any fill
+  // that isn't washed out by bloom. Double width because fill eats the inner
+  // half of the stroke.
+  ctx.strokeStyle = 'rgba(26,16,40,0.2)';
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
 function drawCloudPal(ctx, t, reduced) {
   if (t < cloudLastT) { cloudShockT = 0; cloudLaughT = 0; } // new run: compose yourself
   const dt = Math.max(0, Math.min(0.1, t - cloudLastT));
@@ -795,17 +816,7 @@ function drawCloudPal(ctx, t, reduced) {
 
   ctx.save();
   ctx.translate(x + jx, y);
-  // puffy body
-  ctx.beginPath();
-  for (const [px, py, rx, ry] of [[-15, 3, 10, 8], [0, -5, 13, 10], [15, 3, 10, 8], [0, 4, 17, 9]]) {
-    ctx.moveTo(px + rx, py);
-    ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
-  }
-  ctx.fillStyle = '#f8f8ff';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(26,16,40,0.2)';
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
+  drawCloudBody(ctx, '#f8f8ff');
 
   // idle micro-expressions: every ~8s slot, briefly giggle or doze
   const slot = Math.floor(t / 8);
@@ -923,13 +934,39 @@ function pixelPack(settings) {
       // Clouds go down AFTER the volcano so they drift in front of its smoke —
       // the plume is far-off background, the clouds are nearer sky. Still before
       // the hill layers, so the ranges keep occluding them as they always did.
-      if (cab.id === 'plumber') drawCloudPal(ctx, t, settings && settings.reducedMotion);
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      for (let i = 0; i < 5; i++) {
-        const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
-        const cy = 30 + (i * 37) % 60;
-        ctx.fillRect(Math.round(cx), cy, 34, 8);
-        ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
+      if (cab.id === 'plumber') {
+        // Faceless cousins of the cloud pal: identical silhouette so the sky
+        // reads as one weather system, parallax-scrolled at varied sizes —
+        // a few bigger than the pal, a few small and distant. Greys mixed in
+        // so the flock isn't a stamp sheet. Drawn BEFORE the pal so it always
+        // floats in front of its plain cousins.
+        for (const [off, cy, s, tint] of [
+          [30, 34, 0.8, '#f8f8ff'],
+          [110, 20, 1.15, '#f8f8ff'],
+          [180, 68, 0.55, '#c9cfda'],
+          [255, 44, 0.95, '#dde1ea'],
+          [305, 26, 0.65, '#f8f8ff'],
+          [390, 78, 1.1, '#f8f8ff'],
+          [430, 58, 0.7, '#dde1ea'],
+          [510, 36, 0.6, '#c9cfda'],
+        ]) {
+          const span = W + 130;
+          const cx = ((off - camX * 0.2 - t * 4) % span + span) % span - 65;
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.scale(s, s);
+          drawCloudBody(ctx, tint);
+          ctx.restore();
+        }
+        drawCloudPal(ctx, t, settings && settings.reducedMotion);
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        for (let i = 0; i < 5; i++) {
+          const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
+          const cy = 30 + (i * 37) % 60;
+          ctx.fillRect(Math.round(cx), cy, 34, 8);
+          ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
+        }
       }
       if (cab.id === 'plumber') {
         // Rock and snow are haze-desaturated toward the sky rather than true

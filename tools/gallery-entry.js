@@ -27,6 +27,7 @@ const root = document.getElementById('root');
 const nav = document.getElementById('nav');
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 let zoom = 3;
+let renderScale = 1;
 let animate = true;
 
 function section(id, title, note) {
@@ -44,15 +45,18 @@ function section(id, title, note) {
   return grid;
 }
 
-// One tile. `draw(ctx, t)` paints into a w-by-h logical canvas; CSS scales it
-// up by the zoom factor, which is exactly how the game presents its 480x270.
-function tile(grid, name, sub, w, h, draw, { animated = false, wide = false } = {}) {
+// One tile. `draw(ctx, t)` paints into a w-by-h logical canvas. The backing
+// canvas can be rendered at a denser scale so saved PNGs match the smooth,
+// high-resolution treatment used by the Cast Roll.
+function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true } = {}) {
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
   card.dataset.search = (name + ' ' + (sub || '')).toLowerCase();
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(w));
-  canvas.height = Math.max(1, Math.round(h));
+  const logicalW = Math.max(1, Math.round(w));
+  const logicalH = Math.max(1, Math.round(h));
+  canvas.width = Math.max(1, Math.round(logicalW * renderScale));
+  canvas.height = Math.max(1, Math.round(logicalH * renderScale));
   const label = document.createElement('div');
   label.className = 'name';
   label.innerHTML = `<b>${name}</b>` + (sub ? `<br>${sub}` : '');
@@ -60,7 +64,7 @@ function tile(grid, name, sub, w, h, draw, { animated = false, wide = false } = 
   grid.appendChild(card);
 
   const ctx = canvas.getContext('2d');
-  const entry = { card, canvas, ctx, draw, animated, visible: true, w: canvas.width, h: canvas.height, name };
+  const entry = { card, canvas, ctx, draw, animated, visible: true, w: logicalW, h: logicalH, name, hires, renderScale: hires ? renderScale : 1 };
   tiles.push(entry);
 
   canvas.title = `${name} — ${canvas.width}x${canvas.height} — click to save PNG`;
@@ -73,6 +77,7 @@ function paint(entry, t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(entry.renderScale, 0, 0, entry.renderScale, 0, 0);
   try {
     entry.draw(ctx, t);
   } catch (err) {
@@ -83,14 +88,22 @@ function paint(entry, t) {
   }
 }
 
+function resizeTiles() {
+  for (const entry of tiles) {
+    entry.renderScale = entry.hires ? renderScale : 1;
+    entry.canvas.width = Math.max(1, Math.round(entry.w * entry.renderScale));
+    entry.canvas.height = Math.max(1, Math.round(entry.h * entry.renderScale));
+    entry.ctx = entry.canvas.getContext('2d');
+    entry.canvas.title = `${entry.name} — ${entry.canvas.width}x${entry.canvas.height} — click to save PNG`;
+  }
+  for (const entry of tiles) paint(entry, 0);
+}
+
 function savePng(canvas, name) {
-  canvas.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name.replace(/[^\w.-]+/g, '_') + '.png';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  });
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = name.replace(/[^\w.-]+/g, '_') + '.png';
+  a.click();
 }
 
 // ---------------------------------------------------------------- helpers
@@ -135,12 +148,16 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 {
   const ids = Object.keys(TOON_SPECS);
   const grid = section('heroes', 'Heroes — poses',
-    `${ids.length} heroes x 3 poses, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box.`);
+    `${ids.length} heroes x 4 poses, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
+    + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
   for (const id of ids) {
-    for (const kind of ['run', 'jump', 'duck']) {
-      tile(grid, id, kind, HH * 0.9, HH * 1.15, (ctx, t) => {
-        drawToon(ctx, id, pose(kind, t), (HH * 0.9) / 2, HH * 1.1, HH);
+    for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+      // The victory routine hops/spins up to ~0.26*HH above standing, so its
+      // tile is taller; the feet baseline keeps the same bottom padding.
+      const th = kind === 'celebrate' ? HH * 1.5 : HH * 1.15;
+      tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
+        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
@@ -176,6 +193,195 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       // groundY puts the feet inside the tile instead of at the world's GROUND_Y.
       drawHeroSprite(ctx, player, id, t, 0, false, { flat: true, groundY: th - PAD });
     }, { animated: true });
+  }
+}
+
+// ---------------------------------------------------------------- 2b. hero filter lab
+{
+  const ids = Object.keys(TOON_SPECS);
+  const grid = section('hero-filters', 'Heroes — filter lab',
+    'The drawToon() run cycle pushed through canvas post-treatments — texture and grit '
+    + 'experiments for de-sterilizing the cast. Display-only: nothing here is wired into the game.');
+
+  const HH = 60;
+  const TW = Math.round(HH * 0.9);
+  const TH = Math.round(HH * 1.15);
+
+  // Shared scratch canvases; tiles paint one at a time, so reuse is safe.
+  const heroC = document.createElement('canvas');
+  heroC.width = TW; heroC.height = TH;
+  const auxC = document.createElement('canvas');
+
+  function heroSrc(id, t) {
+    const c = heroC.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, TW, TH);
+    drawToon(c, id, pose('run', t), TW / 2, HH * 1.1, HH);
+    return heroC;
+  }
+
+  // Deterministic noise: stable per (pixel, frame), so grain shimmers with time
+  // instead of boiling differently on every repaint.
+  function hash(x, y, f) {
+    let h = (x * 374761393 + y * 668265263 + (f + 1) * 2246822519) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  }
+
+  // Tint only where the hero already has pixels; the tile stays transparent.
+  function atop(ctx, style, w, h) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = style;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  const FILTERS = [
+    ['clean', (ctx, src) => ctx.drawImage(src, 0, 0)],
+
+    ['film grain', (ctx, src, w, h, t) => {
+      ctx.drawImage(src, 0, 0);
+      const img = ctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      const f = Math.floor(t * 12);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (!d[i + 3]) continue;
+        const n = (hash(x, y, f) - 0.5) * 60;
+        d[i] += n; d[i + 1] += n; d[i + 2] += n;
+      }
+      ctx.putImageData(img, 0, 0);
+    }],
+
+    ['crt', (ctx, src, w, h) => {
+      // Shift R a pixel left and B a pixel right, dim alternate scanlines.
+      const sd = src.getContext('2d').getImageData(0, 0, w, h).data;
+      const out = ctx.createImageData(w, h);
+      const o = out.data;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const l = (y * w + Math.max(0, x - 1)) * 4;
+        const r = (y * w + Math.min(w - 1, x + 1)) * 4;
+        const a = Math.max(sd[i + 3], sd[l + 3], sd[r + 3]);
+        if (!a) continue;
+        const dim = y & 1 ? 0.7 : 1.06;
+        o[i] = sd[l] * dim; o[i + 1] = sd[i + 1] * dim; o[i + 2] = sd[r + 2] * dim;
+        o[i + 3] = a;
+      }
+      ctx.putImageData(out, 0, 0);
+    }],
+
+    ['vhs', (ctx, src, w, h, t) => {
+      const f = Math.floor(t * 10);
+      for (let y = 0; y < h; y += 2) {
+        const tear = hash(0, y, f) < 0.05 ? 3 : 0;
+        const off = Math.sin(t * 6 + y * 0.3) * 1.2 + tear;
+        ctx.drawImage(src, 0, y, w, 2, off, y, w, 2);
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.filter = 'hue-rotate(120deg)';
+      ctx.drawImage(src, 1.5, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      for (let y = 0; y < h; y += 2) ctx.fillRect(0, y, w, 1);
+      ctx.restore();
+    }],
+
+    ['chunky pixels', (ctx, src, w, h) => {
+      const s = 3;
+      auxC.width = Math.ceil(w / s); auxC.height = Math.ceil(h / s);
+      const a = auxC.getContext('2d');
+      a.imageSmoothingEnabled = true;
+      a.drawImage(src, 0, 0, auxC.width, auxC.height);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(auxC, 0, 0, auxC.width * s, auxC.height * s);
+    }],
+
+    ['halftone', (ctx, src, w, h) => {
+      const d = src.getContext('2d').getImageData(0, 0, w, h).data;
+      const cell = 3;
+      for (let y = 1; y < h; y += cell) for (let x = 1; x < w; x += cell) {
+        const i = (y * w + x) * 4;
+        if (!d[i + 3]) continue;
+        const lum = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 255;
+        ctx.fillStyle = `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 0.7 + lum * 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }],
+
+    ['posterize', (ctx, src, w, h) => {
+      ctx.drawImage(src, 0, 0);
+      const img = ctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        d[i] = Math.round(d[i] / 64) * 64;
+        d[i + 1] = Math.round(d[i + 1] / 64) * 64;
+        d[i + 2] = Math.round(d[i + 2] / 64) * 64;
+      }
+      ctx.putImageData(img, 0, 0);
+    }],
+
+    ['gameboy', (ctx, src, w, h) => {
+      const PAL = [[15, 56, 15], [48, 98, 48], [139, 172, 15], [155, 188, 15]];
+      ctx.drawImage(src, 0, 0);
+      const img = ctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        const lum = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+        const p = PAL[Math.min(3, Math.floor(lum / 64))];
+        d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2];
+      }
+      ctx.putImageData(img, 0, 0);
+    }],
+
+    ['neon glow', (ctx, src) => {
+      ctx.save();
+      ctx.filter = 'blur(3px) saturate(2.5) brightness(1.5)';
+      ctx.drawImage(src, 0, 0);
+      ctx.drawImage(src, 0, 0);
+      ctx.filter = 'none';
+      ctx.drawImage(src, 0, 0);
+      ctx.restore();
+    }],
+
+    ['ink sketch', (ctx, src, w, h, t) => {
+      const f = Math.floor(t * 8);
+      ctx.save();
+      ctx.filter = 'saturate(0.12) contrast(1.35) brightness(1.08)';
+      ctx.drawImage(src, 0, 0);
+      ctx.globalAlpha = 0.35;
+      for (let p = 0; p < 2; p++) {
+        const jx = (hash(p, 7, f) - 0.5) * 1.6;
+        const jy = (hash(p, 13, f) - 0.5) * 1.6;
+        ctx.drawImage(src, jx, jy);
+      }
+      ctx.restore();
+    }],
+
+    ['warm grade', (ctx, src, w, h) => {
+      ctx.drawImage(src, 0, 0);
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, 'rgba(255,166,77,0.35)');
+      g.addColorStop(1, 'rgba(120,40,120,0.3)');
+      atop(ctx, g, w, h);
+    }],
+  ];
+
+  for (const [fname, fn] of FILTERS) {
+    for (const id of ids) {
+      tile(grid, id, fname, TW, TH, (ctx, t) => {
+        fn(ctx, heroSrc(id, t), TW, TH, t);
+      }, { animated: true, hires: false });
+    }
   }
 }
 
@@ -303,12 +509,18 @@ window.__gallery = { tiles, paint, get errors() { return tiles.filter((t) => t.s
 function applyZoom() {
   document.getElementById('zoomv').textContent = zoom + 'x';
   for (const t of tiles) {
-    t.canvas.style.width = t.w * zoom + 'px';
-    t.canvas.style.height = t.h * zoom + 'px';
+    t.canvas.style.width = (t.fixed ? t.w : t.w * zoom) + 'px';
+    t.canvas.style.height = (t.fixed ? t.h : t.h * zoom) + 'px';
   }
 }
 const zoomEl = document.getElementById('zoom');
 zoomEl.addEventListener('input', () => { zoom = +zoomEl.value; applyZoom(); });
+
+const resolutionEl = document.getElementById('resolution');
+resolutionEl.addEventListener('change', () => {
+  renderScale = +resolutionEl.value;
+  resizeTiles();
+});
 
 // Backgrounds are full scenes; 3x would be 1440px wide. Cap them at 1x.
 function applyBackdrop(mode) {
