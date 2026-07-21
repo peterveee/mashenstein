@@ -154,7 +154,15 @@ b33p.duck = [
 // not flesh — b33p is a robot, and the toon faceplate inherits this directly.
 // Silver hull: reads tin-toy robot, frees blue for gnash, and lets the gold
 // cannon act as the accent color.
-b33p.pal = { h: '#c9ced8', s: '#12203a', e: '#7ef0ff', m: '#7ef0ff', b: '#9aa3b2', p: '#69727f', f: '#c9ced8', w: '#e8f8ff', a: '#f6d33c' };
+// `hand`: the toon rig's hands default to the face colour, which for a robot
+// whose "face" is a near-black faceplate put two dark blobs on the ends of his
+// grey arms — and since his arms draw behind the torso, all you saw was the
+// blob. Chrome manipulators in the hull colour instead.
+// `arm`: the gun-arm's UPPER segment, a step down from the barrel's `a`. The
+// whole limb is one colour so it reads as a single articulated weapon, and this
+// shade is deliberately close — far enough apart and it goes back to looking
+// like two objects, which is what the two-tone grey-and-yellow version did.
+b33p.pal = { h: '#c9ced8', s: '#12203a', e: '#7ef0ff', m: '#7ef0ff', b: '#9aa3b2', p: '#69727f', f: '#c9ced8', w: '#e8f8ff', a: '#f6d33c', hand: '#c9ced8', arm: '#d4b02e' };
 
 // --- Mochi: pink puffball, stubby arms, red feet -----------------------------
 const mochi = {

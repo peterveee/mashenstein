@@ -692,7 +692,9 @@ export class TitleState {
     // rewind a title theme that is already playing. Other screens replace the
     // bank, so this still starts the theme normally after gameplay or jukebox.
     if (Audio.bank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
-    Input.setMenuButtons();
+    // No ESC button here: the title screen is the root, nothing to back out
+    // of. The erase flow's own CANCEL row still works via tap.
+    Input.setMenuButtons(false);
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
   exit() { setSceneGlow(false); setSkyFx(false); }
@@ -906,7 +908,11 @@ export class DifficultyState {
   update(dt) {
     const n = DIFFICULTIES.length;
     if (this.confirming) {
-      if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); this.commit(5); }
+      // No row to tap here, just a yes/cancel modal — so any tap not on the
+      // ESC button reads as "yes" (there's no ENTER button any more, and
+      // this used to be the one screen that only ever listened for it).
+      const tapConfirms = Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y);
+      if (Input.pressed('confirm') || tapConfirms) { Audio.sfx('uiConfirm'); this.commit(5); }
       if (Input.pressed('back') || Input.pressed('duck')) { this.confirming = false; Audio.sfx('ui'); }
       Input.endFrame();
       return;

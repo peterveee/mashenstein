@@ -216,11 +216,12 @@ export class RunState {
     // corner holds the ability gauge instead.
     this.touchButtons = Input.usingTouch;
     Input.setButtons(Input.usingTouch ? [
-      { id: 'pause', x: W - 18, y: 8, w: 14, h: 12, action: 'pause', label: '=' },
-      { id: 'mute', x: W - 36, y: 8, w: 14, h: 12, action: 'mute', label: 'M' },
-      // Mirrors the Escape key: pauses if running, quits to hub if already
-      // paused — same 'escape' action the keyboard fires, so no new logic.
-      { id: 'escape', x: W - 54, y: 8, w: 14, h: 12, action: 'escape', label: 'X' },
+      // Same box, same corner, same 'global' styling as every menu screen's
+      // ESC button (Input.setMenuButtons) — one button reads as one control
+      // across the whole game instead of a cluster of cryptic icons. Mirrors
+      // the Escape key exactly: pauses if running, quits if already paused —
+      // the 'escape' action already carries that logic, so nothing new here.
+      { id: 'escape', x: 412, y: 8, w: 56, h: 18, action: 'escape', label: 'ESC', global: true },
       { id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' },
     ] : []);
   }
@@ -272,6 +273,12 @@ export class RunState {
     // erases the linework. Those packs opt out.
     setSceneGlow(!this.paused && !this.dead && !this.style.lightBg);
     if (this.paused) {
+      // Touch has no dedicated resume button any more — the ESC button pauses
+      // once, quits on the next tap — so a tap anywhere else on the paused
+      // screen resumes instead. Excludes the ESC button itself (still quits)
+      // and reads on the very frame ESC opened this screen too, since that
+      // tap landed on the button and so fails the buttonAt check below.
+      if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)) this.paused = false;
       Input.endFrame();
       return;
     }
@@ -1680,7 +1687,7 @@ export class RunState {
       }
       if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 162, '#f890b8');
       drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 178, '#c8c8d8');
-      drawTextCentered(ctx, Input.usingTouch ? 'TAP =: RESUME   TAP X: QUIT' : 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
+      drawTextCentered(ctx, Input.usingTouch ? 'TAP HERE: RESUME   ESC BUTTON: QUIT' : 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
     }
     if (this.dead) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';

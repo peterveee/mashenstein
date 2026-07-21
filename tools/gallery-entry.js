@@ -27,7 +27,7 @@ const root = document.getElementById('root');
 const nav = document.getElementById('nav');
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 let zoom = 3;
-let renderScale = 1;
+let renderScale = 3;
 let animate = true;
 
 function section(id, title, note) {

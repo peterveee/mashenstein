@@ -1,7 +1,7 @@
 // State machine with a CRT-shutter transition between states.
 import { W, H, pushOverlayDraw } from './renderer.js';
 import { Input } from './input.js';
-import { drawTextCentered } from './sprites.js';
+import { drawTextCentered, platePath } from './sprites.js';
 import { drawToon } from '../sprites/toons.js';
 
 let current = null;
@@ -122,14 +122,28 @@ function drawTransition(ctx, amount) {
 
 export function drawState(ctx) {
   current && current.draw && current.draw(ctx);
-  // Shared touch-only menu control, identical on every menu screen.
+  // Shared touch-only menu control, identical on every menu screen (and the
+  // hub, and every level) — one ESC/ENTER box drawn one way everywhere.
   if (Input.usingTouch) {
+    const SCALE = 0.85;
+    const R = 3;
     for (const b of Input.buttons.filter((button) => button.global)) {
+      platePath(ctx, b.x, b.y, b.w, b.h, R);
       ctx.fillStyle = 'rgba(11,11,20,0.9)';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fill();
+      // Thin and inset, like every other button plate in the game — a bare
+      // strokeRect here inherits whatever lineWidth the last draw call left
+      // behind, which is how this ended up thick.
+      ctx.save();
+      ctx.lineWidth = 0.8;
       ctx.strokeStyle = '#48e0c8';
-      ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
-      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + 10, '#48e0c8');
+      platePath(ctx, b.x + 0.4, b.y + 0.4, b.w - 0.8, b.h - 0.8, R);
+      ctx.stroke();
+      ctx.restore();
+      // Centred on both axes: cx for horizontal, and the label's own vertical
+      // midpoint (textY's -4.5*scale, same convention hud.js uses) so it sits
+      // dead centre no matter what size the box ends up.
+      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 4.5 * SCALE, '#48e0c8', SCALE);
     }
   }
   if (fade > 0) {

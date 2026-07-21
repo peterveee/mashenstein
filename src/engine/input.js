@@ -137,10 +137,23 @@ class InputSys {
     this.clearAll();
   }
 
-  // Menu states call this before the first touch so ENTER is immediately ready.
-  setMenuButtons() {
+  // Menu states call this before the first touch so ESC is immediately ready.
+  // No ENTER button: every menu screen already confirms straight off the
+  // content — tapping a row selects it and tapping that same row again (or,
+  // on a couple of screens, tapping anywhere) confirms it — so a separate
+  // button duplicated a gesture that already worked. ESC has no such
+  // equivalent (there is no "tap blank space to back out" convention most of
+  // these screens use), so it stays: top-right, out of the way of list
+  // content and title text that both live top-centre, and out of a level's
+  // way too — RunState uses the same box (run.js setButtons) so the corner
+  // reads identically everywhere touch shows it. showBack is false only for
+  // the title screen, which has nothing to back out of at its root
+  // (erase-mode cancel is a tappable list row instead).
+  setMenuButtons(showBack = true) {
     this.setContext('menu');
-    this.setButtons([{ id: 'menuConfirm', x: 396, y: 232, w: 72, h: 28, action: 'confirm', label: 'ENTER', global: true }]);
+    const buttons = [];
+    if (showBack) buttons.push({ id: 'menuBack', x: 412, y: 8, w: 56, h: 18, action: 'back', label: 'ESC', global: true });
+    this.setButtons(buttons);
   }
 
   press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }

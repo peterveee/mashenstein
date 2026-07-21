@@ -56,6 +56,7 @@ export class HubState {
     this.facing = this.facing ?? returning?.facing ?? 1;
     this.t = 0;
     this.talk = null;
+    this.walkTarget = null;
     // Give every loitering hero a tiny patch of food court to inhabit. Their
     // deterministic offsets keep return visits lively without letting anyone
     // wander into a cabinet doorway or disappear down the concourse.
@@ -70,10 +71,12 @@ export class HubState {
       };
     });
     Audio.setBank(HUB_THEME);
+    // Tapping a station both walks to it and uses it (see update()), so the
+    // only touch chrome the hub needs is the same ESC box every other screen
+    // uses — same id/box/style as run.js and Input.setMenuButtons, rendered
+    // once by the shared drawState loop.
     Input.setButtons(Input.usingTouch ? [
-      { id: 'left', x: 8, y: H - 48, w: 44, h: 40, action: 'left', label: '<' },
-      { id: 'right', x: 60, y: H - 48, w: 44, h: 40, action: 'right', label: '>' },
-      { id: 'use', x: W - 52, y: H - 48, w: 44, h: 40, action: 'confirm', label: 'USE' },
+      { id: 'back', x: 412, y: 8, w: 56, h: 18, action: 'back', label: 'ESC', global: true },
     ] : []);
   }
   exit() {
@@ -81,12 +84,34 @@ export class HubState {
     Input.setButtons([]);
   }
 
+  // Camera follows the player, clamped to the concourse — shared by update()
+  // (to turn a tap's screen x back into world x) and draw() (to place it).
+  camX() { return Math.max(0, Math.min(this.width - W, this.px - W / 2)); }
+
   update(dt) {
     this.t += dt;
     this.updateNpcs(dt);
     const st = this.stations();
-    if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; }
-    if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; }
+    if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; this.walkTarget = null; }
+    if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; this.walkTarget = null; }
+    // Tap/click a station (not a virtual button) to walk straight to it —
+    // mouse and touch alike, Input.pointer fires for both. That only walks:
+    // arriving does not auto-enter, because a tap that lands on a cabinet
+    // while you're still 200px away shouldn't commit you to it sight unseen.
+    // Once you're standing on it (the same radius the old USE prompt used),
+    // the SAME tap gesture — tap it again — enters it instead of walking on
+    // the spot, so tapping is walk-then-confirm, never walk-and-auto-enter.
+    if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)) {
+      const worldX = Input.pointer.x + this.camX();
+      const tapped = st.find((s) => Math.abs(s.x - worldX) < 22);
+      if (tapped && Math.abs(tapped.x - this.px) < 26) this.interact(tapped);
+      else if (tapped) this.walkTarget = tapped.x;
+    }
+    if (this.walkTarget != null) {
+      const d = this.walkTarget - this.px;
+      if (Math.abs(d) < 3) this.walkTarget = null;
+      else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), 90 * dt); }
+    }
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
     const near = st.find((s) => Math.abs(s.x - this.px) < 26);
     this.near = near;
@@ -181,7 +206,7 @@ export class HubState {
   draw(ctx) {
     const slot = this.save.slot;
     const act = actForSlot(slot);
-    const cam = Math.max(0, Math.min(this.width - W, this.px - W / 2));
+    const cam = this.camX();
     ctx.fillStyle = '#14101c';
     ctx.fillRect(0, 0, W, H);
     // back wall + floor
@@ -274,7 +299,7 @@ export class HubState {
     }
     // player walks
     const heroId = this.avatarId();
-    const moving = Input.held('left') || Input.held('right');
+    const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
     drawToon(ctx, heroId, {
       kind: moving ? 'run' : 'idle',
       phase: (this.t * 1.6) % 1,
@@ -289,25 +314,22 @@ export class HubState {
     if (this.near) {
       const label = this.near.type === 'cabinet' && !this.near.unlocked
         ? `${this.near.label} (LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS)` : this.near.label;
-      drawTextCentered(ctx, `${label} - ENTER/TAP USE`, W / 2, H - 60, '#f6d33c');
+      drawTextCentered(ctx, `${label} - ${Input.usingTouch ? 'TAP TO ENTER' : 'ENTER TO USE'}`, W / 2, H - 60, '#f6d33c');
     } else if (this.nearNpc) {
       drawTextCentered(ctx, `${HERO_BY_ID[this.nearNpc.id].short} - PRESS DOWN TO TALK`, W / 2, H - 60, '#8a8a98');
     }
     else drawTextCentered(ctx, 'WALK UP TO A CABINET OR COUNTER TO USE IT', W / 2, H - 60, '#5a5a68');
     // controls legend: the hub is a walk-around, so say so out loud
     drawTextCentered(ctx, Input.usingTouch
-      ? 'TAP < > TO WALK   USE TO ENTER   BACK BUTTON FOR TITLE'
+      ? 'TAP TO WALK, TAP AGAIN TO ENTER   ESC EXITS'
       : 'LEFT/RIGHT WALK   ENTER USE   DOWN TALK   ESC TITLE', W / 2, H - 16, '#8a8a98');
     // The same speech card the stages use — portrait, name header, words —
     // rather than a "NAME: line" of centred text. Talking to a hero in the food
     // court is the same act as a hero talking mid-stage, so it gets the same
     // chrome; the null-speaker path handles the cabinet and shelf notes.
     if (this.talk) drawSpeech(ctx, this.talk);
-    for (const b of Input.buttons) {
-      ctx.fillStyle = 'rgba(72,224,200,0.12)';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, '#48e0c8');
-    }
+    // No local buttons left to draw — the one button the hub has (ESC) is
+    // global and renders once, shared, in states.js's drawState.
   }
 }
 

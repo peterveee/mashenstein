@@ -12,16 +12,28 @@ const SKIN_OUTLINE = 'rgba(26,16,40,0.2)';
 const pal = (id) => HERO_SPRITES[id].pal;
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
+// armDepth: root the arms by DEPTH rather than by mirrored left/right — see
+// drawHumanoid. Grumpos's near arm crosses his back-slung axe on the forward
+// half of the cycle; the axe wants re-staging to clear the swing, but the arm
+// sides are right as they stand.
 export const TOON_SPECS = {
-  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true },
-  gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true },
-  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true },
-  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true },
+  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true },
+  gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true },
+  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true },
+  // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
+  // died right on his own silhouette edge with no gun sticking out of him. The
+  // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
+  // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
+  // against his short legs.
+  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3 },
   mochi: { rig: 'pika' },
   chompo: { rig: 'disc' },
-  gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true },
+  gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true },
   raymn: { rig: 'ray' },
-  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true },
+  // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
+  // near arm up the screen-left side, which sat over the old stripe half the
+  // cycle. Face streak and torso stripe are one marking and share the sign.
+  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1 },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -160,13 +172,29 @@ function joint(x1, y1, x2, y2, seg, dir, seg2 = seg) {
 // segments before the color changes, or the second segment's fat outline
 // pass paints over the first one's fill. Round caps (set once in drawToon)
 // blend the two widths at the joint.
-function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w) {
+function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false) {
   const [jx, jy] = joint(x1, y1, x2, y2, seg, dir);
+  // Round caps bulge HALF A STROKE WIDTH past the point they are drawn from.
+  // At the wrist and the elbow that is the point — it rounds the hand and
+  // blends the two bone widths. At the shoulder it is a ball of limb sticking
+  // out beyond the joint, which reads as a stuck-on ball joint the moment the
+  // arm roots near the body edge (arms flung out sideways, worst of all).
+  // `flushRoot` starts each pass half its OWN width in, so the cap crowns
+  // exactly on the root instead of overshooting it. The drawn arm is the same
+  // length either way; it just stops overrunning its socket.
+  // The OUTLINE pass stops a further `pad` short. Crowned level with the fill
+  // it is the wider stroke, so its cap wrapped the root as a dark crescent — a
+  // seam across the top of the arm right where the limb should be melting into
+  // the shoulder. Inset, the fill's end is left un-outlined and reads as the
+  // arm continuing into the body, while the rim still runs the limb's sides.
+  const ux = jx - x1, uy = jy - y1, ul = Math.hypot(ux, uy) || 1;
   for (const [pad, col] of [[ow * 2, OUTLINE], [0, fill]]) {
+    const back = flushRoot ? (w + pad) / 2 + pad : 0;
+    const rx = x1 + (ux / ul) * back, ry = y1 + (uy / ul) * back;
     ctx.strokeStyle = col;
     ctx.lineWidth = w + pad;
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
+    ctx.moveTo(rx, ry);
     ctx.lineTo(jx, jy);
     ctx.stroke();
     ctx.lineWidth = w2 + pad;
@@ -621,8 +649,30 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   } else if (spec.head === 'dome') {
     // antenna: a stalk off the dome with a light that blinks in run cadence
     const tipY = hy - R * 1.5;
-    limb(ctx, hx + R * 0.05, hy - R * 0.8, hx + R * 0.14, tipY, 0.028 * u, p.p, Math.max(0.6, ow * 0.6));
-    dot(ctx, hx + R * 0.14, tipY, R * 0.13, Math.sin((pose.time || 0) * 6) > 0 ? p.a : p.w);
+    const tipX = hx + R * 0.14;
+    limb(ctx, hx + R * 0.05, hy - R * 0.8, tipX, tipY, 0.028 * u, p.p, Math.max(0.6, ow * 0.6));
+    if (pose.kind === 'celebrate' && !lod) {
+      // Victory broadcast: signal rings pulsing off the antenna. Three of them,
+      // evenly staggered through one shared life cycle, so there is always one
+      // leaving the tip while another is fading out at full spread — a single
+      // ring reads as a blink, and two leave a dead gap between pulses. Radius
+      // and alpha both ride `q`, so each ring thins and fades as it expands
+      // instead of popping out of existence at the edge. Drawn BEFORE the lamp
+      // below, letting the lamp cap the point they emanate from.
+      const rt = pose.time || 0;
+      ctx.save();
+      ctx.strokeStyle = p.e;
+      for (let i = 0; i < 3; i++) {
+        const q = (rt * 0.8 + i / 3) % 1;
+        ctx.globalAlpha = (1 - q) * 0.7;
+        ctx.lineWidth = Math.max(0.5, ow * (1 - q * 0.55));
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, R * (0.2 + q * 0.95), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    dot(ctx, tipX, tipY, R * 0.13, Math.sin((pose.time || 0) * 6) > 0 ? p.a : p.w);
     // faceplate: a dark screen, not a face — the LED eyes live on it
     outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => roundRectPath(c, hx - R * 0.62, hy - R * 0.28, R * 1.24, R * 0.95, R * 0.3));
     if (!lod) {
@@ -715,9 +765,10 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // The vertex slides UP the same solved line (it stays collinear with eye
     // center and beard end, so the angle through the eye is untouched) to sit
     // clear above the eyebrow; the scalp start shifts right to meet it.
-    ctx.moveTo(hx - R * 0.52, hy - R * 0.98);
-    ctx.lineTo(hx - R * 0.11, hy - R * 0.55);
-    ctx.lineTo(hx - R * 0.66, hy + R * 0.52);
+    const ts = spec.tatSide ?? -1;
+    ctx.moveTo(hx + ts * R * 0.52, hy - R * 0.98);
+    ctx.lineTo(hx + ts * R * 0.11, hy - R * 0.55);
+    ctx.lineTo(hx + ts * R * 0.66, hy + R * 0.52);
     ctx.stroke();
     ctx.restore();
   }
@@ -757,15 +808,43 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u;
   drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
   if (spec.nose) outlined(ctx, p.n, Math.max(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
+  if (spec.mustache && !lod && ex.joy) {
+    // Celebration only: the one time Lorenzo's mouth is visible at all. A wide
+    // open grin with the top row of teeth showing, drawn BEFORE the mustache so
+    // the lobes cover its upper rim and read as the lip above it. Widens into a
+    // full whoop on the peaks of the hop, same beat as everyone else's cheer.
+    const mx = hx + 0.015 * u;
+    const w = (ex.cheer ? 0.088 : 0.072) * u;
+    const top = hy + 0.108 * u;
+    const d = (ex.cheer ? 0.078 : 0.052) * u;
+    const grin = (c) => {
+      c.moveTo(mx - w, top);
+      c.quadraticCurveTo(mx, top + d * 1.9, mx + w, top);
+      c.closePath();
+    };
+    outlined(ctx, '#5d1a26', Math.max(0.5, ow * 0.5), grin);
+    // Teeth: a white band hugging the upper lip, clipped to the mouth so it can
+    // never spill past the corners at any scale.
+    ctx.save();
+    ctx.beginPath();
+    grin(ctx);
+    ctx.clip();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(mx - w, top - 0.02 * u, w * 2, d * 0.42 + 0.02 * u);
+    ctx.restore();
+  }
   if (spec.mustache && !lod) {
     // Two buoyant lobes give Lorenzo a readable expression instead of a flat
-    // strip pasted beneath the nose.
+    // strip pasted beneath the nose. Mid-celebration the grin under them pushes
+    // the whole thing up and flicks the tips higher, the way a real smile does.
+    const lift = ex.joy ? (ex.cheer ? 0.022 : 0.012) * u : 0;
+    const tip = ex.joy ? (ex.cheer ? 0.026 : 0.014) * u : 0;
     outlined(ctx, p.m, Math.max(0.6, ow * 0.6), (c) => {
-      c.moveTo(hx + 0.015 * u, hy + 0.075 * u);
-      c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u, hx - 0.13 * u, hy + 0.105 * u);
-      c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u, hx + 0.015 * u, hy + 0.1 * u);
-      c.quadraticCurveTo(hx + 0.08 * u, hy + 0.13 * u, hx + 0.145 * u, hy + 0.09 * u);
-      c.quadraticCurveTo(hx + 0.06 * u, hy + 0.035 * u, hx + 0.015 * u, hy + 0.075 * u);
+      c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
+      c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
+      c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u - lift, hx + 0.015 * u, hy + 0.1 * u - lift);
+      c.quadraticCurveTo(hx + 0.08 * u, hy + 0.13 * u - lift, hx + 0.145 * u, hy + 0.09 * u - lift - tip);
+      c.quadraticCurveTo(hx + 0.06 * u, hy + 0.035 * u - lift, hx + 0.015 * u, hy + 0.075 * u - lift);
       c.closePath();
     });
   }
@@ -813,6 +892,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const turned = turnDepth > 0.001;
   // Positive gallery yaw exposes the screen-left side to camera.
   const nearSign = turnYaw < 0 ? 1 : -1;
+  // Travelling left-to-right, a hero shows their RIGHT side to the lens, so the
+  // near arm belongs on screen-LEFT and the far one recedes to screen-right —
+  // which is exactly what nearSign already gives the turned rig. Front-on the
+  // rig used to root them the other way round, so the arms swapped sides the
+  // moment `turn` went nonzero (the far shoulder jumped from -6 to +19 between
+  // 0 deg and 1 deg). `armDepth` opts a hero into the one convention; without
+  // it sideF is 1 and every offset below collapses to the legacy geometry.
+  const depthArms = !!spec.armDepth;
+  const sideF = depthArms ? nearSign : 1;   // outward direction, near arm
+  const sideB = -sideF;                     // outward direction, far arm
   // A slightly smaller head is the strongest lever on perceived height: it
   // also keeps the taller heavy rig inside the 24px draw box.
   const headR = (heavy ? 0.185 : 0.21) * u;
@@ -825,7 +914,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // muscle where a straight barrel reads as belly.
   const waistHalf = torsoHalf * (spec.taper || 1);
   const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u;
-  const armL = (heavy ? 0.34 : 0.26) * u;
+  // Front-on hip half-separation, and how far outboard of it the crouch plants
+  // its feet. Both in u; the crouch's leg length is solved against them.
+  const HIP_HALF = 0.095;
+  const DUCK_SPREAD = 0.215;
+  // The heavy rig's arm is LONG. Its shoulder sits far higher than everyone
+  // else's (-0.708u vs -0.5u) while the old length hung the running hand a
+  // full 0.095u above its own belt — the light rigs land theirs right on it —
+  // so the arms read as held up near the chest on the one character whose
+  // reach should be his most imposing feature.
+  const armL = (heavy ? 0.38 : 0.26) * u;
   const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u;
   // Heavy base width is sized so the arm's PINCH points (elbow 0.72x, wrist
   // 0.62x — see armDims) still match a normal hero's full 0.075u arm: the
@@ -883,6 +981,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // shoes. Rooted at a shared center hip, the IK flares the front thigh up
   // over the torso while the back one hides behind it — a lopsided can-can.
   const stand = !run && !jump && !duck;
+  // Poses whose legs are genuinely symmetric about the body: each leg roots at
+  // its own hip and the shoes read as front-facing ovals. The crouch belongs
+  // here with standing and the victory hop — only running and jumping are
+  // profile gaits with one leg crossing the body.
+  const frontLegs = stand || duck;
   const bob = run ? -Math.abs(Math.cos(ph)) * (walk ? 0.014 : 0.03) * u
     : cm ? Math.sin((pose.time || 0) * 6 + 1.2) * 0.016 * u
     : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.012 * u : 0;
@@ -892,8 +995,34 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   let headY = -(heavy ? 0.978 : 0.76) * u + bob;
   let shoulderY = -(heavy ? 0.708 : 0.5) * u + bob;
   if (duck) {
-    hipY = -0.16 * u; torsoTop = -0.32 * u; headY = -0.42 * u; shoulderY = -0.27 * u;
+    // The crouch used to drop every hero to the same flat height, which is not
+    // the same thing as every hero crouching by the same amount: grumpos stands
+    // a head taller than the rest (-0.978u vs -0.76u), so landing on a shared
+    // -0.42u folded him to 43% of his standing height where the stout heroes
+    // only gave up 45%. He read as a boulder with a face on it. The heavy rig
+    // crouches to the same FRACTION of its OWN height instead, so he stays
+    // visibly the biggest hero on the screen even ducking.
+    // 1.36 is solved, not eyeballed: it puts his crouched crown at the same
+    // fraction of his standing crown (0.65) that the stout heroes fold to, so
+    // he gives up exactly as much height as everyone else and no more.
+    const crouch = heavy ? 1.36 : 1;
+    hipY = -0.16 * u * crouch; torsoTop = -0.32 * u * crouch;
+    headY = -0.42 * u * crouch; shoulderY = -0.27 * u * crouch;
   }
+  // Bottom of the torso. Declared up here with the rest of the body landmarks
+  // rather than beside the torso path it feeds: shoulderCap measures the body's
+  // half-width against it, and the STANDING pose draws its front arm in the
+  // back-limb pass, before the torso is painted. Left at the path it sat in the
+  // temporal dead zone for that one pose.
+  const torsoBot = hipY + 0.05 * u;
+  // Where the ARMS socket, as opposed to where the shoulder line sits. The axe
+  // and shield stay pinned to shoulderY; only the limbs seat lower.
+  const armY = shoulderY + (heavy ? 0.03 : 0) * u;
+  // Running, the NEAR arm rides a little higher in its socket than the far one:
+  // it is the arm carrying the silhouette, and seated at the same depth as the
+  // receding one it read as slung off the bottom of the shoulder. Run only —
+  // the standing pose's deltoid is already the shape the others are chasing.
+  const armYF = armY - (depthArms && run && !turned ? (heavy ? 0.018 : 0.03) : 0) * u;
   const leanX = run ? (walk ? 0.018 : 0.05) * u : 0; // walk upright; run leans forward
   // A yawed torso has a small shoulder-to-hip offset; the top of the body is
   // no longer a perfectly flat front-facing slab over the feet.
@@ -909,7 +1038,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // lower foot lift keep the joint high under the battle skirt, so the hem can
   // sit well above the shin without a knee crossing it. It also reads as the
   // planted, choppy gait of someone twice everyone else's mass.
-  let legSeg = (duck ? 0.2 : heavy ? 0.42 : 0.56) * legL + 0.02 * u;
+  // The tunic rig borrows the same idea for the same reason: the knee's bulge
+  // is the IK slack, sqrt(seg^2 - (d/2)^2), thrown out PERPENDICULAR to the
+  // thigh — and a near-vertical thigh throws it almost straight forward. At the
+  // full 0.56 bone that put fernwick's lifted thigh 0.067u past the edge of his
+  // tunic mid-swing, a brown wedge apparently floating outside the cloth. A
+  // shorter bone is the only lever that touches it: stride and foot lift barely
+  // move the bulge, because it points across the leg rather than along it.
+  let legSeg = (duck ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
   const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? 0.36 : 0.55);
   const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? 0.3 : 0.5);
@@ -921,7 +1057,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (pose.stomp) { footF = [0.06 * u, hipY + legL * 0.95]; footB = [-0.06 * u, hipY + legL * 0.95]; kneeB = -1; }
     else { footF = [0.15 * u, hipY + legL * 0.5]; footB = [-0.12 * u, hipY + legL * 0.85]; }
   } else if (duck) {
-    footF = [0.19 * u, 0]; footB = [-0.19 * u, 0]; kneeB = -1;
+    // A crouch is a FRONT-ON pose, like standing and the victory hop — not a
+    // profile one. Rooted at a shared center hip (the profile rig) the two legs
+    // left that point as straight diagonals to feet 0.19u either side: a hard X
+    // under the body that reads as crossed legs, because at this scale a
+    // straight limb carries no knee to say otherwise. Each leg now hangs off
+    // its OWN hip (see frontLegs) with the feet planted just outboard of it.
+    footF = [DUCK_SPREAD * u, 0]; footB = [-DUCK_SPREAD * u, 0]; kneeB = -1;
+    // Sized off the real hip-to-ankle run, then let out ~30% so the crouch
+    // actually folds: the slack becomes the sideways bow of the knee, which is
+    // the whole silhouette of a squat. Locked to the old flat 0.2*legL the leg
+    // couldn't even reach the foot and straightened out again.
+    legSeg = Math.hypot(DUCK_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
   } else if (cm) {
     // Feet mirror under their own hips and share one tuck height — uneven
     // lifts read as a one-legged kick, not a hop.
@@ -949,7 +1096,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // The pelvis belongs to the turned torso, not the old front-on run axis.
   // Keeping it on leanX while torsoCx shifted in yaw made both thighs appear
   // to enter the body from in front of the waist.
-  const hipRun = turned ? torsoCx : leanX * 0.3;
+  // Second half of the tunic fix: pull the leg roots back a touch. The feet are
+  // absolute gait targets, so only the hips move — the stride lands in exactly
+  // the same place and just leaves from further back, which rakes the thighs
+  // and buys the swing a little more cloth to travel under. On its own it isn't
+  // enough (it can't cover more than a third of the escape without visibly
+  // dragging the legs behind him); paired with the shorter bone above, the
+  // worst-case escape across the whole cycle goes to zero.
+  const tunicRake = spec.tunic && (run || jump) ? 0.03 * u : 0;
+  const hipRun = (turned ? torsoCx : leanX * 0.3) - tunicRake;
   const hipSeparation = (walk ? 0.065 : 0.07) * u * turnDepth;
   const hipNearX = hipRun + nearSign * hipSeparation;
   const hipFarX = hipRun - nearSign * hipSeparation;
@@ -968,9 +1123,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 
   // arms: bent at the elbow, counter-swinging the legs while running
-  // The heavy rig's bicep bone is SHORT — a boulder up near the shoulder —
-  // with the forearm taking the slack, so the arm's total reach is unchanged.
-  const armSeg = armL * (heavy ? 0.42 : 0.55);
+  // Bones split evenly. The heavy rig used to carry a SHORT bicep with the
+  // forearm taking the slack, which reads fine on a straight arm but wrecks the
+  // solver on a bent one: whenever the hand target came nearer than the forearm
+  // is long, the elbow swung up BEHIND the shoulder — 0.046u above it just
+  // standing, and it only got worse as the arm lengthened. An even split keeps
+  // the joint under the shoulder in every pose.
+  const armSeg = armL * 0.55;
   const armSegF = armL * 1.1 - armSeg;
   // Celebrating is front-on, so the arms root at the torso's shoulder
   // corners; at the run cycle's mid-chest attach, the front arm draws over
@@ -978,14 +1137,48 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the shoulder's edge in EVERY pose: its anatomy arm starts with a visible
   // shoulder cap that the old blended strokes never showed, and parked at
   // mid-chest that cap reads as an arm growing out of his sternum.
-  const shSpread = pose.kind === 'celebrate' ? 0.92 : turned ? (heavy ? 0.9 : 0.84) : heavy ? 0.84 : 0.55;
+  // Celebrate used to root the arms at 0.92 of the half-width — nearly on the
+  // rib edge, and far wider than any other pose sockets them. Both arms paid
+  // for it: the near one hung its shoulder cap off the silhouette, and the far
+  // one, drawn behind the torso, had almost nothing buried to attach to, so it
+  // read as a tube laid against the body rather than an arm coming out of it.
+  // The routine's spread lives in the HAND targets, not in the sockets, so the
+  // pose loses nothing by rooting arms where every other pose roots them.
+  const shSpread = turned ? (heavy ? 0.9 : 0.84) : heavy ? 0.84 : 0.55;
   const shoulderCx = turned ? torsoCx : leanX;
+  // Running, the depth rig pushes the NEAR shoulder out past the ribs. Arm and
+  // torso share p.b, so an arm crossing the chest is teal on teal and reads as
+  // nothing but a stray glove; rooted wide, the near arm clears the body edge
+  // and reads as an arm. The far shoulder keeps its symmetric root — buried
+  // deeper it disappeared for the whole cycle and he looked one-armed.
+  // Only the run: the standing and celebrating poses are genuinely symmetric,
+  // and pushing one shoulder out there just cants him to one side.
+  // ...but never past ~0.69 of the half-width, and never INWARD from the rig's
+  // own spread. The push exists to compensate for the narrow 0.55 shoulder the
+  // light rigs use; the heavy rig already roots at 0.84, and a blind 25% on top
+  // of that hangs its shoulder clean off the ribs.
+  const depthRun = depthArms && run && !turned;
+  // The heavy rig gets its own pair: its shoulder is broad enough already that
+  // the light rigs' cap would pull it IN, and its far shoulder sits barely
+  // 0.015u inside the rib edge, so the deltoid showed on the receding side.
+  const nearSpread = depthRun ? (heavy ? 1.12 : 1) : 1;
+  const farSpread = depthRun && heavy ? 0.7 : 1;
+  // Running, a light rig roots its near arm FLUSH with the torso edge: its
+  // outer edge lands exactly on the silhouette. Rooted inboard of that — the
+  // old mid-chest attach — a strip of body is left outside the arm, and once
+  // the arm crosses the chest diagonally that strip is cut off from the rest of
+  // the torso and reads as a lump sitting above the shoulder. Flush, there is
+  // nothing left out there to orphan. The heavy rig keeps its own root: its
+  // deltoid cap covers the join, so it can sit proud of the edge.
+  const nearFlush = torsoCx + sideF * (torsoHalf - armWF / 2);
   const shF = turned
     ? shoulderCx + nearSign * (torsoHalf * shSpread * (1 + 0.14 * turnDepth) + turnDepth * 0.025 * u)
-    : shoulderCx + torsoHalf * shSpread;
+    : depthRun && !heavy
+      ? nearFlush
+      : shoulderCx + sideF * torsoHalf * shSpread * nearSpread;
   const shB = turned
     ? shoulderCx - nearSign * (torsoHalf * shSpread * (1 - 0.26 * turnDepth) + turnDepth * 0.018 * u)
-    : shoulderCx - torsoHalf * shSpread;
+    : shoulderCx + sideB * torsoHalf * shSpread * farSpread;
   // Slide a hand target out to full arm reach along its own direction, so the
   // IK draws the arm straight: arms-out poses with a mid-reach target crook
   // the elbow into a chicken wing.
@@ -1000,57 +1193,61 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const pump = Math.sin(ct * 6) * 0.05 * u;
     if (id === 'fernwick') {
       // champion's clasp: both hands meet overhead
-      handF = [0.05 * u, shoulderY - armL * 0.95 + pump]; elbF = 1;
-      handB = [-0.05 * u, shoulderY - armL * 0.95 + pump]; elbB = -1;
+      handF = [sideF * 0.05 * u, armY - armL * 0.95 + pump]; elbF = sideF;
+      handB = [sideB * 0.05 * u, armY - armL * 0.95 + pump]; elbB = sideB;
     } else if (id === 'gnash') {
       // one cool point at the sky, the other hand on the hip
-      handF = [shF + 0.12 * u, shoulderY - armL * 0.98 + pump]; elbF = 1;
-      handB = [shB - 0.13 * u, shoulderY + armL * 0.4]; elbB = -1;
+      handF = [shF + sideF * 0.12 * u, armY - armL * 0.98 + pump]; elbF = sideF;
+      handB = [shB + sideB * 0.13 * u, armY + armL * 0.4]; elbB = sideB;
     } else if (id === 'grumpos') {
       // Arms flung out wide and dead STRAIGHT — a strongman's "behold" spread,
       // rising and settling on the pump. Straight matters: bent, the inverted
       // elbows this pose used to carry read as arms broken backwards at menu
       // scale. The reach() targets sit at full extension so the IK never puts
       // a visible joint in either arm; the flex big-move still bends them.
-      handF = reach(shF, shoulderY, [shF + 0.3 * u, shoulderY - armL * 0.3 + pump]); elbF = 1;
-      handB = reach(shB, shoulderY, [shB - 0.3 * u, shoulderY - armL * 0.3 - pump]); elbB = -1;
+      handF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.3 + pump]); elbF = sideF;
+      handB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.3 - pump]); elbB = sideB;
     } else if (id === 'gary') {
       // a big overhead wave; the other hand stays professionally at his side
-      handF = [shF + 0.08 * u + Math.sin(ct * 8) * 0.11 * u, shoulderY - armL * 0.95]; elbF = 1;
-      handB = [shB - 0.04 * u, shoulderY + armL * 0.5]; elbB = -1;
+      handF = [shF + sideF * (0.08 * u + Math.sin(ct * 8) * 0.11 * u), armY - armL * 0.95]; elbF = sideF;
+      handB = [shB + sideB * 0.04 * u, armY + armL * 0.5]; elbB = sideB;
     } else {
       // double fist pump, alternating (lorenzo mid-hop, b33p's free arm)
-      handF = [shF + 0.15 * u, shoulderY - armL * 0.9 + pump]; elbF = 1;
-      handB = [shB - 0.15 * u, shoulderY - armL * 0.9 - pump]; elbB = -1;
+      handF = [shF + sideF * 0.15 * u, armY - armL * 0.9 + pump]; elbF = sideF;
+      handB = [shB + sideB * 0.15 * u, armY - armL * 0.9 - pump]; elbB = sideB;
     }
     // On the big beat the signature gives way to the move: arms fly out for a
     // turn, sweep low for a bow, swing loose for a shimmy, punch up on a hop.
     if (cm.move === 'spin') {
-      handF = [shF + 0.3 * u, shoulderY - armL * 0.25]; elbF = 1;
-      handB = [shB - 0.3 * u, shoulderY - armL * 0.25]; elbB = -1;
+      handF = [shF + sideF * 0.3 * u, armY - armL * 0.25]; elbF = sideF;
+      handB = [shB + sideB * 0.3 * u, armY - armL * 0.25]; elbB = sideB;
     } else if (cm.move === 'bow') {
-      handF = [shF + 0.18 * u, shoulderY + armL * 0.75]; elbF = 1;
-      handB = [shB - 0.22 * u, shoulderY + armL * 0.55]; elbB = -1;
+      handF = [shF + sideF * 0.18 * u, armY + armL * 0.75]; elbF = sideF;
+      handB = [shB + sideB * 0.22 * u, armY + armL * 0.55]; elbB = sideB;
     } else if (cm.move === 'shimmy') {
-      const sw = Math.sin(cm.q * Math.PI * 8) * 0.14 * u;
-      handF = [shF + 0.14 * u + sw, shoulderY - armL * 0.55]; elbF = 1;
-      handB = [shB - 0.14 * u + sw, shoulderY - armL * 0.55]; elbB = -1;
+      const sw = Math.sin(cm.q * Math.PI * 8) * 0.14 * u * sideF;
+      handF = [shF + sideF * 0.14 * u + sw, armY - armL * 0.55]; elbF = sideF;
+      handB = [shB + sideB * 0.14 * u + sw, armY - armL * 0.55]; elbB = sideB;
     } else if (cm.move === 'hop') {
-      handF = [shF + 0.1 * u, shoulderY - armL * 1.05]; elbF = 1;
-      handB = [shB - 0.1 * u, shoulderY - armL * 1.05]; elbB = -1;
+      handF = [shF + sideF * 0.1 * u, armY - armL * 1.05]; elbF = sideF;
+      handB = [shB + sideB * 0.1 * u, armY - armL * 1.05]; elbB = sideB;
     } else if (cm.move === 'flex') {
       // Two poses hit and held: a wider double-biceps, then most-muscular
       // with the fists dragged low and together in front.
       if (cm.q < 0.5) {
-        // Fists up just inside the shoulders, elbows bent OUTWARD (+/-):
-        // with a target nearly overhead the IK's bend is horizontal, so the
-        // inverted dirs this used to carry folded the joints inward and
-        // parked both elbows on his cheeks.
-        handF = [shF - 0.04 * u, shoulderY - armL * 0.72]; elbF = 1;
-        handB = [shB + 0.04 * u, shoulderY - armL * 0.72]; elbB = -1;
+        // Fists up just inside the shoulders, elbows bent OUTWARD (-/+).
+        // joint()'s "dir +1 bends toward +x" only holds for a limb pointing
+        // DOWN; the bend axis flips with the limb, so on a target this close
+        // to overhead the +/- pair folds both joints IN — elbows meeting on
+        // his sternum with the forearms crossed over his own beard, which is
+        // a flinch, not a pose. Negated, they swing wide of the fists and the
+        // arms frame the head: the double-biceps shape this beat is after.
+        // Same convention, same reason, as the menu 'flex' curl below.
+        handF = [shF - sideF * 0.04 * u, armY - armL * 0.72]; elbF = -sideF;
+        handB = [shB - sideB * 0.04 * u, armY - armL * 0.72]; elbB = -sideB;
       } else {
-        handF = [0.07 * u, shoulderY + armL * 0.52]; elbF = 1;
-        handB = [-0.07 * u, shoulderY + armL * 0.52]; elbB = -1;
+        handF = [sideF * 0.07 * u, armY + armL * 0.52]; elbF = sideF;
+        handB = [sideB * 0.07 * u, armY + armL * 0.52]; elbB = sideB;
       }
     }
   } else if (pose.menuAction === 'wave') {
@@ -1058,8 +1255,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // the arm at FULL extension through the whole sweep — the old mid-reach
     // target left the elbow crooked, a bent-arm salute instead of a wave.
     const wvt = Math.sin((pose.time || 0) * 8);
-    handF = reach(shF, shoulderY, [shF + (0.12 + 0.08 * wvt) * u, shoulderY - armL * 0.8]); elbF = 1;
-    handB = [shB - 0.03 * u, shoulderY + armL * 0.8]; elbB = -1;
+    handF = reach(shF, armY, [shF + sideF * (0.12 + 0.08 * wvt) * u, armY - armL * 0.8]); elbF = sideF;
+    handB = [shB + sideB * 0.03 * u, armY + armL * 0.8]; elbB = sideB;
   } else if (pose.menuAction === 'flex') {
     // Posing reps on a loop: arms flung out dead straight, held — then the
     // fists snap up into the curl, held — then back out. The two ends are the
@@ -1071,13 +1268,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // are straight, so the dirs never show there.
     const fx = ((pose.time || 0) * 0.8) % 1;
     const fw = fx < 0.4 ? 0 : fx < 0.5 ? (fx - 0.4) * 10 : fx < 0.9 ? 1 : 1 - (fx - 0.9) * 10;
-    const sF = reach(shF, shoulderY, [shF + 0.3 * u, shoulderY - armL * 0.25]);
-    const sB = reach(shB, shoulderY, [shB - 0.3 * u, shoulderY - armL * 0.25]);
-    handF = [sF[0] + (shF + 0.2 * u - sF[0]) * fw, sF[1] + (shoulderY - armL * 0.45 - sF[1]) * fw]; elbF = -1;
-    handB = [sB[0] + (shB - 0.2 * u - sB[0]) * fw, sB[1] + (shoulderY - armL * 0.45 - sB[1]) * fw]; elbB = 1;
+    const sF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.25]);
+    const sB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.25]);
+    handF = [sF[0] + (shF + sideF * 0.2 * u - sF[0]) * fw, sF[1] + (armY - armL * 0.45 - sF[1]) * fw]; elbF = -sideF;
+    handB = [sB[0] + (shB + sideB * 0.2 * u - sB[0]) * fw, sB[1] + (armY - armL * 0.45 - sB[1]) * fw]; elbB = -sideB;
   } else if (pose.headless || pose.stomp) {
-    handF = reach(shF, shoulderY, [shF + 0.16 * u, shoulderY - armL * 0.5]); elbF = 1;
-    handB = reach(shB, shoulderY, [shB - 0.16 * u, shoulderY - armL * 0.5]); elbB = -1;
+    handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
+    handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
   } else if (run) {
     const sw = -s; // opposite phase to the legs
     if (turned) {
@@ -1097,11 +1294,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const farReach = totalArm * (walk ? 0.86 : 0.78);
       handF = [
         shF + Math.sin(nearAngle) * nearReach,
-        shoulderY + Math.cos(nearAngle) * nearReach,
+        armY + Math.cos(nearAngle) * nearReach,
       ];
       handB = [
         shB + Math.sin(farAngle) * farReach,
-        shoulderY + Math.cos(farAngle) * farReach,
+        armY + Math.cos(farAngle) * farReach,
       ];
       // Elbows stay on their anatomical outside for the entire cycle. Flipping
       // this sign at mid-swing makes the joint teleport through a 180° arc.
@@ -1110,40 +1307,140 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // far silhouette is what made it flare out as a separate appendage.
       elbB = nearSign;
     } else {
-      handF = [shF + 0.05 * u + 0.15 * u * sw, shoulderY + armL * 0.5 - 0.04 * u * Math.abs(sw)];
+      // Both offsets here run along the TRAVEL axis, not out to the side, so
+      // they never take sideF — only the shoulders they hang from move.
+      // The legacy rig leads the near hand FORWARD of its shoulder, which was
+      // right when that shoulder sat on the trailing side. Rooted at the near
+      // shoulder the same lead drags the hand into the middle of his belly and
+      // folds the elbow into a chicken wing on every backswing; a small negative
+      // lead keeps the swing centred on the arm's own side of the body.
+      const lead = depthRun ? -0.04 * u : 0.05 * u;
+      const swing = (depthRun ? 0.13 : 0.15) * u;
+      // How far below the shoulder the hand rides. The heavy rig hangs DEEPER.
+      // At 0.5 its hand sat only 0.15u under the shoulder while swinging 0.17u
+      // behind it, so the shoulder-to-hand chord ran at 45 degrees — and a
+      // two-bone solver puts the elbow perpendicular to that chord, which left
+      // it nowhere to go but UP. The joint cleared the shoulder by 0.057u at
+      // the top of the backswing, throwing the whole arm into a high chicken
+      // wing. A steeper chord turns that perpendicular outward instead, and the
+      // elbow stays under the shoulder for the entire cycle.
+      const hang = depthArms ? 0.72 : 0.5;
+      handF = [shF + lead + swing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
       // The back arm swings shallower than the front: it lives behind the torso,
       // so its only visible contribution is the hand clearing the body's back
       // edge on the deep swing — which reads as a lump stuck to his back, not as
       // an arm, since the limb connecting it is hidden.
-      handB = [shB + 0.05 * u - 0.11 * u * sw, shoulderY + armL * 0.5 - 0.04 * u * Math.abs(sw)];
+      // On the depth rig the far arm has moved to the LEADING side, and it is
+      // the ONLY thing keeping him from reading as one-armed: the near arm is
+      // drawn over the torso, so when it swings forward there is nothing else
+      // in the silhouette. Dropping the forward bias and shortening the throw
+      // parks the swing so the glove surfaces past the leading edge on the
+      // counter-beat — visible exactly when the near arm is back — and sinks
+      // behind the body the rest of the cycle. Any more and it detaches into a
+      // glove floating clear of his chest.
+      const farLead = depthRun ? 0 : 0.05 * u;
+      // The far throw scales with the ARM, not the sprite: at a flat 0.11u it
+      // stayed put when the heavy rig's arm grew, so his longer reach never
+      // showed on the side where the hand is the only thing visible. At 0.42
+      // of arm length the light rigs land on the same 0.11u they already had.
+      const farSwing = depthRun ? armL * 0.42 : 0.11 * u;
+      handB = [shB + farLead - farSwing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
     }
   } else if (jump) {
-    handF = reach(shF, shoulderY, [shF + 0.18 * u, shoulderY - armL * 0.4]); elbF = 1;
-    handB = reach(shB, shoulderY, [shB - 0.18 * u, shoulderY - armL * 0.4]); elbB = -1;
+    handF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]); elbF = sideF;
+    handB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]); elbB = sideB;
   } else if (duck) {
-    handF = [shF + 0.2 * u, shoulderY + 0.12 * u]; elbF = 1;
-    handB = [shB - 0.2 * u, shoulderY + 0.12 * u]; elbB = -1;
+    // Braced out at a fixed 0.2u the crouch folded the heavy rig's longer arm
+    // to 56% of its reach where the light rigs sit at 82% — his crouch read
+    // stubby-armed. Scaled off armL every rig folds by the same amount, and
+    // 0.77/0.46 land the light rigs on the exact 0.2u/0.12u they already had.
+    // Elbows keep the usual OUTWARD bend. Pointing them down instead splays
+    // every hero's arms flat to the floor like a crab — the joints only used to
+    // ride high here because the heavy rig's bones were unevenly split.
+    handF = [shF + sideF * armL * 0.77, armY + armL * 0.46]; elbF = sideF;
+    handB = [shB + sideB * armL * 0.77, armY + armL * 0.46]; elbB = sideB;
   } else {
     // arms hang at the sides, elbows ghosting outward — front-on, at ease
-    handF = [shF + 0.07 * u, shoulderY + armL * 0.95]; elbF = 1;
-    handB = [shB - 0.07 * u, shoulderY + armL * 0.95]; elbB = -1;
+    handF = [shF + sideF * 0.07 * u, armY + armL * 0.95]; elbF = sideF;
+    handB = [shB + sideB * 0.07 * u, armY + armL * 0.95]; elbB = sideB;
   }
 
-  // Hand decorations (grumpos bracers, plumber gloves) draw with their own
-  // arm, not as a final pass: the back hand must occlude behind the torso like
-  // the rest of the back arm, or a run cycle reads as two hands clapping.
+  // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with
+  // their own arm, not as a final pass: the back hand must occlude behind the
+  // torso like the rest of the back arm, or a run cycle reads as two clapping.
   const handDeco = (x, y) => {
     if (id === 'grumpos') {
       outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
       dot(ctx, x, y, 0.028 * u, p.s);
     } else if (spec.plumber) {
       outlined(ctx, p.w, Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+    } else if (spec.hands) {
+      // Bare hands in the face's own color. Without them the sleeve simply
+      // stops: the arm is one flat slab of tunic from shoulder to fingertip,
+      // and at this scale a limb ending in a blunt cap reads as unfinished.
+      // Sized off armW rather than fixed, so the slim rig gets a hand in
+      // proportion to the arm it terminates instead of a mitt on a twig.
+      // `p.hand` opts a palette out of the face-colour default — see b33p,
+      // whose face is a near-black plate that reads as a hole on a grey arm.
+      outlined(ctx, p.hand || p.s, Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
     }
   };
-  const shoulderCap = (x, y) => {
-    if (!turned) return;
-    const fill = id === 'grumpos' ? p.s : p.b;
-    const r = (heavy ? 0.09 : 0.065) * u * (turned ? 1.08 : 1);
+  // The depth rig gets this front-on too. Rooted at the near shoulder the arm
+  // otherwise starts as a bare round limb cap sitting on the body edge — a ball
+  // joint stuck to the ribs. It is only visible work on a bare-skinned rig like
+  // grumpos; on the clothed heroes the cap is body-coloured and lands inside
+  // the torso, so it costs them nothing.
+  // The cap works by being the SAME colour as the limb it buries — that is the
+  // whole trick, and it is why it vanishes on a normal arm. Callers whose limb
+  // is not body-coloured have to say so: `fill` is an argument rather than a
+  // lookup here precisely because guessing it from `id` is how this last went
+  // wrong, painting a body-grey disc onto B33P's differently-coloured arm.
+  const shoulderCap = (x, y, fill = id === 'grumpos' ? p.s : p.b) => {
+    if (!turned && !depthArms) return;
+    // Front-on the cap has to fit UNDER the torso's shoulder line. The turned
+    // torso raises and broadens its near shoulder, so the cap tucks into that
+    // slope; on the symmetric front-on torso there is nothing above it, and at
+    // its turned size it cleared the shoulder by 0.014u and stood 1.36x the
+    // arm's own root radius — the detached ball joint exactly.
+    const capFit = (y - torsoTop) / 0.82;
+    // Front-on the heavy cap is SMALLER than the turned one. Turned, it has a
+    // broadened shoulder line to fill and reads as the deltoid; front-on that
+    // same radius is 1.33x the arm's own root and sits on it as a distinct
+    // ball. Just over the arm's width instead, it reads as a swell continuous
+    // with the limb.
+    // ...but only FRONT-ON, where the cap is never stroked and exists purely to
+    // bury the arm's round root cap and its outline in body colour. Sized to
+    // cover them, and no larger.
+    const capBase = heavy ? 0.072 : 0.065;
+    // TURNED, the cap IS the shoulder's silhouette — the outer arc below is
+    // stroked and becomes the contour — so it has to stand proud of the arm it
+    // crowns. HOW FAR proud is a property of that arm, not of the sprite. As a
+    // fixed slab of u it was tuned against the heavy rig's 0.118u limb, and the
+    // clothed heroes, whose arms are barely half that, wore the same ball at
+    // 1.8-2.0x their own root radius where the heavy rig sits at 1.4 — a
+    // pauldron bolted to the sleeve rather than a shoulder. Measured instead
+    // against the arm's OUTLINED root (w/2 + ow, the silhouette the cap
+    // actually has to clear), every rig swells past its own limb by the same
+    // fraction, and the heavy rig keeps the radius it was tuned to.
+    const rootHalf = (armDimsF ? armDimsF.shoulderW : armWF) / 2 + ow;
+    // Front-on it also has to fit inside the torso HORIZONTALLY. The cap is an
+    // unoutlined body-coloured ellipse whose entire job is to vanish against
+    // the chest, so any part of it past the silhouette edge is a smooth lobe
+    // hanging off the body with no contour of its own — it cannot read as
+    // anything but a swelling. The celebrate pose is where this showed: rooting
+    // the arms at 0.92 of the half-width left a 0.065u cap overhanging the edge
+    // by 0.049u, a teal blister on the shoulder. Clamped to the room actually
+    // left between the root and the body's edge at this height, the cap can
+    // only ever bury the arm — never add to the silhouette. Turned is exempt:
+    // there the cap is stroked and IS the shoulder's contour by design.
+    const bodyHalf = spec.taper
+      ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : torsoHalf;
+    const capRoom = bodyHalf - Math.abs(x - torsoCx);
+    const r = turned ? rootHalf * 1.138 : Math.min(capBase * u, capFit, capRoom);
+    // No room at all means the arm roots outside the body: there is nothing to
+    // bury it in, and a cap here would be pure addition to the silhouette.
+    if (r <= 0) return;
     // Solid fill masks the arm's round root cap and the torso edge beneath it,
     // merging both shapes. Stroke only the OUTER half; a complete oval creates
     // an internal seam and reads as a separate shoulder object.
@@ -1151,6 +1448,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 0.82, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Turned, that outer half coincides with the shoulder's silhouette edge and
+    // draws the contour. Front-on the arm roots INSIDE the torso, so the same
+    // arc lands in open chest and reads as a ring painted on him. Here the fill
+    // alone does the work it is there for: it buries the arm's own root cap and
+    // outline, merging limb into shoulder with no seam of any kind.
+    if (!turned) return;
     ctx.strokeStyle = id === 'grumpos' ? SKIN_OUTLINE : OUTLINE;
     ctx.lineWidth = Math.max(0.55, ow * 0.7);
     ctx.beginPath();
@@ -1185,16 +1488,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
 
   // Standing, legs root at their own hips and feet face the camera; in
   // motion they share the center hip and the feet read as profile shoes.
-  const hipAt = (side) => (stand
-    ? side * 0.095 * u
+  const hipAt = (side) => (frontLegs
+    ? side * HIP_HALF * u
     : turned ? (side > 0 ? hipNearX : hipFarX) : hipRun);
   // In profile the shoe shifts toe-ward so the ankle sits back near the heel.
-  const footDx = stand ? 0 : 0.025 * u;
+  const footDx = frontLegs ? 0 : 0.025 * u;
   // Shoe proportions: clearly longer than tall so it reads as a shoe, not a
   // circle. Radii derive from legW — the shoe must swallow the leg's round
   // end cap (legW / 2 past the ankle point) on the wider-legged rigs too.
   const capR = legW * 0.5;
-  const footRx = Math.max(stand ? 0.075 * u : 0.095 * u, capR * 1.5);
+  const footRx = Math.max(frontLegs ? 0.075 * u : 0.095 * u, capR * 1.5);
   const footRy = capR + 0.008 * u;
 
   const drawFrontLeg = () => {
@@ -1215,26 +1518,187 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
     outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + footDx, footF[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
   };
+  // How far the near arm seats INBOARD and BELOW the raw shoulder point. It is
+  // applied as a translate around the whole limb — root, hand, glove and
+  // shoulder cap move as one piece — rather than by nudging shF/armYF, which
+  // would leave the hand targets behind and pivot the arm about the wrist
+  // instead of shifting it.
+  // Signed off sideF (the near arm's outward direction), not off screen x, so
+  // it stays inboard when a negative yaw mirrors the rig.
+  const ARM_SEAT_IN = 0.022, ARM_SEAT_DOWN = 0.02;
   const drawFrontArm = () => {
+    // The victory routine is choreographed as a mirrored PAIR — fernwick's
+    // hands clasp overhead, grumpos claps — so seating one arm of it breaks
+    // the join. Left alone there.
+    const seat = pose.kind !== 'celebrate';
+    ctx.save();
+    // The cannon takes the inboard seat but NOT the drop. The drop exists so a
+    // normal shoulder does not pin to the torso's top corner, and a fleshy arm
+    // fills the gap it leaves; the gun-arm is a bare pin that just hung below
+    // the shoulder line instead. It sets its own joint height below.
+    if (seat) ctx.translate(-sideF * ARM_SEAT_IN * u, (spec.cannon ? 0 : ARM_SEAT_DOWN) * u);
     if (spec.cannon) {
-      // the cannon aims dead ahead — no elbow on ordnance. Celebrating, it
-      // points at the sky and pops a little victory flash instead.
+      // Only the FOREARM is ordnance. Run from the shoulder, the barrel was one
+      // unbroken bar leaving the neckline — he had no arm at all, just a yellow
+      // rod growing out of the chest panel, and recolouring the joint can't fix
+      // a limb with no upper segment. So an ordinary upper arm hangs off the
+      // shoulder in body grey and the gun hinges at the ELBOW.
+      // It mounts on the NEAR (front) shoulder — the left one front-on. That is
+      // the arm that already paints over the torso, so a barrel carried across
+      // the chest reads as a limb held in FRONT of the body rather than one
+      // buried in it, and the far shoulder is left free for an ordinary arm
+      // drawn behind. The elbow is pushed forward below to keep the muzzle
+      // clear of his own silhouette rather than lying flat on the status panel.
+      const gunX = shF;
+      // Both segments carry the SAME width — they are one limb. A 0.12u barrel
+      // on a 0.075u upper arm read as a prop he was holding rather than as the
+      // forearm itself. Declared up here because the joint height measures
+      // itself against the limb's own gauge.
+      const gunW = armW;
+      // The joint sits against the SHOULDER LINE — the torso's own top edge —
+      // rather than at armY, which is 0.06u under it before the near-arm seat
+      // drops it another 0.02u. That left 0.043u of bare torso above a limb
+      // only 0.075u thick, so the gun read as strapped to his ribs rather than
+      // hung off his shoulder. Measured off torsoTop so it holds through every
+      // pose's bob and the crouch's raised torso, and off gunW so it tracks the
+      // gauge: 0.6 of a width down sits the joint just proud of the top edge
+      // instead of pinned to the corner.
+      const gunY = torsoTop + gunW * 0.6;
       const cheer = pose.kind === 'celebrate';
-      const recoil = pose.menuAction === 'aim' ? Math.abs(Math.sin((pose.time || 0) * 12)) * 0.05 * u : 0;
-      const muzzleX = cheer ? shF + armL * 0.22 : shF + armL * 0.72 - recoil;
-      const muzzleY = cheer ? shoulderY - armL * 0.85 : shoulderY + armL * 0.28;
-      limb(ctx, shF, shoulderY, muzzleX, muzzleY, 0.12 * u, p.a, ow);
-      outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, 0.045 * u, 0, Math.PI * 2));
-      if ((pose.menuAction === 'aim' || cheer) && Math.sin((pose.time || 0) * 12) > 0.72) {
-        dot(ctx, muzzleX + (cheer ? 0 : 0.08 * u), muzzleY - (cheer ? 0.09 * u : 0), 0.045 * u, p.w);
+      const gt = pose.time || 0;
+      const recoil = pose.menuAction === 'aim' ? Math.abs(Math.sin(gt * 12)) * 0.05 * u : 0;
+      // Elbow: hanging at his side normally, lifted to shoulder height for the
+      // victory routine so the salute fires over his head instead of out of his
+      // hip. The barrel pivots about THIS point rather than the shoulder, which
+      // is the whole reason the mount reads as an arm now.
+      // Kept BELOW the shoulder in both, celebrate included: parked level with
+      // it, the upper arm vanished behind the head and the barrel read as
+      // growing out of his cheek. Dropped, the grey segment is visible and the
+      // gun clearly hinges off the end of it.
+      // Resting, it swings FORWARD across the body (the near arm draws over the
+      // torso, so this reads as carried in front) and far enough that the
+      // muzzle clears his other edge instead of resting on the status panel.
+      // Celebrating, it swings OUTWARD off the shoulder so the raised gun ends
+      // up beside the dome rather than across his own face.
+      // Both offsets are sized to the arm's OWN bone (armSeg = 0.143u) rather
+      // than dialled by eye. Resting: 0.085 forward by 0.115 down. Celebrating:
+      // 0.06 out by 0.13 UP, so the upper arm lifts and the gun salutes off the
+      // end of it. The old celebrate offset was 0.072u long on a 0.075u-wide
+      // limb — shorter than its own width, so it drew as a bare disc at the
+      // shoulder with no segment visible at all.
+      // Written as armSeg times a UNIT direction, not as raw offsets: the
+      // length then comes from the bone itself, so it can never drift off it
+      // again, and it follows spec.armLen for free.
+      // Resting direction pulled back from (0.59, 0.80) to (0.42, 0.91): the
+      // upper arm hangs closer to vertical and the elbow sits further behind
+      // the muzzle. Both components move together because this is a UNIT vector
+      // scaled by armSeg — drop the forward term alone and the bone shortens
+      // instead of rotating. The muzzle still clears his far edge by 0.06u.
+      const elbowX = gunX + armSeg * (cheer ? sideF * 0.42 : 0.42);
+      const elbowY = gunY + armSeg * (cheer ? -0.91 : 0.91);
+      // Celebrating, the cannon used to hold ONE welded aim for the whole 2.6s
+      // routine while his free arm did every bit of the dancing — the only
+      // hero whose victory read as a freeze-frame with a blinking light on it.
+      // It now pivots at constant barrel length: rotation, not a drifting
+      // endpoint, or the barrel telescopes as it swings. Wide on the shimmy
+      // beat (his big move, so the gun dances with the body), tighter on the
+      // signature bounce.
+      const sweep = cm && cm.move === 'shimmy'
+        ? Math.sin(cm.q * Math.PI * 8) * 0.5
+        : Math.sin(gt * 4.2) * 0.26;
+      // Resting, the barrel sits level down the TRAVEL axis — always forward,
+      // whichever shoulder carries it. Celebrating, it salutes from straight up
+      // (-PI/2) canted OUTBOARD onto the gun's own side. Stated as an offset
+      // from vertical rather than an atan2 of two magic components because the
+      // sweep has to be reasoned about in the same units: at 0.55 out, even the
+      // sweep's full +0.5 swing inboard stops a hair past vertical instead of
+      // carrying the barrel across his own face.
+      const aim = cheer ? -Math.PI / 2 + sideF * 0.55 + sweep : 0;
+      // The barrel IS his forearm, so it scales with the arm rather than
+      // sitting at a fixed length: 0.73 * armL reproduces the tuned 0.19u at
+      // the default reach and grows with spec.armLen.
+      const barrel = armL * 0.73 - recoil;
+      const muzzleX = elbowX + Math.cos(aim) * barrel;
+      const muzzleY = elbowY + Math.sin(aim) * barrel;
+      // The WHOLE limb is the weapon: one articulated gun-arm hinged at the
+      // elbow, rather than an arm that turns into a gun partway down. Grey over
+      // yellow gave the eye no edge to read the joint by on a limb of constant
+      // width — it blurred into a two-tone smear over the chest. The upper
+      // segment now takes p.arm, one step down from the barrel's p.a: enough
+      // separation to tell the segments apart, close enough that they stay one
+      // object. Falls back to p.a for any palette without the key.
+      limb(ctx, gunX, gunY, elbowX, elbowY, gunW, p.arm || p.a, ow);
+      limb(ctx, elbowX, elbowY, muzzleX, muzzleY, gunW, p.a, ow);
+      if (!lod) {
+        // Banding down the barrel, in the same translucent ink as the bore and
+        // the hinge so every mechanical mark on him is one material. The bands
+        // need no clip: the barrel is a STROKED line, so its shaft is exactly
+        // gunW across, and a perpendicular chord of that length sits flush
+        // inside its edges. Butt caps for the same reason — round ones would
+        // add half a lineWidth at each end and poke out both sides. Kept off
+        // the ends, clear of the muzzle bore and the elbow's round cap.
+        const nx = Math.cos(aim), ny = Math.sin(aim);
+        const half = gunW * 0.49;
+        ctx.save();
+        ctx.lineCap = 'butt';
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(0.6, ow * 1.3);
+        ctx.beginPath();
+        for (const f of [0.42, 0.6, 0.78]) {
+          const bx = elbowX + nx * barrel * f, by = elbowY + ny * barrel * f;
+          ctx.moveTo(bx + ny * half, by - nx * half);
+          ctx.lineTo(bx - ny * half, by + nx * half);
+        }
+        ctx.stroke();
+        ctx.restore();
       }
-      shoulderCap(shF, shoulderY);
+      // Hinge pin: the one mark that says the bend is a joint and not a kink in
+      // a bent pipe. Same translucent ink as the bore, so they read as a set.
+      if (!lod) outlined(ctx, OUTLINE, Math.max(0.5, ow * 0.4), (c) => c.arc(elbowX, elbowY, gunW * 0.34, 0, Math.PI * 2));
+      // Bore sized off the barrel, not a fixed 0.045u — at the slimmer gauge a
+      // fixed bore stood proud of the barrel it is supposed to be a hole in.
+      outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, gunW * 0.5, 0, Math.PI * 2));
+      if (cheer && !lod) {
+        // Victory salute: he empties a few rounds into the sky. The pellets are
+        // derived from the clock rather than tracked as state — three in flight
+        // at once, each a third of a cycle behind the last, so one leaves the
+        // muzzle every ~0.19s and they climb evenly spaced. Each shrinks and
+        // fades as it travels, which is what sells distance at this scale.
+        // They fly along the CURRENT aim rather than the angle they were fired
+        // at: the sweep moves slowly enough that the two differ by well under a
+        // pixel at hero size, and honouring per-shot angles would mean redoing
+        // the whole rig transform (hop, tilt, spin) once per pellet.
+        const SHOT = 0.56;
+        ctx.save();
+        for (let i = 0; i < 3; i++) {
+          const q = (gt / SHOT + i / 3) % 1;
+          const d = (0.07 + q * 0.5) * u;
+          ctx.globalAlpha = Math.max(0, 1 - q * 1.2);
+          dot(ctx, muzzleX + Math.cos(aim) * d, muzzleY + Math.sin(aim) * d, 0.03 * u * (1 - q * 0.4), p.w);
+        }
+        ctx.restore();
+        // Flash on the shot itself rather than a free-running blink, so the
+        // muzzle lights exactly when a round leaves it. It also rides the sweep
+        // instead of the fixed offset that only lined up with the old aim.
+        if ((gt / SHOT * 3) % 1 < 0.3) {
+          dot(ctx, muzzleX + Math.cos(aim) * 0.07 * u, muzzleY + Math.sin(aim) * 0.07 * u, 0.05 * u, p.a);
+        }
+      } else if (pose.menuAction === 'aim' && Math.sin(gt * 12) > 0.72) {
+        dot(ctx, muzzleX + 0.08 * u, muzzleY, 0.045 * u, p.w);
+      }
+      // NO shoulder cap on the gun-arm. The cap is a 0.065u ellipse sized for a
+      // normal arm — 1.73x this limb's own half-width — and it only disappears
+      // on body-coloured arms, where it lands inside the torso. In the gun's
+      // yellow it was simply a ball stuck on his shoulder, wider than the arm
+      // hanging off it. The limb's own round cap already closes the root at
+      // exactly the right gauge, which on a robot reads as the shoulder joint.
     } else {
-      if (armDimsF) muscleLimb(ctx, shF, shoulderY, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
-      else limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, armWF, p.b, ow);
+      if (armDimsF) muscleLimb(ctx, shF, armYF, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
+      else limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, p.b, ow, armWF, true);
       handDeco(handF[0], handF[1]);
-      shoulderCap(shF, shoulderY);
+      shoulderCap(shF, armYF);
     }
+    ctx.restore();
   };
 
   // The axe is the DEEPEST layer — slung flat on his back, so every limb
@@ -1249,17 +1713,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // throws the shoulders forward the same way); pinned to center-frame x,
     // the root slides off the shoulder in both.
     const axx = run || jump ? 0.025 * u : 0;
-    limb(ctx, axx + 0.08 * u, shoulderY + 0.12 * u, axx - 0.33 * u, shoulderY - 0.24 * u, 0.06 * u, p.w, ow);
+    // Lifted clear of the near arm: on the depth rig that arm swings up the
+    // same screen-left side the axe is slung on, and at the top of the upswing
+    // the elbow was grazing the haft.
+    const axy = shoulderY - 0.05 * u;
+    limb(ctx, axx + 0.08 * u, axy + 0.12 * u, axx - 0.33 * u, axy - 0.24 * u, 0.06 * u, p.w, ow);
     outlined(ctx, '#b8d8f0', ow, (c) => {
-      c.moveTo(axx - 0.34 * u, shoulderY - 0.3 * u);
-      c.quadraticCurveTo(axx - 0.54 * u, shoulderY - 0.16 * u, axx - 0.41 * u, shoulderY + 0.03 * u);
-      c.lineTo(axx - 0.27 * u, shoulderY - 0.04 * u);
-      c.lineTo(axx - 0.24 * u, shoulderY - 0.25 * u);
+      c.moveTo(axx - 0.34 * u, axy - 0.3 * u);
+      c.quadraticCurveTo(axx - 0.54 * u, axy - 0.16 * u, axx - 0.41 * u, axy + 0.03 * u);
+      c.lineTo(axx - 0.27 * u, axy - 0.04 * u);
+      c.lineTo(axx - 0.24 * u, axy - 0.25 * u);
       c.closePath();
     });
     if (!lod) {
       ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = Math.max(0.6, ow * 0.55);
-      ctx.beginPath(); ctx.moveTo(axx - 0.44 * u, shoulderY - 0.16 * u); ctx.lineTo(axx - 0.3 * u, shoulderY - 0.1 * u); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(axx - 0.44 * u, axy - 0.16 * u); ctx.lineTo(axx - 0.3 * u, axy - 0.1 * u); ctx.stroke();
     }
   }
 
@@ -1270,8 +1738,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // reads as clapping from behind his back.
   const clapFront = id === 'grumpos' && pose.kind === 'celebrate';
   if (!clapFront) {
-    if (armDimsB) muscleLimb(ctx, shB, shoulderY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
-    else limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, armWB, p.b, ow);
+    // B33P needs no special case here any more. With the cannon moved onto the
+    // NEAR shoulder it is simply the front arm, drawn in the front pass like
+    // everyone else's; his far shoulder carries an ordinary arm on the ordinary
+    // target. The old arrangement — gun on the far shoulder but painted in
+    // front — forced the free arm to be re-rooted onto the near side with a
+    // borrowed swing, which is the tangle this replaces.
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, p.b, ow, armWB, true);
     handDeco(handB[0], handB[1]);
     // The cannon is mounted ordnance, not a mirrored arm — behind the torso
     // its barrel vanishes into the helmet, so it always draws in front.
@@ -1279,7 +1753,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
   limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, p.p, ow);
   outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
-  if (stand) drawFrontLeg();
+  if (frontLegs) drawFrontLeg();
 
   // Grumpos needs an actual pelvis between torso and thighs. Previously each
   // leg simply ended at an independent point inside the belly; the skirt hid
@@ -1309,7 +1783,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 
   // torso
-  const torsoBot = hipY + 0.05 * u;
   const torsoPath = turned
     ? (c) => turnedTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf, turnYaw)
     : spec.taper
@@ -1401,15 +1874,27 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // at the tattooed shoulder and returning to that side at the waist.
     ctx.strokeStyle = p.a;
     ctx.lineWidth = Math.max(1.4, headR * 0.29);
+    // Same side as the face streak — they are one continuous marking.
+    const ts = spec.tatSide ?? -1;
+    // Paint is on the skin, so every point of the stripe rides the run bob as
+    // one piece. torsoTop already carries it; hipY does not, so measure the
+    // lower half against a bobbed hip line (same trick as the belt and hem
+    // below). Rooted at bobbing torsoTop with a tail pinned to static hipY the
+    // stroke stretched a tenth of its length each stride and its gap to the
+    // belt pumped open and shut — the mark appeared to bounce on his ribs.
+    const hipYb = hipY + bob;
     ctx.beginPath();
-    ctx.moveTo(px - torsoHalf * 0.78, torsoTop);
-    const paintEndY = hipY - 0.12 * u;
-    const paintEndX = px - 1.02 * (spec.taper
+    ctx.moveTo(px + ts * torsoHalf * 0.78, torsoTop);
+    // Ends CLEAR of the belt, not tucked behind it. At 0.12 the stroke's lower
+    // edge crossed the belt's top rim by 0.01u, so the paint appeared to run
+    // under the leather instead of stopping on the ribs above it.
+    const paintEndY = hipYb - 0.16 * u;
+    const paintEndX = px + ts * 1.02 * (spec.taper
       ? taperHalfAt(paintEndY, torsoTop, torsoBot, torsoHalf, waistHalf)
       : torsoHalf);
     ctx.bezierCurveTo(
-      px + torsoHalf * 0.12, torsoTop + (hipY - torsoTop) * 0.3,
-      px + torsoHalf * 0.02, torsoTop + (hipY - torsoTop) * 0.7,
+      px - ts * torsoHalf * 0.12, torsoTop + (hipYb - torsoTop) * 0.3,
+      px - ts * torsoHalf * 0.02, torsoTop + (hipYb - torsoTop) * 0.7,
       paintEndX, paintEndY);
     ctx.stroke();
     ctx.restore();
@@ -1443,6 +1928,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.stroke();
     ctx.restore();
   }
+  // Filled in by the straps block below when the near arm roots on top of the
+  // near suspender; run after drawFrontArm() so the strap crosses the shoulder.
+  let strapOverArm = null;
   if (spec.straps && !lod && !duck) {
     // Straps and belt track the torso's run-lean shift (leanX * 0.5), else
     // they drift off-center whenever the body leans forward.
@@ -1457,15 +1945,33 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // inward. Stubs that stop at the collarbone read as epaulettes, not straps.
     // Clipped to the torso — the shoulder ends land in the rounded corners,
     // where the stroke would otherwise hang off the side of the body.
-    ctx.save();
-    ctx.beginPath(); torsoPath(ctx); ctx.clip();
-    ctx.strokeStyle = p.p;
-    ctx.lineWidth = 0.045 * u;
-    ctx.beginPath();
-    ctx.moveTo(px - torsoHalf * 0.5, torsoTop + 0.01 * u); ctx.lineTo(px - torsoHalf * 0.34, beltY);
-    ctx.moveTo(px + torsoHalf * 0.5, torsoTop + 0.01 * u); ctx.lineTo(px + torsoHalf * 0.34, beltY);
-    ctx.stroke();
-    ctx.restore();
+    const strapTopY = torsoTop + 0.01 * u;
+    const strapTopX = (s) => px + s * torsoHalf * 0.5;
+    const strapBotX = (s) => px + s * torsoHalf * 0.34;
+    const strapStroke = (s, endY) => {
+      ctx.save();
+      ctx.beginPath(); torsoPath(ctx); ctx.clip();
+      ctx.strokeStyle = p.p;
+      ctx.lineWidth = 0.045 * u;
+      ctx.beginPath();
+      for (const sg of s) {
+        const t = (endY - strapTopY) / (beltY - strapTopY);
+        ctx.moveTo(strapTopX(sg), strapTopY);
+        ctx.lineTo(strapTopX(sg) + (strapBotX(sg) - strapTopX(sg)) * t, endY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    };
+    strapStroke([-1, 1], beltY);
+    // A suspender passes OVER the shoulder — the arm hangs outboard of it. The
+    // profile gaits root the near arm at ~0.69 of the half-width, and a 0.075u
+    // bone plus its outline reaches back in past 0.5, so the shoulder cap lands
+    // square on the near strap's top end and swallows it: he ran the whole
+    // cycle with one suspender that started at the ribs. Re-stroke just that
+    // end after the arm is painted, down to where the cap stops (armY + a
+    // shoulder's worth). Below that the bicep genuinely IS in front of the bib
+    // and still occludes, which is what a strap under a swinging arm should do.
+    if (!stand) strapOverArm = () => strapStroke([sideF], armY + 0.05 * u);
     ctx.strokeStyle = p.m; ctx.lineWidth = 0.055 * u;
     ctx.beginPath(); ctx.moveTo(px - torsoHalf * 0.88, beltY); ctx.lineTo(px + torsoHalf * 0.88, beltY); ctx.stroke();
     outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => roundRectPath(c, px - 0.035 * u, beltY - 0.033 * u, 0.07 * u, 0.06 * u, 0.012 * u));
@@ -1474,9 +1980,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.w, Math.max(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
   }
 
-  // front limbs — in profile (run/jump/duck) the near leg and arm cross the
-  // body, so they paint over the torso; front-on they already drew behind it
-  if (!stand) drawFrontLeg();
+  // front limbs — in profile (run/jump) the near leg and arm cross the body, so
+  // they paint over the torso; front-on they already drew behind it
+  if (!frontLegs) drawFrontLeg();
   if (id === 'grumpos' && !pose.hideSkirt) {
     // Battle skirt (pteruges): belt-width at the waist, flaring OUT to a
     // wider hem, split into hanging panels by strip lines. The hem is driven
@@ -1515,7 +2021,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // standing and celebrating poses need a real A-line or his legs show past
     // the leather. In profile the legs are behind it and a tighter hang reads
     // better. Fanned wider than this the straps stop overlapping.
-    const flare = stand || cm ? 1.5 : 1.18;
+    const flare = frontLegs || cm ? 1.5 : 1.18;
     const wHem = wTop * flare;
     // How far each leg has swung from its OWN hip — not from the body center,
     // which reads as a permanent outward pull when the legs stand apart and
@@ -1630,7 +2136,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const sway = jump ? 0.02 * u : 0;
     const beltY = hipY - 0.05 * u + bob;
     const top = beltY + 0.02 * u;
-    const hemY = hipY + legL * 0.5 + bob * 0.5;
+    const hemY = hipY + legL * 0.36 + bob * 0.5;
     const wTop = torsoHalf * 0.96;
     const wHem = torsoHalf * 1.3;
     outlined(ctx, p.b, ow, (c) => {
@@ -1658,6 +2164,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
   if (!clapFront && (!stand || spec.cannon)) {
     drawFrontArm();
+    if (strapOverArm) strapOverArm();
   }
 
   // head (or the stump of one)
@@ -1674,7 +2181,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // both fists up beside the face, and drawn before the head they slide
   // behind the beard — hands vanishing behind his own neck mid-pose.
   if (clapFront) {
-    muscleLimb(ctx, shB, shoulderY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+    muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
     handDeco(handB[0], handB[1]);
     drawFrontArm();
   }
@@ -1875,11 +2382,22 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
       const tipX = baseX + lean + side * 0.06 * u;
       const tipY = baseY - earLen - wob;
       const halfBase = 0.11 * u, halfTip = 0.075 * u;
+      // The base corners have to meet a DOME, not a flat line. Both used to sit
+      // at one shared y: fine for the inner corner, which lands well inside the
+      // head, but the outer one is a whole halfBase further out, where the
+      // ellipse has already fallen away — it hung ~0.054u clear of the skull, so
+      // the ear's own bottom outline drew across open air and the whole ear read
+      // as floating beside the head. Each corner now sinks to whichever is
+      // deeper: the old flat base, or the head's edge at that x plus a bite of
+      // overlap. The body paints over the ears, so the joint closes invisibly.
+      const headTopAt = (x) => cy - ry * Math.sqrt(Math.max(0, 1 - (x / rx) ** 2));
+      const rootY = (x) => Math.max(baseY + 0.02 * u, headTopAt(x) + 0.035 * u);
+      const innerX = baseX - side * halfBase, outerX = baseX + side * halfBase;
       const earPath = (c) => {
-        c.moveTo(baseX - side * halfBase, baseY + 0.02 * u);
+        c.moveTo(innerX, rootY(innerX));
         c.quadraticCurveTo(baseX + lean * 0.3 - side * halfTip, (baseY + tipY) / 2, tipX - side * halfTip, tipY + 0.03 * u);
         c.quadraticCurveTo(tipX + side * 0.005 * u, tipY - 0.07 * u, tipX + side * halfTip, tipY + 0.03 * u);
-        c.quadraticCurveTo(baseX + lean * 0.5 + side * halfTip, (baseY + tipY) / 2, baseX + side * halfBase, baseY + 0.02 * u);
+        c.quadraticCurveTo(baseX + lean * 0.5 + side * halfTip, (baseY + tipY) / 2, outerX, rootY(outerX));
         c.closePath();
       };
       outlined(ctx, p.b, ow, earPath);

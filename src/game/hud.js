@@ -410,10 +410,10 @@ export function drawHud(ctx, run) {
   // player went to the gauges, which are read continuously.
   //
   // Right-anchored, so the panels grow leftward into empty sky as the text gets
-  // longer instead of pushing off the screen edge. Touch play parks the pause/
-  // mute/escape row in this same corner (run.js setButtons), so the anchor
-  // pulls in to clear them instead of drawing text underneath the buttons.
-  const OBJ_R = W - 8 - (Input.usingTouch ? 58 : 0);
+  // longer instead of pushing off the screen edge. Touch play parks the ESC
+  // button in this same corner (run.js setButtons), so the anchor pulls in to
+  // clear it instead of drawing text underneath the button.
+  const OBJ_R = W - 8 - (Input.usingTouch ? 66 : 0);
   const objective = (tag, tagColor, text, ink, y, scale) => {
     const TP = 5, GAP = 5;
     const h = scale < 1 ? 12 : 14;
@@ -484,43 +484,42 @@ export function drawHud(ctx, run) {
 
   // Touch buttons. Rounded and edged like every other panel — square-cornered
   // rects were the last thing on screen still drawn in the old language.
+  // Global buttons (ESC) render once, shared, in states.js's drawState —
+  // skipped here so they don't draw twice.
   for (const b of Input.buttons) {
-    if (b.id === 'pause' || b.id === 'mute' || b.id === 'escape') {
-      rawDrawText(ctx, b.label, b.x + 4, b.y + 3, '#8a8a98');
-    } else {
-      // A banked charge overrides the cooldown fill: the button reads gold and
-      // full, because it is usable right now.
-      const charged = b.id === 'ability' && run.player.relayCharge;
-      const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
-      const R = 5;
-      ctx.save();
-      platePath(ctx, b.x, b.y, b.w, b.h, R);
-      ctx.fillStyle = charged ? 'rgba(246,211,60,0.28)' : cd > 0 ? 'rgba(50,50,64,0.4)' : 'rgba(72,224,200,0.15)';
-      ctx.fill();
-      if (cd > 0) {
-        // Recharge rises from the bottom of the button — no ticking number,
-        // just a level. It has to read against the level art behind it (any
-        // colour, any brightness), so the fill leans on contrast with its own
-        // dark base above rather than on the background: a bright meniscus at
-        // the waterline reads the level at a glance even when the flood fill
-        // alone would not.
-        const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
-        const fh = Math.round(b.h * Math.max(0, Math.min(1, 1 - cd / maxCd)));
-        ctx.clip();
-        ctx.fillStyle = 'rgba(72,224,200,0.55)';
-        ctx.fillRect(b.x, b.y + b.h - fh, b.w, fh);
-        ctx.fillStyle = 'rgba(184,248,232,0.95)';
-        ctx.fillRect(b.x, b.y + b.h - fh, b.w, 1.5);
-      }
-      ctx.restore();
-      ctx.save();
-      ctx.lineWidth = 0.8;
-      ctx.strokeStyle = charged ? 'rgba(246,211,60,0.9)' : 'rgba(72,224,200,0.5)';
-      platePath(ctx, b.x + 0.4, b.y + 0.4, b.w - 0.8, b.h - 0.8, R);
-      ctx.stroke();
-      ctx.restore();
-      rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, charged ? '#f6d33c' : '#48e0c8');
+    if (b.global) continue;
+    // A banked charge overrides the cooldown fill: the button reads gold and
+    // full, because it is usable right now.
+    const charged = b.id === 'ability' && run.player.relayCharge;
+    const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
+    const R = 5;
+    ctx.save();
+    platePath(ctx, b.x, b.y, b.w, b.h, R);
+    ctx.fillStyle = charged ? 'rgba(246,211,60,0.28)' : cd > 0 ? 'rgba(50,50,64,0.4)' : 'rgba(72,224,200,0.15)';
+    ctx.fill();
+    if (cd > 0) {
+      // Recharge rises from the bottom of the button — no ticking number,
+      // just a level. It has to read against the level art behind it (any
+      // colour, any brightness), so the fill leans on contrast with its own
+      // dark base above rather than on the background: a bright meniscus at
+      // the waterline reads the level at a glance even when the flood fill
+      // alone would not.
+      const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
+      const fh = Math.round(b.h * Math.max(0, Math.min(1, 1 - cd / maxCd)));
+      ctx.clip();
+      ctx.fillStyle = 'rgba(72,224,200,0.55)';
+      ctx.fillRect(b.x, b.y + b.h - fh, b.w, fh);
+      ctx.fillStyle = 'rgba(184,248,232,0.95)';
+      ctx.fillRect(b.x, b.y + b.h - fh, b.w, 1.5);
     }
+    ctx.restore();
+    ctx.save();
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = charged ? 'rgba(246,211,60,0.9)' : 'rgba(72,224,200,0.5)';
+    platePath(ctx, b.x + 0.4, b.y + 0.4, b.w - 0.8, b.h - 0.8, R);
+    ctx.stroke();
+    ctx.restore();
+    rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, charged ? '#f6d33c' : '#48e0c8');
   }
 }
 
