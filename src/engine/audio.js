@@ -5,7 +5,7 @@
 // at the same nominal gain. These trims keep their perceived peaks close to the
 // everyday jump/coin/UI family while preserving their internal balance.
 const SFX_TRIM = {
-  blockBreak: 0.58, boom: 0.68, coinSpray: 0.7, hit: 0.74,
+  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // A tail layer, not an event: it should colour the break, never top it.
@@ -14,6 +14,9 @@ const SFX_TRIM = {
   // so they are the body of the sound while those two carry the tone. First
   // pass was mixed as background texture and read as too faint.
   fizzUp: 0.75, popSmall: 0.95, popBig: 0.9, crackle: 0.85,
+  // The title asteroid's blast needs room for the music: heavy underneath,
+  // but not a peak that dominates the menu.
+  boom: 0.36,
   // Miss Chomp's coin bite. Measured against 'coin': it peaks ~5dB hotter at
   // the same nominal gain (the resonant lowpass), but the real problem was
   // sustain — it holds its peak where 'coin' is a fast-decaying blip, putting
@@ -166,6 +169,41 @@ class AudioSys {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f); f.connect(g); g.connect(this.sfxGain);
     src.start(t); src.stop(t + dur + 0.02);
+  }
+
+  explosion() {
+    if (!this.ctx || !this.crashBuf) return;
+    const t = this.ctx.currentTime;
+    const q = this.cueGain;
+    // Use the dedicated long noise buffer so the blast has a continuous body,
+    // rather than looping the short SFX buffer and sounding like a snare roll.
+    const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
+    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 70;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(7200, t);
+    lp.frequency.exponentialRampToValueAtTime(420, t + 1.45);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.36 * q, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.17 * q, t + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.08 * q, t + 0.72);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+    // A quiet send into the arcade echo makes the blast occupy the room, while
+    // the dry SFX path stays restrained enough not to jump over the title music.
+    const echo = this.ctx.createGain(); echo.gain.value = 0.14;
+    g.connect(echo); echo.connect(this.echoBus);
+    src.start(t); src.stop(t + 1.55);
+
+    // The front edge is bright and sharp; the long filtered buffer carries the
+    // expanding cloud while these layers provide the punch and falling rumble.
+    this.noise(0.16, 0.26, 'highpass', 2400);
+    this.osc('sine', 125, 22, 1.4, 0.42, 0.02);
+    this.osc('triangle', 68, 26, 1.2, 0.25, 0.05);
+    this.noise(1.05, 0.14, 'lowpass', 240, 0.04);
+    for (const [when, freq, gain] of [[0.18, 1800, 0.13], [0.38, 1250, 0.1], [0.64, 820, 0.075], [0.91, 520, 0.05]]) {
+      this.noise(0.16, gain, 'bandpass', freq, when);
+    }
   }
 
   // The title sign shorting out.
@@ -417,7 +455,7 @@ class AudioSys {
       case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.osc('square', f, f, 0.11, 0.14, i * 0.09)); break;
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
-      case 'boom': this.noise(0.5, 0.3, 'lowpass', 300); this.osc('sine', 100, 30, 0.5, 0.3); break;
+      case 'boom': this.explosion(); break;
       // ---- Fireworks. Three burst shapes so a long results screen never
       // repeats the same crack twice in a row; the caller also detunes each.
       // The mortar going up: air, not tone. Rising sine underneath it only to
@@ -451,6 +489,9 @@ class AudioSys {
   // clap:[...]} arrays of 32 steps (2 bars of 16ths); melodic values are
   // frequency or null, percussion is boolean. Loops with A/B lead.
   setBank(bank) {
+    // Re-selecting the current bank is common when returning to a menu. Keep
+    // its phase intact; only a real bank change should restart the sequencer.
+    if (this.bank === bank) return;
     this.bank = bank;
     this.step = 0; // songs start from the top (section order matters now)
     if (bank && bank.bpm) {

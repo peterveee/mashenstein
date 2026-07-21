@@ -154,10 +154,43 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
       // The victory routine hops/spins up to ~0.26*HH above standing, so its
-      // tile is taller; the feet baseline keeps the same bottom padding.
-      const th = kind === 'celebrate' ? HH * 1.5 : HH * 1.15;
+      // tile is taller; the feet baseline keeps the same bottom padding. The
+      // standing tile clears 1.3*HH so the tallest hero's gear (grumpos's axe
+      // rides ~1.25 above his feet) isn't cropped at the tile's top edge.
+      const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
       tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
         drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+      }, { animated: true });
+    }
+  }
+}
+
+// ------------------------------------------------- 2a. grumpos build lab
+{
+  // Torso-shape options for grumpos: heavy alone reads as belly, so these
+  // trade barrel width for an inverted taper, deltoid caps and chest shading.
+  // Each tile temporarily swaps TOON_SPECS.grumpos around its own draw — the
+  // spec is the only thing that varies, so the comparison is honest.
+  const BUILDS = [
+    ['A · barrel', 'no taper — the pre-change baseline', { taper: 1 }],
+    ['B · mild taper', 'waist 0.82 of the shoulders — SHIPPING', {}],
+    ['C · hard taper', 'waist 0.68 — full V', { taper: 0.68 }],
+    ['D · taper + delts', 'C plus deltoid caps', { taper: 0.68, delts: true }],
+    ['E · the works', 'D plus pec/sternum shading', { taper: 0.68, delts: true, pecs: true }],
+    ['F · wide + hard V', 'shoulders +12%, waist 0.62 of that', { shoulders: 1.12, taper: 0.62, delts: true, pecs: true }],
+  ];
+  const grid = section('grumpos-build', 'Grumpos — build lab',
+    'Torso silhouette options, idle and run side by side. Display-only: the shipping '
+    + 'look is whatever TOON_SPECS.grumpos carries in src/sprites/toons.js.');
+  const HH = 60;
+  const base = { ...TOON_SPECS.grumpos };
+  for (const [name, note, mods] of BUILDS) {
+    for (const kind of ['idle', 'run']) {
+      const th = HH * 1.15;
+      tile(grid, name, `${kind} · ${note}`, HH * 0.9, th, (ctx, t) => {
+        TOON_SPECS.grumpos = { ...base, ...mods };
+        drawToon(ctx, 'grumpos', pose(kind, t), (HH * 0.9) / 2, th - HH * 0.05, HH);
+        TOON_SPECS.grumpos = base;
       }, { animated: true });
     }
   }
@@ -503,7 +536,12 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Poke at tiles from the devtools console: __gallery.tiles[0].stack, repaint(), etc.
-window.__gallery = { tiles, paint, get errors() { return tiles.filter((t) => t.stack); } };
+// drawToon/TOON_SPECS ride along for silhouette measuring: every tile crops at
+// its own height, so "how tall is this hero really?" needs a scratch canvas.
+window.__gallery = {
+  tiles, paint, drawToon, TOON_SPECS, HERO_DRAW_H,
+  get errors() { return tiles.filter((t) => t.stack); },
+};
 
 // ---------------------------------------------------------------- controls
 function applyZoom() {

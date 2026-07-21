@@ -26,3 +26,4 @@ Do not edit by hand.
 | 2026-07-21 | `c0543fa` | [2026-07-21-c0543fa.html](2026-07-21-c0543fa.html) | Add briefing manifest and story beats tests |
 | 2026-07-21 | `c371e76` | [2026-07-21-c371e76.html](2026-07-21-c371e76.html) | feat: enhance menus and HUD with formatted coin display and new file options |
 | 2026-07-21 | `8a976e8` | [2026-07-21-8a976e8.html](2026-07-21-8a976e8.html) | Refactor code structure for improved readability and maintainability |
+| 2026-07-21 | `9335ccc` | [2026-07-21-9335ccc.html](2026-07-21-9335ccc.html) | Gallery/Game version |

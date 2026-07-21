@@ -87,21 +87,43 @@ const INVADER_FRAMES = [
   ['..#.....#..', '#..#...#..#', '#.#######.#', '###.###.###',
    '###########', '.#########.', '..#.....#..', '.#.......#.'],
 ];
-// It keeps to the very top of the sky, well clear of the logo, and on every
-// other pass it drops a bolt on whoever happens to be walking underneath.
+// It keeps to the very top of the sky, well clear of the logo. Every other
+// pass is armed, and an armed pass drops a short little spread of bombs.
 // Everything below is a pure function of the clock: no state to keep in sync.
 const INV_FIRST = 24;      // the sky stays empty for the first half-minute
 const INV_PERIOD = 46;     // ...and between fly-bys after that
-const INV_CROSS = 9;       // seconds to cross
-const INV_DROP_P = 0.42;   // fly-by progress at which the bolt is released
+const INV_CROSS = 11;      // slower than the hero parade, so targets change
+// Spread the three releases across the fly-by. The middle one is a harmless
+// near miss; the first and last are the only bombs allowed to connect.
+const INV_DROP_PS = [0.10, 0.45, 0.80];
 const INV_SPAN = W + 44;
 const BOLT_G = 260;        // px/s^2
 const BOLT_HEAD_Y = 238;   // where the parade's heads are
 const KNOCK_T = 1.9;       // how long a clobbered hero stays airborne
+const INV_HIT_RADIUS = 38;
+const PARADE_EDGE_FADE = 32;
+const HERO_PARADE_SPEED = 42;
+const HERO_PARADE_SPAN = W + 140;
+const HERO_PARADE_DELAY = 3.5;
+const HERO_ENTRY_GAP = 66 / HERO_PARADE_SPEED;
+const HERO_ENTRY_JUMP_T = 2.1;
+const HERO_ENTRY_JUMP_H = 30;
+const HERO_ENTRY_ZOOM = 1.35;
 
 const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * INV_SPAN);
 const invY = (trip, t) => 7 + (trip % 3) * 4 + Math.sin(t * 2.3) * 1.6;
-const heroX = (i, t) => ((t * 42 + i * 66) % (W + 140)) - 70;
+const heroX = (i, t) => {
+  const local = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+  return local < 0 ? -70 : ((local * HERO_PARADE_SPEED) % HERO_PARADE_SPAN) - 70;
+};
+function paradeEdgeAlpha(x) {
+  // Let each hero leave fully before the modulo wrap puts them back at the
+  // left. This avoids a hard clipped pop when the toon or its accent is still
+  // partly visible at either edge of the title screen.
+  const entering = Math.max(0, Math.min(1, (x + PARADE_EDGE_FADE) / PARADE_EDGE_FADE));
+  const leaving = Math.max(0, Math.min(1, (W + PARADE_EDGE_FADE - x) / PARADE_EDGE_FADE));
+  return Math.min(entering, leaving);
+}
 
 // Rare, legally-distinct maze-wisp cameos. They share the heroes' floor line
 // but are visitors rather than roster members: a small gang crosses once, then
@@ -202,24 +224,66 @@ function invaderPass(t) {
   return p <= 1 ? { trip, p } : null;
 }
 
-// The bolt for the current pass, plus who it lands on. Every other trip only,
-// so the gag stays rare enough to be a surprise.
-function invaderStrike(t) {
+function invaderBombsForTrip(trip) {
+  if (trip < 0 || trip % 2 !== 0) return [];
+  const bombs = [];
+  const claimedVictims = new Set();
+  let hitCount = 0;
+  for (const [dropIndex, dropP] of INV_DROP_PS.entries()) {
+    const tDrop = INV_FIRST + trip * INV_PERIOD + dropP * INV_CROSS;
+    const x = invX(trip, dropP) + 5;
+    const y0 = invY(trip, tDrop) + 8;
+    const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
+    // A bomb landing within the hero's sprite width counts as a clobber. The
+    // slightly generous radius makes the hit legible at the title's small scale.
+    let victim = -1;
+    if (dropIndex !== 1) {
+      let best = INV_HIT_RADIUS;
+      for (let i = 0; i < HERO_PARADE.length; i++) {
+        if (claimedVictims.has(i)) continue;
+        const d = Math.abs(heroX(i, tHit) - x);
+        if (d < best) { best = d; victim = i; }
+      }
+    }
+    if (victim >= 0 && hitCount >= 2) victim = -1;
+    else if (victim >= 0) { hitCount++; claimedVictims.add(victim); }
+    // Once the knockback has carried the hero away, their next scheduled
+    // parade wrap is the first fair moment to let them rejoin the line.
+    const phase = victim < 0 ? 0 : heroX(victim, tHit) + 70;
+    const returnAt = victim < 0 ? Infinity : tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
+    bombs.push({ id: `${trip}:${dropP}`, tDrop, x, y0, tHit, victim, returnAt, dir: trip % 2 === 0 ? 1 : -1 });
+  }
+  return bombs;
+}
+
+// The active bombs for the current pass, plus who each one lands on. Every
+// other trip is armed, giving the fly-by an exact 50% attack rate.
+function invaderStrikes(t) {
   const pass = invaderPass(t);
   if (!pass || pass.trip % 2 !== 0) return null;
-  const tDrop = INV_FIRST + pass.trip * INV_PERIOD + INV_DROP_P * INV_CROSS;
-  if (t < tDrop) return null;
-  const x = invX(pass.trip, INV_DROP_P) + 5;
-  const y0 = invY(pass.trip, tDrop) + 8;
-  const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
-  if (t < tHit) return { x, y: y0 + 0.5 * BOLT_G * (t - tDrop) * (t - tDrop), tHit };
-  // landed: nearest hero within arm's reach takes it, otherwise it just fizzles
-  let victim = -1, best = 26;
-  for (let i = 0; i < HERO_PARADE.length; i++) {
-    const d = Math.abs(heroX(i, tHit) - x);
-    if (d < best) { best = d; victim = i; }
+  const strikes = [];
+  for (const bomb of invaderBombsForTrip(pass.trip)) {
+    if (t < bomb.tDrop || t > bomb.tHit + KNOCK_T) continue;
+    if (t < bomb.tHit) {
+      strikes.push({ id: bomb.id, x: bomb.x, y: bomb.y0 + 0.5 * BOLT_G * (t - bomb.tDrop) * (t - bomb.tDrop), tHit: bomb.tHit });
+    } else {
+      strikes.push({ id: bomb.id, x: bomb.x, y: BOLT_HEAD_Y, tHit: bomb.tHit, kt: t - bomb.tHit, victim: bomb.victim, dir: bomb.dir });
+    }
   }
-  return { x, y: BOLT_HEAD_Y, tHit, kt: t - tHit, victim, dir: pass.trip % 2 === 0 ? 1 : -1 };
+  return strikes.length ? strikes : null;
+}
+
+function heroIsKnockedOut(i, t) {
+  const latestTrip = Math.floor((t - INV_FIRST) / INV_PERIOD);
+  if (latestTrip < 0) return false;
+  // A knockback lasts less than one fly-by period, so the current and previous
+  // attack passes cover every possible return window.
+  for (let trip = Math.max(0, latestTrip - 1); trip <= latestTrip; trip++) {
+    for (const bomb of invaderBombsForTrip(trip)) {
+      if (bomb.victim === i && t >= bomb.tHit && t < bomb.returnAt) return true;
+    }
+  }
+  return false;
 }
 
 function drawInvader(ctx, t) {
@@ -238,24 +302,62 @@ function drawInvader(ctx, t) {
 
 // The bolt itself: the classic wiggling bar, then a flat little starburst
 // where it lands.
-function drawBolt(ctx, t, strike) {
-  if (!strike) return;
-  if (strike.kt === undefined) {
-    ctx.fillStyle = '#fff6a8';
-    for (let r = 0; r < 5; r++) {
-      ctx.fillRect(Math.round(strike.x + Math.sin(t * 22 + r * 1.6)), Math.round(strike.y) + r, 1, 1);
+function drawBolt(ctx, t, strikes) {
+  if (!strikes) return;
+  for (const strike of strikes) {
+    if (strike.kt === undefined) {
+      const x = Math.round(strike.x + Math.sin(t * 22) * 0.5);
+      const y = Math.round(strike.y);
+      // A tiny, plain projectile keeps the homage closer to the original
+      // Space Invaders drop. The contact effect supplies the visual punch.
+      ctx.fillStyle = '#fff6a8';
+      ctx.fillRect(x, y, 1, 5);
+      continue;
     }
-    return;
+    if (strike.kt > 0.32) continue;
+    const p = strike.kt / 0.32;
+    ctx.globalAlpha = 1 - p;
+    ctx.fillStyle = '#fff6a8';
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.fillRect(Math.round(strike.x + Math.cos(a) * (3 + p * 12)), Math.round(strike.y + Math.sin(a) * (2 + p * 8)), 2, 2);
+    }
+    ctx.globalAlpha = 1;
   }
-  if (strike.kt > 0.32) return;
-  const p = strike.kt / 0.32;
-  ctx.globalAlpha = 1 - p;
-  ctx.fillStyle = '#fff6a8';
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    ctx.fillRect(Math.round(strike.x + Math.cos(a) * (3 + p * 12)), Math.round(strike.y + Math.sin(a) * (2 + p * 8)), 2, 2);
+}
+
+function drawInvaderImpact(ctx, strikes) {
+  if (!strikes) return;
+  for (const strike of strikes) {
+    if (strike.kt === undefined || strike.victim < 0 || strike.kt >= 0.72) continue;
+    const age = strike.kt;
+    const ringP = Math.min(1, age / 0.42);
+    const fade = Math.max(0, 1 - age / 0.72);
+    const x = Math.round(strike.x);
+    const y = BOLT_HEAD_Y;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // A hot square core and a widening pixel ring sell contact even when the
+    // hero immediately spins away from the impact point.
+    ctx.fillStyle = '#fffbe0';
+    ctx.fillRect(x - 3, y - 3, 6, 6);
+    ctx.fillStyle = '#f6d33c';
+    ctx.fillRect(x - 5, y - 1, 10, 2);
+    ctx.fillRect(x - 1, y - 5, 2, 10);
+    ctx.strokeStyle = '#ff8b52';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, 4 + ringP * 13, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4 + strike.victim * 0.37;
+      const inner = 5 + ringP * 4;
+      const outer = inner + 3 + ringP * 5;
+      ctx.fillStyle = i % 2 ? '#ff8b52' : '#fffbe0';
+      ctx.fillRect(Math.round(x + Math.cos(a) * inner), Math.round(y + Math.sin(a) * outer), 2, 2);
+    }
+    ctx.restore();
   }
-  ctx.globalAlpha = 1;
 }
 
 function titleScene(ctx, t, reduced) {
@@ -323,29 +425,36 @@ function titleScene(ctx, t, reduced) {
 
   // The cast still crosses the arcade, but each hero occasionally breaks into
   // a small personality beat. Cycles are offset so the parade stays readable.
-  const strike = reduced ? null : invaderStrike(t);
-  drawBolt(ctx, t, strike);
+  const strikes = reduced ? null : invaderStrikes(t);
+  drawBolt(ctx, t, strikes);
   drawMazeWispCameo(ctx, t, reduced);
   for (let i = 0; i < HERO_PARADE.length; i++) {
     const hx = heroX(i, t);
     const id = HERO_PARADE[i];
     // Clobbered: launched into a spin and tumbled off the side of the screen,
     // fading out before the parade loop would have wrapped them around.
-    if (strike && strike.victim === i && strike.kt < KNOCK_T) {
+    const strike = strikes?.find((candidate) => candidate.victim === i && candidate.kt < KNOCK_T);
+    if (strike) {
       const kt = strike.kt;
       const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
       const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
+      const knockScale = 1 + Math.min(0.8, kt * 0.42);
       ctx.save();
-      ctx.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5);
-      ctx.translate(kx, ky - 13);
+      ctx.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5) * paradeEdgeAlpha(kx);
+      // Keep the feet at the throw point while the body grows toward the
+      // viewer, like the hero is being flung out of the title screen.
+      ctx.translate(kx, ky);
       ctx.rotate(strike.dir * kt * 7);
-      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 13, 26);
+      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, 26 * knockScale);
       ctx.restore();
       continue;
     }
+    if (heroIsKnockedOut(i, t)) continue;
     const actionLength = 1.35;
     const beat = (t + i * 0.71) % 4.9;
-    const acting = !reduced && beat < actionLength;
+    const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+    const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
+    const acting = !reduced && !entering && beat < actionLength;
     const actionP = acting ? beat / actionLength : 0;
     const lift = acting ? Math.sin(actionP * Math.PI) : 0;
     const pose = {
@@ -353,6 +462,13 @@ function titleScene(ctx, t, reduced) {
       phase: (t * 1.5 + i * 0.37) % 1,
     };
     let feetY = 268;
+    if (entering) {
+      const landing = entryT / HERO_ENTRY_JUMP_T;
+      // Keep the gait moving during the airborne part so this reads as a
+      // running leap into the arcade, not a frozen sprite sliding in.
+      pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
+      feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
+    }
     if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3; }
     if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7; }
     if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
@@ -361,9 +477,16 @@ function titleScene(ctx, t, reduced) {
     if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2; }
     if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
     if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
-    drawToon(ctx, id, pose, hx, feetY, 26);
+    const edgeAlpha = paradeEdgeAlpha(hx);
+    if (edgeAlpha <= 0) continue;
+    const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * HERO_ENTRY_ZOOM : 1;
+    ctx.save();
+    ctx.globalAlpha *= edgeAlpha;
+    drawToon(ctx, id, pose, hx, feetY, 26 * entryZoom);
     if (acting) drawParadeAccent(ctx, id, hx, feetY, actionP);
+    ctx.restore();
   }
+  drawInvaderImpact(ctx, strikes);
 
   // The marquee: MASHENSTEIN in warm cartoon gold, outlined, stitched together
   // out of parts, and wired to a sign that has seen better decades. It stutters
@@ -562,9 +685,13 @@ export class TitleState {
     this.lastCometCycle = -1;
     this.wasDark = false;
     this.lastBuzzCycle = -1;
+    this.hitBombs = new Set();
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
-    Audio.setBank(TITLE_THEME);
+    // Returning from settings, help, or another title-side screen should not
+    // rewind a title theme that is already playing. Other screens replace the
+    // bank, so this still starts the theme normally after gameplay or jukebox.
+    if (Audio.bank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
     Input.setMenuButtons();
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
@@ -637,6 +764,16 @@ export class TitleState {
   }
   update(dt) {
     this.t += dt;
+    if (!this.save.settings.reducedFlashing) {
+      for (const strike of invaderStrikes(this.t) || []) {
+        // The strike is present for the knockback window, so use its age to
+        // edge-trigger the sound on the first frame after contact.
+        if (strike.victim >= 0 && strike.kt >= 0 && strike.kt < dt + 0.02 && !this.hitBombs.has(strike.id)) {
+          this.hitBombs.add(strike.id);
+          Audio.sfx('boom');
+        }
+      }
+    }
     const cometCycle = Math.floor(this.t / 6.5);
     const cometPhase = this.t - cometCycle * 6.5;
     if (!this.save.settings.reducedFlashing && cometPhase >= 0.4 && this.lastCometCycle !== cometCycle && shaderHash21(cometCycle, 3) >= 0.55) {

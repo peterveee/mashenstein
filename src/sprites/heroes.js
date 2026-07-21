@@ -269,7 +269,10 @@ gary.duck = [
   '..ff...ff...',
   '............',
 ];
-gary.pal = { a: '#e8e8f0', s: '#9ec89e', e: '#d83030', m: '#4a6a4a', b: '#c85028', p: '#3a3a48', f: '#3a3a48', w: '#fff' };
+// `hair` is a deeper shade of the same sickly green as his skin (s), so the mop
+// under the paper hat reads as hair and not as a second hat. Multi-letter keys
+// are toon-only — the pixel renderer looks up single characters.
+gary.pal = { a: '#e8e8f0', s: '#9ec89e', e: '#d83030', m: '#4a6a4a', b: '#c85028', p: '#3a3a48', f: '#3a3a48', w: '#fff', hair: '#4f7a4f' };
 gary.headless = gary.run1.map((r, i) => (i < 7 ? '............' : r));
 
 // --- Grumpos: huge, bald, red stripe, axe on back ----------------------------
