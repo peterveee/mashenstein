@@ -6,6 +6,7 @@ import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, UI_PLATE } from '../engine/sprites.js';
 import { drawProp } from '../sprites/props.js';
+import { VIEW_W, applyWorld } from '../engine/camera.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
 import { CABINET_BY_ID } from '../data/cabinets.js';
@@ -74,7 +75,7 @@ export class BossState extends RunState {
     this.jokeDone = false;
     this.joke2Done = false;
     this.jokeT = 0;
-    this.bossX = 330;
+    this.bossX = VIEW_W * 0.68;   // first-frame seed, before update() frames it
     this.bossAlt = 60;
     this.speech = { text: this.boss.intro, t: 4, who: 'eggshell' };
     // The Dust Devil's tragedy gets a narrator card after Eggshell's pitch.
@@ -100,7 +101,10 @@ export class BossState extends RunState {
 
     const wdt = dt;
     // Boss hovers ahead.
-    this.bossX = this.camX + 300 + Math.sin(this.tRun * 0.9) * 50;
+    // Framing, not distance: this is "hovering in the upper right of the frame",
+    // so it is measured against the VIEW. At a literal 300 the boss would sit
+    // well past the right edge of a 213-px-wide view and never be seen.
+    this.bossX = this.camX + VIEW_W * 0.62 + Math.sin(this.tRun * 0.9) * VIEW_W * 0.12;
     this.bossAlt = 55 + Math.sin(this.tRun * 1.6) * (this.boss.pull ? 32 : 18);
 
     // Drop attacks.
@@ -182,13 +186,17 @@ export class BossState extends RunState {
 
   draw(ctx) {
     super.draw(ctx);
-    // Boss sprite + health bars.
+    // Boss sprite + health bars. super.draw() has already closed its world band,
+    // so the boss — a thing IN the world — reopens one; the bars below are HUD.
     const x = Math.round(this.bossX - this.camX);
     const y = Math.round(GROUND_Y - this.bossAlt - 24);
     const big = this.boss.sprite === 'dustdevil';
+    ctx.save();
+    applyWorld(ctx, this.camZoom);
     drawProp(ctx, this.boss.sprite, x - 12, y, big ? 28 : 24, big ? 24 : 20);
     ctx.fillStyle = 'rgba(200,200,216,0.6)';
     ctx.fillRect(x - 8 + Math.round(Math.sin(this.tRun * 40) * 3), y - 4, 24, 1);
+    ctx.restore();
 
     // Health bars: 1 real + N fake labeled PRESENTATION ERROR.
     const bw = 160;

@@ -11,9 +11,15 @@
 // cutoff separates "bright detail" from "bright background". Light packs opt out
 // wholesale instead; their art carries its own drawn highlights.
 import { W, H } from '../renderer.js';
+import { GROUND_Y, ZOOM } from '../camera.js';
 import { glowSprite } from '../../sprites/props.js';
 
-const GROUND_Y = 232;
+// Every layer back here scrolls a FRACTION of the foreground, and the camera now
+// magnifies that foreground — so each parallax factor is scaled by the same
+// amount to keep the depth ratio the run was tuned with. Without it the world
+// races past a backdrop that has effectively frozen. Layer sizes are untouched:
+// the groundline these layers hang off does not move at any zoom.
+const PLX = ZOOM;
 
 function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
   ctx.fillStyle = colBody;
@@ -61,7 +67,7 @@ const OVER = MARGIN + 4;
 const TREE_MAX = 18; // tallest crown, reserved as tile headroom
 // Slower than the far hill layer's 0.15: the volcano sits behind that range,
 // so it must drift more slowly than the crests occluding it.
-const VOLCANO_PLX = 0.09;
+const VOLCANO_PLX = 0.09 * PLX;
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
@@ -173,7 +179,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     }
     hillCache.set(key, tile);
   }
-  const off = ((camX * factor) % period + period) % period;
+  const off = ((camX * factor * PLX) % period + period) % period;
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   for (let x0 = -off; x0 < W; x0 += period) {
@@ -951,7 +957,7 @@ function pixelPack(settings) {
           [510, 36, 0.6, '#c9cfda'],
         ]) {
           const span = W + 130;
-          const cx = ((off - camX * 0.2 - t * 4) % span + span) % span - 65;
+          const cx = ((off - camX * 0.2 * PLX - t * 4) % span + span) % span - 65;
           ctx.save();
           ctx.translate(cx, cy);
           ctx.scale(s, s);
@@ -962,7 +968,7 @@ function pixelPack(settings) {
       } else {
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         for (let i = 0; i < 5; i++) {
-          const cx = ((i * 137 - camX * 0.2) % (W + 60)) - 30;
+          const cx = ((i * 137 - camX * 0.2 * PLX) % (W + 60)) - 30;
           const cy = 30 + (i * 37) % 60;
           ctx.fillRect(Math.round(cx), cy, 34, 8);
           ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
@@ -1005,7 +1011,7 @@ function faux3dPack(settings) {
       ctx.strokeStyle = 'rgba(160,104,48,0.5)';
       ctx.lineWidth = 4;
       for (let i = 0; i < 2; i++) {
-        const lx = ((i * 340 - camX * 0.3) % (W + 160)) - 80;
+        const lx = ((i * 340 - camX * 0.3 * PLX) % (W + 160)) - 80;
         ctx.beginPath(); ctx.arc(lx, GROUND_Y - 40, 28, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.lineWidth = 1;
@@ -1059,14 +1065,14 @@ function neonPack(settings) {
       // starfield
       ctx.fillStyle = '#8888c8';
       for (let i = 0; i < 40; i++) {
-        const sx = (i * 97 - camX * 0.05) % W;
+        const sx = (i * 97 - camX * 0.05 * PLX) % W;
         const sy = (i * 61) % (GROUND_Y - 60);
         ctx.fillRect(Math.round(sx < 0 ? sx + W : sx), sy, 1, 1);
       }
       // wireframe skyline
       ctx.strokeStyle = '#e838f8';
       for (let i = 0; i < 8; i++) {
-        const bx = ((i * 90 - camX * 0.25) % (W + 100)) - 50;
+        const bx = ((i * 90 - camX * 0.25 * PLX) % (W + 100)) - 50;
         const bh = 40 + (i * 53) % 70;
         ctx.strokeRect(Math.round(bx) + 0.5, GROUND_Y - bh + 0.5, 36, bh);
         ctx.strokeStyle = i % 2 ? '#38d8f8' : '#e838f8';
@@ -1120,7 +1126,7 @@ function watercolorPack(settings) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // soft wash blobs
       for (let i = 0; i < 6; i++) {
-        const bx = ((i * 120 - camX * 0.1) % (W + 120)) - 60;
+        const bx = ((i * 120 - camX * 0.1 * PLX) % (W + 120)) - 60;
         const by = 30 + (i * 47) % 80;
         const g = ctx.createRadialGradient(bx, by, 4, bx, by, 40);
         g.addColorStop(0, 'rgba(255,255,255,0.25)');
@@ -1318,7 +1324,7 @@ function cardboardPack(settings) {
       for (let x = 0; x < W; x += 10) ctx.fillRect(x, GROUND_Y - 60 + Math.round(wob), 2, 6);
       parallaxHills(ctx, camX, cab.hills, GROUND_Y - wob, 34, 60, 0.35);
       // a "distant" castle that is obviously four inches tall, on a stick
-      const cx = ((300 - camX * 0.4) % (W + 200)) - 100;
+      const cx = ((300 - camX * 0.4 * PLX) % (W + 200)) - 100;
       ctx.fillStyle = '#b89058';
       ctx.fillRect(cx, GROUND_Y - 40, 24, 20);
       ctx.fillRect(cx + 2, GROUND_Y - 46, 5, 6);

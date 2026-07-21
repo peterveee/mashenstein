@@ -220,7 +220,11 @@ assert(run.coins === 0, 'Haunted Coupon does not award shield-break coins');
 let bossEnds = 0;
 const boss = new BossState({ bossCab: 'neon', save, seed: 8, difficulty: 1, onEnd: () => bossEnds++ });
 boss.enter(); boss.obstacles = [];
-boss.projectiles = [{ type: 'pellet', x: boss.camX + 303, alt: 10, vx: 0, live: true, pierce: true, hitIds: new Set() }];
+// One tick to let the boss take up its framed position, then park the pellet on
+// it — where that is depends on the camera, so read it rather than assume it.
+boss.update(1 / 60);
+boss.obstacles = [];
+boss.projectiles = [{ type: 'pellet', x: boss.bossX + 3, alt: 10, vx: 0, live: true, pierce: true, hitIds: new Set() }];
 const hp0 = boss.bossHp; boss.update(1 / 60); const hp1 = boss.bossHp; boss.update(1 / 60);
 assert(hp1 === hp0 - 1 && boss.bossHp === hp1, 'piercing shot damages the same boss only once');
 boss.endRun(false); boss.endRun(false);

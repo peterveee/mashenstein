@@ -1,6 +1,7 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow } from '../engine/renderer.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, camYFor, zoomFor, easeZoom } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
@@ -22,14 +23,21 @@ import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
-export const GROUND_Y = 232;
+export { GROUND_Y };
+// The hero's screen x at the resting zoom: 30% of the frame. The HUD/floatie
+// layer draws UNSCALED above the world, so anything that has to sit over the
+// hero up there anchors here rather than to the world-space PLAYER_X.
+export const HERO_SCREEN_X = PLAYER_X * ZOOM;
 // Stage-clear: a short beat on the finish frame so the tape-cross registers.
 // The scene change itself is the CRT shutter in states.js — this used to close
 // an iris to black first, which meant fading out twice back to back.
 const FINALE_HOLD = 0.25;
-// Floatie stack anchor: above the standing hero's head (~202) with clearance,
-// below the speech bubble's reach — risen text fades out before ~y 90.
-const FLOAT_BASE_Y = 150;
+// Floatie stack anchor: above the standing hero's head with clearance, below
+// the speech bubble's reach — risen text fades out before ~y 90. The camera put
+// that head at y 178 (24 drawn px at the resting zoom, off a groundline pinned
+// to 232), so the stack starts high enough that three cards can pile up before
+// the lowest one reaches it.
+const FLOAT_BASE_Y = 128;
 // Floatie chrome: one step lighter than the standard HUD panel, so in-world
 // barks read as their own species without leaving the design system.
 const FLOAT_PANEL = 'rgba(58,64,88,0.72)';
@@ -39,7 +47,12 @@ export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
 );
 const BASE_SPEED = 160;
-const FINISH_LINE_X = W - 58;
+// Where the camera parks relative to the tape: the hero's screen-space dash at
+// the end of a stage runs from PLAYER_X to here. It is a VIEW measurement, not a
+// screen one — at W-58 the goal would sit 422 world px ahead of a 213-px-wide
+// view and never come on screen at all. totalDist is untouched, so the run is
+// exactly as long as it was; only where the camera stops short of the tape moves.
+const FINISH_LINE_X = VIEW_W - 32;
 
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
@@ -63,6 +76,16 @@ export class RunState {
 
   groundYAt(worldX) {
     return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
+  }
+
+  // The dolly. Camera Y never tracks the hero — it is derived from the zoom so
+  // the groundline stays welded to its screen y — so a jump that outgrows the
+  // frame opens the frame instead of panning it. Most single jumps (57px against
+  // 103px of headroom) never move it at all; Gnash's 89px and any double jump do.
+  updateCamera(dt) {
+    const heroX = this.playerWorldX();
+    const lift = GROUND_Y - this.groundYAt(heroX);   // rolling terrain owes headroom too
+    this.camZoom = easeZoom(this.camZoom, zoomFor(this.player.y, lift), dt);
   }
 
   // Translate a draw callback down to the terrain. Sampling ONE point floats
@@ -110,6 +133,7 @@ export class RunState {
     this.powerups.shieldStack = HERO_BY_ID[this.relay.current].startShield;
 
     this.camX = 0;
+    this.camZoom = ZOOM;
     this.speedBoost = 0;
     this.tRun = 0;
     this.score = 0;
@@ -307,6 +331,7 @@ export class RunState {
     const sp = this.speed;
     this.camX += sp * wdt;
     this.distance = this.camX;
+    this.updateCamera(wdt);
     if (this.speedBoost > 0) this.speedBoost = Math.max(0, this.speedBoost - wdt * 0.6);
 
     // Score accrual (real time).
@@ -441,6 +466,7 @@ export class RunState {
     // screen. The final stretch remains live: hazards, pickups and attacks
     // use this moving world position just as they do during normal scrolling.
     this.finishPlayerX += sp * wdt;
+    this.updateCamera(wdt);
     this.updateEntities(wdt, sp);
     this.updateProjectiles(wdt, sp);
     this.collide();
@@ -818,7 +844,10 @@ export class RunState {
       if (ob.def.beatSync) ob.h = 10 + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
       if (ob.def.shoots) {
         ob.shootT -= dt;
-        if (ob.shootT <= 0 && ob.x > this.playerWorldX() + 60 && ob.x < this.camX + W + 40) {
+        // Bounded by the VIEW, not the logical frame: a shooter that opens fire
+        // from W away is over two screens back, and its shot arrives with no
+        // telegraph at all.
+        if (ob.shootT <= 0 && ob.x > this.playerWorldX() + 60 && ob.x < this.camX + VIEW_W + 40) {
           ob.shootT = 2.2;
           const alt = ob.def.ground ? 8 : ob.alt;
           this.projectiles.push({ type: 'enemyShot', x: ob.x, alt, vx: -70, live: true, telegraph: 0.4 });
@@ -850,7 +879,10 @@ export class RunState {
     // camX + PLAYER_X + 40 or chase missions are unwinnable.
     if (this.copter) {
       const c = this.copter;
-      c.x = this.camX + 80 + (Math.sin(this.tRun * 0.55) * 0.5 + 0.5) * 240;
+      // The far end of the arc is a VIEW measurement so the swoop stays on
+      // screen; the near end stays at 80, so the dx < 40 catch window below is
+      // reached exactly as often as before.
+      c.x = this.camX + 80 + (Math.sin(this.tRun * 0.55) * 0.5 + 0.5) * (VIEW_W - 96);
       c.alt = 50 + Math.sin(this.tRun * 1.7) * 20;
       if (c.cooldown > 0) c.cooldown -= dt;
       const dx = c.x - (this.camX + PLAYER_X);
@@ -1414,6 +1446,7 @@ export class RunState {
     this.deadT += dt;
     this.player.vy -= this.gravityForDeath() * dt;
     this.player.y += this.player.vy * dt;
+    this.updateCamera(dt);   // the death pop launches high; keep it in frame
     if (this.deadT > 1.4) {
       if (this.demo) {
         this.endRun(false); // demos die once and end — no checkpoint recovery
@@ -1510,9 +1543,19 @@ export class RunState {
   // ------------------------------------------------------------------ draw
   draw(ctx) {
     const cam = this.camX;
+    const z = this.camZoom;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+    // Backgrounds stay in SCREEN space. Their layers are anchored to the
+    // groundline's screen y, and the camera pins that line there at every zoom,
+    // so they keep lining up exactly as authored while the world in front of
+    // them magnifies. Only their scroll RATES scale (stylePacks/index.js).
     this.style.bg(ctx, this.tRun, cam, this.cabinet, this.totalDist);
+
+    // ---- world band. Everything from here to post() draws through the camera,
+    // in the same coordinates it always did: x offsets from cam, absolute y.
+    ctx.save();
+    applyWorld(ctx, z);
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
@@ -1546,7 +1589,7 @@ export class RunState {
     }
     };
     if (!this.style.actorsAbovePost) drawActors();
-    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun));
+    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun, z));
     if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
     if (this.escapeWall != null) {
       const x = Math.round(this.escapeWall - cam);
@@ -1574,7 +1617,14 @@ export class RunState {
         ctx.fillStyle = '#0b0b14';
         ctx.fillRect(fx + 15, finishGround - 26, 2, 3);
         ctx.fillRect(fx + 12, finishGround - 25, 2, 3);
-        drawText(ctx, 'THE BREAKER', fx - 14, finishGround - 94, '#f6d33c', 1, 'ui', UI_PLATE);
+        // Signage, drawn unscaled off the top of the BOX. Magnified with the
+        // world it read as a billboard, and hung off the pole instead it landed
+        // under the HUD — the pole now stands two thirds of the frame tall.
+        ctx.save();
+        ctx.translate(fx + 2, finishGround - 34);
+        ctx.scale(1 / z, 1 / z);
+        drawTextCentered(ctx, 'THE BREAKER', 0, -14, '#f6d33c', 1, 'ui', UI_PLATE);
+        ctx.restore();
       }
       // No FINISH AHEAD blink before this. It sat centre-screen in the dialog
       // band for about two seconds, warning about a pole that arrives labelled
@@ -1598,7 +1648,7 @@ export class RunState {
     // Player.
     const heroScreenX = this.finishing ? this.finishPlayerX : PLAYER_X;
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, flat: this.paused || this.dead, screenX: heroScreenX,
+      { mirror: this.mirror, flat: this.paused || this.dead, screenX: heroScreenX, zoom: z,
       groundY: this.groundYAt(cam + heroScreenX),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
@@ -1613,14 +1663,26 @@ export class RunState {
     // overlay and inside the mirror transform, so both continue to apply.
     if (!this.style.actorsAbovePost) drawHero();
     drawParticles(ctx, cam);
+    ctx.restore();
+    // ---- end world band. post() is a treatment of the FRAME (scanlines, the
+    // LCD conversion, vignettes), so it runs at screen scale like the bg did.
     this.style.post(ctx, this.tRun);
-    if (this.style.actorsAbovePost) { drawActors(); drawHero(); }
+    if (this.style.actorsAbovePost) {
+      ctx.save();
+      applyWorld(ctx, z);
+      drawActors();
+      drawHero();
+      ctx.restore();
+    }
 
     // Blackout overlay (mission).
     if (this.mission.type === 'blackout') {
       // A brown-out, not a blackout: the edges dim hard but hazards stay
-      // readable — the tension is squinting, not guessing.
-      const px = PLAYER_X + 6, py = this.groundYAt(cam + PLAYER_X) - this.player.y - 8;
+      // readable — the tension is squinting, not guessing. Drawn in screen
+      // space with a screen-space radius: scaled with the zoom it would light
+      // nearly the whole frame and the mission would stop being a mission.
+      const px = (PLAYER_X + 6) * z;
+      const py = (this.groundYAt(cam + PLAYER_X) - this.player.y - 8 - camYFor(z)) * z;
       const r = this.briefSlow > 0 ? 260 : 130;
       const g = ctx.createRadialGradient(px, py, r * 0.35, px, py, r);
       g.addColorStop(0, 'rgba(8,6,12,0)');
@@ -1642,11 +1704,14 @@ export class RunState {
       // and rags rightward into the direction of travel — centering long lines
       // on a hero this near the screen edge just shoved each one to its own x.
       // In mirror mode the shared edge is on the right and text rags leftward.
-      const floatX = this.mirror ? W - PLAYER_X - 6 : PLAYER_X + 6;
-      const edgeX = this.mirror ? W - PLAYER_X : PLAYER_X;
+      // This layer is UNSCALED, so the hero's column here is their screen x —
+      // PLAYER_X is a world offset and would leave every card behind them.
+      const heroX = PLAYER_X * z;
+      const floatX = this.mirror ? W - heroX - 6 : heroX + 6;
+      const edgeX = this.mirror ? W - heroX : heroX;
       for (const f of this.floaties) {
         const short = f.text.length <= 5;
-        const lines = wrapText(f.text, short ? W - 32 : W - PLAYER_X - 8, 1, 2);
+        const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
         const topY = Math.max(38, Math.min(H - 48 - lines.length * 10, Math.round(f.y)));
         // Each floatie rides its own HUD panel — the bare text plate washed
         // out over light packs. Fade out at end of life so cards don't blink off.
@@ -1698,6 +1763,11 @@ export class RunState {
   }
 
   drawDebug(ctx) {
+    // Hitboxes are world objects, so they need the camera to land on the things
+    // they describe; the readout underneath is screen chrome.
+    ctx.save();
+    applyWorld(ctx, this.camZoom);
+    ctx.lineWidth = 1 / this.camZoom;
     ctx.strokeStyle = '#0f0';
     const pb = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
     ctx.strokeRect(pb.x - this.camX, pb.y, pb.w, pb.h);
@@ -1707,6 +1777,7 @@ export class RunState {
       const b = entityBox(ob, this.groundYAt(ob.x));
       ctx.strokeRect(b.x - this.camX, b.y, b.w, b.h);
     }
+    ctx.restore();
     drawText(ctx, `SEED ${this.seed} SPD ${Math.round(this.speed)} X ${Math.round(this.camX)}`, 4, H - 10, '#0f0');
   }
 }

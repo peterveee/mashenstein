@@ -1,6 +1,7 @@
 // Entity + hero drawing (logic-free; style packs may decorate).
 import { getSprite, buildSprite, scaled2x, tinted, drawTextCentered } from '../engine/sprites.js';
 import { pushOverlayDraw } from '../engine/renderer.js';
+import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite } from '../sprites/toons.js';
@@ -152,7 +153,12 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     }
   };
   if (opts.flat || opts.mirror) paint(ctx);
-  else pushOverlayDraw(paint);
+  else {
+    // The overlay is a SEPARATE canvas with its own context, so it never sees
+    // the camera the caller set up — the hero has to carry it across.
+    const z = opts.zoom ?? ZOOM;
+    pushOverlayDraw((c) => { c.save(); applyWorld(c, z); paint(c); c.restore(); });
+  }
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
 
@@ -317,20 +323,27 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }
 
-export function drawPortal(ctx, portal, camX, t) {
+export function drawPortal(ctx, portal, camX, t, zoom = ZOOM) {
   const x = Math.round(portal.x - camX);
   const pulse = Math.round(Math.sin(t * 5) * 2);
   drawProp(ctx, 'portal', x, GROUND_Y - 40 - pulse, 12, 40 + pulse);
+  ctx.fillStyle = '#48e0c8';
+  ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
+  // Who you are about to become, and what they do. Signage, not scenery: hung
+  // off the top of the arch and then drawn unscaled, so both the type size and
+  // the gap above the arch stay as authored instead of being magnified with the
+  // world — at 2.25x the callout alone was wider than the frame.
+  ctx.save();
+  ctx.translate(x + 6, GROUND_Y - 40 - pulse);
+  ctx.scale(1 / zoom, 1 / zoom);
   const face = toonFaceSprite(portal.hero, 12, 9);
   if (face) {
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, x, GROUND_Y - 56 - pulse, 12, 9);
+    ctx.drawImage(face, -6, -16, 12, 9);
     ctx.imageSmoothingEnabled = false;
   }
-  ctx.fillStyle = '#48e0c8';
-  ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
-  // who you are about to become, and what they do
-  if (portal.label) drawTextCentered(ctx, portal.label, x + 6, GROUND_Y - 68 - pulse, '#9db8d2');
+  if (portal.label) drawTextCentered(ctx, portal.label, 0, -28, '#9db8d2');
+  ctx.restore();
 }
 
 export function drawCopter(ctx, copter, camX, t) {
