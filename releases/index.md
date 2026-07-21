@@ -32,3 +32,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-21 | `8a976e8` | [2026-07-21-8a976e8.html](2026-07-21-8a976e8.html) | Refactor code structure for improved readability and maintainability |
 | 2026-07-21 | `8b562c2` | [2026-07-21-8b562c2.html](2026-07-21-8b562c2.html) | Refactor code structure for improved readability and maintainability |
 | 2026-07-21 | `7e8bacb` | [2026-07-21-7e8bacb.html](2026-07-21-7e8bacb.html) | Add turned run sheet and Grumpos walk cycle to gallery |
+| 2026-07-22 | `8658bfa` | [2026-07-22-8658bfa.html](2026-07-22-8658bfa.html) | Add camera module for world rendering and zoom management |
