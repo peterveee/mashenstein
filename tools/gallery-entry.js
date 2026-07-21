@@ -229,7 +229,114 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
 }
 
-// ---------------------------------------------------------------- 2b. hero filter lab
+// -------------------------------------------------------------- 2a. turn sheet
+{
+  // Angle labels are measured INWARD FROM A RIGHT-FACING PROFILE, matching a
+  // character travelling left-to-right. Thus 25° here is a 65° yaw from the
+  // camera, not the almost-front-facing 25° interpretation used previously.
+  const IDS = [
+    ['grumpos', 'KRATOS / GRUMPOS'],
+    ['lorenzo', 'LORENZO'],
+    ['b33p', 'B-33P'],
+  ];
+  const ANGLES = [20, 25, 30];
+  const HH = 60;
+  const PAD = 12;
+  const phaseAt = (i) => i / 6;
+
+  function drawTurned(ctx, id, phase, profileTurn, cx, feetY, h = HH) {
+    const yawFromFront = 90 - profileTurn;
+    drawToon(ctx, id, pose('run', phase / 1.6, { time: phase, turn: yawFromFront }), cx, feetY, h);
+  }
+
+  const grid = section('angled-run', 'Turned run sheet — first pass',
+    'Kratos/Grumpos, Lorenzo and B-33P. Angles are measured toward camera from a '
+    + 'right-facing profile: the main 25° pose is therefore 65° from front. The arm '
+    + 'swing follows the left-to-right travel axis with bounded two-bone IK; screen-left '
+    + 'limbs are foreground and screen-right limbs recede behind the torso.');
+
+  // Angle comparison: each hero gets one row of the three candidate turns at
+  // the same mid-stride phase, so the silhouette choice is easy to compare.
+  const refW = IDS.length * 3 * 54 + PAD * 2;
+  const refH = IDS.length * 74 + PAD * 2;
+  tile(grid, 'ANGLE REFERENCE', 'same run phase · 20° / 25° / 30° inward from profile', refW, refH,
+    (ctx) => {
+      for (let row = 0; row < IDS.length; row++) {
+        const [id, label] = IDS[row];
+        const y = PAD + row * 74;
+        for (let col = 0; col < ANGLES.length; col++) {
+          const x = PAD + col * 54 + 27;
+          drawTurned(ctx, id, 0.25, ANGLES[col], x, y + 59, HH);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '10px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${label} · ${ANGLES[col]}° in`, x, y + 71);
+        }
+      }
+    }, { animated: false, wide: true });
+
+  // Filmstrips make the arm path legible: each strip is six evenly spaced
+  // samples across one run cycle, all sharing the same 25° turn.
+  const stripW = 6 * 54 + PAD * 2;
+  const stripH = 80;
+  for (const [id, label] of IDS) {
+    tile(grid, label, '25° inward from profile · six-frame contact strip', stripW, stripH,
+      (ctx) => {
+        for (let i = 0; i < 6; i++) {
+          const x = PAD + i * 54 + 27;
+          drawTurned(ctx, id, phaseAt(i), 25, x, stripH - 10, HH);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '10px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(String(i + 1), x, stripH - 1);
+        }
+      }, { animated: true, wide: true });
+  }
+}
+
+// --------------------------------------------------------- 2b. grumpos walk cycle
+{
+  const HH = 60;
+  const ANGLE_FROM_PROFILE = 25;
+  const YAW_FROM_FRONT = 90 - ANGLE_FROM_PROFILE;
+  const PAD = 12;
+  const FRAMES = ['contact', 'down', 'pass', 'up', 'contact', 'down', 'pass', 'up'];
+
+  function drawGrumposWalk(ctx, phase, time, cx, feetY) {
+    drawToon(ctx, 'grumpos', pose('run', phase / 1.6, {
+      time,
+      turn: YAW_FROM_FRONT,
+      walk: true,
+    }), cx, feetY, HH);
+  }
+
+  const grid = section('grumpos-walk', 'Grumpos — walk cycle',
+    'Eight-frame 3/4 walk at 25° inward from profile, with the curved belt and skirt restored '
+    + 'over the corrected pelvis and hip attachments.');
+
+  tile(grid, 'GRUMPOS WALK — LIVE', 'one complete cycle · 0.9 cycles/sec', 72, 96,
+    (ctx, t) => {
+      const phase = (t * 0.9) % 1;
+      drawGrumposWalk(ctx, phase, t, 36, 90);
+    }, { animated: true });
+
+  const stripW = 8 * 54 + PAD * 2;
+  const stripH = 100;
+  tile(grid, 'GRUMPOS WALK — 8 FRAMES', 'contact · down · pass · up · mirrored repeat', stripW, stripH,
+    (ctx) => {
+      for (let i = 0; i < 8; i++) {
+        const phase = i / 8;
+        const x = PAD + i * 54 + 27;
+        drawGrumposWalk(ctx, phase, phase, x, 88);
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '9px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${i + 1} ${FRAMES[i]}`, x, stripH - 2);
+      }
+    }, { animated: false, wide: true });
+}
+
+// ---------------------------------------------------------------- 2c. hero filter lab
 {
   const ids = Object.keys(TOON_SPECS);
   const grid = section('hero-filters', 'Heroes — filter lab',

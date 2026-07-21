@@ -212,12 +212,15 @@ export class RunState {
   exit() { setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Audio.setDetune(1); Audio.setInvincible(false); }
 
   setButtons() {
-    // Touch only: keyboard players have P/M keys, and the freed top-right
+    // Touch only: keyboard players have P/M/ESC keys, and the freed top-right
     // corner holds the ability gauge instead.
     this.touchButtons = Input.usingTouch;
     Input.setButtons(Input.usingTouch ? [
       { id: 'pause', x: W - 18, y: 8, w: 14, h: 12, action: 'pause', label: '=' },
       { id: 'mute', x: W - 36, y: 8, w: 14, h: 12, action: 'mute', label: 'M' },
+      // Mirrors the Escape key: pauses if running, quits to hub if already
+      // paused — same 'escape' action the keyboard fires, so no new logic.
+      { id: 'escape', x: W - 54, y: 8, w: 14, h: 12, action: 'escape', label: 'X' },
       { id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' },
     ] : []);
   }
@@ -1677,7 +1680,7 @@ export class RunState {
       }
       if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 162, '#f890b8');
       drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 178, '#c8c8d8');
-      drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
+      drawTextCentered(ctx, Input.usingTouch ? 'TAP =: RESUME   TAP X: QUIT' : 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
     }
     if (this.dead) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
