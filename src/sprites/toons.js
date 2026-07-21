@@ -6,6 +6,9 @@
 import { HERO_SPRITES } from './heroes.js';
 
 const OUTLINE = 'rgba(26,16,40,0.32)';
+// Softer contour for BARE SKIN — the standard weight reads harsher against
+// grumpos's pale hide than it does against clothing and hair.
+const SKIN_OUTLINE = 'rgba(26,16,40,0.2)';
 const pal = (id) => HERO_SPRITES[id].pal;
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
@@ -85,12 +88,12 @@ function taperTorsoPath(c, cx, top, bot, halfTop, halfBot) {
   c.quadraticCurveTo(cx - halfTop, top, cx - halfTop + rT, top);
   c.closePath();
 }
-function outlined(ctx, fill, ow, pathFn) {
+function outlined(ctx, fill, ow, pathFn, stroke = OUTLINE) {
   ctx.beginPath();
   pathFn(ctx);
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.strokeStyle = OUTLINE;
+  ctx.strokeStyle = stroke;
   ctx.lineWidth = ow;
   ctx.stroke();
 }
@@ -115,18 +118,21 @@ function dot(ctx, x, y, r, fill) {
 // analytic 2-bone joint: where the knee/elbow sits between (x1,y1)-(x2,y2);
 // dir=+1 bends toward +x, -1 toward -x. Straightens naturally when the
 // target is at full reach.
-function joint(x1, y1, x2, y2, seg, dir) {
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+function joint(x1, y1, x2, y2, seg, dir, seg2 = seg) {
   const dx = x2 - x1, dy = y2 - y1;
   const d = Math.hypot(dx, dy) || 1e-6;
-  const h = Math.sqrt(Math.max(0, seg * seg - (d * d) / 4));
-  return [mx + (dy / d) * h * dir, my + (-dx / d) * h * dir];
+  // Unequal bones: the joint sits `seg` from the root, `seg2` from the end.
+  // `a` is its along-axis distance from the root (law of cosines); equal
+  // segments collapse it back to the old midpoint.
+  const a = Math.min(seg, Math.max(-seg, (d * d + seg * seg - seg2 * seg2) / (2 * d)));
+  const h = Math.sqrt(Math.max(0, seg * seg - a * a));
+  return [x1 + (dx / d) * a + (dy / d) * h * dir, y1 + (dy / d) * a + (-dx / d) * h * dir];
 }
 // two-segment limb (thigh+shin / upper+forearm) with a soft joint bend
-// `w2` is the far segment's width, defaulting to `w`: a fatter upper segment
-// reads as a bicep. Each pass strokes BOTH segments before the color changes,
-// or the second segment's fat outline paints over the first one's fill. Round
-// caps (set once in drawToon) blend the two widths at the joint.
+// `w2` is the far segment's width, defaulting to `w`. Each pass strokes BOTH
+// segments before the color changes, or the second segment's fat outline
+// pass paints over the first one's fill. Round caps (set once in drawToon)
+// blend the two widths at the joint.
 function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w) {
   const [jx, jy] = joint(x1, y1, x2, y2, seg, dir);
   for (const [pad, col] of [[ow * 2, OUTLINE], [0, fill]]) {
@@ -141,6 +147,59 @@ function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w) {
     ctx.moveTo(jx, jy);
     ctx.lineTo(x2, y2);
     ctx.stroke();
+  }
+}
+// Anatomy-styled two-bone arm for the heavy rig. The bones are two-radius
+// capsules that PINCH at the elbow and wrist, and the muscle lives in bulge
+// ellipses laid over them — a bicep in the middle of the upper arm, a
+// forearm swell just past the elbow — instead of in uniformly fat bones,
+// which read as sausages. Two color passes (fat outline, then fill) merge
+// bones and bulges into one silhouette, the same trick limb2 uses.
+function muscleLimb(ctx, x1, y1, x2, y2, segU, segF, dir, fill, ow, d) {
+  const [jx, jy] = joint(x1, y1, x2, y2, segU, dir, segF);
+  const thU = Math.atan2(jy - y1, jx - x1), thF = Math.atan2(y2 - jy, x2 - jx);
+  // Bones and bulges append SUBPATHS and each pass fills once at the end:
+  // OUTLINE is translucent, and filling four overlapping shapes one at a
+  // time stacks its alpha wherever they overlap — a blotchy, darker rim on
+  // the arms than the single-stroke limbs get. One nonzero-winding fill
+  // covers every overlap exactly once.
+  const cap = (ax, ay, bx, by, ra, rb, th) => {
+    ctx.moveTo(ax + Math.cos(th + Math.PI / 2) * ra, ay + Math.sin(th + Math.PI / 2) * ra);
+    ctx.arc(ax, ay, ra, th + Math.PI / 2, th - Math.PI / 2);
+    ctx.arc(bx, by, rb, th - Math.PI / 2, th + Math.PI / 2);
+    ctx.closePath();
+  };
+  const blob = (bx, by, rl, rc, th) => {
+    ctx.moveTo(bx + Math.cos(th) * rl, by + Math.sin(th) * rl);
+    ctx.ellipse(bx, by, rl, rc, th, 0, Math.PI * 2);
+  };
+  // The bulges sit on ONE side of each bone — the side away from the elbow,
+  // where the bicep and forearm mass actually live — with their far half
+  // buried in the bone so the underside of the arm stays a clean line. A
+  // bulge centered on the bone inflates both edges and reads as a lollipop.
+  const pxn = -Math.sin(thU), pyn = Math.cos(thU);
+  const cmx = (x1 + x2) / 2, cmy = (y1 + y2) / 2;
+  const side = pxn * (jx - cmx) + pyn * (jy - cmy);
+  // A straight arm puts the elbow ON the chord, so `side` collapses to FP
+  // noise and the bulge would re-pick its side every frame — a bicep that
+  // flickers top-to-bottom mid-spread. Under a small threshold it defaults
+  // to world-UP, where the bicep belongs on an outstretched arm.
+  const sgn = Math.abs(side) < segU * 0.08
+    ? (pyn > 0 ? -1 : 1)
+    : (side > 0 ? -1 : 1);
+  const fxn = -Math.sin(thF) * sgn, fyn = Math.cos(thF) * sgn;
+  for (const [pad, col] of [[ow, SKIN_OUTLINE], [0, fill]]) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    cap(x1, y1, jx, jy, d.shoulderW / 2 + pad, d.elbowW / 2 + pad, thU);
+    blob(x1 + (jx - x1) * 0.48 + pxn * sgn * d.bicepR * 0.38,
+      y1 + (jy - y1) * 0.48 + pyn * sgn * d.bicepR * 0.38,
+      segU * 0.54 + pad, d.bicepR + pad, thU);
+    cap(jx, jy, x2, y2, d.elbowW / 2 + pad, d.wristW / 2 + pad, thF);
+    blob(jx + (x2 - jx) * 0.34 + fxn * d.foreR * 0.34,
+      jy + (y2 - jy) * 0.34 + fyn * d.foreR * 0.34,
+      segF * 0.44 + pad, d.foreR + pad, thF);
+    ctx.fill();
   }
 }
 // running foot path: backward along the ground during stance, lifting
@@ -242,6 +301,14 @@ function expressionFor(id, pose = {}) {
     // a permanent expression — this is for faces that should barely crack.
     beam: !!(cm && cm.peak && cm.move),
     effort: !!(pose.stomp || pose.roll || pose.headless),
+    // Even Grumpos's scowl unclenches now and then: mid-run the face drops
+    // to neutral for a couple of seconds out of every eight or so, seeded so
+    // the lull lands at different beats per hero clock. Permanent anger reads
+    // as a mask; the occasional slack face is what makes the scowl register
+    // as a mood. Downstream this suppresses the focus brows and flattens his
+    // mouth, so it needs its own flag — mood alone can't unclench a running
+    // face, because ex.focus forces the brows on.
+    relaxed: id === 'grumpos' && pose.kind === 'run' && (t + seed * 1.7) % 8.3 < 2.2,
     mood: id === 'gnash' || id === 'raymn' ? 'cocky'
       : id === 'fernwick' ? 'bright'
       : id === 'b33p' ? 'robot'
@@ -310,7 +377,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     const lookY = ex.surprise || ex.cheer ? -0.005 * u : 0.012 * u;
     dot(ctx, cx + sx * sep + lookX, cy + lookY, 0.026 * u, p.e);
   }
-  if (!lod && ex.mood !== 'bright' && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+  if (!lod && ex.mood !== 'bright' && !ex.relaxed && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
     ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.7, 0.018 * u);
@@ -449,8 +516,8 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // Tiny crossed-tool mark instead of a familiar letter emblem.
       ctx.strokeStyle = p.h; ctx.lineWidth = Math.max(0.6, ow * 0.55);
       ctx.beginPath();
-      ctx.moveTo(hx + R * 0.02, hy - R * 0.65); ctx.lineTo(hx + R * 0.22, hy - R * 0.45);
-      ctx.moveTo(hx + R * 0.22, hy - R * 0.65); ctx.lineTo(hx + R * 0.02, hy - R * 0.45);
+      ctx.moveTo(hx + R * 0.02, hy - R * 0.85); ctx.lineTo(hx + R * 0.22, hy - R * 0.65);
+      ctx.moveTo(hx + R * 0.22, hy - R * 0.85); ctx.lineTo(hx + R * 0.02, hy - R * 0.65);
       ctx.stroke();
     }
   } else if (spec.head === 'jackal') {
@@ -668,8 +735,10 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
       ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.75, ow * 0.65);
       ctx.beginPath();
+      // Relaxed, the stern arc irons out flat — the frown is the default,
+      // not the only setting.
       ctx.moveTo(hx - R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
-      ctx.quadraticCurveTo(hx, mouthY - R * 0.08, hx + R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
+      ctx.quadraticCurveTo(hx, mouthY - (ex.relaxed ? 0 : R * 0.08), hx + R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
       ctx.stroke();
     }
   }
@@ -689,21 +758,27 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // muscle where a straight barrel reads as belly.
   const waistHalf = torsoHalf * (spec.taper || 1);
   const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u;
-  const armL = (heavy ? 0.3 : 0.26) * u;
+  const armL = (heavy ? 0.34 : 0.26) * u;
   const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u;
-  const armW = (heavy ? 0.09 : spec.slim ? 0.068 : 0.075) * u;
+  // Heavy base width is sized so the arm's PINCH points (elbow 0.72x, wrist
+  // 0.62x — see armDims) still match a normal hero's full 0.075u arm: the
+  // muscle profile narrows in places, and sized equal at the base those
+  // narrows made the strongest hero read thinner-armed than anyone.
+  const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u;
   // The heavy rig's arms carry a bicep — upper segment fatter than the
   // forearm. Everyone else strokes a uniform limb.
-  // Flexing for a crowd, the biceps actually swell — the victory pose is
-  // about the arms, so the arms have to sell it. Throbs on the same clock as
-  // the pose's arm pump so the swell and the squeeze land together, and only
-  // on the near-side pass; a forearm that inflated with it would read as a
-  // balloon rather than a muscle.
-  const bicepW = (heavy ? armW * 1.45 : armW)
-    * (heavy && pose.kind === 'celebrate'
-      ? 1.14 + 0.2 * Math.abs(Math.sin((pose.time || 0) * 6))
-      : 1);
-  const foreW = heavy ? armW * 0.92 : armW;
+  // Heavy-arm anatomy kit: bones pinch at the elbow and wrist, and the
+  // muscle mass rides in bulges (see muscleLimb). Flexing for a crowd the
+  // BICEP bulge swells, throbbing on the same clock as the pose's arm pump
+  // so the swell and the squeeze land together; the bones don't inflate,
+  // which is what kept the old fat-bone version reading as sausages.
+  const flexT = heavy && (pose.kind === 'celebrate' || pose.menuAction === 'flex')
+    ? 1.06 + 0.12 * Math.abs(Math.sin((pose.time || 0) * 6))
+    : 1;
+  const armDims = heavy ? {
+    shoulderW: armW * 1.12, elbowW: armW * 0.72, wristW: armW * 0.62,
+    bicepR: armW * 0.5 * flexT, foreR: armW * 0.44,
+  } : null;
   const run = pose.kind === 'run';
   const jump = pose.kind === 'jump';
   const duck = pose.kind === 'duck';
@@ -774,18 +849,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 
   // arms: bent at the elbow, counter-swinging the legs while running
-  const armSeg = armL * 0.55;
+  // The heavy rig's bicep bone is SHORT — a boulder up near the shoulder —
+  // with the forearm taking the slack, so the arm's total reach is unchanged.
+  const armSeg = armL * (heavy ? 0.42 : 0.55);
+  const armSegF = armL * 1.1 - armSeg;
   // Celebrating is front-on, so the arms root at the torso's shoulder
   // corners; at the run cycle's mid-chest attach, the front arm draws over
-  // the torso and reads as growing out of the chest.
-  const shSpread = pose.kind === 'celebrate' ? 0.92 : 0.55;
+  // the torso and reads as growing out of the chest. The heavy rig roots at
+  // the shoulder's edge in EVERY pose: its anatomy arm starts with a visible
+  // shoulder cap that the old blended strokes never showed, and parked at
+  // mid-chest that cap reads as an arm growing out of his sternum.
+  const shSpread = pose.kind === 'celebrate' ? 0.92 : heavy ? 0.84 : 0.55;
   const shF = torsoHalf * shSpread + leanX, shB = -torsoHalf * shSpread + leanX;
   // Slide a hand target out to full arm reach along its own direction, so the
   // IK draws the arm straight: arms-out poses with a mid-reach target crook
   // the elbow into a chicken wing.
   const reach = (sx, sy, [tx, ty]) => {
     const dx = tx - sx, dy = ty - sy, d = Math.hypot(dx, dy) || 1;
-    return [sx + (dx / d) * armSeg * 2, sy + (dy / d) * armSeg * 2];
+    return [sx + (dx / d) * (armSeg + armSegF), sy + (dy / d) * (armSeg + armSegF)];
   };
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
   if (pose.kind === 'celebrate') {
@@ -801,12 +882,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handF = [shF + 0.12 * u, shoulderY - armL * 0.98 + pump]; elbF = 1;
       handB = [shB - 0.13 * u, shoulderY + armL * 0.4]; elbB = -1;
     } else if (id === 'grumpos') {
-      // Double-biceps, gym-poster style. Hands come UP and slightly inward so
-      // the IK throws both elbows wide — that lateral upper arm is what the
-      // pose is actually showing off, and it's where the bicep width lives.
-      // The elbow dirs are inverted from every other hero for the same reason.
-      handF = [shF - 0.02 * u, shoulderY - armL * 0.62 + pump]; elbF = -1;
-      handB = [shB + 0.02 * u, shoulderY - armL * 0.62 - pump]; elbB = 1;
+      // Arms flung out wide and dead STRAIGHT — a strongman's "behold" spread,
+      // rising and settling on the pump. Straight matters: bent, the inverted
+      // elbows this pose used to carry read as arms broken backwards at menu
+      // scale. The reach() targets sit at full extension so the IK never puts
+      // a visible joint in either arm; the flex big-move still bends them.
+      handF = reach(shF, shoulderY, [shF + 0.3 * u, shoulderY - armL * 0.3 + pump]); elbF = 1;
+      handB = reach(shB, shoulderY, [shB - 0.3 * u, shoulderY - armL * 0.3 - pump]); elbB = -1;
     } else if (id === 'gary') {
       // a big overhead wave; the other hand stays professionally at his side
       handF = [shF + 0.08 * u + Math.sin(ct * 8) * 0.11 * u, shoulderY - armL * 0.95]; elbF = 1;
@@ -835,19 +917,39 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // Two poses hit and held: a wider double-biceps, then most-muscular
       // with the fists dragged low and together in front.
       if (cm.q < 0.5) {
-        handF = [shF - 0.04 * u, shoulderY - armL * 0.72]; elbF = -1;
-        handB = [shB + 0.04 * u, shoulderY - armL * 0.72]; elbB = 1;
+        // Fists up just inside the shoulders, elbows bent OUTWARD (+/-):
+        // with a target nearly overhead the IK's bend is horizontal, so the
+        // inverted dirs this used to carry folded the joints inward and
+        // parked both elbows on his cheeks.
+        handF = [shF - 0.04 * u, shoulderY - armL * 0.72]; elbF = 1;
+        handB = [shB + 0.04 * u, shoulderY - armL * 0.72]; elbB = -1;
       } else {
         handF = [0.07 * u, shoulderY + armL * 0.52]; elbF = 1;
         handB = [-0.07 * u, shoulderY + armL * 0.52]; elbB = -1;
       }
     }
   } else if (pose.menuAction === 'wave') {
-    handF = [shF + 0.15 * u, shoulderY - armL * 0.72]; elbF = 1;
+    // Cast-roll wave: the hand target swings on the clock and reach() holds
+    // the arm at FULL extension through the whole sweep — the old mid-reach
+    // target left the elbow crooked, a bent-arm salute instead of a wave.
+    const wvt = Math.sin((pose.time || 0) * 8);
+    handF = reach(shF, shoulderY, [shF + (0.12 + 0.08 * wvt) * u, shoulderY - armL * 0.8]); elbF = 1;
     handB = [shB - 0.03 * u, shoulderY + armL * 0.8]; elbB = -1;
   } else if (pose.menuAction === 'flex') {
-    handF = [shF + 0.2 * u, shoulderY - armL * 0.45]; elbF = 1;
-    handB = [shB - 0.2 * u, shoulderY - armL * 0.45]; elbB = -1;
+    // Posing reps on a loop: arms flung out dead straight, held — then the
+    // fists snap up into the curl, held — then back out. The two ends are the
+    // interesting shapes, so the clock spends its time AT them (fw is a
+    // plateaued wave, not a sine): a continuous swing reads as jumping jacks,
+    // not posing. Elbows bend DOWNWARD in the curl (front -1, back +1); for
+    // an up-out target the IK's bend axis tilts, and +/- dirs would throw the
+    // joints up-inward — the backwards-elbow look. At full spread the arms
+    // are straight, so the dirs never show there.
+    const fx = ((pose.time || 0) * 0.8) % 1;
+    const fw = fx < 0.4 ? 0 : fx < 0.5 ? (fx - 0.4) * 10 : fx < 0.9 ? 1 : 1 - (fx - 0.9) * 10;
+    const sF = reach(shF, shoulderY, [shF + 0.3 * u, shoulderY - armL * 0.25]);
+    const sB = reach(shB, shoulderY, [shB - 0.3 * u, shoulderY - armL * 0.25]);
+    handF = [sF[0] + (shF + 0.2 * u - sF[0]) * fw, sF[1] + (shoulderY - armL * 0.45 - sF[1]) * fw]; elbF = -1;
+    handB = [sB[0] + (shB - 0.2 * u - sB[0]) * fw, sB[1] + (shoulderY - armL * 0.45 - sB[1]) * fw]; elbB = 1;
   } else if (pose.headless || pose.stomp) {
     handF = reach(shF, shoulderY, [shF + 0.16 * u, shoulderY - armL * 0.5]); elbF = 1;
     handB = reach(shB, shoulderY, [shB - 0.16 * u, shoulderY - armL * 0.5]); elbB = -1;
@@ -902,21 +1004,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     });
   }
-  if (spec.back === 'axe' && !pose.axeThrown) {
-    limb(ctx, 0.08 * u, shoulderY + 0.12 * u, -0.31 * u, headY - 0.27 * u, 0.06 * u, p.w, ow);
-    outlined(ctx, '#b8d8f0', ow, (c) => {
-      c.moveTo(-0.32 * u, headY - 0.39 * u);
-      c.quadraticCurveTo(-0.52 * u, headY - 0.25 * u, -0.39 * u, headY - 0.06 * u);
-      c.lineTo(-0.25 * u, headY - 0.13 * u);
-      c.lineTo(-0.22 * u, headY - 0.34 * u);
-      c.closePath();
-    });
-    if (!lod) {
-      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = Math.max(0.6, ow * 0.55);
-      ctx.beginPath(); ctx.moveTo(-0.42 * u, headY - 0.25 * u); ctx.lineTo(-0.28 * u, headY - 0.19 * u); ctx.stroke();
-    }
-  }
-
   // Grumpos wears plain leather shoes cut from the same hide as his panels —
   // just the foot shape in that color, with no cuff or strap work above it, so
   // the bare leg above reads as long as it is.
@@ -952,10 +1039,37 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         dot(ctx, muzzleX + (cheer ? 0 : 0.08 * u), muzzleY - (cheer ? 0.09 * u : 0), 0.045 * u, p.w);
       }
     } else {
-      limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, bicepW, heavy ? p.s : p.b, ow, foreW);
+      if (armDims) muscleLimb(ctx, shF, shoulderY, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDims);
+      else limb2(ctx, shF, shoulderY, handF[0], handF[1], armSeg, elbF, armW, p.b, ow);
       handDeco(handF[0], handF[1]);
     }
   };
+
+  // The axe is the DEEPEST layer — slung flat on his back, so every limb
+  // draws over it: mid-celebrate and mid-jump the arms swing up across the
+  // blade, and hidden behind it they read as amputated at the shoulder.
+  if (spec.back === 'axe' && !pose.axeThrown) {
+    // Anchored to the SHOULDER, not the head: the blade peeks over the
+    // deltoid beside the beard. Head-anchored, the handle vanished behind
+    // the skull and the blade sat at crown height — an axe growing out of
+    // his head. The whole thing shifts forward with the airborne/running
+    // body (the run lean moves the torso by leanX * 0.5, and the jump pose
+    // throws the shoulders forward the same way); pinned to center-frame x,
+    // the root slides off the shoulder in both.
+    const axx = run || jump ? 0.025 * u : 0;
+    limb(ctx, axx + 0.08 * u, shoulderY + 0.12 * u, axx - 0.33 * u, shoulderY - 0.24 * u, 0.06 * u, p.w, ow);
+    outlined(ctx, '#b8d8f0', ow, (c) => {
+      c.moveTo(axx - 0.34 * u, shoulderY - 0.3 * u);
+      c.quadraticCurveTo(axx - 0.54 * u, shoulderY - 0.16 * u, axx - 0.41 * u, shoulderY + 0.03 * u);
+      c.lineTo(axx - 0.27 * u, shoulderY - 0.04 * u);
+      c.lineTo(axx - 0.24 * u, shoulderY - 0.25 * u);
+      c.closePath();
+    });
+    if (!lod) {
+      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = Math.max(0.6, ow * 0.55);
+      ctx.beginPath(); ctx.moveTo(axx - 0.44 * u, shoulderY - 0.16 * u); ctx.lineTo(axx - 0.3 * u, shoulderY - 0.1 * u); ctx.stroke();
+    }
+  }
 
   // back limbs — and, front-on, the front-side pair too: a front limb painted
   // over the torso roots visibly on the chest while its mirror hides behind
@@ -964,7 +1078,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // reads as clapping from behind his back.
   const clapFront = id === 'grumpos' && pose.kind === 'celebrate';
   if (!clapFront) {
-    limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, bicepW, heavy ? p.s : p.b, ow, foreW);
+    if (armDims) muscleLimb(ctx, shB, shoulderY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDims);
+    else limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, armW, p.b, ow);
     handDeco(handB[0], handB[1]);
     // The cannon is mounted ordnance, not a mirrored arm — behind the torso
     // its barrel vanishes into the helmet, so it always draws in front.
@@ -974,8 +1089,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
   if (stand) drawFrontLeg();
 
-  // Backpack/shield on the back: drawn after the rear arm so the rear elbow
-  // tucks BEHIND it, but before the torso so the body still sits in front.
   if (spec.back === 'shield') {
     outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
     dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
@@ -991,10 +1104,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (spec.delts) {
     const dr = torsoHalf * 0.44;
     for (const sgn of [-1, 1]) {
-      outlined(ctx, p.b, ow, (c) => c.arc(leanX * 0.5 + sgn * torsoHalf * 0.86, torsoTop + dr * 0.75, dr, 0, Math.PI * 2));
+      outlined(ctx, p.b, ow * 0.65, (c) => c.arc(leanX * 0.5 + sgn * torsoHalf * 0.86, torsoTop + dr * 0.75, dr, 0, Math.PI * 2), 'rgba(26,16,40,0.15)');
     }
   }
-  outlined(ctx, p.b, ow, torsoPath);
+  // The heavy torso is bare skin: thinner and fainter still than the arms'
+  // SKIN_OUTLINE — it is the biggest uninterrupted shape on him, and at full
+  // weight its rim dominates the sprite the way no limb's can.
+  outlined(ctx, p.b, heavy ? ow * 0.65 : ow, torsoPath, heavy ? 'rgba(26,16,40,0.15)' : OUTLINE);
   if (spec.pecs && !lod) {
     // Chest shading: a pec shelf and a short sternum line. Any more detail
     // than this turns into speckle once the sprite is back at game scale.
@@ -1014,6 +1130,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath();
     ctx.moveTo(px, torsoTop + 0.03 * u);
     ctx.lineTo(px, pecY);
+    ctx.stroke();
+    // A four-pack below the shelf: the sternum seam carries on down the
+    // belly and two short rungs cross it. Same whisper-weight as the pecs —
+    // more detail than this speckles once the sprite is back at game scale.
+    const absBot = hipY - 0.11 * u + bob;
+    ctx.beginPath();
+    ctx.moveTo(px, pecY + 0.02 * u);
+    ctx.lineTo(px, absBot);
+    ctx.stroke();
+    ctx.beginPath();
+    for (const f of [0.42, 0.78]) {
+      const ay = pecY + (absBot - pecY) * f;
+      ctx.moveTo(px - torsoHalf * 0.26, ay);
+      ctx.lineTo(px + torsoHalf * 0.26, ay);
+    }
     ctx.stroke();
     ctx.restore();
   }
@@ -1246,11 +1377,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.p, Math.max(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
     outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
-  if (clapFront) {
-    limb2(ctx, shB, shoulderY, handB[0], handB[1], armSeg, elbB, bicepW, p.s, ow, foreW);
-    handDeco(handB[0], handB[1]);
-    drawFrontArm();
-  } else if (!stand || spec.cannon) {
+  if (!clapFront && (!stand || spec.cannon)) {
     drawFrontArm();
   }
 
@@ -1262,6 +1389,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // leanX it sits a half-lean ahead of the body, and the torso's back edge
     // juts out behind the neck — a hump, most visible on a tapered torso.
     drawHead(ctx, id, spec, p, u, ow, 0.01 * u + leanX * 0.5, headY, lod, pose);
+  }
+
+  // Grumpos's celebrate arms draw dead LAST, after the head: the flex brings
+  // both fists up beside the face, and drawn before the head they slide
+  // behind the beard — hands vanishing behind his own neck mid-pose.
+  if (clapFront) {
+    muscleLimb(ctx, shB, shoulderY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDims);
+    handDeco(handB[0], handB[1]);
+    drawFrontArm();
   }
 }
 

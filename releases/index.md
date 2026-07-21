@@ -30,3 +30,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-20 | `b2ae843` | [2026-07-20-b2ae843.html](2026-07-20-b2ae843.html) | Refine HUD panel styling and battery art |
 | 2026-07-21 | `c0543fa` | [2026-07-21-c0543fa.html](2026-07-21-c0543fa.html) | Add briefing manifest and story beats tests |
 | 2026-07-21 | `8a976e8` | [2026-07-21-8a976e8.html](2026-07-21-8a976e8.html) | Refactor code structure for improved readability and maintainability |
+| 2026-07-21 | `8b562c2` | [2026-07-21-8b562c2.html](2026-07-21-8b562c2.html) | Refactor code structure for improved readability and maintainability |

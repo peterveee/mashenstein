@@ -25,6 +25,22 @@ const CAST_HERO_TILE = 150;
 const CAST_HERO_SCALE = 2;
 const CAST_HERO_FLOOR = 140;
 
+// Gary is an NPC gag, not a playable relay member. Keep him local to the
+// roll call so the normal eight-hero systems do not start selecting him.
+const GARY_CAST = {
+  id: 'gary', name: 'GARY, STILL ON THE CLOCK', short: 'GARY',
+  tagline: 'TECHNICALLY I NEVER CLOCKED OUT.',
+  ability: { label: 'UNAUTHORIZED INITIATIVE' },
+  abilityDesc: 'STILL RESPONSIBLE FOR THE PHYSICAL SWITCHES. DEATH DID NOT UPDATE THE ROSTER.',
+  joke: 'HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.',
+};
+
+export const CAST_HEROES = [
+  ...HEROES.slice(0, -1),
+  GARY_CAST,
+  HEROES[HEROES.length - 1],
+];
+
 let castHeroSurface;
 
 // The gallery's CRT filter is intentionally applied to the hero tile rather
@@ -97,7 +113,7 @@ function drawCastHero(ctx, heroId, pose, cx, feetY) {
 // known-good for their rig.
 const BEATS = {
   lorenzo: 'wave', gnash: 'jump', fernwick: 'roll', b33p: 'aim',
-  mochi: 'float', chompo: 'chomp', raymn: 'assemble', grumpos: 'flex',
+  mochi: 'float', chompo: 'chomp', raymn: 'assemble', grumpos: 'flex', gary: 'wave',
 };
 
 export class CastState {
@@ -115,7 +131,7 @@ export class CastState {
 
   exit() { Input.clearAll(); }
 
-  isLast() { return this.i === HEROES.length - 1; }
+  isLast() { return this.i === CAST_HEROES.length - 1; }
   slotLen() { return SLOT_T + (this.isLast() ? TAIL_T : 0); }
 
   update(dt) {
@@ -142,7 +158,7 @@ export class CastState {
     if (this.slotT >= this.slotLen()) {
       this.slotT = 0;
       this.i++;
-      if (this.i >= HEROES.length) { this.o.onExit(true); return; } // whole cast seen
+      if (this.i >= CAST_HEROES.length) { this.o.onExit(true); return; } // whole cast seen
     }
     Input.endFrame();
   }
@@ -172,7 +188,7 @@ export class CastState {
   }
 
   draw(ctx) {
-    const hero = HEROES[Math.min(this.i, HEROES.length - 1)];
+    const hero = CAST_HEROES[Math.min(this.i, CAST_HEROES.length - 1)];
     const t = this.t;
     // Slide/fade the panel in at the top of each slot.
     const intro = this.slotT < FADE_T;
@@ -269,8 +285,8 @@ export class CastState {
 
     // --- roll-call progress + exit hint ------------------------------------
     const dotW = 8;
-    const x0 = W / 2 - (HEROES.length * dotW) / 2;
-    for (let i = 0; i < HEROES.length; i++) {
+    const x0 = W / 2 - (CAST_HEROES.length * dotW) / 2;
+    for (let i = 0; i < CAST_HEROES.length; i++) {
       ctx.fillStyle = i === this.i ? '#f6d33c' : i < this.i ? '#5a5a68' : '#2a2a3a';
       ctx.fillRect(x0 + i * dotW, H - 30, 5, 3);
     }

@@ -3,8 +3,7 @@
 import { installDom } from './dom-stub.js';
 const dom = installDom();
 
-const { CastState } = await import('../src/game/cast.js');
-const { HEROES } = await import('../src/data/heroes.js');
+const { CastState, CAST_HEROES } = await import('../src/game/cast.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -31,18 +30,18 @@ while (exited === null && ticks < 60 * 120) {
   st.update(TICK);
   if (exited === null) {
     st.draw(ctx);
-    const id = HEROES[Math.min(st.i, HEROES.length - 1)].id;
+    const id = CAST_HEROES[Math.min(st.i, CAST_HEROES.length - 1)].id;
     if (shown[shown.length - 1] !== id) shown.push(id);
   }
   ticks++;
 }
 st.exit();
 assert(exited === true, `roll call ended on its own after ${(ticks / 60).toFixed(1)}s (auto=${exited})`);
-assert(shown.length === HEROES.length, `showed ${shown.length}/${HEROES.length} heroes`);
-assert(shown.join(',') === HEROES.map((h) => h.id).join(','), 'every hero appeared once, in roster order');
+assert(shown.length === CAST_HEROES.length, `showed ${shown.length}/${CAST_HEROES.length} cast members`);
+assert(shown.join(',') === CAST_HEROES.map((h) => h.id).join(','), 'every cast member appeared once, in roster order');
 
 // 2) every hero has the copy the screen renders
-for (const h of HEROES) {
+for (const h of CAST_HEROES) {
   assert(!!(h.short && h.tagline && h.ability && h.ability.label && h.abilityDesc),
     `${h.short} has name, tagline and ability copy`);
 }
