@@ -157,7 +157,8 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     // The overlay is a SEPARATE canvas with its own context, so it never sees
     // the camera the caller set up — the hero has to carry it across.
     const z = opts.zoom ?? ZOOM;
-    pushOverlayDraw((c) => { c.save(); applyWorld(c, z); paint(c); c.restore(); });
+    const pan = opts.pan ?? 0;
+    pushOverlayDraw((c) => { c.save(); applyWorld(c, z, pan); paint(c); c.restore(); });
   }
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
@@ -332,7 +333,7 @@ export function drawPortal(ctx, portal, camX, t, zoom = ZOOM) {
   // Who you are about to become, and what they do. Signage, not scenery: hung
   // off the top of the arch and then drawn unscaled, so both the type size and
   // the gap above the arch stay as authored instead of being magnified with the
-  // world — at 2.25x the callout alone was wider than the frame.
+  // world — magnified, the callout alone was wider than the frame.
   ctx.save();
   ctx.translate(x + 6, GROUND_Y - 40 - pulse);
   ctx.scale(1 / zoom, 1 / zoom);

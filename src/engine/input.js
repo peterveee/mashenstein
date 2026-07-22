@@ -72,7 +72,15 @@ class InputSys {
         this.press(btn.action);
       } else {
         this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action: null });
-        if (this.usingTouch) this.press('jump'); // tap = jump (gesture may refine to duck)
+        // Tap-to-jump is a RUN-gameplay convenience only. Every other context
+        // has its own tap handling (menu list-select, the hub's walk/interact
+        // logic, ...), and a bare 'jump' press leaking in there is a real bug,
+        // not just redundant: some of those screens read 'jump' as a
+        // controller's action button (e.g. the hub's "confirm the station
+        // you're standing at"), and since this fired from ANY tap anywhere on
+        // screen, merely being near a station — not tapping it — was enough
+        // to confirm it.
+        if (this.usingTouch && this.context === 'run') this.press('jump');
       }
       e.preventDefault();
     });

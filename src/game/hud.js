@@ -527,13 +527,29 @@ export function drawHud(ctx, run) {
 // have a toon rig, so the portrait path works — only the name needs supplying.
 const EXTRA_SPEAKERS = { gary: { short: 'GARY' } };
 
-export function drawSpeech(ctx, speech) {
+// `opts.light` swaps the card to a pale, opaque plate with dark ink.
+//
+// The default is built for a run: a translucent slate over a bright, moving
+// stage, where a solid card would punch a hole in the art. The food court is the
+// opposite problem — the concourse wall is #241c30, which is within a few
+// percent of the panel's own fill, so the card lost its edges and pale teal ink
+// sat on near-black at almost no contrast. A light plate reads instantly there,
+// and the difference is worth having anyway: a hero chatting in the hub is a
+// different register from one shouting over gameplay.
+export function drawSpeech(ctx, speech, opts = {}) {
+  const light = !!opts.light;
   // Eggshell talks in pink-red ink, allies in the same pale teal as the badge.
   const isEgg = speech.who === 'eggshell';
   const hero = !isEgg && speech.who
     ? (HERO_BY_ID[speech.who] || EXTRA_SPEAKERS[speech.who] || null)
     : null;
-  const ink = isEgg ? '#f0a0a0' : '#d0f0e8';
+  const ink = light ? (isEgg ? '#8e1f36' : '#332b45') : (isEgg ? '#f0a0a0' : '#d0f0e8');
+  const nameInk = light ? '#1a1028' : '#fff';
+  const plate = light ? '#ece9f6' : undefined;
+  const plateOpts = light ? { border: 'rgba(26,16,40,0.4)', shadow: true } : null;
+  const panel = (px, py, pw, ph) => (plate
+    ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
+    : drawPanel(ctx, px, py, pw, ph, 3));
   const y = 46;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
@@ -541,7 +557,7 @@ export function drawSpeech(ctx, speech) {
     // Three lines, not two: Eggshell's longest grievances need the room.
     const lines = wrapText(speech.text, W - 56, 1, 3);
     const tw = Math.max(...lines.map((line) => textWidth(line)));
-    drawPanel(ctx, W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * 11, 3);
+    panel(W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * 11);
     lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, ink));
     return;
   }
@@ -555,7 +571,7 @@ export function drawSpeech(ctx, speech) {
   const h = Math.max(FACE_H + 6, textH + 8);
   const w = PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(W / 2 - w / 2);
-  drawPanel(ctx, x, y - 4, w, h, 3);
+  panel(x, y - 4, w, h);
   const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
   // Eggshell has no toon rig — his prop painter plays the portrait.
   if (isEgg) {
@@ -570,6 +586,6 @@ export function drawSpeech(ctx, speech) {
   }
   const tx = x + PAD + FACE_W + GAP;
   const ty = y - 4 + Math.round((h - textH) / 2) + 3;
-  rawDrawText(ctx, name, tx, ty, '#fff');
+  rawDrawText(ctx, name, tx, ty, nameInk);
   lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + 11 + i * 11, ink));
 }

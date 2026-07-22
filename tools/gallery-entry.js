@@ -12,9 +12,15 @@ import { buildAllSprites, drawWorldEntity, drawHeroSprite, HERO_DRAW_W, HERO_DRA
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
 import { PROP_PAINTERS, drawProp, propFrames, propTall, glowSprite, sparkSprite } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
+import {
+  cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
+  drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
+} from '../src/sprites/arcade.js';
+import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H } from '../src/sprites/backwall.js';
 import { TOON_SPECS, drawToon, drawToonFace } from '../src/sprites/toons.js';
 import { getStylePack } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
+import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
 import { drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W } from '../src/game/plugs.js';
 
@@ -544,6 +550,131 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       const f = frames > 1 ? Math.floor(t * 8) % frames : 0;
       drawProp(ctx, n, 4, 4, w, fh, f);
     }, { animated: frames > 1 });
+  }
+}
+
+// ------------------------------------------------------- 3b. food court furniture
+{
+  const grid = section('foodcourt', 'Food court furniture',
+    'The hub concourse, at the size HubState draws it: nine cabinets lit and dead '
+    + '(sprites/arcade.js), the overtime machine, and every service door. '
+    + 'Cabinet colours come straight from each CABINETS entry.');
+  const CW = 40, CH = 90, DW = 44, DH = 84;
+  const cabTile = (cab, unlocked) => {
+    const pal = cabinetPalette(cab, unlocked);
+    // The first cabinet has no unlock threshold at all, so UNLOCKS has no entry
+    // for it — say "free" rather than "undefined plugs".
+    tile(grid, cab.id + (unlocked ? '' : ' (locked)'), unlocked ? cab.genre : `${UNLOCKS[cab.id] ?? 0} plugs`,
+      CW + 8, CH + 8, (ctx, t) => {
+        drawCabinetShell(ctx, 4, 4, CW, CH, pal);
+        const scr = drawCabinetScreen(ctx, 4, 4, CW, CH, pal);
+        if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+      }, { animated: unlocked });
+  };
+  for (const cab of CABINETS) cabTile(cab, true);
+  for (const cab of CABINETS) cabTile(cab, false);
+  tile(grid, 'overtime', 'OVERTIME_PALETTE', CW + 8, CH + 8,
+    (ctx) => drawCabinetShell(ctx, 4, 4, CW, CH, OVERTIME_PALETTE));
+  for (const [type, pal] of Object.entries(DOOR_PALETTES)) {
+    tile(grid, type, `${pal.icon} sign`, DW + 8, DH + 8,
+      (ctx) => drawDoor(ctx, 4, 4, DW, DH, pal));
+  }
+}
+
+// --------------------------------------------------- 3c. cabinet style bake-off
+// Four silhouettes of the same machine, so the choice can be made by looking
+// rather than by describing. Every style shares the hardware (controls, coin
+// door, marquee art) and differs only in outline and proportion. Whichever wins
+// becomes CABINET_STYLE in sprites/arcade.js — a one-word edit.
+{
+  const grid = section('cabinet-styles', 'Cabinet style bake-off',
+    'The same cabinets drawn in each candidate silhouette. '
+    + `Active style is "${CABINET_STYLE}". `
+    + 'Rows are the styles; each is shown at hub size against a representative '
+    + 'spread of palettes — bright, dark, pale — plus a locked one.');
+  // A spread that stresses the palette maths: a bright cabinet, a near-black
+  // one, a near-white one, and the remix cabinet.
+  const PICKS = ['plumber', 'crypt', 'office', 'surge'];
+  for (const [name, st] of Object.entries(CABINET_STYLES)) {
+    for (const id of PICKS) {
+      const cab = CABINETS.find((c) => c.id === id);
+      const pal = cabinetPalette(cab, true);
+      tile(grid, `${name} — ${id}`, `${st.w}x${st.h}${name === CABINET_STYLE ? ' (active)' : ''}`,
+        st.w + 8, st.h + 8, (ctx, t) => {
+          drawCabinetShell(ctx, 4, 4, st.w, st.h, pal, name);
+          const scr = drawCabinetScreen(ctx, 4, 4, st.w, st.h, pal, name);
+          if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+        }, { animated: true });
+    }
+    const locked = cabinetPalette(CABINETS.find((c) => c.id === 'rhythm'), false);
+    tile(grid, `${name} — locked`, 'unplugged', st.w + 8, st.h + 8,
+      (ctx) => drawCabinetShell(ctx, 4, 4, st.w, st.h, locked), { animated: false });
+  }
+}
+
+// ------------------------------------------------- 3d. back wall bake-off
+// Five candidate dressings for the wall behind the cabinets, which is currently
+// one flat fill. Each is shown three ways: the bay lit, the bay dark, and the
+// bay as the concourse actually frames it — with a cabinet standing in front,
+// which is the only view that says how much of the art survives the occlusion.
+// The strip at the end is the real pitch: one painter, lit on the left, falling
+// off to nothing on the right as the ceiling lights run out.
+{
+  const grid = section('backwall', 'Back wall bake-off',
+    'Candidate dressings for the wall band behind the concourse (y 40..190, one '
+    + `${BAY_W}px ceiling-light bay each). Columns: fully lit, unlit, and with a `
+    + 'cabinet in front at hub scale. Lighting is wallLitAt() falloff, not a '
+    + 'per-bay on/off — so detail fades with distance from the nearest working light.');
+  const BW = BAY_W, BH = WALL_H;
+  const CS = cabinetStyle();
+  const litPal = cabinetPalette(CABINETS[0], true);
+
+  for (const [id, d] of Object.entries(WALL_DRESSINGS)) {
+    tile(grid, d.name, 'lit', BW, BH,
+      (ctx, t) => drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 1, pal: litPal }),
+      { animated: true });
+    tile(grid, d.name, 'unlit — same art, no power', BW, BH,
+      (ctx, t) => drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 0.12, pal: litPal }),
+      { animated: true });
+    tile(grid, d.name, 'in place, cabinet in front', BW, BH,
+      (ctx, t) => {
+        drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 0.9, pal: litPal });
+        // Hub geometry: floor line at 190 within this band, cabinet standing on it.
+        const cy = BH - 2 - CS.h;
+        drawCabinetShell(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
+        const scr = drawCabinetScreen(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
+        if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+      }, { animated: true });
+  }
+
+  // The falloff itself: four bays of one dressing, lit only at the left end.
+  // Every machine is PLUGGED IN here — the ones on the right are dim because
+  // nothing is lighting them, not because they are locked. The shading pass is
+  // deliberately last and covers the cabinets too, so the darkness reads as the
+  // room running out of light rather than as the wall alone going out.
+  const falloff = (x) => wallLitAt(x, 2, BW);
+  for (const [id, d] of Object.entries(WALL_DRESSINGS)) {
+    tile(grid, `${d.name} — falloff`, '4 bays, 2 lights working, one lit gradient over the lot', BW * 4, BH,
+      (ctx, t) => {
+        for (let b = 0; b < 4; b++) {
+          drawWallBay(ctx, b * BW, 0, BW, BH, id, { t, seed: b, lit: 1, pal: litPal });
+        }
+        for (let b = 0; b < 4; b++) {
+          const bx = b * BW;
+          const pal = cabinetPalette(CABINETS[b % CABINETS.length], true);
+          const cy = BH - 2 - CS.h;
+          drawCabinetShell(ctx, bx + BW / 2 - CS.w / 2, cy, CS.w, CS.h, pal);
+          const scr = drawCabinetScreen(ctx, bx + BW / 2 - CS.w / 2, cy, CS.w, CS.h, pal);
+          if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+        }
+        shadeWall(ctx, 0, 0, BW * 4, BH, falloff);
+        // Fixtures last, at the hub's y 46 within the wall band: a dead tube
+        // should not be lit by its own glow, and a live one is the light source.
+        for (let b = 0; b < 4; b++) {
+          ctx.fillStyle = b < 2 ? '#f6d33c' : '#30303f';
+          ctx.fillRect(b * BW + BW / 2 - 13, 6, 26, 4);
+        }
+      }, { animated: true, wide: true });
   }
 }
 

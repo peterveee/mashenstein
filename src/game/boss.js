@@ -192,7 +192,7 @@ export class BossState extends RunState {
     const y = Math.round(GROUND_Y - this.bossAlt - 24);
     const big = this.boss.sprite === 'dustdevil';
     ctx.save();
-    applyWorld(ctx, this.camZoom);
+    applyWorld(ctx, this.camZoom, this.camPan);
     drawProp(ctx, this.boss.sprite, x - 12, y, big ? 28 : 24, big ? 24 : 20);
     ctx.fillStyle = 'rgba(200,200,216,0.6)';
     ctx.fillRect(x - 8 + Math.round(Math.sin(this.tRun * 40) * 3), y - 4, 24, 1);

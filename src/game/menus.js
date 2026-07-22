@@ -43,7 +43,13 @@ const TAGLINES = [
   'EVERY PIXEL LOVINGLY REPLACED WITH MATH',
 ];
 
+// The title screen's cabinet row. Narrower and shorter than the food court's
+// (nine have to fit across 480px here), but the same silhouette, standing on
+// the same floor line the checkered tiles start at.
+
 let titleGrad = null;
+// Offsets here are in the 26-tall units the accents were drawn against; the
+// caller scales the whole thing to whatever size the parade is running at.
 function drawParadeAccent(ctx, id, x, feetY, p) {
   const fade = Math.sin(p * Math.PI);
   if (fade <= 0) return;
@@ -98,20 +104,32 @@ const INV_CROSS = 11;      // slower than the hero parade, so targets change
 const INV_DROP_PS = [0.10, 0.45, 0.80];
 const INV_SPAN = W + 44;
 const BOLT_G = 260;        // px/s^2
-const BOLT_HEAD_Y = 238;   // where the parade's heads are
+const BOLT_HEAD_Y = 227;   // where the parade's heads are
 const KNOCK_T = 1.9;       // how long a clobbered hero stays airborne
-const INV_HIT_RADIUS = 38;
+const INV_HIT_RADIUS = 48;
 const PARADE_EDGE_FADE = 32;
+// How tall the cast stands on the title screen. The whole text stack above them
+// is pinned well clear of this, so the parade gets the bottom strip to itself
+// and reads at close to the size the heroes have in the food court.
+const HERO_PARADE_H = 36;
+// Every hop, accent and tap footprint below was tuned against a 26-tall parade;
+// they scale off this rather than being re-eyeballed one at a time.
+const PARADE_K = HERO_PARADE_H / 26;
 const HERO_PARADE_SPEED = 42;
 const HERO_PARADE_SPAN = W + 140;
 const HERO_PARADE_DELAY = 3.5;
 const HERO_ENTRY_GAP = 66 / HERO_PARADE_SPEED;
 const HERO_ENTRY_JUMP_T = 2.1;
-const HERO_ENTRY_JUMP_H = 30;
+const HERO_ENTRY_JUMP_H = 30 * PARADE_K;
 const HERO_ENTRY_ZOOM = 1.35;
+// A tapped hero's startled little hop, overriding whatever they were doing.
+const HERO_POKE_T = 0.4;
+const HERO_POKE_H = 11 * PARADE_K;
 
 const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * INV_SPAN);
-const invY = (trip, t) => 7 + (trip % 3) * 4 + Math.sin(t * 2.3) * 1.6;
+// Tucked right under the top edge: the marquee moved up to give the cast the
+// bottom of the screen, so the fly-by has less sky to keep out of its way.
+const invY = (trip, t) => 4 + (trip % 3) * 3 + Math.sin(t * 2.3) * 1.6;
 const heroX = (i, t) => {
   const local = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
   return local < 0 ? -70 : ((local * HERO_PARADE_SPEED) % HERO_PARADE_SPAN) - 70;
@@ -136,13 +154,41 @@ const WISP_GAP = 38;
 const WISP_FIRST = PARADE_SPAN / PARADE_SPEED + 92 / PARADE_SPEED;
 const WISP_PERIOD = (PARADE_SPAN / PARADE_SPEED) * 3;
 const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
+// Tapping any visitor spooks the whole crossing gang into a power-pellet
+// fright: everyone on screen turns blue and scatters in place for a few
+// seconds, still crossing normally rather than fleeing. Tapping one of them
+// again while frightened eats it — the body drops away to just a pair of
+// eyes that zip straight off whichever edge is nearest.
+const WISP_TAP_RADIUS = 12 * PARADE_K;
+// Top of the strip a tap has to land in to count as poking the parade rather
+// than the menu. Tracks the tallest head, so it follows HERO_PARADE_H.
+const PARADE_TAP_TOP = 268 - HERO_PARADE_H - 6;
+// The visitors share the parade's floor line, so they share its scaling too —
+// a fixed 0.68 left them knee-high once the cast grew.
+const WISP_SCALE = 0.68 * PARADE_K;
+const WISP_FRIGHT_T = 7;
+const WISP_FRIGHT_COLOR = '#4a5be0';
+const WISP_FRIGHT_FLASH_T = 2; // last stretch blinks blue/white, the classic warning
+const WISP_EATEN_SPEED = 150;
+// Scattering: each visitor still on screen when the fright starts breaks from
+// the shared marching formula onto its own independent line — half hold still
+// for a beat, half peel off backward — instead of the whole gang drifting on
+// in the same lockstep it was in a moment ago.
+const WISP_SCATTER_PAUSE_T = 2.2;
+const WISP_SCATTER_SPEED = 58;
+function wispScatterX(t, w) {
+  if (w.mode === 'reverse') return w.x0 - (t - w.t0) * WISP_SCATTER_SPEED;
+  const held = t - w.t0;
+  if (held < WISP_SCATTER_PAUSE_T) return w.x0;
+  return w.x0 + (held - WISP_SCATTER_PAUSE_T) * PARADE_SPEED;
+}
 
 function mazeWispPass(t) {
   if (t < WISP_FIRST) return null;
   const elapsed = t - WISP_FIRST;
   const trip = Math.floor(elapsed / WISP_PERIOD);
   const local = elapsed % WISP_PERIOD;
-  const count = 2 + (trip % 3);
+  const count = 1 + (trip % 2);
   // From the lead wisp touching the left edge until the final trailing wisp
   // has completely cleared the right. No alpha fade and no mid-screen cutoff.
   const cross = (W + 48 + (count - 1) * WISP_GAP) / PARADE_SPEED;
@@ -150,15 +196,16 @@ function mazeWispPass(t) {
   return { trip, local, count };
 }
 
-function drawMazeWisp(ctx, x, feetY, color, phase, mood) {
-  const bob = Math.sin(phase * Math.PI * 2) * 1.3;
-  const swish = Math.sin(phase * Math.PI * 1.35 + mood) * 1.2;
-  const face = (Math.floor(phase * 0.42) + mood) % 4;
+function drawMazeWisp(ctx, x, feetY, color, phase, mood, scatter) {
+  const bob = Math.sin(phase * Math.PI * 2) * (scatter ? 1.8 : 1.3);
+  const swish = Math.sin(phase * (scatter ? 2.4 : 1.35) + mood) * (scatter ? 1.9 : 1.2);
+  // Scattering reads as one fixed startled face, not the leisurely per-phase cycle.
+  const face = scatter ? 1 : (Math.floor(phase * 0.42) + mood) % 4;
   const blinkClock = ((phase + mood * 1.31) % 6 + 6) % 6;
-  const blinking = blinkClock > 5.68;
+  const blinking = !scatter && blinkClock > 5.68;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(feetY + bob));
-  ctx.scale(0.68, 0.68);
+  ctx.scale(WISP_SCALE, WISP_SCALE);
   ctx.lineJoin = 'round';
   // Rounded hood, tapered sides and three uneven little skirt points make a
   // soft floating mascot rather than a literal arcade-ghost sprite.
@@ -199,20 +246,91 @@ function drawMazeWisp(ctx, x, feetY, color, phase, mood) {
   ctx.restore();
 }
 
-function drawMazeWispCameo(ctx, t, reduced) {
+// The eaten state: just the eyes, screaming off toward the nearest edge —
+// the body doesn't survive contact with a tap once frightened.
+function drawWispEyes(ctx, x, feetY, dir) {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(feetY));
+  ctx.scale(WISP_SCALE, WISP_SCALE);
+  const gx = dir * 1.4;
+  ctx.fillStyle = '#fff8e8';
+  ctx.beginPath(); ctx.ellipse(-3.3, -16, 2.7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(3.3, -16, 2.7, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#30204a';
+  ctx.beginPath(); ctx.arc(-3.3 + gx, -16, 1.15, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3.3 + gx, -16, 1.15, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter) {
   if (reduced) return;
+  const frightActive = frightStart != null && t - frightStart < WISP_FRIGHT_T;
+  // The last stretch blinks blue/white — the classic warning that fright is
+  // about to wear off — on the same 8Hz clock the flicker uses elsewhere.
+  const frightFlashing = frightActive && WISP_FRIGHT_T - (t - frightStart) < WISP_FRIGHT_FLASH_T
+    && Math.floor((t - frightStart) * 8) % 2 === 0;
+  const frightColor = frightFlashing ? '#fbfbf0' : WISP_FRIGHT_COLOR;
+  // Eaten visitors run on their own clock, independent of the pass that
+  // spawned them — often still zipping off well after their group has crossed.
+  if (eaten) {
+    for (const w of eaten.values()) {
+      const x = w.x0 + w.dir * (t - w.t0) * WISP_EATEN_SPEED;
+      if (x < -24 || x > W + 24) continue;
+      drawWispEyes(ctx, x, 267, w.dir);
+    }
+  }
+  // Scattering visitors also run on their own clock, independent of the
+  // shared marching formula their pass would otherwise place them on.
+  if (scatter) {
+    for (const [key, w] of scatter) {
+      if (eaten && eaten.has(key)) continue;
+      const x = wispScatterX(t, w);
+      if (x < -24 || x > W + 24) continue;
+      ctx.fillStyle = 'rgba(4,3,9,0.25)';
+      ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
+      const color = frightActive ? frightColor : WISP_COLORS[w.colorIdx];
+      drawMazeWisp(ctx, x, 267, color, t * 1.8 + w.colorIdx * 0.24, w.colorIdx % 3, true);
+    }
+  }
   const pass = mazeWispPass(t);
   if (!pass) return;
   // All visitors share the parade's exact speed. Starting this traversal at
   // the aligned WISP_FIRST time places the leader 46px behind Lorenzo; the
   // remaining guests follow in the rest of the cast's reserved tail space.
   for (let i = 0; i < pass.count; i++) {
+    const key = `${pass.trip}:${i}`;
+    if ((eaten && eaten.has(key)) || (scatter && scatter.has(key))) continue; // drawn above instead
     const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
     if (x < -24 || x > W + 24) continue;
     ctx.fillStyle = 'rgba(4,3,9,0.25)';
-    ctx.beginPath(); ctx.ellipse(x, 268, 5.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
-    drawMazeWisp(ctx, x, 267, WISP_COLORS[(pass.trip + i) % WISP_COLORS.length], t * 1.8 + i * 0.24, (pass.trip + i) % 3);
+    ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
+    const color = frightActive ? frightColor : WISP_COLORS[(pass.trip + i) % WISP_COLORS.length];
+    drawMazeWisp(ctx, x, 267, color, t * 1.8 + i * 0.24, (pass.trip + i) % 3, frightActive);
   }
+}
+
+// A tap landing on a not-yet-eaten maze-wisp visitor. Returns its map key and
+// current x (so eating it knows which edge is nearest), or null.
+function wispTapHit(t, px, py, eaten, scatter) {
+  if (py < PARADE_TAP_TOP || py > 270) return null;
+  if (scatter) {
+    for (const [key, w] of scatter) {
+      if (eaten && eaten.has(key)) continue;
+      const x = wispScatterX(t, w);
+      if (x < -24 || x > W + 24) continue;
+      if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key, x };
+    }
+  }
+  const pass = mazeWispPass(t);
+  if (!pass) return null;
+  for (let i = 0; i < pass.count; i++) {
+    const key = `${pass.trip}:${i}`;
+    if ((eaten && eaten.has(key)) || (scatter && scatter.has(key))) continue;
+    const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
+    if (x < -24 || x > W + 24) continue;
+    if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key, x };
+  }
+  return null;
 }
 
 // Which fly-by (if any) is on screen right now.
@@ -222,6 +340,16 @@ function invaderPass(t) {
   const trip = Math.floor(e / INV_PERIOD);
   const p = (e % INV_PERIOD) / INV_CROSS;
   return p <= 1 ? { trip, p } : null;
+}
+
+// Whether hero i has actually appeared on screen yet at time t: past their
+// entrance and not faded out at the parade's wrap edge. A bomb should only
+// ever pick a target the player can actually see get hit — otherwise a
+// not-yet-entered or already-offscreen hero snaps into view just to be flung.
+function heroOnScreen(i, t) {
+  const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+  if (entryT < 0) return false;
+  return paradeEdgeAlpha(heroX(i, t)) > 0;
 }
 
 function invaderBombsForTrip(trip) {
@@ -240,7 +368,7 @@ function invaderBombsForTrip(trip) {
     if (dropIndex !== 1) {
       let best = INV_HIT_RADIUS;
       for (let i = 0; i < HERO_PARADE.length; i++) {
-        if (claimedVictims.has(i)) continue;
+        if (claimedVictims.has(i) || !heroOnScreen(i, tHit)) continue;
         const d = Math.abs(heroX(i, tHit) - x);
         if (d < best) { best = d; victim = i; }
       }
@@ -256,34 +384,92 @@ function invaderBombsForTrip(trip) {
   return bombs;
 }
 
+function bombStrike(bomb, t) {
+  if (t < bomb.tDrop || t > bomb.tHit + KNOCK_T) return null;
+  if (t < bomb.tHit) {
+    return { id: bomb.id, x: bomb.x, y: bomb.y0 + 0.5 * BOLT_G * (t - bomb.tDrop) * (t - bomb.tDrop), tHit: bomb.tHit };
+  }
+  return { id: bomb.id, x: bomb.x, y: BOLT_HEAD_Y, tHit: bomb.tHit, kt: t - bomb.tHit, victim: bomb.victim, dir: bomb.dir };
+}
+
 // The active bombs for the current pass, plus who each one lands on. Every
-// other trip is armed, giving the fly-by an exact 50% attack rate.
-function invaderStrikes(t) {
-  const pass = invaderPass(t);
-  if (!pass || pass.trip % 2 !== 0) return null;
+// other trip is armed on its own, giving the fly-by an exact 50% attack rate
+// — but a tapped ship (tapBombs) drops one regardless of whether its trip
+// was armed, so those are folded in independent of the trip check below.
+function invaderStrikes(t, tapBombs) {
   const strikes = [];
-  for (const bomb of invaderBombsForTrip(pass.trip)) {
-    if (t < bomb.tDrop || t > bomb.tHit + KNOCK_T) continue;
-    if (t < bomb.tHit) {
-      strikes.push({ id: bomb.id, x: bomb.x, y: bomb.y0 + 0.5 * BOLT_G * (t - bomb.tDrop) * (t - bomb.tDrop), tHit: bomb.tHit });
-    } else {
-      strikes.push({ id: bomb.id, x: bomb.x, y: BOLT_HEAD_Y, tHit: bomb.tHit, kt: t - bomb.tHit, victim: bomb.victim, dir: bomb.dir });
+  const pass = invaderPass(t);
+  if (pass && pass.trip % 2 === 0) {
+    for (const bomb of invaderBombsForTrip(pass.trip)) {
+      const s = bombStrike(bomb, t);
+      if (s) strikes.push(s);
     }
+  }
+  for (const bomb of tapBombs || []) {
+    const s = bombStrike(bomb, t);
+    if (s) strikes.push(s);
   }
   return strikes.length ? strikes : null;
 }
 
-function heroIsKnockedOut(i, t) {
+function heroIsKnockedOut(i, t, tapBombs) {
   const latestTrip = Math.floor((t - INV_FIRST) / INV_PERIOD);
-  if (latestTrip < 0) return false;
   // A knockback lasts less than one fly-by period, so the current and previous
   // attack passes cover every possible return window.
-  for (let trip = Math.max(0, latestTrip - 1); trip <= latestTrip; trip++) {
-    for (const bomb of invaderBombsForTrip(trip)) {
-      if (bomb.victim === i && t >= bomb.tHit && t < bomb.returnAt) return true;
+  if (latestTrip >= 0) {
+    for (let trip = Math.max(0, latestTrip - 1); trip <= latestTrip; trip++) {
+      for (const bomb of invaderBombsForTrip(trip)) {
+        if (bomb.victim === i && t >= bomb.tHit && t < bomb.returnAt) return true;
+      }
     }
   }
+  for (const bomb of tapBombs || []) {
+    if (bomb.victim === i && t >= bomb.tHit && t < bomb.returnAt) return true;
+  }
   return false;
+}
+
+// A tap landing on the invader mid fly-by: makes it drop an extra bomb from
+// its current spot regardless of whether this trip was already armed.
+const INV_TAP_PAD = 9;
+function invaderTapHit(t, px, py) {
+  const pass = invaderPass(t);
+  if (!pass) return null;
+  const x = invX(pass.trip, pass.p), y = invY(pass.trip, t);
+  if (px < x - INV_TAP_PAD || px > x + 11 + INV_TAP_PAD || py < y - INV_TAP_PAD || py > y + 8 + INV_TAP_PAD) return null;
+  return { trip: pass.trip, x, y };
+}
+
+// Builds a bomb with the same shape invaderBombsForTrip produces, so it can
+// flow through bombStrike/heroIsKnockedOut unmodified.
+function makeTapBomb(id, tDrop, invaderX, invaderY, dir, tapBombs) {
+  const x = invaderX + 5, y0 = invaderY + 8;
+  const tHit = tDrop + Math.sqrt((2 * (BOLT_HEAD_Y - y0)) / BOLT_G);
+  let victim = -1, best = INV_HIT_RADIUS;
+  for (let i = 0; i < HERO_PARADE.length; i++) {
+    if (!heroOnScreen(i, tHit) || heroIsKnockedOut(i, tHit, tapBombs)) continue;
+    const d = Math.abs(heroX(i, tHit) - x);
+    if (d < best) { best = d; victim = i; }
+  }
+  const phase = victim < 0 ? 0 : heroX(victim, tHit) + 70;
+  const returnAt = victim < 0 ? Infinity : tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
+  return { id, tDrop, x, y0, tHit, victim, returnAt, dir };
+}
+
+// A tap landing on a parading hero: same rough footprint the invader bombs
+// use to find a victim, keyed off the pointer instead of a bomb's landing
+// site. Knocked-out heroes are mid-knockback (translated/rotated in their own
+// draw branch) and not worth hit-testing against their nominal floor spot.
+const HERO_TAP_RADIUS = 13 * PARADE_K;
+function heroTapIndex(t, px, py, tapBombs) {
+  if (py < PARADE_TAP_TOP || py > 270) return -1;
+  for (let i = 0; i < HERO_PARADE.length; i++) {
+    if (heroIsKnockedOut(i, t, tapBombs)) continue;
+    const hx = heroX(i, t);
+    if (paradeEdgeAlpha(hx) <= 0) continue;
+    if (Math.abs(px - hx) < HERO_TAP_RADIUS) return i;
+  }
+  return -1;
 }
 
 function drawInvader(ctx, t) {
@@ -360,7 +546,7 @@ function drawInvaderImpact(ctx, strikes) {
   }
 }
 
-function titleScene(ctx, t, reduced) {
+function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs) {
   // night sky over the last functioning food court
   if (!titleGrad) {
     titleGrad = ctx.createLinearGradient(0, 0, 0, H);
@@ -390,44 +576,30 @@ function titleScene(ctx, t, reduced) {
   }
   if (!reduced) drawInvader(ctx, t);
 
-  // the cabinet row: nine machines humming their own colors in the dark
-  CABINETS.forEach((cab, i) => {
-    const x = 22 + i * 49;
-    ctx.fillStyle = '#100c18';
-    ctx.fillRect(x, 128, 42, 76);
-    ctx.fillStyle = cab.ground;
-    ctx.fillRect(x, 124, 42, 7); // marquee
-    // glowing screen with a lazy attract shimmer
-    const flick = reduced ? 1 : 0.82 + 0.18 * Math.sin(t * (2 + i * 0.7) + i * 9);
-    ctx.globalAlpha = flick;
-    ctx.fillStyle = cab.sky[0];
-    ctx.fillRect(x + 5, 136, 32, 38);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillRect(x + 5, 136 + (Math.floor(t * 2.4 + i) % 5) * 8, 32, 2);
-    // light pooling on the floor below each screen
-    ctx.globalAlpha = 0.12 * flick;
-    ctx.fillStyle = cab.sky[0];
-    ctx.fillRect(x - 2, 204, 46, 20);
-    ctx.globalAlpha = 1;
-  });
+  // The nine-cabinet row used to stand here. It was competing with the marquee,
+  // the save-file panel and the hero parade for the same screen, and the title
+  // is not the place to inventory the arcade — the food court does that, at a
+  // size where the machines actually read. The floor and the parade carry the
+  // scene on their own.
 
-  // checkered floor
+  // Checkered floor. It starts higher than the text stack needs it to, because
+  // the cast is what the bottom of the screen is for — a taller parade standing
+  // on a deeper floor reads as a room rather than a strip of sprites.
   ctx.fillStyle = '#171222';
-  ctx.fillRect(0, 204, W, H - 204);
+  ctx.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
   for (let row = 0; row < 3; row++) {
     for (let x = -32; x < W; x += 32) {
       if ((Math.floor(x / 32) + row) % 2 === 0) continue;
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(x, 208 + row * 21, 32, 21);
+      ctx.fillRect(x, TITLE_FLOOR_Y + 4 + row * 24, 32, 24);
     }
   }
 
   // The cast still crosses the arcade, but each hero occasionally breaks into
   // a small personality beat. Cycles are offset so the parade stays readable.
-  const strikes = reduced ? null : invaderStrikes(t);
+  const strikes = reduced ? null : invaderStrikes(t, tapBombs);
   drawBolt(ctx, t, strikes);
-  drawMazeWispCameo(ctx, t, reduced);
+  drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter);
   for (let i = 0; i < HERO_PARADE.length; i++) {
     const hx = heroX(i, t);
     const id = HERO_PARADE[i];
@@ -445,11 +617,11 @@ function titleScene(ctx, t, reduced) {
       // viewer, like the hero is being flung out of the title screen.
       ctx.translate(kx, ky);
       ctx.rotate(strike.dir * kt * 7);
-      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, 26 * knockScale);
+      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, HERO_PARADE_H * knockScale);
       ctx.restore();
       continue;
     }
-    if (heroIsKnockedOut(i, t)) continue;
+    if (heroIsKnockedOut(i, t, tapBombs)) continue;
     const actionLength = 1.35;
     const beat = (t + i * 0.71) % 4.9;
     const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
@@ -469,21 +641,33 @@ function titleScene(ctx, t, reduced) {
       pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
       feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
     }
-    if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3; }
-    if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7; }
+    if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3 * PARADE_K; }
+    if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7 * PARADE_K; }
     if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
     if (acting && id === 'b33p') { pose.squash = lift * 0.35; pose.menuAction = 'aim'; }
-    if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8; }
-    if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2; }
+    if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8 * PARADE_K; }
+    if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2 * PARADE_K; }
     if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
     if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
+    // A tap startles whoever it lands on, overriding their signature beat —
+    // getting poked takes priority over whatever bit they were mid-performing.
+    const pokeAt = poke && poke.get(i);
+    if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
+      const pokeP = (t - pokeAt) / HERO_POKE_T;
+      pose.kind = 'jump'; pose.grounded = false;
+      feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+    }
     const edgeAlpha = paradeEdgeAlpha(hx);
     if (edgeAlpha <= 0) continue;
     const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * HERO_ENTRY_ZOOM : 1;
     ctx.save();
     ctx.globalAlpha *= edgeAlpha;
-    drawToon(ctx, id, pose, hx, feetY, 26 * entryZoom);
-    if (acting) drawParadeAccent(ctx, id, hx, feetY, actionP);
+    drawToon(ctx, id, pose, hx, feetY, HERO_PARADE_H * entryZoom);
+    if (acting) {
+      ctx.translate(hx, feetY);
+      ctx.scale(PARADE_K, PARADE_K);
+      drawParadeAccent(ctx, id, 0, 0, actionP);
+    }
     ctx.restore();
   }
   drawInvaderImpact(ctx, strikes);
@@ -570,14 +754,18 @@ function shuffleParade() {
 // Title menu geometry, shared by the renderer and the touch hit-test so a tap
 // always lands on the row it looks like it lands on.
 // The stack is tight: marquee, subtitle, panel, then the two footer lines, all
-// of which have to finish above the cast's heads at y=233.
+// of which have to finish above the cast's heads at 268 - HERO_PARADE_H.
 const TITLE_SCALE = 4.4;        // sized so the logo spans about the panel's width
 // Set by build.js ahead of the bundle, and only for `npm run dev` — the
 // published build never defines it, so this is '' and the title draws no stamp.
 const BUILD_STAMP = (typeof window !== 'undefined' && window.__MASH_BUILD__) || '';
-const TITLE_MARQUEE_Y = 30;     // a little top margin so the logo isn't on the edge
-const TITLE_SUBTITLE_Y = 71;
-const TITLE_PANEL_Y = 92;
+// The stack rides high: only enough headroom above the marquee for the invader
+// to cross without clipping the lettering, so everything the text needs is
+// spent above the cast rather than in the middle of the screen.
+const TITLE_MARQUEE_Y = 20;
+const TITLE_SUBTITLE_Y = 61;
+const TITLE_PANEL_Y = 80;
+const TITLE_FLOOR_Y = 194;      // horizon line, above the parade's own strip
 const TITLE_PANEL_PAD = 10;     // panel height beyond the rows themselves
 const TITLE_ROW_H = 14;
 const TITLE_ROW_INSET = 7;      // first row's offset inside the panel
@@ -591,7 +779,7 @@ const TITLE_FOOTER_LINE_H = 11;
 // footer down into the cast. Rather than let the text collide, the rows tighten
 // just enough to keep the whole stack clear. Both the renderer and the touch
 // hit-test read this, so a tap always lands on the row it looks like it does.
-const TITLE_PANEL_MAX_BOTTOM = 202;
+const TITLE_PANEL_MAX_BOTTOM = 190;
 function titleRowH(count) {
   const fits = Math.floor((TITLE_PANEL_MAX_BOTTOM - TITLE_PANEL_Y - TITLE_PANEL_PAD) / count);
   return Math.min(TITLE_ROW_H, fits);
@@ -686,6 +874,12 @@ export class TitleState {
     this.wasDark = false;
     this.lastBuzzCycle = -1;
     this.hitBombs = new Set();
+    this.poke = new Map(); // hero parade index -> t when last tapped
+    this.frightStart = null; // set when a wisp tap triggers the power-pellet fright
+    this.eaten = new Map(); // wisp pass key -> { t0, x0, dir } once eaten while frightened
+    this.scatter = new Map(); // wisp pass key -> { t0, x0, mode, colorIdx } once frightened
+    this.tapBombs = []; // player-triggered invader bombs, same shape as the scheduled ones
+    this.tapBombId = 0;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     // Returning from settings, help, or another title-side screen should not
@@ -767,7 +961,7 @@ export class TitleState {
   update(dt) {
     this.t += dt;
     if (!this.save.settings.reducedFlashing) {
-      for (const strike of invaderStrikes(this.t) || []) {
+      for (const strike of invaderStrikes(this.t, this.tapBombs) || []) {
         // The strike is present for the knockback window, so use its age to
         // edge-trigger the sound on the first frame after contact.
         if (strike.victim >= 0 && strike.kt >= 0 && strike.kt < dt + 0.02 && !this.hitBombs.has(strike.id)) {
@@ -818,11 +1012,75 @@ export class TitleState {
       const rowH = titleRowH(opts.length);
       const i = Math.floor((p.y - (TITLE_PANEL_Y + TITLE_ROW_INSET - 4)) / rowH);
       if (i >= 0 && i < opts.length) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
+      else {
+        // Didn't land on a menu row — maybe it landed on the invader overhead.
+        const ship = invaderTapHit(this.t, p.x, p.y);
+        if (ship) {
+          const dir = ship.trip % 2 === 0 ? 1 : -1;
+          this.tapBombs.push(makeTapBomb(`tap:${this.tapBombId++}`, this.t, ship.x, ship.y, dir, this.tapBombs));
+          Audio.sfx('shoot');
+        } else {
+          // Or a parading hero.
+          const hero = heroTapIndex(this.t, p.x, p.y, this.tapBombs);
+          if (hero >= 0) { this.poke.set(hero, this.t); Audio.sfx('jump'); }
+          else {
+            // Or a maze-wisp visitor. First tap on any of them is a power
+            // pellet: the whole crossing gang turns blue and scatters, still
+            // on screen. A tap on one of them while frightened eats it, and
+            // it zips off toward whichever edge is nearest.
+            const wisp = wispTapHit(this.t, p.x, p.y, this.eaten, this.scatter);
+            if (wisp) {
+              const frightActive = this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T;
+              if (frightActive) {
+                const dir = wisp.x < W / 2 ? -1 : 1;
+                this.eaten.set(wisp.key, { t0: this.t, x0: wisp.x, dir });
+                this.scatter.delete(wisp.key);
+                Audio.sfx('tag');
+              } else {
+                this.frightStart = this.t;
+                Audio.sfx('power');
+              }
+            }
+          }
+        }
+      }
+    }
+    // Any wisp visible for the first time since the fright started breaks off
+    // the shared marching formula onto its own scatter line — this also
+    // catches one still arriving mid-fright, not just the one that got tapped.
+    if (this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T) {
+      const pass = mazeWispPass(this.t);
+      if (pass) {
+        for (let j = 0; j < pass.count; j++) {
+          const key = `${pass.trip}:${j}`;
+          if (this.eaten.has(key) || this.scatter.has(key)) continue;
+          const x = -24 + pass.local * PARADE_SPEED - j * WISP_GAP;
+          if (x < -24 || x > W + 24) continue;
+          this.scatter.set(key, {
+            t0: this.t, x0: x,
+            mode: j % 2 === 0 ? 'pause' : 'reverse',
+            colorIdx: (pass.trip + j) % WISP_COLORS.length,
+          });
+        }
+      }
+    }
+    // Prune spent tap-bombs: misses once their impact has fully faded, hits
+    // once the knocked-out hero has earned their way back into the line.
+    this.tapBombs = this.tapBombs.filter((b) => this.t < (b.victim < 0 ? b.tHit + KNOCK_T : b.returnAt));
+    // Prune eaten wisps once they've fully cleared whichever edge they zipped toward.
+    for (const [key, w] of this.eaten) {
+      const x = w.x0 + w.dir * (this.t - w.t0) * WISP_EATEN_SPEED;
+      if (x < -40 || x > W + 40) this.eaten.delete(key);
+    }
+    // Prune scattered wisps once they've wandered off whichever edge they reached.
+    for (const [key, w] of this.scatter) {
+      const x = wispScatterX(this.t, w);
+      if (x < -40 || x > W + 40) this.scatter.delete(key);
     }
     Input.endFrame();
   }
   draw(ctx) {
-    titleScene(ctx, this.t, this.save.settings.reducedFlashing);
+    titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs);
     const opts = this.options();
     const ui = (d) => {
       // The cast owns the bottom strip, so every line of text sits above it:
@@ -856,7 +1114,10 @@ export class TitleState {
       drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, controlsY, '#6b7d95');
       d.globalAlpha = 0.85;
       if (this.onAttract && this.attractDelay <= 10) {
-        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY CANCELS`, W / 2, flavorY, '#8858c8', 0.875);
+        // A tap bumps Input.activity exactly like a keypress does, so it cancels
+        // the countdown too — say so, matching the "PRESS ANY KEY / TAP" wording
+        // used everywhere else this idiom appears.
+        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY / TAP CANCELS`, W / 2, flavorY, '#8858c8', 0.875);
       } else {
         drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', 0.875);
       }
@@ -904,16 +1165,20 @@ export class TitleState {
 
 export class DifficultyState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
+  // The base list never had a back affordance (there's nowhere to go back TO —
+  // this only ever runs once, right after creating a save slot), so the corner
+  // button was only ever load-bearing inside the confirm modal below, which now
+  // carries its own YES/NO zones instead.
+  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(false); }
   update(dt) {
     const n = DIFFICULTIES.length;
     if (this.confirming) {
-      // No row to tap here, just a yes/cancel modal — so any tap not on the
-      // ESC button reads as "yes" (there's no ENTER button any more, and
-      // this used to be the one screen that only ever listened for it).
-      const tapConfirms = Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y);
-      if (Input.pressed('confirm') || tapConfirms) { Audio.sfx('uiConfirm'); this.commit(5); }
-      if (Input.pressed('back') || Input.pressed('duck')) { this.confirming = false; Audio.sfx('ui'); }
+      // Two explicit tap zones (see draw()) rather than "anywhere but the
+      // corner button" — this is a menu now, not a floating-button screen.
+      const p = Input.pointer;
+      const tapped = Input.pressed('pointer') && p.y >= 142 && p.y <= 160;
+      if (Input.pressed('confirm') || (tapped && p.x < W / 2)) { Audio.sfx('uiConfirm'); this.commit(5); }
+      if (Input.pressed('back') || Input.pressed('duck') || (tapped && p.x >= W / 2)) { this.confirming = false; Audio.sfx('ui'); }
       Input.endFrame();
       return;
     }
@@ -961,7 +1226,11 @@ export class DifficultyState {
       ctx.strokeRect(40.5, 90.5, W - 81, 80);
       drawTextCentered(ctx, 'ARE YOU SURE?', W / 2, 108, '#e04848', 2);
       drawTextCentered(ctx, '(WE ARE NOT.)', W / 2, 132, '#8a8a98');
-      drawTextCentered(ctx, 'ENTER: YES   ESC: WISDOM', W / 2, 150, '#c8c8d8');
+      // Two tappable words instead of a floating corner button — left half of
+      // the box is YES, right half is NO (see update()'s hit test). ENTER/ESC
+      // still work too; the words are the touch affordance, not a replacement.
+      drawTextCentered(ctx, 'YES', W / 2 - 100, 150, '#e04848', 1.25, 'bold');
+      drawTextCentered(ctx, 'NO — WISDOM', W / 2 + 100, 150, '#c8c8d8', 1.25, 'bold');
     }
   }
 }
@@ -1450,14 +1719,20 @@ const GUIDE_PAGES = [
 
 export class FieldGuideState {
   constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
-  enter() { this.page = 0; this.t = 0; Input.setMenuButtons(); }
+  // Paging already claims the whole screen (see update()), so DONE gets its
+  // own carved-out corner instead of a floating button — no separate ESC chrome.
+  enter() { this.page = 0; this.t = 0; Input.setMenuButtons(false); }
   update(dt) {
     this.t += dt;
     const n = GUIDE_PAGES.length;
     if (Input.pressed('right') || Input.pressed('down')) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('left') || Input.pressed('up')) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer') && this.t > 0.3) {
-      if (Input.pointer.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
+      const p = Input.pointer;
+      // DONE lives in the bottom-right corner (see draw()), carved out of the
+      // otherwise screen-wide paging zones so leaving needs no other button.
+      if (p.x > W - 56 && p.y > H - 20) { Audio.sfx('ui'); this.onDone(); }
+      else if (p.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
       else { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
     }
     if (Input.pressed('confirm') && this.t > 0.3) { this.page = (this.page + 1) % n; Audio.sfx('ui'); }
@@ -1533,7 +1808,16 @@ export class FieldGuideState {
       drawText(ctx, r.name, 70, y + 6, p.color);
       drawText(ctx, r.desc, 190, y + 6, '#c8c8d8');
     });
-    drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
+    // Touch pages by tapping the left/right thirds of the screen (see update());
+    // the arrow-key hint means nothing there, so it's swapped for the gesture,
+    // and DONE — the corner tap zone update() carves out — gets its own label
+    // instead of leaning on a floating ESC button.
+    if (Input.usingTouch) {
+      drawTextCentered(ctx, `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`, W / 2, H - 14, '#5a5a68');
+      drawText(ctx, 'DONE', W - 50, H - 18, '#f6d33c');
+    } else {
+      drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
+    }
   }
 }
 
@@ -1550,7 +1834,9 @@ const JUKEBOX_ROW = 14;
 
 export class SoundTestState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(); }
+  // The BACK row (below) makes the floating ESC button redundant, same as
+  // every list menu that already ends in one.
+  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(false); }
   exit() { Audio.setBank(null); }
   play(i) {
     this.playing = i;
@@ -1560,13 +1846,15 @@ export class SoundTestState {
   update(dt) {
     this.t += dt;
     const n = JUKEBOX.length;
-    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
-    if (Input.pressed('confirm')) this.play(this.idx);
+    const total = n + 1; // +1 for the trailing BACK row
+    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % total; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + total - 1) % total; Audio.sfx('ui'); }
+    if (Input.pressed('confirm')) { if (this.idx === n) { Audio.setBank(null); this.onDone(); } else this.play(this.idx); }
     if (Input.pressed('pointer')) {
       const i = Math.floor((Input.pointer.y - JUKEBOX_TOP) / JUKEBOX_ROW);
-      if (i >= 0 && i < n) {
-        if (this.idx === i) this.play(i); else { this.idx = i; Audio.sfx('ui'); }
+      if (i >= 0 && i < total) {
+        if (this.idx === i) { if (i === n) { Audio.setBank(null); this.onDone(); } else this.play(i); }
+        else { this.idx = i; Audio.sfx('ui'); }
       }
     }
     if (Input.pressed('back')) { Audio.setBank(null); this.onDone(); }
@@ -1583,6 +1871,10 @@ export class SoundTestState {
       const label = `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)`;
       drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, JUKEBOX_TOP + i * JUKEBOX_ROW, on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
     });
+    {
+      const backSel = this.idx === JUKEBOX.length;
+      drawTextCentered(ctx, `${backSel ? '> ' : ''}BACK${backSel ? ' <' : ''}`, W / 2, JUKEBOX_TOP + JUKEBOX.length * JUKEBOX_ROW, backSel ? '#f6d33c' : '#c8c8d8');
+    }
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -1597,7 +1889,9 @@ export class SoundTestState {
 
 export class HowToPlayState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.t = 0; Input.setMenuButtons(); }
+  // A tap ANYWHERE dismisses this card (update()), and the footer already
+  // says so — no floating corner button needed on top of that.
+  enter() { this.t = 0; Input.setMenuButtons(false); }
   update(dt) {
     this.t += dt;
     if (this.t > 0.3 && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
@@ -1637,7 +1931,9 @@ export class HowToPlayState {
 
 export class SettingsState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.idx = 0; Input.setMenuButtons(); }
+  // The options list always ends in a DONE row — the floating ESC button is
+  // redundant once that's there.
+  enter() { this.idx = 0; Input.setMenuButtons(false); }
   volumeOption(key, name) {
     const s = this.save.settings;
     const adjust = (dir) => {
@@ -1693,6 +1989,8 @@ export class SettingsState {
       const sel = i === this.idx;
       drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2, 70 + i * 18, sel ? '#f6d33c' : '#c8c8d8');
     });
-    drawTextCentered(ctx, 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68', 0.875);
+    // Touch selects a row with one tap and changes it with a second, same as
+    // every other listMenu-style screen — there is no left/right gesture here.
+    drawTextCentered(ctx, Input.usingTouch ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68', 0.875);
   }
 }

@@ -4,11 +4,14 @@
 // so art is resolution independent; painters are rasterized once into
 // supersampled offscreen canvases and drawn smoothly at any size.
 
-const OUTLINE = 'rgba(26,16,40,0.34)';
+export const OUTLINE = 'rgba(26,16,40,0.34)';
 
 // ------------------------------------------------------------- helpers
+// Exported so sibling art modules (sprites/arcade.js) draw in the same
+// language — same outline weight, same rounded-rect maths — instead of
+// forking a second set that drifts.
 function ol(ctx, u) { ctx.strokeStyle = OUTLINE; ctx.lineWidth = Math.max(0.55, 0.055 * u); }
-function shape(ctx, fill, u, pathFn) {
+export function shape(ctx, fill, u, pathFn) {
   ctx.beginPath();
   pathFn(ctx);
   ctx.fillStyle = fill;
@@ -16,13 +19,13 @@ function shape(ctx, fill, u, pathFn) {
   ol(ctx, u);
   ctx.stroke();
 }
-function plain(ctx, fill, pathFn) {
+export function plain(ctx, fill, pathFn) {
   ctx.beginPath();
   pathFn(ctx);
   ctx.fillStyle = fill;
   ctx.fill();
 }
-function rr(ctx, x, y, w, h, r) {
+export function rr(ctx, x, y, w, h, r) {
   const k = Math.min(r, w / 2, h / 2);
   ctx.moveTo(x + k, y);
   ctx.arcTo(x + w, y, x + w, y + h, k);
@@ -31,7 +34,7 @@ function rr(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, k);
   ctx.closePath();
 }
-function star(ctx, cx, cy, R, r, n, rot = -Math.PI / 2) {
+export function star(ctx, cx, cy, R, r, n, rot = -Math.PI / 2) {
   for (let i = 0; i < n * 2; i++) {
     const rad = i % 2 ? r : R;
     const a = rot + (i * Math.PI) / n;
@@ -41,7 +44,7 @@ function star(ctx, cx, cy, R, r, n, rot = -Math.PI / 2) {
   ctx.closePath();
 }
 // simple round-cap line
-function stroke(ctx, col, w, pathFn) {
+export function stroke(ctx, col, w, pathFn) {
   ctx.beginPath();
   pathFn(ctx);
   ctx.strokeStyle = col;
@@ -516,13 +519,11 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
 
-// Cached vector prop rasterized at SS x its logical size.
-export function propSprite(name, w, h, frame = 0) {
-  const f = frame % propFrames(name);
-  const key = `${name}|${w}x${h}|${f}`;
+// Rasterize any vector painter into the shared cache at SS x its logical size.
+// The key is the caller's whole identity — name, size, and anything else that
+// changes the pixels (a frame index here, a palette id in sprites/arcade.js).
+export function rasterize(key, w, h, paintFn) {
   if (cache.has(key)) return cache.get(key);
-  const paint = PROP_PAINTERS[name];
-  if (!paint) return null;
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w * SS));
   c.height = Math.max(1, Math.round(h * SS));
@@ -530,9 +531,17 @@ export function propSprite(name, w, h, frame = 0) {
   x.scale(SS, SS);
   x.lineJoin = 'round';
   x.lineCap = 'round';
-  paint(x, w, h, f);
+  paintFn(x, w, h);
   cache.set(key, c);
   return c;
+}
+
+// Cached vector prop rasterized at SS x its logical size.
+export function propSprite(name, w, h, frame = 0) {
+  const f = frame % propFrames(name);
+  const paint = PROP_PAINTERS[name];
+  if (!paint) return null;
+  return rasterize(`${name}|${w}x${h}|${f}`, w, h, (x) => paint(x, w, h, f));
 }
 
 // Flat silhouette of a prop in one color — used for hazard rim outlines.

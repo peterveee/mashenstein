@@ -11,21 +11,19 @@ let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
 const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
 let transitionHero = TRANSITION_HEROES[0];
-let transitionHeroIndex = -1;
 
-function pickTransitionHero() {
-  // Random selection without back-to-back repeats.
-  let pick = Math.floor(Math.random() * (TRANSITION_HEROES.length - 1));
-  if (pick >= transitionHeroIndex) pick++;
-  transitionHeroIndex = pick;
-  return TRANSITION_HEROES[pick];
+// The cameo used to be a random hero every transition, which was fine when the
+// hub avatar was also arbitrary. Now that you carry one specific hero between
+// the concourse and the stage, a random face on the shutter contradicts the one
+// you are actually playing — so the transition shows whoever that is.
+export function setTransitionHero(id) {
+  if (TRANSITION_HEROES.includes(id)) transitionHero = id;
 }
 
 let cameo = true;
 
 export function setState(next, ...args) {
   cameo = true;
-  transitionHero = pickTransitionHero();
   pending = { next, args };
   fading = 1;
   if (!current) { // first state: no cover animation
@@ -68,7 +66,21 @@ export function updateState(dt) {
   // Once a destination is queued, freeze the outgoing screen. This prevents
   // a held confirm/pointer press from scheduling another state while the
   // shutter is closing. The incoming state updates during its reveal.
-  if (!pending) current && current.update && current.update(dt);
+  //
+  // The finally is a backstop, not decoration. Every state ends its own update
+  // with Input.endFrame(), so a throw partway through one skips it — and an
+  // uncleared press-set means the same key reads as pressed on the next frame,
+  // which re-throws, which skips endFrame again. That turns any one-frame error
+  // into a permanently unresponsive screen instead of a single dropped frame
+  // (it did exactly that to the food court once already). endFrame just clears
+  // two Sets, so calling it twice in a normal frame costs nothing.
+  if (!pending && current && current.update) {
+    try {
+      current.update(dt);
+    } finally {
+      Input.endFrame();
+    }
+  }
 }
 
 function drawTransition(ctx, amount) {

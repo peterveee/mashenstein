@@ -37,8 +37,10 @@ for (let i = 0; i < 9; i++) { dom.key('Enter'); frames(12); }
 frames(40);
 assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.window.__mash_state})`);
 
-// Walk right to the first cabinet and interact.
-dom.keyDown('ArrowRight'); frames(20); dom.keyUp('ArrowRight');
+// Stand on the first cabinet and interact — see tests/smoke.js for why this
+// reads the station list instead of walking for a fixed number of frames.
+globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
+frames(2);
 dom.key('Enter'); frames(40);
 assert(globalThis.window.__mash_state === 'StageSelectState',
   `cabinet opens straight onto stage select (got ${globalThis.window.__mash_state})`);

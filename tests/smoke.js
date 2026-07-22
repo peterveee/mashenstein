@@ -48,8 +48,12 @@ assert(data.slots[0] && data.slots[0].difficulty === 1, 'slot created with diffi
 
 assert(globalThis.window.__mash_state === 'HubState', `in hub (got ${globalThis.window.__mash_state})`);
 
-// Walk right to the first cabinet (x=70, start px=40, 90 px/s) and interact.
-dom.keyDown('ArrowRight'); frames(20); dom.keyUp('ArrowRight');
+// Stand on the first cabinet and interact. Its position is read from the live
+// station list rather than reached by walking for a fixed number of frames —
+// what this asserts is "a cabinet opens onto stage select", not the walk speed,
+// and the concourse gets re-spaced whenever the art changes.
+globalThis.window.__mash_cur.px = globalThis.window.__mash_cur.stations().find((s) => s.type === 'cabinet').x;
+frames(2);
 dom.key('Enter'); frames(40);
 // No breaker box in the doorway any more — cabinets open straight onto stages.
 assert(globalThis.window.__mash_state === 'StageSelectState', `cabinet opens to stage select (got ${globalThis.window.__mash_state})`);

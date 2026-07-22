@@ -11,7 +11,7 @@
 // cutoff separates "bright detail" from "bright background". Light packs opt out
 // wholesale instead; their art carries its own drawn highlights.
 import { W, H } from '../renderer.js';
-import { GROUND_Y, ZOOM } from '../camera.js';
+import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
 import { glowSprite } from '../../sprites/props.js';
 
 // Every layer back here scrolls a FRACTION of the foreground, and the camera now
@@ -685,7 +685,12 @@ function skyGrad(ctx, c0, c1) {
     gradCache.set(key, g);
   }
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, GROUND_Y);
+  // Up to PAN_MAX above the frame as well: the camera cranes the whole
+  // background down on a tall jump, and without that headroom the strip it
+  // opens at the top of the screen is whatever was in the backbuffer. The
+  // gradient itself still runs 0..GROUND_Y as authored — a canvas gradient
+  // clamps outside its stops, so the extra rows are flat sky, not a stretch.
+  ctx.fillRect(0, -PAN_MAX, W, GROUND_Y + PAN_MAX);
 }
 
 // Full-screen textures (scanlines, dot lattices) as tiny repeating patterns:
@@ -1217,6 +1222,10 @@ function lcdPack(settings) {
     // hazards, pickups — draws on top of it in colour, as the lit things you
     // are meant to track.
     actorsAbovePost: true,
+    // The panel does not crane with the camera. Everything bg() draws here —
+    // backplate art, bezel, backlight — is printed on the glass; sliding it
+    // down on a jump would move the physical handheld, not the picture.
+    bgPan: 0,
     bg(ctx, t, camX, cab) {
       // Bright backlight. post() only ever darkens, so the panel has to start
       // near-white or the whole screen lands in mud.
@@ -1408,6 +1417,9 @@ function doodlePack(settings) {
     // under a fixed margin line reads as two sheets sliding over each other,
     // and the punches made that contradiction impossible to miss. Speed is
     // carried by the terrain and obstacles, which are the ink, not the paper.
+    // The camera's crane is the same argument in y: the sheet is held still and
+    // the ink is redrawn higher up it, so the page does not travel either.
+    bgPan: 0,
     bg(ctx, t, camX, cab) {
       // graph paper — a warm off-white, not near-#fff, so blue ink reads
       ctx.fillStyle = '#eceadf';
@@ -1492,6 +1504,9 @@ function surgePack(settings) {
     // Same deal for the bloom gate: the cycle passes through the light packs,
     // and their backgrounds clip just as hard here as they do standalone.
     get lightBg() { return pick(this._t || 0).lightBg === true; },
+    // ...and for the crane: the cycle passes through lcd and doodle, whose
+    // backgrounds are screen furniture and must stay put while it is on them.
+    get bgPan() { return pick(this._t || 0).bgPan ?? 1; },
     bg(ctx, t, camX, cab, totalDist) { pick(t).bg(ctx, t, camX, cab, totalDist); },
     ground(ctx, camX, cab, obstacles) { pick(this._t || 0).ground(ctx, camX, cab, obstacles); },
     post(ctx, t) {

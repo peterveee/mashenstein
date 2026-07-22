@@ -1360,9 +1360,37 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     handF = [shF + sideF * armL * 0.77, armY + armL * 0.46]; elbF = sideF;
     handB = [shB + sideB * armL * 0.77, armY + armL * 0.46]; elbB = sideB;
   } else {
-    // arms hang at the sides, elbows ghosting outward — front-on, at ease
-    handF = [shF + sideF * 0.07 * u, armY + armL * 0.95]; elbF = sideF;
-    handB = [shB + sideB * 0.07 * u, armY + armL * 0.95]; elbB = sideB;
+    // Arms hang at the sides, elbows ghosting outward — front-on, at ease.
+    //
+    // Standing draws BOTH arms in the back pass (see the back-limb section
+    // below), so an arm is only visible where it clears the torso silhouette:
+    // arm and torso share p.b, and whatever is buried is buried in its own
+    // colour. The light rigs socket their shoulders at 0.55 of the half-width,
+    // and a hand only 0.07u out from there lands INSIDE a 0.17u torso — the
+    // entire limb painted under the body, nothing showing but a sliver of
+    // hand. Only the heavy rig's wide 0.84 socket already cleared the edge,
+    // which is why grumpos read fine while the rest looked armless and tucked.
+    //
+    // So: park the hand far enough out that the arm's OUTER edge clears the
+    // ribs, and hang it at 0.78 of arm length instead of 0.95 (of a 1.1 total
+    // reach) so the elbow keeps a visible bend instead of dropping to near
+    // full stretch. The heavy rig is deliberately left on its own numbers —
+    // its arm is half again as thick, so a shared clearance formula would
+    // shove it out to a scarecrow splay to satisfy the thinner rigs.
+    const standOut = heavy
+      ? Math.abs(shF - shoulderCx) + 0.07 * u
+      : Math.max(Math.abs(shF - shoulderCx) + 0.07 * u, torsoHalf + armW * 0.5 + 0.015 * u);
+    const standHang = heavy ? 0.95 : 0.78;
+    // Breathing, arms: they drift a hair out and back on the same 2.0 cadence
+    // as the idle bob, but lagging it — settling weight, not a pump in time
+    // with the chest. Both arms take the same signed offset so they open and
+    // close together rather than scissoring. The hands lift very slightly as
+    // they swing out, which is simply what an arm on a fixed shoulder does.
+    const sway = Math.sin((pose.time || 0) * 2 - 0.7) * 0.014 * u;
+    const outX = standOut + sway;
+    const hangY = armY + armL * standHang - sway * 0.32;
+    handF = [shoulderCx + sideF * outX, hangY]; elbF = sideF;
+    handB = [shoulderCx + sideB * outX, hangY]; elbB = sideB;
   }
 
   // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with
@@ -1594,8 +1622,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // the muzzle. Both components move together because this is a UNIT vector
       // scaled by armSeg — drop the forward term alone and the bone shortens
       // instead of rotating. The muzzle still clears his far edge by 0.06u.
-      const elbowX = gunX + armSeg * (cheer ? sideF * 0.42 : 0.42);
-      const elbowY = gunY + armSeg * (cheer ? -0.91 : 0.91);
+      // Standing and airborne, the gun hangs down his OWN side instead — the
+      // same arm-at-rest the free arm takes. The level carry below is rooted
+      // on the near shoulder with the barrel aimed at +x, so the whole limb
+      // lies diagonally across the torso: fine mid-run or crouched, where the
+      // body's motion justifies the arm being brought up and across, but at
+      // rest it read as an arm folded over his belly rather than ordnance
+      // hanging off a shoulder.
+      const hangGun = !cheer && (stand || jump);
+      // 0.45 of the bone lands the elbow ON the rib edge, so the hanging gun
+      // sits outside the status panel rather than lying across its corner, and
+      // the muzzle ends up at the same width the free arm's hand hangs at —
+      // the two arms then read as a matched pair at rest.
+      const elbowOut = cheer ? sideF * 0.42 : hangGun ? sideF * 0.45 : 0.42;
+      const elbowDown = cheer ? -0.91 : hangGun ? 0.95 : 0.91;
+      const elbowX = gunX + armSeg * elbowOut;
+      const elbowY = gunY + armSeg * elbowDown;
       // Celebrating, the cannon used to hold ONE welded aim for the whole 2.6s
       // routine while his free arm did every bit of the dancing — the only
       // hero whose victory read as a freeze-frame with a blinking light on it.
@@ -1613,7 +1655,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // sweep has to be reasoned about in the same units: at 0.55 out, even the
       // sweep's full +0.5 swing inboard stops a hair past vertical instead of
       // carrying the barrel across his own face.
-      const aim = cheer ? -Math.PI / 2 + sideF * 0.55 + sweep : 0;
+      // Hanging, the barrel points at the floor canted a touch OUTBOARD, so it
+      // clears his own hip and leg rather than tucking behind them. Stated as
+      // an offset from straight down (+PI/2) and signed by sideF, so it leans
+      // away from the body whichever shoulder carries the gun.
+      const aim = cheer
+        ? -Math.PI / 2 + sideF * 0.55 + sweep
+        : hangGun ? Math.PI / 2 - sideF * 0.2 : 0;
       // The barrel IS his forearm, so it scales with the arm rather than
       // sitting at a fixed length: 0.73 * armL reproduces the tuned 0.19u at
       // the default reach and grows with spec.armLen.
@@ -1731,6 +1779,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
   }
 
+  // The pack is slung on his back, so like the axe it belongs UNDER every
+  // limb. Drawn after the arms (where it used to sit) it only looked right in
+  // the poses whose near arm paints in the front pass — run and jump. Standing
+  // and celebrating put both arms in the back pass below, and the pack landed
+  // on top of the arm it should be hanging behind.
+  if (spec.back === 'shield') {
+    outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
+    dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
+  }
+
   // back limbs — and, front-on, the front-side pair too: a front limb painted
   // over the torso roots visibly on the chest while its mirror hides behind
   // the body, so a symmetric pose reads lopsided. Exception: grumpos's
@@ -1775,11 +1833,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath();
     ctx.ellipse(pelvisCx, pelvisY, pelvisRx, pelvisRy, 0, 0, Math.PI);
     ctx.stroke();
-  }
-
-  if (spec.back === 'shield') {
-    outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
-    dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
   }
 
   // torso

@@ -4,7 +4,7 @@ import { startLoop } from './engine/loop.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateNoCameo, updateState, drawState } from './engine/states.js';
+import { setState, setStateNoCameo, updateState, drawState, setTransitionHero } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -29,10 +29,25 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 
 const Flow = {
   lastTeam: null,
+  // The hero you are currently carrying. Set by a hub swap, and re-set at the
+  // end of every run to whoever was holding the baton when it finished — so the
+  // relay's own shuffling gradually puts you in most of the cast without ever
+  // asking, and the food court always shows the one you just were.
+  hubAvatar: null,
   pendingCab: null,
   pendingStage: null,
   pendingCorrupted: [],
   pendingBoss: false,
+
+  // One answer to "who am I", used by the hub, by the stage launcher and by the
+  // transition cameo. Without a single source these three drifted: the hub read
+  // lastTeam[0] (the run's STARTER), the stage drew a fresh random hero, and the
+  // shutter drew a third one at random.
+  heroId() { return Flow.hubAvatar || (Flow.lastTeam && Flow.lastTeam[0]) || 'lorenzo'; },
+  setHero(id) {
+    if (id) Flow.hubAvatar = id;
+    setTransitionHero(Flow.heroId());
+  },
 
   toTitle(opts = {}) { setState(new TitleState({
     save,
@@ -100,6 +115,8 @@ const Flow = {
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
   launchStage(cab, stage, corrupted, seedOverride, initialHeroId) {
+    // You walk into the cabinet as yourself. The dev menu still overrides.
+    initialHeroId = initialHeroId || Flow.heroId();
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
@@ -112,6 +129,7 @@ const Flow = {
       initialHeroId,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
+        Flow.setHero(result.finalHero);
         const gains = applyResult(save, result);
         setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
       },
@@ -125,6 +143,7 @@ const Flow = {
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
+        Flow.setHero(result.finalHero);
         if (result.success) {
           save.slot.campaign.bossesDown[cabId] = true;
           save.persist();
@@ -149,6 +168,7 @@ const Flow = {
       difficulty: save.slot.difficulty,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
+        Flow.setHero(result.finalHero);
         const gains = applyResult(save, result);
         setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
       },

@@ -1,7 +1,7 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow } from '../engine/renderer.js';
-import { GROUND_Y, ZOOM, VIEW_W, applyWorld, camYFor, zoomFor, easeZoom } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
@@ -24,7 +24,7 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export { GROUND_Y };
-// The hero's screen x at the resting zoom: 30% of the frame. The HUD/floatie
+// The hero's screen x at the resting zoom: 26.7% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
 export const HERO_SCREEN_X = PLAYER_X * ZOOM;
@@ -34,7 +34,7 @@ export const HERO_SCREEN_X = PLAYER_X * ZOOM;
 const FINALE_HOLD = 0.25;
 // Floatie stack anchor: above the standing hero's head with clearance, below
 // the speech bubble's reach — risen text fades out before ~y 90. The camera put
-// that head at y 178 (24 drawn px at the resting zoom, off a groundline pinned
+// that head at y 184 (24 drawn px at the resting zoom, off a groundline pinned
 // to 232), so the stack starts high enough that three cards can pile up before
 // the lowest one reaches it.
 const FLOAT_BASE_Y = 128;
@@ -78,14 +78,18 @@ export class RunState {
     return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
   }
 
-  // The dolly. Camera Y never tracks the hero — it is derived from the zoom so
-  // the groundline stays welded to its screen y — so a jump that outgrows the
-  // frame opens the frame instead of panning it. Most single jumps (57px against
-  // 103px of headroom) never move it at all; Gnash's 89px and any double jump do.
+  // The dolly. Camera Y never TRACKS the hero — both numbers come out of
+  // framingFor, so the groundline stays welded to its screen y and the frame
+  // opens or cranes as one piece rather than chasing them around. A jump that
+  // outgrows the frame cranes up first (which costs the ground apron and
+  // nothing else) and only pulls the zoom back for what is left over. Most
+  // single jumps (57px against 103px of headroom) still move neither.
   updateCamera(dt) {
     const heroX = this.playerWorldX();
     const lift = GROUND_Y - this.groundYAt(heroX);   // rolling terrain owes headroom too
-    this.camZoom = easeZoom(this.camZoom, zoomFor(this.player.y, lift), dt);
+    const want = framingFor(this.player.y, lift);
+    this.camPan = easePan(this.camPan, want.pan, dt);
+    this.camZoom = easeZoom(this.camZoom, want.zoom, dt);
   }
 
   // Translate a draw callback down to the terrain. Sampling ONE point floats
@@ -134,6 +138,7 @@ export class RunState {
 
     this.camX = 0;
     this.camZoom = ZOOM;
+    this.camPan = 0;
     this.speedBoost = 0;
     this.tRun = 0;
     this.score = 0;
@@ -1486,6 +1491,10 @@ export class RunState {
       challengeDone: this.challenge ? (!this.challenge.failed && (this.challenge.type === 'noDamage' ? this.damageTaken === 0 : this.challenge.count >= this.challenge.n)) : false,
       applianceGot: this.applianceGot,
       team: [...this.usedHeroes],
+      // Who was actually holding the baton at the end. `team` is a Set in
+      // insertion order, so team[0] is who STARTED — the food court wants the
+      // opposite end of the relay.
+      finalHero: this.relay.current,
       failMsg: this.failMsg,
       distance: Math.floor(this.distance),
       time: this.tRun,
@@ -1544,18 +1553,29 @@ export class RunState {
   draw(ctx) {
     const cam = this.camX;
     const z = this.camZoom;
+    const pan = this.camPan;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
     // Backgrounds stay in SCREEN space. Their layers are anchored to the
     // groundline's screen y, and the camera pins that line there at every zoom,
     // so they keep lining up exactly as authored while the world in front of
     // them magnifies. Only their scroll RATES scale (stylePacks/index.js).
+    //
+    // The crane is the one camera move they DO have to take, or the horizon
+    // stays put while the ground it sits on slides out from under it. It goes on
+    // as a bodily translate — no vertical parallax split — because at 38px the
+    // depth cue would be imperceptible and any factor below 1 unwelds the hills
+    // from the groundline for the sake of it. `bgPan: 0` opts out the two packs
+    // whose "background" is screen furniture rather than scenery.
+    ctx.save();
+    ctx.translate(0, pan * (this.style.bgPan ?? 1));
     this.style.bg(ctx, this.tRun, cam, this.cabinet, this.totalDist);
+    ctx.restore();
 
     // ---- world band. Everything from here to post() draws through the camera,
     // in the same coordinates it always did: x offsets from cam, absolute y.
     ctx.save();
-    applyWorld(ctx, z);
+    applyWorld(ctx, z, pan);
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
@@ -1648,7 +1668,7 @@ export class RunState {
     // Player.
     const heroScreenX = this.finishing ? this.finishPlayerX : PLAYER_X;
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, flat: this.paused || this.dead, screenX: heroScreenX, zoom: z,
+      { mirror: this.mirror, flat: this.paused || this.dead, screenX: heroScreenX, zoom: z, pan,
       groundY: this.groundYAt(cam + heroScreenX),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
@@ -1669,7 +1689,7 @@ export class RunState {
     this.style.post(ctx, this.tRun);
     if (this.style.actorsAbovePost) {
       ctx.save();
-      applyWorld(ctx, z);
+      applyWorld(ctx, z, pan);
       drawActors();
       drawHero();
       ctx.restore();
@@ -1682,7 +1702,7 @@ export class RunState {
       // space with a screen-space radius: scaled with the zoom it would light
       // nearly the whole frame and the mission would stop being a mission.
       const px = (PLAYER_X + 6) * z;
-      const py = (this.groundYAt(cam + PLAYER_X) - this.player.y - 8 - camYFor(z)) * z;
+      const py = screenYFor(this.groundYAt(cam + PLAYER_X) - this.player.y - 8, z, pan);
       const r = this.briefSlow > 0 ? 260 : 130;
       const g = ctx.createRadialGradient(px, py, r * 0.35, px, py, r);
       g.addColorStop(0, 'rgba(8,6,12,0)');
@@ -1766,7 +1786,7 @@ export class RunState {
     // Hitboxes are world objects, so they need the camera to land on the things
     // they describe; the readout underneath is screen chrome.
     ctx.save();
-    applyWorld(ctx, this.camZoom);
+    applyWorld(ctx, this.camZoom, this.camPan);
     ctx.lineWidth = 1 / this.camZoom;
     ctx.strokeStyle = '#0f0';
     const pb = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
