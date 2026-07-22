@@ -1,7 +1,7 @@
 // Build: bundle src/main.js (IIFE) and inline it into template.html -> dist/index.html.
 // The dist file is fully self-contained and works from file://.
 import esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,17 +46,22 @@ function emit(result) {
   writeFileSync(join(root, 'dist/index.html'), html);
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB)`);
 
-  const releasesDir = join(root, 'releases');
-  const originalRelease = existsSync(releasesDir)
-    ? readdirSync(releasesDir).filter((f) => f.endsWith('.html')).sort()[0]
-    : null;
-  if (originalRelease) {
-    mkdirSync(join(root, 'dist/v1'), { recursive: true });
-    copyFileSync(
-      join(releasesDir, originalRelease),
-      join(root, 'dist/v1/index.html'),
-    );
-    console.log(`dist/v1/index.html written from releases/${originalRelease}`);
+  // Versioned outputs driven by releases/versions.json.
+  // Each key becomes a dist/<version>/index.html served by GitHub Pages.
+  const manifestPath = join(root, 'releases/versions.json');
+  if (existsSync(manifestPath)) {
+    const versions = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    for (const [version, filename] of Object.entries(versions)) {
+      const src = join(root, 'releases', filename);
+      if (!existsSync(src)) {
+        console.warn(`releases/versions.json: ${filename} not found, skipping ${version}`);
+        continue;
+      }
+      const destDir = join(root, 'dist', version);
+      mkdirSync(destDir, { recursive: true });
+      copyFileSync(src, join(destDir, 'index.html'));
+      console.log(`dist/${version}/index.html written from releases/${filename}`);
+    }
   }
 }
 
