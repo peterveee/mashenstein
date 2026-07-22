@@ -298,9 +298,12 @@ const oldHub = new HubState({ save, flow: hubFlow });
 oldHub.px = 438; oldHub.facing = -1; oldHub.exit();
 const returnedHub = new HubState({ save, flow: hubFlow }); returnedHub.enter();
 assert(returnedHub.px === 438 && returnedHub.facing === -1, 'food-court position and facing survive a state round trip');
+const hubWalkStart = returnedHub.px;
 const npcStart = returnedHub.npcs()[1].x;
-returnedHub.update(0.5);
+Input.press('right'); returnedHub.update(0.5); Input.release('right'); Input.endFrame();
+assert(returnedHub.px === hubWalkStart + 60, 'food-court walking uses the faster 120-unit pace');
 assert(returnedHub.npcs()[1].x !== npcStart, 'food-court heroes stroll during their loiter cycle');
+returnedHub.px = hubWalkStart;
 for (let i = 0; i < 200; i++) returnedHub.update(0.1);
 // The old rule here was "never stray more than 17 from home", which kept the
 // crowd in tiny fenced pens. Heroes now range widely — walking past a machine is
@@ -326,7 +329,57 @@ assert(returnedHub.npcs().filter((n) => n.state === 'idle' && !n.pinned && !n.at
 // their counters, and any drift past the unit would paint them through its side.
 assert(returnedHub.npcs().filter((n) => n.pinned).every((n) => Math.abs(n.x - n.home) <= n.roam + 0.01),
   'counter staff never drift off their own deck');
+
+// A wandering hero crossing a service counter must yield to the customer
+// instead of intercepting taps/confirm or standing over the counter art.
+const repair = returnedHub.stations().find((s) => s.type === 'bench');
+const obstruction = returnedHub.npcs().find((n) => !n.pinned);
+const staffBefore = returnedHub.npcs().filter((n) => n.pinned).map((n) => [n.id, n.x]);
+returnedHub.px = repair.x;
+obstruction.x = repair.x;
+obstruction.state = 'idle';
+returnedHub.addressing = obstruction.id;
+returnedHub.focusNpc = obstruction;
+returnedHub.updateNpcs(0.1);
+assert(obstruction.state === 'walk' && obstruction.clearingStation && obstruction.x !== repair.x,
+  'wandering NPC immediately moves aside at the repair counter');
+assert(returnedHub.addressing === null && returnedHub.focusNpc === null,
+  'an NPC clearing a service counter cannot steal station focus');
+for (let i = 0; i < 30; i++) returnedHub.updateNpcs(0.1);
+assert(Math.abs(obstruction.x - repair.x) >= returnedHub.loiterClear(repair) - 0.01,
+  'wandering NPC clears the full repair-counter interaction area');
+const pawn = returnedHub.stations().find((s) => s.type === 'shop');
+returnedHub.px = pawn.x;
+obstruction.x = pawn.x;
+obstruction.state = 'idle';
+returnedHub.updateNpcs(0.1);
+assert(obstruction.state === 'walk' && obstruction.clearingStation && obstruction.x !== pawn.x,
+  'wandering NPC immediately moves aside at the pawn shop');
+for (let i = 0; i < 30; i++) returnedHub.updateNpcs(0.1);
+assert(Math.abs(obstruction.x - pawn.x) >= returnedHub.loiterClear(pawn) - 0.01,
+  'wandering NPC clears the full pawn-shop interaction area');
+assert(returnedHub.npcs().filter((n) => n.pinned)
+  .every((n) => Math.abs(n.x - staffBefore.find(([id]) => id === n.id)[1]) < 0.01),
+  'Gary and Dolores stay behind their counters while other NPCs make way');
 returnedHub.exit();
+
+// Post-game OVERTIME sits one whole cabinet bay beyond the preceding room.
+// That empty bay must be part of the concourse itself so NPC homes and movement
+// bounds expand into it rather than treating it as decorative tail padding.
+const overtimeSlot = defaultSlot();
+for (let i = 0; i < 9; i++) overtimeSlot.campaign.plugs[`test-${i}`] = [true, true, true];
+overtimeSlot.campaign.storyFlags.sawEnding = true;
+const overtimeHub = new HubState({ save: { slot: overtimeSlot }, flow: { hubPosition: null } });
+const overtimeStations = overtimeHub.stations();
+const overtime = overtimeStations.find((s) => s.type === 'overtime');
+const beforeOvertime = overtimeStations[overtimeStations.indexOf(overtime) - 1];
+assert(overtime.x - beforeOvertime.x === 176,
+  'OVERTIME leaves one full cabinet bay open after the trophy/back-room end');
+overtimeHub.enter();
+const overtimeHomes = overtimeHub.npcHomes();
+assert(overtimeHomes.every((x) => x >= 90 && x <= overtimeHub.npcFarX() && overtimeHub.canLoiter(x)),
+  'expanded food-court NPC homes follow the longer concourse and remain on free floor');
+overtimeHub.exit();
 
 run = makeRun(); run.enter();
 run.relay.current = 'lorenzo'; run.player.setHero('lorenzo');

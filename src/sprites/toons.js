@@ -630,6 +630,36 @@ function limb(ctx, x1, y1, x2, y2, w, fill, ow) {
     ctx.strokeStyle = g.lit; ctx.stroke();
   }
 }
+
+// Lorenzo's working wrench, anchored at the glove rather than flashed in
+// screen space. The open jaw and inset handle survive the 24-unit run rig;
+// a tiny rectangle on a yellow stroke did not.
+function drawWrench(ctx, x, y, angle, u, ow) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  const steel = '#a8b0b8', steelHi = '#e5edf2';
+  outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) =>
+    roundRectPath(c, -0.055 * u, -0.026 * u, 0.31 * u, 0.052 * u, 0.022 * u));
+  // Open-ended head: two jaws with a clear V-shaped bite between them.
+  outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) => {
+    c.moveTo(0.205 * u, -0.05 * u);
+    c.lineTo(0.315 * u, -0.13 * u);
+    c.lineTo(0.405 * u, -0.075 * u);
+    c.lineTo(0.32 * u, -0.012 * u);
+    c.lineTo(0.405 * u, 0.075 * u);
+    c.lineTo(0.315 * u, 0.13 * u);
+    c.lineTo(0.205 * u, 0.05 * u);
+    c.closePath();
+  });
+  ctx.strokeStyle = steelHi;
+  ctx.lineWidth = Math.max(0.45, ow * 0.45);
+  ctx.beginPath();
+  ctx.moveTo(0.01 * u, -0.009 * u);
+  ctx.lineTo(0.235 * u, -0.009 * u);
+  ctx.stroke();
+  ctx.restore();
+}
 function dot(ctx, x, y, r, fill) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -759,6 +789,52 @@ function muscleLimb(ctx, x1, y1, x2, y2, segU, segF, dir, fill, ow, d) {
       segF * 0.44 + pad, d.foreR + pad, thF);
     ctx.fill();
   }
+  if (d.separate > 0.01 && d.shoulderW > 2.6) {
+    // Re-establish the forearm as the nearer form during the acute curl. This
+    // reuses the exact same geometry — no silhouette or proportion change —
+    // but gives that segment its own restrained outline and a small depth step.
+    // Without it, the union-fill above necessarily turns the folded arm into
+    // one uninterrupted skin island, exactly as the gallery screenshot showed.
+    ctx.save();
+    ctx.globalAlpha *= d.separate;
+    for (const [pad, col] of [
+      [ow * 0.72, SKIN_OUTLINE],
+      [0, recede(fill, 0.075)],
+    ]) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      cap(jx, jy, x2, y2, d.elbowW / 2 + pad, d.wristW / 2 + pad, thF);
+      blob(jx + (x2 - jx) * 0.34 + fxn * d.foreR * 0.34,
+        jy + (y2 - jy) * 0.34 + fyn * d.foreR * 0.34,
+        segF * 0.44 + pad, d.foreR + pad, thF);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (d.crease > 0.01 && d.shoulderW > 2.6) {
+    // A short anatomical separation on the exposed bicep side. In a hard curl
+    // the forearm overlaps the bulge's outer silhouette, and because all four
+    // muscle shapes union-fill above there is otherwise no boundary left to
+    // describe the contraction. Keep it off the 18u minimum, where this would
+    // collapse into a dark pixel rather than a crease.
+    const ax = x1 + (jx - x1) * 0.56 + pxn * sgn * d.bicepR * 0.28;
+    const ay = y1 + (jy - y1) * 0.56 + pyn * sgn * d.bicepR * 0.28;
+    const bx = x1 + (jx - x1) * 0.77 + pxn * sgn * d.elbowW * 0.12;
+    const by = y1 + (jy - y1) * 0.77 + pyn * sgn * d.elbowW * 0.12;
+    ctx.save();
+    ctx.globalAlpha *= 0.42 * d.crease;
+    ctx.strokeStyle = SKIN_OUTLINE;
+    ctx.lineWidth = Math.max(0.45, ow * 0.52);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.quadraticCurveTo(
+      (ax + bx) / 2 + pxn * sgn * d.bicepR * 0.14,
+      (ay + by) / 2 + pyn * sgn * d.bicepR * 0.14,
+      bx, by,
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 // running foot path: backward along the ground during stance, lifting
 // forward during swing (p in cycles; returns [x, y] with ground at y=0)
@@ -792,22 +868,155 @@ const CELEBRATE_MOVE = {
 // floor; Grumpos and the robot mostly rock in place.
 const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035 };
 const CEL_CYCLE = 2.6, CEL_SIG = 0.6; // seconds per loop; fraction on the signature
+// One-switch rollback for the shipped celebration redesign. Callers normally
+// omit celebrateStyle and inherit this value; the gallery's before column asks
+// for `legacy` explicitly so the approved A/B remains available for reference.
+export const ACTIVE_CELEBRATION_STYLE = 'reworked';
+const usesReworkedCelebration = (pose) =>
+  (pose && pose.celebrateStyle ? pose.celebrateStyle : ACTIVE_CELEBRATION_STYLE) === 'reworked';
 
-function celebrateMotion(id, t) {
+// Jump/duck motion has the same one-switch escape hatch as celebrations. The
+// gallery requests `legacy` explicitly for its A/B; ordinary callers omit the
+// field and receive the approved motion. Geometry and standing proportions are
+// untouched — this only changes pose targets while airborne or crouching.
+export const ACTIVE_LOCOMOTION_STYLE = 'enhanced';
+const usesEnhancedLocomotion = (pose) =>
+  (pose && pose.motionStyle ? pose.motionStyle : ACTIVE_LOCOMOTION_STYLE) === 'enhanced';
+
+// Title-parade personality beats are a public rendering contract, just like
+// gameplay poses. Keeping their pose inputs here lets the title and gallery use
+// the exact same choreography instead of maintaining two lookalike lists.
+export const TITLE_PARADE_ACTIONS = Object.freeze({
+  lorenzo: 'compact wave',
+  gnash: 'running hop',
+  fernwick: 'shield roll',
+  b33p: 'cannon aim',
+  mochi: 'float and squish',
+  chompo: 'chomp',
+  raymn: 'rocket-fist toss',
+  grumpos: 'menu flex',
+});
+
+export function titleParadeAction(id, time, progress) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  const lift = Math.sin(p * Math.PI);
+  const patch = {};
+  let feetLift = 0; // fraction of the toon draw height
+  if (id === 'lorenzo') { patch.menuAction = 'wave'; feetLift = lift * 3 / 26; }
+  if (id === 'gnash') {
+    patch.kind = 'jump'; patch.grounded = false;
+    feetLift = Math.abs(Math.sin(p * Math.PI * 2)) * 7 / 26;
+  }
+  if (id === 'fernwick') { patch.kind = 'duck'; patch.roll = true; }
+  if (id === 'b33p') { patch.squash = lift * 0.35; patch.menuAction = 'aim'; }
+  if (id === 'mochi') {
+    patch.float = true;
+    patch.squash = Math.max(0, Math.sin(p * Math.PI * 2)) * 0.22;
+    feetLift = lift * 8 / 26;
+  }
+  if (id === 'chompo') { patch.menuAction = 'chomp'; feetLift = lift * 2 / 26; }
+  if (id === 'raymn') {
+    patch.headless = p > 0.18 && p < 0.78;
+    // Ray's detached glove orbits because this is a menu pose. It is a
+    // rocket-fist toss, not a wave; the old unused `menuAction = wave` label
+    // made the title choreography sound like something it never rendered.
+  }
+  if (id === 'grumpos') { patch.menuAction = 'flex'; patch.squash = lift * 0.12; }
+  return { pose: patch, feetLift };
+}
+
+export function transitionCameoAction(id) {
+  const patch = {};
+  if (id === 'lorenzo' || id === 'fernwick') patch.menuAction = 'wave';
+  if (id === 'gnash') { patch.kind = 'jump'; patch.grounded = false; }
+  if (id === 'b33p') patch.menuAction = 'aim';
+  if (id === 'mochi') patch.float = true;
+  if (id === 'chompo') patch.menuAction = 'chomp';
+  if (id === 'grumpos') patch.menuAction = 'flex';
+  return patch;
+}
+
+export const B33P_TITLE_WINDUP_T = 0.18;
+export function b33pTitleShotPose(age) {
+  const t = Math.max(0, Number(age) || 0);
+  const raw = Math.max(0, Math.min(1, t / B33P_TITLE_WINDUP_T));
+  const aimAmount = raw * raw * (3 - 2 * raw);
+  const shotFired = t >= B33P_TITLE_WINDUP_T;
+  return {
+    menuAction: 'aim',
+    aimAmount,
+    shotFired,
+    actionTime: shotFired ? t - B33P_TITLE_WINDUP_T : 0,
+    squash: Math.sin(Math.min(1, t / 0.4) * Math.PI) * 0.35,
+  };
+}
+
+function celebrateMotion(id, t, reworked = false) {
   const seed = FACE_SEED[id] || 0;
-  const c = ((t + seed * 0.4) % CEL_CYCLE) / CEL_CYCLE;
+  // Grumpos's three-pose routine needs room for two equal hero holds. Every
+  // other celebration retains the shared 2.6s cadence.
+  const cycleLength = reworked && id === 'grumpos' ? 3.4 : CEL_CYCLE;
+  const c = ((t + seed * 0.4) % cycleLength) / cycleLength;
   const amp = CELEBRATE_BOUNCE[id] != null ? CELEBRATE_BOUNCE[id] : 0.055;
-  const m = { lift: 0, x: 0, tilt: 0, spin: 1, squash: 0, peak: false, move: null, q: 0 };
+  const m = { lift: 0, x: 0, tilt: 0, spin: 1, squash: 0, hunch: 0, peak: false, move: null, q: 0, cycle: c };
+  // Full-cycle reworked routines. Mochi's body/ears/face share these two
+  // hop arcs; Chompo gets two staged bites without ever flattening into the
+  // generic card-spin. The gallery can still request the legacy path above.
+  if (reworked && id === 'mochi') {
+    const arc = Math.abs(Math.sin(c * Math.PI * 2));
+    m.move = 'synchop'; m.q = c; m.lift = arc * 0.15;
+    m.squash = Math.max(0, 0.22 - arc) * 0.8; m.peak = arc > 0.72;
+    return m;
+  }
+  if (reworked && id === 'chompo') {
+    const bite = biteWave(c * 2);
+    const phase = (c * 2) % 1;
+    const smooth = (v) => {
+      const n = Math.max(0, Math.min(1, v));
+      return n * n * (3 - 2 * n);
+    };
+    // Pull away from the mouth direction, lunge through the open bite, then
+    // recoil to centre. The old candidate changed only the jaw and looked idle
+    // under her hair; this gives the bite a readable whole-body verb.
+    const pull = phase < 0.2 ? smooth(phase / 0.2)
+      : phase < 0.34 ? 1 - smooth((phase - 0.2) / 0.14) : 0;
+    const lunge = phase < 0.2 ? 0
+      : phase < 0.48 ? smooth((phase - 0.2) / 0.28)
+        : phase < 0.76 ? 1 - smooth((phase - 0.48) / 0.28) : 0;
+    const satisfied = phase > 0.73 && phase < 0.98
+      ? Math.sin((phase - 0.73) / 0.25 * Math.PI) : 0;
+    m.move = 'bite'; m.q = c;
+    m.x = -pull * 0.07 + lunge * 0.09;
+    m.lift = bite * 0.025 + satisfied * 0.1;
+    m.squash = pull * 0.18 + (1 - bite) * 0.06;
+    m.tilt = -pull * 0.06 + lunge * 0.045;
+    m.peak = bite > 0.82 || satisfied > 0.7;
+    return m;
+  }
+  if (reworked && id === 'raymn') {
+    // His detached gloves carry the whole routine: rise, high-five, separate,
+    // then hold one clean victory fist. A tiny body lift lands on the impact.
+    const impact = c >= 0.18 && c < 0.36
+      ? Math.sin((c - 0.18) / 0.18 * Math.PI) : 0;
+    m.move = 'gloves'; m.q = c;
+    m.lift = impact * 0.055;
+    m.squash = Math.max(0, 0.12 - impact) * 0.45;
+    m.peak = impact > 0.65 || (c >= 0.5 && c < 0.82);
+    return m;
+  }
   if (c < CEL_SIG) {
-    const b = Math.sin(c * CEL_CYCLE * 6);
+    const b = Math.sin(c * cycleLength * 6);
     m.lift = Math.abs(b) * amp;
-    m.tilt = Math.sin(c * CEL_CYCLE * 3) * 0.06;
+    m.tilt = Math.sin(c * cycleLength * 3) * 0.06;
     m.squash = Math.max(0, -b) * 0.25;      // land into a knee-bend, then spring
     m.peak = b > 0.3;
     return m;
   }
   const q = (c - CEL_SIG) / (1 - CEL_SIG);  // 0..1 through the big move
-  const move = CELEBRATE_MOVE[id] || 'hop';
+  const proposedMove = reworked ? {
+    gnash: 'stepturn', fernwick: 'present', b33p: 'salute',
+  }[id] : null;
+  const move = proposedMove || CELEBRATE_MOVE[id] || 'hop';
   m.move = move; m.q = q;
   if (move === 'spin') {
     m.lift = Math.sin(q * Math.PI) * 0.17;
@@ -827,10 +1036,42 @@ function celebrateMotion(id, t) {
     m.squash = Math.max(0, 0.4 - hit) * 0.8;
     m.tilt = (q < 0.5 ? -1 : 1) * 0.05 * Math.min(1, hit * 3);
     m.peak = hit > 0.82;                      // only while a pose is held
+  } else if (move === 'stepturn') {
+    // A planted cocky step rather than the shared paper-thin spin. The actual
+    // torso yaw is consumed by drawHumanoid; this supplies the weight shift.
+    const step = Math.sin(q * Math.PI * 2);
+    m.x = step * 0.055; m.tilt = -step * 0.07;
+    m.lift = Math.sin(q * Math.PI) * 0.045; m.peak = q > 0.38 && q < 0.7;
+  } else if (move === 'present') {
+    const hit = Math.sin(q * Math.PI);
+    m.x = hit * 0.025; m.tilt = -hit * 0.045;
+    m.squash = (1 - hit) * 0.08; m.peak = q > 0.32 && q < 0.78;
+  } else if (move === 'salute') {
+    const hit = Math.sin(q * Math.PI);
+    m.lift = hit * 0.025; m.tilt = Math.sin(q * Math.PI * 2) * 0.025;
+    m.peak = q > 0.18 && q < 0.86;
+  } else if (move === 'gloves') {
+    const hit = Math.sin(q * Math.PI);
+    m.lift = hit * 0.035; m.tilt = -Math.sin(q * Math.PI * 2) * 0.025;
+    m.peak = q > 0.24 && q < 0.82;
   } else {                                   // hop: two big airborne bounds
     const arc = Math.abs(Math.sin(q * Math.PI * 2));
     m.lift = arc * 0.26; m.tilt = Math.sin(q * Math.PI * 2) * 0.09;
     m.squash = Math.max(0, 0.3 - arc) * 0.8; m.peak = arc > 0.4;
+  }
+  if (reworked && id === 'grumpos') {
+    // The final most-muscular hit hinges forward: ease in after the horizontal
+    // double-biceps, hold through the front squeeze, then recover before the
+    // loop returns overhead. drawHumanoid turns this envelope into separate
+    // pelvis/shoulder/head offsets rather than flattening the whole sprite.
+    const smooth = (v) => {
+      const n = Math.max(0, Math.min(1, v));
+      return n * n * (3 - 2 * n);
+    };
+    m.hunch = c < 0.547 ? 0
+      : c < 0.604 ? smooth((c - 0.547) / 0.057)
+        : c < 0.956 ? 1
+          : 1 - smooth((c - 0.956) / 0.044);
   }
   return m;
 }
@@ -846,7 +1087,8 @@ function expressionFor(id, pose = {}) {
   const joy = pose.kind === 'celebrate';
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
-  const cm = joy ? celebrateMotion(id, t) : null;
+  const reworkedCelebration = joy && usesReworkedCelebration(pose);
+  const cm = joy ? celebrateMotion(id, t, reworkedCelebration) : null;
   const cheer = !!(cm && cm.peak);
   // Dolores calls NEXT to a queue that has not existed in years. She never
   // breaks posture — no wave, no lean — so the face has to carry it: brows up,
@@ -869,7 +1111,13 @@ function expressionFor(id, pose = {}) {
     // The narrowest window in the routine: a hit of the BIG move, held. The
     // signature bounce peaks constantly, so anything keyed to `cheer` reads as
     // a permanent expression — this is for faces that should barely crack.
-    beam: !!(cm && cm.peak && cm.move),
+    // The Grumpos gallery routine has long held poses. Letting `beam` follow
+    // the old short peak window swaps his pale beard-mouth between two shapes
+    // mid-hold, which reads as the mouth blinking out. Keep his stern mouth
+    // registered throughout the study; production retains the rare grin.
+    beam: id === 'grumpos' && reworkedCelebration
+      ? false
+      : !!(cm && cm.peak && cm.move),
     effort: !!(pose.stomp || pose.roll || pose.headless),
     // Even Grumpos's scowl unclenches now and then: mid-run the face drops
     // to neutral for a couple of seconds out of every eight or so, seeded so
@@ -915,7 +1163,10 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     }
     const lw = 0.045 * u;
     const lh = ex.blink ? 0.011 * u : ex.surprise || ex.cheer ? 0.068 * u : 0.05 * u;
-    const lookX = (ex.focus ? 0.012 : 0) * u + turnYaw * 0.032 * u;
+    // A robot's eye panels belong to the visor rather than floating over skin:
+    // keep their shared center registered and let far-panel narrowing carry
+    // the tiny directional cue.
+    const lookX = (ex.focus ? 0.012 : 0) * u;
     for (const sx of [-1, 1]) {
       outlined(ctx, p.w, Math.max(0.28, 0.008 * u) * INK.face, (c) =>
         roundRectPath(c, eyeX(sx) + lookX - lw, cy - lh, lw * 2, lh * 2, Math.min(lw, lh) * 0.8));
@@ -1276,7 +1527,11 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // not squeeze the skull, hat, hair or ears. Whole-body turn keeps its existing
   // head transform; a headTurn candidate only feeds the directional face below.
   const bodyTurn = Number(pose.turn) || 0;
-  const headTurn = Number(pose.headTurn ?? bodyTurn) || 0;
+  const requestedHeadTurn = Number(pose.headTurn ?? bodyTurn) || 0;
+  // B-33P's eyes are panels mounted inside a rigid visor. A full facial shift
+  // reads as bad registration, not anatomy, so he gets only a trace of far-eye
+  // foreshortening and no mask translation.
+  const headTurn = id === 'b33p' ? requestedHeadTurn * 0.5 : requestedHeadTurn;
   const outlineTurn = pose.headTurn == null ? bodyTurn : 0;
   const outlineRad = Math.max(-turnLimit, Math.min(turnLimit, outlineTurn * Math.PI / 180));
   const outlineYaw = Math.sin(outlineRad);
@@ -1650,6 +1905,10 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // center and beard end, so the angle through the eye is untouched) to sit
     // clear above the eyebrow; the scalp start shifts right to meet it.
     const ts = spec.tatSide ?? -1;
+    // The tattoo is facial registration, not a backdrop mark. Directional
+    // treatment moves Grumpos's eye mask across the fixed skull, so carry the
+    // paint by that same offset or its solved line misses the eye it belongs to.
+    ctx.translate(faceYaw * 0.11 * u, 0);
     ctx.moveTo(hx + ts * R * 0.52, hy - R * 0.98);
     ctx.lineTo(hx + ts * R * 0.11, hy - R * 0.55);
     ctx.lineTo(hx + ts * R * 0.66, hy + R * 0.52);
@@ -1686,7 +1945,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // creates a broad near cheek and a compressed receding cheek.
   if (faceDepth > 0.001) {
     ctx.save();
-    ctx.translate(faceYaw * 0.11 * u, 0);
+    ctx.translate(faceYaw * (id === 'b33p' ? 0 : 0.11) * u, 0);
   }
   // The mask — eyes, nose, mustache, mouth — slides as one. Ear, sideburn and
   // hat stay bolted to the skull above.
@@ -1784,8 +2043,16 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
+  const cm = pose.kind === 'celebrate'
+    ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose))
+    : null;
   const turnLimit = Math.PI * 5 / 12;
-  const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(pose.turn) || 0) * Math.PI / 180));
+  // Gallery Gnash turns his actual rig through a modest three-quarter pose;
+  // the shipped spin remains untouched. sin(pi*q) returns him front-on at both
+  // ends, avoiding the old flat scale-through-zero trick.
+  const celebrateTurn = cm && cm.move === 'stepturn' ? Math.sin(cm.q * Math.PI) * 42 : 0;
+  const turnRad = Math.max(-turnLimit, Math.min(turnLimit,
+    ((Number(pose.turn) || 0) + celebrateTurn) * Math.PI / 180));
   const turnYaw = Math.sin(turnRad);
   const turnDepth = Math.abs(turnYaw);
   const turned = turnDepth > 0.001;
@@ -1811,15 +2078,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // A slightly smaller head is the strongest lever on perceived height: it
   // also keeps the taller heavy rig inside the 24px draw box.
   const headR = (heavy ? 0.185 : 0.21) * u;
-  const torsoBaseHalf = (heavy ? 0.23 : spec.stout ? 0.2 : spec.slim ? 0.148 : 0.17) * u * (spec.shoulders || 1);
+  // The final multipliers are intentionally absent from every production
+  // spec. They are narrow gallery dials for comparing the body-proportion
+  // study without cloning this rig or moving any head/face geometry.
+  const torsoBaseHalf = (heavy ? 0.23 : spec.stout ? 0.2 : spec.slim ? 0.148 : 0.17)
+    * u * (spec.shoulders || 1) * (spec.torsoWidth || 1);
   // Keep most of the chibi barrel width through the turn. The asymmetric
   // silhouette and overlap carry the depth; projection only trims it lightly.
   const torsoHalf = torsoBaseHalf * (1 - 0.1 * turnDepth);
   // Shoulder-to-waist taper. torsoHalf is the shoulder line; `taper` is the
   // waist as a fraction of it, so <1 is the inverted taper that reads as
   // muscle where a straight barrel reads as belly.
-  const waistHalf = torsoHalf * (spec.taper || 1);
-  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u;
+  const waistHalf = torsoHalf * (spec.taper || 1) * (spec.waistScale || 1);
+  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u * (spec.legLength || 1);
   // Front-on hip half-separation, and how far outboard of it the crouch plants
   // its feet. Both in u; the crouch's leg length is solved against them.
   const HIP_HALF = 0.095;
@@ -1829,13 +2100,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // full 0.095u above its own belt — the light rigs land theirs right on it —
   // so the arms read as held up near the chest on the one character whose
   // reach should be his most imposing feature.
-  const armL = (heavy ? 0.38 : 0.26) * u;
-  const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u;
+  const armL = (heavy ? 0.38 : 0.26) * u * (spec.armLength || 1);
+  const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u * (spec.legWidth || 1);
   // Heavy base width is sized so the arm's PINCH points (elbow 0.72x, wrist
   // 0.62x — see armDims) still match a normal hero's full 0.075u arm: the
   // muscle profile narrows in places, and sized equal at the base those
   // narrows made the strongest hero read thinner-armed than anyone.
-  const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u;
+  const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u * (spec.armWidth || 1);
   // The heavy rig's arms carry a bicep — upper segment fatter than the
   // forearm. Everyone else strokes a uniform limb.
   // Heavy-arm anatomy kit: bones pinch at the elbow and wrist, and the
@@ -1843,12 +2114,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // BICEP bulge swells, throbbing on the same clock as the pose's arm pump
   // so the swell and the squeeze land together; the bones don't inflate,
   // which is what kept the old fat-bone version reading as sausages.
+  const reworkedCelebration = pose.kind === 'celebrate' && usesReworkedCelebration(pose);
+  const studyCurl = heavy && cm && reworkedCelebration
+    ? cm.cycle < 0.058 ? 0
+      : cm.cycle < 0.138 ? (cm.cycle - 0.058) / 0.08
+        : cm.cycle < 0.49 ? 1
+          : cm.cycle < 0.547 ? 1 - (cm.cycle - 0.49) / 0.057 : 0
+    : 0;
   const flexT = heavy && (pose.kind === 'celebrate' || pose.menuAction === 'flex')
-    ? 1.06 + 0.12 * Math.abs(Math.sin((pose.time || 0) * 6))
+    ? reworkedCelebration
+      // The gallery curl now contracts ON the pose instead of breathing on an
+      // unrelated sine clock and occasionally going slack during its hold.
+      ? 1.08 + 0.14 * studyCurl
+      : 1.06 + 0.12 * Math.abs(Math.sin((pose.time || 0) * 6))
     : 1;
   const armDims = heavy ? {
     shoulderW: armW * 1.12, elbowW: armW * 0.72, wristW: armW * 0.62,
     bicepR: armW * 0.5 * flexT, foreR: armW * 0.44,
+    crease: studyCurl, separate: studyCurl,
   } : null;
   // The near arm carries more of the silhouette; the far arm is narrower and
   // pulled toward the torso. This is the depth cue the old front-on rig lacked.
@@ -1876,11 +2159,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const walk = run && !!pose.walk;
   const jump = pose.kind === 'jump';
   const duck = pose.kind === 'duck';
+  const enhancedMotion = usesEnhancedLocomotion(pose);
+  const airV = jump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
+  // Player physics uses positive Y/velocity upward and negative downward.
+  const airRise = Math.max(0, airV), airFall = Math.max(0, -airV);
+  const airApex = jump ? 1 - Math.abs(airV) : 0;
   const ph = (pose.phase || 0) * Math.PI * 2;
   const s = Math.sin(ph);
   // The victory hop itself is applied to the whole rig in drawToon; here the
   // torso only lags a beat behind it, so the head trails the body.
-  const cm = pose.kind === 'celebrate' ? celebrateMotion(id, pose.time || 0) : null;
   // Standing still — and the victory dance — are genuinely FRONT-ON poses,
   // not becalmed walk frames: legs hang from separate left/right hip points,
   // and the feet draw as symmetric front-facing ovals instead of profile
@@ -1914,6 +2201,23 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const crouch = heavy ? 1.36 : 1;
     hipY = -0.16 * u * crouch; torsoTop = -0.32 * u * crouch;
     headY = -0.42 * u * crouch; shoulderY = -0.27 * u * crouch;
+    if (enhancedMotion) {
+      // Let the shoulders and head settle a fraction farther than the pelvis:
+      // a braced squat, rather than the entire figure shrinking as one block.
+      torsoTop += 0.012 * u * crouch;
+      shoulderY += 0.018 * u * crouch;
+      headY += 0.024 * u * crouch;
+    }
+  }
+  if (heavy && cm && cm.hunch) {
+    // Front-on shorthand for a forward waist hinge: the knees and pelvis give
+    // slightly, the shoulder girdle rolls farther down, and the head tucks the
+    // farthest toward the chest. Different offsets preserve his mass; a single
+    // y-scale would merely make the whole character look squashed.
+    hipY += cm.hunch * 0.018 * u;
+    torsoTop += cm.hunch * 0.025 * u;
+    shoulderY += cm.hunch * 0.045 * u;
+    headY += cm.hunch * 0.07 * u;
   }
   // Bottom of the torso. Declared up here with the rest of the body landmarks
   // rather than beside the torso path it feeds: shoulderCap measures the body's
@@ -1929,7 +2233,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // receding one it read as slung off the bottom of the shoulder. Run only —
   // the standing pose's deltoid is already the shape the others are chasing.
   const armYF = armY - (depthArms && run && !turned ? (heavy ? 0.018 : 0.03) : 0) * u;
-  const leanX = run ? (walk ? 0.018 : 0.05) * u : 0; // walk upright; run leans forward
+  const leanX = run ? (walk ? 0.018 : 0.05) * u
+    : duck && enhancedMotion ? 0.025 * u : 0; // crouch puts weight over the toes
   // A yawed torso has a small shoulder-to-hip offset; the top of the body is
   // no longer a perfectly flat front-facing slab over the feet.
   const torsoCx = leanX * 0.5 + nearSign * turnDepth * 0.04 * u;
@@ -1961,7 +2266,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     footB = gaitFoot((pose.phase || 0) + 0.5, stride, lift);
   } else if (jump) {
     if (pose.stomp) { footF = [0.06 * u, hipY + legL * 0.95]; footB = [-0.06 * u, hipY + legL * 0.95]; kneeB = -1; }
-    else { footF = [0.15 * u, hipY + legL * 0.5]; footB = [-0.12 * u, hipY + legL * 0.85]; }
+    else if (enhancedMotion) {
+      // Launch trails one leg, the apex tucks both knees, and descent opens the
+      // feet into a landing stance. The targets interpolate continuously from
+      // velocity, so reversing at the apex cannot pop a knee between sides.
+      footF = [
+        (0.15 + 0.035 * airApex + 0.02 * airFall) * u,
+        hipY + legL * (0.48 - 0.17 * airApex + 0.24 * airFall),
+      ];
+      footB = [
+        (-0.12 - 0.03 * airApex - 0.015 * airFall) * u,
+        hipY + legL * (0.82 - 0.38 * airApex - 0.12 * airFall - 0.05 * airRise),
+      ];
+    } else { footF = [0.15 * u, hipY + legL * 0.5]; footB = [-0.12 * u, hipY + legL * 0.85]; }
   } else if (duck) {
     // A crouch is a FRONT-ON pose, like standing and the victory hop — not a
     // profile one. Rooted at a shared center hip (the profile rig) the two legs
@@ -2093,10 +2410,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     return [sx + (dx / d) * (armSeg + armSegF), sy + (dy / d) * (armSeg + armSegF)];
   };
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
+  let wrenchAngle = null;
   if (pose.kind === 'celebrate') {
     // Victory choreography, one flavor per hero.
     const ct = pose.time || 0;
     const pump = Math.sin(ct * 6) * 0.05 * u;
+    // Reworked raised-arm routines for the two characters whose hands crowded
+    // the head. `legacy` remains selectable in the gallery through the shared
+    // celebration-style switch above.
+    const raisedArmStudy = reworkedCelebration;
     if (id === 'fernwick') {
       // champion's clasp: both hands meet overhead
       handF = [sideF * 0.05 * u, armY - armL * 0.95 + pump]; elbF = sideF;
@@ -2115,8 +2437,30 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.3 - pump]); elbB = sideB;
     } else if (id === 'gary') {
       // a big overhead wave; the other hand stays professionally at his side
-      handF = [shF + sideF * (0.08 * u + Math.sin(ct * 8) * 0.11 * u), armY - armL * 0.95]; elbF = sideF;
+      if (raisedArmStudy) {
+        // Keep the shoulder quiet and describe a small arc with the hand. The
+        // outward elbow gives the raised arm a readable gap beside the head;
+        // the old target swept 0.22u sideways and pulled the whole limb across
+        // Gary's face like a windscreen wiper.
+        const wave = Math.sin(ct * 8);
+        handF = [shF + sideF * (0.22 + wave * 0.025) * u,
+          armY - armL * (0.8 + wave * 0.055)]; elbF = -sideF;
+      } else {
+        handF = [shF + sideF * (0.08 * u + Math.sin(ct * 8) * 0.11 * u), armY - armL * 0.95]; elbF = sideF;
+      }
       handB = [shB + sideB * 0.04 * u, armY + armL * 0.5]; elbB = sideB;
+    } else if (id === 'dolores' && raisedArmStudy) {
+      // A small, composed clap at sternum height replaces the generic victory
+      // fists; the existing formal bow still takes over on the big beat.
+      const clap = 0.018 * u * (0.5 + 0.5 * Math.sin(ct * 8));
+      handF = [sideF * clap, armY + armL * 0.18]; elbF = sideF;
+      handB = [sideB * clap, armY + armL * 0.18]; elbB = sideB;
+    } else if (id === 'lorenzo' && raisedArmStudy) {
+      // Separate the fists from the cap and bend the elbows OUTWARD. Besides
+      // preserving the face silhouette, the wider targets stop the elbows
+      // folding inward as the hop squashes the body underneath them.
+      handF = [shF + sideF * 0.2 * u, armY - armL * 0.8 + pump * 0.45]; elbF = -sideF;
+      handB = [shB + sideB * 0.2 * u, armY - armL * 0.8 - pump * 0.45]; elbB = -sideB;
     } else {
       // double fist pump, alternating (lorenzo mid-hop, b33p's free arm)
       handF = [shF + sideF * 0.15 * u, armY - armL * 0.9 + pump]; elbF = sideF;
@@ -2135,8 +2479,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handF = [shF + sideF * 0.14 * u + sw, armY - armL * 0.55]; elbF = sideF;
       handB = [shB + sideB * 0.14 * u + sw, armY - armL * 0.55]; elbB = sideB;
     } else if (cm.move === 'hop') {
-      handF = [shF + sideF * 0.1 * u, armY - armL * 1.05]; elbF = sideF;
-      handB = [shB + sideB * 0.1 * u, armY - armL * 1.05]; elbB = sideB;
+      if (id === 'lorenzo' && raisedArmStudy) {
+        // The big hop keeps the same wider silhouette as the signature pumps,
+        // rather than snapping both fists back above the crown on its last beat.
+        handF = [shF + sideF * 0.21 * u, armY - armL * 0.86]; elbF = -sideF;
+        handB = [shB + sideB * 0.21 * u, armY - armL * 0.86]; elbB = -sideB;
+      } else {
+        handF = [shF + sideF * 0.1 * u, armY - armL * 1.05]; elbF = sideF;
+        handB = [shB + sideB * 0.1 * u, armY - armL * 1.05]; elbB = sideB;
+      }
+    } else if (cm.move === 'present') {
+      // Fernwick lowers the champion's clasp and supports the shield in front
+      // of his body. The prop itself is painted in the final front pass below.
+      handF = [sideF * 0.2 * u, armY + armL * 0.12]; elbF = sideF;
+      handB = [sideB * 0.07 * u, armY + armL * 0.22]; elbB = sideB;
+    } else if (cm.move === 'salute') {
+      // B-33P's cannon owns the near arm; park the free fist high and still so
+      // the upward barrel and antenna broadcast are the animation, not a shimmy.
+      handB = [shB + sideB * 0.12 * u, armY - armL * 0.52]; elbB = -sideB;
     } else if (cm.move === 'flex') {
       // Two poses hit and held: a wider double-biceps, then most-muscular
       // with the fists dragged low and together in front.
@@ -2156,12 +2516,87 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         handB = [sideB * 0.07 * u, armY + armL * 0.52]; elbB = sideB;
       }
     }
+
+    if (id === 'grumpos' && raisedArmStudy) {
+      // Three-beat candidate across the FULL celebration cycle, not crammed
+      // into the final 1.04s big-move window: overhead flex, classic horizontal
+      // double-biceps, then the compact most-muscular squeeze in front. The
+      // middle pose gets the longest hold. Each elbow-direction change happens
+      // only while the arm is at full reach, where the two-bone solution is
+      // straight and the sign cannot create a visible pop.
+      const mix = (a, b, v) => a + (b - a) * v;
+      const smooth = (v) => {
+        const n = Math.max(0, Math.min(1, v));
+        return n * n * (3 - 2 * n);
+      };
+      const between = (a, b, v) => [mix(a[0], b[0], v), mix(a[1], b[1], v)];
+      const curve = (a, control, b, v) => {
+        const iv = 1 - v;
+        return [
+          iv * iv * a[0] + 2 * iv * v * control[0] + v * v * b[0],
+          iv * iv * a[1] + 2 * iv * v * control[1] + v * v * b[1],
+        ];
+      };
+      const wideF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.3]);
+      const wideB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.3]);
+      const overheadF = [shF - sideF * 0.04 * u, armY - armL * 0.72];
+      const overheadB = [shB - sideB * 0.04 * u, armY - armL * 0.72];
+      // Keep the upper arms level but pull the fists back toward the temples.
+      // At the old 0.20u-out / 0.45-arm-up target the two bones met at almost
+      // exactly 90 degrees — two sideways Ls. The shorter shoulder-to-fist
+      // chord below closes the elbow into a visibly harder, acute contraction.
+      const levelF = [shF + sideF * 0.09 * u, armY - armL * 0.36];
+      const levelB = [shB + sideB * 0.09 * u, armY - armL * 0.36];
+      // Opening the fists slightly outward on the way down lets the shoulders
+      // unfold before the hard curl. A direct line from overhead to level made
+      // the IK elbow scissor inward, then reverse at the last instant.
+      const curlArcF = [shF + sideF * 0.19 * u, armY - armL * 0.58];
+      const curlArcB = [shB + sideB * 0.19 * u, armY - armL * 0.58];
+      const resetF = reach(shF, armY, [shF + sideF * 0.32 * u, armY + armL * 0.04]);
+      const resetB = reach(shB, armY, [shB + sideB * 0.32 * u, armY + armL * 0.04]);
+      const frontF = [sideF * 0.07 * u, armY + armL * 0.52];
+      const frontB = [sideB * 0.07 * u, armY + armL * 0.52];
+      const c = cm.cycle;
+      if (c < 0.031) {
+        // The overhead shape is a quick opening accent, not the pose to read.
+        const v = smooth(c / 0.031);
+        handF = between(wideF, overheadF, v); handB = between(wideB, overheadB, v);
+        elbF = -sideF; elbB = -sideB;
+      } else if (c < 0.058) {
+        handF = overheadF; handB = overheadB; elbF = -sideF; elbB = -sideB;
+      } else if (c < 0.138) {
+        const v = smooth((c - 0.058) / 0.08);
+        handF = curve(overheadF, curlArcF, levelF, v);
+        handB = curve(overheadB, curlArcB, levelB, v);
+        elbF = -sideF; elbB = -sideB;
+      } else if (c < 0.49) {
+        // 0.352 of the 3.4s candidate cycle = ~1.2s. The final front flex gets
+        // the exact same span below, so neither hero pose is treated as filler.
+        handF = levelF; handB = levelB; elbF = -sideF; elbB = -sideB;
+      } else if (c < 0.547) {
+        const v = smooth((c - 0.49) / 0.057);
+        handF = between(levelF, resetF, v); handB = between(levelB, resetB, v);
+        elbF = -sideF; elbB = -sideB;
+      } else if (c < 0.604) {
+        const v = smooth((c - 0.547) / 0.057);
+        handF = between(resetF, frontF, v); handB = between(resetB, frontB, v);
+        elbF = sideF; elbB = sideB;
+      } else if (c < 0.956) {
+        // Same ~1.2s hold as the horizontal double-biceps pose above.
+        handF = frontF; handB = frontB; elbF = sideF; elbB = sideB;
+      } else {
+        const v = smooth((c - 0.956) / 0.044);
+        handF = between(frontF, wideF, v); handB = between(frontB, wideB, v);
+        elbF = sideF; elbB = sideB;
+      }
+    }
   } else if (pose.menuAction === 'wave') {
-    // Cast-roll wave: the hand target swings on the clock and reach() holds
-    // the arm at FULL extension through the whole sweep — the old mid-reach
-    // target left the elbow crooked, a bent-arm salute instead of a wave.
+    // Compact title/cameo wave, matched to Gary's approved celebration wave.
+    // A small wrist arc and outward elbow leave a clean gap beside the head;
+    // the former fully-extended sweep read as a stiff semaphore at 36px.
     const wvt = Math.sin((pose.time || 0) * 8);
-    handF = reach(shF, armY, [shF + sideF * (0.12 + 0.08 * wvt) * u, armY - armL * 0.8]); elbF = sideF;
+    handF = [shF + sideF * (0.22 + 0.025 * wvt) * u,
+      armY - armL * (0.8 + 0.055 * wvt)]; elbF = -sideF;
     handB = [shB + sideB * 0.03 * u, armY + armL * 0.8]; elbB = sideB;
   } else if (pose.menuAction === 'flex') {
     // Posing reps on a loop: arms flung out dead straight, held — then the
@@ -2185,6 +2620,32 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const sB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.25]);
     handF = [sF[0] + (shF + sideF * 0.2 * u - sF[0]) * fw, sF[1] + (armY - armL * 0.45 - sF[1]) * fw]; elbF = -sideF;
     handB = [sB[0] + (shB + sideB * 0.2 * u - sB[0]) * fw, sB[1] + (armY - armL * 0.45 - sB[1]) * fw]; elbB = -sideB;
+  } else if (id === 'lorenzo' && pose.menuAction === 'smash') {
+    // A compact three-beat working swing: pull the tool up, snap it through the
+    // target, then settle. `actionTime` starts at zero when useAbility fires,
+    // so this is deterministic and completes inside its 0.3s pose budget.
+    const q = Math.max(0, Math.min(1, (pose.actionTime || 0) / 0.3));
+    const ease = (v) => v * v * (3 - 2 * v);
+    const mix = (a, b, v) => a + (b - a) * v;
+    const rest = [shF + 0.02 * u, armY + 0.48 * armL];
+    const wind = [shF - 0.07 * u, armY - 0.9 * armL];
+    const hit = [shF + 0.24 * u, armY + 0.62 * armL];
+    if (q < 0.3) {
+      const v = ease(q / 0.3);
+      handF = [mix(rest[0], wind[0], v), mix(rest[1], wind[1], v)];
+      wrenchAngle = mix(0.2, -1.72, v);
+    } else if (q < 0.66) {
+      const v = ease((q - 0.3) / 0.36);
+      handF = [mix(wind[0], hit[0], v), mix(wind[1], hit[1], v)];
+      wrenchAngle = mix(-1.72, 0.58, v);
+    } else {
+      const v = ease((q - 0.66) / 0.34);
+      handF = [mix(hit[0], rest[0], v), mix(hit[1], rest[1], v)];
+      wrenchAngle = mix(0.58, 0.2, v);
+    }
+    elbF = sideF;
+    // The free hand braces across the body instead of continuing its run pump.
+    handB = [shB - sideB * 0.03 * u, armY + armL * 0.42]; elbB = sideB;
   } else if (pose.headless || pose.stomp) {
     handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
     handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
@@ -2260,8 +2721,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handB = [shB + farLead - farSwing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
     }
   } else if (jump) {
-    handF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]); elbF = sideF;
-    handB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]); elbB = sideB;
+    if (enhancedMotion && !pose.stomp) {
+      // Arms counter the legs on launch, float higher through the apex, then
+      // widen for balance on descent instead of freezing in one cheer pose.
+      handF = reach(shF, armY, [
+        shF + sideF * (0.16 + 0.035 * airApex + 0.02 * airFall) * u,
+        armY - armL * (0.42 + 0.28 * airApex - 0.13 * airFall),
+      ]); elbF = sideF;
+      handB = reach(shB, armY, [
+        shB + sideB * (0.13 + 0.04 * airApex + 0.035 * airFall) * u,
+        armY - armL * (0.12 + 0.32 * airApex - 0.2 * airFall),
+      ]); elbB = sideB;
+    } else {
+      handF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]); elbF = sideF;
+      handB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]); elbB = sideB;
+    }
   } else if (duck) {
     // Braced out at a fixed 0.2u the crouch folded the heavy rig's longer arm
     // to 56% of its reach where the light rigs sit at 82% — his crouch read
@@ -2270,8 +2744,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Elbows keep the usual OUTWARD bend. Pointing them down instead splays
     // every hero's arms flat to the floor like a crab — the joints only used to
     // ride high here because the heavy rig's bones were unevenly split.
-    handF = [shF + sideF * armL * 0.77, armY + armL * 0.46]; elbF = sideF;
-    handB = [shB + sideB * armL * 0.77, armY + armL * 0.46]; elbB = sideB;
+    const out = enhancedMotion ? 0.62 : 0.77;
+    const down = enhancedMotion ? 0.64 : 0.46;
+    handF = [shF + sideF * armL * out, armY + armL * down]; elbF = sideF;
+    handB = [shB + sideB * armL * out, armY + armL * down]; elbB = sideB;
   } else {
     // Arms hang at the sides, elbows ghosting outward — front-on, at ease.
     //
@@ -2536,7 +3012,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const gunY = torsoTop + gunW * 0.6;
       const cheer = pose.kind === 'celebrate';
       const gt = pose.time || 0;
-      const recoil = pose.menuAction === 'aim' ? Math.abs(Math.sin(gt * 12)) * 0.05 * u : 0;
+      const aiming = pose.menuAction === 'aim';
+      const aimAmount = aiming
+        ? Math.max(0, Math.min(1, pose.aimAmount == null ? 1 : Number(pose.aimAmount)))
+        : 0;
+      const shotFired = pose.shotFired !== false;
+      const shotT = aiming ? Math.max(0, Math.min(0.3, Number(pose.actionTime) || 0)) : 0;
+      // The projectile fires at t=0. Pull the barrel back sharply, then let it
+      // recover over the same authored 0.3s window instead of using the global
+      // run clock (which made recoil start at an arbitrary phase).
+      const recoil = aiming && shotFired ? Math.max(0, 1 - shotT / 0.22) * 0.05 * u : 0;
       // Elbow: hanging at his side normally, lifted to shoulder height for the
       // victory routine so the salute fires over his head instead of out of his
       // hip. The barrel pivots about THIS point rather than the shoulder, which
@@ -2581,7 +3066,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // reads as raised and sighted rather than the same low, at-rest carry
       // the run cycle already uses — 'aim' used to only add a tiny recoil, so
       // firing looked identical to just standing there with the gun hanging.
-      const aiming = pose.menuAction === 'aim';
       let elbowX, elbowY, aim;
       // The barrel IS his forearm, so it scales with the arm rather than
       // sitting at a fixed length: 0.73 * armL reproduces the tuned 0.19u at
@@ -2615,8 +3099,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         [elbowX, elbowY] = joint(gunX, gunY, targetX, targetY, armSeg, sideF, barrel);
         aim = Math.atan2(targetY - elbowY, targetX - elbowX);
       } else {
-        const elbowOut = cheer ? sideF * 0.42 : aiming ? sideF * 0.52 : 0.42;
-        const elbowDown = cheer ? -0.91 : aiming ? -0.08 : 0.91;
+        const elbowOut = cheer ? sideF * 0.42
+          : sideF * (0.42 + (0.52 - 0.42) * aimAmount);
+        const elbowDown = cheer ? -0.91 : 0.91 + (-0.08 - 0.91) * aimAmount;
         elbowX = gunX + armSeg * elbowOut;
         elbowY = gunY + armSeg * elbowDown;
         // Celebrating, the cannon used to hold ONE welded aim for the whole
@@ -2626,9 +3111,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         // not a drifting endpoint, or the barrel telescopes as it swings.
         // Wide on the shimmy beat (his big move, so the gun dances with the
         // body), tighter on the signature bounce.
-        const sweep = cm && cm.move === 'shimmy'
-          ? Math.sin(cm.q * Math.PI * 8) * 0.5
-          : Math.sin(gt * 4.2) * 0.26;
+        const salutePreview = cm && cm.move === 'salute';
+        const sweep = salutePreview
+          ? Math.sin(cm.q * Math.PI * 4) * 0.09
+          : cm && cm.move === 'shimmy'
+            ? Math.sin(cm.q * Math.PI * 8) * 0.5
+            : Math.sin(gt * 4.2) * 0.26;
         // Resting, the barrel sits level down the TRAVEL axis — always
         // forward, whichever shoulder carries it. Celebrating, it salutes
         // from straight up (-PI/2) canted OUTBOARD onto the gun's own side.
@@ -2637,7 +3125,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         // units: at 0.55 out, even the sweep's full +0.5 swing inboard stops
         // a hair past vertical instead of carrying the barrel across his own
         // face.
-        aim = cheer ? -Math.PI / 2 + sideF * 0.55 + sweep : 0;
+        aim = cheer ? -Math.PI / 2 + sideF * (salutePreview ? 0.24 : 0.55) + sweep : 0;
       }
       const muzzleX = elbowX + Math.cos(aim) * barrel;
       const muzzleY = elbowY + Math.sin(aim) * barrel;
@@ -2704,8 +3192,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         if ((gt / SHOT * 3) % 1 < 0.3) {
           dot(ctx, muzzleX + Math.cos(aim) * 0.07 * u, muzzleY + Math.sin(aim) * 0.07 * u, 0.05 * u, p.a);
         }
-      } else if (pose.menuAction === 'aim' && Math.sin(gt * 12) > 0.72) {
-        dot(ctx, muzzleX + 0.08 * u, muzzleY, 0.045 * u, p.w);
+      } else if (aiming && shotFired && shotT < 0.09) {
+        // This is the real articulated endpoint; it cannot drift away from the
+        // cannon when the shoulder, elbow or barrel length changes.
+        dot(ctx, muzzleX + Math.cos(aim) * 0.07 * u, muzzleY + Math.sin(aim) * 0.07 * u, 0.05 * u, p.w);
+        dot(ctx, muzzleX + Math.cos(aim) * 0.055 * u, muzzleY + Math.sin(aim) * 0.055 * u, 0.025 * u, p.a);
       }
       // NO shoulder cap on the gun-arm. The cap is a 0.065u ellipse sized for a
       // normal arm — 1.73x this limb's own half-width — and it only disappears
@@ -2716,6 +3207,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     } else {
       if (armDimsF) muscleLimb(ctx, shF, armYF, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
       else limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, p.b, ow, armWF, true);
+      if (wrenchAngle != null) drawWrench(ctx, handF[0], handF[1], wrenchAngle, u, ow);
       handDeco(handF[0], handF[1]);
       shoulderCap(shF, armYF);
     }
@@ -2757,7 +3249,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the poses whose near arm paints in the front pass — run and jump. Standing
   // and celebrating put both arms in the back pass below, and the pack landed
   // on top of the arm it should be hanging behind.
-  if (spec.back === 'shield') {
+  const presentingShield = id === 'fernwick' && cm && cm.move === 'present';
+  if (spec.back === 'shield' && !presentingShield) {
     outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
     dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
   }
@@ -2767,7 +3260,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the body, so a symmetric pose reads lopsided. Exception: grumpos's
   // celebrate clap, whose arms BOTH draw in the front pass — an arm back here
   // reads as clapping from behind his back.
-  const clapFront = id === 'grumpos' && pose.kind === 'celebrate';
+  const clapFront = pose.kind === 'celebrate' && (
+    id === 'grumpos'
+    || (reworkedCelebration && (id === 'dolores' || id === 'fernwick'))
+  );
+  const raisedArmStudyFront = pose.kind === 'celebrate'
+    && reworkedCelebration
+    && (id === 'lorenzo' || id === 'gary');
   if (!clapFront) {
     // B33P needs no special case here any more. With the cannon moved onto the
     // NEAR shoulder it is simply the front arm, drawn in the front pass like
@@ -2783,7 +3282,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // silhouette, matching how a plain hand peeks out at rest. It used to be
     // exempted and always drawn in front instead, which is what read as a
     // separate prop bolted to his chest rather than an arm attached to him.
-    if (stand) drawFrontArm();
+    if (stand && !raisedArmStudyFront) drawFrontArm();
   }
   limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, recede(p.p, farShade), ow);
   outlined(ctx, recede(footFill, farShade), Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
@@ -3317,7 +3816,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u));
     }
   }
-  if (!clapFront && !stand) {
+  if (!clapFront && (!stand || raisedArmStudyFront)) {
     drawFrontArm();
     if (strapOverArm) strapOverArm();
   }
@@ -3332,11 +3831,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     drawHead(ctx, id, spec, p, u, ow, 0.01 * u + torsoCx + nearSign * turnDepth * 0.015 * u, headY, lod, pose);
   }
 
+  if (presentingShield) {
+    // The same round shield he normally carries on his back, brought forward
+    // and supported by the two presentation targets above.
+    const sx = sideF * 0.14 * u, sy = shoulderY + 0.18 * u;
+    outlined(ctx, p.w, ow, (c) => c.arc(sx, sy, 0.15 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, Math.max(0.5, ow * 0.65), (c) => c.arc(sx, sy, 0.095 * u, 0, Math.PI * 2));
+    dot(ctx, sx, sy, 0.035 * u, OUTLINE);
+  }
+
   // Grumpos's celebrate arms draw dead LAST, after the head: the flex brings
   // both fists up beside the face, and drawn before the head they slide
   // behind the beard — hands vanishing behind his own neck mid-pose.
   if (clapFront) {
-    muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
     handDeco(handB[0], handB[1]);
     drawFrontArm();
   }
@@ -3473,7 +3982,15 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const kind = pose.kind;
   const duck = kind === 'duck';
+  const enhancedDuck = duck && usesEnhancedLocomotion(pose);
+  const enhancedJump = kind === 'jump' && usesEnhancedLocomotion(pose);
+  const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
+  const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
+  const airRise = Math.max(0, airV);
   const celebrate = kind === 'celebrate';
+  const celebrateSync = celebrate && usesReworkedCelebration(pose)
+    ? celebrateMotion(id, t, true)
+    : null;
   const acc = p.ear || p.a;          // purple accent (ears + cowlick)
   const star = p.star || acc;        // tail star
   const belly = p.belly || p.a;
@@ -3483,7 +4000,18 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   if (duck) { rx = 0.4 * u; ry = 0.22 * u; cy = -0.25 * u; }
   else if (kind === 'run') { const b = Math.sin(2 * ph) * 0.03 * u; ry += b; rx -= b * 0.7; }
   else if (kind === 'idle') { cy -= 0.012 * u * (1 + Math.sin(t * 3)) * 0.5; }
-  if (celebrate) { const b = Math.sin(t * 7); ry *= 1 + 0.1 * b; rx *= 1 - 0.08 * b; cy -= 0.03 * u * Math.max(0, b); }
+  else if (enhancedJump) {
+    // Mochi tucks into a soft ball at the apex and lengthens slightly while
+    // travelling. This is local deformation of the squishy rig, not a change
+    // to her standing body proportions.
+    rx *= 1 + 0.055 * airApex;
+    ry *= 1 - 0.045 * airApex;
+    cy -= 0.035 * u * airApex;
+  }
+  if (celebrate) {
+    const b = celebrateSync ? celebrateSync.lift / 0.15 : Math.sin(t * 7);
+    ry *= 1 + 0.1 * b; rx *= 1 - 0.08 * b; cy -= 0.03 * u * Math.max(0, b);
+  }
 
   ctx.save();
   // Ears make the silhouette taller than the rest of the cast; scale the whole
@@ -3494,7 +4022,7 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
     ctx.rotate(0.06 * Math.sin(t * 5));
     cy -= 0.03 * u * (1 + Math.sin(t * 9)) * 0.5;
   }
-  const armsUp = pose.float || celebrate;
+  const armsUp = pose.float || celebrate || enhancedJump;
 
   // tail: star-tipped stalk, drawn on the LEFT in rig space so it trails behind
   // (the drawToon wrapper mirrors the whole rig with facing, keeping it correct).
@@ -3533,9 +4061,13 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
     for (const side of [-1, 1]) {
       const baseX = side * rx * 0.5;
       const lean = side * 0.12 * u;
-      const wob = celebrate ? 0.03 * u * Math.max(0, Math.sin(t * 7)) : 0;
-      const tipX = baseX + lean + side * 0.06 * u;
-      const tipY = baseY - earLen - wob;
+      const wob = celebrate
+        ? 0.03 * u * Math.max(0, celebrateSync ? celebrateSync.lift / 0.15 : Math.sin(t * 7))
+        : 0;
+      const tipX = baseX + lean + side * (0.06 + airApex * 0.025 + (enhancedDuck ? 0.025 : 0)) * u;
+      // The ears trail a rising body, then splay back open at the apex.
+      const tipY = baseY - earLen - wob + airRise * 0.055 * u - airApex * 0.025 * u
+        + (enhancedDuck ? 0.025 * u : 0);
       const halfBase = 0.11 * u, halfTip = 0.075 * u;
       // The base corners have to meet a DOME, not a flat line. Both used to sit
       // at one shared y: fine for the inner corner, which lands well inside the
@@ -3580,8 +4112,11 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
 
   // feet stubs
   const step = kind === 'run' ? Math.sin(ph) * 0.06 * u : 0;
-  outlined(ctx, p.b, ow, (c) => c.ellipse(-0.14 * u + step, -0.03 * u, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
-  outlined(ctx, p.b, ow, (c) => c.ellipse(0.14 * u - step, -0.03 * u, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
+  const duckSpread = enhancedDuck ? 0.025 * u : 0;
+  const footIn = enhancedJump ? airApex * 0.035 * u : -duckSpread;
+  const footUp = enhancedJump ? (0.055 + airApex * 0.055) * u : 0;
+  outlined(ctx, p.b, ow, (c) => c.ellipse(-0.14 * u + step + footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
+  outlined(ctx, p.b, ow, (c) => c.ellipse(0.14 * u - step - footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
 
   // body + lighter belly
   outlined(ctx, p.b, ow, (c) => c.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2));
@@ -3592,7 +4127,7 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   ctx.restore();
 
   // arm nubs (rotate up while floating / celebrating)
-  const nubY = armsUp ? cy - ry * 0.5 : cy + ry * 0.2;
+  const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedDuck ? 0.42 : 0.2);
   outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(-rx - 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
   outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(rx + 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
 
@@ -3763,6 +4298,10 @@ function chompoEye(ctx, p, e, bodyFill, lod, blink, gaze = 0) {
 function drawDisc(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const duck = pose.kind === 'duck';
+  const enhancedMotion = usesEnhancedLocomotion(pose);
+  const enhancedJump = pose.kind === 'jump' && enhancedMotion;
+  const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
+  const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
   const r = (duck ? 0.3 : 0.34) * u;
   const cy = duck ? -0.31 * u : -0.44 * u;
   if (duck && pose.roll) {
@@ -3784,6 +4323,9 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     return;
   }
   const ex = expressionFor(id, pose);
+  const reworkedCelebrate = pose.kind === 'celebrate' && usesReworkedCelebration(pose)
+    ? celebrateMotion(id, pose.time || 0, true)
+    : null;
   // Pac-Man mouth with a fixed TOP lip: the upper angle holds the spec's idle
   // 15° while only the jaw (lower lip) swings. The jaw travels from -15° (flush
   // against the top lip — mouth FULLY closed, she becomes a circle) down to a
@@ -3797,7 +4339,9 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   // speed is controllable and never frantic.
   if (pose.menuAction === 'chomp') loDeg = -upDeg + 57 * biteWave(mt * 1.7); // wide bite, just short of exposing a leg — snappy, ~0.6s a cycle
   else if (pose.kind === 'run') loDeg = -upDeg + 40 * (0.5 - 0.5 * Math.cos(mt * 11)); // gentle chew, ~1.75/s
-  else if (pose.kind === 'celebrate') loDeg = -upDeg + 50 * Math.abs(Math.sin(mt * 6)); // chomping the air in triumph
+  else if (pose.kind === 'celebrate') loDeg = -upDeg + 50 * (reworkedCelebrate
+    ? biteWave(reworkedCelebrate.cycle * 2)
+    : Math.abs(Math.sin(mt * 6))); // shipped two-stage bite; legacy keeps the air-chomp
   else if (pose.kind === 'jump') loDeg = 32;
   const thetaUp = upDeg * Math.PI / 180, thetaLo = loDeg * Math.PI / 180;
 
@@ -3806,8 +4350,12 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   // mid-stride — so she reads as a character walking, not a disc vibrating in
   // place. Matches the humanoid cast's -|cos| bob for a consistent gait.
   const bob = pose.kind === 'run' ? -Math.abs(Math.cos(ph)) * 0.03 * u
-    : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.008 * u : 0;
-  const squash = pose.kind === 'run' ? (0.5 - Math.abs(Math.cos(ph))) * 0.06 : Math.sin((pose.time || 0) * 2.2) * 0.012;
+    : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.008 * u
+      : enhancedJump ? -airApex * 0.03 * u : 0;
+  const squash = pose.kind === 'run' ? (0.5 - Math.abs(Math.cos(ph))) * 0.06
+    : duck && enhancedMotion ? 0.115
+      : enhancedJump ? airApex * 0.035
+        : Math.sin((pose.time || 0) * 2.2) * 0.012;
   const pivotY = cy + r * 0.9;
   ctx.save();
   ctx.translate(0, pivotY); ctx.scale(1 + squash, 1 - squash); ctx.translate(0, -pivotY);
@@ -3840,16 +4388,50 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
   });
   ctx.restore();
 
+  if (reworkedCelebrate) {
+    // A tiny golden snack makes the verb unmistakable: it arcs from outside
+    // the silhouette into the transparent mouth wedge, shrinks on the snap,
+    // and is gone before the satisfied bounce. Painted before the body so the
+    // closed jaw naturally masks it instead of requiring a separate clip.
+    const phase = (reworkedCelebrate.cycle * 2) % 1;
+    if (phase >= 0.08 && phase < 0.74) {
+      const raw = Math.max(0, Math.min(1, (phase - 0.08) / 0.66));
+      const travel = raw * raw * (3 - 2 * raw);
+      const snackX = (0.62 - travel * 0.31) * u;
+      const snackY = cy - Math.sin(travel * Math.PI) * 0.09 * u;
+      const snackR = (0.062 - travel * 0.035) * u;
+      ctx.save();
+      ctx.translate(snackX, snackY);
+      ctx.rotate(travel * 1.8);
+      outlined(ctx, '#f6d33c', Math.max(0.5, ow * 0.65), (c) => {
+        c.moveTo(0, -snackR);
+        c.lineTo(snackR, 0);
+        c.lineTo(0, snackR);
+        c.lineTo(-snackR, 0);
+        c.closePath();
+      });
+      if (!lod) {
+        dot(ctx, -snackR * 0.22, -snackR * 0.08, snackR * 0.12, '#9a6515');
+        dot(ctx, snackR * 0.25, snackR * 0.2, snackR * 0.1, '#9a6515');
+      }
+      ctx.restore();
+    }
+  }
+
   // 2. legs — excluded from the spec; the rig's own gait. Sized against the
   // humanoid cast (legW 0.09u): a touch slimmer at 0.07u, and reaching a
   // lower ankle so the pumps plant as deep as everyone else's soles — at the
   // old 0.055u / -0.05u ankle she read as hovering above the ground line.
   const p01 = pose.phase || 0;
-  const gF = pose.kind === 'run' ? gaitFoot(p01, 0.08 * u, 0.06 * u) : [0, 0];
-  const gB = pose.kind === 'run' ? gaitFoot(p01 + 0.5, 0.08 * u, 0.06 * u) : [0, 0];
+  let gF = pose.kind === 'run' ? gaitFoot(p01, 0.08 * u, 0.06 * u) : [0, 0];
+  let gB = pose.kind === 'run' ? gaitFoot(p01 + 0.5, 0.08 * u, 0.06 * u) : [0, 0];
+  if (enhancedJump) {
+    gF = [(0.035 + 0.025 * airApex) * u, 0];
+    gB = [(-0.025 - 0.02 * airApex) * u, 0.035 * (1 - airApex) * u];
+  }
   // legs stop at the ANKLE so the shoe, drawn on top, meets them cleanly
   // instead of the leg poking through it
-  const ankleY = -0.03 * u;
+  const ankleY = enhancedJump ? (-0.11 - 0.055 * airApex) * u : -0.03 * u;
   const hipY = cy + r * 0.6 + bob;   // hips ride the bob; feet stay planted, so legs stretch
   limb(ctx, -0.1 * u, hipY, -0.1 * u + gB[0], ankleY + gB[1], 0.07 * u, p.p, ow);
   limb(ctx, 0.1 * u, hipY, 0.1 * u + gF[0], ankleY + gF[1], 0.07 * u, p.p, ow);
@@ -3989,17 +4571,23 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   const ph = (pose.phase || 0) * Math.PI * 2;
   const run = pose.kind === 'run';
   const duck = pose.kind === 'duck';
+  const enhancedMotion = usesEnhancedLocomotion(pose);
+  const jump = pose.kind === 'jump' && enhancedMotion;
+  const airV = jump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
+  const airApex = jump ? 1 - Math.abs(airV) : 0;
   // Two distinct footfalls per cycle: each shoe travels backward along the
   // floor, then lifts and swings forward. The torso settles on contact.
   const footF = run ? floatingFoot(pose.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
   const footB = run ? floatingFoot((pose.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
   const bob = run ? -Math.abs(Math.sin(ph)) * 0.028 * u : 0;
-  const cy = (duck ? -0.3 : -0.5) * u + bob;
-  const handSwing = run ? Math.cos(ph) * 0.075 * u : 0;
-  const handLift = run ? Math.sin(ph) * 0.035 * u : 0;
+  const cy = (duck ? -0.3 : -0.5) * u + bob - airApex * 0.03 * u;
+  const handSwing = run ? Math.cos(ph) * 0.075 * u : jump ? 0.055 * u : 0;
+  const handLift = run ? Math.sin(ph) * 0.035 * u : jump ? (0.045 + 0.035 * airApex) * u : 0;
   // Floating shoes—no connecting legs.
-  const backShoeX = -0.13 * u + footB[0], backShoeY = -0.04 * u + footB[1];
-  const frontShoeX = 0.13 * u + footF[0], frontShoeY = -0.04 * u + footF[1];
+  const shoeSpread = duck && enhancedMotion ? 0.165 : 0.13;
+  const shoeLift = jump ? (0.09 + 0.07 * airApex) * u : 0;
+  const backShoeX = -shoeSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
+  const frontShoeX = shoeSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
   const backTilt = -0.08 - (run ? Math.sin(ph) * 0.1 : 0);
   const frontTilt = 0.08 + (run ? Math.sin(ph) * 0.1 : 0);
   outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
@@ -4018,19 +4606,69 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   ctx.fillStyle = p.m; ctx.beginPath(); ctx.moveTo(-0.14 * u, cy - 0.245 * u); ctx.quadraticCurveTo(-0.3 * u, cy - 0.225 * u + scarfLag, -0.37 * u, cy - 0.17 * u + scarfLag); ctx.lineTo(-0.14 * u, cy - 0.14 * u); ctx.fill();
   drawRayHead(ctx, id, p, pose, u, ow, 0, cy - 0.35 * u, lod, run);
   // Floating gloves—hide the throwing glove until it returns.
-  const handY = cy + 0.02 * u;
+  const handY = cy + (duck && enhancedMotion ? 0.085 : jump ? -0.11 : 0.02) * u;
+  const handOut = duck && enhancedMotion ? 0.34 : 0.29;
   const cheer = pose.kind === 'celebrate';
-  // Celebrating, both gloves go up and the front one waves — being floating
-  // hands, they wave with the whole glove.
-  const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
-  outlined(ctx, p.w, ow, (c) => c.ellipse(-0.29 * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
-  if (cheer) {
-    const waveX = Math.sin((pose.time || 0) * 8) * 0.1 * u;
-    outlined(ctx, p.w, ow, (c) => c.ellipse(0.28 * u + waveX, cy - 0.62 * u, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
-  } else if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(0.29 * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
-  else if (pose.menu) {
-    const orbit = (pose.time || 0) * 8;
-    outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
+  const gloveStudy = cheer && usesReworkedCelebration(pose);
+  if (gloveStudy) {
+    const gm = celebrateMotion(id, pose.time || 0, true);
+    const smooth = (v) => {
+      const n = Math.max(0, Math.min(1, v));
+      return n * n * (3 - 2 * n);
+    };
+    const blend = (a, b, v) => a.map((n, i) => n + (b[i] - n) * v);
+    const restL = [-0.29 * u, cy - 0.24 * u, -0.12];
+    const restR = [0.29 * u, cy - 0.24 * u, 0.12];
+    // Centres sit just under one glove-width apart, so the palms visibly meet
+    // without becoming one white blob.
+    const meetL = [-0.095 * u, cy - 0.69 * u, 0.48];
+    const meetR = [0.095 * u, cy - 0.69 * u, -0.48];
+    const finishL = [-0.27 * u, cy - 0.63 * u, -0.12];
+    const finishR = [0.3 * u, cy - 0.18 * u, 0.12];
+    const c = gm.cycle;
+    let left, right;
+    if (c < 0.18) {
+      const v = smooth(c / 0.18);
+      left = blend(restL, meetL, v); right = blend(restR, meetR, v);
+    } else if (c < 0.36) {
+      left = meetL; right = meetR;
+    } else if (c < 0.5) {
+      const v = smooth((c - 0.36) / 0.14);
+      left = blend(meetL, finishL, v); right = blend(meetR, finishR, v);
+    } else if (c < 0.82) {
+      left = finishL; right = finishR;
+    } else {
+      const v = smooth((c - 0.82) / 0.18);
+      left = blend(finishL, restL, v); right = blend(finishR, restR, v);
+    }
+    outlined(ctx, p.w, ow, (path) => path.ellipse(left[0], left[1], 0.105 * u, 0.095 * u, left[2], 0, Math.PI * 2));
+    outlined(ctx, p.w, ow, (path) => path.ellipse(right[0], right[1], 0.105 * u, 0.095 * u, right[2], 0, Math.PI * 2));
+    const impact = Math.max(0, 1 - Math.abs(c - 0.27) / 0.09);
+    if (impact > 0 && !lod) {
+      const iy = cy - 0.69 * u;
+      ctx.save();
+      ctx.globalAlpha *= impact;
+      ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = Math.max(0.6, ow * 0.8);
+      ctx.beginPath();
+      for (const a of [-Math.PI / 2, -0.35, Math.PI + 0.35]) {
+        ctx.moveTo(Math.cos(a) * 0.03 * u, iy + Math.sin(a) * 0.03 * u);
+        ctx.lineTo(Math.cos(a) * 0.1 * u, iy + Math.sin(a) * 0.1 * u);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  } else {
+    // Shipped celebration: both gloves rise and the front one waves.
+    const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
+    outlined(ctx, p.w, ow, (c) => c.ellipse(-handOut * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+    if (cheer) {
+      const waveX = Math.sin((pose.time || 0) * 8) * 0.1 * u;
+      outlined(ctx, p.w, ow, (c) => c.ellipse(0.28 * u + waveX, cy - 0.62 * u, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+    } else if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(handOut * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+    else if (pose.menu) {
+      const orbit = (pose.time || 0) * 8;
+      outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
+    }
   }
 }
 
@@ -4097,9 +4735,34 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   const lod = h < 16;
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {
-    const st = pose.stomp ? 0.25 : Math.min(0.18, Math.abs(pose.vy || 0) / 700);
-    sy = 1 + st;
-    sx = 1 - 0.6 * st;
+    if (usesEnhancedLocomotion(pose) && !pose.stomp) {
+      // Velocity stretches the moving figure, but much less than the legacy
+      // 18% pull. The limbs now carry the jump's story; the whole body should
+      // only breathe with their momentum, not turn rubbery in free fall.
+      const speed = Math.min(1, Math.abs(Number(pose.vy) || 0) / 520);
+      sy = 1 + 0.095 * speed;
+      sx = 1 - 0.052 * speed;
+    } else {
+      const st = pose.stomp ? 0.25 : Math.min(0.18, Math.abs(pose.vy || 0) / 700);
+      sy = 1 + st;
+      sx = 1 - 0.6 * st;
+    }
+  }
+  if (pose.kind === 'duck' && usesEnhancedLocomotion(pose) && !pose.roll) {
+    const raw = pose.duckAmount == null ? 1
+      : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+    let crouch = raw * raw * (3 - 2 * raw);
+    // On entry, dip just past the held pose and rebound during the final third.
+    // It is deliberately tiny: enough to show weight arriving, not enough to
+    // pulse the hitbox or make the hero look rubbery.
+    if (pose.duckDirection > 0 && raw > 0.68 && raw < 1) {
+      crouch += Math.sin((raw - 0.68) / 0.32 * Math.PI) * 0.055;
+    }
+    const startTall = spec.rig === 'disc' ? 1.28
+      : spec.rig === 'pika' || spec.rig === 'blob' ? 1.45
+        : spec.rig === 'ray' ? 1.25 : 1.7;
+    sy *= startTall + (1 - startTall) * crouch;
+    sx *= 0.9 + 0.1 * crouch;
   }
   const q = pose.squash || 0;
   if (q > 0) { sy *= 1 - 0.28 * q; sx *= 1 + 0.32 * q; }
@@ -4108,9 +4771,18 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   ctx.translate(cx, feetY);
   // The victory routine drives the whole rig — hop, sway, turn and squash —
   // so humanoid, blob, disc and ray all dance off the same clock.
-  const cm = pose.kind === 'celebrate' ? celebrateMotion(heroId, pose.time || 0) : null;
+  const cm = pose.kind === 'celebrate'
+    ? celebrateMotion(heroId, pose.time || 0, usesReworkedCelebration(pose))
+    : null;
   if (cm) ctx.translate(cm.x * u, -cm.lift * u);
   if (pose.facing === -1) ctx.scale(-1, 1);
+  // Blob/disc/floating rigs do not have separable torso and limb dimensions.
+  // These optional spec values therefore scale their complete figure about
+  // the feet. No production spec sets them; the gallery applies and restores
+  // them around a single comparison draw.
+  if (spec.figureScaleX || spec.figureScaleY) {
+    ctx.scale(spec.figureScaleX || 1, spec.figureScaleY || 1);
+  }
   if (pose.lean) ctx.rotate(pose.lean);
   if (cm) {
     if (cm.tilt) ctx.rotate(cm.tilt);
@@ -4287,6 +4959,10 @@ function effectPoses(heroId) {
     chompo: { kind: 'run', phase: 0.25, time: 0.22, grounded: true, facing: 1, menuAction: 'chomp' },
   }[heroId];
   if (special) poses.push(special);
+  if (heroId === 'lorenzo') poses.push({
+    kind: 'run', phase: 0.25, time: 0.18, grounded: true, facing: 1,
+    menuAction: 'smash', actionTime: 0.18,
+  });
   return poses;
 }
 
@@ -4392,13 +5068,21 @@ export function toonStandSprite(heroId, w, h) {
 // a full gape/hold/snap (~0.4s via biteWave) to read as an actual bite rather
 // than a twitch, longer than the flat 0.3s every other ability flourish gets.
 const EAT_POWER_POSE_T = 0.5;
+// One kill switch for the production directional-face treatment. This affects
+// only ordinary grounded running; set to 0 to restore the previous front-facing
+// run faces without touching idle/menu/HUD/cast poses or gallery candidates.
+export const RUN_HEAD_TURN = 12;
 
 export function poseFromPlayer(player, t) {
   const hero = player.hero || {};
   const firing = player.powerPoseT > 0;
   const eating = firing && player.powerType === 'eat';
+  const smashing = firing && player.powerType === 'stomp' && player.grounded;
+  const forcedDuck = player.rolling || player.compressT > 0;
+  const recoveringDuck = player.grounded && (player.duckAmount || 0) > 0;
+  const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck' : (!player.grounded ? 'jump' : 'run');
   return {
-    kind: (player.ducking || player.rolling || player.compressT > 0) ? 'duck' : (!player.grounded ? 'jump' : 'run'),
+    kind,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens
@@ -4406,6 +5090,10 @@ export function poseFromPlayer(player, t) {
     time: eating ? (EAT_POWER_POSE_T - player.powerPoseT) : t,
     vy: player.vy,
     grounded: player.grounded,
+    // Rolls and Mochi's compression remain immediate ability silhouettes.
+    // Ordinary input uses the controller's entry/exit blend.
+    duckAmount: forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
+    duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / 0.12)),
     lean: player.dashT > 0 ? 0.26 * Math.min(1, player.dashT / 0.2) : 0,
     roll: !!player.rolling,
@@ -4416,7 +5104,9 @@ export function poseFromPlayer(player, t) {
     // The wide hazard-bite gape and the raised, sighted cannon arm both used
     // to be menu-only flourishes — a real bite or a real shot looked no
     // different from an idle chew or an at-rest carry.
-    menuAction: eating ? 'chomp' : (firing && player.powerType === 'shoot') ? 'aim' : undefined,
+    menuAction: eating ? 'chomp' : (firing && player.powerType === 'shoot') ? 'aim' : smashing ? 'smash' : undefined,
+    actionTime: firing && !eating ? 0.3 - player.powerPoseT : 0,
+    headTurn: kind === 'run' ? RUN_HEAD_TURN : 0,
     facing: 1,
   };
 }

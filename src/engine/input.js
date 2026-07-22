@@ -80,7 +80,7 @@ class InputSys {
         this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true });
         this.press(action);
       } else {
-        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action: null });
+        let action = null;
         // Tap-to-jump is a RUN-gameplay convenience only. Every other context
         // has its own tap handling (menu list-select, the hub's walk/interact
         // logic, ...), and a bare 'jump' press leaking in there is a real bug,
@@ -89,7 +89,19 @@ class InputSys {
         // you're standing at"), and since this fired from ANY tap anywhere on
         // screen, merely being near a station — not tapping it — was enough
         // to confirm it.
-        if (this.usingTouch && this.context === 'run') this.press('jump');
+        // Desktop gets the same direct controls without stealing clicks from
+        // menus or the hub: left mouse jumps and right mouse attacks. Ignore
+        // extra mouse buttons, and suspend both mappings while the run's pause
+        // menu has borrowed the input context.
+        const liveRun = this.context === 'run' && !this.menuKeys;
+        const liveWorkshop = this.context === 'workshop';
+        // Touch keeps a null action while the finger is down so pointermove
+        // can still promote the starting jump into a duck/power swipe.
+        if (liveRun && this.usingTouch) this.press('jump');
+        else if (liveRun && e.button === 0) action = 'jump';
+        else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
+        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action });
+        if (action) this.press(action);
       }
       e.preventDefault();
     });

@@ -4,7 +4,7 @@ import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
-import { drawToon, toonInkTop } from '../../sprites/toons.js';
+import { drawToon, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
@@ -27,6 +27,7 @@ import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
+import { Player } from '../player.js';
 
 const CORRUPTED_MODIFIERS = [
   { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
@@ -45,6 +46,11 @@ export { CORRUPTED_MODIFIERS };
 // uses to pin GROUND_Y for the run camera — so zooming in crops the ceiling
 // rather than sliding the ground out from under the player.
 const HUB_ZOOM = 1.3;
+// The concourse is intentionally long enough to browse cabinet by cabinet, but
+// returning players also cross it end to end. At 90 that trip overstayed its
+// welcome; 120 keeps precise station approaches while cutting traversal time by
+// a quarter. Tap-to-walk and keyboard movement share this speed.
+const HUB_WALK_SPEED = 120;
 // Where the floor line sits, which — because the pin maps this world y to the
 // same SCREEN y — is also how the 270px frame is split between wall and floor.
 // It was 192, leaving 78px of floor for a UI band that only ever uses the
@@ -72,6 +78,10 @@ const HUB_CEIL_Y = Math.ceil(HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM) + 6;
 // so nothing about walking up to them changes.
 const CAB_W = cabinetStyle().w, CAB_H = cabinetStyle().h;
 const CAB_Y = HUB_FLOOR_PIN_Y - CAB_H;
+// Leave one full cabinet pitch open before OVERTIME. This is a real bay, not
+// visual padding: stations() advances the world cursor by it, so camera bounds,
+// lighting, free floor, NPC homes and their far-wall clamp all grow with it.
+const OVERTIME_EMPTY_BAY = 88;
 const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // The serving line stands on the same floor as everything else. It is twice a
 // door's width and half its height on purpose: a counter is a horizontal thing,
@@ -711,6 +721,11 @@ export class HubState {
     // campaign — this is the door the player walks through every time, and the
     // back room next to it already set the shape for a label that winks.
     if (slot.campaign.storyFlags.sawEnding) {
+      // A cabinet-sized patch of bare floor between the trophy/back-room end
+      // and OVERTIME reserves a natural home for one more machine later. Keep
+      // it in the station cursor rather than adding it to the tail: the whole
+      // concourse (including NPC distribution) then knows the space is usable.
+      x += OVERTIME_EMPTY_BAY;
       st.push({ type: 'overtime', x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' });
     }
     // Tail past the last station. Widened once the crowd started living out
@@ -939,7 +954,6 @@ export class HubState {
     this.walkTarget = null;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
-    this.shelfPage = this.shelfPage ?? 0; // trophy shelf cycles a new stat page each visit
     this.npcMenuIdx = 0;
     this.npcDwell = 0;
     this.greeted = false;     // has this hero already said hello, this approach
@@ -1033,8 +1047,8 @@ export class HubState {
     this.t += dt;
     this.updateNpcs(dt);
     const st = this.stations();
-    if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
-    if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
+    if (Input.held('left')) { this.px -= HUB_WALK_SPEED * dt; this.facing = -1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
+    if (Input.held('right')) { this.px += HUB_WALK_SPEED * dt; this.facing = 1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
     if (!this.hasMoved && (Input.held('left') || Input.held('right') || this.walkTarget != null)) this.hasMoved = true;
     if (this.hasMoved) this.movedAt += dt;
     // Tap/click anywhere (not a virtual button) to walk there — mouse and
@@ -1088,7 +1102,7 @@ export class HubState {
       // Widened from 14: a hero is about that wide on screen, so half of every
       // sprite was outside its own tap target and clicking someone's shoulder
       // walked you past them. Dolores and Gary are wider still.
-      const npcHit = nearestTo(this.npcs(), worldX, 17);
+      const npcHit = nearestTo(this.npcs().filter((n) => !n.clearingStation), worldX, 17);
       // An NPC's wander can drift it right next to a station (the food court
       // is cramped); whichever is actually closer to the tap wins, so tapping
       // dead-on a loitering hero doesn't get swallowed by the counter behind them.
@@ -1143,14 +1157,14 @@ export class HubState {
     // been standing on and they were somewhere else entirely. NPC_ATTEND_R does
     // the rest: get within 30 and they stop, so the chase always converges.
     if (this.walkToNpc) {
-      const who = this.npcs().find((n) => n.id === this.walkToNpc);
+      const who = this.npcs().find((n) => n.id === this.walkToNpc && !n.clearingStation);
       if (who) this.walkTarget = this.standBesideX(who);
       else this.walkToNpc = null;
     }
     if (this.walkTarget != null) {
       const d = this.walkTarget - this.px;
       if (Math.abs(d) < 3) { this.walkTarget = null; this.walkToNpc = null; }
-      else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), 90 * dt); }
+      else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), HUB_WALK_SPEED * dt); }
     }
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
     const near = nearestTo(st, this.px, STATION_R);
@@ -1172,13 +1186,14 @@ export class HubState {
     // So: hold whoever we have until they actually leave talk range, and only
     // then look for somebody new.
     let held = this.addressing
-      ? this.npcs().find((n) => n.id === this.addressing && Math.abs(n.x - this.px) < NPC_TALK_R)
+      ? this.npcs().find((n) => n.id === this.addressing
+        && !n.clearingStation && Math.abs(n.x - this.px) < NPC_TALK_R)
       : null;
     // Not while we are still on our way to them: they are out of talk range for
     // the whole crossing, so clearing on range alone dropped the intent on the
     // very first frame and the walk arrived with nothing chosen.
     if (!held && !this.walkToNpc) {
-      const found = nearestTo(this.npcs(), this.px, NPC_TALK_R);
+      const found = nearestTo(this.npcs().filter((n) => !n.clearingStation), this.px, NPC_TALK_R);
       this.addressing = found ? found.id : null;
       this.addressTap = false;   // acquired by standing near them, not chosen
       held = found;
@@ -1277,26 +1292,10 @@ export class HubState {
     else if (st.type === 'bench') this.flow.openBench();
     else if (st.type === 'shop') this.flow.openShop();
     else if (st.type === 'arcade') this.flow.openArcade();
+    else if (st.type === 'shelf') this.flow.openTrophyRoom();
     else if (st.type === 'socket') this.flow.startFinale();
     else if (st.type === 'overtime') this.flow.startOvertime();
     else if (st.type === 'backroom') this.flow.startOvertime((Date.now() & 0xfffff) ^ 0xbac);
-    else if (st.type === 'shelf') {
-      const toasters = Object.values(slot.campaign.plugs).filter((p) => p[2]).length;
-      const sRanks = Object.values(slot.campaign.ranks).filter((r) => r === 'S' || r === 'CONCERNING').length;
-      const clumsy = clumsiestHero(slot);
-      const clumsyName = clumsy ? (HERO_BY_ID[clumsy[0]]?.short || clumsy[0]) : null;
-      // Three pages, one stat family each: the shelf has more to brag about than
-      // one line can hold, so each visit turns to the next page instead of
-      // cramming every lifetime number into a single wrapped block.
-      const pages = [
-        `TOASTERS: ${toasters}/27. S RANKS: ${sRanks}. DEATHS: ${slot.stats.deaths}. THE SHELF IS PROUD-ADJACENT.`,
-        `RUNS: ${slot.stats.runs}. TIME PLAYED: ${formatPlaytime(slot.playtimeSec)}. DISTANCE: ${formatCoins(slot.stats.distanceTraveled)}. LIFETIME COINS: ${formatCoins(slot.stats.coinsEarned)}.`,
-        `POWERUPS GRABBED: ${slot.stats.powerupsCollected}. APPLIANCES FOUND: ${slot.stats.appliancesFound}.` +
-          (clumsy ? ` CLUMSIEST: ${clumsyName} (${clumsy[1]} DEATHS).` : ' CLUMSIEST: NOBODY YET.'),
-      ];
-      this.talk = { text: pages[this.shelfPage % pages.length], t: 4, who: null };
-      this.shelfPage++;
-    }
   }
 
   talkTo(npc) {
@@ -1379,6 +1378,9 @@ export class HubState {
   }
 
   updateNpcs(dt) {
+    const service = this.stations().find((s) =>
+      (s.type === 'bench' || s.type === 'shop')
+      && Math.abs(this.px - s.x) < STATION_R);
     for (const n of this.npcs()) {
       // Counter staff do not wander the concourse — they are drawn inside their
       // own units, so a walk cycle on the hero rules would carry them out
@@ -1393,6 +1395,7 @@ export class HubState {
       // deck) and it stays rare, because a counter clerk pacing continuously
       // reads as agitated rather than staffed.
       if (n.pinned) {
+        n.clearingStation = false;
         n.state = 'idle';
         n.timer -= dt;
         if (n.timer <= 0) {
@@ -1427,6 +1430,32 @@ export class HubState {
         n.facing = this.px < n.x ? -1 : 1;
         continue;
       }
+
+      // When the player steps up to either service counter, wandering cast
+      // members actively make way. canLoiter() already stopped them CHOOSING
+      // this area as a resting place, but they could still cross it slowly and
+      // steal station focus while doing so. Walk them to the nearest edge of
+      // the counter's full clearance band and temporarily remove them from
+      // tap/talk targeting. Counter staff are handled above and never move.
+      const serviceClear = service ? this.loiterClear(service) : 0;
+      if (service && Math.abs(n.x - service.x) < serviceClear) {
+        n.clearingStation = true;
+        n.attending = false;
+        n.state = 'walk';
+        n.timer = Math.max(n.timer, 0.6);
+        const dir = Math.sign(n.x - service.x) || (n.cycles % 2 ? -1 : 1);
+        n.facing = dir;
+        n.x += dir * Math.min(serviceClear - Math.abs(n.x - service.x), 42 * dt);
+        if (this.addressing === n.id) {
+          this.addressing = null;
+          this.addressTap = false;
+        }
+        if (this.walkToNpc === n.id) this.walkToNpc = null;
+        if (this.focusNpc?.id === n.id) this.focusNpc = null;
+        if (this.talk?.who === n.id) this.talk = null;
+        continue;
+      }
+      n.clearingStation = false;
       // Conversation wins over wandering, and the speaker turns toward the
       // player instead of strolling away halfway through a punchline.
       //
@@ -1976,6 +2005,508 @@ export class HubState {
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE',
       W / 2, H - 14, '#8a8a98', HINT_S);
     ctx.restore();
+  }
+}
+
+// --------------------------------------------------------------------------
+// TROPHY WORKSHOP
+//
+// A room, not a report. Campaign progress is embodied as objects on the wall,
+// while the floor is a tiny no-stakes practice space: swap heroes at the podium
+// and hit the sprung target as often as desired. Nothing here changes campaign
+// rewards or combat cooldowns.
+const TROPHY_FLOOR_Y = 218;
+const TROPHY_EXIT_X = 30;
+const TROPHY_RECORDS_X = 108;
+const TROPHY_PODIUM_X = 190;
+const TROPHY_DUMMY_X = 365;
+const TROPHY_ATTACK_RANGE = 112;
+const TROPHY_MOVE_SPEED = 92;
+const TROPHY_BOSSES = [
+  { id: 'neon', label: 'COPTER', relic: 'copter' },
+  { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
+  { id: 'surge', label: 'FINAL STRIP', relic: 'powerstrip' },
+];
+
+export class TrophyRoomState {
+  constructor({ save, flow }) {
+    this.save = save;
+    this.flow = flow;
+  }
+
+  heroId() {
+    return (this.flow.heroId && this.flow.heroId()) || heroIdFor(this.flow);
+  }
+
+  enter() {
+    Input.setContext('workshop');
+    Input.setButtons([]);
+    Input.setChromeButtons([]);
+    this.t = 0;
+    this.px = 78;
+    this.facing = 1;
+    this.walkTarget = null;
+    this.pending = null;
+    this.player = new Player(this.heroId());
+    this.player.grounded = true;
+    this.attackT = 0;
+    this.attackType = null;
+    this.dummyHitT = 0;
+    this.hits = 0;
+    this.chain = 0;
+    this.bestChain = 0;
+    this.comboT = 0;
+    this.heroFlashT = 0;
+    this.recordsPage = 0;
+  }
+
+  exit() {
+    Input.setButtons([]);
+    Input.setChromeButtons([]);
+  }
+
+  toasterCount() {
+    return STAGES.reduce((n, s) => n + ((this.save.slot.campaign.plugs[s.id] || [])[2] ? 1 : 0), 0);
+  }
+
+  sRankCount() {
+    return Object.values(this.save.slot.campaign.ranks)
+      .filter((r) => r === 'S' || r === 'CONCERNING').length;
+  }
+
+  defeatedBosses() {
+    return TROPHY_BOSSES.filter((b) => !!this.save.slot.campaign.bossesDown[b.id]);
+  }
+
+  cabinetRecords() {
+    const order = { C: 0, B: 1, A: 2, S: 3, CONCERNING: 4 };
+    return CABINETS.map((cab) => {
+      const stages = stagesForCabinet(cab.id);
+      const plugs = stages.reduce((n, s) => n + (this.save.slot.campaign.plugs[s.id] || []).filter(Boolean).length, 0);
+      const ranks = stages.map((s) => this.save.slot.campaign.ranks[s.id]).filter(Boolean);
+      const rank = ranks.reduce((best, r) => !best || order[r] > order[best] ? r : best, null);
+      return { cab, plugs, max: stages.length * 3, rank };
+    });
+  }
+
+  statPages() {
+    const slot = this.save.slot;
+    const clumsy = clumsiestHero(slot);
+    const clumsyName = clumsy ? (HERO_BY_ID[clumsy[0]]?.short || clumsy[0]).toUpperCase() : 'NOBODY';
+    return [
+      {
+        title: 'CAREER',
+        rows: [
+          ['RUNS', formatCoins(slot.stats.runs)],
+          ['TIME PLAYED', formatPlaytime(slot.playtimeSec)],
+          ['DISTANCE', formatCoins(slot.stats.distanceTraveled)],
+          ['LIFETIME COINS', formatCoins(slot.stats.coinsEarned)],
+        ],
+      },
+      {
+        title: 'WEAR & TEAR',
+        rows: [
+          ['LIVES LOST', formatCoins(slot.stats.deaths)],
+          ['POWERUPS', formatCoins(slot.stats.powerupsCollected)],
+          ['APPLIANCES', formatCoins(slot.stats.appliancesFound)],
+          ['CLUMSIEST', clumsy ? `${clumsyName} x${clumsy[1]}` : clumsyName],
+        ],
+      },
+      {
+        title: 'COLLECTION',
+        rows: [
+          ['TOASTERS', `${this.toasterCount()}/${STAGES.length}`],
+          ['S-RANKS', formatCoins(this.sRankCount())],
+          ['OVERTIME BEST', formatCoins(slot.overtime.best)],
+          ['BEST RELAY', formatCoins(slot.overtime.bestRelay)],
+        ],
+      },
+    ];
+  }
+
+  near(x, r = 34) { return Math.abs(this.px - x) <= r; }
+
+  cycleHero(dir = 1) {
+    const at = HEROES.findIndex((h) => h.id === this.player.heroId);
+    const next = HEROES[(at + dir + HEROES.length) % HEROES.length];
+    this.player.setHero(next.id);
+    this.player.grounded = true;
+    this.flow.setHero && this.flow.setHero(next.id);
+    this.heroFlashT = 0.35;
+    Audio.sfx('power');
+  }
+
+  cycleRecords(dir = 1) {
+    const n = this.statPages().length;
+    this.recordsPage = (this.recordsPage + dir + n) % n;
+    Audio.sfx('ui');
+  }
+
+  queueInteraction(kind, target) {
+    this.pending = kind;
+    this.walkTarget = target;
+  }
+
+  usePending() {
+    const kind = this.pending;
+    this.pending = null;
+    this.walkTarget = null;
+    if (kind === 'exit') this.flow.toHub();
+    else if (kind === 'records' || kind === 'recordsNext') this.cycleRecords(1);
+    else if (kind === 'recordsPrev') this.cycleRecords(-1);
+    else if (kind === 'podium' || kind === 'podiumNext') this.cycleHero(1);
+    else if (kind === 'podiumPrev') this.cycleHero(-1);
+    else if (kind === 'dummy') this.attackDummy();
+  }
+
+  attackDummy() {
+    if (!this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) {
+      this.queueInteraction('dummy', TROPHY_DUMMY_X - 68);
+      return false;
+    }
+    const type = this.player.hero.ability.type;
+    this.attackType = type;
+    this.attackT = 0.52;
+    this.dummyHitT = 0.38;
+    this.chain = this.comboT > 0 ? this.chain + 1 : 1;
+    this.bestChain = Math.max(this.bestChain, this.chain);
+    this.comboT = 2;
+    this.hits++;
+    this.facing = 1;
+    this.player.powerType = type;
+    this.player.powerPoseT = type === 'eat' ? 0.5 : 0.3;
+    if (type === 'dash') this.player.dashT = 0.4;
+    else if (type === 'roll') this.player.rollT = 0.65;
+    else if (type === 'compress') this.player.compressT = 0.8;
+    else if (type === 'fist') this.player.fistThrown = true;
+    else if (type === 'axe') this.player.axeThrown = true;
+    else if (type === 'stomp' && !this.player.grounded) {
+      this.player.stomping = true;
+      this.player.vy = Math.min(this.player.vy, -180);
+    }
+    Audio.sfx(type === 'shoot' ? 'shoot'
+      : type === 'eat' ? 'chomp'
+        : type === 'axe' ? 'axe'
+          : type === 'fist' ? 'plop'
+            : type === 'stomp' ? 'crunch' : 'dash');
+    return true;
+  }
+
+  update(dt) {
+    this.t += dt;
+    this.attackT = Math.max(0, this.attackT - dt);
+    this.dummyHitT = Math.max(0, this.dummyHitT - dt);
+    const comboBefore = this.comboT;
+    this.comboT = Math.max(0, this.comboT - dt);
+    if (comboBefore > 0 && this.comboT === 0) this.chain = 0;
+    this.heroFlashT = Math.max(0, this.heroFlashT - dt);
+    if (this.attackT <= 0) {
+      this.player.fistThrown = false;
+      this.player.axeThrown = false;
+      this.attackType = null;
+    }
+
+    if (Input.pressed('back')) { this.flow.toHub(); return; }
+
+    // The room itself is the touch UI. Tapping an exhibit walks over and uses
+    // it; tapping open floor just walks there.
+    if (Input.pressed('pointer')) {
+      const x = Input.pointer.x, y = Input.pointer.y;
+      if (x < 62) this.queueInteraction('exit', 70);
+      else if (x >= 56 && x <= 154 && y >= 160) {
+        this.queueInteraction(x < TROPHY_RECORDS_X ? 'recordsPrev' : 'recordsNext', TROPHY_RECORDS_X + 45);
+      }
+      else if (x >= 145 && x <= 232 && y > 142) {
+        this.queueInteraction(x < TROPHY_PODIUM_X ? 'podiumPrev' : 'podiumNext', TROPHY_PODIUM_X + 48);
+      }
+      else if (x >= TROPHY_DUMMY_X - 35 && y > 112) this.queueInteraction('dummy', TROPHY_DUMMY_X - 68);
+      else { this.pending = null; this.walkTarget = Math.max(68, Math.min(414, x)); }
+    }
+
+    if (Input.pressed('ability')) this.attackDummy();
+    if (Input.pressed('jump')) this.player.jumpPressed(Audio);
+
+    if (Input.pressed('confirm')) {
+      if (this.near(TROPHY_EXIT_X, 54)) this.flow.toHub();
+      else if (this.near(TROPHY_RECORDS_X, 46)) this.cycleRecords(1);
+      else if (this.near(TROPHY_PODIUM_X, 58)) this.cycleHero(1);
+      else if (this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) this.attackDummy();
+    }
+
+    let move = (Input.held('right') ? 1 : 0) - (Input.held('left') ? 1 : 0);
+    if (move) { this.walkTarget = null; this.pending = null; }
+    if (!move && this.walkTarget != null) {
+      const d = this.walkTarget - this.px;
+      if (Math.abs(d) <= 2.5) {
+        this.px = this.walkTarget;
+        if (this.pending) this.usePending();
+        else this.walkTarget = null;
+      } else move = Math.sign(d);
+    }
+    if (move) {
+      this.facing = move;
+      this.px = Math.max(68, Math.min(414, this.px + move * TROPHY_MOVE_SPEED * dt));
+    } else if (!this.attackT) this.facing = this.px < TROPHY_DUMMY_X ? 1 : -1;
+
+    this.player.update(dt, Input, { speed: move ? TROPHY_MOVE_SPEED : 0 });
+  }
+
+  drawToasterCase(ctx) {
+    const got = this.toasterCount();
+    const x0 = 18, y0 = 48, cw = 18, ch = 27;
+    // Warm case light grows with the collection rather than switching on at an
+    // arbitrary threshold. Empty slots remain visible, so every missing object
+    // has a physical address instead of only changing a counter.
+    const glow = 0.05 + 0.16 * (got / STAGES.length);
+    const caseGlow = ctx.createLinearGradient(x0, y0, x0, y0 + ch * 3);
+    caseGlow.addColorStop(0, `rgba(246,211,60,${glow})`);
+    caseGlow.addColorStop(1, 'rgba(22,18,30,0)');
+    ctx.fillStyle = '#16121e';
+    ctx.fillRect(x0 - 5, y0 - 7, cw * 9 + 10, ch * 3 + 13);
+    ctx.fillStyle = caseGlow;
+    ctx.fillRect(x0 - 4, y0 - 6, cw * 9 + 8, ch * 3 + 11);
+    ctx.strokeStyle = '#6b6350'; ctx.lineWidth = 2;
+    ctx.strokeRect(x0 - 5, y0 - 7, cw * 9 + 10, ch * 3 + 13);
+    for (let i = 0; i < STAGES.length; i++) {
+      const x = x0 + (i % 9) * cw, y = y0 + Math.floor(i / 9) * ch;
+      const earned = !!(this.save.slot.campaign.plugs[STAGES[i].id] || [])[2];
+      ctx.fillStyle = earned ? 'rgba(246,211,60,0.11)' : 'rgba(255,255,255,0.025)';
+      ctx.fillRect(x, y, cw - 2, ch - 3);
+      if (earned) {
+        const featured = !this.save.settings.reducedFlashing && Math.floor(this.t * 0.7) % STAGES.length === i;
+        drawProp(ctx, 'appliance', x + 2, y + 7 - (featured ? 1.5 : 0), 12, 9);
+        if (featured) {
+          ctx.fillStyle = '#d8a878';
+          ctx.fillRect(x + 6, y + 3, 2, 4); ctx.fillRect(x + 10, y + 3, 2, 4);
+        }
+      }
+      else {
+        ctx.strokeStyle = 'rgba(138,138,152,0.22)'; ctx.lineWidth = 1;
+        ctx.strokeRect(x + 3, y + 8, 10, 8);
+      }
+    }
+    drawTextCentered(ctx, `RECOVERED TOASTERS  ${got}/${STAGES.length}`, x0 + cw * 4.5, 35, '#f6d33c', 0.85, 'bold');
+  }
+
+  drawBossRelic(ctx, relic, x, y) {
+    if (relic === 'dustdevil') {
+      drawProp(ctx, 'dustdevil', x - 11, y - 4, 22, 38);
+      return;
+    }
+    if (relic === 'copter') {
+      drawProp(ctx, 'eggshell', x - 14, y + 5, 28, 24);
+      ctx.strokeStyle = '#8a8a98'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y + 7); ctx.lineTo(x, y + 1); ctx.stroke();
+      ctx.fillStyle = '#b8c8d8';
+      ctx.fillRect(x - 19, y, 38, 2); ctx.fillRect(x - 1, y - 5, 2, 12);
+      ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 26, 34, 5);
+      return;
+    }
+    // The finale's trophy is the impossible power strip itself, not a second
+    // Eggshell doll. Six sockets on a five-socket body preserves the joke even
+    // at exhibit scale.
+    ctx.fillStyle = '#d9d8e0'; ctx.fillRect(x - 20, y + 5, 40, 24);
+    ctx.strokeStyle = '#5a5363'; ctx.lineWidth = 1; ctx.strokeRect(x - 20, y + 5, 40, 24);
+    for (let i = 0; i < 6; i++) {
+      const sx = x - 16 + i * 6.3;
+      ctx.fillStyle = '#332d3e'; ctx.fillRect(sx, y + 11, 2, 5); ctx.fillRect(sx + 3, y + 11, 2, 5);
+    }
+    ctx.fillStyle = '#e04848'; ctx.fillRect(x + 12, y + 21, 5, 5);
+    ctx.strokeStyle = '#332d3e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 20, y + 24); ctx.quadraticCurveTo(x - 31, y + 29, x - 25, y + 37); ctx.stroke();
+  }
+
+  drawBossCase(ctx) {
+    drawTextCentered(ctx, 'DEFEATED MANAGEMENT', 292, 35, '#f0a0a0', 0.85, 'bold');
+    TROPHY_BOSSES.forEach((b, i) => {
+      const x = 222 + i * 69;
+      const won = !!this.save.slot.campaign.bossesDown[b.id];
+      ctx.fillStyle = won ? '#332b42' : '#17131e';
+      ctx.fillRect(x - 27, 46, 54, 70);
+      ctx.strokeStyle = won ? '#8a7a52' : '#332d3e'; ctx.lineWidth = 1;
+      ctx.strokeRect(x - 27, 46, 54, 70);
+      ctx.save(); ctx.globalAlpha = won ? 1 : 0.12;
+      this.drawBossRelic(ctx, b.relic, x, 58);
+      ctx.restore();
+      ctx.fillStyle = won ? '#6b5430' : '#292431';
+      ctx.fillRect(x - 19, 94, 38, 8); ctx.fillRect(x - 23, 102, 46, 5);
+      drawTextCentered(ctx, won ? b.label : '???', x, 110, won ? '#c8b880' : '#4a4454', 0.62, 'bold');
+    });
+  }
+
+  drawCabinetWall(ctx) {
+    const records = this.cabinetRecords();
+    const x0 = 64, y = 134, pitch = 44, pw = 40, ph = 25;
+    drawText(ctx, 'CABINET RECORDS', x0, y - 7, '#8a8a98', 0.62, 'bold');
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i], x = x0 + i * pitch;
+      ctx.fillStyle = '#17131e'; ctx.fillRect(x, y, pw, ph);
+      ctx.strokeStyle = r.cab.sky[0]; ctx.lineWidth = r.plugs ? 1.5 : 0.7; ctx.strokeRect(x, y, pw, ph);
+      ctx.fillStyle = r.cab.sky[0]; ctx.globalAlpha = r.plugs ? 0.22 : 0.07;
+      ctx.fillRect(x + 2, y + 2, pw - 4, 7); ctx.globalAlpha = 1;
+      drawText(ctx, r.cab.id.slice(0, 4).toUpperCase(), x + 3, y + 3, r.plugs ? '#e8e8f0' : '#5a5363', 0.55, 'bold');
+      // Nine tiny plug lamps: the same physical grammar as the cabinets, small
+      // enough to fit on a brass museum plate.
+      for (let p = 0; p < r.max; p++) {
+        ctx.fillStyle = p < r.plugs ? '#48e0c8' : '#302a38';
+        ctx.fillRect(x + 3 + (p % 9) * 3.2, y + 14 + Math.floor(p / 9) * 3, 2, 2);
+      }
+      const rank = r.rank === 'CONCERNING' ? '!' : (r.rank || '-');
+      drawTextCentered(ctx, rank, x + 35, y + 14, r.rank ? '#f6d33c' : '#4a4454', 0.72, 'bold');
+    }
+  }
+
+  drawRecordsBoard(ctx) {
+    const pages = this.statPages();
+    const page = pages[this.recordsPage % pages.length];
+    const x = 57, y = 164, w = 98, h = 47;
+    // A repurposed split-flap departures board: information belongs to the
+    // room, behind glass, rather than arriving in a dialogue balloon.
+    ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 9);
+    drawText(ctx, page.title, x + 7, y + 5, '#f6d33c', 0.62, 'bold');
+    drawText(ctx, `${this.recordsPage + 1}/${pages.length}`, x + w - 18, y + 5, '#8a8a98', 0.55, 'bold');
+    page.rows.forEach(([label, value], i) => {
+      const yy = y + 15 + i * 7.2;
+      ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(72,224,200,0.025)';
+      ctx.fillRect(x + 4, yy - 1, w - 8, 7);
+      drawText(ctx, label, x + 7, yy, '#8a8a98', 0.5, 'bold');
+      const shown = String(value);
+      drawText(ctx, shown, x + w - 7 - textWidth(shown, 0.5), yy, '#e8e8f0', 0.5, 'bold');
+    });
+    // Brass side tabs make the touch affordance physical: tap the left or
+    // right half of the fixture to flip the board in that direction.
+    ctx.fillStyle = '#c8a020';
+    ctx.beginPath(); ctx.moveTo(x - 5, y + h / 2); ctx.lineTo(x, y + h / 2 - 4); ctx.lineTo(x, y + h / 2 + 4); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + w + 5, y + h / 2); ctx.lineTo(x + w, y + h / 2 - 4); ctx.lineTo(x + w, y + h / 2 + 4); ctx.closePath(); ctx.fill();
+  }
+
+  drawRoom(ctx) {
+    ctx.fillStyle = '#0d0a12'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 24, W, TROPHY_FLOOR_Y - 24);
+    // Reclaimed wall panels stop the museum from reading as one flat fill.
+    for (let x = 0; x < W; x += 48) {
+      ctx.fillStyle = (x / 48) % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.035)';
+      ctx.fillRect(x, 25, 47, TROPHY_FLOOR_Y - 25);
+      ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, 25, 1, TROPHY_FLOOR_Y - 25);
+    }
+    // Ceiling rail and four uneven museum spots. The beams are deliberately
+    // translucent: exhibits should feel lit, not pasted under white triangles.
+    ctx.fillStyle = '#17131e'; ctx.fillRect(0, 24, W, 5);
+    for (const [x, col, strength] of [[100, '#f6d33c', this.toasterCount() / STAGES.length], [292, '#f0a0a0', this.defeatedBosses().length / 3], [190, '#48e0c8', 0.75], [365, '#f6d33c', 0.85]]) {
+      ctx.fillStyle = '#6a6372'; ctx.fillRect(x - 8, 26, 16, 4);
+      const g = ctx.createLinearGradient(0, 30, 0, TROPHY_FLOOR_Y);
+      g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save(); ctx.globalAlpha = 0.025 + strength * 0.045; ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(x - 7, 30); ctx.lineTo(x + 7, 30); ctx.lineTo(x + 52, TROPHY_FLOOR_Y); ctx.lineTo(x - 52, TROPHY_FLOOR_Y); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    ctx.fillStyle = '#44384f'; ctx.fillRect(0, TROPHY_FLOOR_Y, W, H - TROPHY_FLOOR_Y);
+    ctx.fillStyle = '#5a4b63'; ctx.fillRect(0, TROPHY_FLOOR_Y, W, 4);
+    // Practice-lane mat, taped off and already scuffed from entirely voluntary
+    // quality assurance.
+    ctx.fillStyle = '#292432'; ctx.fillRect(250, TROPHY_FLOOR_Y + 5, 158, 23);
+    for (let x = 252; x < 408; x += 16) {
+      ctx.fillStyle = (x / 16) % 2 ? '#c8a020' : '#3a3030';
+      ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 16, TROPHY_FLOOR_Y + 10); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 10); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(200,200,216,0.18)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const x = 282 + i * 25;
+      ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 14 + (i % 2) * 4); ctx.lineTo(x + 10, TROPHY_FLOOR_Y + 12); ctx.stroke();
+    }
+  }
+
+  drawDummy(ctx) {
+    const q = this.dummyHitT > 0 ? this.dummyHitT / 0.38 : 0;
+    const wobble = q ? Math.sin((1 - q) * Math.PI * 5) * q * 0.18 : 0;
+    ctx.save();
+    ctx.translate(TROPHY_DUMMY_X, TROPHY_FLOOR_Y);
+    ctx.rotate(wobble);
+    ctx.fillStyle = '#6a4a2a'; ctx.fillRect(-3, -55, 6, 51);
+    ctx.fillStyle = '#4a3422'; ctx.fillRect(-17, -6, 34, 6);
+    drawProp(ctx, 'target', -21, -80, 42, 42);
+    ctx.restore();
+    if (q) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, q * 2);
+      ctx.fillStyle = '#f6d33c';
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4 + this.hits;
+        const r = 25 + (1 - q) * 18;
+        ctx.fillRect(TROPHY_DUMMY_X + Math.cos(a) * r - 2, TROPHY_FLOOR_Y - 59 + Math.sin(a) * r - 2, 4, 4);
+      }
+      ctx.restore();
+    }
+  }
+
+  drawAttackEffect(ctx) {
+    if (!this.attackT || !this.attackType) return;
+    const p = 1 - this.attackT / 0.52;
+    const y = TROPHY_FLOOR_Y - 37;
+    if (['shoot', 'fist', 'axe'].includes(this.attackType)) {
+      const x = this.px + 18 + (TROPHY_DUMMY_X - this.px - 28) * Math.min(1, p * 2.1);
+      if (this.attackType === 'shoot') drawProp(ctx, 'capStar', x - 4, y - 4, 8, 8);
+      else if (this.attackType === 'fist') {
+        ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(p * 18);
+        ctx.fillStyle = '#b8c8d8'; ctx.fillRect(-9, -3, 18, 6); ctx.fillStyle = '#7a4a2a'; ctx.fillRect(-2, -8, 4, 16); ctx.restore();
+      }
+    } else if (p < 0.55) {
+      ctx.save(); ctx.globalAlpha = 1 - p;
+      ctx.strokeStyle = this.attackType === 'eat' ? '#f890b8' : '#48e0c8'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(TROPHY_DUMMY_X - 17, y, 14 + p * 18, -1.2, 1.2); ctx.stroke(); ctx.restore();
+    }
+  }
+
+  draw(ctx) {
+    this.drawRoom(ctx);
+    drawTextCentered(ctx, 'TROPHY WORKSHOP', W / 2, 12, '#f6d33c', 1.4, 'title');
+
+    this.drawToasterCase(ctx);
+    this.drawBossCase(ctx);
+    this.drawCabinetWall(ctx);
+    this.drawRecordsBoard(ctx);
+
+    // The exit is deliberately the food court's same trophy door seen from the
+    // other side, so BACK has a physical place in the room.
+    drawDoor(ctx, TROPHY_EXIT_X - 21, TROPHY_FLOOR_Y - 78, 42, 78, DOOR_PALETTES.shelf, this.t, this.save.settings.reducedFlashing);
+    drawTextCentered(ctx, 'FOOD COURT', TROPHY_EXIT_X, TROPHY_FLOOR_Y + 9, '#8a8a98', 0.65, 'bold');
+
+    // Hero swap podium: the selected hero is the object being displayed.
+    ctx.fillStyle = '#342840'; ctx.fillRect(TROPHY_PODIUM_X - 31, TROPHY_FLOOR_Y - 8, 62, 8);
+    ctx.fillStyle = '#f6d33c'; ctx.fillRect(TROPHY_PODIUM_X - 24, TROPHY_FLOOR_Y - 11, 48, 3);
+    ctx.fillStyle = '#f6d33c';
+    ctx.beginPath(); ctx.moveTo(TROPHY_PODIUM_X - 25, TROPHY_FLOOR_Y - 19); ctx.lineTo(TROPHY_PODIUM_X - 17, TROPHY_FLOOR_Y - 23); ctx.lineTo(TROPHY_PODIUM_X - 17, TROPHY_FLOOR_Y - 15); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(TROPHY_PODIUM_X + 25, TROPHY_FLOOR_Y - 19); ctx.lineTo(TROPHY_PODIUM_X + 17, TROPHY_FLOOR_Y - 23); ctx.lineTo(TROPHY_PODIUM_X + 17, TROPHY_FLOOR_Y - 15); ctx.closePath(); ctx.fill();
+    drawTextCentered(ctx, 'HERO PODIUM', TROPHY_PODIUM_X, TROPHY_FLOOR_Y + 9, '#c8b880', 0.65, 'bold');
+    if (this.heroFlashT > 0) {
+      ctx.save(); ctx.globalAlpha = this.heroFlashT / 0.35;
+      ctx.fillStyle = '#f6d33c'; ctx.beginPath(); ctx.ellipse(this.px, TROPHY_FLOOR_Y - 24, 25, 34, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+
+    this.drawDummy(ctx);
+    this.drawAttackEffect(ctx);
+    const pose = poseFromPlayer(this.player, this.t);
+    pose.facing = this.facing;
+    drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), 58);
+    drawPlayerMarker(ctx, this.px, TROPHY_FLOOR_Y - this.player.y - 69, MARKER_R);
+
+    if (this.comboT > 0) drawTextCentered(ctx, `CHAIN x${this.chain}   BEST x${this.bestChain}`, TROPHY_DUMMY_X, 126, '#f6d33c', 0.82, 'bold');
+    drawTextCentered(ctx, this.player.hero.short, TROPHY_PODIUM_X, 165, '#48e0c8', 0.78, 'bold');
+    drawTextCentered(ctx, this.player.hero.ability.label, TROPHY_PODIUM_X, 175, '#8a8a98', 0.58, 'bold');
+    const hint = this.near(TROPHY_EXIT_X, 54) ? `${Input.confirmVerb()}: FOOD COURT`
+      : this.near(TROPHY_RECORDS_X, 46) ? (Input.isTouchDevice() ? 'TAP BOARD SIDES: FLIP RECORDS' : `${Input.confirmVerb()}: FLIP RECORDS`)
+      : this.near(TROPHY_PODIUM_X, 58) ? (Input.isTouchDevice() ? 'TAP PODIUM SIDES: PREV / NEXT' : `${Input.confirmVerb()}: NEXT HERO`)
+        : this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)
+          ? (Input.isTouchDevice() ? 'TAP THE TARGET TO ATTACK' : 'X / SHIFT / RIGHT CLICK: ATTACK')
+          : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
+    drawTextCentered(ctx, hint, W / 2, H - 13, '#c8c8d8', 0.8, 'bold');
+    // The cup has its own little wall bracket rather than floating beside a
+    // line of UI text. Its engraved count is still readable at a glance.
+    ctx.fillStyle = '#6b5430'; ctx.fillRect(W - 53, 188, 38, 5);
+    drawProp(ctx, 'goldTrophy', W - 46, 158, 24, 31);
+    drawTextCentered(ctx, `S x${this.sRankCount()}`, W - 34, 196, '#c8b880', 0.62, 'bold');
   }
 }
 

@@ -13,7 +13,7 @@ import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
-import { HubState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
+import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
@@ -194,6 +194,7 @@ const Flow = {
   openBench() { setState(new BenchState({ save, flow: Flow })); },
   openShop() { setState(new ShopState({ save, flow: Flow })); },
   openArcade() { setState(new ArcadeState({ save, flow: Flow })); },
+  openTrophyRoom() { setState(new TrophyRoomState({ save, flow: Flow })); },
 
   playMinigame(game) {
     // Arcade Corner takes its coin up front, so a bail-out still costs the play.

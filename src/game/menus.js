@@ -5,7 +5,9 @@ import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { canInstall, showInstallGuide } from '../engine/install-prompt.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
-import { drawToon } from '../sprites/toons.js';
+import {
+  drawToon, titleParadeAction, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
+} from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 
@@ -495,7 +497,8 @@ function heroTapIndex(t, px, py, tapBombs) {
 // it exactly like a tap would — fright if calm, eaten if already blue).
 const SHOT_SPEED = 220;
 const SHOT_HIT_RADIUS = 12 * PARADE_K;
-const SHOT_Y = 258;
+// Raised cannon muzzle, rather than the old hip-height projectile line.
+const SHOT_Y = 268 - HERO_PARADE_H * 0.58;
 
 function drawInvader(ctx, t) {
   const pass = invaderPass(t);
@@ -542,6 +545,7 @@ function drawBolt(ctx, t, strikes) {
 function drawShots(ctx, t, shots) {
   if (!shots) return;
   for (const shot of shots) {
+    if (t < shot.tFired) continue;
     const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED;
     ctx.fillStyle = 'rgba(168,255,192,0.4)';
     ctx.fillRect(Math.round(x - 9), Math.round(shot.y), 6, 2);
@@ -673,7 +677,6 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
       const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
       const acting = !reduced && !entering && beat < actionLength;
       const actionP = acting ? beat / actionLength : 0;
-      const lift = acting ? Math.sin(actionP * Math.PI) : 0;
       const pose = {
         kind: 'run', grounded: true, time: t, menu: true,
         phase: (t * 1.5 + i * 0.37) % 1,
@@ -686,25 +689,20 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
         pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
         feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
       }
-      if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3 * PARADE_K; }
-      if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7 * PARADE_K; }
-      if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
-      if (acting && id === 'b33p') { pose.squash = lift * 0.35; pose.menuAction = 'aim'; }
-      if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8 * PARADE_K; }
-      if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2 * PARADE_K; }
-      if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
-      if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
+      if (acting) {
+        const action = titleParadeAction(id, t, actionP);
+        Object.assign(pose, action.pose);
+        feetY -= action.feetLift * HERO_PARADE_H;
+      }
       // A tap startles whoever it lands on, overriding their signature beat —
       // getting poked takes priority over whatever bit they were mid-performing.
       const pokeAt = poke && poke.get(i);
       if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
         const pokeP = (t - pokeAt) / HERO_POKE_T;
         if (id === 'b33p') {
-          // He fired — snap the cannon arm to the aiming stance so the recoil
-          // (keyed off menuAction === 'aim') has something correct to recoil
-          // FROM, instead of whatever the run-cycle carry was doing mid-stride.
-          pose.menuAction = 'aim';
-          pose.squash = Math.sin(pokeP * Math.PI) * 0.35;
+          // Raise first, then fire and recoil. The projectile uses the same
+          // wind-up delay below, so it cannot leave before the arm is level.
+          Object.assign(pose, b33pTitleShotPose(t - pokeAt));
         } else {
           pose.kind = 'jump'; pose.grounded = false;
           feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
@@ -981,7 +979,7 @@ export class TitleState {
     this.scatter = new Map(); // wisp pass key -> { t0, x0, mode, colorIdx } once frightened
     this.tapBombs = []; // player-triggered invader bombs, same shape as the scheduled ones
     this.tapBombId = 0;
-    this.shots = []; // b33p's projectiles: { id, tFired, x0, y }
+    this.shots = []; // b33p projectiles; tFired follows the visible arm wind-up
     this.shotId = 0;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
@@ -1221,9 +1219,15 @@ export class TitleState {
               // `poke` so his pose snaps to the aiming stance (arm up, gun
               // level) instead of firing from whatever his run-cycle arm was
               // doing a moment ago.
-              this.shots.push({ id: `shot:${this.shotId++}`, tFired: this.t, x0: heroX(hero, this.t) + 12, y: SHOT_Y });
+              const tFired = this.t + B33P_TITLE_WINDUP_T;
+              this.shots.push({
+                id: `shot:${this.shotId++}`,
+                tFired,
+                x0: heroX(hero, tFired) + 12,
+                y: SHOT_Y,
+                sounded: false,
+              });
               this.poke.set(hero, this.t);
-              Audio.sfx('shoot');
             } else {
               this.poke.set(hero, this.t);
               Audio.sfx('jump');
@@ -1255,6 +1259,8 @@ export class TitleState {
     }
     // Resolve b33p's shots: travel until a hit or the far edge.
     this.shots = this.shots.filter((shot) => {
+      if (this.t < shot.tFired) return true;
+      if (!shot.sounded) { shot.sounded = true; Audio.sfx('shoot'); }
       const x = shot.x0 + (this.t - shot.tFired) * SHOT_SPEED;
       if (x > W + 20) return false;
       for (let i = 0; i < HERO_PARADE.length; i++) {
@@ -1689,30 +1695,16 @@ export class IntroState {
         if (a <= 0) return;
         const ease = 1 - Math.pow(1 - a, 3);
         const scale = ease + Math.sin(a * Math.PI) * 0.14;
-        // On panel 4 ("EIGHT HEROES. ONE SOCKET. A RELAY BEGINS") they are
-        // already assembled and reacting to it, so a scattered few break out of
-        // the idle. Every third, offset — not all of them, because a line of
-        // eight all performing at once reads as a screensaver rather than as a
-        // crowd with opinions.
-        //
-        // These are the MENU poses (the same per-hero beats the shutter cameo
-        // uses), not 'celebrate'. Celebrate is the results-screen victory
-        // routine — it spins and tumbles, and caught at an arbitrary phase in a
-        // line-up gnash flattens into a vertical sliver and raymn loses his
-        // head. The menu poses are built to be held.
+        // On the relay panel the assembled cast now uses the same approved
+        // celebration routines as the results screen and cast-roll spotlight.
+        // Their clocks are staggered by the same 0.35s used by the curtain call,
+        // so the row reads as a crowd rather than one synchronized metronome.
         const pose = { kind: 'idle', phase: (this.panelT * 0.55 + i * 0.21) % 1, time: this.panelT + i * 0.8, grounded: true };
-        if (!rollCall && i % 3 === 1) {
+        if (!rollCall) {
           pose.menu = true;
-          if (h === 'gnash') { pose.kind = 'jump'; pose.grounded = false; }
-          else if (h === 'mochi') pose.float = true;
-          // flexHold: the curl, held — not the full spread-and-curl rep. The
-          // spread throws his fists a body-width to either side, which put one
-          // blade through raymn and the other past the frame. A held curl is
-          // the half that reads as flexing anyway.
-          else if (h === 'grumpos') { pose.menuAction = 'flex'; pose.flexHold = true; }
-          else if (h === 'b33p') pose.menuAction = 'aim';
-          else if (h === 'chompo') pose.menuAction = 'chomp';
-          else pose.menuAction = 'wave';
+          pose.kind = 'celebrate';
+          pose.phase = 0;
+          pose.time = this.panelT + i * 0.35;
         }
         drawToon(ctx, h, pose, ROW_X + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
       });

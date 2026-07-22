@@ -46,6 +46,8 @@ export class Player {
     this.jumps = 0;
     this.powerJumpBonus = 0;
     this.ducking = false;
+    this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
+    this.duckDirection = 0;
     this.floating = false;
     this.iframes = 0;
     this.anim = 0;
@@ -89,6 +91,8 @@ export class Player {
     this.fistThrown = false;
     this.axeThrown = false;
     this.ducking = false;
+    this.duckAmount = 0;
+    this.duckDirection = 0;
     // relayCharge deliberately survives: an unspent charge follows the player
     // to the next hero rather than evaporating at the portal.
   }
@@ -104,7 +108,7 @@ export class Player {
     m += this.powerJumpBonus;
     return m;
   }
-  get hitH() { return (this.ducking || this.rollT > 0 || this.compressT > 0) ? DUCK_H : PLAYER_H; }
+  get hitH() { return (this.ducking || this.duckAmount > 0.35 || this.rollT > 0 || this.compressT > 0) ? DUCK_H : PLAYER_H; }
   get hitW() {
     let w = PLAYER_W;
     if (this.compressT > 0) w = 5;
@@ -114,6 +118,18 @@ export class Player {
   get rolling() { return this.rollT > 0; }
   get invincible() { return this.iframes > 0 || this.dashT > 0; }
 
+  updateDuckBlend(dt, target) {
+    const before = this.duckAmount;
+    // The drop has enough time to read and settle; releasing is a touch faster
+    // so controls never feel sticky. Collision stays crouched through most of
+    // the recovery via hitH's threshold above.
+    const duration = target ? 0.14 : 0.1;
+    this.duckAmount = Math.max(0, Math.min(1,
+      before + (target ? 1 : -1) * dt / duration));
+    this.duckDirection = this.duckAmount > before ? 1
+      : this.duckAmount < before ? -1 : 0;
+  }
+
   jumpPressed(audio) {
     if (this.rollT > 0 || this.stumbleT > 0) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
@@ -122,6 +138,7 @@ export class Player {
       this.jumps++;
       this.grounded = false;
       this.ducking = false;
+      this.duckDirection = -1;
       audio && audio.sfx(this.jumps > 1 ? 'jump2' : 'jump');
       return true;
     }
@@ -177,10 +194,14 @@ export class Player {
         this.vy = 0;
         this.landedT = 0.12;
         if (world && world.ice) this.slideT = 0.35;
+        this.ducking = holdDuck && this.rollT <= 0;
+        this.updateDuckBlend(dt, this.ducking);
         return { landed: true, stompLand: wasStomp };
       }
+      this.updateDuckBlend(dt, false);
     } else {
       this.ducking = holdDuck && this.rollT <= 0;
+      this.updateDuckBlend(dt, this.ducking);
     }
     return { landed: false, stompLand: false };
   }

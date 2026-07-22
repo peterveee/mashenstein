@@ -120,6 +120,11 @@ selectHero('chompo');
 const snack = makeObstacle('crate', run.camX + PLAYER_X + 30);
 run.obstacles = [snack]; run.useAbility();
 assert(!snack.live, 'Miss Chomp power eats a nearby breakable hazard');
+assert(run.chompBites.length === 1 && run.chompBites[0].ob.type === 'crate',
+  'the eaten hazard remains briefly as a visual travelling into her mouth');
+let biteDrawError = null;
+try { run.draw(document.createElement('canvas').getContext('2d')); } catch (err) { biteDrawError = err; }
+assert(!biteDrawError, `the travelling hazard renders safely${biteDrawError ? ` (${biteDrawError.message})` : ''}`);
 
 selectHero('raymn'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'fist'), "Ray M'N power throws his rocket fist");

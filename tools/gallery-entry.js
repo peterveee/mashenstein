@@ -20,6 +20,9 @@ import {
 import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE } from '../src/sprites/backwall.js';
 import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
+  ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE,
+  TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
+  b33pTitleShotPose,
   LORENZO_FACES, setLorenzoFace, LORENZO_PANTS, setLorenzoPants,
 } from '../src/sprites/toons.js';
 import { getStylePack } from '../src/engine/stylePacks/index.js';
@@ -161,11 +164,13 @@ const powerPoseAlpha = (t, budget) => Math.min(1, Math.max(0, budget - (t % POWE
 // since this pulse's ability fired", matching the bite's own time-reset in
 // poseFromPlayer so biteWave() opens from a closed mouth.
 function powerupExtra(type, local) {
+  if (type === 'stomp') return local <= 0.3 ? { menuAction: 'smash', actionTime: local } : {};
   if (type === 'dash') return { lean: 0.26 };
   if (type === 'roll') return { kind: 'duck', roll: true };
   if (type === 'compress') return { kind: 'duck' };
   if (type === 'fist') return { headless: true };
-  if (type === 'shoot') return { menuAction: 'aim' };
+  if (type === 'axe') return { axeThrown: true };
+  if (type === 'shoot') return local <= 0.3 ? { menuAction: 'aim', actionTime: local } : {};
   if (type === 'eat') return { menuAction: 'chomp', time: local };
   return {};
 }
@@ -175,6 +180,22 @@ function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
   const type = hero.ability.type;
   const budget = type === 'eat' ? 0.5 : 0.3; // matches useAbility()'s powerPoseT
   const local = t % POWERPOSE_PERIOD;
+  if (id === 'chompo' && local <= 0.42) {
+    // The run removes collision immediately but keeps the eaten sprite for this
+    // visual handoff. Reproduce that staging here so the ability reference does
+    // not show a character merely chomping at empty air.
+    const q = Math.max(0, Math.min(1, local / 0.42));
+    const e = q * q * (3 - 2 * q);
+    const fromX = cx + 0.78 * hh, fromY = feetY - 0.38 * hh;
+    const mouthX = cx + 0.37 * hh, mouthY = feetY - 0.44 * hh;
+    const x = fromX + (mouthX - fromX) * e;
+    const y = fromY + (mouthY - fromY) * e - Math.sin(q * Math.PI) * 0.13 * hh;
+    const s = Math.max(0.18, 1 - e * 0.82);
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(e * 0.8); ctx.scale(s, s);
+    drawProp(ctx, 'crate', -0.25 * hh, -0.23 * hh, 0.5 * hh, 0.46 * hh);
+    ctx.restore();
+  }
   drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh);
   drawPowerPose(ctx, cx, feetY, type, powerPoseAlpha(t, budget), hh / HERO_DRAW_H);
 }
@@ -211,12 +232,12 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 {
   const ids = Object.keys(TOON_SPECS);
   const grid = section('heroes', 'Heroes — poses',
-    `${ids.length} heroes x 4 poses, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
+    `${ids.length} heroes across the five shared poses plus each playable hero's special, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
     + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
     + 'Power up is what a real run actually shows the instant their ability fires — poseFromPlayer\'s '
     + 'ability-specific pose fields (lean/roll/duck/headless/menuAction) plus drawPowerPose()\'s overlay '
-    + 'flourish where one exists. Stomp and axe read from their world-space effect instead (a shockwave, '
-    + 'a thrown prop) rather than a body-pose change, so those two tiles show the bare cast animation.');
+    + 'flourish where one exists. World-space projectiles are not duplicated here, but Grumpos does lose '
+    + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
@@ -229,7 +250,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
         drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
-    // Gary is cast-roll flavour, not a roster member — he has no ability to show.
+    // Gary and Dolores are cast-roll flavour, not roster members — neither has
+    // a gameplay ability to show.
     const hero = HERO_BY_ID[id];
     if (!hero) continue;
     const th = HH * 1.3;
@@ -295,9 +317,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
   // The row the other five never gave you: every ability firing at once. Two
   // heroes are absent by design — gary and dolores are cast-roll flavour with no
-  // roster entry, so there is no ability to fire. Neither stomp nor axe changes
-  // the BODY: stomp gets a small overlay and axe is a thrown prop out in the
-  // world, so those two tiles sit closest to a plain run. That is the honest
+  // roster entry, so there is no ability to fire. Axe is a thrown prop out in
+  // the world; Lorenzo's grounded smash drives his arm and hand-held wrench.
+  // Those tiles exercise the same action pose production now supplies. That is the honest
   // comparison, and lined up together it is the fastest way to see which
   // specials do not read as specials.
   {
@@ -308,11 +330,89 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     const th = HH * 1.3;
     for (const hid of roster) {
       const hero = HERO_BY_ID[hid];
-      tile(grid, hid, `${hero.ability.label} · ${hero.ability.type}`, HH * 0.9, th, (ctx, t) => {
-        drawPowerupTile(ctx, hid, hero, t, (HH * 0.9) / 2, th - HH * 0.05, HH);
+      const tw = hid === 'chompo' ? HH * 1.55 : HH * 0.9;
+      tile(grid, hid, `${hero.ability.label} · ${hero.ability.type}`, tw, th, (ctx, t) => {
+        drawPowerupTile(ctx, hid, hero, t, hid === 'chompo' ? HH * 0.48 : tw / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
+}
+
+// ----------------------------------------- 2b. complete character animation map
+// The primary rows above own the shared locomotion, duck transitions,
+// celebrations and one ability per playable hero. This section records the
+// production-only branches that used to be invisible in the gallery: both
+// menu systems, multi-state abilities, and title-screen reactions.
+{
+  const ids = Object.keys(TITLE_PARADE_ACTIONS);
+  const HH = 60, TW = 58, TH = 92, FEET = 86;
+  const grid = section('character-animation-map', 'Hero animations — complete production map',
+    'Completes the shared Idle / Run / Jump / Duck / Celebrate and Special rows above. '
+    + 'TITLE BEAT calls the exact title-parade choreography helper used by the game; TRANSITION calls '
+    + 'the exact shutter-cameo helper. The final tiles cover ability substates and shared title reactions '
+    + 'that are not visible in a single standard pose. No gallery-only choreography is used here.');
+
+  for (const id of ids) {
+    tile(grid, id, `TITLE BEAT · ${TITLE_PARADE_ACTIONS[id]}`, TW, TH, (ctx, t) => {
+      const p = (t % 1.35) / 1.35;
+      const action = titleParadeAction(id, t, p);
+      const titlePose = pose('run', t, { menu: true, ...action.pose });
+      drawToon(ctx, id, titlePose, TW / 2, FEET - action.feetLift * HH, HH);
+    }, { animated: true });
+  }
+
+  for (const id of ids) {
+    tile(grid, id, 'TRANSITION CAMEO', TW, TH, (ctx, t) => {
+      const cameoPose = pose('idle', t, { menu: true, ...transitionCameoAction(id) });
+      drawToon(ctx, id, cameoPose, TW / 2, FEET, HH);
+    }, { animated: true });
+  }
+
+  const variants = [
+    ['lorenzo', 'AIR STOMP · airborne ability branch', (t) => pose('jump', t, {
+      grounded: false, stomp: true, vy: 420,
+    })],
+    ['mochi', 'FLOAT · held-jump branch', (t) => pose('jump', t, {
+      grounded: false, float: true, vy: -45,
+    })],
+    ['grumpos', 'AXE AWAY · projectile in flight', (t) => pose('run', t, {
+      axeThrown: true,
+    })],
+    ['b33p', 'TITLE TAP · cannon recoil', (t) => pose('run', t, {
+      menu: true, ...b33pTitleShotPose(t % 0.7),
+    })],
+  ];
+  for (const [id, label, makePose] of variants) {
+    tile(grid, id, label, TW, TH, (ctx, t) => {
+      drawToon(ctx, id, makePose(t), TW / 2, FEET, HH);
+    }, { animated: true });
+  }
+
+  tile(grid, 'shared title entry', 'RUNNING LEAP · all heroes', TW, TH, (ctx, t) => {
+    const p = (t % 2.1) / 2.1;
+    const y = Math.sin((1 - p) * Math.PI / 2) * 0.83 * HH;
+    drawToon(ctx, 'lorenzo', pose('run', t, {
+      menu: true, grounded: false, vy: -260 + p * 260,
+    }), TW / 2, FEET - y, HH);
+  }, { animated: true });
+
+  tile(grid, 'shared title tap', 'STARTLED HOP · all except B-33P', TW, TH, (ctx, t) => {
+    const p = (t % 0.8) / 0.8;
+    const active = p < 0.5 ? p * 2 : 0;
+    drawToon(ctx, 'lorenzo', pose(active ? 'jump' : 'run', t, {
+      menu: true, grounded: !active,
+    }), TW / 2, FEET - Math.sin(active * Math.PI) * 0.42 * HH, HH);
+  }, { animated: true });
+
+  tile(grid, 'shared title hit', 'KNOCKED-OUT TUMBLE · all heroes', 92, TH, (ctx, t) => {
+    const q = (t % 1.9) / 1.9;
+    ctx.save();
+    ctx.translate(46 + q * 16, FEET - (q * 0.75 - 0.5 * q * q) * HH);
+    ctx.rotate(q * 7);
+    const s = 1 + q * 0.8;
+    drawToon(ctx, 'lorenzo', pose('jump', t, { menu: true, grounded: false }), 0, 0, HH * s);
+    ctx.restore();
+  }, { animated: true, wide: true });
 }
 
 {
@@ -602,6 +702,147 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // ==================================================================
 navSeparator('lab / bake-offs');
 
+// ------------------------------------------------ body-proportion candidates
+// Gallery-only reconstruction of the earlier silhouette proposal. Humanoids
+// adjust torso/waist/limb dimensions while retaining the exact same heads,
+// faces, clothing, poses and animation. For figures whose body is also their
+// head (Mochi and Chompo), and Ray's disconnected floating rig, the complete
+// figure is scaled about the planted feet. Every temporary spec edit is
+// restored synchronously after its one draw.
+{
+  const CANDIDATES = {
+    lorenzo: {
+      label: 'compact handyman · broader chest · shorter stance',
+      spec: { torsoWidth: 1.06, waistScale: 0.94, legLength: 0.94 },
+    },
+    gnash: {
+      label: 'sprinter · narrow core · longer, lighter limbs',
+      spec: { torsoWidth: 0.9, legLength: 1.1, legWidth: 0.9, armWidth: 0.9 },
+    },
+    fernwick: {
+      label: 'rangy adventurer · narrower waist · longer stride',
+      spec: { torsoWidth: 0.93, waistScale: 0.9, legLength: 1.08 },
+    },
+    b33p: {
+      label: 'armoured machine · boxier hull · heavier short legs',
+      spec: { torsoWidth: 1.1, waistScale: 1.02, legLength: 0.92, legWidth: 1.1 },
+    },
+    mochi: {
+      label: 'rounder mascot · slightly wider, lower silhouette',
+      spec: { figureScaleX: 1.07, figureScaleY: 0.96 },
+    },
+    chompo: {
+      label: 'stronger chomper disc · wider, more grounded silhouette',
+      spec: { figureScaleX: 1.08, figureScaleY: 0.95 },
+    },
+    gary: {
+      label: 'lanky zombie · narrow torso · longer loose limbs',
+      spec: { torsoWidth: 0.92, legLength: 1.1, armLength: 1.08 },
+    },
+    dolores: {
+      label: 'grounded cafeteria shape · fuller waist · shorter stance',
+      spec: { torsoWidth: 1.04, taper: 1.08, legLength: 0.92 },
+    },
+    raymn: {
+      label: 'lanky floating hero · narrower, taller assembly',
+      spec: { figureScaleX: 0.91, figureScaleY: 1.07 },
+    },
+    grumpos: {
+      label: 'stronger V · broader shoulders · tighter waist and arms',
+      spec: { torsoWidth: 1.07, waistScale: 0.9, armWidth: 1.05 },
+    },
+  };
+
+  const withSpec = (id, patch, draw) => {
+    const spec = TOON_SPECS[id];
+    const previous = {};
+    for (const key of Object.keys(patch)) {
+      previous[key] = { owned: Object.hasOwn(spec, key), value: spec[key] };
+      spec[key] = patch[key];
+    }
+    try { draw(); } finally {
+      for (const [key, old] of Object.entries(previous)) {
+        if (old.owned) spec[key] = old.value;
+        else delete spec[key];
+      }
+    }
+  };
+
+  const grid = section('body-shapes', 'Hero body shapes — current / proposed',
+    'GALLERY ONLY — no production proportions have changed. Each card compares the exact current '
+    + 'rig with the earlier differentiation direction in both idle and the same synchronized run '
+    + 'phase. Humanoid heads and facial features are identical on both sides; only the body '
+    + 'dimensions named under the card move.');
+  const HH = 60, WIDE = 216, FEET = 82;
+  for (const id of Object.keys(TOON_SPECS)) {
+    const candidate = CANDIDATES[id];
+    tile(grid, `${id} — body before / after`, candidate.label, WIDE, 94, (ctx, t) => {
+      const samples = [
+        [27, 'idle', null, 'CURRENT'],
+        [79, 'idle', candidate.spec, 'PROPOSED'],
+        [137, 'run', null, 'CURRENT'],
+        [189, 'run', candidate.spec, 'PROPOSED'],
+      ];
+      for (const [x, kind, patch, label] of samples) {
+        const draw = () => drawToon(ctx, id, pose(kind, t), x, FEET, HH);
+        if (patch) withSpec(id, patch, draw); else draw();
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${kind.toUpperCase()} ${label}`, x, 92);
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = '#8a8a9e';
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(108, 7); ctx.lineTo(108, 93); ctx.stroke();
+      ctx.restore();
+    }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
+// ---------------------------------------------------- jump / duck comparison
+{
+  const grid = section('jump-duck-motion', 'Jump and duck — legacy / improved',
+    'The improved jump responds continuously to vertical velocity: launch stretch, an apex tuck, '
+    + 'then a wider landing preparation. The improved duck settles weight through bent knees or '
+    + 'character-specific feet and braces the hands/appendages around the lower silhouette. '
+    + 'Standing proportions are unchanged. Both columns use the same clock and jump velocity.');
+  const HH = 60, FEET = 84, CW = 66;
+  for (const id of Object.keys(TOON_SPECS)) {
+    tile(grid, `${id} — jump / duck before / after`, 'jump legacy · jump improved · duck legacy · duck improved',
+      CW * 4, 98, (ctx, t) => {
+        const vy = Math.sin(t * 2.1) * 460;
+        const duckCycle = t % 2;
+        const duckAmount = duckCycle < 0.14 ? duckCycle / 0.14
+          : duckCycle < 0.9 ? 1
+            : duckCycle < 1 ? 1 - (duckCycle - 0.9) / 0.1 : 0;
+        const duckDirection = duckCycle < 0.14 ? 1 : duckCycle < 0.9 ? 0 : -1;
+        const samples = [
+          ['jump', 'legacy', 'JUMP L'],
+          ['jump', ACTIVE_LOCOMOTION_STYLE, 'JUMP I'],
+          ['duck', 'legacy', 'DUCK L'],
+          ['duck', ACTIVE_LOCOMOTION_STYLE, 'DUCK I'],
+        ];
+        for (let i = 0; i < samples.length; i++) {
+          const [kind, motionStyle, label] = samples[i];
+          const x = i * CW + CW / 2;
+          drawToon(ctx, id, pose(kind, t, {
+            motionStyle,
+            vy: kind === 'jump' ? vy : 0,
+            grounded: kind !== 'jump',
+            duckAmount: kind === 'duck' && motionStyle !== 'legacy' ? duckAmount : 1,
+            duckDirection: kind === 'duck' && motionStyle !== 'legacy' ? duckDirection : 0,
+          }), x, FEET, HH);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '7px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, x, 96);
+        }
+      }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
 // ------------------------------------------------------- head yaw candidates
 // This is deliberately a pose field that production never supplies. Body turn
 // already has its own sheet below; this one asks the narrower question: does a
@@ -638,6 +879,93 @@ navSeparator('lab / bake-offs');
         ctx.restore();
       }
     }, { animated: true, wide: true, hires: 6 });
+  }
+}
+
+// ------------------------------------------ raised-arm celebration candidates
+// The whole cast's retired routines remain here beside the shipped rework.
+{
+  const grid = section('celebrate-arms', 'Celebration poses — legacy / shipped',
+    'The shipped column is now the production results-screen treatment. It contains clearer raised '
+    + 'arms for Lorenzo and Gary; character-specific turns, '
+    + 'presentation, salute, bites, glove work and clapping for the rest of the cast; synchronized '
+    + 'hop details for Mochi; and Grumpos\'s three-beat flex study. '
+    + 'The small row uses the results screen\'s real 18u minimum and 32u maximum hero heights.');
+  const IDS = [
+    ['lorenzo', 'wider fists · outward elbows'],
+    ['gnash', 'sky point · real step-turn · no flat spin'],
+    ['fernwick', 'champion clasp · shield presentation'],
+    ['b33p', 'planted cannon salute · compact sweep'],
+    ['mochi', 'body · ears · face synchronized to two hops'],
+    ['chompo', 'snack lunge · hard snap · satisfied bounce'],
+    ['gary', 'steady shoulder · compact wave'],
+    ['raymn', 'floating-glove high-five · raised-fist finish'],
+    ['dolores', 'restrained clap · formal bow'],
+    ['grumpos', 'overhead · horizontal biceps · front flex'],
+  ];
+  const proposed = (t) => pose('celebrate', t, { menu: true, celebrateStyle: ACTIVE_CELEBRATION_STYLE });
+  const current = (t) => pose('celebrate', t, { menu: true, celebrateStyle: 'legacy' });
+
+  for (const [id, note] of IDS) {
+    // Live, large A/B: both halves receive the exact same time so differences
+    // come from the arm study, not from comparing two different dance frames.
+    tile(grid, `${id} — animated before / after`, `legacy · shipped — ${note}`,
+      150, 100, (ctx, t) => {
+        drawToon(ctx, id, current(t), 39, 88, 60);
+        drawToon(ctx, id, proposed(t), 111, 88, 60);
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '8px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LEGACY', 39, 98);
+        ctx.fillText('SHIPPED', 111, 98);
+      }, { animated: true, wide: true, hires: 4 });
+
+    // Six synchronized samples expose the path itself. A live loop can hide a
+    // one-frame elbow reversal; the strip cannot.
+    const FRAME_W = 52, PAD = 8, stripW = PAD * 2 + FRAME_W * 6;
+    tile(grid, `${id} — motion path`, 'legacy above · shipped below · six cycle samples',
+      stripW, 190, (ctx) => {
+        for (let i = 0; i < 6; i++) {
+          const t = i * 2.6 / 6;
+          const proposedT = i * (id === 'grumpos' ? 3.4 : 2.6) / 6;
+          const x = PAD + FRAME_W * i + FRAME_W / 2;
+          drawToon(ctx, id, current(t), x, 84, 52);
+          drawToon(ctx, id, proposed(proposedT), x, 174, 52);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '7px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(String(i + 1), x, 91);
+          ctx.fillText(String(i + 1), x, 181);
+        }
+        ctx.save();
+        ctx.translate(4, 48); ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
+        ctx.fillText('CURRENT', 0, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.translate(4, 138); ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = '#8a8a9e'; ctx.font = '7px ui-monospace, monospace'; ctx.textAlign = 'center';
+        ctx.fillText('PROPOSED', 0, 0);
+        ctx.restore();
+      }, { wide: true, hires: 4 });
+
+    // These pass h=18 and h=32 to drawToon rather than shrinking a 60u render,
+    // preserving the same stroke floors and simplification decisions used by
+    // the real results screen.
+    tile(grid, `${id} — results-screen sizes`, '18u min and 32u max · legacy / shipped',
+      164, 68, (ctx, t) => {
+        const samples = [
+          [22, 18, current(t), '18 L'], [52, 18, proposed(t), '18 S'],
+          [96, 32, current(t), '32 L'], [140, 32, proposed(t), '32 S'],
+        ];
+        for (const [x, h, p, label] of samples) {
+          drawToon(ctx, id, p, x, 61, h);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, x, 67);
+        }
+      }, { animated: true, wide: true, hires: 6 });
   }
 }
 

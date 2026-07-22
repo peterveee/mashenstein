@@ -1,7 +1,7 @@
 // State machine with a CRT-shutter transition between states.
 import { W, H, pushOverlayDraw, clearChrome } from './renderer.js';
 import { Input } from './input.js';
-import { drawToon } from '../sprites/toons.js';
+import { drawToon, transitionCameoAction } from '../sprites/toons.js';
 
 let current = null;
 let pending = null;
@@ -130,12 +130,7 @@ function drawTransition(ctx, amount) {
     const bounce = Math.sin(show * Math.PI) * 5;
     const sy = 0.78 + show * 0.22;
     const pose = { kind: 'idle', grounded: true, time: a * 2.5, menu: true };
-    if (transitionHero === 'lorenzo' || transitionHero === 'fernwick') pose.menuAction = 'wave';
-    if (transitionHero === 'gnash') { pose.kind = 'jump'; pose.grounded = false; }
-    if (transitionHero === 'b33p') pose.menuAction = 'aim';
-    if (transitionHero === 'mochi') pose.float = true;
-    if (transitionHero === 'chompo') pose.menuAction = 'chomp';
-    if (transitionHero === 'grumpos') pose.menuAction = 'flex';
+    Object.assign(pose, transitionCameoAction(transitionHero));
     drawToon(ctx, transitionHero, pose, cx, cy + 37 - bounce, 68 * sy, { alpha: show });
     // Uneven sticker stars keep the cameo playful, not ceremonial.
     ctx.globalAlpha = show;

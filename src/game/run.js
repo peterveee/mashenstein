@@ -207,6 +207,7 @@ export class RunState {
     this.obstacles = [];
     this.pickups = [];
     this.projectiles = [];
+    this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
     this.goalSeen = { mission: false, challenge: false };
@@ -641,6 +642,7 @@ export class RunState {
     if (this.coinComboT > 0) { this.coinComboT -= dt; if (this.coinComboT <= 0) this.coinCombo = 0; }
     for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
     this.floaties = this.floaties.filter((f) => f.t > 0);
+    this.updateChompBites(dt);
     if (this.goalToasts.length) {
       this.goalToasts[0].t -= dt;
       if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
@@ -721,6 +723,7 @@ export class RunState {
     this.obstacles = this.obstacles.filter((ob) => ob.x < finishX);
     this.pickups = this.pickups.filter((p) => p.x < finishX);
     this.projectiles = [];
+    this.chompBites = [];
     this.portal = null;
     this.copter = null;
     this.floaties = [];
@@ -747,6 +750,7 @@ export class RunState {
     this.updateCamera(wdt);
     this.updateEntities(wdt, sp);
     this.updateProjectiles(wdt, sp);
+    this.updateChompBites(dt);
     this.collide();
     if (this.dead) return;
     updateParticles(dt);
@@ -857,13 +861,18 @@ export class RunState {
         let ate = 0;
         for (const ob of this.obstacles) {
           if (ob.live && ob.def.breakable !== false && !ob.def.isGap
-              && ob.x > this.camX && ob.x < this.camX + W) { this.breakObstacle(ob, true); ate++; }
+              && ob.x > this.camX && ob.x < this.camX + W) {
+            this.startChompBite(ob);
+            this.breakObstacle(ob, true);
+            ate++;
+          }
         }
         this.floatText(ate ? 'MISS CHOMP ATE ALL OF IT. POLITELY.' : 'NOTHING ON THE MENU.', '#f6d33c');
         if (ate) this.chompFlourish(px + 30, GROUND_Y - this.player.y - 18);
       } else {
         const target = this.powerTarget(type);
         if (target) {
+          this.startChompBite(target);
           this.breakObstacle(target, true);
           this.floatText('MISS CHOMP ATE IT. POLITELY.', '#f6d33c');
           this.chompFlourish(target.x + target.w / 2, this.groundYAt(target.x) - target.alt - target.h / 2);
@@ -986,6 +995,39 @@ export class RunState {
       }
     }
     this.floatText(this.fxRng.pick(['MWAH. — DARLING', 'RETURNED WITH A NOTE. XOXO', 'WAKA, DARLING.', 'DEE-LIGHTFUL. THANK YOU.']), PINK);
+  }
+
+  // Keep a cosmetic snapshot after gameplay removes the hazard, then pull the
+  // real sprite into the mouth over the same half-second as the authored gape
+  // and snap. Collision is still immediate; only its visible exit is delayed.
+  startChompBite(ob) {
+    if (!ob || this.save.settings.reducedMotion) return;
+    const copy = { ...ob, live: true };
+    if (this.chompBites.length < 8) {
+      this.chompBites.push({ ob: copy, t: 0, duration: 0.42, spin: (this.fxRng.float() - 0.5) * 1.8 });
+    }
+    // Material-coloured crumbs make the direction readable even when the
+    // obstacle itself is tiny or the cabinet treatment is visually busy.
+    const fromX = ob.x + ob.w / 2;
+    const fromY = this.groundYAt(ob.x) - ob.alt - ob.h / 2;
+    const mouthX = this.playerWorldX() + 9;
+    const mouthY = this.groundYAt(mouthX) - this.player.y - 11;
+    const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
+    const colors = d.colors && d.colors.length ? d.colors : ['#f6d33c'];
+    const travel = 0.4;
+    for (let i = 0; i < 5; i++) {
+      const jitterX = (this.fxRng.float() - 0.5) * Math.min(12, ob.w);
+      const jitterY = (this.fxRng.float() - 0.5) * Math.min(10, ob.h);
+      spawn(fromX + jitterX, fromY + jitterY,
+        (mouthX - fromX) / travel + (this.fxRng.float() - 0.5) * 12,
+        (mouthY - fromY) / travel - 12 - this.fxRng.float() * 10,
+        travel, colors[i % colors.length], Math.max(1.2, (d.size || 2) * 0.55), 28);
+    }
+  }
+
+  updateChompBites(dt) {
+    for (const bite of this.chompBites) bite.t += dt;
+    this.chompBites = this.chompBites.filter((bite) => bite.t < bite.duration);
   }
 
   breakObstacle(ob, silent) {
@@ -1485,7 +1527,7 @@ export class RunState {
     this.player.relayCharge = !!s.relayCharge;
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
     this.spawner.lastActionX = s.camX;
-    this.obstacles = []; this.pickups = []; this.projectiles = [];
+    this.obstacles = []; this.pickups = []; this.projectiles = []; this.chompBites = [];
     this.portal = null;
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.escapeWall = s.escapeWall != null ? s.camX - 140 : null;
@@ -1882,6 +1924,29 @@ export class RunState {
     const finishX = this.overtime ? Infinity : this.finishWorldX();
     for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
     for (const ob of this.obstacles) if (ob.live && ob.x < finishX) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
+    for (const bite of this.chompBites) {
+      const ob = bite.ob;
+      const q = Math.max(0, Math.min(1, bite.t / bite.duration));
+      const e = q * q * (3 - 2 * q);
+      const fromX = ob.x - cam + ob.w / 2;
+      const terrainY = this.groundYAt(ob.x);
+      const terrainDy = terrainY - GROUND_Y + (ob.def.ground && ob.alt === 0 ? 1.5 : 0);
+      const fromY = GROUND_Y + terrainDy - ob.alt - ob.h / 2;
+      const mouthWorldX = this.playerWorldX() + 9;
+      const mouthX = mouthWorldX - cam;
+      const mouthY = this.groundYAt(mouthWorldX) - this.player.y - 11;
+      const x = fromX + (mouthX - fromX) * e;
+      const y = fromY + (mouthY - fromY) * e - Math.sin(q * Math.PI) * 8;
+      const scale = Math.max(0.18, 1 - e * 0.82);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(bite.spin * e);
+      ctx.scale(scale, scale);
+      ctx.translate(-fromX, -fromY);
+      ctx.translate(0, terrainDy);
+      drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings);
+      ctx.restore();
+    }
     for (const pr of this.projectiles) {
       const x = Math.round(pr.x - cam), y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {

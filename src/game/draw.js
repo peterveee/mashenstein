@@ -107,14 +107,16 @@ export function drawPowerPose(c, cx, feetY, type, alpha = 1, scale = 1) {
   c.translate(cx, feetY); c.scale(scale, scale);
   c.globalAlpha *= alpha; c.strokeStyle = '#f6d33c'; c.lineWidth = 1.5 / scale;
   if (type === 'stomp') {
-    c.beginPath(); c.moveTo(1, -14); c.lineTo(14, -22); c.stroke();
-    c.fillStyle = '#a8b0b8'; c.fillRect(11, -25, 7, 4);
+    // The wrench now belongs to Lorenzo's hand and swing in drawHumanoid.
+    // Leave impact feedback to the broken obstacle, shake and CLANG floatie;
+    // a detached streak here was the yellow line that obscured the action.
   } else if (type === 'eat') {
     c.beginPath(); c.arc(10, -11, 9, -0.7, 0.7); c.stroke();
   } else if (type === 'compress') {
     c.strokeStyle = '#f8c0d8'; c.beginPath(); c.arc(0, -7, 11 + (1 - alpha) * 8, 0, Math.PI * 2); c.stroke();
   } else if (type === 'shoot') {
-    c.strokeStyle = '#f6d33c'; c.beginPath(); c.moveTo(8, -11); c.lineTo(18, -11); c.stroke();
+    // B-33P's flash is drawn from the articulated cannon's computed muzzle.
+    // A fixed streak here detached whenever the arm changed pose.
   }
   c.restore();
 }

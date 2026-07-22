@@ -16,10 +16,25 @@ const FADE_T = 0.45;       // slide/fade in at the start of each slot
 // title mid-pose and reads as a glitch. Hold, then bow out.
 const TAIL_T = 1.2;
 const FADE_OUT_T = 0.55;
-// The beat runs from settle to just before the next hero slides in, so the
-// longer slot reads as a held performance rather than a pose and a long wait.
-const ACT_IN = 0.9;
-const ACT_LEN = SLOT_T - ACT_IN - 0.7;
+// Default card arc: move for 70%, then celebrate for the final 30%. Individual
+// locomotion-special cards override the second beat below. Nobody idles.
+const PERFORMANCE_IN = SLOT_T * 0.7;
+const LORENZO_ATTACK_IN = SLOT_T * 0.45;
+const LORENZO_ATTACK_T = 0.55;
+const GRUMPOS_CELEBRATE_IN = SLOT_T * 0.5;
+// Whole-cycle gait rates: eight ordinary cycles and twelve Gnash cycles land
+// exactly at 5.6s. This preserves a constant walking speed right up to the
+// celebration/special handoff—no late brake and no half-raised foot.
+const CAST_GAIT_RATE = 8 / PERFORMANCE_IN;
+const GRUMPOS_GAIT_RATE = 6 / GRUMPOS_CELEBRATE_IN;
+const GNASH_GAIT_CYCLES = 12;
+function gnashGaitPhase(beat) {
+  const p = Math.max(0, Math.min(1, beat / PERFORMANCE_IN));
+  // Integral of a linearly increasing gait rate. The 0.7/0.3 curve starts
+  // just above the ordinary walk and reaches nearly twice that cadence, while
+  // still accumulating exactly twelve complete strides at the dash handoff.
+  return (GNASH_GAIT_CYCLES * (0.7 * p + 0.3 * p * p)) % 1;
+}
 const FLOOR_Y = 214;
 const CAST_HERO_TILE = 150;
 const CAST_HERO_SCALE = 2;
@@ -59,13 +74,24 @@ export const CAST_HEROES = [
 
 let castHeroSurface;
 
+function paintCastPose(ctx, heroId, pose, cx, feetY) {
+  // Gnash's actual dash read comes from the moving ghosts as much as the lean.
+  // Reproduce that layer in the roll call rather than reducing SPIN DASH to a
+  // slightly tilted run pose. The offsets scale with the 104u cast figure.
+  if (pose.castDash) {
+    drawToon(ctx, heroId, pose, cx - 18, feetY, 104, { alpha: 0.16 });
+    drawToon(ctx, heroId, pose, cx - 10, feetY, 104, { alpha: 0.28 });
+  }
+  drawToon(ctx, heroId, pose, cx, feetY, 104);
+}
+
 // The gallery's CRT filter is intentionally applied to the hero tile rather
 // than the whole cast screen. This keeps the dossier copy crisp while giving
 // the character the same RGB fringe and scanline treatment as the high-res
 // gallery preview.
 function drawCastHero(ctx, heroId, pose, cx, feetY) {
   if (typeof document === 'undefined') {
-    drawToon(ctx, heroId, pose, cx, feetY, 104);
+    paintCastPose(ctx, heroId, pose, cx, feetY);
     return;
   }
 
@@ -87,7 +113,7 @@ function drawCastHero(ctx, heroId, pose, cx, feetY) {
 
     off.setTransform(CAST_HERO_SCALE, 0, 0, CAST_HERO_SCALE, 0, 0);
     off.clearRect(0, 0, CAST_HERO_TILE, CAST_HERO_TILE);
-    drawToon(off, heroId, pose, CAST_HERO_TILE / 2, CAST_HERO_FLOOR, 104);
+    paintCastPose(off, heroId, pose, CAST_HERO_TILE / 2, CAST_HERO_FLOOR);
 
     // Shift red one physical pixel left and blue one physical pixel right;
     // alternate scanlines are dimmed like the existing gallery CRT filter.
@@ -121,18 +147,9 @@ function drawCastHero(ctx, heroId, pose, cx, feetY) {
     );
   } catch {
     // Keep headless test contexts and unusual canvas implementations usable.
-    drawToon(ctx, heroId, pose, cx, feetY, 104);
+    paintCastPose(ctx, heroId, pose, cx, feetY);
   }
 }
-
-// Each hero's signature beat, matching the title parade so the poses are
-// known-good for their rig. Dolores is absent on purpose: everyone else
-// performs and she just stands at her post, which is the character. Her beat
-// is on her face instead — see `calling` in sprites/toons.js.
-const BEATS = {
-  lorenzo: 'wave', gnash: 'jump', fernwick: 'roll', b33p: 'aim',
-  mochi: 'float', chompo: 'chomp', raymn: 'assemble', grumpos: 'flex', gary: 'wave',
-};
 
 export class CastState {
   // opts: { realSettings, onExit(autoAdvance) }
@@ -185,24 +202,79 @@ export class CastState {
   poseFor(hero, intro) {
     const t = this.t;
     const beat = this.slotT;
-    const acting = !this.reduced && !intro && beat > ACT_IN && beat < ACT_IN + ACT_LEN;
-    const lift = acting ? Math.sin(((beat - ACT_IN) / ACT_LEN) * Math.PI) : 0;
     const pose = {
       kind: 'run', grounded: true, time: t, menu: true,
-      phase: (t * 1.5) % 1,
+      phase: (beat * CAST_GAIT_RATE) % 1,
     };
-    let feetOff = 0;
-    const act = BEATS[hero.id];
-    if (acting) {
-      if (act === 'wave' || act === 'flex') pose.menuAction = act;
-      else if (act === 'jump') { pose.kind = 'jump'; pose.grounded = false; feetOff = lift * 22; }
-      else if (act === 'roll') { pose.kind = 'duck'; pose.roll = true; }
-      else if (act === 'aim') { pose.menuAction = 'aim'; pose.squash = lift * 0.3; }
-      else if (act === 'float') { pose.float = true; feetOff = lift * 18; }
-      else if (act === 'chomp') pose.menuAction = 'chomp';
-      else if (act === 'assemble') { pose.headless = lift > 0.45; pose.menuAction = 'wave'; }
+    if (this.reduced) return { pose, feetOff: 0 };
+
+    if (hero.id === 'lorenzo') {
+      // Lorenzo's card demonstrates the actual wrench kit instead of the
+      // curtain-call celebration: walk continuously, layer one readable
+      // working swing over the gait, then keep walking. Only the upper-body
+      // arm targets change; phase and legs never stop or restart. The cast
+      // version gives the 0.3s gameplay action 0.55s of screen time without
+      // changing its authored wind-up / hit / recovery proportions.
+      pose.phase = (beat * 1.5) % 1;
+      if (beat >= LORENZO_ATTACK_IN && beat < LORENZO_ATTACK_IN + LORENZO_ATTACK_T) {
+        const local = beat - LORENZO_ATTACK_IN;
+        pose.menuAction = 'smash';
+        pose.actionTime = local / LORENZO_ATTACK_T * 0.3;
+      }
+      return { pose, feetOff: 0 };
     }
-    return { pose, feetOff };
+
+    if (hero.id === 'dolores') {
+      // Dolores does not perform for the camera. Her shift is still in
+      // progress, so she keeps walking through the whole card: no celebration
+      // and, like every other roll-call card, no idle pause.
+      pose.phase = (beat * CAST_GAIT_RATE) % 1;
+      return { pose, feetOff: 0 };
+    }
+
+    if (hero.id === 'gnash' || hero.id === 'fernwick') {
+      // These two demonstrate a locomotion ability, so a pause actively works
+      // against the verb. Keep moving at a constant rate for 70%, land the
+      // whole-number gait on a planted frame, then enter the gameplay special.
+      if (beat < PERFORMANCE_IN) {
+        pose.phase = hero.id === 'gnash'
+          ? gnashGaitPhase(beat)
+          : (beat * CAST_GAIT_RATE) % 1;
+      } else {
+        pose.time = beat - PERFORMANCE_IN;
+        if (hero.id === 'gnash') {
+          pose.kind = 'run';
+          pose.phase = (pose.time * 3.1) % 1;
+          pose.lean = 0.26;
+          pose.castDash = true;
+        } else {
+          pose.kind = 'duck';
+          pose.phase = 0;
+          pose.roll = true;
+        }
+      }
+      return { pose, feetOff: 0 };
+    }
+
+    if (hero.id === 'grumpos') {
+      if (beat >= GRUMPOS_CELEBRATE_IN) {
+        pose.kind = 'celebrate';
+        pose.phase = 0;
+        pose.time = beat - GRUMPOS_CELEBRATE_IN;
+      } else {
+        pose.phase = (beat * GRUMPOS_GAIT_RATE) % 1;
+      }
+      return { pose, feetOff: 0 };
+    }
+
+    if (beat >= PERFORMANCE_IN) {
+      pose.time = beat - PERFORMANCE_IN;
+      // Everyone else uses the same approved routine as the results curtain
+      // call, and never falls back to walking before the next card arrives.
+      pose.kind = 'celebrate';
+      pose.phase = 0;
+    }
+    return { pose, feetOff: 0 };
   }
 
   draw(ctx) {
