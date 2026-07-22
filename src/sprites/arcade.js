@@ -369,7 +369,11 @@ function paintRounded(ctx, w, h, pal) {
 // reference — 44x78 rather than 40x90.
 const CHIBI_BOX = {
   hood: { x0: 0, x1: 1, y0: 0, y1: 0.235 },
-  glass: { x0: 0.07, x1: 0.93, y0: 0.04, y1: 0.195 },
+  // Glass stops just short of the hood's bottom edge: the strip it leaves behind
+  // carries the plug bulbs (hub/index.js drawPlugLights). It was cut back
+  // further than this to fit oversized bulbs; they are small again, so the
+  // marquee gets its height back.
+  glass: { x0: 0.07, x1: 0.93, y0: 0.04, y1: 0.193 },
   upper: { x0: 0.06, x1: 0.94, y0: 0.235, y1: 0.6 },
   bezel: { x0: 0.1, x1: 0.9, y0: 0.265, y1: 0.585 },
   screen: { x0: 0.14, x1: 0.86, y0: 0.283, y1: 0.567 }, screenR: 0.111,

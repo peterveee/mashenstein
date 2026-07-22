@@ -18,6 +18,7 @@ const GUIDE_ICON_SIZES = {
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
+import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
@@ -690,8 +691,16 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
     const pokeAt = poke && poke.get(i);
     if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
       const pokeP = (t - pokeAt) / HERO_POKE_T;
-      pose.kind = 'jump'; pose.grounded = false;
-      feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+      if (id === 'b33p') {
+        // He fired — snap the cannon arm to the aiming stance so the recoil
+        // (keyed off menuAction === 'aim') has something correct to recoil
+        // FROM, instead of whatever the run-cycle carry was doing mid-stride.
+        pose.menuAction = 'aim';
+        pose.squash = Math.sin(pokeP * Math.PI) * 0.35;
+      } else {
+        pose.kind = 'jump'; pose.grounded = false;
+        feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+      }
     }
     const edgeAlpha = paradeEdgeAlpha(hx);
     if (edgeAlpha <= 0) continue;
@@ -803,22 +812,76 @@ const TITLE_SUBTITLE_Y = 61;
 const TITLE_PANEL_Y = 80;
 const TITLE_FLOOR_Y = 194;      // horizon line, above the parade's own strip
 const TITLE_PANEL_PAD = 10;     // panel height beyond the rows themselves
-const TITLE_ROW_H = 14;
-const TITLE_ROW_INSET = 7;      // first row's offset inside the panel
+const TITLE_PANEL_W = 220;
+const TITLE_PANEL_X = W / 2 - TITLE_PANEL_W / 2;
 // The footer hangs off the bottom of the panel rather than sitting at a fixed
 // y, because the panel grows with the number of save files — pinning it would
-// leave the gap different on a 7-row menu than an 8-row one. The gap matches
+// leave the gap different on a 4-row menu than a 5-row one. The gap matches
 // the one above the panel, so the subtitle and the footer frame it evenly.
 const TITLE_FOOTER_GAP = 12;
 const TITLE_FOOTER_LINE_H = 11;
-// Unlocking OVERTIME adds an eighth row, and at full row height that pushes the
-// footer down into the cast. Rather than let the text collide, the rows tighten
-// just enough to keep the whole stack clear. Both the renderer and the touch
-// hit-test read this, so a tap always lands on the row it looks like it does.
+// A row is only ever as tall as its share of the band between the panel's top
+// and the lowest it may reach, capped so a short menu doesn't sprawl.
+//
+// Touch gets its own pair of numbers. The canvas scales by min(w/480, h/270),
+// so a phone in landscape is height-limited at roughly 1.45 CSS px per logical
+// unit — a 12-unit row lands at 17 CSS px, well under the 44pt/48dp minimum
+// every platform asks for. Touch therefore spends the footer's second line (see
+// the draw below) on taller rows and lets them grow to 30.
+const TITLE_ROW_H = 20;
+const TITLE_ROW_H_TOUCH = 30;
 const TITLE_PANEL_MAX_BOTTOM = 190;
+const TITLE_PANEL_MAX_BOTTOM_TOUCH = 202;
+// isTouchDevice(), not usingTouch: a phone should get the touch layout on its
+// FIRST paint, not only once a finger has landed. Both the renderer and the tap
+// hit-test read this, so a tap always lands on the row it looks like it does.
+function titleTouch() { return Input.isTouchDevice(); }
 function titleRowH(count) {
-  const fits = Math.floor((TITLE_PANEL_MAX_BOTTOM - TITLE_PANEL_Y - TITLE_PANEL_PAD) / count);
-  return Math.min(TITLE_ROW_H, fits);
+  const touch = titleTouch();
+  const bottom = touch ? TITLE_PANEL_MAX_BOTTOM_TOUCH : TITLE_PANEL_MAX_BOTTOM;
+  const fits = Math.floor((bottom - TITLE_PANEL_Y - TITLE_PANEL_PAD) / count);
+  return Math.min(touch ? TITLE_ROW_H_TOUCH : TITLE_ROW_H, fits);
+}
+// Top edge of row i's band. Rows own the full height between these edges, so
+// the highlight, the lettering and the tap target all derive from one number.
+function titleRowTop(i, rowH) { return TITLE_PANEL_Y + TITLE_PANEL_PAD / 2 + i * rowH; }
+// Which row a pointer landed on, or -1. Bounded in x as well as y: without it
+// a tap anywhere across the full 480-unit width — out over the starfield, or
+// the parade — counted as a tap on whichever row shared its y.
+function titleRowAt(px, py, count) {
+  if (px < TITLE_PANEL_X - 6 || px > TITLE_PANEL_X + TITLE_PANEL_W + 6) return -1;
+  const rowH = titleRowH(count);
+  const i = Math.floor((py - titleRowTop(0, rowH)) / rowH);
+  return i >= 0 && i < count ? i : -1;
+}
+
+// Both of the title's modal lists — ERASE and EXTRAS — are sized from here, so
+// they share one box, one row pitch and one hit-test. Touch rows are nearly
+// twice as tall, which matters most for ERASE: it is the only list in the game
+// that destroys data, and a single tap commits each step.
+// ERASE carries a warning line under its heading and EXTRAS doesn't, so the
+// header comes in two heights — reserving room for a line that isn't there
+// left the list floating well below its own title.
+const MODAL_HEAD_H = 42;        // heading plus a note line
+const MODAL_HEAD_H_BARE = 28;   // heading alone
+function modalListGeom(count, hasNote) {
+  const rowH = titleTouch() ? 26 : 15;
+  const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
+  // Sized from the row count rather than pinned. The old fixed 92-unit box
+  // wasn't tall enough for its own longest list — three files plus CANCEL
+  // needed 102, so the last row was drawn below the box's bottom edge.
+  const h = headH + count * rowH + 8;
+  // Centred, with a floor low enough that the tallest list — EXTRAS at seven
+  // rows on touch — still centres instead of being pinned to the top and
+  // hanging off the bottom.
+  const y = Math.max(8, Math.round((H - h) / 2));
+  return { x: 88, y, w: W - 176, h, rowH, firstY: y + headH };
+}
+function modalRowAt(px, py, count, hasNote) {
+  const g = modalListGeom(count, hasNote);
+  if (px < g.x || px > g.x + g.w) return -1;
+  const i = Math.floor((py - g.firstY) / g.rowH);
+  return i >= 0 && i < count ? i : -1;
 }
 
 // JavaScript twin of the starfield shader's hash21. This lets the audio fire
@@ -894,9 +957,9 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onAttract, attractDelay, attractLabel }) {
+  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
-    this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest;
+    this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
   }
@@ -904,6 +967,7 @@ export class TitleState {
     shuffleParade();
     this.idx = 0;
     this.erase = null;
+    this.extras = null;
     this.t = 0;
     this.idleT = 0;
     this.lastCometCycle = -1;
@@ -935,7 +999,6 @@ export class TitleState {
   // already blue. Centralizing this keeps all three triggers in lockstep.
   hitWisp(wisp) {
     const frightActive = this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T;
-    console.log('DEBUG hitWisp', JSON.stringify({ t: this.t, key: wisp.key, frightActive }));
     if (frightActive) {
       const dir = wisp.x < W / 2 ? -1 : 1;
       this.eaten.set(wisp.key, { t0: this.t, x0: wisp.x, dir });
@@ -965,7 +1028,6 @@ export class TitleState {
   // Same explode/knockback the invader's bombs use, for any other projectile
   // (b33p's shot) that lands on a hero.
   explodeHero(id, x, victim, dir) {
-    console.log('DEBUG explodeHero', JSON.stringify({ t: this.t, id, x, victim, heroId: HERO_PARADE[victim] }));
     const tHit = this.t;
     const phase = heroX(victim, tHit) + 70;
     const returnAt = tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
@@ -982,12 +1044,49 @@ export class TitleState {
     });
     const anyOvertime = this.save.data.slots.some((s) => s && s.campaign.storyFlags.sawEnding);
     if (anyOvertime) opts.push({ id: 'overtime', label: 'OVERTIME (ENDLESS)', act: () => this.onOvertime() });
-    opts.push({ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() });
-    opts.push({ id: 'guide', label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
-    opts.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
-    if (this.save.data.slots.some(Boolean)) opts.push({ id: 'erase', label: 'ERASE A FILE', act: () => this.beginErase() });
-    opts.push({ id: 'settings', label: 'SETTINGS', act: () => this.onSettings() });
+    // Everything that isn't "start playing" lives one tap deeper. Nine rows in
+    // a 100-unit band meant 11-unit rows, which on a phone is a 16px target —
+    // and ERASE A FILE sat two of them below FILE 3, where a miss is
+    // destructive. Four or five rows is what lets a row be worth tapping.
+    opts.push({ id: 'extras', label: 'EXTRAS...', act: () => { this.extras = { idx: 0 }; Audio.sfx('ui'); } });
     return opts;
+  }
+  extrasChoices() {
+    // Ordered by what someone opening this menu actually wants: the two
+    // orientation screens first, then the rest of the reference, then the
+    // file/system rows.
+    // Both file-dependent rows hang off this. With no save yet there is nothing
+    // to erase, and the opening isn't a rerun you'd want early — starting a file
+    // plays it for you.
+    const anyFile = this.save.data.slots.some(Boolean);
+    const choices = [{ label: 'HOW TO PLAY', act: () => this.onHowTo() }];
+    // Until now the opening was reachable only by starting a brand new file —
+    // so the one way to read it twice was to erase your progress.
+    if (anyFile) choices.push({ label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
+    choices.push({ label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
+    choices.push({ label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
+    if (anyFile) choices.push({ label: 'ERASE A FILE', act: () => { this.extras = null; this.beginErase(); } });
+    choices.push({ label: 'SETTINGS', act: () => this.onSettings() });
+    choices.push({ label: 'BACK', cancel: true });
+    return choices;
+  }
+  // Same shape as updateErase below: the modal owns the frame while it is open.
+  updateExtras() {
+    const choices = this.extrasChoices();
+    if (Input.pressed('down') || Input.pressed('right')) { this.extras.idx = (this.extras.idx + 1) % choices.length; Audio.sfx('ui'); }
+    if (Input.pressed('up') || Input.pressed('left')) { this.extras.idx = (this.extras.idx + choices.length - 1) % choices.length; Audio.sfx('ui'); }
+    if (Input.pressed('back')) { this.extras = null; Audio.sfx('ui'); return; }
+    let chosen = Input.pressed('confirm') ? this.extras.idx : -1;
+    if (Input.pressed('pointer')) {
+      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, false); // heading only
+      if (i >= 0) chosen = i;
+    }
+    if (chosen < 0) return;
+    this.extras.idx = chosen;
+    const choice = choices[chosen];
+    if (choice.cancel) { this.extras = null; Audio.sfx('ui'); return; }
+    Audio.sfx('uiConfirm');
+    choice.act();
   }
   beginErase() {
     const slots = this.save.data.slots.map((slot, i) => slot ? i : -1).filter((i) => i >= 0);
@@ -1012,10 +1111,8 @@ export class TitleState {
     if (Input.pressed('back')) { this.erase = null; Audio.sfx('ui'); return; }
     let chosen = Input.pressed('confirm') ? this.erase.idx : -1;
     if (Input.pressed('pointer')) {
-      const p = Input.pointer;
-      const firstY = 124;
-      const i = Math.floor((p.y - (firstY - 4)) / 15);
-      if (p.x >= 100 && p.x <= W - 100 && i >= 0 && i < choices.length) chosen = i;
+      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, true); // every step warns
+      if (i >= 0) chosen = i;
     }
     if (chosen < 0) return;
     this.erase.idx = chosen;
@@ -1084,9 +1181,9 @@ export class TitleState {
     this.wasDark = dark;
     // Attract mode: fire after attractDelay seconds of zero HUMAN input.
     if (Input.activity !== this.actTok) { this.actTok = Input.activity; this.idleT = 0; this.attractDelay = 60; }
-    if (this.erase) {
+    if (this.erase || this.extras) {
       this.idleT = 0;
-      this.updateErase();
+      if (this.erase) this.updateErase(); else this.updateExtras();
       Input.endFrame();
       return;
     }
@@ -1098,9 +1195,8 @@ export class TitleState {
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const p = Input.pointer;
-      const rowH = titleRowH(opts.length);
-      const i = Math.floor((p.y - (TITLE_PANEL_Y + TITLE_ROW_INSET - 4)) / rowH);
-      if (i >= 0 && i < opts.length) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
+      const i = titleRowAt(p.x, p.y, opts.length);
+      if (i >= 0) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
       else {
         // Didn't land on a menu row — maybe it landed on the invader overhead.
         const ship = invaderTapHit(this.t, p.x, p.y);
@@ -1111,12 +1207,14 @@ export class TitleState {
         } else {
           // Or a parading hero.
           const hero = heroTapIndex(this.t, p.x, p.y, this.tapBombs);
-          console.log('DEBUG tap', JSON.stringify({ t: this.t, px: p.x, py: p.y, hero, heroId: hero >= 0 ? HERO_PARADE[hero] : null }));
           if (hero >= 0) {
             if (HERO_PARADE[hero] === 'b33p') {
-              // b33p doesn't hop when poked — he shoots.
+              // b33p doesn't hop when poked — he shoots. Still routes through
+              // `poke` so his pose snaps to the aiming stance (arm up, gun
+              // level) instead of firing from whatever his run-cycle arm was
+              // doing a moment ago.
               this.shots.push({ id: `shot:${this.shotId++}`, tFired: this.t, x0: heroX(hero, this.t) + 12, y: SHOT_Y });
-              console.log('DEBUG shot fired', JSON.stringify({ t: this.t, x0: heroX(hero, this.t) + 12 }));
+              this.poke.set(hero, this.t);
               Audio.sfx('shoot');
             } else {
               this.poke.set(hero, this.t);
@@ -1185,7 +1283,7 @@ export class TitleState {
     const ui = (d) => {
       // The cast owns the bottom strip, so every line of text sits above it:
       // panel under the logo, then the controls and the flavour line as a footer.
-      const panelW = 220, panelX = W / 2 - panelW / 2;
+      const panelW = TITLE_PANEL_W, panelX = TITLE_PANEL_X;
       const rowH = titleRowH(opts.length);
       const panelY = TITLE_PANEL_Y, panelH = opts.length * rowH + TITLE_PANEL_PAD;
       // solid backing so the crates behind don't bleed through the list
@@ -1198,20 +1296,25 @@ export class TitleState {
       d.stroke();
       opts.forEach((o, i) => {
         const sel = i === this.idx;
-        const rowY = panelY + TITLE_ROW_INSET + i * rowH;
+        const rowTop = titleRowTop(i, rowH);
+        // The highlight fills the row's whole band and the lettering centres in
+        // it. A fixed 11-unit highlight read as a thin bar floating in a tall
+        // touch row, and text pinned to the band's top left the tap target
+        // looking like it belonged to the row above.
+        const textY = rowTop + (rowH - 12) / 2;
         if (sel) {
-          // Centred on the lettering's optical middle, not the glyph box: the
-          // box carries ascender leading above the caps, so matching it hangs
-          // the highlight low. Ink sits between rowY+0.7 and rowY+7.7.
           d.fillStyle = 'rgba(255,207,51,0.12)';
-          roundRect(d, panelX + 4, rowY - 1.5, panelW - 8, 11, 3);
+          roundRect(d, panelX + 4, rowTop + 1, panelW - 8, rowH - 2, 3);
           d.fill();
         }
-        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, rowY, sel ? '#ffcf33' : '#c3cede', 1, sel ? 'bold' : 'ui');
+        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, textY, sel ? '#ffcf33' : '#c3cede', 1, sel ? 'bold' : 'ui');
       });
+      // Touch spends the controls line on taller rows: "ARROWS" means nothing
+      // there, and the rows read as buttons without being told they're tappable.
+      const touch = titleTouch();
       const controlsY = panelY + panelH + TITLE_FOOTER_GAP;
-      const flavorY = controlsY + TITLE_FOOTER_LINE_H;
-      drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, controlsY, '#6b7d95');
+      const flavorY = touch ? controlsY : controlsY + TITLE_FOOTER_LINE_H;
+      if (!touch) drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, controlsY, '#6b7d95');
       d.globalAlpha = 0.85;
       if (this.onAttract && this.attractDelay <= 10) {
         // A tap bumps Input.activity exactly like a keypress does, so it cancels
@@ -1228,39 +1331,52 @@ export class TitleState {
         d.globalAlpha = 1;
       }
       if (this.erase) this.drawEraseModal(d);
+      else if (this.extras) this.drawExtrasModal(d);
     };
     if (!pushOverlayDraw(ui)) ui(ctx);
   }
   drawEraseModal(d) {
-    const choices = this.eraseChoices();
-    d.fillStyle = 'rgba(2,3,10,0.78)';
-    d.fillRect(0, 0, W, H);
-    const x = 88, y = 82, w = W - 176, h = 92;
-    d.fillStyle = 'rgba(11,10,20,0.98)';
-    roundRect(d, x, y, w, h, 4); d.fill();
-    d.strokeStyle = '#e05a62'; d.lineWidth = 1;
-    roundRect(d, x + 0.5, y + 0.5, w - 1, h - 1, 4); d.stroke();
     let title = 'ERASE WHICH FILE?';
-    let warning = 'CHOOSE CAREFULLY. BACK CANCELS.';
+    let note = 'CHOOSE CAREFULLY. BACK CANCELS.';
     if (this.erase.step === 'confirm') {
       title = `ERASE FILE ${this.erase.slot + 1}?`;
-      warning = 'ALL PROGRESS IN THIS FILE WILL BE LOST.';
+      note = 'ALL PROGRESS IN THIS FILE WILL BE LOST.';
     } else if (this.erase.step === 'final') {
       title = `FINAL WARNING: ERASE FILE ${this.erase.slot + 1}?`;
-      warning = 'THIS CANNOT BE UNDONE.';
+      note = 'THIS CANNOT BE UNDONE.';
     }
-    drawTextCentered(d, title, W / 2, 94, '#ff727c', 1.25, 'bold');
-    drawTextCentered(d, warning, W / 2, 110, '#aab4c6', 0.875);
-    choices.forEach((choice, i) => {
-      const selected = i === this.erase.idx;
-      const rowY = 124 + i * 15;
-      if (selected) {
-        d.fillStyle = 'rgba(255,207,51,0.12)';
-        roundRect(d, x + 7, rowY - 2, w - 14, 12, 3); d.fill();
-      }
-      drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}${selected ? ' <' : ''}`, W / 2, rowY, selected ? '#ffcf33' : '#d3d9e5', 1, selected ? 'bold' : 'ui');
+    drawModalList(d, this.eraseChoices(), this.erase.idx, { title, note, accent: '#e05a62', titleColor: '#ff727c' });
+  }
+  drawExtrasModal(d) {
+    drawModalList(d, this.extrasChoices(), this.extras.idx, {
+      title: 'EXTRAS', accent: '#2f6f68', titleColor: '#5fd6c8',
     });
   }
+}
+
+// The title's two modal lists, drawn one way. Geometry comes from
+// modalListGeom, which the tap hit-test reads too, so the rows a finger finds
+// are exactly the rows on screen at whatever size the device asked for.
+function drawModalList(d, choices, idx, { title, note, accent, titleColor }) {
+  const g = modalListGeom(choices.length, !!note);
+  d.fillStyle = 'rgba(2,3,10,0.78)';
+  d.fillRect(0, 0, W, H);
+  d.fillStyle = 'rgba(11,10,20,0.98)';
+  roundRect(d, g.x, g.y, g.w, g.h, 4); d.fill();
+  d.strokeStyle = accent; d.lineWidth = 1;
+  roundRect(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
+  drawTextCentered(d, title, W / 2, g.y + 12, titleColor, 1.25, 'bold');
+  if (note) drawTextCentered(d, note, W / 2, g.y + 28, '#aab4c6', 0.875);
+  choices.forEach((choice, i) => {
+    const selected = i === idx;
+    const rowTop = g.firstY + i * g.rowH;
+    const textY = rowTop + (g.rowH - 12) / 2;
+    if (selected) {
+      d.fillStyle = 'rgba(255,207,51,0.12)';
+      roundRect(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2, 3); d.fill();
+    }
+    drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}${selected ? ' <' : ''}`, W / 2, textY, selected ? '#ffcf33' : '#d3d9e5', 1, selected ? 'bold' : 'ui');
+  });
 }
 
 export class DifficultyState {
@@ -1335,16 +1451,31 @@ export class DifficultyState {
   }
 }
 
+// How wide each panel's frame wants to be. The frame is not decoration — it is
+// the stage each panel plays on, and they need different amounts of room: six
+// cabinets, one villain, then eight heroes shoulder to shoulder. Animating
+// between them turns the widest panel's arrival into a reveal, and the hero
+// line-up spreads as it opens because its pitch is derived from the live width.
+const INTRO_FRAME_W = [404, 250, 470, 470];
+const INTRO_FRAME_Y = 30.5, INTRO_FRAME_H = 120;
+
 export class IntroState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.panel = 0; this.chars = 0; Input.setMenuButtons(); }
+  enter() { this.panel = 0; this.chars = 0; this.t = 0; this.panelT = 0; this.frameW = INTRO_FRAME_W[0]; Input.setMenuButtons(); }
   update(dt) {
+    this.t += dt;
+    this.panelT += dt;
+    // Eased toward the target rather than snapped: the panels are read at a
+    // click each, so a hard cut in frame width reads as a layout glitch where a
+    // half-second open reads as the scene making room.
+    const want = INTRO_FRAME_W[Math.min(this.panel, INTRO_FRAME_W.length - 1)];
+    this.frameW += (want - this.frameW) * Math.min(1, dt * 6);
     if (this.panel >= INTRO_PANELS.length) { Input.endFrame(); return; }
     this.chars += dt * 40;
     const text = INTRO_PANELS[this.panel].text;
     if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
       if (this.chars < text.length) this.chars = text.length;
-      else { this.panel++; this.chars = 0; Audio.sfx('ui'); if (this.panel >= INTRO_PANELS.length) { this.onDone(); } }
+      else { this.panel++; this.chars = 0; this.panelT = 0; Audio.sfx('ui'); if (this.panel >= INTRO_PANELS.length) { this.onDone(); } }
     }
     if (Input.pressed('back')) this.onDone();
     Input.endFrame();
@@ -1355,20 +1486,68 @@ export class IntroState {
     ctx.fillRect(0, 0, W, H);
     // panel art: minimal pixel scenes
     ctx.strokeStyle = '#30303f';
-    ctx.strokeRect(60.5, 30.5, W - 121, 120);
+    const fw = this.frameW;
+    ctx.strokeRect(W / 2 - fw / 2, INTRO_FRAME_Y, fw, INTRO_FRAME_H);
     if (this.panel === 1) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
     if (this.panel === 0) {
+      // The real cabinets, from the real palettes. These were six hardcoded
+      // rectangles in colours hand-copied off CABINETS — so the opening shot of
+      // the arcade showed machines that existed nowhere else in the game, and
+      // drifted further every time the cabinet art changed. Same painters the
+      // food court stands them up with, so this shot can never go stale again.
+      const CW = 46, CH = 82, BOT = 146;
       for (let i = 0; i < 6; i++) {
-        ctx.fillStyle = ['#3a9c48', '#c88848', '#282858', '#c8e0f0', '#3a3048', '#c8a068'][i];
-        ctx.fillRect(80 + i * 55, 60, 40, 60);
-        ctx.fillStyle = '#181820';
-        ctx.fillRect(84 + i * 55, 66, 32, 40);
+        const cab = CABINETS[i];
+        const cx = W / 2 + (i - 2.5) * 68;
+        const pal = cabinetPalette(cab);
+        drawCabinetShell(ctx, cx - CW / 2, BOT - CH, CW, CH, pal);
+        // "EVERY CABINET DREAMING ITS LITTLE ELECTRIC DREAM" — so they are lit,
+        // each rolling its own attract on its own clock.
+        const scr = drawCabinetScreen(ctx, cx - CW / 2, BOT - CH, CW, CH, pal);
+        if (scr) drawScreenSweep(ctx, scr, this.t + i * 1.3, i * 977);
       }
     }
     if (this.panel === 2 || this.panel === 3) {
+      // One row of eight, filling the widened frame. They were 24 units tall in
+      // a single row, then 44 in two rows of four; a single row across the wider
+      // box gets them to 78 — three times the original, on the one screen whose
+      // entire job is introducing them. A row also says "a line-up" in a way a
+      // block of four-by-two does not, which is what these two panels are about.
       const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+      // Pitch comes from the LIVE frame width, so the line-up spreads as the
+      // frame opens instead of sitting at a fixed spacing inside a moving box.
+      // 68 rather than 72: chompo's flame trail and mochi's ears are far wider
+      // than 0.6x their height, so the pair that touches is not the pair the
+      // pitch maths predicts. Four units off every hero clears it without the
+      // row visibly shrinking.
+      const HH = 68, PITCH = (fw - 46) / (heroes.length - 1);
+      // The roll call plays ONCE, on panel 3, where the cast is being introduced.
+      // Panel 4 is the same eight people a beat later — replaying their entrance
+      // there would say they had just arrived again, and turn a one-off flourish
+      // into a tic you sit through twice.
+      const rollCall = this.panel === 2;
       heroes.forEach((h, i) => {
-        drawToon(ctx, h, { kind: 'idle', time: this.chars * 0.05 + i * 0.8, grounded: true }, 90 + i * 38 + 9, 108, 24);
+        // They arrive one at a time, left to right, over about a second — a
+        // roll call rather than a group photo that was always there. Each pops
+        // in on its own short ease with a bulge past full size at the midpoint
+        // and a rise from below, so the landing reads as weight rather than a
+        // fade. Anyone whose turn has not come yet simply is not drawn.
+        const a = rollCall ? Math.min(1, Math.max(0, (this.panelT - (0.2 + i * 0.13)) / 0.28)) : 1;
+        if (a <= 0) return;
+        const ease = 1 - Math.pow(1 - a, 3);
+        const scale = ease + Math.sin(a * Math.PI) * 0.14;
+        // On panel 4 ("EIGHT HEROES. ONE SOCKET. A RELAY BEGINS") they are
+        // already assembled and reacting to it, so a scattered few break into
+        // their victory routine. Every third, offset — not all of them, because
+        // a line of eight all celebrating at once reads as a screensaver rather
+        // than as a crowd with opinions.
+        const celebrating = !rollCall && i % 3 === 1;
+        drawToon(ctx, h, {
+          kind: celebrating ? 'celebrate' : 'idle',
+          phase: (this.panelT * 0.55 + i * 0.21) % 1,
+          time: this.panelT + i * 0.8,
+          grounded: true,
+        }, W / 2 + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
       });
     }
     const text = INTRO_PANELS[this.panel].text;
@@ -1377,7 +1556,7 @@ export class IntroState {
     const mid = shown.length > 60 ? shown.lastIndexOf(' ', 60) : shown.length;
     drawTextCentered(ctx, shown.slice(0, mid), W / 2, 170, '#e8e8f0');
     if (mid < shown.length) drawTextCentered(ctx, shown.slice(mid + 1), W / 2, 184, '#e8e8f0');
-    drawTextCentered(ctx, `${this.panel + 1}/4  (TAP/ENTER)`, W / 2, H - 20, '#5a5a68');
+    drawTextCentered(ctx, `${this.panel + 1}/${INTRO_PANELS.length}  (TAP/ENTER)`, W / 2, H - 20, '#5a5a68');
   }
 }
 

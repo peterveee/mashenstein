@@ -1634,8 +1634,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // sits outside the status panel rather than lying across its corner, and
       // the muzzle ends up at the same width the free arm's hand hangs at —
       // the two arms then read as a matched pair at rest.
-      const elbowOut = cheer ? sideF * 0.42 : hangGun ? sideF * 0.45 : 0.42;
-      const elbowDown = cheer ? -0.91 : hangGun ? 0.95 : 0.91;
+      // Actively aiming (the menu "aim" beat, and now the poke that fires it):
+      // the elbow lifts to shoulder height and pushes out, so the level barrel
+      // reads as raised and sighted rather than the same low, at-rest carry
+      // the run cycle already uses — 'aim' used to only add a tiny recoil, so
+      // firing looked identical to just standing there with the gun hanging.
+      const aiming = pose.menuAction === 'aim';
+      const elbowOut = cheer ? sideF * 0.42 : aiming ? sideF * 0.52 : hangGun ? sideF * 0.45 : 0.42;
+      const elbowDown = cheer ? -0.91 : aiming ? -0.08 : hangGun ? 0.95 : 0.91;
       const elbowX = gunX + armSeg * elbowOut;
       const elbowY = gunY + armSeg * elbowDown;
       // Celebrating, the cannon used to hold ONE welded aim for the whole 2.6s

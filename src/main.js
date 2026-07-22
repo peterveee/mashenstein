@@ -76,6 +76,9 @@ const Flow = {
     onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toTitle() })),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toTitle() })),
     onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toTitle() })),
+    // A replay, not the real thing: this onDone only walks back to the title.
+    // The new-file path above is the one that sets sawIntro and persists.
+    onIntro: () => setState(new IntroState({ onDone: () => Flow.toTitle() })),
   })); },
 
   // cameo=false for the results hand-off: the run already ended on a cast

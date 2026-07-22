@@ -92,6 +92,30 @@ function drawStarAura(c, cx, feetY, h, t, left, reduced) {
   return fade;
 }
 
+// The brief flourish overlaid on a hero the instant they use their ability —
+// keyed off ability.type, not hero id, so it fires the same way no matter who
+// is holding the baton. Not every type has one yet: dash/roll/fist/axe rely on
+// the ability's own world-space effect (dash ghosts, the axe prop, etc.) to
+// read as "something happened" and draw nothing here.
+// scale lets a caller reuse the same tuned-for-24px-hero offsets at a bigger
+// draw size (the gallery's toons are drawn far taller than the in-run sprite).
+export function drawPowerPose(c, cx, feetY, type, alpha = 1, scale = 1) {
+  c.save();
+  c.translate(cx, feetY); c.scale(scale, scale);
+  c.globalAlpha *= alpha; c.strokeStyle = '#f6d33c'; c.lineWidth = 1.5 / scale;
+  if (type === 'stomp') {
+    c.beginPath(); c.moveTo(1, -14); c.lineTo(14, -22); c.stroke();
+    c.fillStyle = '#a8b0b8'; c.fillRect(11, -25, 7, 4);
+  } else if (type === 'eat') {
+    c.beginPath(); c.arc(10, -11, 9, -0.7, 0.7); c.stroke();
+  } else if (type === 'compress') {
+    c.strokeStyle = '#f8c0d8'; c.beginPath(); c.arc(0, -7, 11 + (1 - alpha) * 8, 0, Math.PI * 2); c.stroke();
+  } else if (type === 'shoot') {
+    c.strokeStyle = '#f6d33c'; c.beginPath(); c.moveTo(8, -11); c.lineTo(18, -11); c.stroke();
+  }
+  c.restore();
+}
+
 export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts = {}) {
   // Heroes are procedurally animated vector toons (sprites/toons.js).
   // During normal play they render ABOVE the low-res backbuffer at device
@@ -137,19 +161,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     }
     if (player.powerPoseT > 0) {
       const reduced = opts.settings && opts.settings.reducedMotion;
-      const a = reduced ? 0.8 : Math.min(1, player.powerPoseT * 5);
-      c.save(); c.globalAlpha *= a; c.strokeStyle = '#f6d33c'; c.lineWidth = 1.5;
-      if (player.powerType === 'stomp') {
-        c.beginPath(); c.moveTo(cx + 1, feetY - 14); c.lineTo(cx + 14, feetY - 22); c.stroke();
-        c.fillStyle = '#a8b0b8'; c.fillRect(cx + 11, feetY - 25, 7, 4);
-      } else if (player.powerType === 'eat') {
-        c.beginPath(); c.arc(cx + 10, feetY - 11, 9, -0.7, 0.7); c.stroke();
-      } else if (player.powerType === 'compress') {
-        c.strokeStyle = '#f8c0d8'; c.beginPath(); c.arc(cx, feetY - 7, 11 + (1 - a) * 8, 0, Math.PI * 2); c.stroke();
-      } else if (player.powerType === 'shoot') {
-        c.strokeStyle = '#f6d33c'; c.beginPath(); c.moveTo(cx + 8, feetY - 11); c.lineTo(cx + 18, feetY - 11); c.stroke();
-      }
-      c.restore();
+      drawPowerPose(c, cx, feetY, player.powerType, reduced ? 0.8 : Math.min(1, player.powerPoseT * 5));
     }
   };
   if (opts.flat || opts.mirror) paint(ctx);

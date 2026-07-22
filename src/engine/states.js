@@ -10,7 +10,12 @@ let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
 const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
-let transitionHero = TRANSITION_HEROES[0];
+// Null until the game knows who you are. The shutter used to open on a hero
+// from the very first transition — title, difficulty, the intro panels — which
+// spoiled a cast the intro is in the middle of introducing, and presented one of
+// them as "yours" before you had any. No hero, no cameo; the sticker just closes
+// and opens.
+let transitionHero = null;
 
 // The cameo used to be a random hero every transition, which was fine when the
 // hub avatar was also arbitrary. Now that you carry one specific hero between
@@ -110,7 +115,7 @@ function drawTransition(ctx, amount) {
 
   // Once the sticker is large enough, introduce a rotating cast cameo. Each
   // hero gets a tiny personality pose, turning loading time into a roll call.
-  if (cameo && a > 0.52) {
+  if (cameo && transitionHero && a > 0.52) {
     const show = Math.min(1, (a - 0.52) / 0.2);
     const bounce = Math.sin(show * Math.PI) * 5;
     const sy = 0.78 + show * 0.22;

@@ -10,6 +10,7 @@ import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE,
 } from '../../sprites/arcade.js';
+import { HUB_WALL_PLAN, BAY_W, drawWallBay, wallLitFrom } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
@@ -38,9 +39,24 @@ export { CORRUPTED_MODIFIERS };
 // uses to pin GROUND_Y for the run camera — so zooming in crops the ceiling
 // rather than sliding the ground out from under the player.
 const HUB_ZOOM = 1.3;
-const HUB_FLOOR_PIN_Y = 192;
+// Where the floor line sits, which — because the pin maps this world y to the
+// same SCREEN y — is also how the 270px frame is split between wall and floor.
+// It was 192, leaving 78px of floor for a UI band that only ever uses the
+// bottom ~50 (the legend at H-48, the prompt at H-30, the status row at H-11).
+// The surplus was 20px of empty checkerboard bought at the wall's expense, so
+// the line moved down: same UI, more room for what is actually on the wall.
+const HUB_FLOOR_PIN_Y = 212;
 const HUB_VIEW_W = W / HUB_ZOOM;
 const HUB_CAM_Y = HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM;
+
+// Wall band and ceiling, both derived rather than written down. Lowering the
+// floor also lowers the top crop (the pin trades ceiling for floor), and a
+// hardcoded fixture y is exactly how the lights ended up drawn off-screen the
+// first time — so the ceiling is defined as "the first world y that is actually
+// on screen", plus clearance for the housing drawCeilingLight hangs at y-4.
+const HUB_WALL_Y0 = 40;
+const HUB_WALL_Y1 = HUB_FLOOR_PIN_Y - 2;            // top of the skirting trim
+const HUB_CEIL_Y = Math.ceil(HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM) + 6;
 
 // Station footprints, all standing on the floor line. The cabinet takes its
 // size from whichever silhouette CABINET_STYLE names rather than hardcoding
@@ -295,6 +311,93 @@ function drawNpcChips(ctx, npcX, cam, idx) {
   }
 }
 
+// A cabinet's remaining business, as nine bulbs set into its marquee.
+//
+// Three placements in and this is the one that holds. On the lower body they sat
+// at y169..187, dead inside the y154..192 band where heroes stand, so the crowd
+// hid them. Mounted on a plate above the machine they cleared the crowd but read
+// as UI hovering over the scene rather than anything the cabinet owned. Here
+// they are recessed into the hood just under the marquee glass — the one strip
+// that is never occluded, and the one place on an arcade cabinet where a row of
+// bulbs is what you would expect to find anyway. The service-door signs already
+// carry bulb rows on the same idiom.
+//
+// Evenly spaced, full stop. An earlier pass grouped them 3-3-3 to mark which
+// stage each triplet belonged to; at a 3px bulb that grouping does not read as
+// grouping, it reads as a row someone spaced badly. The stage breakdown lives on
+// the stage select, where there is room to say it properly.
+//
+// Colours are plugs.js's own BANKED/EMPTY, so a bulb here and a pip in the run
+// HUD mean the same thing.
+// Small. An earlier pass sized these to the largest that would still fit — r 1.9
+// at pitch 5.0 — which made a progress readout the loudest thing on the machine,
+// competing with the marquee art directly above it. At r 1.1 the same pitch
+// leaves a 2.8 gap, so the row reads as inset bulbs rather than a bar of blobs,
+// and the eye goes to the cabinet first and the tally second, which is the right
+// order for something you only consult when you are deciding where to go.
+// A small cluster, not a strip. Sizing these to the hood's width was the mistake
+// behind every earlier pass: nine bulbs spread across 48 units need a backing
+// dark enough to hold them, and that backing then reads as a black bar ruled
+// across the machine with dots printed on it. Pulled into a ~20-unit huddle in
+// the middle they read as one object — a little bank of indicator lamps — and
+// the recess behind them is small enough to be a detail rather than a stripe.
+const PLUG_LIGHT_R = 0.85, PLUG_LIGHT_PITCH = 2.5;
+function drawPlugLights(ctx, slot, cabId, cx, cy, w) {
+  const stages = stagesForCabinet(cabId);
+  const lit = [];
+  for (const st of stages) {
+    const banked = slot.campaign.plugs[st.id] || [];
+    for (let i = 0; i < 3; i++) lit.push(!!banked[i]);
+  }
+  const pitch = PLUG_LIGHT_PITCH;
+  const span = pitch * (lit.length - 1);
+  const x0 = cx - span / 2;
+  // A shallow recess hugging the cluster. Translucent rather than a solid dark
+  // fill, so it darkens whatever chassis colour is under it instead of stamping
+  // the same near-black onto a white cabinet and a near-black one alike.
+  ctx.save();
+  ctx.beginPath();
+  platePath(ctx, x0 - PLUG_LIGHT_R - 1.1, cy - PLUG_LIGHT_R - 0.8,
+    span + PLUG_LIGHT_R * 2 + 2.2, PLUG_LIGHT_R * 2 + 1.6, PLUG_LIGHT_R + 0.8);
+  ctx.fillStyle = 'rgba(6,4,14,0.3)';
+  ctx.fill();
+  ctx.restore();
+
+  for (let i = 0; i < lit.length; i++) {
+    const px = x0 + i * pitch;
+    // No bloom. Nine haloed bulbs turned the strip into a light source that
+    // outshone the marquee art right above it; at this size the gold fill is
+    // already unmistakably "on" against the unlit sockets beside it.
+    ctx.beginPath();
+    ctx.arc(px, cy, PLUG_LIGHT_R, 0, Math.PI * 2);
+    ctx.fillStyle = lit[i] ? '#f6d33c' : 'rgba(10,8,18,0.55)';
+    ctx.fill();
+    // Unlit sockets carry a pale rim rather than leaning on their fill: at this
+    // size a dark disc inside a dark recess is invisible, which turned "nine
+    // sockets, three of them lit" into "three gold dots on a bar".
+    ctx.lineWidth = 0.28;
+    ctx.strokeStyle = lit[i] ? 'rgba(255,248,208,0.45)' : 'rgba(150,155,180,0.5)';
+    ctx.stroke();
+  }
+}
+
+// A boss waiting behind a cabinet is the one thing here that is genuinely NEW
+// rather than merely unfinished, so it gets a colour nothing else uses and a
+// pulse. Only neon/rhythm/surge ever have one.
+function drawBossPip(ctx, cx, cy, r, t) {
+  const pulse = 0.72 + 0.28 * Math.sin(t * 4);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = 'rgba(224,72,72,0.35)';
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.9, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#e04848';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd0d0';
+  ctx.beginPath(); ctx.arc(cx - r * 0.3, cy - r * 0.3, r * 0.35, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 // The cleared badge: a gold star on the corner of the marquee. Small, and on
 // the machine rather than floating above it, because it marks a finished
 // cabinet without competing with the marquee art it sits beside.
@@ -393,6 +496,10 @@ export class HubState {
 
   enter() {
     Input.setContext('default');
+    // Arriving in the food court is the moment you HAVE a hero, so it is the
+    // moment transitions may start showing one. Before this — title, difficulty,
+    // the intro — the shutter stays a plain sticker.
+    setTransitionHero(this.avatarId());
     const returning = this.flow.hubPosition;
     this.px = this.px ?? returning?.px ?? 40;
     this.facing = this.facing ?? returning?.facing ?? 1;
@@ -481,7 +588,11 @@ export class HubState {
       const tappedNpc = npcHit && (!stationHit || npcCloser) ? npcHit : null;
       const onSelf = Math.abs(worldX - this.px) < 20;
       if (tappedStation && onSelf && Math.abs(tappedStation.x - this.px) < 26) this.interact(tappedStation);
-      else if (tappedNpc && onSelf && Math.abs(tappedNpc.x - this.px) < 18) this.chooseNpc(tappedNpc);
+      // Tapping a hero does NOT act on them. It used to run chooseNpc, which
+      // with TALK selected just replayed their line — a second, invisible way to
+      // do a thing the chips already do visibly, and the only one that could
+      // fire by accident while you were trying to walk. The chips are the whole
+      // interface now; a tap on the hero themselves falls through and walks.
       else {
         const target = tappedStation ? tappedStation.x : tappedNpc ? tappedNpc.x : worldX;
         this.walkTarget = Math.max(20, Math.min(this.width - 20, target));
@@ -703,17 +814,47 @@ export class HubState {
     ctx.translate(0, -HUB_CAM_Y);
     // back wall + floor
     ctx.fillStyle = '#241c30';
-    ctx.fillRect(0, 40, HUB_VIEW_W, 150);
+    ctx.fillRect(0, HUB_WALL_Y0, HUB_VIEW_W, HUB_WALL_Y1 - HUB_WALL_Y0);
     ctx.fillStyle = '#38304a';
-    ctx.fillRect(0, 190, HUB_VIEW_W, 6);
+    ctx.fillRect(0, HUB_WALL_Y1, HUB_VIEW_W, 6);
     ctx.fillStyle = '#1c1626';
-    ctx.fillRect(0, 196, HUB_VIEW_W, H - 196);
+    ctx.fillRect(0, HUB_WALL_Y1 + 6, HUB_VIEW_W, H - HUB_WALL_Y1 - 6);
     // checkered food-court floor
     for (let y = 0; y < 3; y++) {
       for (let x = -((cam) % 32); x < HUB_VIEW_W; x += 32) {
         ctx.fillStyle = (Math.floor((x + cam) / 32) + y) % 2 === 0 ? '#241c30' : '#1c1626';
-        ctx.fillRect(Math.round(x), 200 + y * 22, 32, 22);
+        ctx.fillRect(Math.round(x), HUB_WALL_Y1 + 10 + y * 22, 32, 22);
       }
+    }
+    // Wall dressing: posters down the arcade, the menu board over the service
+    // counters (HUB_WALL_PLAN). Drawn straight onto the wall the block above
+    // just laid down — hence base:false — and before the stations, so a cabinet
+    // stands in front of its own poster.
+    //
+    // How lit each bay is falls out of which ceiling fixtures are working, in
+    // SCREEN space: the lights parallax at 0.9 of the camera, so their world
+    // positions drift and only where they land on screen means anything. That
+    // makes the left of an early-act concourse readable and the far end fade
+    // out, and it is why the dressing is worth drawing at all — the detail is
+    // painted once and the lighting decides how much of it you get.
+    const litXs = [];
+    for (let i = 0; i < act * 3 && i < 8; i++) litXs.push(i * 130 - cam * 0.9 + 13);
+    const wallLit = (sx) => wallLitFrom(sx, litXs);
+    for (const bay of HUB_WALL_PLAN) {
+      const bx = bay.x - cam;
+      if (bx + BAY_W < 0 || bx > HUB_VIEW_W) continue;
+      // Colour a poster bay off the machine standing in front of it.
+      const mid = bay.x + BAY_W / 2;
+      let near = null, bestD = Infinity;
+      for (const s of this.stations()) {
+        if (s.type !== 'cabinet') continue;
+        const d = Math.abs(s.x - mid);
+        if (d < bestD) { bestD = d; near = s; }
+      }
+      drawWallBay(ctx, bx, HUB_WALL_Y0, BAY_W, HUB_WALL_Y1 - HUB_WALL_Y0, bay.id, {
+        t: this.t, seed: bay.x, lit: wallLit, base: false,
+        pal: near ? palFor(near.cab, near.unlocked) : null,
+      });
     }
     // ceiling lights: on per act, flickering because the place is falling apart.
     // Drawn at y 46 rather than the ceiling's actual y 34 — HUB_ZOOM's floor pin
@@ -727,7 +868,7 @@ export class HubState {
     for (let i = 0; i < 8; i++) {
       const lx = Math.round(i * 130 - cam * 0.9);
       const on = i < act * 3;
-      drawCeilingLight(ctx, lx, 46, on ? lightFlicker(this.t, i, this.save.settings.reducedFlashing) : 0);
+      drawCeilingLight(ctx, lx, HUB_CEIL_Y, on ? lightFlicker(this.t, i, this.save.settings.reducedFlashing) : 0);
     }
     // Light pooling: every lit machine throws its screen colour onto the tiles
     // in front of it. Drawn before the stations so each cabinet stands ON its
@@ -770,12 +911,19 @@ export class HubState {
           // seconds its dead screen crackles and throws a spark.
           drawDeadScreen(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, this.t, pal.seed, this.save.settings.reducedFlashing);
         }
-        // Cleared: every stage in this cabinet has its mission plug (see
-        // progress.js, which gates the boss on the same flag). That is a
-        // different fact from "lit", which only means unlocked — so it still
-        // needs saying, but as a gold star pinned to the machine rather than as
-        // the word OK floating in the air above it.
-        if (slot.campaign.cleared[s.cab.id]) drawClearedStar(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.05, CAB_W * 0.115);
+        // The corner badge used to be one gold star for `cleared` — every stage's
+        // MISSION plug banked. That flag is doing two unrelated jobs: on six
+        // cabinets it means "missions done", and on neon/rhythm/surge it is
+        // exactly what opens the boss. Worse, once the boss was beaten the flag
+        // stayed true, so "a boss is waiting" and "nothing left here" drew
+        // identically. Three states, three marks:
+        if (s.unlocked) {
+          if (bossAvailable(slot, s.cab.id)) drawBossPip(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.06, CAB_W * 0.06, this.t);
+          else if (slot.campaign.bossesDown[s.cab.id]) drawClearedStar(ctx, x + CAB_W * 0.4, CAB_Y + CAB_H * 0.05, CAB_W * 0.115);
+          // ...and the nine lights carry "how much is left", which is the
+          // question the star was being asked to answer and could not.
+          drawPlugLights(ctx, slot, s.cab.id, x, CAB_Y + CAB_H * 0.215, CAB_W);
+        }
       } else if (s.type === 'socket') {
         // Not a door and not a cabinet: THE SOCKET is a hole in the wall, and
         // the whole joke is that it looks like one.
@@ -815,7 +963,7 @@ export class HubState {
       // doesn't leave them hopping a token amount over a pinprick of shade.
       const hop = n.state === 'hop' ? Math.sin(Math.PI * (1 - n.timer / n.duration)) * NPC_H * 0.26 : 0;
       ctx.fillStyle = 'rgba(4,3,9,0.28)';
-      ctx.beginPath(); ctx.ellipse(x, 192, NPC_H * (n.state === 'hop' ? 0.26 : 0.37), NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, HUB_FLOOR_PIN_Y, NPC_H * (n.state === 'hop' ? 0.26 : 0.37), NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
       drawToon(ctx, n.id, {
         kind: n.state === 'walk' ? 'run' : n.state === 'hop' ? 'jump' : 'idle',
         phase: (this.t * 1.25 + n.cycles * 0.17) % 1,
@@ -823,7 +971,7 @@ export class HubState {
         grounded: n.state !== 'hop',
         vy: n.state === 'hop' ? -40 : 0,
         facing: n.facing || 1,
-      }, x, 192 - hop, NPC_H);
+      }, x, HUB_FLOOR_PIN_Y - hop, NPC_H);
     }
     // THE DUST DEVIL drifts through occasionally, cleaning something
     // impossible (varies by act). ~9s of every ~48, unannounced, then gone.
@@ -833,7 +981,7 @@ export class HubState {
       // The act-2 ceiling cameo rides the same crop-safe strip as the lights
       // (y 46, see above) — there's only ~2px of margin above the crop line,
       // not enough room to place it above them and still be visible.
-      const [ddY, onCeiling] = [[178, false], [48, true], [118, false]][Math.min(act - 1, 2)];
+      const [ddY, onCeiling] = [[178, false], [HUB_CEIL_Y + 4, true], [118, false]][Math.min(act - 1, 2)];
       // Screen-relative glide, right to left — whenever it visits, you see it.
       const ddX = Math.round(HUB_VIEW_W + 20 - (ddCyc / 9) * (HUB_VIEW_W + 60));
       ctx.save();
@@ -858,15 +1006,15 @@ export class HubState {
     // voice.
     const pxs = Math.round(this.px - cam);
     ctx.fillStyle = 'rgba(4,3,9,0.4)';
-    ctx.beginPath(); ctx.ellipse(pxs, 192, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(pxs, HUB_FLOOR_PIN_Y, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     drawToon(ctx, heroId, {
       kind: moving ? 'run' : 'idle',
       phase: (this.t * 1.6) % 1,
       time: this.t,
       grounded: true,
       facing: this.facing || 1,
-    }, pxs, 192, PLAYER_H);
-    drawPlayerMarker(ctx, pxs, 192 - PLAYER_H - 10 + Math.sin(this.t * 2.6) * 1.3, 3.2);
+    }, pxs, HUB_FLOOR_PIN_Y, PLAYER_H);
+    drawPlayerMarker(ctx, pxs, HUB_FLOOR_PIN_Y - PLAYER_H - 10 + Math.sin(this.t * 2.6) * 1.3, 3.2);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
     // the contextual prompt, the location name, a PLUGS/COINS/ACT readout and a

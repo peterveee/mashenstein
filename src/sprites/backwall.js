@@ -11,10 +11,67 @@
 // Painters are deliberately side-effect free and deterministic: they are called
 // every frame, so a Math.random() anywhere here would make the wall crawl.
 import { rr, shape, plain, stroke } from './props.js';
+import { GENRE_MOTIFS } from './arcade.js';
+import { TOON_SPECS, drawToon } from './toons.js';
 
-// The wall band, mirroring hub/index.js: ceiling at 40, floor line at 190.
-// A bay is one ceiling-light span wide (the lights sit every 130px).
-export const WALL_Y0 = 40, WALL_Y1 = 190, WALL_H = WALL_Y1 - WALL_Y0;
+// Who is on the poster for which machine. A cover needs a face — the genre icon
+// alone is a pictogram, and three pictograms in a row is signage, not
+// advertising. The obvious castings are the joke (the plumber game fronts the
+// plumber, the speed game fronts the needlemouse, the blaster game fronts the
+// blastbot); the rest are a straight one-per-cabinet spread so no hero fronts
+// two machines. Nothing downstream depends on this being canon — an id that is
+// not a real toon just falls back to the genre motif.
+const CABINET_STAR = {
+  plumber: 'lorenzo', speed: 'gnash', neon: 'b33p', frost: 'fernwick',
+  crypt: 'grumpos', rhythm: 'mochi', cardboard: 'raymn', office: 'chompo',
+  surge: 'gary',
+};
+
+// A poster is a still image, so its hero is rendered once and stamped after
+// that. Drawing a dozen live toons a frame — three posters a bay, several bays
+// on screen — to animate artwork that is nailed to a wall would be paying for
+// motion nobody can see. Supersampled so the plate stays clean under the hub's
+// zoom, and keyed by size so one cache serves the hub and the gallery.
+const STAR_PLATES = new Map();
+function starPlate(id, w, h) {
+  const key = `${id}|${Math.round(w)}x${Math.round(h)}`;
+  if (STAR_PLATES.has(key)) return STAR_PLATES.get(key);
+  let plate = null;
+  try {
+    if (typeof document !== 'undefined' && TOON_SPECS[id] && w > 0 && h > 0) {
+      const S = 3;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(w * S));
+      cv.height = Math.max(1, Math.round(h * S));
+      const cx = cv.getContext('2d');
+      if (cx && cx.save) {
+        cx.scale(S, S);
+        drawToon(cx, id, {
+          kind: 'idle', phase: 0, time: 0, grounded: true, facing: 1,
+          vy: 0, squash: 0, lean: 0,
+        }, w / 2, h, h * 0.94);
+        plate = cv;
+      }
+    }
+  } catch { plate = null; } // headless/stubbed canvas: fall back to the motif
+  STAR_PLATES.set(key, plate);
+  return plate;
+}
+
+// Perceptual-ish brightness, for deciding whether artwork printed on a given
+// paper wants dark ink or light. Cabinet bodies run from near-black to pale, so
+// a fixed choice would lose the illustration on half the concourse.
+function luma(c) {
+  const s = String(c).replace('#', '');
+  const n = parseInt(s.length === 3 ? s.split('').map((k) => k + k).join('') : s, 16);
+  return (((n >> 16) & 255) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114) / 255;
+}
+
+// The wall band, mirroring hub/index.js' HUB_WALL_Y0/HUB_WALL_Y1: ceiling at
+// 40, skirting at 210. A bay is one ceiling-light span wide (lights every
+// 130px). Kept in step with the hub by hand — the gallery has to frame these at
+// the height the concourse actually gives them or the mockups lie about fit.
+export const WALL_Y0 = 40, WALL_Y1 = 210, WALL_H = WALL_Y1 - WALL_Y0;
 export const BAY_W = 130;
 
 // The hub's own wall colours, so a dressed bay sits on exactly the surface the
@@ -45,9 +102,19 @@ function rnd(seed, i) {
 // This is the piece that makes the dressings worth drawing: detail is painted
 // once and the light decides how much of it you get to see.
 export function wallLitAt(x, litCount, spacing = BAY_W, reach = spacing * 1.15) {
-  if (litCount <= 0) return 0;
+  const xs = [];
+  for (let i = 0; i < litCount; i++) xs.push(i * spacing + spacing / 2);
+  return wallLitFrom(x, xs, reach);
+}
+
+// The same falloff against fixtures whose positions are known outright. The hub
+// parallaxes its ceiling lights (they slide at 0.9 of the camera), so their
+// world positions drift and only their SCREEN x is meaningful — this takes that
+// list directly rather than deriving it from an index.
+export function wallLitFrom(x, positions, reach = BAY_W * 1.15) {
+  if (!positions || !positions.length) return 0;
   let best = Infinity;
-  for (let i = 0; i < litCount; i++) best = Math.min(best, Math.abs(x - (i * spacing + spacing / 2)));
+  for (const p of positions) best = Math.min(best, Math.abs(x - p));
   // Smoothstep the falloff — a linear ramp reads as a hard cone edge.
   const k = Math.max(0, Math.min(1, 1 - best / reach));
   return k * k * (3 - 2 * k);
@@ -264,8 +331,9 @@ function paintPosters(ctx, x, y, w, h, o) {
   const X = (f) => x + w * f, Y = (f) => y + h * f;
   const u = olU(w);
   const pal = o.pal || {};
-  const paper = pal.body || '#5a4a7a';
-  const ink = pal.screen || '#f6d33c';
+  const paper = pal.body || '#5a4a7a';   // the stock, from the cabinet's chassis
+  const plate = pal.screen || '#101018'; // art plate: the one value that always contrasts it
+  const ink = pal.button || '#f6d33c';   // wordmark — dull on a locked machine, gold on a live one
 
   const poster = (fx, fy, fw, fh, tilt, torn, seed) => {
     const pw = w * fw, ph = h * fh;
@@ -285,18 +353,60 @@ function paintPosters(ctx, x, y, w, h, o) {
       c.lineTo(0, ph);
       c.closePath();
     });
-    // Title bar and a motif blocked in — a poster reads as a poster from its
-    // layout, not from legible text at 30px wide.
-    plain(ctx, ink, (c) => c.rect(pw * 0.10, ph * 0.10, pw * 0.80, ph * 0.13));
-    plain(ctx, 'rgba(255,255,255,0.22)', (c) => {
-      c.arc(pw * 0.50, ph * 0.48, Math.min(pw, ph) * 0.20, 0, Math.PI * 2);
-    });
-    for (let i = 0; i < 3; i++) {
-      plain(ctx, 'rgba(0,0,0,0.28)',
-        (c) => c.rect(pw * 0.16, ph * (0.70 + i * 0.09), pw * (0.66 - i * 0.16), ph * 0.045));
+    // A composition, not a stack of bars. What made this read as "basic" was
+    // that every element was the same thing — a flat rectangle on a flat
+    // rectangle — with the one piece of artwork printed in a dark ink barely a
+    // shade off the paper, so it disappeared. A real cover has depth of field:
+    // a bordered sheet, an art plate that is a DIFFERENT value from the stock,
+    // a subject with a face, and a wordmark. That is what is below.
+    //
+    // Printed margin, so the sheet has an edge rather than bleeding to the cut.
+    stroke(ctx, luma(paper) > 0.42 ? 'rgba(14,10,20,0.30)' : 'rgba(240,238,248,0.22)',
+      Math.max(0.4, pw * 0.018), (c) => c.rect(pw * 0.06, ph * 0.05, pw * 0.88, ph * 0.90));
+
+    // The art plate. Filled with the cabinet's SCREEN colour, which is the one
+    // value in the palette guaranteed to contrast its body — this is what the
+    // dark-green-icon-on-green version was missing.
+    const ax = pw * 0.11, ay = ph * 0.16, aw = pw * 0.78, ah = ph * 0.48;
+    plain(ctx, plate, (c) => c.rect(ax, ay, aw, ah));
+
+    // The star, stamped from a cached plate. Full-colour character art against
+    // the flat plate does the heavy lifting: it is the only element with more
+    // than one hue in it, so the eye reads it as the subject immediately.
+    const star = starPlate(CABINET_STAR[pal.motif], aw * 0.62, ah * 0.94);
+    if (star) {
+      ctx.drawImage(star, ax + aw * 0.19, ay + ah * 0.06, aw * 0.62, ah * 0.94);
     }
-    // Bleached by whatever light still reaches it.
-    plain(ctx, 'rgba(232,228,240,0.14)', (c) => c.rect(0, 0, pw, ph));
+    // The genre motif keeps a place, demoted to a corner badge — a logo on the
+    // artwork rather than instead of it.
+    const art = GENRE_MOTIFS[pal.motif];
+    if (art) {
+      const s = Math.min(aw, ah) * 0.30;
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.translate(ax + aw - s * 1.05, ay + ah - s * 1.05);
+      art(ctx, s, s, luma(plate) > 0.42 ? 'rgba(14,10,20,0.75)' : 'rgba(240,238,248,0.72)', plate);
+      ctx.restore();
+    }
+
+    // Wordmark: two blocks of unequal width, which is the shape of a two-word
+    // arcade title. One centred bar read as a placeholder; this reads as type
+    // too small to make out, which is exactly what it is.
+    plain(ctx, ink, (c) => c.rect(pw * 0.13, ph * 0.68, pw * 0.62, ph * 0.085));
+    plain(ctx, ink, (c) => c.rect(pw * 0.13, ph * 0.785, pw * 0.40, ph * 0.065));
+    // Small print along the bottom.
+    plain(ctx, luma(paper) > 0.42 ? 'rgba(14,10,20,0.28)' : 'rgba(240,238,248,0.22)',
+      (c) => c.rect(pw * 0.13, ph * 0.885, pw * 0.52, ph * 0.030));
+
+    // A fold crease down the sheet — the one line that says "this was printed,
+    // folded into a box, and put up by hand" rather than rendered.
+    stroke(ctx, 'rgba(255,255,255,0.13)', Math.max(0.3, pw * 0.012),
+      (c) => { c.moveTo(pw * 0.62, 0); c.lineTo(pw * 0.58, ph); });
+    // Bleached by whatever light still reaches it — but lightly. At 0.14 the
+    // wash greyed the stock down to the point that nine differently-coloured
+    // cabinets all advertised on the same beige, which cost the one thing the
+    // per-cabinet palette was bought for.
+    plain(ctx, 'rgba(232,228,240,0.08)', (c) => c.rect(0, 0, pw, ph));
     // Tape, over the top of the sheet so it reads as holding it up.
     for (const tx of [0.06, 0.78]) {
       plain(ctx, 'rgba(236,236,246,0.30)', (c) => c.rect(pw * tx, -ph * 0.05, pw * 0.16, ph * 0.10));
@@ -304,13 +414,28 @@ function paintPosters(ctx, x, y, w, h, o) {
     ctx.restore();
   };
 
-  poster(0.10, 0.10, 0.30, 0.42, -0.045, true, o.seed);
-  poster(0.52, 0.14, 0.26, 0.34, 0.055, false, o.seed + 4);
-  // A flyer that lost its tape and is hanging by one corner.
+  // Sized and banded deliberately. A poster is set dressing, not furniture: at
+  // the first pass these ran 39x63 against a 48x85 cabinet, which put wall art
+  // and arcade machine at the same visual weight and flattened the scene. These
+  // are roughly a third of a cabinet and live entirely in fy 0.10..0.42 — world
+  // y 55..103, the strip above the cabinet tops at 107 — so they fill the empty
+  // band the concourse actually has rather than crowding the machines. The whole
+  // group is knocked back a little so it sits behind everything as well.
+  // Jittered off the bay's own seed. The concourse shows about three bays at
+  // once, so a fixed arrangement repeated down the wall reads as wallpaper —
+  // shifting each sheet a little, and letting the seed decide which ones are
+  // torn and which way they hang, is enough to break the tiling without
+  // needing a second layout.
+  const j = (i, amt) => (rnd(o.seed, i) - 0.5) * amt;
   ctx.save();
-  ctx.translate(X(0.86), Y(0.12));
-  ctx.rotate(0.42);
-  plain(ctx, 'rgba(232,228,240,0.45)', (c) => c.rect(0, 0, w * 0.10, h * 0.16));
+  ctx.globalAlpha = 0.88;
+  poster(0.04 + j(1, 0.05), 0.17 + j(2, 0.05), 0.21, 0.30, -0.05 + j(3, 0.07), rnd(o.seed, 9) > 0.4, o.seed);
+  poster(0.31 + j(4, 0.05), 0.21 + j(5, 0.05), 0.19, 0.27, 0.06 + j(6, 0.07), rnd(o.seed, 10) > 0.7, o.seed + 4);
+  poster(0.57 + j(7, 0.05), 0.16 + j(8, 0.05), 0.20, 0.29, -0.03 + j(11, 0.07), rnd(o.seed, 12) > 0.45, o.seed + 8);
+  // A flyer that lost its tape and is hanging by one corner.
+  ctx.translate(X(0.80 + j(13, 0.05)), Y(0.22 + j(14, 0.06)));
+  ctx.rotate(0.42 + j(15, 0.5));
+  plain(ctx, 'rgba(232,228,240,0.38)', (c) => c.rect(0, 0, w * 0.07, h * 0.11));
   ctx.restore();
 }
 
@@ -464,6 +589,7 @@ export const WALL_DRESSINGS = {
     name: 'Food court menu board',
     note: 'The literal food court, still advertising. Items struck through and rewritten in marker — a joke slot.',
     paint: paintMenuBoard,
+    selfLit: 0.42, // backlit: dim in a dead stretch, never invisible
   },
   partydecor: {
     name: 'Leftover party decor',
@@ -471,6 +597,22 @@ export const WALL_DRESSINGS = {
     paint: paintPartyDecor,
   },
 };
+
+// What actually hangs where, in hub world x. Posters run the length of the
+// cabinet arcade (stations sit from x 70 to about 582), each bay taking its
+// colours from the machine standing in front of it; the menu board is further
+// along on the right, over the service counters — which is where a food court
+// would have put it, and where it stops being competition for nine marquees.
+// Everything past that is left bare: the far end of the concourse should read
+// as the part nobody bothered to decorate.
+export const HUB_WALL_PLAN = [
+  { x: 0, id: 'posters' },
+  { x: BAY_W, id: 'posters' },
+  { x: BAY_W * 2, id: 'posters' },
+  { x: BAY_W * 3, id: 'posters' },
+  { x: BAY_W * 4, id: 'posters' },
+  { x: BAY_W * 5, id: 'menuboard' },
+];
 
 // Paint one dressed bay: wall, dressing, then the light falloff over the top.
 // `lit` is 0..1 (see wallLitAt); `pal` is a cabinet palette for the dressings
@@ -486,5 +628,10 @@ export function drawWallBay(ctx, x, y, w, h, id, { t = 0, seed = 0, lit = 1, pal
     d.paint(ctx, x, y, w, h, { t, seed, pal });
     ctx.restore();
   }
-  shadeWall(ctx, x, y, w, h, lit);
+  // A dressing that carries its own power never goes fully dark, however far it
+  // is from a working ceiling light — the menu board is a lightbox, and the one
+  // thing still running in an abandoned food court being the menu is the joke.
+  const floor = d ? (d.selfLit || 0) : 0;
+  shadeWall(ctx, x, y, w, h,
+    typeof lit === 'function' ? (lx) => Math.max(floor, lit(lx)) : Math.max(floor, lit));
 }

@@ -8,8 +8,9 @@
 // translating the context, rather than by changing how entities draw.
 import { W, H } from '../src/engine/renderer.js';
 import { getSprite } from '../src/engine/sprites.js';
-import { buildAllSprites, drawWorldEntity, drawHeroSprite, HERO_DRAW_W, HERO_DRAW_H } from '../src/game/draw.js';
+import { buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, HERO_DRAW_W, HERO_DRAW_H } from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
+import { HERO_BY_ID } from '../src/data/heroes.js';
 import { PROP_PAINTERS, drawProp, propFrames, propTall, glowSprite, sparkSprite } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
@@ -155,8 +156,18 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const ids = Object.keys(TOON_SPECS);
   const grid = section('heroes', 'Heroes — poses',
     `${ids.length} heroes x 4 poses, drawn by drawToon() at 3x the in-game ${HERO_DRAW_W}x${HERO_DRAW_H} box. `
-    + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move.');
+    + 'Celebrate is the results-screen victory routine: each hero\'s signature bounce, then their big move. '
+    + 'Power up is the flourish drawHeroSprite overlays the instant their ability fires in a real run — '
+    + 'drawPowerPose(), keyed off ability.type. Four types (dash/roll/fist/axe) have none coded yet and '
+    + 'lean on the ability\'s own world effect instead, so those tiles show the bare cast animation.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
+  // drawPowerPose's offsets are tuned for the in-run 24px-tall sprite; scale
+  // them up to match how much taller these gallery toons are drawn.
+  const POWERPOSE_SCALE = HH / HERO_DRAW_H;
+  // Loops the same 0..0.3s countdown useAbility() sets player.powerPoseT to,
+  // rather than freezing on one alpha, so the flourish visibly flashes in.
+  const POWERPOSE_PERIOD = 1.4;
+  const powerPoseAlpha = (t) => Math.min(1, Math.max(0, 0.3 - (t % POWERPOSE_PERIOD)) * 5);
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
       // The victory routine hops/spins up to ~0.26*HH above standing, so its
@@ -168,6 +179,15 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
         drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
+    // Gary is cast-roll flavour, not a roster member — he has no ability to show.
+    const hero = HERO_BY_ID[id];
+    if (!hero) continue;
+    const th = HH * 1.3;
+    tile(grid, id, `powerup · ${hero.ability.label}`, HH * 0.9, th, (ctx, t) => {
+      const cx = (HH * 0.9) / 2, feetY = th - HH * 0.05;
+      drawToon(ctx, id, pose('run', t), cx, feetY, HH);
+      drawPowerPose(ctx, cx, feetY, hero.ability.type, powerPoseAlpha(t), POWERPOSE_SCALE);
+    }, { animated: true });
   }
 }
 
