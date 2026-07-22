@@ -47,9 +47,20 @@ function section(id, title, note) {
   root.appendChild(s);
   const a = document.createElement('a');
   a.href = `#h-${id}`;
+  a.dataset.target = id;
   a.textContent = title;
   nav.appendChild(a);
   return grid;
+}
+
+// A nav label with no target section — just a visual break before the lab
+// cluster, so "still iterating on this" reads as a different kind of content
+// from the production reference sections above it.
+function navSeparator(label) {
+  const sep = document.createElement('span');
+  sep.className = 'nav-sep';
+  sep.textContent = label;
+  nav.appendChild(sep);
 }
 
 // One tile. `draw(ctx, t)` paints into a w-by-h logical canvas. The backing
@@ -209,32 +220,44 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
 }
 
-// ------------------------------------------------- 2a. grumpos build lab
+// ---------------------------------------------------------- 2a. pose comparison
+// The same cast, grouped by pose instead of by hero: "All Idle", "All Run", etc.
+// The heroes section above is one row per hero across every pose — great for
+// judging one character, bad for spotting the one hero whose run cycle reads
+// wrong next to everyone else's. This is that comparison, the other way round.
 {
-  // Torso-shape options for grumpos: heavy alone reads as belly, so these
-  // trade barrel width for an inverted taper, deltoid caps and chest shading.
-  // Each tile temporarily swaps TOON_SPECS.grumpos around its own draw — the
-  // spec is the only thing that varies, so the comparison is honest.
-  const BUILDS = [
-    ['A · barrel', 'no taper — the pre-change baseline', { taper: 1 }],
-    ['B · mild taper', 'waist 0.82 of the shoulders — SHIPPING', {}],
-    ['C · hard taper', 'waist 0.68 — full V', { taper: 0.68 }],
-    ['D · taper + delts', 'C plus deltoid caps', { taper: 0.68, delts: true }],
-    ['E · the works', 'D plus pec/sternum shading', { taper: 0.68, delts: true, pecs: true }],
-    ['F · wide + hard V', 'shoulders +12%, waist 0.62 of that', { shoulders: 1.12, taper: 0.62, delts: true, pecs: true }],
-  ];
-  const grid = section('grumpos-build', 'Grumpos — build lab',
-    'Torso silhouette options, idle and run side by side. Display-only: the shipping '
-    + 'look is whatever TOON_SPECS.grumpos carries in src/sprites/toons.js.');
+  const ids = Object.keys(TOON_SPECS);
+  const secId = 'pose-compare';
+  const title = 'Heroes — pose comparison';
+  const s = document.createElement('section');
+  s.id = secId;
+  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
+    + `<p class="note">The whole cast doing the same pose, lined up together — an outlier `
+    + 'stands out fast here in a way it does not when every hero only appears next to their '
+    + 'own other poses.</p>';
+  root.appendChild(s);
+  const navLink = document.createElement('a');
+  navLink.href = `#h-${secId}`;
+  navLink.dataset.target = secId;
+  navLink.textContent = title;
+  nav.appendChild(navLink);
+
   const HH = 60;
-  const base = { ...TOON_SPECS.grumpos };
-  for (const [name, note, mods] of BUILDS) {
-    for (const kind of ['idle', 'run']) {
-      const th = HH * 1.15;
-      tile(grid, name, `${kind} · ${note}`, HH * 0.9, th, (ctx, t) => {
-        TOON_SPECS.grumpos = { ...base, ...mods };
-        drawToon(ctx, 'grumpos', pose(kind, t), (HH * 0.9) / 2, th - HH * 0.05, HH);
-        TOON_SPECS.grumpos = base;
+  const LABELS = { idle: 'All Idle', run: 'All Run', jump: 'All Jump', duck: 'All Duck', celebrate: 'All Celebrate' };
+  for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = LABELS[kind];
+    s.appendChild(h3);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    // Mirrors the heroes section's own tile heights so a side-by-side glance
+    // between the two sections compares like for like.
+    const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
+    for (const hid of ids) {
+      tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
+        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
@@ -272,6 +295,134 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     }, { animated: true });
   }
 }
+
+// ---------------------------------------------------------------- 3. props
+{
+  const names = Object.keys(PROP_PAINTERS);
+  const grid = section('props', 'Props (vector painters)',
+    `${names.length} entries in PROP_PAINTERS, drawn via drawProp(). Multi-frame props cycle.`);
+  // Nominal box: reuse the gameplay size where a def references this sprite.
+  const sizeOf = (n) => {
+    const def = Object.values(OBSTACLES).find((d) => d.sprite === n)
+      || Object.values(PICKUPS).find((d) => d.sprite === n);
+    return def ? { w: def.w, h: def.h } : { w: 16, h: 16 };
+  };
+  for (const n of names) {
+    const { w, h } = sizeOf(n);
+    const fh = Math.round(h * propTall(n));
+    const frames = propFrames(n);
+    tile(grid, n, `${w}x${fh}${frames > 1 ? ` · ${frames}f` : ''}`, w + 8, fh + 8, (ctx, t) => {
+      const f = frames > 1 ? Math.floor(t * 8) % frames : 0;
+      drawProp(ctx, n, 4, 4, w, fh, f);
+    }, { animated: frames > 1 });
+  }
+}
+
+// ------------------------------------------------------- 3b. food court furniture
+{
+  const grid = section('foodcourt', 'Food court furniture',
+    'The hub concourse, at the size HubState draws it: nine cabinets lit and dead '
+    + '(sprites/arcade.js), the overtime machine, and every service door. '
+    + 'Cabinet colours come straight from each CABINETS entry.');
+  const CW = 40, CH = 90, DW = 44, DH = 84;
+  const cabTile = (cab, unlocked) => {
+    const pal = cabinetPalette(cab, unlocked);
+    // The first cabinet has no unlock threshold at all, so UNLOCKS has no entry
+    // for it — say "free" rather than "undefined plugs".
+    tile(grid, cab.id + (unlocked ? '' : ' (locked)'), unlocked ? cab.genre : `${UNLOCKS[cab.id] ?? 0} plugs`,
+      CW + 8, CH + 8, (ctx, t) => {
+        drawCabinetShell(ctx, 4, 4, CW, CH, pal);
+        const scr = drawCabinetScreen(ctx, 4, 4, CW, CH, pal);
+        if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+      }, { animated: unlocked });
+  };
+  for (const cab of CABINETS) cabTile(cab, true);
+  for (const cab of CABINETS) cabTile(cab, false);
+  tile(grid, 'overtime', 'OVERTIME_PALETTE', CW + 8, CH + 8,
+    (ctx) => drawCabinetShell(ctx, 4, 4, CW, CH, OVERTIME_PALETTE));
+  for (const [type, pal] of Object.entries(DOOR_PALETTES)) {
+    tile(grid, type, `${pal.icon} sign`, DW + 8, DH + 8,
+      (ctx) => drawDoor(ctx, 4, 4, DW, DH, pal));
+  }
+}
+
+// ---------------------------------------------------------------- 4. world sprites
+{
+  const keys = Object.keys(WORLD_SPRITES);
+  const grid = section('world', 'World sprites (pixel grids)',
+    `${keys.length} pixel-grid sprites from WORLD_SPRITES, built by buildAllSprites() and read back via getSprite().`);
+  for (const k of [...keys, 'zombieWalk']) {
+    const spr = getSprite(k);
+    if (!spr) { tile(grid, k, 'not in cache', 16, 16, () => {}); continue; }
+    tile(grid, k, `${spr.width}x${spr.height}`, spr.width + 4, spr.height + 4,
+      (ctx) => ctx.drawImage(spr, 2, 2));
+  }
+}
+
+// ---------------------------------------------------------------- 5. obstacles
+{
+  const grid = section('obstacles', 'Obstacles (in-world)',
+    'Real drawWorldEntity() path — shadow, bob, telegraphs and all. Styled with the pixel pack.');
+  const style = getStylePack('pixel', {});
+  for (const type of Object.keys(OBSTACLES)) {
+    const def = OBSTACLES[type];
+    const e = makeObstacle(type, 100);
+    // Gaps are holes in the ground, not art: drawWorldEntity skips them and the
+    // pack's ground() cuts them. An empty tile here is correct, so say so.
+    const sub = def.isGap
+      ? `${def.w}x${def.h} · no art — cut by ground()`
+      : `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`;
+    entityTile(grid, type, sub, e, style);
+  }
+}
+
+// ---------------------------------------------------------------- 6. pickups
+{
+  const grid = section('pickups', 'Pickups (in-world)', 'Real drawWorldEntity() path, pixel pack.');
+  const style = getStylePack('pixel', {});
+  for (const type of Object.keys(PICKUPS)) {
+    const def = PICKUPS[type];
+    const e = makePickup(type, 100);
+    entityTile(grid, type, `${def.w}x${def.h}${def.power ? ' · ' + def.power : ''}`, e, style);
+  }
+}
+
+// ---------------------------------------------------------------- 7. obstacles x styles
+{
+  const grid = section('style-matrix', 'Style matrix',
+    'The same crate through every style pack — decorate() is what differs.');
+  for (const cab of CABINETS) {
+    const style = getStylePack(cab.style, {});
+    const e = makeObstacle('crate', 100);
+    entityTile(grid, cab.style, cab.id, e, style);
+  }
+}
+
+// ---------------------------------------------------------------- 8. effects + hud
+{
+  const grid = section('effects', 'Effects & HUD bits', 'Glow/spark sprite factories and the plug row.');
+  for (const [id, def] of Object.entries(POWER_DEFS)) {
+    const g = glowSprite(def.color, 16);
+    tile(grid, id, `glow · ${def.name}`, g.width, g.height, (ctx) => ctx.drawImage(g, 0, 0));
+  }
+  for (const [id, def] of Object.entries(POWER_DEFS)) {
+    const s = sparkSprite(def.color);
+    tile(grid, id, 'spark', s.width + 8, s.height + 8, (ctx) => ctx.drawImage(s, 4, 4));
+  }
+  const size = 11;
+  tile(grid, 'plug row', `${PLUG_NAMES.join('/')} — banked/live/empty`, PLUG_ROW_W(size) + 8, size + 8,
+    (ctx, t) => drawPlugRow(ctx, 4, 4, Math.floor(t) % 4, [false, true, false], size), { animated: true });
+  tile(grid, 'plug icons', PLUG_ICONS.join(' · '), 16 * 3 + 8, 24, (ctx) => {
+    PLUG_ICONS.forEach((n, i) => drawProp(ctx, n, 4 + i * 16, 4, 14, 14));
+  });
+}
+
+// ==================================================================
+// LAB & BAKE-OFFS — dev-only comparisons kept below the production
+// reference sections above. These render real code paths but decide or
+// audit a still-open art question rather than document a shipped asset.
+// ==================================================================
+navSeparator('lab / bake-offs');
 
 // -------------------------------------------------------------- 2a. turn sheet
 {
@@ -569,56 +720,6 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
 }
 
-// ---------------------------------------------------------------- 3. props
-{
-  const names = Object.keys(PROP_PAINTERS);
-  const grid = section('props', 'Props (vector painters)',
-    `${names.length} entries in PROP_PAINTERS, drawn via drawProp(). Multi-frame props cycle.`);
-  // Nominal box: reuse the gameplay size where a def references this sprite.
-  const sizeOf = (n) => {
-    const def = Object.values(OBSTACLES).find((d) => d.sprite === n)
-      || Object.values(PICKUPS).find((d) => d.sprite === n);
-    return def ? { w: def.w, h: def.h } : { w: 16, h: 16 };
-  };
-  for (const n of names) {
-    const { w, h } = sizeOf(n);
-    const fh = Math.round(h * propTall(n));
-    const frames = propFrames(n);
-    tile(grid, n, `${w}x${fh}${frames > 1 ? ` · ${frames}f` : ''}`, w + 8, fh + 8, (ctx, t) => {
-      const f = frames > 1 ? Math.floor(t * 8) % frames : 0;
-      drawProp(ctx, n, 4, 4, w, fh, f);
-    }, { animated: frames > 1 });
-  }
-}
-
-// ------------------------------------------------------- 3b. food court furniture
-{
-  const grid = section('foodcourt', 'Food court furniture',
-    'The hub concourse, at the size HubState draws it: nine cabinets lit and dead '
-    + '(sprites/arcade.js), the overtime machine, and every service door. '
-    + 'Cabinet colours come straight from each CABINETS entry.');
-  const CW = 40, CH = 90, DW = 44, DH = 84;
-  const cabTile = (cab, unlocked) => {
-    const pal = cabinetPalette(cab, unlocked);
-    // The first cabinet has no unlock threshold at all, so UNLOCKS has no entry
-    // for it — say "free" rather than "undefined plugs".
-    tile(grid, cab.id + (unlocked ? '' : ' (locked)'), unlocked ? cab.genre : `${UNLOCKS[cab.id] ?? 0} plugs`,
-      CW + 8, CH + 8, (ctx, t) => {
-        drawCabinetShell(ctx, 4, 4, CW, CH, pal);
-        const scr = drawCabinetScreen(ctx, 4, 4, CW, CH, pal);
-        if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-      }, { animated: unlocked });
-  };
-  for (const cab of CABINETS) cabTile(cab, true);
-  for (const cab of CABINETS) cabTile(cab, false);
-  tile(grid, 'overtime', 'OVERTIME_PALETTE', CW + 8, CH + 8,
-    (ctx) => drawCabinetShell(ctx, 4, 4, CW, CH, OVERTIME_PALETTE));
-  for (const [type, pal] of Object.entries(DOOR_PALETTES)) {
-    tile(grid, type, `${pal.icon} sign`, DW + 8, DH + 8,
-      (ctx) => drawDoor(ctx, 4, 4, DW, DH, pal));
-  }
-}
-
 // --------------------------------------------------- 3c. cabinet style bake-off
 // Four silhouettes of the same machine, so the choice can be made by looking
 // rather than by describing. Every style shares the hardware (controls, coin
@@ -716,77 +817,6 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
 }
 
-// ---------------------------------------------------------------- 4. world sprites
-{
-  const keys = Object.keys(WORLD_SPRITES);
-  const grid = section('world', 'World sprites (pixel grids)',
-    `${keys.length} pixel-grid sprites from WORLD_SPRITES, built by buildAllSprites() and read back via getSprite().`);
-  for (const k of [...keys, 'zombieWalk']) {
-    const spr = getSprite(k);
-    if (!spr) { tile(grid, k, 'not in cache', 16, 16, () => {}); continue; }
-    tile(grid, k, `${spr.width}x${spr.height}`, spr.width + 4, spr.height + 4,
-      (ctx) => ctx.drawImage(spr, 2, 2));
-  }
-}
-
-// ---------------------------------------------------------------- 5. obstacles
-{
-  const grid = section('obstacles', 'Obstacles (in-world)',
-    'Real drawWorldEntity() path — shadow, bob, telegraphs and all. Styled with the pixel pack.');
-  const style = getStylePack('pixel', {});
-  for (const type of Object.keys(OBSTACLES)) {
-    const def = OBSTACLES[type];
-    const e = makeObstacle(type, 100);
-    // Gaps are holes in the ground, not art: drawWorldEntity skips them and the
-    // pack's ground() cuts them. An empty tile here is correct, so say so.
-    const sub = def.isGap
-      ? `${def.w}x${def.h} · no art — cut by ground()`
-      : `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`;
-    entityTile(grid, type, sub, e, style);
-  }
-}
-
-// ---------------------------------------------------------------- 6. pickups
-{
-  const grid = section('pickups', 'Pickups (in-world)', 'Real drawWorldEntity() path, pixel pack.');
-  const style = getStylePack('pixel', {});
-  for (const type of Object.keys(PICKUPS)) {
-    const def = PICKUPS[type];
-    const e = makePickup(type, 100);
-    entityTile(grid, type, `${def.w}x${def.h}${def.power ? ' · ' + def.power : ''}`, e, style);
-  }
-}
-
-// ---------------------------------------------------------------- 7. obstacles x styles
-{
-  const grid = section('style-matrix', 'Style matrix',
-    'The same crate through every style pack — decorate() is what differs.');
-  for (const cab of CABINETS) {
-    const style = getStylePack(cab.style, {});
-    const e = makeObstacle('crate', 100);
-    entityTile(grid, cab.style, cab.id, e, style);
-  }
-}
-
-// ---------------------------------------------------------------- 8. effects + hud
-{
-  const grid = section('effects', 'Effects & HUD bits', 'Glow/spark sprite factories and the plug row.');
-  for (const [id, def] of Object.entries(POWER_DEFS)) {
-    const g = glowSprite(def.color, 16);
-    tile(grid, id, `glow · ${def.name}`, g.width, g.height, (ctx) => ctx.drawImage(g, 0, 0));
-  }
-  for (const [id, def] of Object.entries(POWER_DEFS)) {
-    const s = sparkSprite(def.color);
-    tile(grid, id, 'spark', s.width + 8, s.height + 8, (ctx) => ctx.drawImage(s, 4, 4));
-  }
-  const size = 11;
-  tile(grid, 'plug row', `${PLUG_NAMES.join('/')} — banked/live/empty`, PLUG_ROW_W(size) + 8, size + 8,
-    (ctx, t) => drawPlugRow(ctx, 4, 4, Math.floor(t) % 4, [false, true, false], size), { animated: true });
-  tile(grid, 'plug icons', PLUG_ICONS.join(' · '), 16 * 3 + 8, 24, (ctx) => {
-    PLUG_ICONS.forEach((n, i) => drawProp(ctx, n, 4 + i * 16, 4, 14, 14));
-  });
-}
-
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.
 const io = new IntersectionObserver((entries) => {
@@ -819,16 +849,52 @@ window.__gallery = {
   get errors() { return tiles.filter((t) => t.stack); },
 };
 
+// Nav pills get a tile count so you can tell a 6-tile section from a 90-tile
+// one before clicking in, and the pill for whichever section is scrolled to
+// the top of the viewport lights up — scanning by eye across ~15 sections is
+// exactly what the nav exists to save you from.
+for (const a of nav.querySelectorAll('a[data-target]')) {
+  const sec = document.getElementById(a.dataset.target);
+  const badge = document.createElement('span');
+  badge.className = 'nav-count';
+  badge.textContent = sec ? sec.querySelectorAll('.card').length : 0;
+  a.appendChild(badge);
+}
+const navSpy = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    for (const a of nav.querySelectorAll('a[data-target]')) {
+      a.classList.toggle('active', a.dataset.target === en.target.id);
+    }
+  }
+}, { rootMargin: '-96px 0px -70% 0px' });
+for (const s of root.querySelectorAll('section')) navSpy.observe(s);
+
+// Each h2 collapses its own section — useful now that the gallery runs to
+// several hundred tiles and a session is usually spent in one or two of them.
+for (const h2 of root.querySelectorAll('section > h2')) {
+  h2.addEventListener('click', () => h2.closest('section').classList.toggle('collapsed'));
+}
+const collapseAllEl = document.getElementById('collapseAll');
+collapseAllEl.addEventListener('click', () => {
+  const sections = [...root.querySelectorAll('section')];
+  const collapsing = !sections.every((s) => s.classList.contains('collapsed'));
+  for (const s of sections) s.classList.toggle('collapsed', collapsing);
+  collapseAllEl.textContent = collapsing ? 'expand all' : 'collapse all';
+});
+
+document.querySelector('h1 small').textContent =
+  `dev build · click any tile to save a PNG · ${tiles.length} tiles across ${root.querySelectorAll('section').length} sections`;
+
 // ---------------------------------------------------------------- controls
 function applyZoom() {
-  document.getElementById('zoomv').textContent = zoom + 'x';
   for (const t of tiles) {
     t.canvas.style.width = (t.fixed ? t.w : t.w * zoom) + 'px';
     t.canvas.style.height = (t.fixed ? t.h : t.h * zoom) + 'px';
   }
 }
 const zoomEl = document.getElementById('zoom');
-zoomEl.addEventListener('input', () => { zoom = +zoomEl.value; applyZoom(); });
+zoomEl.addEventListener('change', () => { zoom = +zoomEl.value; applyZoom(); });
 
 const resolutionEl = document.getElementById('resolution');
 resolutionEl.addEventListener('change', () => {
@@ -838,7 +904,8 @@ resolutionEl.addEventListener('change', () => {
 
 // Backgrounds are full scenes; 3x would be 1440px wide. Cap them at 1x.
 function applyBackdrop(mode) {
-  document.body.className = 'bg-' + mode;
+  document.body.classList.remove('bg-checker', 'bg-dark', 'bg-light', 'bg-none');
+  document.body.classList.add('bg-' + mode);
 }
 const bdEl = document.getElementById('backdrop');
 bdEl.addEventListener('change', () => applyBackdrop(bdEl.value));
@@ -853,12 +920,15 @@ animEl.addEventListener('change', () => {
 const filterEl = document.getElementById('filter');
 filterEl.addEventListener('input', () => {
   const q = filterEl.value.trim().toLowerCase();
+  // Filtering forces collapsed sections open (via the .filtering CSS hook) so
+  // a match hiding inside a collapsed section is never invisible.
+  document.body.classList.toggle('filtering', !!q);
   for (const t of tiles) t.card.style.display = !q || t.card.dataset.search.includes(q) ? '' : 'none';
 });
 
 applyZoom();
 applyBackdrop(bdEl.value);
-// Scene tiles stay at 1x regardless of the zoom slider.
+// Scene tiles stay at 1x regardless of the zoom control.
 for (const t of tiles) {
   if (t.w === W && t.h === H) {
     t.canvas.style.width = W + 'px';

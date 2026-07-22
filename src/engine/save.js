@@ -30,6 +30,7 @@ export function defaultSlot() {
       bossesDown: {},
       storyFlags: {}, // sawIntro, sawEnding, unplugged, minigamesSeen:[...]
       ngPlus: false,
+      bestScore: {},  // stageId -> highest score ever posted on that stage
     },
     coins: 0,
     bench: { shield: 1, magnet: 1, star: 1, tuneup: 0 },
@@ -38,7 +39,11 @@ export function defaultSlot() {
     tutor: {},        // one-time teaching prompts already shown
     hub: { roomsOpen: 1, manualsFound: [], npcSeen: {} },
     overtime: { best: 0, bestRelay: 0, seedBests: {} },
-    stats: { runs: 0, tags: 0, perfectTags: 0, deaths: 0, coinsEarned: 0 },
+    stats: {
+      runs: 0, tags: 0, perfectTags: 0, deaths: 0, coinsEarned: 0,
+      distanceTraveled: 0, powerupsCollected: 0, appliancesFound: 0,
+      deathsByHero: {}, // heroId -> death count while that hero was active
+    },
   };
 }
 

@@ -18,7 +18,7 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, stageUnlocked, prevStage } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -98,6 +98,18 @@ const NPC_H = 46, PLAYER_H = 46;
 // ROAM is deliberately wide — a hero should cross in front of two or three
 // machines on a stroll; it is only where they STOP that matters.
 const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
+// The walk-up ranges that decide who you are addressing. ATTEND is only used by
+// the pinned counter staff, who hold position rather than tidying while a
+// customer is at the counter — for them it cannot pile anybody up, because they
+// were never going anywhere. The wandering cast is held by FOCUS instead of by a
+// radius; see updateNpcs for why that distinction is the whole ballgame.
+const STATION_R = 26, NPC_TALK_R = 18, NPC_ATTEND_R = 30;
+// How far to stop SHORT of somebody you tapped. Comfortably inside NPC_TALK_R,
+// so arriving is the same thing as being able to address them, and wide enough
+// that the two sprites stand shoulder to shoulder rather than inside each other.
+// The walk stops within 3 of its target, so the arrival band is 11..17 — still
+// under the talk radius at its loosest.
+const NPC_STAND_OFF = 14;
 // How far counter staff drift from their post while working. A small fraction of
 // their own deck — far enough to be seen moving, never far enough to leave the
 // unit they are drawn inside.
@@ -153,6 +165,22 @@ function dustDevilPass(visit, act) {
 // than a method on Flow: the hub is constructed with a stub flow in several
 // tests, and requiring a method there would make "which hero" a thing callers
 // have to implement rather than a thing derived from two fields.
+// Closest of `list` to `x`, within `r`, or null. Every one of these lookups was
+// an Array.find, which returns the first match in ARRAY order — and npcActors is
+// built in HEROES order, so with two heroes inside the same radius (which is
+// most of the time; the crowd clusters) you addressed whichever of them the
+// roster happened to list first rather than the one you were standing next to.
+// That is a large part of why walking along the concourse felt like the chips
+// picked people at random.
+function nearestTo(list, x, r) {
+  let best = null, bd = r;
+  for (const it of list) {
+    const d = Math.abs(it.x - x);
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
+
 export function heroIdFor(flow) {
   return (flow && flow.hubAvatar) || (flow && flow.lastTeam && flow.lastTeam[0]) || 'lorenzo';
 }
@@ -297,34 +325,45 @@ function drawCeilingLight(ctx, x, y, lit) {
   ctx.fillRect(x + 3, y + 1, LIGHT_W - 6, 2);
 
   const cx = x + LIGHT_W / 2;
-  // Halo: the air immediately around the fixture.
-  const halo = ctx.createRadialGradient(cx, y + 2, 1, cx, y + 2, 34);
-  halo.addColorStop(0, 'rgba(246,211,60,0.22)');
+  // Halo: the air immediately around the fixture. Wider than the light itself
+  // by some way, with a mid stop, so it thins out instead of ending.
+  const halo = ctx.createRadialGradient(cx, y + 2, 1, cx, y + 2, 46);
+  halo.addColorStop(0, 'rgba(246,211,60,0.2)');
+  halo.addColorStop(0.45, 'rgba(246,211,60,0.07)');
   halo.addColorStop(1, 'rgba(246,211,60,0)');
   ctx.fillStyle = halo;
-  ctx.fillRect(cx - 34, y - 32, 68, 68);
+  ctx.fillRect(cx - 46, y - 44, 92, 92);
 
   // The beam. Splayed, and sheared toward whichever side of the view this
   // fixture sits on, so the further off-centre it is the harder it rakes.
+  //
+  // Three nested splays rather than one wedge. A single polygon fades with
+  // DISTANCE but has a hard lateral edge, which is what made these read as
+  // stage spotlights rather than as strip fluorescents behind a yellowed
+  // diffuser — the thing the ceiling actually is. The three shares sum to the
+  // old strength straight down the core and taper off sideways, so the beam
+  // now has an edge you cannot point at.
   const lean = ((cx - HUB_VIEW_W / 2) / (HUB_VIEW_W / 2)) * 26;
   const top = y + 4, bottom = 168;
-  const beam = ctx.createLinearGradient(0, top, 0, bottom);
-  beam.addColorStop(0, 'rgba(246,211,60,0.13)');
-  beam.addColorStop(0.55, 'rgba(246,211,60,0.05)');
-  beam.addColorStop(1, 'rgba(246,211,60,0)');
-  ctx.fillStyle = beam;
-  ctx.beginPath();
-  ctx.moveTo(x + 1, top);
-  ctx.lineTo(x + LIGHT_W - 1, top);
-  ctx.lineTo(x + LIGHT_W + 20 + lean, bottom);
-  ctx.lineTo(x - 20 + lean, bottom);
-  ctx.closePath();
-  ctx.fill();
-
+  for (const [spread, share] of [[48, 0.34], [31, 0.33], [17, 0.33]]) {
+    const beam = ctx.createLinearGradient(0, top, 0, bottom);
+    beam.addColorStop(0, `rgba(246,211,60,${(0.13 * share).toFixed(3)})`);
+    beam.addColorStop(0.55, `rgba(246,211,60,${(0.05 * share).toFixed(3)})`);
+    beam.addColorStop(1, 'rgba(246,211,60,0)');
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, top);
+    ctx.lineTo(x + LIGHT_W - 1, top);
+    ctx.lineTo(x + LIGHT_W + spread + lean, bottom);
+    ctx.lineTo(x - spread + lean, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
   // A tighter, brighter core inside the beam — light has a bright middle and
   // soft edges, and a single flat wedge has neither.
   const core = ctx.createLinearGradient(0, top, 0, bottom - 40);
-  core.addColorStop(0, 'rgba(255,244,200,0.12)');
+  core.addColorStop(0, 'rgba(255,244,200,0.1)');
+  core.addColorStop(0.5, 'rgba(255,244,200,0.03)');
   core.addColorStop(1, 'rgba(255,244,200,0)');
   ctx.fillStyle = core;
   ctx.beginPath();
@@ -604,6 +643,29 @@ export class HubState {
     return !this.stations().some((st) => Math.abs(st.x - x) < NPC_LOITER_CLEAR);
   }
 
+  // Where to stand in order to address `n`. Beside them, never on top of them,
+  // and on whichever side leaves THEM the nearest thing — the focus rule is
+  // nearest-wins, so walking to a hero who is standing at a machine and stopping
+  // on the machine's side would arrive with the machine selected and the hero's
+  // chips gone. That is the whole failure this is avoiding, and it is not
+  // hypothetical: it is exactly where Dolores and Gary stand, a few units off
+  // the centre of a station that is 118 wide.
+  //
+  // Prefer the side we are already on, since that is the shorter walk, and flip
+  // only when that spot would hand the arrival to a station.
+  standBesideX(n) {
+    const side = Math.sign(this.px - n.x) || 1;
+    const clamp = (x) => Math.max(20, Math.min(this.width - 20, x));
+    for (const s of [side, -side]) {
+      const x = clamp(n.x + s * NPC_STAND_OFF);
+      const st = nearestTo(this.stations(), x, STATION_R);
+      // Arriving here puts us NPC_STAND_OFF from them; they win only if every
+      // station is further off than that.
+      if (!st || Math.abs(st.x - x) > Math.abs(n.x - x)) return x;
+    }
+    return clamp(n.x + side * NPC_STAND_OFF);
+  }
+
   nearestGap(x) {
     const gaps = this.npcGaps();
     if (!gaps.length) return x;
@@ -625,6 +687,7 @@ export class HubState {
     this.walkTarget = null;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
+    this.shelfPage = this.shelfPage ?? 0; // trophy shelf cycles a new stat page each visit
     this.npcMenuIdx = 0;
     this.npcDwell = 0;
     this.greeted = false;     // has this hero already said hello, this approach
@@ -715,8 +778,8 @@ export class HubState {
     this.t += dt;
     this.updateNpcs(dt);
     const st = this.stations();
-    if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; this.walkTarget = null; }
-    if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; this.walkTarget = null; }
+    if (Input.held('left')) { this.px -= 90 * dt; this.facing = -1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
+    if (Input.held('right')) { this.px += 90 * dt; this.facing = 1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
     if (!this.hasMoved && (Input.held('left') || Input.held('right') || this.walkTarget != null)) this.hasMoved = true;
     if (this.hasMoved) this.movedAt += dt;
     // Tap/click anywhere (not a virtual button) to walk there — mouse and
@@ -750,7 +813,7 @@ export class HubState {
       // A tap that lands on one of the chooser's chips takes that option and
       // nothing else — checked next, because the chips hang over open floor and
       // would otherwise read as "walk there".
-      const chipNpc = this.nearNpc && !this.near ? this.nearNpc : null;
+      const chipNpc = this.focusNpc;
       if (chipNpc) {
         const wx = Input.pointer.x / HUB_ZOOM + this.camX();
         const wy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
@@ -766,8 +829,11 @@ export class HubState {
         }
       }
       const worldX = Input.pointer.x / HUB_ZOOM + this.camX();
-      const stationHit = st.find((s) => Math.abs(s.x - worldX) < 22);
-      const npcHit = this.npcs().find((n) => Math.abs(n.x - worldX) < 14);
+      const stationHit = nearestTo(st, worldX, 22);
+      // Widened from 14: a hero is about that wide on screen, so half of every
+      // sprite was outside its own tap target and clicking someone's shoulder
+      // walked you past them. Dolores and Gary are wider still.
+      const npcHit = nearestTo(this.npcs(), worldX, 17);
       // An NPC's wander can drift it right next to a station (the food court
       // is cramped); whichever is actually closer to the tap wins, so tapping
       // dead-on a loitering hero doesn't get swallowed by the counter behind them.
@@ -780,11 +846,27 @@ export class HubState {
       // with TALK selected just replayed their line — a second, invisible way to
       // do a thing the chips already do visibly, and the only one that could
       // fire by accident while you were trying to walk. The chips are the whole
-      // interface now; a tap on the hero themselves falls through and walks.
+      // interface now; a tap on the hero themselves falls through and walks —
+      // but it walks to a spot BESIDE them (standBesideX) rather than to their
+      // own x. Walking onto somebody's exact position stood the two sprites
+      // inside each other, and for the counter staff it was worse than untidy:
+      // their x sits a few units off a station centre, so arriving there handed
+      // the focus to the counter and the chips you were walking over to use
+      // never appeared.
       else {
-        const target = tappedStation ? tappedStation.x : tappedNpc ? tappedNpc.x : worldX;
+        const target = tappedStation ? tappedStation.x
+          : tappedNpc ? this.standBesideX(tappedNpc) : worldX;
         this.walkTarget = Math.max(20, Math.min(this.width - 20, target));
-        this.dragging = true;
+        this.walkToNpc = tappedNpc ? tappedNpc.id : null;
+        // Who you MEANT. Tapping open floor or a station drops it.
+        this.addressing = tappedNpc ? tappedNpc.id : null;
+        this.addressTap = !!tappedNpc;
+        // Not a drag when the tap picked a person. Press-and-hold re-steers to
+        // wherever the pointer currently is, and a mouse click stays down for a
+        // frame or two — long enough to overwrite the beside-them target with
+        // the raw pointer x and put us back on top of them. Tapping somebody is
+        // a committed destination; dragging is for steering across open floor.
+        this.dragging = !tappedNpc;
       }
     }
     // Press-and-hold steers live: once the initial touch-down was spent
@@ -797,21 +879,84 @@ export class HubState {
     } else if (this.dragging && !Input.pressed('pointer')) {
       const worldX = Input.pointer.x / HUB_ZOOM + this.camX();
       this.walkTarget = Math.max(20, Math.min(this.width - 20, worldX));
+      this.walkToNpc = null;
+    }
+    // Following somebody you tapped: the destination is the PERSON, so it is
+    // recomputed every frame from where they actually are now. Tapping stored
+    // only their x, and the concourse is long — a hero at walking pace covers
+    // a lot of it while you cross the room, so you arrived at the spot they had
+    // been standing on and they were somewhere else entirely. NPC_ATTEND_R does
+    // the rest: get within 30 and they stop, so the chase always converges.
+    if (this.walkToNpc) {
+      const who = this.npcs().find((n) => n.id === this.walkToNpc);
+      if (who) this.walkTarget = this.standBesideX(who);
+      else this.walkToNpc = null;
     }
     if (this.walkTarget != null) {
       const d = this.walkTarget - this.px;
-      if (Math.abs(d) < 3) this.walkTarget = null;
+      if (Math.abs(d) < 3) { this.walkTarget = null; this.walkToNpc = null; }
       else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), 90 * dt); }
     }
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
-    const near = st.find((s) => Math.abs(s.x - this.px) < 26);
+    const near = nearestTo(st, this.px, STATION_R);
     this.near = near;
     // Talk to NPC heroes: press down, or just stand alongside one for a second —
     // same line either way. The dwell timer resets whenever the adjacent NPC
     // changes (including to none), so lingering only ever fires the auto-talk
     // once per visit.
-    const npc = this.npcs().find((n) => Math.abs(n.x - this.px) < 18);
+    // WHO YOU ARE TALKING TO — sticky, not re-decided every frame.
+    //
+    // Nearest-wins is the right way to ACQUIRE somebody and the wrong way to
+    // keep them. Recomputing it per frame meant the selection changed under you
+    // as the crowd milled about: stood perfectly still for three minutes, the
+    // chips swapped identity 22 times, because anyone strolling past came within
+    // a unit of whoever you were already stood with and took the slot. And when
+    // it came from an explicit tap it was worse than jittery — you crossed the
+    // concourse for Fernwick and arrived to find B-33P selected.
+    //
+    // So: hold whoever we have until they actually leave talk range, and only
+    // then look for somebody new.
+    let held = this.addressing
+      ? this.npcs().find((n) => n.id === this.addressing && Math.abs(n.x - this.px) < NPC_TALK_R)
+      : null;
+    // Not while we are still on our way to them: they are out of talk range for
+    // the whole crossing, so clearing on range alone dropped the intent on the
+    // very first frame and the walk arrived with nothing chosen.
+    if (!held && !this.walkToNpc) {
+      const found = nearestTo(this.npcs(), this.px, NPC_TALK_R);
+      this.addressing = found ? found.id : null;
+      this.addressTap = false;   // acquired by standing near them, not chosen
+      held = found;
+    }
+    const npc = held;
     this.nearNpc = npc;
+    // WHO YOU ARE ADDRESSING — decided once, here, and read by everything else.
+    //
+    // The rule used to be "a station anywhere within 26 suppresses the chips
+    // outright", restated by hand at four call sites (chip hit-test, chip
+    // drawing, the bottom prompt, and confirm). Two problems with that:
+    //
+    //  - It blanks out most of the arcade. Cabinets sit 88 apart with a 26
+    //    radius each way, so 52 units of every 88 are station, and standing
+    //    beside a hero anywhere in that stretch silently offered you nothing —
+    //    with no visible reason, since the cabinet is behind you and the hero is
+    //    right there.
+    //  - The touch path had ALREADY rejected it. Tapping used nearest-wins
+    //    (`npcCloser` below), so tapping a hero standing at a cabinet talked to
+    //    them, while walking to that same hero and pressing Enter opened the
+    //    cabinet. One situation, two answers, depending on input device.
+    //
+    // Nearest-wins everywhere instead, matching what touch already did. The
+    // chips are what make it legible: whenever they are on screen, confirm acts
+    // on the hero, and whenever they are not, it acts on the station. There is
+    // no case where the affordance on screen disagrees with what the button does.
+    // A person you TAPPED outranks the station behind them — you pointed at
+    // them, which is not ambiguous. Somebody you merely ended up standing near
+    // does not: there, nearest-wins, so walking onto a machine still selects
+    // the machine even with a hero loitering beside it.
+    const npcWins = !!npc
+      && (this.addressTap || !near || Math.abs(npc.x - this.px) < Math.abs(near.x - this.px));
+    this.focusNpc = npcWins ? npc : null;
     // Declared here, ABOVE its first use in the confirm test below. It was
     // originally left further down, which put it in the temporal dead zone: the
     // `Input.pressed('jump') && !chooser` arm threw a ReferenceError on every
@@ -825,15 +970,13 @@ export class HubState {
     // 'jump' and 'duck' actions, NOT 'up'/'down'. Input.actionForKey only mints
     // 'up'/'down' inside the 'menu' context, and the hub runs 'default'
     // (see enter()), so binding to those would have made the chips unreachable.
-    const chooser = !!npc && !near;
-    // Confirm is contextual: a station if you are standing at one, otherwise the
-    // hero beside you. Stations win — their hit radius is wider, and "enter the
-    // cabinet I am standing at" is never the surprising reading.
+    const chooser = !!this.focusNpc;
+    // Confirm follows the focus, so it always does what the chips say it will.
     // 'jump' doubles as confirm for gamepad face buttons, but while the chooser
     // is up ArrowUp is steering it — so it must not also fire the selection.
     if (Input.pressed('confirm') || (Input.pressed('jump') && !chooser)) {
-      if (near) this.interact(near);
-      else if (npc) this.chooseNpc(npc);
+      if (this.focusNpc) this.chooseNpc(this.focusNpc);
+      else if (near) this.interact(near);
     }
     // The chooser resets to TALK whenever the hero beside you changes, so it
     // never opens already pointing at SWAP on someone you just walked up to.
@@ -885,7 +1028,19 @@ export class HubState {
     else if (st.type === 'shelf') {
       const toasters = Object.values(slot.campaign.plugs).filter((p) => p[2]).length;
       const sRanks = Object.values(slot.campaign.ranks).filter((r) => r === 'S' || r === 'CONCERNING').length;
-      this.talk = { text: `TOASTERS: ${toasters}/27. S RANKS: ${sRanks}. DEATHS: ${slot.stats.deaths}. THE SHELF IS PROUD-ADJACENT.`, t: 4, who: null };
+      const clumsy = clumsiestHero(slot);
+      const clumsyName = clumsy ? (HERO_BY_ID[clumsy[0]]?.short || clumsy[0]) : null;
+      // Three pages, one stat family each: the shelf has more to brag about than
+      // one line can hold, so each visit turns to the next page instead of
+      // cramming every lifetime number into a single wrapped block.
+      const pages = [
+        `TOASTERS: ${toasters}/27. S RANKS: ${sRanks}. DEATHS: ${slot.stats.deaths}. THE SHELF IS PROUD-ADJACENT.`,
+        `RUNS: ${slot.stats.runs}. TIME PLAYED: ${formatPlaytime(slot.playtimeSec)}. DISTANCE: ${formatCoins(slot.stats.distanceTraveled)}. LIFETIME COINS: ${formatCoins(slot.stats.coinsEarned)}.`,
+        `POWERUPS GRABBED: ${slot.stats.powerupsCollected}. APPLIANCES FOUND: ${slot.stats.appliancesFound}.` +
+          (clumsy ? ` CLUMSIEST: ${clumsyName} (${clumsy[1]} DEATHS).` : ' CLUMSIEST: NOBODY YET.'),
+      ];
+      this.talk = { text: pages[this.shelfPage % pages.length], t: 4, who: null };
+      this.shelfPage++;
     }
   }
 
@@ -1004,9 +1159,14 @@ export class HubState {
           // ratio they looked restless, so it sits nearer 6-to-1.
           n.timer = n.awayTo == null ? 15 + (n.cycles % 4) * 4.5 : 2.4 + (n.cycles % 3) * 0.7;
         }
+        // Serving somebody takes precedence over tidying: with a customer at the
+        // counter she holds where she is rather than drifting off down the deck
+        // mid-order.
         const goal = n.awayTo == null ? n.home : n.awayTo;
         const d = goal - n.x;
-        if (Math.abs(d) > 0.4) n.x += Math.sign(d) * Math.min(Math.abs(d), 7 * dt);
+        if (Math.abs(d) > 0.4 && Math.abs(n.x - this.px) >= NPC_ATTEND_R) {
+          n.x += Math.sign(d) * Math.min(Math.abs(d), 7 * dt);
+        }
         // Facing still belongs to the customer: they turn to whoever is at the
         // counter no matter which way along it they happen to be working.
         n.facing = this.px < n.x ? -1 : 1;
@@ -1014,12 +1174,32 @@ export class HubState {
       }
       // Conversation wins over wandering, and the speaker turns toward the
       // player instead of strolling away halfway through a punchline.
-      if (this.talk?.who === n.id) {
+      //
+      // So does being addressed: the hero you are actually talking to stops and
+      // turns to you, the way anybody would. That is worth having for its own
+      // sake, but it also steadies the chips — the TALK/SWAP window is 18 units
+      // wide and a wandering hero crosses it at 10 units a second, so standing
+      // beside one who had not noticed you meant the chips appeared, slid away
+      // and came back while you had not moved at all.
+      //
+      // It is keyed to the FOCUS and not to a radius, which matters more than it
+      // looks. Stopping everyone within a radius made that radius an absorbing
+      // state: heroes random-walk, so any that wandered into it froze there and
+      // never left, and standing still for forty seconds silently collected a
+      // crowd of five around you. Only one person is ever being addressed, so
+      // only one is ever held, and everybody else walks past the way they should.
+      //
+      // The timer floor is what stops them setting off again the instant you
+      // step away: without it the lapsed timer picks a new walk on the very next
+      // frame, and they leave the moment you turn your back.
+      if (this.talk?.who === n.id || this.focusNpc?.id === n.id) {
         n.state = 'idle';
+        n.attending = true;   // stopped FOR you, not settled here by choice
         n.facing = this.px < n.x ? -1 : 1;
         n.timer = Math.max(n.timer, 0.35);
         continue;
       }
+      n.attending = false;
       n.timer -= dt;
       const roam = n.roam || NPC_ROAM;
       if (n.state === 'walk') {
@@ -1044,6 +1224,13 @@ export class HubState {
         if (!this.canLoiter(n.x)) { n.timer = 0.5 + (n.cycles % 3) * 0.2; continue; }
         n.state = 'idle'; n.timer = 0.8 + (n.cycles % 4) * 0.25;
       } else if (n.state === 'hop') {
+        // Same rule as a walk that ran out somewhere unsuitable — a hop is not a
+        // licence to settle in front of a machine. This guard was only ever on
+        // the walk arm, so a hero who happened to hop inside a station's radius
+        // came to rest there and stayed; it went unnoticed because a wider
+        // freeze-on-approach radius used to mark those heroes as attending and
+        // the check that would have caught it skips them.
+        if (!this.canLoiter(n.x)) { n.state = 'walk'; n.timer = 0.5 + (n.cycles % 3) * 0.2; continue; }
         n.state = 'idle'; n.timer = 0.7 + (n.cycles % 3) * 0.3;
       } else if (n.cycles % 4 === 0) {
         n.state = 'hop'; n.duration = 0.5; n.timer = n.duration;
@@ -1105,6 +1292,24 @@ export class HubState {
     const litXs = [];
     for (let i = 0; i < act * 3 && i < 8; i++) litXs.push(i * 130 - cam * 0.9 + 13);
     const wallLit = (sx) => wallLitFrom(sx, litXs);
+    // The counters carry their own lamps — three over each deck, and by
+    // drawCounter's own account the only warm light left at this end of the
+    // concourse. Dolores and Gary stand directly under three working ones, so
+    // lighting them off the CEILING alone had both clerks reading as though the
+    // room were dark on them while their lamps burned overhead.
+    //
+    // Kept separate from wallLit rather than folded into it, because these are
+    // TASK lights: they hang low and point down at the deck. They light the
+    // people at the counter and not the wall behind it, and the tighter reach
+    // is what stops a bench lamp from lighting half a bay.
+    const lampXs = [];
+    for (const s of this.stations()) {
+      if (s.type !== 'bench' && s.type !== 'shop') continue;
+      const left = s.x - cam - COUNTER_W / 2;
+      for (const f of [0.28, 0.5, 0.72]) lampXs.push(left + COUNTER_W * f);
+    }
+    // What a BODY standing at sx receives: whichever of the two is brighter.
+    const castLit = (sx) => Math.max(wallLit(sx), wallLitFrom(sx, lampXs, COUNTER_W * 0.42));
     // Room furniture first (the menu board), then ONE poster per cabinet.
     for (const bay of hubWallBays(this.stations())) {
       const bx = bay.x - cam;
@@ -1227,7 +1432,8 @@ export class HubState {
           server: staff ? (c) => drawToon(c, staff.id, {
             kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t,
             grounded: true, facing: staff.facing || 1, vy: 0,
-          }, Math.round(staff.x - cam), HUB_FLOOR_PIN_Y, staff.staffH || NPC_H) : null,
+          }, Math.round(staff.x - cam), HUB_FLOOR_PIN_Y, staff.staffH || NPC_H,
+          { lit: castLit(Math.round(staff.x - cam)) }) : null,
         });
       } else if (DOOR_PALETTES[s.type]) {
         drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, DOOR_PALETTES[s.type], this.t, this.save.settings.reducedFlashing);
@@ -1254,7 +1460,10 @@ export class HubState {
         grounded: n.state !== 'hop',
         vy: n.state === 'hop' ? -40 : 0,
         facing: n.facing || 1,
-      }, x, HUB_FLOOR_PIN_Y - hop, NPC_H);
+        // Lit by the bay they are standing in, same as the wall behind them.
+        // Exempt, they stood at full daylight in front of a dead bay — the one
+        // thing in the concourse the ceiling had no authority over.
+      }, x, HUB_FLOOR_PIN_Y - hop, NPC_H, { lit: castLit(x) });
     }
     // THE DUST DEVIL comes through occasionally, cleaning something (which
     // surface varies). ~9s of every ~48, unannounced, then gone. Nobody
@@ -1301,7 +1510,7 @@ export class HubState {
     // station is also in range — standing between a cabinet and a loitering
     // hero, ENTER belongs to the cabinet, so offering chips you cannot pick
     // would be a lie.
-    if (this.nearNpc && !this.near) drawNpcChips(ctx, this.nearNpc.x, cam, this.npcMenuIdx || 0, npcMenuFor(this.nearNpc));
+    if (this.focusNpc) drawNpcChips(ctx, this.focusNpc.x, cam, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc));
     // player walks
     const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
@@ -1320,7 +1529,7 @@ export class HubState {
       time: this.t,
       grounded: true,
       facing: this.facing || 1,
-    }, pxs, HUB_FLOOR_PIN_Y, PLAYER_H);
+    }, pxs, HUB_FLOOR_PIN_Y, PLAYER_H, { lit: castLit(pxs) });
     drawPlayerMarker(ctx, pxs, HUB_FLOOR_PIN_Y - PLAYER_H - 10 + Math.sin(this.t * 2.6) * 1.3, 3.2);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
@@ -1342,7 +1551,19 @@ export class HubState {
     // TO LEAVE" directly above "TAP TO CLOSE" reads as two competing
     // instructions.
     if (this.poster) { this.drawPosterZoom(ctx); return; }
-    if (this.near) {
+    // Focus first, so this row names whatever confirm is actually pointed at. It
+    // used to test the station first, which meant standing nose to nose with a
+    // hero in front of a cabinet read out the CABINET's name and verb while the
+    // hero's chips were the thing on screen.
+    if (this.focusNpc) {
+      // Touch talks the same way it enters a station — tap them again once
+      // you're standing alongside (update()'s tappedNpc branch); DOWN is the
+      // keyboard's own way in, not something touch has a key for.
+      // Just the name: the chips over their head already say what the two
+      // options are, so repeating them down here would be the same sentence in
+      // two places — which is exactly what the rest of this row was cut for.
+      drawTextCentered(ctx, this.focusNpc.name || HERO_BY_ID[this.focusNpc.id].short, W / 2, H - 30, '#48e0c8');
+    } else if (this.near) {
       // A locked cabinet gets no verb. "ENTER TO USE" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
       // is to say what this thing is and whether you can act on it, so a locked
@@ -1358,14 +1579,6 @@ export class HubState {
           : (Input.usingTouch ? 'TAP TO ENTER' : 'ENTER TO USE');
         drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
       }
-    } else if (this.nearNpc) {
-      // Touch talks the same way it enters a station — tap them again once
-      // you're standing alongside (update()'s tappedNpc branch); DOWN is the
-      // keyboard's own way in, not something touch has a key for.
-      // Just the name: the chips over their head already say what the two
-      // options are, so repeating them down here would be the same sentence in
-      // two places — which is exactly what the rest of this row was cut for.
-      drawTextCentered(ctx, this.nearNpc.name || HERO_BY_ID[this.nearNpc.id].short, W / 2, H - 30, '#48e0c8');
     }
     // One status row along the very bottom: where you are on the left, what you
     // have on the right. The location name used to be a fading title card, but a

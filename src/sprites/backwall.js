@@ -155,7 +155,13 @@ export function wallLitAt(x, litCount, spacing = BAY_W, reach = spacing * 1.15) 
 // parallaxes its ceiling lights (they slide at 0.9 of the camera), so their
 // world positions drift and only their SCREEN x is meaningful — this takes that
 // list directly rather than deriving it from an index.
-export function wallLitFrom(x, positions, reach = BAY_W * 1.15) {
+// `reach` runs well past one bay on purpose. At 1.15 a fixture lit its own bay
+// and quit, so adjacent pools met at a visible trough and the concourse read as
+// a row of stage spotlights. Overlapping them is what a ceiling of strip lights
+// actually does: the pools blend, the dead stretches are the ones genuinely far
+// from any working tube, and the falloff is something you notice having crossed
+// rather than something you can point at.
+export function wallLitFrom(x, positions, reach = BAY_W * 1.55) {
   if (!positions || !positions.length) return 0;
   let best = Infinity;
   for (const p of positions) best = Math.min(best, Math.abs(x - p));

@@ -172,8 +172,13 @@ assert(returnedHub.npcs().every((n) => n.x >= 69.99),
 // front of a machine, and Dolores is stationed behind the serving counter on
 // purpose — standing at her own station is the entire job. Asserting over her
 // would be asserting that the counter has nobody behind it.
-assert(returnedHub.npcs().filter((n) => n.state === 'idle' && !n.pinned).every((n) => returnedHub.canLoiter(n.x)),
-  'wandering heroes settle clear of every station rather than in front of one');
+// `attending` is excluded for the same reason as `pinned`: the guarantee is
+// about where a hero CHOOSES to stop, and one who has broken off to face the
+// player stopped where the player walked up to them, which may well be in front
+// of a machine. That is the correct behaviour, not a settle.
+assert(returnedHub.npcs().filter((n) => n.state === 'idle' && !n.pinned && !n.attending)
+  .every((n) => returnedHub.canLoiter(n.x)),
+'wandering heroes settle clear of every station rather than in front of one');
 // Staff shuffle along their own deck and come back, so the guarantee is a leash
 // rather than a fixed x — but it has to be a SHORT one: they are drawn inside
 // their counters, and any drift past the unit would paint them through its side.

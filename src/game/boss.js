@@ -181,6 +181,7 @@ export class BossState extends RunState {
       damageTaken: this.damageTaken, bestCombo: 0,
       team: [...this.usedHeroes], time: this.tRun, overtime: false, stage: null,
       challengeDone: false, applianceGot: false, failMsg: this.failMsg,
+      distance: Math.floor(this.distance), powerupsCollected: this.powerupsCollected,
     });
   }
 

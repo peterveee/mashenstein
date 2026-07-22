@@ -51,6 +51,16 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
+// Half-width of roundRectPath at a given y — the plain-torso twin of
+// taperHalfAt, and needed for the same reason: anything that has to hide
+// INSIDE the body near the shoulder line is up in the corner arc, where the
+// silhouette is a long way in from the nominal half-width.
+function roundHalfAt(y, top, bot, half, r) {
+  const rr = Math.min(r, half, (bot - top) / 2);
+  const dy = y <= top + rr ? top + rr - y : y >= bot - rr ? y - (bot - rr) : 0;
+  if (dy >= rr) return half - rr;                 // past the cap: the corner's own inset
+  return half - rr + Math.sqrt(rr * rr - dy * dy);
+}
 // A torso that narrows from shoulders to waist: rounded shoulder corners, a
 // lat sweep down each side, rounded hips. With halfTop > halfBot the sweep is
 // the inverted taper of a lifted upper body.
@@ -190,6 +200,20 @@ const HILITE_A = 0.2;  // highlight alpha at the lit end
 const SPEC_A = 0.2;    // peak alpha at the blob's centre
 const SPEC_OFF = 0.36; // how far toward the key it sits, as a fraction of the form
 const SPEC_R = 0.78;   // and its radius, against the form's SHORT half-axis
+// How dark a figure standing in an unlit room goes. The concourse already dims
+// its wall and its dressings by where the working ceiling lights are (see
+// backwall's wallLitFrom); until now the cast was exempt from it and stood at
+// full daylight in front of a near-black bay, which is the surest way to read
+// as a sticker laid on a scene rather than a body standing in it.
+//
+// Losing the key does two things at once, and doing only the first is what
+// makes dimmed art look like it is behind smoked glass: the figure gets DARKER,
+// and it gets FLATTER, because the modelling was the key light's doing. So this
+// deepens the shadow floor and fades the highlight and blob together.
+//
+// Held well short of the wall's own 0.88: the cast is what you are looking at,
+// and a silhouette you cannot read is not atmosphere.
+const AMBIENT_A = 0.62;
 // The rim rides OVER the contour but stops well short of erasing it: at full
 // weight the key simply deleted the outline down the lit side, and heroes lost
 // the border on their leading shoulder mid-walk. It thins and warms that edge
@@ -204,23 +228,27 @@ const SHADE_MIN = 0.1;
 // and single-threaded, so this is threaded the same way ctx state is. `g`
 // caches the figure's three gradients: they are identical for every shape, so
 // they are built once on first use rather than ~90 times per frame.
-const shade = { on: false, lx: 0, ly: -1, u: 1, g: null };
+const shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, g: null };
 
 // Arm the key for one figure. `xSign` is the net horizontal sign the caller
 // has already pushed onto the context (facing flip, celebrate spin); negating
-// lx against it is what keeps the light in world space. Returns the previous
-// state — paintFace nests a whole drawToon inside its own render.
-function armLight(u, xSign, on) {
-  const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, g: shade.g };
+// lx against it is what keeps the light in world space. `lit` is 0..1 room
+// brightness where this figure is standing — 1 everywhere that has no opinion,
+// which is every caller except the concourse. Returns the previous state —
+// paintFace nests a whole drawToon inside its own render.
+function armLight(u, xSign, on, lit = 1) {
+  const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, lit: shade.lit, g: shade.g };
   shade.on = !!on;
   shade.u = u;
   shade.lx = (LIGHT_X / LIGHT_LEN) * (xSign < 0 ? -1 : 1);
   shade.ly = LIGHT_Y / LIGHT_LEN;
+  shade.lit = Math.max(0, Math.min(1, lit));
   shade.g = null;
   return prev;
 }
 function disarmLight(prev) {
-  shade.on = prev.on; shade.lx = prev.lx; shade.ly = prev.ly; shade.u = prev.u; shade.g = prev.g;
+  shade.on = prev.on; shade.lx = prev.lx; shade.ly = prev.ly;
+  shade.u = prev.u; shade.lit = prev.lit; shade.g = prev.g;
 }
 
 // Bounding box of a path function without rasterizing it. The rig's path
@@ -289,19 +317,28 @@ function fieldRamps(ctx) {
   const cx = 0, cy = FIELD_CY * u, r = FIELD_R * u;
   const ax = cx + shade.lx * r, ay = cy + shade.ly * r;   // lit end
   const bx = cx - shade.lx * r, by = cy - shade.ly * r;   // shadow end
+  // Room brightness rides the SAME gradients rather than a separate pass over
+  // the figure: a flat wash drawn per shape would stack wherever the rig
+  // overlaps pieces, which is the seam this whole design exists to avoid.
+  // `dark` is the shadow floor the ambient adds everywhere; `key` is how much
+  // of the directional modelling survives.
+  const key = shade.lit;
+  const dark = (1 - shade.lit) * AMBIENT_A;
+  const sh = (a) => Math.min(1, dark + a * key).toFixed(3);
+  const hi = (a) => (a * key).toFixed(3);
   const core = ctx.createLinearGradient(ax, ay, bx, by);
   // Nothing happens through the lit half. A terminator that starts at the
   // highlight and runs the entire figure is a gradient, not a lit form.
-  core.addColorStop(0, `rgba(${SHADOW_INK},0)`);
-  core.addColorStop(0.46, `rgba(${SHADOW_INK},0)`);
-  core.addColorStop(0.74, `rgba(${SHADOW_INK},${(FORM_A * 0.38).toFixed(3)})`);
-  core.addColorStop(1, `rgba(${SHADOW_INK},${FORM_A.toFixed(3)})`);
+  core.addColorStop(0, `rgba(${SHADOW_INK},${sh(0)})`);
+  core.addColorStop(0.46, `rgba(${SHADOW_INK},${sh(0)})`);
+  core.addColorStop(0.74, `rgba(${SHADOW_INK},${sh(FORM_A * 0.38)})`);
+  core.addColorStop(1, `rgba(${SHADOW_INK},${sh(FORM_A)})`);
   const lit = ctx.createLinearGradient(ax, ay, bx, by);
-  lit.addColorStop(0, `rgba(${HILITE_INK},${HILITE_A.toFixed(3)})`);
+  lit.addColorStop(0, `rgba(${HILITE_INK},${hi(HILITE_A)})`);
   lit.addColorStop(0.4, `rgba(${HILITE_INK},0)`);
   lit.addColorStop(1, `rgba(${HILITE_INK},0)`);
   const edge = ctx.createLinearGradient(ax, ay, bx, by);
-  edge.addColorStop(0, `rgba(${HILITE_INK},${EDGE_A.toFixed(3)})`);
+  edge.addColorStop(0, `rgba(${HILITE_INK},${hi(EDGE_A)})`);
   edge.addColorStop(0.5, `rgba(${HILITE_INK},0)`);
   edge.addColorStop(1, `rgba(${HILITE_INK},0)`);
   shade.g = { core, lit, edge };
@@ -319,14 +356,17 @@ function formRamps(ctx, pathFn) {
   const g = fieldRamps(ctx);
   if (!g) return null;
   const short = Math.min(hw, hh);
-  // Under a couple of device pixels a blob is a smudge, not a highlight.
-  if (short < 0.03 * shade.u) return g;
+  // Under a couple of device pixels a blob is a smudge, not a highlight. In an
+  // unlit bay there is no key to put one there at all — the blob fades out with
+  // the rest of the modelling rather than floating on a darkened figure.
+  const peak = SPEC_A * shade.lit;
+  if (short < 0.03 * shade.u || peak < 0.01) return g;
   const cx = (b.x0 + b.x1) / 2 + shade.lx * hw * SPEC_OFF;
   const cy = (b.y0 + b.y1) / 2 + shade.ly * hh * SPEC_OFF;
   const r = short * SPEC_R;
   const spec = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  spec.addColorStop(0, `rgba(${HILITE_INK},${SPEC_A.toFixed(3)})`);
-  spec.addColorStop(0.55, `rgba(${HILITE_INK},${(SPEC_A * 0.34).toFixed(3)})`);
+  spec.addColorStop(0, `rgba(${HILITE_INK},${peak.toFixed(3)})`);
+  spec.addColorStop(0.55, `rgba(${HILITE_INK},${(peak * 0.34).toFixed(3)})`);
   spec.addColorStop(1, `rgba(${HILITE_INK},0)`);
   return { core: g.core, lit: g.lit, edge: g.edge, spec };
 }
@@ -1581,8 +1621,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // an up-out target the IK's bend axis tilts, and +/- dirs would throw the
     // joints up-inward — the backwards-elbow look. At full spread the arms
     // are straight, so the dirs never show there.
+    // flexHold pins the rep at the curl and never opens it. The spread half of
+    // the cycle throws his fists a full body-width out to either side, which is
+    // fine alone on a menu and impossible in a line-up: in the intro row it put
+    // one blade through raymn and the other off the side of the screen. The
+    // curl is the half that reads as flexing anyway — arms out straight is just
+    // a man measuring a fish.
     const fx = ((pose.time || 0) * 0.8) % 1;
-    const fw = fx < 0.4 ? 0 : fx < 0.5 ? (fx - 0.4) * 10 : fx < 0.9 ? 1 : 1 - (fx - 0.9) * 10;
+    const fw = pose.flexHold ? 1
+      : fx < 0.4 ? 0 : fx < 0.5 ? (fx - 0.4) * 10 : fx < 0.9 ? 1 : 1 - (fx - 0.9) * 10;
     const sF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.25]);
     const sB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.25]);
     handF = [sF[0] + (shF + sideF * 0.2 * u - sF[0]) * fw, sF[1] + (armY - armL * 0.45 - sF[1]) * fw]; elbF = -sideF;
@@ -1778,11 +1825,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // left between the root and the body's edge at this height, the cap can
     // only ever bury the arm — never add to the silhouette. Turned is exempt:
     // there the cap is stroked and IS the shoulder's contour by design.
-    const bodyHalf = spec.taper
-      ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf)
-      : torsoHalf;
-    const capRoom = bodyHalf - Math.abs(x - torsoCx);
-    const r = turned ? rootHalf * 1.138 : Math.min(capBase * u, capFit, capRoom);
+    // The room is measured over the cap's whole SPAN, not just along its
+    // centre line. A plain rounded-rect torso is still turning its shoulder
+    // corner at arm height, so an ellipse that fits exactly at its own centre
+    // hangs its upper half outside the corner — a small unstroked teal lobe
+    // riding on the shoulder, which is precisely the blister the clamp is here
+    // to prevent. Solved in two passes because the span depends on the radius:
+    // the first sizes the cap at its root, the second shrinks it to whatever
+    // the body still offers at its top edge. Shrinking only ever lowers that
+    // edge into wider body, so one correction is enough.
+    const bodyRoom = (yy) => (spec.taper
+      ? taperHalfAt(yy, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : roundHalfAt(yy, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7)
+    ) - Math.abs(x - torsoCx);
+    let r = turned ? rootHalf * 1.138 : Math.min(capBase * u, capFit, bodyRoom(y));
+    if (!turned) r = Math.min(r, bodyRoom(y - r * 0.82));
     // No room at all means the arm roots outside the body: there is nothing to
     // bury it in, and a cap here would be pure addition to the silhouette.
     if (r <= 0) return;
@@ -1885,7 +1942,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // The victory routine is choreographed as a mirrored PAIR — fernwick's
     // hands clasp overhead, grumpos claps — so seating one arm of it breaks
     // the join. Left alone there.
-    const seat = pose.kind !== 'celebrate';
+    // Front-on stand and duck are mirrored pairs for the same reason: both
+    // arms hang off the same hand targets, reflected about the body, and both
+    // draw at the same depth. Seating one of them there drops the near hand
+    // 0.02u below its twin and pulls it 0.022u inboard — every hero standing
+    // with one arm visibly lower than the other. The seat is a NEAR-arm cue,
+    // so it needs the arm to actually be staged in front: a turn, or a gait
+    // that paints it over the torso.
+    const seat = pose.kind !== 'celebrate' && !(frontLegs && !turned);
     ctx.save();
     // The cannon takes the inboard seat but NOT the drop. The drop exists so a
     // normal shoulder does not pin to the torso's top corner, and a fleshy arm
@@ -3405,8 +3469,14 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // mirror x, and the light has to sit still through either. Off below the LOD
   // cut — at 16px a form is two pixels of ramp and reads as dirt, and the tiny
   // sites (HUD faces, hub NPCs) are cached anyway, so nothing is saved by it.
+  //
+  // `opts.lit` is room brightness at this figure's position, for callers that
+  // have a lighting model of their own to answer to — in practice the hub,
+  // whose ceiling fixtures already dim its wall and dressings. Defaulting to 1
+  // leaves the runner alone on purpose: a hero flickering past light sources at
+  // running speed is a distraction, not atmosphere.
   const xSign = (pose.facing === -1 ? -1 : 1) * (sx < 0 ? -1 : 1);
-  const prevLight = armLight(u, xSign, !lod && opts.light !== false);
+  const prevLight = armLight(u, xSign, !lod && opts.light !== false, opts.lit == null ? 1 : opts.lit);
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'disc') drawDisc(ctx, heroId, p, pose, u, ow, lod);

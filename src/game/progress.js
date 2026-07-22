@@ -11,6 +11,22 @@ export function formatCoins(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+export function formatPlaytime(sec) {
+  const s = Math.floor(sec || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}H ${m}M`;
+  if (m > 0) return `${m}M`;
+  return `${s}S`;
+}
+
+// [heroId, deathCount] for whoever has died the most, or null with no deaths yet.
+export function clumsiestHero(slot) {
+  const entries = Object.entries(slot.stats.deathsByHero || {});
+  if (!entries.length) return null;
+  return entries.reduce((best, e) => (e[1] > best[1] ? e : best));
+}
+
 // Every stage carries the same three plugs (mission, challenge, toaster), so
 // the campaign ceiling follows the stage list rather than a hand-kept number.
 export const MAX_PLUGS = STAGES.length * 3;
@@ -65,6 +81,10 @@ export function applyResult(save, result) {
   const slot = save.slot;
   const gains = { coins: 0, plugsNew: 0, mastery: [] };
   slot.stats.runs++;
+  slot.playtimeSec += result.time || 0;
+  slot.stats.distanceTraveled += result.distance || 0;
+  slot.stats.powerupsCollected += result.powerupsCollected || 0;
+  if (result.applianceGot) slot.stats.appliancesFound++;
 
   if (result.overtime) {
     slot.overtime.best = Math.max(slot.overtime.best, result.score);
@@ -72,6 +92,9 @@ export function applyResult(save, result) {
     gains.coins += Math.floor(result.score / 100);
   } else if (result.stage) {
     const id = result.stage.id;
+    const prevBestScore = slot.campaign.bestScore[id] || 0;
+    result.newBestScore = (result.score || 0) > prevBestScore;
+    slot.campaign.bestScore[id] = Math.max(prevBestScore, result.score || 0);
     const prev = slot.campaign.plugs[id] || [false, false, false];
     const now = [
       prev[0] || result.success,

@@ -517,7 +517,13 @@ export function drawHud(ctx, run) {
 
 // Cast who talk but are not playable, so are absent from HERO_BY_ID. They still
 // have a toon rig, so the portrait path works — only the name needs supplying.
-const EXTRA_SPEAKERS = { gary: { short: 'GARY' } };
+//
+// Missing an entry here is not a crash, which is what makes it easy to miss: an
+// unknown `who` falls through to the anonymous branch below and the speaker gets
+// the plain centred plate the GAME uses to talk to you. So a named character
+// left out of this table does not look broken, it looks like narration — which
+// is exactly how Dolores shipped her first afternoon.
+const EXTRA_SPEAKERS = { gary: { short: 'GARY' }, dolores: { short: 'DOLORES' } };
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
 //

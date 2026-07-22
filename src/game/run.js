@@ -169,6 +169,7 @@ export class RunState {
     this.score = 0;
     this.coins = 0;
     this.coinCombo = 0;
+    this.powerupsCollected = 0;
     this.coinComboT = 0;
     this.battery = this.maxBattery();
     this.damageTaken = 0;
@@ -1358,6 +1359,7 @@ export class RunState {
       // Only overcharge speaks. The plain grab already shows up as a timer in
       // the power row; overcharging is rare and the HUD states it only faintly.
       const res = this.powerups.grab(p.def.power);
+      this.powerupsCollected++;
       Audio.sfx('power');
       if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
     } else if (p.def.appliance) {
@@ -1489,6 +1491,8 @@ export class RunState {
     this.failMsg = msg || this.fxRng.pick(FAIL_MESSAGES);
     Audio.sfx('die');
     this.save.slot.stats.deaths++;
+    const dh = this.save.slot.stats.deathsByHero;
+    dh[this.relay.current] = (dh[this.relay.current] || 0) + 1;
   }
 
   updateDead(dt) {
@@ -1542,6 +1546,7 @@ export class RunState {
       failMsg: this.failMsg,
       distance: Math.floor(this.distance),
       time: this.tRun,
+      powerupsCollected: this.powerupsCollected,
     };
     this.o.onEnd(result);
   }

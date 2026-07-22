@@ -4,33 +4,60 @@
 <meta charset="utf-8">
 <title>MASHENSTEIN — Asset Gallery</title>
 <style>
-  :root { --bg:#0b0b14; --panel:#15151f; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e; --accent:#f6d33c; }
+  :root { --bg:#0b0b14; --panel:#15151f; --panel2:#1a1a28; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e;
+          --accent:#f6d33c; --accent-soft:rgba(246,211,60,0.1); }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background:var(--bg); color:var(--ink);
                font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { background-image:radial-gradient(ellipse 900px 500px at 15% -10%, rgba(246,211,60,0.05), transparent); }
   header { position:sticky; top:0; z-index:10; background:rgba(11,11,20,0.94);
            backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 20px; }
-  h1 { margin:0 0 8px; font-size:15px; letter-spacing:0.08em; color:var(--accent); }
+  h1 { margin:0 0 8px; font-size:15px; letter-spacing:0.08em; font-weight:600;
+       background:linear-gradient(90deg, var(--accent), #ffe98a); -webkit-background-clip:text;
+       background-clip:text; color:transparent; }
   h1 small { color:var(--dim); font-weight:normal; letter-spacing:0; margin-left:10px; }
   .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
   .controls label { display:flex; gap:6px; align-items:center; color:var(--dim); cursor:pointer; }
-  .controls input[type=range] { width:110px; }
-  nav { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
-  nav a { color:var(--dim); text-decoration:none; padding:2px 8px; border:1px solid var(--line); border-radius:99px; }
+  .controls select, .controls button, .controls input[type=search] {
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:5px;
+    padding:3px 8px; font:inherit; }
+  .controls button { color:var(--dim); cursor:pointer; }
+  .controls button:hover { color:var(--accent); border-color:var(--accent); }
+  nav { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; align-items:center; }
+  nav a { color:var(--dim); text-decoration:none; padding:2px 9px; border:1px solid var(--line); border-radius:99px;
+          transition:color .12s ease, border-color .12s ease, background .12s ease; }
   nav a:hover { color:var(--accent); border-color:var(--accent); }
+  nav a.active { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+  nav a .nav-count { opacity:0.55; font-size:9px; margin-left:5px; }
+  nav .nav-sep { color:var(--dim); font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+                 margin-left:6px; padding-left:10px; border-left:1px solid var(--line); opacity:0.7; }
   main { padding:20px; }
   section { margin-bottom:34px; }
   section > h2 { font-size:13px; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent);
-                 border-bottom:1px solid var(--line); padding-bottom:6px; margin:0 0 4px; scroll-margin-top:120px; }
+                 border-bottom:1px solid var(--line); padding-bottom:6px; margin:0 0 4px; scroll-margin-top:120px;
+                 cursor:pointer; user-select:none; display:flex; align-items:center; gap:7px; }
+  section > h2::before { content:'▾'; font-size:9px; color:var(--dim); display:inline-block;
+                         transition:transform .15s ease; }
+  section.collapsed > h2::before { transform:rotate(-90deg); }
+  section.collapsed > h2 { color:var(--dim); }
+  section.collapsed > *:not(h2) { display:none; }
+  body.filtering section.collapsed > .grid { display:flex; }
+  body.filtering section.collapsed > p.note, body.filtering section.collapsed > h3.subhead { display:block; }
   section > p.note { color:var(--dim); margin:0 0 12px; }
+  h3.subhead { font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--dim);
+               font-weight:normal; margin:16px 0 8px; }
+  h3.subhead:first-of-type { margin-top:4px; }
   .grid { display:flex; flex-wrap:wrap; gap:10px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px;
-          display:flex; flex-direction:column; align-items:center; gap:6px; }
+          display:flex; flex-direction:column; align-items:center; gap:6px;
+          transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .card:hover { transform:translateY(-2px); border-color:#454564; box-shadow:0 8px 20px rgba(0,0,0,0.4); }
   .card canvas { display:block; image-rendering:pixelated; border-radius:3px; cursor:pointer; }
   .card .name { color:var(--dim); font-size:11px; text-align:center; max-width:100%; word-break:break-word; }
   .card .name b { color:var(--ink); font-weight:normal; }
   .card.wide { width:100%; }
   .card.err { border-color:#e04848; }
+  .card.err:hover { border-color:#e04848; }
   .card.err .name { color:#e04848; }
   /* Swatch backdrops behind transparent art. */
   .bg-dark canvas   { background:#12121c; }
@@ -47,7 +74,20 @@
 <header>
   <h1>MASHENSTEIN — ASSET GALLERY <small>dev build · click any tile to save a PNG</small></h1>
   <div class="controls">
-    <label>zoom <input id="zoom" type="range" min="1" max="8" step="1" value="3"><span id="zoomv">3x</span></label>
+    <label>zoom
+      <select id="zoom">
+        <option value="1">1x</option>
+        <option value="2">2x</option>
+        <option value="3" selected>3x</option>
+        <option value="4">4x</option>
+        <option value="6">6x</option>
+        <option value="8">8x</option>
+        <option value="12">12x</option>
+        <option value="16">16x</option>
+        <option value="24">24x</option>
+        <option value="32">32x</option>
+      </select>
+    </label>
     <label>render
       <select id="resolution">
         <option value="1">logical</option>
@@ -64,6 +104,7 @@
     </label>
     <label><input id="animate" type="checkbox" checked> animate</label>
     <label>filter <input id="filter" type="search" placeholder="name…" size="14"></label>
+    <button id="collapseAll" type="button">collapse all</button>
   </div>
   <nav id="nav"></nav>
 </header>

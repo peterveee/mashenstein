@@ -1517,11 +1517,27 @@ export class IntroState {
       const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
       // Pitch comes from the LIVE frame width, so the line-up spreads as the
       // frame opens instead of sitting at a fixed spacing inside a moving box.
-      // 68 rather than 72: chompo's flame trail and mochi's ears are far wider
+      // 64 rather than 72: chompo's flame trail and mochi's ears are far wider
       // than 0.6x their height, so the pair that touches is not the pair the
-      // pitch maths predicts. Four units off every hero clears it without the
+      // pitch maths predicts. Eight units off every hero clears it without the
       // row visibly shrinking.
-      const HH = 68, PITCH = (fw - 46) / (heroes.length - 1);
+      //
+      // The 72 is the END INSET, and it is a silhouette measurement, not half a
+      // hero box: it is the room the outermost hero's actual ink needs inside
+      // the frame. At 46 grumpos — right end, bearded, armed, and the widest
+      // hero from anchor to fingertip — hung a blade off the side of the SCREEN.
+      // ROW_X leans the whole line 4px left of centre for the other half of the
+      // same problem: he reaches further right of his anchor than lorenzo does
+      // left of his, so centring the ANCHORS leaves the INK off-centre by
+      // exactly that difference, and the overflow all lands on grumpos.
+      //
+      // Height and inset are one dial, not two. Insetting alone buys end margin
+      // by squeezing the middle — at 68 tall the room that clears grumpos is the
+      // same room mochi and chompo were using. Taking four units off the heroes
+      // pays for both ends at once: every silhouette narrows, so the ends pull in
+      // AND the pairs that touch get further apart. This lands ~10px of daylight
+      // at each end of the frame with the middle gaps no tighter than they were.
+      const HH = 64, PITCH = (fw - 72) / (heroes.length - 1), ROW_X = W / 2 - 4;
       // The roll call plays ONCE, on panel 3, where the cast is being introduced.
       // Panel 4 is the same eight people a beat later — replaying their entrance
       // there would say they had just arrived again, and turn a one-off flourish
@@ -1553,12 +1569,16 @@ export class IntroState {
           pose.menu = true;
           if (h === 'gnash') { pose.kind = 'jump'; pose.grounded = false; }
           else if (h === 'mochi') pose.float = true;
-          else if (h === 'grumpos') pose.menuAction = 'flex';
+          // flexHold: the curl, held — not the full spread-and-curl rep. The
+          // spread throws his fists a body-width to either side, which put one
+          // blade through raymn and the other past the frame. A held curl is
+          // the half that reads as flexing anyway.
+          else if (h === 'grumpos') { pose.menuAction = 'flex'; pose.flexHold = true; }
           else if (h === 'b33p') pose.menuAction = 'aim';
           else if (h === 'chompo') pose.menuAction = 'chomp';
           else pose.menuAction = 'wave';
         }
-        drawToon(ctx, h, pose, W / 2 + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
+        drawToon(ctx, h, pose, ROW_X + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
       });
     }
     const text = INTRO_PANELS[this.panel].text;
@@ -1867,6 +1887,7 @@ export class ResultsState {
     // asterisk, two named mastery-ups and their summary).
     const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 12; };
     line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
+    if (r.newBestScore) line('NEW BEST SCORE ON THIS STAGE!', '#f6d33c');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
       line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');
