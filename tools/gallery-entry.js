@@ -611,8 +611,9 @@ navSeparator('lab / bake-offs');
   const YAWS = [0, 12, 20, 28];
   const grid = section('head-yaw', 'Head yaw — unresolved before / candidates',
     'GALLERY ONLY — production remains at 0°. Columns are current 0°, subtle 12°, medium 20°, '
-    + 'strong 28°. Every row shares one live run phase; the second tile shows the exact 24px '
-    + 'gameplay size rather than a large render scaled down after the fact.');
+    + 'strong 28°. Every row shares one live run phase; the second tile reproduces the normal '
+    + 'run camera: a 24-world-unit rig drawn through the 2× camera, approximately 48 logical '
+    + 'screen pixels before device-density scaling.');
 
   for (const id of ids) {
     const largeW = 4 * 66, largeH = 78;
@@ -625,10 +626,16 @@ navSeparator('lab / bake-offs');
       }
     }, { animated: true, wide: true, hires: 4 });
 
-    const runW = 4 * 38, runH = 32;
-    tile(grid, `${id} — gameplay size`, 'true 24px rig · 0° / 12° / 20° / 28°', runW, runH, (ctx, t) => {
+    const runW = 4 * 60, runH = 64;
+    tile(grid, `${id} — normal run size`, '24-unit rig × 2× camera = ~48px · 0° / 12° / 20° / 28°', runW, runH, (ctx, t) => {
       for (let i = 0; i < YAWS.length; i++) {
-        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), i * 38 + 19, 29, HERO_DRAW_H);
+        // Match applyWorld() rather than passing h=48: stroke floors are chosen
+        // from the real 24-unit rig first, then the camera magnifies the result.
+        ctx.save();
+        ctx.translate(i * 60 + 30, 60);
+        ctx.scale(2, 2);
+        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), 0, 0, HERO_DRAW_H);
+        ctx.restore();
       }
     }, { animated: true, wide: true, hires: 6 });
   }
