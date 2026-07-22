@@ -20,7 +20,7 @@ To run it locally:
 
 ```
 npm install        # once (esbuild only, dev-time)
-npm run build      # writes dist/index.html
+npm run build      # writes dist/index.html and dist/v1/index.html
 open dist/index.html
 ```
 
@@ -89,4 +89,5 @@ Layout: `src/engine/` (loop, renderer, style packs, sprites, input, audio, rng,
 save), `src/game/` (run, relay, spawner, bosses, minigames, hub, menus),
 `src/data/` (heroes, cabinets, stages, dialogue, jokes, progression, words),
 `src/sprites/` (string-grid pixel art). `build/build.js` bundles and inlines
-everything into `dist/index.html`.
+everything into `dist/index.html` and also writes the first archived release to
+`dist/v1/index.html` for GitHub Pages versioned routing.
