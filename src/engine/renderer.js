@@ -28,11 +28,19 @@ export const chrome = { mode: 'none', vw: 0, vh: 0 };
 // Radius scales with however much margin a device actually has — bigger on a
 // generous margin (iPad, portrait phones), never smaller than what a thumb
 // needs even on the tightest notch iPhone.
-const CHROME_R_MIN = 28;
-const CHROME_R_MAX = 40;
-const CHROME_PAD = 8;                         // gap from the outer screen edge
+const CHROME_R_MIN = 32;
+const CHROME_R_MAX = 46;
+const CHROME_PAD = 8;
 const CHROME_MIN_MARGIN = CHROME_R_MIN * 2 + CHROME_PAD;
 const chromeR = (margin) => Math.max(CHROME_R_MIN, Math.min(CHROME_R_MAX, margin / 2 - CHROME_PAD));
+// A phone's screen is a squircle, not a rectangle — a disc parked hard against
+// TWO edges at once (a true corner) gets its own corner clipped by that curve.
+// 'side' mode's buttons sit at a screen corner (bottom-left/right, top-right),
+// so their edge-facing axis needs real clearance, not just CHROME_PAD's sliver.
+const CHROME_EDGE_PAD = 26;
+// 'topbottom' mode anchors to the GAME's edge instead (see below) — a small
+// gap is enough there, since the corner risk mostly isn't in play.
+const CHROME_GAME_GAP = 10;
 
 export const back = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -141,19 +149,32 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   if (chrome.mode === 'side') {
     const r = chromeR(ox);
     // JUMP has the whole left column to itself; PAUSE/PWR split the right
-    // column top/bottom, since both live over there.
-    chrome.jump    = { x: ox / 2,        y: winH - r - CHROME_PAD, r, zone: { x: 0,           y: 0,          w: ox, h: winH } };
-    chrome.ability = { x: winW - ox / 2, y: winH - r - CHROME_PAD, r, zone: { x: winW - ox,    y: winH / 2,   w: ox, h: winH / 2 } };
-    chrome.pause   = { x: winW - ox / 2, y: r + CHROME_PAD,        r, zone: { x: winW - ox,    y: 0,          w: ox, h: winH / 2 } };
+    // column top/bottom, since both live over there. CHROME_EDGE_PAD (not the
+    // plain CHROME_PAD) keeps every one of these off the screen's rounded
+    // corners — each sits at a true corner (bottom-left, bottom-right,
+    // top-right), so it needs real clearance on its edge-facing axis.
+    chrome.jump    = { x: ox / 2,        y: winH - r - CHROME_EDGE_PAD, r, zone: { x: 0,           y: 0,          w: ox, h: winH } };
+    chrome.ability = { x: winW - ox / 2, y: winH - r - CHROME_EDGE_PAD, r, zone: { x: winW - ox,    y: winH / 2,   w: ox, h: winH / 2 } };
+    chrome.pause   = { x: winW - ox / 2, y: r + CHROME_EDGE_PAD,        r, zone: { x: winW - ox,    y: 0,          w: ox, h: winH / 2 } };
   } else if (chrome.mode === 'topbottom') {
     const r = chromeR(oy);
     // PAUSE has the whole top bar to itself; JUMP/PWR split the bottom bar
-    // left/right. Anchored to the physical top/bottom edge (not centered in
-    // the band) — on a portrait phone that band can be hundreds of px tall,
-    // and a button floating in the middle of it reads as lost, not placed.
-    chrome.jump    = { x: r + CHROME_PAD,        y: winH - r - CHROME_PAD, r, zone: { x: 0,        y: winH - oy, w: winW / 2, h: oy } };
-    chrome.ability = { x: winW - r - CHROME_PAD, y: winH - r - CHROME_PAD, r, zone: { x: winW / 2, y: winH - oy, w: winW / 2, h: oy } };
-    chrome.pause   = { x: winW - r - CHROME_PAD, y: r + CHROME_PAD,        r, zone: { x: 0,        y: 0,        w: winW,     h: oy } };
+    // left/right. Anchored to the GAME's own top/bottom edge (CHROME_GAME_GAP
+    // away from it), not the physical screen edge — on a portrait phone that
+    // margin can be hundreds of px tall, and a button sitting at the far
+    // physical edge reads as lost out in empty space instead of a control for
+    // the game right above/below it. CHROME_EDGE_PAD still guards the x-axis,
+    // since JUMP/PWR still sit at the screen's left/right extent.
+    //
+    // On a thin margin (iPad, whose oy runs 53-128 vs a portrait phone's
+    // 300+), "hug the game edge" and "stay fully on screen" can conflict once
+    // r is big enough — clamp each toward the screen's own edge instead of
+    // letting the disc run past it.
+    const bottomY = Math.min((winH - oy) + r + CHROME_GAME_GAP, winH - r - CHROME_PAD);
+    const topY = Math.max(oy - r - CHROME_GAME_GAP, r + CHROME_PAD);
+    chrome.jump    = { x: r + CHROME_EDGE_PAD,        y: bottomY, r, zone: { x: 0,        y: winH - oy, w: winW / 2, h: oy } };
+    chrome.ability = { x: winW - r - CHROME_EDGE_PAD, y: bottomY, r, zone: { x: winW / 2, y: winH - oy, w: winW / 2, h: oy } };
+    chrome.pause   = { x: winW - r - CHROME_EDGE_PAD, y: topY,    r, zone: { x: 0,        y: 0,        w: winW,     h: oy } };
   }
 }
 

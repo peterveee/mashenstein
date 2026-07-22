@@ -4,7 +4,7 @@
 // player who already installed it, or nagging anyone forever.
 import { installDom } from './dom-stub.js';
 installDom();
-const { installAdvice } = await import('../src/engine/install-prompt.js');
+const { installAdvice, installFlavor, iosMajor } = await import('../src/engine/install-prompt.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -13,6 +13,7 @@ function assert(cond, msg) {
 }
 
 const IPHONE_SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+const IPHONE_SAFARI_26 = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 const IPHONE_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0 Mobile/15E148 Safari/604.1';
 const IPHONE_INSTAGRAM = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 330.0';
 const IPAD = 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
@@ -23,6 +24,11 @@ const DAY = 24 * 60 * 60 * 1000;
 
 // Who is asked at all.
 assert(installAdvice({ ua: IPHONE_SAFARI }) === 'safari', 'iPhone Safari gets the walkthrough');
+// iOS 26 moved Share into the ••• menu and dropped it from the toolbar, so the
+// steps and the arrow have to change with the OS, not just the orientation.
+assert(installAdvice({ ua: IPHONE_SAFARI_26 }) === 'menu', 'iOS 26 Safari is routed via the ••• menu');
+assert(iosMajor(IPHONE_SAFARI_26) === 26 && iosMajor(IPHONE_SAFARI) === 17, 'iOS major version parsed');
+assert(iosMajor('nonsense') === 0, 'an unparseable UA reads as version 0, which takes the old steps');
 assert(installAdvice({ ua: IPHONE_CHROME }) === 'alt', 'iPhone Chrome gets the share-menu wording');
 assert(installAdvice({ ua: IPHONE_INSTAGRAM }) === 'inapp', "an app's webview is sent to Safari");
 assert(installAdvice({ ua: IPAD }) === null, 'iPad is left alone — it already gets real fullscreen');
@@ -51,6 +57,14 @@ assert(installAdvice({ ua: IPHONE_SAFARI, seen: { n: 3, t: 0 }, now: 400 * DAY }
 assert(installAdvice({}) === null, 'no arguments, no card');
 assert(installAdvice() === null, 'no environment at all, no card');
 assert(installAdvice({ ua: IPHONE_SAFARI, seen: {} }) === 'safari', 'an empty record reads as never shown');
+
+// The EXTRAS row asks the same device question but is deliberately blind to the
+// showing count: coming looking for it is not the same as being nagged.
+assert(installFlavor(IPHONE_SAFARI_26) === 'menu' && installFlavor(MAC) === null,
+  'the manual route reads the device the same way');
+assert(installAdvice({ ua: IPHONE_SAFARI, seen: { n: 3, t: 0 } }) === null
+  && installFlavor(IPHONE_SAFARI) === 'safari',
+  'a retired prompt still has a card to show when asked for one');
 
 console.log(failed ? 'INSTALL PROMPT: FAILED' : 'INSTALL PROMPT: OK');
 process.exit(failed ? 1 : 0);

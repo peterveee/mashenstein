@@ -1,6 +1,6 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, clearChrome } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -266,7 +266,6 @@ export class RunState {
 
   exit() {
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
-    clearChrome(); // otherwise the last-drawn chrome button lingers over the hub/menus
     Audio.setDetune(1); Audio.setInvincible(false);
   }
 
@@ -325,10 +324,9 @@ export class RunState {
     return { icon: 'pause' };
   }
 
-  // Drawn every frame regardless of mode, so clearChrome() wipes any stale
-  // button left over from a pause toggle or a mid-run rotation.
+  // states.js's drawState() already cleared #chrome this frame before calling
+  // here — nothing to wipe, just redraw on top when there's something to show.
   drawChromeButtons() {
-    clearChrome();
     if (!chromeCtx || !this.useChrome) return;
     for (const b of Input.chromeButtons) {
       const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
@@ -340,9 +338,15 @@ export class RunState {
       // of whatever roundButtonOpts already worked out for cooldown/charge.
       drawRoundButton(chromeCtx, box, {
         ...base,
-        fill: charged ? base.fill : 'rgba(255,255,255,0.16)',
-        ring: charged ? 'rgba(246,211,60,0.55)' : 'rgba(72,224,200,0.5)',
-        labelScale: 1.3,
+        fill: charged ? base.fill : 'rgba(255,255,255,0.22)',
+        // Plain white instead of the in-canvas teal/gold: teal reads fine as an
+        // accent over gameplay art, but as the ONLY color out in a flat black
+        // margin it looked like a color choice rather than a control. White
+        // ring + white text just reads as "button."
+        ink: charged ? base.ink : '#ffffff',
+        ring: charged ? 'rgba(246,211,60,0.7)' : 'rgba(255,255,255,0.75)',
+        ringWidth: 3,
+        labelScale: 2,
         labelStyle: 'bold',
       });
     }

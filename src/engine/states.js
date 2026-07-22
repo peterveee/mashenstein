@@ -1,5 +1,5 @@
 // State machine with a CRT-shutter transition between states.
-import { W, H, pushOverlayDraw } from './renderer.js';
+import { W, H, pushOverlayDraw, clearChrome } from './renderer.js';
 import { Input } from './input.js';
 import { drawToon } from '../sprites/toons.js';
 
@@ -148,6 +148,11 @@ function drawTransition(ctx, amount) {
 }
 
 export function drawState(ctx) {
+  // Cleared centrally, every frame, regardless of which state is current —
+  // not left to whichever state last drew into it to clean up after itself
+  // on its way out. RunState redraws its buttons right after, same frame, so
+  // active gameplay sees no flicker; anything else just stays empty.
+  clearChrome();
   current && current.draw && current.draw(ctx);
   if (fade > 0) {
     // Queue after every hero/effect overlay so the sticker truly covers the

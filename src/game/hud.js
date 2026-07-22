@@ -356,13 +356,14 @@ export function drawHud(ctx, run) {
   // and grabbing a duplicate refreshes its timer rather than adding one. A
   // brief third is possible off a breaker bonus or a ?-crate; past that the row
   // would reach the hints, which the sim says does not happen.
-  const SHELF_CY = GAUGE_CY - 15;
-  // Touch parks the round JUMP button in this corner (run.js setButtons), whose
-  // disc reaches x 56 — so the row starts to its right instead of running
-  // underneath it. Three entries from here still stop short of the PWR button
-  // opposite, and on touch the ability ring below is skipped, so nothing else
-  // is competing for the band.
-  let px = GAUGE_X + (Input.usingTouch ? 52 : 0);
+  // On touch the ability ring below is skipped entirely (see !Input.usingTouch
+  // below) — so the shelf only needs clearance from a ring that's not there,
+  // and can sit closer to the bottom edge instead of leaving that band empty.
+  const SHELF_CY = GAUGE_CY - (Input.usingTouch ? 4 : 15);
+  // Only the in-canvas fallback JUMP button (run.js setButtons, chrome.mode
+  // 'none') actually reaches into this corner at x 56 — chrome mode moves
+  // JUMP out into the margin, so the row no longer needs to duck it there.
+  let px = GAUGE_X + (Input.usingTouch && !run.useChrome ? 52 : 0);
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;

@@ -110,14 +110,17 @@ const NPC_ROAM = 155, NPC_MIN_X = 70;
 // is measured from each station's real width instead (see loiterClear), with
 // this as the air on top.
 //
-// Deliberately small. It is tempting to make it a hero's own half-width so
-// nobody ever clips a chassis, but the cabinets sit only 88 apart and are 48
-// wide: at a pad of 16 each machine forbids 80 of that 88, the gaps between them
-// stop being standing room at all, and the entire cast gets evicted from the
-// arcade bank into the service end. 6 reproduces the old 30-unit cabinet
-// clearance exactly — heroes clip a chassis edge at the extremes of a stroll,
-// which was always the intent — while still keeping them out of the counters.
-const NPC_LOITER_PAD = 6;
+// A hero's own half-width, so somebody at rest stands BESIDE the furniture
+// instead of half inside it. At 6 they cleared a station's centre by 28, which
+// for a 44-wide door puts a 32-wide hero ten units inside the doorway — they
+// looked like they were standing in the trophy shelf.
+//
+// This does squeeze the banks: cabinets are 88 apart and 48 wide, so at 40 of
+// clearance each they leave an 8-unit window at the midpoint of each gap. That
+// window is exactly where a hero does not touch either machine, which is the
+// right place for the only standing spot to be — see freeFloor's sliver floor,
+// which is held below it on purpose.
+const NPC_LOITER_PAD = 16;
 // The walk-up ranges that decide who you are addressing. ATTEND is only used by
 // the pinned counter staff, who hold position rather than tidying while a
 // customer is at the counter — for them it cannot pile anybody up, because they
@@ -429,6 +432,18 @@ const NPC_MENU = [{ id: 'talk', label: 'TALK' }, { id: 'swap', label: 'SWAP' }];
 // the wrong thing, so he gets a one-item chooser instead.
 function npcMenuFor(npc) { return npc && npc.swappable === false ? NPC_MENU.slice(0, 1) : NPC_MENU; }
 const NPC_CHIP_W = 30, NPC_CHIP_H = 12, NPC_CHIP_GAP = 3;
+// How far short of the back wall a hero has to stop.
+//
+// The chips are centred on whoever they belong to and drawn in WORLD space, so a
+// hero standing hard against the far end of the concourse hangs half a chip row
+// past it — and the camera is already clamped at that wall, so there is no pan
+// left to bring it back on screen. The result is a TALK/SWAP pair with its right
+// edge sliced off, and no amount of walking fixes it.
+//
+// Derived from the chip geometry rather than picked, so widening the chips or
+// adding a third option can never silently re-break it. A full row is
+// 2*30 + 3 = 63, so half of it is 31.5; the rest is air.
+const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
 // World-space rect for option `i` above a hero standing at `npcX`. One function
 // for both the drawing and the hit test, so a chip can never be somewhere other
@@ -659,10 +674,19 @@ export class HubState {
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
     if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) st.push({ type: 'socket', x, label: 'THE SOCKET' });
     if (slot.campaign.storyFlags.sawEnding) st.push({ type: 'overtime', x, label: 'OVERTIME CABINET' });
-    x += 80;
+    // Tail past the last station. Widened once the crowd started living out
+    // here: the far hero now reserves a chip row off the end (npcFarX), and
+    // at the old 80 that put them close enough to the back wall to read as
+    // cornered rather than as standing at the quiet end of a room.
+    x += 130;
     this.width = Math.max(W, x);
     return st;
   }
+
+  // The furthest right an NPC may stand. Short of the player's own limit by a
+  // chip row's worth, so their TALK/SWAP pair always has somewhere to be drawn
+  // — the camera stops at the wall, so anything past it is simply never shown.
+  npcFarX() { return this.width - 20 - NPC_CHIP_MARGIN; }
 
   // How much floor a station takes up, plus the air a hero keeps around it.
   // Stations are no longer one size: a counter is 118 across where a door is 44
@@ -688,7 +712,7 @@ export class HubState {
     // Runs to the far wall, not to a comfortable stopping point short of it.
     // update() clamps the player to width - 20, so anything inside that is
     // walkable floor and a hero standing on it is a hero you can reach.
-    const lo = NPC_MIN_X + 20, hi = Math.max(lo + 1, this.width - 30);
+    const lo = NPC_MIN_X + 20, hi = Math.max(lo + 1, this.npcFarX());
     const bands = st
       .map((s) => [s.x - this.loiterClear(s), s.x + this.loiterClear(s)])
       .sort((a, b) => a[0] - b[0]);
@@ -700,10 +724,12 @@ export class HubState {
       if (cur >= hi) break;
     }
     if (cur < hi) free.push([cur, hi]);
-    // Slivers are not standing room; a hero dropped into one has nowhere to go.
-    // Held under the 28-unit windows the cabinet gaps come to, or the arcade
-    // bank would filter itself out and take three quarters of the crowd with it.
-    return free.filter(([a, b]) => b - a > 16);
+    // Slivers are not standing room. Held at 6, which is under the 8-unit
+    // windows the 88-pitch banks come to once each station claims its own
+    // clearance: raise it past that and the cabinet row and the service doors
+    // both stop offering anywhere to stand, and the whole cast gets squeezed
+    // into the plaza and the far end.
+    return free.filter(([a, b]) => b - a > 6);
   }
 
   // Where the crowd lives: one standing patch each, spread evenly across the
@@ -735,7 +761,7 @@ export class HubState {
     const spans = this.freeFloor();
     const n = Math.max(1, HEROES.length);
     const lo = NPC_MIN_X + 20;
-    const hi = Math.max(lo + 1, this.width - 30);
+    const hi = Math.max(lo + 1, this.npcFarX());
     const snap = (want) => {
       let best = want, bd = Infinity;
       for (const [a, b] of spans) {
@@ -745,15 +771,25 @@ export class HubState {
       }
       return best;
     };
+    // The first legal spot at or beyond `minX`. Distinct from snap(), which
+    // takes the NEAREST — and nearest is the wrong answer when the thing being
+    // escaped is a wide forbidden band, since the closest legal spot to the far
+    // side of a counter is the near side of that same counter, i.e. exactly
+    // where we were trying not to be.
+    const snapAfter = (minX) => {
+      for (const [a, b] of spans) if (b >= minX) return Math.max(a, minX);
+      return null;
+    };
     const homes = [];
+    const MIN_SEP = NPC_STAND_OFF * 2;
     for (let i = 0; i < n; i++) {
-      const want = lo + ((i + 0.5) / n) * (hi - lo);
+      // Endpoints included: hero 0 is homed at the near end of the walkable
+      // floor and hero n-1 at the far end, past every station, rather than both
+      // sitting a half-step inside. This is what actually reaches the back wall.
+      const want = n > 1 ? lo + (i / (n - 1)) * (hi - lo) : (lo + hi) / 2;
       let x = snap(want);
-      // Two positions either side of a wide band (the counters again) can snap
-      // onto the same edge. Nudge past the neighbour and re-snap so nobody is
-      // homed on top of anybody.
       const prev = homes[homes.length - 1];
-      if (prev != null && x - prev < NPC_STAND_OFF * 2) x = snap(prev + NPC_STAND_OFF * 2.5);
+      if (prev != null && x - prev < MIN_SEP) x = snapAfter(prev + MIN_SEP) ?? x;
       homes.push(x);
     }
     return homes;
@@ -1331,6 +1367,14 @@ export class HubState {
         // reaches well past its art, so a hero idling near it competes with the
         // one station you cannot afford to mis-trigger.
         if (n.x < NPC_MIN_X) { n.x = NPC_MIN_X; n.facing = 1; }
+        // ...and never off the far end either. This clamp only ever existed on
+        // the left, because the crowd used to live in the cabinet gaps in the
+        // middle of the room and could not reach either wall. Now that they are
+        // homed the length of the concourse, the hero at the far end has a roam
+        // range that runs clean past the last of the floor, and they walked out
+        // over the edge into the letterbox. Same bound the player gets.
+        const far = this.npcFarX();
+        if (n.x > far) { n.x = far; n.facing = -1; }
       }
       if (n.timer > 0) continue;
       n.cycles++;

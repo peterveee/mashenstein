@@ -3,6 +3,7 @@
 import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
+import { canInstall, showInstallGuide } from '../engine/install-prompt.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
@@ -43,10 +44,6 @@ const TAGLINES = [
   'FLOOR MOPPED HOURLY BY A HAUNTED VACUUM',
   'EVERY PIXEL LOVINGLY REPLACED WITH MATH',
 ];
-
-// The title screen's cabinet row. Narrower and shorter than the food court's
-// (nine have to fit across 480px here), but the same silhouette, standing on
-// the same floor line the checkered tiles start at.
 
 let titleGrad = null;
 // Offsets here are in the 26-tall units the accents were drawn against; the
@@ -615,21 +612,16 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   // The nine-cabinet row used to stand here. It was competing with the marquee,
   // the save-file panel and the hero parade for the same screen, and the title
   // is not the place to inventory the arcade — the food court does that, at a
-  // size where the machines actually read. The floor and the parade carry the
-  // scene on their own.
+  // size where the machines actually read.
 
-  // Checkered floor. It starts higher than the text stack needs it to, because
-  // the cast is what the bottom of the screen is for — a taller parade standing
-  // on a deeper floor reads as a room rather than a strip of sprites.
+  // Ground plane. The checkered tiles went with the cabinets: with nothing
+  // standing on it, the pattern was reading as arcade carpet on a screen that
+  // is no longer an arcade. A flat band still gives the parade something to
+  // walk on, and it starts higher than the text stack needs it to, because the
+  // cast is what the bottom of the screen is for — a taller parade standing on
+  // a deeper floor reads as a room rather than a strip of sprites.
   ctx.fillStyle = '#171222';
   ctx.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
-  for (let row = 0; row < 3; row++) {
-    for (let x = -32; x < W; x += 32) {
-      if ((Math.floor(x / 32) + row) % 2 === 0) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(x, TITLE_FLOOR_Y + 4 + row * 24, 32, 24);
-    }
-  }
 
   // The cast still crosses the arcade, but each hero occasionally breaks into
   // a small personality beat. Cycles are offset so the parade stays readable.
@@ -1045,6 +1037,15 @@ export class TitleState {
     // plays it for you.
     const anyFile = this.save.data.slots.some(Boolean);
     const choices = [{ label: 'HOW TO PLAY', act: () => this.onHowTo() }];
+    // The Home Screen walkthrough, for the player who waved it away on first
+    // load and then spent a level looking at Safari's toolbar. Only drawn where
+    // it can actually be followed — an iPhone that is not already installed.
+    if (canInstall()) {
+      choices.push({
+        label: 'PLAY FULLSCREEN (ADD TO HOME)',
+        act: () => { this.extras = null; showInstallGuide({ hasSave: anyFile }); },
+      });
+    }
     // Until now the opening was reachable only by starting a brand new file —
     // so the one way to read it twice was to erase your progress.
     if (anyFile) choices.push({ label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });

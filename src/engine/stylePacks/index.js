@@ -744,6 +744,7 @@ function bakedFill(ctx, key, tw, th, paint) {
 // around with big eyes, and reacts to hero hits — gasping in sympathy or,
 // just as often, laughing. Game code pings sunShock() from takeHit.
 let cloudShockT = 0, cloudLaughT = 0, cloudLastT = 0;
+const PAL_S = 1.4; // the pal outsizes every plain cloud so the face reads first
 export function sunShock() {
   if (Math.random() < 0.55) cloudLaughT = 1.7;
   else cloudShockT = 1.4;
@@ -755,7 +756,9 @@ function drawStaticSun(ctx, t) {
   const sx = (t * 3.2) % (W + 150);
   const x = W + 60 - sx;                              // drifts right to left
   const u = (x - W / 2) / (W / 2);
-  const y = 32 + 26 * u * u;                          // shallow day-arc
+  // Base sits below the HUD pill row (~y 23) plus the halo/ray radius (~30),
+  // so the sun never hides behind the score furniture at the apex of its arc.
+  const y = 58 + 26 * u * u;                          // shallow day-arc
   const breathe = 1 + 0.06 * Math.sin(t * 1.1);
   ctx.save();
   ctx.translate(x, y);
@@ -820,13 +823,17 @@ function drawCloudPal(ctx, t, reduced) {
   // for a stretch before floating back in from the left.
   const x = ((t * 13) % (W + 190)) - 95;
   if (x < -45 || x > W + 45) return; // off having a private moment
-  let y = 48 + Math.sin(t * 0.33) * 20 + Math.sin(t * 0.9) * 4;
+  // Rides lower than the plain clouds and bobs less: at PAL_S the silhouette
+  // reaches ~20px above its origin, and the HUD pill row owns everything down
+  // to y 23 — a higher or wider bob would park the face behind the score.
+  let y = 74 + Math.sin(t * 0.33) * 14 + Math.sin(t * 0.9) * 3;
   let jx = 0;
   if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
   if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;
 
   ctx.save();
   ctx.translate(x + jx, y);
+  ctx.scale(PAL_S, PAL_S); // the pal is the big one; the flock stays smaller
   drawCloudBody(ctx, '#f8f8ff');
 
   // idle micro-expressions: every ~8s slot, briefly giggle or doze

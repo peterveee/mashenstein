@@ -68,9 +68,16 @@ class InputSys {
       this.pointer = { x: p.x, y: p.y, down: true };
       this.press('pointer');
       const btn = this.buttonAt(p.x, p.y);
-      if (btn) {
-        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action: btn.action, isButton: true });
-        this.press(btn.action);
+      // A chrome button is allowed to sit close enough to the game rect that
+      // its outer sliver overlaps it (run.js) — a tap landing on that sliver
+      // is dispatched to #game (it's on top there), not #chrome, so without
+      // this check it would fall through to the tap-to-jump convenience
+      // below and fire a stray jump instead of PWR/JUMP/PAUSE.
+      const chromeBtn = !btn && this.chromeButtonAt(e.clientX, e.clientY);
+      if (btn || chromeBtn) {
+        const action = btn ? btn.action : chromeBtn.action;
+        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true });
+        this.press(action);
       } else {
         this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action: null });
         // Tap-to-jump is a RUN-gameplay convenience only. Every other context
