@@ -103,13 +103,31 @@ const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
 // customer is at the counter — for them it cannot pile anybody up, because they
 // were never going anywhere. The wandering cast is held by FOCUS instead of by a
 // radius; see updateNpcs for why that distinction is the whole ballgame.
-const STATION_R = 26, NPC_TALK_R = 18, NPC_ATTEND_R = 30;
-// How far to stop SHORT of somebody you tapped. Comfortably inside NPC_TALK_R,
-// so arriving is the same thing as being able to address them, and wide enough
-// that the two sprites stand shoulder to shoulder rather than inside each other.
-// The walk stops within 3 of its target, so the arrival band is 11..17 — still
-// under the talk radius at its loosest.
-const NPC_STAND_OFF = 14;
+//
+// TALK is sized off NPC_STAND_OFF rather than chosen: walking up to somebody has
+// to leave them addressable, so the radius follows the gap and not the other way
+// round. It was 18 — under the width of two toons — which is why tapping a hero
+// parked the two sprites inside each other.
+const STATION_R = 26, NPC_ATTEND_R = 30;
+// How far to stop SHORT of somebody you tapped, and the number the talk radius
+// is derived from.
+//
+// Measured, not guessed. These toons are far wider than their walk-up radius
+// suggested: the cast runs 28-33 units across (Grumpos is the widest at 33, half
+// of 18; the player is 28, half of 14), so two of them TOUCH at 32 apart. The
+// old 14 therefore overlapped them by eighteen units — most of a body — and
+// tapping a hero to go and stand with them buried you in their chest.
+//
+// 34 puts them just clear of touching against the WIDEST hero — Grumpos, who is
+// the one that sets this number — and a little roomier against everybody else.
+// Tuned by eye from there: 38 was correct and read as standoffish, with visible
+// daylight between two people supposedly having a conversation. This sits them
+// shoulder to shoulder with their contact shadows just overlapping.
+const NPC_STAND_OFF = 34;
+// The walk stops within 3 of its target and the crowd keeps shuffling, so the
+// radius needs headroom over the stand-off or arriving would sometimes land just
+// outside talk range and the chips you walked over for would not appear.
+const NPC_TALK_R = NPC_STAND_OFF + 8;
 // How far counter staff drift from their post while working. A small fraction of
 // their own deck — far enough to be seen moving, never far enough to leave the
 // unit they are drawn inside.

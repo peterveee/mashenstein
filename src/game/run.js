@@ -1,13 +1,13 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, clearChrome } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, textYForMid, UI_PLATE } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, textYForMid, UI_PLATE, drawRoundButton } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
@@ -17,7 +17,7 @@ import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech } from './hud.js';
+import { drawHud, drawSpeech, roundButtonOpts } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
@@ -264,20 +264,40 @@ export class RunState {
     clearParticles();
   }
 
-  exit() { setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Audio.setDetune(1); Audio.setInvincible(false); }
+  exit() {
+    setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
+    clearChrome(); // otherwise the last-drawn chrome button lingers over the hub/menus
+    Audio.setDetune(1); Audio.setInvincible(false);
+  }
 
   setButtons() {
     this.touchButtons = Input.usingTouch;
+    this.chromeMode = chromeGeo.mode;
     // The paused screen is a menu, so it takes the screen's buttons over
     // wholesale: the three play controls have nothing to do while the world is
     // stopped, and leaving JUMP live under a dimmed screen invites a tap that
     // does nothing and reads as a hang. Registered for mouse as well as touch —
     // these are the only controls on this screen a pointer can reach, and a
     // desktop player who paused with the mouse expects to leave the same way.
-    if (this.paused) { Input.setButtons(PAUSE_BUTTONS); return; }
+    if (this.paused) { Input.setButtons(PAUSE_BUTTONS); Input.setChromeButtons([]); this.useChrome = false; return; }
     // Play controls are touch only: keyboard players have SPACE/RIGHT/P/ESC,
     // and the corners hold HUD instead.
-    //
+    if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); this.useChrome = false; return; }
+    // Enough black margin outside the 480x270 rect (renderer.js's chrome
+    // geometry) to put the controls out there instead of over the art. Falls
+    // back to the old in-canvas corners on anything too close to 16:9 to have
+    // room (chrome.mode === 'none').
+    this.useChrome = chromeGeo.mode !== 'none';
+    if (this.useChrome) {
+      Input.setButtons([]);
+      Input.setChromeButtons([
+        { id: 'jump', ...chromeGeo.jump, action: 'jump' },
+        { id: 'ability', ...chromeGeo.ability, action: 'ability' },
+        { id: 'pause', ...chromeGeo.pause, action: 'escape' },
+      ]);
+      return;
+    }
+    Input.setChromeButtons([]);
     // Three discs, one style, one painter (drawRoundButton) — thumbs find a
     // shape faster than they read a label, and three identical shapes say "the
     // controls" the way three differently-drawn boxes never did. JUMP and PWR
@@ -285,7 +305,7 @@ export class RunState {
     // landscape; PAUSE sits top-right UNDER the objective panels rather than
     // beside them, so the corner the eye goes to for GOAL/BONUS is not also
     // the corner that quits the run.
-    Input.setButtons(Input.usingTouch ? [
+    Input.setButtons([
       { id: 'jump', x: 12, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
       { id: 'ability', x: W - 56, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'PWR', round: true },
       // Mirrors the Escape key exactly: pauses if running, quits if already
@@ -293,7 +313,27 @@ export class RunState {
       // half of it is now unreachable from here, since pausing swaps this
       // button out for the menu above.
       { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
-    ] : []);
+    ]);
+  }
+
+  // Chrome buttons carry no label/icon of their own (see setButtons) — drawn
+  // here from the same three ids the in-canvas buttons use, so one lookup
+  // supplies both the JUMP/PWR label text and the PAUSE glyph.
+  chromeButtonArt(id) {
+    if (id === 'jump') return { label: 'JUMP' };
+    if (id === 'ability') return { label: 'PWR' };
+    return { icon: 'pause' };
+  }
+
+  // Drawn every frame regardless of mode, so clearChrome() wipes any stale
+  // button left over from a pause toggle or a mid-run rotation.
+  drawChromeButtons() {
+    clearChrome();
+    if (!chromeCtx || !this.useChrome) return;
+    for (const b of Input.chromeButtons) {
+      const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
+      drawRoundButton(chromeCtx, box, roundButtonOpts(this, box));
+    }
   }
 
   maxBattery() {
@@ -330,7 +370,9 @@ export class RunState {
       Input.endFrame(); return;
     }
     if (this.finishing) { this.updateFinish(dt); Input.endFrame(); return; }
-    if (Input.usingTouch !== this.touchButtons) this.setButtons(); // first touch mid-run
+    // First touch mid-run, or a rotation that flips which margin (if any) has
+    // room for chrome buttons — either needs the button set rebuilt.
+    if (Input.usingTouch !== this.touchButtons || chromeGeo.mode !== this.chromeMode) this.setButtons();
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
     const wasPaused = this.paused;
@@ -1802,6 +1844,7 @@ export class RunState {
       if (this.introFreeze > 0 && this.introText) this.drawActBanner(d);
     };
     if (!pushOverlayDraw(drawUi)) drawUi(ctx);
+    this.drawChromeButtons();
 
     // Queued behind drawUi rather than painted straight onto the backbuffer:
     // the HUD draws into the overlay layer, which composites ON TOP of ctx, so

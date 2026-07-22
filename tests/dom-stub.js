@@ -34,11 +34,17 @@ export function installDom() {
   }
 
   const canvas = makeCanvas();
+  // The second canvas renderer.js looks up, for touch chrome out in the
+  // letterbox margin. It has to be a real stub canvas: everything else here
+  // falls through to bootErrorEl, which has no getContext, so #chrome resolving
+  // to that threw at module scope and took all sixteen suites down with it
+  // before a single test ran.
+  const chromeCanvas = makeCanvas();
   const bootErrorEl = { style: {}, textContent: '' };
 
   globalThis.document = {
     readyState: 'complete',
-    getElementById: (id) => (id === 'game' ? canvas : bootErrorEl),
+    getElementById: (id) => (id === 'game' ? canvas : id === 'chrome' ? chromeCanvas : bootErrorEl),
     createElement: () => makeCanvas(),
     addEventListener: (ev, fn) => { (listeners['doc:' + ev] ||= []).push(fn); },
   };

@@ -26,6 +26,7 @@ class InputSys {
     this.up = new Set();        // released this frame
     this.pointer = { x: 0, y: 0, down: false };
     this.buttons = [];          // virtual on-screen buttons: {id, x, y, w, h, action}
+    this.chromeButtons = [];    // buttons OUTSIDE the game rect: {id, x, y, r, action} in viewport CSS px
     this.textHandler = null;    // for TURDLE typing
     this.touches = new Map();   // pointerId -> {x0, y0, t0, action}
     this.padPrev = new Set();
@@ -124,6 +125,25 @@ class InputSys {
     el.addEventListener('pointerup', endPointer);
     el.addEventListener('pointercancel', endPointer);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // #chrome sits behind #game and only shows through in the letterbox/
+    // pillarbox margin (run.js), so a tap only ever reaches it there. No
+    // swipe gestures or tap-to-jump fallback here — just hit a button or not.
+    const chromeEl = document.getElementById('chrome');
+    if (chromeEl) {
+      chromeEl.addEventListener('pointerdown', (e) => {
+        this.activity++;
+        this.usingTouch = e.pointerType === 'touch';
+        this.onAnyGesture && this.onAnyGesture();
+        const btn = this.chromeButtonAt(e.clientX, e.clientY);
+        if (btn) {
+          this.touches.set(e.pointerId, { x0: e.clientX, y0: e.clientY, t0: performance.now(), action: btn.action, isButton: true });
+          this.press(btn.action);
+        }
+        e.preventDefault();
+      });
+      chromeEl.addEventListener('pointerup', endPointer);
+      chromeEl.addEventListener('pointercancel', endPointer);
+    }
     window.addEventListener('blur', () => { this.down.clear(); });
   }
 
@@ -165,6 +185,21 @@ class InputSys {
   }
 
   setButtons(list) { this.buttons = list || []; }
+
+  // Chrome buttons are discs positioned in raw viewport CSS px (renderer.js's
+  // `chrome` geometry), not the logical 480x270 space `buttonAt` tests — hence
+  // the separate list and a plain circular hit-test instead of clientToLogical.
+  chromeButtonAt(cx, cy) {
+    const SLOP = 6;
+    for (const b of this.chromeButtons) {
+      const r = b.r + SLOP;
+      const dx = cx - b.x, dy = cy - b.y;
+      if (dx * dx + dy * dy <= r * r) return b;
+    }
+    return null;
+  }
+
+  setChromeButtons(list) { this.chromeButtons = list || []; }
 
   setContext(context) {
     this.context = context || 'default';

@@ -8,6 +8,27 @@ export const H = 270;
 
 const canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
+// Second canvas, full viewport, sitting BEHIND #game in the DOM (so #game
+// paints on top wherever the two overlap and still owns every gameplay tap;
+// #chrome only shows — and only receives pointer events — out in the black
+// letterbox/pillarbox margin, where #game doesn't cover). Lets touch controls
+// live outside the 480x270 play field as real canvas-drawn buttons instead of
+// crowding the corners of the art.
+const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
+export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
+
+// Chrome button geometry, recomputed every resize(). 'side': margin left+right
+// (phones in landscape — the fit is height-limited, same math run.js's touch
+// comment already spells out). 'topbottom': margin above+below (iPad in
+// landscape, whose 4:3-ish screen makes the fit WIDTH-limited instead — and
+// portrait phones, which hit that same width-limited case with a much bigger
+// margin). 'none': neither margin clears the minimum — an exact-16:9 device,
+// where callers fall back to the old in-canvas buttons.
+export const chrome = { mode: 'none', vw: 0, vh: 0 };
+const CHROME_R = 26;                          // button radius, CSS px
+const CHROME_PAD = 10;                        // gap from the outer screen edge
+const CHROME_MIN_MARGIN = CHROME_R * 2 + CHROME_PAD;
+
 export const back = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (c) { c.width = W; c.height = H; }
@@ -91,7 +112,37 @@ function resize() {
   }
   Object.assign(screen, { scale, ox, oy, cssW, cssH, px, dpx: pxW / W });
   if (glfx.active) glfx.resize(bw, bh);
+  resizeChrome(winW, winH, ox, oy, dpr);
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
+}
+
+function resizeChrome(winW, winH, ox, oy, dpr) {
+  if (chromeCanvas) {
+    chromeCanvas.width = Math.round(winW * dpr);
+    chromeCanvas.height = Math.round(winH * dpr);
+    chromeCanvas.style.width = winW + 'px';
+    chromeCanvas.style.height = winH + 'px';
+    chromeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  chrome.vw = winW;
+  chrome.vh = winH;
+  chrome.mode = ox >= CHROME_MIN_MARGIN ? 'side' : oy >= CHROME_MIN_MARGIN ? 'topbottom' : 'none';
+  if (chrome.mode === 'side') {
+    chrome.jump    = { x: ox / 2,        y: winH - CHROME_R - CHROME_PAD, r: CHROME_R };
+    chrome.ability = { x: winW - ox / 2, y: winH - CHROME_R - CHROME_PAD, r: CHROME_R };
+    chrome.pause   = { x: winW - ox / 2, y: CHROME_R + CHROME_PAD,        r: CHROME_R };
+  } else if (chrome.mode === 'topbottom') {
+    chrome.jump    = { x: CHROME_R + CHROME_PAD,        y: winH - oy / 2, r: CHROME_R };
+    chrome.ability = { x: winW - CHROME_R - CHROME_PAD, y: winH - oy / 2, r: CHROME_R };
+    chrome.pause   = { x: winW - CHROME_R - CHROME_PAD, y: oy / 2,        r: CHROME_R };
+  }
+}
+
+// Wipes the chrome canvas — called every frame regardless of mode, so a
+// device that flips between 'none' and an outside mode (pause toggling,
+// rotation) never leaves a stale button drawn behind.
+export function clearChrome() {
+  if (chromeCtx) chromeCtx.clearRect(0, 0, chrome.vw, chrome.vh);
 }
 
 let shakeX = 0, shakeY = 0, shakePower = 0, shakeTime = 0;

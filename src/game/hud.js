@@ -499,20 +499,26 @@ export function drawHud(ctx, run) {
   // overlay draws itself (run.js drawPaused) — over the dim, not under it.
   for (const b of Input.buttons) {
     if (!b.round) continue;
-    // A banked charge overrides the cooldown: the button reads gold and full,
-    // because it is usable right now.
-    const charged = b.id === 'ability' && run.player.relayCharge;
-    const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
-    const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
-    drawRoundButton(ctx, b, {
-      frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : null,
-      // Charged is the one state allowed to raise its voice, and with the
-      // outline gone the fill is the only place left to say it: a gold wash
-      // under gold ink, against the same near-invisible slate the others wear.
-      fill: charged ? 'rgba(246,211,60,0.2)' : 'rgba(11,11,20,0.22)',
-      ink: charged ? '#f6d33c' : '#48e0c8',
-    });
+    drawRoundButton(ctx, b, roundButtonOpts(run, b));
   }
+}
+
+// Shared between the in-canvas button loop above and run.js's chrome-canvas
+// buttons (same discs, drawn to a different context when there's room to put
+// them outside the game rect instead). A banked charge overrides the
+// cooldown: the button reads gold and full, because it is usable right now.
+export function roundButtonOpts(run, b) {
+  const charged = b.id === 'ability' && run.player.relayCharge;
+  const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
+  const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
+  return {
+    frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : null,
+    // Charged is the one state allowed to raise its voice, and with the
+    // outline gone the fill is the only place left to say it: a gold wash
+    // under gold ink, against the same near-invisible slate the others wear.
+    fill: charged ? 'rgba(246,211,60,0.2)' : 'rgba(11,11,20,0.22)',
+    ink: charged ? '#f6d33c' : '#48e0c8',
+  };
 }
 
 // Cast who talk but are not playable, so are absent from HERO_BY_ID. They still
