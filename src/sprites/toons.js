@@ -3611,8 +3611,8 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   // facial mask shifts across the fixed body and compresses slightly instead.
   const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
   ctx.save();
-  ctx.translate(faceYaw * 0.045 * u, 0);
-  ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1);
+  ctx.translate(faceYaw * 0.11 * u, 0);
+  ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1);
   pikaEyes(ctx, p, u, 0, faceY, lod, ex);
   const jig = kind === 'run' ? Math.sin(2 * ph - 0.7) : 0;
   const cheekY = faceY + 0.11 * u + jig * 0.018 * u;
@@ -3939,9 +3939,9 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     // eye mask while leaving the wedge, hair and bow silhouette untouched.
     const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
     ctx.save();
-    ctx.translate(faceYaw * 7, 0);
-    ctx.translate(120, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1); ctx.translate(-120, 0);
-    for (const e of CHOMPO_EYES) chompoEye(ctx, p, e, bodyFill, lod, ex.blink, faceYaw * 3);
+    ctx.translate(faceYaw * 36, 0);
+    ctx.translate(120, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1); ctx.translate(-120, 0);
+    for (const e of CHOMPO_EYES) chompoEye(ctx, p, e, bodyFill, lod, ex.blink, faceYaw * 8);
     ctx.restore();
     // 7. bow (spec rotate(-8°) plus a small flutter so it isn't frozen)
     const flutter = (pose.kind === 'run' ? Math.sin(2 * ph) : Math.sin((pose.time || 0) * 2)) * 0.05;
@@ -3977,9 +3977,9 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
   });
   const ex = expressionFor(id, pose);
   const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
-  const faceX = hx + (0.02 + faceYaw * 0.045) * u;
+  const faceX = hx + (0.02 + faceYaw * 0.11) * u;
   ctx.save();
-  ctx.translate(faceX, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1); ctx.translate(-faceX, 0);
+  ctx.translate(faceX, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1); ctx.translate(-faceX, 0);
   drawEyes(ctx, p, u, faceX, hy - 0.01 * u, lod, ex);
   if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, faceX, hy + 0.08 * u, ow, ex);
   ctx.restore();
