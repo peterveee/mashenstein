@@ -1,6 +1,18 @@
 {
-  "v0": "2026-07-19-b3c348d.html",
-  "v1": "2026-07-19-659b55e.html",
-  "v2": "2026-07-20-a5a97ef.html",
-  "v3": "2026-07-21-8a976e8.html"
+  "v0": {
+    "file": "2026-07-19-b3c348d.html",
+    "note": "Jul 19, 12:08. First deployed build. Pixel-font prototype: placeholder sprites, no toons, flat grey title. 6.6k lines of source."
+  },
+  "v1": {
+    "file": "2026-07-19-659b55e.html",
+    "note": "Jul 19, 22:03, ten hours later. The visual identity arrives -- vector toon cast, WebGL effects, vector props, attract mode, cast roll call, star power, synth music. Look at the TITLE SCREEN: the hub is barely touched."
+  },
+  "v2": {
+    "file": "2026-07-21-c0543fa.html",
+    "note": "Jul 21, 00:19. Structure and story: three plug objectives per stage, relay redesigned to bank-and-spend, destructible debris, ability gauge, and the per-stage briefing screen. Look at the BRIEFING and the HUD -- the hub still looks like v1."
+  },
+  "v3": {
+    "file": "2026-07-22-8658bfa.html",
+    "note": "Jul 22, 09:07. Last build before the environment art. Dev menu, ~2k lines of character animation, and the camera module that adds run zoom. The food court is still flat slabs here -- that is the point, it is what the live site is about to replace."
+  }
 }

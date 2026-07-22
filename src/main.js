@@ -17,6 +17,8 @@ import { HubState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdF
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
+import { initInstallPrompt } from './engine/install-prompt.js';
+import { initUpdates } from './engine/updates.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -253,6 +255,15 @@ function boot() {
   Dev.enabled = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
   if (Dev.enabled) Dev.install({ Flow, save });
   Flow.toTitle();
+  // Keep an installed copy current (silently), and — on an iPhone, once — show
+  // the player how to install it. The dismiss tap is a real user gesture, so
+  // hand it to the same unlock the first canvas tap would have done: the menu
+  // theme starts as the card leaves rather than on some later poke.
+  initUpdates();
+  initInstallPrompt({
+    hasSave: save.data.slots.some(Boolean),
+    onDismiss: () => Input.onAnyGesture && Input.onAnyGesture(),
+  });
   startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => { drawState(bctx); Dev.draw(bctx); blit(); },

@@ -29,6 +29,25 @@ Or `npm run dev` for a watch + local server loop.
 For phone testing on your LAN: `python3 -m http.server -d dist` and open
 `http://<your-ip>:8000/`.
 
+### On an iPhone
+
+Safari has no Fullscreen API, so a phone loses about a third of the screen to
+its toolbars. The only true fullscreen iOS offers is the Home Screen, and the
+first load on an iPhone says so: a card walks through Share → Add to Home
+Screen, points at whichever end of the screen Safari's toolbar is currently
+living at, and does not ask more than three times. iPad and desktop never see
+it (`src/engine/install-prompt.js`).
+
+An installed copy keeps itself current. `dist/sw.js` fetches the page
+network-first with `cache: 'no-store'`, because a Home Screen launch will
+otherwise happily reopen a build from weeks ago and GitHub Pages gives us no
+cache headers to argue with. The cache is only ever the offline fallback.
+
+The Home Screen icon is Lorenzo, rendered from the game's own vector painter
+rather than exported by hand: `node tools/render-icon.js` rewrites
+`build/icons/icon-{180,192,512}.png` and the build copies them into `dist/`
+beside a web manifest. Re-run it if the cast's look changes.
+
 ## Controls
 
 | Action | Keyboard | Touch |

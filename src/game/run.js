@@ -332,7 +332,19 @@ export class RunState {
     if (!chromeCtx || !this.useChrome) return;
     for (const b of Input.chromeButtons) {
       const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
-      drawRoundButton(chromeCtx, box, roundButtonOpts(this, box));
+      const base = roundButtonOpts(this, box);
+      const charged = b.id === 'ability' && this.player.relayCharge;
+      // Out in the margin these sit against near-black instead of colourful
+      // gameplay art — the in-canvas fill barely shows there, so chrome gets
+      // its own brighter fill, a defining ring, and bigger/bolder text on top
+      // of whatever roundButtonOpts already worked out for cooldown/charge.
+      drawRoundButton(chromeCtx, box, {
+        ...base,
+        fill: charged ? base.fill : 'rgba(255,255,255,0.16)',
+        ring: charged ? 'rgba(246,211,60,0.55)' : 'rgba(72,224,200,0.5)',
+        labelScale: 1.3,
+        labelStyle: 'bold',
+      });
     }
   }
 

@@ -75,11 +75,13 @@ const CSS = `
   background: #2a173b; border: 2px solid #48e0c8; border-radius: 14px;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
 }
-/* The sticker scallop the state-machine shutter uses, borrowed as a top edge
-   so the card reads as part of the game and not as a Safari alert. */
+/* A stitched seam along the top edge, so the card reads as part of the game
+   and not as a Safari alert — the shutter's sticker scallops, clipped by the
+   card's own scroll box into something closer to running stitch, which for
+   this game is arguably more on the nose anyway. */
 .mash-a2hs-card::before {
-  content: ''; position: absolute; left: 10px; right: 10px; top: -7px; height: 8px;
-  background: radial-gradient(circle at 6px 4px, #f2a6c8 4px, transparent 4.5px) 0 0/12px 8px repeat-x;
+  content: ''; position: absolute; left: 16px; right: 16px; top: -9px; height: 11px;
+  background: radial-gradient(circle at 9px 6px, #f2a6c8 6px, transparent 6.5px) 0 0/18px 11px repeat-x;
 }
 
 .mash-a2hs-eyebrow {
@@ -104,6 +106,10 @@ const CSS = `
   padding: 5px 0; font-size: 0.86rem; line-height: 1.3;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
 }
+/* Every inline child of a flex container becomes its own flex item, which put
+   a gap around each <b> and broke "Tap Add , then ..." into three of them. One
+   span, one item, ordinary text flow inside it. */
+.mash-a2hs-steps li > span { flex: 1 1 auto; min-width: 0; }
 .mash-a2hs-steps li::before {
   counter-increment: step; content: counter(step);
   flex: 0 0 1.25rem; height: 1.25rem; border-radius: 50%;
@@ -114,14 +120,19 @@ const CSS = `
   width: 0.95em; height: 0.95em; vertical-align: -0.13em; margin: 0 1px;
   fill: none; stroke: #4da3ff; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
 }
-.mash-a2hs-note {
-  margin: 0 0 10px; font-size: 0.72rem; line-height: 1.3; color: #9d90b4;
+/* Typed as p.class, not .class: the bare paragraph rule above is the more
+   specific selector and would otherwise win, and a footnote at body size is
+   not a footnote. */
+.mash-a2hs p.mash-a2hs-note {
+  margin: 0 0 10px; font-size: 0.72rem; line-height: 1.32; color: #9d90b4;
 }
 
 .mash-a2hs-buttons { display: flex; align-items: center; gap: 14px; }
 .mash-a2hs button { font-family: inherit; cursor: pointer; -webkit-appearance: none; }
 .mash-a2hs-ok {
-  flex: 1 1 auto; padding: 11px 14px; border: 0; border-radius: 9px;
+  /* Full width on a portrait phone, but capped: stretched across a landscape
+     card it stopped reading as a button and started reading as a floor. */
+  flex: 1 1 auto; max-width: 22rem; padding: 11px 14px; border: 0; border-radius: 9px;
   background: #f6d33c; color: #2a173b; font-weight: 600; font-size: 0.95rem;
   letter-spacing: 0.06em; text-transform: uppercase;
   box-shadow: 0 3px 0 #a8791f;
@@ -173,9 +184,9 @@ function cardHtml(flavor, portrait, hasSave) {
          anywhere. Sent to Safari, MASHENSTEIN can live on your Home Screen and
          run with no address bar in the way.</p>
       <ol class="mash-a2hs-steps">
-        <li>Tap this app's <b>&#8943;</b> or ${SHARE_SVG} menu</li>
-        <li>Choose <b>Open in Safari</b> (or <b>Open in browser</b>)</li>
-        <li>The tip for the Home Screen will meet you over there</li>
+        <li><span>Tap this app's <b>&#8943;</b> or ${SHARE_SVG} menu</span></li>
+        <li><span>Choose <b>Open in Safari</b> (or <b>Open in browser</b>)</span></li>
+        <li><span>The tip for the Home Screen will meet you over there</span></li>
       </ol>
       <div class="mash-a2hs-buttons">
         <button class="mash-a2hs-ok" type="button">Play here for now</button>
@@ -212,9 +223,9 @@ function cardHtml(flavor, portrait, hasSave) {
       </div>
       <div>
         <ol class="mash-a2hs-steps">
-          <li>${share}</li>
-          <li>Scroll down to <b>Add to Home Screen</b></li>
-          <li>Tap <b>Add</b>, then open MASHENSTEIN from your Home Screen</li>
+          <li><span>${share}</span></li>
+          <li><span>Scroll down to <b>Add to Home Screen</b></span></li>
+          <li><span>Tap <b>Add</b>, then open MASHENSTEIN from your Home Screen</span></li>
         </ol>
       </div>
     </div>

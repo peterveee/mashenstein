@@ -975,9 +975,7 @@ export class TitleState {
     // rewind a title theme that is already playing. Other screens replace the
     // bank, so this still starts the theme normally after gameplay or jukebox.
     if (Audio.bank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
-    // No ESC button here: the title screen is the root, nothing to back out
-    // of. The erase flow's own CANCEL row still works via tap.
-    Input.setMenuButtons(false);
+    Input.setMenuButtons();
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
   exit() { setSceneGlow(false); setSkyFx(false); }
@@ -1381,7 +1379,7 @@ export class DifficultyState {
   // this only ever runs once, right after creating a save slot), so the corner
   // button was only ever load-bearing inside the confirm modal below, which now
   // carries its own YES/NO zones instead.
-  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(false); }
+  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
   update(dt) {
     const n = DIFFICULTIES.length;
     if (this.confirming) {
@@ -2031,8 +2029,8 @@ const GUIDE_PAGES = [
 export class FieldGuideState {
   constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
   // Paging already claims the whole screen (see update()), so DONE gets its
-  // own carved-out corner instead of a floating button — no separate ESC chrome.
-  enter() { this.page = 0; this.t = 0; Input.setMenuButtons(false); }
+  // own carved-out corner.
+  enter() { this.page = 0; this.t = 0; Input.setMenuButtons(); }
   update(dt) {
     this.t += dt;
     const n = GUIDE_PAGES.length;
@@ -2121,8 +2119,7 @@ export class FieldGuideState {
     });
     // Touch pages by tapping the left/right thirds of the screen (see update());
     // the arrow-key hint means nothing there, so it's swapped for the gesture,
-    // and DONE — the corner tap zone update() carves out — gets its own label
-    // instead of leaning on a floating ESC button.
+    // and DONE — the corner tap zone update() carves out — gets its own label.
     if (Input.usingTouch) {
       drawTextCentered(ctx, `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`, W / 2, H - 14, '#5a5a68');
       drawText(ctx, 'DONE', W - 50, H - 18, '#f6d33c');
@@ -2150,9 +2147,7 @@ function jukeboxRowH(count) { return Math.min(14, (VIS_TOP - 4 - JUKEBOX_TOP) / 
 
 export class SoundTestState {
   constructor({ onDone }) { this.onDone = onDone; }
-  // The BACK row (below) makes the floating ESC button redundant, same as
-  // every list menu that already ends in one.
-  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(false); }
+  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(); }
   exit() { Audio.setBank(null); }
   play(i) {
     this.playing = i;
@@ -2211,7 +2206,7 @@ export class HowToPlayState {
   constructor({ onDone }) { this.onDone = onDone; }
   // A tap ANYWHERE dismisses this card (update()), and the footer already
   // says so — no floating corner button needed on top of that.
-  enter() { this.t = 0; Input.setMenuButtons(false); }
+  enter() { this.t = 0; Input.setMenuButtons(); }
   update(dt) {
     this.t += dt;
     if (this.t > 0.3 && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
@@ -2253,9 +2248,7 @@ const SETTINGS_TOP = 70, SETTINGS_ROW = 18;
 
 export class SettingsState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  // The options list always ends in a DONE row — the floating ESC button is
-  // redundant once that's there.
-  enter() { this.idx = 0; Input.setMenuButtons(false); }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   volumeOption(key, name) {
     const s = this.save.settings;
     const adjust = (dir) => {

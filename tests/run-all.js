@@ -22,6 +22,7 @@ const suites = [
   'tests/attract.js',
   'tests/dev-menu.js',
   'tests/cast.js',
+  'tests/install-prompt.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
   'tools/fairness-sim.js',

@@ -186,15 +186,17 @@ class InputSys {
 
   setButtons(list) { this.buttons = list || []; }
 
-  // Chrome buttons are discs positioned in raw viewport CSS px (renderer.js's
-  // `chrome` geometry), not the logical 480x270 space `buttonAt` tests — hence
-  // the separate list and a plain circular hit-test instead of clientToLogical.
+  // Chrome buttons live in raw viewport CSS px (renderer.js's `chrome`
+  // geometry), not the logical 480x270 space `buttonAt` tests — hence the
+  // separate list. Hit-tests the button's `zone` (the whole stretch of margin
+  // around its disc), not the disc itself: #chrome only ever shows in the
+  // margin and only ever holds these three buttons, so the entire visible
+  // canvas can safely count as "near enough" rather than requiring a precise
+  // tap on the drawn circle.
   chromeButtonAt(cx, cy) {
-    const SLOP = 6;
     for (const b of this.chromeButtons) {
-      const r = b.r + SLOP;
-      const dx = cx - b.x, dy = cy - b.y;
-      if (dx * dx + dy * dy <= r * r) return b;
+      const z = b.zone;
+      if (z && cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return b;
     }
     return null;
   }
@@ -206,23 +208,15 @@ class InputSys {
     this.clearAll();
   }
 
-  // Menu states call this before the first touch so ESC is immediately ready.
-  // No ENTER button: every menu screen already confirms straight off the
-  // content — tapping a row selects it and tapping that same row again (or,
-  // on a couple of screens, tapping anywhere) confirms it — so a separate
-  // button duplicated a gesture that already worked. ESC has no such
-  // equivalent (there is no "tap blank space to back out" convention most of
-  // these screens use), so it stays: top-right, out of the way of list content
-  // and title text that both live top-centre. A level's top-right corner holds
-  // the round PAUSE disc instead (run.js setButtons) — a menu backs out and a
-  // level suspends, which are different enough acts to be different controls.
-  // showBack is false only for the title screen, which has nothing to back out
-  // of at its root (erase-mode cancel is a tappable list row instead).
-  setMenuButtons(showBack = true) {
+  // Menu states call this on enter to switch key mapping into menu context and
+  // drop whatever buttons the previous screen owned. No floating chrome comes
+  // with it: every menu screen already both confirms and backs out straight off
+  // its own content — tapping a row selects it and tapping it again confirms,
+  // and each list ends in its own BACK/DONE row — so ENTER and ESC boxes only
+  // ever duplicated gestures that already worked.
+  setMenuButtons() {
     this.setContext('menu');
-    const buttons = [];
-    if (showBack) buttons.push({ id: 'menuBack', x: 412, y: 8, w: 56, h: 18, action: 'back', label: 'ESC', global: true });
-    this.setButtons(buttons);
+    this.setButtons([]);
   }
 
   press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }

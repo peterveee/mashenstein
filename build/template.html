@@ -12,6 +12,15 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MASHENSTEIN">
+<!-- Without an apple-touch-icon, iOS puts a SCREENSHOT of the page on the home
+     screen — whatever the title screen happened to be showing, shrunk to 60px
+     and unreadable. These are rendered from the game's own drawing code by
+     tools/render-icon.js and copied into dist/ by the build; a loose
+     index.html with no icon files beside it simply has no icon. -->
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0b14">
 <title>MASHENSTEIN: The Unpluggening</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

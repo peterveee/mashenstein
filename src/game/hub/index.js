@@ -93,11 +93,31 @@ const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
 // the same floor line at the same distance; there is no reason Lorenzo is
 // shorter when you happen not to be driving him.
 const NPC_H = 46, PLAYER_H = 46;
+// How dark the cast is allowed to get in a dead bay, as a floor under the room's
+// own 0..1 brightness. The wall may go to nothing; bodies may not. Raise it and
+// the concourse lighting stops reading on the cast at all; drop it and the hero
+// fades out crossing the unlit stretches.
+const CAST_LIT_FLOOR = 0.45;
 // How far a hero ranges from their spot, how much clearance a station needs
 // before anyone will stop beside it, and how close to the exit anyone may get.
 // ROAM is deliberately wide — a hero should cross in front of two or three
 // machines on a stroll; it is only where they STOP that matters.
-const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
+const NPC_ROAM = 155, NPC_MIN_X = 70;
+// Margin a loitering hero keeps beyond a station's OWN footprint. It used to be
+// a flat 30 from the station's centre, which was fine when every station was a
+// 44-wide door — and quietly wrong the moment two of them became 118-wide
+// counters, since 30 from the centre of a counter is still inside it. Clearance
+// is measured from each station's real width instead (see loiterClear), with
+// this as the air on top.
+//
+// Deliberately small. It is tempting to make it a hero's own half-width so
+// nobody ever clips a chassis, but the cabinets sit only 88 apart and are 48
+// wide: at a pad of 16 each machine forbids 80 of that 88, the gaps between them
+// stop being standing room at all, and the entire cast gets evicted from the
+// arcade bank into the service end. 6 reproduces the old 30-unit cabinet
+// clearance exactly — heroes clip a chassis edge at the extremes of a stroll,
+// which was always the intent — while still keeping them out of the counters.
+const NPC_LOITER_PAD = 6;
 // The walk-up ranges that decide who you are addressing. ATTEND is only used by
 // the pinned counter staff, who hold position rather than tidying while a
 // customer is at the counter — for them it cannot pile anybody up, because they
@@ -644,21 +664,99 @@ export class HubState {
     return st;
   }
 
-  // Midpoints between neighbouring cabinets — the strips of floor the crowd is
-  // meant to occupy. Derived from stations() rather than hardcoded, so respacing
-  // the concourse moves the crowd with it.
-  npcGaps() {
-    const cabs = this.stations().filter((st) => st.type === 'cabinet').map((st) => st.x);
-    const gaps = [];
-    for (let i = 0; i < cabs.length - 1; i++) gaps.push((cabs[i] + cabs[i + 1]) / 2);
-    return gaps;
+  // How much floor a station takes up, plus the air a hero keeps around it.
+  // Stations are no longer one size: a counter is 118 across where a door is 44
+  // and a cabinet 48, so one flat number cannot serve all three.
+  loiterClear(s) {
+    const half = s.type === 'bench' || s.type === 'shop' ? COUNTER_W / 2
+      : s.type === 'cabinet' || s.type === 'overtime' ? CAB_W / 2
+        : DOOR_W / 2;
+    return half + NPC_LOITER_PAD;
   }
 
-  // Somewhere a hero may come to rest: clear of every station's walk-up radius,
-  // and well clear of the exit.
+  // Somewhere a hero may come to rest: beside the furniture rather than through
+  // it, and well clear of the exit.
   canLoiter(x) {
     if (x < NPC_MIN_X) return false;
-    return !this.stations().some((st) => Math.abs(st.x - x) < NPC_LOITER_CLEAR);
+    return !this.stations().some((s) => Math.abs(s.x - x) < this.loiterClear(s));
+  }
+
+  // The stretches of concourse a hero may actually stand on: everything between
+  // NPC_MIN_X and the far end, minus each station's footprint.
+  freeFloor() {
+    const st = this.stations();          // also refreshes this.width
+    // Runs to the far wall, not to a comfortable stopping point short of it.
+    // update() clamps the player to width - 20, so anything inside that is
+    // walkable floor and a hero standing on it is a hero you can reach.
+    const lo = NPC_MIN_X + 20, hi = Math.max(lo + 1, this.width - 30);
+    const bands = st
+      .map((s) => [s.x - this.loiterClear(s), s.x + this.loiterClear(s)])
+      .sort((a, b) => a[0] - b[0]);
+    const free = [];
+    let cur = lo;
+    for (const [a, b] of bands) {
+      if (a > cur) free.push([cur, Math.min(a, hi)]);
+      cur = Math.max(cur, b);
+      if (cur >= hi) break;
+    }
+    if (cur < hi) free.push([cur, hi]);
+    // Slivers are not standing room; a hero dropped into one has nowhere to go.
+    // Held under the 28-unit windows the cabinet gaps come to, or the arcade
+    // bank would filter itself out and take three quarters of the crowd with it.
+    return free.filter(([a, b]) => b - a > 16);
+  }
+
+  // Where the crowd lives: one standing patch each, spread evenly across the
+  // whole concourse.
+  //
+  // These used to be the midpoints between neighbouring cabinets — nine
+  // cabinets, eight gaps, one hero apiece — which packed the entire cast into
+  // the seven hundred units of arcade bank and left the plaza, both counters and
+  // the whole service end without a soul in them. Everybody stood within half a
+  // cabinet of a machine, so the crowd read as a queue for the machines rather
+  // than as a food court with people in it.
+  //
+  // Spaced evenly across the CONCOURSE, then each one snapped onto the nearest
+  // patch of standable floor.
+  //
+  // Spacing them evenly along the free floor instead — walking the total and
+  // dropping somebody every 1/n of it — sounds more principled and looks worse.
+  // Free floor is not spread evenly through the room: the arcade bank is eight
+  // narrow 28-unit slots between cabinets, so by standable area it holds nearly
+  // half the concourse, and four of eight heroes piled into the machines while a
+  // 330-unit hole opened either side of the counters. What the eye reads is
+  // distance, not area, so the spacing is done in plain x.
+  //
+  // Snapping is what keeps that honest. An even spread in x will land people
+  // inside the furniture — squarely in the middle of the pawn till, since the
+  // counters are 118 wide and only 140 apart with no standing room between them
+  // at all — so every position is pulled to the nearest legal spot afterwards.
+  npcHomes() {
+    const spans = this.freeFloor();
+    const n = Math.max(1, HEROES.length);
+    const lo = NPC_MIN_X + 20;
+    const hi = Math.max(lo + 1, this.width - 30);
+    const snap = (want) => {
+      let best = want, bd = Infinity;
+      for (const [a, b] of spans) {
+        const x = Math.max(a, Math.min(b, want));
+        const d = Math.abs(x - want);
+        if (d < bd) { bd = d; best = x; }
+      }
+      return best;
+    };
+    const homes = [];
+    for (let i = 0; i < n; i++) {
+      const want = lo + ((i + 0.5) / n) * (hi - lo);
+      let x = snap(want);
+      // Two positions either side of a wide band (the counters again) can snap
+      // onto the same edge. Nudge past the neighbour and re-snap so nobody is
+      // homed on top of anybody.
+      const prev = homes[homes.length - 1];
+      if (prev != null && x - prev < NPC_STAND_OFF * 2) x = snap(prev + NPC_STAND_OFF * 2.5);
+      homes.push(x);
+    }
+    return homes;
   }
 
   // Where to stand in order to address `n`. Beside them, never on top of them,
@@ -684,10 +782,10 @@ export class HubState {
     return clamp(n.x + side * NPC_STAND_OFF);
   }
 
-  nearestGap(x) {
-    const gaps = this.npcGaps();
-    if (!gaps.length) return x;
-    return gaps.reduce((best, g) => (Math.abs(g - x) < Math.abs(best - x) ? g : best), gaps[0]);
+  nearestHome(x) {
+    const homes = this.npcHomes();
+    if (!homes.length) return x;
+    return homes.reduce((best, h) => (Math.abs(h - x) < Math.abs(best - x) ? h : best), homes[0]);
   }
 
   enter() {
@@ -711,27 +809,30 @@ export class HubState {
     this.greeted = false;     // has this hero already said hello, this approach
     this.hasMoved = false;   // the controls legend retires once you have walked
     this.movedAt = 0;
-    // Every loitering hero gets a gap between two cabinets to inhabit, not an
-    // arbitrary stretch of concourse. Standing in front of a machine they hide
-    // the screen and the plug lights, and they sit inside the cabinet's own
-    // 26-unit walk-up radius — so reaching one meant threading between a hero
-    // and a station that both wanted the same patch of floor. There are nine
-    // cabinets and eight heroes, which is exactly eight gaps: one each.
+    // One standing patch per hero, spread the length of the concourse — see
+    // npcHomes for why it is measured in free floor rather than in x.
     //
-    // NPC_ROAM keeps a wander inside its gap. The gap is 88 wide with 48 of
-    // cabinet on either side, so 20 units of clear floor each way; 13 leaves a
-    // hero's own width of margin before they start overlapping a chassis. They
-    // still clip an edge at the extremes, which is the point — they should look
-    // like people milling about, not like furniture on marks.
-    const gaps = this.npcGaps();
+    // Roam is DERIVED from that spacing rather than fixed. A flat 155 was tuned
+    // when the whole cast lived in the 88-wide gaps between cabinets, where it
+    // meant "you may stroll past two or three machines". Against homes that are
+    // now the better part of two hundred apart it would mean something else
+    // entirely — every hero's range overlapping both neighbours, so the crowd
+    // slowly pools back into clumps and undoes the spread. Just under half the
+    // spacing lets neighbouring ranges meet without lapping over each other,
+    // which keeps them mingling without re-gathering.
+    const homes = this.npcHomes();
+    const spacing = homes.length > 1
+      ? (homes[homes.length - 1] - homes[0]) / (homes.length - 1)
+      : NPC_ROAM;
+    const roam = Math.max(40, Math.min(NPC_ROAM, spacing * 0.45));
     this.npcActors = HEROES.map((h, i) => {
-      const home = gaps.length ? gaps[i % gaps.length] : 155 + i * 120;
+      const home = homes.length ? homes[i % homes.length] : 155 + i * 120;
       const walking = i % 3 !== 0;
       return {
         id: h.id, home, x: home, facing: i % 2 ? -1 : 1,
         state: walking ? 'walk' : 'idle',
         timer: 0.75 + (i % 4) * 0.33,
-        duration: 1, cycles: i, swappable: true, roam: NPC_ROAM,
+        duration: 1, cycles: i, swappable: true, roam,
       };
     });
     // The counter staff. Neither is swappable: they are not in HEROES, and Relay
@@ -762,8 +863,8 @@ export class HubState {
     }
     Audio.setBank(HUB_THEME);
     // Tapping a station both walks to it and uses it (see update()), and the
-    // EXIT sign at the left of the concourse is itself a station — so unlike
-    // every other screen, the hub needs no floating ESC chrome for touch.
+    // EXIT sign at the left of the concourse is itself a station — the whole
+    // hub is its own control surface, so it needs no buttons of its own.
     Input.setButtons([]);
   }
   exit() {
@@ -1116,7 +1217,7 @@ export class HubState {
       // stood at a cabinet parked someone in front of it for the rest of the
       // session — the one thing the gap placement exists to prevent.
       actor.x = prevX;
-      actor.home = this.nearestGap(prevX);
+      actor.home = this.nearestHome(prevX);
       actor.state = 'idle';
       actor.timer = 1.4;
       actor.facing = npc.x < prevX ? -1 : 1;
@@ -1320,14 +1421,27 @@ export class HubState {
     // TASK lights: they hang low and point down at the deck. They light the
     // people at the counter and not the wall behind it, and the tighter reach
     // is what stops a bench lamp from lighting half a bay.
+    // ONE source per counter, not one per lamp. The three tubes sit 26px apart
+    // and sampling them separately made the pool ripple: walking the deck, the
+    // hero brightened and dimmed under each one in turn, which is a flicker
+    // rather than lighting. A bank of three tubes a hand's width apart IS one
+    // broad source, and the bank's centre is the station's own x — the lamp
+    // fractions (0.28, 0.50, 0.72) are symmetric about it.
     const lampXs = [];
     for (const s of this.stations()) {
       if (s.type !== 'bench' && s.type !== 'shop') continue;
-      const left = s.x - cam - COUNTER_W / 2;
-      for (const f of [0.28, 0.5, 0.72]) lampXs.push(left + COUNTER_W * f);
+      lampXs.push(s.x - cam);
     }
-    // What a BODY standing at sx receives: whichever of the two is brighter.
-    const castLit = (sx) => Math.max(wallLit(sx), wallLitFrom(sx, lampXs, COUNTER_W * 0.42));
+    // Reach runs past the deck on both sides so there is somewhere lit to STAND
+    // at a counter, not just a bright clerk behind one.
+    const benchLit = (sx) => wallLitFrom(sx, lampXs, COUNTER_W * 1.3);
+    // What a BODY at sx receives — and it swings over a NARROWER range than the
+    // room does. Given the room's full 0..1 the hero visibly faded up and down
+    // crossing the concourse, and the thing you are steering is the last thing
+    // that should be hard to find. Floored, the cue still reads — a dead bay is
+    // plainly darker than a lit one — without the player pulsing as they walk.
+    const castLit = (sx) => CAST_LIT_FLOOR
+      + (1 - CAST_LIT_FLOOR) * Math.max(wallLit(sx), benchLit(sx));
     // Room furniture first (the menu board), then ONE poster per cabinet.
     for (const bay of hubWallBays(this.stations())) {
       const bx = bay.x - cam;
@@ -1754,9 +1868,6 @@ const LIST_TOP = 74, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
 
 export class StageSelectState {
   constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = LIST_TOP; this.rowH = ROW_MAX; }
-  // The option list always ends in a BACK row (see options() below), so the
-  // floating corner ESC button would just be a second, disconnected way to do
-  // the same thing — drop it and let the list carry it.
   enter() {
     this.corrupt = null;
     const opts = this.options();
@@ -1768,7 +1879,7 @@ export class StageSelectState {
     let frontier = 0;
     opts.forEach((o, i) => { if (o.kind === 'stage' && stageUnlocked(this.save.slot, o.stage)) frontier = i; });
     this.idx = frontier;
-    Input.setMenuButtons(false);
+    Input.setMenuButtons();
   }
   options() {
     const slot = this.save.slot;
@@ -1862,8 +1973,7 @@ export class StageSelectState {
 
 export class BenchState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 20; }
-  // options() always ends in a BACK row — the floating ESC button is redundant.
-  enter() { this.idx = 0; Input.setMenuButtons(false); }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = BENCH_UPGRADES.map((u) => {
@@ -1920,8 +2030,7 @@ export class BenchState {
 
 export class ShopState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  // options() always ends in a BACK row — the floating ESC button is redundant.
-  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; Input.setMenuButtons(false); }
+  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {
@@ -1985,8 +2094,7 @@ export class ShopState {
 
 export class ArcadeState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  // options() always ends in a BACK row — the floating ESC button is redundant.
-  enter() { this.idx = 0; Input.setMenuButtons(false); }
+  enter() { this.idx = 0; Input.setMenuButtons(); }
   options() {
     // Breaker-box games are keyboard-shaped; on touch the corner is shuttered.
     if (Input.isTouchDevice()) return [{ none: true }, { back: true }];

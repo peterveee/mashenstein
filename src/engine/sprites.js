@@ -500,7 +500,18 @@ export function drawRoundButton(ctx, b, opts = {}) {
     ctx.fillStyle = 'rgba(184,248,232,0.8)';
     ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
   }
-  ctx.restore();
+  // A defining ring — the in-canvas buttons deliberately go without one (see
+  // above: over scrolling gameplay it read as a third thing to track), but
+  // that concern doesn't exist against the chrome canvas's static margin, and
+  // there a ring is what keeps the disc from disappearing into a background
+  // that's nearly its own fill color.
+  if (opts.ring) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = opts.ring;
+    ctx.lineWidth = opts.ringWidth || 1.5;
+    ctx.stroke();
+  }
   if (b.icon === 'pause') {
     // The one control with a symbol every player already knows. A glyph also
     // survives a translation and a smaller button; the word PAUSE does neither.
@@ -510,7 +521,11 @@ export function drawRoundButton(ctx, b, opts = {}) {
     ctx.fillRect(cx + gap, cy - bh / 2, bw, bh);
   } else if (b.label) {
     // Same ink-centred midline every HUD panel uses, so a label in a disc sits
-    // at the same height as a label in a plate.
-    drawTextCentered(ctx, b.label, cx, textYForMid(cy, BUTTON_LABEL_S), ink, BUTTON_LABEL_S);
+    // at the same height as a label in a plate. labelScale/labelStyle default
+    // to the in-canvas look; the chrome canvas passes a bigger, bolder pair —
+    // a disc with room to spare should carry text you can read at a glance,
+    // not the same small ui-weight label that fits a 44px corner button.
+    const s = opts.labelScale || BUTTON_LABEL_S;
+    drawTextCentered(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
   }
 }

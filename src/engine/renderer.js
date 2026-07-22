@@ -25,9 +25,14 @@ export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
 // margin). 'none': neither margin clears the minimum — an exact-16:9 device,
 // where callers fall back to the old in-canvas buttons.
 export const chrome = { mode: 'none', vw: 0, vh: 0 };
-const CHROME_R = 26;                          // button radius, CSS px
-const CHROME_PAD = 10;                        // gap from the outer screen edge
-const CHROME_MIN_MARGIN = CHROME_R * 2 + CHROME_PAD;
+// Radius scales with however much margin a device actually has — bigger on a
+// generous margin (iPad, portrait phones), never smaller than what a thumb
+// needs even on the tightest notch iPhone.
+const CHROME_R_MIN = 28;
+const CHROME_R_MAX = 40;
+const CHROME_PAD = 8;                         // gap from the outer screen edge
+const CHROME_MIN_MARGIN = CHROME_R_MIN * 2 + CHROME_PAD;
+const chromeR = (margin) => Math.max(CHROME_R_MIN, Math.min(CHROME_R_MAX, margin / 2 - CHROME_PAD));
 
 export const back = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -127,14 +132,28 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   chrome.vw = winW;
   chrome.vh = winH;
   chrome.mode = ox >= CHROME_MIN_MARGIN ? 'side' : oy >= CHROME_MIN_MARGIN ? 'topbottom' : 'none';
+  // Every button carries a `zone` — the whole reachable chunk of margin around
+  // it, not just its drawn disc — so a tap anywhere in that stretch of the
+  // (otherwise dead) margin counts, the same generosity a thumb gets from a
+  // button that fills its own corner of a phone. Zones tile the full margin
+  // between the three controls with no gaps, since #chrome never shows
+  // anywhere else.
   if (chrome.mode === 'side') {
-    chrome.jump    = { x: ox / 2,        y: winH - CHROME_R - CHROME_PAD, r: CHROME_R };
-    chrome.ability = { x: winW - ox / 2, y: winH - CHROME_R - CHROME_PAD, r: CHROME_R };
-    chrome.pause   = { x: winW - ox / 2, y: CHROME_R + CHROME_PAD,        r: CHROME_R };
+    const r = chromeR(ox);
+    // JUMP has the whole left column to itself; PAUSE/PWR split the right
+    // column top/bottom, since both live over there.
+    chrome.jump    = { x: ox / 2,        y: winH - r - CHROME_PAD, r, zone: { x: 0,           y: 0,          w: ox, h: winH } };
+    chrome.ability = { x: winW - ox / 2, y: winH - r - CHROME_PAD, r, zone: { x: winW - ox,    y: winH / 2,   w: ox, h: winH / 2 } };
+    chrome.pause   = { x: winW - ox / 2, y: r + CHROME_PAD,        r, zone: { x: winW - ox,    y: 0,          w: ox, h: winH / 2 } };
   } else if (chrome.mode === 'topbottom') {
-    chrome.jump    = { x: CHROME_R + CHROME_PAD,        y: winH - oy / 2, r: CHROME_R };
-    chrome.ability = { x: winW - CHROME_R - CHROME_PAD, y: winH - oy / 2, r: CHROME_R };
-    chrome.pause   = { x: winW - CHROME_R - CHROME_PAD, y: oy / 2,        r: CHROME_R };
+    const r = chromeR(oy);
+    // PAUSE has the whole top bar to itself; JUMP/PWR split the bottom bar
+    // left/right. Anchored to the physical top/bottom edge (not centered in
+    // the band) — on a portrait phone that band can be hundreds of px tall,
+    // and a button floating in the middle of it reads as lost, not placed.
+    chrome.jump    = { x: r + CHROME_PAD,        y: winH - r - CHROME_PAD, r, zone: { x: 0,        y: winH - oy, w: winW / 2, h: oy } };
+    chrome.ability = { x: winW - r - CHROME_PAD, y: winH - r - CHROME_PAD, r, zone: { x: winW / 2, y: winH - oy, w: winW / 2, h: oy } };
+    chrome.pause   = { x: winW - r - CHROME_PAD, y: r + CHROME_PAD,        r, zone: { x: 0,        y: 0,        w: winW,     h: oy } };
   }
 }
 
