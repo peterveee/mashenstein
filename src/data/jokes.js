@@ -202,6 +202,8 @@ export const HUB_LINES = {
     'THE VENDING MACHINE OWES ME AN APOLOGY AND A REFUND.',
     'I CONSIDERED EATING GARY. HE DECLINED POLITELY. I RESPECTED THAT.',
     'THE MENU WAS DELICIOUS. THE PRICES WERE NOT.',
+    'THE COUNTER WOMAN AND I HAVE HISTORY. I MAINTAIN I WAS WITHIN MY RIGHTS.',
+    'I HAVE A TAB AT THE SERVING LINE. SHE HAS A LEDGER. WE ARE AT AN IMPASSE.',
   ],
   gary: [
     'HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.',
@@ -233,6 +235,29 @@ export const HUB_LINES = {
     'BOY WANTED A PRETZEL. I SAW THE PRICE. WE ARE HUNTING INSTEAD.',
     'I THREW THE AXE AT THE COMPLAINTS BOX. COMPLAINT RESOLVED.',
     'BOY ASKED FOR A PRETZEL. BOY GOT A PRETZEL. THIS IS THE JOB.',
+  ],
+  // DOLORES. The rule that makes her work is that she never acknowledges the
+  // arcade is dead — not as denial, which would be sad, but as a shift that has
+  // not ended yet. The lunch rush is coming. Everything is portioned. She is
+  // ready. Gary is deceased and knows it; the Dust Devil is haunted and enjoys
+  // it; Dolores is simply still on, and nobody has come to relieve her.
+  //
+  // She never asks a question she wants answered, and she never completes the
+  // thought that would give the game away. The gap is the joke.
+  dolores: [
+    'NEXT.',
+    'TAKE A NUMBER. THE DISPENSER IS EMPTY. TAKE ONE ANYWAY.',
+    'NOW SERVING ZERO. HAS BEEN FOR A WHILE. WE STAY READY.',
+    'WE STOPPED DOING NACHOS. DO NOT ASK ME AGAIN.',
+    'THE LUNCH RUSH IS AT NOON. I HAVE PORTIONED FOR FORTY.',
+    'ONE PER CUSTOMER. I DO NOT MAKE THE POLICY. I ENFORCE IT.',
+    'THE LAMPS STAY ON. THAT IS NOT A DECISION ANYONE MADE.',
+    'I GO ON BREAK AT SIX. IT HAS NOT BEEN SIX YET.',
+    'HANDS OFF THE GUARD. IT IS THE ONLY CLEAN THING IN HERE.',
+    'YOU WANT THE SHIELD, YOU QUEUE LIKE EVERYONE ELSE. THERE IS NO ONE ELSE.',
+    'I HAVE NOT BEEN RELIEVED. THAT IS ALL THAT MEANS.',
+    'SOMEBODY UNPLUGGED SOMETHING. NOT MY SECTION.',
+    'NOT HER. SHE KNOWS WHY. THE LEDGER IS BEHIND ME AND IT IS ACCURATE.',
   ],
 };
 

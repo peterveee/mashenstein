@@ -27,6 +27,16 @@ export function setTransitionHero(id) {
 
 let cameo = true;
 
+// Debug handles the browser harness drives the game through. Published from
+// wherever `current` is assigned — including the boot state below, which skips
+// the transition and so used to leave __mash_cur unset until the first screen
+// change.
+function publish() {
+  if (typeof window === 'undefined') return;
+  window.__mash_state = current.constructor.name;
+  window.__mash_cur = current;
+}
+
 export function setState(next, ...args) {
   cameo = true;
   pending = { next, args };
@@ -36,6 +46,7 @@ export function setState(next, ...args) {
     fade = 1; fading = -1;
     next.enter && next.enter(...args);
     pending = null;
+    publish();
   }
 }
 
@@ -61,7 +72,7 @@ export function updateState(dt) {
       current && current.exit && current.exit();
       current = pending.next;
       current.enter && current.enter(...pending.args);
-      if (typeof window !== 'undefined') { window.__mash_state = current.constructor.name; window.__mash_cur = current; }
+      publish();
       pending = null;
       fading = -1;
     } else if (fade <= 0) {

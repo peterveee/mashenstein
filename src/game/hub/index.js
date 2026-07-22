@@ -3,12 +3,12 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, textYForMid } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { drawToon } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
-  drawDoor, DOOR_PALETTES, OVERTIME_PALETTE,
+  drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, drawCounter, COUNTER_W, COUNTER_H, COUNTER_STAFF_X,
 } from '../../sprites/arcade.js';
 import {
   hubWallBays, BAY_W, drawWallBay, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
@@ -70,6 +70,10 @@ const HUB_CEIL_Y = Math.ceil(HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM) + 6;
 const CAB_W = cabinetStyle().w, CAB_H = cabinetStyle().h;
 const CAB_Y = HUB_FLOOR_PIN_Y - CAB_H;
 const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
+// The serving line stands on the same floor as everything else. It is twice a
+// door's width and half its height on purpose: a counter is a horizontal thing,
+// and the whole point of it is that you can see over it to the person behind.
+const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
 
 // How tall the cast stands in the concourse, in the same logical units the
 // cabinets are measured in (drawToon's `h` is character height).
@@ -81,14 +85,23 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // the player's head lands just under the screen bezel, so the cast fills the
 // control-deck band without covering the art on the screens.
 //
-// The NPC/player gap is kept (0.83) — the hero you are driving reads slightly
-// larger than the crowd, which is how you find yourself on a busy concourse.
-const NPC_H = 38, PLAYER_H = 46;
+// Everyone is the same height. The player used to be drawn 21% larger as a
+// "which one is you" cue, which the gold marker over their head now does
+// explicitly — and the size gap was actively costing something: on a swap the
+// hero you left shrank 46 to 38 while the one you took grew 38 to 46, a visible
+// pop with nothing behind it. They are the same eight characters standing on
+// the same floor line at the same distance; there is no reason Lorenzo is
+// shorter when you happen not to be driving him.
+const NPC_H = 46, PLAYER_H = 46;
 // How far a hero ranges from their spot, how much clearance a station needs
 // before anyone will stop beside it, and how close to the exit anyone may get.
 // ROAM is deliberately wide — a hero should cross in front of two or three
 // machines on a stroll; it is only where they STOP that matters.
 const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
+// How far counter staff drift from their post while working. A small fraction of
+// their own deck — far enough to be seen moving, never far enough to leave the
+// unit they are drawn inside.
+const STAFF_ROAM = 13;
 
 // THE DUST DEVIL's cameo. It is a stick vacuum, so it has to be touching
 // something: brush head down on the floor line, or brush head up on the ceiling
@@ -103,6 +116,24 @@ const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
 // it stood a third as tall as a hero — fine for a smudge floating up the wall,
 // a toy once it shares a floor with them.
 const DD_H = Math.round(NPC_H * 0.55), DD_W = Math.round(DD_H * 0.85);
+
+// Counter staff read as adults among mascots — a little over the player, well
+// under a cabinet. Dolores is the taller; Gary has never stood fully upright in
+// his life, dead or otherwise.
+//
+// These were briefly 62 and 54, which was a staging hack that backfired. The
+// problem it solved was real (a cast-sized person behind a serving deck is a
+// face on a slab) but the fix was wrong for a flat side view: with no
+// perspective in the scene, drawing someone BIGGER does not read as "nearer the
+// camera", it reads as "enormous" — and these two stand BEHIND their counters,
+// where if anything the cue should run the other way. Dolores ended up towering
+// over a player standing three feet in front of her.
+//
+// The occlusion is fixed where it belongs instead: the staff stand at the open
+// end of the unit past the glass (COUNTER_STAFF_X), and CTR.deck is set low
+// enough to clear a normal torso. Held under CTR.lampLo either way, or their own
+// heat lamps crop their heads off.
+const DOLORES_H = 48, GARY_H = 44;
 
 // What it is doing on a given visit, seeded on the visit index so a pass is
 // rolled once and never re-rolls mid-glide.
@@ -201,6 +232,17 @@ function cabinetScreenArt(cab, t, seed = 0) {
 // cabinetPalette() mixes a dozen colours per call and the answer only depends
 // on the cabinet and whether it is unlocked, so each one is built once.
 const CAB_PALETTES = new Map();
+// Where a poster hangs and how it was hung. Both derived from the cabinet's own
+// x so they are stable frame to frame, and both shared between the wall loop in
+// draw(), the tap test in update(), and the blown-up read — a tilt that changed
+// between the wall and the zoom would read as a different poster, and a hit box
+// that disagreed with either would be the kind of miss nobody can explain.
+const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
+function posterLook(x) {
+  const k = Math.round(x / 64);
+  return { tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012), torn: k % 3 === 1 };
+}
+
 function palFor(cab, unlocked) {
   const key = `${cab.id}|${unlocked ? 1 : 0}`;
   let p = CAB_PALETTES.get(key);
@@ -524,8 +566,17 @@ export class HubState {
     // butt together with 40 units between them, which left the crowd nowhere to
     // stand but among the cabinets; this gives them somewhere to spill into.
     x += 96;
-    st.push({ type: 'bench', x, label: 'REPAIR BENCH' }); x += 88;
-    st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 98;
+    // The two counters. Wider berths than the doors they replaced: a counter is
+    // 118 across where a door was 44, and butting them at the old 88/98 pitch
+    // ran the serving line straight into the pawn till with no floor between
+    // them to queue on.
+    // Hers, and a counter rather than a bench. "REPAIR BENCH" dated from when
+    // this was a shutter with a spanner painted on it; there has not been a
+    // bench here since it became the serving line, and naming it after the woman
+    // standing at it puts it in the same shape as Gary's unit next door — the
+    // two staffed stations in the room both belong to somebody.
+    st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 140;
+    st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
     st.push({ type: 'shelf', x, label: 'TROPHY SHELF' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
@@ -570,6 +621,7 @@ export class HubState {
     this.facing = this.facing ?? returning?.facing ?? 1;
     this.t = 0;
     this.talk = null;
+    this.poster = null;      // a wall poster held open, full-frame, to be read
     this.walkTarget = null;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
@@ -601,22 +653,30 @@ export class HubState {
         duration: 1, cycles: i, swappable: true, roam: NPC_ROAM,
       };
     });
-    // Gary is an actor now rather than a sprite pinned to his shop front. He
-    // stood dead centre of the doorway, blocking the one thing that doorway is
-    // for, and being a cached toonStandSprite he never moved a muscle. He keeps
-    // his own patch beside the shop instead of taking a cabinet gap, on a
-    // shorter leash than the rest — he is working.
+    // The counter staff. Neither is swappable: they are not in HEROES, and Relay
+    // ignores an initialHeroId it does not recognise, so "play as Gary" would
+    // quietly start the run as somebody else. Both are `pinned` — they are drawn
+    // INSIDE drawCounter, between its back shelf and its front, so their x is not
+    // theirs to change, and the wander states would walk them out through the
+    // front of their own units.
     //
-    // Not swappable: he is not in HEROES, and Relay ignores an initialHeroId it
-    // does not recognise, so "play as Gary" would quietly start the run as
-    // somebody else. He talks, which is all he ever needed to do — HUB_LINES.gary
-    // has been sitting there unreachable since it was written.
-    const shop = this.stations().find((st) => st.type === 'shop');
-    if (shop) {
+    // Gary used to stand loose beside a shop door, which is where he ended up
+    // after being a cached sprite blocking the doorway itself. Behind a till is
+    // what he was always describing: he has physical jurisdiction, business
+    // hours, and a counter.
+    for (const [id, name, type, h] of [
+      ['dolores', 'DOLORES', 'bench', DOLORES_H],
+      ['gary', 'GARY', 'shop', GARY_H],
+    ]) {
+      const at = this.stations().find((st) => st.type === type);
+      if (!at) continue;
+      // The open end of the unit, past where the glass stops — stated once in
+      // arcade.js so their post and the end of the glass can never drift apart.
+      const px = at.x - COUNTER_W / 2 + COUNTER_W * COUNTER_STAFF_X;
       this.npcActors.push({
-        id: 'gary', name: 'GARY', home: shop.x + 34, x: shop.x + 34, facing: -1,
-        state: 'idle', timer: 1.1, duration: 1, cycles: 2,
-        swappable: false, roam: 26,
+        id, name, home: px, x: px, facing: 1, staffH: h, station: type,
+        state: 'idle', timer: 2 + (id === 'gary' ? 5 : 0), duration: 1, cycles: 0,
+        swappable: false, pinned: true, roam: STAFF_ROAM,
       });
     }
     Audio.setBank(HUB_THEME);
@@ -635,6 +695,23 @@ export class HubState {
   camX() { return Math.max(0, Math.min(this.width - HUB_VIEW_W, this.px - HUB_VIEW_W / 2)); }
 
   update(dt) {
+    // A poster held open owns the screen, and the concourse holds still behind
+    // it: this sits above even `this.t`, so the walk, the NPC wander, the dwell
+    // timers and the flicker all stop rather than running on behind a dim you
+    // cannot see them through. You are reading, not idling in a room.
+    if (this.poster) {
+      this.poster.t += dt;
+      // Any press closes it. There is nothing else to do in here and nowhere
+      // to aim — the sheet fills the frame — so every input can only mean
+      // "done reading", and making the player find a specific X to hit would
+      // be ceremony around a thing they opened with one tap.
+      if (Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back') || Input.pressed('jump')) {
+        this.poster = null;
+        Audio.sfx('ui');
+      }
+      Input.endFrame();
+      return;
+    }
     this.t += dt;
     this.updateNpcs(dt);
     const st = this.stations();
@@ -653,8 +730,25 @@ export class HubState {
     // "confirm exit" purely because the door happened to be nearby. A plain
     // tap on open floor, anywhere, always just walks to that exact spot.
     if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)) {
+      // Posters answer first. They hang high on the back wall — screen y 16 to
+      // 86, a band that holds nothing else tappable and no floor to walk to —
+      // so a tap that lands on one cannot have meant anything else. At 40x54
+      // on the wall a poster is legibly a poster and nothing more: the star
+      // reads, the wordmark is a shape, and the tagline under it is a smudge.
+      // This is the only way to actually read one.
+      const pwx = Input.pointer.x / HUB_ZOOM + this.camX();
+      const pwy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
+      const tappedPoster = pwy > POSTER_TOP_Y - 4 && pwy < POSTER_TOP_Y + POSTER_H + 4
+        ? st.find((s) => s.type === 'cabinet' && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
+        : null;
+      if (tappedPoster) {
+        this.poster = { station: tappedPoster, t: 0, ...posterLook(tappedPoster.x) };
+        Audio.sfx('uiConfirm');
+        Input.endFrame();
+        return;
+      }
       // A tap that lands on one of the chooser's chips takes that option and
-      // nothing else — checked first, because the chips hang over open floor and
+      // nothing else — checked next, because the chips hang over open floor and
       // would otherwise read as "walk there".
       const chipNpc = this.nearNpc && !this.near ? this.nearNpc : null;
       if (chipNpc) {
@@ -876,6 +970,48 @@ export class HubState {
 
   updateNpcs(dt) {
     for (const n of this.npcs()) {
+      // Counter staff do not wander the concourse — they are drawn inside their
+      // own units, so a walk cycle on the hero rules would carry them out
+      // through the front of their counter and a hop would put a head through
+      // the glass. What they do instead is work: a short shuffle along the deck
+      // now and then, and back to the post.
+      //
+      // The point of it is that a figure pinned to one x for an entire visit
+      // reads as a sprite bolted to the furniture, which is exactly what Gary
+      // used to be. A few units of drift, rarely, is enough to say somebody is
+      // actually standing there. It stays SHORT (STAFF_ROAM is a fraction of the
+      // deck) and it stays rare, because a counter clerk pacing continuously
+      // reads as agitated rather than staffed.
+      if (n.pinned) {
+        n.state = 'idle';
+        n.timer -= dt;
+        if (n.timer <= 0) {
+          n.cycles++;
+          // Alternate: a spell away from the post, then a spell back at it. The
+          // trip home is a state of its own rather than a snap, so they are seen
+          // to return rather than teleporting the moment the timer lapses.
+          //
+          // Direction comes off the TRIP count, not off `cycles`. Trips only
+          // ever start on odd cycles (the even ones are the walk home), so
+          // `cycles % 2` is constant at the only moment it gets read, and both
+          // of them shuffled to their right forever.
+          const trip = Math.floor(n.cycles / 2);
+          n.awayTo = n.awayTo == null
+            ? n.home + (trip % 2 ? -1 : 1) * STAFF_ROAM * (0.55 + (trip % 3) * 0.22)
+            : null;
+          // Long at the post, brief away from it. This wants to read as somebody
+          // occasionally reaching for something, not as pacing — at a 3-to-1
+          // ratio they looked restless, so it sits nearer 6-to-1.
+          n.timer = n.awayTo == null ? 15 + (n.cycles % 4) * 4.5 : 2.4 + (n.cycles % 3) * 0.7;
+        }
+        const goal = n.awayTo == null ? n.home : n.awayTo;
+        const d = goal - n.x;
+        if (Math.abs(d) > 0.4) n.x += Math.sign(d) * Math.min(Math.abs(d), 7 * dt);
+        // Facing still belongs to the customer: they turn to whoever is at the
+        // counter no matter which way along it they happen to be working.
+        n.facing = this.px < n.x ? -1 : 1;
+        continue;
+      }
       // Conversation wins over wandering, and the speaker turns toward the
       // player instead of strolling away halfway through a punchline.
       if (this.talk?.who === n.id) {
@@ -986,11 +1122,11 @@ export class HubState {
       if (s.type !== 'cabinet') continue;
       const sx = s.x - cam;
       if (sx < -POSTER_W || sx > HUB_VIEW_W + POSTER_W) continue;
-      const k = Math.round(s.x / 64);
-      drawPoster(ctx, sx, CAB_Y - POSTER_H - 12, POSTER_W, POSTER_H, {
+      const look = posterLook(s.x);
+      drawPoster(ctx, sx, POSTER_TOP_Y, POSTER_W, POSTER_H, {
         pal: palFor(s.cab, s.unlocked),
-        tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012),
-        torn: k % 3 === 1,
+        tilt: look.tilt,
+        torn: look.torn,
         lit: wallLit(sx),
       });
     }
@@ -1073,12 +1209,37 @@ export class HubState {
         // Nominally a cabinet, so it gets the cabinet: same machine, violet
         // chassis, and a screen showing nothing at all.
         drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, OVERTIME_PALETTE);
+      } else if (s.type === 'bench' || s.type === 'shop') {
+        // The two counters, each handed its own staff member as the `server` so
+        // the counter can paint them at the right depth — behind its front, in
+        // front of its back shelf. They are deliberately NOT drawn by the NPC
+        // loop below, which runs after every station and would stand them on top
+        // of the counters they are supposed to be behind.
+        // Matched by the station they were hired to, not by proximity. Proximity
+        // was wrong the moment there were two counters: at this pitch Dolores
+        // sits within COUNTER_W of BOTH stations, so the pawn unit found her
+        // too — drawing a second, unoccluded copy of her outside its own box and
+        // never drawing Gary at all.
+        const staff = this.npcs().find((n) => n.station === s.type);
+        drawCounter(ctx, x - COUNTER_W / 2, CTR_Y, COUNTER_W, COUNTER_H, {
+          t: this.t,
+          variant: s.type === 'shop' ? 'pawn' : 'serving',
+          server: staff ? (c) => drawToon(c, staff.id, {
+            kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t,
+            grounded: true, facing: staff.facing || 1, vy: 0,
+          }, Math.round(staff.x - cam), HUB_FLOOR_PIN_Y, staff.staffH || NPC_H) : null,
+        });
       } else if (DOOR_PALETTES[s.type]) {
         drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, DOOR_PALETTES[s.type], this.t, this.save.settings.reducedFlashing);
       }
     }
     // NPC heroes
     for (const n of this.npcs()) {
+      // Dolores already drew, inside her own counter (see the bench station
+      // above). She is in this list so she can be walked up to and talked to;
+      // drawing her here as well would paint a second copy of her standing in
+      // front of the serving line.
+      if (n.pinned) continue;
       const x = Math.round(n.x - cam);
       if (x < -20 || x > HUB_VIEW_W + 20) continue;
       // Hop height and contact shadow both ride NPC_H, so scaling the cast
@@ -1173,6 +1334,14 @@ export class HubState {
     // was the same sentence twice. Now the name and the legend introduce
     // themselves and get out of the way, and the resources sit quietly in the
     // corner where status belongs rather than in the message stack.
+    //
+    // Skipped entirely while a poster is open. Every row of it answers a
+    // question about the room — what you are standing next to, where you are,
+    // what you have — and you are not in the room, you are reading. Dimming was
+    // not enough: gold on near-black still glimmers, and a ghost of "EXIT - TAP
+    // TO LEAVE" directly above "TAP TO CLOSE" reads as two competing
+    // instructions.
+    if (this.poster) { this.drawPosterZoom(ctx); return; }
     if (this.near) {
       // A locked cabinet gets no verb. "ENTER TO USE" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
@@ -1217,9 +1386,14 @@ export class HubState {
     if (legendA > 0) {
       ctx.save();
       ctx.globalAlpha = legendA;
+      // The posters earn a clause here rather than a line of their own: there
+      // is no room for one (below the floor line the legend, the prompt and
+      // the status row already take all 58px, and anything above it lands on
+      // the cast's feet), and this is the one piece of chrome whose job is to
+      // name what is tappable and then get out of the way.
       drawTextCentered(ctx, Input.usingTouch
-        ? 'TAP TO WALK, TAP AGAIN TO ENTER'
-        : 'LEFT/RIGHT WALK   UP/DOWN PICK   ENTER CONFIRM', W / 2, H - 48, '#8a8a98', 0.9);
+        ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
+        : 'LEFT/RIGHT WALK   UP/DOWN PICK   ENTER CONFIRM   CLICK A POSTER', W / 2, H - 48, '#8a8a98', 0.9);
       ctx.restore();
     }
     // The same speech card the stages use — portrait, name header, words —
@@ -1228,6 +1402,51 @@ export class HubState {
     // chrome; the null-speaker path handles the cabinet and shelf notes.
     if (this.talk) drawSpeech(ctx, this.talk, { light: true });
     // No touch buttons to draw at all: EXIT is a station like any other.
+  }
+
+  // The blown-up read. drawPoster is fully parametric — the plate, the star,
+  // the badge and both lines of type all size off the sheet they are handed,
+  // and the wordmark and tagline re-fit to the new measure — so this is the
+  // same sheet drawn at 4x, not a 40px one magnified. The tagline that was a
+  // ruled smudge on the wall is set type here.
+  //
+  // It grows out of its own place on the wall rather than fading up centred.
+  // The tap meant "that one", and travelling from there is what makes the big
+  // version read as the same object rather than as a card about it.
+  drawPosterZoom(ctx) {
+    const p = this.poster;
+    const s = p.station;
+    const k = Math.min(1, p.t / 0.22);
+    const e = k * k * (3 - 2 * k);
+    const lerp = (a, b) => a + (b - a) * e;
+    // Where it hangs, in SCREEN space: the wall is painted inside the HUB_ZOOM
+    // transform and this is not, so the poster's world position has to be run
+    // through the same zoom and camera by hand.
+    const srcCx = (s.x - this.camX()) * HUB_ZOOM;
+    const srcCy = (POSTER_TOP_Y + POSTER_H / 2 - HUB_CAM_Y) * HUB_ZOOM;
+    // As tall as the frame allows with the close hint clear underneath.
+    const DST_H = 216, DST_W = DST_H * (POSTER_W / POSTER_H);
+    ctx.save();
+    ctx.globalAlpha = e;
+    // Near-opaque. At 0.86 the concourse's own bottom row — the walk-up
+    // prompt, the location name, the coin count — stayed legible through it
+    // and competed with the sheet for the same glance, which is the one thing
+    // a full-screen read cannot afford.
+    ctx.fillStyle = 'rgba(6,4,12,0.95)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    const pw = lerp(POSTER_W * HUB_ZOOM, DST_W), ph = lerp(POSTER_H * HUB_ZOOM, DST_H);
+    // Straightens as it comes forward, and comes up to full light. On the wall
+    // it is tilted and half in shadow because it is a thing in a room; held up
+    // to read, it is just the sheet.
+    drawPoster(ctx, lerp(srcCx, W / 2), lerp(srcCy, 8 + DST_H / 2) - ph / 2, pw, ph, {
+      pal: palFor(s.cab, s.unlocked), tilt: lerp(p.tilt, 0), torn: p.torn, lit: 1,
+    });
+    ctx.save();
+    ctx.globalAlpha = e;
+    drawTextCentered(ctx, Input.usingTouch ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE',
+      W / 2, H - 14, '#8a8a98', 0.9);
+    ctx.restore();
   }
 }
 
@@ -1249,16 +1468,18 @@ function listMenu(state, opts) {
 // The cursor band behind the selected row, and the y its lettering sits on.
 // listMenu hit-tests the whole pitch, so the band is drawn at exactly that
 // pitch and the text is centred in it: what the finger finds, what the eye
-// sees, and where the words are, all off the same two numbers. `lines` is how
-// many lines of text the row stacks — a stage row carries its blurb underneath
-// — and `dy` the gap between them, so the block centres rather than the first
-// line of it. Rows reserve the space whether or not they use it, or the labels
-// on the one-line rows would sit lower than the labels on their neighbours.
+// sees, and where the words are, all off the same two numbers.
 function drawSelRow(ctx, state, i, x0) {
   drawMenuRow(ctx, x0 - 12, state.listY + i * state.rowH + 1, W - (x0 - 12) * 2, state.rowH - 2);
 }
-function rowTextY(state, i, lines = 1, dy = 0) {
-  return textYForMid(state.listY + i * state.rowH + state.rowH / 2) - (lines - 1) * dy / 2;
+// `dy`/`s2` describe the second line for the rows that stack one — a stage
+// carries its mission blurb under its name — so the pair centres as a block
+// rather than the label centring and the blurb hanging off the bottom. Rows
+// reserve that drop whether or not they draw into it, or the label on a plain
+// BACK row would sit lower than the labels either side of it.
+function rowTextY(state, i, s1 = 1, dy = 0, s2 = s1) {
+  const mid = state.listY + i * state.rowH + state.rowH / 2;
+  return mid - (TEXT_INK_TOP * s1 + dy + (TEXT_INK_TOP + TEXT_INK_H) * s2) / 2;
 }
 
 // Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select,
@@ -1364,10 +1585,12 @@ export class StageSelectState {
     drawTextCentered(ctx, 'RANK', rankCx, this.listY - 13, '#5a5a68');
     // Second line of a row: the mission blurb, or what it takes to open a
     // locked one. Sits clear of the pips, which ride the label line above it.
-    const descY = (y) => y + 9 * ROW_S + 3;
+    const DESC_DY = 9 * ROW_S + 3;
+    const descY = (y) => y + DESC_DY;
     this.options().forEach((o, i) => {
-      const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
+      if (sel) drawSelRow(ctx, this, i, 40);
+      const y = rowTextY(this, i, ROW_S, DESC_DY, DESC_S);
       const c = sel ? '#f6d33c' : '#c8c8d8';
       if (o.kind === 'stage') {
         const plugs = slot.campaign.plugs[o.stage.id] || [];
@@ -1443,11 +1666,15 @@ export class BenchState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'THE REPAIR BENCH', W / 2, 16, '#f6d33c', 2, 'title');
+    // The screen you are standing at her counter to read. Her name goes on it
+    // for the same reason it goes on the station: you are being SERVED here, by
+    // somebody, and the menu framing only lands if the counter has a server.
+    drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 16, '#f6d33c', 2, 'title');
     drawTextCentered(ctx, `COINS: ${formatCoins(this.save.slot.coins)}`, W / 2, 40, '#f6d33c');
     this.options().forEach((o, i) => {
-      const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
+      if (sel) drawSelRow(ctx, this, i, 40);
+      const y = rowTextY(this, i);
       if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, sel ? '#f6d33c' : '#c8c8d8'); return; }
       const c = sel ? '#f6d33c' : '#c8c8d8';
       const lvlText = 'I'.repeat(Math.max(1, o.lvl));
@@ -1512,8 +1739,9 @@ export class ShopState {
     const slot = this.save.slot;
     drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');
     this.options().forEach((o, i) => {
-      const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
+      if (sel) drawSelRow(ctx, this, i, 30);
+      const y = rowTextY(this, i);
       if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 30, y, sel ? '#f6d33c' : '#c8c8d8'); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
       drawText(ctx, `${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, 30, y, c);
@@ -1554,8 +1782,9 @@ export class ArcadeState {
     const touch = Input.isTouchDevice();
     const broke = this.save.slot.coins < ARCADE_PLAY_COST;
     this.options().forEach((o, i) => {
-      const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
+      if (sel) drawSelRow(ctx, this, i, 40);
+      const y = rowTextY(this, i);
       if (o.back || o.none) {
         const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';
         drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');

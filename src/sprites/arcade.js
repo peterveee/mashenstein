@@ -1036,3 +1036,226 @@ export const DOOR_PALETTES = {
   // purpose — it is the only door that is supposed to disappear.
   backroom: { id: 'backroom', frame: '#332e3a', door: '#221d29', sign: '#302a38', ink: '#302a38', icon: 'none' },
 };
+
+// ------------------------------------------------------------ serving line
+// The service end of the food court used to be a row of doors: you fixed your
+// gear behind a shutter and pawned it through a second shutter, in a room whose
+// wall was advertising a lunch counter that did not exist. Both are counters
+// now. Nothing here was rebuilt — it was REPURPOSED, which is the room's whole
+// joke and the reason the trays are still trays, the warming wells are still
+// warm, and the only thing that changed about the menu is what is in the tray.
+//
+// Two variants off one carcass. `serving` is Dolores's steam table (tray rail,
+// wells, sneeze guard, heat lamps); `pawn` is Gary's till (security grille,
+// register, tagged stock on the shelf). They share a deck, a front and a back
+// shelf, because they ARE the same counter — the food court only ever built one
+// kind, and the pawn shop moved into a unit that already had one.
+//
+// Every vertical landmark is an absolute HEIGHT OFF THE FLOOR in logical px,
+// not a fraction of the box. A counter is a set of heights — deck at the
+// customer's chest, guard at the server's collarbone, lamps above her head —
+// and while these were fractions of `h`, every attempt to move one rescaled all
+// the others: raising the lamps to clear Dolores's head dragged the deck up
+// with them. `k` restores proportional scaling for callers drawing at some other
+// size, so at COUNTER_H the numbers below are literally pixels.
+export const COUNTER_W = 118, COUNTER_H = 70;
+// Deck and guard are set by what has to stay VISIBLE over them, not by what a
+// counter really measures. At a true serving height (deck at the customer's
+// chest, guard at the server's collarbone) both staff were a head floating on a
+// slab: correct, and useless — the apron, the name tag, the arms and the whole
+// reason for drawing a character were behind the furniture.
+const CTR = {
+  deck: 19,       // top of the serving deck
+  slab: 22,       // its front lip
+  railLo: 8, railHi: 14,
+  shelf: 24,      // the back shelf the staff work in front of
+  guard: 30,      // glass top rail, over the wells only — see COUNTER_GLASS_R
+  // Just clear of DOLORES_H — below it the hood crops her head, far above it the
+  // lamps stop reading as this counter's lamps and start reading as ceiling.
+  lampLo: 56, lampHi: 64,
+};
+// A real serving line is not glazed end to end: the wells are under glass and
+// the till end is open, which is where the person serving you actually stands.
+// Splitting the counter that way is what finally got the staff out from behind
+// their own furniture — the glass runs the left of the unit, and Dolores and
+// Gary stand at the open right end with nothing but deck in front of them. The
+// hub positions them off COUNTER_STAFF_X, so where they stand and where the
+// glass stops can never drift apart.
+const COUNTER_GLASS_L = 0.05, COUNTER_GLASS_R = 0.56;
+export const COUNTER_STAFF_X = 0.73;
+const COUNTER_PAL = {
+  body: '#42576a', bodyLo: '#334352', deck: '#9aa8b4', rail: '#b6c2cc',
+  well: '#141220', housing: '#3a4450', lamp: '#f6a83c',
+};
+// Gary's unit, in the pawn shop's own plum — the same family DOOR_PALETTES.shop
+// used, so the station keeps its colour identity now that it has stopped being
+// a door.
+const PAWN_PAL = {
+  body: '#5d4460', bodyLo: '#48344c', deck: '#a08aa4', rail: '#bda8bf',
+  well: '#150f1c', housing: '#3e2e42', lamp: '#f890b8',
+};
+// The marker somebody has been correcting this place with, in the two values
+// backwall.js established for it: the bright one is for dark surfaces (the
+// menu board's backlit panel), the deep one for anything written on pale stock.
+// A placard is cream card, so it gets the deep one — the bright teal that reads
+// beautifully on a black lightbox disappears on paper.
+const MARKER_ON_DARK = '#48e0c8', MARKER_ON_PALE = '#0d5f57';
+
+// `server` is painted between the back shelf and the counter front, which is
+// the only reason it is a callback rather than the caller drawing the staff
+// themselves: standing behind a counter is a Z-ORDER, and the one place that
+// ordering can be stated correctly is inside the thing doing the occluding.
+export function drawCounter(ctx, x, y, w, h, { t = 0, server = null, variant = 'serving' } = {}) {
+  const pawn = variant === 'pawn';
+  const P = pawn ? PAWN_PAL : COUNTER_PAL;
+  const u = olU(w);
+  const X = (n) => x + w * n;
+  const k = h / COUNTER_H;              // 1 at natural size; scales other callers
+  const up = (px) => y + h - px * k;    // height off the floor, in logical px
+  const tall = (px) => px * k;          // a vertical EXTENT in the same units
+  const floor = y + h;
+
+  // Back shelf: the run behind the counter, carrying what the unit never put
+  // away. Dressed on the LEFT only — the staff stand at the right-hand end, and
+  // anything shelved behind them is occluded by a person. Everything on it also
+  // sits above the deck, since below that the counter's own front hides it.
+  plain(ctx, P.bodyLo, (c) => c.rect(X(0.04), up(CTR.shelf), w * 0.92, tall(3.4)));
+  plain(ctx, darken(P.bodyLo, 0.3), (c) => c.rect(X(0.04), up(CTR.shelf), w * 0.92, tall(1)));
+  if (pawn) {
+    // Stock, tagged and shelved. Nothing matches anything: a pawn shop's back
+    // wall is the one place in a shop where the merchandise has no theme.
+    const stock = [['#c8a03c', 0.06, 9], ['#7a8ec8', 0.15, 13], ['#c85a5a', 0.24, 7],
+      ['#6fa89c', 0.33, 11], ['#c8c8d8', 0.42, 8]];
+    for (const [col, fx, ht] of stock) {
+      shape(ctx, col, u, (c) => rr(c, X(fx), up(CTR.shelf + ht), w * 0.062, tall(ht - 1), w * 0.008));
+      plain(ctx, '#ded8c8', (c) => c.rect(X(fx + 0.011), up(CTR.shelf + ht - 1.5), w * 0.026, tall(2.2)));
+    }
+  } else {
+    // A coffee urn nobody has emptied, its sight glass still reading full.
+    shape(ctx, '#6b7684', u, (c) => rr(c, X(0.06), up(CTR.shelf + 15), w * 0.10, tall(15), w * 0.012));
+    plain(ctx, '#20283a', (c) => c.rect(X(0.075), up(CTR.shelf + 11), w * 0.026, tall(5.6)));
+    plain(ctx, '#8a5a3c', (c) => c.rect(X(0.079), up(CTR.shelf + 10.2), w * 0.018, tall(3.8)));
+    // Trays, stacked and waiting, in the brown every cafeteria tray has ever been.
+    for (let i = 0; i < 5; i++) {
+      plain(ctx, i % 2 ? '#7a5a4a' : '#8a6a56',
+        (c) => c.rect(X(0.21), up(CTR.shelf + 2 + i * 2.4), w * 0.13, tall(2)));
+    }
+  }
+
+  if (server) server(ctx);
+
+  // The deck and the front of the counter — the big flat plane the player walks
+  // up to, carrying the thing that used to be on the door: what the station is.
+  shape(ctx, P.body, u, (c) => rr(c, X(0.02), up(CTR.deck), w * 0.96, tall(CTR.deck), w * 0.010));
+  plain(ctx, P.bodyLo, (c) => c.rect(X(0.02), up(7), w * 0.96, tall(7)));
+  plain(ctx, P.deck, (c) => rr(c, X(0), up(CTR.slab), w, tall(CTR.slab - CTR.deck + 1), w * 0.008));
+  // Tray rail, standing off the front face on two brackets. This is the single
+  // detail that makes the silhouette read as a cafeteria line from across the
+  // concourse, so it gets real thickness rather than a drawn-on stripe. The pawn
+  // unit keeps it: it did not take the rail off, it just stopped using it.
+  for (const f of [0.10, 0.88]) {
+    plain(ctx, darken(P.body, 0.25), (c) => c.rect(X(f), up(CTR.railHi), w * 0.018, tall(CTR.railHi - CTR.railLo)));
+  }
+  shape(ctx, P.rail, Math.max(10, u * 0.7),
+    (c) => rr(c, X(0.035), up(CTR.railHi), w * 0.93, tall(2.6), tall(1.3)));
+
+  // The glass section, left end. Both variants put the same box in the same
+  // band — a sneeze guard and a display case are the same object doing opposite
+  // jobs, and the food court only ever built one kind of counter.
+  const GL = X(COUNTER_GLASS_L), GR = X(COUNTER_GLASS_R);
+  if (pawn) {
+    // Small tagged valuables, sat inside the case on the deck.
+    for (let i = 0; i < 5; i++) {
+      plain(ctx, ['#f6d33c', '#c8c8d8', '#f890b8', '#48c0e0', '#f6d33c'][i],
+        (c) => c.rect(X(0.09 + i * 0.088), up(CTR.slab + 2.6), w * 0.036, tall(2.8)));
+    }
+  } else {
+    // Warming wells, sunk into the deck. Two empty, one holding what the counter
+    // serves now — fuses and plugs, portioned into rows exactly the way the
+    // nachos were. Nobody converted this; somebody put different things in the
+    // tray.
+    for (let i = 0; i < 3; i++) {
+      const wx = X(0.08 + i * 0.163), ww = w * 0.145;
+      plain(ctx, P.well, (c) => rr(c, wx, up(CTR.slab + 1.6), ww, tall(3.4), w * 0.005));
+      if (i !== 1) continue;
+      for (let n = 0; n < 3; n++) {
+        plain(ctx, n % 2 ? '#f6d33c' : '#c8c8d8',
+          (c) => c.rect(wx + ww * (0.16 + n * 0.26), up(CTR.slab + 1.2), ww * 0.15, tall(1.9)));
+      }
+    }
+  }
+  for (const gx of [GL, GR - w * 0.016]) {
+    plain(ctx, pawn ? '#8a7a94' : '#6b7684', (c) => c.rect(gx, up(CTR.guard), w * 0.016, tall(CTR.guard - CTR.slab)));
+  }
+  ctx.save();
+  ctx.globalAlpha = pawn ? 0.22 : 0.20;
+  plain(ctx, pawn ? '#e8d8f0' : '#cfe4f0', (c) => c.rect(GL, up(CTR.guard), GR - GL, tall(CTR.guard - CTR.slab)));
+  ctx.restore();
+  stroke(ctx, pawn ? 'rgba(232,216,240,0.46)' : 'rgba(220,238,248,0.42)', Math.max(0.4, w * 0.007),
+    (c) => { c.moveTo(GL, up(CTR.guard)); c.lineTo(GR, up(CTR.guard)); });
+
+  // The till, at the open end past the glass — where you pay, and the reason the
+  // staff stand where they stand. Both units have one: the pawn shop moved into a
+  // unit that already had a register on it and simply kept using it.
+  const rx = X(0.84), rw = w * 0.13;
+  shape(ctx, pawn ? '#2e2438' : '#2a3542', u, (c) => rr(c, rx, up(CTR.deck + 9), rw, tall(9), w * 0.010));
+  plain(ctx, '#48e0c8', (c) => c.rect(rx + rw * 0.14, up(CTR.deck + 7.6), rw * 0.72, tall(2.8)));
+  for (let i = 0; i < 3; i++) {
+    plain(ctx, '#c8c8d8', (c) => c.rect(rx + rw * (0.16 + i * 0.26), up(CTR.deck + 3.6), rw * 0.18, tall(1.5)));
+  }
+
+  // Lamps, hung clear above head height, and the only reason this end of the
+  // concourse has any warm light in it at all. They are still on. Nobody turned
+  // them off, because turning them off was never anybody's job.
+  plain(ctx, P.housing, (c) => rr(c, X(0.12), up(CTR.lampHi), w * 0.76, tall(CTR.lampHi - CTR.lampLo), w * 0.008));
+  for (const f of [0.28, 0.50, 0.72]) {
+    const pulse = 0.82 + 0.18 * Math.sin(t * 1.6 + f * 9);
+    ctx.save();
+    ctx.globalAlpha = 0.9 * pulse;
+    plain(ctx, P.lamp, (c) => c.ellipse(X(f), up(CTR.lampLo), w * 0.024, tall(1.8), 0, 0, Math.PI * 2));
+    ctx.restore();
+    // The pour of light onto the deck. Drawn over the glass so the pane takes the
+    // glow too and the whole assembly sits in one pool, rather than the deck
+    // being lit under a pane that is not.
+    const g = ctx.createLinearGradient(0, up(CTR.lampLo), 0, up(CTR.slab));
+    const [lr, lg, lb] = rgb(P.lamp);
+    g.addColorStop(0, `rgba(${lr},${lg},${lb},${(0.18 * pulse).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${lr},${lg},${lb},0)`);
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(X(f) - w * 0.026, up(CTR.lampLo));
+    ctx.lineTo(X(f) + w * 0.026, up(CTR.lampLo));
+    ctx.lineTo(X(f) + w * 0.10, up(CTR.slab));
+    ctx.lineTo(X(f) - w * 0.10, up(CTR.slab));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // The placard, taped to the front where the price list used to be, in the same
+  // marker that has been correcting the menu board all along. This is the job the
+  // door's icon was doing — telling you what the station is. It does it worse,
+  // and by hand, which is an improvement. Deep marker rather than bright: this is
+  // cream card, and backwall.js already learned that the teal which reads
+  // beautifully on a black lightbox disappears on paper.
+  const word = pawn ? 'PAWN' : 'REPAIRS';
+  const cardW = w * 0.32, cardH = tall(10);
+  const cardX = X(0.40) - cardW / 2, cardY = up(16.5);
+  shape(ctx, '#ded8c8', Math.max(10, u * 0.6), (c) => rr(c, cardX, cardY, cardW, cardH, w * 0.005));
+  for (const tx of [0.02, 0.80]) {
+    plain(ctx, 'rgba(236,236,246,0.34)',
+      (c) => c.rect(cardX + cardW * tx, cardY - cardH * 0.20, cardW * 0.18, cardH * 0.36));
+  }
+  const cs = Math.min(0.62, (cardW * 0.82) / Math.max(1, textWidth(word, 1, 'marker')));
+  drawText(ctx, word, cardX + cardW * 0.5 - textWidth(word, cs, 'marker') / 2,
+    cardY + cardH * 0.5 - cs * 4.6, MARKER_ON_PALE, cs, 'marker');
+
+  // Floor grime along the kick plate: the strip of tile in front of a serving
+  // counter is the most walked-on square metre in any food court, and it is the
+  // cheapest possible way to say people used to queue here.
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  plain(ctx, '#0e0a16', (c) => c.ellipse(X(0.5), floor + tall(1), w * 0.54, tall(3.4), 0, 0, Math.PI * 2));
+  ctx.restore();
+}

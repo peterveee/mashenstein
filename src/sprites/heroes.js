@@ -318,4 +318,12 @@ grumpos.pal = { s: '#ded9d2', a: '#c92f3b', e: '#17131a', m: '#352523', b: '#ded
 // Ray M'N is vector-drawn in play; these grids provide palette/fallback data.
 const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d85050', b: '#28a8a0', p: '#7048a8', f: '#f06038', w: '#f5f2e8' } };
 
-export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos };
+// Dolores never runs a stage, so like Ray M'n she borrows Gary's grids and
+// brings only a palette — the toon layer is the only thing that ever draws her.
+// The uniform is institutional mint (b) under a cream apron (a): the two
+// colours a cafeteria has always been, and neither of them is a colour any
+// cabinet in the concourse uses, so she does not read as belonging to a
+// machine. `hair` is the set grey the net goes over.
+const dolores = { ...gary, pal: { s: '#e0a884', a: '#e4dccc', e: '#171126', m: '#8a4a52', b: '#6fa89c', p: '#3a3a48', f: '#2e2a38', w: '#fff', hair: '#b4aac0' } };
+
+export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores };

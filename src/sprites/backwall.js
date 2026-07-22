@@ -62,9 +62,17 @@ function fitScale(str, maxW, cap, style = 'ui') {
 // on screen — to animate artwork that is nailed to a wall would be paying for
 // motion nobody can see. Supersampled so the plate stays clean under the hub's
 // zoom, and keyed by size so one cache serves the hub and the gallery.
+// Sizes are quantised to a 4px grid before they become a key. Every caller
+// stamps the plate into an explicit destination rect, so a plate rendered at
+// the next step up is invisible — but without this the tap-to-read zoom, which
+// tweens the sheet's width every frame it opens, minted a fresh supersampled
+// toon render per frame and kept every one of them forever. A dozen sizes is a
+// cache; a continuum is a leak.
 const STAR_PLATES = new Map();
 function starPlate(id, w, h) {
-  const key = `${id}|${Math.round(w)}x${Math.round(h)}`;
+  const q = (v) => Math.max(4, Math.round(v / 4) * 4);
+  w = q(w); h = q(h);
+  const key = `${id}|${w}x${h}`;
   if (STAR_PLATES.has(key)) return STAR_PLATES.get(key);
   let plate = null;
   try {
@@ -389,16 +397,19 @@ export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = f
   // A composition, not a stack of bars. What made this read as "basic" was that
   // every element was the same thing — a flat rectangle on a flat rectangle —
   // with the one piece of artwork printed in a dark ink barely a shade off the
-  // paper, so it disappeared. A real cover has depth of field: a bordered
-  // sheet, an art plate that is a DIFFERENT value from the stock, a subject
-  // with a face, and a wordmark.
-  stroke(ctx, luma(paper) > 0.42 ? 'rgba(14,10,20,0.30)' : 'rgba(240,238,248,0.22)',
-    Math.max(0.4, pw * 0.018), (c) => c.rect(pw * 0.06, ph * 0.05, pw * 0.88, ph * 0.90));
-
+  // paper, so it disappeared. What fixed it was contrast and a subject, not
+  // more frame: an art plate a DIFFERENT value from the stock, a face on it,
+  // and a wordmark.
+  //
+  // There WAS a printed margin ruled inside the sheet edge here. Between the
+  // sheet's own outline and the art plate's edge that made three nested
+  // rectangles inside 40px, which at this size reads as fussy rather than
+  // designed — the eye counts borders before it reads the poster. The sheet
+  // edge already does that job, so the margin is simply gone.
   // The art plate, in the cabinet's SCREEN colour — the one value in the
   // palette guaranteed to contrast its body. This is what the
   // dark-green-icon-on-green version was missing.
-  const ax = pw * 0.11, ay = ph * 0.16, aw = pw * 0.78, ah = ph * 0.48;
+  const ax = pw * 0.09, ay = ph * 0.12, aw = pw * 0.82, ah = ph * 0.50;
   plain(ctx, plate, (c) => c.rect(ax, ay, aw, ah));
 
   // The star, stamped from a cached plate. Full-colour character art against a
@@ -429,9 +440,17 @@ export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = f
     // display type, and it keeps in-world print from reading in the same voice
     // as the HUD. The tagline stays in the body face underneath it, which is
     // the contrast a real poster is built on.
-    const nameS = fitScale(copy[0], pw * 0.80, 0.62, 'title');
+    // Both caps are proportional to the sheet, not fixed in absolute scale
+    // units. The hub hangs these 40px wide and the tap-to-read view blows the
+    // same sheet up past four times that; with a fixed cap the wordmark came
+    // out the same physical size on both, so the big version was a large
+    // poster with the wall poster's tiny title still printed on it. Against
+    // the sheet's own width, the blown-up read is simply this poster larger —
+    // which is the entire point of being able to open one.
+    const k = pw / POSTER_W;
+    const nameS = fitScale(copy[0], pw * 0.80, 0.62 * k, 'title');
     drawTextCentered(ctx, copy[0], pw * 0.5, ph * 0.665, ink, nameS, 'title');
-    const tagS = fitScale(copy[1], pw * 0.76, 0.44);
+    const tagS = fitScale(copy[1], pw * 0.76, 0.44 * k);
     drawTextCentered(ctx, copy[1], pw * 0.5, ph * 0.79,
       luma(paper) > 0.42 ? 'rgba(14,10,20,0.62)' : 'rgba(240,238,248,0.60)', tagS);
   }
@@ -441,8 +460,10 @@ export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = f
     (c) => c.rect(pw * 0.24, ph * 0.90, pw * 0.52, ph * 0.028));
 
   // A fold crease down the sheet — the one line that says "printed, folded into
-  // a box, and put up by hand" rather than rendered.
-  stroke(ctx, 'rgba(255,255,255,0.13)', Math.max(0.3, pw * 0.012),
+  // a box, and put up by hand" rather than rendered. Faint: it is texture, and
+  // with the printed margin gone it is the only ruled line left on the sheet,
+  // so it earns its place only by staying near the threshold of noticing.
+  stroke(ctx, 'rgba(255,255,255,0.09)', Math.max(0.3, pw * 0.010),
     (c) => { c.moveTo(pw * 0.62, 0); c.lineTo(pw * 0.58, ph); });
   // Bleached by whatever light still reaches it — but lightly. At 0.14 the wash
   // greyed the stock enough that nine differently-coloured cabinets all
@@ -540,10 +561,17 @@ function handStrike(ctx, x0, x1, y, lw, seed, col = '#e04848') {
   });
 }
 
+// Where the lit panel sits inside its bay. Named because hubWallBays has to
+// hang the BOARD over the serving counter, and the board is not centred in its
+// own bay — the counter display and the grade card take up the right third.
+// Placing the bay by its own centre put the panel half a counter to the left.
+const MENU_PANEL_X = 0.06, MENU_PANEL_W = 0.66;
+export const MENU_PANEL_CENTRE = MENU_PANEL_X + MENU_PANEL_W / 2;
+
 function paintMenuBoard(ctx, x, y, w, h, o) {
   const X = (f) => x + w * f, Y = (f) => y + h * f;
   const u = olU(w);
-  const bx = X(0.06), by = Y(0.07), bw = w * 0.66, bh = h * 0.50;
+  const bx = X(MENU_PANEL_X), by = Y(0.07), bw = w * MENU_PANEL_W, bh = h * 0.50;
 
   // Housing, with the light box behind the panel still faintly on.
   shape(ctx, '#2a2438', u, (c) => rr(c, bx, by, bw, bh, w * 0.012));
@@ -755,36 +783,42 @@ export const WALL_DRESSINGS = {
   },
 };
 
-// What actually hangs where, in hub world x. Posters run the length of the
-// cabinet arcade (stations sit from x 70 to about 582), each bay taking its
-// colours from the machine standing in front of it; the menu board is further
-// along on the right, over the service counters — which is where a food court
-// would have put it, and where it stops being competition for nine marquees.
-// Everything past that is left bare: the far end of the concourse should read
-// as the part nobody bothered to decorate.
-// Posters are NOT in this list: they hang one per cabinet (see drawPoster and
-// the station loop in hub/index.js), because a poster belongs to a machine, not
-// to a span of wall. What is left here is the furniture that belongs to the
-// ROOM — the menu board, over the service counters on the right, where a food
-// court would have put it and where it is not competing with nine marquees.
-// Everything past it stays bare: the far end should read as the part nobody
-// bothered to decorate.
-// Derived from the live station list rather than written down as a fixed x.
-// The concourse gets re-spaced whenever the furniture changes — the cabinets
-// have already moved from 64 apart to 88, which silently dropped a hardcoded
-// bay into the middle of the arcade bank — so the board states its placement as
-// a RULE: hang it in the plaza that opens up after the LAST cabinet, before
-// whatever service furniture comes next. That is the first stretch of wall the
-// machines are not competing for, and a menu wants to be readable from the end
-// of the arcade bank rather than from among it.
+// What actually hangs where, in hub world x. Posters are NOT in this list: they
+// hang one per cabinet (see drawPoster and the station loop in hub/index.js),
+// because a poster belongs to a machine, not to a span of wall. What is left
+// here is the furniture that belongs to the ROOM — currently the menu board,
+// with everything past it left bare, because the far end of the concourse
+// should read as the part nobody bothered to decorate.
+//
+// The board used to hang in the empty plaza between the last cabinet and the
+// service doors: the best available answer while the repair bench was still a
+// door, and a sign advertising a counter that was not in the room. The counter
+// exists now, so the rule is the obvious one.
+//
+// Derived from the live station list rather than written down as a fixed x —
+// the concourse gets re-spaced whenever the furniture changes, and the cabinets
+// have already moved from 64 apart to 88 once, which silently dropped a
+// hardcoded bay into the middle of the arcade bank.
 export function hubWallBays(stations) {
   const bays = [];
+  // The board hangs over the SERVING COUNTER, which is the only place a menu
+  // board has ever hung. Placed by its own PANEL rather than by its bay: the lit
+  // panel occupies only the left two-thirds of a bay (the NOW SERVING readout
+  // and the grade card take the rest), so centring the BAY on the counter hung
+  // the actual board half a counter to the left of it.
+  const counter = stations.find((s) => s.type === 'bench');
+  if (counter) {
+    bays.push({ x: counter.x - BAY_W * MENU_PANEL_CENTRE, id: 'menuboard' });
+    return bays;
+  }
+  // No counter in the room — older station lists, and the stubs the hub tests
+  // build. Falls back to the plaza after the last cabinet, where it used to
+  // hang: the next fixture along, whatever it happens to be, with the plaza the
+  // gap between the two. With nothing past the machines it hangs just clear of
+  // the last one instead.
   const cabs = stations.filter((s) => s.type === 'cabinet');
   if (!cabs.length) return bays;
   const last = cabs[cabs.length - 1];
-  // The next fixture along, whatever it happens to be — the plaza is the gap
-  // between the two, and the board hangs over the middle of it. With nothing
-  // past the machines, it hangs just clear of the last one instead.
   const next = stations.find((s) => s.type !== 'cabinet' && s.x > last.x);
   const centre = next ? (last.x + next.x) / 2 : last.x + BAY_W * 0.75;
   bays.push({ x: centre - BAY_W / 2, id: 'menuboard' });

@@ -61,7 +61,7 @@ patient. The turtle is not impressed.
 - **Breaker-box minigames** power on each cabinet: BLOCK SURGE (MASH-ominoes),
   REWIRE, CODE INJECT, PADDLE WAR, MASH INVADERS, BRICK BONK, TURDLE. All
   replayable in the hub's arcade corner.
-- **Progression:** the REPAIR BENCH (power-up levels, relay upgrades), Hero
+- **Progression:** DOLORES' REPAIR COUNTER (power-up levels, relay upgrades), Hero
   Mastery (sidegrades with comic drawbacks), and Cabinet Mods from GARY'S
   LEGALLY DISTINCT PAWN SHOP.
 - **Bosses** at the end of each act, fought with runner verbs only. Some health

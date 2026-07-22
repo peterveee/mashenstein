@@ -29,6 +29,11 @@ export const TOON_SPECS = {
   mochi: { rig: 'pika' },
   chompo: { rig: 'disc' },
   gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true },
+  // The serving line's own staff. Stout and short-armed on purpose: she is only
+  // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
+  // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
+  // whole performance — she is not pleased to see you and she is not displeased.
+  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, nameTag: true, stout: true, armDepth: true, hands: true },
   raymn: { rig: 'ray' },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
@@ -127,14 +132,250 @@ function turnedTorsoPath(c, cx, top, bot, halfTop, halfBot, yaw) {
   c.quadraticCurveTo(cx - leftTop, leftTopY, cx - leftTop + shoulderRound, leftTopY);
   c.closePath();
 }
+// ------------------------------------------------------------- key light
+// Flat fills are what made the cast read as stickers laid on the background:
+// every form was one solid colour inside a contour, with nothing saying which
+// way was up. This is a single key light for the whole cast, and the whole of
+// it is gradient re-fills of paths the rig has ALREADY built — no blur, no
+// shadow passes, no offscreen buffers. The player's hero repaints every frame
+// at full device resolution on a phone, so the shading budget is whatever the
+// rasterizer does for free.
+//
+// Two cues here, plus a third next door:
+//   FORM   a light-to-shadow ramp, so a head reads as a ball and a torso as a
+//          barrel instead of as two stickers.
+//   RIM    a warm lit-side contour, which is what lifts a figure off whatever
+//          is behind it.
+//   DEPTH  a flat push-back on the receding-side limbs — see `recede` and
+//          drawHumanoid's farShade. The turned rig was BUILT for that cue and
+//          then lit as if both sides were the same distance away.
+//
+// ONE FIELD, NOT ONE RAMP PER SHAPE. This is the whole design, and it is worth
+// being blunt about because the obvious implementation is the wrong one: fit
+// each shape's ramp to its own bounding box and every shape is lit correctly
+// in isolation and wrongly against its neighbours. This rig builds masses out
+// of overlapping pieces that must not show a seam — the shoulder cap exists
+// purely to bury an arm's root in the torso, the pelvis bridges two thighs,
+// the battle skirt is four leather panels over an under-layer — and per-shape
+// ramps put a different gradient on each piece. The cap turned into a pauldron
+// bolted to the shoulder, and every skirt panel put its own highlight at its
+// own top edge, banding the waist until the leather looked see-through.
+//
+// A single field evaluated in FIGURE space has no such failure mode: any two
+// shapes meeting at a point get the same value there, so every blend the rig
+// relies on stays invisible and shapes may overlap freely. Figure space is
+// origin at the feet, -y up. drawToon re-signs the x component against the
+// facing flip, so the key stays put in the WORLD when a hero turns around
+// rather than sliding across their body with them.
+const LIGHT_X = -0.45, LIGHT_Y = -1;
+const LIGHT_LEN = Math.hypot(LIGHT_X, LIGHT_Y);
+// Where the field's ramp is anchored, in u: the figure's rough centre, and how
+// far out along the key its lit and shadow ends sit. Sized to the standing
+// silhouette so heads land near the lit end and feet near the shadow end.
+const FIELD_CY = -0.5, FIELD_R = 0.72;
+// The shadow tint is OUTLINE's ink: contour and shading stay one colour
+// family, so a shaded form looks lit rather than dirty.
+const SHADOW_INK = '26,16,40';
+const HILITE_INK = '255,246,232';
+const FORM_A = 0.42;   // shadow alpha at the shadow end of the figure
+const HILITE_A = 0.2;  // highlight alpha at the lit end
+// A field alone cannot round a single form: it varies with POSITION, and every
+// point where two shapes meet has one value, which is exactly why it never
+// seams — and also why a head lit by it reads as "the top of the figure is
+// brighter" rather than as a ball. The volume comes back as a soft highlight
+// blob per form, sized to the form and held well inside it. Anything that
+// reaches zero before the contour cannot disagree with a neighbour at the
+// contour, so this buys back per-form roundness under the same no-seam rule
+// the field is built on.
+const SPEC_A = 0.2;    // peak alpha at the blob's centre
+const SPEC_OFF = 0.36; // how far toward the key it sits, as a fraction of the form
+const SPEC_R = 0.78;   // and its radius, against the form's SHORT half-axis
+// The rim rides OVER the contour but stops well short of erasing it: at full
+// weight the key simply deleted the outline down the lit side, and heroes lost
+// the border on their leading shoulder mid-walk. It thins and warms that edge
+// instead — RIM_W is the fraction of the outline's own width it covers, so
+// dark always survives on both sides of it.
+const EDGE_A = 0.34, RIM_W = 0.6;
+// Marks, not volumes: eyes, pupils, buttons and teeth. A ramp across a
+// three-pixel pupil is mud, and a rim around one is a smudge.
+const SHADE_MIN = 0.1;
+
+// Live light state, set per figure by armLight. Rendering here is synchronous
+// and single-threaded, so this is threaded the same way ctx state is. `g`
+// caches the figure's three gradients: they are identical for every shape, so
+// they are built once on first use rather than ~90 times per frame.
+const shade = { on: false, lx: 0, ly: -1, u: 1, g: null };
+
+// Arm the key for one figure. `xSign` is the net horizontal sign the caller
+// has already pushed onto the context (facing flip, celebrate spin); negating
+// lx against it is what keeps the light in world space. Returns the previous
+// state — paintFace nests a whole drawToon inside its own render.
+function armLight(u, xSign, on) {
+  const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, g: shade.g };
+  shade.on = !!on;
+  shade.u = u;
+  shade.lx = (LIGHT_X / LIGHT_LEN) * (xSign < 0 ? -1 : 1);
+  shade.ly = LIGHT_Y / LIGHT_LEN;
+  shade.g = null;
+  return prev;
+}
+function disarmLight(prev) {
+  shade.on = prev.on; shade.lx = prev.lx; shade.ly = prev.ly; shade.u = prev.u; shade.g = prev.g;
+}
+
+// Bounding box of a path function without rasterizing it. The rig's path
+// builders only ever call these eleven methods, so replaying one against a
+// recorder yields its extent for the cost of the arithmetic — no second
+// canvas, no getImageData. Curve control points count as corners, which
+// overstates the tightest arcs by a few percent; a lighting ramp cannot see
+// the difference.
+const TAU = Math.PI * 2;
+function arcCovers(a0, a1, ccw, a) {
+  if (Math.abs(a1 - a0) >= TAU) return true;
+  const norm = (v) => ((v % TAU) + TAU) % TAU;
+  const span = ccw ? norm(a0 - a1) : norm(a1 - a0);
+  const at = ccw ? norm(a0 - a) : norm(a - a0);
+  return at <= span;
+}
+function boundsOf(pathFn) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const put = (x, y) => {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  };
+  const rec = {
+    beginPath() {}, closePath() {},
+    moveTo: put, lineTo: put,
+    quadraticCurveTo(cx, cy, x, y) { put(cx, cy); put(x, y); },
+    bezierCurveTo(ax, ay, bx, by, x, y) { put(ax, ay); put(bx, by); put(x, y); },
+    arcTo(ax, ay, x, y) { put(ax, ay); put(x, y); },
+    rect(x, y, w, h) { put(x, y); put(x + w, y + h); },
+    roundRect(x, y, w, h) { put(x, y); put(x + w, y + h); },
+    // A partial arc that only sweeps the top of a circle must not report the
+    // bottom: half-dome hat brims are drawn exactly that way, and boxing them
+    // as full circles drops the ramp's centre a quarter of a head too low.
+    arc(x, y, r, a0, a1, ccw) {
+      if (a0 == null) { put(x - r, y - r); put(x + r, y + r); return; }
+      put(x + Math.cos(a0) * r, y + Math.sin(a0) * r);
+      put(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+      for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2;
+        if (arcCovers(a0, a1, !!ccw, a)) put(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
+    },
+    // Every ellipse in the rig is a full one; the rotated extent is exact.
+    ellipse(x, y, rx, ry, rot) {
+      const c = Math.abs(Math.cos(rot || 0)), s = Math.abs(Math.sin(rot || 0));
+      const ex = Math.hypot(rx * c, ry * s), ey = Math.hypot(rx * s, ry * c);
+      put(x - ex, y - ey); put(x + ex, y + ey);
+    },
+  };
+  pathFn(rec);
+  return x1 >= x0 ? { x0, y0, x1, y1 } : null;
+}
+
+// The figure's three gradients, along the key axis through figure space. Built
+// once per figure and handed to every shape, which is what makes the field a
+// field. Canvas resolves gradient coordinates against the transform in force
+// when they are PAINTED, so a cached object and a freshly built one behave
+// identically inside the rig's few nested transforms — the cache is pure
+// savings, not a change in result.
+function fieldRamps(ctx) {
+  if (!shade.on) return null;
+  if (shade.g) return shade.g;
+  const u = shade.u;
+  const cx = 0, cy = FIELD_CY * u, r = FIELD_R * u;
+  const ax = cx + shade.lx * r, ay = cy + shade.ly * r;   // lit end
+  const bx = cx - shade.lx * r, by = cy - shade.ly * r;   // shadow end
+  const core = ctx.createLinearGradient(ax, ay, bx, by);
+  // Nothing happens through the lit half. A terminator that starts at the
+  // highlight and runs the entire figure is a gradient, not a lit form.
+  core.addColorStop(0, `rgba(${SHADOW_INK},0)`);
+  core.addColorStop(0.46, `rgba(${SHADOW_INK},0)`);
+  core.addColorStop(0.74, `rgba(${SHADOW_INK},${(FORM_A * 0.38).toFixed(3)})`);
+  core.addColorStop(1, `rgba(${SHADOW_INK},${FORM_A.toFixed(3)})`);
+  const lit = ctx.createLinearGradient(ax, ay, bx, by);
+  lit.addColorStop(0, `rgba(${HILITE_INK},${HILITE_A.toFixed(3)})`);
+  lit.addColorStop(0.4, `rgba(${HILITE_INK},0)`);
+  lit.addColorStop(1, `rgba(${HILITE_INK},0)`);
+  const edge = ctx.createLinearGradient(ax, ay, bx, by);
+  edge.addColorStop(0, `rgba(${HILITE_INK},${EDGE_A.toFixed(3)})`);
+  edge.addColorStop(0.5, `rgba(${HILITE_INK},0)`);
+  edge.addColorStop(1, `rgba(${HILITE_INK},0)`);
+  shade.g = { core, lit, edge };
+  return shade.g;
+}
+
+// The field plus this form's own highlight blob. The bounds pass earns its
+// keep twice over: it tells a volume from a mark, and it sizes the blob.
+function formRamps(ctx, pathFn) {
+  if (!shade.on) return null;
+  const b = boundsOf(pathFn);
+  if (!b) return null;
+  const hw = (b.x1 - b.x0) / 2, hh = (b.y1 - b.y0) / 2;
+  if (Math.max(hw, hh) * 2 < SHADE_MIN * shade.u) return null;
+  const g = fieldRamps(ctx);
+  if (!g) return null;
+  const short = Math.min(hw, hh);
+  // Under a couple of device pixels a blob is a smudge, not a highlight.
+  if (short < 0.03 * shade.u) return g;
+  const cx = (b.x0 + b.x1) / 2 + shade.lx * hw * SPEC_OFF;
+  const cy = (b.y0 + b.y1) / 2 + shade.ly * hh * SPEC_OFF;
+  const r = short * SPEC_R;
+  const spec = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  spec.addColorStop(0, `rgba(${HILITE_INK},${SPEC_A.toFixed(3)})`);
+  spec.addColorStop(0.55, `rgba(${HILITE_INK},${(SPEC_A * 0.34).toFixed(3)})`);
+  spec.addColorStop(1, `rgba(${HILITE_INK},0)`);
+  return { core: g.core, lit: g.lit, edge: g.edge, spec };
+}
+
+// Push a colour back into depth for a receding-side limb. It loses value and
+// a little saturation together — darkening alone reads as a limb painted in a
+// second colour, where losing both reads as the same paint further away.
+const SHADOW_RGB = [26, 16, 40];
+function parseHex(hex) {
+  if (typeof hex !== 'string' || hex[0] !== '#') return null;
+  if (hex.length === 7) return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  if (hex.length === 4) return [17 * parseInt(hex[1], 16), 17 * parseInt(hex[2], 16), 17 * parseInt(hex[3], 16)];
+  return null;
+}
+function recede(col, t) {
+  if (!t || !shade.on) return col;
+  const rgb = parseHex(col);
+  if (!rgb) return col;                     // rgba()/named: leave it alone
+  const grey = (rgb[0] + rgb[1] + rgb[2]) / 3;
+  const out = rgb.map((v, i) => {
+    const flat = v + (grey - v) * t * 0.45;  // saturation goes with the light
+    return Math.round(flat + (SHADOW_RGB[i] - flat) * t);
+  });
+  return `rgb(${out[0]},${out[1]},${out[2]})`;
+}
+
 function outlined(ctx, fill, ow, pathFn, stroke = OUTLINE) {
   ctx.beginPath();
   pathFn(ctx);
   ctx.fillStyle = fill;
   ctx.fill();
+  // Canvas keeps the current path after a fill or a stroke, so every pass
+  // below reuses it: the shading costs rasterizer time and not path building.
+  const g = formRamps(ctx, pathFn);
+  if (g) {
+    ctx.fillStyle = g.core; ctx.fill();
+    ctx.fillStyle = g.lit; ctx.fill();
+    if (g.spec) { ctx.fillStyle = g.spec; ctx.fill(); }
+  }
   ctx.strokeStyle = stroke;
   ctx.lineWidth = ow;
   ctx.stroke();
+  // Rim last, riding inside the contour's own width so the dark line thins and
+  // warms on the lit side instead of being deleted by it.
+  if (g) {
+    ctx.strokeStyle = g.edge;
+    ctx.lineWidth = ow * RIM_W;
+    ctx.stroke();
+  }
 }
 // two-pass round-cap stroke: fat outline pass, then the fill pass inside
 function limb(ctx, x1, y1, x2, y2, w, fill, ow) {
@@ -147,6 +388,11 @@ function limb(ctx, x1, y1, x2, y2, w, fill, ow) {
   ctx.strokeStyle = fill;
   ctx.lineWidth = w;
   ctx.stroke();
+  const g = fieldRamps(ctx);
+  if (g) {
+    ctx.strokeStyle = g.core; ctx.stroke();
+    ctx.strokeStyle = g.lit; ctx.stroke();
+  }
 }
 function dot(ctx, x, y, r, fill) {
   ctx.beginPath();
@@ -203,6 +449,20 @@ function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = f
     ctx.lineTo(x2, y2);
     ctx.stroke();
   }
+  const g = fieldRamps(ctx);
+  if (g) {
+    // Both bones as ONE path. Stroked segment-by-segment like the passes
+    // above, the ramps are translucent and stack where the round caps overlap
+    // at the elbow — a dark bead printed on every joint in the cast.
+    const back = flushRoot ? w / 2 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x1 + (ux / ul) * back, y1 + (uy / ul) * back);
+    ctx.lineTo(jx, jy);
+    ctx.lineTo(x2, y2);
+    ctx.lineWidth = (w + w2) / 2;
+    ctx.strokeStyle = g.core; ctx.stroke();
+    ctx.strokeStyle = g.lit; ctx.stroke();
+  }
 }
 // Anatomy-styled two-bone arm for the heavy rig. The bones are two-radius
 // capsules that PINCH at the elbow and wrist, and the muscle lives in bulge
@@ -243,7 +503,14 @@ function muscleLimb(ctx, x1, y1, x2, y2, segU, segF, dir, fill, ow, d) {
     ? (pyn > 0 ? -1 : 1)
     : (side > 0 ? -1 : 1);
   const fxn = -Math.sin(thF) * sgn, fyn = Math.cos(thF) * sgn;
-  for (const [pad, col] of [[ow, SKIN_OUTLINE], [0, fill]]) {
+  // The shading rides along as two more passes of the same four subpaths: one
+  // nonzero fill each, so the bones and their bulges take the ramp exactly
+  // once wherever they overlap — the same reason the outline pass is built
+  // this way and not stacked shape by shape.
+  const g = fieldRamps(ctx);
+  const passes = [[ow, SKIN_OUTLINE], [0, fill]];
+  if (g) passes.push([0, g.core], [0, g.lit]);
+  for (const [pad, col] of passes) {
     ctx.fillStyle = col;
     ctx.beginPath();
     cap(x1, y1, jx, jy, d.shoulderW / 2 + pad, d.elbowW / 2 + pad, thU);
@@ -273,7 +540,7 @@ function floatingFoot(p, stride, lift) {
 }
 
 // ---------------------------------------------------------------- faces
-const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7 };
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7 };
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -283,7 +550,7 @@ const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4
 // animation played nine times.
 const CELEBRATE_MOVE = {
   lorenzo: 'hop', gnash: 'spin', fernwick: 'spin', b33p: 'shimmy', mochi: 'hop',
-  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex',
+  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex', dolores: 'bow',
 };
 // How high the signature bounce carries each hero. The light ones leave the
 // floor; Grumpos and the robot mostly rock in place.
@@ -738,6 +1005,47 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       c.quadraticCurveTo(hx, capY - R * 0.46, hx - R * 0.97, capY - R * 0.26);
       c.closePath();
     });
+  } else if (spec.head === 'hairnet') {
+    // Grey set hair under a net, with the bun at the BACK of the skull. Two
+    // landmarks carry this at hub scale and the rest is texture: the bun's
+    // silhouette breaking the head's circle, and the elastic band running
+    // across the brow. A net drawn as mesh alone samples down to a grey smear
+    // — the band is the line that says "food service" rather than "old lady".
+    const bunX = hx - R * 0.92, bunY = hy - R * 0.5;
+    outlined(ctx, p.hair, ow, (c) => c.arc(bunX, bunY, R * 0.46, 0, Math.PI * 2));
+    // The set itself: a helmet of hair sitting proud of the skull all round,
+    // swept back into the bun rather than hanging in bangs — this is hair that
+    // has been dealt with, which is the opposite of Gary's mop.
+    outlined(ctx, p.hair, ow, (c) => {
+      c.moveTo(hx - R * 0.96, hy + R * 0.18);
+      c.quadraticCurveTo(hx - R * 1.14, hy - R * 0.72, hx - R * 0.34, hy - R * 1.1);
+      c.quadraticCurveTo(hx + R * 0.5, hy - R * 1.26, hx + R * 0.98, hy - R * 0.66);
+      c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.2);
+      c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.46);
+      c.closePath();
+    });
+    if (!lod) {
+      // The net: a couple of arcs following the crown, and the elastic across
+      // the forehead. Kept to three strokes — at this size any more mesh fills
+      // in solid and the hair loses its own colour.
+      ctx.save();
+      ctx.globalAlpha *= 0.5;
+      ctx.strokeStyle = p.w;
+      ctx.lineWidth = Math.max(0.4, ow * 0.5);
+      for (const k of [0.6, 0.86]) {
+        ctx.beginPath();
+        ctx.arc(hx, hy, R * k, Math.PI * 1.08, Math.PI * 1.92);
+        ctx.stroke();
+      }
+      ctx.restore();
+      outlined(ctx, p.a, Math.max(0.4, ow * 0.5), (c) => {
+        c.moveTo(hx - R * 1.0, hy - R * 0.42);
+        c.quadraticCurveTo(hx, hy - R * 0.72, hx + R * 0.98, hy - R * 0.34);
+        c.lineTo(hx + R * 0.98, hy - R * 0.16);
+        c.quadraticCurveTo(hx, hy - R * 0.54, hx - R * 1.0, hy - R * 0.24);
+        c.closePath();
+      });
+    }
   } else if (spec.head === 'bald') {
     // Intentionally bare: Grumpos's asymmetric war-paint streak is drawn
     // below. A curved crown stripe reads too easily as a hat at tiny scale.
@@ -902,6 +1210,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const depthArms = !!spec.armDepth;
   const sideF = depthArms ? nearSign : 1;   // outward direction, near arm
   const sideB = -sideF;                     // outward direction, far arm
+  // How far the receding side is pushed back. A depth-rigged hero carries a
+  // little of this even front-on — the far arm is behind the ribs whether or
+  // not the body has turned — and the rest arrives with the turn. The turned
+  // TORSO has had a receding-side shade since the 3/4 rig landed; this is the
+  // same cue finally reaching the limbs that hang off it, which is why the arms
+  // used to read as pasted on at the same distance as the near ones.
+  const farShade = depthArms ? 0.1 + 0.18 * turnDepth : 0.22 * turnDepth;
   // A slightly smaller head is the strongest lever on perceived height: it
   // also keeps the taller heavy rig inside the 24px draw box.
   const headR = (heavy ? 0.185 : 0.21) * u;
@@ -1396,12 +1711,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with
   // their own arm, not as a final pass: the back hand must occlude behind the
   // torso like the rest of the back arm, or a run cycle reads as two clapping.
-  const handDeco = (x, y) => {
+  // `back` recedes the hand with the arm it terminates: an un-pushed glove on
+  // a pushed-back arm reads as a bright bead floating off the far wrist.
+  const handDeco = (x, y, back = 0) => {
     if (id === 'grumpos') {
-      outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
-      dot(ctx, x, y, 0.028 * u, p.s);
+      outlined(ctx, recede(p.g, back), Math.max(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
+      dot(ctx, x, y, 0.028 * u, recede(p.s, back));
     } else if (spec.plumber) {
-      outlined(ctx, p.w, Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+      outlined(ctx, recede(p.w, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
     } else if (spec.hands) {
       // Bare hands in the face's own color. Without them the sleeve simply
       // stops: the arm is one flat slab of tunic from shoulder to fingertip,
@@ -1410,7 +1727,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // proportion to the arm it terminates instead of a mitt on a twig.
       // `p.hand` opts a palette out of the face-colour default — see b33p,
       // whose face is a near-black plate that reads as a hole on a grey arm.
-      outlined(ctx, p.hand || p.s, Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
+      outlined(ctx, recede(p.hand || p.s, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
     }
   };
   // The depth rig gets this front-on too. Rooted at the near shoulder the arm
@@ -1469,6 +1786,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // No room at all means the arm roots outside the body: there is nothing to
     // bury it in, and a cap here would be pure addition to the silhouette.
     if (r <= 0) return;
+    const g = fieldRamps(ctx);
     // Solid fill masks the arm's round root cap and the torso edge beneath it,
     // merging both shapes. Stroke only the OUTER half; a complete oval creates
     // an internal seam and reads as a separate shoulder object.
@@ -1476,6 +1794,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 0.82, 0, 0, Math.PI * 2);
     ctx.fill();
+    // The cap's opaque fill wipes the shaded arm and torso underneath it, so it
+    // has to re-take the light or it stops burying anything and becomes the
+    // very ball joint it exists to hide. Same field as its neighbours, so it
+    // lands on the values they already carry and stays invisible.
+    if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
     // Turned, that outer half coincides with the shoulder's silhouette edge and
     // draws the contour. Front-on the arm roots INSIDE the torso, so the same
     // arc lands in open chest and reads as a ring painted on him. Here the fill
@@ -1537,6 +1860,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.beginPath();
       ctx.ellipse(hipX, legRootY, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Same reason as shoulderCap: this buries the thigh's root, and an opaque
+      // fill over shaded pixels has to re-take the light to stay invisible.
+      const g = fieldRamps(ctx);
+      if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
       ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = Math.max(0.5, ow * 0.65);
       ctx.beginPath();
@@ -1646,18 +1973,30 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // the default reach and grows with spec.armLen.
       const barrel = armL * 0.73 - recoil;
       if (hangGun) {
-        // Hanging at rest: the free arm at this same beat hangs almost
-        // straight down and disappears BEHIND the torso, out past its round
-        // edge only enough for a gloved hand to peek out at hip height — it
-        // is drawn in the back pass and is never seen crossing the front.
-        // The cannon can't hide that way; it is deliberately the FRONT arm so
-        // it reads as ordnance rather than buried in the body. So: aim for
-        // the same almost-straight-down hip-height drop, cleared out from
-        // the shoulder only as far as the torso's own edge, solved through
-        // the SAME joint() two-bone solver every other limb in this rig
-        // bends through rather than a separately dialled angle.
-        const targetX = shoulderCx + sideF * (torsoHalf + armW * 0.5 + 0.01 * u);
-        const targetY = hipY - 0.02 * u;
+        // Hanging at rest, reach for the EXACT point the plain arm's hand
+        // settles at in its own "stand" branch above — same target, same
+        // idle breathing sway — solved through the SAME joint() two-bone
+        // solver every other limb in this rig bends through, so it hangs and
+        // moves like his actual arm rather than a separately dialled prop.
+        // Now that it draws in the same early pass as everyone else's front
+        // arm (see the back-limb section below), the torso hides most of it
+        // just like theirs — only the tip needs to land in the right place.
+        let targetX, targetY;
+        if (stand) {
+          const standOut = heavy
+            ? Math.abs(shF - shoulderCx) + 0.07 * u
+            : Math.max(Math.abs(shF - shoulderCx) + 0.07 * u, torsoHalf + armW * 0.5 + 0.015 * u);
+          const standHang = heavy ? 0.95 : 0.78;
+          const sway = Math.sin((pose.time || 0) * 2 - 0.7) * 0.014 * u;
+          targetX = shoulderCx + sideF * (standOut + sway);
+          targetY = armY + armL * standHang - sway * 0.32;
+        } else {
+          // Airborne: the same hip-height reach as before — jump still draws
+          // this in front (see drawFrontArm's call sites), so it isn't hidden
+          // the way standing now is.
+          targetX = shoulderCx + sideF * (torsoHalf + armW * 0.5 + 0.01 * u);
+          targetY = hipY - 0.02 * u;
+        }
         [elbowX, elbowY] = joint(gunX, gunY, targetX, targetY, armSeg, sideF, barrel);
         aim = Math.atan2(targetY - elbowY, targetX - elbowX);
       } else {
@@ -1821,9 +2160,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // target. The old arrangement — gun on the far shoulder but painted in
     // front — forced the free arm to be re-rooted onto the near side with a
     // borrowed swing, which is the tangle this replaces.
-    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
-    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, p.b, ow, armWB, true);
-    handDeco(handB[0], handB[1]);
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+    handDeco(handB[0], handB[1], farShade);
     // Standing, the cannon now hides behind the torso here same as every
     // other hero's front arm does — only the hip-height muzzle tip clears the
     // silhouette, matching how a plain hand peeks out at rest. It used to be
@@ -1831,8 +2170,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // separate prop bolted to his chest rather than an arm attached to him.
     if (stand) drawFrontArm();
   }
-  limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, p.p, ow);
-  outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+  limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, recede(p.p, farShade), ow);
+  outlined(ctx, recede(footFill, farShade), Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
   if (frontLegs) drawFrontLeg();
 
   // Grumpos needs an actual pelvis between torso and thighs. Previously each
@@ -1848,6 +2187,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath();
     ctx.ellipse(pelvisCx, pelvisY, pelvisRx, pelvisRy, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Another opaque bridge piece over shaded neighbours — same rule as the
+    // shoulder and hip caps.
+    const gp = fieldRamps(ctx);
+    if (gp) { ctx.fillStyle = gp.core; ctx.fill(); ctx.fillStyle = gp.lit; ctx.fill(); }
     // Only the exposed lower rim gets an outline. A full oval would draw a
     // seam across the abdomen and make the pelvis another stuck-on object.
     ctx.strokeStyle = OUTLINE;
@@ -1991,17 +2334,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.moveTo(px - torsoHalf * 0.85, hipY - 0.055 * u);
     ctx.lineTo(px + torsoHalf * 0.85, hipY - 0.055 * u);
     ctx.stroke();
-    // hull sheen: a soft light streak down the plating beside the chest panel
-    ctx.save();
-    ctx.globalAlpha *= 0.75;
-    ctx.strokeStyle = '#eef3f9';
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 0.045 * u;
-    ctx.beginPath();
-    ctx.moveTo(px - torsoHalf * 0.68, torsoTop + 0.06 * u);
-    ctx.lineTo(px - torsoHalf * 0.5, hipY - 0.075 * u);
-    ctx.stroke();
-    ctx.restore();
+    // No hull sheen. A soft diagonal streak used to run down the plating beside
+    // the chest panel to sell it as curved metal; at the size he is actually
+    // seen it never read as a highlight, only as a stray light line ruled from
+    // his shoulder to his waist, and the eye kept going to it instead of to the
+    // chest screen it was sitting next to. The plating already reads as metal
+    // from the panel, the waist seam and the palette — it did not need the
+    // specular, and a mark that has to be explained is not doing its job.
   }
   // Filled in by the straps block below when the near arm roots on top of the
   // near suspender; run after drawFrontArm() so the strap crosses the shoulder.
@@ -2236,6 +2575,47 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // belt over the waist, covering the skirt's top seam; gold buckle
     outlined(ctx, p.p, Math.max(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
     outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
+  }
+  if (spec.apron && !duck) {
+    // A bib apron, which is one shape and not two: bib, waist and skirt are cut
+    // as a single panel so the join never shows a seam of uniform through it at
+    // small sizes. Narrower at the chest than at the hem, the way an apron
+    // actually hangs — a straight rectangle read as a sandwich board.
+    const px = torsoCx;
+    const bibTop = torsoTop + 0.075 * u;
+    const waistY = hipY - 0.04 * u + bob;
+    const hemY = hipY + legL * 0.42 + bob * 0.5;
+    const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+    outlined(ctx, p.a, ow, (c) => {
+      c.moveTo(px - wBib, bibTop);
+      c.lineTo(px + wBib, bibTop);
+      c.lineTo(px + wWaist, waistY);
+      c.lineTo(px + wHem, hemY);
+      c.quadraticCurveTo(px, hemY + 0.04 * u, px - wHem, hemY);
+      c.lineTo(px - wWaist, waistY);
+      c.closePath();
+    });
+    if (!lod) {
+      // Neck strap over one shoulder and the tie at the waist. The strap is the
+      // detail that stops the bib reading as a printed white panel on her front.
+      outlined(ctx, p.a, Math.max(0.4, ow * 0.55), (c) => {
+        c.moveTo(px - wBib * 0.72, bibTop + 0.01 * u);
+        c.quadraticCurveTo(px - torsoHalf * 0.5, torsoTop - 0.02 * u, px - wBib * 0.18, bibTop - 0.005 * u);
+      });
+      ctx.save();
+      ctx.globalAlpha *= 0.5;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(0.4, ow * 0.45);
+      ctx.beginPath();
+      ctx.moveTo(px - wWaist, waistY);
+      ctx.lineTo(px + wWaist, waistY);
+      ctx.stroke();
+      ctx.restore();
+      // A pocket, because every apron in every cafeteria has exactly one and it
+      // always has a pen in it.
+      outlined(ctx, p.b, Math.max(0.4, ow * 0.45),
+        (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u));
+    }
   }
   if (!clapFront && !stand) {
     drawFrontArm();
@@ -3021,11 +3401,18 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   ctx.scale(sx, sy);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  // Key light on, in world space: the facing flip and the celebrate spin both
+  // mirror x, and the light has to sit still through either. Off below the LOD
+  // cut — at 16px a form is two pixels of ramp and reads as dirt, and the tiny
+  // sites (HUD faces, hub NPCs) are cached anyway, so nothing is saved by it.
+  const xSign = (pose.facing === -1 ? -1 : 1) * (sx < 0 ? -1 : 1);
+  const prevLight = armLight(u, xSign, !lod && opts.light !== false);
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'disc') drawDisc(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'ray') drawRay(ctx, heroId, p, pose, u, ow, lod);
   else drawHumanoid(ctx, heroId, spec, p, pose, u, ow, lod);
+  disarmLight(prevLight);
   ctx.restore();
 }
 
@@ -3038,6 +3425,10 @@ function paintFace(ctx, heroId, spec, x, y, w, h) {
   // head+hat spans ~0.5u; fit that span to the box height
   const u = (h * 0.92) / 0.5;
   const ow = Math.max(0.6, 0.032 * (h * 2));
+  // Face crops are supersampled and cached, so the light is worth arming even
+  // for a HUD cell — but only once the head is big enough to hold a ramp. The
+  // blob/disc branch nests a whole drawToon, which arms its own.
+  const prevLight = armLight(u, 1, h >= 24);
   if (spec.rig === 'humanoid') {
     drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false);
   } else if (spec.rig === 'ray') {
@@ -3047,6 +3438,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h) {
     // blob/disc: the body IS the face — draw the whole toon fitted
     drawToon(ctx, heroId, { kind: 'idle', time: 0 }, x + w / 2, y + h * 1.18, h * 1.45);
   }
+  disarmLight(prevLight);
 }
 
 // Ink bounds of paintFace, in fractions of its own w-by-h box. Measured once

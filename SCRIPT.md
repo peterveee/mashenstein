@@ -4,7 +4,7 @@
 
 **Voice rule, stated in [jokes.js](src/data/jokes.js):** *absolute deadpan sincerity. Jokes never replace usable information.* Everything is uppercase in-game.
 
-**Cast:** eight heroes + Eggshell + Gary + the Dust Devil.
+**Cast:** eight heroes + Eggshell + Gary + Dolores + the Dust Devil.
 **Runtime shape:** 4 intro panels → 3 acts / 9 cabinets / 27 stages (each opening on a briefing screen) → 3 bosses → 9 finale beats.
 
 ---
@@ -24,7 +24,9 @@
 
 **DON K. EGGSHELL, PHD** — *"A GRIEVANCE INTENSIFIES."* Antagonist. A giant egg-shaped ape with a magnificent red mustache, tiny science goggles, and a spiky shell. Lost to heroes for 40 straight fiscal years. Never appears as a fair fight; appears as a grievance.
 
-**GARY (DECEASED)** — *"PHYSICAL JURISDICTION RETAINED."* Deceased pawn-shop clerk. No hero entry; exists as an NPC, a shop, and an avatar — and as the only entity in the room with real hands. Resolves the plot by accident.
+**GARY (DECEASED)** — *"PHYSICAL JURISDICTION RETAINED."* Deceased pawn-shop clerk. No hero entry; exists as an NPC, a shop, and an avatar — and as the only entity in the room with real hands. Resolves the plot by accident. Works his counter at the service end of the concourse.
+
+**DOLORES (ON BREAK)** — *"NEXT."* Food court counter staff, still on shift. No hero entry; exists as an NPC and as the serving line itself — DOLORES' REPAIR COUNTER is her steam table, and repairs are priced and portioned like lunch. The parenthetical is a lie: she has never had one. She does not acknowledge that the arcade is dead, because as far as her shift is concerned it is not over. She calls NEXT to an empty concourse; the menu board above her still reads NOW SERVING 0.
 
 **DUST DEVIL 9000** — *"DEEP CLEAN ENGAGED."* A haunted vacuum. Cleans something impossible in the background of every act. Becomes a boss. Prints a certificate.
 
@@ -106,7 +108,9 @@ A tagline rotates underneath — the arcade talking to itself:
 
 *The hub. Side-scrolling walk-around. Returned to between every stage.*
 
-Nine cabinets in a row, most of them dark. Then: `REPAIR BENCH`, `GARY'S LEGALLY DISTINCT PAWN SHOP`, `ARCADE CORNER`, `TROPHY SHELF`.
+Nine cabinets in a row, most of them dark. Then the service end: `DOLORES' REPAIR COUNTER`, `GARY'S LEGALLY DISTINCT PAWN SHOP`, `ARCADE CORNER`, `TROPHY SHELF`.
+
+The first two are **counters**, not doors — the food court's original serving line, still standing, with the heat lamps still on because turning them off was never anybody's job. Dolores works the steam table (fuses and plugs portioned into the warming wells where the nachos went); Gary works the pawn till beside her, the same unit with a display case instead of a sneeze guard. The menu board hangs on the wall directly above Dolores, still pricing lunch in plugs, half of it struck through and re-priced in marker. Both staff stand at the open end of their counters and shuffle a few feet along the deck now and then, the way people who have been on shift a long time do.
 
 The ceiling lights come on three at a time, one bank per act. The DUST DEVIL cleans in the background — and what it is cleaning escalates with the act:
 
@@ -145,6 +149,15 @@ The seven heroes you are not currently playing loiter here, wandering and hoppin
 > I ATE THE MENU. THE SPECIALS WERE DELICIOUS.
 > THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN.
 > I TRIED TO EAT THE SCORE COUNTER AGAIN. IT IS CHEWY, DARLING.
+
+**DOLORES**
+> NEXT.
+> TAKE A NUMBER. THE DISPENSER IS EMPTY. TAKE ONE ANYWAY.
+> NOW SERVING ZERO. HAS BEEN FOR A WHILE. WE STAY READY.
+> THE LUNCH RUSH IS AT NOON. I HAVE PORTIONED FOR FORTY.
+> I GO ON BREAK AT SIX. IT HAS NOT BEEN SIX YET.
+> I HAVE NOT BEEN RELIEVED. THAT IS ALL THAT MEANS.
+> SOMEBODY UNPLUGGED SOMETHING. NOT MY SECTION.
 
 **GARY**
 > HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.

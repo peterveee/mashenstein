@@ -1359,6 +1359,17 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor }) {
   });
 }
 
+// A centred list's cursor band hugs the widest row it will ever draw rather
+// than running the width of the screen: a band three times wider than the words
+// in it stops reading as a row and starts reading as a bar they sit in front
+// of. Measured over every label the list has, not just the selected one, so the
+// band doesn't breathe as the cursor moves.
+function centredBand(labels, scale = 1) {
+  const widest = labels.reduce((m, s) => Math.max(m, textWidth(s, scale)), 0);
+  const w = Math.min(W - 48, widest + 28);
+  return { x: (W - w) / 2, w };
+}
+
 // Difficulty rows are a name over a one-line gloss, and the pair is what the
 // tap hit-test and the cursor band both cover — so the geometry lives here
 // rather than being spelled out again in update() and draw().
@@ -1410,13 +1421,14 @@ export class DifficultyState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
     drawTextCentered(ctx, '(THE PAUSE MENU WILL ALWAYS TELL YOU THE TRUTH)', W / 2, 64, '#5a5a68');
+    const band = centredBand(DIFFICULTIES.flatMap((d) => [`> ${d.name} <`, d.desc]));
     DIFFICULTIES.forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
       const label = d.name;
       const color = danger ? '#e04848' : sel ? '#f6d33c' : '#c8c8d8';
       const rowTop = DIFF_TOP + i * DIFF_ROW;
-      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, DIFF_ROW - 2);
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
       const nameY = textYForMid(rowTop + DIFF_ROW / 2) - DIFF_GLOSS_DY / 2;
@@ -2150,13 +2162,15 @@ export class SoundTestState {
     drawTextCentered(ctx, 'ALL CHIPTUNES ARE PLAYED LIVE BY A VERY SMALL ORCHESTRA.', W / 2, 40, '#5a5a68');
     // The trailing BACK row is drawn from the same list as the tracks so it gets
     // the same cursor band and the same pitch the hit-test uses.
-    const rowH = jukeboxRowH(JUKEBOX.length + 1);
-    JUKEBOX.concat([null]).forEach((tr, i) => {
+    const rows = JUKEBOX.concat([null]);
+    const rowH = jukeboxRowH(rows.length);
+    const band = centredBand(rows.map((tr) => (tr ? `> * ${tr.name}  (${tr.bank.bpm} BPM) <` : '')));
+    rows.forEach((tr, i) => {
       const sel = i === this.idx;
       const on = tr && i === this.playing;
       const label = tr ? `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)` : 'BACK';
       const rowTop = JUKEBOX_TOP + i * rowH;
-      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, rowH - 2);
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, rowH - 2);
       drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2,
         textYForMid(rowTop + rowH / 2), on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
     });
@@ -2272,10 +2286,12 @@ export class SettingsState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
-    this.options().forEach((o, i) => {
+    const opts = this.options();
+    const band = centredBand(opts.map((o) => `> ${o.label} <`));
+    opts.forEach((o, i) => {
       const sel = i === this.idx;
       const rowTop = SETTINGS_TOP + i * SETTINGS_ROW;
-      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, SETTINGS_ROW - 2);
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, SETTINGS_ROW - 2);
       // A bare leading '> ' on a centred row shunts the whole label half a
       // caret to the left as the cursor arrives; the closing one balances it.
       drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2,
