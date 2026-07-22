@@ -18,12 +18,17 @@ import {
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
 import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE } from '../src/sprites/backwall.js';
-import { TOON_SPECS, drawToon, drawToonFace, setInk, setRim, LORENZO_FACES, setLorenzoFace } from '../src/sprites/toons.js';
+import {
+  TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
+  LORENZO_FACES, setLorenzoFace, LORENZO_PANTS, setLorenzoPants,
+} from '../src/sprites/toons.js';
 import { getStylePack } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
 import { drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W } from '../src/game/plugs.js';
+import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
+import { STAGES } from '../src/data/stages.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -290,10 +295,11 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
   // The row the other five never gave you: every ability firing at once. Two
   // heroes are absent by design — gary and dolores are cast-roll flavour with no
-  // roster entry, so there is no ability to fire. Stomp and axe change the world
-  // rather than the body (a shockwave, a thrown prop), so those tiles look like
-  // a plain run next to the others; that is the honest comparison, and seeing
-  // them side by side is the fastest way to notice which specials do not read.
+  // roster entry, so there is no ability to fire. Neither stomp nor axe changes
+  // the BODY: stomp gets a small overlay and axe is a thrown prop out in the
+  // world, so those two tiles sit closest to a plain run. That is the honest
+  // comparison, and lined up together it is the fastest way to see which
+  // specials do not read as specials.
   {
     const roster = ids.filter((hid) => HERO_BY_ID[hid]);
     const grid = subhead(LABELS.powerup,
@@ -339,6 +345,32 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       // groundY puts the feet inside the tile instead of at the world's GROUND_Y.
       drawHeroSprite(ctx, player, id, t, 0, false, { flat: true, groundY: th - PAD });
     }, { animated: true });
+  }
+}
+
+// Stable shield envelopes at the exact gameplay size. Unlike the generic
+// in-run row above, these tiles leave enough room for the fitted glass around
+// ears, axes and cannon poses; the label exposes the normalized geometry so an
+// accidental fallback or implausible fit is visible before opening a PNG.
+{
+  const grid = section('hero-shields', 'Heroes — fitted shield envelopes',
+    'One stable per-hero ellipse, measured from ordinary gameplay poses and drawn through '
+    + 'the real drawHeroSprite() path. It does not resize with the live footfall.');
+  const HERO_CX = 70, TW = 54, TH = 54, FLOOR = 47;
+  for (const id of Object.keys(HERO_BY_ID)) {
+    const player = {
+      hero: {}, anim: 0, vy: 0, grounded: true, ducking: false, rolling: false,
+      compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
+      headless: 0, fistThrown: false, y: 0, invuln: 0, powers: {},
+      deflectFlashT: 0, powerPoseT: 0,
+    };
+    const fit = toonEffectEllipse(id);
+    tile(grid, id, `rx ${fit.rx.toFixed(2)} · ry ${fit.ry.toFixed(2)}`, TW, TH, (ctx, t) => {
+      ctx.translate(TW / 2 - HERO_CX, 0);
+      player.anim = t * 1.6;
+      drawHeroSprite(ctx, player, id, t, 0, false,
+        { flat: true, groundY: FLOOR, shield: 1, settings: {} });
+    }, { animated: true, hires: 4 });
   }
 }
 
@@ -463,12 +495,144 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   });
 }
 
+// ---------------------------------------------------------------- 9. floaties
+// One floatie per KIND, drawn by hud.js's real drawFloatie. Colour is the only
+// signal these carry, so the section is a contrast check first and a catalogue
+// second: one card per ink, plus the two shape variants (a centred impact word,
+// and the opaque hazard card). Rendering all sixty-odd strings proved nothing
+// the representative one does not — they differ in wording, not in legibility.
+//
+// The ratios in the labels are measured against the card as it actually
+// composites over the LIGHTEST pack (the doodle sheet, #eceadf), which is the
+// worst case: the panel is translucent, so it lands near rgb(108,112,126)
+// there and every ink is at its weakest. Anything at or above ~3.0 holds.
+{
+  const grid = section('floaties', 'Floaties — one of each kind',
+    'Real drawFloatie() from hud.js, on the real card. Ratios are WCAG contrast against the '
+    + 'card over the lightest pack — the worst case. Use the backdrop control to swing them '
+    + 'between light and dark.');
+
+  // The game's own geometry: PLAYER_X through the resting zoom is the column
+  // every card hangs off, and FLOAT_BASE_Y is where the stack starts.
+  const HERO_X = 92;          // PLAYER_X * resting zoom, as run.js computes it
+  const CARD_Y = 128;         // FLOAT_BASE_Y
+  const TILE_W = 300, TILE_H = 34;
+
+  function floatieTile(label, text, color, solid = false) {
+    tile(grid, text, label, TILE_W, TILE_H, (ctx) => {
+      // Shift the world so the card's own screen position lands in the tile.
+      ctx.translate(-(HERO_X - 8), -(CARD_Y - 8));
+      drawFloatie(ctx, { text, color, y: CARD_Y, solid }, { heroX: HERO_X });
+    }, { wide: true });
+  }
+
+  for (const [label, text, color] of [
+    ['gold — a beat landed · 3.4', 'WRENCH SMASH', '#f6d33c'],
+    ['teal — mission progress · 3.0', 'CORD PIECE 3/5', '#48e0c8'],
+    ['green — banked · 3.0', 'CHECKPOINT. +2 CELLS. SINCERELY.', '#8ddd8d'],
+    ['pale blue — defensive · 3.6', 'SHIELD BROKE. IT DID ITS JOB.', '#a8e6ff'],
+    ['bone — unpeelable · 4.1', 'UNPEELABLE.', '#e8e8f0'],
+    ['pink — Miss Chompo · 3.0', 'DEE-LIGHTFUL. THANK YOU.', '#f7bacc'],
+    ['pink — B-33P · 3.0', 'DEFINITELY NOT NORMAL PHYSICS', '#ffb7c3'],
+    ['tan — Lorenzo · 3.0', 'THE AXE LODGED IN THE SCENERY. INTENDED.', '#ecc3a1'],
+    ['sage — resident · 3.0', 'A RESIDENT FOLLOWS YOU. CONFUSED BUT GAME.', '#b2d3b2'],
+  ]) floatieTile(label, text, color);
+
+  // Shape variants, not new inks. The impact word is the only card that centres
+  // on the hero instead of ragging off their column, and the hazard card is the
+  // only one that is opaque — red cannot be lightened without ceasing to mean
+  // danger, so it keeps its ink and the card carries the contrast instead.
+  floatieTile('gold — impact word, centred · 3.4', 'PEW', '#f6d33c');
+  floatieTile('RED — hazard, opaque card · 4.5', 'THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', true);
+}
+
+// ------------------------------------------------------- 10. banners & speech
+// The full-screen text the game puts OVER a run, one tile per ink. Same idea as
+// the floaties section above and the same reason for existing: these are the
+// strings that have to stay readable against whatever the stage happens to look
+// like at that moment, and the only way to check that is to put them there.
+//
+// So each tile paints a real style pack underneath rather than sitting on the
+// gallery backdrop. An act card judged over flat black is a card you have not
+// judged: the dim is part of the design, and what it is dimming is the point.
+{
+  const grid = section('banners', 'Banners & speech — one of each ink',
+    'drawActBanner(), drawFailBanner() and drawSpeech() from hud.js, each over a real pack. '
+    + 'The light speech pair sits on the concourse wall instead, which is the only place '
+    + 'that variant is used.');
+
+  // The brightest, busiest thing any of these has to survive.
+  const cab = CABINETS[0];
+  const pack = getStylePack(cab.style, {});
+  const props = [makeObstacle('crate', 180), makeObstacle('barrel', 300)];
+  const runBg = (ctx, t) => {
+    if (pack.bg) pack.bg(ctx, t, t * 60, cab, 1000);
+    if (pack.ground) pack.ground(ctx, t * 60, cab, props);
+    if (pack.post) pack.post(ctx, t);
+  };
+  // The food court wall: #241c30, the surface the light plate was built for.
+  const hubBg = (ctx) => { ctx.fillStyle = '#241c30'; ctx.fillRect(0, 0, W, H); };
+
+  const banner = (name, sub, bg, paint, animated = false) =>
+    tile(grid, name, sub, W, H, (ctx, t) => { bg(ctx, t); paint(ctx, t); }, { animated });
+
+  const actIntro = (STAGES.find((st) => st.intro && st.intro.startsWith('ACT ')) || {}).intro
+    || 'ACT I. THE ARCADE GOES DARK.';
+
+  banner('ACT card', 'white core, #c83030 + #48e0c8 ghosts, #c8c8d8 tail',
+    runBg, (ctx, t) => drawActBanner(ctx, actIntro, { t }), true);
+  banner('fail banner', '#e04848 on the opaque hazard card',
+    runBg, (ctx) => drawFailBanner(ctx, 'UNPLUGGED FOR SCHEDULED MAINTENANCE'));
+  banner('speech — ally', '#d0f0e8, portrait',
+    runBg, (ctx) => drawSpeech(ctx, { text: 'RUN THROUGH THE PORTAL TO TAG IN THE NEXT HERO.', who: 'lorenzo' }));
+  banner('speech — Eggshell', '#f0a0a0, portrait',
+    runBg, (ctx) => drawSpeech(ctx, { text: 'THAT ONE DID NOT COUNT. I AM DISPUTING ALL OF IT.', who: 'eggshell' }));
+  banner('speech — the game itself', '#d0f0e8, no portrait (tutorials, station notes)',
+    runBg, (ctx) => drawSpeech(ctx, { text: 'EVERY HERO HAS A POWER. PRESS RIGHT/D.', who: null }));
+  banner('speech — ally, light plate', '#332b45 on #ece9f6 — the hub variant',
+    hubBg, (ctx) => drawSpeech(ctx, { text: 'THE FOOD COURT IS TECHNICALLY STILL OPEN.', who: 'lorenzo' }, { light: true }));
+  banner('speech — Eggshell, light plate', '#8e1f36 on #ece9f6 — the hub variant',
+    hubBg, (ctx) => drawSpeech(ctx, { text: 'I OWN THIS CONCOURSE. ALLEGEDLY.', who: 'eggshell' }, { light: true }));
+}
+
 // ==================================================================
 // LAB & BAKE-OFFS — dev-only comparisons kept below the production
 // reference sections above. These render real code paths but decide or
 // audit a still-open art question rather than document a shipped asset.
 // ==================================================================
 navSeparator('lab / bake-offs');
+
+// ------------------------------------------------------- head yaw candidates
+// This is deliberately a pose field that production never supplies. Body turn
+// already has its own sheet below; this one asks the narrower question: does a
+// directional face improve the run without changing the character silhouette?
+{
+  const ids = Object.keys(TOON_SPECS);
+  const YAWS = [0, 12, 20, 28];
+  const grid = section('head-yaw', 'Head yaw — unresolved before / candidates',
+    'GALLERY ONLY — production remains at 0°. Columns are current 0°, subtle 12°, medium 20°, '
+    + 'strong 28°. Every row shares one live run phase; the second tile shows the exact 24px '
+    + 'gameplay size rather than a large render scaled down after the fact.');
+
+  for (const id of ids) {
+    const largeW = 4 * 66, largeH = 78;
+    tile(grid, `${id} — inspection`, '0° current · 12° · 20° · 28°', largeW, largeH, (ctx, t) => {
+      for (let i = 0; i < YAWS.length; i++) {
+        const x = i * 66 + 33;
+        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), x, 68, 60);
+        ctx.fillStyle = '#8a8a9e'; ctx.font = '9px ui-monospace, monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`${YAWS[i]}°`, x, 77);
+      }
+    }, { animated: true, wide: true, hires: 4 });
+
+    const runW = 4 * 38, runH = 32;
+    tile(grid, `${id} — gameplay size`, 'true 24px rig · 0° / 12° / 20° / 28°', runW, runH, (ctx, t) => {
+      for (let i = 0; i < YAWS.length; i++) {
+        drawToon(ctx, id, pose('run', t, { headTurn: YAWS[i] }), i * 38 + 19, 29, HERO_DRAW_H);
+      }
+    }, { animated: true, wide: true, hires: 6 });
+  }
+}
 
 // -------------------------------------------------------------- 2a. turn sheet
 {
@@ -828,7 +992,7 @@ navSeparator('lab / bake-offs');
         const cy = BH - 2 - CS.h;
         drawCabinetShell(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
         const scr = drawCabinetScreen(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
-        if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
+        if (scr) drawScreenSweep(ctx, scr, t, litPal.seed);
       }, { animated: true });
   }
 
@@ -1004,26 +1168,35 @@ navSeparator('lab / bake-offs');
   }
 }
 
-// ------------------------------------------------------- 2d. lorenzo face lab
-// The complaint: his cap hem is a flat chord at -0.12R while his eyes top out
-// at -0.38R, so the hat crosses 42% of the way down the eye — and the focus
-// brows, at -0.45R..-0.29R, are drawn entirely inside the hat. They only show
-// because the face paints after the hat. See LORENZO_FACES in toons.js; every
-// candidate below renders through the real drawHead path, dialed by
-// setLorenzoFace the same way the ink bake-off dials setInk.
+// ------------------------------------------------------ 2d. lorenzo cap: was/is
+// Settled 2026-07-23. The complaint: his cap hem was a flat chord at -0.12R
+// while his eyes top out at -0.38R, so the hat crossed 42% of the way down the
+// eye — and the focus brows, at -0.45R..-0.29R, were drawn entirely inside it,
+// showing only because the face paints after the hat. Eight candidates went
+// through this section to get here; what is left is the before and the after,
+// both rendered through the real drawHead path via setLorenzoFace, so this
+// cannot drift from what the game draws. See LORENZO_FACES in toons.js.
 {
-  const grid = section('lorenzo-face', 'Lorenzo — cap & face bake-off',
-    'Six candidates for the brow line. `current` is the shipped geometry, reproduced exactly. '
-    + '`lifted` and `arched` raise the hem off the eyes and leave the face alone; `low face` keeps the '
-    + 'low cap as his brow line and drops the mask under it instead; `bushy` and `pushed back` restyle '
-    + 'the face itself, trading the ink hairlines for brown caterpillar brows that match the mustache. '
-    + 'The head-to-head grid is frozen and supersampled — judge the brow line there, then check the '
-    + 'animated strips for what a blink, a scowl and a whoop do to it.');
+  const grid = section('lorenzo-face', 'Lorenzo — cap & face (was / is)',
+    'What changed, and why each piece had to. The band is flat across the brows and drops to the '
+    + 'ears only at the temples, so it clears the brow line without turning him into forehead. The '
+    + 'sides slope inward off the band, so the cap follows the skull rather than resting on it like '
+    + 'a dome on a sphere. The hat rocks back 12 deg about the HEAD CENTER — the one pivot that '
+    + 'leaves every point of it equidistant from the skull, so the raised side cannot lift away — '
+    + 'while the oval bill holds level against that rotation. Ink brow hairlines became brown '
+    + 'caterpillars in the mustache colour, and they move with the mood instead of holding a scowl '
+    + 'through a grin. A tufted fringe shows under the band, deepest at the temples and shallowest '
+    + 'at the nose, because that is where the brows are. And the face mask sits 0.067R lower, which '
+    + 'is what opens the forehead the fringe hangs into. Head proportions are otherwise unchanged: '
+    + 'an earlier pass moved the face twice as far AND raised the crown AND tapered the sides, and '
+    + 'the skull came out egg-shaped — the crown and the taper were the culprits.');
 
   const HH = 60;
   // Same crop machinery as the ink bake-off: each row keeps its OWN u and
   // scales the context, so the stroke floors bind where the game binds them.
-  const CELL = 84, LABEL_W = 60;
+  // Two columns now, so they can be big: this is a before/after, and the whole
+  // point is that the difference survives being looked at closely.
+  const CELL = 110, LABEL_W = 58;
   const HEAD_SPAN = 0.62;
   const headCell = (ctx, cellX, cellY, h, p) => {
     ctx.save();
@@ -1035,13 +1208,16 @@ navSeparator('lab / bake-offs');
     drawToon(ctx, 'lorenzo', p, 0, 0.76 * h, h);
     ctx.restore();
   };
-  // Three rows that between them expose every failure mode: the idle face has
-  // NO brows at all (they are keyed to focus), the running face is the one that
-  // put brows on the hat, and the 24u row is what a real run draws.
+  // Four rows that between them expose every failure the old geometry had: the
+  // idle face draws NO brows at all (they are keyed to focus), the running face
+  // is the one that put brows on the hat, the 24u row is what a real run draws,
+  // and the celebrate beat at t=0.5 is the squeezed-shut ^ ^ where a brow that
+  // does not move with the mood reads as two expressions on one face.
   const ROWS = [
     ['idle 60u', HH, () => pose('idle', 0.7)],
     ['run 60u', HH, () => pose('run', 0.42)],
     ['run 24u', HERO_DRAW_H, () => pose('run', 0.42)],
+    ['celebrate', HH, () => pose('celebrate', 0.5, { menu: true })],
   ];
   const cmpW = LABEL_W + LORENZO_FACES.length * CELL;
   const cmpH = 14 + ROWS.length * CELL;
@@ -1049,7 +1225,16 @@ navSeparator('lab / bake-offs');
     ctx.font = 'bold 7px ui-monospace, monospace';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#8a8a9a';
-    LORENZO_FACES.forEach((v, i) => ctx.fillText(v.label, LABEL_W + i * CELL + 4, 9));
+    // Clip each header to its own cell: at ten columns the long labels ran into
+    // their neighbours, and a bake-off you cannot read the axis of is a mural.
+    LORENZO_FACES.forEach((v, i) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(LABEL_W + i * CELL, 0, CELL - 2, 12);
+      ctx.clip();
+      ctx.fillText(v.label, LABEL_W + i * CELL + 3, 9);
+      ctx.restore();
+    });
     ROWS.forEach(([rowLabel, h, mk], r) => {
       const y = 14 + r * CELL;
       ctx.fillStyle = '#8a8a9a';
@@ -1110,23 +1295,30 @@ navSeparator('lab / bake-offs');
 // stands its cast on a lit wall.
 {
   const grid = section('rim-bakeoff', 'Lit-side rim bake-off',
-    'The key light lays a warm rim over the middle `RIM.w` of the contour, leaving dark ink on '
-    + 'both sides of it — see RIM in toons.js. Against near-black the OUTER dark is invisible '
-    + 'and the INNER dark is not, so the edge reads light-then-dark: an embossed rim rather than '
-    + 'an outline. Every row runs twice, on the gallery black and on the hub\'s own WALL_BASE, '
-    + 'because the whole question is what the ink has to darken. `inside` clips the rim to its '
-    + 'shape so it can only warm the fill; `full` lets it eat the whole contour (the version '
-    + 'that used to delete the leading shoulder); `half` touches alpha and no geometry. Note '
-    + 'INK.alpha does NOT reach the rim, so the ink bake-off\'s `soft` column shifts this ratio '
-    + 'toward the light half as a side effect. Judge the 24u rows.');
+    'SETTLED — `current` is the clipped rim, `was` is the centred one it replaced. The rim used '
+    + 'to be a stroke centred on the contour, which put a warm band OUTSIDE the silhouette and '
+    + 'left the dark ink inside it: measured across grumpos\'s skull at 24u on the wall, +68 out '
+    + 'against -67 in, which reads as an embossed edge rather than an outlined one. Every hero '
+    + 'but chompo carried one. Clipping the rim to its own shape confines it to the fill; see '
+    + 'RIM in toons.js. Rows run twice, on the gallery black and on the hub\'s own WALL_BASE, '
+    + 'because the whole question is what the ink has to darken — the outer half of a contour '
+    + 'moves the wall four levels out of 255, so it was never doing the work the centred rim '
+    + 'assumed it was. `wide` is the clip taken too far (it eats the inner dark line as well); '
+    + '`full` is the old failure that deleted the leading shoulder. Note INK.alpha does NOT '
+    + 'reach the rim, so the ink bake-off\'s `soft` column still shifts this balance toward the '
+    + 'light half as a side effect. Judge the 24u rows.');
 
+  // Every column spells out `inside`. setRim() defaults each field it is not
+  // given to the SHIPPED value — which is what makes the bare setRim() in the
+  // finally below a restore — so a centred column that omitted it would quietly
+  // inherit the clip and render as a duplicate of `current`.
   const TREATMENTS = [
-    ['current', 'shipped — centred, w 0.6, alpha 0.34', { w: 0.6, a: 1 }],
-    ['inside', 'clipped to the shape · same band, all of it on the fill side', { w: 0.6, a: 1, inside: true }],
-    ['inside thin', 'clipped and halved, so dark ink still survives inboard', { w: 0.3, a: 1, inside: true }],
-    ['full', 'w 0.6→1.0 · rim covers the contour outright on the lit side', { w: 1, a: 1 }],
-    ['half', 'no geometry change · rim alpha 0.34→0.17', { w: 0.6, a: 0.5 }],
-    ['none', 'rim off entirely — contour and form ramps only', { w: 0, a: 0 }],
+    ['current', 'shipped — clipped to the shape, surviving band 0.3', { w: 0.3, a: 1, inside: true }],
+    ['was', 'pre-2026-07-22 — centred at 0.6, halo +68 outside vs -67 in', { w: 0.6, a: 1, inside: false }],
+    ['wide', 'clipped but double the band — eats the inner dark line too', { w: 0.6, a: 1, inside: true }],
+    ['full', 'centred at 1.0 · rim covers the contour outright on the lit side', { w: 1, a: 1, inside: false }],
+    ['half', 'centred, no geometry change · rim alpha 0.34→0.17', { w: 0.6, a: 0.5, inside: false }],
+    ['none', 'rim off entirely — contour and form ramps only', { w: 0, a: 0, inside: false }],
   ];
 
   // grumpos is the complaint: #ded9d2 is the palest fill in the cast, so his
@@ -1214,6 +1406,182 @@ navSeparator('lab / bake-offs');
         });
       } finally {
         setRim();
+      }
+    }, { animated: true, wide: true });
+  }
+}
+
+// Brow weight. Carved off the ink bake-off because the thin-face pass moved the
+// eye ring and the brows on one dial, and only the ring was the defect — the
+// brow is the mark the expression hangs on. The axis that matters here is SIZE,
+// not backdrop: BROW_W * u only clears BROW_MIN above u=38, so the HUD cell and
+// the in-run sprite draw the same absolute brow no matter what the multiplier
+// does to the 60u menus. A column that only looks right at 60 has not answered
+// the question.
+{
+  const grid = section('brow-bakeoff', 'Eyebrow weight bake-off',
+    'One dial — `INK.brow` — on the eyebrow hairline alone, leaving the eye rings and mouths at '
+    + 'their shipped thin-face weights. `current` is 0.01u, `was` the 0.018u the pass cut it '
+    + 'from. Read the SIZE columns against each other, not just down: the brow is '
+    + '`max(BROW_MIN, BROW_W * u)`, and BROW_MIN (0.38) binds below u=38 — so at 60u the '
+    + 'multiplier moves a proportional width, while at 34u and 24u it is scaling the FLOOR, and '
+    + 'those two sites draw an identical brow despite being different sizes. That is why the '
+    + 'thinning reads much harder in the menus and the cast parade than it does in a run. '
+    + 'grumpos is `gruff`, gnash and raymn are `cocky`, the rest draw brows off `focus` while '
+    + 'running; fernwick (`bright`) and b33p (robot LEDs) draw none and are not shown.');
+
+  // Width is settled at 0.018u, so this axis is now DARKNESS. `thin dark` is the
+  // pre-restore brow — thin geometry at full ink — kept as the anchor the whole
+  // thread started from, and `wide dark` is the restore before BROW_A, which is
+  // what made the scowl read as a bar. The rest walk the alpha down at the
+  // shipped width. NOTE the width multiplier scales the FLOOR too, which the
+  // shipped code does not — see BROW_W in toons.js.
+  // [label, note, widthMul, opacity, lighten]. The two `a-only` columns are the
+  // failed attempt kept as anchors: opacity alone had to go translucent to soften
+  // the tone, so the war paint and the shaded skull show through and the mark
+  // goes muddy. The shipped column lightens the ink and stays near-opaque.
+  const TREATMENTS = [
+    ['current', 'shipped — lighten 0.30 at opacity 0.92', 1, 0.92, 0.3],
+    ['full ink', 'no lighten, fully opaque — the bar', 1, 1, 0],
+    ['a-only .72', 'opacity 0.72, no lighten — the first try, too dark', 1, 0.72, 0],
+    ['a-only .58', 'opacity 0.58, no lighten — too light AND translucent', 1, 0.58, 0],
+    ['lighter', 'lighten 0.42 at opacity 0.92 — a notch further', 1, 0.92, 0.42],
+  ];
+
+  // Every hero here must actually DRAW the ink hairline. lorenzo and mochi were
+  // in this list and rendered dead cells for it: lorenzo's cap variant hands his
+  // brows to bushyBrows via faceEx.brow, and mochi is a `pika` rig that never
+  // reaches this stroke — as do chompo (`disc`), fernwick (mood 'bright', which
+  // opts out) and b33p (LED eyes, a different dialect entirely). That leaves the
+  // five below, of which gary is the one that matters most: his p.e is #d83030,
+  // the only non-black brow ink in the cast, and the only one where lightening
+  // costs hue as well as tone. See BROW_L_SCALE.
+  const IDS = ['grumpos', 'gary', 'gnash', 'raymn'];
+
+  // A frozen brow comparison has to dodge two separate suppressors at once, and
+  // this section has now been caught by both. `relaxed` unclenches grumpos for
+  // 2.2s of every 8.3 mid-run and drops his brows (the ink bake-off's 0.42 lands
+  // inside it); and every hero blinks on their own seeded clock, which closes
+  // the eyes and takes the brows with them. Swept at 0.25s across 2..7, the
+  // holes are 2.75 (gnash), 3 (gary) and 5 (raymn) — 4 is the phase furthest
+  // from all of them, with a clean quarter-second either side.
+  //
+  // Note gary's HUD row is brow-less no matter what this is set to, and that is
+  // the rig, not the section: drawToonFace poses neutral, so `focus` is off, and
+  // brows then need mood 'cocky' or 'gruff'. gary is 'soft'. Only the scowlers
+  // and the cocky ones carry brows into a HUD cell.
+  const BROW_T = 4;
+
+  // The three sites, at their REAL units — 60u menus, the HUD face crop, and the
+  // in-run sprite. Scaling one to stand in for another would relax the floor and
+  // show a brow the game never draws, which is the whole point of the section.
+  const CELL = 66, LABEL_W = 74;
+  const SITES = [
+    ['60u menu', (ctx, id, x, y) => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
+      ctx.translate(x + CELL / 2, y + CELL / 2);
+      ctx.scale(CELL / (0.62 * 60), CELL / (0.62 * 60));
+      drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * 60, 60);
+      ctx.restore();
+    }],
+    ['34u HUD face', (ctx, id, x, y) => {
+      // drawToonFace's own path at the size the HUD asks for, then magnified as
+      // a whole — the ink lands at 34 and is blown up, exactly as a player sees
+      // it on a high-density screen.
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
+      ctx.translate(x, y);
+      ctx.scale(CELL / 34, CELL / 34);
+      drawToonFace(ctx, id, 0, 0, 34, 34);
+      ctx.restore();
+    }],
+    ['24u in-run', (ctx, id, x, y) => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
+      ctx.translate(x + CELL / 2, y + CELL / 2);
+      ctx.scale(CELL / (0.62 * HERO_DRAW_H), CELL / (0.62 * HERO_DRAW_H));
+      drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * HERO_DRAW_H, HERO_DRAW_H);
+      ctx.restore();
+    }],
+  ];
+
+  for (const id of IDS) {
+    const cmpW = LABEL_W + TREATMENTS.length * CELL;
+    const cmpH = 14 + SITES.length * CELL;
+    tile(grid, `${id} — brow weight`, 'five weights x three real sites, frozen', cmpW, cmpH, (ctx) => {
+      ctx.font = 'bold 7px ui-monospace, monospace';
+      ctx.fillStyle = '#8a8a9a';
+      ctx.textBaseline = 'alphabetic';
+      TREATMENTS.forEach(([name], i) => ctx.fillText(name, LABEL_W + i * CELL + 4, 9));
+      SITES.forEach(([siteLabel, paintCell], r) => {
+        const y = 14 + r * CELL;
+        ctx.fillStyle = '#8a8a9a';
+        ctx.fillText(siteLabel, 4, y + CELL / 2);
+        TREATMENTS.forEach(([, , brow, browA, browL], i) => {
+          setInk({ brow, browA, browL });
+          try {
+            paintCell(ctx, id, LABEL_W + i * CELL, y);
+          } finally {
+            setInk();
+          }
+        });
+      });
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      for (let i = 0; i <= TREATMENTS.length; i++) {
+        ctx.moveTo(LABEL_W + i * CELL, 12);
+        ctx.lineTo(LABEL_W + i * CELL, cmpH);
+      }
+      for (let r = 0; r <= SITES.length; r++) {
+        ctx.moveTo(LABEL_W, 14 + r * CELL);
+        ctx.lineTo(cmpW, 14 + r * CELL);
+      }
+      ctx.stroke();
+    }, { wide: true, hires: 6 });
+  }
+}
+
+// --------------------------------------------------- 2e. lorenzo trouser colour
+// `p.p` is one garment — legs, trouser front and braces all read from it — so
+// each candidate is drawn as the whole lower body, not as a swatch. Judged on
+// THREE backdrops on purpose: a colour picked against the gallery's black can
+// behave completely differently on the wall he actually stands in front of.
+// Charcoal is the case in point, and the top row is where you can see it.
+{
+  const grid = section('lorenzo-pants', 'Lorenzo — trouser colour bake-off',
+    'Blue is shipped, and is also the most recognisable borrowed note left in the design: cap plus '
+    + 'mustache plus blue trousers is a silhouette everyone already knows. Each row is one candidate '
+    + 'on the hub wall (#241c30), a stage sky, and the gallery black, at the 60u gallery size and '
+    + 'again at the real in-run 24u. Judge the 24u panels and the hub-wall column — a trouser colour '
+    + 'that only works on a bright stage is not a trouser colour. See LORENZO_PANTS in toons.js; '
+    + 'setLorenzoPants drives the real draw path, so nothing here is a mock-up.');
+
+  const BACKS = [['hub wall', WALL_BASE], ['stage sky', '#8ed0f0'], ['gallery black', '#12121a']];
+  const HH = 74, PANEL = 96, PAD = 6;
+  const TW = BACKS.length * PANEL;
+  const TH = 116;
+  for (const cand of LORENZO_PANTS) {
+    tile(grid, cand.label, `${cand.hex} — ${cand.note}`, TW, TH, (ctx, t) => {
+      setLorenzoPants(cand.hex);
+      try {
+        BACKS.forEach(([, bg], i) => {
+          const x = i * PANEL;
+          ctx.fillStyle = bg;
+          ctx.fillRect(x, 0, PANEL - 2, TH);
+          // 60u on the left of the panel, the honest 24u on the right at 2x —
+          // scaling the CONTEXT, not the unit, so the stroke floors bind where
+          // the game binds them.
+          drawToon(ctx, 'lorenzo', pose('run', t), x + PANEL * 0.3, TH - PAD, HH);
+          ctx.save();
+          ctx.translate(x + PANEL * 0.62, TH - PAD - 30);
+          ctx.scale(2, 2);
+          drawToon(ctx, 'lorenzo', pose('run', t), 12, 15, HERO_DRAW_H);
+          ctx.restore();
+        });
+      } finally {
+        setLorenzoPants();   // never leak a candidate into the next tile
       }
     }, { animated: true, wide: true });
   }

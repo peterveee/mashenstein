@@ -22,13 +22,12 @@ import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } fro
 import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
-import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
+import { totalPlugs, MAX_PLUGS, formatCoins, nextStage, stageUnlocked } from './progress.js';
 
-// What the player actually does to confirm, named for the device in their
-// hands. 'TAP/ENTER' told a phone about a key it does not have and a desktop
-// about a screen it cannot touch — on the one line of a screen that has to be
-// acted on rather than read, half the width went to the other device's input.
-function confirmVerb() { return Input.isTouchDevice() ? 'TAP' : 'ENTER'; }
+// See Input.confirmVerb — the word is shared with the in-run ACT card now, so
+// it lives with the device test. Kept as a local name because every screen in
+// this file reads better calling it bare.
+const confirmVerb = () => Input.confirmVerb();
 
 function menuNav(input, idx, len) {
   if (input.pressed('down') || input.pressed('right')) { Audio.sfx('ui'); return (idx + 1) % len; }
@@ -1996,12 +1995,28 @@ function drawTubeMask(ctx) {
   ctx.restore();
 }
 
+// A failed run used to end on a single CONTINUE that walked you to the food
+// court, leaving the cabinet four screens away — so the cheapest thing a player
+// could do after a loss was the most expensive one to ask for. The retry rows
+// only appear on a loss: a clear ends on the curtain call, which is the flourish
+// this screen is built around, and it stands where these rows would.
+const RESULT_OPT_H = 14;
+// The rows stand in the curtain call's place and reach down over the prompt
+// line: they name their own actions, so there is nothing left to prompt for.
+const RESULT_OPT_TOP = RESULT_FOOTER_MID + TEXT_INK_H / 2 - RESULT_OPT_H * 2;
 export class ResultsState {
-  constructor({ result, gains, save, onDone }) {
+  constructor({ result, gains, save, onDone, onRetry }) {
     this.result = result; this.gains = gains; this.save = save; this.onDone = onDone;
+    // No retry offered (overtime's seed is the day's, not the run's) falls back
+    // to the plain prompt rather than drawing a row that cannot fire.
+    this.onRetry = onRetry || null;
   }
+  // Not on a quit. That button is labelled EXIT TO FOOD COURT and the player
+  // just pressed it, so offering them the choice again — with RUN IT AGAIN
+  // sitting under the cursor — argues with the thing they already decided.
+  get retryable() { return !!this.onRetry && !this.result.success && this.result.reason !== 'QUIT'; }
   enter() {
-    this.t = 0; this.shown = 0;
+    this.t = 0; this.shown = 0; this.idx = 0;
     this.shells = [];       // rising mortars; they burst at the top of their arc
     this.shellT = 0.25;     // first one goes up almost immediately
     this.streamerT = 0;
@@ -2068,11 +2083,32 @@ export class ResultsState {
     this.shown = Math.min(this.result.score, this.shown + dt * Math.max(500, this.result.score));
     // Short enough to only swallow a stray input carried in from the run; the
     // screen is fully drawn on frame one, so a longer lock just reads as stuck.
-    if ((Input.pressed('confirm') || Input.pressed('pointer') || Input.pressed('jump')) && this.t > 0.15) {
+    if (this.t <= 0.15) { Input.endFrame(); return; }
+    if (this.retryable) {
+      if (Input.pressed('down') || Input.pressed('right') || Input.pressed('up') || Input.pressed('left')) {
+        this.idx = 1 - this.idx; Audio.sfx('ui');
+      }
+      // Tap-to-select, tap-again-to-confirm, the same contract every hub list
+      // makes — a phone has no arrow keys and the rows are the only way through.
+      if (Input.pressed('pointer')) {
+        const i = Math.floor((Input.pointer.y - RESULT_OPT_TOP) / RESULT_OPT_H);
+        if (i >= 0 && i < 2) {
+          if (this.idx === i) this.choose(i);
+          else { this.idx = i; Audio.sfx('ui'); }
+        }
+      }
+      // `jump` is deliberately not a confirm here: it is the button the player
+      // was mashing a second ago, and it would pick a row before they read one.
+      if (Input.pressed('confirm')) this.choose(this.idx);
+    } else if (Input.pressed('confirm') || Input.pressed('pointer') || Input.pressed('jump')) {
       Audio.sfx('uiConfirm');
       this.onDone();
     }
     Input.endFrame();
+  }
+  choose(i) {
+    Audio.sfx('uiConfirm');
+    if (i === 0) this.onRetry(); else this.onDone();
   }
   draw(ctx) {
     drawTubeFace(ctx);
@@ -2089,6 +2125,11 @@ export class ResultsState {
     // Everything below is pinned to the tube: the glass runs TUBE_INSET_Y to
     // H - TUBE_INSET_Y, and the title and footer sit a margin inside that.
     drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 38, r.success ? '#48c848' : '#e04848', 2, 'title');
+    // MISSION INCOMPLETE never said what was incomplete, and the run knew: the
+    // count sits under the headline in the same words the GOAL panel used, so
+    // the answer is where the question was asked rather than in the ledger of
+    // rewards below it.
+    if (r.failDetail) drawTextCentered(ctx, r.failDetail, W / 2, 56, '#c05050', 1);
     // The ledger is COLLECTED before any of it is drawn: its type size falls
     // out of how many rows there turned out to be, so the rows have to exist
     // first. Blank ones are dropped rather than left as a gap — an empty row
@@ -2096,11 +2137,23 @@ export class ResultsState {
     const rows = [];
     const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
     line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
-    if (r.newBestScore) line('NEW BEST SCORE ON THIS STAGE!', '#f6d33c');
+    // The best score banks whether or not the run cleared, so this row can land
+    // on a loss — where a gold exclamation directly above NO PLUGS was the
+    // screen congratulating and penalising in the same breath. The fact keeps
+    // its place; the party is only thrown for a clear.
+    if (r.newBestScore) line(r.success ? 'NEW BEST SCORE ON THIS STAGE!' : 'STILL A NEW BEST SCORE ON THIS STAGE.', r.success ? '#f6d33c' : '#8a8a98');
     if (r.stage) {
       const plugs = this.save.slot.campaign.plugs[r.stage.id] || [];
       line(`PLUGS: ${['MISSION', 'CHALLENGE', 'TOASTER'].map((n, i) => `${n} ${plugs[i] ? 'X' : '-'}`).join('  ')}`, '#48e0c8');
       if (this.gains.plugsNew > 0) line(`+${this.gains.plugsNew} NEW PLUG${this.gains.plugsNew > 1 ? 'S' : ''}`, '#48e0c8');
+      // Three dashes on the row above is the whole consequence, and it is a long
+      // way from "the next stage is still shut". Name the stage that stayed
+      // locked — and only when it did, so a toaster salvaged from a lost run
+      // (which opens the next stage on its own) is not told off for it.
+      else {
+        const nxt = nextStage(r.stage);
+        if (nxt && !stageUnlocked(this.save.slot, nxt)) line(`NO PLUGS. ${nxt.id.toUpperCase()} STAYS LOCKED.`, '#c05050');
+      }
       if (r.rank) {
         const osha = this.save.slot.mods.equipped.includes('osha');
         line(`RANK: ${r.rank}${osha ? '*' : ''}`, r.rank === 'S' || r.rank === 'CONCERNING' ? '#f6d33c' : '#c8c8d8');
@@ -2133,9 +2186,12 @@ export class ResultsState {
     // the glass. Whichever bound is tighter wins, and never below 1 — the point
     // of the exercise is that a phone stops getting caption-sized copy.
     const widest = rows.reduce((m, [t]) => Math.max(m, textWidth(t, 1)), 1);
+    // The ledger is fitted above whichever stands below it — the retry rows on a
+    // loss, the curtain call on a clear.
+    const bodyFloor = this.retryable ? RESULT_OPT_TOP - RESULT_GAP : heroFeet - RESULT_HERO_H - RESULT_GAP;
     const bodyS = Math.max(1, Math.min(
       RESULT_BODY_S_MAX,
-      (heroFeet - RESULT_HERO_H - RESULT_GAP - RESULT_BODY_TOP) / (rows.length * RESULT_ROW_H),
+      (bodyFloor - RESULT_BODY_TOP) / (rows.length * RESULT_ROW_H),
       (W - TUBE_INSET_X * 2 - RESULT_BODY_PAD * 2) / widest,
     ));
     // Derived from the ledger rather than fixed, so the headline stays a step
@@ -2159,7 +2215,19 @@ export class ResultsState {
         { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
         W / 2 + (i - (r.team.length - 1) / 2) * heroH * 1.5, heroFeet, heroH));
     }
-    drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
+    if (this.retryable) {
+      // Retry sits first and starts selected: it is what the player came to this
+      // screen wanting, and confirm-on-arrival should be the cheap thing.
+      ['RUN IT AGAIN', 'BACK TO THE FOOD COURT'].forEach((label, i) => {
+        const sel = i === this.idx;
+        const y = RESULT_OPT_TOP + i * RESULT_OPT_H;
+        if (sel) drawMenuRow(ctx, TUBE_INSET_X + 6, y + 1, W - (TUBE_INSET_X + 6) * 2, RESULT_OPT_H - 2);
+        drawTextCentered(ctx, `${sel ? '> ' : '  '}${label}`, W / 2,
+          textYForMid(y + RESULT_OPT_H / 2, 1), sel ? '#f6d33c' : '#8a8a98', 1);
+      });
+    } else {
+      drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
+    }
   }
 }
 
@@ -2560,7 +2628,7 @@ export class HowToPlayState {
     // SKIP button, and pause is a button that opens plates you press.
     line('BREAKER BOX', `WIN IT: BONUS POWERUP. ${touch ? 'TAP SKIP' : 'ESC OR SKIP'} TO BAIL OUT.`, '#f890b8');
     y += 4;
-    line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO HUB QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
+    line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
     drawTextCentered(ctx, 'JUMP THE RED CACTI. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }

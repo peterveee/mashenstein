@@ -275,6 +275,11 @@ export function pushOverlayDraw(fn) {
   return true;
 }
 
+// Read-only diagnostic used by rendering contract tests. Keeping this at the
+// queue boundary lets tests verify that a state stayed on the native-density
+// path without exposing or executing the callbacks out of compositing order.
+export function pendingOverlayDrawCount() { return overlayDraws.length; }
+
 export function blit() {
   const px = screen.px || 1;
   // Draw queued overlays (hero, banners) into the overlay layer in logical

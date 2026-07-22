@@ -37,15 +37,133 @@ let SKIN_OUTLINE = `rgba(26,16,40,${SKIN_OUTLINE_A})`;
 // lands ~3x its intended width. They exist so a hairline survives a near-1:1
 // render, which no longer describes how this game is scaled. Worth making
 // scale-aware, but as its own change, tuned against these widths.
-export const INK = { body: 1, face: 1, alpha: 1 };
+// ------------------------------------------------------------------ the brows
+// Declared above INK because INK defaults to them.
+//
+// Width: back at the 0.018u the thin-face pass cut it from. That pass was aimed
+// at the eye RING — a ring drawn wider than the sclera it encloses reads as a
+// grey donut — and swept the brows along with it on the shared `face` dial. A
+// bold brow was never the defect: it is the mark the expression hangs on, and on
+// the scowling half of the cast it is most of the characterisation.
+//
+// The floor is deliberately NOT scaled with the width, so the restore lands
+// unevenly. BROW_W * u only clears BROW_MIN above u=21: the 60u menus and cast
+// parade get the full 0.6 -> 1.08 back, the ~34u HUD cell 0.38 -> 0.61, and the
+// 24u in-run sprite only 0.38 -> 0.43, because down there the floor was already
+// carrying the line and still nearly is. Matching the gallery's boldest cells at
+// 24u too would mean lifting BROW_MIN, which is the scale-aware floor rework the
+// INK comment below already calls for — worth doing as its own change, tuned
+// against every stroke, not smuggled in behind the brows.
+const BROW_W = 0.018, BROW_MIN = 0.38;
+// Tone. The brow is the only face mark drawn at FULL palette ink (`p.e`, the
+// same near-black as the pupils) at the heaviest face width, so the restored
+// 0.018u put the most mass in the face on the stroke least able to carry it —
+// a scowl reading as a bar rather than a brow. BROW_L lightens the ink toward
+// white and BROW_A sets how solid it lands; see the INK comment below for why
+// it takes both and not opacity alone.
+const BROW_L = 0.3, BROW_A = 0.92;
+// Per-hero scale on the lighten, because BROW_L lightens toward WHITE and white
+// is not a neutral direction for a coloured ink. Most of the cast draws `p.e` as
+// a near-black (grumpos #17131a, dolores, raymn), where lightening only lowers
+// the tone and the hue has nothing to lose. Gary's is #d83030 — he is a zombie
+// and his brows are meant to read as the same red as his pupils — and pushing
+// THAT toward white desaturates before it darkens: at the full 0.3 he lands on
+// rgb(228,110,110), which is salmon, not red. Scaled to 0.4 he sits at
+// rgb(221,73,73), still unmistakably his own colour.
+//
+// A scale rather than an absolute so a future BROW_L move carries him with it,
+// and he is measured as the LOWEST-contrast brow in the cast either way (see the
+// brow bake-off) — so this both keeps his hue and buys back a little presence.
+const BROW_L_SCALE = { gary: 0.4 };
 
-export function setInk({ body = 1, face = 1, alpha = 1 } = {}) {
+//   brow  — scales the eyebrow hairline's WIDTH alone, on top of `face`.
+//   browA — the brow ink's OPACITY, absolute (not a multiplier). See BROW_A.
+//   browL — how far the brow ink is LIGHTENED, absolute. See BROW_L.
+//
+// The brows get their own dials because the thin-face pass was aimed at the eye
+// RING and took them along with it. A ring wider than the sclera it encloses is
+// a defect; a bold brow is not — it is the mark the whole expression hangs on,
+// and the only one asked to read at HUD size.
+//
+// Three dials and not one because a brow's presence is width TIMES tone, and
+// none of the three substitutes for another. Width is SHAPE: what survives the
+// downscale to a HUD cell, and what makes an angry brow read as angry. Lightness
+// is TONE: how loud the mark is. Opacity is SOLIDITY: whether it reads as a
+// drawn mark or as something showing through. Those last two both darken a brow
+// on the way down, which is why the first attempt at toning it down used opacity
+// alone — and why that was wrong. Alpha low enough to soften the tone also makes
+// the stroke translucent, so the war-paint stripe and the shaded skull beneath
+// start showing through it and the brow goes muddy at exactly the sizes it most
+// needs to read. Lighten the ink and keep it near-opaque instead: same softened
+// tone, still a crisp mark.
+//
+// browA/browL are absolute overrides rather than multipliers because both are
+// already fractions with a meaningful zero, and a multiplier on a fraction is a
+// number nobody can picture.
+export const INK = { body: 1, face: 1, alpha: 1, brow: 1, browA: BROW_A, browL: BROW_L };
+
+export function setInk({
+  body = 1, face = 1, alpha = 1, brow = 1, browA = BROW_A, browL = BROW_L,
+} = {}) {
   INK.body = body; INK.face = face; INK.alpha = alpha;
+  INK.brow = brow; INK.browA = browA; INK.browL = browL;
   OUTLINE = `rgba(26,16,40,${+(OUTLINE_A * alpha).toFixed(3)})`;
   SKIN_OUTLINE = `rgba(26,16,40,${+(SKIN_OUTLINE_A * alpha).toFixed(3)})`;
 }
 
-const pal = (id) => HERO_SPRITES[id].pal;
+// The eyebrow hairline. Split out of the inline literal it used to be so the
+// floor is nameable — it is the interesting half.
+//
+// The width is back at the 0.018u the thin-face pass cut it from. That pass was
+// aimed at the eye RING — a ring drawn wider than the sclera it encloses reads
+// as a grey donut — and swept the brows along with it on the shared `face`
+// dial. A bold brow was never the defect: it is the mark the expression hangs
+// on, and on the scowling half of the cast it is most of the characterisation.
+//
+// The floor is deliberately NOT scaled with it, so the restore lands unevenly.
+// BROW_W * u only clears BROW_MIN above u=21: the 60u menus and cast parade get
+// the full 0.6 -> 1.08 back, the ~34u HUD cell 0.38 -> 0.61, and the 24u in-run
+// sprite only 0.38 -> 0.43, because down there the floor was already carrying
+// the line and still nearly is. Matching the gallery's boldest cells at 24u too
+// would mean lifting BROW_MIN, which is the scale-aware floor rework the INK
+// comment above already calls for — worth doing as its own change, tuned
+// against every stroke, not smuggled in behind the brows.
+// p.e arrives as a palette hex: lighten it toward white by `l`, then lay it
+// down at opacity `a`. Lightening rides on the ink itself so it works the same
+// over every ground the brow crosses — pale hide on grumpos, a dark blue head
+// on gnash, a cap on lorenzo — where a fixed paler hex would have to be chosen
+// against one of them and be wrong on the rest. parseHex is defined further
+// down; this only runs at draw time, long after the module has evaluated.
+const browInk = (hex, a, l) => {
+  const rgb = parseHex(hex);
+  if (!rgb) return hex;
+  const lit = l > 0 ? rgb.map((v) => Math.round(v + (255 - v) * l)) : rgb;
+  return a >= 1
+    ? `rgb(${lit[0]},${lit[1]},${lit[2]})`
+    : `rgba(${lit[0]},${lit[1]},${lit[2]},${+a.toFixed(3)})`;
+};
+
+// ------------------------------------------------------ trouser colour dial
+// `p.p` is ONE garment: legs, trouser front and braces all read from it, so a
+// candidate has to be judged as the whole lower body rather than as a swatch.
+// Blue is the shipped colour and also the most recognisable borrowed note in
+// the design — cap plus mustache plus blue trousers is a silhouette everyone
+// already knows — so the alternatives are here to be looked at, not argued
+// about. The gallery drives this; production leaves it null.
+export const LORENZO_PANTS = [
+  { id: 'blue', label: 'blue (now)', hex: '#22608c', note: 'shipped — reads everywhere, and is the borrowed note' },
+  { id: 'olive', label: 'olive drab', hex: '#57632f', note: 'workwear; the only candidate that holds on all three backdrops' },
+  { id: 'plum', label: 'plum', hex: '#4a2f6b', note: 'ties the lower body to the cap — one palette, purple-heavy' },
+  { id: 'tan', label: 'canvas tan', hex: '#9a6b3a', note: 'warm canvas; competes with the brown boots, belt and mustache' },
+  { id: 'charcoal', label: 'charcoal', hex: '#3a3f4d', note: 'workwear slate — but it sinks into the hub wall, see the top row' },
+  { id: 'teal', label: 'deep teal', hex: '#1d6f6b', note: 'tonal with the shirt: a coverall, but the waist stops reading' },
+];
+const PANTS = { hex: null };
+export function setLorenzoPants(hex = null) { PANTS.hex = hex; }
+
+const pal = (id) => (id === 'lorenzo' && PANTS.hex
+  ? { ...HERO_SPRITES[id].pal, p: PANTS.hex }
+  : HERO_SPRITES[id].pal);
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
 // armDepth: root the arms by DEPTH rather than by mirrored left/right — see
@@ -53,7 +171,7 @@ const pal = (id) => HERO_SPRITES[id].pal;
 // half of the cycle; the axe wants re-staging to clear the swing, but the arm
 // sides are right as they stand.
 export const TOON_SPECS = {
-  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true },
+  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true },
   gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true },
   fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
@@ -253,26 +371,39 @@ const AMBIENT_A = 0.62;
 // The rim rides OVER the contour but stops well short of erasing it: at full
 // weight the key simply deleted the outline down the lit side, and heroes lost
 // the border on their leading shoulder mid-walk. It thins and warms that edge
-// instead — RIM_W is the fraction of the outline's own width it covers, so
-// dark always survives on both sides of it.
-const EDGE_A = 0.34, RIM_W = 0.6;
-// ------------------------------------------------------------------ rim dial
-// "Dark survives on both sides" is true of the INK, and not of what you see.
-// A canvas stroke is centred on its path, so the contour's outer half lands on
-// the background and its inner half on the fill. Against the near-black the
-// cast usually stands on, dark-on-dark is a no-op: the outer sliver vanishes,
-// the rim's outer half is the only thing that marks it, and the inner sliver
-// survives against the fill. Read outward-in that is light, then dark — a
-// bevel, and a pale hero (grumpos, #ded9d2) shows it most because his fill
-// gives the inner sliver the most to bite on.
+// instead.
 //
-// These are the levers on that, all shipped-default here; the gallery's rim
-// bake-off drives them. `w` is RIM_W. `a` scales EDGE_A — note INK.alpha does
-// NOT reach the rim, so softening the contour alone shifts this ratio toward
-// the light half. `inside` clips the rim to the shape it belongs to, so it can
-// only warm the fill and never spills onto the background.
-export const RIM = { w: RIM_W, a: 1, inside: false };
-export function setRim({ w = RIM_W, a = 1, inside = false } = {}) {
+// It used to ride ACROSS the contour — a stroke centred on the same path at
+// RIM_W of its width, on the theory that dark then survives on both sides of
+// it. That is true of the INK and false of the PICTURE, and it is why the pale
+// heads read as embossed rather than outlined. A canvas stroke straddles its
+// path, so the contour's outer half lands on the BACKGROUND: against the
+// concourse wall the dark ink moves it four levels out of 255, which is to say
+// not at all, while the same ink over grumpos's #ded9d2 hide costs 67. Measured
+// across his skull at the in-run 24u, wall 31 and skin 225, the old centred rim
+// read
+//
+//     31 -> 27 -> [99] -> 187 -> [158] -> 225
+//      wall  ink   RIM     ink    ink     skin
+//
+// — a +68 band OUTSIDE the silhouette against a -67 band inside it. Near
+// symmetric, which is a bevel, not a contour. Every hero but chompo carried
+// one (halo means of 20-36); grumpos only shows it worst because his fill is
+// the palest in the cast and gives the inner half the most to bite on.
+//
+// So the rim is CLIPPED to the shape it belongs to. It can only warm the fill
+// now, never spill past the edge. RIM_W halves to match: a clipped stroke
+// throws away its outer half, so 0.3 clipped covers the same skin 0.6 centred
+// did, and leaves the inner dark line at exactly the 158 it always had. The
+// halo goes; the contour, the ramps and the blob do not move.
+const EDGE_A = 0.34, RIM_W = 0.3, RIM_INSIDE = true;
+// ------------------------------------------------------------------ rim dial
+// The levers on all of the above, defaulted to the shipped values; the
+// gallery's rim bake-off drives them, including the old centred `was` column.
+// `a` scales EDGE_A — note INK.alpha does NOT reach the rim, so softening the
+// contour alone shifts the balance toward the light half.
+export const RIM = { w: RIM_W, a: 1, inside: RIM_INSIDE };
+export function setRim({ w = RIM_W, a = 1, inside = RIM_INSIDE } = {}) {
   RIM.w = w; RIM.a = a; RIM.inside = inside;
 }
 // Marks, not volumes: eyes, pupils, buttons and teeth. A ramp across a
@@ -464,15 +595,13 @@ function outlined(ctx, fill, ow, pathFn, stroke = OUTLINE) {
   ctx.strokeStyle = stroke;
   ctx.lineWidth = ow;
   ctx.stroke();
-  // Rim last, riding inside the contour's own width so the dark line thins and
-  // warms on the lit side instead of being deleted by it.
+  // Rim last, clipped to the shape so it warms the lit side of the fill and
+  // never reaches past the contour — see RIM above for why that clip is the
+  // whole point. Half of every stroke is thrown away by it, hence the doubled
+  // width: RIM.w is quoted as the band that SURVIVES, not the one laid down.
   if (g && RIM.w > 0) {
     ctx.strokeStyle = g.edge;
     if (RIM.inside) {
-      // Clipped to its own shape the rim can only warm the fill. Half of every
-      // stroke is thrown away, so the width is doubled to land the same visible
-      // band — which now sits entirely on the skin side of the contour, leaving
-      // the background edge purely dark instead of purely light.
       ctx.save();
       ctx.clip();
       ctx.lineWidth = ow * RIM.w * 2;
@@ -719,8 +848,20 @@ function expressionFor(id, pose = {}) {
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const cm = joy ? celebrateMotion(id, t) : null;
   const cheer = !!(cm && cm.peak);
+  // Dolores calls NEXT to a queue that has not existed in years. She never
+  // breaks posture — no wave, no lean — so the face has to carry it: brows up,
+  // eyes past you to the front of a line that is not there, mouth open on the
+  // word. Then the service face resets. Her cast slot is 8s, so a ~5s cycle
+  // lands the call once or twice while you read her card. Strictly id-gated:
+  // no other hero can reach it.
+  const calling = id === 'dolores' && !active && !joy && (t + seed) % 5.1 < 0.5;
   return {
-    blink: !active && blinkPhase < (pose.menu ? 0.2 : 0.13),
+    // A blink through the call would eat it, so the call wins.
+    blink: !active && !calling && blinkPhase < (pose.menu ? 0.2 : 0.13),
+    calling,
+    // Carried so downstream marks can be keyed to the hero, not just the mood —
+    // BROW_L_SCALE is the one that needs it.
+    id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
     surprise: pose.kind === 'jump' && !pose.stomp,
     joy,
@@ -750,9 +891,13 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   const sep = 0.075 * u;
   const turnLimit = Math.PI * 5 / 12;
   const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(ex.turn) || 0) * Math.PI / 180));
+  const turnYaw = Math.sin(turnRad);
+  const turnDepth = Math.abs(turnYaw);
   const nearSide = turnRad < 0 ? 1 : -1;
   const turned = Math.abs(turnRad) > 0.001;
-  const eyeX = (side) => cx + side * sep * (turned && side !== nearSide ? 0.82 : 1);
+  // Foreshortening grows with the requested angle. The first version used one
+  // fixed 0.82 multiplier for every non-zero value, making 12/20/28 identical.
+  const eyeX = (side) => cx + side * sep * (turned && side !== nearSide ? 1 - 0.42 * turnDepth : 1);
   if (ex.mood === 'robot') {
     // LED eyes on the faceplate: glowing bars, no whites or pupils. They
     // squash to slits for a blink and stretch tall in surprise.
@@ -770,7 +915,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     }
     const lw = 0.045 * u;
     const lh = ex.blink ? 0.011 * u : ex.surprise || ex.cheer ? 0.068 * u : 0.05 * u;
-    const lookX = ex.focus ? 0.012 * u : 0;
+    const lookX = (ex.focus ? 0.012 : 0) * u + turnYaw * 0.032 * u;
     for (const sx of [-1, 1]) {
       outlined(ctx, p.w, Math.max(0.28, 0.008 * u) * INK.face, (c) =>
         roundRectPath(c, eyeX(sx) + lookX - lw, cy - lh, lw * 2, lh * 2, Math.min(lw, lh) * 0.8));
@@ -807,21 +952,37 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   }
   for (const sx of [-1, 1]) {
     outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
-    const lookX = ex.focus ? 0.012 * u : 0;
-    const lookY = ex.surprise || ex.cheer ? -0.005 * u : 0.012 * u;
+    // Calling looks further off than focus does — past you, at the head of the
+    // queue — and level rather than down.
+    const lookX = (ex.calling ? 0.026 : ex.focus ? 0.012 : 0) * u + turnYaw * 0.032 * u;
+    const lookY = ex.surprise || ex.cheer || ex.calling ? -0.005 * u : 0.012 * u;
     dot(ctx, eyeX(sx) + lookX, cy + lookY, 0.026 * u, p.e);
   }
   // `brow` opts a face out of the shipped hairlines: 'none' draws nothing,
   // 'bushy' means drawHead paints hair brows over the top instead.
-  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.calling || ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
-    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.38, 0.01 * u) * INK.face;
+    ctx.strokeStyle = browInk(p.e, INK.browA, INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
+    ctx.lineWidth = Math.max(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
     ctx.beginPath();
-    ctx.moveTo(eyeX(-1) - 0.05 * u, cy - 0.08 * u);
-    ctx.lineTo(eyeX(-1) + 0.045 * u, cy - (ex.mood === 'worried' ? 0.055 : 0.045) * u);
-    ctx.moveTo(eyeX(1) - 0.045 * u, cy - 0.045 * u);
-    ctx.lineTo(eyeX(1) + 0.05 * u, cy - 0.08 * u);
+    if (ex.calling) {
+      // Raised and near-level: the counter-staff "next in line" brow. Angling
+      // them would read as a mood, and she does not have one about this. The
+      // lift is deliberately small — measured at 0.104u the brows crowd the
+      // hairnet and the face reads as startled, which is the one thing she
+      // never is.
+      const by = cy - 0.092 * u;
+      ctx.moveTo(eyeX(-1) - 0.05 * u, by);
+      ctx.lineTo(eyeX(-1) + 0.045 * u, by + 0.006 * u);
+      ctx.moveTo(eyeX(1) - 0.045 * u, by + 0.006 * u);
+      ctx.lineTo(eyeX(1) + 0.05 * u, by);
+    } else {
+      ctx.moveTo(eyeX(-1) - 0.05 * u, cy - 0.08 * u);
+      ctx.lineTo(eyeX(-1) + 0.045 * u, cy - (ex.mood === 'worried' ? 0.055 : 0.045) * u);
+      ctx.moveTo(eyeX(1) - 0.045 * u, cy - 0.045 * u);
+      ctx.lineTo(eyeX(1) + 0.05 * u, cy - 0.08 * u);
+    }
     ctx.stroke();
   }
 }
@@ -838,6 +999,14 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
       c.quadraticCurveTo(cx, cy + d * 1.9, cx + w, cy - 0.012 * u);
       c.closePath();
     });
+    return;
+  }
+  if (ex.calling) {
+    // Mid-word: open, clearly wider than tall. She is projecting across a
+    // counter, not shouting — a rounder mouth reads as a gasp, which is the
+    // surprise face, not this one.
+    ctx.stroke();
+    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy + 0.008 * u, 0.042 * u, 0.025 * u, 0, 0, Math.PI * 2));
     return;
   }
   if (ex.surprise) {
@@ -876,81 +1045,198 @@ function bluntSpike(c, ax, ay, tx, ty, bx, by, round = 0.18) {
   c.closePath();
 }
 
-// ------------------------------------------------- Lorenzo's cap (bake-off)
-// The shipped cap is a semicircle closed by a FLAT chord at -0.12R, while his
-// eyes top out at -0.38R and the focus brows run -0.45R..-0.29R. So the hem
-// crosses 42% of the way down the eye, and both brow strokes land inside the
-// hat — they only show at all because the face draws after the hat, which is
-// also why this survived so long: it reads as "low brim" until you notice the
-// eyebrows are sitting ON the purple.
+// ------------------------------------------------------------ Lorenzo's cap
+// The shipped cap used to be a semicircle closed by a FLAT chord at -0.12R,
+// while his eyes top out at -0.38R and the focus brows run -0.45R..-0.29R. So
+// the hem crossed 42% of the way down the eye, and both brow strokes were drawn
+// inside the hat — they showed at all only because the face paints after the
+// hat, which is also why it survived so long: it reads as "low brim" until you
+// notice the eyebrows are sitting ON the purple.
 //
-// The candidate fixes are a table rather than an edit, and the gallery renders
-// them side by side through this same code path (setLorenzoFace, same pattern
-// as setInk). `current` reproduces the shipped geometry exactly — its flat hem
-// plus 0.5523 circle constants below are a semicircle to within a rounding
-// error — so the baseline in the bake-off is the real thing, not a redraw.
+// What ships now, arrived at by bake-off (see the gallery's was/is pair, driven
+// through this same code path by setLorenzoFace):
+//   - the band is flat across the brows and drops to the ears only at the
+//     temples, so it clears the brow line without becoming all forehead;
+//   - the sides slope inward off the band (`hug`), so the cap follows the skull
+//     instead of resting on it like a dome on a sphere;
+//   - the whole hat rocks back 12 deg about the HEAD CENTER — the one pivot
+//     that leaves every point of it the same distance from the skull, so the
+//     raised side cannot lift away — while the oval bill's own rotation cancels
+//     that, holding it level;
+//   - brown caterpillar brows in the mustache colour replace the ink hairlines,
+//     and they move with the mood: up and arched for joy, down for effort;
+//   - a tufted fringe shows under the band, deepest at the temples and
+//     shallowest at the nose, because that is where the brows are;
+//   - the face mask sits 0.067R lower, which is what opens the forehead the
+//     fringe hangs into. Half that shift stretched the skull into an egg when it
+//     arrived with a taller crown and tapered sides; on its own it does not.
 //
 // Cap fields are in head radii R measured from the head CENTER, positive up:
 //   hem      front-center hem height        hemSide  hem height at the temples
 //   width    half-width at the temples      crown    height of the dome top
-//   bill     [x, y, rx, ry] of the visor    emblem   height of the tool badge
-//   hair     brown fringe under the hem     faceDy   face mask shift, in u
-//   brow     'ink' (shipped hairlines) | 'bushy' | 'none'
+//   hemPow   how the band falls to the       hug      how hard the sides slope
+//            temples (2 = parabola)                   in off the band (1 = not)
+//   emblem   height of the tool badge       faceDy   face mask shift, in u
+//   tilt     degrees the whole hat is rocked back (bill lifting)
+//   billOval [x, aboveHem, rx, ry] of the visor; `bill` is the legacy free
+//            ellipse, kept only by the `was` row
+//   hair     tufted fringe under the hem    hairLock how far its locks hang
+//   brow     unset = the old ink hairlines | 'bushy' | 'none'
 export const LORENZO_FACES = [
-  { id: 'current', label: 'current', note: 'shipped — flat hem at -0.12R, through the eyes',
+  { id: 'shipped', label: 'is', note: 'band arched clear of the brows, hat rocked back 12 deg, tufted fringe, oval bill, face down 0.038R',
+    // width is not a free number: the hem corner sits at r = hypot(width,
+    // hemSide) from the head centre, and at 1.02 that put it 5.3% OUTSIDE the
+    // 1.0R skull. The cap edge then CROSSES the head outline rather than
+    // meeting it, and that step is exactly what reads as a hat resting on top
+    // of a head instead of being worn on one. sqrt(1 - 0.26^2) = 0.966 lands
+    // the corner on the silhouette; 0.97 leaves a hair of fabric proud of it.
+    hem: 0.78, hemSide: 0.26, hemPow: 3, width: 0.97, crown: 1.26, hug: 0.94, tilt: 12,
+    // Bill reaches 1.60R from the head centre, 0.6R clear of the skull. Its
+    // inner end still sits at 0.16R, buried under the dome — that overlap is
+    // the whole attachment, so the visor can be lengthened from the outside
+    // without ever loosening the join.
+    // Two things this went through. The wedge of hair that used to show between
+    // bill and dome was a THICKNESS problem, not a height one: at ry 0.19 the
+    // bill did not span the gap between the dome's edge and the band, so raising
+    // it far enough to cover that span parked it up on the dome's shoulder. A
+    // taller bill closes the same gap sitting low, where a bill belongs.
+    //
+    // Then the shape: a level, symmetric, round-ended lozenge sticking straight
+    // out from a sphere does not read as a bill, and reads as other things. The
+    // fix is not a tapered outline — a drawn wedge comes out a thin flap with
+    // less mass than the ellipse — it is ANGLE. Tipped 9 deg down the same oval
+    // reads as a visor shading the eyes. Reach is unchanged at 1.56R.
+    // 1.56R and 3.1:1. Extending it was tried and reverted — 1.74R is simply too
+    // much bill for the head, whether or not the depth is raised to hold the
+    // aspect ratio. Worth knowing if it comes up again: length ALONE is not an
+    // option, since it takes the ratio to 3.7:1 and elongation is exactly what
+    // made the pre-angle version read wrong.
+    billOval: [0.84, 0.16, 0.72, 0.23], billDown: 9,
+    // faceDy is a lift from the 0.014 the bake-off settled on: the mask sits
+    // 0.038R below where it always did rather than 0.067R. That costs the
+    // fringe 0.029R of the gap it hangs into, so the longest centre lock now
+    // ends about level with the brow instead of 0.065R clear of it. Deliberate
+    // — they are both `p.m` brown and a little contact reads as hair meeting
+    // brow, which is what hair under a cap does.
+    hair: true, hairLock: 0.62, faceDy: 0.008, brow: 'bushy' },
+  // Kept, and only kept, so the gallery can show the two side by side. This is
+  // the geometry every screenshot before 2026-07-23 has: a flat chord at -0.12R
+  // crossing 42% of the way down the eye, with both brow strokes drawn inside
+  // the hat and showing only because the face paints after it.
+  { id: 'was', label: 'was', note: 'pre-2026-07-23 — flat hem at -0.12R, cutting the eyes, brows on the cap',
     hem: 0.12, width: 1.02, crown: 1.14, bill: [0.8, 0.28, 0.5, 0.16], emblem: 0.75 },
-  { id: 'lifted', label: 'lifted', note: 'same cap, hem raised clear of the brows',
-    hem: 0.58, width: 0.95, crown: 1.24, bill: [0.82, 0.52, 0.5, 0.15], emblem: 0.94 },
-  { id: 'arched', label: 'arched', note: 'hem bows up over the brows, hugs the temples',
-    hem: 0.7, hemSide: 0.3, width: 1.0, crown: 1.24, bill: [0.84, 0.42, 0.5, 0.15], emblem: 0.94 },
-  { id: 'lowface', label: 'low face', note: 'cap stays low and IS the brow — face drops under it, no brow strokes',
-    hem: 0.12, width: 1.02, crown: 1.14, bill: [0.8, 0.28, 0.5, 0.16], emblem: 0.75,
-    faceDy: 0.052, brow: 'none' },
-  { id: 'bushy', label: 'bushy', note: 'arched hem + brown caterpillar brows matching the mustache',
-    hem: 0.7, hemSide: 0.32, width: 1.0, crown: 1.26, bill: [0.84, 0.44, 0.5, 0.15], emblem: 0.96,
-    faceDy: 0.012, brow: 'bushy' },
-  { id: 'pushed', label: 'pushed back', note: 'cap shoved up the crown, brown fringe showing under it',
-    hem: 0.78, width: 0.92, crown: 1.32, bill: [0.8, 0.62, 0.48, 0.15], emblem: 1.02,
-    hair: true, faceDy: 0.012, brow: 'bushy' },
 ];
-const LORENZO_FACE = { variant: 'current' };
-// Dev-only dial for the bake-off above; ships pinned to whichever id wins.
-export function setLorenzoFace(variant = 'current') {
+const LORENZO_FACE = { variant: 'shipped' };
+// Dev-only dial, for the gallery's was/is pair. Production never calls it.
+export function setLorenzoFace(variant = 'shipped') {
   LORENZO_FACE.variant = variant;
 }
 const lorenzoFace = () => LORENZO_FACES.find((v) => v.id === LORENZO_FACE.variant) || LORENZO_FACES[0];
 
+// The hem as a function of x, so hair, bills and seams can be hung off the band
+// instead of guessed at. `hemPow` shapes the fall from the center height to the
+// temples: 2 is exactly the quadratic the first pass drew as a bezier (that
+// curve's x is linear in t, so its y works out to hem - xn^2*(hem - hemSide)),
+// and higher powers hold the band flat across the face before dropping hard at
+// the sides. That distinction matters: the brows reach out to x ~0.6, and a
+// parabola is already halfway down by there, so the arch that cleared them at
+// the nose was cutting into them at their outer ends.
+function hemYAt(hx, hy, R, v, xn) {
+  const side = v.hemSide != null ? v.hemSide : v.hem;
+  const k = Math.pow(Math.min(1, Math.abs(xn)), v.hemPow != null ? v.hemPow : 2);
+  return hy - R * (v.hem * (1 - k) + side * k);
+}
+
 // Dome + hem as one closed path. K is the circle-to-cubic constant, so a flat
-// hem with width == crown - hem gives a true semicircle.
+// hem with width == crown - hem and hug == 1 gives a true semicircle.
+//
+// `hug` is what makes a raised cap sit ON the skull rather than hover over it.
+// At hug 1 the side control points sit directly above the hem corners, so the
+// cap leaves the hem vertically and bulges outboard of a head that is already
+// curving inward at that height — a dome resting on top of a sphere. Pulling
+// the controls in (hug < 1) starts the sides sloping inward straight off the
+// band, the way fabric stretched over a skull does.
 function capPath(c, hx, hy, R, v) {
   const K = 0.5523;
-  const hemS = hy - R * (v.hemSide != null ? v.hemSide : v.hem);
-  const hemC = hy - R * v.hem;
+  const hemS = hemYAt(hx, hy, R, v, 1);
   const w = R * v.width;
+  const hug = v.hug != null ? v.hug : 1;
   const top = hy - R * v.crown;
   const dh = hemS - top;
   c.moveTo(hx - w, hemS);
-  c.bezierCurveTo(hx - w, hemS - dh * K, hx - w * K, top, hx, top);
-  c.bezierCurveTo(hx + w * K, top, hx + w, hemS - dh * K, hx + w, hemS);
-  // Front hem back to the left temple: a straight chord when hem == hemSide,
-  // bowed up over the brows when the center rides higher. The control point is
-  // mirrored past the center height so the curve passes through it exactly.
-  c.quadraticCurveTo(hx, 2 * hemC - hemS, hx - w, hemS);
+  c.bezierCurveTo(hx - w * hug, hemS - dh * K, hx - w * K, top, hx, top);
+  c.bezierCurveTo(hx + w * K, top, hx + w * hug, hemS - dh * K, hx + w, hemS);
+  // Front hem back to the left temple, sampled off hemYAt so band, bill seam
+  // and fringe cannot disagree. A flat hem samples to a straight chord, which
+  // is what `current` needs to stay byte-for-byte the shipped shape.
+  for (let i = 15; i >= 0; i--) {
+    const xn = -1 + (2 * i) / 16;
+    c.lineTo(hx + w * xn, hemYAt(hx, hy, R, v, xn));
+  }
   c.closePath();
 }
 
-// Brown fringe for the pushed-back cap: crown hidden under the hat, showing as
-// a scalloped edge across the forehead. Ties to the sideburn `plumber` already
-// draws at the temple, so the hair reads as one head of hair rather than a
-// separate patch.
-function capFringe(c, hx, hy, R) {
-  c.moveTo(hx - R * 0.94, hy - R * 0.46);
-  c.quadraticCurveTo(hx, hy - R * 1.14, hx + R * 0.94, hy - R * 0.46);
-  c.quadraticCurveTo(hx + R * 0.7, hy - R * 0.34, hx + R * 0.5, hy - R * 0.5);
-  c.quadraticCurveTo(hx + R * 0.28, hy - R * 0.32, hx + R * 0.06, hy - R * 0.5);
-  c.quadraticCurveTo(hx - R * 0.18, hy - R * 0.32, hx - R * 0.42, hy - R * 0.5);
-  c.quadraticCurveTo(hx - R * 0.68, hy - R * 0.32, hx - R * 0.94, hy - R * 0.46);
+// The hair's hidden top: the SKULL, not a guess at one. It used to be a
+// quadratic aimed at 0.86 of the crown height — but a quadratic only reaches a
+// QUARTER of the way to its control point (apex = (P0+2P1+P2)/4), so it topped
+// out at -0.607R while the cap's front hem sat at -0.66R. The hair stopped
+// below the hem: a brown blob parked under the cap rather than a head of hair
+// the cap is covering. Riding the head's own circle, it cannot fall short at
+// any hem, and since the tilt pivots on the head center this arc maps onto the
+// skull exactly even when the hat is rocked.
+function hairCrown(c, hx, hy, R, v) {
+  const w = R * v.width;
+  const ly = hemYAt(hx, hy, R, v, -1), ry = hemYAt(hx, hy, R, v, 1);
+  c.moveTo(hx - w, ly);
+  // Canvas y grows downward, so sweeping clockwise from the left hem angle to
+  // the right one passes over the CROWN, not under the chin.
+  c.arc(hx, hy, R * 0.99, Math.atan2(ly - hy, -w), Math.atan2(ry - hy, w), false);
+  c.lineTo(hx + w, ry);
+}
+
+// Tufted alternative to the scalloped fringe: a handful of distinct locks
+// poking out along the band instead of one continuous mass. Leans with travel.
+// Each lock is a bluntSpike rooted on two hem points — same band-relative
+// construction as the band itself, so it follows whatever curve the hem has.
+function capTufts(c, hx, hy, R, v) {
+  const w = R * v.width;
+  const drop = R * (v.hairLock != null ? v.hairLock : 0.16);
+  // The band under the hat: crown over the top, then back along the HEM. It
+  // used to close with a straight lineTo between the two hem corners — but the
+  // hem is high in the middle and low at the temples, so that chord ran 0.42R
+  // BELOW the hem across the centre and dumped a brown mass over his forehead.
+  // Only the locks below are supposed to show.
+  hairCrown(c, hx, hy, R, v);
+  for (let i = 16; i >= 0; i--) {
+    const xn = -1 + (2 * i) / 16;
+    c.lineTo(hx + w * xn, hemYAt(hx, hy, R, v, xn));
+  }
   c.closePath();
+  // The last span reaches the band's own corner. It used to stop at 0.9, and
+  // with the hat rocked back that left the stretch between there and the corner
+  // bare — right above the right ear, where the bill already hides the lock
+  // inboard of it, so that side read as shaved. The third number scales that
+  // lock's reach: at the corner the band is at its lowest, so a lock the same
+  // length as its neighbours hangs to the jaw and reads as a sideburn. Half
+  // length is a wisp escaping the band, which is all that gap needs.
+  for (const [a, b, scale = 1] of [
+    [-0.88, -0.52], [-0.52, -0.16], [-0.16, 0.2], [0.2, 0.56], [0.56, 0.86], [0.86, 1.0, 0.5],
+  ]) {
+    const mid = (a + b) / 2;
+    // Locks hang deeper the further out they sit. Not a stylistic flourish: the
+    // brows live under the middle of the band and top out at -0.469R, so a lock
+    // long enough to read at the temple lands in his eyebrow at the nose. Out
+    // past the brows there is nothing to collide with, which is also where hair
+    // under a tilted cap actually escapes.
+    // |mid| is clamped before it drives the reach: the new outermost lock sits
+    // at 0.93, and ungoverned that profile would hang it to the jaw as a
+    // sideburn rather than a bit of hair escaping the band.
+    const reach = drop * scale * (0.5 + 0.5 * Math.pow(Math.min(Math.abs(mid), 0.78), 1.2));
+    bluntSpike(c,
+      hx + w * a, hemYAt(hx, hy, R, v, a),
+      hx + w * (mid + 0.06), hemYAt(hx, hy, R, v, mid) + reach,   // tip, leaning with travel
+      hx + w * b, hemYAt(hx, hy, R, v, b), 0.3);
+  }
 }
 
 // Caterpillar brows: hair rather than expression, so unlike the ink hairlines
@@ -959,9 +1245,18 @@ function capFringe(c, hx, hy, R) {
 function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
   const sep = 0.075 * u;
   const drop = ex.focus ? 0.012 * u : ex.surprise || ex.cheer ? -0.014 * u : 0;
+  // Celebrating, the eyes squeeze into delighted ^ ^ arcs — and a brow that
+  // holds its scowl through that reads as a face wearing two expressions at
+  // once. Hair brows have to move with the mood the way the ink ones do by
+  // being switched off. So: both ends ride up, and the INNER end lifts further,
+  // which is what flattens the caterpillar's angry slant into a happy arch.
+  // 0.016u, not more: at the arched bands these sit ~0.05R under the hem, and
+  // a bigger lift parks his eyebrows inside his hat.
+  const lift = ex.joy ? 0.016 * u : 0;
+  const arch = ex.joy ? 0.01 * u : 0;
   for (const sx of [-1, 1]) {
-    const ox = cx + sx * (sep + 0.045 * u), oy = cy - 0.086 * u;   // outer, over the temple
-    const ix = cx + sx * (sep - 0.052 * u), iy = cy - 0.05 * u + drop; // inner, toward the nose
+    const ox = cx + sx * (sep + 0.045 * u), oy = cy - 0.086 * u - lift;   // outer, over the temple
+    const ix = cx + sx * (sep - 0.052 * u), iy = cy - 0.05 * u + drop - lift - arch; // inner, toward the nose
     outlined(ctx, p.m, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
       c.moveTo(ox, oy + 0.015 * u);
       c.quadraticCurveTo(cx + sx * sep, oy - 0.016 * u, ix, iy - 0.009 * u);
@@ -976,16 +1271,26 @@ function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
 // rig and the face-crop sprites.
 function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   const turnLimit = Math.PI * 5 / 12;
-  const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(pose.turn) || 0) * Math.PI / 180));
-  const turnYaw = Math.sin(turnRad);
-  const turnDepth = Math.abs(turnYaw);
-  if (turnDepth > 0.001) {
+  // `turn` moves the whole humanoid rig. `headTurn` is an independent,
+  // gallery-only FACIAL experiment: production poses never set it, and it must
+  // not squeeze the skull, hat, hair or ears. Whole-body turn keeps its existing
+  // head transform; a headTurn candidate only feeds the directional face below.
+  const bodyTurn = Number(pose.turn) || 0;
+  const headTurn = Number(pose.headTurn ?? bodyTurn) || 0;
+  const outlineTurn = pose.headTurn == null ? bodyTurn : 0;
+  const outlineRad = Math.max(-turnLimit, Math.min(turnLimit, outlineTurn * Math.PI / 180));
+  const outlineYaw = Math.sin(outlineRad);
+  const outlineDepth = Math.abs(outlineYaw);
+  const faceRad = Math.max(-turnLimit, Math.min(turnLimit, headTurn * Math.PI / 180));
+  const faceYaw = Math.sin(faceRad);
+  const faceDepth = Math.abs(faceYaw);
+  if (outlineDepth > 0.001) {
     // A turned head is not just a squeezed front-facing face: the near cheek
     // advances and the far side foreshortens, carrying the eye spacing with it.
-    const nearShift = -Math.sin(turnRad) * 0.025 * u;
+    const nearShift = -outlineYaw * 0.025 * u;
     ctx.save();
     ctx.translate(hx + nearShift, hy);
-    ctx.scale(1 - 0.08 * turnDepth, 1);
+    ctx.scale(1 - 0.08 * outlineDepth, 1);
     ctx.translate(-hx, -hy);
   }
   const R = (spec.heavy ? 0.22 : 0.21) * u;
@@ -1029,6 +1334,24 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     });
     if (!lod) dot(ctx, tipX, tipY, R * 0.12, p.a);
   }
+  if (spec.plumber) {
+    // Ears go BEHIND the head, so the skull's own fill cuts them off and only
+    // the outboard lobe shows. Drawn on top they were two blobs sitting ON the
+    // face, and the separate sideburn strips that came with them read as hair
+    // stuck to a cheek — worst on the right, where the cap rocks UP and left a
+    // gap of bare head between band and strip with nothing bridging it. The
+    // strips are gone entirely: the tufted fringe already hangs past ear level
+    // at the temples, which is the job they were doing before he had hair.
+    //
+    // The right ear rides higher, following the hat. Not anatomy — the tilt
+    // opens more bare head on that side, and an ear sitting at the same height
+    // as its partner leaves that space looking empty.
+    for (const sx of [-1, 1]) {
+      const lift = sx > 0 && spec.head === 'cap' && lorenzoFace().tilt ? R * 0.12 : 0;
+      outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) =>
+        c.ellipse(hx + sx * R * 0.95, hy + R * 0.08 - lift, R * 0.2, R * 0.28, 0, 0, Math.PI * 2));
+    }
+  }
   // Grumpos gets a broad chibi block-head; the softer cast keeps round heads.
   // The cranium stays fully round — only the jaw is faceted, tapering on hard
   // straight lines from the cheekbones to a narrow chin. That reads tougher
@@ -1055,12 +1378,55 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // hats / hair ON the head
   if (spec.head === 'cap') {
     const cap = lorenzoFace();
-    if (cap.hair) outlined(ctx, p.m, ow, (c) => capFringe(c, hx, hy, R));
+    // A cap worn back on the head. In a flat front view there is no axis to
+    // rotate "backward" around, so the 2D read of that is the whole hat group
+    // rocked so the bill lifts — pivoting at the back of the band, where a real
+    // one pivots when you shove it. The emblem and bill ride the same transform
+    // rather than being re-placed by hand, which is the only way they stay put
+    // relative to the dome.
+    // Pivot on the HEAD CENTER, which is the whole trick: a rotation about the
+    // center leaves every point of the hat the same distance from the skull it
+    // sits on, so the band cannot lift away anywhere. Pivoting at the back of
+    // the band instead — the obvious-looking choice, since that is where a real
+    // cap hinges — swings the front corner from 1.03R out to 1.15R, and that
+    // 12% is a visible gap of bare head under the raised side.
+    const tilt = cap.tilt ? (cap.tilt * Math.PI) / 180 : 0;
+    if (tilt) {
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(-tilt);
+      ctx.translate(-hx, -hy);
+    }
+    // Hair rides inside the same transform: only its bottom edge is visible, and
+    // hanging off a tilted hem is what keeps it parallel to the band instead of
+    // opening a wedge of scalp on the high side.
+    if (cap.hair) outlined(ctx, p.m, ow, (c) => capTufts(c, hx, hy, R, cap));
     outlined(ctx, p.h, ow, (c) => capPath(c, hx, hy, R, cap));
-    const [bx, by, brx, bry] = cap.bill;
-    outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, hy - R * by, R * brx, R * bry, 0, 0, Math.PI * 2));
-    if (!lod) {
-      // Center the gold backing on the raised crossed-tool mark.
+    if (cap.billOval) {
+      // An oval, but seated: centred a touch ABOVE the local hem so most of it
+      // is buried in the cap and only the part past the skull reads as bill.
+      // Attachment by overlap, which is how the legacy `was` ellipse gets away
+      // with it too — that one just sits too high on the dome to look joined.
+      // Held LEVEL through the tilt by its own rotation cancelling the group's,
+      // which is the difference between a cap tipped back and a cap whose bill
+      // points at the ceiling.
+      const [bx, above, brx, bry] = cap.billOval;
+      const by = hemYAt(hx, hy, R, cap, (R * bx) / (R * cap.width)) - R * above;
+      // `billDown` tips the far end DOWN, in degrees. A bill angled down reads
+      // as a visor shading the eyes; a level, symmetric, round-ended lozenge
+      // sticking straight out from a sphere reads as almost anything else.
+      const down = ((cap.billDown || 0) * Math.PI) / 180;
+      outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, by, R * brx, R * bry, tilt + down, 0, Math.PI * 2));
+    } else if (cap.bill) {
+      const [bx, by, brx, bry] = cap.bill;
+      outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, hy - R * by, R * brx, R * bry, 0, 0, Math.PI * 2));
+    }
+    if (!lod && cap.emblem != null) {
+      // Center the gold backing on the raised crossed-tool mark. Off on the
+      // shipped cap: a circular badge on the front of a cap is structurally the
+      // same mark as the one worn by the plumber this design keeps being
+      // compared to, so dropping it buys more distance than any recolour of it
+      // could. `was` keeps its badge, being the historical record.
       const ey = hy - R * cap.emblem;
       outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, ey, R * 0.22, 0, Math.PI * 2));
       // Tiny crossed-tool mark instead of a familiar letter emblem.
@@ -1070,6 +1436,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       ctx.moveTo(hx + R * 0.22, ey - R * 0.1); ctx.lineTo(hx + R * 0.02, ey + R * 0.1);
       ctx.stroke();
     }
+    if (tilt) ctx.restore();
   } else if (spec.head === 'jackal') {
     // A small windswept brow tuft, not a bank of rear-facing spines.
     outlined(ctx, p.h, ow, (c) => bluntSpike(c,
@@ -1305,14 +1672,10 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       c.closePath();
     });
   }
-  if (spec.plumber) {
-    // Ear and sideburn break up the perfect head circle and add a little age.
-    outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx - R * 0.94, hy + R * 0.08, R * 0.22, R * 0.3, 0, 0, Math.PI * 2));
-    outlined(ctx, p.m, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, hx - R * 0.93, hy - R * 0.2, R * 0.2, R * 0.45, R * 0.08));
-  }
+
   // face
   const ex = expressionFor(id, pose);
-  const faceEx = pose.turn ? { ...ex, turn: pose.turn } : ex;
+  const faceEx = headTurn ? { ...ex, turn: headTurn } : ex;
   // Cap variants that reshape Lorenzo's brow line also move the face mask under
   // it and choose how the brows are drawn. Everyone else is untouched.
   const capV = spec.head === 'cap' ? lorenzoFace() : null;
@@ -1321,9 +1684,9 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // squeezing a centred pair of eyes leaves a front-facing mask on an oval.
   // Hair, beard and cheek paint remain anchored to the skull, so this shift
   // creates a broad near cheek and a compressed receding cheek.
-  if (turnDepth > 0.001) {
+  if (faceDepth > 0.001) {
     ctx.save();
-    ctx.translate(turnYaw * 0.055 * u, 0);
+    ctx.translate(faceYaw * 0.11 * u, 0);
   }
   // The mask — eyes, nose, mustache, mouth — slides as one. Ear, sideburn and
   // hat stay bolted to the skull above.
@@ -1371,7 +1734,13 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     outlined(ctx, p.m, Math.max(0.33, ow * 0.33) * INK.face, (c) => {
       c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
       c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
-      c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u - lift, hx + 0.015 * u, hy + 0.1 * u - lift);
+      // The notch between the lobes has to clear the NOSE, which is a circle
+      // reaching +0.110u. At +0.100u the mustache stopped 0.010u short and a
+      // sliver of nose showed through the gap — small, but centred right where
+      // a mouth would be, so it read as one. Nothing else is drawn down there:
+      // drawMouth is gated on !spec.mustache, so a mustached face has no mouth
+      // at all outside the celebrate grin.
+      c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u - lift, hx + 0.015 * u, hy + 0.118 * u - lift);
       c.quadraticCurveTo(hx + 0.08 * u, hy + 0.13 * u - lift, hx + 0.145 * u, hy + 0.09 * u - lift - tip);
       c.quadraticCurveTo(hx + 0.06 * u, hy + 0.035 * u - lift, hx + 0.015 * u, hy + 0.075 * u - lift);
       c.closePath();
@@ -1407,8 +1776,8 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   }
   if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow, ex);
   if (faceDy) ctx.restore();
-  if (turnDepth > 0.001) ctx.restore();
-  if (turnDepth > 0.001) ctx.restore();
+  if (faceDepth > 0.001) ctx.restore();
+  if (outlineDepth > 0.001) ctx.restore();
 }
 
 // ---------------------------------------------------------------- rigs
@@ -2464,6 +2833,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // SKIN_OUTLINE — it is the biggest uninterrupted shape on him, and at full
   // weight its rim dominates the sprite the way no limb's can.
   outlined(ctx, p.b, heavy ? ow * 0.65 : ow, torsoPath, heavy ? 'rgba(26,16,40,0.15)' : OUTLINE);
+  // Where the waist is, for anyone who needs it. The belt rides the run bob
+  // like the torso does — pinned to a static hipY it detaches from a bobbing
+  // body — so trousers and belt have to share one number or the colour seam
+  // and the strap that is meant to cover it drift apart mid-stride.
+  const beltY = hipY - 0.085 * u + bob;
+  if (spec.pants) {
+    // Below the waist in the LEG colour, so the lower body reads as trousers
+    // rather than as a shirt worn long. Clipped to the torso, so the silhouette
+    // is untouched — this is paint, not geometry — and drawn before the belt,
+    // which then sits on the seam and hides it. It runs past torsoBot on
+    // purpose: the pelvis and leg roots are drawn under the torso and the fill
+    // has to reach them, or a sliver of shirt colour survives at the crotch.
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.fillStyle = p.p;
+    ctx.fillRect(torsoCx - torsoHalf * 1.2, beltY, torsoHalf * 2.4, torsoBot - beltY + 0.1 * u);
+    ctx.restore();
+  }
   if (turned && !duck) {
     // Shade the receding far side. Grumpos's body and skin share a colour, so
     // using skin here was invisible and left his torso reading front-on.
@@ -2596,33 +2983,100 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // they drift off-center whenever the body leans forward.
     const px = torsoCx;
     // Tool belt and brass buckle anchor the overalls at tiny scale. The belt
-    // sits a little above the hip line and stops just shy of the torso edge,
-    // so it reads as wrapping the body without poking past the silhouette.
-    // It follows the run bob like the torso does (same as grumpos's belt) —
-    // pinned to static hipY it would detach from the bobbing body.
-    const beltY = hipY - 0.115 * u + bob;
+    // stops just shy of the torso edge, so it reads as wrapping the body
+    // without poking past the silhouette. Its height comes from the shared
+    // `beltY` above, which the trouser fill also uses — the belt has to land ON
+    // that colour seam to cover it.
     // Suspenders run the full bib: shoulder down to the belt, angling slightly
     // inward. Stubs that stop at the collarbone read as epaulettes, not straps.
     // Clipped to the torso — the shoulder ends land in the rounded corners,
     // where the stroke would otherwise hang off the side of the body.
+    // `bib` is off: braces on a shirt sit further from the obvious plumber than
+  // overalls do, and the teal torso staying dominant is the most un-Mario thing
+  // about him. Kept as a flag, not deleted, because it is a real alternative and
+  // one word flips it back.
+  //
+  // The BIB is what makes these overalls rather than braces on a shirt: the
+    // trouser front carried up the chest as a panel, with the straps running
+    // off its top corners. Widening the straps alone would only ever read as
+    // wide suspenders. This is also what the pixel grid has always described —
+    // its torso rows put a band of trouser blue up the middle of the teal body
+    // (`.bsbppppbs..`, commented "overall straps") — so the toon was the one
+    // that had drifted. Same p.p as the trousers and rooted at the same beltY,
+    // so bib and legs are visibly one garment; clipped to the torso, so like
+    // the trousers this is paint and the silhouette never moves.
+    const bib = !!spec.bib;
+    const bibHalf = torsoHalf * 0.46;
+    const bibTopY = torsoTop + (beltY - torsoTop) * 0.42;
+    if (bib) {
+      ctx.save();
+      ctx.beginPath(); torsoPath(ctx); ctx.clip();
+      ctx.fillStyle = p.p;
+      ctx.beginPath();
+      roundRectPath(ctx, px - bibHalf, bibTopY, bibHalf * 2, beltY - bibTopY + 0.02 * u, bibHalf * 0.3);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Straps land ON the bib's top corners and splay outward going up, the way
+    // a strap crosses a shoulder. The old pair angled the other way — inward as
+    // they descended, to a point narrower than the bib now is — which is the
+    // braces read, not the overalls one.
+    // With a bib the straps land ON its top corners and splay outward going up,
+    // the way a strap crosses a shoulder. Without one they run all the way to
+    // the belt and angle inward as they descend — braces on a shirt, which is
+    // the geometry this carried before the bib and a visibly different garment.
+    const strapEndY = bib ? bibTopY : beltY;
     const strapTopY = torsoTop + 0.01 * u;
-    const strapTopX = (s) => px + s * torsoHalf * 0.5;
-    const strapBotX = (s) => px + s * torsoHalf * 0.34;
+    const strapTopX = (s) => px + s * torsoHalf * (bib ? 0.62 : 0.5);
+    const strapBotX = (s) => px + s * (bib ? bibHalf : torsoHalf * 0.34);
     const strapStroke = (s, endY) => {
       ctx.save();
       ctx.beginPath(); torsoPath(ctx); ctx.clip();
       ctx.strokeStyle = p.p;
-      ctx.lineWidth = 0.045 * u;
+      ctx.lineWidth = (bib ? 0.055 : 0.045) * u;
       ctx.beginPath();
       for (const sg of s) {
-        const t = (endY - strapTopY) / (beltY - strapTopY);
+        const t = (endY - strapTopY) / (strapEndY - strapTopY);
         ctx.moveTo(strapTopX(sg), strapTopY);
         ctx.lineTo(strapTopX(sg) + (strapBotX(sg) - strapTopX(sg)) * t, endY);
       }
       ctx.stroke();
       ctx.restore();
     };
-    strapStroke([-1, 1], beltY);
+    strapStroke([-1, 1], strapEndY);
+    // One pocket with a tool head in it, and nothing else on the bib. The bib
+    // is the piece that pulls this silhouette toward the obvious plumber — cap
+    // plus mustache plus overalls IS that formula — so the panel earns its keep
+    // by saying handyman instead of mascot. What is deliberately NOT here: two
+    // round buttons at the strap joins. On a blue bib that is the single most
+    // recognisable mark of the character we are steering around, and it would
+    // undo every other difference in one stroke.
+    if (bib) {
+    const pocketH = (beltY - bibTopY) * 0.44;
+    // Chest height, not waist height: down by the hem the gold tool head stacked
+    // directly above the gold belt buckle, and two gold marks that close read as
+    // one cluttered smudge at any size that matters.
+    const pocketY = bibTopY + (beltY - bibTopY) * 0.3;
+    const pocketHalf = bibHalf * 0.62;
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(0.4, ow * 0.5);
+    ctx.beginPath();
+    roundRectPath(ctx, px - pocketHalf, pocketY, pocketHalf * 2, pocketH, pocketH * 0.22);
+    ctx.stroke();
+    // Tool head poking out of it, in the cap-badge gold so the two read as the
+    // same trade. Short: anything longer becomes a stripe at 24px.
+    ctx.strokeStyle = p.m;
+    ctx.lineWidth = Math.max(0.5, 0.014 * u);
+    ctx.beginPath();
+    ctx.moveTo(px + pocketHalf * 0.42, pocketY + pocketH * 0.5);
+    ctx.lineTo(px + pocketHalf * 0.42, pocketY - pocketH * 0.34);
+    ctx.stroke();
+    outlined(ctx, p.a, Math.max(0.4, ow * 0.4), (c) =>
+      roundRectPath(c, px + pocketHalf * 0.18, pocketY - pocketH * 0.62, pocketHalf * 0.48, pocketH * 0.4, pocketH * 0.12));
+    ctx.restore();
+    }
     // A suspender passes OVER the shoulder — the arm hangs outboard of it. The
     // profile gaits root the near arm at ~0.69 of the half-width, and a 0.075u
     // bone plus its outline reaches back in past 0.5, so the shoulder cap lands
@@ -3153,6 +3607,12 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   ex.cross = loll;
   const faceBob = kind === 'run' ? Math.sin(2 * ph) * 0.012 * u : 0;
   const faceY = cy - ry * 0.08 + faceBob;
+  // Gallery-only directional look. Poyo has no separate head to rotate, so the
+  // facial mask shifts across the fixed body and compresses slightly instead.
+  const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
+  ctx.save();
+  ctx.translate(faceYaw * 0.045 * u, 0);
+  ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1);
   pikaEyes(ctx, p, u, 0, faceY, lod, ex);
   const jig = kind === 'run' ? Math.sin(2 * ph - 0.7) : 0;
   const cheekY = faceY + 0.11 * u + jig * 0.018 * u;
@@ -3185,6 +3645,8 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
     ctx.quadraticCurveTo(0.025 * u, faceY + 0.16 * u, 0.05 * u, faceY + 0.12 * u);
     ctx.stroke();
   }
+
+  ctx.restore();
 
   ctx.restore();
 }
@@ -3276,7 +3738,7 @@ function chompoBodyFill(ctx, p, lod) {
   g.addColorStop(0, p.hi); g.addColorStop(0.58, p.b); g.addColorStop(1, p.sh);
   return g;
 }
-function chompoEye(ctx, p, e, bodyFill, lod, blink) {
+function chompoEye(ctx, p, e, bodyFill, lod, blink, gaze = 0) {
   ctx.save();
   ctx.translate(e.cx, e.cy); ctx.scale(e.k, e.k); ctx.translate(-e.cx, -e.cy);
   if (blink) { // closed: the lash line arc plus her lash tips, so a blink still reads glam
@@ -3288,8 +3750,8 @@ function chompoEye(ctx, p, e, bodyFill, lod, blink) {
   ctx.beginPath(); ctx.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2);
   ctx.fillStyle = p.w; ctx.fill();
   ctx.globalAlpha = 0.5; ctx.strokeStyle = p.sh; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1;
-  dot(ctx, e.pupil[0], e.pupil[1], e.pupil[2], p.e);
-  dot(ctx, e.glint[0], e.glint[1], e.glint[2], p.w);
+  dot(ctx, e.pupil[0] + gaze, e.pupil[1], e.pupil[2], p.e);
+  dot(ctx, e.glint[0] + gaze, e.glint[1], e.glint[2], p.w);
   if (!lod) {
     specFill(ctx, e.lid, bodyFill);        // half-lidded, body-coloured
     specStroke(ctx, e.lash, p.e, e.lashW);
@@ -3472,8 +3934,15 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     specFill(ctx, CHOMPO_PATHS.hairFront, p.hair);
     if (!lod) specStroke(ctx, CHOMPO_PATHS.hairFrontHi, p.hairLight, 4, 0.55);
     ctx.restore();
-    // 6. eyes (far then near), on top of the hair
-    for (const e of CHOMPO_EYES) chompoEye(ctx, p, e, bodyFill, lod, ex.blink);
+    // 6. eyes (far then near), on top of the hair. Miss Chomp's whole body is
+    // her head, so the gallery-only yaw candidate moves and foreshortens the
+    // eye mask while leaving the wedge, hair and bow silhouette untouched.
+    const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
+    ctx.save();
+    ctx.translate(faceYaw * 7, 0);
+    ctx.translate(120, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1); ctx.translate(-120, 0);
+    for (const e of CHOMPO_EYES) chompoEye(ctx, p, e, bodyFill, lod, ex.blink, faceYaw * 3);
+    ctx.restore();
     // 7. bow (spec rotate(-8°) plus a small flutter so it isn't frozen)
     const flutter = (pose.kind === 'run' ? Math.sin(2 * ph) : Math.sin((pose.time || 0) * 2)) * 0.05;
     ctx.save();
@@ -3507,8 +3976,13 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
     c.closePath();
   });
   const ex = expressionFor(id, pose);
-  drawEyes(ctx, p, u, hx + 0.02 * u, hy - 0.01 * u, lod, ex);
-  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, hx + 0.02 * u, hy + 0.08 * u, ow, ex);
+  const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose.headTurn) || 0)) * Math.PI / 180);
+  const faceX = hx + (0.02 + faceYaw * 0.045) * u;
+  ctx.save();
+  ctx.translate(faceX, 0); ctx.scale(1 - Math.abs(faceYaw) * 0.08, 1); ctx.translate(-faceX, 0);
+  drawEyes(ctx, p, u, faceX, hy - 0.01 * u, lod, ex);
+  if (!lod) drawMouth(ctx, { mouth: 'smirk' }, p, u, faceX, hy + 0.08 * u, ow, ex);
+  ctx.restore();
 }
 
 function drawRay(ctx, id, p, pose, u, ow, lod) {
@@ -3769,6 +4243,104 @@ export function toonInkTop(heroId) {
   if (b) top = (TOP_FEET - b.y0) / TOP_R;
   STAND_TOP.set(heroId, top);
   return top;
+}
+
+// Stable glass-effect envelope for each toon. The shield used to be one ellipse
+// centered on the nominal 24px body box, which meant ears, hats, axes and wide
+// action poses poked straight through it. A dynamic per-frame fit fixes the
+// containment but makes the glass visibly breathe with every footfall, so this
+// measures the UNION of ordinary gameplay poses once and fits one ellipse that
+// stays put for the whole time a hero carries a shield.
+//
+// Values are normalized to drawToon's `h`: cx/cy offset from the feet anchor,
+// rx/ry radii. Headless/thrown-weapon states are deliberately absent because
+// they only remove ink; victory and cast-roll choreography are not gameplay.
+const EFFECT_ELLIPSE = new Map();
+const EFFECT_R = 96;
+const EFFECT_PAD = 0.055;
+const EFFECT_FALLBACK = {
+  lorenzo:  { cx: 0, cy: -0.5,  rx: 0.58, ry: 0.68 },
+  gnash:    { cx: 0, cy: -0.53, rx: 0.62, ry: 0.72 },
+  fernwick: { cx: 0, cy: -0.52, rx: 0.62, ry: 0.72 },
+  b33p:     { cx: 0.04, cy: -0.52, rx: 0.72, ry: 0.72 },
+  mochi:    { cx: 0, cy: -0.58, rx: 0.64, ry: 0.88 },
+  chompo:   { cx: -0.02, cy: -0.5, rx: 0.66, ry: 0.72 },
+  gary:     { cx: 0, cy: -0.5, rx: 0.58, ry: 0.68 },
+  dolores:  { cx: 0, cy: -0.5, rx: 0.6, ry: 0.7 },
+  raymn:    { cx: -0.02, cy: -0.5, rx: 0.7, ry: 0.78 },
+  grumpos:  { cx: 0, cy: -0.62, rx: 0.72, ry: 0.94 },
+};
+
+function effectPoses(heroId) {
+  const poses = [0, 0.25, 0.5, 0.75].map((phase) =>
+    ({ kind: 'run', phase, time: phase, grounded: true, facing: 1 }));
+  poses.push(
+    { kind: 'jump', phase: 0.25, time: 0.25, grounded: false, facing: 1, vy: 280 },
+    { kind: 'duck', phase: 0.5, time: 0.5, grounded: true, facing: 1 },
+  );
+  const special = {
+    lorenzo: { kind: 'jump', phase: 0.5, time: 0.2, grounded: false, facing: 1, stomp: true, vy: -240 },
+    gnash: { kind: 'run', phase: 0.25, time: 0.25, grounded: true, facing: 1, lean: 0.26 },
+    fernwick: { kind: 'duck', phase: 0.5, time: 0.3, grounded: true, facing: 1, roll: true },
+    b33p: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
+    mochi: { kind: 'duck', phase: 0.5, time: 0.2, grounded: true, facing: 1, squash: 1 },
+    chompo: { kind: 'run', phase: 0.25, time: 0.22, grounded: true, facing: 1, menuAction: 'chomp' },
+  }[heroId];
+  if (special) poses.push(special);
+  return poses;
+}
+
+function effectInk(heroId) {
+  try {
+    const size = EFFECT_R * 4;
+    const anchorX = EFFECT_R * 2, feetY = EFFECT_R * 2.5;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const x = c.getContext('2d');
+    for (const pose of effectPoses(heroId)) {
+      drawToon(x, heroId, pose, anchorX, feetY, EFFECT_R, { light: false });
+    }
+    const { data } = x.getImageData(0, 0, size, size);
+    if (data.length !== size * size * 4) return null;
+    const points = [];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        if (data[(py * size + px) * 4 + 3] < 8) continue;
+        points.push([px, py]);
+        if (px < x0) x0 = px; if (px > x1) x1 = px;
+        if (py < y0) y0 = py; if (py > y1) y1 = py;
+      }
+    }
+    if (!points.length) return null;
+    return { points, x0, y0, x1, y1, anchorX, feetY };
+  } catch { return null; }
+}
+
+export function toonEffectEllipse(heroId) {
+  if (EFFECT_ELLIPSE.has(heroId)) return EFFECT_ELLIPSE.get(heroId);
+  const ink = effectInk(heroId);
+  let fit = EFFECT_FALLBACK[heroId] || { cx: 0, cy: -0.5, rx: 0.62, ry: 0.72 };
+  if (ink) {
+    const mx = (ink.x0 + ink.x1) / 2, my = (ink.y0 + ink.y1) / 2;
+    const bx = Math.max(1, (ink.x1 - ink.x0 + 1) / 2);
+    const by = Math.max(1, (ink.y1 - ink.y0 + 1) / 2);
+    // A bounding box alone does not imply a containing ellipse: ink near a
+    // corner can sit outside it. Inflate both axes by the largest normalized
+    // radius actually occupied, then add a small glass-to-ink air gap.
+    let radial = 1;
+    for (const [px, py] of ink.points) {
+      radial = Math.max(radial, Math.hypot((px - mx) / bx, (py - my) / by));
+    }
+    fit = Object.freeze({
+      cx: (mx - ink.anchorX) / EFFECT_R,
+      cy: (my - ink.feetY) / EFFECT_R,
+      rx: bx * radial / EFFECT_R + EFFECT_PAD,
+      ry: by * radial / EFFECT_R + EFFECT_PAD,
+    });
+  } else fit = Object.freeze({ ...fit });
+  EFFECT_ELLIPSE.set(heroId, fit);
+  return fit;
 }
 
 // Head-and-face render fitted to a w-by-h box (HUD cells, portal crops).

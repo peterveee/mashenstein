@@ -25,8 +25,10 @@ const CAST_HERO_TILE = 150;
 const CAST_HERO_SCALE = 2;
 const CAST_HERO_FLOOR = 140;
 
-// Gary is an NPC gag, not a playable relay member. Keep him local to the
-// roll call so the normal eight-hero systems do not start selecting him.
+// Gary and Dolores are NPC gags, not playable relay members. Keep them local
+// to the roll call so the normal eight-hero systems do not start selecting
+// them. The Dust Devil is deliberately NOT here: he is a surprise, and a card
+// would spend him before the player meets him.
 const GARY_CAST = {
   id: 'gary', name: 'GARY, STILL ON THE CLOCK', short: 'GARY',
   tagline: 'TECHNICALLY I NEVER CLOCKED OUT.',
@@ -35,9 +37,23 @@ const GARY_CAST = {
   joke: 'HR SAYS BEING DECEASED IS NOT APPROVED LEAVE. I HAVE APPEALED.',
 };
 
+// Her rule, per the hub lines: she never acknowledges the arcade is dead. Not
+// denial — a shift that has not ended. So the card never winks at it either;
+// it is written as staff copy, and the gap is the joke.
+const DOLORES_CAST = {
+  id: 'dolores', name: 'DOLORES, NOT YET RELIEVED', short: 'DOLORES',
+  tagline: 'NEXT.',
+  ability: { label: 'ONE PER CUSTOMER' },
+  abilityDesc: 'PLACE ONE ITEM ON THE COUNTER. DO NOT HOLD UP THE LINE.',
+  joke: 'NOW SERVING ZERO. PLEASE HAVE YOUR NUMBER READY.',
+};
+
+// The two counter staff land together, then the roll call still ends on a
+// hero rather than the NPC bit.
 export const CAST_HEROES = [
   ...HEROES.slice(0, -1),
   GARY_CAST,
+  DOLORES_CAST,
   HEROES[HEROES.length - 1],
 ];
 
@@ -110,7 +126,9 @@ function drawCastHero(ctx, heroId, pose, cx, feetY) {
 }
 
 // Each hero's signature beat, matching the title parade so the poses are
-// known-good for their rig.
+// known-good for their rig. Dolores is absent on purpose: everyone else
+// performs and she just stands at her post, which is the character. Her beat
+// is on her face instead — see `calling` in sprites/toons.js.
 const BEATS = {
   lorenzo: 'wave', gnash: 'jump', fernwick: 'roll', b33p: 'aim',
   mochi: 'float', chompo: 'chomp', raymn: 'assemble', grumpos: 'flex', gary: 'wave',

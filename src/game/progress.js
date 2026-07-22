@@ -47,16 +47,38 @@ export function prevStage(stage) {
   return STAGES.find((s) => s.cabinet === stage.cabinet && s.index === stage.index - 1) || null;
 }
 
+// The stage after this one in the same cabinet, or null for a cabinet's last.
+// What a run has left locked behind it, which the results screen names.
+export function nextStage(stage) {
+  return STAGES.find((s) => s.cabinet === stage.cabinet && s.index === stage.index + 1) || null;
+}
+
 // Cabinets already gate on the campaign-wide plug total; this gates *within* a
 // cabinet, so its three stages open in order. The bar is one plug, not a clear:
 // the toaster banks even on a failed run, so a player stuck on the mission can
 // still grab the appliance and move on. Without this a first-time visitor lands
 // on a cabinet's three stages at once and tends to bounce off stage 3 —
 // balanced against having played 1 and 2 — and read the whole cabinet as unfair.
+// Has this stage ever paid out? One plug is the bar, and the toaster banks even
+// on a failed run — so this reads as "you have been here before", not "you beat
+// it". Both callers want the former: the gate below opens a cabinet's next
+// stage, and the ACT card uses it to decide whether it is a first read.
+export function stagePlayed(slot, stage) {
+  return (slot.campaign.plugs[stage.id] || []).some(Boolean);
+}
+
+// Mission, challenge and toaster all banked — there is nothing left to earn on
+// this stage. The ACT card uses it as the point where an establishing beat has
+// stopped establishing anything.
+export function stageAllPlugs(slot, stage) {
+  const banked = slot.campaign.plugs[stage.id] || [];
+  return banked.length === 3 && banked.every(Boolean);
+}
+
 export function stageUnlocked(slot, stage) {
   const prev = prevStage(stage);
   if (!prev) return true;
-  return (slot.campaign.plugs[prev.id] || []).some(Boolean);
+  return stagePlayed(slot, prev);
 }
 
 export function finaleUnlocked(slot) {

@@ -136,7 +136,14 @@ const Flow = {
         Flow.lastTeam = result.team;
         Flow.setHero(result.finalHero);
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => Flow.toHub(false) }));
+        setStateNoCameo(new ResultsState({
+          result, gains, save,
+          onDone: () => Flow.toHub(false),
+          // launchStage, not startStage: a retry has already read the briefing.
+          // No seed passed either, so the next attempt is a fresh roll rather
+          // than a replay of the pattern that just went wrong.
+          onRetry: () => Flow.launchStage(cab, stage, corrupted),
+        }));
       },
     }));
   },
@@ -154,10 +161,14 @@ const Flow = {
           save.persist();
         }
         const gains = applyResult(save, result);
-        setStateNoCameo(new ResultsState({ result, gains, save, onDone: () => {
-          if (result.success && cabId === 'surge') Flow.startFinale();
-          else Flow.toHub(false);
-        } }));
+        setStateNoCameo(new ResultsState({
+          result, gains, save,
+          onDone: () => {
+            if (result.success && cabId === 'surge') Flow.startFinale();
+            else Flow.toHub(false);
+          },
+          onRetry: () => Flow.startBoss(cabId),
+        }));
       },
     }));
   },

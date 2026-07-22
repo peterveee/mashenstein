@@ -18,6 +18,16 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   durationSec: opts.durationSec || CAB_DURATION[cab],
   applianceAt: opts.applianceAt ?? (0.55 + 0.1 * ((idx * 7) % 3)), // fraction of distance
   applianceHigh: opts.applianceHigh ?? (idx % 2 === 0),
+  // Two separate openers, because they are two different events and a stage may
+  // have both. `act` is the full-screen milestone card: it freezes the world for
+  // two seconds before the run starts. `intro` is a speech bubble that rides the
+  // first four seconds of actual running.
+  //
+  // These used to be one field, with run.js deciding which it was by testing
+  // whether the string began with 'ACT ' — so the difference between a frozen
+  // two-second card and a line of banter was a prefix, invisible here, and a
+  // stage could not have one of each.
+  act: opts.act || null,
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
 });
@@ -27,7 +37,8 @@ export const STAGES = [
   S('plumber', 1,
     { type: 'reach', desc: 'REACH THE BREAKER. FLIP IT. SAVE EVERYTHING.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
-    { introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.' }),
+    { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
+      introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.' }),
   S('plumber', 2,
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 ?-CRATES. THE ? IS RHETORICAL.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
@@ -58,7 +69,7 @@ export const STAGES = [
   S('frost', 1,
     { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' },
-    { intro: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.' }),
+    { act: 'ACT II. THE EXTENSION CRISIS. EVERYONE IS COLD AND BRAVE.' }),
   S('frost', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 CORD PIECES FROZEN IN THE FORTRESS.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
@@ -89,7 +100,7 @@ export const STAGES = [
   S('cardboard', 1,
     { type: 'reach', desc: 'CROSS THE KINGDOM BEFORE IT FINISHES COLLAPSING.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { intro: 'ACT III. THE OUTLET AT THE END OF EVERYTHING. THE CASTLE IS FOUR INCHES TALL.' }),
+    { act: 'ACT III. THE OUTLET AT THE END OF EVERYTHING. THE CASTLE IS FOUR INCHES TALL.' }),
   S('cardboard', 2,
     { type: 'escape', desc: 'ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' }),

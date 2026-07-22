@@ -15,6 +15,7 @@ const suites = [
   'tests/props.js',
   'tests/debris.js',
   'tests/star-power.js',
+  'tests/character-rendering.js',
   'tests/title-sign.js',
   'tests/minigames.js',
   'tests/plug-tally.js',

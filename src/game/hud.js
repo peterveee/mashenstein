@@ -613,6 +613,10 @@ export function roundButtonOpts(run, b) {
 // is exactly how Dolores shipped her first afternoon.
 const EXTRA_SPEAKERS = { gary: { short: 'GARY' }, dolores: { short: 'DOLORES' } };
 
+// Speech plates lay out on a taller row than the popup cards do — the bubble is
+// read standing still, the barks are read in motion.
+const SPEECH_ROW = 11;
+
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
 //
 // The default is built for a run: a translucent slate over a bright, moving
@@ -639,12 +643,21 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const y = 46;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
+  //
+  // The bubble sits high on purpose — it belongs to a character standing at the
+  // bottom of the frame — so this y is an anchor, not a centring failure. What
+  // is centred here is the ink inside the plate.
   if (!isEgg && !hero) {
     // Three lines, not two: Eggshell's longest grievances need the room.
     const lines = wrapText(speech.text, W - 56, 1, 3);
     const tw = Math.max(...lines.map((line) => textWidth(line)));
-    panel(W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * 11);
-    lines.forEach((line, i) => rawDrawTextCentered(ctx, line, W / 2, y + i * 11, ink));
+    panel(W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * SPEECH_ROW);
+    // Through textY, like every other panel in this file. The plate's 4 units
+    // of top padding put the first ROW at y; the ink then has to be centred on
+    // that row rather than having its 12-unit glyph box hung off the top of it,
+    // which sat every tutorial line high on its own plate.
+    lines.forEach((line, i) =>
+      rawDrawTextCentered(ctx, line, W / 2, textY(y + i * SPEECH_ROW + SPEECH_ROW / 2), ink));
     return;
   }
   // Named speakers: one block — portrait on the left, name as a header over
@@ -674,4 +687,171 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const ty = y - 4 + Math.round((h - textH) / 2) + 3;
   rawDrawText(ctx, name, tx, ty, nameInk);
   lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + 11 + i * 11, ink));
+}
+
+// ACT announcement: full-screen corporate-glitch card over the frozen world.
+// The text is an authored stage.intro, split at the first sentence so the act
+// number slams as a title and the subtitle sits under it.
+//
+// It sits next to drawSpeech because it is the same job — the game addressing
+// you over the top of a run — and because it is a painter, not a run: the only
+// state it reads is passed in. That is what lets the dev prose browser preview
+// an act card cold, with no RunState behind it, and still be looking at the
+// exact card the stage puts up.
+const HEAD_S = 2; // the act number's type scale; the block height is measured off it
+// The skip hint's own line, low on the card and clear of the centred block.
+const SKIP_Y = 210;
+export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip = false } = {}) {
+  const dot = text.indexOf('. ');
+  const head = dot > 0 ? text.slice(0, dot) : text;
+  const tail = dot > 0 ? text.slice(dot + 2) : '';
+  const jx = (i) => (still ? 0 : Math.round(Math.sin(t * 47 + i * 13) * 1.5));
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, W, H);
+  // Centred on the canvas, measured rather than nailed to a y.
+  //
+  // Head and tail used to sit at a hard 92 and 128, which centred the block on
+  // the band ABOVE the groundline (0..GROUND_Y, middle 116) rather than on the
+  // screen — so a card with one subtitle line rode about 20px high, and one
+  // with three rode high by a different amount again, because only the top of
+  // the block was pinned. Both are laid out from the midline now, so every card
+  // is centred and a longer subtitle grows in both directions.
+  //
+  // The internal spacing is the authored one, kept exactly: the head's glyph
+  // box is 12*scale tall, then a 13px gap, then 12px per tail line.
+  const tailLines = wrapText(tail, W - 48, 1, 3);
+  const HEAD_H = 12 * HEAD_S, GAP = 13, TAIL_H = 12;
+  const blockH = HEAD_H + (tailLines.length ? GAP + TAIL_H * tailLines.length : 0);
+  const top = Math.round((H - blockH) / 2);
+  // rawDrawTextCentered takes the glyph-box top, which sits 1*scale above the ink.
+  const headY = top + HEAD_S;
+  const tailY = top + HEAD_H + GAP + 1;
+  // Chromatic ghosts under a white core: a memo shot through a bad signal.
+  rawDrawTextCentered(ctx, head, W / 2 - 1 + jx(1), headY, '#c83030', HEAD_S, 'title');
+  rawDrawTextCentered(ctx, head, W / 2 + 1 - jx(2), headY, '#48e0c8', HEAD_S, 'title');
+  rawDrawTextCentered(ctx, head, W / 2, headY, '#fff', HEAD_S, 'title');
+  tailLines.forEach((line, i) =>
+    rawDrawTextCentered(ctx, line, W / 2, tailY + i * TAIL_H, '#c8c8d8'));
+  if (!still) {
+    // Tracking slices: thin bars drifting like a mistracked tape.
+    ctx.fillStyle = 'rgba(200,48,48,0.3)';
+    for (let i = 0; i < 4; i++) {
+      const y = (i * 67 + Math.floor(t * 140)) % H;
+      ctx.fillRect(jx(i) * 2, y, W, 1);
+    }
+  }
+  // Only drawn when the card can actually be skipped, which is the whole point:
+  // an always-present hint would be a lie on the one playthrough where the card
+  // is not skippable, and that is the playthrough where it is read.
+  if (skip) {
+    rawDrawTextCentered(ctx, `${Input.confirmVerb()} TO SKIP`, W / 2, SKIP_Y, '#8a8a98');
+  }
+  ctx.restore();
+}
+
+// The row height every carded popup lays its lines out on. Named because the
+// card's height and the ink's midline are both derived from it — they were two
+// separate literal 10s, which is how the text ended up centred on the glyph BOX
+// instead of on the ink (see TEXT_INK_TOP in sprites.js).
+const LINE_H = 10;
+
+// Floatie chrome: one step lighter than the standard HUD panel, so in-world
+// barks read as their own species without leaving the design system.
+const FLOAT_PANEL = 'rgba(58,64,88,0.72)';
+const FLOAT_BORDER = 'rgba(255,255,255,0.22)';
+
+// The hazard card. Every other floatie tints the translucent panel above, which
+// over a light pack (the doodle sheet is #eceadf) composites to a mid grey near
+// rgb(108,112,126) — and the hazard red is the one ink in the set dark enough
+// that it cannot survive that: it lands at 1.2:1 there and 3.2:1 even over the
+// darkest pack. The rest of the palette was lifted to clear the floor, but red
+// cannot be lifted without becoming salmon and ceasing to mean danger. So the
+// ink keeps its saturation and the CARD does the work instead: opaque, so the
+// pack behind it stops mattering, which puts red at 4.5:1 everywhere. It reads
+// as a different species of message, which a hazard is.
+const HAZARD_PANEL = '#1a1220';
+const HAZARD_BORDER = { border: 'rgba(224,72,72,0.55)', shadow: true };
+
+// The death banner: the dim, and the fail message on a card.
+//
+// Same job as drawActBanner — the game addressing you over the top of a run —
+// and now the same rule as every other string this module draws: it sits on a
+// panel. It was the one exception, bare red text over a 35% dim, which put the
+// message straight onto whatever the stage happened to look like at the moment
+// you died. Over a bright pack that is red on mid-tone at barely 2:1.
+//
+// It takes the HAZARD card rather than the standard translucent one for the
+// same reason the hazard floatie does: this is the failure ink, it is the
+// darkest in the set, and it cannot survive a panel you can see the stage
+// through. Opaque card, and the pack behind it stops mattering.
+//
+// The dim is deeper than the 0.35 it replaces but lighter than the pause
+// screen's 0.6 — the hero's death pop launches them up through this frame and
+// is worth still being able to watch.
+export function drawFailBanner(ctx, text) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+  // Same card geometry as a floatie (4px above and below the ink), with more
+  // air at the sides: this one is centred on the screen rather than hung off
+  // the hero's column, so it reads as a plate rather than as a bark.
+  //
+  // Centred on the canvas from the card's own height, so a message that wraps
+  // to two lines grows in both directions instead of hanging off a fixed top.
+  const PADX = 10;
+  const lines = wrapText(text, W - 72, 1, 2);
+  const tw = Math.max(...lines.map((line) => textWidth(line)));
+  const bw = tw + PADX * 2, bh = lines.length * 10 + 8;
+  const by = Math.round((H - bh) / 2);
+  drawPanel(ctx, Math.round(W / 2 - bw / 2), by, bw, bh, 5, HAZARD_PANEL, HAZARD_BORDER);
+  // Through textY, like every other panel in this file: the glyph box is 12
+  // units tall but the ink only occupies the middle 6 of it, so centring the
+  // box leaves the lettering sitting visibly high on its own card.
+  lines.forEach((line, i) =>
+    rawDrawTextCentered(ctx, line, W / 2, textY(by + 4 + i * LINE_H + LINE_H / 2), '#e04848'));
+  ctx.restore();
+}
+
+// One feedback popup — the card and the words on it. Lifted out of run.js's
+// draw loop for the same reason drawActBanner was: it is a painter, and the
+// only state it reads is passed in. That is what lets the gallery lay every
+// floatie the game can produce side by side, drawn by this exact function,
+// and judge them for legibility without a RunState behind any of them.
+//
+// `heroX` is the hero's column in SCREEN space, already through the zoom —
+// this layer is unscaled, so a world offset here would leave every card
+// trailing behind the hero.
+export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1 } = {}) {
+  // Impact words (PEW, BOY.) center over the hero's head; anything longer
+  // shares one left edge at the hero column and rags rightward into the
+  // direction of travel — centering long lines on a hero this near the screen
+  // edge just shoved each one to its own x. In mirror mode the shared edge is
+  // on the right and text rags leftward.
+  const floatX = mirror ? W - heroX - 6 : heroX + 6;
+  const edgeX = mirror ? W - heroX : heroX;
+  const short = f.text.length <= 5;
+  const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
+  const topY = Math.max(38, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y)));
+  // Each floatie rides its own HUD panel — the bare text plate washed out over
+  // light packs.
+  const tw = Math.max(...lines.map((line) => textWidth(line)));
+  const PADX = 5;
+  const bx = short ? floatX - tw / 2 - PADX : (mirror ? edgeX - tw - PADX : edgeX - PADX);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  drawPanel(ctx, Math.round(bx), topY - 4, tw + PADX * 2, lines.length * LINE_H + 8, 4,
+    f.solid ? HAZARD_PANEL : FLOAT_PANEL,
+    f.solid ? HAZARD_BORDER : { border: FLOAT_BORDER, shadow: true });
+  // Through textY, like every other panel in this file. The glyph box is 12
+  // units tall and the ink occupies only the middle 6, so placing the box top
+  // at the row top — which is what this did — left every bark riding high on
+  // its own card, by most of the 3 units of padding the card actually has.
+  lines.forEach((line, i) => {
+    const y = textY(topY + i * LINE_H + LINE_H / 2);
+    if (short) rawDrawTextCentered(ctx, line, floatX, y, f.color);
+    else rawDrawText(ctx, line, mirror ? edgeX - textWidth(line) : edgeX, y, f.color);
+  });
+  ctx.restore();
 }

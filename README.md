@@ -8,9 +8,10 @@ power strip after losing to heroes for 40 straight years. Due to budget cuts,
 the arcade can only render ONE hero at a time, so eight parody heroes must
 relay-run through nine dying cabinets to reach THE SOCKET.
 
-Everything is procedural — pixel art, chiptune music, sound effects. No assets,
-no runtime dependencies. The built game is one self-contained HTML file that
-works offline from `file://`.
+Everything is procedural — vector characters and props, pixel-influenced worlds,
+chiptune music, and sound effects. No external art or audio assets and no runtime
+dependencies. The built game is one self-contained HTML file that works offline
+from `file://`.
 
 ## Play
 
@@ -68,7 +69,8 @@ patient. The turtle is not impressed.
 - **9 arcade cabinets**, 3 stages each, across 3 acts — each cabinet a different
   genre parody in a different visual style (pixel, faux-3D, neon vector,
   watercolor, VHS, LCD handheld, cardboard, notebook doodle; THE SURGE mashes
-  all eight). The heroes stay defiantly pixel-art everywhere.
+  all eight). The heroes are procedural vector toons, composited pin-sharp over
+  every cabinet's deliberately low-resolution, pixel-influenced world.
 - **8 heroes** with distinct kits (stomp/smash, spin-dash, finite shield-roll,
   pellet cannon, cosmic squish, hazard bite, rocket fist, returning axe). The
   full cast rotates through co-op cable portals automatically, and every
@@ -107,6 +109,7 @@ configs (the joke is load-bearing).
 Layout: `src/engine/` (loop, renderer, style packs, sprites, input, audio, rng,
 save), `src/game/` (run, relay, spawner, bosses, minigames, hub, menus),
 `src/data/` (heroes, cabinets, stages, dialogue, jokes, progression, words),
-`src/sprites/` (string-grid pixel art). `build/build.js` bundles and inlines
-everything into `dist/index.html` and also writes the first archived release to
-`dist/v1/index.html` for GitHub Pages versioned routing.
+`src/sprites/` (the active procedural toon renderer in `toons.js`, vector props,
+and legacy/string-grid pixel sources for world art and palettes). `build/build.js`
+bundles and inlines everything into `dist/index.html` and also writes the first
+archived release to `dist/v1/index.html` for GitHub Pages versioned routing.

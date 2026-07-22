@@ -10,10 +10,11 @@ const { BossState } = await import('../src/game/boss.js');
 const { MinigameState } = await import('../src/game/minigames/index.js');
 const { HubState } = await import('../src/game/hub/index.js');
 const { TitleState, SettingsState } = await import('../src/game/menus.js');
-const { makeObstacle } = await import('../src/game/entities.js');
+const { makeObstacle, makePickup, PICKUPS } = await import('../src/game/entities.js');
 const { DripSpawner } = await import('../src/game/spawner.js');
 const { Rng } = await import('../src/engine/rng.js');
 const { PLAYER_X } = await import('../src/game/player.js');
+const { VIEW_W } = await import('../src/engine/camera.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
 const { save } = await import('../src/engine/save.js');
 const { Save, defaultSlot, defaultSettings } = await import('../src/engine/save.js');
@@ -33,11 +34,62 @@ let run = makeRun(() => completions++); run.enter();
 run.endRun(true); run.endRun(true); run.update(1 / 60);
 assert(completions === 1, 'run completion callback is one-shot');
 
+// Pausing borrows the menu mappings without leaving run context. Every route
+// through the pause screen must swap those mappings and drop held gameplay
+// input, then put the run mappings back cleanly on resume.
+{
+  const pausedRun = makeRun(); pausedRun.enter();
+  Input.press('jump');
+  Input.press('escape'); pausedRun.update(1 / 60);
+  assert(pausedRun.paused && Input.menuKeys, 'pausing a run enables menu key meanings');
+  assert(!Input.held('jump') && !Input.pressed('jump'), 'entering pause drops held and pending gameplay input');
+  assert(Input.actionForKey('ArrowUp') === 'up' && Input.actionForKey('ArrowDown') === 'down',
+    'paused arrows navigate the pause plates');
+  assert(Input.padAction(0) === 'confirm' && Input.padAction(12) === 'up' && Input.padAction(13) === 'down',
+    'paused gamepad buttons use the same menu actions');
+  assert(Input.buttons.map((b) => `${b.id}:${b.action}`).join(',') === 'resume:pause,quit:escape',
+    'touch pause plates dispatch the same continue and exit actions');
+
+  Input.press('down'); pausedRun.update(1 / 60);
+  assert(pausedRun.pauseIdx === 1, 'pause selection moves to EXIT');
+  Input.press('up'); pausedRun.update(1 / 60);
+  assert(pausedRun.pauseIdx === 0, 'pause selection moves back to CONTINUE');
+  Input.press('confirm'); pausedRun.update(1 / 60);
+  assert(!pausedRun.paused && !Input.menuKeys, 'confirming CONTINUE restores run key meanings');
+  assert(Input.actionForKey('ArrowUp') === 'jump' && Input.actionForKey('ArrowRight') === 'ability',
+    'resumed arrows drive the hero again');
+
+  pausedRun.paused = true; pausedRun.pauseChanged();
+  Input.press('up');
+  pausedRun.paused = false; pausedRun.pauseChanged();
+  assert(!Input.held('up'), 'leaving pause also drops an action held across the mapping change');
+
+  let quitResult = null;
+  const quitRun = makeRun((result) => { quitResult = result; }); quitRun.enter();
+  Input.press('escape'); quitRun.update(1 / 60);
+  Input.press('down'); quitRun.update(1 / 60);
+  Input.press('confirm'); quitRun.update(1 / 60);
+  assert(quitResult && !quitResult.success && quitResult.reason === 'QUIT',
+    'confirming EXIT follows the normal quit result path');
+
+  const resetRun = makeRun(); resetRun.enter();
+  Input.press('escape'); resetRun.update(1 / 60);
+  resetRun.pauseIdx = 1;
+  Input.press('pause'); resetRun.update(1 / 60);
+  Input.press('pause'); resetRun.update(1 / 60);
+  assert(resetRun.paused && resetRun.pauseIdx === 0, 'pause always reopens with CONTINUE selected');
+  Input.clearAll();
+}
+
 let airborneFinish = null;
 run = makeRun((result) => { airborneFinish = result; }); run.enter();
 run.player.y = 80;
 run.player.grounded = false;
-run.camX = run.totalDist;
+// Arm the finish where the run itself arms it. The trigger is tested every
+// frame, so a real camera is never more than one frame past finishCameraX;
+// skipping ahead to totalDist instead leaves the tape already level with the
+// hero, and there is then no run-in left for them to make.
+run.camX = run.finishCameraX();
 run.update(1 / 60);
 const finishCam = run.camX;
 for (let i = 0; i < 30; i++) run.update(1 / 60);
@@ -60,6 +112,96 @@ const cellsBeforeFinishHit = run.battery;
 run.collide();
 assert(run.battery === cellsBeforeFinishHit - 1,
   'hazards can still damage the player while the finish camera is locked');
+
+// The final stretch keeps its hazards, so it has to be losable as well as
+// survivable. Dying there used to hand every remaining frame to updateFinish,
+// which bails on `dead` before the tape check: deadT never advanced, nothing
+// ever ended the attempt, and the hero slid away off a frozen camera forever.
+let deathOnLap = null;
+const lapRun = makeRun((result) => { deathOnLap = result; }); lapRun.enter();
+lapRun.camX = lapRun.finishCameraX();
+lapRun.update(1 / 60);
+assert(lapRun.finishing, 'finish run armed for the death-on-the-lap check');
+lapRun.oneHit = true;           // no checkpoint to fall back to: this ends the attempt
+lapRun.battery = 1;
+lapRun.player.iframes = 0;
+lapRun.obstacles = [makeObstacle('zombie', lapRun.playerWorldX())];
+lapRun.update(1 / 60);
+assert(lapRun.dead, 'a hazard on the final stretch can still be fatal');
+const lapX = lapRun.finishPlayerX;
+for (let i = 0; i < 60 * 5 && !deathOnLap; i++) lapRun.update(1 / 60);
+assert(deathOnLap && !deathOnLap.success, 'dying on the finish run resolves the attempt as a loss');
+assert(lapRun.deadT > 0, 'the death animation advances instead of the finish run holding the frame');
+assert(lapRun.finishPlayerX === lapX, 'a dead hero stops where they fell rather than sliding off the frozen camera');
+
+// A checkpoint death on the final stretch returns ownership to the scrolling
+// camera. From there the same attempt can reach and finish the tape exactly
+// once instead of resuming frozen in the victory lap.
+let restoredFinishResult = null, restoredFinishEnds = 0;
+const restoredFinish = makeRun((result) => { restoredFinishResult = result; restoredFinishEnds++; }); restoredFinish.enter();
+restoredFinish.camX = restoredFinish.finishCameraX() - 120;
+restoredFinish.snapshot = restoredFinish.makeSnapshot();
+const checkpointX = restoredFinish.snapshot.camX;
+restoredFinish.camX = restoredFinish.finishCameraX();
+restoredFinish.startFinishRun();
+restoredFinish.finishPlayerX += 20;
+restoredFinish.battery = 0;
+restoredFinish.die('TEST FINISH DEATH');
+restoredFinish.updateDead(1.5);
+assert(!restoredFinish.dead && !restoredFinish.finishing && restoredFinish.camX === checkpointX
+  && restoredFinish.finishPlayerX === PLAYER_X,
+  'checkpoint restore resets a death during the finish run');
+restoredFinish.camX = restoredFinish.finishCameraX();
+restoredFinish.obstacles = []; restoredFinish.pickups = [];
+for (let i = 0; i < 300 && !restoredFinishResult; i++) restoredFinish.update(1 / 60);
+assert(restoredFinishResult?.success, 'a restored finish attempt can complete normally');
+restoredFinish.endRun(true);
+assert(restoredFinishResult?.success && restoredFinishEnds === 1,
+  'death, restore and finish still resolve through one completion');
+
+// A resident picked up after the normal finish threshold counts immediately,
+// and the already-visible tape stays where it was when the victory run begins.
+const rescueStage = { ...stage, mission: { type: 'rescue', n: 1, count: 0, desc: 'TEST' } };
+const rescueRun = new RunState({ stage: rescueStage, save, seed: 46, difficulty: 1, onEnd() {} });
+rescueRun.enter();
+rescueRun.camX = rescueRun.finishCameraX() + 18;
+const follower = makePickup('resident', rescueRun.playerWorldX(), 0); follower.following = true;
+rescueRun.pickups = [follower]; rescueRun.obstacles = [];
+rescueRun.update(1 / 60);
+assert(rescueRun.finishing && rescueRun.missionSatisfied(), 'a late following resident completes the rescue mission');
+const visibleTapeX = rescueRun.finishScreenX();
+rescueRun.update(1 / 60);
+assert(rescueRun.finishScreenX() === visibleTapeX && visibleTapeX < VIEW_W - 32,
+  'a late-completed mission starts a shortened finish run without moving the tape');
+
+// Counted mission failures carry the exact counter tested by the win check.
+const shortStage = { ...stage, mission: { type: 'cords', n: 4, count: 3, desc: 'TEST' } };
+let shortResult = null;
+const shortRun = new RunState({ stage: shortStage, save, seed: 47, difficulty: 1, onEnd: (result) => { shortResult = result; } });
+shortRun.enter(); shortRun.mission.count = 3; shortRun.camX = shortRun.totalDist; shortRun.obstacles = []; shortRun.pickups = [];
+shortRun.update(1 / 60);
+assert(shortResult?.failDetail === 'CORDS 3/4', 'mission failure reports the exact objective shortfall');
+
+// Objective replacements are capped to the last drawable spot before the
+// breaker, and suppressed once that spot is no longer ahead of the viewport.
+const objectiveRun = new RunState({ stage: shortStage, save, seed: 48, difficulty: 1, onEnd() {} });
+objectiveRun.enter(); objectiveRun.pickups = [];
+objectiveRun.camX = objectiveRun.finishCameraX() - VIEW_W;
+const spawnedCord = objectiveRun.spawnObjective('cord', 30);
+const lastCord = objectiveRun.pickups.at(-1);
+assert(spawnedCord && lastCord.x >= objectiveRun.camX + VIEW_W
+  && lastCord.x + PICKUPS.cord.w + 24 <= objectiveRun.finishWorldX(),
+  'a late cord spawns ahead of view and before the finish');
+objectiveRun.camX = objectiveRun.finishWorldX() - PICKUPS.resident.w - 24 - VIEW_W + 1;
+const beforeResidents = objectiveRun.pickups.length;
+assert(!objectiveRun.spawnObjective('resident', 0) && objectiveRun.pickups.length === beforeResidents,
+  'an objective is not spawned when no reachable runway remains');
+objectiveRun.mission = { type: 'rescue', n: 3, count: 1 };
+const carriedA = makePickup('resident', 0, 0); carriedA.following = true;
+const carriedB = makePickup('resident', 0, 0); carriedB.following = true;
+objectiveRun.pickups = [carriedA, carriedB];
+assert(objectiveRun.missionCount() === 3 && objectiveRun.missionSatisfied(),
+  'rescue progress includes delivered and currently-following residents');
 
 const fullDrip = new DripSpawner(new Rng(1), {});
 fullDrip.batteryTimer = 0;

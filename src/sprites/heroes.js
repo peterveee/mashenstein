@@ -1,5 +1,8 @@
-// Hero sprites: 12x16 string grids composed from head/torso rows + leg frames.
-// Palette keys are per-hero. Heroes are ALWAYS pixel art, in every style pack.
+// Legacy 12x16 hero grids and the per-character palettes they established.
+// Playable heroes are rendered by the procedural vector rigs in toons.js; that
+// renderer still reads these palettes so the old and new representations cannot
+// drift in colour. The grids remain as reference data and Gary's grid supplies
+// the zombie walker assembled in game/draw.js.
 // o=outline, s=skin, h=hat/hair, b=body/torso, p=pants/lower, f=feet, w=white,
 // e=eye, a=accent.
 

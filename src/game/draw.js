@@ -1,10 +1,10 @@
 // Entity + hero drawing (logic-free; style packs may decorate).
 import { getSprite, buildSprite, scaled2x, tinted, drawTextCentered } from '../engine/sprites.js';
-import { pushOverlayDraw } from '../engine/renderer.js';
+import { W, pushOverlayDraw } from '../engine/renderer.js';
 import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
-import { drawToon, poseFromPlayer, toonFaceSprite } from '../sprites/toons.js';
+import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import { hasProp, propSprite, propTinted, propRimPair, propFrames, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
 
 const POWER_GLOW = {
@@ -29,29 +29,32 @@ export function buildAllSprites() {
 }
 
 // Glass orb around the hero while a shield is banked — one ring per stack.
-function drawShieldOrb(c, cx, feetY, h, t, stack) {
-  const wob = 1 + 0.035 * Math.sin(t * 5);
-  const rx = h * 0.55 * wob, ry = h * 0.6 / wob;
-  const cy = feetY - h * 0.5;
+function drawShieldOrb(c, heroId, cx, feetY, h, t, stack) {
+  const fit = toonEffectEllipse(heroId);
+  // The glass follows one measured envelope, not the current animation frame.
+  // Motion belongs to the travelling highlight below; resizing the boundary
+  // makes hands, ears and weapons appear to poke through on alternate beats.
+  const rx = h * fit.rx, ry = h * fit.ry;
+  const ox = h * fit.cx, cy = feetY + h * fit.cy;
   c.save();
   c.beginPath();
-  c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  c.ellipse(cx + ox, cy, rx, ry, 0, 0, Math.PI * 2);
   c.fillStyle = 'rgba(120,200,255,0.09)';
   c.fill();
   for (let i = 0; i < stack; i++) {
     c.beginPath();
-    c.ellipse(cx, cy, rx - i * 2.2, ry - i * 2.2, 0, 0, Math.PI * 2);
+    c.ellipse(cx + ox, cy, rx - i * 2.2, ry - i * 2.2, 0, 0, Math.PI * 2);
     c.strokeStyle = `rgba(168,230,255,${(0.34 - i * 0.09) + 0.09 * Math.sin(t * 5)})`;
     c.lineWidth = Math.max(0.6, h * 0.032);
     c.stroke();
   }
   // glass highlight + a travelling glint — barely-there, like real glass
   c.beginPath();
-  c.ellipse(cx - rx * 0.4, cy - ry * 0.42, rx * 0.26, ry * 0.14, -0.7, 0, Math.PI * 2);
+  c.ellipse(cx + ox - rx * 0.4, cy - ry * 0.42, rx * 0.26, ry * 0.14, -0.7, 0, Math.PI * 2);
   c.fillStyle = 'rgba(255,255,255,0.22)';
   c.fill();
   c.beginPath();
-  c.arc(cx, cy, rx * 0.86, t * 2.2, t * 2.2 + 0.5);
+  c.arc(cx + ox, cy, rx * 0.86, t * 2.2, t * 2.2 + 0.5);
   c.strokeStyle = 'rgba(255,255,255,0.22)';
   c.lineWidth = Math.max(0.5, h * 0.025);
   c.stroke();
@@ -118,10 +121,9 @@ export function drawPowerPose(c, cx, feetY, type, alpha = 1, scale = 1) {
 
 export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts = {}) {
   // Heroes are procedurally animated vector toons (sprites/toons.js).
-  // During normal play they render ABOVE the low-res backbuffer at device
-  // resolution (pushOverlayDraw) so curves stay smooth; on paused/dead/
-  // mirrored frames they bake into the backbuffer instead so dim overlays
-  // and the mirror transform still apply to them.
+  // During play they render ABOVE the low-res backbuffer at device resolution
+  // (pushOverlayDraw) so curves stay smooth. The overlay callback recreates
+  // scene transforms, and later overlay callbacks cover it for pause/death.
   // Star power outranks the i-frame blink: while it is up the hero is always
   // on screen (the aura, not a flicker, is what says "you can't be hurt").
   const starLeft = opts.invincible || 0;
@@ -154,7 +156,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H, { alpha: pulse * starFade });
       c.restore();
     }
-    if (shield > 0) drawShieldOrb(c, cx, feetY, HERO_DRAW_H, t, shield);
+    if (shield > 0) drawShieldOrb(c, heroId, cx, feetY, HERO_DRAW_H, t, shield);
     if (player.deflectFlashT > 0) {
       c.strokeStyle = `rgba(168,230,255,${Math.min(1, player.deflectFlashT * 4)})`;
       c.lineWidth = 2; c.beginPath(); c.arc(cx + 4, feetY - 12, 14, -1.2, 1.2); c.stroke(); c.lineWidth = 1;
@@ -164,13 +166,22 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       drawPowerPose(c, cx, feetY, player.powerType, reduced ? 0.8 : Math.min(1, player.powerPoseT * 5));
     }
   };
-  if (opts.flat || opts.mirror) paint(ctx);
+  if (opts.flat) paint(ctx);
   else {
     // The overlay is a SEPARATE canvas with its own context, so it never sees
     // the camera the caller set up — the hero has to carry it across.
     const z = opts.zoom ?? ZOOM;
     const pan = opts.pan ?? 0;
-    pushOverlayDraw((c) => { c.save(); applyWorld(c, z, pan); paint(c); c.restore(); });
+    pushOverlayDraw((c) => {
+      c.save();
+      // Mirror belongs to the scene, not to the toon. The backbuffer receives
+      // this transform in RunState.draw(); the full-resolution overlay has its
+      // own context and must recreate it before applying the same world camera.
+      if (opts.mirror) { c.translate(W, 0); c.scale(-1, 1); }
+      applyWorld(c, z, pan);
+      paint(c);
+      c.restore();
+    });
   }
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }

@@ -33,6 +33,7 @@ class InputSys {
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
     this.context = 'default';
+    this.menuKeys = false;      // menu key meanings without a full context switch
   }
 
   init() {
@@ -156,8 +157,8 @@ class InputSys {
 
   actionForKey(code) {
     if (code === 'Escape') return this.context === 'run' ? 'escape' : 'back';
-    if (this.context === 'run' && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
-    if (this.context === 'menu') {
+    if (this.context === 'run' && !this.menuKeys && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
+    if (this.menuNav()) {
       if (code === 'ArrowUp' || code === 'KeyW') return 'up';
       if (code === 'ArrowDown' || code === 'KeyS') return 'down';
       if (code === 'Space' || code === 'Enter') return 'confirm';
@@ -172,6 +173,17 @@ class InputSys {
     if (this.usingTouch) return true;
     return !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   }
+
+  // What the player actually does to confirm, named for the device in their
+  // hands. 'TAP/ENTER' told a phone about a key it does not have and a desktop
+  // about a screen it cannot touch — on the one line of a screen that has to be
+  // acted on rather than read, half the width went to the other device's input.
+  //
+  // Player-facing copy living in the input layer looks odd until you notice it
+  // is a statement about the device, not about the screen asking. It started in
+  // menus.js; the in-run ACT card needed the same word and the alternative was
+  // a second copy of it that could disagree.
+  confirmVerb() { return this.isTouchDevice() ? 'TAP' : 'ENTER'; }
 
   // x/y/w/h is every button's bounding box, round or not, so layout and this
   // test read the same numbers. Round buttons hit-test as discs — the corners
@@ -212,6 +224,9 @@ class InputSys {
 
   setContext(context) {
     this.context = context || 'default';
+    // A borrowed mapping never outlives the screen that borrowed it — leaving a
+    // run mid-pause (quit, death, a state swap) lands in the new context clean.
+    this.menuKeys = false;
     this.clearAll();
   }
 
@@ -224,6 +239,23 @@ class InputSys {
   setMenuButtons() {
     this.setContext('menu');
     this.setButtons([]);
+  }
+
+  // Whether the arrows/action button drive a list of choices rather than the
+  // hero. True in a menu state, and true for the one screen that is a menu
+  // without being a menu state: the paused run, which still needs 'run' context
+  // for Escape (quit, not back) while it is up.
+  menuNav() { return this.context === 'menu' || this.menuKeys; }
+
+  // Borrow the menu key meanings mid-context. Held actions are dropped on every
+  // flip, because a key that changes meaning between its keydown and its keyup
+  // never gets released: ArrowUp held into a pause presses 'jump' and releases
+  // 'up', leaving the hero jumping the moment the run resumes.
+  setMenuKeys(on) {
+    if (!!on === this.menuKeys) return;
+    this.menuKeys = !!on;
+    this.down.clear();
+    this.padPrev = new Set();
   }
 
   press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }
@@ -239,6 +271,23 @@ class InputSys {
   }
   release(a) { if (this.down.has(a)) { this.down.delete(a); this.up.add(a); } }
 
+  // What a pad button means in the context that is up. One lookup for both
+  // passes below (fire the action, count the activity) — they were the same
+  // chain written twice, which is one edit away from disagreeing.
+  padAction(i) {
+    if (this.menuNav()) {
+      if (i === 12) return 'up';
+      if (i === 13) return 'down';
+      if (i === 0) return 'confirm';
+      if (i === 1) return 'back';
+      // Start backs out of a menu state — but on a paused run it is the button
+      // that opened the pause, so it stays the button that closes it.
+      if (i === 9 && !this.menuKeys) return 'back';
+    }
+    if (this.context === 'run' && !this.menuKeys && i === 15) return 'ability';
+    return GAMEPAD_MAP[i];
+  }
+
   pollGamepad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const now = new Set();
@@ -246,26 +295,16 @@ class InputSys {
       if (!pad) continue;
       pad.buttons.forEach((b, i) => {
         if (!b.pressed || !GAMEPAD_MAP[i]) return;
-        const action = this.context === 'menu' && i === 12 ? 'up'
-          : this.context === 'menu' && i === 13 ? 'down'
-          : this.context === 'menu' && i === 0 ? 'confirm'
-          : this.context === 'menu' && (i === 1 || i === 9) ? 'back'
-          : this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
-        now.add(action);
+        now.add(this.padAction(i));
       });
       pad.buttons.forEach((b, i) => {
         if (!b.pressed || !GAMEPAD_MAP[i]) return;
-        const action = this.context === 'menu' && i === 12 ? 'up'
-          : this.context === 'menu' && i === 13 ? 'down'
-          : this.context === 'menu' && i === 0 ? 'confirm'
-          : this.context === 'menu' && (i === 1 || i === 9) ? 'back'
-          : this.context === 'run' && i === 15 ? 'ability' : GAMEPAD_MAP[i];
-        if (!this.padPrev.has(action)) this.activity++;
+        if (!this.padPrev.has(this.padAction(i))) this.activity++;
       });
       if (pad.axes[0] < -0.5) now.add('left');
-      if (pad.axes[0] > 0.5) now.add(this.context === 'run' ? 'ability' : 'right');
-      if (pad.axes[1] < -0.5) now.add(this.context === 'menu' ? 'up' : 'jump');
-      if (pad.axes[1] > 0.5) now.add(this.context === 'menu' ? 'down' : 'duck');
+      if (pad.axes[0] > 0.5) now.add(this.context === 'run' && !this.menuKeys ? 'ability' : 'right');
+      if (pad.axes[1] < -0.5) now.add(this.menuNav() ? 'up' : 'jump');
+      if (pad.axes[1] > 0.5) now.add(this.menuNav() ? 'down' : 'duck');
     }
     for (const a of now) if (!this.padPrev.has(a)) this.press(a);
     for (const a of this.padPrev) if (!now.has(a)) this.release(a);

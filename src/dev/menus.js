@@ -17,6 +17,7 @@ import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progres
 import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
+import { proseMenu } from './prose.js';
 import { showInstallGuide, FLAVORS } from '../engine/install-prompt.js';
 
 const GOLD = '#f6d33c';
@@ -70,6 +71,33 @@ function instantClear(dev, stage) {
   setState(new ResultsState({ result, gains, save, onDone: () => Flow.toHub() }));
 }
 
+// The mirror of INSTANT-CLEAR: the finish crossed with the mission still short.
+// It is the only results screen that carries a shortfall line, a locked-stage
+// line and the retry rows, and the only way to reach it by playing is to lose
+// on purpose at the very end of a run.
+function instantFail(dev, stage) {
+  const { save, Flow } = dev.ctx;
+  const cab = CABINET_BY_ID[stage.cabinet];
+  const m = stage.mission;
+  const result = {
+    ...fakeResult(stage),
+    success: false, reason: 'MISSION INCOMPLETE',
+    score: 4210, coins: 120,
+    challengeDone: false, applianceGot: false,
+    failMsg: 'MISSION INCOMPLETE',
+    // Two short of the bar, or blank on the survive-to-the-end types — which
+    // can never actually fail this way, but the preview should still open.
+    failDetail: m.n ? `${m.type.toUpperCase()} ${Math.max(0, m.n - 2)}/${m.n}` : '',
+  };
+  const gains = applyResult(save, result);
+  dev.close();
+  setState(new ResultsState({
+    result, gains, save,
+    onDone: () => Flow.toHub(),
+    onRetry: () => Flow.launchStage(cab, stage, []),
+  }));
+}
+
 // ------------------------------------------------------------------ screens
 function stageActions(dev, stage) {
   const cab = CABINET_BY_ID[stage.cabinet];
@@ -92,6 +120,7 @@ function stageActions(dev, stage) {
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
       { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
+      { label: 'INSTANT-FAIL', act: () => instantFail(dev, stage) },
       { label: 'BRIEFING', act: () => { dev.close(); setState(new BriefingState({ cab, stage, onDone: () => dev.ctx.Flow.toHub() })); } },
       { label: `MISSION: ${stage.mission.type}${stage.mission.n ? ' x' + stage.mission.n : ''}`, act: null },
       { label: `CHALLENGE: ${stage.challenge.type}`, act: null },
@@ -207,7 +236,15 @@ function scenesMenu(dev) {
       { label: 'ARCADE', act: go(() => Flow.openArcade()) },
       { label: 'STAGE SELECT', act: go(() => Flow.openCabinet(CABINETS[0])) },
       { label: 'RESULTS (fake S-rank)', act: () => instantClear(dev, STAGES[0]) },
+      // The losing half of the same screen. Deliberately not STAGES[0]: the
+      // shortfall line only has something to say on a counted mission, and
+      // plumber-1 is a reach.
+      { label: 'RESULTS (fake mission fail)', act: () => instantFail(dev, STAGES.find((s) => s.mission.n)) },
       { label: 'FINALE', act: go(() => Flow.startFinale()) },
+      // Every authored text screen in one index — see dev/prose.js for why the
+      // rows below cannot cover it (the stage intros have no other route at
+      // all, and the briefings are one stage launch each).
+      { label: 'STORY TEXT ▸', submenu: () => proseMenu(dev) },
       { label: 'ATTRACT (real)', act: go(() => Flow.startAttract()) },
       { label: 'FIELD GUIDE', act: go(() => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toHub() }))) },
       { label: 'SOUND TEST', act: go(() => setState(new SoundTestState({ onDone: () => Flow.toHub() }))) },
