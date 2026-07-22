@@ -4,7 +4,7 @@ import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
-import { drawToon } from '../../sprites/toons.js';
+import { drawToon, toonInkTop } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
@@ -31,7 +31,10 @@ import { hashStr } from '../../engine/rng.js';
 const CORRUPTED_MODIFIERS = [
   { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
   { id: 'maxspeed', name: 'MAXIMUM SPEED', desc: 'EVERYTHING IS FASTER. NOTHING IS CALMER.' },
-  { id: 'randomswap', name: 'RANDOM SWAPS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
+  // Display name only — the id stays 'randomswap', which is what saves and
+  // run.js carry. 'SWAPS' was the hub's word for trading places on the
+  // concourse; what this mod actually does is hand you more tags.
+  { id: 'randomswap', name: 'RANDOM TAGS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
   { id: 'narration', name: 'INACCURATE LORE', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
 ];
 export { CORRUPTED_MODIFIERS };
@@ -98,6 +101,23 @@ const NPC_H = 46, PLAYER_H = 46;
 // the concourse lighting stops reading on the cast at all; drop it and the hero
 // fades out crossing the unlit stretches.
 const CAST_LIT_FLOOR = 0.45;
+// How lit the service end is with nothing banked at all. Not zero: the repair
+// counter and the pawn shop are act-1 furniture and you cannot use a room you
+// cannot see. It climbs from here to 1 as the plug count approaches the finale
+// (see ceilingFixtures), which is the far end doing double duty as a progress
+// readout. Held low so restoring power moves the concourse from black to dingy
+// rather than to bright — this is THE LAST FUNCTIONING FOOD COURT, and the
+// reward for a full clear is legibility, not cheer.
+const SERVICE_LIT_FLOOR = 0.24;
+// The brightest the ROOM ever gets, even directly under a working tube. Without
+// it a fully lit bay is the raw art with no shading over it at all, which is how
+// a derelict food court ended up reading as a going concern. The ceiling still
+// works — this is a dingy room you can see, not a lit one.
+//
+// Deliberately not applied to the fixtures themselves: a tube is the source and
+// should look like one. Nor to benchLit, whose heat lamps are the one thing in
+// the building nobody ever switched off.
+const ROOM_LIT_PEAK = 0.8;
 // How far a hero ranges from their spot, how much clearance a station needs
 // before anyone will stop beside it, and how close to the exit anyone may get.
 // ROAM is deliberately wide — a hero should cross in front of two or three
@@ -355,12 +375,20 @@ function drawCeilingLight(ctx, x, y, lit) {
   // tube works. A dead light is still a fixture.
   ctx.fillStyle = '#232030';
   ctx.fillRect(x - 3, y - 4, LIGHT_W + 6, 4);
-  ctx.fillStyle = lit > 0 ? '#f6d33c' : '#30303f';
+  // The tube: dead colour laid down first, then the lit colour over it at the
+  // fixture's own level, so a half-powered tube LOOKS half-powered. This used to
+  // be a straight either/or, which was true enough while `lit` only ever came
+  // from the flicker (0, or a blink value, or 1). Now that the service end sits
+  // at a steady fraction all day, an either/or tube glowed at full strength over
+  // a beam you could barely see.
+  ctx.fillStyle = '#30303f';
   ctx.fillRect(x, y, LIGHT_W, 4);
   if (lit <= 0) return;
 
   ctx.save();
   ctx.globalAlpha = lit;
+  ctx.fillStyle = '#f6d33c';
+  ctx.fillRect(x, y, LIGHT_W, 4);
   // The hot core — a lit tube is not one flat colour end to end.
   ctx.fillStyle = '#fff6c8';
   ctx.fillRect(x + 3, y + 1, LIGHT_W - 6, 2);
@@ -610,6 +638,11 @@ function fadeOut(t, hold, fade) {
 // where a fat round-joined stroke gives clean radii at any size. The dark pass
 // goes down first and wider, so the outline sits outside the gold instead of
 // eating into it.
+const MARKER_R = 3.2;
+// Center of the wedge to the top of the head. The wedge's own tip hangs about
+// r * 1.02 below that center once the outline is counted, so this leaves ~7
+// units of air — close enough to point, far enough not to graze a hat.
+const MARKER_GAP = 10;
 function drawPlayerMarker(ctx, cx, cy, r) {
   const path = (c) => {
     c.beginPath();
@@ -673,7 +706,13 @@ export class HubState {
     st.push({ type: 'shelf', x, label: 'TROPHY SHELF' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
     if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) st.push({ type: 'socket', x, label: 'THE SOCKET' });
-    if (slot.campaign.storyFlags.sawEnding) st.push({ type: 'overtime', x, label: 'OVERTIME CABINET' });
+    // The parenthetical carries what the finale used to say in one opaque line:
+    // nothing in OVERTIME counts. It belongs here rather than at the end of the
+    // campaign — this is the door the player walks through every time, and the
+    // back room next to it already set the shape for a label that winks.
+    if (slot.campaign.storyFlags.sawEnding) {
+      st.push({ type: 'overtime', x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' });
+    }
     // Tail past the last station. Widened once the crowd started living out
     // here: the far hero now reserves a chip row off the end (npcFarX), and
     // at the old 80 that put them close enough to the back wall to read as
@@ -681,6 +720,67 @@ export class HubState {
     x += 130;
     this.width = Math.max(W, x);
     return st;
+  }
+
+  // The ceiling, in WORLD x: one strip fixture per gap between cabinets, at the
+  // cabinet pitch, running the length of the concourse. `k` is how lit each one
+  // is, 0..1.
+  //
+  // Both halves of that used to be wrong. There were exactly eight fixtures and
+  // they lived in PARALLAXED SCREEN SPACE (`i * 130 - cam * 0.9`), which meant
+  // (a) they covered 910 units of a 1658-unit room and everything past camera
+  // ~1010 was unlit black — the entire service end, at every act, including a
+  // fully restored arcade — and (b) nothing was anchored to anything, so whether
+  // a given machine looked powered depended on where the camera happened to be.
+  // Lighting could not say "this cabinet has power", which is the one thing the
+  // fiction wants it to say.
+  //
+  // Placement is the GAP between two cabinets, not the cabinet itself. A poster
+  // hangs at y 56..110 over every machine and a fixture housing is y 51..59, so
+  // one hung directly over a cabinet clips the top of its own poster; at the
+  // midpoint a 26-wide fixture sits inside the 48-wide gap between two posters
+  // and clears both. Phase comes off the first cabinet so the grid stays lined
+  // up with the bank however the concourse is respaced.
+  ceilingFixtures() {
+    const slot = this.save.slot;
+    const st = this.stations();
+    const cabs = st.filter((s) => s.type === 'cabinet');
+    if (!cabs.length) return [];
+    const pitch = cabs.length > 1 ? cabs[1].x - cabs[0].x : 88;
+    const phase = cabs[0].x + pitch / 2;
+    const lastCab = cabs[cabs.length - 1].x;
+    // Past the machines the room is not powered by any one cabinet, so it runs
+    // off the whole job: dim enough at the start to read as derelict, bright
+    // enough to use the counters in act 1, and full by the time the finale opens.
+    // This is the far end doubling as a progress bar you can see from the middle
+    // of the concourse.
+    const done = Math.max(0, Math.min(1, totalPlugs(slot) / UNLOCKS.finale));
+    const service = SERVICE_LIT_FLOOR + (1 - SERVICE_LIT_FLOOR) * done;
+    const out = [];
+    for (let x = phase - pitch; x < this.width; x += pitch) {
+      let k;
+      if (x > lastCab) k = service;
+      else {
+        // A gap fixture spans the two machines it hangs between, so it burns at
+        // the SHARE of them that has power: none, half, or full.
+        //
+        // The first cut lit a fixture outright if either neighbour was on, which
+        // meant a single unlocked cabinet lit the fixture on both sides of
+        // itself, at full — two tubes blazing over a brand new file where the
+        // room is supposed to be one working machine in the dark. Halves fix
+        // that and buy something better: powering a machine fully lights the
+        // fixture behind it AND half-lights the one ahead, so the light creeps
+        // down the room a half-step at a time instead of jumping a whole bay.
+        //
+        // Always over two, not over however many neighbours exist. The fixture
+        // at the exit end has only one cabinet beside it, and dividing by that
+        // put a full-strength tube at the darkest end of an unrestored arcade.
+        const on = cabs.filter((c) => Math.abs(c.x - x) <= pitch && c.unlocked).length;
+        k = Math.min(1, on / 2);
+      }
+      out.push({ x, k });
+    }
+    return out;
   }
 
   // The furthest right an NPC may stand. Short of the player's own limit by a
@@ -1446,15 +1546,31 @@ export class HubState {
     // down (hence base:false) and before the stations, so a cabinet stands in
     // front of its own poster.
     //
-    // How lit any of it is falls out of which ceiling fixtures are working, in
-    // SCREEN space: the lights parallax at 0.9 of the camera, so their world
-    // positions drift and only where they land on screen means anything. That
-    // makes the left of an early-act concourse readable and the far end fade
-    // out, and it is why the dressing is worth drawing at all — the detail is
-    // painted once and the lighting decides how much of it you get.
-    const litXs = [];
-    for (let i = 0; i < act * 3 && i < 8; i++) litXs.push(i * 130 - cam * 0.9 + 13);
-    const wallLit = (sx) => wallLitFrom(sx, litXs);
+    // How lit any of it is falls out of which ceiling fixtures are working —
+    // see ceilingFixtures, which hangs one over every gap in the cabinet bank
+    // and lights it when the machine beside it has power. The dressing is only
+    // worth drawing because of this: the detail is painted once and the lighting
+    // decides how much of it you get, so the concourse you can actually SEE
+    // grows as you restore it.
+    //
+    // Converted to screen space here and nowhere else. There is no parallax on
+    // them any more: a fixture that slides against the machine it is lighting
+    // cannot say anything about that machine, and the depth cue the parallax was
+    // buying is already covered by drawCeilingLight's beam-lean, which rakes
+    // harder the further off-centre a fixture sits.
+    // Reach is tied to the fixture PITCH rather than left at wallLitFrom's
+    // default. That default (BAY_W * 1.55, about 201) was chosen against
+    // fixtures 130 apart, where the dimmest point between two of them fell to
+    // 0.75 and the ceiling read as a row of overlapping pools. Hanging one over
+    // every cabinet gap put them 88 apart, and at the same reach every point is
+    // inside four or five pools at once — wallLitFrom takes the max, so the dip
+    // between fixtures only reached 0.88 and the whole concourse flattened out
+    // into one evenly bright wash. 1.5x the pitch restores the old modulation at
+    // the new density.
+    const fixtures = this.ceilingFixtures();
+    const pitch = fixtures.length > 1 ? fixtures[1].x - fixtures[0].x : BAY_W;
+    const litXs = fixtures.map((f) => ({ x: f.x - cam, k: f.k }));
+    const wallLit = (sx) => wallLitFrom(sx, litXs, pitch * 1.5) * ROOM_LIT_PEAK;
     // The counters carry their own lamps — three over each deck, and by
     // drawCounter's own account the only warm light left at this end of the
     // concourse. Dolores and Gary stand directly under three working ones, so
@@ -1511,7 +1627,7 @@ export class HubState {
         lit: wallLit(sx),
       });
     }
-    // ceiling lights: on per act, flickering because the place is falling apart.
+    // The fixtures themselves, flickering because the place is falling apart.
     // Drawn at y 46 rather than the ceiling's actual y 34 — HUB_ZOOM's floor pin
     // crops everything above world y ~44 off the top of the frame, so a light
     // fixture at the real ceiling height would flicker invisibly. y 46 is as
@@ -1520,11 +1636,22 @@ export class HubState {
     // The glow's reach is stretched to match (down to y 170, was 140) so the
     // extra headroom reads as more of the back wall getting lit, not just a
     // taller light fixture.
-    for (let i = 0; i < 8; i++) {
-      const lx = Math.round(i * 130 - cam * 0.9);
-      const on = i < act * 3;
-      drawCeilingLight(ctx, lx, HUB_CEIL_Y, on ? lightFlicker(this.t, i, this.save.settings.reducedFlashing) : 0);
-    }
+    //
+    // Culled to the view. There are around nineteen fixtures over the whole
+    // concourse now where there used to be eight, but only about six are ever on
+    // screen — so this draws FEWER of them per frame than the old fixed loop,
+    // which painted all eight whether or not they were in shot.
+    //
+    // Flicker is deliberately applied to the fixture sprite and NOT to litXs
+    // above. The tube stutters; the pool of light it casts holds steady. Wiring
+    // the flicker through the falloff would strobe the whole room, every wall
+    // dressing and every face in it, several times a minute.
+    fixtures.forEach((f, i) => {
+      const lx = Math.round(f.x - cam);
+      if (lx < -LIGHT_W - 60 || lx > HUB_VIEW_W + 60) return;
+      const flick = lightFlicker(this.t, i, this.save.settings.reducedFlashing);
+      drawCeilingLight(ctx, lx, HUB_CEIL_Y, f.k > 0 ? f.k * flick : 0);
+    });
     // Light pooling: every lit machine throws its screen colour onto the tiles
     // in front of it. Drawn before the stations so each cabinet stands ON its
     // own pool. Nine lit cabinets over unlit floor was the single biggest
@@ -1706,7 +1833,13 @@ export class HubState {
       grounded: true,
       facing: this.facing || 1,
     }, pxs, HUB_FLOOR_PIN_Y, PLAYER_H, { lit: castLit(pxs) });
-    drawPlayerMarker(ctx, pxs, HUB_FLOOR_PIN_Y - PLAYER_H - 10 + Math.sin(this.t * 2.6) * 1.3, 3.2);
+    // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
+    // height passed to drawToon sizes the body, so a fixed offset above it sits
+    // in clear air over grumpos' helmet crest and pika's ears while hovering a
+    // head-and-a-half above the ones who end at the nominal line. Measured, the
+    // marker keeps the same sliver of air over every hero in the cast.
+    const headY = HUB_FLOOR_PIN_Y - toonInkTop(heroId) * PLAYER_H;
+    drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
     // the contextual prompt, the location name, a PLUGS/COINS/ACT readout and a
@@ -1750,9 +1883,13 @@ export class HubState {
         drawTextCentered(ctx, `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`,
           W / 2, H - 30, '#8a8a98');
       } else {
+        // isTouchDevice(), not usingTouch: the hub is the first screen a phone
+        // lands on after the title, and until a finger had touched something it
+        // was told to press ENTER.
+        const touch = Input.isTouchDevice();
         const verb = this.near.type === 'exit'
-          ? (Input.usingTouch ? 'TAP TO LEAVE' : 'ENTER TO LEAVE')
-          : (Input.usingTouch ? 'TAP TO ENTER' : 'ENTER TO USE');
+          ? (touch ? 'TAP TO LEAVE' : 'ENTER TO LEAVE')
+          : (touch ? 'TAP TO ENTER' : 'ENTER TO USE');
         drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
       }
     }
@@ -1761,12 +1898,15 @@ export class HubState {
     // place label is not an announcement — it wants to just be there, quietly,
     // the way a sign on a wall is. Sitting it on the same baseline as the
     // resources turns three stacked lines into one row that reads left to right.
-    drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, H - 11, '#3f8a80', 0.85);
+    // Set at 0.85 this row was ten CSS px on a phone — the coin count is a
+    // number you check before deciding what to buy, not decoration. The whole
+    // strip moves together at HINT_S so it stays one line.
+    drawText(ctx, 'THE LAST FUNCTIONING FOOD COURT', 8, H - 11, '#3f8a80', HINT_S);
     const coins = `COINS ${formatCoins(slot.coins)}`;
     const plugs = `PLUGS ${totalPlugs(slot)}/${MAX_PLUGS}`;
-    const coinsW = textWidth(coins, 0.85);
-    drawText(ctx, coins, W - 8 - coinsW, H - 11, '#f6d33c', 0.85);
-    drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, 0.85), H - 11, '#48e0c8', 0.85);
+    const coinsW = textWidth(coins, HINT_S);
+    drawText(ctx, coins, W - 8 - coinsW, H - 11, '#f6d33c', HINT_S);
+    drawText(ctx, plugs, W - 20 - coinsW - textWidth(plugs, HINT_S), H - 11, '#48e0c8', HINT_S);
 
     // The legend still introduces itself and leaves — it is the one thing here
     // that genuinely has nothing to say after you have read it once. It takes
@@ -1780,9 +1920,9 @@ export class HubState {
       // the status row already take all 58px, and anything above it lands on
       // the cast's feet), and this is the one piece of chrome whose job is to
       // name what is tappable and then get out of the way.
-      drawTextCentered(ctx, Input.usingTouch
+      drawTextCentered(ctx, Input.isTouchDevice()
         ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
-        : 'LEFT/RIGHT WALK   UP/DOWN PICK   ENTER CONFIRM   CLICK A POSTER', W / 2, H - 48, '#8a8a98', 0.9);
+        : 'LEFT/RIGHT WALK   UP/DOWN PICK   ENTER CONFIRM   CLICK A POSTER', W / 2, H - 48, '#8a8a98', HINT_S);
       ctx.restore();
     }
     // The same speech card the stages use — portrait, name header, words —
@@ -1833,8 +1973,8 @@ export class HubState {
     });
     ctx.save();
     ctx.globalAlpha = e;
-    drawTextCentered(ctx, Input.usingTouch ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE',
-      W / 2, H - 14, '#8a8a98', 0.9);
+    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP TO CLOSE' : 'CLICK OR ESC TO CLOSE',
+      W / 2, H - 14, '#8a8a98', HINT_S);
     ctx.restore();
   }
 }
@@ -1873,11 +2013,27 @@ function rowTextY(state, i, s1 = 1, dy = 0, s2 = s1) {
 
 // Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select,
 // tap-again-to-confirm, spelled out at the bottom of the screen.
+//
+// isTouchDevice(), not usingTouch: usingTouch only turns true once a finger has
+// landed, so a phone arriving at one of these screens cold was told to press
+// keys it does not have. And the touch line names no way back, because a phone
+// has no ESC — every one of these lists carries a BACK row instead.
 function drawMenuHint(ctx, extra) {
-  const text = Input.usingTouch
-    ? `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}   ESC BACK`
+  const text = Input.isTouchDevice()
+    ? `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}`
     : `UP/DOWN SELECT   ENTER ${extra || 'CONFIRM'}   ESC BACK`;
   drawText(ctx, text, 12, H - 13, '#5a5a68', HINT_S);
+}
+
+// Hub lists size their rows the way stage select does: the list grows into
+// whatever the header leaves it instead of sitting at a fixed 18-unit pitch —
+// which on a phone was a 26 CSS px row, under every platform's 44pt touch
+// minimum, with the bottom half of the screen left black under it.
+const MENU_LIST_BOTTOM = 232, MENU_ROW_MIN = 20, MENU_ROW_MAX = 34;
+const MENU_ROW_S = 1.3;    // row labels
+const MENU_NOTE_S = 1.1;   // the selected row's one-line gloss
+function fitRows(state, count) {
+  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, (MENU_LIST_BOTTOM - state.listY) / count));
 }
 // The status strip along the bottom of every hub menu. Nudged up from scale 1
 // because on a phone the canvas is barely 2x its 480x270 design size, and a
@@ -2016,8 +2172,8 @@ export class StageSelectState {
 
 
 export class BenchState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 20; }
-  enter() { this.idx = 0; Input.setMenuButtons(); }
+  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = MENU_ROW_MAX; }
+  enter() { this.idx = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = BENCH_UPGRADES.map((u) => {
@@ -2056,25 +2212,27 @@ export class BenchState {
     // somebody, and the menu framing only lands if the counter has a server.
     drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 16, '#f6d33c', 2, 'title');
     drawTextCentered(ctx, `COINS: ${formatCoins(this.save.slot.coins)}`, W / 2, 40, '#f6d33c');
-    this.options().forEach((o, i) => {
+    const opts = this.options();
+    fitRows(this, opts.length);
+    opts.forEach((o, i) => {
       const sel = i === this.idx;
       if (sel) drawSelRow(ctx, this, i, 40);
-      const y = rowTextY(this, i);
-      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, sel ? '#f6d33c' : '#c8c8d8'); return; }
+      const y = rowTextY(this, i, MENU_ROW_S);
+      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = sel ? '#f6d33c' : '#c8c8d8';
       const lvlText = 'I'.repeat(Math.max(1, o.lvl));
-      drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} [${lvlText}]`, 40, y, c);
-      if (o.maxed || o.cost === undefined) drawText(ctx, 'MAX', W - 90, y, '#48c848');
-      else drawText(ctx, `${formatCoins(o.cost)}`, W - 90, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68');
-      if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 26, '#8a8a98');
+      drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} [${lvlText}]`, 40, y, c, MENU_ROW_S);
+      if (o.maxed || o.cost === undefined) drawText(ctx, 'MAX', W - 100, y, '#48c848', MENU_ROW_S);
+      else drawText(ctx, `${formatCoins(o.cost)}`, W - 100, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
+      if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     });
     drawMenuHint(ctx, 'BUY');
   }
 }
 
 export class ShopState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; Input.setMenuButtons(); }
+  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; }
+  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {
@@ -2122,23 +2280,28 @@ export class ShopState {
     drawTextCentered(ctx, this.line, W / 2, 28, '#5a5a68');
     const slot = this.save.slot;
     drawTextCentered(ctx, `COINS: ${formatCoins(slot.coins)}   EQUIPPED: ${slot.mods.equipped.length}/${slot.mods.slots}`, W / 2, 44, '#f6d33c');
-    this.options().forEach((o, i) => {
+    const opts = this.options();
+    fitRows(this, opts.length);
+    opts.forEach((o, i) => {
       const sel = i === this.idx;
       if (sel) drawSelRow(ctx, this, i, 30);
-      const y = rowTextY(this, i);
-      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 30, y, sel ? '#f6d33c' : '#c8c8d8'); return; }
+      const y = rowTextY(this, i, MENU_ROW_S);
+      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 30, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = o.equipped ? '#48e0c8' : sel ? '#f6d33c' : o.owned ? '#c8c8d8' : '#8a8a98';
-      drawText(ctx, `${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, 30, y, c);
-      if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, W - 70, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68');
-      if (sel) drawTextCentered(ctx, (o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.').slice(0, 70), W / 2, H - 26, '#8a8a98');
+      // Names are measured against the price column rather than trusted to fit:
+      // a size up, the longest mod name reached the coins it costs.
+      const priceX = W - 76;
+      drawText(ctx, fitText(`${sel ? '> ' : '  '}${o.equipped ? '[E] ' : ''}${o.m.name}`, priceX - 36, MENU_ROW_S), 30, y, c, MENU_ROW_S);
+      if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, priceX, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
+      if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     });
     drawMenuHint(ctx, 'BUY/EQUIP');
   }
 }
 
 export class ArcadeState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = 18; }
-  enter() { this.idx = 0; Input.setMenuButtons(); }
+  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = MENU_ROW_MAX; }
+  enter() { this.idx = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
   options() {
     // Breaker-box games are keyboard-shaped; on touch the corner is shuttered.
     if (Input.isTouchDevice()) return [{ none: true }, { back: true }];
@@ -2164,20 +2327,22 @@ export class ArcadeState {
     drawTextCentered(ctx, `${ARCADE_PLAY_COST} COINS A GO. WIN: +${REWARDS.arcadeWin} AND A POWER-UP.`, W / 2, 40, '#8a8a98');
     const touch = Input.isTouchDevice();
     const broke = this.save.slot.coins < ARCADE_PLAY_COST;
-    this.options().forEach((o, i) => {
+    const opts = this.options();
+    fitRows(this, opts.length);
+    opts.forEach((o, i) => {
       const sel = i === this.idx;
       if (sel) drawSelRow(ctx, this, i, 40);
-      const y = rowTextY(this, i);
+      const y = rowTextY(this, i, MENU_ROW_S);
       if (o.back || o.none) {
         const label = o.back ? 'BACK' : 'OUT OF ORDER ON TOUCH. TRY A KEYBOARD.';
-        drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8');
+        drawText(ctx, `${sel ? '> ' : '  '}${label}`, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S);
         return;
       }
       const c = broke ? '#5a5a68' : sel ? '#f6d33c' : '#c8c8d8';
-      drawText(ctx, `${sel ? '> ' : '  '}${MINIGAME_NAMES[o.game]}`, 40, y, c);
-      drawText(ctx, `${ARCADE_PLAY_COST}`, W - 70, y, broke ? '#5a5a68' : '#f6d33c');
+      drawText(ctx, `${sel ? '> ' : '  '}${MINIGAME_NAMES[o.game]}`, 40, y, c, MENU_ROW_S);
+      drawText(ctx, `${ARCADE_PLAY_COST}`, W - 76, y, broke ? '#5a5a68' : '#f6d33c', MENU_ROW_S);
     });
-    if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 26, '#8a8a98');
+    if (!touch && broke) drawTextCentered(ctx, 'THE COIN SLOT IS UNMOVED BY YOUR POVERTY.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     drawMenuHint(ctx, 'PLAY');
   }
 }

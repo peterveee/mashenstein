@@ -10,6 +10,7 @@ import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
   textWidth, wrapText, drawPanel, drawRoundButton, textYForMid, UI_PANEL_BORDER,
+  keyLegendWidth, drawKeyLegend,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
@@ -20,6 +21,35 @@ import { formatCoins } from './progress.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
+
+// The touch power-up shelf's midline (see drawHud below) — exported so run.js
+// can line the chrome ability-name label up against it exactly, not just land
+// close by.
+export const TOUCH_SHELF_CY = H - 11 - 4;
+
+// How long the keyboard legend stays up at the start of a teaching stage, and
+// how much of that is the fade out. Five seconds is about two obstacles' worth
+// of running: long enough to have looked once, short enough that it is gone
+// before the stage gets interesting.
+export const HINT_TIME = 5;
+const HINT_FADE = 1;
+
+// How long the BONUS panel holds its full sentence before folding down to just
+// the live count, and how long the fold itself takes.
+//
+// It folds rather than leaves, which is the difference between it and the
+// legend above. The legend is a teaching aid and teaching aids are done when
+// you have read them; the BONUS panel is a running counter that turns green at
+// the moment it completes, and hiding it would take the count and that moment
+// along with the sentence. The sentence is the read-once half — ten seconds is
+// long enough to have looked — so the sentence is the only half that goes.
+//
+// BONUS_HOLD re-opens it when the state changes under the player: completing or
+// missing a challenge is news, and news arrives in words before it settles back
+// to a number.
+export const BONUS_TIME = 10;
+export const BONUS_HOLD = 3;
+const BONUS_FOLD = 0.55;
 
 // GOAL-panel display labels. The counted missions (targets/cords/chase/rescue/
 // combo) fall through to the raw type name because the count printed beside it
@@ -56,6 +86,10 @@ function mix(a, b, k) {
   const ch = (sh) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * k);
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
+
+// Ease in and out of both ends. Chrome that starts and stops at full speed reads
+// as a jump cut even when the travel between is the right length.
+const smoothstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 // The status pill: cells on the left, coins on the right, one panel.
 //
@@ -359,7 +393,7 @@ export function drawHud(ctx, run) {
   // On touch the ability ring below is skipped entirely (see !Input.usingTouch
   // below) — so the shelf only needs clearance from a ring that's not there,
   // and can sit closer to the bottom edge instead of leaving that band empty.
-  const SHELF_CY = GAUGE_CY - (Input.usingTouch ? 4 : 15);
+  const SHELF_CY = Input.usingTouch ? TOUCH_SHELF_CY : GAUGE_CY - 15;
   // Only the in-canvas fallback JUMP button (run.js setButtons, chrome.mode
   // 'none') actually reaches into this corner at x 56 — chrome mode moves
   // JUMP out into the margin, so the row no longer needs to duck it there.
@@ -422,16 +456,50 @@ export function drawHud(ctx, run) {
   // in 66px to clear it, costing every mission title a third of its width on
   // the screens with the least of it. PAUSE hangs below these panels now.
   const OBJ_R = W - 8;
-  const objective = (tag, tagColor, text, ink, y, scale) => {
+  // `text` is either a plain string or a [head, tail] pair, where the tail is
+  // the live part that survives a fold and the head is the sentence that does
+  // not. `fold` runs 0 (full) to 1 (tail only).
+  //
+  // Both halves are laid out from the right edge, which is what makes the fold
+  // cheap to read: the tail's glyphs are already where they will end up, so the
+  // count does not slide across the screen while you are trying to watch it. All
+  // that moves is the panel's left edge, and it moves *through* the head — the
+  // clip below is set at the tag's trailing edge, so the shrinking panel wipes
+  // the sentence with the same motion that closes it. One gesture, not two.
+  const objective = (tag, tagColor, text, ink, y, scale, fold = 0) => {
     const TP = 5, GAP = 5;
     const h = scale < 1 ? 12 : 14;
     const cy = y + h / 2;
     const tw = textWidth(tag, 0.8, 'bold');
-    const w = TP * 2 + tw + GAP + textWidth(text, scale);
+    const lead = TP * 2 + tw + GAP;      // panel's left edge -> first glyph
+    const [head, tail] = Array.isArray(text) ? text : [text, ''];
+    const full = head + tail;
+    const wFull = lead + textWidth(full, scale);
+    const wTail = lead + textWidth(tail, scale);
+    const w = Math.round(wFull + (wTail - wFull) * fold);
     const x = OBJ_R - w;
     drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
     rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
-    rawDrawText(ctx, text, x + TP + tw + GAP, textY(cy, scale), ink, scale);
+    const tailX = OBJ_R - TP - textWidth(tail, scale);
+    if (head && fold < 1) {
+      // Measured as the difference between the joined string and the tail, not
+      // as textWidth(head): textWidth drops the trailing tracking on whatever it
+      // is handed, so measuring the head alone lands it a pixel off from where
+      // the same words sit when the two are drawn as one string.
+      const headX = tailX - (textWidth(full, scale) - textWidth(tail, scale));
+      if (fold > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x + lead - GAP, y, OBJ_R - (x + lead - GAP), h);
+        ctx.clip();
+        // The wipe does the work; alpha only joins for the back half, so the
+        // last few glyphs thin out instead of being sheared off mid-stroke.
+        ctx.globalAlpha = Math.min(1, 2 * (1 - fold));
+      }
+      rawDrawText(ctx, head, headX, textY(cy, scale), ink, scale);
+      if (fold > 0) ctx.restore();
+    }
+    if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
   };
   // Centred on HERO_CY, the midline the status pill and the hero badge already
   // share, so all three top-row panels sit level instead of GOAL riding high.
@@ -440,12 +508,17 @@ export function drawHud(ctx, run) {
   // hierarchy, not one block, and 4px of sky says so.
   const OBJ_Y2 = OBJ_Y + 18;
   // Long challenge descriptions have to fit beside the badge, not through it.
-  const fitRight = (text) => {
-    const max = W / 2 - 44;
+  // `reserve` is width already spoken for by a tail the truncation must not eat
+  // into — the count is the one part of that line worth keeping whole.
+  const fitRight = (text, reserve = 0) => {
+    const max = W / 2 - 44 - reserve;
     let out = text;
     while (out.length > 3 && textWidth(out) > max) out = out.slice(0, -1);
     return out === text ? out : out.slice(0, -2) + '..';
   };
+  // The BONUS panel's fold clock. Held open while bonusT is running, eased shut
+  // over its last half-second.
+  const fold = 1 - smoothstep(Math.min(1, Math.max(0, run.bonusT ?? 0) / BONUS_FOLD));
   if (!run.overtime && run.stage) {
     const m = run.mission;
     let prog = '';
@@ -457,37 +530,39 @@ export function drawHud(ctx, run) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
       const tail = done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`;
-      objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)', fitRight(`${c.desc} ${tail}`),
-        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85);
+      objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)',
+        [`${fitRight(c.desc, textWidth(` ${tail}`, 0.85))} `, tail],
+        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold);
     } else if (run.challenge) {
-      objective('BONUS', 'rgba(255,255,255,0.3)', fitRight(`${run.challenge.desc} - NOT THIS TIME`),
-        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85);
+      // Folded, this one keeps the verdict rather than the description: a missed
+      // challenge is a tombstone, and the words that matter are the last three.
+      objective('BONUS', 'rgba(255,255,255,0.3)',
+        [`${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `, 'NOT THIS TIME'],
+        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85, fold);
     }
   } else {
     objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
   }
 
   // Keyboard controls hint; the power status lives in the top-right gauge.
-  // Keys are called out in the same green the cells use and the actions stay
-  // quiet, so the line reads as a legend rather than as a sentence — it is
-  // scanned for one key, never read through.
-  if (!Input.usingTouch) {
+  //
+  // It teaches, then it leaves. Four keys is a thing you learn in the first
+  // stage and then never look at again, and a strip that sits in the corner for
+  // all twenty-seven of them is just permanent furniture — so run.js only arms
+  // the timer on the opening stage, and the pause screen carries the same
+  // legend for anyone who does forget. The last second is a fade rather than a
+  // cut: chrome that vanishes between frames reads as a glitch.
+  if (!Input.usingTouch && run.hintT > 0) {
     const hero = HERO_BY_ID[run.relay.current];
     const hints = [['SPC', 'JUMP'], ['DN', 'DUCK'], ['RT/D', hero.ability.label], ['P', 'PAUSE']];
-    const S = 0.85, KEY_GAP = 2.5, PAIR_GAP = 7, HP = 6, HH = 12;
-    const parts = hints.map(([k, a]) => ({
-      k, a, w: textWidth(k, S, 'bold') + KEY_GAP + textWidth(a, S),
-    }));
-    const inner = parts.reduce((n, p) => n + p.w, 0) + PAIR_GAP * (parts.length - 1);
+    const S = 0.85, HP = 6, HH = 12;
+    const inner = keyLegendWidth(hints, S);
     const hx = W - 8 - (inner + HP * 2), hy = H - 17;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, run.hintT / HINT_FADE);
     drawPanel(ctx, hx, hy, inner + HP * 2, HH, 4, undefined, PANEL);
-    let tx = hx + HP;
-    for (const p of parts) {
-      rawDrawText(ctx, p.k, tx, textY(hy + HH / 2, S), '#74c947', S, 'bold');
-      tx += textWidth(p.k, S, 'bold') + KEY_GAP;
-      rawDrawText(ctx, p.a, tx, textY(hy + HH / 2, S), 'rgba(255,255,255,0.6)', S);
-      tx += textWidth(p.a, S) + PAIR_GAP;
-    }
+    drawKeyLegend(ctx, hints, hx + HP, textY(hy + HH / 2, S), { scale: S });
+    ctx.restore();
   }
 
   // The touch controls: JUMP, PWR, PAUSE. One painter for all three
@@ -509,11 +584,17 @@ export function drawHud(ctx, run) {
 // them outside the game rect instead). A banked charge overrides the
 // cooldown: the button reads gold and full, because it is usable right now.
 export function roundButtonOpts(run, b) {
-  const charged = b.id === 'ability' && run.player.relayCharge;
-  const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
+  if (b.id !== 'ability') return { frac: null, fill: 'rgba(11,11,20,0.22)', ink: '#48e0c8' };
+  const charged = run.player.relayCharge;
+  const cd = charged ? 0 : run.player.abilityCd;
   const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
   return {
-    frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : null,
+    // Full reads as "ready" — not empty. It drains to 0 the instant you fire
+    // it, then rises back to full as the cooldown counts down, and STAYS full
+    // once ready (drawRoundButton no longer treats frac===1 as "nothing to
+    // draw"). The old empty-when-ready/full-right-before-ready-again cycle
+    // had the meter and the mental model running backwards from each other.
+    frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : 1,
     // Charged is the one state allowed to raise its voice, and with the
     // outline gone the fill is the only place left to say it: a gold wash
     // under gold ink, against the same near-invisible slate the others wear.

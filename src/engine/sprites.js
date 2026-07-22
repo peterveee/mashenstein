@@ -460,6 +460,41 @@ export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, sty
   drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style, plate);
 }
 
+// A control legend: a KEY, then what it does, repeated. Keys carry the green
+// the HUD's cells already use for "this is live" and the actions stay quiet, so
+// the row scans as a lookup table instead of reading as a sentence — you come
+// to it hunting one key, never to read it through.
+//
+// One painter for both places it appears (the opening seconds of a run, and the
+// pause screen you check later), because the whole point of the legend is that
+// those two ARE the same legend: same word, same colour, same order. Two call
+// sites drawing "the same" row is how that quietly stops being true.
+export const KEY_INK = '#74c947';
+export const ACTION_INK = 'rgba(255,255,255,0.6)';
+const LEGEND_KEY_GAP = 3;    // key -> the action it performs
+const LEGEND_PAIR_GAP = 10;  // pair -> pair; wide enough that the halves group
+
+const legendPairWidth = ([key, action], scale) =>
+  textWidth(key, scale, 'bold') + LEGEND_KEY_GAP * scale + textWidth(action, scale);
+
+export function keyLegendWidth(pairs, scale = 1) {
+  return pairs.reduce((n, p) => n + legendPairWidth(p, scale), 0)
+    + LEGEND_PAIR_GAP * scale * (pairs.length - 1);
+}
+
+// pairs: [key, action, actionInk?][] — the per-pair ink is for the one line
+// that reports state (your power, and whether it is charged) rather than a
+// control, which wants its own colour without leaving the legend's shape.
+export function drawKeyLegend(ctx, pairs, x, y, { scale = 1, keyInk = KEY_INK, actionInk = ACTION_INK } = {}) {
+  let tx = x;
+  for (const [key, action, ink] of pairs) {
+    drawText(ctx, key, tx, y, keyInk, scale, 'bold');
+    tx += textWidth(key, scale, 'bold') + LEGEND_KEY_GAP * scale;
+    drawText(ctx, action, tx, y, ink || actionInk, scale);
+    tx += textWidth(action, scale) + LEGEND_PAIR_GAP * scale;
+  }
+}
+
 // Labels ride a size down inside a disc: at full scale a four-letter word
 // reaches the edge and the button reads as a word someone drew a circle around,
 // rather than as a button.
@@ -492,14 +527,20 @@ export function drawRoundButton(ctx, b, opts = {}) {
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.22)';
   ctx.fill();
-  if (opts.frac != null && opts.frac < 1) {
+  if (opts.frac != null) {
     ctx.clip();
-    const fh = Math.round(r * 2 * Math.max(0, opts.frac));
+    const fh = Math.round(r * 2 * Math.max(0, Math.min(1, opts.frac)));
     ctx.fillStyle = 'rgba(72,224,200,0.28)';
     ctx.fillRect(cx - r, cy + r - fh, r * 2, fh);
-    ctx.fillStyle = 'rgba(184,248,232,0.8)';
-    ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
+    // The meniscus line marks the waterline while it's rising; at a full disc
+    // it would sit pinned to the rim, reading as a stray ring rather than a
+    // "still filling" cue — so it only draws while there's headroom above it.
+    if (opts.frac < 1) {
+      ctx.fillStyle = 'rgba(184,248,232,0.8)';
+      ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
+    }
   }
+  ctx.restore();
   // A defining ring — the in-canvas buttons deliberately go without one (see
   // above: over scrolling gameplay it read as a third thing to track), but
   // that concern doesn't exist against the chrome canvas's static margin, and

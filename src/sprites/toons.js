@@ -5,10 +5,46 @@
 // Colors come from HERO_SPRITES palettes so pixel and toon stay in sync.
 import { HERO_SPRITES } from './heroes.js';
 
-const OUTLINE = 'rgba(26,16,40,0.32)';
+const OUTLINE_A = 0.32, SKIN_OUTLINE_A = 0.2;
+let OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
 // Softer contour for BARE SKIN — the standard weight reads harsher against
 // grumpos's pale hide than it does against clothing and hair.
-const SKIN_OUTLINE = 'rgba(26,16,40,0.2)';
+let SKIN_OUTLINE = `rgba(26,16,40,${SKIN_OUTLINE_A})`;
+
+// ---------------------------------------------------------------- ink weight
+// Three independent dials on how heavy the linework reads. All three are 1 in
+// production; the gallery's bake-off drives them to compare candidate weights
+// without keeping a second copy of the rig around.
+//
+//   body  — scales `ow`, the contour every silhouette path and limb strokes at.
+//   face  — scales the small-feature strokes (eyes, brows, mouths, mustache).
+//   alpha — scales the outline colors' opacity. Softens without thinning.
+//
+// The face strokes used to run HEAVIER than the body contour they sat inside —
+// a 0.020u eye ring against a 0.016u contour, on a feature a twentieth the size
+// of the torso. Sliced across, the ring came out wider than the sclera it
+// enclosed, and the eye read as a grey donut rather than an eye. They are now
+// ~0.55x their old values (ring 0.020u -> 0.011u), which seats every face line
+// at or just under the contour. Widths below are the SHIPPED numbers; INK is a
+// dial on top of them, not the correction itself.
+//
+// face/body stay keyed to `u` rather than to each other on purpose: `ow` is not
+// the same fraction of `u` in the body rig as it is in the face crops, so an
+// ow-relative eye would silently double in weight on the HUD cells.
+//
+// Still outstanding: the Math.max floors below are absolute, so at the in-run
+// u=24 they bind and hand back a heavier-than-proportional line — the frown
+// lands ~3x its intended width. They exist so a hairline survives a near-1:1
+// render, which no longer describes how this game is scaled. Worth making
+// scale-aware, but as its own change, tuned against these widths.
+export const INK = { body: 1, face: 1, alpha: 1 };
+
+export function setInk({ body = 1, face = 1, alpha = 1 } = {}) {
+  INK.body = body; INK.face = face; INK.alpha = alpha;
+  OUTLINE = `rgba(26,16,40,${+(OUTLINE_A * alpha).toFixed(3)})`;
+  SKIN_OUTLINE = `rgba(26,16,40,${+(SKIN_OUTLINE_A * alpha).toFixed(3)})`;
+}
+
 const pal = (id) => HERO_SPRITES[id].pal;
 
 // rig: humanoid | blob | disc. head/back/etc select per-hero decorations.
@@ -220,6 +256,25 @@ const AMBIENT_A = 0.62;
 // instead — RIM_W is the fraction of the outline's own width it covers, so
 // dark always survives on both sides of it.
 const EDGE_A = 0.34, RIM_W = 0.6;
+// ------------------------------------------------------------------ rim dial
+// "Dark survives on both sides" is true of the INK, and not of what you see.
+// A canvas stroke is centred on its path, so the contour's outer half lands on
+// the background and its inner half on the fill. Against the near-black the
+// cast usually stands on, dark-on-dark is a no-op: the outer sliver vanishes,
+// the rim's outer half is the only thing that marks it, and the inner sliver
+// survives against the fill. Read outward-in that is light, then dark — a
+// bevel, and a pale hero (grumpos, #ded9d2) shows it most because his fill
+// gives the inner sliver the most to bite on.
+//
+// These are the levers on that, all shipped-default here; the gallery's rim
+// bake-off drives them. `w` is RIM_W. `a` scales EDGE_A — note INK.alpha does
+// NOT reach the rim, so softening the contour alone shifts this ratio toward
+// the light half. `inside` clips the rim to the shape it belongs to, so it can
+// only warm the fill and never spills onto the background.
+export const RIM = { w: RIM_W, a: 1, inside: false };
+export function setRim({ w = RIM_W, a = 1, inside = false } = {}) {
+  RIM.w = w; RIM.a = a; RIM.inside = inside;
+}
 // Marks, not volumes: eyes, pupils, buttons and teeth. A ramp across a
 // three-pixel pupil is mud, and a rim around one is a smudge.
 const SHADE_MIN = 0.1;
@@ -338,7 +393,7 @@ function fieldRamps(ctx) {
   lit.addColorStop(0.4, `rgba(${HILITE_INK},0)`);
   lit.addColorStop(1, `rgba(${HILITE_INK},0)`);
   const edge = ctx.createLinearGradient(ax, ay, bx, by);
-  edge.addColorStop(0, `rgba(${HILITE_INK},${hi(EDGE_A)})`);
+  edge.addColorStop(0, `rgba(${HILITE_INK},${hi(EDGE_A * RIM.a)})`);
   edge.addColorStop(0.5, `rgba(${HILITE_INK},0)`);
   edge.addColorStop(1, `rgba(${HILITE_INK},0)`);
   shade.g = { core, lit, edge };
@@ -411,10 +466,22 @@ function outlined(ctx, fill, ow, pathFn, stroke = OUTLINE) {
   ctx.stroke();
   // Rim last, riding inside the contour's own width so the dark line thins and
   // warms on the lit side instead of being deleted by it.
-  if (g) {
+  if (g && RIM.w > 0) {
     ctx.strokeStyle = g.edge;
-    ctx.lineWidth = ow * RIM_W;
-    ctx.stroke();
+    if (RIM.inside) {
+      // Clipped to its own shape the rim can only warm the fill. Half of every
+      // stroke is thrown away, so the width is doubled to land the same visible
+      // band — which now sits entirely on the skin side of the contour, leaving
+      // the background edge purely dark instead of purely light.
+      ctx.save();
+      ctx.clip();
+      ctx.lineWidth = ow * RIM.w * 2;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.lineWidth = ow * RIM.w;
+      ctx.stroke();
+    }
   }
 }
 // two-pass round-cap stroke: fat outline pass, then the fill pass inside
@@ -692,7 +759,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     if (ex.joy && !ex.cheer) {
       // delight, robot dialect: the LEDs bend into little ^ arcs
       ctx.strokeStyle = p.w;
-      ctx.lineWidth = Math.max(1, 0.03 * u);
+      ctx.lineWidth = Math.max(0.55, 0.017 * u) * INK.face;
       for (const sx of [-1, 1]) {
         ctx.beginPath();
         ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
@@ -705,14 +772,14 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     const lh = ex.blink ? 0.011 * u : ex.surprise || ex.cheer ? 0.068 * u : 0.05 * u;
     const lookX = ex.focus ? 0.012 * u : 0;
     for (const sx of [-1, 1]) {
-      outlined(ctx, p.w, Math.max(0.5, 0.015 * u), (c) =>
+      outlined(ctx, p.w, Math.max(0.28, 0.008 * u) * INK.face, (c) =>
         roundRectPath(c, eyeX(sx) + lookX - lw, cy - lh, lw * 2, lh * 2, Math.min(lw, lh) * 0.8));
     }
     return;
   }
   if (ex.blink) {
     ctx.strokeStyle = p.e;
-    ctx.lineWidth = Math.max(0.8, 0.025 * u);
+    ctx.lineWidth = Math.max(0.44, 0.014 * u) * INK.face;
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(eyeX(sx) - 0.035 * u, cy);
@@ -724,7 +791,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   // Happy-arc eyes: squeezed shut between cheers, the classic ^ ^ of delight.
   if (ex.joy && !ex.cheer) {
     ctx.strokeStyle = p.e;
-    ctx.lineWidth = Math.max(0.9, 0.028 * u);
+    ctx.lineWidth = Math.max(0.5, 0.015 * u) * INK.face;
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
@@ -739,15 +806,17 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     return;
   }
   for (const sx of [-1, 1]) {
-    outlined(ctx, '#fff', Math.max(0.75, 0.02 * u), (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
     const lookX = ex.focus ? 0.012 * u : 0;
     const lookY = ex.surprise || ex.cheer ? -0.005 * u : 0.012 * u;
     dot(ctx, eyeX(sx) + lookX, cy + lookY, 0.026 * u, p.e);
   }
-  if (!lod && ex.mood !== 'bright' && !ex.relaxed && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+  // `brow` opts a face out of the shipped hairlines: 'none' draws nothing,
+  // 'bushy' means drawHead paints hair brows over the top instead.
+  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
-    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.7, 0.018 * u);
+    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.38, 0.01 * u) * INK.face;
     ctx.beginPath();
     ctx.moveTo(eyeX(-1) - 0.05 * u, cy - 0.08 * u);
     ctx.lineTo(eyeX(-1) + 0.045 * u, cy - (ex.mood === 'worried' ? 0.055 : 0.045) * u);
@@ -758,13 +827,13 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
 }
 function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = Math.max(1, ow * 0.7);
+  ctx.lineWidth = Math.max(0.55, ow * 0.4) * INK.face;
   ctx.beginPath();
   if (ex.joy) {
     // An actual smile: a filled D-grin that widens into a whoop on the peaks.
     const w = (ex.cheer ? 0.085 : 0.065) * u, d = (ex.cheer ? 0.075 : 0.038) * u;
     ctx.stroke();
-    outlined(ctx, p.m || p.e, Math.max(0.5, ow * 0.45), (c) => {
+    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => {
       c.moveTo(cx - w, cy - 0.012 * u);
       c.quadraticCurveTo(cx, cy + d * 1.9, cx + w, cy - 0.012 * u);
       c.closePath();
@@ -773,7 +842,7 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   }
   if (ex.surprise) {
     ctx.stroke();
-    outlined(ctx, p.m || p.e, Math.max(0.5, ow * 0.45), (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
     return;
   } else if (ex.effort) {
     ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u); ctx.lineTo(cx + 0.055 * u, cy - 0.005 * u);
@@ -783,7 +852,7 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   else if (spec.mouth === 'grille') {
     // speaker grille: three glowing ticks instead of lips
     ctx.strokeStyle = p.w;
-    ctx.lineWidth = Math.max(0.7, ow * 0.5);
+    ctx.lineWidth = Math.max(0.38, ow * 0.28) * INK.face;
     for (let i = -1; i <= 1; i++) {
       ctx.moveTo(cx + i * 0.034 * u, cy - 0.018 * u);
       ctx.lineTo(cx + i * 0.034 * u, cy + 0.018 * u);
@@ -805,6 +874,102 @@ function bluntSpike(c, ax, ay, tx, ty, bx, by, round = 0.18) {
   c.quadraticCurveTo(tx, ty, p2x, p2y);
   c.lineTo(bx, by);
   c.closePath();
+}
+
+// ------------------------------------------------- Lorenzo's cap (bake-off)
+// The shipped cap is a semicircle closed by a FLAT chord at -0.12R, while his
+// eyes top out at -0.38R and the focus brows run -0.45R..-0.29R. So the hem
+// crosses 42% of the way down the eye, and both brow strokes land inside the
+// hat — they only show at all because the face draws after the hat, which is
+// also why this survived so long: it reads as "low brim" until you notice the
+// eyebrows are sitting ON the purple.
+//
+// The candidate fixes are a table rather than an edit, and the gallery renders
+// them side by side through this same code path (setLorenzoFace, same pattern
+// as setInk). `current` reproduces the shipped geometry exactly — its flat hem
+// plus 0.5523 circle constants below are a semicircle to within a rounding
+// error — so the baseline in the bake-off is the real thing, not a redraw.
+//
+// Cap fields are in head radii R measured from the head CENTER, positive up:
+//   hem      front-center hem height        hemSide  hem height at the temples
+//   width    half-width at the temples      crown    height of the dome top
+//   bill     [x, y, rx, ry] of the visor    emblem   height of the tool badge
+//   hair     brown fringe under the hem     faceDy   face mask shift, in u
+//   brow     'ink' (shipped hairlines) | 'bushy' | 'none'
+export const LORENZO_FACES = [
+  { id: 'current', label: 'current', note: 'shipped — flat hem at -0.12R, through the eyes',
+    hem: 0.12, width: 1.02, crown: 1.14, bill: [0.8, 0.28, 0.5, 0.16], emblem: 0.75 },
+  { id: 'lifted', label: 'lifted', note: 'same cap, hem raised clear of the brows',
+    hem: 0.58, width: 0.95, crown: 1.24, bill: [0.82, 0.52, 0.5, 0.15], emblem: 0.94 },
+  { id: 'arched', label: 'arched', note: 'hem bows up over the brows, hugs the temples',
+    hem: 0.7, hemSide: 0.3, width: 1.0, crown: 1.24, bill: [0.84, 0.42, 0.5, 0.15], emblem: 0.94 },
+  { id: 'lowface', label: 'low face', note: 'cap stays low and IS the brow — face drops under it, no brow strokes',
+    hem: 0.12, width: 1.02, crown: 1.14, bill: [0.8, 0.28, 0.5, 0.16], emblem: 0.75,
+    faceDy: 0.052, brow: 'none' },
+  { id: 'bushy', label: 'bushy', note: 'arched hem + brown caterpillar brows matching the mustache',
+    hem: 0.7, hemSide: 0.32, width: 1.0, crown: 1.26, bill: [0.84, 0.44, 0.5, 0.15], emblem: 0.96,
+    faceDy: 0.012, brow: 'bushy' },
+  { id: 'pushed', label: 'pushed back', note: 'cap shoved up the crown, brown fringe showing under it',
+    hem: 0.78, width: 0.92, crown: 1.32, bill: [0.8, 0.62, 0.48, 0.15], emblem: 1.02,
+    hair: true, faceDy: 0.012, brow: 'bushy' },
+];
+const LORENZO_FACE = { variant: 'current' };
+// Dev-only dial for the bake-off above; ships pinned to whichever id wins.
+export function setLorenzoFace(variant = 'current') {
+  LORENZO_FACE.variant = variant;
+}
+const lorenzoFace = () => LORENZO_FACES.find((v) => v.id === LORENZO_FACE.variant) || LORENZO_FACES[0];
+
+// Dome + hem as one closed path. K is the circle-to-cubic constant, so a flat
+// hem with width == crown - hem gives a true semicircle.
+function capPath(c, hx, hy, R, v) {
+  const K = 0.5523;
+  const hemS = hy - R * (v.hemSide != null ? v.hemSide : v.hem);
+  const hemC = hy - R * v.hem;
+  const w = R * v.width;
+  const top = hy - R * v.crown;
+  const dh = hemS - top;
+  c.moveTo(hx - w, hemS);
+  c.bezierCurveTo(hx - w, hemS - dh * K, hx - w * K, top, hx, top);
+  c.bezierCurveTo(hx + w * K, top, hx + w, hemS - dh * K, hx + w, hemS);
+  // Front hem back to the left temple: a straight chord when hem == hemSide,
+  // bowed up over the brows when the center rides higher. The control point is
+  // mirrored past the center height so the curve passes through it exactly.
+  c.quadraticCurveTo(hx, 2 * hemC - hemS, hx - w, hemS);
+  c.closePath();
+}
+
+// Brown fringe for the pushed-back cap: crown hidden under the hat, showing as
+// a scalloped edge across the forehead. Ties to the sideburn `plumber` already
+// draws at the temple, so the hair reads as one head of hair rather than a
+// separate patch.
+function capFringe(c, hx, hy, R) {
+  c.moveTo(hx - R * 0.94, hy - R * 0.46);
+  c.quadraticCurveTo(hx, hy - R * 1.14, hx + R * 0.94, hy - R * 0.46);
+  c.quadraticCurveTo(hx + R * 0.7, hy - R * 0.34, hx + R * 0.5, hy - R * 0.5);
+  c.quadraticCurveTo(hx + R * 0.28, hy - R * 0.32, hx + R * 0.06, hy - R * 0.5);
+  c.quadraticCurveTo(hx - R * 0.18, hy - R * 0.32, hx - R * 0.42, hy - R * 0.5);
+  c.quadraticCurveTo(hx - R * 0.68, hy - R * 0.32, hx - R * 0.94, hy - R * 0.46);
+  c.closePath();
+}
+
+// Caterpillar brows: hair rather than expression, so unlike the ink hairlines
+// they stay on the face through blinks and cheers. Thick at the outer end,
+// tapering toward the nose, and they steepen when he is concentrating.
+function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
+  const sep = 0.075 * u;
+  const drop = ex.focus ? 0.012 * u : ex.surprise || ex.cheer ? -0.014 * u : 0;
+  for (const sx of [-1, 1]) {
+    const ox = cx + sx * (sep + 0.045 * u), oy = cy - 0.086 * u;   // outer, over the temple
+    const ix = cx + sx * (sep - 0.052 * u), iy = cy - 0.05 * u + drop; // inner, toward the nose
+    outlined(ctx, p.m, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
+      c.moveTo(ox, oy + 0.015 * u);
+      c.quadraticCurveTo(cx + sx * sep, oy - 0.016 * u, ix, iy - 0.009 * u);
+      c.lineTo(ix, iy + 0.009 * u);
+      c.quadraticCurveTo(cx + sx * sep, oy + 0.02 * u, ox, oy + 0.015 * u);
+      c.closePath();
+    });
+  }
 }
 
 // Head + hat + face, anchored at head center (hx, hy). Shared by the body
@@ -889,16 +1054,20 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   }
   // hats / hair ON the head
   if (spec.head === 'cap') {
-    outlined(ctx, p.h, ow, (c) => { c.arc(hx, hy - R * 0.12, R * 1.02, Math.PI, 0); c.closePath(); });
-    outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * 0.8, hy - R * 0.28, R * 0.5, R * 0.16, 0, 0, Math.PI * 2));
+    const cap = lorenzoFace();
+    if (cap.hair) outlined(ctx, p.m, ow, (c) => capFringe(c, hx, hy, R));
+    outlined(ctx, p.h, ow, (c) => capPath(c, hx, hy, R, cap));
+    const [bx, by, brx, bry] = cap.bill;
+    outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, hy - R * by, R * brx, R * bry, 0, 0, Math.PI * 2));
     if (!lod) {
       // Center the gold backing on the raised crossed-tool mark.
-      outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, hy - R * 0.75, R * 0.22, 0, Math.PI * 2));
+      const ey = hy - R * cap.emblem;
+      outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, ey, R * 0.22, 0, Math.PI * 2));
       // Tiny crossed-tool mark instead of a familiar letter emblem.
       ctx.strokeStyle = p.h; ctx.lineWidth = Math.max(0.6, ow * 0.55);
       ctx.beginPath();
-      ctx.moveTo(hx + R * 0.02, hy - R * 0.85); ctx.lineTo(hx + R * 0.22, hy - R * 0.65);
-      ctx.moveTo(hx + R * 0.22, hy - R * 0.85); ctx.lineTo(hx + R * 0.02, hy - R * 0.65);
+      ctx.moveTo(hx + R * 0.02, ey - R * 0.1); ctx.lineTo(hx + R * 0.22, ey + R * 0.1);
+      ctx.moveTo(hx + R * 0.22, ey - R * 0.1); ctx.lineTo(hx + R * 0.02, ey + R * 0.1);
       ctx.stroke();
     }
   } else if (spec.head === 'jackal') {
@@ -1144,6 +1313,10 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // face
   const ex = expressionFor(id, pose);
   const faceEx = pose.turn ? { ...ex, turn: pose.turn } : ex;
+  // Cap variants that reshape Lorenzo's brow line also move the face mask under
+  // it and choose how the brows are drawn. Everyone else is untouched.
+  const capV = spec.head === 'cap' ? lorenzoFace() : null;
+  if (capV && capV.brow) faceEx.brow = capV.brow;
   // Move the facial mask toward the direction the head is looking. Merely
   // squeezing a centred pair of eyes leaves a front-facing mask on an oval.
   // Hair, beard and cheek paint remain anchored to the skull, so this shift
@@ -1152,9 +1325,17 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     ctx.save();
     ctx.translate(turnYaw * 0.055 * u, 0);
   }
+  // The mask — eyes, nose, mustache, mouth — slides as one. Ear, sideburn and
+  // hat stay bolted to the skull above.
+  const faceDy = capV && capV.faceDy ? capV.faceDy * u : 0;
+  if (faceDy) {
+    ctx.save();
+    ctx.translate(0, faceDy);
+  }
   // Fernwick's eyes sit a touch lower, giving him a taller, more childlike brow.
   const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u;
   drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
+  if (faceEx.brow === 'bushy' && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow);
   if (spec.nose) outlined(ctx, p.n, Math.max(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
   if (spec.mustache && !lod && ex.joy) {
     // Celebration only: the one time Lorenzo's mouth is visible at all. A wide
@@ -1187,7 +1368,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // the whole thing up and flicks the tips higher, the way a real smile does.
     const lift = ex.joy ? (ex.cheer ? 0.022 : 0.012) * u : 0;
     const tip = ex.joy ? (ex.cheer ? 0.026 : 0.014) * u : 0;
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.6), (c) => {
+    outlined(ctx, p.m, Math.max(0.33, ow * 0.33) * INK.face, (c) => {
       c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
       c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
       c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u - lift, hx + 0.015 * u, hy + 0.1 * u - lift);
@@ -1201,21 +1382,21 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // opens during surprise and tightens into a stern Dad-of-War frown.
     const mouthY = hy + R * 0.58;
     if (ex.surprise) {
-      outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
+      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
       dot(ctx, hx, mouthY + R * 0.04, R * 0.11, p.e);
     } else if (ex.beam) {
       // The one beat he lets it show: on a held pose of the victory flex the
       // stern gap opens into a broad grin, then shuts again. Keyed to `beam`,
       // not `cheer` — cheer covers half the routine, and a Grumpos who grins
       // for half his victory dance isn't Grumpos.
-      outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => {
+      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
         c.moveTo(hx - R * 0.34, mouthY - R * 0.09);
         c.quadraticCurveTo(hx, mouthY + R * 0.36, hx + R * 0.34, mouthY - R * 0.09);
         c.closePath();
       });
     } else {
-      outlined(ctx, p.s, Math.max(0.55, ow * 0.55), (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
-      ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.75, ow * 0.65);
+      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
+      ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.41, ow * 0.36) * INK.face;
       ctx.beginPath();
       // Relaxed, the stern arc irons out flat — the frown is the default,
       // not the only setting.
@@ -1225,6 +1406,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     }
   }
   if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow, ex);
+  if (faceDy) ctx.restore();
   if (turnDepth > 0.001) ctx.restore();
   if (turnDepth > 0.001) ctx.restore();
 }
@@ -3437,7 +3619,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   if (!spec) return;
   const p = pal(heroId);
   const u = h;
-  const ow = Math.max(0.3, 0.016 * h); // whisper-light contour
+  const ow = Math.max(0.3, 0.016 * h) * INK.body; // whisper-light contour
   const lod = h < 16;
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {
@@ -3494,7 +3676,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h) {
   ctx.lineCap = 'round';
   // head+hat spans ~0.5u; fit that span to the box height
   const u = (h * 0.92) / 0.5;
-  const ow = Math.max(0.6, 0.032 * (h * 2));
+  const ow = Math.max(0.6, 0.032 * (h * 2)) * INK.body;
   // Face crops are supersampled and cached, so the light is worth arming even
   // for a HUD cell — but only once the head is big enough to hold a ramp. The
   // blob/disc branch nests a whole drawToon, which arms its own.
@@ -3511,6 +3693,33 @@ function paintFace(ctx, heroId, spec, x, y, w, h) {
   disarmLight(prevLight);
 }
 
+// Where the ink actually lands, in pixels, for a paint call on a square scratch
+// canvas. Null when nothing was drawn or the pixels can't be read (headless
+// stubs), so every caller keeps a nominal fallback.
+function inkBounds(size, paint) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const x = c.getContext('2d');
+    x.save();
+    paint(x);
+    x.restore();
+    const { data } = x.getImageData(0, 0, size, size);
+    if (data.length !== size * size * 4) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        if (data[(py * size + px) * 4 + 3] < 8) continue; // ignore AA dust
+        if (px < x0) x0 = px;
+        if (px > x1) x1 = px;
+        if (py < y0) y0 = py;
+        if (py > y1) y1 = py;
+      }
+    }
+    return x1 >= x0 ? { x0, y0, x1, y1 } : null;
+  } catch { return null; }
+}
+
 // Ink bounds of paintFace, in fractions of its own w-by-h box. Measured once
 // per hero on an oversized scratch canvas (so anything spilling past the box
 // still registers) and cached; falls back to the nominal box if pixels can't
@@ -3519,39 +3728,47 @@ const FACE_FIT = new Map();
 const FIT_R = 64; // nominal box size used for the measurement render
 function faceFit(heroId, spec) {
   if (FACE_FIT.has(heroId)) return FACE_FIT.get(heroId);
-  const nominal = { x: 0, y: 0, w: 1, h: 1 };
-  let fit = nominal;
-  try {
-    const c = document.createElement('canvas');
-    c.width = c.height = FIT_R * 3;
-    const x = c.getContext('2d');
-    x.save();
-    paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R);
-    x.restore();
-    const { data } = x.getImageData(0, 0, c.width, c.height);
-    if (data.length === c.width * c.height * 4) {
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (let py = 0; py < c.height; py++) {
-        for (let px = 0; px < c.width; px++) {
-          if (data[(py * c.width + px) * 4 + 3] < 8) continue; // ignore AA dust
-          if (px < x0) x0 = px;
-          if (px > x1) x1 = px;
-          if (py < y0) y0 = py;
-          if (py > y1) y1 = py;
-        }
-      }
-      if (x1 >= x0) {
-        fit = {
-          x: (x0 - FIT_R) / FIT_R,
-          y: (y0 - FIT_R) / FIT_R,
-          w: (x1 - x0 + 1) / FIT_R,
-          h: (y1 - y0 + 1) / FIT_R,
-        };
-      }
-    }
-  } catch { /* no canvas: keep nominal framing */ }
+  let fit = { x: 0, y: 0, w: 1, h: 1 }; // nominal framing, if nothing measures
+  const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R));
+  if (b) {
+    fit = {
+      x: (b.x0 - FIT_R) / FIT_R,
+      y: (b.y0 - FIT_R) / FIT_R,
+      w: (b.x1 - b.x0 + 1) / FIT_R,
+      h: (b.y1 - b.y0 + 1) / FIT_R,
+    };
+  }
   FACE_FIT.set(heroId, fit);
   return fit;
+}
+
+// How far a hero's ink reaches above their own feet, as a multiple of the
+// height they were drawn at. Nothing about the rig predicts this: the `h` a
+// caller passes drawToon sizes the BODY, and then a crest, ears, a hat or a
+// shouldered axe carry on past it by a different amount for every hero. So
+// anything that has to sit above a head — the hub's "this is you" marker —
+// measures instead of assuming, or it lands on the tall ones.
+//
+// The walk cycle is stamped over the idle at four phases on one scratch canvas,
+// which makes the single measurement the union of every pose a hub hero holds.
+// The marker then clears the tallest moment of the walk and stays put, rather
+// than riding up and down as an arm swings through it.
+const STAND_TOP = new Map();
+const TOP_R = 64;                    // height the measurement is drawn at
+const TOP_FEET = TOP_R * 2.75;       // feet line on the TOP_R * 3 canvas
+export function toonInkTop(heroId) {
+  if (STAND_TOP.has(heroId)) return STAND_TOP.get(heroId);
+  let top = 1; // nominal: the drawn height, which is what callers assumed
+  const b = inkBounds(TOP_R * 3, (x) => {
+    const poses = [{ kind: 'idle', phase: 0 }, ...[0, 0.25, 0.5, 0.75].map((phase) => ({ kind: 'run', phase }))];
+    for (const pose of poses) {
+      drawToon(x, heroId, { ...pose, time: 0, grounded: true, facing: 1 },
+        TOP_R * 1.5, TOP_FEET, TOP_R, { light: false });
+    }
+  });
+  if (b) top = (TOP_FEET - b.y0) / TOP_R;
+  STAND_TOP.set(heroId, top);
+  return top;
 }
 
 // Head-and-face render fitted to a w-by-h box (HUD cells, portal crops).

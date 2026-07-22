@@ -89,9 +89,16 @@
       </select>
     </label>
     <label>render
+      <!-- Render density, which is NOT the zoom. Zoom stretches the finished
+           bitmap (image-rendering:pixelated, so it blocks up); this re-renders
+           the vectors denser. On-screen magnification is zoom/render, so 3x+3x
+           is 1:1 and picking a render ABOVE the zoom supersamples — the read
+           you want when judging hairline weights. 6x costs 4x the canvas
+           memory across ~460 tiles, so it is opt-in rather than the default. -->
       <select id="resolution">
         <option value="1">logical</option>
         <option value="3" selected>high-res 3x</option>
+        <option value="6">high-res 6x</option>
       </select>
     </label>
     <label>backdrop

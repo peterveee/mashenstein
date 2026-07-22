@@ -143,7 +143,9 @@ export class AttractState {
     pushOverlayDraw((d) => {
       d.fillStyle = 'rgba(11,11,20,0.82)';
       d.fillRect(0, H - 28, W, 28);
-      drawTextCentered(d, 'DEMO MODE - PRESS ANY KEY / TAP TO RETURN', W / 2, H - 24, '#f6d33c');
+      // The attract loop is the one screen a phone reaches with no input at all
+      // behind it, so isTouchDevice() rather than usingTouch.
+      drawTextCentered(d, Input.isTouchDevice() ? 'DEMO MODE - TAP TO RETURN' : 'DEMO MODE - PRESS ANY KEY TO RETURN', W / 2, H - 24, '#f6d33c');
       drawTextCentered(d, name, W / 2, H - 13, '#8a8a98');
     });
   }

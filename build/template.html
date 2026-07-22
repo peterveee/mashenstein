@@ -38,6 +38,12 @@
 <body>
 <canvas id="chrome"></canvas>
 <canvas id="game"></canvas>
+<!-- Invisible probe, not a control: env(safe-area-inset-*) isn't readable from
+     JS directly, only via a computed style, so this element exists purely to
+     have its padding measured (renderer.js) — the actual notch/Dynamic
+     Island/home-indicator geometry for THIS device, not a guessed constant. -->
+<div id="safe-area" style="position:fixed; inset:0; visibility:hidden; pointer-events:none;
+     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);"></div>
 <div id="boot-error"></div>
 <script>
 window.addEventListener('error', function (e) {

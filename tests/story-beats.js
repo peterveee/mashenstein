@@ -108,7 +108,7 @@ function makeRun(stage, onEnd = () => {}) {
   assert(unprompted.length === 0, `every cabinet has a validation prompt (missing: ${unprompted.join(', ') || 'none'})`);
 }
 
-// --- Briefing screen: typewriter, then confirm to proceed ------------------
+// --- Briefing screen: the memo cascades in, then confirm to proceed --------
 {
   let launched = false;
   const st = new BriefingState({
@@ -118,9 +118,9 @@ function makeRun(stage, onEnd = () => {}) {
   assert(st.pieces.length === 3 && st.pieces[0].text.startsWith('MISSION:'),
     'frost-1 briefing = mission line + 2 memo blocks');
   st.update(TICK);
-  assert(st.chars < st.total && !launched, 'typewriter starts partial; no early launch');
+  assert(!st.landed() && !launched, 'the memo is still landing; no early launch');
   Input.press('confirm'); st.update(TICK); Input.release('confirm'); st.update(TICK);
-  assert(st.chars >= st.total && !launched, 'first confirm completes the text');
+  assert(st.landed() && !launched, 'first confirm lands the whole memo');
   Input.press('confirm'); st.update(TICK); Input.release('confirm');
   assert(launched, 'second confirm launches the stage');
 }

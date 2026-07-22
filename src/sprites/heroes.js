@@ -152,8 +152,23 @@ b33p.duck = [
 ];
 // s doubles as the screen/faceplate color: dark hull navy with glowing eyes,
 // not flesh — b33p is a robot, and the toon faceplate inherits this directly.
-// Silver hull: reads tin-toy robot, frees blue for gnash, and lets the gold
-// cannon act as the accent color.
+// Steel hull: reads tin-toy robot, frees saturated blue for gnash, and lets the
+// gold cannon act as the accent colour.
+//
+// It used to be a true neutral grey and washed out badly — on the title screen,
+// in the food court and in a run. Two reasons, and only one of them is about
+// this sprite. Every other hero carries a saturated hue (teal, blue, green,
+// pink, orange, red), so a character with NO chroma at all does not read as
+// "metal" beside them, it reads as unfinished. And the three greys sat close
+// enough in value that the dome, the torso and the legs merged into one shape at
+// hub scale.
+//
+// So: a cool cast in the metal, and the darks pushed down to separate hull from
+// limbs. Held short of an actual blue — Gnash is the blue one, and the point is
+// still bare steel rather than paint. His one warm note stays the gold gun-arm,
+// which has much more punch against a cool hull than it had against neutral
+// grey. Being a bit drab is on-brand for a robot who reports LOW ON CYAN; being
+// invisible is not.
 // `hand`: the toon rig's hands default to the face colour, which for a robot
 // whose "face" is a near-black faceplate put two dark blobs on the ends of his
 // grey arms — and since his arms draw behind the torso, all you saw was the
@@ -162,7 +177,7 @@ b33p.duck = [
 // whole limb is one colour so it reads as a single articulated weapon, and this
 // shade is deliberately close — far enough apart and it goes back to looking
 // like two objects, which is what the two-tone grey-and-yellow version did.
-b33p.pal = { h: '#c9ced8', s: '#12203a', e: '#7ef0ff', m: '#7ef0ff', b: '#9aa3b2', p: '#69727f', f: '#c9ced8', w: '#e8f8ff', a: '#f6d33c', hand: '#c9ced8', arm: '#d4b02e' };
+b33p.pal = { h: '#b6c6dc', s: '#101c33', e: '#7ef0ff', m: '#7ef0ff', b: '#7d8ca8', p: '#4d5972', f: '#8fa0bc', w: '#e8f8ff', a: '#f6d33c', hand: '#b6c6dc', arm: '#d4b02e' };
 
 // --- Mochi: pink puffball, stubby arms, red feet -----------------------------
 const mochi = {

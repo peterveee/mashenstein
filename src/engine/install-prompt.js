@@ -119,7 +119,7 @@ const CSS = `
 .mash-a2hs-card {
   position: relative; width: 100%; max-width: 27rem;
   max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  box-sizing: border-box; padding: 22px 20px 18px;
+  box-sizing: border-box; padding: 18px 18px 16px;
   /* Ink and slate rather than the game's plum: this sheet sits between the
      player and their phone's own UI, and it reads as a thing to act on when it
      is quiet. The colour lives in the accents. */
@@ -128,7 +128,7 @@ const CSS = `
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-.mash-a2hs-head { display: flex; align-items: center; gap: 13px; margin-bottom: 14px; }
+.mash-a2hs-head { display: flex; align-items: center; gap: 13px; margin-bottom: 11px; }
 /* The actual tile they are about to end up with. Removes itself when the file
    is not beside the page (a loose index.html, a file:// copy). */
 .mash-a2hs-icon {
@@ -144,23 +144,23 @@ const CSS = `
   font-size: 1.6rem; line-height: 1.06; color: #ffcf33; letter-spacing: 0.01em;
   text-shadow: 0 2px 12px rgba(255, 190, 40, 0.18);
 }
-.mash-a2hs p { margin: 0 0 14px; font-size: 1rem; line-height: 1.5; color: #c3c8d6; }
+.mash-a2hs p { margin: 0 0 12px; font-size: 1rem; line-height: 1.48; color: #c3c8d6; }
 .mash-a2hs b { color: #fff; font-weight: 600; }
 
-.mash-a2hs-why { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 16px; padding: 0; list-style: none; }
+.mash-a2hs-why { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 13px; padding: 0; list-style: none; }
 .mash-a2hs-why li {
   padding: 5px 12px; border-radius: 999px; font-size: 0.82rem; color: #a6ecdf;
   background: rgba(72, 224, 200, 0.09); border: 1px solid rgba(72, 224, 200, 0.22);
 }
 
-.mash-a2hs-steps { margin: 0 0 15px; padding: 0; list-style: none; counter-reset: step; }
+.mash-a2hs-steps { margin: 0 0 12px; padding: 0; list-style: none; counter-reset: step; }
 .mash-a2hs-steps li {
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 14px; border-radius: 14px;
+  padding: 10px 13px; border-radius: 14px;
   background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 0.97rem; line-height: 1.5;
 }
-.mash-a2hs-steps li + li { margin-top: 8px; }
+.mash-a2hs-steps li + li { margin-top: 6px; }
 .mash-a2hs-steps li::before {
   counter-increment: step; content: counter(step);
   flex: 0 0 auto; width: 1.45rem; height: 1.45rem; margin-top: 0.1rem; border-radius: 50%;
@@ -187,23 +187,20 @@ const CSS = `
   /* Typed as p.class, not .class: the bare paragraph rule above is the more
      specific selector and would otherwise win, and a footnote set at body size
      is not a footnote. */
-  margin: 0 0 14px; font-size: 0.83rem; line-height: 1.45; color: #8a90a3;
+  margin: 0 0 11px; font-size: 0.83rem; line-height: 1.42; color: #8a90a3;
 }
 
-.mash-a2hs-buttons { display: flex; align-items: center; gap: 16px; }
+.mash-a2hs-buttons { display: flex; }
 .mash-a2hs button { font-family: inherit; cursor: pointer; -webkit-appearance: none; }
 .mash-a2hs-ok {
-  flex: 1 1 auto; max-width: 20rem; padding: 14px 16px; border: 0; border-radius: 13px;
+  width: 100%; padding: 14px 16px; border: 0; border-radius: 13px;
   background: linear-gradient(180deg, #ffd94f, #f3b323);
-  color: #241a05; font-weight: 600; font-size: 1rem;
-  letter-spacing: 0.06em; text-transform: uppercase;
+  color: #241a05; font-weight: 600; font-size: 1.05rem; letter-spacing: 0.01em;
   box-shadow: 0 3px 0 #b8801a, 0 6px 18px rgba(243, 179, 35, 0.22);
 }
 .mash-a2hs-ok:active { transform: translateY(2px); box-shadow: 0 1px 0 #b8801a; }
-.mash-a2hs-later {
-  flex: 0 0 auto; padding: 10px 4px; border: 0; background: none;
-  color: #8a90a3; font-size: 0.88rem; text-decoration: underline;
-}
+/* The last footnote sits against the button, so it does not need a full gap. */
+.mash-a2hs-notes p.mash-a2hs-note:last-child { margin-bottom: 10px; }
 
 /* The pointer at Safari's own toolbar. Where that is depends on the phone:
    iOS 26's Compact bar is a floating capsule at the bottom whose ••• sits at
@@ -225,6 +222,21 @@ const CSS = `
 @keyframes mash-a2hs-bob-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
 @keyframes mash-a2hs-bob-up { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 @media (prefers-reduced-motion: reduce) { .mash-a2hs-arrow { animation: none; } }
+
+/* The narrow phones — SE, mini — wrap a line more everywhere, which is worth
+   about a step and a half of height. Trimmed just enough to land, since a
+   sheet you have to scroll to reach the button of is a sheet with a hidden
+   button. */
+@media (max-width: 380px) {
+  .mash-a2hs-card { padding: 15px 15px 14px; }
+  .mash-a2hs-icon { width: 46px; height: 46px; }
+  .mash-a2hs h1 { font-size: 1.42rem; }
+  .mash-a2hs-head { margin-bottom: 9px; }
+  .mash-a2hs p { font-size: 0.96rem; margin-bottom: 10px; }
+  .mash-a2hs-steps li { padding: 9px 12px; font-size: 0.94rem; }
+  .mash-a2hs-why { margin-bottom: 11px; }
+  .mash-a2hs-why li { font-size: 0.78rem; padding: 4px 10px; }
+}
 
 /* A phone in landscape is ~330px tall with the toolbar in it, so the card
    becomes a real two-column grid: pitch and footnotes down the left, the steps
@@ -253,7 +265,7 @@ const CSS = `
   .mash-a2hs-steps li + li { margin-top: 6px; }
   .mash-a2hs-steps li::before { width: 1.3rem; height: 1.3rem; line-height: 1.3rem; font-size: 0.74rem; }
   .mash-a2hs p.mash-a2hs-note { font-size: 0.76rem; margin-bottom: 6px; }
-  .mash-a2hs-ok { padding: 11px 16px; font-size: 0.94rem; }
+  .mash-a2hs-ok { padding: 11px 16px; font-size: 0.98rem; }
 }
 `;
 
@@ -267,12 +279,13 @@ function target(flavor, portrait) {
 }
 
 function cardHtml(flavor, portrait, hasSave, manual) {
-  const dismiss = manual
-    ? `<div class="mash-a2hs-buttons"><button class="mash-a2hs-ok" type="button">Got it</button></div>`
-    : `<div class="mash-a2hs-buttons">
-         <button class="mash-a2hs-ok" type="button">Got it</button>
-         <button class="mash-a2hs-later" type="button">not now</button>
-       </div>`;
+  // One button, and it closes the card whatever the player decided. There is no
+  // "not now" because there is nothing to defer to: the same walkthrough lives
+  // under EXTRAS on the title screen forever, so the honest thing is to say so
+  // and take the tap.
+  const dismiss = `<div class="mash-a2hs-buttons">
+      <button class="mash-a2hs-ok" type="button">Okily Dokily!</button>
+    </div>`;
 
   if (flavor === 'inapp') {
     return `
@@ -327,6 +340,11 @@ function cardHtml(flavor, portrait, hasSave, manual) {
     notes.push(`Heads up: iOS may give the Home Screen copy its own save file, so the
                 sooner you add it, the less there is to leave behind.`);
   }
+  // Sprung on them, so it says where it went. Opened FROM that menu, it would
+  // be telling them where they are standing.
+  if (!manual) {
+    notes.push(`In no rush? This lives under <b>EXTRAS</b> on the title screen.`);
+  }
 
   return `
     <div class="mash-a2hs-head">
@@ -339,8 +357,7 @@ function cardHtml(flavor, portrait, hasSave, manual) {
     <div class="mash-a2hs-cols">
       <div>
         <p>Safari's bars eat a third of the screen. On your Home Screen,
-           MASHENSTEIN opens like a real app — no address bar, no toolbar,
-           the whole display.</p>
+           MASHENSTEIN opens like a real app — no address bar, no toolbar.</p>
         <ul class="mash-a2hs-why">
           <li>True fullscreen</li>
           <li>Plays offline</li>
@@ -383,8 +400,7 @@ function mountCard(flavor, { hasSave = false, onDismiss = null, manual = false }
     // tile rather than leave a broken image in the header.
     const icon = root.querySelector('.mash-a2hs-icon');
     if (icon) icon.addEventListener('error', () => icon.remove());
-    root.querySelectorAll('.mash-a2hs-ok').forEach((b) => b.addEventListener('click', () => close(true)));
-    root.querySelectorAll('.mash-a2hs-later').forEach((b) => b.addEventListener('click', () => close(false)));
+    root.querySelectorAll('.mash-a2hs-ok').forEach((b) => b.addEventListener('click', close));
   };
 
   // A rotation mid-read moves the toolbar to the other end of the screen, and
@@ -396,12 +412,12 @@ function mountCard(flavor, { hasSave = false, onDismiss = null, manual = false }
     paint();
   };
 
-  // "Got it" is taken at its word and retires the tip. "not now" only restamps
-  // the clock — the showing itself was already counted by initInstallPrompt, so
-  // a card swiped away rather than answered costs exactly the same one.
-  function close(done) {
-    const rec = readRecord() || { n: 0, t: 0 };
-    writeRecord({ n: done ? MAX_SHOWS : rec.n, t: Date.now() });
+  // Answering the card retires it for good — they have read it and they know
+  // where it lives now. The MAX_SHOWS counter still exists for the OTHER exit:
+  // a player who swipes away to the Home Screen mid-card never answered, and
+  // initInstallPrompt will offer it a couple more times over the next few days.
+  function close() {
+    writeRecord({ n: MAX_SHOWS, t: Date.now() });
     root.classList.remove('is-in');
     root.classList.add('is-out');
     window.removeEventListener('resize', onResize);
@@ -447,11 +463,14 @@ export function initInstallPrompt({ hasSave = false, onDismiss = null } = {}) {
 }
 
 // The EXTRAS route: same card, asked for rather than sprung, and immediate.
-export function showInstallGuide({ hasSave = false, onDismiss = null } = {}) {
+// `flavor` overrides what the browser would be given — the dev menu uses it to
+// look at the iOS 26 and legacy-Safari variants from a desktop, which is
+// otherwise impossible without four spare phones.
+export const FLAVORS = ['menu', 'safari', 'alt', 'inapp'];
+export function showInstallGuide({ hasSave = false, onDismiss = null, flavor = null } = {}) {
   if (typeof document === 'undefined' || !document.body) return null;
   const e = env();
-  const flavor = installFlavor(e.ua) || 'safari';
-  const root = mountCard(flavor, { hasSave, onDismiss, manual: true });
+  const root = mountCard(flavor || installFlavor(e.ua) || 'safari', { hasSave, onDismiss, manual: true });
   if (root) show(root, 0);
   return root;
 }

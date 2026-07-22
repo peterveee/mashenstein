@@ -17,8 +17,8 @@ import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
-import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H } from '../src/sprites/backwall.js';
-import { TOON_SPECS, drawToon, drawToonFace } from '../src/sprites/toons.js';
+import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE } from '../src/sprites/backwall.js';
+import { TOON_SPECS, drawToon, drawToonFace, setInk, setRim, LORENZO_FACES, setLorenzoFace } from '../src/sprites/toons.js';
 import { getStylePack } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
@@ -66,6 +66,13 @@ function navSeparator(label) {
 // One tile. `draw(ctx, t)` paints into a w-by-h logical canvas. The backing
 // canvas can be rendered at a denser scale so saved PNGs match the smooth,
 // high-resolution treatment used by the Cast Roll.
+//
+// `hires` is true (follow the global resolution control), false (pin to 1x), or
+// a NUMBER pinning this tile to its own scale regardless of the control. A tile
+// pinned above the zoom renders denser than it displays, which supersamples it:
+// the browser downsamples the backing store on the way to the screen, so
+// sub-pixel stroke differences survive as tone instead of snapping to whole
+// pixels. That is the only honest way to eyeball a 1.2px-vs-0.7px line.
 function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true } = {}) {
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
@@ -73,8 +80,9 @@ function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hir
   const canvas = document.createElement('canvas');
   const logicalW = Math.max(1, Math.round(w));
   const logicalH = Math.max(1, Math.round(h));
-  canvas.width = Math.max(1, Math.round(logicalW * renderScale));
-  canvas.height = Math.max(1, Math.round(logicalH * renderScale));
+  const rs = typeof hires === 'number' ? hires : hires ? renderScale : 1;
+  canvas.width = Math.max(1, Math.round(logicalW * rs));
+  canvas.height = Math.max(1, Math.round(logicalH * rs));
   const label = document.createElement('div');
   label.className = 'name';
   label.innerHTML = `<b>${name}</b>` + (sub ? `<br>${sub}` : '');
@@ -82,7 +90,7 @@ function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hir
   grid.appendChild(card);
 
   const ctx = canvas.getContext('2d');
-  const entry = { card, canvas, ctx, draw, animated, visible: true, w: logicalW, h: logicalH, name, hires, renderScale: hires ? renderScale : 1 };
+  const entry = { card, canvas, ctx, draw, animated, visible: true, w: logicalW, h: logicalH, name, hires, renderScale: rs };
   tiles.push(entry);
 
   canvas.title = `${name} — ${canvas.width}x${canvas.height} — click to save PNG`;
@@ -108,7 +116,7 @@ function paint(entry, t) {
 
 function resizeTiles() {
   for (const entry of tiles) {
-    entry.renderScale = entry.hires ? renderScale : 1;
+    entry.renderScale = typeof entry.hires === 'number' ? entry.hires : entry.hires ? renderScale : 1;
     entry.canvas.width = Math.max(1, Math.round(entry.w * entry.renderScale));
     entry.canvas.height = Math.max(1, Math.round(entry.h * entry.renderScale));
     entry.ctx = entry.canvas.getContext('2d');
@@ -132,6 +140,38 @@ function pose(kind, t, extra = {}) {
     grounded: kind !== 'jump', squash: 0, lean: 0, roll: false, float: false,
     stomp: false, headless: false, facing: 1, ...extra,
   };
+}
+
+// What a real run actually shows the instant an ability fires: poseFromPlayer's
+// ability-specific pose fields plus drawPowerPose()'s overlay flourish where one
+// exists. Shared by the per-hero section and the all-cast comparison below, so
+// the two can never drift apart.
+//
+// Loops the same 0..0.3s (0..0.5s for the eat bite) countdown useAbility() sets
+// player.powerPoseT to, rather than freezing on one alpha, so the flourish
+// visibly flashes in instead of holding at a single frame.
+const POWERPOSE_PERIOD = 1.4;
+const powerPoseAlpha = (t, budget) => Math.min(1, Math.max(0, budget - (t % POWERPOSE_PERIOD)) * 5);
+// Kept in sync with poseFromPlayer, not reinvented here. `local` is "seconds
+// since this pulse's ability fired", matching the bite's own time-reset in
+// poseFromPlayer so biteWave() opens from a closed mouth.
+function powerupExtra(type, local) {
+  if (type === 'dash') return { lean: 0.26 };
+  if (type === 'roll') return { kind: 'duck', roll: true };
+  if (type === 'compress') return { kind: 'duck' };
+  if (type === 'fist') return { headless: true };
+  if (type === 'shoot') return { menuAction: 'aim' };
+  if (type === 'eat') return { menuAction: 'chomp', time: local };
+  return {};
+}
+// One power-up tile: the ability pose plus its flourish, feet at `feetY`.
+// `poseScale` maps drawPowerPose's in-run 24px offsets onto a taller gallery toon.
+function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
+  const type = hero.ability.type;
+  const budget = type === 'eat' ? 0.5 : 0.3; // matches useAbility()'s powerPoseT
+  const local = t % POWERPOSE_PERIOD;
+  drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, hh);
+  drawPowerPose(ctx, cx, feetY, type, powerPoseAlpha(t, budget), hh / HERO_DRAW_H);
 }
 
 // Entities always draw against the world's fixed GROUND_Y. To crop one into a
@@ -173,27 +213,6 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     + 'flourish where one exists. Stomp and axe read from their world-space effect instead (a shockwave, '
     + 'a thrown prop) rather than a body-pose change, so those two tiles show the bare cast animation.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
-  // drawPowerPose's offsets are tuned for the in-run 24px-tall sprite; scale
-  // them up to match how much taller these gallery toons are drawn.
-  const POWERPOSE_SCALE = HH / HERO_DRAW_H;
-  // Loops the same 0..0.3s (0..0.5s for the eat bite) countdown useAbility()
-  // sets player.powerPoseT to, rather than freezing on one alpha, so the
-  // flourish visibly flashes in instead of holding at a single frame.
-  const POWERPOSE_PERIOD = 1.4;
-  const powerPoseAlpha = (t, budget) => Math.min(1, Math.max(0, budget - (t % POWERPOSE_PERIOD)) * 5);
-  // What poseFromPlayer itself sets per ability.type while player.powerPoseT
-  // is counting down — kept in sync with that function, not reinvented here.
-  // `local` is "seconds since this pulse's ability fired", matching the bite's
-  // own time-reset in poseFromPlayer so biteWave() opens from a closed mouth.
-  function powerupExtra(type, local) {
-    if (type === 'dash') return { lean: 0.26 };
-    if (type === 'roll') return { kind: 'duck', roll: true };
-    if (type === 'compress') return { kind: 'duck' };
-    if (type === 'fist') return { headless: true };
-    if (type === 'shoot') return { menuAction: 'aim' };
-    if (type === 'eat') return { menuAction: 'chomp', time: local };
-    return {};
-  }
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
       // The victory routine hops/spins up to ~0.26*HH above standing, so its
@@ -209,13 +228,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     const hero = HERO_BY_ID[id];
     if (!hero) continue;
     const th = HH * 1.3;
-    const type = hero.ability.type;
-    const budget = type === 'eat' ? 0.5 : 0.3; // matches useAbility()'s powerPoseT
     tile(grid, id, `powerup · ${hero.ability.label}`, HH * 0.9, th, (ctx, t) => {
-      const cx = (HH * 0.9) / 2, feetY = th - HH * 0.05;
-      const local = t % POWERPOSE_PERIOD;
-      drawToon(ctx, id, pose('run', t, powerupExtra(type, local)), cx, feetY, HH);
-      drawPowerPose(ctx, cx, feetY, type, powerPoseAlpha(t, budget), POWERPOSE_SCALE);
+      drawPowerupTile(ctx, id, hero, t, (HH * 0.9) / 2, th - HH * 0.05, HH);
     }, { animated: true });
   }
 }
@@ -243,21 +257,53 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   nav.appendChild(navLink);
 
   const HH = 60;
-  const LABELS = { idle: 'All Idle', run: 'All Run', jump: 'All Jump', duck: 'All Duck', celebrate: 'All Celebrate' };
-  for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+  const LABELS = {
+    idle: 'All Idle', run: 'All Run', jump: 'All Jump', duck: 'All Duck',
+    celebrate: 'All Celebrate', powerup: 'All Special Move',
+  };
+  const subhead = (text, note) => {
     const h3 = document.createElement('h3');
     h3.className = 'subhead';
-    h3.textContent = LABELS[kind];
+    h3.textContent = text;
     s.appendChild(h3);
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'note';
+      p.textContent = note;
+      s.appendChild(p);
+    }
     const grid = document.createElement('div');
     grid.className = 'grid';
     s.appendChild(grid);
+    return grid;
+  };
+  for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
+    const grid = subhead(LABELS[kind]);
     // Mirrors the heroes section's own tile heights so a side-by-side glance
     // between the two sections compares like for like.
     const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
     for (const hid of ids) {
       tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
         drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+      }, { animated: true });
+    }
+  }
+  // The row the other five never gave you: every ability firing at once. Two
+  // heroes are absent by design — gary and dolores are cast-roll flavour with no
+  // roster entry, so there is no ability to fire. Stomp and axe change the world
+  // rather than the body (a shockwave, a thrown prop), so those tiles look like
+  // a plain run next to the others; that is the honest comparison, and seeing
+  // them side by side is the fastest way to notice which specials do not read.
+  {
+    const roster = ids.filter((hid) => HERO_BY_ID[hid]);
+    const grid = subhead(LABELS.powerup,
+      `${roster.length} of ${ids.length} heroes — the ability pose plus drawPowerPose()'s flourish, `
+      + 'pulsing on the same countdown a real run gives it.');
+    const th = HH * 1.3;
+    for (const hid of roster) {
+      const hero = HERO_BY_ID[hid];
+      tile(grid, hid, `${hero.ability.label} · ${hero.ability.type}`, HH * 0.9, th, (ctx, t) => {
+        drawPowerupTile(ctx, hid, hero, t, (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
@@ -814,6 +860,362 @@ navSeparator('lab / bake-offs');
           ctx.fillRect(b * BW + BW / 2 - 13, 6, 26, 4);
         }
       }, { animated: true, wide: true });
+  }
+}
+
+// The eye ring is currently 0.02u wide on an eye 0.11u across, while the body
+// contour it sits inside is 0.016u — so the darkest, thinnest-looking line on
+// the hero is in fact the FATTEST one he owns, wrapped around his smallest
+// feature. Slice an eye horizontally at u=60 and it goes ring 1.2 / white 1.1 /
+// pupil 3.1 / white 1.1 / ring 1.2: the outline is wider than the sclera.
+//
+// Four ways out, and they are not interchangeable — thinning the face leaves the
+// silhouette's weight alone, thinning everything changes the hero's whole read,
+// and dropping alpha changes neither width but risks losing the figure against
+// the room. The 24px column is the one that decides it: `u` is 24 in a real run
+// (drawHeroSprite passes HERO_DRAW_H), which is small enough that the Math.max
+// floors bind and hand back a HEAVIER-than-proportional line. A treatment that
+// looks right at gallery size and dissolves at 24px is not a treatment.
+{
+  const grid = section('ink-bakeoff', 'Outline weight bake-off',
+    'One rig, five ink weights. `face` scales the eye/brow/mouth strokes, `body` scales the '
+    + 'contour `ow`, `alpha` scales the outline colors — see INK in toons.js. `current` is what '
+    + 'ships; `was` winds the face strokes back to their pre-2026-07-22 weights, when the eye '
+    + 'ring was drawn wider than the contour around it. Each row is the same hero at three '
+    + 'scales: the 60u gallery pose, the 32px HUD face crop, and the real in-run 24u sprite at '
+    + '2x world zoom. Judge on the 24u column, not the big one — the stroke floors only bind '
+    + 'down there, and that is where the game actually lives.');
+
+  // Rebased on the shipped weights. `was` is the pre-thin-face rig — face 1.818
+  // is 1/0.55, which winds the baked 0.011u ring back to the 0.020u it used to
+  // be — kept so the change stays visible and reversible by eye rather than by
+  // archaeology. The rest are the NEXT levers, not the ones already spent.
+  const TREATMENTS = [
+    ['current', 'shipped — 0.011u ring, 0.016u contour', { body: 1, face: 1, alpha: 1 }],
+    ['was', 'pre-thin-face — 0.020u ring over a 0.016u contour', { body: 1, face: 1.818, alpha: 1 }],
+    ['thinner face', 'ring →0.008u, if current still reads heavy', { body: 1, face: 0.72, alpha: 1 }],
+    ['thin body', 'contour 0.016u→0.011u · face as shipped', { body: 0.7, face: 1, alpha: 1 }],
+    ['soft', 'no geometry change · outline alpha 0.32→0.20', { body: 1, face: 1, alpha: 0.62 }],
+  ];
+  // grumpos is the complaint (bald, beard-gap mouth, brows); lorenzo carries a
+  // mustache and a nose; b33p's eyes are LED bars, a different face dialect that
+  // a face-only dial could easily wreck while the other two look fine.
+  const IDS = ['grumpos', 'lorenzo', 'b33p'];
+
+  const HH = 60;
+
+  // Head-to-head, which is the only layout that actually settles this. Five
+  // full-body cards stacked down the page put ~250px of gap and a scroll between
+  // the things being compared, and a 0.009u stroke difference does not survive
+  // that trip. Same feature, touching, same frozen phase, magnified — and
+  // rendered at 6x into a 3x display so the extra density comes back as tone
+  // rather than as a fatter run of whole pixels.
+  //
+  // Each row keeps its OWN u and scales the context to match sizes on screen.
+  // Blowing 24u up to 60u instead would relax the Math.max stroke floors and
+  // quietly show a sprite the game never draws.
+  const CELL = 78, LABEL_W = 62, HEAD_ROWS = [['60u', HH], ['24u', HERO_DRAW_H]];
+  const HEAD_SPAN = 0.62;  // fraction of u the crop covers, top of skull to chin
+  const headCell = (ctx, id, h, cellX, cellY, phase) => {
+    // Where drawHumanoid parks the head, in u above the feet: see `headY`.
+    const anchor = TOON_SPECS[id].heavy ? 0.978 : 0.76;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cellX, cellY, CELL, CELL);
+    ctx.clip();
+    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
+    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
+    // feet at +anchor*h below the cell center puts the head center ON it
+    drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    ctx.restore();
+  };
+
+  const PHASE = 0.42; // frozen: an A/B that bobs is an A/B you cannot read
+  for (const id of IDS) {
+    const cmpW = LABEL_W + TREATMENTS.length * CELL;
+    const cmpH = 14 + HEAD_ROWS.length * CELL;
+    tile(grid, `${id} — head to head`, 'all five treatments, frozen, 6x supersampled', cmpW, cmpH, (ctx) => {
+      ctx.font = 'bold 7px ui-monospace, monospace';
+      ctx.fillStyle = '#8a8a9a';
+      ctx.textBaseline = 'alphabetic';
+      TREATMENTS.forEach(([name], i) => {
+        ctx.fillText(name, LABEL_W + i * CELL + 4, 9);
+      });
+      HEAD_ROWS.forEach(([rowLabel, h], r) => {
+        const y = 14 + r * CELL;
+        ctx.fillStyle = '#8a8a9a';
+        ctx.fillText(rowLabel, 4, y + CELL / 2);
+        TREATMENTS.forEach(([, , ink], i) => {
+          setInk(ink);
+          try {
+            headCell(ctx, id, h, LABEL_W + i * CELL, y, PHASE);
+          } finally {
+            setInk();
+          }
+        });
+      });
+      // Hairlines between cells so the eye has an edge to compare across.
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      for (let i = 0; i <= TREATMENTS.length; i++) {
+        ctx.moveTo(LABEL_W + i * CELL, 12);
+        ctx.lineTo(LABEL_W + i * CELL, cmpH);
+      }
+      for (let r = 0; r <= HEAD_ROWS.length; r++) {
+        ctx.moveTo(LABEL_W, 14 + r * CELL);
+        ctx.lineTo(cmpW, 14 + r * CELL);
+      }
+      ctx.stroke();
+    }, { wide: true, hires: 6 });
+  }
+
+  const POSE_W = Math.round(HH * 0.9), POSE_H = Math.round(HH * 1.3);
+  const FACE = 34;
+  const RUN_Z = 2; // stand-in for the world zoom drawHeroSprite renders under
+  const RUN_W = (HERO_DRAW_W + 10) * RUN_Z, RUN_H = (HERO_DRAW_H + 8) * RUN_Z;
+  const GAP = 6;
+  const TW = POSE_W + GAP + FACE + GAP + RUN_W;
+  const TH = Math.max(POSE_H, FACE, RUN_H);
+
+  for (const id of IDS) {
+    for (const [name, note, ink] of TREATMENTS) {
+      tile(grid, `${id} — ${name}`, note, TW, TH, (ctx, t) => {
+        setInk(ink);
+        try {
+          drawToon(ctx, id, pose('run', t), POSE_W / 2, POSE_H - HH * 0.05, HH);
+
+          const fx = POSE_W + GAP;
+          drawToonFace(ctx, id, fx, (TH - FACE) / 2, FACE, FACE);
+
+          // The honest one: u = HERO_DRAW_H exactly as a run passes it, then a
+          // world-zoom scale on top. Scaling the CONTEXT (not the unit) is what
+          // the game does, so the floors bind at 24 and magnify from there.
+          ctx.save();
+          ctx.translate(fx + FACE + GAP, 0);
+          ctx.scale(RUN_Z, RUN_Z);
+          drawToon(ctx, id, pose('run', t), (HERO_DRAW_W + 10) / 2, RUN_H / RUN_Z - 4, HERO_DRAW_H);
+          ctx.restore();
+        } finally {
+          setInk(); // never leak a treatment into the next tile
+        }
+      }, { animated: true, wide: true });
+    }
+  }
+}
+
+// ------------------------------------------------------- 2d. lorenzo face lab
+// The complaint: his cap hem is a flat chord at -0.12R while his eyes top out
+// at -0.38R, so the hat crosses 42% of the way down the eye — and the focus
+// brows, at -0.45R..-0.29R, are drawn entirely inside the hat. They only show
+// because the face paints after the hat. See LORENZO_FACES in toons.js; every
+// candidate below renders through the real drawHead path, dialed by
+// setLorenzoFace the same way the ink bake-off dials setInk.
+{
+  const grid = section('lorenzo-face', 'Lorenzo — cap & face bake-off',
+    'Six candidates for the brow line. `current` is the shipped geometry, reproduced exactly. '
+    + '`lifted` and `arched` raise the hem off the eyes and leave the face alone; `low face` keeps the '
+    + 'low cap as his brow line and drops the mask under it instead; `bushy` and `pushed back` restyle '
+    + 'the face itself, trading the ink hairlines for brown caterpillar brows that match the mustache. '
+    + 'The head-to-head grid is frozen and supersampled — judge the brow line there, then check the '
+    + 'animated strips for what a blink, a scowl and a whoop do to it.');
+
+  const HH = 60;
+  // Same crop machinery as the ink bake-off: each row keeps its OWN u and
+  // scales the context, so the stroke floors bind where the game binds them.
+  const CELL = 84, LABEL_W = 60;
+  const HEAD_SPAN = 0.62;
+  const headCell = (ctx, cellX, cellY, h, p) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cellX, cellY, CELL, CELL);
+    ctx.clip();
+    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
+    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
+    drawToon(ctx, 'lorenzo', p, 0, 0.76 * h, h);
+    ctx.restore();
+  };
+  // Three rows that between them expose every failure mode: the idle face has
+  // NO brows at all (they are keyed to focus), the running face is the one that
+  // put brows on the hat, and the 24u row is what a real run draws.
+  const ROWS = [
+    ['idle 60u', HH, () => pose('idle', 0.7)],
+    ['run 60u', HH, () => pose('run', 0.42)],
+    ['run 24u', HERO_DRAW_H, () => pose('run', 0.42)],
+  ];
+  const cmpW = LABEL_W + LORENZO_FACES.length * CELL;
+  const cmpH = 14 + ROWS.length * CELL;
+  tile(grid, 'lorenzo — head to head', 'six variants, frozen, 6x supersampled', cmpW, cmpH, (ctx) => {
+    ctx.font = 'bold 7px ui-monospace, monospace';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#8a8a9a';
+    LORENZO_FACES.forEach((v, i) => ctx.fillText(v.label, LABEL_W + i * CELL + 4, 9));
+    ROWS.forEach(([rowLabel, h, mk], r) => {
+      const y = 14 + r * CELL;
+      ctx.fillStyle = '#8a8a9a';
+      ctx.fillText(rowLabel, 4, y + CELL / 2);
+      LORENZO_FACES.forEach((v, i) => {
+        setLorenzoFace(v.id);
+        try {
+          headCell(ctx, LABEL_W + i * CELL, y, h, mk());
+        } finally {
+          setLorenzoFace();
+        }
+      });
+    });
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    for (let i = 0; i <= LORENZO_FACES.length; i++) {
+      ctx.moveTo(LABEL_W + i * CELL, 12);
+      ctx.lineTo(LABEL_W + i * CELL, cmpH);
+    }
+    for (let r = 0; r <= ROWS.length; r++) {
+      ctx.moveTo(LABEL_W, 14 + r * CELL);
+      ctx.lineTo(cmpW, 14 + r * CELL);
+    }
+    ctx.stroke();
+  }, { wide: true, hires: 6 });
+
+  // Live strips: full body, HUD face crop, and the four poses whose expressions
+  // move the brow line (blink lives inside idle; celebrate opens the grin).
+  const POSE_W = Math.round(HH * 0.9), POSE_H = Math.round(HH * 1.35);
+  const FACE = 40;
+  const GAP = 6;
+  const KINDS = ['idle', 'run', 'jump', 'duck', 'celebrate'];
+  const TW = POSE_W + GAP + FACE + GAP + KINDS.length * POSE_W;
+  for (const v of LORENZO_FACES) {
+    tile(grid, `lorenzo — ${v.label}`, v.note, TW, POSE_H, (ctx, t) => {
+      setLorenzoFace(v.id);
+      try {
+        drawToon(ctx, 'lorenzo', pose('run', t), POSE_W / 2, POSE_H - HH * 0.05, HH);
+        drawToonFace(ctx, 'lorenzo', POSE_W + GAP, (POSE_H - FACE) / 2, FACE, FACE);
+        KINDS.forEach((kind, i) => {
+          const cx = POSE_W + GAP + FACE + GAP + i * POSE_W + POSE_W / 2;
+          drawToon(ctx, 'lorenzo', pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), cx, POSE_H - HH * 0.05, HH);
+        });
+      } finally {
+        setLorenzoFace(); // never leak a variant into the next tile
+      }
+    }, { animated: true, wide: true });
+  }
+}
+
+// The bevel on grumpos's skull: is the lit-side rim reading as a raised edge,
+// and which lever fixes it. Laid out like the ink bake-off next door, with one
+// axis it needs and that one does not — the BACKDROP. A canvas stroke straddles
+// its path, so half the contour lands on the background and half on the fill;
+// the whole effect is that dark-on-black is a no-op while dark-on-skin is not.
+// An A/B run only against the gallery's black cannot see that, and the game
+// stands its cast on a lit wall.
+{
+  const grid = section('rim-bakeoff', 'Lit-side rim bake-off',
+    'The key light lays a warm rim over the middle `RIM.w` of the contour, leaving dark ink on '
+    + 'both sides of it — see RIM in toons.js. Against near-black the OUTER dark is invisible '
+    + 'and the INNER dark is not, so the edge reads light-then-dark: an embossed rim rather than '
+    + 'an outline. Every row runs twice, on the gallery black and on the hub\'s own WALL_BASE, '
+    + 'because the whole question is what the ink has to darken. `inside` clips the rim to its '
+    + 'shape so it can only warm the fill; `full` lets it eat the whole contour (the version '
+    + 'that used to delete the leading shoulder); `half` touches alpha and no geometry. Note '
+    + 'INK.alpha does NOT reach the rim, so the ink bake-off\'s `soft` column shifts this ratio '
+    + 'toward the light half as a side effect. Judge the 24u rows.');
+
+  const TREATMENTS = [
+    ['current', 'shipped — centred, w 0.6, alpha 0.34', { w: 0.6, a: 1 }],
+    ['inside', 'clipped to the shape · same band, all of it on the fill side', { w: 0.6, a: 1, inside: true }],
+    ['inside thin', 'clipped and halved, so dark ink still survives inboard', { w: 0.3, a: 1, inside: true }],
+    ['full', 'w 0.6→1.0 · rim covers the contour outright on the lit side', { w: 1, a: 1 }],
+    ['half', 'no geometry change · rim alpha 0.34→0.17', { w: 0.6, a: 0.5 }],
+    ['none', 'rim off entirely — contour and form ramps only', { w: 0, a: 0 }],
+  ];
+
+  // grumpos is the complaint: #ded9d2 is the palest fill in the cast, so his
+  // inner dark sliver has the most to bite on. gnash is the opposite end — a
+  // #4a50d2 head, where the fill is darker than the ink and the rim is the only
+  // edge there is. lorenzo carries both at once, pale skin under a dark cap.
+  const IDS = ['grumpos', 'gnash', 'lorenzo'];
+
+  const CELL = 72, LABEL_W = 62;
+  const HEAD_SPAN = 0.62;
+  // Same u twice, once per backdrop — never one u stretched to stand in for the
+  // other, for the reason the ink bake-off spells out: blowing 24u up to 60u
+  // relaxes the stroke floors and shows a sprite the game never draws.
+  const HEAD_ROWS = [
+    ['60u', 60, null],
+    ['60u ·wall', 60, WALL_BASE],
+    ['24u', HERO_DRAW_H, null],
+    ['24u ·wall', HERO_DRAW_H, WALL_BASE],
+  ];
+  const headCell = (ctx, id, h, cellX, cellY, phase, bg) => {
+    const anchor = TOON_SPECS[id].heavy ? 0.978 : 0.76;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cellX, cellY, CELL, CELL);
+    ctx.clip();
+    if (bg) { ctx.fillStyle = bg; ctx.fillRect(cellX, cellY, CELL, CELL); }
+    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
+    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
+    drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    ctx.restore();
+  };
+
+  const PHASE = 0.42; // frozen, same as the ink bake-off, so the two compare
+  for (const id of IDS) {
+    const cmpW = LABEL_W + TREATMENTS.length * CELL;
+    const cmpH = 14 + HEAD_ROWS.length * CELL;
+    tile(grid, `${id} — rim head to head`, 'six treatments x two backdrops, frozen', cmpW, cmpH, (ctx) => {
+      ctx.font = 'bold 7px ui-monospace, monospace';
+      ctx.fillStyle = '#8a8a9a';
+      ctx.textBaseline = 'alphabetic';
+      TREATMENTS.forEach(([name], i) => {
+        ctx.fillText(name, LABEL_W + i * CELL + 4, 9);
+      });
+      HEAD_ROWS.forEach(([rowLabel, h, bg], r) => {
+        const y = 14 + r * CELL;
+        ctx.fillStyle = '#8a8a9a';
+        ctx.fillText(rowLabel, 4, y + CELL / 2);
+        TREATMENTS.forEach(([, , rim], i) => {
+          setRim(rim);
+          try {
+            headCell(ctx, id, h, LABEL_W + i * CELL, y, PHASE, bg);
+          } finally {
+            setRim(); // never leak a treatment into the next cell
+          }
+        });
+      });
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      for (let i = 0; i <= TREATMENTS.length; i++) {
+        ctx.moveTo(LABEL_W + i * CELL, 12);
+        ctx.lineTo(LABEL_W + i * CELL, cmpH);
+      }
+      for (let r = 0; r <= HEAD_ROWS.length; r++) {
+        ctx.moveTo(LABEL_W, 14 + r * CELL);
+        ctx.lineTo(cmpW, 14 + r * CELL);
+      }
+      ctx.stroke();
+    }, { wide: true, hires: 5 });
+  }
+
+  // The bevel is an EDGE effect, and a head crop still shows it wrapped around
+  // a curve where a highlight and a contour are hard to tell apart. One full
+  // body per treatment, on the wall, is the check that whatever wins the crop
+  // has not quietly deleted a shoulder or flattened the whole figure.
+  const POSE_W = 54, POSE_H = 78;
+  for (const [name, note, rim] of TREATMENTS) {
+    tile(grid, `full figure — ${name}`, note, POSE_W * IDS.length, POSE_H, (ctx, t) => {
+      ctx.fillStyle = WALL_BASE;
+      ctx.fillRect(0, 0, POSE_W * IDS.length, POSE_H);
+      setRim(rim);
+      try {
+        IDS.forEach((id, i) => {
+          drawToon(ctx, id, pose('run', t), POSE_W * i + POSE_W / 2, POSE_H - 3, 60);
+        });
+      } finally {
+        setRim();
+      }
+    }, { animated: true, wide: true });
   }
 }
 

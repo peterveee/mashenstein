@@ -277,8 +277,14 @@ export const FINALE_BEATS = [
   'EGGSHELL, WARMED BY WALL-SOCKET ELECTRICITY: "SO THIS IS THE WARMTH I NEVER GOT."',
   'DUST DEVIL 9000 PRINTS AN EMPLOYEE OF THE MONTH CERTIFICATE FROM SOMEWHERE IT SHOULD NOT CONTAIN A PRINTER.',
   'THE POWER STRIP WAS PLUGGED INTO ITSELF THE ENTIRE TIME. NOBODY ADDRESSES THIS.',
-  'CANON DEPARTMENT HAS GONE HOME.',
+  'THE LIGHTS GO OFF. THE POWER STRIP DOES NOT.',
 ];
+
+// The last beat does not end when its line does. A pause after the ending, and
+// then HR files its objection in fine print — the campaign is over, the
+// paperwork is not, and OVERTIME is the thing nobody signed off on. It reads as
+// a disclaimer because it is drawn as one: small, muted, late.
+export const FINALE_CODA = 'HR HAS APPROVED NOTHING THAT HAPPENS FROM HERE ON.';
 
 export const DIFFICULTIES = [
   { id: 1, name: 'BREEZY', desc: 'FOR RELAXING.' },

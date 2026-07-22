@@ -823,10 +823,11 @@ function drawCloudPal(ctx, t, reduced) {
   // for a stretch before floating back in from the left.
   const x = ((t * 13) % (W + 190)) - 95;
   if (x < -45 || x > W + 45) return; // off having a private moment
-  // Rides lower than the plain clouds and bobs less: at PAL_S the silhouette
-  // reaches ~20px above its origin, and the HUD pill row owns everything down
-  // to y 23 — a higher or wider bob would park the face behind the score.
-  let y = 74 + Math.sin(t * 0.33) * 14 + Math.sin(t * 0.9) * 3;
+  // Sits just under the HUD, not down in the middle of the sky: at PAL_S the
+  // silhouette reaches ~21px above its origin and the pill row owns everything
+  // down to y 23, so the top of the bob is tuned to land at y ~28 — as high as
+  // the pal can ride while its face still clears the score.
+  let y = 61 + Math.sin(t * 0.33) * 9.5 + Math.sin(t * 0.9) * 2.5;
   let jx = 0;
   if (!reduced && laughing) { y -= Math.abs(Math.sin(t * 15)) * 3; jx = Math.sin(t * 21) * 1.2; }
   if (!reduced && shocked) jx = Math.sin(t * 26) * 1.2;

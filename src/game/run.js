@@ -7,7 +7,7 @@ import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, textYForMid, UI_PLATE, drawRoundButton } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, textYForMid, UI_PLATE, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
@@ -15,9 +15,10 @@ import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
+import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, roundButtonOpts } from './hud.js';
+import { drawHud, drawSpeech, roundButtonOpts, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
@@ -251,6 +252,22 @@ export class RunState {
     this.lastCoinSprayT = -1;
     Audio.setInvincible(false);
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
+    // The keyboard legend is a teaching aid, so it only runs while there is
+    // something to teach: the campaign's opening stage, or a run with no stage
+    // behind it (endless, where nothing came before it either). The bot needs
+    // no education, and touch never sees it — those buttons label themselves.
+    // A retry re-arms it, which is the one case where asking again is right.
+    //
+    // Against STAGES[0] rather than "act 1, stage 1": all three Act I cabinets
+    // have a stage 1, and a legend that comes back on SPEED ZONE and NEON
+    // BLASTERS is teaching a scheme the player has already run a whole cabinet
+    // with. The opening stage is a position in the campaign, not a shape.
+    const teaching = this.stage ? this.stage.id === STAGES[0].id : true;
+    this.hintT = (this.demo || !teaching) ? 0 : HINT_TIME;
+    // The BONUS panel's sentence gets one read at the top of every stage, not
+    // just the teaching one: it is a different sentence each time, so unlike the
+    // key legend there is always something new to say.
+    this.bonusT = this.challenge ? BONUS_TIME : 0;
     this.setButtons();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
     if (this.startingPowerup) {
@@ -283,12 +300,25 @@ export class RunState {
     // and the corners hold HUD instead.
     if (!Input.usingTouch) { Input.setButtons([]); Input.setChromeButtons([]); this.useChrome = false; return; }
     // Enough black margin outside the 480x270 rect (renderer.js's chrome
-    // geometry) to put the controls out there instead of over the art. Falls
+    // geometry) to put JUMP/ABILITY out there instead of over the art. Falls
     // back to the old in-canvas corners on anything too close to 16:9 to have
     // room (chrome.mode === 'none').
     this.useChrome = chromeGeo.mode !== 'none';
+    // Mirrors the Escape key exactly: pauses if running, quits if already
+    // paused. The 'escape' action already carries that logic — but the second
+    // half of it is now unreachable from here, since pausing swaps this
+    // button out for the menu above.
     if (this.useChrome) {
-      Input.setButtons([]);
+      // The ability-name banner (drawAbilityName) reads as a label FOR PWR,
+      // sitting right next to it — so treating it as a second, generously
+      // oversized hit target for the same action (rather than inert text)
+      // means a tap that lands on the words still does the right thing.
+      // Fixed box, not measured off the label each frame: the widest ability
+      // name across every hero (~13 chars) still fits inside it with room to
+      // spare, so it never needs to track a value that changes on hero swap.
+      Input.setButtons(chromeGeo.mode === 'side'
+        ? [{ id: 'abilityName', x: W - 4 - 90, y: TOUCH_SHELF_CY - 9, w: 90, h: 18, action: 'ability' }]
+        : []);
       Input.setChromeButtons([
         { id: 'jump', ...chromeGeo.jump, action: 'jump' },
         { id: 'ability', ...chromeGeo.ability, action: 'ability' },
@@ -298,26 +328,18 @@ export class RunState {
     }
     Input.setChromeButtons([]);
     // Three discs, one style, one painter (drawRoundButton) — thumbs find a
-    // shape faster than they read a label, and three identical shapes say "the
-    // controls" the way three differently-drawn boxes never did. JUMP and PWR
-    // take the bottom corners, where thumbs already rest holding a phone in
-    // landscape; PAUSE sits top-right UNDER the objective panels rather than
-    // beside them, so the corner the eye goes to for GOAL/BONUS is not also
-    // the corner that quits the run.
+    // shape faster than they read a label. JUMP and PWR take the bottom
+    // corners, where thumbs already rest holding a phone in landscape; PAUSE
+    // sits top-right under the objective panels.
     Input.setButtons([
       { id: 'jump', x: 12, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
       { id: 'ability', x: W - 56, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'PWR', round: true },
-      // Mirrors the Escape key exactly: pauses if running, quits if already
-      // paused. The 'escape' action already carries that logic — but the second
-      // half of it is now unreachable from here, since pausing swaps this
-      // button out for the menu above.
       { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
     ]);
   }
 
-  // Chrome buttons carry no label/icon of their own (see setButtons) — drawn
-  // here from the same three ids the in-canvas buttons use, so one lookup
-  // supplies both the JUMP/PWR label text and the PAUSE glyph.
+  // One lookup supplies the JUMP/PWR label text and the PAUSE glyph for
+  // whichever chrome button is being drawn.
   chromeButtonArt(id) {
     if (id === 'jump') return { label: 'JUMP' };
     if (id === 'ability') return { label: 'PWR' };
@@ -350,6 +372,24 @@ export class RunState {
         labelStyle: 'bold',
       });
     }
+  }
+
+  // The in-canvas ability "donut" (drawHud) never draws for touch at all — the
+  // PWR disc shows its own recharge instead — so without this, a touch player
+  // has no way to see which power is even equipped. Drawn on the game canvas
+  // itself (not #chrome), bottom-right where PWR sits just outside that
+  // corner — same plate-and-text look every other HUD readout uses (see
+  // hud.js's gauge() labels), not bare floating text. Landscape ('side') only:
+  // 'topbottom' mode's bottom-center spot is too narrow at a readable size to
+  // be worth the clutter.
+  drawAbilityName(d) {
+    if (!this.useChrome || chromeGeo.mode !== 'side') return;
+    const label = HERO_BY_ID[this.relay.current].ability.label;
+    const scale = 0.8, PADX = 5, LH = 13;
+    const w = textWidth(label, scale, 'bold') + PADX * 2;
+    const x = W - 4 - w, midY = TOUCH_SHELF_CY;
+    drawPanel(d, x, midY - LH / 2, w, LH, 4, undefined, { border: UI_PANEL_BORDER, shadow: true });
+    drawText(d, label, x + PADX, textYForMid(midY, scale), '#c8e0ff', scale, 'bold');
   }
 
   maxBattery() {
@@ -431,6 +471,10 @@ export class RunState {
     const wdt = dt * ts;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
+    // Run time, not wall time: the legend should not burn down behind a pause
+    // screen or an ACT banner, both of which return before this line.
+    if (this.hintT > 0) this.hintT -= wdt;
+    if (this.bonusT > 0) this.bonusT -= wdt;
     const hero = HERO_BY_ID[this.relay.current];
 
     // Movement / camera.
@@ -857,7 +901,11 @@ export class RunState {
       const hero = this.relay.next;
       this.portal = { x: this.camX + W + 40, hero, label: `${HERO_BY_ID[hero].short} - ${HERO_CALLOUT[hero]}` };
       this.relay.portalSpawned();
-      this.tutor('firstPortal', 'RUN THROUGH THE PORTAL TO CHANGE HERO.');
+      // Names the TAG, because this is the moment the word gets taught: the
+      // mastery track pays out on 'EVERY PERFECT TAG' and the intro opens on a
+      // relay, and until this line said it the player met the term first in a
+      // shop description for a thing they had never been told they were doing.
+      this.tutor('firstPortal', 'RUN THROUGH THE PORTAL TO TAG IN THE NEXT HERO.');
     }
     if (this.portal) {
       const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - 40, w: 12, h: 40 };
@@ -1194,6 +1242,7 @@ export class RunState {
     if (c && !this.goalSeen.challenge && !c.failed && c.type !== 'noDamage' && c.count >= c.n) {
       this.goalSeen.challenge = true;
       this.goalToast(`BONUS: ${c.desc}`);
+      this.bonusT = BONUS_HOLD;   // re-open the panel to say it in words, then fold back
     }
     // Only counted missions have a moment to catch. reach/fuse/blackout/escape
     // are satisfied by surviving to the socket, which is the run ending anyway.
@@ -1487,7 +1536,10 @@ export class RunState {
     // nothing at all.
     if (!this.devInvuln) this.battery--;
     this.damageTaken++;
-    if (this.challenge && this.challenge.type === 'noDamage') this.challenge.failed = true;
+    if (this.challenge && this.challenge.type === 'noDamage' && !this.challenge.failed) {
+      this.challenge.failed = true;
+      this.bonusT = BONUS_HOLD;   // losing it is news too — say so before folding back
+    }
     if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848');
     Audio.sfx('hit');
     shake(5, 0.3);
@@ -1857,6 +1909,7 @@ export class RunState {
       }
       if (this.speech) drawSpeech(d, this.speech);
       drawHud(d, this);
+      this.drawAbilityName(d);
       if (this.introFreeze > 0 && this.introText) this.drawActBanner(d);
     };
     if (!pushOverlayDraw(drawUi)) drawUi(ctx);
@@ -1888,25 +1941,70 @@ export class RunState {
     drawTextCentered(ctx, 'PAUSED', W / 2, 62, '#fff', 2, 'title');
     const pHero = HERO_BY_ID[this.relay.current];
     const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    // Every key on this screen is painted by the same legend painter the HUD
+    // strip uses, so the two agree on what a key looks like: green and bold,
+    // with the thing it does beside it in a quieter ink. A wall of one colour
+    // was the old failing here — three lines of identical grey that had to be
+    // read word by word to find the one word you paused to look up.
+    const legend = (pairs, y, opts) =>
+      drawKeyLegend(ctx, pairs, W / 2 - keyLegendWidth(pairs, opts?.scale) / 2, y, opts);
     drawTextCentered(ctx, pHero.name, W / 2, 92, '#48e0c8');
-    drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 104, '#f6d33c');
+    // The power line reports state rather than teaching a control, so it keeps
+    // its gold — only the key in front of it joins the legend.
+    const cd = this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`;
+    legend([[pBtn, `${pHero.ability.label}  ${cd}`, '#f6d33c']], 104);
     drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 118, '#c8e0ff');
+    // The challenge in full, directly under the mission and in the same order
+    // the HUD stacks them. The HUD folds this sentence away ten seconds into the
+    // stage and keeps only the count, which is the right trade while you are
+    // running — but "what was the bonus again" is precisely a thing you pause to
+    // ask, so the words live down here, unabbreviated and untruncated.
+    if (this.challenge && !this.overtime && this.stage) {
+      const c = this.challenge;
+      const done = c.type === 'noDamage' ? this.damageTaken === 0 : c.count >= c.n;
+      const tail = c.failed ? 'NOT THIS TIME' : done ? 'OK' : c.n ? `${Math.min(c.count, c.n)}/${c.n}` : '';
+      drawTextCentered(ctx, `BONUS: ${c.desc}${tail ? ` ${tail}` : ''}`, W / 2, 130,
+        c.failed ? '#6a6a78' : done ? '#74c947' : '#8a8a98');
+    }
     // Plug standing lives here rather than in the HUD: it is a "how am I doing"
     // question, which is the question you paused to ask, and it does not belong
     // in the corner of your eye while you are dodging.
+    //
+    // It shares its row with the relay charge. Both are short status chips, and
+    // the rows below this one belong to the controls — which stay at a fixed
+    // height so that a legend you paused to look up is in the place it was last
+    // time, rather than wherever the lines above it happened to end.
+    const chips = [];
     if (!this.overtime && this.stage) {
       const got = goalsDone(this).filter(Boolean).length;
-      drawTextCentered(ctx, `GOALS ${got}/3`, W / 2, 130, got ? '#f6d33c' : '#8a8a98');
+      chips.push([`GOALS ${got}/3`, got ? '#f6d33c' : '#8a8a98']);
     }
-    if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 142, '#f890b8');
+    if (this.player.relayCharge) chips.push(['POWER CHARGED: SPEND IT', '#f890b8']);
+    if (chips.length) {
+      const CHIP_GAP = 12;
+      const total = chips.reduce((a, [t]) => a + textWidth(t), 0) + CHIP_GAP * (chips.length - 1);
+      let cx = W / 2 - total / 2;
+      for (const [t, ink] of chips) { drawText(ctx, t, cx, 142, ink); cx += textWidth(t) + CHIP_GAP; }
+    }
     // The touch line names the gestures, not the buttons: JUMP and PWR label
     // themselves on screen, and the swipes are the half of the scheme nothing
     // else advertises.
-    drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   SWIPE RIGHT POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 158, '#c8c8d8');
+    legend(Input.usingTouch
+      ? [['TAP', 'JUMP'], ['SWIPE DOWN', 'DUCK'], ['SWIPE RIGHT', 'POWER']]
+      : [['SPACE', 'JUMP'], ['DOWN', 'DUCK'], ['RIGHT/D', 'POWER']], 158,
+    { actionInk: '#c8c8d8' });
     // Only keyboard needs telling: the plates below say it for everyone else,
-    // and printing "P: RESUME" under a button marked CONTINUE is the same
-    // instruction twice in two languages.
-    if (!Input.usingTouch) drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 172, '#8a8a98');
+    // and printing a resume key under a button marked CONTINUE is the same
+    // instruction twice in two languages. P is listed as both halves of what it
+    // does — it is the key you pressed to get here and the key that undoes
+    // that, and naming only one of them makes the other look like a different
+    // key you have not found yet.
+    //
+    // Dimmer than the controls above: these two work the menu, not the run.
+    if (!Input.usingTouch) {
+      legend([['P', 'PAUSE/RESUME'], ['ESC', 'QUIT TO HUB']], 172,
+        { keyInk: 'rgba(116,201,71,0.65)', actionInk: '#8a8a98' });
+    }
     // CONTINUE leads in teal, the game's "this one" colour; EXIT sits back in
     // plain grey. Same plate, different weight — one of these ends the run.
     for (const b of Input.buttons) {

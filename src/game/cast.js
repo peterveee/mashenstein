@@ -291,7 +291,10 @@ export class CastState {
       ctx.fillRect(x0 + i * dotW, H - 30, 5, 3);
     }
     if (this.reduced || Math.floor(t * 1.6) % 2 === 0) {
-      drawTextCentered(ctx, 'PRESS ANY KEY / TAP TO RETURN', W / 2, H - 18, '#8a8a98');
+      // isTouchDevice(), not usingTouch: this screen can be arrived at cold from
+      // the attract loop, and 'PRESS ANY KEY' on a phone names hardware it does
+      // not have.
+      drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP TO RETURN' : 'PRESS ANY KEY TO RETURN', W / 2, H - 18, '#8a8a98');
     }
   }
 }

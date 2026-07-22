@@ -103,7 +103,9 @@ export class MinigameState {
       ctx.fillRect(b.x, b.y, b.w, b.h);
       drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, skip ? '#f6d33c' : '#48e0c8');
     }
-    if (!Input.usingTouch) drawText(ctx, 'ESC SKIP', 8, 12, '#5a5a68');
+    // isTouchDevice(), not usingTouch: the breaker box can open before a finger
+    // has landed this run, and the SKIP plate beside it already says it better.
+    if (!Input.isTouchDevice()) drawText(ctx, 'ESC SKIP', 8, 12, '#5a5a68');
   }
 }
 
@@ -273,7 +275,10 @@ function rewire(rng) {
         ctx.stroke();
         ctx.lineWidth = 1;
       }
-      drawTextCentered(ctx, 'TAP A TILE OR ARROWS + A TO ROTATE', W / 2, oy + ROWS * CS + 10, '#5a5a68');
+      // 'ARROWS + A' named the wrong key: A is bound to left, and the tile is
+      // rotated by jump (SPACE / UP / W). Cursor moves on left, right and down.
+      drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP A TILE TO ROTATE IT' : 'ARROWS MOVE   SPACE ROTATES',
+        W / 2, oy + ROWS * CS + 10, '#5a5a68');
     },
   };
 }

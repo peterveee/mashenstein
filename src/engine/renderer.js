@@ -17,6 +17,25 @@ const canvas = typeof document !== 'undefined' ? document.getElementById('game')
 const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
 export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
 
+// env(safe-area-inset-*) isn't readable from JS directly — only a computed
+// style reports it — so #safe-area (template.html) exists purely to have its
+// padding measured. Real per-device notch/Dynamic Island/home-indicator
+// clearance, not a guessed constant: on an iPhone in landscape those cutouts
+// rotate to the LEFT/RIGHT edges (whichever side the island/indicator lands
+// on), not top/bottom, so it's `left`/`right` that matter for 'side' mode's
+// buttons, and `bottom` for 'topbottom' mode's (portrait's home indicator).
+const safeAreaEl = typeof document !== 'undefined' ? document.getElementById('safe-area') : null;
+function safeInsets() {
+  if (!safeAreaEl || typeof getComputedStyle === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 };
+  const cs = getComputedStyle(safeAreaEl);
+  return {
+    top: parseFloat(cs.paddingTop) || 0,
+    right: parseFloat(cs.paddingRight) || 0,
+    bottom: parseFloat(cs.paddingBottom) || 0,
+    left: parseFloat(cs.paddingLeft) || 0,
+  };
+}
+
 // Chrome button geometry, recomputed every resize(). 'side': margin left+right
 // (phones in landscape — the fit is height-limited, same math run.js's touch
 // comment already spells out). 'topbottom': margin above+below (iPad in
@@ -41,6 +60,13 @@ const CHROME_EDGE_PAD = 26;
 // 'topbottom' mode anchors to the GAME's edge instead (see below) — a small
 // gap is enough there, since the corner risk mostly isn't in play.
 const CHROME_GAME_GAP = 10;
+// A zone's game-facing edge sits exactly where #game begins — but a tap
+// aiming for PWR near that boundary, not precisely past it, still lands ON
+// #game (it's on top there), which has no in-canvas ability button to catch
+// it in chrome mode and falls through to tap-to-jump. Extending the zone this
+// far INTO the game side means input.js's #game fallback (which consults
+// these same zones) catches it too, not just #chrome's own listener.
+const CHROME_GAME_EDGE_BUF = 44;
 
 export const back = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -146,35 +172,61 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   // button that fills its own corner of a phone. Zones tile the full margin
   // between the three controls with no gaps, since #chrome never shows
   // anywhere else.
+  // PAUSE shares a column/bar with ABILITY (JUMP still gets an entire one to
+  // itself) — this used to be the whole margin layout, got pulled back to
+  // in-canvas when a tap aimed at PWR near the shared boundary was landing on
+  // #game's tap-to-jump fallback instead, and comes back out here now that
+  // the actual cause is fixed: CHROME_GAME_EDGE_BUF below extends every
+  // zone's game-facing edge INTO #game itself, so a near-boundary tap on
+  // #game resolves through the same zone rather than falling through.
+  const safe = safeInsets();
+  const SAFE_BUF = 6; // a little air past the reported inset, not right on its edge
   if (chrome.mode === 'side') {
     const r = chromeR(ox);
-    // JUMP has the whole left column to itself; PAUSE/PWR split the right
-    // column top/bottom, since both live over there. CHROME_EDGE_PAD (not the
-    // plain CHROME_PAD) keeps every one of these off the screen's rounded
-    // corners — each sits at a true corner (bottom-left, bottom-right,
-    // top-right), so it needs real clearance on its edge-facing axis.
-    chrome.jump    = { x: ox / 2,        y: winH - r - CHROME_EDGE_PAD, r, zone: { x: 0,           y: 0,          w: ox, h: winH } };
-    chrome.ability = { x: winW - ox / 2, y: winH - r - CHROME_EDGE_PAD, r, zone: { x: winW - ox,    y: winH / 2,   w: ox, h: winH / 2 } };
-    chrome.pause   = { x: winW - ox / 2, y: r + CHROME_EDGE_PAD,        r, zone: { x: winW - ox,    y: 0,          w: ox, h: winH / 2 } };
+    // Move up/in as far as either the rounded-corner default (CHROME_EDGE_PAD)
+    // or the device's REAL reported inset demands, whichever is bigger — never
+    // less safe than measured, but no more cramped than necessary on a device
+    // that doesn't need it (older notch iPhones, most non-Apple touch devices,
+    // where the probe reports 0 and this reduces to the plain default).
+    const yBottomPad = Math.max(CHROME_EDGE_PAD, safe.bottom + SAFE_BUF);
+    const yTopPad = Math.max(CHROME_EDGE_PAD, safe.top + SAFE_BUF);
+    const yBottom = winH - r - yBottomPad;
+    const yTop = r + yTopPad;
+    // Pushed toward the game far enough to clear the inset, but never so far
+    // it starts sliding UNDER #game (behind it, which #chrome can't draw over —
+    // see the module comment) — capped a couple px short of that boundary.
+    const jumpX = Math.min(ox - r - 2, Math.max(ox / 2, safe.left + r + SAFE_BUF));
+    const rightX = Math.max(winW - ox + r + 2, Math.min(winW - ox / 2, winW - safe.right - r - SAFE_BUF));
+    // PAUSE only needs a quarter of the shared column — it's the control you
+    // reach for least — so ABILITY keeps the remaining three quarters rather
+    // than splitting it down the middle.
+    const pauseZoneH = winH / 4;
+    chrome.jump    = { x: jumpX, y: yBottom, r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: winH } };
+    chrome.ability = { x: rightX, y: yBottom, r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: pauseZoneH, w: ox + CHROME_GAME_EDGE_BUF, h: winH - pauseZoneH } };
+    chrome.pause   = { x: rightX, y: yTop,    r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pauseZoneH } };
   } else if (chrome.mode === 'topbottom') {
     const r = chromeR(oy);
-    // PAUSE has the whole top bar to itself; JUMP/PWR split the bottom bar
-    // left/right. Anchored to the GAME's own top/bottom edge (CHROME_GAME_GAP
-    // away from it), not the physical screen edge — on a portrait phone that
-    // margin can be hundreds of px tall, and a button sitting at the far
-    // physical edge reads as lost out in empty space instead of a control for
-    // the game right above/below it. CHROME_EDGE_PAD still guards the x-axis,
-    // since JUMP/PWR still sit at the screen's left/right extent.
+    // Anchored to the GAME's own top/bottom edge (CHROME_GAME_GAP away from
+    // it), not the physical screen edge — on a portrait phone that margin can
+    // be hundreds of px tall, and a button sitting at the far physical edge
+    // reads as lost out in empty space instead of a control for the game
+    // right above/below it.
     //
     // On a thin margin (iPad, whose oy runs 53-128 vs a portrait phone's
-    // 300+), "hug the game edge" and "stay fully on screen" can conflict once
-    // r is big enough — clamp each toward the screen's own edge instead of
+    // 300+), "hug the game edge" and "stay fully on screen" (now: fully clear
+    // of the notch/home indicator, whichever needs more room) can conflict
+    // once r is big enough — clamp toward the screen's own edge instead of
     // letting the disc run past it.
-    const bottomY = Math.min((winH - oy) + r + CHROME_GAME_GAP, winH - r - CHROME_PAD);
-    const topY = Math.max(oy - r - CHROME_GAME_GAP, r + CHROME_PAD);
-    chrome.jump    = { x: r + CHROME_EDGE_PAD,        y: bottomY, r, zone: { x: 0,        y: winH - oy, w: winW / 2, h: oy } };
-    chrome.ability = { x: winW - r - CHROME_EDGE_PAD, y: bottomY, r, zone: { x: winW / 2, y: winH - oy, w: winW / 2, h: oy } };
-    chrome.pause   = { x: winW - r - CHROME_EDGE_PAD, y: topY,    r, zone: { x: 0,        y: 0,        w: winW,     h: oy } };
+    const bottomPad = Math.max(CHROME_PAD, safe.bottom + SAFE_BUF);
+    const topPad = Math.max(CHROME_PAD, safe.top + SAFE_BUF);
+    const bottomY = Math.min((winH - oy) + r + CHROME_GAME_GAP, winH - r - bottomPad);
+    const topY = Math.max(oy - r - CHROME_GAME_GAP, r + topPad);
+    const xPad = Math.max(CHROME_EDGE_PAD, 0);
+    const jumpX = Math.min(winW / 2 - r - 2, Math.max(r + xPad, safe.left + r + SAFE_BUF));
+    const rightX = Math.max(winW / 2 + r + 2, Math.min(winW - r - xPad, winW - safe.right - r - SAFE_BUF));
+    chrome.jump    = { x: jumpX,  y: bottomY, r, zone: { x: 0,        y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
+    chrome.ability = { x: rightX, y: bottomY, r, zone: { x: winW / 2, y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
+    chrome.pause   = { x: rightX, y: topY,    r, zone: { x: 0,        y: 0,                                w: winW,     h: oy + CHROME_GAME_EDGE_BUF } };
   }
 }
 

@@ -4,7 +4,7 @@ import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../en
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { canInstall, showInstallGuide } from '../engine/install-prompt.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
@@ -18,11 +18,17 @@ const GUIDE_ICON_SIZES = {
   capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [12, 9], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
-import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, RANK_LINES } from '../data/jokes.js';
+import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } from '../data/jokes.js';
 import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { totalPlugs, MAX_PLUGS, formatCoins } from './progress.js';
+
+// What the player actually does to confirm, named for the device in their
+// hands. 'TAP/ENTER' told a phone about a key it does not have and a desktop
+// about a screen it cannot touch — on the one line of a screen that has to be
+// acted on rather than read, half the width went to the other device's input.
+function confirmVerb() { return Input.isTouchDevice() ? 'TAP' : 'ENTER'; }
 
 function menuNav(input, idx, len) {
   if (input.pressed('down') || input.pressed('right')) { Audio.sfx('ui'); return (idx + 1) % len; }
@@ -623,91 +629,103 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   ctx.fillStyle = '#171222';
   ctx.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
 
-  // The cast still crosses the arcade, but each hero occasionally breaks into
-  // a small personality beat. Cycles are offset so the parade stays readable.
-  const strikes = reduced ? null : invaderStrikes(t, tapBombs);
-  drawBolt(ctx, t, strikes);
-  drawShots(ctx, t, shots);
-  drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter);
-  for (let i = 0; i < HERO_PARADE.length; i++) {
-    const hx = heroX(i, t);
-    const id = HERO_PARADE[i];
-    // Clobbered: launched into a spin and tumbled off the side of the screen,
-    // fading out before the parade loop would have wrapped them around.
-    const strike = strikes?.find((candidate) => candidate.victim === i && candidate.kt < KNOCK_T);
-    if (strike) {
-      const kt = strike.kt;
-      const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
-      const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
-      const knockScale = 1 + Math.min(0.8, kt * 0.42);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5) * paradeEdgeAlpha(kx);
-      // Keep the feet at the throw point while the body grows toward the
-      // viewer, like the hero is being flung out of the title screen.
-      ctx.translate(kx, ky);
-      ctx.rotate(strike.dir * kt * 7);
-      drawToon(ctx, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, HERO_PARADE_H * knockScale);
-      ctx.restore();
-      continue;
-    }
-    if (heroIsKnockedOut(i, t, tapBombs)) continue;
-    const actionLength = 1.35;
-    const beat = (t + i * 0.71) % 4.9;
-    const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
-    const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
-    const acting = !reduced && !entering && beat < actionLength;
-    const actionP = acting ? beat / actionLength : 0;
-    const lift = acting ? Math.sin(actionP * Math.PI) : 0;
-    const pose = {
-      kind: 'run', grounded: true, time: t, menu: true,
-      phase: (t * 1.5 + i * 0.37) % 1,
-    };
-    let feetY = 268;
-    if (entering) {
-      const landing = entryT / HERO_ENTRY_JUMP_T;
-      // Keep the gait moving during the airborne part so this reads as a
-      // running leap into the arcade, not a frozen sprite sliding in.
-      pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
-      feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
-    }
-    if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3 * PARADE_K; }
-    if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7 * PARADE_K; }
-    if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
-    if (acting && id === 'b33p') { pose.squash = lift * 0.35; pose.menuAction = 'aim'; }
-    if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8 * PARADE_K; }
-    if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2 * PARADE_K; }
-    if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
-    if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
-    // A tap startles whoever it lands on, overriding their signature beat —
-    // getting poked takes priority over whatever bit they were mid-performing.
-    const pokeAt = poke && poke.get(i);
-    if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
-      const pokeP = (t - pokeAt) / HERO_POKE_T;
-      if (id === 'b33p') {
-        // He fired — snap the cannon arm to the aiming stance so the recoil
-        // (keyed off menuAction === 'aim') has something correct to recoil
-        // FROM, instead of whatever the run-cycle carry was doing mid-stride.
-        pose.menuAction = 'aim';
-        pose.squash = Math.sin(pokeP * Math.PI) * 0.35;
-      } else {
-        pose.kind = 'jump'; pose.grounded = false;
-        feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+  // The cast, the invader and its ordnance, returned as a painter instead of
+  // drawn here — the caller hands it to pushOverlayDraw so it renders at DEVICE
+  // resolution, the same treatment in-run heroes get.
+  //
+  // This is what made the whole roster look washed out on the title screen. The
+  // parade was painting into the 480x270 backbuffer and being upscaled with it,
+  // so a 36px-tall hero was blurred into the dark sky behind them — and blending
+  // a character with the background is exactly how you desaturate one. Nothing
+  // was wrong with the palettes; they were being averaged away. sprites/toons.js
+  // has always said these are meant to be drawn at device resolution.
+  const cast = (c) => {
+    // The cast still crosses the arcade, but each hero occasionally breaks into
+    // a small personality beat. Cycles are offset so the parade stays readable.
+    const strikes = reduced ? null : invaderStrikes(t, tapBombs);
+    drawBolt(c, t, strikes);
+    drawShots(c, t, shots);
+    drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter);
+    for (let i = 0; i < HERO_PARADE.length; i++) {
+      const hx = heroX(i, t);
+      const id = HERO_PARADE[i];
+      // Clobbered: launched into a spin and tumbled off the side of the screen,
+      // fading out before the parade loop would have wrapped them around.
+      const strike = strikes?.find((candidate) => candidate.victim === i && candidate.kt < KNOCK_T);
+      if (strike) {
+        const kt = strike.kt;
+        const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
+        const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
+        const knockScale = 1 + Math.min(0.8, kt * 0.42);
+        c.save();
+        c.globalAlpha = Math.min(1, (KNOCK_T - kt) / 0.5) * paradeEdgeAlpha(kx);
+        // Keep the feet at the throw point while the body grows toward the
+        // viewer, like the hero is being flung out of the title screen.
+        c.translate(kx, ky);
+        c.rotate(strike.dir * kt * 7);
+        drawToon(c, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, HERO_PARADE_H * knockScale);
+        c.restore();
+        continue;
       }
+      if (heroIsKnockedOut(i, t, tapBombs)) continue;
+      const actionLength = 1.35;
+      const beat = (t + i * 0.71) % 4.9;
+      const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+      const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
+      const acting = !reduced && !entering && beat < actionLength;
+      const actionP = acting ? beat / actionLength : 0;
+      const lift = acting ? Math.sin(actionP * Math.PI) : 0;
+      const pose = {
+        kind: 'run', grounded: true, time: t, menu: true,
+        phase: (t * 1.5 + i * 0.37) % 1,
+      };
+      let feetY = 268;
+      if (entering) {
+        const landing = entryT / HERO_ENTRY_JUMP_T;
+        // Keep the gait moving during the airborne part so this reads as a
+        // running leap into the arcade, not a frozen sprite sliding in.
+        pose.kind = 'run'; pose.grounded = false; pose.vy = -260 + landing * 260;
+        feetY -= Math.sin((1 - landing) * Math.PI / 2) * HERO_ENTRY_JUMP_H;
+      }
+      if (acting && id === 'lorenzo') { pose.menuAction = 'wave'; feetY -= lift * 3 * PARADE_K; }
+      if (acting && id === 'gnash') { pose.kind = 'jump'; pose.grounded = false; feetY -= Math.abs(Math.sin(actionP * Math.PI * 2)) * 7 * PARADE_K; }
+      if (acting && id === 'fernwick') { pose.kind = 'duck'; pose.roll = true; }
+      if (acting && id === 'b33p') { pose.squash = lift * 0.35; pose.menuAction = 'aim'; }
+      if (acting && id === 'mochi') { pose.float = true; pose.squash = Math.max(0, Math.sin(actionP * Math.PI * 2)) * 0.22; feetY -= lift * 8 * PARADE_K; }
+      if (acting && id === 'chompo') { pose.menuAction = 'chomp'; feetY -= lift * 2 * PARADE_K; }
+      if (acting && id === 'raymn') { pose.headless = actionP > 0.18 && actionP < 0.78; pose.menuAction = 'wave'; }
+      if (acting && id === 'grumpos') { pose.menuAction = 'flex'; pose.squash = lift * 0.12; }
+      // A tap startles whoever it lands on, overriding their signature beat —
+      // getting poked takes priority over whatever bit they were mid-performing.
+      const pokeAt = poke && poke.get(i);
+      if (pokeAt != null && t - pokeAt < HERO_POKE_T) {
+        const pokeP = (t - pokeAt) / HERO_POKE_T;
+        if (id === 'b33p') {
+          // He fired — snap the cannon arm to the aiming stance so the recoil
+          // (keyed off menuAction === 'aim') has something correct to recoil
+          // FROM, instead of whatever the run-cycle carry was doing mid-stride.
+          pose.menuAction = 'aim';
+          pose.squash = Math.sin(pokeP * Math.PI) * 0.35;
+        } else {
+          pose.kind = 'jump'; pose.grounded = false;
+          feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
+        }
+      }
+      const edgeAlpha = paradeEdgeAlpha(hx);
+      if (edgeAlpha <= 0) continue;
+      const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * HERO_ENTRY_ZOOM : 1;
+      c.save();
+      c.globalAlpha *= edgeAlpha;
+      drawToon(c, id, pose, hx, feetY, HERO_PARADE_H * entryZoom);
+      if (acting) {
+        c.translate(hx, feetY);
+        c.scale(PARADE_K, PARADE_K);
+        drawParadeAccent(c, id, 0, 0, actionP);
+      }
+      c.restore();
     }
-    const edgeAlpha = paradeEdgeAlpha(hx);
-    if (edgeAlpha <= 0) continue;
-    const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * HERO_ENTRY_ZOOM : 1;
-    ctx.save();
-    ctx.globalAlpha *= edgeAlpha;
-    drawToon(ctx, id, pose, hx, feetY, HERO_PARADE_H * entryZoom);
-    if (acting) {
-      ctx.translate(hx, feetY);
-      ctx.scale(PARADE_K, PARADE_K);
-      drawParadeAccent(ctx, id, 0, 0, actionP);
-    }
-    ctx.restore();
-  }
-  drawInvaderImpact(ctx, strikes);
+    drawInvaderImpact(c, strikes);
+  };
 
   // The marquee: MASHENSTEIN in warm cartoon gold, outlined, stitched together
   // out of parts, and wired to a sign that has seen better decades. It stutters
@@ -776,6 +794,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
       ctx.fillRect(px2 - 4 + ((i * 37 + Math.floor(t * 60)) % 8), py2 + 9 + (i % 3) * 2, 1.6, 1.6);
     }
   }
+  return cast;
 }
 // Shuffled each time we enter the title so the cast doesn't always cross in the
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
@@ -812,6 +831,10 @@ const TITLE_PANEL_X = W / 2 - TITLE_PANEL_W / 2;
 // the one above the panel, so the subtitle and the footer frame it evenly.
 const TITLE_FOOTER_GAP = 12;
 const TITLE_FOOTER_LINE_H = 11;
+// The tagline and the attract countdown were set at 0.875 — about 10 CSS px on
+// a phone, under the smallest size iOS itself sets body copy at. There is room
+// under the panel for a full-size line, so they get one.
+const TITLE_FLAVOR_S = 1;
 // A row is only ever as tall as its share of the band between the panel's top
 // and the lowest it may reach, capped so a short menu doesn't sprawl.
 //
@@ -1264,7 +1287,14 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
-    titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs, this.shots);
+    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs, this.shots);
+    // Pushed BEFORE the ui painter below, so the save panel and its modals still
+    // land on top of a hero who has been launched up the screen. Falls back to
+    // painting straight into the backbuffer where there is no overlay layer at
+    // all (headless tests): the parade then draws over the marquee instead of
+    // under it, which costs nothing — one is the top of the screen and the other
+    // is the bottom strip, and they never share a pixel.
+    if (!pushOverlayDraw(cast)) cast(ctx);
     const opts = this.options();
     const ui = (d) => {
       // The cast owns the bottom strip, so every line of text sits above it:
@@ -1296,15 +1326,18 @@ export class TitleState {
       const touch = titleTouch();
       const controlsY = panelY + panelH + TITLE_FOOTER_GAP;
       const flavorY = touch ? controlsY : controlsY + TITLE_FOOTER_LINE_H;
-      if (!touch) drawTextCentered(d, 'ARROWS/TAP: CHOOSE   ENTER/TAP: CONFIRM', W / 2, controlsY, '#6b7d95');
+      // Keyboard-only by the branch above, so it names keys only: listing taps
+      // to the one reader who cannot make them is the mirror of the mistake the
+      // touch layout avoids by dropping this line entirely.
+      if (!touch) drawTextCentered(d, 'ARROWS: CHOOSE   ENTER: CONFIRM', W / 2, controlsY, '#6b7d95');
       d.globalAlpha = 0.85;
       if (this.onAttract && this.attractDelay <= 10) {
         // A tap bumps Input.activity exactly like a keypress does, so it cancels
-        // the countdown too — say so, matching the "PRESS ANY KEY / TAP" wording
-        // used everywhere else this idiom appears.
-        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ANY KEY / TAP CANCELS`, W / 2, flavorY, '#8858c8', 0.875);
+        // the countdown too — named for the device in hand rather than listing
+        // both, the way every other prompt on this screen is.
+        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'} CANCELS`, W / 2, flavorY, '#8858c8', TITLE_FLAVOR_S);
       } else {
-        drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', 0.875);
+        drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', TITLE_FLAVOR_S);
       }
       d.globalAlpha = 1;
       if (BUILD_STAMP) {
@@ -1369,10 +1402,99 @@ function centredBand(labels, scale = 1) {
   return { x: (W - w) / 2, w };
 }
 
+// PROSE THAT SIZES ITSELF TO THE ROOM IT HAS.
+//
+// A phone shows this 480x270 canvas at about 1.5 CSS px per unit, so a fixed
+// scale 1 is caption-sized in a hand — and the screens that read this way (the
+// briefing, the intro, the finale) spend most of their height on black. So:
+// pick the largest step whose wrapped block fits the band, and centre it there.
+const TYPE_STEPS = [2, 1.75, 1.5, 1.25, 1];
+const TYPE_LINE_H = 11; // per unit of scale
+
+// Wrapped lines carrying the character offset each starts at, so a typewriter
+// reveals into a layout that never reflows underneath itself. Wrapping the
+// PARTIAL string every frame — what these screens used to do — walked every
+// line below down the screen as the one above filled in.
+function typeLines(text, maxW, scale, from = 0, maxLines = 12) {
+  return wrapText(text, maxW, scale, maxLines).map((t) => {
+    const line = { text: t, from };
+    from += t.length + 1; // the wrap ate exactly one space
+    return line;
+  });
+}
+
+// `maxLines` is for the lines that turn on their last word. Fitting by height
+// alone, the finale's closer took the biggest step that merely FIT the band and
+// wrapped to "...THE POWER STRIP DOES / NOT." — a greedy break that strands the
+// punchline on a line of its own and reads as a bug rather than as timing.
+// Capping the line count makes it step down until the sentence holds together.
+function fitProse(text, maxW, band, steps = TYPE_STEPS, maxLines = Infinity) {
+  let block = null;
+  for (const scale of steps) {
+    const lines = typeLines(text, maxW, scale);
+    block = { lines, scale, height: lines.length * TYPE_LINE_H * scale };
+    if (block.height <= band && lines.length <= maxLines) break;
+  }
+  return block;
+}
+
+// `budget` characters of a fitProse block, centred in [top, top + band].
+// budget null shows the whole thing. For a block of prose, prefer the cascade
+// below — a per-character crawl only reads as delivery when the unit is one
+// sentence, which on these screens means the finale and nothing else.
+function drawProse(ctx, block, top, band, color, budget = null) {
+  const y0 = top + Math.max(0, (band - block.height) / 2);
+  block.lines.forEach((line, i) => {
+    const shown = budget == null ? line.text : line.text.slice(0, Math.max(0, budget - line.from));
+    if (shown) drawTextCentered(ctx, shown, W / 2, y0 + i * TYPE_LINE_H * block.scale, color, block.scale);
+  });
+}
+
+// A PARAGRAPH ARRIVES A LINE AT A TIME, NOT A LETTER AT A TIME.
+//
+// Nobody reads a block while it assembles — the eye wants the whole shape — so
+// a character crawl across eight lines is not delivery, it is a wait, on
+// screens that are read before every stage and again on every retry. And a
+// centred line drawn half-finished walks sideways as it fills, which at these
+// sizes was the loudest movement on the screen.
+//
+// So each line fades and drops the last of its rise into place a beat behind
+// the one above: the whole memo is standing in well under a second, every line
+// is readable the instant it appears, and the fiction is right — a memo comes
+// out of a machine a line at a time.
+const CASCADE_STAGGER = 0.07;
+const CASCADE_FADE = 0.14;
+const CASCADE_RISE = 2.5; // units of the block's own scale
+function cascadeAt(t, i) {
+  const k = Math.max(0, Math.min(1, (t - i * CASCADE_STAGGER) / CASCADE_FADE));
+  return { alpha: k, dy: (1 - k) * (1 - k) * CASCADE_RISE };
+}
+function cascadeDone(t, n) { return t >= Math.max(0, n - 1) * CASCADE_STAGGER + CASCADE_FADE; }
+// Long enough to have landed every line of anything this game sets.
+const CASCADE_ALL = 99;
+
+function drawCascade(ctx, block, top, band, color, t) {
+  const y0 = top + Math.max(0, (band - block.height) / 2);
+  ctx.save();
+  block.lines.forEach((line, i) => {
+    const { alpha, dy } = cascadeAt(t, i);
+    if (alpha <= 0) return;
+    ctx.globalAlpha = alpha;
+    drawTextCentered(ctx, line.text, W / 2, y0 + (i * TYPE_LINE_H + dy) * block.scale, color, block.scale);
+  });
+  ctx.restore();
+}
+
 // Difficulty rows are a name over a one-line gloss, and the pair is what the
 // tap hit-test and the cursor band both cover — so the geometry lives here
 // rather than being spelled out again in update() and draw().
-const DIFF_TOP = 90, DIFF_ROW = 24, DIFF_GLOSS_DY = 10;
+//
+// Five rows used to take 120 of the 270 units and leave the bottom third black,
+// at a pitch of 24 — 35 CSS px on a phone, under every platform's 44pt touch
+// minimum. They fill the screen now, which fixes the target and the type size
+// with the same number.
+const DIFF_TOP = 86, DIFF_ROW = 31, DIFF_GLOSS_DY = 13;
+const DIFF_NAME_S = 1.3, DIFF_GLOSS_S = 1.05;
 
 export class DifficultyState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
@@ -1420,7 +1542,11 @@ export class DifficultyState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
     drawTextCentered(ctx, '(THE PAUSE MENU WILL ALWAYS TELL YOU THE TRUTH)', W / 2, 64, '#5a5a68');
-    const band = centredBand(DIFFICULTIES.flatMap((d) => [`> ${d.name} <`, d.desc]));
+    // Widest of the two columns of type, since the names are set a size above
+    // their glosses and either can be the long one.
+    const names = centredBand(DIFFICULTIES.map((d) => `> ${d.name} <`), DIFF_NAME_S);
+    const glosses = centredBand(DIFFICULTIES.map((d) => d.desc), DIFF_GLOSS_S);
+    const band = names.w >= glosses.w ? names : glosses;
     DIFFICULTIES.forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
@@ -1430,10 +1556,11 @@ export class DifficultyState {
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
-      const nameY = textYForMid(rowTop + DIFF_ROW / 2) - DIFF_GLOSS_DY / 2;
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, nameY, color);
-      drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68');
-      if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label) / 2 + 18, nameY, '#8a8a98'); // the skull is smiling
+      const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
+      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, nameY, color, DIFF_NAME_S);
+      drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68', DIFF_GLOSS_S);
+      // the skull is smiling
+      if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label, DIFF_NAME_S) / 2 + 18, nameY, '#8a8a98', DIFF_NAME_S);
     });
     if (this.confirming) {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -1458,10 +1585,20 @@ export class DifficultyState {
 // line-up spreads as it opens because its pitch is derived from the live width.
 const INTRO_FRAME_W = [404, 250, 470, 470];
 const INTRO_FRAME_Y = 30.5, INTRO_FRAME_H = 120;
+// The caption strip: under the picture frame, above the panel counter.
+const INTRO_TEXT_TOP = INTRO_FRAME_Y + INTRO_FRAME_H + 6;
+const INTRO_TEXT_BOTTOM = H - 28;
 
 export class IntroState {
   constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.panel = 0; this.chars = 0; this.t = 0; this.panelT = 0; this.frameW = INTRO_FRAME_W[0]; Input.setMenuButtons(); }
+  enter() { this.panel = 0; this.reveal = 0; this.t = 0; this.panelT = 0; this.frameW = INTRO_FRAME_W[0]; this.blocks = []; Input.setMenuButtons(); }
+  // Laid out once per panel and kept: the wrap is measured type, and measuring
+  // it every frame to draw a growing prefix of it is both wasteful and how the
+  // lines used to shuffle mid-typewriter.
+  block(i) {
+    if (!this.blocks[i]) this.blocks[i] = fitProse(INTRO_PANELS[i].text, W - 56, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP);
+    return this.blocks[i];
+  }
   update(dt) {
     this.t += dt;
     this.panelT += dt;
@@ -1471,11 +1608,12 @@ export class IntroState {
     const want = INTRO_FRAME_W[Math.min(this.panel, INTRO_FRAME_W.length - 1)];
     this.frameW += (want - this.frameW) * Math.min(1, dt * 6);
     if (this.panel >= INTRO_PANELS.length) { Input.endFrame(); return; }
-    this.chars += dt * 40;
-    const text = INTRO_PANELS[this.panel].text;
+    this.reveal += dt;
     if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      if (this.chars < text.length) this.chars = text.length;
-      else { this.panel++; this.chars = 0; this.panelT = 0; Audio.sfx('ui'); if (this.panel >= INTRO_PANELS.length) { this.onDone(); } }
+      // First input lands the caption, second turns the page — unchanged, the
+      // cascade is just quick enough that the first one is rarely needed.
+      if (!cascadeDone(this.reveal, this.block(this.panel).lines.length)) this.reveal = CASCADE_ALL;
+      else { this.panel++; this.reveal = 0; this.panelT = 0; Audio.sfx('ui'); if (this.panel >= INTRO_PANELS.length) { this.onDone(); } }
     }
     if (Input.pressed('back')) this.onDone();
     Input.endFrame();
@@ -1580,71 +1718,122 @@ export class IntroState {
         drawToon(ctx, h, pose, ROW_X + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
       });
     }
-    const text = INTRO_PANELS[this.panel].text;
-    const shown = text.slice(0, Math.floor(this.chars));
-    // simple two-line wrap
-    const mid = shown.length > 60 ? shown.lastIndexOf(' ', 60) : shown.length;
-    drawTextCentered(ctx, shown.slice(0, mid), W / 2, 170, '#e8e8f0');
-    if (mid < shown.length) drawTextCentered(ctx, shown.slice(mid + 1), W / 2, 184, '#e8e8f0');
-    drawTextCentered(ctx, `${this.panel + 1}/${INTRO_PANELS.length}  (TAP/ENTER)`, W / 2, H - 20, '#5a5a68');
+    // The caption fills the strip under the frame instead of sitting at a fixed
+    // scale 1 on two hard-wrapped lines: this is the first prose a new file ever
+    // shows, and on a phone that was a 12px caption under a 120-unit picture.
+    const block = this.block(this.panel);
+    drawCascade(ctx, block, INTRO_TEXT_TOP, INTRO_TEXT_BOTTOM - INTRO_TEXT_TOP, '#e8e8f0', this.reveal);
+    const promptS = Input.isTouchDevice() ? 1.25 : 1;
+    drawTextCentered(ctx, `${this.panel + 1}/${INTRO_PANELS.length}  (${confirmVerb()})`,
+      W / 2, textYForMid(H - 16, promptS), '#5a5a68', promptS);
   }
 }
 
 // THE BRIEFING MANIFEST: a full-black establishment screen before every
 // stage. The MISSION line carries the real information; the memo blocks are
 // letterhead comedy. One input completes the typewriter, a second proceeds.
+//
+// The type is sized to the memo rather than fixed: at a constant scale 1 the
+// longest briefing and the shortest one both crowded the top third and left
+// the rest of the screen black, which on a phone — where 270 logical units is
+// about three inches — put the whole manifest under ten CSS pixels a line. The
+// layout below picks the largest step that still fits between the header and
+// the confirm line, so short memos come up large and only the densest ones
+// step back down toward the old size.
+//
+// The top step is 1.75, not whatever fits: the header is drawn at scale 2 in a
+// heavier face, and a one-line mission blown up past it made the body outrank
+// the title it was filed under.
+const BRIEF_SCALES = TYPE_STEPS.filter((s) => s <= 1.75);
+const BRIEF_TOP = 54;             // under the header, with air
+const BRIEF_BOTTOM = H - 36;      // above the confirm line
+const BRIEF_HEAD_GAP = 1;         // letterhead to its own body
+const BRIEF_PIECE_GAP = 8;        // memo to memo
+const BRIEF_MARGIN = 56;          // total horizontal margin
+
+// One memo laid out at one scale. Lines carry their own y (relative to the top
+// of the block) and the character offset they start at, so the typewriter can
+// reveal into a layout that never reflows underneath itself — at scale 1 the
+// old code re-wrapped the partial string every frame, which walked the lower
+// memos down the screen as the upper one filled in.
+function briefingLayout(pieces, scale) {
+  const maxW = W - BRIEF_MARGIN;
+  const lineH = TYPE_LINE_H * scale;
+  const lines = [];
+  let y = 0, chars = 0;
+  for (const piece of pieces) {
+    const start = chars;
+    if (piece.head) {
+      const isEgg = piece.head.startsWith('INTERRUPTION');
+      for (const line of wrapText(piece.head, maxW, scale, 3)) {
+        lines.push({ text: line, y, from: start, head: true, color: isEgg ? '#f0a0a0' : '#48e0c8' });
+        y += lineH;
+      }
+      y += BRIEF_HEAD_GAP * scale;
+    }
+    for (const line of typeLines(piece.text, maxW, scale, start)) {
+      lines.push({ ...line, y, head: false, color: piece.head ? '#c8c8d8' : '#f6d33c' });
+      y += lineH;
+    }
+    chars = start + piece.text.length;
+    y += BRIEF_PIECE_GAP * scale;
+  }
+  return { lines, scale, height: y - BRIEF_PIECE_GAP * scale };
+}
+
 export class BriefingState {
   constructor({ cab, stage, onDone }) { this.cab = cab; this.stage = stage; this.onDone = onDone; }
   enter() {
-    this.chars = 0;
+    this.reveal = 0;
     this.t = 0;
     Input.setMenuButtons();
     this.pieces = [
       { head: null, text: `MISSION: ${this.stage.mission.desc}` },
       ...(BRIEFINGS[this.stage.id] || []),
     ];
-    this.total = this.pieces.reduce((n, p) => n + p.text.length, 0);
+    const band = BRIEF_BOTTOM - BRIEF_TOP;
+    const steps = BRIEF_SCALES.map((s) => briefingLayout(this.pieces, s));
+    this.layout = steps.find((l) => l.height <= band) || steps[steps.length - 1];
+    // Centred in the band: a two-line mission pinned to the top of a black
+    // screen reads as a rendering fault rather than as a title card.
+    this.top = BRIEF_TOP + Math.max(0, (band - this.layout.height) / 2);
   }
   update(dt) {
     this.t += dt;
-    this.chars += dt * 70; // brisker than the finale's 34 — this screen is read often
+    this.reveal += dt;
     if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      if (this.chars < this.total) { this.chars = this.total; Audio.sfx('ui'); }
+      // Still two inputs — land the memo, then proceed — but the memo lands in
+      // well under a second, so the first one is a courtesy rather than a gate.
+      if (!this.landed()) { this.reveal = CASCADE_ALL; Audio.sfx('ui'); }
       else { Audio.sfx('uiConfirm'); this.onDone(); }
     }
     if (Input.pressed('back')) { Audio.sfx('uiConfirm'); this.onDone(); }
     Input.endFrame();
   }
+  landed() { return cascadeDone(this.reveal, this.layout.lines.length); }
   draw(ctx) {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     const cabNo = CABINETS.findIndex((c) => c.id === this.cab.id) + 1;
     drawTextCentered(ctx, `STAGE ${cabNo}-${this.stage.index} BRIEFING`, W / 2, 26, '#e8e8f0', 2, 'title');
-    let budget = Math.floor(this.chars);
-    let y = 58;
-    for (const piece of this.pieces) {
-      if (budget <= 0) break;
-      // Letterhead pops in whole the moment its memo starts typing.
-      if (piece.head) {
-        const isEgg = piece.head.startsWith('INTERRUPTION');
-        wrapText(piece.head, W - 64, 1, 2).forEach((line) => {
-          drawTextCentered(ctx, line, W / 2, y, isEgg ? '#f0a0a0' : '#48e0c8');
-          y += 11;
-        });
-        y += 1;
-      }
-      const shown = piece.text.slice(0, budget);
-      budget -= piece.text.length;
-      wrapText(shown, W - 64, 1, 8).forEach((line) => {
-        drawTextCentered(ctx, line, W / 2, y, piece.head ? '#c8c8d8' : '#f6d33c');
-        y += 11;
-      });
-      y += 8;
-    }
-    const done = this.chars >= this.total;
+    // Letterhead and memo cascade together, in the order they are read: a head
+    // is just the line its memo starts with.
+    const { lines, scale } = this.layout;
+    ctx.save();
+    lines.forEach((line, i) => {
+      const { alpha, dy } = cascadeAt(this.reveal, i);
+      if (alpha <= 0) return;
+      ctx.globalAlpha = alpha;
+      drawTextCentered(ctx, line.text, W / 2, this.top + line.y + dy * scale, line.color, scale);
+    });
+    ctx.restore();
+    const done = this.landed();
     if (!done || Math.floor(this.t * 2) % 2 === 0) {
-      drawTextCentered(ctx, `${Input.usingTouch ? '[TAP]' : '[ENTER]'}: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`,
-        W / 2, H - 20, done ? '#c8c8d8' : '#5a5a68');
+      // The confirm line rides a size up on touch: it is the one thing on the
+      // screen a thumb has to act on, not just read.
+      const promptS = Input.isTouchDevice() ? 1.25 : 1;
+      drawTextCentered(ctx, `[${confirmVerb()}]: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`,
+        W / 2, textYForMid(H - 16, promptS), done ? '#c8c8d8' : '#5a5a68', promptS);
     }
   }
 }
@@ -1653,6 +1842,27 @@ export class BriefingState {
 // so the confetti reads as MASHENSTEIN and not as generic stock celebration.
 const PARTY_COLORS = ['#f6d33c', '#48e0c8', '#f890b8', '#8858c8', '#48c848', '#ffffff'];
 const BURST_SFX = ['popSmall', 'popBig', 'crackle'];
+
+// The results screen sizes its ledger to the band it actually has, the way
+// titleRowH() does for the slot menu. Fixed at scale 1 it was wrong in both
+// directions: the canvas is 480x270 scaled by min(w/480, h/270), so a landscape
+// iPhone is height-limited at ~1.44 CSS px per unit and a body row landed at
+// 8.6 CSS px of cap height — iOS caption size — while a typical clear left
+// forty units of empty tube under it. A ten-line one overran into the heroes.
+const RESULT_BODY_TOP = 92;
+const RESULT_ROW_H = 12;        // per unit of body scale
+const RESULT_BODY_S_MAX = 1.35; // past this the ledger starts out-shouting the title
+const RESULT_BODY_PAD = 10;     // clear of the glass, so a long rank line never touches it
+const RESULT_GAP = 6;           // between the ledger, the curtain call and the prompt
+const RESULT_HERO_H = 32;
+// Low, because the ten-row case is genuinely over-subscribed and a small bow is
+// better than one taken through the last two rows of the ledger. The celebrate
+// rig lifts a hero by up to ~0.2h off its feet, so the clearance above has to
+// survive that too.
+const RESULT_HERO_H_MIN = 18;
+// The prompt's ink sits on this line at every size, so growing it for a thumb
+// moves its edges, never its middle.
+const RESULT_FOOTER_MID = H - 27;
 
 // The results screen is the one place we admit where the game physically is:
 // inside the tube. Act III says so literally, so the frame here is the CRT
@@ -1879,12 +2089,12 @@ export class ResultsState {
     // Everything below is pinned to the tube: the glass runs TUBE_INSET_Y to
     // H - TUBE_INSET_Y, and the title and footer sit a margin inside that.
     drawTextCentered(ctx, r.success ? (r.boss ? 'BOSS DEFEATED' : 'STAGE COMPLETE') : (r.failMsg || 'UNPLUGGED'), W / 2, 38, r.success ? '#48c848' : '#e04848', 2, 'title');
-    drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 72, '#fff', 1);
-    let y = 90;
-    // 12 rather than 13: the inset tube costs 38px of height, and the worst
-    // case here is nine rows (coins, plugs, new plugs, rank, flavour, the OSHA
-    // asterisk, two named mastery-ups and their summary).
-    const line = (t, c) => { drawTextCentered(ctx, t, W / 2, y, c || '#c8c8d8'); y += 12; };
+    // The ledger is COLLECTED before any of it is drawn: its type size falls
+    // out of how many rows there turned out to be, so the rows have to exist
+    // first. Blank ones are dropped rather than left as a gap — an empty row
+    // used to cost the whole block a size for nothing.
+    const rows = [];
+    const line = (t, c) => { if (String(t).trim()) rows.push([t, c || '#c8c8d8']); };
     line(`COINS BANKED: +${formatCoins(this.gains.coins)}`, '#f6d33c');
     if (r.newBestScore) line('NEW BEST SCORE ON THIS STAGE!', '#f6d33c');
     if (r.stage) {
@@ -1895,7 +2105,11 @@ export class ResultsState {
         const osha = this.save.slot.mods.equipped.includes('osha');
         line(`RANK: ${r.rank}${osha ? '*' : ''}`, r.rank === 'S' || r.rank === 'CONCERNING' ? '#f6d33c' : '#c8c8d8');
         line(RANK_LINES[r.rank] || '', '#8a8a98');
-        if (osha) line('* THE BINDER IS DISAPPOINTED.', '#5a5a68');
+        // Quietest row on the screen, but not below the floor: #5a5a68 measures
+        // ~2.3:1 against the lit tube, which is the same grey the prompt just
+        // lost for being unreadable at phone size. The aside shares the rank
+        // line's grey instead — the asterisk already ties the two together.
+        if (osha) line('* THE BINDER IS DISAPPOINTED.', '#8a8a98');
       }
     }
     // Two named mastery-ups, then a summary — a full-cast run would otherwise
@@ -1903,12 +2117,39 @@ export class ResultsState {
     const mastery = this.gains.mastery || [];
     mastery.slice(0, 2).forEach((m) => line(`${m.heroId.toUpperCase()} MASTERY LEVEL ${m.level}!`, '#f890b8'));
     if (mastery.length > 2) line(`+${mastery.length - 2} MORE MASTERY-UPS. THE BENCH IS IMPRESSED.`, '#f890b8');
-    // The row follows the text rather than sitting at a fixed y: a long run
-    // (full team, OSHA equipped, several mastery-ups) used to drive the last
-    // line straight through the heroes' heads. Clamped at the top so a short
-    // result still centres well, and at the bottom to clear the footer.
-    const heroY = Math.min(248, Math.max(232, y + 34));
+
+    // The prompt is placed and sized FIRST and everything else is fitted above
+    // it, because it is the one line on this screen that has to be acted on
+    // rather than read — the same trade BriefingState makes. It used to get the
+    // leftovers: body size, the dimmest grey on the tube (~2.3:1 against the
+    // phosphor glow it sits in, under even the large-text floor), and a hero
+    // clamp whose bottom stop was BELOW its own baseline, so a dense result
+    // stood the curtain call on top of it.
+    const promptS = Input.isTouchDevice() ? 1.25 : 1;
+    const footerInkTop = RESULT_FOOTER_MID - TEXT_INK_H * promptS / 2;
+    const heroFeet = footerInkTop - RESULT_GAP;
+    // Height first, then width: a six-line clear has room to spend and a
+    // ten-line one has none, and either way the longest row still has to clear
+    // the glass. Whichever bound is tighter wins, and never below 1 — the point
+    // of the exercise is that a phone stops getting caption-sized copy.
+    const widest = rows.reduce((m, [t]) => Math.max(m, textWidth(t, 1)), 1);
+    const bodyS = Math.max(1, Math.min(
+      RESULT_BODY_S_MAX,
+      (heroFeet - RESULT_HERO_H - RESULT_GAP - RESULT_BODY_TOP) / (rows.length * RESULT_ROW_H),
+      (W - TUBE_INSET_X * 2 - RESULT_BODY_PAD * 2) / widest,
+    ));
+    // Derived from the ledger rather than fixed, so the headline stays a step
+    // above it wherever it lands.
+    drawTextCentered(ctx, `SCORE: ${Math.floor(this.shown)}`, W / 2, 68, '#fff', bodyS + 0.3);
+    let y = RESULT_BODY_TOP;
+    for (const [t, c] of rows) { drawTextCentered(ctx, t, W / 2, y, c, bodyS); y += RESULT_ROW_H * bodyS; }
+
     if (r.success && r.team && r.team.length) {
+      // The curtain call stands on a fixed floor and takes whatever height the
+      // ledger left it, down to a floor of its own: it is the flourish, and the
+      // rows above it and the prompt below it are the content. Shrinking beats
+      // the old behaviour of moving down into them.
+      const heroH = Math.max(RESULT_HERO_H_MIN, Math.min(RESULT_HERO_H, heroFeet - RESULT_GAP - y));
       // The relay team takes a bow — each hero in their own celebrate pose,
       // slightly out of phase so the line reads as a crowd, not a metronome.
       // Only one hero is ever inside a level at a time, but the cast all exist
@@ -1916,22 +2157,84 @@ export class ResultsState {
       // call after the stage clears is the one moment they can share a frame.
       r.team.forEach((id, i) => drawToon(ctx, id,
         { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
-        W / 2 + (i - (r.team.length - 1) / 2) * 48, heroY, 32));
+        W / 2 + (i - (r.team.length - 1) / 2) * heroH * 1.5, heroFeet, heroH));
     }
-    drawTextCentered(ctx, 'TAP/ENTER: CONTINUE', W / 2, H - 30, '#5a5a68');
+    drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
   }
 }
 
+// Where the beats that carry art (Eggshell, the vacuum, the OVERTIME card)
+// leave off, and where the beat counter starts.
+const FINALE_ART_BOTTOM = 108;
+const FINALE_TEXT_BOTTOM = H - 30;
+// The strip the closing beat holds back for HR's fine print, and how long the
+// ending gets to sit on its own before the disclaimer lands on it. Long enough
+// to read as a separate thought; short enough that nobody reaches for a button.
+const FINALE_CODA_BAND = 40;
+const FINALE_CODA_DELAY = 1.4;
+const LAST_BEAT = FINALE_BEATS.length - 1;
+
+// THE ONE SCREEN THAT STILL TYPES A LETTER AT A TIME.
+//
+// The intro and the briefing gave the character crawl up for the line cascade
+// above, on the grounds that nobody reads a block while it assembles and that
+// those screens are re-read before every stage and again on every retry. The
+// finale is neither of those things: it is seen once, and its beats are single
+// sentences rather than eight-line memos, so the crawl costs a reader who
+// already knows the words nothing.
+//
+// And here the wait is the delivery. These are a joke a screen, and the dead
+// air in front of the last two is the setup — cascade them in and all nine
+// punchlines land the instant the screen does. It is the same reason the coda
+// sits on FINALE_CODA_DELAY before it starts typing at all. If this ever gets
+// unified with drawCascade for consistency's sake, that is what it costs.
 export class FinaleState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.beat = 0; this.chars = 0; Input.setMenuButtons(); Audio.setBank(FINALE_THEME); }
+  enter() {
+    this.beat = 0; this.chars = 0; this.blocks = [];
+    this.codaT = 0; this.codaChars = 0; this.coda = null;
+    Input.setMenuButtons(); Audio.setBank(FINALE_THEME);
+  }
+  // Which band this beat's prose owns. Shared by block() and draw() so the
+  // typed layout and the drawn one cannot drift apart.
+  layout(i) {
+    const art = (i >= 1 && i <= 6) || i === LAST_BEAT;
+    return {
+      art,
+      top: art ? FINALE_ART_BOTTOM : 56,
+      bottom: i === LAST_BEAT ? FINALE_TEXT_BOTTOM - FINALE_CODA_BAND : FINALE_TEXT_BOTTOM,
+    };
+  }
+  // One layout per beat, kept — see IntroState.block.
+  block(i) {
+    if (!this.blocks[i]) {
+      const { top, bottom } = this.layout(i);
+      this.blocks[i] = fitProse(FINALE_BEATS[i], W - 56, bottom - top, TYPE_STEPS, i === LAST_BEAT ? 1 : Infinity);
+    }
+    return this.blocks[i];
+  }
+  codaBlock() {
+    if (!this.coda) this.coda = fitProse(FINALE_CODA, W - 56, FINALE_CODA_BAND, [1.25, 1]);
+    return this.coda;
+  }
   update(dt) {
     if (this.beat >= FINALE_BEATS.length) { Input.endFrame(); return; }
     this.chars += dt * 34;
     const text = FINALE_BEATS[this.beat];
+    const last = this.beat === LAST_BEAT;
+    const done = this.chars >= text.length;
+    if (last && done) {
+      this.codaT += dt;
+      if (this.codaT >= FINALE_CODA_DELAY) this.codaChars += dt * 34;
+    }
     if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
-      if (this.chars < text.length) this.chars = text.length;
-      else {
+      // Three states to skip through on the last beat, not two: the line, then
+      // the disclaimer. A player who mashes still gets to see the fine print
+      // rather than skipping the ending's second half without knowing it exists.
+      if (!done) this.chars = text.length;
+      else if (last && this.codaChars < FINALE_CODA.length) {
+        this.codaT = FINALE_CODA_DELAY; this.codaChars = FINALE_CODA.length;
+      } else {
         this.beat++; this.chars = 0; Audio.sfx('ui');
         if (this.beat >= FINALE_BEATS.length) {
           this.save.slot.campaign.storyFlags.sawEnding = true;
@@ -1948,12 +2251,17 @@ export class FinaleState {
     ctx.fillRect(0, 0, W, H);
     if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
     if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 12, 60, 24, 20);
-    if (this.beat === 8) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2, 'title');
-    const text = FINALE_BEATS[this.beat];
-    const shown = text.slice(0, Math.floor(this.chars));
-    const mid = shown.length > 58 ? shown.lastIndexOf(' ', 58) : shown.length;
-    drawTextCentered(ctx, shown.slice(0, mid), W / 2, 150, '#e8e8f0');
-    if (mid < shown.length) drawTextCentered(ctx, shown.slice(mid + 1), W / 2, 164, '#e8e8f0');
+    if (this.beat === LAST_BEAT) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2, 'title');
+    // The ending is one sentence on a black screen and it used to be set at the
+    // same size as a menu row, pinned to y150 with a hard 58-character break.
+    // It takes whatever the beat's art leaves it now, and centres in that.
+    const { top, bottom } = this.layout(this.beat);
+    drawProse(ctx, this.block(this.beat), top, bottom - top, '#e8e8f0', Math.floor(this.chars));
+    // Muted and a size down from the line above: the disclaimer has to read as
+    // filed against the ending, not as the ending's own last sentence.
+    if (this.beat === LAST_BEAT && this.codaChars > 0) {
+      drawProse(ctx, this.codaBlock(), bottom, FINALE_CODA_BAND, '#8a8a98', Math.floor(this.codaChars));
+    }
     drawTextCentered(ctx, `${this.beat + 1}/${FINALE_BEATS.length}`, W / 2, H - 20, '#5a5a68');
   }
 }
@@ -1995,7 +2303,7 @@ const GUIDE_PAGES = [
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
-      { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO BECOME THE PREVIEWED HERO.' },
+      { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.' },
       { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
     ],
   },
@@ -2121,7 +2429,11 @@ export class FieldGuideState {
     // Touch pages by tapping the left/right thirds of the screen (see update());
     // the arrow-key hint means nothing there, so it's swapped for the gesture,
     // and DONE — the corner tap zone update() carves out — gets its own label.
-    if (Input.usingTouch) {
+    //
+    // isTouchDevice(), not usingTouch: usingTouch only turns true after a finger
+    // has already landed, so a phone opening this screen cold was told to press
+    // ESC — a key it does not have — until it tapped something.
+    if (Input.isTouchDevice()) {
       drawTextCentered(ctx, `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`, W / 2, H - 14, '#5a5a68');
       drawText(ctx, 'DONE', W - 50, H - 18, '#f6d33c');
     } else {
@@ -2199,7 +2511,9 @@ export class SoundTestState {
         ctx.fillRect(W / 2 - bars * 5 + i * 10, H - 24 - hgt, 6, hgt);
       }
     }
-    drawTextCentered(ctx, 'ENTER/TAP: PLAY   ESC: BACK', W / 2, H - 14, '#5a5a68');
+    // The BACK row is in the list itself, so touch needs no key named for it.
+    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: PLAY' : 'ENTER: PLAY   ESC: BACK',
+      W / 2, H - 14, '#5a5a68');
   }
 }
 
@@ -2227,21 +2541,28 @@ export class HowToPlayState {
       drawText(ctx, b, 170, y, '#c8c8d8');
       y += 15;
     };
-    line('JUMP', 'SPACE / W / UP -- TAP. HOLD FOR HIGHER.');
-    line('DUCK', 'S / DOWN (HOLD) -- SWIPE DOWN.');
-    line('HERO POWER', 'RIGHT / D -- PWR OR SWIPE RIGHT. X / SHIFT TOO.');
-    line('PORTALS', 'RUN THROUGH TO BECOME THE PREVIEWED HERO.', '#48e0c8');
+    // The three control rows used to carry both schemes either side of a dash,
+    // which meant half of every row named hardware the reader does not have.
+    // A phone gets the gestures, a keyboard gets the keys, nobody gets both.
+    const touch = Input.isTouchDevice();
+    line('JUMP', touch ? 'TAP. HOLD FOR HIGHER.' : 'SPACE / W / UP. HOLD FOR HIGHER.');
+    line('DUCK', touch ? 'SWIPE DOWN AND HOLD.' : 'S / DOWN. HOLD IT.');
+    line('HERO POWER', touch ? 'THE PWR BUTTON, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
+    line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     line('RELAY BATON', 'VERY RARE CAPSULE. BANKS ONE SUPERCHARGED POWER.', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
     line('TOASTER', 'GRAB THE FLOATING APPLIANCE MID-STAGE. THIRD PLUG.', '#f890b8');
     line('PLUGS', 'ONE-TIME EACH. UNLOCK CABINETS. COINS BUY UPGRADES.', '#f890b8');
-    line('BREAKER BOX', 'WIN IT: BONUS POWERUP. ESC OR SKIP TO BAIL OUT.', '#f890b8');
+    // The last two rows are the only ones that name a way OUT of something, and
+    // a phone has none of the keys they used to name: the breaker box carries a
+    // SKIP button, and pause is a button that opens plates you press.
+    line('BREAKER BOX', `WIN IT: BONUS POWERUP. ${touch ? 'TAP SKIP' : 'ESC OR SKIP'} TO BAIL OUT.`, '#f890b8');
     y += 4;
-    line('PAUSE / MUTE', 'P OR ESC / M. ESC AGAIN QUITS.');
+    line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO HUB QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
     drawTextCentered(ctx, 'JUMP THE RED CACTI. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
-    drawTextCentered(ctx, 'TAP/ENTER: BACK', W / 2, H - 16, '#5a5a68');
+    drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }
 }
 
@@ -2314,6 +2635,6 @@ export class SettingsState {
     });
     // Touch selects a row with one tap and changes it with a second, same as
     // every other listMenu-style screen — there is no left/right gesture here.
-    drawTextCentered(ctx, Input.usingTouch ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68', 0.875);
+    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
   }
 }

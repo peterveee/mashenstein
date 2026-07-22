@@ -106,9 +106,14 @@ function luma(c) {
 }
 
 // The wall band, mirroring hub/index.js' HUB_WALL_Y0/HUB_WALL_Y1: ceiling at
-// 40, skirting at 210. A bay is one ceiling-light span wide (lights every
-// 130px). Kept in step with the hub by hand — the gallery has to frame these at
-// the height the concourse actually gives them or the mockups lie about fit.
+// 40, skirting at 210. Kept in step with the hub by hand — the gallery has to
+// frame these at the height the concourse actually gives them or the mockups lie
+// about fit.
+//
+// BAY_W is the width one dressing is laid out against, and nothing more. It was
+// also "one ceiling-light span", back when the hub spaced its fixtures every 130
+// to match; the hub now hangs them off its own furniture (see ceilingFixtures)
+// and the two numbers have no relationship left.
 export const WALL_Y0 = 40, WALL_Y1 = 210, WALL_H = WALL_Y1 - WALL_Y0;
 export const BAY_W = 130;
 
@@ -152,9 +157,15 @@ export function wallLitAt(x, litCount, spacing = BAY_W, reach = spacing * 1.15) 
 }
 
 // The same falloff against fixtures whose positions are known outright. The hub
-// parallaxes its ceiling lights (they slide at 0.9 of the camera), so their
-// world positions drift and only their SCREEN x is meaningful — this takes that
-// list directly rather than deriving it from an index.
+// hands over the screen x of each of its ceiling fixtures rather than deriving
+// them from an index, because what is over your head depends on which stretch of
+// concourse you are looking at.
+//
+// A fixture is either a bare number (fully lit) or `{ x, k }`, where k is 0..1.
+// The fractional form is what lets the service end sit at a dim baseline and
+// come up with your plug count instead of being on or off — a partly-powered
+// room is the whole premise, and the flat list could only ever say "on".
+//
 // `reach` runs well past one bay on purpose. At 1.15 a fixture lit its own bay
 // and quit, so adjacent pools met at a visible trough and the concourse read as
 // a row of stage spotlights. Overlapping them is what a ceiling of strip lights
@@ -163,11 +174,20 @@ export function wallLitAt(x, litCount, spacing = BAY_W, reach = spacing * 1.15) 
 // rather than something you can point at.
 export function wallLitFrom(x, positions, reach = BAY_W * 1.55) {
   if (!positions || !positions.length) return 0;
-  let best = Infinity;
-  for (const p of positions) best = Math.min(best, Math.abs(x - p));
-  // Smoothstep the falloff — a linear ramp reads as a hard cone edge.
-  const k = Math.max(0, Math.min(1, 1 - best / reach));
-  return k * k * (3 - 2 * k);
+  let best = 0;
+  for (const p of positions) {
+    const px = typeof p === 'number' ? p : p.x;
+    const k = typeof p === 'number' ? 1 : (p.k ?? 1);
+    if (k <= 0) continue;
+    const d = Math.abs(x - px);
+    if (d >= reach) continue;
+    // Smoothstep the falloff — a linear ramp reads as a hard cone edge. Scaled
+    // by the fixture's own level, so a dim tube throws a dim pool rather than a
+    // smaller one: brightness falls off, the cone does not shrink.
+    const t = 1 - d / reach;
+    best = Math.max(best, k * t * t * (3 - 2 * t));
+  }
+  return best;
 }
 
 // Darken a region to `amount` of full brightness (1 = fully lit). Drawn OVER
