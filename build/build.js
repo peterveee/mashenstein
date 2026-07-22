@@ -1,7 +1,7 @@
 // Build: bundle src/main.js (IIFE) and inline it into template.html -> dist/index.html.
 // The dist file is fully self-contained and works from file://.
 import esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,6 +45,19 @@ function emit(result) {
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/index.html'), html);
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB)`);
+
+  const releasesDir = join(root, 'releases');
+  const originalRelease = existsSync(releasesDir)
+    ? readdirSync(releasesDir).filter((f) => f.endsWith('.html')).sort()[0]
+    : null;
+  if (originalRelease) {
+    mkdirSync(join(root, 'dist/v1'), { recursive: true });
+    copyFileSync(
+      join(releasesDir, originalRelease),
+      join(root, 'dist/v1/index.html'),
+    );
+    console.log(`dist/v1/index.html written from releases/${originalRelease}`);
+  }
 }
 
 if (watch) {
