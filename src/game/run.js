@@ -7,7 +7,7 @@ import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, UI_PLATE } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, wrapText, drawPanel, textYForMid, UI_PLATE } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
@@ -24,7 +24,7 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.
 import { drawTerrain, terrainGroundY } from './terrain.js';
 
 export { GROUND_Y };
-// The hero's screen x at the resting zoom: 26.7% of the frame. The HUD/floatie
+// The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
 export const HERO_SCREEN_X = PLAYER_X * ZOOM;
@@ -42,6 +42,31 @@ const FLOAT_BASE_Y = 128;
 // barks read as their own species without leaving the design system.
 const FLOAT_PANEL = 'rgba(58,64,88,0.72)';
 const FLOAT_BORDER = 'rgba(255,255,255,0.22)';
+
+// Touch control geometry. 44 logical px across: the screen fits its 480-wide
+// backbuffer to a phone by height, so a landscape iPhone renders roughly 1.4
+// CSS px per logical px and this lands near 60 CSS px — comfortably past the
+// ~44 CSS px minimum a thumb needs, without three dinner plates on a 270-tall
+// play field.
+const TOUCH_D = 44;
+// PAUSE hangs below the objective panels rather than beside them: GOAL sits at
+// y 7 and BONUS below it ends at y 37, so this clears the pair with air to
+// spare. Fixed, not measured off whichever panels happen to be showing — a
+// control that moves when the mission changes is a control you have to look
+// for, and OVERTIME (no BONUS line) would shift it every run.
+const PAUSE_BTN_Y = 43;
+// The paused screen's two ways out, as tappable plates. Wide and worded rather
+// than round and glyphed: these are read once and pressed once, which is the
+// opposite of the play controls, and CONTINUE/EXIT are not symbols anyone
+// shares. Laid out to match the pause copy above them — see drawPaused.
+const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
+const PAUSE_BUTTONS = [
+  // 'pause' toggles, so it resumes from here; 'escape' while already paused is
+  // the quit half of the Escape key's behaviour. Both actions already existed —
+  // the buttons just give a thumb somewhere to send them.
+  { id: 'resume', x: W / 2 - PAUSE_MENU_W / 2, y: 196, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
+  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'EXIT TO HUB' },
+];
 
 export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
@@ -241,17 +266,32 @@ export class RunState {
   exit() { setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Audio.setDetune(1); Audio.setInvincible(false); }
 
   setButtons() {
-    // Touch only: keyboard players have P/M/ESC keys, and the freed top-right
-    // corner holds the ability gauge instead.
     this.touchButtons = Input.usingTouch;
+    // The paused screen is a menu, so it takes the screen's buttons over
+    // wholesale: the three play controls have nothing to do while the world is
+    // stopped, and leaving JUMP live under a dimmed screen invites a tap that
+    // does nothing and reads as a hang. Registered for mouse as well as touch —
+    // these are the only controls on this screen a pointer can reach, and a
+    // desktop player who paused with the mouse expects to leave the same way.
+    if (this.paused) { Input.setButtons(PAUSE_BUTTONS); return; }
+    // Play controls are touch only: keyboard players have SPACE/RIGHT/P/ESC,
+    // and the corners hold HUD instead.
+    //
+    // Three discs, one style, one painter (drawRoundButton) — thumbs find a
+    // shape faster than they read a label, and three identical shapes say "the
+    // controls" the way three differently-drawn boxes never did. JUMP and PWR
+    // take the bottom corners, where thumbs already rest holding a phone in
+    // landscape; PAUSE sits top-right UNDER the objective panels rather than
+    // beside them, so the corner the eye goes to for GOAL/BONUS is not also
+    // the corner that quits the run.
     Input.setButtons(Input.usingTouch ? [
-      // Same box, same corner, same 'global' styling as every menu screen's
-      // ESC button (Input.setMenuButtons) — one button reads as one control
-      // across the whole game instead of a cluster of cryptic icons. Mirrors
-      // the Escape key exactly: pauses if running, quits if already paused —
-      // the 'escape' action already carries that logic, so nothing new here.
-      { id: 'escape', x: 412, y: 8, w: 56, h: 18, action: 'escape', label: 'ESC', global: true },
-      { id: 'ability', x: W - 56, y: H - 52, w: 44, h: 40, action: 'ability', label: 'PWR' },
+      { id: 'jump', x: 12, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
+      { id: 'ability', x: W - 56, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'PWR', round: true },
+      // Mirrors the Escape key exactly: pauses if running, quits if already
+      // paused. The 'escape' action already carries that logic — but the second
+      // half of it is now unreachable from here, since pausing swaps this
+      // button out for the menu above.
+      { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
     ] : []);
   }
 
@@ -292,22 +332,24 @@ export class RunState {
     if (Input.usingTouch !== this.touchButtons) this.setButtons(); // first touch mid-run
     if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); this.save.persist(); }
     if (Input.pressed('debug')) this.debug = !this.debug;
+    const wasPaused = this.paused;
     if (Input.pressed('escape')) {
       if (this.paused) { this.endRun(false, 'QUIT'); Input.endFrame(); return; }
       this.paused = true;
     }
     if (Input.pressed('pause')) this.paused = !this.paused;
+    // Pausing and resuming swap the whole button set (play controls <-> the two
+    // menu plates), so any path that flips the flag has to re-register here
+    // rather than each caller remembering to.
+    if (this.paused !== wasPaused) this.setButtons();
     // Scene bloom brightens anything above ~0.8 luma. On paper-white packs
     // that is the WHOLE background, so the bloom clips it to pure white and
     // erases the linework. Those packs opt out.
     setSceneGlow(!this.paused && !this.dead && !this.style.lightBg);
     if (this.paused) {
-      // Touch has no dedicated resume button any more — the ESC button pauses
-      // once, quits on the next tap — so a tap anywhere else on the paused
-      // screen resumes instead. Excludes the ESC button itself (still quits)
-      // and reads on the very frame ESC opened this screen too, since that
-      // tap landed on the button and so fails the buttonAt check below.
-      if (Input.pressed('pointer') && !Input.buttonAt(Input.pointer.x, Input.pointer.y)) this.paused = false;
+      // No tap-anywhere-to-resume. It existed because touch had no resume
+      // button; now CONTINUE and EXIT are both on screen, and a stray tap that
+      // silently un-pauses the run is a way to lose one, not a shortcut.
       Input.endFrame();
       return;
     }
@@ -524,7 +566,9 @@ export class RunState {
     }
     this.player.abilityCd = hero.ability.cooldown * cdMult;
     this.player.powerType = type;
-    this.player.powerPoseT = 0.3;
+    // Eating needs the full gape/hold/snap bite cycle (~0.4s) to read as a
+    // bite rather than a twitch — see poseFromPlayer's EAT_POWER_POSE_T.
+    this.player.powerPoseT = type === 'eat' ? 0.5 : 0.3;
     if (type === 'stomp') {
       if (charged) {
         // Screen-wide shockwave: the old blast, but Lorenzo swings it.
@@ -1754,25 +1798,14 @@ export class RunState {
     };
     if (!pushOverlayDraw(drawUi)) drawUi(ctx);
 
+    // Queued behind drawUi rather than painted straight onto the backbuffer:
+    // the HUD draws into the overlay layer, which composites ON TOP of ctx, so
+    // a dim rect written here would end up underneath the status pill and the
+    // objectives it is supposed to be dimming — and underneath the menu plates.
+    // Same layer, later in the queue, and the pause screen covers the run.
     if (this.paused) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, W, H);
-      drawTextCentered(ctx, 'PAUSED', W / 2, 84, '#fff', 2, 'title');
-      const pHero = HERO_BY_ID[this.relay.current];
-      const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
-      drawTextCentered(ctx, pHero.name, W / 2, 112, '#48e0c8');
-      drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 124, '#f6d33c');
-      drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 138, '#c8e0ff');
-      // Plug standing lives here now rather than in the HUD: it is a "how am I
-      // doing" question, which is the question you paused to ask, and it does
-      // not belong in the corner of your eye while you are dodging.
-      if (!this.overtime && this.stage) {
-        const got = goalsDone(this).filter(Boolean).length;
-        drawTextCentered(ctx, `GOALS ${got}/3`, W / 2, 150, got ? '#f6d33c' : '#8a8a98');
-      }
-      if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 162, '#f890b8');
-      drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   PWR POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 178, '#c8c8d8');
-      drawTextCentered(ctx, Input.usingTouch ? 'TAP HERE: RESUME   ESC BUTTON: QUIT' : 'P: RESUME   ESC: QUIT TO HUB', W / 2, 192, '#8a8a98');
+      const drawPaused = (d) => this.drawPaused(d);
+      if (!pushOverlayDraw(drawPaused)) drawPaused(ctx);
     }
     if (this.dead) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -1780,6 +1813,44 @@ export class RunState {
       drawTextCentered(ctx, this.failMsg || 'UNPLUGGED', W / 2, 110, '#e04848', 1);
     }
     if (this.debug) this.drawDebug(ctx);
+  }
+
+  // The pause screen: a status read-out over a dimmed run, then the two ways
+  // out. The whole block sits higher than it used to — the copy ended at y 192
+  // when the only way out was a keypress, and the menu plates need that room.
+  drawPaused(ctx) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    drawTextCentered(ctx, 'PAUSED', W / 2, 62, '#fff', 2, 'title');
+    const pHero = HERO_BY_ID[this.relay.current];
+    const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    drawTextCentered(ctx, pHero.name, W / 2, 92, '#48e0c8');
+    drawTextCentered(ctx, `${pBtn}: ${pHero.ability.label}  ${this.player.abilityCd <= 0 ? 'READY' : `${this.player.abilityCd.toFixed(1)}S`}`, W / 2, 104, '#f6d33c');
+    drawTextCentered(ctx, `MISSION: ${this.mission.desc}`, W / 2, 118, '#c8e0ff');
+    // Plug standing lives here rather than in the HUD: it is a "how am I doing"
+    // question, which is the question you paused to ask, and it does not belong
+    // in the corner of your eye while you are dodging.
+    if (!this.overtime && this.stage) {
+      const got = goalsDone(this).filter(Boolean).length;
+      drawTextCentered(ctx, `GOALS ${got}/3`, W / 2, 130, got ? '#f6d33c' : '#8a8a98');
+    }
+    if (this.player.relayCharge) drawTextCentered(ctx, 'POWER CHARGED: SPEND IT', W / 2, 142, '#f890b8');
+    // The touch line names the gestures, not the buttons: JUMP and PWR label
+    // themselves on screen, and the swipes are the half of the scheme nothing
+    // else advertises.
+    drawTextCentered(ctx, Input.usingTouch ? 'TAP JUMP   SWIPE DOWN DUCK   SWIPE RIGHT POWER' : 'SPACE JUMP   DOWN DUCK   RIGHT/D POWER', W / 2, 158, '#c8c8d8');
+    // Only keyboard needs telling: the plates below say it for everyone else,
+    // and printing "P: RESUME" under a button marked CONTINUE is the same
+    // instruction twice in two languages.
+    if (!Input.usingTouch) drawTextCentered(ctx, 'P: RESUME   ESC: QUIT TO HUB', W / 2, 172, '#8a8a98');
+    // CONTINUE leads in teal, the game's "this one" colour; EXIT sits back in
+    // plain grey. Same plate, different weight — one of these ends the run.
+    for (const b of Input.buttons) {
+      const go = b.id === 'resume';
+      drawPanel(ctx, b.x, b.y, b.w, b.h, 5, 'rgba(11,11,20,0.82)',
+        { border: go ? 'rgba(72,224,200,0.75)' : 'rgba(255,255,255,0.22)', shadow: true });
+      drawTextCentered(ctx, b.label, b.x + b.w / 2, textYForMid(b.y + b.h / 2), go ? '#48e0c8' : '#c8c8d8');
+    }
   }
 
   drawDebug(ctx) {

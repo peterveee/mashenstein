@@ -3,20 +3,22 @@
 import { W, H } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, platePath } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, textYForMid } from '../../engine/sprites.js';
 import { drawToon } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE,
 } from '../../sprites/arcade.js';
-import { HUB_WALL_PLAN, BAY_W, drawWallBay, wallLitFrom } from '../../sprites/backwall.js';
+import {
+  hubWallBays, BAY_W, drawWallBay, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
+} from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, stageUnlocked, prevStage } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -24,6 +26,7 @@ import { setTransitionHero } from '../../engine/states.js';
 import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
+import { hashStr } from '../../engine/rng.js';
 
 const CORRUPTED_MODIFIERS = [
   { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
@@ -81,6 +84,39 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // The NPC/player gap is kept (0.83) — the hero you are driving reads slightly
 // larger than the crowd, which is how you find yourself on a busy concourse.
 const NPC_H = 38, PLAYER_H = 46;
+// How far a hero ranges from their spot, how much clearance a station needs
+// before anyone will stop beside it, and how close to the exit anyone may get.
+// ROAM is deliberately wide — a hero should cross in front of two or three
+// machines on a stroll; it is only where they STOP that matters.
+const NPC_ROAM = 155, NPC_LOITER_CLEAR = 30, NPC_MIN_X = 70;
+
+// THE DUST DEVIL's cameo. It is a stick vacuum, so it has to be touching
+// something: brush head down on the floor line, or brush head up on the ceiling
+// with the whole machine hanging off it. What it must never be is halfway up
+// the wall, which is where it spent the last few builds — its y was hardcoded
+// to the OLD floor line (192), so when the floor dropped to 212 it was left
+// hovering with nothing under the brush, reading as a bug rather than a
+// haunting.
+//
+// Size comes off the cast rather than the eye: a stick vacuum reaches somewhere
+// around the waist of whoever is pushing it, so ~55% of NPC_H. At the old 16x14
+// it stood a third as tall as a hero — fine for a smudge floating up the wall,
+// a toy once it shares a floor with them.
+const DD_H = Math.round(NPC_H * 0.55), DD_W = Math.round(DD_H * 0.85);
+
+// What it is doing on a given visit, seeded on the visit index so a pass is
+// rolled once and never re-rolls mid-glide.
+function dustDevilPass(visit, act) {
+  const h = hashStr(`dustdevil-${visit}`);
+  return {
+    // Act 1 keeps its feet down (the maintenance log has it mopping the floor);
+    // from act 2 on it has earned the ceiling, but only now and then — the
+    // ceiling gag lands because it is the exception.
+    onCeiling: act > 1 && (h >>> 3) % 3 === 0,
+    dir: (h & 1) ? 1 : -1,           // which way it crosses
+    depth: (h >>> 5) % 11,           // px in front of the floor line; the floor runs well past it
+  };
+}
 
 // Who you are currently carrying, from a flow object. A plain function rather
 // than a method on Flow: the hub is constructed with a stub flow in several
@@ -269,6 +305,10 @@ function drawCeilingLight(ctx, x, y, lit) {
 // character telling you nothing about themselves. Two labelled chips say what
 // both actions are, and are hit the same way on a phone as on a keyboard.
 const NPC_MENU = [{ id: 'talk', label: 'TALK' }, { id: 'swap', label: 'SWAP' }];
+// Not everyone in the concourse is a body you can wear — Gary runs the shop and
+// is not in HEROES. Offering SWAP on him would be a button that silently does
+// the wrong thing, so he gets a one-item chooser instead.
+function npcMenuFor(npc) { return npc && npc.swappable === false ? NPC_MENU.slice(0, 1) : NPC_MENU; }
 const NPC_CHIP_W = 30, NPC_CHIP_H = 12, NPC_CHIP_GAP = 3;
 
 // World-space rect for option `i` above a hero standing at `npcX`. One function
@@ -280,8 +320,8 @@ const NPC_CHIP_W = 30, NPC_CHIP_H = 12, NPC_CHIP_GAP = 3;
 // pair low enough to still read as belonging to that hero. Selection stays on
 // UP/DOWN even though the layout is horizontal — LEFT/RIGHT is walking, and
 // with exactly two options either key is a toggle, not a direction.
-function npcChipRect(npcX, i) {
-  const row = NPC_MENU.length * NPC_CHIP_W + (NPC_MENU.length - 1) * NPC_CHIP_GAP;
+function npcChipRect(npcX, i, count = NPC_MENU.length) {
+  const row = count * NPC_CHIP_W + (count - 1) * NPC_CHIP_GAP;
   // Clears the player's own marker, which sits at ~132-138: you stand within 18
   // units of whoever you address, so the chips and the wedge share a column.
   const top = HUB_FLOOR_PIN_Y - NPC_H - 36;
@@ -293,9 +333,9 @@ function npcChipRect(npcX, i) {
   };
 }
 
-function drawNpcChips(ctx, npcX, cam, idx) {
-  for (let i = 0; i < NPC_MENU.length; i++) {
-    const r = npcChipRect(npcX, i);
+function drawNpcChips(ctx, npcX, cam, idx, opts) {
+  for (let i = 0; i < opts.length; i++) {
+    const r = npcChipRect(npcX, i, opts.length);
     const x = Math.round(r.x - cam);
     const sel = i === idx;
     ctx.save();
@@ -307,7 +347,7 @@ function drawNpcChips(ctx, npcX, cam, idx) {
     ctx.strokeStyle = sel ? 'rgba(26,16,40,0.5)' : 'rgba(246,211,60,0.45)';
     ctx.stroke();
     ctx.restore();
-    drawTextCentered(ctx, NPC_MENU[i].label, x + r.w / 2, r.y + 2.5, sel ? '#1a1028' : '#f6d33c', 0.85, 'bold');
+    drawTextCentered(ctx, opts[i].label, x + r.w / 2, r.y + 2.5, sel ? '#1a1028' : '#f6d33c', 0.85, 'bold');
   }
 }
 
@@ -468,10 +508,9 @@ export class HubState {
     // The exit sits at the leftmost walkable point (px's own floor is 20 —
     // see update()), so walking off the left edge always lands on it.
     const st = [{ type: 'exit', x: 20, label: 'EXIT' }];
-    // A stretch of bare wall between the way out and the first machine: the
-    // exit used to sit 4px off PLUMBER PANIC's cabinet, which read as one
-    // cluttered fixture rather than as a door you leave through.
-    let x = 130;
+    // Enough bare wall that the exit reads as its own fixture rather than part
+    // of the arcade bank — but not the corridor 130 opened up.
+    let x = 96;
     for (const cab of CABINETS) {
       const unlocked = cabinetUnlocked(slot, cab.id);
       st.push({ type: 'cabinet', cab, x, unlocked, label: cab.name });
@@ -481,7 +520,10 @@ export class HubState {
       // between them that 110 opened up.
       x += 88;
     }
-    x += 40;
+    // A plaza between the machines and the service doors. The two banks used to
+    // butt together with 40 units between them, which left the crowd nowhere to
+    // stand but among the cabinets; this gives them somewhere to spill into.
+    x += 96;
     st.push({ type: 'bench', x, label: 'REPAIR BENCH' }); x += 88;
     st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 98;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
@@ -492,6 +534,29 @@ export class HubState {
     x += 80;
     this.width = Math.max(W, x);
     return st;
+  }
+
+  // Midpoints between neighbouring cabinets — the strips of floor the crowd is
+  // meant to occupy. Derived from stations() rather than hardcoded, so respacing
+  // the concourse moves the crowd with it.
+  npcGaps() {
+    const cabs = this.stations().filter((st) => st.type === 'cabinet').map((st) => st.x);
+    const gaps = [];
+    for (let i = 0; i < cabs.length - 1; i++) gaps.push((cabs[i] + cabs[i + 1]) / 2);
+    return gaps;
+  }
+
+  // Somewhere a hero may come to rest: clear of every station's walk-up radius,
+  // and well clear of the exit.
+  canLoiter(x) {
+    if (x < NPC_MIN_X) return false;
+    return !this.stations().some((st) => Math.abs(st.x - x) < NPC_LOITER_CLEAR);
+  }
+
+  nearestGap(x) {
+    const gaps = this.npcGaps();
+    if (!gaps.length) return x;
+    return gaps.reduce((best, g) => (Math.abs(g - x) < Math.abs(best - x) ? g : best), gaps[0]);
   }
 
   enter() {
@@ -513,19 +578,47 @@ export class HubState {
     this.greeted = false;     // has this hero already said hello, this approach
     this.hasMoved = false;   // the controls legend retires once you have walked
     this.movedAt = 0;
-    // Give every loitering hero a tiny patch of food court to inhabit. Their
-    // deterministic offsets keep return visits lively without letting anyone
-    // wander into a cabinet doorway or disappear down the concourse.
+    // Every loitering hero gets a gap between two cabinets to inhabit, not an
+    // arbitrary stretch of concourse. Standing in front of a machine they hide
+    // the screen and the plug lights, and they sit inside the cabinet's own
+    // 26-unit walk-up radius — so reaching one meant threading between a hero
+    // and a station that both wanted the same patch of floor. There are nine
+    // cabinets and eight heroes, which is exactly eight gaps: one each.
+    //
+    // NPC_ROAM keeps a wander inside its gap. The gap is 88 wide with 48 of
+    // cabinet on either side, so 20 units of clear floor each way; 13 leaves a
+    // hero's own width of margin before they start overlapping a chassis. They
+    // still clip an edge at the extremes, which is the point — they should look
+    // like people milling about, not like furniture on marks.
+    const gaps = this.npcGaps();
     this.npcActors = HEROES.map((h, i) => {
-      const home = 155 + i * 120 + (i % 3) * 26;
+      const home = gaps.length ? gaps[i % gaps.length] : 155 + i * 120;
       const walking = i % 3 !== 0;
       return {
         id: h.id, home, x: home, facing: i % 2 ? -1 : 1,
         state: walking ? 'walk' : 'idle',
         timer: 0.75 + (i % 4) * 0.33,
-        duration: 1, cycles: i,
+        duration: 1, cycles: i, swappable: true, roam: NPC_ROAM,
       };
     });
+    // Gary is an actor now rather than a sprite pinned to his shop front. He
+    // stood dead centre of the doorway, blocking the one thing that doorway is
+    // for, and being a cached toonStandSprite he never moved a muscle. He keeps
+    // his own patch beside the shop instead of taking a cabinet gap, on a
+    // shorter leash than the rest — he is working.
+    //
+    // Not swappable: he is not in HEROES, and Relay ignores an initialHeroId it
+    // does not recognise, so "play as Gary" would quietly start the run as
+    // somebody else. He talks, which is all he ever needed to do — HUB_LINES.gary
+    // has been sitting there unreachable since it was written.
+    const shop = this.stations().find((st) => st.type === 'shop');
+    if (shop) {
+      this.npcActors.push({
+        id: 'gary', name: 'GARY', home: shop.x + 34, x: shop.x + 34, facing: -1,
+        state: 'idle', timer: 1.1, duration: 1, cycles: 2,
+        swappable: false, roam: 26,
+      });
+    }
     Audio.setBank(HUB_THEME);
     // Tapping a station both walks to it and uses it (see update()), and the
     // EXIT sign at the left of the concourse is itself a station — so unlike
@@ -567,8 +660,9 @@ export class HubState {
       if (chipNpc) {
         const wx = Input.pointer.x / HUB_ZOOM + this.camX();
         const wy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
-        for (let i = 0; i < NPC_MENU.length; i++) {
-          const r = npcChipRect(chipNpc.x, i);
+        const chipOpts = npcMenuFor(chipNpc);
+        for (let i = 0; i < chipOpts.length; i++) {
+          const r = npcChipRect(chipNpc.x, i, chipOpts.length);
           if (wx >= r.x - 4 && wx <= r.x + r.w + 4 && wy >= r.y - 3 && wy <= r.y + r.h + 3) {
             this.npcMenuIdx = i;
             this.chooseNpc(chipNpc);
@@ -665,8 +759,12 @@ export class HubState {
       if (!this.greeted && this.npcDwell >= 0.8) { this.greeted = true; this.talkTo(npc); }
     }
     if (chooser) {
-      if (Input.pressed('jump')) { this.npcMenuIdx = (this.npcMenuIdx + NPC_MENU.length - 1) % NPC_MENU.length; Audio.sfx('ui'); }
-      if (Input.pressed('duck')) { this.npcMenuIdx = (this.npcMenuIdx + 1) % NPC_MENU.length; Audio.sfx('ui'); }
+      const opts = npcMenuFor(npc);
+      if (this.npcMenuIdx >= opts.length) this.npcMenuIdx = 0;
+      if (opts.length > 1) {
+        if (Input.pressed('jump')) { this.npcMenuIdx = (this.npcMenuIdx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+        if (Input.pressed('duck')) { this.npcMenuIdx = (this.npcMenuIdx + 1) % opts.length; Audio.sfx('ui'); }
+      }
     }
     if (this.talk && (this.talk.t -= dt) <= 0) this.talk = null;
     if (Input.pressed('back')) this.flow.toTitle();
@@ -720,7 +818,9 @@ export class HubState {
 
   // Whichever chip is lit.
   chooseNpc(npc) {
-    if (NPC_MENU[this.npcMenuIdx || 0].id === 'swap') this.swapTo(npc);
+    const opts = npcMenuFor(npc);
+    const pick = opts[Math.min(this.npcMenuIdx || 0, opts.length - 1)];
+    if (pick.id === 'swap') this.swapTo(npc);
     else this.talkTo(npc);
   }
 
@@ -744,8 +844,12 @@ export class HubState {
     setTransitionHero(npc.id);
     const actor = (this.npcActors || []).find((a) => a.id === prev);
     if (actor) {
+      // They appear exactly where you were standing, then drift to the nearest
+      // gap. Handing them prevX as a permanent home meant that swapping while
+      // stood at a cabinet parked someone in front of it for the rest of the
+      // session — the one thing the gap placement exists to prevent.
       actor.x = prevX;
-      actor.home = prevX;
+      actor.home = this.nearestGap(prevX);
       actor.state = 'idle';
       actor.timer = 1.4;
       actor.facing = npc.x < prevX ? -1 : 1;
@@ -781,24 +885,50 @@ export class HubState {
         continue;
       }
       n.timer -= dt;
+      const roam = n.roam || NPC_ROAM;
       if (n.state === 'walk') {
         n.x += n.facing * 10 * dt;
-        if (Math.abs(n.x - n.home) >= 17) {
-          n.x = n.home + Math.sign(n.x - n.home) * 17;
-          n.state = 'idle'; n.timer = 0.9 + (n.cycles % 3) * 0.3;
-        }
+        // Turn around at the edge of their range instead of stopping there.
+        // Stopping on the limit made the limit itself a loitering spot, which is
+        // how heroes ended up parked at arbitrary points along the concourse.
+        if (Math.abs(n.x - n.home) >= roam) n.facing = n.x > n.home ? -1 : 1;
+        // Never drift back toward the way out. The exit's own walk-up radius
+        // reaches well past its art, so a hero idling near it competes with the
+        // one station you cannot afford to mis-trigger.
+        if (n.x < NPC_MIN_X) { n.x = NPC_MIN_X; n.facing = 1; }
       }
       if (n.timer > 0) continue;
       n.cycles++;
       if (n.state === 'walk') {
+        // Walking anywhere is fine — crossing in front of a machine is what a
+        // concourse looks like. STOPPING in front of one is not: it hides the
+        // screen and it sits inside the station's own walk-up radius, so
+        // reaching the machine means contesting the same patch of floor. If the
+        // walk ran out somewhere unsuitable, keep going rather than settle.
+        if (!this.canLoiter(n.x)) { n.timer = 0.5 + (n.cycles % 3) * 0.2; continue; }
         n.state = 'idle'; n.timer = 0.8 + (n.cycles % 4) * 0.25;
       } else if (n.state === 'hop') {
         n.state = 'idle'; n.timer = 0.7 + (n.cycles % 3) * 0.3;
       } else if (n.cycles % 4 === 0) {
         n.state = 'hop'; n.duration = 0.5; n.timer = n.duration;
       } else {
-        n.state = 'walk'; n.facing = n.x > n.home + 5 ? -1 : n.x < n.home - 5 ? 1 : (n.cycles % 2 ? -1 : 1);
-        n.timer = 1.1 + (n.cycles % 3) * 0.35;
+        n.state = 'walk';
+        // Direction: carry on, unless they are near the edge of their range.
+        //
+        // The old rule steered them home the moment they were FIVE units off
+        // their spot, which is a homing spring — every new walk pointed back, so
+        // no matter how wide their patch was nobody could actually cross it.
+        // Measured over 30s, most heroes covered 64-75 units of a 124-unit
+        // range, i.e. less than a single cabinet pitch, which is why they read
+        // as glued to one machine.
+        //
+        // Now the pull only kicks in past 65% of the range, and otherwise they
+        // keep whatever heading they had (with the odd about-turn), so several
+        // walks chain into a real journey down the concourse.
+        const off = n.x - n.home;
+        if (Math.abs(off) > roam * 0.65) n.facing = off > 0 ? -1 : 1;
+        else if (n.cycles % 3 === 0) n.facing = -n.facing;
+        n.timer = 1.6 + (n.cycles % 4) * 0.55;
       }
     }
   }
@@ -826,12 +956,11 @@ export class HubState {
         ctx.fillRect(Math.round(x), HUB_WALL_Y1 + 10 + y * 22, 32, 22);
       }
     }
-    // Wall dressing: posters down the arcade, the menu board over the service
-    // counters (HUB_WALL_PLAN). Drawn straight onto the wall the block above
-    // just laid down — hence base:false — and before the stations, so a cabinet
-    // stands in front of its own poster.
+    // Wall dressing, drawn straight onto the wall the block above just laid
+    // down (hence base:false) and before the stations, so a cabinet stands in
+    // front of its own poster.
     //
-    // How lit each bay is falls out of which ceiling fixtures are working, in
+    // How lit any of it is falls out of which ceiling fixtures are working, in
     // SCREEN space: the lights parallax at 0.9 of the camera, so their world
     // positions drift and only where they land on screen means anything. That
     // makes the left of an early-act concourse readable and the far end fade
@@ -840,20 +969,29 @@ export class HubState {
     const litXs = [];
     for (let i = 0; i < act * 3 && i < 8; i++) litXs.push(i * 130 - cam * 0.9 + 13);
     const wallLit = (sx) => wallLitFrom(sx, litXs);
-    for (const bay of HUB_WALL_PLAN) {
+    // Room furniture first (the menu board), then ONE poster per cabinet.
+    for (const bay of hubWallBays(this.stations())) {
       const bx = bay.x - cam;
       if (bx + BAY_W < 0 || bx > HUB_VIEW_W) continue;
-      // Colour a poster bay off the machine standing in front of it.
-      const mid = bay.x + BAY_W / 2;
-      let near = null, bestD = Infinity;
-      for (const s of this.stations()) {
-        if (s.type !== 'cabinet') continue;
-        const d = Math.abs(s.x - mid);
-        if (d < bestD) { bestD = d; near = s; }
-      }
       drawWallBay(ctx, bx, HUB_WALL_Y0, BAY_W, HUB_WALL_Y1 - HUB_WALL_Y0, bay.id, {
         t: this.t, seed: bay.x, lit: wallLit, base: false,
-        pal: near ? palFor(near.cab, near.unlocked) : null,
+      });
+    }
+    // A poster hangs above the machine it advertises, centred on it — that is
+    // the whole placement rule, and it is why there is exactly one. Tiled three
+    // to a span of wall they read as wallpaper; hung one per cabinet they read
+    // as belonging to something. The tilt alternates off the station's own x so
+    // the row is not a set of perfectly level rectangles.
+    for (const s of this.stations()) {
+      if (s.type !== 'cabinet') continue;
+      const sx = s.x - cam;
+      if (sx < -POSTER_W || sx > HUB_VIEW_W + POSTER_W) continue;
+      const k = Math.round(s.x / 64);
+      drawPoster(ctx, sx, CAB_Y - POSTER_H - 12, POSTER_W, POSTER_H, {
+        pal: palFor(s.cab, s.unlocked),
+        tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012),
+        torn: k % 3 === 1,
+        lit: wallLit(sx),
       });
     }
     // ceiling lights: on per act, flickering because the place is falling apart.
@@ -937,22 +1075,6 @@ export class HubState {
         drawCabinetShell(ctx, x - CAB_W / 2, CAB_Y, CAB_W, CAB_H, OVERTIME_PALETTE);
       } else if (DOOR_PALETTES[s.type]) {
         drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, DOOR_PALETTES[s.type], this.t, this.save.settings.reducedFlashing);
-        // Gary works his own doorway, at NPC scale, feet on the same floor line
-        // as everyone else. He was a toonStandSprite — which caches ONE render
-        // at time 0, so he was a frozen frame standing beside a concourse of
-        // breathing heroes. drawToon on the hub clock costs the same and gives
-        // him an idle.
-        //
-        // Skipped when he IS the avatar: the coupon mod makes Gary the hero you
-        // drive (see avatarId()), and nothing here checked, so equipping it put
-        // two Garys on screen at once.
-        if (s.type === 'shop' && this.avatarId() !== 'gary') {
-          ctx.fillStyle = 'rgba(4,3,9,0.28)';
-          ctx.beginPath(); ctx.ellipse(x, HUB_FLOOR_PIN_Y, NPC_H * 0.37, NPC_H * 0.1, 0, 0, Math.PI * 2); ctx.fill();
-          drawToon(ctx, 'gary', {
-            kind: 'idle', phase: 0, time: this.t + 1.7, grounded: true, facing: -1,
-          }, x, HUB_FLOOR_PIN_Y, NPC_H);
-        }
       }
     }
     // NPC heroes
@@ -973,28 +1095,52 @@ export class HubState {
         facing: n.facing || 1,
       }, x, HUB_FLOOR_PIN_Y - hop, NPC_H);
     }
-    // THE DUST DEVIL drifts through occasionally, cleaning something
-    // impossible (varies by act). ~9s of every ~48, unannounced, then gone.
-    // Nobody addresses this.
+    // THE DUST DEVIL comes through occasionally, cleaning something (which
+    // surface varies). ~9s of every ~48, unannounced, then gone. Nobody
+    // addresses this.
     const ddCyc = (this.t + 39) % 48; // first visit ~9s after entering
     if (ddCyc < 9) {
-      // The act-2 ceiling cameo rides the same crop-safe strip as the lights
-      // (y 46, see above) — there's only ~2px of margin above the crop line,
-      // not enough room to place it above them and still be visible.
-      const [ddY, onCeiling] = [[178, false], [HUB_CEIL_Y + 4, true], [118, false]][Math.min(act - 1, 2)];
-      // Screen-relative glide, right to left — whenever it visits, you see it.
-      const ddX = Math.round(HUB_VIEW_W + 20 - (ddCyc / 9) * (HUB_VIEW_W + 60));
+      const pass = dustDevilPass(Math.floor((this.t + 39) / 48), act);
+      const p = ddCyc / 9;
+      // Screen-relative crossing — whenever it visits, you see it — but with a
+      // scrub laid over the traverse that's deep enough to briefly reverse, so
+      // it works a square twice before moving on instead of gliding like a
+      // cardboard cutout on a string.
+      const travel = (HUB_VIEW_W + 60) * p + Math.sin(p * Math.PI * 7) * 16;
+      const ddX = Math.round(pass.dir > 0 ? travel - 40 : HUB_VIEW_W + 20 - travel);
+      // Brush head on a surface either way. Floor pass: the same line the cast
+      // stands on. Ceiling pass: the line the light housings bolt to, which is
+      // the only thing in the frame that says where the ceiling actually IS —
+      // the top of the wall is a crop, not a plane, so hanging below it just
+      // reads as floating again. The vertical flip puts the head at ddY and
+      // leaves the handle dangling.
+      const ddY = pass.onCeiling ? HUB_CEIL_Y - 4 : HUB_FLOOR_PIN_Y + pass.depth - DD_H;
       ctx.save();
       ctx.globalAlpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
-      if (onCeiling) { ctx.translate(ddX + 8, ddY + 7); ctx.rotate(Math.PI); ctx.translate(-8, -7); }
-      drawProp(ctx, 'dustdevil', onCeiling ? 0 : ddX, onCeiling ? 0 : ddY, 16, 14);
+      if (!pass.onCeiling) {
+        // Contact shadow in the cast's voice. Wider than the brush head on
+        // purpose — the head is opaque and sits flat on its own shadow, so an
+        // ellipse that only matched it would be a shadow nobody can see.
+        ctx.fillStyle = 'rgba(4,3,9,0.28)';
+        ctx.beginPath();
+        ctx.ellipse(ddX + DD_W * 0.42, HUB_FLOOR_PIN_Y + pass.depth, DD_W * 0.55, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Mirrored about its own box so the cord always trails the direction of
+      // travel; the ceiling pass adds the vertical flip that turns it over.
+      if (pass.dir > 0 || pass.onCeiling) {
+        ctx.translate(ddX + DD_W / 2, ddY + DD_H / 2);
+        ctx.scale(pass.dir > 0 ? -1 : 1, pass.onCeiling ? -1 : 1);
+        ctx.translate(-(ddX + DD_W / 2), -(ddY + DD_H / 2));
+      }
+      drawProp(ctx, 'dustdevil', ddX, ddY, DD_W, DD_H);
       ctx.restore();
     }
     // The chooser rides above whichever hero you are beside, and only when no
     // station is also in range — standing between a cabinet and a loitering
     // hero, ENTER belongs to the cabinet, so offering chips you cannot pick
     // would be a lie.
-    if (this.nearNpc && !this.near) drawNpcChips(ctx, this.nearNpc.x, cam, this.npcMenuIdx || 0);
+    if (this.nearNpc && !this.near) drawNpcChips(ctx, this.nearNpc.x, cam, this.npcMenuIdx || 0, npcMenuFor(this.nearNpc));
     // player walks
     const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
@@ -1028,10 +1174,21 @@ export class HubState {
     // themselves and get out of the way, and the resources sit quietly in the
     // corner where status belongs rather than in the message stack.
     if (this.near) {
-      const label = this.near.type === 'cabinet' && !this.near.unlocked
-        ? `${this.near.label} (LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS)` : this.near.label;
-      const verb = this.near.type === 'exit' ? (Input.usingTouch ? 'TAP TO LEAVE' : 'ENTER TO LEAVE') : (Input.usingTouch ? 'TAP TO ENTER' : 'ENTER TO USE');
-      drawTextCentered(ctx, `${label} - ${verb}`, W / 2, H - 30, '#f6d33c');
+      // A locked cabinet gets no verb. "ENTER TO USE" on a machine that will
+      // refuse you is an instruction that does not work — the line's whole job
+      // is to say what this thing is and whether you can act on it, so a locked
+      // one states its price instead, in the muted colour rather than the gold
+      // the hub uses for "you can do this right now".
+      const locked = this.near.type === 'cabinet' && !this.near.unlocked;
+      if (locked) {
+        drawTextCentered(ctx, `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`,
+          W / 2, H - 30, '#8a8a98');
+      } else {
+        const verb = this.near.type === 'exit'
+          ? (Input.usingTouch ? 'TAP TO LEAVE' : 'ENTER TO LEAVE')
+          : (Input.usingTouch ? 'TAP TO ENTER' : 'ENTER TO USE');
+        drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
+      }
     } else if (this.nearNpc) {
       // Touch talks the same way it enters a station — tap them again once
       // you're standing alongside (update()'s tappedNpc branch); DOWN is the
@@ -1039,7 +1196,7 @@ export class HubState {
       // Just the name: the chips over their head already say what the two
       // options are, so repeating them down here would be the same sentence in
       // two places — which is exactly what the rest of this row was cut for.
-      drawTextCentered(ctx, HERO_BY_ID[this.nearNpc.id].short, W / 2, H - 30, '#48e0c8');
+      drawTextCentered(ctx, this.nearNpc.name || HERO_BY_ID[this.nearNpc.id].short, W / 2, H - 30, '#48e0c8');
     }
     // One status row along the very bottom: where you are on the left, what you
     // have on the right. The location name used to be a fading title card, but a
@@ -1089,14 +1246,34 @@ function listMenu(state, opts) {
   return null;
 }
 
+// The cursor band behind the selected row, and the y its lettering sits on.
+// listMenu hit-tests the whole pitch, so the band is drawn at exactly that
+// pitch and the text is centred in it: what the finger finds, what the eye
+// sees, and where the words are, all off the same two numbers. `lines` is how
+// many lines of text the row stacks — a stage row carries its blurb underneath
+// — and `dy` the gap between them, so the block centres rather than the first
+// line of it. Rows reserve the space whether or not they use it, or the labels
+// on the one-line rows would sit lower than the labels on their neighbours.
+function drawSelRow(ctx, state, i, x0) {
+  drawMenuRow(ctx, x0 - 12, state.listY + i * state.rowH + 1, W - (x0 - 12) * 2, state.rowH - 2);
+}
+function rowTextY(state, i, lines = 1, dy = 0) {
+  return textYForMid(state.listY + i * state.rowH + state.rowH / 2) - (lines - 1) * dy / 2;
+}
+
 // Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select,
 // tap-again-to-confirm, spelled out at the bottom of the screen.
 function drawMenuHint(ctx, extra) {
   const text = Input.usingTouch
     ? `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}   ESC BACK`
     : `UP/DOWN SELECT   ENTER ${extra || 'CONFIRM'}   ESC BACK`;
-  drawText(ctx, text, 12, H - 12, '#5a5a68');
+  drawText(ctx, text, 12, H - 13, '#5a5a68', HINT_S);
 }
+// The status strip along the bottom of every hub menu. Nudged up from scale 1
+// because on a phone the canvas is barely 2x its 480x270 design size, and a
+// 8px em there lands under 10 CSS px — legible on a monitor, guesswork in a
+// hand. Everything on that strip moves together so the row stays one line.
+const HINT_S = 1.1;
 
 // Mission blurbs used to be cut at a fixed character count, which clipped the
 // longer ones mid-word even when they had room left. Measure instead, and only
@@ -1109,12 +1286,38 @@ function fitText(str, maxWidth, scale = 1, style = 'ui') {
   return out.replace(/[\s.,]+$/, '') + '...';
 }
 
+// Stage select type sizes. This screen is the one a player reads standing up
+// with a phone at arm's length, and it had the room to spare: three stages and
+// a BACK row used barely half the panel, so the list was small AND surrounded
+// by emptiness. Row labels and the rank letter ride the same scale so a row
+// reads as one line of text with a letter parked at the end of it.
+const ROW_S = 1.4, DESC_S = 1.1, PIP = 13;
+// Rows grow to fill whatever the option count leaves free rather than sitting
+// at a fixed pitch: three stages plus BACK get a generous 48 — which on a phone
+// is a tap target around a centimetre tall, since listMenu hit-tests the whole
+// pitch and not just the glyphs — and the fully loaded six-row case (boss and
+// corrupted mode both unlocked) tightens to 30 rather than running off the
+// bottom of the panel.
+const LIST_TOP = 74, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
+
 export class StageSelectState {
-  constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = 74; this.rowH = 26; }
+  constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = LIST_TOP; this.rowH = ROW_MAX; }
   // The option list always ends in a BACK row (see options() below), so the
   // floating corner ESC button would just be a second, disconnected way to do
   // the same thing — drop it and let the list carry it.
-  enter() { this.idx = 0; this.corrupt = null; Input.setMenuButtons(false); }
+  enter() {
+    this.corrupt = null;
+    const opts = this.options();
+    this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));
+    // Open on the frontier — the last stage that is actually playable — rather
+    // than always on stage 1. Coming back from a clear, the thing you just
+    // unlocked is the thing you came here for; replaying an earlier stage for
+    // its remaining plugs is one press away either direction.
+    let frontier = 0;
+    opts.forEach((o, i) => { if (o.kind === 'stage' && stageUnlocked(this.save.slot, o.stage)) frontier = i; });
+    this.idx = frontier;
+    Input.setMenuButtons(false);
+  }
   options() {
     const slot = this.save.slot;
     const opts = stagesForCabinet(this.cab.id).map((s) => ({ kind: 'stage', stage: s }));
@@ -1126,7 +1329,10 @@ export class StageSelectState {
   update(dt) {
     const sel = listMenu(this, this.options());
     if (sel) {
-      if (sel.kind === 'stage') this.flow.pickTeam(this.cab, sel.stage, this.corrupt ? [this.corrupt] : []);
+      // A locked stage stays selectable so you can read what is behind it and
+      // what opens it — it just refuses to start.
+      if (sel.kind === 'stage' && !stageUnlocked(this.save.slot, sel.stage)) Audio.sfx('uiBad');
+      else if (sel.kind === 'stage') this.flow.pickTeam(this.cab, sel.stage, this.corrupt ? [this.corrupt] : []);
       else if (sel.kind === 'boss') this.flow.pickTeam(this.cab, null, [], true);
       else if (sel.kind === 'corrupt') {
         const cur = CORRUPTED_MODIFIERS.findIndex((m) => m.id === this.corrupt);
@@ -1141,7 +1347,7 @@ export class StageSelectState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, this.cab.name, W / 2, 20, '#f6d33c', 2, 'title');
-    drawTextCentered(ctx, `${this.cab.genre} CABINET - STYLE: ${this.cab.style.toUpperCase()}`, W / 2, 44, '#8a8a98');
+    drawTextCentered(ctx, `${this.cab.genre} CABINET - STYLE: ${this.cab.style.toUpperCase()}`, W / 2, 44, '#8a8a98', DESC_S);
     const slot = this.save.slot;
     // Plugs are one-time per stage, so a running count tells you what is still
     // out there — a cleared cabinet reads 9/9 and never moves again.
@@ -1150,12 +1356,15 @@ export class StageSelectState {
     const cabMax = cabStages.length * 3;
     // Column headers sit above the list so the plug pips and the rank letter
     // read as labelled columns rather than loose glyphs at the end of a row.
-    const plugX = W - 130, rankX = plugX + PLUG_ROW_W() + 4;
+    const plugX = W - 130, rankX = plugX + PLUG_ROW_W(PIP) + 4;
     // The rank letter is one glyph under a four-glyph header, so both hang off a
     // shared column centre rather than a shared left edge.
     const rankCx = rankX + textWidth('RANK') / 2;
-    drawTextCentered(ctx, 'PLUGS', plugX + PLUG_ROW_W() / 2, this.listY - 12, '#5a5a68');
-    drawTextCentered(ctx, 'RANK', rankCx, this.listY - 12, '#5a5a68');
+    drawTextCentered(ctx, 'PLUGS', plugX + PLUG_ROW_W(PIP) / 2, this.listY - 13, '#5a5a68');
+    drawTextCentered(ctx, 'RANK', rankCx, this.listY - 13, '#5a5a68');
+    // Second line of a row: the mission blurb, or what it takes to open a
+    // locked one. Sits clear of the pips, which ride the label line above it.
+    const descY = (y) => y + 9 * ROW_S + 3;
     this.options().forEach((o, i) => {
       const y = this.listY + i * this.rowH;
       const sel = i === this.idx;
@@ -1163,26 +1372,35 @@ export class StageSelectState {
       if (o.kind === 'stage') {
         const plugs = slot.campaign.plugs[o.stage.id] || [];
         const rank = slot.campaign.ranks[o.stage.id];
-        drawText(ctx, `${sel ? '> ' : '  '}${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`, 40, y, c);
+        const open = stageUnlocked(slot, o.stage);
+        // A locked row keeps its name and its empty pips — it is a place you
+        // are going, not a hole in the list — but drops to a colour that reads
+        // as unavailable even while the cursor is sitting on it.
+        drawText(ctx, `${sel ? '> ' : '  '}${o.stage.id.toUpperCase()}  ${o.stage.mission.type.toUpperCase()}`,
+          40, y, open ? c : sel ? '#8a7a52' : '#54545e', ROW_S);
         // The pip row already says how many plugs you have, so the n/3 counter
         // that used to sit here was the same fact twice.
-        drawPlugRow(ctx, plugX, y - 2, plugs);
-        if (rank) drawTextCentered(ctx, rank, rankCx, y, '#48e0c8');
-        drawText(ctx, fitText(o.stage.mission.desc, W - 8 - 52), 52, y + 10, '#5a5a68');
+        drawPlugRow(ctx, plugX, y - 0.5, plugs, undefined, PIP);
+        if (rank) drawTextCentered(ctx, rank, rankCx, y, '#48e0c8', ROW_S);
+        // Naming the stage that opens it, rather than a bare LOCKED, means the
+        // gate never sends anyone hunting for which of the nine cabinets it
+        // meant — the answer is always the row directly above.
+        const desc = open ? o.stage.mission.desc : `LOCKED - EARN A PLUG IN ${prevStage(o.stage).id.toUpperCase()}`;
+        drawText(ctx, fitText(desc, W - 60, DESC_S), 52, descY(y), open ? '#5a5a68' : '#6a5a3a', DESC_S);
       } else if (o.kind === 'boss') {
-        drawText(ctx, `${sel ? '> ' : '  '}BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050');
+        drawText(ctx, `${sel ? '> ' : '  '}BOSS: ${this.cab.id === 'neon' ? 'THE UNDERINSURED CLOWN-COPTER' : this.cab.id === 'rhythm' ? 'DUST DEVIL 9000' : 'THE FINAL POWER STRIP'}`, 40, y, sel ? '#e04848' : '#c05050', ROW_S);
       } else if (o.kind === 'corrupt') {
         const m = CORRUPTED_MODIFIERS.find((mm) => mm.id === this.corrupt);
-        drawText(ctx, `${sel ? '> ' : '  '}CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a');
-        if (m) drawText(ctx, m.desc + ' (ONE-HIT RULES)', 52, y + 10, '#5a5a68');
+        drawText(ctx, `${sel ? '> ' : '  '}CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a', ROW_S);
+        if (m) drawText(ctx, fitText(m.desc + ' (ONE-HIT RULES)', W - 60, DESC_S), 52, descY(y), '#5a5a68', DESC_S);
       } else {
-        drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, c);
+        drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, c, ROW_S);
       }
     });
     // The tally is reference, not a headline: it rides the bottom status row
     // opposite the controls hint instead of crowding the title block.
     const tally = `PLUGS HERE: ${cabGot}/${cabMax}   TOTAL: ${totalPlugs(slot)}/${MAX_PLUGS}`;
-    drawText(ctx, tally, W - 12 - textWidth(tally), H - 12, cabGot >= cabMax ? '#f6d33c' : '#48e0c8');
+    drawText(ctx, tally, W - 12 - textWidth(tally, HINT_S), H - 13, cabGot >= cabMax ? '#f6d33c' : '#48e0c8', HINT_S);
     drawMenuHint(ctx, 'PLAY');
   }
 }

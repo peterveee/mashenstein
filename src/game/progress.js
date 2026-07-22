@@ -26,6 +26,23 @@ export function cabinetUnlocked(slot, cabId) {
   return totalPlugs(slot) >= need;
 }
 
+// The stage before this one in the same cabinet, or null for a cabinet opener.
+export function prevStage(stage) {
+  return STAGES.find((s) => s.cabinet === stage.cabinet && s.index === stage.index - 1) || null;
+}
+
+// Cabinets already gate on the campaign-wide plug total; this gates *within* a
+// cabinet, so its three stages open in order. The bar is one plug, not a clear:
+// the toaster banks even on a failed run, so a player stuck on the mission can
+// still grab the appliance and move on. Without this a first-time visitor lands
+// on a cabinet's three stages at once and tends to bounce off stage 3 —
+// balanced against having played 1 and 2 — and read the whole cabinet as unfair.
+export function stageUnlocked(slot, stage) {
+  const prev = prevStage(stage);
+  if (!prev) return true;
+  return (slot.campaign.plugs[prev.id] || []).some(Boolean);
+}
+
 export function finaleUnlocked(slot) {
   return totalPlugs(slot) >= UNLOCKS.finale && slot.campaign.bossesDown.surge;
 }

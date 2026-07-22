@@ -7,6 +7,7 @@ const { Player, PLAYER_X } = await import('../src/game/player.js');
 const { RunState } = await import('../src/game/run.js');
 const { makeObstacle } = await import('../src/game/entities.js');
 const { save } = await import('../src/engine/save.js');
+const { HERO_BY_ID } = await import('../src/data/heroes.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -48,7 +49,8 @@ run.relay.current = 'fernwick';
 run.player.setHero('fernwick');
 run.powerups.shieldStack = 0;
 run.useAbility();
-assert(run.player.rolling && run.player.abilityCd > 4.4, 'Fernwick power starts a finite roll and cooldown');
+assert(run.player.rolling && run.player.abilityCd === HERO_BY_ID.fernwick.ability.cooldown,
+  'Fernwick power starts a finite roll and cooldown');
 run.player.grounded = false;
 run.player.abilityCd = 0;
 run.useAbility();
@@ -127,7 +129,8 @@ assert(run.projectiles.some((p) => p.type === 'axe'), 'Grumpos power throws his 
 
 run.bench.tuneup = 3;
 selectHero('gnash'); run.useAbility();
-assert(Math.abs(run.player.abilityCd - 3.5) < 0.001, 'Hero Tune-Up reduces the shared cooldown for every active kit');
+assert(Math.abs(run.player.abilityCd - HERO_BY_ID.gnash.ability.cooldown * 0.7) < 0.001,
+  'Hero Tune-Up reduces the shared cooldown for every active kit');
 
 run.exit();
 console.log(failed ? 'HERO-KITS: FAILED' : 'HERO-KITS: PASSED');

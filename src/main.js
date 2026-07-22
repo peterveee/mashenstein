@@ -218,10 +218,34 @@ function boot() {
   Audio.setVolumes(save.settings.volumes);
   Audio.ensure();
   Audio.setMuted(save.settings.muted);
+  // Touch only, and only once. A phone browser's toolbars eat a third of a
+  // landscape screen, so the first tap asks for them back; iPad and Android
+  // Chrome grant it, iPhone Safari has no Fullscreen API and rejects, which is
+  // what the home-screen meta tags in the page head are for. A desktop player
+  // clicking the canvas sized their own window and would read this as a jump
+  // scare, so they never get asked. Once either way: a rejection will keep
+  // rejecting, and a player who backed out of fullscreen meant to.
+  let askedFullscreen = false;
+  const goFullscreen = () => {
+    askedFullscreen = true;
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    // Both shapes of failure — a throw and a rejected promise — mean the same
+    // thing here (this browser will not do it) and there is nothing to say.
+    try {
+      const p = req.call(el);
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* not available: play windowed */ }
+  };
   Input.onAnyGesture = () => {
     Audio.ensure();
     Audio.setVolumes(save.settings.volumes);
     Audio.setMuted(save.settings.muted);
+    // Must run inside the gesture's own call stack to count as user-activated,
+    // which it does: Input fires this synchronously from its pointerdown
+    // handler, after usingTouch is set from the event's pointerType.
+    if (!askedFullscreen && Input.usingTouch) goFullscreen();
   };
   // Dev menu: local builds only. __MASH_BUILD__ is emitted by build/build.js
   // under --watch and is absent from a published bundle, so install() never

@@ -5,7 +5,7 @@ export const HEROES = [
     tagline: 'STANDARD PLUMBING PROCEDURE.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.25, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'stomp', cooldown: 3.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
+    ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     abilityDesc: 'POWER: AIR STOMP OR GROUNDED WRENCH SMASH.',
     sidegrades: [
@@ -17,7 +17,7 @@ export const HEROES = [
     tagline: 'ALREADY THERE. WAITING.',
     speedMult: 1.15, scoreMult: 1.15, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'dash', cooldown: 5, label: 'SPIN DASH', callout: 'SPIN DASH' }, stomp: false,
+    ability: { type: 'dash', cooldown: 3.5, label: 'SPIN DASH', callout: 'SPIN DASH' }, stomp: false,
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
     abilityDesc: 'SPIN-DASH: A BURST OF INVINCIBLE SPEED.',
     sidegrades: [
@@ -29,7 +29,7 @@ export const HEROES = [
     tagline: 'THE RECEIPT FORETOLD THIS.',
     speedMult: 1.0, scoreMult: 0.95, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 1, magnetRadius: 0, variableJump: true,
-    ability: { type: 'roll', cooldown: 4.5, label: 'SHIELD ROLL', callout: 'SHIELD ROLL' }, stomp: false,
+    ability: { type: 'roll', cooldown: 3, label: 'SHIELD ROLL', callout: 'SHIELD ROLL' }, stomp: false,
     joke: 'HIS SACRED PROPHECY IS PRINTED ON A FADED SUPERMARKET RECEIPT.',
     abilityDesc: 'STARTS SHIELDED. POWER: A SHORT, FINITE SHIELD ROLL.',
     sidegrades: [
@@ -41,7 +41,7 @@ export const HEROES = [
     tagline: 'LOW ON CYAN.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 0.9, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, duckIsRoll: false, variableJump: true,
-    ability: { type: 'shoot', cooldown: 2.5, label: 'LEMON CANNON', callout: 'SHOOT' }, stomp: false,
+    ability: { type: 'shoot', cooldown: 1.8, label: 'LEMON CANNON', callout: 'SHOOT' }, stomp: false,
     joke: 'CONSTANTLY REPORTS LOW ON CYAN. REGARDLESS OF CONTEXT.',
     abilityDesc: 'LEMON CANNON: PELLET DESTROYS GROUND OBSTACLES.',
     sidegrades: [
@@ -53,7 +53,7 @@ export const HEROES = [
     tagline: 'PROBABLY NOT A COSMIC ENTITY.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 2, canFloat: true,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'compress', cooldown: 5, label: 'COSMIC SQUISH', callout: 'COSMIC SQUISH' }, stomp: false,
+    ability: { type: 'compress', cooldown: 3.5, label: 'COSMIC SQUISH', callout: 'COSMIC SQUISH' }, stomp: false,
     joke: 'ADORABLE. THE STARS BEND SLIGHTLY TOWARD MOCHI.',
     abilityDesc: 'DOUBLE JUMP AND FLOAT. POWER: SHRINK AND FALL SLOWLY.',
     sidegrades: [
@@ -65,7 +65,7 @@ export const HEROES = [
     tagline: 'APPETITE WITH EXCELLENT POSTURE.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 40, variableJump: true,
-    ability: { type: 'eat', cooldown: 5.5, label: 'HAZARD BITE', callout: 'EAT HAZARD' }, stomp: false, pickupBonus: 1.25,
+    ability: { type: 'eat', cooldown: 3.5, label: 'HAZARD BITE', callout: 'EAT HAZARD' }, stomp: false, pickupBonus: 1.25,
     joke: 'OCCASIONALLY EATS HUD ELEMENTS AND RETURNS THEM WITH A THANK-YOU NOTE.',
     abilityDesc: 'COIN MAGNET. POWER: EAT A NEARBY BREAKABLE HAZARD.',
     sidegrades: [
@@ -77,7 +77,7 @@ export const HEROES = [
     tagline: 'LIMBS WERE OUT OF BUDGET.',
     speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'fist', cooldown: 4.5, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, stomp: false, assemblyGrace: true,
+    ability: { type: 'fist', cooldown: 3, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, stomp: false, assemblyGrace: true,
     joke: 'THE INSURANCE FORM REQUIRES A LIMB COUNT. HE KEEPS WRITING "OPTIONAL."',
     abilityDesc: 'REASSEMBLES AFTER ONE FATAL HIT. POWER: THROW RETURNING FIST.',
     sidegrades: [
@@ -89,7 +89,7 @@ export const HEROES = [
     tagline: 'BOY.',
     speedMult: 1.0, scoreMult: 1.1, jumpMult: 1.0, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'axe', cooldown: 4, label: 'RETURNING AXE', callout: 'THROW AXE' }, stomp: false, heavy: true,
+    ability: { type: 'axe', cooldown: 2.8, label: 'RETURNING AXE', callout: 'THROW AXE' }, stomp: false, heavy: true,
     joke: 'THROWS HIS AXE MAJESTICALLY. OCCASIONALLY FAILS TO CATCH IT.',
     abilityDesc: 'RETURNING AXE DESTROYS GROUND OR FLYING OBSTACLES.',
     sidegrades: [

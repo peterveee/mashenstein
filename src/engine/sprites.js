@@ -196,9 +196,18 @@ export function wrapText(str, maxWidth, scale = 1, maxLines = 2, style = 'ui') {
 // proportional face, which left rivers around narrow letters like I and L.
 const BODY_FAMILY = "'Fredoka'";
 const TITLE_FAMILY = "'Lilita One'";
+// Anything the fiction says was written BY HAND, on top of something printed —
+// the corrections on the food court's menu board, and whatever else ends up
+// scrawled on this place. A marker face rather than a script one on purpose:
+// the wall dressings set it at about two logical pixels of cap height, and a
+// fine-stroked handwriting face turns to mush at that size where a fat nib
+// survives. The fallback is deliberately the same stack as everything else —
+// if the face never lands, the line still reads, just in the wrong hand.
+const MARKER_FAMILY = "'Permanent Marker'";
 const FALLBACK = "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
 const BODY_FONT = `${BODY_FAMILY}, ${FALLBACK}`;
 const TITLE_FONT = `${TITLE_FAMILY}, ${FALLBACK}`;
+const MARKER_FONT = `${MARKER_FAMILY}, ${FALLBACK}`;
 
 // Text styles the game draws in. 'ui' is the default everywhere; 'bold' is the
 // highlighted menu row; 'title' is the marquee and every screen header.
@@ -210,6 +219,7 @@ const TEXT_STYLES = {
   title: { font: TITLE_FONT, weight: 400 },
   marquee: { font: TITLE_FONT, weight: 400, tracking: 0.5, stroke: { width: 1, color: '#2a1e05' } },
   subtitle: { font: BODY_FONT, weight: 600, tracking: 3 },
+  marker: { font: MARKER_FONT, weight: 400 },
 };
 const GLYPH_PX = 8.2;   // em size, unchanged — only the spacing moved
 const TRACKING = 0.5;   // a hair of letter-spacing; pure metric fit reads tight here
@@ -307,6 +317,7 @@ if (typeof document !== 'undefined' && document.fonts) {
       `400 32px ${TITLE_FAMILY}`,
       `500 12px ${BODY_FAMILY}`,
       `600 12px ${BODY_FAMILY}`,
+      `400 12px ${MARKER_FAMILY}`,
     ];
     Promise.all(faces.map((f) => document.fonts.load(f).catch(() => {}))).then(drop);
   }
@@ -382,10 +393,39 @@ export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL, opts = null) 
   ctx.restore();
 }
 
+// Where the ink of a line actually lands, relative to the y handed to drawText,
+// per unit of scale. Glyphs occupy y-1*scale .. y+11*scale, but this game writes
+// in capitals, and capitals reach neither the top of that box nor anywhere near
+// its floor: measured in Chromium, Fredoka's caps run y+0.85 .. y+6.78 at
+// scale 1, and the Trebuchet fallback lands within a quarter unit of both edges.
+// The remaining half of the box is ascender slack and descender room nothing
+// ever occupies, so centring the BOX on a midline puts the lettering visibly
+// high in it — by two units, which is most of a row's apparent padding.
+export const TEXT_INK_TOP = 0.85;
+export const TEXT_INK_H = 5.95;
+
+// The y to hand drawText so its lettering sits optically centred on `midY`.
+// Anything that centres text in a box it also draws — menu row highlights, HUD
+// panels, button discs — measures from here, so the box and the words inside it
+// are always derived from the same number.
+export function textYForMid(midY, scale = 1) {
+  return midY - (TEXT_INK_TOP + TEXT_INK_H / 2) * scale;
+}
+
+// The cursor behind the selected row of any list the player can arrow through.
+// One painter rather than a colour each screen re-picks: a highlight that shows
+// up on some lists and not others reads as those lists not being navigable.
+export const MENU_ROW_HILITE = 'rgba(255,207,51,0.12)';
+export function drawMenuRow(ctx, x, y, w, h, r = 3) {
+  ctx.fillStyle = MENU_ROW_HILITE;
+  platePath(ctx, x, y, w, h, r);
+  ctx.fill();
+}
+
 // `plate` (a css colour) fills a soft rounded rect behind the string, sized
-// from the same metrics the glyphs use. Glyphs occupy y-1*scale .. y+11*scale
-// but the ink sits well inside that box, so the plate hugs a tighter band —
-// the full box reads as a tall bar with the text floating in it.
+// from the same metrics the glyphs use, hugging the ink band rather than the
+// full glyph box — the full box reads as a tall bar with the text floating in
+// it, and floating high at that.
 export function platePath(ctx, x, y, w, h, r) {
   const k = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -403,9 +443,12 @@ export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui'
   ctx.imageSmoothingEnabled = true;
   if (plate && s.trim()) {
     const w = textWidth(s, scale, style);
-    const padX = 2.2 * scale, padY = 1.2 * scale;
+    const padX = 2.2 * scale, padY = 1.2 * scale, band = 9 * scale;
+    // Centred on the ink rather than on the glyph box: measured from the box,
+    // the plate hung three units below the lettering and only two above it.
+    const inkMid = y + (TEXT_INK_TOP + TEXT_INK_H / 2) * scale;
     ctx.fillStyle = plate;
-    platePath(ctx, x - padX, y - padY, w + padX * 2, 9 * scale + padY * 2, 3 * scale);
+    platePath(ctx, x - padX, inkMid - band / 2 - padY, w + padX * 2, band + padY * 2, 3 * scale);
     ctx.fill();
   }
   const cx = paintGlyphs(ctx, s, x, y, color, scale, style);
@@ -415,4 +458,59 @@ export function drawText(ctx, str, x, y, color = '#fff', scale = 1, style = 'ui'
 
 export function drawTextCentered(ctx, str, cx, y, color = '#fff', scale = 1, style = 'ui', plate = null) {
   drawText(ctx, str, cx - textWidth(String(str), scale, style) / 2, y, color, scale, style, plate);
+}
+
+// Labels ride a size down inside a disc: at full scale a four-letter word
+// reaches the edge and the button reads as a word someone drew a circle around,
+// rather than as a button.
+const BUTTON_LABEL_S = 0.85;
+
+// The on-screen touch controls — jump, power, pause — are one instrument in
+// three places, so they are one painter rather than three call sites that
+// happen to agree today. Discs, not plates: the round ones are the controls you
+// hold, and keeping them shaped differently from every rectangular readout in
+// the HUD means a thumb never has to read anything to find them.
+//
+// A soft shadow of a disc and nothing else — no outline, and barely there. The
+// rest of the HUD is bordered panels because it is information you read; these
+// are furniture you press without looking, and they sit ON the play field
+// rather than beside it. A teal ring made three hard targets the eye kept
+// catching on while the level scrolled past underneath them. What survives is
+// the ink: the label carries the button, and the disc only has to lift it off
+// whatever colour happens to be behind it that second.
+//
+// `opts.frac` (0..1) floods the disc from the bottom for the power button's
+// recharge: a level, not a ticking number. It has to read against any pack's
+// background, so the waterline carries a bright meniscus rather than leaning on
+// the flood colour alone — and with no outline to mark the disc's extent, that
+// line is also the only thing drawing its edge.
+export function drawRoundButton(ctx, b, opts = {}) {
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, r = Math.min(b.w, b.h) / 2;
+  const ink = opts.ink || '#48e0c8';
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.22)';
+  ctx.fill();
+  if (opts.frac != null && opts.frac < 1) {
+    ctx.clip();
+    const fh = Math.round(r * 2 * Math.max(0, opts.frac));
+    ctx.fillStyle = 'rgba(72,224,200,0.28)';
+    ctx.fillRect(cx - r, cy + r - fh, r * 2, fh);
+    ctx.fillStyle = 'rgba(184,248,232,0.8)';
+    ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
+  }
+  ctx.restore();
+  if (b.icon === 'pause') {
+    // The one control with a symbol every player already knows. A glyph also
+    // survives a translation and a smaller button; the word PAUSE does neither.
+    const bw = Math.max(2, r * 0.19), bh = r * 0.82, gap = r * 0.22;
+    ctx.fillStyle = ink;
+    ctx.fillRect(cx - gap - bw, cy - bh / 2, bw, bh);
+    ctx.fillRect(cx + gap, cy - bh / 2, bw, bh);
+  } else if (b.label) {
+    // Same ink-centred midline every HUD panel uses, so a label in a disc sits
+    // at the same height as a label in a plate.
+    drawTextCentered(ctx, b.label, cx, textYForMid(cy, BUTTON_LABEL_S), ink, BUTTON_LABEL_S);
+  }
 }

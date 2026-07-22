@@ -3,7 +3,7 @@
 import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid } from '../engine/sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
@@ -943,19 +943,6 @@ function flickerBlock(t) {
   return Math.floor(beat / FLICKER_BEATS);
 }
 
-// Built by hand rather than via ctx.roundRect, which the headless test stub
-// and older canvas implementations don't provide.
-function roundRect(ctx, x, y, w, h, r) {
-  const rad = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rad, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rad);
-  ctx.arcTo(x + w, y + h, x, y + h, rad);
-  ctx.arcTo(x, y + h, x, y, rad);
-  ctx.arcTo(x, y, x + w, y, rad);
-  ctx.closePath();
-}
-
 export class TitleState {
   constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
@@ -1288,11 +1275,11 @@ export class TitleState {
       const panelY = TITLE_PANEL_Y, panelH = opts.length * rowH + TITLE_PANEL_PAD;
       // solid backing so the crates behind don't bleed through the list
       d.fillStyle = 'rgba(8,10,20,0.86)';
-      roundRect(d, panelX, panelY, panelW, panelH, 3);
+      platePath(d, panelX, panelY, panelW, panelH, 3);
       d.fill();
       d.strokeStyle = '#2f6f68';
       d.lineWidth = 1;
-      roundRect(d, panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1, 3);
+      platePath(d, panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1, 3);
       d.stroke();
       opts.forEach((o, i) => {
         const sel = i === this.idx;
@@ -1301,12 +1288,8 @@ export class TitleState {
         // it. A fixed 11-unit highlight read as a thin bar floating in a tall
         // touch row, and text pinned to the band's top left the tap target
         // looking like it belonged to the row above.
-        const textY = rowTop + (rowH - 12) / 2;
-        if (sel) {
-          d.fillStyle = 'rgba(255,207,51,0.12)';
-          roundRect(d, panelX + 4, rowTop + 1, panelW - 8, rowH - 2, 3);
-          d.fill();
-        }
+        const textY = textYForMid(rowTop + rowH / 2);
+        if (sel) drawMenuRow(d, panelX + 4, rowTop + 1, panelW - 8, rowH - 2);
         drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, textY, sel ? '#ffcf33' : '#c3cede', 1, sel ? 'bold' : 'ui');
       });
       // Touch spends the controls line on taller rows: "ARROWS" means nothing
@@ -1362,22 +1345,24 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor }) {
   d.fillStyle = 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
   d.fillStyle = 'rgba(11,10,20,0.98)';
-  roundRect(d, g.x, g.y, g.w, g.h, 4); d.fill();
+  platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
   d.strokeStyle = accent; d.lineWidth = 1;
-  roundRect(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
+  platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
   drawTextCentered(d, title, W / 2, g.y + 12, titleColor, 1.25, 'bold');
   if (note) drawTextCentered(d, note, W / 2, g.y + 28, '#aab4c6', 0.875);
   choices.forEach((choice, i) => {
     const selected = i === idx;
     const rowTop = g.firstY + i * g.rowH;
-    const textY = rowTop + (g.rowH - 12) / 2;
-    if (selected) {
-      d.fillStyle = 'rgba(255,207,51,0.12)';
-      roundRect(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2, 3); d.fill();
-    }
+    const textY = textYForMid(rowTop + g.rowH / 2);
+    if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
     drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}${selected ? ' <' : ''}`, W / 2, textY, selected ? '#ffcf33' : '#d3d9e5', 1, selected ? 'bold' : 'ui');
   });
 }
+
+// Difficulty rows are a name over a one-line gloss, and the pair is what the
+// tap hit-test and the cursor band both cover — so the geometry lives here
+// rather than being spelled out again in update() and draw().
+const DIFF_TOP = 90, DIFF_ROW = 24, DIFF_GLOSS_DY = 10;
 
 export class DifficultyState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
@@ -1401,7 +1386,7 @@ export class DifficultyState {
     if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - 90) / 24);
+      const i = Math.floor((Input.pointer.y - DIFF_TOP) / DIFF_ROW);
       if (i >= 0 && i < n) {
         if (this.idx === i) this.select(); else { this.idx = i; Audio.sfx('ui'); }
       }
@@ -1428,12 +1413,16 @@ export class DifficultyState {
     DIFFICULTIES.forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
-      let label = d.name;
-      if (d.id === 2) label += ' '.repeat(0);
+      const label = d.name;
       const color = danger ? '#e04848' : sel ? '#f6d33c' : '#c8c8d8';
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, 90 + i * 24, color, d.id === 2 ? 1 : 1);
-      drawTextCentered(ctx, d.desc, W / 2, 100 + i * 24, '#5a5a68');
-      if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label) / 2 + 18, 90 + i * 24, '#8a8a98'); // the skull is smiling
+      const rowTop = DIFF_TOP + i * DIFF_ROW;
+      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, DIFF_ROW - 2);
+      // The name/gloss pair centres in the band as one block, so the band the
+      // finger finds is the band the words sit in the middle of.
+      const nameY = textYForMid(rowTop + DIFF_ROW / 2) - DIFF_GLOSS_DY / 2;
+      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, nameY, color);
+      drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68');
+      if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label) / 2 + 18, nameY, '#8a8a98'); // the skull is smiling
     });
     if (this.confirming) {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -1537,17 +1526,27 @@ export class IntroState {
         const ease = 1 - Math.pow(1 - a, 3);
         const scale = ease + Math.sin(a * Math.PI) * 0.14;
         // On panel 4 ("EIGHT HEROES. ONE SOCKET. A RELAY BEGINS") they are
-        // already assembled and reacting to it, so a scattered few break into
-        // their victory routine. Every third, offset — not all of them, because
-        // a line of eight all celebrating at once reads as a screensaver rather
-        // than as a crowd with opinions.
-        const celebrating = !rollCall && i % 3 === 1;
-        drawToon(ctx, h, {
-          kind: celebrating ? 'celebrate' : 'idle',
-          phase: (this.panelT * 0.55 + i * 0.21) % 1,
-          time: this.panelT + i * 0.8,
-          grounded: true,
-        }, W / 2 + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
+        // already assembled and reacting to it, so a scattered few break out of
+        // the idle. Every third, offset — not all of them, because a line of
+        // eight all performing at once reads as a screensaver rather than as a
+        // crowd with opinions.
+        //
+        // These are the MENU poses (the same per-hero beats the shutter cameo
+        // uses), not 'celebrate'. Celebrate is the results-screen victory
+        // routine — it spins and tumbles, and caught at an arbitrary phase in a
+        // line-up gnash flattens into a vertical sliver and raymn loses his
+        // head. The menu poses are built to be held.
+        const pose = { kind: 'idle', phase: (this.panelT * 0.55 + i * 0.21) % 1, time: this.panelT + i * 0.8, grounded: true };
+        if (!rollCall && i % 3 === 1) {
+          pose.menu = true;
+          if (h === 'gnash') { pose.kind = 'jump'; pose.grounded = false; }
+          else if (h === 'mochi') pose.float = true;
+          else if (h === 'grumpos') pose.menuAction = 'flex';
+          else if (h === 'b33p') pose.menuAction = 'aim';
+          else if (h === 'chompo') pose.menuAction = 'chomp';
+          else pose.menuAction = 'wave';
+        }
+        drawToon(ctx, h, pose, W / 2 + (i - 3.5) * PITCH, 145 + (1 - ease) * 13, HH * scale, { alpha: ease });
       });
     }
     const text = INTRO_PANELS[this.panel].text;
@@ -1648,7 +1647,7 @@ const TUBE_R = 34;       // generous: a shallow curve reads as a rounded box
 let tubeGlow = null;
 let tubeWash = null;
 
-// Traced by hand rather than roundRect() — the corner is a quadratic through
+// Traced by hand rather than platePath() — the corner is a quadratic through
 // the actual corner point, which gives the slightly-inflated curve of real
 // tube glass instead of a perfect quarter circle.
 // `fresh` false appends the tube as a second subpath to whatever is already
@@ -2107,9 +2106,14 @@ const JUKEBOX = [
   ...CABINETS.map((c) => ({ name: `${c.name} (${c.genre})`, bank: c.music })),
   { name: 'ONE MORE SWITCH (FINALE THEME)', bank: FINALE_THEME },
 ];
-// Track list sits above the visualizer bars so the two never collide.
+// Track list sits above the visualizer bars so the two never collide. The bars
+// are drawn from the bottom up and the tallest reaches VIS_TOP, so the rows
+// divide what is left rather than sitting at a fixed pitch — at a fixed 14 the
+// last row's cursor band ran under the bars, which was survivable while the row
+// was bare lettering and is not once it has a lit rectangle behind it.
 const JUKEBOX_TOP = 58;
-const JUKEBOX_ROW = 14;
+const VIS_TOP = H - 24 - 13;
+function jukeboxRowH(count) { return Math.min(14, (VIS_TOP - 4 - JUKEBOX_TOP) / count); }
 
 export class SoundTestState {
   constructor({ onDone }) { this.onDone = onDone; }
@@ -2130,7 +2134,7 @@ export class SoundTestState {
     if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + total - 1) % total; Audio.sfx('ui'); }
     if (Input.pressed('confirm')) { if (this.idx === n) { Audio.setBank(null); this.onDone(); } else this.play(this.idx); }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - JUKEBOX_TOP) / JUKEBOX_ROW);
+      const i = Math.floor((Input.pointer.y - JUKEBOX_TOP) / jukeboxRowH(total));
       if (i >= 0 && i < total) {
         if (this.idx === i) { if (i === n) { Audio.setBank(null); this.onDone(); } else this.play(i); }
         else { this.idx = i; Audio.sfx('ui'); }
@@ -2144,16 +2148,18 @@ export class SoundTestState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'SOUND TEST', W / 2, 16, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL CHIPTUNES ARE PLAYED LIVE BY A VERY SMALL ORCHESTRA.', W / 2, 40, '#5a5a68');
-    JUKEBOX.forEach((tr, i) => {
+    // The trailing BACK row is drawn from the same list as the tracks so it gets
+    // the same cursor band and the same pitch the hit-test uses.
+    const rowH = jukeboxRowH(JUKEBOX.length + 1);
+    JUKEBOX.concat([null]).forEach((tr, i) => {
       const sel = i === this.idx;
-      const on = i === this.playing;
-      const label = `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)`;
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, JUKEBOX_TOP + i * JUKEBOX_ROW, on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
+      const on = tr && i === this.playing;
+      const label = tr ? `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)` : 'BACK';
+      const rowTop = JUKEBOX_TOP + i * rowH;
+      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, rowH - 2);
+      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2,
+        textYForMid(rowTop + rowH / 2), on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
     });
-    {
-      const backSel = this.idx === JUKEBOX.length;
-      drawTextCentered(ctx, `${backSel ? '> ' : ''}BACK${backSel ? ' <' : ''}`, W / 2, JUKEBOX_TOP + JUKEBOX.length * JUKEBOX_ROW, backSel ? '#f6d33c' : '#c8c8d8');
-    }
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -2192,7 +2198,7 @@ export class HowToPlayState {
     };
     line('JUMP', 'SPACE / W / UP -- TAP. HOLD FOR HIGHER.');
     line('DUCK', 'S / DOWN (HOLD) -- SWIPE DOWN.');
-    line('HERO POWER', 'RIGHT / D -- PWR. X / SHIFT ALSO WORK.');
+    line('HERO POWER', 'RIGHT / D -- PWR OR SWIPE RIGHT. X / SHIFT TOO.');
     line('PORTALS', 'RUN THROUGH TO BECOME THE PREVIEWED HERO.', '#48e0c8');
     line('RELAY BATON', 'VERY RARE CAPSULE. BANKS ONE SUPERCHARGED POWER.', '#48e0c8');
     y += 4;
@@ -2207,6 +2213,8 @@ export class HowToPlayState {
     drawTextCentered(ctx, 'TAP/ENTER: BACK', W / 2, H - 16, '#5a5a68');
   }
 }
+
+const SETTINGS_TOP = 70, SETTINGS_ROW = 18;
 
 export class SettingsState {
   constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
@@ -2251,7 +2259,7 @@ export class SettingsState {
     if (Input.pressed('right')) { if (opts[this.idx].adjust) opts[this.idx].adjust(1); else opts[this.idx].act(); Audio.sfx('ui'); }
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - 70) / 18);
+      const i = Math.floor((Input.pointer.y - SETTINGS_TOP) / SETTINGS_ROW);
       if (i >= 0 && i < opts.length) {
         if (this.idx === i) { Audio.sfx('uiConfirm'); opts[i].act(); } else { this.idx = i; Audio.sfx('ui'); }
       }
@@ -2266,7 +2274,12 @@ export class SettingsState {
     drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
     this.options().forEach((o, i) => {
       const sel = i === this.idx;
-      drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2, 70 + i * 18, sel ? '#f6d33c' : '#c8c8d8');
+      const rowTop = SETTINGS_TOP + i * SETTINGS_ROW;
+      if (sel) drawMenuRow(ctx, 40, rowTop + 1, W - 80, SETTINGS_ROW - 2);
+      // A bare leading '> ' on a centred row shunts the whole label half a
+      // caret to the left as the cursor arrives; the closing one balances it.
+      drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2,
+        textYForMid(rowTop + SETTINGS_ROW / 2), sel ? '#f6d33c' : '#c8c8d8');
     });
     // Touch selects a row with one tap and changes it with a second, same as
     // every other listMenu-style screen — there is no left/right gesture here.

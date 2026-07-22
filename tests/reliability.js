@@ -160,7 +160,16 @@ const npcStart = returnedHub.npcs()[1].x;
 returnedHub.update(0.5);
 assert(returnedHub.npcs()[1].x !== npcStart, 'food-court heroes stroll during their loiter cycle');
 for (let i = 0; i < 200; i++) returnedHub.update(0.1);
-assert(returnedHub.npcs().every((n) => Math.abs(n.x - n.home) <= 17.01), 'wandering heroes stay inside their safe food-court patch');
+// The old rule here was "never stray more than 17 from home", which kept the
+// crowd in tiny fenced pens. Heroes now range widely — walking past a machine is
+// what a concourse looks like — so the guarantees that actually matter are
+// about where they STOP and how far they can get, not about a leash.
+assert(returnedHub.npcs().every((n) => Math.abs(n.x - n.home) <= n.roam + 1.01),
+  'wandering heroes stay within their own stretch of the concourse');
+assert(returnedHub.npcs().every((n) => n.x >= 69.99),
+  'wandering heroes never drift back onto the exit');
+assert(returnedHub.npcs().filter((n) => n.state === 'idle').every((n) => returnedHub.canLoiter(n.x)),
+  'heroes settle clear of every station rather than in front of one');
 returnedHub.exit();
 
 run = makeRun(); run.enter();

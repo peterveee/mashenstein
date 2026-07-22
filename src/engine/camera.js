@@ -20,10 +20,10 @@ import { W, H } from './renderer.js';
 // camera is defined against it; run.js re-exports it for its own importers.
 export const GROUND_Y = 232;
 
-// Resting magnification. The hero is drawn a fixed 64 world px right of camX,
-// so the runner anchor falls out of this number and PLAYER_X never has to move:
-// 64 / (480 / 2) = 26.7% of the frame, a little further left than the 30% a
-// 2.25 zoom gave, which is that much more road ahead.
+// Resting magnification. The hero is drawn a fixed PLAYER_X world px right of
+// camX, so where they sit in the frame falls out of this number: 56 / (480 / 2)
+// = 23.3%, against the 30% a 2.25 zoom and the old 64px anchor gave. Both moves
+// buy runway — the frame is 240 world px wide now rather than 213.
 //
 // It is also what decides how much of the dolly's work the crane can do. The
 // frame holds GROUND_Y / ZOOM world px above the groundline — 116 here against

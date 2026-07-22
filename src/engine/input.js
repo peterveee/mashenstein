@@ -89,11 +89,26 @@ class InputSys {
       this.pointer.x = p.x; this.pointer.y = p.y;
       const t = this.touches.get(e.pointerId);
       if (t && !t.isButton && !t.action) {
-        const dy = p.y - t.y0;
-        if (dy > 24 && performance.now() - t.t0 < 300) { // swipe down = duck (held)
-          this.release('jump');
-          t.action = 'duck';
-          this.press('duck');
+        const dx = p.x - t.x0, dy = p.y - t.y0;
+        // Both gestures start as a tap, which in a run has already fired a
+        // jump — releasing it here ends the hold rather than undoing the hop,
+        // the same trade swipe-down has always made. The alternative is
+        // deferring jump to pointerup, which costs hold-for-height on every
+        // jump to save a hop on the occasional swipe.
+        const swipe = (action) => { this.release('jump'); t.action = action; this.press(action); };
+        // Dominant axis wins, so a swipe that drifts diagonally still resolves
+        // to the one the thumb meant rather than to whichever test ran first.
+        if (performance.now() - t.t0 < 300) {
+          // Swipe down = duck (held).
+          if (dy > 24 && dy >= Math.abs(dx)) swipe('duck');
+          // Swipe right = power, so the whole game is playable one-handed:
+          // JUMP and PWR are opposite bottom corners, which is a two-thumb
+          // layout, and a phone held in one hand can only reach one of them.
+          // Rightward because the hero runs right and the powers throw, dash
+          // and smash that way — the gesture is a shove in the direction the
+          // ability already goes. Run only: elsewhere a horizontal drag is
+          // scrolling a list or dragging the hub, not firing anything.
+          else if (this.context === 'run' && dx > 24 && dx > Math.abs(dy)) swipe('ability');
         }
       }
     });
@@ -131,9 +146,20 @@ class InputSys {
     return !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   }
 
+  // x/y/w/h is every button's bounding box, round or not, so layout and this
+  // test read the same numbers. Round buttons hit-test as discs — the corners
+  // of a circular button's box are visibly outside it, and a tap landing there
+  // firing the button is the kind of thing that reads as a mis-registered
+  // screen. SLOP buys back what the disc costs a thumb, which lands short of
+  // where its owner thinks it did more often than it lands wide.
   buttonAt(x, y) {
+    const SLOP = 4;
     for (const b of this.buttons) {
-      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+      if (b.round) {
+        const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+        const r = Math.min(b.w, b.h) / 2 + SLOP;
+        if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) return b;
+      } else if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
     }
     return null;
   }
@@ -151,12 +177,12 @@ class InputSys {
   // on a couple of screens, tapping anywhere) confirms it — so a separate
   // button duplicated a gesture that already worked. ESC has no such
   // equivalent (there is no "tap blank space to back out" convention most of
-  // these screens use), so it stays: top-right, out of the way of list
-  // content and title text that both live top-centre, and out of a level's
-  // way too — RunState uses the same box (run.js setButtons) so the corner
-  // reads identically everywhere touch shows it. showBack is false only for
-  // the title screen, which has nothing to back out of at its root
-  // (erase-mode cancel is a tappable list row instead).
+  // these screens use), so it stays: top-right, out of the way of list content
+  // and title text that both live top-centre. A level's top-right corner holds
+  // the round PAUSE disc instead (run.js setButtons) — a menu backs out and a
+  // level suspends, which are different enough acts to be different controls.
+  // showBack is false only for the title screen, which has nothing to back out
+  // of at its root (erase-mode cancel is a tappable list row instead).
   setMenuButtons(showBack = true) {
     this.setContext('menu');
     const buttons = [];

@@ -4,7 +4,25 @@ import { HERO_BY_ID } from '../data/heroes.js';
 
 export const GRAVITY = 900;
 export const BASE_JUMP_V = 320;
-export const PLAYER_X = 64;      // fixed screen x
+// The runner anchor: a fixed WORLD offset from camX, which the camera then
+// magnifies into a screen position (23.3% of the frame at ZOOM 2). Everything
+// right of it is runway, so this is really a reaction-time dial — the view is
+// VIEW_W wide, so you see (VIEW_W - PLAYER_X) px of it, 184 here, which is
+// 1.15s of warning at the 160px/s base speed.
+//
+// 56 rather than further left because of what is up there. The crane now
+// carries the hero to the top of the frame on a double jump instead of
+// shrinking them, and the HUD's left column — the battery/coin pill, x 8 out to
+// ~105 — is what they would go behind when they get there. At rest their 18px
+// of drawn width lands at screen x 106..142, clearing it by a pixel; the dial
+// stops where the chrome starts.
+//
+// That clearance is a REST measurement. The camera scales x as well as y and
+// welds the left edge to camX, so a pulled-back frame slides the hero toward
+// screen 0 — at ZOOM_MIN they sit at 73 instead of 112, behind the pill. Only
+// the cape/triple heights pull back that far, and they grazed it at the old
+// anchor too; it is the price of the left edge staying welded.
+export const PLAYER_X = 56;      // fixed world offset from camX
 export const PLAYER_W = 8;       // hitbox (12px sprite, 2px inset)
 export const PLAYER_H = 14;
 export const DUCK_H = 7;

@@ -1,7 +1,7 @@
 // State machine with a CRT-shutter transition between states.
 import { W, H, pushOverlayDraw } from './renderer.js';
 import { Input } from './input.js';
-import { drawTextCentered, platePath } from './sprites.js';
+import { drawTextCentered, platePath, textYForMid } from './sprites.js';
 import { drawToon } from '../sprites/toons.js';
 
 let current = null;
@@ -157,10 +157,10 @@ export function drawState(ctx) {
       platePath(ctx, b.x + 0.4, b.y + 0.4, b.w - 0.8, b.h - 0.8, R);
       ctx.stroke();
       ctx.restore();
-      // Centred on both axes: cx for horizontal, and the label's own vertical
-      // midpoint (textY's -4.5*scale, same convention hud.js uses) so it sits
-      // dead centre no matter what size the box ends up.
-      drawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 4.5 * SCALE, '#48e0c8', SCALE);
+      // Centred on both axes: cx for horizontal, and the label's own ink
+      // midpoint (the convention hud.js and every menu uses) so it sits dead
+      // centre no matter what size the box ends up.
+      drawTextCentered(ctx, b.label, b.x + b.w / 2, textYForMid(b.y + b.h / 2, SCALE), '#48e0c8', SCALE);
     }
   }
   if (fade > 0) {

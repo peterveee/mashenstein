@@ -9,7 +9,7 @@
 import { W, H } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, drawPanel, platePath, UI_PANEL_BORDER,
+  textWidth, wrapText, drawPanel, drawRoundButton, textYForMid, UI_PANEL_BORDER,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
@@ -43,9 +43,10 @@ const PANEL_GOLD = { border: 'rgba(246,201,69,0.3)', shadow: true };
 // boss signage and the finish-line callouts.)
 //
 // Glyphs occupy y-1*scale .. y+11*scale but the ink sits well inside that box,
-// so centring on a panel means offsetting from the midline by this rather than
-// by half the box. Every panel in this file places its text through it.
-function textY(cy, scale = 1) { return cy - 4.5 * scale; }
+// so centring on a panel means offsetting from the midline by the ink's own
+// half-height rather than by half the box. Every panel in this file places its
+// text through it, and so does every menu — see textYForMid in sprites.js.
+const textY = textYForMid;
 
 // Blend two '#rrggbb' literals. Only the progress bar needs this — it is the
 // one piece of HUD chrome that changes colour continuously rather than
@@ -356,7 +357,12 @@ export function drawHud(ctx, run) {
   // brief third is possible off a breaker bonus or a ?-crate; past that the row
   // would reach the hints, which the sim says does not happen.
   const SHELF_CY = GAUGE_CY - 15;
-  let px = GAUGE_X;
+  // Touch parks the round JUMP button in this corner (run.js setButtons), whose
+  // disc reaches x 56 — so the row starts to its right instead of running
+  // underneath it. Three entries from here still stop short of the PWR button
+  // opposite, and on touch the ability ring below is skipped, so nothing else
+  // is competing for the band.
+  let px = GAUGE_X + (Input.usingTouch ? 52 : 0);
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
     const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
@@ -395,7 +401,7 @@ export function drawHud(ctx, run) {
   }
   // Raw text: the badge is already the backing, so it must not carry a plate
   // of its own.
-  rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, HERO_CY - 4.5, '#d0f0e8');
+  rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, textY(HERO_CY), '#d0f0e8');
 
   // What you are here to do, top-right. Two panels, deliberately unequal: the
   // mission is the run's win condition and the challenge is an optional extra,
@@ -410,10 +416,11 @@ export function drawHud(ctx, run) {
   // player went to the gauges, which are read continuously.
   //
   // Right-anchored, so the panels grow leftward into empty sky as the text gets
-  // longer instead of pushing off the screen edge. Touch play parks the ESC
-  // button in this same corner (run.js setButtons), so the anchor pulls in to
-  // clear it instead of drawing text underneath the button.
-  const OBJ_R = W - 8 - (Input.usingTouch ? 66 : 0);
+  // longer instead of pushing off the screen edge. The full corner is theirs on
+  // touch too: the PAUSE button used to share this line and the anchor pulled
+  // in 66px to clear it, costing every mission title a third of its width on
+  // the screens with the least of it. PAUSE hangs below these panels now.
+  const OBJ_R = W - 8;
   const objective = (tag, tagColor, text, ink, y, scale) => {
     const TP = 5, GAP = 5;
     const h = scale < 1 ? 12 : 14;
@@ -482,44 +489,29 @@ export function drawHud(ctx, run) {
     }
   }
 
-  // Touch buttons. Rounded and edged like every other panel — square-cornered
-  // rects were the last thing on screen still drawn in the old language.
-  // Global buttons (ESC) render once, shared, in states.js's drawState —
-  // skipped here so they don't draw twice.
+  // The touch controls: JUMP, PWR, PAUSE. One painter for all three
+  // (drawRoundButton) — the whole point of the set is that they are the same
+  // object in three places, and three call sites drawing "the same" disc is how
+  // that stops being true. Only PWR carries state, and only it deviates: a
+  // recharge level, and gold when a relay charge is banked.
+  //
+  // Non-round buttons here are the paused screen's menu plates, which the pause
+  // overlay draws itself (run.js drawPaused) — over the dim, not under it.
   for (const b of Input.buttons) {
-    if (b.global) continue;
-    // A banked charge overrides the cooldown fill: the button reads gold and
-    // full, because it is usable right now.
+    if (!b.round) continue;
+    // A banked charge overrides the cooldown: the button reads gold and full,
+    // because it is usable right now.
     const charged = b.id === 'ability' && run.player.relayCharge;
     const cd = b.id === 'ability' && !charged ? run.player.abilityCd : 0;
-    const R = 5;
-    ctx.save();
-    platePath(ctx, b.x, b.y, b.w, b.h, R);
-    ctx.fillStyle = charged ? 'rgba(246,211,60,0.28)' : cd > 0 ? 'rgba(50,50,64,0.4)' : 'rgba(72,224,200,0.15)';
-    ctx.fill();
-    if (cd > 0) {
-      // Recharge rises from the bottom of the button — no ticking number,
-      // just a level. It has to read against the level art behind it (any
-      // colour, any brightness), so the fill leans on contrast with its own
-      // dark base above rather than on the background: a bright meniscus at
-      // the waterline reads the level at a glance even when the flood fill
-      // alone would not.
-      const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
-      const fh = Math.round(b.h * Math.max(0, Math.min(1, 1 - cd / maxCd)));
-      ctx.clip();
-      ctx.fillStyle = 'rgba(72,224,200,0.55)';
-      ctx.fillRect(b.x, b.y + b.h - fh, b.w, fh);
-      ctx.fillStyle = 'rgba(184,248,232,0.95)';
-      ctx.fillRect(b.x, b.y + b.h - fh, b.w, 1.5);
-    }
-    ctx.restore();
-    ctx.save();
-    ctx.lineWidth = 0.8;
-    ctx.strokeStyle = charged ? 'rgba(246,211,60,0.9)' : 'rgba(72,224,200,0.5)';
-    platePath(ctx, b.x + 0.4, b.y + 0.4, b.w - 0.8, b.h - 0.8, R);
-    ctx.stroke();
-    ctx.restore();
-    rawDrawTextCentered(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2 - 3, charged ? '#f6d33c' : '#48e0c8');
+    const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
+    drawRoundButton(ctx, b, {
+      frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : null,
+      // Charged is the one state allowed to raise its voice, and with the
+      // outline gone the fill is the only place left to say it: a gold wash
+      // under gold ink, against the same near-invisible slate the others wear.
+      fill: charged ? 'rgba(246,211,60,0.2)' : 'rgba(11,11,20,0.22)',
+      ink: charged ? '#f6d33c' : '#48e0c8',
+    });
   }
 }
 

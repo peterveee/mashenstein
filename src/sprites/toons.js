@@ -1640,38 +1640,51 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // the run cycle already uses — 'aim' used to only add a tiny recoil, so
       // firing looked identical to just standing there with the gun hanging.
       const aiming = pose.menuAction === 'aim';
-      const elbowOut = cheer ? sideF * 0.42 : aiming ? sideF * 0.52 : hangGun ? sideF * 0.45 : 0.42;
-      const elbowDown = cheer ? -0.91 : aiming ? -0.08 : hangGun ? 0.95 : 0.91;
-      const elbowX = gunX + armSeg * elbowOut;
-      const elbowY = gunY + armSeg * elbowDown;
-      // Celebrating, the cannon used to hold ONE welded aim for the whole 2.6s
-      // routine while his free arm did every bit of the dancing — the only
-      // hero whose victory read as a freeze-frame with a blinking light on it.
-      // It now pivots at constant barrel length: rotation, not a drifting
-      // endpoint, or the barrel telescopes as it swings. Wide on the shimmy
-      // beat (his big move, so the gun dances with the body), tighter on the
-      // signature bounce.
-      const sweep = cm && cm.move === 'shimmy'
-        ? Math.sin(cm.q * Math.PI * 8) * 0.5
-        : Math.sin(gt * 4.2) * 0.26;
-      // Resting, the barrel sits level down the TRAVEL axis — always forward,
-      // whichever shoulder carries it. Celebrating, it salutes from straight up
-      // (-PI/2) canted OUTBOARD onto the gun's own side. Stated as an offset
-      // from vertical rather than an atan2 of two magic components because the
-      // sweep has to be reasoned about in the same units: at 0.55 out, even the
-      // sweep's full +0.5 swing inboard stops a hair past vertical instead of
-      // carrying the barrel across his own face.
-      // Hanging, the barrel points at the floor canted a touch OUTBOARD, so it
-      // clears his own hip and leg rather than tucking behind them. Stated as
-      // an offset from straight down (+PI/2) and signed by sideF, so it leans
-      // away from the body whichever shoulder carries the gun.
-      const aim = cheer
-        ? -Math.PI / 2 + sideF * 0.55 + sweep
-        : hangGun ? Math.PI / 2 - sideF * 0.2 : 0;
+      let elbowX, elbowY, aim;
       // The barrel IS his forearm, so it scales with the arm rather than
       // sitting at a fixed length: 0.73 * armL reproduces the tuned 0.19u at
       // the default reach and grows with spec.armLen.
       const barrel = armL * 0.73 - recoil;
+      if (hangGun) {
+        // Hanging at rest: the free arm at this same beat hangs almost
+        // straight down and disappears BEHIND the torso, out past its round
+        // edge only enough for a gloved hand to peek out at hip height — it
+        // is drawn in the back pass and is never seen crossing the front.
+        // The cannon can't hide that way; it is deliberately the FRONT arm so
+        // it reads as ordnance rather than buried in the body. So: aim for
+        // the same almost-straight-down hip-height drop, cleared out from
+        // the shoulder only as far as the torso's own edge, solved through
+        // the SAME joint() two-bone solver every other limb in this rig
+        // bends through rather than a separately dialled angle.
+        const targetX = shoulderCx + sideF * (torsoHalf + armW * 0.5 + 0.01 * u);
+        const targetY = hipY - 0.02 * u;
+        [elbowX, elbowY] = joint(gunX, gunY, targetX, targetY, armSeg, sideF, barrel);
+        aim = Math.atan2(targetY - elbowY, targetX - elbowX);
+      } else {
+        const elbowOut = cheer ? sideF * 0.42 : aiming ? sideF * 0.52 : 0.42;
+        const elbowDown = cheer ? -0.91 : aiming ? -0.08 : 0.91;
+        elbowX = gunX + armSeg * elbowOut;
+        elbowY = gunY + armSeg * elbowDown;
+        // Celebrating, the cannon used to hold ONE welded aim for the whole
+        // 2.6s routine while his free arm did every bit of the dancing — the
+        // only hero whose victory read as a freeze-frame with a blinking
+        // light on it. It now pivots at constant barrel length: rotation,
+        // not a drifting endpoint, or the barrel telescopes as it swings.
+        // Wide on the shimmy beat (his big move, so the gun dances with the
+        // body), tighter on the signature bounce.
+        const sweep = cm && cm.move === 'shimmy'
+          ? Math.sin(cm.q * Math.PI * 8) * 0.5
+          : Math.sin(gt * 4.2) * 0.26;
+        // Resting, the barrel sits level down the TRAVEL axis — always
+        // forward, whichever shoulder carries it. Celebrating, it salutes
+        // from straight up (-PI/2) canted OUTBOARD onto the gun's own side.
+        // Stated as an offset from vertical rather than an atan2 of two magic
+        // components because the sweep has to be reasoned about in the same
+        // units: at 0.55 out, even the sweep's full +0.5 swing inboard stops
+        // a hair past vertical instead of carrying the barrel across his own
+        // face.
+        aim = cheer ? -Math.PI / 2 + sideF * 0.55 + sweep : 0;
+      }
       const muzzleX = elbowX + Math.cos(aim) * barrel;
       const muzzleY = elbowY + Math.sin(aim) * barrel;
       // The WHOLE limb is the weapon: one articulated gun-arm hinged at the
@@ -1811,9 +1824,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, p.b, ow, armWB, true);
     handDeco(handB[0], handB[1]);
-    // The cannon is mounted ordnance, not a mirrored arm — behind the torso
-    // its barrel vanishes into the helmet, so it always draws in front.
-    if (stand && !spec.cannon) drawFrontArm();
+    // Standing, the cannon now hides behind the torso here same as every
+    // other hero's front arm does — only the hip-height muzzle tip clears the
+    // silhouette, matching how a plain hand peeks out at rest. It used to be
+    // exempted and always drawn in front instead, which is what read as a
+    // separate prop bolted to his chest rather than an arm attached to him.
+    if (stand) drawFrontArm();
   }
   limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, p.p, ow);
   outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
@@ -2221,7 +2237,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.p, Math.max(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
     outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
-  if (!clapFront && (!stand || spec.cannon)) {
+  if (!clapFront && !stand) {
     drawFrontArm();
     if (strapOverArm) strapOverArm();
   }
@@ -3121,12 +3137,22 @@ export function toonStandSprite(heroId, w, h) {
 }
 
 // Derive a draw pose from the shared Player controller.
+// Mirrors run.js useAbility()'s powerPoseT budget for 'eat' — the bite needs
+// a full gape/hold/snap (~0.4s via biteWave) to read as an actual bite rather
+// than a twitch, longer than the flat 0.3s every other ability flourish gets.
+const EAT_POWER_POSE_T = 0.5;
+
 export function poseFromPlayer(player, t) {
   const hero = player.hero || {};
+  const firing = player.powerPoseT > 0;
+  const eating = firing && player.powerType === 'eat';
   return {
     kind: (player.ducking || player.rolling || player.compressT > 0) ? 'duck' : (!player.grounded ? 'jump' : 'run'),
     phase: player.anim % 1,
-    time: t,
+    // The bite's clock has to start at 0 the instant the ability fires, not
+    // wherever the run's absolute clock happens to be, or biteWave() opens
+    // the mouth mid-cycle instead of from closed.
+    time: eating ? (EAT_POWER_POSE_T - player.powerPoseT) : t,
     vy: player.vy,
     grounded: player.grounded,
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / 0.12)),
@@ -3136,6 +3162,10 @@ export function poseFromPlayer(player, t) {
     stomp: !!player.stomping,
     headless: player.headless > 0 || player.fistThrown,
     axeThrown: !!player.axeThrown,
+    // The wide hazard-bite gape and the raised, sighted cannon arm both used
+    // to be menu-only flourishes — a real bite or a real shot looked no
+    // different from an idle chew or an at-rest carry.
+    menuAction: eating ? 'chomp' : (firing && player.powerType === 'shoot') ? 'aim' : undefined,
     facing: 1,
   };
 }

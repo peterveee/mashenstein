@@ -149,6 +149,23 @@ assert(t.every((v) => v === false), 'overtime holds no plugs');
   }
   assert(!threw, `stage select renders for every cabinet and plug state (${threw || 'no throw'})`);
 
+  // Rows are sized from the option count, so the list has to stay inside the
+  // panel in the loaded case as well as the empty one — six rows is the ceiling
+  // (three stages, BOSS, CORRUPTED MODE, BACK) and it must not push the last
+  // row's blurb down into the bottom status strip.
+  const { H } = await import('../src/engine/renderer.js');
+  let worst = 0, worstCab = '', worstRows = 0;
+  for (const cab of CABINETS) {
+    const slot = { coins: 0, campaign: { plugs: fill('full'), ranks: {}, cleared: { [cab.id]: true }, bossesDown: {} } };
+    const st = new StageSelectState({ save: { slot }, cab, flow: {} });
+    st.enter();
+    const rows = st.options().length;
+    const bottom = st.listY + rows * st.rowH;
+    if (bottom > worst || (bottom === worst && rows > worstRows)) { worst = bottom; worstRows = rows; worstCab = cab.id; }
+  }
+  assert(worstRows === 6, `a boss cabinet with corrupted mode open reaches the six-row case (got ${worstRows} at ${worstCab})`);
+  assert(worst <= H - 16, `the fullest stage list clears the status strip: ${worstCab} ends at ${worst.toFixed(1)} of ${H - 16}`);
+
   // The per-cabinet denominator must be three per stage, and the totals must
   // agree with progress.totalPlugs rather than being counted a second way.
   const slot = { coins: 0, campaign: { plugs: fill('partial'), ranks: {}, cleared: {}, bossesDown: {} } };
@@ -165,6 +182,37 @@ assert(t.every((v) => v === false), 'overtime holds no plugs');
   const maxed = { coins: 0, campaign: { plugs: fill('full'), ranks: {}, cleared: {}, bossesDown: {} } };
   assert(totalPlugs(maxed) === MAX_PLUGS, `a fully plugged campaign hits the advertised ceiling (${totalPlugs(maxed)}/${MAX_PLUGS})`);
   assert(MAX_PLUGS >= UNLOCKS.finale, `the finale gate (${UNLOCKS.finale}) is inside the ceiling (${MAX_PLUGS})`);
+}
+
+// Stages inside a cabinet open in order, one plug at a time. The rule has to
+// stay reachable from a blank save: every cabinet's first stage is open, and
+// every later one is opened by the row above it and nothing else.
+{
+  const { stageUnlocked, prevStage } = await import('../src/game/progress.js');
+  const { CABINETS } = await import('../src/data/cabinets.js');
+  const { stagesForCabinet } = await import('../src/data/stages.js');
+  const blank = { campaign: { plugs: {} } };
+
+  for (const cab of CABINETS) {
+    const [first] = stagesForCabinet(cab.id);
+    assert(prevStage(first) === null && stageUnlocked(blank, first),
+      `${cab.id}: the cabinet's first stage is open on a blank save`);
+  }
+  const later = STAGES.filter((s) => s.index > 1);
+  assert(later.every((s) => !stageUnlocked(blank, s)),
+    `every stage past the first is locked on a blank save (${later.length} checked)`);
+
+  // One plug is the whole bar — and it need not be the mission plug, so a
+  // toaster grabbed on a failed run still moves you forward.
+  const s2 = STAGES.find((s) => s.id === 'plumber-2'), s3 = STAGES.find((s) => s.id === 'plumber-3');
+  const toasterOnly = { campaign: { plugs: { 'plumber-1': [false, false, true] } } };
+  assert(stageUnlocked(toasterOnly, s2), 'a toaster-only plug on stage 1 opens stage 2');
+  assert(!stageUnlocked(toasterOnly, s3), 'stage 2 does not open until stage 2 itself is plugged');
+
+  // Gates are per-cabinet: plugs in one cabinet never open another's stage 2.
+  const elsewhere = { campaign: { plugs: {} } };
+  for (const s of STAGES) if (s.id !== 'plumber-1') elsewhere.campaign.plugs[s.id] = [true, true, true];
+  assert(!stageUnlocked(elsewhere, s2), 'a fully plugged campaign minus stage 1 still locks stage 2');
 }
 
 console.log(failed ? 'PLUG TALLY: FAILED' : 'PLUG TALLY: PASSED');
