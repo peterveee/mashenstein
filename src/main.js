@@ -13,7 +13,7 @@ import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
-import { HubState, StageSelectState, BenchState, ShopState, ArcadeState } from './game/hub/index.js';
+import { HubState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
@@ -43,7 +43,7 @@ const Flow = {
   // transition cameo. Without a single source these three drifted: the hub read
   // lastTeam[0] (the run's STARTER), the stage drew a fresh random hero, and the
   // shutter drew a third one at random.
-  heroId() { return Flow.hubAvatar || (Flow.lastTeam && Flow.lastTeam[0]) || 'lorenzo'; },
+  heroId() { return heroIdFor(Flow); },
   setHero(id) {
     if (id) Flow.hubAvatar = id;
     setTransitionHero(Flow.heroId());

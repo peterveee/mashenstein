@@ -171,16 +171,29 @@ const WISP_FRIGHT_COLOR = '#4a5be0';
 const WISP_FRIGHT_FLASH_T = 2; // last stretch blinks blue/white, the classic warning
 const WISP_EATEN_SPEED = 150;
 // Scattering: each visitor still on screen when the fright starts breaks from
-// the shared marching formula onto its own independent line — half hold still
-// for a beat, half peel off backward — instead of the whole gang drifting on
-// in the same lockstep it was in a moment ago.
-const WISP_SCATTER_PAUSE_T = 2.2;
+// the shared marching formula onto its own independent line — half hold still,
+// half peel off backward — instead of the whole gang drifting on in the same
+// lockstep it was in a moment ago. Once fright wears off (color reverts to
+// normal), a scatterer freezes right where it is and waits for a clear gap in
+// the hero line before calmly walking on and off screen.
 const WISP_SCATTER_SPEED = 58;
+// How close a hero can be to a spot before it no longer counts as clear for a
+// calmed-down wisp to walk back out through.
+const WISP_GAP_CLEARANCE = 22 * PARADE_K;
 function wispScatterX(t, w) {
+  if (w.frozen) {
+    if (w.frozen.resumeAt == null) return w.frozen.x;
+    return w.frozen.x + (t - w.frozen.resumeAt) * PARADE_SPEED;
+  }
   if (w.mode === 'reverse') return w.x0 - (t - w.t0) * WISP_SCATTER_SPEED;
-  const held = t - w.t0;
-  if (held < WISP_SCATTER_PAUSE_T) return w.x0;
-  return w.x0 + (held - WISP_SCATTER_PAUSE_T) * PARADE_SPEED;
+  return w.x0; // 'pause': holds until fright ends and a gap opens up
+}
+function heroGapAt(t, x, tapBombs) {
+  for (let i = 0; i < HERO_PARADE.length; i++) {
+    if (!heroOnScreen(i, t) || heroIsKnockedOut(i, t, tapBombs)) continue;
+    if (Math.abs(heroX(i, t) - x) < WISP_GAP_CLEARANCE) return false;
+  }
+  return true;
 }
 
 function mazeWispPass(t) {
@@ -289,17 +302,18 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter) {
       ctx.fillStyle = 'rgba(4,3,9,0.25)';
       ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
       const color = frightActive ? frightColor : WISP_COLORS[w.colorIdx];
-      drawMazeWisp(ctx, x, 267, color, t * 1.8 + w.colorIdx * 0.24, w.colorIdx % 3, true);
+      drawMazeWisp(ctx, x, 267, color, t * 1.8 + w.colorIdx * 0.24, w.colorIdx % 3, !w.frozen);
     }
   }
+  // No new visitor appears while the current episode (scattering or still
+  // being eaten) is unresolved — the roster is fixed the moment fright starts.
+  if ((eaten && eaten.size > 0) || (scatter && scatter.size > 0)) return;
   const pass = mazeWispPass(t);
   if (!pass) return;
   // All visitors share the parade's exact speed. Starting this traversal at
   // the aligned WISP_FIRST time places the leader 46px behind Lorenzo; the
   // remaining guests follow in the rest of the cast's reserved tail space.
   for (let i = 0; i < pass.count; i++) {
-    const key = `${pass.trip}:${i}`;
-    if ((eaten && eaten.has(key)) || (scatter && scatter.has(key))) continue; // drawn above instead
     const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
     if (x < -24 || x > W + 24) continue;
     ctx.fillStyle = 'rgba(4,3,9,0.25)';
@@ -321,14 +335,14 @@ function wispTapHit(t, px, py, eaten, scatter) {
       if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key, x };
     }
   }
+  // No new visitor to tap while the current episode is still unresolved.
+  if ((eaten && eaten.size > 0) || (scatter && scatter.size > 0)) return null;
   const pass = mazeWispPass(t);
   if (!pass) return null;
   for (let i = 0; i < pass.count; i++) {
-    const key = `${pass.trip}:${i}`;
-    if ((eaten && eaten.has(key)) || (scatter && scatter.has(key))) continue;
     const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
     if (x < -24 || x > W + 24) continue;
-    if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key, x };
+    if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key: `${pass.trip}:${i}`, x };
   }
   return null;
 }
@@ -472,6 +486,14 @@ function heroTapIndex(t, px, py, tapBombs) {
   return -1;
 }
 
+// b33p doesn't take a poke lying down: tapping him fires a shot instead of
+// the usual startled hop. It travels until it hits a hero (who goes through
+// the same explode/knockback the invader's bombs use) or a wisp (who takes
+// it exactly like a tap would — fright if calm, eaten if already blue).
+const SHOT_SPEED = 220;
+const SHOT_HIT_RADIUS = 12 * PARADE_K;
+const SHOT_Y = 258;
+
 function drawInvader(ctx, t) {
   const pass = invaderPass(t);
   if (!pass) return;
@@ -512,6 +534,19 @@ function drawBolt(ctx, t, strikes) {
   }
 }
 
+// b33p's shot: a short bright streak with a fading tail, punchier than the
+// invader's plain falling bolt since this one travels the width of the screen.
+function drawShots(ctx, t, shots) {
+  if (!shots) return;
+  for (const shot of shots) {
+    const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED;
+    ctx.fillStyle = 'rgba(168,255,192,0.4)';
+    ctx.fillRect(Math.round(x - 9), Math.round(shot.y), 6, 2);
+    ctx.fillStyle = '#eaffef';
+    ctx.fillRect(Math.round(x - 4), Math.round(shot.y), 4, 2);
+  }
+}
+
 function drawInvaderImpact(ctx, strikes) {
   if (!strikes) return;
   for (const strike of strikes) {
@@ -546,7 +581,7 @@ function drawInvaderImpact(ctx, strikes) {
   }
 }
 
-function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs) {
+function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs, shots) {
   // night sky over the last functioning food court
   if (!titleGrad) {
     titleGrad = ctx.createLinearGradient(0, 0, 0, H);
@@ -599,6 +634,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   // a small personality beat. Cycles are offset so the parade stays readable.
   const strikes = reduced ? null : invaderStrikes(t, tapBombs);
   drawBolt(ctx, t, strikes);
+  drawShots(ctx, t, shots);
   drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter);
   for (let i = 0; i < HERO_PARADE.length; i++) {
     const hx = heroX(i, t);
@@ -880,6 +916,8 @@ export class TitleState {
     this.scatter = new Map(); // wisp pass key -> { t0, x0, mode, colorIdx } once frightened
     this.tapBombs = []; // player-triggered invader bombs, same shape as the scheduled ones
     this.tapBombId = 0;
+    this.shots = []; // b33p's projectiles: { id, tFired, x0, y }
+    this.shotId = 0;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     // Returning from settings, help, or another title-side screen should not
@@ -892,6 +930,47 @@ export class TitleState {
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
   exit() { setSceneGlow(false); setSkyFx(false); }
+  // Whatever lands the hit — a direct tap, b33p's shot, or the ship's bomb —
+  // a wisp always reacts the same way: fright if it's calm, eaten if it's
+  // already blue. Centralizing this keeps all three triggers in lockstep.
+  hitWisp(wisp) {
+    const frightActive = this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T;
+    console.log('DEBUG hitWisp', JSON.stringify({ t: this.t, key: wisp.key, frightActive }));
+    if (frightActive) {
+      const dir = wisp.x < W / 2 ? -1 : 1;
+      this.eaten.set(wisp.key, { t0: this.t, x0: wisp.x, dir });
+      this.scatter.delete(wisp.key);
+      Audio.sfx('tag');
+    } else {
+      this.frightStart = this.t;
+      // Snapshot every visitor visible right now — no more may join once the
+      // pellet's been eaten, so the gang scattering stays a fixed headcount.
+      const pass = mazeWispPass(this.t);
+      if (pass) {
+        for (let j = 0; j < pass.count; j++) {
+          const key = `${pass.trip}:${j}`;
+          const x = -24 + pass.local * PARADE_SPEED - j * WISP_GAP;
+          if (x < -24 || x > W + 24) continue;
+          this.scatter.set(key, {
+            t0: this.t, x0: x,
+            mode: j % 2 === 0 ? 'pause' : 'reverse',
+            colorIdx: (pass.trip + j) % WISP_COLORS.length,
+            frozen: null,
+          });
+        }
+      }
+      Audio.sfx('power');
+    }
+  }
+  // Same explode/knockback the invader's bombs use, for any other projectile
+  // (b33p's shot) that lands on a hero.
+  explodeHero(id, x, victim, dir) {
+    console.log('DEBUG explodeHero', JSON.stringify({ t: this.t, id, x, victim, heroId: HERO_PARADE[victim] }));
+    const tHit = this.t;
+    const phase = heroX(victim, tHit) + 70;
+    const returnAt = tHit + (HERO_PARADE_SPAN - phase) / HERO_PARADE_SPEED;
+    this.tapBombs.push({ id, tDrop: tHit, x, y0: BOLT_HEAD_Y, tHit, victim, returnAt, dir });
+  }
   options() {
     const opts = [];
     this.save.data.slots.forEach((s, i) => {
@@ -970,6 +1049,16 @@ export class TitleState {
         }
       }
     }
+    // A tap-bomb landing on a ghost instead acts exactly like tapping it —
+    // the ghost takes the hit rather than whichever hero happened to be
+    // nearest. Scoped to player-dropped bombs (ship taps + b33p's shots);
+    // resolved once, right as each bomb lands.
+    for (const bomb of this.tapBombs) {
+      if (bomb._wispChecked || this.t < bomb.tHit) continue;
+      bomb._wispChecked = true;
+      const wisp = wispTapHit(bomb.tHit, bomb.x, SHOT_Y, this.eaten, this.scatter);
+      if (wisp) { bomb.victim = -1; this.hitWisp(wisp); }
+    }
     const cometCycle = Math.floor(this.t / 6.5);
     const cometPhase = this.t - cometCycle * 6.5;
     if (!this.save.settings.reducedFlashing && cometPhase >= 0.4 && this.lastCometCycle !== cometCycle && shaderHash21(cometCycle, 3) >= 0.55) {
@@ -1022,48 +1111,59 @@ export class TitleState {
         } else {
           // Or a parading hero.
           const hero = heroTapIndex(this.t, p.x, p.y, this.tapBombs);
-          if (hero >= 0) { this.poke.set(hero, this.t); Audio.sfx('jump'); }
-          else {
+          console.log('DEBUG tap', JSON.stringify({ t: this.t, px: p.x, py: p.y, hero, heroId: hero >= 0 ? HERO_PARADE[hero] : null }));
+          if (hero >= 0) {
+            if (HERO_PARADE[hero] === 'b33p') {
+              // b33p doesn't hop when poked — he shoots.
+              this.shots.push({ id: `shot:${this.shotId++}`, tFired: this.t, x0: heroX(hero, this.t) + 12, y: SHOT_Y });
+              console.log('DEBUG shot fired', JSON.stringify({ t: this.t, x0: heroX(hero, this.t) + 12 }));
+              Audio.sfx('shoot');
+            } else {
+              this.poke.set(hero, this.t);
+              Audio.sfx('jump');
+            }
+          } else {
             // Or a maze-wisp visitor. First tap on any of them is a power
             // pellet: the whole crossing gang turns blue and scatters, still
             // on screen. A tap on one of them while frightened eats it, and
             // it zips off toward whichever edge is nearest.
             const wisp = wispTapHit(this.t, p.x, p.y, this.eaten, this.scatter);
-            if (wisp) {
-              const frightActive = this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T;
-              if (frightActive) {
-                const dir = wisp.x < W / 2 ? -1 : 1;
-                this.eaten.set(wisp.key, { t0: this.t, x0: wisp.x, dir });
-                this.scatter.delete(wisp.key);
-                Audio.sfx('tag');
-              } else {
-                this.frightStart = this.t;
-                Audio.sfx('power');
-              }
-            }
+            if (wisp) this.hitWisp(wisp);
           }
         }
       }
     }
-    // Any wisp visible for the first time since the fright started breaks off
-    // the shared marching formula onto its own scatter line — this also
-    // catches one still arriving mid-fright, not just the one that got tapped.
-    if (this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T) {
-      const pass = mazeWispPass(this.t);
-      if (pass) {
-        for (let j = 0; j < pass.count; j++) {
-          const key = `${pass.trip}:${j}`;
-          if (this.eaten.has(key) || this.scatter.has(key)) continue;
-          const x = -24 + pass.local * PARADE_SPEED - j * WISP_GAP;
-          if (x < -24 || x > W + 24) continue;
-          this.scatter.set(key, {
-            t0: this.t, x0: x,
-            mode: j % 2 === 0 ? 'pause' : 'reverse',
-            colorIdx: (pass.trip + j) % WISP_COLORS.length,
-          });
+    // Once fright wears off (color reverts to normal), a still-scattering
+    // wisp freezes right where it is and waits for a clear gap in the hero
+    // line before calmly walking on and off screen, rather than plowing on
+    // through whoever's in its way.
+    {
+      const frightActive = this.frightStart != null && this.t - this.frightStart < WISP_FRIGHT_T;
+      for (const w of this.scatter.values()) {
+        if (w.frozen) {
+          if (w.frozen.resumeAt == null && heroGapAt(this.t, w.frozen.x, this.tapBombs)) w.frozen.resumeAt = this.t;
+        } else if (!frightActive) {
+          w.frozen = { x: wispScatterX(this.t, w), resumeAt: null };
         }
       }
     }
+    // Resolve b33p's shots: travel until a hit or the far edge.
+    this.shots = this.shots.filter((shot) => {
+      const x = shot.x0 + (this.t - shot.tFired) * SHOT_SPEED;
+      if (x > W + 20) return false;
+      for (let i = 0; i < HERO_PARADE.length; i++) {
+        if (HERO_PARADE[i] === 'b33p') continue;
+        if (!heroOnScreen(i, this.t) || heroIsKnockedOut(i, this.t, this.tapBombs)) continue;
+        if (Math.abs(heroX(i, this.t) - x) < SHOT_HIT_RADIUS) {
+          this.explodeHero(shot.id, x, i, 1);
+          Audio.sfx('hit');
+          return false;
+        }
+      }
+      const wisp = wispTapHit(this.t, x, shot.y, this.eaten, this.scatter);
+      if (wisp) { this.hitWisp(wisp); return false; }
+      return true;
+    });
     // Prune spent tap-bombs: misses once their impact has fully faded, hits
     // once the knocked-out hero has earned their way back into the line.
     this.tapBombs = this.tapBombs.filter((b) => this.t < (b.victim < 0 ? b.tHit + KNOCK_T : b.returnAt));
@@ -1080,7 +1180,7 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
-    titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs);
+    titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs, this.shots);
     const opts = this.options();
     const ui = (d) => {
       // The cast owns the bottom strip, so every line of text sits above it:

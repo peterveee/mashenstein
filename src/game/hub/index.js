@@ -19,6 +19,7 @@ import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, 
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
+import { setTransitionHero } from '../../engine/states.js';
 import { getStylePack } from '../../engine/stylePacks/index.js';
 import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
@@ -64,6 +65,14 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // The NPC/player gap is kept (0.83) — the hero you are driving reads slightly
 // larger than the crowd, which is how you find yourself on a busy concourse.
 const NPC_H = 38, PLAYER_H = 46;
+
+// Who you are currently carrying, from a flow object. A plain function rather
+// than a method on Flow: the hub is constructed with a stub flow in several
+// tests, and requiring a method there would make "which hero" a thing callers
+// have to implement rather than a thing derived from two fields.
+export function heroIdFor(flow) {
+  return (flow && flow.hubAvatar) || (flow && flow.lastTeam && flow.lastTeam[0]) || 'lorenzo';
+}
 
 // What is actually playing on a cabinet's screen: a slice of that cabinet's own
 // level, panning past.
@@ -595,7 +604,7 @@ export class HubState {
     // last run, else Lorenzo. Gary is deliberately NOT pushed through it — the
     // coupon mod is a hub costume, and Relay ignores an initialHeroId that is not
     // in HEROES anyway, so a Gary run would just draw at random.
-    return this.flow.heroId();
+    return heroIdFor(this.flow);
   }
 
   // Whichever chip is lit.
@@ -618,10 +627,10 @@ export class HubState {
     const prev = this.avatarId();
     if (prev === npc.id) return;
     const prevX = this.px;
-    // setHero, not a bare assignment: it also points the transition cameo at
-    // whoever you just became, so the shutter on the way into a cabinet shows
-    // the hero you are about to play.
-    this.flow.setHero(npc.id);
+    this.flow.hubAvatar = npc.id;
+    // Point the shutter cameo at whoever you just became, so walking into a
+    // cabinet shows the hero you are about to play rather than a stranger.
+    setTransitionHero(npc.id);
     const actor = (this.npcActors || []).find((a) => a.id === prev);
     if (actor) {
       actor.x = prevX;
