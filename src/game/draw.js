@@ -5,7 +5,7 @@ import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
-import { hasProp, propSprite, propTinted, propRimPair, propFrames, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
+import { hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
 
 const POWER_GLOW = {
   capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)',
@@ -238,7 +238,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     return;
   }
   const sprName = e.def ? e.def.sprite : null;
-  // Vector art first, keyed by entity TYPE so ?-crates, targets, pipes and
+  // Vector art first, keyed by entity TYPE so !-crates, targets, pipes and
   // switches get their own look instead of borrowing another prop's sprite.
   const propName = hasProp(e.type) ? e.type : (hasProp(sprName) ? sprName : null);
   const spr = propName ? null : (sprName ? getSprite(sprName) : null);
@@ -258,7 +258,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // to stay a flicker rather than a strobe.
   const frameCount = propName ? propFrames(propName) : 1;
   const frame = frameCount > 1 && !settings.reducedMotion
-    ? Math.floor(t * 11 + e.bobPhase * 4) % frameCount
+    ? Math.floor(t * propFps(propName) + e.bobPhase * 4) % frameCount
     : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;
   const rimLite = danger ? (propName ? null : tinted(sprName, '#f0f0f8')) : null;

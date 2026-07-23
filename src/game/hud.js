@@ -388,7 +388,7 @@ export function drawHud(ctx, run) {
   // runs. Capsules arrive every 12-18s against 8-20s effects, ~8% of the table
   // is the relay charge and ~17% is SHIELD (which is orb rings, not an entry),
   // and grabbing a duplicate refreshes its timer rather than adding one. A
-  // brief third is possible off a breaker bonus or a ?-crate; past that the row
+  // brief third is possible off a breaker bonus or a !-crate; past that the row
   // would reach the hints, which the sim says does not happen.
   // On touch the ability ring below is skipped entirely (see !Input.usingTouch
   // below) — so the shelf only needs clearance from a ring that's not there,

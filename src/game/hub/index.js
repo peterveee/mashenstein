@@ -1,9 +1,9 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { W, H } from '../../engine/renderer.js';
+import { W, H, chrome as chromeGeo, chromeCtx } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, drawRoundButton, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
 import { drawToon, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
@@ -49,8 +49,23 @@ const HUB_ZOOM = 1.3;
 // The concourse is intentionally long enough to browse cabinet by cabinet, but
 // returning players also cross it end to end. At 90 that trip overstayed its
 // welcome; 120 keeps precise station approaches while cutting traversal time by
-// a quarter. Tap-to-walk and keyboard movement share this speed.
+// a quarter. Tap-to-walk and keyboard movement share this base speed.
 const HUB_WALK_SPEED = 120;
+// Holding a direction should make the long concourses quicker to cross without
+// making short taps imprecise. The smoothstep curve starts at the room's normal
+// pace and tops out after a deliberate hold; releasing immediately drops the
+// next walk back to its base speed.
+const WALK_ACCEL_TIME = 1.25;
+const WALK_ACCEL_GAIN = 0.7;
+function heldWalkSpeed(base, heldFor) {
+  const p = Math.max(0, Math.min(1, heldFor / WALK_ACCEL_TIME));
+  const eased = p * p * (3 - 2 * p);
+  return base * (1 + WALK_ACCEL_GAIN * eased);
+}
+// A no-stakes room hop: high enough to read clearly at HUB_ZOOM, but shorter
+// than a run jump so the avatar stays comfortably below the wall displays.
+const HUB_JUMP_V = 280;
+const HUB_JUMP_GRAVITY = 900;
 // Where the floor line sits, which — because the pin maps this world y to the
 // same SCREEN y — is also how the 270px frame is split between wall and floor.
 // It was 192, leaving 78px of floor for a UI band that only ever uses the
@@ -337,6 +352,10 @@ const CAB_PALETTES = new Map();
 // between the wall and the zoom would read as a different poster, and a hit box
 // that disagreed with either would be the kind of miss nobody can explain.
 const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
+// The post-game machine is deliberately blank, but the poster above it is not:
+// give drawPoster an OVERTIME motif without changing the cabinet palette (and
+// therefore without putting art on the machine's dead screen).
+const OVERTIME_POSTER_PALETTE = { ...OVERTIME_PALETTE, motif: 'overtime', button: '#e04848' };
 function posterLook(x) {
   const k = Math.round(x / 64);
   return { tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012), torn: k % 3 === 1 };
@@ -347,6 +366,12 @@ function palFor(cab, unlocked) {
   let p = CAB_PALETTES.get(key);
   if (!p) { p = cabinetPalette(cab, unlocked); CAB_PALETTES.set(key, p); }
   return p;
+}
+
+function posterPalFor(station) {
+  return station.type === 'overtime'
+    ? OVERTIME_POSTER_PALETTE
+    : palFor(station.cab, station.unlocked);
 }
 
 // The food court is falling apart, so the ceiling lights that ARE working
@@ -713,7 +738,7 @@ export class HubState {
     st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 140;
     st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
-    st.push({ type: 'shelf', x, label: 'TROPHY SHELF' }); x += 88;
+    st.push({ type: 'shelf', x, label: 'TROPHY ROOM' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
     if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) st.push({ type: 'socket', x, label: 'THE SOCKET' });
     // The parenthetical carries what the finale used to say in one opaque line:
@@ -940,7 +965,8 @@ export class HubState {
   }
 
   enter() {
-    Input.setContext('default');
+    Input.setContext('hub');
+    this.setChromeWalkButtons();
     // Arriving in the food court is the moment you HAVE a hero, so it is the
     // moment transitions may start showing one. Before this — title, difficulty,
     // the intro — the shutter stays a plain sticker.
@@ -948,10 +974,13 @@ export class HubState {
     const returning = this.flow.hubPosition;
     this.px = this.px ?? returning?.px ?? 40;
     this.facing = this.facing ?? returning?.facing ?? 1;
+    this.jumpY = 0;
+    this.jumpVy = 0;
     this.t = 0;
     this.talk = null;
     this.poster = null;      // a wall poster held open, full-frame, to be read
     this.walkTarget = null;
+    this.walkHoldT = 0;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
@@ -1020,6 +1049,40 @@ export class HubState {
   exit() {
     this.flow.hubPosition = { px: this.px, facing: this.facing || 1 };
     Input.setButtons([]);
+    Input.setChromeButtons([]);
+  }
+
+  setChromeWalkButtons() {
+    this.chromeMode = chromeGeo.mode;
+    this.chromeTouch = Input.usingTouch;
+    // These exposed-margin controls are the food court's touch navigation.
+    // Mouse and keyboard already have click-to-walk and left/right, so showing
+    // the discs there only turns otherwise quiet canvas into duplicate chrome.
+    if (!Input.usingTouch || chromeGeo.mode === 'none') { Input.setChromeButtons([]); return; }
+    Input.setChromeButtons([
+      { id: 'hubLeft', ...chromeGeo.jump, action: 'left' },
+      { id: 'hubRight', ...chromeGeo.ability, action: 'right' },
+    ]);
+  }
+
+  drawChromeWalkButtons() {
+    if (!chromeCtx || !Input.usingTouch || chromeGeo.mode === 'none' || this.poster) return;
+    for (const button of Input.chromeButtons) {
+      if (button.id !== 'hubLeft' && button.id !== 'hubRight') continue;
+      const box = {
+        x: button.x - button.r, y: button.y - button.r,
+        w: button.r * 2, h: button.r * 2,
+        label: button.id === 'hubLeft' ? '<' : '>', round: true,
+      };
+      drawRoundButton(chromeCtx, box, {
+        fill: 'rgba(255,255,255,0.22)',
+        ink: '#ffffff',
+        ring: 'rgba(255,255,255,0.75)',
+        ringWidth: 1.5,
+        labelScale: 2.4,
+        labelStyle: 'bold',
+      });
+    }
   }
 
   // Camera follows the player, clamped to the concourse — shared by update()
@@ -1045,10 +1108,22 @@ export class HubState {
       return;
     }
     this.t += dt;
+    if (chromeGeo.mode !== this.chromeMode || Input.usingTouch !== this.chromeTouch) this.setChromeWalkButtons();
     this.updateNpcs(dt);
     const st = this.stations();
-    if (Input.held('left')) { this.px -= HUB_WALK_SPEED * dt; this.facing = -1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
-    if (Input.held('right')) { this.px += HUB_WALK_SPEED * dt; this.facing = 1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
+    const directionHeld = Input.held('left') || Input.held('right');
+    const walkSpeed = heldWalkSpeed(HUB_WALK_SPEED, this.walkHoldT);
+    if (Input.pressed('jump') && this.jumpY === 0) {
+      this.jumpVy = HUB_JUMP_V;
+      Audio.sfx('jump');
+    }
+    if (this.jumpY > 0 || this.jumpVy > 0) {
+      this.jumpVy -= HUB_JUMP_GRAVITY * dt;
+      this.jumpY += this.jumpVy * dt;
+      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpVy = 0; }
+    }
+    if (Input.held('left')) { this.px -= walkSpeed * dt; this.facing = -1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
+    if (Input.held('right')) { this.px += walkSpeed * dt; this.facing = 1; this.walkTarget = null; this.walkToNpc = null; this.addressing = null; this.addressTap = false; }
     if (!this.hasMoved && (Input.held('left') || Input.held('right') || this.walkTarget != null)) this.hasMoved = true;
     if (this.hasMoved) this.movedAt += dt;
     // Tap/click anywhere (not a virtual button) to walk there — mouse and
@@ -1071,7 +1146,8 @@ export class HubState {
       const pwx = Input.pointer.x / HUB_ZOOM + this.camX();
       const pwy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
       const tappedPoster = pwy > POSTER_TOP_Y - 4 && pwy < POSTER_TOP_Y + POSTER_H + 4
-        ? st.find((s) => s.type === 'cabinet' && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
+        ? st.find((s) => (s.type === 'cabinet' || s.type === 'overtime')
+          && Math.abs(s.x - pwx) < POSTER_W / 2 + 4)
         : null;
       if (tappedPoster) {
         this.poster = { station: tappedPoster, t: 0, ...posterLook(tappedPoster.x) };
@@ -1164,8 +1240,12 @@ export class HubState {
     if (this.walkTarget != null) {
       const d = this.walkTarget - this.px;
       if (Math.abs(d) < 3) { this.walkTarget = null; this.walkToNpc = null; }
-      else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), HUB_WALK_SPEED * dt); }
+      else { this.facing = d > 0 ? 1 : -1; this.px += Math.sign(d) * Math.min(Math.abs(d), walkSpeed * dt); }
     }
+    const steeringHeld = Input.held('pointer') && this.dragging && this.walkTarget != null;
+    this.walkHoldT = directionHeld || steeringHeld
+      ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
+      : 0;
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
     const near = nearestTo(st, this.px, STATION_R);
     this.near = near;
@@ -1236,15 +1316,11 @@ export class HubState {
     // A one-frame error became a permanent lock purely through the missed
     // endFrame().
     //
-    // The chooser moves on ArrowUp/ArrowDown — which in this context are the
-    // 'jump' and 'duck' actions, NOT 'up'/'down'. Input.actionForKey only mints
-    // 'up'/'down' inside the 'menu' context, and the hub runs 'default'
-    // (see enter()), so binding to those would have made the chips unreachable.
+    // The chooser moves on ArrowUp/ArrowDown. The hub input context keeps those
+    // as navigation actions while reserving Space for the avatar's jump.
     const chooser = !!this.focusNpc;
     // Confirm follows the focus, so it always does what the chips say it will.
-    // 'jump' doubles as confirm for gamepad face buttons, but while the chooser
-    // is up ArrowUp is steering it — so it must not also fire the selection.
-    if (Input.pressed('confirm') || (Input.pressed('jump') && !chooser)) {
+    if (Input.pressed('confirm')) {
       if (this.focusNpc) this.chooseNpc(this.focusNpc);
       else if (near) this.interact(near);
     }
@@ -1269,8 +1345,8 @@ export class HubState {
       const opts = npcMenuFor(npc);
       if (this.npcMenuIdx >= opts.length) this.npcMenuIdx = 0;
       if (opts.length > 1) {
-        if (Input.pressed('jump')) { this.npcMenuIdx = (this.npcMenuIdx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
-        if (Input.pressed('duck')) { this.npcMenuIdx = (this.npcMenuIdx + 1) % opts.length; Audio.sfx('ui'); }
+        if (Input.pressed('up')) { this.npcMenuIdx = (this.npcMenuIdx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+        if (Input.pressed('down')) { this.npcMenuIdx = (this.npcMenuIdx + 1) % opts.length; Audio.sfx('ui'); }
       }
     }
     if (this.talk && (this.talk.t -= dt) <= 0) this.talk = null;
@@ -1378,8 +1454,11 @@ export class HubState {
   }
 
   updateNpcs(dt) {
-    const service = this.stations().find((s) =>
-      (s.type === 'bench' || s.type === 'shop')
+    // Counters and actual door stations are access points, unlike cabinets
+    // that the crowd may casually cross in front of. When the player is at one,
+    // the wandering cast actively clears its full footprint.
+    const access = this.stations().find((s) =>
+      DOOR_PALETTES[s.type]
       && Math.abs(this.px - s.x) < STATION_R);
     for (const n of this.npcs()) {
       // Counter staff do not wander the concourse — they are drawn inside their
@@ -1431,21 +1510,25 @@ export class HubState {
         continue;
       }
 
-      // When the player steps up to either service counter, wandering cast
+      // When the player steps up to a service counter or a door, wandering cast
       // members actively make way. canLoiter() already stopped them CHOOSING
-      // this area as a resting place, but they could still cross it slowly and
-      // steal station focus while doing so. Walk them to the nearest edge of
-      // the counter's full clearance band and temporarily remove them from
-      // tap/talk targeting. Counter staff are handled above and never move.
-      const serviceClear = service ? this.loiterClear(service) : 0;
-      if (service && Math.abs(n.x - service.x) < serviceClear) {
+      // these areas as resting places, but they could still cross one slowly
+      // and steal station focus while doing so. Walk them to the nearest edge
+      // of its full clearance band and temporarily remove them from tap/talk
+      // targeting. Counter staff are handled above and never move.
+      const accessClear = access ? this.loiterClear(access) : 0;
+      if (access && Math.abs(n.x - access.x) < accessClear) {
         n.clearingStation = true;
         n.attending = false;
         n.state = 'walk';
         n.timer = Math.max(n.timer, 0.6);
-        const dir = Math.sign(n.x - service.x) || (n.cycles % 2 ? -1 : 1);
+        const left = access.x - accessClear;
+        const right = access.x + accessClear;
+        const dir = left < NPC_MIN_X ? 1
+          : right > this.npcFarX() ? -1
+            : Math.sign(n.x - access.x) || (n.cycles % 2 ? -1 : 1);
         n.facing = dir;
-        n.x += dir * Math.min(serviceClear - Math.abs(n.x - service.x), 42 * dt);
+        n.x += dir * Math.min(accessClear - Math.abs(n.x - access.x), 42 * dt);
         if (this.addressing === n.id) {
           this.addressing = null;
           this.addressTap = false;
@@ -1644,13 +1727,15 @@ export class HubState {
     // to a span of wall they read as wallpaper; hung one per cabinet they read
     // as belonging to something. The tilt alternates off the station's own x so
     // the row is not a set of perfectly level rectangles.
+    // OVERTIME joins the rule after the finale, but gets bespoke art rather
+    // than borrowing one of the nine campaign heroes.
     for (const s of this.stations()) {
-      if (s.type !== 'cabinet') continue;
+      if (s.type !== 'cabinet' && s.type !== 'overtime') continue;
       const sx = s.x - cam;
       if (sx < -POSTER_W || sx > HUB_VIEW_W + POSTER_W) continue;
       const look = posterLook(s.x);
       drawPoster(ctx, sx, POSTER_TOP_Y, POSTER_W, POSTER_H, {
-        pal: palFor(s.cab, s.unlocked),
+        pal: posterPalFor(s),
         tilt: look.tilt,
         torn: look.torn,
         lit: wallLit(sx),
@@ -1846,6 +1931,7 @@ export class HubState {
     // player walks
     const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
+    const airborne = this.jumpY > 0;
     // Which one is you. Being 8 units taller than the crowd is not an answer to
     // that question — in a concourse with three heroes loitering by the same
     // door it is invisible. So the hero you are driving gets a marker over their
@@ -1856,18 +1942,19 @@ export class HubState {
     ctx.fillStyle = 'rgba(4,3,9,0.4)';
     ctx.beginPath(); ctx.ellipse(pxs, HUB_FLOOR_PIN_Y, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     drawToon(ctx, heroId, {
-      kind: moving ? 'run' : 'idle',
+      kind: airborne ? 'jump' : moving ? 'run' : 'idle',
       phase: (this.t * 1.6) % 1,
       time: this.t,
-      grounded: true,
+      grounded: !airborne,
+      vy: this.jumpVy,
       facing: this.facing || 1,
-    }, pxs, HUB_FLOOR_PIN_Y, PLAYER_H, { lit: castLit(pxs) });
+    }, pxs, HUB_FLOOR_PIN_Y - this.jumpY, PLAYER_H, { lit: castLit(pxs) });
     // Off the measured top of THIS hero's silhouette, not off PLAYER_H. The
     // height passed to drawToon sizes the body, so a fixed offset above it sits
     // in clear air over grumpos' helmet crest and pika's ears while hovering a
     // head-and-a-half above the ones who end at the nominal line. Measured, the
     // marker keeps the same sliver of air over every hero in the cast.
-    const headY = HUB_FLOOR_PIN_Y - toonInkTop(heroId) * PLAYER_H;
+    const headY = HUB_FLOOR_PIN_Y - this.jumpY - toonInkTop(heroId) * PLAYER_H;
     drawPlayerMarker(ctx, pxs, headY - MARKER_GAP + Math.sin(this.t * 2.6) * 1.3, MARKER_R);
     ctx.restore();
     // The bottom of the screen used to carry four stacked lines every frame:
@@ -1951,7 +2038,7 @@ export class HubState {
       // name what is tappable and then get out of the way.
       drawTextCentered(ctx, Input.isTouchDevice()
         ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
-        : 'LEFT/RIGHT WALK   UP/DOWN PICK   ENTER CONFIRM   CLICK A POSTER', W / 2, H - 48, '#8a8a98', HINT_S);
+        : 'LEFT/RIGHT WALK   SPACE JUMP   UP/DOWN PICK   ENTER CONFIRM', W / 2, H - 48, '#8a8a98', HINT_S);
       ctx.restore();
     }
     // The same speech card the stages use — portrait, name header, words —
@@ -1959,7 +2046,7 @@ export class HubState {
     // court is the same act as a hero talking mid-stage, so it gets the same
     // chrome; the null-speaker path handles the cabinet and shelf notes.
     if (this.talk) drawSpeech(ctx, this.talk, { light: true });
-    // No touch buttons to draw at all: EXIT is a station like any other.
+    this.drawChromeWalkButtons();
   }
 
   // The blown-up read. drawPoster is fully parametric — the plate, the star,
@@ -1998,7 +2085,7 @@ export class HubState {
     // it is tilted and half in shadow because it is a thing in a room; held up
     // to read, it is just the sheet.
     drawPoster(ctx, lerp(srcCx, W / 2), lerp(srcCy, 8 + DST_H / 2) - ph / 2, pw, ph, {
-      pal: palFor(s.cab, s.unlocked), tilt: lerp(p.tilt, 0), torn: p.torn, lit: 1,
+      pal: posterPalFor(s), tilt: lerp(p.tilt, 0), torn: p.torn, lit: 1,
     });
     ctx.save();
     ctx.globalAlpha = e;
@@ -2009,19 +2096,25 @@ export class HubState {
 }
 
 // --------------------------------------------------------------------------
-// TROPHY WORKSHOP
+// TROPHY ROOM
 //
 // A room, not a report. Campaign progress is embodied as objects on the wall,
 // while the floor is a tiny no-stakes practice space: swap heroes at the podium
 // and hit the sprung target as often as desired. Nothing here changes campaign
 // rewards or combat cooldowns.
 const TROPHY_FLOOR_Y = 218;
+const TROPHY_WORLD_W = 2820;
 const TROPHY_EXIT_X = 30;
-const TROPHY_RECORDS_X = 108;
-const TROPHY_PODIUM_X = 190;
-const TROPHY_DUMMY_X = 365;
+const TROPHY_RECORDS_X = 92;
+const TROPHY_LEVELS_X = 500;
+const TROPHY_LEVEL_BOARD_W = 184;
+const TROPHY_LEVEL_BOARD_GAP = 12;
+const TROPHY_ACT_GAP = 24;
+const TROPHY_BOSSES_X = 2420;
+const TROPHY_PODIUM_X = 2590;
+const TROPHY_DUMMY_X = 2710;
 const TROPHY_ATTACK_RANGE = 112;
-const TROPHY_MOVE_SPEED = 92;
+const TROPHY_MOVE_SPEED = 140;
 const TROPHY_BOSSES = [
   { id: 'neon', label: 'COPTER', relic: 'copter' },
   { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
@@ -2043,9 +2136,10 @@ export class TrophyRoomState {
     Input.setButtons([]);
     Input.setChromeButtons([]);
     this.t = 0;
-    this.px = 78;
+    this.px = 90;
     this.facing = 1;
     this.walkTarget = null;
+    this.walkHoldT = 0;
     this.pending = null;
     this.player = new Player(this.heroId());
     this.player.grounded = true;
@@ -2057,7 +2151,6 @@ export class TrophyRoomState {
     this.bestChain = 0;
     this.comboT = 0;
     this.heroFlashT = 0;
-    this.recordsPage = 0;
   }
 
   exit() {
@@ -2065,66 +2158,64 @@ export class TrophyRoomState {
     Input.setChromeButtons([]);
   }
 
-  toasterCount() {
-    return STAGES.reduce((n, s) => n + ((this.save.slot.campaign.plugs[s.id] || [])[2] ? 1 : 0), 0);
-  }
-
-  sRankCount() {
-    return Object.values(this.save.slot.campaign.ranks)
-      .filter((r) => r === 'S' || r === 'CONCERNING').length;
-  }
-
   defeatedBosses() {
     return TROPHY_BOSSES.filter((b) => !!this.save.slot.campaign.bossesDown[b.id]);
   }
 
-  cabinetRecords() {
-    const order = { C: 0, B: 1, A: 2, S: 3, CONCERNING: 4 };
-    return CABINETS.map((cab) => {
-      const stages = stagesForCabinet(cab.id);
-      const plugs = stages.reduce((n, s) => n + (this.save.slot.campaign.plugs[s.id] || []).filter(Boolean).length, 0);
-      const ranks = stages.map((s) => this.save.slot.campaign.ranks[s.id]).filter(Boolean);
-      const rank = ranks.reduce((best, r) => !best || order[r] > order[best] ? r : best, null);
-      return { cab, plugs, max: stages.length * 3, rank };
-    });
-  }
-
-  statPages() {
+  statGroups() {
     const slot = this.save.slot;
     const clumsy = clumsiestHero(slot);
     const clumsyName = clumsy ? (HERO_BY_ID[clumsy[0]]?.short || clumsy[0]).toUpperCase() : 'NOBODY';
+    const overtimeOpen = !!slot.campaign.storyFlags.sawEnding;
+    const bestLevelScore = Math.max(0, ...Object.values(slot.campaign.bestScore || {}));
     return [
       {
-        title: 'CAREER',
+        title: 'PLAY',
         rows: [
           ['RUNS', formatCoins(slot.stats.runs)],
           ['TIME PLAYED', formatPlaytime(slot.playtimeSec)],
-          ['DISTANCE', formatCoins(slot.stats.distanceTraveled)],
-          ['LIFETIME COINS', formatCoins(slot.stats.coinsEarned)],
+          overtimeOpen
+            ? ['OVERTIME HIGH SCORE', formatCoins(slot.overtime.best)]
+            : ['BEST LEVEL SCORE', bestLevelScore ? formatCoins(bestLevelScore) : '—'],
         ],
       },
       {
-        title: 'WEAR & TEAR',
+        title: 'CAREER',
         rows: [
+          ['LIFETIME COINS', formatCoins(slot.stats.coinsEarned)],
           ['LIVES LOST', formatCoins(slot.stats.deaths)],
-          ['POWERUPS', formatCoins(slot.stats.powerupsCollected)],
-          ['APPLIANCES', formatCoins(slot.stats.appliancesFound)],
           ['CLUMSIEST', clumsy ? `${clumsyName} x${clumsy[1]}` : clumsyName],
         ],
       },
       {
         title: 'COLLECTION',
         rows: [
-          ['TOASTERS', `${this.toasterCount()}/${STAGES.length}`],
-          ['S-RANKS', formatCoins(this.sRankCount())],
-          ['OVERTIME BEST', formatCoins(slot.overtime.best)],
-          ['BEST RELAY', formatCoins(slot.overtime.bestRelay)],
+          ['TOASTERS FOUND', formatCoins(slot.stats.appliancesFound)],
+          ['PLUGS', `${totalPlugs(slot)}/${MAX_PLUGS}`],
+          ['LEVELS CLEARED', `${Object.keys(slot.campaign.ranks).length}/${STAGES.length}`],
         ],
       },
     ];
   }
 
+  levelRecords() {
+    const campaign = this.save.slot.campaign;
+    return CABINETS.map((cabinet) => ({
+      cabinet,
+      levels: stagesForCabinet(cabinet.id).map((stage) => ({
+        stage,
+        plugs: (campaign.plugs[stage.id] || []).filter(Boolean).length,
+        rank: campaign.ranks[stage.id] || '-',
+        score: campaign.bestScore[stage.id] || 0,
+      })),
+    }));
+  }
+
   near(x, r = 34) { return Math.abs(this.px - x) <= r; }
+
+  camX() {
+    return Math.max(0, Math.min(TROPHY_WORLD_W - W, this.px - W * 0.42));
+  }
 
   cycleHero(dir = 1) {
     const at = HEROES.findIndex((h) => h.id === this.player.heroId);
@@ -2136,12 +2227,6 @@ export class TrophyRoomState {
     Audio.sfx('power');
   }
 
-  cycleRecords(dir = 1) {
-    const n = this.statPages().length;
-    this.recordsPage = (this.recordsPage + dir + n) % n;
-    Audio.sfx('ui');
-  }
-
   queueInteraction(kind, target) {
     this.pending = kind;
     this.walkTarget = target;
@@ -2151,19 +2236,17 @@ export class TrophyRoomState {
     const kind = this.pending;
     this.pending = null;
     this.walkTarget = null;
-    if (kind === 'exit') this.flow.toHub();
-    else if (kind === 'records' || kind === 'recordsNext') this.cycleRecords(1);
-    else if (kind === 'recordsPrev') this.cycleRecords(-1);
-    else if (kind === 'podium' || kind === 'podiumNext') this.cycleHero(1);
+    if (kind === 'podium' || kind === 'podiumNext') this.cycleHero(1);
     else if (kind === 'podiumPrev') this.cycleHero(-1);
     else if (kind === 'dummy') this.attackDummy();
   }
 
   attackDummy() {
-    if (!this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) {
-      this.queueInteraction('dummy', TROPHY_DUMMY_X - 68);
-      return false;
-    }
+    // Ability keys/buttons are attacks, never navigation. Tapping the physical
+    // target has its own explicit walk-over path in update(); pressing Shift or
+    // right-click somewhere else in the room must not pull the hero across the
+    // gallery toward it.
+    if (!this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) return false;
     const type = this.player.hero.ability.type;
     this.attackType = type;
     this.attackT = 0.52;
@@ -2211,28 +2294,25 @@ export class TrophyRoomState {
     // The room itself is the touch UI. Tapping an exhibit walks over and uses
     // it; tapping open floor just walks there.
     if (Input.pressed('pointer')) {
-      const x = Input.pointer.x, y = Input.pointer.y;
-      if (x < 62) this.queueInteraction('exit', 70);
-      else if (x >= 56 && x <= 154 && y >= 160) {
-        this.queueInteraction(x < TROPHY_RECORDS_X ? 'recordsPrev' : 'recordsNext', TROPHY_RECORDS_X + 45);
-      }
-      else if (x >= 145 && x <= 232 && y > 142) {
+      const x = Input.pointer.x + this.camX(), y = Input.pointer.y;
+      if (x < 62) { this.pending = null; this.walkTarget = 34; }
+      else if (x >= TROPHY_PODIUM_X - 45 && x <= TROPHY_PODIUM_X + 45 && y > 142) {
         this.queueInteraction(x < TROPHY_PODIUM_X ? 'podiumPrev' : 'podiumNext', TROPHY_PODIUM_X + 48);
       }
       else if (x >= TROPHY_DUMMY_X - 35 && y > 112) this.queueInteraction('dummy', TROPHY_DUMMY_X - 68);
-      else { this.pending = null; this.walkTarget = Math.max(68, Math.min(414, x)); }
+      else { this.pending = null; this.walkTarget = Math.max(68, Math.min(TROPHY_WORLD_W - 30, x)); }
     }
 
     if (Input.pressed('ability')) this.attackDummy();
     if (Input.pressed('jump')) this.player.jumpPressed(Audio);
 
     if (Input.pressed('confirm')) {
-      if (this.near(TROPHY_EXIT_X, 54)) this.flow.toHub();
-      else if (this.near(TROPHY_RECORDS_X, 46)) this.cycleRecords(1);
-      else if (this.near(TROPHY_PODIUM_X, 58)) this.cycleHero(1);
+      if (this.near(TROPHY_PODIUM_X, 58)) this.cycleHero(1);
       else if (this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)) this.attackDummy();
     }
 
+    const directionHeld = Input.held('left') || Input.held('right');
+    const walkSpeed = heldWalkSpeed(TROPHY_MOVE_SPEED, this.walkHoldT);
     let move = (Input.held('right') ? 1 : 0) - (Input.held('left') ? 1 : 0);
     if (move) { this.walkTarget = null; this.pending = null; }
     if (!move && this.walkTarget != null) {
@@ -2245,47 +2325,43 @@ export class TrophyRoomState {
     }
     if (move) {
       this.facing = move;
-      this.px = Math.max(68, Math.min(414, this.px + move * TROPHY_MOVE_SPEED * dt));
+      this.px = Math.max(22, Math.min(TROPHY_WORLD_W - 30, this.px + move * walkSpeed * dt));
+      if (this.px <= 50) { this.flow.toHub(); return; }
     } else if (!this.attackT) this.facing = this.px < TROPHY_DUMMY_X ? 1 : -1;
 
-    this.player.update(dt, Input, { speed: move ? TROPHY_MOVE_SPEED : 0 });
+    const steeringHeld = Input.held('pointer') && this.walkTarget != null;
+    this.walkHoldT = directionHeld || steeringHeld
+      ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
+      : 0;
+    this.player.update(dt, Input, { speed: move ? walkSpeed : 0 });
   }
 
-  drawToasterCase(ctx) {
-    const got = this.toasterCount();
-    const x0 = 18, y0 = 48, cw = 18, ch = 27;
-    // Warm case light grows with the collection rather than switching on at an
-    // arbitrary threshold. Empty slots remain visible, so every missing object
-    // has a physical address instead of only changing a counter.
-    const glow = 0.05 + 0.16 * (got / STAGES.length);
-    const caseGlow = ctx.createLinearGradient(x0, y0, x0, y0 + ch * 3);
-    caseGlow.addColorStop(0, `rgba(246,211,60,${glow})`);
-    caseGlow.addColorStop(1, 'rgba(22,18,30,0)');
-    ctx.fillStyle = '#16121e';
-    ctx.fillRect(x0 - 5, y0 - 7, cw * 9 + 10, ch * 3 + 13);
-    ctx.fillStyle = caseGlow;
-    ctx.fillRect(x0 - 4, y0 - 6, cw * 9 + 8, ch * 3 + 11);
-    ctx.strokeStyle = '#6b6350'; ctx.lineWidth = 2;
-    ctx.strokeRect(x0 - 5, y0 - 7, cw * 9 + 10, ch * 3 + 13);
-    for (let i = 0; i < STAGES.length; i++) {
-      const x = x0 + (i % 9) * cw, y = y0 + Math.floor(i / 9) * ch;
-      const earned = !!(this.save.slot.campaign.plugs[STAGES[i].id] || [])[2];
-      ctx.fillStyle = earned ? 'rgba(246,211,60,0.11)' : 'rgba(255,255,255,0.025)';
-      ctx.fillRect(x, y, cw - 2, ch - 3);
-      if (earned) {
-        const featured = !this.save.settings.reducedFlashing && Math.floor(this.t * 0.7) % STAGES.length === i;
-        drawProp(ctx, 'appliance', x + 2, y + 7 - (featured ? 1.5 : 0), 12, 9);
-        if (featured) {
-          ctx.fillStyle = '#d8a878';
-          ctx.fillRect(x + 6, y + 3, 2, 4); ctx.fillRect(x + 10, y + 3, 2, 4);
-        }
-      }
-      else {
-        ctx.strokeStyle = 'rgba(138,138,152,0.22)'; ctx.lineWidth = 1;
-        ctx.strokeRect(x + 3, y + 8, 10, 8);
-      }
-    }
-    drawTextCentered(ctx, `RECOVERED TOASTERS  ${got}/${STAGES.length}`, x0 + cw * 4.5, 35, '#f6d33c', 0.85, 'bold');
+  drawLevelRecords(ctx) {
+    const records = this.levelRecords();
+    drawText(ctx, 'LEVEL RECORDS  —  ALL 27', TROPHY_LEVELS_X, 34, '#8a8a98', 0.82, 'bold');
+    records.forEach((group, index) => {
+      const actBreaks = Math.floor(index / 3);
+      const x = TROPHY_LEVELS_X + index * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP) + actBreaks * TROPHY_ACT_GAP;
+      const y = 46, w = TROPHY_LEVEL_BOARD_W, h = 132;
+      ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 24);
+      drawText(ctx, `ACT ${group.cabinet.act}`, x + 8, y + 9, '#f6d33c', 0.66, 'bold');
+      const nameScale = Math.min(0.72, 128 / Math.max(1, textWidth(group.cabinet.name, 1, 'bold')));
+      drawText(ctx, group.cabinet.name, x + 49, y + 9, '#48e0c8', nameScale, 'bold');
+      group.levels.forEach((record, i) => {
+        const yy = y + 34 + i * 32;
+        ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(72,224,200,0.025)';
+        ctx.fillRect(x + 5, yy - 3, w - 10, 30);
+        drawText(ctx, `LEVEL ${record.stage.index}`, x + 10, yy, '#e8e8f0', 0.82, 'bold');
+        drawText(ctx, `${record.plugs}/3 PLUGS`, x + 78, yy, record.plugs ? '#48e0c8' : '#5a5363', 0.76, 'bold');
+        const rank = record.rank === 'CONCERNING' ? 'CONC.' : record.rank;
+        drawText(ctx, rank, x + 148, yy, record.rank === '-' ? '#5a5363' : '#f6d33c', 0.82, 'bold');
+        const best = record.score ? formatCoins(record.score) : '-';
+        drawText(ctx, 'BEST', x + 10, yy + 14, '#6f7180', 0.62, 'bold');
+        drawText(ctx, best, x + 48, yy + 14, '#e8e8f0', 0.86, 'bold');
+      });
+    });
   }
 
   drawBossRelic(ctx, relic, x, y) {
@@ -2317,102 +2393,91 @@ export class TrophyRoomState {
   }
 
   drawBossCase(ctx) {
-    drawTextCentered(ctx, 'DEFEATED MANAGEMENT', 292, 35, '#f0a0a0', 0.85, 'bold');
-    TROPHY_BOSSES.forEach((b, i) => {
-      const x = 222 + i * 69;
-      const won = !!this.save.slot.campaign.bossesDown[b.id];
-      ctx.fillStyle = won ? '#332b42' : '#17131e';
-      ctx.fillRect(x - 27, 46, 54, 70);
-      ctx.strokeStyle = won ? '#8a7a52' : '#332d3e'; ctx.lineWidth = 1;
-      ctx.strokeRect(x - 27, 46, 54, 70);
-      ctx.save(); ctx.globalAlpha = won ? 1 : 0.12;
-      this.drawBossRelic(ctx, b.relic, x, 58);
-      ctx.restore();
-      ctx.fillStyle = won ? '#6b5430' : '#292431';
-      ctx.fillRect(x - 19, 94, 38, 8); ctx.fillRect(x - 23, 102, 46, 5);
-      drawTextCentered(ctx, won ? b.label : '???', x, 110, won ? '#c8b880' : '#4a4454', 0.62, 'bold');
-    });
-  }
-
-  drawCabinetWall(ctx) {
-    const records = this.cabinetRecords();
-    const x0 = 64, y = 134, pitch = 44, pw = 40, ph = 25;
-    drawText(ctx, 'CABINET RECORDS', x0, y - 7, '#8a8a98', 0.62, 'bold');
-    for (let i = 0; i < records.length; i++) {
-      const r = records[i], x = x0 + i * pitch;
-      ctx.fillStyle = '#17131e'; ctx.fillRect(x, y, pw, ph);
-      ctx.strokeStyle = r.cab.sky[0]; ctx.lineWidth = r.plugs ? 1.5 : 0.7; ctx.strokeRect(x, y, pw, ph);
-      ctx.fillStyle = r.cab.sky[0]; ctx.globalAlpha = r.plugs ? 0.22 : 0.07;
-      ctx.fillRect(x + 2, y + 2, pw - 4, 7); ctx.globalAlpha = 1;
-      drawText(ctx, r.cab.id.slice(0, 4).toUpperCase(), x + 3, y + 3, r.plugs ? '#e8e8f0' : '#5a5363', 0.55, 'bold');
-      // Nine tiny plug lamps: the same physical grammar as the cabinets, small
-      // enough to fit on a brass museum plate.
-      for (let p = 0; p < r.max; p++) {
-        ctx.fillStyle = p < r.plugs ? '#48e0c8' : '#302a38';
-        ctx.fillRect(x + 3 + (p % 9) * 3.2, y + 14 + Math.floor(p / 9) * 3, 2, 2);
+    const earned = this.defeatedBosses();
+    drawTextCentered(ctx, 'MANAGEMENT ARCHIVE', TROPHY_BOSSES_X, 45, '#b8a0b8', 1.05, 'bold');
+    if (!earned.length) {
+      // One closed archive instead of three mystery silhouettes. Before the
+      // first boss, even the number and shapes of future trophies are spoilers.
+      ctx.fillStyle = '#17131e'; ctx.fillRect(TROPHY_BOSSES_X - 97, 56, 194, 70);
+      ctx.strokeStyle = '#332d3e'; ctx.lineWidth = 1; ctx.strokeRect(TROPHY_BOSSES_X - 97, 56, 194, 70);
+      for (let y = 61; y < 120; y += 8) {
+        ctx.fillStyle = y % 16 ? '#211b29' : '#292231'; ctx.fillRect(TROPHY_BOSSES_X - 92, y, 184, 5);
       }
-      const rank = r.rank === 'CONCERNING' ? '!' : (r.rank || '-');
-      drawTextCentered(ctx, rank, x + 35, y + 14, r.rank ? '#f6d33c' : '#4a4454', 0.72, 'bold');
+      ctx.fillStyle = '#4a4454'; ctx.fillRect(TROPHY_BOSSES_X - 10, 82, 20, 19);
+      drawTextCentered(ctx, 'ARCHIVE SEALED', TROPHY_BOSSES_X, 113, '#5a5363', 0.82, 'bold');
+      return;
     }
+    earned.forEach((b, i) => {
+      const x = TROPHY_BOSSES_X + (i - (earned.length - 1) / 2) * 69;
+      ctx.fillStyle = '#332b42';
+      ctx.fillRect(x - 27, 46, 54, 70);
+      ctx.strokeStyle = '#8a7a52'; ctx.lineWidth = 1;
+      ctx.strokeRect(x - 27, 46, 54, 70);
+      this.drawBossRelic(ctx, b.relic, x, 58);
+      ctx.fillStyle = '#6b5430';
+      ctx.fillRect(x - 19, 94, 38, 8); ctx.fillRect(x - 23, 102, 46, 5);
+      drawTextCentered(ctx, b.label, x, 110, '#c8b880', 0.72, 'bold');
+    });
   }
 
   drawRecordsBoard(ctx) {
-    const pages = this.statPages();
-    const page = pages[this.recordsPage % pages.length];
-    const x = 57, y = 164, w = 98, h = 47;
-    // A repurposed split-flap departures board: information belongs to the
-    // room, behind glass, rather than arriving in a dialogue balloon.
+    const groups = this.statGroups();
+    const x = TROPHY_RECORDS_X + 13, y = 69, w = 285, h = 84, colW = w / 3;
+    // A small wall board, not a screen-filling report. Three semantic columns
+    // keep related values together, and every stat stays on one compact line.
     ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 9);
-    drawText(ctx, page.title, x + 7, y + 5, '#f6d33c', 0.62, 'bold');
-    drawText(ctx, `${this.recordsPage + 1}/${pages.length}`, x + w - 18, y + 5, '#8a8a98', 0.55, 'bold');
-    page.rows.forEach(([label, value], i) => {
-      const yy = y + 15 + i * 7.2;
-      ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(72,224,200,0.025)';
-      ctx.fillRect(x + 4, yy - 1, w - 8, 7);
-      drawText(ctx, label, x + 7, yy, '#8a8a98', 0.5, 'bold');
-      const shown = String(value);
-      drawText(ctx, shown, x + w - 7 - textWidth(shown, 0.5), yy, '#e8e8f0', 0.5, 'bold');
+    ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 12);
+    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, y + 7, '#f6d33c', 0.88, 'bold');
+    groups.forEach((group, column) => {
+      const gx = x + column * colW;
+      if (column) { ctx.fillStyle = '#332d3e'; ctx.fillRect(gx, y + 18, 1, h - 23); }
+      drawText(ctx, group.title, gx + 6, y + 21, '#48e0c8', 0.58, 'bold');
+      group.rows.forEach(([label, value], row) => {
+        const yy = y + 36 + row * 14;
+        ctx.fillStyle = row % 2 ? 'rgba(255,255,255,0.014)' : 'rgba(72,224,200,0.025)';
+        ctx.fillRect(gx + 4, yy - 3, colW - 8, 12);
+        const shown = String(value);
+        const valueScale = 0.7;
+        const available = colW - 16 - textWidth(shown, valueScale, 'bold');
+        const labelScale = Math.max(0.43, Math.min(0.56, (available - 4) / Math.max(1, textWidth(label, 1, 'bold'))));
+        drawText(ctx, label, gx + 7, yy, '#8a8a98', labelScale, 'bold');
+        drawText(ctx, shown, gx + colW - 7 - textWidth(shown, valueScale, 'bold'), yy, '#e8e8f0', valueScale, 'bold');
+      });
     });
-    // Brass side tabs make the touch affordance physical: tap the left or
-    // right half of the fixture to flip the board in that direction.
-    ctx.fillStyle = '#c8a020';
-    ctx.beginPath(); ctx.moveTo(x - 5, y + h / 2); ctx.lineTo(x, y + h / 2 - 4); ctx.lineTo(x, y + h / 2 + 4); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(x + w + 5, y + h / 2); ctx.lineTo(x + w, y + h / 2 - 4); ctx.lineTo(x + w, y + h / 2 + 4); ctx.closePath(); ctx.fill();
   }
 
   drawRoom(ctx) {
-    ctx.fillStyle = '#0d0a12'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 24, W, TROPHY_FLOOR_Y - 24);
+    ctx.fillStyle = '#0d0a12'; ctx.fillRect(0, 0, TROPHY_WORLD_W, H);
+    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 24, TROPHY_WORLD_W, TROPHY_FLOOR_Y - 24);
     // Reclaimed wall panels stop the museum from reading as one flat fill.
-    for (let x = 0; x < W; x += 48) {
+    for (let x = 0; x < TROPHY_WORLD_W; x += 48) {
       ctx.fillStyle = (x / 48) % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.035)';
       ctx.fillRect(x, 25, 47, TROPHY_FLOOR_Y - 25);
       ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, 25, 1, TROPHY_FLOOR_Y - 25);
     }
     // Ceiling rail and four uneven museum spots. The beams are deliberately
     // translucent: exhibits should feel lit, not pasted under white triangles.
-    ctx.fillStyle = '#17131e'; ctx.fillRect(0, 24, W, 5);
-    for (const [x, col, strength] of [[100, '#f6d33c', this.toasterCount() / STAGES.length], [292, '#f0a0a0', this.defeatedBosses().length / 3], [190, '#48e0c8', 0.75], [365, '#f6d33c', 0.85]]) {
+    ctx.fillStyle = '#17131e'; ctx.fillRect(0, 24, TROPHY_WORLD_W, 5);
+    for (const [x, col, strength] of [[257, '#48e0c8', 0.55], [788, '#f6d33c', 0.5], [1400, '#f6d33c', 0.5], [2012, '#f6d33c', 0.5], [TROPHY_BOSSES_X, '#f0a0a0', this.defeatedBosses().length / 3], [TROPHY_PODIUM_X, '#48e0c8', 0.75], [TROPHY_DUMMY_X, '#f6d33c', 0.85]]) {
       ctx.fillStyle = '#6a6372'; ctx.fillRect(x - 8, 26, 16, 4);
       const g = ctx.createLinearGradient(0, 30, 0, TROPHY_FLOOR_Y);
       g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save(); ctx.globalAlpha = 0.025 + strength * 0.045; ctx.fillStyle = g;
       ctx.beginPath(); ctx.moveTo(x - 7, 30); ctx.lineTo(x + 7, 30); ctx.lineTo(x + 52, TROPHY_FLOOR_Y); ctx.lineTo(x - 52, TROPHY_FLOOR_Y); ctx.closePath(); ctx.fill(); ctx.restore();
     }
-    ctx.fillStyle = '#44384f'; ctx.fillRect(0, TROPHY_FLOOR_Y, W, H - TROPHY_FLOOR_Y);
-    ctx.fillStyle = '#5a4b63'; ctx.fillRect(0, TROPHY_FLOOR_Y, W, 4);
+    ctx.fillStyle = '#44384f'; ctx.fillRect(0, TROPHY_FLOOR_Y, TROPHY_WORLD_W, H - TROPHY_FLOOR_Y);
+    ctx.fillStyle = '#5a4b63'; ctx.fillRect(0, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 4);
     // Practice-lane mat, taped off and already scuffed from entirely voluntary
     // quality assurance.
-    ctx.fillStyle = '#292432'; ctx.fillRect(250, TROPHY_FLOOR_Y + 5, 158, 23);
-    for (let x = 252; x < 408; x += 16) {
+    ctx.fillStyle = '#292432'; ctx.fillRect(TROPHY_PODIUM_X - 48, TROPHY_FLOOR_Y + 5, 208, 23);
+    for (let x = TROPHY_PODIUM_X - 46; x < TROPHY_DUMMY_X + 70; x += 16) {
       ctx.fillStyle = (x / 16) % 2 ? '#c8a020' : '#3a3030';
       ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 5); ctx.lineTo(x + 16, TROPHY_FLOOR_Y + 10); ctx.lineTo(x + 8, TROPHY_FLOOR_Y + 10); ctx.closePath(); ctx.fill();
     }
     ctx.strokeStyle = 'rgba(200,200,216,0.18)'; ctx.lineWidth = 1;
     for (let i = 0; i < 5; i++) {
-      const x = 282 + i * 25;
+      const x = TROPHY_PODIUM_X + 18 + i * 25;
       ctx.beginPath(); ctx.moveTo(x, TROPHY_FLOOR_Y + 14 + (i % 2) * 4); ctx.lineTo(x + 10, TROPHY_FLOOR_Y + 12); ctx.stroke();
     }
   }
@@ -2460,17 +2525,21 @@ export class TrophyRoomState {
   }
 
   draw(ctx) {
+    const camera = this.camX();
+    ctx.save();
+    ctx.translate(-camera, 0);
     this.drawRoom(ctx);
-    drawTextCentered(ctx, 'TROPHY WORKSHOP', W / 2, 12, '#f6d33c', 1.4, 'title');
 
-    this.drawToasterCase(ctx);
+    this.drawLevelRecords(ctx);
     this.drawBossCase(ctx);
-    this.drawCabinetWall(ctx);
     this.drawRecordsBoard(ctx);
 
-    // The exit is deliberately the food court's same trophy door seen from the
-    // other side, so BACK has a physical place in the room.
-    drawDoor(ctx, TROPHY_EXIT_X - 21, TROPHY_FLOOR_Y - 78, 42, 78, DOOR_PALETTES.shelf, this.t, this.save.settings.reducedFlashing);
+    // This is an open passage, not an interaction. Walking into it returns to
+    // the food court immediately, just like crossing a room boundary.
+    ctx.fillStyle = '#09070d'; ctx.fillRect(0, TROPHY_FLOOR_Y - 82, 52, 82);
+    ctx.fillStyle = '#54475e'; ctx.fillRect(50, TROPHY_FLOOR_Y - 84, 5, 86);
+    ctx.fillStyle = '#211b29'; ctx.fillRect(4, TROPHY_FLOOR_Y - 78, 5, 75);
+    drawTextCentered(ctx, '<', TROPHY_EXIT_X, TROPHY_FLOOR_Y - 46, '#8a8a98', 1.15, 'bold');
     drawTextCentered(ctx, 'FOOD COURT', TROPHY_EXIT_X, TROPHY_FLOOR_Y + 9, '#8a8a98', 0.65, 'bold');
 
     // Hero swap podium: the selected hero is the object being displayed.
@@ -2492,21 +2561,22 @@ export class TrophyRoomState {
     drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), 58);
     drawPlayerMarker(ctx, this.px, TROPHY_FLOOR_Y - this.player.y - 69, MARKER_R);
 
-    if (this.comboT > 0) drawTextCentered(ctx, `CHAIN x${this.chain}   BEST x${this.bestChain}`, TROPHY_DUMMY_X, 126, '#f6d33c', 0.82, 'bold');
-    drawTextCentered(ctx, this.player.hero.short, TROPHY_PODIUM_X, 165, '#48e0c8', 0.78, 'bold');
-    drawTextCentered(ctx, this.player.hero.ability.label, TROPHY_PODIUM_X, 175, '#8a8a98', 0.58, 'bold');
-    const hint = this.near(TROPHY_EXIT_X, 54) ? `${Input.confirmVerb()}: FOOD COURT`
-      : this.near(TROPHY_RECORDS_X, 46) ? (Input.isTouchDevice() ? 'TAP BOARD SIDES: FLIP RECORDS' : `${Input.confirmVerb()}: FLIP RECORDS`)
+    if (this.comboT > 0) drawTextCentered(ctx, `CHAIN x${this.chain}   BEST x${this.bestChain}`, TROPHY_DUMMY_X, 118, '#f6d33c', 0.82, 'bold');
+    drawTextCentered(ctx, this.player.hero.short, TROPHY_PODIUM_X, 184, '#48e0c8', 0.78, 'bold');
+    drawTextCentered(ctx, this.player.hero.ability.label, TROPHY_PODIUM_X, 194, '#8a8a98', 0.58, 'bold');
+    const hint = this.near(TROPHY_EXIT_X, 54) ? 'WALK LEFT: FOOD COURT'
       : this.near(TROPHY_PODIUM_X, 58) ? (Input.isTouchDevice() ? 'TAP PODIUM SIDES: PREV / NEXT' : `${Input.confirmVerb()}: NEXT HERO`)
         : this.near(TROPHY_DUMMY_X, TROPHY_ATTACK_RANGE)
           ? (Input.isTouchDevice() ? 'TAP THE TARGET TO ATTACK' : 'X / SHIFT / RIGHT CLICK: ATTACK')
           : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
+    ctx.restore();
+
+    // Room chrome stays steady while the exhibits move past behind it.
+    drawTextCentered(ctx, 'TROPHY ROOM', W / 2, 12, '#f6d33c', 1.4, 'title');
     drawTextCentered(ctx, hint, W / 2, H - 13, '#c8c8d8', 0.8, 'bold');
-    // The cup has its own little wall bracket rather than floating beside a
-    // line of UI text. Its engraved count is still readable at a glance.
-    ctx.fillStyle = '#6b5430'; ctx.fillRect(W - 53, 188, 38, 5);
-    drawProp(ctx, 'goldTrophy', W - 46, 158, 24, 31);
-    drawTextCentered(ctx, `S x${this.sRankCount()}`, W - 34, 196, '#c8b880', 0.62, 'bold');
+    if (camera < TROPHY_WORLD_W - W - 8) {
+      drawText(ctx, 'MORE  >', W - 64, 29, '#8a8a98', 0.55, 'bold');
+    }
   }
 }
 
@@ -2514,14 +2584,71 @@ export class TrophyRoomState {
 function listMenu(state, opts) {
   if (Input.pressed('down') || Input.pressed('right')) { state.idx = (state.idx + 1) % opts.length; Audio.sfx('ui'); }
   if (Input.pressed('up') || Input.pressed('left')) { state.idx = (state.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+  keepSelectionVisible(state, opts.length);
   if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); return opts[state.idx]; }
+  // A scrollable touch list waits for finger-up before treating a gesture as a
+  // tap. That leaves the same finger free to drag the window without buying or
+  // equipping whichever row happened to be under the initial contact.
+  if (state.visibleRows && Input.isTouchDevice()) return touchListMenu(state, opts);
   if (Input.pressed('pointer')) {
-    const i = Math.floor((Input.pointer.y - state.listY) / state.rowH);
-    if (i >= 0 && i < opts.length) {
+    const i = listIndexAt(state, opts.length, Input.pointer.y);
+    if (i !== null) {
       if (state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
       state.idx = i; Audio.sfx('ui');
     }
   }
+  return null;
+}
+
+function touchListMenu(state, opts) {
+  const scrollCount = opts.length - (state.fixedLastRow ? 1 : 0);
+  const visible = Math.min(scrollCount, state.visibleRows);
+  const indexAtFinger = () => listIndexAt(state, opts.length, Input.pointer.y);
+
+  if (Input.pressed('pointer')) {
+    const pressedIndex = indexAtFinger();
+    state.touchListGesture = pressedIndex !== null ? {
+      y: Input.pointer.y,
+      listStart: state.listStart || 0,
+      moved: false,
+      scrollable: pressedIndex < scrollCount,
+    } : null;
+  }
+
+  const gesture = state.touchListGesture;
+  if (!gesture) return null;
+  const dy = gesture.y - Input.pointer.y;
+  // Eight logical pixels is roughly a fingertip's allowance at the normal 2x
+  // canvas scale: small hand jitter remains a tap, an intentional pull scrolls.
+  if (gesture.scrollable && Math.abs(dy) >= 8) gesture.moved = true;
+  if (gesture.moved) {
+    const maxStart = Math.max(0, scrollCount - visible);
+    state.listStart = Math.max(0, Math.min(maxStart,
+      gesture.listStart + Math.round(dy / state.rowH)));
+    // Keep a selection in the window so fitRows() cannot snap a hand-scrolled
+    // list straight back to the old keyboard selection on the next draw.
+    state.idx = Math.max(state.listStart, Math.min(state.idx, state.listStart + visible - 1));
+  }
+
+  if (!Input.released('pointer')) return null;
+  state.touchListGesture = null;
+  if (gesture.moved) return null;
+  const i = indexAtFinger();
+  if (i === null) return null;
+  if (state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
+  state.idx = i; Audio.sfx('ui');
+  return null;
+}
+
+function listIndexAt(state, count, y) {
+  const scrollCount = count - (state.fixedLastRow ? 1 : 0);
+  const visible = Math.min(scrollCount, state.visibleRows || scrollCount);
+  const localI = Math.floor((y - state.listY) / state.rowH);
+  if (localI >= 0 && localI < visible) {
+    const i = (state.listStart || 0) + localI;
+    return i < scrollCount ? i : null;
+  }
+  if (state.fixedLastRow && localI === visible) return count - 1;
   return null;
 }
 
@@ -2530,7 +2657,7 @@ function listMenu(state, opts) {
 // pitch and the text is centred in it: what the finger finds, what the eye
 // sees, and where the words are, all off the same two numbers.
 function drawSelRow(ctx, state, i, x0) {
-  drawMenuRow(ctx, x0 - 12, state.listY + i * state.rowH + 1, W - (x0 - 12) * 2, state.rowH - 2);
+  drawMenuRow(ctx, x0 - 12, state.listY + listVisualRow(state, i) * state.rowH + 1, W - (x0 - 12) * 2, state.rowH - 2);
 }
 // `dy`/`s2` describe the second line for the rows that stack one — a stage
 // carries its mission blurb under its name — so the pair centres as a block
@@ -2538,8 +2665,14 @@ function drawSelRow(ctx, state, i, x0) {
 // reserve that drop whether or not they draw into it, or the label on a plain
 // BACK row would sit lower than the labels either side of it.
 function rowTextY(state, i, s1 = 1, dy = 0, s2 = s1) {
-  const mid = state.listY + i * state.rowH + state.rowH / 2;
+  const mid = state.listY + listVisualRow(state, i) * state.rowH + state.rowH / 2;
   return mid - (TEXT_INK_TOP * s1 + dy + (TEXT_INK_TOP + TEXT_INK_H) * s2) / 2;
+}
+function listVisualRow(state, i) {
+  if (state.fixedLastRow && i === state.listCount - 1) {
+    return Math.min(state.listCount - 1, state.visibleRows);
+  }
+  return i - (state.listStart || 0);
 }
 
 // Every hub sub-menu is listMenu-driven: arrow keys or a tap-to-select,
@@ -2564,7 +2697,31 @@ const MENU_LIST_BOTTOM = 232, MENU_ROW_MIN = 20, MENU_ROW_MAX = 34;
 const MENU_ROW_S = 1.3;    // row labels
 const MENU_NOTE_S = 1.1;   // the selected row's one-line gloss
 function fitRows(state, count) {
-  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, (MENU_LIST_BOTTOM - state.listY) / count));
+  state.listCount = count;
+  const fixed = state.fixedLastRow ? 1 : 0;
+  const shown = Math.min(count - fixed, state.visibleRows || count) + fixed;
+  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, (MENU_LIST_BOTTOM - state.listY) / shown));
+  keepSelectionVisible(state, count);
+}
+function keepSelectionVisible(state, count) {
+  if (!state.visibleRows) { state.listStart = 0; return; }
+  const scrollCount = count - (state.fixedLastRow ? 1 : 0);
+  const maxStart = Math.max(0, scrollCount - state.visibleRows);
+  state.listStart = Math.max(0, Math.min(state.listStart || 0, maxStart));
+  if (state.fixedLastRow && state.idx === count - 1) return;
+  if (state.idx < state.listStart) state.listStart = state.idx;
+  else if (state.idx >= state.listStart + state.visibleRows) state.listStart = state.idx - state.visibleRows + 1;
+}
+function drawListScrollbar(ctx, state, count) {
+  const scrollCount = count - (state.fixedLastRow ? 1 : 0);
+  if (!state.visibleRows || scrollCount <= state.visibleRows) return;
+  const trackY = state.listY + 2;
+  const trackH = state.rowH * state.visibleRows - 4;
+  const thumbH = Math.max(12, trackH * state.visibleRows / scrollCount);
+  const maxStart = scrollCount - state.visibleRows;
+  const thumbY = trackY + (trackH - thumbH) * (state.listStart || 0) / maxStart;
+  ctx.fillStyle = '#281d2d'; ctx.fillRect(W - 12, trackY, 3, trackH);
+  ctx.fillStyle = '#8a7a94'; ctx.fillRect(W - 12, thumbY, 3, thumbH);
 }
 // The status strip along the bottom of every hub menu. Nudged up from scale 1
 // because on a phone the canvas is barely 2x its 480x270 design size, and a
@@ -2762,8 +2919,8 @@ export class BenchState {
 }
 
 export class ShopState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; }
-  enter() { this.idx = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Input.setMenuButtons(); }
+  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; this.visibleRows = 7; this.fixedLastRow = true; this.listStart = 0; }
+  enter() { this.idx = 0; this.listStart = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {
@@ -2814,6 +2971,7 @@ export class ShopState {
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
+      if (!o.back && (i < this.listStart || i >= this.listStart + this.visibleRows)) return;
       const sel = i === this.idx;
       if (sel) drawSelRow(ctx, this, i, 30);
       const y = rowTextY(this, i, MENU_ROW_S);
@@ -2826,6 +2984,7 @@ export class ShopState {
       if (!o.owned) drawText(ctx, `${formatCoins(o.price)}`, priceX, y, slot.coins >= o.price ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
       if (sel) drawTextCentered(ctx, o.m.desc || 'A MASTERY SIDEGRADE. IT KNOWS WHAT IT DID.', W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
     });
+    drawListScrollbar(ctx, this, opts.length);
     drawMenuHint(ctx, 'BUY/EQUIP');
   }
 }

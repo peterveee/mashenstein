@@ -45,6 +45,7 @@ const POSTER_COPY = {
   cardboard: ["RAY M'N", 'NO ELBOWS'],
   office: ['MISS CHOMP', 'STILL HUNGRY'],
   surge: ['GARY', 'NOT A COPY'],
+  overtime: ['OVERTIME', 'NOT APPROVED'],
 };
 
 // Largest scale that fits `str` in `maxW`, capped. textWidth is linear in
@@ -443,6 +444,38 @@ export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = f
   // one hue in it, so the eye reads it as the subject immediately.
   const star = starPlate(CABINET_STAR[pal.motif], aw * 0.62, ah * 0.94);
   if (star) ctx.drawImage(star, ax + aw * 0.19, ay + ah * 0.06, aw * 0.62, ah * 0.94);
+  // OVERTIME is not one of the nine games and has no hero to advertise. Its
+  // one-sheet appears only after the finale, so it gets a different visual
+  // grammar: an old punch clock, hands already past midnight, with the red
+  // warning hand supplying the one hot colour in the art. It still uses the
+  // same stock, plate and type system as the cabinet posters, so it belongs to
+  // the wall without pretending to be a tenth campaign cabinet.
+  if (pal.motif === 'overtime') {
+    const clockInk = luma(plate) > 0.42 ? '#171020' : '#e8dff4';
+    const cx = ax + aw * 0.5, cy = ay + ah * 0.52;
+    const r = Math.min(aw, ah) * 0.34;
+    stroke(ctx, clockInk, Math.max(0.7, pw * 0.025), (c) => {
+      c.arc(cx, cy, r, 0, Math.PI * 2);
+      c.moveTo(cx - r * 0.58, cy + r * 0.83);
+      c.lineTo(cx - r * 0.82, cy + r * 1.12);
+      c.moveTo(cx + r * 0.58, cy + r * 0.83);
+      c.lineTo(cx + r * 0.82, cy + r * 1.12);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        c.moveTo(cx + Math.cos(a) * r * 0.72, cy + Math.sin(a) * r * 0.72);
+        c.lineTo(cx + Math.cos(a) * r * 0.88, cy + Math.sin(a) * r * 0.88);
+      }
+    });
+    stroke(ctx, clockInk, Math.max(0.9, pw * 0.032), (c) => {
+      c.moveTo(cx, cy);
+      c.lineTo(cx - r * 0.48, cy - r * 0.42);
+    });
+    stroke(ctx, '#e04848', Math.max(1, pw * 0.038), (c) => {
+      c.moveTo(cx, cy);
+      c.lineTo(cx + r * 0.16, cy - r * 0.72);
+    });
+    plain(ctx, '#e04848', (c) => c.arc(cx, cy, Math.max(0.8, pw * 0.025), 0, Math.PI * 2));
+  }
   // The genre motif keeps a place, demoted to a corner badge — a logo ON the
   // artwork rather than instead of it.
   const art = GENRE_MOTIFS[pal.motif];

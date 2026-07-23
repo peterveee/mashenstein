@@ -409,6 +409,10 @@ export function rootMenu(dev) {
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },
+      { label: 'TROPHY ROOM', act: () => {
+        dev.close();
+        dev.ctx.Flow.openTrophyRoom();
+      } },
       { label: 'CAST ROLL', act: () => {
         dev.close();
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));

@@ -64,8 +64,8 @@ export const PICKUPS = {
   // Not a timed power: banks one supercharged ability, so it carries its own
   // flag instead of a `power` the Powerups clock would try to run down.
   capRelay:  { w: 8, h: 8, sprite: 'capRelay', relayCharge: true },
-  appliance: { w: 12, h: 8, sprite: 'appliance', appliance: true },
-  cord:      { w: 8, h: 6, sprite: 'fuse', cord: true },
+  appliance: { w: 18, h: 12, sprite: 'appliance', appliance: true, bob: true },
+  cord:      { w: 14, h: 9, sprite: 'cord', cord: true },
   resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
 };
 

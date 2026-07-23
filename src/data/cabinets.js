@@ -30,7 +30,7 @@ export const CABINETS = [
   {
     id: 'plumber', name: 'PLUMBER PANIC', act: 1, style: 'pixel',
     genre: 'PLATFORMER', unlockPlugs: 0,
-    mechanic: 'qcrates', // breakable ?-crates, pipes as secret routes
+    mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
     // ONE harmonic bed (the original A-F-C-G loop) for the whole song — no

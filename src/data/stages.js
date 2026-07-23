@@ -40,7 +40,7 @@ export const STAGES = [
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
       introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.' }),
   S('plumber', 2,
-    { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 ?-CRATES. THE ? IS RHETORICAL.' },
+    { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
   S('plumber', 3,
     { type: 'fuse', desc: 'CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS.' },

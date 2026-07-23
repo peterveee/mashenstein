@@ -17,7 +17,7 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [12, 9], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [12, 9], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } from '../data/jokes.js';
@@ -2358,7 +2358,7 @@ const GUIDE_PAGES = [
   {
     title: 'TOUCH THESE ON PURPOSE', color: '#48e0c8', hint: 'TEAL = RUN INTO IT. IT IS FINE.',
     rows: [
-      { s: '_qcrate', name: '?-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
+      { s: '_qcrate', name: '!-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
       { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
@@ -2389,7 +2389,7 @@ const GUIDE_PAGES = [
       { s: 'coin', name: 'COIN', desc: 'MONEY. THE ARCADE RUNS ON IT.' },
       { s: 'battery', name: 'BATTERY', desc: '+1 BATTERY CELL. HEALTH, BASICALLY.' },
       { s: 'appliance', name: 'GOLDEN TOASTER', desc: 'THE THIRD PLUG. GRAB IT MID-STAGE.' },
-      { s: 'fuse', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
+      { s: 'cord', name: 'CORD PIECE', desc: 'MISSION PICKUP. COLLECT ALL THE PIECES.' },
       { s: 'resident', name: 'RESIDENT', desc: 'ALIVE. WAVES. FOLLOWS YOU. ESCORT THEM TO THE FINISH.' },
     ],
   },

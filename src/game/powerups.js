@@ -12,7 +12,7 @@ export const POWER_DEFS = {
   unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
 };
 
-// Shared by drip spawns and ?-crate prizes. The borrowed traits are exciting
+// Shared by drip spawns and !-crate prizes. The borrowed traits are exciting
 // finds without crowding out the established staple capsules. Three staples
 // share the 52% tail since Slow-Mo was retired — the reduced variety is the
 // point: nothing left in the common pool fights the player for control.

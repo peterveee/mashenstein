@@ -11,7 +11,7 @@ import { getSprite } from '../src/engine/sprites.js';
 import { buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, HERO_DRAW_W, HERO_DRAW_H } from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
-import { PROP_PAINTERS, drawProp, propFrames, propTall, glowSprite, sparkSprite } from '../src/sprites/props.js';
+import { PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
@@ -44,6 +44,7 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 let zoom = 3;
 let renderScale = 3;
 let animate = true;
+const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel']);
 
 function section(id, title, note) {
   const s = document.createElement('section');
@@ -81,11 +82,12 @@ function navSeparator(label) {
 // the browser downsamples the backing store on the way to the screen, so
 // sub-pixel stroke differences survive as tone instead of snapping to whole
 // pixels. That is the only honest way to eyeball a 1.2px-vs-0.7px line.
-function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true } = {}) {
+function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true, smooth = false } = {}) {
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
   card.dataset.search = (name + ' ' + (sub || '')).toLowerCase();
   const canvas = document.createElement('canvas');
+  if (smooth) canvas.classList.add('smooth-preview');
   const logicalW = Math.max(1, Math.round(w));
   const logicalH = Math.max(1, Math.round(h));
   const rs = typeof hires === 'number' ? hires : hires ? renderScale : 1;
@@ -209,7 +211,14 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   tile(grid, label, sub, w, h, (ctx, t) => {
     ctx.translate(0, -(GROUND_Y - e.alt - e.h - pad));
     drawWorldEntity(ctx, e, e.x - pad, t, style, {});
-  }, { animated: true });
+  }, {
+    animated: true,
+    // Selected small vector props render at twice their display density, then
+    // the browser downsamples them smoothly. Other world sprites retain the
+    // gallery's deliberately pixelated inspection mode.
+    hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? 6 : true,
+    smooth: SMOOTH_PREVIEW_PROPS.has(e.type),
+  });
 }
 
 // ---------------------------------------------------------------- 1. backgrounds
@@ -490,9 +499,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     const fh = Math.round(h * propTall(n));
     const frames = propFrames(n);
     tile(grid, n, `${w}x${fh}${frames > 1 ? ` · ${frames}f` : ''}`, w + 8, fh + 8, (ctx, t) => {
-      const f = frames > 1 ? Math.floor(t * 8) % frames : 0;
+      const f = frames > 1 ? Math.floor(t * propFps(n)) % frames : 0;
       drawProp(ctx, n, 4, 4, w, fh, f);
-    }, { animated: frames > 1 });
+    }, { animated: frames > 1, hires: SMOOTH_PREVIEW_PROPS.has(n) ? 6 : true, smooth: SMOOTH_PREVIEW_PROPS.has(n) });
   }
 }
 
@@ -561,7 +570,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   for (const type of Object.keys(PICKUPS)) {
     const def = PICKUPS[type];
     const e = makePickup(type, 100);
-    entityTile(grid, type, `${def.w}x${def.h}${def.power ? ' · ' + def.power : ''}`, e, style);
+    const frames = propFrames(type);
+    entityTile(grid, type, `${def.w}x${def.h}${frames > 1 ? ` · ${frames}f` : ''}${def.power ? ' · ' + def.power : ''}`, e, style);
   }
 }
 

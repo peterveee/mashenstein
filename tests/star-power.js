@@ -66,7 +66,7 @@ assert(toons === 0, 'a hurt hero flickers out on the off half of the blink');
 drawHeroSprite(counting, flickerPlayer, HEROES[0].id, blinkT, 0, false, { flat: true, invincible: 6, settings: save.settings });
 assert(toons > 0, 'star power overrides the i-frame blink');
 
-// ---- breaking an overhead ?-box announces itself, coins and all -----------
+// ---- breaking an overhead !-box announces itself, coins and all -----------
 const { makeObstacle } = await import('../src/game/entities.js');
 const heard = [];
 const realSfx = Audio.sfx.bind(Audio);
@@ -77,7 +77,7 @@ const boxRun = new RunState({ stage, save, seed: 3, difficulty: 1, onEnd: () => 
 boxRun.enter();
 boxRun.fxRng.chance = () => false;   // coins, not a prize capsule
 boxRun.breakObstacle(box);
-assert(heard.some((s) => s.name === 'blockBreak'), 'a ?-box break gets its own cue, not the generic crunch');
+assert(heard.some((s) => s.name === 'blockBreak'), 'a !-box break gets its own cue, not the generic crunch');
 const spray = heard.find((s) => s.name === 'coinSpray');
 assert(spray, 'the coins spilling out are audible');
 assert(spray && spray.opt.count === 3, `the spray knows how many coins it is scattering (${spray && spray.opt.count})`);

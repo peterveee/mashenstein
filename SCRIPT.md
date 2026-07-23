@@ -298,7 +298,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | Stage | Mission | Challenge |
 |---|---|---|
 | 1 | REACH THE BREAKER. FLIP IT. SAVE EVERYTHING. | COLLECT 20 COINS |
-| 2 | BREAK 6 ?-CRATES. THE ? IS RHETORICAL. | TAKE NO DAMAGE |
+| 2 | BREAK 6 !-CRATES. THE ! MEANS HIT IT. | TAKE NO DAMAGE |
 | 3 | CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS. | COLLECT 25 COINS |
 
 *If the fuse survives:* `THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.`

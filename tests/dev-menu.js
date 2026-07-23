@@ -53,6 +53,8 @@ const bundle = outputFiles[0].text;
 
   dom.key('Backquote'); frames(4);
   assert(dev.open, 'backquote opens the dev menu');
+  assert(dev.top().items.some((item) => item.label === 'TROPHY ROOM' && item.act),
+    'trophy room is a direct top-level dev-menu destination');
 
   // The underlying state must be frozen while the menu is up.
   const stateBefore = globalThis.window.__mash_state;

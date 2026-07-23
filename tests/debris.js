@@ -31,7 +31,7 @@ for (const [type, def] of Object.entries(OBSTACLES)) {
   assert(DEBRIS_MATS[d.mat], `${type} debris names a material the audio cue knows (${d.mat})`);
 }
 assert(DEBRIS_MATS[DEBRIS_DEFAULT.mat], 'the fallback material is a real one too');
-assert(DEBRIS.qcrate.mat === 'gold', 'the ?-box scatters with its own coin-flavoured tinkle');
+assert(DEBRIS.qcrate.mat === 'gold', 'the !-box scatters with its own coin-flavoured tinkle');
 assert(Audio.sfx('debris', { mat: 'stone' }) === undefined, 'the cue is safe to fire with no audio context');
 assert(DEBRIS.zombie && DEBRIS.drone && DEBRIS.crate, 'the common enemies and blocks all have their own material');
 assert(Array.isArray(DEBRIS_DEFAULT.colors), 'unlisted types fall back to a valid default');

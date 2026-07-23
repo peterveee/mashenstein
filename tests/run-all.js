@@ -12,6 +12,7 @@ const suites = [
   'tests/hero-kits.js',
   'tests/reliability.js',
   'tests/mouse-controls.js',
+  'tests/shop-menu.js',
   'tests/trophy-workshop.js',
   'tests/breaker-bonus.js',
   'tests/props.js',

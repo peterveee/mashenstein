@@ -16,6 +16,7 @@ const { Rng } = await import('../src/engine/rng.js');
 const { PLAYER_X } = await import('../src/game/player.js');
 const { VIEW_W } = await import('../src/engine/camera.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
+const { chrome } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
 const { Save, defaultSlot, defaultSettings } = await import('../src/engine/save.js');
 
@@ -298,10 +299,39 @@ const oldHub = new HubState({ save, flow: hubFlow });
 oldHub.px = 438; oldHub.facing = -1; oldHub.exit();
 const returnedHub = new HubState({ save, flow: hubFlow }); returnedHub.enter();
 assert(returnedHub.px === 438 && returnedHub.facing === -1, 'food-court position and facing survive a state round trip');
+assert(Input.context === 'hub' && Input.actionForKey('Space') === 'jump',
+  'Space maps to jump in the food court');
+assert(Input.actionForKey('ArrowUp') === 'up' && Input.actionForKey('ArrowDown') === 'down',
+  'food-court chooser navigation stays on Up/Down');
+Input.press('jump'); returnedHub.update(1 / 60); Input.release('jump'); Input.endFrame();
+assert(returnedHub.jumpY > 0 && returnedHub.jumpVy > 0,
+  'Space starts a physical food-court jump');
+for (let i = 0; i < 60; i++) returnedHub.update(1 / 60);
+assert(returnedHub.jumpY === 0 && returnedHub.jumpVy === 0,
+  'the food-court jump lands cleanly');
+chrome.mode = 'side';
+chrome.jump = { x: 35, y: 220, r: 32, zone: { x: 0, y: 0, w: 70, h: 270 } };
+chrome.ability = { x: 925, y: 220, r: 32, zone: { x: 890, y: 60, w: 70, h: 210 } };
+Input.usingTouch = false;
+returnedHub.setChromeWalkButtons();
+assert(Input.chromeButtons.length === 0,
+  'food court keeps second-canvas walking controls hidden outside touch mode');
+Input.usingTouch = true;
+returnedHub.setChromeWalkButtons();
+assert(Input.chromeButtons.map((b) => b.action).join(',') === 'left,right',
+  'food court registers left/right walking controls on the second canvas in touch mode');
 const hubWalkStart = returnedHub.px;
 const npcStart = returnedHub.npcs()[1].x;
-Input.press('right'); returnedHub.update(0.5); Input.release('right'); Input.endFrame();
-assert(returnedHub.px === hubWalkStart + 60, 'food-court walking uses the faster 120-unit pace');
+Input.press('right');
+returnedHub.update(0.5); Input.endFrame();
+const firstHubStep = returnedHub.px - hubWalkStart;
+returnedHub.update(0.5);
+const secondHubStep = returnedHub.px - hubWalkStart - firstHubStep;
+Input.release('right'); Input.endFrame();
+assert(firstHubStep === 60, 'food-court walking starts at the precise 120-unit pace');
+assert(secondHubStep > firstHubStep, 'holding a food-court direction smoothly accelerates walking');
+chrome.mode = 'none'; returnedHub.setChromeWalkButtons();
+Input.usingTouch = false;
 assert(returnedHub.npcs()[1].x !== npcStart, 'food-court heroes stroll during their loiter cycle');
 returnedHub.px = hubWalkStart;
 for (let i = 0; i < 200; i++) returnedHub.update(0.1);
@@ -334,7 +364,6 @@ assert(returnedHub.npcs().filter((n) => n.pinned).every((n) => Math.abs(n.x - n.
 // instead of intercepting taps/confirm or standing over the counter art.
 const repair = returnedHub.stations().find((s) => s.type === 'bench');
 const obstruction = returnedHub.npcs().find((n) => !n.pinned);
-const staffBefore = returnedHub.npcs().filter((n) => n.pinned).map((n) => [n.id, n.x]);
 returnedHub.px = repair.x;
 obstruction.x = repair.x;
 obstruction.state = 'idle';
@@ -358,8 +387,20 @@ assert(obstruction.state === 'walk' && obstruction.clearingStation && obstructio
 for (let i = 0; i < 30; i++) returnedHub.updateNpcs(0.1);
 assert(Math.abs(obstruction.x - pawn.x) >= returnedHub.loiterClear(pawn) - 0.01,
   'wandering NPC clears the full pawn-shop interaction area');
+for (const door of returnedHub.stations().filter((s) =>
+  s.type === 'exit' || s.type === 'arcade' || s.type === 'shelf' || s.type === 'backroom')) {
+  returnedHub.px = door.x;
+  obstruction.x = door.x;
+  obstruction.state = 'idle';
+  returnedHub.updateNpcs(0.1);
+  assert(obstruction.state === 'walk' && obstruction.clearingStation,
+    `wandering NPC immediately makes way at the ${door.type} door`);
+  for (let i = 0; i < 30; i++) returnedHub.updateNpcs(0.1);
+  assert(Math.abs(obstruction.x - door.x) >= returnedHub.loiterClear(door) - 0.01,
+    `wandering NPC clears the full ${door.type} doorway`);
+}
 assert(returnedHub.npcs().filter((n) => n.pinned)
-  .every((n) => Math.abs(n.x - staffBefore.find(([id]) => id === n.id)[1]) < 0.01),
+  .every((n) => !n.clearingStation && Math.abs(n.x - n.home) <= n.roam + 0.01),
   'Gary and Dolores stay behind their counters while other NPCs make way');
 returnedHub.exit();
 

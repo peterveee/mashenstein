@@ -15,9 +15,8 @@ export function formatPlaytime(sec) {
   const s = Math.floor(sec || 0);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}H ${m}M`;
-  if (m > 0) return `${m}M`;
-  return `${s}S`;
+  const remaining = s % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`;
 }
 
 // [heroId, deathCount] for whoever has died the most, or null with no deaths yet.

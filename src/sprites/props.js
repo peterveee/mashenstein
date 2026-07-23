@@ -154,24 +154,95 @@ export const PROP_PAINTERS = {
   cactusBig(ctx, w, h, frame = 0) { PROP_PAINTERS.cactus(ctx, w, h, frame); },
   crate(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#c89858', u, (c) => rr(c, w * 0.04, h * 0.06, w * 0.92, h * 0.88, w * 0.12));
-    stroke(ctx, '#8a6432', Math.max(0.6, w * 0.07), (c) => {
-      c.moveTo(w * 0.12, h * 0.16); c.lineTo(w * 0.88, h * 0.84);
-      c.moveTo(w * 0.88, h * 0.16); c.lineTo(w * 0.12, h * 0.84);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(50,30,12,0.32)';
+      ctx.lineWidth = Math.max(0.3, u * 0.024);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    };
+    // Three visible planes keep the obstacle solid at 12x11 without relying on
+    // a heavy outline. The right plane is narrow enough to preserve a broad,
+    // readable front for the familiar diagonal crate bracing.
+    fineShape('#8a6432', (c) => {
+      c.moveTo(w * 0.75, h * 0.21); c.lineTo(w * 0.9, h * 0.12);
+      c.quadraticCurveTo(w * 0.96, h * 0.09, w * 0.96, h * 0.16);
+      c.lineTo(w * 0.95, h * 0.77); c.quadraticCurveTo(w * 0.95, h * 0.84, w * 0.9, h * 0.87);
+      c.lineTo(w * 0.75, h * 0.95); c.closePath();
     });
-    stroke(ctx, '#5a4020', Math.max(0.5, w * 0.05), (c) => rr(c, w * 0.04, h * 0.06, w * 0.92, h * 0.88, w * 0.12));
+    fineShape('#c89858', (c) => {
+      c.moveTo(w * 0.12, h * 0.2); c.lineTo(w * 0.69, h * 0.2);
+      c.quadraticCurveTo(w * 0.75, h * 0.2, w * 0.75, h * 0.27);
+      c.lineTo(w * 0.75, h * 0.88); c.quadraticCurveTo(w * 0.75, h * 0.95, w * 0.68, h * 0.95);
+      c.lineTo(w * 0.12, h * 0.95); c.quadraticCurveTo(w * 0.06, h * 0.95, w * 0.06, h * 0.88);
+      c.lineTo(w * 0.06, h * 0.27); c.quadraticCurveTo(w * 0.06, h * 0.2, w * 0.12, h * 0.2); c.closePath();
+    });
+    fineShape('#e0b06a', (c) => {
+      c.moveTo(w * 0.08, h * 0.22); c.lineTo(w * 0.22, h * 0.11);
+      c.quadraticCurveTo(w * 0.25, h * 0.08, w * 0.31, h * 0.08);
+      c.lineTo(w * 0.9, h * 0.1); c.quadraticCurveTo(w * 0.97, h * 0.1, w * 0.91, h * 0.15);
+      c.lineTo(w * 0.77, h * 0.24); c.quadraticCurveTo(w * 0.75, h * 0.26, w * 0.7, h * 0.25);
+      c.lineTo(w * 0.13, h * 0.25); c.quadraticCurveTo(w * 0.06, h * 0.25, w * 0.08, h * 0.22); c.closePath();
+    });
+    // Individual planks, then inset braces. The lines are deliberately finer
+    // than the old X so wood grain remains visible instead of becoming a logo.
+    stroke(ctx, 'rgba(106,70,30,0.48)', Math.max(0.32, w * 0.028), (c) => {
+      c.moveTo(w * 0.08, h * 0.44); c.lineTo(w * 0.73, h * 0.44);
+      c.moveTo(w * 0.08, h * 0.7); c.lineTo(w * 0.73, h * 0.7);
+      c.moveTo(w * 0.82, h * 0.22); c.lineTo(w * 0.82, h * 0.88);
+    });
+    stroke(ctx, '#8a5a2a', Math.max(0.5, w * 0.055), (c) => {
+      c.moveTo(w * 0.15, h * 0.3); c.lineTo(w * 0.67, h * 0.86);
+      c.moveTo(w * 0.67, h * 0.3); c.lineTo(w * 0.15, h * 0.86);
+    });
+    plain(ctx, '#5a4020', (c) => {
+      for (const [x, y] of [[0.12, 0.27], [0.69, 0.27], [0.12, 0.87], [0.69, 0.87]])
+        c.arc(w * x, h * y, w * 0.025, 0, Math.PI * 2);
+    });
+    stroke(ctx, 'rgba(255,238,190,0.38)', Math.max(0.25, w * 0.018), (c) => {
+      c.moveTo(w * 0.3, h * 0.14); c.lineTo(w * 0.68, h * 0.15);
+      c.moveTo(w * 0.12, h * 0.38); c.lineTo(w * 0.28, h * 0.38);
+    });
   },
   qcrate(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.04, h * 0.06, w * 0.92, h * 0.88, w * 0.14));
-    plain(ctx, '#8a6432', (c) => {
-      // a chunky "?"
-      c.arc(w * 0.5, h * 0.36, w * 0.19, Math.PI * 0.9, Math.PI * 0.25, false);
-      c.lineTo(w * 0.5, h * 0.62);
-      c.lineTo(w * 0.42, h * 0.62);
-      c.closePath();
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(58,38,8,0.3)';
+      ctx.lineWidth = Math.max(0.3, u * 0.024);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    };
+    // The prize crate shares the ordinary crate's three-quarter construction,
+    // but gold planes and a clean ! make "hit this" its own visual language.
+    fineShape('#b88a18', (c) => {
+      c.moveTo(w * 0.75, h * 0.21); c.lineTo(w * 0.9, h * 0.12);
+      c.quadraticCurveTo(w * 0.96, h * 0.09, w * 0.96, h * 0.16);
+      c.lineTo(w * 0.95, h * 0.77); c.quadraticCurveTo(w * 0.95, h * 0.84, w * 0.9, h * 0.87);
+      c.lineTo(w * 0.75, h * 0.95); c.closePath();
     });
-    plain(ctx, '#8a6432', (c) => c.arc(w * 0.47, h * 0.76, w * 0.07, 0, Math.PI * 2));
+    fineShape('#f6d33c', (c) => {
+      c.moveTo(w * 0.12, h * 0.2); c.lineTo(w * 0.69, h * 0.2);
+      c.quadraticCurveTo(w * 0.75, h * 0.2, w * 0.75, h * 0.27);
+      c.lineTo(w * 0.75, h * 0.88); c.quadraticCurveTo(w * 0.75, h * 0.95, w * 0.68, h * 0.95);
+      c.lineTo(w * 0.12, h * 0.95); c.quadraticCurveTo(w * 0.06, h * 0.95, w * 0.06, h * 0.88);
+      c.lineTo(w * 0.06, h * 0.27); c.quadraticCurveTo(w * 0.06, h * 0.2, w * 0.12, h * 0.2); c.closePath();
+    });
+    fineShape('#ffe56a', (c) => {
+      c.moveTo(w * 0.08, h * 0.22); c.lineTo(w * 0.22, h * 0.11);
+      c.quadraticCurveTo(w * 0.25, h * 0.08, w * 0.31, h * 0.08);
+      c.lineTo(w * 0.9, h * 0.1); c.quadraticCurveTo(w * 0.97, h * 0.1, w * 0.91, h * 0.15);
+      c.lineTo(w * 0.77, h * 0.24); c.quadraticCurveTo(w * 0.75, h * 0.26, w * 0.7, h * 0.25);
+      c.lineTo(w * 0.13, h * 0.25); c.quadraticCurveTo(w * 0.06, h * 0.25, w * 0.08, h * 0.22); c.closePath();
+    });
+    plain(ctx, '#8a6432', (c) => {
+      rr(c, w * 0.36, h * 0.31, w * 0.1, h * 0.37, w * 0.035);
+      c.arc(w * 0.41, h * 0.8, w * 0.06, 0, Math.PI * 2);
+    });
+    stroke(ctx, 'rgba(255,248,192,0.55)', Math.max(0.25, w * 0.02), (c) => {
+      c.moveTo(w * 0.13, h * 0.28); c.lineTo(w * 0.13, h * 0.82);
+      c.moveTo(w * 0.31, h * 0.14); c.lineTo(w * 0.68, h * 0.15);
+    });
   },
   pipe(ctx, w, h) {
     const u = Math.max(w, h);
@@ -192,12 +263,44 @@ export const PROP_PAINTERS = {
   },
   barrel(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#b07840', u, (c) => rr(c, w * 0.06, h * 0.04, w * 0.88, h * 0.92, w * 0.3));
-    stroke(ctx, '#7a4c22', Math.max(0.6, h * 0.09), (c) => {
-      c.moveTo(w * 0.1, h * 0.32); c.lineTo(w * 0.9, h * 0.32);
-      c.moveTo(w * 0.1, h * 0.68); c.lineTo(w * 0.9, h * 0.68);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(42,24,10,0.32)';
+      ctx.lineWidth = Math.max(0.32, u * 0.024);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    };
+    // Bowed staves form a real cylinder instead of a rounded rectangle.
+    fineShape('#b87838', (c) => {
+      c.moveTo(w * 0.22, h * 0.12);
+      c.bezierCurveTo(w * 0.08, h * 0.3, w * 0.08, h * 0.7, w * 0.22, h * 0.88);
+      c.quadraticCurveTo(w * 0.5, h * 0.98, w * 0.78, h * 0.88);
+      c.bezierCurveTo(w * 0.92, h * 0.7, w * 0.92, h * 0.3, w * 0.78, h * 0.12);
+      c.closePath();
     });
-    plain(ctx, '#d09858', (c) => c.ellipse(w * 0.34, h * 0.2, w * 0.1, h * 0.07, -0.5, 0, Math.PI * 2));
+    // Receding side shade and top lip establish the cylinder's volume.
+    plain(ctx, 'rgba(88,42,14,0.32)', (c) => {
+      c.moveTo(w * 0.68, h * 0.13);
+      c.bezierCurveTo(w * 0.82, h * 0.28, w * 0.84, h * 0.72, w * 0.7, h * 0.89);
+      c.quadraticCurveTo(w * 0.79, h * 0.88, w * 0.82, h * 0.81);
+      c.bezierCurveTo(w * 0.93, h * 0.62, w * 0.91, h * 0.3, w * 0.78, h * 0.12); c.closePath();
+    });
+    fineShape('#d8a058', (c) => c.ellipse(w * 0.5, h * 0.14, w * 0.3, h * 0.095, 0, 0, Math.PI * 2));
+    plain(ctx, '#8a5426', (c) => c.ellipse(w * 0.5, h * 0.145, w * 0.22, h * 0.052, 0, 0, Math.PI * 2));
+    // Hoops curve with the body; stave seams bend gently toward the waist.
+    stroke(ctx, '#5e4e46', Math.max(0.65, h * 0.065), (c) => {
+      c.moveTo(w * 0.13, h * 0.31); c.bezierCurveTo(w * 0.35, h * 0.35, w * 0.65, h * 0.35, w * 0.87, h * 0.31);
+      c.moveTo(w * 0.12, h * 0.69); c.bezierCurveTo(w * 0.35, h * 0.73, w * 0.65, h * 0.73, w * 0.88, h * 0.69);
+    });
+    stroke(ctx, 'rgba(106,58,24,0.62)', Math.max(0.28, w * 0.025), (c) => {
+      c.moveTo(w * 0.34, h * 0.2); c.quadraticCurveTo(w * 0.3, h * 0.5, w * 0.35, h * 0.84);
+      c.moveTo(w * 0.51, h * 0.19); c.lineTo(w * 0.51, h * 0.86);
+      c.moveTo(w * 0.67, h * 0.2); c.quadraticCurveTo(w * 0.72, h * 0.5, w * 0.66, h * 0.84);
+    });
+    stroke(ctx, 'rgba(255,220,160,0.5)', Math.max(0.3, w * 0.025), (c) => {
+      c.moveTo(w * 0.23, h * 0.38); c.quadraticCurveTo(w * 0.18, h * 0.5, w * 0.23, h * 0.61);
+    });
+    plain(ctx, '#4a382e', (c) => c.ellipse(w * 0.61, h * 0.14, w * 0.035, h * 0.018, 0, 0, Math.PI * 2));
   },
   tombstone(ctx, w, h) {
     const u = Math.max(w, h);
@@ -400,12 +503,123 @@ export const PROP_PAINTERS = {
     plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
     plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
-  appliance(ctx, w, h) {
+  appliance(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    shape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.08, h * 0.22, w * 0.84, h * 0.72, w * 0.16));
-    plain(ctx, '#8a6432', (c) => { rr(c, w * 0.24, h * 0.06, w * 0.16, h * 0.24, w * 0.03); rr(c, w * 0.58, h * 0.06, w * 0.16, h * 0.24, w * 0.03); }); // toast
-    plain(ctx, '#c8a020', (c) => rr(c, w * 0.18, h * 0.62, w * 0.4, h * 0.1, h * 0.05));
-    plain(ctx, '#fff8c0', (c) => c.ellipse(w * 0.26, h * 0.38, w * 0.08, h * 0.08, 0, 0, Math.PI * 2));
+    // The shared prop outline is intentionally bold enough for hazards. On
+    // this tiny bright collectible it became a three-screen-pixel border, so
+    // use a one-screen-pixel hairline and let colour contrast carry the form.
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(26,16,40,0.24)';
+      ctx.lineWidth = Math.max(0.28, u * 0.018);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+    };
+    // The classic toaster's body reads left-to-right in three-quarter view.
+    // Author the detailed geometry once, then flip the complete construction
+    // so the top plane, shaded side, lever, toast and unequal wings all agree.
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    // Twelve eased poses at 24fps give the wings a clean two-flaps-per-second
+    // cycle. A small fore/aft sweep distinguishes the rising half from the
+    // falling half instead of playing the same six silhouettes backwards.
+    const phase = (frame % 12) * Math.PI / 6;
+    const lift = Math.cos(phase);
+    const sweep = Math.sin(phase);
+    const drawWing = (side, fill, depth = 1) => fineShape(fill, (c) => {
+      const rootX = side < 0 ? w * 0.31 : w * 0.7;
+      const rootY = h * (side < 0 ? 0.5 : 0.48);
+      const tipX = side < 0 ? w * 0.015 : w * 0.985;
+      const tipY = h * (0.43 - lift * 0.34 * depth);
+      const innerX = (side < 0 ? w * 0.18 : w * 0.83) + sweep * w * 0.025;
+      c.moveTo(rootX, rootY - h * 0.11);
+      c.quadraticCurveTo(innerX, tipY, tipX, tipY + (side > 0 ? h * 0.03 : 0));
+      c.quadraticCurveTo(innerX, tipY + h * 0.28 * depth, rootX, rootY + h * 0.15);
+      c.closePath();
+    });
+    // The smaller grey wing sits behind the toaster; the brighter near wing
+    // overlaps farther forward. Their unequal scale is the first depth cue.
+    drawWing(1, '#c8c8d8', 0.78);
+    drawWing(-1, '#f4f4fa', 1);
+    plain(ctx, '#c8c8d8', (c) => {
+      const nearY = h * (0.57 - lift * 0.3);
+      const farY = h * (0.55 - lift * 0.23);
+      c.moveTo(w * 0.035, nearY); c.lineTo(w * 0.245, h * 0.5); c.lineTo(w * 0.09, nearY + h * 0.08); c.closePath();
+      c.moveTo(w * 0.965, farY); c.lineTo(w * 0.76, h * 0.48); c.lineTo(w * 0.91, farY + h * 0.07); c.closePath();
+    });
+
+    // Toast rises behind the top plane, already skewed in the body's direction.
+    fineShape('#9a6830', (c) => {
+      c.moveTo(w * 0.41, h * 0.31); c.lineTo(w * 0.42, h * 0.13);
+      c.quadraticCurveTo(w * 0.43, h * 0.05, w * 0.5, h * 0.055);
+      c.lineTo(w * 0.56, h * 0.07); c.quadraticCurveTo(w * 0.61, h * 0.08, w * 0.6, h * 0.16);
+      c.lineTo(w * 0.59, h * 0.33); c.closePath();
+    });
+    plain(ctx, '#d8a050', (c) => rr(c, w * 0.445, h * 0.105, w * 0.12, h * 0.18, w * 0.035));
+
+    // Three-quarter toaster body: dark receding side, broad gold face, then a
+    // lighter top plane. It stays graphic, but no longer reads as a flat badge.
+    fineShape('#b88a18', (c) => {
+      c.moveTo(w * 0.65, h * 0.36); c.lineTo(w * 0.79, h * 0.43);
+      c.lineTo(w * 0.76, h * 0.81); c.lineTo(w * 0.64, h * 0.89); c.closePath();
+    });
+    fineShape('#f6d33c', (c) => {
+      c.moveTo(w * 0.27, h * 0.38); c.lineTo(w * 0.66, h * 0.39);
+      c.lineTo(w * 0.64, h * 0.86); c.quadraticCurveTo(w * 0.61, h * 0.91, w * 0.34, h * 0.91);
+      c.quadraticCurveTo(w * 0.28, h * 0.9, w * 0.27, h * 0.83); c.closePath();
+    });
+    fineShape('#ffe56a', (c) => {
+      c.moveTo(w * 0.27, h * 0.38); c.lineTo(w * 0.38, h * 0.27);
+      c.lineTo(w * 0.67, h * 0.29); c.lineTo(w * 0.79, h * 0.43);
+      c.lineTo(w * 0.66, h * 0.41); c.lineTo(w * 0.29, h * 0.42); c.closePath();
+    });
+    stroke(ctx, '#765018', Math.max(0.35, h * 0.035), (c) => {
+      c.moveTo(w * 0.4, h * 0.33); c.lineTo(w * 0.66, h * 0.35);
+    });
+    plain(ctx, '#c8a020', (c) => rr(c, w * 0.34, h * 0.68, w * 0.22, h * 0.075, h * 0.035));
+    plain(ctx, '#fff8c0', (c) => c.ellipse(w * 0.35, h * 0.49, w * 0.045, h * 0.065, 0, 0, Math.PI * 2));
+    plain(ctx, '#8a6418', (c) => rr(c, w * 0.765, h * 0.53, w * 0.07, h * 0.16, h * 0.025));
+    plain(ctx, '#5a4020', (c) => {
+      rr(c, w * 0.33, h * 0.88, w * 0.065, h * 0.085, h * 0.02);
+      rr(c, w * 0.66, h * 0.84, w * 0.065, h * 0.085, h * 0.02);
+    });
+    ctx.restore();
+  },
+  cord(ctx, w, h) {
+    const u = Math.max(w, h);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(26,16,40,0.28)';
+      ctx.lineWidth = Math.max(0.28, u * 0.02);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+    };
+    // A loose extension-cord S: dark edging keeps the thin cable intact over
+    // bright stages, while the orange centre distinguishes it from fuse wire.
+    const cable = (c) => {
+      c.moveTo(w * 0.18, h * 0.3);
+      c.bezierCurveTo(w * 0.38, h * 0.22, w * 0.3, h * 0.8, w * 0.54, h * 0.72);
+      c.bezierCurveTo(w * 0.73, h * 0.66, w * 0.64, h * 0.3, w * 0.82, h * 0.42);
+    };
+    stroke(ctx, 'rgba(26,16,40,0.4)', Math.max(1, h * 0.16), cable);
+    stroke(ctx, '#e07820', Math.max(0.62, h * 0.085), cable);
+
+    // Male plug at left, female socket at right. Their opposite faces make a
+    // single fragment read as something that can reconnect into a longer cord.
+    fineShape('#d8d8e4', (c) => rr(c, w * 0.04, h * 0.14, w * 0.17, h * 0.3, h * 0.07));
+    plain(ctx, '#6a6a78', (c) => {
+      rr(c, 0, h * 0.19, w * 0.055, h * 0.055, h * 0.015);
+      rr(c, 0, h * 0.33, w * 0.055, h * 0.055, h * 0.015);
+    });
+    fineShape('#707080', (c) => rr(c, w * 0.78, h * 0.27, w * 0.2, h * 0.34, h * 0.09));
+    plain(ctx, '#242430', (c) => {
+      c.ellipse(w * 0.845, h * 0.44, w * 0.018, h * 0.035, 0, 0, Math.PI * 2);
+      c.ellipse(w * 0.92, h * 0.44, w * 0.018, h * 0.035, 0, 0, Math.PI * 2);
+    });
+    plain(ctx, '#fff', (c) => c.ellipse(w * 0.815, h * 0.33, w * 0.018, h * 0.025, 0, 0, Math.PI * 2));
   },
   fuse(ctx, w, h) {
     const u = Math.max(w, h);
@@ -509,7 +723,8 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // Anything absent is static. Frames are rasterized and cached individually, so
 // an animated prop costs one canvas per frame per size and still draws with a
 // single drawImage — no per-frame vector work in the hot loop.
-export const PROP_FRAMES = { cactus: 6, cactusBig: 6 };
+export const PROP_FRAMES = { cactus: 6, cactusBig: 6, appliance: 12 };
+const PROP_FPS = { appliance: 24 };
 
 // Visual overdraw: props drawn taller than their def box, bottom-anchored, so
 // the art gains stature without touching the hitbox (hazards already render
@@ -518,6 +733,7 @@ export const PROP_TALL = { cactus: 1.55, cactusBig: 1.4 };
 export function propTall(name) { return PROP_TALL[name] || 1; }
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
+export function propFps(name) { return PROP_FPS[name] || 11; }
 
 // Rasterize any vector painter into the shared cache at SS x its logical size.
 // The key is the caller's whole identity — name, size, and anything else that

@@ -4,7 +4,7 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { propFrames, propSprite, propTinted, propRimPair, PROP_FRAMES, PROP_PAINTERS } = await import('../src/sprites/props.js');
+const { propFrames, propFps, propSprite, propTinted, propRimPair, PROP_FRAMES, PROP_PAINTERS } = await import('../src/sprites/props.js');
 const { OBSTACLES, PICKUPS } = await import('../src/game/entities.js');
 
 let failed = false;
@@ -20,6 +20,13 @@ assert(!OBSTACLES.shrub && !OBSTACLES.flames, 'no shrub or flames obstacle survi
 assert(typeof PROP_PAINTERS.cactus === 'function', 'cactus has a vector painter');
 assert(PICKUPS.resident.sprite === 'resident' && typeof PROP_PAINTERS.resident === 'function',
   'residents use distinct friendly art instead of the zombie hazard sprite');
+assert(PICKUPS.appliance.w === 18 && PICKUPS.appliance.h === 12 && PICKUPS.appliance.bob,
+  'flying toaster has a readable 18x12 silhouette and bobs');
+assert(propFrames('appliance') === 12, 'the flying toaster flaps over twelve frames');
+assert(propFps('appliance') === 24, 'the flying toaster cycles smoothly at 24fps');
+assert(PICKUPS.cord.w === 14 && PICKUPS.cord.h === 9 && PICKUPS.cord.sprite === 'cord',
+  'cord pieces use their own larger pickup art instead of the carried fuse');
+assert(typeof PROP_PAINTERS.cord === 'function', 'cord piece has a refined vector painter');
 
 assert(propFrames('cactus') === 6, 'the cactus sways over six frames');
 const c0 = propSprite('crate', 12, 11, 0);

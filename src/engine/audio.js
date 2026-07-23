@@ -32,7 +32,7 @@ export const DEBRIS_MATS = {
   stone: { type: 'bandpass', freq: 2300, gain: 0.09, ticks: 4, dur: 0.03 },
   metal: { type: 'highpass', freq: 3800, gain: 0.07, ticks: 3, dur: 0.035, ping: [1860, 2490] },
   soft:  { type: 'lowpass',  freq: 520,  gain: 0.11, ticks: 3, dur: 0.06 },
-  // The ?-box: a light tinkle that sits *under* the coinSpray already firing
+  // The !-box: a light tinkle that sits *under* the coinSpray already firing
   // over it, rather than competing with it for the same ear.
   gold:  { type: 'highpass', freq: 5200, gain: 0.05, ticks: 3, dur: 0.025, ping: [2637, 3136] },
 };
@@ -415,7 +415,7 @@ class AudioSys {
         if (m.ping) m.ping.forEach((f, i) => this.osc('triangle', f, f * 0.94, 0.07, 0.035, 0.12 + i * 0.08));
         break;
       }
-      // A ?-box giving way overhead: a hard ceramic crack on top of a gut
+      // A !-box giving way overhead: a hard ceramic crack on top of a gut
       // thump, then splinters raining down. 'crunch' was too polite for a hit
       // you are meant to go out of your way to land.
       case 'blockBreak':

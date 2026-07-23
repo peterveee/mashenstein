@@ -170,6 +170,15 @@ class InputSys {
   actionForKey(code) {
     if (code === 'Escape') return this.context === 'run' ? 'escape' : 'back';
     if (this.context === 'run' && !this.menuKeys && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
+    // The food court is both a walkable room and a small chooser. Keep its
+    // vertical navigation separate from the physical jump so Space can lift
+    // the avatar while Up/Down continue to move the TALK/SWAP selection.
+    if (this.context === 'hub') {
+      if (code === 'ArrowUp' || code === 'KeyW') return 'up';
+      if (code === 'ArrowDown' || code === 'KeyS') return 'down';
+      if (code === 'Space') return 'jump';
+      if (code === 'Enter') return 'confirm';
+    }
     if (this.menuNav()) {
       if (code === 'ArrowUp' || code === 'KeyW') return 'up';
       if (code === 'ArrowDown' || code === 'KeyS') return 'down';
@@ -257,7 +266,7 @@ class InputSys {
   // hero. True in a menu state, and true for the one screen that is a menu
   // without being a menu state: the paused run, which still needs 'run' context
   // for Escape (quit, not back) while it is up.
-  menuNav() { return this.context === 'menu' || this.menuKeys; }
+  menuNav() { return this.context === 'menu' || this.context === 'hub' || this.menuKeys; }
 
   // Borrow the menu key meanings mid-context. Held actions are dropped on every
   // flip, because a key that changes meaning between its keydown and its keyup

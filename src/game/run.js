@@ -450,7 +450,7 @@ export class RunState {
         // ring + white text just reads as "button."
         ink: charged ? base.ink : '#ffffff',
         ring: charged ? 'rgba(246,211,60,0.7)' : 'rgba(255,255,255,0.75)',
-        ringWidth: 3,
+        ringWidth: 2,
         labelScale: 2,
         labelStyle: 'bold',
       });
@@ -937,7 +937,7 @@ export class RunState {
     }
   }
 
-  // A ?-box is a prize box, so it pops brighter than a splintering crate: gold
+  // A !-box is a prize box, so it pops brighter than a splintering crate: gold
   // shards, a white flash at the centre, and a harder kick.
   qboxPop(cx, cy) {
     const r = () => this.fxRng.float();
@@ -1622,7 +1622,7 @@ export class RunState {
         continue;
       }
       // Targets and switches are objectives, not hazards: contact breaks them.
-      // (Without this, jumping into a ?-crate Mario-style dealt damage and the
+      // (Without this, jumping into a !-crate dealt damage and the
       // break-N-targets missions read as impossible to anyone without an
       // offensive ability equipped.)
       if (ob.def.isTarget || ob.def.isSwitch) {
