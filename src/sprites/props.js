@@ -19,6 +19,23 @@ export function shape(ctx, fill, u, pathFn) {
   ol(ctx, u);
   ctx.stroke();
 }
+// Hairline version for small world props. These objects are rasterized at
+// extra internal detail, so a fine translucent contour survives reduction
+// without turning into the broad dark border used by the older shared shape().
+function fineShape(ctx, fill, u, pathFn, color = OUTLINE, scale = 0.02) {
+  ctx.beginPath();
+  pathFn(ctx);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(0.2, scale * u);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+function cappedLine(u, minimum, growth, maximum) {
+  return Math.min(maximum, Math.max(minimum, growth * u));
+}
 export function plain(ctx, fill, pathFn) {
   ctx.beginPath();
   pathFn(ctx);
@@ -114,7 +131,7 @@ export const PROP_PAINTERS = {
       c.lineTo(x0 + dir * (aw * 0.8), y0 - aw * 0.2);
       c.closePath();
     };
-    shape(ctx, '#d84828', u, (c) => {
+    fineShape(ctx, '#d84828', u, (c) => {
       // trunk: slightly waisted, domed top
       c.moveTo(w * 0.38, base);
       c.lineTo(w * 0.38, h * 0.3);
@@ -164,8 +181,8 @@ export const PROP_PAINTERS = {
       pathFn(ctx);
       ctx.fillStyle = fill;
       ctx.fill();
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = Math.max(0.3, u * 0.022);
+      ctx.strokeStyle = 'rgba(26,16,40,0.24)';
+      ctx.lineWidth = Math.max(0.24, u * 0.013);
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.stroke();
@@ -228,19 +245,22 @@ export const PROP_PAINTERS = {
     // The pupils
     // are deliberately mismatched—both generally watch the player to the left,
     // but they cannot quite agree on where the player is.
-    stroke(ctx, 'rgba(75,49,95,0.62)', Math.max(0.55, u * 0.035), (c) => {
+    const glassesColor = 'rgba(55,35,76,0.78)';
+    const glassesLine = cappedLine(u, 0.34, 0.022, 0.58);
+    stroke(ctx, glassesColor, glassesLine, (c) => {
       c.moveTo(cx - w * 0.235, headY - h * 0.055); c.lineTo(cx - w * 0.29, headY - h * 0.085);
       c.moveTo(cx + w * 0.235, headY - h * 0.055); c.lineTo(cx + w * 0.29, headY - h * 0.085);
+      c.moveTo(cx - w * 0.02, headY - h * 0.055); c.lineTo(cx + w * 0.02, headY - h * 0.055);
     });
-    plain(ctx, 'rgba(75,49,95,0.62)', (c) => {
-      rr(c, cx - w * 0.235, headY - h * 0.16, w * 0.215, h * 0.205, h * 0.04);
-      rr(c, cx + w * 0.02, headY - h * 0.16, w * 0.215, h * 0.205, h * 0.04);
-      rr(c, cx - w * 0.055, headY - h * 0.075, w * 0.11, h * 0.045, h * 0.018);
-    });
-    plain(ctx, '#f7fbff', (c) => {
-      rr(c, cx - w * 0.205, headY - h * 0.125, w * 0.155, h * 0.14, h * 0.025);
-      rr(c, cx + w * 0.05, headY - h * 0.125, w * 0.155, h * 0.14, h * 0.025);
-    });
+    ctx.beginPath();
+    rr(ctx, cx - w * 0.225, headY - h * 0.15, w * 0.195, h * 0.185, h * 0.032);
+    rr(ctx, cx + w * 0.03, headY - h * 0.15, w * 0.195, h * 0.185, h * 0.032);
+    ctx.fillStyle = '#f7fbff';
+    ctx.fill();
+    ctx.strokeStyle = glassesColor;
+    ctx.lineWidth = glassesLine;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
     plain(ctx, '#172238', (c) => {
       c.ellipse(cx - w * 0.148, headY - h * 0.045, w * 0.034, h * 0.048, -0.12, 0, Math.PI * 2);
       c.ellipse(cx + w * 0.087, headY - h * 0.025, w * 0.034, h * 0.048, 0.18, 0, Math.PI * 2);
@@ -262,7 +282,7 @@ export const PROP_PAINTERS = {
     });
     // One understated crooked mouth completes the face without competing with
     // the glasses or turning into another row of coal.
-    stroke(ctx, 'rgba(43,36,64,0.55)', Math.max(0.5, u * 0.03), (c) => {
+    stroke(ctx, 'rgba(37,29,57,0.72)', cappedLine(u, 0.3, 0.018, 0.44), (c) => {
       c.moveTo(cx - w * 0.085, headY + h * 0.093);
       c.quadraticCurveTo(cx - w * 0.005, headY + h * 0.103, cx + w * 0.08, headY + h * 0.101);
     });
@@ -275,7 +295,7 @@ export const PROP_PAINTERS = {
       ctx.beginPath(); pathFn(ctx);
       ctx.fillStyle = fill; ctx.fill();
       ctx.strokeStyle = 'rgba(50,30,12,0.24)';
-      ctx.lineWidth = Math.max(0.18, u * 0.014);
+      ctx.lineWidth = Math.max(0.12, u * 0.01);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
     };
     // Flat, rounded construction: one fine frame and one inset wooden face.
@@ -299,7 +319,7 @@ export const PROP_PAINTERS = {
   qcrate(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
     const outlinedShape = (fill, pathFn, strokeStyle = 'rgba(58,38,8,0.22)',
-      lineWidth = Math.max(0.18, u * 0.014)) => {
+      lineWidth = cappedLine(u, 0.12, 0.009, 0.18)) => {
       ctx.beginPath(); pathFn(ctx);
       ctx.fillStyle = fill; ctx.fill();
       ctx.strokeStyle = strokeStyle;
@@ -310,7 +330,7 @@ export const PROP_PAINTERS = {
     // Its hairline perimeter keeps the block crisp without turning it into a
     // dark badge after the high-resolution art is reduced into the world.
     outlinedShape('#b88a18', (c) => rr(c, w * 0.04, h * 0.05, w * 0.92, h * 0.9, w * 0.18),
-      'rgba(58,38,8,0.18)', Math.max(0.1, u * 0.008));
+      'rgba(58,38,8,0.18)', cappedLine(u, 0.08, 0.006, 0.12));
     plain(ctx, '#f6d33c', (c) => rr(c, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.14));
     plain(ctx, '#ffe56a', (c) => rr(c, w * 0.13, h * 0.14, w * 0.74, h * 0.1, h * 0.045));
 
@@ -371,13 +391,13 @@ export const PROP_PAINTERS = {
   },
   pipe(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#2ea8a0', u, (c) => rr(c, w * 0.14, h * 0.22, w * 0.72, h * 0.8, w * 0.08)); // shaft
-    shape(ctx, '#3ac0b6', u, (c) => rr(c, 0, 0, w, h * 0.26, w * 0.08));                     // lip
+    fineShape(ctx, '#2ea8a0', u, (c) => rr(c, w * 0.14, h * 0.22, w * 0.72, h * 0.8, w * 0.08)); // shaft
+    fineShape(ctx, '#3ac0b6', u, (c) => rr(c, 0, 0, w, h * 0.26, w * 0.08));                     // lip
     stroke(ctx, 'rgba(255,255,255,0.35)', Math.max(0.5, w * 0.1), (c) => { c.moveTo(w * 0.3, h * 0.34); c.lineTo(w * 0.3, h * 0.92); });
   },
   switch(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#b8e0f8', u, (c) => rr(c, w * 0.1, h * 0.32, w * 0.8, h * 0.6, w * 0.16)); // frozen housing
+    fineShape(ctx, '#b8e0f8', u, (c) => rr(c, w * 0.1, h * 0.32, w * 0.8, h * 0.6, w * 0.16)); // frozen housing
     stroke(ctx, '#e04848', Math.max(0.6, w * 0.14), (c) => { c.moveTo(w * 0.5, h * 0.6); c.lineTo(w * 0.76, h * 0.16); });
     plain(ctx, '#f6d33c', (c) => c.arc(w * 0.76, h * 0.16, w * 0.14, 0, Math.PI * 2));
   },
@@ -440,14 +460,14 @@ export const PROP_PAINTERS = {
   },
   chair(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#3a4a5a', u, (c) => rr(c, w * 0.1, h * 0.04, w * 0.28, h * 0.66, w * 0.08)); // back
-    shape(ctx, '#4a5a6c', u, (c) => rr(c, w * 0.08, h * 0.52, w * 0.84, h * 0.22, w * 0.08)); // seat
+    fineShape(ctx, '#3a4a5a', u, (c) => rr(c, w * 0.1, h * 0.04, w * 0.28, h * 0.66, w * 0.08)); // back
+    fineShape(ctx, '#4a5a6c', u, (c) => rr(c, w * 0.08, h * 0.52, w * 0.84, h * 0.22, w * 0.08)); // seat
     stroke(ctx, '#2a3542', Math.max(0.6, w * 0.07), (c) => { c.moveTo(w * 0.5, h * 0.72); c.lineTo(w * 0.5, h * 0.86); });
     plain(ctx, '#1a1028', (c) => { c.arc(w * 0.28, h * 0.92, w * 0.1, 0, Math.PI * 2); c.arc(w * 0.72, h * 0.92, w * 0.1, 0, Math.PI * 2); });
   },
   printer(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#b0b0c0', u, (c) => rr(c, w * 0.04, h * 0.3, w * 0.92, h * 0.66, w * 0.12));
+    fineShape(ctx, '#b0b0c0', u, (c) => rr(c, w * 0.04, h * 0.3, w * 0.92, h * 0.66, w * 0.12));
     plain(ctx, '#fff', (c) => rr(c, w * 0.24, h * 0.02, w * 0.52, h * 0.34, w * 0.04)); // paper
     plain(ctx, '#e04848', (c) => rr(c, w * 0.14, h * 0.52, w * 0.24, h * 0.14, h * 0.06));
     plain(ctx, '#48e0c8', (c) => c.arc(w * 0.74, h * 0.6, w * 0.08, 0, Math.PI * 2));
@@ -455,10 +475,10 @@ export const PROP_PAINTERS = {
   zombieWalk(ctx, w, h) {
     const u = Math.max(w, h);
     // slouched green office zombie
-    shape(ctx, '#5a6a8a', u, (c) => rr(c, w * 0.18, h * 0.42, w * 0.64, h * 0.42, w * 0.16));
+    fineShape(ctx, '#5a6a8a', u, (c) => rr(c, w * 0.18, h * 0.42, w * 0.64, h * 0.42, w * 0.16));
     stroke(ctx, '#9ec89e', Math.max(0.7, w * 0.16), (c) => { c.moveTo(w * 0.2, h * 0.52); c.lineTo(w * 0.02, h * 0.44); });
     stroke(ctx, '#9ec89e', Math.max(0.7, w * 0.16), (c) => { c.moveTo(w * 0.3, h * 0.84); c.lineTo(w * 0.28, h); c.moveTo(w * 0.68, h * 0.84); c.lineTo(w * 0.7, h); });
-    shape(ctx, '#9ec89e', u, (c) => c.arc(w * 0.5, h * 0.26, w * 0.3, 0, Math.PI * 2));
+    fineShape(ctx, '#9ec89e', u, (c) => c.arc(w * 0.5, h * 0.26, w * 0.3, 0, Math.PI * 2));
     plain(ctx, '#d83030', (c) => { c.arc(w * 0.4, h * 0.24, w * 0.06, 0, Math.PI * 2); c.arc(w * 0.62, h * 0.24, w * 0.06, 0, Math.PI * 2); });
     stroke(ctx, '#4a6a4a', Math.max(0.5, w * 0.06), (c) => { c.moveTo(w * 0.38, h * 0.4); c.lineTo(w * 0.64, h * 0.4); });
   },
@@ -479,7 +499,7 @@ export const PROP_PAINTERS = {
   drone(ctx, w, h) {
     const u = Math.max(w, h);
     stroke(ctx, 'rgba(200,200,216,0.75)', Math.max(0.5, h * 0.12), (c) => { c.moveTo(w * 0.06, h * 0.16); c.lineTo(w * 0.94, h * 0.16); });
-    shape(ctx, '#8858c8', u, (c) => rr(c, w * 0.14, h * 0.3, w * 0.72, h * 0.56, h * 0.26));
+    fineShape(ctx, '#8858c8', u, (c) => rr(c, w * 0.14, h * 0.3, w * 0.72, h * 0.56, h * 0.26));
     plain(ctx, '#f6d33c', (c) => c.arc(w * 0.36, h * 0.56, h * 0.14, 0, Math.PI * 2));
     plain(ctx, '#c8b8e8', (c) => rr(c, w * 0.56, h * 0.44, w * 0.22, h * 0.16, h * 0.06));
     stroke(ctx, '#5a3890', Math.max(0.5, h * 0.1), (c) => { c.moveTo(w * 0.28, h * 0.16); c.lineTo(w * 0.34, h * 0.32); c.moveTo(w * 0.72, h * 0.16); c.lineTo(w * 0.66, h * 0.32); });
@@ -490,14 +510,14 @@ export const PROP_PAINTERS = {
   },
   buzzbird(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#f0a860', u, (c) => c.ellipse(w * 0.28, h * 0.42, w * 0.24, h * 0.34, -0.3, 0, Math.PI * 2)); // wing
-    shape(ctx, '#d87830', u, (c) => c.ellipse(w * 0.58, h * 0.5, w * 0.34, h * 0.36, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#f0a860', u, (c) => c.ellipse(w * 0.28, h * 0.42, w * 0.24, h * 0.34, -0.3, 0, Math.PI * 2)); // wing
+    fineShape(ctx, '#d87830', u, (c) => c.ellipse(w * 0.58, h * 0.5, w * 0.34, h * 0.36, 0, 0, Math.PI * 2));
     plain(ctx, '#f6d33c', (c) => { c.moveTo(w * 0.9, h * 0.42); c.lineTo(w, h * 0.54); c.lineTo(w * 0.88, h * 0.62); c.closePath(); });
     plain(ctx, '#1a1028', (c) => c.arc(w * 0.74, h * 0.4, w * 0.06, 0, Math.PI * 2));
   },
   icicle(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#b8e0f8', u, (c) => {
+    fineShape(ctx, '#b8e0f8', u, (c) => {
       c.moveTo(w * 0.1, 0); c.lineTo(w * 0.9, 0); c.lineTo(w * 0.55, h); c.closePath();
     });
     plain(ctx, '#e8f8ff', (c) => { c.moveTo(w * 0.24, h * 0.06); c.lineTo(w * 0.44, h * 0.06); c.lineTo(w * 0.4, h * 0.62); c.closePath(); });
@@ -536,7 +556,7 @@ export const PROP_PAINTERS = {
   },
   battery(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#48c848', u, (c) => rr(c, w * 0.16, h * 0.14, w * 0.68, h * 0.82, w * 0.14));
+    fineShape(ctx, '#48c848', u, (c) => rr(c, w * 0.16, h * 0.14, w * 0.68, h * 0.82, w * 0.14));
     plain(ctx, '#2a8a2a', (c) => rr(c, w * 0.34, h * 0.02, w * 0.32, h * 0.14, w * 0.05));
     plain(ctx, '#eaffea', (c) => { c.moveTo(w * 0.56, h * 0.28); c.lineTo(w * 0.36, h * 0.56); c.lineTo(w * 0.5, h * 0.56); c.lineTo(w * 0.44, h * 0.86); c.lineTo(w * 0.66, h * 0.5); c.lineTo(w * 0.5, h * 0.5); c.closePath(); });
   },
@@ -570,7 +590,7 @@ export const PROP_PAINTERS = {
   },
   capShield(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#48a8f0', u, (c) => {
+    fineShape(ctx, '#48a8f0', u, (c) => {
       c.moveTo(w * 0.5, h * 0.04);
       c.lineTo(w * 0.92, h * 0.24);
       c.quadraticCurveTo(w * 0.92, h * 0.8, w * 0.5, h * 0.98);
@@ -581,7 +601,7 @@ export const PROP_PAINTERS = {
   },
   capMagnet(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#e04848', u, (c) => {
+    fineShape(ctx, '#e04848', u, (c) => {
       c.arc(w * 0.5, h * 0.52, w * 0.4, Math.PI, 0);
       c.lineTo(w * 0.9, h * 0.76); c.lineTo(w * 0.62, h * 0.76);
       c.lineTo(w * 0.62, h * 0.52);
@@ -593,22 +613,22 @@ export const PROP_PAINTERS = {
   },
   capStar(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#f6d33c', u, (c) => star(c, w / 2, h * 0.52, w * 0.48, w * 0.2, 5));
+    fineShape(ctx, '#f6d33c', u, (c) => star(c, w / 2, h * 0.52, w * 0.48, w * 0.2, 5));
     plain(ctx, '#fff8c0', (c) => star(c, w / 2, h * 0.5, w * 0.22, w * 0.09, 5));
   },
   capAirJump(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#72d8f0', u, (c) => { c.moveTo(w * 0.5, h * 0.04); c.lineTo(w * 0.92, h * 0.84); c.lineTo(w * 0.5, h * 0.68); c.lineTo(w * 0.08, h * 0.84); c.closePath(); });
+    fineShape(ctx, '#72d8f0', u, (c) => { c.moveTo(w * 0.5, h * 0.04); c.lineTo(w * 0.92, h * 0.84); c.lineTo(w * 0.5, h * 0.68); c.lineTo(w * 0.08, h * 0.84); c.closePath(); });
     plain(ctx, '#e8fbff', (c) => { c.moveTo(w * 0.5, h * 0.22); c.lineTo(w * 0.7, h * 0.62); c.lineTo(w * 0.5, h * 0.54); c.lineTo(w * 0.3, h * 0.62); c.closePath(); });
   },
   capSpeed(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#f89048', u, (c) => { c.moveTo(w * 0.16, h * 0.2); c.lineTo(w * 0.62, h * 0.2); c.lineTo(w * 0.46, h * 0.48); c.lineTo(w * 0.84, h * 0.48); c.lineTo(w * 0.28, h * 0.9); c.lineTo(w * 0.42, h * 0.6); c.lineTo(w * 0.1, h * 0.6); c.closePath(); });
+    fineShape(ctx, '#f89048', u, (c) => { c.moveTo(w * 0.16, h * 0.2); c.lineTo(w * 0.62, h * 0.2); c.lineTo(w * 0.46, h * 0.48); c.lineTo(w * 0.84, h * 0.48); c.lineTo(w * 0.28, h * 0.9); c.lineTo(w * 0.42, h * 0.6); c.lineTo(w * 0.1, h * 0.6); c.closePath(); });
     plain(ctx, '#fff0c8', (c) => { c.moveTo(w * 0.48, h * 0.3); c.lineTo(w * 0.66, h * 0.3); c.lineTo(w * 0.5, h * 0.5); c.lineTo(w * 0.32, h * 0.5); c.closePath(); });
   },
   capLowGrav(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#b888f0', u, (c) => c.arc(w / 2, h / 2, w * 0.44, 0, Math.PI * 2));
+    fineShape(ctx, '#b888f0', u, (c) => c.arc(w / 2, h / 2, w * 0.44, 0, Math.PI * 2));
     plain(ctx, '#5c3c98', (c) => c.arc(w * 0.6, h * 0.46, w * 0.24, 0, Math.PI * 2));
     plain(ctx, '#f4e8ff', (c) => { c.arc(w * 0.27, h * 0.28, w * 0.08, 0, Math.PI * 2); c.arc(w * 0.35, h * 0.68, w * 0.05, 0, Math.PI * 2); });
   },
@@ -616,7 +636,7 @@ export const PROP_PAINTERS = {
     // the potato that cannot be peeled: humble spud, unreasonable aura
     const u = Math.max(w, h);
     stroke(ctx, '#e8e8f0', Math.max(0.5, w * 0.09), (c) => c.ellipse(w * 0.5, h * 0.5, w * 0.45, h * 0.45, 0, 0, Math.PI * 2));
-    shape(ctx, '#c89058', u, (c) => c.ellipse(w * 0.5, h * 0.54, w * 0.34, h * 0.28, 0.3, 0, Math.PI * 2));
+    fineShape(ctx, '#c89058', u, (c) => c.ellipse(w * 0.5, h * 0.54, w * 0.34, h * 0.28, 0.3, 0, Math.PI * 2));
     plain(ctx, '#8a6038', (c) => {
       c.ellipse(w * 0.38, h * 0.46, w * 0.07, h * 0.06, 0, 0, Math.PI * 2);
       c.ellipse(w * 0.62, h * 0.62, w * 0.06, h * 0.05, 0, 0, Math.PI * 2);
@@ -627,7 +647,7 @@ export const PROP_PAINTERS = {
     // for the score star at 8px; the gold spark at the tip is the tell that it
     // is a charge and not just another capsule.
     const u = Math.max(w, h);
-    shape(ctx, '#f890b8', u, (c) => rr(c, w * 0.24, h * 0.12, w * 0.52, h * 0.62, w * 0.26));
+    fineShape(ctx, '#f890b8', u, (c) => rr(c, w * 0.24, h * 0.12, w * 0.52, h * 0.62, w * 0.26));
     plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
     plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
@@ -907,7 +927,7 @@ export const PROP_PAINTERS = {
     const detailLine = Math.max(0.16, u * 0.009);
 
     // A real upright-vacuum silhouette: loop grip and steel spine first, then
-    // the bag/chamber, motor pod, wheels and a wide floor nozzle.
+    // the bag/chamber, motor pod and a wide floor nozzle.
     stroke(ctx, '#3a3040', Math.max(0.34, u * 0.025), (c) => {
       c.moveTo(w * 0.41, h * 0.52);
       c.lineTo(w * 0.61, h * 0.14);
@@ -952,13 +972,21 @@ export const PROP_PAINTERS = {
       c.lineTo(w * 0.32, h * 0.65);
       c.closePath();
     });
-    fineShape('#bfd4dc', (c) => rr(c, w * 0.37, h * 0.36, w * 0.15, h * 0.22, w * 0.035));
-    plain(ctx, 'rgba(245,252,255,0.68)', (c) => rr(c, w * 0.39, h * 0.38, w * 0.035, h * 0.16, w * 0.012));
-    stroke(ctx, '#737986', detailLine, (c) => {
-      c.arc(w * 0.455, h * 0.47, w * 0.045, -0.4, Math.PI * 1.45);
-      c.lineTo(w * 0.465, h * 0.44);
+    // An amber beacon sits physically above the chamber, away from the face.
+    plain(ctx, 'rgba(246,211,60,0.24)', (c) => rr(c, w * 0.325, h * 0.19, w * 0.075, h * 0.065, h * 0.02));
+    fineShape('#f6d33c', (c) => rr(c, w * 0.337, h * 0.2, w * 0.052, h * 0.048, h * 0.016));
+
+    // A quiet pair of cartoon eyes sits directly on the red chamber. Small,
+    // close-set ovals with no sockets or outline register on a second look
+    // instead of turning the whole appliance into a face.
+    plain(ctx, '#f4eee4', (c) => {
+      c.ellipse(w * 0.416, h * 0.408, w * 0.023, h * 0.032, -0.05, 0, Math.PI * 2);
+      c.ellipse(w * 0.472, h * 0.41, w * 0.023, h * 0.032, 0.05, 0, Math.PI * 2);
     });
-    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.335, h * 0.32, w * 0.025, 0, Math.PI * 2));
+    plain(ctx, '#26313d', (c) => {
+      c.ellipse(w * 0.423, h * 0.414, w * 0.0085, h * 0.012, 0, 0, Math.PI * 2);
+      c.ellipse(w * 0.479, h * 0.416, w * 0.0085, h * 0.012, 0, 0, Math.PI * 2);
+    });
 
     // Low motor housing bridges the tall chamber to the cleaning head.
     fineShape('#be3036', (c) => {
@@ -971,19 +999,11 @@ export const PROP_PAINTERS = {
       c.closePath();
     });
     plain(ctx, '#e05252', (c) => rr(c, w * 0.23, h * 0.65, w * 0.28, h * 0.045, h * 0.018));
-    fineShape('#34303a', (c) => {
-      c.arc(w * 0.24, h * 0.82, w * 0.075, 0, Math.PI * 2);
-      c.arc(w * 0.64, h * 0.82, w * 0.075, 0, Math.PI * 2);
-    });
-    plain(ctx, '#9498a2', (c) => {
-      c.arc(w * 0.24, h * 0.82, w * 0.032, 0, Math.PI * 2);
-      c.arc(w * 0.64, h * 0.82, w * 0.032, 0, Math.PI * 2);
-    });
 
     // Broad wedge-shaped floor head and dark brush lip finish the read.
     fineShape('#8f1c25', (c) => {
-      c.moveTo(w * 0.08, h * 0.8);
-      c.lineTo(w * 0.74, h * 0.79);
+      c.moveTo(w * 0.08, h * 0.835);
+      c.lineTo(w * 0.74, h * 0.825);
       c.lineTo(w * 0.89, h * 0.9);
       c.quadraticCurveTo(w * 0.9, h * 0.95, w * 0.84, h * 0.96);
       c.lineTo(w * 0.06, h * 0.96);
@@ -991,10 +1011,12 @@ export const PROP_PAINTERS = {
       c.closePath();
     });
     plain(ctx, '#c9363d', (c) => {
-      c.moveTo(w * 0.1, h * 0.82); c.lineTo(w * 0.72, h * 0.82);
-      c.lineTo(w * 0.8, h * 0.87); c.lineTo(w * 0.08, h * 0.88); c.closePath();
+      c.moveTo(w * 0.1, h * 0.845); c.lineTo(w * 0.72, h * 0.84);
+      c.lineTo(w * 0.8, h * 0.88); c.lineTo(w * 0.08, h * 0.89); c.closePath();
     });
     plain(ctx, '#4b2730', (c) => rr(c, w * 0.06, h * 0.92, w * 0.79, h * 0.035, h * 0.014));
+    // Its small transport wheels are recessed under the head; showing them
+    // here adds two face-like circles without strengthening the vacuum read.
     stroke(ctx, 'rgba(238,108,108,0.65)', detailLine, (c) => {
       c.moveTo(w * 0.19, h * 0.9); c.lineTo(w * 0.68, h * 0.89);
     });
@@ -1037,7 +1059,18 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // Extra internal art scale for props with fine expression or reflective detail.
 // Their painters receive at least a 2x box before supersampling; the world draw
 // size and gameplay hitbox do not change.
-const PROP_DETAIL_SCALE = { snowman: 2, snowmanBig: 2, qcrate: 2 };
+const PROP_DETAIL_SCALE = {
+  cactus: 2, cactusBig: 2,
+  snowman: 2, snowmanBig: 2,
+  crate: 2, qcrate: 2, pipe: 2, switch: 2,
+  zombieWalk: 2, icicle: 2,
+  buzzbird: 2, drone: 2, shooterDrone: 2,
+  printer: 2, chair: 2,
+  coin: 2, battery: 2,
+  capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
+  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2,
+  appliance: 2, cord: 2, resident: 2, dustdevil: 2,
+};
 export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 
 // World-only visual size. Snowmen overdraw their unchanged collision boxes a
@@ -1045,11 +1078,16 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 const PROP_VISUAL_SCALE = { snowman: 1.15, snowmanBig: 1.15 };
 export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
 
-// The shared two-pass hazard rim turns pale round snow into a broad grey halo
-// once the world camera and fractional desktop scale magnify it. Snowmen carry
-// their own fine outline and high-contrast scarf, so they skip that extra rim.
+// Refined props carry their own high-resolution hairline. The shared two-pass
+// hazard rim would sit outside it as a second broad border at desktop scale,
+// undoing the lighter authored contour.
+const SELF_OUTLINED_PROPS = new Set([
+  'cactus', 'cactusBig', 'snowman', 'snowmanBig',
+  'crate', 'pipe', 'zombieWalk', 'icicle',
+  'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair',
+]);
 export function propHazardRim(name) {
-  return name !== 'snowman' && name !== 'snowmanBig';
+  return !SELF_OUTLINED_PROPS.has(name);
 }
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }

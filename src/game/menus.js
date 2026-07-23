@@ -17,7 +17,7 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [18, 15], cord: [13, 8], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } from '../data/jokes.js';
@@ -2310,7 +2310,7 @@ export class FinaleState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
-    if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 12, 60, 24, 20);
+    if (this.beat === 6) drawProp(ctx, 'dustdevil', W / 2 - 20, 60, 40, 44);
     if (this.beat === LAST_BEAT) drawTextCentered(ctx, 'OVERTIME UNLOCKED', W / 2, 70, '#8858c8', 2, 'title');
     // The ending is one sentence on a black screen and it used to be set at the
     // same size as a menu row, pinned to y150 with a hard 58-character break.

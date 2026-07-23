@@ -269,7 +269,7 @@ export const glfx = {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
   },
 
-  render(backCanvas, overlayCanvas, shakeX, shakeY, outW, outH) {
+  render(backCanvas, overlayCanvas, shakeX, shakeY) {
     const gl = this.gl;
     if (!gl || !this.ready) return;
     this.upload(this.texBack, backCanvas);
@@ -298,9 +298,15 @@ export const glfx = {
       g.uniform2f(g.getUniformLocation(p, 'uDir'), 0, 1 / this.bloomB.h);
     });
 
-    // 2) final: world + bloom + vignette + aberration, crisp overlay on top
+    // 2) final: world + bloom + vignette + aberration, crisp overlay on top.
+    // Use the context's REAL drawing-buffer size, not canvas.width/height:
+    // Android Emulator's ANGLE translator can clamp the requested canvas
+    // backing store (2573x1446 became 1470x827 in the failing case). A viewport
+    // built from the requested size then maps only part of the fullscreen
+    // triangle and its UVs into the actual buffer, producing a black frame
+    // without a WebGL error or context loss.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, outW, outH);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     this.draw(this.pFinal, (g, p) => {
       bind(0, this.texBack); bind(1, this.bloomA.tex); bind(2, this.texOv);
       g.uniform1i(g.getUniformLocation(p, 'uBack'), 0);

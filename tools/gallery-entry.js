@@ -484,29 +484,63 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   }
 }
 
-// ---------------------------------------------------------------- 3. props
+// Reuse gameplay dimensions for the magnified source side of prop comparisons.
+// A painter may be shared by more than one definition; the first matching
+// obstacle/pickup is the same convention the original gallery used.
+function propNominalSize(name) {
+  const def = Object.values(OBSTACLES).find((d) => d.sprite === name)
+    || Object.values(PICKUPS).find((d) => d.sprite === name);
+  return def ? { w: def.w, h: def.h } : { w: 16, h: 16 };
+}
+
+// ------------------------------------------------------- 3. prop scale comparison
 {
   const names = Object.keys(PROP_PAINTERS);
-  const grid = section('props', 'Props (vector painters)',
-    `${names.length} entries in PROP_PAINTERS, drawn via drawProp(). Multi-frame props cycle.`);
-  // Nominal box: reuse the gameplay size where a def references this sprite.
-  const sizeOf = (n) => {
-    const def = Object.values(OBSTACLES).find((d) => d.sprite === n)
-      || Object.values(PICKUPS).find((d) => d.sprite === n);
-    return def ? { w: def.w, h: def.h } : { w: 16, h: 16 };
-  };
+  const grid = section('props', 'Props — gameplay vs large',
+    'LEFT magnifies the exact gameplay-sized raster. RIGHT rerenders the vector painter at the same large display size. '
+    + 'Compare them directly to judge which outlines should stay thick when small but stop growing when large.');
+  const TILE_W = 128;
+  const TILE_H = 72;
+  const PAD = 4;
+  const GAP = 4;
+  const LABEL_H = 8;
+  const COL_W = (TILE_W - PAD * 2 - GAP) / 2;
+  const ART_H = TILE_H - LABEL_H - PAD;
   for (const n of names) {
-    const { w, h } = sizeOf(n);
+    const { w, h } = propNominalSize(n);
     const fh = Math.round(h * propTall(n));
     const frames = propFrames(n);
-    tile(grid, n, `${w}x${fh}${frames > 1 ? ` · ${frames}f` : ''}`, w + 8, fh + 8, (ctx, t) => {
-      const f = frames > 1 ? Math.floor(t * propFps(n)) % frames : 0;
-      drawProp(ctx, n, 4, 4, w, fh, f);
-    }, { animated: frames > 1, hires: SMOOTH_PREVIEW_PROPS.has(n) ? smoothPreviewScale(n) : true, smooth: SMOOTH_PREVIEW_PROPS.has(n) });
+    tile(grid, n, `${w}x${fh} source · left gameplay / right rerender${frames > 1 ? ` · ${frames}f` : ''}`,
+      TILE_W, TILE_H, (ctx, t) => {
+        const f = frames > 1 ? Math.floor(t * propFps(n)) % frames : 0;
+        const scale = Math.min(COL_W / w, ART_H / fh);
+        const dw = w * scale;
+        const dh = fh * scale;
+
+        ctx.fillStyle = 'rgba(34,38,52,0.58)';
+        ctx.font = '4px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('GAME', PAD + COL_W / 2, LABEL_H / 2);
+        ctx.fillText('LARGE', PAD + COL_W + GAP + COL_W / 2, LABEL_H / 2);
+        ctx.fillStyle = 'rgba(34,38,52,0.12)';
+        ctx.fillRect(TILE_W / 2 - 0.25, LABEL_H, 0.5, ART_H);
+
+        const leftX = PAD + (COL_W - dw) / 2;
+        const artY = LABEL_H + (ART_H - dh) / 2;
+        ctx.save();
+        ctx.translate(leftX, artY);
+        ctx.scale(scale, scale);
+        drawProp(ctx, n, 0, 0, w, fh, f);
+        ctx.restore();
+
+        const rightX = PAD + COL_W + GAP + (COL_W - dw) / 2;
+        drawProp(ctx, n, rightX, artY, dw, dh, f);
+      }, { animated: frames > 1, hires: 3, smooth: true });
   }
 }
 
-// ------------------------------------------------------- 3b. food court furniture
+// ------------------------------------------------------- 3a. food court furniture
 {
   const grid = section('foodcourt', 'Food court furniture',
     'The hub concourse, at the size HubState draws it: nine cabinets lit and dead '

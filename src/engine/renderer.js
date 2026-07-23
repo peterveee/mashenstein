@@ -162,10 +162,11 @@ function resize() {
   const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
-  // Backbuffer density is capped: 3 device pixels per logical pixel keeps
-  // vector art smooth while quartering fill cost on Retina displays (the
-  // hero overlay still rasterizes at FULL device resolution in blit).
-  const px = Math.min(pxW / W, 4);
+  // Render the world at the display's full device density, just like the hero
+  // overlay. The former 4px/logical cap made Retina desktop frames render at
+  // half resolution and then enlarge in the final composite, softening every
+  // prop contour even though the source art itself was supersampled.
+  const px = pxW / W;
   const bw = Math.round(W * px), bh = Math.round(H * px);
   if (back.width !== bw || back.height !== bh) { back.width = bw; back.height = bh; }
   bctx.setTransform(px, 0, 0, bh / H, 0, 0);
@@ -332,11 +333,11 @@ export function blit() {
 
   if (glfx.active) {
     paintOverlays(octx);
-    glfx.render(back, overlayLayer, Math.round(shakeX * px), Math.round(shakeY * px), canvas.width, canvas.height);
+    glfx.render(back, overlayLayer, Math.round(shakeX * px), Math.round(shakeY * px));
     return;
   }
 
-  // 2D fallback: stretch the density-capped backbuffer to the display.
+  // 2D fallback: the backbuffer already matches full device density.
   dctx.setTransform(1, 0, 0, 1, 0, 0);
   dctx.imageSmoothingEnabled = back.width !== canvas.width;
   dctx.clearRect(0, 0, canvas.width, canvas.height);

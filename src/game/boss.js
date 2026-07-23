@@ -190,11 +190,16 @@ export class BossState extends RunState {
     // Boss sprite + health bars. super.draw() has already closed its world band,
     // so the boss — a thing IN the world — reopens one; the bars below are HUD.
     const x = Math.round(this.bossX - this.camX);
-    const y = Math.round(GROUND_Y - this.bossAlt - 24);
     const big = this.boss.sprite === 'dustdevil';
+    // Dust Devil is an industrial upright, not a hero-sized square prop. At
+    // 38px high it stands a little over 1.5x the 24px in-run cast, while the
+    // narrower portrait box preserves the vacuum silhouette from its painter.
+    const bossW = big ? 35 : 24;
+    const bossH = big ? 38 : 20;
+    const y = Math.round(GROUND_Y - this.bossAlt - bossH);
     ctx.save();
     applyWorld(ctx, this.camZoom, this.camPan);
-    drawProp(ctx, this.boss.sprite, x - 12, y, big ? 28 : 24, big ? 24 : 20);
+    drawProp(ctx, this.boss.sprite, x - bossW / 2, y, bossW, bossH);
     ctx.fillStyle = 'rgba(200,200,216,0.6)';
     ctx.fillRect(x - 8 + Math.round(Math.sin(this.tRun * 40) * 3), y - 4, 24, 1);
     ctx.restore();

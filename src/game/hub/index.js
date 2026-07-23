@@ -209,11 +209,11 @@ const STAFF_ROAM = 13;
 // hovering with nothing under the brush, reading as a bug rather than a
 // haunting.
 //
-// Size comes off the cast rather than the eye: a stick vacuum reaches somewhere
-// around the waist of whoever is pushing it, so ~55% of NPC_H. At the old 16x14
-// it stood a third as tall as a hero — fine for a smudge floating up the wall,
-// a toy once it shares a floor with them.
-const DD_H = Math.round(NPC_H * 0.55), DD_W = Math.round(DD_H * 0.85);
+// Size comes off the cast rather than the eye: this industrial upright reaches
+// above the waist of whoever would be pushing it, so ~70% of NPC_H. At 55% it
+// still read as a domestic toy once it shared a floor with the cast; Deep Clean
+// mode gets the full boss-sized escalation in boss.js.
+const DD_H = Math.round(NPC_H * 0.7), DD_W = Math.round(DD_H * 0.9);
 
 // Counter staff read as adults among mascots — a little over the player, well
 // under a cabinet. Dolores is the taller; Gary has never stood fully upright in

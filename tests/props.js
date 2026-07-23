@@ -27,8 +27,8 @@ assert(typeof PROP_PAINTERS.cactus === 'function', 'cactus has a vector painter'
 assert(typeof PROP_PAINTERS.snowman === 'function', 'snowman has a vector painter');
 assert(PICKUPS.resident.sprite === 'resident' && typeof PROP_PAINTERS.resident === 'function',
   'residents use distinct friendly art instead of the zombie hazard sprite');
-assert(PICKUPS.appliance.w === 24 && PICKUPS.appliance.h === 20 && PICKUPS.appliance.bob,
-  'flying toaster has a detailed 24x16 body plus launch headroom and bobs');
+assert(PICKUPS.appliance.w === 22 && PICKUPS.appliance.h === 18 && PICKUPS.appliance.bob,
+  'flying toaster has a detailed mid-size body plus launch headroom and bobs');
 assert(propFrames('appliance') === 96, 'the flying toaster combines a four-second toast pop with its quick flap');
 assert(propFps('appliance') === 24, 'the flying toaster cycles smoothly at 24fps');
 assert(propFrames('qcrate') === 36 && propFps('qcrate') === 12,
@@ -43,10 +43,26 @@ assert(propFrames('cactus') === 6, 'the cactus sways over six frames');
 assert(propFrames('snowman') === 6, 'the snowman shivers over six frames');
 assert(propDetailScale('snowman') === 2 && propDetailScale('snowmanBig') === 2,
   'both snowmen rasterize at double internal detail');
+assert(propDetailScale('dustdevil') === 2,
+  'Dust Devil keeps its small cartoon eyes at gameplay sizes');
+const refinedProps = [
+  'cactus', 'cactusBig', 'crate', 'qcrate', 'pipe', 'switch', 'zombieWalk', 'icicle',
+  'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'battery',
+  'capShield', 'capMagnet', 'capStar', 'capAirJump', 'capSpeed', 'capLowGrav', 'capUnpeel', 'capRelay',
+];
+assert(refinedProps.every((name) => propDetailScale(name) === 2),
+  'small reviewed props rasterize at double internal detail');
+const pickupSprites = [...new Set(Object.values(PICKUPS).map((def) => def.sprite))];
+assert(pickupSprites.every((name) => propDetailScale(name) === 2),
+  'every world pickup rasterizes at double internal detail');
 assert(propVisualScale('snowman') === 1.15 && propVisualScale('snowmanBig') === 1.15,
   'both snowmen draw larger without changing their hitboxes');
-assert(!propHazardRim('snowman') && !propHazardRim('snowmanBig') && propHazardRim('cactus'),
-  'snowmen skip the blurry shared hazard halo without changing other hazards');
+const selfOutlinedHazards = [
+  'cactus', 'cactusBig', 'snowman', 'snowmanBig', 'crate', 'pipe', 'zombieWalk', 'icicle',
+  'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair',
+];
+assert(selfOutlinedHazards.every((name) => !propHazardRim(name)) && propHazardRim('barrel'),
+  'refined hazards skip the blurry shared halo while other hazards retain it');
 const frost = CABINETS.find((cabinet) => cabinet.id === 'frost');
 const frostTypes = frost.patterns.flatMap((pattern) => pattern.cells.map((cell) => cell.t));
 assert(frostTypes.includes('snowman') && frostTypes.includes('snowmanBig'),

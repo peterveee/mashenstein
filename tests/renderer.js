@@ -9,9 +9,9 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-function webglStub({ compile = true } = {}) {
+function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   let id = 0;
-  const calls = { deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0 };
+  const calls = { deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0, viewports: [] };
   const noop = () => {};
   const gl = new Proxy({
     VERTEX_SHADER: 1, FRAGMENT_SHADER: 2,
@@ -21,6 +21,8 @@ function webglStub({ compile = true } = {}) {
     CLAMP_TO_EDGE: 10, TEXTURE_MIN_FILTER: 11, TEXTURE_MAG_FILTER: 12,
     LINEAR: 13, RGBA: 14, UNSIGNED_BYTE: 15,
     COLOR_ATTACHMENT0: 16, FRAMEBUFFER: 17,
+    drawingBufferWidth: drawingBuffer[0],
+    drawingBufferHeight: drawingBuffer[1],
     createShader: () => ({ id: ++id }),
     getShaderParameter: () => compile,
     getShaderInfoLog: () => 'forced shader compile failure',
@@ -31,6 +33,7 @@ function webglStub({ compile = true } = {}) {
     createFramebuffer: () => { calls.framebuffers++; return { id: ++id }; },
     deleteFramebuffer: () => { calls.deletedFramebuffers++; },
     deleteTexture: () => { calls.deletedTextures++; },
+    viewport: (...args) => { calls.viewports.push(args); },
   }, {
     get(target, key) { return key in target ? target[key] : noop; },
   });
@@ -59,6 +62,10 @@ function webglStub({ compile = true } = {}) {
   glfx.resize(1600, 900);
   assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 2,
     'a real resize deletes both superseded bloom framebuffer pairs');
+  glfx.render({ width: 2573, height: 1446 }, { width: 2573, height: 1446 }, 0, 0);
+  const finalViewport = good.calls.viewports[good.calls.viewports.length - 1];
+  assert(finalViewport[2] === 1470 && finalViewport[3] === 827,
+    'final pass uses ANGLE actual drawing-buffer size when canvas backing size is clamped');
 }
 
 // Force the Android-shaped failure: WebGL returns a context, then its shader
