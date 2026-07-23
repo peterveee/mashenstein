@@ -818,7 +818,11 @@ export class RunState {
       } else if (this.player.grounded) {
         const px = this.playerWorldX();
         const target = this.powerTarget(type);
-        if (target) this.breakObstacle(target);
+        if (target) {
+          this.projectileImpact({ type: 'spanner' }, target.x + target.w / 2,
+            this.groundYAt(target.x) - target.alt - target.h / 2);
+          this.breakObstacle(target);
+        }
         Audio.sfx('crunch');
         shake(2, 0.12);
         this.floatText(target ? 'WRENCH SMASH' : 'CLANG', '#f6d33c');
@@ -905,6 +909,8 @@ export class RunState {
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def.ground || !ob.def.breakable) continue;
       if (Math.abs(ob.x + ob.w / 2 - px) < radius + ob.w / 2) {
+        this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
+          this.groundYAt(ob.x) - ob.alt - ob.h / 2);
         this.breakObstacle(ob);
         if (this.modIds.includes('shockwave')) this.scatterCoins(ob.x);
         this.player.vy = 200; this.player.grounded = false; this.player.jumps = 1; // bounce
@@ -961,6 +967,18 @@ export class RunState {
     // No floatie: the capsule arcs high on its own and the catch announces
     // itself. Calling the toss and the catch is announcing one capsule twice.
     if (!quiet) Audio.sfx('power');
+  }
+
+  // Contact remains visually explicit, but it is deliberately silent until a
+  // weapon-specific replacement is selected. The shared impact crash made
+  // pellets, fists, axes and the wrench all sound like the same generic bang.
+  // Breakable props still play their own material/debris sound separately.
+  projectileImpact(pr, cx, cy) {
+    shake(pr.type === 'axe' ? 1.6 : 1.1, 0.07);
+    if (this.save.settings.reducedMotion) return;
+    const r = () => this.fxRng.float();
+    burst(cx, cy, 9, 86, 0.32, '#fff8d0', 1.15, 80, r);
+    burst(cx, cy, 7, 112, 0.26, '#f6d33c', 1, 100, r);
   }
 
   // The object comes apart into chunks of itself: they scatter from the centre,
@@ -1268,15 +1286,20 @@ export class RunState {
             : (ob.def.ground || ob.def.isTarget) && !ob.def.armored;
           if (!canHit) {
             // pellet pings off armored flyers
-            if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') { pr.live = false; Audio.sfx('ui'); }
+            if (!ob.def.ground && Math.abs(ob.x - pr.x) < 8 && pr.type === 'pellet') {
+              this.projectileImpact(pr, pr.x + 4, this.groundYAt(pr.x) - pr.alt - 4);
+              pr.live = false;
+            }
             continue;
           }
           const box = entityBox(ob, this.groundYAt(ob.x));
           const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
           if (overlaps(box, pbox)) {
             pr.hitIds.add(ob.id);
+            const ix = (Math.max(box.x, pbox.x) + Math.min(box.x + box.w, pbox.x + pbox.w)) / 2;
+            const iy = (Math.max(box.y, pbox.y) + Math.min(box.y + box.h, pbox.y + pbox.h)) / 2;
+            this.projectileImpact(pr, ix, iy);
             if (ob.def.breakable === false) {
-              Audio.sfx('ui');
               if (pr.type === 'axe' || pr.type === 'fist') pr.returning = true;
               else pr.live = false;
               continue;

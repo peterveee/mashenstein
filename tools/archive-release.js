@@ -1,10 +1,10 @@
-// Copy the current dist/index.html into releases/ under its commit, then
-// regenerate releases/index.md. Every push to main archives one playable,
-// self-contained copy of the game -- GitHub Pages artifacts expire after a day,
-// so this repo is the only durable record of what was published.
+// Combine the current split dist/index.html + dist/game.js into one release
+// HTML under its commit, then regenerate releases/index.md. The live build
+// keeps game.js behind the iPhone install gate; historical snapshots remain
+// self-contained because GitHub Pages artifacts expire after a day.
 // Usage: node tools/archive-release.js   (run after `npm run build`)
 import { execFileSync } from 'node:child_process';
-import { readdirSync, copyFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,8 +25,9 @@ function gitTry(...args) {
 }
 
 const built = join(root, 'dist/index.html');
-if (!existsSync(built)) {
-  console.error('no dist/index.html -- run `npm run build` first');
+const builtGame = join(root, 'dist/game.js');
+if (!existsSync(built) || !existsSync(builtGame)) {
+  console.error('no complete dist build -- run `npm run build` first');
   process.exit(1);
 }
 
@@ -34,7 +35,13 @@ mkdirSync(releases, { recursive: true });
 const sha = git('rev-parse', '--short=7', 'HEAD');
 const date = git('log', '-1', '--format=%ad', '--date=short', 'HEAD');
 const name = `${date}-${sha}.html`;
-copyFileSync(built, join(releases, name));
+const html = readFileSync(built, 'utf8');
+// A non-JavaScript script element is inert until the already-inlined gate
+// copies its text into a real script after platform approval. Escape a literal
+// closing tag so game source can never terminate this storage element early.
+const game = readFileSync(builtGame, 'utf8').replace(/<\/script/gi, '<\\/script');
+const embedded = `<script id="mash-embedded-game" type="application/x-mashenstein">${game}</script>\n`;
+writeFileSync(join(releases, name), html.replace('</body>', `${embedded}</body>`));
 
 // Rebuild the index from whatever is on disk, so a hand-deleted or
 // hand-added archive stays consistent without a separate bookkeeping file.

@@ -253,8 +253,8 @@ export const PROP_PAINTERS = {
       c.moveTo(cx - w * 0.02, headY - h * 0.055); c.lineTo(cx + w * 0.02, headY - h * 0.055);
     });
     ctx.beginPath();
-    rr(ctx, cx - w * 0.225, headY - h * 0.15, w * 0.195, h * 0.185, h * 0.032);
-    rr(ctx, cx + w * 0.03, headY - h * 0.15, w * 0.195, h * 0.185, h * 0.032);
+    rr(ctx, cx - w * 0.25, headY - h * 0.12, w * 0.22, h * 0.11, h * 0.032);
+    rr(ctx, cx + w * 0.03, headY - h * 0.12, w * 0.22, h * 0.11, h * 0.032);
     ctx.fillStyle = '#f7fbff';
     ctx.fill();
     ctx.strokeStyle = glassesColor;
@@ -262,12 +262,12 @@ export const PROP_PAINTERS = {
     ctx.lineJoin = 'round';
     ctx.stroke();
     plain(ctx, '#172238', (c) => {
-      c.ellipse(cx - w * 0.148, headY - h * 0.045, w * 0.034, h * 0.048, -0.12, 0, Math.PI * 2);
-      c.ellipse(cx + w * 0.087, headY - h * 0.025, w * 0.034, h * 0.048, 0.18, 0, Math.PI * 2);
+      c.ellipse(cx - w * 0.148, headY - h * 0.072, w * 0.034, h * 0.048, -0.12, 0, Math.PI * 2);
+      c.ellipse(cx + w * 0.087, headY - h * 0.052, w * 0.034, h * 0.048, 0.18, 0, Math.PI * 2);
     });
     plain(ctx, '#fff', (c) => {
-      c.arc(cx - w * 0.16, headY - h * 0.07, w * 0.011, 0, Math.PI * 2);
-      c.arc(cx + w * 0.075, headY - h * 0.052, w * 0.011, 0, Math.PI * 2);
+      c.arc(cx - w * 0.16, headY - h * 0.097, w * 0.011, 0, Math.PI * 2);
+      c.arc(cx + w * 0.075, headY - h * 0.079, w * 0.011, 0, Math.PI * 2);
     });
     // A darker rounded root sits inside the snow head; the carrot cone emerges
     // from it and draws over the glasses, so it is both embedded and in front.

@@ -5,7 +5,7 @@
 // at the same nominal gain. These trims keep their perceived peaks close to the
 // everyday jump/coin/UI family while preserving their internal balance.
 const SFX_TRIM = {
-  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
+  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74, impact: 1.08,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // A tail layer, not an event: it should colour the break, never top it.
@@ -57,10 +57,14 @@ class AudioSys {
     this.starRoot = 110;   // last bass note the song played (arpeggio follows it)
     this.beatListeners = [];
     this.songTime = 0;
+    this.lifecyclePaused = false;
   }
 
   ensure() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) {
+      if (!this.lifecyclePaused && this.ctx.state !== 'running') this.resumeContext();
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
@@ -68,7 +72,7 @@ class AudioSys {
     // and require an explicit resume request. Try immediately; browsers with
     // a gesture requirement reject/hold it harmlessly, then the existing
     // gesture path calls ensure() again and resumes for real.
-    if (this.ctx.state === 'suspended') {
+    if (!this.lifecyclePaused && this.ctx.state === 'suspended') {
       const resumed = this.ctx.resume();
       if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
     }
@@ -122,6 +126,29 @@ class AudioSys {
     const cd = this.crashBuf.getChannelData(0);
     for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
     this.startSequencer();
+    if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
+  }
+
+  settleContext(promise) {
+    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+  }
+
+  suspendContext() {
+    if (!this.ctx || typeof this.ctx.suspend !== 'function' || this.ctx.state === 'suspended') return;
+    try { this.settleContext(this.ctx.suspend()); } catch (e) { /* platform owns lifecycle */ }
+  }
+
+  resumeContext() {
+    if (!this.ctx || typeof this.ctx.resume !== 'function' || this.lifecyclePaused) return;
+    try { this.settleContext(this.ctx.resume()); } catch (e) { /* next gesture retries */ }
+  }
+
+  setLifecyclePaused(paused) {
+    paused = !!paused;
+    if (paused === this.lifecyclePaused) return;
+    this.lifecyclePaused = paused;
+    if (paused) this.suspendContext();
+    else this.resumeContext();
   }
 
   setMuted(m) {
@@ -204,6 +231,31 @@ class AudioSys {
     for (const [when, freq, gain] of [[0.18, 1800, 0.13], [0.38, 1250, 0.1], [0.64, 820, 0.075], [0.91, 520, 0.05]]) {
       this.noise(0.16, gain, 'bandpass', freq, when);
     }
+  }
+
+  // A compact impact crash. This uses the long noise buffer rather than a
+  // handful of tiny filtered pings, so the sound has an audible noisy body and
+  // a real tail instead of collapsing into a pitched bonk.
+  impactCrash(pitch = 1) {
+    if (!this.ctx || !this.crashBuf) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
+    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 95;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(6200 * pitch, t);
+    lp.frequency.exponentialRampToValueAtTime(260 * pitch, t + 0.62);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.62 * this.cueGain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.28 * this.cueGain, t + 0.16);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.72);
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+    src.start(t); src.stop(t + 0.78);
+
+    // The noise is the body; these two layers make its front edge read on
+    // laptop speakers without turning the whole cue back into a beep.
+    this.noise(0.045, 0.46, 'highpass', 3600 * pitch);
+    this.osc('sine', 145 * pitch, 38 * pitch, 0.3, 0.34);
   }
 
   // The title sign shorting out.
@@ -396,6 +448,14 @@ class AudioSys {
       // ...and off: the same run walking back down, quieter.
       case 'starEnd': [1568, 1319, 1047, 784].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.1, i * 0.06)); break;
       case 'hit': this.osc('sawtooth', 200, 40, 0.4, 0.25); this.noise(0.15, 0.2, 'lowpass', 900); break;
+      // Shared attack contact: a noisy crash, not a pitched little bonk. The
+      // wide noise layers carry on small speakers; the low layer gives it the
+      // physical hit; the bright transient makes the contact unmistakable.
+      // This is separate from 'crunch' (a prop breaking) and 'hit' (the player
+      // taking damage), so weapon contact reads before the target reacts.
+      case 'impact':
+        this.impactCrash(pitch);
+        break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;

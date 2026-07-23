@@ -1,10 +1,11 @@
-// Build: bundle src/main.js (IIFE) and inline it into template.html -> dist/index.html.
-// The dist file is fully self-contained and works from file://.
+// Build two deliberately separate entry points:
+//   gate.js -> inlined into index.html, small enough to decide whether an
+//              iPhone may play before any game code or assets are requested.
+//   game.js -> requested only after that gate permits the platform.
 //
-// It is not the ONLY file in dist/ any more: an installed game also gets a
-// service worker, an app icon and a web manifest (see emitAppShell below).
-// Those are additions, not dependencies — index.html on its own, off a USB
-// stick, still boots and plays exactly as before.
+// tools/archive-release.js combines the pair for durable historical snapshots;
+// the deployed current build remains split so a browser-only iPhone never
+// downloads or evaluates the game.
 import esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -15,16 +16,20 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
 
 const options = {
-  entryPoints: [join(root, 'src/main.js')],
+  entryPoints: {
+    gate: join(root, 'src/gate.js'),
+    game: join(root, 'src/main.js'),
+  },
   bundle: true,
   format: 'iife',
   target: ['es2020'],
   minify: !watch,
   sourcemap: watch ? 'inline' : false,
-  // We inline the bundle into template.html ourselves, so nothing is written
-  // by esbuild -- but ctx.serve() still refuses an entry point that has no
-  // output path to map requests onto, so name one it will never write to.
-  outdir: join(root, 'dist'),
+  // We write both public outputs ourselves after putting the gate into the
+  // template. In watch mode esbuild's serve layer also exposes its in-memory
+  // outputs; park those under a private URL so raw /game.js cannot shadow the
+  // stamped dist/game.js that enables dev mode.
+  outdir: watch ? join(root, 'dist/.esbuild') : join(root, 'dist'),
   write: false,
   logLevel: 'info',
 };
@@ -55,14 +60,14 @@ const ICONS = [180, 192, 512];
 // instead of a screenshot of whatever the page looked like when it was added,
 // and the manifest that tells Android the same things the <meta> tags tell iOS.
 // Each piece degrades to nothing if it is missing.
-function emitAppShell(html) {
+function emitAppShell(html, gameJs) {
   const dist = join(root, 'dist');
   // Version = a hash of the page itself, so sw.js changes its own bytes on
   // every real change to the game and stays byte-identical when nothing moved.
   // That byte difference is the only thing a browser checks to decide a worker
   // is new, and a version that churned on every build (a timestamp, say) would
   // reinstall the worker for nothing.
-  const version = createHash('sha1').update(html).digest('hex').slice(0, 10);
+  const version = createHash('sha1').update(html).update(gameJs).digest('hex').slice(0, 10);
   const sw = readFileSync(join(root, 'build/sw.js'), 'utf8').replace('__VERSION__', version);
   writeFileSync(join(dist, 'sw.js'), sw);
 
@@ -83,7 +88,9 @@ function emitAppShell(html) {
     start_url: './',
     scope: './',
     display: 'standalone',
-    orientation: 'landscape',
+    // iPhone landscape is enforced by the lifecycle overlay. Keeping the
+    // manifest open lets installed iPad and Android builds rotate freely.
+    orientation: 'any',
     background_color: '#0b0b14',
     theme_color: '#0b0b14',
     icons: icons.map((size) => ({
@@ -95,23 +102,32 @@ function emitAppShell(html) {
   return version;
 }
 
+function output(result, name) {
+  const found = result.outputFiles.find((file) => file.path.endsWith(`/${name}.js`));
+  if (!found) throw new Error(`esbuild did not produce ${name}.js`);
+  return found.text;
+}
+
 function emit(result) {
-  const js = result.outputFiles[0].text;
+  const gateJs = output(result, 'gate');
+  const gameJs = buildStamp() + output(result, 'game');
+  const timestamp = buildTimestamp();
   const template = readFileSync(join(root, 'build/template.html'), 'utf8')
-    .replace('__BUILD_TIMESTAMP__', buildTimestamp());
-  // Inline safely: </script> inside the bundle would terminate the tag early.
-  const safe = js.replace(/<\/script/gi, '<\\/script');
-  // Stamp goes ahead of the bundle so it is set before any module code reads it.
-  const html = template.replace('/*__BUNDLE__*/', () => buildStamp() + safe);
+    .replaceAll('__BUILD_TIMESTAMP__', timestamp);
+  // Inline safely: </script> inside the gate would terminate the tag early.
+  const safeGate = gateJs.replace(/<\/script/gi, '<\\/script');
+  const html = template.replace('/*__GATE_BUNDLE__*/', () => safeGate);
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/index.html'), html);
-  console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB)`);
+  writeFileSync(join(root, 'dist/game.js'), gameJs);
+  console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB gate)`);
+  console.log(`dist/game.js written (${(gameJs.length / 1024).toFixed(0)} KB game)`);
 
   // Watch builds deliberately skip the service worker: a network-first worker
   // is still one more thing between a save and a refresh, and the dev server
   // has nothing to keep current. With no sw.js to fetch, registration 404s
   // and gives up.
-  if (!watch) emitAppShell(html);
+  if (!watch) emitAppShell(html, gameJs);
 
   // Versioned outputs driven by releases/versions.json.
   // Each key becomes a dist/<version>/index.html served by GitHub Pages.

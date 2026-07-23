@@ -36,48 +36,44 @@ function loadPlaywright() {
 
 // The painter runs in the browser, where the game's drawing code expects to be.
 const ENTRY = `
-import { drawToonFace } from '${join(root, 'src/sprites/toons.js').replace(/\\/g, '/')}';
+import { drawToonFace, setInk } from '${join(root, 'src/sprites/toons.js').replace(/\\/g, '/')}';
 
 window.paintIcon = (ctx, S, hero) => {
-  // Plum, lit from the middle: the shutter sticker's colour, so the icon and
-  // the first thing the game draws are recognisably the same object.
-  const bg = ctx.createRadialGradient(S * 0.5, S * 0.42, S * 0.05, S * 0.5, S * 0.5, S * 0.72);
-  bg.addColorStop(0, '#4a2668');
-  bg.addColorStop(1, '#1b1029');
+  // Full-bleed arcade teal gives Lorenzo's purple cap and warm face clean
+  // contrast without spending a third of the tile on a token-shaped frame.
+  const bg = ctx.createLinearGradient(0, 0, S, S);
+  bg.addColorStop(0, '#2aa9a7');
+  bg.addColorStop(0.52, '#12657a');
+  bg.addColorStop(1, '#082c49');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, S, S);
 
+  // A broad cabinet-light bloom keeps the face bright through circular and
+  // squircle masks while the corners retain enough depth to define the tile.
+  const glow = ctx.createRadialGradient(S * 0.34, S * 0.24, 0, S * 0.42, S * 0.42, S * 0.72);
+  glow.addColorStop(0, 'rgba(116,240,211,0.34)');
+  glow.addColorStop(0.58, 'rgba(41,164,168,0.08)');
+  glow.addColorStop(1, 'rgba(4,18,37,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, S, S);
+
   // Arcade CRT scanlines, barely there — texture at 512, invisible at 60.
-  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
   const band = Math.max(2, Math.round(S / 64));
   for (let y = 0; y < S; y += band * 2) ctx.fillRect(0, y, S, band);
 
-  // A gold token with the face on it. Gold because Lorenzo is a dark purple cap
-  // on a dark plum ground otherwise, and at 60px that is one shape, not a face
-  // — and gold is already the game's own colour for its name.
+  // Icon art needs a single crisp silhouette. Production's deliberately soft,
+  // translucent contours blend into moving scenery; on a static Home Screen
+  // tile they look like several misregistered copies of the same edge. Use
+  // thinner but fully opaque icon ink, without changing normal game rendering.
+  setInk({ body: 0.38, face: 0.42, alpha: 5, brow: 1, browA: 1, browL: 0.15 });
   //
-  // Everything lives inside a 0.4 radius: that is the safe zone a maskable icon
-  // is allowed to keep, so Android can crop this to a circle, a squircle or a
-  // teardrop and iOS can round the corners, and none of them clip him.
-  const R = S * 0.40;
-  const disc = ctx.createRadialGradient(S * 0.42, S * 0.36, S * 0.04, S * 0.5, S * 0.5, R * 1.1);
-  disc.addColorStop(0, '#ffe07a');
-  disc.addColorStop(1, '#eda227');
-  ctx.fillStyle = disc;
-  ctx.beginPath();
-  ctx.arc(S / 2, S / 2, R, 0, Math.PI * 2);
-  ctx.fill();
-  // The teal every button and plate in the game is outlined in. It rides just
-  // outside the token, on the plum, where it is the one cool colour on the
-  // tile — a dark rim between gold and plum would be invisible against a
-  // background that is already that colour.
-  ctx.lineWidth = S * 0.012;
-  ctx.strokeStyle = '#48e0c8';
-  ctx.beginPath();
-  ctx.arc(S / 2, S / 2, R * 1.075, 0, Math.PI * 2);
-  ctx.stroke();
-
-  drawToonFace(ctx, hero, S * 0.175, S * 0.15, S * 0.65, S * 0.65);
+  // The in-game directional-light pass also adds volume that is useful in play
+  // but too busy here, so this crop is flat-lit.
+  // Centre Lorenzo's FACE rather than the total ink bounds. His long bill
+  // carries the silhouette far to the right; centring that silhouette parked
+  // his eyes, nose and moustache visibly left of the token centre.
+  drawToonFace(ctx, hero, S * 0.10, S * 0.05, S * 0.90, S * 0.90, { light: false });
 };
 `;
 
@@ -94,15 +90,24 @@ await page.addScriptTag({ content: bundle.outputFiles[0].text });
 
 mkdirSync(join(root, 'build/icons'), { recursive: true });
 for (const size of SIZES) {
-  // Rendered natively at each size rather than downscaled from one big one:
-  // the art is vector, so the small sizes get their own honest rasterisation
-  // instead of a blur of the 512.
+  // Supersample every requested size independently, then reduce it once with
+  // high-quality filtering. Curves stay smooth without depending on a 512px
+  // master or accumulating multiple resize passes.
   const dataUrl = await page.evaluate(([S, hero]) => {
+    const scale = 4;
+    const hi = document.createElement('canvas');
+    hi.width = hi.height = S * scale;
+    const hx = hi.getContext('2d');
+    hx.scale(scale, scale);
+    window.paintIcon(hx, S, hero);
+
     const c = document.getElementById('c');
-    c.width = S; c.height = S;
+    c.width = c.height = S;
     const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, S, S);
-    window.paintIcon(ctx, S, hero);
+    ctx.drawImage(hi, 0, 0, S, S);
     return c.toDataURL('image/png');
   }, [size, HERO]);
   const png = Buffer.from(dataUrl.split(',')[1], 'base64');

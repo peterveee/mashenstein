@@ -956,8 +956,8 @@ function flickerBlock(t) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onOvertime, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel }) {
-    this.save = save; this.onSlotChosen = onSlotChosen; this.onOvertime = onOvertime; this.onSettings = onSettings;
+  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel }) {
+    this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
@@ -1039,8 +1039,6 @@ export class TitleState {
         act: () => this.onSlotChosen(i, !s),
       });
     });
-    const anyOvertime = this.save.data.slots.some((s) => s && s.campaign.storyFlags.sawEnding);
-    if (anyOvertime) opts.push({ id: 'overtime', label: 'OVERTIME (ENDLESS)', act: () => this.onOvertime() });
     // Everything that isn't "start playing" lives one tap deeper. Nine rows in
     // a 100-unit band meant 11-unit rows, which on a phone is a 16px target —
     // and ERASE A FILE sat two of them below FILE 3, where a miss is

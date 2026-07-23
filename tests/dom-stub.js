@@ -67,7 +67,14 @@ export function installDom({ gameGetContext = null, locationSearch = '' } = {}) 
 
   globalThis.document = {
     readyState: 'complete',
-    getElementById: (id) => (id === 'game' ? gameCanvas : id === 'chrome' ? chromeCanvas : bootErrorEl),
+    hidden: false,
+    activeElement: null,
+    getElementById: (id) => {
+      if (id === 'game') return gameCanvas;
+      if (id === 'chrome') return chromeCanvas;
+      if (id === 'boot-error') return bootErrorEl;
+      return null;
+    },
     createElement: () => makeCanvas(),
     addEventListener: (ev, fn) => { (listeners['doc:' + ev] ||= []).push(fn); },
   };

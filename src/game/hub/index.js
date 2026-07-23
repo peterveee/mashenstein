@@ -80,10 +80,14 @@ const HUB_CAM_Y = HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM;
 // floor also lowers the top crop (the pin trades ceiling for floor), and a
 // hardcoded fixture y is exactly how the lights ended up drawn off-screen the
 // first time — so the ceiling is defined as "the first world y that is actually
-// on screen", plus clearance for the housing drawCeilingLight hangs at y-4.
+// on screen". The bright tube itself belongs on that line; anchoring the dark
+// housing there still left the part players read as "the light" visibly lower.
 const HUB_WALL_Y0 = 40;
 const HUB_WALL_Y1 = HUB_FLOOR_PIN_Y - 2;            // top of the skirting trim
-const HUB_CEIL_Y = Math.ceil(HUB_FLOOR_PIN_Y - HUB_FLOOR_PIN_Y / HUB_ZOOM) + 6;
+const HUB_LIGHT_Y = HUB_CAM_Y;
+// Ceiling-crawling props need the housing's lower edge rather than the clipped
+// tube line, so keep their attachment point separate from the light position.
+const HUB_CEIL_Y = Math.ceil(HUB_CAM_Y) + 4;
 
 // Station footprints, all standing on the floor line. The cabinet takes its
 // size from whichever silhouette CABINET_STYLE names rather than hardcoding
@@ -102,6 +106,25 @@ const DOOR_W = 44, DOOR_H = 84, DOOR_Y = HUB_FLOOR_PIN_Y - DOOR_H;
 // door's width and half its height on purpose: a counter is a horizontal thing,
 // and the whole point of it is that you can see over it to the person behind.
 const CTR_Y = HUB_FLOOR_PIN_Y - COUNTER_H;
+
+// One floor treatment for both halves of the hub. The Food Court draws this in
+// camera space while the Trophy Room draws it across its whole world, but the
+// skirting, colours and tile dimensions stay identical.
+function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
+  const wallY1 = floorY - 2;
+  ctx.fillStyle = '#38304a';
+  ctx.fillRect(0, wallY1, width, 6);
+  ctx.fillStyle = '#1c1626';
+  ctx.fillRect(0, wallY1 + 6, width, H - wallY1 - 6);
+  for (let row = 0; row < 3; row++) {
+    for (let x = -(worldOffsetX % 32); x < width; x += 32) {
+      ctx.fillStyle = (Math.floor((x + worldOffsetX) / 32) + row) % 2 === 0
+        ? '#241c30'
+        : '#1c1626';
+      ctx.fillRect(Math.round(x), wallY1 + 10 + row * 22, 32, 22);
+    }
+  }
+}
 
 // How tall the cast stands in the concourse, in the same logical units the
 // cabinets are measured in (drawToon's `h` is character height).
@@ -405,7 +428,7 @@ function lightFlicker(t, i, reduced) {
 //      angle. The lean is what makes eight fixtures read as a room rather than
 //      as eight copies of one sprite.
 const LIGHT_W = 26;
-function drawCeilingLight(ctx, x, y, lit) {
+function drawCeilingLight(ctx, x, y, lit, viewX = x, viewWidth = HUB_VIEW_W) {
   // Housing first: a dark bracket the tube hangs in, drawn whether or not the
   // tube works. A dead light is still a fixture.
   ctx.fillStyle = '#232030';
@@ -447,7 +470,10 @@ function drawCeilingLight(ctx, x, y, lit) {
   // diffuser — the thing the ceiling actually is. The three shares sum to the
   // old strength straight down the core and taper off sideways, so the beam
   // now has an edge you cannot point at.
-  const lean = ((cx - HUB_VIEW_W / 2) / (HUB_VIEW_W / 2)) * 26;
+  // x may be a world coordinate (the unzoomed Trophy Room draws its fixtures
+  // that way), but perspective belongs to where the fixture is on screen.
+  const viewCx = viewX + LIGHT_W / 2;
+  const lean = ((viewCx - viewWidth / 2) / (viewWidth / 2)) * 26;
   const top = y + 4, bottom = 168;
   for (const [spread, share] of [[48, 0.34], [31, 0.33], [17, 0.33]]) {
     const beam = ctx.createLinearGradient(0, top, 0, bottom);
@@ -481,8 +507,9 @@ function drawCeilingLight(ctx, x, y, lit) {
 }
 
 // Walking up to a hero offers two things, and neither of them is guessable from
-// the world: you can hear what they have to say, or you can BE them. So they get
-// a two-item chooser floating over their head rather than being bound to keys.
+// the world: you can hear what they have to say, or you can BE them. Their name
+// and those two actions share the bottom contextual row, so identity and verbs
+// read as one sentence and no interface floats over the cast.
 //
 // The alternative was mapping them to different inputs (DOWN talks, ENTER
 // swaps), which reads fine in a manual and not at all on a screen — and on touch
@@ -494,57 +521,55 @@ const NPC_MENU = [{ id: 'talk', label: 'TALK' }, { id: 'swap', label: 'SWAP' }];
 // is not in HEROES. Offering SWAP on him would be a button that silently does
 // the wrong thing, so he gets a one-item chooser instead.
 function npcMenuFor(npc) { return npc && npc.swappable === false ? NPC_MENU.slice(0, 1) : NPC_MENU; }
-const NPC_CHIP_W = 30, NPC_CHIP_H = 12, NPC_CHIP_GAP = 3;
+const NPC_CHIP_W = 34, NPC_CHIP_H = 16, NPC_CHIP_GAP = 3;
+const NPC_NAME_GAP = 8;
 // How far short of the back wall a hero has to stop.
 //
-// The chips are centred on whoever they belong to and drawn in WORLD space, so a
-// hero standing hard against the far end of the concourse hangs half a chip row
-// past it — and the camera is already clamped at that wall, so there is no pan
-// left to bring it back on screen. The result is a TALK/SWAP pair with its right
-// edge sliced off, and no amount of walking fixes it.
-//
-// Derived from the chip geometry rather than picked, so widening the chips or
-// adding a third option can never silently re-break it. A full row is
-// 2*30 + 3 = 63, so half of it is 31.5; the rest is air.
+// Keep the crowd clear of the room's hard end. The interaction row no longer
+// follows them through world space, but this breathing room stops the last hero
+// from looking pinned against the wall.
 const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
-// World-space rect for option `i` above a hero standing at `npcX`. One function
-// for both the drawing and the hit test, so a chip can never be somewhere other
-// than where it looks.
-//
-// Side by side rather than stacked: two chips in a row is one band of chrome
-// over a head instead of a column climbing toward the ceiling, and it leaves the
-// pair low enough to still read as belonging to that hero. Selection stays on
-// UP/DOWN even though the layout is horizontal — LEFT/RIGHT is walking, and
-// with exactly two options either key is a toggle, not a direction.
-function npcChipRect(npcX, i, count = NPC_MENU.length) {
-  const row = count * NPC_CHIP_W + (count - 1) * NPC_CHIP_GAP;
-  // Clears the player's own marker, which sits at ~132-138: you stand within 18
-  // units of whoever you address, so the chips and the wedge share a column.
-  const top = HUB_FLOOR_PIN_Y - NPC_H - 36;
+// One screen-space layout for name, drawing and hit-testing. Long names expand
+// leftward while the actions remain immediately beside them; centring the full
+// group keeps every cast member balanced without the buttons wandering.
+function npcPromptLayout(npc, opts = npcMenuFor(npc)) {
+  const name = npc.name || HERO_BY_ID[npc.id].short;
+  const nameW = textWidth(name, 1, 'ui');
+  const chipsW = opts.length * NPC_CHIP_W + (opts.length - 1) * NPC_CHIP_GAP;
+  const totalW = nameW + NPC_NAME_GAP + chipsW;
+  const x = W / 2 - totalW / 2;
+  const y = H - 39;
   return {
-    x: npcX - row / 2 + i * (NPC_CHIP_W + NPC_CHIP_GAP),
-    y: top,
-    w: NPC_CHIP_W,
-    h: NPC_CHIP_H,
+    name,
+    nameX: x,
+    nameY: y + 4,
+    rects: opts.map((_, i) => ({
+      x: x + nameW + NPC_NAME_GAP + i * (NPC_CHIP_W + NPC_CHIP_GAP),
+      y,
+      w: NPC_CHIP_W,
+      h: NPC_CHIP_H,
+    })),
   };
 }
 
-function drawNpcChips(ctx, npcX, cam, idx, opts) {
+function drawNpcPrompt(ctx, npc, idx, opts) {
+  const layout = npcPromptLayout(npc, opts);
+  drawText(ctx, layout.name, layout.nameX, layout.nameY, '#48e0c8');
   for (let i = 0; i < opts.length; i++) {
-    const r = npcChipRect(npcX, i, opts.length);
-    const x = Math.round(r.x - cam);
+    const r = layout.rects[i];
     const sel = i === idx;
     ctx.save();
     ctx.beginPath();
-    platePath(ctx, x, r.y, r.w, r.h, 4);
+    platePath(ctx, r.x, r.y, r.w, r.h, 4);
     ctx.fillStyle = sel ? '#f6d33c' : 'rgba(18,14,28,0.86)';
     ctx.fill();
     ctx.lineWidth = 0.8;
     ctx.strokeStyle = sel ? 'rgba(26,16,40,0.5)' : 'rgba(246,211,60,0.45)';
     ctx.stroke();
     ctx.restore();
-    drawTextCentered(ctx, opts[i].label, x + r.w / 2, r.y + 2.5, sel ? '#1a1028' : '#f6d33c', 0.85, 'bold');
+    drawTextCentered(ctx, opts[i].label, r.x + r.w / 2, r.y + 4.5,
+      sel ? '#1a1028' : '#f6d33c', 0.85, 'bold');
   }
 }
 
@@ -707,9 +732,10 @@ export class HubState {
 
   stations() {
     const slot = this.save.slot;
-    // The exit sits at the leftmost walkable point (px's own floor is 20 —
-    // see update()), so walking off the left edge always lands on it.
-    const st = [{ type: 'exit', x: 20, label: 'EXIT' }];
+    // Boundary doors are positioned by their outer frames, not by a nearly
+    // matching player clamp: the EXIT frame is exactly flush with the left
+    // edge and the Trophy Room frame is exactly flush with the right.
+    const st = [{ type: 'exit', x: DOOR_W / 2, label: 'EXIT' }];
     // Enough bare wall that the exit reads as its own fixture rather than part
     // of the arcade bank — but not the corridor 130 opened up.
     let x = 96;
@@ -738,9 +764,10 @@ export class HubState {
     st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 140;
     st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
-    st.push({ type: 'shelf', x, label: 'TROPHY ROOM' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
-    if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) st.push({ type: 'socket', x, label: 'THE SOCKET' });
+    if (finaleUnlocked(slot) && !slot.campaign.storyFlags.sawEnding) {
+      st.push({ type: 'socket', x, label: 'THE SOCKET' }); x += 88;
+    }
     // The parenthetical carries what the finale used to say in one opaque line:
     // nothing in OVERTIME counts. It belongs here rather than at the end of the
     // campaign — this is the door the player walks through every time, and the
@@ -751,14 +778,14 @@ export class HubState {
       // it in the station cursor rather than adding it to the tail: the whole
       // concourse (including NPC distribution) then knows the space is usable.
       x += OVERTIME_EMPTY_BAY;
-      st.push({ type: 'overtime', x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' });
+      st.push({ type: 'overtime', x, label: 'OVERTIME CABINET (HR HAS APPROVED NONE OF THIS)' }); x += 88;
     }
-    // Tail past the last station. Widened once the crowd started living out
-    // here: the far hero now reserves a chip row off the end (npcFarX), and
-    // at the old 80 that put them close enough to the back wall to read as
-    // cornered rather than as standing at the quiet end of a room.
-    x += 130;
-    this.width = Math.max(W, x);
+    // The Trophy Room is the right-hand boundary, mirroring EXIT.
+    // There is no decorative tail beyond it: the last walkable player position
+    // is the centre of this door, so crossing it is unambiguously leaving the
+    // concourse rather than interacting with another free-standing fixture.
+    st.push({ type: 'shelf', x, label: 'TROPHY ROOM' });
+    this.width = Math.max(W, x + DOOR_W / 2);
     return st;
   }
 
@@ -1155,17 +1182,17 @@ export class HubState {
         Input.endFrame();
         return;
       }
-      // A tap that lands on one of the chooser's chips takes that option and
-      // nothing else — checked next, because the chips hang over open floor and
-      // would otherwise read as "walk there".
+      // A tap that lands on one of the chooser's bottom-row chips takes that
+      // option and nothing else. Check it before translating the pointer into
+      // world space, because this contextual chrome is fixed to the screen.
       const chipNpc = this.focusNpc;
       if (chipNpc) {
-        const wx = Input.pointer.x / HUB_ZOOM + this.camX();
-        const wy = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
         const chipOpts = npcMenuFor(chipNpc);
+        const chipLayout = npcPromptLayout(chipNpc, chipOpts);
         for (let i = 0; i < chipOpts.length; i++) {
-          const r = npcChipRect(chipNpc.x, i, chipOpts.length);
-          if (wx >= r.x - 4 && wx <= r.x + r.w + 4 && wy >= r.y - 3 && wy <= r.y + r.h + 3) {
+          const r = chipLayout.rects[i];
+          if (Input.pointer.x >= r.x - 4 && Input.pointer.x <= r.x + r.w + 4
+            && Input.pointer.y >= r.y - 3 && Input.pointer.y <= r.y + r.h + 3) {
             this.npcMenuIdx = i;
             this.chooseNpc(chipNpc);
             Input.endFrame();
@@ -1237,6 +1264,12 @@ export class HubState {
       if (who) this.walkTarget = this.standBesideX(who);
       else this.walkToNpc = null;
     }
+    const exitDoor = st.find((s) => s.type === 'exit');
+    const trophyDoor = st.find((s) => s.type === 'shelf');
+    const walkingThroughExit = Input.held('left')
+      || (this.walkTarget != null && exitDoor && this.walkTarget <= exitDoor.x);
+    const walkingThroughTrophy = Input.held('right')
+      || (this.walkTarget != null && trophyDoor && this.walkTarget >= trophyDoor.x);
     if (this.walkTarget != null) {
       const d = this.walkTarget - this.px;
       if (Math.abs(d) < 3) { this.walkTarget = null; this.walkToNpc = null; }
@@ -1247,6 +1280,20 @@ export class HubState {
       ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
       : 0;
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
+    if (walkingThroughExit && exitDoor && this.px <= exitDoor.x) {
+      this.flow.toTitle();
+      Input.endFrame();
+      return;
+    }
+    if (walkingThroughTrophy && trophyDoor && this.px >= trophyDoor.x) {
+      // The saved hub facing is what the returning room transition restores.
+      // Face back into the concourse so leaving the Trophy Room never points
+      // the hero straight back through the boundary they just used.
+      this.facing = -1;
+      this.flow.openTrophyRoom();
+      Input.endFrame();
+      return;
+    }
     const near = nearestTo(st, this.px, STATION_R);
     this.near = near;
     // Talk to NPC heroes: press down, or just stand alongside one for a second —
@@ -1368,7 +1415,7 @@ export class HubState {
     else if (st.type === 'bench') this.flow.openBench();
     else if (st.type === 'shop') this.flow.openShop();
     else if (st.type === 'arcade') this.flow.openArcade();
-    else if (st.type === 'shelf') this.flow.openTrophyRoom();
+    else if (st.type === 'shelf') { this.facing = -1; this.flow.openTrophyRoom(); }
     else if (st.type === 'socket') this.flow.startFinale();
     else if (st.type === 'overtime') this.flow.startOvertime();
     else if (st.type === 'backroom') this.flow.startOvertime((Date.now() & 0xfffff) ^ 0xbac);
@@ -1643,17 +1690,7 @@ export class HubState {
     // back wall + floor
     ctx.fillStyle = '#241c30';
     ctx.fillRect(0, HUB_WALL_Y0, HUB_VIEW_W, HUB_WALL_Y1 - HUB_WALL_Y0);
-    ctx.fillStyle = '#38304a';
-    ctx.fillRect(0, HUB_WALL_Y1, HUB_VIEW_W, 6);
-    ctx.fillStyle = '#1c1626';
-    ctx.fillRect(0, HUB_WALL_Y1 + 6, HUB_VIEW_W, H - HUB_WALL_Y1 - 6);
-    // checkered food-court floor
-    for (let y = 0; y < 3; y++) {
-      for (let x = -((cam) % 32); x < HUB_VIEW_W; x += 32) {
-        ctx.fillStyle = (Math.floor((x + cam) / 32) + y) % 2 === 0 ? '#241c30' : '#1c1626';
-        ctx.fillRect(Math.round(x), HUB_WALL_Y1 + 10 + y * 22, 32, 22);
-      }
-    }
+    drawFoodCourtFloor(ctx, HUB_FLOOR_PIN_Y, HUB_VIEW_W, cam);
     // Wall dressing, drawn straight onto the wall the block above just laid
     // down (hence base:false) and before the stations, so a cabinet stands in
     // front of its own poster.
@@ -1742,11 +1779,9 @@ export class HubState {
       });
     }
     // The fixtures themselves, flickering because the place is falling apart.
-    // Drawn at y 46 rather than the ceiling's actual y 34 — HUB_ZOOM's floor pin
-    // crops everything above world y ~44 off the top of the frame, so a light
-    // fixture at the real ceiling height would flicker invisibly. y 46 is as
-    // close to that crop line as fits; now that the status readout has moved
-    // down to the floor cluster, nothing else contests the top of the screen.
+    // The visible tube begins on the first visible world row. Its dark housing
+    // extends upward and is cropped by the room edge, making the fixtures read
+    // unmistakably as mounted at the very top rather than floating below it.
     // The glow's reach is stretched to match (down to y 170, was 140) so the
     // extra headroom reads as more of the back wall getting lit, not just a
     // taller light fixture.
@@ -1764,7 +1799,7 @@ export class HubState {
       const lx = Math.round(f.x - cam);
       if (lx < -LIGHT_W - 60 || lx > HUB_VIEW_W + 60) return;
       const flick = lightFlicker(this.t, i, this.save.settings.reducedFlashing);
-      drawCeilingLight(ctx, lx, HUB_CEIL_Y, f.k > 0 ? f.k * flick : 0);
+      drawCeilingLight(ctx, lx, HUB_LIGHT_Y, f.k > 0 ? f.k * flick : 0);
     });
     // Light pooling: every lit machine throws its screen colour onto the tiles
     // in front of it. Drawn before the stations so each cabinet stands ON its
@@ -1923,11 +1958,6 @@ export class HubState {
       drawProp(ctx, 'dustdevil', ddX, ddY, DD_W, DD_H);
       ctx.restore();
     }
-    // The chooser rides above whichever hero you are beside, and only when no
-    // station is also in range — standing between a cabinet and a loitering
-    // hero, ENTER belongs to the cabinet, so offering chips you cannot pick
-    // would be a lie.
-    if (this.focusNpc) drawNpcChips(ctx, this.focusNpc.x, cam, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc));
     // player walks
     const heroId = this.avatarId();
     const moving = Input.held('left') || Input.held('right') || this.walkTarget != null;
@@ -1979,15 +2009,11 @@ export class HubState {
     // Focus first, so this row names whatever confirm is actually pointed at. It
     // used to test the station first, which meant standing nose to nose with a
     // hero in front of a cabinet read out the CABINET's name and verb while the
-    // hero's chips were the thing on screen.
+    // hero's actions were the thing on screen.
     if (this.focusNpc) {
-      // Touch talks the same way it enters a station — tap them again once
-      // you're standing alongside (update()'s tappedNpc branch); DOWN is the
-      // keyboard's own way in, not something touch has a key for.
-      // Just the name: the chips over their head already say what the two
-      // options are, so repeating them down here would be the same sentence in
-      // two places — which is exactly what the rest of this row was cut for.
-      drawTextCentered(ctx, this.focusNpc.name || HERO_BY_ID[this.focusNpc.id].short, W / 2, H - 30, '#48e0c8');
+      // Identity and verbs stay together in this one contextual cluster. The
+      // same rectangles are used by update() for touch hit-testing.
+      drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc));
     } else if (this.near) {
       // A locked cabinet gets no verb. "ENTER TO USE" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
@@ -2003,9 +2029,9 @@ export class HubState {
         // lands on after the title, and until a finger had touched something it
         // was told to press ENTER.
         const touch = Input.isTouchDevice();
-        const verb = this.near.type === 'exit'
-          ? (touch ? 'TAP TO LEAVE' : 'ENTER TO LEAVE')
-          : (touch ? 'TAP TO ENTER' : 'ENTER TO USE');
+        const verb = this.near.type === 'exit' ? 'WALK THROUGH TO EXIT'
+          : this.near.type === 'shelf' ? 'WALK THROUGH TO ENTER'
+            : (touch ? 'TAP TO ENTER' : 'ENTER TO USE');
         drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
       }
     }
@@ -2102,19 +2128,44 @@ export class HubState {
 // while the floor is a tiny no-stakes practice space: swap heroes at the podium
 // and hit the sprung target as often as desired. Nothing here changes campaign
 // rewards or combat cooldowns.
-const TROPHY_FLOOR_Y = 218;
-const TROPHY_WORLD_W = 2820;
-const TROPHY_EXIT_X = 30;
-const TROPHY_RECORDS_X = 105;
-const TROPHY_LEVELS_X = 500;
-const TROPHY_LEVEL_BOARD_W = 184;
-const TROPHY_LEVEL_BOARD_GAP = 12;
-const TROPHY_ACT_GAP = 24;
-const TROPHY_BOSSES_X = 2420;
-const TROPHY_PODIUM_X = 2590;
-const TROPHY_DUMMY_X = 2710;
+// The room is unzoomed, so pin its floor to the Food Court's rendered floor
+// line. This makes the shared doors and their skirting meet at the same height.
+const TROPHY_FLOOR_Y = HUB_FLOOR_PIN_Y;
+const TROPHY_WORLD_W = 1290;
+const TROPHY_DOOR_W = DOOR_W * HUB_ZOOM;
+const TROPHY_DOOR_H = DOOR_H * HUB_ZOOM;
+const TROPHY_EXIT_X = TROPHY_DOOR_W / 2;
+const TROPHY_BOARD_GAP = 30;
+const TROPHY_RECORDS_X = 80;
+const TROPHY_RECORDS_W = 300;
+const TROPHY_LEVELS_X = TROPHY_RECORDS_X + TROPHY_RECORDS_W + TROPHY_BOARD_GAP;
+const TROPHY_LEVEL_BOARD_W = 112;
+const TROPHY_LEVEL_BOARD_GAP = 4;
+const TROPHY_LEVELS_W = TROPHY_LEVEL_BOARD_W * 3 + TROPHY_LEVEL_BOARD_GAP * 2;
+const TROPHY_LEVELS_CENTER = TROPHY_LEVELS_X + TROPHY_LEVELS_W / 2;
+const TROPHY_BOSSES_W = 150;
+const TROPHY_BOSSES_X = TROPHY_LEVELS_X + TROPHY_LEVELS_W
+  + TROPHY_BOARD_GAP + TROPHY_BOSSES_W / 2;
+const TROPHY_BOARD_TITLE_SCALE = 1.38;
+const TROPHY_BOARD_TITLE_Y = 13;
+// Keep the first exhibit's established position as the alignment reference.
+const TROPHY_BOARD_Y = 27;
+const TROPHY_PODIUM_X = 1060;
+const TROPHY_DUMMY_X = 1180;
 const TROPHY_ATTACK_RANGE = 112;
 const TROPHY_MOVE_SPEED = 140;
+
+function drawTrophyPanel(ctx, x, y, w, h, radius = 5, fill = '#100e16', border = null) {
+  ctx.fillStyle = fill;
+  platePath(ctx, x, y, w, h, radius);
+  ctx.fill();
+  if (!border) return;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 2;
+  platePath(ctx, x + 1, y + 1, w - 2, h - 2, Math.max(1, radius - 1));
+  ctx.stroke();
+}
+
 const TROPHY_BOSSES = [
   { id: 'neon', label: 'COPTER', relic: 'copter' },
   { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
@@ -2140,6 +2191,7 @@ export class TrophyRoomState {
     this.facing = 1;
     this.walkTarget = null;
     this.walkHoldT = 0;
+    this.moving = false;
     this.pending = null;
     this.player = new Player(this.heroId());
     this.player.grounded = true;
@@ -2175,24 +2227,24 @@ export class TrophyRoomState {
           ['RUNS', formatCoins(slot.stats.runs)],
           ['TIME PLAYED', formatPlaytime(slot.playtimeSec)],
           overtimeOpen
-            ? ['OVERTIME HIGH SCORE', formatCoins(slot.overtime.best)]
+            ? ['OVERTIME RECORD', formatCoins(slot.overtime.best)]
             : ['BEST LEVEL SCORE', bestLevelScore ? formatCoins(bestLevelScore) : '—'],
         ],
       },
       {
         title: 'CAREER',
         rows: [
-          ['LIFETIME COINS', formatCoins(slot.stats.coinsEarned)],
           ['LIVES LOST', formatCoins(slot.stats.deaths)],
+          ['LIFETIME COINS', formatCoins(slot.stats.coinsEarned)],
           ['CLUMSIEST', clumsy ? `${clumsyName} x${clumsy[1]}` : clumsyName],
         ],
       },
       {
         title: 'COLLECTION',
         rows: [
-          ['TOASTERS FOUND', formatCoins(slot.stats.appliancesFound)],
-          ['PLUGS', `${totalPlugs(slot)}/${MAX_PLUGS}`],
           ['LEVELS CLEARED', `${Object.keys(slot.campaign.ranks).length}/${STAGES.length}`],
+          ['PLUGS', `${totalPlugs(slot)}/${MAX_PLUGS}`],
+          ['TOASTERS FOUND', formatCoins(slot.stats.appliancesFound)],
         ],
       },
     ];
@@ -2204,6 +2256,7 @@ export class TrophyRoomState {
       cabinet,
       levels: stagesForCabinet(cabinet.id).map((stage) => ({
         stage,
+        plugStates: campaign.plugs[stage.id] || [false, false, false],
         plugs: (campaign.plugs[stage.id] || []).filter(Boolean).length,
         rank: campaign.ranks[stage.id] || '-',
         score: campaign.bestScore[stage.id] || 0,
@@ -2295,7 +2348,7 @@ export class TrophyRoomState {
     // it; tapping open floor just walks there.
     if (Input.pressed('pointer')) {
       const x = Input.pointer.x + this.camX(), y = Input.pointer.y;
-      if (x < 62) { this.pending = null; this.walkTarget = 34; }
+      if (x < TROPHY_DOOR_W + 6) { this.pending = null; this.walkTarget = TROPHY_EXIT_X; }
       else if (x >= TROPHY_PODIUM_X - 45 && x <= TROPHY_PODIUM_X + 45 && y > 142) {
         this.queueInteraction(x < TROPHY_PODIUM_X ? 'podiumPrev' : 'podiumNext', TROPHY_PODIUM_X + 48);
       }
@@ -2326,42 +2379,45 @@ export class TrophyRoomState {
     if (move) {
       this.facing = move;
       this.px = Math.max(22, Math.min(TROPHY_WORLD_W - 30, this.px + move * walkSpeed * dt));
-      if (this.px <= 50) { this.flow.toHub(); return; }
+      if (this.px <= TROPHY_EXIT_X) { this.flow.toHub(); return; }
     } else if (!this.attackT) this.facing = this.px < TROPHY_DUMMY_X ? 1 : -1;
 
     const steeringHeld = Input.held('pointer') && this.walkTarget != null;
     this.walkHoldT = directionHeld || steeringHeld
       ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
       : 0;
+    this.moving = !!move;
     this.player.update(dt, Input, { speed: move ? walkSpeed : 0 });
   }
 
   drawLevelRecords(ctx) {
     const records = this.levelRecords();
-    drawText(ctx, 'LEVEL RECORDS  —  ALL 27', TROPHY_LEVELS_X, 34, '#8a8a98', 0.82, 'bold');
-    records.forEach((group, index) => {
-      const actBreaks = Math.floor(index / 3);
-      const x = TROPHY_LEVELS_X + index * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP) + actBreaks * TROPHY_ACT_GAP;
-      const y = 46, w = TROPHY_LEVEL_BOARD_W, h = 132;
-      ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 24);
-      drawText(ctx, `ACT ${group.cabinet.act}`, x + 8, y + 9, '#f6d33c', 0.66, 'bold');
-      const nameScale = Math.min(0.72, 128 / Math.max(1, textWidth(group.cabinet.name, 1, 'bold')));
-      drawText(ctx, group.cabinet.name, x + 49, y + 9, '#48e0c8', nameScale, 'bold');
-      group.levels.forEach((record, i) => {
-        const yy = y + 34 + i * 32;
-        ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(72,224,200,0.025)';
-        ctx.fillRect(x + 5, yy - 3, w - 10, 30);
-        drawText(ctx, `LEVEL ${record.stage.index}`, x + 10, yy, '#e8e8f0', 0.82, 'bold');
-        drawText(ctx, `${record.plugs}/3 PLUGS`, x + 78, yy, record.plugs ? '#48e0c8' : '#5a5363', 0.76, 'bold');
-        const rank = record.rank === 'CONCERNING' ? 'CONC.' : record.rank;
-        drawText(ctx, rank, x + 148, yy, record.rank === '-' ? '#5a5363' : '#f6d33c', 0.82, 'bold');
-        const best = record.score ? formatCoins(record.score) : '-';
-        drawText(ctx, 'BEST', x + 10, yy + 14, '#6f7180', 0.62, 'bold');
-        drawText(ctx, best, x + 48, yy + 14, '#e8e8f0', 0.86, 'bold');
+    for (let act = 0; act < 3; act++) {
+      const x = TROPHY_LEVELS_X + act * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP);
+      const y = TROPHY_BOARD_Y, w = TROPHY_LEVEL_BOARD_W, h = 156;
+      const actTitle = `ACT ${act + 1} PROGRESS`;
+      drawTextCentered(ctx, actTitle, x + w / 2, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+      drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
+      records.slice(act * 3, act * 3 + 3).forEach((group, cabinetIndex) => {
+        const blockY = y + 3 + cabinetIndex * 50;
+        drawTrophyPanel(ctx, x + 4, blockY, w - 8, 14, 2.5, '#292432');
+        const nameScale = Math.min(0.82, (w - 14) / Math.max(1, textWidth(group.cabinet.name, 1, 'bold')));
+        drawText(ctx, group.cabinet.name, x + 7, blockY + 2, '#48e0c8', nameScale, 'bold');
+        group.levels.forEach((record, levelIndex) => {
+          const yy = blockY + 17 + levelIndex * 11;
+          ctx.fillStyle = levelIndex % 2 ? 'rgba(255,255,255,0.014)' : 'rgba(72,224,200,0.025)';
+          ctx.fillRect(x + 5, yy - 1, w - 10, 10);
+          drawText(ctx, String(record.stage.index), x + 6, yy, '#e8e8f0', 0.9, 'bold');
+          drawPlugRow(ctx, x + 15, yy - 1, record.plugStates, undefined, 8);
+          const rank = record.rank === 'CONCERNING' ? 'CONC.' : record.rank;
+          const rankScale = Math.min(0.82, 16 / Math.max(1, textWidth(rank, 1, 'bold')));
+          drawTextCentered(ctx, rank, x + 52, yy, record.rank === '-' ? '#5a5363' : '#f6d33c', rankScale, 'bold');
+          const best = record.score ? formatCoins(record.score) : '-';
+          const bestScale = Math.min(0.9, 44 / Math.max(1, textWidth(best, 1, 'bold')));
+          drawText(ctx, best, x + w - 6 - textWidth(best, bestScale, 'bold'), yy, '#e8e8f0', bestScale, 'bold');
+        });
       });
-    });
+    }
   }
 
   drawBossRelic(ctx, relic, x, y) {
@@ -2394,81 +2450,101 @@ export class TrophyRoomState {
 
   drawBossCase(ctx) {
     const earned = this.defeatedBosses();
-    drawTextCentered(ctx, 'MANAGEMENT ARCHIVE', TROPHY_BOSSES_X, 45, '#b8a0b8', 1.05, 'bold');
+    const w = TROPHY_BOSSES_W, h = 94, x0 = TROPHY_BOSSES_X - w / 2, y0 = TROPHY_BOARD_Y;
+    const title = 'MANAGEMENT ARCHIVE';
+    drawTextCentered(ctx, title, TROPHY_BOSSES_X, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTrophyPanel(ctx, x0, y0, w, h, 5, '#100e16', '#73657c');
     if (!earned.length) {
       // One closed archive instead of three mystery silhouettes. Before the
       // first boss, even the number and shapes of future trophies are spoilers.
-      ctx.fillStyle = '#17131e'; ctx.fillRect(TROPHY_BOSSES_X - 97, 56, 194, 70);
-      ctx.strokeStyle = '#332d3e'; ctx.lineWidth = 1; ctx.strokeRect(TROPHY_BOSSES_X - 97, 56, 194, 70);
-      for (let y = 61; y < 120; y += 8) {
-        ctx.fillStyle = y % 16 ? '#211b29' : '#292231'; ctx.fillRect(TROPHY_BOSSES_X - 92, y, 184, 5);
+      for (let y = y0 + 6; y < y0 + h - 9; y += 8) {
+        ctx.fillStyle = y % 16 ? '#211b29' : '#292231'; ctx.fillRect(x0 + 6, y, w - 12, 5);
       }
-      ctx.fillStyle = '#4a4454'; ctx.fillRect(TROPHY_BOSSES_X - 10, 82, 20, 19);
-      drawTextCentered(ctx, 'ARCHIVE SEALED', TROPHY_BOSSES_X, 113, '#5a5363', 0.82, 'bold');
+      ctx.fillStyle = '#4a4454'; ctx.fillRect(TROPHY_BOSSES_X - 9, y0 + 31, 18, 18);
+      drawTextCentered(ctx, 'ARCHIVE SEALED', TROPHY_BOSSES_X, y0 + 69, '#5a5363', 0.82, 'bold');
       return;
     }
     earned.forEach((b, i) => {
-      const x = TROPHY_BOSSES_X + (i - (earned.length - 1) / 2) * 69;
+      const x = TROPHY_BOSSES_X + (i - (earned.length - 1) / 2) * 46;
       ctx.fillStyle = '#332b42';
-      ctx.fillRect(x - 27, 46, 54, 70);
+      ctx.fillRect(x - 20, y0 + 6, 40, 76);
       ctx.strokeStyle = '#8a7a52'; ctx.lineWidth = 1;
-      ctx.strokeRect(x - 27, 46, 54, 70);
-      this.drawBossRelic(ctx, b.relic, x, 58);
+      ctx.strokeRect(x - 20, y0 + 6, 40, 76);
+      this.drawBossRelic(ctx, b.relic, x, y0 + 15);
       ctx.fillStyle = '#6b5430';
-      ctx.fillRect(x - 19, 94, 38, 8); ctx.fillRect(x - 23, 102, 46, 5);
-      drawTextCentered(ctx, b.label, x, 110, '#c8b880', 0.72, 'bold');
+      ctx.fillRect(x - 15, y0 + 54, 30, 6); ctx.fillRect(x - 18, y0 + 60, 36, 4);
+      const labelScale = Math.min(0.64, 36 / Math.max(1, textWidth(b.label, 1, 'bold')));
+      drawTextCentered(ctx, b.label, x, y0 + 69, '#c8b880', labelScale, 'bold');
     });
   }
 
   drawRecordsBoard(ctx) {
     const groups = this.statGroups();
-    const x = TROPHY_RECORDS_X, y = 47, w = 360, h = 88, colW = w / 3;
+    const x = TROPHY_RECORDS_X, y = TROPHY_BOARD_Y, w = TROPHY_RECORDS_W, h = 132, colW = w / 3;
     // Still a wall board rather than a screen-filling report, but large enough
     // that its nine entries survive a phone-sized landscape display. Three
-    // semantic columns keep related values together. The section title sits
-    // above the frame, leaving the board itself to use a tighter, larger 3x3.
-    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, 34, '#f6d33c', 1.24, 'bold');
-    ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+    // semantic columns keep related values together. Labels sit upper-left and
+    // values stagger beneath them at lower-right, so neither has to surrender
+    // size to share one baseline and the whole board can be substantially
+    // narrower.
+    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, TROPHY_BOARD_TITLE_Y, '#f6d33c', TROPHY_BOARD_TITLE_SCALE, 'title');
+    drawTrophyPanel(ctx, x, y, w, h, 5, '#100e16', '#73657c');
     groups.forEach((group, column) => {
       const gx = x + column * colW;
       if (column) { ctx.fillStyle = '#332d3e'; ctx.fillRect(gx, y + 7, 1, h - 14); }
-      drawText(ctx, group.title, gx + 7, y + 7, '#48e0c8', 1, 'bold');
+      const groupScale = Math.min(1.1, (colW - 14) / Math.max(1, textWidth(group.title, 1, 'bold')));
+      drawText(ctx, group.title, gx + 7, y + 7, '#48e0c8', groupScale, 'bold');
       group.rows.forEach(([label, value], row) => {
-        const yy = y + 27 + row * 18;
-        ctx.fillStyle = row % 2 ? 'rgba(255,255,255,0.014)' : 'rgba(72,224,200,0.025)';
-        ctx.fillRect(gx + 5, yy - 4, colW - 10, 16);
+        // The first stat tucks directly under its category; the larger stride
+        // after that puts visible air between one value and the next label, so
+        // the staggered pair always reads as a unit.
+        const yy = y + 23 + row * 34;
+        drawTrophyPanel(ctx, gx + 5, yy - 3, colW - 10, 27, 2,
+          row % 2 ? 'rgba(255,255,255,0.014)' : 'rgba(72,224,200,0.025)');
         const shown = String(value);
-        const valueScale = 1.15;
-        const available = colW - 19 - textWidth(shown, valueScale, 'bold');
-        const labelScale = Math.max(0.68, Math.min(0.98, (available - 5) / Math.max(1, textWidth(label, 1, 'bold'))));
+        // Each line fits independently. Long labels and unusually large
+        // lifetime totals therefore remain contained without shrinking the
+        // other half of the stat with them.
+        const labelScale = Math.min(1.02, (colW - 16) / Math.max(1, textWidth(label, 1, 'bold')));
+        const valueScale = Math.min(1.28, (colW - 16) / Math.max(1, textWidth(shown, 1, 'bold')));
         drawText(ctx, label, gx + 8, yy, '#9b9baa', labelScale, 'bold');
-        drawText(ctx, shown, gx + colW - 8 - textWidth(shown, valueScale, 'bold'), yy, '#f1f1f6', valueScale, 'bold');
+        drawText(ctx, shown, gx + colW - 8 - textWidth(shown, valueScale, 'bold'), yy + 11, '#f1f1f6', valueScale, 'bold');
       });
     });
   }
 
-  drawRoom(ctx) {
+  drawRoom(ctx, camera) {
     ctx.fillStyle = '#0d0a12'; ctx.fillRect(0, 0, TROPHY_WORLD_W, H);
-    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 24, TROPHY_WORLD_W, TROPHY_FLOOR_Y - 24);
+    ctx.fillStyle = '#281f32'; ctx.fillRect(0, 0, TROPHY_WORLD_W, TROPHY_FLOOR_Y);
     // Reclaimed wall panels stop the museum from reading as one flat fill.
     for (let x = 0; x < TROPHY_WORLD_W; x += 48) {
       ctx.fillStyle = (x / 48) % 2 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.035)';
-      ctx.fillRect(x, 25, 47, TROPHY_FLOOR_Y - 25);
-      ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, 25, 1, TROPHY_FLOOR_Y - 25);
+      ctx.fillRect(x, 0, 47, TROPHY_FLOOR_Y);
+      ctx.fillStyle = '#17131e'; ctx.fillRect(x + 47, 0, 1, TROPHY_FLOOR_Y);
     }
-    // Ceiling rail and four uneven museum spots. The beams are deliberately
-    // translucent: exhibits should feel lit, not pasted under white triangles.
-    ctx.fillStyle = '#17131e'; ctx.fillRect(0, 24, TROPHY_WORLD_W, 5);
-    for (const [x, col, strength] of [[257, '#48e0c8', 0.55], [788, '#f6d33c', 0.5], [1400, '#f6d33c', 0.5], [2012, '#f6d33c', 0.5], [TROPHY_BOSSES_X, '#f0a0a0', this.defeatedBosses().length / 3], [TROPHY_PODIUM_X, '#48e0c8', 0.75], [TROPHY_DUMMY_X, '#f6d33c', 0.85]]) {
-      ctx.fillStyle = '#6a6372'; ctx.fillRect(x - 8, 26, 16, 4);
-      const g = ctx.createLinearGradient(0, 30, 0, TROPHY_FLOOR_Y);
-      g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.save(); ctx.globalAlpha = 0.025 + strength * 0.045; ctx.fillStyle = g;
-      ctx.beginPath(); ctx.moveTo(x - 7, 30); ctx.lineTo(x + 7, 30); ctx.lineTo(x + 52, TROPHY_FLOOR_Y); ctx.lineTo(x - 52, TROPHY_FLOOR_Y); ctx.closePath(); ctx.fill(); ctx.restore();
-    }
-    ctx.fillStyle = '#44384f'; ctx.fillRect(0, TROPHY_FLOOR_Y, TROPHY_WORLD_W, H - TROPHY_FLOOR_Y);
-    ctx.fillStyle = '#5a4b63'; ctx.fillRect(0, TROPHY_FLOOR_Y, TROPHY_WORLD_W, 4);
+    // This is still the same failing food-court building, so its gallery uses
+    // the same housings, warm tubes, halos, soft-edged beams and independent
+    // flicker as the concourse. y=0 is the Trophy Room equivalent of
+    // HUB_LIGHT_Y after the Food Court's zoom/crop: the visible tube is flush
+    // with the very top edge and its bracket is naturally clipped above it.
+    const lights = [
+      [TROPHY_RECORDS_X + TROPHY_RECORDS_W * 0.3, 0.72],
+      [TROPHY_RECORDS_X + TROPHY_RECORDS_W * 0.7, 0.72],
+      ...Array.from({ length: 3 }, (_, act) => [
+        TROPHY_LEVELS_X + act * (TROPHY_LEVEL_BOARD_W + TROPHY_LEVEL_BOARD_GAP)
+          + TROPHY_LEVEL_BOARD_W / 2,
+        0.68,
+      ]),
+      [TROPHY_BOSSES_X, this.defeatedBosses().length ? 0.72 : 0.42],
+      [TROPHY_PODIUM_X, 0.76],
+      [TROPHY_DUMMY_X, 0.82],
+    ];
+    lights.forEach(([center, strength], i) => {
+      const x = center - LIGHT_W / 2;
+      const flick = lightFlicker(this.t, i + 11, this.save.settings.reducedFlashing);
+      drawCeilingLight(ctx, x, 0, strength * flick, x - camera, W);
+    });
+    drawFoodCourtFloor(ctx, TROPHY_FLOOR_Y, TROPHY_WORLD_W);
     // Practice-lane mat, taped off and already scuffed from entirely voluntary
     // quality assurance.
     ctx.fillStyle = '#292432'; ctx.fillRect(TROPHY_PODIUM_X - 48, TROPHY_FLOOR_Y + 5, 208, 23);
@@ -2529,19 +2605,18 @@ export class TrophyRoomState {
     const camera = this.camX();
     ctx.save();
     ctx.translate(-camera, 0);
-    this.drawRoom(ctx);
+    this.drawRoom(ctx, camera);
 
     this.drawLevelRecords(ctx);
     this.drawBossCase(ctx);
     this.drawRecordsBoard(ctx);
 
-    // This is an open passage, not an interaction. Walking into it returns to
-    // the food court immediately, just like crossing a room boundary.
-    ctx.fillStyle = '#09070d'; ctx.fillRect(0, TROPHY_FLOOR_Y - 82, 52, 82);
-    ctx.fillStyle = '#54475e'; ctx.fillRect(50, TROPHY_FLOOR_Y - 84, 5, 86);
-    ctx.fillStyle = '#211b29'; ctx.fillRect(4, TROPHY_FLOOR_Y - 78, 5, 75);
-    drawTextCentered(ctx, '<', TROPHY_EXIT_X, TROPHY_FLOOR_Y - 46, '#8a8a98', 1.15, 'bold');
-    drawTextCentered(ctx, 'FOOD COURT', TROPHY_EXIT_X, TROPHY_FLOOR_Y + 9, '#8a8a98', 0.65, 'bold');
+    // Visually this is the same EXIT service door used in the Food Court, so
+    // the route reads consistently in both rooms. Mechanically it remains a
+    // room boundary rather than an interaction: walk into it (or tap it and
+    // let tap-to-walk finish) and update() returns directly to the Food Court.
+    drawDoor(ctx, 0, TROPHY_FLOOR_Y - TROPHY_DOOR_H,
+      TROPHY_DOOR_W, TROPHY_DOOR_H, DOOR_PALETTES.exit, this.t, this.save.settings.reducedFlashing);
 
     // Hero swap podium: the selected hero is the object being displayed.
     ctx.fillStyle = '#342840'; ctx.fillRect(TROPHY_PODIUM_X - 31, TROPHY_FLOOR_Y - 8, 62, 8);
@@ -2558,6 +2633,10 @@ export class TrophyRoomState {
     this.drawDummy(ctx);
     this.drawAttackEffect(ctx);
     const pose = poseFromPlayer(this.player, this.t);
+    if (!this.moving && pose.kind === 'run') {
+      pose.kind = 'idle';
+      pose.headTurn = 0;
+    }
     pose.facing = this.facing;
     drawToon(ctx, this.player.heroId, pose, Math.round(this.px), Math.round(TROPHY_FLOOR_Y - this.player.y), 58);
     drawPlayerMarker(ctx, this.px, TROPHY_FLOOR_Y - this.player.y - 69, MARKER_R);
@@ -2572,11 +2651,17 @@ export class TrophyRoomState {
           : (Input.isTouchDevice() ? 'TAP TO WALK' : 'LEFT / RIGHT: WALK   SPACE: JUMP');
     ctx.restore();
 
-    // Room chrome stays steady while the exhibits move past behind it.
-    drawTextCentered(ctx, 'TROPHY ROOM', W / 2, 12, '#f6d33c', 1.4, 'title');
-    drawTextCentered(ctx, hint, W / 2, H - 13, '#c8c8d8', 0.8, 'bold');
+    // Match the food court's persistent bottom status row: location on the
+    // left, contextual controls on the right. This keeps the entire top band
+    // available for the exhibit headings and larger board type.
+    const roomTitle = 'TROPHY ROOM';
+    const roomTitleScale = 1.1;
+    drawText(ctx, roomTitle, 8, H - 11, '#f6d33c', roomTitleScale, 'bold');
+    const titleW = textWidth(roomTitle, roomTitleScale, 'bold');
+    const hintScale = Math.min(0.95, (W - 32 - titleW) / Math.max(1, textWidth(hint, 1, 'bold')));
+    drawText(ctx, hint, W - 8 - textWidth(hint, hintScale, 'bold'), H - 11, '#c8c8d8', hintScale, 'bold');
     if (camera < TROPHY_WORLD_W - W - 8) {
-      drawText(ctx, 'MORE  >', W - 64, 29, '#8a8a98', 0.55, 'bold');
+      drawText(ctx, 'MORE  >', W - 54, H - 25, '#8a8a98', 0.55, 'bold');
     }
   }
 }

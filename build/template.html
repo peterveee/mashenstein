@@ -23,9 +23,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0b0b14">
 <title>MASHENSTEIN: The Unpluggening</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap" rel="stylesheet">
+<script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";</script>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden; }
   body { touch-action: none; -webkit-user-select: none; user-select: none;
@@ -34,27 +32,120 @@
   #chrome { position: fixed; left: 0; top: 0; }
   #boot-error { position: absolute; inset: 0; color: #e0e0e8; font: 14px monospace;
                 padding: 2em; display: none; white-space: pre-wrap; }
+  #safe-area { position: fixed; inset: 0; visibility: hidden; pointer-events: none;
+               padding: env(safe-area-inset-top) env(safe-area-inset-right)
+                        env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+  .mash-install-blocker, .mash-portrait-overlay {
+    position: fixed; inset: 0; z-index: 10000; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right))
+             calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+    background: radial-gradient(circle at 50% 30%, #20213a 0%, #0b0b14 62%);
+    color: #eceef5; font-family: system-ui, -apple-system, sans-serif;
+    touch-action: manipulation; user-select: text; -webkit-user-select: text;
+  }
+  .mash-install-blocker[data-edge="bottom"] { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .mash-install-blocker[data-edge="top"] { padding-top: calc(48px + env(safe-area-inset-top)); }
+  .mash-portrait-overlay[hidden] { display: none; }
+  .mash-install-card, .mash-portrait-card {
+    width: min(27rem, 100%); max-height: 100%; overflow-y: auto;
+    -webkit-overflow-scrolling: touch; box-sizing: border-box; padding: 18px 18px 16px;
+    border: 1px solid rgba(255,255,255,.16); border-radius: 22px;
+    background: linear-gradient(180deg, #191a24, #101119);
+    box-shadow: 0 24px 60px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .mash-install-eyebrow {
+    color: #48e0c8; font-size: .66rem; font-weight: 700;
+    letter-spacing: .19em; margin-bottom: 3px;
+  }
+  .mash-install-head { display: flex; align-items: center; gap: 13px; margin-bottom: 11px; }
+  .mash-install-icon {
+    flex: 0 0 auto; width: 54px; height: 54px; border-radius: 13px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  }
+  .mash-install-head h1 { margin-bottom: 0; }
+  .mash-install-ui {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    padding: 1px 8px; border-radius: 8px; color: #fff; font-weight: 700;
+    background: rgba(255,255,255,.11); border: 1px solid rgba(255,255,255,.15);
+  }
+  .mash-install-dots { letter-spacing: .09em; padding-inline: 9px; }
+  .mash-install-share {
+    width: .95em; height: .95em; fill: none; stroke: #6fb4ff;
+    stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .mash-install-card h1, .mash-portrait-card h1 {
+    color: #ffcf33; font-size: clamp(1.6rem, 7vw, 2.1rem);
+    line-height: 1.02; margin: 0;
+  }
+  .mash-install-card h1:focus-visible, .mash-portrait-card h1:focus-visible {
+    outline: 3px solid #48e0c8; outline-offset: 5px; border-radius: 3px;
+  }
+  .mash-install-card p, .mash-portrait-card p {
+    color: #c8cbd7; font-size: 1rem; line-height: 1.48; margin: 0 0 12px;
+  }
+  .mash-install-card b { color: #fff; }
+  .mash-install-why {
+    display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 13px; padding: 0; list-style: none;
+  }
+  .mash-install-why li {
+    padding: 5px 12px; border-radius: 999px; font-size: .82rem; color: #a6ecdf;
+    background: rgba(72,224,200,.09); border: 1px solid rgba(72,224,200,.22);
+  }
+  .mash-install-steps { margin: 0 0 12px; padding: 0; list-style: none; counter-reset: step; }
+  .mash-install-steps li {
+    display: flex; align-items: flex-start; gap: 12px; padding: 10px 13px;
+    border: 1px solid rgba(255,255,255,.07); border-radius: 14px;
+    background: rgba(255,255,255,.045); font-size: .97rem; line-height: 1.5;
+  }
+  .mash-install-steps li + li { margin-top: 6px; }
+  .mash-install-steps li::before {
+    counter-increment: step; content: counter(step); flex: 0 0 auto;
+    width: 24px; height: 24px; margin-top: 1px; border-radius: 50%;
+    color: #06231e; background: #48e0c8; text-align: center;
+    font-weight: 800; line-height: 24px;
+  }
+  .mash-install-steps li > span { flex: 1 1 auto; min-width: 0; }
+  .mash-install-card p.mash-install-note {
+    color: #9095a7; font-size: .83rem; line-height: 1.42; margin-bottom: 8px;
+  }
+  .mash-install-card p.mash-install-note:last-child { margin-bottom: 0; }
+  .mash-install-arrow {
+    position: absolute; color: #48e0c8; font-size: 28px; line-height: 1;
+    text-shadow: 0 0 12px rgba(72,224,200,.65); pointer-events: none;
+  }
+  .mash-install-blocker[data-side="center"] .mash-install-arrow { left: 50%; margin-left: -14px; }
+  .mash-install-blocker[data-side="right"] .mash-install-arrow { right: 46px; }
+  .mash-install-blocker[data-edge="bottom"] .mash-install-arrow {
+    bottom: calc(7px + env(safe-area-inset-bottom)); animation: mash-install-down 1.4s ease-in-out infinite;
+  }
+  .mash-install-blocker[data-edge="top"] .mash-install-arrow {
+    top: calc(5px + env(safe-area-inset-top)); animation: mash-install-up 1.4s ease-in-out infinite;
+  }
+  @keyframes mash-install-down { 50% { transform: translateY(7px); } }
+  @keyframes mash-install-up { 50% { transform: translateY(-7px); } }
+  @media (prefers-reduced-motion: reduce) { .mash-install-arrow { animation: none; } }
+  .mash-portrait-card { text-align: center; max-width: 29rem; }
+  .mash-phone-turn { color: #48e0c8; font-size: 4.5rem; line-height: 1; margin-bottom: 8px; }
+  .mash-portrait-card p { margin-bottom: 0; }
+  .mash-portrait-card p.mash-build-time {
+    margin-top: 14px; color: #8e94a6; font: 700 .72rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .07em; text-transform: uppercase;
+  }
+  @media (orientation: landscape) and (max-height: 480px) {
+    .mash-install-card { padding: 14px 18px; }
+    .mash-install-card h1 { font-size: 1.35rem; margin-bottom: 7px; }
+    .mash-install-card p { font-size: .86rem; margin-bottom: 7px; }
+    .mash-install-card { width: min(44rem, 100%); }
+    .mash-install-cols { display: grid; grid-template-columns: 1fr 1.15fr; gap: 20px; }
+    .mash-install-steps { margin-bottom: 7px; }
+    .mash-install-steps li { padding: 8px 10px; font-size: .82rem; }
+    .mash-install-why li { padding: 4px 9px; font-size: .76rem; }
+  }
 </style>
 </head>
 <body>
-<canvas id="chrome"></canvas>
-<canvas id="game"></canvas>
-<!-- Invisible probe, not a control: env(safe-area-inset-*) isn't readable from
-     JS directly, only via a computed style, so this element exists purely to
-     have its padding measured (renderer.js) — the actual notch/Dynamic
-     Island/home-indicator geometry for THIS device, not a guessed constant. -->
-<div id="safe-area" style="position:fixed; inset:0; visibility:hidden; pointer-events:none;
-     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);"></div>
-<div id="boot-error"></div>
-<script>
-window.addEventListener('error', function (e) {
-  var el = document.getElementById('boot-error');
-  if (el && !window.__mash_booted) {
-    el.style.display = 'block';
-    el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + (e.message || e.error);
-  }
-});
-</script>
-<script>/*__BUNDLE__*/</script>
+<script>/*__GATE_BUNDLE__*/</script>
 </body>
 </html>

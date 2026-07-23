@@ -107,8 +107,8 @@ export function setInk({
 } = {}) {
   INK.body = body; INK.face = face; INK.alpha = alpha;
   INK.brow = brow; INK.browA = browA; INK.browL = browL;
-  OUTLINE = `rgba(26,16,40,${+(OUTLINE_A * alpha).toFixed(3)})`;
-  SKIN_OUTLINE = `rgba(26,16,40,${+(SKIN_OUTLINE_A * alpha).toFixed(3)})`;
+  OUTLINE = `rgba(26,16,40,${+Math.min(1, OUTLINE_A * alpha).toFixed(3)})`;
+  SKIN_OUTLINE = `rgba(26,16,40,${+Math.min(1, SKIN_OUTLINE_A * alpha).toFixed(3)})`;
 }
 
 // The eyebrow hairline. Split out of the inline literal it used to be so the
@@ -4816,7 +4816,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
 
 // The raw face paint: nominal framing per rig. Extents vary a lot between
 // heroes (hats, ears, whiskers), so drawToonFace measures this and refits.
-function paintFace(ctx, heroId, spec, x, y, w, h) {
+function paintFace(ctx, heroId, spec, x, y, w, h, light = true) {
   const p = pal(heroId);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -4826,7 +4826,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h) {
   // Face crops are supersampled and cached, so the light is worth arming even
   // for a HUD cell — but only once the head is big enough to hold a ramp. The
   // blob/disc branch nests a whole drawToon, which arms its own.
-  const prevLight = armLight(u, 1, h >= 24);
+  const prevLight = armLight(u, 1, light && h >= 24);
   if (spec.rig === 'humanoid') {
     drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false);
   } else if (spec.rig === 'ray') {
@@ -4872,10 +4872,11 @@ function inkBounds(size, paint) {
 // be read (headless stubs).
 const FACE_FIT = new Map();
 const FIT_R = 64; // nominal box size used for the measurement render
-function faceFit(heroId, spec) {
-  if (FACE_FIT.has(heroId)) return FACE_FIT.get(heroId);
+function faceFit(heroId, spec, light = true) {
+  const key = `${heroId}|${light ? 'lit' : 'flat'}`;
+  if (FACE_FIT.has(key)) return FACE_FIT.get(key);
   let fit = { x: 0, y: 0, w: 1, h: 1 }; // nominal framing, if nothing measures
-  const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R));
+  const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light));
   if (b) {
     fit = {
       x: (b.x0 - FIT_R) / FIT_R,
@@ -4884,7 +4885,7 @@ function faceFit(heroId, spec) {
       h: (b.y1 - b.y0 + 1) / FIT_R,
     };
   }
-  FACE_FIT.set(heroId, fit);
+  FACE_FIT.set(key, fit);
   return fit;
 }
 
@@ -5023,10 +5024,11 @@ export function toonEffectEllipse(heroId) {
 // Every hero is scaled and centered so its whole silhouette lands inside the
 // box with a hair of breathing room — no clipped hats, ears, or chins.
 const FACE_PAD = 0.04; // fraction of the box left empty on each side
-export function drawToonFace(ctx, heroId, x, y, w, h) {
+export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   const spec = TOON_SPECS[heroId];
   if (!spec) return;
-  const fit = faceFit(heroId, spec);
+  const light = opts.light !== false;
+  const fit = faceFit(heroId, spec, light);
   // paintFace scales everything off h and centers on w/2, so the ink lands at
   // this size and offset regardless of how wide the box is.
   const inkW = fit.w * h, inkH = fit.h * h;
@@ -5038,7 +5040,7 @@ export function drawToonFace(ctx, heroId, x, y, w, h) {
   ctx.translate(x + w / 2, y + h / 2);
   ctx.scale(s, s);
   ctx.translate(-cx, -cy);
-  paintFace(ctx, heroId, spec, 0, 0, w, h);
+  paintFace(ctx, heroId, spec, 0, 0, w, h, light);
   ctx.restore();
 }
 

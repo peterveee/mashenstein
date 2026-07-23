@@ -19,6 +19,8 @@ import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
 import { initInstallPrompt } from './engine/install-prompt.js';
 import { initUpdates } from './engine/updates.js';
+import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
+import { readPlatform } from './engine/platform.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -69,10 +71,6 @@ const Flow = {
         save.selectSlot(i);
         Flow.toHub();
       }
-    },
-    onOvertime: () => {
-      const slotIdx = save.data.slots.findIndex((s) => s && s.campaign.storyFlags.sawEnding);
-      if (slotIdx >= 0) { save.selectSlot(slotIdx); Flow.startOvertime(); }
     },
     onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } })),
     onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toTitle() })),
@@ -221,6 +219,7 @@ const Flow = {
 };
 
 function boot() {
+  const platform = window.__mash_platform || readPlatform();
   initRenderer();
   setFancyFx(save.settings.fancyFx);
   Input.init();
@@ -230,6 +229,13 @@ function boot() {
   // leave the context suspended and the first gesture resumes this same
   // already-configured sequencer instead of creating it late.
   Audio.setVolumes(save.settings.volumes);
+  Audio.setLifecyclePaused(lifecyclePolicy({
+    ...platform,
+    visible: !document.hidden,
+    portrait: window.matchMedia
+      ? window.matchMedia('(orientation: portrait)').matches
+      : window.innerHeight > window.innerWidth,
+  }).paused);
   Audio.ensure();
   Audio.setMuted(save.settings.muted);
   // Touch only, and only once. A phone browser's toolbars eat a third of a
@@ -276,9 +282,15 @@ function boot() {
     hasSave: save.data.slots.some(Boolean),
     onDismiss: () => Input.onAnyGesture && Input.onAnyGesture(),
   });
-  startLoop({
+  const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => { drawState(bctx); Dev.draw(bctx); blit(); },
+  });
+  // Install after startLoop in the same task: no animation frame can run
+  // between these calls, and the controller can immediately pause the loop
+  // through its public handle when booting hidden or in iPhone portrait.
+  window.__mash_lifecycle = new LifecycleController({
+    platform, loop, input: Input, audio: Audio,
   });
   window.__mash_booted = true;
 }

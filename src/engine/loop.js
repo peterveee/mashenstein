@@ -18,9 +18,20 @@ export function startLoop({ update, draw }) {
   let acc = 0;
   let last = performance.now();
   let running = true;
+  let stopped = false;
+  let queued = false;
+
+  const schedule = () => {
+    if (stopped || queued || !running) return;
+    queued = true;
+    requestAnimationFrame(frame);
+  };
 
   function frame(now) {
-    if (!running) return;
+    queued = false;
+    // A frame may already be queued when lifecycle pause lands. Do no work and
+    // do not queue another; resume() starts a fresh chain.
+    if (!running || stopped) return;
     try {
       let dt = (now - last) / 1000;
       if (dt > 0.25) dt = 0.25; // tab-switch spike clamp
@@ -32,11 +43,33 @@ export function startLoop({ update, draw }) {
       draw();
     } catch (error) {
       running = false;
+      stopped = true;
       reportFatalError(error);
       return;
     }
-    requestAnimationFrame(frame);
+    schedule();
   }
-  requestAnimationFrame(frame);
-  return { stop() { running = false; } };
+  schedule();
+  return {
+    pause() {
+      if (!running || stopped) return;
+      running = false;
+      acc = 0;
+    },
+    resume() {
+      if (running || stopped) return;
+      // Hidden time is not game time. Throw away both the wall-clock gap and
+      // any partial fixed step that existed before the pause.
+      last = performance.now();
+      acc = 0;
+      running = true;
+      schedule();
+    },
+    stop() {
+      running = false;
+      stopped = true;
+      acc = 0;
+    },
+    isPaused() { return !running && !stopped; },
+  };
 }

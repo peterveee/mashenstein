@@ -14,30 +14,13 @@
 // iPhone only. iPad already grants the Fullscreen API (main.js asks on the
 // first touch and gets it), so the pitch there would be "lose the toolbar you
 // already lost" — the tip is only true where the tip is needed.
+import { installFlavor, installTarget, iosMajor } from './platform.js';
+export { installFlavor, iosMajor } from './platform.js';
 
 const KEY = 'mashenstein.a2hs';
 const MAX_SHOWS = 3;                       // then it stops asking, forever
 const REST_MS = 3 * 24 * 60 * 60 * 1000;   // ...and waits this long in between
 const APPEAR_MS = 900;                     // let the title screen land first
-
-// In-app browsers (the webview inside Instagram, Facebook, Slack, ...) cannot
-// add anything to the Home Screen at all, so they get sent to Safari instead of
-// a set of steps they have no menu for. They give themselves away by NOT
-// claiming to be Safari; the named ones are here because a couple of them do.
-const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Snapchat|Twitter|LinkedIn|Pinterest|GSA\//;
-// Real browsers that are not Safari. They can install, but from their own menu.
-const ALT_BROWSER = /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Brave/;
-
-// iOS 26 redesigned Safari's toolbar. In the Compact layout — the default —
-// there is no Share button on screen at all: the bar is a floating capsule of
-// [back] [address] [•••], and Share hides inside that ••• menu. Instructions
-// written for the old five-icon toolbar send the player hunting for a glyph
-// their phone does not draw, so the OS version picks which steps they get.
-export function iosMajor(ua = '') {
-  const m = /(?:iPhone )?OS (\d+)(?:_\d+)* like Mac OS X/.exec(ua);
-  return m ? Number(m[1]) : 0;
-}
-const COMPACT_FROM = 26;
 
 function readRecord() {
   try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; }
@@ -56,15 +39,6 @@ function env() {
     standalone: nav.standalone === true || !!(typeof window !== 'undefined'
       && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches),
   };
-}
-
-// Which card this browser needs, ignoring how many times it has been shown.
-// Null means there is nothing useful to say here.
-export function installFlavor(ua = '') {
-  if (!/iPhone|iPod/.test(ua)) return null;
-  if (ALT_BROWSER.test(ua)) return 'alt';
-  if (IN_APP.test(ua) || !/Safari/.test(ua)) return 'inapp';
-  return iosMajor(ua) >= COMPACT_FROM ? 'menu' : 'safari';
 }
 
 // Pure, so the whole matrix is testable without a DOM: which card (if any) this
@@ -269,15 +243,6 @@ const CSS = `
 }
 `;
 
-// Where the thing they have to tap actually is, which decides both the arrow
-// and the wording. iOS 26 Compact keeps its capsule at the bottom in either
-// orientation; everything older follows the old toolbar.
-function target(flavor, portrait) {
-  if (flavor === 'menu') return { edge: 'bottom', side: 'right', glyph: '▼', where: 'at the bottom right' };
-  if (portrait) return { edge: 'bottom', side: 'center', glyph: '▼', where: 'in the bar at the bottom' };
-  return { edge: 'top', side: 'right', glyph: '▲', where: 'top-right of the bar above' };
-}
-
 function cardHtml(flavor, portrait, hasSave, manual) {
   // One button, and it closes the card whatever the player decided. There is no
   // "not now" because there is nothing to defer to: the same walkthrough lives
@@ -307,7 +272,7 @@ function cardHtml(flavor, portrait, hasSave, manual) {
       ${dismiss}`;
   }
 
-  const t = target(flavor, portrait);
+  const t = installTarget(flavor, portrait);
   // iOS 26 hid Share inside the ••• menu; older Safari has it in the toolbar;
   // other browsers keep their own arrangement, so they get told the goal
   // rather than a route.
@@ -378,6 +343,7 @@ let open = null;   // only ever one card, however it was asked for
 // (they came looking for it) and no delay.
 function mountCard(flavor, { hasSave = false, onDismiss = null, manual = false } = {}) {
   if (open) return open;
+  const previousFocus = document.activeElement;
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -385,23 +351,43 @@ function mountCard(flavor, { hasSave = false, onDismiss = null, manual = false }
   const root = document.createElement('div');
   root.className = 'mash-a2hs';
   root.setAttribute('role', 'dialog');
-  root.setAttribute('aria-label', 'Add MASHENSTEIN to your Home Screen');
+  root.setAttribute('aria-modal', 'true');
+  root.setAttribute('aria-labelledby', 'mash-a2hs-title');
   open = root;
 
   const paint = () => {
     const portrait = window.innerHeight > window.innerWidth;
-    const t = target(flavor, portrait);
+    const t = installTarget(flavor, portrait);
     root.dataset.edge = t.edge;
     root.dataset.side = t.side;
     root.dataset.portrait = portrait ? '1' : '0';
     root.innerHTML = `<div class="mash-a2hs-card">${cardHtml(flavor, portrait, hasSave, manual)}</div>`
       + (flavor === 'inapp' ? '' : `<div class="mash-a2hs-arrow" aria-hidden="true">${t.glyph}</div>`);
+    const heading = root.querySelector('h1');
+    if (heading) { heading.id = 'mash-a2hs-title'; heading.tabIndex = -1; }
     // No icon file beside the page (file://, or a loose index.html) — drop the
     // tile rather than leave a broken image in the header.
     const icon = root.querySelector('.mash-a2hs-icon');
     if (icon) icon.addEventListener('error', () => icon.remove());
     root.querySelectorAll('.mash-a2hs-ok').forEach((b) => b.addEventListener('click', close));
   };
+
+  const focusables = () => [...root.querySelectorAll('button, [href], [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.disabled);
+  const onKeydown = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key !== 'Tab') return;
+    const items = focusables();
+    if (!items.length) {
+      e.preventDefault();
+      root.querySelector('h1')?.focus();
+      return;
+    }
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  root.addEventListener('keydown', onKeydown);
 
   // A rotation mid-read moves the toolbar to the other end of the screen, and
   // an arrow left pointing at the wrong edge is worse than no arrow. Cheap
@@ -424,6 +410,9 @@ function mountCard(flavor, { hasSave = false, onDismiss = null, manual = false }
     window.removeEventListener('orientationchange', onResize);
     setTimeout(() => { root.remove(); style.remove(); }, 340);
     open = null;
+    if (previousFocus && previousFocus.isConnected && previousFocus.focus) {
+      try { previousFocus.focus({ preventScroll: true }); } catch (e) { previousFocus.focus(); }
+    }
     onDismiss && onDismiss();
   }
 
@@ -437,7 +426,13 @@ function show(root, delay) {
   setTimeout(() => {
     document.body.appendChild(root);
     // Force a frame before the class lands, or the transition never runs.
-    requestAnimationFrame(() => root.classList.add('is-in'));
+    requestAnimationFrame(() => {
+      root.classList.add('is-in');
+      const target = root.querySelector('button') || root.querySelector('h1');
+      if (target) {
+        try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+      }
+    });
   }, delay);
 }
 

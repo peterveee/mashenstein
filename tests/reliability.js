@@ -278,9 +278,12 @@ assert(Audio.levels.music === 0.6 && Audio.levels.sfx === 0.8, 'volume changes a
 const eraseSave = new Save(); eraseSave.load(); eraseSave.newSlot(1, 123);
 const title = new TitleState({
   save: eraseSave,
-  onSlotChosen() {}, onOvertime() {}, onSettings() {}, onHowTo() {},
+  onSlotChosen() {}, onSettings() {}, onHowTo() {},
   onGuide() {}, onSoundTest() {},
 });
+eraseSave.slot.campaign.storyFlags.sawEnding = true;
+assert(!title.options().some((option) => option.id === 'overtime'),
+  'the title menu does not expose Overtime after the ending');
 title.enter(); title.beginErase();
 const tapTitle = (action) => {
   Input.press(action); title.update(0); Input.release(action); Input.endFrame();
@@ -321,7 +324,7 @@ returnedHub.setChromeWalkButtons();
 assert(Input.chromeButtons.map((b) => b.action).join(',') === 'left,right',
   'food court registers left/right walking controls on the second canvas in touch mode');
 const hubWalkStart = returnedHub.px;
-const npcStart = returnedHub.npcs()[1].x;
+const npcStarts = returnedHub.npcs().map((n) => n.x);
 Input.press('right');
 returnedHub.update(0.5); Input.endFrame();
 const firstHubStep = returnedHub.px - hubWalkStart;
@@ -332,7 +335,9 @@ assert(firstHubStep === 60, 'food-court walking starts at the precise 120-unit p
 assert(secondHubStep > firstHubStep, 'holding a food-court direction smoothly accelerates walking');
 chrome.mode = 'none'; returnedHub.setChromeWalkButtons();
 Input.usingTouch = false;
-assert(returnedHub.npcs()[1].x !== npcStart, 'food-court heroes stroll during their loiter cycle');
+for (let i = 0; i < 10; i++) returnedHub.update(0.1);
+assert(returnedHub.npcs().some((n, i) => n.x !== npcStarts[i]),
+  'food-court heroes stroll during their loiter cycle');
 returnedHub.px = hubWalkStart;
 for (let i = 0; i < 200; i++) returnedHub.update(0.1);
 // The old rule here was "never stray more than 17 from home", which kept the
@@ -404,6 +409,36 @@ assert(returnedHub.npcs().filter((n) => n.pinned)
   'Gary and Dolores stay behind their counters while other NPCs make way');
 returnedHub.exit();
 
+let foodCourtWalkExits = 0;
+const walkExitHub = new HubState({
+  save,
+  flow: { hubPosition: null, toTitle: () => { foodCourtWalkExits++; } },
+});
+walkExitHub.enter();
+walkExitHub.px = 24;
+Input.press('left'); walkExitHub.update(0.1); Input.release('left'); Input.endFrame();
+assert(foodCourtWalkExits === 1,
+  'walking through the Food Court EXIT returns to the title without an interaction');
+walkExitHub.exit();
+
+let trophyRoomWalkEntries = 0;
+const walkTrophyHub = new HubState({
+  save,
+  flow: { hubPosition: null, openTrophyRoom: () => { trophyRoomWalkEntries++; } },
+});
+walkTrophyHub.enter();
+const farTrophyStations = walkTrophyHub.stations();
+const farTrophyDoor = farTrophyStations.find((s) => s.type === 'shelf');
+assert(farTrophyStations.at(-1) === farTrophyDoor,
+  'the Trophy Room is the final station at the far end of the Food Court');
+assert(farTrophyStations[0].x === 22 && walkTrophyHub.width - farTrophyDoor.x === 22,
+  'the Food Court boundary door frames sit flush with the left and right room edges');
+walkTrophyHub.px = farTrophyDoor.x - 4;
+Input.press('right'); walkTrophyHub.update(0.1); Input.release('right'); Input.endFrame();
+assert(trophyRoomWalkEntries === 1,
+  'walking through the far Food Court door enters the Trophy Room without an interaction');
+walkTrophyHub.exit();
+
 // Post-game OVERTIME sits one whole cabinet bay beyond the preceding room.
 // That empty bay must be part of the concourse itself so NPC homes and movement
 // bounds expand into it rather than treating it as decorative tail padding.
@@ -448,7 +483,15 @@ run.obstacles = [topCrate]; run.player.grounded = false; run.player.y = topCrate
 const topCells = run.battery; run.collide(); run.collide();
 assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is safe for the full contact');
 
-// Unbreakables reject every player projectile family.
+// Unbreakables reject every player projectile family. Weapon contact is silent
+// until the replacement set has been auditioned; the old generic crash must
+// not leak through for any attack family.
+const originalSfx = Audio.sfx;
+let projectileImpacts = 0;
+Audio.sfx = function(name, ...args) {
+  if (name === 'impact') projectileImpacts++;
+  return originalSfx.call(this, name, ...args);
+};
 for (const type of ['pellet', 'axe', 'fist']) {
   const pipe = makeObstacle('pipe', run.camX + PLAYER_X + 20);
   run.obstacles = [pipe];
@@ -456,6 +499,16 @@ for (const type of ['pellet', 'axe', 'fist']) {
   run.updateProjectiles(0, 160);
   assert(pipe.live, `${type} cannot destroy an unbreakable pipe`);
 }
+run.relay.current = 'lorenzo';
+run.player.setHero('lorenzo');
+run.player.grounded = true;
+run.player.abilityCd = 0;
+const spannerTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
+run.obstacles = [spannerTarget];
+run.useAbility();
+assert(!spannerTarget.live, 'Lorenzo spanner still breaks its direct target');
+Audio.sfx = originalSfx;
+assert(projectileImpacts === 0, 'pellet, fist, axe, and spanner contacts no longer share the generic impact crash');
 
 // Fernwick consumes one enemy shot per roll, without becoming invincible.
 run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.abilityCd = 0; run.useAbility();

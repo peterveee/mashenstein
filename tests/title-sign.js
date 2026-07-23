@@ -28,7 +28,7 @@ function buzzesPerMinute(settings) {
   Audio.songBeat = () => beat;
   let buzzes = 0;
   Audio.sfx = (name) => { if (name === 'neonBuzz') buzzes++; };
-  const title = new TitleState({ save, onSlotChosen() {}, onOvertime() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {}, attractDelay: 1e9 });
+  const title = new TitleState({ save, onSlotChosen() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {}, attractDelay: 1e9 });
   title.enter();
   const dt = 1 / 60;
   for (let i = 0; i < 60 * 60; i++) { beat += dt * beatsPerSec; title.update(dt); }
@@ -60,7 +60,7 @@ assert(Audio.songBeat() === null, 'no song, no beat clock');
 let fallbackBuzzes = 0;
 const realSfx = Audio.sfx.bind(Audio);
 Audio.sfx = (name) => { if (name === 'neonBuzz') fallbackBuzzes++; };
-const title = new TitleState({ save, onSlotChosen() {}, onOvertime() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {}, attractDelay: 1e9 });
+const title = new TitleState({ save, onSlotChosen() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {}, attractDelay: 1e9 });
 title.enter();
 for (let i = 0; i < 60 * 60; i++) title.update(1 / 60);
 Audio.sfx = realSfx;

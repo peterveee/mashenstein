@@ -10,8 +10,8 @@ relay-run through nine dying cabinets to reach THE SOCKET.
 
 Everything is procedural — vector characters and props, pixel-influenced worlds,
 chiptune music, and sound effects. No external art or audio assets and no runtime
-dependencies. The built game is one self-contained HTML file that works offline
-from `file://`.
+dependencies. The live build uses a small HTML install gate plus a deferred
+`game.js`; archived releases combine them into one self-contained snapshot.
 
 ## Play
 
@@ -21,8 +21,8 @@ To run it locally:
 
 ```
 npm install        # once (esbuild only, dev-time)
-npm run build      # writes dist/index.html and dist/v1/index.html
-open dist/index.html
+npm run build      # writes dist/index.html, dist/game.js and versioned archives
+python3 -m http.server -d dist
 ```
 
 Or `npm run dev` for a watch + local server loop.
@@ -33,11 +33,15 @@ For phone testing on your LAN: `python3 -m http.server -d dist` and open
 ### On an iPhone
 
 Safari has no Fullscreen API, so a phone loses about a third of the screen to
-its toolbars. The only true fullscreen iOS offers is the Home Screen, and the
-first load on an iPhone says so: a card walks through Share → Add to Home
-Screen, points at whichever end of the screen Safari's toolbar is currently
-living at, and does not ask more than three times. iPad and desktop never see
-it (`src/engine/install-prompt.js`).
+its toolbars. The only true fullscreen iOS offers is the Home Screen. An iPhone
+browser therefore loads only a small install screen with instructions tailored
+to Safari, iOS 26, alternate browsers, or in-app browsers; the game bundle is
+not requested until the Home Screen app is launched. iPad remains playable in
+Safari and fullscreen.
+
+Installed iPhones pause gameplay, input, rendering, and audio in portrait and
+show a rotate-to-landscape dialog. Every platform pauses those same systems
+while the page/app is hidden or the device is locked.
 
 An installed copy keeps itself current. `dist/sw.js` fetches the page
 network-first with `cache: 'no-store'`, because a Home Screen launch will
@@ -111,5 +115,6 @@ save), `src/game/` (run, relay, spawner, bosses, minigames, hub, menus),
 `src/data/` (heroes, cabinets, stages, dialogue, jokes, progression, words),
 `src/sprites/` (the active procedural toon renderer in `toons.js`, vector props,
 and legacy/string-grid pixel sources for world art and palettes). `build/build.js`
-bundles and inlines everything into `dist/index.html` and also writes the first
-archived release to `dist/v1/index.html` for GitHub Pages versioned routing.
+inlines the platform gate into `dist/index.html`, writes the deferred game to
+`dist/game.js`, and copies selected archived releases into versioned GitHub
+Pages routes.

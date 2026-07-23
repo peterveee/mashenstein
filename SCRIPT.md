@@ -534,7 +534,7 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 
 > **The shape of the ending.** The heroes do not win the fight — they complete a *task*, and the task turns out to have been mis-specified. The villain is defeated by warmth, the plot is resolved by an unauthorized employee, the central object was self-referential the whole time, and the game signs off by admitting nobody was minding continuity. Every beat is an institutional failure played as a happy ending.
 
-**After the finale:** THE SOCKET in the hub is replaced by the **OVERTIME CABINET**. `OVERTIME (ENDLESS)` appears on the title menu. Its mission text is:
+**After the finale:** THE SOCKET in the hub is replaced by the **OVERTIME CABINET**. Its mission text is:
 
 > RUN. FOREVER. THAT IS THE WHOLE DEAL.
 

@@ -34,10 +34,12 @@ class InputSys {
     this.usingTouch = false;
     this.context = 'default';
     this.menuKeys = false;      // menu key meanings without a full context switch
+    this.suspended = false;     // lifecycle gate: hidden/locked/iPhone portrait
   }
 
   init() {
     window.addEventListener('keydown', (e) => {
+      if (this.suspended) return;
       if (e.repeat) return;
       // Reserved for the dev screenshot shortcut. Keep it out of the game's
       // activity counter so attract/cast scenes do not treat the combo as an
@@ -57,11 +59,13 @@ class InputSys {
       this.onAnyGesture && this.onAnyGesture();
     });
     window.addEventListener('keyup', (e) => {
+      if (this.suspended) return;
       const act = this.actionForKey(e.code);
       if (act) this.release(act);
     });
     const el = document.getElementById('game');
     el.addEventListener('pointerdown', (e) => {
+      if (this.suspended) { e.preventDefault(); return; }
       this.activity++;
       this.usingTouch = e.pointerType === 'touch';
       this.onAnyGesture && this.onAnyGesture();
@@ -106,6 +110,7 @@ class InputSys {
       e.preventDefault();
     });
     el.addEventListener('pointermove', (e) => {
+      if (this.suspended) return;
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer.x = p.x; this.pointer.y = p.y;
       const t = this.touches.get(e.pointerId);
@@ -134,6 +139,7 @@ class InputSys {
       }
     });
     const endPointer = (e) => {
+      if (this.suspended) return;
       const t = this.touches.get(e.pointerId);
       if (t) {
         if (t.action) this.release(t.action);
@@ -151,6 +157,7 @@ class InputSys {
     const chromeEl = document.getElementById('chrome');
     if (chromeEl) {
       chromeEl.addEventListener('pointerdown', (e) => {
+        if (this.suspended) { e.preventDefault(); return; }
         this.activity++;
         this.usingTouch = e.pointerType === 'touch';
         this.onAnyGesture && this.onAnyGesture();
@@ -164,7 +171,7 @@ class InputSys {
       chromeEl.addEventListener('pointerup', endPointer);
       chromeEl.addEventListener('pointercancel', endPointer);
     }
-    window.addEventListener('blur', () => { this.down.clear(); });
+    window.addEventListener('blur', () => this.clearAll());
   }
 
   actionForKey(code) {
@@ -279,7 +286,10 @@ class InputSys {
     this.padPrev = new Set();
   }
 
-  press(a) { if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); } }
+  press(a) {
+    if (this.suspended) return;
+    if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); }
+  }
 
   // Drop every held/pending input (attract mode consumes the exit press so it
   // can never navigate a menu).
@@ -289,6 +299,13 @@ class InputSys {
     if (this.up) this.up.clear();
     this.touches.clear();
     this.padPrev = new Set();
+    this.pointer.down = false;
+  }
+  setSuspended(on) {
+    on = !!on;
+    if (on === this.suspended) return;
+    this.suspended = on;
+    this.clearAll();
   }
   release(a) { if (this.down.has(a)) { this.down.delete(a); this.up.add(a); } }
 
@@ -310,6 +327,7 @@ class InputSys {
   }
 
   pollGamepad() {
+    if (this.suspended) { this.clearAll(); return; }
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const now = new Set();
     for (const pad of pads) {
