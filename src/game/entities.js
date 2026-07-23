@@ -5,6 +5,8 @@
 export const OBSTACLES = {
   cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump' },
   cactusBig:   { w: 17, h: 14, sprite: 'cactusBig', ground: true, breakable: true, action: 'jump' },
+  snowman:     { w: 13, h: 12, sprite: 'snowman', ground: true, breakable: true, action: 'jump' },
+  snowmanBig:  { w: 17, h: 14, sprite: 'snowmanBig', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
   barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true },
   drone:      { w: 12, h: 7,  sprite: 'drone', alt: 11, armored: true, action: 'duck', bob: true },
@@ -32,6 +34,8 @@ export const OBSTACLES = {
 export const DEBRIS = {
   cactus:      { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 2.6, mat: 'soft' },
   cactusBig:   { colors: ['#a83020', '#d84828', '#f8d0a0'], size: 3.2, count: 14, mat: 'soft' },
+  snowman:     { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 2.6, mat: 'soft' },
+  snowmanBig:  { colors: ['#eaf6ff', '#b9d9ee', '#d84848'], size: 3.2, count: 14, mat: 'soft' },
   crate:       { colors: ['#c89858', '#8a6432', '#5a4020'], size: 3, mat: 'wood' },
   qcrate:      { colors: ['#f6d33c', '#c89858', '#8a6432'], size: 3, mat: 'gold' },
   barrel:      { colors: ['#b07840', '#7a4c22', '#d09858'], size: 3.2, mat: 'wood' },
@@ -64,7 +68,7 @@ export const PICKUPS = {
   // Not a timed power: banks one supercharged ability, so it carries its own
   // flag instead of a `power` the Powerups clock would try to run down.
   capRelay:  { w: 8, h: 8, sprite: 'capRelay', relayCharge: true },
-  appliance: { w: 18, h: 12, sprite: 'appliance', appliance: true, bob: true },
+  appliance: { w: 24, h: 20, sprite: 'appliance', appliance: true, bob: true },
   cord:      { w: 14, h: 9, sprite: 'cord', cord: true },
   resident:  { w: 10, h: 12, sprite: 'resident', resident: true, shamble: true },
 };

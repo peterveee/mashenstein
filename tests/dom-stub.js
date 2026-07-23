@@ -1,5 +1,5 @@
 // Minimal DOM/browser stubs so the bundle can boot headlessly in Node.
-export function installDom() {
+export function installDom({ gameGetContext = null } = {}) {
   const listeners = {};
   const noop = () => {};
   const gradient = { addColorStop: noop };
@@ -22,18 +22,38 @@ export function installDom() {
     });
   }
 
-  function makeCanvas() {
+  let gameCanvas = null;
+
+  function makeCanvas(customGetContext = null) {
     const c = {
+      id: '',
       width: 480, height: 270,
       style: {},
-      getContext: () => { const x = makeCtx(); x.canvas = c; return x; },
+      getContext: (type, opts) => {
+        if (customGetContext) return customGetContext(type, opts, c);
+        if (type !== '2d') return null;
+        const x = makeCtx(); x.canvas = c; return x;
+      },
       addEventListener: (ev, fn) => { (listeners['canvas:' + ev] ||= []).push(fn); },
       removeEventListener: noop,
+      cloneNode: () => {
+        const clone = makeCanvas();
+        clone.id = c.id;
+        clone.width = c.width;
+        clone.height = c.height;
+        clone.style = { ...c.style };
+        return clone;
+      },
+      replaceWith: (replacement) => {
+        if (gameCanvas === c) gameCanvas = replacement;
+      },
     };
     return c;
   }
 
-  const canvas = makeCanvas();
+  const canvas = makeCanvas(gameGetContext);
+  canvas.id = 'game';
+  gameCanvas = canvas;
   // The second canvas renderer.js looks up, for touch chrome out in the
   // letterbox margin. It has to be a real stub canvas: everything else here
   // falls through to bootErrorEl, which has no getContext, so #chrome resolving
@@ -44,7 +64,7 @@ export function installDom() {
 
   globalThis.document = {
     readyState: 'complete',
-    getElementById: (id) => (id === 'game' ? canvas : id === 'chrome' ? chromeCanvas : bootErrorEl),
+    getElementById: (id) => (id === 'game' ? gameCanvas : id === 'chrome' ? chromeCanvas : bootErrorEl),
     createElement: () => makeCanvas(),
     addEventListener: (ev, fn) => { (listeners['doc:' + ev] ||= []).push(fn); },
   };
@@ -78,7 +98,9 @@ export function installDom() {
 
   return {
     listeners,
-    canvas,
+    get canvas() { return gameCanvas; },
+    originalCanvas: canvas,
+    bootErrorEl,
     store,
     fire(key, ev) { for (const fn of listeners[key] || []) fn(ev); },
     key(code) {

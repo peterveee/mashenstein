@@ -41,6 +41,10 @@ function buildStamp() {
   return `window.__MASH_BUILD__=${JSON.stringify(s)};\n`;
 }
 
+function buildTimestamp() {
+  return new Date().toISOString();
+}
+
 // The icon sizes the platforms actually ask for: 180 is what iOS wants for a
 // Home Screen tile, 192 and 512 are what a web manifest is expected to offer.
 // Rendered from the game's own drawing code by tools/render-icon.js.
@@ -93,7 +97,8 @@ function emitAppShell(html) {
 
 function emit(result) {
   const js = result.outputFiles[0].text;
-  const template = readFileSync(join(root, 'build/template.html'), 'utf8');
+  const template = readFileSync(join(root, 'build/template.html'), 'utf8')
+    .replace('__BUILD_TIMESTAMP__', buildTimestamp());
   // Inline safely: </script> inside the bundle would terminate the tag early.
   const safe = js.replace(/<\/script/gi, '<\\/script');
   // Stamp goes ahead of the bundle so it is set before any module code reads it.

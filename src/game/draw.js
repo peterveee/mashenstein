@@ -5,7 +5,10 @@ import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
-import { hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall, glowSprite, sparkSprite, drawProp } from '../sprites/props.js';
+import {
+  hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
+  propVisualScale, propHazardRim, glowSprite, sparkSprite, drawProp,
+} from '../sprites/props.js';
 
 const POWER_GLOW = {
   capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)',
@@ -216,7 +219,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // if rotating on its vertical axis, with a white glint as it catches the
   // light (the WebGL bloom pass makes the glint genuinely gleam).
   if (e.kind === 'pickup' && e.type === 'coin') {
-    const spr2 = propSprite('coin', 8, 8);
+    // Render twice the logical pickup size and downsample in the scene. The
+    // footprint stays 8x8, but the fine embossed rim survives the spin.
+    const spr2 = propSprite('coin', 16, 16);
     const phase = e.bobPhase || 0;
     const spin = Math.cos(t * 3.4 + phase * 5);
     const cw = e.w * (0.25 + 0.75 * Math.abs(spin));
@@ -270,13 +275,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     // the hitbox alone — the rasters are painted at the stretched height so
     // nothing is distorted, just drawn with more stature.
     const tall = propName ? propTall(propName) : 1;
+    const visualScale = propName ? propVisualScale(propName) : 1;
     const shT = sh * tall;
-    const w0 = natural ? sw : Math.round(sw * 4 / 3);
-    const h0 = natural ? sh : Math.round(sh * 4 / 3 * tall);
+    const w0 = Math.round((natural ? sw : sw * 4 / 3) * visualScale);
+    const h0 = Math.round((natural ? sh : sh * 4 / 3 * tall) * visualScale);
     const ox = dx - Math.floor((w0 - sw) / 2);
     const oy = anchor === 'center' ? dy - Math.floor((h0 - sh) / 2) : dy - (h0 - sh);
     ctx.imageSmoothingEnabled = true;
-    if (danger && propName) {
+    if (danger && propName && propHazardRim(propName)) {
       // precomposed rim rings: one draw per color instead of two
       const rl = propRimPair(propName, sw, shT, '#f0f0f8', 'x', frame);
       const rd = propRimPair(propName, sw, shT, '#101018', 'y', frame);
@@ -285,7 +291,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
       ctx.globalAlpha = 0.22;
       if (rd) ctx.drawImage(rd, ox - 1, oy - 1, w0 + 2, h0 + 2);
       ctx.globalAlpha = 1;
-    } else if (danger) {
+    } else if (danger && !propName) {
       ctx.globalAlpha = 0.12 + 0.08 * Math.sin(t * 5 + e.bobPhase);
       ctx.drawImage(rimLite, ox - 1, oy, w0, h0); ctx.drawImage(rimLite, ox + 1, oy, w0, h0);
       ctx.globalAlpha = 0.22;

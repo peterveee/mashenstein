@@ -6,7 +6,7 @@
 export const W = 480;
 export const H = 270;
 
-const canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
+let canvas = typeof document !== 'undefined' ? document.getElementById('game') : null;
 
 // Second canvas, full viewport, sitting BEHIND #game in the DOM (so #game
 // paints on top wherever the two overlap and still owns every gameplay tap;
@@ -103,10 +103,41 @@ export function setSkyFx(on, time) {
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
 
 let dctx = null;
+let backend = null;
+
+// Read-only diagnostic for tests and support reports. Gameplay code should not
+// branch on this: WebGL is an enhancement and both paths render the same game.
+export function rendererBackend() { return backend; }
+
+function freshCanvasAfterWebglFailure() {
+  const failed = canvas;
+  const replacement = failed.cloneNode(false);
+  failed.replaceWith(replacement);
+  canvas = replacement;
+}
 
 export function initRenderer() {
   // WebGL post pipeline when available; otherwise the classic 2D blit.
-  if (!glfx.init(canvas)) dctx = canvas.getContext('2d');
+  const webgl = glfx.init(canvas);
+  if (webgl.ok) {
+    backend = 'webgl';
+  } else {
+    // getContext locks a canvas to the first context family it successfully
+    // returns. If WebGL claimed it and shader/program setup then failed, asking
+    // that same element for 2D returns null on real browsers. A clone retains
+    // the #game identity and CSS but has a fresh backing store. Input.init()
+    // runs after this function, so it binds to the replacement automatically.
+    if (webgl.claimed) freshCanvasAfterWebglFailure();
+    dctx = canvas.getContext('2d');
+    if (!dctx) {
+      const why = webgl.error ? ` WebGL failed first: ${webgl.error.message || webgl.error}` : '';
+      throw new Error(`No usable WebGL or 2D canvas renderer.${why}`);
+    }
+    backend = '2d';
+    if (webgl.error && typeof console !== 'undefined' && console.warn) {
+      console.warn('WebGL effects disabled; using the 2D renderer.', webgl.error);
+    }
+  }
   resize();
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);

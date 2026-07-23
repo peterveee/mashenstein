@@ -177,9 +177,16 @@ function makeFbo(gl, w, h) {
   return { fb, tex, w, h };
 }
 
+function destroyFbo(gl, target) {
+  if (!target) return;
+  if (target.fb) gl.deleteFramebuffer(target.fb);
+  if (target.tex) gl.deleteTexture(target.tex);
+}
+
 export const glfx = {
   gl: null,
   active: false,
+  lastError: null,
   fx: 1,    // GLOW FX setting: 1 on, 0 off
   glow: 0,  // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
   sky: 0,   // procedural starfield gate: 1 on the title screen only
@@ -187,8 +194,21 @@ export const glfx = {
 
   init(canvas) {
     let gl = null;
-    try { gl = canvas.getContext('webgl2', { alpha: false }) || canvas.getContext('webgl', { alpha: false }); } catch (e) { gl = null; }
-    if (!gl) return false;
+    this.gl = null;
+    this.active = false;
+    this.ready = false;
+    this.lastError = null;
+    // These shaders are deliberately GLSL ES 1.00 and use no WebGL 2
+    // facilities. Asking for WebGL 1 directly avoids handing the same source
+    // to a stricter mobile WebGL 2 compiler for no benefit.
+    try {
+      gl = canvas.getContext('webgl', { alpha: false })
+        || canvas.getContext('experimental-webgl', { alpha: false });
+    } catch (error) {
+      this.lastError = error;
+      return { ok: false, claimed: false, error };
+    }
+    if (!gl) return { ok: false, claimed: false, error: null };
     try {
       this.gl = gl;
       this.pBright = compile(gl, VS, FS_BRIGHT);
@@ -200,11 +220,14 @@ export const glfx = {
       this.texBack = makeTex(gl);
       this.texOv = makeTex(gl);
       this.active = true;
-      return true;
-    } catch (e) {
+      return { ok: true, claimed: true, error: null };
+    } catch (error) {
+      // A context that reached this branch has already claimed its canvas.
+      // renderer.js must use a fresh canvas before asking for a 2D fallback.
+      this.lastError = error;
       this.gl = null;
       this.active = false;
-      return false;
+      return { ok: false, claimed: true, error };
     }
   },
 
@@ -214,8 +237,14 @@ export const glfx = {
     this.srcW = srcW; this.srcH = srcH;
     this.ready = true;
     const bw = Math.max(1, srcW >> 2), bh = Math.max(1, srcH >> 2);
-    this.bloomA = makeFbo(gl, bw, bh);
-    this.bloomB = makeFbo(gl, bw, bh);
+    if (this.bloomA && this.bloomA.w === bw && this.bloomA.h === bh
+        && this.bloomB && this.bloomB.w === bw && this.bloomB.h === bh) return;
+    const nextA = makeFbo(gl, bw, bh);
+    const nextB = makeFbo(gl, bw, bh);
+    destroyFbo(gl, this.bloomA);
+    destroyFbo(gl, this.bloomB);
+    this.bloomA = nextA;
+    this.bloomB = nextB;
   },
 
   draw(prog, setUniforms) {

@@ -152,97 +152,222 @@ export const PROP_PAINTERS = {
     plain(ctx, '#8a2018', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.04, 0, 0, Math.PI * 2));
   },
   cactusBig(ctx, w, h, frame = 0) { PROP_PAINTERS.cactus(ctx, w, h, frame); },
+  // Frost Fortress swaps the desert hazard for this hostile little snowman.
+  // It keeps the cactus hitbox and red "avoid" read, but belongs to the ice
+  // cabinet: blue-shadowed snow, coal eyes, carrot nose, and a broad red scarf.
+  // Six shivering poses move the twig arms while the bottom snowball stays
+  // planted on the ground line.
+  snowman(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath();
+      pathFn(ctx);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(0.3, u * 0.022);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    };
+    const p = (frame % 6) * (Math.PI / 3);
+    const sway = Math.sin(p);
+    const shiver = Math.cos(p);
+    const cx = w * (0.5 + sway * 0.018);
+    const bodyY = h * (0.765 + (1 - shiver) * 0.006);
+    const headY = h * (0.37 - shiver * 0.012);
+    const armLine = Math.max(0.55, u * 0.052);
+
+    // Twig arms sit behind the snowballs. Their opposing wave makes the
+    // shiver readable even at the ordinary 13-pixel obstacle width.
+    stroke(ctx, '#513849', armLine, (c) => {
+      c.moveTo(cx - w * 0.23, h * 0.58);
+      c.lineTo(w * 0.12, h * (0.46 + sway * 0.035));
+      c.lineTo(w * 0.035, h * (0.39 + sway * 0.055));
+      c.moveTo(w * 0.12, h * (0.46 + sway * 0.035));
+      c.lineTo(w * 0.07, h * (0.5 + sway * 0.02));
+      c.moveTo(cx + w * 0.23, h * 0.57);
+      c.lineTo(w * 0.88, h * (0.43 - sway * 0.035));
+      c.lineTo(w * 0.965, h * (0.34 - sway * 0.055));
+      c.moveTo(w * 0.88, h * (0.43 - sway * 0.035));
+      c.lineTo(w * 0.94, h * (0.47 - sway * 0.02));
+    });
+
+    // Two simple, flat snowballs with the shared soft outline.
+    fineShape('#eaf6ff', (c) => {
+      c.ellipse(cx, bodyY, w * (0.34 + shiver * 0.006), h * (0.23 - shiver * 0.004), 0, 0, Math.PI * 2);
+    });
+    plain(ctx, '#b9d9ee', (c) => {
+      c.ellipse(cx - w * 0.13, bodyY + h * 0.045, w * 0.075, h * 0.14, -0.22, 0, Math.PI * 2);
+    });
+    fineShape('#f7fbff', (c) => {
+      c.ellipse(cx, headY, w * 0.285, h * 0.235, sway * 0.025, 0, Math.PI * 2);
+    });
+    plain(ctx, '#c9e3f2', (c) => {
+      c.ellipse(cx - w * 0.12, headY + h * 0.03, w * 0.06, h * 0.125, -0.15, 0, Math.PI * 2);
+    });
+
+    // The scarf is deliberately broad and red: on the pale ice palette this
+    // replaces the cactus's red body as the instant hazard cue.
+    fineShape('#d84848', (c) => rr(c, cx - w * 0.255, h * 0.515, w * 0.51, h * 0.105, h * 0.045));
+    plain(ctx, '#a83038', (c) => {
+      c.moveTo(cx + w * 0.105, h * 0.585);
+      c.lineTo(cx + w * (0.28 + sway * 0.025), h * 0.64);
+      c.lineTo(cx + w * (0.23 + sway * 0.02), h * 0.82);
+      c.lineTo(cx + w * 0.08, h * 0.69);
+      c.closePath();
+    });
+    // A simple three-button row down the torso.
+    plain(ctx, '#2b2440', (c) => {
+      c.arc(cx - w * 0.012, h * 0.69, w * 0.034, 0, Math.PI * 2);
+      c.arc(cx + w * 0.014, h * 0.79, w * 0.034, 0, Math.PI * 2);
+      c.arc(cx - w * 0.02, h * 0.89, w * 0.034, 0, Math.PI * 2);
+    });
+
+    // Oversized rounded-rectangle glasses turn the hazard into a visual joke.
+    // The pupils
+    // are deliberately mismatched—both generally watch the player to the left,
+    // but they cannot quite agree on where the player is.
+    stroke(ctx, 'rgba(75,49,95,0.62)', Math.max(0.55, u * 0.035), (c) => {
+      c.moveTo(cx - w * 0.235, headY - h * 0.055); c.lineTo(cx - w * 0.29, headY - h * 0.085);
+      c.moveTo(cx + w * 0.235, headY - h * 0.055); c.lineTo(cx + w * 0.29, headY - h * 0.085);
+    });
+    plain(ctx, 'rgba(75,49,95,0.62)', (c) => {
+      rr(c, cx - w * 0.235, headY - h * 0.16, w * 0.215, h * 0.205, h * 0.04);
+      rr(c, cx + w * 0.02, headY - h * 0.16, w * 0.215, h * 0.205, h * 0.04);
+      rr(c, cx - w * 0.055, headY - h * 0.075, w * 0.11, h * 0.045, h * 0.018);
+    });
+    plain(ctx, '#f7fbff', (c) => {
+      rr(c, cx - w * 0.205, headY - h * 0.125, w * 0.155, h * 0.14, h * 0.025);
+      rr(c, cx + w * 0.05, headY - h * 0.125, w * 0.155, h * 0.14, h * 0.025);
+    });
+    plain(ctx, '#172238', (c) => {
+      c.ellipse(cx - w * 0.148, headY - h * 0.045, w * 0.034, h * 0.048, -0.12, 0, Math.PI * 2);
+      c.ellipse(cx + w * 0.087, headY - h * 0.025, w * 0.034, h * 0.048, 0.18, 0, Math.PI * 2);
+    });
+    plain(ctx, '#fff', (c) => {
+      c.arc(cx - w * 0.16, headY - h * 0.07, w * 0.011, 0, Math.PI * 2);
+      c.arc(cx + w * 0.075, headY - h * 0.052, w * 0.011, 0, Math.PI * 2);
+    });
+    // A darker rounded root sits inside the snow head; the carrot cone emerges
+    // from it and draws over the glasses, so it is both embedded and in front.
+    plain(ctx, '#c95b25', (c) => {
+      c.ellipse(cx - w * 0.006, headY + h * 0.004, w * 0.045, h * 0.05, -0.08, 0, Math.PI * 2);
+    });
+    plain(ctx, '#ef7b32', (c) => {
+      c.moveTo(cx - w * 0.006, headY - h * 0.038);
+      c.lineTo(cx - w * 0.37, headY + h * (0.005 - sway * 0.008));
+      c.lineTo(cx - w * 0.018, headY + h * 0.045);
+      c.closePath();
+    });
+    // One understated crooked mouth completes the face without competing with
+    // the glasses or turning into another row of coal.
+    stroke(ctx, 'rgba(43,36,64,0.55)', Math.max(0.5, u * 0.03), (c) => {
+      c.moveTo(cx - w * 0.085, headY + h * 0.093);
+      c.quadraticCurveTo(cx - w * 0.005, headY + h * 0.103, cx + w * 0.08, headY + h * 0.101);
+    });
+    plain(ctx, '#91b9d2', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.035, 0, 0, Math.PI * 2));
+  },
+  snowmanBig(ctx, w, h, frame = 0) { PROP_PAINTERS.snowman(ctx, w, h, frame); },
   crate(ctx, w, h) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
       ctx.beginPath(); pathFn(ctx);
       ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = 'rgba(50,30,12,0.32)';
-      ctx.lineWidth = Math.max(0.3, u * 0.024);
+      ctx.strokeStyle = 'rgba(50,30,12,0.24)';
+      ctx.lineWidth = Math.max(0.18, u * 0.014);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
     };
-    // Three visible planes keep the obstacle solid at 12x11 without relying on
-    // a heavy outline. The right plane is narrow enough to preserve a broad,
-    // readable front for the familiar diagonal crate bracing.
-    fineShape('#8a6432', (c) => {
-      c.moveTo(w * 0.75, h * 0.21); c.lineTo(w * 0.9, h * 0.12);
-      c.quadraticCurveTo(w * 0.96, h * 0.09, w * 0.96, h * 0.16);
-      c.lineTo(w * 0.95, h * 0.77); c.quadraticCurveTo(w * 0.95, h * 0.84, w * 0.9, h * 0.87);
-      c.lineTo(w * 0.75, h * 0.95); c.closePath();
-    });
-    fineShape('#c89858', (c) => {
-      c.moveTo(w * 0.12, h * 0.2); c.lineTo(w * 0.69, h * 0.2);
-      c.quadraticCurveTo(w * 0.75, h * 0.2, w * 0.75, h * 0.27);
-      c.lineTo(w * 0.75, h * 0.88); c.quadraticCurveTo(w * 0.75, h * 0.95, w * 0.68, h * 0.95);
-      c.lineTo(w * 0.12, h * 0.95); c.quadraticCurveTo(w * 0.06, h * 0.95, w * 0.06, h * 0.88);
-      c.lineTo(w * 0.06, h * 0.27); c.quadraticCurveTo(w * 0.06, h * 0.2, w * 0.12, h * 0.2); c.closePath();
-    });
-    fineShape('#e0b06a', (c) => {
-      c.moveTo(w * 0.08, h * 0.22); c.lineTo(w * 0.22, h * 0.11);
-      c.quadraticCurveTo(w * 0.25, h * 0.08, w * 0.31, h * 0.08);
-      c.lineTo(w * 0.9, h * 0.1); c.quadraticCurveTo(w * 0.97, h * 0.1, w * 0.91, h * 0.15);
-      c.lineTo(w * 0.77, h * 0.24); c.quadraticCurveTo(w * 0.75, h * 0.26, w * 0.7, h * 0.25);
-      c.lineTo(w * 0.13, h * 0.25); c.quadraticCurveTo(w * 0.06, h * 0.25, w * 0.08, h * 0.22); c.closePath();
-    });
-    // Individual planks, then inset braces. The lines are deliberately finer
-    // than the old X so wood grain remains visible instead of becoming a logo.
+    // Flat, rounded construction: one fine frame and one inset wooden face.
+    // Depth belongs to the flying toaster; this stays in the prop language.
+    fineShape('#8a6432', (c) => rr(c, w * 0.04, h * 0.05, w * 0.92, h * 0.9, w * 0.17));
+    plain(ctx, '#c89858', (c) => rr(c, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.14));
+    plain(ctx, 'rgba(255,230,176,0.3)', (c) => rr(c, w * 0.13, h * 0.14, w * 0.74, h * 0.08, h * 0.035));
     stroke(ctx, 'rgba(106,70,30,0.48)', Math.max(0.32, w * 0.028), (c) => {
-      c.moveTo(w * 0.08, h * 0.44); c.lineTo(w * 0.73, h * 0.44);
-      c.moveTo(w * 0.08, h * 0.7); c.lineTo(w * 0.73, h * 0.7);
-      c.moveTo(w * 0.82, h * 0.22); c.lineTo(w * 0.82, h * 0.88);
+      c.moveTo(w * 0.14, h * 0.39); c.lineTo(w * 0.86, h * 0.39);
+      c.moveTo(w * 0.14, h * 0.63); c.lineTo(w * 0.86, h * 0.63);
     });
     stroke(ctx, '#8a5a2a', Math.max(0.5, w * 0.055), (c) => {
-      c.moveTo(w * 0.15, h * 0.3); c.lineTo(w * 0.67, h * 0.86);
-      c.moveTo(w * 0.67, h * 0.3); c.lineTo(w * 0.15, h * 0.86);
+      c.moveTo(w * 0.19, h * 0.22); c.lineTo(w * 0.81, h * 0.79);
+      c.moveTo(w * 0.81, h * 0.22); c.lineTo(w * 0.19, h * 0.79);
     });
     plain(ctx, '#5a4020', (c) => {
-      for (const [x, y] of [[0.12, 0.27], [0.69, 0.27], [0.12, 0.87], [0.69, 0.87]])
+      for (const [x, y] of [[0.14, 0.15], [0.86, 0.15], [0.14, 0.85], [0.86, 0.85]])
         c.arc(w * x, h * y, w * 0.025, 0, Math.PI * 2);
     });
-    stroke(ctx, 'rgba(255,238,190,0.38)', Math.max(0.25, w * 0.018), (c) => {
-      c.moveTo(w * 0.3, h * 0.14); c.lineTo(w * 0.68, h * 0.15);
-      c.moveTo(w * 0.12, h * 0.38); c.lineTo(w * 0.28, h * 0.38);
-    });
   },
-  qcrate(ctx, w, h) {
+  qcrate(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    const fineShape = (fill, pathFn) => {
+    const outlinedShape = (fill, pathFn, strokeStyle = 'rgba(58,38,8,0.22)',
+      lineWidth = Math.max(0.18, u * 0.014)) => {
       ctx.beginPath(); pathFn(ctx);
       ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = 'rgba(58,38,8,0.3)';
-      ctx.lineWidth = Math.max(0.3, u * 0.024);
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = lineWidth;
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
     };
-    // The prize crate shares the ordinary crate's three-quarter construction,
-    // but gold planes and a clean ! make "hit this" its own visual language.
-    fineShape('#b88a18', (c) => {
-      c.moveTo(w * 0.75, h * 0.21); c.lineTo(w * 0.9, h * 0.12);
-      c.quadraticCurveTo(w * 0.96, h * 0.09, w * 0.96, h * 0.16);
-      c.lineTo(w * 0.95, h * 0.77); c.quadraticCurveTo(w * 0.95, h * 0.84, w * 0.9, h * 0.87);
-      c.lineTo(w * 0.75, h * 0.95); c.closePath();
+    // Flat partner to the ordinary crate: rounded gold frame and inset face.
+    // Its hairline perimeter keeps the block crisp without turning it into a
+    // dark badge after the high-resolution art is reduced into the world.
+    outlinedShape('#b88a18', (c) => rr(c, w * 0.04, h * 0.05, w * 0.92, h * 0.9, w * 0.18),
+      'rgba(58,38,8,0.18)', Math.max(0.1, u * 0.008));
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.14));
+    plain(ctx, '#ffe56a', (c) => rr(c, w * 0.13, h * 0.14, w * 0.74, h * 0.1, h * 0.045));
+
+    // One brief, dim glint every three seconds. Most of the loop is deliberately
+    // quiet, so the block catches the light rather than constantly shimmering.
+    const cycleFrame = frame % 36;
+    if (cycleFrame >= 3 && cycleFrame <= 7) {
+      const glintT = (cycleFrame - 3) / 4;
+      const glintX = w * (-0.12 + glintT * 1.16);
+      ctx.save();
+      ctx.beginPath();
+      rr(ctx, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.14);
+      ctx.clip();
+      plain(ctx, 'rgba(255,255,235,0.18)', (c) => {
+        c.moveTo(glintX - w * 0.075, h * 0.84);
+        c.lineTo(glintX + w * 0.025, h * 0.16);
+        c.lineTo(glintX + w * 0.09, h * 0.16);
+        c.lineTo(glintX - w * 0.01, h * 0.84);
+        c.closePath();
+      });
+      stroke(ctx, 'rgba(255,255,248,0.5)', Math.max(0.1, w * 0.008), (c) => {
+        c.moveTo(glintX - w * 0.005, h * 0.74);
+        c.lineTo(glintX + w * 0.065, h * 0.27);
+      });
+      ctx.restore();
+    }
+
+    // Hand-drawn punctuation: broad curved crown, aggressively tapered stem,
+    // and an oversized oval dot. Only the upper stroke moves: its lower tip is
+    // the pendulum pivot, while the dot remains completely fixed beneath it.
+    const phase = cycleFrame * Math.PI / 18;
+    const tilt = Math.sin(phase) * 0.085;
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.69);
+    ctx.rotate(tilt);
+    ctx.translate(0, -h * 0.17);
+    outlinedShape('#82531f', (c) => {
+      c.moveTo(-w * 0.11, -h * 0.25);
+      c.quadraticCurveTo(-w * 0.105, -h * 0.3, -w * 0.055, -h * 0.31);
+      c.lineTo(w * 0.115, -h * 0.34);
+      c.quadraticCurveTo(w * 0.15, -h * 0.345, w * 0.13, -h * 0.29);
+      c.lineTo(w * 0.025, h * 0.14);
+      c.quadraticCurveTo(w * 0.02, h * 0.17, 0, h * 0.17);
+      c.lineTo(-w * 0.025, h * 0.165);
+      c.quadraticCurveTo(-w * 0.05, h * 0.16, -w * 0.075, h * 0.12);
+      c.closePath();
     });
-    fineShape('#f6d33c', (c) => {
-      c.moveTo(w * 0.12, h * 0.2); c.lineTo(w * 0.69, h * 0.2);
-      c.quadraticCurveTo(w * 0.75, h * 0.2, w * 0.75, h * 0.27);
-      c.lineTo(w * 0.75, h * 0.88); c.quadraticCurveTo(w * 0.75, h * 0.95, w * 0.68, h * 0.95);
-      c.lineTo(w * 0.12, h * 0.95); c.quadraticCurveTo(w * 0.06, h * 0.95, w * 0.06, h * 0.88);
-      c.lineTo(w * 0.06, h * 0.27); c.quadraticCurveTo(w * 0.06, h * 0.2, w * 0.12, h * 0.2); c.closePath();
+    plain(ctx, 'rgba(255,229,130,0.18)', (c) => {
+      c.moveTo(-w * 0.075, -h * 0.245);
+      c.quadraticCurveTo(-w * 0.065, -h * 0.27, -w * 0.035, -h * 0.275);
+      c.lineTo(w * 0.055, -h * 0.29);
+      c.lineTo(-w * 0.035, h * 0.11);
+      c.lineTo(-w * 0.065, h * 0.105);
+      c.closePath();
     });
-    fineShape('#ffe56a', (c) => {
-      c.moveTo(w * 0.08, h * 0.22); c.lineTo(w * 0.22, h * 0.11);
-      c.quadraticCurveTo(w * 0.25, h * 0.08, w * 0.31, h * 0.08);
-      c.lineTo(w * 0.9, h * 0.1); c.quadraticCurveTo(w * 0.97, h * 0.1, w * 0.91, h * 0.15);
-      c.lineTo(w * 0.77, h * 0.24); c.quadraticCurveTo(w * 0.75, h * 0.26, w * 0.7, h * 0.25);
-      c.lineTo(w * 0.13, h * 0.25); c.quadraticCurveTo(w * 0.06, h * 0.25, w * 0.08, h * 0.22); c.closePath();
-    });
-    plain(ctx, '#8a6432', (c) => {
-      rr(c, w * 0.36, h * 0.31, w * 0.1, h * 0.37, w * 0.035);
-      c.arc(w * 0.41, h * 0.8, w * 0.06, 0, Math.PI * 2);
-    });
-    stroke(ctx, 'rgba(255,248,192,0.55)', Math.max(0.25, w * 0.02), (c) => {
-      c.moveTo(w * 0.13, h * 0.28); c.lineTo(w * 0.13, h * 0.82);
-      c.moveTo(w * 0.31, h * 0.14); c.lineTo(w * 0.68, h * 0.15);
-    });
+    ctx.restore();
+    outlinedShape('#82531f', (c) => c.ellipse(w * 0.5, h * 0.81, w * 0.078, h * 0.065, -0.32, 0, Math.PI * 2));
   },
   pipe(ctx, w, h) {
     const u = Math.max(w, h);
@@ -270,37 +395,23 @@ export const PROP_PAINTERS = {
       ctx.lineWidth = Math.max(0.32, u * 0.024);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
     };
-    // Bowed staves form a real cylinder instead of a rounded rectangle.
-    fineShape('#b87838', (c) => {
-      c.moveTo(w * 0.22, h * 0.12);
-      c.bezierCurveTo(w * 0.08, h * 0.3, w * 0.08, h * 0.7, w * 0.22, h * 0.88);
-      c.quadraticCurveTo(w * 0.5, h * 0.98, w * 0.78, h * 0.88);
-      c.bezierCurveTo(w * 0.92, h * 0.7, w * 0.92, h * 0.3, w * 0.78, h * 0.12);
-      c.closePath();
-    });
-    // Receding side shade and top lip establish the cylinder's volume.
-    plain(ctx, 'rgba(88,42,14,0.32)', (c) => {
-      c.moveTo(w * 0.68, h * 0.13);
-      c.bezierCurveTo(w * 0.82, h * 0.28, w * 0.84, h * 0.72, w * 0.7, h * 0.89);
-      c.quadraticCurveTo(w * 0.79, h * 0.88, w * 0.82, h * 0.81);
-      c.bezierCurveTo(w * 0.93, h * 0.62, w * 0.91, h * 0.3, w * 0.78, h * 0.12); c.closePath();
-    });
-    fineShape('#d8a058', (c) => c.ellipse(w * 0.5, h * 0.14, w * 0.3, h * 0.095, 0, 0, Math.PI * 2));
-    plain(ctx, '#8a5426', (c) => c.ellipse(w * 0.5, h * 0.145, w * 0.22, h * 0.052, 0, 0, Math.PI * 2));
-    // Hoops curve with the body; stave seams bend gently toward the waist.
+    // A flat, front-on barrel: rounded silhouette, stave rhythm and hoops.
+    // No top plane or receding side—the toaster owns the 3D exception.
+    fineShape('#b87838', (c) => rr(c, w * 0.1, h * 0.04, w * 0.8, h * 0.92, w * 0.28));
+    plain(ctx, 'rgba(216,160,88,0.42)', (c) => rr(c, w * 0.18, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
+    plain(ctx, 'rgba(112,60,26,0.22)', (c) => rr(c, w * 0.69, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
     stroke(ctx, '#5e4e46', Math.max(0.65, h * 0.065), (c) => {
-      c.moveTo(w * 0.13, h * 0.31); c.bezierCurveTo(w * 0.35, h * 0.35, w * 0.65, h * 0.35, w * 0.87, h * 0.31);
-      c.moveTo(w * 0.12, h * 0.69); c.bezierCurveTo(w * 0.35, h * 0.73, w * 0.65, h * 0.73, w * 0.88, h * 0.69);
+      c.moveTo(w * 0.13, h * 0.25); c.lineTo(w * 0.87, h * 0.25);
+      c.moveTo(w * 0.11, h * 0.72); c.lineTo(w * 0.89, h * 0.72);
     });
     stroke(ctx, 'rgba(106,58,24,0.62)', Math.max(0.28, w * 0.025), (c) => {
-      c.moveTo(w * 0.34, h * 0.2); c.quadraticCurveTo(w * 0.3, h * 0.5, w * 0.35, h * 0.84);
-      c.moveTo(w * 0.51, h * 0.19); c.lineTo(w * 0.51, h * 0.86);
-      c.moveTo(w * 0.67, h * 0.2); c.quadraticCurveTo(w * 0.72, h * 0.5, w * 0.66, h * 0.84);
+      c.moveTo(w * 0.36, h * 0.1); c.lineTo(w * 0.36, h * 0.9);
+      c.moveTo(w * 0.52, h * 0.08); c.lineTo(w * 0.52, h * 0.92);
+      c.moveTo(w * 0.68, h * 0.1); c.lineTo(w * 0.68, h * 0.9);
     });
     stroke(ctx, 'rgba(255,220,160,0.5)', Math.max(0.3, w * 0.025), (c) => {
-      c.moveTo(w * 0.23, h * 0.38); c.quadraticCurveTo(w * 0.18, h * 0.5, w * 0.23, h * 0.61);
+      c.moveTo(w * 0.2, h * 0.34); c.lineTo(w * 0.2, h * 0.62);
     });
-    plain(ctx, '#4a382e', (c) => c.ellipse(w * 0.61, h * 0.14, w * 0.035, h * 0.018, 0, 0, Math.PI * 2));
   },
   tombstone(ctx, w, h) {
     const u = Math.max(w, h);
@@ -402,9 +513,26 @@ export const PROP_PAINTERS = {
   // --- pickups ----------------------------------------------------------
   coin(ctx, w, h) {
     const u = Math.max(w, h);
-    shape(ctx, '#f6d33c', u, (c) => c.ellipse(w / 2, h / 2, w * 0.44, h * 0.46, 0, 0, Math.PI * 2));
-    plain(ctx, '#c8a020', (c) => c.ellipse(w / 2, h / 2, w * 0.26, h * 0.3, 0, 0, Math.PI * 2));
-    plain(ctx, '#fff8c0', (c) => c.ellipse(w * 0.36, h * 0.3, w * 0.1, h * 0.12, -0.5, 0, Math.PI * 2));
+    const r = Math.min(w, h) * 0.46;
+    const gold = ctx.createRadialGradient(w * 0.36, h * 0.29, r * 0.08, w * 0.5, h * 0.52, r);
+    gold.addColorStop(0, '#fff3a0');
+    gold.addColorStop(0.34, '#f8d84a');
+    gold.addColorStop(1, '#d69b18');
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2, w * 0.44, h * 0.46, 0, 0, Math.PI * 2);
+    ctx.fillStyle = gold;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(105,67,10,0.4)';
+    ctx.lineWidth = Math.max(0.2, u * 0.018);
+    ctx.stroke();
+
+    // Fine embossed rim and stamp survive the 16-to-8 downsample as tonal
+    // detail instead of becoming the thick dark washer in the old sprite.
+    stroke(ctx, 'rgba(166,111,16,0.72)', Math.max(0.18, u * 0.017), (c) => {
+      c.ellipse(w / 2, h / 2, w * 0.33, h * 0.35, 0, 0, Math.PI * 2);
+    });
+    plain(ctx, 'rgba(181,124,18,0.58)', (c) => c.ellipse(w * 0.51, h * 0.53, w * 0.105, h * 0.18, 0, 0, Math.PI * 2));
+    plain(ctx, 'rgba(255,251,204,0.9)', (c) => c.ellipse(w * 0.35, h * 0.29, w * 0.075, h * 0.095, -0.45, 0, Math.PI * 2));
   },
   battery(ctx, w, h) {
     const u = Math.max(w, h);
@@ -505,86 +633,179 @@ export const PROP_PAINTERS = {
   },
   appliance(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    // The shared prop outline is intentionally bold enough for hazards. On
-    // this tiny bright collectible it became a three-screen-pixel border, so
-    // use a one-screen-pixel hairline and let colour contrast carry the form.
     const fineShape = (fill, pathFn) => {
       ctx.beginPath(); pathFn(ctx);
       ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = 'rgba(26,16,40,0.24)';
-      ctx.lineWidth = Math.max(0.28, u * 0.018);
+      ctx.strokeStyle = 'rgba(55,35,12,0.22)';
+      ctx.lineWidth = Math.max(0.24, u * 0.015);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.stroke();
     };
-    // The classic toaster's body reads left-to-right in three-quarter view.
-    // Author the detailed geometry once, then flip the complete construction
-    // so the top plane, shaded side, lever, toast and unequal wings all agree.
+    const wingShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(64,61,78,0.4)';
+      ctx.lineWidth = Math.max(0.34, u * 0.02);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+    };
+
+    // Build in the reference's three-quarter view, then flip the complete
+    // construction so its body, lever and unequal wings all travel rightward.
     ctx.save();
+    // The 24x20 pickup reserves its top four pixels for the toast launch.
+    // Compress the appliance construction back to its intended 24x16 body and
+    // bottom-anchor it inside that taller transparent canvas.
+    ctx.translate(0, h * 0.2);
+    ctx.scale(1, 0.8);
     ctx.translate(w, 0);
     ctx.scale(-1, 1);
-    // Twelve eased poses at 24fps give the wings a clean two-flaps-per-second
-    // cycle. A small fore/aft sweep distinguishes the rising half from the
-    // falling half instead of playing the same six silhouettes backwards.
+    // Pitch the complete appliance toward its front-right corner. Because the
+    // authored construction is mirrored, this slight counter-clockwise local
+    // roll appears clockwise on screen: the near-right corner sits lower.
+    ctx.translate(w * 0.5, h * 0.5);
+    ctx.rotate(-0.065);
+    ctx.translate(-w * 0.5, -h * 0.5);
     const phase = (frame % 12) * Math.PI / 6;
     const lift = Math.cos(phase);
     const sweep = Math.sin(phase);
-    const drawWing = (side, fill, depth = 1) => fineShape(fill, (c) => {
-      const rootX = side < 0 ? w * 0.31 : w * 0.7;
-      const rootY = h * (side < 0 ? 0.5 : 0.48);
-      const tipX = side < 0 ? w * 0.015 : w * 0.985;
-      const tipY = h * (0.43 - lift * 0.34 * depth);
-      const innerX = (side < 0 ? w * 0.18 : w * 0.83) + sweep * w * 0.025;
-      c.moveTo(rootX, rootY - h * 0.11);
-      c.quadraticCurveTo(innerX, tipY, tipX, tipY + (side > 0 ? h * 0.03 : 0));
-      c.quadraticCurveTo(innerX, tipY + h * 0.28 * depth, rootX, rootY + h * 0.15);
+    // Toast runs on its own four-second cycle, offset from the quick wing flap.
+    const toastPhase = (frame % 96) * Math.PI / 48 + Math.PI / 6;
+    // Spend most of the slow cycle raised, dip fully into the slot only
+    // briefly, then return. Frame zero starts visibly raised in static views.
+    const toastOpen = Math.pow(Math.max(0, 0.5 + Math.cos(toastPhase) * 0.5), 0.35);
+    const toastRise = h * 0.48 * toastOpen;
+    const toastSway = w * 0.002 * Math.sin(toastPhase);
+
+    // Small rear wing tucked behind the toaster's top shoulder.
+    ctx.save();
+    ctx.translate(w * 0.34, h * 0.44);
+    // This wing extends left in the authored view, so its hinge rotation must
+    // oppose the foreground wing for both tips to rise and fall together.
+    ctx.rotate(0.28 + lift * 0.26 - sweep * 0.02);
+    ctx.scale(1.08, 1.08);
+    wingShape('#d5d4dc', (c) => {
+      c.moveTo(0, h * 0.08);
+      c.bezierCurveTo(-w * 0.1, -h * 0.01, -w * 0.22, -h * 0.03, -w * 0.29, h * 0.01);
+      c.quadraticCurveTo(-w * 0.22, h * 0.11, -w * 0.15, h * 0.11);
+      c.quadraticCurveTo(-w * 0.11, h * 0.19, -w * 0.05, h * 0.15);
       c.closePath();
     });
-    // The smaller grey wing sits behind the toaster; the brighter near wing
-    // overlaps farther forward. Their unequal scale is the first depth cue.
-    drawWing(1, '#c8c8d8', 0.78);
-    drawWing(-1, '#f4f4fa', 1);
-    plain(ctx, '#c8c8d8', (c) => {
-      const nearY = h * (0.57 - lift * 0.3);
-      const farY = h * (0.55 - lift * 0.23);
-      c.moveTo(w * 0.035, nearY); c.lineTo(w * 0.245, h * 0.5); c.lineTo(w * 0.09, nearY + h * 0.08); c.closePath();
-      c.moveTo(w * 0.965, farY); c.lineTo(w * 0.76, h * 0.48); c.lineTo(w * 0.91, farY + h * 0.07); c.closePath();
+    stroke(ctx, '#9999a8', Math.max(0.24, u * 0.014), (c) => {
+      c.moveTo(-w * 0.25, h * 0.025); c.quadraticCurveTo(-w * 0.12, h * 0.06, 0, h * 0.1);
+      c.moveTo(-w * 0.17, h * 0.035); c.lineTo(-w * 0.08, h * 0.135);
+    });
+    ctx.restore();
+
+    // Flat reference construction: one narrow side plane, one broad face and
+    // one sloped cap. Avoid a separate round centre panel.
+    fineShape('#a97816', (c) => {
+      c.moveTo(w * 0.16, h * 0.36);
+      c.quadraticCurveTo(w * 0.17, h * 0.35, w * 0.2, h * 0.36);
+      c.lineTo(w * 0.31, h * 0.39);
+      c.lineTo(w * 0.32, h * 0.92);
+      c.lineTo(w * 0.21, h * 0.9);
+      c.quadraticCurveTo(w * 0.16, h * 0.88, w * 0.16, h * 0.82);
+      c.lineTo(w * 0.16, h * 0.36);
+      c.closePath();
+    });
+    fineShape('#f4c934', (c) => {
+      c.moveTo(w * 0.31, h * 0.39);
+      c.lineTo(w * 0.74, h * 0.35);
+      c.quadraticCurveTo(w * 0.8, h * 0.34, w * 0.8, h * 0.41);
+      c.lineTo(w * 0.79, h * 0.81);
+      c.quadraticCurveTo(w * 0.79, h * 0.86, w * 0.73, h * 0.88);
+      c.lineTo(w * 0.36, h * 0.92);
+      c.quadraticCurveTo(w * 0.32, h * 0.92, w * 0.32, h * 0.88);
+      c.lineTo(w * 0.31, h * 0.39);
+      c.closePath();
+    });
+    fineShape('#ffe16a', (c) => {
+      c.moveTo(w * 0.17, h * 0.36);
+      c.lineTo(w * 0.31, h * 0.28);
+      c.quadraticCurveTo(w * 0.32, h * 0.27, w * 0.35, h * 0.27);
+      c.lineTo(w * 0.68, h * 0.27);
+      c.quadraticCurveTo(w * 0.7, h * 0.27, w * 0.72, h * 0.29);
+      c.lineTo(w * 0.79, h * 0.34);
+      c.quadraticCurveTo(w * 0.8, h * 0.36, w * 0.77, h * 0.36);
+      c.lineTo(w * 0.35, h * 0.39);
+      c.quadraticCurveTo(w * 0.32, h * 0.4, w * 0.3, h * 0.38);
+      c.closePath();
+    });
+    stroke(ctx, 'rgba(178,124,22,0.55)', Math.max(0.2, u * 0.011), (c) => {
+      c.moveTo(w * 0.35, h * 0.39);
+      c.lineTo(w * 0.77, h * 0.36);
     });
 
-    // Toast rises behind the top plane, already skewed in the body's direction.
-    fineShape('#9a6830', (c) => {
-      c.moveTo(w * 0.41, h * 0.31); c.lineTo(w * 0.42, h * 0.13);
-      c.quadraticCurveTo(w * 0.43, h * 0.05, w * 0.5, h * 0.055);
-      c.lineTo(w * 0.56, h * 0.07); c.quadraticCurveTo(w * 0.61, h * 0.08, w * 0.6, h * 0.16);
-      c.lineTo(w * 0.59, h * 0.33); c.closePath();
+    // The ejector lives on the narrow side plane. Its thumb rises as the
+    // independent toast cycle opens, making the mechanism legible without the
+    // old floating knob.
+    stroke(ctx, '#6e4518', Math.max(0.26, u * 0.014), (c) => {
+      c.moveTo(w * 0.235, h * 0.49);
+      c.lineTo(w * 0.235, h * 0.74);
     });
-    plain(ctx, '#d8a050', (c) => rr(c, w * 0.445, h * 0.105, w * 0.12, h * 0.18, w * 0.035));
+    const sliderY = h * (0.67 - toastOpen * 0.13);
+    fineShape('#4a2b12', (c) => rr(c, w * 0.19, sliderY, w * 0.09, h * 0.07, w * 0.022));
 
-    // Three-quarter toaster body: dark receding side, broad gold face, then a
-    // lighter top plane. It stays graphic, but no longer reads as a flat badge.
-    fineShape('#b88a18', (c) => {
-      c.moveTo(w * 0.65, h * 0.36); c.lineTo(w * 0.79, h * 0.43);
-      c.lineTo(w * 0.76, h * 0.81); c.lineTo(w * 0.64, h * 0.89); c.closePath();
+    // A very small travelling gleam keeps the collectible feeling prized
+    // without competing with the toast or feather animation.
+    const glimmer = Math.max(0, Math.sin(toastPhase * 2 - 0.45));
+    ctx.save();
+    ctx.globalAlpha = 0.22 + glimmer * 0.62;
+    plain(ctx, '#fff8c8', (c) => star(c, w * 0.67, h * 0.56, w * (0.012 + glimmer * 0.014), w * 0.005, 4));
+    ctx.restore();
+
+    // Clip the full square slice at the slot line: at the bottom of its slow
+    // cycle it is genuinely inside the casing; at the top it rises almost
+    // completely clear. The tiny lateral settle keeps all 96 poses distinct.
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.325);
+    ctx.rotate(-0.07);
+    ctx.translate(-w * 0.5, -h * 0.325);
+    ctx.beginPath();
+    ctx.rect(0, -h, w, h * 1.335);
+    ctx.clip();
+    ctx.translate(toastSway, -toastRise);
+    // A slight shear makes the slice lean toward the visible right-side plane
+    // while its lower edge remains aligned with the slot.
+    ctx.transform(1, 0, 0.07, 1, -h * 0.021, 0);
+    fineShape('#93602a', (c) => rr(c, w * 0.385, h * 0.345, w * 0.23, h * 0.345, w * 0.03));
+    plain(ctx, '#d9a84f', (c) => rr(c, w * 0.415, h * 0.38, w * 0.17, h * 0.275, w * 0.022));
+    ctx.restore();
+
+    // One clean recessed opening; the dark capsule carries enough depth
+    // without an extra metallic rim competing with the toast.
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.325);
+    ctx.rotate(-0.07);
+    ctx.translate(-w * 0.5, -h * 0.325);
+    plain(ctx, '#4a2b12', (c) => rr(c, w * 0.36, h * 0.309, w * 0.28, h * 0.036, h * 0.016));
+    ctx.restore();
+
+    // Large foreground wing wraps across the side. Separate feather tips make
+    // the wing survive reduction without reverting to a thick dark outline.
+    ctx.save();
+    ctx.translate(w * 0.57, h * 0.52);
+    ctx.rotate(-0.08 - lift * 0.31 + sweep * 0.025);
+    ctx.scale(1.08, 1.08);
+    wingShape('#f6f5fa', (c) => {
+      c.moveTo(-w * 0.05, -h * 0.06);
+      c.bezierCurveTo(w * 0.08, -h * 0.14, w * 0.21, -h * 0.15, w * 0.36, -h * 0.11);
+      c.quadraticCurveTo(w * 0.4, -h * 0.04, w * 0.34, h * 0.015);
+      c.quadraticCurveTo(w * 0.39, h * 0.08, w * 0.31, h * 0.12);
+      c.quadraticCurveTo(w * 0.34, h * 0.2, w * 0.25, h * 0.2);
+      c.quadraticCurveTo(w * 0.23, h * 0.28, w * 0.14, h * 0.23);
+      c.quadraticCurveTo(w * 0.08, h * 0.29, w * 0.02, h * 0.18);
+      c.closePath();
     });
-    fineShape('#f6d33c', (c) => {
-      c.moveTo(w * 0.27, h * 0.38); c.lineTo(w * 0.66, h * 0.39);
-      c.lineTo(w * 0.64, h * 0.86); c.quadraticCurveTo(w * 0.61, h * 0.91, w * 0.34, h * 0.91);
-      c.quadraticCurveTo(w * 0.28, h * 0.9, w * 0.27, h * 0.83); c.closePath();
+    stroke(ctx, '#aaaab8', Math.max(0.24, u * 0.014), (c) => {
+      c.moveTo(-w * 0.02, h * 0.02); c.quadraticCurveTo(w * 0.17, h * 0.02, w * 0.34, -h * 0.08);
+      c.moveTo(w * 0.1, h * 0.04); c.lineTo(w * 0.31, h * 0.1);
+      c.moveTo(w * 0.08, h * 0.08); c.lineTo(w * 0.24, h * 0.19);
+      c.moveTo(w * 0.04, h * 0.1); c.lineTo(w * 0.14, h * 0.23);
     });
-    fineShape('#ffe56a', (c) => {
-      c.moveTo(w * 0.27, h * 0.38); c.lineTo(w * 0.38, h * 0.27);
-      c.lineTo(w * 0.67, h * 0.29); c.lineTo(w * 0.79, h * 0.43);
-      c.lineTo(w * 0.66, h * 0.41); c.lineTo(w * 0.29, h * 0.42); c.closePath();
-    });
-    stroke(ctx, '#765018', Math.max(0.35, h * 0.035), (c) => {
-      c.moveTo(w * 0.4, h * 0.33); c.lineTo(w * 0.66, h * 0.35);
-    });
-    plain(ctx, '#c8a020', (c) => rr(c, w * 0.34, h * 0.68, w * 0.22, h * 0.075, h * 0.035));
-    plain(ctx, '#fff8c0', (c) => c.ellipse(w * 0.35, h * 0.49, w * 0.045, h * 0.065, 0, 0, Math.PI * 2));
-    plain(ctx, '#8a6418', (c) => rr(c, w * 0.765, h * 0.53, w * 0.07, h * 0.16, h * 0.025));
-    plain(ctx, '#5a4020', (c) => {
-      rr(c, w * 0.33, h * 0.88, w * 0.065, h * 0.085, h * 0.02);
-      rr(c, w * 0.66, h * 0.84, w * 0.065, h * 0.085, h * 0.02);
-    });
+    ctx.restore();
+
     ctx.restore();
   },
   cord(ctx, w, h) {
@@ -675,30 +896,107 @@ export const PROP_PAINTERS = {
     });
   },
   dustdevil(ctx, w, h) {
-    // Upright stick vacuum — the silhouette has to say "vacuum" at 14px:
-    // wide floor head, canister on top, slanted handle, and a power cord
-    // floating up to a visible plug (nothing is holding it; it is haunted).
     const u = Math.max(w, h);
-    stroke(ctx, '#3a3a48', Math.max(0.5, w * 0.055), (c) => {
-      c.moveTo(w * 0.52, h * 0.66);
-      c.quadraticCurveTo(w * 0.92, h * 0.6, w * 0.84, h * 0.26);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(35,23,38,0.27)';
+      ctx.lineWidth = Math.max(0.18, u * 0.012);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    };
+    const detailLine = Math.max(0.16, u * 0.009);
+
+    // A real upright-vacuum silhouette: loop grip and steel spine first, then
+    // the bag/chamber, motor pod, wheels and a wide floor nozzle.
+    stroke(ctx, '#3a3040', Math.max(0.34, u * 0.025), (c) => {
+      c.moveTo(w * 0.41, h * 0.52);
+      c.lineTo(w * 0.61, h * 0.14);
+      c.quadraticCurveTo(w * 0.64, h * 0.08, w * 0.7, h * 0.07);
+      c.lineTo(w * 0.79, h * 0.07);
     });
-    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.78, h * 0.1, w * 0.13, h * 0.14, w * 0.03)); // the plug
-    stroke(ctx, '#f6d33c', Math.max(0.5, w * 0.045), (c) => {
-      c.moveTo(w * 0.81, h * 0.1); c.lineTo(w * 0.81, h * 0.02);
-      c.moveTo(w * 0.88, h * 0.1); c.lineTo(w * 0.88, h * 0.02);
+    stroke(ctx, '#aeb2bc', Math.max(0.17, u * 0.011), (c) => {
+      c.moveTo(w * 0.42, h * 0.51);
+      c.lineTo(w * 0.625, h * 0.145);
+      c.quadraticCurveTo(w * 0.65, h * 0.1, w * 0.7, h * 0.095);
+      c.lineTo(w * 0.785, h * 0.095);
     });
-    stroke(ctx, '#8a8a98', Math.max(0.6, w * 0.07), (c) => { c.moveTo(w * 0.36, h * 0.34); c.lineTo(w * 0.6, h * 0.05); }); // handle
-    plain(ctx, '#8a8a98', (c) => c.arc(w * 0.62, h * 0.05, w * 0.06, 0, Math.PI * 2)); // grip knob
-    shape(ctx, '#8a1c1c', u, (c) => rr(c, w * 0.04, h * 0.82, w * 0.74, h * 0.16, w * 0.07)); // floor head
-    plain(ctx, '#601414', (c) => rr(c, w * 0.04, h * 0.93, w * 0.74, h * 0.05, w * 0.02)); // brush lip
-    shape(ctx, '#c83030', u, (c) => rr(c, w * 0.16, h * 0.3, w * 0.42, h * 0.56, w * 0.12)); // canister
-    plain(ctx, '#c8d8e8', (c) => c.ellipse(w * 0.37, h * 0.62, w * 0.13, h * 0.13 * (w / h), 0, 0, Math.PI * 2)); // dust window
-    plain(ctx, '#8a8a98', (c) => c.ellipse(w * 0.37, h * 0.62, w * 0.055, h * 0.055 * (w / h), 0, 0, Math.PI * 2)); // swirl
-    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.37, h * 0.4, w * 0.05, 0, Math.PI * 2)); // the apologetic LED
-    plain(ctx, 'rgba(200,216,232,0.75)', (c) => { // dust it is politely raising
-      c.arc(w * 0.88, h * 0.9, w * 0.045, 0, Math.PI * 2);
-      c.arc(w * 0.97, h * 0.82, w * 0.03, 0, Math.PI * 2);
+    fineShape('#8f2630', (c) => rr(c, w * 0.73, h * 0.035, w * 0.18, h * 0.09, w * 0.035));
+
+    // Flexible hose loops from the motor up the spine—a strong appliance cue
+    // that is quieter and more believable than the old floating plug.
+    stroke(ctx, '#4b4650', Math.max(0.24, u * 0.017), (c) => {
+      c.moveTo(w * 0.59, h * 0.72);
+      c.bezierCurveTo(w * 0.88, h * 0.61, w * 0.79, h * 0.27, w * 0.64, h * 0.21);
+    });
+    stroke(ctx, '#777783', Math.max(0.1, u * 0.006), (c) => {
+      c.moveTo(w * 0.59, h * 0.72);
+      c.bezierCurveTo(w * 0.85, h * 0.6, w * 0.76, h * 0.3, w * 0.64, h * 0.22);
+    });
+
+    // Tapered dust chamber hangs from the spine instead of reading as a
+    // featureless rounded box.
+    fineShape('#9e2028', (c) => {
+      c.moveTo(w * 0.3, h * 0.27);
+      c.quadraticCurveTo(w * 0.32, h * 0.23, w * 0.38, h * 0.23);
+      c.lineTo(w * 0.52, h * 0.27);
+      c.lineTo(w * 0.59, h * 0.67);
+      c.quadraticCurveTo(w * 0.57, h * 0.72, w * 0.5, h * 0.73);
+      c.lineTo(w * 0.3, h * 0.7);
+      c.quadraticCurveTo(w * 0.26, h * 0.68, w * 0.27, h * 0.62);
+      c.closePath();
+    });
+    plain(ctx, '#c93a3e', (c) => {
+      c.moveTo(w * 0.32, h * 0.29);
+      c.lineTo(w * 0.39, h * 0.27);
+      c.lineTo(w * 0.43, h * 0.66);
+      c.lineTo(w * 0.32, h * 0.65);
+      c.closePath();
+    });
+    fineShape('#bfd4dc', (c) => rr(c, w * 0.37, h * 0.36, w * 0.15, h * 0.22, w * 0.035));
+    plain(ctx, 'rgba(245,252,255,0.68)', (c) => rr(c, w * 0.39, h * 0.38, w * 0.035, h * 0.16, w * 0.012));
+    stroke(ctx, '#737986', detailLine, (c) => {
+      c.arc(w * 0.455, h * 0.47, w * 0.045, -0.4, Math.PI * 1.45);
+      c.lineTo(w * 0.465, h * 0.44);
+    });
+    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.335, h * 0.32, w * 0.025, 0, Math.PI * 2));
+
+    // Low motor housing bridges the tall chamber to the cleaning head.
+    fineShape('#be3036', (c) => {
+      c.moveTo(w * 0.18, h * 0.66);
+      c.quadraticCurveTo(w * 0.2, h * 0.61, w * 0.29, h * 0.61);
+      c.lineTo(w * 0.58, h * 0.63);
+      c.quadraticCurveTo(w * 0.67, h * 0.65, w * 0.7, h * 0.74);
+      c.lineTo(w * 0.69, h * 0.82);
+      c.lineTo(w * 0.16, h * 0.82);
+      c.closePath();
+    });
+    plain(ctx, '#e05252', (c) => rr(c, w * 0.23, h * 0.65, w * 0.28, h * 0.045, h * 0.018));
+    fineShape('#34303a', (c) => {
+      c.arc(w * 0.24, h * 0.82, w * 0.075, 0, Math.PI * 2);
+      c.arc(w * 0.64, h * 0.82, w * 0.075, 0, Math.PI * 2);
+    });
+    plain(ctx, '#9498a2', (c) => {
+      c.arc(w * 0.24, h * 0.82, w * 0.032, 0, Math.PI * 2);
+      c.arc(w * 0.64, h * 0.82, w * 0.032, 0, Math.PI * 2);
+    });
+
+    // Broad wedge-shaped floor head and dark brush lip finish the read.
+    fineShape('#8f1c25', (c) => {
+      c.moveTo(w * 0.08, h * 0.8);
+      c.lineTo(w * 0.74, h * 0.79);
+      c.lineTo(w * 0.89, h * 0.9);
+      c.quadraticCurveTo(w * 0.9, h * 0.95, w * 0.84, h * 0.96);
+      c.lineTo(w * 0.06, h * 0.96);
+      c.quadraticCurveTo(w * 0.02, h * 0.94, w * 0.04, h * 0.88);
+      c.closePath();
+    });
+    plain(ctx, '#c9363d', (c) => {
+      c.moveTo(w * 0.1, h * 0.82); c.lineTo(w * 0.72, h * 0.82);
+      c.lineTo(w * 0.8, h * 0.87); c.lineTo(w * 0.08, h * 0.88); c.closePath();
+    });
+    plain(ctx, '#4b2730', (c) => rr(c, w * 0.06, h * 0.92, w * 0.79, h * 0.035, h * 0.014));
+    stroke(ctx, 'rgba(238,108,108,0.65)', detailLine, (c) => {
+      c.moveTo(w * 0.19, h * 0.9); c.lineTo(w * 0.68, h * 0.89);
     });
   },
   goldTrophy(ctx, w, h) {
@@ -723,14 +1021,36 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // Anything absent is static. Frames are rasterized and cached individually, so
 // an animated prop costs one canvas per frame per size and still draws with a
 // single drawImage — no per-frame vector work in the hot loop.
-export const PROP_FRAMES = { cactus: 6, cactusBig: 6, appliance: 12 };
-const PROP_FPS = { appliance: 24 };
+export const PROP_FRAMES = {
+  cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
+};
+const PROP_FPS = { qcrate: 12, appliance: 24 };
 
 // Visual overdraw: props drawn taller than their def box, bottom-anchored, so
 // the art gains stature without touching the hitbox (hazards already render
 // 1.33x their box — bigger art is generous, never unfair).
-export const PROP_TALL = { cactus: 1.55, cactusBig: 1.4 };
+export const PROP_TALL = {
+  cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
+};
 export function propTall(name) { return PROP_TALL[name] || 1; }
+
+// Extra internal art scale for props with fine expression or reflective detail.
+// Their painters receive at least a 2x box before supersampling; the world draw
+// size and gameplay hitbox do not change.
+const PROP_DETAIL_SCALE = { snowman: 2, snowmanBig: 2, qcrate: 2 };
+export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
+
+// World-only visual size. Snowmen overdraw their unchanged collision boxes a
+// little farther so they feel substantial without making their jumps harder.
+const PROP_VISUAL_SCALE = { snowman: 1.15, snowmanBig: 1.15 };
+export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
+
+// The shared two-pass hazard rim turns pale round snow into a broad grey halo
+// once the world camera and fractional desktop scale magnify it. Snowmen carry
+// their own fine outline and high-contrast scarf, so they skip that extra rim.
+export function propHazardRim(name) {
+  return name !== 'snowman' && name !== 'snowmanBig';
+}
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
 export function propFps(name) { return PROP_FPS[name] || 11; }
@@ -757,7 +1077,9 @@ export function propSprite(name, w, h, frame = 0) {
   const f = frame % propFrames(name);
   const paint = PROP_PAINTERS[name];
   if (!paint) return null;
-  return rasterize(`${name}|${w}x${h}|${f}`, w, h, (x) => paint(x, w, h, f));
+  const detail = propDetailScale(name);
+  const rw = w * detail, rh = h * detail;
+  return rasterize(`${name}|${w}x${h}|${detail}x|${f}`, rw, rh, (x) => paint(x, rw, rh, f));
 }
 
 // Flat silhouette of a prop in one color — used for hazard rim outlines.
@@ -786,13 +1108,14 @@ export function propRimPair(name, w, h, color, axis, frame = 0) {
   if (cache.has(key)) return cache.get(key);
   const sil = propTinted(name, w, h, color, f);
   if (!sil) return null;
+  const pad = propDetailScale(name) * SS;
   const c = document.createElement('canvas');
-  c.width = sil.width + 2 * SS;
-  c.height = sil.height + 2 * SS;
+  c.width = sil.width + 2 * pad;
+  c.height = sil.height + 2 * pad;
   const x = c.getContext('2d');
-  const [dx, dy] = axis === 'x' ? [SS, 0] : [0, SS];
-  x.drawImage(sil, SS - dx, SS - dy);
-  x.drawImage(sil, SS + dx, SS + dy);
+  const [dx, dy] = axis === 'x' ? [pad, 0] : [0, pad];
+  x.drawImage(sil, pad - dx, pad - dy);
+  x.drawImage(sil, pad + dx, pad + dy);
   cache.set(key, c);
   return c;
 }

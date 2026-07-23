@@ -2105,7 +2105,7 @@ export class HubState {
 const TROPHY_FLOOR_Y = 218;
 const TROPHY_WORLD_W = 2820;
 const TROPHY_EXIT_X = 30;
-const TROPHY_RECORDS_X = 92;
+const TROPHY_RECORDS_X = 105;
 const TROPHY_LEVELS_X = 500;
 const TROPHY_LEVEL_BOARD_W = 184;
 const TROPHY_LEVEL_BOARD_GAP = 12;
@@ -2422,27 +2422,28 @@ export class TrophyRoomState {
 
   drawRecordsBoard(ctx) {
     const groups = this.statGroups();
-    const x = TROPHY_RECORDS_X + 13, y = 69, w = 285, h = 84, colW = w / 3;
-    // A small wall board, not a screen-filling report. Three semantic columns
-    // keep related values together, and every stat stays on one compact line.
+    const x = TROPHY_RECORDS_X, y = 47, w = 360, h = 88, colW = w / 3;
+    // Still a wall board rather than a screen-filling report, but large enough
+    // that its nine entries survive a phone-sized landscape display. Three
+    // semantic columns keep related values together. The section title sits
+    // above the frame, leaving the board itself to use a tighter, larger 3x3.
+    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, 34, '#f6d33c', 1.24, 'bold');
     ctx.fillStyle = '#100e16'; ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#73657c'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#292432'; ctx.fillRect(x + 3, y + 3, w - 6, 12);
-    drawTextCentered(ctx, 'OVERALL STATUS', x + w / 2, y + 7, '#f6d33c', 0.88, 'bold');
     groups.forEach((group, column) => {
       const gx = x + column * colW;
-      if (column) { ctx.fillStyle = '#332d3e'; ctx.fillRect(gx, y + 18, 1, h - 23); }
-      drawText(ctx, group.title, gx + 6, y + 21, '#48e0c8', 0.58, 'bold');
+      if (column) { ctx.fillStyle = '#332d3e'; ctx.fillRect(gx, y + 7, 1, h - 14); }
+      drawText(ctx, group.title, gx + 7, y + 7, '#48e0c8', 1, 'bold');
       group.rows.forEach(([label, value], row) => {
-        const yy = y + 36 + row * 14;
+        const yy = y + 27 + row * 18;
         ctx.fillStyle = row % 2 ? 'rgba(255,255,255,0.014)' : 'rgba(72,224,200,0.025)';
-        ctx.fillRect(gx + 4, yy - 3, colW - 8, 12);
+        ctx.fillRect(gx + 5, yy - 4, colW - 10, 16);
         const shown = String(value);
-        const valueScale = 0.7;
-        const available = colW - 16 - textWidth(shown, valueScale, 'bold');
-        const labelScale = Math.max(0.43, Math.min(0.56, (available - 4) / Math.max(1, textWidth(label, 1, 'bold'))));
-        drawText(ctx, label, gx + 7, yy, '#8a8a98', labelScale, 'bold');
-        drawText(ctx, shown, gx + colW - 7 - textWidth(shown, valueScale, 'bold'), yy, '#e8e8f0', valueScale, 'bold');
+        const valueScale = 1.15;
+        const available = colW - 19 - textWidth(shown, valueScale, 'bold');
+        const labelScale = Math.max(0.68, Math.min(0.98, (available - 5) / Math.max(1, textWidth(label, 1, 'bold'))));
+        drawText(ctx, label, gx + 8, yy, '#9b9baa', labelScale, 'bold');
+        drawText(ctx, shown, gx + colW - 8 - textWidth(shown, valueScale, 'bold'), yy, '#f1f1f6', valueScale, 'bold');
       });
     });
   }

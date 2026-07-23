@@ -44,7 +44,8 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 let zoom = 3;
 let renderScale = 3;
 let animate = true;
-const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel']);
+const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
+const smoothPreviewScale = (name) => name === 'dustdevil' || name === 'coin' ? 10 : 6;
 
 function section(id, title, note) {
   const s = document.createElement('section');
@@ -216,7 +217,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     // Selected small vector props render at twice their display density, then
     // the browser downsamples them smoothly. Other world sprites retain the
     // gallery's deliberately pixelated inspection mode.
-    hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? 6 : true,
+    hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? smoothPreviewScale(e.type) : true,
     smooth: SMOOTH_PREVIEW_PROPS.has(e.type),
   });
 }
@@ -501,7 +502,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     tile(grid, n, `${w}x${fh}${frames > 1 ? ` · ${frames}f` : ''}`, w + 8, fh + 8, (ctx, t) => {
       const f = frames > 1 ? Math.floor(t * propFps(n)) % frames : 0;
       drawProp(ctx, n, 4, 4, w, fh, f);
-    }, { animated: frames > 1, hires: SMOOTH_PREVIEW_PROPS.has(n) ? 6 : true, smooth: SMOOTH_PREVIEW_PROPS.has(n) });
+    }, { animated: frames > 1, hires: SMOOTH_PREVIEW_PROPS.has(n) ? smoothPreviewScale(n) : true, smooth: SMOOTH_PREVIEW_PROPS.has(n) });
   }
 }
 

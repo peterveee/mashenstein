@@ -19,6 +19,7 @@ const suites = [
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
+  'tests/renderer.js',
   'tests/title-sign.js',
   'tests/minigames.js',
   'tests/plug-tally.js',

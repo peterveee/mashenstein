@@ -13,11 +13,11 @@ import { burst, spawnShard, updateParticles, drawParticles, clearParticles } fro
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
-  cactus: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
+  cactus: [13, 19], snowman: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [12, 9], cord: [13, 8], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [18, 15], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
 import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } from '../data/jokes.js';
@@ -2333,6 +2333,7 @@ const GUIDE_PAGES = [
     title: 'HAZARDS: GROUND FLOOR', color: '#e04848', hint: 'RED = AVOID. JUMP THESE.',
     rows: [
       { s: 'cactus', name: 'THORN CACTUS', desc: 'RED AND PRICKLY. JUMP IT. BREAKABLE.' },
+      { s: 'snowman', name: 'HOSTILE SNOWMAN', desc: 'COLD, CROSS, AND BREAKABLE. JUMP IT.' },
       { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
       { s: '_pipe', name: 'PIPE', desc: 'TALL AND SMUG. JUMP IT.' },
       { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
@@ -2621,7 +2622,7 @@ export class HowToPlayState {
     line('BREAKER BOX', `WIN IT: BONUS POWERUP. ${touch ? 'TAP SKIP' : 'ESC OR SKIP'} TO BAIL OUT.`, '#f890b8');
     y += 4;
     line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
-    drawTextCentered(ctx, 'JUMP THE RED CACTI. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
+    drawTextCentered(ctx, 'JUMP RED HAZARDS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }
 }

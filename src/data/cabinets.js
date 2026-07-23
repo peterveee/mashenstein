@@ -26,6 +26,18 @@ const BASE_PATTERNS = [
   P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }, coinArc(50)]),
 ];
 
+// Frost Fortress keeps the shared jump timing and difficulty curve, but wears
+// its own ground enemy. Clone only the cells that change so the base patterns
+// remain the source of truth for spacing, tiers, coins, and mixed hazards.
+const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
+  ...pattern,
+  cells: pattern.cells.map((cell) => {
+    if (cell.t === 'cactus') return { ...cell, t: 'snowman' };
+    if (cell.t === 'cactusBig') return { ...cell, t: 'snowmanBig' };
+    return cell;
+  }),
+}));
+
 export const CABINETS = [
   {
     id: 'plumber', name: 'PLUMBER PANIC', act: 1, style: 'pixel',
@@ -130,11 +142,11 @@ export const CABINETS = [
     far: '#a8c8e8', hills: '#88a8c8',
     music: { bpm: 100, bass: seq('D2 . . . A2 . . . B1 . . . F2 . . . G1 . . . D2 . . . G2 . . . A2 . . .'), lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 .'), leadType: 'triangle', kick: seq('C1 . . . . . . . C1 . . . . . . .').map((v) => !!v), hats: seq('. . C1 . C1 . . .').map((v) => !!v), snare: seq('. . . . . . . . C1 . . . . . . .').map((v) => !!v) },
     patterns: [
-      ...BASE_PATTERNS,
+      ...ICE_PATTERNS,
       P(0, [{ t: 'icicle', dx: 0 }]),
       P(1, [{ t: 'icicle', dx: 0 }, { t: 'icicle', dx: 60 }]),
       P(1, [{ t: 'switch', dx: 0, y: 50 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
-      P(2, [{ t: 'icicle', dx: 0 }, { t: 'cactus', dx: 70 }, coinArc(120)]),
+      P(2, [{ t: 'icicle', dx: 0 }, { t: 'snowman', dx: 70 }, coinArc(120)]),
       P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'icicle', dx: 120 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
