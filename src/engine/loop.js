@@ -1,5 +1,8 @@
 // Fixed-timestep loop: update always ticks at 60 Hz regardless of display rate.
 export const TICK = 1 / 60;
+let measuredFps = 0;
+
+export function frameRate() { return measuredFps; }
 
 export function reportFatalError(error) {
   const detail = error && (error.stack || error.message) || String(error || 'Unknown error');
@@ -25,6 +28,8 @@ export function startLoop({ update, draw }) {
   let running = true;
   let stopped = false;
   let queued = false;
+  let fpsWindow = last;
+  let fpsFrames = 0;
 
   const schedule = () => {
     if (stopped || queued || !running) return;
@@ -46,6 +51,13 @@ export function startLoop({ update, draw }) {
       while (acc >= TICK && steps < 8) { update(TICK); acc -= TICK; steps++; }
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
       draw();
+      fpsFrames++;
+      const fpsElapsed = now - fpsWindow;
+      if (fpsElapsed >= 500) {
+        measuredFps = Math.round(fpsFrames * 1000 / fpsElapsed);
+        fpsFrames = 0;
+        fpsWindow = now;
+      }
     } catch (error) {
       running = false;
       stopped = true;
@@ -66,6 +78,9 @@ export function startLoop({ update, draw }) {
       // Hidden time is not game time. Throw away both the wall-clock gap and
       // any partial fixed step that existed before the pause.
       last = performance.now();
+      fpsWindow = last;
+      fpsFrames = 0;
+      measuredFps = 0;
       acc = 0;
       running = true;
       schedule();

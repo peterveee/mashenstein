@@ -1,4 +1,4 @@
-// Title toasters cross in a single opening formation, then deterministic 2–5
+// Title toasters cross in a single opening formation, then deterministic 2–4
 // formations, so their cameos stay
 // varied without changing shape halfway through a fly-by.
 import { installDom } from './dom-stub.js';
@@ -16,8 +16,8 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
-assert(TITLE_TOASTER_MIN_COUNT === 1 && TITLE_TOASTER_MAX_COUNT === 5,
-  'title toaster formations use the approved 1–5 range');
+assert(TITLE_TOASTER_MIN_COUNT === 1 && TITLE_TOASTER_MAX_COUNT === 4,
+  'title toaster formations use the approved 1–4 range');
 assert(titleToasterPass(0) === null, 'title toaster cameos leave the opening beat clear');
 assert(titleToasterPass(35) === null, 'toasters wait until the first space ship clears');
 assert(titleToasterPass(37)?.count === 1, 'startup toaster pass is exactly one appliance');
@@ -28,11 +28,8 @@ const counts = new Set();
 for (let trip = 0; trip < 20; trip++) {
   const t = 37 + trip * 29 + 0.5;
   const pass = titleToasterPass(t, false);
-  if (!pass) {
-    assert(invaderPass(t), `formation ${trip} is skipped while the spaceship crosses`);
-    continue;
-  }
-  const validCount = pass?.count >= 2 && pass?.count <= 5;
+  if (!pass) continue; // this cameo may be waiting for a ship to clear
+  const validCount = pass?.count >= 2 && pass?.count <= TITLE_TOASTER_MAX_COUNT;
   assert(pass && validCount, `formation ${trip} has a valid count`);
   assert(pass && pass.dir === (trip % 2 === 0 ? 1 : -1), `formation ${trip} alternates direction`);
   counts.add(pass.count);
@@ -42,6 +39,8 @@ const animationPhases = [0, 1, 2, 3].map((i) => titleToasterStagger(0, i));
 assert(new Set(animationPhases.map((phase) => Math.floor(phase * 24) % 96)).size === 4,
   'toaster animation clocks are independently phased within a formation');
 assert(titleToasterPass(37 + 10) === null, 'a toaster pass clears before the next cameo window');
+assert(titleToasterPass(83, false)?.trip === 1,
+  'a toaster formation waits until the second spaceship clears, then crosses continuously');
 
 // The independent toaster/ship schedules drift over time; the title must
 // still expose at most one of those sky cameos on every frame.
@@ -55,24 +54,24 @@ assert(skyOverlap === null, skyOverlap === null
   ? 'toasters and spaceship never overlap across the title schedule'
   : `toasters and spaceship overlap at ${skyOverlap.toFixed(1)}s`);
 
-// Exercise the formerly crashing five-toaster painter, not just its count.
+// Exercise the maximum-size toaster painter, not just its count.
 save.load();
-const fiveTrip = Array.from({ length: 20 }, (_, trip) => trip)
-  .find((trip) => titleToasterPass(37 + trip * 29 + 0.5, false)?.count === 5);
+const maxTrip = Array.from({ length: 20 }, (_, trip) => trip)
+  .find((trip) => titleToasterPass(37 + trip * 29 + 0.5, false)?.count === TITLE_TOASTER_MAX_COUNT);
 const title = new TitleState({
   save, onSlotChosen() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {},
   attractDelay: 1e9,
 });
 title.enter();
 title.singleToasterOpening = false;
-title.t = 37 + fiveTrip * 29 + 0.5;
-let fiveRendered = true;
+title.t = 37 + maxTrip * 29 + 0.5;
+let maxRendered = true;
 try {
   title.draw(document.getElementById('game').getContext('2d'));
 } catch (error) {
-  fiveRendered = false;
+  maxRendered = false;
 }
-assert(fiveRendered, 'a five-toaster formation renders without a missing lane');
+assert(maxRendered, 'a maximum-size toaster formation renders without a missing lane');
 
 console.log(failed ? 'TITLE TOASTERS: FAILED' : 'TITLE TOASTERS: PASSED');
 process.exit(failed ? 1 : 0);

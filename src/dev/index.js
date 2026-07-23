@@ -30,7 +30,6 @@ export const Dev = {
   stepOnce: false,
   paused: false,
   seedLock: null,     // when set, every dev-launched run reuses this seed
-  a2hsFlavor: 'menu', // which Home Screen card variant the root row opens
   toast: null,
   toastT: 0,
 

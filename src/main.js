@@ -1,6 +1,7 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
-import { initRenderer, bctx, blit, setShakeScale, setFancyFx } from './engine/renderer.js';
-import { startLoop } from './engine/loop.js';
+import { initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw, W } from './engine/renderer.js';
+import { startLoop, frameRate } from './engine/loop.js';
+import { drawText } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
@@ -17,7 +18,6 @@ import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, Arc
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
-import { initInstallPrompt } from './engine/install-prompt.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
@@ -273,20 +273,23 @@ function boot() {
   Dev.enabled = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
   if (Dev.enabled) Dev.install({ Flow, save });
   Flow.toTitle();
-  // Keep an installed copy current (silently), and — on an iPhone, once — show
-  // the player how to install it. The dismiss tap is a real user gesture, so
-  // hand it to the same unlock the first canvas tap would have done: the menu
-  // theme starts as the card leaves rather than on some later poke.
+  // Keep an installed copy current silently. Browser-only iPhones never reach
+  // this boot path: gate.js owns the sole Home Screen installation flow.
   initUpdates();
-  if (!platform.devBrowserBypass) {
-    initInstallPrompt({
-      hasSave: save.data.slots.some(Boolean),
-      onDismiss: () => Input.onAnyGesture && Input.onAnyGesture(),
-    });
-  }
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
-    draw: () => { drawState(bctx); Dev.draw(bctx); blit(); },
+    draw: () => {
+      drawState(bctx);
+      Dev.draw(bctx);
+      if (save.settings.showFps) {
+        pushOverlayDraw((ctx) => {
+          ctx.fillStyle = 'rgba(5,6,12,0.68)';
+          ctx.fillRect(W - 51, 3, 47, 11);
+          drawText(ctx, `FPS ${frameRate() || '--'}`, W - 48, 4, '#f4f1fa', 0.75, 'bold');
+        });
+      }
+      blit();
+    },
   });
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop

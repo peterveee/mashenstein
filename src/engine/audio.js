@@ -4,9 +4,12 @@
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
 // everyday jump/coin/UI family while preserving their internal balance.
+// Weapon launch/contact assets get their own lower bus trim; regular SFX keep
+// their established level and balance.
+const ATTACK_MASTER_TRIM = 0.25;
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74, impact: 1.08,
-  contact: 1, launch: 0.92,
+  contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // A tail layer, not an event: it should colour the break, never top it.

@@ -12,6 +12,7 @@ export function defaultSettings() {
     reducedFlashing: false,
     screenShake: 1,
     highContrast: false,
+    showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
     fancyFx: true,    // WebGL bloom/vignette (when available)
   };

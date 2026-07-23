@@ -965,23 +965,14 @@ function paintDoor(ctx, w, h, pal, lit = 1) {
   plain(ctx, '#080610', (c) => rr(c, ...box('well'), w * 0.09));
   doorLeaf(ctx, w, h, pal, box, X, Y, u);
 
-  // The sign: a bracket, a lit board, a row of bulbs top and bottom, and the
-  // station's icon in the middle of it. `lit` dims the whole lit assembly
-  // together — glass, bulbs, legend — so a flickering sign browns out rather
-  // than having its parts blink independently.
+  // The sign: a bracket, a lit board, and the station's icon in the middle of
+  // it. `lit` dims the whole lit assembly together — glass and legend — so a
+  // flickering sign browns out rather than having its parts blink independently.
   plain(ctx, darken(pal.frame, 0.4), (c) => rr(c, ...box('bracket'), w * 0.02));
   shape(ctx, darken(pal.sign, 0.55), u, (c) => rr(c, ...box('sign'), w * 0.09));
   ctx.save();
   ctx.globalAlpha = lit;
   plain(ctx, pal.sign, (c) => rr(c, ...box('signGlass'), w * 0.07));
-  const bulb = lighten(pal.sign, 0.55);
-  plain(ctx, bulb, (c) => {
-    for (let i = 0; i < 6; i++) {
-      const bx = X(0.11 + i * 0.156);
-      c.moveTo(bx + w * 0.02, Y(0.014)); c.arc(bx, Y(0.014), w * 0.02, 0, Math.PI * 2);
-      c.moveTo(bx + w * 0.02, Y(0.129)); c.arc(bx, Y(0.129), w * 0.02, 0, Math.PI * 2);
-    }
-  });
   // A legend where there is one. The word and the arrow share the glass, so the
   // icon shifts left to make room rather than the two overlapping — this is the
   // one sign in the food court that has to be readable and not merely

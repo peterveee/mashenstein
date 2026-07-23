@@ -3,10 +3,10 @@
 import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { canInstall, showInstallGuide } from '../engine/install-prompt.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
 import {
-  drawToon, titleParadeAction, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
+  drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
+  b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite, propFrames, propFps, propSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
@@ -120,14 +120,18 @@ const PARADE_EDGE_FADE = 32;
 // The title menu has been opened up, so the cast can read as characters rather
 // than a thin footer strip. All parade proportions, tap radii and clearance
 // bounds derive from this height.
-const HERO_PARADE_H = 48;
+const HERO_PARADE_H = 60;
 // Every hop, accent and tap footprint below was tuned against a 26-tall parade;
 // they scale off this rather than being re-eyeballed one at a time.
 const PARADE_K = HERO_PARADE_H / 26;
 const HERO_PARADE_SPEED = 42;
-const HERO_PARADE_SPAN = W + 140;
 const HERO_PARADE_DELAY = 3.5;
-const HERO_ENTRY_GAP = 66 / HERO_PARADE_SPEED;
+// The parade is an 11-slot loop: eight hero slots, two ghost slots, then one
+// permanently empty slot before slot one returns. This leaves a real handoff
+// gap without allowing the cameo to drift into the hero stream.
+const HERO_PARADE_SLOTS = 11;
+const HERO_ENTRY_GAP = 84 / HERO_PARADE_SPEED;
+const HERO_PARADE_SPAN = HERO_ENTRY_GAP * HERO_PARADE_SPEED * HERO_PARADE_SLOTS;
 const HERO_ENTRY_JUMP_T = 2.1;
 const HERO_ENTRY_JUMP_H = 30 * PARADE_K;
 const HERO_ENTRY_ZOOM = 1.35;
@@ -157,11 +161,14 @@ function paradeEdgeAlpha(x) {
 // leaves the parade alone for long enough that the next appearance surprises.
 const PARADE_SPEED = 42;
 const PARADE_SPAN = W + 140;
-const WISP_GAP = 38;
 // Start when the lead wisp trails Lorenzo by 46px, then repeat only every
 // third parade lap. This leaves a little breathing room before the guests.
-const WISP_FIRST = PARADE_SPAN / PARADE_SPEED + 92 / PARADE_SPEED;
-const WISP_PERIOD = (PARADE_SPAN / PARADE_SPEED) * 3;
+// Ghosts occupy parade slots 9 and 10 only (the two slots immediately after
+// the eight heroes). They enter when slot 9 reaches the left edge, then share
+// the hero loop's timing instead of drifting on a separate schedule.
+const WISP_FIRST = HERO_PARADE_DELAY + HERO_ENTRY_GAP * (HERO_PARADE_SLOTS - 3);
+const WISP_PERIOD = HERO_ENTRY_GAP * HERO_PARADE_SLOTS;
+const WISP_COUNT = 2;
 const WISP_COLORS = ['#f06c88', '#66cbe8', '#f2a45f', '#ad82e8', '#79d48d'];
 // Tapping any visitor spooks the whole crossing gang into a power-pellet
 // fright: everyone on screen turns blue and scatters in place for a few
@@ -207,15 +214,14 @@ function heroGapAt(t, x, tapBombs) {
 
 function mazeWispPass(t) {
   if (t < WISP_FIRST) return null;
-  const elapsed = t - WISP_FIRST;
-  const trip = Math.floor(elapsed / WISP_PERIOD);
-  const local = elapsed % WISP_PERIOD;
-  const count = 1 + (trip % 2);
-  // From the lead wisp touching the left edge until the final trailing wisp
-  // has completely cleared the right. No alpha fade and no mid-screen cutoff.
-  const cross = (W + 48 + (count - 1) * WISP_GAP) / PARADE_SPEED;
-  if (local > cross) return null;
-  return { trip, local, count };
+  const trip = Math.floor((t - HERO_PARADE_DELAY) / WISP_PERIOD);
+  return { trip, count: WISP_COUNT };
+}
+
+function wispX(i, t) {
+  const local = (t - WISP_FIRST) * PARADE_SPEED;
+  return ((local % HERO_PARADE_SPAN) + HERO_PARADE_SPAN) % HERO_PARADE_SPAN - 70
+    - i * HERO_ENTRY_GAP * PARADE_SPEED;
 }
 
 function drawMazeWisp(ctx, x, feetY, color, phase, mood, scatter) {
@@ -284,7 +290,7 @@ function drawWispEyes(ctx, x, feetY, dir) {
   ctx.restore();
 }
 
-function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter) {
+function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter, wispsDismissed) {
   if (reduced) return;
   const frightActive = frightStart != null && t - frightStart < WISP_FRIGHT_T;
   // The last stretch blinks blue/white — the classic warning that fright is
@@ -317,13 +323,17 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter) {
   // No new visitor appears while the current episode (scattering or still
   // being eaten) is unresolved — the roster is fixed the moment fright starts.
   if ((eaten && eaten.size > 0) || (scatter && scatter.size > 0)) return;
+  // Being eaten removes these visitors from this title-screen procession.
+  // Keep that decision after the fleeing eyes and scatter records are pruned;
+  // otherwise the next modulo lap silently recreates the same reserved slots.
+  if (wispsDismissed) return;
   const pass = mazeWispPass(t);
   if (!pass) return;
-  // All visitors share the parade's exact speed. Starting this traversal at
-  // the aligned WISP_FIRST time places the leader 46px behind Lorenzo; the
-  // remaining guests follow in the rest of the cast's reserved tail space.
+  // All visitors occupy the two reserved slots after the eight heroes, so
+  // their crossing uses the same speed and span as the cast without inheriting
+  // each slot's different phase at the modulo boundary.
   for (let i = 0; i < pass.count; i++) {
-    const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
+    const x = wispX(i, t);
     if (x < -24 || x > W + 24) continue;
     ctx.fillStyle = 'rgba(4,3,9,0.25)';
     ctx.beginPath(); ctx.ellipse(x, 268, 5.5 * PARADE_K, 1.5 * PARADE_K, 0, 0, Math.PI * 2); ctx.fill();
@@ -334,7 +344,7 @@ function drawMazeWispCameo(ctx, t, reduced, frightStart, eaten, scatter) {
 
 // A tap landing on a not-yet-eaten maze-wisp visitor. Returns its map key and
 // current x (so eating it knows which edge is nearest), or null.
-function wispTapHit(t, px, py, eaten, scatter) {
+function wispTapHit(t, px, py, eaten, scatter, wispsDismissed = false) {
   if (py < PARADE_TAP_TOP || py > 270) return null;
   if (scatter) {
     for (const [key, w] of scatter) {
@@ -346,18 +356,21 @@ function wispTapHit(t, px, py, eaten, scatter) {
   }
   // No new visitor to tap while the current episode is still unresolved.
   if ((eaten && eaten.size > 0) || (scatter && scatter.size > 0)) return null;
+  // The renderer also suppresses dismissed visitors. Keep their hitboxes gone
+  // with them instead of leaving an invisible ghost in a later parade lap.
+  if (wispsDismissed) return null;
   const pass = mazeWispPass(t);
   if (!pass) return null;
   for (let i = 0; i < pass.count; i++) {
-    const x = -24 + pass.local * PARADE_SPEED - i * WISP_GAP;
+    const x = wispX(i, t);
     if (x < -24 || x > W + 24) continue;
     if (Math.abs(px - x) < WISP_TAP_RADIUS) return { key: `${pass.trip}:${i}`, x };
   }
   return null;
 }
 
-// Which fly-by (if any) is on screen right now.
-export function invaderPass(t) {
+// Raw ship schedule, before the toaster cameo claims the sky.
+function rawInvaderPass(t) {
   if (t < INV_FIRST) return null;
   const e = t - INV_FIRST;
   const trip = Math.floor(e / INV_PERIOD);
@@ -370,7 +383,7 @@ export function invaderPass(t) {
 // trip rather than per frame, so every appliance belongs to the same pass and
 // screenshots/replays do not see the formation changing halfway across.
 export const TITLE_TOASTER_MIN_COUNT = 1;
-export const TITLE_TOASTER_MAX_COUNT = 5;
+export const TITLE_TOASTER_MAX_COUNT = 4;
 let titleToasterIntroSeen = false;
 // The first space ship owns the opening sky beat. Its pass starts at 24s and
 // takes 11s to cross, so toasters wait for it to clear plus a small breath.
@@ -379,17 +392,17 @@ const TOASTER_PERIOD = 29;
 const TOASTER_SPEED = 72;
 const TOASTER_GAP = 30;
 const TOASTER_EDGE = 38;
+const TOASTER_BREATH = 2;
 const TOASTER_LANES = {
   1: [0],
   2: [-16, 16],
   3: [-22, 0, 22],
   4: [-27, -9, 9, 27],
-  5: [-30, -15, 0, 15, 30],
 };
 
 function titleToasterCount(trip, singleOpening) {
   if (trip === 0 && singleOpening) return TITLE_TOASTER_MIN_COUNT;
-  return 2 + Math.floor(shaderHash21(trip + 1, 23) * 4);
+  return 2 + Math.floor(shaderHash21(trip + 1, 23) * (TITLE_TOASTER_MAX_COUNT - 1));
 }
 
 // Give each toaster its own point in the slow four-second toast cycle. The
@@ -399,20 +412,40 @@ export function titleToasterStagger(trip, index) {
   return index * 0.14 + shaderHash21(trip + index + 71, 67) * 3.4;
 }
 
+// A toaster pass owns its whole crossing once it starts. If its nominal start
+// would overlap a spaceship pass, move the toaster cameo to just after that
+// ship clears instead of hiding the toaster halfway through its crossing.
+function titleToasterStart(trip, count) {
+  const cross = (W + TOASTER_EDGE * 2 + (count - 1) * TOASTER_GAP) / TOASTER_SPEED;
+  let start = TOASTER_FIRST + trip * TOASTER_PERIOD;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const firstShip = Math.max(0, Math.floor((start - INV_FIRST) / INV_PERIOD) - 1);
+    let moved = false;
+    for (let shipTrip = firstShip; shipTrip <= firstShip + 3; shipTrip++) {
+      const shipStart = INV_FIRST + shipTrip * INV_PERIOD;
+      const shipEnd = shipStart + INV_CROSS;
+      if (start < shipEnd && start + cross > shipStart) {
+        start = shipEnd + TOASTER_BREATH;
+        moved = true;
+        break;
+      }
+    }
+    if (!moved) break;
+  }
+  return { start, cross };
+}
+
 // Which fly-by (if any) is on screen right now. Exported as a small visual
 // contract so the title tests can pin the promised 1–4 range without needing
 // to inspect pixels.
 export function titleToasterPass(t, singleOpening = true) {
   if (t < TOASTER_FIRST) return null;
-  // The spaceship owns the sky while it is crossing. The two effects are
-  // both title foreground cameos, so never let their visible windows overlap
-  // as the independent schedules drift over time.
-  if (invaderPass(t)) return null;
   const elapsed = t - TOASTER_FIRST;
   const trip = Math.floor(elapsed / TOASTER_PERIOD);
   const count = titleToasterCount(trip, singleOpening);
-  const cross = (W + TOASTER_EDGE * 2 + (count - 1) * TOASTER_GAP) / TOASTER_SPEED;
-  const local = elapsed % TOASTER_PERIOD;
+  const { start, cross } = titleToasterStart(trip, count);
+  const local = t - start;
+  if (local < 0) return null;
   if (local > cross) return null;
   return {
     trip,
@@ -420,8 +453,18 @@ export function titleToasterPass(t, singleOpening = true) {
     p: local / cross,
     count,
     dir: trip % 2 === 0 ? 1 : -1,
-    centerY: 52 + shaderHash21(trip + 7, 41) * 112,
+    // Keep the yellow appliances below the gold logo; they may share the cyan
+    // subtitle band, whose contrast remains clear against the warm sprites.
+    centerY: 84 + shaderHash21(trip + 7, 41) * 76,
   };
+}
+
+// Toaster passes move around the raw ship schedule before they begin. This
+// second guard is deliberately reciprocal: if a pass is already crossing,
+// the ship waits for it instead of making the toaster disappear mid-flight.
+export function invaderPass(t) {
+  if (titleToasterPass(t, false)) return null;
+  return rawInvaderPass(t);
 }
 
 function drawFlyingToasters(ctx, t, reduced, singleOpening) {
@@ -644,17 +687,25 @@ function drawBolt(ctx, t, strikes) {
   }
 }
 
-// b33p's shot: a short bright streak with a fading tail, punchier than the
-// invader's plain falling bolt since this one travels the width of the screen.
+// Title ability shots: b33p's pellet is a bright streak; Ray and Grumpos keep
+// their actual fist and axe artwork in flight. All three can hit another hero.
 function drawShots(ctx, t, shots) {
   if (!shots) return;
   for (const shot of shots) {
     if (t < shot.tFired) continue;
-    const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED;
+    const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
+    if (shot.kind === 'fist') {
+      drawRocketFist(ctx, x, shot.y, t);
+      continue;
+    }
+    if (shot.kind === 'axe') {
+      drawThrownAxe(ctx, x, shot.y, (t - shot.tFired) * 14);
+      continue;
+    }
     ctx.fillStyle = 'rgba(168,255,192,0.4)';
-    ctx.fillRect(Math.round(x - 9), Math.round(shot.y), 6, 2);
+    ctx.fillRect(Math.round(x - (shot.dir < 0 ? -3 : 9)), Math.round(shot.y), 6, 2);
     ctx.fillStyle = '#eaffef';
-    ctx.fillRect(Math.round(x - 4), Math.round(shot.y), 4, 2);
+    ctx.fillRect(Math.round(x - (shot.dir < 0 ? 0 : 4)), Math.round(shot.y), 4, 2);
   }
 }
 
@@ -692,7 +743,7 @@ function drawInvaderImpact(ctx, strikes) {
   }
 }
 
-function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs, shots) {
+function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots) {
   // night sky over the last functioning food court
   if (!titleGrad) {
     titleGrad = ctx.createLinearGradient(0, 0, 0, H);
@@ -747,16 +798,17 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   // was wrong with the palettes; they were being averaged away. sprites/toons.js
   // has always said these are meant to be drawn at device resolution.
   const cast = (c) => {
-    const touchCast = titleTouch();
-    const castH = touchCast ? 38 : HERO_PARADE_H;
+    // Keep the parade physically consistent across devices; the responsive
+    // layout changes spacing and hit targets, not the size of the characters.
+    const castH = HERO_PARADE_H;
     const castK = castH / 26;
-    const entryZoomExtra = touchCast ? 0.55 : HERO_ENTRY_ZOOM;
+    const entryZoomExtra = HERO_ENTRY_ZOOM;
     // The cast still crosses the arcade, but each hero occasionally breaks into
     // a small personality beat. Cycles are offset so the parade stays readable.
     const strikes = reduced ? null : invaderStrikes(t, tapBombs);
     drawBolt(c, t, strikes);
     drawShots(c, t, shots);
-    drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter);
+    drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter, wispsDismissed);
     for (let i = 0; i < HERO_PARADE.length; i++) {
       const hx = heroX(i, t);
       const id = HERO_PARADE[i];
@@ -802,6 +854,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
         Object.assign(pose, action.pose);
         feetY -= action.feetLift * castH;
       }
+      const titleShot = shots?.find((shot) => shot.source === i);
       // A tap startles whoever it lands on, overriding their signature beat —
       // getting poked takes priority over whatever bit they were mid-performing.
       const pokeAt = poke && poke.get(i);
@@ -811,11 +864,19 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
           // Raise first, then fire and recoil. The projectile uses the same
           // wind-up delay below, so it cannot leave before the arm is level.
           Object.assign(pose, b33pTitleShotPose(t - pokeAt));
+        } else if (titleShot?.kind === 'fist') {
+          pose.headless = true;
+        } else if (titleShot?.kind === 'axe') {
+          pose.axeThrown = true;
         } else {
           pose.kind = 'jump'; pose.grounded = false;
           feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
         }
       }
+      // Once thrown, Grumpos keeps the axe off his back until the projectile
+      // leaves play; otherwise the normal carry pose restores it immediately
+      // after the short startle animation while the airborne axe is still out.
+      if (titleShot?.kind === 'axe') pose.axeThrown = true;
       const edgeAlpha = paradeEdgeAlpha(hx);
       if (edgeAlpha <= 0) continue;
       const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * entryZoomExtra : 1;
@@ -868,9 +929,10 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   // up the letterform read as a wire crossing the sign rather than leaving it.
   const ax = W / 2 + logoW / 2 - 5 * seamK, ay = TITLE_MARQUEE_Y + 24 * seamK;
   const sway = reduced ? 0 : Math.sin(t * 1.15) * 9;
-  // Stops short of the panel so the plug swings in open air at any phase of the
-  // swing, instead of disappearing behind the menu at one end of its arc.
-  const px2 = ax + sway, py2 = TITLE_PANEL_Y - 16;
+  // Stops above the cards so the plug swings in open air at any phase of the
+  // swing. Its length is independent of the card row: centring the controls in
+  // the open middle of the screen should not stretch the title artwork.
+  const px2 = ax + sway, py2 = TITLE_PLUG_Y;
   ctx.strokeStyle = '#241c30';
   ctx.lineWidth = 2.4;
   ctx.beginPath();
@@ -924,69 +986,58 @@ const BUILD_STAMP = (typeof window !== 'undefined' && window.__MASH_BUILD__) || 
 // to cross without clipping the lettering, so everything the text needs is
 // spent above the cast rather than in the middle of the screen.
 const TITLE_MARQUEE_Y = 20;
-const TITLE_SUBTITLE_Y = 61;
-const TITLE_PANEL_Y = 80;
+const TITLE_SUBTITLE_Y = 67;
+const TITLE_PLUG_Y = 88;
+// Centred in the clear band between the subtitle and the tallest parade heads.
+const TITLE_PANEL_Y = 113;
 const TITLE_FLOOR_Y = 194;      // horizon line, above the parade's own strip
-const TITLE_PANEL_PAD = 10;     // panel height beyond the rows themselves
-const TITLE_PANEL_W = 220;
-const TITLE_PANEL_X = W / 2 - TITLE_PANEL_W / 2;
-// The footer hangs off the bottom of the panel rather than sitting at a fixed
-// y, because the panel grows with the number of save files — pinning it would
-// leave the gap different on a 4-row menu than a 5-row one. The gap matches
-// the one above the panel, so the subtitle and the footer frame it evenly.
-const TITLE_FOOTER_GAP = 12;
+const TITLE_CARD_W = 78;
+const TITLE_CARD_H = 50;
+const TITLE_CARD_GAP = 10;
+const TITLE_CARDS_W = TITLE_CARD_W * 4 + TITLE_CARD_GAP * 3;
+const TITLE_CARDS_X = W / 2 - TITLE_CARDS_W / 2;
+const TITLE_FOOTER_GAP = 20;
 const TITLE_FOOTER_LINE_H = 11;
+// The footer lives in the ground band now: cards stay airy, while the opening
+// instruction and gag have a deliberate low-screen home before the parade
+// arrives and takes over that space.
+const TITLE_FOOTER_Y = 250;
 // The tagline and the attract countdown were set at 0.875 — about 10 CSS px on
 // a phone, under the smallest size iOS itself sets body copy at. There is room
 // under the panel for a full-size line, so they get one.
 const TITLE_FLAVOR_S = 1;
-// A row is only ever as tall as its share of the band between the panel's top
-// and the lowest it may reach, capped so a short menu doesn't sprawl.
-//
-// Touch gets its own pair of numbers. The canvas scales by min(w/480, h/270),
-// so a phone in landscape is height-limited at roughly 1.45 CSS px per logical
-// unit — a 12-unit row lands at 17 CSS px, well under the 44pt/48dp minimum
-// every platform asks for. Touch therefore spends the footer's second line (see
-// the draw below) on taller rows, while keeping the panel compact enough to
-// share the lower title with the foreground cast.
-const TITLE_ROW_H = 24;
-const TITLE_ROW_H_TOUCH = 29;
-// The title menu has only three files and EXTRAS now, so its labels can use
-// the room instead of inheriting the compact scale used by denser menus.
-// Touch gets the larger step because the canvas is displayed smaller per
-// logical unit on a phone, while the row height keeps the text comfortably
-// inside the tap target.
+// Wide enough for a clear three-line hierarchy, but only as tall as a phone
+// finger target needs. Gloss supplies finish without turning them back into
+// literal props that need an explanation.
 const TITLE_MENU_TEXT_S = 1.35;
-const TITLE_PANEL_MAX_BOTTOM = 190;
-const TITLE_PANEL_MAX_BOTTOM_TOUCH = 216;
+const TITLE_STATUS_TEXT_S = 0.95;
 // isTouchDevice(), not usingTouch: a phone should get the touch layout on its
 // FIRST paint, not only once a finger has landed. Both the renderer and the tap
-// hit-test read this, so a tap always lands on the row it looks like it does.
+// hit-test read this, so a tap always lands on the card it looks like it does.
 function titleTouch() { return Input.isTouchDevice(); }
-function titleRowH(count) {
-  const touch = titleTouch();
-  const bottom = touch ? TITLE_PANEL_MAX_BOTTOM_TOUCH : TITLE_PANEL_MAX_BOTTOM;
-  const fits = Math.floor((bottom - TITLE_PANEL_Y - TITLE_PANEL_PAD) / count);
-  return Math.min(touch ? TITLE_ROW_H_TOUCH : TITLE_ROW_H, fits);
+function titleCardGeom(i) {
+  return {
+    x: TITLE_CARDS_X + i * (TITLE_CARD_W + TITLE_CARD_GAP),
+    y: TITLE_PANEL_Y,
+    w: TITLE_CARD_W,
+    h: TITLE_CARD_H,
+  };
 }
-// Top edge of row i's band. Rows own the full height between these edges, so
-// the highlight, the lettering and the tap target all derive from one number.
-function titleRowTop(i, rowH) { return TITLE_PANEL_Y + TITLE_PANEL_PAD / 2 + i * rowH; }
-// Which row a pointer landed on, or -1. Bounded in x as well as y: without it
-// a tap anywhere across the full 480-unit width — out over the starfield, or
-// the parade — counted as a tap on whichever row shared its y.
-function titleRowAt(px, py, count) {
-  if (px < TITLE_PANEL_X - 6 || px > TITLE_PANEL_X + TITLE_PANEL_W + 6) return -1;
-  const rowH = titleRowH(count);
-  const i = Math.floor((py - titleRowTop(0, rowH)) / rowH);
-  return i >= 0 && i < count ? i : -1;
+// Which card a pointer landed on. The gutters belong to the sky, not either
+// neighbouring card.
+function titleButtonAt(px, py, count) {
+  for (let i = 0; i < count; i++) {
+    const g = titleCardGeom(i);
+    if (px >= g.x && px <= g.x + g.w && py >= g.y && py <= g.y + g.h) return i;
+  }
+  return -1;
 }
 
-// Both of the title's modal lists — ERASE and EXTRAS — are sized from here, so
+// Both of the title's modal lists — ERASE and STAFF ONLY — are sized from here, so
 // they share one box, one row pitch and one hit-test. Touch rows are nearly
 // twice as tall, which matters most for ERASE: it is the only list in the game
 // that destroys data, and a single tap commits each step.
-// ERASE carries a warning line under its heading and EXTRAS doesn't, so the
+// ERASE carries a warning line under its heading and STAFF ONLY doesn't, so the
 // header comes in two heights — reserving room for a line that isn't there
 // left the list floating well below its own title.
 const MODAL_HEAD_H = 42;        // heading plus a note line
@@ -998,7 +1049,7 @@ function modalListGeom(count, hasNote) {
   // wasn't tall enough for its own longest list — three files plus CANCEL
   // needed 102, so the last row was drawn below the box's bottom edge.
   const h = headH + count * rowH + 8;
-  // Centred, with a floor low enough that the tallest list — EXTRAS at seven
+  // Centred, with a floor low enough that the tallest list — STAFF ONLY at seven
   // rows on touch — still centres instead of being pinned to the top and
   // hanging off the bottom.
   const y = Math.max(8, Math.round((H - h) / 2));
@@ -1084,6 +1135,7 @@ export class TitleState {
     this.idx = 0;
     this.erase = null;
     this.extras = null;
+    this.touchPress = null;
     this.t = 0;
     this.idleT = 0;
     this.lastCometCycle = -1;
@@ -1094,9 +1146,10 @@ export class TitleState {
     this.frightStart = null; // set when a wisp tap triggers the power-pellet fright
     this.eaten = new Map(); // wisp pass key -> { t0, x0, dir } once eaten while frightened
     this.scatter = new Map(); // wisp pass key -> { t0, x0, mode, colorIdx } once frightened
+    this.wispsDismissed = false;
     this.tapBombs = []; // player-triggered invader bombs, same shape as the scheduled ones
     this.tapBombId = 0;
-    this.shots = []; // b33p projectiles; tFired follows the visible arm wind-up
+    this.shots = []; // title projectiles; tFired follows each visible wind-up
     this.shotId = 0;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
@@ -1124,9 +1177,10 @@ export class TitleState {
       // pellet's been eaten, so the gang scattering stays a fixed headcount.
       const pass = mazeWispPass(this.t);
       if (pass) {
+        this.wispsDismissed = true;
         for (let j = 0; j < pass.count; j++) {
           const key = `${pass.trip}:${j}`;
-          const x = -24 + pass.local * PARADE_SPEED - j * WISP_GAP;
+          const x = wispX(j, this.t);
           if (x < -24 || x > W + 24) continue;
           this.scatter.set(key, {
             t0: this.t, x0: x,
@@ -1150,17 +1204,20 @@ export class TitleState {
   options() {
     const opts = [];
     this.save.data.slots.forEach((s, i) => {
+      const plugs = s ? totalPlugs(s) : 0;
       opts.push({
         id: 'slot' + i,
-        label: s ? `FILE ${i + 1}: ${totalPlugs(s)}/${MAX_PLUGS} PLUGS, ${formatCoins(s.coins)} COINS` : `FILE ${i + 1}: NEW GAME`,
+        label: `SHIFT ${i + 1}`,
+        status: s ? `${plugs}/${MAX_PLUGS} PLUGS` : 'CLOCK IN',
+        progress: s ? plugs / MAX_PLUGS : null,
         act: () => this.onSlotChosen(i, !s),
       });
     });
     // Everything that isn't "start playing" lives one tap deeper. Nine rows in
     // a 100-unit band meant 11-unit rows, which on a phone is a 16px target —
-    // and ERASE A FILE sat two of them below FILE 3, where a miss is
+    // and ERASE A SHIFT sat two of them below SHIFT 3, where a miss is
     // destructive. Four or five rows is what lets a row be worth tapping.
-    opts.push({ id: 'extras', label: 'EXTRAS...', act: () => { this.extras = { idx: 0 }; Audio.sfx('ui'); } });
+    opts.push({ id: 'extras', label: 'STAFF ONLY', act: () => { this.extras = { idx: 0 }; Audio.sfx('ui'); } });
     return opts;
   }
   extrasChoices() {
@@ -1172,21 +1229,12 @@ export class TitleState {
     // plays it for you.
     const anyFile = this.save.data.slots.some(Boolean);
     const choices = [{ label: 'HOW TO PLAY', act: () => this.onHowTo() }];
-    // The Home Screen walkthrough, for the player who waved it away on first
-    // load and then spent a level looking at Safari's toolbar. Only drawn where
-    // it can actually be followed — an iPhone that is not already installed.
-    if (canInstall()) {
-      choices.push({
-        label: 'PLAY FULLSCREEN (ADD TO HOME)',
-        act: () => { this.extras = null; showInstallGuide({ hasSave: anyFile }); },
-      });
-    }
     // Until now the opening was reachable only by starting a brand new file —
     // so the one way to read it twice was to erase your progress.
     if (anyFile) choices.push({ label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
     choices.push({ label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
     choices.push({ label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
-    if (anyFile) choices.push({ label: 'ERASE A FILE', act: () => { this.extras = null; this.beginErase(); } });
+    if (anyFile) choices.push({ label: 'ERASE A SHIFT', act: () => { this.extras = null; this.beginErase(); } });
     choices.push({ label: 'SETTINGS', act: () => this.onSettings() });
     choices.push({ label: 'BACK', cancel: true });
     return choices;
@@ -1217,7 +1265,7 @@ export class TitleState {
   eraseChoices() {
     if (this.erase.step === 'choose') {
       return [
-        ...this.erase.slots.map((i) => ({ label: `FILE ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
+        ...this.erase.slots.map((i) => ({ label: `SHIFT ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
         { label: 'CANCEL', cancel: true },
       ];
     }
@@ -1274,7 +1322,7 @@ export class TitleState {
     for (const bomb of this.tapBombs) {
       if (bomb._wispChecked || this.t < bomb.tHit) continue;
       bomb._wispChecked = true;
-      const wisp = wispTapHit(bomb.tHit, bomb.x, SHOT_Y, this.eaten, this.scatter);
+      const wisp = wispTapHit(bomb.tHit, bomb.x, SHOT_Y, this.eaten, this.scatter, this.wispsDismissed);
       if (wisp) { bomb.victim = -1; this.hitWisp(wisp); }
     }
     const cometCycle = Math.floor(this.t / 6.5);
@@ -1308,6 +1356,19 @@ export class TitleState {
       Input.endFrame();
       return;
     }
+    // A touch needs one visible pressed frame before navigation replaces the
+    // title. Keyboard/controller activation stays immediate; their persistent
+    // purple focus is already the feedback those devices need.
+    if (this.touchPress) {
+      this.idleT = 0;
+      if (this.t >= this.touchPress.commitAt) {
+        const act = this.touchPress.act;
+        this.touchPress = null;
+        act();
+      }
+      Input.endFrame();
+      return;
+    }
     this.idleT += dt;
     if (this.onAttract && this.idleT >= this.attractDelay) { this.onAttract(); return; }
     const opts = this.options();
@@ -1316,8 +1377,13 @@ export class TitleState {
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const p = Input.pointer;
-      const i = titleRowAt(p.x, p.y, opts.length);
-      if (i >= 0) { this.idx = i; Audio.sfx('uiConfirm'); opts[i].act(); }
+      const i = titleButtonAt(p.x, p.y, opts.length);
+      if (i >= 0) {
+        this.idx = i;
+        Audio.sfx('uiConfirm');
+        if (Input.usingTouch) this.touchPress = { i, commitAt: this.t + 0.09, act: opts[i].act };
+        else opts[i].act();
+      }
       else {
         // Didn't land on a menu row — maybe it landed on the invader overhead.
         const ship = invaderTapHit(this.t, p.x, p.y);
@@ -1340,6 +1406,26 @@ export class TitleState {
                 tFired,
                 x0: heroX(hero, tFired) + 12,
                 y: SHOT_Y,
+                dir: 1,
+                source: hero,
+                sounded: false,
+              });
+              this.poke.set(hero, this.t);
+            } else if (HERO_PARADE[hero] === 'grumpos' && this.shots.some((shot) => shot.source === hero && shot.kind === 'axe')) {
+              this.poke.set(hero, this.t);
+              Audio.sfx('jump');
+            } else if (HERO_PARADE[hero] === 'raymn' || HERO_PARADE[hero] === 'grumpos') {
+              const kind = HERO_PARADE[hero] === 'raymn' ? 'fist' : 'axe';
+              const dir = 1;
+              const tFired = this.t + B33P_TITLE_WINDUP_T;
+              this.shots.push({
+                id: `shot:${this.shotId++}`,
+                kind,
+                tFired,
+                x0: heroX(hero, tFired) + dir * 12,
+                y: SHOT_Y,
+                dir,
+                source: hero,
                 sounded: false,
               });
               this.poke.set(hero, this.t);
@@ -1352,7 +1438,7 @@ export class TitleState {
             // pellet: the whole crossing gang turns blue and scatters, still
             // on screen. A tap on one of them while frightened eats it, and
             // it zips off toward whichever edge is nearest.
-            const wisp = wispTapHit(this.t, p.x, p.y, this.eaten, this.scatter);
+            const wisp = wispTapHit(this.t, p.x, p.y, this.eaten, this.scatter, this.wispsDismissed);
             if (wisp) this.hitWisp(wisp);
           }
         }
@@ -1376,10 +1462,10 @@ export class TitleState {
     this.shots = this.shots.filter((shot) => {
       if (this.t < shot.tFired) return true;
       if (!shot.sounded) { shot.sounded = true; Audio.sfx('shoot'); }
-      const x = shot.x0 + (this.t - shot.tFired) * SHOT_SPEED;
-      if (x > W + 20) return false;
+      const x = shot.x0 + (this.t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
+      if (x < -40 || x > W + 40) return false;
       for (let i = 0; i < HERO_PARADE.length; i++) {
-        if (HERO_PARADE[i] === 'b33p') continue;
+        if (i === shot.source || (shot.source == null && HERO_PARADE[i] === 'b33p')) continue;
         if (!heroOnScreen(i, this.t) || heroIsKnockedOut(i, this.t, this.tapBombs)) continue;
         if (Math.abs(heroX(i, this.t) - x) < SHOT_HIT_RADIUS) {
           this.explodeHero(shot.id, x, i, 1);
@@ -1387,7 +1473,7 @@ export class TitleState {
           return false;
         }
       }
-      const wisp = wispTapHit(this.t, x, shot.y, this.eaten, this.scatter);
+      const wisp = wispTapHit(this.t, x, shot.y, this.eaten, this.scatter, this.wispsDismissed);
       if (wisp) { this.hitWisp(wisp); return false; }
       return true;
     });
@@ -1407,56 +1493,85 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
-    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.tapBombs, this.shots);
-    // Pushed BEFORE the ui painter below, so the save panel and its modals still
-    // land on top of a hero who has been launched up the screen. Falls back to
-    // painting straight into the backbuffer where there is no overlay layer at
-    // all (headless tests): the parade then draws over the marquee instead of
-    // under it, which costs nothing — one is the top of the screen and the other
-    // is the bottom strip, and they never share a pixel.
-    const castOverMenu = titleTouch() && !this.erase && !this.extras;
-    if (!castOverMenu && !pushOverlayDraw(cast)) cast(ctx);
+    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots);
+    // The parade is always queued before the menu UI, including on touch. This
+    // keeps the cards readable when a large character crosses their lower edge.
+    // Modals are painted by the UI pass as the final surface over both layers.
+    if (!pushOverlayDraw(cast)) cast(ctx);
     const opts = this.options();
     const ui = (d) => {
-      // The cast owns the bottom strip, so every line of text sits above it:
-      // panel under the logo, then the controls and the flavour line as a footer.
-      const panelW = TITLE_PANEL_W, panelX = TITLE_PANEL_X;
-      const rowH = titleRowH(opts.length);
+      // Four self-contained cards under the logo, then the controls and flavour
+      // line as a footer. No surrounding machine or decorative object is needed.
       const menuTextS = TITLE_MENU_TEXT_S;
-      const panelY = TITLE_PANEL_Y, panelH = opts.length * rowH + TITLE_PANEL_PAD;
-      // solid backing so the crates behind don't bleed through the list
-      d.fillStyle = 'rgba(8,10,20,0.86)';
-      platePath(d, panelX, panelY, panelW, panelH, 3);
-      d.fill();
-      d.strokeStyle = 'rgba(109,90,145,0.35)';
-      d.lineWidth = 1;
-      platePath(d, panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1, 3);
-      d.stroke();
       opts.forEach((o, i) => {
-        const sel = i === this.idx;
-        const rowTop = titleRowTop(i, rowH);
-        // The highlight fills the row's whole band and the lettering centres in
-        // it. A fixed 11-unit highlight read as a thin bar floating in a tall
-        // touch row, and text pinned to the band's top left the tap target
-        // looking like it belonged to the row above.
-        const textY = textYForMid(rowTop + rowH / 2) - (sel ? 1 : 0);
-        if (sel) drawMenuRow(d, panelX + 4, rowTop + 1, panelW - 8, rowH - 2);
-        drawTextCentered(d, (sel ? '> ' : '') + o.label, W / 2, textY, sel ? '#c9a0ff' : '#c3cede', menuTextS, sel ? 'bold' : 'ui');
+        const focused = i === this.idx;
+        const sel = focused && !titleTouch();
+        const pressed = this.touchPress?.i === i;
+        const g = titleCardGeom(i);
+        const y = g.y + (pressed ? 2 : (sel ? -1 : 0));
+        const cardH = g.h - (pressed ? 1 : 0);
+        const cx = g.x + g.w / 2;
+        d.save();
+        if (sel) {
+          d.shadowColor = 'rgba(173,124,218,0.32)';
+          d.shadowBlur = 5;
+        }
+        const cardFill = d.createLinearGradient(0, y, 0, y + cardH);
+        if (sel) {
+          cardFill.addColorStop(0, 'rgba(62,44,78,0.98)');
+          cardFill.addColorStop(1, 'rgba(25,18,37,0.98)');
+        } else if (pressed) {
+          cardFill.addColorStop(0, 'rgba(18,23,38,0.98)');
+          cardFill.addColorStop(1, 'rgba(6,8,17,0.98)');
+        } else {
+          cardFill.addColorStop(0, 'rgba(24,30,49,0.96)');
+          cardFill.addColorStop(1, 'rgba(8,11,22,0.96)');
+        }
+        d.fillStyle = cardFill;
+        platePath(d, g.x, y, g.w, cardH, 3); d.fill();
+        d.shadowBlur = 0;
+        const gloss = d.createLinearGradient(0, y, 0, y + cardH * 0.55);
+        gloss.addColorStop(0, sel ? 'rgba(244,225,255,0.15)' : 'rgba(220,235,255,0.10)');
+        gloss.addColorStop(1, 'rgba(255,255,255,0)');
+        d.fillStyle = gloss;
+        platePath(d, g.x + 1, y + 1, g.w - 2, cardH - 2, 2.5); d.fill();
+        d.strokeStyle = sel ? 'rgba(205,165,242,0.92)' : 'rgba(105,125,153,0.58)';
+        d.lineWidth = sel ? 1.25 : 0.8;
+        platePath(d, g.x + 0.5, y + 0.5, g.w - 1, cardH - 1, 3); d.stroke();
+        if (o.status) {
+          const labelMid = y + 14;
+          const statusMid = y + 41;
+          drawTextCentered(d, o.label, cx, textYForMid(labelMid, menuTextS), sel ? '#f3eaff' : '#e3e9f3', menuTextS, 'bold');
+          if (o.progress != null) {
+            const barX = g.x + 10, barY = y + 26, barW = g.w - 20, barH = 3;
+            d.fillStyle = sel ? 'rgba(221,196,239,0.22)' : 'rgba(111,133,158,0.24)';
+            platePath(d, barX, barY, barW, barH, 1.5); d.fill();
+            const fillW = barW * Math.max(0, Math.min(1, o.progress));
+            if (fillW > 0) {
+              d.fillStyle = sel ? '#d8b2f2' : '#62d5cf';
+              platePath(d, barX, barY, fillW, barH, 1.5); d.fill();
+            }
+          }
+          drawTextCentered(d, o.status, cx, textYForMid(statusMid, TITLE_STATUS_TEXT_S), sel ? '#e4cdf7' : '#c0cbd9', TITLE_STATUS_TEXT_S, 'ui');
+        } else {
+          const staffColor = sel ? '#f3eaff' : '#e3e9f3';
+          drawTextCentered(d, 'STAFF', cx, textYForMid(y + 17, menuTextS), staffColor, menuTextS, 'bold');
+          drawTextCentered(d, 'ONLY', cx, textYForMid(y + 33, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
+        }
+        d.restore();
       });
-      // Touch spends the controls line on taller rows: "ARROWS" means nothing
-      // there, and the rows read as buttons without being told they're tappable.
+      // On touch the cards read as tappable without an instruction beneath them.
       const touch = titleTouch();
-      const controlsY = panelY + panelH + TITLE_FOOTER_GAP;
-      const flavorY = touch ? controlsY : controlsY + TITLE_FOOTER_LINE_H;
+      const flavorY = TITLE_FOOTER_Y;
+      const controlsY = touch ? flavorY : flavorY - TITLE_FOOTER_LINE_H;
       // The footer is useful while the title is waiting for input, then gets
-      // out of the way as soon as the first parade member arrives. This keeps
-      // the cast from competing with instructions and the rotating gag line.
-      // The first hero spends a moment approaching from off-screen; begin the
-      // fade once that approach is visible, not on the parade's first frame.
-      // Instructions leave first, then the little bottom gag follows them.
+      // The footer has a short opening beat of its own, then clears as the first
+      // hero arrives so it never competes with the parade in the ground band.
       const fade = (start, duration) => Math.max(0, Math.min(1, (start + duration - this.t) / duration));
-      const flavorFade = fade(HERO_PARADE_DELAY + 2.2, 1.2);
-      const controlsFade = fade(HERO_PARADE_DELAY + 3.8, 1.2);
+      // Let the lead character land and take a few walking steps before the
+      // footer clears; the copy remains legible through the full entrance beat.
+      const flavorFade = fade(HERO_PARADE_DELAY + 2.6, 1.2);
+      const controlsFade = fade(HERO_PARADE_DELAY + 2.3, 1.2);
       d.globalAlpha = controlsFade;
       // Keyboard-only by the branch above, so it names keys only: listing taps
       // to the one reader who cannot make them is the mirror of the mistake the
@@ -1480,33 +1595,33 @@ export class TitleState {
       if (this.erase) this.drawEraseModal(d);
       else if (this.extras) this.drawExtrasModal(d);
     };
-    if (!pushOverlayDraw(ui)) ui(ctx);
-    // On phones the parade is part of the foreground. Keeping it above the
-    // compact title panel avoids chopping characters at the panel edge; modal
-    // lists still cover it because they must remain unambiguous.
-    if (castOverMenu && !pushOverlayDraw(cast)) cast(ctx);
-    // Toasters are the title's foreground cameo: queue them after the menu so
-    // they can pass over the logo, panel, modal lists, heroes, and invader.
     const foregroundToasters = (d) => drawFlyingToasters(
       d, this.t, this.save.settings.reducedFlashing, this.singleToasterOpening,
     );
-    if (!pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    // The Extras list is a solid modal surface: toaster cameos sit behind it
+    // so they never compete with the cabinet grid or its labels.
+    if (this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    if (!pushOverlayDraw(ui)) ui(ctx);
+    // Toasters are the title's foreground cameo on the normal title screen:
+    // queue them after the menu so they can pass over the logo, panel, heroes,
+    // and invader. Extras is handled above so its modal stays on top.
+    if (!this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
   }
   drawEraseModal(d) {
-    let title = 'ERASE WHICH FILE?';
+    let title = 'ERASE WHICH SHIFT?';
     let note = 'CHOOSE CAREFULLY. BACK CANCELS.';
     if (this.erase.step === 'confirm') {
-      title = `ERASE FILE ${this.erase.slot + 1}?`;
-      note = 'ALL PROGRESS IN THIS FILE WILL BE LOST.';
+      title = `ERASE SHIFT ${this.erase.slot + 1}?`;
+      note = 'ALL PROGRESS IN THIS SHIFT WILL BE LOST.';
     } else if (this.erase.step === 'final') {
-      title = `FINAL WARNING: ERASE FILE ${this.erase.slot + 1}?`;
+      title = `FINAL WARNING: ERASE SHIFT ${this.erase.slot + 1}?`;
       note = 'THIS CANNOT BE UNDONE.';
     }
     drawModalList(d, this.eraseChoices(), this.erase.idx, { title, note, accent: '#e05a62', titleColor: '#ff727c' });
   }
   drawExtrasModal(d) {
     drawModalList(d, this.extrasChoices(), this.extras.idx, {
-      title: 'EXTRAS', accent: 'rgba(109,90,145,0.35)', titleColor: '#f4f1fa',
+      title: 'STAFF ONLY', accent: 'rgba(109,90,145,0.35)', titleColor: '#f4f1fa',
     });
   }
 }
@@ -2765,11 +2880,30 @@ export class HowToPlayState {
   }
 }
 
-const SETTINGS_TOP = 70, SETTINGS_ROW = 18;
+const SETTINGS_TOP = 68;
+const SETTINGS_ROW = 23;
+const SETTINGS_VISIBLE_ROWS = 6;
+const SETTINGS_DONE_TOP = 216;
+const SETTINGS_DONE_H = 25;
 
 export class SettingsState {
-  constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  enter() { this.idx = 0; Input.setMenuButtons(); }
+  constructor({ save, onDone }) {
+    this.save = save;
+    this.onDone = onDone;
+    this.listY = SETTINGS_TOP;
+    this.rowH = SETTINGS_ROW;
+    this.visibleRows = SETTINGS_VISIBLE_ROWS;
+    this.doneY = SETTINGS_DONE_TOP;
+    this.doneH = SETTINGS_DONE_H;
+    this.listStart = 0;
+    this.pointerGesture = null;
+  }
+  enter() {
+    this.idx = 0;
+    this.listStart = 0;
+    this.pointerGesture = null;
+    Input.setMenuButtons();
+  }
   volumeOption(key, name) {
     const s = this.save.settings;
     const adjust = (dir) => {
@@ -2796,21 +2930,91 @@ export class SettingsState {
       { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
       { label: `HIGH CONTRAST OUTLINES: ${s.highContrast ? 'ON' : 'OFF'}`, act: () => { s.highContrast = !s.highContrast; } },
       { label: `GLOW EFFECTS: ${s.fancyFx ? 'ON' : 'OFF'}`, act: () => { s.fancyFx = !s.fancyFx; setFancyFx(s.fancyFx); } },
+      { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
       { label: 'DONE', act: () => { this.save.persist(); this.onDone(); } },
     ];
   }
+  listCount(opts = this.options()) { return opts.length - 1; }
+  maxListStart(opts = this.options()) {
+    return Math.max(0, this.listCount(opts) - this.visibleRows);
+  }
+  keepSelectionVisible(opts = this.options()) {
+    const count = this.listCount(opts);
+    if (this.idx >= count) return;
+    if (this.idx < this.listStart) this.listStart = this.idx;
+    else if (this.idx >= this.listStart + this.visibleRows) {
+      this.listStart = this.idx - this.visibleRows + 1;
+    }
+    this.listStart = Math.max(0, Math.min(this.maxListStart(opts), this.listStart));
+  }
+  pointerIndex(y, opts = this.options()) {
+    const done = opts.length - 1;
+    if (y >= this.doneY && y < this.doneY + this.doneH) return done;
+    if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
+    const visible = Math.floor((y - this.listY) / this.rowH);
+    const index = this.listStart + visible;
+    return index < done ? index : -1;
+  }
+  activate(option) {
+    Audio.sfx('uiConfirm');
+    option.act();
+  }
   update(dt) {
     const opts = this.options();
-    if (Input.pressed('down')) { this.idx = (this.idx + 1) % opts.length; Audio.sfx('ui'); }
-    if (Input.pressed('up')) { this.idx = (this.idx + opts.length - 1) % opts.length; Audio.sfx('ui'); }
+    if (Input.pressed('down')) {
+      this.idx = (this.idx + 1) % opts.length;
+      this.keepSelectionVisible(opts);
+      Audio.sfx('ui');
+    }
+    if (Input.pressed('up')) {
+      this.idx = (this.idx + opts.length - 1) % opts.length;
+      this.keepSelectionVisible(opts);
+      Audio.sfx('ui');
+    }
     if (Input.pressed('left')) { if (opts[this.idx].adjust) opts[this.idx].adjust(-1); else opts[this.idx].act(); Audio.sfx('ui'); }
     if (Input.pressed('right')) { if (opts[this.idx].adjust) opts[this.idx].adjust(1); else opts[this.idx].act(); Audio.sfx('ui'); }
-    if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
+    if (Input.pressed('confirm')) this.activate(opts[this.idx]);
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - SETTINGS_TOP) / SETTINGS_ROW);
-      if (i >= 0 && i < opts.length) {
-        if (this.idx === i) { Audio.sfx('uiConfirm'); opts[i].act(); } else { this.idx = i; Audio.sfx('ui'); }
+      const i = this.pointerIndex(Input.pointer.y, opts);
+      if (i >= 0) {
+        if (Input.usingTouch) {
+          this.pointerGesture = {
+            startY: Input.pointer.y,
+            startList: this.listStart,
+            pressedIndex: i,
+            moved: false,
+          };
+        } else if (this.idx === i) {
+          this.activate(opts[i]);
+        } else {
+          this.idx = i;
+          Audio.sfx('ui');
+        }
+      }
+    }
+    if (this.pointerGesture && Input.pointer.down) {
+      const dy = Input.pointer.y - this.pointerGesture.startY;
+      if (Math.abs(dy) >= 8) this.pointerGesture.moved = true;
+      if (this.pointerGesture.moved) {
+        const rows = Math.round(-dy / this.rowH);
+        this.listStart = Math.max(0, Math.min(
+          this.maxListStart(opts),
+          this.pointerGesture.startList + rows,
+        ));
+      }
+    } else if (this.pointerGesture && !Input.pointer.down) {
+      const gesture = this.pointerGesture;
+      this.pointerGesture = null;
+      if (!gesture.moved) {
+        const i = this.pointerIndex(Input.pointer.y, opts);
+        if (i >= 0) {
+          if (this.idx === i) this.activate(opts[i]);
+          else {
+            this.idx = i;
+            Audio.sfx('ui');
+          }
+        }
       }
     }
     if (Input.pressed('back')) { this.save.persist(); this.onDone(); }
@@ -2822,18 +3026,31 @@ export class SettingsState {
     drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
     const opts = this.options();
-    const band = centredBand(opts.map((o) => `> ${o.label}`));
-    opts.forEach((o, i) => {
+    const doneIndex = opts.length - 1;
+    const band = centredBand(opts.slice(0, doneIndex).map((o) => `> ${o.label}`));
+    opts.slice(0, doneIndex).forEach((o, i) => {
+      if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
-      const rowTop = SETTINGS_TOP + i * SETTINGS_ROW;
-      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, SETTINGS_ROW - 2);
-      // A bare leading '> ' on a centred row shunts the whole label half a
-      // caret to the left as the cursor arrives; the closing one balances it.
+      const rowTop = this.listY + (i - this.listStart) * this.rowH;
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
       drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2,
-        textYForMid(rowTop + SETTINGS_ROW / 2), sel ? '#c9a0ff' : '#c8c8d8');
+        textYForMid(rowTop + this.rowH / 2), sel ? '#c9a0ff' : '#c8c8d8');
     });
-    // Touch selects a row with one tap and changes it with a second, same as
-    // every other listMenu-style screen — there is no left/right gesture here.
+    if (this.listCount(opts) > this.visibleRows) {
+      const trackY = this.listY + 4;
+      const trackH = this.visibleRows * this.rowH - 8;
+      const thumbH = Math.max(18, trackH * this.visibleRows / this.listCount(opts));
+      const thumbY = trackY + (trackH - thumbH) * this.listStart / this.maxListStart(opts);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(W - 17, trackY, 2, trackH);
+      ctx.fillStyle = 'rgba(201,160,255,0.55)';
+      ctx.fillRect(W - 18, thumbY, 4, thumbH);
+    }
+    const doneSelected = this.idx === doneIndex;
+    if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2);
+    drawTextCentered(ctx, `${doneSelected ? '> ' : ''}DONE`, W / 2,
+      textYForMid(this.doneY + this.doneH / 2),
+      doneSelected ? '#c9a0ff' : '#c8c8d8');
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
   }
 }

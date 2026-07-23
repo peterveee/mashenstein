@@ -31,7 +31,7 @@ function frames(n, dt = 16.7) { for (let i = 0; i < n; i++) dom.frame(dt); }
 frames(5);
 assert(globalThis.window.__mash_booted === undefined || true, 'bundle evaluated');
 
-// Title: select FILE 1 (new game).
+// Title: select SHIFT 1 (clock in).
 dom.key('Enter'); frames(30); // through transition into difficulty
 // Difficulty: pick BREEZY.
 dom.key('Enter'); frames(30);

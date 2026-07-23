@@ -135,9 +135,19 @@ assert(blankStats.some(([label, value]) => label === 'BEST LEVEL SCORE' && value
   'an unfinished file shows a spoiler-free best-level score instead of Overtime');
 blankRoom.exit();
 
+const clickExitRoom = new TrophyRoomState({ save: blankSave, flow });
+clickExitRoom.enter();
+Input.pointer.x = 24;
+Input.pointer.y = 108;
+Input.press('pointer');
+clickExitRoom.update(1 / 60);
+Input.endFrame();
+assert(returned === 1, 'tapping the trophy-room exit sign returns to the food court immediately');
+Input.release('pointer'); Input.endFrame();
+
 room.px = 34;
 Input.press('left'); room.update(0.1); Input.release('left'); Input.endFrame();
-assert(returned === 1, 'walking through the trophy-room exit door returns to the food court');
+assert(returned === 2, 'walking through the trophy-room exit door returns to the food court');
 room.exit();
 Input.clearAll();
 

@@ -536,13 +536,13 @@ const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 
 // One screen-space layout for name, drawing and hit-testing. Long names expand
 // leftward while the actions remain immediately beside them; centring the full
-// group keeps every cast member balanced without the buttons wandering.
-function npcPromptLayout(npc, opts = npcMenuFor(npc)) {
+// group under the focused NPC keeps the prompt attached to its character.
+function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2) {
   const name = npc.name || HERO_BY_ID[npc.id].short;
   const nameW = textWidth(name, 1, 'ui');
   const chipsW = opts.length * NPC_CHIP_W + (opts.length - 1) * NPC_CHIP_GAP;
   const totalW = nameW + NPC_NAME_GAP + chipsW;
-  const x = W / 2 - totalW / 2;
+  const x = Math.max(4, Math.min(W - totalW - 4, anchorX - totalW / 2));
   const y = H - 39;
   return {
     name,
@@ -557,8 +557,8 @@ function npcPromptLayout(npc, opts = npcMenuFor(npc)) {
   };
 }
 
-function drawNpcPrompt(ctx, npc, idx, opts) {
-  const layout = npcPromptLayout(npc, opts);
+function drawNpcPrompt(ctx, npc, idx, opts, anchorX) {
+  const layout = npcPromptLayout(npc, opts, anchorX);
   drawText(ctx, layout.name, layout.nameX, layout.nameY, '#48e0c8');
   for (let i = 0; i < opts.length; i++) {
     const r = layout.rects[i];
@@ -1193,7 +1193,8 @@ export class HubState {
       const chipNpc = this.focusNpc;
       if (chipNpc) {
         const chipOpts = npcMenuFor(chipNpc);
-        const chipLayout = npcPromptLayout(chipNpc, chipOpts);
+        const chipLayout = npcPromptLayout(chipNpc, chipOpts,
+          (chipNpc.x - this.camX()) * HUB_ZOOM);
         for (let i = 0; i < chipOpts.length; i++) {
           const r = chipLayout.rects[i];
           if (Input.pointer.x >= r.x - 4 && Input.pointer.x <= r.x + r.w + 4
@@ -2026,7 +2027,7 @@ export class HubState {
     //
     // The other three were saying things once and then repeating them forever:
     // you learn where you are on arrival, and the legend's verbs are already in
-    // the prompt ("- ENTER TO USE" IS "ENTER USE"), so restating them generically
+    // the prompt ("- PRESS ENTER" IS "ENTER"), so restating them generically
     // was the same sentence twice. Now the name and the legend introduce
     // themselves and get out of the way, and the resources sit quietly in the
     // corner where status belongs rather than in the message stack.
@@ -2045,9 +2046,10 @@ export class HubState {
     if (this.focusNpc) {
       // Identity and verbs stay together in this one contextual cluster. The
       // same rectangles are used by update() for touch hit-testing.
-      drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc));
+      drawNpcPrompt(ctx, this.focusNpc, this.npcMenuIdx || 0, npcMenuFor(this.focusNpc),
+        (this.focusNpc.x - cam) * HUB_ZOOM);
     } else if (this.near) {
-      // A locked cabinet gets no verb. "ENTER TO USE" on a machine that will
+      // A locked cabinet gets no verb. "PRESS ENTER" on a machine that will
       // refuse you is an instruction that does not work — the line's whole job
       // is to say what this thing is and whether you can act on it, so a locked
       // one states its price instead, in the muted colour rather than the gold
@@ -2067,7 +2069,7 @@ export class HubState {
         const touch = Input.isTouchDevice();
         const verb = this.near.type === 'exit' ? 'WALK THROUGH TO EXIT'
           : this.near.type === 'shelf' ? 'WALK THROUGH TO ENTER'
-            : (touch ? 'TAP TO ENTER' : 'ENTER TO USE');
+            : (touch ? 'TAP TO ENTER' : 'PRESS ENTER');
         drawTextCentered(ctx, `${this.near.label} - ${verb}`, W / 2, H - 30, '#f6d33c');
       }
     }
@@ -2384,6 +2386,13 @@ export class TrophyRoomState {
     // it; tapping open floor just walks there.
     if (Input.pressed('pointer')) {
       const x = Input.pointer.x + this.camX(), y = Input.pointer.y;
+      // The exit door and its sign are one explicit control surface. A tap on
+      // either should leave immediately, just like the hub's station hit-test;
+      // making it a walk target first made the sign feel inert, especially on
+      // a long press or when the hero was still across the gallery.
+      const onExit = x >= 0 && x <= TROPHY_DOOR_W + 6
+        && y >= TROPHY_FLOOR_Y - TROPHY_DOOR_H - 6 && y <= TROPHY_FLOOR_Y + 6;
+      if (onExit) { this.flow.toHub(); return; }
       if (x < TROPHY_DOOR_W + 6) { this.pending = null; this.walkTarget = TROPHY_EXIT_X; }
       else if (x >= TROPHY_PODIUM_X - 45 && x <= TROPHY_PODIUM_X + 45 && y > 142) {
         this.queueInteraction(x < TROPHY_PODIUM_X ? 'podiumPrev' : 'podiumNext', TROPHY_PODIUM_X + 48);

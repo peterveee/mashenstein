@@ -272,8 +272,11 @@ settings.volumeOption('music', 'MUSIC VOLUME').adjust(-1);
 settings.volumeOption('sfx', 'SFX VOLUME').adjust(-1);
 assert(volumeSave.settings.volumes.music === 0.6 && volumeSave.settings.volumes.sfx === 0.8, 'music and SFX settings adjust independently');
 assert(Audio.levels.music === 0.6 && Audio.levels.sfx === 0.8, 'volume changes apply to the audio buses immediately');
+const fpsOption = settings.options().find((option) => option.label.startsWith('SHOW FPS:'));
+fpsOption.act();
+assert(volumeSave.settings.showFps === true, 'settings exposes a saved FPS display toggle');
 
-// Erasing a save requires choosing the slot and accepting two separate,
+// Erasing a save requires choosing the shift and accepting two separate,
 // default-NO confirmations. Nothing is removed after only the first warning.
 const eraseSave = new Save(); eraseSave.load(); eraseSave.newSlot(1, 123);
 const title = new TitleState({
@@ -281,6 +284,77 @@ const title = new TitleState({
   onSlotChosen() {}, onSettings() {}, onHowTo() {},
   onGuide() {}, onSoundTest() {},
 });
+const emptyTitle = new TitleState({
+  save: { data: { slots: [null, null, null] } },
+  onSlotChosen() {}, onSettings() {}, onHowTo() {},
+  onGuide() {}, onSoundTest() {},
+});
+const emptyTitleOptions = emptyTitle.options();
+assert(emptyTitleOptions.slice(0, 3).every((option, i) => option.label === `SHIFT ${i + 1}` && option.status === 'CLOCK IN'),
+  'empty title slots are presented as shifts ready to clock in');
+assert(emptyTitleOptions[3].label === 'STAFF ONLY',
+  'the fourth title card opens the staff-only menu');
+const occupiedShift = title.options()[1];
+assert(occupiedShift.status.endsWith('PLUGS') && occupiedShift.progress >= 0 && occupiedShift.progress <= 1 && !('detail' in occupiedShift),
+  'an occupied shift exposes bounded plug progression without duplicating the in-game coin balance');
+let pointerShift = -1;
+const pointerTitle = new TitleState({
+  save: eraseSave,
+  onSlotChosen(i) { pointerShift = i; },
+  onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {},
+});
+pointerTitle.enter();
+const horizontalCardCenters = [96, 192, 288, 384];
+for (let i = 0; i < 3; i++) {
+  Input.pointer = { x: horizontalCardCenters[i], y: 140, down: false };
+  Input.press('pointer'); pointerTitle.update(0); Input.release('pointer'); Input.endFrame();
+  assert(pointerShift === i, `horizontal title card ${i + 1} selects shift ${i + 1}`);
+}
+Input.pointer = { x: horizontalCardCenters[3], y: 140, down: false };
+Input.press('pointer'); pointerTitle.update(0); Input.release('pointer'); Input.endFrame();
+assert(pointerTitle.extras, 'horizontal fourth title card opens STAFF ONLY');
+let touchShift = -1;
+const touchTitle = new TitleState({
+  save: eraseSave,
+  onSlotChosen(i) { touchShift = i; },
+  onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {},
+});
+Input.usingTouch = true;
+touchTitle.enter();
+Input.pointer = { x: horizontalCardCenters[0], y: 140, down: true };
+Input.press('pointer'); touchTitle.update(0); Input.release('pointer'); Input.endFrame();
+assert(touchShift === -1 && touchTitle.touchPress?.i === 0,
+  'touch title card holds a visible pressed state before activation');
+touchTitle.update(0.05);
+assert(touchShift === -1, 'touch title card remains pressed for a readable beat');
+touchTitle.update(0.05);
+assert(touchShift === 0 && !touchTitle.touchPress,
+  'touch title card activates after its press-down feedback');
+Input.usingTouch = false;
+
+// Eating a title wisp removes it from this visit's procession. The transient
+// eye/scatter maps are only animation records; pruning them must not recreate
+// the visitor (or its invisible hitbox) on the next modulo lap.
+const wispTitle = new TitleState({
+  save: eraseSave,
+  onSlotChosen() {}, onSettings() {}, onHowTo() {},
+  onGuide() {}, onSoundTest() {},
+  attractDelay: 1e9,
+});
+wispTitle.enter();
+wispTitle.t = 21.5; // first visitor is at x=14 on the opening wisp crossing
+wispTitle.hitWisp({ key: '0:0', x: 14 });
+wispTitle.hitWisp({ key: '0:0', x: 14 });
+assert(wispTitle.wispsDismissed && wispTitle.eaten.has('0:0'),
+  'eating a title wisp permanently dismisses its procession for this title visit');
+wispTitle.eaten.clear(); // mirror the fleeing eyes being pruned off screen
+wispTitle.t = 43.5; // the old formula places a replacement at x=14 one lap later
+const originalFrightStart = wispTitle.frightStart;
+Input.pointer = { x: 14, y: 250, down: false };
+Input.press('pointer'); wispTitle.update(0); Input.release('pointer'); Input.endFrame();
+assert(wispTitle.frightStart === originalFrightStart && wispTitle.scatter.size === 0,
+  'a dismissed title wisp neither returns nor leaves an invisible hitbox next lap');
+
 eraseSave.slot.campaign.storyFlags.sawEnding = true;
 assert(!title.options().some((option) => option.id === 'overtime'),
   'the title menu does not expose Overtime after the ending');
@@ -288,13 +362,13 @@ title.enter(); title.beginErase();
 const tapTitle = (action) => {
   Input.press(action); title.update(0); Input.release(action); Input.endFrame();
 };
-tapTitle('down'); // select occupied FILE 2 if another occupied slot precedes it
+tapTitle('down'); // select occupied SHIFT 2 if another occupied shift precedes it
 tapTitle('confirm');
-assert(title.erase?.step === 'confirm' && eraseSave.data.slots[1], 'erase flow selects a file without deleting it');
+assert(title.erase?.step === 'confirm' && eraseSave.data.slots[1], 'erase flow selects a shift without deleting it');
 tapTitle('down'); tapTitle('confirm');
-assert(title.erase?.step === 'final' && eraseSave.data.slots[1], 'first erase confirmation does not delete the file');
+assert(title.erase?.step === 'final' && eraseSave.data.slots[1], 'first erase confirmation does not delete the shift');
 tapTitle('down'); tapTitle('confirm');
-assert(!eraseSave.data.slots[1] && !title.erase, 'second erase confirmation deletes only the selected file');
+assert(!eraseSave.data.slots[1] && !title.erase, 'second erase confirmation deletes only the selected shift');
 Input.clearAll();
 
 const hubFlow = { hubPosition: null };

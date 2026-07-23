@@ -18,20 +18,10 @@ import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 import { proseMenu } from './prose.js';
-import { showInstallGuide, FLAVORS } from '../engine/install-prompt.js';
 
 const GOLD = '#f6d33c';
 const DIM = '#5a5a68';
 const FG = '#c8c8d8';
-
-// What each install-card variant is actually FOR, since 'menu' and 'safari'
-// mean nothing at a glance in a menu row.
-const A2HS_LABELS = {
-  menu: 'iOS 26 (••• MENU)',
-  safari: 'iOS 25 & BELOW',
-  alt: 'CHROME/FIREFOX',
-  inapp: 'IN-APP WEBVIEW',
-};
 
 // A plausible perfect result, shaped exactly like the object RunState.endRun
 // builds, so ResultsState can be opened cold without playing.
@@ -417,19 +407,6 @@ export function rootMenu(dev) {
         dev.close();
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
       } },
-      // The Home Screen card is DOM, drawn over the canvas, and normally only
-      // appears on an iPhone that has never been shown it. ←→ picks which
-      // variant, so all four are viewable from a desktop without spoofing a
-      // user agent or clearing localStorage between looks.
-      { label: `HOME SCREEN CARD: ${A2HS_LABELS[dev.a2hsFlavor || 'menu']}`,
-        act: () => {
-          dev.close();
-          showInstallGuide({ flavor: dev.a2hsFlavor || 'menu', hasSave: dev.ctx.save.data.slots.some(Boolean) });
-        },
-        adjust: (d) => {
-          const i = FLAVORS.indexOf(dev.a2hsFlavor || 'menu');
-          dev.a2hsFlavor = FLAVORS[(i + d + FLAVORS.length) % FLAVORS.length];
-        } },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },
