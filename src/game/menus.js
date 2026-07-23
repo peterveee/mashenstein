@@ -989,10 +989,10 @@ const TITLE_MARQUEE_Y = 20;
 const TITLE_SUBTITLE_Y = 67;
 const TITLE_PLUG_Y = 88;
 // Centred in the clear band between the subtitle and the tallest parade heads.
-const TITLE_PANEL_Y = 113;
+const TITLE_PANEL_Y = 110;
 const TITLE_FLOOR_Y = 194;      // horizon line, above the parade's own strip
 const TITLE_CARD_W = 78;
-const TITLE_CARD_H = 50;
+const TITLE_CARD_H = 54;
 const TITLE_CARD_GAP = 10;
 const TITLE_CARDS_W = TITLE_CARD_W * 4 + TITLE_CARD_GAP * 3;
 const TITLE_CARDS_X = W / 2 - TITLE_CARDS_W / 2;
@@ -1009,8 +1009,11 @@ const TITLE_FLAVOR_S = 1;
 // Wide enough for a clear three-line hierarchy, but only as tall as a phone
 // finger target needs. Gloss supplies finish without turning them back into
 // literal props that need an explanation.
-const TITLE_MENU_TEXT_S = 1.35;
-const TITLE_STATUS_TEXT_S = 0.95;
+const TITLE_MENU_TEXT_S = 1.55;
+const TITLE_STATUS_TEXT_S = 1.15;
+const TITLE_CARD_LABEL_MID = 12;
+const TITLE_CARD_PROGRESS_Y = 25.5;
+const TITLE_CARD_STATUS_MID = 41;
 // isTouchDevice(), not usingTouch: a phone should get the touch layout on its
 // FIRST paint, not only once a finger has landed. Both the renderer and the tap
 // hit-test read this, so a tap always lands on the card it looks like it does.
@@ -1539,11 +1542,11 @@ export class TitleState {
         d.lineWidth = sel ? 1.25 : 0.8;
         platePath(d, g.x + 0.5, y + 0.5, g.w - 1, cardH - 1, 3); d.stroke();
         if (o.status) {
-          const labelMid = y + 14;
-          const statusMid = y + 41;
+          const labelMid = y + TITLE_CARD_LABEL_MID;
+          const statusMid = y + TITLE_CARD_STATUS_MID;
           drawTextCentered(d, o.label, cx, textYForMid(labelMid, menuTextS), sel ? '#f3eaff' : '#e3e9f3', menuTextS, 'bold');
           if (o.progress != null) {
-            const barX = g.x + 10, barY = y + 26, barW = g.w - 20, barH = 3;
+            const barX = g.x + 10, barY = y + TITLE_CARD_PROGRESS_Y, barW = g.w - 20, barH = 3;
             d.fillStyle = sel ? 'rgba(221,196,239,0.22)' : 'rgba(111,133,158,0.24)';
             platePath(d, barX, barY, barW, barH, 1.5); d.fill();
             const fillW = barW * Math.max(0, Math.min(1, o.progress));
@@ -1555,8 +1558,8 @@ export class TitleState {
           drawTextCentered(d, o.status, cx, textYForMid(statusMid, TITLE_STATUS_TEXT_S), sel ? '#e4cdf7' : '#c0cbd9', TITLE_STATUS_TEXT_S, 'ui');
         } else {
           const staffColor = sel ? '#f3eaff' : '#e3e9f3';
-          drawTextCentered(d, 'STAFF', cx, textYForMid(y + 17, menuTextS), staffColor, menuTextS, 'bold');
-          drawTextCentered(d, 'ONLY', cx, textYForMid(y + 33, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
+          drawTextCentered(d, 'STAFF', cx, textYForMid(y + 19, menuTextS), staffColor, menuTextS, 'bold');
+          drawTextCentered(d, 'ONLY', cx, textYForMid(y + 35, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
         }
         d.restore();
       });
