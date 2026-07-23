@@ -109,6 +109,16 @@ let backend = null;
 // branch on this: WebGL is an enhancement and both paths render the same game.
 export function rendererBackend() { return backend; }
 
+function selectBackend(name) {
+  backend = name;
+  if (typeof window !== 'undefined') window.__mash_renderer = name;
+}
+
+function force2DRequested() {
+  if (typeof window === 'undefined' || !window.location) return false;
+  return new URLSearchParams(window.location.search).get('renderer') === '2d';
+}
+
 function freshCanvasAfterWebglFailure() {
   const failed = canvas;
   const replacement = failed.cloneNode(false);
@@ -118,9 +128,12 @@ function freshCanvasAfterWebglFailure() {
 
 export function initRenderer() {
   // WebGL post pipeline when available; otherwise the classic 2D blit.
-  const webgl = glfx.init(canvas);
+  const forced2D = force2DRequested();
+  const webgl = forced2D
+    ? { ok: false, claimed: false, error: null }
+    : glfx.init(canvas);
   if (webgl.ok) {
-    backend = 'webgl';
+    selectBackend('webgl');
   } else {
     // getContext locks a canvas to the first context family it successfully
     // returns. If WebGL claimed it and shader/program setup then failed, asking
@@ -133,7 +146,7 @@ export function initRenderer() {
       const why = webgl.error ? ` WebGL failed first: ${webgl.error.message || webgl.error}` : '';
       throw new Error(`No usable WebGL or 2D canvas renderer.${why}`);
     }
-    backend = '2d';
+    selectBackend('2d');
     if (webgl.error && typeof console !== 'undefined' && console.warn) {
       console.warn('WebGL effects disabled; using the 2D renderer.', webgl.error);
     }

@@ -1,5 +1,5 @@
 // Minimal DOM/browser stubs so the bundle can boot headlessly in Node.
-export function installDom({ gameGetContext = null } = {}) {
+export function installDom({ gameGetContext = null, locationSearch = '' } = {}) {
   const listeners = {};
   const noop = () => {};
   const gradient = { addColorStop: noop };
@@ -73,6 +73,7 @@ export function installDom({ gameGetContext = null } = {}) {
   globalThis.window = {
     innerWidth: 960, innerHeight: 540,
     devicePixelRatio: 1,
+    location: { search: locationSearch },
     addEventListener: (ev, fn) => { (listeners['win:' + ev] ||= []).push(fn); },
     removeEventListener: noop,
     AudioContext: undefined, // audio engine no-ops without it

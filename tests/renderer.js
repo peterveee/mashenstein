@@ -116,16 +116,24 @@ try {
 assert(noBackendError && noBackendError.message.includes('No usable WebGL or 2D'),
   'missing WebGL and 2D backends fail explicitly during initialization');
 
+// A URL escape hatch makes device diagnosis independent of whether a virtual
+// GPU claims to support WebGL. It must select 2D before WebGL claims #game.
+const forced2DDom = installDom({ locationSearch: '?renderer=2d' });
+const forced2DRenderer = await import('../src/engine/renderer.js?forced-2d');
+forced2DRenderer.initRenderer();
+assert(forced2DRenderer.rendererBackend() === '2d' && window.__mash_renderer === '2d',
+  '?renderer=2d bypasses WebGL and exposes the selected backend');
+
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.
 const { startLoop } = await import('../src/engine/loop.js');
 const error = console.error;
 console.error = () => {};
 startLoop({ update() {}, draw() { throw new Error('forced first-frame failure'); } });
-noBackendDom.frame();
+forced2DDom.frame();
 console.error = error;
-assert(noBackendDom.bootErrorEl.style.display === 'block'
-  && noBackendDom.bootErrorEl.textContent.includes('forced first-frame failure'),
+assert(forced2DDom.bootErrorEl.style.display === 'block'
+  && forced2DDom.bootErrorEl.textContent.includes('forced first-frame failure'),
 'a first-frame failure displays the fatal-error panel');
 
 console.log(failed ? 'RENDERER: FAILED' : 'RENDERER: PASSED');
