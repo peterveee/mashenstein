@@ -129,6 +129,8 @@ const displayCalls = forced2DDom.contextCalls.filter((call) => call.canvas === f
 const worldBlit = displayCalls.findIndex((call) => call.method === 'drawImage');
 assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.method === 'clearRect'),
   '2D overlays do not clear the scrolling world after it is composited');
+assert(displayCalls.filter((call) => call.method === 'drawImage').length === 2,
+  '2D fallback composites its isolated overlay canvas over the scrolling world');
 
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.

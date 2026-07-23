@@ -77,8 +77,10 @@ export const back = (() => {
 export const bctx = back ? back.getContext('2d') : null;
 import { glfx } from './glfx.js';
 
-// Device-density 2D overlay layer (hero, demo banners). Under WebGL it is a
-// texture; under the 2D fallback it draws straight onto the display canvas.
+// Device-density 2D overlay layer (hero, demo banners). Under WebGL it becomes
+// a texture; under the 2D fallback it is composited over the world as a second
+// canvas image. Keeping additive hero effects isolated here avoids mobile 2D
+// canvas drivers clipping or corrupting the already-painted world beneath.
 const overlayLayer = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (c) { c.width = W; c.height = H; }
@@ -329,12 +331,8 @@ export function blit() {
   const px = screen.px || 1;
   // Draw queued overlays (hero, banners) into the overlay layer in logical
   // coordinates at backbuffer density.
-  const paintOverlays = (ctx2, clear = true) => {
-    // The dedicated WebGL overlay texture must be cleared between frames.
-    // In the 2D fallback, however, ctx2 is the DISPLAY canvas and the complete
-    // world has already been copied onto it below. Clearing there erases every
-    // background/ground layer and leaves only the queued hero + HUD visible.
-    if (clear) ctx2.clearRect(0, 0, W, H);
+  const paintOverlays = (ctx2) => {
+    ctx2.clearRect(0, 0, W, H);
     for (const o of overlaySprites) {
       ctx2.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
     }
@@ -361,7 +359,11 @@ export function blit() {
   dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
   dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
   dctx.imageSmoothingEnabled = true;
-  if (overlaySprites.length || overlayDraws.length) paintOverlays(dctx, false);
+  if (overlaySprites.length || overlayDraws.length) {
+    paintOverlays(octx);
+    dctx.setTransform(1, 0, 0, 1, 0, 0);
+    dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
+  }
 }
 
 // Dev/build tooling hook: capture exactly what the player sees, including the
