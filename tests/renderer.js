@@ -123,6 +123,12 @@ const forced2DRenderer = await import('../src/engine/renderer.js?forced-2d');
 forced2DRenderer.initRenderer();
 assert(forced2DRenderer.rendererBackend() === '2d' && window.__mash_renderer === '2d',
   '?renderer=2d bypasses WebGL and exposes the selected backend');
+forced2DRenderer.pushOverlayDraw(() => {});
+forced2DRenderer.blit();
+const displayCalls = forced2DDom.contextCalls.filter((call) => call.canvas === forced2DDom.canvas);
+const worldBlit = displayCalls.findIndex((call) => call.method === 'drawImage');
+assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.method === 'clearRect'),
+  '2D overlays do not clear the scrolling world after it is composited');
 
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.

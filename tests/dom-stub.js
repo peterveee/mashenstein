@@ -1,6 +1,7 @@
 // Minimal DOM/browser stubs so the bundle can boot headlessly in Node.
 export function installDom({ gameGetContext = null, locationSearch = '' } = {}) {
   const listeners = {};
+  const contextCalls = [];
   const noop = () => {};
   const gradient = { addColorStop: noop };
 
@@ -13,6 +14,8 @@ export function installDom({ gameGetContext = null, locationSearch = '' } = {}) 
       createRadialGradient: () => gradient,
       measureText: () => ({ width: 0 }),
       getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+      clearRect(...args) { contextCalls.push({ method: 'clearRect', canvas: this.canvas, args }); },
+      drawImage(...args) { contextCalls.push({ method: 'drawImage', canvas: this.canvas, args }); },
     }, {
       get(t, k) {
         if (k in t) return t[k];
@@ -99,6 +102,7 @@ export function installDom({ gameGetContext = null, locationSearch = '' } = {}) 
 
   return {
     listeners,
+    contextCalls,
     get canvas() { return gameCanvas; },
     originalCanvas: canvas,
     bootErrorEl,

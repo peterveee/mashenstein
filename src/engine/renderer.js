@@ -329,8 +329,12 @@ export function blit() {
   const px = screen.px || 1;
   // Draw queued overlays (hero, banners) into the overlay layer in logical
   // coordinates at backbuffer density.
-  const paintOverlays = (ctx2) => {
-    ctx2.clearRect(0, 0, W, H);
+  const paintOverlays = (ctx2, clear = true) => {
+    // The dedicated WebGL overlay texture must be cleared between frames.
+    // In the 2D fallback, however, ctx2 is the DISPLAY canvas and the complete
+    // world has already been copied onto it below. Clearing there erases every
+    // background/ground layer and leaves only the queued hero + HUD visible.
+    if (clear) ctx2.clearRect(0, 0, W, H);
     for (const o of overlaySprites) {
       ctx2.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
     }
@@ -357,7 +361,7 @@ export function blit() {
   dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
   dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
   dctx.imageSmoothingEnabled = true;
-  if (overlaySprites.length || overlayDraws.length) paintOverlays(dctx);
+  if (overlaySprites.length || overlayDraws.length) paintOverlays(dctx, false);
 }
 
 // Dev/build tooling hook: capture exactly what the player sees, including the
