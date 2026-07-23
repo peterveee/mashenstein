@@ -6,9 +6,14 @@ export function lifecyclePolicy({
   visible = true,
   isIphone = false,
   standalone = false,
+  devBrowserBypass = false,
   portrait = false,
 } = {}) {
-  const iphonePortrait = isIphone && standalone && portrait;
+  // A dev-bypassed browser iPhone deliberately impersonates the installed
+  // lifecycle so Chrome device emulation and real-phone LAN testing exercise
+  // the rotate overlay, paused loop, input and audio. Production browser
+  // iPhones never receive this flag and remain blocked before boot.
+  const iphonePortrait = isIphone && (standalone || devBrowserBypass) && portrait;
   return {
     iphonePortrait,
     paused: !allowed || !visible || iphonePortrait,
@@ -39,6 +44,10 @@ export class LifecycleController {
     this.pageHidden = false;
     this.overlay = doc.getElementById('portrait-overlay');
     this.shell = doc.getElementById('game-shell');
+    this.errorTools = doc.getElementById('portrait-error-tools');
+    this.errorMessage = doc.getElementById('portrait-error-message');
+    this.copyErrorButton = doc.getElementById('copy-error');
+    this.copyErrorStatus = doc.getElementById('copy-error-status');
     this.restoreFocus = null;
     this.wasOverlayVisible = false;
     this.portraitQuery = win.matchMedia ? win.matchMedia('(orientation: portrait)') : null;
@@ -47,23 +56,22 @@ export class LifecycleController {
     this.onPageHide = () => { this.pageHidden = true; this.apply(); };
     this.onPageShow = () => { this.pageHidden = false; this.apply(); };
     this.onViewport = () => this.apply();
-    this.onDialogKey = (e) => {
-      if (e.key !== 'Tab' || !this.wasOverlayVisible) return;
-      e.preventDefault();
-      this.focusOverlay();
-    };
+    this.onFatalError = () => this.syncErrorReport();
+    this.onCopyError = () => { this.copyErrorReport(); };
 
     doc.addEventListener('visibilitychange', this.onVisibility);
     win.addEventListener('pagehide', this.onPageHide);
     win.addEventListener('pageshow', this.onPageShow);
     win.addEventListener('orientationchange', this.onViewport);
     win.addEventListener('resize', this.onViewport);
+    win.addEventListener('mashfatalerror', this.onFatalError);
     win.visualViewport && win.visualViewport.addEventListener('resize', this.onViewport);
     if (this.portraitQuery) {
       if (this.portraitQuery.addEventListener) this.portraitQuery.addEventListener('change', this.onViewport);
       else if (this.portraitQuery.addListener) this.portraitQuery.addListener(this.onViewport);
     }
-    this.overlay && this.overlay.addEventListener('keydown', this.onDialogKey);
+    this.copyErrorButton && this.copyErrorButton.addEventListener('click', this.onCopyError);
+    this.syncErrorReport();
     this.apply();
   }
 
@@ -75,23 +83,43 @@ export class LifecycleController {
     });
   }
 
-  focusOverlay() {
-    const heading = this.overlay && this.overlay.querySelector('[data-dialog-heading]');
-    if (!heading) return;
-    try { heading.focus({ preventScroll: true }); } catch (e) { heading.focus(); }
-  }
-
   setOverlay(show) {
     if (!this.overlay) return;
     if (show === this.wasOverlayVisible) return;
     this.wasOverlayVisible = show;
     this.overlay.hidden = !show;
     if (show) {
+      this.syncErrorReport();
       this.restoreFocus = this.doc.activeElement;
-      requestAnimationFrame(() => this.focusOverlay());
+      // Rotation is the only normal action. Clear whatever the game left
+      // focused so the full-screen pause composition has no glowing heading,
+      // canvas or control in its middle. Fatal-error controls remain available
+      // if the player deliberately tabs to them.
+      if (this.restoreFocus && this.restoreFocus.blur) this.restoreFocus.blur();
     } else if (this.restoreFocus && this.restoreFocus.isConnected && this.restoreFocus.focus) {
       try { this.restoreFocus.focus({ preventScroll: true }); } catch (e) { this.restoreFocus.focus(); }
       this.restoreFocus = null;
+    }
+  }
+
+  syncErrorReport() {
+    const detail = this.win.__mash_fatal_error || '';
+    if (this.errorTools) this.errorTools.hidden = !detail;
+    if (this.errorMessage) this.errorMessage.textContent = detail;
+    if (this.copyErrorStatus && !detail) this.copyErrorStatus.textContent = '';
+  }
+
+  async copyErrorReport() {
+    const detail = this.win.__mash_fatal_error || '';
+    if (!detail) return;
+    try {
+      if (!this.win.navigator?.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await this.win.navigator.clipboard.writeText(detail);
+      if (this.copyErrorStatus) this.copyErrorStatus.textContent = 'ERROR COPIED.';
+    } catch (e) {
+      if (this.copyErrorStatus) {
+        this.copyErrorStatus.textContent = 'PRESS AND HOLD THE ERROR TEXT TO COPY.';
+      }
     }
   }
 
@@ -116,11 +144,12 @@ export class LifecycleController {
     this.win.removeEventListener('pageshow', this.onPageShow);
     this.win.removeEventListener('orientationchange', this.onViewport);
     this.win.removeEventListener('resize', this.onViewport);
+    this.win.removeEventListener('mashfatalerror', this.onFatalError);
     this.win.visualViewport && this.win.visualViewport.removeEventListener('resize', this.onViewport);
     if (this.portraitQuery) {
       if (this.portraitQuery.removeEventListener) this.portraitQuery.removeEventListener('change', this.onViewport);
       else if (this.portraitQuery.removeListener) this.portraitQuery.removeListener(this.onViewport);
     }
-    this.overlay && this.overlay.removeEventListener('keydown', this.onDialogKey);
+    this.copyErrorButton && this.copyErrorButton.removeEventListener('click', this.onCopyError);
   }
 }

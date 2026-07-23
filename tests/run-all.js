@@ -31,6 +31,7 @@ const suites = [
   'tests/install-prompt.js',
   'tests/mobile-lifecycle.js',
   'tests/gate.js',
+  'tests/gate-dev.js',
   'tests/gate-allowed.js',
   'tests/build-shell.js',
   'tests/smoke.js',

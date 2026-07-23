@@ -3,7 +3,12 @@ export const TICK = 1 / 60;
 
 export function reportFatalError(error) {
   const detail = error && (error.stack || error.message) || String(error || 'Unknown error');
-  if (typeof window !== 'undefined') window.__mash_fatal_error = detail;
+  if (typeof window !== 'undefined') {
+    window.__mash_fatal_error = detail;
+    if (window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mashfatalerror', { detail }));
+    }
+  }
   if (typeof document !== 'undefined') {
     const el = document.getElementById('boot-error');
     if (el) {

@@ -41,6 +41,13 @@ assert(!template.includes('<canvas id="game"') && !template.includes('fonts.goog
   'initial template contains no game canvas or font stylesheet request');
 assert(html.includes('aria-modal') && html.includes('portrait-overlay'),
   'built shell contains accessible install and portrait dialogs');
+assert(html.includes('class="mash-portrait-icon"')
+  && html.includes('class="mash-portrait-wordmark"')
+  && /min-height:\s*100svh/.test(html)
+  && !html.includes('id="portrait-overlay-title" data-dialog-heading'),
+  'portrait pause screen is full-height, branded and does not force heading focus');
+assert(html.includes('id="copy-error"') && html.includes('id="portrait-error-message"'),
+  'built portrait shell contains a copyable crash report');
 assert(html.includes('mash-install-share') && html.includes('mash-install-arrow')
   && html.includes('icon-180.png'),
   'built iPhone blocker includes the app icon, Share glyph and toolbar pointer');
@@ -51,12 +58,16 @@ assert(sw.includes("c.addAll(['./'])") && sw.includes("new URL(req.url)"),
   'existing relative, versioned service worker policy is preserved');
 assert(!html.includes('MASHENSTEIN: THE UNPLUGGENING — boot + campaign'),
   'game implementation is not inlined into the live shell');
+assert(!html.includes('window.__MASH_DEV__=true') && !html.includes('__DEV_GATE__'),
+  'production shell cannot bypass the iPhone installation gate');
 assert(contactAudio.every((file) => statSync(join(root, 'dist/audio/weapon-candidates', file)).size > 1000),
   'weapon-specific contact and launch WAVs are copied into the production build');
 
 const buildSource = readFileSync(join(root, 'build/build.js'), 'utf8');
 assert(buildSource.includes("dist/.esbuild") && buildSource.includes('buildStamp() + output'),
   'watch server cannot shadow the dev-stamped public game bundle');
+assert(buildSource.includes("watch ? 'window.__MASH_DEV__=true;' : ''"),
+  'watch build marks its lightweight shell for mobile-browser development');
 
 console.log(failed ? 'BUILD SHELL: FAILED' : 'BUILD SHELL: OK');
 process.exit(failed ? 1 : 0);

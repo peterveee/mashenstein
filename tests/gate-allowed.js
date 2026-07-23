@@ -53,10 +53,24 @@ assert(body.children[0].id === 'game-shell' && body.children[0].innerHTML.includ
   'allowed platform creates game canvases');
 assert(body.children[1].id === 'portrait-overlay'
   && body.children[1].attrs.role === 'dialog'
-  && body.children[1].attrs['aria-modal'] === 'true',
+  && body.children[1].attrs['aria-modal'] === 'true'
+  && body.children[1].attrs['aria-live'] === 'assertive',
   'allowed platform creates accessible portrait dialog');
+assert(body.children[1].innerHTML.includes('class="mash-portrait-icon"')
+  && body.children[1].innerHTML.includes('class="mash-portrait-wordmark"')
+  && !body.children[1].innerHTML.includes('data-dialog-heading')
+  && !body.children[1].innerHTML.includes('tabindex="-1"'),
+  'portrait dialog is branded and has no forced focus target');
+assert(body.children[1].innerHTML.includes('not budgeted for this many vertical pixels'),
+  'portrait dialog carries the game-specific rotation message');
+assert(body.children[1].innerHTML.includes('id="portrait-overlay-copy" class="mash-sr-only"')
+  && !body.children[1].innerHTML.includes('mash-portrait-instruction'),
+  'redundant rotation instruction is screen-reader-only');
 assert(body.children[1].innerHTML.includes('BUILD:') && body.children[1].innerHTML.includes('2026'),
   'portrait dialog shows the localized production build date and time');
+assert(body.children[1].innerHTML.includes('id="copy-error"')
+  && body.children[1].innerHTML.includes('id="portrait-error-message"'),
+  'portrait dialog includes a copyable crash report');
 const script = body.children[2];
 assert(script.tagName === 'SCRIPT' && script.src === 'https://example.test/mashenstein/game.js',
   'allowed platform requests the path-relative deferred game bundle');

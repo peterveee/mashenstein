@@ -153,10 +153,21 @@ export function initRenderer() {
       console.warn('WebGL effects disabled; using the 2D renderer.', webgl.error);
     }
   }
+  // iPad can emit orientationchange before its visual viewport has settled.
+  // Coalesce the following resize notifications and read the final dimensions
+  // on the next frame, so #chrome's backing store and button geometry belong
+  // to the same orientation as #game.
   resize();
-  window.addEventListener('resize', resize);
-  window.addEventListener('orientationchange', resize);
-  window.visualViewport && window.visualViewport.addEventListener('resize', resize);
+  const scheduleResize = () => {
+    if (resize.pending) return;
+    resize.pending = requestAnimationFrame(() => {
+      resize.pending = 0;
+      resize();
+    });
+  };
+  window.addEventListener('resize', scheduleResize);
+  window.addEventListener('orientationchange', scheduleResize);
+  window.visualViewport && window.visualViewport.addEventListener('resize', scheduleResize);
 }
 
 function resize() {

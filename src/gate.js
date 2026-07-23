@@ -152,15 +152,39 @@ function createGameDom() {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'portrait-overlay-title');
+  overlay.setAttribute('aria-describedby', 'portrait-overlay-copy');
+  overlay.setAttribute('aria-live', 'assertive');
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="mash-portrait-card">
-      <div class="mash-phone-turn" aria-hidden="true">↻</div>
-      <h1 id="portrait-overlay-title" data-dialog-heading tabindex="-1">TURN THE ARCADE SIDEWAYS</h1>
-      <p>Rotate your device to landscape to continue.</p>
+      <div class="mash-portrait-brand">
+        <div class="mash-portrait-wordmark" aria-hidden="true">MASHENSTEIN</div>
+        <img class="mash-portrait-icon" src="icon-180.png" alt="">
+      </div>
+      <div class="mash-portrait-message">
+        <div class="mash-phone-turn" aria-hidden="true">↻</div>
+        <h1 id="portrait-overlay-title">TURN THE ARCADE SIDEWAYS</h1>
+        <p id="portrait-overlay-copy" class="mash-sr-only">Rotate your device to landscape to continue.</p>
+        <p class="mash-portrait-gag">The arcade was not budgeted for this many vertical pixels.</p>
+      </div>
+      <div id="portrait-error-tools" class="mash-portrait-error" hidden>
+        <p><b>The arcade stopped running.</b> Copy this report before reloading.</p>
+        <pre id="portrait-error-message"></pre>
+        <button id="copy-error" type="button">COPY ERROR</button>
+        <p id="copy-error-status" class="mash-copy-status" aria-live="polite"></p>
+      </div>
       <p class="mash-build-time">${buildTimeLabel()}</p>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+function exposeError(detail) {
+  window.__mash_fatal_error = String(detail || 'Unknown error');
+  if (window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('mashfatalerror', {
+      detail: window.__mash_fatal_error,
+    }));
+  }
 }
 
 function loadGame() {
@@ -171,8 +195,9 @@ function loadGame() {
     const el = document.getElementById('boot-error');
     if (el && !window.__mash_booted) {
       el.style.display = 'block';
-      el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n'
-        + (e.message || e.error);
+      const detail = e.error?.stack || e.message || e.error;
+      exposeError(detail);
+      el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + detail;
     }
   });
 
@@ -185,13 +210,21 @@ function loadGame() {
     if (el) {
       el.style.display = 'block';
       el.textContent = 'MASHENSTEIN failed to load (the arcade remains unplugged).';
+      exposeError('The game script failed to load.');
     }
   };
   document.body.appendChild(script);
 }
 
 function start() {
-  const platform = readPlatform();
+  const detected = readPlatform();
+  // `npm run dev` marks the lightweight shell before this gate executes.
+  // That lets a real iPhone browser exercise the game over the LAN without
+  // weakening the installation requirement in any production artifact.
+  const devBrowserBypass = window.__MASH_DEV__ === true && !detected.allowed;
+  const platform = devBrowserBypass
+    ? { ...detected, allowed: true, devBrowserBypass: true }
+    : detected;
   window.__mash_platform = platform;
   if (!platform.allowed) showInstallBlocker(platform);
   else loadGame();

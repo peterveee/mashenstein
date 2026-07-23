@@ -25,10 +25,12 @@ npm run build      # writes dist/index.html, dist/game.js and versioned archives
 python3 -m http.server -d dist
 ```
 
-Or `npm run dev` for a watch + local server loop.
-
-For phone testing on your LAN: `python3 -m http.server -d dist` and open
-`http://<your-ip>:8000/`.
+Or `npm run dev` for a watch + local server loop. It prints both a Local URL
+and a Network URL; open the Network URL on a phone connected to the same LAN.
+The watch build alone bypasses the iPhone installation gate so Safari and other
+mobile browsers can run the game directly during development. `npm run build`
+never emits that bypass, so serving a production `dist/` preserves the real
+installation requirement.
 
 ### On an iPhone
 

@@ -278,10 +278,12 @@ function boot() {
   // hand it to the same unlock the first canvas tap would have done: the menu
   // theme starts as the card leaves rather than on some later poke.
   initUpdates();
-  initInstallPrompt({
-    hasSave: save.data.slots.some(Boolean),
-    onDismiss: () => Input.onAnyGesture && Input.onAnyGesture(),
-  });
+  if (!platform.devBrowserBypass) {
+    initInstallPrompt({
+      hasSave: save.data.slots.some(Boolean),
+      onDismiss: () => Input.onAnyGesture && Input.onAnyGesture(),
+    });
+  }
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => { drawState(bctx); Dev.draw(bctx); blit(); },

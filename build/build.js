@@ -46,6 +46,14 @@ function buildStamp() {
   return `window.__MASH_BUILD__=${JSON.stringify(s)};\n`;
 }
 
+// The install decision runs before game.js is requested, so the game bundle's
+// ordinary __MASH_BUILD__ stamp arrives too late to let an iPhone browser
+// through. Put a separate boolean in the lightweight HTML shell only for the
+// watch/dev build. Production replaces the marker with nothing.
+function devGateStamp() {
+  return watch ? 'window.__MASH_DEV__=true;' : '';
+}
+
 function buildTimestamp() {
   return new Date().toISOString();
 }
@@ -126,7 +134,8 @@ function emit(result) {
   const gameJs = buildStamp() + output(result, 'game');
   const timestamp = buildTimestamp();
   const template = readFileSync(join(root, 'build/template.html'), 'utf8')
-    .replaceAll('__BUILD_TIMESTAMP__', timestamp);
+    .replaceAll('__BUILD_TIMESTAMP__', timestamp)
+    .replace('/*__DEV_GATE__*/', devGateStamp());
   // Inline safely: </script> inside the gate would terminate the tag early.
   const safeGate = gateJs.replace(/<\/script/gi, '<\\/script');
   const html = template.replace('/*__GATE_BUNDLE__*/', () => safeGate);

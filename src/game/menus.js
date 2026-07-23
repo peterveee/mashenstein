@@ -8,7 +8,7 @@ import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, 
 import {
   drawToon, titleParadeAction, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
-import { drawProp, hasProp, glowSprite, propFrames, propFps } from '../sprites/props.js';
+import { drawProp, hasProp, glowSprite, propFrames, propFps, propSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 
 // Field-guide icon sizes (logical px) for vector props.
@@ -357,7 +357,7 @@ function wispTapHit(t, px, py, eaten, scatter) {
 }
 
 // Which fly-by (if any) is on screen right now.
-function invaderPass(t) {
+export function invaderPass(t) {
   if (t < INV_FIRST) return null;
   const e = t - INV_FIRST;
   const trip = Math.floor(e / INV_PERIOD);
@@ -384,13 +384,11 @@ const TOASTER_LANES = {
   2: [-16, 16],
   3: [-22, 0, 22],
   4: [-27, -9, 9, 27],
+  5: [-30, -15, 0, 15, 30],
 };
 
-function titleToasterCount(trip) {
-  if (trip === 0 && !titleToasterIntroSeen) {
-    titleToasterIntroSeen = true;
-    return TITLE_TOASTER_MIN_COUNT;
-  }
+function titleToasterCount(trip, singleOpening) {
+  if (trip === 0 && singleOpening) return TITLE_TOASTER_MIN_COUNT;
   return 2 + Math.floor(shaderHash21(trip + 1, 23) * 4);
 }
 
@@ -404,11 +402,15 @@ export function titleToasterStagger(trip, index) {
 // Which fly-by (if any) is on screen right now. Exported as a small visual
 // contract so the title tests can pin the promised 1–4 range without needing
 // to inspect pixels.
-export function titleToasterPass(t) {
+export function titleToasterPass(t, singleOpening = true) {
   if (t < TOASTER_FIRST) return null;
+  // The spaceship owns the sky while it is crossing. The two effects are
+  // both title foreground cameos, so never let their visible windows overlap
+  // as the independent schedules drift over time.
+  if (invaderPass(t)) return null;
   const elapsed = t - TOASTER_FIRST;
   const trip = Math.floor(elapsed / TOASTER_PERIOD);
-  const count = titleToasterCount(trip);
+  const count = titleToasterCount(trip, singleOpening);
   const cross = (W + TOASTER_EDGE * 2 + (count - 1) * TOASTER_GAP) / TOASTER_SPEED;
   const local = elapsed % TOASTER_PERIOD;
   if (local > cross) return null;
@@ -422,9 +424,9 @@ export function titleToasterPass(t) {
   };
 }
 
-function drawFlyingToasters(ctx, t, reduced) {
+function drawFlyingToasters(ctx, t, reduced, singleOpening) {
   if (reduced) return;
-  const pass = titleToasterPass(t);
+  const pass = titleToasterPass(t, singleOpening);
   if (!pass) return;
   const offsets = TOASTER_LANES[pass.count];
   for (let i = 0; i < pass.count; i++) {
@@ -438,6 +440,11 @@ function drawFlyingToasters(ctx, t, reduced) {
     const edge = Math.min(1, Math.max(0, (x + TOASTER_EDGE) / TOASTER_EDGE), Math.max(0, (W + TOASTER_EDGE - x) / TOASTER_EDGE));
     const animationOffset = titleToasterStagger(pass.trip, i);
     const frame = Math.floor((t + animationOffset) * propFps('appliance')) % propFrames('appliance');
+    // Rasterize one authored appliance size and scale it only at draw time.
+    // Passing every random display size into propSprite used to create another
+    // 96-frame canvas set per toaster, which eventually exhausts iOS canvas
+    // memory during repeated title visits.
+    const toaster = propSprite('appliance', 40, 33, frame);
     const lightPulse = 0.72 + Math.sin((t + animationOffset) * 2.4) * 0.18;
     ctx.save();
     ctx.globalAlpha *= edge;
@@ -453,7 +460,7 @@ function drawFlyingToasters(ctx, t, reduced) {
     ctx.globalAlpha *= 0.42 + lightPulse * 0.22;
     ctx.drawImage(halo, -haloSize / 2, -haloSize / 2, haloSize, haloSize);
     ctx.restore();
-    drawProp(ctx, 'appliance', -size / 2, -h / 2, size, h, frame);
+    if (toaster) ctx.drawImage(toaster, -size / 2, -h / 2, size, h);
     ctx.restore();
   }
 }
@@ -740,6 +747,10 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
   // was wrong with the palettes; they were being averaged away. sprites/toons.js
   // has always said these are meant to be drawn at device resolution.
   const cast = (c) => {
+    const touchCast = titleTouch();
+    const castH = touchCast ? 38 : HERO_PARADE_H;
+    const castK = castH / 26;
+    const entryZoomExtra = touchCast ? 0.55 : HERO_ENTRY_ZOOM;
     // The cast still crosses the arcade, but each hero occasionally breaks into
     // a small personality beat. Cycles are offset so the parade stays readable.
     const strikes = reduced ? null : invaderStrikes(t, tapBombs);
@@ -763,7 +774,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
         // viewer, like the hero is being flung out of the title screen.
         c.translate(kx, ky);
         c.rotate(strike.dir * kt * 7);
-        drawToon(c, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, HERO_PARADE_H * knockScale);
+        drawToon(c, id, { kind: 'jump', grounded: false, time: t, menu: true, phase: 0.5 }, 0, 0, castH * knockScale);
         c.restore();
         continue;
       }
@@ -789,7 +800,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
       if (acting) {
         const action = titleParadeAction(id, t, actionP);
         Object.assign(pose, action.pose);
-        feetY -= action.feetLift * HERO_PARADE_H;
+        feetY -= action.feetLift * castH;
       }
       // A tap startles whoever it lands on, overriding their signature beat —
       // getting poked takes priority over whatever bit they were mid-performing.
@@ -807,13 +818,13 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, tapBombs
       }
       const edgeAlpha = paradeEdgeAlpha(hx);
       if (edgeAlpha <= 0) continue;
-      const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * HERO_ENTRY_ZOOM : 1;
+      const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * entryZoomExtra : 1;
       c.save();
       c.globalAlpha *= edgeAlpha;
-      drawToon(c, id, pose, hx, feetY, HERO_PARADE_H * entryZoom);
+      drawToon(c, id, pose, hx, feetY, castH * entryZoom);
       if (acting) {
         c.translate(hx, feetY);
-        c.scale(PARADE_K, PARADE_K);
+        c.scale(castK, castK);
         drawParadeAccent(c, id, 0, 0, actionP);
       }
       c.restore();
@@ -936,9 +947,10 @@ const TITLE_FLAVOR_S = 1;
 // so a phone in landscape is height-limited at roughly 1.45 CSS px per logical
 // unit — a 12-unit row lands at 17 CSS px, well under the 44pt/48dp minimum
 // every platform asks for. Touch therefore spends the footer's second line (see
-// the draw below) on taller rows and lets them grow to 32.
+// the draw below) on taller rows, while keeping the panel compact enough to
+// share the lower title with the foreground cast.
 const TITLE_ROW_H = 24;
-const TITLE_ROW_H_TOUCH = 32;
+const TITLE_ROW_H_TOUCH = 29;
 // The title menu has only three files and EXTRAS now, so its labels can use
 // the room instead of inheriting the compact scale used by denser menus.
 // Touch gets the larger step because the canvas is displayed smaller per
@@ -1066,6 +1078,8 @@ export class TitleState {
     this.attractLabel = attractLabel || 'DEMO';
   }
   enter() {
+    this.singleToasterOpening = !titleToasterIntroSeen;
+    titleToasterIntroSeen = true;
     shuffleParade();
     this.idx = 0;
     this.erase = null;
@@ -1400,7 +1414,8 @@ export class TitleState {
     // all (headless tests): the parade then draws over the marquee instead of
     // under it, which costs nothing — one is the top of the screen and the other
     // is the bottom strip, and they never share a pixel.
-    if (!pushOverlayDraw(cast)) cast(ctx);
+    const castOverMenu = titleTouch() && !this.erase && !this.extras;
+    if (!castOverMenu && !pushOverlayDraw(cast)) cast(ctx);
     const opts = this.options();
     const ui = (d) => {
       // The cast owns the bottom strip, so every line of text sits above it:
@@ -1466,9 +1481,15 @@ export class TitleState {
       else if (this.extras) this.drawExtrasModal(d);
     };
     if (!pushOverlayDraw(ui)) ui(ctx);
+    // On phones the parade is part of the foreground. Keeping it above the
+    // compact title panel avoids chopping characters at the panel edge; modal
+    // lists still cover it because they must remain unambiguous.
+    if (castOverMenu && !pushOverlayDraw(cast)) cast(ctx);
     // Toasters are the title's foreground cameo: queue them after the menu so
     // they can pass over the logo, panel, modal lists, heroes, and invader.
-    const foregroundToasters = (d) => drawFlyingToasters(d, this.t, this.save.settings.reducedFlashing);
+    const foregroundToasters = (d) => drawFlyingToasters(
+      d, this.t, this.save.settings.reducedFlashing, this.singleToasterOpening,
+    );
     if (!pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
   }
   drawEraseModal(d) {

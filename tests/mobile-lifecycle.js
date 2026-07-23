@@ -28,6 +28,14 @@ assert(detectPlatform({ ua: DESKTOP }).allowed, 'desktop browser is allowed');
 
 assert(lifecyclePolicy({ isIphone: true, standalone: true, portrait: true }).paused,
   'installed iPhone portrait pauses');
+const devPortrait = lifecyclePolicy({
+  isIphone: true, standalone: false, devBrowserBypass: true, portrait: true,
+});
+assert(devPortrait.paused && devPortrait.showPortraitOverlay,
+  'dev-bypassed browser iPhone follows installed portrait policy');
+assert(!lifecyclePolicy({
+  isIphone: true, standalone: false, devBrowserBypass: true, portrait: false,
+}).paused, 'dev-bypassed browser iPhone runs in landscape');
 assert(!lifecyclePolicy({ isIpad: true, standalone: true, portrait: true }).paused,
   'iPad portrait keeps running');
 assert(lifecyclePolicy({ visible: false }).paused, 'every hidden platform pauses');
@@ -39,6 +47,17 @@ class Events {
   fire(type, event = {}) { for (const fn of this.listeners[type] || []) fn(event); }
 }
 const heading = { focused: 0, focus() { this.focused++; } };
+const errorTools = { hidden: true };
+const errorMessage = { textContent: '' };
+const copyStatus = { textContent: '' };
+const copyButton = new Events();
+const priorFocus = {
+  isConnected: true,
+  blurred: 0,
+  focused: 0,
+  blur() { this.blurred++; },
+  focus() { this.focused++; },
+};
 const overlay = Object.assign(new Events(), {
   hidden: true,
   querySelector: () => heading,
@@ -55,6 +74,10 @@ const doc = Object.assign(new Events(), {
   getElementById(id) {
     if (id === 'portrait-overlay') return overlay;
     if (id === 'game-shell') return shell;
+    if (id === 'portrait-error-tools') return errorTools;
+    if (id === 'portrait-error-message') return errorMessage;
+    if (id === 'copy-error') return copyButton;
+    if (id === 'copy-error-status') return copyStatus;
     return null;
   },
 });
@@ -64,6 +87,7 @@ const win = Object.assign(new Events(), {
   innerHeight: 390,
   matchMedia: () => portraitQuery,
   visualViewport: null,
+  navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
 });
 const calls = [];
 const loop = { pause: () => calls.push('loop:pause'), resume: () => calls.push('loop:resume') };
@@ -77,6 +101,13 @@ const lifecycle = new LifecycleController({
 });
 assert(calls.at(-1) === 'loop:resume', 'initial landscape lifecycle resumes');
 assert(overlay.hidden, 'portrait overlay starts hidden in landscape');
+win.__mash_fatal_error = 'ReferenceError: toaster lane missing';
+lifecycle.syncErrorReport();
+assert(!errorTools.hidden && errorMessage.textContent.includes('toaster lane'),
+  'portrait overlay exposes the captured crash report');
+await lifecycle.copyErrorReport();
+assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR COPIED.',
+  'portrait crash report can be copied');
 
 doc.hidden = true;
 doc.fire('visibilitychange');
@@ -86,15 +117,19 @@ portraitQuery.matches = true;
 portraitQuery.fire('change');
 assert(calls.at(-1) === 'loop:pause' && overlay.hidden, 'rotation while hidden cannot resume or show dialog');
 
+doc.activeElement = priorFocus;
 doc.hidden = false;
 doc.fire('visibilitychange');
 assert(calls.at(-1) === 'loop:pause' && !overlay.hidden && shell.inert,
   'foregrounding in portrait stays paused and shows dialog');
+assert(priorFocus.blurred === 1 && heading.focused === 0,
+  'portrait overlay clears focus without focusing its heading');
 
 portraitQuery.matches = false;
 portraitQuery.fire('change');
 assert(calls.at(-1) === 'loop:resume' && overlay.hidden && !shell.inert,
   'landscape transition resumes and removes dialog');
+assert(priorFocus.focused === 1, 'landscape restores the prior focus target');
 win.fire('pagehide');
 assert(calls.at(-1) === 'loop:pause', 'pagehide pauses even before visibility catches up');
 win.fire('pageshow');

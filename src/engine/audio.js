@@ -47,8 +47,10 @@ export const LAUNCH_AUDIO = {
 // loudness. These restrained trims bring the family together without boosting
 // any cue above its authored level.
 const WEAPON_AUDIO_GAIN = {
-  contact: { b33p: 0.92, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9 },
-  launch: { b33p: 0.95, raymn: 0.95, grumpos: 0.82 },
+  // B-33P is intentionally much lower: the orb's bright upper partials read
+  // louder than its waveform peak, especially on laptop and phone speakers.
+  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9 },
+  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
