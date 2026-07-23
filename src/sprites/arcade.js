@@ -1031,6 +1031,10 @@ export const DOOR_PALETTES = {
   shop: { id: 'shop', frame: '#7c5a7c', door: '#5d4460', sign: '#f890b8', ink: '#2a0c1c', icon: 'tag', variant: 'window', glow: '#f8c890' },
   arcade: { id: 'arcade', frame: '#46606b', door: '#334a55', sign: '#48e0c8', ink: '#04201c', icon: 'stick' },
   shelf: { id: 'shelf', frame: '#6b6350', door: '#4e4733', sign: '#f6d33c', ink: '#241c04', icon: 'cup' },
+  // Present from the start, but deliberately unpowered until the player has
+  // something to exhibit. Keeping the same carcass makes its later activation
+  // read as this door coming online rather than a new door appearing.
+  shelfLocked: { id: 'shelfLocked', frame: '#403c34', door: '#302d27', sign: '#514b3d', ink: '#b0a895', icon: 'none', label: 'LOCKED' },
   // Unmarked, unlit, and slightly ajar. The sign board is there; nothing is
   // written on it, and nothing behind it is switched on. This one stays dark on
   // purpose — it is the only door that is supposed to disappear.

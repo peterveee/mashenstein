@@ -6,6 +6,7 @@
 // everyday jump/coin/UI family while preserving their internal balance.
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74, impact: 1.08,
+  contact: 1, launch: 0.92,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // A tail layer, not an event: it should colour the break, never top it.
@@ -23,6 +24,31 @@ const SFX_TRIM = {
   // it ~23dB up on total energy. Trim plus a shorter hold (see the cue) lands
   // it just under 'coin' on peak and a few dB over on energy.
   waka: 0.45,
+};
+
+// Keep these as files rather than bundling them into game.js so the iPhone
+// gate does not download game audio before it has allowed the game to load.
+export const CONTACT_AUDIO = {
+  b33p: 'audio/weapon-candidates/25-contact-b33p-orb-pop.wav',
+  grumpos: 'audio/weapon-candidates/26-contact-grumpos-axe-chop.wav',
+  lorenzo: 'audio/weapon-candidates/27-contact-lorenzo-wrench-hit.wav',
+  raymn: 'audio/weapon-candidates/28-contact-raymn-fist-impact.wav',
+  fernwick: 'audio/weapon-candidates/29-contact-fernwick-shield-bonk.wav',
+  chompo: 'audio/weapon-candidates/30-contact-miss-chomp-crunch.wav',
+};
+
+export const LAUNCH_AUDIO = {
+  b33p: 'audio/weapon-candidates/01-b33p-laser-orb-pulse.wav',
+  raymn: 'audio/weapon-candidates/08-raymn-rocket-fist-launch.wav',
+  grumpos: 'audio/weapon-candidates/18-grumpos-axe-throw-ring.wav',
+};
+
+// The WAVs share a peak ceiling, but their timbres have different perceived
+// loudness. These restrained trims bring the family together without boosting
+// any cue above its authored level.
+const WEAPON_AUDIO_GAIN = {
+  contact: { b33p: 0.92, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9 },
+  launch: { b33p: 0.95, raymn: 0.95, grumpos: 0.82 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
@@ -45,6 +71,10 @@ class AudioSys {
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
     this.cueGain = 1;
     this.noiseBuf = null;
+    this.contactBuffers = {};
+    this.contactLoad = null;
+    this.launchBuffers = {};
+    this.launchLoad = null;
     // sequencer
     this.bpm = 112;
     this.step = 0;
@@ -125,6 +155,8 @@ class AudioSys {
     this.crashBuf = this.ctx.createBuffer(1, clen, this.ctx.sampleRate);
     const cd = this.crashBuf.getChannelData(0);
     for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
+    this.loadContactAudio();
+    this.loadLaunchAudio();
     this.startSequencer();
     if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
   }
@@ -165,6 +197,30 @@ class AudioSys {
     this.master.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
     this.musicGain.gain.setTargetAtTime(this.levels.music, t, 0.02);
     this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
+  }
+
+  loadContactAudio() {
+    this.contactLoad = this.loadAudioSet(CONTACT_AUDIO, this.contactBuffers, 'contact', this.contactLoad);
+  }
+
+  loadLaunchAudio() {
+    this.launchLoad = this.loadAudioSet(LAUNCH_AUDIO, this.launchBuffers, 'launch', this.launchLoad);
+  }
+
+  loadAudioSet(files, buffers, label, pending) {
+    if (pending || !this.ctx || typeof fetch !== 'function') return pending;
+    return Promise.all(Object.entries(files).map(async ([id, path]) => {
+      try {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.arrayBuffer();
+        buffers[id] = await this.ctx.decodeAudioData(data);
+      } catch (err) {
+        // A loose/dev build can still play the procedural impact if an asset
+        // is unavailable or a cache refuses one of the files.
+        console.warn(`${label} audio unavailable for ${id}; using procedural fallback.`, err);
+      }
+    }));
   }
 
   // ---- SFX ------------------------------------------------------------------
@@ -256,6 +312,35 @@ class AudioSys {
     // laptop speakers without turning the whole cue back into a beep.
     this.noise(0.045, 0.46, 'highpass', 3600 * pitch);
     this.osc('sine', 145 * pitch, 38 * pitch, 0.3, 0.34);
+  }
+
+  playContact(hero, pitch = 1) {
+    const buffer = this.contactBuffers[hero];
+    if (!buffer) { this.impactCrash(pitch); return; }
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = buffer;
+    src.playbackRate.value = pitch;
+    const trim = WEAPON_AUDIO_GAIN.contact[hero] ?? 1;
+    const g = this.ctx.createGain(); g.gain.value = this.cueGain * trim;
+    src.connect(g); g.connect(this.sfxGain);
+    src.start(t);
+  }
+
+  playLaunch(hero, pitch = 1) {
+    const buffer = this.launchBuffers[hero];
+    if (!buffer) {
+      if (hero === 'b33p') this.sfx('shoot', { pitch });
+      else if (hero === 'raymn') this.sfx('plop', { pitch });
+      else if (hero === 'grumpos') this.sfx('axe', { pitch });
+      return;
+    }
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = buffer;
+    src.playbackRate.value = pitch;
+    const trim = WEAPON_AUDIO_GAIN.launch[hero] ?? 1;
+    const g = this.ctx.createGain(); g.gain.value = this.cueGain * trim;
+    src.connect(g); g.connect(this.sfxGain);
+    src.start(t);
   }
 
   // The title sign shorting out.
@@ -456,6 +541,8 @@ class AudioSys {
       case 'impact':
         this.impactCrash(pitch);
         break;
+      case 'contact': this.playContact(opt.hero, pitch); break;
+      case 'launch': this.playLaunch(opt.hero, pitch); break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;

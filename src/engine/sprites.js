@@ -415,7 +415,7 @@ export function textYForMid(midY, scale = 1) {
 // The cursor behind the selected row of any list the player can arrow through.
 // One painter rather than a colour each screen re-picks: a highlight that shows
 // up on some lists and not others reads as those lists not being navigable.
-export const MENU_ROW_HILITE = 'rgba(255,207,51,0.12)';
+export const MENU_ROW_HILITE = 'rgba(201,160,255,0.15)';
 export function drawMenuRow(ctx, x, y, w, h, r = 3) {
   ctx.fillStyle = MENU_ROW_HILITE;
   platePath(ctx, x, y, w, h, r);

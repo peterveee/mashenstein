@@ -126,6 +126,10 @@ function drawFoodCourtFloor(ctx, floorY, width, worldOffsetX = 0) {
   }
 }
 
+function trophyRoomUnlocked(slot) {
+  return Object.keys(slot.campaign.ranks).length >= 1;
+}
+
 // How tall the cast stands in the concourse, in the same logical units the
 // cabinets are measured in (drawToon's `h` is character height).
 //
@@ -784,7 +788,7 @@ export class HubState {
     // There is no decorative tail beyond it: the last walkable player position
     // is the centre of this door, so crossing it is unambiguously leaving the
     // concourse rather than interacting with another free-standing fixture.
-    st.push({ type: 'shelf', x, label: 'TROPHY ROOM' });
+    st.push({ type: 'shelf', x, label: 'TROPHY ROOM', unlocked: trophyRoomUnlocked(slot) });
     this.width = Math.max(W, x + DOOR_W / 2);
     return st;
   }
@@ -1008,6 +1012,7 @@ export class HubState {
     this.poster = null;      // a wall poster held open, full-frame, to be read
     this.walkTarget = null;
     this.walkHoldT = 0;
+    this.lockedTrophyBump = false;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
     this.npcMenuIdx = 0;
@@ -1270,6 +1275,10 @@ export class HubState {
       || (this.walkTarget != null && exitDoor && this.walkTarget <= exitDoor.x);
     const walkingThroughTrophy = Input.held('right')
       || (this.walkTarget != null && trophyDoor && this.walkTarget >= trophyDoor.x);
+    if (!Input.held('right')
+        && !(this.walkTarget != null && trophyDoor && this.walkTarget >= trophyDoor.x)) {
+      this.lockedTrophyBump = false;
+    }
     if (this.walkTarget != null) {
       const d = this.walkTarget - this.px;
       if (Math.abs(d) < 3) { this.walkTarget = null; this.walkToNpc = null; }
@@ -1286,6 +1295,21 @@ export class HubState {
       return;
     }
     if (walkingThroughTrophy && trophyDoor && this.px >= trophyDoor.x) {
+      if (!trophyDoor.unlocked) {
+        // Meet the closed door instead of walking through its centre. Held
+        // input may keep pressing against it, so the bad-input cue is latched
+        // until the player releases or chooses another destination.
+        this.px = trophyDoor.x - 3;
+        this.walkTarget = null;
+        this.walkToNpc = null;
+        if (!this.lockedTrophyBump) {
+          Audio.sfx('uiBad');
+          this.talk = { text: 'CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.', t: 3, who: null };
+          this.lockedTrophyBump = true;
+        }
+        Input.endFrame();
+        return;
+      }
       // The saved hub facing is what the returning room transition restores.
       // Face back into the concourse so leaving the Trophy Room never points
       // the hero straight back through the boundary they just used.
@@ -1403,8 +1427,13 @@ export class HubState {
   }
 
   interact(st) {
-    Audio.sfx('uiConfirm');
     const slot = this.save.slot;
+    if (st.type === 'shelf' && !trophyRoomUnlocked(slot)) {
+      Audio.sfx('uiBad');
+      this.talk = { text: 'CLEAR 1 LEVEL TO OPEN THE TROPHY ROOM.', t: 3, who: null };
+      return;
+    }
+    Audio.sfx('uiConfirm');
     if (st.type === 'cabinet') {
       if (!st.unlocked) {
         this.talk = { text: `NEEDS ${UNLOCKS[st.cab.id]} PLUGS. YOU HAVE ${totalPlugs(slot)}. THE MATH IS SINCERE.`, t: 3, who: null };
@@ -1888,7 +1917,10 @@ export class HubState {
           { lit: castLit(Math.round(staff.x - cam)) }) : null,
         });
       } else if (DOOR_PALETTES[s.type]) {
-        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, DOOR_PALETTES[s.type], this.t, this.save.settings.reducedFlashing);
+        const doorPal = s.type === 'shelf' && !s.unlocked
+          ? DOOR_PALETTES.shelfLocked
+          : DOOR_PALETTES[s.type];
+        drawDoor(ctx, x - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H, doorPal, this.t, this.save.settings.reducedFlashing);
       }
     }
     // NPC heroes
@@ -2020,9 +2052,13 @@ export class HubState {
       // is to say what this thing is and whether you can act on it, so a locked
       // one states its price instead, in the muted colour rather than the gold
       // the hub uses for "you can do this right now".
-      const locked = this.near.type === 'cabinet' && !this.near.unlocked;
-      if (locked) {
+      const lockedCabinet = this.near.type === 'cabinet' && !this.near.unlocked;
+      const lockedTrophy = this.near.type === 'shelf' && !this.near.unlocked;
+      if (lockedCabinet) {
         drawTextCentered(ctx, `${this.near.label} - LOCKED: ${UNLOCKS[this.near.cab.id]} PLUGS`,
+          W / 2, H - 30, '#8a8a98');
+      } else if (lockedTrophy) {
+        drawTextCentered(ctx, 'TROPHY ROOM - LOCKED: CLEAR 1 LEVEL',
           W / 2, H - 30, '#8a8a98');
       } else {
         // isTouchDevice(), not usingTouch: the hub is the first screen a phone

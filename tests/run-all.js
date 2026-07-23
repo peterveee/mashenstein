@@ -21,6 +21,7 @@ const suites = [
   'tests/character-rendering.js',
   'tests/renderer.js',
   'tests/title-sign.js',
+  'tests/title-toasters.js',
   'tests/minigames.js',
   'tests/plug-tally.js',
   'tests/boss.js',

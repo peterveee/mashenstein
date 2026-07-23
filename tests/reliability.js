@@ -422,8 +422,25 @@ assert(foodCourtWalkExits === 1,
 walkExitHub.exit();
 
 let trophyRoomWalkEntries = 0;
+const trophyGateSlot = defaultSlot();
+const trophyGateSave = { slot: trophyGateSlot, settings: defaultSettings() };
+const lockedTrophyHub = new HubState({
+  save: trophyGateSave,
+  flow: { hubPosition: null, openTrophyRoom: () => { trophyRoomWalkEntries++; } },
+});
+lockedTrophyHub.enter();
+const lockedTrophyDoor = lockedTrophyHub.stations().find((s) => s.type === 'shelf');
+assert(lockedTrophyDoor && !lockedTrophyDoor.unlocked,
+  'the Trophy Room door starts locked before any level is cleared');
+lockedTrophyHub.px = lockedTrophyDoor.x - 4;
+Input.press('right'); lockedTrophyHub.update(0.1); Input.release('right'); Input.endFrame();
+assert(trophyRoomWalkEntries === 0 && lockedTrophyHub.px < lockedTrophyDoor.x,
+  'the locked Trophy Room door blocks walk-through entry');
+lockedTrophyHub.exit();
+
+trophyGateSlot.campaign.ranks['plumber-1'] = 'B';
 const walkTrophyHub = new HubState({
-  save,
+  save: trophyGateSave,
   flow: { hubPosition: null, openTrophyRoom: () => { trophyRoomWalkEntries++; } },
 });
 walkTrophyHub.enter();
@@ -431,6 +448,8 @@ const farTrophyStations = walkTrophyHub.stations();
 const farTrophyDoor = farTrophyStations.find((s) => s.type === 'shelf');
 assert(farTrophyStations.at(-1) === farTrophyDoor,
   'the Trophy Room is the final station at the far end of the Food Court');
+assert(farTrophyDoor.unlocked,
+  'clearing one level unlocks the Trophy Room door');
 assert(farTrophyStations[0].x === 22 && walkTrophyHub.width - farTrophyDoor.x === 22,
   'the Food Court boundary door frames sit flush with the left and right room edges');
 walkTrophyHub.px = farTrophyDoor.x - 4;
@@ -483,13 +502,16 @@ run.obstacles = [topCrate]; run.player.grounded = false; run.player.y = topCrate
 const topCells = run.battery; run.collide(); run.collide();
 assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is safe for the full contact');
 
-// Unbreakables reject every player projectile family. Weapon contact is silent
-// until the replacement set has been auditioned; the old generic crash must
-// not leak through for any attack family.
+// Unbreakables reject every player projectile family, but every weapon contact
+// uses its weapon-specific WAV rather than the old generic crash.
 const originalSfx = Audio.sfx;
+let projectileContacts = 0;
 let projectileImpacts = 0;
+let weaponLaunches = 0;
 Audio.sfx = function(name, ...args) {
+  if (name === 'contact') projectileContacts++;
   if (name === 'impact') projectileImpacts++;
+  if (name === 'launch') weaponLaunches++;
   return originalSfx.call(this, name, ...args);
 };
 for (const type of ['pellet', 'axe', 'fist']) {
@@ -507,8 +529,36 @@ const spannerTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
 run.obstacles = [spannerTarget];
 run.useAbility();
 assert(!spannerTarget.live, 'Lorenzo spanner still breaks its direct target');
+run.relay.current = 'fernwick';
+run.player.setHero('fernwick');
+run.player.grounded = true;
+run.player.abilityCd = 0;
+run.player.relayCharge = true;
+const shieldTarget = makeObstacle('cactus', run.camX + PLAYER_X);
+run.obstacles = [shieldTarget];
+run.useAbility();
+run.collide();
+assert(!shieldTarget.live, 'Fernwick shield contact still breaks its charged target');
+run.relay.current = 'chompo';
+run.player.setHero('chompo');
+run.player.grounded = true;
+run.player.abilityCd = 0;
+const chompTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
+run.obstacles = [chompTarget];
+run.useAbility();
+assert(!chompTarget.live, 'Miss Chomp contact still breaks its direct target');
+for (const id of ['b33p', 'raymn', 'grumpos']) {
+  run.relay.current = id;
+  run.player.setHero(id);
+  run.player.grounded = true;
+  run.player.abilityCd = 0;
+  run.projectiles = [];
+  run.useAbility();
+}
 Audio.sfx = originalSfx;
-assert(projectileImpacts === 0, 'pellet, fist, axe, and spanner contacts no longer share the generic impact crash');
+assert(projectileContacts === 6, 'all six weapon contact families play their specific WAV cue');
+assert(projectileImpacts === 0, 'weapon contacts no longer use the generic impact crash');
+assert(weaponLaunches === 3, 'B-33P, Ray M\'N, and Grumpos play distinct launch cues');
 
 // Fernwick consumes one enemy shot per roll, without becoming invincible.
 run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.abilityCd = 0; run.useAbility();

@@ -8,7 +8,7 @@ import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, 
 import {
   drawToon, titleParadeAction, b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
-import { drawProp, hasProp, glowSprite } from '../sprites/props.js';
+import { drawProp, hasProp, glowSprite, propFrames, propFps } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 
 // Field-guide icon sizes (logical px) for vector props.
@@ -98,6 +98,7 @@ const INVADER_FRAMES = [
   ['..#.....#..', '#..#...#..#', '#.#######.#', '###.###.###',
    '###########', '.#########.', '..#.....#..', '.#.......#.'],
 ];
+const INVADER_PIXEL = 1.35;
 // It keeps to the very top of the sky, well clear of the logo. Every other
 // pass is armed, and an armed pass drops a short little spread of bombs.
 // Everything below is a pure function of the clock: no state to keep in sync.
@@ -116,7 +117,10 @@ const PARADE_EDGE_FADE = 32;
 // How tall the cast stands on the title screen. The whole text stack above them
 // is pinned well clear of this, so the parade gets the bottom strip to itself
 // and reads at close to the size the heroes have in the food court.
-const HERO_PARADE_H = 36;
+// The title menu has been opened up, so the cast can read as characters rather
+// than a thin footer strip. All parade proportions, tap radii and clearance
+// bounds derive from this height.
+const HERO_PARADE_H = 48;
 // Every hop, accent and tap footprint below was tuned against a 26-tall parade;
 // they scale off this rather than being re-eyeballed one at a time.
 const PARADE_K = HERO_PARADE_H / 26;
@@ -134,7 +138,7 @@ const HERO_POKE_H = 11 * PARADE_K;
 const invX = (trip, p) => (trip % 2 === 0 ? -22 + p * INV_SPAN : W + 22 - p * INV_SPAN);
 // Tucked right under the top edge: the marquee moved up to give the cast the
 // bottom of the screen, so the fly-by has less sky to keep out of its way.
-const invY = (trip, t) => 4 + (trip % 3) * 3 + Math.sin(t * 2.3) * 1.6;
+const invY = (trip, t) => 2 + (trip % 3) * 3 + Math.sin(t * 2.3) * 1.6;
 const heroX = (i, t) => {
   const local = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
   return local < 0 ? -70 : ((local * HERO_PARADE_SPEED) % HERO_PARADE_SPAN) - 70;
@@ -361,6 +365,99 @@ function invaderPass(t) {
   return p <= 1 ? { trip, p } : null;
 }
 
+// Flying-toaster cameos: a small, deterministic formation that crosses the
+// entire title in front of both the menu and the cast. The count is varied per
+// trip rather than per frame, so every appliance belongs to the same pass and
+// screenshots/replays do not see the formation changing halfway across.
+export const TITLE_TOASTER_MIN_COUNT = 1;
+export const TITLE_TOASTER_MAX_COUNT = 5;
+let titleToasterIntroSeen = false;
+// The first space ship owns the opening sky beat. Its pass starts at 24s and
+// takes 11s to cross, so toasters wait for it to clear plus a small breath.
+const TOASTER_FIRST = INV_FIRST + INV_CROSS + 2;
+const TOASTER_PERIOD = 29;
+const TOASTER_SPEED = 72;
+const TOASTER_GAP = 30;
+const TOASTER_EDGE = 38;
+const TOASTER_LANES = {
+  1: [0],
+  2: [-16, 16],
+  3: [-22, 0, 22],
+  4: [-27, -9, 9, 27],
+};
+
+function titleToasterCount(trip) {
+  if (trip === 0 && !titleToasterIntroSeen) {
+    titleToasterIntroSeen = true;
+    return TITLE_TOASTER_MIN_COUNT;
+  }
+  return 2 + Math.floor(shaderHash21(trip + 1, 23) * 4);
+}
+
+// Give each toaster its own point in the slow four-second toast cycle. The
+// small index bias keeps neighbours apart, while the seeded phase makes the
+// launch moments feel naturally irregular instead of like a ripple effect.
+export function titleToasterStagger(trip, index) {
+  return index * 0.14 + shaderHash21(trip + index + 71, 67) * 3.4;
+}
+
+// Which fly-by (if any) is on screen right now. Exported as a small visual
+// contract so the title tests can pin the promised 1–4 range without needing
+// to inspect pixels.
+export function titleToasterPass(t) {
+  if (t < TOASTER_FIRST) return null;
+  const elapsed = t - TOASTER_FIRST;
+  const trip = Math.floor(elapsed / TOASTER_PERIOD);
+  const count = titleToasterCount(trip);
+  const cross = (W + TOASTER_EDGE * 2 + (count - 1) * TOASTER_GAP) / TOASTER_SPEED;
+  const local = elapsed % TOASTER_PERIOD;
+  if (local > cross) return null;
+  return {
+    trip,
+    local,
+    p: local / cross,
+    count,
+    dir: trip % 2 === 0 ? 1 : -1,
+    centerY: 52 + shaderHash21(trip + 7, 41) * 112,
+  };
+}
+
+function drawFlyingToasters(ctx, t, reduced) {
+  if (reduced) return;
+  const pass = titleToasterPass(t);
+  if (!pass) return;
+  const offsets = TOASTER_LANES[pass.count];
+  for (let i = 0; i < pass.count; i++) {
+    const x = pass.dir > 0
+      ? -TOASTER_EDGE + pass.local * TOASTER_SPEED - i * TOASTER_GAP
+      : W + TOASTER_EDGE - pass.local * TOASTER_SPEED + i * TOASTER_GAP;
+    if (x < -TOASTER_EDGE - 42 || x > W + TOASTER_EDGE + 42) continue;
+    const size = 32 + shaderHash21(pass.trip + i + 13, 59) * 13;
+    const h = size * 0.82;
+    const y = pass.centerY + offsets[i] + Math.sin(t * 2.2 + i * 0.8 + pass.trip) * 1.5;
+    const edge = Math.min(1, Math.max(0, (x + TOASTER_EDGE) / TOASTER_EDGE), Math.max(0, (W + TOASTER_EDGE - x) / TOASTER_EDGE));
+    const animationOffset = titleToasterStagger(pass.trip, i);
+    const frame = Math.floor((t + animationOffset) * propFps('appliance')) % propFrames('appliance');
+    const lightPulse = 0.72 + Math.sin((t + animationOffset) * 2.4) * 0.18;
+    ctx.save();
+    ctx.globalAlpha *= edge;
+    ctx.translate(Math.round(x), Math.round(y));
+    if (pass.dir < 0) ctx.scale(-1, 1);
+    // A soft warm pool makes the appliance feel lit against the dark title
+    // sky. It breathes on the toaster's own phase, so a formation catches the
+    // light in separate little moments instead of pulsing as one object.
+    const halo = glowSprite('rgba(246,211,60,0.24)', 16);
+    const haloSize = size * (1.35 + lightPulse * 0.18);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha *= 0.42 + lightPulse * 0.22;
+    ctx.drawImage(halo, -haloSize / 2, -haloSize / 2, haloSize, haloSize);
+    ctx.restore();
+    drawProp(ctx, 'appliance', -size / 2, -h / 2, size, h, frame);
+    ctx.restore();
+  }
+}
+
 // Whether hero i has actually appeared on screen yet at time t: past their
 // entrance and not faded out at the parade's wrap edge. A bomb should only
 // ever pick a target the player can actually see get hit — otherwise a
@@ -455,7 +552,7 @@ function invaderTapHit(t, px, py) {
   const pass = invaderPass(t);
   if (!pass) return null;
   const x = invX(pass.trip, pass.p), y = invY(pass.trip, t);
-  if (px < x - INV_TAP_PAD || px > x + 11 + INV_TAP_PAD || py < y - INV_TAP_PAD || py > y + 8 + INV_TAP_PAD) return null;
+  if (px < x - INV_TAP_PAD || px > x + 11 * INVADER_PIXEL + INV_TAP_PAD || py < y - INV_TAP_PAD || py > y + 8 * INVADER_PIXEL + INV_TAP_PAD) return null;
   return { trip: pass.trip, x, y };
 }
 
@@ -509,7 +606,7 @@ function drawInvader(ctx, t) {
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
     for (let c = 0; c < row.length; c++) {
-      if (row[c] === '#') ctx.fillRect(Math.round(x) + c, Math.round(y) + r, 1, 1);
+      if (row[c] === '#') ctx.fillRect(Math.round(x) + c * INVADER_PIXEL, Math.round(y) + r * INVADER_PIXEL, INVADER_PIXEL, INVADER_PIXEL);
     }
   }
 }
@@ -839,11 +936,17 @@ const TITLE_FLAVOR_S = 1;
 // so a phone in landscape is height-limited at roughly 1.45 CSS px per logical
 // unit — a 12-unit row lands at 17 CSS px, well under the 44pt/48dp minimum
 // every platform asks for. Touch therefore spends the footer's second line (see
-// the draw below) on taller rows and lets them grow to 30.
-const TITLE_ROW_H = 20;
-const TITLE_ROW_H_TOUCH = 30;
+// the draw below) on taller rows and lets them grow to 32.
+const TITLE_ROW_H = 24;
+const TITLE_ROW_H_TOUCH = 32;
+// The title menu has only three files and EXTRAS now, so its labels can use
+// the room instead of inheriting the compact scale used by denser menus.
+// Touch gets the larger step because the canvas is displayed smaller per
+// logical unit on a phone, while the row height keeps the text comfortably
+// inside the tap target.
+const TITLE_MENU_TEXT_S = 1.35;
 const TITLE_PANEL_MAX_BOTTOM = 190;
-const TITLE_PANEL_MAX_BOTTOM_TOUCH = 202;
+const TITLE_PANEL_MAX_BOTTOM_TOUCH = 216;
 // isTouchDevice(), not usingTouch: a phone should get the touch layout on its
 // FIRST paint, not only once a finger has landed. Both the renderer and the tap
 // hit-test read this, so a tap always lands on the row it looks like it does.
@@ -877,7 +980,7 @@ function titleRowAt(px, py, count) {
 const MODAL_HEAD_H = 42;        // heading plus a note line
 const MODAL_HEAD_H_BARE = 28;   // heading alone
 function modalListGeom(count, hasNote) {
-  const rowH = titleTouch() ? 26 : 15;
+  const rowH = titleTouch() ? 30 : 21;
   const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   // Sized from the row count rather than pinned. The old fixed 92-unit box
   // wasn't tall enough for its own longest list — three files plus CANCEL
@@ -1304,12 +1407,13 @@ export class TitleState {
       // panel under the logo, then the controls and the flavour line as a footer.
       const panelW = TITLE_PANEL_W, panelX = TITLE_PANEL_X;
       const rowH = titleRowH(opts.length);
+      const menuTextS = TITLE_MENU_TEXT_S;
       const panelY = TITLE_PANEL_Y, panelH = opts.length * rowH + TITLE_PANEL_PAD;
       // solid backing so the crates behind don't bleed through the list
       d.fillStyle = 'rgba(8,10,20,0.86)';
       platePath(d, panelX, panelY, panelW, panelH, 3);
       d.fill();
-      d.strokeStyle = '#2f6f68';
+      d.strokeStyle = 'rgba(109,90,145,0.35)';
       d.lineWidth = 1;
       platePath(d, panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1, 3);
       d.stroke();
@@ -1320,20 +1424,30 @@ export class TitleState {
         // it. A fixed 11-unit highlight read as a thin bar floating in a tall
         // touch row, and text pinned to the band's top left the tap target
         // looking like it belonged to the row above.
-        const textY = textYForMid(rowTop + rowH / 2);
+        const textY = textYForMid(rowTop + rowH / 2) - (sel ? 1 : 0);
         if (sel) drawMenuRow(d, panelX + 4, rowTop + 1, panelW - 8, rowH - 2);
-        drawTextCentered(d, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2, textY, sel ? '#ffcf33' : '#c3cede', 1, sel ? 'bold' : 'ui');
+        drawTextCentered(d, (sel ? '> ' : '') + o.label, W / 2, textY, sel ? '#c9a0ff' : '#c3cede', menuTextS, sel ? 'bold' : 'ui');
       });
       // Touch spends the controls line on taller rows: "ARROWS" means nothing
       // there, and the rows read as buttons without being told they're tappable.
       const touch = titleTouch();
       const controlsY = panelY + panelH + TITLE_FOOTER_GAP;
       const flavorY = touch ? controlsY : controlsY + TITLE_FOOTER_LINE_H;
+      // The footer is useful while the title is waiting for input, then gets
+      // out of the way as soon as the first parade member arrives. This keeps
+      // the cast from competing with instructions and the rotating gag line.
+      // The first hero spends a moment approaching from off-screen; begin the
+      // fade once that approach is visible, not on the parade's first frame.
+      // Instructions leave first, then the little bottom gag follows them.
+      const fade = (start, duration) => Math.max(0, Math.min(1, (start + duration - this.t) / duration));
+      const flavorFade = fade(HERO_PARADE_DELAY + 2.2, 1.2);
+      const controlsFade = fade(HERO_PARADE_DELAY + 3.8, 1.2);
+      d.globalAlpha = controlsFade;
       // Keyboard-only by the branch above, so it names keys only: listing taps
       // to the one reader who cannot make them is the mirror of the mistake the
       // touch layout avoids by dropping this line entirely.
       if (!touch) drawTextCentered(d, 'ARROWS: CHOOSE   ENTER: CONFIRM', W / 2, controlsY, '#6b7d95');
-      d.globalAlpha = 0.85;
+      d.globalAlpha = flavorFade * 0.85;
       if (this.onAttract && this.attractDelay <= 10) {
         // A tap bumps Input.activity exactly like a keypress does, so it cancels
         // the countdown too — named for the device in hand rather than listing
@@ -1352,6 +1466,10 @@ export class TitleState {
       else if (this.extras) this.drawExtrasModal(d);
     };
     if (!pushOverlayDraw(ui)) ui(ctx);
+    // Toasters are the title's foreground cameo: queue them after the menu so
+    // they can pass over the logo, panel, modal lists, heroes, and invader.
+    const foregroundToasters = (d) => drawFlyingToasters(d, this.t, this.save.settings.reducedFlashing);
+    if (!pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
   }
   drawEraseModal(d) {
     let title = 'ERASE WHICH FILE?';
@@ -1367,7 +1485,7 @@ export class TitleState {
   }
   drawExtrasModal(d) {
     drawModalList(d, this.extrasChoices(), this.extras.idx, {
-      title: 'EXTRAS', accent: '#2f6f68', titleColor: '#5fd6c8',
+      title: 'EXTRAS', accent: 'rgba(109,90,145,0.35)', titleColor: '#f4f1fa',
     });
   }
 }
@@ -1377,20 +1495,21 @@ export class TitleState {
 // are exactly the rows on screen at whatever size the device asked for.
 function drawModalList(d, choices, idx, { title, note, accent, titleColor }) {
   const g = modalListGeom(choices.length, !!note);
+  const modalTextS = 1.35;
   d.fillStyle = 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
   d.fillStyle = 'rgba(11,10,20,0.98)';
   platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
   d.strokeStyle = accent; d.lineWidth = 1;
   platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
-  drawTextCentered(d, title, W / 2, g.y + 12, titleColor, 1.25, 'bold');
-  if (note) drawTextCentered(d, note, W / 2, g.y + 28, '#aab4c6', 0.875);
+  drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', 1.5, 'title');
+  if (note) drawTextCentered(d, note, W / 2, g.y + 28, '#aab4c6', 1, 'ui');
   choices.forEach((choice, i) => {
     const selected = i === idx;
     const rowTop = g.firstY + i * g.rowH;
-    const textY = textYForMid(rowTop + g.rowH / 2);
+    const textY = textYForMid(rowTop + g.rowH / 2) - (selected ? 2 : 0);
     if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
-    drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}${selected ? ' <' : ''}`, W / 2, textY, selected ? '#ffcf33' : '#d3d9e5', 1, selected ? 'bold' : 'ui');
+    drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}`, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
   });
 }
 
@@ -1547,20 +1666,20 @@ export class DifficultyState {
     drawTextCentered(ctx, '(THE PAUSE MENU WILL ALWAYS TELL YOU THE TRUTH)', W / 2, 64, '#5a5a68');
     // Widest of the two columns of type, since the names are set a size above
     // their glosses and either can be the long one.
-    const names = centredBand(DIFFICULTIES.map((d) => `> ${d.name} <`), DIFF_NAME_S);
+    const names = centredBand(DIFFICULTIES.map((d) => `> ${d.name}`), DIFF_NAME_S);
     const glosses = centredBand(DIFFICULTIES.map((d) => d.desc), DIFF_GLOSS_S);
     const band = names.w >= glosses.w ? names : glosses;
     DIFFICULTIES.forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
       const label = d.name;
-      const color = danger ? '#e04848' : sel ? '#f6d33c' : '#c8c8d8';
+      const color = danger ? '#e04848' : sel ? '#c9a0ff' : '#c8c8d8';
       const rowTop = DIFF_TOP + i * DIFF_ROW;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
       const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2, nameY, color, DIFF_NAME_S);
+      drawTextCentered(ctx, (sel ? '> ' : '') + label, W / 2, nameY, color, DIFF_NAME_S);
       drawTextCentered(ctx, d.desc, W / 2, nameY + DIFF_GLOSS_DY, '#5a5a68', DIFF_GLOSS_S);
       // the skull is smiling
       if (d.id === 3 && sel) drawText(ctx, ':)', W / 2 + textWidth(label, DIFF_NAME_S) / 2 + 18, nameY, '#8a8a98', DIFF_NAME_S);
@@ -2213,7 +2332,7 @@ export class ResultsState {
         const y = RESULT_OPT_TOP + i * RESULT_OPT_H;
         if (sel) drawMenuRow(ctx, TUBE_INSET_X + 6, y + 1, W - (TUBE_INSET_X + 6) * 2, RESULT_OPT_H - 2);
         drawTextCentered(ctx, `${sel ? '> ' : '  '}${label}`, W / 2,
-          textYForMid(y + RESULT_OPT_H / 2, 1), sel ? '#f6d33c' : '#8a8a98', 1);
+          textYForMid(y + RESULT_OPT_H / 2, 1), sel ? '#c9a0ff' : '#8a8a98', 1);
       });
     } else {
       drawTextCentered(ctx, `${confirmVerb()} TO CONTINUE`, W / 2, textYForMid(RESULT_FOOTER_MID, promptS), '#c8c8d8', promptS);
@@ -2552,15 +2671,15 @@ export class SoundTestState {
     // the same cursor band and the same pitch the hit-test uses.
     const rows = JUKEBOX.concat([null]);
     const rowH = jukeboxRowH(rows.length);
-    const band = centredBand(rows.map((tr) => (tr ? `> * ${tr.name}  (${tr.bank.bpm} BPM) <` : '')));
+    const band = centredBand(rows.map((tr) => (tr ? `> * ${tr.name}  (${tr.bank.bpm} BPM)` : '')));
     rows.forEach((tr, i) => {
       const sel = i === this.idx;
       const on = tr && i === this.playing;
       const label = tr ? `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)` : 'BACK';
       const rowTop = JUKEBOX_TOP + i * rowH;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, rowH - 2);
-      drawTextCentered(ctx, (sel ? '> ' : '') + label + (sel ? ' <' : ''), W / 2,
-        textYForMid(rowTop + rowH / 2), on ? '#48e0c8' : sel ? '#f6d33c' : '#c8c8d8');
+      drawTextCentered(ctx, (sel ? '> ' : '') + label, W / 2,
+        textYForMid(Math.round(rowTop + rowH / 2)), on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8');
     });
     if (this.playing >= 0) {
       const bars = 12;
@@ -2682,15 +2801,15 @@ export class SettingsState {
     drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2, 'title');
     drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
     const opts = this.options();
-    const band = centredBand(opts.map((o) => `> ${o.label} <`));
+    const band = centredBand(opts.map((o) => `> ${o.label}`));
     opts.forEach((o, i) => {
       const sel = i === this.idx;
       const rowTop = SETTINGS_TOP + i * SETTINGS_ROW;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, SETTINGS_ROW - 2);
       // A bare leading '> ' on a centred row shunts the whole label half a
       // caret to the left as the cursor arrives; the closing one balances it.
-      drawTextCentered(ctx, (sel ? '> ' : '') + o.label + (sel ? ' <' : ''), W / 2,
-        textYForMid(rowTop + SETTINGS_ROW / 2), sel ? '#f6d33c' : '#c8c8d8');
+      drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2,
+        textYForMid(rowTop + SETTINGS_ROW / 2), sel ? '#c9a0ff' : '#c8c8d8');
     });
     // Touch selects a row with one tap and changes it with a second, same as
     // every other listMenu-style screen — there is no left/right gesture here.

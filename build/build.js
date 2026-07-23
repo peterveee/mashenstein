@@ -54,6 +54,19 @@ function buildTimestamp() {
 // Home Screen tile, 192 and 512 are what a web manifest is expected to offer.
 // Rendered from the game's own drawing code by tools/render-icon.js.
 const ICONS = [180, 192, 512];
+const CONTACT_AUDIO = [
+  '25-contact-b33p-orb-pop.wav',
+  '26-contact-grumpos-axe-chop.wav',
+  '27-contact-lorenzo-wrench-hit.wav',
+  '28-contact-raymn-fist-impact.wav',
+  '29-contact-fernwick-shield-bonk.wav',
+  '30-contact-miss-chomp-crunch.wav',
+];
+const LAUNCH_AUDIO = [
+  '01-b33p-laser-orb-pulse.wav',
+  '08-raymn-rocket-fist-launch.wav',
+  '18-grumpos-axe-throw-ring.wav',
+];
 
 // Everything an INSTALLED copy needs and a loose index.html does not: the
 // service worker that keeps a Home Screen launch current, the icon iOS shows
@@ -120,6 +133,12 @@ function emit(result) {
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/index.html'), html);
   writeFileSync(join(root, 'dist/game.js'), gameJs);
+  const contactDir = join(root, 'dist', 'audio', 'weapon-candidates');
+  mkdirSync(contactDir, { recursive: true });
+  for (const filename of [...CONTACT_AUDIO, ...LAUNCH_AUDIO]) {
+    copyFileSync(join(root, 'audio', 'weapon-candidates', filename), join(contactDir, filename));
+  }
+  console.log(`weapon audio written (${CONTACT_AUDIO.length + LAUNCH_AUDIO.length} WAV files)`);
   console.log(`dist/index.html written (${(html.length / 1024).toFixed(0)} KB gate)`);
   console.log(`dist/game.js written (${(gameJs.length / 1024).toFixed(0)} KB game)`);
 

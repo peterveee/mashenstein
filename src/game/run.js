@@ -841,11 +841,12 @@ export class RunState {
       this.player.rollT = charged ? 1.4 : 0.65;
       this.player.rollBashed = false;
       this.player.rollDeflectUsed = false;
+      this.player.rollContactIds = new Set();
       this.player.rollPlows = charged; // charged: bash without the sidegrade
       this.player.ducking = false;
       Audio.sfx('dash');
     } else if (type === 'shoot') {
-      Audio.sfx('shoot');
+      Audio.sfx('launch', { hero: 'b33p', pitch: 1.08 });
       const px = this.playerWorldX() + 12;
       // Charged: a three-round spread, every pellet piercing.
       const alts = charged ? [this.player.y - 6, this.player.y + 8, this.player.y + 22] : [this.player.y + 8];
@@ -867,6 +868,8 @@ export class RunState {
           if (ob.live && ob.def.breakable !== false && !ob.def.isGap
               && ob.x > this.camX && ob.x < this.camX + W) {
             this.startChompBite(ob);
+            this.projectileImpact({ type: 'chomp' }, ob.x + ob.w / 2,
+              this.groundYAt(ob.x) - ob.alt - ob.h / 2);
             this.breakObstacle(ob, true);
             ate++;
           }
@@ -877,6 +880,8 @@ export class RunState {
         const target = this.powerTarget(type);
         if (target) {
           this.startChompBite(target);
+          this.projectileImpact({ type: 'chomp' }, target.x + target.w / 2,
+            this.groundYAt(target.x) - target.alt - target.h / 2);
           this.breakObstacle(target, true);
           this.floatText('MISS CHOMP ATE IT. POLITELY.', '#f6d33c');
           this.chompFlourish(target.x + target.w / 2, this.groundYAt(target.x) - target.alt - target.h / 2);
@@ -887,12 +892,12 @@ export class RunState {
         this.player.abilityCd = 0;
       }
     } else if (type === 'fist') {
-      Audio.sfx('plop');
+      Audio.sfx('launch', { hero: 'raymn', pitch: 1 });
       this.player.fistThrown = true;
       // Charged: the fist keeps going instead of turning back at the first hit.
       this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set() });
     } else if (type === 'axe') {
-      Audio.sfx('axe');
+      Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
       this.player.axeThrown = true;
       // Charged: the axe works the whole screen before coming home.
       const hits = charged ? 99 : (this.modIds.includes('ricochet') ? 2 : 1);
@@ -969,11 +974,17 @@ export class RunState {
     if (!quiet) Audio.sfx('power');
   }
 
-  // Contact remains visually explicit, but it is deliberately silent until a
-  // weapon-specific replacement is selected. The shared impact crash made
-  // pellets, fists, axes and the wrench all sound like the same generic bang.
-  // Breakable props still play their own material/debris sound separately.
+  // Contact remains visually explicit, while the weapon-specific WAV makes the
+  // hit read as the attack that caused it. Breakable props still play their own
+  // material/debris sound separately.
   projectileImpact(pr, cx, cy) {
+    const hero = pr.contactHero || ({
+      pellet: 'b33p', axe: 'grumpos', fist: 'raymn', spanner: 'lorenzo',
+      shield: 'fernwick', chomp: 'chompo',
+    }[pr.type]);
+    const pitch = pr.type === 'axe' ? 0.82 : pr.type === 'fist' ? 0.96
+      : pr.type === 'shield' ? 0.9 : pr.type === 'chomp' ? 0.88 : 1.12;
+    Audio.sfx(hero ? 'contact' : 'impact', { hero, pitch });
     shake(pr.type === 'axe' ? 1.6 : 1.1, 0.07);
     if (this.save.settings.reducedMotion) return;
     const r = () => this.fxRng.float();
@@ -1607,6 +1618,14 @@ export class RunState {
         else continue;
       }
       if (!overlaps(pbox, box)) continue;
+      if (this.player.rolling && ob.def.ground) {
+        this.player.rollContactIds ||= new Set();
+        if (!this.player.rollContactIds.has(ob.id)) {
+          this.player.rollContactIds.add(ob.id);
+          this.projectileImpact({ type: 'shield' }, ob.x + ob.w / 2,
+            this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+        }
+      }
       const playerBottom = pbox.y + pbox.h;
       const landedOnCrate = ob.type === 'crate' && this.player.vy <= 0 &&
         pbox.x >= box.x && pbox.x + pbox.w <= box.x + box.w &&
