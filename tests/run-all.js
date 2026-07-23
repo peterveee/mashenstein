@@ -33,6 +33,7 @@ const suites = [
   'tests/gate.js',
   'tests/gate-dev.js',
   'tests/gate-allowed.js',
+  'tests/gate-font-wait.js',
   'tests/build-shell.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',

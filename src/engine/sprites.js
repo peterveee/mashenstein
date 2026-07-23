@@ -322,6 +322,11 @@ if (typeof document !== 'undefined' && document.fonts) {
     Promise.all(faces.map((f) => document.fonts.load(f).catch(() => {}))).then(drop);
   }
   if (document.fonts.ready) document.fonts.ready.then(drop);
+  // The boot gate normally settles every face before game.js starts. Its
+  // offline safeguard is deliberately bounded, though, so a very slow font
+  // response can still finish after the first fallback glyphs were cached.
+  // FontFaceSet's completion event repairs that late path as well.
+  if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', drop);
 }
 
 function paintGlyphs(ctx, s, x, y, color, scale, style) {

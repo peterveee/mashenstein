@@ -11,7 +11,10 @@ function assert(cond, msg) {
 
 function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   let id = 0;
-  const calls = { deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0, viewports: [] };
+  const calls = {
+    deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0,
+    viewports: [], textureAllocations: 0, textureUpdates: 0, draws: 0,
+  };
   const noop = () => {};
   const gl = new Proxy({
     VERTEX_SHADER: 1, FRAGMENT_SHADER: 2,
@@ -34,6 +37,9 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     deleteFramebuffer: () => { calls.deletedFramebuffers++; },
     deleteTexture: () => { calls.deletedTextures++; },
     viewport: (...args) => { calls.viewports.push(args); },
+    texImage2D: () => { calls.textureAllocations++; },
+    texSubImage2D: () => { calls.textureUpdates++; },
+    drawArrays: () => { calls.draws++; },
   }, {
     get(target, key) { return key in target ? target[key] : noop; },
   });
@@ -57,15 +63,35 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     'successful WebGL setup reports an active claimed canvas');
   glfx.resize(1920, 1080);
   const made = good.calls.framebuffers;
+  const allocated = good.calls.textureAllocations;
   glfx.resize(1920, 1080);
   assert(good.calls.framebuffers === made, 'same-size viewport events reuse bloom framebuffers');
+  assert(good.calls.textureAllocations === allocated,
+    'same-size viewport events reuse allocated upload textures');
   glfx.resize(1600, 900);
   assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 2,
     'a real resize deletes both superseded bloom framebuffer pairs');
-  glfx.render({ width: 2573, height: 1446 }, { width: 2573, height: 1446 }, 0, 0);
+  glfx.fx = 1; glfx.glow = 1;
+  const allocationsBeforeRender = good.calls.textureAllocations;
+  const drawsBeforeBloom = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.textureUpdates === 2 && good.calls.textureAllocations === allocationsBeforeRender,
+    'each frame updates two preallocated textures without redefining them');
+  assert(good.calls.draws - drawsBeforeBloom === 4,
+    'enabled scene glow runs three bloom passes and the final composite');
   const finalViewport = good.calls.viewports[good.calls.viewports.length - 1];
   assert(finalViewport[2] === 1470 && finalViewport[3] === 827,
     'final pass uses ANGLE actual drawing-buffer size when canvas backing size is clamped');
+  glfx.glow = 0;
+  const drawsBeforeNoGlow = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.draws - drawsBeforeNoGlow === 1,
+    'disabled scene glow skips the bright and both blur passes');
+  glfx.glow = 1; glfx.fx = 0;
+  const drawsBeforeFxOff = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.draws - drawsBeforeFxOff === 1,
+    'Glow Effects off skips the bright and both blur passes');
 }
 
 // Force the Android-shaped failure: WebGL returns a context, then its shader
@@ -132,16 +158,85 @@ assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.
 assert(displayCalls.filter((call) => call.method === 'drawImage').length === 2,
   '2D fallback composites its isolated overlay canvas over the scrolling world');
 
+// High-density phones begin at 3x logical density, adapt down only after a
+// sustained miss, and never sacrifice the 2x visual floor. CSS geometry stays
+// at the full viewport fit while the separate touch chrome is capped at 2x.
+const phoneDom = installDom({
+  locationSearch: '?renderer=2d',
+  innerWidth: 852,
+  innerHeight: 393,
+  devicePixelRatio: 3,
+});
+const phoneRenderer = await import('../src/engine/renderer.js?phone-density');
+phoneRenderer.initRenderer({ isIphone: true });
+let phoneDiag = phoneRenderer.rendererDiagnostics();
+assert(phoneDiag.mobile && phoneDiag.adaptiveTier === 0 && phoneDiag.density === 3,
+  'high-density phones start at the 3x adaptive tier');
+assert(phoneDom.canvas.width === 1440 && phoneDom.canvas.style.width === '699px',
+  'phone render density changes backing pixels without changing CSS fit');
+assert(phoneDom.chromeCanvas.width === 1704,
+  'phone touch chrome backing density is capped at 2x');
+
+let phoneNow = 1;
+phoneRenderer.noteRendererFrame(phoneNow);
+for (let i = 0; i < 51; i++) {
+  phoneNow += 20;
+  phoneRenderer.noteRendererFrame(phoneNow);
+}
+phoneDiag = phoneRenderer.rendererDiagnostics();
+assert(phoneDiag.adaptiveTier === 1 && phoneDiag.density === 2.5,
+  'one sustained second below 52 FPS steps a phone down to 2.5x');
+for (let i = 0; i < 151; i++) {
+  phoneNow += 20;
+  phoneRenderer.noteRendererFrame(phoneNow);
+}
+phoneDiag = phoneRenderer.rendererDiagnostics();
+assert(phoneDiag.adaptiveTier === 2 && phoneDiag.density === 2,
+  'continued misses after cooldown reach but never cross the 2x floor');
+for (let i = 0; i < 400; i++) {
+  phoneNow += 20;
+  phoneRenderer.noteRendererFrame(phoneNow);
+}
+assert(phoneRenderer.rendererDiagnostics().density === 2,
+  'continued slow frames cannot lower phone density below 2x');
+for (let i = 0; i < 306; i++) {
+  phoneNow += 16;
+  phoneRenderer.noteRendererFrame(phoneNow);
+}
+assert(phoneRenderer.rendererDiagnostics().density === 2,
+  'brief recovery does not raise density before five sustained seconds');
+for (let i = 0; i < 8; i++) {
+  phoneNow += 16;
+  phoneRenderer.noteRendererFrame(phoneNow);
+}
+assert(phoneRenderer.rendererDiagnostics().density === 2.5,
+  'five sustained seconds above 58 FPS cautiously restore one tier');
+
+// A fresh desktop module at the same viewport keeps native density rather
+// than inheriting the phone cap or adaptive policy.
+const desktopDom = installDom({
+  locationSearch: '?renderer=2d',
+  innerWidth: 852,
+  innerHeight: 393,
+  devicePixelRatio: 3,
+});
+const desktopRenderer = await import('../src/engine/renderer.js?desktop-density');
+desktopRenderer.initRenderer({ isDesktop: true });
+const desktopDiag = desktopRenderer.rendererDiagnostics();
+assert(!desktopDiag.mobile && desktopDiag.adaptiveTier === null
+  && desktopDom.canvas.width === Math.round(699 * 3),
+  'desktop rendering remains at full native density');
+
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.
 const { startLoop } = await import('../src/engine/loop.js');
 const error = console.error;
 console.error = () => {};
 startLoop({ update() {}, draw() { throw new Error('forced first-frame failure'); } });
-forced2DDom.frame();
+desktopDom.frame();
 console.error = error;
-assert(forced2DDom.bootErrorEl.style.display === 'block'
-  && forced2DDom.bootErrorEl.textContent.includes('forced first-frame failure'),
+assert(desktopDom.bootErrorEl.style.display === 'block'
+  && desktopDom.bootErrorEl.textContent.includes('forced first-frame failure'),
 'a first-frame failure displays the fatal-error panel');
 
 console.log(failed ? 'RENDERER: FAILED' : 'RENDERER: PASSED');

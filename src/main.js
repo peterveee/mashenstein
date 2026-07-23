@@ -1,5 +1,8 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
-import { initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw, W } from './engine/renderer.js';
+import {
+  initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
+  noteRendererFrame, W,
+} from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText } from './engine/sprites.js';
 import { Input } from './engine/input.js';
@@ -220,7 +223,7 @@ const Flow = {
 
 function boot() {
   const platform = window.__mash_platform || readPlatform();
-  initRenderer();
+  initRenderer(platform);
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
@@ -290,6 +293,7 @@ function boot() {
       }
       blit();
     },
+    present: noteRendererFrame,
   });
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop

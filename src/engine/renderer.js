@@ -1,8 +1,6 @@
-// Device-resolution renderer. Game code always draws in a fixed 480x270
-// logical coordinate space, but the backbuffer is ALLOCATED at full device
-// resolution and pre-scaled, so vector art (heroes, props, text, UI) is
-// rasterized natively with true antialiasing. Nothing is magnified after
-// the fact, which is what used to make menus look blurry.
+// Density-aware renderer. Game code always draws in a fixed 480x270 logical
+// coordinate space. Desktops use full device density; phones use a bounded,
+// adaptive density so Retina fill-rate cannot overwhelm the frame budget.
 export const W = 480;
 export const H = 270;
 
@@ -106,10 +104,25 @@ export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
 
 let dctx = null;
 let backend = null;
+let mobileRenderer = false;
+const MOBILE_DENSITIES = [3, 2.5, 2];
+let mobileDensityTier = 0;
+let lastPresentedAt = 0;
+let slowFor = 0;
+let fastFor = 0;
+let densityCooldown = 0;
 
 // Read-only diagnostic for tests and support reports. Gameplay code should not
 // branch on this: WebGL is an enhancement and both paths render the same game.
 export function rendererBackend() { return backend; }
+export function rendererDiagnostics() {
+  return {
+    backend,
+    density: screen.px,
+    adaptiveTier: mobileRenderer ? mobileDensityTier : null,
+    mobile: mobileRenderer,
+  };
+}
 
 function selectBackend(name) {
   backend = name;
@@ -128,7 +141,11 @@ function freshCanvasAfterWebglFailure() {
   canvas = replacement;
 }
 
-export function initRenderer() {
+export function initRenderer(platform = {}) {
+  mobileRenderer = !!(platform.isIphone || platform.isAndroid);
+  mobileDensityTier = 0;
+  densityCooldown = 0;
+  resetAdaptiveSamples();
   // WebGL post pipeline when available; otherwise the classic 2D blit.
   const forced2D = force2DRequested();
   const webgl = forced2D
@@ -179,7 +196,11 @@ function resize() {
   const scale = Math.min(winW / W, winH / H);
   const cssW = Math.round(W * scale), cssH = Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
-  const pxW = Math.round(cssW * dpr), pxH = Math.round(cssH * dpr);
+  const nativeDensity = cssW * dpr / W;
+  const px = mobileRenderer
+    ? Math.min(nativeDensity, MOBILE_DENSITIES[mobileDensityTier])
+    : nativeDensity;
+  const pxW = Math.round(W * px), pxH = Math.round(H * px);
   canvas.width = pxW;
   canvas.height = pxH;
   canvas.style.width = cssW + 'px';
@@ -188,17 +209,15 @@ function resize() {
   const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
-  // Render the world at the display's full device density, just like the hero
-  // overlay. The former 4px/logical cap made Retina desktop frames render at
-  // half resolution and then enlarge in the final composite, softening every
-  // prop contour even though the source art itself was supersampled.
-  const px = pxW / W;
-  const bw = Math.round(W * px), bh = Math.round(H * px);
+  // The world and overlay share one density: native on desktop, adaptive on
+  // phones. Keeping both aligned avoids an extra resample in the final pass.
+  const renderPx = pxW / W;
+  const bw = pxW, bh = pxH;
   if (back.width !== bw || back.height !== bh) { back.width = bw; back.height = bh; }
-  bctx.setTransform(px, 0, 0, bh / H, 0, 0);
+  bctx.setTransform(renderPx, 0, 0, bh / H, 0, 0);
   bctx.imageSmoothingEnabled = true;
-  // Overlay layer (heroes, banners) stays at FULL device resolution — it is
-  // composited pin-sharp in the final shader pass, never resampled.
+  // Overlay layer (heroes, banners) stays at the selected render density and
+  // is composited directly in the final shader pass.
   if (overlayLayer && (overlayLayer.width !== pxW || overlayLayer.height !== pxH)) {
     overlayLayer.width = pxW;
     overlayLayer.height = pxH;
@@ -207,10 +226,53 @@ function resize() {
     octx.setTransform(pxW / W, 0, 0, pxH / H, 0, 0);
     octx.imageSmoothingEnabled = true;
   }
-  Object.assign(screen, { scale, ox, oy, cssW, cssH, px, dpx: pxW / W });
+  Object.assign(screen, { scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W });
   if (glfx.active) glfx.resize(bw, bh);
-  resizeChrome(winW, winH, ox, oy, dpr);
+  resizeChrome(winW, winH, ox, oy, mobileRenderer ? Math.min(dpr, 2) : dpr);
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
+}
+
+function resetAdaptiveSamples() {
+  lastPresentedAt = 0;
+  slowFor = 0;
+  fastFor = 0;
+}
+
+// Presentation-only quality controller. Simulation remains fixed at 60 Hz.
+// A sustained miss steps down quickly; recovery is deliberately conservative
+// so borderline devices do not resize their canvases back and forth.
+export function noteRendererFrame(now) {
+  if (!mobileRenderer || !Number.isFinite(now)) return;
+  if (!lastPresentedAt) { lastPresentedAt = now; return; }
+  const elapsed = now - lastPresentedAt;
+  lastPresentedAt = now;
+  if (elapsed <= 0 || elapsed > 250) {
+    slowFor = 0;
+    fastFor = 0;
+    return;
+  }
+  densityCooldown = Math.max(0, densityCooldown - elapsed);
+  if (elapsed > 1000 / 52) {
+    slowFor += elapsed;
+    fastFor = 0;
+  } else if (elapsed <= 1000 / 58) {
+    fastFor += elapsed;
+    slowFor = 0;
+  } else {
+    slowFor = 0;
+    fastFor = 0;
+  }
+  if (densityCooldown > 0) return;
+  if (slowFor >= 1000 && mobileDensityTier < MOBILE_DENSITIES.length - 1) {
+    mobileDensityTier++;
+  } else if (fastFor >= 5000 && mobileDensityTier > 0) {
+    mobileDensityTier--;
+  } else {
+    return;
+  }
+  densityCooldown = 3000;
+  resetAdaptiveSamples();
+  resize();
 }
 
 function resizeChrome(winW, winH, ox, oy, dpr) {

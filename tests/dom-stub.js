@@ -1,5 +1,11 @@
 // Minimal DOM/browser stubs so the bundle can boot headlessly in Node.
-export function installDom({ gameGetContext = null, locationSearch = '' } = {}) {
+export function installDom({
+  gameGetContext = null,
+  locationSearch = '',
+  innerWidth = 960,
+  innerHeight = 540,
+  devicePixelRatio = 1,
+} = {}) {
   const listeners = {};
   const contextCalls = [];
   const noop = () => {};
@@ -81,8 +87,8 @@ export function installDom({ gameGetContext = null, locationSearch = '' } = {}) 
 
   const rafQueue = [];
   globalThis.window = {
-    innerWidth: 960, innerHeight: 540,
-    devicePixelRatio: 1,
+    innerWidth, innerHeight,
+    devicePixelRatio,
     location: { search: locationSearch },
     addEventListener: (ev, fn) => { (listeners['win:' + ev] ||= []).push(fn); },
     removeEventListener: noop,
@@ -111,6 +117,7 @@ export function installDom({ gameGetContext = null, locationSearch = '' } = {}) 
     listeners,
     contextCalls,
     get canvas() { return gameCanvas; },
+    chromeCanvas,
     originalCanvas: canvas,
     bootErrorEl,
     store,

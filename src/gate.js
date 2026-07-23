@@ -4,6 +4,13 @@
 import { installFlavor, installTarget, readPlatform } from './engine/platform.js';
 
 const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap';
+const GAME_FONT_FACES = [
+  "400 32px 'Lilita One'",
+  "500 12px 'Fredoka'",
+  "600 12px 'Fredoka'",
+  "400 12px 'Permanent Marker'",
+];
+const GAME_FONT_WAIT_MS = 4000;
 const SHARE_SVG = `<svg class="mash-install-share" viewBox="0 0 24 24" aria-hidden="true">
   <path d="M8.2 10.5H6.4v9.1a1.4 1.4 0 0 0 1.4 1.4h8.4a1.4 1.4 0 0 0 1.4-1.4v-9.1h-1.8"/>
   <path d="M12 15.2V3.2"/><path d="M8.4 6.6 12 3l3.6 3.6"/>
@@ -105,8 +112,11 @@ function showInstallBlocker(platform) {
   window.addEventListener('orientationchange', repaint);
 }
 
+let gameFontsReady = null;
 function addGameFonts() {
-  if (document.getElementById('mash-game-fonts')) return;
+  if (gameFontsReady) return gameFontsReady;
+  const existing = document.getElementById('mash-game-fonts');
+  if (existing) return Promise.resolve();
   const preconnect = document.createElement('link');
   preconnect.rel = 'preconnect';
   preconnect.href = 'https://fonts.gstatic.com';
@@ -115,7 +125,29 @@ function addGameFonts() {
   fonts.id = 'mash-game-fonts';
   fonts.rel = 'stylesheet';
   fonts.href = GAME_FONT_URL;
+
+  // The game draws and measures one cached canvas sprite per glyph. Starting
+  // game.js before this stylesheet has registered its @font-face rules lets a
+  // fast cached bundle win the race (especially in an installed iPhone app):
+  // the first title frame then permanently caches fallback shapes AND fallback
+  // advances. Wait for the CSS, then the actual face files, before any canvas
+  // text can be measured. A bounded fallback preserves offline boot.
+  if (document.fonts?.load) {
+    gameFontsReady = Promise.race([
+      new Promise((resolve) => {
+        fonts.onload = () => {
+          Promise.all(GAME_FONT_FACES.map((face) => document.fonts.load(face)))
+            .then(resolve, resolve);
+        };
+        fonts.onerror = resolve;
+      }),
+      new Promise((resolve) => setTimeout(resolve, GAME_FONT_WAIT_MS)),
+    ]);
+  } else {
+    gameFontsReady = Promise.resolve();
+  }
   document.head.append(preconnect, fonts);
+  return gameFontsReady;
 }
 
 function buildTimeLabel(value = window.__MASH_BUILT_AT__) {
@@ -143,6 +175,7 @@ function createGameDom() {
     <canvas id="chrome"></canvas>
     <canvas id="game"></canvas>
     <div id="safe-area" aria-hidden="true"></div>
+    <div id="font-loading" role="status" aria-live="polite">REPLACING BURNT-OUT LETTERS…</div>
     <div id="boot-error" role="alert"></div>`;
   document.body.appendChild(shell);
 
@@ -187,8 +220,8 @@ function exposeError(detail) {
   }
 }
 
-function loadGame() {
-  addGameFonts();
+async function loadGame() {
+  const fontsReady = addGameFonts();
   createGameDom();
 
   window.addEventListener('error', (e) => {
@@ -200,6 +233,10 @@ function loadGame() {
       el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + detail;
     }
   });
+
+  await fontsReady;
+  const loading = document.getElementById('font-loading');
+  if (loading?.remove) loading.remove();
 
   const script = document.createElement('script');
   const embedded = document.getElementById('mash-embedded-game');

@@ -22,7 +22,7 @@ export function reportFatalError(error) {
   if (typeof console !== 'undefined' && console.error) console.error(error);
 }
 
-export function startLoop({ update, draw }) {
+export function startLoop({ update, draw, present }) {
   let acc = 0;
   let last = performance.now();
   let running = true;
@@ -51,6 +51,7 @@ export function startLoop({ update, draw }) {
       while (acc >= TICK && steps < 8) { update(TICK); acc -= TICK; steps++; }
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
       draw();
+      if (present) present(now);
       fpsFrames++;
       const fpsElapsed = now - fpsWindow;
       if (fpsElapsed >= 500) {

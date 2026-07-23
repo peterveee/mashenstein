@@ -236,6 +236,14 @@ export const glfx = {
     if (!gl) return;
     this.srcW = srcW; this.srcH = srcH;
     this.ready = true;
+    if (this.textureW !== srcW || this.textureH !== srcH) {
+      for (const tex of [this.texBack, this.texOv]) {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, srcW, srcH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      }
+      this.textureW = srcW;
+      this.textureH = srcH;
+    }
     const bw = Math.max(1, srcW >> 2), bh = Math.max(1, srcH >> 2);
     if (this.bloomA && this.bloomA.w === bw && this.bloomA.h === bh
         && this.bloomB && this.bloomB.w === bw && this.bloomB.h === bh) return;
@@ -266,7 +274,7 @@ export const glfx = {
     // color un-premultiplied to full strength and composites as a bright
     // fringe — "glowing outlines" on all overlay art.
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
   },
 
   render(backCanvas, overlayCanvas, shakeX, shakeY) {
@@ -277,26 +285,27 @@ export const glfx = {
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
     // 1) bright-pass the WORLD ONLY into quarter-res, then two blur passes.
-    //    The overlay (heroes, HUD, popup text) is deliberately excluded:
-    //    world glows, UI reads.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
-    gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
-    this.draw(this.pBright, (g, p) => {
-      bind(0, this.texBack);
-      g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
-    });
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomB.fb);
-    this.draw(this.pBlur, (g, p) => {
-      bind(0, this.bloomA.tex);
-      g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
-      g.uniform2f(g.getUniformLocation(p, 'uDir'), 1 / this.bloomA.w, 0);
-    });
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
-    this.draw(this.pBlur, (g, p) => {
-      bind(0, this.bloomB.tex);
-      g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
-      g.uniform2f(g.getUniformLocation(p, 'uDir'), 0, 1 / this.bloomB.h);
-    });
+    //    Skip all three passes when their contribution is zero.
+    if (this.fx > 0 && this.glow > 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
+      gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
+      this.draw(this.pBright, (g, p) => {
+        bind(0, this.texBack);
+        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
+      });
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomB.fb);
+      this.draw(this.pBlur, (g, p) => {
+        bind(0, this.bloomA.tex);
+        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
+        g.uniform2f(g.getUniformLocation(p, 'uDir'), 1 / this.bloomA.w, 0);
+      });
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
+      this.draw(this.pBlur, (g, p) => {
+        bind(0, this.bloomB.tex);
+        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
+        g.uniform2f(g.getUniformLocation(p, 'uDir'), 0, 1 / this.bloomB.h);
+      });
+    }
 
     // 2) final: world + bloom + vignette + aberration, crisp overlay on top.
     // Use the context's REAL drawing-buffer size, not canvas.width/height:
