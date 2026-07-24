@@ -297,7 +297,7 @@ function boot() {
       const fps = frameRate() || '--';
       setChromeOverlay(showChromeFps ? `fps|${fps}` : '', (ctx) => {
         const x = 12;
-        const y = 34;
+        const y = 58;
         const line1 = `FPS ${fps}`;
         const d = rendererDiagnostics();
         const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
