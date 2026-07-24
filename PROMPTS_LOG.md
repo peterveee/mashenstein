@@ -199,6 +199,13 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+### Prompt 22
+**User Request:** "we have regressed! the straps don't hit her shoulders anymore" → the definitive spec: "straps go to the shoulders, the upper part of the arm fully tucked behind the strap and bib, the lower part able to go over the bib as required". Also reverted her to the slimmer body ("changed my mind").
+
+**What I Did:** Reverted the girth dials out of her spec and restored the strict body-dial test guard; bake-off section relabelled GALLERY ONLY. Then settled the strap geometry for good: band bottom pinned flush to the bib's top corner, top splayed out over the arm socket and run past the torso top, clipped to **torso ∪ arm-root caps** — the torso cuts the band at the shoulder curve (reaches the shoulder), the arm caps fill the notch the torso alone left where the body rounds off while the arm continues (upper arm tucks behind the strap), and the bib-line clip keeps strap ink out of the bib. Verified rest, hands-on-hips, and all four walk-cycle frames; all suites pass. The layering contract is now written into the code comment so it doesn't get re-litigated.
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

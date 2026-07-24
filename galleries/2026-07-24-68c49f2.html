@@ -3975,9 +3975,7 @@ void main() {
       const waistY = hipY - 0.04 * u + bob;
       const hemY = hipY + legL * 0.42 + bob * 0.5;
       const strapHalf = 0.027 * u;
-      const strapCx = torsoHalf * 0.46;
-      const wBib = strapCx + strapHalf;
-      const wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+      const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
       outlined(ctx, p.a, ow, (c) => {
         c.moveTo(px - wBib, bibTop);
         c.lineTo(px + wBib, bibTop);
@@ -3988,14 +3986,11 @@ void main() {
         c.closePath();
       }, APRON_OUTLINE);
       if (!lod) {
-        const strapTopY = torsoTop - 0.07 * u;
-        const sTopX = (s2) => px + s2 * strapCx;
-        const sBotX = sTopX;
+        const strapTopY = armY - armW * 0.35;
+        const sTopX = (s2) => px + s2 * torsoHalf * 0.68;
+        const sBotX = (s2) => px + s2 * (wBib - strapHalf);
         const drawStraps = () => {
           ctx.save();
-          ctx.beginPath();
-          torsoPath(ctx);
-          ctx.clip();
           ctx.beginPath();
           const clipTop = strapTopY - u * 0.2;
           ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, bibTop + ow * 1.6 - clipTop);

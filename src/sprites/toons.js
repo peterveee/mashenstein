@@ -3916,16 +3916,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const bibTop = torsoTop + 0.075 * u;
     const waistY = hipY - 0.04 * u + bob;
     const hemY = hipY + legL * 0.42 + bob * 0.5;
-    // The strap band is sized FIRST and the bib's top corners derived from it, so
-    // the two always coincide. Sized independently, the bib's top ran wider than
-    // the band and left a little shelf outboard of each strap — the outer edge
-    // visibly failing to meet the rest of the bib. Now the strap's outer edge IS
-    // the bib's top corner, and the contour runs straight from the bib's side up
-    // the outside of the strap.
+    // The band's BOTTOM outer edge is pinned to the bib's top corner, so the two
+    // meet exactly and the contour runs straight from the bib's side up the
+    // outside of the strap. Sized independently they drifted and the bib grew a
+    // shelf outboard of each strap.
     const strapHalf = 0.027 * u;
-    const strapCx = torsoHalf * 0.46;
-    const wBib = strapCx + strapHalf;
-    const wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+    const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
     // Bib and straps stay SEPARATE shapes on purpose: that is the only way an arm
     // can slot BETWEEN them — in front of the bib, behind the strap — which is
     // what a pinafore actually does when you put your hands on your hips. Both
@@ -3942,20 +3938,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     }, APRON_OUTLINE);
     if (!lod) {
-      // Run the band UP past the shoulder line and let the torso clip below cut
-      // it. Ending it on its own flat top edge made the strap stop short of the
-      // shoulder and sit on the chest; cut by the body silhouette instead, it
-      // reads as passing over the shoulder the way a real strap does.
+      // The contract, stated once because we have circled it: the strap runs
+      // from the bib's top corner up to the SHOULDER; the upper arm tucks fully
+      // behind strap and bib; only the forearm/hand may cross in front of the
+      // bib. Geometry: bottom outer edge pinned to the bib corner (flush join),
+      // top splayed out over the arm's socket and run PAST the torso's top so
+      // the clip below — torso ∪ arm-root caps — cuts it at the shoulder curve
+      // instead of the band ending on its own flat edge short of the shoulder.
       const strapTopY = torsoTop - 0.07 * u;
-      // A straight vertical band, so its outer edge stays flush with the bib's
-      // top corner (wBib is derived from it above) the whole way down — angled,
-      // it peeled away from that corner and the join reopened. strapCx also keeps
-      // the band inside the torso's FLAT shoulder span; the torso path rounds its
-      // corners from ~0.62 of the half-width outward, and a band centred past
-      // that has its outer-top corner eaten by the silhouette clip, which reads
-      // as the arm clipping through the strap.
-      const sTopX = (s) => px + s * strapCx;
-      const sBotX = sTopX;
+      const sTopX = (s) => px + s * torsoHalf * 0.68;
+      const sBotX = (s) => px + s * (wBib - strapHalf);
       // Each strap is its own filled band, clipped just past the bib's top edge.
       // The clip is what keeps the join clean: the band's own bottom edge — and
       // any ink below the line — would read as two stray verticals running down
@@ -3964,10 +3956,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // meet so no seam shows.
       const drawStraps = () => {
         ctx.save();
-        // Two intersecting clips: the torso silhouette (so the band is cut at the
-        // shoulder and never pokes outside the body), and everything above the
-        // bib line (so no ink runs down inside the bib).
-        ctx.beginPath(); torsoPath(ctx); ctx.clip();
+        // Clip to torso ∪ the two arm-root caps. The torso alone notched the
+        // band exactly where the body rounds off its shoulder while the arm
+        // carries on outboard — the old "arm slicing through the strap" — and
+        // with no torso clip at all the band ended on its own flat edge short
+        // of the shoulder. The union does both jobs: the torso cuts the band at
+        // the shoulder curve, and the caps fill the notch so the band lands ON
+        // the upper arm and the arm reads as tucked behind it. The second clip
+        // then cuts everything below the bib line, so no strap ink runs down
+        // inside the bib.
+        ctx.beginPath();
+        torsoPath(ctx);
+        for (const sx of [shF, shB]) {
+          ctx.moveTo(sx + armW * 1.3, armY);
+          ctx.arc(sx, armY, armW * 1.3, 0, Math.PI * 2);
+        }
+        ctx.clip();
         ctx.beginPath();
         const clipTop = strapTopY - u * 0.2;
         ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, (bibTop + ow * 1.6) - clipTop);

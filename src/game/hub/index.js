@@ -121,6 +121,24 @@ function heldWalkSpeed(base, heldFor) {
   const eased = p * p * (3 - 2 * p);
   return base * (1 + WALK_ACCEL_GAIN * eased);
 }
+// Ground covered per full gait cycle, as a fraction of the hero's drawn height.
+//
+// The concourse used to cycle the legs off the wall clock — a flat 1.6 cycles a
+// second no matter how fast the hero was actually travelling. Two things fell
+// out of that. The feet only accounted for about 30% of the ground they crossed,
+// so everyone slid; and holding a direction for the 1.7x speed-up made it worse
+// rather than better (down to ~17%), because the stride never answered the
+// speed. The acceleration was real and invisible: you covered more floor at
+// exactly the same number of steps.
+//
+// Solved off the trophy room rather than picked, since that room already gets
+// this right and is the one the two are compared against. It drives the same rig
+// through the shared Player controller — player.js: `anim += dt * speed / 40` —
+// at a 58px draw height, so 40/58. Expressed against height it holds for both
+// rooms at once: same size of hero, same length of step. Speed then cancels out
+// of the skate entirely, which is why the trophy room does not degrade as it
+// accelerates and the concourse did.
+const GAIT_DISTANCE_PER_CYCLE = 40 / 58;
 // A no-stakes room hop: high enough to read clearly at HUB_ZOOM, but shorter
 // than a run jump so the avatar stays comfortably below the wall displays.
 const HUB_JUMP_V = 280;
@@ -1086,6 +1104,9 @@ export class HubState {
     this.poster = null;      // a wall poster held open, full-frame, to be read
     this.walkTarget = null;
     this.walkHoldT = 0;
+    // Gait clock, advanced by distance travelled rather than by time, so the
+    // legs cycle with the hero instead of alongside them.
+    this.gaitPhase = 0;
     this.lockedTrophyBump = false;
     this.dragging = false;   // press-and-hold is steering the walk target live
     this.dwellNpcId = null;   // which hero the chooser is currently offered for
@@ -1226,6 +1247,13 @@ export class HubState {
     const st = this.stations();
     const directionHeld = Input.held('left') || Input.held('right');
     const walkSpeed = heldWalkSpeed(HUB_WALK_SPEED, this.walkHoldT);
+    // Read before anything moves him: every route into the concourse floor —
+    // keyboard, tap-to-walk, drag-steering — lands in this.px, so measuring the
+    // frame's actual displacement catches all three without each having to
+    // remember to advance the gait. It also picks up the wall clamp for free,
+    // so walking into the end of the room stops the legs instead of leaving
+    // them running on the spot.
+    const gaitPrevPx = this.px;
     if (Input.pressed('jump') && this.jumpY === 0) {
       this.jumpVy = HUB_JUMP_V;
       Audio.sfx('jump');
@@ -1376,6 +1404,18 @@ export class HubState {
       ? Math.min(WALK_ACCEL_TIME, this.walkHoldT + dt)
       : 0;
     this.px = Math.max(20, Math.min(this.width - 20, this.px));
+    const gaitDx = Math.abs(this.px - gaitPrevPx);
+    if (gaitDx > 0) {
+      this.gaitPhase = (this.gaitPhase + gaitDx / (PLAYER_H * GAIT_DISTANCE_PER_CYCLE)) % 1;
+    } else {
+      // Standing still, park the cycle on a contact frame. gaitFoot is a cosine
+      // in x, so phase 0 and 0.5 are the two moments both feet are on the floor;
+      // everywhere else has one of them in the air. Leaving the clock wherever
+      // it happened to stop meant the next step could begin with a foot already
+      // at full lift, and the idle pose it steps out of has both feet planted.
+      // Snapping to the NEARER contact keeps whichever foot was leading.
+      this.gaitPhase = this.gaitPhase < 0.25 || this.gaitPhase >= 0.75 ? 0 : 0.5;
+    }
     if (walkingThroughExit && exitDoor && this.px <= exitDoor.x) {
       this.flow.toTitle();
       Input.endFrame();
@@ -2092,16 +2132,17 @@ export class HubState {
     ctx.beginPath(); ctx.ellipse(pxs, HUB_FLOOR_PIN_Y, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     drawToon(ctx, heroId, {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
+      // Distance-driven, not wall-clock (see GAIT_DISTANCE_PER_CYCLE).
+      //
       // Deliberately NOT the rig's reduced-amplitude `walk` cycle, though a
-      // concourse stroll sounds like exactly what it is for. The hub crosses
-      // the floor at 120 units/sec on a fixed 1.6-cycles/sec clock, and at that
-      // ratio the feet already only account for ~30% of the ground they cover.
-      // Halving the stride takes it to ~15%: measured, not eyeballed. The hero
-      // stops reading as walking briskly and starts reading as tiptoeing while
-      // being slid across the room. Shortening the stride needs the cycle rate
-      // to come off distance travelled rather than the wall clock; until it
-      // does, the longer stride is the closer of the two wrongs.
-      phase: (this.t * 1.6) % 1,
+      // concourse stroll sounds like exactly what it is for. Measured at this
+      // draw height, halving the stride roughly halves how much ground the feet
+      // account for, and the hero reads as tiptoeing while being slid across
+      // the room. With the cycle rate now answering the speed, a shorter stride
+      // would merely spin the legs faster to compensate — so it is available if
+      // the concourse ever wants a gentler gait, but the full stride is what
+      // matches the trophy room, and that is the one to match.
+      phase: this.gaitPhase,
       time: this.t,
       grounded: !airborne,
       vy: this.jumpVy,
