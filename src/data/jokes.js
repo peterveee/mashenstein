@@ -285,6 +285,27 @@ export const FINALE_BEATS = [
 // a disclaimer because it is drawn as one: small, muted, late.
 export const FINALE_CODA = 'HR HAS APPROVED NOTHING THAT HAPPENS FROM HERE ON.';
 
+// THE BOW, AND THE LAST WORDS IN THE GAME.
+//
+// The campaign is one hero at a time by budget, so the cast has never stood in
+// a line together on a story screen. The curtain call is the payoff for that
+// rule: eight of them, one row, all cheering at once.
+//
+// The thanks are sincere, and they are still staff copy — nine screens of HR
+// memos cannot end on a sentence in a different voice, so the gratitude comes
+// from the cast (who mean it) and the fine print comes from the building (which
+// does not). Same disclaimer beat as FINALE_CODA above, one screen later.
+//
+// Two sentences, and it took two false thirds to get there. A middle sentence
+// about the arcade being closed argued with the campaign the player just won;
+// one about the cabinets dreaming again leaned on a phrase that is on screen
+// exactly once, in intro panel 1, which plays on new-file only and skips. The
+// ending has no room to reference something most players never read. Thanks,
+// then an invitation, and nothing that has to be remembered to land.
+export const FINALE_THANKS_TITLE = 'THANK YOU FOR PLAYING';
+export const FINALE_THANKS = 'THE ENTIRE CAST THANKS YOU FOR YOUR PATRONAGE. YOU ARE WELCOME HERE ANY NIGHT.';
+export const FINALE_SIGNOFF = 'HR APPROVED THE GRATITUDE. ONLY THE GRATITUDE.';
+
 export const DIFFICULTIES = [
   { id: 1, name: 'BREEZY', desc: 'FOR RELAXING.' },
   { id: 2, name: 'SPICY', desc: 'FOR THE BOLD.' },

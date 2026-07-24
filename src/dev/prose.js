@@ -101,7 +101,7 @@ function proseBeats(dev) {
   // way out, so previewing the ending unlocks OVERTIME on the title. That is
   // already true of SCENES ▸ FINALE; it is noted, not new.
   beats.push({
-    label: 'FINALE (9 BEATS + CODA)',
+    label: 'FINALE (9 BEATS + CODA + CURTAIN CALL)',
     open: (next) => new FinaleState({ save, onDone: next }),
   });
   return beats;

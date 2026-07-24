@@ -1056,8 +1056,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     + 'The small row uses the results screen\'s real 18u minimum and 32u maximum hero heights.');
   const IDS = [
     ['lorenzo', 'wider fists · outward elbows'],
-    ['gnash', 'sky point · real step-turn · no flat spin'],
-    ['fernwick', 'champion clasp · shield presentation'],
+    ['gnash', 'sky point clear of the head · arm sweeps the step-turn'],
+    ['fernwick', 'shield raised clear of the face · swung down and presented'],
     ['b33p', 'planted cannon salute · compact sweep'],
     ['mochi', 'body · ears · face synchronized to two hops'],
     ['chompo', 'snack lunge · hard snap · satisfied bounce'],

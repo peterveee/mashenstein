@@ -63,7 +63,55 @@ const blob = { version: 2, settings: defaultSettings(), slots: [slot, null, null
 
 With `sawIntro` set, one Enter on the title goes straight to the hub.
 
-## Reaching common surfaces from the hub
+## Dev URL shortcuts (preferred — no menu navigation needed)
+
+Append `?goto=X` to jump directly to any surface. Only works in dev/watch
+builds (`npm run dev`). A save slot is auto-seeded if none exists.
+
+| URL | Screen |
+|---|---|
+| `?goto=tutorial` | Interactive mandatory training |
+| `?goto=hub` | Food court |
+| `?goto=howto` | How To Play reference |
+| `?goto=fieldguide` | Field Guide |
+| `?goto=settings` | Settings |
+| `?goto=cast` | Cast roll |
+| `?goto=attract` | Attract demo |
+| `?goto=intro` | Opening panels |
+| `?goto=soundtest` | Jukebox |
+
+**Launching stages / bosses / overtime directly:**
+
+| URL | Effect |
+|---|---|
+| `?goto=stage&cab=plumber` | Stage select for Plumber Panic |
+| `?goto=stage&cab=plumber&stage=plumber-1` | Launch Plumber Panic stage 1 |
+| `?goto=boss&cab=plumber` | Boss fight for Plumber Panic |
+| `?goto=overtime` | Endless overtime mode |
+
+**Modifiers (append to stage/boss/overtime URLs):**
+
+| Param | Values | Effect |
+|---|---|---|
+| `&hero=X` | `lorenzo`, `gnash`, `fernwick`, `b33p`, `mochi`, `chompo`, `raymn`, `grumpos` | Start as this hero |
+| `&invuln` | (flag) | God mode — never die |
+| `&autoexit` | (flag) | Skip results screen, return to title on end |
+| `&time=N` | seconds (e.g. `10`) | Auto-finish the run after N seconds |
+
+All modifiers compose. Example — hands-off verification of stage 1 as B-33P
+for 15 seconds, god mode, no results screen:
+
+```
+http://127.0.0.1:8000/?fps&mute&goto=stage&cab=plumber&stage=plumber-1&hero=b33p&invuln&time=15&autoexit
+```
+
+After the `?goto` routes, press Enter once or twice to dismiss the briefing
+screen. The run starts immediately after.
+
+## Reaching common surfaces
+
+**Prefer the dev URL shortcuts above.** They skip all manual navigation.
+If you must navigate from the hub manually:
 
 - **Stage select** — hold ArrowRight ~400ms to reach the first cabinet, Enter.
   On a cabinet's first open a breaker-box minigame fires; press Escape to skip

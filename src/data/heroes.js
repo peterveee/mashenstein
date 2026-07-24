@@ -3,12 +3,12 @@ export const HEROES = [
   {
     id: 'lorenzo', name: 'LORENZO "WRENCHES" BRACCIANO', short: 'LORENZO', showFullName: true,
     tagline: 'STANDARD PLUMBING PROCEDURE.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.25, maxJumps: 1, canFloat: false,
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.15, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
-    skillDesc: 'JUMPS 25% HIGHER',
+    skillDesc: 'JUMPS 15% HIGHER',
     powerDesc: 'STOMPS OR SMASHES GROUND HAZARDS',
     abilityDesc: 'AIR STOMP OR GROUNDED WRENCH SMASH.',
     sidegrades: [

@@ -62,6 +62,9 @@ export class Player {
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
+    this.spannerFlurryT = 0; // Lorenzo: repeated wrench swings while active
+    this.spannerFlurryHitIds = null; // obstacles already hit this flurry
+    this.spannerFlurryCd = 0; // deferred cooldown, applied when flurry ends
     this.relayCharge = false; // banked supercharged ability ('charge' relay mode)
     this.chargeFlashT = 0;
     this.fistThrown = false;
@@ -88,6 +91,9 @@ export class Player {
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
+    this.spannerFlurryT = 0;
+    this.spannerFlurryHitIds = null;
+    this.spannerFlurryCd = 0;
     this.fistThrown = false;
     this.axeThrown = false;
     this.ducking = false;
@@ -163,6 +169,17 @@ export class Player {
     if (this.chargeFlashT > 0) this.chargeFlashT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
+    // During Lorenzo's spanner flurry, keep the swing animation looping.
+    if (this.spannerFlurryT > 0 && this.powerPoseT <= 0) this.powerPoseT = 0.3;
+    if (this.spannerFlurryT > 0) this.spannerFlurryT -= dt;
+    if (this.spannerFlurryT <= 0 && this.spannerFlurryHitIds != null) {
+      // Flurry ended (timeout) — apply the deferred cooldown and clean up.
+      if (this.spannerFlurryCd > 0) {
+        this.abilityCd = this.spannerFlurryCd;
+        this.spannerFlurryCd = 0;
+      }
+      this.spannerFlurryHitIds = null;
+    }
     if (this.headless > 0) {
       this.headless -= dt;
       this.iframes = Math.max(this.iframes, 0.05);

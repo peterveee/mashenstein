@@ -70,5 +70,21 @@ the body. Visible in the gallery's "Heroes — in-run render" tiles.
   (incl. grumpos unchanged, b33p's cannon arm exempt, dolores under her apron
   straps) before shipping.
 
+### Auto-collect Grumpos' arm or axe when hovering nearby
+When Grumpos throws his arm or the arm detaches and ends up hovering/idle on the
+ground, the player has to walk directly over it to pick it back up. If the arm
+(or the thrown axe) is hovering close by (within a small pickup radius), it
+should auto-collect — saving the player from pixel-hunting the exact tile.
+
+- **What exists today:** the arm (`src/game/heroes/grumpos/`) is thrown and
+  lands, then waits to be walked over for pickup. There's no hover-state
+  auto-collect radius.
+- **Natural home:** Grumpos' arm state machine or the arm entity's update tick
+  — check distance to Grumpos each frame while the arm is in its idle/landed
+  state.
+- **Watch out for:** don't auto-collect during the throw arc or while the arm
+  is still in its landing animation; only when it's settled and hoverable.
+  Also consider whether the axe behaves the same way (thrown axe pickup).
+
 ## Done
 <!-- move shipped items here with a date -->

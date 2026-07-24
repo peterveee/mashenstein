@@ -19,12 +19,13 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, roundButtonOpts, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
+import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
+import { TapeRewindEffect } from './rewindFx.js';
 
 export { GROUND_Y };
 // The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
@@ -49,6 +50,20 @@ export const ACT_BANNER_TIME = 4.0;
 // the card vanishing mid-pixel; skipping to the fade plays the same exit the
 // card always plays, just sooner.
 const ACT_BANNER_FADE = 0.3;
+// Rewind: hold Left Arrow / A to reverse time, up to 10 seconds at ~30 fps.
+// Snapshots capture the full world state; popping them restores it.
+const REWIND_SECONDS = 10;
+const REWIND_FPS = 30;
+const REWIND_STEP = 1 / REWIND_FPS;
+const REWIND_MAX_FRAMES = REWIND_SECONDS * REWIND_FPS;
+// Rewind plays back at 2× speed: pop 2 snapshots per normal frame.
+const REWIND_SPEED = 2;
+// Cooldown after release: rewind continues decelerating for this many seconds
+// so the animation winds down in step with the tape-stop audio (~1.0s).
+const REWIND_COOLDOWN = 0.55;
+// Seconds after a rewind before another can be triggered.
+const REWIND_LOCKOUT = 3.0;
+
 // Floatie stack anchor: above the standing hero's head with clearance, below
 // the speech bubble's reach — risen text fades out before ~y 90. The camera put
 // that head at y 184 (24 drawn px at the resting zoom, off a groundline pinned
@@ -56,22 +71,6 @@ const ACT_BANNER_FADE = 0.3;
 // the lowest one reaches it.
 const FLOAT_BASE_Y = 128;
 
-// Touch control geometry. 44 logical px across: the screen fits its 480-wide
-// backbuffer to a phone by height, so a landscape iPhone renders roughly 1.4
-// CSS px per logical px and this lands near 60 CSS px — comfortably past the
-// ~44 CSS px minimum a thumb needs, without three dinner plates on a 270-tall
-// play field.
-const TOUCH_D = 44;
-// The play pair sits above the bottom edge instead of occupying it. That gives
-// the action room to breathe above the phone's home-indicator territory and
-// leaves the lower scenery readable behind translucent controls.
-const TOUCH_PLAY_Y = H - 84;
-// PAUSE hangs below the objective panels rather than beside them: GOAL sits at
-// y 7 and BONUS below it ends at y 37, so this clears the pair with air to
-// spare. Fixed, not measured off whichever panels happen to be showing — a
-// control that moves when the mission changes is a control you have to look
-// for, and OVERTIME (no BONUS line) would shift it every run.
-const PAUSE_BTN_Y = 43;
 // The paused screen's two ways out, as tappable plates. Wide and worded rather
 // than round and glyphed: these are read once and pressed once, which is the
 // opposite of the play controls, and CONTINUE/EXIT are not symbols anyone
@@ -121,6 +120,37 @@ const INTRO_RUN_EXP = 1.8;
 // objective armed it with the pole already part of the way in.
 const FINISH_LINE_X = VIEW_W - 32;
 
+// --- THE FLIP --------------------------------------------------------------
+// The stage's last input, and the only one that is pure expression. The hero
+// reaches the breaker under his own power whatever the player does, so a missed
+// flip is a CLUNK worth nothing and the stage still clears. Nothing that arrives
+// AFTER the mission is already satisfied gets to take the clear away — the
+// finish run only arms once missionSatisfied() is true, and a new fail state at
+// that exact moment would be the cruellest one in the game.
+//
+// Graded on contact HEIGHT rather than press timing. That reuses the jump the
+// player has held all stage instead of teaching a button at the last possible
+// moment, it stays legible with no meter on screen, and it rewards a player who
+// jumped early: player.update keeps running through the dash, so an arc begun
+// before the finish armed carries into the grade.
+//
+// Bands are fractions of the CURRENT hero's own peak, never pixels. Peak runs
+// 46px (B-33P, jumpMult 0.9) through 57px (most of the cast) to 75px (Lorenzo,
+// 1.15), and higher again off Mochi's second jump — a fixed pixel band would
+// hand PERFECT to Lorenzo for free and put it permanently out of B-33P's reach.
+const FLIP_BANDS = [
+  { id: 'perfect', at: 0.70, label: 'PERFECT FLIP', bonus: 300, hold: 0.9, shake: 6 },
+  { id: 'clean',   at: 0.35, label: 'CLEAN FLIP',   bonus: 150, hold: 0.6, shake: 4 },
+  { id: 'flip',    at: 0,    label: 'FLIP',         bonus: 60,  hold: 0.45, shake: 3 },
+];
+// Reached on the ground: he shoulders it over. Still a clear, still a beat.
+const FLIP_CLUNK = { id: 'clunk', label: 'CLUNK', bonus: 0, hold: 0.35, shake: 2 };
+const FLIP_THROW = 0.18;   // seconds the lever takes to swing through its arc
+// The verdict card rides higher than the run's usual chatter row: it is printed
+// with the hero standing at the pole, and the pole's own signage occupies the
+// standard row at exactly that column.
+const FLIP_CARD_Y = 92;
+
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
   constructor(opts) {
@@ -143,7 +173,19 @@ export class RunState {
     // not silently drop them and turn a crash test back into a lethal run.
     this.devInvuln = !!opts.devInvuln;
     this.devForceMission = !!opts.devForceMission;
+    this.devAutoExit = !!opts.devAutoExit;
+    this.devMaxTime = opts.devMaxTime || 0; // seconds; 0 = no limit
+    this.devRunTime = 0;                     // elapsed wall-clock seconds
+    this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
     this.devHits = [];
+    // Rewind: rolling snapshot buffer + capture timer.
+    this.rewindFrames = [];
+    this.rewindCaptureT = 0;
+    this.rewinding = false;
+    this.rewindCooldown = 0;
+    this.rewindLockout = 0;
+    this.rewindSpeedMul = 1;
+    this.rewindFx = new TapeRewindEffect();
   }
 
   groundYAt(worldX) {
@@ -227,6 +269,7 @@ export class RunState {
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
+    this.flip = null;           // graded at the breaker; null until contact
     // Off-screen entrance. Defaulted here to the resting anchor so a restart or
     // any early position read is safe; the opener below arms the actual run-in.
     this.introRunning = false;
@@ -319,6 +362,20 @@ export class RunState {
     this.distance = 0;
     this.totalDist = this.overtime ? Infinity : duration * this.baseSpeed() * 1.05;
 
+    // ?startAt=N — skip to N% through the stage (dev builds only).
+    // Must run before the spawner is created so it pre-fills the right region.
+    if (this.devStartPercent > 0 && Number.isFinite(this.totalDist)) {
+      this.distance = this.totalDist * this.devStartPercent;
+      this.camX = this.distance;
+      // Skip the entrance fanfare — the hero starts planted at the anchor.
+      this.introRunning = false;
+      this.introRunX = PLAYER_X;
+      this.introFreeze = 0;
+      this.introText = null;
+      this.introSpeech = null;
+      this.speech = null;
+    }
+
     const react = (this.unplugged || this.corrupted.includes('maxspeed')) ? REACT_FLOOR_MAX : REACT_FLOOR;
     this.spawner = new Spawner({
       cabinet: this.cabinet,
@@ -345,6 +402,19 @@ export class RunState {
     this.checkpointHit = [];
     this.snapshot = null;
 
+    // ?startAt=N — pre-fill the world so the camera doesn't start in empty space,
+    // and mark any checkpoints behind us as already reached.
+    if (this.devStartPercent > 0 && Number.isFinite(this.totalDist)) {
+      const startSp = this.baseSpeed();
+      const hero = HERO_BY_ID[this.relay.current];
+      this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
+      this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
+      this.drip.update(0, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery());
+      for (let i = 0; i < this.checkpoints.length; i++) {
+        if (this.distance >= this.checkpoints[i]) this.checkpointHit[i] = true;
+      }
+    }
+
     this.styleName = this.corrupted.length ? 'pixel' : this.cabinet.style;
     this.style = getStylePack(this.styleName, this.save.settings);
     this.mirror = this.corrupted.includes('mirror');
@@ -354,6 +424,13 @@ export class RunState {
     this.invActive = false;
     this.lastCoinSprayT = -1;
     Audio.setInvincible(false);
+    this.rewindFrames = [];
+    this.rewindCaptureT = 0;
+    this.rewinding = false;
+    this.rewindCooldown = 0;
+    this.rewindLockout = 0;
+    this.rewindSpeedMul = 1;
+    this.rewindFx = new TapeRewindEffect();
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
@@ -439,14 +516,7 @@ export class RunState {
       return;
     }
     Input.setChromeButtons([]);
-    // Three discs, one style, one painter (drawRoundButton). JUMP and USE sit
-    // above the lower corners so they remain present but visually recess into
-    // the play field; PAUSE stays anchored beneath the objective panels.
-    Input.setButtons([
-      { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
-      { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
-      { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
-    ]);
+    Input.setButtons(playButtons());
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -550,6 +620,7 @@ export class RunState {
 
   baseSpeed() {
     return BASE_SPEED * (1 + (this.cabinet.speedBonus || 0)) *
+      (this.stage?.speedMult ?? 1) *
       (this.corrupted.includes('maxspeed') ? 1.35 : 1) *
       (this.save.settings.assistSpeed / 100);
   }
@@ -573,6 +644,14 @@ export class RunState {
     if (this.finaleT != null) {
       this.finaleT -= dt;
       updateShake(dt, () => this.fxRng.float());
+      // The hold is a beat, not a freeze-frame. It used to be 0.25s, short
+      // enough that a parked particle field read as a held pose; the flip
+      // stretches it to as much as 1.15s, and a second of motionless sparks off
+      // a lever that never finishes swinging reads as a hang. So the two things
+      // that are still playing get their time: the throw and its debris.
+      if (this.flip) this.flip.t += dt;
+      updateParticles(dt);
+      for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
       if (this.finaleT <= 0) this.endRun(true);
       Input.endFrame(); return;
     }
@@ -584,6 +663,12 @@ export class RunState {
     // a frozen camera. The final stretch is live — it has to be survivable AND
     // losable.
     if (this.finishing && !this.dead) { this.updateFinish(dt); Input.endFrame(); return; }
+    // Dev: auto-finish after a time cap. Measured while the run is live (not
+    // paused, dead, or on the finish tape).
+    if (this.devMaxTime > 0 && !this.dead && !this.finishing) {
+      this.devRunTime += dt;
+      if (this.devRunTime >= this.devMaxTime) { this.endRun(true, 'TIME CAP'); Input.endFrame(); return; }
+    }
     // First touch mid-run, or a rotation that flips which margin (if any) has
     // room for chrome buttons — either needs the button set rebuilt.
     if (Input.usingTouch !== this.touchButtons || chromeGeo.mode !== this.chromeMode) this.setButtons();
@@ -644,6 +729,62 @@ export class RunState {
     if (this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
 
+    // Rewind: hold Left Arrow / A to reverse time. On release, a cooldown
+    // ramps forward speed from ~0 back to normal so the character's walk
+    // cycle starts slow and accelerates — in step with the tape-stop audio.
+
+    if (Input.held('left') && this.rewindFrames.length > 0 && this.rewindLockout <= 0) {
+      // Arm on first frame of hold (or if re-pressing during cooldown).
+      if (!this.rewinding || this.rewindCooldown > 0) { Audio.setRewinding(true); this.rewindFx.start(); }
+      this.rewinding = true;
+      this.rewindCooldown = 0;
+      this.rewindSpeedMul = 1; // not used during hold (we return early)
+      // Pop at full rewind speed.
+      const toPop = Math.min(REWIND_SPEED, this.rewindFrames.length);
+      for (let i = 0; i < toPop; i++) {
+        const snap = this.rewindFrames.pop();
+        if (i === toPop - 1) this.restoreRewindSnapshot(snap);
+      }
+      this.rewindCaptureT = 0;
+      this.rewindFx.tick(dt);
+      Input.endFrame();
+      return;
+    }
+
+    // Release edge: arm the cooldown. Save the capture position now so the
+    // tape-stop reads the audio that was playing right at the moment of release
+    // (music + reversed SFX at full volume), not silent pre-rewind audio.
+    if (this.rewinding && this.rewindCooldown <= 0) {
+      this.rewindCooldown = REWIND_COOLDOWN;
+      Audio.setRewindPos();   // snapshot capture cursor for tape-stop
+      Audio.setRewinding(false);
+      this.rewindFx.stop();
+    }
+
+    // Cooldown: let forward simulation run with a ramping speed multiplier.
+    // The squared curve (starts slow, accelerates) matches the tape-stop
+    // audio envelope so the walk cycle and camera move in step with the sound.
+    if (this.rewindCooldown > 0) {
+      this.rewindCooldown = Math.max(0, this.rewindCooldown - dt);
+      const t = 1 - this.rewindCooldown / REWIND_COOLDOWN; // 0→1
+      this.rewindSpeedMul = t * t; // squared: slow start, fast finish
+      if (this.rewindCooldown <= 0) {
+        this.rewinding = false;
+        this.rewindSpeedMul = 1;
+        this.rewindLockout = REWIND_LOCKOUT;
+      }
+      this.rewindFx.tick(dt);
+      // Fall through — forward simulation runs with scaled speed.
+    } else {
+      this.rewindSpeedMul = 1;
+    }
+
+    // Done. Reset.
+    this.rewinding = false;
+    this.rewindCooldown = 0;
+    if (this.rewindLockout > 0) this.rewindLockout -= dt;
+    if (this.rewindFx.visible) this.rewindFx.tick(dt);
+
     // Invincibility winds tempo and pitch up a whole tone together, where the
     // pitch shift is the point.
     const star = this.powerups.isInvincible() ? 1.08 : 1;
@@ -658,7 +799,7 @@ export class RunState {
     const hero = HERO_BY_ID[this.relay.current];
 
     // Movement / camera.
-    const sp = this.speed;
+    const sp = this.speed * this.rewindSpeedMul;
     this.camX += sp * wdt;
     this.distance = this.camX;
     this.updateCamera(wdt);
@@ -736,6 +877,9 @@ export class RunState {
       this.failDetail = this.missionShortfall();
       this.endRun(false, 'MISSION INCOMPLETE');
     }
+    // Record a snapshot on the fixed cadence for rewind. Do this after all
+    // forward simulation so the snapshot captures the frame's output state.
+    this.recordRewindFrame(dt);
     Input.endFrame();
   }
 
@@ -885,18 +1029,63 @@ export class RunState {
     if (this.dead) return;
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
-    if (this.finishPlayerX + 6 >= this.finishScreenX()) {
+    if (!this.flip && this.finishPlayerX + 6 >= this.finishScreenX()) {
       // The frozen camera is deliberately short of the goal; the hero's
       // screen-space run completes the remaining distance.
       this.distance = this.totalDist;
       if (this.demo) { this.endRun(true); return; } // attract clips stay snappy
       // A beat on the finish frame, then results. Transient chatter would
-      // clutter the held frame — clear it.
+      // clutter the held frame — clear it. The flip's own card is written
+      // after the clear, so it survives into the held frame as the only thing
+      // on it.
       this.speech = null;
       this.speechQueue = [];
       this.floaties = [];
-      this.finaleT = FINALE_HOLD;
+      this.resolveFlip();
+      this.finaleT = FINALE_HOLD + this.flip.band.hold;
     }
+    // Post-contact: the hold is running, the lever is swinging. Nothing else
+    // to simulate — update()'s finaleT branch owns the frame from here.
+  }
+
+  // The stage's last input, graded. Called on the frame the hero reaches the
+  // breaker: whatever height he happens to be at IS the answer, so there is no
+  // window to open, no prompt to miss, and no way to be caught out by a press
+  // that came a frame late.
+  //
+  // Deliberately has no failure branch. `band` always resolves — grounded falls
+  // to CLUNK, and the bands end at 0 so any airtime at all scores. The return
+  // value feeds two things beyond the score: the lever's swing (drawn from
+  // flip.t) and, once the power-restore payoff lands, how far back up the strip
+  // the lights come on. Both read `this.flip`, so grading stays in one place.
+  resolveFlip() {
+    const hero = HERO_BY_ID[this.relay.current];
+    const peak = jumpHeightFor(hero);
+    // Grounded is its own answer, not a low fraction: he never left the floor.
+    const frac = this.player.grounded ? -1 : this.player.y / peak;
+    const band = this.player.grounded
+      ? FLIP_CLUNK
+      : (FLIP_BANDS.find((b) => frac >= b.at) || FLIP_CLUNK);
+    // Same multiplier stack the run's own accrual uses, so Grumpos' +20% and a
+    // live Star both count on the last points of the stage exactly as they
+    // counted on the first.
+    const sMult = hero.scoreMult * this.powerups.scoreMult() * (this.modIds.includes('crayon') ? 0.95 : 1);
+    const points = Math.round(band.bonus * sMult);
+    this.score += points;
+    this.flip = { band, id: band.id, frac: Math.max(0, frac), points, t: 0 };
+
+    const lx = this.finishWorldX();
+    const ly = this.groundYAt(lx);
+    shake(band.shake, 0.25);
+    if (band.id === 'clunk') {
+      Audio.sfx('contact');
+      burst(lx + 12, ly - 24, 6, 40, 0.35, '#8a99a8', 1, 90, () => this.fxRng.float());
+    } else {
+      Audio.sfx(band.id === 'perfect' ? 'perfect' : 'power');
+      burst(lx + 12, ly - 24, band.id === 'perfect' ? 26 : 14, 110, 0.6, '#f6d33c', 2, 80, () => this.fxRng.float());
+    }
+    this.floatText(points ? `${band.label}  +${points}` : band.label,
+      band.id === 'clunk' ? '#8a99a8' : '#f6d33c', { base: FLIP_CARD_Y });
   }
 
   // ------------------------------------------------------------------ ability
@@ -929,7 +1118,11 @@ export class RunState {
       shake(3, 0.2);
       this.floatText(hero.ability.label, '#f6d33c');
     }
-    this.player.abilityCd = hero.ability.cooldown * cdMult;
+    // Lorenzo's grounded flurry defers the cooldown until the swings stop
+    // (on contact or timeout). Everything else starts the cooldown now.
+    if (!(type === 'stomp' && !charged && this.player.grounded)) {
+      this.player.abilityCd = hero.ability.cooldown * cdMult;
+    }
     this.player.powerType = type;
     // Eating needs the full gape/hold/snap bite cycle (~0.4s) to read as a
     // bite rather than a twitch — see poseFromPlayer's EAT_POWER_POSE_T.
@@ -946,16 +1139,28 @@ export class RunState {
         Audio.sfx('crunch');
         burst(px + 60, GROUND_Y - 40, 40, 120, 0.8, '#f6d33c', 2, 100, () => this.fxRng.float());
       } else if (this.player.grounded) {
+        // Flurry: Lorenzo swings the spanner repeatedly until he connects,
+        // or for a short window. Cooldown starts when the flurry ends.
         const px = this.playerWorldX();
         const target = this.powerTarget(type);
+        this.player.spannerFlurryT = charged ? 3.5 : 1.75;
+        this.player.spannerFlurryHitIds = new Set();
+        this.player.spannerFlurryCd = hero.ability.cooldown * cdMult;
         if (target) {
+          this.player.spannerFlurryHitIds.add(target.id);
           this.projectileImpact({ type: 'spanner' }, target.x + target.w / 2,
             this.groundYAt(target.x) - target.alt - target.h / 2);
           this.breakObstacle(target);
+          // Connected on the first swing — flurry ends, cooldown starts.
+          this.player.spannerFlurryT = 0;
+          this.player.spannerFlurryHitIds = null;
+          this.player.abilityCd = this.player.spannerFlurryCd;
+          this.player.spannerFlurryCd = 0;
         }
+        this.player.powerPoseT = 0.3; // first swing starts immediately
         Audio.sfx('crunch');
         shake(2, 0.12);
-        this.floatText(target ? 'WRENCH SMASH' : 'CLANG', '#f6d33c');
+        this.floatText(target ? 'WRENCH SMASH' : 'WRENCH FLURRY', '#f6d33c');
       } else {
         this.player.stomping = true;
         this.player.vy = Math.min(this.player.vy, -180);
@@ -1025,7 +1230,7 @@ export class RunState {
       Audio.sfx('launch', { hero: 'raymn', pitch: 1 });
       this.player.fistThrown = true;
       // Charged: the fist keeps going instead of turning back at the first hit.
-      this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set() });
+      this.projectiles.push({ type: 'fist', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 320 : 210), t: 0, live: true, returning: false, pierce: charged, hitIds: new Set(), hover: false, hoverT: 0 });
     } else if (type === 'axe') {
       Audio.sfx('launch', { hero: 'grumpos', pitch: 0.9 });
       this.player.axeThrown = true;
@@ -1409,22 +1614,27 @@ export class RunState {
       if (!pr.live) continue;
       if (pr.type === 'axe' || pr.type === 'fist') {
         pr.t += dt;
+        const hoverAlt = 48; // well above any hero or obstacle — clearly spent
         if (pr.type === 'fist') {
-          if (!pr.returning && pr.t > 0.42) pr.returning = true;
+          if (!pr.returning && !pr.hover && pr.t > 0.42) { pr.hover = true; pr.hoverX = pr.x; }
         } else {
-          // Axe: hover ahead of Grumpos while the special recharges, spinning
-          // the whole time, then fly back when the cooldown resets.
-          if (!pr.returning && !pr.hover && pr.t > 0.55) pr.hover = true;
-          if (pr.hover && !pr.returning) {
-            pr.hoverT += dt;
-            // Track Grumpos: stay a screen-position ahead so the spinning
-            // axe is always visible while he runs.
-            pr.x = this.playerWorldX() + 52;
-            if (this.player.abilityCd <= 0) pr.returning = true;
-            continue; // don't move under its own velocity this frame
-          }
+          if (!pr.returning && !pr.hover && pr.t > 0.55) { pr.hover = true; pr.hoverX = pr.x; }
+        }
+        if (pr.hover && !pr.returning) {
+          pr.hoverT += dt;
+          // Rise up out of the combat lane so it is clear the weapon is spent.
+          pr.alt += (hoverAlt - pr.alt) * Math.min(1, dt * 6);
+          // Stay where the weapon landed — a miss stays where it missed.
+          pr.x = pr.hoverX;
+          if (this.player.abilityCd <= 0) pr.returning = true;
+          continue; // don't move under its own velocity this frame
         }
         pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 240 : 300)) : pr.vx) * dt;
+        if (pr.returning) {
+          // Lower back toward the catch height as it flies home.
+          const catchAlt = this.player.y + 10;
+          pr.alt += (catchAlt - pr.alt) * Math.min(1, dt * 7);
+        }
         if (pr.returning && pr.x < this.playerWorldX()) {
           pr.live = false;
           if (pr.type === 'fist') this.player.fistThrown = false;
@@ -1463,14 +1673,13 @@ export class RunState {
             const iy = (Math.max(box.y, pbox.y) + Math.min(box.y + box.h, pbox.y + pbox.h)) / 2;
             this.projectileImpact(pr, ix, iy);
             if (ob.def.breakable === false) {
-              if (pr.type === 'axe') pr.hover = true;
-              else if (pr.type === 'fist') pr.returning = true;
+              if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
               else pr.live = false;
               continue;
             }
             this.breakObstacle(ob);
-            if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) pr.hover = true; }
-            else if (pr.type === 'fist' && !pr.pierce) pr.returning = true;
+            if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) { pr.hover = true; pr.hoverX = pr.x; } }
+            else if (pr.type === 'fist' && !pr.pierce) { pr.hover = true; pr.hoverX = pr.x; }
             else if (!pr.pierce) pr.live = false;
           }
         }
@@ -1504,9 +1713,12 @@ export class RunState {
     }
     if (!this.projectiles.some((p) => p.live && p.type === 'fist')) this.player.fistThrown = false;
     if (!this.projectiles.some((p) => p.live && p.type === 'axe')) this.player.axeThrown = false;
-    // A hovering axe belongs to Grumpos — another hero cannot catch it.
+    // A hovering weapon belongs to its thrower — another hero cannot catch it.
     if (this.relay.current !== 'grumpos') {
       for (const pr of this.projectiles) { if (pr.type === 'axe') pr.live = false; }
+    }
+    if (this.relay.current !== 'raymn') {
+      for (const pr of this.projectiles) { if (pr.type === 'fist') pr.live = false; }
     }
     this.projectiles = this.projectiles.filter((p) => p.live);
   }
@@ -1631,7 +1843,7 @@ export class RunState {
     // are satisfied by surviving to the socket, which is the run ending anyway.
     if (this.mission.n && !this.goalSeen.mission && this.missionSatisfied()) {
       this.goalSeen.mission = true;
-      this.goalToast('GOAL MET. GET TO THE BREAKER.');
+      this.goalToast('GOAL MET. GO FLIP THE BREAKER.');
     }
   }
 
@@ -1730,10 +1942,234 @@ export class RunState {
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
+    this.flip = null;
     this.dead = false;
-    this.player.iframes = 1.5;
+    this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
     clearParticles();
+  }
+
+  // ------------------------------------------------------------------ rewind
+  // Record a snapshot on the fixed cadence during normal forward play.
+  // After recording, discard the oldest if the buffer is full.
+  recordRewindFrame(dt) {
+    this.rewindCaptureT += dt;
+    if (this.rewindCaptureT < REWIND_STEP) return;
+    this.rewindCaptureT -= REWIND_STEP;
+    this.rewindFrames.push(this.makeRewindSnapshot());
+    if (this.rewindFrames.length > REWIND_MAX_FRAMES) this.rewindFrames.shift();
+  }
+
+  // Deep-snapshot everything the rewind needs to restore: camera, player,
+  // relay, world entities, spawners, powerups, RNG streams, mission state.
+  makeRewindSnapshot() {
+    // Clone world entities, preserving def references.
+    const cloneObs = (arr) => arr.filter((e) => e.live).map((e) => {
+      const c = { ...e };
+      if (c.hitIds) c.hitIds = new Set(c.hitIds);
+      if (c.rollContactIds) c.rollContactIds = new Set(c.rollContactIds);
+      return c;
+    });
+    const cloneProj = (arr) => arr.filter((p) => p.live).map((p) => {
+      const c = { ...p };
+      if (c.hitIds) c.hitIds = new Set(c.hitIds);
+      return c;
+    });
+
+    // Clone powerup active state.
+    const activeClone = {};
+    for (const [id, a] of Object.entries(this.powerups.active)) {
+      activeClone[id] = { ...a };
+    }
+
+    // Player mutable state snapshot.
+    const p = this.player;
+    const ps = {
+      heroId: p.heroId, y: p.y, vy: p.vy, jumps: p.jumps,
+      powerJumpBonus: p.powerJumpBonus, ducking: p.ducking, duckAmount: p.duckAmount,
+      duckDirection: p.duckDirection, floating: p.floating,
+      iframes: p.iframes, anim: p.anim,
+      stomping: p.stomping, dashT: p.dashT, rollT: p.rollT,
+      compressT: p.compressT, stumbleT: p.stumbleT,
+      rollBashed: p.rollBashed, rollDeflectUsed: p.rollDeflectUsed,
+      rollPlows: p.rollPlows, deflectFlashT: p.deflectFlashT,
+      powerPoseT: p.powerPoseT, powerType: p.powerType,
+      spannerFlurryT: p.spannerFlurryT, spannerFlurryCd: p.spannerFlurryCd,
+      spannerFlurryHitIds: p.spannerFlurryHitIds ? new Set(p.spannerFlurryHitIds) : null,
+      relayCharge: p.relayCharge, chargeFlashT: p.chargeFlashT,
+      fistThrown: p.fistThrown, axeThrown: p.axeThrown,
+      headless: p.headless, assemblyGraceUsed: p.assemblyGraceUsed,
+      hazardEaten: p.hazardEaten, grounded: p.grounded,
+      slideT: p.slideT, landedT: p.landedT,
+      abilityCooldowns: { ...p.abilityCooldowns }, abilityCd: p.abilityCd,
+      rollContactIds: p.rollContactIds ? new Set(p.rollContactIds) : null,
+    };
+
+    return {
+      // Camera & run
+      camX: this.camX, camZoom: this.camZoom, camPan: this.camPan,
+      distance: this.distance, tRun: this.tRun, score: this.score, coins: this.coins,
+      battery: this.battery, damageTaken: this.damageTaken, speedBoost: this.speedBoost,
+      coinCombo: this.coinCombo, coinComboT: this.coinComboT,
+      powerupsCollected: this.powerupsCollected,
+      hintT: this.hintT, bonusT: this.bonusT,
+      // Player
+      player: ps,
+      // Relay
+      relayCurrent: this.relay.current, relayNext: this.relay.next,
+      relayBag: this.relay.bag.slice(),
+      relaySpawned: this.relay.spawned, relayElapsed: this.relay.elapsed,
+      relayTimer: this.relay.portalTimer, relayEvery: this.relay.portalEvery,
+      relayLastTagLine: this.relay.lastTagLine, relayLastTagLineT: this.relay.lastTagLineT,
+      // Powerups
+      shieldStack: this.powerups.shieldStack,
+      activePowerups: activeClone,
+      // World entities
+      obstacles: cloneObs(this.obstacles),
+      pickups: this.pickups.filter((p) => p.live).map((p) => ({ ...p })),
+      projectiles: cloneProj(this.projectiles),
+      chompBites: this.chompBites.map((b) => ({ ...b })),
+      portal: this.portal ? { ...this.portal } : null,
+      copter: this.copter ? { ...this.copter } : null,
+      // Spawners
+      spawnerNextX: this.spawner.nextX,
+      spawnerLastPatternIdx: this.spawner.lastPatternIdx,
+      spawnerLastActionX: this.spawner.lastActionX,
+      spawnerLastActionKind: this.spawner.lastActionKind,
+      dripCapsuleTimer: this.drip.capsuleTimer,
+      dripBatteryTimer: this.drip.batteryTimer,
+      // RNG streams (state is just the internal counter)
+      rngFx: this.fxRng.state,
+      rngSpeech: this.speechRng.state,
+      rngRelay: this.relay.rng.state,
+      rngSpawn: this.spawner.rng.state,
+      rngDrip: this.drip.rng.state,
+      // Mission / challenge
+      mission: JSON.parse(JSON.stringify(this.mission)),
+      challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
+      applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
+      fuseHeld: this.fuseHeld,
+      escapeWall: this.escapeWall,
+      // Misc
+      finishing: this.finishing, finishT: this.finishT, finishPlayerX: this.finishPlayerX,
+      flip: this.flip ? { ...this.flip } : null,
+      usedHeroes: new Set(this.usedHeroes),
+      exitSpoken: new Set(this.exitSpoken),
+      checkpointHit: this.checkpointHit.slice(),
+      snapshot: null, // death checkpoint not carried across rewind
+    };
+  }
+
+  // Restore the world from a rewind snapshot. Operates in-place on existing
+  // objects where possible (player, relay, spawners, RNGs) to avoid breaking
+  // references held elsewhere.
+  restoreRewindSnapshot(s) {
+    // Camera & run
+    this.camX = s.camX; this.camZoom = s.camZoom; this.camPan = s.camPan;
+    this.distance = s.distance; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
+    this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost;
+    this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
+    this.powerupsCollected = s.powerupsCollected;
+    this.hintT = s.hintT; this.bonusT = s.bonusT;
+
+    // Player: restore mutable fields in-place.
+    const p = this.player;
+    const ps = s.player;
+    // If the hero changed during the recorded window, setHero to swap rig.
+    if (p.heroId !== ps.heroId) p.setHero(ps.heroId);
+    p.y = ps.y; p.vy = ps.vy; p.jumps = ps.jumps;
+    p.powerJumpBonus = ps.powerJumpBonus; p.ducking = ps.ducking;
+    p.duckAmount = ps.duckAmount; p.duckDirection = ps.duckDirection;
+    p.floating = ps.floating; p.iframes = ps.iframes; p.anim = ps.anim;
+    p.stomping = ps.stomping; p.dashT = ps.dashT; p.rollT = ps.rollT;
+    p.compressT = ps.compressT; p.stumbleT = ps.stumbleT;
+    p.rollBashed = ps.rollBashed; p.rollDeflectUsed = ps.rollDeflectUsed;
+    p.rollPlows = ps.rollPlows; p.deflectFlashT = ps.deflectFlashT;
+    p.powerPoseT = ps.powerPoseT; p.powerType = ps.powerType;
+    p.spannerFlurryT = ps.spannerFlurryT; p.spannerFlurryCd = ps.spannerFlurryCd;
+    p.spannerFlurryHitIds = ps.spannerFlurryHitIds ? new Set(ps.spannerFlurryHitIds) : null;
+    p.relayCharge = ps.relayCharge; p.chargeFlashT = ps.chargeFlashT;
+    p.fistThrown = ps.fistThrown; p.axeThrown = ps.axeThrown;
+    p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
+    p.hazardEaten = ps.hazardEaten; p.grounded = ps.grounded;
+    p.slideT = ps.slideT; p.landedT = ps.landedT;
+    p.abilityCooldowns = { ...ps.abilityCooldowns };
+    if (ps.rollContactIds != null) p.rollContactIds = new Set(ps.rollContactIds);
+
+    // Relay
+    this.relay.current = s.relayCurrent;
+    this.relay.next = s.relayNext;
+    this.relay.bag = s.relayBag.slice();
+    this.relay.spawned = s.relaySpawned;
+    this.relay.elapsed = s.relayElapsed;
+    this.relay.portalTimer = s.relayTimer;
+    this.relay.portalEvery = s.relayEvery;
+    this.relay.lastTagLine = s.relayLastTagLine;
+    this.relay.lastTagLineT = s.relayLastTagLineT;
+
+    // Powerups
+    this.powerups.shieldStack = s.shieldStack;
+    this.powerups.active = {};
+    for (const [id, a] of Object.entries(s.activePowerups)) {
+      this.powerups.active[id] = { ...a };
+    }
+
+    // World entities: deep-restore preserving def references.
+    this.obstacles = s.obstacles.map((e) => {
+      const c = { ...e };
+      if (c.hitIds) c.hitIds = new Set(c.hitIds);
+      if (c.rollContactIds) c.rollContactIds = new Set(c.rollContactIds);
+      return c;
+    });
+    this.pickups = s.pickups.map((p) => ({ ...p }));
+    this.projectiles = s.projectiles.map((p) => {
+      const c = { ...p };
+      if (c.hitIds) c.hitIds = new Set(c.hitIds);
+      return c;
+    });
+    this.chompBites = s.chompBites.map((b) => ({ ...b }));
+    this.portal = s.portal ? { ...s.portal } : null;
+    this.copter = s.copter ? { ...s.copter } : null;
+
+    // Spawners
+    this.spawner.nextX = s.spawnerNextX;
+    this.spawner.lastPatternIdx = s.spawnerLastPatternIdx;
+    this.spawner.lastActionX = s.spawnerLastActionX;
+    this.spawner.lastActionKind = s.spawnerLastActionKind;
+    this.drip.capsuleTimer = s.dripCapsuleTimer;
+    this.drip.batteryTimer = s.dripBatteryTimer;
+
+    // RNG streams: restore the internal counter so future draws continue from
+    // the historical point rather than the discarded future's state.
+    this.fxRng.state = s.rngFx;
+    this.speechRng.state = s.rngSpeech;
+    this.relay.rng.state = s.rngRelay;
+    this.spawner.rng.state = s.rngSpawn;
+    this.drip.rng.state = s.rngDrip;
+
+    // Mission / challenge
+    this.mission = JSON.parse(JSON.stringify(s.mission));
+    this.challenge = s.challenge ? JSON.parse(JSON.stringify(s.challenge)) : null;
+    this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
+    this.fuseHeld = s.fuseHeld;
+    this.escapeWall = s.escapeWall;
+
+    // Misc
+    this.finishing = s.finishing; this.finishT = s.finishT; this.finishPlayerX = s.finishPlayerX;
+    this.flip = s.flip ? { ...s.flip } : null;
+    this.usedHeroes = new Set(s.usedHeroes);
+    this.exitSpoken = new Set(s.exitSpoken);
+    this.checkpointHit = s.checkpointHit.slice();
+    this.snapshot = null;
+
+    // Clear transient visuals.
+    this.floaties = [];
+    this.speech = null;
+    this.speechQueue = [];
+    this.goalToasts = [];
+    clearParticles();
+    // On touch, rebuild the button set since the hero may have changed.
+    this.setButtons();
   }
 
   // ------------------------------------------------------------------ collision
@@ -1809,6 +2245,25 @@ export class RunState {
         this.player.vy = 200; this.player.grounded = false; this.player.jumps = 1;
         this.player.stomping = false;
         shake(2, 0.15);
+        continue;
+      }
+      // Lorenzo's spanner flurry: auto-smash the first breakable that enters
+      // melee range, then stop swinging. Cooldown starts on contact.
+      if (this.player.spannerFlurryT > 0 && ob.def.breakable && ob.def.ground
+          && !ob.def.isGap && !this.player.spannerFlurryHitIds.has(ob.id)) {
+        this.player.spannerFlurryHitIds.add(ob.id);
+        this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
+          this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+        this.breakObstacle(ob);
+        this.player.spannerFlurryT = 0;
+        this.player.spannerFlurryHitIds = null;
+        if (this.player.spannerFlurryCd > 0) {
+          this.player.abilityCd = this.player.spannerFlurryCd;
+          this.player.spannerFlurryCd = 0;
+        }
+        Audio.sfx('crunch');
+        shake(2, 0.12);
+        this.floatText('WRENCH SMASH', '#f6d33c');
         continue;
       }
       // Fernwick mastery: one breakable ground hazard ends the finite roll in
@@ -1947,7 +2402,7 @@ export class RunState {
     if (this.mission.type === 'fuse' && this.battery > 0) this.floatText('THE FUSE SURVIVED. BARELY. IT SAW EVERYTHING.', '#e04848', { solid: true });
     Audio.sfx('hit');
     shake(5, 0.3);
-    this.hitstop = 0.12;
+    this.hitstop = 0.08;
     // playerWorldX, not camX + PLAYER_X: on the finish run the hero is the thing
     // moving and the camera is the thing standing still, so the anchor has to be
     // the one that follows them across the screen.
@@ -2017,7 +2472,7 @@ export class RunState {
     this.player.vy -= this.gravityForDeath() * dt;
     this.player.y += this.player.vy * dt;
     this.updateCamera(dt);   // the death pop launches high; keep it in frame
-    if (this.deadT > 1.4) {
+    if (this.deadT > 0.5) {
       if (this.demo) {
         this.endRun(false); // demos die once and end — no checkpoint recovery
       } else if (this.snapshot && !this.oneHit) {
@@ -2039,6 +2494,7 @@ export class RunState {
     if (this.finished) return;
     this.finished = true;
     Audio.setDetune(1);
+    Audio.setRewinding(false);
     this.invActive = false;
     Audio.setInvincible(false);
     if (success && this.mission.type === 'rescue') {
@@ -2065,6 +2521,11 @@ export class RunState {
       distance: Math.floor(this.distance),
       time: this.tRun,
       powerupsCollected: this.powerupsCollected,
+      // How the stage was closed out. null on any exit that never reached the
+      // breaker (a fail, a quit, an attract clip), so the results screen can
+      // tell "clunked it" apart from "never got there".
+      flip: this.flip ? this.flip.id : null,
+      flipBonus: this.flip ? this.flip.points : 0,
     };
     this.o.onEnd(result);
   }
@@ -2078,16 +2539,157 @@ export class RunState {
   // every other ink in the set clears the contrast floor on the translucent
   // card, and handing solid cards out more widely would turn the run's chatter
   // into a stack of opaque plates over the art.
-  floatText(text, color, { solid = false } = {}) {
+  //
+  // `base` lifts a card off the standard row. Only the flip verdict uses it:
+  // that card prints while the hero is standing AT the breaker, so at the
+  // normal height it lands squarely on the pole's own signage — two plates,
+  // same pixels. Everything else keeps the shared row.
+  floatText(text, color, { solid = false, base = FLOAT_BASE_Y } = {}) {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
     // Newest lands at the base; if a recent one is still near it, slot in below
     // so simultaneous popups (pickup + power name) never overprint. The gap is
     // a full panel height now that each floatie carries its own card.
-    let y = FLOAT_BASE_Y;
+    let y = base;
     for (const f of this.floaties) if (f.y + 19 > y) y = f.y + 19;
     this.floaties.push({ text, color, t: readingTime, y, solid });
     if (this.floaties.length > 8) this.floaties.shift();
+  }
+
+  // The goal object, pulled out of draw() as its own method. That is deliberate
+  // and it is the seam the per-cabinet finishes want: the nine style packs
+  // already own bg/ground/post, so a `finish()` on the pack overrides this the
+  // same way every other per-cabinet visual is overridden, with the pole
+  // standing as the fallback for any pack that has not authored one yet.
+  drawFinishMarker(ctx, fx, gy, z) {
+    const flip = this.flip;
+    // Throw progress, smoothstepped. Runs once on contact and sticks at 1, so
+    // the lever holds its thrown pose for the rest of the held frame instead of
+    // snapping back while the results card comes up.
+    const thrown = flip ? Math.min(1, flip.t / FLIP_THROW) : 0;
+    const ease = thrown * thrown * (3 - 2 * thrown);
+    const live = !!flip && flip.band.bonus > 0;   // a clunk throws the lever but lights nothing
+
+    // Pole. Twelve segments, not ten: at 80px Lorenzo's 89px peak carried him
+    // clean off the top and into the HUD chips on a good flip, which reads as
+    // overshooting the goal rather than topping it out. 96 clears the tallest
+    // single jump in the cast, so a PERFECT always lands ON the pole. Mochi's
+    // second jump still goes over, which is Mochi being Mochi.
+    for (let i = 0; i < 12; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#f6d33c' : '#0b0b14';
+      ctx.fillRect(fx, gy - 96 + i * 8, 5, 8);
+    }
+
+    // Where PERFECT lives, marked in the only unit that matters: the height
+    // THIS hero can actually reach. The target sits at 32px under B-33P and
+    // 62px under Lorenzo, so it visibly moves with whoever is holding the
+    // baton — which is the rule teaching itself. You see it inside your own
+    // jump rather than being handed a number you would have to trust.
+    //
+    // A bracket in the sky BESIDE the pole, not a band painted on it. Painted
+    // on, it was pale yellow over a yellow-and-black checkered pole: invisible
+    // against the gold segments, muddy against the black, and it was the single
+    // most important thing the new verb had to say. Out here it has open sky
+    // behind it, on the side the hero is arriving from, and it carries its own
+    // dark backing so it survives the hills too.
+    //
+    // Only during the dash: on the approach it would be one more thing blinking
+    // over a stage that is still being played.
+    if (this.finishing && !flip) {
+      const peak = jumpHeightFor(HERO_BY_ID[this.relay.current]);
+      const top = Math.round(gy - peak);
+      const bot = Math.round(gy - peak * FLIP_BANDS[0].at);
+      const pulse = this.save.settings.reducedMotion ? 0.85 : 0.6 + 0.3 * Math.sin(this.tRun * 9);
+      // Stood off to fx-34 rather than tucked against the pole. The BREAKER and
+      // JUMP! plates hang off the box top and reach about 13px left of the
+      // pole, and a short hero's target sits at exactly that height — B-33P's
+      // bracket landed straight across both plates. Out here it clears them for
+      // the whole cast, and a tick at the band's midpoint keeps it tied to the
+      // pole so it still reads as a height rather than as loose furniture.
+      const mid = Math.round((top + bot) / 2);
+      const bracket = (col, o) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(fx - 34 + o, top + o, 15, 2);
+        ctx.fillRect(fx - 34 + o, bot - 2 + o, 15, 2);
+        ctx.fillRect(fx - 34 + o, top + o, 2, bot - top);
+        ctx.fillRect(fx - 20 + o, mid + o, 20, 1);
+      };
+      bracket('rgba(11,11,20,0.7)', 1);
+      bracket(`rgba(255,255,255,${pulse.toFixed(3)})`, 0);
+    }
+
+    // Box. It used to be one flat rectangle, which read as a doorway with a
+    // yellow plank taped across it — nothing said "electrical". A recessed
+    // housing, four corner bolts and a sunken slot for the lever to sit in cost
+    // eight fills and make it an object with fixtures instead of a shape.
+    ctx.fillStyle = '#232f3c';
+    ctx.fillRect(fx + 6, gy - 36, 20, 36);
+    ctx.fillStyle = '#3a4a5a';
+    ctx.fillRect(fx + 7, gy - 34, 18, 33);
+    ctx.fillStyle = '#4d6172';                       // top bevel, so it has a lid
+    ctx.fillRect(fx + 7, gy - 34, 18, 2);
+    ctx.fillStyle = '#1a2430';                       // the slot the lever throws in
+    ctx.fillRect(fx + 11, gy - 30, 10, 20);
+    ctx.fillStyle = '#5d7385';                       // bolts
+    for (const [bx, by] of [[8, -32], [23, -32], [8, -4], [23, -4]]) ctx.fillRect(fx + bx, gy + by, 2, 2);
+    // The lit face. Dead grey until the lever lands, then warm — this is the
+    // smallest possible version of the power-restore payoff, and the thing the
+    // full one scales up into: the same `live`/`ease` pair drives how far back
+    // up the strip the lights come on.
+    if (live) {
+      // The SLOT lights, and a rim runs round the face — not a gold repaint of
+      // the whole box. Flooding the face read as a second door rather than as
+      // something switching on, and the lever lost its silhouette against it.
+      // Lighting the recess the lever sits in puts the glow where the contact
+      // just happened.
+      ctx.fillStyle = `rgba(246,211,60,${(0.2 + 0.6 * ease).toFixed(3)})`;
+      ctx.fillRect(fx + 11, gy - 30, 10, 20);
+      ctx.fillStyle = `rgba(255,240,160,${(0.55 * ease).toFixed(3)})`;
+      ctx.fillRect(fx + 7, gy - 34, 18, 1);
+      ctx.fillRect(fx + 7, gy - 2, 18, 1);
+      ctx.fillRect(fx + 7, gy - 34, 1, 33);
+      ctx.fillRect(fx + 24, gy - 34, 1, 33);
+    }
+
+    // The lever. Rest is cocked up and back; the throw sweeps it forward
+    // through its pivot, which is what the hero's weight is doing to it.
+    // Pivoted at the centre of the slot so the whole sweep stays on the box
+    // face, and stubbier than it was — at 12px long and 4 wide it read as a
+    // plank leaning on a door rather than as a switch you throw.
+    ctx.save();
+    ctx.translate(fx + 16, gy - 20);
+    ctx.rotate(-0.9 + 1.8 * ease);
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(-3, -10, 6, 11);       // dark backing, so it reads against the lit slot
+    ctx.fillStyle = '#f6d33c';
+    ctx.fillRect(-2, -9, 4, 10);
+    ctx.fillStyle = '#fff0a0';
+    ctx.fillRect(-2, -9, 4, 3);         // the grip
+    ctx.restore();
+    ctx.fillStyle = '#5d7385';
+    ctx.fillRect(fx + 15, gy - 21, 2, 2);   // pivot pin
+
+    // Signage, drawn unscaled off the top of the BOX. Magnified with the
+    // world it read as a billboard, and hung off the pole instead it landed
+    // under the HUD — the pole now stands two thirds of the frame tall.
+    ctx.save();
+    ctx.translate(fx + 2, gy - 34);
+    ctx.scale(1 / z, 1 / z);
+    drawTextCentered(ctx, 'THE BREAKER', 0, -14, '#f6d33c', 1, 'ui', UI_PLATE);
+    // The call to act, on the object it acts on. The verb has no window and no
+    // penalty, so this is a nudge rather than a cue to hit — it says what the
+    // pole is for, and stops the moment the pole has been used.
+    //
+    // Steady, not blinking. The dash it lives on is about a second and a half;
+    // a blink spends a third of that switched off, and the two shots taken to
+    // check this prompt both caught it dark. It bobs instead, which reads as
+    // urgency without ever being absent, and needs no reduced-motion branch
+    // because there is nothing to miss if it holds still.
+    if (this.finishing && !flip) {
+      const bob = this.save.settings.reducedMotion ? 0 : Math.round(Math.sin(this.tRun * 9));
+      drawTextCentered(ctx, 'JUMP!', 0, -26 + bob, '#fff0a0', 1, 'ui', UI_PLATE);
+    }
+    ctx.restore();
   }
 
   // ------------------------------------------------------------------ draw
@@ -2163,20 +2765,30 @@ export class RunState {
         ctx.fillRect(x + 1, y + 1, 2, 2);
         if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
       } else if (pr.type === 'axe') {
+        ctx.save();
         if (pr.hover) {
+          ctx.globalAlpha = 0.42;
           // A faint ring around the spinning axe tells the player it is coming home soon.
-          ctx.save();
-          ctx.globalAlpha = 0.3 + 0.15 * Math.sin(pr.hoverT * 6);
           ctx.strokeStyle = '#ecc3a1';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(x + 4, y + 4, 10, 0, Math.PI * 2);
+          ctx.arc(x + 4, y + 4, 11, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.restore();
         }
         drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
+        ctx.restore();
       } else if (pr.type === 'fist') {
+        ctx.save();
+        if (pr.hover) {
+          ctx.globalAlpha = 0.42;
+          ctx.strokeStyle = '#f7bacc';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(x + 4, y + 2, 12, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
+        ctx.restore();
       } else {
         ctx.fillStyle = '#f6d33c'; ctx.beginPath(); ctx.arc(x + 3, y + 2, 3, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff0a0'; ctx.fillRect(x + 2, y, 2, 1);
@@ -2201,29 +2813,7 @@ export class RunState {
     // tape stays put across the frame the two swap over.
     if (!this.overtime && Number.isFinite(this.totalDist)) {
       const fx = Math.round(this.finishScreenX());
-      if (fx - PLAYER_X < 560) {
-        const finishGround = this.groundYAt(this.finishWorldX());
-        for (let i = 0; i < 10; i++) {
-          ctx.fillStyle = i % 2 === 0 ? '#f6d33c' : '#0b0b14';
-          ctx.fillRect(fx, finishGround - 80 + i * 8, 5, 8);
-        }
-        // the breaker box
-        ctx.fillStyle = '#3a4a5a';
-        ctx.fillRect(fx + 7, finishGround - 34, 18, 34);
-        ctx.fillStyle = '#f6d33c';
-        ctx.fillRect(fx + 13, finishGround - 28, 6, 10);
-        ctx.fillStyle = '#0b0b14';
-        ctx.fillRect(fx + 15, finishGround - 26, 2, 3);
-        ctx.fillRect(fx + 12, finishGround - 25, 2, 3);
-        // Signage, drawn unscaled off the top of the BOX. Magnified with the
-        // world it read as a billboard, and hung off the pole instead it landed
-        // under the HUD — the pole now stands two thirds of the frame tall.
-        ctx.save();
-        ctx.translate(fx + 2, finishGround - 34);
-        ctx.scale(1 / z, 1 / z);
-        drawTextCentered(ctx, 'THE BREAKER', 0, -14, '#f6d33c', 1, 'ui', UI_PLATE);
-        ctx.restore();
-      }
+      if (fx - PLAYER_X < 560) this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z);
       // No FINISH AHEAD blink before this. It sat centre-screen in the dialog
       // band for about two seconds, warning about a pole that arrives labelled
       // moments later — the HUD progress bar warms to gold across that same
@@ -2305,7 +2895,15 @@ export class RunState {
       // column here is their screen x — PLAYER_X is a world offset and would
       // leave every card behind them. Fade out at end of life so cards don't
       // blink off.
-      const heroX = PLAYER_X * z;
+      //
+      // heroScreenX(), not PLAYER_X: on the two scripted runs the hero LEAVES
+      // the resting column, and a constant anchor strands every card where he
+      // used to be. It showed up the moment the flip started printing its
+      // verdict on the finish dash — PERFECT FLIP landed 150px behind the hero,
+      // at the far side of the frame from the breaker it was describing. The
+      // blackout overlay below already reads the same accessor for the same
+      // reason.
+      const heroX = this.heroScreenX() * z;
       for (const f of this.floaties) {
         drawFloatie(d, f, {
           heroX,
@@ -2329,6 +2927,14 @@ export class RunState {
     };
     if (!pushOverlayDraw(drawUi)) drawUi(ctx);
     this.drawChromeButtons();
+
+    // Rewind VHS overlay: wave distortion, tracking bands, chromatic aberration,
+    // noise grain, colour shift, and OSD counter. Renders on the overlay layer
+    // so it covers the world and HUD but sits under pause/fail screens.
+    if (this.rewindFx.visible) {
+      const drawRewind = (d) => this.rewindFx.render(d, W, H);
+      if (!pushOverlayDraw(drawRewind)) this.rewindFx.render(ctx, W, H);
+    }
 
     // Queued behind drawUi rather than painted straight onto the backbuffer:
     // the HUD draws into the overlay layer, which composites ON TOP of ctx, so
@@ -2448,6 +3054,9 @@ export class RunState {
     });
   }
 
+  // VHS-style rewind overlay: scanlines, tracking noise bands, and chromatic
+  // fuzz. The alpha ramps with rewindT (0–1 over REWIND_FADE seconds) so the
+  // effect appears and disappears smoothly rather than blinking on/off.
   drawDebug(ctx) {
     // Hitboxes are world objects, so they need the camera to land on the things
     // they describe; the readout underneath is screen chrome.

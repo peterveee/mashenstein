@@ -20,7 +20,11 @@ const GUIDE_ICON_SIZES = {
   capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
 };
-import { DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES } from '../data/jokes.js';
+import {
+  DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
+  FINALE_THANKS_TITLE, FINALE_THANKS, FINALE_SIGNOFF,
+} from '../data/jokes.js';
+import { HEROES } from '../data/heroes.js';
 import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
@@ -1184,11 +1188,12 @@ function flickerBlock(t) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel }) {
+  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel, onTutorial }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
+    this.onTutorial = onTutorial;
   }
   enter() {
     this.singleToasterOpening = !titleToasterIntroSeen;
@@ -1307,6 +1312,7 @@ export class TitleState {
     // plays it for you.
     const anyFile = this.save.data.slots.some(Boolean);
     const choices = [{ label: 'HOW TO PLAY', act: () => this.onHowTo() }];
+    if (this.onTutorial) choices.push({ label: 'MANDATORY TRAINING', act: () => this.onTutorial() });
     // Until now the opening was reachable only by starting a brand new file —
     // so the one way to read it twice was to erase your progress.
     if (anyFile) choices.push({ label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
@@ -2589,6 +2595,21 @@ const FINALE_CODA_BAND = 40;
 const FINALE_CODA_DELAY = 1.4;
 const LAST_BEAT = FINALE_BEATS.length - 1;
 
+// The curtain call is a beat like the others — one more index past the written
+// ones — so skipping, the counter and the confirm contract all keep working
+// without a second state machine bolted on beside them.
+const CURTAIN = FINALE_BEATS.length;
+const CURTAIN_MARGIN = 12;      // the row is eight wide; it needs every pixel
+const CURTAIN_HERO_H = 44;
+const CURTAIN_HERO_FEET = 158;
+const CURTAIN_THANKS_TOP = 166;
+const CURTAIN_THANKS_BAND = 40;
+const CURTAIN_SIGNOFF_BAND = 28;
+const CURTAIN_SIGNOFF_DELAY = 1.1;
+// A player arrives here mid-mash, having just skipped the coda. Hold the button
+// off long enough that the bow is seen rather than clicked through blind.
+const CURTAIN_LOCK = 0.7;
+
 // THE ONE SCREEN THAT STILL TYPES A LETTER AT A TIME.
 //
 // The intro and the briefing gave the character crawl up for the line cascade
@@ -2608,6 +2629,11 @@ export class FinaleState {
   enter() {
     this.beat = 0; this.chars = 0; this.blocks = [];
     this.codaT = 0; this.codaChars = 0; this.coda = null;
+    this.t = 0;
+    this.curtainT = 0; this.bowT = 0;
+    this.signoffChars = 0; this.signoff = null; this.thanks = null;
+    this.streamerT = 0; this.popT = 0.35;
+    clearParticles();
     Input.setMenuButtons(); Audio.setBank(FINALE_THEME);
   }
   // Which band this beat's prose owns. Shared by block() and draw() so the
@@ -2632,8 +2658,69 @@ export class FinaleState {
     if (!this.coda) this.coda = fitProse(FINALE_CODA, W - 56, FINALE_CODA_BAND, [1.25, 1]);
     return this.coda;
   }
+  thanksBlock() {
+    if (!this.thanks) this.thanks = fitProse(FINALE_THANKS, W - 56, CURTAIN_THANKS_BAND);
+    return this.thanks;
+  }
+  signoffBlock() {
+    if (!this.signoff) this.signoff = fitProse(FINALE_SIGNOFF, W - 56, CURTAIN_SIGNOFF_BAND, [1.25, 1]);
+    return this.signoff;
+  }
+  // Confetti over the bow. Ribbons the whole time, pops on a loose timer — the
+  // same two layers the results screen throws, at about half its rate: this one
+  // has to sit under a sentence somebody is reading.
+  updateParty(dt) {
+    if (this.save.settings.reducedMotion) return;
+    this.streamerT -= dt;
+    if (this.streamerT <= 0) {
+      this.streamerT = 0.16 + Math.random() * 0.14;
+      spawnShard(
+        Math.random() * W, -6,
+        (Math.random() - 0.5) * 30, 24 + Math.random() * 30,
+        5, PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0],
+        2 + Math.random() * 2, 5 + Math.random() * 4,
+        (Math.random() - 0.5) * 9, 12,
+      );
+    }
+    this.popT -= dt;
+    if (this.popT <= 0) {
+      this.popT = 1.1 + Math.random() * 0.9;
+      const x = 60 + Math.random() * (W - 120);
+      const y = 60 + Math.random() * 50;
+      const color = PARTY_COLORS[(Math.random() * PARTY_COLORS.length) | 0];
+      burst(x, y, 22, 105, 1.3, color, 4, 26);
+      burst(x, y, 5, 38, 0.3, '#ffffff', 3, 16);
+      Audio.sfx('coin', { pitch: 0.9 + Math.random() * 0.35 });
+    }
+  }
+  // The bow types its thanks, waits, then files the fine print — the last beat's
+  // shape exactly, so the ending and its curtain call read as one gesture.
+  updateCurtain(dt) {
+    this.curtainT += dt;
+    this.chars += dt * 34;
+    const done = this.chars >= FINALE_THANKS.length;
+    if (done) {
+      this.bowT += dt;
+      if (this.bowT >= CURTAIN_SIGNOFF_DELAY) this.signoffChars += dt * 34;
+    }
+    this.updateParty(dt);
+    updateParticles(dt);
+    if (this.curtainT < CURTAIN_LOCK) return;
+    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
+      if (!done) this.chars = FINALE_THANKS.length;
+      else if (this.signoffChars < FINALE_SIGNOFF.length) {
+        this.bowT = CURTAIN_SIGNOFF_DELAY; this.signoffChars = FINALE_SIGNOFF.length;
+      } else {
+        this.beat++; Audio.sfx('uiConfirm');
+        clearParticles();
+        this.onDone();
+      }
+    }
+  }
   update(dt) {
-    if (this.beat >= FINALE_BEATS.length) { Input.endFrame(); return; }
+    this.t += dt;
+    if (this.beat > CURTAIN) { Input.endFrame(); return; }
+    if (this.beat === CURTAIN) { this.updateCurtain(dt); Input.endFrame(); return; }
     this.chars += dt * 34;
     const text = FINALE_BEATS[this.beat];
     const last = this.beat === LAST_BEAT;
@@ -2651,17 +2738,48 @@ export class FinaleState {
         this.codaT = FINALE_CODA_DELAY; this.codaChars = FINALE_CODA.length;
       } else {
         this.beat++; this.chars = 0; Audio.sfx('ui');
-        if (this.beat >= FINALE_BEATS.length) {
+        if (this.beat === CURTAIN) {
+          // The story is over at the bow, not after it — a player who walks away
+          // mid-curtain-call has still seen the ending, and OVERTIME should not
+          // be held hostage to the last button press of the campaign.
           this.save.slot.campaign.storyFlags.sawEnding = true;
           this.save.persist();
-          this.onDone();
+          Audio.sfx('win');
         }
       }
     }
     Input.endFrame();
   }
+  // ALL EIGHT, ONE ROW, THE ONLY TIME IT HAPPENS IN THE STORY.
+  //
+  // The relay's premise is that the arcade can render one hero at a time, so
+  // every stage screen and every beat above this one has held at most a single
+  // toon. The bow spends that rule: the cast lines up, out of phase with each
+  // other so the row reads as a crowd rather than a metronome (see the results
+  // curtain call, which does the same with whoever actually ran).
+  drawCurtain(ctx) {
+    ctx.fillStyle = '#0b0b14';
+    ctx.fillRect(0, 0, W, H);
+    drawParticles(ctx);
+    drawTextCentered(ctx, FINALE_THANKS_TITLE, W / 2, 54, '#f6d33c', 2, 'title');
+    // Eight figures across 480px: the slot is what sets the size, not the other
+    // way round, so nobody overlaps their neighbour on the widest hero.
+    const slot = (W - CURTAIN_MARGIN * 2) / HEROES.length;
+    const heroH = Math.min(CURTAIN_HERO_H, slot / 1.35);
+    HEROES.forEach((h, i) => drawToon(ctx, h.id,
+      { kind: 'celebrate', grounded: true, menu: true, time: this.t + i * 0.35 },
+      CURTAIN_MARGIN + slot * (i + 0.5), CURTAIN_HERO_FEET, heroH));
+    drawProse(ctx, this.thanksBlock(), CURTAIN_THANKS_TOP, CURTAIN_THANKS_BAND, '#e8e8f0', Math.floor(this.chars));
+    // Same treatment as the coda one screen back, because it is the same joke:
+    // the cast means the thanks, HR files a note about it.
+    if (this.signoffChars > 0) {
+      drawProse(ctx, this.signoffBlock(), CURTAIN_THANKS_TOP + CURTAIN_THANKS_BAND,
+        CURTAIN_SIGNOFF_BAND, '#8a8a98', Math.floor(this.signoffChars));
+    }
+  }
   draw(ctx) {
-    if (this.beat >= FINALE_BEATS.length) return;
+    if (this.beat > CURTAIN) return;
+    if (this.beat === CURTAIN) { this.drawCurtain(ctx); this.drawCounter(ctx); return; }
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     if (this.beat >= 1 && this.beat <= 5) drawProp(ctx, 'eggshell', W / 2 - 24, 60, 48, 40);
@@ -2677,7 +2795,12 @@ export class FinaleState {
     if (this.beat === LAST_BEAT && this.codaChars > 0) {
       drawProse(ctx, this.codaBlock(), bottom, FINALE_CODA_BAND, '#8a8a98', Math.floor(this.codaChars));
     }
-    drawTextCentered(ctx, `${this.beat + 1}/${FINALE_BEATS.length}`, W / 2, H - 20, '#5a5a68');
+    this.drawCounter(ctx);
+  }
+  // The bow counts as a beat, so the tally counts it too — otherwise the last
+  // written line reads as 9/9 and the screen after it looks like an overrun.
+  drawCounter(ctx) {
+    drawTextCentered(ctx, `${this.beat + 1}/${CURTAIN + 1}`, W / 2, H - 20, '#5a5a68');
   }
 }
 

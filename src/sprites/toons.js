@@ -2509,6 +2509,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   };
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
   let wrenchAngle = null;
+  // Where Fernwick's shield rides while the victory routine has it off his
+  // back, as [x, y]. Null the rest of the time, which is also the flag the
+  // back-slung disc and the draw order below both test.
+  let celShield = null;
   if (pose.kind === 'celebrate') {
     // Victory choreography, one flavor per hero.
     const ct = pose.time || 0;
@@ -2517,10 +2521,47 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // the head. `legacy` remains selectable in the gallery through the shared
     // celebration-style switch above.
     const raisedArmStudy = reworkedCelebration;
-    if (id === 'fernwick') {
+    if (id === 'fernwick' && raisedArmStudy) {
+      // SHIELD UP. The "champion's clasp" this replaces met both hands at
+      // x = ±0.05u and 0.95 of the arm overhead, which on this rig is dead
+      // centre of his own face: the shoulder sits at -0.5u with 0.286u of
+      // reach, so a hand tops out at -0.786u while his crown is at -0.97u.
+      // NO overhead clasp can clear the head here — it was never a matter of
+      // dialling the target — and both forearms crossed his eyes for the
+      // 1.56s the signature holds. So the near arm throws the SHIELD up and
+      // out at full extension instead, where the whole disc reads against the
+      // background, and the far fist pumps outboard of the cap.
+      handF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.72 + pump]);
+      elbF = -sideF;
+      handB = reach(shB, armY, [shB + sideB * 0.26 * u, armY - armL * 0.62 - pump * 0.5]);
+      elbB = -sideB;
+      // The prop rides the gripping hand, so it can never drift off it — but a
+      // LITTLE past the fist, along the arm's own axis. Centred exactly on the
+      // hand a 0.15u disc swallows the whole forearm, and what is left reads as
+      // a gong hanging in the air beside him rather than a shield he is holding.
+      const gripX = handF[0] - shF, gripY = handF[1] - armY;
+      const gripLen = Math.hypot(gripX, gripY) || 1;
+      celShield = [
+        handF[0] + (gripX / gripLen) * 0.055 * u,
+        handF[1] + (gripY / gripLen) * 0.055 * u,
+      ];
+    } else if (id === 'fernwick') {
       // champion's clasp: both hands meet overhead
       handF = [sideF * 0.05 * u, armY - armL * 0.95 + pump]; elbF = sideF;
       handB = [sideB * 0.05 * u, armY - armL * 0.95 + pump]; elbB = sideB;
+    } else if (id === 'gnash' && raisedArmStudy) {
+      // The point throws OUT as well as up. Aimed 0.12u out and 0.98 of the
+      // arm up, his fist landed at |x| = 0.21u — exactly his own head radius —
+      // so the entire raised arm hid behind the skull and only a blue nub
+      // cleared the quills: a shoulder with nothing on the end of it. Taken to
+      // full reach on a line 55 degrees off horizontal the fist sits 0.04u
+      // outboard of the head and the limb reads as one straight point.
+      handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.91 + pump]);
+      elbF = -sideF;
+      // ...and the free hand lands ON the hip. At 0.13u outboard of a shoulder
+      // already 0.09u out it hovered 0.05u OUTSIDE his own silhouette, so the
+      // "hand on hip" was a bent flipper resting on nothing.
+      handB = [shB + sideB * 0.055 * u, armY + armL * 0.8]; elbB = sideB;
     } else if (id === 'gnash') {
       // one cool point at the sky, the other hand on the hip
       handF = [shF + sideF * 0.12 * u, armY - armL * 0.98 + pump]; elbF = sideF;
@@ -2592,10 +2633,54 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         handB = [shB + sideB * 0.1 * u, armY - armL * 1.05]; elbB = sideB;
       }
     } else if (cm.move === 'present') {
-      // Fernwick lowers the champion's clasp and supports the shield in front
-      // of his body. The prop itself is painted in the final front pass below.
-      handF = [sideF * 0.2 * u, armY + armL * 0.12]; elbF = sideF;
-      handB = [sideB * 0.07 * u, armY + armL * 0.22]; elbB = sideB;
+      // The raised shield comes DOWN and is planted in front of him. Blended
+      // in over the first third of the beat and back out over the last sixth,
+      // so the disc travels an arc between the two halves of the routine
+      // instead of teleporting: the first pass cut straight to a static hold
+      // with both hands parked near his hips, which is why the prop read as a
+      // dinner plate glued to his tunic rather than as something he is holding.
+      const ease = (v) => { const n = Math.max(0, Math.min(1, v)); return n * n * (3 - 2 * n); };
+      const down = ease(cm.q / 0.34) * (1 - ease((cm.q - 0.72) / 0.28));
+      const toward = (from, to) => [
+        from[0] + (to[0] - from[0]) * down,
+        from[1] + (to[1] - from[1]) * down,
+      ];
+      // A shallow settle as the arms take the weight, then it rises into the
+      // hold — the beat that stops the plant reading as a hard cut.
+      const settle = Math.sin(Math.min(1, cm.q / 0.34) * Math.PI) * 0.025 * u;
+      // Held over the CHEST, not the belt: the first pass planted it at
+      // shoulderY + 0.2u, which hung the bottom half of the disc below his
+      // tunic hem and read as a shield slung on his hip.
+      const shieldAt = [sideF * 0.02 * u, shoulderY + 0.16 * u + settle];
+      // The grip sits out at the RIM rather than at the boss. Gripped dead
+      // centre, a 0.15u disc covers the entire near arm — shoulder, elbow and
+      // all — and the shield reads as stuck to his chest with nothing holding
+      // it. Out here the elbow clears the rim and there is a visible arm.
+      const plantF = [sideF * 0.15 * u, shoulderY + 0.19 * u + settle];
+      // The free arm punches UP rather than joining the shield. Both hands on
+      // the disc cannot work on this rig: the far shoulder sits barely 0.03u
+      // off the rim at chest height, so any rim target folds that arm shut and
+      // lays the forearm flat across the shield face.
+      const plantB = reach(shB, armY, [shB + sideB * 0.22 * u, armY - armL * 0.8]);
+      if (celShield) celShield = toward(celShield, shieldAt);
+      handF = toward(handF, plantF);
+      handB = toward(handB, plantB);
+      // The near arm swaps to the downward bend convention, which it can do
+      // without a pop because the raised target it leaves is at full extension
+      // — straight, so the sign is invisible there. The raised arm keeps its
+      // own sign the whole way through.
+      elbF = sideF;
+    } else if (cm.move === 'stepturn') {
+      // The turn used to carry NO arm choreography — both arms simply held
+      // their signature targets while the body yawed, so the step read as the
+      // rig being rotated rather than as him swinging round. The raised arm
+      // sweeps down and out through the turn and comes back up out of it,
+      // while the planted hand stays on the hip: that contrast is what sells a
+      // step-turn instead of a spin. Both ends of the sweep are at full reach,
+      // so the arm stays straight and needs no elbow-sign change.
+      const sweep = Math.sin(cm.q * Math.PI);
+      const low = reach(shF, armY, [shF + sideF * 0.34 * u, armY + armL * 0.22]);
+      handF = [handF[0] + (low[0] - handF[0]) * sweep, handF[1] + (low[1] - handF[1]) * sweep];
     } else if (cm.move === 'salute') {
       // B-33P's cannon owns the near arm; park the free fist high and still so
       // the upward barrel and antenna broadcast are the animation, not a shimmy.
@@ -3376,8 +3461,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the poses whose near arm paints in the front pass — run and jump. Standing
   // and celebrating put both arms in the back pass below, and the pack landed
   // on top of the arm it should be hanging behind.
-  const presentingShield = id === 'fernwick' && cm && cm.move === 'present';
-  if (spec.back === 'shield' && !presentingShield) {
+  // The shield is off his back for the WHOLE reworked victory routine, not
+  // just its second beat: swapping it between back and hands at the seam
+  // between the two halves popped it across the body in a single frame.
+  if (spec.back === 'shield' && !celShield) {
     outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
     dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
   }
@@ -3985,11 +4072,34 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         outlined(ctx, p.a, ow, apronPanel, APRON_OUTLINE);
         ctx.restore();
       };
+      // Name tag pinned HIGH on the bib — just under the strap tails, the way
+      // one actually sits on a chest, not down by the waist tie. That puts it
+      // inside the band recoverBibBand() re-lays, so it has to paint after that
+      // pass or the run/jump poses would wipe it; hence the closure.
+      const drawNameTag = () => {
+        // A pale badge with a coloured header strip and a scribble of a name:
+        // small enough to read as a badge, not a sign, and it holds down to the
+        // counter size.
+        const tagW = 0.12 * u, tagH = 0.066 * u;
+        const tagX = px - tagW / 2, tagY = bibTop + 0.028 * u;
+        outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
+        ctx.save();
+        ctx.beginPath(); roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u); ctx.clip();
+        ctx.fillStyle = p.b; ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
+        ctx.restore();
+        ctx.strokeStyle = '#5a5546'; ctx.lineWidth = Math.max(0.32, ow * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
+        ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
+        ctx.stroke();
+      };
       // Draw once, on the correct side of the arm: after it whenever the front
       // arm paints over the apron, otherwise here.
       const frontArmOverApron = armsInFront || clapFront || !stand;
       if (!frontArmOverApron) drawStraps();
-      apronStrapOver = frontArmOverApron ? () => { drawStraps(); recoverBibBand(); } : null;
+      apronStrapOver = frontArmOverApron
+        ? () => { drawStraps(); recoverBibBand(); drawNameTag(); }
+        : null;
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = APRON_OUTLINE;
@@ -4003,21 +4113,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // always has a pen in it.
       outlined(ctx, p.b, Math.max(0.4, ow * 0.45),
         (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u), APRON_OUTLINE);
-      // Name tag pinned to the bib — expected on a counter server. A pale badge
-      // with a coloured header strip and a scribble of a name: small enough to
-      // read as a badge, not a sign, and it holds down to the counter size.
-      const tagW = 0.12 * u, tagH = 0.066 * u;
-      const tagX = px - tagW / 2, tagY = bibTop + 0.1 * u;
-      outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
-      ctx.save();
-      ctx.beginPath(); roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u); ctx.clip();
-      ctx.fillStyle = p.b; ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
-      ctx.restore();
-      ctx.strokeStyle = '#5a5546'; ctx.lineWidth = Math.max(0.32, ow * 0.32);
-      ctx.beginPath();
-      ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
-      ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
-      ctx.stroke();
+      // ...and in the standing pose nothing repaints the bib after this, so the
+      // tag lands here — expected on a counter server.
+      if (!frontArmOverApron) drawNameTag();
     }
   }
   if (!clapFront && (!stand || raisedArmStudyFront)) {
@@ -4036,23 +4134,36 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     drawHead(ctx, id, spec, p, u, ow, 0.01 * u + torsoCx + nearSign * turnDepth * 0.015 * u, headY, lod, pose);
   }
 
-  if (presentingShield) {
-    // The same round shield he normally carries on his back, brought forward
-    // and supported by the two presentation targets above.
-    const sx = sideF * 0.14 * u, sy = shoulderY + 0.18 * u;
+  // The same round shield he normally carries on his back, riding whichever
+  // hand target the routine put it on.
+  const drawCelShield = () => {
+    const [sx, sy] = celShield;
     outlined(ctx, p.w, ow, (c) => c.arc(sx, sy, 0.15 * u, 0, Math.PI * 2));
     outlined(ctx, p.a, Math.max(0.5, ow * 0.65), (c) => c.arc(sx, sy, 0.095 * u, 0, Math.PI * 2));
     dot(ctx, sx, sy, 0.035 * u, OUTLINE);
-  }
+  };
+  const drawFarArm = () => {
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+    handDeco(handB[0], handB[1]);
+  };
 
   // Grumpos's celebrate arms draw dead LAST, after the head: the flex brings
   // both fists up beside the face, and drawn before the head they slide
   // behind the beard — hands vanishing behind his own neck mid-pose.
   if (clapFront) {
-    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
-    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
-    handDeco(handB[0], handB[1]);
-    drawFrontArm();
+    if (celShield) {
+      // Near arm, then the shield over the hand gripping it — the disc is
+      // strapped to the back of that hand, so covering it is what reads as a
+      // grip — then the far arm on top, so the hand it rests on the rim with
+      // stays visible instead of disappearing behind the shield.
+      drawFrontArm();
+      drawCelShield();
+      drawFarArm();
+    } else {
+      drawFarArm();
+      drawFrontArm();
+    }
     if (apronStrapOver) apronStrapOver(); // straps cross OVER the arms (Dolores' hips celebrate)
   }
   // Front-pass standing idle (see armsInFront): far arm then near arm, both over
@@ -5294,7 +5405,8 @@ export function poseFromPlayer(player, t) {
   const hero = player.hero || {};
   const firing = player.powerPoseT > 0;
   const eating = firing && player.powerType === 'eat';
-  const smashing = firing && player.powerType === 'stomp' && player.grounded;
+  const flurrying = (player.spannerFlurryT || 0) > 0;
+  const smashing = (firing && player.powerType === 'stomp' && player.grounded) || flurrying;
   const forcedDuck = player.rolling || player.compressT > 0;
   const recoveringDuck = player.grounded && (player.duckAmount || 0) > 0;
   const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck' : (!player.grounded ? 'jump' : 'run');

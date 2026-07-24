@@ -28,6 +28,40 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // close by.
 export const TOUCH_SHELF_CY = H - 11 - 4;
 
+// Touch control geometry. 44 logical px across: the screen fits its 480-wide
+// backbuffer to a phone by height, so a landscape iPhone renders roughly 1.4
+// CSS px per logical px and this lands near 60 CSS px — comfortably past the
+// ~44 CSS px minimum a thumb needs, without three dinner plates on a 270-tall
+// play field.
+const TOUCH_D = 44;
+// The play pair sits above the bottom edge instead of occupying it. That gives
+// the action room to breathe above the phone's home-indicator territory and
+// leaves the lower scenery readable behind translucent controls.
+const TOUCH_PLAY_Y = H - 84;
+// PAUSE hangs below the objective panels rather than beside them: GOAL sits at
+// y 7 and BONUS below it ends at y 37, so this clears the pair with air to
+// spare. Fixed, not measured off whichever panels happen to be showing — a
+// control that moves when the mission changes is a control you have to look
+// for, and OVERTIME (no BONUS line) would shift it every run.
+const PAUSE_BTN_Y = 43;
+
+// The in-canvas play controls: three discs, one style, one painter
+// (drawRoundButton). JUMP and USE sit above the lower corners so they remain
+// present but visually recess into the play field; PAUSE stays anchored beneath
+// the objective panels.
+//
+// A function rather than a frozen list because Input.setButtons takes ownership
+// of what it is handed, and two screens now ask for these — a run and the
+// tutorial. Both are playable surfaces with the same three controls, so they
+// share the geometry rather than each keeping a copy that drifts.
+export function playButtons() {
+  return [
+    { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
+    { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
+    { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
+  ];
+}
+
 // How long the keyboard legend stays up at the start of a teaching stage, and
 // how much of that is the fade out. Five seconds is about two obstacles' worth
 // of running: long enough to have looked once, short enough that it is gone
@@ -107,7 +141,11 @@ const PILL_X = 8, PILL_Y = 5, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
 const CELL_W = 10, CELL_H = 6.8, CELL_GAP = 2;
 const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 
-function drawStatusPill(ctx, run) {
+// Exported because the tutorial shows a coin count too, and a second hand-built
+// coin readout would be a second thing to keep in sync with this one. A caller
+// with no cells to show (oneHit false, maxBattery() 0) gets exactly the coin
+// half of the pill.
+export function drawStatusPill(ctx, run) {
   const cells = run.oneHit ? 0 : run.maxBattery();
   const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
   const count = formatCoins(run.coins);
@@ -533,7 +571,7 @@ export function drawHud(ctx, run) {
   // cut: chrome that vanishes between frames reads as a glitch.
   if (!Input.usingTouch && run.hintT > 0) {
     const hero = HERO_BY_ID[run.relay.current];
-    const hints = [['SPC', 'JUMP'], ['DN', 'DUCK'], ['RT/D', hero.ability.label], ['P', 'PAUSE']];
+    const hints = [['SPC', 'JUMP'], ['DN', 'DUCK'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
     const S = 0.85, HP = 6, HH = 12;
     const inner = keyLegendWidth(hints, S);
     const hx = W - 8 - (inner + HP * 2), hy = H - 17;
@@ -601,6 +639,11 @@ const SPEECH_ROW = 11;
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
 //
+// `opts.maxWidth` narrows the wrap, and with it the measured panel. The card is
+// centred on W/2 and grows symmetrically off its longest line, so a screen with
+// something parked in a top corner — the tutorial's PAUSE disc — pulls both
+// edges in rather than trying to shove the card sideways.
+//
 // The default is built for a run: a translucent slate over a bright, moving
 // stage, where a solid card would punch a hole in the art. The food court is the
 // opposite problem — the concourse wall is #241c30, which is within a few
@@ -631,7 +674,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // is centred here is the ink inside the plate.
   if (!isEgg && !hero) {
     // Three lines, not two: Eggshell's longest grievances need the room.
-    const lines = wrapText(speech.text, W - 56, 1, 3);
+    const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 56), 1, 3);
     const tw = Math.max(...lines.map((line) => textWidth(line)));
     panel(W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * SPEECH_ROW);
     // Through textY, like every other panel in this file. The plate's 4 units
@@ -646,7 +689,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // the words. Face, name, and text read as a single card per speaker.
   const name = isEgg ? 'EGGSHELL' : hero.short;
   const FACE_W = 20, FACE_H = 15, PAD = 7, GAP = 6;
-  const lines = wrapText(speech.text, W - 100, 1, 3);
+  const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 100), 1, 3);
   const tw = Math.max(textWidth(name), ...lines.map((line) => textWidth(line)));
   const textH = (lines.length + 1) * 11; // name row + body rows
   const h = Math.max(FACE_H + 6, textH + 8);

@@ -15,6 +15,7 @@
     "sim:economy": "node tools/economy-sim.js"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "playwright": "^1.61.1"
   }
 }

@@ -30,6 +30,7 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   act: opts.act || null,
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
+  speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
 });
 
 export const STAGES = [
@@ -38,13 +39,16 @@ export const STAGES = [
     { type: 'reach', desc: 'REACH THE BREAKER. FLIP IT. SAVE EVERYTHING.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
-      introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.' }),
+      introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
+      speedMult: 0.9 }),
   S('plumber', 2,
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { speedMult: 0.95 }),
   S('plumber', 3,
     { type: 'fuse', desc: 'CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS.' },
-    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' }),
+    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
+    { speedMult: 1.0 }),
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },

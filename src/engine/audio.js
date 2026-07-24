@@ -84,6 +84,14 @@ class AudioSys {
     this.beatListeners = [];
     this.songTime = 0;
     this.lifecyclePaused = false;
+    // Reversed-audio capture: a ring buffer tapped off the master output
+    // so we can play it backwards during rewind.
+    this._capBuf = null;     // Float32Array ring buffer (~4s)
+    this._capPos = 0;        // write cursor
+    this._capNode = null;    // ScriptProcessorNode
+    this._capGain = null;    // zero-gain sink
+    this._revTimer = null;   // interval for reverse-chunk scheduling
+    this._revSources = [];   // active reversed BufferSources
   }
 
   ensure() {
@@ -153,6 +161,12 @@ class AudioSys {
     for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
     this.renderWeaponBuffers();
     this.startSequencer();
+    this._startCapture();
+    // Separate output for reversed audio — bypasses the capture node to
+    // prevent a feedback loop (reversed audio → capture → reversed again).
+    this._rewindOut = this.ctx.createGain();
+    this._rewindOut.gain.value = this.levels.master;
+    this._rewindOut.connect(this.ctx.destination);
     if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
   }
 
@@ -192,6 +206,7 @@ class AudioSys {
     this.master.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
     this.musicGain.gain.setTargetAtTime(this.levels.music, t, 0.02);
     this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
+    if (this._rewindOut) this._rewindOut.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
   }
 
   // Synthesise the weapon cues into buffers, once, at init. A few ms of math at
@@ -691,6 +706,188 @@ class AudioSys {
     this.musicBus.gain.setTargetAtTime(on ? 0.32 : 1, t, 0.08);
     this.starBus.gain.setTargetAtTime(on ? 1.5 : 0, t, 0.08);
   }
+
+  // Rewind mode: mutes the music bus, ducks SFX, and plays the capture buffer
+  // backwards in overlapping chunks — every sound reversed, like a tape rewinding.
+  setRewinding(on) {
+    on = !!on;
+    if (on === this.rewindMode) return;
+    this.rewindMode = on;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Mute the forward music bus so only the reversed audio is heard.
+    this.musicBus.gain.setTargetAtTime(on ? 0.0001 : 1, t, on ? 0.04 : 0.35);
+    // Duck SFX heavily so forward sounds don't break the reverse illusion.
+    this.sfxGain.gain.setTargetAtTime(on ? 0.10 : this.levels.sfx, t, 0.04);
+    if (on) {
+      this._startReversePlayback();
+    } else {
+      this._stopReversePlayback();
+    }
+  }
+
+  // Continuously record the master output into a ring buffer. A zero-gain
+  // ScriptProcessorNode taps the signal without affecting the live mix.
+  _startCapture() {
+    if (this._capNode) return;
+    const SR = this.ctx.sampleRate;
+    const CAPTURE_SEC = 4;
+    this._capBuf = new Float32Array(Math.floor(SR * CAPTURE_SEC));
+    this._capPos = 0;
+    this._capNode = this.ctx.createScriptProcessor(2048, 1, 1);
+    this._capNode.onaudioprocess = (e) => {
+      if (!this._capBuf || this.lifecyclePaused) return;
+      const input = e.inputBuffer.getChannelData(0);
+      const buf = this._capBuf;
+      let pos = this._capPos;
+      const len = buf.length;
+      for (let i = 0; i < input.length; i++) {
+        buf[pos] = input[i];
+        pos = (pos + 1) % len;
+      }
+      this._capPos = pos;
+    };
+    // Tap master without doubling the output: route through capNode into a
+    // zero-gain sink so the onaudioprocess fires but nothing reaches the speakers.
+    this.master.connect(this._capNode);
+    this._capGain = this.ctx.createGain();
+    this._capGain.gain.value = 0;
+    this._capNode.connect(this._capGain);
+    this._capGain.connect(this.ctx.destination);
+  }
+
+  // Start playing the capture buffer backwards in overlapping chunks. Each
+  // chunk is ~0.7s of audio reversed; a new one fires every 0.35s so they
+  // crossfade and the reversed stream is continuous.
+  _startReversePlayback() {
+    if (this._revTimer || !this._capBuf) return;
+    // Prime the pump immediately, then schedule every 350ms.
+    this._scheduleReverseChunk();
+    this._revTimer = setInterval(() => this._scheduleReverseChunk(), 350);
+  }
+
+  _stopReversePlayback() {
+    if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
+    // Schedule one final chunk that decelerates to a stop over ~0.5s — like a
+    // tape reel braking, not an abrupt cut. The music bus fades back in over
+    // the same period (see setRewinding), so the two cross over smoothly.
+    this._scheduleTapeStop();
+  }
+
+  // Multi-phase tape-stop-and-spin-up on a reversed chunk. Simulates a tape
+  // transport braking to a halt, pausing briefly, then accelerating back.
+  //
+  // Envelope phases (total ~0.55s):
+  //   A  0.00–0.24  decelerate  1.0 → 0.0  (squared curve)
+  //   B  0.24–0.28  hold        0.0
+  //   C  0.28–0.55  accelerate  0.0 → 1.0  (squared curve)
+  //
+  // Envelope phases (total ~0.55s):
+  //   A  0.00–0.24  decelerate  1.0 → 0.0  (squared curve)
+  //   B  0.24–0.28  hold        0.0
+  //   C  0.28–0.55  accelerate  0.0 → 1.0  (squared curve)
+  //
+  // A dynamic low-pass filter tracks playback rate (cutoff ∝ rate^1.5) so the
+  // sound darkens as it slows, and a +3dB gain bump below 0.4× compensates for
+  // the perceived loss of high-frequency energy.
+  _scheduleTapeStop() {
+    if (!this._capBuf || !this.ctx) return;
+    const SR = this.ctx.sampleRate;
+    const bufLen = this._capBuf.length;
+    const totalDur = 0.55;
+    const len = Math.floor(SR * totalDur);
+    if (len > bufLen) return;
+
+    // Build reversed buffer from the ring.
+    const pos = this._rewindStartPos != null ? this._rewindStartPos : this._capPos;
+    const reversed = this.ctx.createBuffer(1, len, SR);
+    const data = reversed.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = this._capBuf[(pos - i - 1 + bufLen) % bufLen];
+    }
+
+    const t = this.ctx.currentTime;
+    const T_A = 0.24, T_B = 0.04, T_C = 0.27;
+
+    // Pre-compute playback-rate curve (256 samples, ~3ms steps).
+    const N = 256;
+    const rateCurve = new Float32Array(N);
+    const lpfCurve = new Float32Array(N);
+    const gainCurve = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const phase = (i / (N - 1)) * totalDur;
+      let rate;
+      if (phase < T_A) {
+        rate = (1 - phase / T_A) ** 2;
+      } else if (phase < T_B + T_A) {
+        rate = 0;
+      } else {
+        rate = ((phase - (T_A + T_B)) / T_C) ** 2;
+      }
+      rateCurve[i] = Math.max(0.001, rate);
+      lpfCurve[i] = Math.max(60, 20000 * (rate ** 1.5));
+      const comp = rate < 0.4 ? 1.41 : rate < 0.8 ? 1.41 - (1.41 - 1.0) * ((rate - 0.4) / 0.4) : 1.0;
+      gainCurve[i] = comp;
+    }
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = reversed;
+    src.playbackRate.setValueCurveAtTime(rateCurve, t, totalDur);
+
+    const g = this.ctx.createGain();
+    const gc = this.ctx.createGain();
+    gc.gain.setValueCurveAtTime(gainCurve, t, totalDur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.85, t + 0.015);
+    g.gain.setValueAtTime(0.85, t + totalDur - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + totalDur);
+
+    src.connect(g);
+    g.connect(gc);
+    gc.connect(this._rewindOut);
+    src.start(t);
+    src.stop(t + totalDur + 0.05);
+  }
+
+  // Read a 0.7s slice from the ring buffer backwards, create a BufferSource
+  // with a quick fade-in/out envelope, and send it to master.
+  _scheduleReverseChunk() {
+    if (!this._capBuf || !this.ctx) return;
+    const SR = this.ctx.sampleRate;
+    const bufLen = this._capBuf.length;
+    const chunkSec = 0.7;
+    const chunkLen = Math.floor(SR * chunkSec);
+    if (chunkLen > bufLen) return;
+    const pos = this._capPos;
+    // Build a reversed buffer: walk backwards from the current write position.
+    const reversed = this.ctx.createBuffer(1, chunkLen, SR);
+    const data = reversed.getChannelData(0);
+    for (let i = 0; i < chunkLen; i++) {
+      data[i] = this._capBuf[(pos - i - 1 + bufLen) % bufLen];
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = reversed;
+    const g = this.ctx.createGain();
+    const t = this.ctx.currentTime;
+    // Quick attack, steady body, quick release — overlapping chunks crossfade
+    // without audible seams.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1.0, t + 0.025);
+    g.gain.setValueAtTime(1.0, t + chunkSec - 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + chunkSec);
+    src.connect(g);
+    g.connect(this._rewindOut);
+    src.start(t);
+    src.stop(t + chunkSec + 0.03);
+    // Track for debugging; Web Audio cleans up stopped sources automatically.
+    this._revSources = this._revSources.filter((s) => s.endTime > t - 0.5);
+    this._revSources.push({ endTime: t + chunkSec });
+  }
+
+  // Save the current capture position for the tape-stop effect. Called from
+  // run.js on the release edge so the decelerating audio is the sound that was
+  // playing at the moment the player let go.
+  setRewindPos() { this._rewindStartPos = this._capPos; }
 
   onBeat(fn) { this.beatListeners.push(fn); }
 

@@ -1,0 +1,3907 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fernwick celebration — frame strip</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 20px; background: #14121a; color: #e8e4f0;
+         font: 13px/1.5 -apple-system, system-ui, sans-serif; }
+  h2 { font-size: 15px; margin: 24px 0 2px; }
+  .note { color: #8f88a6; margin: 0 0 10px; font-size: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+  .card { background: #1e1b28; border: 1px solid #2c2838; border-radius: 6px;
+          padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  canvas { image-rendering: pixelated; background:
+    repeating-conic-gradient(#242030 0% 25%, #1b1826 0% 50%) 50% / 12px 12px; border-radius: 3px; }
+  .cap { color: #b8b0cc; font-size: 10px; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>(() => {
+  // src/sprites/heroes.js
+  var LEGS_A = [
+    "...pp..pp...",
+    "...pp...pp..",
+    "..ff.....ff.",
+    ".ff........."
+  ];
+  var LEGS_B = [
+    "....pppp....",
+    "....pp.pp...",
+    "....ff..ff..",
+    ".....ff....."
+  ];
+  var LEGS_JUMP = [
+    "...pp..pp...",
+    "..pp....pp..",
+    ".ff......ff.",
+    "............"
+  ];
+  function humanoid(head, torso) {
+    return {
+      run1: [...head, ...torso, ...LEGS_A],
+      run2: [...head, ...torso, ...LEGS_B],
+      jump: [...head, ...torso, ...LEGS_JUMP]
+    };
+  }
+  var lorenzo = humanoid([
+    "...hhhhhh...",
+    "..hhhhhhhh..",
+    "..hahhhhhh..",
+    // cap emblem
+    "...ssssss...",
+    "..ssessess..",
+    "..sssssnss..",
+    // big nose (n)
+    "...smmmms..."
+    // mustache
+  ], [
+    "..bbbbbbbb..",
+    ".bsbbbbbbs..",
+    ".bsbppppbs..",
+    // overall straps
+    "..bpppppp...",
+    "..pppppppp.."
+  ]);
+  lorenzo.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "...hhhhhh...",
+    "..hahhhhhh..",
+    "..ssessess..",
+    "...smmmms...",
+    "..bbbbbbbb..",
+    "..pppppppp..",
+    "..ff....ff..",
+    "............"
+  ];
+  lorenzo.pal = { h: "#7b4bd0", a: "#f6d33c", s: "#f2c9a0", e: "#1a1028", n: "#e8a878", m: "#5a3212", b: "#2ea8a0", p: "#22608c", f: "#5a3212", w: "#fff" };
+  var gnash = humanoid([
+    "..hh.h.h....",
+    ".hhhhhhhh...",
+    "hhhhhhhhhh..",
+    ".hhssssss...",
+    ".hssessess..",
+    "..sssssss...",
+    "...ssmms...."
+  ], [
+    "..hhhhhh....",
+    ".hhhbbhhh...",
+    "..hhbbhh....",
+    "...bbbb.....",
+    "..bbbbbb...."
+  ]);
+  gnash.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "..hhhhhhh...",
+    ".hhhhhhhhh..",
+    ".hhessessh..",
+    "..hsssssh...",
+    "..hbbbbh....",
+    "..ffbbff....",
+    "..ff..ff....",
+    "............"
+  ];
+  gnash.pal = { h: "#4a50d2", s: "#efbd83", e: "#1a1028", m: "#a03020", b: "#4a50d2", p: "#3036a8", f: "#d83030", w: "#fff" };
+  var fernwick = humanoid([
+    ".....aa.....",
+    // tuft of blond hair out the top
+    "...hhhhhh...",
+    // hat crown
+    "..hhhhhhhh..",
+    ".hhhhhhhhhh.",
+    // floppy brim (widest)
+    "..ssessess..",
+    // forehead + eyes, clear of the hat
+    "..ssssssss..",
+    "...ssssss..."
+  ], [
+    "..wbbbbbb...",
+    // w = shield edge on back
+    ".wwbbbbbbb..",
+    ".wwbbbbbbb..",
+    "..wbbbbbb...",
+    "...pppppp..."
+  ]);
+  fernwick.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "..hhhhhhhh..",
+    ".hhhhhhhhhh.",
+    "..ssessess..",
+    "..wbbbbbb...",
+    ".wwbbbbbbb..",
+    "..bbbbbbb...",
+    "..ff...ff...",
+    "............"
+  ];
+  fernwick.pal = { h: "#65b83f", a: "#e8bc46", s: "#f2c9a0", e: "#1a1028", b: "#65b83f", p: "#7d6032", f: "#51351f", w: "#b0793a" };
+  var b33p = humanoid([
+    "...hhhhhh...",
+    "..hhhhhhhh..",
+    "..hwhhhhwh..",
+    "..hhhhhhhh..",
+    "..wseewsse..",
+    "..ssssssss..",
+    "...ssssss..."
+  ], [
+    "..bbbbbbba..",
+    ".bbbbbbbaaa.",
+    // arm cannon (a)
+    ".bbbbbbbaaa.",
+    "..bbbbbba...",
+    "..pppppp...."
+  ]);
+  b33p.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "...hhhhhh...",
+    "..hwhhhhwh..",
+    "..wseewsse..",
+    "..bbbbbbaaa.",
+    ".bbbbbbbaaa.",
+    "..bbbbbba...",
+    "..ff...ff...",
+    "............"
+  ];
+  b33p.pal = { h: "#b6c6dc", s: "#101c33", e: "#7ef0ff", m: "#7ef0ff", b: "#7d8ca8", p: "#4d5972", f: "#8fa0bc", w: "#e8f8ff", a: "#f6d33c", hand: "#b6c6dc", arm: "#d4b02e" };
+  var mochi = {
+    run1: [
+      "............",
+      "............",
+      "....bbbb....",
+      "..bbbbbbbb..",
+      ".bbbbbbbbbb.",
+      ".bbebbbbeb..",
+      "abbbbbbbbbba",
+      ".bbbbmmbbbb.",
+      ".bbbbbbbbbb.",
+      "..bbbbbbbb..",
+      "...bbbbbb...",
+      "..ff....ff..",
+      "..fff..fff..",
+      "............",
+      "............",
+      "............"
+    ],
+    duck: null
+  };
+  mochi.run2 = mochi.run1.map((r, i) => i === 11 ? "...ff..ff..." : i === 12 ? "...ffffff..." : r);
+  mochi.jump = mochi.run1.map((r, i) => i === 11 ? "..f......f.." : i === 12 ? "..ff....ff.." : r);
+  mochi.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "....bbbb....",
+    "..bbbbbbbb..",
+    ".bbebbbbeb..",
+    "abbbbmmbbba",
+    ".bbbbbbbbb..",
+    "..bbbbbbb...",
+    "..ff....ff..",
+    "............"
+  ];
+  mochi.pal = { b: "#ff6f5e", e: "#2a1622", m: "#8e2f42", a: "#ffc4b8", f: "#ff6f5e", w: "#fff", belly: "#ffc4b8", ear: "#7a4bb0", cheek: "#ff4d7d", star: "#7a4bb0" };
+  var chompo = {
+    run1: [
+      "............",
+      "............",
+      "....bbbb....",
+      "..bbbbbbbb..",
+      ".bbbebbbbb..",
+      ".bbbbbbbb...",
+      ".bbbbbb.....",
+      // mouth open (wedge)
+      ".bbbb.......",
+      ".bbbbbb.....",
+      ".bbbbbbbb...",
+      ".bbbbbbbbb..",
+      "..bbbbbbbb..",
+      "...pp..pp...",
+      "..ff....ff..",
+      "............",
+      "............"
+    ]
+  };
+  chompo.run2 = chompo.run1.map((r, i) => {
+    if (i === 6) return ".bbbbbbbb...";
+    if (i === 7) return ".bbbbbbb....";
+    if (i === 12) return "....pppp....";
+    if (i === 13) return "...ff.ff....";
+    return r;
+  });
+  chompo.jump = chompo.run1.map((r, i) => i === 12 ? "..pp....pp.." : i === 13 ? ".ff......ff." : r);
+  chompo.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "....bbbb....",
+    "..bbbebbbb..",
+    ".bbbbbbbb...",
+    ".bbbb.......",
+    ".bbbbbbbb...",
+    "..bbbbbbbb..",
+    "..ff....ff..",
+    "............"
+  ];
+  chompo.pal = {
+    b: "#f79a2b",
+    e: "#20140a",
+    p: "#c25e14",
+    f: "#f0609f",
+    a: "#f0609f",
+    m: "#c63c77",
+    w: "#fff",
+    hi: "#ffcb63",
+    sh: "#c25e14",
+    hair: "#d8382f",
+    hairShade: "#8e1d1a",
+    hairLight: "#f58a78",
+    aDark: "#c63c77",
+    lip: "#d81f3f",
+    lipShade: "#9e1230"
+  };
+  var gary = humanoid([
+    "...aaaaaa...",
+    "..aaaaaaaa..",
+    // little paper hat
+    "...ssssss...",
+    "..ssessess..",
+    "..ssssssss..",
+    "...sssmss...",
+    "...ssssss..."
+  ], [
+    "..bbbbbbbb..",
+    ".sbbbwbbbs..",
+    // name tag (w)
+    ".sbbbbbbbs..",
+    "..bbbbbb....",
+    "..pppppp...."
+  ]);
+  gary.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "...aaaaaa...",
+    "..ssessess..",
+    "...sssmss...",
+    "..bbbbbbbb..",
+    ".sbbbwbbbs..",
+    "..bbbbbb....",
+    "..ff...ff...",
+    "............"
+  ];
+  gary.pal = { a: "#e8e8f0", s: "#9ec89e", e: "#d83030", m: "#4a6a4a", b: "#c85028", p: "#3a3a48", f: "#3a3a48", w: "#fff", hair: "#4f7a4f" };
+  gary.headless = gary.run1.map((r, i) => i < 7 ? "............" : r);
+  var grumpos = humanoid([
+    "...ssssss...",
+    "..ssssssss..",
+    "..sassssss..",
+    // red stripe (a)
+    "..sasessess.",
+    "..ssssssss..",
+    "..ssmmmmss..",
+    // beard
+    "...mmmmmm..."
+  ], [
+    ".wbbbbbbbb..",
+    // axe handle (w) over shoulder
+    ".wbbbbbbbbb.",
+    ".wbsbbbbsb..",
+    "..bbbbbbbb..",
+    "..pppppppp.."
+  ]);
+  grumpos.duck = [
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "...ssssss...",
+    "..sasessess.",
+    "..ssmmmmss..",
+    ".wbbbbbbbb..",
+    ".wbbbbbbbbb.",
+    "..bbbbbbbb..",
+    "..ff....ff..",
+    "............"
+  ];
+  grumpos.pal = { s: "#ded9d2", a: "#c92f3b", e: "#17131a", m: "#352523", b: "#ded9d2", p: "#cfc8bd", f: "#d6d0c8", w: "#765238", g: "#d69224" };
+  var raymn = { ...gary, pal: { s: "#f0c090", a: "#f6d33c", e: "#171126", m: "#d85050", b: "#28a8a0", p: "#7048a8", f: "#f06038", w: "#f5f2e8" } };
+  var dolores = { ...gary, pal: { s: "#e0a884", a: "#e4dccc", e: "#171126", m: "#8a4a52", b: "#6fa89c", p: "#3a3a48", f: "#2e2a38", w: "#fff", hair: "#b4aac0" } };
+  var HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores };
+
+  // src/sprites/toons.js
+  var OUTLINE_A = 0.32;
+  var SKIN_OUTLINE_A = 0.2;
+  var OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
+  var SKIN_OUTLINE = `rgba(26,16,40,${SKIN_OUTLINE_A})`;
+  var APRON_OUTLINE = "rgb(120,110,132)";
+  var BROW_W = 0.018;
+  var BROW_MIN = 0.38;
+  var BROW_L = 0.3;
+  var BROW_A = 0.92;
+  var BROW_L_SCALE = { gary: 0.4 };
+  var INK = { body: 1, face: 1, alpha: 1, brow: 1, browA: BROW_A, browL: BROW_L };
+  var browInk = (hex, a, l) => {
+    const rgb = parseHex(hex);
+    if (!rgb) return hex;
+    const lit = l > 0 ? rgb.map((v) => Math.round(v + (255 - v) * l)) : rgb;
+    return a >= 1 ? `rgb(${lit[0]},${lit[1]},${lit[2]})` : `rgba(${lit[0]},${lit[1]},${lit[2]},${+a.toFixed(3)})`;
+  };
+  var PANTS = { hex: null };
+  var pal = (id) => id === "lorenzo" && PANTS.hex ? { ...HERO_SPRITES[id].pal, p: PANTS.hex } : HERO_SPRITES[id].pal;
+  var TOON_SPECS = {
+    lorenzo: { rig: "humanoid", head: "cap", nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true },
+    gnash: { rig: "humanoid", head: "jackal", mouth: "smirk", tail: true, armDepth: true },
+    fernwick: { rig: "humanoid", head: "floppy", mouth: "smile", back: "shield", tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true },
+    // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
+    // died right on his own silhouette edge with no gun sticking out of him. The
+    // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
+    // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
+    // against his short legs.
+    b33p: { rig: "humanoid", head: "dome", mouth: "grille", cannon: true, armDepth: true, hands: true, armLen: 1.3 },
+    mochi: { rig: "pika" },
+    chompo: { rig: "disc" },
+    gary: { rig: "humanoid", head: "paperhat", mouth: "flat", nameTag: true, armDepth: true, hands: true },
+    // The serving line's own staff. Stout and short-armed on purpose: she is only
+    // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
+    // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
+    // whole performance — she is not pleased to see you and she is not displeased.
+    dolores: { rig: "humanoid", head: "hairnet", mouth: "flat", apron: true, stout: true, armDepth: true, hands: true },
+    raymn: { rig: "ray" },
+    // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
+    // near arm up the screen-left side, which sat over the old stripe half the
+    // cycle. Face streak and torso stripe are one marking and share the sign.
+    grumpos: { rig: "humanoid", heavy: true, head: "bald", beard: true, back: "axe", shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1 }
+  };
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+  function roundHalfAt(y, top, bot, half, r) {
+    const rr = Math.min(r, half, (bot - top) / 2);
+    const dy = y <= top + rr ? top + rr - y : y >= bot - rr ? y - (bot - rr) : 0;
+    if (dy >= rr) return half - rr;
+    return half - rr + Math.sqrt(rr * rr - dy * dy);
+  }
+  var TAPER_LEAD = 0.55;
+  function taperCtl(top, bot, halfTop, halfBot) {
+    return {
+      rT: halfTop * 0.5,
+      rB: halfBot * 0.62,
+      midY: top + (bot - top) * 0.55,
+      ctlX: halfTop + (halfBot - halfTop) * TAPER_LEAD
+    };
+  }
+  function taperHalfAt(y, top, bot, halfTop, halfBot) {
+    const { rT, rB, midY, ctlX } = taperCtl(top, bot, halfTop, halfBot);
+    const y0 = top + rT, y1 = bot - rB;
+    if (y <= y0) return halfTop;
+    if (y >= y1) return halfBot;
+    const a = y1 - 2 * midY + y0, b = 2 * (midY - y0), c = y0 - y;
+    let t;
+    if (Math.abs(a) < 1e-9) {
+      t = -c / b;
+    } else {
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) return halfBot;
+      const r = Math.sqrt(disc);
+      t = (-b + r) / (2 * a);
+      if (t < 0 || t > 1) t = (-b - r) / (2 * a);
+    }
+    t = Math.max(0, Math.min(1, t));
+    const it = 1 - t;
+    return it * it * halfTop + 2 * t * it * ctlX + t * t * halfBot;
+  }
+  function taperTorsoPath(c, cx, top, bot, halfTop, halfBot) {
+    const { rT, rB, midY, ctlX } = taperCtl(top, bot, halfTop, halfBot);
+    c.moveTo(cx - halfTop + rT, top);
+    c.lineTo(cx + halfTop - rT, top);
+    c.quadraticCurveTo(cx + halfTop, top, cx + halfTop, top + rT);
+    c.quadraticCurveTo(cx + ctlX, midY, cx + halfBot, bot - rB);
+    c.quadraticCurveTo(cx + halfBot, bot, cx + halfBot - rB, bot);
+    c.lineTo(cx - halfBot + rB, bot);
+    c.quadraticCurveTo(cx - halfBot, bot, cx - halfBot, bot - rB);
+    c.quadraticCurveTo(cx - ctlX, midY, cx - halfTop, top + rT);
+    c.quadraticCurveTo(cx - halfTop, top, cx - halfTop + rT, top);
+    c.closePath();
+  }
+  function turnedTorsoPath(c, cx, top, bot, halfTop, halfBot, yaw) {
+    const d = Math.abs(yaw);
+    const nearLeft = yaw >= 0;
+    const leftTop = halfTop * (nearLeft ? 1.1 : 0.84);
+    const rightTop = halfTop * (nearLeft ? 0.84 : 1.1);
+    const leftBot = halfBot * (nearLeft ? 1.02 : 0.86);
+    const rightBot = halfBot * (nearLeft ? 0.86 : 1.02);
+    const leftTopY = top + (nearLeft ? halfTop * 0.28 * d : 0);
+    const rightTopY = top + (nearLeft ? 0 : halfTop * 0.28 * d);
+    const shoulderRound = halfTop * 0.38;
+    const hipRound = Math.max(halfBot * 0.32, halfTop * 0.12);
+    c.moveTo(cx - leftTop + shoulderRound, leftTopY);
+    c.lineTo(cx + rightTop - shoulderRound, rightTopY);
+    c.quadraticCurveTo(cx + rightTop, rightTopY, cx + rightTop, rightTopY + shoulderRound);
+    c.quadraticCurveTo(cx + rightTop * 0.82, top + (bot - top) * 0.58, cx + rightBot, bot - hipRound);
+    c.quadraticCurveTo(cx + rightBot, bot, cx + rightBot - hipRound, bot);
+    c.lineTo(cx - leftBot + hipRound, bot);
+    c.quadraticCurveTo(cx - leftBot, bot, cx - leftBot, bot - hipRound);
+    c.quadraticCurveTo(cx - leftTop * 0.88, top + (bot - top) * 0.58, cx - leftTop, leftTopY + shoulderRound);
+    c.quadraticCurveTo(cx - leftTop, leftTopY, cx - leftTop + shoulderRound, leftTopY);
+    c.closePath();
+  }
+  var LIGHT_X = -0.45;
+  var LIGHT_Y = -1;
+  var LIGHT_LEN = Math.hypot(LIGHT_X, LIGHT_Y);
+  var FIELD_CY = -0.5;
+  var FIELD_R = 0.72;
+  var SHADOW_INK = "26,16,40";
+  var HILITE_INK = "255,246,232";
+  var FORM_A = 0.42;
+  var HILITE_A = 0.2;
+  var SPEC_A = 0.2;
+  var SPEC_OFF = 0.36;
+  var SPEC_R = 0.78;
+  var AMBIENT_A = 0.62;
+  var EDGE_A = 0.34;
+  var RIM_W = 0.3;
+  var RIM_INSIDE = true;
+  var RIM = { w: RIM_W, a: 1, inside: RIM_INSIDE };
+  var SHADE_MIN = 0.1;
+  var shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, g: null };
+  function armLight(u, xSign, on, lit = 1) {
+    const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, lit: shade.lit, g: shade.g };
+    shade.on = !!on;
+    shade.u = u;
+    shade.lx = LIGHT_X / LIGHT_LEN * (xSign < 0 ? -1 : 1);
+    shade.ly = LIGHT_Y / LIGHT_LEN;
+    shade.lit = Math.max(0, Math.min(1, lit));
+    shade.g = null;
+    return prev;
+  }
+  function disarmLight(prev) {
+    shade.on = prev.on;
+    shade.lx = prev.lx;
+    shade.ly = prev.ly;
+    shade.u = prev.u;
+    shade.lit = prev.lit;
+    shade.g = prev.g;
+  }
+  var TAU = Math.PI * 2;
+  function arcCovers(a0, a1, ccw, a) {
+    if (Math.abs(a1 - a0) >= TAU) return true;
+    const norm = (v) => (v % TAU + TAU) % TAU;
+    const span = ccw ? norm(a0 - a1) : norm(a1 - a0);
+    const at = ccw ? norm(a0 - a) : norm(a - a0);
+    return at <= span;
+  }
+  function boundsOf(pathFn) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const put = (x, y) => {
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    };
+    const rec = {
+      beginPath() {
+      },
+      closePath() {
+      },
+      moveTo: put,
+      lineTo: put,
+      quadraticCurveTo(cx, cy, x, y) {
+        put(cx, cy);
+        put(x, y);
+      },
+      bezierCurveTo(ax, ay, bx, by, x, y) {
+        put(ax, ay);
+        put(bx, by);
+        put(x, y);
+      },
+      arcTo(ax, ay, x, y) {
+        put(ax, ay);
+        put(x, y);
+      },
+      rect(x, y, w, h) {
+        put(x, y);
+        put(x + w, y + h);
+      },
+      roundRect(x, y, w, h) {
+        put(x, y);
+        put(x + w, y + h);
+      },
+      // A partial arc that only sweeps the top of a circle must not report the
+      // bottom: half-dome hat brims are drawn exactly that way, and boxing them
+      // as full circles drops the ramp's centre a quarter of a head too low.
+      arc(x, y, r, a0, a1, ccw) {
+        if (a0 == null) {
+          put(x - r, y - r);
+          put(x + r, y + r);
+          return;
+        }
+        put(x + Math.cos(a0) * r, y + Math.sin(a0) * r);
+        put(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+        for (let k = 0; k < 4; k++) {
+          const a = k * Math.PI / 2;
+          if (arcCovers(a0, a1, !!ccw, a)) put(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+      },
+      // Every ellipse in the rig is a full one; the rotated extent is exact.
+      ellipse(x, y, rx, ry, rot) {
+        const c = Math.abs(Math.cos(rot || 0)), s = Math.abs(Math.sin(rot || 0));
+        const ex = Math.hypot(rx * c, ry * s), ey = Math.hypot(rx * s, ry * c);
+        put(x - ex, y - ey);
+        put(x + ex, y + ey);
+      }
+    };
+    pathFn(rec);
+    return x1 >= x0 ? { x0, y0, x1, y1 } : null;
+  }
+  function fieldRamps(ctx) {
+    if (!shade.on) return null;
+    if (shade.g) return shade.g;
+    const u = shade.u;
+    const cx = 0, cy = FIELD_CY * u, r = FIELD_R * u;
+    const ax = cx + shade.lx * r, ay = cy + shade.ly * r;
+    const bx = cx - shade.lx * r, by = cy - shade.ly * r;
+    const key = shade.lit;
+    const dark = (1 - shade.lit) * AMBIENT_A;
+    const sh = (a) => Math.min(1, dark + a * key).toFixed(3);
+    const hi = (a) => (a * key).toFixed(3);
+    const core = ctx.createLinearGradient(ax, ay, bx, by);
+    core.addColorStop(0, `rgba(${SHADOW_INK},${sh(0)})`);
+    core.addColorStop(0.46, `rgba(${SHADOW_INK},${sh(0)})`);
+    core.addColorStop(0.74, `rgba(${SHADOW_INK},${sh(FORM_A * 0.38)})`);
+    core.addColorStop(1, `rgba(${SHADOW_INK},${sh(FORM_A)})`);
+    const lit = ctx.createLinearGradient(ax, ay, bx, by);
+    lit.addColorStop(0, `rgba(${HILITE_INK},${hi(HILITE_A)})`);
+    lit.addColorStop(0.4, `rgba(${HILITE_INK},0)`);
+    lit.addColorStop(1, `rgba(${HILITE_INK},0)`);
+    const edge = ctx.createLinearGradient(ax, ay, bx, by);
+    edge.addColorStop(0, `rgba(${HILITE_INK},${hi(EDGE_A * RIM.a)})`);
+    edge.addColorStop(0.5, `rgba(${HILITE_INK},0)`);
+    edge.addColorStop(1, `rgba(${HILITE_INK},0)`);
+    shade.g = { core, lit, edge };
+    return shade.g;
+  }
+  function formRamps(ctx, pathFn) {
+    if (!shade.on) return null;
+    const b = boundsOf(pathFn);
+    if (!b) return null;
+    const hw = (b.x1 - b.x0) / 2, hh = (b.y1 - b.y0) / 2;
+    if (Math.max(hw, hh) * 2 < SHADE_MIN * shade.u) return null;
+    const g = fieldRamps(ctx);
+    if (!g) return null;
+    const short = Math.min(hw, hh);
+    const peak = SPEC_A * shade.lit;
+    if (short < 0.03 * shade.u || peak < 0.01) return g;
+    const cx = (b.x0 + b.x1) / 2 + shade.lx * hw * SPEC_OFF;
+    const cy = (b.y0 + b.y1) / 2 + shade.ly * hh * SPEC_OFF;
+    const r = short * SPEC_R;
+    const spec = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    spec.addColorStop(0, `rgba(${HILITE_INK},${peak.toFixed(3)})`);
+    spec.addColorStop(0.55, `rgba(${HILITE_INK},${(peak * 0.34).toFixed(3)})`);
+    spec.addColorStop(1, `rgba(${HILITE_INK},0)`);
+    return { core: g.core, lit: g.lit, edge: g.edge, spec };
+  }
+  var SHADOW_RGB = [26, 16, 40];
+  function parseHex(hex) {
+    if (typeof hex !== "string" || hex[0] !== "#") return null;
+    if (hex.length === 7) return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    if (hex.length === 4) return [17 * parseInt(hex[1], 16), 17 * parseInt(hex[2], 16), 17 * parseInt(hex[3], 16)];
+    return null;
+  }
+  function recede(col, t) {
+    if (!t || !shade.on) return col;
+    const rgb = parseHex(col);
+    if (!rgb) return col;
+    const grey = (rgb[0] + rgb[1] + rgb[2]) / 3;
+    const out = rgb.map((v, i) => {
+      const flat = v + (grey - v) * t * 0.45;
+      return Math.round(flat + (SHADOW_RGB[i] - flat) * t);
+    });
+    return `rgb(${out[0]},${out[1]},${out[2]})`;
+  }
+  function outlined(ctx, fill, ow, pathFn, stroke = OUTLINE) {
+    ctx.beginPath();
+    pathFn(ctx);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    const g = formRamps(ctx, pathFn);
+    if (g) {
+      ctx.fillStyle = g.core;
+      ctx.fill();
+      ctx.fillStyle = g.lit;
+      ctx.fill();
+      if (g.spec) {
+        ctx.fillStyle = g.spec;
+        ctx.fill();
+      }
+    }
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = ow;
+    ctx.stroke();
+    if (g && RIM.w > 0) {
+      ctx.strokeStyle = g.edge;
+      if (RIM.inside) {
+        ctx.save();
+        ctx.clip();
+        ctx.lineWidth = ow * RIM.w * 2;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        ctx.lineWidth = ow * RIM.w;
+        ctx.stroke();
+      }
+    }
+  }
+  function limb(ctx, x1, y1, x2, y2, w, fill, ow) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = w + ow * 2;
+    ctx.stroke();
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = w;
+    ctx.stroke();
+    const g = fieldRamps(ctx);
+    if (g) {
+      ctx.strokeStyle = g.core;
+      ctx.stroke();
+      ctx.strokeStyle = g.lit;
+      ctx.stroke();
+    }
+  }
+  function drawWrench(ctx, x, y, angle, u, ow) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    const steel = "#a8b0b8", steelHi = "#e5edf2";
+    outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) => roundRectPath(c, -0.055 * u, -0.026 * u, 0.31 * u, 0.052 * u, 0.022 * u));
+    outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) => {
+      c.moveTo(0.205 * u, -0.05 * u);
+      c.lineTo(0.315 * u, -0.13 * u);
+      c.lineTo(0.405 * u, -0.075 * u);
+      c.lineTo(0.32 * u, -0.012 * u);
+      c.lineTo(0.405 * u, 0.075 * u);
+      c.lineTo(0.315 * u, 0.13 * u);
+      c.lineTo(0.205 * u, 0.05 * u);
+      c.closePath();
+    });
+    ctx.strokeStyle = steelHi;
+    ctx.lineWidth = Math.max(0.45, ow * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(0.01 * u, -9e-3 * u);
+    ctx.lineTo(0.235 * u, -9e-3 * u);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function dot(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  function joint(x1, y1, x2, y2, seg, dir, seg2 = seg) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const d = Math.hypot(dx, dy) || 1e-6;
+    const a = Math.min(seg, Math.max(-seg, (d * d + seg * seg - seg2 * seg2) / (2 * d)));
+    const h = Math.sqrt(Math.max(0, seg * seg - a * a));
+    return [x1 + dx / d * a + dy / d * h * dir, y1 + dy / d * a + -dx / d * h * dir];
+  }
+  function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false) {
+    const [jx, jy] = joint(x1, y1, x2, y2, seg, dir);
+    const ux = jx - x1, uy = jy - y1, ul = Math.hypot(ux, uy) || 1;
+    for (const [pad, col] of [[ow * 2, OUTLINE], [0, fill]]) {
+      const back = flushRoot ? (w + pad) / 2 + pad : 0;
+      const rx = x1 + ux / ul * back, ry = y1 + uy / ul * back;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = w + pad;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(jx, jy);
+      ctx.stroke();
+      ctx.lineWidth = w2 + pad;
+      ctx.beginPath();
+      ctx.moveTo(jx, jy);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    const g = fieldRamps(ctx);
+    if (g) {
+      const back = flushRoot ? w / 2 : 0;
+      ctx.beginPath();
+      ctx.moveTo(x1 + ux / ul * back, y1 + uy / ul * back);
+      ctx.lineTo(jx, jy);
+      ctx.lineTo(x2, y2);
+      ctx.lineWidth = (w + w2) / 2;
+      ctx.strokeStyle = g.core;
+      ctx.stroke();
+      ctx.strokeStyle = g.lit;
+      ctx.stroke();
+    }
+  }
+  function muscleLimb(ctx, x1, y1, x2, y2, segU, segF, dir, fill, ow, d) {
+    const [jx, jy] = joint(x1, y1, x2, y2, segU, dir, segF);
+    const thU = Math.atan2(jy - y1, jx - x1), thF = Math.atan2(y2 - jy, x2 - jx);
+    const cap = (ax, ay, bx, by, ra, rb, th) => {
+      ctx.moveTo(ax + Math.cos(th + Math.PI / 2) * ra, ay + Math.sin(th + Math.PI / 2) * ra);
+      ctx.arc(ax, ay, ra, th + Math.PI / 2, th - Math.PI / 2);
+      ctx.arc(bx, by, rb, th - Math.PI / 2, th + Math.PI / 2);
+      ctx.closePath();
+    };
+    const blob = (bx, by, rl, rc, th) => {
+      ctx.moveTo(bx + Math.cos(th) * rl, by + Math.sin(th) * rl);
+      ctx.ellipse(bx, by, rl, rc, th, 0, Math.PI * 2);
+    };
+    const pxn = -Math.sin(thU), pyn = Math.cos(thU);
+    const cmx = (x1 + x2) / 2, cmy = (y1 + y2) / 2;
+    const side = pxn * (jx - cmx) + pyn * (jy - cmy);
+    const sgn = Math.abs(side) < segU * 0.08 ? pyn > 0 ? -1 : 1 : side > 0 ? -1 : 1;
+    const fxn = -Math.sin(thF) * sgn, fyn = Math.cos(thF) * sgn;
+    const g = fieldRamps(ctx);
+    const passes = [[ow, SKIN_OUTLINE], [0, fill]];
+    if (g) passes.push([0, g.core], [0, g.lit]);
+    for (const [pad, col] of passes) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      cap(x1, y1, jx, jy, d.shoulderW / 2 + pad, d.elbowW / 2 + pad, thU);
+      blob(
+        x1 + (jx - x1) * 0.48 + pxn * sgn * d.bicepR * 0.38,
+        y1 + (jy - y1) * 0.48 + pyn * sgn * d.bicepR * 0.38,
+        segU * 0.54 + pad,
+        d.bicepR + pad,
+        thU
+      );
+      cap(jx, jy, x2, y2, d.elbowW / 2 + pad, d.wristW / 2 + pad, thF);
+      blob(
+        jx + (x2 - jx) * 0.34 + fxn * d.foreR * 0.34,
+        jy + (y2 - jy) * 0.34 + fyn * d.foreR * 0.34,
+        segF * 0.44 + pad,
+        d.foreR + pad,
+        thF
+      );
+      ctx.fill();
+    }
+    if (d.separate > 0.01 && d.shoulderW > 2.6) {
+      ctx.save();
+      ctx.globalAlpha *= d.separate;
+      for (const [pad, col] of [
+        [ow * 0.72, SKIN_OUTLINE],
+        [0, recede(fill, 0.075)]
+      ]) {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        cap(jx, jy, x2, y2, d.elbowW / 2 + pad, d.wristW / 2 + pad, thF);
+        blob(
+          jx + (x2 - jx) * 0.34 + fxn * d.foreR * 0.34,
+          jy + (y2 - jy) * 0.34 + fyn * d.foreR * 0.34,
+          segF * 0.44 + pad,
+          d.foreR + pad,
+          thF
+        );
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (d.crease > 0.01 && d.shoulderW > 2.6) {
+      const ax = x1 + (jx - x1) * 0.56 + pxn * sgn * d.bicepR * 0.28;
+      const ay = y1 + (jy - y1) * 0.56 + pyn * sgn * d.bicepR * 0.28;
+      const bx = x1 + (jx - x1) * 0.77 + pxn * sgn * d.elbowW * 0.12;
+      const by = y1 + (jy - y1) * 0.77 + pyn * sgn * d.elbowW * 0.12;
+      ctx.save();
+      ctx.globalAlpha *= 0.42 * d.crease;
+      ctx.strokeStyle = SKIN_OUTLINE;
+      ctx.lineWidth = Math.max(0.45, ow * 0.52);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.quadraticCurveTo(
+        (ax + bx) / 2 + pxn * sgn * d.bicepR * 0.14,
+        (ay + by) / 2 + pyn * sgn * d.bicepR * 0.14,
+        bx,
+        by
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  function gaitFoot(p, stride, lift) {
+    const th = p * Math.PI * 2;
+    return [Math.cos(th) * stride, -Math.max(0, -Math.sin(th)) * lift];
+  }
+  function floatingFoot(p, stride, lift) {
+    const th = p * Math.PI * 2;
+    const airborne = Math.max(0, -Math.sin(th));
+    return [Math.cos(th) * stride, -(airborne * airborne) * lift];
+  }
+  var FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7 };
+  var CELEBRATE_MOVE = {
+    lorenzo: "hop",
+    gnash: "spin",
+    fernwick: "spin",
+    b33p: "shimmy",
+    mochi: "hop",
+    chompo: "spin",
+    gary: "bow",
+    raymn: "shimmy",
+    grumpos: "flex",
+    dolores: "hips"
+  };
+  var CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035 };
+  var CEL_CYCLE = 2.6;
+  var CEL_SIG = 0.6;
+  var ACTIVE_CELEBRATION_STYLE = "reworked";
+  var usesReworkedCelebration = (pose2) => (pose2 && pose2.celebrateStyle ? pose2.celebrateStyle : ACTIVE_CELEBRATION_STYLE) === "reworked";
+  var ACTIVE_LOCOMOTION_STYLE = "enhanced";
+  var usesEnhancedLocomotion = (pose2) => (pose2 && pose2.motionStyle ? pose2.motionStyle : ACTIVE_LOCOMOTION_STYLE) === "enhanced";
+  var TITLE_PARADE_ACTIONS = Object.freeze({
+    lorenzo: "compact wave",
+    gnash: "running hop",
+    fernwick: "shield roll",
+    b33p: "cannon aim",
+    mochi: "float and squish",
+    chompo: "chomp",
+    raymn: "rocket-fist toss",
+    grumpos: "menu flex"
+  });
+  function celebrateMotion(id, t, reworked = false) {
+    const seed = FACE_SEED[id] || 0;
+    const cycleLength = reworked && id === "grumpos" ? 3.4 : CEL_CYCLE;
+    const c = (t + seed * 0.4) % cycleLength / cycleLength;
+    const amp = CELEBRATE_BOUNCE[id] != null ? CELEBRATE_BOUNCE[id] : 0.055;
+    const m = { lift: 0, x: 0, tilt: 0, spin: 1, squash: 0, hunch: 0, peak: false, move: null, q: 0, cycle: c };
+    if (reworked && id === "mochi") {
+      const arc = Math.abs(Math.sin(c * Math.PI * 2));
+      m.move = "synchop";
+      m.q = c;
+      m.lift = arc * 0.15;
+      m.squash = Math.max(0, 0.22 - arc) * 0.8;
+      m.peak = arc > 0.72;
+      return m;
+    }
+    if (reworked && id === "chompo") {
+      const bite = biteWave(c * 2);
+      const phase = c * 2 % 1;
+      const smooth = (v) => {
+        const n = Math.max(0, Math.min(1, v));
+        return n * n * (3 - 2 * n);
+      };
+      const pull = phase < 0.2 ? smooth(phase / 0.2) : phase < 0.34 ? 1 - smooth((phase - 0.2) / 0.14) : 0;
+      const lunge = phase < 0.2 ? 0 : phase < 0.48 ? smooth((phase - 0.2) / 0.28) : phase < 0.76 ? 1 - smooth((phase - 0.48) / 0.28) : 0;
+      const satisfied = phase > 0.73 && phase < 0.98 ? Math.sin((phase - 0.73) / 0.25 * Math.PI) : 0;
+      m.move = "bite";
+      m.q = c;
+      m.x = -pull * 0.07 + lunge * 0.09;
+      m.lift = bite * 0.025 + satisfied * 0.1;
+      m.squash = pull * 0.18 + (1 - bite) * 0.06;
+      m.tilt = -pull * 0.06 + lunge * 0.045;
+      m.peak = bite > 0.82 || satisfied > 0.7;
+      return m;
+    }
+    if (reworked && id === "raymn") {
+      const impact = c >= 0.18 && c < 0.36 ? Math.sin((c - 0.18) / 0.18 * Math.PI) : 0;
+      m.move = "gloves";
+      m.q = c;
+      m.lift = impact * 0.055;
+      m.squash = Math.max(0, 0.12 - impact) * 0.45;
+      m.peak = impact > 0.65 || c >= 0.5 && c < 0.82;
+      return m;
+    }
+    if (c < CEL_SIG) {
+      const b = Math.sin(c * cycleLength * 6);
+      m.lift = Math.abs(b) * amp;
+      m.tilt = Math.sin(c * cycleLength * 3) * 0.06;
+      m.squash = Math.max(0, -b) * 0.25;
+      m.peak = b > 0.3;
+      return m;
+    }
+    const q = (c - CEL_SIG) / (1 - CEL_SIG);
+    const proposedMove = reworked ? {
+      gnash: "stepturn",
+      fernwick: "present",
+      b33p: "salute"
+    }[id] : null;
+    const move = proposedMove || CELEBRATE_MOVE[id] || "hop";
+    m.move = move;
+    m.q = q;
+    if (move === "spin") {
+      m.lift = Math.sin(q * Math.PI) * 0.17;
+      m.spin = Math.cos(q * Math.PI * 2);
+      m.peak = true;
+    } else if (move === "hips") {
+      const hit = Math.abs(Math.sin(q * Math.PI * 2));
+      m.squash = hit * 0.07;
+      m.tilt = Math.sin(q * Math.PI * 2) * 0.045;
+      m.lift = 0;
+      m.peak = hit > 0.62;
+    } else if (move === "bow") {
+      const d = Math.sin(q * Math.PI);
+      m.tilt = d * 0.26;
+      m.x = d * 0.05;
+      m.squash = d * 0.3;
+      m.peak = d < 0.5;
+    } else if (move === "shimmy") {
+      const w = Math.sin(q * Math.PI * 8);
+      m.x = w * 0.06;
+      m.tilt = Math.sin(q * Math.PI * 8 + 1) * 0.1;
+      m.lift = Math.abs(w) * 0.05;
+      m.peak = true;
+    } else if (move === "flex") {
+      const hit = Math.abs(Math.sin(q * Math.PI * 2));
+      m.squash = Math.max(0, 0.4 - hit) * 0.8;
+      m.tilt = (q < 0.5 ? -1 : 1) * 0.05 * Math.min(1, hit * 3);
+      m.peak = hit > 0.82;
+    } else if (move === "stepturn") {
+      const step = Math.sin(q * Math.PI * 2);
+      m.x = step * 0.055;
+      m.tilt = -step * 0.07;
+      m.lift = Math.sin(q * Math.PI) * 0.045;
+      m.peak = q > 0.38 && q < 0.7;
+    } else if (move === "present") {
+      const hit = Math.sin(q * Math.PI);
+      m.x = hit * 0.025;
+      m.tilt = -hit * 0.045;
+      m.squash = (1 - hit) * 0.08;
+      m.peak = q > 0.32 && q < 0.78;
+    } else if (move === "salute") {
+      const hit = Math.sin(q * Math.PI);
+      m.lift = hit * 0.025;
+      m.tilt = Math.sin(q * Math.PI * 2) * 0.025;
+      m.peak = q > 0.18 && q < 0.86;
+    } else if (move === "gloves") {
+      const hit = Math.sin(q * Math.PI);
+      m.lift = hit * 0.035;
+      m.tilt = -Math.sin(q * Math.PI * 2) * 0.025;
+      m.peak = q > 0.24 && q < 0.82;
+    } else {
+      const arc = Math.abs(Math.sin(q * Math.PI * 2));
+      m.lift = arc * 0.26;
+      m.tilt = Math.sin(q * Math.PI * 2) * 0.09;
+      m.squash = Math.max(0, 0.3 - arc) * 0.8;
+      m.peak = arc > 0.4;
+    }
+    if (reworked && id === "grumpos") {
+      const smooth = (v) => {
+        const n = Math.max(0, Math.min(1, v));
+        return n * n * (3 - 2 * n);
+      };
+      m.hunch = c < 0.547 ? 0 : c < 0.604 ? smooth((c - 0.547) / 0.057) : c < 0.956 ? 1 : 1 - smooth((c - 0.956) / 0.044);
+    }
+    return m;
+  }
+  function expressionFor(id, pose2 = {}) {
+    const t = pose2.time || 0;
+    const seed = FACE_SEED[id] || 0;
+    const blinkGap = pose2.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
+    const blinkPhase = (t + seed) % blinkGap;
+    const active = pose2.kind === "jump" || pose2.kind === "duck" || pose2.kind === "celebrate" || pose2.stomp || pose2.roll || pose2.float;
+    const joy = pose2.kind === "celebrate";
+    const reworkedCelebration = joy && usesReworkedCelebration(pose2);
+    const cm = joy ? celebrateMotion(id, t, reworkedCelebration) : null;
+    const cheer = !!(cm && cm.peak);
+    let calling = false, glanceX = 0, glanceY = 0, hmph = false, browEase = 1;
+    if (id === "dolores" && !active && !joy && !pose2.annoyed) {
+      const cyc = 4.4, ph = (t + seed) % cyc, win = 0.9;
+      const slotN = Math.floor((t + seed) / cyc) % 7;
+      const ease = ph < win ? Math.min(1, Math.min(ph, win - ph) / 0.22) : 0;
+      if (ph < win) {
+        if (slotN === 0) {
+          calling = true;
+          browEase = ease;
+        } else if (slotN === 2) glanceX = -0.032 * ease;
+        else if (slotN === 3) glanceY = 0.022 * ease;
+        else if (slotN === 4) glanceX = 0.032 * ease;
+        else if (slotN === 5) {
+          hmph = true;
+          browEase = ease;
+        }
+      }
+    }
+    const annoyedAmt = Math.max(0, Math.min(1, +pose2.annoyed || 0));
+    const annoyed = annoyedAmt > 0.02;
+    if (annoyed) browEase = annoyedAmt;
+    return {
+      // A blink through the call or the glare would eat it, so those win.
+      blink: !active && !calling && !annoyed && blinkPhase < (pose2.menu ? 0.2 : 0.13),
+      calling,
+      annoyed,
+      glanceX,
+      glanceY,
+      hmph,
+      browEase,
+      // Which flavour of mad — 0 glare, 1 one-brow-up, 2 eye-roll, 3 fed-up. The
+      // caller rolls it so the same jab twice doesn't give the same face.
+      madStyle: pose2.madStyle | 0,
+      // Carried so downstream marks can be keyed to the hero, not just the mood —
+      // BROW_L_SCALE is the one that needs it.
+      id,
+      focus: pose2.kind === "run" || pose2.kind === "duck" || pose2.roll,
+      surprise: pose2.kind === "jump" && !pose2.stomp,
+      joy,
+      cheer,
+      // The narrowest window in the routine: a hit of the BIG move, held. The
+      // signature bounce peaks constantly, so anything keyed to `cheer` reads as
+      // a permanent expression — this is for faces that should barely crack.
+      // The Grumpos gallery routine has long held poses. Letting `beam` follow
+      // the old short peak window swaps his pale beard-mouth between two shapes
+      // mid-hold, which reads as the mouth blinking out. Keep his stern mouth
+      // registered throughout the study; production retains the rare grin.
+      beam: id === "grumpos" && reworkedCelebration ? false : !!(cm && cm.peak && cm.move),
+      effort: !!(pose2.stomp || pose2.roll || pose2.headless),
+      // Even Grumpos's scowl unclenches now and then: mid-run the face drops
+      // to neutral for a couple of seconds out of every eight or so, seeded so
+      // the lull lands at different beats per hero clock. Permanent anger reads
+      // as a mask; the occasional slack face is what makes the scowl register
+      // as a mood. Downstream this suppresses the focus brows and flattens his
+      // mouth, so it needs its own flag — mood alone can't unclench a running
+      // face, because ex.focus forces the brows on.
+      relaxed: id === "grumpos" && pose2.kind === "run" && (t + seed * 1.7) % 8.3 < 2.2,
+      mood: id === "gnash" || id === "raymn" ? "cocky" : id === "fernwick" ? "bright" : id === "b33p" ? "robot" : id === "grumpos" ? "gruff" : id === "lorenzo" ? "worried" : "soft"
+    };
+  }
+  function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
+    const sep = 0.075 * u;
+    const turnLimit = Math.PI * 5 / 12;
+    const turnRad = Math.max(-turnLimit, Math.min(turnLimit, (Number(ex.turn) || 0) * Math.PI / 180));
+    const turnYaw = Math.sin(turnRad);
+    const turnDepth = Math.abs(turnYaw);
+    const nearSide = turnRad < 0 ? 1 : -1;
+    const turned = Math.abs(turnRad) > 1e-3;
+    const eyeX = (side) => cx + side * sep * (turned && side !== nearSide ? 1 - 0.42 * turnDepth : 1);
+    if (ex.mood === "robot") {
+      if (ex.joy && !ex.cheer) {
+        ctx.strokeStyle = p.w;
+        ctx.lineWidth = Math.max(0.55, 0.017 * u) * INK.face;
+        for (const sx of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
+          ctx.quadraticCurveTo(eyeX(sx), cy - 0.05 * u, eyeX(sx) + 0.04 * u, cy + 0.02 * u);
+          ctx.stroke();
+        }
+        return;
+      }
+      const lw = 0.045 * u;
+      const lh = ex.blink ? 0.011 * u : ex.surprise || ex.cheer ? 0.068 * u : 0.05 * u;
+      const lookX = (ex.focus ? 0.012 : 0) * u;
+      for (const sx of [-1, 1]) {
+        outlined(ctx, p.w, Math.max(0.28, 8e-3 * u) * INK.face, (c) => roundRectPath(c, eyeX(sx) + lookX - lw, cy - lh, lw * 2, lh * 2, Math.min(lw, lh) * 0.8));
+      }
+      return;
+    }
+    if (ex.blink) {
+      ctx.strokeStyle = p.e;
+      ctx.lineWidth = Math.max(0.44, 0.014 * u) * INK.face;
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(eyeX(sx) - 0.035 * u, cy);
+        ctx.quadraticCurveTo(eyeX(sx), cy + 0.018 * u, eyeX(sx) + 0.035 * u, cy);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (ex.joy && !ex.cheer) {
+      ctx.strokeStyle = p.e;
+      ctx.lineWidth = Math.max(0.5, 0.015 * u) * INK.face;
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
+        ctx.quadraticCurveTo(eyeX(sx), cy - 0.055 * u, eyeX(sx) + 0.04 * u, cy + 0.02 * u);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (lod) {
+      dot(ctx, eyeX(-1), cy, 0.032 * u, p.e);
+      dot(ctx, eyeX(1), cy, 0.032 * u, p.e);
+      return;
+    }
+    for (const sx of [-1, 1]) {
+      const rollUp = ex.annoyed && ex.madStyle === 2;
+      const eyeRy = (ex.annoyed ? ex.madStyle === 2 ? 0.062 : ex.madStyle === 1 ? 0.05 : 0.046 : 0.065) * u;
+      outlined(ctx, "#fff", Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, eyeRy, 0, 0, Math.PI * 2));
+      const lookX = ((ex.calling ? 0.026 : ex.focus ? 0.012 : rollUp ? 0.018 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.032 * u;
+      const lookY = ex.surprise || ex.cheer || ex.calling ? -5e-3 * u : rollUp ? -0.03 * u : ex.annoyed ? 0 : (0.012 + (ex.glanceY || 0)) * u;
+      dot(ctx, eyeX(sx) + lookX, cy + lookY, 0.026 * u, p.e);
+    }
+    if (!lod && !ex.brow && ex.mood !== "bright" && !ex.relaxed && (ex.annoyed || ex.calling || ex.hmph || ex.focus || ex.mood === "cocky" || ex.mood === "gruff")) {
+      ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
+      ctx.lineWidth = Math.max(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
+      ctx.beginPath();
+      if (ex.annoyed && ex.madStyle === 1) {
+        const hi = cy - 0.096 * u;
+        ctx.moveTo(eyeX(-1) - 0.05 * u, hi);
+        ctx.lineTo(eyeX(-1) + 0.05 * u, hi + 4e-3 * u);
+        ctx.moveTo(eyeX(1) - 0.05 * u, cy - 0.05 * u);
+        ctx.lineTo(eyeX(1) + 0.052 * u, cy - 0.092 * u);
+      } else if (ex.annoyed && ex.madStyle === 2) {
+        const hi = cy - 0.104 * u;
+        ctx.moveTo(eyeX(-1) - 0.05 * u, hi + 0.01 * u);
+        ctx.lineTo(eyeX(-1) + 0.048 * u, hi);
+        ctx.moveTo(eyeX(1) - 0.048 * u, hi);
+        ctx.lineTo(eyeX(1) + 0.05 * u, hi + 0.01 * u);
+      } else if (ex.annoyed) {
+        const inY = cy - 0.042 * u, outY = cy - 0.098 * u;
+        ctx.moveTo(eyeX(-1) - 0.052 * u, outY);
+        ctx.lineTo(eyeX(-1) + 0.05 * u, inY);
+        ctx.moveTo(eyeX(1) - 0.05 * u, inY);
+        ctx.lineTo(eyeX(1) + 0.052 * u, outY);
+      } else if (ex.calling || ex.hmph) {
+        const by = cy - 0.092 * u;
+        ctx.moveTo(eyeX(-1) - 0.05 * u, by);
+        ctx.lineTo(eyeX(-1) + 0.045 * u, by + 6e-3 * u);
+        ctx.moveTo(eyeX(1) - 0.045 * u, by + 6e-3 * u);
+        ctx.lineTo(eyeX(1) + 0.05 * u, by);
+      } else {
+        ctx.moveTo(eyeX(-1) - 0.05 * u, cy - 0.08 * u);
+        ctx.lineTo(eyeX(-1) + 0.045 * u, cy - (ex.mood === "worried" ? 0.055 : 0.045) * u);
+        ctx.moveTo(eyeX(1) - 0.045 * u, cy - 0.045 * u);
+        ctx.lineTo(eyeX(1) + 0.05 * u, cy - 0.08 * u);
+      }
+      ctx.stroke();
+    }
+  }
+  function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(0.55, ow * 0.4) * INK.face;
+    ctx.beginPath();
+    if (ex.joy) {
+      const w = (ex.cheer ? 0.085 : 0.065) * u, d = (ex.cheer ? 0.075 : 0.038) * u;
+      ctx.stroke();
+      outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => {
+        c.moveTo(cx - w, cy - 0.012 * u);
+        c.quadraticCurveTo(cx, cy + d * 1.9, cx + w, cy - 0.012 * u);
+        c.closePath();
+      });
+      return;
+    }
+    if (ex.calling) {
+      ctx.stroke();
+      outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy + 8e-3 * u, 0.042 * u, 0.025 * u, 0, 0, Math.PI * 2));
+      return;
+    }
+    if (ex.annoyed) {
+      if (ex.madStyle === 1 || ex.madStyle === 2) {
+        ctx.moveTo(cx - 0.052 * u, cy + 0.016 * u);
+        ctx.lineTo(cx + 0.052 * u, cy + 0.016 * u);
+        ctx.stroke();
+        return;
+      }
+      ctx.moveTo(cx - 0.05 * u, cy + 0.024 * u);
+      ctx.quadraticCurveTo(cx, cy - 0.016 * u, cx + 0.05 * u, cy + 0.024 * u);
+      ctx.stroke();
+      return;
+    }
+    if (ex.surprise) {
+      ctx.stroke();
+      outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
+      return;
+    } else if (ex.effort) {
+      ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u);
+      ctx.lineTo(cx + 0.055 * u, cy - 5e-3 * u);
+    } else if (spec.mouth === "smile") ctx.arc(cx, cy - 0.02 * u, 0.06 * u, 0.25 * Math.PI, 0.75 * Math.PI);
+    else if (spec.mouth === "smirk") {
+      ctx.moveTo(cx, cy + 0.01 * u);
+      ctx.quadraticCurveTo(cx + 0.05 * u, cy + 0.02 * u, cx + 0.08 * u, cy - 0.02 * u);
+    } else if (spec.mouth === "line") {
+      ctx.moveTo(cx - 0.045 * u, cy);
+      ctx.lineTo(cx + 0.045 * u, cy);
+    } else if (spec.mouth === "grille") {
+      ctx.strokeStyle = p.w;
+      ctx.lineWidth = Math.max(0.38, ow * 0.28) * INK.face;
+      for (let i = -1; i <= 1; i++) {
+        ctx.moveTo(cx + i * 0.034 * u, cy - 0.018 * u);
+        ctx.lineTo(cx + i * 0.034 * u, cy + 0.018 * u);
+      }
+    } else if (spec.mouth === "flat") {
+      ctx.moveTo(cx - 0.05 * u, cy + 0.01 * u);
+      ctx.lineTo(cx + 0.05 * u, cy + 0.01 * u);
+    } else {
+      ctx.stroke();
+      return;
+    }
+    ctx.stroke();
+  }
+  function bluntSpike(c, ax, ay, tx, ty, bx, by, round = 0.18) {
+    const p1x = ax + (tx - ax) * (1 - round), p1y = ay + (ty - ay) * (1 - round);
+    const p2x = bx + (tx - bx) * (1 - round), p2y = by + (ty - by) * (1 - round);
+    c.moveTo(ax, ay);
+    c.lineTo(p1x, p1y);
+    c.quadraticCurveTo(tx, ty, p2x, p2y);
+    c.lineTo(bx, by);
+    c.closePath();
+  }
+  var LORENZO_FACES = [
+    {
+      id: "shipped",
+      label: "is",
+      note: "band arched clear of the brows, hat rocked back 12 deg, tufted fringe, oval bill, face down 0.038R",
+      // width is not a free number: the hem corner sits at r = hypot(width,
+      // hemSide) from the head centre, and at 1.02 that put it 5.3% OUTSIDE the
+      // 1.0R skull. The cap edge then CROSSES the head outline rather than
+      // meeting it, and that step is exactly what reads as a hat resting on top
+      // of a head instead of being worn on one. sqrt(1 - 0.26^2) = 0.966 lands
+      // the corner on the silhouette; 0.97 leaves a hair of fabric proud of it.
+      hem: 0.78,
+      hemSide: 0.26,
+      hemPow: 3,
+      width: 0.97,
+      crown: 1.26,
+      hug: 0.94,
+      tilt: 12,
+      // Bill reaches 1.60R from the head centre, 0.6R clear of the skull. Its
+      // inner end still sits at 0.16R, buried under the dome — that overlap is
+      // the whole attachment, so the visor can be lengthened from the outside
+      // without ever loosening the join.
+      // Two things this went through. The wedge of hair that used to show between
+      // bill and dome was a THICKNESS problem, not a height one: at ry 0.19 the
+      // bill did not span the gap between the dome's edge and the band, so raising
+      // it far enough to cover that span parked it up on the dome's shoulder. A
+      // taller bill closes the same gap sitting low, where a bill belongs.
+      //
+      // Then the shape: a level, symmetric, round-ended lozenge sticking straight
+      // out from a sphere does not read as a bill, and reads as other things. The
+      // fix is not a tapered outline — a drawn wedge comes out a thin flap with
+      // less mass than the ellipse — it is ANGLE. Tipped 9 deg down the same oval
+      // reads as a visor shading the eyes. Reach is unchanged at 1.56R.
+      // 1.56R and 3.1:1. Extending it was tried and reverted — 1.74R is simply too
+      // much bill for the head, whether or not the depth is raised to hold the
+      // aspect ratio. Worth knowing if it comes up again: length ALONE is not an
+      // option, since it takes the ratio to 3.7:1 and elongation is exactly what
+      // made the pre-angle version read wrong.
+      billOval: [0.84, 0.16, 0.72, 0.23],
+      billDown: 9,
+      // faceDy is a lift from the 0.014 the bake-off settled on: the mask sits
+      // 0.038R below where it always did rather than 0.067R. That costs the
+      // fringe 0.029R of the gap it hangs into, so the longest centre lock now
+      // ends about level with the brow instead of 0.065R clear of it. Deliberate
+      // — they are both `p.m` brown and a little contact reads as hair meeting
+      // brow, which is what hair under a cap does.
+      hair: true,
+      hairLock: 0.62,
+      faceDy: 8e-3,
+      brow: "bushy"
+    },
+    // Kept, and only kept, so the gallery can show the two side by side. This is
+    // the geometry every screenshot before 2026-07-23 has: a flat chord at -0.12R
+    // crossing 42% of the way down the eye, with both brow strokes drawn inside
+    // the hat and showing only because the face paints after it.
+    {
+      id: "was",
+      label: "was",
+      note: "pre-2026-07-23 \u2014 flat hem at -0.12R, cutting the eyes, brows on the cap",
+      hem: 0.12,
+      width: 1.02,
+      crown: 1.14,
+      bill: [0.8, 0.28, 0.5, 0.16],
+      emblem: 0.75
+    }
+  ];
+  var LORENZO_FACE = { variant: "shipped" };
+  var lorenzoFace = () => LORENZO_FACES.find((v) => v.id === LORENZO_FACE.variant) || LORENZO_FACES[0];
+  function hemYAt(hx, hy, R, v, xn) {
+    const side = v.hemSide != null ? v.hemSide : v.hem;
+    const k = Math.pow(Math.min(1, Math.abs(xn)), v.hemPow != null ? v.hemPow : 2);
+    return hy - R * (v.hem * (1 - k) + side * k);
+  }
+  function capPath(c, hx, hy, R, v) {
+    const K = 0.5523;
+    const hemS = hemYAt(hx, hy, R, v, 1);
+    const w = R * v.width;
+    const hug = v.hug != null ? v.hug : 1;
+    const top = hy - R * v.crown;
+    const dh = hemS - top;
+    c.moveTo(hx - w, hemS);
+    c.bezierCurveTo(hx - w * hug, hemS - dh * K, hx - w * K, top, hx, top);
+    c.bezierCurveTo(hx + w * K, top, hx + w * hug, hemS - dh * K, hx + w, hemS);
+    for (let i = 15; i >= 0; i--) {
+      const xn = -1 + 2 * i / 16;
+      c.lineTo(hx + w * xn, hemYAt(hx, hy, R, v, xn));
+    }
+    c.closePath();
+  }
+  function hairCrown(c, hx, hy, R, v) {
+    const w = R * v.width;
+    const ly = hemYAt(hx, hy, R, v, -1), ry = hemYAt(hx, hy, R, v, 1);
+    c.moveTo(hx - w, ly);
+    c.arc(hx, hy, R * 0.99, Math.atan2(ly - hy, -w), Math.atan2(ry - hy, w), false);
+    c.lineTo(hx + w, ry);
+  }
+  function capTufts(c, hx, hy, R, v) {
+    const w = R * v.width;
+    const drop = R * (v.hairLock != null ? v.hairLock : 0.16);
+    hairCrown(c, hx, hy, R, v);
+    for (let i = 16; i >= 0; i--) {
+      const xn = -1 + 2 * i / 16;
+      c.lineTo(hx + w * xn, hemYAt(hx, hy, R, v, xn));
+    }
+    c.closePath();
+    for (const [a, b, scale = 1] of [
+      [-0.88, -0.52],
+      [-0.52, -0.16],
+      [-0.16, 0.2],
+      [0.2, 0.56],
+      [0.56, 0.86],
+      [0.86, 1, 0.5]
+    ]) {
+      const mid = (a + b) / 2;
+      const reach = drop * scale * (0.5 + 0.5 * Math.pow(Math.min(Math.abs(mid), 0.78), 1.2));
+      bluntSpike(
+        c,
+        hx + w * a,
+        hemYAt(hx, hy, R, v, a),
+        hx + w * (mid + 0.06),
+        hemYAt(hx, hy, R, v, mid) + reach,
+        // tip, leaning with travel
+        hx + w * b,
+        hemYAt(hx, hy, R, v, b),
+        0.3
+      );
+    }
+  }
+  function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
+    const sep = 0.075 * u;
+    const drop = ex.focus ? 0.012 * u : ex.surprise || ex.cheer ? -0.014 * u : 0;
+    const lift = ex.joy ? 0.016 * u : 0;
+    const arch = ex.joy ? 0.01 * u : 0;
+    for (const sx of [-1, 1]) {
+      const ox = cx + sx * (sep + 0.045 * u), oy = cy - 0.086 * u - lift;
+      const ix = cx + sx * (sep - 0.052 * u), iy = cy - 0.05 * u + drop - lift - arch;
+      outlined(ctx, p.m, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
+        c.moveTo(ox, oy + 0.015 * u);
+        c.quadraticCurveTo(cx + sx * sep, oy - 0.016 * u, ix, iy - 9e-3 * u);
+        c.lineTo(ix, iy + 9e-3 * u);
+        c.quadraticCurveTo(cx + sx * sep, oy + 0.02 * u, ox, oy + 0.015 * u);
+        c.closePath();
+      });
+    }
+  }
+  function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose2 = {}) {
+    const turnLimit = Math.PI * 5 / 12;
+    const bodyTurn = Number(pose2.turn) || 0;
+    const requestedHeadTurn = Number(pose2.headTurn ?? bodyTurn) || 0;
+    const headTurn = id === "b33p" ? requestedHeadTurn * 0.5 : requestedHeadTurn;
+    const outlineTurn = pose2.headTurn == null ? bodyTurn : 0;
+    const outlineRad = Math.max(-turnLimit, Math.min(turnLimit, outlineTurn * Math.PI / 180));
+    const outlineYaw = Math.sin(outlineRad);
+    const outlineDepth = Math.abs(outlineYaw);
+    const faceRad = Math.max(-turnLimit, Math.min(turnLimit, headTurn * Math.PI / 180));
+    const faceYaw = Math.sin(faceRad);
+    const faceDepth = Math.abs(faceYaw);
+    if (outlineDepth > 1e-3) {
+      const nearShift = -outlineYaw * 0.025 * u;
+      ctx.save();
+      ctx.translate(hx + nearShift, hy);
+      ctx.scale(1 - 0.08 * outlineDepth, 1);
+      ctx.translate(-hx, -hy);
+    }
+    const R = (spec.heavy ? 0.22 : 0.21) * u;
+    if (spec.head === "jackal") {
+      for (const [side, lean, height] of [[-1, -0.05, 1.52], [1, 0.05, 1.44]]) {
+        outlined(ctx, p.h, ow, (c) => bluntSpike(
+          c,
+          hx + side * R * 0.72,
+          hy - R * 0.32,
+          hx + side * R * (0.5 + lean),
+          hy - R * height,
+          hx - side * R * 0.02,
+          hy - R * 0.74
+        ));
+      }
+      outlined(ctx, p.h, ow, (c) => bluntSpike(
+        c,
+        hx - R * 0.4,
+        hy - R * 0.58,
+        hx + R * 0.02,
+        hy - R * 1.6,
+        hx + R * 0.42,
+        hy - R * 0.58
+      ));
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(hx - R * 0.8, hy + R * 0.05);
+        c.lineTo(hx - R * 1.22, hy + R * 0.38);
+        c.lineTo(hx - R * 0.66, hy + R * 0.52);
+        c.closePath();
+      });
+    }
+    if (spec.head === "floppy") {
+      const motion = pose2.kind === "run" || pose2.kind === "jump";
+      const wave = motion ? Math.sin((pose2.time || 0) * 7) * R * 0.2 : 0;
+      const tipX = hx - R * (motion ? 1.86 : 0.98);
+      const tipY = hy + R * (motion ? 0.52 : 1.06) + wave;
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(hx - R * 0.66, hy - R * 0.8);
+        c.quadraticCurveTo(hx - R * (motion ? 1.4 : 1.26), hy + R * (motion ? -0.14 : 0.22) + wave, tipX, tipY);
+        c.quadraticCurveTo(hx - R * (motion ? 1.24 : 0.68), hy + R * (motion ? 0.44 : 0.62) + wave, hx - R * 0.42, hy - R * 0.16);
+        c.closePath();
+      });
+      if (!lod) dot(ctx, tipX, tipY, R * 0.12, p.a);
+    }
+    if (spec.plumber) {
+      for (const sx of [-1, 1]) {
+        const lift = sx > 0 && spec.head === "cap" && lorenzoFace().tilt ? R * 0.12 : 0;
+        outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx + sx * R * 0.95, hy + R * 0.08 - lift, R * 0.2, R * 0.28, 0, 0, Math.PI * 2));
+      }
+    }
+    const blockHead = (c) => {
+      c.moveTo(hx - R, hy + R * 0.06);
+      c.quadraticCurveTo(hx - R * 1.02, hy - R * 0.66, hx - R * 0.46, hy - R * 0.98);
+      c.quadraticCurveTo(hx, hy - R * 1.22, hx + R * 0.46, hy - R * 0.98);
+      c.quadraticCurveTo(hx + R * 1.02, hy - R * 0.66, hx + R, hy + R * 0.06);
+      c.quadraticCurveTo(hx + R * 0.92, hy + R * 0.3, hx + R * 0.64, hy + R * 0.6);
+      c.quadraticCurveTo(hx + R * 0.5, hy + R * 0.86, hx + R * 0.3, hy + R * 0.92);
+      c.lineTo(hx - R * 0.3, hy + R * 0.92);
+      c.quadraticCurveTo(hx - R * 0.5, hy + R * 0.86, hx - R * 0.64, hy + R * 0.6);
+      c.quadraticCurveTo(hx - R * 0.92, hy + R * 0.3, hx - R, hy + R * 0.06);
+      c.closePath();
+    };
+    if (id === "grumpos") {
+      outlined(ctx, p.s, ow, blockHead);
+    } else {
+      outlined(ctx, spec.head === "dome" || spec.head === "jackal" ? p.h : p.s, ow, (c) => c.arc(hx, hy, R, 0, Math.PI * 2));
+    }
+    if (spec.head === "cap") {
+      const cap = lorenzoFace();
+      const tilt = cap.tilt ? cap.tilt * Math.PI / 180 : 0;
+      if (tilt) {
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(-tilt);
+        ctx.translate(-hx, -hy);
+      }
+      if (cap.hair) outlined(ctx, p.m, ow, (c) => capTufts(c, hx, hy, R, cap));
+      outlined(ctx, p.h, ow, (c) => capPath(c, hx, hy, R, cap));
+      if (cap.billOval) {
+        const [bx, above, brx, bry] = cap.billOval;
+        const by = hemYAt(hx, hy, R, cap, R * bx / (R * cap.width)) - R * above;
+        const down = (cap.billDown || 0) * Math.PI / 180;
+        outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, by, R * brx, R * bry, tilt + down, 0, Math.PI * 2));
+      } else if (cap.bill) {
+        const [bx, by, brx, bry] = cap.bill;
+        outlined(ctx, p.h, ow, (c) => c.ellipse(hx + R * bx, hy - R * by, R * brx, R * bry, 0, 0, Math.PI * 2));
+      }
+      if (!lod && cap.emblem != null) {
+        const ey = hy - R * cap.emblem;
+        outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, ey, R * 0.22, 0, Math.PI * 2));
+        ctx.strokeStyle = p.h;
+        ctx.lineWidth = Math.max(0.6, ow * 0.55);
+        ctx.beginPath();
+        ctx.moveTo(hx + R * 0.02, ey - R * 0.1);
+        ctx.lineTo(hx + R * 0.22, ey + R * 0.1);
+        ctx.moveTo(hx + R * 0.22, ey - R * 0.1);
+        ctx.lineTo(hx + R * 0.02, ey + R * 0.1);
+        ctx.stroke();
+      }
+      if (tilt) ctx.restore();
+    } else if (spec.head === "jackal") {
+      outlined(ctx, p.h, ow, (c) => bluntSpike(
+        c,
+        hx - R * 0.52,
+        hy - R * 0.74,
+        hx - R * 0.05,
+        hy - R * 1.2,
+        hx + R * 0.24,
+        hy - R * 0.78
+      ));
+      for (const side of [-1, 1]) {
+        for (const [bx, by, tx, ty, ex2, ey] of [
+          [0.6, 0.68, 1.18, 0.88, 0.82, 0.16],
+          // upper quill
+          [0.74, 0.26, 1.2, 0.34, 0.86, -0.24]
+          // lower quill
+        ]) {
+          outlined(ctx, p.h, ow, (c) => bluntSpike(
+            c,
+            hx + side * R * bx,
+            hy - R * by,
+            hx + side * R * tx,
+            hy - R * ty,
+            hx + side * R * ex2,
+            hy - R * ey
+          ));
+        }
+      }
+    } else if (spec.head === "floppy") {
+      outlined(ctx, p.a, ow, (c) => {
+        c.moveTo(hx - R * 0.96, hy + R * 0.06);
+        c.quadraticCurveTo(hx - R * 1.1, hy - R * 0.74, hx - R * 0.3, hy - R * 1.04);
+        c.quadraticCurveTo(hx + R * 0.42, hy - R * 1.26, hx + R * 1, hy - R * 0.6);
+        c.quadraticCurveTo(hx + R * 1.12, hy - R * 0.28, hx + R * 0.92, hy + R * 0.06);
+        c.lineTo(hx + R * 0.74, hy - R * 0.3);
+        c.lineTo(hx + R * 0.58, hy - R * 0.06);
+        c.lineTo(hx + R * 0.42, hy - R * 0.32);
+        c.lineTo(hx + R * 0.26, hy - R * 0.06);
+        c.lineTo(hx + R * 0.08, hy - R * 0.34);
+        c.lineTo(hx - R * 0.1, hy - R * 0.06);
+        c.lineTo(hx - R * 0.28, hy - R * 0.34);
+        c.lineTo(hx - R * 0.46, hy - R * 0.06);
+        c.lineTo(hx - R * 0.64, hy - R * 0.3);
+        c.lineTo(hx - R * 0.82, hy - R * 0.06);
+        c.closePath();
+      });
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(hx - R * 1.02, hy - R * 0.22);
+        c.quadraticCurveTo(hx, hy - R * 1.18, hx + R * 1.02, hy - R * 0.22);
+        c.quadraticCurveTo(hx + R * 1.16, hy - R * 0.72, hx + R * 0.48, hy - R * 1.16);
+        c.quadraticCurveTo(hx, hy - R * 1.36, hx - R * 0.48, hy - R * 1.16);
+        c.quadraticCurveTo(hx - R * 1.16, hy - R * 0.72, hx - R * 1.02, hy - R * 0.22);
+        c.closePath();
+      });
+    } else if (spec.head === "dome") {
+      const tipY = hy - R * 1.5;
+      const tipX = hx + R * 0.14;
+      limb(ctx, hx + R * 0.05, hy - R * 0.8, tipX, tipY, 0.028 * u, p.p, Math.max(0.6, ow * 0.6));
+      if (pose2.kind === "celebrate" && !lod) {
+        const rt = pose2.time || 0;
+        ctx.save();
+        ctx.strokeStyle = p.e;
+        for (let i = 0; i < 3; i++) {
+          const q = (rt * 0.8 + i / 3) % 1;
+          ctx.globalAlpha = (1 - q) * 0.7;
+          ctx.lineWidth = Math.max(0.5, ow * (1 - q * 0.55));
+          ctx.beginPath();
+          ctx.arc(tipX, tipY, R * (0.2 + q * 0.95), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      dot(ctx, tipX, tipY, R * 0.13, Math.sin((pose2.time || 0) * 6) > 0 ? p.a : p.w);
+      outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => roundRectPath(c, hx - R * 0.62, hy - R * 0.28, R * 1.24, R * 0.95, R * 0.3));
+      if (!lod) {
+        dot(ctx, hx - R * 0.3, hy - R * 0.68, R * 0.1, p.w);
+        dot(ctx, hx + R * 0.3, hy - R * 0.68, R * 0.1, p.w);
+        outlined(ctx, p.p, Math.max(0.5, ow * 0.5), (c) => c.arc(hx - R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
+        outlined(ctx, p.p, Math.max(0.5, ow * 0.5), (c) => c.arc(hx + R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
+        ctx.save();
+        ctx.strokeStyle = "#f8fbff";
+        ctx.lineCap = "round";
+        ctx.lineWidth = R * 0.19;
+        ctx.beginPath();
+        ctx.arc(hx, hy, R * 0.68, -2.9, -2.25);
+        ctx.stroke();
+        ctx.restore();
+        dot(ctx, hx + R * 0.5, hy - R * 0.42, R * 0.085, "#f8fbff");
+      }
+    } else if (spec.head === "paperhat") {
+      outlined(ctx, p.hair || p.m, ow, (c) => {
+        c.moveTo(hx - R * 1, hy + R * 0.3);
+        c.quadraticCurveTo(hx - R * 1.2, hy - R * 0.5, hx - R * 0.6, hy - R * 1.02);
+        c.quadraticCurveTo(hx, hy - R * 1.24, hx + R * 0.62, hy - R * 0.98);
+        c.quadraticCurveTo(hx + R * 1.16, hy - R * 0.5, hx + R * 0.98, hy + R * 0.26);
+        c.lineTo(hx + R * 0.86, hy + R * 0.02);
+        c.lineTo(hx + R * 0.7, hy - R * 0.52);
+        c.lineTo(hx + R * 0.5, hy - R * 0.66);
+        c.lineTo(hx + R * 0.34, hy - R * 0.5);
+        c.lineTo(hx + R * 0.14, hy - R * 0.68);
+        c.lineTo(hx - R * 0.06, hy - R * 0.5);
+        c.lineTo(hx - R * 0.26, hy - R * 0.68);
+        c.lineTo(hx - R * 0.46, hy - R * 0.52);
+        c.lineTo(hx - R * 0.66, hy - R * 0.66);
+        c.lineTo(hx - R * 0.82, hy - R * 0.06);
+        c.closePath();
+      });
+      const capY = hy - R * 0.7;
+      outlined(ctx, p.a, ow, (c) => {
+        c.moveTo(hx - R * 0.92, capY);
+        c.quadraticCurveTo(hx - R * 1.1, hy - R * 1.02, hx - R * 1, hy - R * 1.32);
+        c.quadraticCurveTo(hx, hy - R * 1.52, hx + R * 1.02, hy - R * 1.26);
+        c.quadraticCurveTo(hx + R * 1.08, hy - R * 0.98, hx + R * 0.9, capY + R * 0.04);
+        c.closePath();
+      });
+      outlined(ctx, "#c8c8dc", Math.max(0.5, ow * 0.6), (c) => {
+        c.moveTo(hx - R * 0.92, capY);
+        c.lineTo(hx + R * 0.9, capY + R * 0.04);
+        c.lineTo(hx + R * 0.96, capY - R * 0.3);
+        c.quadraticCurveTo(hx, capY - R * 0.46, hx - R * 0.97, capY - R * 0.26);
+        c.closePath();
+      });
+    } else if (spec.head === "hairnet") {
+      const bunX = hx - R * 0.92, bunY = hy - R * 0.5;
+      outlined(ctx, p.hair, ow, (c) => c.arc(bunX, bunY, R * 0.46, 0, Math.PI * 2));
+      outlined(ctx, p.hair, ow, (c) => {
+        c.moveTo(hx - R * 0.98, hy - R * 0.12);
+        c.quadraticCurveTo(hx - R * 1.14, hy - R * 0.72, hx - R * 0.34, hy - R * 1.1);
+        c.quadraticCurveTo(hx + R * 0.5, hy - R * 1.26, hx + R * 0.98, hy - R * 0.66);
+        c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.24);
+        c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.5);
+        c.closePath();
+      });
+      if (!lod) {
+        ctx.save();
+        ctx.globalAlpha *= 0.5;
+        ctx.strokeStyle = p.w;
+        ctx.lineWidth = Math.max(0.4, ow * 0.5);
+        for (const k of [0.6, 0.86]) {
+          ctx.beginPath();
+          ctx.arc(hx, hy, R * k, Math.PI * 1.08, Math.PI * 1.92);
+          ctx.stroke();
+        }
+        ctx.restore();
+        outlined(ctx, p.a, Math.max(0.4, ow * 0.5), (c) => {
+          c.moveTo(hx - R * 1, hy - R * 0.46);
+          c.quadraticCurveTo(hx, hy - R * 0.74, hx + R * 0.98, hy - R * 0.38);
+          c.lineTo(hx + R * 0.98, hy - R * 0.25);
+          c.quadraticCurveTo(hx, hy - R * 0.6, hx - R * 1, hy - R * 0.33);
+          c.closePath();
+        });
+      }
+    } else if (spec.head === "bald") {
+    }
+    if (spec.head === "jackal") {
+      outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx + R * 0.08, hy + R * 0.4, R * 0.7, R * 0.46, 0, 0, Math.PI * 2));
+      dot(ctx, hx + R * 0.08, hy + R * 0.16, R * 0.17, p.e);
+    }
+    if (id === "grumpos") {
+      ctx.save();
+      ctx.beginPath();
+      blockHead(ctx);
+      ctx.clip();
+      ctx.strokeStyle = p.a;
+      ctx.lineWidth = Math.max(1.2, R * 0.22);
+      ctx.beginPath();
+      const ts = spec.tatSide ?? -1;
+      ctx.translate(faceYaw * 0.11 * u, 0);
+      ctx.moveTo(hx + ts * R * 0.52, hy - R * 0.98);
+      ctx.lineTo(hx + ts * R * 0.11, hy - R * 0.55);
+      ctx.lineTo(hx + ts * R * 0.66, hy + R * 0.52);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (spec.beard) {
+      outlined(ctx, p.m, ow, (c) => {
+        c.moveTo(hx - R * 0.94, hy + R * 0.2);
+        c.quadraticCurveTo(hx - R * 0.86, hy + R * 0.66, hx - R * 0.7, hy + R * 0.9);
+        c.quadraticCurveTo(hx - R * 0.56, hy + R * 1.16, hx - R * 0.3, hy + R * 1.26);
+        c.lineTo(hx + R * 0.3, hy + R * 1.26);
+        c.quadraticCurveTo(hx + R * 0.56, hy + R * 1.16, hx + R * 0.7, hy + R * 0.9);
+        c.quadraticCurveTo(hx + R * 0.86, hy + R * 0.66, hx + R * 0.94, hy + R * 0.2);
+        c.lineTo(hx, hy + R * 0.6);
+        c.closePath();
+      });
+    }
+    const ex = expressionFor(id, pose2);
+    const faceEx = headTurn ? { ...ex, turn: headTurn } : ex;
+    const capV = spec.head === "cap" ? lorenzoFace() : null;
+    if (capV && capV.brow) faceEx.brow = capV.brow;
+    if (faceDepth > 1e-3) {
+      ctx.save();
+      ctx.translate(faceYaw * (id === "b33p" ? 0 : 0.11) * u, 0);
+    }
+    const faceDy = capV && capV.faceDy ? capV.faceDy * u : 0;
+    if (faceDy) {
+      ctx.save();
+      ctx.translate(0, faceDy);
+    }
+    const eyeY = hy - (id === "fernwick" ? -0.018 : 0.015) * u;
+    drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
+    if (faceEx.brow === "bushy" && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow);
+    if (spec.nose) outlined(ctx, p.n, Math.max(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
+    if (spec.mustache && !lod && ex.joy) {
+      const mx = hx + 0.015 * u;
+      const w = (ex.cheer ? 0.088 : 0.072) * u;
+      const top = hy + 0.108 * u;
+      const d = (ex.cheer ? 0.078 : 0.052) * u;
+      const grin = (c) => {
+        c.moveTo(mx - w, top);
+        c.quadraticCurveTo(mx, top + d * 1.9, mx + w, top);
+        c.closePath();
+      };
+      outlined(ctx, "#5d1a26", Math.max(0.5, ow * 0.5), grin);
+      ctx.save();
+      ctx.beginPath();
+      grin(ctx);
+      ctx.clip();
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(mx - w, top - 0.02 * u, w * 2, d * 0.42 + 0.02 * u);
+      ctx.restore();
+    }
+    if (spec.mustache && !lod) {
+      const lift = ex.joy ? (ex.cheer ? 0.022 : 0.012) * u : 0;
+      const tip = ex.joy ? (ex.cheer ? 0.026 : 0.014) * u : 0;
+      outlined(ctx, p.m, Math.max(0.33, ow * 0.33) * INK.face, (c) => {
+        c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
+        c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
+        c.quadraticCurveTo(hx - 0.05 * u, hy + 0.13 * u - lift, hx + 0.015 * u, hy + 0.118 * u - lift);
+        c.quadraticCurveTo(hx + 0.08 * u, hy + 0.13 * u - lift, hx + 0.145 * u, hy + 0.09 * u - lift - tip);
+        c.quadraticCurveTo(hx + 0.06 * u, hy + 0.035 * u - lift, hx + 0.015 * u, hy + 0.075 * u - lift);
+        c.closePath();
+      });
+    }
+    if (id === "grumpos" && !lod) {
+      const mouthY = hy + R * 0.58;
+      if (ex.surprise) {
+        outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
+        dot(ctx, hx, mouthY + R * 0.04, R * 0.11, p.e);
+      } else if (ex.beam) {
+        outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
+          c.moveTo(hx - R * 0.34, mouthY - R * 0.09);
+          c.quadraticCurveTo(hx, mouthY + R * 0.36, hx + R * 0.34, mouthY - R * 0.09);
+          c.closePath();
+        });
+      } else {
+        outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
+        ctx.strokeStyle = p.e;
+        ctx.lineWidth = Math.max(0.41, ow * 0.36) * INK.face;
+        ctx.beginPath();
+        ctx.moveTo(hx - R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
+        ctx.quadraticCurveTo(hx, mouthY - (ex.relaxed ? 0 : R * 0.08), hx + R * 0.2, mouthY + (ex.effort ? R * 0.04 : 0));
+        ctx.stroke();
+      }
+    }
+    if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow, ex);
+    if (faceDy) ctx.restore();
+    if (faceDepth > 1e-3) ctx.restore();
+    if (outlineDepth > 1e-3) ctx.restore();
+  }
+  function drawHumanoid(ctx, id, spec, p, pose2, u, ow, lod) {
+    if (pose2.kind === "duck" && pose2.roll) return drawRoll(ctx, spec, p, pose2, u, ow);
+    const heavy = !!spec.heavy;
+    const cm = pose2.kind === "celebrate" ? celebrateMotion(id, pose2.time || 0, usesReworkedCelebration(pose2)) : null;
+    const turnLimit = Math.PI * 5 / 12;
+    const celebrateTurn = cm && cm.move === "stepturn" ? Math.sin(cm.q * Math.PI) * 42 : 0;
+    const turnRad = Math.max(-turnLimit, Math.min(
+      turnLimit,
+      ((Number(pose2.turn) || 0) + celebrateTurn) * Math.PI / 180
+    ));
+    const turnYaw = Math.sin(turnRad);
+    const turnDepth = Math.abs(turnYaw);
+    const turned = turnDepth > 1e-3;
+    const nearSign = turnYaw < 0 ? 1 : -1;
+    const depthArms = !!spec.armDepth;
+    const sideF = depthArms ? nearSign : 1;
+    const sideB = -sideF;
+    const farShade = depthArms ? 0.1 + 0.18 * turnDepth : 0.22 * turnDepth;
+    const headR = (heavy ? 0.185 : 0.21) * u;
+    const torsoBaseHalf = (heavy ? 0.23 : spec.stout ? 0.2 : spec.slim ? 0.148 : 0.17) * u * (spec.shoulders || 1) * (spec.torsoWidth || 1);
+    const torsoHalf = torsoBaseHalf * (1 - 0.1 * turnDepth);
+    const waistHalf = torsoHalf * (spec.taper || 1) * (spec.waistScale || 1);
+    const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u * (spec.legLength || 1);
+    const HIP_HALF = 0.095;
+    const DUCK_SPREAD = 0.215;
+    const armL = (heavy ? 0.38 : 0.26) * u * (spec.armLength || 1);
+    const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u * (spec.legWidth || 1);
+    const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u * (spec.armWidth || 1);
+    const reworkedCelebration = pose2.kind === "celebrate" && usesReworkedCelebration(pose2);
+    const studyCurl = heavy && cm && reworkedCelebration ? cm.cycle < 0.058 ? 0 : cm.cycle < 0.138 ? (cm.cycle - 0.058) / 0.08 : cm.cycle < 0.49 ? 1 : cm.cycle < 0.547 ? 1 - (cm.cycle - 0.49) / 0.057 : 0 : 0;
+    const flexT = heavy && (pose2.kind === "celebrate" || pose2.menuAction === "flex") ? reworkedCelebration ? 1.08 + 0.14 * studyCurl : 1.06 + 0.12 * Math.abs(Math.sin((pose2.time || 0) * 6)) : 1;
+    const armDims = heavy ? {
+      shoulderW: armW * 1.12,
+      elbowW: armW * 0.72,
+      wristW: armW * 0.62,
+      bicepR: armW * 0.5 * flexT,
+      foreR: armW * 0.44,
+      crease: studyCurl,
+      separate: studyCurl
+    } : null;
+    const armWF = armW * (1 + 0.1 * turnDepth);
+    const armWB = armW * (1 - 0.14 * turnDepth);
+    const armDimsF = armDims && turned ? {
+      ...armDims,
+      shoulderW: armDims.shoulderW * (1 + 0.1 * turnDepth),
+      elbowW: armDims.elbowW * (1 + 0.06 * turnDepth),
+      wristW: armDims.wristW * (1 + 0.04 * turnDepth),
+      bicepR: armDims.bicepR * (1 + 0.08 * turnDepth),
+      foreR: armDims.foreR * (1 + 0.06 * turnDepth)
+    } : armDims;
+    const armDimsB = armDims && turned ? {
+      ...armDims,
+      shoulderW: armDims.shoulderW * (1 - 0.14 * turnDepth),
+      elbowW: armDims.elbowW * (1 - 0.1 * turnDepth),
+      wristW: armDims.wristW * (1 - 0.08 * turnDepth),
+      bicepR: armDims.bicepR * (1 - 0.12 * turnDepth),
+      foreR: armDims.foreR * (1 - 0.1 * turnDepth)
+    } : armDims;
+    const legWF = legW * (1 + 0.06 * turnDepth);
+    const legWB = legW * (1 - 0.12 * turnDepth);
+    const run = pose2.kind === "run";
+    const walk = run && !!pose2.walk;
+    const jump = pose2.kind === "jump";
+    const duck = pose2.kind === "duck";
+    const enhancedMotion = usesEnhancedLocomotion(pose2);
+    const airV = jump ? Math.max(-1, Math.min(1, (Number(pose2.vy) || 0) / 460)) : 0;
+    const airRise = Math.max(0, airV), airFall = Math.max(0, -airV);
+    const airApex = jump ? 1 - Math.abs(airV) : 0;
+    const ph = (pose2.phase || 0) * Math.PI * 2;
+    const s = Math.sin(ph);
+    const stand = !run && !jump && !duck;
+    const frontLegs = stand || duck;
+    const bob = run ? -Math.abs(Math.cos(ph)) * (walk ? 0.014 : 0.03) * u : cm ? Math.sin((pose2.time || 0) * 6 + 1.2) * 0.016 * u : pose2.kind === "idle" ? Math.sin((pose2.time || 0) * 2) * 0.012 * u : 0;
+    let hipY = -legL * 0.92;
+    let torsoTop = -(heavy ? 0.768 : 0.56) * u + bob;
+    let headY = -(heavy ? 0.978 : 0.76) * u + bob;
+    let shoulderY = -(heavy ? 0.708 : 0.5) * u + bob;
+    if (duck) {
+      const crouch = heavy ? 1.36 : 1;
+      hipY = -0.16 * u * crouch;
+      torsoTop = -0.32 * u * crouch;
+      headY = -0.42 * u * crouch;
+      shoulderY = -0.27 * u * crouch;
+      if (enhancedMotion) {
+        torsoTop += 0.012 * u * crouch;
+        shoulderY += 0.018 * u * crouch;
+        headY += 0.024 * u * crouch;
+      }
+    }
+    if (heavy && cm && cm.hunch) {
+      hipY += cm.hunch * 0.018 * u;
+      torsoTop += cm.hunch * 0.025 * u;
+      shoulderY += cm.hunch * 0.045 * u;
+      headY += cm.hunch * 0.07 * u;
+    }
+    const torsoBot = hipY + 0.05 * u;
+    const armY = shoulderY + (heavy ? 0.03 : 0) * u;
+    const armYF = armY - (depthArms && run && !turned ? heavy ? 0.018 : 0.03 : 0) * u;
+    const leanX = run ? (walk ? 0.018 : 0.05) * u : duck && enhancedMotion ? 0.025 * u : 0;
+    const torsoCx = leanX * 0.5 + nearSign * turnDepth * 0.04 * u;
+    const ankleLift = 0.02 * u;
+    let legSeg = (duck ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
+    if (walk && heavy) legSeg = 0.4 * legL + 5e-3 * u;
+    const stride = legL * (walk ? heavy ? 0.23 : 0.32 : heavy ? 0.36 : 0.55);
+    const lift = legL * (walk ? heavy ? 0.15 : 0.22 : heavy ? 0.3 : 0.5);
+    let footF, footB, kneeF = 1, kneeB = 1;
+    if (run) {
+      footF = gaitFoot(pose2.phase || 0, stride, lift);
+      footB = gaitFoot((pose2.phase || 0) + 0.5, stride, lift);
+    } else if (jump) {
+      if (pose2.stomp) {
+        footF = [0.06 * u, hipY + legL * 0.95];
+        footB = [-0.06 * u, hipY + legL * 0.95];
+        kneeB = -1;
+      } else if (enhancedMotion) {
+        footF = [
+          (0.15 + 0.035 * airApex + 0.02 * airFall) * u,
+          hipY + legL * (0.48 - 0.17 * airApex + 0.24 * airFall)
+        ];
+        footB = [
+          (-0.12 - 0.03 * airApex - 0.015 * airFall) * u,
+          hipY + legL * (0.82 - 0.38 * airApex - 0.12 * airFall - 0.05 * airRise)
+        ];
+      } else {
+        footF = [0.15 * u, hipY + legL * 0.5];
+        footB = [-0.12 * u, hipY + legL * 0.85];
+      }
+    } else if (duck) {
+      footF = [DUCK_SPREAD * u, 0];
+      footB = [-DUCK_SPREAD * u, 0];
+      kneeB = -1;
+      legSeg = Math.hypot(DUCK_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
+    } else if (cm) {
+      const air = Math.min(1, cm.lift / 0.1);
+      footF = [(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
+      footB = [-(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
+      kneeB = -1;
+      legSeg = legSeg * air + (Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 1e-3 * u) * (1 - air);
+    } else {
+      footF = [0.105 * u, 0];
+      footB = [-0.105 * u, 0];
+      kneeB = -1;
+      legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 1e-3 * u;
+    }
+    const tunicRake = spec.tunic && (run || jump) ? 0.03 * u : 0;
+    const hipRun = (turned ? torsoCx : leanX * 0.3) - tunicRake;
+    const hipSeparation = (walk ? 0.065 : 0.07) * u * turnDepth;
+    const hipNearX = hipRun + nearSign * hipSeparation;
+    const hipFarX = hipRun - nearSign * hipSeparation;
+    const legRootY = turned && run ? hipY + 0.052 * u : hipY;
+    if (turned && run) {
+      const footSpread = nearSign * turnDepth * (walk ? 6e-3 : 0.04) * u;
+      footF = [hipNearX + footF[0] * (walk ? 0.92 : 0.84) + footSpread, footF[1]];
+      footB = [hipFarX + footB[0] * (walk ? 0.82 : 0.62) - footSpread, footB[1]];
+      kneeF = 1;
+      kneeB = 1;
+    }
+    const armSeg = armL * 0.55;
+    const armSegF = armL * 1.1 - armSeg;
+    const shSpread = turned ? heavy ? 0.9 : 0.84 : heavy ? 0.84 : 0.55;
+    const shoulderCx = turned ? torsoCx : leanX;
+    const depthRun = depthArms && run && !turned;
+    const nearSpread = depthRun ? heavy ? 1.12 : 1 : 1;
+    const farSpread = depthRun && heavy ? 0.7 : 1;
+    const nearFlush = torsoCx + sideF * (torsoHalf - armWF / 2);
+    const shF = turned ? shoulderCx + nearSign * (torsoHalf * shSpread * (1 + 0.14 * turnDepth) + turnDepth * 0.025 * u) : depthRun && !heavy ? nearFlush : shoulderCx + sideF * torsoHalf * shSpread * nearSpread;
+    const shB = turned ? shoulderCx - nearSign * (torsoHalf * shSpread * (1 - 0.26 * turnDepth) + turnDepth * 0.018 * u) : shoulderCx + sideB * torsoHalf * shSpread * farSpread;
+    const reach = (sx, sy, [tx, ty]) => {
+      const dx = tx - sx, dy = ty - sy, d = Math.hypot(dx, dy) || 1;
+      return [sx + dx / d * (armSeg + armSegF), sy + dy / d * (armSeg + armSegF)];
+    };
+    let handF, handB, elbF = -1, elbB = -1;
+    let wrenchAngle = null;
+    let celShield = null;
+    if (pose2.kind === "celebrate") {
+      const ct = pose2.time || 0;
+      const pump = Math.sin(ct * 6) * 0.05 * u;
+      const raisedArmStudy = reworkedCelebration;
+      if (id === "fernwick" && raisedArmStudy) {
+        handF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.72 + pump]);
+        elbF = -sideF;
+        handB = reach(shB, armY, [shB + sideB * 0.26 * u, armY - armL * 0.62 - pump * 0.5]);
+        elbB = -sideB;
+        const gripX = handF[0] - shF, gripY = handF[1] - armY;
+        const gripLen = Math.hypot(gripX, gripY) || 1;
+        celShield = [
+          handF[0] + gripX / gripLen * 0.055 * u,
+          handF[1] + gripY / gripLen * 0.055 * u
+        ];
+      } else if (id === "fernwick") {
+        handF = [sideF * 0.05 * u, armY - armL * 0.95 + pump];
+        elbF = sideF;
+        handB = [sideB * 0.05 * u, armY - armL * 0.95 + pump];
+        elbB = sideB;
+      } else if (id === "gnash" && raisedArmStudy) {
+        handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.91 + pump]);
+        elbF = -sideF;
+        handB = [shB + sideB * 0.055 * u, armY + armL * 0.8];
+        elbB = sideB;
+      } else if (id === "gnash") {
+        handF = [shF + sideF * 0.12 * u, armY - armL * 0.98 + pump];
+        elbF = sideF;
+        handB = [shB + sideB * 0.13 * u, armY + armL * 0.4];
+        elbB = sideB;
+      } else if (id === "grumpos") {
+        handF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.3 + pump]);
+        elbF = sideF;
+        handB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.3 - pump]);
+        elbB = sideB;
+      } else if (id === "gary") {
+        if (raisedArmStudy) {
+          const wave = Math.sin(ct * 8);
+          handF = [
+            shF + sideF * (0.22 + wave * 0.025) * u,
+            armY - armL * (0.8 + wave * 0.055)
+          ];
+          elbF = -sideF;
+        } else {
+          handF = [shF + sideF * (0.08 * u + Math.sin(ct * 8) * 0.11 * u), armY - armL * 0.95];
+          elbF = sideF;
+        }
+        handB = [shB + sideB * 0.04 * u, armY + armL * 0.5];
+        elbB = sideB;
+      } else if (id === "dolores" && raisedArmStudy) {
+        const hipX = torsoHalf * 0.95, hipY2 = armY + armL * 0.7 - Math.abs(pump) * 0.5;
+        handF = [shoulderCx + sideF * hipX, hipY2];
+        elbF = sideF;
+        handB = [shoulderCx + sideB * hipX, hipY2];
+        elbB = sideB;
+      } else if (id === "lorenzo" && raisedArmStudy) {
+        handF = [shF + sideF * 0.2 * u, armY - armL * 0.8 + pump * 0.45];
+        elbF = -sideF;
+        handB = [shB + sideB * 0.2 * u, armY - armL * 0.8 - pump * 0.45];
+        elbB = -sideB;
+      } else {
+        handF = [shF + sideF * 0.15 * u, armY - armL * 0.9 + pump];
+        elbF = sideF;
+        handB = [shB + sideB * 0.15 * u, armY - armL * 0.9 - pump];
+        elbB = sideB;
+      }
+      if (cm.move === "spin") {
+        handF = [shF + sideF * 0.3 * u, armY - armL * 0.25];
+        elbF = sideF;
+        handB = [shB + sideB * 0.3 * u, armY - armL * 0.25];
+        elbB = sideB;
+      } else if (cm.move === "hips") {
+        const hipX = torsoHalf * 0.95, hipY2 = armY + armL * 0.7;
+        handF = [shoulderCx + sideF * hipX, hipY2];
+        elbF = sideF;
+        handB = [shoulderCx + sideB * hipX, hipY2];
+        elbB = sideB;
+      } else if (cm.move === "bow") {
+        handF = [shF + sideF * 0.18 * u, armY + armL * 0.75];
+        elbF = sideF;
+        handB = [shB + sideB * 0.22 * u, armY + armL * 0.55];
+        elbB = sideB;
+      } else if (cm.move === "shimmy") {
+        const sw = Math.sin(cm.q * Math.PI * 8) * 0.14 * u * sideF;
+        handF = [shF + sideF * 0.14 * u + sw, armY - armL * 0.55];
+        elbF = sideF;
+        handB = [shB + sideB * 0.14 * u + sw, armY - armL * 0.55];
+        elbB = sideB;
+      } else if (cm.move === "hop") {
+        if (id === "lorenzo" && raisedArmStudy) {
+          handF = [shF + sideF * 0.21 * u, armY - armL * 0.86];
+          elbF = -sideF;
+          handB = [shB + sideB * 0.21 * u, armY - armL * 0.86];
+          elbB = -sideB;
+        } else {
+          handF = [shF + sideF * 0.1 * u, armY - armL * 1.05];
+          elbF = sideF;
+          handB = [shB + sideB * 0.1 * u, armY - armL * 1.05];
+          elbB = sideB;
+        }
+      } else if (cm.move === "present") {
+        const ease = (v) => {
+          const n = Math.max(0, Math.min(1, v));
+          return n * n * (3 - 2 * n);
+        };
+        const down = ease(cm.q / 0.34) * (1 - ease((cm.q - 0.72) / 0.28));
+        const toward = (from, to) => [
+          from[0] + (to[0] - from[0]) * down,
+          from[1] + (to[1] - from[1]) * down
+        ];
+        const settle = Math.sin(Math.min(1, cm.q / 0.34) * Math.PI) * 0.025 * u;
+        const shieldAt = [sideF * 0.02 * u, shoulderY + 0.16 * u + settle];
+        const plantF = [sideF * 0.15 * u, shoulderY + 0.19 * u + settle];
+        const plantB = reach(shB, armY, [shB + sideB * 0.22 * u, armY - armL * 0.8]);
+        if (celShield) celShield = toward(celShield, shieldAt);
+        handF = toward(handF, plantF);
+        handB = toward(handB, plantB);
+        elbF = sideF;
+      } else if (cm.move === "stepturn") {
+        const sweep = Math.sin(cm.q * Math.PI);
+        const low = reach(shF, armY, [shF + sideF * 0.34 * u, armY + armL * 0.22]);
+        handF = [handF[0] + (low[0] - handF[0]) * sweep, handF[1] + (low[1] - handF[1]) * sweep];
+      } else if (cm.move === "salute") {
+        handB = [shB + sideB * 0.12 * u, armY - armL * 0.52];
+        elbB = -sideB;
+      } else if (cm.move === "flex") {
+        if (cm.q < 0.5) {
+          handF = [shF - sideF * 0.04 * u, armY - armL * 0.72];
+          elbF = -sideF;
+          handB = [shB - sideB * 0.04 * u, armY - armL * 0.72];
+          elbB = -sideB;
+        } else {
+          handF = [sideF * 0.07 * u, armY + armL * 0.52];
+          elbF = sideF;
+          handB = [sideB * 0.07 * u, armY + armL * 0.52];
+          elbB = sideB;
+        }
+      }
+      if (id === "grumpos" && raisedArmStudy) {
+        const mix = (a, b, v) => a + (b - a) * v;
+        const smooth = (v) => {
+          const n = Math.max(0, Math.min(1, v));
+          return n * n * (3 - 2 * n);
+        };
+        const between = (a, b, v) => [mix(a[0], b[0], v), mix(a[1], b[1], v)];
+        const curve = (a, control, b, v) => {
+          const iv = 1 - v;
+          return [
+            iv * iv * a[0] + 2 * iv * v * control[0] + v * v * b[0],
+            iv * iv * a[1] + 2 * iv * v * control[1] + v * v * b[1]
+          ];
+        };
+        const wideF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.3]);
+        const wideB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.3]);
+        const overheadF = [shF - sideF * 0.04 * u, armY - armL * 0.72];
+        const overheadB = [shB - sideB * 0.04 * u, armY - armL * 0.72];
+        const levelF = [shF + sideF * 0.09 * u, armY - armL * 0.36];
+        const levelB = [shB + sideB * 0.09 * u, armY - armL * 0.36];
+        const curlArcF = [shF + sideF * 0.19 * u, armY - armL * 0.58];
+        const curlArcB = [shB + sideB * 0.19 * u, armY - armL * 0.58];
+        const resetF = reach(shF, armY, [shF + sideF * 0.32 * u, armY + armL * 0.04]);
+        const resetB = reach(shB, armY, [shB + sideB * 0.32 * u, armY + armL * 0.04]);
+        const frontF = [sideF * 0.07 * u, armY + armL * 0.52];
+        const frontB = [sideB * 0.07 * u, armY + armL * 0.52];
+        const c = cm.cycle;
+        if (c < 0.031) {
+          const v = smooth(c / 0.031);
+          handF = between(wideF, overheadF, v);
+          handB = between(wideB, overheadB, v);
+          elbF = -sideF;
+          elbB = -sideB;
+        } else if (c < 0.058) {
+          handF = overheadF;
+          handB = overheadB;
+          elbF = -sideF;
+          elbB = -sideB;
+        } else if (c < 0.138) {
+          const v = smooth((c - 0.058) / 0.08);
+          handF = curve(overheadF, curlArcF, levelF, v);
+          handB = curve(overheadB, curlArcB, levelB, v);
+          elbF = -sideF;
+          elbB = -sideB;
+        } else if (c < 0.49) {
+          handF = levelF;
+          handB = levelB;
+          elbF = -sideF;
+          elbB = -sideB;
+        } else if (c < 0.547) {
+          const v = smooth((c - 0.49) / 0.057);
+          handF = between(levelF, resetF, v);
+          handB = between(levelB, resetB, v);
+          elbF = -sideF;
+          elbB = -sideB;
+        } else if (c < 0.604) {
+          const v = smooth((c - 0.547) / 0.057);
+          handF = between(resetF, frontF, v);
+          handB = between(resetB, frontB, v);
+          elbF = sideF;
+          elbB = sideB;
+        } else if (c < 0.956) {
+          handF = frontF;
+          handB = frontB;
+          elbF = sideF;
+          elbB = sideB;
+        } else {
+          const v = smooth((c - 0.956) / 0.044);
+          handF = between(frontF, wideF, v);
+          handB = between(frontB, wideB, v);
+          elbF = sideF;
+          elbB = sideB;
+        }
+      }
+    } else if (pose2.menuAction === "wave") {
+      const wvt = Math.sin((pose2.time || 0) * 8);
+      handF = [
+        shF + sideF * (0.22 + 0.025 * wvt) * u,
+        armY - armL * (0.8 + 0.055 * wvt)
+      ];
+      elbF = -sideF;
+      handB = [shB + sideB * 0.03 * u, armY + armL * 0.8];
+      elbB = sideB;
+    } else if (pose2.menuAction === "flex") {
+      const fx = (pose2.time || 0) * 0.8 % 1;
+      const fw = pose2.flexHold ? 1 : fx < 0.4 ? 0 : fx < 0.5 ? (fx - 0.4) * 10 : fx < 0.9 ? 1 : 1 - (fx - 0.9) * 10;
+      const sF = reach(shF, armY, [shF + sideF * 0.3 * u, armY - armL * 0.25]);
+      const sB = reach(shB, armY, [shB + sideB * 0.3 * u, armY - armL * 0.25]);
+      handF = [sF[0] + (shF + sideF * 0.2 * u - sF[0]) * fw, sF[1] + (armY - armL * 0.45 - sF[1]) * fw];
+      elbF = -sideF;
+      handB = [sB[0] + (shB + sideB * 0.2 * u - sB[0]) * fw, sB[1] + (armY - armL * 0.45 - sB[1]) * fw];
+      elbB = -sideB;
+    } else if (id === "lorenzo" && pose2.menuAction === "smash") {
+      const q = Math.max(0, Math.min(1, (pose2.actionTime || 0) / 0.3));
+      const ease = (v) => v * v * (3 - 2 * v);
+      const mix = (a, b, v) => a + (b - a) * v;
+      const rest = [shF + 0.02 * u, armY + 0.48 * armL];
+      const wind = [shF - 0.07 * u, armY - 0.9 * armL];
+      const hit = [shF + 0.24 * u, armY + 0.62 * armL];
+      if (q < 0.3) {
+        const v = ease(q / 0.3);
+        handF = [mix(rest[0], wind[0], v), mix(rest[1], wind[1], v)];
+        wrenchAngle = mix(0.2, -1.72, v);
+      } else if (q < 0.66) {
+        const v = ease((q - 0.3) / 0.36);
+        handF = [mix(wind[0], hit[0], v), mix(wind[1], hit[1], v)];
+        wrenchAngle = mix(-1.72, 0.58, v);
+      } else {
+        const v = ease((q - 0.66) / 0.34);
+        handF = [mix(hit[0], rest[0], v), mix(hit[1], rest[1], v)];
+        wrenchAngle = mix(0.58, 0.2, v);
+      }
+      elbF = sideF;
+      handB = [shB - sideB * 0.03 * u, armY + armL * 0.42];
+      elbB = sideB;
+    } else if (pose2.headless || pose2.stomp) {
+      handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]);
+      elbF = sideF;
+      handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]);
+      elbB = sideB;
+    } else if (run) {
+      const sw = -s;
+      if (turned) {
+        const armSwing = -Math.cos(ph);
+        const totalArm = armSeg + armSegF;
+        const nearAngle = 0.12 + armSwing * (walk ? 0.38 : 0.72);
+        const farAngle = -0.04 - armSwing * (walk ? 0.22 : 0.46);
+        const nearReach = totalArm * (walk ? 0.72 : 0.78);
+        const farReach = totalArm * (walk ? 0.86 : 0.78);
+        handF = [
+          shF + Math.sin(nearAngle) * nearReach,
+          armY + Math.cos(nearAngle) * nearReach
+        ];
+        handB = [
+          shB + Math.sin(farAngle) * farReach,
+          armY + Math.cos(farAngle) * farReach
+        ];
+        elbF = nearSign;
+        elbB = nearSign;
+      } else {
+        const lead = depthRun ? -0.04 * u : 0.05 * u;
+        const swing = (depthRun ? 0.13 : 0.15) * u;
+        const hang = depthArms ? 0.72 : 0.5;
+        handF = [shF + lead + swing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
+        const farLead = depthRun ? 0 : 0.05 * u;
+        const farSwing = depthRun ? armL * 0.42 : 0.11 * u;
+        handB = [shB + farLead - farSwing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
+      }
+    } else if (jump) {
+      if (enhancedMotion && !pose2.stomp) {
+        handF = reach(shF, armY, [
+          shF + sideF * (0.16 + 0.035 * airApex + 0.02 * airFall) * u,
+          armY - armL * (0.42 + 0.28 * airApex - 0.13 * airFall)
+        ]);
+        elbF = sideF;
+        handB = reach(shB, armY, [
+          shB + sideB * (0.13 + 0.04 * airApex + 0.035 * airFall) * u,
+          armY - armL * (0.12 + 0.32 * airApex - 0.2 * airFall)
+        ]);
+        elbB = sideB;
+      } else {
+        handF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]);
+        elbF = sideF;
+        handB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]);
+        elbB = sideB;
+      }
+    } else if (duck) {
+      const out = enhancedMotion ? 0.62 : 0.77;
+      const down = enhancedMotion ? 0.64 : 0.46;
+      handF = [shF + sideF * armL * out, armY + armL * down];
+      elbF = sideF;
+      handB = [shB + sideB * armL * out, armY + armL * down];
+      elbB = sideB;
+    } else {
+      const standOut = heavy ? Math.abs(shF - shoulderCx) + 0.07 * u : Math.max(Math.abs(shF - shoulderCx) + 0.07 * u, torsoHalf + armW * 0.5 + 0.015 * u);
+      const standHang = heavy ? 0.95 : 0.78;
+      const sway = Math.sin((pose2.time || 0) * 2 - 0.7) * 0.014 * u;
+      const outX = standOut + sway;
+      const hangY = armY + armL * standHang - sway * 0.32;
+      handF = [shoulderCx + sideF * outX, hangY];
+      elbF = sideF;
+      handB = [shoulderCx + sideB * outX, hangY];
+      elbB = sideB;
+      const hipsAmt = Math.max(0, Math.min(1, pose2.hipsAmt || 0));
+      if (hipsAmt > 0) {
+        const hipX = torsoHalf * 0.95;
+        const hipY2 = armY + armL * 0.7 + sway * 0.5;
+        handF = [handF[0] + (shoulderCx + sideF * hipX - handF[0]) * hipsAmt, handF[1] + (hipY2 - handF[1]) * hipsAmt];
+        handB = [handB[0] + (shoulderCx + sideB * hipX - handB[0]) * hipsAmt, handB[1] + (hipY2 - handB[1]) * hipsAmt];
+      }
+    }
+    const handDeco = (x, y, back = 0) => {
+      if (id === "grumpos") {
+        outlined(ctx, recede(p.g, back), Math.max(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
+        dot(ctx, x, y, 0.028 * u, recede(p.s, back));
+      } else if (spec.plumber) {
+        outlined(ctx, recede(p.w, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+      } else if (spec.hands) {
+        outlined(ctx, recede(p.hand || p.s, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
+      }
+    };
+    const shoulderCap = (x, y, fill = id === "grumpos" ? p.s : p.b) => {
+      if (!turned && !depthArms) return;
+      const capFit = (y - torsoTop) / 0.82;
+      const capBase = heavy ? 0.072 : 0.065;
+      const rootHalf = (armDimsF ? armDimsF.shoulderW : armWF) / 2 + ow;
+      const bodyRoom = (yy) => (spec.taper ? taperHalfAt(yy, torsoTop, torsoBot, torsoHalf, waistHalf) : roundHalfAt(yy, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7)) - Math.abs(x - torsoCx);
+      let r = turned ? rootHalf * 1.138 : Math.min(capBase * u, capFit, bodyRoom(y));
+      if (!turned) r = Math.min(r, bodyRoom(y - r * 0.82));
+      if (r <= 0) return;
+      const g = fieldRamps(ctx);
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.82, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (g) {
+        ctx.fillStyle = g.core;
+        ctx.fill();
+        ctx.fillStyle = g.lit;
+        ctx.fill();
+      }
+      if (!turned) return;
+      ctx.strokeStyle = id === "grumpos" ? SKIN_OUTLINE : OUTLINE;
+      ctx.lineWidth = Math.max(0.55, ow * 0.7);
+      ctx.beginPath();
+      if (nearSign < 0) ctx.ellipse(x, y, r, r * 0.82, 0, Math.PI / 2, Math.PI * 1.5);
+      else ctx.ellipse(x, y, r, r * 0.82, 0, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+    };
+    if (spec.tail) {
+      const wag = Math.sin((pose2.time || 0) * (run ? 8 : 2.6)) * 0.045 * u;
+      const baseX = -torsoHalf * 0.65, baseY = hipY - 0.02 * u;
+      const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(baseX, baseY - 0.065 * u);
+        c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
+        c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
+        c.closePath();
+      });
+      outlined(ctx, p.s, Math.max(0.5, ow * 0.65), (c) => {
+        c.moveTo(tipX, tipY);
+        c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
+        c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
+        c.closePath();
+      });
+    }
+    const footFill = id === "grumpos" ? p.w : p.f;
+    const hipAt = (side) => frontLegs ? side * HIP_HALF * u : turned ? side > 0 ? hipNearX : hipFarX : hipRun;
+    const footDx = frontLegs ? 0 : 0.025 * u;
+    const capR = legW * 0.5;
+    const footRx = Math.max(frontLegs ? 0.075 * u : 0.095 * u, capR * 1.5);
+    const footRy = capR + 8e-3 * u;
+    const drawFrontLeg = () => {
+      const hipX = hipAt(1);
+      limb2(ctx, hipX, legRootY, footF[0], footF[1] - ankleLift, legSeg, kneeF, legWF, p.p, ow);
+      if (turned && id !== "grumpos") {
+        const rx = legWF * 0.72, ry = legWF * 0.58;
+        ctx.fillStyle = p.p;
+        ctx.beginPath();
+        ctx.ellipse(hipX, legRootY, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        const g = fieldRamps(ctx);
+        if (g) {
+          ctx.fillStyle = g.core;
+          ctx.fill();
+          ctx.fillStyle = g.lit;
+          ctx.fill();
+        }
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(0.5, ow * 0.65);
+        ctx.beginPath();
+        if (nearSign < 0) ctx.ellipse(hipX, legRootY, rx, ry, 0, Math.PI / 2, Math.PI * 1.5);
+        else ctx.ellipse(hipX, legRootY, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
+        ctx.stroke();
+      }
+      outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + footDx, footF[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+    };
+    const ARM_SEAT_IN = 0.022, ARM_SEAT_DOWN = 0.02;
+    const drawFrontArm = () => {
+      const seat = pose2.kind !== "celebrate" && !(frontLegs && !turned);
+      ctx.save();
+      if (seat) ctx.translate(-sideF * ARM_SEAT_IN * u, (spec.cannon ? 0 : ARM_SEAT_DOWN) * u);
+      if (spec.cannon) {
+        const gunX = shF;
+        const gunW = armW;
+        const gunY = torsoTop + gunW * 0.6;
+        const cheer = pose2.kind === "celebrate";
+        const gt = pose2.time || 0;
+        const aiming = pose2.menuAction === "aim";
+        const aimAmount = aiming ? Math.max(0, Math.min(1, pose2.aimAmount == null ? 1 : Number(pose2.aimAmount))) : 0;
+        const shotFired = pose2.shotFired !== false;
+        const shotT = aiming ? Math.max(0, Math.min(0.3, Number(pose2.actionTime) || 0)) : 0;
+        const recoil = aiming && shotFired ? Math.max(0, 1 - shotT / 0.22) * 0.05 * u : 0;
+        const hangGun = !cheer && (stand || jump);
+        let elbowX, elbowY, aim;
+        const barrel = armL * 0.73 - recoil;
+        if (hangGun) {
+          let targetX, targetY;
+          if (stand) {
+            const standOut = heavy ? Math.abs(shF - shoulderCx) + 0.07 * u : Math.max(Math.abs(shF - shoulderCx) + 0.07 * u, torsoHalf + armW * 0.5 + 0.015 * u);
+            const standHang = heavy ? 0.95 : 0.78;
+            const sway = Math.sin((pose2.time || 0) * 2 - 0.7) * 0.014 * u;
+            targetX = shoulderCx + sideF * (standOut + sway);
+            targetY = armY + armL * standHang - sway * 0.32;
+          } else {
+            targetX = shoulderCx + sideF * (torsoHalf + armW * 0.5 + 0.01 * u);
+            targetY = hipY - 0.02 * u;
+          }
+          [elbowX, elbowY] = joint(gunX, gunY, targetX, targetY, armSeg, sideF, barrel);
+          aim = Math.atan2(targetY - elbowY, targetX - elbowX);
+        } else {
+          const elbowOut = cheer ? sideF * 0.42 : sideF * (0.42 + (0.52 - 0.42) * aimAmount);
+          const elbowDown = cheer ? -0.91 : 0.91 + (-0.08 - 0.91) * aimAmount;
+          elbowX = gunX + armSeg * elbowOut;
+          elbowY = gunY + armSeg * elbowDown;
+          const salutePreview = cm && cm.move === "salute";
+          const sweep = salutePreview ? Math.sin(cm.q * Math.PI * 4) * 0.09 : cm && cm.move === "shimmy" ? Math.sin(cm.q * Math.PI * 8) * 0.5 : Math.sin(gt * 4.2) * 0.26;
+          aim = cheer ? -Math.PI / 2 + sideF * (salutePreview ? 0.24 : 0.55) + sweep : 0;
+        }
+        const muzzleX = elbowX + Math.cos(aim) * barrel;
+        const muzzleY = elbowY + Math.sin(aim) * barrel;
+        limb(ctx, gunX, gunY, elbowX, elbowY, gunW, p.arm || p.a, ow);
+        limb(ctx, elbowX, elbowY, muzzleX, muzzleY, gunW, p.a, ow);
+        if (!lod) {
+          const nx = Math.cos(aim), ny = Math.sin(aim);
+          const half = gunW * 0.49;
+          ctx.save();
+          ctx.lineCap = "butt";
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = Math.max(0.6, ow * 1.3);
+          ctx.beginPath();
+          for (const f of [0.42, 0.6, 0.78]) {
+            const bx = elbowX + nx * barrel * f, by = elbowY + ny * barrel * f;
+            ctx.moveTo(bx + ny * half, by - nx * half);
+            ctx.lineTo(bx - ny * half, by + nx * half);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+        if (!lod) outlined(ctx, OUTLINE, Math.max(0.5, ow * 0.4), (c) => c.arc(elbowX, elbowY, gunW * 0.34, 0, Math.PI * 2));
+        outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, gunW * 0.5, 0, Math.PI * 2));
+        if (cheer && !lod) {
+          const SHOT = 0.56;
+          ctx.save();
+          for (let i = 0; i < 3; i++) {
+            const q = (gt / SHOT + i / 3) % 1;
+            const d = (0.07 + q * 0.5) * u;
+            ctx.globalAlpha = Math.max(0, 1 - q * 1.2);
+            dot(ctx, muzzleX + Math.cos(aim) * d, muzzleY + Math.sin(aim) * d, 0.03 * u * (1 - q * 0.4), p.w);
+          }
+          ctx.restore();
+          if (gt / SHOT * 3 % 1 < 0.3) {
+            dot(ctx, muzzleX + Math.cos(aim) * 0.07 * u, muzzleY + Math.sin(aim) * 0.07 * u, 0.05 * u, p.a);
+          }
+        } else if (aiming && shotFired && shotT < 0.09) {
+          dot(ctx, muzzleX + Math.cos(aim) * 0.07 * u, muzzleY + Math.sin(aim) * 0.07 * u, 0.05 * u, p.w);
+          dot(ctx, muzzleX + Math.cos(aim) * 0.055 * u, muzzleY + Math.sin(aim) * 0.055 * u, 0.025 * u, p.a);
+        }
+      } else {
+        if (armDimsF) muscleLimb(ctx, shF, armYF, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
+        else limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, p.b, ow, armWF, true);
+        if (wrenchAngle != null) drawWrench(ctx, handF[0], handF[1], wrenchAngle, u, ow);
+        handDeco(handF[0], handF[1]);
+        shoulderCap(shF, armYF);
+      }
+      ctx.restore();
+    };
+    if (spec.back === "axe" && !pose2.axeThrown && pose2.axeReady) {
+      const axx = run || jump ? 0.025 * u : 0;
+      const axy = shoulderY - 0.05 * u;
+      limb(ctx, axx + 0.08 * u, axy + 0.12 * u, axx - 0.33 * u, axy - 0.24 * u, 0.06 * u, p.w, ow);
+      outlined(ctx, "#b8d8f0", ow, (c) => {
+        c.moveTo(axx - 0.34 * u, axy - 0.3 * u);
+        c.quadraticCurveTo(axx - 0.54 * u, axy - 0.16 * u, axx - 0.41 * u, axy + 0.03 * u);
+        c.lineTo(axx - 0.27 * u, axy - 0.04 * u);
+        c.lineTo(axx - 0.24 * u, axy - 0.25 * u);
+        c.closePath();
+      });
+      if (!lod) {
+        ctx.strokeStyle = "#eaf8ff";
+        ctx.lineWidth = Math.max(0.6, ow * 0.55);
+        ctx.beginPath();
+        ctx.moveTo(axx - 0.44 * u, axy - 0.16 * u);
+        ctx.lineTo(axx - 0.3 * u, axy - 0.1 * u);
+        ctx.stroke();
+      }
+    }
+    if (spec.back === "shield" && !celShield) {
+      outlined(ctx, p.w, ow, (c) => c.arc(-torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.11 * u, 0, Math.PI * 2));
+      dot(ctx, -torsoHalf - 0.08 * u, shoulderY + 0.06 * u, 0.035 * u, OUTLINE);
+    }
+    const clapFront = pose2.kind === "celebrate" && (id === "grumpos" || reworkedCelebration && (id === "dolores" || id === "fernwick"));
+    const raisedArmStudyFront = pose2.kind === "celebrate" && reworkedCelebration && (id === "lorenzo" || id === "gary");
+    const armsInFront = stand && !!pose2.armsInFront;
+    if (!clapFront && !armsInFront) {
+      if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+      else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+      handDeco(handB[0], handB[1], farShade);
+      if (stand && !raisedArmStudyFront) drawFrontArm();
+    }
+    limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, recede(p.p, farShade), ow);
+    outlined(ctx, recede(footFill, farShade), Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+    if (frontLegs) drawFrontLeg();
+    if (id === "grumpos" && turned && !duck) {
+      const pelvisCx = (hipAt(1) + hipAt(-1)) * 0.5;
+      const pelvisRx = Math.max(waistHalf * 0.94, legW);
+      const pelvisRy = 0.075 * u;
+      const pelvisY = legRootY - 0.012 * u;
+      ctx.fillStyle = p.p;
+      ctx.beginPath();
+      ctx.ellipse(pelvisCx, pelvisY, pelvisRx, pelvisRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const gp = fieldRamps(ctx);
+      if (gp) {
+        ctx.fillStyle = gp.core;
+        ctx.fill();
+        ctx.fillStyle = gp.lit;
+        ctx.fill();
+      }
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(0.55, ow * 0.7);
+      ctx.beginPath();
+      ctx.ellipse(pelvisCx, pelvisY, pelvisRx, pelvisRy, 0, 0, Math.PI);
+      ctx.stroke();
+    }
+    const torsoPath = turned ? (c) => turnedTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf, turnYaw) : spec.taper ? (c) => taperTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf) : (c) => roundRectPath(c, -torsoHalf + torsoCx, torsoTop, torsoHalf * 2, torsoBot - torsoTop, torsoHalf * 0.7);
+    if (spec.delts) {
+      const dr = torsoHalf * 0.44;
+      for (const sgn of [-1, 1]) {
+        outlined(ctx, p.b, ow * 0.65, (c) => c.arc(torsoCx + sgn * torsoHalf * 0.86, torsoTop + dr * 0.75, dr, 0, Math.PI * 2), "rgba(26,16,40,0.15)");
+      }
+    }
+    outlined(ctx, p.b, heavy ? ow * 0.65 : ow, torsoPath, heavy ? "rgba(26,16,40,0.15)" : OUTLINE);
+    const beltY = hipY - 0.085 * u + bob;
+    if (spec.pants) {
+      ctx.save();
+      ctx.beginPath();
+      torsoPath(ctx);
+      ctx.clip();
+      ctx.fillStyle = p.p;
+      ctx.fillRect(torsoCx - torsoHalf * 1.2, beltY, torsoHalf * 2.4, torsoBot - beltY + 0.1 * u);
+      ctx.restore();
+    }
+    if (turned && !duck) {
+      const side = -nearSign;
+      const sideFill = p.p;
+      const sideWidth = torsoHalf * (0.2 + 0.16 * turnDepth);
+      const edge = torsoCx + side * torsoHalf * 0.9;
+      const inner = edge - side * sideWidth;
+      ctx.save();
+      ctx.beginPath();
+      torsoPath(ctx);
+      ctx.clip();
+      ctx.globalAlpha *= 0.42;
+      ctx.fillStyle = sideFill;
+      ctx.beginPath();
+      ctx.moveTo(inner, torsoTop + torsoHalf * 0.22);
+      ctx.lineTo(edge, torsoTop + torsoHalf * 0.3);
+      ctx.lineTo(edge, torsoBot - torsoHalf * 0.18);
+      ctx.lineTo(inner, torsoBot - torsoHalf * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (spec.pecs && !lod) {
+      const px = torsoCx;
+      const pecY = torsoTop + (torsoBot - torsoTop) * 0.38;
+      ctx.save();
+      ctx.beginPath();
+      torsoPath(ctx);
+      ctx.clip();
+      ctx.globalAlpha *= 0.22;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(0.6, ow * 0.75);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(px - torsoHalf * 0.82, pecY - 0.045 * u);
+      ctx.quadraticCurveTo(px - torsoHalf * 0.5, pecY + 0.03 * u, px, pecY);
+      ctx.quadraticCurveTo(px + torsoHalf * 0.5, pecY + 0.03 * u, px + torsoHalf * 0.82, pecY - 0.045 * u);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px, torsoTop + 0.03 * u);
+      ctx.lineTo(px, pecY);
+      ctx.stroke();
+      const absBot = hipY - 0.11 * u + bob;
+      ctx.beginPath();
+      ctx.moveTo(px, pecY + 0.02 * u);
+      ctx.lineTo(px, absBot);
+      ctx.stroke();
+      ctx.beginPath();
+      for (const f of [0.42, 0.78]) {
+        const ay = pecY + (absBot - pecY) * f;
+        ctx.moveTo(px - torsoHalf * 0.26, ay);
+        ctx.lineTo(px + torsoHalf * 0.26, ay);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (id === "grumpos" && !duck) {
+      const px = torsoCx;
+      ctx.save();
+      ctx.beginPath();
+      torsoPath(ctx);
+      ctx.clip();
+      ctx.strokeStyle = p.a;
+      ctx.lineWidth = Math.max(1.4, headR * 0.29);
+      const ts = spec.tatSide ?? -1;
+      const hipYb = hipY + bob;
+      ctx.beginPath();
+      ctx.moveTo(px + ts * torsoHalf * 0.78, torsoTop);
+      const paintEndY = hipYb - 0.16 * u;
+      const paintEndX = px + ts * 1.02 * (spec.taper ? taperHalfAt(paintEndY, torsoTop, torsoBot, torsoHalf, waistHalf) : torsoHalf);
+      ctx.bezierCurveTo(
+        px - ts * torsoHalf * 0.12,
+        torsoTop + (hipYb - torsoTop) * 0.3,
+        px - ts * torsoHalf * 0.02,
+        torsoTop + (hipYb - torsoTop) * 0.7,
+        paintEndX,
+        paintEndY
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (id === "b33p" && !duck) {
+      const px = torsoCx;
+      outlined(ctx, p.s, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, px - torsoHalf * 0.52, torsoTop + 0.045 * u, torsoHalf * 1.04, 0.1 * u, 0.02 * u));
+      const beat = Math.sin((pose2.time || 0) * 5) > 0;
+      dot(ctx, px - torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.a : p.w);
+      dot(ctx, px + torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.w : p.a);
+      ctx.strokeStyle = p.p;
+      ctx.lineWidth = Math.max(0.6, ow * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(px - torsoHalf * 0.85, hipY - 0.055 * u);
+      ctx.lineTo(px + torsoHalf * 0.85, hipY - 0.055 * u);
+      ctx.stroke();
+    }
+    let strapOverArm = null;
+    let apronStrapOver = null;
+    if (spec.straps && !lod && !duck) {
+      const px = torsoCx;
+      const bib = !!spec.bib;
+      const bibHalf = torsoHalf * 0.46;
+      const bibTopY = torsoTop + (beltY - torsoTop) * 0.42;
+      if (bib) {
+        ctx.save();
+        ctx.beginPath();
+        torsoPath(ctx);
+        ctx.clip();
+        ctx.fillStyle = p.p;
+        ctx.beginPath();
+        roundRectPath(ctx, px - bibHalf, bibTopY, bibHalf * 2, beltY - bibTopY + 0.02 * u, bibHalf * 0.3);
+        ctx.fill();
+        ctx.restore();
+      }
+      const strapEndY = bib ? bibTopY : beltY;
+      const strapTopY = torsoTop + 0.01 * u;
+      const strapTopX = (s2) => px + s2 * torsoHalf * (bib ? 0.62 : 0.5);
+      const strapBotX = (s2) => px + s2 * (bib ? bibHalf : torsoHalf * 0.34);
+      const strapStroke = (s2, endY) => {
+        ctx.save();
+        ctx.beginPath();
+        torsoPath(ctx);
+        ctx.clip();
+        ctx.strokeStyle = p.p;
+        ctx.lineWidth = (bib ? 0.055 : 0.045) * u;
+        ctx.beginPath();
+        for (const sg of s2) {
+          const t = (endY - strapTopY) / (strapEndY - strapTopY);
+          ctx.moveTo(strapTopX(sg), strapTopY);
+          ctx.lineTo(strapTopX(sg) + (strapBotX(sg) - strapTopX(sg)) * t, endY);
+        }
+        ctx.stroke();
+        ctx.restore();
+      };
+      strapStroke([-1, 1], strapEndY);
+      if (bib) {
+        const pocketH = (beltY - bibTopY) * 0.44;
+        const pocketY = bibTopY + (beltY - bibTopY) * 0.3;
+        const pocketHalf = bibHalf * 0.62;
+        ctx.save();
+        ctx.beginPath();
+        torsoPath(ctx);
+        ctx.clip();
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(0.4, ow * 0.5);
+        ctx.beginPath();
+        roundRectPath(ctx, px - pocketHalf, pocketY, pocketHalf * 2, pocketH, pocketH * 0.22);
+        ctx.stroke();
+        ctx.strokeStyle = p.m;
+        ctx.lineWidth = Math.max(0.5, 0.014 * u);
+        ctx.beginPath();
+        ctx.moveTo(px + pocketHalf * 0.42, pocketY + pocketH * 0.5);
+        ctx.lineTo(px + pocketHalf * 0.42, pocketY - pocketH * 0.34);
+        ctx.stroke();
+        outlined(ctx, p.a, Math.max(0.4, ow * 0.4), (c) => roundRectPath(c, px + pocketHalf * 0.18, pocketY - pocketH * 0.62, pocketHalf * 0.48, pocketH * 0.4, pocketH * 0.12));
+        ctx.restore();
+      }
+      if (!stand) strapOverArm = () => strapStroke([sideF], armY + 0.05 * u);
+      ctx.strokeStyle = p.m;
+      ctx.lineWidth = 0.055 * u;
+      ctx.beginPath();
+      ctx.moveTo(px - torsoHalf * 0.88, beltY);
+      ctx.lineTo(px + torsoHalf * 0.88, beltY);
+      ctx.stroke();
+      outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => roundRectPath(c, px - 0.035 * u, beltY - 0.033 * u, 0.07 * u, 0.06 * u, 0.012 * u));
+    }
+    if (spec.nameTag && !lod && !duck) {
+      outlined(ctx, p.w, Math.max(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
+    }
+    if (!frontLegs) drawFrontLeg();
+    if (id === "grumpos" && !pose2.hideSkirt) {
+      const px = torsoCx;
+      const sway = jump ? 0.02 * u : 0;
+      const beltY2 = hipY - 0.075 * u + bob;
+      const top = beltY2 + 0.025 * u;
+      const tipY = hipY + legL * (duck ? 0.35 : 0.47) + bob * 0.5;
+      const halfAt = (y) => spec.taper ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf) : torsoHalf;
+      const beltHalf = halfAt(beltY2);
+      const wTop = halfAt(top) * 0.98;
+      const flare = frontLegs || cm ? 1.5 : 1.18;
+      const wHem = wTop * flare;
+      const swingF = footF[0] - hipAt(1), swingB = footB[0] - hipAt(-1);
+      const PANELS = [
+        { f: -0.75, gain: 0.25 },
+        { f: -0.25, gain: 0.4 },
+        { f: 0.25, gain: 0.95 },
+        { f: 0.75, gain: 1 }
+      ];
+      const pTopHalf = wTop * 0.3;
+      const drag = (v, max) => Math.max(-max, Math.min(max, v));
+      const skirtSlope = turned ? turnDepth * 0.025 * u : 0;
+      const waistBow = turned ? turnDepth * 0.022 * u : 0;
+      const depthScaleAt = (f) => turned ? f * nearSign > 0 ? 1.08 : 0.78 : 1;
+      const topYAt = (f) => top + f * nearSign * skirtSlope + (1 - f * f) * waistBow;
+      const tipYAt = (f) => tipY + f * nearSign * skirtSlope * 1.35;
+      const wUnder = wTop * flare * 0.92;
+      outlined(ctx, p.w, Math.max(0.5, ow * 0.5), (c) => {
+        c.moveTo(px - wTop * 0.96 * depthScaleAt(-1), topYAt(-1));
+        c.lineTo(px + wTop * 0.96 * depthScaleAt(1), topYAt(1));
+        c.lineTo(px + wUnder * depthScaleAt(1) + sway, tipYAt(1) - 0.022 * u);
+        c.lineTo(px - wUnder * depthScaleAt(-1) + sway, tipYAt(-1) - 0.022 * u);
+        c.closePath();
+      });
+      const panelOrder = turned && nearSign < 0 ? [...PANELS].reverse() : PANELS;
+      for (const { f, gain } of panelOrder) {
+        const followsFront = turned ? nearSign < 0 ? f < 0 : f > 0 : f > 0;
+        const drivenGain = turned ? followsFront ? Math.abs(f) > 0.5 ? 1 : 0.95 : Math.abs(f) > 0.5 ? 0.25 : 0.4 : gain;
+        const depthScale = depthScaleAt(f);
+        const panelHalf = pTopHalf * depthScale;
+        const lead = followsFront ? swingF : swingB;
+        const rise = followsFront ? footF[1] : footB[1];
+        const topX = px + f * wTop * depthScale;
+        const bx = px + f * wHem * depthScale + sway + drag(drivenGain * 0.45 * lead, 0.055 * u);
+        const by = tipYAt(f) + drag(drivenGain * 0.45 * rise, 0.045 * u);
+        outlined(ctx, p.w, Math.max(0.6, ow * 0.7), (c) => {
+          c.moveTo(topX - panelHalf, topYAt(f));
+          c.lineTo(topX + panelHalf, topYAt(f));
+          c.lineTo(bx + panelHalf * (1 + (flare - 1) * 0.85), by);
+          c.lineTo(bx - panelHalf * (1 + (flare - 1) * 0.85), by);
+          c.closePath();
+        });
+      }
+      if (turned) {
+        const beltSlope = turnDepth * 0.018 * u;
+        const leftY = beltY2 - nearSign * beltSlope;
+        const rightY = beltY2 + nearSign * beltSlope;
+        const leftHalf = beltHalf * depthScaleAt(-1);
+        const rightHalf = beltHalf * depthScaleAt(1);
+        const bandTop = 0.028 * u;
+        const bandBottom = 0.035 * u;
+        outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => {
+          c.moveTo(px - leftHalf, leftY - bandTop);
+          c.quadraticCurveTo(px, beltY2 - bandTop + waistBow, px + rightHalf, rightY - bandTop);
+          c.lineTo(px + rightHalf, rightY + bandBottom);
+          c.quadraticCurveTo(px, beltY2 + bandBottom + waistBow * 1.25, px - leftHalf, leftY + bandBottom);
+          c.closePath();
+        });
+        const farX = px - nearSign * (nearSign < 0 ? rightHalf : leftHalf);
+        const farY = nearSign < 0 ? rightY : leftY;
+        ctx.save();
+        ctx.globalAlpha *= 0.34;
+        ctx.fillStyle = OUTLINE;
+        ctx.beginPath();
+        ctx.ellipse(farX, farY + 3e-3 * u, 0.018 * u, bandBottom + bandTop, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        dot(ctx, px + nearSign * beltHalf * 0.08, beltY2 + waistBow + nearSign * beltSlope * 0.08, 0.034 * u, p.w);
+      } else {
+        outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, px - beltHalf, beltY2 - 0.03 * u, beltHalf * 2, 0.065 * u, 0.02 * u));
+        dot(ctx, px, beltY2 + 2e-3 * u, 0.034 * u, p.w);
+      }
+    }
+    if (spec.tunic && !duck) {
+      const px = torsoCx;
+      const sway = jump ? 0.02 * u : 0;
+      const beltY2 = hipY - 0.05 * u + bob;
+      const top = beltY2 + 0.02 * u;
+      const hemY = hipY + legL * 0.36 + bob * 0.5;
+      const wTop = torsoHalf * 0.96;
+      const wHem = torsoHalf * 1.3;
+      outlined(ctx, p.b, ow, (c) => {
+        c.moveTo(px - wTop, top);
+        c.lineTo(px + wTop, top);
+        c.lineTo(px + wHem + sway, hemY);
+        c.quadraticCurveTo(px + sway, hemY + 0.045 * u, px - wHem + sway, hemY);
+        c.closePath();
+      });
+      if (!lod) {
+        ctx.save();
+        ctx.globalAlpha *= 0.45;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(0.5, ow * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(px + sway * 0.5, top + 0.03 * u);
+        ctx.lineTo(px + sway, hemY - 0.01 * u);
+        ctx.stroke();
+        ctx.restore();
+      }
+      outlined(ctx, p.p, Math.max(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY2 - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
+      outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => c.arc(px, beltY2 + 2e-3 * u, 0.028 * u, 0, Math.PI * 2));
+    }
+    if (spec.apron && !duck) {
+      const px = torsoCx;
+      const bibTop = torsoTop + 0.075 * u;
+      const waistY = hipY - 0.04 * u + bob;
+      const hemY = hipY + legL * 0.42 + bob * 0.5;
+      const strapHalf = 0.027 * u;
+      const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+      const apronPanel = (c) => {
+        c.moveTo(px - wBib, bibTop);
+        c.lineTo(px + wBib, bibTop);
+        c.lineTo(px + wWaist, waistY);
+        c.lineTo(px + wHem, hemY);
+        c.quadraticCurveTo(px, hemY + 0.04 * u, px - wHem, hemY);
+        c.lineTo(px - wWaist, waistY);
+        c.closePath();
+      };
+      outlined(ctx, p.a, ow, apronPanel, APRON_OUTLINE);
+      if (!lod) {
+        const sTopX = (s2) => px + s2 * torsoHalf * 0.6;
+        const sBotX = (s2) => px + s2 * (wBib - strapHalf);
+        const drawStraps = () => {
+          ctx.save();
+          ctx.beginPath();
+          torsoPath(ctx);
+          ctx.clip();
+          ctx.beginPath();
+          const clipTop = torsoTop - 0.2 * u;
+          ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, bibTop + ow * 1.6 - clipTop);
+          ctx.clip();
+          for (const s2 of [-1, 1]) {
+            outlined(ctx, p.a, ow, (c) => {
+              c.moveTo(sTopX(s2) - s2 * strapHalf, torsoTop - 0.05 * u);
+              c.lineTo(sTopX(s2) + s2 * strapHalf, torsoTop - 0.05 * u);
+              c.lineTo(sBotX(s2) + s2 * strapHalf, bibTop + 0.06 * u);
+              c.lineTo(sBotX(s2) - s2 * strapHalf, bibTop + 0.06 * u);
+              c.closePath();
+            }, APRON_OUTLINE);
+          }
+          ctx.restore();
+        };
+        const recoverBibBand = () => {
+          ctx.save();
+          ctx.beginPath();
+          const bandTop = bibTop + ow * 1.6;
+          ctx.rect(px - torsoHalf * 3, bandTop, torsoHalf * 6, armY + armL * 0.38 - bandTop);
+          ctx.clip();
+          outlined(ctx, p.a, ow, apronPanel, APRON_OUTLINE);
+          ctx.restore();
+        };
+        const drawNameTag = () => {
+          const tagW = 0.12 * u, tagH = 0.066 * u;
+          const tagX = px - tagW / 2, tagY = bibTop + 0.028 * u;
+          outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
+          ctx.save();
+          ctx.beginPath();
+          roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u);
+          ctx.clip();
+          ctx.fillStyle = p.b;
+          ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
+          ctx.restore();
+          ctx.strokeStyle = "#5a5546";
+          ctx.lineWidth = Math.max(0.32, ow * 0.32);
+          ctx.beginPath();
+          ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
+          ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
+          ctx.stroke();
+        };
+        const frontArmOverApron = armsInFront || clapFront || !stand;
+        if (!frontArmOverApron) drawStraps();
+        apronStrapOver = frontArmOverApron ? () => {
+          drawStraps();
+          recoverBibBand();
+          drawNameTag();
+        } : null;
+        ctx.save();
+        ctx.globalAlpha *= 0.5;
+        ctx.strokeStyle = APRON_OUTLINE;
+        ctx.lineWidth = Math.max(0.4, ow * 0.45);
+        ctx.beginPath();
+        ctx.moveTo(px - wWaist, waistY);
+        ctx.lineTo(px + wWaist, waistY);
+        ctx.stroke();
+        ctx.restore();
+        outlined(
+          ctx,
+          p.b,
+          Math.max(0.4, ow * 0.45),
+          (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u),
+          APRON_OUTLINE
+        );
+        if (!frontArmOverApron) drawNameTag();
+      }
+    }
+    if (!clapFront && (!stand || raisedArmStudyFront)) {
+      drawFrontArm();
+      if (strapOverArm) strapOverArm();
+      if (apronStrapOver) apronStrapOver();
+    }
+    if (pose2.headless) {
+      outlined(ctx, p.s, Math.max(0.6, ow * 0.8), (c) => c.ellipse(torsoCx, torsoTop, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    } else {
+      drawHead(ctx, id, spec, p, u, ow, 0.01 * u + torsoCx + nearSign * turnDepth * 0.015 * u, headY, lod, pose2);
+    }
+    const drawCelShield = () => {
+      const [sx, sy] = celShield;
+      outlined(ctx, p.w, ow, (c) => c.arc(sx, sy, 0.15 * u, 0, Math.PI * 2));
+      outlined(ctx, p.a, Math.max(0.5, ow * 0.65), (c) => c.arc(sx, sy, 0.095 * u, 0, Math.PI * 2));
+      dot(ctx, sx, sy, 0.035 * u, OUTLINE);
+    };
+    const drawFarArm = () => {
+      if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
+      else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+      handDeco(handB[0], handB[1]);
+    };
+    if (clapFront) {
+      if (celShield) {
+        drawFrontArm();
+        drawCelShield();
+        drawFarArm();
+      } else {
+        drawFarArm();
+        drawFrontArm();
+      }
+      if (apronStrapOver) apronStrapOver();
+    }
+    if (armsInFront) {
+      if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+      else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+      handDeco(handB[0], handB[1], farShade);
+      drawFrontArm();
+      if (apronStrapOver) apronStrapOver();
+    }
+  }
+  function drawRoll(ctx, spec, p, pose2, u, ow) {
+    const r = 0.26 * u;
+    const band = p.p === p.b ? p.h : p.p;
+    ctx.save();
+    ctx.translate(0, -r - 0.01 * u);
+    ctx.rotate((pose2.time || 0) * 14);
+    outlined(ctx, p.b, ow, (c) => c.arc(0, 0, r, 0, Math.PI * 2));
+    ctx.strokeStyle = band;
+    ctx.lineWidth = 0.07 * u;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.8, 0);
+    ctx.lineTo(r * 0.8, 0);
+    ctx.moveTo(0, -r * 0.8);
+    ctx.lineTo(0, r * 0.8);
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(1, ow * 0.6);
+    ctx.globalAlpha *= 0.45;
+    ctx.beginPath();
+    ctx.arc(-r * 1.5, -r, r * 0.45, -0.6, 0.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-r * 1.9, -r, r * 0.3, -0.6, 0.6);
+    ctx.stroke();
+    ctx.globalAlpha /= 0.45;
+  }
+  function drawBlob(ctx, id, p, pose2, u, ow, lod) {
+    const t = pose2.time || 0;
+    const ph = (pose2.phase || 0) * Math.PI * 2;
+    const duck = pose2.kind === "duck";
+    let rx = 0.36 * u, ry = 0.34 * u, cy = -0.4 * u;
+    if (duck && pose2.roll) {
+      ctx.save();
+      ctx.translate(0, -0.27 * u);
+      ctx.rotate((t || 0) * 12);
+      outlined(ctx, p.b, ow, (c) => c.arc(0, 0, 0.29 * u, 0, Math.PI * 2));
+      outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+      outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+      drawEyes(ctx, p, u, 0, -0.05 * u, lod, expressionFor(id, { ...pose2, effort: true }));
+      outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0, 0.09 * u, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+      ctx.restore();
+      return;
+    }
+    if (duck) {
+      rx = 0.4 * u;
+      ry = 0.22 * u;
+      cy = -0.25 * u;
+    }
+    if (pose2.kind === "run") {
+      const b = Math.sin(2 * ph) * 0.03 * u;
+      ry += b;
+      rx -= b * 0.7;
+    }
+    if (pose2.kind === "celebrate") {
+      const b = Math.sin(t * 7);
+      ry *= 1 + 0.1 * b;
+      rx *= 1 - 0.08 * b;
+      cy -= 0.03 * u * Math.max(0, b);
+    }
+    ctx.save();
+    if (pose2.float) {
+      ctx.rotate(0.08 * Math.sin(t * 5));
+      cy -= 0.03 * u * (1 + Math.sin(t * 9)) * 0.5;
+    }
+    const step = pose2.kind === "run" ? Math.sin(ph) * 0.06 * u : 0;
+    outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(-0.13 * u + step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(0.13 * u - step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.b, ow, (c) => c.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2));
+    const nubY = pose2.float || pose2.kind === "celebrate" ? cy - ry * 0.55 : cy + ry * 0.15;
+    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-rx - 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(rx + 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
+    const ex = expressionFor(id, pose2);
+    drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod, ex);
+    if (ex.joy) {
+      const w = (ex.cheer ? 0.085 : 0.06) * u, d = (ex.cheer ? 0.08 : 0.04) * u;
+      outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => {
+        c.moveTo(0.01 * u - w, cy + ry * 0.28);
+        c.quadraticCurveTo(0.01 * u, cy + ry * 0.28 + d * 1.9, 0.01 * u + w, cy + ry * 0.28);
+        c.closePath();
+      });
+    } else if (ex.surprise || pose2.float) {
+      outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.045 * u, 0.055 * u, 0, 0, Math.PI * 2));
+    } else if (ex.blink) {
+      ctx.strokeStyle = p.m;
+      ctx.lineWidth = Math.max(0.8, ow * 0.65);
+      ctx.beginPath();
+      ctx.arc(0.01 * u, cy + ry * 0.25, 0.05 * u, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    } else {
+      outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+    }
+    ctx.restore();
+  }
+  function pikaEyes(ctx, p, u, cx, cy, lod, ex) {
+    const sep = 0.11 * u;
+    if (lod) {
+      dot(ctx, cx - sep, cy, 0.045 * u, p.e);
+      dot(ctx, cx + sep, cy, 0.045 * u, p.e);
+      return;
+    }
+    if (ex.blink) {
+      ctx.strokeStyle = p.e;
+      ctx.lineWidth = Math.max(0.9, 0.025 * u);
+      ctx.lineCap = "round";
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + sx * sep - 0.04 * u, cy);
+        ctx.quadraticCurveTo(cx + sx * sep, cy + 0.02 * u, cx + sx * sep + 0.04 * u, cy);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (ex.joy && !ex.cheer) {
+      ctx.strokeStyle = p.e;
+      ctx.lineWidth = Math.max(1, 0.03 * u);
+      ctx.lineCap = "round";
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + sx * sep - 0.045 * u, cy + 0.02 * u);
+        ctx.quadraticCurveTo(cx + sx * sep, cy - 0.06 * u, cx + sx * sep + 0.045 * u, cy + 0.02 * u);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (ex.cross) {
+      const csep = sep * 0.86;
+      for (const sx of [-1, 1]) {
+        outlined(ctx, p.e, Math.max(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * csep, cy, 0.05 * u, 0.07 * u, 0, 0, Math.PI * 2));
+        dot(ctx, cx + sx * (csep - 0.022 * u), cy - 0.012 * u, 0.024 * u, p.w);
+      }
+      return;
+    }
+    const rY = ex.surprise || ex.cheer ? 0.085 : 0.07;
+    for (const sx of [-1, 1]) {
+      outlined(ctx, p.e, Math.max(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * sep, cy, 0.05 * u, rY * u, 0, 0, Math.PI * 2));
+      dot(ctx, cx + sx * sep - 0.016 * u, cy - 0.022 * u, 0.02 * u, p.w);
+    }
+  }
+  function drawPika(ctx, id, p, pose2, u, ow, lod) {
+    const t = pose2.time || 0;
+    const ph = (pose2.phase || 0) * Math.PI * 2;
+    const kind = pose2.kind;
+    const duck = kind === "duck";
+    const enhancedDuck = duck && usesEnhancedLocomotion(pose2);
+    const enhancedJump = kind === "jump" && usesEnhancedLocomotion(pose2);
+    const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose2.vy) || 0) / 460)) : 0;
+    const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
+    const airRise = Math.max(0, airV);
+    const celebrate = kind === "celebrate";
+    const celebrateSync = celebrate && usesReworkedCelebration(pose2) ? celebrateMotion(id, t, true) : null;
+    const acc = p.ear || p.a;
+    const star = p.star || acc;
+    const belly = p.belly || p.a;
+    const cheek = p.cheek || p.m;
+    let rx = 0.34 * u, ry = 0.35 * u, cy = -0.4 * u;
+    if (duck) {
+      rx = 0.4 * u;
+      ry = 0.22 * u;
+      cy = -0.25 * u;
+    } else if (kind === "run") {
+      const b = Math.sin(2 * ph) * 0.03 * u;
+      ry += b;
+      rx -= b * 0.7;
+    } else if (kind === "idle") {
+      cy -= 0.012 * u * (1 + Math.sin(t * 3)) * 0.5;
+    } else if (enhancedJump) {
+      rx *= 1 + 0.055 * airApex;
+      ry *= 1 - 0.045 * airApex;
+      cy -= 0.035 * u * airApex;
+    }
+    if (celebrate) {
+      const b = celebrateSync ? celebrateSync.lift / 0.15 : Math.sin(t * 7);
+      ry *= 1 + 0.1 * b;
+      rx *= 1 - 0.08 * b;
+      cy -= 0.03 * u * Math.max(0, b);
+    }
+    ctx.save();
+    ctx.scale(0.9, 0.9);
+    if (pose2.float) {
+      ctx.rotate(0.06 * Math.sin(t * 5));
+      cy -= 0.03 * u * (1 + Math.sin(t * 9)) * 0.5;
+    }
+    const armsUp = pose2.float || celebrate || enhancedJump;
+    if (!duck) {
+      const wag = Math.sin(t * 4 + (kind === "run" ? ph : 0)) * 0.05;
+      ctx.save();
+      ctx.translate(-rx * 0.7, cy + ry * 0.35);
+      ctx.scale(-1, 1);
+      const s = u;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 0.1 * s + ow * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0.02 * s);
+      ctx.quadraticCurveTo(0.16 * s, -0.02 * s, 0.2 * s, -0.2 * s + wag * s);
+      ctx.stroke();
+      ctx.strokeStyle = p.b;
+      ctx.lineWidth = 0.1 * s;
+      ctx.stroke();
+      const tx = 0.2 * s, ty = -0.24 * s + wag * s, R = 0.1 * s, r2 = 0.04 * s;
+      outlined(ctx, star, ow * 0.9, (c) => {
+        for (let i = 0; i < 10; i++) {
+          const ang = -Math.PI / 2 + i * Math.PI / 5;
+          const rad = i % 2 ? r2 : R;
+          const px = tx + Math.cos(ang) * rad, py = ty + Math.sin(ang) * rad;
+          i ? c.lineTo(px, py) : c.moveTo(px, py);
+        }
+        c.closePath();
+      });
+      ctx.restore();
+    }
+    {
+      const baseY = cy - ry * 0.78;
+      const earLen = (duck ? 0.22 : 0.3) * u;
+      for (const side of [-1, 1]) {
+        const baseX = side * rx * 0.5;
+        const lean = side * 0.12 * u;
+        const wob = celebrate ? 0.03 * u * Math.max(0, celebrateSync ? celebrateSync.lift / 0.15 : Math.sin(t * 7)) : 0;
+        const tipX = baseX + lean + side * (0.06 + airApex * 0.025 + (enhancedDuck ? 0.025 : 0)) * u;
+        const tipY = baseY - earLen - wob + airRise * 0.055 * u - airApex * 0.025 * u + (enhancedDuck ? 0.025 * u : 0);
+        const halfBase = 0.11 * u, halfTip = 0.075 * u;
+        const headTopAt = (x) => cy - ry * Math.sqrt(Math.max(0, 1 - (x / rx) ** 2));
+        const rootY = (x) => Math.max(baseY + 0.02 * u, headTopAt(x) + 0.035 * u);
+        const innerX = baseX - side * halfBase, outerX = baseX + side * halfBase;
+        const earPath = (c) => {
+          c.moveTo(innerX, rootY(innerX));
+          c.quadraticCurveTo(baseX + lean * 0.3 - side * halfTip, (baseY + tipY) / 2, tipX - side * halfTip, tipY + 0.03 * u);
+          c.quadraticCurveTo(tipX + side * 5e-3 * u, tipY - 0.07 * u, tipX + side * halfTip, tipY + 0.03 * u);
+          c.quadraticCurveTo(baseX + lean * 0.5 + side * halfTip, (baseY + tipY) / 2, outerX, rootY(outerX));
+          c.closePath();
+        };
+        outlined(ctx, p.b, ow, earPath);
+        ctx.save();
+        ctx.beginPath();
+        earPath(ctx);
+        ctx.clip();
+        ctx.fillStyle = acc;
+        ctx.beginPath();
+        ctx.rect(tipX - 0.2 * u, tipY - 0.1 * u, 0.4 * u, 0.26 * u);
+        ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = ow;
+        ctx.beginPath();
+        earPath(ctx);
+        ctx.stroke();
+      }
+      const tuftY = cy - ry * 0.86;
+      const sway = Math.sin(t * 3 + 1) * 0.02 * u + (kind === "run" ? Math.sin(ph) * 0.012 * u : 0);
+      outlined(ctx, acc, ow * 0.9, (c) => {
+        c.moveTo(-0.055 * u, tuftY + 0.04 * u);
+        c.quadraticCurveTo(-0.075 * u, tuftY - 0.1 * u, 0.01 * u + sway, tuftY - 0.15 * u);
+        c.quadraticCurveTo(0.065 * u + sway, tuftY - 0.17 * u, 0.055 * u + sway * 0.6, tuftY - 0.1 * u);
+        c.quadraticCurveTo(0.03 * u, tuftY - 0.1 * u, 0.04 * u, tuftY - 0.04 * u);
+        c.quadraticCurveTo(0.05 * u, tuftY + 0.01 * u, 0.055 * u, tuftY + 0.04 * u);
+        c.closePath();
+      });
+    }
+    const step = kind === "run" ? Math.sin(ph) * 0.06 * u : 0;
+    const duckSpread = enhancedDuck ? 0.025 * u : 0;
+    const footIn = enhancedJump ? airApex * 0.035 * u : -duckSpread;
+    const footUp = enhancedJump ? (0.055 + airApex * 0.055) * u : 0;
+    outlined(ctx, p.b, ow, (c) => c.ellipse(-0.14 * u + step + footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.b, ow, (c) => c.ellipse(0.14 * u - step - footIn, -0.03 * u - footUp, 0.08 * u, 0.05 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.b, ow, (c) => c.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2));
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = belly;
+    ctx.beginPath();
+    ctx.ellipse(0, cy + ry * 0.42, rx * 0.72, ry * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedDuck ? 0.42 : 0.2);
+    outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(-rx - 5e-3 * u, nubY, 0.08 * u, 0, Math.PI * 2));
+    outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(rx + 5e-3 * u, nubY, 0.08 * u, 0, Math.PI * 2));
+    const ex = expressionFor(id, pose2);
+    const loll = kind === "run" && !ex.joy && !ex.surprise && (t + (FACE_SEED[id] || 0)) % 5.4 < 1.5;
+    ex.cross = loll;
+    const faceBob = kind === "run" ? Math.sin(2 * ph) * 0.012 * u : 0;
+    const faceY = cy - ry * 0.08 + faceBob;
+    const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose2.headTurn) || 0)) * Math.PI / 180);
+    ctx.save();
+    ctx.translate(faceYaw * 0.11 * u, 0);
+    ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1);
+    pikaEyes(ctx, p, u, 0, faceY, lod, ex);
+    const jig = kind === "run" ? Math.sin(2 * ph - 0.7) : 0;
+    const cheekY = faceY + 0.11 * u + jig * 0.018 * u;
+    const cheekRx = 0.05 * u * (1 + jig * 0.1);
+    const cheekRy = 0.05 * u * (1 - jig * 0.1);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(s * 0.24 * u, cheekY, cheekRx, cheekRy, 0, 0, Math.PI * 2);
+      ctx.fillStyle = cheek;
+      ctx.fill();
+    }
+    if (!lod) dot(ctx, 0, faceY + 0.08 * u, 0.012 * u, p.e);
+    if (ex.joy || ex.surprise) {
+      outlined(ctx, p.m, Math.max(0.6, 0.014 * u), (c) => c.ellipse(0, faceY + 0.15 * u, 0.05 * u, ex.cheer ? 0.06 * u : 0.04 * u, 0, 0, Math.PI * 2));
+    } else {
+      if (loll && !lod) {
+        const flap = Math.sin(2 * ph) * 0.012 * u;
+        const tx = 0.03 * u, ty = faceY + 0.13 * u;
+        outlined(ctx, cheek, Math.max(0.6, ow * 0.8), (c) => {
+          c.moveTo(tx - 0.025 * u, ty);
+          c.quadraticCurveTo(tx - 0.032 * u, ty + 0.06 * u + flap, tx, ty + 0.062 * u + flap);
+          c.quadraticCurveTo(tx + 0.032 * u, ty + 0.06 * u + flap, tx + 0.025 * u, ty);
+          c.closePath();
+        });
+      }
+      ctx.strokeStyle = p.m;
+      ctx.lineWidth = Math.max(0.8, 0.02 * u);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-0.05 * u, faceY + 0.12 * u);
+      ctx.quadraticCurveTo(-0.025 * u, faceY + 0.16 * u, 0, faceY + 0.13 * u);
+      ctx.quadraticCurveTo(0.025 * u, faceY + 0.16 * u, 0.05 * u, faceY + 0.12 * u);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+  }
+  var CHOMPO_PATHS = {
+    hairA: "M158,54 C126,14 58,14 30,50 C0,82 -6,156 8,232 C18,264 40,282 62,274 C46,230 44,150 60,98 C38,114 28,74 50,50 C80,16 130,18 158,54 Z",
+    hairB: "M152,58 C124,22 58,22 34,54 C6,84 0,152 16,226 C26,258 44,276 62,268 C50,226 48,150 62,100 C42,114 34,76 54,54 C82,22 126,24 152,58 Z",
+    hairC: "M120,40 C78,44 42,68 28,150",
+    hairOver: "M108,98 C50,118 16,178 24,250 C42,224 66,216 92,222 C74,182 74,140 94,110 C84,128 92,110 108,98 Z",
+    hairOverHi: "M98,116 C56,140 38,190 40,244",
+    hairFront: "M136,54 C108,46 78,58 64,92 C56,140 62,210 80,258 C74,206 78,138 96,94 C112,68 126,60 136,54 Z",
+    hairFrontHi: "M120,66 C96,74 82,104 78,170",
+    bowL: "M130,42 C104,20 96,42 100,52 C108,64 126,52 130,46 Z",
+    bowR: "M130,42 C156,20 164,42 160,52 C152,64 134,52 130,46 Z",
+    bowShade: "M130,42 C104,26 100,40 102,50 C112,42 122,44 130,46 Z"
+  };
+  var CHOMPO_EYES = [
+    {
+      cx: 112,
+      cy: 110,
+      k: 0.95,
+      rx: 19,
+      ry: 23,
+      pupil: [120, 115, 10],
+      glint: [116, 111, 3.4],
+      lid: "M93,110 Q112,88 133,108 Q134,100 112,95 Q93,98 93,110 Z",
+      lash: "M92,106 Q112,84 134,104",
+      lashW: 4,
+      tips: "M132,100 L142,95 M128,92 L136,84",
+      tipW: 2.6
+    },
+    {
+      cx: 162,
+      cy: 98,
+      k: 0.72,
+      rx: 25,
+      ry: 30,
+      pupil: [170, 104, 13],
+      glint: [165, 99, 4.5],
+      lid: "M137,98 Q162,74 187,96 Q188,86 162,80 Q137,84 137,98 Z",
+      lash: "M136,94 Q162,68 189,92",
+      lashW: 5,
+      tips: "M188,90 L200,84 M184,80 L194,71 M176,73 L182,62",
+      tipW: 3
+    }
+  ];
+  function specPath(ctx, d) {
+    ctx.beginPath();
+    const re = /([MLCQZ])([^MLCQZ]*)/g;
+    let m;
+    while (m = re.exec(d)) {
+      const n = (m[2].match(/-?[\d.]+/g) || []).map(Number);
+      if (m[1] === "M") ctx.moveTo(n[0], n[1]);
+      else if (m[1] === "L") for (let i = 0; i < n.length; i += 2) ctx.lineTo(n[i], n[i + 1]);
+      else if (m[1] === "C") for (let i = 0; i < n.length; i += 6) ctx.bezierCurveTo(n[i], n[i + 1], n[i + 2], n[i + 3], n[i + 4], n[i + 5]);
+      else if (m[1] === "Q") for (let i = 0; i < n.length; i += 4) ctx.quadraticCurveTo(n[i], n[i + 1], n[i + 2], n[i + 3]);
+      else ctx.closePath();
+    }
+  }
+  function specFill(ctx, d, fill, alpha = 1) {
+    specPath(ctx, d);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  function specStroke(ctx, d, stroke, w, alpha = 1) {
+    specPath(ctx, d);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = w;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  function chompoBodyPath(ctx, thetaUp, thetaLo) {
+    ctx.beginPath();
+    if (thetaUp + thetaLo < 0.02) {
+      ctx.arc(120, 148, 96, 0, Math.PI * 2);
+      ctx.closePath();
+      return;
+    }
+    ctx.moveTo(120, 148);
+    ctx.arc(120, 148, 96, -thetaUp, thetaLo, true);
+    ctx.closePath();
+  }
+  function biteWave(cyc) {
+    const q = cyc - Math.floor(cyc);
+    if (q < 0.34) {
+      const a = q / 0.34;
+      return 1 - (1 - a) * (1 - a);
+    }
+    if (q < 0.66) return 1;
+    if (q < 0.73) {
+      const a = (0.73 - q) / 0.07;
+      return a * a;
+    }
+    return 0;
+  }
+  function chompoBodyFill(ctx, p, lod) {
+    if (lod || !ctx.createRadialGradient) return p.b;
+    const g = ctx.createRadialGradient(96.96, 113.44, 0, 96.96, 113.44, 144);
+    g.addColorStop(0, p.hi);
+    g.addColorStop(0.58, p.b);
+    g.addColorStop(1, p.sh);
+    return g;
+  }
+  function chompoEye(ctx, p, e, bodyFill, lod, blink, gaze = 0) {
+    ctx.save();
+    ctx.translate(e.cx, e.cy);
+    ctx.scale(e.k, e.k);
+    ctx.translate(-e.cx, -e.cy);
+    if (blink) {
+      specStroke(ctx, e.lash, p.e, e.lashW);
+      if (!lod) specStroke(ctx, e.tips, p.e, e.tipW);
+      ctx.restore();
+      return;
+    }
+    ctx.beginPath();
+    ctx.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.w;
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = p.sh;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    dot(ctx, e.pupil[0] + gaze, e.pupil[1], e.pupil[2], p.e);
+    dot(ctx, e.glint[0] + gaze, e.glint[1], e.glint[2], p.w);
+    if (!lod) {
+      specFill(ctx, e.lid, bodyFill);
+      specStroke(ctx, e.lash, p.e, e.lashW);
+      specStroke(ctx, e.tips, p.e, e.tipW);
+    }
+    ctx.restore();
+  }
+  function drawDisc(ctx, id, p, pose2, u, ow, lod) {
+    const ph = (pose2.phase || 0) * Math.PI * 2;
+    const duck = pose2.kind === "duck";
+    const enhancedMotion = usesEnhancedLocomotion(pose2);
+    const enhancedJump = pose2.kind === "jump" && enhancedMotion;
+    const airV = enhancedJump ? Math.max(-1, Math.min(1, (Number(pose2.vy) || 0) / 460)) : 0;
+    const airApex = enhancedJump ? 1 - Math.abs(airV) : 0;
+    const r = (duck ? 0.3 : 0.34) * u;
+    const cy = duck ? -0.31 * u : -0.44 * u;
+    if (duck && pose2.roll) {
+      ctx.save();
+      ctx.translate(0, cy);
+      ctx.rotate((pose2.time || 0) * 13);
+      const half = 0.16 * Math.PI;
+      outlined(ctx, p.b, ow, (c) => {
+        c.arc(0, 0, r, half, Math.PI * 2 - half);
+        c.lineTo(0, 0);
+        c.closePath();
+      });
+      dot(ctx, r * 0.35, -r * 0.45, 0.035 * u, p.e);
+      if (id === "chompo") {
+        outlined(ctx, p.a, ow, (c) => c.ellipse(-0.13 * u, -r * 0.75, 0.1 * u, 0.06 * u, -0.5, 0, Math.PI * 2));
+        outlined(ctx, p.a, ow, (c) => c.ellipse(0.02 * u, -r * 0.82, 0.1 * u, 0.06 * u, 0.5, 0, Math.PI * 2));
+      }
+      ctx.restore();
+      return;
+    }
+    const ex = expressionFor(id, pose2);
+    const reworkedCelebrate = pose2.kind === "celebrate" && usesReworkedCelebration(pose2) ? celebrateMotion(id, pose2.time || 0, true) : null;
+    const upDeg = duck ? 10 : 15;
+    let loDeg = duck ? 10 : 15;
+    const mt = pose2.time || 0;
+    if (pose2.menuAction === "chomp") loDeg = -upDeg + 57 * biteWave(mt * 1.7);
+    else if (pose2.kind === "run") loDeg = -upDeg + 40 * (0.5 - 0.5 * Math.cos(mt * 11));
+    else if (pose2.kind === "celebrate") loDeg = -upDeg + 50 * (reworkedCelebrate ? biteWave(reworkedCelebrate.cycle * 2) : Math.abs(Math.sin(mt * 6)));
+    else if (pose2.kind === "jump") loDeg = 32;
+    const thetaUp = upDeg * Math.PI / 180, thetaLo = loDeg * Math.PI / 180;
+    const bob = pose2.kind === "run" ? -Math.abs(Math.cos(ph)) * 0.03 * u : pose2.kind === "idle" ? Math.sin((pose2.time || 0) * 2) * 8e-3 * u : enhancedJump ? -airApex * 0.03 * u : 0;
+    const squash = pose2.kind === "run" ? (0.5 - Math.abs(Math.cos(ph))) * 0.06 : duck && enhancedMotion ? 0.115 : enhancedJump ? airApex * 0.035 : Math.sin((pose2.time || 0) * 2.2) * 0.012;
+    const pivotY = cy + r * 0.9;
+    ctx.save();
+    ctx.translate(0, pivotY);
+    ctx.scale(1 + squash, 1 - squash);
+    ctx.translate(0, -pivotY);
+    const s = r / 96;
+    const spec = (fn) => {
+      ctx.save();
+      ctx.translate(0, cy);
+      ctx.scale(s, s);
+      ctx.translate(-120, -148);
+      fn();
+      ctx.restore();
+    };
+    const t0 = pose2.time || 0;
+    const hairBack = pose2.kind === "run" ? Math.sin(ph - 1.1) * 9 : Math.sin(t0 * 2.2 - 0.6) * 2.5;
+    const hairFrontB = pose2.kind === "run" ? Math.sin(ph - 0.7) * 4.5 : Math.sin(t0 * 2.2 - 0.3) * 1.5;
+    ctx.save();
+    ctx.translate(0, bob);
+    spec(() => {
+      ctx.translate(0, hairBack);
+      ctx.translate(94, 40);
+      ctx.scale(1.2, 0.95);
+      ctx.translate(-94, -40);
+      specFill(ctx, CHOMPO_PATHS.hairA, p.hairShade);
+      specFill(ctx, CHOMPO_PATHS.hairB, p.hair);
+      if (!lod) specStroke(ctx, CHOMPO_PATHS.hairC, p.hairLight, 4, 0.6);
+    });
+    ctx.restore();
+    if (reworkedCelebrate) {
+      const phase = reworkedCelebrate.cycle * 2 % 1;
+      if (phase >= 0.08 && phase < 0.74) {
+        const raw = Math.max(0, Math.min(1, (phase - 0.08) / 0.66));
+        const travel = raw * raw * (3 - 2 * raw);
+        const snackX = (0.62 - travel * 0.31) * u;
+        const snackY = cy - Math.sin(travel * Math.PI) * 0.09 * u;
+        const snackR = (0.062 - travel * 0.035) * u;
+        ctx.save();
+        ctx.translate(snackX, snackY);
+        ctx.rotate(travel * 1.8);
+        outlined(ctx, "#f6d33c", Math.max(0.5, ow * 0.65), (c) => {
+          c.moveTo(0, -snackR);
+          c.lineTo(snackR, 0);
+          c.lineTo(0, snackR);
+          c.lineTo(-snackR, 0);
+          c.closePath();
+        });
+        if (!lod) {
+          dot(ctx, -snackR * 0.22, -snackR * 0.08, snackR * 0.12, "#9a6515");
+          dot(ctx, snackR * 0.25, snackR * 0.2, snackR * 0.1, "#9a6515");
+        }
+        ctx.restore();
+      }
+    }
+    const p01 = pose2.phase || 0;
+    let gF = pose2.kind === "run" ? gaitFoot(p01, 0.08 * u, 0.06 * u) : [0, 0];
+    let gB = pose2.kind === "run" ? gaitFoot(p01 + 0.5, 0.08 * u, 0.06 * u) : [0, 0];
+    if (enhancedJump) {
+      gF = [(0.035 + 0.025 * airApex) * u, 0];
+      gB = [(-0.025 - 0.02 * airApex) * u, 0.035 * (1 - airApex) * u];
+    }
+    const ankleY = enhancedJump ? (-0.11 - 0.055 * airApex) * u : -0.03 * u;
+    const hipY = cy + r * 0.6 + bob;
+    limb(ctx, -0.1 * u, hipY, -0.1 * u + gB[0], ankleY + gB[1], 0.07 * u, p.p, ow);
+    limb(ctx, 0.1 * u, hipY, 0.1 * u + gF[0], ankleY + gF[1], 0.07 * u, p.p, ow);
+    const heel = (ax, ay) => {
+      const gy = ay + 0.065 * u;
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.scale(1.15, 1.15);
+      ctx.translate(-ax, -ay);
+      outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => {
+        c.moveTo(ax - 0.03 * u, ay + 4e-3 * u);
+        c.quadraticCurveTo(ax + 0.016 * u, ay - 0.014 * u, ax + 0.05 * u, ay + 0.012 * u);
+        c.lineTo(ax + 0.094 * u, gy - 4e-3 * u);
+        c.lineTo(ax + 0.032 * u, gy);
+        c.quadraticCurveTo(ax - 4e-3 * u, gy - 0.03 * u, ax - 0.026 * u, gy);
+        c.lineTo(ax - 0.036 * u, gy);
+        c.closePath();
+      });
+      ctx.restore();
+    };
+    heel(-0.1 * u + gB[0], ankleY + gB[1]);
+    heel(0.1 * u + gF[0], ankleY + gF[1]);
+    ctx.save();
+    ctx.translate(0, bob);
+    spec(() => {
+      const bodyFill = chompoBodyFill(ctx, p, lod);
+      chompoBodyPath(ctx, thetaUp, thetaLo);
+      ctx.fillStyle = bodyFill;
+      ctx.fill();
+      if (!lod) {
+        ctx.save();
+        chompoBodyPath(ctx, thetaUp, thetaLo);
+        ctx.clip();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = p.sh;
+        ctx.beginPath();
+        ctx.ellipse(120, 235, 120, 80, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = p.w;
+        ctx.beginPath();
+        ctx.ellipse(72, 92, 46, 38, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+      if (!lod) {
+        const LIP = p.lip || "#d0202e", LIPSH = p.lipShade || p.aDark;
+        const lip = (ang, perp, prof) => {
+          const c = Math.cos(ang), s2 = Math.sin(ang), px = Math.cos(perp), py = Math.sin(perp);
+          const pt = (rad, off) => [120 + c * rad + px * off, 148 + s2 * rad + py * off];
+          const face = prof.map(([rad, off]) => pt(rad, off)).reverse();
+          ctx.beginPath();
+          let a = pt(prof[0][0], 0);
+          ctx.moveTo(a[0], a[1]);
+          a = pt(prof[prof.length - 1][0], 0);
+          ctx.lineTo(a[0], a[1]);
+          ctx.lineTo(face[0][0], face[0][1]);
+          for (let i = 1; i < face.length - 1; i++) {
+            ctx.quadraticCurveTo(face[i][0], face[i][1], (face[i][0] + face[i + 1][0]) / 2, (face[i][1] + face[i + 1][1]) / 2);
+          }
+          ctx.lineTo(face[face.length - 1][0], face[face.length - 1][1]);
+          ctx.closePath();
+          ctx.fillStyle = LIP;
+          ctx.fill();
+          ctx.strokeStyle = LIPSH;
+          ctx.lineWidth = 1.5;
+          ctx.globalAlpha = 0.6;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        };
+        ctx.save();
+        ctx.lineJoin = "round";
+        lip(-thetaUp, -thetaUp - Math.PI / 2, [[58, 2], [69, 14], [76, 4], [83, 14], [96, 2]]);
+        lip(thetaLo, thetaLo + Math.PI / 2, [[58, 2], [74, 11], [96, 2]]);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(0, hairFrontB);
+      specFill(ctx, CHOMPO_PATHS.hairOver, p.hair, 0.5);
+      if (!lod) specStroke(ctx, CHOMPO_PATHS.hairOverHi, p.hairLight, 3.5, 0.5);
+      specFill(ctx, CHOMPO_PATHS.hairFront, p.hair);
+      if (!lod) specStroke(ctx, CHOMPO_PATHS.hairFrontHi, p.hairLight, 4, 0.55);
+      ctx.restore();
+      const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose2.headTurn) || 0)) * Math.PI / 180);
+      ctx.save();
+      ctx.translate(faceYaw * 36, 0);
+      ctx.translate(120, 0);
+      ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1);
+      ctx.translate(-120, 0);
+      for (const e of CHOMPO_EYES) chompoEye(ctx, p, e, bodyFill, lod, ex.blink, faceYaw * 8);
+      ctx.restore();
+      const flutter = (pose2.kind === "run" ? Math.sin(2 * ph) : Math.sin((pose2.time || 0) * 2)) * 0.05;
+      ctx.save();
+      ctx.translate(130, 40);
+      ctx.rotate(-8 * Math.PI / 180 + flutter);
+      ctx.translate(-130, -40);
+      specFill(ctx, CHOMPO_PATHS.bowL, p.a);
+      specFill(ctx, CHOMPO_PATHS.bowR, p.a);
+      specFill(ctx, CHOMPO_PATHS.bowShade, p.aDark, 0.4);
+      dot(ctx, 130, 45, 9, p.aDark);
+      ctx.restore();
+    });
+    ctx.restore();
+    ctx.restore();
+  }
+  function drawRayHead(ctx, id, p, pose2, u, ow, hx, hy, lod, run) {
+    const hairFlop = Math.sin((pose2.time || 0) * (run ? 8 : 2.5)) * 0.025 * u;
+    outlined(ctx, p.s, ow, (c) => c.arc(hx, hy, 0.17 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, ow, (c) => {
+      c.moveTo(hx - 0.17 * u, hy - 0.02 * u);
+      c.quadraticCurveTo(hx - 0.31 * u, hy - 0.09 * u, hx - 0.28 * u, hy + 0.13 * u + hairFlop);
+      c.quadraticCurveTo(hx - 0.21 * u, hy + 0.03 * u + hairFlop, hx - 0.09 * u, hy - 0.34 * u);
+      c.quadraticCurveTo(hx - 0.05 * u, hy - 0.38 * u, hx - 0.015 * u, hy - 0.17 * u);
+      c.quadraticCurveTo(hx + 0.08 * u, hy - 0.31 * u, hx + 0.21 * u, hy - 0.29 * u);
+      c.quadraticCurveTo(hx + 0.23 * u, hy - 0.23 * u, hx + 0.14 * u, hy - 0.16 * u);
+      c.quadraticCurveTo(hx + 0.23 * u, hy - 0.1 * u, hx + 0.19 * u, hy - 0.025 * u + hairFlop * 0.3);
+      c.quadraticCurveTo(hx + 0.02 * u, hy - 0.15 * u, hx - 0.18 * u, hy - 0.07 * u);
+      c.closePath();
+    });
+    const ex = expressionFor(id, pose2);
+    const faceYaw = Math.sin(Math.max(-65, Math.min(65, Number(pose2.headTurn) || 0)) * Math.PI / 180);
+    const faceX = hx + (0.02 + faceYaw * 0.11) * u;
+    ctx.save();
+    ctx.translate(faceX, 0);
+    ctx.scale(1 - Math.abs(faceYaw) * 0.16, 1);
+    ctx.translate(-faceX, 0);
+    drawEyes(ctx, p, u, faceX, hy - 0.01 * u, lod, ex);
+    if (!lod) drawMouth(ctx, { mouth: "smirk" }, p, u, faceX, hy + 0.08 * u, ow, ex);
+    ctx.restore();
+  }
+  function drawRay(ctx, id, p, pose2, u, ow, lod) {
+    const ph = (pose2.phase || 0) * Math.PI * 2;
+    const run = pose2.kind === "run";
+    const duck = pose2.kind === "duck";
+    const enhancedMotion = usesEnhancedLocomotion(pose2);
+    const jump = pose2.kind === "jump" && enhancedMotion;
+    const airV = jump ? Math.max(-1, Math.min(1, (Number(pose2.vy) || 0) / 460)) : 0;
+    const airApex = jump ? 1 - Math.abs(airV) : 0;
+    const footF = run ? floatingFoot(pose2.phase || 0, 0.115 * u, 0.082 * u) : [0, 0];
+    const footB = run ? floatingFoot((pose2.phase || 0) + 0.5, 0.115 * u, 0.082 * u) : [0, 0];
+    const bob = run ? -Math.abs(Math.sin(ph)) * 0.028 * u : 0;
+    const cy = (duck ? -0.3 : -0.5) * u + bob - airApex * 0.03 * u;
+    const handSwing = run ? Math.cos(ph) * 0.075 * u : jump ? 0.055 * u : 0;
+    const handLift = run ? Math.sin(ph) * 0.035 * u : jump ? (0.045 + 0.035 * airApex) * u : 0;
+    const shoeSpread = duck && enhancedMotion ? 0.165 : 0.13;
+    const shoeLift = jump ? (0.09 + 0.07 * airApex) * u : 0;
+    const backShoeX = -shoeSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
+    const frontShoeX = shoeSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
+    const backTilt = -0.08 - (run ? Math.sin(ph) * 0.1 : 0);
+    const frontTilt = 0.08 + (run ? Math.sin(ph) * 0.1 : 0);
+    outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
+    outlined(ctx, p.f, ow, (c) => c.ellipse(backShoeX, backShoeY, 0.125 * u, 0.063 * u, backTilt, 0, Math.PI * 2));
+    outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));
+    outlined(ctx, p.f, ow, (c) => c.ellipse(frontShoeX, frontShoeY, 0.125 * u, 0.063 * u, frontTilt, 0, Math.PI * 2));
+    outlined(ctx, p.b, ow, (c) => roundRectPath(c, -0.165 * u, cy - 0.2 * u, 0.33 * u, 0.4 * u, 0.09 * u));
+    outlined(ctx, p.m, ow, (c) => roundRectPath(c, -0.195 * u, cy - 0.225 * u, 0.39 * u, 0.07 * u, 0.03 * u));
+    const scarfLag = run ? Math.sin(ph + 0.7) * 0.035 * u : 0;
+    ctx.fillStyle = p.m;
+    ctx.beginPath();
+    ctx.moveTo(-0.14 * u, cy - 0.245 * u);
+    ctx.quadraticCurveTo(-0.3 * u, cy - 0.225 * u + scarfLag, -0.37 * u, cy - 0.17 * u + scarfLag);
+    ctx.lineTo(-0.14 * u, cy - 0.14 * u);
+    ctx.fill();
+    drawRayHead(ctx, id, p, pose2, u, ow, 0, cy - 0.35 * u, lod, run);
+    const handY = cy + (duck && enhancedMotion ? 0.085 : jump ? -0.11 : 0.02) * u;
+    const handOut = duck && enhancedMotion ? 0.34 : 0.29;
+    const cheer = pose2.kind === "celebrate";
+    const gloveStudy = cheer && usesReworkedCelebration(pose2);
+    if (gloveStudy) {
+      const gm = celebrateMotion(id, pose2.time || 0, true);
+      const smooth = (v) => {
+        const n = Math.max(0, Math.min(1, v));
+        return n * n * (3 - 2 * n);
+      };
+      const blend = (a, b, v) => a.map((n, i) => n + (b[i] - n) * v);
+      const restL = [-0.29 * u, cy - 0.24 * u, -0.12];
+      const restR = [0.29 * u, cy - 0.24 * u, 0.12];
+      const meetL = [-0.095 * u, cy - 0.69 * u, 0.48];
+      const meetR = [0.095 * u, cy - 0.69 * u, -0.48];
+      const finishL = [-0.27 * u, cy - 0.63 * u, -0.12];
+      const finishR = [0.3 * u, cy - 0.18 * u, 0.12];
+      const c = gm.cycle;
+      let left, right;
+      if (c < 0.18) {
+        const v = smooth(c / 0.18);
+        left = blend(restL, meetL, v);
+        right = blend(restR, meetR, v);
+      } else if (c < 0.36) {
+        left = meetL;
+        right = meetR;
+      } else if (c < 0.5) {
+        const v = smooth((c - 0.36) / 0.14);
+        left = blend(meetL, finishL, v);
+        right = blend(meetR, finishR, v);
+      } else if (c < 0.82) {
+        left = finishL;
+        right = finishR;
+      } else {
+        const v = smooth((c - 0.82) / 0.18);
+        left = blend(finishL, restL, v);
+        right = blend(finishR, restR, v);
+      }
+      outlined(ctx, p.w, ow, (path) => path.ellipse(left[0], left[1], 0.105 * u, 0.095 * u, left[2], 0, Math.PI * 2));
+      outlined(ctx, p.w, ow, (path) => path.ellipse(right[0], right[1], 0.105 * u, 0.095 * u, right[2], 0, Math.PI * 2));
+      const impact = Math.max(0, 1 - Math.abs(c - 0.27) / 0.09);
+      if (impact > 0 && !lod) {
+        const iy = cy - 0.69 * u;
+        ctx.save();
+        ctx.globalAlpha *= impact;
+        ctx.strokeStyle = "#f6d33c";
+        ctx.lineWidth = Math.max(0.6, ow * 0.8);
+        ctx.beginPath();
+        for (const a of [-Math.PI / 2, -0.35, Math.PI + 0.35]) {
+          ctx.moveTo(Math.cos(a) * 0.03 * u, iy + Math.sin(a) * 0.03 * u);
+          ctx.lineTo(Math.cos(a) * 0.1 * u, iy + Math.sin(a) * 0.1 * u);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else {
+      const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
+      outlined(ctx, p.w, ow, (c) => c.ellipse(-handOut * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+      if (cheer) {
+        const waveX = Math.sin((pose2.time || 0) * 8) * 0.1 * u;
+        outlined(ctx, p.w, ow, (c) => c.ellipse(0.28 * u + waveX, cy - 0.62 * u, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+      } else if (!pose2.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(handOut * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+      else if (pose2.menu) {
+        const orbit = (pose2.time || 0) * 8;
+        outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
+      }
+    }
+  }
+  function drawToon(ctx, heroId, pose2 = {}, cx, feetY, h, opts = {}) {
+    const spec = TOON_SPECS[heroId];
+    if (!spec) return;
+    const p = pal(heroId);
+    const u = h;
+    const ow = Math.max(0.3, 0.016 * h) * INK.body;
+    const lod = h < 16;
+    let sx = 1, sy = 1;
+    if (!pose2.grounded && pose2.kind === "jump") {
+      if (usesEnhancedLocomotion(pose2) && !pose2.stomp) {
+        const speed = Math.min(1, Math.abs(Number(pose2.vy) || 0) / 520);
+        sy = 1 + 0.095 * speed;
+        sx = 1 - 0.052 * speed;
+      } else {
+        const st = pose2.stomp ? 0.25 : Math.min(0.18, Math.abs(pose2.vy || 0) / 700);
+        sy = 1 + st;
+        sx = 1 - 0.6 * st;
+      }
+    }
+    if (pose2.kind === "duck" && usesEnhancedLocomotion(pose2) && !pose2.roll) {
+      const raw = pose2.duckAmount == null ? 1 : Math.max(0, Math.min(1, Number(pose2.duckAmount) || 0));
+      let crouch = raw * raw * (3 - 2 * raw);
+      if (pose2.duckDirection > 0 && raw > 0.68 && raw < 1) {
+        crouch += Math.sin((raw - 0.68) / 0.32 * Math.PI) * 0.055;
+      }
+      const startTall = spec.rig === "disc" ? 1.28 : spec.rig === "pika" || spec.rig === "blob" ? 1.45 : spec.rig === "ray" ? 1.25 : 1.7;
+      sy *= startTall + (1 - startTall) * crouch;
+      sx *= 0.9 + 0.1 * crouch;
+    }
+    const q = pose2.squash || 0;
+    if (q > 0) {
+      sy *= 1 - 0.28 * q;
+      sx *= 1 + 0.32 * q;
+    }
+    ctx.save();
+    if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
+    ctx.translate(cx, feetY);
+    const cm = pose2.kind === "celebrate" ? celebrateMotion(heroId, pose2.time || 0, usesReworkedCelebration(pose2)) : null;
+    if (cm) ctx.translate(cm.x * u, -cm.lift * u);
+    if (pose2.facing === -1) ctx.scale(-1, 1);
+    if (spec.figureScaleX || spec.figureScaleY) {
+      ctx.scale(spec.figureScaleX || 1, spec.figureScaleY || 1);
+    }
+    if (pose2.lean) ctx.rotate(pose2.lean);
+    if (cm) {
+      if (cm.tilt) ctx.rotate(cm.tilt);
+      if (cm.spin !== 1) sx *= (cm.spin < 0 ? -1 : 1) * Math.max(0.12, Math.abs(cm.spin));
+      if (cm.squash) {
+        sy *= 1 - 0.24 * cm.squash;
+        sx *= 1 + 0.2 * cm.squash;
+      }
+    }
+    ctx.scale(sx, sy);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const xSign = (pose2.facing === -1 ? -1 : 1) * (sx < 0 ? -1 : 1);
+    const prevLight = armLight(u, xSign, !lod && opts.light !== false, opts.lit == null ? 1 : opts.lit);
+    if (spec.rig === "pika") drawPika(ctx, heroId, p, pose2, u, ow, lod);
+    else if (spec.rig === "blob") drawBlob(ctx, heroId, p, pose2, u, ow, lod);
+    else if (spec.rig === "disc") drawDisc(ctx, heroId, p, pose2, u, ow, lod);
+    else if (spec.rig === "ray") drawRay(ctx, heroId, p, pose2, u, ow, lod);
+    else drawHumanoid(ctx, heroId, spec, p, pose2, u, ow, lod);
+    disarmLight(prevLight);
+    ctx.restore();
+  }
+  var TOP_R = 64;
+  var TOP_FEET = TOP_R * 2.75;
+
+  // scratchpad/fern-cel-entry.js
+  var CYCLE = 2.6;
+  var SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7 };
+  var root = document.getElementById("root");
+  function pose(kind, t, extra = {}) {
+    return {
+      kind,
+      phase: t * 1.6 % 1,
+      time: t,
+      vy: 0,
+      grounded: true,
+      squash: 0,
+      lean: 0,
+      roll: false,
+      float: false,
+      stomp: false,
+      headless: false,
+      facing: 1,
+      ...extra
+    };
+  }
+  function strip(title, note, id, extra = {}, opts = {}) {
+    const N = opts.n || 8;
+    const HH = opts.hh || 220;
+    const off = (SEED[id] || 0) * 0.4;
+    const sec = document.createElement("section");
+    sec.innerHTML = `<h2>${title}</h2><p class="note">${note}</p>`;
+    const row = document.createElement("div");
+    row.className = "row";
+    sec.appendChild(row);
+    root.appendChild(sec);
+    const from = opts.from == null ? 0 : opts.from;
+    const to = opts.to == null ? 1 : opts.to;
+    for (let i = 0; i < N; i++) {
+      const c = from + (to - from) * (i / N);
+      const t = c * CYCLE - off + CYCLE * 4;
+      const card = document.createElement("div");
+      card.className = "card";
+      const cv = document.createElement("canvas");
+      const w = Math.round(HH * 1.25), h = Math.round(HH * 1.75);
+      cv.width = w;
+      cv.height = h;
+      const cap = document.createElement("div");
+      cap.className = "cap";
+      cap.textContent = `${c.toFixed(2)}${c < 0.6 ? " sig" : " BIG"}`;
+      card.append(cv, cap);
+      row.appendChild(card);
+      const ctx = cv.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      try {
+        drawToon(ctx, id, pose("celebrate", t, { menu: true, ...extra }), w / 2, h - HH * 0.06, HH);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  var which = new URLSearchParams(location.search).get("who") || "both";
+  if (which === "gnash" || which === "both") {
+    strip("Gnash \u2014 signature half (0.00\u20130.56)", "Point at sky (near arm, screen LEFT) + hand on hip.", "gnash", {}, { from: 0, to: 0.56, n: 8 });
+    strip("Gnash \u2014 big move half (0.60\u20131.00)", "stepturn.", "gnash", {}, { from: 0.6, to: 1, n: 8 });
+  }
+  if (which === "fernwick" || which === "both") {
+    strip("Fernwick \u2014 signature half (0.00\u20130.56)", "Champion's clasp.", "fernwick", {}, { from: 0, to: 0.56, n: 8 });
+    strip("Fernwick \u2014 big move half (0.60\u20131.00)", "present.", "fernwick", {}, { from: 0.6, to: 1, n: 8 });
+  }
+  if (which === "cast" || which === "legacy") {
+    const style = which === "legacy" ? { celebrateStyle: "legacy" } : {};
+    for (const id of ["lorenzo", "gnash", "fernwick", "b33p", "mochi", "chompo", "gary", "raymn", "grumpos", "dolores"]) {
+      strip(`${id} \u2014 celebrate (${which})`, "", id, style, { n: 8, hh: 120 });
+    }
+  }
+  if (which === "zoom") {
+    strip("Fernwick \u2014 present, zoomed", "Four frames through the hold.", "fernwick", {}, { from: 0.7, to: 0.98, n: 4, hh: 460 });
+  }
+})();
+</script>
+</body>
+</html>
