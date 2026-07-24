@@ -425,8 +425,8 @@ export function rootMenu(dev) {
 }
 
 // ------------------------------------------------------------------- render
-const ROW_H = 11;
-const MAX_ROWS = 17;
+const ROW_H = 21;
+const MAX_ROWS = 10;
 
 export function drawMenu(ctx, dev) {
   const top = dev.top();
@@ -450,7 +450,7 @@ export function drawMenu(ctx, dev) {
     const sel = realIdx === top.idx;
     const y = 26 + i * ROW_H;
     const inert = !item.act && !item.submenu && !item.adjust;
-    drawText(ctx, (sel ? '> ' : '  ') + item.label, 14, y, sel ? GOLD : inert ? DIM : FG, 0.85);
+    drawText(ctx, (sel ? '> ' : '  ') + item.label, 14, y, sel ? GOLD : inert ? DIM : FG, 1.5);
   });
 
   if (n > MAX_ROWS) {

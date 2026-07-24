@@ -1,7 +1,7 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, W,
+  noteRendererFrame, rendererDiagnostics, W,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText } from './engine/sprites.js';
@@ -222,7 +222,15 @@ const Flow = {
 
 function boot() {
   const platform = window.__mash_platform || readPlatform();
-  initRenderer(platform);
+  // The renderer measures each device and settles on a sustainable density;
+  // persist that so the next launch starts near it (the renderer re-probes one
+  // rung optimistically on top of this seed).
+  initRenderer(platform, {
+    savedDensity: save.settings.renderDensity || 0,
+    onSettle: (v) => {
+      if (save.settings.renderDensity !== v) { save.settings.renderDensity = v; save.persist(); }
+    },
+  });
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
@@ -285,9 +293,13 @@ function boot() {
       Dev.draw(bctx);
       if (save.settings.showFps) {
         pushOverlayDraw((ctx) => {
+          const d = rendererDiagnostics();
+          const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
+          const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.throttled ? ' TH' : ''}`;
           ctx.fillStyle = 'rgba(5,6,12,0.68)';
-          ctx.fillRect(W - 51, 3, 47, 11);
-          drawText(ctx, `FPS ${frameRate() || '--'}`, W - 48, 4, '#f4f1fa', 0.75, 'bold');
+          ctx.fillRect(W - 66, 3, 62, 20);
+          drawText(ctx, `FPS ${frameRate() || '--'}`, W - 63, 4, '#f4f1fa', 0.75, 'bold');
+          drawText(ctx, line2, W - 63, 13, '#9fb4d8', 0.75, 'bold');
         });
       }
       blit();

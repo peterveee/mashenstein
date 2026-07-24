@@ -161,6 +161,13 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+### Prompt 17
+**User Request:** A run refining the hands-on-hips: "elbows too high, should be like a caret" → "doesn't quite read as hands on hips" → "whats with the stitched up mouth expression? Get rid of it" → "she should put her hands on hips if you try to buy a sold out item" → layout: "center the coin count under dolores", "align the keyboard instructions with the menu text and fade it out after dolores arrives" → "the arms are in front of the bib... is the problem that the bib doesn't go over her shoulders?" → "yes i think we need to give her proper shoulder straps".
+
+**What I Did:** Lowered the hip target so the elbows bend to a caret apex at the waist. Made the hands actually read on the hips by drawing the arm in the front pass during the beat only (`armsInFront` gated on `hipsAmt > 0.02`, so at rest the arms sit behind the bib). Added a SOLD-OUT reaction: `reactHips` snaps her hands to her hips for `BENCH_REACT_DUR` (1.8s) alongside the glare, `Math.max`'d with the periodic beat. Dropped mad style 3 (the gritted "stitched" mouth) — now 3 mad faces. Layout: centred the coin count under Dolores, aligned the control legend under the menu labels (`drawMenuHint` got an `x0` arg) and faded it out after she arrives. Root fix for the floating-bib read: replaced the single neck strap with **two pinafore shoulder straps** (`limb()` bands from the bib's top corners up over the shoulders) so the bib hangs from the shoulders — only Dolores has `apron`, so nothing else is touched. All suites pass; verified live.
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

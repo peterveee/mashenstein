@@ -38,6 +38,7 @@ dom.store['mashenstein.v2'] = JSON.stringify(partial);
   assert(s.data.slots[0].bench && s.data.slots[0].bench.shield === 1, 'missing fields deep-defaulted');
   assert(s.data.settings.assistSpeed === 100, 'missing settings defaulted');
   assert(s.data.settings.showFps === false, 'FPS display defaults off for existing saves');
+  assert(s.data.settings.renderDensity === 0, 'render density defaults to auto for existing saves');
 }
 
 console.log(failed ? 'MIGRATION: FAILED' : 'MIGRATION: PASSED');

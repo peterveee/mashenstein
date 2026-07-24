@@ -92,6 +92,24 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
   assert(good.calls.draws - drawsBeforeFxOff === 1,
     'Glow Effects off skips the bright and both blur passes');
+  // Adaptive-density tier gate: at a low render density the bloom passes are
+  // suppressed even with Glow Effects and scene glow both on.
+  glfx.fx = 1; glfx.glow = 1; glfx.setTierFx(false);
+  const drawsBeforeTierOff = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.draws - drawsBeforeTierOff === 1,
+    'a low render-density tier suppresses the bright and both blur passes');
+  glfx.setTierFx(true);
+  const drawsBeforeTierOn = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.draws - drawsBeforeTierOn === 4,
+    'restoring the tier runs the three bloom passes again');
+  // A null overlay (a frame that queued no overlay draws) skips its upload and
+  // binds the 1x1 stand-in: one texture update, not two, and no throw.
+  const updatesBeforeNull = good.calls.textureUpdates;
+  glfx.render({ width: 1600, height: 900 }, null, 0, 0);
+  assert(good.calls.textureUpdates - updatesBeforeNull === 1,
+    'a null overlay uploads only the world texture');
 }
 
 // Force the Android-shaped failure: WebGL returns a context, then its shader
@@ -158,9 +176,10 @@ assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.
 assert(displayCalls.filter((call) => call.method === 'drawImage').length === 2,
   '2D fallback composites its isolated overlay canvas over the scrolling world');
 
-// High-density phones begin at 3x logical density, adapt down only after a
-// sustained miss, and never sacrifice the 2x visual floor. CSS geometry stays
-// at the full viewport fit while the separate touch chrome is capped at 2x.
+// High-density phones seed at the 3x rung below native, adapt down after a
+// sustained miss, and keep the full CSS viewport fit while the separate touch
+// chrome is capped at 2x. (Deep controller behaviour lives in tests/density.js;
+// this suite just proves the seed, geometry, and one drop.)
 const phoneDom = installDom({
   locationSearch: '?renderer=2d',
   innerWidth: 852,
@@ -170,8 +189,8 @@ const phoneDom = installDom({
 const phoneRenderer = await import('../src/engine/renderer.js?phone-density');
 phoneRenderer.initRenderer({ isIphone: true });
 let phoneDiag = phoneRenderer.rendererDiagnostics();
-assert(phoneDiag.mobile && phoneDiag.adaptiveTier === 0 && phoneDiag.density === 3,
-  'high-density phones start at the 3x adaptive tier');
+assert(phoneDiag.adaptive && phoneDiag.rung === 1 && phoneDiag.density === 3,
+  'high-density phones seed at the 3x rung below native');
 assert(phoneDom.canvas.width === 1440 && phoneDom.canvas.style.width === '699px',
   'phone render density changes backing pixels without changing CSS fit');
 assert(phoneDom.chromeCanvas.width === 1704,
@@ -179,41 +198,16 @@ assert(phoneDom.chromeCanvas.width === 1704,
 
 let phoneNow = 1;
 phoneRenderer.noteRendererFrame(phoneNow);
-for (let i = 0; i < 51; i++) {
-  phoneNow += 20;
+for (let i = 0; i < 55; i++) {
+  phoneNow += 25;
   phoneRenderer.noteRendererFrame(phoneNow);
 }
 phoneDiag = phoneRenderer.rendererDiagnostics();
-assert(phoneDiag.adaptiveTier === 1 && phoneDiag.density === 2.5,
-  'one sustained second below 52 FPS steps a phone down to 2.5x');
-for (let i = 0; i < 151; i++) {
-  phoneNow += 20;
-  phoneRenderer.noteRendererFrame(phoneNow);
-}
-phoneDiag = phoneRenderer.rendererDiagnostics();
-assert(phoneDiag.adaptiveTier === 2 && phoneDiag.density === 2,
-  'continued misses after cooldown reach but never cross the 2x floor');
-for (let i = 0; i < 400; i++) {
-  phoneNow += 20;
-  phoneRenderer.noteRendererFrame(phoneNow);
-}
-assert(phoneRenderer.rendererDiagnostics().density === 2,
-  'continued slow frames cannot lower phone density below 2x');
-for (let i = 0; i < 306; i++) {
-  phoneNow += 16;
-  phoneRenderer.noteRendererFrame(phoneNow);
-}
-assert(phoneRenderer.rendererDiagnostics().density === 2,
-  'brief recovery does not raise density before five sustained seconds');
-for (let i = 0; i < 8; i++) {
-  phoneNow += 16;
-  phoneRenderer.noteRendererFrame(phoneNow);
-}
-assert(phoneRenderer.rendererDiagnostics().density === 2.5,
-  'five sustained seconds above 58 FPS cautiously restore one tier');
+assert(phoneDiag.rung === 2 && phoneDiag.density === 2.5,
+  'a sustained second below 52 FPS steps a phone down one rung to 2.5x');
 
-// A fresh desktop module at the same viewport keeps native density rather
-// than inheriting the phone cap or adaptive policy.
+// The same viewport on desktop is adaptive too now, but its ceiling is native
+// density (the top rung) rather than a fixed platform cap.
 const desktopDom = installDom({
   locationSearch: '?renderer=2d',
   innerWidth: 852,
@@ -222,10 +216,19 @@ const desktopDom = installDom({
 });
 const desktopRenderer = await import('../src/engine/renderer.js?desktop-density');
 desktopRenderer.initRenderer({ isDesktop: true });
-const desktopDiag = desktopRenderer.rendererDiagnostics();
-assert(!desktopDiag.mobile && desktopDiag.adaptiveTier === null
+let desktopDiag = desktopRenderer.rendererDiagnostics();
+assert(desktopDiag.adaptive && desktopDiag.rung === 0
   && desktopDom.canvas.width === Math.round(699 * 3),
-  'desktop rendering remains at full native density');
+  'desktop seeds at native density (the ceiling rung) and is adaptive');
+let deskNow = 1;
+desktopRenderer.noteRendererFrame(deskNow);
+for (let i = 0; i < 55; i++) {
+  deskNow += 25;
+  desktopRenderer.noteRendererFrame(deskNow);
+}
+desktopDiag = desktopRenderer.rendererDiagnostics();
+assert(desktopDiag.rung === 1 && desktopDiag.density === 3,
+  'desktop drops from native to the 3x rung under sustained slowness');
 
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.

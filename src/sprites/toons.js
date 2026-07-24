@@ -1238,7 +1238,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     // slits. Style 1 keeps them wide but half-lidded.
     const rollUp = ex.annoyed && ex.madStyle === 2;
     const eyeRy = (ex.annoyed
-      ? (ex.madStyle === 3 ? 0.04 : ex.madStyle === 2 ? 0.062 : ex.madStyle === 1 ? 0.05 : 0.046)
+      ? (ex.madStyle === 2 ? 0.062 : ex.madStyle === 1 ? 0.05 : 0.046)
       : 0.065) * u;
     outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, eyeRy, 0, 0, Math.PI * 2));
     // Calling looks further off than focus does — past you, at the head of the
@@ -1272,10 +1272,8 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
       ctx.lineTo(eyeX(1) + 0.05 * u, hi + 0.01 * u);
     } else if (ex.annoyed) {
       // The angry furrow: inner ends driven down toward the nose bridge, outer
-      // ends held high, so the two brows make a steep \ / over the glare. Style 3
-      // (fed up) drops the whole furrow lower and steeper.
-      const drop = ex.madStyle === 3 ? 0.014 * u : 0;
-      const inY = cy - 0.042 * u + drop, outY = cy - 0.098 * u + drop;
+      // ends held high, so the two brows make a steep \ / over the glare.
+      const inY = cy - 0.042 * u, outY = cy - 0.098 * u;
       ctx.moveTo(eyeX(-1) - 0.052 * u, outY);
       ctx.lineTo(eyeX(-1) + 0.05 * u, inY);
       ctx.moveTo(eyeX(1) - 0.05 * u, inY);
@@ -1324,14 +1322,6 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     return;
   }
   if (ex.annoyed) {
-    if (ex.madStyle === 3) {
-      // Gritted teeth: a flat mouth crossed by ticks, jaw clamped.
-      ctx.moveTo(cx - 0.05 * u, cy + 0.02 * u);
-      ctx.lineTo(cx + 0.05 * u, cy + 0.02 * u);
-      for (let i = -1; i <= 1; i++) { ctx.moveTo(cx + i * 0.03 * u, cy + 0.01 * u); ctx.lineTo(cx + i * 0.03 * u, cy + 0.03 * u); }
-      ctx.stroke();
-      return;
-    }
     if (ex.madStyle === 1 || ex.madStyle === 2) {
       // Tight-lipped: a flat line pressed low, the wordless "no".
       ctx.moveTo(cx - 0.052 * u, cy + 0.016 * u);
@@ -3364,7 +3354,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const raisedArmStudyFront = pose.kind === 'celebrate'
     && reworkedCelebration
     && (id === 'lorenzo' || id === 'gary');
-  if (!clapFront) {
+  // A standing idle that wants its hands to READ — resting on the hips — needs
+  // both arms in the front pass, over the apron, or the hand paints behind the
+  // body and reads as a bump. Because these hands sit at the SIDES (over the
+  // body, not across the bib) the forearm never crosses the apron, so it stays
+  // attached-looking. Gated on the pose flag; only the asked-for idle uses it.
+  const armsInFront = stand && !!pose.armsInFront;
+  if (!clapFront && !armsInFront) {
     // B33P needs no special case here any more. With the cannon moved onto the
     // NEAR shoulder it is simply the front arm, drawn in the front pass like
     // everyone else's; his far shoulder carries an ordinary arm on the ordinary
@@ -3892,12 +3888,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     });
     if (!lod) {
-      // Neck strap over one shoulder and the tie at the waist. The strap is the
-      // detail that stops the bib reading as a printed white panel on her front.
-      outlined(ctx, p.a, Math.max(0.4, ow * 0.55), (c) => {
-        c.moveTo(px - wBib * 0.72, bibTop + 0.01 * u);
-        c.quadraticCurveTo(px - torsoHalf * 0.5, torsoTop - 0.02 * u, px - wBib * 0.18, bibTop - 0.005 * u);
-      });
+      // Pinafore shoulder straps: two bands from the bib's top corners up over
+      // the shoulders. They give the bib something to hang FROM — so it reads as
+      // an apron held up by straps, not a white panel floating on her chest —
+      // and they frame the shoulders the arms swing off, which is what stops a
+      // hand-on-hip arm from looking like it crosses a free-floating bib.
+      const strapW = 0.05 * u;
+      for (const s of [-1, 1]) {
+        limb(ctx, px + s * wBib * 0.8, bibTop + 0.012 * u, px + s * torsoHalf * 0.58, shoulderY - 0.055 * u, strapW, p.a, Math.max(0.4, ow * 0.5));
+      }
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = OUTLINE;
@@ -3944,6 +3943,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
     handDeco(handB[0], handB[1]);
+    drawFrontArm();
+  }
+  // Front-pass standing idle (see armsInFront): far arm then near arm, both over
+  // the apron, so hands resting on the hips read as hands and not bumps.
+  if (armsInFront) {
+    if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
+    else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
+    handDeco(handB[0], handB[1], farShade);
     drawFrontArm();
   }
 }

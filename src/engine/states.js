@@ -1,5 +1,5 @@
 // State machine with a CRT-shutter transition between states.
-import { W, H, pushOverlayDraw, clearChrome } from './renderer.js';
+import { W, H, pushOverlayDraw, beginChromeFrame, commitChromeFrame } from './renderer.js';
 import { Input } from './input.js';
 import { drawToon, transitionCameoAction } from '../sprites/toons.js';
 
@@ -143,12 +143,14 @@ function drawTransition(ctx, amount) {
 }
 
 export function drawState(ctx) {
-  // Cleared centrally, every frame, regardless of which state is current —
-  // not left to whichever state last drew into it to clean up after itself
-  // on its way out. RunState redraws its buttons right after, same frame, so
-  // active gameplay sees no flicker; anything else just stays empty.
-  clearChrome();
+  // Chrome (touch buttons) is committed centrally, every frame, regardless of
+  // which state is current. A state that wants buttons declares them via
+  // paintChrome during its draw; commitChromeFrame then repaints only if their
+  // signature changed since last frame (an empty frame clears once, then
+  // no-ops), so active gameplay sees no flicker and idle screens no churn.
+  beginChromeFrame();
   current && current.draw && current.draw(ctx);
+  commitChromeFrame();
   if (fade > 0) {
     // Queue after every hero/effect overlay so the sticker truly covers the
     // outgoing frame. Headless tests have no overlay target, so draw directly.

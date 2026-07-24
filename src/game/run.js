@@ -1,6 +1,6 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -437,32 +437,48 @@ export class RunState {
     return { icon: 'pause' };
   }
 
-  // states.js's drawState() already cleared #chrome this frame before calling
-  // here — nothing to wipe, just redraw on top when there's something to show.
+  // Declares the touch buttons to the chrome dirty-flag layer. The signature
+  // captures everything that changes the painted pixels — mode/viewport, the
+  // buttons present, the charged state, and the ability cooldown quantized to
+  // its painted waterline — so the two steady states (ready, charged) repaint
+  // zero times while the recharge sweep still animates. commitChromeFrame
+  // (states.js) runs the painter only when this signature changes.
   drawChromeButtons() {
     if (!chromeCtx || !this.useChrome) return;
-    for (const b of Input.chromeButtons) {
-      const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
-      const base = roundButtonOpts(this, box);
-      const charged = b.id === 'ability' && this.player.relayCharge;
-      // Out in the margin these sit against near-black instead of colourful
-      // gameplay art — the in-canvas fill barely shows there, so chrome gets
-      // its own brighter fill, a defining ring, and bigger/bolder text on top
-      // of whatever roundButtonOpts already worked out for cooldown/charge.
-      drawRoundButton(chromeCtx, box, {
-        ...base,
-        fill: charged ? base.fill : 'rgba(255,255,255,0.22)',
-        // Plain white instead of the in-canvas teal/gold: teal reads fine as an
-        // accent over gameplay art, but as the ONLY color out in a flat black
-        // margin it looked like a color choice rather than a control. White
-        // ring + white text just reads as "button."
-        ink: charged ? base.ink : '#ffffff',
-        ring: charged ? 'rgba(246,211,60,0.7)' : 'rgba(255,255,255,0.75)',
-        ringWidth: 2,
-        labelScale: 2,
-        labelStyle: 'bold',
-      });
+    const buttons = Input.chromeButtons;
+    const charged = !!this.player.relayCharge;
+    let sig = `run|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}|${charged ? 1 : 0}`;
+    for (const b of buttons) {
+      sig += `|${b.id}`;
+      if (b.id === 'ability') {
+        const frac = roundButtonOpts(this, { id: 'ability' }).frac;
+        sig += `:${frac == null ? -1 : Math.round(frac * b.r * 2)}`;
+      }
     }
+    paintChrome(sig, (ctx) => {
+      for (const b of buttons) {
+        const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
+        const base = roundButtonOpts(this, box);
+        const chargedB = b.id === 'ability' && this.player.relayCharge;
+        // Out in the margin these sit against near-black instead of colourful
+        // gameplay art — the in-canvas fill barely shows there, so chrome gets
+        // its own brighter fill, a defining ring, and bigger/bolder text on top
+        // of whatever roundButtonOpts already worked out for cooldown/charge.
+        drawRoundButton(ctx, box, {
+          ...base,
+          fill: chargedB ? base.fill : 'rgba(255,255,255,0.22)',
+          // Plain white instead of the in-canvas teal/gold: teal reads fine as
+          // an accent over gameplay art, but as the ONLY color out in a flat
+          // black margin it looked like a color choice rather than a control.
+          // White ring + white text just reads as "button."
+          ink: chargedB ? base.ink : '#ffffff',
+          ring: chargedB ? 'rgba(246,211,60,0.7)' : 'rgba(255,255,255,0.75)',
+          ringWidth: 2,
+          labelScale: 2,
+          labelStyle: 'bold',
+        });
+      }
+    });
   }
 
   // The in-canvas ability "donut" (drawHud) never draws for touch at all — the

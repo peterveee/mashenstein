@@ -55,7 +55,7 @@ export const Dev = {
       }
       const top = this.top();
       if (!top) return;
-      const maxRows = 17, rowH = 11;
+      const maxRows = 10, rowH = 21;
       const first = Math.max(0, Math.min(top.items.length - maxRows, top.idx - Math.floor(maxRows / 2)));
       const row = Math.floor((p.y - 20) / rowH);
       const idx = first + row;

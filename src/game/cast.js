@@ -168,11 +168,21 @@ export class CastState {
 
   isLast() { return this.i === CAST_HEROES.length - 1; }
   slotLen() { return SLOT_T + (this.isLast() ? TAIL_T : 0); }
+  heroTapped() {
+    if (!Input.pressed('pointer')) return false;
+    const k = this.reduced ? 1 : Math.min(1, this.slotT / FADE_T);
+    const ease = 1 - (1 - k) * (1 - k);
+    const cx = 108 + (1 - ease) * -26;
+    const { feetOff } = this.poseFor(CAST_HEROES[this.i], false);
+    const feetY = FLOOR_Y - feetOff;
+    return Input.pointer.x >= cx - 75 && Input.pointer.x <= cx + 75
+      && Input.pointer.y >= feetY - 140 && Input.pointer.y <= feetY + 20;
+  }
 
   update(dt) {
     // Left/A and Right/D: navigate without leaving the roll call.
     if (Input.activity !== this.actTok) {
-      const advance = Input.pressed('right');
+      const advance = Input.pressed('right') || this.heroTapped();
       const retreat = Input.pressed('left');
       Input.clearAll();
       this.actTok = Input.activity;

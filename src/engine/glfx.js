@@ -187,10 +187,13 @@ export const glfx = {
   gl: null,
   active: false,
   lastError: null,
-  fx: 1,    // GLOW FX setting: 1 on, 0 off
-  glow: 0,  // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
-  sky: 0,   // procedural starfield gate: 1 on the title screen only
-  time: 0,  // sky animation clock (seconds); frozen when flashing is reduced
+  fx: 1,     // GLOW FX setting: 1 on, 0 off
+  glow: 0,   // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
+  tierFx: 1, // adaptive-density gate: 0 suppresses bloom at low render density
+  sky: 0,    // procedural starfield gate: 1 on the title screen only
+  time: 0,   // sky animation clock (seconds); frozen when flashing is reduced
+
+  setTierFx(on) { this.tierFx = on ? 1 : 0; },
 
   init(canvas) {
     let gl = null;
@@ -202,8 +205,12 @@ export const glfx = {
     // facilities. Asking for WebGL 1 directly avoids handing the same source
     // to a stricter mobile WebGL 2 compiler for no benefit.
     try {
-      gl = canvas.getContext('webgl', { alpha: false })
-        || canvas.getContext('experimental-webgl', { alpha: false });
+      // high-performance: on dual-GPU laptops this asks for the discrete GPU
+      // (a game wants the frames more than the battery). Unknown attributes are
+      // ignored by older implementations, so this is safe everywhere.
+      const attrs = { alpha: false, powerPreference: 'high-performance' };
+      gl = canvas.getContext('webgl', attrs)
+        || canvas.getContext('experimental-webgl', attrs);
     } catch (error) {
       this.lastError = error;
       return { ok: false, claimed: false, error };
@@ -219,6 +226,11 @@ export const glfx = {
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       this.texBack = makeTex(gl);
       this.texOv = makeTex(gl);
+      // 1x1 transparent stand-in bound in place of texOv on frames that queued
+      // no overlay draws, so those frames skip the full-size overlay upload.
+      // Null data reads back as transparent black; with premultiplied alpha its
+      // ov.a is 0, so the final composite math is identical to an empty overlay.
+      this.texOvBlank = makeTex(gl, 1, 1);
       this.active = true;
       return { ok: true, claimed: true, error: null };
     } catch (error) {
@@ -281,12 +293,16 @@ export const glfx = {
     const gl = this.gl;
     if (!gl || !this.ready) return;
     this.upload(this.texBack, backCanvas);
-    this.upload(this.texOv, overlayCanvas);
+    // A null overlay means the frame queued no overlay draws (menus, most
+    // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
+    const ovTex = overlayCanvas ? this.texOv : this.texOvBlank;
+    if (overlayCanvas) this.upload(this.texOv, overlayCanvas);
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
     // 1) bright-pass the WORLD ONLY into quarter-res, then two blur passes.
-    //    Skip all three passes when their contribution is zero.
-    if (this.fx > 0 && this.glow > 0) {
+    //    Skip all three passes when their contribution is zero — including when
+    //    the adaptive-density tier has gated bloom off (tierFx).
+    if (this.fx > 0 && this.glow > 0 && this.tierFx > 0) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
       gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
       this.draw(this.pBright, (g, p) => {
@@ -317,12 +333,12 @@ export const glfx = {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     this.draw(this.pFinal, (g, p) => {
-      bind(0, this.texBack); bind(1, this.bloomA.tex); bind(2, this.texOv);
+      bind(0, this.texBack); bind(1, this.bloomA.tex); bind(2, ovTex);
       g.uniform1i(g.getUniformLocation(p, 'uBack'), 0);
       g.uniform1i(g.getUniformLocation(p, 'uBloom'), 1);
       g.uniform1i(g.getUniformLocation(p, 'uOv'), 2);
       g.uniform1f(g.getUniformLocation(p, 'uFx'), this.fx);
-      g.uniform1f(g.getUniformLocation(p, 'uGlow'), this.glow);
+      g.uniform1f(g.getUniformLocation(p, 'uGlow'), this.glow * this.tierFx);
       g.uniform1f(g.getUniformLocation(p, 'uSky'), this.sky);
       g.uniform1f(g.getUniformLocation(p, 'uTime'), this.time);
       g.uniform2f(g.getUniformLocation(p, 'uShake'), shakeX / this.srcW, -shakeY / this.srcH);

@@ -15,6 +15,7 @@ export function defaultSettings() {
     showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
     fancyFx: true,    // WebGL bloom/vignette (when available)
+    renderDensity: 0, // adaptive renderer's settled density; 0 = auto-seed
   };
 }
 

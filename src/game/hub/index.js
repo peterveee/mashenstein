@@ -1,6 +1,6 @@
 // THE LAST FUNCTIONING FOOD COURT: side-view hub + stage select,
 // Repair Bench, Gary's Legally Distinct Pawn Shop, arcade corner.
-import { W, H, chrome as chromeGeo, chromeCtx } from '../../engine/renderer.js';
+import { W, H, chrome as chromeGeo, chromeCtx, paintChrome } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawRoundButton, drawPanel, drawKeyLegend, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
@@ -90,6 +90,9 @@ const BENCH_SOLD_OUT_NOTICES = [
   'THIS ITEM IS NO LONGER IN SERVICE. ADJUST YOUR EXPECTATIONS ACCORDINGLY.',
 ];
 
+// How long Dolores' SOLD-OUT reaction holds — the glare and the hands-on-hips
+// snap share this clock so they land and release together.
+const BENCH_REACT_DUR = 1.8;
 function benchGag(pool, replacements = {}) {
   const source = pool[Math.floor(Math.random() * pool.length)];
   return source.replace(/\[([A-Z]+)\]/g, (_, key) => replacements[key] ?? key);
@@ -1170,22 +1173,29 @@ export class HubState {
 
   drawChromeWalkButtons() {
     if (!chromeCtx || !Input.usingTouch || chromeGeo.mode === 'none' || this.poster) return;
-    for (const button of Input.chromeButtons) {
-      if (button.id !== 'hubLeft' && button.id !== 'hubRight') continue;
-      const box = {
-        x: button.x - button.r, y: button.y - button.r,
-        w: button.r * 2, h: button.r * 2,
-        label: button.id === 'hubLeft' ? '<' : '>', round: true,
-      };
-      drawRoundButton(chromeCtx, box, {
-        fill: 'rgba(255,255,255,0.22)',
-        ink: '#ffffff',
-        ring: 'rgba(255,255,255,0.75)',
-        ringWidth: 1.5,
-        labelScale: 2.4,
-        labelStyle: 'bold',
-      });
-    }
+    const buttons = Input.chromeButtons.filter((b) => b.id === 'hubLeft' || b.id === 'hubRight');
+    if (!buttons.length) return;
+    // The walk arrows are static once placed, so the signature is just their
+    // placement — commitChromeFrame (states.js) skips the repaint every frame
+    // they are unchanged. See renderer.js paintChrome/commitChromeFrame.
+    const sig = `hub|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}|${buttons.map((b) => b.id).join(',')}`;
+    paintChrome(sig, (ctx) => {
+      for (const button of buttons) {
+        const box = {
+          x: button.x - button.r, y: button.y - button.r,
+          w: button.r * 2, h: button.r * 2,
+          label: button.id === 'hubLeft' ? '<' : '>', round: true,
+        };
+        drawRoundButton(ctx, box, {
+          fill: 'rgba(255,255,255,0.22)',
+          ink: '#ffffff',
+          ring: 'rgba(255,255,255,0.75)',
+          ringWidth: 1.5,
+          labelScale: 2.4,
+          labelStyle: 'bold',
+        });
+      }
+    });
   }
 
   // Camera follows the player, clamped to the concourse — shared by update()
@@ -2889,13 +2899,13 @@ function listVisualRow(state, i) {
 // landed, so a phone arriving at one of these screens cold was told to press
 // keys it does not have. Every list carries a BACK row, so the footer only
 // needs to explain selection and purchase; the visible row is the way back.
-function drawMenuHint(ctx, extra) {
+function drawMenuHint(ctx, extra, x0 = 12) {
   if (Input.isTouchDevice()) {
-    drawText(ctx, `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}`, 12, H - 13, '#5a5a68', HINT_S);
+    drawText(ctx, `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}`, x0, H - 13, '#5a5a68', HINT_S);
     return;
   }
   const pairs = [['UP/DOWN', 'SELECT'], ['ENTER', extra || 'CONFIRM']];
-  drawKeyLegend(ctx, pairs, 12, H - 13, { scale: HINT_S });
+  drawKeyLegend(ctx, pairs, x0, H - 13, { scale: HINT_S });
 }
 
 // Hub lists size their rows the way stage select does: the list grows into
@@ -3113,10 +3123,11 @@ export class BenchState {
         Audio.sfx('uiBad');
         if (sel.maxed) {
           this.notice = benchGag(BENCH_SOLD_OUT_GAGS, { TIER: sel.targetTier, CURRENT: sel.lvl });
-          // She gets mad for a beat when you jab a SOLD OUT tier — roll one of
-          // four faces so the same jab twice doesn't repeat.
-          this.annoyedT = 1.4;
-          this.madStyle = Math.floor(Math.random() * 4);
+          // She gets mad AND snaps her hands to her hips for a beat when you jab
+          // a SOLD OUT tier — roll one of three faces so the same jab twice
+          // doesn't repeat. BENCH_REACT_DUR is shared with the hips reaction.
+          this.annoyedT = BENCH_REACT_DUR;
+          this.madStyle = Math.floor(Math.random() * 3);
         }
         else if (slot.coins < sel.baseCost) {
           this.notice = benchGag(BENCH_AFFORDABILITY_GAGS, { TIER: sel.targetTier });
@@ -3147,19 +3158,27 @@ export class BenchState {
     const startX = W + 120; // fully clear of the right edge, and far enough for a slow stroll to read
     const doleX = Math.round(startX + (doleCx - startX) * eased);
     const walking = ent < 1;
-    // Every ~17s she plants her hands on her hips for a few seconds, then drops
-    // them back to her sides — a periodic beat, eased in and out. Offset so the
-    // first one lands a beat AFTER she's finished walking in.
+    // Hands-on-hips comes from two places, whichever is stronger:
+    // 1) a periodic idle beat every ~17s, and
+    // 2) a reaction — she snaps them to her hips when you jab a SOLD OUT tier,
+    //    held through the glare, then lowered.
     const HIPS_CYCLE = 17.0, HIPS_RISE = 0.6, HIPS_HOLD = 3.0, HIPS_FALL = 0.7;
     const hp = (this.t + 12.0) % HIPS_CYCLE;
-    let hipsAmt = hp < HIPS_RISE ? hp / HIPS_RISE
+    let periodicHips = hp < HIPS_RISE ? hp / HIPS_RISE
       : hp < HIPS_RISE + HIPS_HOLD ? 1
       : hp < HIPS_RISE + HIPS_HOLD + HIPS_FALL ? 1 - (hp - HIPS_RISE - HIPS_HOLD) / HIPS_FALL
       : 0;
-    hipsAmt = hipsAmt * hipsAmt * (3 - 2 * hipsAmt); // smoothstep the raise/lower
+    periodicHips = periodicHips * periodicHips * (3 - 2 * periodicHips);
+    let reactHips = 0;
+    if (this.annoyedT > 0) {
+      const e = BENCH_REACT_DUR - this.annoyedT; // 0 at the jab, rising as it fades
+      reactHips = e < 0.2 ? e / 0.2 : this.annoyedT < 0.3 ? this.annoyedT / 0.3 : 1;
+      reactHips = reactHips * reactHips * (3 - 2 * reactHips);
+    }
+    const hipsAmt = Math.max(periodicHips, reactHips);
     const pose = walking
       ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
-      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: hipsAmt > 0.02, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
     ctx.fillStyle = 'rgba(4,3,9,0.32)';
     ctx.beginPath();
     ctx.ellipse(doleX, doleFeet + 1, doleH * (walking ? 0.16 : 0.2), doleH * 0.055, 0, 0, Math.PI * 2);
@@ -3170,7 +3189,7 @@ export class BenchState {
     drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 8, '#f6d33c', 2, 'title');
     const menuCx = 180, labelX = 40, rightX = 322, boxL = 26, boxR = 336, glossMaxW = 320;
     const coinsText = `COINS: ${formatCoins(this.save.slot.coins)}`;
-    drawText(ctx, coinsText, W - 12 - textWidth(coinsText), H - 13, '#f6d33c');
+    drawTextCentered(ctx, coinsText, doleCx, H - 13, '#f6d33c'); // centred under Dolores
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
@@ -3229,7 +3248,17 @@ export class BenchState {
         drawText(ctx, line, noticeX + pad + faceW + gap, textTop + lineIndex * lineH, '#f6d33c', MENU_NOTE_S);
       });
     }
-    drawMenuHint(ctx, 'BUY');
+    // The control legend lines up under the menu labels (x = labelX) and fades
+    // away once Dolores has arrived — it's onboarding, not permanent chrome, so
+    // it clears out and leaves the settled counter clean.
+    const hintHold = ENTER_DUR + 0.6, hintFade = 0.9;
+    const hintAlpha = this.enterT < hintHold ? 1 : Math.max(0, 1 - (this.enterT - hintHold) / hintFade);
+    if (hintAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha *= hintAlpha;
+      drawMenuHint(ctx, 'BUY', labelX);
+      ctx.restore();
+    }
   }
 }
 
