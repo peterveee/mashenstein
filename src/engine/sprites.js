@@ -421,8 +421,8 @@ export function textYForMid(midY, scale = 1) {
 // One painter rather than a colour each screen re-picks: a highlight that shows
 // up on some lists and not others reads as those lists not being navigable.
 export const MENU_ROW_HILITE = 'rgba(201,160,255,0.15)';
-export function drawMenuRow(ctx, x, y, w, h, r = 3) {
-  ctx.fillStyle = MENU_ROW_HILITE;
+export function drawMenuRow(ctx, x, y, w, h, r = 3, fill = MENU_ROW_HILITE) {
+  ctx.fillStyle = fill;
   platePath(ctx, x, y, w, h, r);
   ctx.fill();
 }
@@ -535,13 +535,13 @@ export function drawRoundButton(ctx, b, opts = {}) {
   if (opts.frac != null) {
     ctx.clip();
     const fh = Math.round(r * 2 * Math.max(0, Math.min(1, opts.frac)));
-    ctx.fillStyle = 'rgba(72,224,200,0.28)';
+    ctx.fillStyle = opts.levelFill || 'rgba(72,224,200,0.28)';
     ctx.fillRect(cx - r, cy + r - fh, r * 2, fh);
     // The meniscus line marks the waterline while it's rising; at a full disc
     // it would sit pinned to the rim, reading as a stray ring rather than a
     // "still filling" cue — so it only draws while there's headroom above it.
     if (opts.frac < 1) {
-      ctx.fillStyle = 'rgba(184,248,232,0.8)';
+      ctx.fillStyle = opts.waterline || 'rgba(184,248,232,0.8)';
       ctx.fillRect(cx - r, cy + r - fh, r * 2, 1.5);
     }
   }

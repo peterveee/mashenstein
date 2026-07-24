@@ -3344,7 +3344,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // The axe is the DEEPEST layer — slung flat on his back, so every limb
   // draws over it: mid-celebrate and mid-jump the arms swing up across the
   // blade, and hidden behind it they read as amputated at the shoulder.
-  if (spec.back === 'axe' && !pose.axeThrown) {
+  if (spec.back === 'axe' && !pose.axeThrown && pose.axeReady) {
     // Anchored to the SHOULDER, not the head: the blade peeks over the
     // deltoid beside the beard. Head-anchored, the handle vanished behind
     // the skull and the blade sat at crown height — an axe growing out of
@@ -5318,6 +5318,7 @@ export function poseFromPlayer(player, t) {
     stomp: !!player.stomping,
     headless: player.headless > 0 || player.fistThrown,
     axeThrown: !!player.axeThrown,
+    axeReady: player.abilityCd <= 0,
     // The wide hazard-bite gape and the raised, sighted cannon arm both used
     // to be menu-only flourishes — a real bite or a real shot looked no
     // different from an idle chew or an at-rest carry.

@@ -747,6 +747,124 @@ function propNominalSize(name) {
 // ==================================================================
 navSeparator('lab / bake-offs');
 
+// ------------------------------------------- special-move follower proposal
+// A universal companion gauge is more truthful than a weapon/projectile: every
+// hero owns a special move, while its result ranges from a stomp to a float.
+// The circle stays close to the runner's trailing shoulder and the fill alone
+// reports cooldown progress, so the same language works on keyboard and touch.
+function followerChargeColor(fill, ready) {
+  if (ready) return '#e874d6';
+  if (fill >= 0.85) return '#b979df';
+  if (fill >= 0.5) return '#72cb62';
+  if (fill >= 0.18) return '#48d5c3';
+  return '#4ca6c7';
+}
+
+const FOLLOWER_CROWN = {
+  lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
+  mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
+};
+
+function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0 } = {}) {
+  const r = 5.5;
+  const launch = Math.max(0, Math.min(1, fire));
+  const bob = launch ? 0 : Math.sin(t * 4.5) * 1.25;
+  const x = cx + launch * 38;
+  const y = cy + bob - Math.sin(launch * Math.PI) * 5;
+  const energy = followerChargeColor(fill, ready);
+  const rim = ready ? energy : '#596273';
+
+  ctx.save();
+  if (launch) {
+    ctx.globalAlpha = 1 - launch * 0.35;
+    ctx.strokeStyle = energy;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 16, y + 2);
+    ctx.lineTo(x - 4, y + 1);
+    ctx.stroke();
+  }
+
+  if (ready && !launch) {
+    const pulse = 1 + 0.13 * (0.5 + 0.5 * Math.sin(t * 5.5));
+    ctx.globalAlpha = 0.24;
+    ctx.strokeStyle = energy;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, (r + 4) * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // The muted shell makes an empty cooldown readable against bright scenery.
+  ctx.fillStyle = '#111722';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Clip the energy, then raise it from the floor exactly as the recharge does.
+  if (fill > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r - 1, 0, Math.PI * 2);
+    ctx.clip();
+    const level = y + r - (r * 2 * Math.max(0, Math.min(1, fill)));
+    ctx.fillStyle = energy;
+    ctx.fillRect(x - r, level, r * 2, r * 2);
+    if (fill < 1) {
+      ctx.fillStyle = '#d7fff6';
+      ctx.fillRect(x - r, level, r * 2, 1);
+    }
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = rim;
+  ctx.lineWidth = ready ? 2.2 : 1.6;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+{
+  const grid = section('special-move-follower', 'Special move follower — circle fill proposal',
+    'GALLERY ONLY — a universal in-world cooldown companion for every hero. The first five cards show its state changes; '
+    + 'the remaining cards compare the ready follower beside every playable hero at the same in-run scale. '
+    + 'It follows the trailing shoulder, fills from the bottom, flashes once at full charge, and darts forward when used.');
+  const TW = 126, TH = 98, HERO_X = 78, FEET = 89, HERO_H = 60;
+  const states = [
+    ['empty', 'COOLDOWN JUST STARTED', 0, {}],
+    ['charging 1/3', 'CHARGING · 33%', 1 / 3, {}],
+    ['charging 2/3', 'CHARGING · 67%', 2 / 3, {}],
+    ['ready', 'SPECIAL READY', 1, { ready: true }],
+    ['activation', 'SPECIAL USED', 1, { fire: 0.45 }],
+  ];
+  for (const [name, sub, fill, opts] of states) {
+    tile(grid, name, sub, TW, TH, (ctx, t) => {
+      ctx.fillStyle = '#202838';
+      ctx.fillRect(0, 0, TW, TH);
+      ctx.fillStyle = '#303b4d';
+      ctx.fillRect(0, FEET + 1, TW, 2);
+      ctx.fillStyle = '#17202d';
+      ctx.fillRect(0, FEET + 3, TW, TH - FEET - 3);
+      drawToon(ctx, 'lorenzo', pose('run', t), HERO_X, FEET, HERO_H);
+      drawSpecialMoveFollower(ctx, HERO_X - 43, FEET - HERO_H * FOLLOWER_CROWN.lorenzo, fill, t, opts);
+    }, { animated: true, hires: 4, smooth: true });
+  }
+  for (const heroId of Object.keys(HERO_BY_ID)) {
+    tile(grid, heroId, 'SPECIAL READY · RUN SCALE', TW, TH, (ctx, t) => {
+      ctx.fillStyle = '#202838';
+      ctx.fillRect(0, 0, TW, TH);
+      ctx.fillStyle = '#303b4d';
+      ctx.fillRect(0, FEET + 1, TW, 2);
+      ctx.fillStyle = '#17202d';
+      ctx.fillRect(0, FEET + 3, TW, TH - FEET - 3);
+      drawToon(ctx, heroId, pose('run', t), HERO_X, FEET, HERO_H);
+      drawSpecialMoveFollower(ctx, HERO_X - 43, FEET - HERO_H * FOLLOWER_CROWN[heroId], 1, t, { ready: true });
+    }, { animated: true, hires: 4, smooth: true });
+  }
+}
+
 // ------------------------------------------------ body-proportion candidates
 // Gallery-only reconstruction of the earlier silhouette proposal. Humanoids
 // adjust torso/waist/limb dimensions while retaining the exact same heads,

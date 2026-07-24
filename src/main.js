@@ -225,6 +225,15 @@ const Flow = {
 };
 
 function boot() {
+  // URL parameters to force settings on initial load.
+  //   ?fps  or  ?start=fps   → show FPS counter
+  //   ?mute                  → start muted
+  if (typeof window !== 'undefined') {
+    const p = new URLSearchParams(window.location.search);
+    if (p.has('fps') || p.get('start') === 'fps') save.settings.showFps = true;
+    if (p.has('mute')) save.settings.muted = true;
+  }
+
   const platform = window.__mash_platform || readPlatform();
   // The renderer measures each device and settles on a sustainable density;
   // persist that so the next launch starts near it (the renderer re-probes one
@@ -293,35 +302,26 @@ function boot() {
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => {
-      const showChromeFps = save.settings.showFps && Input.isTouchDevice() && chrome.mode !== 'none';
-      const fps = frameRate() || '--';
-      setChromeOverlay(showChromeFps ? `fps|${fps}` : '', (ctx) => {
-        const x = 12;
-        const y = 58;
-        const line1 = `FPS ${fps}`;
-        const d = rendererDiagnostics();
-        const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
-        const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.frozen ? ' FZ' : d.throttled ? ' TH' : ''}`;
-        ctx.fillStyle = 'rgba(5,6,12,0.68)';
-        ctx.fillRect(x - 6, y - 26, 138, 42);
-        drawText(ctx, line1, x, y - 22, '#f4f1fa', 1.75, 'ui');
-        drawText(ctx, line2, x, y - 2, '#9fb4d8', 1.75, 'ui');
-      });
+      if (save.settings.showFps) {
+        const fps = frameRate() || '--';
+        const label = `${fps}`;
+        // Tiny top-right readout, common to touch chrome and desktop overlay.
+        const drawFps = (ctx) => {
+          const tw = textWidth(label, 0.65, 'bold');
+          ctx.fillStyle = 'rgba(5,6,12,0.55)';
+          ctx.fillRect(W - tw - 10, 1, tw + 10, 11);
+          drawText(ctx, label, W - 5 - tw, 3, '#f4f1fa', 0.65, 'bold');
+        };
+        if (Input.isTouchDevice() && chrome.mode !== 'none') {
+          setChromeOverlay(`fps|${fps}`, drawFps);
+        } else {
+          pushOverlayDraw(drawFps);
+        }
+      } else if (Input.isTouchDevice() && chrome.mode !== 'none') {
+        setChromeOverlay('', null);
+      }
       drawState(bctx);
       Dev.draw(bctx);
-      if (save.settings.showFps && !showChromeFps) {
-        pushOverlayDraw((ctx) => {
-          const d = rendererDiagnostics();
-          const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
-          const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.frozen ? ' FZ' : d.throttled ? ' TH' : ''}`;
-          const line1 = `FPS ${frameRate() || '--'}`;
-          const textRight = W - 5;
-          ctx.fillStyle = 'rgba(5,6,12,0.68)';
-          ctx.fillRect(W - 62, 0, 62, 20);
-          drawText(ctx, line1, textRight - textWidth(line1, 0.75, 'bold'), 3, '#f4f1fa', 0.75, 'bold');
-          drawText(ctx, line2, textRight - textWidth(line2, 0.75, 'bold'), 12, '#9fb4d8', 0.75, 'bold');
-        });
-      }
       blit();
     },
     present: noteRendererFrame,

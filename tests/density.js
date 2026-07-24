@@ -137,9 +137,13 @@ function webglStub() {
   feedUntil(r, clk, 25, () => rung() === 2);
   assert(rung() === 2, 'second moderate drop lands at 2.5x again');
   feed(r, clk, 700, 16);             // a clean stretch that would normally climb
-  const d = r.rendererDiagnostics();
+  let d = r.rendererDiagnostics();
   assert(d.rung === 2 && d.density === 2.5, 'recovery is blocked at the locked rung');
   assert(d.lockedRungs.includes(3) && d.strikes['3'] === 2, 'the twice-abandoned 3x rung is locked with two strikes');
+  feed(r, clk, 1200, 16);            // 30s of headroom earns one locked re-probe
+  d = r.rendererDiagnostics();
+  assert(d.rung === 1 && d.density === 3,
+    'a locked rung re-probes after a long, sustained 60 FPS recovery');
 }
 
 // --- Persistence: seed one rung above the settled value, then settle ---------

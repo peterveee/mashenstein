@@ -1,6 +1,6 @@
 // Density-aware renderer. Game code always draws in a fixed 480x270 logical
-// coordinate space. Desktops use full device density; phones use a bounded,
-// adaptive density so Retina fill-rate cannot overwhelm the frame budget.
+// coordinate space. High-density displays start from a bounded adaptive tier
+// so native-resolution fill-rate cannot overwhelm the frame budget.
 export const W = 480;
 export const H = 270;
 
@@ -55,6 +55,10 @@ const chromeR = (margin) => Math.max(CHROME_R_MIN, Math.min(CHROME_R_MAX, margin
 // 'side' mode's buttons sit at a screen corner (bottom-left/right, top-right),
 // so their edge-facing axis needs real clearance, not just CHROME_PAD's sliver.
 const CHROME_EDGE_PAD = 26;
+// Side-margin controls can lift without clipping into the game rectangle. The
+// higher placement keeps them in easy thumb reach while lowering their claim
+// on the bottom of the screen.
+const CHROME_PLAY_LIFT = 28;
 // 'topbottom' mode anchors to the GAME's edge instead (see below) — a small
 // gap is enough there, since the corner risk mostly isn't in play.
 const CHROME_GAME_GAP = 10;
@@ -116,6 +120,7 @@ const EMERGENCY_FRAME_MS = 1000 / 30; // slower than this is an emergency
 const MODERATE_DROP_MS = 1000;        // sustained slow before stepping down one rung
 const EMERGENCY_DROP_MS = 500;        // sustained emergency before dropping two rungs
 const RECOVER_MS = 8000;              // sustained fast before climbing one rung
+const LOCKED_RECOVER_MS = 30000;      // sustained fast needed to re-probe a locked rung
 const ADJUST_COOLDOWN_MS = 3000;      // minimum spacing between adjustments
 const RESET_GUARD_MS = 250;           // a longer gap is a tab-switch, not a slow frame
 const STRIKE_WINDOW_MS = 10000;       // dropping from a rung this soon after arriving = a strike
@@ -128,7 +133,6 @@ const SETTLE_MS = 25000;              // stable this long at a rung => persist i
 const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval average
 
 let phonePlatform = false; // iPhone|Android — gates the chrome dpr cap only
-let touchPlatform = false; // iPhone|iPad|Android — drives the density seed
 let ladder = [1];
 let nativeDensity = 1;
 let rung = -1;             // -1 until resize() seeds it
@@ -214,15 +218,12 @@ function nearestIndex(arr, value) {
   return best;
 }
 
-// Platform seeds the starting rung; a persisted settled density (if any) starts
-// one rung ABOVE where it last landed — optimistic, so a device that had one
-// bad session re-probes upward — but never above the platform ceiling.
+// Every high-density display seeds at the 3x rung; a persisted settled density
+// (if any) starts one rung ABOVE where it last landed — optimistic, so a device
+// that had one bad session re-probes upward — but never above the 3x seed.
 function seedRung() {
-  let platformSeedIdx = 0;
-  if (touchPlatform) {
-    const i = ladder.findIndex((v) => v <= 3 + LADDER_EPS);
-    platformSeedIdx = i < 0 ? 0 : i;
-  }
+  const i = ladder.findIndex((v) => v <= 3 + LADDER_EPS);
+  const platformSeedIdx = i < 0 ? 0 : i;
   if (savedSeedDensity > 0) {
     const persistedIdx = nearestIndex(ladder, savedSeedDensity);
     return Math.max(platformSeedIdx, persistedIdx - 1);
@@ -245,11 +246,10 @@ function freshCanvasAfterWebglFailure() {
 }
 
 export function initRenderer(platform = {}, persistence = {}) {
-  // Platform only SEEDS the starting quality; measured frame timing decides
-  // where a device settles. phonePlatform gates the chrome dpr cap only;
-  // touchPlatform (adds iPad) drives the density seed and adaptation policy.
+  // The density seed limits initial high-DPI fill-rate; measured frame timing
+  // decides where every device ultimately settles. phonePlatform only gates
+  // the touch-chrome dpr cap.
   phonePlatform = !!(platform.isIphone || platform.isAndroid);
-  touchPlatform = phonePlatform || !!platform.isIpad;
   pinnedDensity = densityRequested();
   savedSeedDensity = Number(persistence.savedDensity) > 0 ? Number(persistence.savedDensity) : 0;
   onSettle = typeof persistence.onSettle === 'function' ? persistence.onSettle : null;
@@ -491,7 +491,11 @@ export function noteRendererFrame(now) {
   if (!suspended && emergencyFor >= EMERGENCY_DROP_MS && rung < ladder.length - 1) { dropRungs(2, now); return; }
   if (densityCooldown > 0) return;
   if (!suspended && slowFor >= MODERATE_DROP_MS && rung < ladder.length - 1) { dropRungs(1, now); return; }
-  if (fastFor >= RECOVER_MS && rung > 0 && !lockedRungs.has(ladder[rung - 1])) { climbRung(now); return; }
+  const nextRungLocked = rung > 0 && lockedRungs.has(ladder[rung - 1]);
+  if (fastFor >= RECOVER_MS && rung > 0 && (!nextRungLocked || fastFor >= LOCKED_RECOVER_MS)) {
+    climbRung(now);
+    return;
+  }
 }
 
 function resizeChrome(winW, winH, ox, oy, dpr) {
@@ -529,7 +533,7 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     // where the probe reports 0 and this reduces to the plain default).
     const yBottomPad = Math.max(CHROME_EDGE_PAD, safe.bottom + SAFE_BUF);
     const yTopPad = Math.max(CHROME_EDGE_PAD, safe.top + SAFE_BUF);
-    const yBottom = winH - r - yBottomPad;
+    const yBottom = Math.max(yTopPad + r * 3, winH - r - yBottomPad - CHROME_PLAY_LIFT);
     const yTop = r + yTopPad;
     // Pushed toward the game far enough to clear the inset, but never so far
     // it starts sliding UNDER #game (behind it, which #chrome can't draw over —

@@ -62,6 +62,10 @@ const FLOAT_BASE_Y = 128;
 // ~44 CSS px minimum a thumb needs, without three dinner plates on a 270-tall
 // play field.
 const TOUCH_D = 44;
+// The play pair sits above the bottom edge instead of occupying it. That gives
+// the action room to breathe above the phone's home-indicator territory and
+// leaves the lower scenery readable behind translucent controls.
+const TOUCH_PLAY_Y = H - 84;
 // PAUSE hangs below the objective panels rather than beside them: GOAL sits at
 // y 7 and BONUS below it ends at y 37, so this clears the pair with air to
 // spare. Fixed, not measured off whichever panels happen to be showing — a
@@ -417,7 +421,7 @@ export class RunState {
     // half of it is now unreachable from here, since pausing swaps this
     // button out for the menu above.
     if (this.useChrome) {
-      // The ability-name banner (drawAbilityName) reads as a label FOR PWR,
+      // The ability-name banner (drawAbilityName) reads as a label FOR USE,
       // sitting right next to it — so treating it as a second, generously
       // oversized hit target for the same action (rather than inert text)
       // means a tap that lands on the words still does the right thing.
@@ -435,13 +439,12 @@ export class RunState {
       return;
     }
     Input.setChromeButtons([]);
-    // Three discs, one style, one painter (drawRoundButton) — thumbs find a
-    // shape faster than they read a label. JUMP and PWR take the bottom
-    // corners, where thumbs already rest holding a phone in landscape; PAUSE
-    // sits top-right under the objective panels.
+    // Three discs, one style, one painter (drawRoundButton). JUMP and USE sit
+    // above the lower corners so they remain present but visually recess into
+    // the play field; PAUSE stays anchored beneath the objective panels.
     Input.setButtons([
-      { id: 'jump', x: 12, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
-      { id: 'ability', x: W - 56, y: H - 56, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'PWR', round: true },
+      { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
+      { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
       { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
     ]);
   }
@@ -475,11 +478,11 @@ export class RunState {
     this.pauseChanged();
   }
 
-  // One lookup supplies the JUMP/PWR label text and the PAUSE glyph for
+  // One lookup supplies the JUMP/USE label text and the PAUSE glyph for
   // whichever chrome button is being drawn.
   chromeButtonArt(id) {
     if (id === 'jump') return { label: 'JUMP' };
-    if (id === 'ability') return { label: 'PWR' };
+    if (id === 'ability') return { label: 'USE' };
     return { icon: 'pause' };
   }
 
@@ -506,31 +509,26 @@ export class RunState {
         const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
         const base = roundButtonOpts(this, box);
         const chargedB = b.id === 'ability' && this.player.relayCharge;
-        // Out in the margin these sit against near-black instead of colourful
-        // gameplay art — the in-canvas fill barely shows there, so chrome gets
-        // its own brighter fill, a defining ring, and bigger/bolder text on top
-        // of whatever roundButtonOpts already worked out for cooldown/charge.
+        // External controls should be findable without becoming chrome the
+        // player stares at. They retain a faint rim and label against the black
+        // margin, with a little extra presence only for a banked charge.
         drawRoundButton(ctx, box, {
           ...base,
-          fill: chargedB ? base.fill : 'rgba(255,255,255,0.22)',
-          // Plain white instead of the in-canvas teal/gold: teal reads fine as
-          // an accent over gameplay art, but as the ONLY color out in a flat
-          // black margin it looked like a color choice rather than a control.
-          // White ring + white text just reads as "button."
-          ink: chargedB ? base.ink : '#ffffff',
-          ring: chargedB ? 'rgba(246,211,60,0.7)' : 'rgba(255,255,255,0.75)',
-          ringWidth: 2,
-          labelScale: 2,
-          labelStyle: 'bold',
+          fill: b.id === 'ability' ? base.fill : 'rgba(255,255,255,0.06)',
+          ink: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.42)',
+          ring: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.22)',
+          ringWidth: 1,
+          labelScale: 1.45,
+          labelStyle: 'ui',
         });
       }
     });
   }
 
   // The in-canvas ability "donut" (drawHud) never draws for touch at all — the
-  // PWR disc shows its own recharge instead — so without this, a touch player
+  // USE disc shows its own recharge instead — so without this, a touch player
   // has no way to see which power is even equipped. Drawn on the game canvas
-  // itself (not #chrome), bottom-right where PWR sits just outside that
+  // itself (not #chrome), bottom-right where USE sits just outside that
   // corner — same plate-and-text look every other HUD readout uses (see
   // hud.js's gauge() labels), not bare floating text. Landscape ('side') only:
   // 'topbottom' mode's bottom-center spot is too narrow at a readable size to
@@ -1033,7 +1031,7 @@ export class RunState {
       this.player.axeThrown = true;
       // Charged: the axe works the whole screen before coming home.
       const hits = charged ? 99 : (this.modIds.includes('ricochet') ? 2 : 1);
-      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set() });
+      this.projectiles.push({ type: 'axe', x: this.playerWorldX() + 12, alt: this.player.y + 10, vx: this.speed + (charged ? 300 : 220), t: 0, live: true, returning: false, hits, hitIds: new Set(), hover: false, hoverT: 0 });
       if (this.fxRng.chance(0.25)) this.floatText('BOY.', '#ecc3a1');
     }
   }
@@ -1288,7 +1286,7 @@ export class RunState {
     // names this hero's power and shows whether it is ready, so repeating it in
     // a bubble every swap is the same fact twice. The one-time firstAbility
     // tutor below still teaches the button once.
-    const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    const btn = Input.usingTouch ? 'USE' : 'RIGHT/D';
     // The departing hero gets a parting shot. Only the first time each hero
     // tags out in a run: everyone gets their moment without a swap-heavy run
     // turning into a conversation you read instead of playing. (Only one voice
@@ -1309,7 +1307,7 @@ export class RunState {
   // it or not; it is now a rare capsule, so it lands as a treat. An unspent
   // charge rides along through later switches rather than vanishing.
   grantRelayCharge() {
-    const btn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    const btn = Input.usingTouch ? 'USE' : 'RIGHT/D';
     this.player.relayCharge = true;
     Audio.sfx('power');
     shake(2, 0.15);
@@ -1411,8 +1409,21 @@ export class RunState {
       if (!pr.live) continue;
       if (pr.type === 'axe' || pr.type === 'fist') {
         pr.t += dt;
-        const returnAfter = pr.type === 'fist' ? 0.42 : 0.55;
-        if (!pr.returning && pr.t > returnAfter) pr.returning = true;
+        if (pr.type === 'fist') {
+          if (!pr.returning && pr.t > 0.42) pr.returning = true;
+        } else {
+          // Axe: hover ahead of Grumpos while the special recharges, spinning
+          // the whole time, then fly back when the cooldown resets.
+          if (!pr.returning && !pr.hover && pr.t > 0.55) pr.hover = true;
+          if (pr.hover && !pr.returning) {
+            pr.hoverT += dt;
+            // Track Grumpos: stay a screen-position ahead so the spinning
+            // axe is always visible while he runs.
+            pr.x = this.playerWorldX() + 52;
+            if (this.player.abilityCd <= 0) pr.returning = true;
+            continue; // don't move under its own velocity this frame
+          }
+        }
         pr.x += (pr.returning ? -(sp + (pr.type === 'fist' ? 240 : 300)) : pr.vx) * dt;
         if (pr.returning && pr.x < this.playerWorldX()) {
           pr.live = false;
@@ -1452,12 +1463,13 @@ export class RunState {
             const iy = (Math.max(box.y, pbox.y) + Math.min(box.y + box.h, pbox.y + pbox.h)) / 2;
             this.projectileImpact(pr, ix, iy);
             if (ob.def.breakable === false) {
-              if (pr.type === 'axe' || pr.type === 'fist') pr.returning = true;
+              if (pr.type === 'axe') pr.hover = true;
+              else if (pr.type === 'fist') pr.returning = true;
               else pr.live = false;
               continue;
             }
             this.breakObstacle(ob);
-            if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0) pr.returning = true; }
+            if (pr.type === 'axe') { pr.hits--; if (pr.hits <= 0 && !pr.returning) pr.hover = true; }
             else if (pr.type === 'fist' && !pr.pierce) pr.returning = true;
             else if (!pr.pierce) pr.live = false;
           }
@@ -1492,6 +1504,10 @@ export class RunState {
     }
     if (!this.projectiles.some((p) => p.live && p.type === 'fist')) this.player.fistThrown = false;
     if (!this.projectiles.some((p) => p.live && p.type === 'axe')) this.player.axeThrown = false;
+    // A hovering axe belongs to Grumpos — another hero cannot catch it.
+    if (this.relay.current !== 'grumpos') {
+      for (const pr of this.projectiles) { if (pr.type === 'axe') pr.live = false; }
+    }
     this.projectiles = this.projectiles.filter((p) => p.live);
   }
 
@@ -2147,6 +2163,17 @@ export class RunState {
         ctx.fillRect(x + 1, y + 1, 2, 2);
         if (pr.telegraph > 0) { ctx.strokeStyle = '#f6d33c'; ctx.strokeRect(x - 3, y - 3, 10, 10); }
       } else if (pr.type === 'axe') {
+        if (pr.hover) {
+          // A faint ring around the spinning axe tells the player it is coming home soon.
+          ctx.save();
+          ctx.globalAlpha = 0.3 + 0.15 * Math.sin(pr.hoverT * 6);
+          ctx.strokeStyle = '#ecc3a1';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(x + 4, y + 4, 10, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
         drawThrownAxe(ctx, x + 4, y + 4, pr.t * 12);
       } else if (pr.type === 'fist') {
         drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
@@ -2332,7 +2359,7 @@ export class RunState {
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'PAUSED', W / 2, 62, '#fff', 2, 'title');
     const pHero = HERO_BY_ID[this.relay.current];
-    const pBtn = Input.usingTouch ? 'PWR' : 'RIGHT/D';
+    const pBtn = Input.usingTouch ? 'USE' : 'RIGHT/D';
     // Every key on this screen is painted by the same legend painter the HUD
     // strip uses, so the two agree on what a key looks like: green and bold,
     // with the thing it does beside it in a quieter ink. A wall of one colour
@@ -2378,7 +2405,7 @@ export class RunState {
       let cx = W / 2 - total / 2;
       for (const [t, ink] of chips) { drawText(ctx, t, cx, 142, ink); cx += textWidth(t) + CHIP_GAP; }
     }
-    // The touch line names the gestures, not the buttons: JUMP and PWR label
+    // The touch line names the gestures, not the buttons: JUMP and USE label
     // themselves on screen, and the swipes are the half of the scheme nothing
     // else advertises.
     legend(Input.usingTouch

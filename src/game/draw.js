@@ -64,6 +64,72 @@ function drawShieldOrb(c, heroId, cx, feetY, h, t, stack) {
   c.restore();
 }
 
+// The special belongs beside the hero rather than only in the HUD: each hero's
+// result differs, but every hero shares one cooldown. Its colour steps through
+// the charge so a quick peripheral glance says both "not yet" and "nearly".
+export function specialMoveColor(fill, ready) {
+  if (ready) return '#e874d6';
+  if (fill >= 0.85) return '#b979df';
+  if (fill >= 0.5) return '#72cb62';
+  if (fill >= 0.18) return '#48d5c3';
+  return '#4ca6c7';
+}
+
+// Crown height varies with ears, hats, and the heavy rig. The orb centres on
+// that crown line so it reads as a companion beside the head, not a torso HUD.
+const SPECIAL_FOLLOWER_CROWN = {
+  lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
+  mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
+};
+
+function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, charged, reducedMotion) {
+  const ready = charged || cooldown <= 0;
+  const fill = ready ? 1 : Math.max(0, Math.min(1, 1 - cooldown / cooldownMax));
+  const r = h * 0.09;
+  const x = cx - h * 0.72;
+  const crown = SPECIAL_FOLLOWER_CROWN[heroId] || 0.99;
+  const y = feetY - h * crown + (reducedMotion ? 0 : Math.sin(t * 4.5) * h * 0.025);
+  const energy = specialMoveColor(fill, ready);
+
+  c.save();
+  if (ready && !reducedMotion) {
+    const pulse = 1 + 0.11 * (0.5 + 0.5 * Math.sin(t * 5.5));
+    c.globalAlpha = charged ? 0.5 : 0.3;
+    c.strokeStyle = energy;
+    c.lineWidth = Math.max(0.75, h * 0.055);
+    c.beginPath();
+    c.arc(x, y, (r + h * 0.065) * pulse, 0, Math.PI * 2);
+    c.stroke();
+    c.globalAlpha = 1;
+  }
+
+  // A dark shell keeps an empty orb visible on every world palette.
+  c.fillStyle = '#111722';
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fill();
+  if (fill > 0) {
+    c.save();
+    c.beginPath();
+    c.arc(x, y, r - h * 0.04, 0, Math.PI * 2);
+    c.clip();
+    const level = y + r - r * 2 * fill;
+    c.fillStyle = energy;
+    c.fillRect(x - r, level, r * 2, r * 2);
+    if (fill < 1) {
+      c.fillStyle = '#d7fff6';
+      c.fillRect(x - r, level, r * 2, Math.max(0.5, h * 0.035));
+    }
+    c.restore();
+  }
+  c.strokeStyle = ready ? energy : '#596273';
+  c.lineWidth = Math.max(0.75, h * (ready ? 0.075 : 0.055));
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.stroke();
+  c.restore();
+}
+
 // Star power: a hue-cycling aura behind the hero plus rainbow afterimages.
 // `left` is the time remaining — under two seconds the whole thing strobes so
 // you can hear AND see the clock running out.
@@ -153,6 +219,9 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       }
     }
     drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
+    const cooldownMax = player.hero?.ability?.cooldown || 1;
+    drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
+      cooldownMax, player.relayCharge, reducedMotion);
     // ...and the hero themself burns brighter, in time with the aura pulse.
     if (starLeft > 0) {
       const pulse = reducedMotion ? 0.3 : 0.22 + 0.24 * Math.sin(t * 18);

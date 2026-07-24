@@ -17,7 +17,8 @@ canvas. `npm test` is CI — it does not verify rendering.
 `npm run dev` builds unminified with an inline sourcemap, rebuilds on every
 save, and serves `dist/` at http://127.0.0.1:8000 — driving that URL is the
 best way to never verify a stale bundle. Use it unless you need the bundle as
-a standalone file. To bundle by hand instead:
+a standalone file. **Always append `?fps&mute` to the URL** when driving
+with Playwright, so the FPS counter is visible and audio doesn't interfere.
 
 ```js
 const r = await esbuild.build({

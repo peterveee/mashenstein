@@ -16,6 +16,7 @@ import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
+import { specialMoveColor } from './draw.js';
 import { Input } from '../engine/input.js';
 import { formatCoins } from './progress.js';
 
@@ -295,15 +296,12 @@ export function drawHud(ctx, run) {
   drawStatusPill(ctx, run);
   drawGoalToast(ctx, run);
 
-  // The live gauges, bottom-left: the ability ring with its name beside it,
-  // and any running power-up timers stacked above with theirs.
+  // The live gauges, bottom-left: the ability nameplate and any running
+  // power-up timers stacked above it. The hero-following orb owns the special
+  // move's live cooldown state, so the HUD does not repeat that readout.
   //
-  // They are down here because the cooldown is the only readout in the game
-  // with sub-second value: "can I fire yet" is asked mid-dodge, continuously,
-  // while cells, coins and goals are between-hazard glances. The eye lives at
-  // the player (x=64, on the ground), so the most-consulted gauge belongs in
-  // the nearest corner, not the furthest one. The goals, which are read once,
-  // took the trip to the far corner instead.
+  // The nameplate is a control reminder. The eye can read readiness beside the
+  // hero now, while cells, coins and goals remain between-hazard glances.
   //
   // The stack grows UP from the ability rather than down: the ability sits in
   // the band below the ground line and there is no screen left underneath it.
@@ -315,11 +313,10 @@ export function drawHud(ctx, run) {
   // its own height — and it puts the ability panel directly opposite the hint
   // that names the same button.
   const GAUGE_CY = H - 11;
-  // Each entry: a donut, a name panel hung off its right at the same midline —
-  // the ring is the gauge, the panel is its label, the pairing the top-right
-  // corner used before this moved. Returns the panel's right edge, so a row of
-  // them can be laid end to end. `show` false measures without drawing, which
-  // is how a blinking entry holds its slot instead of collapsing the row.
+  // Each timer entry: a donut, a name panel hung off its right at the same
+  // midline. Returns the panel's right edge, so a row of them can be laid end
+  // to end. `show` false measures without drawing, which is how a blinking
+  // entry holds its slot instead of collapsing the row.
   const gauge = (cx, cy, r, thick, frac, color, label, ink, scale, halo, show = true) => {
     const LP = 5, LH = scale < 1 ? 12 : 14;
     const lx = cx + r + 5;
@@ -343,33 +340,14 @@ export function drawHud(ctx, run) {
   };
 
   if (!Input.usingTouch) {
-    // Touch play skips the ability ring — the PWR button shows its own recharge
-    // and would be reporting the same thing twice.
+    // Touch play names the special directly on its USE button. Desktop keeps a
+    // quiet nameplate here; its cooldown lives beside the hero in world space.
     const hero = HERO_BY_ID[run.relay.current];
-    const cd = run.player.abilityCd;
-    const charged = !!run.player.relayCharge;
-    // A banked relay charge fires through the cooldown, so it reads as ready.
-    const ready = cd <= 0 || charged;
-    const frac = charged || cd <= 0 ? 1 : Math.max(0, Math.min(1, 1 - cd / hero.ability.cooldown));
-    // Recharging is grey, not red. Red is MAGNET's colour (#e04848), and with
-    // the power-up timers sitting directly above this ring, red-above-red read
-    // as one pair of related things rather than "my power is down" above
-    // "magnet is running". Grey says the right thing anyway: not a warning,
-    // just not yet.
-    gauge(
-      GAUGE_X, GAUGE_CY, 6, 3.2, frac,
-      charged ? '#f6d33c' : ready ? '#48c848' : '#7a7a88',
-      hero.ability.label,
-      charged ? '#f6d33c' : ready ? '#48e0c8' : '#8a8a98', 1,
-      // a soft pulse marks the moment it comes back up; charged pulses gold,
-      // faster and wider, because it is worth interrupting the player for
-      ready && {
-        alpha: charged ? 0.45 + 0.4 * Math.sin(run.tRun * 8) : 0.3 + 0.3 * Math.sin(run.tRun * 4),
-        color: charged ? '#f6d33c' : '#a8f0a8',
-        width: charged ? 1.6 : 1,
-        r: charged ? 9 : 7.5,
-      },
-    );
+    const label = hero.ability.label;
+    const LP = 5, LH = 14;
+    const lw = LP * 2 + textWidth(label, 1, 'bold');
+    drawPanel(ctx, GAUGE_X, GAUGE_CY - LH / 2, lw, LH, 4, undefined, PANEL);
+    rawDrawText(ctx, label, GAUGE_X + LP, textY(GAUGE_CY, 1), '#48e0c8', 1, 'bold');
   }
 
   // Power-up timers sit in a single row on the shelf above the ability, each in
@@ -566,10 +544,10 @@ export function drawHud(ctx, run) {
     ctx.restore();
   }
 
-  // The touch controls: JUMP, PWR, PAUSE. One painter for all three
+  // The touch controls: JUMP, USE, PAUSE. One painter for all three
   // (drawRoundButton) — the whole point of the set is that they are the same
   // object in three places, and three call sites drawing "the same" disc is how
-  // that stops being true. Only PWR carries state, and only it deviates: a
+  // that stops being true. Only USE carries state, and only it deviates: a
   // recharge level, and gold when a relay charge is banked.
   //
   // Non-round buttons here are the paused screen's menu plates, which the pause
@@ -585,22 +563,25 @@ export function drawHud(ctx, run) {
 // them outside the game rect instead). A banked charge overrides the
 // cooldown: the button reads gold and full, because it is usable right now.
 export function roundButtonOpts(run, b) {
-  if (b.id !== 'ability') return { frac: null, fill: 'rgba(11,11,20,0.22)', ink: '#48e0c8' };
+  if (b.id !== 'ability') return { frac: null, fill: 'rgba(11,11,20,0.1)', ink: 'rgba(72,224,200,0.48)' };
   const charged = run.player.relayCharge;
   const cd = charged ? 0 : run.player.abilityCd;
   const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
+  const frac = cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : 1;
+  const energy = specialMoveColor(frac, charged || cd <= 0);
   return {
     // Full reads as "ready" — not empty. It drains to 0 the instant you fire
     // it, then rises back to full as the cooldown counts down, and STAYS full
     // once ready (drawRoundButton no longer treats frac===1 as "nothing to
     // draw"). The old empty-when-ready/full-right-before-ready-again cycle
     // had the meter and the mental model running backwards from each other.
-    frac: cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : 1,
-    // Charged is the one state allowed to raise its voice, and with the
-    // outline gone the fill is the only place left to say it: a gold wash
-    // under gold ink, against the same near-invisible slate the others wear.
-    fill: charged ? 'rgba(246,211,60,0.2)' : 'rgba(11,11,20,0.22)',
-    ink: charged ? '#f6d33c' : '#48e0c8',
+    frac,
+    // The USE control shares the hero-side orb's exact readiness palette, so
+    // both reads agree at a glance as the cooldown rises.
+    fill: 'rgba(11,11,20,0.1)',
+    ink: energy,
+    levelFill: energy,
+    waterline: '#d7fff6',
   };
 }
 

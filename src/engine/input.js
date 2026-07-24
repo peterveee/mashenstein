@@ -1,6 +1,6 @@
 // Unified input: keyboard + touch gestures + virtual buttons + gamepad.
 // Actions: jump, duck, ability, left, right, confirm, back, escape, pause, mute.
-import { clientToLogical } from './renderer.js';
+import { clientToLogical, W } from './renderer.js';
 
 const DEFAULT_KEYS = {
   jump: ['Space', 'ArrowUp', 'KeyW'],
@@ -93,18 +93,22 @@ class InputSys {
         // you're standing at"), and since this fired from ANY tap anywhere on
         // screen, merely being near a station — not tapping it — was enough
         // to confirm it.
-        // Desktop gets the same direct controls without stealing clicks from
-        // menus or the hub: left mouse jumps and right mouse attacks. Ignore
-        // extra mouse buttons, and suspend both mappings while the run's pause
-        // menu has borrowed the input context.
+        // The playable canvas is a broad two-button surface: its left 70% is
+        // jump and its right 30% is the special. That works the same for a
+        // thumb and a primary mouse click, so neither device needs a second
+        // gesture merely to fire a special. Right mouse remains an explicit
+        // attack shortcut. All mappings stay off menus and paused runs.
         const liveRun = this.context === 'run' && !this.menuKeys;
         const liveWorkshop = this.context === 'workshop';
-        // Touch keeps a null action while the finger is down so pointermove
-        // can still promote the starting jump into a duck/power swipe.
-        if (liveRun && this.usingTouch) this.press('jump');
-        else if (liveRun && e.button === 0) action = 'jump';
+        const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
+        if (liveRun && primaryCanvas) action = p.x < W * 0.7 ? 'jump' : 'ability';
         else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
-        this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action });
+        this.touches.set(e.pointerId, {
+          x0: p.x, y0: p.y, t0: performance.now(), action,
+          // A jump started in the left zone can still become the established
+          // down/right swipe. The right-zone special is already decisive.
+          allowSwipe: liveRun && this.usingTouch && action === 'jump',
+        });
         if (action) this.press(action);
       }
       e.preventDefault();
@@ -114,14 +118,19 @@ class InputSys {
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer.x = p.x; this.pointer.y = p.y;
       const t = this.touches.get(e.pointerId);
-      if (t && !t.isButton && !t.action) {
+      if (t && !t.isButton && t.allowSwipe) {
         const dx = p.x - t.x0, dy = p.y - t.y0;
         // Both gestures start as a tap, which in a run has already fired a
         // jump — releasing it here ends the hold rather than undoing the hop,
         // the same trade swipe-down has always made. The alternative is
         // deferring jump to pointerup, which costs hold-for-height on every
         // jump to save a hop on the occasional swipe.
-        const swipe = (action) => { this.release('jump'); t.action = action; this.press(action); };
+        const swipe = (action) => {
+          this.release(t.action);
+          t.action = action;
+          t.allowSwipe = false;
+          this.press(action);
+        };
         // Dominant axis wins, so a swipe that drifts diagonally still resolves
         // to the one the thumb meant rather than to whichever test ran first.
         if (performance.now() - t.t0 < 300) {

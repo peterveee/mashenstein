@@ -1913,7 +1913,7 @@ export class DifficultyState {
       const label = d.name;
       const color = danger ? '#e04848' : sel ? '#c9a0ff' : '#c8c8d8';
       const rowTop = DIFF_TOP + i * DIFF_ROW + (i === DIFFICULTIES.length ? DIFF_BACK_GAP : 0);
-      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2);
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2, 3, 'rgba(201,160,255,0.055)');
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.
       const nameY = textYForMid(rowTop + DIFF_ROW / 2, DIFF_NAME_S) - DIFF_GLOSS_DY / 2;
