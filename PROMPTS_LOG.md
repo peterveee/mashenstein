@@ -168,6 +168,13 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+### Prompt 18
+**User Request:** "shoulder straps extend past shoulders they should be incorporated into the model and update the gallery"
+
+**What I Did:** The pinafore straps were running up as floating nubs past the shoulders — re-aimed them to rise from the bib corners up toward the neck base (top at `torsoHalf * 0.44`, ending at `shoulderY` height so they don't poke past the shoulder silhouette), which reads like a natural bib apron flanking the neck. Follow-up "would look more natural next to neck" moved them from the shoulder edge inboard to the neck. Regenerated the asset gallery: `npm run gallery` (build) + `npm run archive:gallery` (snapshot) → `galleries/2026-07-24-af0bdc7.html` (30 indexed), rendered from the real draw functions so it shows the new apron. Flagged that the snapshot is keyed to HEAD's sha while the strap change is still uncommitted, so the history label is approximate until the art is committed and re-archived.
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

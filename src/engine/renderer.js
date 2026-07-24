@@ -13,9 +13,7 @@ let canvas = typeof document !== 'undefined' ? document.getElementById('game') :
 // live outside the 480x270 play field as real canvas-drawn buttons instead of
 // crowding the corners of the art.
 const chromeCanvas = typeof document !== 'undefined' ? document.getElementById('chrome') : null;
-// desynchronized: on Chromium this skips a frame of compositor latency for the
-// touch overlay; ignored everywhere else. Safe here — chrome is never captured.
-export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d', { desynchronized: true }) : null;
+export const chromeCtx = chromeCanvas ? chromeCanvas.getContext('2d') : null;
 
 // env(safe-area-inset-*) isn't readable from JS directly — only a computed
 // style reports it — so #safe-area (template.html) exists purely to have its
@@ -279,11 +277,7 @@ export function initRenderer(platform = {}, persistence = {}) {
     // the #game identity and CSS but has a fresh backing store. Input.init()
     // runs after this function, so it binds to the replacement automatically.
     if (webgl.claimed) freshCanvasAfterWebglFailure();
-    // desynchronized: skips a frame of Chromium compositor latency; ignored on
-    // other browsers. Caveat: capturing this canvas via toDataURL
-    // (saveScreenshot, 2D path only) can read back stale/blank on some Chromium
-    // builds — acceptable for a dev-only screenshot shortcut.
-    dctx = canvas.getContext('2d', { desynchronized: true });
+    dctx = canvas.getContext('2d');
     if (!dctx) {
       const why = webgl.error ? ` WebGL failed first: ${webgl.error.message || webgl.error}` : '';
       throw new Error(`No usable WebGL or 2D canvas renderer.${why}`);

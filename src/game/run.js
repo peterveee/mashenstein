@@ -165,13 +165,6 @@ export class RunState {
     const slot = this.save.slot;
     this.bench = slot.bench;
     this.modIds = slot.mods.equipped.slice();
-    const activeBench = BENCH_UPGRADES
-      .filter((u) => (slot.bench[u.id] || 0) > 0)
-      .map((u) => `${u.name} ${'I'.repeat(slot.bench[u.id])}`);
-    this.benchSummaryText = activeBench.length
-      ? `BENCH UPGRADES. ${activeBench.join(' / ')}`
-      : null;
-    this.benchSummaryT = this.benchSummaryText ? 4 : 0;
     // OVERTIME has no known length, and RANDOMSWAP corruption is *supposed* to
     // feel unscheduled — both fall back to the endless portal cadence.
     const scheduled = o.stage && !this.overtime && !this.corrupted.includes('randomswap');
@@ -218,6 +211,13 @@ export class RunState {
     this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
+    // Equipped bench upgrades announce themselves the same way a banked plug
+    // does: gold pills sliding in under the health bar, one after another, in
+    // place of a full-screen card that froze the opening of the run.
+    for (const u of BENCH_UPGRADES) {
+      const lvl = slot.bench[u.id] || 0;
+      if (lvl > 0) this.goalToasts.push({ text: `${u.name} ${'I'.repeat(lvl)}`, t: 2.4, t0: 2.4 });
+    }
     this.goalSeen = { mission: false, challenge: false };
     this.portal = null;         // active portal entity
     this.speech = null;         // {text, t, who}
@@ -591,7 +591,6 @@ export class RunState {
       }
       Input.endFrame(); return;
     }
-    if (this.benchSummaryT > 0) this.benchSummaryT = Math.max(0, this.benchSummaryT - dt);
     if (this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
 
@@ -2172,13 +2171,6 @@ export class RunState {
           // Drops away as soon as the skip is taken, so the hint never sits on
           // screen describing an input that has already been spent.
           skip: this.introSkippable && this.introFreeze > ACT_BANNER_FADE,
-        });
-      }
-      if (this.introFreeze <= 0 && this.benchSummaryT > 0 && this.benchSummaryText) {
-        drawActBanner(d, this.benchSummaryText, {
-          t: 4 - this.benchSummaryT,
-          alpha: Math.min(1, this.benchSummaryT / 0.45),
-          still: this.save.settings.reducedMotion,
         });
       }
     };

@@ -4,7 +4,7 @@ import {
   noteRendererFrame, rendererDiagnostics, W,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
-import { drawText } from './engine/sprites.js';
+import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
@@ -296,10 +296,12 @@ function boot() {
           const d = rendererDiagnostics();
           const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
           const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.throttled ? ' TH' : ''}`;
+          const line1 = `FPS ${frameRate() || '--'}`;
+          const textRight = W - 5;
           ctx.fillStyle = 'rgba(5,6,12,0.68)';
-          ctx.fillRect(W - 66, 3, 62, 20);
-          drawText(ctx, `FPS ${frameRate() || '--'}`, W - 63, 4, '#f4f1fa', 0.75, 'bold');
-          drawText(ctx, line2, W - 63, 13, '#9fb4d8', 0.75, 'bold');
+          ctx.fillRect(W - 62, 0, 62, 20);
+          drawText(ctx, line1, textRight - textWidth(line1, 0.75, 'bold'), 3, '#f4f1fa', 0.75, 'bold');
+          drawText(ctx, line2, textRight - textWidth(line2, 0.75, 'bold'), 12, '#9fb4d8', 0.75, 'bold');
         });
       }
       blit();

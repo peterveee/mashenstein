@@ -3893,9 +3893,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // an apron held up by straps, not a white panel floating on her chest —
       // and they frame the shoulders the arms swing off, which is what stops a
       // hand-on-hip arm from looking like it crosses a free-floating bib.
-      const strapW = 0.05 * u;
+      const strapW = 0.048 * u;
       for (const s of [-1, 1]) {
-        limb(ctx, px + s * wBib * 0.8, bibTop + 0.012 * u, px + s * torsoHalf * 0.58, shoulderY - 0.055 * u, strapW, p.a, Math.max(0.4, ow * 0.5));
+        limb(ctx, px + s * wBib * 0.9, bibTop + 0.01 * u, px + s * torsoHalf * 0.44, shoulderY + 0.004 * u, strapW, p.a, Math.max(0.4, ow * 0.5));
       }
       ctx.save();
       ctx.globalAlpha *= 0.5;
