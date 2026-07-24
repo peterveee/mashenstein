@@ -119,7 +119,7 @@ const Flow = {
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
-  launchStage(cab, stage, corrupted, seedOverride, initialHeroId) {
+  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
@@ -132,6 +132,9 @@ const Flow = {
       difficulty: save.slot.difficulty,
       corrupted,
       initialHeroId,
+      // The bench-upgrade parade is a once-per-visit thing; a retry has already
+      // seen it (same as the briefing it also skips).
+      announceBench,
       onEnd: (result) => {
         Flow.lastTeam = result.team;
         Flow.setHero(result.finalHero);
@@ -141,8 +144,9 @@ const Flow = {
           onDone: () => Flow.toHub(false),
           // launchStage, not startStage: a retry has already read the briefing.
           // No seed passed either, so the next attempt is a fresh roll rather
-          // than a replay of the pattern that just went wrong.
-          onRetry: () => Flow.launchStage(cab, stage, corrupted),
+          // than a replay of the pattern that just went wrong. announceBench:false
+          // so the bench-upgrade toasts don't parade a second time.
+          onRetry: () => Flow.launchStage(cab, stage, corrupted, undefined, undefined, false),
         }));
       },
     }));
@@ -295,7 +299,7 @@ function boot() {
         pushOverlayDraw((ctx) => {
           const d = rendererDiagnostics();
           const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
-          const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.throttled ? ' TH' : ''}`;
+          const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.frozen ? ' FZ' : d.throttled ? ' TH' : ''}`;
           const line1 = `FPS ${frameRate() || '--'}`;
           const textRight = W - 5;
           ctx.fillStyle = 'rgba(5,6,12,0.68)';

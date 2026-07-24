@@ -987,6 +987,7 @@ const BUILD_STAMP = (typeof window !== 'undefined' && window.__MASH_BUILD__) || 
 // spent above the cast rather than in the middle of the screen.
 const TITLE_MARQUEE_Y = 20;
 const TITLE_SUBTITLE_Y = 67;
+const TITLE_FPS_TAP_WINDOW = 0.35;
 const TITLE_PLUG_Y = 88;
 // Centred in the clear band between the subtitle and the tallest parade heads.
 const TITLE_PANEL_Y = 110;
@@ -998,6 +999,12 @@ const TITLE_CARDS_W = TITLE_CARD_W * 4 + TITLE_CARD_GAP * 3;
 const TITLE_CARDS_X = W / 2 - TITLE_CARDS_W / 2;
 const TITLE_FOOTER_GAP = 20;
 const TITLE_FOOTER_LINE_H = 11;
+
+function titleMarqueeAt(x, y) {
+  const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
+  return x >= W / 2 - logoW / 2 - 8 && x <= W / 2 + logoW / 2 + 8
+    && y >= TITLE_MARQUEE_Y - 8 && y <= TITLE_SUBTITLE_Y + 12;
+}
 // The footer lives in the ground band now: cards stay airy, while the opening
 // instruction and gag have a deliberate low-screen home before the parade
 // arrives and takes over that space.
@@ -1206,6 +1213,7 @@ export class TitleState {
     this.tapBombId = 0;
     this.shots = []; // title projectiles; tFired follows each visible wind-up
     this.shotId = 0;
+    this.lastTitleTapAt = null;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     // Returning from settings, help, or another title-side screen should not
@@ -1216,6 +1224,21 @@ export class TitleState {
     setSceneGlow(true); // the marquee and cabinet screens get to glow
   }
   exit() { setSceneGlow(false); setSkyFx(false); }
+  handleTitleFpsTap(x, y) {
+    if (!titleMarqueeAt(x, y)) {
+      this.lastTitleTapAt = null;
+      return false;
+    }
+    if (this.lastTitleTapAt != null && this.t - this.lastTitleTapAt <= TITLE_FPS_TAP_WINDOW) {
+      this.save.settings.showFps = !this.save.settings.showFps;
+      this.save.persist();
+      this.lastTitleTapAt = null;
+      Audio.sfx('uiConfirm');
+    } else {
+      this.lastTitleTapAt = this.t;
+    }
+    return true;
+  }
   // Whatever lands the hit — a direct tap, b33p's shot, or the ship's bomb —
   // a wisp always reacts the same way: fright if it's calm, eaten if it's
   // already blue. Centralizing this keeps all three triggers in lockstep.
@@ -1432,14 +1455,15 @@ export class TitleState {
     if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); opts[this.idx].act(); }
     if (Input.pressed('pointer')) {
       const p = Input.pointer;
-      const i = titleButtonAt(p.x, p.y, opts.length);
-      if (i >= 0) {
-        this.idx = i;
-        Audio.sfx('uiConfirm');
-        if (Input.usingTouch) this.touchPress = { i, commitAt: this.t + 0.09, act: opts[i].act };
-        else opts[i].act();
-      }
-      else {
+      if (!this.handleTitleFpsTap(p.x, p.y)) {
+        const i = titleButtonAt(p.x, p.y, opts.length);
+        if (i >= 0) {
+          this.idx = i;
+          Audio.sfx('uiConfirm');
+          if (Input.usingTouch) this.touchPress = { i, commitAt: this.t + 0.09, act: opts[i].act };
+          else opts[i].act();
+        }
+        else {
         // Didn't land on a menu row — maybe it landed on the invader overhead.
         const ship = invaderTapHit(this.t, p.x, p.y);
         if (ship) {
@@ -1496,6 +1520,7 @@ export class TitleState {
             const wisp = wispTapHit(this.t, p.x, p.y, this.eaten, this.scatter, this.wispsDismissed);
             if (wisp) this.hitWisp(wisp);
           }
+        }
         }
       }
     }

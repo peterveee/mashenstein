@@ -77,18 +77,18 @@ function webglStub() {
   assert(!seen.has(2.5), 'the emergency drop skips the intermediate 2.5x rung (single adjustment)');
 }
 
-// --- Emergency drop bypasses the post-adjustment cooldown --------------------
+// --- A drop is a bounded probe: no further drop until its verdict ------------
 {
   installDom(PHONE);
-  const r = await import('../src/engine/renderer.js?d-emerg-cd');
+  const r = await import('../src/engine/renderer.js?d-gate');
   r.initRenderer({ isIphone: true });
   const clk = { t: 1 };
   r.noteRendererFrame(clk.t);
-  feed(r, clk, 55, 25);                 // moderate drop → rung 2, cooldown armed
-  assert(r.rendererDiagnostics().rung === 2, 'moderate drop reached 2.5x and armed the cooldown');
-  feed(r, clk, 25, 40);                 // emergency while cooldown still counting down
-  assert(r.rendererDiagnostics().rung >= 4,
-    'an emergency stall drops further despite the 3s cooldown still running');
+  feed(r, clk, 20, 40);                 // one emergency probe: two rungs, then held
+  assert(r.rendererDiagnostics().rung === 3, 'a hard stall drops two rungs in one probe (to 2x)');
+  feed(r, clk, 30, 40);                 // still stalling, but the probe is unresolved
+  assert(r.rendererDiagnostics().rung === 3,
+    'no further drop fires while the probe awaits its verdict (no plunge to the floor)');
 }
 
 // --- Throttle guard: an OS rAF cap is reverted, not chased to the floor ------
@@ -113,6 +113,8 @@ function webglStub() {
   let droppedAgain = false;
   for (let i = 0; i < 1200; i++) { clk.t += 35; r.noteRendererFrame(clk.t); if (r.rendererDiagnostics().rung > 1) droppedAgain = true; }
   assert(droppedAgain, 'once the suspension lapses a real stall drops again');
+  assert(r.rendererDiagnostics().frozen === true,
+    'a second futile drop freezes adaptation so a CPU-bound device stops churning');
 }
 
 // --- Session failure memory: a twice-abandoned rung is locked out of recovery -

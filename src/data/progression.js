@@ -1,13 +1,18 @@
 // Progression & economy data: Repair Bench, Hero Mastery, Cabinet Mods.
 
+// `base` is the level every save already owns for free. Shield and Magnet begin
+// "owned" — you start a run holding charges / with a magnet — so their first
+// purchase climbs from 1; refire rate starts from nothing at 0. Anything that
+// counts what a player has actually bought reads `stored - base`, never the raw
+// stored value (which would count the free base as a purchase).
 export const BENCH_UPGRADES = [
-  { id: 'shield', name: 'EXTRA SHIELD CAPACITY', levels: [0, 1500, 4000], max: 3,
+  { id: 'shield', name: 'EXTRA SHIELD CAPACITY', base: 1, levels: [0, 1500, 4000], max: 3,
     currentDesc: ['HOLDS 2 SHIELD CHARGES.', 'HOLDS 3 SHIELD CHARGES.', 'SHIELD BREAKS WITH A SHOCKWAVE.'],
     desc: ['HOLDS 3 SHIELD CHARGES.', 'SHIELD BREAKS WITH A SHOCKWAVE.'] },
-  { id: 'magnet', name: 'SUPER MAGNET DURATION', levels: [0, 1500, 4000], max: 3,
+  { id: 'magnet', name: 'SUPER MAGNET DURATION', base: 1, levels: [0, 1500, 4000], max: 3,
     currentDesc: ['PULLS COINS FOR 8 SECONDS.', 'PULLS COINS FOR 12 SECONDS.', 'PULLS COINS FOR 16 SECONDS.'],
     desc: ['12 SECONDS. BIGGER PULL.', '16 SECONDS. COINS HAVE NO CHANCE.'] },
-  { id: 'tuneup', name: 'HERO REFIRE RATE', levels: [1800, 4000], max: 2,
+  { id: 'tuneup', name: 'HERO REFIRE RATE', base: 0, levels: [1800, 4000], max: 2,
     currentDesc: ['STANDARD POWER COOLDOWNS.', 'POWER COOLDOWNS -10%.', 'POWER COOLDOWNS -20%.'],
     desc: ['POWER COOLDOWNS -10%.', 'POWER COOLDOWNS -20%.'] },
 ];

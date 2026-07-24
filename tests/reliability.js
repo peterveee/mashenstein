@@ -28,7 +28,10 @@ function assert(cond, msg) {
 
 save.load(); save.newSlot(0, 0);
 const stage = { id: 'reliable-1', cabinet: 'plumber', index: 1, mission: { type: 'reach', desc: 'TEST' }, challenge: { type: 'coins', n: 99, desc: 'TEST' }, durationSec: 40, applianceAt: 0.5 };
-const makeRun = (onEnd = () => {}) => new RunState({ stage, save, seed: 44, difficulty: 1, onEnd });
+// skipRunIn: these cases drive live gameplay from the first frames — collisions,
+// the finish dash, pauses — so they skip the cinematic run-in (covered in
+// story-beats) that would otherwise gate the world for ~0.9s after enter().
+const makeRun = (onEnd = () => {}) => new RunState({ stage, save, seed: 44, difficulty: 1, skipRunIn: true, onEnd });
 
 let completions = 0;
 let run = makeRun(() => completions++); run.enter();
@@ -163,7 +166,7 @@ assert(restoredFinishResult?.success && restoredFinishEnds === 1,
 // A resident picked up after the normal finish threshold counts immediately,
 // and the already-visible tape stays where it was when the victory run begins.
 const rescueStage = { ...stage, mission: { type: 'rescue', n: 1, count: 0, desc: 'TEST' } };
-const rescueRun = new RunState({ stage: rescueStage, save, seed: 46, difficulty: 1, onEnd() {} });
+const rescueRun = new RunState({ stage: rescueStage, save, seed: 46, difficulty: 1, skipRunIn: true, onEnd() {} });
 rescueRun.enter();
 rescueRun.camX = rescueRun.finishCameraX() + 18;
 const follower = makePickup('resident', rescueRun.playerWorldX(), 0); follower.following = true;
@@ -178,14 +181,14 @@ assert(rescueRun.finishScreenX() === visibleTapeX && visibleTapeX < VIEW_W - 32,
 // Counted mission failures carry the exact counter tested by the win check.
 const shortStage = { ...stage, mission: { type: 'cords', n: 4, count: 3, desc: 'TEST' } };
 let shortResult = null;
-const shortRun = new RunState({ stage: shortStage, save, seed: 47, difficulty: 1, onEnd: (result) => { shortResult = result; } });
+const shortRun = new RunState({ stage: shortStage, save, seed: 47, difficulty: 1, skipRunIn: true, onEnd: (result) => { shortResult = result; } });
 shortRun.enter(); shortRun.mission.count = 3; shortRun.camX = shortRun.totalDist; shortRun.obstacles = []; shortRun.pickups = [];
 shortRun.update(1 / 60);
 assert(shortResult?.failDetail === 'CORDS 3/4', 'mission failure reports the exact objective shortfall');
 
 // Objective replacements are capped to the last drawable spot before the
 // breaker, and suppressed once that spot is no longer ahead of the viewport.
-const objectiveRun = new RunState({ stage: shortStage, save, seed: 48, difficulty: 1, onEnd() {} });
+const objectiveRun = new RunState({ stage: shortStage, save, seed: 48, difficulty: 1, skipRunIn: true, onEnd() {} });
 objectiveRun.enter(); objectiveRun.pickups = [];
 objectiveRun.camX = objectiveRun.finishCameraX() - VIEW_W;
 const spawnedCord = objectiveRun.spawnObjective('cord', 30);
@@ -228,7 +231,7 @@ assert(!shotTarget.live,
 
 const targetStage = { ...stage, mission: { type: 'targets', n: 1, desc: 'TEST' } };
 let incompleteFinish = null;
-run = new RunState({ stage: targetStage, save, seed: 45, difficulty: 1, onEnd: (result) => { incompleteFinish = result; } });
+run = new RunState({ stage: targetStage, save, seed: 45, difficulty: 1, skipRunIn: true, onEnd: (result) => { incompleteFinish = result; } });
 run.enter();
 run.player.y = 80;
 run.player.grounded = false;
@@ -331,6 +334,27 @@ touchTitle.update(0.05);
 assert(touchShift === 0 && !touchTitle.touchPress,
   'touch title card activates after its press-down feedback');
 Input.usingTouch = false;
+
+const fpsTitleSave = new Save(); fpsTitleSave.load();
+fpsTitleSave.settings.showFps = false;
+const fpsTitle = new TitleState({
+  save: fpsTitleSave,
+  onSlotChosen() {}, onSettings() {}, onHowTo() {},
+  onGuide() {}, onSoundTest() {}, attractDelay: 1e9,
+});
+fpsTitle.enter();
+for (let i = 0; i < 2; i++) {
+  Input.pointer = { x: 240, y: 42, down: false };
+  Input.press('pointer'); fpsTitle.update(0.1); Input.release('pointer'); Input.endFrame();
+}
+assert(fpsTitleSave.settings.showFps === true,
+  'double-tapping the title marquee toggles the FPS display on');
+for (let i = 0; i < 2; i++) {
+  Input.pointer = { x: 240, y: 42, down: false };
+  Input.press('pointer'); fpsTitle.update(0.1); Input.release('pointer'); Input.endFrame();
+}
+assert(fpsTitleSave.settings.showFps === false,
+  'double-tapping the title marquee toggles the FPS display off');
 
 // Eating a title wisp removes it from this visit's procession. The transient
 // eye/scatter maps are only animation records; pruning them must not recreate
@@ -575,6 +599,14 @@ const topCrate = makeObstacle('crate', run.camX + PLAYER_X);
 run.obstacles = [topCrate]; run.player.grounded = false; run.player.y = topCrate.h - 1; run.player.vy = -120; run.player.iframes = 0;
 const topCells = run.battery; run.collide(); run.collide();
 assert(run.battery === topCells && topCrate.landedOn, 'landing on a crate is safe for the full contact');
+
+// Objective !-crates remain usable during the post-hit invulnerability window.
+run = makeRun(); run.enter();
+const qcrate = makeObstacle('qcrate', run.camX + PLAYER_X);
+run.obstacles = [qcrate]; run.player.grounded = false; run.player.y = 32; run.player.vy = 0; run.player.iframes = 1;
+run.collide();
+assert(!qcrate.live, '! crate breaks during post-hit invulnerability');
+run.player.iframes = 0; run.player.grounded = true; run.player.y = 0;
 
 // Unbreakables reject every player projectile family, but every weapon contact
 // uses its weapon-specific WAV rather than the old generic crash.

@@ -3066,7 +3066,12 @@ export class StageSelectState {
         drawText(ctx, `${sel ? '> ' : '  '}CORRUPTED MODE: ${m ? m.name : 'OFF'}`, 40, y, sel ? '#8858c8' : '#6a5a8a', ROW_S);
         if (m) drawText(ctx, fitText(m.desc + ' (ONE-HIT RULES)', W - 60, DESC_S), 52, descY(y), '#5a5a68', DESC_S);
       } else {
-        drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, c, ROW_S);
+        // BACK is the last row and carries no blurb, so it centres its single
+        // line in the box instead of reserving the two-line drop the stacked
+        // rows above it use — otherwise the label rides the top of its
+        // highlight with a blank half-row hanging beneath it.
+        const backY = rowTextY(this, i, ROW_S);
+        drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, backY, c, ROW_S);
       }
     });
     // The tally is reference, not a headline: it rides the bottom status row
@@ -3084,14 +3089,14 @@ export class BenchState {
   options() {
     const slot = this.save.slot;
     const purchaseCount = BENCH_UPGRADES.reduce((total, u) => {
-      const baseLevel = ['shield', 'magnet', 'star'].includes(u.id) ? 1 : 0;
+      const baseLevel = u.base;
       return total + Math.max(0, (slot.bench[u.id] || 0) - baseLevel);
     }, 0);
     const surcharge = BENCH_FOOD_COURT_SURCHARGES[Math.min(purchaseCount, BENCH_FOOD_COURT_SURCHARGES.length - 1)];
     const opts = BENCH_UPGRADES.map((u) => {
       const cur = slot.bench[u.id] || 0;
       // Power-up tracks start at level 1 (owned); relay tracks start at 0.
-      const baseLevel = ['shield', 'magnet', 'star'].includes(u.id) ? 1 : 0;
+      const baseLevel = u.base;
       const lvl = Math.max(cur, baseLevel);
       const nextIdx = lvl - baseLevel;
       // Shield, Magnet, and Score Star begin at level 1, so their first
@@ -3178,7 +3183,7 @@ export class BenchState {
     const hipsAmt = Math.max(periodicHips, reactHips);
     const pose = walking
       ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
-      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: hipsAmt > 0.02, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
     ctx.fillStyle = 'rgba(4,3,9,0.32)';
     ctx.beginPath();
     ctx.ellipse(doleX, doleFeet + 1, doleH * (walking ? 0.16 : 0.2), doleH * 0.055, 0, 0, Math.PI * 2);

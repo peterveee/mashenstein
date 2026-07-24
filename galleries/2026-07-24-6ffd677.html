@@ -444,7 +444,7 @@ void main() {
   var H = 270;
   var canvas = typeof document !== "undefined" ? document.getElementById("game") : null;
   var chromeCanvas = typeof document !== "undefined" ? document.getElementById("chrome") : null;
-  var chromeCtx = chromeCanvas ? chromeCanvas.getContext("2d", { desynchronized: true }) : null;
+  var chromeCtx = chromeCanvas ? chromeCanvas.getContext("2d") : null;
   var safeAreaEl = typeof document !== "undefined" ? document.getElementById("safe-area") : null;
   var CHROME_R_MIN = 32;
   var CHROME_PAD = 8;
@@ -1503,7 +1503,7 @@ void main() {
     // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
     // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
     // whole performance — she is not pleased to see you and she is not displeased.
-    dolores: { rig: "humanoid", head: "hairnet", mouth: "flat", apron: true, nameTag: true, stout: true, armDepth: true, hands: true },
+    dolores: { rig: "humanoid", head: "hairnet", mouth: "flat", apron: true, stout: true, armDepth: true, hands: true },
     raymn: { rig: "ray" },
     // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
     // near arm up the screen-left side, which sat over the old stripe half the
@@ -1991,7 +1991,7 @@ void main() {
     gary: "bow",
     raymn: "shimmy",
     grumpos: "flex",
-    dolores: "bow"
+    dolores: "hips"
   };
   var CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035 };
   var CEL_CYCLE = 2.6;
@@ -2141,6 +2141,12 @@ void main() {
       m.lift = Math.sin(q * Math.PI) * 0.17;
       m.spin = Math.cos(q * Math.PI * 2);
       m.peak = true;
+    } else if (move === "hips") {
+      const hit = Math.abs(Math.sin(q * Math.PI * 2));
+      m.squash = hit * 0.07;
+      m.tilt = Math.sin(q * Math.PI * 2) * 0.045;
+      m.lift = 0;
+      m.peak = hit > 0.62;
     } else if (move === "bow") {
       const d = Math.sin(q * Math.PI);
       m.tilt = d * 0.26;
@@ -3167,10 +3173,10 @@ void main() {
         handB = [shB + sideB * 0.04 * u, armY + armL * 0.5];
         elbB = sideB;
       } else if (id === "dolores" && raisedArmStudy) {
-        const clap = 0.018 * u * (0.5 + 0.5 * Math.sin(ct * 8));
-        handF = [sideF * clap, armY + armL * 0.18];
+        const hipX = torsoHalf * 0.95, hipY2 = armY + armL * 0.78 - Math.abs(pump) * 0.5;
+        handF = [shoulderCx + sideF * hipX, hipY2];
         elbF = sideF;
-        handB = [sideB * clap, armY + armL * 0.18];
+        handB = [shoulderCx + sideB * hipX, hipY2];
         elbB = sideB;
       } else if (id === "lorenzo" && raisedArmStudy) {
         handF = [shF + sideF * 0.2 * u, armY - armL * 0.8 + pump * 0.45];
@@ -3187,6 +3193,12 @@ void main() {
         handF = [shF + sideF * 0.3 * u, armY - armL * 0.25];
         elbF = sideF;
         handB = [shB + sideB * 0.3 * u, armY - armL * 0.25];
+        elbB = sideB;
+      } else if (cm.move === "hips") {
+        const hipX = torsoHalf * 0.95, hipY2 = armY + armL * 0.78;
+        handF = [shoulderCx + sideF * hipX, hipY2];
+        elbF = sideF;
+        handB = [shoulderCx + sideB * hipX, hipY2];
         elbB = sideB;
       } else if (cm.move === "bow") {
         handF = [shF + sideF * 0.18 * u, armY + armL * 0.75];
@@ -3770,6 +3782,7 @@ void main() {
       ctx.stroke();
     }
     let strapOverArm = null;
+    let apronStrapOver = null;
     if (spec.straps && !lod && !duck) {
       const px = torsoCx;
       const bib = !!spec.bib;
@@ -3969,10 +3982,33 @@ void main() {
         c.closePath();
       });
       if (!lod) {
-        const strapW = 0.048 * u;
-        for (const s2 of [-1, 1]) {
-          limb(ctx, px + s2 * wBib * 0.9, bibTop + 0.01 * u, px + s2 * torsoHalf * 0.44, shoulderY + 4e-3 * u, strapW, p.a, Math.max(0.4, ow * 0.5));
-        }
+        const strapTopY = torsoTop + 0.01 * u;
+        const strapPath = () => {
+          ctx.beginPath();
+          for (const s2 of [-1, 1]) {
+            ctx.moveTo(px + s2 * torsoHalf * 0.6, strapTopY);
+            ctx.lineTo(px + s2 * wBib * 0.9, bibTop + 0.09 * u);
+          }
+        };
+        const drawStraps = () => {
+          ctx.save();
+          ctx.beginPath();
+          torsoPath(ctx);
+          ctx.clip();
+          ctx.lineJoin = "round";
+          ctx.lineCap = "butt";
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = 0.052 * u + ow * 2;
+          strapPath();
+          ctx.stroke();
+          ctx.strokeStyle = p.a;
+          ctx.lineWidth = 0.052 * u;
+          strapPath();
+          ctx.stroke();
+          ctx.restore();
+        };
+        drawStraps();
+        apronStrapOver = drawStraps;
         ctx.save();
         ctx.globalAlpha *= 0.5;
         ctx.strokeStyle = OUTLINE;
@@ -3988,6 +4024,22 @@ void main() {
           Math.max(0.4, ow * 0.45),
           (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u)
         );
+        const tagW = 0.12 * u, tagH = 0.066 * u;
+        const tagX = px - tagW / 2, tagY = bibTop + 0.1 * u;
+        outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u));
+        ctx.save();
+        ctx.beginPath();
+        roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u);
+        ctx.clip();
+        ctx.fillStyle = p.b;
+        ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
+        ctx.restore();
+        ctx.strokeStyle = "#5a5546";
+        ctx.lineWidth = Math.max(0.32, ow * 0.32);
+        ctx.beginPath();
+        ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
+        ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
+        ctx.stroke();
       }
     }
     if (!clapFront && (!stand || raisedArmStudyFront)) {
@@ -4010,12 +4062,14 @@ void main() {
       else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
       handDeco(handB[0], handB[1]);
       drawFrontArm();
+      if (apronStrapOver) apronStrapOver();
     }
     if (armsInFront) {
       if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
       else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
       handDeco(handB[0], handB[1], farShade);
       drawFrontArm();
+      if (apronStrapOver) apronStrapOver();
     }
   }
   function drawRoll(ctx, spec, p, pose2, u, ow) {
@@ -11183,7 +11237,7 @@ void main() {
       ctx.imageSmoothingEnabled = false;
     }
     if (e.def.stack && e.n > 1) {
-      const step = Math.round(11 * 4 / 3);
+      const step = Math.round(11 * 4 / 3) - 2;
       for (let i = 0; i < e.n; i++) draw1(x, Math.round(GROUND_Y - 11 - i * step), "bottom", false, bw, 11);
     } else if (e.def.tall) {
       if (propName) draw1(x, Math.round(GROUND_Y), "bottom", true, bw, 18);

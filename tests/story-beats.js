@@ -31,15 +31,15 @@ function makeRun(stage, onEnd = () => {}) {
   return run;
 }
 
-// Run out a stage's ACT card, if it has one, and leave the run on its first
-// live frame. update() returns early for the whole hold, so any test that needs
-// a moving world has to sit through it first — including the ones on plumber-1,
-// which opens the campaign. The guard is generous on purpose: it is a runaway
-// stop, and sizing it to ACT_BANNER_TIME would just make it the same bug again
-// the next time that number moves.
+// Run out a stage's openers — the ACT card hold, if any, then the off-screen
+// run-in — and leave the run on its first live frame. update() returns early for
+// both, so any test that needs a moving world (or the opening bubble, which now
+// waits for the hero to reach the start line) has to sit through them first.
+// The guard is generous on purpose: it is a runaway stop, and sizing it to the
+// banner/run-in durations would just make it the same bug again when they move.
 function clearIntro(run) {
   let guard = 60 * 60;
-  while (run.introFreeze > 0 && guard-- > 0) run.update(TICK);
+  while ((run.introFreeze > 0 || run.introRunning) && guard-- > 0) run.update(TICK);
   run.update(TICK);
 }
 
@@ -99,11 +99,15 @@ function clearIntro(run) {
   assert(!run.speech && !run.introSpeech, 'a stage with both openers displays each exactly once');
 }
 
-// --- A bubble-only stage still starts moving immediately -------------------
+// --- A bubble-only stage: nothing freezes, but the bubble waits out the
+// --- off-screen run-in and lands as the hero reaches the start line --------
 {
   const run = makeRun(STAGE_BY_ID['office-1']);
   assert(run.introFreeze === 0, 'a stage with no ACT card does not freeze');
   assert(!run.introSkippable, 'a stage with no ACT card has nothing to skip');
+  assert(!run.speech && run.introSpeech,
+    'the bubble waits out the run-in rather than pointing at an off-screen hero');
+  clearIntro(run);
   assert(run.speech && run.speech.who === 'intro',
     'office-1 has no authored speaker, so it stays a narrator bubble');
 }
@@ -161,22 +165,26 @@ function clearIntro(run) {
   assert(done.introFreeze === 0 && !done.introText,
     'a fully-plugged stage does not raise its ACT card at all');
   assert(!done.introSkippable, 'there is no skip to offer once the card is retired');
-  done.update(TICK);
-  assert(done.camX > 0, 'a retired card costs the run no frozen frames');
+  assert(done.introFreeze === 0, 'a retired card raises no banner — nothing freezes the world for it');
+  clearIntro(done);
+  assert(done.camX > 0, 'the world moves once the retired-card stage has run the hero in');
 
   delete save.slot.campaign.plugs[stage.id]; // leave the slot as we found it
 }
 
-// --- Retiring the card hands its stage's bubble straight back --------------
+// --- Retiring the card leaves the run-in in charge of the bubble -----------
 {
   const stage = STAGE_BY_ID['plumber-1'];
   save.slot.campaign.plugs[stage.id] = [true, true, true];
   const run = makeRun(stage);
-  // With no card to wait behind, the bubble stops being deferred and goes back
-  // to riding the opening seconds — the plain no-card path, not a third case.
-  assert(!run.introSpeech, 'nothing is held back when there is no card to hold behind');
+  // No card to wait behind, but the entrance still stands: the bubble rides the
+  // run-in instead, landing as the hero reaches the start line rather than
+  // pointing at him while he is still off the left edge.
+  assert(run.introFreeze === 0, 'a retired card raises no banner');
+  assert(!run.speech && run.introSpeech, 'the bubble rides the run-in, not the (retired) card');
+  clearIntro(run);
   assert(run.speech && run.speech.who === 'lorenzo',
-    'Lorenzo speaks from the first frame once the ACT card is retired');
+    'Lorenzo speaks once the hero has run in, card retired or not');
   delete save.slot.campaign.plugs[stage.id];
 }
 

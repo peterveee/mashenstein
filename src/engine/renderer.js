@@ -123,6 +123,7 @@ const STRIKES_TO_LOCK = 2;            // strikes before a rung is barred from re
 const GUARD_CHECK_MS = 2500;          // delay before judging whether a drop helped
 const GUARD_IMPROVE = 0.88;           // post-drop avg must be <= pre * this (>=12% better)
 const GUARD_SUSPEND_MS = 30000;       // after a "no help" verdict, stop dropping this long
+const CAP_REVERTS_TO_FREEZE = 2;      // this many futile drops => stop adapting for the session
 const SETTLE_MS = 25000;              // stable this long at a rung => persist it
 const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval average
 
@@ -145,6 +146,8 @@ const strikes = new Map();       // rung VALUE -> strike count (survives ladder 
 const lockedRungs = new Set();   // rung VALUEs barred from upward recovery this session
 let guard = null;                // pending "did the last drop help?" check
 let throttleSuspendedUntil = 0;  // absolute clock: drops suspended until here
+let capReverts = 0;              // futile drops reverted this session
+let frozen = false;              // adaptation given up: dropping proved not to help
 // persistence bookkeeping
 let settledFor = 0, settleReported = false, lastSettleValue = -1;
 // chrome dirty-flag: repaint the touch overlay only when its signature changes
@@ -165,6 +168,7 @@ export function rendererDiagnostics() {
     pinned: pinnedDensity,
     bloomSuppressed: isBloomSuppressed(px),
     throttled: throttleSuspendedUntil > lastFrameNow,
+    frozen,
     lockedRungs: [...lockedRungs],
     strikes: Object.fromEntries(strikes),
     settled: lastSettleValue < 0 ? null : lastSettleValue,
@@ -259,6 +263,8 @@ export function initRenderer(platform = {}, persistence = {}) {
   throttleSuspendedUntil = 0;
   densityCooldown = 0;
   guard = null;
+  capReverts = 0;
+  frozen = false;
   strikes.clear();
   lockedRungs.clear();
   resetAdaptiveSamples();
@@ -320,7 +326,7 @@ function resize() {
   const prevLadder = ladder;
   nativeDensity = cssW * dpr / W;
   ladder = buildLadder(nativeDensity);
-  adaptationEnabled = pinnedDensity == null && ladder.length > 1;
+  adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
     rung = seedRung();
   } else {
@@ -443,6 +449,12 @@ function resolveGuard(now) {
   arrivedAt = now;
   throttleSuspendedUntil = now + GUARD_SUSPEND_MS;
   densityCooldown = ADJUST_COOLDOWN_MS;
+  capReverts++;
+  // Twice now a deliberate drop didn't help: this device's frame rate isn't
+  // fill-bound (an OS cap, or it's CPU/paint-bound). Stop adapting for the
+  // session and hold this sharp rung rather than churning resizes that never
+  // buy frames and only blur the image on the way down.
+  if (capReverts >= CAP_REVERTS_TO_FREEZE) frozen = true;
   resetAdaptiveSamples();
   resetSettle();
   resize();
@@ -469,7 +481,10 @@ export function noteRendererFrame(now) {
   if (elapsed > SLOW_FRAME_MS) { slowFor += elapsed; fastFor = 0; }
   else if (elapsed <= FAST_FRAME_MS) { fastFor += elapsed; slowFor = 0; }
   else { slowFor = 0; fastFor = 0; }
-  if (guard && now >= guard.checkAt) { resolveGuard(now); return; }
+  // A pending probe gates every adjustment: hold until its verdict so a stall
+  // steps one bounded probe at a time instead of plunging to the floor chasing
+  // frames a density drop may not deliver.
+  if (guard) { if (now >= guard.checkAt) resolveGuard(now); return; }
   const suspended = now < throttleSuspendedUntil;
   // Emergency drop is deliberately checked BEFORE the cooldown gate so a hard
   // stall bails out immediately rather than waiting out a prior adjustment.

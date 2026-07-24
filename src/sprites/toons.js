@@ -187,7 +187,7 @@ export const TOON_SPECS = {
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
   // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
   // whole performance — she is not pleased to see you and she is not displeased.
-  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, nameTag: true, stout: true, armDepth: true, hands: true },
+  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true },
   raymn: { rig: 'ray' },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
@@ -862,7 +862,7 @@ const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4
 // animation played nine times.
 const CELEBRATE_MOVE = {
   lorenzo: 'hop', gnash: 'spin', fernwick: 'spin', b33p: 'shimmy', mochi: 'hop',
-  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex', dolores: 'bow',
+  chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex', dolores: 'hips',
 };
 // How high the signature bounce carries each hero. The light ones leave the
 // floor; Grumpos and the robot mostly rock in place.
@@ -1022,6 +1022,13 @@ function celebrateMotion(id, t, reworked = false) {
     m.lift = Math.sin(q * Math.PI) * 0.17;
     m.spin = Math.cos(q * Math.PI * 2);     // squeeze through zero: a flat turn
     m.peak = true;
+  } else if (move === 'hips') {
+    // Hands planted on the hips, proud: two small satisfied bobs — a downward
+    // press and a slight nod — rather than a bounce. No lift; her weight stays
+    // on the counter side of things. Peaks on the presses so the grin lands then.
+    const hit = Math.abs(Math.sin(q * Math.PI * 2));
+    m.squash = hit * 0.07; m.tilt = Math.sin(q * Math.PI * 2) * 0.045;
+    m.lift = 0; m.peak = hit > 0.62;
   } else if (move === 'bow') {
     const d = Math.sin(q * Math.PI);
     m.tilt = d * 0.26; m.x = d * 0.05; m.squash = d * 0.3; m.peak = d < 0.5;
@@ -2525,11 +2532,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       }
       handB = [shB + sideB * 0.04 * u, armY + armL * 0.5]; elbB = sideB;
     } else if (id === 'dolores' && raisedArmStudy) {
-      // A small, composed clap at sternum height replaces the generic victory
-      // fists; the existing formal bow still takes over on the big beat.
-      const clap = 0.018 * u * (0.5 + 0.5 * Math.sin(ct * 8));
-      handF = [sideF * clap, armY + armL * 0.18]; elbF = sideF;
-      handB = [sideB * clap, armY + armL * 0.18]; elbB = sideB;
+      // Her signature stance, made celebratory: both hands planted on the hips,
+      // elbows winged, with a small proud press on the pump. The 'hips' big move
+      // holds the same shape, so it reads as a satisfied "there" throughout.
+      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.78 - Math.abs(pump) * 0.5;
+      handF = [shoulderCx + sideF * hipX, hipY]; elbF = sideF;
+      handB = [shoulderCx + sideB * hipX, hipY]; elbB = sideB;
     } else if (id === 'lorenzo' && raisedArmStudy) {
       // Separate the fists from the cap and bend the elbows OUTWARD. Besides
       // preserving the face silhouette, the wider targets stop the elbows
@@ -2546,6 +2554,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (cm.move === 'spin') {
       handF = [shF + sideF * 0.3 * u, armY - armL * 0.25]; elbF = sideF;
       handB = [shB + sideB * 0.3 * u, armY - armL * 0.25]; elbB = sideB;
+    } else if (cm.move === 'hips') {
+      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.78;
+      handF = [shoulderCx + sideF * hipX, hipY]; elbF = sideF;
+      handB = [shoulderCx + sideB * hipX, hipY]; elbB = sideB;
     } else if (cm.move === 'bow') {
       handF = [shF + sideF * 0.18 * u, armY + armL * 0.75]; elbF = sideF;
       handB = [shB + sideB * 0.22 * u, armY + armL * 0.55]; elbB = sideB;
@@ -3570,6 +3582,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // Filled in by the straps block below when the near arm roots on top of the
   // near suspender; run after drawFrontArm() so the strap crosses the shoulder.
   let strapOverArm = null;
+  // Same idea for the apron's pinafore straps: during a hands-on-hip beat the
+  // arm draws in front and would bury them, so this re-strokes the straps over
+  // that arm the way a suspender crosses the shoulder.
+  let apronStrapOver = null;
   if (spec.straps && !lod && !duck) {
     // Straps and belt track the torso's run-lean shift (leanX * 0.5), else
     // they drift off-center whenever the body leans forward.
@@ -3888,15 +3904,40 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     });
     if (!lod) {
-      // Pinafore shoulder straps: two bands from the bib's top corners up over
-      // the shoulders. They give the bib something to hang FROM — so it reads as
-      // an apron held up by straps, not a white panel floating on her chest —
-      // and they frame the shoulders the arms swing off, which is what stops a
-      // hand-on-hip arm from looking like it crosses a free-floating bib.
-      const strapW = 0.048 * u;
-      for (const s of [-1, 1]) {
-        limb(ctx, px + s * wBib * 0.9, bibTop + 0.01 * u, px + s * torsoHalf * 0.44, shoulderY + 0.004 * u, strapW, p.a, Math.max(0.4, ow * 0.5));
-      }
+      // Pinafore straps, drawn like Lorenzo's suspenders: strokes CLIPPED to the
+      // torso, so each one crosses the shoulder and stops at the shoulder line
+      // rather than floating past it as a separate band. They land on the bib's
+      // top corners and splay out a touch as they rise up over the shoulders.
+      const strapTopY = torsoTop + 0.01 * u;
+      const strapPath = () => {
+        ctx.beginPath();
+        for (const s of [-1, 1]) {
+          ctx.moveTo(px + s * torsoHalf * 0.6, strapTopY);
+          // Run PAST the bib's top edge, down onto the bib, so the strap overlaps
+          // and joins it — cream into cream, no gap — instead of stopping a hair
+          // short and leaving a sliver of body showing between strap and bib.
+          ctx.lineTo(px + s * wBib * 0.9, bibTop + 0.09 * u);
+        }
+      };
+      const drawStraps = () => {
+        ctx.save();
+        ctx.beginPath(); torsoPath(ctx); ctx.clip();
+        ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+        // Outline first, then the apron fill on top — so the straps carry the
+        // same dark edge as the bib and read as one continuous piece of it.
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = 0.052 * u + ow * 2;
+        strapPath(); ctx.stroke();
+        ctx.strokeStyle = p.a; ctx.lineWidth = 0.052 * u;
+        strapPath(); ctx.stroke();
+        ctx.restore();
+      };
+      // Draw the straps ONCE. If an arm is going to paint in front of them (the
+      // hands-on-hip idle or the celebrate clap), defer the whole draw to AFTER
+      // that arm instead of drawing here and re-stroking over it — a second pass
+      // would double the translucent outline and darken the straps.
+      const strapsAfterArm = armsInFront || clapFront;
+      if (!strapsAfterArm) drawStraps();
+      apronStrapOver = strapsAfterArm ? drawStraps : null;
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = OUTLINE;
@@ -3910,6 +3951,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // always has a pen in it.
       outlined(ctx, p.b, Math.max(0.4, ow * 0.45),
         (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u));
+      // Name tag pinned to the bib — expected on a counter server. A pale badge
+      // with a coloured header strip and a scribble of a name: small enough to
+      // read as a badge, not a sign, and it holds down to the counter size.
+      const tagW = 0.12 * u, tagH = 0.066 * u;
+      const tagX = px - tagW / 2, tagY = bibTop + 0.1 * u;
+      outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u));
+      ctx.save();
+      ctx.beginPath(); roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u); ctx.clip();
+      ctx.fillStyle = p.b; ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
+      ctx.restore();
+      ctx.strokeStyle = '#5a5546'; ctx.lineWidth = Math.max(0.32, ow * 0.32);
+      ctx.beginPath();
+      ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
+      ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
+      ctx.stroke();
     }
   }
   if (!clapFront && (!stand || raisedArmStudyFront)) {
@@ -3944,6 +4000,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
     handDeco(handB[0], handB[1]);
     drawFrontArm();
+    if (apronStrapOver) apronStrapOver(); // straps cross OVER the arms (Dolores' hips celebrate)
   }
   // Front-pass standing idle (see armsInFront): far arm then near arm, both over
   // the apron, so hands resting on the hips read as hands and not bumps.
@@ -3952,6 +4009,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
     handDeco(handB[0], handB[1], farShade);
     drawFrontArm();
+    if (apronStrapOver) apronStrapOver(); // straps cross OVER the shoulder, not under the arm
   }
 }
 

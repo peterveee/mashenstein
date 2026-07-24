@@ -43,7 +43,7 @@ const stage = {
   mission: { type: 'reach', desc: 'TEST' }, challenge: { type: 'coins', n: 99, desc: 'TEST' },
   durationSec: 40, applianceAt: 0.5, applianceHigh: false,
 };
-const run = new RunState({ stage, save, seed: 81, difficulty: 1, onEnd: () => {} });
+const run = new RunState({ stage, save, seed: 81, difficulty: 1, skipRunIn: true, onEnd: () => {} });
 run.enter();
 run.relay.current = 'fernwick';
 run.player.setHero('fernwick');

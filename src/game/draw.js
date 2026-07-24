@@ -317,13 +317,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
 
   if (e.def.stack && e.n > 1) {
     // Each box gets the same 4/3 inflation a lone crate does, so a stack reads
-    // as two of the SAME crate, and they're stepped by that DRAWN height so
-    // they sit edge-to-edge instead of overlapping. The art then stands taller
+    // as two of the SAME crate. The painter leaves a fine inset around each
+    // face, so overlapping the drawn boxes by 2px makes their visible edges
+    // meet instead of leaving a background seam. The art then stands taller
     // than the n*11 hitbox — the same direction of slack a lone crate already
     // has, i.e. erring toward letting the player through.
     // dy is the nominal 11px box top; the inflated art hangs 4px above it and
-    // ends at dy + 11, so stepping dy by the drawn height stacks bottom-to-top.
-    const step = Math.round(11 * 4 / 3);
+    // ends at dy + 11, so the reduced step stacks bottom-to-top without a seam.
+    const step = Math.round(11 * 4 / 3) - 2;
     for (let i = 0; i < e.n; i++) draw1(x, Math.round(GROUND_Y - 11 - i * step), 'bottom', false, bw, 11);
   } else if (e.def.tall) {
     // one tall piece of art rather than two stacked tiles

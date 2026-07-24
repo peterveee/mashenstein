@@ -18,7 +18,7 @@ function assert(cond, msg) {
 
 save.load(); save.newSlot(0, 0);
 const stage = { id: 'star-1', cabinet: 'plumber', index: 1, mission: { type: 'reach', desc: 'TEST' }, challenge: { type: 'coins', n: 99, desc: 'TEST' }, durationSec: 40, applianceAt: 0.5 };
-const run = new RunState({ stage, save, seed: 7, difficulty: 1, onEnd: () => {} });
+const run = new RunState({ stage, save, seed: 7, difficulty: 1, skipRunIn: true, onEnd: () => {} });
 run.enter();
 
 assert(!Audio.starMode, 'star layer is off at the top of a run');
@@ -73,7 +73,7 @@ const realSfx = Audio.sfx.bind(Audio);
 Audio.sfx = (name, opt) => { heard.push({ name, opt }); realSfx(name, opt); };
 
 const box = makeObstacle('qcrate', 500);
-const boxRun = new RunState({ stage, save, seed: 3, difficulty: 1, onEnd: () => {} });
+const boxRun = new RunState({ stage, save, seed: 3, difficulty: 1, skipRunIn: true, onEnd: () => {} });
 boxRun.enter();
 boxRun.fxRng.chance = () => false;   // coins, not a prize capsule
 boxRun.breakObstacle(box);

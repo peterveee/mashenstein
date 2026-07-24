@@ -85,6 +85,26 @@ export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
 );
 const BASE_SPEED = 160;
+// The hero is off stage when a level opens: he sprints in from beyond the left
+// edge to the running anchor (PLAYER_X) before the world goes live. Behind an
+// ACT card he waits out of frame until it lifts; on a card-less stage the
+// entrance IS the opening beat. START_X sits far enough left to clear the widest
+// hero + carried weapon at the resting zoom, so nothing pokes on screen while he
+// waits. The pace matches the base run so his stride reads as planted rather
+// than skated, which puts the whole entrance at roughly half a second.
+const INTRO_RUN_START_X = -30;
+// The entrance winds up rather than trotting in at a fixed clip: he enters at
+// this fraction of the run speed and accelerates HARD to full by the start line,
+// so momentum is already built when the live run takes the speed over — arriving
+// at full speed is what keeps the handoff free of a gear-change (both his legs
+// and the world are at run pace at the line). Deliberately NOT ease-out: a
+// fast-in/slow-settle arrival would land below run speed and jerk on handoff.
+const INTRO_RUN_SLOW = 0.45;
+// Shape of that ramp against distance covered. 1 is a straight line; >1 is an
+// ease-in that keeps him slower early then surges onto the line. Held modest so
+// the whole walk-on lands near 0.9s — brisk, not a crawl. Kept off the SLOW
+// floor so he never stalls at the edge.
+const INTRO_RUN_EXP = 1.8;
 // Where the camera parks relative to the tape, and so how long the hero's
 // screen-space dash at the end of a stage is: PLAYER_X to here. It is a VIEW
 // measurement, not a screen one — at W-58 the goal would sit 422 world px ahead
@@ -110,6 +130,11 @@ export class RunState {
     this.unplugged = opts.difficulty === 5;
     this.startingPowerup = opts.startingPowerup || null;
     this.introDone = false; // constructor, not enter(): death-restarts must not replay the intro stall
+    // Same reasoning for the bench-upgrade toasts: enter() re-runs on every
+    // death-restart, so announce them once per run and never again. A retry from
+    // the results screen rebuilds the RunState, so it carries announceBench:false
+    // to keep the second attempt from replaying them too.
+    this.benchAnnounced = opts.announceBench === false;
     // Dev-only inspection flags. Constructor, not enter(): a death-restart must
     // not silently drop them and turn a crash test back into a lethal run.
     this.devInvuln = !!opts.devInvuln;
@@ -198,6 +223,10 @@ export class RunState {
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
+    // Off-screen entrance. Defaulted here to the resting anchor so a restart or
+    // any early position read is safe; the opener below arms the actual run-in.
+    this.introRunning = false;
+    this.introRunX = PLAYER_X;
     this.deadT = 0;
     this.failMsg = null;
     this.failDetail = null;     // the counted shortfall, when the line was crossed short
@@ -211,12 +240,18 @@ export class RunState {
     this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
-    // Equipped bench upgrades announce themselves the same way a banked plug
+    // Purchased bench upgrades announce themselves the same way a banked plug
     // does: gold pills sliding in under the health bar, one after another, in
-    // place of a full-screen card that froze the opening of the run.
-    for (const u of BENCH_UPGRADES) {
-      const lvl = slot.bench[u.id] || 0;
-      if (lvl > 0) this.goalToasts.push({ text: `${u.name} ${'I'.repeat(lvl)}`, t: 2.4, t0: 2.4 });
+    // place of a full-screen card that froze the opening of the run. Only tiers
+    // the player actually bought count — the free base level (Shield/Magnet are
+    // owned at level 1) says nothing. Once per run only: enter() re-runs on a
+    // death-restart, and a run that dies mid-parade simply drops the rest.
+    if (!this.benchAnnounced) {
+      this.benchAnnounced = true;
+      for (const u of BENCH_UPGRADES) {
+        const rank = (slot.bench[u.id] || 0) - u.base;
+        if (rank > 0) this.goalToasts.push({ text: `${u.name} ${'I'.repeat(rank)}`, t: 2.4, t0: 2.4 });
+      }
     }
     this.goalSeen = { mission: false, challenge: false };
     this.portal = null;         // active portal entity
@@ -252,14 +287,25 @@ export class RunState {
     this.introText = act;
     this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
     this.introSkippable = !!act && seen;
+    // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
+    // death-restart drops the hero straight onto the anchor), but independent of
+    // the card's seen/done fade: it plays on every first entry, card or not. A
+    // card holds him out of frame first; then he runs in as it lifts. Reduced
+    // motion opts out — the hero simply starts planted at the anchor.
+    const runIn = opens && !this.save.settings.reducedMotion && !this.o.skipRunIn;
+    this.introRunning = runIn;
+    this.introRunX = runIn ? INTRO_RUN_START_X : PLAYER_X;
     // Authored intros can be spoken by a named cast member — including one who
     // is not on this run's team. Ringside commentary still gets a face.
     const bubble = intro ? { text: intro, t: 4.0, who: this.stage.introBy || 'intro' } : null;
-    // Behind a card, the bubble waits for the world (see update). Its four
-    // seconds are meant to be four seconds of running, and it would otherwise
-    // spend half of them dimmed under the banner's scrim.
-    this.introSpeech = act ? bubble : null;
-    if (bubble && !act) this.speech = bubble;
+    // The opening bubble waits for the hero to reach the anchor — behind a card
+    // or not — so its four seconds are four seconds of live running rather than
+    // half-spent under a banner's scrim or over an empty entrance. On a run-in it
+    // is released by updateIntroRun; with the run-in off (reduced motion) it
+    // starts here, since there is no entrance to wait on.
+    const bubbleAfterEntrance = bubble && !act && runIn;
+    this.introSpeech = (act || bubbleAfterEntrance) ? bubble : null;
+    if (bubble && !act && !runIn) this.speech = bubble;
     if (act && !this.save.settings.reducedMotion) shake(3, 0.3);
     this.copter = null;         // chase mission / taunt flyby
     this.tauntT = 30;
@@ -583,14 +629,20 @@ export class RunState {
         this.introFreeze = ACT_BANNER_FADE;
         Audio.sfx('uiConfirm');
       }
-      // The card owned the freeze; the moment it lifts, whoever was waiting to
-      // talk over the opening seconds gets the screen.
-      if (this.introFreeze <= 0 && this.introSpeech) {
+      // The card owned the freeze; the moment it lifts, the run-in takes over
+      // (see below) and the hero sprints in. Only when there is no run-in to
+      // wait on — reduced motion drops him straight onto the anchor — does the
+      // waiting bubble get the screen here instead of at the end of the entrance.
+      if (this.introFreeze <= 0 && this.introSpeech && !this.introRunning) {
         this.speech = this.introSpeech;
         this.introSpeech = null;
       }
       Input.endFrame(); return;
     }
+    // Off-screen entrance: with any card lifted, the hero runs in from the left
+    // to the anchor while the world holds still. The level does not go live
+    // until he arrives — gameplay is everything below this gate.
+    if (this.introRunning) { this.updateIntroRun(dt); Input.endFrame(); return; }
     if (this.hitstop > 0) { this.hitstop -= dt; Input.endFrame(); return; }
     if (this.dead) { this.updateDead(dt); Input.endFrame(); return; }
 
@@ -730,10 +782,66 @@ export class RunState {
   // to shorten the victory lap, but it must not make the pole jump back out to
   // a constant the moment the hero starts running at it.
   finishScreenX() { return this.finishWorldX() - this.camX; }
-  playerWorldX() { return this.camX + (this.finishing ? this.finishPlayerX : PLAYER_X); }
+  // The hero's drawn screen column. Fixed at PLAYER_X through normal play, but
+  // the two scripted runs move it: the finish dash carries it right toward the
+  // tape, the opening run-in carries it up from off the left edge. Every
+  // position consumer (world x, hitbox, draw) reads it here so all three agree.
+  heroScreenX() {
+    if (this.finishing) return this.finishPlayerX;
+    if (this.introRunning) return this.introRunX;
+    return PLAYER_X;
+  }
+  playerWorldX() { return this.camX + this.heroScreenX(); }
   playerBox() {
-    const screenX = this.finishing ? this.finishPlayerX : PLAYER_X;
-    return this.player.box(this.camX, this.groundYAt(this.playerWorldX()), screenX);
+    return this.player.box(this.camX, this.groundYAt(this.playerWorldX()), this.heroScreenX());
+  }
+
+  // Opening run-in: the hero runs himself onto the stage while the WORLD holds
+  // still — camera parked, nothing spawning, no hazards, so the entrance is never
+  // a place to die. But it is not a cutscene: jump and the hero's ability are
+  // read live, exactly as they are on the finish dash, so an eager player is met
+  // with a hop or a shot rather than a dead frame. Only the world is frozen; the
+  // hero and what he fires stay alive. The level goes live (update falls through
+  // past the introRunning gate) the instant he reaches the anchor.
+  updateIntroRun(dt) {
+    // Speed ramps with how far across the apron he is: slow off the edge, full
+    // by the start line, curved by INTRO_RUN_EXP so the wind-up reads as an
+    // exponential surge rather than an even glide. The run cycle is fed the same
+    // speed, so the stride winds up in step with the travel.
+    const full = this.baseSpeed();
+    const p = Math.max(0, Math.min(1,
+      (this.introRunX - INTRO_RUN_START_X) / (PLAYER_X - INTRO_RUN_START_X)));
+    const sp = full * (INTRO_RUN_SLOW + (1 - INTRO_RUN_SLOW) * Math.pow(p, INTRO_RUN_EXP));
+    this.introRunX = Math.min(PLAYER_X, this.introRunX + sp * dt);
+
+    // Live input. tRun and powerup timers deliberately do NOT advance — the
+    // legend and any starting powerup belong to the run, not to the walk-on —
+    // but the buttons that shape the hero do. Real Input (not a null stub) so a
+    // held jump gives its full arc and a duck reads through. sp is fed as the
+    // run-cycle speed so the legs match the accelerating travel.
+    this.player.powerJumpBonus = this.powerups.bonusJumps();
+    if (Input.pressed('jump')) this.player.jumpPressed(Audio);
+    if (Input.pressed('ability')) this.useAbility();
+    const res = this.player.update(dt, Input, {
+      speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
+    });
+    if (res.landed) Audio.sfx('land');
+    // Keep whatever he fired alive and framed. The world is parked, so shots
+    // travel on their own velocity only (scroll term 0); no collide() — there is
+    // nothing on this apron to hit, and nothing may hit him.
+    this.updateProjectiles(dt, 0);
+    this.updateChompBites(dt);
+    this.updateCamera(dt);
+    updateParticles(dt);
+    updateShake(dt, () => this.fxRng.float());
+
+    if (this.introRunX >= PLAYER_X) {
+      this.introRunX = PLAYER_X;
+      this.introRunning = false;
+      // The hero is home: hand the held-back opening bubble to the live run so
+      // it talks over running, not over an empty stage.
+      if (this.introSpeech) { this.speech = this.introSpeech; this.introSpeech = null; }
+    }
   }
 
   startFinishRun() {
@@ -1661,6 +1769,12 @@ export class RunState {
       // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
       if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
       if (this.player.invincible || this.powerups.isInvincible()) {
+        // Targets and switches are objectives, not hazards. Post-hit i-frames
+        // must not make a !-crate temporarily unusable.
+        if (ob.def.isTarget || ob.def.isSwitch) {
+          this.breakObstacle(ob);
+          continue;
+        }
         if ((this.player.dashT > 0 || this.powerups.isInvincible()) && ob.def.breakable) this.breakObstacle(ob);
         continue;
       }
@@ -2093,8 +2207,10 @@ export class RunState {
       }
     }
 
-    // Player.
-    const heroScreenX = this.finishing ? this.finishPlayerX : PLAYER_X;
+    // Player. During the opening run-in this is off the left edge, so the hero
+    // draws his way in from beyond the frame (and stays out of sight behind an
+    // ACT card, which lifts before he moves).
+    const heroScreenX = this.heroScreenX();
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan,
       groundY: this.groundYAt(cam + heroScreenX),
@@ -2130,8 +2246,9 @@ export class RunState {
       // readable — the tension is squinting, not guessing. Drawn in screen
       // space with a screen-space radius: scaled with the zoom it would light
       // nearly the whole frame and the mission would stop being a mission.
-      const px = (PLAYER_X + 6) * z;
-      const py = screenYFor(this.groundYAt(cam + PLAYER_X) - this.player.y - 8, z, pan);
+      const hsx = this.heroScreenX();   // follows the opening run-in, not the anchor
+      const px = (hsx + 6) * z;
+      const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan);
       const r = 130;
       const g = ctx.createRadialGradient(px, py, r * 0.35, px, py, r);
       g.addColorStop(0, 'rgba(8,6,12,0)');

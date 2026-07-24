@@ -129,7 +129,7 @@ function drawStatusPill(ctx, run) {
     x += splitW;
   }
   drawProp(ctx, 'hudCoin', x, PILL_CY - COIN_D / 2, COIN_D, COIN_D);
-  drawCoinGlitter(ctx, x, PILL_CY - COIN_D / 2, COIN_D, run.tRun);
+  drawCoinGlitter(ctx, x, PILL_CY - COIN_D / 2, COIN_D, run);
   rawDrawText(ctx, count, x + COIN_D + 3, textY(PILL_CY), '#ffffff', 1, 'bold');
   // One-hit runs have no cells to show, so the pill states the terms instead —
   // on its own panel under it, red-edged, where the row of cells would have
@@ -198,18 +198,19 @@ function drawGoldTick(ctx, cx, cy, r) {
   ctx.restore();
 }
 
-// A twinkle riding the HUD coin. Two four-point stars a half-cycle apart, each
-// lit for only part of its swing, so the icon catches the light now and then
-// instead of strobing — a constant sparkle next to a live score reads as an
-// alert.
-function drawCoinGlitter(ctx, x, y, size, t) {
-  const spots = [[0.72, 0.24, 0], [0.26, 0.7, 0.55]];
+// The coin catches the light twice in a normal level. It is a small flourish,
+// not an alert competing with the live count beside it.
+function drawCoinGlitter(ctx, x, y, size, run) {
+  const progress = Number.isFinite(run.totalDist) && run.totalDist > 0
+    ? Math.max(0, Math.min(1, run.distance / run.totalDist))
+    : ((run.tRun || 0) % 45) / 45;
+  const glints = [[0.3, 0.72, 0.24], [0.72, 0.26, 0.7]];
   ctx.save();
   ctx.fillStyle = '#fffce0';
-  for (const [fx, fy, phase] of spots) {
-    const p = (((t || 0) / 1.9 + phase) % 1 + 1) % 1;
-    if (p > 0.4) continue;
-    const k = Math.sin((p / 0.4) * Math.PI);
+  for (const [at, fx, fy] of glints) {
+    const p = Math.abs(progress - at) / 0.012;
+    if (p >= 1) continue;
+    const k = Math.sin((1 - p) * Math.PI);
     // The star overhangs the coin rim at full swell — a sparkle contained
     // inside the disc just reads as a chipped highlight.
     const r = size * 0.55 * k;
