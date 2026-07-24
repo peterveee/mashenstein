@@ -1,5 +1,6 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
+import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
@@ -12,6 +13,10 @@ const SFX_TRIM = {
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  // A latch clack plus a bell on inharmonic partials sums hotter at the strike
+  // than the clean chime this replaced; trim it back into the coin/purchase
+  // family instead of letting the clang jump the mix.
+  cash: 0.7,
   // A tail layer, not an event: it should colour the break, never top it.
   debris: 0.65,
   // Fireworks. These layer UNDER 'ui' and 'coin' rather than replacing them,
@@ -29,26 +34,14 @@ const SFX_TRIM = {
   waka: 0.45,
 };
 
-// Keep these as files rather than bundling them into game.js so the iPhone
-// gate does not download game audio before it has allowed the game to load.
-export const CONTACT_AUDIO = {
-  b33p: 'audio/weapon-candidates/25-contact-b33p-orb-pop.wav',
-  grumpos: 'audio/weapon-candidates/26-contact-grumpos-axe-chop.wav',
-  lorenzo: 'audio/weapon-candidates/27-contact-lorenzo-wrench-hit.wav',
-  raymn: 'audio/weapon-candidates/28-contact-raymn-fist-impact.wav',
-  fernwick: 'audio/weapon-candidates/29-contact-fernwick-shield-bonk.wav',
-  chompo: 'audio/weapon-candidates/30-contact-miss-chomp-crunch.wav',
-};
+// The weapon cues used to ship as .wav assets fetched at runtime. They are now
+// synthesised into buffers at init from src/engine/weapon-sfx.js — the same
+// recipes, so the sound is unchanged, but nothing is downloaded. The hero->cue
+// maps live there; audio.js only needs to know which buffers to render.
 
-export const LAUNCH_AUDIO = {
-  b33p: 'audio/weapon-candidates/01-b33p-laser-orb-pulse.wav',
-  raymn: 'audio/weapon-candidates/08-raymn-rocket-fist-launch.wav',
-  grumpos: 'audio/weapon-candidates/18-grumpos-axe-throw-ring.wav',
-};
-
-// The WAVs share a peak ceiling, but their timbres have different perceived
-// loudness. These restrained trims bring the family together without boosting
-// any cue above its authored level.
+// The cues share a peak ceiling (weapon-sfx normalises each to ~0.88), but
+// their timbres have different perceived loudness. These restrained trims bring
+// the family together without boosting any cue above its authored level.
 const WEAPON_AUDIO_GAIN = {
   // B-33P is intentionally much lower: the orb's bright upper partials read
   // louder than its waveform peak, especially on laptop and phone speakers.
@@ -77,9 +70,7 @@ class AudioSys {
     this.cueGain = 1;
     this.noiseBuf = null;
     this.contactBuffers = {};
-    this.contactLoad = null;
     this.launchBuffers = {};
-    this.launchLoad = null;
     // sequencer
     this.bpm = 112;
     this.step = 0;
@@ -160,8 +151,7 @@ class AudioSys {
     this.crashBuf = this.ctx.createBuffer(1, clen, this.ctx.sampleRate);
     const cd = this.crashBuf.getChannelData(0);
     for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
-    this.loadContactAudio();
-    this.loadLaunchAudio();
+    this.renderWeaponBuffers();
     this.startSequencer();
     if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
   }
@@ -204,28 +194,27 @@ class AudioSys {
     this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
   }
 
-  loadContactAudio() {
-    this.contactLoad = this.loadAudioSet(CONTACT_AUDIO, this.contactBuffers, 'contact', this.contactLoad);
-  }
-
-  loadLaunchAudio() {
-    this.launchLoad = this.loadAudioSet(LAUNCH_AUDIO, this.launchBuffers, 'launch', this.launchLoad);
-  }
-
-  loadAudioSet(files, buffers, label, pending) {
-    if (pending || !this.ctx || typeof fetch !== 'function') return pending;
-    return Promise.all(Object.entries(files).map(async ([id, path]) => {
-      try {
-        const response = await fetch(path);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.arrayBuffer();
-        buffers[id] = await this.ctx.decodeAudioData(data);
-      } catch (err) {
-        // A loose/dev build can still play the procedural impact if an asset
-        // is unavailable or a cache refuses one of the files.
-        console.warn(`${label} audio unavailable for ${id}; using procedural fallback.`, err);
+  // Synthesise the weapon cues into buffers, once, at init. A few ms of math at
+  // the context's own sample rate replaces fetching and decoding nine WAVs;
+  // every shot then plays a cheap buffer source, exactly as before. Rendering
+  // is synchronous and cannot half-fail the way a network fetch could, so the
+  // procedural fallbacks in playContact/playLaunch now only guard a missing ctx.
+  renderWeaponBuffers() {
+    const SR = this.ctx.sampleRate;
+    const bake = (cueMap, buffers) => {
+      for (const [hero, name] of Object.entries(cueMap)) {
+        try {
+          const samples = renderCue(name, SR);
+          const buf = this.ctx.createBuffer(1, samples.length, SR);
+          buf.getChannelData(0).set(samples); // Float64 -> Float32 on copy
+          buffers[hero] = buf;
+        } catch (err) {
+          console.warn(`weapon cue ${name} failed to render; using procedural fallback.`, err);
+        }
       }
-    }));
+    };
+    bake(CONTACT_CUE, this.contactBuffers);
+    bake(LAUNCH_CUE, this.launchBuffers);
   }
 
   // ---- SFX ------------------------------------------------------------------
@@ -531,6 +520,40 @@ class AudioSys {
       case 'jump2': this.jumpTone(0, 1.5, 0.045); break; // double jump: same shape, a fifth up
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
       case 'coin': this.osc('square', 988 * pitch, 988 * pitch, 0.06, 0.12); this.osc('square', 1319 * pitch, 1319 * pitch, 0.07, 0.12, 0.06); break;
+      // A cash-register cha-CHING. What sells it is the CONTRAST between the
+      // two halves — make them the same and it just reads as a two-note
+      // doorbell. So:
+      //   "cha"  — the drawer latch: a short, dull mechanical clack, all noise
+      //            and a woody thunk, no ring.
+      //   "ching"— the register bell: bright INHARMONIC partials that ring out.
+      //            Metal reads as metal because it resonates at non-integer
+      //            ratios; these are the modes of an ideal free bar
+      //            (1 : 2.76 : 5.40 : 8.93, the glockenspiel), struck by a
+      //            bright noise transient. This half is the whole gesture, so
+      //            it lands higher, louder and long.
+      case 'cash': {
+        const barModes = [[1, 0.5], [2.76, 0.34], [5.40, 0.2], [8.93, 0.12]];
+        // "cha": the drawer latch snapping open — a chunky mechanical clack
+        // with real body, not a soft thud. A bright click transient, a midrange
+        // mechanical rasp for meat, a square thunk for weight, and a short
+        // DAMPED metallic ring on the same bar modes as the bell (choked off
+        // fast, so the two halves share a metal but stay clearly distinct).
+        this.noise(0.035, 0.14, 'highpass', 3200);   // latch click
+        this.noise(0.05, 0.13, 'bandpass', 1800);    // mechanical rasp — mid body
+        this.osc('square', 300, 175, 0.07, 0.11);    // woody thunk with harmonics
+        for (const [ratio, amp] of barModes.slice(0, 3)) {
+          this.osc('sine', 330 * ratio, 330 * ratio, 0.09 * (ratio < 3 ? 1 : 0.6), 0.12 * amp);
+        }
+        // "ching": the register bell, a beat later — the payoff, higher and
+        // ringing out. Bright INHARMONIC free-bar partials struck by a noise
+        // transient; upper modes decay faster, the way a real bar rings out.
+        const bell = 0.14;
+        this.noise(0.012, 0.13, 'highpass', 7000, bell);   // striker on the bell
+        for (const [ratio, amp] of barModes) {
+          this.osc('sine', 784 * ratio, 784 * ratio, 0.62 * (ratio < 3 ? 1 : 0.55), 0.18 * amp, bell);
+        }
+        break;
+      }
       case 'power': [523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.15, i * 0.07)); break;
       case 'shield': this.noise(0.2, 0.2, 'highpass', 2000); this.osc('sawtooth', 220, 80, 0.25, 0.18); break;
       // Invincibility on: a fast rising run that lands on an octave shimmer.

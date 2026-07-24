@@ -3,8 +3,8 @@
 import { W, H, chrome as chromeGeo, chromeCtx } from '../../engine/renderer.js';
 import { Input } from '../../engine/input.js';
 import { Audio } from '../../engine/audio.js';
-import { drawText, drawTextCentered, getSprite, textWidth, platePath, drawMenuRow, drawRoundButton, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
-import { drawToon, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
+import { drawText, drawTextCentered, getSprite, textWidth, wrapText, platePath, drawMenuRow, drawRoundButton, drawPanel, drawKeyLegend, TEXT_INK_TOP, TEXT_INK_H } from '../../engine/sprites.js';
+import { drawToon, toonFaceSprite, toonInkTop, poseFromPlayer } from '../../sprites/toons.js';
 import { drawProp } from '../../sprites/props.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawDeadScreen, drawScreenSweep,
@@ -12,11 +12,12 @@ import {
 } from '../../sprites/arcade.js';
 import {
   hubWallBays, BAY_W, drawWallBay, drawPoster, wallLitFrom, POSTER_W, POSTER_H,
+  MENU_PANEL_CENTRE, MENU_PANEL_W,
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
-import { BENCH_UPGRADES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
+import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
 import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage } from '../progress.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
@@ -38,6 +39,61 @@ const CORRUPTED_MODIFIERS = [
   { id: 'randomswap', name: 'RANDOM TAGS', desc: 'PORTALS ARRIVE TWICE AS OFTEN. NOBODY ASKED.' },
   { id: 'narration', name: 'INACCURATE LORE', desc: 'EGGSHELL DESCRIBES A DIFFERENT GAME.' },
 ];
+
+const BENCH_AFFORDABILITY_GAGS = [
+  'A BOLD PURCHASE. THE COINS DISAGREE.',
+  'PLEASE RETURN WITH A LESS THEORETICAL WALLET.',
+  'THAT IS NOT ENOUGH MONEY. IT IS A NICE START, THOUGH.',
+  'THE UPGRADE REMAINS AVAILABLE TO PEOPLE WITH COINS.',
+  'YOUR COIN COUNT FAILS TO REACH THE REQUIRED THRESHOLD.',
+  'I DO NOT ACCEPT PROMISES, ONLY HARD CURRENCY.',
+  'THIS IS A PURCHASE COUNTER, NOT A WISH FULFILLMENT CENTER.',
+  'THE DISPLAY BOARD IS CLEAR. YOUR FUNDS ARE NOT.',
+  'RETURN WHEN YOUR BALANCE MATCHES YOUR AMBITION.',
+  'I CANNOT EXTEND CREDIT.',
+  'A VALID ATTEMPT. UNFORTUNATELY, THE TILL IS UNIMPRESSED.',
+  'I AM NOT AUTHORIZED TO GIVE DISCOUNTS. CLEAR THE LINE.',
+  'TIER [TIER] REQUIRES HARD CURRENCY, NOT GOOD INTENTIONS.',
+  'YOU ARE SHORT FOR THIS TIER. STOP WASTING MY TIME',
+];
+
+const BENCH_SUCCESS_GAGS = [
+  'TRANSACTION COMPLETE.',
+  'PAYMENT RECEIVED.',
+  'PORTION ALLOCATED.',
+  'TRANSACTION LOGGED.',
+  'PAYMENT SATISFIED. PLEASE VACATE THE COUNTER AREA.',
+  'TIER UPGRADE APPLIED.',
+  'PAYMENT LOGGED.',
+];
+
+const BENCH_SOLD_OUT_GAGS = [
+  'CLICKING AGAIN WILL NOT RESTOCK THE CABINET.',
+  'THAT TIER IS EXHAUSTED. SELECT FROM AVAILABLE INVENTORY.',
+  'NO STOCK MEANS NO TRANSACTION. MOVE ALONG.',
+  'THAT ITEM WAS REMOVED FROM SHELF DISPLAY. READ THE RED TEXT.',
+  'TIER [TIER] IS OUT OF STOCK. DO NOT BLOCK THE LINE.',
+  'COUNTER POLICY PROHIBITS ISSUING BEYOND THIS POINT.',
+  'THE CABINET IS EMPTY. PRESSING THE BUTTON WILL NOT FILL IT.',
+  'I CANNOT SELL WHAT DOES NOT EXIST. SELECT ANOTHER PORTION.',
+  'TIER [TIER] IS OUT OF STOCK. DO NOT STAND IN THE QUEUE.',
+  'COUNTER POLICY PROHIBITS ISSUING BEYOND TIER [CURRENT]. MOVE ALONG.',
+  'THAT TIER HAS BEEN EXHAUSTED. SELECT AN AVAILABLE PORTION.',
+];
+
+const BENCH_SOLD_OUT_NOTICES = [
+  'TIER [TIER] IS OUT OF STOCK. DO NOT ASK ABOUT THE TRUCK.',
+  'MAX QUANTITY REACHED. POLICY PROHIBITS FURTHER PORTIONING.',
+  'ITEM DISCONTINUED UNTIL LUNCH RUSH CONCLUDES.',
+  'SUPPLY EXHAUSTED. PLEASE CHOOSE FROM AVAILABLE DISPLAY ITEMS.',
+  'TIER [TIER] UNAVAILABLE. THE HEATED HOLDING CABINET IS EMPTY.',
+  'THIS ITEM IS NO LONGER IN SERVICE. ADJUST YOUR EXPECTATIONS ACCORDINGLY.',
+];
+
+function benchGag(pool, replacements = {}) {
+  const source = pool[Math.floor(Math.random() * pool.length)];
+  return source.replace(/\[([A-Z]+)\]/g, (_, key) => replacements[key] ?? key);
+}
 export { CORRUPTED_MODIFIERS };
 
 // Food-court camera: zoomed in from the old 1:1 view so the cast, stations
@@ -292,6 +348,21 @@ function nearestTo(list, x, r) {
     if (d < bd) { bd = d; best = it; }
   }
   return best;
+}
+
+// The serving counter is wider and taller than its station's approach radius.
+// Its menu board is the sign behind Dolores, so both rendered surfaces belong
+// to the same interaction. Dolores herself remains a character target.
+function benchVisualHit(station, worldX, worldY, dolores) {
+  const onCounter = Math.abs(worldX - station.x) <= COUNTER_W / 2
+    && worldY >= CTR_Y && worldY <= HUB_FLOOR_PIN_Y;
+  const boardLeft = station.x - BAY_W * (MENU_PANEL_CENTRE + MENU_PANEL_W / 2);
+  const boardRight = station.x - BAY_W * (MENU_PANEL_CENTRE - MENU_PANEL_W / 2);
+  const onSign = worldX >= boardLeft && worldX <= boardRight
+    && worldY >= HUB_WALL_Y0 && worldY <= HUB_WALL_Y0 + (HUB_WALL_Y1 - HUB_WALL_Y0) * 0.57;
+  const onDolores = dolores && Math.abs(worldX - dolores.x) <= NPC_H * 0.42
+    && worldY >= HUB_FLOOR_PIN_Y - (dolores.staffH || DOLORES_H) && worldY <= HUB_FLOOR_PIN_Y;
+  return (onCounter || onSign) && !onDolores;
 }
 
 export function heroIdFor(flow) {
@@ -765,7 +836,7 @@ export class HubState {
     // bench here since it became the serving line, and naming it after the woman
     // standing at it puts it in the same shape as Gary's unit next door — the
     // two staffed stations in the room both belong to somebody.
-    st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 140;
+    st.push({ type: 'bench', x, label: "DOLORES' REPAIR COUNTER" }); x += 180;
     st.push({ type: 'shop', x, label: "GARY'S LEGALLY DISTINCT PAWN SHOP" }); x += 140;
     st.push({ type: 'arcade', x, label: 'ARCADE CORNER' }); x += 88;
     if (totalPlugs(slot) >= 25) { st.push({ type: 'backroom', x, label: 'THE BACK ROOM (YOU DID NOT SEE THIS DOOR)' }); x += 88; }
@@ -1207,7 +1278,11 @@ export class HubState {
         }
       }
       const worldX = Input.pointer.x / HUB_ZOOM + this.camX();
-      const stationHit = nearestTo(st, worldX, 22);
+      const worldY = Input.pointer.y / HUB_ZOOM + HUB_CAM_Y;
+      const bench = st.find((s) => s.type === 'bench');
+      const dolores = this.npcs().find((n) => n.id === 'dolores' && !n.clearingStation);
+      const visualBenchHit = bench && benchVisualHit(bench, worldX, worldY, dolores) ? bench : null;
+      const stationHit = visualBenchHit || nearestTo(st, worldX, 22);
       // Widened from 14: a hero is about that wide on screen, so half of every
       // sprite was outside its own tap target and clicking someone's shoulder
       // walked you past them. Dolores and Gary are wider still.
@@ -1219,7 +1294,8 @@ export class HubState {
       const tappedStation = stationHit && !npcCloser ? stationHit : null;
       const tappedNpc = npcHit && (!stationHit || npcCloser) ? npcHit : null;
       const onSelf = Math.abs(worldX - this.px) < 20;
-      if (tappedStation && onSelf && Math.abs(tappedStation.x - this.px) < 26) this.interact(tappedStation);
+      const nearBench = visualBenchHit && Math.abs(visualBenchHit.x - this.px) < 26;
+      if (tappedStation && ((onSelf && Math.abs(tappedStation.x - this.px) < 26) || nearBench)) this.interact(tappedStation);
       // Tapping a hero does NOT act on them. It used to run chooseNpc, which
       // with TALK selected just replayed their line — a second, invisible way to
       // do a thing the chips already do visibly, and the only one that could
@@ -2811,13 +2887,15 @@ function listVisualRow(state, i) {
 //
 // isTouchDevice(), not usingTouch: usingTouch only turns true once a finger has
 // landed, so a phone arriving at one of these screens cold was told to press
-// keys it does not have. And the touch line names no way back, because a phone
-// has no ESC — every one of these lists carries a BACK row instead.
+// keys it does not have. Every list carries a BACK row, so the footer only
+// needs to explain selection and purchase; the visible row is the way back.
 function drawMenuHint(ctx, extra) {
-  const text = Input.isTouchDevice()
-    ? `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}`
-    : `UP/DOWN SELECT   ENTER ${extra || 'CONFIRM'}   ESC BACK`;
-  drawText(ctx, text, 12, H - 13, '#5a5a68', HINT_S);
+  if (Input.isTouchDevice()) {
+    drawText(ctx, `TAP SELECT   TAP AGAIN ${extra || 'CONFIRM'}`, 12, H - 13, '#5a5a68', HINT_S);
+    return;
+  }
+  const pairs = [['UP/DOWN', 'SELECT'], ['ENTER', extra || 'CONFIRM']];
+  drawKeyLegend(ctx, pairs, 12, H - 13, { scale: HINT_S });
 }
 
 // Hub lists size their rows the way stage select does: the list grows into
@@ -2831,7 +2909,7 @@ function fitRows(state, count) {
   state.listCount = count;
   const fixed = state.fixedLastRow ? 1 : 0;
   const shown = Math.min(count - fixed, state.visibleRows || count) + fixed;
-  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, (MENU_LIST_BOTTOM - state.listY) / shown));
+  state.rowH = Math.max(MENU_ROW_MIN, Math.min(MENU_ROW_MAX, ((state.listBottom || MENU_LIST_BOTTOM) - state.listY) / shown));
   keepSelectionVisible(state, count);
 }
 function keepSelectionVisible(state, count) {
@@ -2991,24 +3069,35 @@ export class StageSelectState {
 
 
 export class BenchState {
-  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = MENU_ROW_MAX; }
-  enter() { this.idx = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
+  constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 82; this.listBottom = 202; this.rowH = MENU_ROW_MAX; this.notice = ''; this.soldOutKey = ''; this.soldOutNotice = ''; this.t = 0; this.annoyedT = 0; this.madStyle = 0; this.enterT = 0; }
+  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
   options() {
     const slot = this.save.slot;
+    const purchaseCount = BENCH_UPGRADES.reduce((total, u) => {
+      const baseLevel = ['shield', 'magnet', 'star'].includes(u.id) ? 1 : 0;
+      return total + Math.max(0, (slot.bench[u.id] || 0) - baseLevel);
+    }, 0);
+    const surcharge = BENCH_FOOD_COURT_SURCHARGES[Math.min(purchaseCount, BENCH_FOOD_COURT_SURCHARGES.length - 1)];
     const opts = BENCH_UPGRADES.map((u) => {
       const cur = slot.bench[u.id] || 0;
       // Power-up tracks start at level 1 (owned); relay tracks start at 0.
       const baseLevel = ['shield', 'magnet', 'star'].includes(u.id) ? 1 : 0;
       const lvl = Math.max(cur, baseLevel);
       const nextIdx = lvl - baseLevel;
-      const cost = u.levels[nextIdx];
+      // Shield, Magnet, and Score Star begin at level 1, so their first
+      // purchase must use the level-1 price rather than the display-only 0.
+      const cost = u.levels[baseLevel ? lvl : nextIdx];
       const maxed = lvl >= u.max + baseLevel - (baseLevel ? 0 : 0) && nextIdx >= u.levels.length || cost === undefined;
-      return { u, lvl, cost, maxed, baseLevel };
+      const taxedCost = cost === undefined ? cost : Math.round(cost * (1 + surcharge.rate));
+      return { u, lvl, targetTier: lvl + 1, baseCost: cost, cost: taxedCost, surcharge, maxed, baseLevel };
     });
     opts.push({ back: true });
     return opts;
   }
   update(dt) {
+    this.t += dt;
+    this.enterT += dt;
+    if (this.annoyedT > 0) this.annoyedT = Math.max(0, this.annoyedT - dt);
     const sel = listMenu(this, this.options());
     if (sel) {
       if (sel.back) return this.flow.toHub();
@@ -3017,8 +3106,24 @@ export class BenchState {
         slot.coins -= sel.cost;
         slot.bench[sel.u.id] = sel.lvl + 1;
         this.save.persist();
-        Audio.sfx('power');
-      } else Audio.sfx('uiBad');
+        Audio.sfx('cash');
+        this.notice = benchGag(BENCH_SUCCESS_GAGS, { TIER: sel.targetTier });
+        this.notice += ` THAT'LL BE ${sel.cost} COINS, INCLUDING THE ${(sel.surcharge.rate * 100).toFixed(2)}% ${sel.surcharge.name}.`;
+      } else {
+        Audio.sfx('uiBad');
+        if (sel.maxed) {
+          this.notice = benchGag(BENCH_SOLD_OUT_GAGS, { TIER: sel.targetTier, CURRENT: sel.lvl });
+          // She gets mad for a beat when you jab a SOLD OUT tier — roll one of
+          // four faces so the same jab twice doesn't repeat.
+          this.annoyedT = 1.4;
+          this.madStyle = Math.floor(Math.random() * 4);
+        }
+        else if (slot.coins < sel.baseCost) {
+          this.notice = benchGag(BENCH_AFFORDABILITY_GAGS, { TIER: sel.targetTier });
+        } else {
+          this.notice = `THE ${(sel.surcharge.rate * 100).toFixed(2)}% ${sel.surcharge.name} STILL APPLIES.`;
+        }
+      }
     }
     if (Input.pressed('back')) this.flow.toHub();
     Input.endFrame();
@@ -3026,25 +3131,104 @@ export class BenchState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    // The screen you are standing at her counter to read. Her name goes on it
-    // for the same reason it goes on the station: you are being SERVED here, by
-    // somebody, and the menu framing only lands if the counter has a server.
-    drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 16, '#f6d33c', 2, 'title');
-    drawTextCentered(ctx, `COINS: ${formatCoins(this.save.slot.coins)}`, W / 2, 40, '#f6d33c');
+    // Dolores works the counter in person. Standing her on the right — an idle
+    // attendant facing the menu — turns a bare upgrade list into a SERVED
+    // counter, and is why the whole list is pulled into the left column: the
+    // right third of the screen is her floor, not a place to put a price.
+    const doleCx = 410, doleFeet = 234, doleH = 138;
+    // She walks on from fully off-screen right when the counter opens, striding
+    // the whole way to her spot before settling into idle. Starts past the right
+    // edge (unseen until she enters) and eases to a stop rather than stopping
+    // dead; while travelling she runs (legs cycling) and faces left, the way
+    // she's heading, then turns to attend the menu.
+    const ENTER_DUR = 3.0;
+    const ent = Math.min(1, this.enterT / ENTER_DUR);
+    const eased = 1 - Math.pow(1 - ent, 1.7); // steady amble that eases to a stop
+    const startX = W + 120; // fully clear of the right edge, and far enough for a slow stroll to read
+    const doleX = Math.round(startX + (doleCx - startX) * eased);
+    const walking = ent < 1;
+    // Every ~17s she plants her hands on her hips for a few seconds, then drops
+    // them back to her sides — a periodic beat, eased in and out. Offset so the
+    // first one lands a beat AFTER she's finished walking in.
+    const HIPS_CYCLE = 17.0, HIPS_RISE = 0.6, HIPS_HOLD = 3.0, HIPS_FALL = 0.7;
+    const hp = (this.t + 12.0) % HIPS_CYCLE;
+    let hipsAmt = hp < HIPS_RISE ? hp / HIPS_RISE
+      : hp < HIPS_RISE + HIPS_HOLD ? 1
+      : hp < HIPS_RISE + HIPS_HOLD + HIPS_FALL ? 1 - (hp - HIPS_RISE - HIPS_HOLD) / HIPS_FALL
+      : 0;
+    hipsAmt = hipsAmt * hipsAmt * (3 - 2 * hipsAmt); // smoothstep the raise/lower
+    const pose = walking
+      ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
+    ctx.fillStyle = 'rgba(4,3,9,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(doleX, doleFeet + 1, doleH * (walking ? 0.16 : 0.2), doleH * 0.055, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawToon(ctx, 'dolores', pose, doleX, doleFeet, doleH);
+    // The overhead sign still spans the whole station; the list, its glosses and
+    // the price column all sit in the left column, clear of Dolores.
+    drawTextCentered(ctx, "DOLORES' REPAIR COUNTER", W / 2, 8, '#f6d33c', 2, 'title');
+    const menuCx = 180, labelX = 40, rightX = 322, boxL = 26, boxR = 336, glossMaxW = 320;
+    const coinsText = `COINS: ${formatCoins(this.save.slot.coins)}`;
+    drawText(ctx, coinsText, W - 12 - textWidth(coinsText), H - 13, '#f6d33c');
     const opts = this.options();
     fitRows(this, opts.length);
     opts.forEach((o, i) => {
       const sel = i === this.idx;
-      if (sel) drawSelRow(ctx, this, i, 40);
+      if (sel) drawMenuRow(ctx, boxL, this.listY + listVisualRow(this, i) * this.rowH + 1, boxR - boxL, this.rowH - 2);
       const y = rowTextY(this, i, MENU_ROW_S);
-      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, 40, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
+      if (o.back) { drawText(ctx, `${sel ? '> ' : '  '}BACK`, labelX, y, sel ? '#f6d33c' : '#c8c8d8', MENU_ROW_S); return; }
       const c = sel ? '#f6d33c' : '#c8c8d8';
-      const lvlText = 'I'.repeat(Math.max(1, o.lvl));
-      drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} [${lvlText}]`, 40, y, c, MENU_ROW_S);
-      if (o.maxed || o.cost === undefined) drawText(ctx, 'MAX', W - 100, y, '#48c848', MENU_ROW_S);
-      else drawText(ctx, `${formatCoins(o.cost)}`, W - 100, y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
-      if (sel && !o.maxed && o.u.desc[o.lvl - o.baseLevel]) drawTextCentered(ctx, o.u.desc[o.lvl - o.baseLevel], W / 2, H - 28, '#8a8a98', MENU_NOTE_S);
+      drawText(ctx, `${sel ? '> ' : '  '}${o.u.name} (TIER ${o.targetTier})`, labelX, y, c, MENU_ROW_S);
+      const current = o.u.currentDesc && o.u.currentDesc[o.lvl - o.baseLevel];
+      const next = !o.maxed && o.u.desc[o.lvl - o.baseLevel];
+      // Right column is right-aligned to an anchor pulled well in from the edge
+      // so it clears Dolores; short numbers hug the same line as the SOLD OUT tag.
+      if (o.maxed || o.cost === undefined) {
+        const soldOut = 'SOLD OUT';
+        drawText(ctx, soldOut, rightX - textWidth(soldOut, MENU_ROW_S), y, '#e04848', MENU_ROW_S);
+      }
+      else {
+        const price = `${formatCoins(o.baseCost)}`;
+        drawText(ctx, price, rightX - textWidth(price, MENU_ROW_S), y, this.save.slot.coins >= o.cost ? '#f6d33c' : '#5a5a68', MENU_ROW_S);
+      }
+      if (sel) {
+        // The gloss sits just under the list, centred on the left column so it
+        // stays clear of Dolores. A maxed row's NOTICE can run long, so it wraps
+        // instead of sliding under her feet.
+        if (current) drawTextCentered(ctx, `CURRENT: ${o.u.name} TIER ${o.lvl} (ACTIVE)`, menuCx, H - 58, '#8a8a98', MENU_NOTE_S);
+        if (next) drawTextCentered(ctx, `NEXT: ${next}`, menuCx, H - 44, '#c8c8d8', MENU_NOTE_S);
+        if (o.maxed) {
+          const soldOutKey = `${o.u.id}:${o.lvl}`;
+          if (this.soldOutKey !== soldOutKey) {
+            this.soldOutKey = soldOutKey;
+            this.soldOutNotice = benchGag(BENCH_SOLD_OUT_NOTICES, { TIER: o.targetTier });
+          }
+          wrapText(`NOTICE: ${this.soldOutNotice}`, glossMaxW, MENU_NOTE_S, 2)
+            .forEach((line, k) => drawTextCentered(ctx, line, menuCx, H - 44 + k * 14, '#c8c8d8', MENU_NOTE_S));
+        }
+      }
     });
+    if (this.notice) {
+      const faceW = 14, faceH = 14, gap = 5, pad = 6, lineH = 13;
+      const textMaxW = 300;
+      const noticeLines = wrapText(this.notice, textMaxW, MENU_NOTE_S, 3);
+      const noticeTextW = Math.max(...noticeLines.map((line) => textWidth(line, MENU_NOTE_S)));
+      const noticeW = Math.min(W - 48, pad * 2 + faceW + gap + noticeTextW);
+      const noticeX = Math.round((W - noticeW) / 2);
+      // Height tracks the wrapped line count instead of a fixed two-line box, so
+      // a one-line receipt sits in a snug plate and a three-line surcharge spiel
+      // gets the room it needs — the plate is always the size of what it holds.
+      const noticeH = Math.max(faceH + pad * 2, noticeLines.length * lineH + pad * 2);
+      const noticeY = 28;
+      drawPanel(ctx, noticeX, noticeY, noticeW, noticeH, 4, undefined, { border: 'rgba(246,211,60,0.35)', shadow: true });
+      const face = toonFaceSprite('dolores', faceW, faceH);
+      if (face) ctx.drawImage(face, noticeX + pad, noticeY + Math.round((noticeH - faceH) / 2), faceW, faceH);
+      const textTop = noticeY + Math.round((noticeH - noticeLines.length * lineH) / 2) + 2;
+      noticeLines.forEach((line, lineIndex) => {
+        drawText(ctx, line, noticeX + pad + faceW + gap, textTop + lineIndex * lineH, '#f6d33c', MENU_NOTE_S);
+      });
+    }
     drawMenuHint(ctx, 'BUY');
   }
 }

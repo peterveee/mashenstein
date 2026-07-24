@@ -40,6 +40,127 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+## 2026-07-24
+
+### Prompt 1
+**User Request:** "lets fix up some of the sounds effects - familiarise your self with what we have"
+
+**What I Did:** Surveyed the audio system — `AudioSys` in [src/engine/audio.js](src/engine/audio.js) (procedural SFX switch + music step-sequencer), the ~45 SFX cues, `SFX_TRIM`/`WEAPON_AUDIO_GAIN` loudness tables, the weapon-candidate WAVs, and the new untracked [tools/render-sfx.js](tools/render-sfx.js) + `audio/sfx-renders/`. Reported the inventory and asked which cues to work on.
+
+---
+
+### Prompt 2
+**User Request:** "can the sound be more metallic?"
+
+**What I Did:** Confirmed the target was the new `cash` cue. Rebuilt it from a clean harmonic chime into two struck bells on inharmonic ideal-free-bar partials (1 : 2.76 : 5.40 : 8.93) with a bright noise hammer tick per strike, added a `cash: 0.7` `SFX_TRIM` entry, mirrored the change in [tools/render-sfx.js](tools/render-sfx.js), and re-rendered the WAVs.
+
+---
+
+### Prompt 3
+**User Request:** "when we work on a sound effect can we always rerender it as a wave file?"
+
+**What I Did:** Agreed; saved a `feedback` memory (rerender-sfx-wav) to always re-render an edited cue to a WAV (keeping render-sfx.js in sync) so it can be auditioned.
+
+---
+
+### Prompt 4
+**User Request:** "can we space out doloros and garys benches more"
+
+**What I Did:** In `src/game/hub/index.js` stations(), widened the Dolores→Gary pitch from 140 to 180, opening the floor between the repair counter and the pawn shop (62 units of clear floor between the two 118-wide counters instead of 22).
+
+---
+
+### Prompt 5
+**User Request:** "alignment is out of wack... sold out is outside the boundaries, the coins are indented too far left. The text at the bottom could move up... vertical spacing could be tidied up overall" (Dolores' Repair Counter / BenchState)
+
+**What I Did:** In `src/game/hub/index.js` BenchState.draw(), right-aligned both the SOLD OUT tag and the price to a shared anchor inside the selection box (was overflowing at `W-12`; price was left-anchored at a fixed `W-100`). Tidied vertical spacing: extended the list (listBottom 190→200) and pulled the CURRENT/NEXT gloss up under it (H-56/H-41 → H-58/H-44). Verified in a browser screenshot.
+
+---
+
+### Prompt 6
+**User Request:** "could we indent the menu items dramatically so that dolores can appear standing on the right in her idle pose?"
+
+**What I Did:** In BenchState, pulled the whole list into the left column (right-align anchor at x=322, selection box 26→336, glosses centred on x=180) and drew an idle `drawToon('dolores', {kind:'idle', facing:-1})` standing on the right (cx 410, h 138) with a contact shadow. Added `this.t` idle-animation time to the constructor/enter/update. Long sold-out NOTICE gloss now wraps to 2 lines so it stays clear of her. Verified with screenshots.
+
+---
+
+### Prompt 7
+**User Request:** "can we show the required space for the speech bubble, not default to 2 lines always. Also check that all possible text can fit within 2 lines if not, list them"
+
+**What I Did:** Made the bench notice plate height track its wrapped line count (was fixed at 44px ≈ 2 lines), centring the face + text; a 1-line receipt is now snug, a 3-line spiel gets the room. Audited all 46 possible notice strings against the 300px bubble width using the game's real Fredoka metrics in a browser: 16 fit 1 line, 27 fit 2, and **3 need 3 lines** — all the "PAYMENT SATISFIED. PLEASE VACATE THE COUNTER AREA." success gag paired with any surcharge suffix. Those now render fully at 3 lines.
+
+---
+
+### Prompt 8
+**User Request:** "can we make her look annoyed when you try to purchase a sold out item?"
+
+**What I Did:** Added an `annoyed` expression to the shared toon rig (`src/sprites/toons.js`), strictly gated so only Dolores can reach it: furrowed brows, narrowed glaring eyes, downturned frown; it suppresses her idle call and blink so the glare holds. BenchState sets a 1.4s `annoyedT` timer on a SOLD OUT buy attempt and passes `annoyed` into her pose. Verified with close-up screenshots.
+
+---
+
+### Prompt 9
+**User Request:** "lets add a few mad poses that appear at random" / "when we attempt to buy sold out"
+
+**What I Did:** Expanded the annoyed face into 4 random `madStyle` variants — 0 stern glare (furrow + frown), 1 unimpressed (one brow up + flat line), 2 eye-roll (pupils rolled up + raised brows), 3 fed-up (steep furrow + gritted teeth). BenchState rolls `Math.floor(Math.random()*4)` on each sold-out jab. Screenshotted all four.
+
+---
+
+### Prompt 10
+**User Request:** "can we expand her idle to have more variety?"
+
+**What I Did:** Gave Dolores a rotating idle-beat scheduler in `expressionFor` (id-gated): her existing NEXT-call plus a glance down the empty line, a look at the counter, and a brow-raise-at-nothing, one per slot on a 4.4s cycle with plain-rest windows between; eye glances ease in/out. No other hero touched. Verified each beat.
+
+---
+
+### Prompt 11
+**User Request:** "lets have doloros walk in from the right when it starts up"
+
+**What I Did:** BenchState now runs an 0.8s entrance on open — she starts off-screen right, runs in (legs cycling, facing the menu) with an ease-out-cubic deceleration, then settles into her idle. Added an `enterT` clock; the contact shadow tracks her x and tightens while walking. Verified across the walk with screenshots.
+
+---
+
+### Prompt 12
+**User Request:** "can you play back her entrance for me?"
+
+**What I Did:** Captured the real entrance frame-by-frame in a headless browser, encoded a looping GIF with ffmpeg, and published an on-brand playback page (dark counter palette, Replay control) as an artifact so the entrance can actually be watched and replayed.
+
+---
+
+### Prompt 13
+**User Request:** "FOR HER ENTRANCE I ACTUALLY WANT her to walk in from off screen to her final position" → then "slower" → "even slower"
+
+**What I Did:** Fixed the entrance so she starts fully off-screen (startX = W+120, past the right edge) and strides the whole way to her spot, and slowed it in two steps to `ENTER_DUR = 3.0s` with a matching slower stride cadence (0.85×) so she walks rather than moon-walks. Drove it live in a headed Playwright browser (via the MCP) and looped the replay for viewing instead of regenerating a GIF.
+
+---
+
+### Prompt 14
+**User Request:** "maybe dont just have eyebrows appear out of nowhere in the idle poses it looks odd"
+
+**What I Did:** The idle brow beats (the NEXT-call and the brow-raise) were hard-cutting the hairline on/off. Added a `browEase` ramp (0→1→0 over ~0.22s) carried on the brow ink's alpha, so the brows lift in and settle out instead of snapping. Only the idle beats fade; the annoyed/focus brows are unchanged.
+
+---
+
+### Prompt 15
+**User Request:** "what if her idle pose here had her hands on her hips" → then "should the hands be in front maybe?"
+
+**What I Did:** Explored two gated arm poses on the shared rig — `handsOnHips` (akimbo; hands hid behind the apron, read weakly) and `handsInFront` (clasped over the apron via a `handsFront` front-pass layering path). The front clasp made the forearm loop out to the elbow and back across the bib, so it read as detached from the shoulder. Reverted the bench idle to her default arms-at-sides, which sits correctly against the apron. The `handsOnHips`/`handsInFront`/`handsFront` branches remain in the rig (gated, unused) pending a decision on whether to pursue a posed idle (e.g. hands-behind-back) or drop them.
+
+---
+
+### Prompt 13
+**User Request:** A run of audio-architecture questions — "are we only doing retro pixel sounds?", "is one giant HTML file better than a folder?", "what are we archiving for releases?", "wait so we ARE using wav files?" — landing on: "i want all of [the weapon cues] to be procedurally played right now" (chose the render-to-buffer approach for best performance).
+
+**What I Did:** Converted the 9 hero weapon cues (6 contact + 3 launch) from shipped `.wav` assets to procedural synthesis. Extracted the synth primitives + all 30 recipes into a shared pure-ESM module `src/engine/weapon-sfx.js` (single source of truth); refactored `tools/generate-weapon-sfx.js` to render the audition WAVs from it (verified **byte-identical** output); made `audio.js` synthesise the 9 wired cues into buffers at init (`renderWeaponBuffers`) instead of fetching/decoding; dropped the WAV copy from `build/build.js` and updated `tests/build-shell.js` to assert no audio assets ship. Verified in a real browser: 9 buffers render in the AudioContext, **0** `.wav` fetches, **0** decodes, no console errors. All 1012 test assertions pass. Production `game.js` is 511 KB (176 KB gzip). Also clarified for the user that the "3.7 MB bundle" was a dev build (2.9 MB inline sourcemap); production strips it.
+
+---
+
+### Prompt 16
+**User Request:** "i still want her to move to hands on hips if possible... can we go from hands at sides to hands on hips periodically" → "She has arms behind her back not on her hips" → "i want her to do hands on hips NOT behind back and it should be every 15-20 seconds not every 9"
+
+**What I Did:** Made hands-on-hips a periodic animated idle beat — a `hipsAmt` (0→1) blend in the standing arm branch that lerps the resting hands to the hip target and back, elbows staying outward so nothing flips mid-move. First cut parked the hands inboard (behind the apron) so it read as behind-the-back; pushing the hand target OUT to the hip point (`torsoHalf * 1.02`, at the body's side edge where it clears the apron) with the elbows winged wide fixed the read. BenchState drives it on a **17s** cycle (0.6s raise, 3.0s hold, 0.7s lower, smoothstepped), offset past the walk-in. Removed the rejected front-clasp/`handsFront` layering. Verified up/mid frames and live. (A spurious `dist/audio` build-shell failure was just the dev watch server writing WAVs into dist — clean build passes.)
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

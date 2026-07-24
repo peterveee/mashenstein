@@ -152,7 +152,7 @@ for (const d of drops) {
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 const unpeelShare = (counts.unpeel || 0) / total;
 const relayShare = (counts.relayCharge || 0) / total;
-const staples = ['shield', 'magnet', 'star'].map((k) => (counts[k] || 0) / total);
+const staples = ['shield', 'magnet'].map((k) => (counts[k] || 0) / total);
 assert(!counts.slowmo, 'SLOW-MO never drips');
 const traits = ['airjump', 'speed', 'lowgrav'].map((k) => (counts[k] || 0) / total);
 assert(unpeelShare > 0.05 && unpeelShare < 0.2, `unpeel drops sometimes (${(unpeelShare * 100).toFixed(1)}% of ${total})`);

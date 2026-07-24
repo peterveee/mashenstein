@@ -1090,17 +1090,48 @@ function expressionFor(id, pose = {}) {
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
   const cm = joy ? celebrateMotion(id, t, reworkedCelebration) : null;
   const cheer = !!(cm && cm.peak);
-  // Dolores calls NEXT to a queue that has not existed in years. She never
-  // breaks posture — no wave, no lean — so the face has to carry it: brows up,
-  // eyes past you to the front of a line that is not there, mouth open on the
-  // word. Then the service face resets. Her cast slot is 8s, so a ~5s cycle
-  // lands the call once or twice while you read her card. Strictly id-gated:
-  // no other hero can reach it.
-  const calling = id === 'dolores' && !active && !joy && (t + seed) % 5.1 < 0.5;
+  // Dolores never breaks posture — no wave, no lean — so all her idle life has
+  // to carry on the face. She rotates through a handful of micro-beats on a slot
+  // cycle: a call to a queue that has not existed in years (brows up, eyes past
+  // you, mouth open on the word); a glance down the empty line; a look at the
+  // counter in front of her; a brow-raise at nothing. Only one runs per window
+  // and most windows are a plain rest, so it reads as a bored server, not a
+  // twitch. The eye glances ease in and out; the call and brow-raise hard-cut,
+  // matching the old call. Strictly id-gated — no other hero can reach any of it.
+  let calling = false, glanceX = 0, glanceY = 0, hmph = false, browEase = 1;
+  if (id === 'dolores' && !active && !joy && !pose.annoyed) {
+    const cyc = 4.4, ph = (t + seed) % cyc, win = 0.9;
+    const slotN = Math.floor((t + seed) / cyc) % 7;
+    // Ramp the beat in over ~0.22s and back out, so nothing pops. The brow beats
+    // carry this on their ink alpha (browEase) — a hairline that snaps into
+    // existence reads as a glitch; one that lifts in reads as a brow.
+    const ease = ph < win ? Math.min(1, Math.min(ph, win - ph) / 0.22) : 0;
+    if (ph < win) {
+      if (slotN === 0) { calling = true; browEase = ease; }
+      else if (slotN === 2) glanceX = -0.032 * ease; // down the (empty) line
+      else if (slotN === 3) glanceY = 0.022 * ease;  // at the counter in front of her
+      else if (slotN === 4) glanceX = 0.032 * ease;
+      else if (slotN === 5) { hmph = true; browEase = ease; } // a brow-raise at nothing
+      // slots 1 & 6: a plain rest face, so the beats never crowd each other.
+    }
+  }
+  // Set briefly when someone jabs the button on a SOLD OUT tier: brows furrow,
+  // eyes narrow to a glare, mouth turns down. She never breaks posture, so — as
+  // with the call — the whole "no" reads on the face. Suppresses the call and
+  // the idle blink for its duration so the glare holds steady.
+  const annoyed = !!pose.annoyed;
   return {
-    // A blink through the call would eat it, so the call wins.
-    blink: !active && !calling && blinkPhase < (pose.menu ? 0.2 : 0.13),
+    // A blink through the call or the glare would eat it, so those win.
+    blink: !active && !calling && !annoyed && blinkPhase < (pose.menu ? 0.2 : 0.13),
     calling,
+    annoyed,
+    glanceX,
+    glanceY,
+    hmph,
+    browEase,
+    // Which flavour of mad — 0 glare, 1 one-brow-up, 2 eye-roll, 3 fed-up. The
+    // caller rolls it so the same jab twice doesn't give the same face.
+    madStyle: pose.madStyle | 0,
     // Carried so downstream marks can be keyed to the hero, not just the mood —
     // BROW_L_SCALE is the one that needs it.
     id,
@@ -1202,27 +1233,59 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     return;
   }
   for (const sx of [-1, 1]) {
-    outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, 0.065 * u, 0, 0, Math.PI * 2));
+    // Annoyed narrows the eye to a glare — the white squashes and the pupil
+    // stares straight out. Style 2 rolls the pupils up; style 3 squeezes to
+    // slits. Style 1 keeps them wide but half-lidded.
+    const rollUp = ex.annoyed && ex.madStyle === 2;
+    const eyeRy = (ex.annoyed
+      ? (ex.madStyle === 3 ? 0.04 : ex.madStyle === 2 ? 0.062 : ex.madStyle === 1 ? 0.05 : 0.046)
+      : 0.065) * u;
+    outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, eyeRy, 0, 0, Math.PI * 2));
     // Calling looks further off than focus does — past you, at the head of the
     // queue — and level rather than down.
-    const lookX = (ex.calling ? 0.026 : ex.focus ? 0.012 : 0) * u + turnYaw * 0.032 * u;
-    const lookY = ex.surprise || ex.cheer || ex.calling ? -0.005 * u : 0.012 * u;
+    const lookX = ((ex.calling ? 0.026 : ex.focus ? 0.012 : rollUp ? 0.018 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.032 * u;
+    const lookY = ex.surprise || ex.cheer || ex.calling ? -0.005 * u : rollUp ? -0.03 * u : ex.annoyed ? 0 : (0.012 + (ex.glanceY || 0)) * u;
     dot(ctx, eyeX(sx) + lookX, cy + lookY, 0.026 * u, p.e);
   }
   // `brow` opts a face out of the shipped hairlines: 'none' draws nothing,
   // 'bushy' means drawHead paints hair brows over the top instead.
-  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.calling || ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.annoyed || ex.calling || ex.hmph || ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
-    ctx.strokeStyle = browInk(p.e, INK.browA, INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
+    ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
     ctx.lineWidth = Math.max(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
     ctx.beginPath();
-    if (ex.calling) {
-      // Raised and near-level: the counter-staff "next in line" brow. Angling
-      // them would read as a mood, and she does not have one about this. The
-      // lift is deliberately small — measured at 0.104u the brows crowd the
-      // hairnet and the face reads as startled, which is the one thing she
-      // never is.
+    if (ex.annoyed && ex.madStyle === 1) {
+      // One brow up: her left held flat and high (skeptical), the other lowered
+      // and angled in. Asymmetry is what reads as "unimpressed".
+      const hi = cy - 0.096 * u;
+      ctx.moveTo(eyeX(-1) - 0.05 * u, hi);
+      ctx.lineTo(eyeX(-1) + 0.05 * u, hi + 0.004 * u);
+      ctx.moveTo(eyeX(1) - 0.05 * u, cy - 0.05 * u);
+      ctx.lineTo(eyeX(1) + 0.052 * u, cy - 0.092 * u);
+    } else if (ex.annoyed && ex.madStyle === 2) {
+      // Eye-roll: both brows lifted and arched — the "give me a break" hoist.
+      const hi = cy - 0.104 * u;
+      ctx.moveTo(eyeX(-1) - 0.05 * u, hi + 0.01 * u);
+      ctx.lineTo(eyeX(-1) + 0.048 * u, hi);
+      ctx.moveTo(eyeX(1) - 0.048 * u, hi);
+      ctx.lineTo(eyeX(1) + 0.05 * u, hi + 0.01 * u);
+    } else if (ex.annoyed) {
+      // The angry furrow: inner ends driven down toward the nose bridge, outer
+      // ends held high, so the two brows make a steep \ / over the glare. Style 3
+      // (fed up) drops the whole furrow lower and steeper.
+      const drop = ex.madStyle === 3 ? 0.014 * u : 0;
+      const inY = cy - 0.042 * u + drop, outY = cy - 0.098 * u + drop;
+      ctx.moveTo(eyeX(-1) - 0.052 * u, outY);
+      ctx.lineTo(eyeX(-1) + 0.05 * u, inY);
+      ctx.moveTo(eyeX(1) - 0.05 * u, inY);
+      ctx.lineTo(eyeX(1) + 0.052 * u, outY);
+    } else if (ex.calling || ex.hmph) {
+      // Raised and near-level: the counter-staff "next in line" brow, also used
+      // for the idle brow-raise-at-nothing (hmph). Angling them would read as a
+      // mood, and she does not have one about this. The lift is deliberately
+      // small — measured at 0.104u the brows crowd the hairnet and the face
+      // reads as startled, which is the one thing she never is.
       const by = cy - 0.092 * u;
       ctx.moveTo(eyeX(-1) - 0.05 * u, by);
       ctx.lineTo(eyeX(-1) + 0.045 * u, by + 0.006 * u);
@@ -1258,6 +1321,28 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     // surprise face, not this one.
     ctx.stroke();
     outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy + 0.008 * u, 0.042 * u, 0.025 * u, 0, 0, Math.PI * 2));
+    return;
+  }
+  if (ex.annoyed) {
+    if (ex.madStyle === 3) {
+      // Gritted teeth: a flat mouth crossed by ticks, jaw clamped.
+      ctx.moveTo(cx - 0.05 * u, cy + 0.02 * u);
+      ctx.lineTo(cx + 0.05 * u, cy + 0.02 * u);
+      for (let i = -1; i <= 1; i++) { ctx.moveTo(cx + i * 0.03 * u, cy + 0.01 * u); ctx.lineTo(cx + i * 0.03 * u, cy + 0.03 * u); }
+      ctx.stroke();
+      return;
+    }
+    if (ex.madStyle === 1 || ex.madStyle === 2) {
+      // Tight-lipped: a flat line pressed low, the wordless "no".
+      ctx.moveTo(cx - 0.052 * u, cy + 0.016 * u);
+      ctx.lineTo(cx + 0.052 * u, cy + 0.016 * u);
+      ctx.stroke();
+      return;
+    }
+    // Style 0 — corners pulled down, middle held up: the flat "no" become a frown.
+    ctx.moveTo(cx - 0.05 * u, cy + 0.024 * u);
+    ctx.quadraticCurveTo(cx, cy - 0.016 * u, cx + 0.05 * u, cy + 0.024 * u);
+    ctx.stroke();
     return;
   }
   if (ex.surprise) {
@@ -2780,6 +2865,18 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const hangY = armY + armL * standHang - sway * 0.32;
     handF = [shoulderCx + sideF * outX, hangY]; elbF = sideF;
     handB = [shoulderCx + sideB * outX, hangY]; elbB = sideB;
+    // Periodic hands-on-hips. As hipsAmt rises the resting hands ride UP to the
+    // waist and OUT to the hip points — parked right at the body's side edge so
+    // the hand clears the apron and reads as planted on the hip, not tucked
+    // behind it — while the elbows wing outward past the silhouette. Driven by
+    // the caller (the counter idle).
+    const hipsAmt = Math.max(0, Math.min(1, pose.hipsAmt || 0));
+    if (hipsAmt > 0) {
+      const hipX = torsoHalf * 0.95;
+      const hipY = armY + armL * 0.78 + sway * 0.5;
+      handF = [handF[0] + (shoulderCx + sideF * hipX - handF[0]) * hipsAmt, handF[1] + (hipY - handF[1]) * hipsAmt];
+      handB = [handB[0] + (shoulderCx + sideB * hipX - handB[0]) * hipsAmt, handB[1] + (hipY - handB[1]) * hipsAmt];
+    }
   }
 
   // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with

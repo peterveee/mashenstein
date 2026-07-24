@@ -1043,25 +1043,77 @@ function titleButtonAt(px, py, count) {
 // ERASE carries a warning line under its heading and STAFF ONLY doesn't, so the
 // header comes in two heights — reserving room for a line that isn't there
 // left the list floating well below its own title.
-const MODAL_HEAD_H = 42;        // heading plus a note line
+const MODAL_HEAD_H = 58;        // heading plus a prominent warning line
 const MODAL_HEAD_H_BARE = 28;   // heading alone
-function modalListGeom(count, hasNote) {
-  const rowH = titleTouch() ? 30 : 21;
+const warningGlowSprites = new Map();
+function blurAlpha(source, w, h, radius, horizontal) {
+  const output = new Float32Array(source.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      let count = 0;
+      for (let offset = -radius; offset <= radius; offset++) {
+        const sampleX = horizontal ? x + offset : x;
+        const sampleY = horizontal ? y : y + offset;
+        if (sampleX < 0 || sampleX >= w || sampleY < 0 || sampleY >= h) continue;
+        sum += source[sampleY * w + sampleX];
+        count++;
+      }
+      output[y * w + x] = sum / count;
+    }
+  }
+  return output;
+}
+function warningGlowSprite(text, scale) {
+  const key = `${text}|${scale}`;
+  let sprite = warningGlowSprites.get(key);
+  if (sprite) return sprite;
+  const pad = 12;
+  const w = Math.ceil(textWidth(text, scale, 'ui') + pad * 2);
+  const h = Math.ceil(12 * scale + pad * 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  drawText(ctx, text, pad, pad + scale, '#ff263d', scale, 'ui');
+  const pixels = ctx.getImageData(0, 0, w, h);
+  const alpha = new Float32Array(w * h);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = pixels.data[i * 4 + 3];
+  const blurred = blurAlpha(blurAlpha(alpha, w, h, 3, true), w, h, 3, false);
+  const glowPixels = ctx.createImageData(w, h);
+  for (let i = 0; i < blurred.length; i++) {
+    const a = Math.min(255, blurred[i] * 3.8);
+    glowPixels.data[i * 4] = 255;
+    glowPixels.data[i * 4 + 1] = 38;
+    glowPixels.data[i * 4 + 2] = 61;
+    glowPixels.data[i * 4 + 3] = a;
+  }
+  ctx.putImageData(glowPixels, 0, 0);
+  sprite = { canvas, w, h, pad };
+  warningGlowSprites.set(key, sprite);
+  return sprite;
+}
+function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = false) {
+  const rowH = spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
+  const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // Sized from the row count rather than pinned. The old fixed 92-unit box
   // wasn't tall enough for its own longest list — three files plus CANCEL
   // needed 102, so the last row was drawn below the box's bottom edge.
-  const h = headH + count * rowH + 8;
+  const h = headH + count * rowH + cancelGap + 8;
   // Centred, with a floor low enough that the tallest list — STAFF ONLY at seven
   // rows on touch — still centres instead of being pinned to the top and
   // hanging off the bottom.
   const y = Math.max(8, Math.round((H - h) / 2));
-  return { x: 88, y, w: W - 176, h, rowH, firstY: y + headH };
+  const x = spaciousRows ? 72 : 88;
+  return { x, y, w: W - x * 2, h, rowH, firstY: y + headH, cancelGap };
 }
-function modalRowAt(px, py, count, hasNote) {
-  const g = modalListGeom(count, hasNote);
+function modalRowAt(px, py, count, hasNote, gapBeforeLast = false, spaciousRows = false) {
+  const g = modalListGeom(count, hasNote, gapBeforeLast, spaciousRows);
   if (px < g.x || px > g.x + g.w) return -1;
-  const i = Math.floor((py - g.firstY) / g.rowH);
+  const relativeY = py - g.firstY;
+  if (g.cancelGap && relativeY >= (count - 1) * g.rowH && relativeY < (count - 1) * g.rowH + g.cancelGap) return -1;
+  const i = Math.floor((relativeY - (g.cancelGap && relativeY >= (count - 1) * g.rowH + g.cancelGap ? g.cancelGap : 0)) / g.rowH);
   return i >= 0 && i < count ? i : -1;
 }
 
@@ -1283,7 +1335,7 @@ export class TitleState {
     if (Input.pressed('back')) { this.erase = null; Audio.sfx('ui'); return; }
     let chosen = Input.pressed('confirm') ? this.erase.idx : -1;
     if (Input.pressed('pointer')) {
-      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, true); // every step warns
+      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, true, this.erase.step === 'choose', true);
       if (i >= 0) chosen = i;
     }
     if (chosen < 0) return;
@@ -1601,26 +1653,30 @@ export class TitleState {
     const foregroundToasters = (d) => drawFlyingToasters(
       d, this.t, this.save.settings.reducedFlashing, this.singleToasterOpening,
     );
-    // The Extras list is a solid modal surface: toaster cameos sit behind it
-    // so they never compete with the cabinet grid or its labels.
-    if (this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    // Modal lists are solid surfaces: toaster cameos sit behind them so they
+    // never compete with destructive choices, cabinet grids, or their labels.
+    if ((this.erase || this.extras) && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
     if (!pushOverlayDraw(ui)) ui(ctx);
     // Toasters are the title's foreground cameo on the normal title screen:
     // queue them after the menu so they can pass over the logo, panel, heroes,
-    // and invader. Extras is handled above so its modal stays on top.
-    if (!this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    // and invader. Modal lists are handled above so they stay on top.
+    if (!this.erase && !this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
   }
   drawEraseModal(d) {
     let title = 'ERASE WHICH SHIFT?';
-    let note = 'CHOOSE CAREFULLY. BACK CANCELS.';
+    let note = 'CHOOSE CAREFULLY';
+    let warningPulse = this.save.settings.reducedFlashing ? 0.7 : 0.5 + 0.5 * Math.sin(this.t * 3.2);
     if (this.erase.step === 'confirm') {
       title = `ERASE SHIFT ${this.erase.slot + 1}?`;
-      note = 'ALL PROGRESS IN THIS SHIFT WILL BE LOST.';
+      note = 'ALL PROGRESS IN THIS SHIFT WILL BE LOST';
     } else if (this.erase.step === 'final') {
       title = `FINAL WARNING: ERASE SHIFT ${this.erase.slot + 1}?`;
       note = 'THIS CANNOT BE UNDONE.';
     }
-    drawModalList(d, this.eraseChoices(), this.erase.idx, { title, note, accent: '#e05a62', titleColor: '#ff727c' });
+    drawModalList(d, this.eraseChoices(), this.erase.idx, {
+      title, note, accent: '#e05a62', titleColor: '#ff727c', gapBeforeLast: this.erase.step === 'choose',
+      spaciousRows: true, warningPulse,
+    });
   }
   drawExtrasModal(d) {
     drawModalList(d, this.extrasChoices(), this.extras.idx, {
@@ -1632,20 +1688,32 @@ export class TitleState {
 // The title's two modal lists, drawn one way. Geometry comes from
 // modalListGeom, which the tap hit-test reads too, so the rows a finger finds
 // are exactly the rows on screen at whatever size the device asked for.
-function drawModalList(d, choices, idx, { title, note, accent, titleColor }) {
-  const g = modalListGeom(choices.length, !!note);
-  const modalTextS = 1.35;
+function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0 }) {
+  const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows);
+  const modalTextS = spaciousRows ? 1.55 : 1.35;
   d.fillStyle = 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
   d.fillStyle = 'rgba(11,10,20,0.98)';
   platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
   d.strokeStyle = accent; d.lineWidth = 1;
   platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
-  drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', 1.5, 'title');
-  if (note) drawTextCentered(d, note, W / 2, g.y + 28, '#aab4c6', 1, 'ui');
+  drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
+  if (note) {
+    d.save();
+    const noteY = g.y + 30;
+    const noteScale = spaciousRows ? 1.35 : 1.2;
+    const glow = warningGlowSprite(note, noteScale);
+    d.globalCompositeOperation = 'lighter';
+    d.globalAlpha = 0.32 + warningPulse * 0.28;
+    d.drawImage(glow.canvas, W / 2 - glow.w / 2, noteY - noteScale - glow.pad);
+    d.globalCompositeOperation = 'source-over';
+    d.globalAlpha = 1;
+    drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    d.restore();
+  }
   choices.forEach((choice, i) => {
     const selected = i === idx;
-    const rowTop = g.firstY + i * g.rowH;
+    const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
     const textY = textYForMid(rowTop + g.rowH / 2) - (selected ? 2 : 0);
     if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
     drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}`, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
@@ -1754,18 +1822,23 @@ function drawCascade(ctx, block, top, band, color, t) {
 // at a pitch of 24 — 35 CSS px on a phone, under every platform's 44pt touch
 // minimum. They fill the screen now, which fixes the target and the type size
 // with the same number.
-const DIFF_TOP = 86, DIFF_ROW = 31, DIFF_GLOSS_DY = 13;
+const DIFF_TOP = 68, DIFF_ROW = 31, DIFF_BACK_GAP = 12, DIFF_GLOSS_DY = 13;
 const DIFF_NAME_S = 1.3, DIFF_GLOSS_S = 1.05;
 
+function difficultyRowAt(y) {
+  if (y < DIFF_TOP) return -1;
+  const firstRowsEnd = DIFF_TOP + DIFFICULTIES.length * DIFF_ROW;
+  if (y < firstRowsEnd) return Math.floor((y - DIFF_TOP) / DIFF_ROW);
+  const backTop = firstRowsEnd + DIFF_BACK_GAP;
+  if (y >= backTop && y < backTop + DIFF_ROW) return DIFFICULTIES.length;
+  return -1;
+}
+
 export class DifficultyState {
-  constructor({ save, onDone }) { this.save = save; this.onDone = onDone; }
-  // The base list never had a back affordance (there's nowhere to go back TO —
-  // this only ever runs once, right after creating a save slot), so the corner
-  // button was only ever load-bearing inside the confirm modal below, which now
-  // carries its own YES/NO zones instead.
-  enter() { this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
+  constructor({ save, onStart, onDone, onCancel }) { this.save = save; this.onStart = onStart; this.onDone = onDone; this.onCancel = onCancel; }
+  enter() { this.onStart?.(); this.idx = 0; this.confirming = false; Input.setMenuButtons(); }
   update(dt) {
-    const n = DIFFICULTIES.length;
+    const n = DIFFICULTIES.length + 1;
     if (this.confirming) {
       // Two explicit tap zones (see draw()) rather than "anywhere but the
       // corner button" — this is a menu now, not a floating-button screen.
@@ -1776,11 +1849,12 @@ export class DifficultyState {
       Input.endFrame();
       return;
     }
+    if (Input.pressed('back')) { this.onCancel?.(); Audio.sfx('ui'); Input.endFrame(); return; }
     if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - DIFF_TOP) / DIFF_ROW);
-      if (i >= 0 && i < n) {
+      const i = difficultyRowAt(Input.pointer.y);
+      if (i >= 0) {
         if (this.idx === i) this.select(); else { this.idx = i; Audio.sfx('ui'); }
       }
     }
@@ -1788,6 +1862,7 @@ export class DifficultyState {
     Input.endFrame();
   }
   select() {
+    if (this.idx === DIFFICULTIES.length) { this.onCancel?.(); Audio.sfx('ui'); return; }
     const d = DIFFICULTIES[this.idx];
     if (d.id === 5) { this.confirming = true; Audio.sfx('uiBad'); return; }
     Audio.sfx('uiConfirm');
@@ -1802,18 +1877,17 @@ export class DifficultyState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     drawTextCentered(ctx, 'SELECT DIFFICULTY', W / 2, 40, '#fff', 2, 'title');
-    drawTextCentered(ctx, '(THE PAUSE MENU WILL ALWAYS TELL YOU THE TRUTH)', W / 2, 64, '#5a5a68');
     // Widest of the two columns of type, since the names are set a size above
     // their glosses and either can be the long one.
     const names = centredBand(DIFFICULTIES.map((d) => `> ${d.name}`), DIFF_NAME_S);
     const glosses = centredBand(DIFFICULTIES.map((d) => d.desc), DIFF_GLOSS_S);
     const band = names.w >= glosses.w ? names : glosses;
-    DIFFICULTIES.forEach((d, i) => {
+    [...DIFFICULTIES, { id: 0, name: 'BACK', desc: 'RETURN TO SHIFT SELECT' }].forEach((d, i) => {
       const sel = i === this.idx;
       const danger = d.id === 5;
       const label = d.name;
       const color = danger ? '#e04848' : sel ? '#c9a0ff' : '#c8c8d8';
-      const rowTop = DIFF_TOP + i * DIFF_ROW;
+      const rowTop = DIFF_TOP + i * DIFF_ROW + (i === DIFFICULTIES.length ? DIFF_BACK_GAP : 0);
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, DIFF_ROW - 2);
       // The name/gloss pair centres in the band as one block, so the band the
       // finger finds is the band the words sit in the middle of.

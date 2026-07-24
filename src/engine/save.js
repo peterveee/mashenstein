@@ -120,6 +120,26 @@ export class Save {
     try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (e) { /* storage full/blocked */ }
   }
 
+  // File saves deliberately use the same versioned envelope as localStorage.
+  // Import validates the whole envelope before replacing the live save.
+  exportData() {
+    return JSON.parse(JSON.stringify(this.data));
+  }
+
+  importData(raw) {
+    const data = migrate(raw);
+    if (!data || !Array.isArray(data.slots) || data.slots.length !== 3
+      || !data.settings || typeof data.settings !== 'object') {
+      throw new Error('INVALID SAVE FILE');
+    }
+    data.settings = { ...defaultSettings(), ...data.settings };
+    data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
+    this.data = data;
+    this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
+    this.persist();
+    return this;
+  }
+
   get settings() { return this.data.settings; }
   get slot() { return this.data.slots[this.slotIndex]; }
 

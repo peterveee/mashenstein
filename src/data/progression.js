@@ -1,10 +1,21 @@
 // Progression & economy data: Repair Bench, Hero Mastery, Cabinet Mods.
 
 export const BENCH_UPGRADES = [
-  { id: 'shield', name: 'SHIELD', levels: [0, 800, 2400], max: 3, desc: ['ABSORBS 1 HIT. STACKS TO 2.', 'STACKS TO 3.', 'BREAKING EMITS A SHOCKWAVE THAT CLEARS THE NEAREST OBSTACLE.'] },
-  { id: 'magnet', name: 'MAGNET', levels: [0, 800, 2400], max: 3, desc: ['PULLS COINS. 8 SECONDS.', '12 SECONDS. BIGGER PULL.', '16 SECONDS. COINS HAVE NO CHANCE.'] },
-  { id: 'star', name: 'SCORE STAR', levels: [0, 800, 2400], max: 3, desc: ['2X SCORE. 10 SECONDS.', '2.5X SCORE.', '3X SCORE.'] },
-  { id: 'tuneup', name: 'HERO TUNE-UP', levels: [1000, 2000, 3000], max: 3, desc: ['ABILITY COOLDOWNS -10%.', '-20%.', '-30%.'] },
+  { id: 'shield', name: 'EXTRA SHIELD CAPACITY', levels: [0, 1500, 4000], max: 3,
+    currentDesc: ['HOLDS 2 SHIELD CHARGES.', 'HOLDS 3 SHIELD CHARGES.', 'SHIELD BREAKS WITH A SHOCKWAVE.'],
+    desc: ['HOLDS 3 SHIELD CHARGES.', 'SHIELD BREAKS WITH A SHOCKWAVE.'] },
+  { id: 'magnet', name: 'SUPER MAGNET DURATION', levels: [0, 1500, 4000], max: 3,
+    currentDesc: ['PULLS COINS FOR 8 SECONDS.', 'PULLS COINS FOR 12 SECONDS.', 'PULLS COINS FOR 16 SECONDS.'],
+    desc: ['12 SECONDS. BIGGER PULL.', '16 SECONDS. COINS HAVE NO CHANCE.'] },
+  { id: 'tuneup', name: 'HERO REFIRE RATE', levels: [1800, 4000], max: 2,
+    currentDesc: ['STANDARD POWER COOLDOWNS.', 'POWER COOLDOWNS -10%.', 'POWER COOLDOWNS -20%.'],
+    desc: ['POWER COOLDOWNS -10%.', 'POWER COOLDOWNS -20%.'] },
+];
+
+export const BENCH_FOOD_COURT_SURCHARGES = [
+  { rate: 8.73 / 100, name: 'STANDARD FOOD COURT SURCHARGE' },
+  { rate: 10.31 / 100, name: 'PEAK SERVICE SURCHARGE' },
+  { rate: 12.47 / 100, name: 'EQUIPMENT MAINTENANCE SURCHARGE' },
 ];
 
 export const MODS = [

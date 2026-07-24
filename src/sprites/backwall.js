@@ -624,7 +624,8 @@ function handStrike(ctx, x0, x1, y, lw, seed, col = '#e04848') {
 // hang the BOARD over the serving counter, and the board is not centred in its
 // own bay — the counter display and the grade card take up the right third.
 // Placing the bay by its own centre put the panel half a counter to the left.
-const MENU_PANEL_X = 0.06, MENU_PANEL_W = 0.66;
+const MENU_PANEL_X = 0.06;
+export const MENU_PANEL_W = 0.66;
 export const MENU_PANEL_CENTRE = MENU_PANEL_X + MENU_PANEL_W / 2;
 
 function paintMenuBoard(ctx, x, y, w, h, o) {

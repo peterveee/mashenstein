@@ -8,13 +8,13 @@ export const POWER_DEFS = {
   airjump: { name: 'AIR JUMP', color: '#72d8f0' },
   speed:   { name: 'SPEED BURST', color: '#f89048' },
   lowgrav: { name: 'LOW GRAVITY', color: '#b888f0' },
-  // Rarer than the four staples in the drip; also the breaker-box bonus prize.
+  // Rarer than the regular staples in the drip; also the breaker-box bonus prize.
   unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
 };
 
 // Shared by drip spawns and !-crate prizes. The borrowed traits are exciting
-// finds without crowding out the established staple capsules. Three staples
-// share the 52% tail since Slow-Mo was retired — the reduced variety is the
+// finds without crowding out the established staple capsules. Two staples
+// share the 52% tail since Slow-Mo and Score Star were retired — the reduced variety is the
 // point: nothing left in the common pool fights the player for control.
 export function randomPowerPickup(rng) {
   const roll = rng.float();
@@ -24,7 +24,7 @@ export function randomPowerPickup(rng) {
   if (roll < 0.08) return 'capRelay';
   if (roll < 0.18) return 'capUnpeel';
   if (roll < 0.48) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.18) / 0.10)];
-  return rng.pick(['capShield', 'capMagnet', 'capStar']);
+  return rng.pick(['capShield', 'capMagnet']);
 }
 
 export class Powerups {
@@ -38,7 +38,7 @@ export class Powerups {
   levelOf(id) { return Math.max(1, this.bench[id] || 1); }
   durMult() { return this.mods.includes('storebrand') ? 0.8 : 1; }
 
-  shieldCap() { return [2, 2, 3, 3][this.levelOf('shield')] || 2; }
+  shieldCap() { return [0, 2, 3, 3][this.levelOf('shield')] || 2; }
 
   grab(id, opts = {}) {
     if (id === 'shield') {

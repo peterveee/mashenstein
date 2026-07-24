@@ -15,7 +15,7 @@
 // Input.textHandler swallows every letter during TURDLE — the menu must behave
 // identically wherever it was opened from.
 import { Input } from '../engine/input.js';
-import { H, pushOverlayDraw, saveScreenshot } from '../engine/renderer.js';
+import { H, pushOverlayDraw, saveScreenshot, clientToLogical } from '../engine/renderer.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
 import { rootMenu, drawMenu } from './menus.js';
 
@@ -32,11 +32,40 @@ export const Dev = {
   seedLock: null,     // when set, every dev-launched run reuses this seed
   toast: null,
   toastT: 0,
+  touchUnlock: { count: 0, t: 0 },
 
   install(ctx) {
     if (!this.enabled || this.ctx) return;
     this.ctx = ctx;
     window.addEventListener('keydown', (e) => this.onKey(e), { capture: true });
+    const game = document.getElementById('game');
+    game && game.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
+      const p = clientToLogical(e.clientX, e.clientY);
+      const now = performance.now();
+      if (!this.open) {
+        if (e.pointerType !== 'touch') return;
+        // Touch-only dev builds have no Backquote key: five taps in the
+        // upper-left corner open the intentionally obscure dev overlay.
+        if (p.x <= 72 && p.y <= 32 && now - this.touchUnlock.t < 1600) this.touchUnlock.count++;
+        else this.touchUnlock.count = 1;
+        this.touchUnlock.t = now;
+        if (this.touchUnlock.count >= 5) { this.openMenu(); this.touchUnlock.count = 0; e.preventDefault(); }
+        return;
+      }
+      const top = this.top();
+      if (!top) return;
+      const maxRows = 17, rowH = 11;
+      const first = Math.max(0, Math.min(top.items.length - maxRows, top.idx - Math.floor(maxRows / 2)));
+      const row = Math.floor((p.y - 20) / rowH);
+      const idx = first + row;
+      if (idx < 0 || idx >= top.items.length || row >= maxRows) return;
+      top.idx = idx;
+      const item = top.items[idx];
+      if (item.submenu) this.push(item.submenu(this));
+      else if (item.act) { item.act(); this.refresh(); }
+      e.preventDefault();
+    }, { capture: true });
     if (typeof window !== 'undefined') window.__mash_dev = this;
   },
 
@@ -49,6 +78,41 @@ export const Dev = {
     const name = `mashenstein-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
       + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.png`;
     this.say(saveScreenshot(name) ? `SAVED ${name}` : 'SCREENSHOT UNAVAILABLE');
+  },
+
+  exportSave() {
+    try {
+      const json = JSON.stringify(this.ctx.save.exportData(), null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mashenstein-save.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.say('SAVE EXPORTED');
+    } catch (e) { this.say('EXPORT UNAVAILABLE'); }
+  },
+
+  importSave() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          this.ctx.save.importData(JSON.parse(reader.result));
+          this.say('SAVE IMPORTED');
+          this.refresh();
+        } catch (e) { this.say(e.message === 'INVALID SAVE FILE' ? e.message : 'IMPORT FAILED'); }
+      };
+      reader.onerror = () => this.say('IMPORT FAILED');
+      reader.readAsText(file);
+    });
+    input.click();
   },
 
   run() {

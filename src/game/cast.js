@@ -9,7 +9,7 @@ import { drawText, drawTextCentered, textWidth, wrapText } from '../engine/sprit
 import { drawToon } from '../sprites/toons.js';
 import { HEROES } from '../data/heroes.js';
 
-const SLOT_T = 8.0;        // seconds per hero; gives players time to read the full card
+const SLOT_T = 16.0;       // seconds per hero; gives players time to read the full card
 const FADE_T = 0.45;       // slide/fade in at the start of each slot
 // Every hero but the last is covered by the next one fading in over them. The
 // last has nothing following it, so without a tail the roll call cuts to the
@@ -23,7 +23,7 @@ const LORENZO_ATTACK_IN = SLOT_T * 0.45;
 const LORENZO_ATTACK_T = 0.55;
 const GRUMPOS_CELEBRATE_IN = SLOT_T * 0.5;
 // Whole-cycle gait rates: eight ordinary cycles and twelve Gnash cycles land
-// exactly at 5.6s. This preserves a constant walking speed right up to the
+// exactly at 11.2s. This preserves a constant walking speed right up to the
 // celebration/special handoff—no late brake and no half-raised foot.
 const CAST_GAIT_RATE = 8 / PERFORMANCE_IN;
 const GRUMPOS_GAIT_RATE = 6 / GRUMPOS_CELEBRATE_IN;
@@ -45,7 +45,7 @@ const CAST_HERO_FLOOR = 140;
 // them. The Dust Devil is deliberately NOT here: he is a surprise, and a card
 // would spend him before the player meets him.
 const GARY_CAST = {
-  id: 'gary', name: 'GARY, STILL ON THE CLOCK', short: 'GARY',
+  id: 'gary', name: 'GARY, STILL ON THE CLOCK', short: 'GARY', subtitle: 'STILL ON THE CLOCK',
   tagline: 'TECHNICALLY I NEVER CLOCKED OUT.',
   ability: { label: 'UNAUTHORIZED INITIATIVE' },
   abilityDesc: 'STILL RESPONSIBLE FOR THE PHYSICAL SWITCHES. DEATH DID NOT UPDATE THE ROSTER.',
@@ -56,10 +56,10 @@ const GARY_CAST = {
 // denial — a shift that has not ended. So the card never winks at it either;
 // it is written as staff copy, and the gap is the joke.
 const DOLORES_CAST = {
-  id: 'dolores', name: 'DOLORES, NOT YET RELIEVED', short: 'DOLORES',
+  id: 'dolores', name: 'DOLORES, NOT YET RELIEVED', short: 'DOLORES', subtitle: 'NOT YET RELIEVED',
   tagline: 'NEXT.',
-  ability: { label: 'ONE PER CUSTOMER' },
-  abilityDesc: 'PLACE ONE ITEM ON THE COUNTER. DO NOT HOLD UP THE LINE.',
+  ability: { label: 'REPAIR COUNTER' },
+  abilityDesc: 'PERMANENT UPGRADES FOR THE CAST. ASK DOLORES.',
   joke: 'NOW SERVING ZERO. PLEASE HAVE YOUR NUMBER READY.',
 };
 
@@ -348,9 +348,10 @@ export class CastState {
     let y = 62;
     drawText(ctx, hero.short, tx, y, '#ffd94a', 2);
     y += 26;
-    // Full name only when it says something the short name doesn't.
-    if (hero.name !== hero.short) {
-      drawText(ctx, hero.name, tx, y, '#8a8a98');
+    // Avoid repeating the displayed name: GRUMPOS followed by GRUMPOS, DAD OF
+    // BOY is redundant. Keep a second line only when it adds a distinct name.
+    if (hero.subtitle || (hero.name !== hero.short && (hero.showFullName || !hero.name.startsWith(hero.short)))) {
+      drawText(ctx, hero.subtitle || hero.name, tx, y, '#8a8a98');
       y += 14;
     }
     drawText(ctx, `"${hero.tagline}"`, tx, y, '#48e0c8');
@@ -359,14 +360,30 @@ export class CastState {
     ctx.fillStyle = 'rgba(246,211,60,0.5)';
     ctx.fillRect(tx, y - 2, 44, 1);
     y += 8;
-    drawText(ctx, hero.ability.label, tx, y, '#f6d33c');
-    y += 14;
-    for (const line of wrapText(hero.abilityDesc, W - tx - 16, 1, 3)) {
-      drawText(ctx, line, tx, y, '#c8c8d8');
-      y += 11;
+    if (hero.ability.type) {
+      drawText(ctx, 'SKILL: ' + (hero.skillLabel || hero.ability.label), tx, y, '#f6d33c');
+      y += 14;
+      for (const line of wrapText(hero.skillDesc || hero.abilityDesc, W - tx - 16, 1, 3)) {
+        drawText(ctx, line, tx, y, '#c8c8d8');
+        y += 11;
+      }
+      y += 6;
+      drawText(ctx, 'MOVE: ' + hero.ability.label, tx, y, '#f6d33c');
+      y += 14;
+      for (const line of wrapText(hero.powerDesc || hero.abilityDesc, W - tx - 16, 1, 3)) {
+        drawText(ctx, line, tx, y, '#c8c8d8');
+        y += 11;
+      }
+    } else {
+      drawText(ctx, hero.ability.label, tx, y, '#f6d33c');
+      y += 14;
+      for (const line of wrapText(hero.abilityDesc, W - tx - 16, 1, 3)) {
+        drawText(ctx, line, tx, y, '#c8c8d8');
+        y += 11;
+      }
     }
     // The dossier footnote nobody asked for, filling the card's lower half.
-    y += 10;
+    y += 6;
     for (const line of wrapText(hero.joke, W - tx - 16, 1, 3)) {
       drawText(ctx, line, tx, y, '#5a5a68');
       y += 11;

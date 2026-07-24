@@ -64,8 +64,7 @@ const Flow = {
     onSlotChosen: (i, isNew) => {
       Flow.hubPosition = null;
       if (isNew) {
-        save.newSlot(i, Date.now());
-        setState(new DifficultyState({ save, onDone: () => setState(new IntroState({ onDone: () => {
+        setState(new DifficultyState({ save, onStart: () => save.newSlot(i, Date.now()), onCancel: () => { save.eraseSlot(i); Flow.toTitle(); }, onDone: () => setState(new IntroState({ onDone: () => {
           save.slot.campaign.storyFlags.sawIntro = true;
           save.persist();
           Flow.toHub();

@@ -26,7 +26,7 @@ const st = new CastState({ realSettings: save.settings, onExit: (auto) => { exit
 st.enter();
 const shown = [];
 let ticks = 0;
-while (exited === null && ticks < 60 * 120) {
+while (exited === null && ticks < 60 * 240) {
   st.update(TICK);
   if (exited === null) {
     st.draw(ctx);
@@ -58,7 +58,7 @@ for (const h of CAST_HEROES) {
   }
   assert(!foundIdle, `${h.short} never enters an idle pose`);
   if (h.id !== 'lorenzo') {
-    const handoff = h.id === 'grumpos' ? 4 : 5.6;
+    const handoff = h.id === 'grumpos' ? 8 : 11.2;
     const gaitPhase = (offset) => {
       st.slotT = handoff + offset;
       return st.poseFor(h, false).pose.phase;
@@ -76,9 +76,9 @@ for (const h of CAST_HEROES) {
   if (h.id === 'lorenzo') {
     st.slotT = 3.5;
     const walkingIn = st.poseFor(h, false).pose;
-    st.slotT = 3.85;
+    st.slotT = 7.25;
     const attacking = st.poseFor(h, false).pose;
-    st.slotT = 4.3;
+    st.slotT = 7.9;
     const walkingOut = st.poseFor(h, false).pose;
     assert(walkingIn.kind === 'run' && attacking.kind === 'run'
       && attacking.menuAction === 'smash' && attacking.actionTime > 0
@@ -91,19 +91,19 @@ for (const h of CAST_HEROES) {
     const early = st.poseFor(h, false).pose;
     st.slotT = 6;
     const late = st.poseFor(h, false).pose;
-    st.slotT = 7.9;
+    st.slotT = 15.9;
     const finishing = st.poseFor(h, false).pose;
     assert(early.kind === 'run' && late.kind === 'run' && finishing.kind === 'run',
       'DOLORES keeps walking for her whole card and never celebrates');
     continue;
   }
-  st.slotT = 4.7;
+  st.slotT = 9.4;
   const walking = st.poseFor(h, false).pose;
-  st.slotT = 5.1;
+  st.slotT = 10.2;
   const middle = st.poseFor(h, false).pose;
-  st.slotT = 5.7;
+  st.slotT = 11.7;
   const celebrating = st.poseFor(h, false).pose;
-  st.slotT = 7.9;
+  st.slotT = 15.9;
   const finishing = st.poseFor(h, false).pose;
   if (h.id === 'gnash' || h.id === 'fernwick') {
     const special = h.id === 'gnash'
@@ -113,32 +113,32 @@ for (const h of CAST_HEROES) {
         && finishing.kind === 'duck' && finishing.roll;
     assert(walking.kind === 'run' && middle.kind === 'run' && special,
       `${h.short} moves 70%, then enters the gameplay special directly`);
-    st.slotT = 5.6 - 0.000001;
+    st.slotT = 11.2 - 0.000001;
     assert(st.poseFor(h, false).pose.phase > 0.999,
       `${h.short} finishes the gait cycle before the special`);
   } else if (h.id === 'grumpos') {
-    st.slotT = 3.9;
+    st.slotT = 7.9;
     const firstHalf = st.poseFor(h, false).pose;
-    st.slotT = 4.1;
+    st.slotT = 8.1;
     const secondHalf = st.poseFor(h, false).pose;
     assert(firstHalf.kind === 'run' && secondHalf.kind === 'celebrate'
       && finishing.kind === 'celebrate',
     'GRUMPOS walks 50%, then celebrates through the final 50%');
-    st.slotT = 4 - 0.000001;
+    st.slotT = 8 - 0.000001;
     assert(st.poseFor(h, false).pose.phase > 0.999,
       'GRUMPOS finishes the gait cycle before celebrating');
   } else if (h.id === 'b33p') {
     assert(walking.kind === 'run' && middle.kind === 'run'
       && celebrating.kind === 'celebrate' && finishing.kind === 'celebrate',
     'B-33P walks 70%, then celebrates directly through the final 30%');
-    st.slotT = 5.6 - 0.000001;
+    st.slotT = 11.2 - 0.000001;
     assert(st.poseFor(h, false).pose.phase > 0.999,
       'B-33P finishes the gait cycle before celebrating');
   } else {
     assert(walking.kind === 'run' && middle.kind === 'run'
       && celebrating.kind === 'celebrate' && finishing.kind === 'celebrate',
     `${h.short} moves 70%, then celebrates directly through the end`);
-    st.slotT = 5.6 - 0.000001;
+    st.slotT = 11.2 - 0.000001;
     assert(st.poseFor(h, false).pose.phase > 0.999,
       `${h.short} finishes the gait cycle before celebrating`);
   }

@@ -1,6 +1,6 @@
 // Production artifact contract for the split gate/game build.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,17 +22,6 @@ const game = readFileSync(join(root, 'dist/game.js'), 'utf8');
 const manifest = JSON.parse(readFileSync(join(root, 'dist/manifest.webmanifest'), 'utf8'));
 const sw = readFileSync(join(root, 'dist/sw.js'), 'utf8');
 const template = readFileSync(join(root, 'build/template.html'), 'utf8');
-const contactAudio = [
-  '25-contact-b33p-orb-pop.wav',
-  '26-contact-grumpos-axe-chop.wav',
-  '27-contact-lorenzo-wrench-hit.wav',
-  '28-contact-raymn-fist-impact.wav',
-  '29-contact-fernwick-shield-bonk.wav',
-  '30-contact-miss-chomp-crunch.wav',
-  '01-b33p-laser-orb-pulse.wav',
-  '08-raymn-rocket-fist-launch.wav',
-  '18-grumpos-axe-throw-ring.wav',
-];
 
 assert(manifest.orientation === 'any', 'manifest allows iPad and Android rotation');
 assert(statSync(join(root, 'dist/index.html')).size < 50 * 1024, 'initial install gate stays lightweight');
@@ -60,8 +49,10 @@ assert(!html.includes('MASHENSTEIN: THE UNPLUGGENING — boot + campaign'),
   'game implementation is not inlined into the live shell');
 assert(!html.includes('window.__MASH_DEV__=true') && !html.includes('__DEV_GATE__'),
   'production shell cannot bypass the iPhone installation gate');
-assert(contactAudio.every((file) => statSync(join(root, 'dist/audio/weapon-candidates', file)).size > 1000),
-  'weapon-specific contact and launch WAVs are copied into the production build');
+assert(!existsSync(join(root, 'dist/audio')),
+  'no audio assets are shipped — weapon cues are synthesised in-engine, not fetched');
+assert(game.includes('contact-b33p-orb-pop') && game.includes('raymn-rocket-fist-launch'),
+  'weapon cue recipes are bundled into the game bundle for procedural playback');
 
 const buildSource = readFileSync(join(root, 'build/build.js'), 'utf8');
 assert(buildSource.includes("dist/.esbuild") && buildSource.includes('buildStamp() + output'),

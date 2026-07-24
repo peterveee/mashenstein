@@ -221,8 +221,6 @@ function scenesMenu(dev) {
       { label: 'HUB', act: go(() => Flow.toHub()) },
       { label: 'TITLE', act: go(() => Flow.toTitle()) },
       { label: 'NEW FILE ▸', submenu: () => newFileMenu(dev) },
-      { label: 'BENCH', act: go(() => Flow.openBench()) },
-      { label: 'SHOP', act: go(() => Flow.openShop()) },
       { label: 'ARCADE', act: go(() => Flow.openArcade()) },
       { label: 'STAGE SELECT', act: go(() => Flow.openCabinet(CABINETS[0])) },
       { label: 'RESULTS (fake S-rank)', act: () => instantClear(dev, STAGES[0]) },
@@ -261,6 +259,8 @@ function saveMenu(dev) {
     return {
       title: 'SAVE',
       items: [
+        { label: 'EXPORT SAVE FILE', act: () => dev.exportSave() },
+        { label: 'IMPORT SAVE FILE', act: () => dev.importSave() },
         {
           label: 'UNLOCK EVERYTHING',
           act: () => {
@@ -402,6 +402,14 @@ export function rootMenu(dev) {
       { label: 'TROPHY ROOM', act: () => {
         dev.close();
         dev.ctx.Flow.openTrophyRoom();
+      } },
+      { label: "DOLORES' REPAIR BENCH", act: () => {
+        dev.close();
+        dev.ctx.Flow.openBench();
+      } },
+      { label: "GARY'S PAWN SHOP", act: () => {
+        dev.close();
+        dev.ctx.Flow.openShop();
       } },
       { label: 'CAST ROLL', act: () => {
         dev.close();
