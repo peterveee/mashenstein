@@ -137,6 +137,22 @@ export const WORLD_SPRITES = {
       '............',
     ],
   },
+  trafficCone: {
+    pal: { o: '#e86020', w: '#f8f8ff', d: '#b84018' },
+    grid: [
+      '....oo....',
+      '...oooo...',
+      '..oooooo..',
+      '.oooooooo.',
+      '..oooooo..',
+      '.owooooow.',
+      '.oowwwooo.',
+      '.oowwwooo.',
+      '..oowwoo..',
+      '...oddo...',
+      '...oddo...',
+    ],
+  },
   // -- pickups --------------------------------------------------------------
   coin: {
     pal: { g: '#f6d33c', d: '#c8a020', w: '#fff8d0' },

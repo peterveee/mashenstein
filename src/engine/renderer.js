@@ -578,14 +578,17 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
 // last painted. An unchanged signature => no clear, no paint, so the compositor
 // can cache the layer instead of taking a full-viewport clear + re-upload every
 // frame. An empty frame (menus, pause) clears once, then no-ops.
+let chromeOverlay = null;
 export function beginChromeFrame() { chromeWant = null; }
 export function paintChrome(sig, painter) { chromeWant = { sig, painter }; }
+export function setChromeOverlay(sig, painter) { chromeOverlay = sig ? { sig, painter } : null; }
 export function commitChromeFrame() {
   if (!chromeCtx) return;
-  const sig = chromeWant ? chromeWant.sig : '';
+  const sig = `${chromeWant ? chromeWant.sig : ''}|${chromeOverlay ? chromeOverlay.sig : ''}`;
   if (sig === chromePaintedSig) return;
   chromeCtx.clearRect(0, 0, chrome.vw, chrome.vh);
   if (chromeWant && chromeWant.painter) chromeWant.painter(chromeCtx);
+  if (chromeOverlay && chromeOverlay.painter) chromeOverlay.painter(chromeCtx);
   chromePaintedSig = sig;
 }
 

@@ -1,14 +1,14 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, rendererDiagnostics, W,
+  noteRendererFrame, rendererDiagnostics, W, chrome, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateNoCameo, updateState, drawState, setTransitionHero, currentState } from './engine/states.js';
+import { setState, setStateNoCameo, updateState, drawState, setTransitionHero } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -293,9 +293,23 @@ function boot() {
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => {
+      const showChromeFps = save.settings.showFps && Input.isTouchDevice() && chrome.mode !== 'none';
+      const fps = frameRate() || '--';
+      setChromeOverlay(showChromeFps ? `fps|${fps}` : '', (ctx) => {
+        const x = 12;
+        const y = 34;
+        const line1 = `FPS ${fps}`;
+        const d = rendererDiagnostics();
+        const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
+        const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.frozen ? ' FZ' : d.throttled ? ' TH' : ''}`;
+        ctx.fillStyle = 'rgba(5,6,12,0.68)';
+        ctx.fillRect(x - 6, y - 26, 138, 42);
+        drawText(ctx, line1, x, y - 22, '#f4f1fa', 1.75, 'ui');
+        drawText(ctx, line2, x, y - 2, '#9fb4d8', 1.75, 'ui');
+      });
       drawState(bctx);
       Dev.draw(bctx);
-      if (save.settings.showFps && !(Input.usingTouch && currentState()?.useChrome)) {
+      if (save.settings.showFps && !showChromeFps) {
         pushOverlayDraw((ctx) => {
           const d = rendererDiagnostics();
           const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';

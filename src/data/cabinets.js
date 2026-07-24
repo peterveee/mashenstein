@@ -105,14 +105,82 @@ export const CABINETS = [
     mechanic: 'boost',
     sky: ['#f08048', '#f8c060'], ground: '#c88848', groundDark: '#a06830',
     far: '#d09858', hills: '#b07840',
-    music: { bpm: 128, bass: seq('E2 E2 . E2 . E2 . . G2 G2 . G2 . G2 . . A2 A2 . A2 . A2 . . B2 . D3 . B2 . G2 .'), lead: seq('E5 . . B4 . E5 . G5 . E5 . B4 . A4 . B4'), kick: seq('C1 . C1 . C1 . C1 . C1 . C1 . C1 . C1 .').map((v) => !!v), hats: seq('C1 C1 . C1 C1 C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v) },
+    // The original E-minor lap, unchanged note-for-note, played eight times —
+    // then the same lap walked through a I-IV-V at the key level: two blocks
+    // in A minor (IV), two in B minor (V), and the wrap resolves V back to I.
+    // Modulating the whole lap rather than reharmonising inside it keeps the
+    // tune identical in all three keys, so the progression is heard as the
+    // track changing gear rather than as a new section.
+    //
+    // The open hats are held back to arrive with the first modulation: the key
+    // going up and the hi-hat opening are one gear change, not two.
+    //
+    // One mix change underneath: the kick is on quarters rather than eighths
+    // (at 128bpm it was landing on top of every bass note and the low end
+    // never breathed). The bass lane itself is untouched.
+    music: {
+      bpm: 128,
+      bass: seq('E2 E2 . E2 . E2 . . G2 G2 . G2 . G2 . . A2 A2 . A2 . A2 . . B2 . D3 . B2 . G2 .'),
+      lead: seq('E5 . . B4 . E5 . G5 . E5 . B4 . A4 . B4'),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      hats: seq('C1 C1 . C1 C1 C1 . C1').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v),
+      // The arpeggio is the only lane feeding the echo bus (bass is dry unless
+      // a bank opts in, and there are no chords here), so echoLevel is in
+      // effect a send on the high part alone. Kept light — it should widen the
+      // arp, not smear the grid at this tempo.
+      echoLevel: 0.16,
+      // The lead takes each modulation upward (+5 to IV, +7 to V) so the lift
+      // is heard where the tune is. The bass takes the nearest LOW voicing of
+      // the same key instead of the literal transposition — up a fifth would
+      // put it at B2-A3 (123-220Hz), out of the bass register and into the
+      // low-mids, and the track would thin out underneath exactly where it is
+      // supposed to gain. Down a fourth/fifth is the same chord, same key,
+      // and keeps all three sections within a few Hz of each other:
+      //   I  E2-D3  (82-147Hz)   IV  A1-G2 (55-98Hz)   V  B1-A2 (62-110Hz)
+      sections: [
+        {}, // I — home: E minor, closed hats only
+        // IV — A minor. Same line, same rhythm, lead +5.
+        { bass: seq('A1 A1 . A1 . A1 . . C2 C2 . C2 . C2 . . D2 D2 . D2 . D2 . . E2 . G2 . E2 . C2 .'),
+          lead: seq('A5 . . E5 . A5 . C6 . A5 . E5 . D5 . E5'),
+          ohats: seq('. . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+          echoLevel: 0.2 },
+        // V — B minor. Lead +7.
+        { bass: seq('B1 B1 . B1 . B1 . . D2 D2 . D2 . D2 . . E2 E2 . E2 . E2 . . F#2 . A2 . F#2 . D2 .'),
+          lead: seq('B5 . . F#5 . B5 . D6 . B5 . F#5 . E5 . F#5'),
+          ohats: seq('. . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+          echoLevel: 0.2 },
+        // The three turn blocks: a keyboard run up the last beat, landing on
+        // the tonic of whichever key is about to start. The run is a natural-
+        // minor scale rooted on its target, so it arrives carrying the
+        // incoming key's notes and each modulation is announced rather than
+        // just happening.
+        { keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . A5 . . .'), keyGlissGain: 0.035 }, // I -> IV
+        { bass: seq('A1 A1 . A1 . A1 . . C2 C2 . C2 . C2 . . D2 D2 . D2 . D2 . . E2 . G2 . E2 . C2 .'),
+          lead: seq('A5 . . E5 . A5 . C6 . A5 . E5 . D5 . E5'),
+          ohats: seq('. . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+          echoLevel: 0.2,
+          keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . B5 . . .'), keyGlissGain: 0.035 }, // IV -> V
+        { bass: seq('B1 B1 . B1 . B1 . . D2 D2 . D2 . D2 . . E2 E2 . E2 . E2 . . F#2 . A2 . F#2 . D2 .'),
+          lead: seq('B5 . . F#5 . B5 . D6 . B5 . F#5 . E5 . F#5'),
+          ohats: seq('. . . . . . C1 . . . . . . . C1 .').map((v) => !!v),
+          echoLevel: 0.2,
+          keyGliss: seq('. . . . . . . . . . . . . . . . . . . . . . . . . . . . E5 . . .'), keyGlissGain: 0.035 }, // V -> I
+      ],
+      //          I x8 (bars 1-16)          IV x2      V x2
+      order: [0, 0, 0, 0, 0, 0, 0, 3, 1, 4, 2, 5],
+    },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60, 6)]),
+      P(0, [{ t: 'trafficCone', dx: 0 }]),
       P(1, [{ t: 'boostPad', dx: 0 }, { t: 'cactus', dx: 120 }]),
+      P(1, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 40 }]),
       P(2, [{ t: 'gap', dx: 0, w: 56 }]),           // collapsing road: a pit
       P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100, 5)]),
       P(2, [{ t: 'barrel', dx: 0 }, { t: 'barrel', dx: 140 }]),
+      P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'trafficCone', dx: 60 }]),
     ],
     taunt: 'I INVENTED SPEED. IN 1987. NO ONE THANKED ME.',
   },

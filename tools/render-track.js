@@ -20,7 +20,12 @@ for (let r = 0; r < REPEAT; r++) for (const oi of order) blocks.push(bank.sectio
 const TAIL = 2.0;
 const N = Math.ceil((blocks.length * 32 * spb + TAIL) * SR);
 
-const voice = new Float32Array(N); // pre-bus voice sum
+const voice = new Float32Array(N); // pre-bus voice sum (everything, dry path)
+// The engine's echoBus is a parallel send fed only by the melodic lanes —
+// percussion and vocal one-shots stay dry whatever echoLevel says. Rendering
+// the whole voice sum into the delay (as this tool used to) put the kick and
+// hats in the repeats, which is audibly not the mix the game plays.
+const wet = new Float32Array(N);   // the subset that feeds the echo send
 const MUSIC_GAIN = 0.7;
 
 // ---- DSP helpers ------------------------------------------------------------
@@ -85,34 +90,44 @@ function wave(type, ph) {
   if (type === 'triangle') return p < 0.5 ? 4 * p - 1 : 3 - 4 * p;
   return Math.sin(2 * Math.PI * p);
 }
-// play(): 0.0001 -> peak over atk, then -> 0.0001 at dur (engine's osc env)
-function tone(t0, dur, type, freqFn, peak, atk = 0.01) {
+// play(): 0.0001 -> peak over atk, then -> 0.0001 at dur (engine's osc env).
+// echo mirrors play()'s echo flag: true = also tap the send.
+function tone(t0, dur, type, freqFn, peak, atk = 0.01, echo = true) {
   const i0 = Math.floor(t0 * SR), n = Math.floor(dur * SR);
   let ph = 0;
   for (let i = 0; i < n && i0 + i < N; i++) {
     const t = i / SR;
     ph += freqFn(t) / SR;
     const env = t < atk ? expInterp(0.0001, peak, t / atk) : expInterp(peak, 0.0001, (t - atk) / Math.max(1e-6, dur - atk));
-    voice[i0 + i] += wave(type, ph) * env;
+    const v = wave(type, ph) * env;
+    voice[i0 + i] += v;
+    if (echo) wet[i0 + i] += v;
   }
 }
 // percussion env: setValueAtTime(peak) -> exp ramp to 0.001 over decay
-function noiseEv(t0, stop, peak, decay, filt) {
+function noiseEv(t0, stop, peak, decay, filt, echo = false) {
   const i0 = Math.floor(t0 * SR), n = Math.floor(stop * SR);
   for (let i = 0; i < n && i0 + i < N; i++) {
     const t = i / SR;
     const env = t < decay ? expInterp(peak, 0.001, t / decay) : 0.001;
-    voice[i0 + i] += filt(Math.random() * 2 - 1) * env;
+    const v = filt(Math.random() * 2 - 1) * env;
+    voice[i0 + i] += v;
+    if (echo) wet[i0 + i] += v;
   }
 }
-function tonalPerc(t0, stop, type, f0, f1, sweepT, peak, decay) {
+function tonalPerc(t0, stop, type, f0, f1, sweepT, peak, decay, echo = false, atk = 0) {
   const i0 = Math.floor(t0 * SR), n = Math.floor(stop * SR);
   let ph = 0;
   for (let i = 0; i < n && i0 + i < N; i++) {
     const t = i / SR;
     ph += (t < sweepT ? expInterp(f0, f1, t / sweepT) : f1) / SR;
-    const env = t < decay ? expInterp(peak, 0.001, t / decay) : 0.001;
-    voice[i0 + i] += wave(type, ph) * env;
+    // atk > 0 mirrors the engine's short exponential ramp in (the 808 body),
+    // rather than a hard setValueAtTime at the peak.
+    const env = t < atk ? expInterp(0.0001, peak, t / atk)
+      : (t < decay ? expInterp(peak, 0.001, (t - atk) / Math.max(1e-6, decay - atk)) : 0.001);
+    const v = wave(type, ph) * env;
+    voice[i0 + i] += v;
+    if (echo) wet[i0 + i] += v;
   }
 }
 
@@ -124,10 +139,22 @@ blocks.forEach((b, blk) => {
     const i0 = Math.floor(t0 * SR), i1 = Math.min(N, Math.floor((t0 + spb) * SR));
     lvlTarget.fill(b.echoLevel != null ? b.echoLevel : 0.28, i0, i1);
     const type = b.leadType || 'square';
-    if (b.bass && b.bass[s]) tone(t0, spb * 1.8, b.bassType || 'square', () => b.bass[s], 0.1);
-    if (b.lead && b.lead[s]) tone(t0, spb * 1.2, type, () => b.lead[s], 0.06);
-    if (b.leadHarm && b.leadHarm[s]) tone(t0, spb * 1.2, type, () => b.leadHarm[s], 0.04);
-    if (b.chords && b.chords[s]) for (const f of b.chords[s]) tone(t0, spb * 2.6, b.chordType || 'square', () => f, 0.05);
+    const EV = !!b.echoEverything;
+    if (b.bass && b.bass[s]) {
+      // Bass is dry unless the bank opts in — the engine's default, and it
+      // matters for deep lines whose harmonics would otherwise wash the delay.
+      const bassDur = spb * (b.bassDur || 1.8);
+      const bassGain = b.bassGain ?? 0.1;
+      const bassEcho = !!b.bassEcho || EV;
+      tone(t0, bassDur, b.bassType || 'square', () => b.bass[s], bassGain, b.bassAttack || 0.01, bassEcho);
+      if (b.bassRepeat) {
+        tone(t0 + spb * b.bassRepeat, bassDur * (b.bassRepeatDur ?? 0.8), b.bassType || 'square',
+          () => b.bass[s], bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false);
+      }
+    }
+    if (b.lead && b.lead[s]) tone(t0, spb * (b.leadDur || 1.2), type, () => b.lead[s], b.leadGain ?? 0.06, b.leadAttack || 0.01);
+    if (b.leadHarm && b.leadHarm[s]) tone(t0, spb * (b.harmDur || b.leadDur || 1.2), b.harmType || type, () => b.leadHarm[s], b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+    if (b.chords && b.chords[s]) for (const f of b.chords[s]) tone(t0, spb * (b.chordDur || 2.6), b.chordType || 'square', () => f, b.chordGain ?? 0.05, b.chordAttack || 0.01);
     if (b.keyGliss && b.keyGliss[s]) {
       const fT = b.keyGliss[s];
       const steps = [-12, -10, -9, -7, -5, -4, -2, 0];
@@ -189,15 +216,24 @@ blocks.forEach((b, blk) => {
         voice[i0v + i] += (bpA.run(src) + bpB.run(src)) * sg;
       }
     }
-    if (b.kick && b.kick[s]) tonalPerc(t0, 0.11, 'sine', 150, 50, 0.06, 0.34, 0.08);
-    if (b.hats && b.hats[s]) noiseEv(t0, 0.07, 0.14, 0.05, biquad('highpass', 5200));
-    if (b.ohats && b.ohats[s]) noiseEv(t0, 0.24, 0.12, 0.22, biquad('highpass', 4200));
+    if (b.kick && b.kick[s]) {
+      // 808: long sine body pitched down into a sub, a 12ms high-passed click
+      // for the beater, and a mid "knock" so the attack survives the bass.
+      const kg = b.kickGain ?? 1;
+      const tail = b.kickTail ?? 0.2;
+      tonalPerc(t0, tail + 0.04, 'sine', 165, 48, 0.05, 0.42 * kg, tail, EV, 0.006);
+      noiseEv(t0, 0.03, 0.13 * kg, 0.012, biquad('highpass', 1900), EV);
+      const knock = b.kickKnock ?? 1;
+      if (knock > 0) tonalPerc(t0, 0.07, 'triangle', 300, 180, 0.04, 0.17 * kg * knock, 0.05, EV, 0.004);
+    }
+    if (b.hats && b.hats[s]) noiseEv(t0, 0.07, 0.14, 0.05, biquad('highpass', 5200), EV);
+    if (b.ohats && b.ohats[s]) noiseEv(t0, 0.24, 0.12, 0.22, biquad('highpass', 4200), EV);
     if (b.snare && b.snare[s]) {
-      noiseEv(t0, 0.11, 0.32, 0.09, biquad('bandpass', 2600, 0.7));
-      tonalPerc(t0, 0.08, 'triangle', 210, 140, 0.05, 0.12, 0.06);
+      noiseEv(t0, 0.11, 0.32, 0.09, biquad('bandpass', 2600, 0.7), EV);
+      tonalPerc(t0, 0.08, 'triangle', 210, 140, 0.05, 0.12, 0.06, EV);
     }
     if (b.clap && b.clap[s]) for (let ci = 0; ci < 3; ci++) {
-      noiseEv(t0 + ci * 0.012, 0.15, ci === 2 ? 0.26 : 0.16, ci === 2 ? 0.12 : 0.03, biquad('highpass', 1500));
+      noiseEv(t0 + ci * 0.012, 0.15, ci === 2 ? 0.26 : 0.16, ci === 2 ? 0.12 : 0.03, biquad('highpass', 1500), EV);
     }
   }
 });

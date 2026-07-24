@@ -30,8 +30,14 @@ const LANES = [
   { name: 'Arp',    ch: 1, prog: 81, lanes: ['lead'],              dur: 1.2, vel: 88 },
   { name: 'Harm',   ch: 2, prog: 81, lanes: ['leadHarm'],          dur: 1.2, vel: 72 },
   { name: 'Chords', ch: 3, prog: 82, lanes: ['chords'],            dur: 2.6, vel: 70 },
-  { name: 'FX',     ch: 4, prog: 85, lanes: ['gliss', 'keyGliss', 'vox', 'shout'], dur: 3, vel: 84 },
+  { name: 'FX',     ch: 4, prog: 85, lanes: ['gliss', 'vox', 'shout'], dur: 3, vel: 84 },
 ];
+// keyGliss is not a single note — the engine plays a run of discrete scale
+// steps up into the target (a hand dragged along the white keys), so writing
+// one note at the target would drop the whole gesture on the way out. Same
+// intervals and same timing as audio.js: eight notes of a natural-minor scale
+// rooted on the target, spread across three 16ths, swelling into the landing.
+const GLISS_STEPS = [-12, -10, -9, -7, -5, -4, -2, 0];
 const DRUMS = { kick: 36, snare: 38, hats: 42, ohats: 46, clap: 39 };
 
 // ---- MIDI file primitives ---------------------------------------------------
@@ -88,6 +94,23 @@ for (const L of LANES) {
   if (!ev.length) continue;
   tracks.push(track(ev, [...nameMeta(L.name), 0x00, 0xc0 | L.ch, L.prog]));
 }
+
+// keyGliss run — its own track so the gesture can be edited or muted apart
+// from the sustained FX voices it would otherwise be tangled up with.
+const gev = [];
+blocks.forEach((b, bi) => {
+  if (!b.keyGliss) return;
+  for (let s = 0; s < 32; s++) {
+    if (!b.keyGliss[s]) continue;
+    const target = midiNote(b.keyGliss[s]);
+    const dt = (3 * TPS) / GLISS_STEPS.length;
+    GLISS_STEPS.forEach((semi, k) => {
+      const vel = Math.round(84 * (0.6 + 0.4 * ((k + 1) / GLISS_STEPS.length))); // cresc. into the target
+      note(gev, 4, target + semi, (bi * 32 + s) * TPS + Math.round(k * dt), dt * 1.7, vel);
+    });
+  }
+});
+if (gev.length) tracks.push(track(gev, [...nameMeta('Gliss'), 0x00, 0xc4, 81]));
 
 const dev = [];
 blocks.forEach((b, bi) => {

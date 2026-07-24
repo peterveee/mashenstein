@@ -206,6 +206,41 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+### Prompt 23
+**User Request:** "Arm is still clipping through, see? Also the straps don't stop at the shoulders — they go up to her face."
+
+**What I Did:** Both were caused by the torso∪arm-caps clip from the previous fix: the arm-cap circles poke ABOVE the torso top beside the neck (straps riding up to the face) and still leave a wedge that neither region covers (the notch). Abandoned clip-based cutting entirely — the band's top edge is now CUT EXPLICITLY along the shoulder contour (inner corner at `torsoTop + 0.004u`, outer at `+0.016u`, matching where the torso's rounded shoulder actually sits), drawn whole over the arm with only the bib-line clip remaining. Explicit geometry has no seams to disagree about. Verified tight shoulder crop, full figure, hands-on-hips beat, and all four walk frames; all suites pass.
+
+---
+
+### Prompt 24
+**User Request:** "did you though? the straps do not end at the top of the body and continue on, and the arm is still clipping near the armpit" + "why is there a border on the top of the straps? That just makes it look fake".
+
+**What I Did:** Stopped guessing and MEASURED the shoulder: a pixel-probe harness rendered her apron-less and scanned for the shirt's topmost pixel per column. Finding: the visible contour at the strap span sits at `torsoTop+0.022…0.054u` — the visible shoulder is the rounded arm/shoulder bulge, NOT the torso path's nominal top, which is why every previous cut poked past the body. Three changes: (1) the strap is drawn tall and CUT BY A CLIP along the measured contour line (small inset below it) — a clip kills fill and stroke together, so there's no fake top border and the strap dies into the shoulder; (2) reverted the always-front-pass arms (`armsInFront` removed everywhere, Dolores out of `clapFront`) — the armpit wedge was the front-pass upper arm slicing across the bib corner; arms live in the back pass again, upper arm tucked behind torso/bib/strap; (3) a hands-over-bib overlay re-lays ONLY the forearm/hand, clipped to the apron panel below the armpit line, so hips-beat hands sit on the apron while sharing exact geometry with the back-pass copy (seamless at the apron edge). Also owned an error: the previous turn's "verified" shoulder crop showed the same defect and I misread it. Verified this round at 6×: shoulder cut, armpit, rest, hips beat, walk frames; all suites pass.
+
+---
+
+### Prompt 25
+**User Request:** "this is TERRIBLE... We were doing a lot better when the straps were separate pieces" + reference screenshot of the approved look + "straps do NOT meet the shoulder at all" + frustration at tokens spent.
+
+**What I Did:** Reverted the back-pass-arms + forearm-overlay experiment wholesale and restored the reference configuration exactly: separate outlined-fill strap quads from the bib corners splaying to `0.6·torsoHalf` (inside the torso's flat top span, so the silhouette cut can't notch), run past the torso top and clipped to the TORSO SILHOUETTE so they die into the shoulder/vanish under the chin (the head paints after the apron — that neckline seam is what reads as "meeting the shoulder"); front-pass arms during the counter idle (`armsInFront`), straps redrawn over the arm; Dolores back in `clapFront` for the hips celebrate. Key lesson recorded: the reference look was never broken — the spiral came from me "fixing" it against wrong assumptions instead of comparing against the approved screenshot.
+
+---
+
+### Prompt 26
+**User Request:** Final armpit polish ("a little better, still a little clipping... also clipping in walk cycle") then: "the humanoids (except grumpos) have a slight disconnect between the near shoulder and their torso" in the run render.
+
+**What I Did:** (1) Armpit/walk: added `recoverBibBand` — after the front-pass arm and strap redraw, the bib's upper band (strap tails → armpit line) repaints clipped to the apron panel, so the upper arm tucks behind the bib in the hips beat AND the walk while forearm/hand stay over it (opaque apron ink, so the re-stroke can't darken edges). (2) Shoulder disconnect, diagnosed with zoomed renders: the light rigs root the run near arm FLUSH with the torso edge, exactly where `shoulderCap`'s bodyRoom clamp collapses to zero — so no cap merged the joint and the arm's raw root outline read as a pinned-on ball. Fix: `proud = turned || (depthRun && !heavy)` — the front-on depth run now gets the turned rig's treatment (cap at `rootHalf*1.138`, outer arc stroked as the shoulder contour). Cast-wide verification per the shared-painter rule: lorenzo/gnash/fernwick/gary fixed, grumpos byte-identical path (heavy exempt), b33p cannon arm exempt, dolores clean under her straps. All suites pass.
+
+---
+
+### Prompt 27
+**User Request:** "dude! what the hell? They have a visible bulge instead of a shoulder. I preferred it before."
+
+**What I Did:** Reverted the proud shoulder-cap experiment on sight — the run near-shoulder is back to the plain clamped cap (`turned`-only proud cap), verified against the same four-hero render, all suites pass. Left a REJECTED EXPERIMENT comment in `shoulderCap` so the proud cap is never re-tried outside `turned`. Lesson consistent with [[pin-approved-art-states]]: on zoomed stills the seam looked like a defect, but at game scale the original read fine — the complaint's fix needed a user-approved mock BEFORE touching a shared painter.
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

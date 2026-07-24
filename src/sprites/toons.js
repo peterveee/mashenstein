@@ -2551,7 +2551,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // Her signature stance, made celebratory: both hands planted on the hips,
       // elbows winged, with a small proud press on the pump. The 'hips' big move
       // holds the same shape, so it reads as a satisfied "there" throughout.
-      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.78 - Math.abs(pump) * 0.5;
+      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.70 - Math.abs(pump) * 0.5;
       handF = [shoulderCx + sideF * hipX, hipY]; elbF = sideF;
       handB = [shoulderCx + sideB * hipX, hipY]; elbB = sideB;
     } else if (id === 'lorenzo' && raisedArmStudy) {
@@ -2571,7 +2571,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handF = [shF + sideF * 0.3 * u, armY - armL * 0.25]; elbF = sideF;
       handB = [shB + sideB * 0.3 * u, armY - armL * 0.25]; elbB = sideB;
     } else if (cm.move === 'hips') {
-      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.78;
+      const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.70;
       handF = [shoulderCx + sideF * hipX, hipY]; elbF = sideF;
       handB = [shoulderCx + sideB * hipX, hipY]; elbB = sideB;
     } else if (cm.move === 'bow') {
@@ -2898,7 +2898,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const hipsAmt = Math.max(0, Math.min(1, pose.hipsAmt || 0));
     if (hipsAmt > 0) {
       const hipX = torsoHalf * 0.95;
-      const hipY = armY + armL * 0.78 + sway * 0.5;
+      const hipY = armY + armL * 0.70 + sway * 0.5; // raised a touch so the upper arm crosses under the strap, not the bib corner
       handF = [handF[0] + (shoulderCx + sideF * hipX - handF[0]) * hipsAmt, handF[1] + (hipY - handF[1]) * hipsAmt];
       handB = [handB[0] + (shoulderCx + sideB * hipX - handB[0]) * hipsAmt, handB[1] + (hipY - handB[1]) * hipsAmt];
     }
@@ -2987,6 +2987,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ? taperHalfAt(yy, torsoTop, torsoBot, torsoHalf, waistHalf)
       : roundHalfAt(yy, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7)
     ) - Math.abs(x - torsoCx);
+    // REJECTED EXPERIMENT (2026-07-24): giving the front-on depth run a proud,
+    // outer-arc-stroked cap (the turned treatment) to close the near-shoulder
+    // seam. On a front-facing torso it reads as a bulge bolted to the shoulder,
+    // not a deltoid — Peter vetoed it on sight. The run's flush-rooted arm keeps
+    // its plain clamped cap; do not re-try the proud cap outside `turned`.
     let r = turned ? rootHalf * 1.138 : Math.min(capBase * u, capFit, bodyRoom(y));
     if (!turned) r = Math.min(r, bodyRoom(y - r * 0.82));
     // No room at all means the arm roots outside the body: there is nothing to
@@ -3389,11 +3394,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const raisedArmStudyFront = pose.kind === 'celebrate'
     && reworkedCelebration
     && (id === 'lorenzo' || id === 'gary');
-  // A standing idle that wants its hands to READ — resting on the hips — needs
-  // both arms in the front pass, over the apron, or the hand paints behind the
-  // body and reads as a bump. Because these hands sit at the SIDES (over the
-  // body, not across the bib) the forearm never crosses the apron, so it stays
-  // attached-looking. Gated on the pose flag; only the asked-for idle uses it.
+  // Dolores' counter idle draws both arms in the FRONT pass (over the apron)
+  // so the hips-beat hands read on the bib — the reference-approved look.
   const armsInFront = stand && !!pose.armsInFront;
   if (!clapFront && !armsInFront) {
     // B33P needs no special case here any more. With the cannon moved onto the
@@ -3928,7 +3930,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // are outlined() FILLS, though, never strokes: a stroked band picked up a
     // flatter shade than the filled panel beside it, which is what made the strap
     // fabric read as a different cream from the bib.
-    outlined(ctx, p.a, ow, (c) => {
+    const apronPanel = (c) => {
       c.moveTo(px - wBib, bibTop);
       c.lineTo(px + wBib, bibTop);
       c.lineTo(px + wWaist, waistY);
@@ -3936,62 +3938,58 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.quadraticCurveTo(px, hemY + 0.04 * u, px - wHem, hemY);
       c.lineTo(px - wWaist, waistY);
       c.closePath();
-    }, APRON_OUTLINE);
+    };
+    outlined(ctx, p.a, ow, apronPanel, APRON_OUTLINE);
     if (!lod) {
-      // The contract, stated once because we have circled it: the strap runs
-      // from the bib's top corner up to the SHOULDER; the upper arm tucks fully
-      // behind strap and bib; only the forearm/hand may cross in front of the
-      // bib. Geometry: bottom outer edge pinned to the bib corner (flush join),
-      // top splayed out over the arm's socket and run PAST the torso's top so
-      // the clip below — torso ∪ arm-root caps — cuts it at the shoulder curve
-      // instead of the band ending on its own flat edge short of the shoulder.
-      const strapTopY = torsoTop - 0.07 * u;
-      const sTopX = (s) => px + s * torsoHalf * 0.68;
+      // The reference-approved straps: outlined-fill quads from the bib's top
+      // corners splaying up to 0.6·torsoHalf, run PAST the torso top and cut by
+      // the TORSO SILHOUETTE clip. 0.6 keeps the whole band inside the torso's
+      // flat top span (the corner rounding starts at ~0.62 of the half-width),
+      // so the silhouette cut is a clean straight top: no notch, no drawn top
+      // border, and the tops vanish under the chin — the head paints after the
+      // apron, so the visible strap ends at the neckline the way a real
+      // pinafore strap disappears over the shoulder.
+      const sTopX = (s) => px + s * torsoHalf * 0.6;
       const sBotX = (s) => px + s * (wBib - strapHalf);
-      // Each strap is its own filled band, clipped just past the bib's top edge.
-      // The clip is what keeps the join clean: the band's own bottom edge — and
-      // any ink below the line — would read as two stray verticals running down
-      // inside the bib. Cut there instead, the cream simply continues into the
-      // bib's cream, and the band still covers the bib's top contour where they
-      // meet so no seam shows.
       const drawStraps = () => {
         ctx.save();
-        // Clip to torso ∪ the two arm-root caps. The torso alone notched the
-        // band exactly where the body rounds off its shoulder while the arm
-        // carries on outboard — the old "arm slicing through the strap" — and
-        // with no torso clip at all the band ended on its own flat edge short
-        // of the shoulder. The union does both jobs: the torso cuts the band at
-        // the shoulder curve, and the caps fill the notch so the band lands ON
-        // the upper arm and the arm reads as tucked behind it. The second clip
-        // then cuts everything below the bib line, so no strap ink runs down
+        ctx.beginPath(); torsoPath(ctx); ctx.clip();
+        // Second clip: nothing below the bib line, so no strap ink runs down
         // inside the bib.
         ctx.beginPath();
-        torsoPath(ctx);
-        for (const sx of [shF, shB]) {
-          ctx.moveTo(sx + armW * 1.3, armY);
-          ctx.arc(sx, armY, armW * 1.3, 0, Math.PI * 2);
-        }
-        ctx.clip();
-        ctx.beginPath();
-        const clipTop = strapTopY - u * 0.2;
+        const clipTop = torsoTop - 0.2 * u;
         ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, (bibTop + ow * 1.6) - clipTop);
         ctx.clip();
         for (const s of [-1, 1]) {
           outlined(ctx, p.a, ow, (c) => {
-            c.moveTo(sTopX(s) - strapHalf, strapTopY);
-            c.lineTo(sTopX(s) + strapHalf, strapTopY);
-            c.lineTo(sBotX(s) + strapHalf, bibTop + 0.06 * u);
-            c.lineTo(sBotX(s) - strapHalf, bibTop + 0.06 * u);
+            c.moveTo(sTopX(s) - s * strapHalf, torsoTop - 0.05 * u);
+            c.lineTo(sTopX(s) + s * strapHalf, torsoTop - 0.05 * u);
+            c.lineTo(sBotX(s) + s * strapHalf, bibTop + 0.06 * u);
+            c.lineTo(sBotX(s) - s * strapHalf, bibTop + 0.06 * u);
             c.closePath();
           }, APRON_OUTLINE);
         }
+        ctx.restore();
+      };
+      // The bib's upper band — from just under the strap tails down to the
+      // armpit line — re-covers whatever arm crossed it, so the upper arm tucks
+      // behind the bib while the forearm/hand lower down stay on top of it.
+      // Fill and edge both re-lay; the edge ink is opaque, so the repaint can't
+      // darken the panel's outline where it doubles.
+      const recoverBibBand = () => {
+        ctx.save();
+        ctx.beginPath();
+        const bandTop = bibTop + ow * 1.6;
+        ctx.rect(px - torsoHalf * 3, bandTop, torsoHalf * 6, (armY + armL * 0.38) - bandTop);
+        ctx.clip();
+        outlined(ctx, p.a, ow, apronPanel, APRON_OUTLINE);
         ctx.restore();
       };
       // Draw once, on the correct side of the arm: after it whenever the front
       // arm paints over the apron, otherwise here.
       const frontArmOverApron = armsInFront || clapFront || !stand;
       if (!frontArmOverApron) drawStraps();
-      apronStrapOver = frontArmOverApron ? drawStraps : null;
+      apronStrapOver = frontArmOverApron ? () => { drawStraps(); recoverBibBand(); } : null;
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = APRON_OUTLINE;
@@ -4058,13 +4056,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (apronStrapOver) apronStrapOver(); // straps cross OVER the arms (Dolores' hips celebrate)
   }
   // Front-pass standing idle (see armsInFront): far arm then near arm, both over
-  // the apron, so hands resting on the hips read as hands and not bumps.
+  // the apron, then the straps back over the arms at the shoulder.
   if (armsInFront) {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(p.b, farShade), ow, armWB, true);
     handDeco(handB[0], handB[1], farShade);
     drawFrontArm();
-    if (apronStrapOver) apronStrapOver(); // straps cross OVER the shoulder, not under the arm
+    if (apronStrapOver) apronStrapOver();
   }
 }
 

@@ -26,6 +26,7 @@ export const OBSTACLES = {
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
   paperwork:  { w: 8, h: 6,   sprite: null, alt: 12, armored: false, action: 'duck', paper: true, bob: true },
+  trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump' },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -51,6 +52,7 @@ export const DEBRIS = {
   target:      { colors: ['#f6d33c', '#fff8d0'], size: 2.4, mat: 'metal' },
   switch:      { colors: ['#48e0c8', '#f6d33c', '#3a4a5a'], size: 2.4, mat: 'metal' },
   paperwork:   { colors: ['#fff', '#e8e8f0'], size: 3, grav: 60, count: 10, mat: 'soft' },
+  trafficCone: { colors: ['#e86020', '#f8a030', '#fff'], size: 2.8, mat: 'soft' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

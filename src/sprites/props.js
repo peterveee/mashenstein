@@ -472,6 +472,54 @@ export const PROP_PAINTERS = {
     plain(ctx, '#e04848', (c) => rr(c, w * 0.14, h * 0.52, w * 0.24, h * 0.14, h * 0.06));
     plain(ctx, '#48e0c8', (c) => c.arc(w * 0.74, h * 0.6, w * 0.08, 0, Math.PI * 2));
   },
+  // A bright orange traffic cone with two white reflective bands. Small
+  // footprint (10×13) so it reads easily in clusters; the Speed Zone cabinet's
+  // orange ground means the white bands do the heavy lifting for visibility.
+  trafficCone(ctx, w, h) {
+    const u = Math.max(w, h);
+    // Square base — rounded rect sitting on the ground line
+    fineShape(ctx, '#e86020', u, (c) => rr(c, w * 0.14, h * 0.78, w * 0.72, h * 0.18, w * 0.06));
+    // Tapered cone body
+    const conePath = (c) => {
+      c.moveTo(w * 0.22, h * 0.82);
+      c.lineTo(w * 0.5, h * 0.08);
+      c.lineTo(w * 0.78, h * 0.82);
+      c.closePath();
+    };
+    ctx.beginPath();
+    conePath(ctx);
+    ctx.fillStyle = '#e86020';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(26,16,40,0.22)';
+    ctx.lineWidth = Math.max(0.2, u * 0.012);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    // White reflective bands — clipped to the cone so they never poke out
+    ctx.save();
+    ctx.beginPath();
+    conePath(ctx);
+    ctx.clip();
+    const bandH = h * 0.05;
+    for (const by of [h * 0.55, h * 0.36]) {
+      const half = w * 0.18 + (w * 0.60) * ((h * 0.82 - by) / (h * 0.74));
+      plain(ctx, '#f8f8ff', (c) => {
+        c.moveTo(w * 0.5 - half, by - bandH);
+        c.lineTo(w * 0.5 + half, by - bandH);
+        c.lineTo(w * 0.5 + half * 0.96, by + bandH);
+        c.lineTo(w * 0.5 - half * 0.96, by + bandH);
+        c.closePath();
+      });
+    }
+    ctx.restore();
+    // Subtle highlight stripe down the left side
+    plain(ctx, 'rgba(255,255,255,0.13)', (c) => {
+      c.moveTo(w * 0.26, h * 0.78);
+      c.lineTo(w * 0.48, h * 0.12);
+      c.lineTo(w * 0.45, h * 0.12);
+      c.lineTo(w * 0.24, h * 0.78);
+      c.closePath();
+    });
+  },
   zombieWalk(ctx, w, h) {
     const u = Math.max(w, h);
     // slouched green office zombie
@@ -1066,6 +1114,7 @@ const PROP_DETAIL_SCALE = {
   zombieWalk: 2, icicle: 2,
   buzzbird: 2, drone: 2, shooterDrone: 2,
   printer: 2, chair: 2,
+  trafficCone: 2,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
   capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2,
@@ -1084,7 +1133,7 @@ export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
 const SELF_OUTLINED_PROPS = new Set([
   'cactus', 'cactusBig', 'snowman', 'snowmanBig',
   'crate', 'pipe', 'zombieWalk', 'icicle',
-  'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair',
+  'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',
 ]);
 export function propHazardRim(name) {
   return !SELF_OUTLINED_PROPS.has(name);
