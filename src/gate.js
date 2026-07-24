@@ -206,6 +206,9 @@ function createGameDom() {
         <button id="copy-error" type="button">COPY ERROR</button>
         <p id="copy-error-status" class="mash-copy-status" aria-live="polite"></p>
       </div>
+      <div class="mash-portrait-reload">
+        <button id="portrait-reload" type="button">FORCE RELOAD</button>
+      </div>
       <p class="mash-build-time">${buildTimeLabel()}</p>
     </div>`;
   document.body.appendChild(overlay);

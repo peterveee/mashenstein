@@ -7,6 +7,7 @@ const { RunState } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { PLAYER_X } = await import('../src/game/player.js');
+const { makeObstacle } = await import('../src/game/entities.js');
 
 save.load();
 save.newSlot(0, 0);
@@ -71,5 +72,15 @@ if (result) {
   assert(result.score > 0, `score accrued: ${result.score}`);
   assert(result.distance > 0, `distance covered: ${result.distance}`);
 }
+
+const portalX = 500;
+const approachHazard = makeObstacle('cactus', 460);
+const overlappingGap = makeObstacle('gap', 480);
+const harmlessTarget = makeObstacle('target', 470);
+run.obstacles = [approachHazard, overlappingGap, harmlessTarget];
+run.clearPortalApproach(portalX);
+assert(!approachHazard.live, 'portal clears hazards from its left-side approach');
+assert(!overlappingGap.live, 'portal clears gaps that overlap its approach');
+assert(harmlessTarget.live, 'portal leaves non-hazard objects intact');
 console.log(failed ? 'RUN-COMPLETE: FAILED' : 'RUN-COMPLETE: PASSED');
 process.exit(failed ? 1 : 0);

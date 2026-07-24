@@ -126,11 +126,15 @@ export const CABINETS = [
       hats: seq('C1 C1 . C1 C1 C1 . C1').map((v) => !!v),
       snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v),
-      // The arpeggio is the only lane feeding the echo bus (bass is dry unless
-      // a bank opts in, and there are no chords here), so echoLevel is in
-      // effect a send on the high part alone. Kept light — it should widen the
-      // arp, not smear the grid at this tempo.
+      // Arp and bass both feed the echo bus. Note what the bass actually
+      // contributes: the send is highpassed at 500Hz, so the fundamentals
+      // (55-147Hz across the three keys) are stripped and only the square's
+      // upper harmonics survive into the repeats — a harmonic shadow of the
+      // bassline rather than low end sloshing around behind the beat. The low
+      // end of the dry signal is untouched. Kept light either way: it should
+      // widen the track, not smear the grid at this tempo.
       echoLevel: 0.16,
+      bassEcho: true,
       // The lead takes each modulation upward (+5 to IV, +7 to V) so the lift
       // is heard where the tune is. The bass takes the nearest LOW voicing of
       // the same key instead of the literal transposition — up a fifth would

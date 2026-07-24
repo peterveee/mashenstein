@@ -23,6 +23,10 @@ assert(detectPlatform({ ua: IPAD }).allowed, 'ordinary iPad browser is allowed')
 const ipadMac = detectPlatform({ ua: IPAD_MAC, maxTouchPoints: 5 });
 assert(ipadMac.isIpad && !ipadMac.isIphone && ipadMac.allowed, 'Mac-UA touch iPad is allowed as iPad');
 assert(detectPlatform({ ua: IPAD_MAC, maxTouchPoints: 0 }).isDesktop, 'ordinary Mac stays desktop');
+assert(detectPlatform({ ua: ANDROID, screenW: 412, screenH: 915 }).isAndroidPhone,
+  'narrow Android detects as phone');
+assert(detectPlatform({ ua: ANDROID, screenW: 800, screenH: 1280 }).isAndroidTablet,
+  'wide Android detects as tablet');
 assert(detectPlatform({ ua: ANDROID }).allowed, 'Android browser is allowed');
 assert(detectPlatform({ ua: DESKTOP }).allowed, 'desktop browser is allowed');
 
@@ -38,6 +42,10 @@ assert(!lifecyclePolicy({
 }).paused, 'dev-bypassed browser iPhone runs in landscape');
 assert(!lifecyclePolicy({ isIpad: true, standalone: true, portrait: true }).paused,
   'iPad portrait keeps running');
+assert(lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true }).paused,
+  'installed Android phone portrait pauses');
+assert(!lifecyclePolicy({ isAndroidTablet: true, standalone: true, portrait: true }).paused,
+  'Android tablet portrait keeps running (like iPad)');
 assert(lifecyclePolicy({ visible: false }).paused, 'every hidden platform pauses');
 
 class Events {
@@ -51,6 +59,7 @@ const errorTools = { hidden: true };
 const errorMessage = { textContent: '' };
 const copyStatus = { textContent: '' };
 const copyButton = new Events();
+const reloadButton = new Events();
 const priorFocus = {
   isConnected: true,
   blurred: 0,
@@ -78,6 +87,7 @@ const doc = Object.assign(new Events(), {
     if (id === 'portrait-error-message') return errorMessage;
     if (id === 'copy-error') return copyButton;
     if (id === 'copy-error-status') return copyStatus;
+    if (id === 'portrait-reload') return reloadButton;
     return null;
   },
 });
@@ -88,6 +98,8 @@ const win = Object.assign(new Events(), {
   matchMedia: () => portraitQuery,
   visualViewport: null,
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
+  confirm: () => false,
+  location: { reloaded: 0, reload() { this.reloaded++; } },
 });
 const calls = [];
 const loop = { pause: () => calls.push('loop:pause'), resume: () => calls.push('loop:resume') };
@@ -108,6 +120,13 @@ assert(!errorTools.hidden && errorMessage.textContent.includes('toaster lane'),
 await lifecycle.copyErrorReport();
 assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR COPIED.',
   'portrait crash report can be copied');
+
+win.confirm = () => false;
+reloadButton.fire('click');
+assert(win.location.reloaded === 0, 'declining the reload confirm does not reload');
+win.confirm = () => true;
+reloadButton.fire('click');
+assert(win.location.reloaded === 1, 'confirming the portrait reload button reloads the page');
 
 doc.hidden = true;
 doc.fire('visibilitychange');
