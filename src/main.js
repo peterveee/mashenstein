@@ -8,7 +8,7 @@ import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateNoCameo, updateState, drawState, setTransitionHero } from './engine/states.js';
+import { setState, setStateNoCameo, updateState, drawState, setTransitionHero, currentState } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -295,7 +295,7 @@ function boot() {
     draw: () => {
       drawState(bctx);
       Dev.draw(bctx);
-      if (save.settings.showFps) {
+      if (save.settings.showFps && !(Input.usingTouch && currentState()?.useChrome)) {
         pushOverlayDraw((ctx) => {
           const d = rendererDiagnostics();
           const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';

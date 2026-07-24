@@ -1444,6 +1444,7 @@ void main() {
   var SKIN_OUTLINE_A = 0.2;
   var OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
   var SKIN_OUTLINE = `rgba(26,16,40,${SKIN_OUTLINE_A})`;
+  var APRON_OUTLINE = "rgb(120,110,132)";
   var BROW_W = 0.018;
   var BROW_MIN = 0.38;
   var BROW_L = 0.3;
@@ -2230,7 +2231,9 @@ void main() {
         }
       }
     }
-    const annoyed = !!pose2.annoyed;
+    const annoyedAmt = Math.max(0, Math.min(1, +pose2.annoyed || 0));
+    const annoyed = annoyedAmt > 0.02;
+    if (annoyed) browEase = annoyedAmt;
     return {
       // A blink through the call or the glare would eat it, so those win.
       blink: !active && !calling && !annoyed && blinkPhase < (pose2.menu ? 0.2 : 0.13),
@@ -2832,11 +2835,11 @@ void main() {
       const bunX = hx - R * 0.92, bunY = hy - R * 0.5;
       outlined(ctx, p.hair, ow, (c) => c.arc(bunX, bunY, R * 0.46, 0, Math.PI * 2));
       outlined(ctx, p.hair, ow, (c) => {
-        c.moveTo(hx - R * 0.96, hy + R * 0.18);
+        c.moveTo(hx - R * 0.98, hy - R * 0.12);
         c.quadraticCurveTo(hx - R * 1.14, hy - R * 0.72, hx - R * 0.34, hy - R * 1.1);
         c.quadraticCurveTo(hx + R * 0.5, hy - R * 1.26, hx + R * 0.98, hy - R * 0.66);
-        c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.2);
-        c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.46);
+        c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.24);
+        c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.5);
         c.closePath();
       });
       if (!lod) {
@@ -2851,10 +2854,10 @@ void main() {
         }
         ctx.restore();
         outlined(ctx, p.a, Math.max(0.4, ow * 0.5), (c) => {
-          c.moveTo(hx - R * 1, hy - R * 0.42);
-          c.quadraticCurveTo(hx, hy - R * 0.72, hx + R * 0.98, hy - R * 0.34);
-          c.lineTo(hx + R * 0.98, hy - R * 0.16);
-          c.quadraticCurveTo(hx, hy - R * 0.54, hx - R * 1, hy - R * 0.24);
+          c.moveTo(hx - R * 1, hy - R * 0.46);
+          c.quadraticCurveTo(hx, hy - R * 0.74, hx + R * 0.98, hy - R * 0.38);
+          c.lineTo(hx + R * 0.98, hy - R * 0.25);
+          c.quadraticCurveTo(hx, hy - R * 0.6, hx - R * 1, hy - R * 0.33);
           c.closePath();
         });
       }
@@ -3971,7 +3974,10 @@ void main() {
       const bibTop = torsoTop + 0.075 * u;
       const waistY = hipY - 0.04 * u + bob;
       const hemY = hipY + legL * 0.42 + bob * 0.5;
-      const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+      const strapHalf = 0.027 * u;
+      const strapCx = torsoHalf * 0.46;
+      const wBib = strapCx + strapHalf;
+      const wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
       outlined(ctx, p.a, ow, (c) => {
         c.moveTo(px - wBib, bibTop);
         c.lineTo(px + wBib, bibTop);
@@ -3980,38 +3986,37 @@ void main() {
         c.quadraticCurveTo(px, hemY + 0.04 * u, px - wHem, hemY);
         c.lineTo(px - wWaist, waistY);
         c.closePath();
-      });
+      }, APRON_OUTLINE);
       if (!lod) {
-        const strapTopY = torsoTop + 0.01 * u;
-        const strapPath = () => {
-          ctx.beginPath();
-          for (const s2 of [-1, 1]) {
-            ctx.moveTo(px + s2 * torsoHalf * 0.6, strapTopY);
-            ctx.lineTo(px + s2 * wBib * 0.9, bibTop + 0.09 * u);
-          }
-        };
+        const strapTopY = torsoTop - 0.07 * u;
+        const sTopX = (s2) => px + s2 * strapCx;
+        const sBotX = sTopX;
         const drawStraps = () => {
           ctx.save();
           ctx.beginPath();
           torsoPath(ctx);
           ctx.clip();
-          ctx.lineJoin = "round";
-          ctx.lineCap = "butt";
-          ctx.strokeStyle = OUTLINE;
-          ctx.lineWidth = 0.052 * u + ow * 2;
-          strapPath();
-          ctx.stroke();
-          ctx.strokeStyle = p.a;
-          ctx.lineWidth = 0.052 * u;
-          strapPath();
-          ctx.stroke();
+          ctx.beginPath();
+          const clipTop = strapTopY - u * 0.2;
+          ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, bibTop + ow * 1.6 - clipTop);
+          ctx.clip();
+          for (const s2 of [-1, 1]) {
+            outlined(ctx, p.a, ow, (c) => {
+              c.moveTo(sTopX(s2) - strapHalf, strapTopY);
+              c.lineTo(sTopX(s2) + strapHalf, strapTopY);
+              c.lineTo(sBotX(s2) + strapHalf, bibTop + 0.06 * u);
+              c.lineTo(sBotX(s2) - strapHalf, bibTop + 0.06 * u);
+              c.closePath();
+            }, APRON_OUTLINE);
+          }
           ctx.restore();
         };
-        drawStraps();
-        apronStrapOver = drawStraps;
+        const frontArmOverApron = armsInFront || clapFront || !stand;
+        if (!frontArmOverApron) drawStraps();
+        apronStrapOver = frontArmOverApron ? drawStraps : null;
         ctx.save();
         ctx.globalAlpha *= 0.5;
-        ctx.strokeStyle = OUTLINE;
+        ctx.strokeStyle = APRON_OUTLINE;
         ctx.lineWidth = Math.max(0.4, ow * 0.45);
         ctx.beginPath();
         ctx.moveTo(px - wWaist, waistY);
@@ -4022,11 +4027,12 @@ void main() {
           ctx,
           p.b,
           Math.max(0.4, ow * 0.45),
-          (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u)
+          (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u),
+          APRON_OUTLINE
         );
         const tagW = 0.12 * u, tagH = 0.066 * u;
         const tagX = px - tagW / 2, tagY = bibTop + 0.1 * u;
-        outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u));
+        outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
         ctx.save();
         ctx.beginPath();
         roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u);
@@ -4045,6 +4051,7 @@ void main() {
     if (!clapFront && (!stand || raisedArmStudyFront)) {
       drawFrontArm();
       if (strapOverArm) strapOverArm();
+      if (apronStrapOver) apronStrapOver();
     }
     if (pose2.headless) {
       outlined(ctx, p.s, Math.max(0.6, ow * 0.8), (c) => c.ellipse(torsoCx, torsoTop, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
@@ -8383,6 +8390,9 @@ void main() {
     for (let i = 0; i < 32; i++) out.push(n(toks[i % toks.length] === "." ? null : toks[i % toks.length]));
     return out;
   }
+
+  // src/engine/loop.js
+  var TICK = 1 / 60;
 
   // src/engine/particles.js
   var MAX = 400;
@@ -14394,6 +14404,70 @@ void main() {
           setLorenzoPants();
         }
       }, { animated: true, wide: true });
+    }
+  }
+  {
+    const grid = section(
+      "dolores-girth",
+      "Dolores \u2014 fatter / rounder body bake-off",
+      "GALLERY ONLY \u2014 production proportions are unchanged; the slimmer shipped rig stayed. Two degrees of a wider, rounder torso against it, in idle and the same synchronized run phase. Only torso dimensions move: head, apron cut, straps and limbs are the identical rig, so what you are judging is silhouette girth rather than a redraw. The apron measures off the torso, so it widens with her instead of sitting on top like a board."
+    );
+    const CANDIDATES = [
+      {
+        key: "rounder",
+        label: "rounder \u2014 torso +16%, waist +14% (un-tapered)",
+        spec: { torsoWidth: 1.16, waistScale: 1.14 }
+      },
+      {
+        key: "fattest",
+        label: "fattest \u2014 torso +30%, waist +26%, legs \u22126%",
+        spec: { torsoWidth: 1.3, waistScale: 1.26, legLength: 0.94 }
+      }
+    ];
+    const withSpec = (id, patch, draw) => {
+      const spec = TOON_SPECS[id];
+      const previous = {};
+      for (const key of Object.keys(patch)) {
+        previous[key] = { owned: Object.hasOwn(spec, key), value: spec[key] };
+        spec[key] = patch[key];
+      }
+      try {
+        draw();
+      } finally {
+        for (const [key, old] of Object.entries(previous)) {
+          if (old.owned) spec[key] = old.value;
+          else delete spec[key];
+        }
+      }
+    };
+    const HH = 60, WIDE = 216, FEET = 82;
+    for (const cand of CANDIDATES) {
+      tile(grid, `dolores \u2014 shipped / ${cand.key}`, cand.label, WIDE, 94, (ctx, t) => {
+        const samples = [
+          [27, "idle", null, "SHIPPED"],
+          [79, "idle", cand.spec, "CANDIDATE"],
+          [137, "run", null, "SHIPPED"],
+          [189, "run", cand.spec, "CANDIDATE"]
+        ];
+        for (const [x, kind, patch, label] of samples) {
+          const draw = () => drawToon(ctx, "dolores", pose(kind, t), x, FEET, HH);
+          if (patch) withSpec("dolores", patch, draw);
+          else draw();
+          ctx.fillStyle = "#8a8a9e";
+          ctx.font = "6px ui-monospace, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`${kind.toUpperCase()} ${label}`, x, 92);
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = "#8a8a9e";
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(108, 7);
+        ctx.lineTo(108, 93);
+        ctx.stroke();
+        ctx.restore();
+      }, { animated: true, wide: true, hires: 4 });
     }
   }
   var io = new IntersectionObserver((entries) => {

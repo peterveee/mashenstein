@@ -10,6 +10,13 @@ let OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
 // Softer contour for BARE SKIN — the standard weight reads harsher against
 // grumpos's pale hide than it does against clothing and hair.
 let SKIN_OUTLINE = `rgba(26,16,40,${SKIN_OUTLINE_A})`;
+// Dolores' APRON pieces (bib, straps, pocket, name tag, tie) draw with this
+// OPAQUE, lighter outline instead of the translucent one. The layered apron —
+// straps over bib, and the whole thing under a front-pass arm — stacked the
+// translucent edges into dark seams wherever they overlapped; an opaque line in
+// a colour that mimics the translucent look keeps overlaps from compounding.
+// Scoped to the apron only, so her face, hair and body keep the normal edge.
+const APRON_OUTLINE = 'rgb(120,110,132)';
 
 // ---------------------------------------------------------------- ink weight
 // Three independent dials on how heavy the linework reads. All three are 1 in
@@ -1126,7 +1133,13 @@ function expressionFor(id, pose = {}) {
   // eyes narrow to a glare, mouth turns down. She never breaks posture, so — as
   // with the call — the whole "no" reads on the face. Suppresses the call and
   // the idle blink for its duration so the glare holds steady.
-  const annoyed = !!pose.annoyed;
+  //
+  // `pose.annoyed` is a 0..1 RAMP, not a flag: the mad brows carry it on their
+  // ink alpha so they lift in and settle out like the idle beats, instead of a
+  // hairline snapping into existence mid-glare.
+  const annoyedAmt = Math.max(0, Math.min(1, +pose.annoyed || 0));
+  const annoyed = annoyedAmt > 0.02;
+  if (annoyed) browEase = annoyedAmt;
   return {
     // A blink through the call or the glare would eat it, so those win.
     blink: !active && !calling && !annoyed && blinkPhase < (pose.menu ? 0.2 : 0.13),
@@ -1930,11 +1943,11 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // swept back into the bun rather than hanging in bangs — this is hair that
     // has been dealt with, which is the opposite of Gary's mop.
     outlined(ctx, p.hair, ow, (c) => {
-      c.moveTo(hx - R * 0.96, hy + R * 0.18);
+      c.moveTo(hx - R * 0.98, hy - R * 0.12);
       c.quadraticCurveTo(hx - R * 1.14, hy - R * 0.72, hx - R * 0.34, hy - R * 1.1);
       c.quadraticCurveTo(hx + R * 0.5, hy - R * 1.26, hx + R * 0.98, hy - R * 0.66);
-      c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.2);
-      c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.46);
+      c.quadraticCurveTo(hx + R * 1.1, hy - R * 0.42, hx + R * 0.96, hy - R * 0.24);
+      c.quadraticCurveTo(hx + R * 0.3, hy - R * 0.62, hx - R * 0.5, hy - R * 0.5);
       c.closePath();
     });
     if (!lod) {
@@ -1951,11 +1964,14 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         ctx.stroke();
       }
       ctx.restore();
+      // An even-width elastic rather than one that flares at the temples: the
+      // old ends were twice the depth of the middle and ran down the sides of
+      // her face like sideburns. Same band, same line, just cut level.
       outlined(ctx, p.a, Math.max(0.4, ow * 0.5), (c) => {
-        c.moveTo(hx - R * 1.0, hy - R * 0.42);
-        c.quadraticCurveTo(hx, hy - R * 0.72, hx + R * 0.98, hy - R * 0.34);
-        c.lineTo(hx + R * 0.98, hy - R * 0.16);
-        c.quadraticCurveTo(hx, hy - R * 0.54, hx - R * 1.0, hy - R * 0.24);
+        c.moveTo(hx - R * 1.0, hy - R * 0.46);
+        c.quadraticCurveTo(hx, hy - R * 0.74, hx + R * 0.98, hy - R * 0.38);
+        c.lineTo(hx + R * 0.98, hy - R * 0.25);
+        c.quadraticCurveTo(hx, hy - R * 0.6, hx - R * 1.0, hy - R * 0.33);
         c.closePath();
       });
     }
@@ -2776,6 +2792,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // folds the elbow into a chicken wing on every backswing; a small negative
       // lead keeps the swing centred on the arm's own side of the body.
       const lead = depthRun ? -0.04 * u : 0.05 * u;
+      // NOTE: `walk` stops at the waist on this branch. The turned three-quarter
+      // arms above scale their swing by it; these front-on ones do not, because
+      // the only caller that has ever set the flag (the grumpos walk study in
+      // tools/gallery-entry.js) is turned and never reaches here. Any future
+      // front-on `walk` caller has to scale `swing` and `farSwing` — roughly the
+      // 0.5 the turned branch chose — or it gets half-length strides under a
+      // full sprint arm pump.
       const swing = (depthRun ? 0.13 : 0.15) * u;
       // How far below the shoulder the hand rides. The heavy rig hangs DEEPER.
       // At 0.5 its hand sat only 0.15u under the shoulder while swinging 0.17u
@@ -3893,7 +3916,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const bibTop = torsoTop + 0.075 * u;
     const waistY = hipY - 0.04 * u + bob;
     const hemY = hipY + legL * 0.42 + bob * 0.5;
-    const wBib = torsoHalf * 0.62, wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+    // The strap band is sized FIRST and the bib's top corners derived from it, so
+    // the two always coincide. Sized independently, the bib's top ran wider than
+    // the band and left a little shelf outboard of each strap — the outer edge
+    // visibly failing to meet the rest of the bib. Now the strap's outer edge IS
+    // the bib's top corner, and the contour runs straight from the bib's side up
+    // the outside of the strap.
+    const strapHalf = 0.027 * u;
+    const strapCx = torsoHalf * 0.46;
+    const wBib = strapCx + strapHalf;
+    const wWaist = torsoHalf * 0.88, wHem = torsoHalf * 1.12;
+    // Bib and straps stay SEPARATE shapes on purpose: that is the only way an arm
+    // can slot BETWEEN them — in front of the bib, behind the strap — which is
+    // what a pinafore actually does when you put your hands on your hips. Both
+    // are outlined() FILLS, though, never strokes: a stroked band picked up a
+    // flatter shade than the filled panel beside it, which is what made the strap
+    // fabric read as a different cream from the bib.
     outlined(ctx, p.a, ow, (c) => {
       c.moveTo(px - wBib, bibTop);
       c.lineTo(px + wBib, bibTop);
@@ -3902,45 +3940,57 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.quadraticCurveTo(px, hemY + 0.04 * u, px - wHem, hemY);
       c.lineTo(px - wWaist, waistY);
       c.closePath();
-    });
+    }, APRON_OUTLINE);
     if (!lod) {
-      // Pinafore straps, drawn like Lorenzo's suspenders: strokes CLIPPED to the
-      // torso, so each one crosses the shoulder and stops at the shoulder line
-      // rather than floating past it as a separate band. They land on the bib's
-      // top corners and splay out a touch as they rise up over the shoulders.
-      const strapTopY = torsoTop + 0.01 * u;
-      const strapPath = () => {
-        ctx.beginPath();
-        for (const s of [-1, 1]) {
-          ctx.moveTo(px + s * torsoHalf * 0.6, strapTopY);
-          // Run PAST the bib's top edge, down onto the bib, so the strap overlaps
-          // and joins it — cream into cream, no gap — instead of stopping a hair
-          // short and leaving a sliver of body showing between strap and bib.
-          ctx.lineTo(px + s * wBib * 0.9, bibTop + 0.09 * u);
-        }
-      };
+      // Run the band UP past the shoulder line and let the torso clip below cut
+      // it. Ending it on its own flat top edge made the strap stop short of the
+      // shoulder and sit on the chest; cut by the body silhouette instead, it
+      // reads as passing over the shoulder the way a real strap does.
+      const strapTopY = torsoTop - 0.07 * u;
+      // A straight vertical band, so its outer edge stays flush with the bib's
+      // top corner (wBib is derived from it above) the whole way down — angled,
+      // it peeled away from that corner and the join reopened. strapCx also keeps
+      // the band inside the torso's FLAT shoulder span; the torso path rounds its
+      // corners from ~0.62 of the half-width outward, and a band centred past
+      // that has its outer-top corner eaten by the silhouette clip, which reads
+      // as the arm clipping through the strap.
+      const sTopX = (s) => px + s * strapCx;
+      const sBotX = sTopX;
+      // Each strap is its own filled band, clipped just past the bib's top edge.
+      // The clip is what keeps the join clean: the band's own bottom edge — and
+      // any ink below the line — would read as two stray verticals running down
+      // inside the bib. Cut there instead, the cream simply continues into the
+      // bib's cream, and the band still covers the bib's top contour where they
+      // meet so no seam shows.
       const drawStraps = () => {
         ctx.save();
+        // Two intersecting clips: the torso silhouette (so the band is cut at the
+        // shoulder and never pokes outside the body), and everything above the
+        // bib line (so no ink runs down inside the bib).
         ctx.beginPath(); torsoPath(ctx); ctx.clip();
-        ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
-        // Outline first, then the apron fill on top — so the straps carry the
-        // same dark edge as the bib and read as one continuous piece of it.
-        ctx.strokeStyle = OUTLINE; ctx.lineWidth = 0.052 * u + ow * 2;
-        strapPath(); ctx.stroke();
-        ctx.strokeStyle = p.a; ctx.lineWidth = 0.052 * u;
-        strapPath(); ctx.stroke();
+        ctx.beginPath();
+        const clipTop = strapTopY - u * 0.2;
+        ctx.rect(px - torsoHalf * 3, clipTop, torsoHalf * 6, (bibTop + ow * 1.6) - clipTop);
+        ctx.clip();
+        for (const s of [-1, 1]) {
+          outlined(ctx, p.a, ow, (c) => {
+            c.moveTo(sTopX(s) - strapHalf, strapTopY);
+            c.lineTo(sTopX(s) + strapHalf, strapTopY);
+            c.lineTo(sBotX(s) + strapHalf, bibTop + 0.06 * u);
+            c.lineTo(sBotX(s) - strapHalf, bibTop + 0.06 * u);
+            c.closePath();
+          }, APRON_OUTLINE);
+        }
         ctx.restore();
       };
-      // Draw the straps ONCE. If an arm is going to paint in front of them (the
-      // hands-on-hip idle or the celebrate clap), defer the whole draw to AFTER
-      // that arm instead of drawing here and re-stroking over it — a second pass
-      // would double the translucent outline and darken the straps.
-      const strapsAfterArm = armsInFront || clapFront;
-      if (!strapsAfterArm) drawStraps();
-      apronStrapOver = strapsAfterArm ? drawStraps : null;
+      // Draw once, on the correct side of the arm: after it whenever the front
+      // arm paints over the apron, otherwise here.
+      const frontArmOverApron = armsInFront || clapFront || !stand;
+      if (!frontArmOverApron) drawStraps();
+      apronStrapOver = frontArmOverApron ? drawStraps : null;
       ctx.save();
       ctx.globalAlpha *= 0.5;
-      ctx.strokeStyle = OUTLINE;
+      ctx.strokeStyle = APRON_OUTLINE;
       ctx.lineWidth = Math.max(0.4, ow * 0.45);
       ctx.beginPath();
       ctx.moveTo(px - wWaist, waistY);
@@ -3950,13 +4000,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // A pocket, because every apron in every cafeteria has exactly one and it
       // always has a pen in it.
       outlined(ctx, p.b, Math.max(0.4, ow * 0.45),
-        (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u));
+        (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u), APRON_OUTLINE);
       // Name tag pinned to the bib — expected on a counter server. A pale badge
       // with a coloured header strip and a scribble of a name: small enough to
       // read as a badge, not a sign, and it holds down to the counter size.
       const tagW = 0.12 * u, tagH = 0.066 * u;
       const tagX = px - tagW / 2, tagY = bibTop + 0.1 * u;
-      outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u));
+      outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
       ctx.save();
       ctx.beginPath(); roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u); ctx.clip();
       ctx.fillStyle = p.b; ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
@@ -3971,6 +4021,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (!clapFront && (!stand || raisedArmStudyFront)) {
     drawFrontArm();
     if (strapOverArm) strapOverArm();
+    if (apronStrapOver) apronStrapOver(); // strap passes over the near arm in the run/jump/duck cycle
   }
 
   // head (or the stump of one)

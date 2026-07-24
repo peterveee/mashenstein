@@ -1967,6 +1967,63 @@ navSeparator('lab / bake-offs');
   }
 }
 
+// ------------------------------------------- Dolores girth bake-off (lab only)
+{
+  const grid = section('dolores-girth', 'Dolores — fatter / rounder body bake-off',
+    'GALLERY ONLY — production proportions are unchanged; the slimmer shipped rig stayed. '
+    + 'Two degrees of a wider, rounder torso against it, in idle and the same synchronized run '
+    + 'phase. Only torso dimensions move: head, apron cut, straps and limbs are the identical '
+    + 'rig, so what you are judging is silhouette girth rather than a redraw. The apron '
+    + 'measures off the torso, so it widens with her instead of sitting on top like a board.');
+  // waistScale > 1 UN-tapers the waist, so she reads as a barrel rather than a
+  // wider triangle. That roundness is the point, not simply extra width.
+  const CANDIDATES = [
+    { key: 'rounder', label: 'rounder — torso +16%, waist +14% (un-tapered)',
+      spec: { torsoWidth: 1.16, waistScale: 1.14 } },
+    { key: 'fattest', label: 'fattest — torso +30%, waist +26%, legs −6%',
+      spec: { torsoWidth: 1.3, waistScale: 1.26, legLength: 0.94 } },
+  ];
+  const withSpec = (id, patch, draw) => {
+    const spec = TOON_SPECS[id];
+    const previous = {};
+    for (const key of Object.keys(patch)) {
+      previous[key] = { owned: Object.hasOwn(spec, key), value: spec[key] };
+      spec[key] = patch[key];
+    }
+    try { draw(); } finally {
+      for (const [key, old] of Object.entries(previous)) {
+        if (old.owned) spec[key] = old.value;
+        else delete spec[key];
+      }
+    }
+  };
+  const HH = 60, WIDE = 216, FEET = 82;
+  for (const cand of CANDIDATES) {
+    tile(grid, `dolores — shipped / ${cand.key}`, cand.label, WIDE, 94, (ctx, t) => {
+      const samples = [
+        [27, 'idle', null, 'SHIPPED'],
+        [79, 'idle', cand.spec, 'CANDIDATE'],
+        [137, 'run', null, 'SHIPPED'],
+        [189, 'run', cand.spec, 'CANDIDATE'],
+      ];
+      for (const [x, kind, patch, label] of samples) {
+        const draw = () => drawToon(ctx, 'dolores', pose(kind, t), x, FEET, HH);
+        if (patch) withSpec('dolores', patch, draw); else draw();
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${kind.toUpperCase()} ${label}`, x, 92);
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = '#8a8a9e';
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(108, 7); ctx.lineTo(108, 93); ctx.stroke();
+      ctx.restore();
+    }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.
 const io = new IntersectionObserver((entries) => {

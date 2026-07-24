@@ -1,10 +1,11 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
-import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
+import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome, rendererDiagnostics } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
+import { frameRate } from '../engine/loop.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PLATE, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth } from '../engine/sprites.js';
@@ -493,7 +494,9 @@ export class RunState {
     if (!chromeCtx || !this.useChrome) return;
     const buttons = Input.chromeButtons;
     const charged = !!this.player.relayCharge;
-    let sig = `run|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}|${charged ? 1 : 0}`;
+    const showFps = this.save.settings.showFps;
+    const fps = frameRate() || '--';
+    let sig = `run|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}|${charged ? 1 : 0}|${showFps ? fps : ''}`;
     for (const b of buttons) {
       sig += `|${b.id}`;
       if (b.id === 'ability') {
@@ -502,6 +505,19 @@ export class RunState {
       }
     }
     paintChrome(sig, (ctx) => {
+      if (showFps) {
+        // Leave clearance for display corners and cutouts; this corner is unused.
+        const x = 12;
+        const y = 30;
+        const line1 = `FPS ${fps}`;
+        const d = rendererDiagnostics();
+        const dens = d.density ? (Number.isInteger(d.density) ? d.density : d.density.toFixed(1)) : '?';
+        const line2 = `${d.backend === 'webgl' ? 'GL' : '2D'} ${dens}X${d.bloomSuppressed ? ' NB' : ''}${d.frozen ? ' FZ' : d.throttled ? ' TH' : ''}`;
+        ctx.fillStyle = 'rgba(5,6,12,0.68)';
+        ctx.fillRect(x - 5, y - 14, 62, 20);
+        drawText(ctx, line1, x, y - 11, '#f4f1fa', 0.75, 'bold');
+        drawText(ctx, line2, x, y - 2, '#9fb4d8', 0.75, 'bold');
+      }
       for (const b of buttons) {
         const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...this.chromeButtonArt(b.id) };
         const base = roundButtonOpts(this, box);

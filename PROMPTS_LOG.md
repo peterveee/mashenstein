@@ -182,6 +182,23 @@ Detailed record of all instructions and prompts given to Claude for MASHENSTEIN 
 
 ---
 
+### Prompt 20
+**User Request:** "the outlines are all translucent so overlaps double up darker — could we make them opaque and a lighter colour, only Dolores for now" + "the inner lines closer to her face shouldn't extend quite so far down".
+
+**What I Did:** (1) Root cause of the worst dark seams was self-inflicted — with the idle arms now always front-pass, `apronStrapOver` was re-drawing the WHOLE strap every frame, stacking a second translucent outline; fixed it to draw the straps ONCE (deferred past the arm only when an arm actually crosses them). (2) Gave **Dolores alone** an opaque, lighter outline (`DOLORES_OUTLINE = rgb(120,110,132)`) — swapped into the module `OUTLINE`/`SKIN_OUTLINE` around her `drawToon` and restored right after, so no other character changes. Opaque edges don't compound where straps/bib/arms overlap. (3) Raised the hair-set's low corner (`hy+0.18R → hy-0.12R`) so the grey hair stops at cheek level instead of sweeping down to her jaw on one side. All suites pass; gallery rebuilt + re-archived (`galleries/2026-07-24-68c49f2.html`).
+---
+
+### Prompt 21
+**User Request:** A polish run on the apron/strap rendering, then "can we do a bake off in the gallery where we make dolores' body fatter and rounder?" → "i like the rounder body, we should go with that, but the bib isn't sitting nicely at the shoulders" → "the arm is clipping through the strap on the other edges".
+
+**What I Did:**
+- **Fabric shade / outline.** Root cause: the bib is an `outlined()` FILL while the straps were STROKES, and a stroke picked up a flatter shade. Made each strap its own `outlined()` fill so the cream matches and the contour runs unbroken around the band. Kept bib and straps as SEPARATE shapes — as the user pointed out, that separation is exactly what lets an arm slot in front of the bib but behind the strap. Band clipped just past the bib line (no ink running down inside the bib) and to the torso (shoulder silhouette cuts it, so it reads as passing over the shoulder).
+- **Arm clipping through the strap.** The band sat at `torsoHalf*0.6`, outside the torso's flat shoulder span (the path rounds its corners from ~0.62 of the half-width), so the clip ate the strap's outer-top corner. Moved it inboard to `0.46`.
+- **Girth bake-off → shipped.** Added a gallery-only `dolores-girth` bake-off in the lab cluster using a `withSpec` patch. User picked the rounder candidate, so `torsoWidth: 1.16, waistScale: 1.14` now ship in her spec; the section was rewritten as the record of the call (previous proportions + the next degree up, not taken).
+- **Test guard narrowed, not deleted.** `character-rendering.js` asserted no production spec may carry gallery body dials. Shipping the girth is a deliberate exception, so the guard now allows Dolores' two dials *by name* and stays strict for every other hero — an unresolved candidate still can't silently become production.
+
+---
+
 ## How This Works Going Forward
 
 After each task or instruction:

@@ -2092,6 +2092,15 @@ export class HubState {
     ctx.beginPath(); ctx.ellipse(pxs, HUB_FLOOR_PIN_Y, PLAYER_H * 0.4, PLAYER_H * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     drawToon(ctx, heroId, {
       kind: airborne ? 'jump' : moving ? 'run' : 'idle',
+      // Deliberately NOT the rig's reduced-amplitude `walk` cycle, though a
+      // concourse stroll sounds like exactly what it is for. The hub crosses
+      // the floor at 120 units/sec on a fixed 1.6-cycles/sec clock, and at that
+      // ratio the feet already only account for ~30% of the ground they cover.
+      // Halving the stride takes it to ~15%: measured, not eyeballed. The hero
+      // stops reading as walking briskly and starts reading as tiptoeing while
+      // being slid across the room. Shortening the stride needs the cycle rate
+      // to come off distance travelled rather than the wall clock; until it
+      // does, the longer stride is the closer of the two wrongs.
       phase: (this.t * 1.6) % 1,
       time: this.t,
       grounded: !airborne,
@@ -3183,7 +3192,9 @@ export class BenchState {
     const hipsAmt = Math.max(periodicHips, reactHips);
     const pose = walking
       ? { kind: 'run', phase: (this.t * 0.85) % 1, time: this.t, grounded: true, facing: -1, vy: 0 }
-      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true, hipsAmt, annoyed: this.annoyedT > 0, madStyle: this.madStyle };
+      // `annoyed` is the 0..1 reaction ramp, not a flag, so the mad brows can
+      // fade in and out with it instead of snapping on.
+      : { kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t, grounded: true, facing: -1, vy: 0, armsInFront: true, hipsAmt, annoyed: reactHips, madStyle: this.madStyle };
     ctx.fillStyle = 'rgba(4,3,9,0.32)';
     ctx.beginPath();
     ctx.ellipse(doleX, doleFeet + 1, doleH * (walking ? 0.16 : 0.2), doleH * 0.055, 0, 0, Math.PI * 2);
