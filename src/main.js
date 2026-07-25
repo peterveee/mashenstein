@@ -28,9 +28,9 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
-import { sendTelemetry } from './engine/telemetry.js';
+import { sendTelemetry, sendSessionEnd } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
-import { readDiag, writeDiag } from './engine/diag.js';
+import { consumeBenchDiag, releaseBenchRenderer } from './engine/diag.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -373,15 +373,14 @@ function boot() {
   // hidden panel on the portrait screen — the only way to turn them on inside an
   // installed PWA, which is the only way iPhone runs this game at all.
   let benchRequested = false;
+  let benchDiag = null;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
-    const diag = readDiag();
+    const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     if (p.has('mute')) save.settings.muted = true;
     benchRequested = p.has('bench') || !!diag.bench;
-    // One-shot: consumed as the sweep starts, so a reload afterwards returns to
-    // playing instead of benchmarking the device again every single launch.
-    if (diag.bench) writeDiag({ bench: false });
+    benchDiag = diag;
   }
 
   const platform = window.__mash_platform || readPlatform();
@@ -389,14 +388,18 @@ function boot() {
   // persist that so the next launch starts near it (the renderer re-probes one
   // rung optimistically on top of this seed).
   initRenderer(platform, {
-    savedDensity: save.settings.renderDensity || 0,
-    onSettle: (v) => {
-      if (save.settings.renderDensity !== v) { save.settings.renderDensity = v; save.persist(); }
+    savedDensities: save.settings.renderDensityByBackend,
+    onSettle: (v, backend) => {
+      if (save.settings.renderDensityByBackend[backend] !== v) {
+        save.settings.renderDensityByBackend[backend] = v;
+        save.persist();
+      }
       // Fire telemetry once the render density settles — the most important
       // number: it tells us whether this device actually kept up.
-      sendTelemetry({ density: v, backend: rendererBackend() });
+      sendTelemetry({ density: rendererDiagnostics().density, backend });
     },
   });
+  releaseBenchRenderer(benchDiag);
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
@@ -502,16 +505,26 @@ function boot() {
           // here: its coordinates land inside the area #game covers, where the
           // readout is faithfully painted every frame and never once seen.
           setChromeOverlay(`fps|${fps}|${dens}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
-            // 'side': only the ~ox-wide pillar is free, so stack two short
-            // lines. 'topbottom': the whole width above the game is free.
+            // A landscape phone's side pillar is narrow but tall. Short,
+            // single-stat rows let the lettering grow instead of shrinking one
+            // long density/backend string to fit. A top/bottom band has width
+            // to spare, so pair the same fields across two larger rows.
             const side = chrome.mode === 'side';
-            const lines = side ? [`FPS ${fps}`, dens] : [`FPS ${fps} ${dens}`];
+            const backend = rendererBackend().toUpperCase();
+            const state = flags || 'AUTO';
+            const density = `${r2(rd.density)}X`;
+            const native = `${r2(rd.native)}X`;
+            const lines = side
+              ? [`FPS ${fps}`, `D ${density}`, `N ${native}`, backend, state]
+              : [`FPS ${fps}  ${backend} ${state}`, `D ${density}  N ${native}`];
             const pad = 8;
             const widest = Math.max(...lines.map((l) => textWidth(l, 1, 'ui')));
-            // Size to the margin actually on offer — a notch iPhone's pillar is
-            // 72px, an iPad's top band is the full screen width.
-            const avail = (side ? screen.ox : chrome.vw) - pad * 3;
-            const s = Math.max(1, Math.min(2.4, avail / widest));
+            // Respect both dimensions: side mode is width-bound, while a thin
+            // iPad band can be height-bound. The shorter rows materially raise
+            // the side-mode scale without ever spilling under #game.
+            const availW = (side ? screen.ox : chrome.vw) - pad * 2;
+            const availH = side ? chrome.vh - 52 : screen.oy - pad * 2;
+            const s = Math.max(1, Math.min(2.8, availW / widest, availH / (lines.length * 12)));
             const lineH = 12 * s;
             const boxH = lines.length * lineH + pad;
             // Dropped clear of the top corner: a phone screen is a squircle, so
@@ -525,7 +538,10 @@ function boot() {
             ctx.fillStyle = 'rgba(5,6,12,0.68)';
             ctx.fillRect(pad - 4, top - 4, widest * s + 12, boxH);
             for (let i = 0; i < lines.length; i++) {
-              drawText(ctx, lines[i], pad, top + i * lineH, i ? '#9fb4d8' : '#f4f1fa', s, 'ui');
+              const ink = i === 0 ? '#f4f1fa'
+                : lines[i] === backend ? '#8ef0c0'
+                  : '#b9c9e3';
+              drawText(ctx, lines[i], pad, top + i * lineH, ink, s, 'ui');
             }
           });
         } else {
@@ -560,6 +576,9 @@ function boot() {
     platform, loop, input: Input, audio: Audio,
   });
   window.__mash_booted = true;
+
+  // Fire session duration on tab close. sendBeacon guarantees delivery.
+  window.addEventListener('beforeunload', () => sendSessionEnd());
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

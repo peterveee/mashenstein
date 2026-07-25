@@ -1,7 +1,7 @@
 // Density-aware renderer. Game code always draws in a fixed 480x270 logical
-// coordinate space. Desktops render at their display's native density; hand-held
-// and tablet displays start from a bounded adaptive tier so Retina fill-rate
-// cannot overwhelm the frame budget on a device that has to stay cool.
+// coordinate space. Desktops and tablets start at native density; hand-held
+// phones start from a bounded adaptive tier so Retina fill-rate cannot overwhelm
+// the frame budget on a device that has to stay cool.
 export const W = 480;
 export const H = 270;
 
@@ -170,7 +170,7 @@ const CAP_REVERTS_TO_FREEZE = 2;      // this many futile drops => stop adapting
 const SETTLE_MS = 25000;              // stable this long at a rung => persist it
 const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval average
 
-let phonePlatform = false;   // iPhone|Android — gates the density seed and the chrome dpr cap
+let phonePlatform = false;   // iPhone|Android phone — gates density seed and chrome dpr cap
 let desktopPlatform = false; // no touch platform detected — seeds at native density
 let ladder = [1];
 let nativeDensity = 1;
@@ -178,6 +178,7 @@ let rung = -1;             // -1 until resize() seeds it
 let pinnedDensity = null;  // ?density=N override: fixed density, adaptation off
 let adaptationEnabled = false;
 let savedSeedDensity = 0;  // persisted settled density, seeds the first guess
+let savedNative = false;   // this backend previously proved the native rung
 let onSettle = null;       // called with the settled density value to persist it
 // controller counters
 let lastPresentedAt = 0, lastFrameNow = 0;
@@ -192,7 +193,7 @@ let throttleSuspendedUntil = 0;  // absolute clock: drops suspended until here
 let capReverts = 0;              // futile drops reverted this session
 let frozen = false;              // adaptation given up: dropping proved not to help
 // persistence bookkeeping
-let settledFor = 0, settleReported = false, lastSettleValue = -1;
+let settledFor = 0, settleReported = false, lastSettleValue = null;
 // chrome dirty-flag: repaint the touch overlay only when its signature changes
 let chromeWant = null, chromePaintedSig = null;
 
@@ -214,7 +215,7 @@ export function rendererDiagnostics() {
     frozen,
     lockedRungs: [...lockedRungs],
     strikes: Object.fromEntries(strikes),
-    settled: lastSettleValue < 0 ? null : lastSettleValue,
+    settled: lastSettleValue,
   };
 }
 
@@ -232,7 +233,8 @@ function rendererRequested() {
   return q || readDiag().renderer || null;
 }
 
-// iOS/iPadOS takes the 2D path, and this is not a fallback — it is the fast one.
+// iPadOS stays on the 2D path for now, based on the measured M1 iPad result.
+// This is not a fallback — it is the fast path on that device.
 //
 // The WebGL pipeline draws the world on a 2D canvas and re-uploads that whole
 // canvas to the GPU every frame with texSubImage2D. Measured on an iPad Pro
@@ -259,10 +261,12 @@ function rendererRequested() {
 // nebula for 14x the pixels is not a close call on a device whose whole problem
 // was that it looked blocky.
 //
-// ?renderer=webgl forces the pipeline back on for comparison; ?renderer=2d
-// forces 2D anywhere.
+// This result must not be generalized to iPhone. Recent iPhones have sustained
+// the WebGL path at useful densities, and forcing them to 2D here prevents the
+// renderer from even measuring their actual capability. ?renderer=webgl still
+// forces the pipeline on for iPad comparison; ?renderer=2d forces 2D anywhere.
 function prefer2D(platform) {
-  return !!(platform.isIphone || platform.isIpad);
+  return !!platform.isIpad;
 }
 
 // Pin the density from code, exactly as ?density=N does — same field, so
@@ -339,6 +343,7 @@ function nearestIndex(arr, value) {
 // genuinely benefits from remembering; a tablet or desktop should just re-probe.
 function seedRung() {
   if (!phonePlatform) return 0;
+  if (savedNative) return 0;
   const i = ladder.findIndex((v) => v <= PHONE_SEED_DENSITY + LADDER_EPS);
   const platformSeedIdx = i < 0 ? 0 : i;
   if (savedSeedDensity > 0) {
@@ -367,10 +372,12 @@ export function initRenderer(platform = {}, persistence = {}) {
   // decides where every device ultimately settles. phonePlatform picks the
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
   // entirely and starts at native.
-  phonePlatform = !!(platform.isIphone || platform.isAndroid);
+  phonePlatform = !!(platform.isIphone || platform.isAndroidPhone);
   desktopPlatform = !!platform.isDesktop;
   pinnedDensity = densityRequested();
-  savedSeedDensity = Number(persistence.savedDensity) > 0 ? Number(persistence.savedDensity) : 0;
+  // Select history only after the backend is known below. Keep the input here
+  // so a WebGL result can never seed the 2D path, or vice versa.
+  const savedDensities = persistence.savedDensities || null;
   onSettle = typeof persistence.onSettle === 'function' ? persistence.onSettle : null;
   rung = -1;              // resize() seeds on its first pass (see seedRung)
   ladder = [1];
@@ -378,7 +385,7 @@ export function initRenderer(platform = {}, persistence = {}) {
   adaptationEnabled = false;
   arrivedAt = 0;
   lastFrameNow = 0;
-  lastSettleValue = -1;
+  lastSettleValue = null;
   throttleSuspendedUntil = 0;
   densityCooldown = 0;
   guard = null;
@@ -414,6 +421,11 @@ export function initRenderer(platform = {}, persistence = {}) {
       console.warn('WebGL effects disabled; using the 2D renderer.', webgl.error);
     }
   }
+  const saved = savedDensities
+    ? savedDensities[backend]
+    : persistence.savedDensity; // scalar retained for focused tests/old callers
+  savedNative = saved === 'native';
+  savedSeedDensity = Number(saved) > 0 ? Number(saved) : 0;
   // iPad can emit orientationchange before its visual viewport has settled.
   // Coalesce the following resize notifications and read the final dimensions
   // on the next frame, so #chrome's backing store and button geometry belong
@@ -500,19 +512,18 @@ function resetSettle() {
   settleReported = false;
 }
 
-// Persist the settled density once a rung has been held long enough. Rung 0
-// (native) persists as 0/auto, never the fractional native value: that avoids
-// save churn from desktop window resizes and gives a fully-recovered device a
-// clean re-seed next launch.
+// Persist the settled density once a rung has been held long enough. Native is
+// an explicit token rather than 0/auto: a phone that proved it can sustain its
+// display ceiling should not be forced to re-earn 4x and native every launch.
 function updateSettle(elapsed) {
   if (pinnedDensity != null || settleReported) return;
   settledFor += elapsed;
   if (settledFor < SETTLE_MS) return;
   settleReported = true;
-  const value = rung === 0 ? 0 : ladder[rung];
+  const value = rung === 0 ? 'native' : ladder[rung];
   if (value !== lastSettleValue) {
     lastSettleValue = value;
-    if (onSettle) onSettle(value);
+    if (onSettle) onSettle(value, backend);
   }
 }
 

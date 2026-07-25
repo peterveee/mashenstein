@@ -35,6 +35,39 @@ function safeStr(s, max) {
   return String(s || '').slice(0, max);
 }
 
+const sessionStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+let sessionEnded = false;
+
+// Persistent anonymous device ID. Stored in localStorage so the same device
+// gets the same ID across sessions — lets us count returning players without
+// cookies, accounts, or IP addresses.
+const DEVICE_ID_KEY = 'mash_did';
+function deviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch (_) { return null; }
+}
+
+// Deterministic code name from the device ID. Same ID = same name forever.
+// Two-word combos drawn from the game's own vocabulary.
+const ADJ = ['SHINY','ANGRY','GOLDEN','SPARE','BURNT','LOOSE','FROZEN','SPARKY',
+  'RUSTY','NOBLE','GIDDY','STERN','WILY','ZAPPY','DAMP','COZY'];
+const NOUN = ['TOASTER','CACTUS','PLUG','FUSE','CORD','CRATE','DRONE','PIPE',
+  'CAPSULE','RELAY','PORTAL','BATTERY','WRENCH','AXE','SHIELD','PIXEL'];
+function deviceName(did) {
+  if (!did) return null;
+  let h = 0;
+  for (let i = 0; i < did.length; i++) h = ((h << 5) - h + did.charCodeAt(i)) | 0;
+  const a = Math.abs(h) % ADJ.length;
+  const n = Math.abs(h >> 4) % NOUN.length;
+  return ADJ[a] + ' ' + NOUN[n];
+}
+
 export function sendTelemetry(extra = {}) {
   const url = endpointUrl();
   if (!url) return;
@@ -56,6 +89,8 @@ export function sendTelemetry(extra = {}) {
     dpr: window.devicePixelRatio || 1,
     density: extra.density != null ? extra.density : null,
     backend: extra.backend || null,
+    did: deviceId(),
+    name: deviceName(deviceId()),
     referrer: safeStr(document.referrer, 256),
     sent: new Date().toISOString(),
     ...extra,
@@ -67,4 +102,28 @@ export function sendTelemetry(extra = {}) {
     // sendBeacon can throw if the URL is invalid or the body is too large.
     // Silently ignore — telemetry must never break the game.
   }
+}
+
+// Fire a lightweight ping on page unload with session duration. sendBeacon
+// is designed for exactly this: it guarantees delivery even if the tab closes
+// before the request completes.
+export function sendSessionEnd(extra = {}) {
+  if (sessionEnded) return;
+  sessionEnded = true;
+  const url = endpointUrl();
+  if (!url) return;
+
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const elapsed = Math.round((now - sessionStart) / 1000);
+
+  try {
+    navigator.sendBeacon(url, JSON.stringify({
+      kind: 'end',
+      did: deviceId(),
+      name: deviceName(deviceId()),
+      sessionSec: elapsed,
+      sent: new Date().toISOString(),
+      ...extra,
+    }));
+  } catch (_) { /* never break the page */ }
 }

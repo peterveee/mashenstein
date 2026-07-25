@@ -38,7 +38,24 @@ dom.store['mashenstein.v2'] = JSON.stringify(partial);
   assert(s.data.slots[0].bench && s.data.slots[0].bench.shield === 1, 'missing fields deep-defaulted');
   assert(s.data.settings.assistSpeed === 100, 'missing settings defaulted');
   assert(s.data.settings.showFps === false, 'FPS display defaults off for existing saves');
-  assert(s.data.settings.renderDensity === 0, 'render density defaults to auto for existing saves');
+  assert(s.data.settings.renderDensityByBackend.webgl === 0
+    && s.data.settings.renderDensityByBackend['2d'] === 0,
+  'backend-specific render densities default to auto for existing saves');
+}
+
+// Case 4: the old scalar density is deliberately discarded because it does not
+// identify the renderer that produced it.
+dom.store['mashenstein.v2'] = JSON.stringify({
+  version: 2,
+  settings: { renderDensity: 1.5 },
+  slots: [null, null, null],
+});
+{
+  const s = new Save().load();
+  assert(!('renderDensity' in s.data.settings), 'ambiguous legacy render density is removed');
+  assert(s.data.settings.renderDensityByBackend.webgl === 0
+    && s.data.settings.renderDensityByBackend['2d'] === 0,
+  'a low legacy WebGL result cannot soften the 2D renderer');
 }
 
 console.log(failed ? 'MIGRATION: FAILED' : 'MIGRATION: PASSED');

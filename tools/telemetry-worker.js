@@ -74,12 +74,15 @@ function dashboardHtml(stats) {
 
   const recentRows = (recent || []).slice().reverse()
     .map((r) => '<tr>' +
-      '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 19) + '</td>' +
+      '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 16) + '</td>' +
       '<td class="rec-plat">' + r.platform + '</td>' +
       '<td class="rec-res">' + (r.screenW || '?') + '\xd7' + (r.screenH || '?') + '</td>' +
-      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +
-      '<td class="rec-gl">' + (r.backend || '\u2014') + '</td>' +      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
-      '<td class="rec-ua" title="' + r.ua.replace(/"/g, '&quot;') + '">' + r.uaShort + '</td>' +
+      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +
+      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +
+      '<td class="rec-gl">' + (r.backend || '\u2014') + '</td>' +
+      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + (r.sessionSec != null ? ' \u2022 ' + r.sessionSec + 's' : '') + '</td>' +
+      '<td class="rec-geo">' + [r.country, r.city].filter(Boolean).join(', ') + '</td>' +
+      '<td class="rec-name">' + (r.name || '') + '</td>' +
       '</tr>')
     .join('');
 
@@ -112,6 +115,8 @@ function dashboardHtml(stats) {
     '  .rec-dpr{color:#f890b8}\n' +
     '  .rec-density{color:#48e0c8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
     '  .rec-gl{color:#f890b8;font-size:.71rem}\n' +
+    '  .rec-geo{color:#c8cbd7;font-size:.71rem}\n' +
+    '  .rec-name{color:#f6d33c;font-size:.75rem;font-weight:600;letter-spacing:.03em}\n' +
     '  .rec-pwa{color:#f6d33c}\n' +
     '  .rec-ua{color:#55647a;font-size:.69rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n' +
     '  .footer{margin-top:40px;color:#55647a;font-size:.72rem}\n' +
@@ -122,6 +127,7 @@ function dashboardHtml(stats) {
     '<div class="hero">\n' +
     '  <div><div class="num">' + total + '</div><div class="lbl">total sessions</div></div>\n' +
     '  <div><div class="num">' + (stats.devices || total) + '</div><div class="lbl">unique devices</div></div>\n' +
+    '  <div><div class="num">' + (stats.avgSession || '\u2014') + '</div><div class="lbl">avg session (min)</div></div>\n' +
     '  <div><div class="num">' + installedPct + '%</div><div class="lbl">installed (PWA)</div></div>\n' +
     '</div>\n' +
     '<h2>Platforms</h2>\n' +
@@ -134,7 +140,7 @@ function dashboardHtml(stats) {
     '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
-    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th></th><th>UA</th></tr></thead>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th></th><th>Location</th><th>Device</th></tr></thead>\n' +
     '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
     '<p class="footer">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
@@ -151,11 +157,15 @@ async function aggregateStats(env) {
   const daily = {};
   const recent = [];
   const devices = new Set();
+  const deviceVisits = {};
   let total = 0;
+  let sessionSecs = 0;
+  let sessionEnds = 0;
 
   function deviceKey(p) {
-    // Fingerprint a device without cookies or IPs: platform + resolution +
-    // DPR + major UA version. Same device returning = same key.
+    // Prefer the persistent localStorage ID when available.
+    // Fall back to fingerprint: platform + resolution + DPR + UA major version.
+    if (p.did) return p.did;
     const uaMajor = (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').replace(/ (KHTML|Gecko|Chrome|Safari|Version|Mobile)\/[^\s]*/g, '').slice(0, 40);
     return (p.platform || '?') + '|' + (p.screenW || 0) + 'x' + (p.screenH || 0) + '|' + (p.dpr || 1) + '|' + uaMajor;
   }
@@ -168,9 +178,15 @@ async function aggregateStats(env) {
       if (!raw) continue;
       let p;
       try { p = JSON.parse(raw); } catch (_) { continue; }
+
+      // End pings carry session duration — tally for the average.
+      if (p.sessionSec != null) { sessionSecs += p.sessionSec; sessionEnds++; }
+
       total++;
 
-      devices.add(deviceKey(p));
+      const dk = deviceKey(p);
+      devices.add(dk);
+      deviceVisits[dk] = (deviceVisits[dk] || 0) + 1;
 
       const plat = p.platform || 'desktop';
       platforms[plat] = (platforms[plat] || 0) + 1;
@@ -196,9 +212,15 @@ async function aggregateStats(env) {
           dpr: p.dpr || 1,
           density: p.density != null ? p.density : null,
           backend: p.backend || null,
+          name: p.name || null,
+          did: p.did || null,
           installed: !!p.installed,
           ua: p.ua || '',
           uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),
+          country: p.country || '',
+          city: p.city || '',
+          isp: p.isp || '',
+          sessionSec: p.sessionSec || null,
         });
       }
     }
@@ -257,6 +279,15 @@ export default {
     } catch (_) {
       return new Response('Invalid JSON', { status: 400, headers: CORS });
     }
+
+    // Enrich with Cloudflare edge data — no IPs stored, just aggregated metadata.
+    // cf object is free on every Worker plan. https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
+    const cf = request.cf || {};
+    if (cf.country) payload.country = cf.country;
+    if (cf.city) payload.city = cf.city;
+    if (cf.continent) payload.continent = cf.continent;
+    if (cf.asOrganization) payload.isp = cf.asOrganization;
+    if (cf.httpProtocol) payload.httpProtocol = cf.httpProtocol;
 
     const ts = payload.sent || new Date().toISOString();
     const suffix = Math.random().toString(36).slice(2, 8);

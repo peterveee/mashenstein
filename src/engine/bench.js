@@ -8,10 +8,10 @@
 // One URL, one table, no ambiguity.
 //
 // Run it twice to answer the question that actually matters:
-//     ?bench              the WebGL path, which re-uploads the whole world
-//                         canvas to the GPU every frame
-//     ?bench&renderer=2d  the 2D path, where the canvas IS the display and
-//                         there is no upload at all
+//     ?bench&renderer=webgl  the WebGL path, which re-uploads the whole world
+//                           canvas to the GPU every frame
+//     ?bench&renderer=2d     the 2D path, where the canvas IS the display and
+//                           there is no upload at all
 // If 2D holds a rung that WebGL cannot, the upload is the ceiling.
 import { setDensityPin, suppressSkyFx, rendererDiagnostics, rendererBackend, W, H } from './renderer.js';
 import { drawText, textWidth } from './sprites.js';

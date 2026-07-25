@@ -218,6 +218,18 @@ sixtyHz.stop();
 // Input is a separate import after the loop globals are installed.
 const { installDom } = await import('./dom-stub.js');
 const dom = installDom();
+const { consumeBenchDiag, readDiag, releaseBenchRenderer } = await import('../src/engine/diag.js');
+dom.store.mash_diag = JSON.stringify({ bench: true, renderer: '2d', fps: true });
+const benchDiag = consumeBenchDiag();
+assert(benchDiag.bench && benchDiag.renderer === '2d' && readDiag().bench === false,
+  'a stored benchmark is consumed once while its backend remains available for this boot');
+releaseBenchRenderer(benchDiag);
+assert(!readDiag().renderer && readDiag().fps === true,
+  'the benchmark backend clears after renderer initialization without clearing FPS');
+dom.store.mash_diag = JSON.stringify({ bench: false, renderer: '2d', fps: true });
+const staleDiag = consumeBenchDiag();
+assert(!staleDiag.renderer && !readDiag().renderer,
+  'a backend stranded by an older completed benchmark is cleared on boot');
 const { Input } = await import('../src/engine/input.js');
 Input.init();
 dom.keyDown('Space');

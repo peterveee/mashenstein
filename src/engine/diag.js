@@ -33,6 +33,28 @@ export function writeDiag(patch) {
   return next;
 }
 
+// A stored benchmark request and its renderer choice belong to one boot only.
+// Return the original snapshot so renderer.js can still consume its backend,
+// while disarming the benchmark immediately. Once the renderer has initialized,
+// releaseBenchRenderer() removes that temporary backend for the next launch.
+export function consumeBenchDiag() {
+  const diag = readDiag();
+  if (diag.bench) {
+    writeDiag({ bench: false });
+  } else if (diag.renderer) {
+    // Older builds cleared `bench` but stranded its renderer choice forever.
+    // The UI has never offered a persistent renderer-only override, so this is
+    // unambiguously stale benchmark state and should not survive another boot.
+    writeDiag({ renderer: null });
+    diag.renderer = null;
+  }
+  return diag;
+}
+
+export function releaseBenchRenderer(diag) {
+  if (diag && diag.bench && diag.renderer) writeDiag({ renderer: null });
+}
+
 export function clearDiag() {
   try {
     localStorage.removeItem(KEY);

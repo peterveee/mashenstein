@@ -26,6 +26,7 @@ function feedUntil(r, clk, dt, pred, max = 5000) {
 }
 
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 15; Pixel Tablet) AppleWebKit/537.36 Chrome/130 Safari/537.36';
 const PHONE = { locationSearch: '?renderer=2d', innerWidth: 852, innerHeight: 393, devicePixelRatio: 3 };
 // Phone native = 852-fit cssW 699 * dpr 3 / 480 = 4.36875 → ladder below. Phones
 // seed at 3x (index 2), leaving the 4x rung above them to climb into.
@@ -81,6 +82,55 @@ function webglStub() {
   const d = r.rendererDiagnostics();
   assert(d.rung === 2 && d.density === 3, 'a phone seeds at 3x, not at native like a tablet');
   assert(d.ladder[1] === 4, 'the 4x rung sits above the phone seed as a climb target');
+}
+
+// --- Android phones and tablets use their actual detected device class -------
+{
+  installDom(PHONE);
+  const r = await import('../src/engine/renderer.js?d-android-phone');
+  const platform = detectPlatform({
+    ua: ANDROID_UA,
+    screenW: 412,
+    screenH: 915,
+  });
+  r.initRenderer(platform);
+  const d = r.rendererDiagnostics();
+  assert(platform.isAndroidPhone && d.density === 3,
+    'an Android phone keeps the bounded 3x seed');
+}
+{
+  const dom = installDom({
+    locationSearch: '?renderer=2d',
+    innerWidth: 1280,
+    innerHeight: 800,
+    devicePixelRatio: 3,
+  });
+  const r = await import('../src/engine/renderer.js?d-android-tablet');
+  const platform = detectPlatform({
+    ua: ANDROID_UA,
+    screenW: 800,
+    screenH: 1280,
+  });
+  r.initRenderer(platform, { savedDensities: { webgl: 1.5, '2d': 1.5 } });
+  const d = r.rendererDiagnostics();
+  assert(platform.isAndroidTablet && d.rung === 0 && d.density === d.native,
+    'an Android tablet seeds at native and ignores old phone-style density history');
+  assert(dom.chromeCanvas.width === 3840,
+    'an Android tablet does not receive the phone-only 2x touch-chrome cap');
+}
+
+// --- iPhone uses WebGL; the measured M1 result stays within the iPad class ----
+{
+  const webgl = webglStub();
+  installDom({
+    ...PHONE,
+    locationSearch: '',
+    gameGetContext: (type) => (type === 'webgl' ? webgl.gl : undefined),
+  });
+  const r = await import('../src/engine/renderer.js?d-iphone-webgl-default');
+  r.initRenderer({ isIphone: true });
+  assert(r.rendererBackend() === 'webgl',
+    'an available WebGL renderer remains the iPhone default');
 }
 
 // --- Emergency two-rung drop from the seed, in a single adjustment -----------
@@ -187,8 +237,46 @@ function webglStub() {
   r.initRenderer({ isIphone: true }, { savedDensity: 3 });
   assert(r.rendererDiagnostics().density === 3, 'a settled 3x on a phone stays clamped at the 3x seed, not native');
 }
+{
+  const webgl = webglStub();
+  installDom({
+    ...PHONE,
+    locationSearch: '',
+    gameGetContext: (type) => (type === 'webgl' ? webgl.gl : undefined),
+  });
+  const r = await import('../src/engine/renderer.js?d-backend-persist');
+  r.initRenderer({ isIphone: true }, {
+    savedDensities: { webgl: 'native', '2d': 1.5 },
+  });
+  const d = r.rendererDiagnostics();
+  assert(r.rendererBackend() === 'webgl' && d.rung === 0 && d.density === d.native,
+    'WebGL uses only its own persisted density and remembers a proven native rung');
+}
+{
+  installDom({ ...PHONE, locationSearch: '?renderer=2d' });
+  const r = await import('../src/engine/renderer.js?d-backend-persist-2d');
+  r.initRenderer({ isIphone: true }, {
+    savedDensities: { webgl: 1.5, '2d': 3 },
+  });
+  assert(r.rendererDiagnostics().density === 3,
+    'a low WebGL result cannot seed the 2D renderer');
+}
+{
+  installDom({ ...PHONE, locationSearch: '?renderer=2d' });
+  const r = await import('../src/engine/renderer.js?d-native-persist');
+  const settles = [];
+  r.initRenderer({ isIphone: true }, {
+    savedDensities: { webgl: 0, '2d': 'native' },
+    onSettle: (value, backend) => settles.push({ value, backend }),
+  });
+  const clk = { t: 1 };
+  r.noteRendererFrame(clk.t);
+  feed(r, clk, 1600, 18);
+  assert(settles.length === 1 && settles[0].value === 'native' && settles[0].backend === '2d',
+    'native capability persists explicitly for the backend that proved it');
+}
 
-// --- iOS defaults to the 2D backend, and can be forced back for comparison ---
+// --- The measured M1 iPad defaults to 2D and can be forced for comparison ----
 // Measured on an iPad Pro 12.9 (M1): the WebGL path's per-frame canvas upload is
 // bandwidth-capped near 20-25 Mpx/s, so it manages 6 FPS at native where 2D
 // holds 60. The post pipeline is not worth a fourteenth of the resolution.
@@ -257,9 +345,8 @@ function webglStub() {
 // --- WebGL bloom tier gate + overlay-upload skip -----------------------------
 {
   const webgl = webglStub();
-  // iOS now defaults to the 2D backend (the WebGL upload is bandwidth-capped
-  // there), so this case has to ask for WebGL explicitly to exercise the bloom
-  // tier gate at all.
+  // Keep the backend explicit: this test is about the bloom tier, not platform
+  // policy, and should remain stable if backend defaults change.
   installDom({ ...PHONE, locationSearch: '?density=1.5&renderer=webgl', gameGetContext: (type) => (type === 'webgl' ? webgl.gl : null) });
   const r = await import('../src/engine/renderer.js?d-bloom');
   r.initRenderer({ isIphone: true });

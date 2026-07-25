@@ -15,7 +15,11 @@ export function defaultSettings() {
     showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
     fancyFx: true,    // WebGL bloom/vignette (when available)
-    renderDensity: 0, // adaptive renderer's settled density; 0 = auto-seed
+    // A WebGL canvas upload and a direct 2D blit can sustain very different
+    // densities on the same device. Keep their learned ceilings separate so a
+    // slow diagnostic run on one backend cannot soften the other. Values are a
+    // numeric density, 'native' (proved at the display ceiling), or 0 (auto).
+    renderDensityByBackend: { webgl: 0, '2d': 0 },
   };
 }
 
@@ -81,6 +85,14 @@ export class Save {
     }
     // Deep-default each present slot so new fields appear on old saves.
     data.settings = { ...defaultSettings(), ...data.settings };
+    data.settings.renderDensityByBackend = {
+      ...defaultSettings().renderDensityByBackend,
+      ...(data.settings.renderDensityByBackend || {}),
+    };
+    // The retired scalar did not record which backend produced it. Discard it:
+    // carrying a low WebGL result into the 2D renderer was the iPhone quality
+    // regression this backend-specific store replaces.
+    delete data.settings.renderDensity;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
     // Relay simplification: refund the retired PERFECT TAG WINDOW and RELAY
     // METER upgrades exactly once, then drop their bench entries.
@@ -134,6 +146,11 @@ export class Save {
       throw new Error('INVALID SAVE FILE');
     }
     data.settings = { ...defaultSettings(), ...data.settings };
+    data.settings.renderDensityByBackend = {
+      ...defaultSettings().renderDensityByBackend,
+      ...(data.settings.renderDensityByBackend || {}),
+    };
+    delete data.settings.renderDensity;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
