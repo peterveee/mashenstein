@@ -99,13 +99,23 @@ const win = Object.assign(new Events(), {
   visualViewport: null,
   timers: new Map(),
   nextTimerId: 0,
-  setTimeout(fn) {
+  setTimeout(fn, delay = 0) {
     const id = ++this.nextTimerId;
-    this.timers.set(id, fn);
+    this.timers.set(id, { fn, delay });
     return id;
   },
   clearTimeout(id) {
     this.timers.delete(id);
+  },
+  runTimeout(id) {
+    const timer = this.timers.get(id);
+    if (!timer) return false;
+    this.timers.delete(id);
+    timer.fn();
+    return true;
+  },
+  runAllTimeouts() {
+    for (const id of [...this.timers.keys()]) this.runTimeout(id);
   },
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
   location: { reloaded: 0, reload() { this.reloaded++; } },
@@ -133,6 +143,10 @@ assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR 
 reloadButton.fire('click');
 assert(win.location.reloaded === 0 && reloadButton.textContent === 'TAP AGAIN TO CONFIRM',
   'first portrait reload tap arms confirmation without reloading');
+win.runAllTimeouts();
+assert(win.location.reloaded === 0 && reloadButton.textContent === 'FORCE RELOAD',
+  'portrait reload confirmation auto-disarms after its timeout');
+reloadButton.fire('click');
 reloadButton.fire('click');
 assert(win.location.reloaded === 1 && reloadButton.textContent === 'RELOADING...',
   'second portrait reload tap confirms and reloads the page');
