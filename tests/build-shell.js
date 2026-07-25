@@ -37,6 +37,10 @@ assert(html.includes('class="mash-portrait-icon"')
   'portrait pause screen is full-height, branded and does not force heading focus');
 assert(html.includes('id="copy-error"') && html.includes('id="portrait-error-message"'),
   'built portrait shell contains a copyable crash report');
+assert(html.includes('id="portrait-reload"')
+  && html.includes('CHECK FOR UPDATE')
+  && html.includes('id="portrait-reload-status"'),
+  'built portrait shell checks for updates before offering reload confirmation');
 assert(html.includes('id="landscape-diag"')
   && html.includes('id="landscape-diag-force-webgl"')
   && html.includes('mash-landscape-diag'),

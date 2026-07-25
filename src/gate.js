@@ -199,7 +199,8 @@ function createGameDom() {
         <p id="copy-error-status" class="mash-copy-status" aria-live="polite"></p>
       </div>
       <div class="mash-portrait-reload">
-        <button id="portrait-reload" type="button">FORCE RELOAD</button>
+        <button id="portrait-reload" type="button">CHECK FOR UPDATE</button>
+        <p id="portrait-reload-status" class="mash-reload-status" aria-live="polite"></p>
       </div>
       <div class="mash-build-time">
         <p class="mash-build-label">${buildTimeLabelLines()[0]}</p>

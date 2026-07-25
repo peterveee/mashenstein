@@ -68,6 +68,7 @@ export class LifecycleController {
     this.copyErrorButton = doc.getElementById('copy-error');
     this.copyErrorStatus = doc.getElementById('copy-error-status');
     this.reloadButton = doc.getElementById('portrait-reload');
+    this.reloadStatus = doc.getElementById('portrait-reload-status');
     this.restoreFocus = null;
     this.wasOverlayVisible = false;
     this.portraitQuery = win.matchMedia ? win.matchMedia('(orientation: portrait)') : null;
@@ -78,7 +79,7 @@ export class LifecycleController {
     this.onViewport = () => this.apply();
     this.onFatalError = () => this.syncErrorReport();
     this.onCopyError = () => { this.copyErrorReport(); };
-    this.onReload = () => this.confirmReload();
+    this.onReload = () => { this.confirmReload(); };
     this.onDiagOpen = () => this.openLandscapeDiag();
     this.onDiagClose = () => this.closeLandscapeDiag();
 
@@ -252,36 +253,90 @@ export class LifecycleController {
   }
 
   // Portrait is the one screen every installed player sees before anything else
-  // loads, which makes it the reliable place to offer an escape hatch from a
-  // stale Home Screen snapshot.
-  //
-  // It used to guard the reload with window.confirm(). That does not work in an
-  // installed iOS app: standalone mode suppresses native JS dialogs, so confirm()
-  // never returned true and the button silently did nothing on the exact
-  // platform the escape hatch exists for. The guard is now the button itself —
-  // press once to arm, again to go — which needs no dialog, no game DOM and no
-  // fonts, and reads more clearly than a modal anyway.
-  confirmReload() {
-    if (!this.reloadButton) return;
+  // loads, which makes it the reliable place to check whether a Home Screen
+  // snapshot is stale. A check never reloads an up-to-date app. When the
+  // service worker reports a new version, the button becomes the confirmation
+  // step; this stays usable on iOS, where native confirm() is suppressed.
+  async confirmReload() {
+    if (!this.reloadButton || this.reloadChecking) return;
     if (!this.reloadArmed) {
-      this.reloadArmed = true;
-      // Captured once, not per arm: by the time a second arm happens the label
-      // may already have been overwritten with a transient state, and restoring
-      // THAT would leave the button reading "RELOADING..." forever.
+      // Captured once, not per check: by the time a later check happens the
+      // label may already have been overwritten with a transient state.
       if (this.reloadLabel === undefined) this.reloadLabel = this.reloadButton.textContent;
-      this.reloadButton.textContent = 'TAP AGAIN TO CONFIRM';
+      this.reloadChecking = true;
+      this.reloadButton.disabled = true;
+      this.reloadButton.textContent = 'CHECKING FOR UPDATE...';
+      this.showReloadStatus('CHECKING FOR UPDATE...');
+      let available = null;
+      let timeoutId = null;
+      try {
+        const result = this.checkForUpdate();
+        const timeout = new Promise((resolve) => {
+          timeoutId = this.win.setTimeout(() => resolve(null), 1500);
+        });
+        available = await Promise.race([result, timeout]);
+      } catch (e) {
+        available = null;
+      } finally {
+        if (timeoutId != null) this.win.clearTimeout(timeoutId);
+        this.reloadChecking = false;
+        this.reloadButton.disabled = false;
+      }
+      if (available !== true) {
+        this.reloadButton.textContent = this.reloadLabel || 'CHECK FOR UPDATE';
+        this.showReloadStatus(available === false
+          ? 'NO UPDATE FOUND.'
+          : 'UPDATE CHECK UNAVAILABLE.');
+        return;
+      }
+      this.reloadArmed = true;
+      this.reloadButton.textContent = 'TAP AGAIN TO RELOAD';
+      this.showReloadStatus('UPDATE AVAILABLE. TAP AGAIN TO RELOAD.');
       // Disarm on its own, so a stray tap does not leave the button primed for
       // the rest of the session waiting to eat a run.
       this.reloadTimer = this.win.setTimeout(() => {
         this.reloadArmed = false;
-        this.reloadButton.textContent = this.reloadLabel || 'FORCE RELOAD';
+        this.reloadButton.textContent = this.reloadLabel || 'CHECK FOR UPDATE';
+        this.showReloadStatus('UPDATE CHECK EXPIRED.');
       }, 4000);
       return;
     }
     this.win.clearTimeout(this.reloadTimer);
     this.reloadArmed = false;
+    this.reloadButton.disabled = true;
     this.reloadButton.textContent = 'RELOADING...';
+    this.showReloadStatus('RELOADING WITH THE UPDATE...');
     this.forceReload();
+  }
+
+  showReloadStatus(text) {
+    if (this.reloadStatus) this.reloadStatus.textContent = text;
+  }
+
+  async checkForUpdate() {
+    const nav = this.win.navigator;
+    if (!nav?.serviceWorker?.getRegistrations) return null;
+    const registrations = await nav.serviceWorker.getRegistrations();
+    if (!registrations?.length) return false;
+    const inspect = async (registration) => {
+      let found = !!(registration.waiting || registration.installing);
+      let failed = false;
+      const onUpdateFound = () => { found = true; };
+      if (registration.addEventListener) registration.addEventListener('updatefound', onUpdateFound);
+      try {
+        if (registration.update) await registration.update();
+      } catch (e) {
+        // An individual registration can fail while another one still reports
+        // a usable update. Keep checking the rest rather than rejecting all.
+        failed = true;
+      } finally {
+        if (registration.removeEventListener) registration.removeEventListener('updatefound', onUpdateFound);
+      }
+      return { found: found || !!(registration.waiting || registration.installing), failed };
+    };
+    const results = await Promise.all(registrations.map(inspect));
+    if (results.some((result) => result.found)) return true;
+    return results.some((result) => result.failed) ? null : false;
   }
 
   // "Force" has to mean more than location.reload() here. An installed PWA is

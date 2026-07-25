@@ -59,7 +59,8 @@ const errorTools = { hidden: true };
 const errorMessage = { textContent: '' };
 const copyStatus = { textContent: '' };
 const copyButton = new Events();
-const reloadButton = Object.assign(new Events(), { textContent: 'FORCE RELOAD' });
+const reloadButton = Object.assign(new Events(), { textContent: 'CHECK FOR UPDATE', disabled: false });
+const reloadStatus = { textContent: '' };
 const priorFocus = {
   isConnected: true,
   blurred: 0,
@@ -88,6 +89,7 @@ const doc = Object.assign(new Events(), {
     if (id === 'copy-error') return copyButton;
     if (id === 'copy-error-status') return copyStatus;
     if (id === 'portrait-reload') return reloadButton;
+    if (id === 'portrait-reload-status') return reloadStatus;
     return null;
   },
 });
@@ -126,24 +128,52 @@ await lifecycle.copyErrorReport();
 assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR COPIED.',
   'portrait crash report can be copied');
 
-// FORCE RELOAD arms on the first press and fires on the second. It must never
-// call window.confirm(): iOS standalone suppresses native dialogs, so the old
-// confirm-guarded version did nothing at all on the one platform this escape
-// hatch exists for. The stub above has no confirm(), so a regression throws.
+// The first press checks the service worker and never reloads an up-to-date
+// app. The stub deliberately has no confirm(): an installed iOS PWA suppresses
+// native dialogs, so the reload path must not depend on one.
+let updateAvailable = false;
+const registration = {
+  waiting: null,
+  installing: null,
+  updateCalls: 0,
+  addEventListener() {},
+  removeEventListener() {},
+  update() {
+    this.updateCalls++;
+    if (updateAvailable) this.waiting = {};
+    return Promise.resolve();
+  },
+};
+win.navigator.serviceWorker = { getRegistrations: async () => [registration] };
+const settle = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
 reloadButton.fire('click');
-assert(win.location.reloaded === 0, 'the first press arms rather than reloading');
-assert(reloadButton.textContent === 'TAP AGAIN TO CONFIRM', 'the button says it is armed');
-reloadButton.fire('click');
-assert(win.location.reloaded === 1, 'the second press reloads');
+await settle();
+assert(win.location.reloaded === 0, 'an up-to-date app is not reloaded');
+assert(reloadButton.textContent === 'CHECK FOR UPDATE' && reloadStatus.textContent === 'NO UPDATE FOUND.',
+  'the first press reports that there is no update');
 
-// A stray single tap must not leave the button primed to eat a run later.
+// When the worker finds a new version, the same button becomes the explicit
+// confirmation step, then forceReload refreshes the caches before navigating.
+updateAvailable = true;
+registration.waiting = null;
 reloadButton.fire('click');
-assert(win.location.reloaded === 1, 'a fresh press re-arms instead of reloading again');
+await settle();
+assert(reloadButton.textContent === 'TAP AGAIN TO RELOAD'
+  && reloadStatus.textContent === 'UPDATE AVAILABLE. TAP AGAIN TO RELOAD.',
+  'an available update asks for confirmation');
+reloadButton.fire('click');
+await settle();
+assert(win.location.reloaded === 1, 'the confirmed update reloads');
+
+// A fresh tap after the confirmation reload checks again instead of reloading.
+reloadButton.fire('click');
+await settle();
+assert(win.location.reloaded === 1, 'a fresh tap checks again instead of reloading');
 const disarm = win.timers.filter(Boolean).at(-1);
-disarm.fn();
-assert(reloadButton.textContent === 'FORCE RELOAD', 'the arm times out back to its label');
-reloadButton.fire('click');
-assert(win.location.reloaded === 1, 'after disarming, one press does not reload');
+if (disarm?.fn) disarm.fn();
+assert(reloadButton.textContent === 'CHECK FOR UPDATE', 'the check button restores its label');
 
 doc.hidden = true;
 doc.fire('visibilitychange');
