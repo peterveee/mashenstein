@@ -101,9 +101,10 @@ const win = Object.assign(new Events(), {
   nextTimerId: 0,
   setTimeout(fn, delay = 0) {
     const id = this.nextTimerId++;
+    const ms = Number(delay);
     this.timers.set(id, {
       fn,
-      delay: Number.isFinite(Number(delay)) ? Number(delay) : 0,
+      delay: Number.isFinite(ms) ? ms : 0,
     });
     return id;
   },
