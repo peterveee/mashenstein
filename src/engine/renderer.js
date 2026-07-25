@@ -220,6 +220,22 @@ function force2DRequested() {
   return new URLSearchParams(window.location.search).get('renderer') === '2d';
 }
 
+// Pin the density from code, exactly as ?density=N does — same field, so
+// adaptation switches off for as long as a pin is set. This is what lets the
+// ?bench sweep walk the ladder inside one page load instead of asking a person
+// to reload with a different query string eight times and read a number off a
+// screen each time. Pass null to release the pin and hand control back to the
+// adaptive controller.
+export function setDensityPin(n) {
+  pinnedDensity = Number.isFinite(n) && n > 0 ? n : null;
+  resize();
+  // resize() recomputes adaptationEnabled from the new pin; clear the measuring
+  // state too, or samples taken at the previous density decide the next verdict.
+  resetAdaptiveSamples();
+  resetSettle();
+  guard = null;
+}
+
 // ?density=N pins render density and disables adaptation — for pinning a tier
 // during physical-device testing. Returns null when absent or malformed.
 function densityRequested() {

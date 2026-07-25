@@ -25,15 +25,16 @@ he is working through, each section is a section of it, and a miss is an
 
 | | |
 |---|---|
-| Lane speed | 90 (a run proper is 160) |
+| Lane speed | **112** (a run proper is 160). The master timing dial: every distance in the file is world px, so raising it shortens the spawn lead, the retry lead, the ladder pitch and the payout stretch at once and in proportion |
 | Spawn distance | a screen and a half ahead — a challenge arrives ~3.5s after Gary starts talking |
 | Spawn distance on a **retry** | just off the right edge, ~2.3s. A retry does not buy the reading time again: you already know what is coming and what you did wrong, so the empty lane that bought the first read is only a queue |
 | Speech hold | 5s, two rows, unhurried |
-| Settle between sections | 1.6s |
-| Opening beat | 4.5s over an empty lane |
+| Whole module | ~77s for all eleven sections played clean, ~108s including the epilogue read at full pace. Was ~2m25s |
+| Settle between sections | 1.7s — dead lane, eleven times over, so it buys the pass floatie landing and nothing after it |
+| Opening beat | 3.4s over an empty lane |
 | Reopens before he concedes | 4 |
 | Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/11` rides the same midline beside it |
-| Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.35x — out of the band a held jump travels through. Touch takes the bigger type, its own wrap and its own anchor as one set |
+| Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.15x — out of the band a held jump travels through. Touch takes the bigger type, its own wrap and its own anchor as one set |
 | Card width | as wide as what is beside it allows, because a wider card is a **shorter** one and the lines it saves are lines of lane it is not standing in. Desktop plate x 58–422, clearing the coin pill (ends 48, even at four digits) and the FPS readout (starts 442) by ~10px each. Touch is capped at 368 by the coin pill on its left |
 | Touch controls | **outside the canvas**, in the black margin, wherever the device has room — the same chrome layout a run uses, re-synced when the first tap lands or the phone rotates. Only screens too close to 16:9 fall back to discs on the art. Pausing takes them out of the margin too: the pause plates are in-canvas and a live JUMP disc outside a paused game is a control that looks pressable and is not |
 | Card z-order | **under the hero.** It is the biggest opaque object on screen and it is up almost continuously, so with it on top a tall jump put the character you are steering behind a menu. Everything else on this screen is a readout, and a readout can wait behind the person jumping |
@@ -51,7 +52,7 @@ is still open, because the section specifies ducking.
 
 > HR ASSIGNED ME THE TRAINING MODULE. I AM DECEASED. THE FORM DID NOT ASK.
 
-Empty lane, 4.5s.
+Empty lane, 3.4s.
 
 ### 1 — JUMP · Lorenzo · one crate
 
@@ -65,12 +66,15 @@ Empty lane, 4.5s.
 
 - **Brief:** THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.
 - **Again:** THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.
-- 140px apart, still comfortably above the spawner's own fairness floor (~103).
-  At 200 the previous stack was off the back of the screen before the next
-  appeared at the front, so the comparison the section is built on — *this one
-  is taller than the last one* — had to be remembered instead of seen. At 140
-  two rungs are in frame together and the ladder is a shape rather than a
-  sequence.
+- 165px apart — the same REACTION GAP the old 140 bought before the lane sped
+  up, since a pitch in world px is only a duration once you divide it by lane
+  speed. 1.47s between rungs against Lorenzo's 0.82s airtime, so he lands with
+  two thirds of a second to look at the next one. Above the fairness floor
+  (~128 at this speed).
+  At 200 the previous stack was off the back of the screen before the
+  next appeared at the front, so the comparison the section is built on — *this
+  one is taller than the last one* — had to be remembered instead of seen. Two
+  rungs are in frame together now and the ladder is a shape, not a sequence.
 
 ### 3 — COINS · Lorenzo · a coin arc, then a ! box
 
@@ -87,7 +91,7 @@ Empty lane, 4.5s.
 
 **On pass — the payout stretch.** The lane fills: a coin arc every 76px, the
 floor paved at 13px, a high band at the top of a held jump, and a ! box every
-118px, over ~1180px of lane. The frame is never without coins in it at three
+118px, over ~1000px of lane — about nine seconds of free play. The frame is never without coins in it at three
 heights. Nothing here can hurt you and nothing can fail you, boxes pop on
 contact, and the stretch runs until the last of it is behind the hero plus a
 beat — never on a stopwatch that expires mid-arc.
@@ -204,14 +208,25 @@ After four reopens of the same section:
 
 ## Epilogue
 
-The lane winds down to a stop (the hero's run cycle is driven by world speed, so
-his legs wind down with it), the camera pushes in to 3.2x, and Gary walks on
-from the right — up the track, against the direction everything has been
-travelling all day. He stops about half a body from the hero: a two-shot, not
-two dots in a lane. He does not talk and walk; he is not paid for two things.
+The lane winds down to a stop over two seconds (the hero's run cycle is driven
+by world speed, so his legs wind down with it), the camera pushes in to 3.2x,
+and Gary walks on from the right — up the track, against the direction
+everything has been travelling all day. He stops about half a body from the
+hero: a two-shot, not two dots in a lane. He does not talk and walk; he is not
+paid for two things.
+
+**They close the distance together.** He enters from just off the right edge of
+the current frame and covers the ground briskly, and the lane is still winding
+down while he does — so the hero is still running toward him and they arrive at
+the same moment, about two seconds in. The old pairing (a start well outside the
+pushed-in frame, at a stroll) was four seconds of a stationary hero watching an
+empty lane before the ending began.
 
 Every beat is skippable — one press advances — so an impatient player taps
-through in seconds and a reader gets the whole bit.
+through in seconds and a reader gets the whole bit. The holds are reading time
+for one or two rows plus a beat to look up, and nothing more: they had drifted
+to 4.6 and 5.2 apiece, which across seven beats is most of a minute of waiting
+for a man to finish.
 
 The form's order, not a storyteller's: deductions are processed before awards,
 so payroll takes the coins back and *then* he certifies you.

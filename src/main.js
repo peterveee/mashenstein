@@ -28,6 +28,7 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
+import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -365,10 +366,13 @@ function boot() {
   // URL parameters to force settings on initial load.
   //   ?fps  or  ?start=fps   → show FPS counter
   //   ?mute                  → start muted
+  //   ?bench                 → sweep the density ladder and report FPS per rung
+  let benchRequested = false;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
     if (p.has('fps') || p.get('start') === 'fps') save.settings.showFps = true;
     if (p.has('mute')) save.settings.muted = true;
+    benchRequested = p.has('bench');
   }
 
   const platform = window.__mash_platform || readPlatform();
@@ -459,16 +463,22 @@ function boot() {
         // Render density rides along with the FPS: on a device you can only
         // look at, "blocky" and "which rung did it settle on" are the same
         // question, and there is no console to ask rendererDiagnostics().
-        // Why it is at that density matters as much as the number. A device
-        // that ratcheted to the floor and locked itself out of recovery reads
-        // identically to one that genuinely cannot do better, and the fix for
-        // each is the opposite of the fix for the other. F = adaptation frozen
-        // (two drops in a row failed to buy frames, so it gave up); Ln = n rungs
-        // barred from recovery this session; T = drops currently suspended.
+        // Density alone is ambiguous: 1X reads the same whether the controller
+        // ratcheted down to the floor, a ?density pin disabled it, or the
+        // viewport is so small that native IS 1 and there is no ladder at all.
+        // Native is what separates those, so both numbers show — "1X/5.69X" is
+        // a controller problem, "1X/1X" is a viewport one.
+        //
+        // Flags say why it is where it is. P = pinned by ?density (adaptation
+        // off); A = adaptation off for any other reason (a single-rung ladder);
+        // F = frozen, two drops in a row failed to buy frames so it gave up;
+        // Ln = n rungs barred from recovery by strikes; T = drops suspended.
         const rd = rendererDiagnostics();
-        const flags = (rd.frozen ? 'F' : '') + (rd.lockedRungs.length ? 'L' + rd.lockedRungs.length : '')
+        const r2 = (v) => Math.round(v * 100) / 100;
+        const flags = (rd.pinned != null ? 'P' : (rd.adaptive ? '' : 'A'))
+          + (rd.frozen ? 'F' : '') + (rd.lockedRungs.length ? 'L' + rd.lockedRungs.length : '')
           + (rd.throttled ? 'T' : '');
-        const dens = `${Math.round(rd.density * 100) / 100}X${flags ? ' ' + flags : ''}`;
+        const dens = `${r2(rd.density)}X/${r2(rd.native)}X${flags ? ' ' + flags : ''}`;
         if (showChromeFps) {
           // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
           // #game — so this painter has to place itself against the margin
@@ -519,10 +529,14 @@ function boot() {
       }
       drawState(bctx);
       Dev.draw(bctx);
+      if (benchRequested) pushOverlayDraw(drawBench);
       blit();
     },
-    present: noteRendererFrame,
+    // The sweep counts presented frames, so it reads the same clock the density
+    // controller does. While it holds a pin the controller is inert anyway.
+    present: (now) => { noteRendererFrame(now); benchFrame(now); },
   });
+  if (benchRequested) startBench(performance.now());
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop
   // through its public handle when booting hidden or in iPhone portrait.

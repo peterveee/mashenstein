@@ -49,7 +49,16 @@ import {
 // The run proper moves at 160. This is gentler without being a crawl — the old
 // 70 was slow enough that the hero's legs crawled too, since the run cycle is
 // driven by world.speed (see player.update).
-const TRAINING_SPEED = 90;
+//
+// 112, up from 90. The lane speed is the master dial for how long the module
+// takes: every distance in this file — the spawn lead, the retry lead, the
+// ladder pitch, the whole payout stretch — is measured in world px, so raising
+// it shortens all of them at once and in proportion. At 90 a flawless run of
+// all eleven sections took a shade over two minutes before the epilogue; the
+// same run at 112 is about ninety seconds, and the hero's legs read as running
+// rather than as wading. Anything that must NOT shrink with it — reading time,
+// the reaction gap in the ladder — is re-bought explicitly below.
+const TRAINING_SPEED = 112;
 // Reading time is bought here rather than by slowing the world down further. A
 // challenge spawns most of a screen beyond the right edge, so it arrives ~3.8s
 // after Gary starts talking: the words land, they are read, and only then does
@@ -73,10 +82,13 @@ const RETRY_AHEAD = VIEW_W + 20;
 const SPEECH_T = 5;
 // How long the world runs on after a section closes, before the next one opens.
 // Long enough for the pass floatie to land and be read on its own, and for the
-// line that logged it to be read under it.
-const SETTLE_T = 2.6;
+// line that logged it to be read under it — but this is dead lane, eleven times
+// over, and at 2.6 it was the single largest block of nothing in the module.
+// 1.7 still lands the floatie; what it stops paying for is the pause after it.
+const SETTLE_T = 1.7;
 // The opening beat, over an empty lane, before section one spawns anything.
-const INTRO_T = 4.5;
+// Enough to read two rows and look up, not enough to wonder if it has started.
+const INTRO_T = 3.4;
 // Sections Gary will re-open before he gives up and marks it satisfactory.
 // Nobody gets stuck in training.
 const CONCEDE_AFTER = 4;
@@ -347,7 +359,13 @@ const STEPS = [
     legend: [['SPC', 'JUMP']],
     brief: () => 'THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.',
     again: () => 'THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.',
-    // 140px apart. The spawner's own fairness rule (fairGap) would allow ~103 at
+    // 165px apart, which is the same REACTION GAP the old 140 bought at the old
+    // lane speed — a pitch in world px is a duration only once you divide it by
+    // how fast the lane is moving, and the lane got 24% faster. Lorenzo's
+    // airtime is 0.82s and 165px at 112 is 1.47s, so he still lands with about
+    // two thirds of a second to look at the next rung and decide.
+    //
+    // The spawner's own fairness rule (fairGap) would allow ~128 at
     // this speed for Lorenzo — land, then a quarter second to react — so this
     // still sits comfortably above the floor while reading as one ladder rather
     // than as three separate crates that happen to be in the same section. At
@@ -360,8 +378,8 @@ const STEPS = [
       const x = t.spawnX();
       t.obstacles = [
         makeObstacle('crate', x),
-        makeObstacle('crate', x + 140, { n: 2 }),
-        makeObstacle('crate', x + 280, { n: 3 }),
+        makeObstacle('crate', x + 165, { n: 2 }),
+        makeObstacle('crate', x + 330, { n: 3 }),
       ];
     },
   },
@@ -562,8 +580,14 @@ const STEPS = [
 // The form's order, not a storyteller's: deductions are processed before
 // awards, so payroll takes the coins back and THEN he certifies you. Working
 // through it in the order the form has it is the most Gary thing in the scene.
+//
+// The holds are the reading time for one or two rows plus a beat to look up —
+// nothing more. They had drifted up to 4.6 and 5.2 apiece, which over seven
+// beats is most of a minute of a player waiting for a man to finish; a two-row
+// line is read in about three seconds. Every one of these is also skippable, so
+// the hold is the ceiling for a reader, not a wait for anyone else.
 const OUTRO = [
-  { hold: 4.6, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
+  { hold: 3.6, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
   // The reclaim runs UNDER this line: he says it and the counter drains while
   // he does, in front of you, rather than the coins having quietly vanished
   // eight sections ago.
@@ -574,23 +598,23 @@ const OUTRO = [
   // top of each other — you cannot register a total being taken off you if you
   // never got a clean look at the total. The beat is: read it, then watch it
   // go. The hold covers the pause plus the drain plus a moment at zero.
-  { hold: 7.4, clawback: true, clawDelay: 1.9,
+  { hold: 6.0, clawback: true, clawDelay: 1.4,
     line: 'PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER.' },
-  { hold: 4.6, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
-  { hold: 5.2, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
+  { hold: 3.4, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
+  { hold: 4.0, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
   // The celebration beat. The hero celebrates; Gary does not — he rolls his
   // eyes and stands in it. A Gary who genuinely celebrates undoes the joke the
   // whole module rests on, so the form celebrates on his behalf: the step is
   // logged as completed, the streamers fire, and he has done the paperwork
   // instead of the party.
-  { hold: 4.6, party: true,
+  { hold: 4.0, party: true,
     line: 'THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
   // ...and it ends the way everything he hands out ends. The streamers go back
   // to Stores, which is his actual job — it says so on the certificate he is
   // about to sign.
-  { hold: 4.6, sweep: true,
+  { hold: 3.6, sweep: true,
     line: 'THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK.' },
-  { hold: 5.0, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
+  { hold: 4.0, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
 ];
 
 // Party colours — the arcade's own accent set (coin gold, relay teal, portal
@@ -609,7 +633,18 @@ const PARTY_T = 2.8;
 // Each stands ~77px tall in a 270px frame, which is a proper two-shot rather
 // than two dots in a lane.
 const GARY_STOP_X = 96;
-const GARY_WALK_SPEED = 46;
+// He enters from just off the right edge of the CURRENT frame rather than from
+// 40px beyond the resting frame's width, and he covers the ground briskly. The
+// old pairing — a start 130px outside the pushed-in frame at 46px/s — was four
+// seconds of a stationary hero watching an empty lane before the ending began.
+// Now the two of them close the distance together: the lane is still winding
+// down while he walks in, so the hero is still running toward him, and they
+// arrive at the same moment about two seconds in.
+const GARY_ENTER_X = 250;
+const GARY_WALK_SPEED = 78;
+// How long the treadmill takes to stop, matched to that walk so the hero's legs
+// wind down exactly as Gary arrives instead of a beat and a half beforehand.
+const OUTRO_STOP_T = 2.0;
 const GARY_H = 24;
 const OUTRO_ZOOM = 3.2;
 
@@ -858,7 +893,7 @@ export class TutorialState {
       // ever leaving the room.
       this.shield = 0;
       // beat -1 is "still walking on"; he says nothing until he arrives.
-      this.outro = { beat: -1, garyX: VIEW_W + 40, walking: true, cardT: 0, holdT: 0, clawIn: 0 };
+      this.outro = { beat: -1, garyX: GARY_ENTER_X, walking: true, cardT: 0, holdT: 0, clawIn: 0 };
       Audio.sfx('win');
       return;
     }
@@ -1098,7 +1133,12 @@ export class TutorialState {
     // against the visible width rather than in the abstract — at ZOOM 2 the
     // frame is VIEW_W (240) world px wide, so a 76px arc pitch puts three arcs
     // on screen at once and a 13px floor pitch puts eighteen coins under them.
-    const RUN = 1180;                       // how much lane the payout covers
+    // How much lane the payout covers. A duration, expressed as a distance:
+    // 1000 at 112 is about nine seconds of free play, which is long enough to
+    // stop feeling like a corridor and short enough that the joke it is setting
+    // up still arrives. The density below is what makes it feel generous — the
+    // length was doing none of that work.
+    const RUN = 1000;
     for (let x = x0; x < x0 + RUN; x += 76) {
       this.pickups.push(...coinArc(x + this.rng.range(0, 10), 7 + Math.floor(this.rng.range(0, 5)),
         this.player.heroId));
@@ -1125,7 +1165,7 @@ export class TutorialState {
     // accurate and still sounds like a threat.
     this.say(PAYOUT_1, 5.5);
     this.sayIn(6.5, PAYOUT_2, 5.5);
-    this.freePlayUntilLaneClears(2.2);
+    this.freePlayUntilLaneClears(1.5);
   }
 
   // After the shoot section, a gallery of varied targets rolls past so B-33P
@@ -1149,7 +1189,7 @@ export class TutorialState {
     this.obstacles.push(makeObstacle('crate', x0 + 400, { n: 3 }));
     // A target for the sharpshooters.
     this.obstacles.push(makeObstacle('target', x0 + 540));
-    this.freePlayUntilLaneClears(2.2);
+    this.freePlayUntilLaneClears(1.5);
   }
 
   // The gag, and the honest thing: nothing earned in here was ever going into
@@ -1440,7 +1480,7 @@ export class TutorialState {
     // The treadmill stops rather than cuts. The hero's run cycle is driven by
     // world speed, so his legs wind down with it and he settles into a stand
     // without needing a separate animation.
-    this.speed = Math.max(0, this.speed - TRAINING_SPEED * dt / 1.3);
+    this.speed = Math.max(0, this.speed - TRAINING_SPEED * dt / OUTRO_STOP_T);
     this.worldX += this.speed * dt;
     this.player.update(dt, Input, { speed: this.speed, gravityScale: 1, ice: false });
     // Push in on the pair rather than tracking the hero's jump — nobody is
