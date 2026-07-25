@@ -133,12 +133,21 @@ const HERO_PARADE_H = 60;
 // move at the full title tick. The cache is one reusable canvas per hero: this
 // is deliberately bounded, so an idle title cannot grow an animation atlas
 // forever.
-const TITLE_POSE_FPS = 30;
+// The parade is sampled less often on high-density phones. Positions and
+// accents still move at the full title tick; only the expensive procedural
+// toon raster is held for a few presentation frames. At 3x this halves the
+// number of full rig paints while remaining much smoother than a static atlas.
+function titlePoseFps() {
+  const ss = bakeSS();
+  if (ss >= 3) return 15;
+  if (ss >= 2.5) return 20;
+  return 30;
+}
 const titleToonSlots = new Map();
 
 function titlePoseKey(id, pose, h) {
   const qh = Math.round(h * 2) / 2;
-  const qt = Math.floor((Number(pose.time) || 0) * TITLE_POSE_FPS);
+  const qt = Math.floor((Number(pose.time) || 0) * titlePoseFps());
   return [
     id, qh, qt, pose.kind || '', pose.grounded ? 1 : 0,
     pose.facing === -1 ? -1 : 1, pose.menuAction || '',
@@ -177,9 +186,61 @@ function cachedTitleToon(id, pose, h) {
   return slot;
 }
 
-function drawCachedTitleToon(ctx, id, pose, cx, feetY, h) {
+function drawCachedTitleToon(ctx, id, pose, cx, feetY, h, scale = 1) {
   const slot = cachedTitleToon(id, pose, h);
-  ctx.drawImage(slot.canvas, cx - slot.w / 2, feetY - slot.feet, slot.w, slot.h);
+  const dw = slot.w * scale;
+  const dh = slot.h * scale;
+  ctx.drawImage(slot.canvas, cx - dw / 2, feetY - slot.feet * scale, dw, dh);
+}
+
+// The parade is a visual layer, not the interaction model. Keep the logical
+// hero positions and tap tests independent, but composite the settled lower
+// strip as one image: six high-resolution drawImage calls every frame were
+// enough to pull both Canvas2D and WebGL into the 40 FPS range on iPhone.
+const TITLE_PARADE_TOP = 160;
+const TITLE_PARADE_H = H - TITLE_PARADE_TOP;
+const titleParadeCache = { canvas: null, ctx: null, ss: 0, key: '' };
+
+function invalidateTitleParadeCache() {
+  titleParadeCache.key = '';
+}
+
+function titleParadeStateKey(state) {
+  const pokes = [...state.poke.entries()].map(([i, t]) => `${i}:${t}`).join(',');
+  const eaten = [...state.eaten.keys()].join(',');
+  const scatter = [...state.scatter.entries()]
+    .map(([key, w]) => `${key}:${w.frozen ? `${w.frozen.x}:${w.frozen.resumeAt}` : ''}`).join(',');
+  const bombs = state.tapBombs.map((b) => `${b.id}:${b.victim}:${b.tHit}`).join(',');
+  const shots = state.shots.map((s) => `${s.id}:${s.tFired}:${s.source}:${s.kind || ''}`).join(',');
+  return [
+    HERO_PARADE.join(','),
+    state.frightStart,
+    state.wispsDismissed ? 1 : 0,
+    state.save.settings.reducedFlashing ? 1 : 0,
+    pokes, eaten, scatter, bombs, shots,
+  ].join('|');
+}
+
+function drawCachedTitleParade(ctx, cast, t, stateKey) {
+  const ss = bakeSS();
+  const key = `${Math.floor(t * 30)}|${ss}|${stateKey}`;
+  if (titleParadeCache.key !== key) {
+    if (!titleParadeCache.canvas || titleParadeCache.ss !== ss) {
+      titleParadeCache.canvas = document.createElement('canvas');
+      titleParadeCache.canvas.width = Math.max(1, Math.round(W * ss));
+      titleParadeCache.canvas.height = Math.max(1, Math.round(TITLE_PARADE_H * ss));
+      titleParadeCache.ctx = titleParadeCache.canvas.getContext('2d');
+      titleParadeCache.ss = ss;
+    }
+    const x = titleParadeCache.ctx;
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.clearRect(0, 0, titleParadeCache.canvas.width, titleParadeCache.canvas.height);
+    x.setTransform(ss, 0, 0, ss, 0, -TITLE_PARADE_TOP * ss);
+    x.imageSmoothingEnabled = true;
+    cast(x, 'stable');
+    titleParadeCache.key = key;
+  }
+  ctx.drawImage(titleParadeCache.canvas, 0, TITLE_PARADE_TOP, W, TITLE_PARADE_H);
 }
 
 // Every hop, accent and tap footprint below was tuned against a 26-tall parade;
@@ -858,7 +919,9 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // a character with the background is exactly how you desaturate one. Nothing
   // was wrong with the palettes; they were being averaged away. sprites/toons.js
   // has always said these are meant to be drawn at device resolution.
-  const cast = (c) => {
+  const cast = (c, mode = 'all') => {
+    const stable = mode !== 'dynamic';
+    const dynamic = mode === 'dynamic';
     // Keep the parade physically consistent across devices; the responsive
     // layout changes spacing and hit targets, not the size of the characters.
     const castH = HERO_PARADE_H;
@@ -867,16 +930,21 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
     // The cast still crosses the arcade, but each hero occasionally breaks into
     // a small personality beat. Cycles are offset so the parade stays readable.
     const strikes = reduced ? null : invaderStrikes(t, tapBombs);
-    drawBolt(c, t, strikes);
-    drawShots(c, t, shots);
-    drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter, wispsDismissed);
+    if (stable) {
+      drawBolt(c, t, strikes);
+      drawShots(c, t, shots);
+      drawMazeWispCameo(c, t, reduced, frightStart, eaten, scatter, wispsDismissed);
+    }
     for (let i = 0; i < HERO_PARADE.length; i++) {
       const hx = heroX(i, t);
       const id = HERO_PARADE[i];
+      const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
+      const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
       // Clobbered: launched into a spin and tumbled off the side of the screen,
       // fading out before the parade loop would have wrapped them around.
       const strike = strikes?.find((candidate) => candidate.victim === i && candidate.kt < KNOCK_T);
       if (strike) {
+        if (stable) continue;
         const kt = strike.kt;
         const kx = heroX(i, strike.tHit) + strike.dir * kt * 165;
         const ky = 268 - (kt * 190 - 0.5 * 150 * kt * kt);
@@ -891,11 +959,11 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
         c.restore();
         continue;
       }
+      if (stable && entering) continue;
+      if (dynamic && !entering) continue;
       if (heroIsKnockedOut(i, t, tapBombs)) continue;
       const actionLength = 1.35;
       const beat = (t + i * 0.71) % 4.9;
-      const entryT = t - HERO_PARADE_DELAY - i * HERO_ENTRY_GAP;
-      const entering = entryT >= 0 && entryT < HERO_ENTRY_JUMP_T;
       const acting = !reduced && !entering && beat < actionLength;
       const actionP = acting ? beat / actionLength : 0;
       const pose = {
@@ -943,7 +1011,10 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * entryZoomExtra : 1;
       c.save();
       c.globalAlpha *= edgeAlpha;
-      drawCachedTitleToon(c, id, pose, hx, feetY, castH * entryZoom);
+      // Keep entry zoom as a destination transform. Baking the changing size
+      // into the cache key forced a fresh full toon raster on every few pixels
+      // of the two-second entrance, exactly as more heroes joined the parade.
+      drawCachedTitleToon(c, id, pose, hx, feetY, castH, entryZoom);
       if (acting) {
         c.translate(hx, feetY);
         c.scale(castK, castK);
@@ -951,7 +1022,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       }
       c.restore();
     }
-    drawInvaderImpact(c, strikes);
+    if (stable) drawInvaderImpact(c, strikes);
   };
 
   // The marquee: MASHENSTEIN in warm cartoon gold, outlined, stitched together
@@ -1253,6 +1324,7 @@ export class TitleState {
     this.onTutorial = onTutorial;
   }
   enter() {
+    invalidateTitleParadeCache();
     this.singleToasterOpening = !titleToasterIntroSeen;
     titleToasterIntroSeen = true;
     shuffleParade();
@@ -1646,7 +1718,16 @@ export class TitleState {
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.
-    if (profile.parade && !pushOverlayDraw(cast)) cast(ctx);
+    if (profile.parade) {
+      const stateKey = titleParadeStateKey(this);
+      const parade = (d) => {
+        drawCachedTitleParade(d, cast, this.t, stateKey);
+        // Entrances and knockouts stay individually composited above the strip,
+        // so their motion and tap reactions never wait for the cache cadence.
+        cast(d, 'dynamic');
+      };
+      if (!pushOverlayDraw(parade)) cast(ctx);
+    }
     const opts = this.options();
     const ui = (d) => {
       // Four self-contained cards under the logo, then the controls and flavour
