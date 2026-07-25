@@ -975,6 +975,11 @@ export class TutorialState {
       this.introPhase = 4;
       this.speedRamp = 1;
       this.speed = TRAINING_SPEED;
+      // Skipping the staged intro still has to land in the same resting frame
+      // as a normal gameplay level; otherwise dev inspection leaves the lane
+      // at the opening close-up for every settled section.
+      this.camZoom = ZOOM;
+      this.camPan = 0;
     }
     const step = this.step();
     // A skipped portal still hands the body over. Skipping past one and

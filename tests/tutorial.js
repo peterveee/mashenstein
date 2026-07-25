@@ -6,6 +6,7 @@ installDom();
 
 const { Input } = await import('../src/engine/input.js');
 const { TutorialState } = await import('../src/game/tutorial.js');
+const { ZOOM } = await import('../src/engine/camera.js');
 const { drawSpeech } = await import('../src/game/hud.js');
 
 let failed = false;
@@ -85,6 +86,14 @@ const compactHeight = compactArcs[1].args[1] - compactArcs[0].args[1];
 assert(namedImages > compactImages, 'the default named-speaker card still draws its name');
 assert(compactImages > 0, 'a name-hidden card still draws the speaker portrait and body text');
 assert(compactHeight < namedHeight, 'hiding the name removes the header row from the card height');
+
+const skippedIntro = new TutorialState({ onDone: () => {} });
+skippedIntro.enter();
+assert(skippedIntro.camZoom > ZOOM, 'the staged intro starts at its close-up zoom');
+skippedIntro.devSkipSection('KeyN');
+assert(skippedIntro.camZoom === ZOOM && skippedIntro.introPhase === 4,
+  'skipping the intro settles at the normal gameplay zoom');
+skippedIntro.exit();
 
 tutorial.exit();
 console.log(failed ? 'TUTORIAL: FAILED' : 'TUTORIAL: PASSED');
