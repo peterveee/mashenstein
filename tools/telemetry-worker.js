@@ -69,11 +69,12 @@ function dashboardHtml(stats) {
     : 0;
 
   const dayRows = (days || [])
-    .map((d) => '<tr><td class="label">' + d.date + '</td><td class="count">' + d.count + '</td></tr>')
+    .map((d) => '<tr><td class="label">' + d.date + '</td><td class="count">' + d.count + '</td><td class="count">' + d.devices + '</td></tr>')
     .join('');
 
   const fmtTime = (s) => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   const deviceRows = Object.entries(stats.deviceStats || {})
+    .filter(([, d]) => d.name)
     .sort((a, b) => b[1].sessions - a[1].sessions)
     .map(([, d]) => '<tr>' +
       '<td class="rec-name">' + (d.name || '\u2014') + '</td>' +
@@ -94,9 +95,10 @@ function dashboardHtml(stats) {
       '<td class="rec-plat">' + r.platform + '</td>' +
       '<td class="rec-res">' + (r.screenW || '?') + '\xd7' + (r.screenH || '?') + '</td>' +
       '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +
-      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +
+      '<td class="rec-density">' + (r.density != null ? Number(r.density).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + 'x' : '\u2014') + '</td>' +
       '<td class="rec-gl">' + (r.backend || '\u2014') + '</td>' +
-      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + (r.sessionSec != null ? ' \u2022 ' + r.sessionSec + 's' : '') + '</td>' +
+      '<td class="rec-pwa">' + (r.installed ? 'Yes' : 'No') + '</td>' +
+      '<td class="count">' + (r.sessionSec != null ? r.sessionSec + 's' : '') + '</td>' +
       '<td class="rec-geo">' + [r.country, r.city].filter(Boolean).join(', ') + '</td>' +
       '<td class="rec-name">' + (r.name || '') + '</td>' +
       '</tr>')
@@ -115,6 +117,8 @@ function dashboardHtml(stats) {
     '  .hero>div{background:rgba(255,255,255,.04);border-radius:10px;padding:16px 22px;min-width:130px}\n' +
     '  .hero .num{color:#f6d33c;font-size:2rem;font-weight:800;line-height:1.1}\n' +
     '  .hero .lbl{color:#8e94a6;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}\n' +
+    '  .chart-row{display:flex;gap:32px;flex-wrap:wrap}\n' +
+    '  .chart-row>div{flex:1 1 180px;min-width:160px}\n' +
     '  table{width:100%;max-width:620px;border-collapse:collapse}\n' +
     '  td{padding:5px 8px}\n' +
     '  .label{color:#c8cbd7;font-size:.82rem;white-space:nowrap;width:1px}\n' +
@@ -146,25 +150,32 @@ function dashboardHtml(stats) {
     '  <div><div class="num">' + (stats.avgSession || '\u2014') + '</div><div class="lbl">avg session (min)</div></div>\n' +
     '  <div><div class="num">' + installedPct + '%</div><div class="lbl">installed (PWA)</div></div>\n' +
     '</div>\n' +
-    '<h2>Platforms</h2>\n' +
-    '<table>' + (platformRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
-    '<h2>Screen sizes</h2>\n' +
-    '<table>' + (resRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
-    '<h2>Device pixel ratio</h2>\n' +
-    '<table>' + (dprRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
+    '<div class="chart-row">\n' +
+    '<div><h2>Platforms</h2>\n' +
+    '<table>' + (platformRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table></div>\n' +
+    '<div><h2>Screen sizes</h2>\n' +
+    '<table>' + (resRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table></div>\n' +
+    '<div><h2>Device pixel ratio</h2>\n' +
+    '<table>' + (dprRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table></div>\n' +
+    '</div>\n' +
     '<h2>Daily players</h2>\n' +
-    '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
+    '<table><thead><tr><th>Date</th><th>Sessions</th><th>Devices</th></tr></thead>\n' +
+    '<tbody>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody></table>\n' +
     '<h2>Devices</h2>\n' +
     '<div class="wide"><table>\n' +
     '<thead><tr><th>Name</th><th>Platform</th><th>Location</th><th>Sessions</th><th>Runs</th><th>Clears</th><th>Coins</th><th>Playtime</th></tr></thead>\n' +
-    '<tbody>' + (stats.deviceRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
+    '<tbody>' + (stats.deviceRows || '<tr><td class="label" style="color:#55647a">no named devices yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
-    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th></th><th>Location</th><th>Device</th></tr></thead>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th>PWA</th><th>Dur</th><th>Location</th><th>Device</th></tr></thead>\n' +
     '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
-    '<p class="footer">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
+    '<p class="footer" id="dash-ft">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
+    '<script>\n' +
+    'document.querySelectorAll(".rec-time").forEach(el=>{const s=el.textContent.trim();if(!s)return;const d=new Date(s.replace(" ","T")+"Z");if(isNaN(d.getTime()))return;el.textContent=d.toLocaleString()});\n' +
+    'const ft=document.getElementById("dash-ft");if(ft)ft.textContent="Refreshed "+new Date().toLocaleString()\n' +
+    '</script>\n' +
     '</body>\n</html>';
 }
 
@@ -176,6 +187,7 @@ async function aggregateStats(env) {
   const resolutions = {};
   const dprs = {};
   const daily = {};
+  const dailyDevices = {};
   const recent = [];
   const devices = new Set();
   const deviceVisits = {};
@@ -210,6 +222,9 @@ async function aggregateStats(env) {
       devices.add(dk);
       deviceVisits[dk] = (deviceVisits[dk] || 0) + 1;
 
+      const plat = p.platform || 'desktop';
+      platforms[plat] = (platforms[plat] || 0) + 1;
+
       // Per-device summary
       if (!deviceStats[dk]) {
         deviceStats[dk] = { name: p.name || '', platform: plat, country: p.country || '', sessions: 0, runs: 0, clears: 0, coins: 0, totalTime: 0 };
@@ -224,9 +239,6 @@ async function aggregateStats(env) {
         ds.sessions++;
       }
 
-      const plat = p.platform || 'desktop';
-      platforms[plat] = (platforms[plat] || 0) + 1;
-
       installed[p.installed ? 'true' : 'false']++;
 
       const res = bucketResolution(p.screenW || 0, p.screenH || 0);
@@ -236,7 +248,11 @@ async function aggregateStats(env) {
       dprs[dpr] = (dprs[dpr] || 0) + 1;
 
       const day = (p.sent || '').slice(0, 10);
-      if (day) daily[day] = (daily[day] || 0) + 1;
+      if (day) {
+        daily[day] = (daily[day] || 0) + 1;
+        if (!dailyDevices[day]) dailyDevices[day] = new Set();
+        dailyDevices[day].add(dk);
+      }
 
       // Keep the 50 most recent for the raw table.
       if (recent.length < 50) {
@@ -275,7 +291,7 @@ async function aggregateStats(env) {
   const days = Object.entries(daily)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-30)
-    .map(([date, count]) => ({ date, count }));
+    .map(([date, count]) => ({ date, count, devices: dailyDevices[date] ? dailyDevices[date].size : 0 }));
 
   const avgSession = sessionEnds > 0 ? Math.round(sessionSecs / sessionEnds / 60) : null;
 
