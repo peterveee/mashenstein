@@ -66,8 +66,10 @@ assert(body.children[1].innerHTML.includes('not budgeted for this many vertical 
 assert(body.children[1].innerHTML.includes('id="portrait-overlay-copy" class="mash-sr-only"')
   && !body.children[1].innerHTML.includes('mash-portrait-instruction'),
   'redundant rotation instruction is screen-reader-only');
-assert(body.children[1].innerHTML.includes('BUILD:') && body.children[1].innerHTML.includes('2026'),
-  'portrait dialog shows the localized production build date and time');
+assert(body.children[1].innerHTML.includes('mash-build-label')
+  && body.children[1].innerHTML.includes('mash-build-stamp')
+  && body.children[1].innerHTML.includes('2026'),
+  'portrait dialog shows the localized production build date and time on two lines');
 assert(body.children[1].innerHTML.includes('id="copy-error"')
   && body.children[1].innerHTML.includes('id="portrait-error-message"'),
   'portrait dialog includes a copyable crash report');

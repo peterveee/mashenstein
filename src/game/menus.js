@@ -3293,6 +3293,16 @@ export class SettingsState {
       textYForMid(this.doneY + this.doneH / 2),
       doneSelected ? '#c9a0ff' : '#c8c8d8');
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
+    // Build stamp: dev builds carry __MASH_BUILD__, all builds carry __MASH_BUILT_AT__.
+    const buildStamp = window.__MASH_BUILD__ || (window.__MASH_BUILT_AT__
+      ? new Date(window.__MASH_BUILT_AT__).toISOString().replace('T', ' ').slice(0, 19)
+      : null);
+    if (buildStamp) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      drawText(ctx, `BUILD: ${buildStamp}`, 4, 4, '#55647a', 0.75);
+      ctx.restore();
+    }
     if (this.confirming) {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(40, 90, W - 80, 60);

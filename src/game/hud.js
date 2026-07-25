@@ -672,7 +672,13 @@ export function drawSpeech(ctx, speech, opts = {}) {
     : null;
   const ink = light ? (isEgg ? '#8e1f36' : '#332b45') : (isEgg ? '#f0a0a0' : '#d0f0e8');
   const nameInk = light ? '#1a1028' : '#fff';
-  const plate = light ? '#ece9f6' : undefined;
+  // `opts.plate` overrides the light card's fill — the one use for it is taking
+  // a few percent of alpha out so the lane shows through, which a screen whose
+  // card is up almost continuously wants and the food court's occasional line
+  // does not. Passing it does NOT change the ink or the border: those are what
+  // make the light plate readable, and they are sized for a plate that is
+  // nearly opaque.
+  const plate = light ? (opts.plate ?? '#ece9f6') : undefined;
   const plateOpts = light ? { border: 'rgba(26,16,40,0.4)', shadow: true } : null;
   const panel = (px, py, pw, ph) => (plate
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)

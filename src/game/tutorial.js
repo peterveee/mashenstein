@@ -53,6 +53,13 @@ const TRAINING_SPEED = 90;
 // anything ask for a reaction. Slowing the lane instead would have made the
 // same gap out of a hero who looks like they are wading.
 const SPAWN_AHEAD = VIEW_W + 150;
+// A RETRY does not buy that reading time again. The first time a challenge
+// arrives the player is reading a sentence they have never seen; the second
+// time they already know what is coming and what they did wrong, and the four
+// and a half seconds of empty lane that bought the first read is just a queue.
+// This puts the next attempt just off the right edge — about two seconds out,
+// which is still the whole width of the screen to react in.
+const RETRY_AHEAD = VIEW_W + 20;
 // Gary's card does NOT expire. What he last said stays on screen until he says
 // something else, which for a training module is the only defensible policy: a
 // line that times out while you are mid-jump is a line you were never given a
@@ -79,17 +86,40 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // being jumped were in the same place. Its wrap is pulled in to match — the
 // card is centred and grows off its longest line, so a narrower wrap is what
 // keeps its left edge clear of the coin pill in the top-left corner.
-const SPEECH_Y = 18;
-const SPEECH_MAX_W = 296;
+// 10, not 18: as high as the plate can go and still have a couple of pixels of
+// margin above it. The card is opaque and it is up almost continuously, so
+// every pixel it comes down is a pixel of lane it is standing in — and the lane
+// is where the game is. The hero passes in front of it regardless now, but the
+// right fix for "the card is in the way" is the card not being there.
+const SPEECH_Y = 10;
+// 324, measured against what is actually beside it rather than guessed. The
+// card is centred on W/2 and its plate is the wrap plus 40 for the portrait,
+// the gap and two paddings — so 324 makes a 364-wide plate spanning x 58–422.
+// The coin pill ends at 48 and the FPS readout starts at 442: ten pixels either
+// side, the same clearance the touch card runs. Wider is better here for the
+// same reason the card is high — a wider card is a SHORTER one, because the
+// lines it saves are lines of lane it is not standing in.
+const SPEECH_MAX_W = 324;
+// A few percent of the lane shows through the card. Not a translucent HUD panel
+// — the dark plate is that, and it is the register for shouting over a stage —
+// but enough that a plate up for nine sections stops reading as a hole punched
+// in the screen. 0.88 keeps the dark ink on it at a contrast ratio the light
+// plate was measured for; going much thinner starts eating the words rather
+// than the plate.
+const SPEECH_PLATE = 'rgba(236,233,246,0.88)';
 // Touch gets a substantially bigger card. A phone is a quarter the physical
 // width of the monitor this was laid out on and is held at arm's length, so the
 // card that reads as comfortable on a desk reads as fine print in a hand — and
 // this is the one screen in the game whose entire job is being read.
 //
-// It is parked lower as well as grown. The coin pill occupies y 5–23 in the top
-// left, and a card this wide is centred through it, so 28 is the first anchor
-// whose plate clears the pill instead of printing over the counter Gary is
-// about to make a joke about.
+// It rides at 18, which puts its plate in the same horizontal band as the coin
+// pill (y 5–23, top left). Measured rather than assumed: at this wrap the plate
+// starts at x 60 and the pill ends around 50, so they clear each other by ten
+// pixels and the anchor is free to be this high. If the wrap ever widens or the
+// counter runs to four digits they will meet — which is survivable rather than
+// a bug, because the pill draws in the layer ABOVE the card and the plate is
+// translucent: the counter Gary is about to make a joke about would read as
+// sitting on the card rather than being eaten by it.
 //
 // The wrap is what it is because of the PAUSE disc, not because of the words.
 // That disc sits at x 424–468, y 43–87, and the card is centred on W/2 and
@@ -97,8 +127,13 @@ const SPEECH_MAX_W = 296;
 // after the portrait, the gap and two paddings at this scale leaves 312 for the
 // lettering. Widening past that does not get more text on a row, it gets a
 // plate with a pause button printed through it.
+//
+// Three rows at this scale bottom out at y 94, and the certificate starts at
+// 66 — so the closing line is the one line in the module that has to stay
+// short enough for a single row. At 312 it does, with the plate ending at 64
+// and the document starting two below it.
 const SPEECH_SCALE_TOUCH = 1.35;
-const SPEECH_Y_TOUCH = 28;
+const SPEECH_Y_TOUCH = 18;
 const SPEECH_MAX_W_TOUCH = 312;
 
 // The bottom status row — room name, section counter, key legend — is laid out
@@ -285,7 +320,7 @@ const STEPS = [
     again: (touch) => (touch
       ? 'YOU FLICKED IT. HOLD IT DOWN. THE CRATE COMES BACK.'
       : 'YOU TAPPED IT. HOLD IT DOWN. THE CRATE COMES BACK.'),
-    setup(t) { t.obstacles = [makeObstacle('crate', t.worldX + SPAWN_AHEAD)]; },
+    setup(t) { t.obstacles = [makeObstacle('crate', t.spawnX())]; },
   },
   {
     // One crate, then two, then three. The jump is analogue — you keep whatever
@@ -299,18 +334,21 @@ const STEPS = [
     legend: [['SPC', 'JUMP']],
     brief: () => 'THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.',
     again: () => 'THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.',
-    // 200px apart. The spawner's own fairness rule (fairGap) would allow ~103
-    // at this speed for Lorenzo — land, then a quarter second to react — so
-    // this is roughly double the floor, on purpose. Fair is the bar for a
-    // stage; a ladder whose whole point is that each rung wants a longer hold
-    // than the last needs the player to SEE the next one coming and decide,
-    // not to clear it on reflex.
+    // 140px apart. The spawner's own fairness rule (fairGap) would allow ~103 at
+    // this speed for Lorenzo — land, then a quarter second to react — so this
+    // still sits comfortably above the floor while reading as one ladder rather
+    // than as three separate crates that happen to be in the same section. At
+    // 200 the three rungs arrived far enough apart that the comparison the
+    // section is built on — this one is taller than the last one — had to be
+    // remembered instead of seen: the previous stack was off the back of the
+    // screen before the next appeared at the front. At 140 two are in frame
+    // together and the ladder is a shape rather than a sequence.
     setup(t) {
-      const x = t.worldX + SPAWN_AHEAD;
+      const x = t.spawnX();
       t.obstacles = [
         makeObstacle('crate', x),
-        makeObstacle('crate', x + 200, { n: 2 }),
-        makeObstacle('crate', x + 400, { n: 3 }),
+        makeObstacle('crate', x + 140, { n: 2 }),
+        makeObstacle('crate', x + 280, { n: 3 }),
       ];
     },
   },
@@ -335,7 +373,7 @@ const STEPS = [
     optionalPickups: true,
     requires: (t) => t.sawQbox,
     setup(t) {
-      const x = t.worldX + SPAWN_AHEAD;
+      const x = t.spawnX();
       t.pickups = coinArc(x, 8, 'lorenzo');
       // A ! crate normally floats at alt 40, where the game expects it to be
       // SHOT or stomped — the headbutt is a fallback path, and at that height
@@ -369,7 +407,7 @@ const STEPS = [
     // what the section asks for.
     requires: (t) => t.sawDuck,
     wrongWay: () => 'YOU WENT OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.',
-    setup(t) { t.obstacles = [makeObstacle('drone', t.worldX + SPAWN_AHEAD)]; },
+    setup(t) { t.obstacles = [makeObstacle('drone', t.spawnX())]; },
   },
   {
     id: 'shield',
@@ -378,7 +416,7 @@ const STEPS = [
     legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
     brief: () => 'SHIELD CAPSULE. IT TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT.',
     again: () => 'IT WENT PAST. I WILL REQUISITION ANOTHER. THAT IS A FORM. I HAVE ALREADY FILED IT.',
-    setup(t) { t.pickups = [makePickup('capShield', t.worldX + SPAWN_AHEAD, 10)]; },
+    setup(t) { t.pickups = [makePickup('capShield', t.spawnX(), 10)]; },
   },
   {
     // The one section on the form that is not really on the form. Every cabinet
@@ -405,7 +443,7 @@ const STEPS = [
       // Up where an ordinary held jump reaches and a lazy one does not.
       // Missable is the point; a test is not — Lorenzo clears 89px, so at 44
       // the appliance is a decision rather than a skill check.
-      t.pickups = [makePickup('appliance', t.worldX + SPAWN_AHEAD, 44)];
+      t.pickups = [makePickup('appliance', t.spawnX(), 44)];
     },
   },
   {
@@ -417,7 +455,7 @@ const STEPS = [
     brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED IT ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
-      t.portal = { x: t.worldX + SPAWN_AHEAD, hero: 'mochi', label: 'MOCHI', hit: false };
+      t.portal = { x: t.spawnX(), hero: 'mochi', label: 'MOCHI', hit: false };
     },
   },
   {
@@ -443,7 +481,7 @@ const STEPS = [
     // is *just* possible — and the section says so out loud when it happens
     // ("YOU GOT OVER IT ON ONE"), which is the honest outcome rather than a
     // silent pass for the move it is not teaching.
-    setup(t) { t.obstacles = [makeObstacle('crate', t.worldX + SPAWN_AHEAD, { n: 5 })]; },
+    setup(t) { t.obstacles = [makeObstacle('crate', t.spawnX(), { n: 5 })]; },
   },
   {
     id: 'portal2',
@@ -454,7 +492,7 @@ const STEPS = [
     brief: () => 'ANOTHER PORTAL, ANOTHER BODY. THIS IS NORMAL HERE. STRAIGHT THROUGH.',
     again: () => 'THROUGH IT. I HAVE SAID THIS ONCE ALREADY TODAY.',
     setup(t) {
-      t.portal = { x: t.worldX + SPAWN_AHEAD, hero: 'b33p', label: 'B-33P', hit: false };
+      t.portal = { x: t.spawnX(), hero: 'b33p', label: 'B-33P', hit: false };
     },
   },
   {
@@ -477,7 +515,7 @@ const STEPS = [
     requires: (t) => t.sawShotDown,
     wrongWay: () => 'YOU AVOIDED IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.',
     setup(t) {
-      t.obstacles = [makeObstacle('drone', t.worldX + SPAWN_AHEAD)];
+      t.obstacles = [makeObstacle('drone', t.spawnX())];
       t.player.abilityCd = 0;
     },
     onPass(t) { t.spawnShootGallery(); },
@@ -496,7 +534,7 @@ const STEPS = [
     brief: () => 'LAST PORTAL. IT PUTS YOU BACK IN THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.',
     again: () => 'THROUGH IT. YOU CANNOT SIGN THE FORM AS SOMEBODY ELSE. I HAVE TRIED.',
     setup(t) {
-      t.portal = { x: t.worldX + SPAWN_AHEAD, hero: 'lorenzo', label: 'LORENZO', hit: false };
+      t.portal = { x: t.spawnX(), hero: 'lorenzo', label: 'LORENZO', hit: false };
     },
   },
 ];
@@ -570,7 +608,15 @@ const SHIELD_BROKE = 'THE EQUIPMENT PERFORMED AS SPECIFIED. YOU DID NOT.';
 // them back, and "the part people remember" is the line the reclaim lands on.
 const PAYOUT_1 = 'COINS ARE GOOD. COINS BUY UPGRADES. DOLORES RUNS THAT COUNTER AND DOLORES DOES NOT NEGOTIATE.';
 const PAYOUT_2 = 'TAKE ALL OF THEM. EVERY ONE. THIS IS THE PART OF THE MODULE PEOPLE REMEMBER.';
-const SIGN_OFF = 'SIGNED, GARY. STILL ON THE CLOCK. STILL NOT PAID EXTRA.';
+// He does not announce that he signed it. The certificate is on screen with his
+// name on the signature line and the man himself is standing under it — saying
+// "SIGNED, GARY" out loud put three signatures in one frame, which is two more
+// than the joke needs. A signature is a thing you put on a document so that you
+// do not have to say it.
+//
+// What is left is the half that was always doing the work: the one moment he
+// does something for you, immediately re-filed as unpaid labour.
+const SIGN_OFF = 'STILL ON THE CLOCK. STILL NOT PAID EXTRA.';
 // The certificate is a piece of paper, so it is drawn as one: a pale plate with
 // dark ink, ruled, with a signature line at the bottom. It deliberately does
 // NOT use drawActBanner — that card is the ACT-break announcement, a mistracked
@@ -638,6 +684,7 @@ export class TutorialState {
     // gap between sections.
     this.stepIndex = -1;
     this.misses = 0;
+    this.retrying = false;
     this.settleT = 0;
     this.legend = [];
     this.finished = false;
@@ -686,6 +733,11 @@ export class TutorialState {
   // ---- sections ------------------------------------------------------------
 
   step() { return STEPS[this.stepIndex]; }
+
+  // Where a section's props are laid down. Every setup() measures from here
+  // rather than from the constant, because the answer differs between a section
+  // opening and a section being re-presented — see RETRY_AHEAD.
+  spawnX() { return this.worldX + (this.retrying ? RETRY_AHEAD : SPAWN_AHEAD); }
 
   startStep(i) {
     if (i >= STEPS.length) {
@@ -807,7 +859,12 @@ export class TutorialState {
     this.say(line);
     this.clearWitness();
     this.clearEntities();
+    // The next attempt comes back close — see RETRY_AHEAD. The flag is set only
+    // around the setup call so nothing else in the section's life is affected
+    // by it, and it is cleared before anything can read it stale.
+    this.retrying = true;
     step.setup(this);
+    this.retrying = false;
   }
 
   // Coins outlive the section that spawned them. A coin still in the air, or
@@ -1144,23 +1201,16 @@ export class TutorialState {
     if (this.floaties.length > 5) this.floaties.shift();
   }
 
-  // Is the certificate on screen crowding the speech card? Only ever true on
-  // touch, where the card is big enough to reach the document.
-  certificateUp() {
-    const o = this.outro;
-    return !!o && o.beat >= OUTRO.length && Input.isTouchDevice();
-  }
-
   // How Gary's card is laid out on this device. Touch takes the bigger type,
   // the wider wrap and the lower anchor as one set — they only work together,
   // since bigger lettering in the same box just wraps to more lines and a wider
   // box at the old anchor prints over the coin pill.
   speechOpts() {
     if (!Input.isTouchDevice()) {
-      return { light: true, y: SPEECH_Y, maxWidth: SPEECH_MAX_W };
+      return { light: true, plate: SPEECH_PLATE, y: SPEECH_Y, maxWidth: SPEECH_MAX_W };
     }
     return {
-      light: true, y: SPEECH_Y_TOUCH,
+      light: true, plate: SPEECH_PLATE, y: SPEECH_Y_TOUCH,
       maxWidth: SPEECH_MAX_W_TOUCH, scale: SPEECH_SCALE_TOUCH,
     };
   }
@@ -1592,8 +1642,16 @@ export class TutorialState {
     ctx.restore();
 
     // The hero renders above the backbuffer at device resolution and pushes its
-    // own overlay callback, so everything that has to sit ON TOP of them has to
-    // go through the same queue — otherwise the panels end up underneath.
+    // own overlay callback, so anything that has to sit either side of them has
+    // to go through the same queue — the order these are pushed in IS the
+    // z-order.
+    //
+    // Gary's card goes UNDER the hero. It is the biggest opaque object on the
+    // screen and it is up for most of the module, so with it on top a tall jump
+    // put the character you are steering behind a menu. The hero is never
+    // allowed to be the thing that gets covered: everything else on this screen
+    // is a readout, and a readout can wait behind the person jumping.
+    if (!this.paused) pushOverlayDraw((d) => this.drawSpeechCard(d));
     // Once the treadmill has stopped the controller still reports a RUN — it
     // only knows run/jump/duck — so the hero held whatever stride frame the
     // lane died on for the whole epilogue. He stands instead, and waves when
@@ -1604,6 +1662,14 @@ export class TutorialState {
       pose: stopped ? this.outroPose() : null,
     });
     pushOverlayDraw((d) => this.drawUi(d));
+  }
+
+  // Gary talking. Its own layer because of where it sits in the z-order (under
+  // the hero, over the lane) — the pause screen draws it again on top of its
+  // own scrim, where being over the hero is correct.
+  drawSpeechCard(ctx) {
+    if (!this.speech) return;
+    drawSpeech(ctx, this.speech, this.speechOpts());
   }
 
   // What the hero is doing while the lane stands still. He greets Gary, he
@@ -1658,9 +1724,10 @@ export class TutorialState {
     // make room without printing over the heads of the two people the whole
     // ending is composed around. The document wins that argument: it is the
     // thing the beat exists to show, and it is already signed.
-    if (this.speech && !this.certificateUp()) {
-      drawSpeech(ctx, this.speech, this.speechOpts());
-    }
+    // Gary's card is NOT drawn here — it went down as its own layer before the
+    // hero, so the hero passes in front of it (see draw()). This comment is the
+    // signpost: a card added back into this function would silently start
+    // covering the character again.
     if (o && o.beat >= OUTRO.length && o.cardT > 0.9) {
       drawText(ctx, `${Input.confirmVerb()} TO FINISH`, W / 2 - textWidth(`${Input.confirmVerb()} TO FINISH`) / 2,
         H - 26, 'rgba(255,255,255,0.5)');

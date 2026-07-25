@@ -10,7 +10,7 @@
 // of this: a coin (#f6d33c) sits at 0.80 luma, BELOW a pastel sky at 0.92, so no
 // cutoff separates "bright detail" from "bright background". Light packs opt out
 // wholesale instead; their art carries its own drawn highlights.
-import { W, H } from '../renderer.js';
+import { W, H, bakeSS } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
 import { glowSprite } from '../../sprites/props.js';
 
@@ -40,6 +40,11 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
 // then scroll as GPU texture blits instead of re-tracing a 60-segment path
 // on the CPU every frame.
 const hillCache = new Map();
+// Tiles are baked at the render density, so a density change (rotation, a
+// window resize, an adaptive step) invalidates every one of them. Tracking the
+// factor the cache was built at is cheaper than baking it into each key, and it
+// drops the stale canvases instead of leaving both generations resident.
+let hillCacheSS = 0;
 // `opts.peak` swaps the rounded |sin| ridge for a triangular one with a lower
 // shoulder — hills become mountains. `opts.rock` and `opts.snow` then band them:
 // each fills everything above its own altitude line, clipped to the ridge
@@ -81,9 +86,10 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const tileTop = top - (trees ? TREE_MAX : 0);
   const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${rock || ''}|${snow || ''}|`
     + (trees ? trees.leaf + trees.trunk : '');
+  const SS = bakeSS();
+  if (SS !== hillCacheSS) { hillCache.clear(); hillCacheSS = SS; }
   let tile = hillCache.get(key);
   if (!tile) {
-    const SS = 3;
     tile = document.createElement('canvas');
     tile.width = (period + MARGIN * 2) * SS;
     tile.height = Math.max(1, (H - tileTop) * SS);
@@ -393,12 +399,12 @@ function vCapPath() {
 // `cone` and `cap` are kept for the per-frame highlight clip — it needs BOTH,
 // see the note where it is drawn. `under`/`over` are the baked halves of the
 // static stack.
-const volcBake = { under: null, over: null, cone: null, cap: null };
+const volcBake = { under: null, over: null, cone: null, cap: null, ss: 0 };
 // Layer-local drawing happens in ABSOLUTE y and CXB-relative x, so every
 // context that touches the volcano wants the same transform.
-function volcCtx(canvas) {
+function volcCtx(canvas, ss) {
   const g = canvas.getContext('2d');
-  g.setTransform(V_SS, 0, 0, V_SS, 0, -V_LY * V_SS);
+  g.setTransform(ss, 0, 0, ss, 0, -V_LY * ss);
   return g;
 }
 // Rasterise `paint` into a supersampled full-layer scratch, then resolve the
@@ -414,22 +420,35 @@ function volcCtx(canvas) {
 // The band is tight in Y for the same reason: `under` only needs the cone's
 // own ~94 rows, `over` only the ~40 around the cap. Blitting the full layer
 // height would drag the plume's 172 rows of empty headroom along with it.
-function bakeSlice(paint, y0, y1) {
+// `out` is the density the slice RESOLVES to. It used to resolve to 1x logical,
+// which was invisible while the world rendered at 2-3x and glaring at 5.69x,
+// where the cone was being blown up almost six-fold from its own raster. The
+// callers still blit at logical size, so only the texel count changes.
+//
+// Both the source supersample and the blur radius have to follow `out`: the
+// blur is specified in the destination canvas's own pixels, so leaving it at
+// V_BLUR would shrink the depth-of-field softening to a sixth of its intent.
+function bakeSlice(paint, y0, y1, out) {
+  const ss = Math.max(V_SS, out);
   const sc = document.createElement('canvas');
-  sc.width = V_LW * V_SS;
-  sc.height = V_LH * V_SS;
-  paint(volcCtx(sc));
+  sc.width = V_LW * ss;
+  sc.height = V_LH * ss;
+  paint(volcCtx(sc, ss));
   const h = Math.ceil(y1 - y0);
   const c = document.createElement('canvas');
-  c.width = V_LW;
-  c.height = h;
+  c.width = V_LW * out;
+  c.height = h * out;
   const g = c.getContext('2d');
-  g.filter = `blur(${V_BLUR}px)`;
-  g.drawImage(sc, 0, (y0 - V_LY) * V_SS, V_LW * V_SS, h * V_SS, 0, 0, V_LW, h);
+  g.filter = `blur(${V_BLUR * out}px)`;
+  g.drawImage(sc, 0, (y0 - V_LY) * ss, V_LW * ss, h * ss, 0, 0, V_LW * out, h * out);
   return { c, y: y0, h };
 }
 function bakeVolcano() {
-  if (volcBake.under) return;
+  const out = bakeSS();
+  // A density change makes the existing bakes the wrong resolution, not merely
+  // stale — hold the factor they were built at rather than re-baking blindly.
+  if (volcBake.under && volcBake.ss === out) return;
+  volcBake.ss = out;
   const cone = vConePath(), cap = vCapPath();
   volcBake.cone = cone;
   volcBake.cap = cap;
@@ -476,7 +495,7 @@ function bakeVolcano() {
   g.restore();
   // The cone's own band: the ink stroke's half-width above the summit, down to
   // just past the groundline. Everything above is plume, which is drawn live.
-  }, V_RIM_Y - 2, GROUND_Y + 2);
+  }, V_RIM_Y - 2, GROUND_Y + 2, out);
 
   // ---- over: the cap's ink outline and the crater's inner wall ----
   volcBake.over = bakeSlice((h) => {
@@ -499,7 +518,7 @@ function bakeVolcano() {
   h.fill();
   h.restore();
   // Rim to the bottom of the longest drip, plus slack for the blur.
-  }, V_RIM_Y - 3, V_CAP_BOT + 18);
+  }, V_RIM_Y - 3, V_CAP_BOT + 18, out);
 }
 
 function drawVolcano(ctx, t, camX, atCam, reduced) {
@@ -597,6 +616,7 @@ const SMOKE_SS = 2; // supersample, so the blit is not soft at device res
 // blur for nothing.
 const PUFF_R0 = Math.ceil((6 + 22) * V_SMOKE_SC);
 const puffSprites = [];
+let puffOutSS = 0;   // bake factor the cached puffs were resolved at
 
 // The outline is a DILATED SILHOUETTE, not a stroke. Stroking the cluster path
 // would trace every circle in full, including the arcs buried inside the union,
@@ -620,16 +640,22 @@ function puffCluster(g, cx, cy, r, seed, grow) {
   }
 }
 function puffSprite(seed) {
+  // Same story as the volcano slices: the resolve target was 1x logical, so at
+  // native density every puff was magnified from its own raster. Keyed on the
+  // bake factor so a density change rebuilds rather than reusing the wrong one.
+  const out = bakeSS();
+  if (puffOutSS !== out) { puffSprites.length = 0; puffOutSS = out; }
   let s = puffSprites[seed];
   if (s) return s;
   const r = PUFF_R0;
   const ow = Math.max(0.9, r * 0.085);
   const half = Math.ceil(r * 1.55 + ow + 2);
   const size = half * 2;
+  const ss = Math.max(SMOKE_SS, out);
   const sc = document.createElement('canvas');
-  sc.width = sc.height = size * SMOKE_SS;
+  sc.width = sc.height = size * ss;
   const g = sc.getContext('2d');
-  g.setTransform(SMOKE_SS, 0, 0, SMOKE_SS, 0, 0);
+  g.setTransform(ss, 0, 0, ss, 0, 0);
   const m = size / 2;
   puffCluster(g, m, m, r, seed, ow);
   g.fillStyle = V_INK_SOLID;
@@ -654,10 +680,10 @@ function puffSprite(seed) {
   // the top of the column. Under a translucent grey cloud that reads as the
   // near end of the plume being slightly sharper, which is not wrong.
   const c = document.createElement('canvas');
-  c.width = c.height = size;
+  c.width = c.height = size * out;
   const o = c.getContext('2d');
-  o.filter = `blur(${V_BLUR}px)`;
-  o.drawImage(sc, 0, 0, size * SMOKE_SS, size * SMOKE_SS, 0, 0, size, size);
+  o.filter = `blur(${V_BLUR * out}px)`;
+  o.drawImage(sc, 0, 0, size * ss, size * ss, 0, 0, size * out, size * out);
   s = { c, half };
   puffSprites[seed] = s;
   return s;

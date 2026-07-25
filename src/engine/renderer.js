@@ -107,6 +107,24 @@ export function setSkyFx(on, time) {
 // px = device pixels per logical pixel (what everything is pre-scaled by).
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
 
+// Supersample factor for art baked into an offscreen canvas ahead of time —
+// scenery tiles, the volcano stack, cached toon sprites. Those canvases are
+// sized in multiples of the 480x270 logical space and then blitted into a world
+// rendered at `screen.px` device pixels per logical pixel, so a bake below that
+// density gets MAGNIFIED on the way in. Hardcoded factors are how an iPad Pro
+// stayed blocky after its canvas was already 1:1 with the display: hill tiles
+// baked at 3x against a 5.69x world is a 1.9x upscale, and 1.9 is the ugliest
+// ratio there is — near enough to 2 that most of the image is cleanly pixel-
+// doubled, with a seam every tenth pixel where it isn't.
+//
+// Rounded UP so the blit is always a slight minification, never a magnification.
+// Capped at 6 because tile memory grows with the square of this and the
+// sharpness past 6 is not worth it — a hill tile at 6x is already ~8MB.
+const BAKE_SS_MAX = 6;
+export function bakeSS() {
+  return Math.max(1, Math.min(BAKE_SS_MAX, Math.ceil(screen.px)));
+}
+
 let dctx = null;
 let backend = null;
 
@@ -246,15 +264,21 @@ function nearestIndex(arr, value) {
 // Phones keep the 3x seed: a hand-held GPU pushing 480x270 at native is a real
 // thermal cost, and at that screen size the resample is genuinely hard to see.
 //
-// Either way measured frame timing still decides where the device ends up. A
-// persisted settled density (if any) starts one rung ABOVE where it last landed
-// — optimistic, so a device that had one bad session re-probes upward. Desktops
-// ignore the persisted seed outright: one bad session (a background export, a
-// hot laptop) must not park the machine at a soft density for every launch
-// afterwards.
+// Either way measured frame timing still decides where the device ends up.
+//
+// ONLY PHONES carry a persisted seed forward. The persisted density starts one
+// rung ABOVE where the device last landed, which is optimistic but still well
+// below native — so on anything that seeds at native it does not soften the
+// first launch, it overrides it entirely, and permanently: the density it
+// restores is itself what gets re-persisted. A single bad session (a hot
+// laptop, a background export, or — as happened here — a stretch where the
+// renderer had a bug that made every device look slow) would cost the machine
+// its native resolution on every launch from then on, with no way back except
+// earning eight clean seconds per rung. A phone has a real thermal budget and
+// genuinely benefits from remembering; a tablet or desktop should just re-probe.
 function seedRung() {
-  if (desktopPlatform) return 0;
-  const i = phonePlatform ? ladder.findIndex((v) => v <= PHONE_SEED_DENSITY + LADDER_EPS) : 0;
+  if (!phonePlatform) return 0;
+  const i = ladder.findIndex((v) => v <= PHONE_SEED_DENSITY + LADDER_EPS);
   const platformSeedIdx = i < 0 ? 0 : i;
   if (savedSeedDensity > 0) {
     const persistedIdx = nearestIndex(ladder, savedSeedDensity);

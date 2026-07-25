@@ -264,7 +264,11 @@ export const Dev = {
     if (this.toastT > 0 && this.toast) bits.push(this.toast);
     if (!bits.length) return;
     const label = bits.join('  ');
-    drawPanel(ctx, 2, H - 13, 8 + label.length * 4, 11, 2, 'rgba(11,11,20,0.82)');
-    drawText(ctx, label, 6, H - 10, '#f6d33c', 0.75);
+    // One row up from the bottom edge. The very bottom-left is the game's own
+    // location label — the food court, the trophy room, MANDATORY TRAINING —
+    // and a dev strip printed straight over the name of the room you are in
+    // obscures production UI to report a development state, which is backwards.
+    drawPanel(ctx, 2, H - 30, 8 + label.length * 4, 11, 2, 'rgba(11,11,20,0.82)');
+    drawText(ctx, label, 6, H - 27, '#f6d33c', 0.75);
   },
 };

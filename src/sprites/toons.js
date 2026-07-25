@@ -4,6 +4,7 @@
 // and cached/supersampled for tiny static sites (HUD faces, hub NPCs).
 // Colors come from HERO_SPRITES palettes so pixel and toon stay in sync.
 import { HERO_SPRITES } from './heroes.js';
+import { bakeSS } from '../engine/renderer.js';
 
 const OUTLINE_A = 0.32, SKIN_OUTLINE_A = 0.2;
 let OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
@@ -5370,10 +5371,14 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   ctx.restore();
 }
 
-// Cached supersampled canvases for static small sites.
+// Cached supersampled canvases for static small sites. The factor follows the
+// render density rather than sitting at a constant 6: a 4K desktop renders at
+// 8x, where a fixed 6 would magnify every cached face by a third.
 const toonCache = new Map();
-const SS = 6;
+let toonCacheSS = 0;
 function cached(key, w, h, paint) {
+  const SS = bakeSS();
+  if (SS !== toonCacheSS) { toonCache.clear(); toonCacheSS = SS; }
   if (toonCache.has(key)) return toonCache.get(key);
   const c = document.createElement('canvas');
   c.width = Math.max(1, w * SS);

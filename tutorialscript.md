@@ -26,13 +26,16 @@ he is working through, each section is a section of it, and a miss is an
 | | |
 |---|---|
 | Lane speed | 90 (a run proper is 160) |
-| Spawn distance | a screen and a half ahead — a challenge arrives ~3.8s after Gary starts talking |
+| Spawn distance | a screen and a half ahead — a challenge arrives ~3.5s after Gary starts talking |
+| Spawn distance on a **retry** | just off the right edge, ~2.3s. A retry does not buy the reading time again: you already know what is coming and what you did wrong, so the empty lane that bought the first read is only a queue |
 | Speech hold | 5s, two rows, unhurried |
 | Settle between sections | 1.6s |
 | Opening beat | 4.5s over an empty lane |
 | Reopens before he concedes | 4 |
 | Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/11` rides the same midline beside it |
-| Gary's card | pale plate, high (y 18), narrow wrap (296) — out of the band a held jump travels through |
+| Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.35x — out of the band a held jump travels through. Touch takes the bigger type, its own wrap and its own anchor as one set |
+| Card width | as wide as what is beside it allows, because a wider card is a **shorter** one and the lines it saves are lines of lane it is not standing in. Desktop plate x 58–422, clearing the coin pill (ends 48, even at four digits) and the FPS readout (starts 442) by ~10px each. Touch is already at its ceiling: the PAUSE disc at x 424 caps the plate at 368 |
+| Card z-order | **under the hero.** It is the biggest opaque object on screen and it is up almost continuously, so with it on top a tall jump put the character you are steering behind a menu. Everything else on this screen is a readout, and a readout can wait behind the person jumping |
 | Lighting | warm overhead cones every 108px with a hot core and a floor pool; the fixtures are above frame and never drawn |
 | Pause | 20% scrim, and Gary's card stays up at full strength — including the *last* thing he said if the live line has expired |
 
@@ -61,8 +64,12 @@ Empty lane, 4.5s.
 
 - **Brief:** THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.
 - **Again:** THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.
-- 200px apart — roughly double the spawner's own fairness floor, on purpose. The
-  player has to SEE the next rung and decide, not clear it on reflex.
+- 140px apart, still comfortably above the spawner's own fairness floor (~103).
+  At 200 the previous stack was off the back of the screen before the next
+  appeared at the front, so the comparison the section is built on — *this one
+  is taller than the last one* — had to be remembered instead of seen. At 140
+  two rungs are in frame together and the ladder is a shape rather than a
+  sequence.
 
 ### 3 — COINS · Lorenzo · a coin arc, then a ! box
 
@@ -262,6 +269,8 @@ run does not teach them again.
 
 - **ESC** pauses. It is the *pause screen* that offers the way out — the key
   legend says PAUSE for that reason.
+- The dev status strip sits one row **above** the room label, not on it — a
+  development readout is not allowed to obscure production UI.
 - **N** or the **forward arrow** — dev builds only (`npm run dev`), wired in
   `src/dev/index.js` — closes the current section on the spot and moves to the
   next. A skipped portal still hands the body over, so the epilogue is reached

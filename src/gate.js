@@ -168,6 +168,25 @@ function buildTimeLabel(value = window.__MASH_BUILT_AT__) {
   }
 }
 
+function buildTimeLabelLines(value = window.__MASH_BUILT_AT__) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return ['BUILD', 'TIME UNAVAILABLE'];
+  try {
+    const stamp = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short',
+    }).format(date);
+    return ['BUILD', stamp];
+  } catch (e) {
+    return ['BUILD', date.toISOString()];
+  }
+}
+
 function createGameDom() {
   const shell = document.createElement('div');
   shell.id = 'game-shell';
@@ -209,7 +228,10 @@ function createGameDom() {
       <div class="mash-portrait-reload">
         <button id="portrait-reload" type="button">FORCE RELOAD</button>
       </div>
-      <p class="mash-build-time">${buildTimeLabel()}</p>
+      <div class="mash-build-time">
+        <p class="mash-build-label">${buildTimeLabelLines()[0]}</p>
+        <p class="mash-build-stamp">${buildTimeLabelLines()[1]}</p>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
 }

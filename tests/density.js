@@ -60,10 +60,15 @@ function webglStub() {
   const r = await import('../src/engine/renderer.js?d-ipad');
   const platform = detectPlatform({ ua: MAC_UA, maxTouchPoints: 5 });
   assert(platform.isIpad && !platform.isIphone, 'modern iPad UA + touch points detects as iPad');
-  r.initRenderer(platform);
+  // savedDensity mimics a real device that has played before. A tablet must not
+  // inherit a soft density from an earlier session; that is what kept an iPad
+  // Pro blocky on every screen, menus included, long after the seed was fixed.
+  r.initRenderer(platform, { savedDensity: 2.5 });
   const d = r.rendererDiagnostics();
   assert(d.adaptive && d.rung === 0 && d.density === d.native,
     'iPad seeds at native density — no resample, nothing to look blocky');
+  // Without the exemption a persisted 2.5 seeds one rung above it, at 3x.
+  assert(d.density > 4, 'a persisted 2.5x from an earlier session does not seed an iPad soft');
   assert(d.ladder[1] === 4 && d.ladder[2] === 3,
     'the iPad ladder keeps 4x and 3x below native as graduated fallbacks');
 }
