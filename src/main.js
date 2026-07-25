@@ -392,15 +392,14 @@ function boot() {
     savedDensity: save.settings.renderDensity || 0,
     onSettle: (v) => {
       if (save.settings.renderDensity !== v) { save.settings.renderDensity = v; save.persist(); }
+      // Fire telemetry once the render density settles — the most important
+      // number: it tells us whether this device actually kept up.
+      sendTelemetry({ density: v });
     },
   });
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
-
-  // Fire device telemetry once on boot — non-blocking, never throws, and
-  // silently does nothing when no endpoint is configured.
-  sendTelemetry();
 
   // Touch players cannot rewind, so do not create the continuously-running
   // audio capture node on coarse-pointer devices.

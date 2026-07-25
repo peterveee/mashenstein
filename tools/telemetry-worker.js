@@ -77,8 +77,7 @@ function dashboardHtml(stats) {
       '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 19) + '</td>' +
       '<td class="rec-plat">' + r.platform + '</td>' +
       '<td class="rec-res">' + (r.screenW || '?') + '\xd7' + (r.screenH || '?') + '</td>' +
-      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +
-      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
+      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
       '<td class="rec-ua" title="' + r.ua.replace(/"/g, '&quot;') + '">' + r.uaShort + '</td>' +
       '</tr>')
     .join('');
@@ -110,6 +109,7 @@ function dashboardHtml(stats) {
     '  .rec-plat{color:#48e0c8}\n' +
     '  .rec-res{color:#c8cbd7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
     '  .rec-dpr{color:#f890b8}\n' +
+    '  .rec-density{color:#48e0c8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
     '  .rec-pwa{color:#f6d33c}\n' +
     '  .rec-ua{color:#55647a;font-size:.69rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n' +
     '  .footer{margin-top:40px;color:#55647a;font-size:.72rem}\n' +
@@ -131,7 +131,7 @@ function dashboardHtml(stats) {
     '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
-    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th></th><th>UA</th></tr></thead>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th></th><th>UA</th></tr></thead>\n' +
     '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
     '<p class="footer">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
@@ -181,6 +181,7 @@ async function aggregateStats(env) {
           screenW: p.screenW || 0,
           screenH: p.screenH || 0,
           dpr: p.dpr || 1,
+          density: p.density != null ? p.density : null,
           installed: !!p.installed,
           ua: p.ua || '',
           uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),

@@ -15,6 +15,7 @@
 //   viewW     — window.innerWidth  (CSS px)
 //   viewH     — window.innerHeight (CSS px)
 //   dpr       — window.devicePixelRatio
+//   density   — settled render scale (null if not yet known)
 //   referrer  — document.referrer (first 256 chars)
 //   sent      — ISO timestamp of when the beacon was fired
 
@@ -52,6 +53,7 @@ export function sendTelemetry(extra = {}) {
     viewW: window.innerWidth || 0,
     viewH: window.innerHeight || 0,
     dpr: window.devicePixelRatio || 1,
+    density: extra.density != null ? extra.density : null,
     referrer: safeStr(document.referrer, 256),
     sent: new Date().toISOString(),
     ...extra,
