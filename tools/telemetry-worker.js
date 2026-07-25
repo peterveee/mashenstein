@@ -17,24 +17,29 @@ const CORS = {
 // ---- helpers -----------------------------------------------------------
 
 function bucketResolution(w, h) {
-  const area = w * h;
-  if (area <= 0) return 'unknown';
-  if (w > h) [w, h] = [h, w]; // normalise to portrait for bucketing
-  if (w <= 400 && h <= 700) return '\u2264 iPhone SE';
-  if (w <= 400 && h <= 850) return 'iPhone 6\u20138';
-  if (w <= 400 && h <= 950) return 'iPhone X\u201315';
-  if (w <= 430 && h <= 950) return 'iPhone 15 Pro Max';
-  if (w <= 820 && h <= 1200) return 'iPad / small tablet';
+  // Bucket by CSS-pixel resolution, not by model name — many phones share the
+  // same logical resolution and cannot be told apart from screen size alone.
+  if (w * h <= 0) return 'unknown';
+  if (w > h) [w, h] = [h, w]; // normalise to portrait
+  if (w <= 400 && h <= 700) return '\u2264375\u00d7667';
+  if (w <= 400 && h <= 750) return '375\u00d7736\u2013744';
+  if (w <= 400 && h <= 850) return '375\u00d7812';
+  if (w <= 400 && h <= 900) return '390\u00d7844';
+  if (w <= 430 && h <= 940) return '402\u00d7874';
+  if (w <= 430 && h <= 960) return '430\u00d7932';
+  if (w <= 820 && h <= 1200) return 'tablet (768\u2013820\u00d71024\u20131200)';
   if (w <= 1100 && h <= 1400) return 'large tablet';
-  if (w <= 1200 && h <= 1700) return 'laptop (\u22641440p)';
-  if (w <= 1500 && h <= 2200) return 'desktop (1440p\u20134K)';
+  if (w <= 1280 && h <= 800) return 'laptop (\u22641440\u00d7900)';
+  if (w <= 1500 && h <= 1000) return 'desktop (1440\u20131680\u00d7900\u20131050)';
+  if (w <= 2000 && h <= 1200) return 'desktop (1920\u00d71080\u20131200)';
+  if (w <= 2600 && h <= 1500) return 'desktop (2560\u00d71440)';
   return '4K+ / ultrawide';
 }
 
 // ---- dashboard HTML ----------------------------------------------------
 
 function dashboardHtml(stats) {
-  const { total, platforms, installed, resolutions, dprs, days } = stats;
+  const { total, platforms, installed, resolutions, dprs, days, recent } = stats;
 
   const bar = (label, count, max, color = '#48e0c8') => {
     const pct = max > 0 ? (count / max) * 100 : 0;
@@ -67,6 +72,17 @@ function dashboardHtml(stats) {
     .map((d) => '<tr><td class="label">' + d.date + '</td><td class="count">' + d.count + '</td></tr>')
     .join('');
 
+  const recentRows = (recent || [])
+    .map((r) => '<tr>' +
+      '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 19) + '</td>' +
+      '<td class="rec-plat">' + r.platform + '</td>' +
+      '<td class="rec-res">' + (r.screenW || '?') + '\xd7' + (r.screenH || '?') + '</td>' +
+      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +
+      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
+      '<td class="rec-ua" title="' + r.ua.replace(/"/g, '&quot;') + '">' + r.uaShort + '</td>' +
+      '</tr>')
+    .join('');
+
   return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
     '<meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">\n' +
@@ -86,6 +102,16 @@ function dashboardHtml(stats) {
     '  .count{color:#8e94a6;font-size:.82rem;text-align:right;width:54px;font-variant-numeric:tabular-nums}\n' +
     '  .bar-cell{width:100%}\n' +
     '  .bar{height:14px;border-radius:4px;min-width:2px}\n' +
+    '  .wide{max-width:100%;overflow-x:auto}\n' +
+    '  .wide table{max-width:none;min-width:700px}\n' +
+    '  .wide td{font-size:.78rem;padding:4px 7px}\n' +
+    '  .wide th{font-size:.72rem;color:#8e94a6;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:4px 7px}\n' +
+    '  .rec-time{color:#6b7084;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.71rem}\n' +
+    '  .rec-plat{color:#48e0c8}\n' +
+    '  .rec-res{color:#c8cbd7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
+    '  .rec-dpr{color:#f890b8}\n' +
+    '  .rec-pwa{color:#f6d33c}\n' +
+    '  .rec-ua{color:#55647a;font-size:.69rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n' +
     '  .footer{margin-top:40px;color:#55647a;font-size:.72rem}\n' +
     '  @media(max-width:500px){body{padding:14px}h1{font-size:1.4rem}}\n' +
     '</style>\n</head>\n<body>\n' +
@@ -103,6 +129,11 @@ function dashboardHtml(stats) {
     '<table>' + (dprRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
     '<h2>Daily players</h2>\n' +
     '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
+    '<h2>Recent sessions</h2>\n' +
+    '<div class="wide"><table>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th></th><th>UA</th></tr></thead>\n' +
+    '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
+    '</table></div>\n' +
     '<p class="footer">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
     '</body>\n</html>';
 }
@@ -115,6 +146,7 @@ async function aggregateStats(env) {
   const resolutions = {};
   const dprs = {};
   const daily = {};
+  const recent = [];
   let total = 0;
 
   let cursor;
@@ -140,6 +172,20 @@ async function aggregateStats(env) {
 
       const day = (p.sent || '').slice(0, 10);
       if (day) daily[day] = (daily[day] || 0) + 1;
+
+      // Keep the 50 most recent for the raw table.
+      if (recent.length < 50) {
+        recent.push({
+          sent: p.sent || '',
+          platform: plat,
+          screenW: p.screenW || 0,
+          screenH: p.screenH || 0,
+          dpr: p.dpr || 1,
+          installed: !!p.installed,
+          ua: p.ua || '',
+          uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),
+        });
+      }
     }
     cursor = list.cursor;
     if (!cursor || list.keys.length < 500) break;
@@ -158,7 +204,7 @@ async function aggregateStats(env) {
     .slice(-30)
     .map(([date, count]) => ({ date, count }));
 
-  return { total, platforms, installed, resolutions, dprs, days };
+  return { total, platforms, installed, resolutions, dprs, days, recent };
 }
 
 // ---- fetch handler -----------------------------------------------------

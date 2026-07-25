@@ -215,7 +215,10 @@ export class LifecycleController {
     if (!this.reloadButton) return;
     if (!this.reloadArmed) {
       this.reloadArmed = true;
-      this.reloadLabel = this.reloadButton.textContent;
+      // Captured once, not per arm: by the time a second arm happens the label
+      // may already have been overwritten with a transient state, and restoring
+      // THAT would leave the button reading "RELOADING..." forever.
+      if (this.reloadLabel === undefined) this.reloadLabel = this.reloadButton.textContent;
       this.reloadButton.textContent = 'TAP AGAIN TO CONFIRM';
       // Disarm on its own, so a stray tap does not leave the button primed for
       // the rest of the session waiting to eat a run.

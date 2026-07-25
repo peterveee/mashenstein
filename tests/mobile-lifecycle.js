@@ -98,8 +98,13 @@ const win = Object.assign(new Events(), {
   matchMedia: () => portraitQuery,
   visualViewport: null,
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
-  confirm: () => false,
+  // Deliberately NO confirm(): an installed iOS PWA suppresses native dialogs,
+  // and the reload path must not depend on one. If it ever reaches for confirm
+  // again this stub throws rather than quietly passing.
   location: { reloaded: 0, reload() { this.reloaded++; } },
+  timers: [],
+  setTimeout(fn, ms) { this.timers.push({ fn, ms }); return this.timers.length; },
+  clearTimeout(id) { if (id) this.timers[id - 1] = null; },
 });
 const calls = [];
 const loop = { pause: () => calls.push('loop:pause'), resume: () => calls.push('loop:resume') };
@@ -121,12 +126,24 @@ await lifecycle.copyErrorReport();
 assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR COPIED.',
   'portrait crash report can be copied');
 
-win.confirm = () => false;
+// FORCE RELOAD arms on the first press and fires on the second. It must never
+// call window.confirm(): iOS standalone suppresses native dialogs, so the old
+// confirm-guarded version did nothing at all on the one platform this escape
+// hatch exists for. The stub above has no confirm(), so a regression throws.
 reloadButton.fire('click');
-assert(win.location.reloaded === 0, 'declining the reload confirm does not reload');
-win.confirm = () => true;
+assert(win.location.reloaded === 0, 'the first press arms rather than reloading');
+assert(reloadButton.textContent === 'TAP AGAIN TO CONFIRM', 'the button says it is armed');
 reloadButton.fire('click');
-assert(win.location.reloaded === 1, 'confirming the portrait reload button reloads the page');
+assert(win.location.reloaded === 1, 'the second press reloads');
+
+// A stray single tap must not leave the button primed to eat a run later.
+reloadButton.fire('click');
+assert(win.location.reloaded === 1, 'a fresh press re-arms instead of reloading again');
+const disarm = win.timers.filter(Boolean).at(-1);
+disarm.fn();
+assert(reloadButton.textContent === 'FORCE RELOAD', 'the arm times out back to its label');
+reloadButton.fire('click');
+assert(win.location.reloaded === 1, 'after disarming, one press does not reload');
 
 doc.hidden = true;
 doc.fire('visibilitychange');
