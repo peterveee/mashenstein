@@ -1,7 +1,7 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, rendererDiagnostics, W, chrome, screen, setChromeOverlay,
+  noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
@@ -492,7 +492,10 @@ function boot() {
         const flags = (rd.pinned != null ? 'P' : (rd.adaptive ? '' : 'A'))
           + (rd.frozen ? 'F' : '') + (rd.lockedRungs.length ? 'L' + rd.lockedRungs.length : '')
           + (rd.throttled ? 'T' : '');
-        const dens = `${r2(rd.density)}X/${r2(rd.native)}X${flags ? ' ' + flags : ''}`;
+        // Backend too: "60 at 2x" means the pipeline is saturated if it is GL
+        // and something else entirely if it is 2D, and the two are
+        // indistinguishable without it.
+        const dens = `${r2(rd.density)}X/${r2(rd.native)}X ${rendererBackend()}${flags ? ' ' + flags : ''}`;
         if (showChromeFps) {
           // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
           // #game — so this painter has to place itself against the margin
@@ -550,7 +553,7 @@ function boot() {
     // controller does. While it holds a pin the controller is inert anyway.
     present: (now) => { noteRendererFrame(now); benchFrame(now); },
   });
-  if (benchRequested) startBench(performance.now());
+  if (benchRequested) startBench();
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop
   // through its public handle when booting hidden or in iPhone portrait.

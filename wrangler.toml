@@ -6,4 +6,4 @@ compatibility_date = "2025-07-01"
 #   npx wrangler kv:namespace create MASHTELEMETRY
 [[kv_namespaces]]
 binding = "MASHTELEMETRY"
-id = "<paste-kv-namespace-id-here>"
+id = "1539b3e4142f46a6910f0b99ea4f8288"

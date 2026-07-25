@@ -15,6 +15,19 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
 
+// Load .env if present so MASH_TELEMETRY_URL persists across builds.
+const envPath = join(root, '.env');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq > 0 && !line.startsWith('#')) {
+      const key = line.slice(0, eq).trim();
+      const val = line.slice(eq + 1).trim();
+      if (!process.env[key]) process.env[key] = val;
+    }
+  }
+}
+
 const options = {
   entryPoints: {
     gate: join(root, 'src/gate.js'),

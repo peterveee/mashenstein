@@ -99,8 +99,15 @@ export function setSceneGlow(on) { glfx.glow = on ? 1 : 0; }
 // Procedural GPU sky (title screen). Returns true when it is actually live,
 // so the caller can leave the sky transparent instead of painting its own —
 // on the 2D fallback it returns false and the caller draws the plain version.
+// The bench holds this on so both backends render the SAME scene. Without it a
+// WebGL sweep on the title screen carries a full-screen procedural sky shader
+// that the 2D sweep never draws, and the two columns are not comparable — the
+// gap reads as pipeline cost when some or all of it may be the sky.
+let skySuppressed = false;
+export function suppressSkyFx(on) { skySuppressed = !!on; }
+
 export function setSkyFx(on, time) {
-  glfx.sky = on && glfx.active ? 1 : 0;
+  glfx.sky = on && glfx.active && !skySuppressed ? 1 : 0;
   glfx.time = time || 0;
   return glfx.sky === 1;
 }
