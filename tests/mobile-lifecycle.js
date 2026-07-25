@@ -101,7 +101,8 @@ const win = Object.assign(new Events(), {
   nextTimerId: 0,
   setTimeout(fn, delay = 0) {
     const id = ++this.nextTimerId;
-    this.timers.set(id, { fn, delay: Number(delay) || 0 });
+    const parsedDelay = Number(delay);
+    this.timers.set(id, { fn, delay: Number.isFinite(parsedDelay) ? parsedDelay : 0 });
     return id;
   },
   clearTimeout(id) {
@@ -115,10 +116,11 @@ const win = Object.assign(new Events(), {
     return true;
   },
   runAllTimeouts() {
-    for (const [id] of [...this.timers.entries()].sort((a, b) => {
-      const d = a[1].delay - b[1].delay;
-      return d || (a[0] - b[0]);
-    })) this.runTimeout(id);
+    const timers = [...this.timers.entries()].sort(([idA, timerA], [idB, timerB]) => {
+      const d = timerA.delay - timerB.delay;
+      return d || (idA - idB);
+    });
+    for (const [id] of timers) this.runTimeout(id);
   },
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
   location: { reloaded: 0, reload() { this.reloaded++; } },
