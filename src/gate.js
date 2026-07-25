@@ -239,6 +239,7 @@ function createGameDom() {
           <button id="diag-force-3x-gl" type="button">FORCE 3X GL</button>
           <button id="diag-bench-2d" type="button">BENCH 2D</button>
           <button id="diag-bench-gl" type="button">BENCH GL</button>
+          <button id="diag-title-profile" type="button">TITLE 3X PROFILE</button>
           <button id="diag-clear" type="button">CLEAR</button>
         </div>
         <p id="diag-status" class="mash-diag-status" aria-live="polite"></p>

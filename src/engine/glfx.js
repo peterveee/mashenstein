@@ -197,6 +197,13 @@ export const glfx = {
   skyTarget: null,
   skyValid: false,
   skyFrame: 0,
+  profile: {
+    uploads: 0,
+    uploadPixels: 0,
+    renderCalls: 0,
+    skyPasses: 0,
+    bloomPasses: 0,
+  },
   fx: 1,     // GLOW FX setting: 1 on, 0 off
   glow: 0,   // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
   tierFx: 1, // adaptive-density gate: 0 suppresses bloom at low render density
@@ -215,6 +222,7 @@ export const glfx = {
     this.skyTarget = null;
     this.skyValid = false;
     this.skyFrame = 0;
+    this.resetProfile();
     // These shaders are deliberately GLSL ES 1.00 and use no WebGL 2
     // facilities. Asking for WebGL 1 directly avoids handing the same source
     // to a stricter mobile WebGL 2 compiler for no benefit.
@@ -342,11 +350,24 @@ export const glfx = {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    this.profile.uploads++;
+    this.profile.uploadPixels += (canvas.width || 0) * (canvas.height || 0);
   },
+
+  resetProfile() {
+    this.profile.uploads = 0;
+    this.profile.uploadPixels = 0;
+    this.profile.renderCalls = 0;
+    this.profile.skyPasses = 0;
+    this.profile.bloomPasses = 0;
+  },
+
+  profileStats() { return { ...this.profile }; },
 
   render(backCanvas, overlayCanvas, shakeX, shakeY) {
     const gl = this.gl;
     if (!gl || !this.ready) return;
+    this.profile.renderCalls++;
     const loc = this.locations;
     this.upload(this.texBack, backCanvas);
     // A null overlay means the frame queued no overlay draws (menus, most
@@ -362,6 +383,7 @@ export const glfx = {
     // without changing the sharpness of the title, cards or parade.
     if (this.sky > 0) this.ensureSkyTarget();
     if (this.sky > 0 && this.skyTarget && (!this.skyValid || (this.skyFrame++ % 2) === 0)) {
+      this.profile.skyPasses++;
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.skyTarget.fb);
       gl.viewport(0, 0, this.skyTarget.w, this.skyTarget.h);
       this.draw(this.pFinal, loc.final, (g) => {
@@ -388,6 +410,7 @@ export const glfx = {
     //    Skip all three passes when their contribution is zero — including when
     //    the adaptive-density tier has gated bloom off (tierFx).
     if (this.fx > 0 && this.glow > 0 && this.tierFx > 0) {
+      this.profile.bloomPasses += 3;
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
       gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
       this.draw(this.pBright, loc.bright, (g) => {

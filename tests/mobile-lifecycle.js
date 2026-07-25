@@ -230,6 +230,15 @@ dom.store.mash_diag = JSON.stringify({ bench: false, renderer: '2d', fps: true }
 const staleDiag = consumeBenchDiag();
 assert(!staleDiag.renderer && !readDiag().renderer,
   'a backend stranded by an older completed benchmark is cleared on boot');
+dom.store.mash_diag = JSON.stringify({ titleProfile: true, fps: true });
+const titleProfileDiag = consumeBenchDiag();
+assert(titleProfileDiag.titleProfile && readDiag().titleProfile === false,
+  'a stored title profile is consumed once without clearing the FPS switch');
+dom.store.mash_diag = JSON.stringify({ titleProfile: true, titleProfileRenderer: true, renderer: 'webgl', rendererLock: true, density: 3 });
+const pinnedProfileDiag = consumeBenchDiag();
+releaseBenchRenderer(pinnedProfileDiag);
+assert(!readDiag().renderer && readDiag().titleProfileRenderer === false,
+  'the title profile releases only its temporary WebGL 3x pin');
 forceWebglDensity(3);
 const forcedDiag = consumeBenchDiag();
 assert(forcedDiag.renderer === 'webgl' && forcedDiag.rendererLock && forcedDiag.density === 3,

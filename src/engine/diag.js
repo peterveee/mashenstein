@@ -33,7 +33,7 @@ export function writeDiag(patch) {
   return next;
 }
 
-// A stored benchmark request and its renderer choice belong to one boot only.
+// A stored benchmark/profile request and its renderer choice belong to one boot only.
 // Return the original snapshot so renderer.js can still consume its backend,
 // while disarming the benchmark immediately. Once the renderer has initialized,
 // releaseBenchRenderer() removes that temporary backend for the next launch.
@@ -48,11 +48,15 @@ export function consumeBenchDiag() {
     writeDiag({ renderer: null });
     diag.renderer = null;
   }
+  if (diag.titleProfile) writeDiag({ titleProfile: false });
   return diag;
 }
 
 export function releaseBenchRenderer(diag) {
   if (diag && diag.bench) writeDiag({ renderer: null, rendererLock: null, density: null });
+  if (diag && diag.titleProfileRenderer) {
+    writeDiag({ renderer: null, rendererLock: null, density: null, titleProfileRenderer: false });
+  }
 }
 
 export function forceWebglDensity(n = 3) {

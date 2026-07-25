@@ -1,6 +1,7 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
+import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { defaultSettings } from '../engine/save.js';
@@ -126,6 +127,61 @@ const PARADE_EDGE_FADE = 32;
 // than a thin footer strip. All parade proportions, tap radii and clearance
 // bounds derive from this height.
 const HERO_PARADE_H = 60;
+// The parade is decorative, but drawToon is a full procedural rig with
+// gradients, path bounds and multiple outline passes. Holding its pose raster
+// at 30Hz cuts that CPU work roughly in half while positions and effects still
+// move at the full title tick. The cache is one reusable canvas per hero: this
+// is deliberately bounded, so an idle title cannot grow an animation atlas
+// forever.
+const TITLE_POSE_FPS = 30;
+const titleToonSlots = new Map();
+
+function titlePoseKey(id, pose, h) {
+  const qh = Math.round(h * 2) / 2;
+  const qt = Math.floor((Number(pose.time) || 0) * TITLE_POSE_FPS);
+  return [
+    id, qh, qt, pose.kind || '', pose.grounded ? 1 : 0,
+    pose.facing === -1 ? -1 : 1, pose.menuAction || '',
+    pose.headless ? 1 : 0, pose.axeThrown ? 1 : 0, pose.axeReady ? 1 : 0,
+    pose.stomp ? 1 : 0, pose.roll ? 1 : 0,
+    pose.duckAmount == null ? '' : Math.round(Number(pose.duckAmount) * 8),
+  ].join('|');
+}
+
+function cachedTitleToon(id, pose, h) {
+  const ss = bakeSS();
+  const qh = Math.max(1, Math.round(h * 2) / 2);
+  const key = `${titlePoseKey(id, pose, qh)}|ss${ss}`;
+  let slot = titleToonSlots.get(id);
+  if (!slot) { slot = {}; titleToonSlots.set(id, slot); }
+  if (slot.key === key && slot.canvas) return slot;
+
+  // Keep a generous transparent margin for hats, axes and the occasional
+  // airborne lean. The actual figure remains aligned by its feet anchor.
+  const w = Math.ceil(Math.max(96, qh * 2.0));
+  const hh = Math.ceil(Math.max(112, qh * 2.1));
+  const feet = hh * 0.8;
+  if (!slot.canvas || slot.w !== w || slot.h !== hh || slot.ss !== ss) {
+    slot.canvas = document.createElement('canvas');
+    slot.canvas.width = Math.max(1, Math.round(w * ss));
+    slot.canvas.height = Math.max(1, Math.round(hh * ss));
+    slot.w = w; slot.h = hh; slot.ss = ss;
+    slot.ctx = slot.canvas.getContext('2d');
+  }
+  const x = slot.ctx;
+  x.setTransform(ss, 0, 0, ss, 0, 0);
+  x.clearRect(0, 0, w, hh);
+  drawToon(x, id, pose, w / 2, feet, qh);
+  slot.key = key;
+  slot.feet = feet;
+  return slot;
+}
+
+function drawCachedTitleToon(ctx, id, pose, cx, feetY, h) {
+  const slot = cachedTitleToon(id, pose, h);
+  ctx.drawImage(slot.canvas, cx - slot.w / 2, feetY - slot.feet, slot.w, slot.h);
+}
+
 // Every hop, accent and tap footprint below was tuned against a 26-tall parade;
 // they scale off this rather than being re-eyeballed one at a time.
 const PARADE_K = HERO_PARADE_H / 26;
@@ -887,7 +943,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * entryZoomExtra : 1;
       c.save();
       c.globalAlpha *= edgeAlpha;
-      drawToon(c, id, pose, hx, feetY, castH * entryZoom);
+      drawCachedTitleToon(c, id, pose, hx, feetY, castH * entryZoom);
       if (acting) {
         c.translate(hx, feetY);
         c.scale(castK, castK);
@@ -1586,10 +1642,11 @@ export class TitleState {
   }
   draw(ctx) {
     const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots);
+    const profile = titleProfileOptions();
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.
-    if (!pushOverlayDraw(cast)) cast(ctx);
+    if (profile.parade && !pushOverlayDraw(cast)) cast(ctx);
     const opts = this.options();
     const ui = (d) => {
       // Four self-contained cards under the logo, then the controls and flavour
@@ -1692,12 +1749,12 @@ export class TitleState {
     );
     // Modal lists are solid surfaces: toaster cameos sit behind them so they
     // never compete with destructive choices, cabinet grids, or their labels.
-    if ((this.erase || this.extras) && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
-    if (!pushOverlayDraw(ui)) ui(ctx);
+    if (profile.ui && (this.erase || this.extras) && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    if (profile.ui && !pushOverlayDraw(ui)) ui(ctx);
     // Toasters are the title's foreground cameo on the normal title screen:
     // queue them after the menu so they can pass over the logo, panel, heroes,
     // and invader. Modal lists are handled above so they stay on top.
-    if (!this.erase && !this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
+    if (profile.ui && !this.erase && !this.extras && !pushOverlayDraw(foregroundToasters)) foregroundToasters(ctx);
   }
   drawEraseModal(d) {
     let title = 'ERASE WHICH SHIFT?';

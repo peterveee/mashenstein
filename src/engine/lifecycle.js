@@ -147,6 +147,13 @@ export class LifecycleController {
       // reload after the sweep returns to playing rather than re-benchmarking.
       ['diag-bench-2d', () => reloadInto({ bench: true, renderer: '2d', rendererLock: null, density: null }, 'reloading into 2D bench...')],
       ['diag-bench-gl', () => reloadInto({ bench: true, renderer: 'webgl', rendererLock: null, density: null }, 'reloading into WebGL bench...')],
+      ['diag-title-profile', () => reloadInto({
+        titleProfile: true,
+        titleProfileRenderer: true,
+        renderer: 'webgl',
+        rendererLock: true,
+        density: 3,
+      }, 'reloading into WebGL 3X title profile...')],
       ['diag-clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
     ].map(([id, fn]) => {
       const el = this.doc.getElementById(id);

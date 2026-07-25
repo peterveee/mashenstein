@@ -208,6 +208,33 @@ let settledFor = 0, settleReported = false, lastSettleValue = null;
 // chrome dirty-flag: repaint the touch overlay only when its signature changes
 let chromeWant = null, chromePaintedSig = null;
 
+// Optional title-profiler timing. It is dormant during normal play; when the
+// hidden diagnostics panel arms a title run, these counters separate Canvas2D
+// foreground painting from the renderer submission and expose the WebGL
+// upload/pass counts collected by glfx.
+let renderProfile = null;
+export function resetRenderProfileStats() {
+  renderProfile = { paintMs: 0, submitMs: 0, displayMs: 0 };
+  if (glfx.resetProfile) glfx.resetProfile();
+}
+export function renderProfileStats() {
+  return {
+    ...(renderProfile || { paintMs: 0, submitMs: 0, displayMs: 0 }),
+    ...(glfx.profileStats ? glfx.profileStats() : {}),
+  };
+}
+export function setRenderProfile(on) {
+  if (on) resetRenderProfileStats();
+  else renderProfile = null;
+}
+
+function profileTimed(kind, fn) {
+  if (!renderProfile || typeof performance === 'undefined') return fn();
+  const at = performance.now();
+  try { return fn(); }
+  finally { renderProfile[kind] += performance.now() - at; }
+}
+
 // Read-only diagnostic for tests and support reports. Gameplay code should not
 // branch on this: WebGL is an enhancement and both paths render the same game.
 export function rendererBackend() { return backend; }
@@ -791,20 +818,22 @@ export function blit() {
   // Draw queued overlays (hero, banners) into the overlay layer in logical
   // coordinates at backbuffer density.
   const paintOverlays = (ctx2, clear = true, applyShake = true) => {
-    if (clear) ctx2.clearRect(0, 0, W, H);
-    for (const o of overlaySprites) {
-      const sx = applyShake ? Math.round(shakeX) : 0;
-      const sy = applyShake ? Math.round(shakeY) : 0;
-      ctx2.drawImage(o.img, o.x + sx, o.y + sy, o.w, o.h);
-    }
-    for (const fn of overlayDraws) {
-      ctx2.save();
-      if (applyShake) ctx2.translate(Math.round(shakeX), Math.round(shakeY));
-      fn(ctx2);
-      ctx2.restore();
-    }
-    overlaySprites.length = 0;
-    overlayDraws.length = 0;
+    return profileTimed('paintMs', () => {
+      if (clear) ctx2.clearRect(0, 0, W, H);
+      for (const o of overlaySprites) {
+        const sx = applyShake ? Math.round(shakeX) : 0;
+        const sy = applyShake ? Math.round(shakeY) : 0;
+        ctx2.drawImage(o.img, o.x + sx, o.y + sy, o.w, o.h);
+      }
+      for (const fn of overlayDraws) {
+        ctx2.save();
+        if (applyShake) ctx2.translate(Math.round(shakeX), Math.round(shakeY));
+        fn(ctx2);
+        ctx2.restore();
+      }
+      overlaySprites.length = 0;
+      overlayDraws.length = 0;
+    });
   };
 
   if (glfx.active) {
@@ -814,12 +843,12 @@ export function blit() {
       // combined canvas. The title's world and foreground already share this
       // exact render density, so no sharpness is lost.
       paintOverlays(bctx, false, false);
-      glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px));
+      profileTimed('submitMs', () => glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px)));
     } else {
       // Gameplay still keeps the isolated overlay so world-only bloom and the
       // crisp foreground composite retain their existing semantics.
       if (hasOverlay) paintOverlays(octx);
-      glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px));
+      profileTimed('submitMs', () => glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px)));
     }
     return;
   }
@@ -830,17 +859,19 @@ export function blit() {
     // the selected density and the display copy then applies shake once.
     paintOverlays(bctx, false, false);
   }
-  dctx.setTransform(1, 0, 0, 1, 0, 0);
-  dctx.imageSmoothingEnabled = back.width !== canvas.width;
-  dctx.clearRect(0, 0, canvas.width, canvas.height);
-  dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
-  dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
-  dctx.imageSmoothingEnabled = true;
-  if (hasOverlay && !mergeOverlays) {
-      paintOverlays(octx);
-      dctx.setTransform(1, 0, 0, 1, 0, 0);
-      dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
-  }
+  profileTimed('displayMs', () => {
+    dctx.setTransform(1, 0, 0, 1, 0, 0);
+    dctx.imageSmoothingEnabled = back.width !== canvas.width;
+    dctx.clearRect(0, 0, canvas.width, canvas.height);
+    dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
+    dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
+    dctx.imageSmoothingEnabled = true;
+    if (hasOverlay && !mergeOverlays) {
+        paintOverlays(octx);
+        dctx.setTransform(1, 0, 0, 1, 0, 0);
+        dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
+    }
+  });
 }
 
 // Dev/build tooling hook: capture exactly what the player sees, including the

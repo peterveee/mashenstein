@@ -31,6 +31,7 @@ import { readPlatform } from './engine/platform.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer } from './engine/diag.js';
+import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -373,6 +374,7 @@ function boot() {
   // hidden panel on the portrait screen — the only way to turn them on inside an
   // installed PWA, which is the only way iPhone runs this game at all.
   let benchRequested = false;
+  let titleProfileRequested = false;
   let benchDiag = null;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
@@ -380,6 +382,7 @@ function boot() {
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     if (p.has('mute')) save.settings.muted = true;
     benchRequested = p.has('bench') || !!diag.bench;
+    titleProfileRequested = p.has('titleProfile') || !!diag.titleProfile;
     benchDiag = diag;
   }
 
@@ -559,16 +562,28 @@ function boot() {
       if (!showChromeFps && Input.isTouchDevice() && chrome.mode !== 'none') {
         setChromeOverlay('', null);
       }
+      const profileOn = titleProfileActive();
+      const drawStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
       drawState(bctx);
+      const drawMs = profileOn ? performance.now() - drawStartedAt : 0;
       Dev.draw(bctx);
       if (benchRequested) pushOverlayDraw(drawBench);
+      if (titleProfileReportVisible()) pushOverlayDraw(drawTitleProfile);
+      const blitStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
       blit();
+      if (profileOn) {
+        titleProfileFrame(performance.now(), {
+          drawMs,
+          blitMs: performance.now() - blitStartedAt,
+        });
+      }
     },
     // The sweep counts presented frames, so it reads the same clock the density
     // controller does. While it holds a pin the controller is inert anyway.
     present: (now) => { noteRendererFrame(now); benchFrame(now); },
   });
   if (benchRequested) startBench();
+  if (titleProfileRequested) startTitleProfile();
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop
   // through its public handle when booting hidden or in iPhone portrait.

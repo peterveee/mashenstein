@@ -17,8 +17,14 @@ animated sky.
 - Completed: the title merges its full-density foreground into the backbuffer,
   so WebGL uploads one combined frame instead of a world texture plus a second
   full-size overlay texture. Existing title bloom remains enabled.
-- Next: split title glow into a small selective mask, then cache the parade
-  animation frames.
+- Completed: a hidden `TITLE 3X PROFILE` run now pins WebGL at 3× and
+  measures full title, no-sky, no-bloom, no-parade and world-only stages. It
+  reports presented FPS, Canvas2D paint time, renderer submission time, and
+  WebGL upload/pass counts only after the measurements finish.
+- Completed: the title parade now reuses one device-density toon canvas per
+  hero and refreshes pose art at 30Hz while positions and effects stay at 60Hz.
+- Next: use the physical-device profile to choose between a selective glow mask
+  and a deeper pose atlas if the parade still misses 58–60 fps.
 
 This is a title-first performance project. It should produce a visible result
 quickly and establish renderer pieces that can later be reused by gameplay.
@@ -57,9 +63,9 @@ changing gameplay mechanics or collision behavior.
 
 ## Phase 0 — honest title profiling
 
-Add a hidden `PROFILE TITLE 3X` diagnostic run. Do not draw a changing report
-through the WebGL overlay while measuring. Store the results and show them only
-after the run, or display them in the portrait diagnostics panel.
+The hidden `TITLE 3X PROFILE` diagnostic run pins WebGL at 3×. It does not draw
+a changing report through the WebGL overlay while measuring; it stores the
+results and shows them only after the run.
 
 Run the title at a fixed 3× density through these controlled cases:
 
@@ -242,14 +248,14 @@ GPU title path independently before changing the general iPad backend policy.
 
 ## Implementation order
 
-1. Add non-perturbing title profiling.
-2. Cache WebGL locations/state and test upload conversion flags.
-3. Split the sky into low-resolution nebula and crisp stars.
-4. Combine the title foreground into one full-size upload.
-5. Add the small selective glow mask.
-6. Cache the parade animation frames.
-7. Verify 3× on the iPhone 17 Pro cold and warm.
-8. Generalize bounded layers for gameplay.
+1. ~~Add non-perturbing title profiling.~~
+2. ~~Cache WebGL locations/state and test upload conversion flags.~~
+3. ~~Split the sky into low-resolution nebula and crisp stars.~~
+4. ~~Combine the title foreground into one full-size upload.~~
+5. Add the small selective glow mask or deepen the bounded pose atlas,
+   selected by the physical profile.
+6. Verify 3× on the iPhone 17 Pro cold and warm.
+7. Generalize bounded layers for gameplay.
 
 The title work should be treated as the first vertical slice of the larger
 renderer rewrite, not as a separate throwaway optimization.
