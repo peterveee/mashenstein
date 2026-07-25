@@ -119,6 +119,7 @@ const win = Object.assign(new Events(), {
     return true;
   },
   runAllTimeouts() {
+    // Test helper: deterministic execution order matters more than speed here.
     const timers = [...this.timers.entries()].sort(([idA, timerA], [idB, timerB]) => {
       const delayDiff = timerA.delay - timerB.delay;
       return delayDiff || (idA - idB);
@@ -155,6 +156,8 @@ win.runAllTimeouts();
 assert(win.location.reloaded === 0 && reloadButton.textContent === 'FORCE RELOAD',
   'portrait reload confirmation auto-disarms after its timeout');
 reloadButton.fire('click');
+assert(win.location.reloaded === 0 && reloadButton.textContent === 'TAP AGAIN TO CONFIRM',
+  'after timeout disarm, a new first tap re-arms confirmation');
 reloadButton.fire('click');
 assert(win.location.reloaded === 1 && reloadButton.textContent === 'RELOADING...',
   'second portrait reload tap confirms and reloads the page');
