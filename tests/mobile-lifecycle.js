@@ -97,8 +97,17 @@ const win = Object.assign(new Events(), {
   innerHeight: 390,
   matchMedia: () => portraitQuery,
   visualViewport: null,
+  timers: new Map(),
+  nextTimerId: 0,
+  setTimeout(fn) {
+    const id = ++this.nextTimerId;
+    this.timers.set(id, fn);
+    return id;
+  },
+  clearTimeout(id) {
+    this.timers.delete(id);
+  },
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
-  confirm: () => false,
   location: { reloaded: 0, reload() { this.reloaded++; } },
 });
 const calls = [];
@@ -121,12 +130,12 @@ await lifecycle.copyErrorReport();
 assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR COPIED.',
   'portrait crash report can be copied');
 
-win.confirm = () => false;
 reloadButton.fire('click');
-assert(win.location.reloaded === 0, 'declining the reload confirm does not reload');
-win.confirm = () => true;
+assert(win.location.reloaded === 0 && reloadButton.textContent === 'TAP AGAIN TO CONFIRM',
+  'first portrait reload tap arms confirmation without reloading');
 reloadButton.fire('click');
-assert(win.location.reloaded === 1, 'confirming the portrait reload button reloads the page');
+assert(win.location.reloaded === 1 && reloadButton.textContent === 'RELOADING...',
+  'second portrait reload tap confirms and reloads the page');
 
 doc.hidden = true;
 doc.fire('visibilitychange');
