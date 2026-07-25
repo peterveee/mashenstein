@@ -230,7 +230,8 @@ function selectBackend(name) {
 function rendererRequested() {
   if (typeof window === 'undefined' || !window.location) return null;
   const q = new URLSearchParams(window.location.search).get('renderer');
-  return q || readDiag().renderer || null;
+  const d = readDiag();
+  return q || (d.renderer && (d.bench || d.rendererLock) ? d.renderer : null);
 }
 
 // iPadOS stays on the 2D path for now, based on the measured M1 iPad result.
@@ -289,7 +290,9 @@ export function setDensityPin(n) {
 // during physical-device testing. Returns null when absent or malformed.
 function densityRequested() {
   if (typeof window === 'undefined' || !window.location) return null;
-  const raw = new URLSearchParams(window.location.search).get('density');
+  const q = new URLSearchParams(window.location.search).get('density');
+  const d = readDiag();
+  const raw = q != null ? q : (d.rendererLock ? d.density : null);
   if (raw == null) return null;
   const n = parseFloat(raw);
   return Number.isFinite(n) && n > 0 ? n : null;

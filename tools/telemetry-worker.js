@@ -72,6 +72,22 @@ function dashboardHtml(stats) {
     .map((d) => '<tr><td class="label">' + d.date + '</td><td class="count">' + d.count + '</td></tr>')
     .join('');
 
+  const fmtTime = (s) => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
+  const deviceRows = Object.entries(stats.deviceStats || {})
+    .sort((a, b) => b[1].sessions - a[1].sessions)
+    .map(([, d]) => '<tr>' +
+      '<td class="rec-name">' + (d.name || '\u2014') + '</td>' +
+      '<td class="rec-plat">' + d.platform + '</td>' +
+      '<td class="rec-geo">' + (d.country || '') + '</td>' +
+      '<td class="count">' + d.sessions + '</td>' +
+      '<td class="count">' + d.runs + '</td>' +
+      '<td class="count">' + d.clears + '</td>' +
+      '<td class="count">' + d.coins.toLocaleString() + '</td>' +
+      '<td class="count">' + fmtTime(d.totalTime) + '</td>' +
+      '</tr>')
+    .join('');
+  stats.deviceRows = deviceRows;
+
   const recentRows = (recent || []).slice().reverse()
     .map((r) => '<tr>' +
       '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 16) + '</td>' +
@@ -138,6 +154,11 @@ function dashboardHtml(stats) {
     '<table>' + (dprRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
     '<h2>Daily players</h2>\n' +
     '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
+    '<h2>Devices</h2>\n' +
+    '<div class="wide"><table>\n' +
+    '<thead><tr><th>Name</th><th>Platform</th><th>Location</th><th>Sessions</th><th>Runs</th><th>Clears</th><th>Coins</th><th>Playtime</th></tr></thead>\n' +
+    '<tbody>' + (stats.deviceRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
+    '</table></div>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
     '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th></th><th>Location</th><th>Device</th></tr></thead>\n' +
@@ -158,6 +179,7 @@ async function aggregateStats(env) {
   const recent = [];
   const devices = new Set();
   const deviceVisits = {};
+  const deviceStats = {};
   let total = 0;
   let sessionSecs = 0;
   let sessionEnds = 0;
@@ -187,6 +209,20 @@ async function aggregateStats(env) {
       const dk = deviceKey(p);
       devices.add(dk);
       deviceVisits[dk] = (deviceVisits[dk] || 0) + 1;
+
+      // Per-device summary
+      if (!deviceStats[dk]) {
+        deviceStats[dk] = { name: p.name || '', platform: plat, country: p.country || '', sessions: 0, runs: 0, clears: 0, coins: 0, totalTime: 0 };
+      }
+      const ds = deviceStats[dk];
+      if (p.kind === 'run') {
+        ds.runs++;
+        if (p.success) ds.clears++;
+        ds.coins += p.coins || 0;
+        ds.totalTime += p.time || 0;
+      } else if (p.kind !== 'end') {
+        ds.sessions++;
+      }
 
       const plat = p.platform || 'desktop';
       platforms[plat] = (platforms[plat] || 0) + 1;
@@ -241,7 +277,9 @@ async function aggregateStats(env) {
     .slice(-30)
     .map(([date, count]) => ({ date, count }));
 
-  return { total, devices: devices.size, platforms, installed, resolutions, dprs, days, recent };
+  const avgSession = sessionEnds > 0 ? Math.round(sessionSecs / sessionEnds / 60) : null;
+
+  return { total, devices: devices.size, avgSession, platforms, installed, resolutions, dprs, days, recent, deviceStats };
 }
 
 // ---- fetch handler -----------------------------------------------------

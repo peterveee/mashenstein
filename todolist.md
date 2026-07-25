@@ -86,5 +86,31 @@ should auto-collect — saving the player from pixel-hunting the exact tile.
   is still in its landing animation; only when it's settled and hoverable.
   Also consider whether the axe behaves the same way (thrown axe pickup).
 
+### Limit how much a stage regenerates between attempts
+Right now a stage's layout is fully reseeded on every entry, so nothing about a
+stage is learnable except its frame. Worth considering whether that should be
+dialled back — a stage you can partly *learn* rewards a retry, and "the bit
+right after the second checkpoint" only becomes a thing players talk about if
+it survives a restart.
+
+- **What exists today:** `seed: Date.now() ^ (stage.id.length * 7919)` in
+  `src/main.js:259` for a fresh entry, and `seed + 1` on the death-restart path
+  in `src/game/run.js:2495`. Both give a completely unrelated obstacle stream.
+  Fixed per stage: duration, mission, challenge, cabinet pattern pool, and the
+  appliance spot (`applianceAt`). Checkpoint recovery already replays the exact
+  same stretch via `restoreSnapshot`, so the machinery for "same layout twice"
+  exists.
+- **Options, roughly in order of how much they change:** derive the seed from
+  the stage id alone (fully fixed layouts, memorisable, guide-able); keep a
+  small per-stage rotation of N seeds so it varies but repeats; or keep the
+  reseed but pin the first ~15s so every attempt opens the same way and only
+  the tail differs.
+- **Watch out for:** the daily run (`dailySeed()`) and attract clips
+  (`clipSeed`) already pin their seeds — don't double-fix those. Fixed layouts
+  also raise the stakes on spawner fairness: today an unfair-feeling stretch is
+  gone next attempt, whereas a pinned one is there forever. And the death
+  restart deliberately reseeds so a run that killed you isn't handed straight
+  back — decide whether that stays true.
+
 ## Done
 <!-- move shipped items here with a date -->

@@ -28,7 +28,7 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
-import { sendTelemetry, sendSessionEnd } from './engine/telemetry.js';
+import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer } from './engine/diag.js';
 import { Dev } from './dev/index.js';

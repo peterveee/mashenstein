@@ -41,7 +41,7 @@ export function consumeBenchDiag() {
   const diag = readDiag();
   if (diag.bench) {
     writeDiag({ bench: false });
-  } else if (diag.renderer) {
+  } else if (diag.renderer && !diag.rendererLock) {
     // Older builds cleared `bench` but stranded its renderer choice forever.
     // The UI has never offered a persistent renderer-only override, so this is
     // unambiguously stale benchmark state and should not survive another boot.
@@ -52,7 +52,11 @@ export function consumeBenchDiag() {
 }
 
 export function releaseBenchRenderer(diag) {
-  if (diag && diag.bench && diag.renderer) writeDiag({ renderer: null });
+  if (diag && diag.bench) writeDiag({ renderer: null, rendererLock: null, density: null });
+}
+
+export function forceWebglDensity(n = 3) {
+  return writeDiag({ renderer: 'webgl', density: n, rendererLock: true });
 }
 
 export function clearDiag() {

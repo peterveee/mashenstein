@@ -1,13 +1,14 @@
 // One source of truth for browser/app lifecycle. Visibility and orientation
 // events never resume subsystems independently; they all recompute this policy.
-import { readDiag, writeDiag, clearDiag } from './diag.js';
+import { readDiag, writeDiag, clearDiag, forceWebglDensity } from './diag.js';
 
 // One line summarising which overrides are live, so the panel opens saying what
 // state the device is already in rather than looking like a fresh slate.
 function describeDiag(d) {
   const on = [];
   if (d.fps) on.push('FPS');
-  if (d.renderer) on.push(d.renderer.toUpperCase());
+  if (d.rendererLock) on.push(`${d.renderer.toUpperCase()} ${d.density || ''}X PIN`.trim());
+  else if (d.renderer) on.push(d.renderer.toUpperCase());
   return on.length ? `active: ${on.join(' + ')}` : 'no overrides active';
 }
 
@@ -137,10 +138,15 @@ export class LifecycleController {
         writeDiag({ fps: next });
         this.showDiagStatus(`FPS readout ${next ? 'ON' : 'OFF'} - rotate to see it`);
       }],
+      ['diag-force-3x-gl', () => {
+        forceWebglDensity(3);
+        this.showDiagStatus('forcing WebGL at 3X - reloading...');
+        this.win.setTimeout(() => this.win.location.reload(), 350);
+      }],
       // The bench is one-shot: main.js clears the flag as it starts, so a
       // reload after the sweep returns to playing rather than re-benchmarking.
-      ['diag-bench-2d', () => reloadInto({ bench: true, renderer: '2d' }, 'reloading into 2D bench...')],
-      ['diag-bench-gl', () => reloadInto({ bench: true, renderer: 'webgl' }, 'reloading into WebGL bench...')],
+      ['diag-bench-2d', () => reloadInto({ bench: true, renderer: '2d', rendererLock: null, density: null }, 'reloading into 2D bench...')],
+      ['diag-bench-gl', () => reloadInto({ bench: true, renderer: 'webgl', rendererLock: null, density: null }, 'reloading into WebGL bench...')],
       ['diag-clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
     ].map(([id, fn]) => {
       const el = this.doc.getElementById(id);

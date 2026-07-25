@@ -2,6 +2,7 @@
 import { REWARDS, MASTERY_LEVELS } from '../data/progression.js';
 import { UNLOCKS, STAGES } from '../data/stages.js';
 import { CABINETS } from '../data/cabinets.js';
+import { sendRunResult } from '../engine/telemetry.js';
 
 // Coin totals reach six figures late on, where an unbroken run of digits is
 // hard to read at a glance. Grouped by hand rather than via toLocaleString so
@@ -154,6 +155,7 @@ export function applyResult(save, result) {
     }
   }
   save.persist();
+  sendRunResult(result);
   return gains;
 }
 

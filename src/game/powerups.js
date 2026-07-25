@@ -16,7 +16,18 @@ export const POWER_DEFS = {
 // finds without crowding out the established staple capsules. Two staples
 // share the 52% tail since Slow-Mo and Score Star were retired — the reduced variety is the
 // point: nothing left in the common pool fights the player for control.
-export function randomPowerPickup(rng) {
+// `avoid` is the type of the previous capsule in the world: one reroll if the
+// table lands on it again. Back-to-back duplicates read as the world repeating
+// itself rather than as a find, and the second one only ever buys a temporary
+// +1 level. A *single* reroll, so the odds stay close to the table (a repeat is
+// still possible at p², which is all the overcharge path needs).
+export function randomPowerPickup(rng, avoid) {
+  const first = rollPowerPickup(rng);
+  if (avoid && first === avoid) return rollPowerPickup(rng);
+  return first;
+}
+
+function rollPowerPickup(rng) {
   const roll = rng.float();
   // The relay charge is deliberately the rarest thing in the table. Capsules
   // drip every 12-18s, so 8% works out to roughly one charge every three or

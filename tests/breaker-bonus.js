@@ -164,5 +164,39 @@ assert(staples.every((s) => s > unpeelShare), `every staple is more common than 
 assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');
 
+// --- No two capsules within a screen of each other ------------------------
+// The drip and the !-box prize run off different clocks, so the only way a
+// pair ends up side by side is one source ignoring the other's last drop.
+const { POWER_MIN_GAP } = await import('../src/game/spawner.js');
+const { makeObstacle } = await import('../src/game/entities.js');
+
+const gapRun = makeRun();
+gapRun.enter();
+// A row of !-boxes, all broken on the same frame (a screen-clear does this).
+const boxRun = [];
+for (let i = 0; i < 12; i++) boxRun.push(makeObstacle('qcrate', gapRun.camX + 200 + i * 40));
+gapRun.obstacles = boxRun.slice();
+for (const box of boxRun) gapRun.breakObstacle(box, true);
+// Then let the drip run on top of the same world.
+for (let i = 0; i < 400; i++) gapRun.drip.update(0.5, gapRun.camX + i * 60, gapRun.pickups, false, true);
+
+// Sorted by where each capsule comes to rest: a tossed prize keeps travelling
+// after it leaves the box, so its spawn x is not where the player meets it.
+const capsules = gapRun.pickups
+  .filter((pk) => pk.def.power || pk.def.relayCharge)
+  .map((pk) => ({ type: pk.type, x: pk.toss ? pk.x + pk.vx * 0.85 : pk.x }))
+  .sort((a, b) => a.x - b.x);
+let tightest = Infinity, dupeAdjacent = false;
+for (let i = 1; i < capsules.length; i++) {
+  tightest = Math.min(tightest, capsules[i].x - capsules[i - 1].x);
+  if (capsules[i].type === capsules[i - 1].type) dupeAdjacent = true;
+}
+assert(capsules.length > 3, `the spacing sim actually produced capsules (${capsules.length})`);
+assert(tightest >= POWER_MIN_GAP,
+  `no two capsules land within a screen (closest pair ${Math.round(tightest)}px, floor ${POWER_MIN_GAP})`);
+assert(!dupeAdjacent, 'consecutive capsules are never the same type');
+// A vetoed prize still pays out: the box gives coins instead of nothing.
+assert(gapRun.pickups.some((pk) => pk.type === 'coin'), 'a !-box denied its prize still drops coins');
+
 console.log(failed ? 'BREAKER-BONUS: FAILED' : 'BREAKER-BONUS: PASSED');
 process.exit(failed ? 1 : 0);

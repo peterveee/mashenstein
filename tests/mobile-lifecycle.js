@@ -218,7 +218,7 @@ sixtyHz.stop();
 // Input is a separate import after the loop globals are installed.
 const { installDom } = await import('./dom-stub.js');
 const dom = installDom();
-const { consumeBenchDiag, readDiag, releaseBenchRenderer } = await import('../src/engine/diag.js');
+const { consumeBenchDiag, readDiag, releaseBenchRenderer, forceWebglDensity } = await import('../src/engine/diag.js');
 dom.store.mash_diag = JSON.stringify({ bench: true, renderer: '2d', fps: true });
 const benchDiag = consumeBenchDiag();
 assert(benchDiag.bench && benchDiag.renderer === '2d' && readDiag().bench === false,
@@ -230,6 +230,10 @@ dom.store.mash_diag = JSON.stringify({ bench: false, renderer: '2d', fps: true }
 const staleDiag = consumeBenchDiag();
 assert(!staleDiag.renderer && !readDiag().renderer,
   'a backend stranded by an older completed benchmark is cleared on boot');
+forceWebglDensity(3);
+const forcedDiag = consumeBenchDiag();
+assert(forcedDiag.renderer === 'webgl' && forcedDiag.rendererLock && forcedDiag.density === 3,
+  'the persistent 3x WebGL diagnostic survives the next boot');
 const { Input } = await import('../src/engine/input.js');
 Input.init();
 dom.keyDown('Space');

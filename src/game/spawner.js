@@ -91,6 +91,14 @@ export class Spawner {
   }
 }
 
+// Two capsules must never share a screen. The timed drip is spaced out on its
+// own (12-18s apart is thousands of world px), but !-box prizes come from a
+// different clock entirely, and a prize landing on top of a drip capsule — or
+// two boxes paying out in a row — is what puts a pair side by side. Every
+// capsule source reports through notePower/canPlacePower so the rule holds
+// across sources rather than within each one.
+export const POWER_MIN_GAP = 480;   // one screen of world px
+
 // Capsule/battery drip spawner (kept separate from patterns; verified reachable).
 export class DripSpawner {
   constructor(rng, benchLevels) {
@@ -98,14 +106,37 @@ export class DripSpawner {
     this.bench = benchLevels;
     this.capsuleTimer = this.rng.range(12, 18);
     this.batteryTimer = this.rng.range(20, 30);
+    this.lastPowerX = -1e9;   // finite so it survives a snapshot round-trip
+    this.lastPowerType = null;
   }
+
+  // Would a capsule placed here be at least a screen clear of the last one?
+  canPlacePower(x) { return x >= this.lastPowerX + POWER_MIN_GAP; }
+
+  // Where a capsule actually came to rest (tossed prizes travel before they
+  // settle), so the next one measures from the thing the player will see.
+  notePower(x, type) {
+    if (x <= this.lastPowerX) return;
+    this.lastPowerX = x;
+    this.lastPowerType = type;
+  }
+
   update(dt, worldX, pickups, oneHit, batteryFull = false) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
-      this.capsuleTimer = this.rng.range(12, 18);
-      const type = randomPowerPickup(this.rng);
-      pickups.push(makePickup(type, worldX + 480 + 60, 34));
+      const x = worldX + 480 + 60;
+      // Too close to a prize that just dropped: hold the capsule rather than
+      // skip it, and retry shortly — the world scrolls the gap open in about a
+      // second, so the drip keeps its cadence instead of losing a beat.
+      if (!this.canPlacePower(x)) {
+        this.capsuleTimer = 0.5;
+      } else {
+        this.capsuleTimer = this.rng.range(12, 18);
+        const type = randomPowerPickup(this.rng, this.lastPowerType);
+        pickups.push(makePickup(type, x, 34));
+        this.notePower(x, type);
+      }
     }
     if (!oneHit && this.batteryTimer <= 0) {
       this.batteryTimer = this.rng.range(20, 30);

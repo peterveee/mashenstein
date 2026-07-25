@@ -127,3 +127,32 @@ export function sendSessionEnd(extra = {}) {
     }));
   } catch (_) { /* never break the page */ }
 }
+
+// Fire when a run completes — win or lose. Captures stage, plugs earned,
+// score, rank, and duration. Same sendBeacon, same guarantees.
+export function sendRunResult(result) {
+  const url = endpointUrl();
+  if (!url) return;
+
+  const plugs = [];
+  if (result.success) plugs.push('mission');
+  if (result.challengeDone) plugs.push('challenge');
+  if (result.applianceGot) plugs.push('toaster');
+
+  try {
+    navigator.sendBeacon(url, JSON.stringify({
+      kind: 'run',
+      did: deviceId(),
+      name: deviceName(deviceId()),
+      stage: result.stage ? result.stage.id : null,
+      success: result.success || false,
+      score: result.score || 0,
+      coins: result.coins || 0,
+      plugs,
+      rank: result.rank || null,
+      time: Math.round(result.time || 0),
+      flip: result.flip || null,
+      sent: new Date().toISOString(),
+    }));
+  } catch (_) { /* never break the game */ }
+}

@@ -135,7 +135,7 @@ function emit(result) {
   const timestamp = buildTimestamp();
   const template = readFileSync(join(root, 'build/template.html'), 'utf8')
     .replaceAll('__BUILD_TIMESTAMP__', timestamp)
-    .replaceAll('__TELEMETRY_URL__', process.env.MASH_TELEMETRY_URL || '')
+    .replaceAll('__TLM_URL__', process.env.MASH_TELEMETRY_URL || '')
     .replace('/*__DEV_GATE__*/', devGateStamp());
   // Inline safely: </script> inside the gate would terminate the tag early.
   const safeGate = gateJs.replace(/<\/script/gi, '<\\/script');

@@ -1298,12 +1298,16 @@ export class RunState {
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const type = randomPowerPickup(this.fxRng);
+    const type = randomPowerPickup(this.fxRng, this.drip.lastPowerType);
     const p = makePickup(type, x, alt);
     p.toss = true;
     p.vx = this.speed * 1.45;
     p.vy = 205; // arcs higher than a coin — you should see this one coming
     this.pickups.push(p);
+    // The toss arcs and bounces before it settles (~0.85s of forward travel at
+    // these numbers), so the spacing rule measures from where it lands, not
+    // from the box it came out of.
+    this.drip.notePower(x + p.vx * 0.85, type);
     // No floatie: the capsule arcs high on its own and the catch announces
     // itself. Calling the toss and the catch is announcing one capsule twice.
     if (!quiet) Audio.sfx('power');
@@ -1409,7 +1413,12 @@ export class RunState {
     }
     if (ob.def.bonusCoins) {
       const alt = ob.alt + ob.h;
-      if (ob.def.prizeChance && this.fxRng.chance(ob.def.prizeChance)) this.tossPrize(cx, alt, silent);
+      // The roll is drawn either way so the fx stream stays in step, then the
+      // spacing rule can veto it: a box that would drop a second capsule
+      // within a screen of the last one pays out in coins instead. A box
+      // always gives you something.
+      const won = ob.def.prizeChance && this.fxRng.chance(ob.def.prizeChance);
+      if (won && this.drip.canPlacePower(cx)) this.tossPrize(cx, alt, silent);
       else this.tossCoins(cx, ob.def.bonusCoins, alt, silent);
     }
     if (ob.def.isTarget && this.mission.type === 'targets' && (!this.mission.targetType || this.mission.targetType === ob.type)) {
@@ -2038,6 +2047,8 @@ export class RunState {
       spawnerLastActionKind: this.spawner.lastActionKind,
       dripCapsuleTimer: this.drip.capsuleTimer,
       dripBatteryTimer: this.drip.batteryTimer,
+      dripLastPowerX: this.drip.lastPowerX,
+      dripLastPowerType: this.drip.lastPowerType,
       // RNG streams (state is just the internal counter)
       rngFx: this.fxRng.state,
       rngSpeech: this.speechRng.state,
@@ -2138,6 +2149,8 @@ export class RunState {
     this.spawner.lastActionKind = s.spawnerLastActionKind;
     this.drip.capsuleTimer = s.dripCapsuleTimer;
     this.drip.batteryTimer = s.dripBatteryTimer;
+    this.drip.lastPowerX = s.dripLastPowerX;
+    this.drip.lastPowerType = s.dripLastPowerType;
 
     // RNG streams: restore the internal counter so future draws continue from
     // the historical point rather than the discarded future's state.
