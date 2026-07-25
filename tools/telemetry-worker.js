@@ -72,12 +72,13 @@ function dashboardHtml(stats) {
     .map((d) => '<tr><td class="label">' + d.date + '</td><td class="count">' + d.count + '</td></tr>')
     .join('');
 
-  const recentRows = (recent || [])
+  const recentRows = (recent || []).slice().reverse()
     .map((r) => '<tr>' +
       '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 19) + '</td>' +
       '<td class="rec-plat">' + r.platform + '</td>' +
       '<td class="rec-res">' + (r.screenW || '?') + '\xd7' + (r.screenH || '?') + '</td>' +
-      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
+      '<td class="rec-dpr">' + (r.dpr || '1') + 'x</td>' +      '<td class="rec-density">' + (r.density != null ? r.density + 'x' : '\u2014') + '</td>' +
+      '<td class="rec-gl">' + (r.backend || '\u2014') + '</td>' +      '<td class="rec-pwa">' + (r.installed ? 'PWA' : '') + '</td>' +
       '<td class="rec-ua" title="' + r.ua.replace(/"/g, '&quot;') + '">' + r.uaShort + '</td>' +
       '</tr>')
     .join('');
@@ -110,6 +111,7 @@ function dashboardHtml(stats) {
     '  .rec-res{color:#c8cbd7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
     '  .rec-dpr{color:#f890b8}\n' +
     '  .rec-density{color:#48e0c8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}\n' +
+    '  .rec-gl{color:#f890b8;font-size:.71rem}\n' +
     '  .rec-pwa{color:#f6d33c}\n' +
     '  .rec-ua{color:#55647a;font-size:.69rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n' +
     '  .footer{margin-top:40px;color:#55647a;font-size:.72rem}\n' +
@@ -119,6 +121,7 @@ function dashboardHtml(stats) {
     '<p style="color:#6b7084;margin-bottom:20px">Device telemetry \u2014 last 90 days</p>\n' +
     '<div class="hero">\n' +
     '  <div><div class="num">' + total + '</div><div class="lbl">total sessions</div></div>\n' +
+    '  <div><div class="num">' + (stats.devices || total) + '</div><div class="lbl">unique devices</div></div>\n' +
     '  <div><div class="num">' + installedPct + '%</div><div class="lbl">installed (PWA)</div></div>\n' +
     '</div>\n' +
     '<h2>Platforms</h2>\n' +
@@ -131,7 +134,7 @@ function dashboardHtml(stats) {
     '<table>' + (dayRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
-    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th></th><th>UA</th></tr></thead>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th></th><th>UA</th></tr></thead>\n' +
     '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
     '<p class="footer">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
@@ -147,7 +150,15 @@ async function aggregateStats(env) {
   const dprs = {};
   const daily = {};
   const recent = [];
+  const devices = new Set();
   let total = 0;
+
+  function deviceKey(p) {
+    // Fingerprint a device without cookies or IPs: platform + resolution +
+    // DPR + major UA version. Same device returning = same key.
+    const uaMajor = (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').replace(/ (KHTML|Gecko|Chrome|Safari|Version|Mobile)\/[^\s]*/g, '').slice(0, 40);
+    return (p.platform || '?') + '|' + (p.screenW || 0) + 'x' + (p.screenH || 0) + '|' + (p.dpr || 1) + '|' + uaMajor;
+  }
 
   let cursor;
   for (let batch = 0; batch < 5; batch++) {
@@ -158,6 +169,8 @@ async function aggregateStats(env) {
       let p;
       try { p = JSON.parse(raw); } catch (_) { continue; }
       total++;
+
+      devices.add(deviceKey(p));
 
       const plat = p.platform || 'desktop';
       platforms[plat] = (platforms[plat] || 0) + 1;
@@ -182,6 +195,7 @@ async function aggregateStats(env) {
           screenH: p.screenH || 0,
           dpr: p.dpr || 1,
           density: p.density != null ? p.density : null,
+          backend: p.backend || null,
           installed: !!p.installed,
           ua: p.ua || '',
           uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),
@@ -205,7 +219,7 @@ async function aggregateStats(env) {
     .slice(-30)
     .map(([date, count]) => ({ date, count }));
 
-  return { total, platforms, installed, resolutions, dprs, days, recent };
+  return { total, devices: devices.size, platforms, installed, resolutions, dprs, days, recent };
 }
 
 // ---- fetch handler -----------------------------------------------------

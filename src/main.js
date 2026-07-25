@@ -394,7 +394,7 @@ function boot() {
       if (save.settings.renderDensity !== v) { save.settings.renderDensity = v; save.persist(); }
       // Fire telemetry once the render density settles — the most important
       // number: it tells us whether this device actually kept up.
-      sendTelemetry({ density: v });
+      sendTelemetry({ density: v, backend: rendererBackend() });
     },
   });
   setFancyFx(save.settings.fancyFx);
