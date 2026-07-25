@@ -114,19 +114,18 @@ let backend = null;
 // the highest density it can sustain. The platform only seeds the first guess.
 // Rungs below native, in preference order; the ladder is [native, ...those < native].
 // The 4x and 5x rungs exist for tablets and hi-DPI desktops, whose native lands
-// around 5-6x: without them the rung under native is 3x, a 1.7-1.9x upscale that
-// reads as blocky, and the only way off it is one 3x fill-rate leap to native
-// that a marginal frame will fail — earning strikes that lock native out for the
-// session. Intermediate rungs make that climb affordable one step at a time.
+// around 5-6x: without them the rung under native is 3x, so a device that has to
+// step down off native falls to a 1.7-1.9x upscale in one go, and the climb back
+// is a single 3x fill-rate leap that a marginal frame will fail — earning strikes
+// that lock native out for the session. Intermediate rungs make both directions
+// affordable one step at a time.
 const STANDARD_RUNGS = [5, 4, 3, 2.5, 2, 1.5, 1];
 const LADDER_EPS = 1e-6;
 const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
-const TABLET_SEED_DENSITY = 4;        // initial rung on iPad/Android tablets
-// Desktops seed at rung 0 — native, the full resolution of the display. There is
-// no thermal or battery budget to protect and a desktop GPU is not the fill-rate
-// risk a hand-held one is, so a desktop starts sharp instead of climbing to
-// sharp. Adaptation stays armed underneath: a machine that genuinely cannot hold
-// 60 FPS at native still steps down, it just is not assumed to be that machine.
+// Desktops and tablets seed at rung 0 — native, the display's own resolution.
+// Adaptation stays armed underneath: a machine that genuinely cannot hold 60 FPS
+// at native still steps down, it just is not assumed to be that machine before
+// it has rendered a single frame. See seedRung for why native specifically.
 const SLOW_FRAME_MS = 1000 / 52;      // slower than this counts as a slow frame
 const FAST_FRAME_MS = 1000 / 58;      // this fast or better counts as a fast frame
 const EMERGENCY_FRAME_MS = 1000 / 30; // slower than this is an emergency
@@ -232,20 +231,30 @@ function nearestIndex(arr, value) {
   return best;
 }
 
-// Desktops start at native. Phones seed at 3x — a hand-held GPU pushing 480x270
-// at 4x is 1.8x the fill of 3x for pixels no one can resolve at that screen size.
-// Tablets seed at 4x: an iPad Pro's native runs 5-6x, so a 3x seed is a visibly
-// soft 1.7-1.9x upscale, and a tablet's power budget carries the extra fill.
+// Everything except a phone starts at native — rung 0, the display's own
+// resolution, no resample at all.
+//
+// The reason is that ANY rung below native is a fractional upscale, and a
+// fractional upscale of crisp art is what "blocky" actually looks like: at 4x on
+// an iPad Pro's 5.69x display the ratio is 1.42, so source pixels land on one
+// screen pixel in some columns and two in the next, and the eye reads that
+// unevenness as chunky edges. A gentler rung does not fix it, it only makes the
+// unevenness finer — 1:1 is the only ratio with no artifact. An M1 iPad runs the
+// same silicon as an M1 laptop, so there is no reason to hand it a softer
+// picture than the laptop gets.
+//
+// Phones keep the 3x seed: a hand-held GPU pushing 480x270 at native is a real
+// thermal cost, and at that screen size the resample is genuinely hard to see.
+//
 // Either way measured frame timing still decides where the device ends up. A
 // persisted settled density (if any) starts one rung ABOVE where it last landed
-// — optimistic, so a device that had one bad session re-probes upward — but
-// never below its platform seed. Desktops ignore the persisted seed outright:
-// one bad session (a background export, a hot laptop) must not park the machine
-// at a soft density for every launch afterwards.
+// — optimistic, so a device that had one bad session re-probes upward. Desktops
+// ignore the persisted seed outright: one bad session (a background export, a
+// hot laptop) must not park the machine at a soft density for every launch
+// afterwards.
 function seedRung() {
   if (desktopPlatform) return 0;
-  const seed = phonePlatform ? PHONE_SEED_DENSITY : TABLET_SEED_DENSITY;
-  const i = ladder.findIndex((v) => v <= seed + LADDER_EPS);
+  const i = phonePlatform ? ladder.findIndex((v) => v <= PHONE_SEED_DENSITY + LADDER_EPS) : 0;
   const platformSeedIdx = i < 0 ? 0 : i;
   if (savedSeedDensity > 0) {
     const persistedIdx = nearestIndex(ladder, savedSeedDensity);

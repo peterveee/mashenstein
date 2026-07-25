@@ -53,12 +53,18 @@ const TRAINING_SPEED = 90;
 // anything ask for a reaction. Slowing the lane instead would have made the
 // same gap out of a hero who looks like they are wading.
 const SPAWN_AHEAD = VIEW_W + 150;
-// Gary's lines run two rows at this width; five seconds is an unhurried read of
-// two rows with time to look up at the lane afterwards.
+// Gary's card does NOT expire. What he last said stays on screen until he says
+// something else, which for a training module is the only defensible policy: a
+// line that times out while you are mid-jump is a line you were never given a
+// chance to finish, and the alternative — dead air over a lane with an
+// instruction you half-read — is worse than a card that overstays. The only
+// thing still on a five-second clock is the touch-zone diagram, which is a
+// picture of the screen and stops being useful the moment it has been seen.
 const SPEECH_T = 5;
 // How long the world runs on after a section closes, before the next one opens.
-// Long enough for the pass floatie to land and be read on its own.
-const SETTLE_T = 1.6;
+// Long enough for the pass floatie to land and be read on its own, and for the
+// line that logged it to be read under it.
+const SETTLE_T = 2.6;
 // The opening beat, over an empty lane, before section one spawns anything.
 const INTRO_T = 4.5;
 // Sections Gary will re-open before he gives up and marks it satisfactory.
@@ -75,6 +81,25 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // keeps its left edge clear of the coin pill in the top-left corner.
 const SPEECH_Y = 18;
 const SPEECH_MAX_W = 296;
+// Touch gets a substantially bigger card. A phone is a quarter the physical
+// width of the monitor this was laid out on and is held at arm's length, so the
+// card that reads as comfortable on a desk reads as fine print in a hand — and
+// this is the one screen in the game whose entire job is being read.
+//
+// It is parked lower as well as grown. The coin pill occupies y 5–23 in the top
+// left, and a card this wide is centred through it, so 28 is the first anchor
+// whose plate clears the pill instead of printing over the counter Gary is
+// about to make a joke about.
+//
+// The wrap is what it is because of the PAUSE disc, not because of the words.
+// That disc sits at x 424–468, y 43–87, and the card is centred on W/2 and
+// grows symmetrically — so the widest plate that still clears it is 368, which
+// after the portrait, the gap and two paddings at this scale leaves 312 for the
+// lettering. Widening past that does not get more text on a row, it gets a
+// plate with a pause button printed through it.
+const SPEECH_SCALE_TOUCH = 1.35;
+const SPEECH_Y_TOUCH = 28;
+const SPEECH_MAX_W_TOUCH = 312;
 
 // The bottom status row — room name, section counter, key legend — is laid out
 // off ONE midline rather than off a shared glyph-box top. drawText takes the
@@ -83,6 +108,11 @@ const SPEECH_MAX_W = 296;
 // legend rode 4px high of the title and the counter sat a pixel under it.
 // textYForMid is the correction, and it needs a single number to measure from.
 const ROW_MID = H - 11;
+
+// How long the touch zone diagram stays up. Longer than a speech line, because
+// it has to survive the gap between being read and the drone it is about
+// actually arriving — about 3.8s after the brief starts.
+const ZONE_T = 7;
 
 // Pause screen plates — same layout as run.js so the muscle memory carries over.
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
@@ -292,8 +322,15 @@ const STEPS = [
     hero: 'lorenzo',
     label: 'COINS',
     legend: [['SPC', 'JUMP']],
-    brief: () => 'COINS. RUN THROUGH THEM. THE BOX AFTER THEM IS ALSO COINS — JUMP UP INTO IT.',
-    again: () => 'THE BOX IS STILL FULL. HIT IT FROM UNDERNEATH. ANOTHER ONE IS COMING.',
+    // The box's copy has three jobs and does them in this order: it BREAKS
+    // OPEN, you break it from UNDERNEATH, and what falls out is usually coins
+    // but not always. The old line said "the box is also coins", which taught a
+    // container that is not worth opening twice — in a real stage a ! crate is
+    // a quarter chance of something better than money, and a player who has
+    // been told it is a coin dispenser has no reason to go out of their way for
+    // one.
+    brief: () => 'COINS. RUN THROUGH THEM. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES SOMETHING BETTER.',
+    again: () => 'THE BOX IS STILL FULL. BREAK IT OPEN FROM UNDERNEATH. ANOTHER ONE IS COMING.',
     // Missing a coin or two is not worth reopening a section over; the box is.
     optionalPickups: true,
     requires: (t) => t.sawQbox,
@@ -344,6 +381,34 @@ const STEPS = [
     setup(t) { t.pickups = [makePickup('capShield', t.worldX + SPAWN_AHEAD, 10)]; },
   },
   {
+    // The one section on the form that is not really on the form. Every cabinet
+    // hides a golden appliance and no cabinet requires it, so training teaches
+    // it the way the game plays it: it goes past whether or not you reach, and
+    // nothing reopens either way.
+    //
+    // `optional` is what makes that true — the section always closes, and the
+    // fork is in what Gary says rather than in whether you passed. Which is
+    // also the joke: the man cannot mark you down for it and is going to have
+    // an opinion regardless, because having an opinion about things that are
+    // not his responsibility is the whole of his job.
+    id: 'toaster',
+    hero: 'lorenzo',
+    label: 'GOLDEN APPLIANCE',
+    legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
+    brief: () => 'THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT.',
+    optional: true,
+    done: (t) => t.sawToaster,
+    got: () => 'YOU TOOK THE TOASTER. IT DOES NOTHING AND IT IS WORTH A GREAT DEAL. BOTH OF THOSE ARE ON RECORD.',
+    missed: () => 'YOU LEFT THE TOASTER. IT WAS RIGHT THERE. I CANNOT MARK YOU DOWN FOR IT. I AM SIMPLY GOING TO REMEMBER IT.',
+    setup(t) {
+      t.sawToaster = false;
+      // Up where an ordinary held jump reaches and a lazy one does not.
+      // Missable is the point; a test is not — Lorenzo clears 89px, so at 44
+      // the appliance is a decision rather than a skill check.
+      t.pickups = [makePickup('appliance', t.worldX + SPAWN_AHEAD, 44)];
+    },
+  },
+  {
     id: 'portal1',
     hero: 'lorenzo',
     tagTo: 'mochi',
@@ -371,7 +436,14 @@ const STEPS = [
     again: () => 'INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.',
     requires: (t) => t.sawDoubleJump,
     wrongWay: () => 'YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.',
-    setup(t) { t.obstacles = [makeObstacle('crate', t.worldX + SPAWN_AHEAD, { n: 6 })]; },
+    // Five crates, not six. Six (66px) was a wall a beginner had to time the
+    // second jump well to get over; five (55px) leaves room to be sloppy with
+    // it, which is what a section teaching a new input should allow. It sits a
+    // whisker under Mochi's 56.9px single-jump apex, so a frame-perfect single
+    // is *just* possible — and the section says so out loud when it happens
+    // ("YOU GOT OVER IT ON ONE"), which is the honest outcome rather than a
+    // silent pass for the move it is not teaching.
+    setup(t) { t.obstacles = [makeObstacle('crate', t.worldX + SPAWN_AHEAD, { n: 5 })]; },
   },
   {
     id: 'portal2',
@@ -440,27 +512,34 @@ const STEPS = [
 // awards, so payroll takes the coins back and THEN he certifies you. Working
 // through it in the order the form has it is the most Gary thing in the scene.
 const OUTRO = [
-  { hold: 3.8, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
+  { hold: 4.6, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
   // The reclaim runs UNDER this line: he says it and the counter drains while
   // he does, in front of you, rather than the coins having quietly vanished
   // eight sections ago.
-  { hold: 4.6, clawback: true,
+  //
+  // It waits `clawDelay` before it starts. Firing the drain on the same frame
+  // as the line meant the number was already falling while the sentence
+  // explaining it was still being read, so the two halves of the gag landed on
+  // top of each other — you cannot register a total being taken off you if you
+  // never got a clean look at the total. The beat is: read it, then watch it
+  // go. The hold covers the pause plus the drain plus a moment at zero.
+  { hold: 7.4, clawback: true, clawDelay: 1.9,
     line: 'PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER.' },
-  { hold: 3.8, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
-  { hold: 4.4, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
+  { hold: 4.6, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
+  { hold: 5.2, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
   // The celebration beat. The hero celebrates; Gary does not — he rolls his
   // eyes and stands in it. A Gary who genuinely celebrates undoes the joke the
   // whole module rests on, so the form celebrates on his behalf: the step is
   // logged as completed, the streamers fire, and he has done the paperwork
   // instead of the party.
-  { hold: 4.0, party: true,
+  { hold: 4.6, party: true,
     line: 'THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
   // ...and it ends the way everything he hands out ends. The streamers go back
   // to Stores, which is his actual job — it says so on the certificate he is
   // about to sign.
-  { hold: 3.8, sweep: true,
+  { hold: 4.6, sweep: true,
     line: 'THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK.' },
-  { hold: 4.2, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
+  { hold: 5.0, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
 ];
 
 // Party colours — the arcade's own accent set (coin gold, relay teal, portal
@@ -486,6 +565,11 @@ const OUTRO_ZOOM = 3.2;
 const OPENING = 'HR ASSIGNED ME THE TRAINING MODULE. I AM DECEASED. THE FORM DID NOT ASK.';
 const CONCEDED = 'I AM MARKING THIS ONE SATISFACTORY. NOBODY AUDITS ME.';
 const SHIELD_BROKE = 'THE EQUIPMENT PERFORMED AS SPECIFIED. YOU DID NOT.';
+// The payout stretch. Two lines, spaced across it: what coins are for, then
+// permission to take the lot. Both are setups — the epilogue takes every one of
+// them back, and "the part people remember" is the line the reclaim lands on.
+const PAYOUT_1 = 'COINS ARE GOOD. COINS BUY UPGRADES. DOLORES RUNS THAT COUNTER AND DOLORES DOES NOT NEGOTIATE.';
+const PAYOUT_2 = 'TAKE ALL OF THEM. EVERY ONE. THIS IS THE PART OF THE MODULE PEOPLE REMEMBER.';
 const SIGN_OFF = 'SIGNED, GARY. STILL ON THE CLOCK. STILL NOT PAID EXTRA.';
 // The certificate is a piece of paper, so it is drawn as one: a pale plate with
 // dark ink, ruled, with a signature line at the bottom. It deliberately does
@@ -544,8 +628,10 @@ export class TutorialState {
     // for, and the drip clock that keeps the streamers coming while they are.
     this.partyT = 0;
     this.partyAcc = 0;
-    this.playgroundT = 0;
-    this.playgroundWait = false;
+    // Free play: a victory lap with a full lane and no way to fail. Set by the
+    // payouts that follow the coins and the cannon sections, cleared when the
+    // next section opens.
+    this.freePlay = false;
     this.shield = 0;
     // -1 is the opening beat: Gary explains why he is here, over an empty lane,
     // before section one spawns anything. settleT runs it out like any other
@@ -563,6 +649,7 @@ export class TutorialState {
     this.sawDoubleJump = false;
     this.sawShotDown = false;
     this.sawQbox = false;
+    this.sawToaster = false;
   }
 
   // ---- lifecycle -----------------------------------------------------------
@@ -605,29 +692,47 @@ export class TutorialState {
       this.finished = true;
       this.doneT = 0;
       this.speech = null;
+      this.freePlay = false;
       this.clearEntities();
+      // The capsule goes back before he walks on. A shield bubble is a bright
+      // ring around the hero's whole body, and the ending is a two-shot held at
+      // 3.2x for half a minute — one of the two figures standing inside a
+      // glowing egg for all of it is a different picture from the one this
+      // scene is composed as. It is also correct on the fiction: protective
+      // equipment is Stores, Stores is Gary, and nothing issued in here was
+      // ever leaving the room.
+      this.shield = 0;
       // beat -1 is "still walking on"; he says nothing until he arrives.
-      this.outro = { beat: -1, garyX: VIEW_W + 40, walking: true, cardT: 0 };
+      this.outro = { beat: -1, garyX: VIEW_W + 40, walking: true, cardT: 0, holdT: 0, clawIn: 0 };
       Audio.sfx('win');
       return;
     }
     this.stepIndex = i;
     const step = STEPS[i];
     this.obstacles = [];
-    this.pickups = [];
+    this.retireCoins();
     this.pellets = [];
     this.portal = null;
     this.misses = 0;
     this.settleT = 0;
+    this.freePlay = false;
+    // A queued line belongs to the stretch that queued it. Arriving two
+    // sections later, over a lane it is not describing, is worse than not
+    // arriving at all.
+    this.pending = null;
     this.clearWitness();
     if (this.player.heroId !== step.hero) this.player.setHero(step.hero);
     this.player.abilityCd = 0;
     this.setButtons();
     this.legend = typeof step.legend === 'function' ? step.legend(Input.isTouchDevice()) : step.legend;
     this.say(step.brief(Input.isTouchDevice()));
-    // Up for as long as the brief is, so the card and the sentence explaining
-    // it expire together.
-    this.zoneT = step.zones && Input.isTouchDevice() ? SPEECH_T : 0;
+    // Outlives the brief on purpose. It is a diagram of the whole input
+    // surface, arriving at the one moment the player has a reason to care about
+    // the half they have never touched — and it is read, looked away from, and
+    // then read again once the drone is actually on screen. Expiring with the
+    // speech panel gave it about a second of attention after the sentence
+    // explaining it had gone.
+    this.zoneT = step.zones && Input.isTouchDevice() ? ZONE_T : 0;
     step.setup(this);
   }
 
@@ -653,8 +758,7 @@ export class TutorialState {
     this.clearEntities();
     this.speech = null;
     this.zoneT = 0;
-    this.playgroundT = 0;
-    this.playgroundWait = false;
+    this.freePlay = false;
     this.startStep(this.stepIndex + 1);
     return step ? `TRAINING: SKIPPED ${step.label}` : 'TRAINING: SKIPPED INTRO';
   }
@@ -668,13 +772,20 @@ export class TutorialState {
     this.sawDoubleJump = false;
     this.sawShotDown = false;
     this.sawQbox = false;
+    this.sawToaster = false;
   }
 
   // Section closed. The world does not stop; it just runs on for a beat.
-  passStep() {
+  //
+  // `logged` false is an optional section that went by untaken: it still
+  // closes, because that is what optional means, but it does not get the pass
+  // chime or the green — a grey NOT TAKEN is the honest report, and it leaves
+  // the celebratory reading of the floatie meaning something.
+  passStep(logged = true) {
     const step = this.step();
-    this.floatText(`${step.label} — LOGGED`, '#74c947');
-    Audio.sfx('perfect');
+    this.floatText(logged ? `${step.label} — LOGGED` : `${step.label} — NOT TAKEN`,
+      logged ? '#74c947' : '#8a8a98');
+    Audio.sfx(logged ? 'perfect' : 'ui');
     this.settleT = SETTLE_T;
     if (step.onPass) step.onPass(this);
   }
@@ -697,6 +808,21 @@ export class TutorialState {
     this.clearWitness();
     this.clearEntities();
     step.setup(this);
+  }
+
+  // Coins outlive the section that spawned them. A coin still in the air, or
+  // still ahead of the hero, is not the next section's business — but wiping it
+  // is money taken out of the player's hands by the one module that just taught
+  // them to pick it up, and a box popped late throws its payout FORWARD, so the
+  // section boundary lands in the middle of the arc more often than not.
+  //
+  // Marked rather than moved to a second list: a stray still collects, draws and
+  // scrolls exactly like any other pickup. What it is not is evidence in
+  // anybody's judgement — an uncollected coin left over from section three must
+  // never be able to reopen section five.
+  retireCoins() {
+    this.pickups = this.pickups.filter((p) => p.live && p.def.coin);
+    for (const p of this.pickups) p.stray = true;
   }
 
   clearEntities() {
@@ -779,38 +905,73 @@ export class TutorialState {
     }
   }
 
-  // After the coins section closes, spawn a screenful of coins and blocks for
-  // the player to bat around — the training wheels come off for a few seconds.
-  // Then payroll takes it all back.
+  // Free play runs until the lane it spawned has actually gone past, not until
+  // a stopwatch says so. The fixed five seconds this used to run on expired
+  // wherever the coins happened to be — mid-arc, mid-reach — and then wiped
+  // them, so the reward for the section that teaches you to collect things was
+  // watching them evaporate out of your hands. Nothing is swept out from under
+  // the player now: whatever was laid down is laid down until the hero has
+  // driven past the last of it, plus `tail` of empty lane to land on.
+  freePlayUntilLaneClears(tail) {
+    let last = this.worldX;
+    for (const e of [...this.obstacles, ...this.pickups]) last = Math.max(last, e.x + e.w);
+    const travel = (last - this.playerWorldX()) / Math.max(1, this.speed);
+    this.settleT = Math.max(SETTLE_T, travel + tail);
+  }
+
+  // After the coins section closes, the lane fills up: coins by the hundred and
+  // a row of boxes, none of which can hurt you. The training wheels come off
+  // for a stretch and the counter runs away with itself.
+  //
+  // The size of the pile is the joke's setup, not decoration. Everything here
+  // is going to be reclaimed to your face in the epilogue, and a reclaim is
+  // only funny in proportion to what you thought you had — so this is deliberate
+  // over-payment, a lane that reads as the module having decided to like you.
   spawnPlayground() {
-    this.playgroundT = 5.0;
-    this.playgroundWait = false;
-    this.settleT = 7.0;   // playground + a beat of empty lane + settle
+    this.freePlay = true;
     const x0 = this.worldX + VIEW_W;
-    this.pickups = [];
+    this.retireCoins();
     this.obstacles = [];
-    // Coin arcs packed across the width of the screen — dense enough that the
-    // lane looks like someone tipped a slot machine over.
-    for (let i = 0; i < 5; i++) {
-      const base = x0 + i * 110 + this.rng.range(0, 20);
-      this.pickups.push(...coinArc(base, 8 + i, this.player.heroId));
+    // The brief is FILLED: at any instant the frame should hold coins on the
+    // floor, coins at head height and coins at the top of a jump, so there is
+    // no way to look at the lane and see a gap. The numbers below are picked
+    // against the visible width rather than in the abstract — at ZOOM 2 the
+    // frame is VIEW_W (240) world px wide, so a 76px arc pitch puts three arcs
+    // on screen at once and a 13px floor pitch puts eighteen coins under them.
+    const RUN = 1180;                       // how much lane the payout covers
+    for (let x = x0; x < x0 + RUN; x += 76) {
+      this.pickups.push(...coinArc(x + this.rng.range(0, 10), 7 + Math.floor(this.rng.range(0, 5)),
+        this.player.heroId));
     }
-    // Five boxes to open, staggered so they arrive in a steady stream.
-    for (let i = 0; i < 5; i++) {
-      const box = makeObstacle('qcrate', x0 + 80 + i * 130);
+    // The floor, paved. Nothing in this stretch pays nothing.
+    for (let x = x0; x < x0 + RUN; x += 13) {
+      this.pickups.push(makePickup('coin', x + this.rng.range(-4, 4), 8));
+    }
+    // A high band above the arcs, at the altitude a held jump tops out on, so
+    // the payout rewards jumping through it rather than only running under it.
+    for (let x = x0 + 40; x < x0 + RUN; x += 22) {
+      this.pickups.push(makePickup('coin', x + this.rng.range(-5, 5), this.rng.range(56, 82)));
+    }
+    // Boxes to open, staggered so they arrive in a steady stream rather than
+    // all at once. Every one of them is a headbutt and three more coins.
+    for (let i = 0; i * 118 < RUN; i++) {
+      const box = makeObstacle('qcrate', x0 + 80 + i * 118);
       box.alt = 60;
       this.obstacles.push(box);
     }
-    // Ground coins filling in the gaps between arcs.
-    for (let i = 0; i < 18; i++) {
-      this.pickups.push(makePickup('coin', x0 + i * 32 + this.rng.range(-10, 10), 8));
-    }
+    // Why the coins are worth having — the setup the epilogue's reclaim is the
+    // punchline to. He is not being kind; he is reading out the benefit line of
+    // a form, and Dolores is a real counter in the food court, so the sell is
+    // accurate and still sounds like a threat.
+    this.say(PAYOUT_1, 5.5);
+    this.sayIn(6.5, PAYOUT_2, 5.5);
+    this.freePlayUntilLaneClears(2.2);
   }
 
   // After the shoot section, a gallery of varied targets rolls past so B-33P
   // can unload the cannon a few more times before the module ends.
   spawnShootGallery() {
-    this.settleT = 6.5;   // long enough for everything to scroll past
+    this.freePlay = true;
     const x0 = this.worldX + VIEW_W;
     this.obstacles = [];
     // Drones at different altitudes — the cannon's bread and butter.
@@ -828,6 +989,7 @@ export class TutorialState {
     this.obstacles.push(makeObstacle('crate', x0 + 400, { n: 3 }));
     // A target for the sharpshooters.
     this.obstacles.push(makeObstacle('target', x0 + 540));
+    this.freePlayUntilLaneClears(2.2);
   }
 
   // The gag, and the honest thing: nothing earned in here was ever going into
@@ -950,12 +1112,25 @@ export class TutorialState {
 
   // ---- talk ----------------------------------------------------------------
 
-  say(text, t = SPEECH_T) {
+  // Infinity, not a countdown. What he last said stays up until he says the
+  // next thing, so there is never a stretch of this module with nothing written
+  // on it — a player who was watching the lane when a line arrived can look up
+  // afterwards and it is still there. The epilogue paces itself off its own
+  // beat clock rather than off this expiring, which is what the countdown used
+  // to be doing double duty as.
+  say(text, t = Infinity) {
     this.speech = { text, t, who: 'gary' };
     // Kept past its own expiry for the pause screen. A player who pauses is
     // usually pausing because the instruction went away before they had
     // finished with it, so the pause is where the last thing he said lives.
     this.lastSaid = { text, t, who: 'gary' };
+  }
+
+  // A second line, later in the same stretch. The payout runs for the better
+  // part of fifteen seconds and one five-second line leaves ten of them silent,
+  // which reads as the module having wandered off rather than as a pause.
+  sayIn(delay, text, hold) {
+    this.pending = { t: delay, text, hold };
   }
 
   // Longer-lived than a run's barks. In a stage a floatie is confirmation of
@@ -967,6 +1142,27 @@ export class TutorialState {
     for (const f of this.floaties) if (f.y + 19 > y) y = f.y + 19;
     this.floaties.push({ text, color, t: 3.2, y, solid });
     if (this.floaties.length > 5) this.floaties.shift();
+  }
+
+  // Is the certificate on screen crowding the speech card? Only ever true on
+  // touch, where the card is big enough to reach the document.
+  certificateUp() {
+    const o = this.outro;
+    return !!o && o.beat >= OUTRO.length && Input.isTouchDevice();
+  }
+
+  // How Gary's card is laid out on this device. Touch takes the bigger type,
+  // the wider wrap and the lower anchor as one set — they only work together,
+  // since bigger lettering in the same box just wraps to more lines and a wider
+  // box at the old anchor prints over the coin pill.
+  speechOpts() {
+    if (!Input.isTouchDevice()) {
+      return { light: true, y: SPEECH_Y, maxWidth: SPEECH_MAX_W };
+    }
+    return {
+      light: true, y: SPEECH_Y_TOUCH,
+      maxWidth: SPEECH_MAX_W_TOUCH, scale: SPEECH_SCALE_TOUCH,
+    };
   }
 
   // ---- geometry ------------------------------------------------------------
@@ -1023,24 +1219,15 @@ export class TutorialState {
     }
     for (const f of this.floaties) { f.t -= dt; f.y -= dt * 12; }
     this.floaties = this.floaties.filter((f) => f.t > 0);
+    if (this.pending) {
+      this.pending.t -= dt;
+      if (this.pending.t <= 0) { this.say(this.pending.text, this.pending.hold); this.pending = null; }
+    }
     if (this.zoneT > 0) this.zoneT -= dt;
     if (this.waveT > 0) this.waveT -= dt;
     if (this.sulkT > 0) this.sulkT -= dt;
     if (this.partyT > 0) { this.partyT -= dt; this.updateParty(dt); }
     this.updateClawback(dt);
-    if (this.playgroundT > 0) {
-      this.playgroundT -= dt;
-      if (this.playgroundT <= 0) {
-        if (!this.playgroundWait) {
-          // End of free play — clear the lane and let the settle run out.
-          this.clearEntities();
-          this.playgroundT = 1.5;
-          this.playgroundWait = true;
-        } else {
-          this.playgroundT = 0;
-        }
-      }
-    }
 
     if (this.finished) {
       this.updateFinished(dt);
@@ -1064,6 +1251,12 @@ export class TutorialState {
 
     if (this.settleT > 0) {
       this.settleT -= dt;
+      // A settle is normally an empty lane, but a free-play settle is a lane
+      // full of things the player is meant to be hitting — so the collision
+      // pass still has to run through it. Without this the boxes in the payout
+      // stretch were scenery: judgeStep is the only thing that opens one, and
+      // it was switched off for the entire time they were on screen.
+      if (this.freePlay) this.judgeFreePlay();
       if (this.settleT <= 0) this.startStep(this.stepIndex + 1);
     } else {
       this.judgeStep();
@@ -1111,14 +1304,32 @@ export class TutorialState {
     // be here.
     if (o.walking) { o.walking = false; this.waveT = 2.6; }
 
+    // The beat clock. Gary's card no longer expires — it stays up until he says
+    // the next thing — so the epilogue keeps its own countdown rather than
+    // reading "has the speech gone away yet" as "is this beat over yet".
+    if (o.holdT > 0) o.holdT -= dt;
+    // The pause between the line about the reclaim and the reclaim itself. It
+    // exists so the total gets a clean second on screen while the sentence
+    // explaining what is about to happen to it is read.
+    if (o.clawIn > 0) {
+      o.clawIn -= dt;
+      if (o.clawIn <= 0) this.startClawback();
+    }
+
     if (o.beat < OUTRO.length) {
       // A finished line, or an impatient player, moves it along.
-      if (!this.speech || press) {
+      if (o.holdT <= 0 || press) {
         o.beat++;
+        // Skipping past the reclaim beat does not skip the reclaim: whatever
+        // was still owed is taken now, under the next line, rather than being
+        // quietly written off because the player was quick with the button.
+        if (o.clawIn > 0) { o.clawIn = 0; this.startClawback(); }
         if (o.beat < OUTRO.length) {
           const beat = OUTRO[o.beat];
-          this.say(beat.line, beat.hold);
-          if (beat.clawback) this.startClawback();
+          this.say(beat.line);
+          o.holdT = beat.hold;
+          if (beat.clawback) o.clawIn = beat.clawDelay || 0;
+          if (beat.clawback && !beat.clawDelay) this.startClawback();
           // Whatever is still on the floor goes back to Stores. Skipping ahead
           // ends the party early too — an impatient player gets the same beats,
           // faster, not a different set of them.
@@ -1131,7 +1342,7 @@ export class TutorialState {
           // an impatient player who skipped through the reclaim gets it settled
           // here rather than watching the till drain under the card.
           this.endClawback();
-          this.say(SIGN_OFF, 99);
+          this.say(SIGN_OFF);
           // Certificate up, and the one person here who is pleased about it
           // celebrates. The sulk is cancelled rather than allowed to run out
           // under the card: the coins are gone and he has decided the piece of
@@ -1227,6 +1438,12 @@ export class TutorialState {
       pu.live = false;
       this.collect(pu);
     }
+    // A retired coin is swept up only once it is genuinely gone — behind the
+    // hero and off the back of the frame — rather than at the moment its
+    // section ended. Nothing the player can still reach is ever removed.
+    if (this.pickups.some((p) => p.stray)) {
+      this.pickups = this.pickups.filter((p) => !p.stray || (p.live && p.x + p.w > this.worldX - 8));
+    }
 
     if (this.portal && !this.portal.hit) {
       const pbox = { x: this.portal.x, y: GROUND_Y - 40, w: 12, h: 40 };
@@ -1239,6 +1456,20 @@ export class TutorialState {
       this.coins += 1;
       this.paidOut = true;
       Audio.sfx('coin');
+      return;
+    }
+    // The appliance keeps the fanfare a run gives it — the 'win' jingle and the
+    // full joke in the floatie — because the whole point of teaching it here is
+    // that a player meeting one in a real cabinet recognises what just
+    // happened. It pays no coins: nothing in this room is legal tender, and a
+    // toaster that quietly topped up a counter about to be confiscated would be
+    // teaching the wrong lesson twice.
+    if (pu.def.appliance) {
+      this.sawToaster = true;
+      Audio.sfx('win');
+      burst(pu.x + pu.w / 2, GROUND_Y - pu.alt - pu.h / 2, 16, 90, 0.55, '#f6d33c', 1.3, 120,
+        () => this.rng.float());
+      this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', '#f6d33c');
       return;
     }
     Audio.sfx('power');
@@ -1263,6 +1494,20 @@ export class TutorialState {
       () => this.rng.float());
   }
 
+  // Free play: the lane is full and none of it can fail you. Boxes pop, crates
+  // and drones come apart on contact, and a hit costs nothing — a section that
+  // has already been logged is not allowed to reopen because of something that
+  // happened during its own victory lap.
+  judgeFreePlay() {
+    const hit = this.hitObstacle();
+    if (!hit) return;
+    if (hit.def.isTarget) { this.popQbox(hit); return; }
+    // Not a knock: it just breaks. The brief iframes keep a stack of crates
+    // from being resolved one per frame as the hero ploughs through it.
+    this.player.iframes = 0.4;
+    this.breakObstacle(hit);
+  }
+
   // Has the section closed, or has it failed to? Everything here is measured
   // against the hero's own column: a challenge is resolved the moment it is
   // behind them.
@@ -1284,13 +1529,29 @@ export class TutorialState {
       return;
     }
 
-    const spawned = [...this.obstacles, ...this.pickups];
+    // Strays — coins carried over from an earlier section — are deliberately
+    // not in here. They are the player's to collect, not the section's to be
+    // judged on.
+    const mine = this.pickups.filter((p) => !p.stray);
+    const spawned = [...this.obstacles, ...mine];
     if (!spawned.length) return;
     // Unresolved while any part of the challenge is still standing and not yet
     // behind the hero. A broken one counts as resolved wherever it is.
     if (spawned.some((e) => e.live && e.x + e.w >= heroX)) return;
 
-    if (!step.optionalPickups && this.pickups.some((p) => p.live)) { this.reopenStep(false); return; }
+    // An optional section closes whichever way it went; only the commentary
+    // forks. It gets a longer settle than a normal pass because the line Gary
+    // has just said is the entire content of the section — there is nothing
+    // else to have taken away from it.
+    if (step.optional) {
+      const got = step.done(this);
+      this.say(got ? step.got() : step.missed());
+      this.passStep(got);
+      this.settleT = 4.6;
+      return;
+    }
+
+    if (!step.optionalPickups && mine.some((p) => p.live)) { this.reopenStep(false); return; }
     if (step.requires && !step.requires(this)) { this.reopenStep(true); return; }
     this.passStep();
   }
@@ -1390,7 +1651,16 @@ export class TutorialState {
     // is a printed HR module and not someone shouting over a stage, and narrow
     // so the centred card never reaches the coin pill or, on touch, the PAUSE
     // disc parked in the top-right corner.
-    if (this.speech) drawSpeech(ctx, this.speech, { light: true, y: SPEECH_Y, maxWidth: SPEECH_MAX_W });
+    //
+    // The one moment the card gives way is the certificate, and only on touch.
+    // The enlarged card runs to y 94 and the certificate starts at 66, so on a
+    // phone the two pale plates stack — and the certificate cannot move down to
+    // make room without printing over the heads of the two people the whole
+    // ending is composed around. The document wins that argument: it is the
+    // thing the beat exists to show, and it is already signed.
+    if (this.speech && !this.certificateUp()) {
+      drawSpeech(ctx, this.speech, this.speechOpts());
+    }
     if (o && o.beat >= OUTRO.length && o.cardT > 0.9) {
       drawText(ctx, `${Input.confirmVerb()} TO FINISH`, W / 2 - textWidth(`${Input.confirmVerb()} TO FINISH`) / 2,
         H - 26, 'rgba(255,255,255,0.5)');
@@ -1440,7 +1710,7 @@ export class TutorialState {
     // one has already timed out — a paused module with nothing written on it is
     // a paused module you cannot read the instruction off.
     const said = this.speech || this.lastSaid;
-    if (said) drawSpeech(ctx, said, { light: true, y: SPEECH_Y, maxWidth: SPEECH_MAX_W });
+    if (said) drawSpeech(ctx, said, this.speechOpts());
     drawTextCentered(ctx, 'PAUSED', W / 2, 92, '#fff', 2, 'title');
     drawTextCentered(ctx, 'MANDATORY TRAINING', W / 2, 126, '#8a8a98');
     const cursor = !Input.usingTouch;
@@ -1478,11 +1748,25 @@ export class TutorialState {
     // side of rather than as a wall.
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     for (let y = 4; y < H; y += 12) ctx.fillRect(split - 0.5, y, 1, 6);
+    // Three rows per side: what it does, how you do it, and how much of the
+    // screen it is. The percentage alone was a statistic; "TAP AND HOLD
+    // ANYWHERE ON THIS SIDE" is the instruction, and it is the instruction that
+    // is new information — the discs in the corners had everyone believing the
+    // buttons were the only places that worked.
     const pct = Math.round(TOUCH_JUMP_FRAC * 100);
-    drawTextCentered(ctx, 'JUMP', split / 2, 150, '#d7fff6', 1.6, 'title');
-    drawTextCentered(ctx, `${pct}% OF THE SCREEN`, split / 2, 170, 'rgba(215,255,246,0.75)', 0.8);
-    drawTextCentered(ctx, 'POWER', split + (W - split) / 2, 150, '#ffe9a0', 1.2, 'title');
-    drawTextCentered(ctx, `${100 - pct}%`, split + (W - split) / 2, 170, 'rgba(255,233,160,0.75)', 0.8);
+    const lx = split / 2, rx = split + (W - split) / 2;
+    // The header clears a THREE-line speech panel, not a two-line one: this
+    // card only ever appears on touch, where the wrap is narrowest and Gary's
+    // brief for this section runs to three rows.
+    drawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', W / 2, 106, 'rgba(255,255,255,0.82)', 0.9, 'bold');
+    drawTextCentered(ctx, 'JUMP', lx, 134, '#d7fff6', 1.7, 'title');
+    drawTextCentered(ctx, 'TAP AND HOLD', lx, 158, 'rgba(215,255,246,0.9)', 0.9, 'bold');
+    drawTextCentered(ctx, 'ANYWHERE ON THIS SIDE', lx, 171, 'rgba(215,255,246,0.62)', 0.75);
+    drawTextCentered(ctx, `LEFT ${pct}%`, lx, 188, 'rgba(215,255,246,0.62)', 0.75, 'bold');
+    drawTextCentered(ctx, 'POWER', rx, 134, '#ffe9a0', 1.2, 'title');
+    drawTextCentered(ctx, 'TAP HERE', rx, 158, 'rgba(255,233,160,0.9)', 0.9, 'bold');
+    drawTextCentered(ctx, 'OR THE USE DISC', rx, 171, 'rgba(255,233,160,0.62)', 0.75);
+    drawTextCentered(ctx, `RIGHT ${100 - pct}%`, rx, 188, 'rgba(255,233,160,0.62)', 0.75, 'bold');
     ctx.restore();
   }
 

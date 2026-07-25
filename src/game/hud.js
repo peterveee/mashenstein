@@ -649,6 +649,13 @@ const SPEECH_ROW = 11;
 // something parked in a top corner — the tutorial's PAUSE disc — pulls both
 // edges in rather than trying to shove the card sideways.
 //
+// `opts.scale` grows the whole card, not just the lettering — portrait, padding
+// and row pitch all come up together, because type that grows inside fixed
+// furniture just outgrows the box it is printed in. Training uses it on touch:
+// a phone is a quarter the physical width of a desk monitor and is held at
+// arm's length with a thumb over part of it, so a card sized for a keyboard
+// player is a card a phone player squints at.
+//
 // The default is built for a run: a translucent slate over a bright, moving
 // stage, where a solid card would punch a hole in the art. The food court is the
 // opposite problem — the concourse wall is #241c30, which is within a few
@@ -671,6 +678,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
     : drawPanel(ctx, px, py, pw, ph, 3));
   const y = opts.y ?? 46;
+  const s = opts.scale ?? 1;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
   //
@@ -679,25 +687,27 @@ export function drawSpeech(ctx, speech, opts = {}) {
   // is centred here is the ink inside the plate.
   if (!isEgg && !hero) {
     // Three lines, not two: Eggshell's longest grievances need the room.
-    const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 56), 1, 3);
-    const tw = Math.max(...lines.map((line) => textWidth(line)));
-    panel(W / 2 - tw / 2 - 6, y - 4, tw + 12, 8 + lines.length * SPEECH_ROW);
+    const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 56 * s), s, 3);
+    const tw = Math.max(...lines.map((line) => textWidth(line, s)));
+    panel(W / 2 - tw / 2 - 6 * s, y - 4, tw + 12 * s, 8 * s + lines.length * SPEECH_ROW * s);
     // Through textY, like every other panel in this file. The plate's 4 units
     // of top padding put the first ROW at y; the ink then has to be centred on
     // that row rather than having its 12-unit glyph box hung off the top of it,
     // which sat every tutorial line high on its own plate.
     lines.forEach((line, i) =>
-      rawDrawTextCentered(ctx, line, W / 2, textY(y + i * SPEECH_ROW + SPEECH_ROW / 2), ink));
+      rawDrawTextCentered(ctx, line, W / 2,
+        textY(y + (i * SPEECH_ROW + SPEECH_ROW / 2) * s, s), ink, s));
     return;
   }
   // Named speakers: one block — portrait on the left, name as a header over
   // the words. Face, name, and text read as a single card per speaker.
   const name = isEgg ? 'EGGSHELL' : hero.short;
-  const FACE_W = 20, FACE_H = 15, PAD = 7, GAP = 6;
-  const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 100), 1, 3);
-  const tw = Math.max(textWidth(name), ...lines.map((line) => textWidth(line)));
-  const textH = (lines.length + 1) * 11; // name row + body rows
-  const h = Math.max(FACE_H + 6, textH + 8);
+  const FACE_W = 20 * s, FACE_H = 15 * s, PAD = 7 * s, GAP = 6 * s;
+  const ROW = SPEECH_ROW * s;
+  const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 100 * s), s, 3);
+  const tw = Math.max(textWidth(name, s), ...lines.map((line) => textWidth(line, s)));
+  const textH = (lines.length + 1) * ROW; // name row + body rows
+  const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
   const w = PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(W / 2 - w / 2);
   panel(x, y - 4, w, h);
@@ -714,9 +724,9 @@ export function drawSpeech(ctx, speech, opts = {}) {
     }
   }
   const tx = x + PAD + FACE_W + GAP;
-  const ty = y - 4 + Math.round((h - textH) / 2) + 3;
-  rawDrawText(ctx, name, tx, ty, nameInk);
-  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + 11 + i * 11, ink));
+  const ty = y - 4 + Math.round((h - textH) / 2) + 3 * s;
+  rawDrawText(ctx, name, tx, ty, nameInk, s);
+  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + ROW + i * ROW, ink, s));
 }
 
 // ACT announcement: full-screen corporate-glitch card over the frozen world.

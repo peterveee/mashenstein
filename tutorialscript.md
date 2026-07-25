@@ -31,14 +31,14 @@ he is working through, each section is a section of it, and a miss is an
 | Settle between sections | 1.6s |
 | Opening beat | 4.5s over an empty lane |
 | Reopens before he concedes | 4 |
-| Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/10` rides the same midline beside it |
+| Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/11` rides the same midline beside it |
 | Gary's card | pale plate, high (y 18), narrow wrap (296) — out of the band a held jump travels through |
 | Lighting | warm overhead cones every 108px with a hot core and a floor pool; the fixtures are above frame and never drawn |
 | Pause | 20% scrim, and Gary's card stays up at full strength — including the *last* thing he said if the live line has expired |
 
 ## Sections
 
-Ten sections. `requires` is what makes this Gary's screen rather than a
+Eleven sections. `requires` is what makes this Gary's screen rather than a
 checklist: clearing the obstacle is not the same as completing the section.
 Jump the drone instead of ducking it and you are past the hazard but the section
 is still open, because the section specifies ducking.
@@ -66,16 +66,38 @@ Empty lane, 4.5s.
 
 ### 3 — COINS · Lorenzo · a coin arc, then a ! box
 
-- **Brief:** COINS. RUN THROUGH THEM. THE BOX AFTER THEM IS ALSO COINS — JUMP UP INTO IT.
-- **Again:** THE BOX IS STILL FULL. HIT IT FROM UNDERNEATH. ANOTHER ONE IS COMING.
+- **Brief:** COINS. RUN THROUGH THEM. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES SOMETHING BETTER.
+- **Again:** THE BOX IS STILL FULL. BREAK IT OPEN FROM UNDERNEATH. ANOTHER ONE IS COMING.
 - **Requires:** the box actually opened. Missing a coin or two is not worth
   reopening a section over; the box is.
+- The copy has three jobs, in this order: the box *breaks open*, you break it
+  from *underneath*, and what falls out is usually coins **but not always** — a
+  real ! crate is a quarter chance of something better than money, and a player
+  told it is a coin dispenser has no reason to go out of their way for one.
 - The box floats at alt 60 rather than the usual 40 — just under Lorenzo's apex,
   where the jump lingers, which turns an 0.07s strike window into 0.4s.
-- **On pass:** the playground — five coin arcs, five ! boxes, a scatter of ground
-  coins, five seconds of free play, then the lane clears.
-- **The coins are NOT taken here.** They stay on the counter for the rest of the
-  module. Gary reclaims them in the epilogue, in person.
+
+**On pass — the payout stretch.** The lane fills: a coin arc every 76px, the
+floor paved at 13px, a high band at the top of a held jump, and a ! box every
+118px, over ~1180px of lane. The frame is never without coins in it at three
+heights. Nothing here can hurt you and nothing can fail you, boxes pop on
+contact, and the stretch runs until the last of it is behind the hero plus a
+beat — never on a stopwatch that expires mid-arc.
+
+Gary sells it, twice, because the reclaim in the epilogue is the punchline and
+this is the setup:
+
+> COINS ARE GOOD. COINS BUY UPGRADES. DOLORES RUNS THAT COUNTER AND DOLORES DOES NOT NEGOTIATE.
+
+…then about six seconds later:
+
+> TAKE ALL OF THEM. EVERY ONE. THIS IS THE PART OF THE MODULE PEOPLE REMEMBER.
+
+**The coins are NOT taken here**, and they are never wiped by a section
+boundary either: a coin still in the air or still ahead of the hero is carried
+into the next section as a *stray* — collectible, drawn and scrolling normally,
+but excluded from every section's judgement, so an old coin can never reopen a
+later section. It is swept only once it is behind the hero and off the frame.
 
 ### 4 — DUCK · Lorenzo · one drone
 
@@ -92,27 +114,41 @@ Empty lane, 4.5s.
 - **Again:** IT WENT PAST. I WILL REQUISITION ANOTHER. THAT IS A FORM. I HAVE ALREADY FILED IT.
 - If it later eats a hit: THE EQUIPMENT PERFORMED AS SPECIFIED. YOU DID NOT.
 
-### 6 — PORTAL TAG · Lorenzo → Mochi
+### 6 — GOLDEN APPLIANCE · Lorenzo · one toaster *(optional)*
+
+- **Brief:** THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT.
+- **Took it:** YOU TOOK THE TOASTER. IT DOES NOTHING AND IT IS WORTH A GREAT DEAL. BOTH OF THOSE ARE ON RECORD.
+- **Missed it:** YOU LEFT THE TOASTER. IT WAS RIGHT THERE. I CANNOT MARK YOU DOWN FOR IT. I AM SIMPLY GOING TO REMEMBER IT.
+- The only section that closes either way — it never reopens, only the
+  commentary forks. At alt 44 against Lorenzo's 89px jump it is a decision, not
+  a skill check.
+
+### 7 — PORTAL TAG · Lorenzo → Mochi
 
 - **Brief:** RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED IT ONCE. THERE WAS PAPERWORK.
 - **Again:** OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.
 
-### 7 — DOUBLE JUMP · Mochi · a stack of six
+### 8 — DOUBLE JUMP · Mochi · a stack of five
 
 - **Brief:** MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. ONE JUMP WILL NOT CLEAR THAT.
 - **Touch:** … TAP AGAIN IN MID-AIR. …
 - **Again:** INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.
 - **Wrong way:** YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.
 - **Requires:** a second jump in the air. Mochi is here because she jumps LOW —
-  57px against Lorenzo's 89 — so a stack this tall can only be cleared by the
-  thing being taught.
+  56.9px against Lorenzo's 75 — so a stack this tall is one Lorenzo would have
+  strolled over.
+- **Five crates, not six.** Six (66px) was a wall a beginner had to time the
+  second jump well to clear; five (55px) leaves room to be sloppy with it. That
+  sits a whisker under Mochi's 56.9px single-jump apex, so a frame-perfect
+  single is *just* possible — and the section says so out loud when it happens
+  rather than passing silently for the move it is not teaching.
 
-### 8 — PORTAL TAG · Mochi → B-33P
+### 9 — PORTAL TAG · Mochi → B-33P
 
 - **Brief:** ANOTHER PORTAL, ANOTHER BODY. THIS IS NORMAL HERE. STRAIGHT THROUGH.
 - **Again:** THROUGH IT. I HAVE SAID THIS ONCE ALREADY TODAY.
 
-### 9 — HERO POWER · B-33P · one drone, then a gallery
+### 10 — HERO POWER · B-33P · one drone, then a gallery
 
 - **Brief:** EVERY HERO HAS A POWER. B-33P SHOOTS. PRESS RIGHT OR D. THE CANNON IS COMPANY PROPERTY.
 - **Touch:** … TAP THE RIGHT STRIP, OR THE USE DISC. …
@@ -121,14 +157,22 @@ Empty lane, 4.5s.
 - **Requires:** the drone shot down.
 - **Touch only — the zone card.** The canvas has been a two-button surface since
   section one and nothing has said so: left 70% JUMP, right 30% POWER. Both
-  halves wash (shading only one reads as "this half is disabled"), a dashed seam
-  between them, up for as long as the brief and dismissed early by the first
-  shot. It shows *here* because this is the first control that lives in the
-  right-hand strip.
+  halves wash (shading only one reads as "this half is disabled"), with a dashed
+  seam between them. It shows *here* because this is the first control that
+  lives in the right-hand strip.
+  - Three rows a side — what it does, **how you do it**, and how much of the
+    screen it is — under a `THE WHOLE SCREEN IS TWO BUTTONS` header. The
+    percentage alone was a statistic; `TAP AND HOLD / ANYWHERE ON THIS SIDE` is
+    the instruction, and the instruction is the new information: the discs in
+    the corners had everyone believing the buttons were the only places that
+    worked.
+  - **7 seconds**, not the 5 of a speech line. It has to survive the gap between
+    being read and the drone it is about actually arriving (~3.8s after the
+    brief starts). The first shot fades it early.
 - **On pass:** the shoot gallery — drones at five altitudes, two buzzbirds, two
   crate stacks, a target.
 
-### 10 — PORTAL TAG · B-33P → Lorenzo
+### 11 — PORTAL TAG · B-33P → Lorenzo
 
 - **Brief:** LAST PORTAL. IT PUTS YOU BACK IN THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.
 - **Again:** THROUGH IT. YOU CANNOT SIGN THE FORM AS SOMEBODY ELSE. I HAVE TRIED.
@@ -221,7 +265,7 @@ run does not teach them again.
 - **N** or the **forward arrow** — dev builds only (`npm run dev`), wired in
   `src/dev/index.js` — closes the current section on the spot and moves to the
   next. A skipped portal still hands the body over, so the epilogue is reached
-  as the right hero. Reviewing a ten-section module by playing all ten of them
+  as the right hero. Reviewing an eleven-section module by playing all eleven of them
   every time is how the last section ends up unreviewed.
   - The forward arrow is *also* the ability key, so while the hero is holding a
     live power — B-33P in sections 9 and 10 — the arrow stays the cannon and

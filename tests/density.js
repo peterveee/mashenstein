@@ -51,9 +51,10 @@ function webglStub() {
   return { gl, calls };
 }
 
-// --- iPad (masquerading as macOS) is adaptive, seeded at the tablet 4x rung ---
-// An iPad Pro's native is ~5x, so the 3x phone seed would show the game at a
-// 1.7x upscale; 4x keeps it to 1.24x and native is still one climb away.
+// --- iPad (masquerading as macOS) renders at native, with the ladder armed ----
+// Any rung below native is a fractional upscale, and a fractional upscale is
+// what reads as blocky. An M1 iPad runs M1 silicon; it gets the same 1:1 picture
+// a laptop does, and the ladder is there if it turns out it cannot hold it.
 {
   installDom({ innerWidth: 1194, innerHeight: 834, devicePixelRatio: 2 });
   const r = await import('../src/engine/renderer.js?d-ipad');
@@ -61,10 +62,10 @@ function webglStub() {
   assert(platform.isIpad && !platform.isIphone, 'modern iPad UA + touch points detects as iPad');
   r.initRenderer(platform);
   const d = r.rendererDiagnostics();
-  assert(d.adaptive && d.rung === 1 && d.density === 4,
-    'iPad is adaptive and seeds at the 4x rung below its ~5x native');
-  assert(d.ladder[0] > 4 && d.ladder[1] === 4,
-    'the iPad ladder has a 4x rung between native and 3x, not a bare 3x cliff');
+  assert(d.adaptive && d.rung === 0 && d.density === d.native,
+    'iPad seeds at native density — no resample, nothing to look blocky');
+  assert(d.ladder[1] === 4 && d.ladder[2] === 3,
+    'the iPad ladder keeps 4x and 3x below native as graduated fallbacks');
 }
 
 // --- A phone keeps the lower 3x seed, with the 4x rung left above it ---------
@@ -73,7 +74,7 @@ function webglStub() {
   const r = await import('../src/engine/renderer.js?d-phone-seed');
   r.initRenderer({ isIphone: true });
   const d = r.rendererDiagnostics();
-  assert(d.rung === 2 && d.density === 3, 'a phone seeds at 3x, not the tablet 4x');
+  assert(d.rung === 2 && d.density === 3, 'a phone seeds at 3x, not at native like a tablet');
   assert(d.ladder[1] === 4, 'the 4x rung sits above the phone seed as a climb target');
 }
 
