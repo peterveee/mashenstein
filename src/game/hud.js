@@ -17,7 +17,7 @@ import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { specialMoveColor } from './draw.js';
-import { Input } from '../engine/input.js';
+import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
 import { formatCoins } from './progress.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
@@ -797,6 +797,92 @@ export function drawActBanner(ctx, text, { t = 0, alpha = 1, still = false, skip
   if (skip) {
     rawDrawTextCentered(ctx, `${Input.confirmVerb()} TO SKIP`, W / 2, SKIP_Y, '#8a8a98');
   }
+  ctx.restore();
+}
+
+// The two-button surface, drawn on itself. The left TOUCH_JUMP_FRAC of the
+// canvas is JUMP and the rest is the power, and nothing else on a touch screen
+// says so — the discs in the corners look like the only controls there are, so
+// a thumb that stayed on the left plays whole stages without knowing the
+// right-hand strip exists.
+//
+// Both zones are washed rather than just the jump side: shading one half reads
+// as "this half is disabled", which is the opposite of the point. The jump side
+// carries the heavier wash because it is the bigger claim on the screen and
+// that is the fact being taught.
+//
+// It lives here rather than in the tutorial that first drew it because the
+// campaign's opening stage now shows the same card to players who skipped
+// training (run.js). One painter, so the two can never drift into teaching the
+// same screen two different layouts.
+export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {}) {
+  const split = Math.round(W * TOUCH_JUMP_FRAC);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // Optional, and off for the caller that draws this over a moving world: a
+  // tutorial that dims its own lane is hiding the thing the card is pointing
+  // at. Where the card is modal (run.js holds the world for it), the dim earns
+  // its place twice — the two zone washes are barely a fifth of an alpha, and
+  // over a bright pack they carry pale ink on a pale sky at close to 2:1; and a
+  // screen that has stopped ought to look stopped.
+  if (scrim > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${scrim})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.fillStyle = 'rgba(72,224,200,0.22)';
+  ctx.fillRect(0, 0, split, H);
+  ctx.fillStyle = 'rgba(246,211,60,0.22)';
+  ctx.fillRect(split, 0, W - split, H);
+  // The seam, dashed, so it reads as a boundary you could put a thumb either
+  // side of rather than as a wall.
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  for (let y = 4; y < H; y += 12) ctx.fillRect(split - 0.5, y, 1, 6);
+  // Three rows a side, each centred on its own zone, then two full-width lines
+  // under them — the gesture that works in either zone, and the way out.
+  //
+  // Every line is far bigger than a HUD line, because this is not a HUD: it is
+  // the one screen in the game whose entire job is to be read once, by someone
+  // who does not yet know how to play, at arm's length, on a phone. It used to
+  // run five rows a side at 0.75–0.9 scale — the size the HUD uses for numbers
+  // you glance at. Fewer facts, and the type doubled to suit.
+  //
+  // Nothing in the right column may extend below y 184: the USE disc occupies
+  // x 424–468 from there down, and the tutorial draws this card over live
+  // controls with no scrim to quiet them.
+  const pct = Math.round(TOUCH_JUMP_FRAC * 100);
+  const lx = split / 2, rx = split + (W - split) / 2;
+  const TEAL = '#d7fff6', GOLD = '#ffe9a0';
+  // The header clears a THREE-line speech panel, not a two-line one: this card
+  // only ever appears on touch, where the wrap is narrowest and the tutorial's
+  // brief for this section runs to three rows. That panel bottoms out at 74.
+  // Every line on this card is centred on a ZONE, never on the canvas. The
+  // canvas midline falls at 240 and the seam at 336, so a screen-centred
+  // headline lands three-quarters of the way across the teal half and reads as
+  // crooked — it is centred on a middle the card does not have. The two
+  // full-width lines take the jump column's axis instead, which is the one the
+  // eye is already using.
+  rawDrawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', lx, 76, 'rgba(255,255,255,0.92)', 1.35, 'bold');
+  // POWER runs smaller than JUMP for the room it has, not for its importance:
+  // the right zone is 30% of the canvas and a word a letter longer at the left
+  // column's scale would touch both its edges.
+  rawDrawTextCentered(ctx, 'JUMP', lx, 100, TEAL, 3.6, 'title');
+  rawDrawTextCentered(ctx, 'POWER', rx, 106, GOLD, 2.7, 'title');
+  rawDrawTextCentered(ctx, 'TAP & HOLD ANYWHERE', lx, 150, TEAL, 1.4, 'bold');
+  rawDrawTextCentered(ctx, 'TAP ANYWHERE', rx, 150, GOLD, 1.4, 'bold');
+  // The footnote of the card, not its point — and the last row that fits above
+  // the USE disc.
+  rawDrawTextCentered(ctx, `LEFT ${pct}%`, lx, 172, 'rgba(215,255,246,0.72)', 1.2, 'bold');
+  rawDrawTextCentered(ctx, `RIGHT ${100 - pct}%`, rx, 172, 'rgba(255,233,160,0.72)', 1.2, 'bold');
+  // One line rather than one per column, because that is the fact — the duck
+  // swipe is read from whichever zone the thumb is already in, which is what
+  // ANYWHERE is doing in the sentence. On the jump column's axis with the rest
+  // of the full-width copy, and low enough to sit in the clear lane between the
+  // two discs.
+  rawDrawTextCentered(ctx, 'SWIPE DOWN ANYWHERE TO DUCK', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
+  // Below the discs' midline, where nothing else on this card sits — a call to
+  // action wants its own air, and at this size it no longer fits on the ACT
+  // card's skip line.
+  if (hint) rawDrawTextCentered(ctx, hint, lx, 220, '#fff', 1.5, 'bold');
   ctx.restore();
 }
 

@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, setSelectiveGlow, pushOverlayDraw, pushGlowDraw } from '../engine/renderer.js';
+import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -13,6 +13,7 @@ import {
 } from '../sprites/toons.js';
 import { drawProp, hasProp, glowSprite, propFrames, propFps, propSprite } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
+import { readPlatform } from '../engine/platform.js';
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
@@ -137,8 +138,17 @@ const HERO_PARADE_H = 60;
 // accents still move at the full title tick; only the expensive procedural
 // toon raster is held for a few presentation frames. At 3x this halves the
 // number of full rig paints while remaining much smoother than a static atlas.
+function titleIsDesktop() {
+  if (typeof window === 'undefined') return true;
+  const platform = window.__mash_platform || readPlatform();
+  return !!platform.isDesktop;
+}
+
 function titlePoseFps() {
   const ss = bakeSS();
+  // Desktop previously rendered the parade at the full title tick. Keep that
+  // crisp 60 Hz path; the lower cadence is the mobile thermal optimization.
+  if (titleIsDesktop()) return 60;
   if (ss >= 3) return 15;
   if (ss >= 2.5) return 20;
   return 30;
@@ -222,6 +232,13 @@ function titleParadeStateKey(state) {
 }
 
 function drawCachedTitleParade(ctx, cast, t, stateKey) {
+  // The lower strip cache is for mobile fill-rate, not desktop animation. A
+  // desktop title keeps the entire parade live so its movement remains a true
+  // 60 Hz surface on machines that can sustain it.
+  if (titleIsDesktop()) {
+    cast(ctx, 'stable');
+    return;
+  }
   const ss = bakeSS();
   const key = `${Math.floor(t * 30)}|${ss}|${stateKey}`;
   if (titleParadeCache.key !== key) {
@@ -1470,9 +1487,8 @@ export class TitleState {
     // not a second full-size overlay texture, while retaining the title's
     // existing draw order and crispness.
     setOverlayMerge(true);
-    setSelectiveGlow(true);
   }
-  exit() { setOverlayMerge(false); setSelectiveGlow(false); setSceneGlow(false); setSkyFx(false); }
+  exit() { setOverlayMerge(false); setSceneGlow(false); setSkyFx(false); }
   handleTitleFpsTap(x, y) {
     if (!titleMarqueeAt(x, y)) {
       this.lastTitleTapAt = null;
@@ -1844,17 +1860,6 @@ export class TitleState {
   draw(ctx) {
     const profile = titleProfileOptions();
     const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile);
-    // Only the marquee is intentionally luminous on the title. Paint a white
-    // quarter-resolution mask for it; the visible logo remains in the normal
-    // 3x backbuffer, while menu copy and toon highlights stay crisp instead of
-    // entering the bloom bright-pass accidentally.
-    pushGlowDraw((g) => {
-      const alpha = flickerAlpha(this.t, this.save.settings.reducedFlashing);
-      g.globalAlpha = alpha;
-      drawTextCentered(g, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#fff', TITLE_SCALE, 'marquee');
-      drawTextCentered(g, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#fff', TITLE_SCALE, 'marquee');
-      g.globalAlpha = 1;
-    });
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.

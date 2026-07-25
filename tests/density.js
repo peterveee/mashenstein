@@ -231,6 +231,23 @@ function webglStub() {
   feed(r, clk, 400, 18);
   assert(settles.length === 1, 'a rung already persisted is not written again');
 }
+// A normal 60 Hz stream with occasional iOS rAF jitter should still recover
+// from 2.5x to the measured 3x ceiling. The old controller reset all recovery
+// credit on each middle-band interval and never completed this climb.
+{
+  installDom({ ...PHONE, locationSearch: '?renderer=2d' });
+  const r = await import('../src/engine/renderer.js?d-jitter-recovery');
+  r.initRenderer({ isIphone: true }, { savedDensity: 2.5 });
+  const clk = { t: 1 };
+  r.noteRendererFrame(clk.t);
+  const pattern = [16.7, 16.7, 17.9, 16.7, 16.7, 18.2];
+  for (let i = 0; i < 2200 && r.rendererDiagnostics().density < 3; i++) {
+    clk.t += pattern[i % pattern.length];
+    r.noteRendererFrame(clk.t);
+  }
+  assert(r.rendererDiagnostics().density === 3,
+    '2D recovery tolerates ordinary 60 Hz rAF jitter and regains 3x');
+}
 {
   installDom(PHONE);
   const r = await import('../src/engine/renderer.js?d-persist-clamp');

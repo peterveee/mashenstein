@@ -41,6 +41,8 @@ dom.store['mashenstein.v2'] = JSON.stringify(partial);
   assert(s.data.settings.renderDensityByBackend.webgl === 0
     && s.data.settings.renderDensityByBackend['2d'] === 0,
   'backend-specific render densities default to auto for existing saves');
+  assert(s.data.settings.renderDensityVersion === 2,
+    'render-density history is stamped with the current migration version');
 }
 
 // Case 4: the old scalar density is deliberately discarded because it does not
@@ -56,6 +58,20 @@ dom.store['mashenstein.v2'] = JSON.stringify({
   assert(s.data.settings.renderDensityByBackend.webgl === 0
     && s.data.settings.renderDensityByBackend['2d'] === 0,
   'a low legacy WebGL result cannot soften the 2D renderer');
+}
+
+// Case 5: old 2D history is invalidated after the direct-rendering change,
+// while a separately learned WebGL value remains useful.
+dom.store['mashenstein.v2'] = JSON.stringify({
+  version: 2,
+  settings: { renderDensityByBackend: { webgl: 2, '2d': 2.5 } },
+  slots: [null, null, null],
+});
+{
+  const s = new Save().load();
+  assert(s.data.settings.renderDensityByBackend.webgl === 2
+    && s.data.settings.renderDensityByBackend['2d'] === 0,
+  'the renderer migration clears stale 2D history but preserves WebGL history');
 }
 
 console.log(failed ? 'MIGRATION: FAILED' : 'MIGRATION: PASSED');

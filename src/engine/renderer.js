@@ -675,9 +675,20 @@ export function noteRendererFrame(now) {
   densityCooldown = Math.max(0, densityCooldown - elapsed);
   updateSettle(elapsed);
   emergencyFor = elapsed > EMERGENCY_FRAME_MS ? emergencyFor + elapsed : 0;
-  if (elapsed > SLOW_FRAME_MS) { slowFor += elapsed; fastFor = 0; }
-  else if (elapsed <= FAST_FRAME_MS) { fastFor += elapsed; slowFor = 0; }
-  else { slowFor = 0; fastFor = 0; }
+  if (elapsed > SLOW_FRAME_MS) {
+    slowFor += elapsed;
+    fastFor = 0;
+  } else if (elapsed <= FAST_FRAME_MS) {
+    fastFor += elapsed;
+    slowFor = 0;
+  } else {
+    // iOS/ProMotion can produce an isolated 17.5–19 ms rAF interval while the
+    // display is otherwise presenting at 60 Hz. Treat the middle band as a
+    // small recovery debt instead of erasing the entire streak; a sustained
+    // 18 ms stream still earns no recovery credit.
+    slowFor = 0;
+    fastFor = Math.max(0, fastFor - elapsed * 0.5);
+  }
   // A pending probe gates every adjustment: hold until its verdict so a stall
   // steps one bounded probe at a time instead of plunging to the floor chasing
   // frames a density drop may not deliver.

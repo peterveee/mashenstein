@@ -24,6 +24,30 @@ const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'paus
 // own 70% for one build, which is the version of this that goes wrong quietly.
 export const TOUCH_JUMP_FRAC = 0.7;
 
+// Telling a tap apart from the start of a swipe. Both are one finger landing on
+// the glass, so the playable canvas holds the tap's action for a moment instead
+// of firing it on contact — see resolveTouches.
+//
+// The old behaviour was to fire on contact and convert afterwards, which meant
+// every swipe down ALSO jumped (or, from the power side, spent the special) on
+// its way to the duck. You cannot un-hop a hop.
+//
+// The wait is short and usually invisible: a still finger commits after
+// TAP_HOLD_MS, and a finger lifted sooner than that commits on the lift, which
+// is what nearly every real tap does. Only a finger that lands and then slides
+// is made to wait, and it waits only while it is still travelling — TAP_STILL_MS
+// after it settles, whatever it is over becomes a tap. TAP_MAX_MS is the
+// backstop for a finger that never stops crawling, and sits inside the 300ms
+// window the swipe tests themselves use.
+const TAP_HOLD_MS = 50;
+const TAP_SLIP = 5;        // logical px of drift that still reads as a tap
+const TAP_STILL_MS = 60;
+const TAP_MAX_MS = 260;
+// The longest a lifted tap's hold is replayed for. A finger that sat there for
+// a second and then lifted has already had its jump committed by the timer
+// above, so this only ever caps the odd slow tap that resolved late.
+const TAP_MAX_HOLD_MS = 250;
+
 class InputSys {
   constructor() {
     this.keys = JSON.parse(JSON.stringify(DEFAULT_KEYS));
@@ -36,6 +60,7 @@ class InputSys {
     this.chromeButtons = [];    // buttons OUTSIDE the game rect: {id, x, y, r, action} in viewport CSS px
     this.textHandler = null;    // for TURDLE typing
     this.touches = new Map();   // pointerId -> {x0, y0, t0, action}
+    this.holds = [];            // [{action, at}] releases owed to lifted taps
     this.padPrev = new Set();
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
@@ -110,13 +135,28 @@ class InputSys {
         const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
         if (liveRun && primaryCanvas) action = p.x < W * TOUCH_JUMP_FRAC ? 'jump' : 'ability';
         else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
+        // A tap started anywhere on the playable canvas can become the
+        // established down/right swipe — both zones, not just the jump side.
+        // The right zone used to be excluded on the grounds that its special is
+        // "already decisive", but that made DUCK a thing you could only do with
+        // the left 70% of the glass: a thumb resting over the power side, which
+        // is exactly where a one-handed player's thumb lives, could not duck at
+        // all. Ducking is a defensive move and has to be available under
+        // whichever thumb is already down.
+        const gesture = liveRun && this.usingTouch && !!action;
         this.touches.set(e.pointerId, {
           x0: p.x, y0: p.y, t0: performance.now(), action,
-          // A jump started in the left zone can still become the established
-          // down/right swipe. The right-zone special is already decisive.
-          allowSwipe: liveRun && this.usingTouch && action === 'jump',
+          x: p.x, y: p.y,
+          // Held rather than fired (see resolveTouches). A finger landing is
+          // the same event for a tap and for the start of a swipe, so on the
+          // playable canvas the action waits until the gesture has said which
+          // it is. Everywhere else — mouse, menus — nothing is ambiguous and
+          // the press goes out on contact as it always has.
+          pending: gesture,
+          allowSwipe: gesture,
+          downT: 0,   // last moment this finger was measurably travelling down
         });
-        if (action) this.press(action);
+        if (action && !gesture) this.press(action);
       }
       e.preventDefault();
     });
@@ -125,16 +165,23 @@ class InputSys {
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer.x = p.x; this.pointer.y = p.y;
       const t = this.touches.get(e.pointerId);
+      if (t && !t.isButton) { t.x = p.x; t.y = p.y; }
       if (t && !t.isButton && t.allowSwipe) {
         const dx = p.x - t.x0, dy = p.y - t.y0;
-        // Both gestures start as a tap, which in a run has already fired a
-        // jump — releasing it here ends the hold rather than undoing the hop,
-        // the same trade swipe-down has always made. The alternative is
-        // deferring jump to pointerup, which costs hold-for-height on every
-        // jump to save a hop on the occasional swipe.
+        // A finger measurably on its way down is a finger that has not finished
+        // saying what it wants, so resolveTouches keeps holding its tap action
+        // while this keeps being stamped.
+        if (t.pending && dy > TAP_SLIP) t.downT = performance.now();
+        // A swipe that resolves takes the touch outright. On a pending touch
+        // the tap action was never fired, so there is nothing to release and
+        // nothing to undo — which is the entire point of holding it: a swipe
+        // down used to hop first and duck second, and a swipe out of the power
+        // zone used to spend the special on the way past.
         const swipe = (action) => {
-          this.release(t.action);
+          if (action === t.action && !t.pending) return; // already firing it
+          if (!t.pending) this.release(t.action);
           t.action = action;
+          t.pending = false;
           t.allowSwipe = false;
           this.press(action);
         };
@@ -156,8 +203,27 @@ class InputSys {
     });
     const endPointer = (e) => {
       if (this.suspended) return;
+      const now = performance.now();
       const t = this.touches.get(e.pointerId);
       if (t) {
+        // A finger that lifts before its gesture resolved was a tap after all.
+        // It fires here — and its release is pushed out by exactly as long as
+        // the finger was actually down, so the hold the player performed is
+        // preserved, merely shifted later.
+        //
+        // Without that, press and release land in the same frame and the jump
+        // is cut on the frame it starts: hold-for-height reads "not held" on
+        // its first update and a tap produces a 1.5px hop. The finger's own
+        // down-time is the right length because it is the length the player
+        // chose; a flick stays a flick and a firm tap still buys air.
+        if (t.pending && t.action) {
+          t.pending = false;
+          this.press(t.action);
+          this.holdUntil(t.action, Math.min(now - t.t0, TAP_MAX_HOLD_MS));
+          this.touches.delete(e.pointerId);
+          if (this.touches.size === 0) { this.pointer.down = false; this.release('pointer'); }
+          return;
+        }
         if (t.action) this.release(t.action);
         else if (this.usingTouch) this.release('jump');
         this.touches.delete(e.pointerId);
@@ -314,6 +380,9 @@ class InputSys {
 
   press(a) {
     if (this.suspended) return;
+    // A fresh press of an action owns it outright: any release still owed to a
+    // tap that has already lifted is dropped, not applied over the top.
+    if (this.holds.length) this.holds = this.holds.filter((h) => h.action !== a);
     if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); }
   }
 
@@ -324,6 +393,7 @@ class InputSys {
     this.hit.clear();
     if (this.up) this.up.clear();
     this.touches.clear();
+    this.holds = [];
     this.padPrev = new Set();
     this.pointer.down = false;
   }
@@ -381,6 +451,47 @@ class InputSys {
   pressed(a) { return this.hit.has(a); }
   held(a) { return this.down.has(a); }
   released(a) { return this.up.has(a); }
+  // Commit any held tap whose gesture has now declared itself. A finger still
+  // sliding downward is left pending — it may yet cross the swipe threshold and
+  // become a duck, and firing its tap action in the meantime is the double
+  // input this whole mechanism exists to remove.
+  //
+  // Called at the TOP of the frame (states.updateState, beside the gamepad
+  // poll), for the same reason the gamepad is polled there: a press has to be
+  // made before the frame's states read it. Doing this from endFrame instead
+  // looks equivalent and is not — states.js calls endFrame a second time as a
+  // backstop after every state update, so a press made in the first call was
+  // cleared by the second and no update ever saw it. A held finger simply
+  // never jumped.
+  // Keep an action held for `ms` after the finger that fired it has already
+  // lifted (see endPointer). A later press of the same action supersedes the
+  // schedule rather than stacking with it — otherwise a stale release would
+  // land in the middle of the next jump and cut that one short instead.
+  holdUntil(action, ms) {
+    this.holds = this.holds.filter((h) => h.action !== action);
+    if (ms > 0) this.holds.push({ action, at: performance.now() + ms });
+    else this.release(action);
+  }
+
+  resolveTouches() {
+    if (this.holds.length) {
+      const t = performance.now();
+      const due = this.holds.filter((h) => h.at <= t);
+      this.holds = this.holds.filter((h) => h.at > t);
+      for (const h of due) this.release(h.action);
+    }
+    if (this.touches.size === 0) return;
+    const now = performance.now();
+    for (const t of this.touches.values()) {
+      if (!t.pending) continue;
+      const age = now - t.t0;
+      if (age < TAP_HOLD_MS) continue;
+      if (t.downT && now - t.downT < TAP_STILL_MS && age < TAP_MAX_MS) continue;
+      t.pending = false;
+      if (t.action) this.press(t.action);
+    }
+  }
+
   endFrame() { this.hit.clear(); this.up.clear(); }
 }
 

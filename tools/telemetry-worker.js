@@ -103,7 +103,7 @@ function dashboardHtml(stats) {
     .join('');
   stats.deviceRows = deviceRows;
 
-  const recentRows = (recent || []).slice().reverse()
+  const recentRows = (recent || [])
     .map((r) => '<tr>' +
       '<td class="label rec-time">' + (r.sent || '').replace('T', ' ').slice(0, 16) + '</td>' +
       '<td class="rec-plat">' + r.platform + '</td>' +
@@ -276,32 +276,36 @@ async function aggregateStats(env) {
         dailyDevices[day].add(dk);
       }
 
-      // Keep the 50 most recent for the raw table.
-      if (recent.length < 50) {
-        recent.push({
-          sent: p.sent || '',
-          platform: plat,
-          screenW: p.screenW || 0,
-          screenH: p.screenH || 0,
-          dpr: p.dpr || 1,
-          density: p.density != null ? p.density : null,
-          backend: p.backend || null,
-          name: p.name || null,
-          did: p.did || null,
-          installed: !!p.installed,
-          ua: p.ua || '',
-          uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),
-          country: p.country || '',
-          city: p.city || '',
-          isp: p.isp || '',
-          browser: plat === 'desktop' ? detectBrowser(p.ua || '') : '',
-          sessionSec: p.sessionSec || null,
-        });
-      }
+      // Collect all entries, then keep the 50 most recent by sent timestamp.
+      // KV list returns keys in ascending lexicographic order (oldest first),
+      // so taking the first 50 would show the oldest sessions — not useful.
+      recent.push({
+        sent: p.sent || '',
+        platform: plat,
+        screenW: p.screenW || 0,
+        screenH: p.screenH || 0,
+        dpr: p.dpr || 1,
+        density: p.density != null ? p.density : null,
+        backend: p.backend || null,
+        name: p.name || null,
+        did: p.did || null,
+        installed: !!p.installed,
+        ua: p.ua || '',
+        uaShort: (p.ua || '').replace(/^Mozilla\/[\d.]+ /, '').slice(0, 60),
+        country: p.country || '',
+        city: p.city || '',
+        isp: p.isp || '',
+        browser: plat === 'desktop' ? detectBrowser(p.ua || '') : '',
+        sessionSec: p.sessionSec || null,
+      });
     }
     cursor = list.cursor;
     if (!cursor || list.keys.length < 500) break;
   }
+
+  // Sort by sent timestamp descending and keep the 50 most recent.
+  recent.sort((a, b) => (b.sent || '').localeCompare(a.sent || ''));
+  recent.splice(100);
 
   // Fold in daily counters for days that may have fallen out of the ping list.
   const counterList = await env.MASHTELEMETRY.list({ prefix: 'counter:', limit: 90 });
@@ -333,7 +337,7 @@ export default {
         const stats = await aggregateStats(env);
         return new Response(dashboardHtml(stats), {
           status: 200,
-          headers: { 'Content-Type': 'text/html;charset=utf-8', ...CORS },
+          headers: { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-cache', ...CORS },
         });
       } catch (e) {
         return new Response('Dashboard error: ' + e.message, { status: 500 });

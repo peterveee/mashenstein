@@ -25,7 +25,7 @@ import {
 import {
   GROUND_Y, ZOOM, VIEW_W, applyWorld, framingFor, easeZoom, easePan,
 } from '../engine/camera.js';
-import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
+import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import {
@@ -42,6 +42,7 @@ import { makeObstacle, makePickup, entityBox, overlaps, DEBRIS, DEBRIS_DEFAULT }
 import { HERO_BY_ID } from '../data/heroes.js';
 import {
   drawSpeech, drawFloatie, drawStatusPill, roundButtonOpts, playButtons,
+  drawTouchZoneCard,
 } from './hud.js';
 
 // ------------------------------------------------------------------ constants
@@ -60,11 +61,9 @@ import {
 // the reaction gap in the ladder — is re-bought explicitly below.
 const TRAINING_SPEED = 112;
 // Reading time is bought here rather than by slowing the world down further. A
-// challenge spawns most of a screen beyond the right edge, so it arrives ~3s
-// after Gary starts talking: the words land, they are read, and only then does
-// anything ask for a reaction. Slowing the lane instead would have made the
-// same gap out of a hero who looks like they are wading.
-const SPAWN_AHEAD = VIEW_W + 150;
+// challenge spawns just beyond the right edge, arriving ~2.5s after Gary starts
+// talking — the words land, they are read, and the challenge follows promptly.
+const SPAWN_AHEAD = VIEW_W + 60;
 // A RETRY does not buy that reading time again. The first time a challenge
 // arrives the player is reading a sentence they have never seen; the second
 // time they already know what is coming and what they did wrong, and the four
@@ -84,13 +83,29 @@ const RETRY_AHEAD = VIEW_W + 20;
 // line that logged it to be read under it — but this is dead lane, eleven times
 // over, and at 2.6 it was the single largest block of nothing in the module.
 // 1.7 still lands the floatie; what it stops paying for is the pause after it.
-const SETTLE_T = 1.7;
+const SETTLE_T = 1.0;
 // The opening beat, over an empty lane, before section one spawns anything.
 // Enough to read two rows and look up, not enough to wonder if it has started.
 const INTRO_T = 3.4;
+// Intro staging: Gary walks in from the left at tight zoom, stands centre-screen
+// while the camera pulls back, then bolts right. Lorenzo enters as Gary exits.
+// The lane is frozen for the whole intro — the module hasn't started yet.
+//
+// Phases: 0=Gary walking in, 1=standing (zoom eases, card up), 2=bolting right
+// (Lorenzo enters at ¾, speech switches when Gary is gone), 3=Lorenzo settling,
+// 4=done.
+const GARY_ENTRY_START_X = -40;    // Off-screen left at tight zoom
+const GARY_ENTRY_SPEED = 130;      // Walk-in speed (world px/s)
+const GARY_INTRO_STAND_T = 2.5;    // Reading time after zoom settles
+const GARY_INTRO_EXIT_SPEED = 310; // Exit speed (world px/s — quick, he's bolting)
+const GARY_INTRO_H = 24;           // Same as epilogue — zoom makes him big
+const LORENZO_ENTRY_SPEED = 160;   // Lorenzo's run-in speed (world px/s)
+const LORENZO_ENTRY_H = 24;        // Matches HERO_DRAW_H — seamless toon→sprite switch
+const LORENZO_ENTRY_START = -50;   // Off-screen left (world px)
+const INTRO_ZOOM_START = 5.5;      // Tight on Gary — he fills the frame
 // Sections Gary will re-open before he gives up and marks it satisfactory.
 // Nobody gets stuck in training.
-const CONCEDE_AFTER = 4;
+const CONCEDE_AFTER = 3;
 
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 
@@ -105,7 +120,7 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // every pixel it comes down is a pixel of lane it is standing in — and the lane
 // is where the game is. The hero passes in front of it regardless now, but the
 // right fix for "the card is in the way" is the card not being there.
-const SPEECH_Y = 10;
+const SPEECH_Y = 4;
 // 324, measured against what is actually beside it rather than guessed. The
 // card is centred on W/2 and its plate is the wrap plus 40 for the portrait,
 // the gap and two paddings — so 324 makes a 364-wide plate spanning x 58–422.
@@ -157,7 +172,7 @@ const SPEECH_PLATE = 'rgba(236,233,246,0.88)';
 // desktop 1.0 — this is a phone held at arm's length and the screen's whole
 // job is being read.
 const SPEECH_SCALE_TOUCH = 1.15;
-const SPEECH_Y_TOUCH = 18;
+const SPEECH_Y_TOUCH = 10;
 const SPEECH_MAX_W_TOUCH = 312;
 
 // The bottom status row — room name, section counter, key legend — is laid out
@@ -177,7 +192,7 @@ const ZONE_T = 7;
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
 const PAUSE_PLATES = [
   { id: 'resume', x: W / 2 - PAUSE_MENU_W / 2, y: 196, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
-  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'EXIT TO FOOD COURT' },
+  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'EXIT' },
 ];
 
 // The training lane's palette, shaped like a cabinet because that is what the
@@ -358,27 +373,16 @@ const STEPS = [
     legend: [['SPC', 'JUMP']],
     brief: () => 'THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.',
     again: () => 'THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.',
-    // 165px apart, which is the same REACTION GAP the old 140 bought at the old
-    // lane speed — a pitch in world px is a duration only once you divide it by
-    // how fast the lane is moving, and the lane got 24% faster. Lorenzo's
-    // airtime is 0.82s and 165px at 112 is 1.47s, so he still lands with about
-    // two thirds of a second to look at the next rung and decide.
-    //
-    // The spawner's own fairness rule (fairGap) would allow ~128 at
-    // this speed for Lorenzo — land, then a quarter second to react — so this
-    // still sits comfortably above the floor while reading as one ladder rather
-    // than as three separate crates that happen to be in the same section. At
-    // 200 the three rungs arrived far enough apart that the comparison the
-    // section is built on — this one is taller than the last one — had to be
-    // remembered instead of seen: the previous stack was off the back of the
-    // screen before the next appeared at the front. At 140 two are in frame
-    // together and the ladder is a shape rather than a sequence.
+    // 91px apart — tight enough that the ladder reads as one shape but with
+    // enough room to land and re-jump. At 112 px/s the rungs are 0.81s apart
+    // against Lorenzo's 0.82s airtime, so a clean landing is possible between
+    // each stack.
     setup(t) {
       const x = t.spawnX();
       t.obstacles = [
         makeObstacle('crate', x),
-        makeObstacle('crate', x + 165, { n: 2 }),
-        makeObstacle('crate', x + 330, { n: 3 }),
+        makeObstacle('crate', x + 91, { n: 2 }),
+        makeObstacle('crate', x + 182, { n: 3 }),
       ];
     },
   },
@@ -485,7 +489,7 @@ const STEPS = [
     brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED IT ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
-      t.portal = { x: t.spawnX(), hero: 'mochi', label: 'MOCHI', hit: false };
+      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'mochi', label: 'MOCHI', hit: false };
     },
   },
   {
@@ -494,8 +498,14 @@ const STEPS = [
     // this tall is one Lorenzo would have strolled over, so the section can
     // only be completed by the thing it is teaching. Granting a borrowed air
     // jump to a hero who did not need one taught nothing.
+    //
+    // The portal to B-33P used to be its own section. Merged here so clearing
+    // the stack and swapping bodies are one beat: you earn the new body by
+    // using the move that belongs to it, and the portal arrives as the reward
+    // rather than as a separate task.
     id: 'doublejump',
     hero: 'mochi',
+    tagTo: 'b33p',
     label: 'DOUBLE JUMP',
     legend: [['SPC', 'JUMP x2']],
     brief: (touch) => (touch
@@ -512,17 +522,11 @@ const STEPS = [
     // ("YOU GOT OVER IT ON ONE"), which is the honest outcome rather than a
     // silent pass for the move it is not teaching.
     setup(t) { t.obstacles = [makeObstacle('crate', t.spawnX(), { n: 5 })]; },
-  },
-  {
-    id: 'portal2',
-    hero: 'mochi',
-    tagTo: 'b33p',
-    label: 'PORTAL TAG',
-    legend: [['SPC', 'JUMP x2']],
-    brief: () => 'ANOTHER PORTAL, ANOTHER BODY. THIS IS NORMAL HERE. STRAIGHT THROUGH.',
-    again: () => 'THROUGH IT. I HAVE SAID THIS ONCE ALREADY TODAY.',
-    setup(t) {
-      t.portal = { x: t.spawnX(), hero: 'b33p', label: 'B-33P', hit: false };
+    // The portal spawns just ahead of the player — close enough to reach during
+    // the settle, far enough that the floatie is read before it arrives.
+    onPass(t) {
+      t.portal = { x: t.worldX + PLAYER_X + 90, hero: 'b33p', label: 'B-33P', hit: false };
+      t.say('ANOTHER PORTAL, ANOTHER BODY. THIS IS NORMAL HERE. STRAIGHT THROUGH.');
     },
   },
   {
@@ -536,10 +540,9 @@ const STEPS = [
     // The whole canvas has been a two-button surface since section one, and
     // nothing has said so: a thumb that never strayed right of 70% has been
     // playing a one-button game without knowing there was another. The power
-    // is the first control that lives in the right-hand strip, so the split is
-    // shown here — the section that needs it — rather than at the top of the
-    // module where it would be a diagram of something not yet in your hands.
-    zones: true,
+    // is the first control that lives in the right-hand strip. The split is
+    // shown in level 1-1, where it belongs — the tutorial no longer duplicates it.
+    // zones: true,
     again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS ALREADY SIGNED OUT TO YOU.',
     // Ducking the drone would clear it, but this section is about the cannon.
     requires: (t) => t.sawShotDown,
@@ -564,7 +567,7 @@ const STEPS = [
     brief: () => 'LAST PORTAL. IT PUTS YOU BACK IN THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.',
     again: () => 'THROUGH IT. YOU CANNOT SIGN THE FORM AS SOMEBODY ELSE. I HAVE TRIED.',
     setup(t) {
-      t.portal = { x: t.spawnX(), hero: 'lorenzo', label: 'LORENZO', hit: false };
+      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'lorenzo', label: 'LORENZO', hit: false };
     },
   },
 ];
@@ -662,11 +665,6 @@ const PAYOUT_2 = 'TAKE ALL OF THEM. EVERY ONE. THIS IS THE PART OF THE MODULE PE
 // name on the signature line and the man himself is standing under it — saying
 // "SIGNED, GARY" out loud put three signatures in one frame, which is two more
 // than the joke needs. A signature is a thing you put on a document so that you
-// do not have to say it.
-//
-// What is left is the half that was always doing the work: the one moment he
-// does something for you, immediately re-filed as unpaid labour.
-const SIGN_OFF = 'STILL ON THE CLOCK. STILL NOT PAID EXTRA.';
 // The certificate is a piece of paper, so it is drawn as one: a pale plate with
 // dark ink, ruled, with a signature line at the bottom. It deliberately does
 // NOT use drawActBanner — that card is the ACT-break announcement, a mistracked
@@ -677,7 +675,6 @@ const SIGN_OFF = 'STILL ON THE CLOCK. STILL NOT PAID EXTRA.';
 const CERT_HEAD = 'CERTIFICATE OF COMPLETION';
 const CERT_TITLE = 'MANDATORY TRAINING';
 const CERT_FOOT = 'NON-BINDING. EXPIRES ON CONTACT WITH A CABINET.';
-const CERT_SIGN = 'G. — STORES & PHYSICAL SWITCHES';
 
 // ------------------------------------------------------------------ state
 
@@ -697,10 +694,24 @@ export class TutorialState {
     this.pickups = [];
     this.pellets = [];
     this.portal = null;
+    // Failed/finished attempts keep drawing as inert scenery until the lane
+    // has carried them fully past the left edge. They live outside the active
+    // arrays so a retry setup can replace its challenge without erasing them.
+    this.retiredObstacles = [];
+    this.retiredPickups = [];
+    this.retiredPortals = [];
     this.floaties = [];
     this.speech = null;
     this.lastSaid = null;
     this.garyIntroduced = false;
+    // Intro staging: Gary appears in person at centre-screen.
+    // 0 = Gary standing, 1 = Gary bolting right, 2 = Lorenzo entering, 3 = done
+    this.introPhase = 0;
+    this.garyIntroX = 0;          // screen-space X during intro
+    this.lorenzoIntroX = 0;       // screen-space X during Lorenzo's entry
+    this.introTimer = 0;
+    this.section1Said = false;    // true once section 1 brief replaces intro card
+    this.lorenzoEntering = false; // true once Lorenzo starts his run-in
     this.coins = 0;
     // The clawback is a countdown of the counter itself, one coin per tick,
     // and it happens in the epilogue rather than the moment the coins section
@@ -720,7 +731,9 @@ export class TutorialState {
     // reaction to any of it — Gary is on the clock.
     this.waveT = 0;
     this.sulkT = 0;
+    this.sulkStyle = 3;          // 2=eyeroll, 3=scowl (default for coin reclaim)
     this.cheering = false;
+    this.speedRamp = 0;          // eases lane speed in from 0 at module start
     // The mandated celebration: how long the pair are required to be pleased
     // for, and the drip clock that keeps the streamers coming while they are.
     this.partyT = 0;
@@ -763,9 +776,23 @@ export class TutorialState {
     setSceneGlow(true);
     this.garyIntroduced = false;
     this.player = new Player('lorenzo');
+    this.retiredObstacles = [];
+    this.retiredPickups = [];
+    this.retiredPortals = [];
     this.setButtons();
-    this.say(OPENING);
-    this.settleT = INTRO_T;
+    // Intro staging: Gary walks in from the left at tight zoom, then stands
+    // centre-screen while the camera pulls back. The lane is frozen — the
+    // module hasn't started yet.
+    this.speed = 0;
+    this.camZoom = INTRO_ZOOM_START;
+    this.camPan = 0;
+    this.introPhase = 0;
+    // Gary starts off-screen left, walking to centre.
+    this.garyIntroX = GARY_ENTRY_START_X;
+    this.lorenzoIntroX = LORENZO_ENTRY_START;
+    this.introTimer = 0;
+    this.section1Said = false;
+    this.settleT = Infinity;        // held until intro finishes
   }
 
   exit() {
@@ -900,7 +927,10 @@ export class TutorialState {
     }
     this.stepIndex = i;
     const step = STEPS[i];
-    this.obstacles = [];
+    // Keep the previous section's unused props in the moving lane. The new
+    // setup methods replace their active arrays, so retirement has to move the
+    // props to dedicated draw-only arrays first.
+    this.retireAttempt({ pickups: false });
     this.retireCoins();
     this.pellets = [];
     this.portal = null;
@@ -929,8 +959,8 @@ export class TutorialState {
 
   // Dev builds only, wired to N and the forward arrow in src/dev/index.js.
   // Closes the section on the spot — the same path a pass takes, minus the
-  // reward — so the module can be walked to its tenth section without playing
-  // the first nine.
+  // reward — so the module can be walked to its last sections without playing
+  // the first eight.
   //
   // Returning nothing declines the key and lets it through to the game. That is
   // what the ArrowRight guard below is for: the forward arrow is also the
@@ -940,6 +970,12 @@ export class TutorialState {
   devSkipSection(code) {
     if (code === 'ArrowRight' && this.player && this.player.hero.ability.type === 'shoot') return null;
     if (this.finished) return 'TRAINING: ALREADY IN THE EPILOGUE';
+    // If we're still in the intro staging, snap out of it.
+    if (this.introPhase < 4) {
+      this.introPhase = 4;
+      this.speedRamp = 1;
+      this.speed = TRAINING_SPEED;
+    }
     const step = this.step();
     // A skipped portal still hands the body over. Skipping past one and
     // arriving in the epilogue as the wrong hero is not a shortcut, it is a
@@ -989,7 +1025,7 @@ export class TutorialState {
     this.misses++;
     if (this.misses >= CONCEDE_AFTER) {
       this.say(CONCEDED);
-      this.clearEntities();
+      this.retireAttempt();
       this.settleT = SETTLE_T;
       return;
     }
@@ -997,7 +1033,7 @@ export class TutorialState {
     const line = wrongWay && step.wrongWay ? step.wrongWay(touch) : step.again(touch);
     this.say(line);
     this.clearWitness();
-    this.clearEntities();
+    this.retireAttempt();
     // The next attempt comes back close — see RETRY_AHEAD. The flag is set only
     // around the setup call so nothing else in the section's life is affected
     // by it, and it is cleared before anything can read it stale.
@@ -1017,6 +1053,7 @@ export class TutorialState {
   // anybody's judgement — an uncollected coin left over from section three must
   // never be able to reopen section five.
   retireCoins() {
+    this.retiredPickups.push(...this.pickups.filter((p) => p.live && !p.def.coin));
     this.pickups = this.pickups.filter((p) => p.live && p.def.coin);
     for (const p of this.pickups) p.stray = true;
   }
@@ -1024,6 +1061,24 @@ export class TutorialState {
   clearEntities() {
     this.obstacles = [];
     this.pickups = [];
+    this.pellets = [];
+    this.portal = null;
+    this.retiredObstacles = [];
+    this.retiredPickups = [];
+    this.retiredPortals = [];
+  }
+
+  // Move a completed or failed attempt out of gameplay without taking it out
+  // of the picture. Retired props cannot collide, collect, tag or participate
+  // in section judgement; the scrolling camera simply carries them away.
+  retireAttempt({ pickups = true } = {}) {
+    this.retiredObstacles.push(...this.obstacles.filter((ob) => ob.live));
+    if (pickups) {
+      this.retiredPickups.push(...this.pickups.filter((pu) => pu.live));
+      this.pickups = [];
+    }
+    if (this.portal && !this.portal.hit) this.retiredPortals.push(this.portal);
+    this.obstacles = [];
     this.pellets = [];
     this.portal = null;
   }
@@ -1139,7 +1194,7 @@ export class TutorialState {
     // stop feeling like a corridor and short enough that the joke it is setting
     // up still arrives. The density below is what makes it feel generous — the
     // length was doing none of that work.
-    const RUN = 1000;
+    const RUN = 700;
     for (let x = x0; x < x0 + RUN; x += 76) {
       this.pickups.push(...coinArc(x + this.rng.range(0, 10), 7 + Math.floor(this.rng.range(0, 5)),
         this.player.heroId));
@@ -1210,6 +1265,7 @@ export class TutorialState {
     // the drain by a couple of seconds so the face is still on him when the
     // number hits zero.
     this.sulkT = 4.2;
+    this.sulkStyle = 3;          // scowl — payroll took the coins
     this.waveT = 0;
     // One coin per tick, the whole till in about a second and a half however
     // much is in it — a fixed per-coin delay would take a playground haul the
@@ -1306,9 +1362,14 @@ export class TutorialState {
   // it is the same joke, and Stores is the department on his signature line.
   sweepParty() {
     this.partyT = 0;
+    this.cheering = false;
     clearParticles();
     Audio.sfx('uiBad');
     this.floatText('STREAMERS RECLAIMED', '#e04848');
+    // Eyebrow-hoist eyeroll — the "are you kidding me" face. Different from
+    // the coin-reclaim scowl so the two beats read as distinct reactions.
+    this.sulkT = 3.5;
+    this.sulkStyle = 2;
   }
 
   // ---- talk ----------------------------------------------------------------
@@ -1434,6 +1495,22 @@ export class TutorialState {
       return;
     }
 
+    // Intro staging: Gary appears in person, then bolts. Until it finishes the
+    // lane is frozen and nothing spawns.
+    if (this.introPhase < 4) {
+      this.updateIntro(dt);
+      Input.endFrame();
+      return;
+    }
+
+    // Ease the lane up to full speed from a standing start — no instant snap.
+    if (this.speedRamp < 1) {
+      this.speedRamp = Math.min(1, this.speedRamp + dt / 0.35);
+      // Ease-out quad so the ramp-in feels like acceleration, not a linear slide.
+      const t = 1 - (1 - this.speedRamp) * (1 - this.speedRamp);
+      this.speed = TRAINING_SPEED * t;
+    }
+
     this.worldX += this.speed * dt;
 
     if (Input.pressed('jump')) {
@@ -1447,6 +1524,7 @@ export class TutorialState {
 
     this.updatePellets(dt);
     this.updateEntities(dt);
+    this.sweepRetiredEntities();
 
     if (this.settleT > 0) {
       this.settleT -= dt;
@@ -1462,6 +1540,95 @@ export class TutorialState {
     }
 
     Input.endFrame();
+  }
+
+  // ---- intro staging -------------------------------------------------------
+
+  // Gary appears in person at centre-screen, says his piece, then bolts right.
+  // Lorenzo enters from the left and settles into position. From then on Gary
+  // is only a portrait — a voice on the intercom. The lane is frozen for the
+  // whole sequence: the module hasn't started yet.
+  // Intro staging, four phases:
+  //   0 — Gary walks in from left to centre at tight zoom
+  //   1 — Gary stands idle; card up with prompt; waits for input
+  //   2 — On input: zoom eases; Gary bolts right. Once Gary is fully off
+  //       screen, Lorenzo enters and section 1 brief fires. When Lorenzo
+  //       reaches PLAYER_X the module starts immediately.
+  //   4 — done (lane scrolling, tutorial running)
+  updateIntro(dt) {
+    this.introTimer += dt;
+
+    switch (this.introPhase) {
+      case 0: {
+        // Gary walks in from the left toward centre-screen at tight zoom.
+        const centreX = W / (2 * this.camZoom);
+        this.garyIntroX += GARY_ENTRY_SPEED * dt;
+        if (this.garyIntroX >= centreX) {
+          this.garyIntroX = centreX;
+          this.introPhase = 1;
+          this.introTimer = 0;
+          // Card appears only once Gary is in position, with the prompt
+          // appended so it reads as part of the same pale plate.
+          const prompt = Input.isTouchDevice()
+            ? ' — TAP ANYWHERE TO START'
+            : ' — PRESS ANY KEY TO START';
+          this.say(OPENING + prompt);
+        }
+        break;
+      }
+      case 1: {
+        // Gary stands idle at centre. Card is up. Player must press a key or
+        // tap to continue — the prompt tells them so. Gary stays locked to
+        // screen centre; zoom does NOT change yet.
+        this.garyIntroX = W / (2 * this.camZoom);
+        // Check for any input to advance.
+        if (Input.pressed('confirm') || Input.pressed('jump')
+          || Input.pressed('pointer') || Input.pressed('ability')
+          || Input.pressed('duck')) {
+          this.introPhase = 2;
+          this.introTimer = 0;
+          // Snapshot where Gary is in world space at the moment of the press,
+          // so he runs from there rather than tracking centre.
+          // (garyIntroX is already at centre — it stays as the starting point.)
+        }
+        break;
+      }
+      case 2: {
+        // Gary bolts right. Zoom eases from 5.5x toward 2x across the whole
+        // exit — no sudden snap, just a steady settle via easeZoom.
+        this.garyIntroX += GARY_INTRO_EXIT_SPEED * dt;
+        if (this.camZoom > ZOOM + 0.02) {
+          this.camZoom = easeZoom(this.camZoom, ZOOM, dt);
+        }
+        const visibleW = W / this.camZoom;
+        // Lorenzo waits until Gary is fully off screen, then enters.
+        // The section 1 brief fires at the same moment.
+        if (!this.lorenzoEntering && this.garyIntroX > visibleW + 60) {
+          this.lorenzoEntering = true;
+          this.lorenzoIntroX = LORENZO_ENTRY_START;
+          if (!this.section1Said) {
+            this.section1Said = true;
+            const step = STEPS[0];
+            this.say(step.brief(Input.isTouchDevice()));
+          }
+        }
+        if (this.lorenzoEntering) {
+          this.lorenzoIntroX += LORENZO_ENTRY_SPEED * dt;
+        }
+        // Once Lorenzo reaches position, start the module immediately —
+        // no settle gap, the lane just begins scrolling.
+        if (this.lorenzoEntering && this.lorenzoIntroX >= PLAYER_X) {
+          this.lorenzoIntroX = PLAYER_X;
+          this.introPhase = 4;
+          this.camZoom = ZOOM;
+          this.speedRamp = 0;
+          this.startStep(0);
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   // The same dolly a run uses: the groundline stays welded to its screen y and
@@ -1494,7 +1661,10 @@ export class TutorialState {
 
     const press = Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer');
 
-    if (o.garyX > GARY_STOP_X) {
+    // Gary walks in from the right during the opening beat only. Once he has
+    // arrived and the beats have started, this guard stays out of his way —
+    // including when he walks off right at the end.
+    if (o.garyX > GARY_STOP_X && !o.garyExiting) {
       o.garyX = Math.max(GARY_STOP_X, o.garyX - GARY_WALK_SPEED * dt);
       o.walking = true;
       return;   // he does not talk and walk; he is not paid for two things
@@ -1541,7 +1711,6 @@ export class TutorialState {
           // an impatient player who skipped through the reclaim gets it settled
           // here rather than watching the till drain under the card.
           this.endClawback();
-          this.say(SIGN_OFF);
           // Certificate up, and the one person here who is pleased about it
           // celebrates. The sulk is cancelled rather than allowed to run out
           // under the card: the coins are gone and he has decided the piece of
@@ -1549,14 +1718,20 @@ export class TutorialState {
           this.sulkT = 0;
           this.waveT = 0;
           this.cheering = true;
+          this.speech = null;
+          o.garyExiting = true;
           Audio.sfx('uiConfirm');
         }
       }
       return;
     }
 
-    // The certificate, then out.
+    // The certificate, then out. Gary walks off to the right while the hero
+    // celebrates under the document.
     o.cardT += dt;
+    if (o.garyExiting) {
+      o.garyX += GARY_WALK_SPEED * 1.2 * dt;
+    }
     if (o.cardT > 0.9 && press) {
       this.markTaught();
       this.onDone();
@@ -1660,6 +1835,13 @@ export class TutorialState {
     }
   }
 
+  sweepRetiredEntities() {
+    const left = this.worldX - 8;
+    this.retiredObstacles = this.retiredObstacles.filter((ob) => ob.x + ob.w > left);
+    this.retiredPickups = this.retiredPickups.filter((pu) => pu.x + pu.w > left);
+    this.retiredPortals = this.retiredPortals.filter((portal) => portal.x + 12 > left);
+  }
+
   collect(pu) {
     if (pu.def.coin) {
       this.coins += 1;
@@ -1691,11 +1873,12 @@ export class TutorialState {
   }
 
   // The same beats as run.js doSwitch: the hero changes, the tag sounds, and
-  // the swap throws teal.
+  // the swap throws teal. Reads the target hero from the portal entity itself
+  // rather than from the current step, so a portal spawned during a non-portal
+  // section's onPass still works.
   tagIn() {
-    const step = this.step();
     this.portal.hit = true;
-    this.player.setHero(step.tagTo);
+    this.player.setHero(this.portal.hero);
     this.player.abilityCd = 0;
     this.setButtons();
     Audio.sfx('tag');
@@ -1740,7 +1923,7 @@ export class TutorialState {
 
     // Strays — coins carried over from an earlier section — are deliberately
     // not in here. They are the player's to collect, not the section's to be
-    // judged on.
+    // judged on. Retired obstacles are held in a separate draw-only array.
     const mine = this.pickups.filter((p) => !p.stray);
     const spawned = [...this.obstacles, ...mine];
     if (!spawned.length) return;
@@ -1756,7 +1939,7 @@ export class TutorialState {
       const got = step.done(this);
       this.say(got ? step.got() : step.missed());
       this.passStep(got);
-      this.settleT = 4.6;
+      this.settleT = 3.0;
       return;
     }
 
@@ -1783,6 +1966,13 @@ export class TutorialState {
     // Lights before the props: a crate stands IN the light, not under a wash.
     TRAINING_PACK.lights(ctx, cam);
 
+    for (const pu of this.retiredPickups) {
+      drawWorldEntity(ctx, pu, cam, this.t, TRAINING_PACK, this.settings);
+    }
+    for (const ob of this.retiredObstacles) {
+      drawWorldEntity(ctx, ob, cam, this.t, TRAINING_PACK, this.settings);
+    }
+    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, this.t, z);
     for (const pu of this.pickups) {
       if (pu.live) drawWorldEntity(ctx, pu, cam, this.t, TRAINING_PACK, this.settings);
     }
@@ -1820,15 +2010,17 @@ export class TutorialState {
     // lane died on for the whole epilogue. He stands instead, and waves when
     // there is someone to wave at.
     const stopped = this.finished && this.speed < 4;
-    drawHeroSprite(ctx, this.player, this.player.heroId, this.t, cam, false, {
-      settings: this.settings, shield: this.shield, zoom: z, pan,
-      pose: stopped ? this.outroPose() : null,
-      // The readiness orb arrives with the power it belongs to. For nine
-      // sections the player has no power at all, and a meter floating beside
-      // the hero for all of them is a control they cannot find asking to be
-      // understood — the same reason the USE disc waits for B-33P.
-      specialOrb: this.hasPower(),
-    });
+    // During the intro Gary and Lorenzo are drawn as toons on the world layer;
+    // the normal player (Lorenzo) is not drawn until the intro finishes.
+    if (this.introPhase < 4) {
+      this.drawIntroCharacters(ctx, z, pan);
+    } else {
+      drawHeroSprite(ctx, this.player, this.player.heroId, this.t, cam, false, {
+        settings: this.settings, shield: this.shield, zoom: z, pan,
+        pose: stopped ? this.outroPose() : null,
+        specialOrb: this.hasPower(),
+      });
+    }
     pushOverlayDraw((d) => this.drawUi(d));
   }
 
@@ -1856,8 +2048,8 @@ export class TutorialState {
       phase: 0,
       headTurn: 0,
       annoyed: !up && this.sulkT > 0 ? 1 : 0,
-      // Style 3 is the fed-up face. He has just watched payroll take the lot.
-      madStyle: 3,
+      // Style 2 is the eyeroll ("give me a break"), style 3 is the scowl.
+      madStyle: this.sulkStyle,
       menuAction: !up && this.waveT > 0 ? 'wave' : undefined,
     };
   }
@@ -1968,49 +2160,12 @@ export class TutorialState {
     });
   }
 
-  // The two-button surface, drawn on itself. The left TOUCH_JUMP_FRAC of the
-  // canvas is JUMP and the rest is the power, and until this card nothing ever
-  // said so — the discs in the corners look like the only controls there are,
-  // so a thumb that stayed on the left played eight sections without knowing
-  // the right-hand strip existed.
-  //
-  // Both zones are washed rather than just the jump side: shading one half
-  // reads as "this half is disabled", which is the opposite of the point. The
-  // jump side carries the heavier wash because it is the bigger claim on the
-  // screen and that is the fact being taught.
+  // The two-button surface, drawn on itself — the painter is hud.js's, shared
+  // with the campaign's opening stage, which shows the same card to players who
+  // never took the training. Only the fade is this module's: the card arrives
+  // with the section and leaves with it, over the lane, without stopping it.
   drawTouchZones(ctx) {
-    const a = Math.max(0, Math.min(1, this.zoneT / 0.4));
-    const split = Math.round(W * TOUCH_JUMP_FRAC);
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.fillStyle = 'rgba(72,224,200,0.17)';
-    ctx.fillRect(0, 0, split, H);
-    ctx.fillStyle = 'rgba(246,211,60,0.17)';
-    ctx.fillRect(split, 0, W - split, H);
-    // The seam, dashed, so it reads as a boundary you could put a thumb either
-    // side of rather than as a wall.
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    for (let y = 4; y < H; y += 12) ctx.fillRect(split - 0.5, y, 1, 6);
-    // Three rows per side: what it does, how you do it, and how much of the
-    // screen it is. The percentage alone was a statistic; "TAP AND HOLD
-    // ANYWHERE ON THIS SIDE" is the instruction, and it is the instruction that
-    // is new information — the discs in the corners had everyone believing the
-    // buttons were the only places that worked.
-    const pct = Math.round(TOUCH_JUMP_FRAC * 100);
-    const lx = split / 2, rx = split + (W - split) / 2;
-    // The header clears a THREE-line speech panel, not a two-line one: this
-    // card only ever appears on touch, where the wrap is narrowest and Gary's
-    // brief for this section runs to three rows.
-    drawTextCentered(ctx, 'THE WHOLE SCREEN IS TWO BUTTONS', W / 2, 106, 'rgba(255,255,255,0.82)', 0.9, 'bold');
-    drawTextCentered(ctx, 'JUMP', lx, 134, '#d7fff6', 1.7, 'title');
-    drawTextCentered(ctx, 'TAP AND HOLD', lx, 158, 'rgba(215,255,246,0.9)', 0.9, 'bold');
-    drawTextCentered(ctx, 'ANYWHERE ON THIS SIDE', lx, 171, 'rgba(215,255,246,0.62)', 0.75);
-    drawTextCentered(ctx, `LEFT ${pct}%`, lx, 188, 'rgba(215,255,246,0.62)', 0.75, 'bold');
-    drawTextCentered(ctx, 'POWER', rx, 134, '#ffe9a0', 1.2, 'title');
-    drawTextCentered(ctx, 'TAP HERE', rx, 158, 'rgba(255,233,160,0.9)', 0.9, 'bold');
-    drawTextCentered(ctx, 'OR THE USE DISC', rx, 171, 'rgba(255,233,160,0.62)', 0.75);
-    drawTextCentered(ctx, `RIGHT ${100 - pct}%`, rx, 188, 'rgba(255,233,160,0.62)', 0.75, 'bold');
-    ctx.restore();
+    drawTouchZoneCard(ctx, { alpha: Math.max(0, Math.min(1, this.zoneT / 0.4)) });
   }
 
   // The certificate: a printed document, not an announcement. Pale plate, dark
@@ -2024,7 +2179,7 @@ export class TutorialState {
   drawCertificate(ctx, cardT) {
     const k = Math.max(0, Math.min(1, cardT / 0.35));
     const e = k * k * (3 - 2 * k);
-    const CW = 306, CH = 82;
+    const CW = 306, CH = 88;
     const cx = W / 2;
     // Slots into the band between the speech panel (which bottoms out around
     // 70) and the pair's crowns, which at the pushed-in zoom reach y 155. The
@@ -2032,7 +2187,7 @@ export class TutorialState {
     // the ending is watching the two of them stand there, so the document is
     // not permitted to grow down over their heads.
     const x = Math.round(cx - CW / 2);
-    const y = Math.round(66 - (1 - e) * 5);
+    const y = Math.round(42 - (1 - e) * 5);
     ctx.save();
     ctx.globalAlpha = e;
     drawPanel(ctx, x, y, CW, CH, 4, '#ece9f6',
@@ -2051,10 +2206,9 @@ export class TutorialState {
     // is the body the player clocked in with.
     const who = (HERO_BY_ID[this.player.heroId] || {}).short || 'STAFF';
     ctx.fillStyle = 'rgba(26,16,40,0.22)';
-    ctx.fillRect(x + 24, y + 47, CW - 48, 0.5);
-    drawTextCentered(ctx, `AWARDED TO ${who}`, cx, y + 52, '#4a4460', 0.85, 'bold');
-    drawTextCentered(ctx, CERT_FOOT, cx, y + 63, '#4a4460', 0.7);
-    drawTextCentered(ctx, CERT_SIGN, cx, y + 72, '#8a2f3f', 0.7, 'title');
+    ctx.fillRect(x + 24, y + 40, CW - 48, 0.5);
+    drawTextCentered(ctx, `AWARDED TO ${who}`, cx, y + 46, '#4a4460', 0.85, 'bold');
+    drawTextCentered(ctx, CERT_FOOT, cx, y + 57, '#4a4460', 0.7);
     this.drawCertSeal(ctx, x + CW - 30, y + CH - 26);
     ctx.restore();
   }
@@ -2103,13 +2257,55 @@ export class TutorialState {
   // He does not join in. Through the celebration step he stands exactly as he
   // was and rolls his eyes (madStyle 2) — the step is logged, the streamers are
   // company property, and being pleased was never on the form.
+
+  // Intro staging: Gary walks in from the left, stands centre-screen while the
+  // camera pulls back, then bolts right as Lorenzo enters. Drawn in world space
+  // through applyWorld so the zoom scales them.
+  drawIntroCharacters(ctx, zoom, pan) {
+    ctx.save();
+    applyWorld(ctx, zoom, pan);
+    // Gary: drawn until he's genuinely off the right edge, regardless of phase.
+    const garyOnScreen = this.garyIntroX < W / zoom + 50;
+    if (garyOnScreen && this.introPhase <= 3) {
+      const running = this.introPhase === 0 || this.introPhase >= 2;
+      const garyPose = {
+        kind: running ? 'run' : 'idle',
+        phase: (this.t * (running ? 1.7 : 0.5)) % 1,
+        time: this.t,
+        grounded: true,
+        facing: 1,            // always facing right — entering, then exiting
+        vy: 0,
+        annoyed: 0,
+        madStyle: 0,
+      };
+      drawToon(ctx, 'gary', garyPose, this.garyIntroX, GROUND_Y, GARY_INTRO_H);
+    }
+    // Lorenzo: phase 2, once he's started his run-in.
+    if (this.introPhase === 2 && this.lorenzoEntering) {
+      const lorenzoPose = {
+        kind: 'run',
+        phase: (this.t * 1.5) % 1,
+        time: this.t,
+        grounded: true,
+        facing: 1,
+        vy: 0,
+        annoyed: 0,
+        madStyle: 0,
+      };
+      drawToon(ctx, 'lorenzo', lorenzoPose, this.lorenzoIntroX, GROUND_Y, LORENZO_ENTRY_H);
+    }
+    ctx.restore();
+  }
+
   drawGary(ctx, o) {
+    // faces right — walking OFF stage right, his shift is over.
+    const exiting = o.garyExiting && !o.walking;
     const pose = {
-      kind: o.walking ? 'run' : 'idle',
-      phase: (this.t * (o.walking ? 1.7 : 0.5)) % 1,
+      kind: (o.walking || exiting) ? 'run' : 'idle',
+      phase: (this.t * ((o.walking || exiting) ? 1.7 : 0.5)) % 1,
       time: this.t,
       grounded: true,
-      facing: -1,
+      facing: exiting ? 1 : -1,
       vy: 0,
       annoyed: this.partyT > 0 ? 1 : 0,
       madStyle: 2,

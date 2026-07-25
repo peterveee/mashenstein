@@ -22,18 +22,30 @@ const PERFORMANCE_IN = SLOT_T * 0.7;
 const LORENZO_ATTACK_IN = SLOT_T * 0.45;
 const LORENZO_ATTACK_T = 0.55;
 const GRUMPOS_CELEBRATE_IN = SLOT_T * 0.5;
-// Whole-cycle gait rates: eight ordinary cycles and twelve Gnash cycles land
-// exactly at 11.2s. This preserves a constant walking speed right up to the
-// celebration/special handoff—no late brake and no half-raised foot.
-const CAST_GAIT_RATE = 8 / PERFORMANCE_IN;
-const GRUMPOS_GAIT_RATE = 6 / GRUMPOS_CELEBRATE_IN;
-const GNASH_GAIT_CYCLES = 12;
+// Whole-cycle gait rates: the stride count lands exactly on the handoff, so the
+// walking speed is constant right up to the celebration/special—no late brake
+// and no half-raised foot. The cycle COUNT is the only speed control the cards
+// have: nothing here is cached or frame-limited (the loop is a fixed 60 Hz and
+// the hero tile is repainted every frame), so a low count is simply a slow walk.
+// Sixteen cycles over 11.2s is 1.43 strides/s: a purposeful walk rather than the
+// half-speed trudge eight cycles produced.
+const CAST_GAIT_CYCLES = 16;
+const CAST_GAIT_RATE = CAST_GAIT_CYCLES / PERFORMANCE_IN;
+const GRUMPOS_GAIT_RATE = 8 / GRUMPOS_CELEBRATE_IN;
+// Every card shares one rig at one stride length, so cadence is the only thing
+// separating a walk from a run. The needlemouse never walks: he enters at 2.61
+// cycles/s — near twice the cast's walk, a run on arrival — and winds up to
+// exactly the 3.1 cycles/s of the Spin Dash he hands off into.
+const GNASH_GAIT_CYCLES = 32;
+const GNASH_GAIT_LINEAR = 0.915;
 function gnashGaitPhase(beat) {
   const p = Math.max(0, Math.min(1, beat / PERFORMANCE_IN));
-  // Integral of a linearly increasing gait rate. The 0.7/0.3 curve starts
-  // just above the ordinary walk and reaches nearly twice that cadence, while
-  // still accumulating exactly twelve complete strides at the dash handoff.
-  return (GNASH_GAIT_CYCLES * (0.7 * p + 0.3 * p * p)) % 1;
+  // Integral of a linearly increasing gait rate. The 0.915/0.085 split is what
+  // makes the entry cadence a run rather than a brisk walk: nearly all of the
+  // stride budget is spent at speed, with the rest accelerating into the dash —
+  // and it still accumulates exactly 32 complete strides at the handoff.
+  const a = GNASH_GAIT_LINEAR;
+  return (GNASH_GAIT_CYCLES * (a * p + (1 - a) * p * p)) % 1;
 }
 const FLOOR_Y = 214;
 const CAST_HERO_TILE = 150;
@@ -225,7 +237,7 @@ export class CastState {
       // arm targets change; phase and legs never stop or restart. The cast
       // version gives the 0.3s gameplay action 0.55s of screen time without
       // changing its authored wind-up / hit / recovery proportions.
-      pose.phase = (beat * 1.5) % 1;
+      pose.phase = (beat * CAST_GAIT_RATE) % 1;
       if (beat >= LORENZO_ATTACK_IN && beat < LORENZO_ATTACK_IN + LORENZO_ATTACK_T) {
         const local = beat - LORENZO_ATTACK_IN;
         pose.menuAction = 'smash';

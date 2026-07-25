@@ -19,7 +19,7 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
+import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
@@ -50,6 +50,14 @@ export const ACT_BANNER_TIME = 4.0;
 // the card vanishing mid-pixel; skipping to the fade plays the same exit the
 // card always plays, just sooner.
 const ACT_BANNER_FADE = 0.3;
+// The two-button card that follows the ACT card on the campaign's first stage
+// (touch only). It fades in over ZONE_CARD_FADE and cannot be dismissed until
+// ZONE_CARD_ARM has passed — the arm is longer than the fade on purpose, so the
+// earliest a tap can take it is a beat after it is fully legible. Neither number
+// is a reading budget: the card waits indefinitely, and these only stop the tap
+// that dismissed the card BEFORE it from carrying through into this one.
+const ZONE_CARD_FADE = 0.25;
+const ZONE_CARD_ARM = 0.4;
 // Rewind: hold Left Arrow / A to reverse time, up to 10 seconds at ~30 fps.
 // Snapshots capture the full world state; popping them restores it.
 const REWIND_SECONDS = 10;
@@ -334,6 +342,21 @@ export class RunState {
     this.introText = act;
     this.introT = 0; // banner animation clock (tRun is frozen during the freeze)
     this.introSkippable = !!act && seen;
+    // The two-button card, on the campaign's opening stage only, on touch only.
+    // MANDATORY TRAINING teaches the control surface, but training is optional
+    // and skipping it is the common path — so a phone that walks straight into
+    // plumber-1 has never been told that the glass itself is the buttons, and
+    // the two discs in the corners actively suggest otherwise.
+    //
+    // It rides in the beat after the ACT card and before the hero runs in:
+    // nothing is moving yet, so reading it costs no run, and it is the last
+    // thing on screen before the first obstacle. Acts II and III carry a card
+    // of their own and are not where anyone learns to play, so this is pinned
+    // to the first stage. It retires on the same terms that card does — a stage
+    // with every plug banked is being replayed by someone who demonstrably
+    // knows where to put their thumb.
+    this.zoneCard = !!act && this.stage.id === 'plumber-1' && Input.isTouchDevice();
+    this.zoneCardT = 0;
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
     // the card's seen/done fade: it plays on every first entry, card or not. A
@@ -374,6 +397,7 @@ export class RunState {
       this.introText = null;
       this.introSpeech = null;
       this.speech = null;
+      this.zoneCard = false;
     }
 
     const react = (this.unplugged || this.corrupted.includes('maxspeed')) ? REACT_FLOOR_MAX : REACT_FLOOR;
@@ -716,12 +740,19 @@ export class RunState {
       // (see below) and the hero sprints in. Only when there is no run-in to
       // wait on — reduced motion drops him straight onto the anchor — does the
       // waiting bubble get the screen here instead of at the end of the entrance.
-      if (this.introFreeze <= 0 && this.introSpeech && !this.introRunning) {
+      // The zone card, when there is one, is between the two: it hands the
+      // bubble on itself, so nothing is spoken underneath it.
+      if (this.introFreeze <= 0 && this.introSpeech && !this.introRunning && !this.zoneCard) {
         this.speech = this.introSpeech;
         this.introSpeech = null;
       }
       Input.endFrame(); return;
     }
+    // The two-button card. Holds everything still until it is acknowledged —
+    // this is the one screen in the game whose entire job is to be read, and a
+    // timed one would expire under a player still working out that the glass is
+    // the button.
+    if (this.zoneCard) { this.updateZoneCard(dt); Input.endFrame(); return; }
     // Off-screen entrance: with any card lifted, the hero runs in from the left
     // to the anchor while the world holds still. The level does not go live
     // until he arrives — gameplay is everything below this gate.
@@ -936,6 +967,37 @@ export class RunState {
   playerWorldX() { return this.camX + this.heroScreenX(); }
   playerBox() {
     return this.player.box(this.camX, this.groundYAt(this.playerWorldX()), this.heroScreenX());
+  }
+
+  // The two-button card, held between the ACT card and the entrance. Nothing
+  // ticks here but the card's own clock — the world is parked, the hero has not
+  // walked on yet, and the run's timer has not started, so a player who stops to
+  // read this pays nothing for it.
+  //
+  // Any tap continues, from anywhere, including the discs: on a screen whose
+  // whole message is "all of this is a button", a card that then demanded one
+  // particular button would be arguing with itself. The one exception is PAUSE,
+  // which is a real control and is left to do its job.
+  updateZoneCard(dt) {
+    this.zoneCardT += dt;
+    // The ACT card's glitch jolt is normally spent inside its own freeze, but a
+    // skipped card can hand one over mid-decay — and a shake that stops ticking
+    // is a world left sitting at an offset for as long as this card is up.
+    updateShake(dt, () => this.fxRng.float());
+    // A short arm, so the tap that skipped the ACT card cannot roll straight
+    // through this one on the frame it appears — the card would blink past and
+    // the player would never know what they missed.
+    if (this.zoneCardT < ZONE_CARD_ARM) return;
+    if (!(Input.pressed('pointer') || Input.pressed('jump') || Input.pressed('ability')
+          || Input.pressed('confirm'))) return;
+    this.zoneCard = false;
+    Audio.sfx('uiConfirm');
+    // Same handoff the ACT card makes: the waiting bubble goes up now only if
+    // there is no entrance to spend it behind.
+    if (this.introSpeech && !this.introRunning) {
+      this.speech = this.introSpeech;
+      this.introSpeech = null;
+    }
   }
 
   // Opening run-in: the hero runs himself onto the stage while the WORLD holds
@@ -2935,6 +2997,22 @@ export class RunState {
           // Drops away as soon as the skip is taken, so the hint never sits on
           // screen describing an input that has already been spent.
           skip: this.introSkippable && this.introFreeze > ACT_BANNER_FADE,
+        });
+      }
+      // Over the HUD, because it is explaining the HUD's own discs, and over the
+      // parked world for the same reason the ACT card is: nothing behind it is
+      // doing anything yet. The hint only appears once the tap will actually
+      // work, so the card never invites an input it is still ignoring.
+      if (this.zoneCard) {
+        drawTouchZoneCard(d, {
+          alpha: Math.min(1, this.zoneCardT / ZONE_CARD_FADE),
+          // As deep as the pause screen's, which is what this is — a held run
+          // with an instruction over it. It stops short of the ACT card's 0.78
+          // because the stage you are about to run is worth seeing behind it,
+          // and no lighter, because the packs behind it include a white-sky
+          // one that ate the whole card at 0.45.
+          scrim: 0.62,
+          hint: this.zoneCardT >= ZONE_CARD_ARM ? 'TAP ANYWHERE TO START' : null,
         });
       }
     };

@@ -62,7 +62,12 @@ export function currentState() { return current; }
 export function updateState(dt) {
   // Poll before any state consumes pressed actions. Polling at the tail of a
   // state update cleared one-frame gamepad presses before they could be read.
+  // Held touches commit here for the same reason: a tap whose gesture has just
+  // resolved presses now, so this frame's update reads it. (Doing it from
+  // endFrame put the press between the state's own call and the backstop below,
+  // which cleared it again.)
   Input.pollGamepad();
+  Input.resolveTouches();
   if (fading !== 0) {
     fade += fading * dt * TRANSITION_SPEED;
     if (fade >= 1 && pending) {

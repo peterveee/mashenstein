@@ -17,14 +17,34 @@ function assert(cond, msg) {
 Input.init();
 const tutorial = new TutorialState({ onDone: () => {} });
 tutorial.enter();
+while (tutorial.introPhase === 0) tutorial.update(1 / 60);
 assert(tutorial.speech.showName === true, 'Gary is named on the opening card');
 assert(tutorial.lastSaid.showName === true, 'the opening name survives into the pause fallback');
 
 tutorial.startStep(0);
 assert(tutorial.speech.showName === false, 'section one keeps Gary portrait-only');
+const failedObstacle = tutorial.obstacles[0];
 tutorial.reopenStep(false);
 assert(tutorial.speech.showName === false && tutorial.lastSaid.showName === false,
   'retry speech remains portrait-only, including its pause fallback');
+assert(tutorial.retiredObstacles.includes(failedObstacle),
+  'a failed attempt keeps its old obstacle as inert scenery');
+assert(tutorial.obstacles.length === 1 && tutorial.obstacles[0] !== failedObstacle,
+  'a retry can spawn its new active obstacle without erasing the old one');
+tutorial.worldX = failedObstacle.x + failedObstacle.w + 9;
+tutorial.sweepRetiredEntities();
+assert(!tutorial.retiredObstacles.includes(failedObstacle),
+  'a retired obstacle is removed only after it has fully cleared the left edge');
+tutorial.startStep(2);
+const failedPickup = tutorial.pickups[0];
+tutorial.reopenStep(false);
+assert(tutorial.retiredPickups.includes(failedPickup),
+  'a failed attempt keeps its old pickup visible but non-collectible');
+tutorial.startStep(6);
+const failedPortal = tutorial.portal;
+tutorial.reopenStep(true);
+assert(tutorial.retiredPortals.includes(failedPortal),
+  'a failed portal keeps gliding after its retry appears');
 tutorial.sayIn(0, 'QUEUED LINE', 1);
 tutorial.update(1 / 60);
 assert(tutorial.speech.text === 'QUEUED LINE' && tutorial.speech.showName === false,

@@ -3,6 +3,7 @@
 
 const KEY = 'mashenstein.v2';
 const V1KEY = 'superMashBros.v1';
+const RENDER_DENSITY_VERSION = 2;
 
 export function defaultSettings() {
   return {
@@ -20,6 +21,7 @@ export function defaultSettings() {
     // slow diagnostic run on one backend cannot soften the other. Values are a
     // numeric density, 'native' (proved at the display ceiling), or 0 (auto).
     renderDensityByBackend: { webgl: 0, '2d': 0 },
+    renderDensityVersion: RENDER_DENSITY_VERSION,
   };
 }
 
@@ -59,6 +61,22 @@ function migrate(data) {
   return null;
 }
 
+function normalizeSettings(settings) {
+  const defaults = defaultSettings();
+  const oldVersion = Number(settings && settings.renderDensityVersion) || 0;
+  const next = { ...defaults, ...(settings || {}) };
+  next.renderDensityByBackend = {
+    ...defaults.renderDensityByBackend,
+    ...(next.renderDensityByBackend || {}),
+  };
+  // Direct Canvas2D rendering changed the meaning of the old 2D ceiling.
+  // Preserve WebGL history, but let 2D AUTO measure the new path again.
+  if (oldVersion < RENDER_DENSITY_VERSION) next.renderDensityByBackend['2d'] = 0;
+  next.renderDensityVersion = RENDER_DENSITY_VERSION;
+  delete next.renderDensity;
+  return { settings: next, densityHistoryMigrated: oldVersion < RENDER_DENSITY_VERSION };
+}
+
 export class Save {
   constructor() {
     this.data = null;
@@ -84,15 +102,8 @@ export class Save {
       } catch (e) { /* no v1 */ }
     }
     // Deep-default each present slot so new fields appear on old saves.
-    data.settings = { ...defaultSettings(), ...data.settings };
-    data.settings.renderDensityByBackend = {
-      ...defaultSettings().renderDensityByBackend,
-      ...(data.settings.renderDensityByBackend || {}),
-    };
-    // The retired scalar did not record which backend produced it. Discard it:
-    // carrying a low WebGL result into the 2D renderer was the iPhone quality
-    // regression this backend-specific store replaces.
-    delete data.settings.renderDensity;
+    const normalized = normalizeSettings(data.settings);
+    data.settings = normalized.settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
     // Relay simplification: refund the retired PERFECT TAG WINDOW and RELAY
     // METER upgrades exactly once, then drop their bench entries.
@@ -126,6 +137,7 @@ export class Save {
       if (s.mastery) delete s.mastery.gary;
     }
     this.data = data;
+    if (normalized.densityHistoryMigrated) this.persist();
     return this;
   }
 
@@ -145,12 +157,7 @@ export class Save {
       || !data.settings || typeof data.settings !== 'object') {
       throw new Error('INVALID SAVE FILE');
     }
-    data.settings = { ...defaultSettings(), ...data.settings };
-    data.settings.renderDensityByBackend = {
-      ...defaultSettings().renderDensityByBackend,
-      ...(data.settings.renderDensityByBackend || {}),
-    };
-    delete data.settings.renderDensity;
+    data.settings = normalizeSettings(data.settings).settings;
     data.slots = data.slots.map((s) => (s ? deepMerge(defaultSlot(), s) : null));
     this.data = data;
     this.slotIndex = Math.min(this.slotIndex, this.data.slots.length - 1);
