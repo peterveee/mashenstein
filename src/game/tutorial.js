@@ -4,9 +4,9 @@
 // Two rules hold the whole screen together:
 //
 //   1. It never stops. Instructions arrive as a speech panel — the same one
-//      run.js's tutor() prompts use — and expire on their own a few seconds
-//      later while the world keeps scrolling. Nothing is modal, nothing waits
-//      for a keypress to continue, and the hero never freezes mid-stride.
+//      run.js's tutor() prompts use — and remain until Gary replaces them while
+//      the world keeps scrolling. Nothing is modal, nothing waits for a
+//      keypress to continue, and the hero never freezes mid-stride.
 //   2. It draws nothing itself. Crates, drones, coins, capsules, the portals
 //      and the heroes all go through the same painters a real run composes, so
 //      training shows the player the exact art they are about to meet. The one
@@ -55,12 +55,12 @@ import {
 // ladder pitch, the whole payout stretch — is measured in world px, so raising
 // it shortens all of them at once and in proportion. At 90 a flawless run of
 // all eleven sections took a shade over two minutes before the epilogue; the
-// same run at 112 is about ninety seconds, and the hero's legs read as running
+// same run at 112 is about 77 seconds, and the hero's legs read as running
 // rather than as wading. Anything that must NOT shrink with it — reading time,
 // the reaction gap in the ladder — is re-bought explicitly below.
 const TRAINING_SPEED = 112;
 // Reading time is bought here rather than by slowing the world down further. A
-// challenge spawns most of a screen beyond the right edge, so it arrives ~3.8s
+// challenge spawns most of a screen beyond the right edge, so it arrives ~3s
 // after Gary starts talking: the words land, they are read, and only then does
 // anything ask for a reaction. Slowing the lane instead would have made the
 // same gap out of a hero who looks like they are wading.
@@ -68,8 +68,8 @@ const SPAWN_AHEAD = VIEW_W + 150;
 // A RETRY does not buy that reading time again. The first time a challenge
 // arrives the player is reading a sentence they have never seen; the second
 // time they already know what is coming and what they did wrong, and the four
-// and a half seconds of empty lane that bought the first read is just a queue.
-// This puts the next attempt just off the right edge — about two seconds out,
+// and the empty lane that bought the first read is just a queue. This puts the
+// next attempt just off the right edge — about 1.8 seconds out,
 // which is still the whole width of the screen to react in.
 const RETRY_AHEAD = VIEW_W + 20;
 // Gary's card does NOT expire. What he last said stays on screen until he says
@@ -77,9 +77,8 @@ const RETRY_AHEAD = VIEW_W + 20;
 // line that times out while you are mid-jump is a line you were never given a
 // chance to finish, and the alternative — dead air over a lane with an
 // instruction you half-read — is worse than a card that overstays. The only
-// thing still on a five-second clock is the touch-zone diagram, which is a
-// picture of the screen and stops being useful the moment it has been seen.
-const SPEECH_T = 5;
+// timed overlay is the touch-zone diagram, which has its own seven-second clock
+// and stops being useful once it has been seen.
 // How long the world runs on after a section closes, before the next one opens.
 // Long enough for the pass floatie to land and be read on its own, and for the
 // line that logged it to be read under it — but this is dead lane, eleven times
@@ -169,9 +168,9 @@ const SPEECH_MAX_W_TOUCH = 312;
 // textYForMid is the correction, and it needs a single number to measure from.
 const ROW_MID = H - 11;
 
-// How long the touch zone diagram stays up. Longer than a speech line, because
-// it has to survive the gap between being read and the drone it is about
-// actually arriving — about 3.8s after the brief starts.
+// How long the touch zone diagram stays up. It has to survive the gap between
+// being read and the drone it is about actually arriving — about 3s after the
+// brief starts.
 const ZONE_T = 7;
 
 // Pause screen plates — same layout as run.js so the muscle memory carries over.
@@ -500,8 +499,8 @@ const STEPS = [
     label: 'DOUBLE JUMP',
     legend: [['SPC', 'JUMP x2']],
     brief: (touch) => (touch
-      ? 'MOCHI JUMPS TWICE AND NOT VERY HIGH. TAP AGAIN IN MID-AIR. ONE JUMP WILL NOT CLEAR THAT.'
-      : 'MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. ONE JUMP WILL NOT CLEAR THAT.'),
+      ? 'MOCHI JUMPS TWICE AND NOT VERY HIGH. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
+      : 'MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
     again: () => 'INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.',
     requires: (t) => t.sawDoubleJump,
     wrongWay: () => 'YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.',
@@ -608,7 +607,7 @@ const OUTRO = [
   // logged as completed, the streamers fire, and he has done the paperwork
   // instead of the party.
   { hold: 4.0, party: true,
-    line: 'THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
+    line: 'THERE IS A CELEBRATION STEP. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
   // ...and it ends the way everything he hands out ends. The streamers go back
   // to Stores, which is his actual job — it says so on the certificate he is
   // about to sign.
@@ -701,6 +700,7 @@ export class TutorialState {
     this.floaties = [];
     this.speech = null;
     this.lastSaid = null;
+    this.garyIntroduced = false;
     this.coins = 0;
     // The clawback is a countdown of the counter itself, one coin per tick,
     // and it happens in the epilogue rather than the moment the coins section
@@ -761,6 +761,7 @@ export class TutorialState {
     Input.clearAll();
     clearParticles();
     setSceneGlow(true);
+    this.garyIntroduced = false;
     this.player = new Player('lorenzo');
     this.setButtons();
     this.say(OPENING);
@@ -1319,11 +1320,13 @@ export class TutorialState {
   // beat clock rather than off this expiring, which is what the countdown used
   // to be doing double duty as.
   say(text, t = Infinity) {
-    this.speech = { text, t, who: 'gary' };
+    const speech = { text, t, who: 'gary', showName: !this.garyIntroduced };
+    this.garyIntroduced = true;
+    this.speech = speech;
     // Kept past its own expiry for the pause screen. A player who pauses is
-    // usually pausing because the instruction went away before they had
-    // finished with it, so the pause is where the last thing he said lives.
-    this.lastSaid = { text, t, who: 'gary' };
+    // usually pausing to keep an instruction in view, so the pause is where the
+    // last thing he said lives even if a timed line has expired.
+    this.lastSaid = { ...speech };
   }
 
   // A second line, later in the same stretch. The payout runs for the better

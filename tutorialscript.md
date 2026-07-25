@@ -7,9 +7,9 @@ here and change it there, in the same commit.
 
 Two rules hold the whole screen together, and every beat below obeys them:
 
-1. **It never stops.** Instructions arrive as a speech panel and expire on their
-   own a few seconds later while the world keeps scrolling. Nothing is modal,
-   nothing waits for a keypress, the hero never freezes mid-stride.
+1. **It never stops.** Instructions arrive as a speech panel and stay up until
+   Gary replaces them while the world keeps scrolling. Nothing is modal, nothing
+   waits for a keypress, the hero never freezes mid-stride.
 2. **It draws nothing of its own.** Crates, drones, coins, capsules, portals and
    heroes all go through the painters a real run composes. The only authored art
    is the backdrop — a bare lane, overhead lighting, scroll ticks.
@@ -26,15 +26,15 @@ he is working through, each section is a section of it, and a miss is an
 | | |
 |---|---|
 | Lane speed | **112** (a run proper is 160). The master timing dial: every distance in the file is world px, so raising it shortens the spawn lead, the retry lead, the ladder pitch and the payout stretch at once and in proportion |
-| Spawn distance | a screen and a half ahead — a challenge arrives ~3.5s after Gary starts talking |
-| Spawn distance on a **retry** | just off the right edge, ~2.3s. A retry does not buy the reading time again: you already know what is coming and what you did wrong, so the empty lane that bought the first read is only a queue |
-| Speech hold | 5s, two rows, unhurried |
+| Spawn distance | a screen and a half ahead — a challenge arrives in roughly 3s after Gary starts talking |
+| Spawn distance on a **retry** | just off the right edge, roughly 1.8s. A retry does not buy the reading time again: you already know what is coming and what you did wrong, so the empty lane that bought the first read is only a queue |
+| Speech hold | Gary's line stays until he replaces it; timed payout lines use 5.5s holds |
 | Whole module | ~77s for all eleven sections played clean, ~108s including the epilogue read at full pace. Was ~2m25s |
 | Settle between sections | 1.7s — dead lane, eleven times over, so it buys the pass floatie landing and nothing after it |
 | Opening beat | 3.4s over an empty lane |
 | Reopens before he concedes | 4 |
 | Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/11` rides the same midline beside it |
-| Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.15x — out of the band a held jump travels through. Touch takes the bigger type, its own wrap and its own anchor as one set |
+| Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.15x — out of the band a held jump travels through. `GARY` appears on the opening card only; later cards retain his portrait but reclaim that header row. Touch takes the bigger type, its own wrap and its own anchor as one set |
 | Card width | as wide as what is beside it allows, because a wider card is a **shorter** one and the lines it saves are lines of lane it is not standing in. Desktop plate x 58–422, clearing the coin pill (ends 48, even at four digits) and the FPS readout (starts 442) by ~10px each. Touch is capped at 368 by the coin pill on its left |
 | Touch controls | **outside the canvas**, in the black margin, wherever the device has room — the same chrome layout a run uses, re-synced when the first tap lands or the phone rotates. Only screens too close to 16:9 fall back to discs on the art. Pausing takes them out of the margin too: the pause plates are in-canvas and a live JUMP disc outside a paused game is a control that looks pressable and is not |
 | Card z-order | **under the hero.** It is the biggest opaque object on screen and it is up almost continuously, so with it on top a tall jump put the character you are steering behind a menu. Everything else on this screen is a readout, and a readout can wait behind the person jumping |
@@ -142,12 +142,12 @@ later section. It is swept only once it is behind the hero and off the frame.
 
 ### 8 — DOUBLE JUMP · Mochi · a stack of five
 
-- **Brief:** MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. ONE JUMP WILL NOT CLEAR THAT.
-- **Touch:** … TAP AGAIN IN MID-AIR. …
+- **Brief:** MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.
+- **Touch:** … TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.
 - **Again:** INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.
 - **Wrong way:** YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.
 - **Requires:** a second jump in the air. Mochi is here because she jumps LOW —
-  56.9px against Lorenzo's 75 — so a stack this tall is one Lorenzo would have
+  56.9px against Lorenzo's 89 — so a stack this tall is one Lorenzo would have
   strolled over.
 - **Five crates, not six.** Six (66px) was a wall a beginner had to time the
   second jump well to clear; five (55px) leaves room to be sloppy with it. That
@@ -184,8 +184,8 @@ later section. It is swept only once it is behind the hero and off the frame.
     the instruction, and the instruction is the new information: the discs in
     the corners had everyone believing the buttons were the only places that
     worked.
-  - **7 seconds**, not the 5 of a speech line. It has to survive the gap between
-    being read and the drone it is about actually arriving (~3.8s after the
+  - **7 seconds**, independent of the persistent speech line. It has to survive the gap between
+    being read and the drone it is about actually arriving (~3s after the
     brief starts). The first shot fades it early.
 - **On pass:** the shoot gallery — drones at five altitudes, two buzzbirds, two
   crate stacks, a target.
@@ -238,10 +238,10 @@ so payroll takes the coins back and *then* he certifies you.
 | 2 | PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER. | **scowls** | the counter drains to zero under this line, one coin and one blip per tick, pitch falling as it goes |
 | 3 | I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING. | still sour | idle |
 | 4 | YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET. | idle | idle |
-| 5 | THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED. | **celebrates** | **rolls his eyes** — streamers and confetti rain for 2.8s |
+| 5 | THERE IS A CELEBRATION STEP. I HAVE ALREADY LOGGED IT AS COMPLETED. | **celebrates** | **rolls his eyes** — streamers and confetti rain for 2.8s |
 | 6 | THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK. | back to idle | everything on the floor vanishes on the coin-reclaim cue |
 | 7 | RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY. | idle | idle |
-| card | SIGNED, GARY. STILL ON THE CLOCK. STILL NOT PAID EXTRA. | **celebrates** | idle |
+| card | STILL ON THE CLOCK. STILL NOT PAID EXTRA. | **celebrates** | idle |
 
 **Gary never celebrates.** Everything else he does is compliance under protest —
 he appeals to HR, he files forms, he reclaims coins on a technicality — so a

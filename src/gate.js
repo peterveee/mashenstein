@@ -230,7 +230,17 @@ function createGameDom() {
       </div>
       <div class="mash-build-time">
         <p class="mash-build-label">${buildTimeLabelLines()[0]}</p>
-        <p class="mash-build-stamp">${buildTimeLabelLines()[1]}</p>
+        <p id="build-stamp" class="mash-build-stamp">${buildTimeLabelLines()[1]}</p>
+      </div>
+      <div id="diag-tools" class="mash-portrait-diag" hidden>
+        <p class="mash-diag-label">DIAGNOSTICS</p>
+        <div class="mash-diag-row">
+          <button id="diag-fps" type="button">FPS</button>
+          <button id="diag-bench-2d" type="button">BENCH 2D</button>
+          <button id="diag-bench-gl" type="button">BENCH GL</button>
+          <button id="diag-clear" type="button">CLEAR</button>
+        </div>
+        <p id="diag-status" class="mash-diag-status" aria-live="polite"></p>
       </div>
     </div>`;
   document.body.appendChild(overlay);

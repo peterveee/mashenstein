@@ -188,6 +188,44 @@ function webglStub() {
   assert(r.rendererDiagnostics().density === 3, 'a settled 3x on a phone stays clamped at the 3x seed, not native');
 }
 
+// --- iOS defaults to the 2D backend, and can be forced back for comparison ---
+// Measured on an iPad Pro 12.9 (M1): the WebGL path's per-frame canvas upload is
+// bandwidth-capped near 20-25 Mpx/s, so it manages 6 FPS at native where 2D
+// holds 60. The post pipeline is not worth a fourteenth of the resolution.
+{
+  // The WebGL stub is deliberately AVAILABLE here: picking 2D anyway is the
+  // whole point, and without it this would pass for the wrong reason (falling
+  // back because WebGL was missing rather than choosing 2D on purpose).
+  const gl = webglStub().gl;
+  installDom({
+    innerWidth: 1194, innerHeight: 834, devicePixelRatio: 2,
+    gameGetContext: (type) => (type === 'webgl' ? gl : undefined),
+  });
+  const r = await import('../src/engine/renderer.js?d-ios2d');
+  r.initRenderer(detectPlatform({ ua: MAC_UA, maxTouchPoints: 5 }));
+  assert(r.rendererBackend() === '2d', 'iPad picks 2D even when WebGL is available');
+}
+{
+  const gl = webglStub().gl;
+  installDom({
+    innerWidth: 1194, innerHeight: 834, devicePixelRatio: 2, locationSearch: '?renderer=webgl',
+    gameGetContext: (type) => (type === 'webgl' ? gl : undefined),
+  });
+  const r = await import('../src/engine/renderer.js?d-ios-webgl');
+  r.initRenderer(detectPlatform({ ua: MAC_UA, maxTouchPoints: 5 }));
+  assert(r.rendererBackend() === 'webgl', '?renderer=webgl forces the pipeline back on for comparison');
+}
+{
+  const gl = webglStub().gl;
+  installDom({
+    innerWidth: 1512, innerHeight: 916, devicePixelRatio: 2,
+    gameGetContext: (type) => (type === 'webgl' ? gl : undefined),
+  });
+  const r = await import('../src/engine/renderer.js?d-desktop-webgl');
+  r.initRenderer({ isDesktop: true });
+  assert(r.rendererBackend() === 'webgl', 'desktop keeps WebGL — its upload path is not the bottleneck');
+}
+
 // --- Desktop renders at native, and a bad past session does not park it soft --
 // The adaptive ladder exists for devices with a thermal budget. A desktop starts
 // at rung 0 and, unlike phones and tablets, ignores the persisted seed: one slow
@@ -219,7 +257,10 @@ function webglStub() {
 // --- WebGL bloom tier gate + overlay-upload skip -----------------------------
 {
   const webgl = webglStub();
-  installDom({ ...PHONE, locationSearch: '?density=1.5', gameGetContext: (type) => (type === 'webgl' ? webgl.gl : null) });
+  // iOS now defaults to the 2D backend (the WebGL upload is bandwidth-capped
+  // there), so this case has to ask for WebGL explicitly to exercise the bloom
+  // tier gate at all.
+  installDom({ ...PHONE, locationSearch: '?density=1.5&renderer=webgl', gameGetContext: (type) => (type === 'webgl' ? webgl.gl : null) });
   const r = await import('../src/engine/renderer.js?d-bloom');
   r.initRenderer({ isIphone: true });
   assert(r.rendererBackend() === 'webgl', 'the bloom test runs on the WebGL backend');

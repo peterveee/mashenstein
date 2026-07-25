@@ -1,0 +1,9 @@
+name = "mashenstein-telemetry"
+main = "tools/telemetry-worker.js"
+compatibility_date = "2025-07-01"
+
+# Create the KV namespace first, then paste its id here:
+#   npx wrangler kv:namespace create MASHTELEMETRY
+[[kv_namespaces]]
+binding = "MASHTELEMETRY"
+id = "<paste-kv-namespace-id-here>"

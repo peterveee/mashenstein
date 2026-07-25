@@ -1,5 +1,15 @@
 // One source of truth for browser/app lifecycle. Visibility and orientation
 // events never resume subsystems independently; they all recompute this policy.
+import { readDiag, writeDiag, clearDiag } from './diag.js';
+
+// One line summarising which overrides are live, so the panel opens saying what
+// state the device is already in rather than looking like a fresh slate.
+function describeDiag(d) {
+  const on = [];
+  if (d.fps) on.push('FPS');
+  if (d.renderer) on.push(d.renderer.toUpperCase());
+  return on.length ? `active: ${on.join(' + ')}` : 'no overrides active';
+}
 
 export function lifecyclePolicy({
   allowed = true,
@@ -79,8 +89,68 @@ export class LifecycleController {
     }
     this.copyErrorButton && this.copyErrorButton.addEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.addEventListener('click', this.onReload);
+    this.installDiagTools();
     this.syncErrorReport();
     this.apply();
+  }
+
+  // Hidden diagnostics, revealed by tapping the build stamp five times.
+  //
+  // This screen is the only surface an installed iPhone build reliably shows
+  // that is NOT the game — and an installed PWA has no address bar, so ?fps and
+  // ?bench cannot be typed there. Without this the one platform hardest to
+  // measure is also the only one with no way to turn the instruments on.
+  //
+  // Five taps rather than a double-tap: this panel offers a "reload into a
+  // 30-second benchmark" button, and a player idly poking the screen they were
+  // just told to rotate should not land on it. Five is deliberate, matches the
+  // convention people already know from Android's build number, and still takes
+  // under two seconds. The 3s window means stray taps minutes apart never add up.
+  installDiagTools() {
+    this.buildStamp = this.doc.getElementById('build-stamp');
+    this.diagTools = this.doc.getElementById('diag-tools');
+    this.diagStatus = this.doc.getElementById('diag-status');
+    if (!this.buildStamp || !this.diagTools) return;
+    let taps = 0, firstTapAt = 0;
+    this.onStampTap = () => {
+      const now = this.win.performance ? this.win.performance.now() : 0;
+      if (!taps || now - firstTapAt > 3000) { taps = 0; firstTapAt = now; }
+      taps++;
+      if (taps < 5) return;
+      taps = 0;
+      this.diagTools.hidden = false;
+      this.showDiagStatus(describeDiag(readDiag()));
+    };
+    this.buildStamp.addEventListener('click', this.onStampTap);
+
+    const reloadInto = (patch, note) => {
+      writeDiag(patch);
+      this.showDiagStatus(note);
+      // Reload rather than navigate: changing location.search would be a
+      // navigation, and an installed iOS app has been known to hand those to
+      // Safari, which would drop the tester out of the app being measured.
+      this.win.setTimeout(() => this.win.location.reload(), 350);
+    };
+    this.diagButtons = [
+      ['diag-fps', () => {
+        const next = !readDiag().fps;
+        writeDiag({ fps: next });
+        this.showDiagStatus(`FPS readout ${next ? 'ON' : 'OFF'} - rotate to see it`);
+      }],
+      // The bench is one-shot: main.js clears the flag as it starts, so a
+      // reload after the sweep returns to playing rather than re-benchmarking.
+      ['diag-bench-2d', () => reloadInto({ bench: true, renderer: '2d' }, 'reloading into 2D bench...')],
+      ['diag-bench-gl', () => reloadInto({ bench: true, renderer: 'webgl' }, 'reloading into WebGL bench...')],
+      ['diag-clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
+    ].map(([id, fn]) => {
+      const el = this.doc.getElementById(id);
+      if (el) el.addEventListener('click', fn);
+      return [el, fn];
+    });
+  }
+
+  showDiagStatus(text) {
+    if (this.diagStatus) this.diagStatus.textContent = text;
   }
 
   currentPolicy() {
@@ -169,5 +239,7 @@ export class LifecycleController {
     }
     this.copyErrorButton && this.copyErrorButton.removeEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.removeEventListener('click', this.onReload);
+    this.buildStamp && this.onStampTap && this.buildStamp.removeEventListener('click', this.onStampTap);
+    (this.diagButtons || []).forEach(([el, fn]) => el && el.removeEventListener('click', fn));
   }
 }

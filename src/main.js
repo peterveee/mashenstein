@@ -28,7 +28,9 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
+import { sendTelemetry } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
+import { readDiag, writeDiag } from './engine/diag.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -367,12 +369,19 @@ function boot() {
   //   ?fps  or  ?start=fps   → show FPS counter
   //   ?mute                  → start muted
   //   ?bench                 → sweep the density ladder and report FPS per rung
+  // The same three switches are also reachable without an address bar, from the
+  // hidden panel on the portrait screen — the only way to turn them on inside an
+  // installed PWA, which is the only way iPhone runs this game at all.
   let benchRequested = false;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
-    if (p.has('fps') || p.get('start') === 'fps') save.settings.showFps = true;
+    const diag = readDiag();
+    if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
     if (p.has('mute')) save.settings.muted = true;
-    benchRequested = p.has('bench');
+    benchRequested = p.has('bench') || !!diag.bench;
+    // One-shot: consumed as the sweep starts, so a reload afterwards returns to
+    // playing instead of benchmarking the device again every single launch.
+    if (diag.bench) writeDiag({ bench: false });
   }
 
   const platform = window.__mash_platform || readPlatform();
@@ -388,6 +397,11 @@ function boot() {
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
+
+  // Fire device telemetry once on boot — non-blocking, never throws, and
+  // silently does nothing when no endpoint is configured.
+  sendTelemetry();
+
   // Touch players cannot rewind, so do not create the continuously-running
   // audio capture node on coarse-pointer devices.
   Audio.setCaptureEnabled(!Input.isTouchDevice());

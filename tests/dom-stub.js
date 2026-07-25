@@ -39,7 +39,14 @@ export function installDom({
       width: 480, height: 270,
       style: {},
       getContext: (type, opts) => {
-        if (customGetContext) return customGetContext(type, opts, c);
+        // A custom hook returning undefined DELEGATES to the default, so a test
+        // can stub WebGL without also having to reimplement the 2D context. It
+        // must still be able to return null explicitly to mean "this context
+        // type is unavailable", which is a different thing from "not my call".
+        if (customGetContext) {
+          const custom = customGetContext(type, opts, c);
+          if (custom !== undefined) return custom;
+        }
         if (type !== '2d') return null;
         const x = makeCtx(); x.canvas = c; return x;
       },

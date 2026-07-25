@@ -23,7 +23,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0b0b14">
 <title>MASHENSTEIN: The Unpluggening</title>
-<script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";/*__DEV_GATE__*/</script>
+<script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";window.__MASH_TELEMETRY_URL__="__TELEMETRY_URL__";/*__DEV_GATE__*/</script>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden; }
   body { touch-action: none; -webkit-user-select: none; user-select: none;
@@ -190,6 +190,29 @@
     color: #6b7084;
     font: 700 .92rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing: .04em; text-transform: uppercase;
+  }
+  /* Hidden until the build stamp is tapped five times — see lifecycle.js. */
+  .mash-portrait-diag {
+    width: min(31rem, 100%); margin-top: 18px; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.12);
+  }
+  .mash-portrait-diag[hidden] { display: none; }
+  .mash-diag-label {
+    margin: 0 0 8px; color: #8e94a6;
+    font: 700 .72rem/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .1em;
+  }
+  .mash-diag-row {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+  }
+  .mash-diag-row button {
+    padding: 10px 6px; border: 1px solid rgba(72,224,200,.3);
+    border-radius: 10px; color: #d8f7f1; background: rgba(72,224,200,.09);
+    font: 800 .74rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .05em;
+  }
+  .mash-portrait-card p.mash-diag-status {
+    min-height: 1.3em; margin: 8px 0 0; color: #48e0c8; font-size: .74rem;
   }
   .mash-portrait-error {
     width: min(31rem, 100%); margin-top: 28px; padding-top: 18px;

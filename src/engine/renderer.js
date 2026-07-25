@@ -79,6 +79,7 @@ export const back = (() => {
 
 export const bctx = back ? back.getContext('2d') : null;
 import { glfx } from './glfx.js';
+import { readDiag } from './diag.js';
 
 // Device-density 2D overlay layer (hero, demo banners). Under WebGL it becomes
 // a texture; under the 2D fallback it is composited over the world as a second
@@ -215,9 +216,46 @@ function selectBackend(name) {
   if (typeof window !== 'undefined') window.__mash_renderer = name;
 }
 
-function force2DRequested() {
-  if (typeof window === 'undefined' || !window.location) return false;
-  return new URLSearchParams(window.location.search).get('renderer') === '2d';
+// The query string wins, then the stored override from the portrait screen's
+// hidden panel — which is the only route on an installed PWA, where there is no
+// address bar to put a query string into.
+function rendererRequested() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const q = new URLSearchParams(window.location.search).get('renderer');
+  return q || readDiag().renderer || null;
+}
+
+// iOS/iPadOS takes the 2D path, and this is not a fallback — it is the fast one.
+//
+// The WebGL pipeline draws the world on a 2D canvas and re-uploads that whole
+// canvas to the GPU every frame with texSubImage2D. Measured on an iPad Pro
+// 12.9 (M1), that upload is bandwidth-capped at roughly 20-25 Mpx/s — flat
+// across every density, which is the signature of a fixed transfer cost rather
+// than a shading one:
+//
+//     density   resolution    WebGL    2D
+//     1x        480x270          60    60
+//     2x        960x540          33    60
+//     3x        1440x810         17    60
+//     4x        1920x1080        11    60
+//     5.69x     2732x1537         6    60   <- native
+//
+// The adaptive controller was doing its job perfectly against those numbers:
+// 1.5x is genuinely the only rung where WebGL clears 60 on that device, so it
+// walked down to 1.5x and stayed. Choosing 2D here does not tune the controller,
+// it removes the wall the controller kept running into — full native resolution
+// at a locked 60 instead of a fourteenth of the pixels.
+//
+// What it costs is the post pipeline: bloom/glow and the procedural GPU sky.
+// Those are enhancements, and the 2D path already renders the same game without
+// them (it has always been the fallback, and is covered by tests). Trading a
+// nebula for 14x the pixels is not a close call on a device whose whole problem
+// was that it looked blocky.
+//
+// ?renderer=webgl forces the pipeline back on for comparison; ?renderer=2d
+// forces 2D anywhere.
+function prefer2D(platform) {
+  return !!(platform.isIphone || platform.isIpad);
 }
 
 // Pin the density from code, exactly as ?density=N does — same field, so
@@ -343,9 +381,11 @@ export function initRenderer(platform = {}, persistence = {}) {
   lockedRungs.clear();
   resetAdaptiveSamples();
   resetSettle();
-  // WebGL post pipeline when available; otherwise the classic 2D blit.
-  const forced2D = force2DRequested();
-  const webgl = forced2D
+  // WebGL post pipeline when available; otherwise the direct 2D blit. On iOS
+  // 2D is the DEFAULT, not a fallback — see prefer2D for the measurements.
+  const asked = rendererRequested();
+  const use2D = asked === '2d' || (asked !== 'webgl' && prefer2D(platform));
+  const webgl = use2D
     ? { ok: false, claimed: false, error: null }
     : glfx.init(canvas);
   if (webgl.ok) {

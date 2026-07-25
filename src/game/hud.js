@@ -706,13 +706,16 @@ export function drawSpeech(ctx, speech, opts = {}) {
     return;
   }
   // Named speakers: one block — portrait on the left, name as a header over
-  // the words. Face, name, and text read as a single card per speaker.
+  // the words. Face, name, and text read as a single card per speaker. A
+  // caller may hide the repeated name while retaining the portrait; the
+  // omitted header row is removed from the card's measured height as well.
+  const showName = speech.showName !== false;
   const name = isEgg ? 'EGGSHELL' : hero.short;
   const FACE_W = 20 * s, FACE_H = 15 * s, PAD = 7 * s, GAP = 6 * s;
   const ROW = SPEECH_ROW * s;
   const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 100 * s), s, 3);
-  const tw = Math.max(textWidth(name, s), ...lines.map((line) => textWidth(line, s)));
-  const textH = (lines.length + 1) * ROW; // name row + body rows
+  const tw = Math.max(showName ? textWidth(name, s) : 0, ...lines.map((line) => textWidth(line, s)));
+  const textH = (lines.length + (showName ? 1 : 0)) * ROW;
   const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
   const w = PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(W / 2 - w / 2);
@@ -731,8 +734,8 @@ export function drawSpeech(ctx, speech, opts = {}) {
   }
   const tx = x + PAD + FACE_W + GAP;
   const ty = y - 4 + Math.round((h - textH) / 2) + 3 * s;
-  rawDrawText(ctx, name, tx, ty, nameInk, s);
-  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + ROW + i * ROW, ink, s));
+  if (showName) rawDrawText(ctx, name, tx, ty, nameInk, s);
+  lines.forEach((line, i) => rawDrawText(ctx, line, tx, ty + (showName ? ROW : 0) + i * ROW, ink, s));
 }
 
 // ACT announcement: full-screen corporate-glitch card over the frozen world.
