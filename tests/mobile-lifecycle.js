@@ -100,9 +100,11 @@ const win = Object.assign(new Events(), {
   timers: new Map(),
   nextTimerId: 0,
   setTimeout(fn, delay = 0) {
-    const id = ++this.nextTimerId;
-    const parsedDelay = Number(delay);
-    this.timers.set(id, { fn, delay: Number.isFinite(parsedDelay) ? parsedDelay : 0 });
+    const id = this.nextTimerId++;
+    this.timers.set(id, {
+      fn,
+      delay: Number.isFinite(Number(delay)) ? Number(delay) : 0,
+    });
     return id;
   },
   clearTimeout(id) {
@@ -117,8 +119,8 @@ const win = Object.assign(new Events(), {
   },
   runAllTimeouts() {
     const timers = [...this.timers.entries()].sort(([idA, timerA], [idB, timerB]) => {
-      const d = timerA.delay - timerB.delay;
-      return d || (idA - idB);
+      const delayDiff = timerA.delay - timerB.delay;
+      return delayDiff || (idA - idB);
     });
     for (const [id] of timers) this.runTimeout(id);
   },
