@@ -71,13 +71,19 @@ const CHROME_GAME_GAP = 10;
 // these same zones) catches it too, not just #chrome's own listener.
 const CHROME_GAME_EDGE_BUF = 44;
 
-export const back = (() => {
+const uploadBack = (() => {
   const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
   if (c) { c.width = W; c.height = H; }
   return c;
 })();
 
-export const bctx = back ? back.getContext('2d') : null;
+const uploadCtx = uploadBack ? uploadBack.getContext('2d') : null;
+// Live exports: WebGL paints into the upload canvas, while the 2D backend
+// paints straight into #game. Keeping the public drawing target stable lets
+// every state remain backend-neutral without paying a full-frame canvas copy
+// merely to present a 2D frame.
+export let back = uploadBack;
+export let bctx = uploadCtx;
 import { glfx } from './glfx.js';
 import { readDiag } from './diag.js';
 
@@ -283,33 +289,31 @@ function rendererRequested() {
   return q || (d.renderer && (d.bench || d.rendererLock) ? d.renderer : null);
 }
 
-// iPadOS stays on the 2D path for now, based on the measured M1 iPad result.
-// This is not a fallback — it is the fast path on that device.
+// iPadOS stays on the 2D path for now. This is not merely a failure fallback:
+// the current WebGL architecture must upload a complete Canvas2D world texture
+// every frame, while the 2D path now paints that world straight into #game.
 //
 // The WebGL pipeline draws the world on a 2D canvas and re-uploads that whole
 // canvas to the GPU every frame with texSubImage2D. Measured on an iPad Pro
-// 12.9 (M1), that upload is bandwidth-capped at roughly 20-25 Mpx/s — flat
-// across every density, which is the signature of a fixed transfer cost rather
-// than a shading one:
+// 12.9 (M1), that upload was bandwidth-capped at roughly 20-25 Mpx/s — flat
+// across every density, the signature of a fixed transfer cost rather than a
+// shading one:
 //
-//     density   resolution    WebGL    2D
-//     1x        480x270          60    60
-//     2x        960x540          33    60
-//     3x        1440x810         17    60
-//     4x        1920x1080        11    60
-//     5.69x     2732x1537         6    60   <- native
+//     density   resolution    WebGL
+//     1x        480x270          60
+//     2x        960x540          33
+//     3x        1440x810         17
+//     4x        1920x1080        11
+//     5.69x     2732x1537         6   <- native
 //
 // The adaptive controller was doing its job perfectly against those numbers:
 // 1.5x is genuinely the only rung where WebGL clears 60 on that device, so it
-// walked down to 1.5x and stayed. Choosing 2D here does not tune the controller,
-// it removes the wall the controller kept running into — full native resolution
-// at a locked 60 instead of a fourteenth of the pixels.
+// walked down to 1.5x and stayed. Choosing 2D removes that upload wall; the
+// density controller still measures Canvas2D painting/fill cost honestly and
+// can step down if the scene itself cannot sustain the sharper rung.
 //
 // What it costs is the post pipeline: bloom/glow and the procedural GPU sky.
-// Those are enhancements, and the 2D path already renders the same game without
-// them (it has always been the fallback, and is covered by tests). Trading a
-// nebula for 14x the pixels is not a close call on a device whose whole problem
-// was that it looked blocky.
+// Those are enhancements, and the 2D path renders the same game without them.
 //
 // This result must not be generalized to iPhone. Recent iPhones have sustained
 // the WebGL path at useful densities, and forcing them to 2D here prevents the
@@ -455,6 +459,8 @@ export function initRenderer(platform = {}, persistence = {}) {
     ? { ok: false, claimed: false, error: null }
     : glfx.init(canvas);
   if (webgl.ok) {
+    back = uploadBack;
+    bctx = uploadCtx;
     selectBackend('webgl');
   } else {
     // getContext locks a canvas to the first context family it successfully
@@ -468,6 +474,8 @@ export function initRenderer(platform = {}, persistence = {}) {
       const why = webgl.error ? ` WebGL failed first: ${webgl.error.message || webgl.error}` : '';
       throw new Error(`No usable WebGL or 2D canvas renderer.${why}`);
     }
+    back = canvas;
+    bctx = dctx;
     selectBackend('2d');
     if (webgl.error && typeof console !== 'undefined' && console.warn) {
       console.warn('WebGL effects disabled; using the 2D renderer.', webgl.error);
@@ -838,6 +846,22 @@ export function pushGlowDraw(fn) {
 // path without exposing or executing the callbacks out of compositing order.
 export function pendingOverlayDrawCount() { return overlayDraws.length; }
 
+// Prepare the backend's drawing target before states paint. WebGL keeps its
+// offscreen upload canvas unchanged. Canvas2D clears the visible backing store
+// once and installs the logical transform directly on it, eliminating the old
+// backbuffer -> display drawImage of every pixel on every frame.
+export function beginRenderFrame() {
+  if (backend !== '2d' || !dctx) return;
+  profileTimed('displayMs', () => {
+    dctx.setTransform(1, 0, 0, 1, 0, 0);
+    dctx.clearRect(0, 0, canvas.width, canvas.height);
+    const px = screen.dpx || 1;
+    dctx.setTransform(px, 0, 0, px,
+      Math.round(shakeX * px), Math.round(shakeY * px));
+    dctx.imageSmoothingEnabled = true;
+  });
+}
+
 export function blit() {
   const px = screen.px || 1;
   const hasOverlay = overlaySprites.length || overlayDraws.length;
@@ -907,24 +931,22 @@ export function blit() {
   // title visit cannot leak them into a later WebGL boot.
   glowDraws.length = 0;
 
-  // 2D fallback: the backbuffer already matches full device density.
+  // Direct 2D: beginRenderFrame already cleared #game and states painted the
+  // world into it at device density. Only isolated overlays still need a
+  // composite; merged title overlays paint straight into the visible context.
   if (hasOverlay && mergeOverlays) {
-    // Paint before the display blit; the backbuffer is already transformed to
-    // the selected density and the display copy then applies shake once.
     paintOverlays(bctx, false, false);
   }
   profileTimed('displayMs', () => {
-    dctx.setTransform(1, 0, 0, 1, 0, 0);
-    dctx.imageSmoothingEnabled = back.width !== canvas.width;
-    dctx.clearRect(0, 0, canvas.width, canvas.height);
-    dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
-    dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
-    dctx.imageSmoothingEnabled = true;
     if (hasOverlay && !mergeOverlays) {
-        paintOverlays(octx);
-        dctx.setTransform(1, 0, 0, 1, 0, 0);
-        dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
+      paintOverlays(octx);
+      dctx.setTransform(1, 0, 0, 1, 0, 0);
+      dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
     }
+    const px = screen.dpx || 1;
+    dctx.setTransform(px, 0, 0, px,
+      Math.round(shakeX * px), Math.round(shakeY * px));
+    dctx.imageSmoothingEnabled = true;
   });
 }
 

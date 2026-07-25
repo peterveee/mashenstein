@@ -178,14 +178,17 @@ const forced2DRenderer = await import('../src/engine/renderer.js?forced-2d');
 forced2DRenderer.initRenderer();
 assert(forced2DRenderer.rendererBackend() === '2d' && window.__mash_renderer === '2d',
   '?renderer=2d bypasses WebGL and exposes the selected backend');
+forced2DRenderer.beginRenderFrame();
+assert(forced2DRenderer.bctx.canvas === forced2DDom.canvas,
+  '2D states paint directly into the visible game canvas');
 forced2DRenderer.pushOverlayDraw(() => {});
 forced2DRenderer.blit();
 const displayCalls = forced2DDom.contextCalls.filter((call) => call.canvas === forced2DDom.canvas);
 const worldBlit = displayCalls.findIndex((call) => call.method === 'drawImage');
 assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.method === 'clearRect'),
   '2D overlays do not clear the scrolling world after it is composited');
-assert(displayCalls.filter((call) => call.method === 'drawImage').length === 2,
-  '2D fallback composites its isolated overlay canvas over the scrolling world');
+assert(displayCalls.filter((call) => call.method === 'drawImage').length === 1,
+  'direct 2D composites only its isolated overlay canvas, not a copied world');
 const displayBeforeMerge = forced2DDom.contextCalls.filter((call) => call.canvas === forced2DDom.canvas).length;
 forced2DRenderer.setOverlayMerge(true);
 forced2DRenderer.pushOverlayDraw(() => {});
@@ -193,8 +196,8 @@ forced2DRenderer.blit();
 const mergeCalls = forced2DDom.contextCalls
   .filter((call) => call.canvas === forced2DDom.canvas)
   .slice(displayBeforeMerge);
-assert(mergeCalls.filter((call) => call.method === 'drawImage').length === 1,
-  'merged overlays share the backbuffer and take one display blit');
+assert(mergeCalls.filter((call) => call.method === 'drawImage').length === 0,
+  'merged 2D overlays paint directly with no display blit');
 forced2DRenderer.setOverlayMerge(false);
 
 // The WebGL title path should upload one combined backbuffer when the merge

@@ -1,6 +1,6 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
-  initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
+  initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
   noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
@@ -8,7 +8,7 @@ import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateNoCameo, updateState, drawState, setTransitionHero } from './engine/states.js';
+import { setState, setStateNoCameo, updateState, drawState, currentState, setTransitionHero } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -32,6 +32,11 @@ import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer } from './engine/diag.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
+import {
+  startGameplayProfile, gameplayProfileActive, gameplayProfileWaiting,
+  gameplayProfileFrame, gameplayProfileReportVisible,
+  drawGameplayProfile, drawGameplayProfileWaiting,
+} from './engine/gameplay-profile.js';
 import { Dev } from './dev/index.js';
 
 save.load();
@@ -375,6 +380,7 @@ function boot() {
   // installed PWA, which is the only way iPhone runs this game at all.
   let benchRequested = false;
   let titleProfileRequested = false;
+  let gameplayProfileRequested = false;
   let benchDiag = null;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
@@ -383,17 +389,19 @@ function boot() {
     if (p.has('mute')) save.settings.muted = true;
     benchRequested = p.has('bench') || !!diag.bench;
     titleProfileRequested = p.has('titleProfile') || !!diag.titleProfile;
+    gameplayProfileRequested = p.has('gameplayProfile') || !!diag.gameplayProfile;
     benchDiag = diag;
     // URL diagnostics are one-shot tools. Leaving ?bench or ?titleProfile in
     // the address bar made every ordinary reload throw the player back into a
     // title benchmark, which is especially disruptive when testing a level.
     // Storage-backed portrait buttons are already consumed above; this clears
     // the equivalent query flags without navigating away from the PWA.
-    if ((p.has('bench') || p.has('titleProfile')) && window.history?.replaceState) {
+    if ((p.has('bench') || p.has('titleProfile') || p.has('gameplayProfile')) && window.history?.replaceState) {
       try {
         const clean = new URL(window.location.href);
         clean.searchParams.delete('bench');
         clean.searchParams.delete('titleProfile');
+        clean.searchParams.delete('gameplayProfile');
         window.history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
       } catch (e) { /* a restricted standalone URL can simply keep the flag for this boot */ }
     }
@@ -487,6 +495,7 @@ function boot() {
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => {
+      beginRenderFrame();
       // Touch devices with a letterbox margin get the readout out on #chrome,
       // in the dead black beside/above the game, rather than over the art.
       const showChromeFps = save.settings.showFps && Input.isTouchDevice() && chrome.mode !== 'none';
@@ -575,20 +584,29 @@ function boot() {
       if (!showChromeFps && Input.isTouchDevice() && chrome.mode !== 'none') {
         setChromeOverlay('', null);
       }
-      const profileOn = titleProfileActive();
+      const gameplayState = ['RunState', 'BossState', 'MinigameState', 'TutorialState']
+        .includes(currentState()?.constructor?.name);
+      const profileOn = titleProfileActive() || gameplayProfileActive();
       const drawStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
       drawState(bctx);
       const drawMs = profileOn ? performance.now() - drawStartedAt : 0;
       Dev.draw(bctx);
       if (benchRequested) pushOverlayDraw(drawBench);
       if (titleProfileReportVisible()) pushOverlayDraw(drawTitleProfile);
+      if (gameplayProfileWaiting()) pushOverlayDraw(drawGameplayProfileWaiting);
+      if (gameplayProfileReportVisible()) pushOverlayDraw(drawGameplayProfile);
       const blitStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
       blit();
       if (profileOn) {
-        titleProfileFrame(performance.now(), {
+        const now = performance.now();
+        const timings = {
           drawMs,
           blitMs: performance.now() - blitStartedAt,
-        });
+        };
+        titleProfileFrame(now, timings);
+        gameplayProfileFrame(now, timings, gameplayState);
+      } else if (gameplayProfileRequested) {
+        gameplayProfileFrame(performance.now(), {}, gameplayState);
       }
     },
     // The sweep counts presented frames, so it reads the same clock the density
@@ -596,7 +614,12 @@ function boot() {
     present: (now) => { noteRendererFrame(now); benchFrame(now); },
   });
   if (benchRequested) startBench();
-  if (titleProfileRequested) startTitleProfile();
+  if (titleProfileRequested) {
+    startTitleProfile({ restorePin: benchDiag?.titleProfileRenderer ? null : undefined });
+  }
+  if (gameplayProfileRequested) {
+    startGameplayProfile({ restorePin: benchDiag?.gameplayProfileRenderer ? null : undefined });
+  }
   // Install after startLoop in the same task: no animation frame can run
   // between these calls, and the controller can immediately pause the loop
   // through its public handle when booting hidden or in iPhone portrait.

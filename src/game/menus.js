@@ -59,7 +59,6 @@ const TAGLINES = [
   'EVERY PIXEL LOVINGLY REPLACED WITH MATH',
 ];
 
-let titleGrad = null;
 // Offsets here are in the 26-tall units the accents were drawn against; the
 // caller scales the whole thing to whatever size the parade is running at.
 function drawParadeAccent(ctx, id, x, feetY, p) {
@@ -866,23 +865,92 @@ function drawInvaderImpact(ctx, strikes) {
   }
 }
 
-function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots) {
-  // night sky over the last functioning food court
-  if (!titleGrad) {
-    titleGrad = ctx.createLinearGradient(0, 0, 0, H);
-    titleGrad.addColorStop(0, '#07070f');
-    titleGrad.addColorStop(0.65, '#141026');
-    titleGrad.addColorStop(1, '#1c1430');
+// Retained title artwork. These layers used to rebuild gradients, marquee
+// glyph paths and stitched seams every frame even though only their opacity
+// changes. Rasterize them once per bake density and composite the cached art;
+// the live sky, cord, invader and parade remain independently animated.
+const titleBaseCache = { canvas: null, ctx: null, key: '' };
+const titleMarqueeCache = { canvas: null, ctx: null, ss: 0 };
+
+function ensureTitleCanvas(slot, w, h, ss) {
+  if (!slot.canvas || slot.ss !== ss || slot.canvas.width !== Math.round(w * ss)
+      || slot.canvas.height !== Math.round(h * ss)) {
+    slot.canvas = document.createElement('canvas');
+    slot.canvas.width = Math.max(1, Math.round(w * ss));
+    slot.canvas.height = Math.max(1, Math.round(h * ss));
+    slot.ctx = slot.canvas.getContext('2d');
+    slot.ss = ss;
+    slot.key = '';
   }
+  return slot.ctx;
+}
+
+function drawRetainedTitleBase(ctx, skyMode) {
+  // This layer is only a smooth gradient plus two flat colour fields; a
+  // logical-resolution raster scales without losing authored edge detail and
+  // avoids retaining another ~19 MB canvas at an iPad's 6x bake ceiling.
+  const ss = 1;
+  const key = `${ss}|${skyMode}`;
+  const x = ensureTitleCanvas(titleBaseCache, W, H, ss);
+  if (titleBaseCache.key !== key) {
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.clearRect(0, 0, titleBaseCache.canvas.width, titleBaseCache.canvas.height);
+    x.setTransform(ss, 0, 0, ss, 0, 0);
+    if (skyMode === 'canvas') {
+      const grad = x.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#07070f');
+      grad.addColorStop(0.65, '#141026');
+      grad.addColorStop(1, '#1c1430');
+      x.fillStyle = grad;
+      x.fillRect(0, 0, W, H);
+    }
+    x.fillStyle = '#171222';
+    x.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
+    titleBaseCache.key = key;
+  }
+  ctx.drawImage(titleBaseCache.canvas, 0, 0, W, H);
+}
+
+function drawRetainedMarquee(ctx, alpha) {
+  const ss = bakeSS();
+  const x = ensureTitleCanvas(titleMarqueeCache, W, 108, ss);
+  if (!titleMarqueeCache.key) {
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.clearRect(0, 0, titleMarqueeCache.canvas.width, titleMarqueeCache.canvas.height);
+    x.setTransform(ss, 0, 0, ss, 0, 0);
+    drawTextCentered(x, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#a8791f', TITLE_SCALE, 'marquee');
+    drawTextCentered(x, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#ffcf33', TITLE_SCALE, 'marquee');
+    const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
+    const seamK = TITLE_SCALE / 4;
+    const seamTop = TITLE_MARQUEE_Y + 4 * seamK;
+    const seamBot = TITLE_MARQUEE_Y + 22 * seamK;
+    x.strokeStyle = 'rgba(42,30,5,0.85)';
+    x.lineWidth = 1.4;
+    for (let i = 0; i < 6; i++) {
+      const sx = W / 2 - logoW / 2 + (logoW * (i + 0.5)) / 6 - 4;
+      x.beginPath(); x.moveTo(sx, seamTop); x.lineTo(sx + 8, seamBot); x.stroke();
+      x.beginPath(); x.moveTo(sx + 8, seamTop); x.lineTo(sx, seamBot); x.stroke();
+    }
+    drawTextCentered(x, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#5fd6c8', 1, 'subtitle');
+    titleMarqueeCache.key = `${ss}`;
+  }
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.drawImage(titleMarqueeCache.canvas, 0, 0, W, 108);
+  ctx.restore();
+}
+
+function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDismissed, tapBombs, shots, profile) {
+  // night sky over the last functioning food court
   // Under WebGL the sky is generated on the GPU — gradient, drifting nebula,
   // parallax twinkle and the odd shooting star — so we leave a transparent
   // hole for it. Reduced flashing freezes its clock instead of animating.
   // Without WebGL, the old hand-drawn sky stands in.
-  const gpuSky = setSkyFx(true, reduced ? 0 : t);
+  const skyEnabled = profile?.sky !== false;
+  const gpuSky = setSkyFx(skyEnabled, reduced ? 0 : t);
   ctx.clearRect(0, 0, W, H);
-  if (!gpuSky) {
-    ctx.fillStyle = titleGrad;
-    ctx.fillRect(0, 0, W, H);
+  drawRetainedTitleBase(ctx, gpuSky ? 'gpu' : skyEnabled ? 'canvas' : 'none');
+  if (skyEnabled && !gpuSky) {
     // twinkling stars (the bright ones catch the bloom)
     for (let i = 0; i < 26; i++) {
       const sx = (i * 97 + 23) % W;
@@ -907,9 +975,6 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // walk on, and it starts higher than the text stack needs it to, because the
   // cast is what the bottom of the screen is for — a taller parade standing on
   // a deeper floor reads as a room rather than a strip of sprites.
-  ctx.fillStyle = '#171222';
-  ctx.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
-
   // The cast, the invader and its ordnance, returned as a painter instead of
   // drawn here — the caller hands it to pushOverlayDraw so it renders at DEVICE
   // resolution, the same treatment in-run heroes get.
@@ -1030,24 +1095,9 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   // out of parts, and wired to a sign that has seen better decades. It stutters
   // twice in quick succession, then holds steady for a few seconds before the
   // next fit — a constant strobe reads as broken rather than characterful.
-  ctx.globalAlpha = flickerAlpha(t, reduced);
-  drawTextCentered(ctx, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#a8791f', TITLE_SCALE, 'marquee');
-  drawTextCentered(ctx, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#ffcf33', TITLE_SCALE, 'marquee');
-  // The seams: six stitched joins where the letters were sewn back together.
-  // Spread across the measured width of the logo rather than a fixed span, so
-  // they stay on the lettering instead of dangling off the ends.
-  ctx.strokeStyle = 'rgba(42,30,5,0.85)';
-  ctx.lineWidth = 1.4;
   const logoW = textWidth('MASHENSTEIN', TITLE_SCALE, 'marquee');
-  const seamK = TITLE_SCALE / 4;   // seam band tracks the logo's size
-  const seamTop = TITLE_MARQUEE_Y + 4 * seamK, seamBot = TITLE_MARQUEE_Y + 22 * seamK;
-  for (let i = 0; i < 6; i++) {
-    const sx = W / 2 - logoW / 2 + (logoW * (i + 0.5)) / 6 - 4;
-    ctx.beginPath(); ctx.moveTo(sx, seamTop); ctx.lineTo(sx + 8, seamBot); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(sx + 8, seamTop); ctx.lineTo(sx, seamBot); ctx.stroke();
-  }
-  drawTextCentered(ctx, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#5fd6c8', 1, 'subtitle');
-  ctx.globalAlpha = 1;
+  const seamK = TITLE_SCALE / 4;
+  drawRetainedMarquee(ctx, flickerAlpha(t, reduced));
 
   // A live power cord dangles off the logo, swinging, occasionally sparking.
   // The anchor tracks the measured width so the cord stays bolted to the last
@@ -1737,8 +1787,8 @@ export class TitleState {
     Input.endFrame();
   }
   draw(ctx) {
-    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots);
     const profile = titleProfileOptions();
+    const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots, profile);
     // Only the marquee is intentionally luminous on the title. Paint a white
     // quarter-resolution mask for it; the visible logo remains in the normal
     // 3x backbuffer, while menu copy and toon highlights stay crisp instead of

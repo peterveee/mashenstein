@@ -215,7 +215,10 @@ function createGameDom() {
           <button id="diag-force-3x-gl" data-mash-diag="force-3x-gl" type="button">FORCE 3X GL</button>
           <button id="diag-bench-2d" data-mash-diag="bench-2d" type="button">BENCH 2D</button>
           <button id="diag-bench-gl" data-mash-diag="bench-gl" type="button">BENCH GL</button>
-          <button id="diag-title-profile" data-mash-diag="title-profile" type="button">TITLE 3X PROFILE</button>
+          <button id="diag-title-profile-2d" data-mash-diag="title-profile-2d" type="button">TITLE 2D 3X</button>
+          <button id="diag-title-profile-gl" data-mash-diag="title-profile-gl" type="button">TITLE GL 3X</button>
+          <button id="diag-game-profile-2d" data-mash-diag="game-profile-2d" type="button">GAME 2D 3X</button>
+          <button id="diag-game-profile-gl" data-mash-diag="game-profile-gl" type="button">GAME GL 3X</button>
           <button id="diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
         </div>
         <p id="diag-status" class="mash-diag-status" aria-live="polite"></p>
@@ -240,7 +243,10 @@ function createGameDom() {
         <button id="landscape-diag-force-3x-gl" data-mash-diag="force-3x-gl" type="button">FORCE 3X GL</button>
         <button id="landscape-diag-bench-2d" data-mash-diag="bench-2d" type="button">BENCH 2D</button>
         <button id="landscape-diag-bench-gl" data-mash-diag="bench-gl" type="button">BENCH GL</button>
-        <button id="landscape-diag-title-profile" data-mash-diag="title-profile" type="button">TITLE 3X PROFILE</button>
+        <button id="landscape-diag-title-profile-2d" data-mash-diag="title-profile-2d" type="button">TITLE 2D 3X</button>
+        <button id="landscape-diag-title-profile-gl" data-mash-diag="title-profile-gl" type="button">TITLE GL 3X</button>
+        <button id="landscape-diag-game-profile-2d" data-mash-diag="game-profile-2d" type="button">GAME 2D 3X</button>
+        <button id="landscape-diag-game-profile-gl" data-mash-diag="game-profile-gl" type="button">GAME GL 3X</button>
         <button id="landscape-diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
       </div>
       <p id="landscape-diag-status" class="mash-diag-status" aria-live="polite"></p>

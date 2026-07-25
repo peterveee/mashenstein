@@ -166,13 +166,34 @@ export class LifecycleController {
       // reload after the sweep returns to playing rather than re-benchmarking.
       ['bench-2d', () => reloadInto({ bench: true, renderer: '2d', rendererLock: null, density: null }, 'reloading into 2D bench...')],
       ['bench-gl', () => reloadInto({ bench: true, renderer: 'webgl', rendererLock: null, density: null }, 'reloading into WebGL bench...')],
-      ['title-profile', () => reloadInto({
+      ['title-profile-2d', () => reloadInto({
+        titleProfile: true,
+        titleProfileRenderer: true,
+        renderer: '2d',
+        rendererLock: true,
+        density: 3,
+      }, 'reloading into 2D 3X title profile...')],
+      ['title-profile-gl', () => reloadInto({
         titleProfile: true,
         titleProfileRenderer: true,
         renderer: 'webgl',
         rendererLock: true,
         density: 3,
       }, 'reloading into WebGL 3X title profile...')],
+      ['game-profile-2d', () => reloadInto({
+        gameplayProfile: true,
+        gameplayProfileRenderer: true,
+        renderer: '2d',
+        rendererLock: true,
+        density: 3,
+      }, 'reloading into 2D 3X gameplay profile...')],
+      ['game-profile-gl', () => reloadInto({
+        gameplayProfile: true,
+        gameplayProfileRenderer: true,
+        renderer: 'webgl',
+        rendererLock: true,
+        density: 3,
+      }, 'reloading into WebGL 3X gameplay profile...')],
       ['clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
     ];
     this.diagButtons = [];

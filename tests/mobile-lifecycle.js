@@ -269,6 +269,13 @@ const pinnedProfileDiag = consumeBenchDiag();
 releaseBenchRenderer(pinnedProfileDiag);
 assert(!readDiag().renderer && readDiag().titleProfileRenderer === false,
   'the title profile releases only its temporary WebGL 3x pin');
+dom.store.mash_diag = JSON.stringify({ gameplayProfile: true, gameplayProfileRenderer: true, renderer: '2d', rendererLock: true, density: 3 });
+const gameplayProfileDiag = consumeBenchDiag();
+assert(gameplayProfileDiag.gameplayProfile && readDiag().gameplayProfile === false,
+  'a gameplay profile is consumed once while waiting for a playable state');
+releaseBenchRenderer(gameplayProfileDiag);
+assert(!readDiag().renderer && readDiag().gameplayProfileRenderer === false,
+  'the gameplay profile releases only its temporary backend and density pin');
 forceRenderer('2d');
 assert(readDiag().renderer === '2d' && readDiag().rendererLock && readDiag().density === null,
   'the 2D diagnostic pins only the backend and leaves density adaptive');

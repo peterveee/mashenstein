@@ -75,8 +75,11 @@ assert(body.children[1].innerHTML.includes('id="copy-error"')
   'portrait dialog includes a copyable crash report');
 assert(body.children[1].innerHTML.includes('id="diag-force-2d"')
   && body.children[1].innerHTML.includes('id="diag-force-webgl"')
-  && body.children[1].innerHTML.includes('TITLE 3X PROFILE'),
-  'portrait diagnostics expose separate 2D, WebGL and title-profile controls');
+  && body.children[1].innerHTML.includes('TITLE 2D 3X')
+  && body.children[1].innerHTML.includes('TITLE GL 3X')
+  && body.children[1].innerHTML.includes('GAME 2D 3X')
+  && body.children[1].innerHTML.includes('GAME GL 3X'),
+  'portrait diagnostics expose backend-neutral title and gameplay profiles');
 assert(body.children[2].id === 'landscape-diag'
   && body.children[2].hidden
   && body.children[2].attrs.role === 'dialog'

@@ -4,7 +4,7 @@
 // a physical phone can tell us which subsystem actually bought the frames.
 import {
   W, H,
-  setDensityPin, suppressSkyFx, setSceneGlow, setOverlayMerge,
+  setDensityPin, setSceneGlow, setOverlayMerge,
   rendererDiagnostics, rendererBackend,
   resetRenderProfileStats, renderProfileStats, setRenderProfile,
 } from './renderer.js';
@@ -34,6 +34,7 @@ let frames = 0;
 let sumDrawMs = 0;
 let sumBlitMs = 0;
 let savedPin = null;
+let restorePinOverride;
 let profileDensity = 0;
 const results = [];
 
@@ -43,7 +44,6 @@ function nowMs() {
 
 function applyStage() {
   const stage = STAGES[stageIndex];
-  suppressSkyFx(!stage.sky);
   setSceneGlow(stage.glow);
   setOverlayMerge(stage.merge);
   phase = 'settle';
@@ -59,16 +59,25 @@ function finish() {
   active = false;
   done = true;
   phase = 'done';
-  suppressSkyFx(false);
   setSceneGlow(true);
   setOverlayMerge(true);
   setDensityPin(savedPin);
   setRenderProfile(false);
 }
 
-export function startTitleProfile() {
+export function startTitleProfile({ restorePin } = {}) {
+  restorePinOverride = restorePin;
+  savedPin = null;
+  results.length = 0;
+  stageIndex = 0;
+  active = true;
+  done = false;
+  phase = 'waiting';
+}
+
+function beginTitleProfile() {
   const rd = rendererDiagnostics();
-  savedPin = rd.pinned;
+  savedPin = restorePinOverride === undefined ? rd.pinned : restorePinOverride;
   const targetDensity = rd.pinned != null ? rd.pinned : rd.density;
   // Keep every contrast at the same exact pixel count. Without this pin the
   // adaptive controller would interpret a deliberately cheap stage as a
@@ -77,10 +86,6 @@ export function startTitleProfile() {
   // Read back after the pin: a target above the viewport's native ceiling is
   // clamped, and the report must name the pixels it actually measured.
   profileDensity = rendererDiagnostics().density;
-  results.length = 0;
-  stageIndex = 0;
-  active = true;
-  done = false;
   setRenderProfile(true);
   applyStage();
 }
@@ -91,9 +96,9 @@ export function titleProfileReportVisible() { return done && results.length > 0;
 // TitleState reads this on every draw. Keeping the hook here means the profiler
 // can remove the procedural parade and UI without changing input or menu state.
 export function titleProfileOptions() {
-  if (!active) return { parade: true, ui: true };
+  if (!active || phase === 'waiting') return { sky: true, parade: true, ui: true };
   const stage = STAGES[stageIndex];
-  return { parade: stage.parade, ui: stage.ui };
+  return { sky: stage.sky, parade: stage.parade, ui: stage.ui };
 }
 
 function completeStage(now) {
@@ -123,6 +128,13 @@ function completeStage(now) {
 // exactly the cadence the player actually saw.
 export function titleProfileFrame(now, { drawMs = 0, blitMs = 0 } = {}) {
   if (!active) return;
+  if (phase === 'waiting') {
+    // PWA boots can begin in portrait at a lower native ceiling, then resume in
+    // landscape. Pinning here, on the first actually presented frame, measures
+    // the landscape density rather than permanently capturing the boot shape.
+    beginTitleProfile();
+    return;
+  }
   if (phase === 'settle') {
     if (now < phaseEndsAt) return;
     phase = 'measure';
@@ -169,6 +181,6 @@ export function drawTitleProfile(ctx) {
   });
   const note = rendererBackend() === 'webgl'
     ? 'UPLOAD = texture updates / megapixels per stage'
-    : 'UPLOAD = display copy time (WebGL not active)';
+    : 'UPLOAD = direct-display setup/composite time';
   drawText(ctx, note, x + 10, y + boxH - 10, '#7e879d', 0.5, 'ui');
 }

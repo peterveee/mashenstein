@@ -49,6 +49,7 @@ export function consumeBenchDiag() {
     diag.renderer = null;
   }
   if (diag.titleProfile) writeDiag({ titleProfile: false });
+  if (diag.gameplayProfile) writeDiag({ gameplayProfile: false });
   return diag;
 }
 
@@ -56,6 +57,9 @@ export function releaseBenchRenderer(diag) {
   if (diag && diag.bench) writeDiag({ renderer: null, rendererLock: null, density: null });
   if (diag && diag.titleProfileRenderer) {
     writeDiag({ renderer: null, rendererLock: null, density: null, titleProfileRenderer: false });
+  }
+  if (diag && diag.gameplayProfileRenderer) {
+    writeDiag({ renderer: null, rendererLock: null, density: null, gameplayProfileRenderer: false });
   }
 }
 
