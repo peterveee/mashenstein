@@ -36,6 +36,15 @@ function bucketResolution(w, h) {
   return '4K+ / ultrawide';
 }
 
+function detectBrowser(ua) {
+  if (!ua) return '';
+  if (ua.includes('Edg/')) return 'Edge';
+  if (ua.includes('Firefox/')) return 'Firefox';
+  if (ua.includes('Chrome/')) return 'Chrome';
+  if (ua.includes('Safari/')) return 'Safari';
+  return 'Other';
+}
+
 // ---- dashboard HTML ----------------------------------------------------
 
 function dashboardHtml(stats) {
@@ -62,6 +71,11 @@ function dashboardHtml(stats) {
   const dprRows = Object.entries(dprs || {})
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([k, v]) => bar(k + 'x', v, Math.max(...Object.values(dprs)), '#f890b8'))
+    .join('');
+
+  const browserRows = Object.entries(stats.browsers || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => bar(k, v, Math.max(...Object.values(stats.browsers)), '#72d8f0'))
     .join('');
 
   const installedPct = total > 0
@@ -99,6 +113,7 @@ function dashboardHtml(stats) {
       '<td class="rec-gl">' + (r.backend || '\u2014') + '</td>' +
       '<td class="rec-pwa">' + (r.installed ? 'Yes' : 'No') + '</td>' +
       '<td class="count">' + (r.sessionSec != null ? r.sessionSec + 's' : '') + '</td>' +
+      '<td class="rec-browser">' + (r.browser || '') + '</td>' +
       '<td class="rec-geo">' + [r.country, r.city].filter(Boolean).join(', ') + '</td>' +
       '<td class="rec-name">' + (r.name || '') + '</td>' +
       '</tr>')
@@ -137,6 +152,7 @@ function dashboardHtml(stats) {
     '  .rec-gl{color:#f890b8;font-size:.71rem}\n' +
     '  .rec-geo{color:#c8cbd7;font-size:.71rem}\n' +
     '  .rec-name{color:#f6d33c;font-size:.75rem;font-weight:600;letter-spacing:.03em}\n' +
+    '  .rec-browser{color:#72d8f0;font-size:.73rem}\n' +
     '  .rec-pwa{color:#f6d33c}\n' +
     '  .rec-ua{color:#55647a;font-size:.69rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n' +
     '  .footer{margin-top:40px;color:#55647a;font-size:.72rem}\n' +
@@ -157,6 +173,8 @@ function dashboardHtml(stats) {
     '<table>' + (resRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table></div>\n' +
     '<div><h2>Device pixel ratio</h2>\n' +
     '<table>' + (dprRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</table></div>\n' +
+    (browserRows ? '<div><h2>Browser</h2>\n' +
+    '<table>' + browserRows + '</table></div>\n' : '') +
     '</div>\n' +
     '<h2>Daily players</h2>\n' +
     '<table><thead><tr><th>Date</th><th>Sessions</th><th>Devices</th></tr></thead>\n' +
@@ -168,7 +186,7 @@ function dashboardHtml(stats) {
     '</table></div>\n' +
     '<h2>Recent sessions</h2>\n' +
     '<div class="wide"><table>\n' +
-    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th>PWA</th><th>Dur</th><th>Location</th><th>Device</th></tr></thead>\n' +
+    '<thead><tr><th>Time</th><th>Platform</th><th>Screen</th><th>DPR</th><th>Render</th><th>GL</th><th>PWA</th><th>Dur</th><th>Browser</th><th>Location</th><th>Device</th></tr></thead>\n' +
     '<tbody>' + (recentRows || '<tr><td class="label" style="color:#55647a">no data yet</td></tr>') + '</tbody>\n' +
     '</table></div>\n' +
     '<p class="footer" id="dash-ft">Refreshed ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC</p>\n' +
@@ -192,6 +210,7 @@ async function aggregateStats(env) {
   const devices = new Set();
   const deviceVisits = {};
   const deviceStats = {};
+  const browsers = {};
   let total = 0;
   let sessionSecs = 0;
   let sessionEnds = 0;
@@ -241,6 +260,9 @@ async function aggregateStats(env) {
 
       installed[p.installed ? 'true' : 'false']++;
 
+      const browser = plat === 'desktop' ? detectBrowser(p.ua || '') : '';
+      if (browser) browsers[browser] = (browsers[browser] || 0) + 1;
+
       const res = bucketResolution(p.screenW || 0, p.screenH || 0);
       resolutions[res] = (resolutions[res] || 0) + 1;
 
@@ -272,6 +294,7 @@ async function aggregateStats(env) {
           country: p.country || '',
           city: p.city || '',
           isp: p.isp || '',
+          browser: plat === 'desktop' ? detectBrowser(p.ua || '') : '',
           sessionSec: p.sessionSec || null,
         });
       }
@@ -295,7 +318,7 @@ async function aggregateStats(env) {
 
   const avgSession = sessionEnds > 0 ? Math.round(sessionSecs / sessionEnds / 60) : null;
 
-  return { total, devices: devices.size, avgSession, platforms, installed, resolutions, dprs, days, recent, deviceStats };
+  return { total, devices: devices.size, avgSession, platforms, installed, resolutions, dprs, browsers, days, recent, deviceStats };
 }
 
 // ---- fetch handler -----------------------------------------------------

@@ -96,6 +96,15 @@ export function setFancyFx(on) { glfx.fx = on ? 1 : 0; }
 // Scene bloom is a GAMEPLAY effect: menus and pause screens get none.
 export function setSceneGlow(on) { glfx.glow = on ? 1 : 0; }
 
+// Some screens already render every foreground layer at the selected device
+// density. Merging those layers into the backbuffer avoids a second full-size
+// canvas upload on WebGL. The title uses this path: its parade, menu and
+// toasters are all crisp at the same density as the world, and letting them
+// participate in the existing bright pass gives their authored halos a little
+// extra life. Gameplay keeps the isolated overlay until it has bounded layers.
+let mergeOverlays = false;
+export function setOverlayMerge(on) { mergeOverlays = !!on; }
+
 // Procedural GPU sky (title screen). Returns true when it is actually live,
 // so the caller can leave the sky transparent instead of painting its own —
 // on the 2D fallback it returns false and the caller draws the plain version.
@@ -107,7 +116,9 @@ let skySuppressed = false;
 export function suppressSkyFx(on) { skySuppressed = !!on; }
 
 export function setSkyFx(on, time) {
-  glfx.sky = on && glfx.active && !skySuppressed ? 1 : 0;
+  const next = on && glfx.active && !skySuppressed ? 1 : 0;
+  if (!next || glfx.sky === 0) glfx.skyValid = false;
+  glfx.sky = next;
   glfx.time = time || 0;
   return glfx.sky === 1;
 }
@@ -776,16 +787,19 @@ export function pendingOverlayDrawCount() { return overlayDraws.length; }
 
 export function blit() {
   const px = screen.px || 1;
+  const hasOverlay = overlaySprites.length || overlayDraws.length;
   // Draw queued overlays (hero, banners) into the overlay layer in logical
   // coordinates at backbuffer density.
-  const paintOverlays = (ctx2) => {
-    ctx2.clearRect(0, 0, W, H);
+  const paintOverlays = (ctx2, clear = true, applyShake = true) => {
+    if (clear) ctx2.clearRect(0, 0, W, H);
     for (const o of overlaySprites) {
-      ctx2.drawImage(o.img, o.x + Math.round(shakeX), o.y + Math.round(shakeY), o.w, o.h);
+      const sx = applyShake ? Math.round(shakeX) : 0;
+      const sy = applyShake ? Math.round(shakeY) : 0;
+      ctx2.drawImage(o.img, o.x + sx, o.y + sy, o.w, o.h);
     }
     for (const fn of overlayDraws) {
       ctx2.save();
-      ctx2.translate(Math.round(shakeX), Math.round(shakeY));
+      if (applyShake) ctx2.translate(Math.round(shakeX), Math.round(shakeY));
       fn(ctx2);
       ctx2.restore();
     }
@@ -794,25 +808,38 @@ export function blit() {
   };
 
   if (glfx.active) {
-    // Skip the full-size overlay upload on frames that queued nothing (menus,
-    // most gameplay frames): render() binds a 1x1 transparent stand-in instead.
-    const hasOverlay = overlaySprites.length || overlayDraws.length;
-    if (hasOverlay) paintOverlays(octx);
-    glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px));
+    if (hasOverlay && mergeOverlays) {
+      // The final shader applies shake to the complete backbuffer. Paint the
+      // queued foreground without a second shake transform, then upload one
+      // combined canvas. The title's world and foreground already share this
+      // exact render density, so no sharpness is lost.
+      paintOverlays(bctx, false, false);
+      glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px));
+    } else {
+      // Gameplay still keeps the isolated overlay so world-only bloom and the
+      // crisp foreground composite retain their existing semantics.
+      if (hasOverlay) paintOverlays(octx);
+      glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px));
+    }
     return;
   }
 
   // 2D fallback: the backbuffer already matches full device density.
+  if (hasOverlay && mergeOverlays) {
+    // Paint before the display blit; the backbuffer is already transformed to
+    // the selected density and the display copy then applies shake once.
+    paintOverlays(bctx, false, false);
+  }
   dctx.setTransform(1, 0, 0, 1, 0, 0);
   dctx.imageSmoothingEnabled = back.width !== canvas.width;
   dctx.clearRect(0, 0, canvas.width, canvas.height);
   dctx.drawImage(back, Math.round(shakeX * (screen.dpx || 1)), Math.round(shakeY * (screen.dpx || 1)), canvas.width, canvas.height);
   dctx.setTransform((screen.dpx || 1), 0, 0, (screen.dpx || 1), 0, 0);
   dctx.imageSmoothingEnabled = true;
-  if (overlaySprites.length || overlayDraws.length) {
-    paintOverlays(octx);
-    dctx.setTransform(1, 0, 0, 1, 0, 0);
-    dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
+  if (hasOverlay && !mergeOverlays) {
+      paintOverlays(octx);
+      dctx.setTransform(1, 0, 0, 1, 0, 0);
+      dctx.drawImage(overlayLayer, 0, 0, canvas.width, canvas.height);
   }
 }
 

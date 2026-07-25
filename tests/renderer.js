@@ -70,7 +70,7 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     'same-size viewport events reuse allocated upload textures');
   glfx.resize(1600, 900);
   assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 2,
-    'a real resize deletes both superseded bloom framebuffer pairs');
+    'a real resize deletes the superseded bloom framebuffer pair');
   glfx.fx = 1; glfx.glow = 1;
   const allocationsBeforeRender = good.calls.textureAllocations;
   const drawsBeforeBloom = good.calls.draws;
@@ -82,6 +82,17 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   const finalViewport = good.calls.viewports[good.calls.viewports.length - 1];
   assert(finalViewport[2] === 1470 && finalViewport[3] === 827,
     'final pass uses ANGLE actual drawing-buffer size when canvas backing size is clamped');
+  // The title sky target is lazy: ordinary WebGL screens do not pay its FBO
+  // allocation, and the first title frame creates it at half resolution.
+  glfx.sky = 1; glfx.skyValid = false; glfx.time = 0;
+  const skyFbosBefore = good.calls.framebuffers;
+  const drawsBeforeSky = good.calls.draws;
+  glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
+  assert(good.calls.framebuffers === skyFbosBefore + 1,
+    'title sky allocates one lazy half-resolution target on first use');
+  assert(good.calls.draws - drawsBeforeSky === 5,
+    'title sky adds one half-resolution sky pass to bloom and final composite');
+  glfx.sky = 0; glfx.skyValid = false;
   glfx.glow = 0;
   const drawsBeforeNoGlow = good.calls.draws;
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
@@ -175,6 +186,30 @@ assert(worldBlit >= 0 && !displayCalls.slice(worldBlit + 1).some((call) => call.
   '2D overlays do not clear the scrolling world after it is composited');
 assert(displayCalls.filter((call) => call.method === 'drawImage').length === 2,
   '2D fallback composites its isolated overlay canvas over the scrolling world');
+const displayBeforeMerge = forced2DDom.contextCalls.filter((call) => call.canvas === forced2DDom.canvas).length;
+forced2DRenderer.setOverlayMerge(true);
+forced2DRenderer.pushOverlayDraw(() => {});
+forced2DRenderer.blit();
+const mergeCalls = forced2DDom.contextCalls
+  .filter((call) => call.canvas === forced2DDom.canvas)
+  .slice(displayBeforeMerge);
+assert(mergeCalls.filter((call) => call.method === 'drawImage').length === 1,
+  'merged overlays share the backbuffer and take one display blit');
+forced2DRenderer.setOverlayMerge(false);
+
+// The WebGL title path should upload one combined backbuffer when the merge
+// switch is active, not the world plus a second full-size overlay texture.
+const mergedGl = webglStub();
+const mergedGlDom = installDom({ gameGetContext(type) { return type === 'webgl' ? mergedGl.gl : null; } });
+const mergedGlRenderer = await import('../src/engine/renderer.js?merged-gl');
+mergedGlRenderer.initRenderer({ isIphone: true });
+mergedGlRenderer.setOverlayMerge(true);
+const mergedUploadsBefore = mergedGl.calls.textureUpdates;
+mergedGlRenderer.pushOverlayDraw(() => {});
+mergedGlRenderer.blit();
+assert(mergedGl.calls.textureUpdates - mergedUploadsBefore === 1,
+  'merged WebGL title foreground uploads one combined frame');
+mergedGlRenderer.setOverlayMerge(false);
 
 // High-density phones seed at the 3x rung below native, adapt down after a
 // sustained miss, and keep the full CSS viewport fit while the separate touch

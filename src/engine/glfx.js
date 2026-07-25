@@ -35,7 +35,8 @@ const FS_FINAL = `
 precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uBack, uBloom, uOv;
-uniform float uFx, uGlow, uSky, uTime;
+uniform sampler2D uSkyTex;
+uniform float uFx, uGlow, uSky, uSkyTexOn, uApplyVignette, uTime;
 uniform vec2 uShake;
 
 float hash21(vec2 p) {
@@ -135,11 +136,16 @@ void main() {
   // Wherever the 2D layer left a hole (the title screen's sky), the GPU fills
   // it in procedurally. Backbuffer colors are premultiplied, so this slots in
   // underneath without any extra blending math.
-  if (uSky > 0.5) bg += skyColor(vUv, uTime) * (1.0 - bsrc.a);
+  if (uSky > 0.5) {
+    vec3 sky = uSkyTexOn > 0.5 ? texture2D(uSkyTex, vUv).rgb : skyColor(vUv, uTime);
+    bg += sky * (1.0 - bsrc.a);
+  }
   vec3 bl = texture2D(uBloom, vUv).rgb;
   vec4 ov = texture2D(uOv, vUv);
   vec3 col = ov.rgb + (bg + bl * 0.45 * uFx * uGlow) * (1.0 - ov.a);
-  float vig = 1.0 - smoothstep(0.55, 0.98, r) * (0.1 + 0.14 * uFx);
+  float vig = uApplyVignette > 0.5
+    ? 1.0 - smoothstep(0.55, 0.98, r) * (0.1 + 0.14 * uFx)
+    : 1.0;
   gl_FragColor = vec4(col * vig, 1.0);
 }`;
 
@@ -187,6 +193,10 @@ export const glfx = {
   gl: null,
   active: false,
   lastError: null,
+  locations: null,
+  skyTarget: null,
+  skyValid: false,
+  skyFrame: 0,
   fx: 1,     // GLOW FX setting: 1 on, 0 off
   glow: 0,   // scene bloom gate: 1 only during live gameplay, 0 on menus/pause
   tierFx: 1, // adaptive-density gate: 0 suppresses bloom at low render density
@@ -201,6 +211,10 @@ export const glfx = {
     this.active = false;
     this.ready = false;
     this.lastError = null;
+    this.locations = null;
+    this.skyTarget = null;
+    this.skyValid = false;
+    this.skyFrame = 0;
     // These shaders are deliberately GLSL ES 1.00 and use no WebGL 2
     // facilities. Asking for WebGL 1 directly avoids handing the same source
     // to a stricter mobile WebGL 2 compiler for no benefit.
@@ -221,6 +235,34 @@ export const glfx = {
       this.pBright = compile(gl, VS, FS_BRIGHT);
       this.pBlur = compile(gl, VS, FS_BLUR);
       this.pFinal = compile(gl, VS, FS_FINAL);
+      // Resolve all program locations once. Looking them up from the render
+      // loop is unnecessary driver work and is especially noisy on mobile
+      // WebKit, where every JS->GPU boundary call is relatively expensive.
+      this.locations = {
+        bright: {
+          aP: gl.getAttribLocation(this.pBright, 'aP'),
+          uT: gl.getUniformLocation(this.pBright, 'uT'),
+        },
+        blur: {
+          aP: gl.getAttribLocation(this.pBlur, 'aP'),
+          uT: gl.getUniformLocation(this.pBlur, 'uT'),
+          uDir: gl.getUniformLocation(this.pBlur, 'uDir'),
+        },
+        final: {
+          aP: gl.getAttribLocation(this.pFinal, 'aP'),
+          uBack: gl.getUniformLocation(this.pFinal, 'uBack'),
+          uBloom: gl.getUniformLocation(this.pFinal, 'uBloom'),
+          uOv: gl.getUniformLocation(this.pFinal, 'uOv'),
+          uFx: gl.getUniformLocation(this.pFinal, 'uFx'),
+          uGlow: gl.getUniformLocation(this.pFinal, 'uGlow'),
+          uSky: gl.getUniformLocation(this.pFinal, 'uSky'),
+          uSkyTex: gl.getUniformLocation(this.pFinal, 'uSkyTex'),
+          uSkyTexOn: gl.getUniformLocation(this.pFinal, 'uSkyTexOn'),
+          uApplyVignette: gl.getUniformLocation(this.pFinal, 'uApplyVignette'),
+          uTime: gl.getUniformLocation(this.pFinal, 'uTime'),
+          uShake: gl.getUniformLocation(this.pFinal, 'uShake'),
+        },
+      };
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -231,6 +273,11 @@ export const glfx = {
       // Null data reads back as transparent black; with premultiplied alpha its
       // ov.a is 0, so the final composite math is identical to an empty overlay.
       this.texOvBlank = makeTex(gl, 1, 1);
+      // Canvas sources are already drawn in logical top-left coordinates and
+      // use premultiplied alpha. Set the source conversion policy once rather
+      // than repeating it for every texture upload.
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       this.active = true;
       return { ok: true, claimed: true, error: null };
     } catch (error) {
@@ -256,6 +303,9 @@ export const glfx = {
       this.textureW = srcW;
       this.textureH = srcH;
     }
+    // Allocate the sky target lazily: most WebGL screens do not use the title
+    // sky, and a large unused FBO is needless memory pressure on mobile.
+    if (this.skyTarget) this.ensureSkyTarget(srcW, srcH);
     const bw = Math.max(1, srcW >> 2), bh = Math.max(1, srcH >> 2);
     if (this.bloomA && this.bloomA.w === bw && this.bloomA.h === bh
         && this.bloomB && this.bloomB.w === bw && this.bloomB.h === bh) return;
@@ -267,12 +317,23 @@ export const glfx = {
     this.bloomB = nextB;
   },
 
-  draw(prog, setUniforms) {
+  ensureSkyTarget(srcW = this.srcW, srcH = this.srcH) {
+    const gl = this.gl;
+    if (!gl) return;
+    const sw = Math.max(1, srcW >> 1), sh = Math.max(1, srcH >> 1);
+    if (this.skyTarget && this.skyTarget.w === sw && this.skyTarget.h === sh) return;
+    const nextSky = makeFbo(gl, sw, sh);
+    destroyFbo(gl, this.skyTarget);
+    this.skyTarget = { ...nextSky, w: sw, h: sh };
+    this.skyValid = false;
+    this.skyFrame = 0;
+  },
+
+  draw(prog, locations, setUniforms) {
     const gl = this.gl;
     gl.useProgram(prog);
-    const loc = gl.getAttribLocation(prog, 'aP');
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(locations.aP);
+    gl.vertexAttribPointer(locations.aP, 2, gl.FLOAT, false, 0, 0);
     setUniforms(gl, prog);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   },
@@ -280,18 +341,13 @@ export const glfx = {
   upload(tex, canvas) {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    // KEEP canvas data premultiplied: the compositing formula assumes it.
-    // Without this, every anti-aliased edge (text, hero outlines) gets its
-    // color un-premultiplied to full strength and composites as a bright
-    // fringe — "glowing outlines" on all overlay art.
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
   },
 
   render(backCanvas, overlayCanvas, shakeX, shakeY) {
     const gl = this.gl;
     if (!gl || !this.ready) return;
+    const loc = this.locations;
     this.upload(this.texBack, backCanvas);
     // A null overlay means the frame queued no overlay draws (menus, most
     // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
@@ -299,27 +355,56 @@ export const glfx = {
     if (overlayCanvas) this.upload(this.texOv, overlayCanvas);
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
+    // The title sky is deliberately softer than the foreground. Render it to
+    // a half-resolution target and refresh it every other presented frame;
+    // the final pass still composites it at full display resolution. This
+    // removes the expensive noise/star arithmetic from every native pixel
+    // without changing the sharpness of the title, cards or parade.
+    if (this.sky > 0) this.ensureSkyTarget();
+    if (this.sky > 0 && this.skyTarget && (!this.skyValid || (this.skyFrame++ % 2) === 0)) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.skyTarget.fb);
+      gl.viewport(0, 0, this.skyTarget.w, this.skyTarget.h);
+      this.draw(this.pFinal, loc.final, (g) => {
+        bind(0, this.texBack);
+        bind(1, this.bloomA.tex);
+        bind(2, this.texOvBlank);
+        bind(3, this.texOvBlank);
+        g.uniform1i(loc.final.uBack, 0);
+        g.uniform1i(loc.final.uBloom, 1);
+        g.uniform1i(loc.final.uOv, 2);
+        g.uniform1i(loc.final.uSkyTex, 3);
+        g.uniform1f(loc.final.uFx, 0);
+        g.uniform1f(loc.final.uGlow, 0);
+        g.uniform1f(loc.final.uSky, 1);
+        g.uniform1f(loc.final.uSkyTexOn, 0);
+        g.uniform1f(loc.final.uApplyVignette, 0);
+        g.uniform1f(loc.final.uTime, this.time);
+        g.uniform2f(loc.final.uShake, 0, 0);
+      });
+      this.skyValid = true;
+    }
+
     // 1) bright-pass the WORLD ONLY into quarter-res, then two blur passes.
     //    Skip all three passes when their contribution is zero — including when
     //    the adaptive-density tier has gated bloom off (tierFx).
     if (this.fx > 0 && this.glow > 0 && this.tierFx > 0) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
       gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
-      this.draw(this.pBright, (g, p) => {
+      this.draw(this.pBright, loc.bright, (g) => {
         bind(0, this.texBack);
-        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
+        g.uniform1i(loc.bright.uT, 0);
       });
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomB.fb);
-      this.draw(this.pBlur, (g, p) => {
+      this.draw(this.pBlur, loc.blur, (g) => {
         bind(0, this.bloomA.tex);
-        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
-        g.uniform2f(g.getUniformLocation(p, 'uDir'), 1 / this.bloomA.w, 0);
+        g.uniform1i(loc.blur.uT, 0);
+        g.uniform2f(loc.blur.uDir, 1 / this.bloomA.w, 0);
       });
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
-      this.draw(this.pBlur, (g, p) => {
+      this.draw(this.pBlur, loc.blur, (g) => {
         bind(0, this.bloomB.tex);
-        g.uniform1i(g.getUniformLocation(p, 'uT'), 0);
-        g.uniform2f(g.getUniformLocation(p, 'uDir'), 0, 1 / this.bloomB.h);
+        g.uniform1i(loc.blur.uT, 0);
+        g.uniform2f(loc.blur.uDir, 0, 1 / this.bloomB.h);
       });
     }
 
@@ -332,16 +417,19 @@ export const glfx = {
     // without a WebGL error or context loss.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    this.draw(this.pFinal, (g, p) => {
-      bind(0, this.texBack); bind(1, this.bloomA.tex); bind(2, ovTex);
-      g.uniform1i(g.getUniformLocation(p, 'uBack'), 0);
-      g.uniform1i(g.getUniformLocation(p, 'uBloom'), 1);
-      g.uniform1i(g.getUniformLocation(p, 'uOv'), 2);
-      g.uniform1f(g.getUniformLocation(p, 'uFx'), this.fx);
-      g.uniform1f(g.getUniformLocation(p, 'uGlow'), this.glow * this.tierFx);
-      g.uniform1f(g.getUniformLocation(p, 'uSky'), this.sky);
-      g.uniform1f(g.getUniformLocation(p, 'uTime'), this.time);
-      g.uniform2f(g.getUniformLocation(p, 'uShake'), shakeX / this.srcW, -shakeY / this.srcH);
+    this.draw(this.pFinal, loc.final, (g) => {
+      bind(0, this.texBack); bind(1, this.bloomA.tex); bind(2, ovTex); bind(3, this.skyTarget ? this.skyTarget.tex : this.texOvBlank);
+      g.uniform1i(loc.final.uBack, 0);
+      g.uniform1i(loc.final.uBloom, 1);
+      g.uniform1i(loc.final.uOv, 2);
+      g.uniform1i(loc.final.uSkyTex, 3);
+      g.uniform1f(loc.final.uFx, this.fx);
+      g.uniform1f(loc.final.uGlow, this.glow * this.tierFx);
+      g.uniform1f(loc.final.uSky, this.sky);
+      g.uniform1f(loc.final.uSkyTexOn, this.sky > 0 && this.skyValid ? 1 : 0);
+      g.uniform1f(loc.final.uApplyVignette, 1);
+      g.uniform1f(loc.final.uTime, this.time);
+      g.uniform2f(loc.final.uShake, shakeX / this.srcW, -shakeY / this.srcH);
     });
   },
 };

@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { defaultSettings } from '../engine/save.js';
@@ -1228,8 +1228,13 @@ export class TitleState {
     if (Audio.bank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
     Input.setMenuButtons();
     setSceneGlow(true); // the marquee and cabinet screens get to glow
+    // The title's foreground is already rendered at the selected device
+    // density. Merge it into the backbuffer so WebGL uploads one full frame,
+    // not a second full-size overlay texture, while retaining the title's
+    // existing draw order and crispness.
+    setOverlayMerge(true);
   }
-  exit() { setSceneGlow(false); setSkyFx(false); }
+  exit() { setOverlayMerge(false); setSceneGlow(false); setSkyFx(false); }
   handleTitleFpsTap(x, y) {
     if (!titleMarqueeAt(x, y)) {
       this.lastTitleTapAt = null;
