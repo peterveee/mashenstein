@@ -63,6 +63,15 @@ export function forceWebglDensity(n = 3) {
   return writeDiag({ renderer: 'webgl', density: n, rendererLock: true });
 }
 
+// Persistent backend-only switches for the portrait menu. Density stays
+// adaptive: FORCE 3X GL remains the separate stress button for a fixed 3x
+// comparison, while these two buttons answer the simpler question "which
+// renderer should ordinary reloads use?".
+export function forceRenderer(name) {
+  if (name !== '2d' && name !== 'webgl') return readDiag();
+  return writeDiag({ renderer: name, density: null, rendererLock: true });
+}
+
 export function clearDiag() {
   try {
     localStorage.removeItem(KEY);

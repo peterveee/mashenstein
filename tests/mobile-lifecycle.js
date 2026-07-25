@@ -218,7 +218,7 @@ sixtyHz.stop();
 // Input is a separate import after the loop globals are installed.
 const { installDom } = await import('./dom-stub.js');
 const dom = installDom();
-const { consumeBenchDiag, readDiag, releaseBenchRenderer, forceWebglDensity } = await import('../src/engine/diag.js');
+const { consumeBenchDiag, readDiag, releaseBenchRenderer, forceRenderer, forceWebglDensity } = await import('../src/engine/diag.js');
 dom.store.mash_diag = JSON.stringify({ bench: true, renderer: '2d', fps: true });
 const benchDiag = consumeBenchDiag();
 assert(benchDiag.bench && benchDiag.renderer === '2d' && readDiag().bench === false,
@@ -239,6 +239,12 @@ const pinnedProfileDiag = consumeBenchDiag();
 releaseBenchRenderer(pinnedProfileDiag);
 assert(!readDiag().renderer && readDiag().titleProfileRenderer === false,
   'the title profile releases only its temporary WebGL 3x pin');
+forceRenderer('2d');
+assert(readDiag().renderer === '2d' && readDiag().rendererLock && readDiag().density === null,
+  'the 2D diagnostic pins only the backend and leaves density adaptive');
+forceRenderer('webgl');
+assert(readDiag().renderer === 'webgl' && readDiag().rendererLock && readDiag().density === null,
+  'the WebGL diagnostic pins only the backend and leaves density adaptive');
 forceWebglDensity(3);
 const forcedDiag = consumeBenchDiag();
 assert(forcedDiag.renderer === 'webgl' && forcedDiag.rendererLock && forcedDiag.density === 3,

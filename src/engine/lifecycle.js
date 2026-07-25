@@ -1,6 +1,6 @@
 // One source of truth for browser/app lifecycle. Visibility and orientation
 // events never resume subsystems independently; they all recompute this policy.
-import { readDiag, writeDiag, clearDiag, forceWebglDensity } from './diag.js';
+import { readDiag, writeDiag, clearDiag, forceRenderer, forceWebglDensity } from './diag.js';
 
 // One line summarising which overrides are live, so the panel opens saying what
 // state the device is already in rather than looking like a fresh slate.
@@ -137,6 +137,16 @@ export class LifecycleController {
         const next = !readDiag().fps;
         writeDiag({ fps: next });
         this.showDiagStatus(`FPS readout ${next ? 'ON' : 'OFF'} - rotate to see it`);
+      }],
+      ['diag-force-2d', () => {
+        forceRenderer('2d');
+        this.showDiagStatus('2D renderer pinned - reloading...');
+        this.win.setTimeout(() => this.win.location.reload(), 350);
+      }],
+      ['diag-force-webgl', () => {
+        forceRenderer('webgl');
+        this.showDiagStatus('WebGL renderer pinned - reloading...');
+        this.win.setTimeout(() => this.win.location.reload(), 350);
       }],
       ['diag-force-3x-gl', () => {
         forceWebglDensity(3);

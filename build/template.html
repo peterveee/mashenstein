@@ -203,10 +203,11 @@
     letter-spacing: .1em;
   }
   .mash-diag-row {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+    margin: 12px 0;
   }
   .mash-diag-row button {
-    padding: 10px 6px; border: 1px solid rgba(72,224,200,.3);
+    min-height: 44px; padding: 11px 8px; border: 1px solid rgba(72,224,200,.3);
     border-radius: 10px; color: #d8f7f1; background: rgba(72,224,200,.09);
     font: 800 .74rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing: .05em;

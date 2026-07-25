@@ -69,11 +69,14 @@ function finish() {
 export function startTitleProfile() {
   const rd = rendererDiagnostics();
   savedPin = rd.pinned;
-  profileDensity = rd.density;
+  const targetDensity = rd.pinned != null ? rd.pinned : rd.density;
   // Keep every contrast at the same exact pixel count. Without this pin the
   // adaptive controller would interpret a deliberately cheap stage as a
   // recovery signal and change density halfway through the report.
-  setDensityPin(profileDensity);
+  setDensityPin(targetDensity);
+  // Read back after the pin: a target above the viewport's native ceiling is
+  // clamped, and the report must name the pixels it actually measured.
+  profileDensity = rendererDiagnostics().density;
   results.length = 0;
   stageIndex = 0;
   active = true;

@@ -73,6 +73,10 @@ assert(body.children[1].innerHTML.includes('mash-build-label')
 assert(body.children[1].innerHTML.includes('id="copy-error"')
   && body.children[1].innerHTML.includes('id="portrait-error-message"'),
   'portrait dialog includes a copyable crash report');
+assert(body.children[1].innerHTML.includes('id="diag-force-2d"')
+  && body.children[1].innerHTML.includes('id="diag-force-webgl"')
+  && body.children[1].innerHTML.includes('TITLE 3X PROFILE'),
+  'portrait diagnostics expose separate 2D, WebGL and title-profile controls');
 const script = body.children[2];
 assert(script.tagName === 'SCRIPT' && script.src === 'https://example.test/mashenstein/game.js',
   'allowed platform requests the path-relative deferred game bundle');

@@ -384,6 +384,19 @@ function boot() {
     benchRequested = p.has('bench') || !!diag.bench;
     titleProfileRequested = p.has('titleProfile') || !!diag.titleProfile;
     benchDiag = diag;
+    // URL diagnostics are one-shot tools. Leaving ?bench or ?titleProfile in
+    // the address bar made every ordinary reload throw the player back into a
+    // title benchmark, which is especially disruptive when testing a level.
+    // Storage-backed portrait buttons are already consumed above; this clears
+    // the equivalent query flags without navigating away from the PWA.
+    if ((p.has('bench') || p.has('titleProfile')) && window.history?.replaceState) {
+      try {
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('bench');
+        clean.searchParams.delete('titleProfile');
+        window.history.replaceState(null, '', clean.pathname + clean.search + clean.hash);
+      } catch (e) { /* a restricted standalone URL can simply keep the flag for this boot */ }
+    }
   }
 
   const platform = window.__mash_platform || readPlatform();

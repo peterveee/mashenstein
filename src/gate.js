@@ -236,6 +236,8 @@ function createGameDom() {
         <p class="mash-diag-label">DIAGNOSTICS</p>
         <div class="mash-diag-row">
           <button id="diag-fps" type="button">FPS</button>
+          <button id="diag-force-2d" type="button">USE 2D</button>
+          <button id="diag-force-webgl" type="button">USE WEBGL</button>
           <button id="diag-force-3x-gl" type="button">FORCE 3X GL</button>
           <button id="diag-bench-2d" type="button">BENCH 2D</button>
           <button id="diag-bench-gl" type="button">BENCH GL</button>
