@@ -42,6 +42,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          MASH_TELEMETRY_URL: ${{ secrets.MASH_TELEMETRY_URL }}
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
