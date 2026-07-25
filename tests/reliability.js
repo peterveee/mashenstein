@@ -17,6 +17,7 @@ const { PLAYER_X } = await import('../src/game/player.js');
 const { VIEW_W } = await import('../src/engine/camera.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
 const { chrome } = await import('../src/engine/renderer.js');
+const { glfx } = await import('../src/engine/glfx.js');
 const { save } = await import('../src/engine/save.js');
 const { Save, defaultSlot, defaultSettings } = await import('../src/engine/save.js');
 
@@ -307,6 +308,8 @@ const pointerTitle = new TitleState({
   onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {},
 });
 pointerTitle.enter();
+assert(glfx.glow === 1,
+  'the title enables selective WebGL bloom for the marquee');
 const horizontalCardCenters = [96, 192, 288, 384];
 for (let i = 0; i < 3; i++) {
   Input.pointer = { x: horizontalCardCenters[i], y: 140, down: false };

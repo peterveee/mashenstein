@@ -871,6 +871,7 @@ function drawInvaderImpact(ctx, strikes) {
 // the live sky, cord, invader and parade remain independently animated.
 const titleBaseCache = { canvas: null, ctx: null, key: '' };
 const titleMarqueeCache = { canvas: null, ctx: null, ss: 0 };
+const titleStarCaches = Array.from({ length: 3 }, () => ({ canvas: null, ctx: null, key: '' }));
 
 function ensureTitleCanvas(slot, w, h, ss) {
   if (!slot.canvas || slot.ss !== ss || slot.canvas.width !== Math.round(w * ss)
@@ -886,10 +887,9 @@ function ensureTitleCanvas(slot, w, h, ss) {
 }
 
 function drawRetainedTitleBase(ctx, skyMode) {
-  // This layer is only a smooth gradient plus two flat colour fields; a
-  // logical-resolution raster scales without losing authored edge detail and
-  // avoids retaining another ~19 MB canvas at an iPad's 6x bake ceiling.
-  const ss = 1;
+  // Two fixed samples are enough for the broad gradients while avoiding
+  // another full 6x canvas on iPad. Stars live in their own sharper layers.
+  const ss = 2;
   const key = `${ss}|${skyMode}`;
   const x = ensureTitleCanvas(titleBaseCache, W, H, ss);
   if (titleBaseCache.key !== key) {
@@ -898,17 +898,81 @@ function drawRetainedTitleBase(ctx, skyMode) {
     x.setTransform(ss, 0, 0, ss, 0, 0);
     if (skyMode === 'canvas') {
       const grad = x.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, '#07070f');
-      grad.addColorStop(0.65, '#141026');
-      grad.addColorStop(1, '#1c1430');
+      grad.addColorStop(0, '#04050e');
+      grad.addColorStop(0.48, '#0b0b1c');
+      grad.addColorStop(0.78, '#17112b');
+      grad.addColorStop(1, '#1d1530');
       x.fillStyle = grad;
       x.fillRect(0, 0, W, H);
+
+      // A pair of very restrained colour clouds gives the 2D sky depth without
+      // imitating the rejected title bloom or competing with the gold marquee.
+      const violet = x.createRadialGradient(92, 70, 0, 92, 70, 205);
+      violet.addColorStop(0, 'rgba(91,58,139,0.18)');
+      violet.addColorStop(0.52, 'rgba(49,34,87,0.09)');
+      violet.addColorStop(1, 'rgba(10,8,24,0)');
+      x.fillStyle = violet;
+      x.fillRect(0, 0, W, TITLE_FLOOR_Y);
+      const blue = x.createRadialGradient(408, 48, 0, 408, 48, 180);
+      blue.addColorStop(0, 'rgba(45,99,139,0.13)');
+      blue.addColorStop(0.58, 'rgba(26,55,91,0.06)');
+      blue.addColorStop(1, 'rgba(8,10,24,0)');
+      x.fillStyle = blue;
+      x.fillRect(0, 0, W, TITLE_FLOOR_Y);
     }
     x.fillStyle = '#171222';
     x.fillRect(0, TITLE_FLOOR_Y, W, H - TITLE_FLOOR_Y);
     titleBaseCache.key = key;
   }
   ctx.drawImage(titleBaseCache.canvas, 0, 0, W, H);
+}
+
+function drawRetainedTitleStars(ctx, t, reduced) {
+  // The old fallback was 26 logical-pixel squares. Three retained high-detail
+  // layers provide varied size, colour temperature and gentle independent
+  // twinkle without rebuilding radial gradients every frame.
+  const ss = Math.max(2, Math.min(3, bakeSS()));
+  for (let layer = 0; layer < titleStarCaches.length; layer++) {
+    const slot = titleStarCaches[layer];
+    const x = ensureTitleCanvas(slot, W, TITLE_FLOOR_Y, ss);
+    const key = `${ss}|${layer}`;
+    if (slot.key !== key) {
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      x.clearRect(0, 0, slot.canvas.width, slot.canvas.height);
+      x.setTransform(ss, 0, 0, ss, 0, 0);
+      for (let i = layer; i < 90; i += titleStarCaches.length) {
+        const sx = 4 + shaderHash21(i + 3, 17) * (W - 8);
+        const sy = 3 + shaderHash21(i + 19, 31) * (TITLE_FLOOR_Y - 12);
+        const bright = i % 13 === 0;
+        const radius = bright
+          ? 1.05 + shaderHash21(i + 7, 43) * 0.65
+          : 0.35 + shaderHash21(i + 11, 53) * 0.55;
+        const spread = radius * (bright ? 4.1 : 3.0);
+        const warm = i % 9 === 0;
+        const cool = i % 5 === 0;
+        const core = warm ? '255,239,198' : cool ? '205,224,255' : '239,243,255';
+        const star = x.createRadialGradient(sx, sy, 0, sx, sy, spread);
+        star.addColorStop(0, `rgba(${core},0.98)`);
+        star.addColorStop(0.22, `rgba(${core},0.72)`);
+        star.addColorStop(1, `rgba(${core},0)`);
+        x.fillStyle = star;
+        x.fillRect(sx - spread, sy - spread, spread * 2, spread * 2);
+        if (bright) {
+          x.fillStyle = `rgba(${core},0.66)`;
+          x.fillRect(sx - radius * 2.8, sy - 0.18, radius * 5.6, 0.36);
+          x.fillRect(sx - 0.18, sy - radius * 2.8, 0.36, radius * 5.6);
+        }
+      }
+      slot.key = key;
+    }
+    const pulse = reduced
+      ? 0.78
+      : 0.76 + Math.sin(t * (0.55 + layer * 0.17) + layer * 2.1) * 0.14;
+    ctx.save();
+    ctx.globalAlpha *= pulse;
+    ctx.drawImage(slot.canvas, 0, 0, W, TITLE_FLOOR_Y);
+    ctx.restore();
+  }
 }
 
 function drawRetainedMarquee(ctx, alpha) {
@@ -951,16 +1015,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
   ctx.clearRect(0, 0, W, H);
   drawRetainedTitleBase(ctx, gpuSky ? 'gpu' : skyEnabled ? 'canvas' : 'none');
   if (skyEnabled && !gpuSky) {
-    // twinkling stars (the bright ones catch the bloom)
-    for (let i = 0; i < 26; i++) {
-      const sx = (i * 97 + 23) % W;
-      const sy = (i * 53 + 11) % 110;
-      const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (1.1 + (i % 5) * 0.3) + i));
-      ctx.globalAlpha = tw;
-      ctx.fillStyle = i % 4 === 0 ? '#fff' : '#b8c8e8';
-      ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1, i % 4 === 0 ? 2 : 1);
-    }
-    ctx.globalAlpha = 1;
+    drawRetainedTitleStars(ctx, t, reduced);
   }
   if (!reduced) drawInvader(ctx, t);
 
