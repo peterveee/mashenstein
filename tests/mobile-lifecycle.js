@@ -100,22 +100,23 @@ const win = Object.assign(new Events(), {
   timers: new Map(),
   nextTimerId: 0,
   setTimeout(fn, delay = 0) {
+    void delay;
     const id = ++this.nextTimerId;
-    this.timers.set(id, { fn, delay });
+    this.timers.set(id, fn);
     return id;
   },
   clearTimeout(id) {
     this.timers.delete(id);
   },
   runTimeout(id) {
-    const timer = this.timers.get(id);
-    if (!timer) return false;
+    const fn = this.timers.get(id);
+    if (!fn) return false;
     this.timers.delete(id);
-    timer.fn();
+    fn();
     return true;
   },
   runAllTimeouts() {
-    for (const id of [...this.timers.keys()]) this.runTimeout(id);
+    for (const id of [...this.timers.keys()].sort((a, b) => a - b)) this.runTimeout(id);
   },
   navigator: { clipboard: { writeText: async (text) => { win.copied = text; } } },
   location: { reloaded: 0, reload() { this.reloaded++; } },
