@@ -59,7 +59,7 @@ const errorTools = { hidden: true };
 const errorMessage = { textContent: '' };
 const copyStatus = { textContent: '' };
 const copyButton = new Events();
-const reloadButton = new Events();
+const reloadButton = Object.assign(new Events(), { textContent: 'FORCE RELOAD' });
 const priorFocus = {
   isConnected: true,
   blurred: 0,

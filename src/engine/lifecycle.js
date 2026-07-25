@@ -201,13 +201,56 @@ export class LifecycleController {
     }
   }
 
+  // Portrait is the one screen every installed player sees before anything else
+  // loads, which makes it the reliable place to offer an escape hatch from a
+  // stale Home Screen snapshot.
+  //
+  // It used to guard the reload with window.confirm(). That does not work in an
+  // installed iOS app: standalone mode suppresses native JS dialogs, so confirm()
+  // never returned true and the button silently did nothing on the exact
+  // platform the escape hatch exists for. The guard is now the button itself —
+  // press once to arm, again to go — which needs no dialog, no game DOM and no
+  // fonts, and reads more clearly than a modal anyway.
   confirmReload() {
-    // Portrait is the one screen every installed player sees before anything
-    // else loads, which makes it the reliable place to offer an escape hatch
-    // from a stale Home Screen snapshot. Native confirm() is deliberate: it
-    // works inside a standalone PWA with no dependency on game DOM or fonts.
-    const ok = this.win.confirm('Reload MASHENSTEIN? Any run in progress will be lost.');
-    if (ok) this.win.location.reload();
+    if (!this.reloadButton) return;
+    if (!this.reloadArmed) {
+      this.reloadArmed = true;
+      this.reloadLabel = this.reloadButton.textContent;
+      this.reloadButton.textContent = 'TAP AGAIN TO CONFIRM';
+      // Disarm on its own, so a stray tap does not leave the button primed for
+      // the rest of the session waiting to eat a run.
+      this.reloadTimer = this.win.setTimeout(() => {
+        this.reloadArmed = false;
+        this.reloadButton.textContent = this.reloadLabel || 'FORCE RELOAD';
+      }, 4000);
+      return;
+    }
+    this.win.clearTimeout(this.reloadTimer);
+    this.reloadArmed = false;
+    this.reloadButton.textContent = 'RELOADING...';
+    this.forceReload();
+  }
+
+  // "Force" has to mean more than location.reload() here. An installed PWA is
+  // served by the service worker, so a plain reload can hand back the very
+  // bundle the player is trying to escape. Drop the caches and let the worker
+  // update first; whether those succeed or not, the reload always happens.
+  forceReload() {
+    const go = () => this.win.location.reload();
+    const nav = this.win.navigator;
+    const jobs = [];
+    try {
+      if (this.win.caches && this.win.caches.keys) {
+        jobs.push(this.win.caches.keys().then((keys) => Promise.all(keys.map((k) => this.win.caches.delete(k)))));
+      }
+      if (nav && nav.serviceWorker && nav.serviceWorker.getRegistrations) {
+        jobs.push(nav.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((r) => r.update().catch(() => {})))));
+      }
+    } catch (e) { /* storage unavailable: fall through to the plain reload */ }
+    if (!jobs.length) { go(); return; }
+    // Never let a hanging cache API strand the player on this screen.
+    const timeout = new Promise((resolve) => this.win.setTimeout(resolve, 1500));
+    Promise.race([Promise.all(jobs).catch(() => {}), timeout]).then(go, go);
   }
 
   apply() {
@@ -239,6 +282,7 @@ export class LifecycleController {
     }
     this.copyErrorButton && this.copyErrorButton.removeEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.removeEventListener('click', this.onReload);
+    this.win.clearTimeout(this.reloadTimer);
     this.buildStamp && this.onStampTap && this.buildStamp.removeEventListener('click', this.onStampTap);
     (this.diagButtons || []).forEach(([el, fn]) => el && el.removeEventListener('click', fn));
   }
