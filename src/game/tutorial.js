@@ -18,7 +18,10 @@
 // module is a form he is working through, each section is a section of it, and
 // a miss is an unclosed section rather than a player failure — which is also
 // what keeps the forgiving retry policy from reading as the game going soft.
-import { W, H, shake, updateShake, setSceneGlow, pushOverlayDraw } from '../engine/renderer.js';
+import {
+  W, H, shake, updateShake, setSceneGlow, pushOverlayDraw,
+  chrome as chromeGeo, chromeCtx, paintChrome,
+} from '../engine/renderer.js';
 import {
   GROUND_Y, ZOOM, VIEW_W, applyWorld, framingFor, easeZoom, easePan,
 } from '../engine/camera.js';
@@ -132,7 +135,17 @@ const SPEECH_PLATE = 'rgba(236,233,246,0.88)';
 // 66 — so the closing line is the one line in the module that has to stay
 // short enough for a single row. At 312 it does, with the plate ending at 64
 // and the document starting two below it.
-const SPEECH_SCALE_TOUCH = 1.35;
+// 1.15, down from 1.35. Measured rather than eyeballed: a held jump puts the
+// hero's crown at screen y 40 and the card's plate starts at 14, so NO type
+// size gets the card out of the hero's way — the two share that band whatever
+// happens, which is why the hero draws in front of the card rather than behind
+// it. What the size does control is how much of the card is in the band. At
+// 1.35 the briefs ran to three rows and the plate reached y 86, so the hero
+// crossed the whole card; at 1.15 most of them set in two and it bottoms out
+// around 60, so he clips a corner on the way past. Still well above the
+// desktop 1.0 — this is a phone held at arm's length and the screen's whole
+// job is being read.
+const SPEECH_SCALE_TOUCH = 1.15;
 const SPEECH_Y_TOUCH = 18;
 const SPEECH_MAX_W_TOUCH = 312;
 
@@ -603,6 +616,9 @@ const OUTRO_ZOOM = 3.2;
 const OPENING = 'HR ASSIGNED ME THE TRAINING MODULE. I AM DECEASED. THE FORM DID NOT ASK.';
 const CONCEDED = 'I AM MARKING THIS ONE SATISFACTORY. NOBODY AUDITS ME.';
 const SHIELD_BROKE = 'THE EQUIPMENT PERFORMED AS SPECIFIED. YOU DID NOT.';
+// Said on the first shot, not in the brief: the orb only means something once
+// the player has watched it empty.
+const COOLDOWN = 'THE ORB BY YOUR HEAD IS THE RECHARGE. IT FILLS BACK UP ON ITS OWN. YOU CANNOT HURRY IT. I HAVE ASKED.';
 // The payout stretch. Two lines, spaced across it: what coins are for, then
 // permission to take the lot. Both are setups — the epilogue takes every one of
 // them back, and "the part people remember" is the line the reclaim lands on.
@@ -691,6 +707,10 @@ export class TutorialState {
     this.doneT = 0;
     this.paused = false;
     this.pauseIdx = 0;
+    // Touch controls in the black margin rather than on the art, where the
+    // device has margin to spare. Set by setButtons(); read by the chrome
+    // painter and by the pause path.
+    this.useChrome = false;
     this.rng = new Rng(0x7a5c0de);
     this.sawDuck = false;
     this.sawDoubleJump = false;
@@ -724,10 +744,93 @@ export class TutorialState {
   // The USE disc only appears once there is a power behind it. Registering it
   // from section one would put a dead control on screen for most of the module,
   // and its arrival with B-33P is itself part of the lesson.
+  // Touch controls, laid out the way a run lays them out — which, on any device
+  // with enough black margin around the 480x270 rect, means OUTSIDE the canvas
+  // entirely (renderer's chrome geometry). Training was the one touch screen
+  // still parking all three discs on the art: a PAUSE disc in the top-right
+  // corner competing with Gary's card for the same pixels, and JUMP/USE sitting
+  // on the lane the module is asking you to look at. Falls back to the
+  // in-canvas corners only where a run would too — screens too close to 16:9 to
+  // have room out there.
+  // The one power this module hands over. B-33P's cannon is the only ability
+  // taught here — every other hero's moves the hero around in ways this lane
+  // has nothing to say about yet — so it is also the only time the USE control
+  // and the readiness orb have any business being on screen.
+  hasPower() { return !!this.player && this.player.heroId === 'b33p'; }
+
   setButtons() {
-    if (!Input.usingTouch) { Input.setButtons([]); return; }
-    const hasPower = this.player && this.player.heroId === 'b33p';
+    // Both of these can change under a live screen — usingTouch flips on the
+    // first tap of a session, and the chrome mode changes when a phone is
+    // rotated — so they are recorded here and rechecked every frame in
+    // update(). Without that the module was capable of running its whole
+    // length with no touch controls at all: they were registered on entry,
+    // before the player had touched anything, and never asked again.
+    this.touchButtons = Input.usingTouch;
+    this.chromeMode = chromeGeo.mode;
+    if (!Input.usingTouch) {
+      this.useChrome = false;
+      Input.setButtons([]);
+      Input.setChromeButtons([]);
+      return;
+    }
+    const hasPower = this.hasPower();
+    this.useChrome = chromeGeo.mode !== 'none';
+    if (this.useChrome) {
+      Input.setButtons([]);
+      Input.setChromeButtons([
+        { id: 'jump', ...chromeGeo.jump, action: 'jump' },
+        ...(hasPower ? [{ id: 'ability', ...chromeGeo.ability, action: 'ability' }] : []),
+        { id: 'pause', ...chromeGeo.pause, action: 'escape' },
+      ]);
+      return;
+    }
+    Input.setChromeButtons([]);
     Input.setButtons(playButtons().filter((b) => b.id !== 'ability' || hasPower));
+  }
+
+  // Pausing takes the play controls out of the margin as well as off the
+  // canvas. The pause plates are in-canvas, they are the only thing a pointer
+  // can reach on that screen, and leaving a live JUMP disc sitting outside a
+  // paused game is a control that looks pressable and is not.
+  enterPauseButtons() {
+    this.useChrome = false;
+    Input.setChromeButtons([]);
+    Input.setButtons(PAUSE_PLATES);
+  }
+
+  // The discs out in the margin, through the same painter and the same
+  // dirty-flag signature a run uses — the margin only repaints when something
+  // in it actually changes, and the USE meter reads the real cooldown because
+  // roundButtonOpts only ever asks for the player and who they are.
+  drawChromeButtons() {
+    if (!chromeCtx || !this.useChrome) return;
+    const shim = { player: this.player, relay: { current: this.player.heroId } };
+    const buttons = Input.chromeButtons;
+    let sig = `tut|${chromeGeo.mode}|${chromeGeo.vw}x${chromeGeo.vh}`;
+    for (const b of buttons) {
+      sig += `|${b.id}`;
+      if (b.id === 'ability') {
+        const frac = roundButtonOpts(shim, { id: 'ability' }).frac;
+        sig += `:${frac == null ? -1 : Math.round(frac * b.r * 2)}`;
+      }
+    }
+    paintChrome(sig, (ctx) => {
+      for (const b of buttons) {
+        const art = b.id === 'jump' ? { label: 'JUMP' }
+          : b.id === 'ability' ? { label: 'USE' } : { icon: 'pause' };
+        const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...art };
+        const base = roundButtonOpts(shim, box);
+        drawRoundButton(ctx, box, {
+          ...base,
+          fill: b.id === 'ability' ? base.fill : 'rgba(255,255,255,0.06)',
+          ink: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.42)',
+          ring: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.22)',
+          ringWidth: 1,
+          labelScale: 1.45,
+          labelStyle: 'ui',
+        });
+      }
+    });
   }
 
   // ---- sections ------------------------------------------------------------
@@ -1240,7 +1343,7 @@ export class TutorialState {
     // Pause toggles: escape/back pauses; escape while paused exits.
     if (Input.pressed('pause')) {
       this.paused = !this.paused;
-      if (this.paused) { this.pauseIdx = 0; Audio.sfx('ui'); Input.setButtons(PAUSE_PLATES); Input.setMenuKeys(true); }
+      if (this.paused) { this.pauseIdx = 0; Audio.sfx('ui'); this.enterPauseButtons(); Input.setMenuKeys(true); }
       else { Input.setMenuKeys(false); Input.setButtons([]); this.setButtons(); }
     }
     if (Input.pressed('escape') || Input.pressed('back')) {
@@ -1253,7 +1356,7 @@ export class TutorialState {
       this.paused = true;
       this.pauseIdx = 0;
       Audio.sfx('ui');
-      Input.setButtons(PAUSE_PLATES);
+      this.enterPauseButtons();
       Input.setMenuKeys(true);
     }
 
@@ -1262,6 +1365,9 @@ export class TutorialState {
       Input.endFrame();
       return;
     }
+    // The first tap of a session, or a rotation, changes where the controls
+    // belong — see setButtons().
+    if (Input.usingTouch !== this.touchButtons || chromeGeo.mode !== this.chromeMode) this.setButtons();
 
     if (this.speech) {
       this.speech.t -= dt;
@@ -1440,6 +1546,16 @@ export class TutorialState {
     this.player.powerType = 'shoot';
     this.player.powerPoseT = 0.3;
     this.floatText('PEW', '#f6d33c');
+    // The cooldown was never explained anywhere in the module, and the orb that
+    // reports it had been floating beside the hero since section one with
+    // nothing to report. It is explained on the FIRST shot rather than in the
+    // brief, because until you have fired once the orb is empty of meaning:
+    // now it is visibly draining, and the sentence lands on a thing the player
+    // is already looking at.
+    if (!this.taughtCooldown) {
+      this.taughtCooldown = true;
+      this.sayIn(1.3, COOLDOWN, 5.5);
+    }
   }
 
   updatePellets(dt) {
@@ -1651,6 +1767,10 @@ export class TutorialState {
     // put the character you are steering behind a menu. The hero is never
     // allowed to be the thing that gets covered: everything else on this screen
     // is a readout, and a readout can wait behind the person jumping.
+    // Declared during draw, committed centrally by states.js — an empty frame
+    // clears the margin once and then no-ops, so this is safe to call on every
+    // frame including the ones where there is nothing out there.
+    this.drawChromeButtons();
     if (!this.paused) pushOverlayDraw((d) => this.drawSpeechCard(d));
     // Once the treadmill has stopped the controller still reports a RUN — it
     // only knows run/jump/duck — so the hero held whatever stride frame the
@@ -1660,6 +1780,11 @@ export class TutorialState {
     drawHeroSprite(ctx, this.player, this.player.heroId, this.t, cam, false, {
       settings: this.settings, shield: this.shield, zoom: z, pan,
       pose: stopped ? this.outroPose() : null,
+      // The readiness orb arrives with the power it belongs to. For nine
+      // sections the player has no power at all, and a meter floating beside
+      // the hero for all of them is a control they cannot find asking to be
+      // understood — the same reason the USE disc waits for B-33P.
+      specialOrb: this.hasPower(),
     });
     pushOverlayDraw((d) => this.drawUi(d));
   }
@@ -1668,6 +1793,11 @@ export class TutorialState {
   // the hero, over the lane) — the pause screen draws it again on top of its
   // own scrim, where being over the hero is correct.
   drawSpeechCard(ctx) {
+    // The zone diagram rides in this layer too, and goes down FIRST: it is a
+    // wash over the whole canvas, so with it above the card it tinted Gary's
+    // translucent plate yellow down the right-hand side. Under the card, under
+    // the hero, over the lane — which is the order it describes.
+    if (this.zoneT > 0) this.drawTouchZones(ctx);
     if (!this.speech) return;
     drawSpeech(ctx, this.speech, this.speechOpts());
   }
@@ -1704,7 +1834,10 @@ export class TutorialState {
         totalDist: Infinity, distance: 0, tRun: this.t,
       });
     }
-    if (this.zoneT > 0) this.drawTouchZones(ctx);
+    // The zone diagram is NOT drawn here — it goes down with the speech layer,
+    // under the hero. It is a wash over the whole canvas, so drawn from here it
+    // tinted Gary's translucent card yellow on the right-hand side.
+    //
     // The certificate waits until Gary has finished talking, so his bit plays
     // over a clean lane rather than through a scrim.
     const o = this.outro;

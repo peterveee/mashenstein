@@ -1,5 +1,6 @@
 // Procedural pixel sprites: string grids + palette maps compiled once into
 // offscreen canvases. '.' and ' ' are transparent; any other char indexes the palette.
+import { screen } from './renderer.js';
 
 const cache = new Map();
 
@@ -262,8 +263,22 @@ function advance(ch, scale, style) {
 // drawImage is a GPU texture copy, while per-frame fillText re-rasterizes
 // vector outlines on the CPU. Menus are wall-to-wall text, so this matters.
 const glyphCache = new Map();
-const GLYPH_SS = 8;
+// Glyphs rasterize well above the render density so the blit is always a
+// minification — text is the highest-contrast art in the game, so it is where a
+// magnified raster shows first, as stair-steps on every curve.
+//
+// 8 was a constant, which held until a display rendered above 8x: a 6K Pro
+// Display XDR renders at 12.53x and would magnify every glyph by 1.57x. So it
+// follows the density, with 8 as a floor (nothing gets softer than it was) and
+// 16 as a ceiling.
+const GLYPH_SS_MIN = 8, GLYPH_SS_MAX = 16;
+let glyphCacheSS = 0;
+function glyphSS() {
+  return Math.max(GLYPH_SS_MIN, Math.min(GLYPH_SS_MAX, Math.ceil(screen.px)));
+}
 function glyphSprite(ch, color, scale, style) {
+  const GLYPH_SS = glyphSS();
+  if (GLYPH_SS !== glyphCacheSS) { glyphCache.clear(); glyphCacheSS = GLYPH_SS; }
   const key = ch + '|' + color + '|' + scale + '|' + style;
   let g = glyphCache.get(key);
   if (!g) {

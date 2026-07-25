@@ -459,7 +459,16 @@ function boot() {
         // Render density rides along with the FPS: on a device you can only
         // look at, "blocky" and "which rung did it settle on" are the same
         // question, and there is no console to ask rendererDiagnostics().
-        const dens = `${Math.round(rendererDiagnostics().density * 100) / 100}X`;
+        // Why it is at that density matters as much as the number. A device
+        // that ratcheted to the floor and locked itself out of recovery reads
+        // identically to one that genuinely cannot do better, and the fix for
+        // each is the opposite of the fix for the other. F = adaptation frozen
+        // (two drops in a row failed to buy frames, so it gave up); Ln = n rungs
+        // barred from recovery this session; T = drops currently suspended.
+        const rd = rendererDiagnostics();
+        const flags = (rd.frozen ? 'F' : '') + (rd.lockedRungs.length ? 'L' + rd.lockedRungs.length : '')
+          + (rd.throttled ? 'T' : '');
+        const dens = `${Math.round(rd.density * 100) / 100}X${flags ? ' ' + flags : ''}`;
         if (showChromeFps) {
           // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
           // #game — so this painter has to place itself against the margin

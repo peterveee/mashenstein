@@ -34,7 +34,8 @@ he is working through, each section is a section of it, and a miss is an
 | Reopens before he concedes | 4 |
 | Room label | `MANDATORY TRAINING` bottom-left, gold, the food court's and trophy room's exact treatment; `SECTION n/11` rides the same midline beside it |
 | Gary's card | pale plate at 88% opacity, as high as it goes (desktop y 10, touch y 18), wrap 324 / 312 at 1.35x — out of the band a held jump travels through. Touch takes the bigger type, its own wrap and its own anchor as one set |
-| Card width | as wide as what is beside it allows, because a wider card is a **shorter** one and the lines it saves are lines of lane it is not standing in. Desktop plate x 58–422, clearing the coin pill (ends 48, even at four digits) and the FPS readout (starts 442) by ~10px each. Touch is already at its ceiling: the PAUSE disc at x 424 caps the plate at 368 |
+| Card width | as wide as what is beside it allows, because a wider card is a **shorter** one and the lines it saves are lines of lane it is not standing in. Desktop plate x 58–422, clearing the coin pill (ends 48, even at four digits) and the FPS readout (starts 442) by ~10px each. Touch is capped at 368 by the coin pill on its left |
+| Touch controls | **outside the canvas**, in the black margin, wherever the device has room — the same chrome layout a run uses, re-synced when the first tap lands or the phone rotates. Only screens too close to 16:9 fall back to discs on the art. Pausing takes them out of the margin too: the pause plates are in-canvas and a live JUMP disc outside a paused game is a control that looks pressable and is not |
 | Card z-order | **under the hero.** It is the biggest opaque object on screen and it is up almost continuously, so with it on top a tall jump put the character you are steering behind a menu. Everything else on this screen is a readout, and a readout can wait behind the person jumping |
 | Lighting | warm overhead cones every 108px with a hot core and a floor pool; the fixtures are above frame and never drawn |
 | Pause | 20% scrim, and Gary's card stays up at full strength — including the *last* thing he said if the live line has expired |
@@ -162,6 +163,12 @@ later section. It is swept only once it is behind the hero and off the frame.
 - **Again:** IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS ALREADY SIGNED OUT TO YOU.
 - **Wrong way:** YOU AVOIDED IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.
 - **Requires:** the drone shot down.
+- **The cooldown, on the first shot** — not in the brief, because until you have
+  fired once the orb has nothing to report:
+  > THE ORB BY YOUR HEAD IS THE RECHARGE. IT FILLS BACK UP ON ITS OWN. YOU CANNOT HURRY IT. I HAVE ASKED.
+- The readiness orb beside the hero appears **only here**, with the power it
+  belongs to — for the nine sections before this it was a meter for a control
+  the player did not have. Same rule as the USE disc.
 - **Touch only — the zone card.** The canvas has been a two-button surface since
   section one and nothing has said so: left 70% JUMP, right 30% POWER. Both
   halves wash (shading only one reads as "this half is disabled"), with a dashed

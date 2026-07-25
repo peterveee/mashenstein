@@ -3300,7 +3300,7 @@ export class SettingsState {
     if (buildStamp) {
       ctx.save();
       ctx.globalAlpha = 0.5;
-      drawText(ctx, `BUILD: ${buildStamp}`, 4, 4, '#55647a', 0.75);
+      drawText(ctx, `BUILT: ${buildStamp}`, 4, 4, '#55647a', 0.75);
       ctx.restore();
     }
     if (this.confirming) {

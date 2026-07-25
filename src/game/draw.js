@@ -224,9 +224,15 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       }
     }
     drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
+    // opts.specialOrb false hides the readiness orb. A run always wants it —
+    // every hero there has a power and the orb is how you know it is back — but
+    // a scene that has not handed the player a power yet is showing a meter for
+    // a control they do not have, which is a question rather than a readout.
     const cooldownMax = player.hero?.ability?.cooldown || 1;
-    drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
-      cooldownMax, player.relayCharge, reducedMotion);
+    if (opts.specialOrb !== false) {
+      drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
+        cooldownMax, player.relayCharge, reducedMotion);
+    }
     // ...and the hero themself burns brighter, in time with the aura pulse.
     if (starLeft > 0) {
       const pulse = reducedMotion ? 0.3 : 0.22 + 0.24 * Math.sin(t * 18);

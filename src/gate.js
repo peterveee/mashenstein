@@ -170,7 +170,7 @@ function buildTimeLabel(value = window.__MASH_BUILT_AT__) {
 
 function buildTimeLabelLines(value = window.__MASH_BUILT_AT__) {
   const date = new Date(value);
-  if (!value || Number.isNaN(date.getTime())) return ['BUILD', 'TIME UNAVAILABLE'];
+  if (!value || Number.isNaN(date.getTime())) return ['BUILT', 'TIME UNAVAILABLE'];
   try {
     const stamp = new Intl.DateTimeFormat(undefined, {
       year: 'numeric',
@@ -181,9 +181,9 @@ function buildTimeLabelLines(value = window.__MASH_BUILT_AT__) {
       second: '2-digit',
       timeZoneName: 'short',
     }).format(date);
-    return ['BUILD', stamp];
+    return ['BUILT', stamp];
   } catch (e) {
-    return ['BUILD', date.toISOString()];
+    return ['BUILT', date.toISOString()];
   }
 }
 
