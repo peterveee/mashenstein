@@ -478,10 +478,19 @@ function boot() {
             const avail = (side ? screen.ox : chrome.vw) - pad * 3;
             const s = Math.max(1, Math.min(2.4, avail / widest));
             const lineH = 12 * s;
+            const boxH = lines.length * lineH + pad;
+            // Dropped clear of the top corner: a phone screen is a squircle, so
+            // a box parked in the corner gets its own corner shaved off by the
+            // curve — the same clearance CHROME_EDGE_PAD buys the buttons. In
+            // 'topbottom' the band is only oy tall, so never push past its
+            // bottom edge (an iPad's is 72-128px, not a phone's 300+).
+            const top = chrome.mode === 'topbottom'
+              ? Math.min(26, Math.max(pad, screen.oy - boxH - pad))
+              : 26;
             ctx.fillStyle = 'rgba(5,6,12,0.68)';
-            ctx.fillRect(pad - 4, pad - 4, widest * s + 12, lines.length * lineH + pad);
+            ctx.fillRect(pad - 4, top - 4, widest * s + 12, boxH);
             for (let i = 0; i < lines.length; i++) {
-              drawText(ctx, lines[i], pad, pad + i * lineH, i ? '#9fb4d8' : '#f4f1fa', s, 'ui');
+              drawText(ctx, lines[i], pad, top + i * lineH, i ? '#9fb4d8' : '#f4f1fa', s, 'ui');
             }
           });
         } else {
