@@ -21,7 +21,7 @@ const save = {
 const settings = new SettingsState({ save, onDone: () => { returned++; } });
 settings.enter();
 
-assert(settings.options().length === 11, 'settings contains ten options and DONE');
+assert(settings.options().length === 12, 'settings contains eleven options and DONE');
 assert(settings.visibleRows === 6 && settings.listStart === 0,
   'six full-size settings rows scroll above the fixed DONE row');
 
@@ -31,11 +31,11 @@ function down() {
   Input.release('down');
   Input.endFrame();
 }
-for (let i = 0; i < 9; i++) down();
-assert(settings.idx === 9 && settings.listStart === 4,
+for (let i = 0; i < 10; i++) down();
+assert(settings.idx === 10 && settings.listStart === 5,
   'keyboard navigation scrolls to the last setting');
 down();
-assert(settings.idx === 10 && settings.listStart === 4,
+assert(settings.idx === 11 && settings.listStart === 5,
   'DONE is reached without moving the settings window');
 
 const ctx = document.createElement('canvas').getContext('2d');
@@ -50,7 +50,7 @@ settings.update(1 / 60);
 Input.pointer.down = false;
 Input.release('pointer');
 Input.endFrame();
-assert(settings.idx === 4, 'pointer selection maps to the first visible setting');
+assert(settings.idx === 5, 'pointer selection maps to the first visible setting');
 
 // Touch waits for release, so a swipe cannot toggle the row beneath the finger.
 const touchSettings = new SettingsState({ save, onDone: () => { returned++; } });
@@ -82,7 +82,7 @@ assert(save.settings.muted === mutedBeforeSwipe, 'a swipe does not change a sett
 const doneY = touchSettings.doneY + touchSettings.doneH / 2;
 touchDown(doneY);
 touchUp();
-assert(touchSettings.idx === 10 && returned === 0,
+assert(touchSettings.idx === 11 && returned === 0,
   'the fixed DONE row selects with one touch');
 touchDown(doneY);
 touchUp();

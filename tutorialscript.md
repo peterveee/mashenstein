@@ -155,20 +155,38 @@ two dots in a lane. He does not talk and walk; he is not paid for two things.
 Every beat is skippable — one press advances — so an impatient player taps
 through in seconds and a reader gets the whole bit.
 
-| Beat | Line | Hero |
-|---|---|---|
-| arrival | *(silent walk-on)* | stands, then waves hello |
-| 1 | THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH. | idle |
-| 2 | YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET. | idle |
-| 3 | PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER. | **scowls** — the counter drains to zero under this line, one coin and one blip per tick, pitch falling as it goes |
-| 4 | I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING. | still sour |
-| 5 | RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY. | idle |
-| card | SIGNED, GARY. STILL ON THE CLOCK. STILL NOT PAID EXTRA. | **celebrates** |
+The form's order, not a storyteller's: deductions are processed before awards,
+so payroll takes the coins back and *then* he certifies you.
+
+| Beat | Line | Hero | Gary |
+|---|---|---|---|
+| arrival | *(silent walk-on)* | stands, then waves hello | walks on, stands |
+| 1 | THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH. | idle | idle |
+| 2 | PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER. | **scowls** | the counter drains to zero under this line, one coin and one blip per tick, pitch falling as it goes |
+| 3 | I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING. | still sour | idle |
+| 4 | YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET. | idle | idle |
+| 5 | THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED. | **celebrates** | **rolls his eyes** — streamers and confetti rain for 2.8s |
+| 6 | THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK. | back to idle | everything on the floor vanishes on the coin-reclaim cue |
+| 7 | RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY. | idle | idle |
+| card | SIGNED, GARY. STILL ON THE CLOCK. STILL NOT PAID EXTRA. | **celebrates** | idle |
+
+**Gary never celebrates.** Everything else he does is compliance under protest —
+he appeals to HR, he files forms, he reclaims coins on a technicality — so a
+Gary who is genuinely pleased for you undoes the joke the module rests on. The
+form celebrates on his behalf: the step is logged as completed, the streamers
+fire, and he stands in them rolling his eyes. Then he takes them back, because
+Stores is the department on his own signature line.
 
 The reclaim is the honest thing as well as the gag: nothing earned in here was
 ever going into the save file, so the counter is walked back to zero in front of
 you rather than having quietly vanished eight sections ago. The readout stays on
 screen at zero — that is where the joke lives.
+
+Streamers are ribbons and confetti in the arcade's own accent colours (coin
+gold, relay teal, portal magenta, pass green) rather than a fresh party palette,
+so they read as this game's confetti. They outlive the step deliberately: what
+lands has to still be lying there at beat 6, or the sweep has nothing to take
+back. Reduced motion suppresses them.
 
 ### The certificate
 
@@ -200,8 +218,12 @@ run does not teach them again.
 
 - **ESC** pauses. It is the *pause screen* that offers the way out — the key
   legend says PAUSE for that reason.
-- **N** — dev builds only (`npm run dev`), wired in `src/dev/index.js` — closes
-  the current section on the spot and moves to the next. A skipped portal still
-  hands the body over, so the epilogue is reached as the right hero. Reviewing a
-  ten-section module by playing all ten of them every time is how the last
-  section ends up unreviewed.
+- **N** or the **forward arrow** — dev builds only (`npm run dev`), wired in
+  `src/dev/index.js` — closes the current section on the spot and moves to the
+  next. A skipped portal still hands the body over, so the epilogue is reached
+  as the right hero. Reviewing a ten-section module by playing all ten of them
+  every time is how the last section ends up unreviewed.
+  - The forward arrow is *also* the ability key, so while the hero is holding a
+    live power — B-33P in sections 9 and 10 — the arrow stays the cannon and
+    only **N** skips. Otherwise the section that teaches shooting could not be
+    tested in the build it is being reviewed in.

@@ -185,10 +185,20 @@ export const Dev = {
       else if (e.code === 'Backslash') { this.paused = !this.paused; this.say(this.paused ? 'PAUSED' : 'RESUMED'); e.preventDefault(); }
       else if (e.code === 'Period' && this.paused) { this.stepOnce = true; e.preventDefault(); }
       else if (e.code === 'Tab' && cur && cur.takeOver) { cur.takeOver(); this.say('YOU HAVE THE CONTROLS'); e.preventDefault(); }
-      // N skips the section the current screen is sitting on. Only training
-      // implements it — reviewing a nine-section module by playing all nine of
-      // them, every time, is how the last section ends up unreviewed.
-      else if (e.code === 'KeyN' && cur && cur.devSkipSection) { this.say(cur.devSkipSection()); e.preventDefault(); }
+      // N and the forward arrow skip the section the current screen is sitting
+      // on. Only training implements it — reviewing a ten-section module by
+      // playing all ten of them, every time, is how the last section ends up
+      // unreviewed.
+      //
+      // The screen decides, rather than this listener: ArrowRight is also the
+      // ability key during a run, so a screen that is currently teaching the
+      // ability has to be able to decline the skip and let the shot through. A
+      // falsy return means "not mine" — nothing is said and nothing is
+      // swallowed, so the key reaches the game as normal.
+      else if ((e.code === 'KeyN' || e.code === 'ArrowRight') && cur && cur.devSkipSection) {
+        const said = cur.devSkipSection(e.code);
+        if (said) { this.say(said); e.preventDefault(); }
+      }
       return;
     }
 

@@ -25,7 +25,9 @@ import {
 import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
-import { burst, shardBurst, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
+import {
+  burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles,
+} from '../engine/particles.js';
 import {
   drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend,
   keyLegendWidth, drawRoundButton, UI_PANEL_BORDER,
@@ -434,17 +436,38 @@ const STEPS = [
 //
 // Every beat is skippable — one press advances — so an impatient player taps
 // through in seconds and a reader gets the whole bit.
+// The form's order, not a storyteller's: deductions are processed before
+// awards, so payroll takes the coins back and THEN he certifies you. Working
+// through it in the order the form has it is the most Gary thing in the scene.
 const OUTRO = [
   { hold: 3.8, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
-  { hold: 4.4, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
   // The reclaim runs UNDER this line: he says it and the counter drains while
   // he does, in front of you, rather than the coins having quietly vanished
   // eight sections ago.
   { hold: 4.6, clawback: true,
     line: 'PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER.' },
   { hold: 3.8, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
+  { hold: 4.4, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
+  // The celebration beat. The hero celebrates; Gary does not — he rolls his
+  // eyes and stands in it. A Gary who genuinely celebrates undoes the joke the
+  // whole module rests on, so the form celebrates on his behalf: the step is
+  // logged as completed, the streamers fire, and he has done the paperwork
+  // instead of the party.
+  { hold: 4.0, party: true,
+    line: 'THERE IS A CELEBRATION STEP. SECTION ELEVEN. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
+  // ...and it ends the way everything he hands out ends. The streamers go back
+  // to Stores, which is his actual job — it says so on the certificate he is
+  // about to sign.
+  { hold: 3.8, sweep: true,
+    line: 'THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK.' },
   { hold: 4.2, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
 ];
+
+// Party colours — the arcade's own accent set (coin gold, relay teal, portal
+// magenta, pass green) rather than a fresh palette, so the streamers read as
+// this game's confetti and not as stock celebration.
+const PARTY_INK = ['#f6d33c', '#48e0c8', '#e874d6', '#74c947', '#ff8f4a', '#fff8d0'];
+const PARTY_T = 2.8;
 // Where he stops. Close enough to be in conversation with the hero (world x 62)
 // rather than shouting across the lane at them.
 //
@@ -517,6 +540,10 @@ export class TutorialState {
     this.waveT = 0;
     this.sulkT = 0;
     this.cheering = false;
+    // The mandated celebration: how long the pair are required to be pleased
+    // for, and the drip clock that keeps the streamers coming while they are.
+    this.partyT = 0;
+    this.partyAcc = 0;
     this.playgroundT = 0;
     this.playgroundWait = false;
     this.shield = 0;
@@ -604,10 +631,18 @@ export class TutorialState {
     step.setup(this);
   }
 
-  // Dev builds only, wired to N in src/dev/index.js. Closes the section on the
-  // spot — the same path a pass takes, minus the reward — so the module can be
-  // walked to its ninth section without playing the first eight.
-  devSkipSection() {
+  // Dev builds only, wired to N and the forward arrow in src/dev/index.js.
+  // Closes the section on the spot — the same path a pass takes, minus the
+  // reward — so the module can be walked to its tenth section without playing
+  // the first nine.
+  //
+  // Returning nothing declines the key and lets it through to the game. That is
+  // what the ArrowRight guard below is for: the forward arrow is also the
+  // ability key, so while a hero is holding a live power the arrow has to stay
+  // the cannon — otherwise the one section that teaches shooting could not be
+  // tested in the build it is being reviewed in. N always skips.
+  devSkipSection(code) {
+    if (code === 'ArrowRight' && this.player && this.player.hero.ability.type === 'shoot') return null;
     if (this.finished) return 'TRAINING: ALREADY IN THE EPILOGUE';
     const step = this.step();
     // A skipped portal still hands the body over. Skipping past one and
@@ -844,6 +879,75 @@ export class TutorialState {
     this.floatText('RECLAIMED', '#e04848');
   }
 
+  // ---- the mandated celebration --------------------------------------------
+
+  // Streamers and confetti, thrown by nobody in particular — HR does not say
+  // who throws them and Gary is certainly not going to. Ribbons are the same
+  // shard the debris system uses, just long, thin, and barely weighted, so they
+  // flutter down instead of dropping; confetti is the square version of the
+  // same thing. Both land on the groundline and settle there, which is what
+  // makes the sweep two beats later worth doing.
+  startParty() {
+    this.partyT = PARTY_T;
+    this.partyAcc = 0;
+    this.sulkT = 0;
+    this.waveT = 0;
+    Audio.sfx('win');
+    if (this.settings.reducedMotion) return;
+    // The opening pop: a double handful over each of them, thrown up so it
+    // arrives on the way down rather than appearing overhead.
+    for (const wx of [this.playerWorldX() + 6, this.worldX + GARY_STOP_X]) {
+      shardBurst(wx, GROUND_Y - 46, 14, 70, 6, PARTY_INK, {
+        size: 2.4, grav: 90, floor: GROUND_Y, rand: () => this.rng.float(),
+      });
+    }
+    this.dropStreamers(7);
+  }
+
+  // The drip: while the step is open, paper keeps arriving from above the top
+  // of the frame across the whole visible lane.
+  updateParty(dt) {
+    if (this.partyT <= 0 || this.settings.reducedMotion) return;
+    this.partyAcc += dt;
+    while (this.partyAcc >= 0.09) {
+      this.partyAcc -= 0.09;
+      this.dropStreamers(2);
+    }
+  }
+
+  // `n` pieces entering from above the frame. The visible lane is only VIEW_W /
+  // zoom world px wide at the pushed-in ending, so the spread is measured off
+  // the live zoom rather than off a constant — at 3.2 a screen-width scatter
+  // would put nine tenths of it off either side.
+  dropStreamers(n) {
+    const span = W / this.camZoom;
+    const top = GROUND_Y - (H + 30) / this.camZoom;
+    for (let i = 0; i < n; i++) {
+      const x = this.worldX + this.rng.range(-8, span + 8);
+      const ribbon = this.rng.float() < 0.55;
+      const ink = PARTY_INK[Math.floor(this.rng.range(0, PARTY_INK.length)) % PARTY_INK.length];
+      // Lifetimes outlast the step on purpose: what lands has to still be lying
+      // there two beats later, or the sweep has nothing to take back.
+      spawnShard(
+        x, top + this.rng.range(0, 14),
+        this.rng.range(-14, 14), this.rng.range(10, 26),
+        6, ink,
+        ribbon ? 1.2 : 2.2, ribbon ? 8 : 2.2,
+        (this.rng.float() - 0.5) * (ribbon ? 3 : 12),
+        ribbon ? 40 : 70, GROUND_Y,
+      );
+    }
+  }
+
+  // He takes the streamers back. Same cue as the coins, for the same reason —
+  // it is the same joke, and Stores is the department on his signature line.
+  sweepParty() {
+    this.partyT = 0;
+    clearParticles();
+    Audio.sfx('uiBad');
+    this.floatText('STREAMERS RECLAIMED', '#e04848');
+  }
+
   // ---- talk ----------------------------------------------------------------
 
   say(text, t = SPEECH_T) {
@@ -922,6 +1026,7 @@ export class TutorialState {
     if (this.zoneT > 0) this.zoneT -= dt;
     if (this.waveT > 0) this.waveT -= dt;
     if (this.sulkT > 0) this.sulkT -= dt;
+    if (this.partyT > 0) { this.partyT -= dt; this.updateParty(dt); }
     this.updateClawback(dt);
     if (this.playgroundT > 0) {
       this.playgroundT -= dt;
@@ -1014,6 +1119,12 @@ export class TutorialState {
           const beat = OUTRO[o.beat];
           this.say(beat.line, beat.hold);
           if (beat.clawback) this.startClawback();
+          // Whatever is still on the floor goes back to Stores. Skipping ahead
+          // ends the party early too — an impatient player gets the same beats,
+          // faster, not a different set of them.
+          if (beat.sweep) this.sweepParty();
+          else if (beat.party) this.startParty();
+          else this.partyT = 0;
         } else {
           // The certificate goes up and he signs it in the same breath. Nothing
           // is allowed to still be counting down behind a signed document, so
@@ -1239,14 +1350,15 @@ export class TutorialState {
   // exist so the epilogue is a scene between two characters rather than a
   // speech delivered at a mannequin.
   outroPose() {
+    const up = this.cheering || this.partyT > 0;
     return {
-      kind: this.cheering ? 'celebrate' : 'idle',
+      kind: up ? 'celebrate' : 'idle',
       phase: 0,
       headTurn: 0,
-      annoyed: this.sulkT > 0 ? 1 : 0,
+      annoyed: !up && this.sulkT > 0 ? 1 : 0,
       // Style 3 is the fed-up face. He has just watched payroll take the lot.
       madStyle: 3,
-      menuAction: !this.cheering && this.waveT > 0 ? 'wave' : undefined,
+      menuAction: !up && this.waveT > 0 ? 'wave' : undefined,
     };
   }
 
@@ -1460,6 +1572,10 @@ export class TutorialState {
   // left — up the lane, against the direction the whole module has been moving
   // — and then stands. The overlay context has no camera on it, so the world
   // transform is recreated here exactly as drawHeroSprite does.
+  //
+  // He does not join in. Through the celebration step he stands exactly as he
+  // was and rolls his eyes (madStyle 2) — the step is logged, the streamers are
+  // company property, and being pleased was never on the form.
   drawGary(ctx, o) {
     const pose = {
       kind: o.walking ? 'run' : 'idle',
@@ -1468,6 +1584,8 @@ export class TutorialState {
       grounded: true,
       facing: -1,
       vy: 0,
+      annoyed: this.partyT > 0 ? 1 : 0,
+      madStyle: 2,
     };
     ctx.save();
     applyWorld(ctx, this.camZoom, this.camPan);
