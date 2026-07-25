@@ -639,6 +639,11 @@ const SPEECH_ROW = 11;
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
 //
+// `opts.y` moves the whole card off its default anchor. Training uses it to
+// park Gary well above the lane: his card is up for most of the module rather
+// than for a line or two, so at the default y it spent nine sections sitting in
+// the band a held jump actually travels through.
+//
 // `opts.maxWidth` narrows the wrap, and with it the measured panel. The card is
 // centred on W/2 and grows symmetrically off its longest line, so a screen with
 // something parked in a top corner — the tutorial's PAUSE disc — pulls both
@@ -665,7 +670,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const panel = (px, py, pw, ph) => (plate
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
     : drawPanel(ctx, px, py, pw, ph, 3));
-  const y = 46;
+  const y = opts.y ?? 46;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
   //

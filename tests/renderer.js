@@ -189,8 +189,8 @@ const phoneDom = installDom({
 const phoneRenderer = await import('../src/engine/renderer.js?phone-density');
 phoneRenderer.initRenderer({ isIphone: true });
 let phoneDiag = phoneRenderer.rendererDiagnostics();
-assert(phoneDiag.adaptive && phoneDiag.rung === 1 && phoneDiag.density === 3,
-  'high-density phones seed at the 3x rung below native');
+assert(phoneDiag.adaptive && phoneDiag.rung === 2 && phoneDiag.density === 3,
+  'high-density phones seed at the 3x rung, below both native and the 4x rung');
 assert(phoneDom.canvas.width === 1440 && phoneDom.canvas.style.width === '699px',
   'phone render density changes backing pixels without changing CSS fit');
 assert(phoneDom.chromeCanvas.width === 1704,
@@ -203,11 +203,13 @@ for (let i = 0; i < 55; i++) {
   phoneRenderer.noteRendererFrame(phoneNow);
 }
 phoneDiag = phoneRenderer.rendererDiagnostics();
-assert(phoneDiag.rung === 2 && phoneDiag.density === 2.5,
+assert(phoneDiag.rung === 3 && phoneDiag.density === 2.5,
   'a sustained second below 52 FPS steps a phone down one rung to 2.5x');
 
-// The same viewport on desktop starts at the 3x seed too, avoiding a costly
-// native high-DPI render before it has proved that it can sustain one.
+// The same viewport on desktop renders at full native density from the first
+// frame — no seed, no climb. A desktop has no thermal budget to protect, and
+// starting it soft was a visible quality regression on Retina displays. The
+// ladder stays armed below it for a machine that genuinely cannot hold 60 FPS.
 const desktopDom = installDom({
   locationSearch: '?renderer=2d',
   innerWidth: 852,
@@ -217,9 +219,9 @@ const desktopDom = installDom({
 const desktopRenderer = await import('../src/engine/renderer.js?desktop-density');
 desktopRenderer.initRenderer({ isDesktop: true });
 let desktopDiag = desktopRenderer.rendererDiagnostics();
-assert(desktopDiag.adaptive && desktopDiag.rung === 1
-  && desktopDom.canvas.width === 1440,
-  'desktop seeds at the 3x density tier and is adaptive');
+assert(desktopDiag.adaptive && desktopDiag.rung === 0
+  && desktopDiag.density === desktopDiag.native && desktopDom.canvas.width === 2097,
+  'desktop renders at full native density and keeps adaptation armed');
 let deskNow = 1;
 desktopRenderer.noteRendererFrame(deskNow);
 for (let i = 0; i < 55; i++) {
@@ -227,8 +229,8 @@ for (let i = 0; i < 55; i++) {
   desktopRenderer.noteRendererFrame(deskNow);
 }
 desktopDiag = desktopRenderer.rendererDiagnostics();
-assert(desktopDiag.rung === 2 && desktopDiag.density === 2.5,
-  'desktop drops below the 3x seed under sustained slowness');
+assert(desktopDiag.rung === 1 && desktopDiag.density === 4,
+  'desktop still steps down off native under sustained slowness');
 
 // A failure inside the first scheduled frame happens after main marks boot
 // complete. It still needs to stop the loop and show a useful error.

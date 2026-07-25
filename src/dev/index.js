@@ -178,13 +178,17 @@ export const Dev = {
     }
 
     if (!this.open) {
-      // Closed-menu shortcuts: speed, pause, frame-step, bot takeover.
+      // Closed-menu shortcuts: speed, pause, frame-step, bot takeover, skip.
       const cur = typeof window !== 'undefined' ? window.__mash_cur : null;
       if (e.code === 'BracketLeft') { this.cycleSpeed(-1); e.preventDefault(); }
       else if (e.code === 'BracketRight') { this.cycleSpeed(1); e.preventDefault(); }
       else if (e.code === 'Backslash') { this.paused = !this.paused; this.say(this.paused ? 'PAUSED' : 'RESUMED'); e.preventDefault(); }
       else if (e.code === 'Period' && this.paused) { this.stepOnce = true; e.preventDefault(); }
       else if (e.code === 'Tab' && cur && cur.takeOver) { cur.takeOver(); this.say('YOU HAVE THE CONTROLS'); e.preventDefault(); }
+      // N skips the section the current screen is sitting on. Only training
+      // implements it — reviewing a nine-section module by playing all nine of
+      // them, every time, is how the last section ends up unreviewed.
+      else if (e.code === 'KeyN' && cur && cur.devSkipSection) { this.say(cur.devSkipSection()); e.preventDefault(); }
       return;
     }
 

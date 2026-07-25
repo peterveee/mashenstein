@@ -1869,7 +1869,7 @@ export class RunState {
     const at = this.stage.applianceAt * this.totalDist;
     if (this.camX + W > at) {
       this.applianceSpawned = true;
-      const alt = this.stage.applianceHigh ? 66 : 16;
+      const alt = this.stage.applianceHigh ? 70 : 44;
       this.pickups.push(makePickup('appliance', at + W, alt));
     }
   }

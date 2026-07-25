@@ -1,7 +1,7 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, rendererDiagnostics, W, chrome, setChromeOverlay,
+  noteRendererFrame, rendererDiagnostics, W, chrome, screen, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
@@ -384,6 +384,9 @@ function boot() {
   setFancyFx(save.settings.fancyFx);
   Input.init();
   buildAllSprites();
+  // Touch players cannot rewind, so do not create the continuously-running
+  // audio capture node on coarse-pointer devices.
+  Audio.setCaptureEnabled(!Input.isTouchDevice());
   // Prime Web Audio before the title state is installed. Browsers/builds that
   // permit autoplay now begin the menu theme immediately; stricter browsers
   // leave the context suspended and the first gesture resumes this same
@@ -448,22 +451,52 @@ function boot() {
   const loop = startLoop({
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => {
+      // Touch devices with a letterbox margin get the readout out on #chrome,
+      // in the dead black beside/above the game, rather than over the art.
+      const showChromeFps = save.settings.showFps && Input.isTouchDevice() && chrome.mode !== 'none';
       if (save.settings.showFps) {
         const fps = frameRate() || '--';
-        const label = `${fps}`;
-        // Tiny top-right readout, common to touch chrome and desktop overlay.
-        const drawFps = (ctx) => {
-          const tw = textWidth(label, 0.65, 'bold');
-          ctx.fillStyle = 'rgba(5,6,12,0.55)';
-          ctx.fillRect(W - tw - 10, 1, tw + 10, 11);
-          drawText(ctx, label, W - 5 - tw, 3, '#f4f1fa', 0.65, 'bold');
-        };
-        if (Input.isTouchDevice() && chrome.mode !== 'none') {
-          setChromeOverlay(`fps|${fps}`, drawFps);
+        // Render density rides along with the FPS: on a device you can only
+        // look at, "blocky" and "which rung did it settle on" are the same
+        // question, and there is no console to ask rendererDiagnostics().
+        const dens = `${Math.round(rendererDiagnostics().density * 100) / 100}X`;
+        if (showChromeFps) {
+          // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
+          // #game — so this painter has to place itself against the margin
+          // geometry. The 480x270 game-space painter below cannot be reused
+          // here: its coordinates land inside the area #game covers, where the
+          // readout is faithfully painted every frame and never once seen.
+          setChromeOverlay(`fps|${fps}|${dens}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
+            // 'side': only the ~ox-wide pillar is free, so stack two short
+            // lines. 'topbottom': the whole width above the game is free.
+            const side = chrome.mode === 'side';
+            const lines = side ? [`FPS ${fps}`, dens] : [`FPS ${fps} ${dens}`];
+            const pad = 8;
+            const widest = Math.max(...lines.map((l) => textWidth(l, 1, 'ui')));
+            // Size to the margin actually on offer — a notch iPhone's pillar is
+            // 72px, an iPad's top band is the full screen width.
+            const avail = (side ? screen.ox : chrome.vw) - pad * 3;
+            const s = Math.max(1, Math.min(2.4, avail / widest));
+            const lineH = 12 * s;
+            ctx.fillStyle = 'rgba(5,6,12,0.68)';
+            ctx.fillRect(pad - 4, pad - 4, widest * s + 12, lines.length * lineH + pad);
+            for (let i = 0; i < lines.length; i++) {
+              drawText(ctx, lines[i], pad, pad + i * lineH, i ? '#9fb4d8' : '#f4f1fa', s, 'ui');
+            }
+          });
         } else {
-          pushOverlayDraw(drawFps);
+          const label = `FPS ${fps} ${dens}`;
+          // Tiny top-right readout on the game canvas overlay — desktop, and
+          // touch devices at an exact 16:9 where there is no margin to use.
+          pushOverlayDraw((ctx) => {
+            const tw = textWidth(label, 0.65, 'bold');
+            ctx.fillStyle = 'rgba(5,6,12,0.68)';
+            ctx.fillRect(W - tw - 10, 1, tw + 10, 11);
+            drawText(ctx, label, W - 5 - tw, 3, '#f4f1fa', 0.65, 'bold');
+          });
         }
-      } else if (Input.isTouchDevice() && chrome.mode !== 'none') {
+      }
+      if (!showChromeFps && Input.isTouchDevice() && chrome.mode !== 'none') {
         setChromeOverlay('', null);
       }
       drawState(bctx);

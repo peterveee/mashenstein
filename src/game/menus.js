@@ -3,6 +3,7 @@
 import { W, H, setFancyFx, setSceneGlow, setSkyFx, pushOverlayDraw } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
+import { defaultSettings } from '../engine/save.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
@@ -3127,6 +3128,7 @@ export class SettingsState {
     this.idx = 0;
     this.listStart = 0;
     this.pointerGesture = null;
+    this.confirming = false;
     Input.setMenuButtons();
   }
   volumeOption(key, name) {
@@ -3157,6 +3159,7 @@ export class SettingsState {
       { label: `GLOW EFFECTS: ${s.fancyFx ? 'ON' : 'OFF'}`, act: () => { s.fancyFx = !s.fancyFx; setFancyFx(s.fancyFx); } },
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
+      { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
       { label: 'DONE', act: () => { this.save.persist(); this.onDone(); } },
     ];
   }
@@ -3185,8 +3188,21 @@ export class SettingsState {
     Audio.sfx('uiConfirm');
     option.act();
   }
+  resetToDefaults() {
+    Object.assign(this.save.settings, defaultSettings());
+    setFancyFx(this.save.settings.fancyFx);
+    Audio.setVolumes(this.save.settings.volumes);
+    Audio.setMuted(this.save.settings.muted);
+    this.confirming = false;
+  }
   update(dt) {
     const opts = this.options();
+    if (this.confirming) {
+      if (Input.pressed('confirm')) { Audio.sfx('uiConfirm'); this.resetToDefaults(); }
+      if (Input.pressed('back') || Input.pressed('duck')) { this.confirming = false; Audio.sfx('ui'); }
+      Input.endFrame();
+      return;
+    }
     if (Input.pressed('down')) {
       this.idx = (this.idx + 1) % opts.length;
       this.keepSelectionVisible(opts);
@@ -3277,5 +3293,13 @@ export class SettingsState {
       textYForMid(this.doneY + this.doneH / 2),
       doneSelected ? '#c9a0ff' : '#c8c8d8');
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
+    if (this.confirming) {
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(40, 90, W - 80, 60);
+      ctx.strokeStyle = '#e04848';
+      ctx.strokeRect(40.5, 90.5, W - 81, 60);
+      drawTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2, 108, '#e04848', 1.5);
+      drawTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK: CANCEL`, W / 2, 132, '#8a8a98');
+    }
   }
 }

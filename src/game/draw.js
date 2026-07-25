@@ -199,7 +199,12 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // on screen (the aura, not a flicker, is what says "you can't be hurt").
   const starLeft = opts.invincible || 0;
   if (!starLeft && player.iframes > 0 && Math.floor(t * 14) % 2 === 0 && player.headless <= 0) return;
-  const pose = poseFromPlayer(player, t);
+  // opts.pose patches the derived pose. The controller only ever reports run /
+  // jump / duck, because those are the only things a hero does while a stage is
+  // moving — a scene that has STOPPED the world (training's epilogue) has to be
+  // able to say "stand there and wave", or the hero holds whatever stride frame
+  // the treadmill died on.
+  const pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
   const cx = Math.round(opts.screenX ?? PLAYER_X) + 6; // center of the 12px slot
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
@@ -267,6 +272,9 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   let y = Math.round(bottom - e.h);
   if (e.def && (e.def.bob || (e.def && e.def.power))) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
   if (e.kind === 'pickup' && e.def.power) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
+  // The golden appliance gets a more pronounced hover so it reads as its own
+  // thing — a deliberate prize, not scenery you run past.
+  if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 5);
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
   if (e.kind === 'obstacle' && e.def.ground) {

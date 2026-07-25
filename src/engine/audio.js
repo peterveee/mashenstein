@@ -90,6 +90,7 @@ class AudioSys {
     this._capPos = 0;        // write cursor
     this._capNode = null;    // ScriptProcessorNode
     this._capGain = null;    // zero-gain sink
+    this.captureEnabled = true;
     this._revTimer = null;   // interval for reverse-chunk scheduling
     this._revSources = [];   // active reversed BufferSources
   }
@@ -161,7 +162,7 @@ class AudioSys {
     for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
     this.renderWeaponBuffers();
     this.startSequencer();
-    this._startCapture();
+    if (this.captureEnabled) this._startCapture();
     // Separate output for reversed audio — bypasses the capture node to
     // prevent a feedback loop (reversed audio → capture → reversed again).
     this._rewindOut = this.ctx.createGain();
@@ -190,6 +191,18 @@ class AudioSys {
     this.lifecyclePaused = paused;
     if (paused) this.suspendContext();
     else this.resumeContext();
+  }
+
+  // Rewind is unavailable on touch screens, so their audio must not pay for
+  // the continuously-running master-output recorder. Configure this before
+  // ensure(); changing it later also tears down an already-created recorder.
+  setCaptureEnabled(enabled) {
+    enabled = !!enabled;
+    if (enabled === this.captureEnabled) return;
+    this.captureEnabled = enabled;
+    if (!this.ctx) return;
+    if (enabled) this._startCapture();
+    else this._stopCapture();
   }
 
   setMuted(m) {
@@ -729,7 +742,7 @@ class AudioSys {
   // Continuously record the master output into a ring buffer. A zero-gain
   // ScriptProcessorNode taps the signal without affecting the live mix.
   _startCapture() {
-    if (this._capNode) return;
+    if (!this.captureEnabled || this._capNode) return;
     const SR = this.ctx.sampleRate;
     const CAPTURE_SEC = 4;
     this._capBuf = new Float32Array(Math.floor(SR * CAPTURE_SEC));
@@ -754,6 +767,15 @@ class AudioSys {
     this._capGain.gain.value = 0;
     this._capNode.connect(this._capGain);
     this._capGain.connect(this.ctx.destination);
+  }
+
+  _stopCapture() {
+    if (this._capNode && typeof this._capNode.disconnect === 'function') this._capNode.disconnect();
+    if (this._capGain && typeof this._capGain.disconnect === 'function') this._capGain.disconnect();
+    this._capNode = null;
+    this._capGain = null;
+    this._capBuf = null;
+    this._capPos = 0;
   }
 
   // Start playing the capture buffer backwards in overlapping chunks. Each

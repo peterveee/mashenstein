@@ -1,6 +1,7 @@
 // Density-aware renderer. Game code always draws in a fixed 480x270 logical
-// coordinate space. High-density displays start from a bounded adaptive tier
-// so native-resolution fill-rate cannot overwhelm the frame budget.
+// coordinate space. Desktops render at their display's native density; hand-held
+// and tablet displays start from a bounded adaptive tier so Retina fill-rate
+// cannot overwhelm the frame budget on a device that has to stay cool.
 export const W = 480;
 export const H = 270;
 
@@ -112,8 +113,20 @@ let backend = null;
 // Adaptive density: every device measures its own frame timing and settles on
 // the highest density it can sustain. The platform only seeds the first guess.
 // Rungs below native, in preference order; the ladder is [native, ...those < native].
-const STANDARD_RUNGS = [3, 2.5, 2, 1.5, 1];
+// The 4x and 5x rungs exist for tablets and hi-DPI desktops, whose native lands
+// around 5-6x: without them the rung under native is 3x, a 1.7-1.9x upscale that
+// reads as blocky, and the only way off it is one 3x fill-rate leap to native
+// that a marginal frame will fail — earning strikes that lock native out for the
+// session. Intermediate rungs make that climb affordable one step at a time.
+const STANDARD_RUNGS = [5, 4, 3, 2.5, 2, 1.5, 1];
 const LADDER_EPS = 1e-6;
+const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
+const TABLET_SEED_DENSITY = 4;        // initial rung on iPad/Android tablets
+// Desktops seed at rung 0 — native, the full resolution of the display. There is
+// no thermal or battery budget to protect and a desktop GPU is not the fill-rate
+// risk a hand-held one is, so a desktop starts sharp instead of climbing to
+// sharp. Adaptation stays armed underneath: a machine that genuinely cannot hold
+// 60 FPS at native still steps down, it just is not assumed to be that machine.
 const SLOW_FRAME_MS = 1000 / 52;      // slower than this counts as a slow frame
 const FAST_FRAME_MS = 1000 / 58;      // this fast or better counts as a fast frame
 const EMERGENCY_FRAME_MS = 1000 / 30; // slower than this is an emergency
@@ -132,7 +145,8 @@ const CAP_REVERTS_TO_FREEZE = 2;      // this many futile drops => stop adapting
 const SETTLE_MS = 25000;              // stable this long at a rung => persist it
 const AVG_ALPHA = 0.1;                // EWMA weight for the frame-interval average
 
-let phonePlatform = false; // iPhone|Android — gates the chrome dpr cap only
+let phonePlatform = false;   // iPhone|Android — gates the density seed and the chrome dpr cap
+let desktopPlatform = false; // no touch platform detected — seeds at native density
 let ladder = [1];
 let nativeDensity = 1;
 let rung = -1;             // -1 until resize() seeds it
@@ -218,11 +232,20 @@ function nearestIndex(arr, value) {
   return best;
 }
 
-// Every high-density display seeds at the 3x rung; a persisted settled density
-// (if any) starts one rung ABOVE where it last landed — optimistic, so a device
-// that had one bad session re-probes upward — but never above the 3x seed.
+// Desktops start at native. Phones seed at 3x — a hand-held GPU pushing 480x270
+// at 4x is 1.8x the fill of 3x for pixels no one can resolve at that screen size.
+// Tablets seed at 4x: an iPad Pro's native runs 5-6x, so a 3x seed is a visibly
+// soft 1.7-1.9x upscale, and a tablet's power budget carries the extra fill.
+// Either way measured frame timing still decides where the device ends up. A
+// persisted settled density (if any) starts one rung ABOVE where it last landed
+// — optimistic, so a device that had one bad session re-probes upward — but
+// never below its platform seed. Desktops ignore the persisted seed outright:
+// one bad session (a background export, a hot laptop) must not park the machine
+// at a soft density for every launch afterwards.
 function seedRung() {
-  const i = ladder.findIndex((v) => v <= 3 + LADDER_EPS);
+  if (desktopPlatform) return 0;
+  const seed = phonePlatform ? PHONE_SEED_DENSITY : TABLET_SEED_DENSITY;
+  const i = ladder.findIndex((v) => v <= seed + LADDER_EPS);
   const platformSeedIdx = i < 0 ? 0 : i;
   if (savedSeedDensity > 0) {
     const persistedIdx = nearestIndex(ladder, savedSeedDensity);
@@ -247,13 +270,15 @@ function freshCanvasAfterWebglFailure() {
 
 export function initRenderer(platform = {}, persistence = {}) {
   // The density seed limits initial high-DPI fill-rate; measured frame timing
-  // decides where every device ultimately settles. phonePlatform only gates
-  // the touch-chrome dpr cap.
+  // decides where every device ultimately settles. phonePlatform picks the
+  // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
+  // entirely and starts at native.
   phonePlatform = !!(platform.isIphone || platform.isAndroid);
+  desktopPlatform = !!platform.isDesktop;
   pinnedDensity = densityRequested();
   savedSeedDensity = Number(persistence.savedDensity) > 0 ? Number(persistence.savedDensity) : 0;
   onSettle = typeof persistence.onSettle === 'function' ? persistence.onSettle : null;
-  rung = -1;              // resize() seeds on its first pass
+  rung = -1;              // resize() seeds on its first pass (see seedRung)
   ladder = [1];
   nativeDensity = 1;
   adaptationEnabled = false;

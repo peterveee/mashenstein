@@ -17,6 +17,13 @@ const DEFAULT_KEYS = {
 
 const GAMEPAD_MAP = { 0: 'jump', 1: 'duck', 2: 'ability', 3: 'ability', 9: 'pause', 12: 'jump', 13: 'duck', 14: 'left', 15: 'right' };
 
+// Where the playable canvas splits into its two broad thumb zones during a run:
+// everything left of this fraction is JUMP, everything right of it is the
+// special. Exported because a screen that TEACHES the split has to draw the
+// same line the handler tests against — training's touch zone card measured its
+// own 70% for one build, which is the version of this that goes wrong quietly.
+export const TOUCH_JUMP_FRAC = 0.7;
+
 class InputSys {
   constructor() {
     this.keys = JSON.parse(JSON.stringify(DEFAULT_KEYS));
@@ -101,7 +108,7 @@ class InputSys {
         const liveRun = this.context === 'run' && !this.menuKeys;
         const liveWorkshop = this.context === 'workshop';
         const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
-        if (liveRun && primaryCanvas) action = p.x < W * 0.7 ? 'jump' : 'ability';
+        if (liveRun && primaryCanvas) action = p.x < W * TOUCH_JUMP_FRAC ? 'jump' : 'ability';
         else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
         this.touches.set(e.pointerId, {
           x0: p.x, y0: p.y, t0: performance.now(), action,
@@ -180,6 +187,16 @@ class InputSys {
       chromeEl.addEventListener('pointerup', endPointer);
       chromeEl.addEventListener('pointercancel', endPointer);
     }
+    // Scroll wheel navigates lists in menu / hub / paused contexts.
+    window.addEventListener('wheel', (e) => {
+      if (this.suspended) return;
+      if (!this.menuNav()) return;
+      const ticks = Math.min(5, Math.ceil(Math.abs(e.deltaY) / 40));
+      const action = e.deltaY > 0 ? 'down' : 'up';
+      for (let i = 0; i < ticks; i++) { this.release(action); this.press(action); }
+      e.preventDefault();
+    }, { passive: false });
+
     window.addEventListener('blur', () => this.clearAll());
   }
 

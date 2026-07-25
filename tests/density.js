@@ -27,8 +27,9 @@ function feedUntil(r, clk, dt, pred, max = 5000) {
 
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
 const PHONE = { locationSearch: '?renderer=2d', innerWidth: 852, innerHeight: 393, devicePixelRatio: 3 };
-// Phone native = 852-fit cssW 699 * dpr 3 / 480 = 4.36875 → ladder below:
-const LADDER = [4.36875, 3, 2.5, 2, 1.5, 1];
+// Phone native = 852-fit cssW 699 * dpr 3 / 480 = 4.36875 → ladder below. Phones
+// seed at 3x (index 2), leaving the 4x rung above them to climb into.
+const LADDER = [4.36875, 4, 3, 2.5, 2, 1.5, 1];
 
 function webglStub() {
   let id = 0;
@@ -50,7 +51,9 @@ function webglStub() {
   return { gl, calls };
 }
 
-// --- iPad (masquerading as macOS) is adaptive now, seeded at the 3x rung ------
+// --- iPad (masquerading as macOS) is adaptive, seeded at the tablet 4x rung ---
+// An iPad Pro's native is ~5x, so the 3x phone seed would show the game at a
+// 1.7x upscale; 4x keeps it to 1.24x and native is still one climb away.
 {
   installDom({ innerWidth: 1194, innerHeight: 834, devicePixelRatio: 2 });
   const r = await import('../src/engine/renderer.js?d-ipad');
@@ -58,8 +61,20 @@ function webglStub() {
   assert(platform.isIpad && !platform.isIphone, 'modern iPad UA + touch points detects as iPad');
   r.initRenderer(platform);
   const d = r.rendererDiagnostics();
-  assert(d.adaptive && d.rung === 1 && d.density === 3,
-    'iPad is adaptive and seeds at the 3x rung below native');
+  assert(d.adaptive && d.rung === 1 && d.density === 4,
+    'iPad is adaptive and seeds at the 4x rung below its ~5x native');
+  assert(d.ladder[0] > 4 && d.ladder[1] === 4,
+    'the iPad ladder has a 4x rung between native and 3x, not a bare 3x cliff');
+}
+
+// --- A phone keeps the lower 3x seed, with the 4x rung left above it ---------
+{
+  installDom(PHONE);
+  const r = await import('../src/engine/renderer.js?d-phone-seed');
+  r.initRenderer({ isIphone: true });
+  const d = r.rendererDiagnostics();
+  assert(d.rung === 2 && d.density === 3, 'a phone seeds at 3x, not the tablet 4x');
+  assert(d.ladder[1] === 4, 'the 4x rung sits above the phone seed as a climb target');
 }
 
 // --- Emergency two-rung drop from the seed, in a single adjustment -----------
@@ -73,7 +88,7 @@ function webglStub() {
   // 15 frames is one emergency drop's worth; more would trigger a second drop.
   for (let i = 0; i < 15; i++) { clk.t += 40; r.noteRendererFrame(clk.t); seen.add(r.rendererDiagnostics().density); }
   const d = r.rendererDiagnostics();
-  assert(d.density === 2 && d.rung === 3, 'a half-second of >33ms frames drops two rungs to 2x');
+  assert(d.density === 2 && d.rung === 4, 'a half-second of >33ms frames drops two rungs to 2x');
   assert(!seen.has(2.5), 'the emergency drop skips the intermediate 2.5x rung (single adjustment)');
 }
 
@@ -85,9 +100,9 @@ function webglStub() {
   const clk = { t: 1 };
   r.noteRendererFrame(clk.t);
   feed(r, clk, 20, 40);                 // one emergency probe: two rungs, then held
-  assert(r.rendererDiagnostics().rung === 3, 'a hard stall drops two rungs in one probe (to 2x)');
+  assert(r.rendererDiagnostics().rung === 4, 'a hard stall drops two rungs in one probe (to 2x)');
   feed(r, clk, 30, 40);                 // still stalling, but the probe is unresolved
-  assert(r.rendererDiagnostics().rung === 3,
+  assert(r.rendererDiagnostics().rung === 4,
     'no further drop fires while the probe awaits its verdict (no plunge to the floor)');
 }
 
@@ -101,17 +116,17 @@ function webglStub() {
   // Constant 35ms frames: emergency-slow, but dropping never speeds them up.
   feed(r, clk, 120, 35);               // past the guard's 2.5s verdict window
   let d = r.rendererDiagnostics();
-  assert(d.density === 3 && d.rung === 1, 'an unhelpful drop is reverted to the pre-drop rung');
+  assert(d.density === 3 && d.rung === 2, 'an unhelpful drop is reverted to the pre-drop rung');
   assert(d.throttled === true, 'the revert marks the renderer as throttled');
   assert(d.lockedRungs.length === 0 && !d.strikes['3'],
     'the reverted drop revokes the strike it charged and locks nothing');
   feed(r, clk, 200, 35);               // still inside the 30s suspension
-  assert(r.rendererDiagnostics().rung === 1, 'drops stay suspended for the cap window');
+  assert(r.rendererDiagnostics().rung === 2, 'drops stay suspended for the cap window');
   // Past the 30s suspension the stall drops again — but a persistent cap is
   // re-detected and reverted, so the drop is transient. Detect that it occurs
   // at all rather than sampling a fixed endpoint.
   let droppedAgain = false;
-  for (let i = 0; i < 1200; i++) { clk.t += 35; r.noteRendererFrame(clk.t); if (r.rendererDiagnostics().rung > 1) droppedAgain = true; }
+  for (let i = 0; i < 1200; i++) { clk.t += 35; r.noteRendererFrame(clk.t); if (r.rendererDiagnostics().rung > 2) droppedAgain = true; }
   assert(droppedAgain, 'once the suspension lapses a real stall drops again');
   assert(r.rendererDiagnostics().frozen === true,
     'a second futile drop freezes adaptation so a CPU-bound device stops churning');
@@ -127,22 +142,22 @@ function webglStub() {
   r.noteRendererFrame(clk.t);
   // Slow until it drops (strike 1 on rung value 3), then a clean stretch that
   // both satisfies the guard (16ms << the 25ms pre-drop avg) and climbs back.
-  feedUntil(r, clk, 25, () => rung() === 2);
-  assert(rung() === 2, 'first moderate drop lands at 2.5x');
-  feedUntil(r, clk, 16, () => rung() === 1);
-  assert(rung() === 1, 'a clean stretch climbs back to 3x');
+  feedUntil(r, clk, 25, () => rung() === 3);
+  assert(rung() === 3, 'first moderate drop lands at 2.5x');
+  feedUntil(r, clk, 16, () => rung() === 2);
+  assert(rung() === 2, 'a clean stretch climbs back to 3x');
   // Drop from rung 1 a second time (strike 2 → lock 3). Keep the slow phase
   // short so switching to fast frames next lets the guard keep this drop
   // instead of reverting it as a cap.
-  feedUntil(r, clk, 25, () => rung() === 2);
-  assert(rung() === 2, 'second moderate drop lands at 2.5x again');
+  feedUntil(r, clk, 25, () => rung() === 3);
+  assert(rung() === 3, 'second moderate drop lands at 2.5x again');
   feed(r, clk, 700, 16);             // a clean stretch that would normally climb
   let d = r.rendererDiagnostics();
-  assert(d.rung === 2 && d.density === 2.5, 'recovery is blocked at the locked rung');
+  assert(d.rung === 3 && d.density === 2.5, 'recovery is blocked at the locked rung');
   assert(d.lockedRungs.includes(3) && d.strikes['3'] === 2, 'the twice-abandoned 3x rung is locked with two strikes');
   feed(r, clk, 1200, 16);            // 30s of headroom earns one locked re-probe
   d = r.rendererDiagnostics();
-  assert(d.rung === 1 && d.density === 3,
+  assert(d.rung === 2 && d.density === 3,
     'a locked rung re-probes after a long, sustained 60 FPS recovery');
 }
 
@@ -165,6 +180,21 @@ function webglStub() {
   const r = await import('../src/engine/renderer.js?d-persist-clamp');
   r.initRenderer({ isIphone: true }, { savedDensity: 3 });
   assert(r.rendererDiagnostics().density === 3, 'a settled 3x on a phone stays clamped at the 3x seed, not native');
+}
+
+// --- Desktop renders at native, and a bad past session does not park it soft --
+// The adaptive ladder exists for devices with a thermal budget. A desktop starts
+// at rung 0 and, unlike phones and tablets, ignores the persisted seed: one slow
+// session must not cost it native density on every launch afterwards.
+{
+  installDom(PHONE);                 // same 4.36875x native, desktop platform flags
+  const r = await import('../src/engine/renderer.js?d-desktop');
+  r.initRenderer({ isDesktop: true }, { savedDensity: 2 });
+  const d = r.rendererDiagnostics();
+  assert(d.rung === 0 && d.density === d.native,
+    'desktop seeds at native density, not a bounded tier');
+  assert(d.density > 4, 'a persisted 2x does not drag a desktop below native');
+  assert(d.adaptive === true, 'desktop keeps adaptation armed as a safety net');
 }
 
 // --- ?density= pin fixes the density and disables adaptation -----------------
