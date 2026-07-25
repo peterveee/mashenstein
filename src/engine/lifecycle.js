@@ -59,6 +59,9 @@ export class LifecycleController {
     this.win = win;
     this.pageHidden = false;
     this.overlay = doc.getElementById('portrait-overlay');
+    this.landscapeDiag = doc.getElementById('landscape-diag');
+    this.landscapeDiagStatus = doc.getElementById('landscape-diag-status');
+    this.landscapeDiagClose = doc.getElementById('landscape-diag-close');
     this.shell = doc.getElementById('game-shell');
     this.errorTools = doc.getElementById('portrait-error-tools');
     this.errorMessage = doc.getElementById('portrait-error-message');
@@ -76,6 +79,8 @@ export class LifecycleController {
     this.onFatalError = () => this.syncErrorReport();
     this.onCopyError = () => { this.copyErrorReport(); };
     this.onReload = () => this.confirmReload();
+    this.onDiagOpen = () => this.openLandscapeDiag();
+    this.onDiagClose = () => this.closeLandscapeDiag();
 
     doc.addEventListener('visibilitychange', this.onVisibility);
     win.addEventListener('pagehide', this.onPageHide);
@@ -84,23 +89,26 @@ export class LifecycleController {
     win.addEventListener('resize', this.onViewport);
     win.addEventListener('mashfatalerror', this.onFatalError);
     win.visualViewport && win.visualViewport.addEventListener('resize', this.onViewport);
+    win.addEventListener('mashdiagopen', this.onDiagOpen);
     if (this.portraitQuery) {
       if (this.portraitQuery.addEventListener) this.portraitQuery.addEventListener('change', this.onViewport);
       else if (this.portraitQuery.addListener) this.portraitQuery.addListener(this.onViewport);
     }
     this.copyErrorButton && this.copyErrorButton.addEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.addEventListener('click', this.onReload);
+    this.landscapeDiagClose && this.landscapeDiagClose.addEventListener('click', this.onDiagClose);
     this.installDiagTools();
     this.syncErrorReport();
     this.apply();
   }
 
-  // Hidden diagnostics, revealed by tapping the build stamp five times.
+  // Hidden diagnostics, revealed by tapping the build stamp five times on the
+  // portrait shell, or by tapping the title marquee five times on touch iPad.
   //
-  // This screen is the only surface an installed iPhone build reliably shows
-  // that is NOT the game — and an installed PWA has no address bar, so ?fps and
-  // ?bench cannot be typed there. Without this the one platform hardest to
-  // measure is also the only one with no way to turn the instruments on.
+  // These are the surfaces an installed PWA reliably shows that are NOT the
+  // game. There is no address bar, so ?fps and ?bench cannot be typed there.
+  // Without this the platforms hardest to measure are also the ones with no
+  // way to turn the instruments on.
   //
   // Five taps rather than a double-tap: this panel offers a "reload into a
   // 30-second benchmark" button, and a player idly poking the screen they were
@@ -132,48 +140,67 @@ export class LifecycleController {
       // Safari, which would drop the tester out of the app being measured.
       this.win.setTimeout(() => this.win.location.reload(), 350);
     };
-    this.diagButtons = [
-      ['diag-fps', () => {
+    const diagButtons = [
+      ['fps', () => {
         const next = !readDiag().fps;
         writeDiag({ fps: next });
         this.showDiagStatus(`FPS readout ${next ? 'ON' : 'OFF'} - rotate to see it`);
       }],
-      ['diag-force-2d', () => {
+      ['force-2d', () => {
         forceRenderer('2d');
         this.showDiagStatus('2D renderer pinned - reloading...');
         this.win.setTimeout(() => this.win.location.reload(), 350);
       }],
-      ['diag-force-webgl', () => {
+      ['force-webgl', () => {
         forceRenderer('webgl');
         this.showDiagStatus('WebGL renderer pinned - reloading...');
         this.win.setTimeout(() => this.win.location.reload(), 350);
       }],
-      ['diag-force-3x-gl', () => {
+      ['force-3x-gl', () => {
         forceWebglDensity(3);
         this.showDiagStatus('forcing WebGL at 3X - reloading...');
         this.win.setTimeout(() => this.win.location.reload(), 350);
       }],
       // The bench is one-shot: main.js clears the flag as it starts, so a
       // reload after the sweep returns to playing rather than re-benchmarking.
-      ['diag-bench-2d', () => reloadInto({ bench: true, renderer: '2d', rendererLock: null, density: null }, 'reloading into 2D bench...')],
-      ['diag-bench-gl', () => reloadInto({ bench: true, renderer: 'webgl', rendererLock: null, density: null }, 'reloading into WebGL bench...')],
-      ['diag-title-profile', () => reloadInto({
+      ['bench-2d', () => reloadInto({ bench: true, renderer: '2d', rendererLock: null, density: null }, 'reloading into 2D bench...')],
+      ['bench-gl', () => reloadInto({ bench: true, renderer: 'webgl', rendererLock: null, density: null }, 'reloading into WebGL bench...')],
+      ['title-profile', () => reloadInto({
         titleProfile: true,
         titleProfileRenderer: true,
         renderer: 'webgl',
         rendererLock: true,
         density: 3,
       }, 'reloading into WebGL 3X title profile...')],
-      ['diag-clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
-    ].map(([id, fn]) => {
-      const el = this.doc.getElementById(id);
-      if (el) el.addEventListener('click', fn);
-      return [el, fn];
-    });
+      ['clear', () => { clearDiag(); reloadInto({}, 'cleared - reloading...'); }],
+    ];
+    this.diagButtons = [];
+    for (const [key, fn] of diagButtons) {
+      const targets = [
+        this.doc.getElementById(`diag-${key}`),
+        this.doc.getElementById(`landscape-diag-${key}`),
+      ];
+      for (const el of targets) {
+        if (!el) continue;
+        el.addEventListener('click', fn);
+        this.diagButtons.push([el, fn]);
+      }
+    }
   }
 
   showDiagStatus(text) {
     if (this.diagStatus) this.diagStatus.textContent = text;
+    if (this.landscapeDiagStatus) this.landscapeDiagStatus.textContent = text;
+  }
+
+  openLandscapeDiag() {
+    if (!this.landscapeDiag) return;
+    this.landscapeDiag.hidden = false;
+    this.showDiagStatus(describeDiag(readDiag()));
+  }
+
+  closeLandscapeDiag() {
+    if (this.landscapeDiag) this.landscapeDiag.hidden = true;
   }
 
   currentPolicy() {

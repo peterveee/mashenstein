@@ -197,6 +197,9 @@ export const glfx = {
   skyTarget: null,
   skyValid: false,
   skyFrame: 0,
+  texGlow: null,
+  glowW: 0,
+  glowH: 0,
   profile: {
     uploads: 0,
     uploadPixels: 0,
@@ -222,6 +225,9 @@ export const glfx = {
     this.skyTarget = null;
     this.skyValid = false;
     this.skyFrame = 0;
+    this.texGlow = null;
+    this.glowW = 0;
+    this.glowH = 0;
     this.resetProfile();
     // These shaders are deliberately GLSL ES 1.00 and use no WebGL 2
     // facilities. Asking for WebGL 1 directly avoids handing the same source
@@ -316,13 +322,18 @@ export const glfx = {
     if (this.skyTarget) this.ensureSkyTarget(srcW, srcH);
     const bw = Math.max(1, srcW >> 2), bh = Math.max(1, srcH >> 2);
     if (this.bloomA && this.bloomA.w === bw && this.bloomA.h === bh
-        && this.bloomB && this.bloomB.w === bw && this.bloomB.h === bh) return;
+        && this.bloomB && this.bloomB.w === bw && this.bloomB.h === bh
+        && this.texGlow && this.glowW === bw && this.glowH === bh) return;
     const nextA = makeFbo(gl, bw, bh);
     const nextB = makeFbo(gl, bw, bh);
     destroyFbo(gl, this.bloomA);
     destroyFbo(gl, this.bloomB);
+    if (this.texGlow) gl.deleteTexture(this.texGlow);
     this.bloomA = nextA;
     this.bloomB = nextB;
+    this.texGlow = makeTex(gl, bw, bh);
+    this.glowW = bw;
+    this.glowH = bh;
   },
 
   ensureSkyTarget(srcW = this.srcW, srcH = this.srcH) {
@@ -364,7 +375,7 @@ export const glfx = {
 
   profileStats() { return { ...this.profile }; },
 
-  render(backCanvas, overlayCanvas, shakeX, shakeY) {
+  render(backCanvas, overlayCanvas, shakeX, shakeY, glowCanvas = null) {
     const gl = this.gl;
     if (!gl || !this.ready) return;
     this.profile.renderCalls++;
@@ -374,6 +385,9 @@ export const glfx = {
     // frames): skip the full-size upload and bind the 1x1 transparent stand-in.
     const ovTex = overlayCanvas ? this.texOv : this.texOvBlank;
     if (overlayCanvas) this.upload(this.texOv, overlayCanvas);
+    const bloomEnabled = this.fx > 0 && this.glow > 0 && this.tierFx > 0;
+    const bloomTex = glowCanvas && bloomEnabled ? this.texGlow : this.texBack;
+    if (glowCanvas && bloomEnabled) this.upload(this.texGlow, glowCanvas);
     const bind = (unit, tex) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); };
 
     // The title sky is deliberately softer than the foreground. Render it to
@@ -409,12 +423,12 @@ export const glfx = {
     // 1) bright-pass the WORLD ONLY into quarter-res, then two blur passes.
     //    Skip all three passes when their contribution is zero — including when
     //    the adaptive-density tier has gated bloom off (tierFx).
-    if (this.fx > 0 && this.glow > 0 && this.tierFx > 0) {
+    if (bloomEnabled) {
       this.profile.bloomPasses += 3;
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomA.fb);
       gl.viewport(0, 0, this.bloomA.w, this.bloomA.h);
       this.draw(this.pBright, loc.bright, (g) => {
-        bind(0, this.texBack);
+        bind(0, bloomTex);
         g.uniform1i(loc.bright.uT, 0);
       });
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomB.fb);

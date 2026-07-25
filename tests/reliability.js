@@ -356,6 +356,34 @@ for (let i = 0; i < 2; i++) {
 assert(fpsTitleSave.settings.showFps === false,
   'double-tapping the title marquee toggles the FPS display off');
 
+// Landscape iPad has no portrait pause card to host the hidden tools. Its
+// title marquee is the five-tap anchor, while the phone's two-tap FPS shortcut
+// remains unchanged.
+const ipadDiagTitle = new TitleState({
+  save: fpsTitleSave,
+  onSlotChosen() {}, onSettings() {}, onHowTo() {},
+  onGuide() {}, onSoundTest() {}, attractDelay: 1e9,
+});
+ipadDiagTitle.enter();
+const priorPlatform = window.__mash_platform;
+const priorDispatch = window.dispatchEvent;
+const priorCustomEvent = globalThis.CustomEvent;
+const diagEvents = [];
+window.__mash_platform = { isIpad: true };
+window.dispatchEvent = (event) => { diagEvents.push(event.type); };
+if (typeof globalThis.CustomEvent === 'undefined') {
+  globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
+}
+Input.usingTouch = true;
+for (let i = 0; i < 5; i++) ipadDiagTitle.handleTitleFpsTap(240, 42);
+assert(diagEvents.includes('mashdiagopen'),
+  'five title taps open the landscape iPad diagnostics panel');
+Input.usingTouch = false;
+window.__mash_platform = priorPlatform;
+window.dispatchEvent = priorDispatch;
+if (priorCustomEvent === undefined) delete globalThis.CustomEvent;
+else globalThis.CustomEvent = priorCustomEvent;
+
 // Eating a title wisp removes it from this visit's procession. The transient
 // eye/scatter maps are only animation records; pruning them must not recreate
 // the visitor (or its invisible hitbox) on the next modulo lap.

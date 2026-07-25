@@ -48,7 +48,7 @@ Object.defineProperty(globalThis, 'navigator', {
 
 await import('../src/gate.js');
 
-assert(body.children.length === 3, 'allowed platform creates shell, portrait overlay and script');
+assert(body.children.length === 4, 'allowed platform creates shell, overlays and script');
 assert(body.children[0].id === 'game-shell' && body.children[0].innerHTML.includes('<canvas id="game">'),
   'allowed platform creates game canvases');
 assert(body.children[1].id === 'portrait-overlay'
@@ -77,7 +77,14 @@ assert(body.children[1].innerHTML.includes('id="diag-force-2d"')
   && body.children[1].innerHTML.includes('id="diag-force-webgl"')
   && body.children[1].innerHTML.includes('TITLE 3X PROFILE'),
   'portrait diagnostics expose separate 2D, WebGL and title-profile controls');
-const script = body.children[2];
+assert(body.children[2].id === 'landscape-diag'
+  && body.children[2].hidden
+  && body.children[2].attrs.role === 'dialog'
+  && body.children[2].attrs['aria-modal'] === 'true'
+  && body.children[2].innerHTML.includes('id="landscape-diag-force-webgl"')
+  && body.children[2].innerHTML.includes('Five-tap title access'),
+  'allowed iPad landscape diagnostics are present but hidden until the title gesture');
+const script = body.children[3];
 assert(script.tagName === 'SCRIPT' && script.src === 'https://example.test/mashenstein/game.js',
   'allowed platform requests the path-relative deferred game bundle');
 assert(head.children.some((el) => el.id === 'mash-game-fonts'), 'allowed platform loads game fonts');

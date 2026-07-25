@@ -69,8 +69,8 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   assert(good.calls.textureAllocations === allocated,
     'same-size viewport events reuse allocated upload textures');
   glfx.resize(1600, 900);
-  assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 2,
-    'a real resize deletes the superseded bloom framebuffer pair');
+  assert(good.calls.deletedFramebuffers === 2 && good.calls.deletedTextures === 3,
+    'a real resize deletes the superseded bloom framebuffer pair and glow mask');
   glfx.fx = 1; glfx.glow = 1;
   const allocationsBeforeRender = good.calls.textureAllocations;
   const drawsBeforeBloom = good.calls.draws;

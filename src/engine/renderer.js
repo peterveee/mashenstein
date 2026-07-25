@@ -91,6 +91,15 @@ const overlayLayer = (() => {
   return c;
 })();
 const octx = overlayLayer ? overlayLayer.getContext('2d') : null;
+// Optional quarter-resolution glow mask. The title uses this to bloom only
+// deliberate light sources (the marquee), instead of running the bright pass
+// over every white character, menu label and card edge in the merged frame.
+const glowLayer = (() => {
+  const c = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  if (c) { c.width = W; c.height = H; }
+  return c;
+})();
+const gctx = glowLayer ? glowLayer.getContext('2d') : null;
 
 export function setFancyFx(on) { glfx.fx = on ? 1 : 0; }
 // Scene bloom is a GAMEPLAY effect: menus and pause screens get none.
@@ -104,6 +113,8 @@ export function setSceneGlow(on) { glfx.glow = on ? 1 : 0; }
 // extra life. Gameplay keeps the isolated overlay until it has bounded layers.
 let mergeOverlays = false;
 export function setOverlayMerge(on) { mergeOverlays = !!on; }
+let selectiveGlow = false;
+export function setSelectiveGlow(on) { selectiveGlow = !!on; }
 
 // Procedural GPU sky (title screen). Returns true when it is actually live,
 // so the caller can leave the sky transparent instead of painting its own —
@@ -534,6 +545,11 @@ function resize() {
     octx.setTransform(pxW / W, 0, 0, pxH / H, 0, 0);
     octx.imageSmoothingEnabled = true;
   }
+  const glowW = Math.max(1, pxW >> 2), glowH = Math.max(1, pxH >> 2);
+  if (glowLayer && (glowLayer.width !== glowW || glowLayer.height !== glowH)) {
+    glowLayer.width = glowW;
+    glowLayer.height = glowH;
+  }
   Object.assign(screen, { scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
   resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);
@@ -801,9 +817,19 @@ export function pushOverlaySprite(img, x, y, w, h) {
 // transform already set, so vector paths rasterize at device resolution.
 // Used for the toon heroes. Consumed (and cleared) every blit.
 const overlayDraws = [];
+const glowDraws = [];
 export function pushOverlayDraw(fn) {
   if (!dctx && !glfx.active) return false;
   overlayDraws.push(fn);
+  return true;
+}
+
+// Draws into the quarter-resolution glow mask, never into the visible frame.
+// The queue is consumed with the ordinary overlay queue so a title can change
+// its glow source every frame without adding a second full-size upload.
+export function pushGlowDraw(fn) {
+  if (!dctx && !glfx.active) return false;
+  glowDraws.push(fn);
   return true;
 }
 
@@ -815,6 +841,8 @@ export function pendingOverlayDrawCount() { return overlayDraws.length; }
 export function blit() {
   const px = screen.px || 1;
   const hasOverlay = overlaySprites.length || overlayDraws.length;
+  const bloomEnabled = glfx.active && glfx.fx > 0 && glfx.glow > 0 && glfx.tierFx > 0;
+  const hasGlow = selectiveGlow && bloomEnabled;
   // Draw queued overlays (hero, banners) into the overlay layer in logical
   // coordinates at backbuffer density.
   const paintOverlays = (ctx2, clear = true, applyShake = true) => {
@@ -836,22 +864,48 @@ export function blit() {
     });
   };
 
+  const paintGlow = () => {
+    if (!hasGlow || !gctx || !glowLayer) {
+      glowDraws.length = 0;
+      return null;
+    }
+    return profileTimed('paintMs', () => {
+      const bw = glowLayer.width, bh = glowLayer.height;
+      gctx.setTransform(1, 0, 0, 1, 0, 0);
+      gctx.clearRect(0, 0, bw, bh);
+      gctx.setTransform(bw / W, 0, 0, bh / H, 0, 0);
+      gctx.imageSmoothingEnabled = true;
+      for (const fn of glowDraws) {
+        gctx.save();
+        fn(gctx);
+        gctx.restore();
+      }
+      glowDraws.length = 0;
+      return glowLayer;
+    });
+  };
+
   if (glfx.active) {
+    const glowCanvas = paintGlow();
     if (hasOverlay && mergeOverlays) {
       // The final shader applies shake to the complete backbuffer. Paint the
       // queued foreground without a second shake transform, then upload one
       // combined canvas. The title's world and foreground already share this
       // exact render density, so no sharpness is lost.
       paintOverlays(bctx, false, false);
-      profileTimed('submitMs', () => glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px)));
+      profileTimed('submitMs', () => glfx.render(back, null, Math.round(shakeX * px), Math.round(shakeY * px), glowCanvas));
     } else {
       // Gameplay still keeps the isolated overlay so world-only bloom and the
       // crisp foreground composite retain their existing semantics.
       if (hasOverlay) paintOverlays(octx);
-      profileTimed('submitMs', () => glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px)));
+      profileTimed('submitMs', () => glfx.render(back, hasOverlay ? overlayLayer : null, Math.round(shakeX * px), Math.round(shakeY * px), glowCanvas));
     }
     return;
   }
+
+  // The 2D backend has no bloom pass; discard any queued mask callbacks so a
+  // title visit cannot leak them into a later WebGL boot.
+  glowDraws.length = 0;
 
   // 2D fallback: the backbuffer already matches full device density.
   if (hasOverlay && mergeOverlays) {

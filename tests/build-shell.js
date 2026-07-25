@@ -37,6 +37,10 @@ assert(html.includes('class="mash-portrait-icon"')
   'portrait pause screen is full-height, branded and does not force heading focus');
 assert(html.includes('id="copy-error"') && html.includes('id="portrait-error-message"'),
   'built portrait shell contains a copyable crash report');
+assert(html.includes('id="landscape-diag"')
+  && html.includes('id="landscape-diag-force-webgl"')
+  && html.includes('mash-landscape-diag'),
+  'built shell carries the hidden landscape iPad diagnostics panel');
 assert(html.includes('mash-install-share') && html.includes('mash-install-arrow')
   && html.includes('icon-180.png'),
   'built iPhone blocker includes the app icon, Share glyph and toolbar pointer');

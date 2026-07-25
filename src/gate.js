@@ -2,6 +2,7 @@
 // game is allowed before creating canvases, loading game fonts or requesting
 // game.js. Every other platform proceeds directly to the ordinary game boot.
 import { installFlavor, installTarget, readPlatform } from './engine/platform.js';
+import { formatBuildTime, formatBuildTimeLines } from './engine/build-time.js';
 
 const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap';
 const GAME_FONT_FACES = [
@@ -151,40 +152,12 @@ function addGameFonts() {
 }
 
 function buildTimeLabel(value = window.__MASH_BUILT_AT__) {
-  const date = new Date(value);
-  if (!value || Number.isNaN(date.getTime())) return 'BUILD TIME UNAVAILABLE';
-  try {
-    return `BUILD: ${new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-    }).format(date)}`;
-  } catch (e) {
-    return `BUILD: ${date.toISOString()}`;
-  }
+  const stamp = formatBuildTime(value);
+  return stamp ? `BUILD: ${stamp}` : 'BUILD TIME UNAVAILABLE';
 }
 
 function buildTimeLabelLines(value = window.__MASH_BUILT_AT__) {
-  const date = new Date(value);
-  if (!value || Number.isNaN(date.getTime())) return ['BUILT', 'TIME UNAVAILABLE'];
-  try {
-    const stamp = new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-    }).format(date);
-    return ['BUILT', stamp];
-  } catch (e) {
-    return ['BUILT', date.toISOString()];
-  }
+  return formatBuildTimeLines(value);
 }
 
 function createGameDom() {
@@ -235,19 +208,44 @@ function createGameDom() {
       <div id="diag-tools" class="mash-portrait-diag" hidden>
         <p class="mash-diag-label">DIAGNOSTICS</p>
         <div class="mash-diag-row">
-          <button id="diag-fps" type="button">FPS</button>
-          <button id="diag-force-2d" type="button">USE 2D</button>
-          <button id="diag-force-webgl" type="button">USE WEBGL</button>
-          <button id="diag-force-3x-gl" type="button">FORCE 3X GL</button>
-          <button id="diag-bench-2d" type="button">BENCH 2D</button>
-          <button id="diag-bench-gl" type="button">BENCH GL</button>
-          <button id="diag-title-profile" type="button">TITLE 3X PROFILE</button>
-          <button id="diag-clear" type="button">CLEAR</button>
+          <button id="diag-fps" data-mash-diag="fps" type="button">FPS</button>
+          <button id="diag-force-2d" data-mash-diag="force-2d" type="button">USE 2D</button>
+          <button id="diag-force-webgl" data-mash-diag="force-webgl" type="button">USE WEBGL</button>
+          <button id="diag-force-3x-gl" data-mash-diag="force-3x-gl" type="button">FORCE 3X GL</button>
+          <button id="diag-bench-2d" data-mash-diag="bench-2d" type="button">BENCH 2D</button>
+          <button id="diag-bench-gl" data-mash-diag="bench-gl" type="button">BENCH GL</button>
+          <button id="diag-title-profile" data-mash-diag="title-profile" type="button">TITLE 3X PROFILE</button>
+          <button id="diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
         </div>
         <p id="diag-status" class="mash-diag-status" aria-live="polite"></p>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  const landscape = document.createElement('div');
+  landscape.id = 'landscape-diag';
+  landscape.className = 'mash-landscape-diag';
+  landscape.hidden = true;
+  landscape.setAttribute('role', 'dialog');
+  landscape.setAttribute('aria-modal', 'true');
+  landscape.setAttribute('aria-labelledby', 'landscape-diag-title');
+  landscape.innerHTML = `
+    <div class="mash-landscape-diag-card">
+      <p id="landscape-diag-title" class="mash-landscape-diag-title">DIAGNOSTICS</p>
+      <p class="mash-landscape-diag-copy">Five-tap title access. Renderer changes reload once.</p>
+      <div class="mash-diag-row">
+        <button id="landscape-diag-fps" data-mash-diag="fps" type="button">FPS</button>
+        <button id="landscape-diag-force-2d" data-mash-diag="force-2d" type="button">USE 2D</button>
+        <button id="landscape-diag-force-webgl" data-mash-diag="force-webgl" type="button">USE WEBGL</button>
+        <button id="landscape-diag-force-3x-gl" data-mash-diag="force-3x-gl" type="button">FORCE 3X GL</button>
+        <button id="landscape-diag-bench-2d" data-mash-diag="bench-2d" type="button">BENCH 2D</button>
+        <button id="landscape-diag-bench-gl" data-mash-diag="bench-gl" type="button">BENCH GL</button>
+        <button id="landscape-diag-title-profile" data-mash-diag="title-profile" type="button">TITLE 3X PROFILE</button>
+        <button id="landscape-diag-clear" data-mash-diag="clear" type="button">CLEAR</button>
+      </div>
+      <p id="landscape-diag-status" class="mash-diag-status" aria-live="polite"></p>
+      <button id="landscape-diag-close" class="mash-landscape-diag-close" type="button">CLOSE</button>
+    </div>`;
+  document.body.appendChild(landscape);
 }
 
 function exposeError(detail) {

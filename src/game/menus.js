@@ -1,10 +1,11 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, setSelectiveGlow, pushOverlayDraw, pushGlowDraw } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { defaultSettings } from '../engine/save.js';
+import { formatBuildTime } from '../engine/build-time.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
@@ -1120,6 +1121,7 @@ const BUILD_STAMP = (typeof window !== 'undefined' && window.__MASH_BUILD__) || 
 const TITLE_MARQUEE_Y = 20;
 const TITLE_SUBTITLE_Y = 67;
 const TITLE_FPS_TAP_WINDOW = 0.35;
+const TITLE_DIAG_TAP_WINDOW = 3;
 const TITLE_PLUG_Y = 88;
 // Centred in the clear band between the subtitle and the tallest parade heads.
 const TITLE_PANEL_Y = 110;
@@ -1348,6 +1350,8 @@ export class TitleState {
     this.shots = []; // title projectiles; tFired follows each visible wind-up
     this.shotId = 0;
     this.lastTitleTapAt = null;
+    this.titleDiagTaps = 0;
+    this.titleDiagFirstTapAt = 0;
     this.actTok = Input.activity;
     this.tagline = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
     // Returning from settings, help, or another title-side screen should not
@@ -1361,12 +1365,32 @@ export class TitleState {
     // not a second full-size overlay texture, while retaining the title's
     // existing draw order and crispness.
     setOverlayMerge(true);
+    setSelectiveGlow(true);
   }
-  exit() { setOverlayMerge(false); setSceneGlow(false); setSkyFx(false); }
+  exit() { setOverlayMerge(false); setSelectiveGlow(false); setSceneGlow(false); setSkyFx(false); }
   handleTitleFpsTap(x, y) {
     if (!titleMarqueeAt(x, y)) {
       this.lastTitleTapAt = null;
+      this.titleDiagTaps = 0;
       return false;
+    }
+    // Landscape iPad has no portrait pause card, so the marquee becomes its
+    // hidden diagnostics anchor. Keep the gesture touch-only and iPad-only;
+    // phones retain their existing two-tap FPS shortcut.
+    const isIpad = !!(typeof window !== 'undefined' && window.__mash_platform?.isIpad);
+    if (isIpad && Input.isTouchDevice()) {
+      if (!this.titleDiagTaps || this.t - this.titleDiagFirstTapAt > TITLE_DIAG_TAP_WINDOW) {
+        this.titleDiagTaps = 0;
+        this.titleDiagFirstTapAt = this.t;
+      }
+      this.titleDiagTaps++;
+      if (this.titleDiagTaps >= 5) {
+        this.titleDiagTaps = 0;
+        if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mashdiagopen'));
+        }
+      }
+      return true;
     }
     if (this.lastTitleTapAt != null && this.t - this.lastTitleTapAt <= TITLE_FPS_TAP_WINDOW) {
       this.save.settings.showFps = !this.save.settings.showFps;
@@ -1715,6 +1739,17 @@ export class TitleState {
   draw(ctx) {
     const cast = titleScene(ctx, this.t, this.save.settings.reducedFlashing, this.poke, this.frightStart, this.eaten, this.scatter, this.wispsDismissed, this.tapBombs, this.shots);
     const profile = titleProfileOptions();
+    // Only the marquee is intentionally luminous on the title. Paint a white
+    // quarter-resolution mask for it; the visible logo remains in the normal
+    // 3x backbuffer, while menu copy and toon highlights stay crisp instead of
+    // entering the bloom bright-pass accidentally.
+    pushGlowDraw((g) => {
+      const alpha = flickerAlpha(this.t, this.save.settings.reducedFlashing);
+      g.globalAlpha = alpha;
+      drawTextCentered(g, 'MASHENSTEIN', W / 2 + 1.5, TITLE_MARQUEE_Y + 1.5, '#fff', TITLE_SCALE, 'marquee');
+      drawTextCentered(g, 'MASHENSTEIN', W / 2, TITLE_MARQUEE_Y, '#fff', TITLE_SCALE, 'marquee');
+      g.globalAlpha = 1;
+    });
     // The parade is always queued before the menu UI, including on touch. This
     // keeps the cards readable when a large character crosses their lower edge.
     // Modals are painted by the UI pass as the final surface over both layers.
@@ -3436,10 +3471,9 @@ export class SettingsState {
       textYForMid(this.doneY + this.doneH / 2),
       doneSelected ? '#c9a0ff' : '#c8c8d8');
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
-    // Build stamp: dev builds carry __MASH_BUILD__, all builds carry __MASH_BUILT_AT__.
-    const buildStamp = window.__MASH_BUILD__ || (window.__MASH_BUILT_AT__
-      ? new Date(window.__MASH_BUILT_AT__).toISOString().replace('T', ' ').slice(0, 19)
-      : null);
+    // Use the same device-local formatter as the portrait shell. The dev-only
+    // stamp is a fallback for an older live shell that predates __MASH_BUILT_AT__.
+    const buildStamp = formatBuildTime(window.__MASH_BUILT_AT__) || window.__MASH_BUILD__;
     if (buildStamp) {
       ctx.save();
       ctx.globalAlpha = 0.5;
