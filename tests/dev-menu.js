@@ -59,9 +59,12 @@ const bundle = outputFiles[0].text;
   assert(!!visualiserItem && visualiserItem.submenu,
     'visualisers is a top-level dev-menu submenu');
   const visualiserMenu = visualiserItem && visualiserItem.submenu(dev);
-  assert(visualiserMenu && visualiserMenu.items.length >= 14
-    && visualiserMenu.items[0].label.includes('NEON CATHEDRAL')
-    && visualiserMenu.items.at(-1).label.includes('TOASTER SKY PARADE'),
+  // Track the real preset list rather than a hardcoded tail name, so appending
+  // a visualizer doesn't fail this suite.
+  const { VISUALIZER_NAMES } = await import('../src/engine/visualizers.js');
+  assert(visualiserMenu
+    && visualiserMenu.items.length === VISUALIZER_NAMES.length
+    && VISUALIZER_NAMES.every((name, i) => visualiserMenu.items[i].label.includes(name)),
     'visualisers submenu lists every available preset');
 
   // The underlying state must be frozen while the menu is up.

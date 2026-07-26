@@ -81,7 +81,7 @@ const RETRY_AHEAD = VIEW_W + 20;
 // and stops being useful once it has been seen.
 // How long the world runs on after a section closes, before the next one opens.
 // Long enough for the pass floatie to land and be read on its own, and for the
-// line that logged it to be read under it — but this is dead lane, seven times
+// line that logged it to be read under it — but this is dead lane, nine times
 // over, and at 2.6 it was the single largest block of nothing in the module.
 // 1.7 still lands the floatie; what it stops paying for is the pause after it.
 const SETTLE_T = 1.0;
@@ -133,7 +133,7 @@ const SPEECH_Y = 4;
 const SPEECH_MAX_W = 324;
 // A few percent of the lane shows through the card. Not a translucent HUD panel
 // — the dark plate is that, and it is the register for shouting over a stage —
-// but enough that a plate up for seven sections stops reading as a hole punched
+// but enough that a plate up for nine sections stops reading as a hole punched
 // in the screen. 0.88 keeps the dark ink on it at a contrast ratio the light
 // plate was measured for; going much thinner starts eating the words rather
 // than the plate.
@@ -528,6 +528,11 @@ const STEPS = [
   {
     id: 'shoot',
     hero: 'b33p',
+    // The way home is at the end of this section's gallery rather than in a
+    // section of its own, so this is the section that hands the body back — and
+    // the dev skip reads `tagTo` to do it without the portal. Skipping into the
+    // epilogue as B-33P is not a shortcut, it is a different ending.
+    tagTo: 'lorenzo',
     label: 'HERO POWER',
     legend: (touch) => (touch ? [['USE', 'LEMON CANNON']] : [['RT/D', 'LEMON CANNON']]),
     brief: (touch) => (touch
@@ -571,7 +576,7 @@ const OUTRO = [
   { hold: 3.0, line: 'THAT IS THE MODULE. INCLUDING THE PARTS I DISAGREE WITH.' },
   // The reclaim runs UNDER this line: he says it and the counter drains while
   // he does, in front of you, rather than the coins having quietly vanished
-  // eight sections ago.
+  // six sections ago.
   //
   // It waits `clawDelay` before it starts. Firing the drain on the same frame
   // as the line meant the number was already falling while the sentence
@@ -1268,7 +1273,7 @@ export class TutorialState {
   //
   // It happens in the epilogue, not the moment the coins section closes. Taking
   // them back seconds after handing them over made the payout feel like a trick
-  // question and left seven sections to play with a dead zero in the corner;
+  // question and left six sections to play with a dead zero in the corner;
   // held to the end, the counter climbs all module and Gary reclaims it to your
   // face, which is the joke the line was always written for.
   startClawback() {

@@ -3686,11 +3686,16 @@ export class SoundTestState {
         const inkScale = itemScale / textYScale;
         const titleY = textYForMid(rowMid - lineGap / 2, inkScale);
         const bpmY = textYForMid(rowMid + lineGap / 2, inkScale);
-        const rowCenterX = band.x + band.w / 2;
-        if (sel) menuText('>', band.x + 10, titleY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
-        menuTextCentered(`${this.trackCounter(i)} ${tr.name}`, rowCenterX, titleY,
+        // Both lines share one left margin so the stack reads as a column.
+        // Portrait keeps the marker inside the plate instead of hanging it off
+        // the left edge, so the text sits a touch past the landscape margin to
+        // clear it — any further right and the longest title reaches the frame.
+        const markerX = band.x + 6;
+        const titleX = band.textX + 6;
+        if (sel) menuText('>', markerX, titleY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
+        menuText(`${this.trackCounter(i)} ${tr.name}`, titleX, titleY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
-        menuTextCentered(`(${tr.bank.bpm} BPM)`, rowCenterX, bpmY,
+        menuText(`(${tr.bank.bpm} BPM)`, titleX, bpmY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#8b8ba0', LEFT_MENU_ITEM_S);
       } else {
         const textY = textYForMid(rowMid);

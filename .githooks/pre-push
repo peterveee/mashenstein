@@ -1,0 +1,26 @@
+#!/bin/sh
+# Run the full suite before anything leaves the machine.
+#
+# Enabled per clone with:  git config core.hooksPath .githooks
+# Bypass for an emergency push with:  git push --no-verify
+
+# Nothing to test when we're only deleting remote refs.
+only_deletes=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  case "$local_sha" in
+    0000000000000000000000000000000000000000) ;;
+    '') ;;
+    *) only_deletes=0 ;;
+  esac
+done
+[ "$only_deletes" -eq 1 ] && exit 0
+
+echo "pre-push: running npm test..."
+if npm test; then
+  exit 0
+fi
+
+echo ""
+echo "pre-push: TESTS FAILED — push aborted."
+echo "          Fix the suite, or re-run with 'git push --no-verify' to override."
+exit 1
