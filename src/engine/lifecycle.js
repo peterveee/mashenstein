@@ -20,16 +20,19 @@ export function lifecyclePolicy({
   standalone = false,
   devBrowserBypass = false,
   portrait = false,
+  allowPortrait = false,
 } = {}) {
   // A dev-bypassed browser iPhone deliberately impersonates the installed
   // lifecycle so Chrome device emulation and real-phone LAN testing exercise
   // the rotate overlay, paused loop, input and audio. Production browser
   // iPhones never receive this flag and remain blocked before boot.
   //
-  // Android phones get the same treatment: portrait is useless for a
-  // landscape-only arcade game and the rotate overlay is the clearest
-  // signal. Tablets are wide enough to be usable in either orientation.
-  const phonePortrait = (isIphone || isAndroidPhone) && (standalone || devBrowserBypass) && portrait;
+  // Android phones get the same treatment outside the jukebox: portrait is
+  // useless for a landscape-only arcade game and the rotate overlay is the
+  // clearest signal. The listening/visualizer surface can explicitly opt out;
+  // tablets are wide enough to be usable in either orientation.
+  const phonePortrait = (isIphone || isAndroidPhone)
+    && (standalone || devBrowserBypass) && portrait && !allowPortrait;
   return {
     iphonePortrait: phonePortrait,
     paused: !allowed || !visible || phonePortrait,
@@ -50,6 +53,7 @@ export class LifecycleController {
     audio,
     doc = document,
     win = window,
+    allowPortrait = () => false,
   }) {
     this.platform = platform;
     this.loop = loop;
@@ -57,6 +61,7 @@ export class LifecycleController {
     this.audio = audio;
     this.doc = doc;
     this.win = win;
+    this.allowPortrait = allowPortrait;
     this.pageHidden = false;
     this.overlay = doc.getElementById('portrait-overlay');
     this.landscapeDiag = doc.getElementById('landscape-diag');
@@ -226,10 +231,14 @@ export class LifecycleController {
   }
 
   currentPolicy() {
+    const portraitAllowed = typeof this.allowPortrait === 'function'
+      ? this.allowPortrait()
+      : !!this.allowPortrait;
     return lifecyclePolicy({
       ...this.platform,
       visible: !this.doc.hidden && !this.pageHidden,
       portrait: portraitNow(this.win),
+      allowPortrait: portraitAllowed,
     });
   }
 

@@ -89,7 +89,7 @@ const PAUSE_BUTTONS = [
   // the quit half of the Escape key's behaviour. Both actions already existed —
   // the buttons just give a thumb somewhere to send them.
   { id: 'resume', x: W / 2 - PAUSE_MENU_W / 2, y: 196, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
-  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'EXIT TO FOOD COURT' },
+  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
 ];
 
 export const HERO_CALLOUT = Object.fromEntries(

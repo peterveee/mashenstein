@@ -74,6 +74,16 @@ assert(body.children[1].innerHTML.includes('not budgeted for this many vertical 
 assert(body.children[1].innerHTML.includes('id="portrait-overlay-copy" class="mash-sr-only"')
   && !body.children[1].innerHTML.includes('mash-portrait-instruction'),
   'redundant rotation instruction is screen-reader-only');
+assert(body.children[1].innerHTML.includes('<svg class="mash-phone-turn"')
+  && body.children[1].innerHTML.includes('<g class="mash-phone-turn-device"')
+  && body.children[1].innerHTML.includes('mash-phone-turn-trail-1')
+  && body.children[1].innerHTML.includes('mash-phone-turn-trail-2')
+  && body.children[1].innerHTML.includes('mash-phone-turn-trail-3')
+  && body.children[1].innerHTML.includes('iPhone 17 Pro body ratio: 150.0 mm tall by 71.9 mm wide')
+  && body.children[1].innerHTML.includes('<rect x="39" y="46.15" width="112" height="53.7"')
+  && body.children[1].innerHTML.includes('<path d="M137 65v16"')
+  && !body.children[1].innerHTML.includes('mash-phone-turn-arrow'),
+  'portrait dialog rotates one iPhone 17 Pro-proportioned handset plus three trail echoes');
 assert(body.children[1].innerHTML.includes('mash-build-label')
   && body.children[1].innerHTML.includes('mash-build-stamp')
   && body.children[1].innerHTML.includes('2026'),

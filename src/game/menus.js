@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen, visualizerFrame } from '../engine/renderer.js';
+import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen, setJukeboxPortrait, visualizerFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -1365,7 +1365,7 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
   // Sized from the row count rather than pinned. The old fixed 92-unit box
-  // wasn't tall enough for its own longest list — three files plus CANCEL
+  // wasn't tall enough for its own longest list — three files plus BACK
   // needed 102, so the last row was drawn below the box's bottom edge.
   const h = headH + count * rowH + cancelGap + 8;
   // Centred, with a floor low enough that the tallest list — STAFF ONLY at seven
@@ -1637,7 +1637,7 @@ export class TitleState {
     if (this.erase.step === 'choose') {
       return [
         ...this.erase.slots.map((i) => ({ label: `SHIFT ${i + 1}: ${totalPlugs(this.save.data.slots[i])}/${MAX_PLUGS} PLUGS, ${formatCoins(this.save.data.slots[i].coins)} COINS`, slot: i })),
-        { label: 'CANCEL', cancel: true },
+        { label: 'BACK', cancel: true },
       ];
     }
     return this.erase.step === 'confirm'
@@ -1966,7 +1966,7 @@ export class TitleState {
         // A tap bumps Input.activity exactly like a keypress does, so it cancels
         // the countdown too — named for the device in hand rather than listing
         // both, the way every other prompt on this screen is.
-        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'} CANCELS`, W / 2, flavorY, '#8858c8', TITLE_FLAVOR_S);
+        drawTextCentered(d, `NEXT ${this.attractLabel} IN ${Math.max(1, Math.ceil(this.attractDelay - this.idleT))} - ${touch ? 'TAP' : 'ANY KEY'}: BACK`, W / 2, flavorY, '#8858c8', TITLE_FLAVOR_S);
       } else {
         drawTextCentered(d, this.tagline, W / 2, flavorY, '#55647a', TITLE_FLAVOR_S);
       }
@@ -2009,7 +2009,7 @@ export class TitleState {
     // Keep destructive-menu actions in the same compact keyboard hint format
     // used by the other menus, with the hint tucked against the right edge so
     // it never changes the left-aligned row geometry.
-    const prompt = `${confirmVerb()}: CONFIRM   BACK: CANCEL`;
+    const prompt = `${confirmVerb()}: CONFIRM   BACK`;
     const promptScale = 0.9;
     drawText(d, prompt, W - 16 - textWidth(prompt, promptScale), H - 12, '#8a8a98', promptScale);
   }
@@ -3199,7 +3199,7 @@ const GUIDE_PAGES = [
 
 export class FieldGuideState {
   constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
-  // Paging already claims the whole screen (see update()), so DONE gets its
+  // Paging already claims the whole screen (see update()), so BACK gets its
   // own carved-out corner.
   enter() { this.page = 0; this.t = 0; Input.setMenuButtons(); }
   update(dt) {
@@ -3209,7 +3209,7 @@ export class FieldGuideState {
     if (Input.pressed('left') || Input.pressed('up')) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
     if (Input.pressed('pointer') && this.t > 0.3) {
       const p = Input.pointer;
-      // DONE lives in the bottom-right corner (see draw()), carved out of the
+      // BACK lives in the bottom-right corner (see draw()), carved out of the
       // otherwise screen-wide paging zones so leaving needs no other button.
       if (p.x > W - 56 && p.y > H - 20) { Audio.sfx('ui'); this.onDone(); }
       else if (p.x < W / 3) { this.page = (this.page + n - 1) % n; Audio.sfx('ui'); }
@@ -3290,14 +3290,14 @@ export class FieldGuideState {
     });
     // Touch pages by tapping the left/right thirds of the screen (see update());
     // the arrow-key hint means nothing there, so it's swapped for the gesture,
-    // and DONE — the corner tap zone update() carves out — gets its own label.
+    // and BACK — the corner tap zone update() carves out — gets its own label.
     //
     // isTouchDevice(), not usingTouch: usingTouch only turns true after a finger
     // has already landed, so a phone opening this screen cold was told to press
     // ESC — a key it does not have — until it tapped something.
     if (Input.isTouchDevice()) {
       drawTextCentered(ctx, `TAP L/R TO PAGE   ${this.page + 1}/${GUIDE_PAGES.length}`, W / 2, H - 14, '#5a5a68');
-      drawText(ctx, 'DONE', W - 50, H - 18, '#f6d33c');
+      drawText(ctx, 'BACK', W - 50, H - 18, '#f6d33c');
     } else {
       drawTextCentered(ctx, `< PREV   PAGE ${this.page + 1}/${GUIDE_PAGES.length}   NEXT >   ESC: BACK`, W / 2, H - 14, '#5a5a68');
     }
@@ -3350,6 +3350,7 @@ export class SoundTestState {
     this.actTok = 0;
   }
   enter() {
+    setJukeboxPortrait(true);
     const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < JUKEBOX.length
       ? this.initialTrack : -1;
     this.idx = initial >= 0 ? initial : 0;
@@ -3379,6 +3380,7 @@ export class SoundTestState {
   exit() {
     Audio.setBank(null);
     this.clearVisualizer();
+    setJukeboxPortrait(false);
   }
   clearVisualizer() {
     setVisualizerFullscreen(false);
@@ -3466,6 +3468,7 @@ export class SoundTestState {
   done() {
     Audio.setBank(null);
     this.clearVisualizer();
+    setJukeboxPortrait(false);
     this.onDone();
   }
   update(dt) {
@@ -3574,22 +3577,68 @@ export class SoundTestState {
   drawList(ctx, alpha = 1) {
     ctx.save();
     ctx.globalAlpha = alpha;
+    // Portrait jukebox mode fills the phone vertically. Compensate only the
+    // glyphs for the non-uniform CSS fill; rows and bars are allowed to use
+    // the extra height, while text retains its normal physical proportions.
+    const portraitMenuScale = screen.portraitFill ? 1.9 : 1;
+    const itemScale = LEFT_MENU_ITEM_S * portraitMenuScale;
+    const textYScale = screen.portraitFill
+      ? screen.cssH / (H * Math.max(0.001, screen.scale)) : 1;
+    const menuText = (text, x, y, color, size, font) => {
+      const renderedSize = (size == null ? 1 : size) * portraitMenuScale;
+      if (textYScale === 1) return drawText(ctx, text, x, y, color, renderedSize, font);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1, 1 / textYScale);
+      drawText(ctx, text, 0, 0, color, renderedSize, font);
+      ctx.restore();
+    };
+    const menuTextCentered = (text, x, y, color, size, font) => {
+      const renderedSize = (size == null ? 1 : size) * portraitMenuScale;
+      if (textYScale === 1) return drawTextCentered(ctx, text, x, y, color, renderedSize, font);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1, 1 / textYScale);
+      drawTextCentered(ctx, text, 0, 0, color, renderedSize, font);
+      ctx.restore();
+    };
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`), LEFT_MENU_ITEM_S);
-    drawText(ctx, 'SOUND TEST', band.textX, 12, '#fff', 2, 'title');
+    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`), itemScale);
+    menuText('SOUND TEST', band.textX, 12, '#fff', 2, 'title');
     const status = this.playing >= 0 ? `NOW PLAYING: ${JUKEBOX[this.playing].name}` : 'STOPPED';
-    drawText(ctx, status, band.textX, 39, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
+    menuText(status, band.textX, 39, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
     JUKEBOX.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
       const on = i === this.playing;
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
-      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
-      const textY = textYForMid(rowTop + this.rowH / 2);
-      if (sel) drawText(ctx, '>', band.textX - 16, textY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
-      drawText(ctx, `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`, band.textX,
-        textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+      if (sel) {
+        const highlightY = rowTop + 1;
+        const highlightH = this.rowH - 2;
+        drawMenuRow(ctx, band.x, highlightY, band.w, highlightH);
+      }
+      const rowMid = rowTop + this.rowH / 2;
+      if (screen.portraitFill) {
+        const lineGap = itemScale * 2.6;
+        // The glyphs are vertically compressed in the logical canvas and
+        // expanded by the portrait CSS fill. Account for that once when
+        // choosing the baseline, otherwise the ink lands high in the plate.
+        const inkScale = itemScale / textYScale;
+        const titleY = textYForMid(rowMid - lineGap / 2, inkScale);
+        const bpmY = textYForMid(rowMid + lineGap / 2, inkScale);
+        const rowCenterX = band.x + band.w / 2;
+        if (sel) menuText('>', band.x + 10, titleY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
+        menuTextCentered(`${this.trackCounter(i)} ${tr.name}`, rowCenterX, titleY,
+          on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+        menuTextCentered(`(${tr.bank.bpm} BPM)`, rowCenterX, bpmY,
+          on ? '#48e0c8' : sel ? '#c9a0ff' : '#8b8ba0', LEFT_MENU_ITEM_S);
+      } else {
+        const textY = textYForMid(rowMid);
+        if (sel) menuText('>', band.textX - 16, textY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
+        menuText(`${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`, band.textX,
+          textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+      }
     });
     if (JUKEBOX.length > this.visibleRows) {
       const trackY = this.listY + 4;
@@ -3604,8 +3653,8 @@ export class SoundTestState {
     const backSelected = this.idx === JUKEBOX.length;
     if (backSelected) drawMenuRow(ctx, band.x, this.backY + 1, band.w, this.backH - 2);
     const backTextY = textYForMid(this.backY + this.backH / 2);
-    if (backSelected) drawText(ctx, '>', band.textX - 16, backTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
-    drawText(ctx, 'BACK', band.textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+    if (backSelected) menuText('>', band.textX - 16, backTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
+    menuText('BACK', band.textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
@@ -3614,7 +3663,7 @@ export class SoundTestState {
         ctx.fillRect(band.textX + i * 6, 63 - hgt, 4, hgt);
       }
     }
-    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: PLAY/STOP   DRAG: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
+    menuTextCentered(Input.isTouchDevice() ? 'TAP: PLAY/STOP   DRAG: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
       W / 2, H - 14, '#5a5a68');
     ctx.restore();
   }
@@ -3662,22 +3711,40 @@ export class SoundTestState {
       // Keep the screensaver metadata quiet and out of the way: the track hugs
       // the lower-left edge while the current preset balances it on the right.
       // A safe inset keeps both clear of rounded mobile display corners.
-      const labelScale = 0.82;
-      const labelInset = 24;
+      const portraitLabels = visualizerFrame.bottom - visualizerFrame.top
+        > (visualizerFrame.right - visualizerFrame.left) * 1.35;
+      const labelScale = portraitLabels ? 0.9 : 0.82;
+      const labelInset = portraitLabels ? 10 : 24;
       const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
       const visualLabel = this.visualizer.name;
       const safeLeft = visualizerFrame.left + labelInset;
       const safeRight = visualizerFrame.right - labelInset;
-      const trackX = Math.max(labelInset, safeLeft);
-      const visualX = Math.min(W - labelInset - textWidth(visualLabel, labelScale), safeRight - textWidth(visualLabel, labelScale));
-      const labelY = Math.min(H - 14, visualizerFrame.bottom - 14);
+      const trackWidth = textWidth(trackLabel, labelScale);
+      const visualWidth = textWidth(visualLabel, labelScale);
+      const maxWidth = Math.max(32, safeRight - safeLeft);
+      const fitLabel = (label, width) => {
+        if (width <= maxWidth) return label;
+        const keep = Math.max(4, Math.floor(label.length * maxWidth / width) - 1);
+        return `${label.slice(0, keep)}…`;
+      };
+      const fittedTrack = fitLabel(trackLabel, trackWidth);
+      const fittedVisual = fitLabel(visualLabel, visualWidth);
+      const fittedTrackWidth = textWidth(fittedTrack, labelScale);
+      const fittedVisualWidth = textWidth(fittedVisual, labelScale);
+      const trackX = portraitLabels ? Math.max(safeLeft, (safeLeft + safeRight - fittedTrackWidth) * 0.5) : Math.max(labelInset, safeLeft);
+      const visualX = portraitLabels
+        ? Math.max(safeLeft, (safeLeft + safeRight - fittedVisualWidth) * 0.5)
+        : Math.min(W - labelInset - fittedVisualWidth, safeRight - fittedVisualWidth);
+      const labelY = portraitLabels
+        ? Math.min(H - 25, visualizerFrame.bottom - 28)
+        : Math.min(H - 14, visualizerFrame.bottom - 14);
       const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
       surface.save();
       surface.globalAlpha = visualAlpha * labelFade * 0.92;
-      drawText(surface, trackLabel, trackX + 1, labelY + 1, '#02030a', labelScale);
-      drawText(surface, visualLabel, visualX + 1, labelY + 1, '#02030a', labelScale);
-      drawText(surface, trackLabel, trackX, labelY, '#f4f1fa', labelScale);
-      drawText(surface, visualLabel, visualX, labelY, '#48e0c8', labelScale);
+      drawText(surface, fittedTrack, trackX + 1, labelY + 1, '#02030a', labelScale);
+      drawText(surface, fittedVisual, visualX + 1, portraitLabels ? labelY + 15 : labelY + 1, '#02030a', labelScale);
+      drawText(surface, fittedTrack, trackX, labelY, '#f4f1fa', labelScale);
+      drawText(surface, fittedVisual, visualX, portraitLabels ? labelY + 14 : labelY, '#48e0c8', labelScale);
       surface.restore();
     };
     if (!pushOverlayDraw(drawVisualSurface)) drawVisualSurface(ctx);
@@ -3736,8 +3803,8 @@ export class HowToPlayState {
 const SETTINGS_TOP = 68;
 const SETTINGS_ROW = 23;
 const SETTINGS_VISIBLE_ROWS = 6;
-const SETTINGS_DONE_TOP = 216;
-const SETTINGS_DONE_H = 25;
+const SETTINGS_BACK_TOP = 216;
+const SETTINGS_BACK_H = 25;
 
 export class SettingsState {
   constructor({ save, onDone }) {
@@ -3746,8 +3813,8 @@ export class SettingsState {
     this.listY = SETTINGS_TOP;
     this.rowH = SETTINGS_ROW;
     this.visibleRows = SETTINGS_VISIBLE_ROWS;
-    this.doneY = SETTINGS_DONE_TOP;
-    this.doneH = SETTINGS_DONE_H;
+    this.doneY = SETTINGS_BACK_TOP;
+    this.doneH = SETTINGS_BACK_H;
     this.listStart = 0;
     this.pointerGesture = null;
   }
@@ -3787,7 +3854,7 @@ export class SettingsState {
       { label: `SHOW FPS: ${s.showFps ? 'ON' : 'OFF'}`, act: () => { s.showFps = !s.showFps; } },
       { label: `ASSIST SPEED: ${s.assistSpeed}%`, act: () => { s.assistSpeed = s.assistSpeed === 100 ? 80 : s.assistSpeed + 10; } },
       { label: 'RESET TO DEFAULTS', act: () => { this.confirming = true; Audio.sfx('uiBad'); } },
-      { label: 'DONE', act: () => { this.save.persist(); this.onDone(); } },
+      { label: 'BACK', act: () => { this.save.persist(); this.onDone(); } },
     ];
   }
   listCount(opts = this.options()) { return opts.length - 1; }
@@ -3919,7 +3986,7 @@ export class SettingsState {
     if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2);
     const doneTextY = textYForMid(this.doneY + this.doneH / 2);
     if (doneSelected) drawText(ctx, '>', (band.x + band.textX) / 2, doneTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
-    drawText(ctx, 'DONE', band.textX, doneTextY, doneSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
+    drawText(ctx, 'BACK', band.textX, doneTextY, doneSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
     // Use the same device-local formatter as the portrait shell. The dev-only
     // stamp is a fallback for an older live shell that predates __MASH_BUILT_AT__.
@@ -3936,7 +4003,7 @@ export class SettingsState {
       ctx.strokeStyle = '#e04848';
       ctx.strokeRect(40.5, 90.5, W - 81, 60);
       drawTextCentered(ctx, 'RESET ALL TO DEFAULTS?', W / 2, 108, '#e04848', 1.5);
-      drawTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK: CANCEL`, W / 2, 132, '#8a8a98');
+      drawTextCentered(ctx, `${confirmVerb()}: CONFIRM   BACK`, W / 2, 132, '#8a8a98');
     }
   }
 }

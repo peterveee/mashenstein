@@ -624,7 +624,14 @@ function boot() {
   // between these calls, and the controller can immediately pause the loop
   // through its public handle when booting hidden or in iPhone portrait.
   window.__mash_lifecycle = new LifecycleController({
-    platform, loop, input: Input, audio: Audio,
+    platform,
+    loop,
+    input: Input,
+    audio: Audio,
+    // The jukebox is a self-contained listening/visualizer surface and is
+    // intentionally usable in portrait. Keep the landscape gate everywhere
+    // else, including the title and gameplay states.
+    allowPortrait: () => currentState()?.constructor?.name === 'SoundTestState',
   });
   window.__mash_booted = true;
 

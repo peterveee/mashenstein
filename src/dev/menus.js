@@ -5,7 +5,7 @@
 // Items: {label, act?, submenu?, adjust?}
 import { W, H } from '../engine/renderer.js';
 import { drawText, drawTextCentered, drawPanel } from '../engine/sprites.js';
-import { setState } from '../engine/states.js';
+import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
 import { BOSSES } from '../game/boss.js';
@@ -416,9 +416,14 @@ export function rootMenu(dev) {
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
       } },
       { label: 'VISUALISERS', act: () => {
+        const previousState = currentState();
         dev.close();
         setState(new SoundTestState({
-          onDone: () => dev.ctx.Flow.toHub(),
+          onDone: () => {
+            if (!previousState) return dev.ctx.Flow.toHub();
+            setState(previousState);
+            dev.reopenMenuAfterState(previousState);
+          },
           initialTrack: JUKEBOX.length - 1,
           startVisualizer: true,
         }));
@@ -446,7 +451,7 @@ export function drawMenu(ctx, dev) {
 
   const crumbs = dev.stack.map((s) => s.title).join(' / ');
   drawText(ctx, crumbs, 14, 12, GOLD);
-  drawText(ctx, '↑↓ move  ←→ adjust  ENTER pick  BKSP back  ` close', 14, H - 16, DIM, 0.75);
+  drawText(ctx, '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, H - 16, DIM, 0.75);
 
   // Scroll window so long lists (27 stages, every obstacle type) stay usable.
   const n = top.items.length;

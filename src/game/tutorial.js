@@ -194,7 +194,7 @@ const ZONE_T = 7;
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
 const PAUSE_PLATES = [
   { id: 'resume', x: W / 2 - PAUSE_MENU_W / 2, y: 196, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'pause', label: 'CONTINUE' },
-  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'EXIT' },
+  { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
 ];
 
 // The training lane's palette, shaped like a cabinet because that is what the

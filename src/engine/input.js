@@ -396,7 +396,7 @@ class InputSys {
   // drop whatever buttons the previous screen owned. No floating chrome comes
   // with it: every menu screen already both confirms and backs out straight off
   // its own content — tapping a row selects it and tapping it again confirms,
-  // and each list ends in its own BACK/DONE row — so ENTER and ESC boxes only
+  // and each list ends in its own BACK row — so ENTER and ESC boxes only
   // ever duplicated gestures that already worked.
   setMenuButtons() {
     this.setContext('menu');

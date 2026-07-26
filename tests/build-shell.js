@@ -44,6 +44,23 @@ assert(html.includes('class="mash-portrait-icon"')
   && /min-height:\s*100svh/.test(html)
   && !html.includes('id="portrait-overlay-title" data-dialog-heading'),
   'portrait pause screen is full-height, branded and does not force heading focus');
+assert(html.includes('<svg class="mash-phone-turn"')
+  && html.includes('<g class="mash-phone-turn-device"')
+  && html.includes('mash-phone-turn-trail-1')
+  && html.includes('mash-phone-turn-trail-2')
+  && html.includes('mash-phone-turn-trail-3')
+  && html.includes('iPhone 17 Pro body ratio: 150.0 mm tall by 71.9 mm wide')
+  && html.includes('<rect x="39" y="46.15" width="112" height="53.7"')
+  && !html.includes('mash-phone-turn-arrow')
+  && /\.mash-phone-turn\s*\{[^}]*color:\s*#fff/s.test(html)
+  && /\.mash-phone-turn rect, \.mash-phone-turn path\s*\{[^}]*stroke-width:\s*6/s.test(html)
+  && /@keyframes mash-phone-rotate-cycle\s*\{[^}]*opacity:\s*0;\s*transform:\s*rotate\(-90deg\)/s.test(html)
+  && /38%, 84%\s*\{[^}]*opacity:\s*1;\s*transform:\s*rotate\(0deg\)/s.test(html)
+  && /@keyframes mash-phone-trail-1[\s\S]*opacity:\s*\.24/.test(html)
+  && /@keyframes mash-phone-trail-2[\s\S]*opacity:\s*\.32/.test(html)
+  && /@keyframes mash-phone-trail-3[\s\S]*opacity:\s*\.4/.test(html)
+  && /prefers-reduced-motion:\s*reduce[\s\S]*\.mash-phone-turn-device\s*\{[^}]*animation:\s*none/s.test(html),
+  'built portrait shell rotates an iPhone 17 Pro-proportioned phone with trail and fade');
 assert(html.includes('id="copy-error"') && html.includes('id="portrait-error-message"'),
   'built portrait shell contains a copyable crash report');
 assert(html.includes('id="portrait-reload"')

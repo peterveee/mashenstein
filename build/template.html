@@ -193,7 +193,50 @@
   .mash-portrait-message {
     width: min(31rem, 100%); margin-top: clamp(50px, 9vh, 104px);
   }
-  .mash-phone-turn { color: #48e0c8; font-size: 4.5rem; line-height: 1; margin-bottom: clamp(26px, 4vh, 44px); }
+  .mash-phone-turn {
+    display: block; width: clamp(142px, 42vw, 188px); height: auto;
+    margin: 0 auto clamp(26px, 4vh, 44px); overflow: visible;
+    color: #fff; filter: drop-shadow(0 0 10px rgba(255,255,255,.18));
+  }
+  .mash-phone-turn rect, .mash-phone-turn path {
+    fill: none; stroke: currentColor; stroke-width: 6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .mash-phone-turn-device, .mash-phone-turn-trail {
+    transform-origin: 95px 73px;
+  }
+  .mash-phone-turn-device {
+    animation: mash-phone-rotate-cycle 8s ease-in-out infinite;
+  }
+  .mash-phone-turn-device rect {
+    fill: #111220;
+  }
+  .mash-phone-turn-trail { opacity: 0; }
+  .mash-phone-turn-trail-1 { animation: mash-phone-trail-1 8s linear infinite; }
+  .mash-phone-turn-trail-2 { animation: mash-phone-trail-2 8s linear infinite; }
+  .mash-phone-turn-trail-3 { animation: mash-phone-trail-3 8s linear infinite; }
+  @keyframes mash-phone-rotate-cycle {
+    0% { opacity: 0; transform: rotate(-90deg); }
+    6%, 22% { opacity: 1; transform: rotate(-90deg); }
+    38%, 84% { opacity: 1; transform: rotate(0deg); }
+    100% { opacity: 0; transform: rotate(0deg); }
+  }
+  @keyframes mash-phone-trail-1 {
+    0%, 25%, 36%, 100% { opacity: 0; transform: rotate(-67.5deg); }
+    28%, 33% { opacity: .24; transform: rotate(-67.5deg); }
+  }
+  @keyframes mash-phone-trail-2 {
+    0%, 29%, 39%, 100% { opacity: 0; transform: rotate(-45deg); }
+    32%, 35% { opacity: .32; transform: rotate(-45deg); }
+  }
+  @keyframes mash-phone-trail-3 {
+    0%, 32%, 42%, 100% { opacity: 0; transform: rotate(-22.5deg); }
+    35%, 38% { opacity: .4; transform: rotate(-22.5deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mash-phone-turn-device { animation: none; opacity: 1; transform: none; }
+    .mash-phone-turn-trail { display: none; animation: none; }
+  }
   .mash-portrait-card h1 { line-height: 1.08; margin-bottom: clamp(24px, 3.8vh, 42px); }
   .mash-portrait-card p { margin-bottom: 0; }
   .mash-sr-only {

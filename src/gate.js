@@ -193,7 +193,25 @@ function createGameDom() {
         <img class="mash-portrait-icon" src="icon-180.png" alt="">
       </div>
       <div class="mash-portrait-message">
-        <div class="mash-phone-turn" aria-hidden="true">↻</div>
+        <svg class="mash-phone-turn" viewBox="0 0 190 145" aria-hidden="true">
+          <!-- iPhone 17 Pro body ratio: 150.0 mm tall by 71.9 mm wide. -->
+          <g class="mash-phone-turn-trail mash-phone-turn-trail-1">
+            <rect x="39" y="46.15" width="112" height="53.7" rx="13"/>
+            <path d="M137 65v16"/>
+          </g>
+          <g class="mash-phone-turn-trail mash-phone-turn-trail-2">
+            <rect x="39" y="46.15" width="112" height="53.7" rx="13"/>
+            <path d="M137 65v16"/>
+          </g>
+          <g class="mash-phone-turn-trail mash-phone-turn-trail-3">
+            <rect x="39" y="46.15" width="112" height="53.7" rx="13"/>
+            <path d="M137 65v16"/>
+          </g>
+          <g class="mash-phone-turn-device">
+            <rect x="39" y="46.15" width="112" height="53.7" rx="13"/>
+            <path d="M137 65v16"/>
+          </g>
+        </svg>
         <h1 id="portrait-overlay-title">TURN THE ARCADE SIDEWAYS</h1>
         <p id="portrait-overlay-copy" class="mash-sr-only">Rotate your device to landscape to continue.</p>
         <p class="mash-portrait-gag">The arcade was not budgeted for this many vertical pixels.</p>

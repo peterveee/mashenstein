@@ -16,6 +16,7 @@
 // identically wherever it was opened from.
 import { Input } from '../engine/input.js';
 import { H, pushOverlayDraw, saveScreenshot, clientToLogical } from '../engine/renderer.js';
+import { currentState } from '../engine/states.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
 import { rootMenu, drawMenu } from './menus.js';
 
@@ -33,6 +34,7 @@ export const Dev = {
   toast: null,
   toastT: 0,
   touchUnlock: { count: 0, t: 0 },
+  reopenAfterState: null,
 
   install(ctx) {
     if (!this.enabled || this.ctx) return;
@@ -130,6 +132,12 @@ export const Dev = {
   },
 
   close() { this.open = false; this.stack = []; },
+
+  // A dev screen launched as a temporary state can hand control back to the
+  // exact state that was underneath the overlay. Wait until the shutter has
+  // finished before reopening the overlay; opening it immediately would pause
+  // the transition on its first frame.
+  reopenMenuAfterState(state) { this.reopenAfterState = state || null; },
 
   push(menu) { this.stack.push({ ...menu, idx: 0 }); },
 
@@ -232,6 +240,11 @@ export const Dev = {
   update(dt) {
     if (!this.enabled) return false;
     if (this.toastT > 0) this.toastT -= dt;
+
+    if (this.reopenAfterState && currentState() === this.reopenAfterState) {
+      this.reopenAfterState = null;
+      this.openMenu();
+    }
 
     if (this.open) {
       // Nothing downstream will run, so clear the one-frame input sets here.

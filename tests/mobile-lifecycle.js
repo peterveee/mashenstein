@@ -32,6 +32,8 @@ assert(detectPlatform({ ua: DESKTOP }).allowed, 'desktop browser is allowed');
 
 assert(lifecyclePolicy({ isIphone: true, standalone: true, portrait: true }).paused,
   'installed iPhone portrait pauses');
+assert(!lifecyclePolicy({ isIphone: true, standalone: true, portrait: true, allowPortrait: true }).paused,
+  'approved portrait surface keeps an installed iPhone running');
 const devPortrait = lifecyclePolicy({
   isIphone: true, standalone: false, devBrowserBypass: true, portrait: true,
 });
@@ -44,6 +46,8 @@ assert(!lifecyclePolicy({ isIpad: true, standalone: true, portrait: true }).paus
   'iPad portrait keeps running');
 assert(lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true }).paused,
   'installed Android phone portrait pauses');
+assert(!lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true, allowPortrait: true }).paused,
+  'approved portrait surface keeps an installed Android phone running');
 assert(!lifecyclePolicy({ isAndroidTablet: true, standalone: true, portrait: true }).paused,
   'Android tablet portrait keeps running (like iPad)');
 assert(lifecyclePolicy({ visible: false }).paused, 'every hidden platform pauses');

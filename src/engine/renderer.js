@@ -141,9 +141,13 @@ export function setSkyFx(on, time) {
 }
 
 // px = device pixels per logical pixel (what everything is pre-scaled by).
-export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
+export const screen = {
+  scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, portraitFill: false,
+  inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
+};
 export const visualizerFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualizerFullscreen = false;
+let jukeboxPortrait = false;
 
 // The game normally preserves its 16:9 logical frame with letterbox margins.
 // Screensaver visuals are an exception: they are decorative and can stretch
@@ -153,6 +157,16 @@ export function setVisualizerFullscreen(on) {
   const next = !!on;
   if (next === visualizerFullscreen) return;
   visualizerFullscreen = next;
+  if (typeof window !== 'undefined' && canvas) resize();
+}
+
+// The jukebox list is allowed to use a phone's portrait height. Its logical
+// art remains 16:9, but the list presentation may fill the portrait viewport;
+// SoundTestState compensates its text vertically so lettering stays crisp.
+export function setJukeboxPortrait(on) {
+  const next = !!on;
+  if (next === jukeboxPortrait) return;
+  jukeboxPortrait = next;
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
@@ -524,9 +538,15 @@ function resize() {
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
-  const cssW = visualizerFullscreen ? Math.round(winW) : Math.round(W * scale);
-  const cssH = visualizerFullscreen ? Math.round(winH) : Math.round(H * scale);
+  const portraitFill = jukeboxPortrait && !visualizerFullscreen && winH > winW;
+  const fillViewport = visualizerFullscreen || portraitFill;
+  const cssW = fillViewport ? Math.round(winW) : Math.round(W * scale);
+  const cssH = fillViewport ? Math.round(winH) : Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
+  let inputScaleX = scale;
+  let inputScaleY = scale;
+  let inputLeft = 0;
+  let inputTop = 0;
   if (visualizerFullscreen) {
     const cover = Math.max(winW / W, winH / H);
     const visibleW = winW / cover, visibleH = winH / cover;
@@ -534,6 +554,16 @@ function resize() {
     visualizerFrame.top = (H - visibleH) * 0.5;
     visualizerFrame.right = visualizerFrame.left + visibleW;
     visualizerFrame.bottom = visualizerFrame.top + visibleH;
+    inputScaleX = cover;
+    inputScaleY = cover;
+    inputLeft = visualizerFrame.left;
+    inputTop = visualizerFrame.top;
+  } else if (portraitFill) {
+    // The portrait jukebox deliberately fills the viewport non-uniformly.
+    // Pointer coordinates must follow that same X/Y mapping or taps land
+    // above/below the row the player touched.
+    inputScaleX = winW / W;
+    inputScaleY = winH / H;
   } else {
     visualizerFrame.left = 0; visualizerFrame.top = 0;
     visualizerFrame.right = W; visualizerFrame.bottom = H;
@@ -564,8 +594,8 @@ function resize() {
   // Fullscreen visualizers use the viewport as a cover frame, preserving the
   // logical 16:9 aspect ratio instead of stretching circles and typography.
   // A little edge crop is preferable to visibly distorted artwork.
-  canvas.style.objectFit = visualizerFullscreen ? 'cover' : 'fill';
-  canvas.style.objectPosition = 'center center';
+  canvas.style.objectFit = visualizerFullscreen ? 'cover' : portraitFill ? 'fill' : '';
+  canvas.style.objectPosition = visualizerFullscreen ? 'center center' : '';
   canvas.style.imageRendering = 'auto';
   const ox = visualizerFullscreen ? 0 : Math.floor((winW - cssW) / 2);
   const oy = visualizerFullscreen ? 0 : Math.floor((winH - cssH) / 2);
@@ -593,7 +623,10 @@ function resize() {
     glowLayer.width = glowW;
     glowLayer.height = glowH;
   }
-  Object.assign(screen, { scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W });
+  Object.assign(screen, {
+    scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W, portraitFill,
+    inputScaleX, inputScaleY, inputLeft, inputTop,
+  });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
   resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);
   if (dctx) dctx.imageSmoothingEnabled = true; // resizing resets context state
@@ -1011,5 +1044,8 @@ export function saveScreenshot(filename = 'mashenstein.png') {
 
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.
 export function clientToLogical(cx, cy) {
-  return { x: (cx - screen.ox) / screen.scale, y: (cy - screen.oy) / screen.scale };
+  return {
+    x: (cx - screen.ox) / screen.inputScaleX + screen.inputLeft,
+    y: (cy - screen.oy) / screen.inputScaleY + screen.inputTop,
+  };
 }
