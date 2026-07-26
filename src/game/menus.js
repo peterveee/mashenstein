@@ -1,12 +1,13 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw } from '../engine/renderer.js';
+import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
+import { VISUALIZER_NAMES, clamp, createVisualizer, pickVisualizer, smooth } from '../engine/visualizers.js';
 import { defaultSettings } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, drawB33pPellet } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
   b33pTitleShotPose, B33P_TITLE_WINDUP_T,
@@ -32,6 +33,8 @@ import { HEROES } from '../data/heroes.js';
 import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } from '../sprites/arcade.js';
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
+import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
+import { MEGAMIX_SOURCE_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, nextStage, stageUnlocked } from './progress.js';
 
 // See Input.confirmVerb — the word is shared with the in-run ACT card now, so
@@ -826,25 +829,26 @@ function drawBolt(ctx, t, strikes) {
   }
 }
 
-// Title ability shots: b33p's pellet is a bright streak; Ray and Grumpos keep
-// their actual fist and axe artwork in flight. All three can hit another hero.
+// Title ability shots: B33P uses the same pellet silhouette as gameplay; Ray
+// and Grumpos keep their actual fist and axe artwork in flight. All three can
+// hit another hero.
 function drawShots(ctx, t, shots) {
   if (!shots) return;
   for (const shot of shots) {
     if (t < shot.tFired) continue;
     const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
-    if (shot.kind === 'fist') {
-      drawRocketFist(ctx, x, shot.y, t);
+    if (shot.kind === 'fist' || HERO_PARADE[shot.source] === 'raymn') {
+      // Gameplay starts the fist's animation clock when the projectile is
+      // spawned, so the title version does the same instead of using the
+      // parade's absolute clock.
+      drawRocketFist(ctx, x, shot.y, t - shot.tFired);
       continue;
     }
     if (shot.kind === 'axe') {
       drawThrownAxe(ctx, x, shot.y, (t - shot.tFired) * 14);
       continue;
     }
-    ctx.fillStyle = 'rgba(168,255,192,0.4)';
-    ctx.fillRect(Math.round(x - (shot.dir < 0 ? -3 : 9)), Math.round(shot.y), 6, 2);
-    ctx.fillStyle = '#eaffef';
-    ctx.fillRect(Math.round(x - (shot.dir < 0 ? 0 : 4)), Math.round(shot.y), 4, 2);
+    drawB33pPellet(ctx, x, shot.y);
   }
 }
 
@@ -1356,7 +1360,7 @@ function warningGlowSprite(text, scale) {
   warningGlowSprites.set(key, sprite);
   return sprite;
 }
-function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = false) {
+function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = false, labels = null) {
   const rowH = spaciousRows ? (titleTouch() ? 38 : 27) : (titleTouch() ? 30 : 21);
   const headH = hasNote ? MODAL_HEAD_H : MODAL_HEAD_H_BARE;
   const cancelGap = gapBeforeLast ? rowH * 0.6 : 0;
@@ -1368,11 +1372,14 @@ function modalListGeom(count, hasNote, gapBeforeLast = false, spaciousRows = fal
   // rows on touch — still centres instead of being pinned to the top and
   // hanging off the bottom.
   const y = Math.max(8, Math.round((H - h) / 2));
-  const x = spaciousRows ? 72 : 88;
-  return { x, y, w: W - x * 2, h, rowH, firstY: y + headH, cancelGap };
+  const defaultX = spaciousRows ? 72 : 88;
+  const widest = labels ? labels.reduce((m, label) => Math.max(m, textWidth(label, 1.35)), 0) : 0;
+  const w = labels ? Math.min(W - 32, widest + 42) : W - defaultX * 2;
+  const x = labels ? (W - w) / 2 : defaultX;
+  return { x, y, w, h, rowH, firstY: y + headH, cancelGap };
 }
-function modalRowAt(px, py, count, hasNote, gapBeforeLast = false, spaciousRows = false) {
-  const g = modalListGeom(count, hasNote, gapBeforeLast, spaciousRows);
+function modalRowAt(px, py, count, hasNote, gapBeforeLast = false, spaciousRows = false, labels = null) {
+  const g = modalListGeom(count, hasNote, gapBeforeLast, spaciousRows, labels);
   if (px < g.x || px > g.x + g.w) return -1;
   const relativeY = py - g.firstY;
   if (g.cancelGap && relativeY >= (count - 1) * g.rowH && relativeY < (count - 1) * g.rowH + g.cancelGap) return -1;
@@ -1448,6 +1455,7 @@ export class TitleState {
     this.onTutorial = onTutorial;
   }
   enter() {
+    setVisualizerFullscreen(false);
     invalidateTitleParadeCache();
     this.singleToasterOpening = !titleToasterIntroSeen;
     titleToasterIntroSeen = true;
@@ -1610,7 +1618,7 @@ export class TitleState {
     if (Input.pressed('back')) { this.extras = null; Audio.sfx('ui'); return; }
     let chosen = Input.pressed('confirm') ? this.extras.idx : -1;
     if (Input.pressed('pointer')) {
-      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, false); // heading only
+      const i = modalRowAt(Input.pointer.x, Input.pointer.y, choices.length, false, false, false, choices.map((choice) => choice.label)); // heading only
       if (i >= 0) chosen = i;
     }
     if (chosen < 0) return;
@@ -1767,6 +1775,7 @@ export class TitleState {
               const tFired = this.t + B33P_TITLE_WINDUP_T;
               this.shots.push({
                 id: `shot:${this.shotId++}`,
+                kind: 'pellet',
                 tFired,
                 x0: heroX(hero, tFired) + 12,
                 y: SHOT_Y,
@@ -1995,12 +2004,19 @@ export class TitleState {
     }
     drawModalList(d, this.eraseChoices(), this.erase.idx, {
       title, note, accent: '#e05a62', titleColor: '#ff727c', gapBeforeLast: this.erase.step === 'choose',
-      spaciousRows: true, warningPulse,
+      spaciousRows: true, warningPulse, align: 'left',
     });
+    // Keep destructive-menu actions in the same compact keyboard hint format
+    // used by the other menus, with the hint tucked against the right edge so
+    // it never changes the left-aligned row geometry.
+    const prompt = `${confirmVerb()}: CONFIRM   BACK: CANCEL`;
+    const promptScale = 0.9;
+    drawText(d, prompt, W - 16 - textWidth(prompt, promptScale), H - 12, '#8a8a98', promptScale);
   }
   drawExtrasModal(d) {
     drawModalList(d, this.extrasChoices(), this.extras.idx, {
       title: 'STAFF ONLY', accent: 'rgba(109,90,145,0.35)', titleColor: '#f4f1fa',
+      align: 'left', fitWidth: true,
     });
   }
 }
@@ -2008,16 +2024,19 @@ export class TitleState {
 // The title's two modal lists, drawn one way. Geometry comes from
 // modalListGeom, which the tap hit-test reads too, so the rows a finger finds
 // are exactly the rows on screen at whatever size the device asked for.
-function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0 }) {
-  const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows);
+function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBeforeLast = false, spaciousRows = false, warningPulse = 0, align = 'center', fitWidth = false }) {
+  const g = modalListGeom(choices.length, !!note, gapBeforeLast, spaciousRows, fitWidth ? choices.map((choice) => choice.label) : null);
   const modalTextS = spaciousRows ? 1.55 : 1.35;
+  const left = align === 'left';
+  const textX = g.x + 24;
   d.fillStyle = 'rgba(2,3,10,0.78)';
   d.fillRect(0, 0, W, H);
   d.fillStyle = 'rgba(11,10,20,0.98)';
   platePath(d, g.x, g.y, g.w, g.h, 4); d.fill();
   d.strokeStyle = accent; d.lineWidth = 1;
   platePath(d, g.x + 0.5, g.y + 0.5, g.w - 1, g.h - 1, 4); d.stroke();
-  drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
+  if (left) drawText(d, title, textX, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
+  else drawTextCentered(d, title, W / 2, g.y + 12, '#f4f1fa', spaciousRows ? 1.75 : 1.5, 'title');
   if (note) {
     d.save();
     const noteY = g.y + 30;
@@ -2025,18 +2044,24 @@ function drawModalList(d, choices, idx, { title, note, accent, titleColor, gapBe
     const glow = warningGlowSprite(note, noteScale);
     d.globalCompositeOperation = 'lighter';
     d.globalAlpha = 0.32 + warningPulse * 0.28;
-    d.drawImage(glow.canvas, W / 2 - glow.w / 2, noteY - noteScale - glow.pad);
+    const glowX = left ? textX - glow.pad : W / 2 - glow.w / 2;
+    d.drawImage(glow.canvas, glowX, noteY - noteScale - glow.pad);
     d.globalCompositeOperation = 'source-over';
     d.globalAlpha = 1;
-    drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    if (left) drawText(d, note, textX, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
+    else drawTextCentered(d, note, W / 2, g.y + 30, '#ff727c', spaciousRows ? 1.35 : 1.2, 'ui');
     d.restore();
   }
   choices.forEach((choice, i) => {
     const selected = i === idx;
     const rowTop = g.firstY + i * g.rowH + (g.cancelGap && i === choices.length - 1 ? g.cancelGap : 0);
-    const textY = textYForMid(rowTop + g.rowH / 2) - (selected ? 2 : 0);
+    const textY = textYForMid(rowTop + g.rowH / 2);
     if (selected) drawMenuRow(d, g.x + 7, rowTop + 1, g.w - 14, g.rowH - 2);
-    drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}`, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+    if (left) {
+      if (selected) drawText(d, '>', (g.x + 7 + textX) / 2, textY, '#c9a0ff', modalTextS, 'bold');
+      drawText(d, choice.label, textX, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
+    }
+    else drawTextCentered(d, `${selected ? '> ' : ''}${choice.label}`, W / 2, textY, selected ? '#c9a0ff' : '#d3d9e5', modalTextS, selected ? 'bold' : 'ui');
   });
 }
 
@@ -2049,6 +2074,15 @@ function centredBand(labels, scale = 1) {
   const widest = labels.reduce((m, s) => Math.max(m, textWidth(s, scale)), 0);
   const w = Math.min(W - 48, widest + 28);
   return { x: (W - w) / 2, w };
+}
+
+function leftBand(labels, scale = 1) {
+  const widest = labels.reduce((m, s) => Math.max(m, textWidth(s, scale)), 0);
+  // The label starts 20 units inside the band; leave the same breathing room
+  // on the far side so the widest rendered entry remains fully covered.
+  const w = Math.min(W - 40, widest + 44);
+  const x = (W - w) / 2;
+  return { x, w, textX: x + 20 };
 }
 
 // PROSE THAT SIZES ITSELF TO THE ROOM IT HAS.
@@ -3271,77 +3305,333 @@ export class FieldGuideState {
 }
 
 // SOUND TEST: the classic arcade jukebox. Every cabinet track + the hub theme.
-const JUKEBOX = [
-  { name: 'EMPTY ARCADE (TITLE THEME)', bank: TITLE_THEME },
-  { name: 'THE FOOD COURT (HUB THEME)', bank: HUB_THEME },
-  ...CABINETS.map((c) => ({ name: `${c.name} (${c.genre})`, bank: c.music })),
-  { name: 'ONE MORE SWITCH (FINALE THEME)', bank: FINALE_THEME },
+export const JUKEBOX = [
+  ...MEGAMIX_SOURCE_TRACKS,
+  { name: 'MASHENSTEIN: THE MONSTER MIX', bank: MEGAMIX_THEME },
 ];
-// Track list sits above the visualizer bars so the two never collide. The bars
-// are drawn from the bottom up and the tallest reaches VIS_TOP, so the rows
-// divide what is left rather than sitting at a fixed pitch — at a fixed 14 the
-// last row's cursor band ran under the bars, which was survivable while the row
-// was bare lettering and is not once it has a lit rectangle behind it.
-const JUKEBOX_TOP = 58;
-const VIS_TOP = H - 24 - 13;
-function jukeboxRowH(count) { return Math.min(14, (VIS_TOP - 4 - JUKEBOX_TOP) / count); }
+// Match Settings' finger-sized scrolling list. BACK stays fixed below the
+// window so a long catalogue never shrinks the rows or pushes the exit target
+// off-screen.
+const JUKEBOX_TOP = 68;
+const JUKEBOX_ROW = 23;
+const JUKEBOX_VISIBLE_ROWS = 6;
+const JUKEBOX_BACK_TOP = 216;
+const JUKEBOX_BACK_H = 25;
+const LEFT_MENU_ITEM_S = 1.15;
 
 export class SoundTestState {
-  constructor({ onDone }) { this.onDone = onDone; }
-  enter() { this.idx = 0; this.playing = -1; this.t = 0; Audio.setBank(null); Input.setMenuButtons(); }
-  exit() { Audio.setBank(null); }
-  play(i) {
-    this.playing = i;
-    Audio.setBank(JUKEBOX[i].bank);
+  constructor({ onDone, initialTrack = -1, startVisualizer = false }) {
+    this.onDone = onDone;
+    this.initialTrack = initialTrack;
+    this.startVisualizerOnEnter = startVisualizer;
+    this.listY = JUKEBOX_TOP;
+    this.rowH = JUKEBOX_ROW;
+    this.visibleRows = JUKEBOX_VISIBLE_ROWS;
+    this.backY = JUKEBOX_BACK_TOP;
+    this.backH = JUKEBOX_BACK_H;
+    this.listStart = 0;
+    this.pointerGesture = null;
+    this.idleT = 0;
+    this.visualState = 'list'; // list -> in -> active -> out
+    this.visualT = 0;
+    this.visualizer = null;
+    this.previousVisualizer = null;
+    this.visualSwitchT = 0;
+    this.labelT = 0;
+    this.visualizerIndex = -1;
+    this.lastVisualizerIndex = -1;
+    this.actTok = 0;
+  }
+  enter() {
+    const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < JUKEBOX.length
+      ? this.initialTrack : -1;
+    this.idx = initial >= 0 ? initial : 0;
+    this.playing = initial;
+    this.t = 0;
+    this.listStart = 0;
+    this.pointerGesture = null;
+    this.idleT = 0;
+    this.visualState = 'list';
+    this.visualT = 0;
+    this.visualizer = null;
+    this.previousVisualizer = null;
+    this.visualSwitchT = 0;
+    this.labelT = 0;
+    this.visualizerIndex = -1;
+    this.lastVisualizerIndex = -1;
+    this.actTok = Input.activity;
+    Audio.setBank(null);
+    if (this.playing >= 0) {
+      Audio.setBank(JUKEBOX[this.playing].bank);
+      this.resetIdle();
+      if (this.startVisualizerOnEnter) this.startVisualizer();
+    }
+    Input.setMenuButtons();
+  }
+  exit() {
+    Audio.setBank(null);
+    this.clearVisualizer();
+  }
+  clearVisualizer() {
+    setVisualizerFullscreen(false);
+    this.visualState = 'list';
+    this.visualT = 0;
+    this.visualizer = null;
+    this.previousVisualizer = null;
+    this.visualSwitchT = 0;
+    this.labelT = 0;
+    this.visualizerIndex = -1;
+  }
+  resetIdle() {
+    this.idleT = this.playing >= 0 ? -(Audio.pendingStartDelay || 0) : 0;
+    this.actTok = Input.activity;
+    this.clearVisualizer();
+  }
+  startVisualizer() {
+    if (this.playing < 0 || this.visualState !== 'list') return;
+    setVisualizerFullscreen(true);
+    this.visualizerIndex = pickVisualizer(this.lastVisualizerIndex, Math.random);
+    this.lastVisualizerIndex = this.visualizerIndex;
+    const seed = ((Math.random() * 0xffffffff) ^ (this.visualizerIndex * 0x9e3779b9)) >>> 0;
+    this.visualizer = createVisualizer(this.visualizerIndex, seed, JUKEBOX[this.playing].bank);
+    this.previousVisualizer = null;
+    this.visualSwitchT = 0;
+    this.labelT = 0;
+    this.visualState = 'in';
+    this.visualT = 0;
+    this.actTok = Input.activity;
+  }
+  wakeVisualizer() {
+    if (this.visualState === 'list') return false;
+    this.visualState = 'out';
+    this.visualT = 0;
+    this.idleT = 0;
+    // The wake gesture is intentionally consumed by this screen. The next
+    // gesture belongs to the jukebox list and can stop/switch the song.
+    this.actTok = Input.activity;
+    return true;
+  }
+  switchVisualizer(delta) {
+    if (!this.visualizer || this.visualState === 'out') return;
+    const count = VISUALIZER_NAMES.length;
+    const next = (this.visualizerIndex + delta + count) % count;
+    this.previousVisualizer = this.visualizer;
+    this.visualizerIndex = next;
+    const seed = ((Math.random() * 0xffffffff) ^ (next * 0x9e3779b9) ^ this.t * 1000) >>> 0;
+    this.visualizer = createVisualizer(next, seed, JUKEBOX[this.playing]?.bank);
+    this.visualSwitchT = 0.35;
+    this.labelT = 0;
+    this.actTok = Input.activity;
+  }
+  visualizerInput() {
+    return Input.activity !== this.actTok
+      || Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back')
+      || Input.pressed('jump') || Input.pressed('ability') || Input.pressed('pause');
+  }
+  maxListStart() { return Math.max(0, JUKEBOX.length - this.visibleRows); }
+  trackCounter(i) { return `${i + 1}.`; }
+  keepSelectionVisible() {
+    if (this.idx >= JUKEBOX.length) return;
+    if (this.idx < this.listStart) this.listStart = this.idx;
+    else if (this.idx >= this.listStart + this.visibleRows) this.listStart = this.idx - this.visibleRows + 1;
+    this.listStart = Math.max(0, Math.min(this.maxListStart(), this.listStart));
+  }
+  pointerIndex(y) {
+    if (y >= this.backY && y < this.backY + this.backH) return JUKEBOX.length;
+    if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
+    const i = this.listStart + Math.floor((y - this.listY) / this.rowH);
+    return i < JUKEBOX.length ? i : -1;
+  }
+  toggle(i) {
+    if (this.playing === i) {
+      this.playing = -1;
+      Audio.setBank(null);
+    } else {
+      this.playing = i;
+      Audio.setBank(JUKEBOX[i].bank);
+    }
+    this.resetIdle();
     Audio.sfx('uiConfirm');
+  }
+  done() {
+    Audio.setBank(null);
+    this.clearVisualizer();
+    this.onDone();
   }
   update(dt) {
     this.t += dt;
     const n = JUKEBOX.length;
     const total = n + 1; // +1 for the trailing BACK row
-    if (Input.pressed('down') || Input.pressed('right')) { this.idx = (this.idx + 1) % total; Audio.sfx('ui'); }
-    if (Input.pressed('up') || Input.pressed('left')) { this.idx = (this.idx + total - 1) % total; Audio.sfx('ui'); }
-    if (Input.pressed('confirm')) { if (this.idx === n) { Audio.setBank(null); this.onDone(); } else this.play(this.idx); }
+    if (this.visualState !== 'list') {
+      const previous = Input.pressed('left') || Input.pressed('up');
+      const next = Input.pressed('right') || Input.pressed('down');
+      if (this.visualState !== 'out' && (previous || next)) this.switchVisualizer(next ? 1 : -1);
+      else if (this.visualizerInput()) this.wakeVisualizer();
+      if (this.visualizer) this.visualizer.update(dt, Audio.musicAnalysis());
+      if (this.visualState !== 'out') this.labelT += dt;
+      if (this.visualSwitchT > 0) {
+        this.visualSwitchT = Math.max(0, this.visualSwitchT - dt);
+        if (this.visualSwitchT === 0) this.previousVisualizer = null;
+      }
+      this.visualT += dt;
+      if (this.visualState === 'in' && this.visualT >= 1.0) {
+        this.visualState = 'active';
+        this.visualT = 1.0;
+      } else if (this.visualState === 'out' && this.visualT >= 0.45) {
+        this.clearVisualizer();
+      }
+      Input.endFrame();
+      return;
+    }
+    if (this.playing >= 0) {
+      this.idleT += dt;
+      if (this.idleT >= 5) this.startVisualizer();
+    }
+    if (Input.pressed('down') || Input.pressed('right')) {
+      this.idx = (this.idx + 1) % total;
+      this.keepSelectionVisible();
+      this.resetIdle();
+      Audio.sfx('ui');
+    }
+    if (Input.pressed('up') || Input.pressed('left')) {
+      this.idx = (this.idx + total - 1) % total;
+      this.keepSelectionVisible();
+      this.resetIdle();
+      Audio.sfx('ui');
+    }
+    if (Input.pressed('confirm')) {
+      if (this.idx === n) this.done();
+      else this.toggle(this.idx);
+    }
     if (Input.pressed('pointer')) {
-      const i = Math.floor((Input.pointer.y - JUKEBOX_TOP) / jukeboxRowH(total));
-      if (i >= 0 && i < total) {
-        if (this.idx === i) { if (i === n) { Audio.setBank(null); this.onDone(); } else this.play(i); }
-        else { this.idx = i; Audio.sfx('ui'); }
+      const i = this.pointerIndex(Input.pointer.y);
+      if (i >= 0) {
+        if (Input.usingTouch) {
+          this.pointerGesture = {
+            startY: Input.pointer.y,
+            startList: this.listStart,
+            moved: false,
+          };
+        } else if (i === n) {
+          this.done();
+        } else if (this.idx === i) {
+          this.toggle(i);
+        } else {
+          this.idx = i;
+          this.resetIdle();
+          Audio.sfx('ui');
+        }
       }
     }
-    if (Input.pressed('back')) { Audio.setBank(null); this.onDone(); }
+    if (this.pointerGesture && Input.pointer.down) {
+      const dy = Input.pointer.y - this.pointerGesture.startY;
+      if (Math.abs(dy) >= 8) this.pointerGesture.moved = true;
+      if (this.pointerGesture.moved) {
+        const rows = Math.round(-dy / this.rowH);
+        this.listStart = Math.max(0, Math.min(this.maxListStart(), this.pointerGesture.startList + rows));
+        this.idx = Math.max(this.listStart, Math.min(this.idx, this.listStart + this.visibleRows - 1));
+      }
+    } else if (this.pointerGesture && !Input.pointer.down) {
+      const moved = this.pointerGesture.moved;
+      this.pointerGesture = null;
+      if (!moved) {
+        const i = this.pointerIndex(Input.pointer.y);
+        if (i === n) this.done();
+        else if (i >= 0) {
+          this.idx = i;
+          this.toggle(i);
+        }
+      }
+    }
+    if (Input.pressed('back')) this.done();
     Input.endFrame();
   }
-  draw(ctx) {
+  drawList(ctx, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'SOUND TEST', W / 2, 16, '#fff', 2, 'title');
-    drawTextCentered(ctx, 'ALL CHIPTUNES ARE PLAYED LIVE BY A VERY SMALL ORCHESTRA.', W / 2, 40, '#5a5a68');
-    // The trailing BACK row is drawn from the same list as the tracks so it gets
-    // the same cursor band and the same pitch the hit-test uses.
-    const rows = JUKEBOX.concat([null]);
-    const rowH = jukeboxRowH(rows.length);
-    const band = centredBand(rows.map((tr) => (tr ? `> * ${tr.name}  (${tr.bank.bpm} BPM)` : '')));
-    rows.forEach((tr, i) => {
+    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`), LEFT_MENU_ITEM_S);
+    drawText(ctx, 'SOUND TEST', band.textX, 12, '#fff', 2, 'title');
+    const status = this.playing >= 0 ? `NOW PLAYING: ${JUKEBOX[this.playing].name}` : 'STOPPED';
+    drawText(ctx, status, band.textX, 39, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
+    JUKEBOX.forEach((tr, i) => {
+      if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
-      const on = tr && i === this.playing;
-      const label = tr ? `${on ? '* ' : ''}${tr.name}  (${tr.bank.bpm} BPM)` : 'BACK';
-      const rowTop = JUKEBOX_TOP + i * rowH;
-      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, rowH - 2);
-      drawTextCentered(ctx, (sel ? '> ' : '') + label, W / 2,
-        textYForMid(Math.round(rowTop + rowH / 2)), on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8');
+      const on = i === this.playing;
+      const rowTop = this.listY + (i - this.listStart) * this.rowH;
+      if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
+      const textY = textYForMid(rowTop + this.rowH / 2);
+      if (sel) drawText(ctx, '>', band.textX - 16, textY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
+      drawText(ctx, `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`, band.textX,
+        textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     });
+    if (JUKEBOX.length > this.visibleRows) {
+      const trackY = this.listY + 4;
+      const trackH = this.visibleRows * this.rowH - 8;
+      const thumbH = Math.max(18, trackH * this.visibleRows / JUKEBOX.length);
+      const thumbY = trackY + (trackH - thumbH) * this.listStart / this.maxListStart();
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(W - 17, trackY, 2, trackH);
+      ctx.fillStyle = 'rgba(72,224,200,0.55)';
+      ctx.fillRect(W - 18, thumbY, 4, thumbH);
+    }
+    const backSelected = this.idx === JUKEBOX.length;
+    if (backSelected) drawMenuRow(ctx, band.x, this.backY + 1, band.w, this.backH - 2);
+    const backTextY = textYForMid(this.backY + this.backH / 2);
+    if (backSelected) drawText(ctx, '>', band.textX - 16, backTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
+    drawText(ctx, 'BACK', band.textX, backTextY, backSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     if (this.playing >= 0) {
       const bars = 12;
       for (let i = 0; i < bars; i++) {
-        const hgt = 3 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 10;
+        const hgt = 2 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 7;
         ctx.fillStyle = '#48e0c8';
-        ctx.fillRect(W / 2 - bars * 5 + i * 10, H - 24 - hgt, 6, hgt);
+        ctx.fillRect(band.textX + i * 6, 63 - hgt, 4, hgt);
       }
     }
-    // The BACK row is in the list itself, so touch needs no key named for it.
-    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: PLAY' : 'ENTER: PLAY   ESC: BACK',
+    drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: PLAY/STOP   DRAG: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
       W / 2, H - 14, '#5a5a68');
+    ctx.restore();
+  }
+  draw(ctx) {
+    if (this.visualState === 'list' || !this.visualizer) {
+      this.drawList(ctx);
+      return;
+    }
+    const inFade = this.visualState === 'in' ? smooth(clamp(this.visualT / 1)) : 1;
+    const outFade = this.visualState === 'out' ? 1 - smooth(clamp(this.visualT / 0.45)) : 1;
+    const visualAlpha = clamp(inFade * outFade);
+    this.drawList(ctx, 1 - visualAlpha);
+    ctx.save();
+    if (this.previousVisualizer && this.visualSwitchT > 0) {
+      const switchP = 1 - this.visualSwitchT / 0.35;
+      ctx.globalAlpha = visualAlpha * (1 - switchP);
+      this.previousVisualizer.draw(ctx);
+      ctx.globalAlpha = visualAlpha * switchP;
+      this.visualizer.draw(ctx);
+    } else {
+      ctx.globalAlpha = visualAlpha;
+      this.visualizer.draw(ctx);
+    }
+    ctx.restore();
+    // Keep the screensaver metadata quiet and out of the way: the track hugs
+    // the lower-left edge while the current preset balances it on the right.
+    // A tiny shadow preserves legibility over bright particle passes without
+    // bringing back the centered modal card.
+    const labelScale = 0.82;
+    const labelInset = 24;
+    const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
+    const visualLabel = this.visualizer.name;
+    const trackX = labelInset;
+    const visualX = W - labelInset - textWidth(visualLabel, labelScale);
+    const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
+    ctx.save();
+    ctx.globalAlpha = visualAlpha * labelFade * 0.92;
+    drawText(ctx, trackLabel, trackX + 1, H - 14 + 1, '#02030a', labelScale);
+    drawText(ctx, visualLabel, visualX + 1, H - 14 + 1, '#02030a', labelScale);
+    drawText(ctx, trackLabel, trackX, H - 14, '#f4f1fa', labelScale);
+    drawText(ctx, visualLabel, visualX, H - 14, '#48e0c8', labelScale);
+    ctx.restore();
   }
 }
 
@@ -3552,18 +3842,19 @@ export class SettingsState {
   draw(ctx) {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    drawTextCentered(ctx, 'SETTINGS', W / 2, 30, '#fff', 2, 'title');
-    drawTextCentered(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', W / 2, 52, '#5a5a68');
     const opts = this.options();
     const doneIndex = opts.length - 1;
-    const band = centredBand(opts.slice(0, doneIndex).map((o) => `> ${o.label}`));
+    const band = leftBand(opts.slice(0, doneIndex).map((o) => o.label), LEFT_MENU_ITEM_S);
+    drawText(ctx, 'SETTINGS', band.textX, 30, '#fff', 2, 'title');
+    drawText(ctx, 'ALL OF THESE DO EXACTLY WHAT THEY SAY.', band.textX, 52, '#5a5a68');
     opts.slice(0, doneIndex).forEach((o, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
       const rowTop = this.listY + (i - this.listStart) * this.rowH;
       if (sel) drawMenuRow(ctx, band.x, rowTop + 1, band.w, this.rowH - 2);
-      drawTextCentered(ctx, (sel ? '> ' : '') + o.label, W / 2,
-        textYForMid(rowTop + this.rowH / 2), sel ? '#c9a0ff' : '#c8c8d8');
+      const textY = textYForMid(rowTop + this.rowH / 2);
+      if (sel) drawText(ctx, '>', (band.x + band.textX) / 2, textY, '#c9a0ff', LEFT_MENU_ITEM_S);
+      drawText(ctx, o.label, band.textX, textY, sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     });
     if (this.listCount(opts) > this.visibleRows) {
       const trackY = this.listY + 4;
@@ -3577,9 +3868,9 @@ export class SettingsState {
     }
     const doneSelected = this.idx === doneIndex;
     if (doneSelected) drawMenuRow(ctx, band.x, this.doneY + 1, band.w, this.doneH - 2);
-    drawTextCentered(ctx, `${doneSelected ? '> ' : ''}DONE`, W / 2,
-      textYForMid(this.doneY + this.doneH / 2),
-      doneSelected ? '#c9a0ff' : '#c8c8d8');
+    const doneTextY = textYForMid(this.doneY + this.doneH / 2);
+    if (doneSelected) drawText(ctx, '>', (band.x + band.textX) / 2, doneTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
+    drawText(ctx, 'DONE', band.textX, doneTextY, doneSelected ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
     drawTextCentered(ctx, Input.isTouchDevice() ? 'TAP: SELECT   TAP AGAIN: CHANGE' : 'LEFT/RIGHT: ADJUST   ENTER: CHANGE', W / 2, H - 14, '#5a5a68');
     // Use the same device-local formatter as the portrait shell. The dev-only
     // stamp is a fallback for an older live shell that predates __MASH_BUILT_AT__.

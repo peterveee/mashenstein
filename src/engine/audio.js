@@ -69,6 +69,24 @@ class AudioSys {
   constructor() {
     this.ctx = null;
     this.master = null; this.sfxGain = null; this.musicGain = null;
+    this.songTrim = null;
+    this.musicTrim = 1;
+    this.pendingStartDelay = 0;
+    this.songAnalyser = null;
+    // Browserless/headless fallback buffers keep the public shape stable even
+    // when Web Audio is unavailable; a live analyser replaces them at ensure().
+    this._analysisSpectrum = new Uint8Array(128);
+    this._analysisWaveform = new Uint8Array(256);
+    this._analysis = {
+      spectrum: this._analysisSpectrum,
+      waveform: this._analysisWaveform,
+      bass: 0,
+      mid: 0,
+      treble: 0,
+      beat: null,
+      beatPhase: 0,
+      beatPulse: 0,
+    };
     this.muted = false;
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
     this.cueGain = 1;
@@ -123,7 +141,27 @@ class AudioSys {
     // The song proper rides on musicBus; the invincibility arpeggio rides on
     // starBus. Two buses so the theme can duck under the star layer without
     // the star layer ducking itself. Both feed musicGain (and so the echo).
-    this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.musicGain);
+    this.songTrim = this.ctx.createGain();
+    this.songTrim.gain.value = this.bank ? 0.0001 : 0;
+    // The analyser sits on the song lane, before the user music fader, so it
+    // hears the procedural song (including its echo) but none of the UI/SFX
+    // bus. Keeping it pre-fader also means a muted jukebox can still animate
+    // its screensaver rather than freezing on a black frame.
+    if (this.ctx.createAnalyser) {
+      this.songAnalyser = this.ctx.createAnalyser();
+      this.songAnalyser.fftSize = 256;
+      this.songAnalyser.smoothingTimeConstant = 0.72;
+      this._analysisSpectrum = new Uint8Array(this.songAnalyser.frequencyBinCount);
+      this._analysisWaveform = new Uint8Array(this.songAnalyser.fftSize);
+      this.songTrim.connect(this.songAnalyser);
+      this.songAnalyser.connect(this.musicGain);
+      this._analysis.spectrum = this._analysisSpectrum;
+      this._analysis.waveform = this._analysisWaveform;
+    } else {
+      this.songTrim.connect(this.musicGain);
+    }
+    if (this.bank) this.songTrim.gain.setTargetAtTime(this.musicTrim, this.ctx.currentTime + 0.5, 0.01);
+    this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.songTrim);
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
     // YMCK-style space: tempo-synced dotted-eighth echo. echoBus is a parallel
     // wet send — only melodic lanes (bass/lead/leadHarm/twinkle/chords, via
@@ -151,7 +189,7 @@ class AudioSys {
     this.delay.connect(this.delayLp);
     this.delayLp.connect(this.delayFb);
     this.delayFb.connect(this.delay);
-    this.delayLp.connect(this.musicGain);
+    this.delayLp.connect(this.songTrim);
     const len = Math.floor(this.ctx.sampleRate * 0.5);
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
@@ -810,6 +848,21 @@ class AudioSys {
     // its phase intact; only a real bank change should restart the sequencer.
     if (this.bank === bank) return;
     this.bank = bank;
+    this.musicTrim = bank?.musicTrim ?? 1;
+    this.pendingStartDelay = bank ? 0.5 : 0;
+    if (this.songTrim) {
+      const now = this.ctx.currentTime;
+      this.songTrim.gain.cancelScheduledValues(now);
+      if (bank) {
+        // Mute any notes left in the old lookahead window, then open the new
+        // bank after a clean half-second gap.
+        this.songTrim.gain.setValueAtTime(0.0001, now);
+        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + 0.5, 0.01);
+        this.nextTime = now + 0.5;
+      } else {
+        this.songTrim.gain.setValueAtTime(0.0001, now);
+      }
+    }
     this.step = 0; // songs start from the top (section order matters now)
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
@@ -1029,7 +1082,7 @@ class AudioSys {
 
   startSequencer() {
     if (this.timer) return;
-    this.nextTime = this.ctx.currentTime + 0.1;
+    this.nextTime = this.ctx.currentTime + (this.bank ? 0.5 : 0.1);
     this.timer = setInterval(() => this.schedule(), 25);
   }
 
@@ -1071,7 +1124,44 @@ class AudioSys {
         const bassDur = spb * (b.bassDur || 1.8);
         const bassGain = b.bassGain ?? 0.1;
         const bassEcho = !!b.bassEcho || !!b.echoEverything;
-        play(b.bass[s], b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+        if (b.bassFilteredSaw && b.bass[s] != null) {
+          // Resonant low-pass saw bass: harmonic enough to survive small
+          // speakers, but with the bright edge closing quickly into a round
+          // sustained body. A quiet sine sub keeps the bottom anchored.
+          const t = this.nextTime;
+          const f = b.bass[s] * this.detune;
+          const o = this.ctx.createOscillator(); o.type = 'sawtooth';
+          o.frequency.setValueAtTime(f, t);
+          const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
+          filter.Q.value = b.bassFilterQ ?? 1.15;
+          filter.frequency.setValueAtTime(b.bassFilterOpen ?? 1150, t);
+          filter.frequency.exponentialRampToValueAtTime(b.bassFilterClose ?? 320, t + bassDur);
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(bassGain, t + (b.bassAttack || 0.006));
+          g.gain.exponentialRampToValueAtTime(0.0001, t + bassDur);
+          o.connect(filter); filter.connect(g); g.connect(this.musicBus);
+          if (bassEcho) g.connect(this.echoBus);
+          o.start(t); o.stop(t + bassDur + 0.02);
+          play(b.bass[s] * 0.5, 'sine', bassDur * 1.05,
+            bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
+        } else if (b.bass80s && b.bass[s] != null) {
+          // Compact 1980s-style synth bass: a square body for definition, a
+          // rounded sine sub beneath it, and a very short octave tick on the
+          // attack. No filterless saw drone and no compulsory ghost repeat.
+          const f = b.bass[s];
+          play(f, b.bass80sBodyType || 'square', bassDur,
+            bassGain * (b.bass80sBodyGain ?? 0.78), b.bassAttack || 0.004, bassEcho);
+          play(f * 0.5, 'sine', bassDur * 1.08,
+            bassGain * (b.bass80sSubGain ?? 0.34), 0.006, false);
+          // A real low-mid octave layer rather than a near-inaudible click: it
+          // carries the bass identity on phone speakers that cannot reproduce
+          // the sub fundamental.
+          play(f * 2, 'triangle', bassDur * 0.62,
+            bassGain * (b.bass80sOctaveGain ?? 0.34), 0.003, false);
+        } else {
+          play(b.bass[s], b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+        }
         // bassRepeat: one softer restatement of the note N steps later — a
         // written-in slapback, not a delay tap, so it has no feedback tail and
         // stays locked to the grid. Always dry: echoing a ghost note doubles it.
@@ -1081,11 +1171,45 @@ class AudioSys {
         }
         if (b.bass[s] != null) this.starRoot = b.bass[s]; // the star arpeggio follows the song's key
       }
-      if (b.lead) play(b.lead[s], b.leadType || 'square', spb * (b.leadDur || 1.2), b.leadGain ?? 0.06, b.leadAttack || 0.01);
+      if (b.lead) {
+        const leadDur = spb * (b.leadDur || 1.2);
+        const leadGain = b.leadGain ?? 0.06;
+        play(b.lead[s], b.leadType || 'square', leadDur, leadGain, b.leadAttack || 0.01);
+        if (b.leadBright && b.lead[s]) {
+          play(b.lead[s] * 2, 'sine', leadDur * 0.68,
+            leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
+        }
+      }
       if (b.leadHarm) play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * (b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01); // parallel-3rds partner voice
       if (b.twinkle && b.twinkle[s]) {
         play(b.twinkle[s], 'sine', spb * (b.twinkleDur || 6), b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
         play(b.twinkle[s] * 2, 'sine', spb * (b.twinkleDur || 6) * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
+      }
+      if (b.electroFx && b.electroFx[s]) {
+        // Sparse deterministic "random" shop-machine flourishes. The grid
+        // position selects one of three tiny electronic gestures, so offline
+        // auditions and live playback stay identical on every loop.
+        const t = this.nextTime;
+        const f = b.electroFx[s] * this.detune;
+        const gain = b.electroFxGain ?? 0.012;
+        const dur = spb * (b.electroFxDur || 0.86);
+        const kind = s % 3;
+        if (kind === 2) {
+          play(f, 'sine', dur, gain, 0.002, true);
+          play(f * 2.01, 'sine', dur * 0.62, gain * 0.42, 0.002, false);
+        } else {
+          const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+          o.type = kind === 0 ? 'square' : 'triangle';
+          const from = kind === 0 ? f * 0.72 : f * 1.8;
+          const to = kind === 0 ? f * 1.45 : f * 0.68;
+          o.frequency.setValueAtTime(from, t);
+          o.frequency.exponentialRampToValueAtTime(to, t + dur);
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(gain, t + 0.003);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          o.connect(g); g.connect(this.musicBus); g.connect(this.echoBus);
+          o.start(t); o.stop(t + dur + 0.02);
+        }
       }
       if (b.sweeps && b.sweeps[s] && this.noiseBuf) {
         // Heavily filtered air: a narrow band slowly opens and closes beneath
@@ -1165,6 +1289,71 @@ class AudioSys {
         // stab: all chord tones at once, short and punchy
         for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * (b.chordDur || 2.6), b.chordGain ?? 0.05, b.chordAttack || 0.01);
       }
+      if (b.organChords && b.organChords[s]) {
+        // Drawbar-style organ bed: sine partials at the common 8', 4', 2 2/3',
+        // 2' and 1 1/3' relationships. It is a separate sustained lane, not a
+        // replacement for the short keyboard stabs, so an arrangement can let
+        // the organ hold the harmony while the original comping plays along.
+        const dur = spb * (b.organDur || 7.2);
+        const gain = b.organGain ?? 0.009;
+        const attack = b.organAttack || 0.035;
+        const echo = b.organEcho !== false;
+        const drawbars = b.organBright
+          ? [[1, 1], [2, 0.78], [3, 0.48], [4, 0.3], [6, 0.16]]
+          : [[1, 1], [2, 0.62], [3, 0.32], [4, 0.2], [6, 0.1]];
+        for (const cf of b.organChords[s]) {
+          for (const [ratio, level] of drawbars) play(cf * ratio, 'sine', dur, gain * level, attack, echo);
+          // Hammond-style percussion: a short third-harmonic pip on the key
+          // attack. Kept dry so repeated off-beat stabs stay crisp.
+          if (b.organPercussion) {
+            play(cf * 3, 'sine', spb * (b.organPercussionDur || 0.62),
+              gain * (b.organPercussionGain || 0.72), 0.002, false);
+          }
+        }
+      }
+      if (b.organGliss && b.organGliss[s]) {
+        // A quick drawbar-organ slide played as discrete scale notes, like a
+        // palm skimming the keys. This lane has its own timbre so the main
+        // melody does not need to become square/organ-like just to host it.
+        const target = b.organGliss[s] * this.detune;
+        const steps = [-12, -10, -9, -7, -5, -4, -2, 0];
+        const dt = (spb * (b.organGlissSpan || 2.7)) / steps.length;
+        const gain = b.organGlissGain ?? 0.012;
+        const partials = b.organBright
+          ? [[1, 1], [2, 0.7], [3, 0.4], [4, 0.22]]
+          : [[1, 1], [2, 0.55], [3, 0.25]];
+        steps.forEach((semi, i) => {
+          const note = target * Math.pow(2, semi / 12);
+          for (const [ratio, level] of partials) {
+            play(note * ratio, 'sine', dt * 1.35, gain * level,
+              b.organGlissAttack || 0.003, false, i * dt);
+          }
+        });
+      }
+      if (b.organSwoop && b.organSwoop[s]) {
+        // Continuous drawbar-organ pitch glide: unlike organGliss's discrete
+        // palm-run notes, every partial bends smoothly from one pitch into the
+        // target for a clean dance-mix transition.
+        const t = this.nextTime;
+        const target = b.organSwoop[s] * this.detune;
+        const from = target * Math.pow(2, (b.organSwoopFromSemitones ?? -5) / 12);
+        const dur = spb * (b.organSwoopDur || 3.2);
+        const gain = b.organSwoopGain ?? 0.012;
+        const partials = b.organBright
+          ? [[1, 1], [2, 0.66], [3, 0.34], [4, 0.18]]
+          : [[1, 1], [2, 0.5], [3, 0.22]];
+        for (const [ratio, level] of partials) {
+          const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(from * ratio, t);
+          o.frequency.exponentialRampToValueAtTime(target * ratio, t + dur);
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(gain * level, t + 0.012);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          o.connect(g); g.connect(this.musicBus); g.connect(this.echoBus);
+          o.start(t); o.stop(t + dur + 0.02);
+        }
+      }
       if (b.kick && b.kick[s]) {
         // 808 kick: a long sine "boooom" that pitch-drops into a sub
         // fundamental for the thump, with a short noise click on the front so
@@ -1173,7 +1362,7 @@ class AudioSys {
         // in between. crashDur-style bank overrides (kickGain/kickTail) let a
         // sparser track lean on the boom or a busy one tighten it up.
         const t = this.nextTime;
-        const kg = b.kickGain ?? 1;
+        const kg = (b.kickGain ?? 1) * (b.drumGain ?? 1);
         const tail = b.kickTail ?? 0.2;      // how long the sub rings out
         // Body: near-instant punch, pitch envelope from a snappy attack pitch
         // down to ~48Hz, then a long amplitude decay. The short gain ramp (vs
@@ -1223,7 +1412,7 @@ class AudioSys {
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 5200;
         const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.14, t);
+        g.gain.setValueAtTime(0.14 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
         if (b.echoEverything) g.connect(this.echoBus);
@@ -1300,7 +1489,7 @@ class AudioSys {
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 4200;
         const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.12, t);
+        g.gain.setValueAtTime(0.12 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
         if (b.echoEverything) g.connect(this.echoBus);
@@ -1312,7 +1501,7 @@ class AudioSys {
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.7;
         const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.32, t);
+        g.gain.setValueAtTime(0.32 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
         src.connect(f); f.connect(g); g.connect(this.musicBus);
         if (b.echoEverything) g.connect(this.echoBus);
@@ -1321,7 +1510,7 @@ class AudioSys {
         o.type = 'triangle';
         o.frequency.setValueAtTime(210, t);
         o.frequency.exponentialRampToValueAtTime(140, t + 0.05);
-        og.gain.setValueAtTime(0.12, t);
+        og.gain.setValueAtTime(0.12 * (b.drumGain ?? 1), t);
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
         o.connect(og); og.connect(this.musicBus); if (b.echoEverything) og.connect(this.echoBus); o.start(t); o.stop(t + 0.08);
       }
@@ -1340,7 +1529,7 @@ class AudioSys {
         lp.frequency.setValueAtTime(b.crashOpen ?? 9000, t);
         lp.frequency.exponentialRampToValueAtTime(b.crashClose ?? 1100, t + dur);
         const g = this.ctx.createGain();
-        const gain = b.crashGain ?? 0.15;
+        const gain = (b.crashGain ?? 0.15) * (b.drumGain ?? 1);
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(gain, t + 0.005); // near-instant transient so it reads as on the beat
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -1360,7 +1549,7 @@ class AudioSys {
         // underneath for body. Two-stage decay out to ~75ms — a fast transient
         // then a brief ring, instead of one flat drop to silence.
         const t = this.nextTime;
-        const lvl = b.rimGain ?? 0.21;
+        const lvl = (b.rimGain ?? 0.21) * (b.drumGain ?? 1);
         // Metallic ring: three inharmonic partials through a narrow bandpass.
         const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1750; f.Q.value = 3.6;
         const g = this.ctx.createGain();
@@ -1411,7 +1600,8 @@ class AudioSys {
           const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
           const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1500;
           const g = this.ctx.createGain();
-          g.gain.setValueAtTime(ci === 2 ? 0.26 : 0.16, t);
+          g.gain.setValueAtTime((ci === 2 ? 0.26 : 0.16)
+            * (b.drumGain ?? 1) * (b.clapGain ?? 1), t);
           g.gain.exponentialRampToValueAtTime(0.001, t + (ci === 2 ? 0.12 : 0.03));
           src.connect(f); f.connect(g); g.connect(this.musicBus);
           if (b.echoEverything) g.connect(this.echoBus);
@@ -1473,6 +1663,50 @@ class AudioSys {
     if (!this.ctx || !this.bank) return 0;
     const spb = (60 / (this.bpm * this.tempo));
     return ((this.ctx.currentTime % spb) / spb);
+  }
+
+  _analysisBand(lo, hi) {
+    const nyquist = (this.ctx?.sampleRate || 44100) / 2;
+    const a = Math.max(0, Math.floor(lo / nyquist * this._analysisSpectrum.length));
+    const b = Math.min(this._analysisSpectrum.length, Math.max(a + 1,
+      Math.ceil(hi / nyquist * this._analysisSpectrum.length)));
+    let sum = 0;
+    for (let i = a; i < b; i++) sum += this._analysisSpectrum[i];
+    return sum / ((b - a) * 255);
+  }
+
+  // Stable, allocation-free readout for the jukebox visualizer. The returned
+  // object and typed arrays are owned by Audio and reused every frame. The
+  // analyser values provide the organic response; songBeat() supplies the
+  // exact procedural clock so kicks and phrase geometry never drift from the
+  // notes the sequencer actually scheduled.
+  musicAnalysis() {
+    const out = this._analysis;
+    if (this.songAnalyser && this._analysisSpectrum && this._analysisWaveform) {
+      this.songAnalyser.getByteFrequencyData(this._analysisSpectrum);
+      this.songAnalyser.getByteTimeDomainData(this._analysisWaveform);
+      // Smooth once more at the feature level. This keeps a single sharp FFT
+      // bin from making the large visual shapes twitch while preserving beat
+      // transients in beatPulse below.
+      out.bass += (this._analysisBand(55, 240) - out.bass) * 0.34;
+      out.mid += (this._analysisBand(240, 2200) - out.mid) * 0.30;
+      out.treble += (this._analysisBand(2200, 9000) - out.treble) * 0.38;
+    } else {
+      // Browserless tests and old Web Audio implementations still receive a
+      // deterministic fallback driven by the sequencer clock.
+      out.bass += ((this.bank ? 0.42 : 0) - out.bass) * 0.12;
+      out.mid += ((this.bank ? 0.28 : 0) - out.mid) * 0.10;
+      out.treble += ((this.bank ? 0.20 : 0) - out.treble) * 0.14;
+    }
+    out.beat = this.songBeat();
+    if (out.beat == null) {
+      out.beatPhase = 0;
+      out.beatPulse = 0;
+    } else {
+      out.beatPhase = ((out.beat % 1) + 1) % 1;
+      out.beatPulse = Math.pow(1 - out.beatPhase, 5);
+    }
+    return out;
   }
 }
 

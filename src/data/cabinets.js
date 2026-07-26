@@ -53,6 +53,7 @@ export const CABINETS = [
     // the wrap drops back to the lone melody.
     music: {
       bpm: 112,
+      musicTrim: 0.93,
       bass: seq('A2 . A2 . F2 . F2 . C3 . C3 . G2 . G2 .'),
       lead: seq('A4 . C5 E5 . A4 . . F4 A4 C5 . E5 . D5 C5 | A4 . C5 E5 . G5 . . F5 E5 D5 . C5 . B4 A4'),
       leadHarm: seq('F4 . A4 C5 . F4 . . D4 F4 A4 . C5 . B4 A4 | F4 . A4 C5 . E5 . . D5 C5 B4 . A4 . G4 F4'),
@@ -120,6 +121,7 @@ export const CABINETS = [
     // never breathed). The bass lane itself is untouched.
     music: {
       bpm: 128,
+      musicTrim: 0.87,
       bass: seq('E2 E2 . E2 . E2 . . G2 G2 . G2 . G2 . . A2 A2 . A2 . A2 . . B2 . D3 . B2 . G2 .'),
       lead: seq('E5 . . B4 . E5 . G5 . E5 . B4 . A4 . B4'),
       kick: seq('C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
@@ -194,7 +196,7 @@ export const CABINETS = [
     mechanic: 'pellets',
     sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
     far: '#302868', hills: '#282050',
-    music: { bpm: 120, bass: seq('A2 . E2 . A2 . E2 . F2 . C2 . F2 . C2 . D2 . A1 . D2 . A1 . E2 . E2 . G2 . B2 .'), lead: seq('A5 . . E5 . C5 . E5 A5 . . G5 . E5 . C5'), leadType: 'sawtooth', kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('. C1 . C1').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
+    music: { bpm: 120, musicTrim: 0.93, bass: seq('A2 . E2 . A2 . E2 . F2 . C2 . F2 . C2 . D2 . A1 . D2 . A1 . E2 . E2 . G2 . B2 .'), lead: seq('A5 . . E5 . C5 . E5 A5 . . G5 . E5 . C5'), leadType: 'sawtooth', kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('. C1 . C1').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'drone', dx: 0, y: 26 }]),
@@ -212,7 +214,7 @@ export const CABINETS = [
     mechanic: 'ice', // slidey landings + icicles + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
-    music: { bpm: 100, bass: seq('D2 . . . A2 . . . B1 . . . F2 . . . G1 . . . D2 . . . G2 . . . A2 . . .'), lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 .'), leadType: 'triangle', kick: seq('C1 . . . . . . . C1 . . . . . . .').map((v) => !!v), hats: seq('. . C1 . C1 . . .').map((v) => !!v), snare: seq('. . . . . . . . C1 . . . . . . .').map((v) => !!v) },
+    music: { bpm: 100, musicTrim: 1.74, bass: seq('D2 . . . A2 . . . B1 . . . F2 . . . G1 . . . D2 . . . G2 . . . A2 . . .'), lead: seq('D5 . F5 . A5 . F5 . D5 . . . C5 . E5 .'), leadType: 'triangle', kick: seq('C1 . . . . . . . C1 . . . . . . .').map((v) => !!v), hats: seq('. . C1 . C1 . . .').map((v) => !!v), snare: seq('. . . . . . . . C1 . . . . . . .').map((v) => !!v) },
     patterns: [
       ...ICE_PATTERNS,
       P(0, [{ t: 'icicle', dx: 0 }]),
@@ -229,7 +231,7 @@ export const CABINETS = [
     mechanic: 'darkness', // light radius; cursed shortcuts
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
-    music: { bpm: 90, bass: seq('A1 . . . A1 . . . A1 . . . C2 . B1 . A1 . . . A1 . . . F1 . . . E1 . . .'), lead: seq('A4 . . . . . C5 . . . B4 . . . . .'), leadType: 'triangle', kick: seq('C1 . . . . . . .').map((v) => !!v), hats: seq('. . . C1').map((v) => !!v), clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v) },
+    music: { bpm: 90, musicTrim: 1.6, bass: seq('A1 . . . A1 . . . A1 . . . C2 . B1 . A1 . . . A1 . . . F1 . . . E1 . . .'), lead: seq('A4 . . . . . C5 . . . B4 . . . . .'), leadType: 'triangle', kick: seq('C1 . . . . . . .').map((v) => !!v), hats: seq('. . . C1').map((v) => !!v), clap: seq('. . . . . . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'tombstone', dx: 0 }]),
@@ -247,7 +249,7 @@ export const CABINETS = [
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
     sky: ['#202018', '#383828'], ground: '#484838', groundDark: '#303024',
     far: '#404030', hills: '#383828',
-    music: { bpm: 124, bass: seq('C2 . C2 . G2 . E2 . C2 . C2 . A2 . G2 . F2 . F2 . C2 . A1 . G1 . G2 . B2 . D3 .'), lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . .'), kick: seq('C1 . . . C1 . . . C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('. . C1 . . . C1 . . . C1 . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . C1 .').map((v) => !!v) },
+    music: { bpm: 124, musicTrim: 1.05, bass: seq('C2 . C2 . G2 . E2 . C2 . C2 . A2 . G2 . F2 . F2 . C2 . A1 . G1 . G2 . B2 . D3 .'), lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . .'), kick: seq('C1 . . . C1 . . . C1 . . . C1 . C1 .').map((v) => !!v), hats: seq('. . C1 . . . C1 . . . C1 . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . C1 .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier < 2),
       P(1, [{ t: 'beatBar', dx: 0 }]),
@@ -263,7 +265,7 @@ export const CABINETS = [
     mechanic: 'collapse', // scenery collapses behind; fake perspective props
     sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
     far: '#b89058', hills: '#a88448',
-    music: { bpm: 108, bass: seq('C2 . G1 . C2 . G1 . F1 . C2 . F1 . C2 . G1 . D2 . G1 . D2 . C2 . E2 . G2 . C3 .'), lead: seq('E5 D5 C5 . . G4 . . E5 D5 C5 . D5 . . .'), leadType: 'triangle', kick: seq('C1 . . . C1 . . .').map((v) => !!v), hats: seq('. C1 . . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
+    music: { bpm: 108, musicTrim: 1.18, bass: seq('C2 . G1 . C2 . G1 . F1 . C2 . F1 . C2 . G1 . D2 . G1 . D2 . C2 . E2 . G2 . C3 .'), lead: seq('E5 D5 C5 . . G4 . . E5 D5 C5 . D5 . . .'), leadType: 'triangle', kick: seq('C1 . . . C1 . . .').map((v) => !!v), hats: seq('. C1 . . . C1 . C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS,
       P(0, [{ t: 'cardboardMonster', dx: 0 }]),
@@ -280,7 +282,7 @@ export const CABINETS = [
     mechanic: 'meetings', // printers, chairs, paperwork
     sky: ['#e8e8f0', '#f4f4f8'], ground: '#b0b0c0', groundDark: '#8a8a98',
     far: '#c8c8d8', hills: '#b8b8c8',
-    music: { bpm: 116, bass: seq('G1 . G1 . B1 . B1 . C2 . C2 . D2 . D2 . E2 . E2 . C2 . C2 . D2 . B1 . G1 . . .'), lead: seq('G4 . B4 D5 . . B4 . C5 . E5 . D5 . B4 .'), kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('C1 . C1 . C1 . C1 .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
+    music: { bpm: 116, musicTrim: 0.93, bass: seq('G1 . G1 . B1 . B1 . C2 . C2 . D2 . D2 . E2 . E2 . C2 . C2 . D2 . B1 . G1 . . .'), lead: seq('G4 . B4 D5 . . B4 . C5 . E5 . D5 . B4 .'), kick: seq('C1 . . C1 . . C1 .').map((v) => !!v), hats: seq('C1 . C1 . C1 . C1 .').map((v) => !!v), clap: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v) },
     patterns: [
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'chair', dx: 0 }]),
@@ -298,7 +300,7 @@ export const CABINETS = [
     mechanic: 'remix', // segments sample other cabinets
     sky: ['#181828', '#282838'], ground: '#484858', groundDark: '#303040',
     far: '#404050', hills: '#383848',
-    music: { bpm: 132, bass: seq('A1 A2 . A1 . A2 A1 . F1 F2 . F1 . F2 F1 . G1 G2 . G1 . G2 G1 . E2 . E2 E2 . B2 . .'), lead: seq('A5 G5 E5 . A5 . G5 E5 D5 . E5 . C5 . E5 .'), leadType: 'sawtooth', kick: seq('C1 . C1 C1 . C1 C1 .').map((v) => !!v), hats: seq('C1 C1 C1 C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . C1 . . . . C1 . . .').map((v) => !!v) },
+    music: { bpm: 132, musicTrim: 0.7, bass: seq('A1 A2 . A1 . A2 A1 . F1 F2 . F1 . F2 F1 . G1 G2 . G1 . G2 G1 . E2 . E2 E2 . B2 . .'), lead: seq('A5 G5 E5 . A5 . G5 E5 D5 . E5 . C5 . E5 .'), leadType: 'sawtooth', kick: seq('C1 . C1 C1 . C1 C1 .').map((v) => !!v), hats: seq('C1 C1 C1 C1').map((v) => !!v), snare: seq('. . . . C1 . . . . . . . C1 . . .').map((v) => !!v), clap: seq('. . . . C1 . . C1 . . . . C1 . . .').map((v) => !!v) },
     patterns: [], // filled at runtime by the remix engine from cabinets 1-8
     taunt: 'BEHOLD. EVERY GAME AT ONCE. MY MASTERPIECE. MY MASHTERPIECE.',
   },
@@ -316,6 +318,7 @@ const HT_ARP = seq('A3 C4 E4 C4 E3 G3 B3 G3 G3 B3 D4 B3 D3 F#3 A3 F#3 | A3 C4 E4
 const HT_ARP_HI = seq('A4 C5 E5 C5 E4 G4 B4 G4 G4 B4 D5 B4 D4 F#4 A4 F#4 | A4 C5 E5 C5 E4 G4 B4 G4 G4 B4 D5 B4 B3 D4 F4 D4');
 export const HUB_THEME = {
   bpm: 90,
+  musicTrim: 1.05,
   echoEverything: true, // the original mix: a light echo wash on (almost) everything, claps and vox included, not just the melodic lanes
   bass: seq('A2 . . . E2 . . . G2 . . . D2 . . . A2 . . . E2 . . . G2 . . . B2 . . .'),
   kick: seq('C1 . . . . . . .').map((v) => !!v),
@@ -364,6 +367,7 @@ export const HUB_THEME = {
 // but leaves percussion out entirely and lets each tone dissolve into echo.
 export const TITLE_THEME = {
   bpm: 56,
+  musicTrim: 3.33,
   bass: seq('A2 . . . . . . . F2 . . . . . . . C3 . . . . . . . G2 . . . . . . .'),
   bassType: 'sine', bassGain: 0.045, bassDur: 7.4, bassAttack: 0.18,
   lead: seq('A4 . . C5 . . E5 . F4 . . A4 . . C5 . E5 . . G5 . . E5 . D5 . . C5 . . .'),
@@ -455,6 +459,7 @@ const FT_DROP_BASE = {
 // rings each note out most of the way to the next without smearing into it.
 export const FINALE_THEME = {
   bpm: 126,
+  musicTrim: 0.95,
   // The intro/build "clav": a short square stab that reads as plucked
   // percussion rather than a bassline. Near-instant attack keeps the
   // transient crisp, with enough decay to ring; it carries the groove

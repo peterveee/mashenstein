@@ -7,7 +7,7 @@ import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PLATE, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PLATE, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawB33pPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
@@ -2865,8 +2865,7 @@ export class RunState {
         drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
         ctx.restore();
       } else {
-        ctx.fillStyle = '#f6d33c'; ctx.beginPath(); ctx.arc(x + 3, y + 2, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff0a0'; ctx.fillRect(x + 2, y, 2, 1);
+        drawB33pPellet(ctx, x + 3, y + 2);
       }
     }
     };

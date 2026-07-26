@@ -1,13 +1,21 @@
 // Offline WAV render of a music bank — mirrors engine/audio.js voice-for-voice
 // (same envelopes, filters, echo bus, section/order song-form logic).
-// Usage: node tools/render-track.js [trackId|hub] [repeats] [outPath]
+// Usage: node tools/render-track.js [trackId|hub|title|finale|megamix|shop-candidate-id] [repeats] [outPath]
 // e.g.:  node tools/render-track.js plumber 2 dist/plumber-panic.wav
 import { writeFileSync } from 'fs';
-import { CABINET_BY_ID, HUB_THEME } from '../src/data/cabinets.js';
+import {
+  CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME,
+} from '../src/data/cabinets.js';
+import { SHOP_THEME_BY_ID } from '../src/data/shop-themes.js';
+import { MEGAMIX_THEME } from '../src/data/megamix.js';
 
 const [, , trackId = 'plumber', repeatArg = '2', outArg = null] = process.argv;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 2);
-const bank = trackId === 'hub' ? HUB_THEME : (CABINET_BY_ID[trackId] || {}).music;
+const bank = trackId === 'hub' ? HUB_THEME
+  : trackId === 'title' ? TITLE_THEME
+    : trackId === 'finale' ? FINALE_THEME
+      : trackId === 'megamix' ? MEGAMIX_THEME
+        : SHOP_THEME_BY_ID[trackId] || (CABINET_BY_ID[trackId] || {}).music;
 if (!bank) { console.error(`unknown track "${trackId}"`); process.exit(1); }
 const OUT = outArg || `dist/${trackId === 'hub' ? 'food-court' : trackId + '-panic'}.wav`;
 
@@ -27,6 +35,7 @@ const voice = new Float32Array(N); // pre-bus voice sum (everything, dry path)
 // hats in the repeats, which is audibly not the mix the game plays.
 const wet = new Float32Array(N);   // the subset that feeds the echo send
 const MUSIC_GAIN = 0.7;
+const MUSIC_TRIM = bank.musicTrim ?? 1;
 
 // ---- DSP helpers ------------------------------------------------------------
 function biquad(type, f0, Q = 1) {
@@ -83,6 +92,28 @@ function varBandpass(Q) { // bandpass biquad with retunable center frequency
     },
   };
 }
+function varLowpass(Q) {
+  const s = { x1: 0, x2: 0, y1: 0, y2: 0 };
+  let c = null;
+  return {
+    set(f0) {
+      const w0 = (2 * Math.PI * f0) / SR, alpha = Math.sin(w0) / (2 * Q), cs = Math.cos(w0);
+      const a0 = 1 + alpha;
+      c = {
+        b0: ((1 - cs) / 2) / a0,
+        b1: (1 - cs) / a0,
+        b2: ((1 - cs) / 2) / a0,
+        a1: (-2 * cs) / a0,
+        a2: (1 - alpha) / a0,
+      };
+    },
+    run(x) {
+      const y = c.b0 * x + c.b1 * s.x1 + c.b2 * s.x2 - c.a1 * s.y1 - c.a2 * s.y2;
+      s.x2 = s.x1; s.x1 = x; s.y2 = s.y1; s.y1 = y;
+      return y;
+    },
+  };
+}
 function wave(type, ph) {
   const p = ph - Math.floor(ph);
   if (type === 'square') return p < 0.5 ? 1 : -1;
@@ -100,6 +131,21 @@ function tone(t0, dur, type, freqFn, peak, atk = 0.01, echo = true) {
     ph += freqFn(t) / SR;
     const env = t < atk ? expInterp(0.0001, peak, t / atk) : expInterp(peak, 0.0001, (t - atk) / Math.max(1e-6, dur - atk));
     const v = wave(type, ph) * env;
+    voice[i0 + i] += v;
+    if (echo) wet[i0 + i] += v;
+  }
+}
+function filteredSawBass(t0, dur, freq, peak, atk, open, close, Q, echo = false) {
+  const i0 = Math.floor(t0 * SR), n = Math.floor(dur * SR);
+  const lp = varLowpass(Q);
+  let ph = 0;
+  for (let i = 0; i < n && i0 + i < N; i++) {
+    const t = i / SR;
+    ph += freq / SR;
+    lp.set(open * Math.pow(close / open, t / dur));
+    const env = t < atk ? expInterp(0.0001, peak, t / atk)
+      : expInterp(peak, 0.0001, (t - atk) / Math.max(1e-6, dur - atk));
+    const v = lp.run(wave('sawtooth', ph)) * env;
     voice[i0 + i] += v;
     if (echo) wet[i0 + i] += v;
   }
@@ -146,15 +192,101 @@ blocks.forEach((b, blk) => {
       const bassDur = spb * (b.bassDur || 1.8);
       const bassGain = b.bassGain ?? 0.1;
       const bassEcho = !!b.bassEcho || EV;
-      tone(t0, bassDur, b.bassType || 'square', () => b.bass[s], bassGain, b.bassAttack || 0.01, bassEcho);
+      if (b.bassFilteredSaw) {
+        const f = b.bass[s];
+        filteredSawBass(t0, bassDur, f, bassGain, b.bassAttack || 0.006,
+          b.bassFilterOpen ?? 1150, b.bassFilterClose ?? 320, b.bassFilterQ ?? 1.15, bassEcho);
+        tone(t0, bassDur * 1.05, 'sine', () => f * 0.5,
+          bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
+      } else if (b.bass80s) {
+        const f = b.bass[s];
+        tone(t0, bassDur, b.bass80sBodyType || 'square', () => f,
+          bassGain * (b.bass80sBodyGain ?? 0.78), b.bassAttack || 0.004, bassEcho);
+        tone(t0, bassDur * 1.08, 'sine', () => f * 0.5,
+          bassGain * (b.bass80sSubGain ?? 0.34), 0.006, false);
+        tone(t0, bassDur * 0.62, 'triangle', () => f * 2,
+          bassGain * (b.bass80sOctaveGain ?? 0.34), 0.003, false);
+      } else {
+        tone(t0, bassDur, b.bassType || 'square', () => b.bass[s], bassGain, b.bassAttack || 0.01, bassEcho);
+      }
       if (b.bassRepeat) {
         tone(t0 + spb * b.bassRepeat, bassDur * (b.bassRepeatDur ?? 0.8), b.bassType || 'square',
           () => b.bass[s], bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false);
       }
     }
-    if (b.lead && b.lead[s]) tone(t0, spb * (b.leadDur || 1.2), type, () => b.lead[s], b.leadGain ?? 0.06, b.leadAttack || 0.01);
+    if (b.lead && b.lead[s]) {
+      const leadDur = spb * (b.leadDur || 1.2);
+      const leadGain = b.leadGain ?? 0.06;
+      tone(t0, leadDur, type, () => b.lead[s], leadGain, b.leadAttack || 0.01);
+      if (b.leadBright) {
+        tone(t0, leadDur * 0.68, 'sine', () => b.lead[s] * 2,
+          leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
+      }
+    }
     if (b.leadHarm && b.leadHarm[s]) tone(t0, spb * (b.harmDur || b.leadDur || 1.2), b.harmType || type, () => b.leadHarm[s], b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+    if (b.electroFx && b.electroFx[s]) {
+      const f = b.electroFx[s];
+      const gain = b.electroFxGain ?? 0.012;
+      const dur = spb * (b.electroFxDur || 0.86);
+      const kind = s % 3;
+      if (kind === 2) {
+        tone(t0, dur, 'sine', () => f, gain, 0.002, true);
+        tone(t0, dur * 0.62, 'sine', () => f * 2.01, gain * 0.42, 0.002, false);
+      } else {
+        const from = kind === 0 ? f * 0.72 : f * 1.8;
+        const to = kind === 0 ? f * 1.45 : f * 0.68;
+        tone(t0, dur, kind === 0 ? 'square' : 'triangle',
+          (t) => from * Math.pow(to / from, t / dur), gain, 0.003, true);
+      }
+    }
     if (b.chords && b.chords[s]) for (const f of b.chords[s]) tone(t0, spb * (b.chordDur || 2.6), b.chordType || 'square', () => f, b.chordGain ?? 0.05, b.chordAttack || 0.01);
+    if (b.organChords && b.organChords[s]) {
+      const drawbars = b.organBright
+        ? [[1, 1], [2, 0.78], [3, 0.48], [4, 0.3], [6, 0.16]]
+        : [[1, 1], [2, 0.62], [3, 0.32], [4, 0.2], [6, 0.1]];
+      const dur = spb * (b.organDur || 7.2);
+      const gain = b.organGain ?? 0.009;
+      const echo = b.organEcho !== false;
+      for (const f of b.organChords[s]) {
+        for (const [ratio, level] of drawbars) {
+          tone(t0, dur, 'sine', () => f * ratio, gain * level, b.organAttack || 0.035, echo);
+        }
+        if (b.organPercussion) {
+          tone(t0, spb * (b.organPercussionDur || 0.62), 'sine', () => f * 3,
+            gain * (b.organPercussionGain || 0.72), 0.002, false);
+        }
+      }
+    }
+    if (b.organGliss && b.organGliss[s]) {
+      const target = b.organGliss[s];
+      const steps = [-12, -10, -9, -7, -5, -4, -2, 0];
+      const dt = (spb * (b.organGlissSpan || 2.7)) / steps.length;
+      const gain = b.organGlissGain ?? 0.012;
+      const partials = b.organBright
+        ? [[1, 1], [2, 0.7], [3, 0.4], [4, 0.22]]
+        : [[1, 1], [2, 0.55], [3, 0.25]];
+      steps.forEach((semi, i) => {
+        const note = target * Math.pow(2, semi / 12);
+        for (const [ratio, level] of partials) {
+          tone(t0 + i * dt, dt * 1.35, 'sine', () => note * ratio,
+            gain * level, b.organGlissAttack || 0.003, false);
+        }
+      });
+    }
+    if (b.organSwoop && b.organSwoop[s]) {
+      const target = b.organSwoop[s];
+      const from = target * Math.pow(2, (b.organSwoopFromSemitones ?? -5) / 12);
+      const dur = spb * (b.organSwoopDur || 3.2);
+      const gain = b.organSwoopGain ?? 0.012;
+      const partials = b.organBright
+        ? [[1, 1], [2, 0.66], [3, 0.34], [4, 0.18]]
+        : [[1, 1], [2, 0.5], [3, 0.22]];
+      for (const [ratio, level] of partials) {
+        tone(t0, dur, 'sine',
+          (t) => from * ratio * Math.pow(target / from, t / dur),
+          gain * level, 0.012, true);
+      }
+    }
     if (b.keyGliss && b.keyGliss[s]) {
       const fT = b.keyGliss[s];
       const steps = [-12, -10, -9, -7, -5, -4, -2, 0];
@@ -219,21 +351,32 @@ blocks.forEach((b, blk) => {
     if (b.kick && b.kick[s]) {
       // 808: long sine body pitched down into a sub, a 12ms high-passed click
       // for the beater, and a mid "knock" so the attack survives the bass.
-      const kg = b.kickGain ?? 1;
+      const kg = (b.kickGain ?? 1) * (b.drumGain ?? 1);
       const tail = b.kickTail ?? 0.2;
       tonalPerc(t0, tail + 0.04, 'sine', 165, 48, 0.05, 0.42 * kg, tail, EV, 0.006);
       noiseEv(t0, 0.03, 0.13 * kg, 0.012, biquad('highpass', 1900), EV);
       const knock = b.kickKnock ?? 1;
       if (knock > 0) tonalPerc(t0, 0.07, 'triangle', 300, 180, 0.04, 0.17 * kg * knock, 0.05, EV, 0.004);
     }
-    if (b.hats && b.hats[s]) noiseEv(t0, 0.07, 0.14, 0.05, biquad('highpass', 5200), EV);
-    if (b.ohats && b.ohats[s]) noiseEv(t0, 0.24, 0.12, 0.22, biquad('highpass', 4200), EV);
+    const drumGain = b.drumGain ?? 1;
+    if (b.hats && b.hats[s]) noiseEv(t0, 0.07, 0.14 * drumGain, 0.05, biquad('highpass', 5200), EV);
+    if (b.ohats && b.ohats[s]) noiseEv(t0, 0.24, 0.12 * drumGain, 0.22, biquad('highpass', 4200), EV);
     if (b.snare && b.snare[s]) {
-      noiseEv(t0, 0.11, 0.32, 0.09, biquad('bandpass', 2600, 0.7), EV);
-      tonalPerc(t0, 0.08, 'triangle', 210, 140, 0.05, 0.12, 0.06, EV);
+      noiseEv(t0, 0.11, 0.32 * drumGain, 0.09, biquad('bandpass', 2600, 0.7), EV);
+      tonalPerc(t0, 0.08, 'triangle', 210, 140, 0.05, 0.12 * drumGain, 0.06, EV);
+    }
+    if (b.rim && b.rim[s]) {
+      const lvl = (b.rimGain ?? 0.21) * drumGain;
+      for (const f of [1720, 2630, 3350]) {
+        tone(t0, 0.075, 'square', (t) => f * Math.pow(0.94, t / 0.06), lvl * 0.32, 0.001, false);
+      }
+      noiseEv(t0, 0.03, lvl * 0.45, 0.012, biquad('highpass', 3200), EV);
+      tonalPerc(t0, 0.08, 'triangle', 430, 300, 0.05, lvl * 0.38, 0.06, EV);
     }
     if (b.clap && b.clap[s]) for (let ci = 0; ci < 3; ci++) {
-      noiseEv(t0 + ci * 0.012, 0.15, ci === 2 ? 0.26 : 0.16, ci === 2 ? 0.12 : 0.03, biquad('highpass', 1500), EV);
+      noiseEv(t0 + ci * 0.012, 0.15,
+        (ci === 2 ? 0.26 : 0.16) * drumGain * (b.clapGain ?? 1),
+        ci === 2 ? 0.12 : 0.03, biquad('highpass', 1500), EV);
     }
   }
 });
@@ -247,7 +390,7 @@ const smooth = 1 - Math.exp(-1 / (0.08 * SR)); // setTargetAtTime tau = 0.08
 let lvl = lvlTarget[0], di = 0;
 for (let i = 0; i < N; i++) {
   lvl += (lvlTarget[i] - lvl) * smooth;
-  const music = voice[i] * MUSIC_GAIN;
+  const music = voice[i] * MUSIC_GAIN * MUSIC_TRIM;
   const x = hp(music * lvl);
   const y = lp(dline[di]);
   out[i] = music + y;

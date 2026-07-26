@@ -23,6 +23,23 @@ const frame = (ms = 16) => { Input.endFrame(); dom.frame(ms); Input.resolveTouch
 Input.init();
 Input.setContext('run');
 
+// iOS runs native touch/gesture recognisers alongside Pointer Events. Both
+// visible canvases must synchronously cancel those recognisers so a stationary
+// thumb cannot raise the text/image magnifier or callout over the game.
+for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel',
+  'gesturestart', 'gesturechange', 'gestureend', 'dblclick']) {
+  assert((dom.listeners[`canvas:${type}`] || []).length === 2,
+    `both canvases block native ${type}`);
+}
+let nativePrevented = 0;
+dom.fire('canvas:touchstart', { preventDefault() { nativePrevented++; } });
+assert(nativePrevented === 2, 'native touch cancellation calls preventDefault on both canvases');
+assert(dom.canvas.style.touchAction === 'none'
+  && dom.canvas.style.webkitTouchCallout === 'none'
+  && dom.canvas.style.webkitUserSelect === 'none'
+  && dom.canvas.draggable === false,
+  'the playable canvas carries direct iOS selection and drag opt-outs');
+
 const left = pointer(0, 1, 240);
 dom.fire('canvas:pointerdown', left);
 assert(Input.pressed('jump') && Input.held('jump'), 'left 70% of a mouse click jumps during a level');
@@ -54,6 +71,21 @@ frame();
 assert(Input.held('jump') && !Input.released('jump'), 'the tap keeps its hold after the finger lifts');
 frame(90);
 assert(Input.released('jump') && !Input.held('jump'), 'the replayed hold ends one tap-length later');
+
+// A very fast tap used to replay its literal few milliseconds after pointerup.
+// Variable jump then cut it almost immediately, producing a tiny accidental-
+// looking hop. It should remain the shortest jump, but survive long enough for
+// several gameplay frames.
+frame();
+const quickTouch = pointer(0, 30, 240, 'touch');
+dom.fire('canvas:pointerdown', quickTouch);
+dom.frame(8);
+dom.fire('canvas:pointerup', quickTouch);
+assert(Input.pressed('jump') && Input.held('jump'), 'an ultra-quick tap resolves as a jump');
+frame(80);
+assert(Input.held('jump') && !Input.released('jump'), 'an ultra-quick tap gets a useful minimum jump hold');
+frame(25);
+assert(Input.released('jump') && !Input.held('jump'), 'the minimum quick-tap hold still releases promptly');
 
 frame();
 const touchRight = pointer(0, 4, 400, 'touch');

@@ -43,6 +43,12 @@ const TAP_HOLD_MS = 50;
 const TAP_SLIP = 5;        // logical px of drift that still reads as a tap
 const TAP_STILL_MS = 60;
 const TAP_MAX_MS = 260;
+// A very quick lift still needs enough held frames to read as an intentional
+// short jump. Swipe arbitration delays the press until pointerup; replaying a
+// 5-20ms contact literally then lets variable-jump cut it almost immediately.
+// This floor applies only to lifted jump taps. A finger that remains down still
+// commits and releases in real time, and ability/duck gestures are unchanged.
+const TAP_MIN_JUMP_HOLD_MS = 100;
 // The longest a lifted tap's hold is replayed for. A finger that sat there for
 // a second and then lifted has already had its jump committed by the timer
 // above, so this only ever caps the odd slow tap that resolved late.
@@ -207,19 +213,22 @@ class InputSys {
       const t = this.touches.get(e.pointerId);
       if (t) {
         // A finger that lifts before its gesture resolved was a tap after all.
-        // It fires here — and its release is pushed out by exactly as long as
-        // the finger was actually down, so the hold the player performed is
-        // preserved, merely shifted later.
+        // It fires here — and its release is pushed out by the time the finger
+        // was actually down, so the hold the player performed is preserved,
+        // merely shifted later. A jump has a small floor: otherwise the swipe
+        // arbitration turns an ultra-quick tap into a barely visible hop.
         //
         // Without that, press and release land in the same frame and the jump
         // is cut on the frame it starts: hold-for-height reads "not held" on
-        // its first update and a tap produces a 1.5px hop. The finger's own
-        // down-time is the right length because it is the length the player
-        // chose; a flick stays a flick and a firm tap still buys air.
+        // its first update and a tap produces a 1.5px hop. Longer taps still
+        // preserve the player's chosen hold duration.
         if (t.pending && t.action) {
           t.pending = false;
           this.press(t.action);
-          this.holdUntil(t.action, Math.min(now - t.t0, TAP_MAX_HOLD_MS));
+          const heldMs = Math.min(now - t.t0, TAP_MAX_HOLD_MS);
+          this.holdUntil(t.action, t.action === 'jump'
+            ? Math.max(TAP_MIN_JUMP_HOLD_MS, heldMs)
+            : heldMs);
           this.touches.delete(e.pointerId);
           if (this.touches.size === 0) { this.pointer.down = false; this.release('pointer'); }
           return;
@@ -238,12 +247,33 @@ class InputSys {
     // the art). The CSS in template.html says the same thing declaratively;
     // these are the belt to its braces, since a long press that begins on the
     // canvas but drifts is arbitrated by the events, not the style.
-    const noSelect = (target) => {
+    const noNativeCanvasGestures = (target) => {
+      // Pointer Events drive the game, but iOS still runs its native Touch and
+      // Gesture recognisers in parallel. CSS alone does not reliably stop the
+      // text/image loupe after a long stationary press, so cancel those native
+      // recognisers synchronously on the touched canvas as well. These must be
+      // explicitly non-passive or Safari is allowed to ignore preventDefault.
+      // Restate the critical styles inline too: these canvases are created by
+      // the install gate at runtime, and this keeps the opt-out attached to the
+      // actual element even if shell selectors are reorganised later.
+      target.style.touchAction = 'none';
+      target.style.webkitTouchCallout = 'none';
+      target.style.webkitUserSelect = 'none';
+      target.style.userSelect = 'none';
+      target.draggable = false;
+      const prevent = (e) => e.preventDefault();
+      for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+        target.addEventListener(type, prevent, { passive: false });
+      }
+      for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+        target.addEventListener(type, prevent, { passive: false });
+      }
+      target.addEventListener('dblclick', prevent);
       target.addEventListener('contextmenu', (e) => e.preventDefault());
       target.addEventListener('selectstart', (e) => e.preventDefault());
       target.addEventListener('dragstart', (e) => e.preventDefault());
     };
-    noSelect(el);
+    noNativeCanvasGestures(el);
     // #chrome sits behind #game and only shows through in the letterbox/
     // pillarbox margin (run.js), so a tap only ever reaches it there. No
     // swipe gestures or tap-to-jump fallback here — just hit a button or not.
@@ -263,7 +293,7 @@ class InputSys {
       });
       chromeEl.addEventListener('pointerup', endPointer);
       chromeEl.addEventListener('pointercancel', endPointer);
-      noSelect(chromeEl);
+      noNativeCanvasGestures(chromeEl);
     }
     // Scroll wheel navigates lists in menu / hub / paused contexts.
     window.addEventListener('wheel', (e) => {

@@ -30,6 +30,15 @@ assert(!template.includes('<canvas id="game"') && !template.includes('fonts.goog
   'initial template contains no game canvas or font stylesheet request');
 assert(html.includes('aria-modal') && html.includes('portrait-overlay'),
   'built shell contains accessible install and portrait dialogs');
+assert(html.includes('id="boot-error-reload"')
+  && html.includes('RELOAD GAME')
+  && /#boot-error-reload\s*\{[^}]*position:\s*fixed/s.test(html),
+  'built fatal-error panel keeps a reload button at the bottom of the screen');
+assert(html.includes('touch-action: none !important')
+  && html.includes('-webkit-touch-callout: none !important')
+  && html.includes('-webkit-user-drag: none')
+  && html.includes('maximum-scale=1, user-scalable=no'),
+  'built shell disables native zoom, selection, callout and drag gestures over the canvases');
 assert(html.includes('class="mash-portrait-icon"')
   && html.includes('class="mash-portrait-wordmark"')
   && /min-height:\s*100svh/.test(html)

@@ -4,9 +4,12 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Input } = await import('../src/engine/input.js');
+const { Audio } = await import('../src/engine/audio.js');
 const { defaultSlot } = await import('../src/engine/save.js');
 const { HEROES } = await import('../src/data/heroes.js');
-const { ShopState } = await import('../src/game/hub/index.js');
+const { HUB_THEME } = await import('../src/data/cabinets.js');
+const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
+const { BenchState, ShopState } = await import('../src/game/hub/index.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -20,6 +23,8 @@ const save = { slot, persist() {} };
 let returned = 0;
 const shop = new ShopState({ save, flow: { toHub: () => { returned++; } } });
 shop.enter();
+assert(Audio.bank === COUNTER_DANCE_MIX_THEME,
+  'Gary counter activation starts the approved procedural Dance Mix');
 
 assert(shop.options().length === 15, 'the fullest shop contains fifteen rows');
 assert(shop.visibleRows === 7 && shop.fixedLastRow && shop.listStart === 0,
@@ -98,6 +103,15 @@ touchDown(touchBackY); touchUp();
 assert(touchShop.idx === 14 && returned === 1, 'the fixed touch BACK row selects with one tap');
 touchDown(touchBackY); touchUp();
 assert(returned === 2, 'a second tap on fixed BACK exits the shop');
+
+const benchAudio = new BenchState({ save, flow: { toHub() {} } });
+benchAudio.enter();
+assert(Audio.bank === COUNTER_DANCE_MIX_THEME,
+  'Dolores counter activation starts the approved procedural Dance Mix');
+benchAudio.exit();
+assert(Audio.bank === HUB_THEME, 'leaving Dolores restores the Food Court theme');
+shop.exit();
+assert(Audio.bank === HUB_THEME, 'leaving Gary restores the Food Court theme');
 
 Input.clearAll();
 console.log(failed ? 'SHOP MENU: FAILED' : 'SHOP MENU: PASSED');

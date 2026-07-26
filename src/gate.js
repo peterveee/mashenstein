@@ -168,8 +168,14 @@ function createGameDom() {
     <canvas id="game"></canvas>
     <div id="safe-area" aria-hidden="true"></div>
     <div id="font-loading" role="status" aria-live="polite">REPLACING BURNT-OUT LETTERS…</div>
-    <div id="boot-error" role="alert"></div>`;
+    <div id="boot-error" role="alert">
+      <pre id="boot-error-message"></pre>
+      <button id="boot-error-reload" type="button">RELOAD GAME</button>
+    </div>`;
   document.body.appendChild(shell);
+  document.getElementById('boot-error-reload')?.addEventListener('click', () => {
+    window.location.reload();
+  });
 
   const overlay = document.createElement('div');
   overlay.id = 'portrait-overlay';
@@ -274,7 +280,8 @@ async function loadGame() {
       el.style.display = 'block';
       const detail = e.error?.stack || e.message || e.error;
       exposeError(detail);
-      el.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + detail;
+      const message = document.getElementById('boot-error-message') || el;
+      message.textContent = 'MASHENSTEIN failed to boot (the arcade remains unplugged):\n\n' + detail;
     }
   });
 
@@ -290,7 +297,8 @@ async function loadGame() {
     const el = document.getElementById('boot-error');
     if (el) {
       el.style.display = 'block';
-      el.textContent = 'MASHENSTEIN failed to load (the arcade remains unplugged).';
+      const message = document.getElementById('boot-error-message') || el;
+      message.textContent = 'MASHENSTEIN failed to load (the arcade remains unplugged).';
       exposeError('The game script failed to load.');
     }
   };

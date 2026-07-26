@@ -142,6 +142,18 @@ export function setSkyFx(on, time) {
 
 // px = device pixels per logical pixel (what everything is pre-scaled by).
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
+let visualizerFullscreen = false;
+
+// The game normally preserves its 16:9 logical frame with letterbox margins.
+// Screensaver visuals are an exception: they are decorative and can stretch
+// into the entire viewport while the list is hidden. Input remains logical and
+// the mode is reverted as soon as the visualizer wakes or exits.
+export function setVisualizerFullscreen(on) {
+  const next = !!on;
+  if (next === visualizerFullscreen) return;
+  visualizerFullscreen = next;
+  if (typeof window !== 'undefined' && canvas) resize();
+}
 
 // Supersample factor for art baked into an offscreen canvas ahead of time —
 // scenery tiles, the volcano stack, cached toon sprites. Those canvases are
@@ -424,6 +436,7 @@ function freshCanvasAfterWebglFailure() {
 }
 
 export function initRenderer(platform = {}, persistence = {}) {
+  visualizerFullscreen = false;
   // The density seed limits initial high-DPI fill-rate; measured frame timing
   // decides where every device ultimately settles. phonePlatform picks the
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
@@ -510,14 +523,18 @@ function resize() {
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
-  const cssW = Math.round(W * scale), cssH = Math.round(H * scale);
+  const cssW = visualizerFullscreen ? Math.round(winW) : Math.round(W * scale);
+  const cssH = visualizerFullscreen ? Math.round(winH) : Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
   // Rebuild the density ladder for this viewport (native is the ceiling rung).
   // On a resize/rotation that moves native, preserve the current position by
   // VALUE — snap to the nearest new rung — rather than by index, which would
   // drift as the ladder's length changes.
   const prevLadder = ladder;
-  nativeDensity = cssW * dpr / W;
+  // Preserve the renderer's existing rounded-CSS density contract outside
+  // fullscreen mode; the visualizer presentation only changes the element's
+  // CSS box, not the logical backing-store budget.
+  nativeDensity = (visualizerFullscreen ? scale : Math.round(W * scale) / W) * dpr;
   ladder = buildLadder(nativeDensity);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
@@ -533,7 +550,8 @@ function resize() {
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
   canvas.style.imageRendering = 'auto';
-  const ox = Math.floor((winW - cssW) / 2), oy = Math.floor((winH - cssH) / 2);
+  const ox = visualizerFullscreen ? 0 : Math.floor((winW - cssW) / 2);
+  const oy = visualizerFullscreen ? 0 : Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
   // The world and overlay share one density: native on desktop, adaptive on

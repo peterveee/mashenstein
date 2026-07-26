@@ -15,7 +15,7 @@ import { MINIGAMES } from '../game/minigames/index.js';
 import { HEROES } from '../data/heroes.js';
 import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progress.js';
 import { AttractState } from '../game/attract.js';
-import { ResultsState, BriefingState, FieldGuideState, SoundTestState, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
+import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 import { proseMenu } from './prose.js';
 
@@ -414,6 +414,14 @@ export function rootMenu(dev) {
       { label: 'CAST ROLL', act: () => {
         dev.close();
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
+      } },
+      { label: 'VISUALISERS', act: () => {
+        dev.close();
+        setState(new SoundTestState({
+          onDone: () => dev.ctx.Flow.toHub(),
+          initialTrack: JUKEBOX.length - 1,
+          startVisualizer: true,
+        }));
       } },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },

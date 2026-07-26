@@ -21,7 +21,8 @@ export function reportFatalError(error) {
     const el = document.getElementById('boot-error');
     if (el) {
       el.style.display = 'block';
-      el.textContent = `MASHENSTEIN stopped running (the arcade came unplugged):\n\n${detail}`;
+      const message = document.getElementById('boot-error-message') || el;
+      message.textContent = `MASHENSTEIN stopped running (the arcade came unplugged):\n\n${detail}`;
     }
   }
   if (typeof console !== 'undefined' && console.error) console.error(error);

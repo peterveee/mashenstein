@@ -15,6 +15,7 @@ import {
   MENU_PANEL_CENTRE, MENU_PANEL_W,
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
+import { COUNTER_DANCE_MIX_THEME } from '../../data/shop-themes.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
@@ -3135,7 +3136,8 @@ export class StageSelectState {
 
 export class BenchState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 82; this.listBottom = 202; this.rowH = MENU_ROW_MAX; this.notice = ''; this.soldOutKey = ''; this.soldOutNotice = ''; this.t = 0; this.annoyedT = 0; this.madStyle = 0; this.enterT = 0; }
-  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
+  enter() { this.idx = 0; this.t = 0; this.annoyedT = 0; this.enterT = 0; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
+  exit() { Audio.setBank(HUB_THEME); }
   options() {
     const slot = this.save.slot;
     const purchaseCount = BENCH_UPGRADES.reduce((total, u) => {
@@ -3321,7 +3323,8 @@ export class BenchState {
 
 export class ShopState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 58; this.rowH = MENU_ROW_MAX; this.visibleRows = 7; this.fixedLastRow = true; this.listStart = 0; }
-  enter() { this.idx = 0; this.listStart = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Input.setMenuButtons(); }
+  enter() { this.idx = 0; this.listStart = 0; this.line = PAWN_LINES[Math.floor(Math.random() * PAWN_LINES.length)]; fitRows(this, this.options().length); Audio.setBank(COUNTER_DANCE_MIX_THEME); Input.setMenuButtons(); }
+  exit() { Audio.setBank(HUB_THEME); }
   options() {
     const slot = this.save.slot;
     const opts = MODS.filter((m) => m.source === 'shop' || slot.mods.found.includes(m.id)).map((m) => {

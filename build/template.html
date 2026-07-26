@@ -37,13 +37,38 @@
      text (install steps, the copyable error dump); everything a finger touches
      while playing must stay opted out. */
   #game, #chrome, #game-shell, #safe-area, #font-loading {
-    touch-action: none; -webkit-user-select: none; user-select: none;
-    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    touch-action: none !important;
+    -webkit-user-select: none !important; user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-drag: none; user-drag: none;
   }
   #game { position: fixed; image-rendering: auto; }
   #chrome { position: fixed; left: 0; top: 0; }
-  #boot-error { position: absolute; inset: 0; color: #e0e0e8; font: 14px monospace;
-                padding: 2em; display: none; white-space: pre-wrap; }
+  #boot-error {
+    position: fixed; inset: 0; z-index: 9999; box-sizing: border-box;
+    display: none; overflow: hidden; padding: 2em;
+    color: #e0e0e8; background: #0b0b14; font: 14px/1.35 monospace;
+  }
+  #boot-error-message {
+    box-sizing: border-box; width: 100%; height: 100%; overflow: auto;
+    margin: 0; padding: 0 0 calc(4.5rem + env(safe-area-inset-bottom));
+    color: inherit; font: inherit; white-space: pre-wrap;
+    user-select: text; -webkit-user-select: text; -webkit-overflow-scrolling: touch;
+  }
+  #boot-error-reload {
+    position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
+    min-width: min(18rem, calc(100vw - 36px)); min-height: 48px;
+    transform: translateX(-50%); padding: 12px 24px; border: 2px solid #71f5df;
+    border-radius: 8px; color: #071411; background: #48e0c8;
+    box-shadow: 0 6px 24px rgba(0,0,0,.55);
+    font: 800 .9rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .08em; cursor: pointer; touch-action: manipulation;
+  }
+  #boot-error-reload:focus-visible {
+    outline: 3px solid #ffcf33; outline-offset: 3px;
+  }
+  #boot-error-reload:active { transform: translateX(-50%) translateY(1px); }
   #font-loading { position: fixed; inset: 0; display: flex; align-items: center;
                   justify-content: center; color: #5fd6c8; font: 700 .78rem/1 ui-monospace,
                   SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }

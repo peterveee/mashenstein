@@ -590,3 +590,16 @@ export function drawRoundButton(ctx, b, opts = {}) {
     drawTextCentered(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
   }
 }
+
+// B33P's projectile is shared by the in-game and title-screen renderers.
+// Keep its tiny pixel silhouette in one place so the title tap attack reads
+// like the weapon players see during a run.
+export function drawB33pPellet(ctx, cx, cy) {
+  const x = Math.round(cx), y = Math.round(cy);
+  ctx.fillStyle = '#f6d33c';
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff0a0';
+  ctx.fillRect(x - 1, y - 2, 2, 1);
+}

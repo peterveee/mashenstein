@@ -24,18 +24,21 @@ class El {
 
 const body = new El('body');
 const head = new El('head');
+const reloadButton = new El('button');
+reloadButton.addEventListener = (type, fn) => { reloadButton[type] = fn; };
 globalThis.document = {
   readyState: 'complete',
   baseURI: 'https://example.test/mashenstein/',
   body,
   head,
   createElement: (tag) => new El(tag),
-  getElementById: () => null,
+  getElementById: (id) => id === 'boot-error-reload' ? reloadButton : null,
 };
 globalThis.window = {
   __MASH_BUILT_AT__: '2026-07-23T04:05:06.000Z',
   matchMedia: () => ({ matches: false }),
   addEventListener() {},
+  location: { reloads: 0, reload() { this.reloads++; } },
 };
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
@@ -51,6 +54,11 @@ await import('../src/gate.js');
 assert(body.children.length === 4, 'allowed platform creates shell, overlays and script');
 assert(body.children[0].id === 'game-shell' && body.children[0].innerHTML.includes('<canvas id="game">'),
   'allowed platform creates game canvases');
+assert(body.children[0].innerHTML.includes('id="boot-error-reload"')
+  && body.children[0].innerHTML.includes('RELOAD GAME'),
+  'fatal-error panel includes a reload button');
+reloadButton.click();
+assert(window.location.reloads === 1, 'fatal-error reload button reloads the page');
 assert(body.children[1].id === 'portrait-overlay'
   && body.children[1].attrs.role === 'dialog'
   && body.children[1].attrs['aria-modal'] === 'true'
