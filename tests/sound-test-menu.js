@@ -108,6 +108,12 @@ assert(preview.playing === JUKEBOX.length - 1 && preview.visualizer
   'dev visualiser preview starts the Monster Mix with a random preset');
 preview.exit();
 
+const forced = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1, startVisualizer: true, startVisualizerIndex: 13 });
+forced.enter();
+assert(forced.visualizerIndex === 13 && forced.visualizer?.name === 'TOASTER SKY PARADE',
+  'dev visualiser submenu can launch a specific preset');
+forced.exit();
+
 Input.clearAll();
 console.log(failed ? 'SOUND TEST MENU: FAILED' : 'SOUND TEST MENU: PASSED');
 process.exit(failed ? 1 : 0);

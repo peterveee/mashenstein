@@ -59,8 +59,8 @@ fixedBackShop.listStart = 5;
 fixedBackShop.idx = 5;
 Input.pointer = { x: 60, y: fixedBackShop.listY + fixedBackShop.rowH * 7.5, down: false };
 Input.press('pointer'); fixedBackShop.update(1 / 60); Input.release('pointer'); Input.endFrame();
-assert(fixedBackShop.idx === 14 && fixedBackShop.listStart === 5,
-  'the fixed BACK row is selectable without changing the item scroll position');
+assert(returned === 2 && fixedBackShop.idx === 5 && fixedBackShop.listStart === 5,
+  'one mouse click on fixed BACK returns without changing the item scroll position');
 
 // Touch waits until release to distinguish a tap from a swipe. Pulling upward
 // reveals later rows; pulling downward returns toward the start.
@@ -84,7 +84,7 @@ touchDown(touchY);
 touchMove(touchY - touchShop.rowH * 4);
 touchUp();
 assert(touchShop.listStart === 4, 'an upward touch swipe reveals four later rows');
-assert(returned === 1, 'a swipe never confirms the row under the finger');
+assert(returned === 2, 'a swipe never confirms the row under the finger');
 
 touchDown(touchY);
 touchMove(touchY + touchShop.rowH * 2);
@@ -100,9 +100,7 @@ assert(touchShop.idx === touchShop.listStart + 3, 'a stationary touch still sele
 
 const touchBackY = touchShop.listY + touchShop.rowH * 7.5;
 touchDown(touchBackY); touchUp();
-assert(touchShop.idx === 14 && returned === 1, 'the fixed touch BACK row selects with one tap');
-touchDown(touchBackY); touchUp();
-assert(returned === 2, 'a second tap on fixed BACK exits the shop');
+assert(returned === 3, 'one touch on fixed BACK exits the shop');
 
 const benchAudio = new BenchState({ save, flow: { toHub() {} } });
 benchAudio.enter();

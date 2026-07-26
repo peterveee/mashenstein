@@ -1,14 +1,14 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, setChromeOverlay,
+  noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualizerFrame, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateNoCameo, updateState, drawState, currentState, setTransitionHero } from './engine/states.js';
+import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -189,10 +189,14 @@ const Flow = {
     setTransitionHero(Flow.heroId());
   },
 
-  toTitle(opts = {}) { setState(new TitleState({
+  toTitle(opts = {}) {
+    const go = opts.fade ? setStateFade : setState;
+    go(new TitleState({
     save,
     attractDelay: opts.attractDelay,
     attractLabel: nextAttract() === 'cast' ? 'CAST ROLL' : 'DEMO',
+    openExtras: opts.openExtras,
+    extrasFocus: opts.extrasFocus,
     onAttract: () => Flow.startAttract(),
     onSlotChosen: (i, isNew) => {
       Flow.hubPosition = null;
@@ -207,15 +211,18 @@ const Flow = {
         Flow.toHub();
       }
     },
-    onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } })),
-    onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toTitle() })),
-    onTutorial: () => Flow.toTutorial(),
-    onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toTitle() })),
-    onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toTitle() })),
+    onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toExtras('settings'); } })),
+    onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toExtras('howto') })),
+    onTutorial: () => Flow.toTutorial(true),
+    onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
+    onSoundTest: () => setState(new SoundTestState({ onDone: () => Flow.toExtras('soundtest') })),
     // A replay, not the real thing: this onDone only walks back to the title.
     // The new-file path above is the one that sets sawIntro and persists.
-    onIntro: () => setState(new IntroState({ onDone: () => Flow.toTitle() })),
-  })); },
+    onIntro: () => setState(new IntroState({ onDone: () => Flow.toExtras('intro') })),
+    }));
+  },
+
+  toExtras(extrasFocus = null) { Flow.toTitle({ openExtras: true, extrasFocus }); },
 
   // cameo=false for the results hand-off: the run already ended on a cast
   // celebration, so neither shutter on the way out needs a hero in it.
@@ -342,8 +349,8 @@ const Flow = {
   openArcade() { setState(new ArcadeState({ save, flow: Flow })); },
   openTrophyRoom() { setState(new TrophyRoomState({ save, flow: Flow })); },
 
-  toTutorial() {
-    setState(new TutorialState({ save, onDone: () => Flow.toTitle() }));
+  toTutorial(fromExtras = false) {
+    setState(new TutorialState({ save, onDone: () => (fromExtras ? Flow.toExtras('tutorial') : Flow.toTitle()) }));
   },
 
   playMinigame(game) {
@@ -496,9 +503,18 @@ function boot() {
     update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
     draw: () => {
       beginRenderFrame();
+      let drawFpsReadout = null;
+      const menuState = currentState();
+      const visualizerActive = menuState instanceof SoundTestState
+        && menuState.visualState !== 'list';
+      // The visualizer introduces itself with the track and preset names for
+      // five seconds. Do not compete with that lower-third; the diagnostics
+      // take its place only once those titles have faded cleanly away.
+      const visualizerTitlesVisible = visualizerActive && menuState.labelT < 6;
       // Touch devices with a letterbox margin get the readout out on #chrome,
       // in the dead black beside/above the game, rather than over the art.
-      const showChromeFps = save.settings.showFps && Input.isTouchDevice() && chrome.mode !== 'none';
+      const showChromeFps = save.settings.showFps && !visualizerActive
+        && Input.isTouchDevice() && chrome.mode !== 'none';
       if (save.settings.showFps) {
         const fps = frameRate() || '--';
         // Render density rides along with the FPS: on a device you can only
@@ -569,16 +585,26 @@ function boot() {
               drawText(ctx, lines[i], pad, top + i * lineH, ink, s, 'ui');
             }
           });
-        } else {
+        } else if (!visualizerTitlesVisible) {
           const label = `FPS ${fps} ${dens}`;
-          // Tiny top-right readout on the game canvas overlay — desktop, and
-          // touch devices at an exact 16:9 where there is no margin to use.
-          pushOverlayDraw((ctx) => {
-            const tw = textWidth(label, 0.65, 'bold');
+          // Keep the diagnostic above the visualizer surface. Once its titles
+          // are gone, use their bottom-centre berth in both orientations.
+          drawFpsReadout = (ctx) => {
+            const availableW = visualizerFrame.right - visualizerFrame.left - 18;
+            const scale = visualizerActive
+              ? Math.max(0.42, Math.min(0.65, availableW / textWidth(label, 1, 'bold')))
+              : 0.65;
+            const tw = textWidth(label, scale, 'bold');
+            const x = visualizerActive
+              ? (visualizerFrame.left + visualizerFrame.right - tw) * 0.5
+              : W - 5 - tw;
+            const y = visualizerActive
+              ? visualizerFrame.bottom - 14
+              : 3;
             ctx.fillStyle = 'rgba(5,6,12,0.68)';
-            ctx.fillRect(W - tw - 10, 1, tw + 10, 11);
-            drawText(ctx, label, W - 5 - tw, 3, '#f4f1fa', 0.65, 'bold');
-          });
+            ctx.fillRect(x - 5, y - scale * 3, tw + 10, scale * 16);
+            drawText(ctx, label, x, y, '#f4f1fa', scale, 'bold');
+          };
         }
       }
       if (!showChromeFps && Input.isTouchDevice() && chrome.mode !== 'none') {
@@ -591,6 +617,7 @@ function boot() {
       drawState(bctx);
       const drawMs = profileOn ? performance.now() - drawStartedAt : 0;
       Dev.draw(bctx);
+      if (drawFpsReadout) pushOverlayDraw(drawFpsReadout);
       if (benchRequested) pushOverlayDraw(drawBench);
       if (titleProfileReportVisible()) pushOverlayDraw(drawTitleProfile);
       if (gameplayProfileWaiting()) pushOverlayDraw(drawGameplayProfileWaiting);
@@ -631,7 +658,11 @@ function boot() {
     // The jukebox is a self-contained listening/visualizer surface and is
     // intentionally usable in portrait. Keep the landscape gate everywhere
     // else, including the title and gameplay states.
-    allowPortrait: () => currentState()?.constructor?.name === 'SoundTestState',
+    allowPortrait: () => {
+      const state = currentState();
+      return state instanceof SoundTestState || state?.constructor?.name === 'SoundTestState';
+    },
+    onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
   });
   window.__mash_booted = true;
 

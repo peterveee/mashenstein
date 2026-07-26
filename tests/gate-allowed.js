@@ -65,6 +65,7 @@ assert(body.children[1].id === 'portrait-overlay'
   && body.children[1].attrs['aria-live'] === 'assertive',
   'allowed platform creates accessible portrait dialog');
 assert(body.children[1].innerHTML.includes('class="mash-portrait-icon"')
+  && body.children[1].innerHTML.includes('id="portrait-lorenzo-icon"')
   && body.children[1].innerHTML.includes('class="mash-portrait-wordmark"')
   && !body.children[1].innerHTML.includes('data-dialog-heading')
   && !body.children[1].innerHTML.includes('tabindex="-1"'),

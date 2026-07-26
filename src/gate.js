@@ -190,7 +190,7 @@ function createGameDom() {
     <div class="mash-portrait-card">
       <div class="mash-portrait-brand">
         <div class="mash-portrait-wordmark" aria-hidden="true">MASHENSTEIN</div>
-        <img class="mash-portrait-icon" src="icon-180.png" alt="">
+        <img id="portrait-lorenzo-icon" class="mash-portrait-icon" src="icon-180.png" alt="">
       </div>
       <div class="mash-portrait-message">
         <svg class="mash-phone-turn" viewBox="0 0 190 145" aria-hidden="true">

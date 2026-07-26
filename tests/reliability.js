@@ -359,9 +359,8 @@ for (let i = 0; i < 2; i++) {
 assert(fpsTitleSave.settings.showFps === false,
   'double-tapping the title marquee toggles the FPS display off');
 
-// Landscape iPad has no portrait pause card to host the hidden tools. Its
-// title marquee is the five-tap anchor, while the phone's two-tap FPS shortcut
-// remains unchanged.
+// Landscape iPad has no portrait pause card to host the hidden tools, so its
+// title marquee remains the five-tap diagnostics anchor.
 const ipadDiagTitle = new TitleState({
   save: fpsTitleSave,
   onSlotChosen() {}, onSettings() {}, onHowTo() {},
@@ -424,6 +423,21 @@ tapTitle('down'); tapTitle('confirm');
 assert(title.erase?.step === 'final' && eraseSave.data.slots[1], 'first erase confirmation does not delete the shift');
 tapTitle('down'); tapTitle('confirm');
 assert(!eraseSave.data.slots[1] && !title.erase, 'second erase confirmation deletes only the selected shift');
+
+// Staff Only is the parent of its utilities. Returning from one reopens that
+// list on the route the player just used; erasing keeps the same parent modal
+// in place when Back cancels it.
+const returnToExtras = new TitleState({
+  save: eraseSave, openExtras: true, extrasFocus: 'settings',
+  onSlotChosen() {}, onSettings() {}, onHowTo() {}, onGuide() {}, onSoundTest() {},
+});
+returnToExtras.enter();
+assert(returnToExtras.extrasChoices()[returnToExtras.extras.idx].id === 'settings',
+  'a Staff Only utility returns to its selected Staff Only row');
+returnToExtras.beginErase();
+Input.press('back'); returnToExtras.update(0); Input.release('back'); Input.endFrame();
+assert(!returnToExtras.erase && returnToExtras.extras,
+  'Back from erase returns to Staff Only instead of the title');
 Input.clearAll();
 
 const hubFlow = { hubPosition: null };

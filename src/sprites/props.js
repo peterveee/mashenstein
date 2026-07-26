@@ -699,7 +699,7 @@ export const PROP_PAINTERS = {
     plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
     plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
-  appliance(ctx, w, h, frame = 0) {
+  appliance(ctx, w, h, frame = 0, finish = null) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
       ctx.beginPath(); pathFn(ctx);
@@ -738,10 +738,15 @@ export const PROP_PAINTERS = {
     const lift = Math.cos(phase);
     const sweep = Math.sin(phase);
     // Toast runs on its own four-second cycle, offset from the quick wing flap.
+    const toastBand = Math.floor((frame % 96) / 12);
     const toastPhase = (frame % 96) * Math.PI / 48 + Math.PI / 6;
     // Spend most of the slow cycle raised, dip fully into the slot only
     // briefly, then return. Frame zero starts visibly raised in static views.
-    const toastOpen = Math.pow(Math.max(0, 0.5 + Math.cos(toastPhase) * 0.5), 0.35);
+    // Band three is reserved for genuinely toastless appliances.  Previously
+    // it merely landed near the bottom of the animation curve, which still
+    // left a small slice visible on most wing frames.
+    const toastOpen = toastBand === 3 ? 0
+      : Math.pow(Math.max(0, 0.5 + Math.cos(toastPhase) * 0.5), 0.35);
     const toastRise = h * 0.48 * toastOpen;
     const toastSway = w * 0.002 * Math.sin(toastPhase);
 
@@ -767,7 +772,7 @@ export const PROP_PAINTERS = {
 
     // Flat reference construction: one narrow side plane, one broad face and
     // one sloped cap. Avoid a separate round centre panel.
-    fineShape('#a97816', (c) => {
+    fineShape(finish?.back || '#a97816', (c) => {
       c.moveTo(w * 0.16, h * 0.36);
       c.quadraticCurveTo(w * 0.17, h * 0.35, w * 0.2, h * 0.36);
       c.lineTo(w * 0.31, h * 0.39);
@@ -777,7 +782,7 @@ export const PROP_PAINTERS = {
       c.lineTo(w * 0.16, h * 0.36);
       c.closePath();
     });
-    fineShape('#f4c934', (c) => {
+    fineShape(finish?.side || '#f4c934', (c) => {
       c.moveTo(w * 0.31, h * 0.39);
       c.lineTo(w * 0.74, h * 0.35);
       c.quadraticCurveTo(w * 0.8, h * 0.34, w * 0.8, h * 0.41);
@@ -788,7 +793,7 @@ export const PROP_PAINTERS = {
       c.lineTo(w * 0.31, h * 0.39);
       c.closePath();
     });
-    fineShape('#ffe16a', (c) => {
+    fineShape(finish?.top || '#ffe16a', (c) => {
       c.moveTo(w * 0.17, h * 0.36);
       c.lineTo(w * 0.31, h * 0.28);
       c.quadraticCurveTo(w * 0.32, h * 0.27, w * 0.35, h * 0.27);
@@ -1256,6 +1261,22 @@ export function sparkSprite(color) {
 export function drawProp(ctx, name, x, y, w, h, frame = 0) {
   const spr = propSprite(name, w, h, frame);
   if (!spr) return false;
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(spr, x, y, w, h);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
+}
+
+// A rare visualizer-only appliance finish still uses the original vector
+// painter, so only its authored casing planes change colour—not the toast,
+// wings, outlines, or transparent bounds as with a post-process tint.
+export function drawApplianceFinish(ctx, x, y, w, h, frame, finish) {
+  const f = frame % propFrames('appliance');
+  const detail = propDetailScale('appliance');
+  const rw = w * detail, rh = h * detail;
+  const spr = rasterize(`appliance|${w}x${h}|${detail}x|${f}|finish:${finish.id}`,
+    rw, rh, (paintCtx) => PROP_PAINTERS.appliance(paintCtx, rw, rh, f, finish));
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(spr, x, y, w, h);

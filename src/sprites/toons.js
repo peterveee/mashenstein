@@ -1099,7 +1099,9 @@ function expressionFor(id, pose = {}) {
   const blinkGap = pose.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
   const blinkPhase = (t + seed) % blinkGap;
   const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate' || pose.stomp || pose.roll || pose.float;
-  const joy = pose.kind === 'celebrate';
+  // Face-only moods let a running cameo react without switching its body into
+  // a celebration animation. Production poses do not set these flags.
+  const joy = pose.kind === 'celebrate' || !!pose.faceJoy;
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
@@ -1157,7 +1159,7 @@ function expressionFor(id, pose = {}) {
     // BROW_L_SCALE is the one that needs it.
     id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
-    surprise: pose.kind === 'jump' && !pose.stomp,
+    surprise: (pose.kind === 'jump' && !pose.stomp) || !!pose.faceSurprised,
     joy,
     cheer,
     // The narrowest window in the routine: a hit of the BIG move, held. The

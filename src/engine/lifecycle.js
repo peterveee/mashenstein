@@ -45,6 +45,11 @@ function portraitNow(win) {
   return win.innerHeight > win.innerWidth;
 }
 
+const UPDATE_CHECK_TIMEOUT_MS = 10000;
+const UPDATE_CONFIRM_TIMEOUT_MS = 10000;
+const UPDATE_RELOAD_TIMEOUT_MS = 5000;
+const BUILD_END_MARKER = '<!-- MASHENSTEIN_BUILD_COMPLETE -->';
+
 export class LifecycleController {
   constructor({
     platform,
@@ -54,6 +59,7 @@ export class LifecycleController {
     doc = document,
     win = window,
     allowPortrait = () => false,
+    onPortraitJukebox = () => {},
   }) {
     this.platform = platform;
     this.loop = loop;
@@ -62,6 +68,7 @@ export class LifecycleController {
     this.doc = doc;
     this.win = win;
     this.allowPortrait = allowPortrait;
+    this.onPortraitJukebox = onPortraitJukebox;
     this.pageHidden = false;
     this.overlay = doc.getElementById('portrait-overlay');
     this.landscapeDiag = doc.getElementById('landscape-diag');
@@ -74,6 +81,11 @@ export class LifecycleController {
     this.copyErrorStatus = doc.getElementById('copy-error-status');
     this.reloadButton = doc.getElementById('portrait-reload');
     this.reloadStatus = doc.getElementById('portrait-reload-status');
+    this.lorenzoIcon = doc.getElementById('portrait-lorenzo-icon');
+    this.lorenzoTapCount = 0;
+    this.lorenzoFirstTapAt = 0;
+    this.lorenzoIgnoreClickUntil = 0;
+    this.portraitJukeboxOpening = false;
     this.restoreFocus = null;
     this.wasOverlayVisible = false;
     this.portraitQuery = win.matchMedia ? win.matchMedia('(orientation: portrait)') : null;
@@ -87,6 +99,32 @@ export class LifecycleController {
     this.onReload = () => { this.confirmReload(); };
     this.onDiagOpen = () => this.openLandscapeDiag();
     this.onDiagClose = () => this.closeLandscapeDiag();
+    this.onLorenzoTap = () => {
+      if (!this.overlay || this.overlay.hidden) return;
+      const now = this.win.performance ? this.win.performance.now() : 0;
+      if (now < this.lorenzoIgnoreClickUntil) {
+        this.lorenzoIgnoreClickUntil = 0;
+        return;
+      }
+      if (!this.lorenzoTapCount || now - this.lorenzoFirstTapAt > 3000) {
+        this.lorenzoTapCount = 0;
+        this.lorenzoFirstTapAt = now;
+      }
+      this.lorenzoTapCount++;
+      if (this.lorenzoTapCount < 5) return;
+      this.lorenzoTapCount = 0;
+      // setState() transitions on the game loop, which is normally paused
+      // behind this overlay. Admit portrait for the hand-off so that first
+      // plain fade can actually run; SoundTestState then owns the allowance.
+      this.portraitJukeboxOpening = true;
+      this.onPortraitJukebox();
+      this.apply();
+    };
+    this.onLorenzoPointerUp = () => {
+      const now = this.win.performance ? this.win.performance.now() : 0;
+      this.onLorenzoTap();
+      this.lorenzoIgnoreClickUntil = now + 500;
+    };
 
     doc.addEventListener('visibilitychange', this.onVisibility);
     win.addEventListener('pagehide', this.onPageHide);
@@ -103,6 +141,8 @@ export class LifecycleController {
     this.copyErrorButton && this.copyErrorButton.addEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.addEventListener('click', this.onReload);
     this.landscapeDiagClose && this.landscapeDiagClose.addEventListener('click', this.onDiagClose);
+    this.lorenzoIcon && this.lorenzoIcon.addEventListener('click', this.onLorenzoTap);
+    this.lorenzoIcon && this.lorenzoIcon.addEventListener('pointerup', this.onLorenzoPointerUp);
     this.installDiagTools();
     this.syncErrorReport();
     this.apply();
@@ -231,14 +271,15 @@ export class LifecycleController {
   }
 
   currentPolicy() {
-    const portraitAllowed = typeof this.allowPortrait === 'function'
+    const stateAllowsPortrait = typeof this.allowPortrait === 'function'
       ? this.allowPortrait()
       : !!this.allowPortrait;
+    if (stateAllowsPortrait) this.portraitJukeboxOpening = false;
     return lifecyclePolicy({
       ...this.platform,
       visible: !this.doc.hidden && !this.pageHidden,
       portrait: portraitNow(this.win),
-      allowPortrait: portraitAllowed,
+      allowPortrait: stateAllowsPortrait || this.portraitJukeboxOpening,
     });
   }
 
@@ -302,7 +343,7 @@ export class LifecycleController {
       try {
         const result = this.checkForUpdate();
         const timeout = new Promise((resolve) => {
-          timeoutId = this.win.setTimeout(() => resolve(null), 1500);
+          timeoutId = this.win.setTimeout(() => resolve(null), UPDATE_CHECK_TIMEOUT_MS);
         });
         available = await Promise.race([result, timeout]);
       } catch (e) {
@@ -328,7 +369,7 @@ export class LifecycleController {
         this.reloadArmed = false;
         this.reloadButton.textContent = this.reloadLabel || 'CHECK FOR UPDATE';
         this.showReloadStatus('UPDATE CHECK EXPIRED.');
-      }, 4000);
+      }, UPDATE_CONFIRM_TIMEOUT_MS);
       return;
     }
     this.win.clearTimeout(this.reloadTimer);
@@ -344,10 +385,67 @@ export class LifecycleController {
   }
 
   async checkForUpdate() {
+    // The newest worker may already have activated and claimed this client
+    // while the old page remains in memory. In that state registration.update()
+    // correctly reports no newer worker, but the player still needs a reload.
+    // Compare the loaded shell's immutable build stamp with a network-fresh
+    // copy before consulting worker state.
+    let pageIsCurrent = false;
+    const loadedBuild = this.win.__MASH_BUILT_AT__;
+    if (loadedBuild && this.win.fetch && this.win.location?.href) {
+      try {
+        const response = await this.win.fetch(this.win.location.href, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        if (response?.ok) {
+          const html = await response.text();
+          const match = html.match(/<!--\s*Built:\s*([^>]+?)\s*-->/i);
+          if (match) {
+            const liveBuild = match[1].trim();
+            const pageComplete = html.trimEnd().endsWith(BUILD_END_MARKER);
+            if (liveBuild !== loadedBuild) {
+              // A timestamp appears near the start of the document. Do not
+              // offer a reload until the explicit final bytes prove the new
+              // shell finished deploying instead of arriving truncated.
+              return pageComplete ? true : null;
+            }
+            pageIsCurrent = pageComplete;
+          }
+        }
+      } catch (e) { /* worker update below distinguishes offline from current */ }
+    }
+
     const nav = this.win.navigator;
-    if (!nav?.serviceWorker?.getRegistrations) return null;
-    const registrations = await nav.serviceWorker.getRegistrations();
-    if (!registrations?.length) return false;
+    const serviceWorker = nav?.serviceWorker;
+    if (!serviceWorker) return pageIsCurrent ? false : null;
+
+    // getRegistration() returns the most specific registration controlling
+    // this document. getRegistrations() can include workers for sibling
+    // GitHub Pages projects on the same origin, so treating any of those as a
+    // MASHENSTEIN update produces both false positives and needless requests.
+    let registration = null;
+    if (serviceWorker.getRegistration) {
+      registration = await serviceWorker.getRegistration();
+    } else if (serviceWorker.getRegistrations) {
+      const registrations = await serviceWorker.getRegistrations();
+      const href = this.win.location?.href;
+      registration = href
+        ? registrations
+          .filter((candidate) => candidate.scope && href.startsWith(candidate.scope))
+          .sort((a, b) => b.scope.length - a.scope.length)[0]
+        : registrations?.[0];
+    }
+
+    // initUpdates() registers asynchronously during boot. A quick tap on the
+    // portrait screen used to beat that promise and incorrectly report that no
+    // update existed. Registering the same URL is idempotent and joins the
+    // in-flight registration instead.
+    if (!registration && serviceWorker.register) {
+      registration = await serviceWorker.register('./sw.js', { scope: './' });
+    }
+    if (!registration) return pageIsCurrent ? false : null;
+
     const inspect = async (registration) => {
       let found = !!(registration.waiting || registration.installing);
       let failed = false;
@@ -356,17 +454,17 @@ export class LifecycleController {
       try {
         if (registration.update) await registration.update();
       } catch (e) {
-        // An individual registration can fail while another one still reports
-        // a usable update. Keep checking the rest rather than rejecting all.
+        // A network or browser-level update failure is different from a
+        // completed check that found the current worker.
         failed = true;
       } finally {
         if (registration.removeEventListener) registration.removeEventListener('updatefound', onUpdateFound);
       }
       return { found: found || !!(registration.waiting || registration.installing), failed };
     };
-    const results = await Promise.all(registrations.map(inspect));
-    if (results.some((result) => result.found)) return true;
-    return results.some((result) => result.failed) ? null : false;
+    const result = await inspect(registration);
+    if (result.found) return true;
+    return result.failed && !pageIsCurrent ? null : false;
   }
 
   // "Force" has to mean more than location.reload() here. An installed PWA is
@@ -379,15 +477,28 @@ export class LifecycleController {
     const jobs = [];
     try {
       if (this.win.caches && this.win.caches.keys) {
-        jobs.push(this.win.caches.keys().then((keys) => Promise.all(keys.map((k) => this.win.caches.delete(k)))));
+        jobs.push(this.win.caches.keys().then((keys) => Promise.all(keys
+          .filter((key) => key.startsWith('mashenstein-'))
+          .map((key) => this.win.caches.delete(key)))));
       }
-      if (nav && nav.serviceWorker && nav.serviceWorker.getRegistrations) {
-        jobs.push(nav.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((r) => r.update().catch(() => {})))));
+      if (nav?.serviceWorker?.getRegistration) {
+        jobs.push(nav.serviceWorker.getRegistration()
+          .then((registration) => registration?.update?.().catch(() => {})));
+      } else if (nav?.serviceWorker?.getRegistrations) {
+        const href = this.win.location?.href;
+        jobs.push(nav.serviceWorker.getRegistrations().then((registrations) => {
+          const registration = href
+            ? registrations
+              .filter((candidate) => candidate.scope && href.startsWith(candidate.scope))
+              .sort((a, b) => b.scope.length - a.scope.length)[0]
+            : registrations?.[0];
+          return registration?.update?.().catch(() => {});
+        }));
       }
     } catch (e) { /* storage unavailable: fall through to the plain reload */ }
     if (!jobs.length) { go(); return; }
     // Never let a hanging cache API strand the player on this screen.
-    const timeout = new Promise((resolve) => this.win.setTimeout(resolve, 1500));
+    const timeout = new Promise((resolve) => this.win.setTimeout(resolve, UPDATE_RELOAD_TIMEOUT_MS));
     Promise.race([Promise.all(jobs).catch(() => {}), timeout]).then(go, go);
   }
 
@@ -420,6 +531,8 @@ export class LifecycleController {
     }
     this.copyErrorButton && this.copyErrorButton.removeEventListener('click', this.onCopyError);
     this.reloadButton && this.reloadButton.removeEventListener('click', this.onReload);
+    this.lorenzoIcon && this.lorenzoIcon.removeEventListener('click', this.onLorenzoTap);
+    this.lorenzoIcon && this.lorenzoIcon.removeEventListener('pointerup', this.onLorenzoPointerUp);
     this.win.clearTimeout(this.reloadTimer);
     this.buildStamp && this.onStampTap && this.buildStamp.removeEventListener('click', this.onStampTap);
     (this.diagButtons || []).forEach(([el, fn]) => el && el.removeEventListener('click', fn));

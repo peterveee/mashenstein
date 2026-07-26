@@ -2861,7 +2861,7 @@ function listMenu(state, opts) {
   if (Input.pressed('pointer')) {
     const i = listIndexAt(state, opts.length, Input.pointer.y);
     if (i !== null) {
-      if (state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
+      if (opts[i].back || opts[i].kind === 'back' || state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
       state.idx = i; Audio.sfx('ui');
     }
   }
@@ -2903,7 +2903,7 @@ function touchListMenu(state, opts) {
   if (gesture.moved) return null;
   const i = indexAtFinger();
   if (i === null) return null;
-  if (state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
+  if (opts[i].back || opts[i].kind === 'back' || state.idx === i) { Audio.sfx('uiConfirm'); return opts[i]; }
   state.idx = i; Audio.sfx('ui');
   return null;
 }

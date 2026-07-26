@@ -40,6 +40,7 @@ assert(html.includes('touch-action: none !important')
   && html.includes('maximum-scale=1, user-scalable=no'),
   'built shell disables native zoom, selection, callout and drag gestures over the canvases');
 assert(html.includes('class="mash-portrait-icon"')
+  && html.includes('id="portrait-lorenzo-icon"')
   && html.includes('class="mash-portrait-wordmark"')
   && /min-height:\s*100svh/.test(html)
   && !html.includes('id="portrait-overlay-title" data-dialog-heading'),
@@ -55,7 +56,7 @@ assert(html.includes('<svg class="mash-phone-turn"')
   && /\.mash-phone-turn\s*\{[^}]*color:\s*#fff/s.test(html)
   && /\.mash-phone-turn rect, \.mash-phone-turn path\s*\{[^}]*stroke-width:\s*6/s.test(html)
   && /@keyframes mash-phone-rotate-cycle\s*\{[^}]*opacity:\s*0;\s*transform:\s*rotate\(-90deg\)/s.test(html)
-  && /38%, 84%\s*\{[^}]*opacity:\s*1;\s*transform:\s*rotate\(0deg\)/s.test(html)
+  && /32%, 84%\s*\{[^}]*opacity:\s*1;\s*transform:\s*rotate\(0deg\)/s.test(html)
   && /@keyframes mash-phone-trail-1[\s\S]*opacity:\s*\.24/.test(html)
   && /@keyframes mash-phone-trail-2[\s\S]*opacity:\s*\.32/.test(html)
   && /@keyframes mash-phone-trail-3[\s\S]*opacity:\s*\.4/.test(html)
@@ -77,8 +78,12 @@ assert(html.includes('mash-install-share') && html.includes('mash-install-arrow'
 assert(/window\.__MASH_BUILT_AT__="\\?20\d\d-\d\d-\d\dT/.test(html)
   && html.includes('mash-build-time'),
   'built portrait shell carries and renders its production timestamp');
+assert(html.trimEnd().endsWith('<!-- MASHENSTEIN_BUILD_COMPLETE -->'),
+  'production shell ends with the update completeness marker');
 assert(sw.includes("c.addAll(['./'])") && sw.includes("new URL(req.url)"),
   'existing relative, versioned service worker policy is preserved');
+assert(sw.includes("k.startsWith('mashenstein-') && k !== CACHE"),
+  'service worker activation only retires MASHENSTEIN caches');
 assert(!html.includes('MASHENSTEIN: THE UNPLUGGENING — boot + campaign'),
   'game implementation is not inlined into the live shell');
 assert(!html.includes('window.__MASH_DEV__=true') && !html.includes('__DEV_GATE__'),

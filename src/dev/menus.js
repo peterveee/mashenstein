@@ -17,6 +17,7 @@ import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progres
 import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
+import { VISUALIZER_NAMES } from '../engine/visualizers.js';
 import { proseMenu } from './prose.js';
 
 const GOLD = '#f6d33c';
@@ -250,6 +251,31 @@ function scenesMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
+function visualizersMenu(dev) {
+  const previousState = currentState();
+  const launch = (index) => {
+    dev.close();
+    setState(new SoundTestState({
+      onDone: () => {
+        if (!previousState) return dev.ctx.Flow.toHub();
+        setState(previousState);
+        dev.reopenMenuAfterState(previousState);
+      },
+      initialTrack: JUKEBOX.length - 1,
+      startVisualizer: true,
+      startVisualizerIndex: index,
+    }));
+  };
+  const build = () => ({
+    title: 'VISUALISERS',
+    items: VISUALIZER_NAMES.map((name, index) => ({
+      label: `${String(index + 1).padStart(2, '0')}  ${name}`,
+      act: () => launch(index),
+    })),
+  });
+  return { ...build(), rebuild: build };
+}
+
 function saveMenu(dev) {
   const { save } = dev.ctx;
   const slot = () => save.slot;
@@ -415,19 +441,7 @@ export function rootMenu(dev) {
         dev.close();
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
       } },
-      { label: 'VISUALISERS', act: () => {
-        const previousState = currentState();
-        dev.close();
-        setState(new SoundTestState({
-          onDone: () => {
-            if (!previousState) return dev.ctx.Flow.toHub();
-            setState(previousState);
-            dev.reopenMenuAfterState(previousState);
-          },
-          initialTrack: JUKEBOX.length - 1,
-          startVisualizer: true,
-        }));
-      } },
+      { label: 'VISUALISERS ▸', submenu: () => visualizersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },
@@ -463,7 +477,8 @@ export function drawMenu(ctx, dev) {
     const sel = realIdx === top.idx;
     const y = 26 + i * ROW_H;
     const inert = !item.act && !item.submenu && !item.adjust;
-    drawText(ctx, (sel ? '> ' : '  ') + item.label, 14, y, sel ? GOLD : inert ? DIM : FG, 1.5);
+    const scale = top.title === 'DEV MENU' ? 1.2 : 1.5;
+    drawText(ctx, (sel ? '> ' : '  ') + item.label, 14, y, sel ? GOLD : inert ? DIM : FG, scale);
   });
 
   if (n > MAX_ROWS) {

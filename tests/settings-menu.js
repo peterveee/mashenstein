@@ -82,12 +82,8 @@ assert(save.settings.muted === mutedBeforeSwipe, 'a swipe does not change a sett
 const doneY = touchSettings.doneY + touchSettings.doneH / 2;
 touchDown(doneY);
 touchUp();
-assert(touchSettings.idx === 11 && returned === 0,
-  'the fixed DONE row selects with one touch');
-touchDown(doneY);
-touchUp();
 assert(returned === 1 && persisted === 1,
-  'a second touch on DONE saves and exits');
+  'one touch on BACK saves and exits');
 
 Input.clearAll();
 console.log(failed ? 'SETTINGS MENU: FAILED' : 'SETTINGS MENU: PASSED');

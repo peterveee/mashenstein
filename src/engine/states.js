@@ -7,6 +7,7 @@ let current = null;
 let pending = null;
 let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
+let transitionStyle = 'shutter';
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
 const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
 // Null until the game knows who you are. The shutter used to open on a hero
@@ -34,13 +35,36 @@ function publish() {
   if (typeof window === 'undefined') return;
   window.__mash_state = current.constructor.name;
   window.__mash_cur = current;
+  // Orientation policy depends on the active screen. Recompute immediately
+  // after a state transition so the jukebox can enter portrait without
+  // waiting for another resize/orientation event, and the lock returns when
+  // leaving it.
+  window.__mash_lifecycle?.apply?.();
 }
 
 export function setState(next, ...args) {
   cameo = true;
+  transitionStyle = 'shutter';
   pending = { next, args };
   fading = 1;
   if (!current) { // first state: no cover animation
+    current = next;
+    fade = 1; fading = -1;
+    next.enter && next.enter(...args);
+    pending = null;
+    publish();
+  }
+}
+
+// A quiet full-frame fade for hand-offs that should not borrow the arcade
+// shutter's character. The Lorenzo portrait shortcut uses this to dissolve
+// directly into the Jukebox.
+export function setStateFade(next, ...args) {
+  cameo = false;
+  transitionStyle = 'fade';
+  pending = { next, args };
+  fading = 1;
+  if (!current) {
     current = next;
     fade = 1; fading = -1;
     next.enter && next.enter(...args);
@@ -157,6 +181,14 @@ export function drawState(ctx) {
   current && current.draw && current.draw(ctx);
   commitChromeFrame();
   if (fade > 0) {
+    if (transitionStyle === 'fade') {
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      return;
+    }
     // Queue after every hero/effect overlay so the sticker truly covers the
     // outgoing frame. Headless tests have no overlay target, so draw directly.
     if (!pushOverlayDraw((overlayCtx) => drawTransition(overlayCtx, fade))) drawTransition(ctx, fade);

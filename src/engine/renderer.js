@@ -562,6 +562,8 @@ function resize() {
     // The portrait jukebox deliberately fills the viewport non-uniformly.
     // Pointer coordinates must follow that same X/Y mapping or taps land
     // above/below the row the player touched.
+    visualizerFrame.left = 0; visualizerFrame.top = 0;
+    visualizerFrame.right = W; visualizerFrame.bottom = H;
     inputScaleX = winW / W;
     inputScaleY = winH / H;
   } else {

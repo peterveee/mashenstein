@@ -63,6 +63,7 @@ const errorTools = { hidden: true };
 const errorMessage = { textContent: '' };
 const copyStatus = { textContent: '' };
 const copyButton = new Events();
+const lorenzoIcon = new Events();
 const reloadButton = Object.assign(new Events(), { textContent: 'CHECK FOR UPDATE', disabled: false });
 const reloadStatus = { textContent: '' };
 const priorFocus = {
@@ -91,6 +92,7 @@ const doc = Object.assign(new Events(), {
     if (id === 'portrait-error-tools') return errorTools;
     if (id === 'portrait-error-message') return errorMessage;
     if (id === 'copy-error') return copyButton;
+    if (id === 'portrait-lorenzo-icon') return lorenzoIcon;
     if (id === 'copy-error-status') return copyStatus;
     if (id === 'portrait-reload') return reloadButton;
     if (id === 'portrait-reload-status') return reloadStatus;
@@ -113,6 +115,8 @@ const win = Object.assign(new Events(), {
   clearTimeout(id) { if (id) this.timers[id - 1] = null; },
 });
 const calls = [];
+let jukeboxOpens = 0;
+let jukeboxActive = false;
 const loop = { pause: () => calls.push('loop:pause'), resume: () => calls.push('loop:resume') };
 const input = { setSuspended: (v) => calls.push(`input:${v}`) };
 const audio = { setLifecyclePaused: (v) => calls.push(`audio:${v}`) };
@@ -121,9 +125,26 @@ globalThis.requestAnimationFrame = (fn) => { fn(); return 1; };
 const lifecycle = new LifecycleController({
   platform: detectPlatform({ ua: IPHONE, standalone: true }),
   loop, input, audio, doc, win,
+  allowPortrait: () => jukeboxActive,
+  onPortraitJukebox: () => { jukeboxOpens++; jukeboxActive = true; },
 });
 assert(calls.at(-1) === 'loop:resume', 'initial landscape lifecycle resumes');
 assert(overlay.hidden, 'portrait overlay starts hidden in landscape');
+portraitQuery.matches = true;
+win.innerWidth = 390;
+win.innerHeight = 844;
+lifecycle.apply();
+for (let i = 0; i < 4; i++) lorenzoIcon.fire('click');
+assert(jukeboxOpens === 0, 'portrait Lorenzo icon does not open jukebox before five taps');
+lorenzoIcon.fire('click');
+assert(jukeboxOpens === 1, 'five portrait Lorenzo-icon clicks open the jukebox transition');
+assert(overlay.hidden && calls.at(-1) === 'loop:resume',
+  'portrait jukebox hand-off hides the lock screen and resumes the transition loop');
+jukeboxActive = false;
+portraitQuery.matches = false;
+win.innerWidth = 844;
+win.innerHeight = 390;
+lifecycle.apply();
 win.__mash_fatal_error = 'ReferenceError: toaster lane missing';
 lifecycle.syncErrorReport();
 assert(!errorTools.hidden && errorMessage.textContent.includes('toaster lane'),
@@ -137,6 +158,7 @@ assert(win.copied.includes('toaster lane') && copyStatus.textContent === 'ERROR 
 // native dialogs, so the reload path must not depend on one.
 let updateAvailable = false;
 const registration = {
+  scope: 'https://example.test/mashenstein/',
   waiting: null,
   installing: null,
   updateCalls: 0,
@@ -148,7 +170,25 @@ const registration = {
     return Promise.resolve();
   },
 };
-win.navigator.serviceWorker = { getRegistrations: async () => [registration] };
+const unrelatedRegistration = {
+  scope: 'https://example.test/other-app/',
+  updateCalls: 0,
+  update() { this.updateCalls++; return Promise.resolve(); },
+};
+win.location.href = 'https://example.test/mashenstein/';
+win.__MASH_BUILT_AT__ = '2026-07-26T00:00:00.000Z';
+let servedBuild = win.__MASH_BUILT_AT__;
+let servedPageComplete = true;
+win.fetch = async () => ({
+  ok: true,
+  text: async () => `<!-- Built: ${servedBuild} -->${servedPageComplete
+    ? '<!-- MASHENSTEIN_BUILD_COMPLETE -->'
+    : '<main>TRUNCATED DEPLOY'}`,
+});
+win.navigator.serviceWorker = {
+  getRegistration: async () => registration,
+  getRegistrations: async () => [unrelatedRegistration, registration],
+};
 const settle = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
@@ -157,6 +197,8 @@ await settle();
 assert(win.location.reloaded === 0, 'an up-to-date app is not reloaded');
 assert(reloadButton.textContent === 'CHECK FOR UPDATE' && reloadStatus.textContent === 'NO UPDATE FOUND.',
   'the first press reports that there is no update');
+assert(registration.updateCalls === 1 && unrelatedRegistration.updateCalls === 0,
+  'the update check only pokes the worker controlling this game');
 
 // When the worker finds a new version, the same button becomes the explicit
 // confirmation step, then forceReload refreshes the caches before navigating.
@@ -170,6 +212,8 @@ assert(reloadButton.textContent === 'TAP AGAIN TO RELOAD'
 reloadButton.fire('click');
 await settle();
 assert(win.location.reloaded === 1, 'the confirmed update reloads');
+assert(unrelatedRegistration.updateCalls === 0,
+  'the confirmed reload still leaves unrelated origin workers alone');
 
 // A fresh tap after the confirmation reload checks again instead of reloading.
 reloadButton.fire('click');
@@ -178,6 +222,35 @@ assert(win.location.reloaded === 1, 'a fresh tap checks again instead of reloadi
 const disarm = win.timers.filter(Boolean).at(-1);
 if (disarm?.fn) disarm.fn();
 assert(reloadButton.textContent === 'CHECK FOR UPDATE', 'the check button restores its label');
+
+// The foreground updater may already have activated the newest worker while
+// this page is still executing the old bundle. Worker state alone says "none";
+// the fresh shell stamp must still offer the reload.
+updateAvailable = false;
+registration.waiting = null;
+servedBuild = '2026-07-26T01:00:00.000Z';
+assert(await lifecycle.checkForUpdate() === true,
+  'a newer live shell is detected after its worker has already activated');
+
+servedPageComplete = false;
+assert(await lifecycle.checkForUpdate() === null,
+  'a newer timestamp without the final marker is not reported as an update');
+servedPageComplete = true;
+servedBuild = win.__MASH_BUILT_AT__;
+
+// A tap can arrive before initUpdates() finishes its asynchronous registration.
+// The button joins that registration instead of reporting a false "no update".
+let registeredByButton = 0;
+win.navigator.serviceWorker.getRegistration = async () => null;
+win.navigator.serviceWorker.register = async () => {
+  registeredByButton++;
+  return registration;
+};
+updateAvailable = false;
+registration.waiting = null;
+await lifecycle.checkForUpdate();
+assert(registeredByButton === 1 && registration.updateCalls >= 3,
+  'an early update check ensures the game service worker is registered');
 
 doc.hidden = true;
 doc.fire('visibilitychange');

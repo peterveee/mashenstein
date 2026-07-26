@@ -1447,12 +1447,14 @@ function flickerBlock(t) {
 }
 
 export class TitleState {
-  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel, onTutorial }) {
+  constructor({ save, onSlotChosen, onSettings, onHowTo, onGuide, onSoundTest, onIntro, onAttract, attractDelay, attractLabel, onTutorial, openExtras = false, extrasFocus = null }) {
     this.save = save; this.onSlotChosen = onSlotChosen; this.onSettings = onSettings;
     this.onHowTo = onHowTo; this.onGuide = onGuide; this.onSoundTest = onSoundTest; this.onIntro = onIntro;
     this.onAttract = onAttract; this.attractDelay = attractDelay ?? 60;
     this.attractLabel = attractLabel || 'DEMO';
     this.onTutorial = onTutorial;
+    this.openExtras = openExtras;
+    this.extrasFocus = extrasFocus;
   }
   enter() {
     setVisualizerFullscreen(false);
@@ -1462,7 +1464,10 @@ export class TitleState {
     shuffleParade();
     this.idx = 0;
     this.erase = null;
-    this.extras = null;
+    const extrasIndex = this.extrasFocus
+      ? this.extrasChoices().findIndex((choice) => choice.id === this.extrasFocus)
+      : 0;
+    this.extras = this.openExtras ? { idx: Math.max(0, extrasIndex) } : null;
     this.touchPress = null;
     this.t = 0;
     this.idleT = 0;
@@ -1598,16 +1603,16 @@ export class TitleState {
     // to erase, and the opening isn't a rerun you'd want early — starting a file
     // plays it for you.
     const anyFile = this.save.data.slots.some(Boolean);
-    const choices = [{ label: 'HOW TO PLAY', act: () => this.onHowTo() }];
-    if (this.onTutorial) choices.push({ label: 'MANDATORY TRAINING', act: () => this.onTutorial() });
+    const choices = [{ id: 'howto', label: 'HOW TO PLAY', act: () => this.onHowTo() }];
+    if (this.onTutorial) choices.push({ id: 'tutorial', label: 'MANDATORY TRAINING', act: () => this.onTutorial() });
     // Until now the opening was reachable only by starting a brand new file —
     // so the one way to read it twice was to erase your progress.
-    if (anyFile) choices.push({ label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
-    choices.push({ label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
-    choices.push({ label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
-    if (anyFile) choices.push({ label: 'ERASE A SHIFT', act: () => { this.extras = null; this.beginErase(); } });
-    choices.push({ label: 'SETTINGS', act: () => this.onSettings() });
-    choices.push({ label: 'BACK', cancel: true });
+    if (anyFile) choices.push({ id: 'intro', label: 'HOW THIS ALL STARTED', act: () => this.onIntro() });
+    choices.push({ id: 'guide', label: 'FIELD GUIDE (WHAT IS WHAT)', act: () => this.onGuide() });
+    choices.push({ id: 'soundtest', label: 'SOUND TEST (JUKEBOX)', act: () => this.onSoundTest() });
+    if (anyFile) choices.push({ id: 'erase', label: 'ERASE A SHIFT', act: () => this.beginErase() });
+    choices.push({ id: 'settings', label: 'SETTINGS', act: () => this.onSettings() });
+    choices.push({ id: 'back', label: 'BACK', cancel: true });
     return choices;
   }
   // Same shape as updateErase below: the modal owns the frame while it is open.
@@ -1670,6 +1675,7 @@ export class TitleState {
       const next = this.save.data.slots.findIndex(Boolean);
       this.save.selectSlot(next >= 0 ? next : 0);
       this.erase = null;
+      this.extras = { idx: 0 };
       this.idx = Math.min(this.idx, this.options().length - 1);
       Audio.sfx('uiConfirm');
     }
@@ -1732,6 +1738,13 @@ export class TitleState {
     // purple focus is already the feedback those devices need.
     if (this.touchPress) {
       this.idleT = 0;
+      if (Input.pressed('back')) {
+        // A left swipe can begin on a row. Cancel its delayed touch commit so
+        // the gesture never activates the row it started over.
+        this.touchPress = null;
+        Input.endFrame();
+        return;
+      }
       if (this.t >= this.touchPress.commitAt) {
         const act = this.touchPress.act;
         this.touchPress = null;
@@ -3326,10 +3339,11 @@ const VISUAL_OUT_GAP = 0.10;
 const VISUAL_OUT_TOTAL = 0.45;
 
 export class SoundTestState {
-  constructor({ onDone, initialTrack = -1, startVisualizer = false }) {
+  constructor({ onDone, initialTrack = -1, startVisualizer = false, startVisualizerIndex = null }) {
     this.onDone = onDone;
     this.initialTrack = initialTrack;
     this.startVisualizerOnEnter = startVisualizer;
+    this.startVisualizerIndex = Number.isInteger(startVisualizerIndex) ? startVisualizerIndex : null;
     this.listY = JUKEBOX_TOP;
     this.rowH = JUKEBOX_ROW;
     this.visibleRows = JUKEBOX_VISIBLE_ROWS;
@@ -3337,6 +3351,7 @@ export class SoundTestState {
     this.backH = JUKEBOX_BACK_H;
     this.listStart = 0;
     this.pointerGesture = null;
+    this.visualSwipe = null;
     this.idleT = 0;
     this.visualState = 'list'; // list -> in -> active -> out
     this.visualT = 0;
@@ -3358,6 +3373,7 @@ export class SoundTestState {
     this.t = 0;
     this.listStart = 0;
     this.pointerGesture = null;
+    this.visualSwipe = null;
     this.idleT = 0;
     this.visualState = 'list';
     this.visualT = 0;
@@ -3392,6 +3408,7 @@ export class SoundTestState {
     this.labelT = 0;
     this.visualizerIndex = -1;
     this.fullscreenReady = false;
+    this.visualSwipe = null;
   }
   resetIdle() {
     this.idleT = this.playing >= 0 ? -(Audio.pendingStartDelay || 0) : 0;
@@ -3400,7 +3417,11 @@ export class SoundTestState {
   }
   startVisualizer() {
     if (this.playing < 0 || this.visualState !== 'list') return;
-    this.visualizerIndex = pickVisualizer(this.lastVisualizerIndex, Math.random);
+    const requested = this.startVisualizerIndex;
+    this.startVisualizerIndex = null;
+    this.visualizerIndex = requested == null
+      ? pickVisualizer(this.lastVisualizerIndex, Math.random)
+      : ((requested % VISUALIZER_NAMES.length) + VISUALIZER_NAMES.length) % VISUALIZER_NAMES.length;
     this.lastVisualizerIndex = this.visualizerIndex;
     const seed = ((Math.random() * 0xffffffff) ^ (this.visualizerIndex * 0x9e3779b9)) >>> 0;
     this.visualizer = createVisualizer(this.visualizerIndex, seed, JUKEBOX[this.playing].bank);
@@ -3434,6 +3455,43 @@ export class SoundTestState {
     this.visualSwitchT = 0.35;
     this.labelT = 0;
     this.actTok = Input.activity;
+  }
+  handleVisualizerSwipe() {
+    // A touch on the full-screen visualizer is ambiguous until it either
+    // travels horizontally or is released. Hold the activity token while the
+    // finger is down so the visualizer does not wake on pointer-down; a tap
+    // still wakes on release, while a completed swipe is consumed here.
+    if (Input.pressed('pointer') && Input.usingTouch && this.visualState !== 'out') {
+      this.visualSwipe = {
+        startX: Input.pointer.x,
+        startY: Input.pointer.y,
+        moved: false,
+      };
+      this.actTok = Input.activity;
+      return true;
+    }
+    const gesture = this.visualSwipe;
+    if (!gesture) return false;
+    if (Input.pointer.down) {
+      const dx = Input.pointer.x - gesture.startX;
+      const dy = Input.pointer.y - gesture.startY;
+      // Use logical pixels so the same gesture feels consistent in the
+      // letterboxed desktop view and portrait full-screen view.
+      if (!gesture.moved && Math.abs(dx) >= 26 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+        gesture.moved = true;
+        this.switchVisualizer(dx < 0 ? 1 : -1);
+      }
+      return true;
+    }
+    // Pointer-up does not increment Input.activity. Explicitly consume the
+    // release after a swipe, or wake for a stationary tap.
+    this.visualSwipe = null;
+    if (gesture.moved) {
+      this.actTok = Input.activity;
+    } else {
+      this.wakeVisualizer();
+    }
+    return true;
   }
   visualizerInput() {
     return Input.activity !== this.actTok
@@ -3476,10 +3534,11 @@ export class SoundTestState {
     const n = JUKEBOX.length;
     const total = n + 1; // +1 for the trailing BACK row
     if (this.visualState !== 'list') {
+      const swipeHandled = this.handleVisualizerSwipe();
       const previous = Input.pressed('left') || Input.pressed('up');
       const next = Input.pressed('right') || Input.pressed('down');
       if (this.visualState !== 'out' && (previous || next)) this.switchVisualizer(next ? 1 : -1);
-      else if (this.visualizerInput()) this.wakeVisualizer();
+      else if (!swipeHandled && this.visualizerInput()) this.wakeVisualizer();
       if (this.visualizer) this.visualizer.update(dt, Audio.musicAnalysis());
       if (this.visualState !== 'out') this.labelT += dt;
       if (this.visualSwitchT > 0) {
@@ -3920,7 +3979,7 @@ export class SettingsState {
             pressedIndex: i,
             moved: false,
           };
-        } else if (this.idx === i) {
+        } else if (i === opts.length - 1 || this.idx === i) {
           this.activate(opts[i]);
         } else {
           this.idx = i;
@@ -3944,7 +4003,7 @@ export class SettingsState {
       if (!gesture.moved) {
         const i = this.pointerIndex(Input.pointer.y, opts);
         if (i >= 0) {
-          if (this.idx === i) this.activate(opts[i]);
+          if (i === opts.length - 1 || this.idx === i) this.activate(opts[i]);
           else {
             this.idx = i;
             Audio.sfx('ui');

@@ -55,8 +55,14 @@ const bundle = outputFiles[0].text;
   assert(dev.open, 'backquote opens the dev menu');
   assert(dev.top().items.some((item) => item.label === 'TROPHY ROOM' && item.act),
     'trophy room is a direct top-level dev-menu destination');
-  assert(dev.top().items.some((item) => item.label === 'VISUALISERS' && item.act),
-    'visualisers is a direct top-level dev-menu destination');
+  const visualiserItem = dev.top().items.find((item) => item.label === 'VISUALISERS ▸');
+  assert(!!visualiserItem && visualiserItem.submenu,
+    'visualisers is a top-level dev-menu submenu');
+  const visualiserMenu = visualiserItem && visualiserItem.submenu(dev);
+  assert(visualiserMenu && visualiserMenu.items.length >= 14
+    && visualiserMenu.items[0].label.includes('NEON CATHEDRAL')
+    && visualiserMenu.items.at(-1).label.includes('TOASTER SKY PARADE'),
+    'visualisers submenu lists every available preset');
 
   // The underlying state must be frozen while the menu is up.
   const stateBefore = globalThis.window.__mash_state;

@@ -154,6 +154,13 @@ Input.setContext('menu');
 dom.fire('canvas:pointerdown', pointer(0, 10));
 dom.fire('canvas:pointerdown', pointer(2, 11));
 assert(!Input.pressed('jump') && !Input.pressed('ability'), 'mouse gameplay controls stay inactive outside levels');
+Input.endFrame();
+const menuSwipe = pointer(0, 14, 240, 'touch');
+dom.fire('canvas:pointerdown', menuSwipe);
+dom.fire('canvas:pointermove', { ...menuSwipe, clientX: 200 });
+assert(Input.pressed('back') && Input.held('back'), 'a left touch swipe in a menu maps to Back');
+dom.fire('canvas:pointerup', menuSwipe);
+assert(Input.released('back') && !Input.held('back'), 'menu swipe Back releases cleanly');
 
 Input.setContext('run');
 Input.setMenuKeys(true);

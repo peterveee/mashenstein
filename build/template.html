@@ -183,7 +183,7 @@
   .mash-portrait-brand { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
   .mash-portrait-icon {
     width: clamp(88px, 24vw, 124px); height: auto; margin-top: 22px; border-radius: 22%;
-    box-shadow: 0 16px 36px rgba(0,0,0,.42);
+    box-shadow: 0 16px 36px rgba(0,0,0,.42); cursor: pointer; touch-action: manipulation;
   }
   .mash-portrait-wordmark {
     color: #ffcf33;
@@ -211,27 +211,29 @@
   .mash-phone-turn-device rect {
     fill: #111220;
   }
-  .mash-phone-turn-trail { opacity: 0; }
+  .mash-phone-turn-trail {
+    opacity: 0; animation-fill-mode: both;
+  }
   .mash-phone-turn-trail-1 { animation: mash-phone-trail-1 8s linear infinite; }
   .mash-phone-turn-trail-2 { animation: mash-phone-trail-2 8s linear infinite; }
   .mash-phone-turn-trail-3 { animation: mash-phone-trail-3 8s linear infinite; }
   @keyframes mash-phone-rotate-cycle {
     0% { opacity: 0; transform: rotate(-90deg); }
-    6%, 22% { opacity: 1; transform: rotate(-90deg); }
-    38%, 84% { opacity: 1; transform: rotate(0deg); }
+    2%, 16% { opacity: 1; transform: rotate(-90deg); }
+    32%, 84% { opacity: 1; transform: rotate(0deg); }
     100% { opacity: 0; transform: rotate(0deg); }
   }
   @keyframes mash-phone-trail-1 {
-    0%, 25%, 36%, 100% { opacity: 0; transform: rotate(-67.5deg); }
-    28%, 33% { opacity: .24; transform: rotate(-67.5deg); }
+    0%, 15%, 32%, 100% { opacity: 0; transform: rotate(-67.5deg); }
+    18%, 26% { opacity: .24; transform: rotate(-67.5deg); }
   }
   @keyframes mash-phone-trail-2 {
-    0%, 29%, 39%, 100% { opacity: 0; transform: rotate(-45deg); }
-    32%, 35% { opacity: .32; transform: rotate(-45deg); }
+    0%, 18%, 35%, 100% { opacity: 0; transform: rotate(-45deg); }
+    21%, 29% { opacity: .32; transform: rotate(-45deg); }
   }
   @keyframes mash-phone-trail-3 {
-    0%, 32%, 42%, 100% { opacity: 0; transform: rotate(-22.5deg); }
-    35%, 38% { opacity: .4; transform: rotate(-22.5deg); }
+    0%, 21%, 38%, 100% { opacity: 0; transform: rotate(-22.5deg); }
+    24%, 32% { opacity: .4; transform: rotate(-22.5deg); }
   }
   @media (prefers-reduced-motion: reduce) {
     .mash-phone-turn-device { animation: none; opacity: 1; transform: none; }
@@ -362,3 +364,4 @@
 <script>/*__GATE_BUNDLE__*/</script>
 </body>
 </html>
+<!-- MASHENSTEIN_BUILD_COMPLETE -->
