@@ -5,6 +5,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Input } = await import('../src/engine/input.js');
+const { Audio } = await import('../src/engine/audio.js');
 const { TutorialState } = await import('../src/game/tutorial.js');
 const { ZOOM } = await import('../src/engine/camera.js');
 const { drawSpeech } = await import('../src/game/hud.js');
@@ -86,6 +87,26 @@ const compactHeight = compactArcs[1].args[1] - compactArcs[0].args[1];
 assert(namedImages > compactImages, 'the default named-speaker card still draws its name');
 assert(compactImages > 0, 'a name-hidden card still draws the speaker portrait and body text');
 assert(compactHeight < namedHeight, 'hiding the name removes the header row from the card height');
+
+// The last coin extraction gets a clean half-second before the tutorial's
+// final death jingle. This is a state timer, not a blocking sleep.
+const deathCueTutorial = new TutorialState({ onDone: () => {} });
+deathCueTutorial.enter();
+deathCueTutorial.clawing = true;
+deathCueTutorial.coins = 1;
+deathCueTutorial.clawStart = 1;
+deathCueTutorial.clawStep = 0.01;
+const realSfx = Audio.sfx;
+const heard = [];
+Audio.sfx = (name) => heard.push(name);
+deathCueTutorial.updateClawback(0.01);
+assert(!heard.includes('pacDeath'), 'coin extraction does not fire the death cue immediately');
+deathCueTutorial.update(0.49);
+assert(!heard.includes('pacDeath'), 'death cue remains silent during the half-second pause');
+deathCueTutorial.update(0.02);
+assert(heard.includes('pacDeath'), 'death cue fires after the extraction pause');
+Audio.sfx = realSfx;
+deathCueTutorial.exit();
 
 const skippedIntro = new TutorialState({ onDone: () => {} });
 skippedIntro.enter();

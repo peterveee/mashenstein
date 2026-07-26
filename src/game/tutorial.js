@@ -29,7 +29,8 @@ import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { Rng } from '../engine/rng.js';
 import {
-  burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles,
+  burst, shardBurst, spawnFoil, foilBurst,
+  updateParticles, drawParticles, clearParticles,
 } from '../engine/particles.js';
 import {
   drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend,
@@ -55,8 +56,8 @@ import {
 // takes: every distance in this file — the spawn lead, the retry lead, the
 // ladder pitch, the whole payout stretch — is measured in world px, so raising
 // it shortens all of them at once and in proportion. At 90 a flawless run of
-// all eleven sections took a shade over two minutes before the epilogue; the
-// same run at 112 is about 77 seconds, and the hero's legs read as running
+// every section took a shade over two minutes before the epilogue; the
+// same run at 112 is about 43 seconds, and the hero's legs read as running
 // rather than as wading. Anything that must NOT shrink with it — reading time,
 // the reaction gap in the ladder — is re-bought explicitly below.
 const TRAINING_SPEED = 112;
@@ -80,7 +81,7 @@ const RETRY_AHEAD = VIEW_W + 20;
 // and stops being useful once it has been seen.
 // How long the world runs on after a section closes, before the next one opens.
 // Long enough for the pass floatie to land and be read on its own, and for the
-// line that logged it to be read under it — but this is dead lane, eleven times
+// line that logged it to be read under it — but this is dead lane, seven times
 // over, and at 2.6 it was the single largest block of nothing in the module.
 // 1.7 still lands the floatie; what it stops paying for is the pause after it.
 const SETTLE_T = 1.0;
@@ -106,6 +107,7 @@ const INTRO_ZOOM_START = 5.5;      // Tight on Gary — he fills the frame
 // Sections Gary will re-open before he gives up and marks it satisfactory.
 // Nobody gets stuck in training.
 const CONCEDE_AFTER = 3;
+const CLAW_DEATH_PAUSE = 0.5;
 
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 
@@ -131,7 +133,7 @@ const SPEECH_Y = 4;
 const SPEECH_MAX_W = 324;
 // A few percent of the lane shows through the card. Not a translucent HUD panel
 // — the dark plate is that, and it is the register for shouting over a stage —
-// but enough that a plate up for nine sections stops reading as a hole punched
+// but enough that a plate up for seven sections stops reading as a hole punched
 // in the screen. 0.88 keeps the dark ink on it at a contrast ratio the light
 // plate was measured for; going much thinner starts eating the words rather
 // than the plate.
@@ -353,9 +355,13 @@ const STEPS = [
     // "HOLD", not "PRESS": every hero has a variable jump, so a flicked key
     // clamps to a 2px hop and eats the crate (player.update). Teaching the tap
     // first and the hold second taught the failure first.
+    // "SECTION ONE:" was doing nothing the room label at the bottom of the
+    // screen was not already doing, and dropping it lets the callback at the end
+    // land on a shorter line — and gives the touch variant, which had no joke in
+    // it at all, the same one.
     brief: (touch) => (touch
-      ? 'SECTION ONE: CRATES. TOUCH AND HOLD THE LEFT OF THE SCREEN TO JUMP.'
-      : 'SECTION ONE: CRATES. HOLD SPACE TO JUMP. I DID NOT WRITE SECTION ONE.'),
+      ? 'CRATES. HOLD THE LEFT OF THE SCREEN. I DID NOT WRITE SECTION ONE.'
+      : 'CRATES. HOLD SPACE TO JUMP. I DID NOT WRITE SECTION ONE.'),
     again: (touch) => (touch
       ? 'YOU FLICKED IT. HOLD IT DOWN. THE CRATE COMES BACK.'
       : 'YOU TAPPED IT. HOLD IT DOWN. THE CRATE COMES BACK.'),
@@ -371,8 +377,8 @@ const STEPS = [
     hero: 'lorenzo',
     label: 'VARIABLE JUMP',
     legend: [['SPC', 'JUMP']],
-    brief: () => 'THREE STACKS, EACH TALLER. HOLD THE JUMP LONGER FOR EACH ONE. THE MANUAL CALLS THIS INTUITIVE.',
-    again: () => 'THAT ONE WAS TALLER THAN THE LAST. HOLD IT LONGER. I AM NOT PAID FOR RETAKES.',
+    brief: () => 'THREE STACKS, EACH TALLER. HOLD LONGER FOR EACH. THE MANUAL CALLS THIS INTUITIVE.',
+    again: () => 'TALLER THAN THE LAST ONE. HOLD LONGER. I AM NOT PAID FOR RETAKES.',
     // 91px apart — tight enough that the ladder reads as one shape but with
     // enough room to land and re-jump. At 112 px/s the rungs are 0.81s apart
     // against Lorenzo's 0.82s airtime, so a clean landing is possible between
@@ -401,8 +407,8 @@ const STEPS = [
     // a quarter chance of something better than money, and a player who has
     // been told it is a coin dispenser has no reason to go out of their way for
     // one.
-    brief: () => 'COINS. RUN THROUGH THEM. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES SOMETHING BETTER.',
-    again: () => 'THE BOX IS STILL FULL. BREAK IT OPEN FROM UNDERNEATH. ANOTHER ONE IS COMING.',
+    brief: () => 'RUN THROUGH THE COINS. THE BOX BREAKS OPEN FROM UNDERNEATH — COINS, MOSTLY. SOMETIMES BETTER.',
+    again: () => 'THE BOX IS STILL FULL. FROM UNDERNEATH. ANOTHER ONE IS COMING.',
     // Missing a coin or two is not worth reopening a section over; the box is.
     optionalPickups: true,
     requires: (t) => t.sawQbox,
@@ -440,7 +446,7 @@ const STEPS = [
     // Lorenzo clears the drone with an ordinary jump, so clearing it is not
     // what the section asks for.
     requires: (t) => t.sawDuck,
-    wrongWay: () => 'YOU WENT OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.',
+    wrongWay: () => 'OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.',
     setup(t) { t.obstacles = [makeObstacle('drone', t.spawnX())]; },
   },
   {
@@ -448,21 +454,14 @@ const STEPS = [
     hero: 'lorenzo',
     label: 'SHIELD',
     legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
-    brief: () => 'SHIELD CAPSULE. IT TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT.',
+    brief: () => 'SHIELD CAPSULE. TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT.',
     again: () => 'IT WENT PAST. I WILL REQUISITION ANOTHER. THAT IS A FORM. I HAVE ALREADY FILED IT.',
     setup(t) { t.pickups = [makePickup('capShield', t.spawnX(), 10)]; },
   },
   {
-    // The one section on the form that is not really on the form. Every cabinet
-    // hides a golden appliance and no cabinet requires it, so training teaches
-    // it the way the game plays it: it goes past whether or not you reach, and
-    // nothing reopens either way.
-    //
-    // `optional` is what makes that true — the section always closes, and the
-    // fork is in what Gary says rather than in whether you passed. Which is
-    // also the joke: the man cannot mark you down for it and is going to have
-    // an opinion regardless, because having an opinion about things that are
-    // not his responsibility is the whole of his job.
+    // The toaster is optional, but it gets its own section so the capsule and
+    // appliance remain two readable tutorial beats rather than one crowded
+    // Stores lane. The portal follows at the next fixed section index.
     id: 'toaster',
     hero: 'lorenzo',
     label: 'GOLDEN APPLIANCE',
@@ -470,13 +469,10 @@ const STEPS = [
     brief: () => 'THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT.',
     optional: true,
     done: (t) => t.sawToaster,
-    got: () => 'YOU TOOK THE TOASTER. IT DOES NOTHING AND IT IS WORTH A GREAT DEAL. BOTH OF THOSE ARE ON RECORD.',
-    missed: () => 'YOU LEFT THE TOASTER. IT WAS RIGHT THERE. I CANNOT MARK YOU DOWN FOR IT. I AM SIMPLY GOING TO REMEMBER IT.',
+    got: () => 'YOU TOOK THE TOASTER. IT DOES NOTHING AND IT IS WORTH A FORTUNE. BOTH ARE ON RECORD.',
+    missed: () => 'YOU LEFT THE TOASTER. I CANNOT MARK YOU DOWN FOR IT. I AM SIMPLY GOING TO REMEMBER IT.',
     setup(t) {
       t.sawToaster = false;
-      // Up where an ordinary held jump reaches and a lazy one does not.
-      // Missable is the point; a test is not — Lorenzo clears 89px, so at 44
-      // the appliance is a decision rather than a skill check.
       t.pickups = [makePickup('appliance', t.spawnX(), 44)];
     },
   },
@@ -486,7 +482,7 @@ const STEPS = [
     tagTo: 'mochi',
     label: 'PORTAL TAG',
     legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
-    brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED IT ONCE. THERE WAS PAPERWORK.',
+    brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED ONE ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
       t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'mochi', label: 'MOCHI', hit: false };
@@ -509,8 +505,8 @@ const STEPS = [
     label: 'DOUBLE JUMP',
     legend: [['SPC', 'JUMP x2']],
     brief: (touch) => (touch
-      ? 'MOCHI JUMPS TWICE AND NOT VERY HIGH. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
-      : 'MOCHI JUMPS TWICE AND NOT VERY HIGH. PRESS JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
+      ? 'MOCHI JUMPS TWICE, AND NOT VERY HIGH. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
+      : 'MOCHI JUMPS TWICE, AND NOT VERY HIGH. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
     again: () => 'INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.',
     requires: (t) => t.sawDoubleJump,
     wrongWay: () => 'YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.',
@@ -526,7 +522,7 @@ const STEPS = [
     // the settle, far enough that the floatie is read before it arrives.
     onPass(t) {
       t.portal = { x: t.worldX + PLAYER_X + 90, hero: 'b33p', label: 'B-33P', hit: false };
-      t.say('ANOTHER PORTAL, ANOTHER BODY. THIS IS NORMAL HERE. STRAIGHT THROUGH.');
+      t.say('ANOTHER PORTAL, ANOTHER BODY. NORMAL HERE. STRAIGHT THROUGH.');
     },
   },
   {
@@ -543,7 +539,7 @@ const STEPS = [
     // is the first control that lives in the right-hand strip. The split is
     // shown in level 1-1, where it belongs — the tutorial no longer duplicates it.
     // zones: true,
-    again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS ALREADY SIGNED OUT TO YOU.',
+    again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS SIGNED OUT TO YOU.',
     // Ducking the drone would clear it, but this section is about the cannon.
     requires: (t) => t.sawShotDown,
     wrongWay: () => 'YOU AVOIDED IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.',
@@ -552,23 +548,6 @@ const STEPS = [
       t.player.abilityCd = 0;
     },
     onPass(t) { t.spawnShootGallery(); },
-  },
-  {
-    // Home again. The module borrowed two bodies to teach two things and hands
-    // the first one back before the paperwork: you arrived as Lorenzo, the
-    // certificate is made out to whoever is standing there at the end, and
-    // being signed off in someone else's body is exactly the sort of thing
-    // this place would let happen.
-    id: 'portal3',
-    hero: 'b33p',
-    tagTo: 'lorenzo',
-    label: 'PORTAL TAG',
-    legend: [['SPC', 'JUMP']],
-    brief: () => 'LAST PORTAL. IT PUTS YOU BACK IN THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.',
-    again: () => 'THROUGH IT. YOU CANNOT SIGN THE FORM AS SOMEBODY ELSE. I HAVE TRIED.',
-    setup(t) {
-      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'lorenzo', label: 'LORENZO', hit: false };
-    },
   },
 ];
 
@@ -589,7 +568,7 @@ const STEPS = [
 // line is read in about three seconds. Every one of these is also skippable, so
 // the hold is the ceiling for a reader, not a wait for anyone else.
 const OUTRO = [
-  { hold: 3.6, line: 'THAT IS THE MODULE. ALL OF IT. INCLUDING THE PARTS I DISAGREE WITH.' },
+  { hold: 3.0, line: 'THAT IS THE MODULE. INCLUDING THE PARTS I DISAGREE WITH.' },
   // The reclaim runs UNDER this line: he says it and the counter drains while
   // he does, in front of you, rather than the coins having quietly vanished
   // eight sections ago.
@@ -600,23 +579,29 @@ const OUTRO = [
   // top of each other — you cannot register a total being taken off you if you
   // never got a clean look at the total. The beat is: read it, then watch it
   // go. The hold covers the pause plus the drain plus a moment at zero.
-  { hold: 6.0, clawback: true, clawDelay: 1.4,
-    line: 'PAYROLL HAS RECLAIMED THOSE. THEY WERE TRAINING COINS. TRAINING COINS ARE NOT LEGAL TENDER.' },
-  { hold: 3.4, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
-  { hold: 4.0, line: 'YOU ARE CERTIFIED. THE CERTIFICATE IS NON-BINDING AND EXPIRES ON CONTACT WITH AN ACTUAL CABINET.' },
+  { hold: 5.0, clawback: true, clawDelay: 1.2,
+    line: 'PAYROLL HAS RECLAIMED THOSE. TRAINING COINS ARE NOT LEGAL TENDER.' },
+  { hold: 2.4, line: 'I DID ASK. I ASKED TWICE. THE SECOND TIME IN WRITING.' },
+  // The certificate is on screen under this line already reading NON-BINDING.
+  // EXPIRES ON CONTACT WITH A CABINET, so the old version of this beat was Gary
+  // reading the card out. Get a laugh off the card instead of repeating it.
+  { hold: 3.0, line: 'YOU ARE CERTIFIED. READ THE SMALL PRINT. IT IS ALL SMALL PRINT.' },
   // The celebration beat. The hero celebrates; Gary does not — he rolls his
   // eyes and stands in it. A Gary who genuinely celebrates undoes the joke the
   // whole module rests on, so the form celebrates on his behalf: the step is
   // logged as completed, the streamers fire, and he has done the paperwork
   // instead of the party.
-  { hold: 4.0, party: true,
-    line: 'THERE IS A CELEBRATION STEP. I HAVE ALREADY LOGGED IT AS COMPLETED.' },
+  // The hold cannot go below PARTY_T (2.8) or the sweep beat arrives before the
+  // streamers have finished landing and there is nothing on the floor to take
+  // back.
+  { hold: 3.2, party: true,
+    line: 'THERE IS A CELEBRATION STEP. I HAVE LOGGED IT AS COMPLETED.' },
   // ...and it ends the way everything he hands out ends. The streamers go back
   // to Stores, which is his actual job — it says so on the certificate he is
   // about to sign.
-  { hold: 3.6, sweep: true,
-    line: 'THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY ARE COMING BACK.' },
-  { hold: 4.0, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND I HAUNT IT DURING BUSINESS HOURS ONLY. IT IS POLICY.' },
+  { hold: 3.0, sweep: true,
+    line: 'THAT IS THE CELEBRATION. THE STREAMERS ARE FROM STORES. THEY GO BACK.' },
+  { hold: 3.4, line: 'RIGHT. I HAVE A SHOP TO HAUNT, AND ONLY DURING BUSINESS HOURS. IT IS POLICY.' },
 ];
 
 // Party colours — the arcade's own accent set (coin gold, relay teal, portal
@@ -655,12 +640,12 @@ const CONCEDED = 'I AM MARKING THIS ONE SATISFACTORY. NOBODY AUDITS ME.';
 const SHIELD_BROKE = 'THE EQUIPMENT PERFORMED AS SPECIFIED. YOU DID NOT.';
 // Said on the first shot, not in the brief: the orb only means something once
 // the player has watched it empty.
-const COOLDOWN = 'THE ORB BY YOUR HEAD IS THE RECHARGE. IT FILLS BACK UP ON ITS OWN. YOU CANNOT HURRY IT. I HAVE ASKED.';
+const COOLDOWN = 'THE ORB IS THE RECHARGE. IT REFILLS ON ITS OWN. YOU CANNOT HURRY IT. I HAVE ASKED.';
 // The payout stretch. Two lines, spaced across it: what coins are for, then
 // permission to take the lot. Both are setups — the epilogue takes every one of
 // them back, and "the part people remember" is the line the reclaim lands on.
-const PAYOUT_1 = 'COINS ARE GOOD. COINS BUY UPGRADES. DOLORES RUNS THAT COUNTER AND DOLORES DOES NOT NEGOTIATE.';
-const PAYOUT_2 = 'TAKE ALL OF THEM. EVERY ONE. THIS IS THE PART OF THE MODULE PEOPLE REMEMBER.';
+const PAYOUT_1 = 'COINS BUY UPGRADES. DOLORES RUNS THAT COUNTER AND DOLORES DOES NOT NEGOTIATE.';
+const PAYOUT_2 = 'TAKE ALL OF THEM. THIS IS THE PART PEOPLE REMEMBER.';
 // He does not announce that he signed it. The certificate is on screen with his
 // name on the signature line and the man himself is standing under it — saying
 // "SIGNED, GARY" out loud put three signatures in one frame, which is two more
@@ -721,6 +706,7 @@ export class TutorialState {
     this.clawAcc = 0;
     this.clawStep = 0.05;
     this.clawStart = 0;
+    this.clawDeathT = 0;
     // Once the module has paid out once the readout stays up — including at
     // zero, which is where the joke lives.
     this.paidOut = false;
@@ -920,6 +906,16 @@ export class TutorialState {
       // equipment is Stores, Stores is Gary, and nothing issued in here was
       // ever leaving the room.
       this.shield = 0;
+      // The last portal is at the end of the shoot gallery rather than in a
+      // section of its own, so nothing reopens when it is jumped — and the
+      // certificate is made out to whoever is standing there. Hand the body back
+      // anyway. A jumped last portal is not a different ending, it is a missed
+      // one, and the line that used to reopen the section says the true thing
+      // here instead: it rides the silent walk-on and is replaced by beat one.
+      if (this.player.heroId !== 'lorenzo') {
+        this.player.setHero('lorenzo');
+        this.say('THROUGH IT. YOU CANNOT SIGN THE FORM AS SOMEBODY ELSE. I HAVE TRIED.');
+      }
       // beat -1 is "still walking on"; he says nothing until he arrives.
       this.outro = { beat: -1, garyX: GARY_ENTER_X, walking: true, cardT: 0, holdT: 0, clawIn: 0 };
       Audio.sfx('win');
@@ -1171,6 +1167,10 @@ export class TutorialState {
   freePlayUntilLaneClears(tail) {
     let last = this.worldX;
     for (const e of [...this.obstacles, ...this.pickups]) last = Math.max(last, e.x + e.w);
+    // A portal laid down at the end of the stretch is part of the stretch. It is
+    // not in either array, so without this the settle expires on the last crate
+    // and the doorway is swept off the lane before the hero reaches it.
+    if (this.portal && !this.portal.hit) last = Math.max(last, this.portal.x + 12);
     const travel = (last - this.playerWorldX()) / Math.max(1, this.speed);
     this.settleT = Math.max(SETTLE_T, travel + tail);
   }
@@ -1250,6 +1250,16 @@ export class TutorialState {
     this.obstacles.push(makeObstacle('crate', x0 + 400, { n: 3 }));
     // A target for the sharpshooters.
     this.obstacles.push(makeObstacle('target', x0 + 540));
+    // And the way home, at the end of it. The last portal used to be a section
+    // of its own — a spawn lead and a settle for a doorway with nothing to get
+    // wrong. It goes where it was always going to be run through anyway: past
+    // the last target, at the end of the gallery.
+    //
+    // The module borrowed two bodies to teach two things and hands the first one
+    // back before the paperwork. The certificate is made out to whoever is
+    // standing there at the end.
+    this.portal = { x: x0 + 660, hero: 'lorenzo', label: 'LORENZO', hit: false };
+    this.sayIn(1.2, 'LAST PORTAL. BACK INTO THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.');
     this.freePlayUntilLaneClears(1.5);
   }
 
@@ -1266,6 +1276,7 @@ export class TutorialState {
     this.clawing = true;
     this.clawAcc = 0;
     this.clawStart = this.coins;
+    this.clawDeathT = 0;
     // He watches the counter go down and he is not pleased about it. It outlasts
     // the drain by a couple of seconds so the face is still on him when the
     // number hits zero.
@@ -1299,17 +1310,32 @@ export class TutorialState {
     this.clawing = false;
     this.clawStart = 0;
     this.coins = 0;
-    Audio.sfx('uiBad');
+    // Let the final coin extraction land before the arcade dies. The pause is
+    // deliberately stateful rather than a blocking wait, so the tutorial keeps
+    // updating and drawing the reclaimed counter during the beat.
+    this.clawDeathT = CLAW_DEATH_PAUSE;
     this.floatText('RECLAIMED', '#e04848');
+  }
+
+  updateClawbackDeath(dt) {
+    if (this.clawDeathT <= 0) return;
+    this.clawDeathT -= dt;
+    if (this.clawDeathT <= 0) {
+      this.clawDeathT = 0;
+      // The till hits zero and the arcade itself dies: the Pac-Man death
+      // jingle, sweeps and all. The clean gap keeps it from landing on the
+      // final coin's extraction blip.
+      Audio.sfx('pacDeath');
+    }
   }
 
   // ---- the mandated celebration --------------------------------------------
 
   // Streamers and confetti, thrown by nobody in particular — HR does not say
-  // who throws them and Gary is certainly not going to. Ribbons are the same
-  // shard the debris system uses, just long, thin, and barely weighted, so they
-  // flutter down instead of dropping; confetti is the square version of the
-  // same thing. Both land on the groundline and settle there, which is what
+  // who throws them and Gary is certainly not going to. Both are foil (see
+  // spawnFoil): paper that flips over as it falls, shows its own shadowed back
+  // when it does, drifts on a sway of its own, and flashes an edge-on glint on
+  // the way past. They land on the groundline and settle there, which is what
   // makes the sweep two beats later worth doing.
   startParty() {
     this.partyT = PARTY_T;
@@ -1319,11 +1345,17 @@ export class TutorialState {
     Audio.sfx('win');
     if (this.settings.reducedMotion) return;
     // The opening pop: a double handful over each of them, thrown up so it
-    // arrives on the way down rather than appearing overhead.
+    // arrives on the way down rather than appearing overhead. Foil forgets the
+    // throw within a beat, so this is an arc that turns into a flutter.
+    const rand = () => this.rng.float();
     for (const wx of [this.playerWorldX() + 6, this.worldX + GARY_STOP_X]) {
-      shardBurst(wx, GROUND_Y - 46, 14, 70, 6, PARTY_INK, {
-        size: 2.4, grav: 90, floor: GROUND_Y, rand: () => this.rng.float(),
+      foilBurst(wx, GROUND_Y - 46, 14, 62, PARTY_INK, {
+        size: 2.6, life: 6, floor: GROUND_Y, ribbonChance: 0.3, rand,
       });
+      // A few sparks of plain shrapnel underneath the foil: the pop of the
+      // popper itself, gone in a third of a second, so the throw has a moment
+      // of grit before the paper takes over.
+      burst(wx, GROUND_Y - 46, 6, 84, 0.3, '#fff8d0', 1.2, 160, rand);
     }
     this.dropStreamers(7);
   }
@@ -1346,20 +1378,23 @@ export class TutorialState {
   dropStreamers(n) {
     const span = W / this.camZoom;
     const top = GROUND_Y - (H + 30) / this.camZoom;
+    const rand = () => this.rng.float();
     for (let i = 0; i < n; i++) {
       const x = this.worldX + this.rng.range(-8, span + 8);
-      const ribbon = this.rng.float() < 0.55;
+      const ribbon = this.rng.float() < 0.5;
       const ink = PARTY_INK[Math.floor(this.rng.range(0, PARTY_INK.length)) % PARTY_INK.length];
       // Lifetimes outlast the step on purpose: what lands has to still be lying
       // there two beats later, or the sweep has nothing to take back.
-      spawnShard(
-        x, top + this.rng.range(0, 14),
-        this.rng.range(-14, 14), this.rng.range(10, 26),
-        6, ink,
-        ribbon ? 1.2 : 2.2, ribbon ? 8 : 2.2,
-        (this.rng.float() - 0.5) * (ribbon ? 3 : 12),
-        ribbon ? 40 : 70, GROUND_Y,
-      );
+      spawnFoil(x, top + this.rng.range(0, 14), ink, {
+        vx: this.rng.range(-10, 10), vy: this.rng.range(8, 20), life: 6,
+        w: ribbon ? 1.9 : this.rng.range(1.9, 2.9),
+        h: this.rng.range(1.9, 2.9),
+        ribbon, len: this.rng.range(8, 13),
+        // The paper does not all fall at one speed — a spread here is what
+        // stops the drip reading as rows arriving on a conveyor.
+        vt: this.rng.range(26, 46),
+        floor: GROUND_Y, rand,
+      });
     }
   }
 
@@ -1492,6 +1527,7 @@ export class TutorialState {
     if (this.waveT > 0) this.waveT -= dt;
     if (this.sulkT > 0) this.sulkT -= dt;
     if (this.partyT > 0) { this.partyT -= dt; this.updateParty(dt); }
+    this.updateClawbackDeath(dt);
     this.updateClawback(dt);
 
     if (this.finished) {
@@ -1575,8 +1611,8 @@ export class TutorialState {
           // Card appears only once Gary is in position, with the prompt
           // appended so it reads as part of the same pale plate.
           const prompt = Input.isTouchDevice()
-            ? ' — TAP ANYWHERE TO START'
-            : ' — PRESS ANY KEY TO START';
+            ? ' TAP ANYWHERE TO START'
+            : ' PRESS ANY KEY TO START';
           this.say(OPENING + prompt);
         }
         break;
@@ -1944,7 +1980,11 @@ export class TutorialState {
       const got = step.done(this);
       this.say(got ? step.got() : step.missed());
       this.passStep(got);
-      this.settleT = 3.0;
+      // A floor, not an assignment. passStep runs onPass, and an onPass with a
+      // portal to reach in it knows better than this line does how much lane it
+      // needs — clobbering the value it just set would strand the portal past
+      // the end of the settle.
+      this.settleT = Math.max(this.settleT, 3.0);
       return;
     }
 

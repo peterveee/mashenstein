@@ -25,9 +25,21 @@
 <title>MASHENSTEIN: The Unpluggening</title>
 <script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";window.__MASH_TELEMETRY_URL__="__TLM_URL__";/*__DEV_GATE__*/</script>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0b0b14; overflow: hidden;
+               -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { touch-action: none; -webkit-user-select: none; user-select: none;
-         -webkit-touch-callout: none; overscroll-behavior: none; }
+         -webkit-touch-callout: none; overscroll-behavior: none;
+         -webkit-tap-highlight-color: transparent; }
+  /* The canvases restate what they already inherit from body. iOS decides the
+     long-press behaviour — callout menu, selection, magnifier loupe — from the
+     touched element's own computed style, and a thumb held on the glass mid-run
+     is a long press. The overlays below deliberately opt back INTO selectable
+     text (install steps, the copyable error dump); everything a finger touches
+     while playing must stay opted out. */
+  #game, #chrome, #game-shell, #safe-area, #font-loading {
+    touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
   #game { position: fixed; image-rendering: auto; }
   #chrome { position: fixed; left: 0; top: 0; }
   #boot-error { position: absolute; inset: 0; color: #e0e0e8; font: 14px monospace;

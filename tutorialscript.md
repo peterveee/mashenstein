@@ -55,7 +55,7 @@ the frame. He arrives centre-screen and settles into idle pose. His card appears
 
 > HR ASSIGNED ME THE TRAINING MODULE. I AM DECEASED. THE FORM DID NOT ASK.
 
-A prompt is appended to the card itself — **— PRESS ANY KEY TO START** (desktop)
+A prompt is appended to the card itself — ** PRESS ANY KEY TO START** (desktop)
 or **— TAP ANYWHERE TO START** (touch) — appearing as a second line in the same
 pale plate. The scene holds here — nothing moves, nothing scrolls — until the
 player acknowledges it.

@@ -232,7 +232,18 @@ class InputSys {
     };
     el.addEventListener('pointerup', endPointer);
     el.addEventListener('pointercancel', endPointer);
-    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Nothing the finger does on the glass may be read as "acting on content":
+    // no right-click / long-press callout menu, no drag of the canvas as an
+    // image, no selection (which on iOS is what raises the magnifier loupe over
+    // the art). The CSS in template.html says the same thing declaratively;
+    // these are the belt to its braces, since a long press that begins on the
+    // canvas but drifts is arbitrated by the events, not the style.
+    const noSelect = (target) => {
+      target.addEventListener('contextmenu', (e) => e.preventDefault());
+      target.addEventListener('selectstart', (e) => e.preventDefault());
+      target.addEventListener('dragstart', (e) => e.preventDefault());
+    };
+    noSelect(el);
     // #chrome sits behind #game and only shows through in the letterbox/
     // pillarbox margin (run.js), so a tap only ever reaches it there. No
     // swipe gestures or tap-to-jump fallback here — just hit a button or not.
@@ -252,6 +263,7 @@ class InputSys {
       });
       chromeEl.addEventListener('pointerup', endPointer);
       chromeEl.addEventListener('pointercancel', endPointer);
+      noSelect(chromeEl);
     }
     // Scroll wheel navigates lists in menu / hub / paused contexts.
     window.addEventListener('wheel', (e) => {

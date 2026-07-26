@@ -17,6 +17,9 @@ function wave(type, phase) {
   const p = phase - Math.floor(phase);
   if (type === 'square') return p < 0.5 ? 1 : -1;
   if (type === 'triangle') return p < 0.5 ? 4 * p - 1 : 3 - 4 * p;
+  // 25% duty pulse — the live cue builds this as a PeriodicWave from the same
+  // duty; here the naive edge is fine, it just aliases a little higher up.
+  if (type === 'pulse') return p < 0.25 ? 1 : -1;
   return Math.sin(2 * Math.PI * p);
 }
 
@@ -74,10 +77,66 @@ function noiseBurst(out, t0, dur, gain, type, freq) {
   }
 }
 
+// Mirror of AudioSys.pacDeath(): eleven stepped downward sweeps that lengthen
+// and quieten as they go, then the two-tone drop. The frequency staircase and
+// the per-cycle level sag are the point, so this renders the automation
+// directly rather than going through tone().
+function pacDeath(out, t0 = 0) {
+  const CYCLES = 11, STEPS = 14;
+  const peak0 = 0.15;
+  let phase = 0, t = t0, prevGain = 0.0001;
+  // One-pole lowpass tracking 6200Hz -> 2400Hz across the sweeps.
+  let lp = 0;
+  const sweepEnd = (() => {
+    let e = t0;
+    for (let i = 0; i < CYCLES; i++) e += 0.082 + 0.042 * (i / (CYCLES - 1));
+    return e;
+  })();
+  for (let i = 0; i < CYCLES; i++) {
+    const k = i / (CYCLES - 1);
+    const top = 1560 * Math.pow(0.943, i);
+    const bot = 470 * Math.pow(0.962, i);
+    const dur = 0.082 + 0.042 * k;
+    const peak = peak0 * (1 - 0.4 * k);
+    const start = Math.floor(t * SR);
+    const count = Math.floor(dur * SR);
+    for (let n = 0; n < count && start + n < out.length; n++) {
+      const u = n / count;                       // position within this sweep
+      const step = Math.min(STEPS - 1, Math.floor(u * STEPS));
+      const f = top * Math.pow(bot / top, step / (STEPS - 1));
+      phase += f / SR;
+      // attack on the first cycle only, then the sag down to half level
+      let env;
+      if (i === 0 && n < 0.005 * SR) env = expInterp(0.0001, peak, n / (0.005 * SR));
+      else env = peak + (peak * 0.5 - peak) * Math.min(1, u / 0.93);
+      prevGain = env;
+      const cut = expInterp(6200, 2400, (t + n / SR - t0) / Math.max(1e-6, sweepEnd - t0));
+      const a = (1 / SR) / (1 / (2 * Math.PI * cut) + 1 / SR);
+      lp += a * (wave('pulse', phase) * env - lp);
+      out[start + n] += lp;
+    }
+    t += dur;
+  }
+  // release
+  const relStart = Math.floor(t * SR), relCount = Math.floor(0.02 * SR);
+  for (let n = 0; n < relCount && relStart + n < out.length; n++) {
+    phase += 840 / SR;
+    out[relStart + n] += wave('pulse', phase) * expInterp(prevGain, 0.0001, n / relCount);
+  }
+
+  // The tail: penultimate drop, then the pluck that collapses to nothing.
+  const tailAt = t + 0.07;
+  tone(out, tailAt, 0.085, 'pulse', 190, 132, 0.2);
+  tone(out, tailAt + 0.095, 0.15, 'pulse', 118, 38, 0.22);
+  tone(out, tailAt + 0.095, 0.15, 'sine', 59, 24, 0.16);
+}
+
 function render(name) {
   // cash rings out longer than the other blips; give it room for the tail.
-  const out = new Float32Array(Math.ceil((name === 'cash' ? 0.85 : 0.6) * SR));
-  if (name === 'coin') {
+  const len = name === 'pacDeath' ? 1.9 : name === 'cash' ? 0.85 : 0.6;
+  const out = new Float32Array(Math.ceil(len * SR));
+  if (name === 'pacDeath') pacDeath(out, 0);
+  else if (name === 'coin') {
     tone(out, 0, 0.06, 'square', 988, 988, 0.12);
     tone(out, 0.06, 0.07, 'square', 1319, 1319, 0.12);
   } else if (name === 'cash') {
@@ -124,7 +183,7 @@ function render(name) {
 }
 
 mkdirSync(outDir, { recursive: true });
-for (const name of ['cash', 'power', 'coin', 'waka']) {
+for (const name of ['cash', 'power', 'coin', 'waka', 'pacDeath']) {
   const path = join(outDir, `${name}.wav`);
   writeFileSync(path, render(name));
   console.log(path);

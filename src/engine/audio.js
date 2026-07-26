@@ -32,6 +32,10 @@ const SFX_TRIM = {
   // it ~23dB up on total energy. Trim plus a shorter hold (see the cue) lands
   // it just under 'coin' on peak and a few dB over on energy.
   waka: 0.45,
+  // Eleven pulse-wave sweeps back to back is a lot of continuous energy next to
+  // the one-shot blips it follows. Trimmed into the 'lose'/'uiBad' family so it
+  // lands as a punchline rather than a level jump.
+  pacDeath: 0.62,
 };
 
 // The weapon cues used to ship as .wav assets fetched at runtime. They are now
@@ -534,6 +538,115 @@ class AudioSys {
     o.start(t); o.stop(t + dur + 0.03);
   }
 
+  // A 25% duty-cycle pulse — the classic arcade PSG timbre, hollow and reedy
+  // where a square is fat. Built from the exact Fourier series for the duty
+  // (b_n = 2/(nπ)·sin(nπd)) rather than a hand-picked pair of partials, and
+  // cached because a PeriodicWave is immutable and not cheap to build.
+  pulseWave(duty = 0.25, harmonics = 24) {
+    if (!this.ctx) return null;
+    const key = `p${duty}`;
+    this._waves = this._waves || {};
+    if (this._waves[key]) return this._waves[key];
+    const real = new Float32Array(harmonics + 1);
+    const imag = new Float32Array(harmonics + 1);
+    for (let n = 1; n <= harmonics; n++) imag[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
+    const w = this.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+    this._waves[key] = w;
+    return w;
+  }
+
+  // The arcade death jingle: eleven rapid downward sweeps that each start and
+  // end lower than the last, then a two-tone drop where the sprite blinks out.
+  //
+  // Three things make it read as THE sound rather than "a descending beep":
+  //   * the sweep is STEPPED, not glided. The original PSG walked its frequency
+  //     register in discrete increments and the staircase is audible — it's the
+  //     buzz inside the fall. A smooth exponentialRamp sounds like a slide
+  //     whistle instead.
+  //   * every sweep re-articulates. The level jumps back up at the top of each
+  //     cycle and sags across it, which is what gives the pulsing "wobble".
+  //   * it slows down as it goes. Cycles lengthen and quieten toward the end,
+  //     so the thing runs out of life instead of stopping.
+  // Then the tail: ~145Hz for 80ms and a final ~110Hz pluck that collapses to
+  // nothing — the "bloop-bloop" as the sprite folds up and vanishes.
+  pacDeath(when = 0) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime + when;
+    const wave = this.pulseWave(0.25);
+    const q = this.cueGain;
+
+    const CYCLES = 11;
+    const STEPS = 14;          // frequency staircase per sweep
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    // Non-resonant roll-off: a 25% pulse puts real energy up at the 5th and 7th
+    // harmonic, and at the top of the first sweeps that lands in the ear's
+    // sorest band. Track it down with the pitch so the fall gets duller as it
+    // gets lower, the way the cabinet's little speaker did it for free.
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(6200, t0);
+    if (wave) o.setPeriodicWave(wave); else o.type = 'square';
+
+    const peak0 = 0.15 * q;
+    g.gain.setValueAtTime(0.0001, t0);
+    let t = t0;
+    for (let i = 0; i < CYCLES; i++) {
+      const k = i / (CYCLES - 1);
+      const top = 1560 * Math.pow(0.943, i);   // ~1560Hz down to ~840Hz
+      const bot = 470 * Math.pow(0.962, i);    // ~470Hz down to ~310Hz
+      const dur = 0.082 + 0.042 * k;           // 82ms at full pelt, 124ms by the end
+      for (let s = 0; s < STEPS; s++) {
+        const f = top * Math.pow(bot / top, s / (STEPS - 1));
+        o.frequency.setValueAtTime(f, t + dur * (s / STEPS));
+      }
+      const peak = peak0 * (1 - 0.4 * k);
+      // First cycle fades in over 5ms so the pulse doesn't start on a click;
+      // the rest snap back to full at the top of their sweep.
+      if (i === 0) g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+      else g.gain.setValueAtTime(peak, t);
+      g.gain.linearRampToValueAtTime(peak * 0.5, t + dur * 0.93);
+      t += dur;
+    }
+    lp.frequency.exponentialRampToValueAtTime(2400, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+    o.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+    o.start(t0); o.stop(t + 0.05);
+
+    // ---- the tail: sprite folds up, sprite is gone ----------------------
+    const drop = (f0, f1, at, dur, gain, sub = 0) => {
+      const to = this.ctx.createOscillator();
+      const tg = this.ctx.createGain();
+      const tf = this.ctx.createBiquadFilter();
+      tf.type = 'lowpass'; tf.Q.value = 0.9; tf.frequency.value = 1800;
+      if (wave) to.setPeriodicWave(wave); else to.type = 'square';
+      to.frequency.setValueAtTime(f0, at);
+      to.frequency.exponentialRampToValueAtTime(f1, at + dur);
+      tg.gain.setValueAtTime(0.0001, at);
+      tg.gain.exponentialRampToValueAtTime(gain, at + 0.006);
+      tg.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      to.connect(tf); tf.connect(tg); tg.connect(this.sfxGain);
+      to.start(at); to.stop(at + dur + 0.02);
+      // A sine an octave under the final pluck: the pulse alone is all buzz and
+      // no weight, and on laptop speakers the last note has to land.
+      if (sub > 0) {
+        const so = this.ctx.createOscillator(); so.type = 'sine';
+        const sg = this.ctx.createGain();
+        so.frequency.setValueAtTime(f0 * 0.5, at);
+        so.frequency.exponentialRampToValueAtTime(Math.max(24, f1 * 0.5), at + dur);
+        sg.gain.setValueAtTime(0.0001, at);
+        sg.gain.exponentialRampToValueAtTime(sub, at + 0.008);
+        sg.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        so.connect(sg); sg.connect(this.sfxGain);
+        so.start(at); so.stop(at + dur + 0.02);
+      }
+    };
+    // A breath between the sweeps and the tail — the pause is half the gag.
+    const tailAt = t + 0.07;
+    drop(190, 132, tailAt, 0.085, 0.2 * q);
+    drop(118, 38, tailAt + 0.095, 0.15, 0.22 * q, 0.16 * q);
+  }
+
   sfx(name, opt = {}) {
     if (!this.ctx) return;
     this.cueGain = SFX_TRIM[name] ?? 1;
@@ -657,6 +770,7 @@ class AudioSys {
         break;
       case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.osc('square', f, f, 0.11, 0.14, i * 0.09)); break;
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
+      case 'pacDeath': this.pacDeath(); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
       case 'boom': this.explosion(); break;
       // ---- Fireworks. Three burst shapes so a long results screen never
