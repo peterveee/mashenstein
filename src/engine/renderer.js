@@ -142,6 +142,7 @@ export function setSkyFx(on, time) {
 
 // px = device pixels per logical pixel (what everything is pre-scaled by).
 export const screen = { scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1 };
+export const visualizerFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualizerFullscreen = false;
 
 // The game normally preserves its 16:9 logical frame with letterbox margins.
@@ -526,6 +527,17 @@ function resize() {
   const cssW = visualizerFullscreen ? Math.round(winW) : Math.round(W * scale);
   const cssH = visualizerFullscreen ? Math.round(winH) : Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
+  if (visualizerFullscreen) {
+    const cover = Math.max(winW / W, winH / H);
+    const visibleW = winW / cover, visibleH = winH / cover;
+    visualizerFrame.left = (W - visibleW) * 0.5;
+    visualizerFrame.top = (H - visibleH) * 0.5;
+    visualizerFrame.right = visualizerFrame.left + visibleW;
+    visualizerFrame.bottom = visualizerFrame.top + visibleH;
+  } else {
+    visualizerFrame.left = 0; visualizerFrame.top = 0;
+    visualizerFrame.right = W; visualizerFrame.bottom = H;
+  }
   // Rebuild the density ladder for this viewport (native is the ceiling rung).
   // On a resize/rotation that moves native, preserve the current position by
   // VALUE — snap to the nearest new rung — rather than by index, which would
@@ -549,6 +561,11 @@ function resize() {
   canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
+  // Fullscreen visualizers use the viewport as a cover frame, preserving the
+  // logical 16:9 aspect ratio instead of stretching circles and typography.
+  // A little edge crop is preferable to visibly distorted artwork.
+  canvas.style.objectFit = visualizerFullscreen ? 'cover' : 'fill';
+  canvas.style.objectPosition = 'center center';
   canvas.style.imageRendering = 'auto';
   const ox = visualizerFullscreen ? 0 : Math.floor((winW - cssW) / 2);
   const oy = visualizerFullscreen ? 0 : Math.floor((winH - cssH) / 2);

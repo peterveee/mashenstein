@@ -1,6 +1,6 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen } from '../engine/renderer.js';
+import { W, H, bakeSS, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen, visualizerFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
@@ -3318,6 +3318,12 @@ const JUKEBOX_VISIBLE_ROWS = 6;
 const JUKEBOX_BACK_TOP = 216;
 const JUKEBOX_BACK_H = 25;
 const LEFT_MENU_ITEM_S = 1.15;
+const VISUAL_MENU_FADE = 0.30;
+const VISUAL_GAP = 0.12;
+const VISUAL_IN_TOTAL = 1.0;
+const VISUAL_OUT_FADE = 0.20;
+const VISUAL_OUT_GAP = 0.10;
+const VISUAL_OUT_TOTAL = 0.45;
 
 export class SoundTestState {
   constructor({ onDone, initialTrack = -1, startVisualizer = false }) {
@@ -3340,6 +3346,7 @@ export class SoundTestState {
     this.labelT = 0;
     this.visualizerIndex = -1;
     this.lastVisualizerIndex = -1;
+    this.fullscreenReady = false;
     this.actTok = 0;
   }
   enter() {
@@ -3359,6 +3366,7 @@ export class SoundTestState {
     this.labelT = 0;
     this.visualizerIndex = -1;
     this.lastVisualizerIndex = -1;
+    this.fullscreenReady = false;
     this.actTok = Input.activity;
     Audio.setBank(null);
     if (this.playing >= 0) {
@@ -3381,6 +3389,7 @@ export class SoundTestState {
     this.visualSwitchT = 0;
     this.labelT = 0;
     this.visualizerIndex = -1;
+    this.fullscreenReady = false;
   }
   resetIdle() {
     this.idleT = this.playing >= 0 ? -(Audio.pendingStartDelay || 0) : 0;
@@ -3389,7 +3398,6 @@ export class SoundTestState {
   }
   startVisualizer() {
     if (this.playing < 0 || this.visualState !== 'list') return;
-    setVisualizerFullscreen(true);
     this.visualizerIndex = pickVisualizer(this.lastVisualizerIndex, Math.random);
     this.lastVisualizerIndex = this.visualizerIndex;
     const seed = ((Math.random() * 0xffffffff) ^ (this.visualizerIndex * 0x9e3779b9)) >>> 0;
@@ -3399,12 +3407,14 @@ export class SoundTestState {
     this.labelT = 0;
     this.visualState = 'in';
     this.visualT = 0;
+    this.fullscreenReady = false;
     this.actTok = Input.activity;
   }
   wakeVisualizer() {
     if (this.visualState === 'list') return false;
     this.visualState = 'out';
     this.visualT = 0;
+    this.fullscreenReady = true;
     this.idleT = 0;
     // The wake gesture is intentionally consumed by this screen. The next
     // gesture belongs to the jukebox list and can stop/switch the song.
@@ -3474,10 +3484,25 @@ export class SoundTestState {
         if (this.visualSwitchT === 0) this.previousVisualizer = null;
       }
       this.visualT += dt;
+      if (this.visualState === 'in' && !this.fullscreenReady
+        && this.visualT >= VISUAL_MENU_FADE + VISUAL_GAP) {
+        // The menu has fully disappeared and the beat-sized gap is over. Only
+        // now expand the canvas, while the frame is already a dark visualizer
+        // field, so the menu never visibly zooms or crops.
+        setVisualizerFullscreen(true);
+        this.fullscreenReady = true;
+      }
+      if (this.visualState === 'out' && this.fullscreenReady
+        && this.visualT >= VISUAL_OUT_FADE + VISUAL_OUT_GAP) {
+        // Restore the normal letterboxed canvas before the menu starts its
+        // return fade, making the reverse transition just as stable.
+        setVisualizerFullscreen(false);
+        this.fullscreenReady = false;
+      }
       if (this.visualState === 'in' && this.visualT >= 1.0) {
         this.visualState = 'active';
-        this.visualT = 1.0;
-      } else if (this.visualState === 'out' && this.visualT >= 0.45) {
+        this.visualT = VISUAL_IN_TOTAL;
+      } else if (this.visualState === 'out' && this.visualT >= VISUAL_OUT_TOTAL) {
         this.clearVisualizer();
       }
       Input.endFrame();
@@ -3598,40 +3623,64 @@ export class SoundTestState {
       this.drawList(ctx);
       return;
     }
-    const inFade = this.visualState === 'in' ? smooth(clamp(this.visualT / 1)) : 1;
-    const outFade = this.visualState === 'out' ? 1 - smooth(clamp(this.visualT / 0.45)) : 1;
-    const visualAlpha = clamp(inFade * outFade);
-    this.drawList(ctx, 1 - visualAlpha);
-    ctx.save();
-    if (this.previousVisualizer && this.visualSwitchT > 0) {
-      const switchP = 1 - this.visualSwitchT / 0.35;
-      ctx.globalAlpha = visualAlpha * (1 - switchP);
-      this.previousVisualizer.draw(ctx);
-      ctx.globalAlpha = visualAlpha * switchP;
-      this.visualizer.draw(ctx);
-    } else {
-      ctx.globalAlpha = visualAlpha;
-      this.visualizer.draw(ctx);
+    let visualAlpha = 1;
+    let menuAlpha = 0;
+    if (this.visualState === 'in') {
+      menuAlpha = this.visualT < VISUAL_MENU_FADE
+        ? 1 - smooth(clamp(this.visualT / VISUAL_MENU_FADE)) : 0;
+      visualAlpha = this.visualT <= VISUAL_MENU_FADE + VISUAL_GAP
+        ? 0 : smooth(clamp((this.visualT - VISUAL_MENU_FADE - VISUAL_GAP)
+          / (VISUAL_IN_TOTAL - VISUAL_MENU_FADE - VISUAL_GAP)));
+    } else if (this.visualState === 'out') {
+      visualAlpha = this.visualT < VISUAL_OUT_FADE
+        ? 1 - smooth(clamp(this.visualT / VISUAL_OUT_FADE)) : 0;
+      menuAlpha = this.visualT <= VISUAL_OUT_FADE + VISUAL_OUT_GAP
+        ? 0 : smooth(clamp((this.visualT - VISUAL_OUT_FADE - VISUAL_OUT_GAP)
+          / (VISUAL_OUT_TOTAL - VISUAL_OUT_FADE - VISUAL_OUT_GAP)));
     }
-    ctx.restore();
-    // Keep the screensaver metadata quiet and out of the way: the track hugs
-    // the lower-left edge while the current preset balances it on the right.
-    // A tiny shadow preserves legibility over bright particle passes without
-    // bringing back the centered modal card.
-    const labelScale = 0.82;
-    const labelInset = 24;
-    const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
-    const visualLabel = this.visualizer.name;
-    const trackX = labelInset;
-    const visualX = W - labelInset - textWidth(visualLabel, labelScale);
-    const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
-    ctx.save();
-    ctx.globalAlpha = visualAlpha * labelFade * 0.92;
-    drawText(ctx, trackLabel, trackX + 1, H - 14 + 1, '#02030a', labelScale);
-    drawText(ctx, visualLabel, visualX + 1, H - 14 + 1, '#02030a', labelScale);
-    drawText(ctx, trackLabel, trackX, H - 14, '#f4f1fa', labelScale);
-    drawText(ctx, visualLabel, visualX, H - 14, '#48e0c8', labelScale);
-    ctx.restore();
+    if (menuAlpha > 0) this.drawList(ctx, menuAlpha);
+    else {
+      ctx.fillStyle = '#0b0b14';
+      ctx.fillRect(0, 0, W, H);
+    }
+    // Visuals and metadata live on the dedicated device-density overlay. This
+    // makes the screensaver a true composited surface: the jukebox list fades
+    // underneath it, and WebGL/2D get the same fade and layer ordering.
+    const drawVisualSurface = (surface) => {
+      surface.save();
+      if (this.previousVisualizer && this.visualSwitchT > 0) {
+        const switchP = 1 - this.visualSwitchT / 0.35;
+        surface.globalAlpha = visualAlpha * (1 - switchP);
+        this.previousVisualizer.draw(surface);
+        surface.globalAlpha = visualAlpha * switchP;
+        this.visualizer.draw(surface);
+      } else {
+        surface.globalAlpha = visualAlpha;
+        this.visualizer.draw(surface);
+      }
+      surface.restore();
+      // Keep the screensaver metadata quiet and out of the way: the track hugs
+      // the lower-left edge while the current preset balances it on the right.
+      // A safe inset keeps both clear of rounded mobile display corners.
+      const labelScale = 0.82;
+      const labelInset = 24;
+      const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
+      const visualLabel = this.visualizer.name;
+      const safeLeft = visualizerFrame.left + labelInset;
+      const safeRight = visualizerFrame.right - labelInset;
+      const trackX = Math.max(labelInset, safeLeft);
+      const visualX = Math.min(W - labelInset - textWidth(visualLabel, labelScale), safeRight - textWidth(visualLabel, labelScale));
+      const labelY = Math.min(H - 14, visualizerFrame.bottom - 14);
+      const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
+      surface.save();
+      surface.globalAlpha = visualAlpha * labelFade * 0.92;
+      drawText(surface, trackLabel, trackX + 1, labelY + 1, '#02030a', labelScale);
+      drawText(surface, visualLabel, visualX + 1, labelY + 1, '#02030a', labelScale);
+      drawText(surface, trackLabel, trackX, labelY, '#f4f1fa', labelScale);
+      drawText(surface, visualLabel, visualX, labelY, '#48e0c8', labelScale);
+      surface.restore();
+    };
+    if (!pushOverlayDraw(drawVisualSurface)) drawVisualSurface(ctx);
   }
 }
 

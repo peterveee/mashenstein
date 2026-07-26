@@ -135,7 +135,7 @@ class BaseVisualizer {
     g.addColorStop(0.45, rgba(color, alpha * 0.28));
     g.addColorStop(1, rgba(color, 0));
     ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   }
 
   drawDust(ctx, alpha = 0.5) {
@@ -148,7 +148,7 @@ class BaseVisualizer {
       ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke();
       if (p.z > 0.72) {
         ctx.fillStyle = rgba('#ffffff', a * 0.6);
-        ctx.fillRect(p.x - 0.5, p.y - 0.5, 1 + p.z, 1 + p.z);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 0.5 + p.z * 0.55, 0, TAU); ctx.fill();
       }
     }
     ctx.restore();
@@ -455,7 +455,15 @@ class MonsterReactor extends BaseVisualizer {
 }
 
 class ElectricKaleidoscope extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[4]; this.symmetry = 12; this.lastPhrase = -1; }
+  constructor(seed, track) {
+    super(seed, track); this.name = VISUALIZER_NAMES[4]; this.symmetry = 12; this.lastPhrase = -1;
+    this.satellites = makePool(7);
+    this.satellites.forEach((p) => {
+      p.angle = this.rng.float() * TAU; p.radius = 72 + this.rng.float() * 76;
+      p.size = 8 + this.rng.float() * 11; p.spin = -1 + this.rng.float() * 2;
+      p.petals = 3 + Math.floor(this.rng.float() * 3); p.hue = this.rng.float();
+    });
+  }
   update(dt, a) {
     super.update(dt, a);
     const phrase = Math.floor(this.beat / 8);
@@ -466,6 +474,10 @@ class ElectricKaleidoscope extends BaseVisualizer {
       this.lastPhrase = phrase;
       const step = ((phrase * 5 + (this.seed >>> 0)) % 9 + 9) % 9;
       this.symmetry = 8 + step * 2;
+    }
+    for (const p of this.satellites) {
+      p.angle += dt * p.spin * (0.18 + this.mid * 0.55);
+      p.radius += Math.sin(this.t * 0.7 + p.hue * TAU) * dt * (3 + this.bass * 8);
     }
   }
   draw(ctx) {
@@ -501,6 +513,28 @@ class ElectricKaleidoscope extends BaseVisualizer {
     ctx.fillStyle = core; ctx.beginPath(); ctx.arc(0, 0, radius * 0.72, 0, TAU); ctx.fill();
     ctx.restore();
     this.glowDot(ctx, this.focusX, this.focusY, radius * 2.2, this.palette[1], 0.18 + this.beatPulse * 0.2);
+    // A swarm of smaller, lower-petal kaleidoscopes orbits the main bloom.
+    // They share the palette but keep independent motion so the scene feels
+    // populated rather than like one giant flower copied seven times.
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const p of this.satellites) {
+      const sx = this.focusX + Math.cos(p.angle) * p.radius;
+      const sy = this.focusY + Math.sin(p.angle) * p.radius * 0.62;
+      const r = p.size * (1 + this.beatPulse * 0.45);
+      const c = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      this.glowDot(ctx, sx, sy, r * 2.4, c, 0.1 + this.mid * 0.1);
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(this.t * p.spin * 0.22 + p.hue * TAU);
+      for (let i = 0; i < p.petals; i++) {
+        ctx.save(); ctx.rotate(i * TAU / p.petals);
+        ctx.fillStyle = rgba(this.palette[(i + Math.floor(p.hue * 4)) % this.palette.length], 0.2 + this.treble * 0.16);
+        ctx.strokeStyle = rgba(c, 0.35 + this.treble * 0.25); ctx.lineWidth = 0.7 + this.beatPulse * 0.7;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(r * 0.65, -r * 0.35, r * 1.5, 0); ctx.quadraticCurveTo(r * 0.65, r * 0.35, 0, 0); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.fillStyle = rgba('#ffffff', 0.35 + this.beatPulse * 0.3); ctx.beginPath(); ctx.arc(0, 0, 1.5 + this.beatPulse * 1.4, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
     this.drawDust(ctx, 0.75);
     this.modernFinish(ctx, 0.16);
   }
@@ -586,10 +620,21 @@ class PrismaticStorm extends BaseVisualizer {
     this.backdrop(ctx, '#10052c', '#020814');
     const fx = this.focusX; const fy = this.focusY; const pulse = this.beatPulse;
     for (let i = 0; i < 6; i++) { const a = this.t * (0.08 + i * 0.012) + i; this.glowDot(ctx, fx + Math.cos(a) * 45, fy + Math.sin(a) * 28, 42 + this.bass * 28, this.palette[i % 4], 0.1); }
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 14; i++) { const a = i * TAU / 14 + this.t * 0.16; ctx.strokeStyle = rgba(this.palette[i % 4], 0.12 + this.bass * 0.2); ctx.lineWidth = 1 + pulse * 2; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(a) * 260, fy + Math.sin(a) * 170); ctx.stroke(); }
-    for (const p of this.shards) { const x = fx + Math.cos(p.angle) * p.radius; const y = fy + Math.sin(p.angle) * p.radius * 0.62; const s = p.size * (1 + (1 - p.depth) * 0.8 + pulse * 0.7); ctx.fillStyle = rgba(this.palette[Math.floor(p.depth * 4) % 4], 0.25 + p.depth * 0.55 + this.treble * 0.2); polygonPath(ctx, x, y, s, 3 + (p.depth > 0.65 ? 1 : 0), p.angle + this.t * p.spin); ctx.fill(); }
-    for (let i = 0; i < 5; i++) { ctx.strokeStyle = rgba(this.palette[(i + 1) % 4], 0.22); ctx.lineWidth = 1.2; polygonPath(ctx, fx, fy, 24 + i * 18 + pulse * 10, 5 + i % 3, this.t * (0.12 + i * 0.02)); ctx.stroke(); }
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+    for (let i = 0; i < 14; i++) {
+      const a = i * TAU / 14 + this.t * 0.16; const length = 260 + this.bass * 34;
+      ctx.strokeStyle = rgba(this.palette[i % 4], 0.12 + this.bass * 0.2); ctx.lineWidth = 1 + pulse * 2;
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(a) * length, fy + Math.sin(a) * length * 0.66); ctx.stroke();
+      ctx.fillStyle = rgba(this.palette[i % 4], 0.22 + pulse * 0.18); ctx.beginPath(); ctx.arc(fx + Math.cos(a) * length, fy + Math.sin(a) * length * 0.66, 1.5 + pulse * 2, 0, TAU); ctx.fill();
+    }
+    for (const p of this.shards) {
+      const x = fx + Math.cos(p.angle) * p.radius; const y = fy + Math.sin(p.angle) * p.radius * 0.62;
+      const s = p.size * (1 + (1 - p.depth) * 0.8 + pulse * 0.7); const color = this.palette[Math.floor(p.depth * 4) % 4];
+      this.glowDot(ctx, x, y, s * 3.2, color, 0.08 + p.depth * 0.12);
+      ctx.fillStyle = rgba(color, 0.25 + p.depth * 0.55 + this.treble * 0.2);
+      ctx.beginPath(); ctx.arc(x, y, s, 0, TAU); ctx.fill();
+    }
+    for (let i = 0; i < 5; i++) { ctx.strokeStyle = rgba(this.palette[(i + 1) % 4], 0.22); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(fx, fy, 24 + i * 18 + pulse * 10, 15 + i * 10 + pulse * 6, this.t * (0.12 + i * 0.02), 0, TAU); ctx.stroke(); }
     this.glowDot(ctx, fx, fy, 50 + this.bass * 35, '#ffffff', 0.16 + pulse * 0.28);
     ctx.restore(); this.drawDust(ctx, 1.05); this.modernFinish(ctx, 0.14);
   }
@@ -622,7 +667,7 @@ class HolographicOcean extends BaseVisualizer {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let row = 0; row < 18; row++) { const p = row / 18; const y = horizon + p * p * 150; const amp = 3 + p * (12 + this.bass * 26) + this.beatPulse * 5; ctx.strokeStyle = rgba(this.palette[(row + 1) % 4], 0.12 + p * 0.22 + this.mid * 0.1); ctx.lineWidth = 0.65 + p * 1.1; ctx.beginPath(); for (let x = -20; x <= W + 20; x += 12) { const wave = Math.sin(x * 0.028 + this.t * (1.2 + p) + row * 0.45) * amp + Math.sin(x * 0.065 - this.t * 0.7) * amp * 0.25; if (x === -20) ctx.moveTo(x, y + wave); else ctx.lineTo(x, y + wave); } ctx.stroke(); }
     for (let i = 0; i < 9; i++) { const y = horizon - 28 + i * 9 + Math.sin(this.t * 0.8 + i) * 4; ctx.strokeStyle = rgba(this.palette[i % 4], 0.15 + this.treble * 0.2); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y + Math.sin(this.t + i) * 5); ctx.stroke(); }
-    for (const p of this.motes) { ctx.fillStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.18 + p.z * 0.55); ctx.fillRect(p.x, p.y, 1 + p.z * 2, 1 + p.z * 2); }
+    for (const p of this.motes) { ctx.fillStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.18 + p.z * 0.55); ctx.beginPath(); ctx.arc(p.x, p.y, 0.6 + p.z * 1.15, 0, TAU); ctx.fill(); }
     ctx.fillStyle = rgba('#ffffff', 0.35 + this.beatPulse * 0.3); ctx.beginPath(); ctx.arc(sunX, sunY, 12 + this.bass * 10, 0, TAU); ctx.fill(); ctx.restore();
     this.drawDust(ctx, 0.9); this.modernFinish(ctx, 0.15);
   }
