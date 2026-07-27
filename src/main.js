@@ -8,7 +8,7 @@ import { drawText, textWidth } from './engine/sprites.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
-import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero } from './engine/states.js';
+import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
 import { RunState } from './game/run.js';
@@ -451,7 +451,20 @@ function boot() {
   // resolves to "not portrait-capable" — matching the landscape gate the old
   // inline check applied by simply omitting allowPortrait.
   const diagPortrait = !!readDiag().portrait;
-  const allowPortraitNow = () => portraitAllowedFor(currentState(), diagPortrait);
+  // The open dev menu is a portrait surface of its own. It consumes the frame
+  // before any state updates (see Dev.update), so admitting portrait here runs
+  // the loop for the overlay alone — the landscape-only screen underneath stays
+  // frozen exactly as it would behind the rotate card, and a tester who opened
+  // the menu from that card reads it without turning the phone back.
+  //
+  // A shutter in flight is admitted too, because it needs frames to land and a
+  // paused phone gives it none: picking a screen from that menu would otherwise
+  // freeze half-way through the transition, leaving the old state current and
+  // the destination pending. The destination gets the deciding vote a moment
+  // later — publish() re-applies on the swap, and the loop below re-applies
+  // again once the reveal finishes.
+  const allowPortraitNow = () => Dev.open || isTransitioning()
+    || portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,
     visible: !document.hidden,
@@ -493,7 +506,12 @@ function boot() {
   // under --watch and is absent from a published bundle, so install() never
   // runs there and no listener is ever registered.
   Dev.enabled = !!(typeof window !== 'undefined' && window.__MASH_BUILD__);
-  if (Dev.enabled) Dev.install({ Flow, save });
+  // onOpenChange: opening or closing the overlay changes the answer
+  // allowPortraitNow gives, and nothing else would ask the question again while
+  // the phone is held still.
+  if (Dev.enabled) {
+    Dev.install({ Flow, save, onOpenChange: () => window.__mash_lifecycle?.apply() });
+  }
 
   // Dev URL shortcuts — append ?goto=screen to jump directly to any surface.
   // Only active when __MASH_BUILD__ is set (npm run dev / watch builds).
@@ -507,8 +525,18 @@ function boot() {
   // Keep an installed copy current silently. Browser-only iPhones never reach
   // this boot path: gate.js owns the sole Home Screen installation flow.
   initUpdates();
+  // The trailing edge of a transition. allowPortraitNow admits the shutter so
+  // it can land; the frame it finishes on is the frame the destination's own
+  // orientation policy has to take over, and no DOM event will say so.
+  let wasTransitioning = false;
   const loop = startLoop({
-    update: (dt) => { if (Dev.update(dt)) return; updateState(dt * Dev.timeScale); },
+    update: (dt) => {
+      const transitioning = isTransitioning();
+      if (wasTransitioning && !transitioning) window.__mash_lifecycle?.apply();
+      wasTransitioning = transitioning;
+      if (Dev.update(dt)) return;
+      updateState(dt * Dev.timeScale);
+    },
     draw: () => {
       beginRenderFrame();
       let drawFpsReadout = null;
@@ -669,6 +697,14 @@ function boot() {
     // everything else, including the title and gameplay states.
     allowPortrait: allowPortraitNow,
     onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
+    // Five taps on the portrait heading. Local builds only, like every other
+    // door into the dev menu: a published bundle never sets __MASH_BUILD__, so
+    // this reports false and the overlay says nothing.
+    onDevMenu: () => {
+      if (!Dev.enabled) return false;
+      Dev.openMenu();
+      return true;
+    },
   });
   window.__mash_booted = true;
 

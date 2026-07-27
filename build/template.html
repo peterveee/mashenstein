@@ -239,7 +239,14 @@
     .mash-phone-turn-device { animation: none; opacity: 1; transform: none; }
     .mash-phone-turn-trail { display: none; animation: none; }
   }
-  .mash-portrait-card h1 { line-height: 1.08; margin-bottom: clamp(24px, 3.8vh, 42px); }
+  /* The heading is also a hidden five-tap target that opens the dev menu in
+     local builds — see lifecycle.js. Safari only delivers click to a plain
+     element that looks tappable, hence cursor; touch-action drops the
+     double-tap-zoom wait so five taps in a row are counted as five. */
+  .mash-portrait-card h1 {
+    line-height: 1.08; margin-bottom: clamp(24px, 3.8vh, 42px);
+    cursor: pointer; touch-action: manipulation;
+  }
   .mash-portrait-card p { margin-bottom: 0; }
   .mash-sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

@@ -4,6 +4,7 @@
 //
 // Items: {label, act?, submenu?, adjust?}
 import { W, H } from '../engine/renderer.js';
+import { Input } from '../engine/input.js';
 import { drawText, drawTextCentered, drawPanel } from '../engine/sprites.js';
 import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
@@ -239,7 +240,6 @@ function scenesMenu(dev) {
       { label: 'FIELD GUIDE', act: go(() => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toHub() }))) },
       { label: 'SOUND TEST', act: go(() => setState(new SoundTestState({ onDone: () => Flow.toHub() }))) },
       { label: 'HOW TO PLAY', act: go(() => setState(new HowToPlayState({ onDone: () => Flow.toHub() }))) },
-      { label: 'CREDITS', act: go(() => setState(new CreditsState({ onDone: () => Flow.toHub() }))) },
       { label: 'OVERTIME', act: go(() => Flow.startOvertime(dev.seedLock ?? undefined)) },
       {
         label: 'MINIGAMES ▸',
@@ -443,6 +443,10 @@ export function rootMenu(dev) {
         dev.close();
         setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
       } },
+      { label: 'CREDITS', act: () => {
+        dev.close();
+        setState(new CreditsState({ onDone: () => dev.ctx.Flow.toHub() }));
+      } },
       { label: 'VISUALISERS ▸', submenu: () => visualizersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
@@ -467,7 +471,11 @@ export function drawMenu(ctx, dev) {
 
   const crumbs = dev.stack.map((s) => s.title).join(' / ');
   drawText(ctx, crumbs, 14, 12, GOLD);
-  drawText(ctx, '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, H - 16, DIM, 0.75);
+  // Name the controls the device in hand actually has: the phone that opened
+  // this from the portrait card has no key to press and no ` to close with.
+  drawText(ctx, Input.isTouchDevice()
+    ? 'TAP A ROW TO PICK   TAP THE TOP BAR TO GO BACK'
+    : '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, H - 16, DIM, 0.75);
 
   // Scroll window so long lists (27 stages, every obstacle type) stay usable.
   const n = top.items.length;

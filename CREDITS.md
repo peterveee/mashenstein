@@ -20,7 +20,7 @@ Studio Head / General Manager — **Walter Krebbs**
 
 ---
 
-**[ RELAY HANDOFF: DIRECTION → PRODUCTION ]**
+**[ RELAY HANDOFF: DIRECTION → PRODUCTION ]** — *Lorenzo hands off to Gnash*
 DIRECTION: *"Your turn."*
 PRODUCTION: *"I have filed a form about that."*
 
@@ -71,7 +71,7 @@ Grievance & Paperwork Copywriting *(Don K. Eggshell's Dialogue)* — **Marguerit
 
 ---
 
-**[ RELAY HANDOFF: NARRATIVE → ENGINEERING ]**
+**[ RELAY HANDOFF: NARRATIVE → ENGINEERING ]** — *Fernwick hands off to B-33P*
 NARRATIVE: *"Your turn."*
 ENGINEERING: *"We don't do turns. We do tickets."*
 
@@ -134,9 +134,11 @@ CAST: *"POYO."*
 **Grumpos, Dad of Boy** ........................... "BOY" performed with range
 **Don K. Eggshell, PhD** .......................... played by himself, thesis available on request
 **Gary** .......................................... played by Gary (deceased), SAG-AFTRA status pending since hiring
-**Dolores** ........................................ played by Dolores, still on shift
-**Dust Devil 9000** ............................... plays itself, apologizes in advance
-**The Turtle** *(TURDLE)* ......................... himself, wearing a borrowed shell; Legal has questions
+**Dolores** ........................................ played by Delores, still on shift
+*(The Dust Devil 9000 and the TURDLE turtle are deliberately absent — the Dust
+Devil for the same reason the in-game cast roll leaves him out, that he is a
+surprise and a credit spends him early, and the turtle because he has no
+portrait to give.)*
 
 ---
 
@@ -156,23 +158,6 @@ Compliance Testing, UNPLUGGED Mode *(Filed Under Protest)* — **Renata Szabo**
 Director of Localization — **Anezka Dvorak**
 
 *All dialogue ships in its original ALL CAPS. No localization was required, requested, or, per Legal, technically possible.*
-
----
-
-**[ RELAY HANDOFF: LOCALIZATION → HUMAN RESOURCES ]**
-LOCALIZATION: *"Your turn."*
-HUMAN RESOURCES: *"We're going to need that in writing."*
-
----
-
-## HUMAN RESOURCES, COMPLIANCE & LEGAL
-
-Director of Human Resources — **Beauregard Finch**
-Employee Relations, Deceased Staff Division — **Corinne Achebe** *(Gary's file is thick)*
-Forms & Grievance Processing — *an entire department, uncredited per their own request*
-Risk, Liability & Appliance Safety — **Dagny Holm**
-General Counsel — **Percival Wrenfield, Esq.**
-Outside Counsel for Don K. Eggshell, PhD — **Marchetti, Ohm & Fuse LLP**
 
 ---
 
@@ -199,6 +184,77 @@ Board Observer *(Non-Voting, Seat Disputed)* — **Don K. Eggshell, PhD**
 Catering & Craft Services — **Dolores' Repair Counter** — *NEXT.*
 Custodial & Facilities — **Dust Devil 9000** *(Deep Clean Engaged)*
 IT Support / Power Infrastructure — *could not be reached following the unplugging incident*
+
+---
+
+**[ RELAY HANDOFF: FACILITIES → HUMAN RESOURCES ]** — *Mochi hands off to Miss Chomp*
+*"Your turn."*
+*"We're going to need that in writing."*
+
+---
+
+## HUMAN RESOURCES
+
+*Deliberately last, and deliberately the longest section in the crawl. By this
+point the credits have wound down through Facilities and read as nearly over —
+which is exactly when the studio's largest department arrives and does not stop.
+In-game the banner is set to fill the screen edge to edge.*
+
+*the studio's largest department, by headcount and by volume*
+
+**OFFICE OF THE CHIEF PEOPLE OFFICER**
+Chief People Officer — **Beauregard Finch**
+Deputy Chief People Officer — **Marisol Grabowski**
+Chief of Staff to the Chief People Officer — **Aurelio Banning**
+Executive Assistant to the Chief of Staff — **Nadia Fellowes**
+
+**OFFICE OF FORMS**
+Director of Forms — **Ignatius Pell**
+Head of Form Design — **Clementine Oyibo**
+Form Design, Sections 1-4 — **Rupert Vasquez-Hale**
+Form Design, Section 5 and the Small Print — **Annika Sørhaug**
+Forms About Forms — **Desmond Achterberg**
+Triplicate Coordination — **Lucia Marchetti-Ng**
+Carbon Copy Integrity — **Bartholomew Quist**
+Form Retrieval, Ongoing — *one (1) form remains at large*
+
+**GRIEVANCES & APPEALS**
+Director of Grievances — **Hyacinth Oduya-Bell**
+Grievance Intake — **Emeka Lindqvist**
+Grievance Intake, Overflow — **Petra Nwachukwu**
+Grievance Intake, Overflow Overflow — **Cassius Yamada-Roche**
+Appeals — **Fenella Drummond**
+Appeals of Appeals — **Fenella Drummond**, escalated
+Disputed Jumps, Adjudication — **Osric Tambe**
+Forty-Year Losing Streak Liaison — *a rotating duty nobody volunteers for*
+
+**COMPLIANCE & RECORDS**
+Head of Compliance — **Solveig Amadi**
+Mandatory Training Module Authorship — *not Gary*
+Mandatory Training Module Delivery — **Gary**
+Certification & Small Print — **Theodora Blackwood-Osei**
+Records Retention — **Vikram Halloway**
+Filing, Physical — *the only department with hands*
+Audit — *nobody audits Gary*
+
+**EMPLOYEE RELATIONS**
+Head of Employee Relations — **Corinne Achebe**
+Deceased Staff Division — **Corinne Achebe** *(Gary's file is thick)*
+Approved Leave, Determinations — *being deceased is not approved leave*
+Shift Relief Scheduling — *Dolores has not been relieved*
+Roster Maintenance — *death did not update the roster*
+Morale — *position unfilled*
+
+**RISK, SAFETY & LEGAL**
+Director of Risk & Liability — **Dagny Holm**
+Appliance Safety — **Konstantin Ferreira**
+Electrical Safety — **Konstantin Ferreira**, hazard pay pending
+Limb Insurance, Optional Appendages — **Wilhelmina Strand**
+General Counsel — **Percival Wrenfield, Esq.**
+Outside Counsel for Don K. Eggshell, PhD — **Marchetti, Ohm & Fuse LLP**
+Legally Distinct Naming Review — *Gary's Pawn Shop cleared, barely*
+
+*This department has filed a grievance regarding the length of its own credit.*
 
 ---
 

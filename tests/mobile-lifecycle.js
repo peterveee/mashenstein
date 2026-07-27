@@ -78,6 +78,7 @@ const errorMessage = { textContent: '' };
 const copyStatus = { textContent: '' };
 const copyButton = new Events();
 const lorenzoIcon = new Events();
+const portraitTitle = new Events();
 const reloadButton = Object.assign(new Events(), { textContent: 'CHECK FOR UPDATE', disabled: false });
 const reloadStatus = { textContent: '' };
 const priorFocus = {
@@ -107,6 +108,7 @@ const doc = Object.assign(new Events(), {
     if (id === 'portrait-error-message') return errorMessage;
     if (id === 'copy-error') return copyButton;
     if (id === 'portrait-lorenzo-icon') return lorenzoIcon;
+    if (id === 'portrait-overlay-title') return portraitTitle;
     if (id === 'copy-error-status') return copyStatus;
     if (id === 'portrait-reload') return reloadButton;
     if (id === 'portrait-reload-status') return reloadStatus;
@@ -131,6 +133,7 @@ const win = Object.assign(new Events(), {
 const calls = [];
 let jukeboxOpens = 0;
 let jukeboxActive = false;
+let devMenuOpens = 0;
 const loop = { pause: () => calls.push('loop:pause'), resume: () => calls.push('loop:resume') };
 const input = { setSuspended: (v) => calls.push(`input:${v}`) };
 const audio = { setLifecyclePaused: (v) => calls.push(`audio:${v}`) };
@@ -141,13 +144,31 @@ const lifecycle = new LifecycleController({
   loop, input, audio, doc, win,
   allowPortrait: () => jukeboxActive,
   onPortraitJukebox: () => { jukeboxOpens++; jukeboxActive = true; },
+  onDevMenu: () => { devMenuOpens++; },
 });
 assert(calls.at(-1) === 'loop:resume', 'initial landscape lifecycle resumes');
 assert(overlay.hidden, 'portrait overlay starts hidden in landscape');
+for (let i = 0; i < 5; i++) portraitTitle.fire('click');
+assert(devMenuOpens === 0, 'the rotate heading is inert while the portrait card is not up');
 portraitQuery.matches = true;
 win.innerWidth = 390;
 win.innerHeight = 844;
 lifecycle.apply();
+
+// Five taps on TURN THE ARCADE SIDEWAYS open the dev menu, which then holds the
+// screen in portrait in place of this card (see main.js allowPortraitNow).
+for (let i = 0; i < 4; i++) portraitTitle.fire('click');
+assert(devMenuOpens === 0, 'the rotate heading does not open the dev menu before five taps');
+portraitTitle.fire('click');
+assert(devMenuOpens === 1, 'five heading taps open the dev menu');
+// A part-finished gesture does not carry across a rotation and back.
+lifecycle.setOverlay(false);
+lifecycle.setOverlay(true);
+for (let i = 0; i < 4; i++) portraitTitle.fire('click');
+assert(devMenuOpens === 1, 'a freshly shown card starts the five-tap count over');
+portraitTitle.fire('click');
+assert(devMenuOpens === 2, 'the count completes on the new card');
+
 for (let i = 0; i < 4; i++) lorenzoIcon.fire('click');
 assert(jukeboxOpens === 0, 'portrait Lorenzo icon does not open jukebox before five taps');
 lorenzoIcon.fire('click');

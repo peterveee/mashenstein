@@ -79,6 +79,7 @@ export class LifecycleController {
     win = window,
     allowPortrait = () => false,
     onPortraitJukebox = () => {},
+    onDevMenu = null,
   }) {
     this.platform = platform;
     this.loop = loop;
@@ -88,6 +89,9 @@ export class LifecycleController {
     this.win = win;
     this.allowPortrait = allowPortrait;
     this.onPortraitJukebox = onPortraitJukebox;
+    // Supplied by main.js only where a dev menu exists; returns false when it
+    // does not, so a published build stays silent instead of promising one.
+    this.onDevMenu = onDevMenu;
     this.pageHidden = false;
     this.overlay = doc.getElementById('portrait-overlay');
     this.landscapeDiag = doc.getElementById('landscape-diag');
@@ -104,6 +108,10 @@ export class LifecycleController {
     this.lorenzoTapCount = 0;
     this.lorenzoFirstTapAt = 0;
     this.lorenzoIgnoreClickUntil = 0;
+    this.portraitTitle = doc.getElementById('portrait-overlay-title');
+    this.titleTapCount = 0;
+    this.titleFirstTapAt = 0;
+    this.titleIgnoreClickUntil = 0;
     this.portraitJukeboxOpening = false;
     this.restoreFocus = null;
     this.wasOverlayVisible = false;
@@ -144,6 +152,35 @@ export class LifecycleController {
       this.onLorenzoTap();
       this.lorenzoIgnoreClickUntil = now + 500;
     };
+    // Five taps on TURN THE ARCADE SIDEWAYS open the dev menu. The in-game
+    // unlock is five taps inside a 72x32 corner of a live canvas, which on a
+    // phone means aiming at a moving game; this heading is the largest, most
+    // stationary target the device offers, and rotating to reach it is a
+    // gesture rather than a hunt. The overlay counts as a portrait surface
+    // (main.js), so the fifth tap replaces this card with the menu in place —
+    // no confirmation copy needed, and nothing to rotate back for.
+    this.onTitleTap = () => {
+      if (!this.onDevMenu) return;
+      if (!this.overlay || this.overlay.hidden) return;
+      const now = this.win.performance ? this.win.performance.now() : 0;
+      if (now < this.titleIgnoreClickUntil) {
+        this.titleIgnoreClickUntil = 0;
+        return;
+      }
+      if (!this.titleTapCount || now - this.titleFirstTapAt > 3000) {
+        this.titleTapCount = 0;
+        this.titleFirstTapAt = now;
+      }
+      this.titleTapCount++;
+      if (this.titleTapCount < 5) return;
+      this.titleTapCount = 0;
+      this.onDevMenu();
+    };
+    this.onTitlePointerUp = () => {
+      const now = this.win.performance ? this.win.performance.now() : 0;
+      this.onTitleTap();
+      this.titleIgnoreClickUntil = now + 500;
+    };
 
     doc.addEventListener('visibilitychange', this.onVisibility);
     win.addEventListener('pagehide', this.onPageHide);
@@ -162,6 +199,8 @@ export class LifecycleController {
     this.landscapeDiagClose && this.landscapeDiagClose.addEventListener('click', this.onDiagClose);
     this.lorenzoIcon && this.lorenzoIcon.addEventListener('click', this.onLorenzoTap);
     this.lorenzoIcon && this.lorenzoIcon.addEventListener('pointerup', this.onLorenzoPointerUp);
+    this.portraitTitle && this.portraitTitle.addEventListener('click', this.onTitleTap);
+    this.portraitTitle && this.portraitTitle.addEventListener('pointerup', this.onTitlePointerUp);
     this.installDiagTools();
     this.syncErrorReport();
     this.apply();
@@ -309,6 +348,9 @@ export class LifecycleController {
     this.overlay.hidden = !show;
     if (show) {
       this.syncErrorReport();
+      // A card shown again later starts its own count: the taps that opened the
+      // menu last time are spent, and half a gesture must not carry over.
+      this.titleTapCount = 0;
       this.restoreFocus = this.doc.activeElement;
       // Rotation is the only normal action. Clear whatever the game left
       // focused so the full-screen pause composition has no glowing heading,
@@ -552,6 +594,8 @@ export class LifecycleController {
     this.reloadButton && this.reloadButton.removeEventListener('click', this.onReload);
     this.lorenzoIcon && this.lorenzoIcon.removeEventListener('click', this.onLorenzoTap);
     this.lorenzoIcon && this.lorenzoIcon.removeEventListener('pointerup', this.onLorenzoPointerUp);
+    this.portraitTitle && this.portraitTitle.removeEventListener('click', this.onTitleTap);
+    this.portraitTitle && this.portraitTitle.removeEventListener('pointerup', this.onTitlePointerUp);
     this.win.clearTimeout(this.reloadTimer);
     this.buildStamp && this.onStampTap && this.buildStamp.removeEventListener('click', this.onStampTap);
     (this.diagButtons || []).forEach(([el, fn]) => el && el.removeEventListener('click', fn));

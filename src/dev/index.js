@@ -57,6 +57,11 @@ export const Dev = {
       }
       const top = this.top();
       if (!top) return;
+      // The breadcrumb strip is the touch BACK. A phone has no Backspace and no
+      // backquote, so without it a submenu reached by tapping is a room with no
+      // door — and popping the last screen closes the overlay, which is the
+      // touch CLOSE as well.
+      if (p.y < 20) { this.pop(); e.preventDefault(); return; }
       const maxRows = 10, rowH = 21;
       const first = Math.max(0, Math.min(top.items.length - maxRows, top.idx - Math.floor(maxRows / 2)));
       const row = Math.floor((p.y - 20) / rowH);
@@ -129,9 +134,24 @@ export const Dev = {
   openMenu() {
     this.stack = [{ ...rootMenu(this), idx: 0 }];
     this.open = true;
+    this.syncPortrait();
   },
 
-  close() { this.open = false; this.stack = []; },
+  close() { this.open = false; this.stack = []; this.syncPortrait(); },
+
+  // An open overlay is its own portrait surface (main.js folds this.open into
+  // the lifecycle's portrait predicate), so the pause policy has to be recomputed
+  // whenever it opens or closes — a phone held still fires no other event.
+  //
+  // Deferred by a microtask because nearly every menu action closes and then
+  // immediately setState()s: the policy must be read against the screen the
+  // action is leaving behind, not the one it is still standing on.
+  syncPortrait() {
+    const notify = this.ctx && this.ctx.onOpenChange;
+    if (!notify) return;
+    if (typeof queueMicrotask === 'function') queueMicrotask(notify);
+    else notify();
+  },
 
   // A dev screen launched as a temporary state can hand control back to the
   // exact state that was underneath the overlay. Wait until the shutter has
@@ -143,7 +163,7 @@ export const Dev = {
 
   pop() {
     this.stack.pop();
-    if (!this.stack.length) this.open = false;
+    if (!this.stack.length) this.close();
   },
 
   top() { return this.stack[this.stack.length - 1]; },
