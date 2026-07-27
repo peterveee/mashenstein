@@ -457,13 +457,14 @@ function boot() {
   // frozen exactly as it would behind the rotate card, and a tester who opened
   // the menu from that card reads it without turning the phone back.
   //
-  // A shutter in flight is admitted too, because it needs frames to land and a
-  // paused phone gives it none: picking a screen from that menu would otherwise
-  // freeze half-way through the transition, leaving the old state current and
-  // the destination pending. The destination gets the deciding vote a moment
-  // later — publish() re-applies on the swap, and the loop below re-applies
-  // again once the reveal finishes.
-  const allowPortraitNow = () => Dev.open || isTransitioning()
+  // A shutter in flight is admitted too, in dev builds only, because that menu
+  // can launch a screen with the phone still upright: the transition needs
+  // frames to land and a paused phone gives it none, so the pick would freeze
+  // half-way, leaving the old screen current and the new one pending. The
+  // destination gets the deciding vote a moment later — publish() re-applies on
+  // the swap, and the loop below re-applies once the reveal ends. A shipped
+  // build has no such launcher and keeps the old behaviour untouched.
+  const allowPortraitNow = () => Dev.open || (Dev.enabled && isTransitioning())
     || portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,
@@ -525,15 +526,18 @@ function boot() {
   // Keep an installed copy current silently. Browser-only iPhones never reach
   // this boot path: gate.js owns the sole Home Screen installation flow.
   initUpdates();
-  // The trailing edge of a transition. allowPortraitNow admits the shutter so
-  // it can land; the frame it finishes on is the frame the destination's own
-  // orientation policy has to take over, and no DOM event will say so.
+  // The trailing edge of a transition, dev builds only, matching the clause
+  // allowPortraitNow adds there. The shutter is admitted so it can land; the
+  // frame it finishes on is the frame the destination's own orientation policy
+  // has to take over, and no DOM event will say so.
   let wasTransitioning = false;
   const loop = startLoop({
     update: (dt) => {
-      const transitioning = isTransitioning();
-      if (wasTransitioning && !transitioning) window.__mash_lifecycle?.apply();
-      wasTransitioning = transitioning;
+      if (Dev.enabled) {
+        const transitioning = isTransitioning();
+        if (wasTransitioning && !transitioning) window.__mash_lifecycle?.apply();
+        wasTransitioning = transitioning;
+      }
       if (Dev.update(dt)) return;
       updateState(dt * Dev.timeScale);
     },

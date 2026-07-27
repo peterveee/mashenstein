@@ -53,8 +53,8 @@ await page.screenshot({ path: `${out}/devmenu-portrait-card-back.png` });
 // A landscape-only destination must land its transition and then hand the
 // screen back to the rotate card rather than freezing half-way through it.
 await openMenu();
-await tap(60, 70, 2500);   // TROPHY ROOM
-show('launched the trophy room', await state());
+await tap(60, 135, 2500);  // CAST ROLL — landscape-only, needs no save slot
+show('launched the cast roll', await state());
 await page.screenshot({ path: `${out}/devmenu-portrait-landscape-dest.png` });
 
 // A portrait-capable destination keeps the screen: no card, no rotation.
