@@ -17,10 +17,12 @@
      screen — whatever the title screen happened to be showing, shrunk to 60px
      and unreadable. These are rendered from the game's own drawing code by
      tools/render-icon.js and copied into dist/ by the build; a loose
-     index.html with no icon files beside it simply has no icon. -->
-<link rel="apple-touch-icon" href="icon-180.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="manifest" href="manifest.webmanifest">
+     index.html with no icon files beside it simply has no icon. The names are
+     filled in by build/build.js because the dev server installs a deliberately
+     different-looking tile than the real thing. -->
+<link rel="apple-touch-icon" href="__ICON_180__">
+<link rel="icon" type="image/png" sizes="192x192" href="__ICON_192__">
+<link rel="manifest" href="__MANIFEST__">
 <meta name="theme-color" content="#0b0b14">
 <title>MASHENSTEIN: The Unpluggening</title>
 <script>window.__MASH_BUILT_AT__="__BUILD_TIMESTAMP__";window.__MASH_TELEMETRY_URL__="__TLM_URL__";/*__DEV_GATE__*/</script>

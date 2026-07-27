@@ -47,13 +47,7 @@ export function setState(next, ...args) {
   transitionStyle = 'shutter';
   pending = { next, args };
   fading = 1;
-  if (!current) { // first state: no cover animation
-    current = next;
-    fade = 1; fading = -1;
-    next.enter && next.enter(...args);
-    pending = null;
-    publish();
-  }
+  if (!current) { firstState(next, args); }
 }
 
 // A quiet full-frame fade for hand-offs that should not borrow the arcade
@@ -64,13 +58,22 @@ export function setStateFade(next, ...args) {
   transitionStyle = 'fade';
   pending = { next, args };
   fading = 1;
-  if (!current) {
-    current = next;
-    fade = 1; fading = -1;
-    next.enter && next.enter(...args);
-    pending = null;
-    publish();
-  }
+  if (!current) { firstState(next, args); }
+}
+
+// Boot installs its screen outright — no cover and no reveal. This used to open
+// on the shutter (fade 1, fading -1), which read as the game irising onto a
+// title it had not earned yet; every later trip to the title still gets the
+// full shutter. It also settles an orientation bug: a running transition holds
+// the rotate overlay off on dev builds (allowPortraitNow in main.js), so the
+// boot reveal was long enough to show a portrait phone the letterboxed title
+// before the lock arrived. With nothing animating at boot there is no window.
+function firstState(next, args) {
+  current = next;
+  fade = 0; fading = 0;
+  next.enter && next.enter(...args);
+  pending = null;
+  publish();
 }
 
 // Same shutter, no cast cameo. For the run-to-results hand-off: the results

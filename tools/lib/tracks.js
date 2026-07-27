@@ -30,6 +30,24 @@ export function resolveTrack(trackId) {
   return null;
 }
 
+// Every track id the resolver above accepts, so a picker never has to guess
+// or duplicate the resolution rules. Aliases first — they are the real
+// in-game cues — then cabinets, then the parked shop candidates.
+export function listTracks() {
+  const ids = [
+    ...Object.keys(ALIASES),
+    ...Object.keys(CABINET_BY_ID).filter((id) => CABINET_BY_ID[id].music),
+    ...Object.keys(SHOP_THEME_BY_ID),
+  ];
+  const seen = new Set();
+  return ids
+    .filter((id) => (seen.has(id) ? false : seen.add(id)))
+    .map((id) => {
+      const { bank, ...rest } = resolveTrack(id);
+      return rest;
+    });
+}
+
 export function resolveOrExit(trackId) {
   const track = resolveTrack(trackId);
   if (!track) {

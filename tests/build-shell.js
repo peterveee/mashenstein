@@ -75,6 +75,11 @@ assert(html.includes('id="landscape-diag"')
 assert(html.includes('mash-install-share') && html.includes('mash-install-arrow')
   && html.includes('icon-180.png'),
   'built iPhone blocker includes the app icon, Share glyph and toolbar pointer');
+assert(html.includes('href="icon-180.png"') && html.includes('href="icon-192.png"')
+  && html.includes('href="manifest.webmanifest"')
+  && manifest.icons.every((icon) => !icon.src.includes('dev'))
+  && !html.includes('__ICON_180__') && !html.includes('__MANIFEST__'),
+  'production shell installs the production tile, never the dev server’s');
 assert(/window\.__MASH_BUILT_AT__="\\?20\d\d-\d\d-\d\dT/.test(html)
   && html.includes('mash-build-time'),
   'built portrait shell carries and renders its production timestamp');
@@ -98,6 +103,9 @@ assert(buildSource.includes("dist/.esbuild") && buildSource.includes('buildStamp
   'watch server cannot shadow the dev-stamped public game bundle');
 assert(buildSource.includes("watch ? 'window.__MASH_DEV__=true;' : ''"),
   'watch build marks its lightweight shell for mobile-browser development');
+assert(buildSource.includes("watch ? 'build/icons/dev' : 'build/icons'")
+  && buildSource.includes("watch ? 'manifest-dev.webmanifest' : 'manifest.webmanifest'"),
+  'watch build installs under its own icon and manifest, distinct from the shipped ones');
 
 console.log(failed ? 'BUILD SHELL: FAILED' : 'BUILD SHELL: OK');
 process.exit(failed ? 1 : 0);

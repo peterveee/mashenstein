@@ -6,18 +6,25 @@
 // headings in favour of drawing the handoff, and adds art rows the document has
 // no way to express. Nothing here parses that file; keep the two in step by
 // hand when the wording changes.
-import { W, H } from '../engine/renderer.js';
+import { W, H, screen } from '../engine/renderer.js';
+import { Rng } from '../engine/rng.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { drawText, drawTextCentered, textWidth, wrapText, UI_PLATE } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, textYForMid, wrapText, UI_PLATE } from '../engine/sprites.js';
 import { drawToon, drawToonFace } from '../sprites/toons.js';
-import { drawProp, propFrames, propFps } from '../sprites/props.js';
+import { drawProp } from '../sprites/props.js';
+import { readPlatform } from '../engine/platform.js';
+import { drawHandoff, HANDOFF_SWAP_AT, HANDOFF_LINE_A_AT } from './credits-handoff.js';
 import { MEGAMIX_THEME } from '../data/megamix.js';
 
 const GOLD = '#f6d33c';
 const CYAN = '#48e0c8';
 const PINK = '#f890b8';
-const DIM = '#5a5a68';
+// Was #5a5a68, which is barely four steps off the #0b0b14 background — it read
+// as "greyed out" rather than "quiet", and putting a lit starfield behind it
+// only narrowed the gap. This still sits clearly below FG in the hierarchy
+// while actually being readable, on a phone and over a star.
+const DIM = '#98a0b8';
 const FG = '#c8c8d8';
 const WHITE = '#ffffff';
 
@@ -47,6 +54,14 @@ const FACE_BOX = 18;
 const ROW_INK_MID = 5;
 // How much a held arrow adds to / removes from the 1x scroll rate.
 const SCRUB_RATE = 7;
+// The corner legends, parked on the bottom edge. A 0.6 line is ~7u of ink, so
+// this leaves roughly two units of air under it.
+const HINT_SCALE = 0.6;
+const HINT_Y = H - 9;
+// Watchdog for a scrub action that never gets released. Generous on purpose:
+// a full-speed scrub crosses the entire crawl in about twenty seconds, so
+// nothing a real finger does comes near this.
+const SCRUB_STUCK_T = 40;
 // Where the final row comes to rest. The crawl does NOT scroll away into an
 // empty screen and does NOT eject you: it settles on the closing socket /
 // sequel card and holds there, music still running, until you leave.
@@ -56,8 +71,200 @@ const REST_Y = 200;
 // character saying it — with the speaker prefixes gone, position and colour are
 // the only things left carrying attribution.
 const HANDOFF_DX = 44;
+const HANDOFF_H = 48;
+// Half the clear space the exchange leaves down the middle. The portal above
+// is 22u wide, so this keeps the gap a little wider than the thing it is a gap
+// for — the two halves must never look like one wrapped sentence.
+const HANDOFF_GAP = 18;
 const OUTGOING_INK = '#48e0c8';
 const INCOMING_INK = '#f6d33c';
+
+// ---- the sky ---------------------------------------------------------------
+// Modelled on the ARCADE ART GALLERY visualizer's night sky (its `galleryStars`
+// recipe: depth-weighted radius, per-star twinkle rate, additive blend) but
+// owned here rather than shared. That painter is a method bound to a live
+// visualizer's audio-derived palette and clock, so reusing it literally would
+// have meant refactoring a shipped visualizer's look to serve a dev-only
+// screen. Same recipe, no risk to it.
+const STAR_COUNT = 150;
+// Fixed seed: the sky is the same every time the credits roll, so a screenshot
+// of it is reproducible and the layout can be judged against a known field.
+const STAR_SEED = 'mashenstein-credits-sky';
+const STAR_INKS = ['#ffffff', '#c8d4ff', '#f6d33c', '#48e0c8', '#f890b8'];
+// How far the field drifts against the crawl. Depth 1 stars travel ~1 screen
+// over the whole roll — enough to feel like the credits are moving through
+// something, far too slow to pull the eye off the names.
+const STAR_PARALLAX = 0.06;
+
+const alphaCache = new Map();
+function withAlpha(hex, a) {
+  const key = hex + '|' + a.toFixed(3);
+  let v = alphaCache.get(key);
+  if (!v) {
+    const n = parseInt(hex.slice(1), 16);
+    v = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a.toFixed(3)})`;
+    alphaCache.set(key, v);
+  }
+  return v;
+}
+
+function makeStars(n) {
+  const rng = new Rng(STAR_SEED);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({
+      x: rng.float() * W,
+      y: rng.float() * H,
+      r: 0.28 + rng.float() * 1.25,
+      phase: rng.float() * Math.PI * 2,
+      rate: 0.45 + rng.float() * 1.8,
+      ink: STAR_INKS[Math.floor(rng.float() * STAR_INKS.length)],
+      depth: 0.25 + rng.float() * 0.75,
+    });
+  }
+  return out;
+}
+
+// A comet instead of planets. A planet is a permanent object: parked in the
+// frame for the whole roll, drifting on the parallax, and therefore passing
+// behind every band of the crawl sooner or later. A comet is an event — it
+// crosses, it is gone, and the sky is a sky again — so the field keeps its
+// depth without anything competing with the names for more than a few seconds.
+//
+// One slot every COMET_CYCLE seconds, and most slots stay empty, so a roll of
+// a few minutes gets a handful: enough that the sky is alive, rare enough that
+// catching one feels like catching one.
+const COMET_CYCLE = 17;
+const COMET_CHANCE = 0.6;
+const COMET_TRAVEL = 2.4;
+
+// Deterministic per slot, like the seeded star field above it: the same roll
+// draws the same comets at the same moments, so a screenshot is reproducible
+// and a bad crossing can be found again. Sampled per frame, so it is a function
+// of the slot rather than a seeded Rng carried across frames.
+//
+// An integer mixer rather than the usual fract(sin(n)*43758.5453): that one is
+// built for the wide, noisy inputs a shader feeds it and is visibly lumpy over
+// the first twenty integers — it drew 7 comets where 12 were asked for, with a
+// hundred seconds of empty sky in the middle. `salt` separates the draws so a
+// slot's chance, direction and height are independent of each other.
+function hash01(n, salt = 0) {
+  let x = Math.imul(n | 0, 374761393) + Math.imul(salt | 0, 668265263) + 1442695040;
+  x = Math.imul(x ^ (x >>> 13), 1274126177);
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+}
+
+function drawComet(ctx, t) {
+  const slot = Math.floor(t / COMET_CYCLE);
+  if (hash01(slot) > COMET_CHANCE) return;
+  const phase = (t - slot * COMET_CYCLE) / COMET_TRAVEL;
+  if (phase >= 1) return;
+  const dir = hash01(slot, 1) < 0.5 ? 1 : -1;
+  // Upper half only, on a shallow descent. Low and steep reads as a falling
+  // object rather than a distant one, and lands it in the middle of the crawl.
+  const y0 = 16 + hash01(slot, 2) * H * 0.42;
+  const drop = 22 + hash01(slot, 3) * 46;
+  const span = W + 100;
+  const x = dir > 0 ? -50 + phase * span : W + 50 - phase * span;
+  const y = y0 + phase * drop;
+  // Long enough to read as a comet under the scrim. At 44u it was a scratch on
+  // the lens; at ~70 the taper has room to be a tail.
+  const len = 66 + hash01(slot, 4) * 32;
+  // Fade in and out at the ends so it arrives and leaves rather than popping.
+  const fade = Math.sin(phase * Math.PI);
+  const tx = x - dir * len;
+  const ty = y - drop * (len / span);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createLinearGradient(x, y, tx, ty);
+  g.addColorStop(0, withAlpha('#ffffff', 0.9 * fade));
+  g.addColorStop(0.28, withAlpha('#c8d4ff', 0.4 * fade));
+  g.addColorStop(1, withAlpha('#c8d4ff', 0));
+  ctx.strokeStyle = g;
+  ctx.lineWidth = 1.7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+  // A soft halo under the head, so the bright point has somewhere to sit — the
+  // same trick the stars' additive blend plays, one size up.
+  const halo = ctx.createRadialGradient(x, y, 0, x, y, 5.5);
+  halo.addColorStop(0, withAlpha('#ffffff', 0.5 * fade));
+  halo.addColorStop(1, withAlpha('#c8d4ff', 0));
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = withAlpha('#ffffff', 0.95 * fade);
+  ctx.beginPath();
+  ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+const wrapY = (v) => ((v % H) + H) % H;
+
+function drawSky(ctx, stars, t, scroll, reduced) {
+  ctx.fillStyle = '#05060f';
+  ctx.fillRect(0, 0, W, H);
+
+  // The Monster Mix is playing over this screen, so the sky answers it. Bass
+  // swells the nebulae, the beat flares the stars. musicAnalysis() is the same
+  // allocation-free readout the jukebox visualizers use, and it degrades to a
+  // deterministic fallback with no Web Audio at all.
+  let pulse = 0, bass = 0;
+  if (!reduced) {
+    const a = Audio.musicAnalysis ? Audio.musicAnalysis() : null;
+    if (a) { pulse = a.beatPulse || 0; bass = a.bass || 0; }
+  }
+
+  const neb = (cx, cy, r, ink, alpha) => {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, withAlpha(ink, alpha));
+    g.addColorStop(1, withAlpha(ink, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  };
+  const drift = reduced ? 0 : Math.sin(t * 0.06) * 26;
+  neb(120 + drift, wrapY(60 - scroll * 0.02), 190, '#3a2a6e', 0.30 + bass * 0.12);
+  neb(370 - drift, wrapY(200 - scroll * 0.03), 210, '#123a58', 0.26 + bass * 0.10);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of stars) {
+    const y = wrapY(s.y - scroll * s.depth * STAR_PARALLAX);
+    const tw = reduced ? 0.8 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.rate + s.phase));
+    const boost = 1 + pulse * 0.45 * s.depth;
+    ctx.fillStyle = withAlpha(s.ink, Math.min(1, (0.16 + s.depth * 0.34) * tw * boost));
+    ctx.beginPath();
+    ctx.arc(s.x, y, s.r * (0.72 + tw * 0.45) * boost, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Motion is the whole point of a comet, so reduced motion simply gets none.
+  if (!reduced) drawComet(ctx, t);
+
+  // The scrim is what makes the crawl readable over all of the above. Without
+  // it the brightest stars sit at the same value as DIM body text.
+  ctx.fillStyle = 'rgba(5,6,15,0.34)';
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ---- safe area -------------------------------------------------------------
+// The crawl is full-bleed: HUMAN RESOURCES is measured to span the real screen,
+// not a fixed inset off the 480-unit design box. On a notched phone that box
+// is not all reachable, so everything edge-anchored asks here instead.
+const BLEED_PAD = 4;
+function safeBox() {
+  const left = Math.max(0, screen.safeLeft || 0);
+  const right = Math.max(0, screen.safeRight || 0);
+  const bottom = Math.max(0, screen.safeBottom || 0);
+  const x0 = left + BLEED_PAD;
+  const x1 = W - right - BLEED_PAD;
+  return { x0, x1, width: Math.max(80, x1 - x0), cx: (x0 + x1) / 2, bottom };
+}
 
 // ---- content, declared top to bottom in the order it scrolls -------------
 const SCRIPT = [
@@ -68,7 +275,7 @@ const SCRIPT = [
   { k: 'gap', px: 6 },
   { k: 'sub', text: 'A CIRCUIT & SPLICE INTERACTIVE PRODUCTION', color: GOLD },
   { k: 'sub', text: 'IN ASSOCIATION WITH RECLAIMED PARTS STUDIOS' },
-  { k: 'note', text: 'a division of General Appliance Holdings, Unincorporated' },
+  { k: 'note', text: 'A division of General Appliance Holdings, Unincorporated' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'DIRECTION' },
@@ -108,7 +315,7 @@ const SCRIPT = [
   { k: 'role', role: 'RHYTHM BANKRUPTCY', name: 'Marlon deSouza' },
   { k: 'role', role: 'CARDBOARD KINGDOM', name: 'Rhiannon Oduya' },
   { k: 'role', role: 'CORPORATE KOMBAT', name: 'Felix Bramante' },
-  { k: 'role', role: 'THE SURGE', name: 'the entire Design department, at once' },
+  { k: 'role', role: 'THE SURGE', name: 'The entire Design department, at once' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'NARRATIVE' },
@@ -124,6 +331,7 @@ const SCRIPT = [
   { k: 'header', text: 'ENGINEERING' },
   { k: 'role', role: 'Technical Director', name: 'Radhika Sethna' },
   { k: 'role', role: 'Lead Engine Programmer', name: 'Otis Vandermeer' },
+  { k: 'role', role: 'Principal Engineer, Core Systems', name: 'George Simonidis' },
   { k: 'role', role: 'Rendering & Style-Pack Programming', name: 'Ines Kowalczyk' },
   { k: 'role', role: 'Gameplay Systems Programming', name: 'Tobias Nkemelu' },
   { k: 'role', role: 'Local-Only Netcode (There Is No Netcode)', name: 'Department of One' },
@@ -160,22 +368,24 @@ const SCRIPT = [
 
   { k: 'header', text: 'STARRING', color: GOLD },
   { k: 'castRole', face: 'lorenzo', role: 'Lorenzo "Wrenches" Bracciano', name: '"Big Sal" Marchetti, Local 4' },
-  { k: 'castRole', face: 'gnash', role: 'Gnash the Needlemouse', name: 'credited as Already Left' },
-  { k: 'castRole', face: 'fernwick', role: 'Fernwick, Hero of Thyme', name: 'a grocery receipt, itself' },
-  { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'grievance filed on his behalf' },
+  { k: 'castRole', face: 'gnash', role: 'Gnash the Needlemouse', name: 'Credited as Already Left' },
+  { k: 'castRole', face: 'fernwick', role: 'Fernwick, Hero of Thyme', name: 'A grocery receipt, itself' },
+  { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'Grievance filed on his behalf' },
   { k: 'castRole', face: 'mochi', role: 'Mochi', name: '"POYO" performed by Mochi' },
-  { k: 'castRole', face: 'chompo', role: 'Miss Chomp', name: 'appetite consultant credited separately' },
-  { k: 'castRole', face: 'raymn', role: "Ray M'n, Appendage-Optional", name: 'limbs insured separately' },
+  { k: 'castRole', face: 'chompo', role: 'Miss Chomp', name: 'Appetite consultant credited separately' },
+  { k: 'castRole', face: 'raymn', role: "Ray M'n, Appendage-Optional", name: 'Limbs insured separately' },
   { k: 'castRole', face: 'grumpos', role: 'Grumpos, Dad of Boy', name: '"BOY" performed with range' },
-  { k: 'castRole', prop: 'eggshell', propW: 20, propH: 17, role: 'Don K. Eggshell, PhD', name: 'played by himself, thesis on request' },
-  { k: 'castRole', face: 'gary', role: 'Gary', name: 'played by Gary (deceased)' },
+  { k: 'castRole', face: 'gary', role: 'Gary', name: 'Played by Gary (deceased)' },
   // The one-letter difference is the joke — the actor is emphatically not the
   // character, and the credit insists on it. Do not "fix" the spelling.
-  { k: 'castRole', face: 'dolores', role: 'Dolores', name: 'played by Delores, still on shift' },
-  // The Dust Devil and the TURDLE turtle are deliberately NOT in this list, for
-  // the same reason CastState leaves the Dust Devil out of the roll call: he is
-  // a surprise, and a credit spends him before the player has met him. The
-  // turtle has no portrait to give and reads as filler without one.
+  { k: 'castRole', face: 'dolores', role: 'Dolores', name: 'Played by Delores, still on shift' },
+  // Heroes and counter staff only. Three deliberate absences:
+  //   Don K. Eggshell — he closes the whole crawl with the sequel sting, and a
+  //     villain who has the last word should not also be a row in the cast roll.
+  //   Dust Devil 9000 — the same call CastState makes in the roll call: he is a
+  //     surprise, and a credit spends him before the player has met him.
+  //   The TURDLE turtle — no portrait to give, and a nameplate alone reads as
+  //     filler next to eleven faces.
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'QUALITY ASSURANCE' },
@@ -183,14 +393,17 @@ const SCRIPT = [
   { k: 'role', role: 'QA Leads', name: 'Ingrid Halvorsen, Chibuzo Amadi' },
   { k: 'role', role: 'Test Engineer, Fairness Simulation', name: 'Milo Standish' },
   { k: 'role', role: 'Compliance Testing, UNPLUGGED Mode', name: 'Renata Szabo, filed under protest' },
+  // QA rather than Employee Relations: this department's whole function is
+  // telling people they are wrong and being right about it, which is the joke.
+  { k: 'role', role: 'Second Opinions', name: 'Flora Crollini (she is aware you disagree)' },
   { k: 'gap', px: 6 },
-  { k: 'note', text: 'and forty testers who lost to the Act II vacuum an average of eleven times each' },
+  { k: 'note', text: 'And forty testers who lost to the Act II vacuum an average of eleven times each' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'LOCALIZATION' },
   { k: 'role', role: 'Director of Localization', name: 'Anezka Dvorak' },
   { k: 'gap', px: 6 },
-  { k: 'note', text: 'all dialogue ships pre-shouted; localization was not technically possible' },
+  { k: 'note', text: 'All dialogue ships pre-shouted; localization was not technically possible' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'MARKETING & COMMUNITY' },
@@ -210,7 +423,7 @@ const SCRIPT = [
   { k: 'header', text: 'FACILITIES' },
   { k: 'role', role: 'Catering & Craft Services', name: "Dolores' Repair Counter — NEXT." },
   { k: 'role', role: 'Custodial & Facilities', name: 'Dust Devil 9000, Deep Clean Engaged' },
-  { k: 'role', role: 'IT Support / Power Infrastructure', name: 'could not be reached' },
+  { k: 'role', role: 'IT Support / Power Infrastructure', name: 'Could not be reached' },
   { k: 'gap', px: 20 },
 
   // HR goes LAST on purpose. By here the crawl has done its thanks-adjacent
@@ -231,7 +444,7 @@ const SCRIPT = [
   { k: 'gap', px: 6 },
   { k: 'mark', prop: 'paperwork', w: 34, h: 27 },
   { k: 'gap', px: 4 },
-  { k: 'note', text: 'the studio\'s largest department, by headcount and by volume' },
+  { k: 'note', text: 'The studio\'s largest department, by headcount and by volume' },
   { k: 'gap', px: 10 },
 
   { k: 'sub', text: 'OFFICE OF THE CHIEF PEOPLE OFFICER', color: PINK },
@@ -249,26 +462,30 @@ const SCRIPT = [
   { k: 'role', role: 'Forms About Forms', name: 'Desmond Achterberg' },
   { k: 'role', role: 'Triplicate Coordination', name: 'Lucia Marchetti-Ng' },
   { k: 'role', role: 'Carbon Copy Integrity', name: 'Bartholomew Quist' },
-  { k: 'role', role: 'Form Retrieval, Ongoing', name: 'one (1) form remains at large' },
+  { k: 'role', role: 'Form Retrieval, Ongoing', name: 'One (1) form remains at large' },
   { k: 'gap', px: 10 },
 
   { k: 'sub', text: 'COMPLIANCE & RECORDS', color: PINK },
   { k: 'role', role: 'Head of Compliance', name: 'Solveig Amadi' },
-  { k: 'role', role: 'Mandatory Training Module Authorship', name: 'not Gary' },
+  { k: 'role', role: 'Head of Governance', name: 'Scott Mahony' },
+  { k: 'role', role: 'Mandatory Training Module Authorship', name: 'Not Gary' },
   { k: 'role', role: 'Mandatory Training Module Delivery', name: 'Gary' },
   { k: 'role', role: 'Certification & Small Print', name: 'Theodora Blackwood-Osei' },
   { k: 'role', role: 'Records Retention', name: 'Vikram Halloway' },
-  { k: 'role', role: 'Filing, Physical', name: 'the only department with hands' },
-  { k: 'role', role: 'Audit', name: 'nobody audits Gary' },
+  { k: 'role', role: 'Filing, Physical', name: 'The only department with hands' },
+  // The real credit is what makes the joke under it land: audit is a staffed,
+  // functioning discipline right up until the scope reaches Gary.
+  { k: 'role', role: 'Internal Audit', name: 'Samantha Bousias' },
+  { k: 'role', role: 'Audit, Gary', name: 'Nobody audits Gary' },
   { k: 'gap', px: 10 },
 
   { k: 'sub', text: 'EMPLOYEE RELATIONS', color: PINK },
   { k: 'role', role: 'Head of Employee Relations', name: 'Corinne Achebe' },
   { k: 'role', role: 'Deceased Staff Division', name: "Corinne Achebe (Gary's file is thick)" },
-  { k: 'role', role: 'Approved Leave, Determinations', name: 'being deceased is not approved leave' },
+  { k: 'role', role: 'Approved Leave, Determinations', name: 'Being deceased is not approved leave' },
   { k: 'role', role: 'Shift Relief Scheduling', name: 'Dolores has not been relieved' },
-  { k: 'role', role: 'Roster Maintenance', name: 'death did not update the roster' },
-  { k: 'role', role: 'Morale', name: 'position unfilled' },
+  { k: 'role', role: 'Roster Maintenance', name: 'Death did not update the roster' },
+  { k: 'role', role: 'Morale', name: 'Position unfilled' },
   { k: 'gap', px: 10 },
 
   { k: 'sub', text: 'RISK, SAFETY & LEGAL', color: PINK },
@@ -292,16 +509,23 @@ const SCRIPT = [
   { k: 'role', role: 'Appeals', name: 'Fenella Drummond' },
   { k: 'role', role: 'Appeals of Appeals', name: 'Fenella Drummond, escalated' },
   { k: 'role', role: 'Disputed Jumps, Adjudication', name: 'Osric Tambe' },
-  { k: 'role', role: 'Forty-Year Losing Streak Liaison', name: 'a rotating duty nobody volunteers for' },
+  { k: 'role', role: 'Forty-Year Losing Streak Liaison', name: 'A rotating duty nobody volunteers for' },
   { k: 'gap', px: 8 },
-  { k: 'role', role: 'Grievance Re: The Length Of This Credit', name: 'filed by the above, against the above' },
+  // A role/name row on purpose, not a centred aside. This department escalates
+  // entirely through the left column — Intake, Overflow, Overflow Overflow,
+  // Appeals, Appeals of Appeals — so its closing joke lands hardest as one more
+  // row of the same machine, with a FILING standing where the person's name
+  // goes. "Re:" is a subject line rather than a post anybody holds, which is
+  // what keeps it from reading as a job; and the white name column is what
+  // separates the punchline from the DIM asides in this section.
+  { k: 'role', role: 'Grievance Re: The Length Of This Credit', name: 'Filed by the above, against the above' },
   { k: 'gap', px: 12 },
 
   { k: 'sub', text: 'ADDITIONAL FORMS PROCESSING STAFF', color: PINK },
   { k: 'gap', px: 6 },
   { k: 'wall' },
   { k: 'gap', px: 10 },
-  { k: 'note', text: 'and a further 1,140 staff whose forms are still being processed' },
+  { k: 'note', text: 'And a further 1,140 staff whose forms are still being processed' },
   { k: 'gap', px: 26 },
 
   { k: 'header', text: 'SPECIAL THANKS', color: GOLD },
@@ -389,14 +613,37 @@ const HR_WALL = [
   'Leopold Nkosi-Barr', 'Antonia Wexford', 'Balthazar Ojukwu',
   'Seraphina Holt-Mbaye', 'Auberon Kristiansen', 'Philomena Dasgupta',
 ];
-// Two columns, not three. Three fit the names at 0.7, which on a phone is about
-// 0.9mm of cap height — under half the game's own baseline (every other menu
-// sets body text at scale 1) and past the point where a name reads as a name
-// rather than as grey texture. Two wider columns carry the same 48 names at a
-// legible size and still fill the screen, which was the whole point of the wall.
-const HR_WALL_COLS = 2;
+// Three columns at 0.8. The earlier phone-legibility pass dropped this to two
+// AND raised the scale from 0.7, when only the scale was ever the problem: 0.7
+// is about 0.9mm of cap height on a phone, under half the game's own baseline.
+// A third of (W - 28) is 150u and the longest name sets at ~120u, so three
+// columns fit comfortably at the readable size — and three is what makes the
+// block read as a wall.
+const HR_WALL_COLS = 3;
 const HR_WALL_ROW_H = 11;
 const HR_WALL_SCALE = 0.8;
+
+// Phone only — NOT "is this a touch device". An iPad reports a coarse pointer
+// just like an iPhone does, but it has the screen to read 0.85 comfortably, so
+// keying off touch would enlarge the boilerplate on the one tablet that never
+// needed it. readPlatform already draws exactly this line for the install gate.
+function isPhone() {
+  try {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    const p = readPlatform();
+    return p.isIphone || p.isAndroidPhone;
+  } catch {
+    return false; // headless tests and odd embeddings keep the desktop setting
+  }
+}
+
+// Applies to the legal block AND every one-line aside. They are all the same
+// register of text and were all reported as small on a phone, so they move
+// together rather than the paragraph alone getting the fix.
+const BODY_SCALE_PHONE = 1;
+const BODY_SCALE_WIDE = 0.85;
+function bodyScale() { return isPhone() ? BODY_SCALE_PHONE : BODY_SCALE_WIDE; }
+const noteRowH = (s) => Math.round(12 * (s / BODY_SCALE_WIDE));
 
 function layoutCredits() {
   const rows = [];
@@ -412,14 +659,20 @@ function layoutCredits() {
       case 'title': push(item, 26); break;
       case 'title2': push(item, 18); break;
       case 'sub': push(item, 15); break;
-      case 'note': push(item, 12); break;
+      case 'note': {
+        const s = item.scale || bodyScale();
+        push({ ...item, scale: s }, noteRowH(s));
+        break;
+      }
       case 'header': push(item, 18); break;
       case 'role': push(item, 13); break;
       // Tall enough that an 18u portrait clears its neighbours' lettering.
       case 'castRole': push(item, 21); break;
       case 'mark': push(item, item.h + 7); break;
+      // Measured against the reachable width, not the 480-unit design box, so
+      // the banner truly spans the screen it is on rather than a nominal one.
       case 'bigHeader': {
-        const s = Math.min(BIG_HEADER_MAX, fillScale(item.fit || item.text, W - 30));
+        const s = Math.min(BIG_HEADER_MAX, fillScale(item.fit || item.text, safeBox().width));
         push({ ...item, scale: s }, Math.round(11 * s));
         break;
       }
@@ -433,14 +686,38 @@ function layoutCredits() {
       // speaker prefixes — both are screenplay formatting, and a credit roll is
       // not a script. The portal and the two toons say "handoff" on their own,
       // and the sections either side of it say who is talking.
-      case 'handoff':
-        push({ k: 'handoffArt', from: item.from, to: item.to }, 48);
-        push({ k: 'handoffLine', text: `"${item.lineA}"`, side: -1 }, 13);
-        push({ k: 'handoffLine', text: `"${item.lineB}"`, side: 1 }, 13);
+      //
+      // artDY is how far ABOVE each dialogue line its own hand-off block sits.
+      // The lines fade in with their speaker, and the speaker's timing comes
+      // from where the ART is on screen — so a line has to be able to ask
+      // about a row other than itself.
+      case 'handoff': {
+        const artY = y;
+        push({ k: 'handoffArt', from: item.from, to: item.to }, HANDOFF_H);
+        // One line, not two stacked. Both halves of the exchange share a
+        // baseline and split around a gap the width of the portal above them,
+        // so the reply reads as an answer across the portal rather than as a
+        // second caption underneath the first.
+        push({
+          k: 'handoffDuo',
+          a: `"${item.lineA}"`,
+          b: `"${item.lineB}"`,
+          artDY: artY - y,
+        }, 16);
         break;
-      case 'para':
-        for (const line of wrapText(item.text, BODY_W, 0.85, 60, 'ui')) push({ k: 'note', text: line, color: DIM, scale: 0.85 }, 11);
+      }
+      // The densest block in the crawl, and the one that suffers most on a
+      // small screen. A phone gets it a size up (and wrapped fresh at that
+      // size, so the wrap matches the type); a tablet or desktop keeps the
+      // small setting, where boilerplate belongs and is perfectly legible.
+      case 'para': {
+        const s = bodyScale();
+        const lineH = Math.round(11 * (s / BODY_SCALE_WIDE));
+        for (const line of wrapText(item.text, BODY_W, s, 60, 'ui')) {
+          push({ k: 'note', text: line, color: DIM, scale: s }, lineH);
+        }
         break;
+      }
       default: break;
     }
   }
@@ -485,6 +762,11 @@ function drawSocket(ctx, cx, cy, t) {
 // words "RATED E", which is not a thing any rating board does.)
 const RATED_BOX_W = 34;
 const RATED_BOX_H = 42;
+// Rule position inside the box, splitting it into the grade band and the word
+// band. Everything else in the mark is centred against one of those two.
+const RATED_RULE_Y = 30;
+const RATED_GRADE_S = 2.6;
+const RATED_LABEL_S = 0.5;
 const RATED_LINE_1 = 'FOR EVERYONE WHO CAN FILE A FORM IN TRIPLICATE';
 const RATED_LINE_2 = 'Mild Cartoon Violence · Comic Bureaucracy · Sustained Appliance Peril';
 
@@ -492,19 +774,27 @@ function drawRatedBox(ctx, cx, y) {
   const s1 = 0.75, s2 = 0.7;
   const textW = Math.max(textWidth(RATED_LINE_1, s1), textWidth(RATED_LINE_2, s2));
   const x = Math.round(cx - (RATED_BOX_W + 10 + textW) / 2);
+  const top = Math.round(y);
+  const ruleY = top + RATED_RULE_Y;
+  const cxBox = x + RATED_BOX_W / 2;
 
   ctx.strokeStyle = FG;
   ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, Math.round(y) + 0.5, RATED_BOX_W, RATED_BOX_H);
-  // The grade, then a rule, then the word it stands for — all inside the box.
-  drawTextCentered(ctx, 'E', x + RATED_BOX_W / 2, y + 3, WHITE, 2.2, 'title');
+  ctx.strokeRect(x + 0.5, top + 0.5, RATED_BOX_W, RATED_BOX_H);
+
+  // Each band centres its OWN ink: the grade in the space above the rule, the
+  // word in the space below it, the descriptors against the box as a whole.
+  // Hand-picked y offsets had the E riding high over a pool of dead space,
+  // because a glyph's ink does not start at the y you hand drawText.
+  drawTextCentered(ctx, 'E', cxBox, textYForMid((top + ruleY) / 2, RATED_GRADE_S), WHITE, RATED_GRADE_S, 'title');
   ctx.fillStyle = FG;
-  ctx.fillRect(x + 3, y + RATED_BOX_H - 12, RATED_BOX_W - 6, 1);
-  drawTextCentered(ctx, 'EVERYONE', x + RATED_BOX_W / 2, y + RATED_BOX_H - 10, FG, 0.5);
+  ctx.fillRect(x + 3, ruleY, RATED_BOX_W - 6, 1);
+  drawTextCentered(ctx, 'EVERYONE', cxBox, textYForMid((ruleY + top + RATED_BOX_H) / 2, RATED_LABEL_S), FG, RATED_LABEL_S);
 
   const tx = x + RATED_BOX_W + 10;
-  drawText(ctx, RATED_LINE_1, tx, y + 10, GOLD, s1);
-  drawText(ctx, RATED_LINE_2, tx, y + 24, DIM, s2);
+  const mid = top + RATED_BOX_H / 2;
+  drawText(ctx, RATED_LINE_1, tx, textYForMid(mid - 7, s1), GOLD, s1);
+  drawText(ctx, RATED_LINE_2, tx, textYForMid(mid + 7, s2), DIM, s2);
 }
 
 function drawRow(ctx, row, y, t) {
@@ -520,48 +810,55 @@ function drawRow(ctx, row, y, t) {
       drawText(ctx, row.name, CX + gap, y, WHITE, 0.85);
       break;
     }
-    case 'handoffLine': {
+    // The whole exchange on one baseline: the outgoing hero's line ends just
+    // left of the portal's column, the reply starts just right of it. Each half
+    // still arrives with the hero who says it — the reply does not sit on
+    // screen for seconds before anyone is there to have said it.
+    case 'handoffDuo': {
       const s = 0.85;
-      const w = textWidth(row.text, s);
-      // Centred on its speaker, then clamped back on-screen so a long line
-      // leans toward the right character instead of running off the edge.
-      const want = CX + row.side * HANDOFF_DX - w / 2;
-      const x = Math.max(8, Math.min(W - 8 - w, want));
-      drawText(ctx, row.text, x, y, row.side < 0 ? OUTGOING_INK : INCOMING_INK, s);
+      const artY = y + (row.artDY || 0);
+      const p = Math.max(0, Math.min(1, (H - artY) / (H + HANDOFF_H)));
+      const fade = (from) => Math.max(0, Math.min(1, (p - from) / 0.10));
+
+      const aAlpha = fade(HANDOFF_LINE_A_AT);
+      if (aAlpha > 0) {
+        const w = textWidth(row.a, s);
+        ctx.save();
+        ctx.globalAlpha = aAlpha;
+        drawText(ctx, row.a, Math.max(6, CX - HANDOFF_GAP - w), y, OUTGOING_INK, s);
+        ctx.restore();
+      }
+      const bAlpha = fade(HANDOFF_SWAP_AT + 0.06);
+      if (bAlpha > 0) {
+        const w = textWidth(row.b, s);
+        ctx.save();
+        ctx.globalAlpha = bAlpha;
+        drawText(ctx, row.b, Math.min(CX + HANDOFF_GAP, W - 6 - w), y, INCOMING_INK, s);
+        ctx.restore();
+      }
       break;
     }
-    // The departments hand off the way the cast does: outgoing hero running
-    // into the portal, incoming hero already running out of it. Both face
-    // right, which is the direction the whole game runs in.
+    // The departments hand off the way the cast does. The staging itself is
+    // under bake-off (credits-handoff.js, and the gallery's lab section), so
+    // the painter lives there and this only supplies the box and the timing.
+    //
+    // Progress is keyed to where the block sits ON SCREEN rather than to a
+    // free-running clock: a candidate that animates a whole swap then plays it
+    // out exactly as it crosses, so you always catch the entire beat instead
+    // of whatever frame the loop happened to be on when it scrolled in.
     case 'handoffArt': {
-      const feetY = y + 42;
-      // Scaled to stand with the 34u toons rather than to the field guide's
-      // 12u icon. The painter's inner glint is drawn at w*0.16, so at 14 wide
-      // it collapsed into a hook that read as a stray glyph; at 22 it resolves
-      // as the highlight it is.
-      const portalH = 40 + Math.round(Math.sin(t * 5) * 2);
-      drawProp(ctx, 'portal', CX - 11, feetY - portalH, 22, portalH);
-      const pose = (offset) => ({
-        kind: 'run', grounded: true, menu: true, time: t,
-        phase: (t * 1.6 + offset) % 1,
-      });
-      // Half a stride apart so the two figures never mirror each other.
-      drawToon(ctx, row.from, pose(0), CX - HANDOFF_DX, feetY, 34);
-      drawToon(ctx, row.to, pose(0.5), CX + HANDOFF_DX, feetY, 34);
+      const progress = Math.max(0, Math.min(1, (H - y) / (H + HANDOFF_H)));
+      drawHandoff(ctx, { from: row.from, to: row.to, t, progress, x: 0, y, w: W, h: HANDOFF_H });
       break;
     }
     case 'castRole': {
       const gap = 6;
       drawText(ctx, row.role, CX - gap - textWidth(row.role, 0.85), y, FG, 0.85);
       drawText(ctx, row.name, CX + gap, y, WHITE, 0.85);
-      const midY = y + ROW_INK_MID;
-      if (row.face) {
-        drawToonFace(ctx, row.face, FACE_X, midY - FACE_BOX / 2, FACE_BOX, FACE_BOX);
-      } else if (row.prop) {
-        const pw = row.propW, ph = row.propH;
-        const frame = Math.floor(t * propFps(row.prop)) % propFrames(row.prop);
-        drawProp(ctx, row.prop, FACE_X + (FACE_BOX - pw) / 2, midY - ph / 2, pw, ph, frame);
-      }
+      // Every cast row is a toon portrait now. The prop-portrait branch that
+      // used to live here served only Eggshell and the Dust Devil, both since
+      // cut from this list; it went with them rather than sitting unexercised.
+      drawToonFace(ctx, row.face, FACE_X, y + ROW_INK_MID - FACE_BOX / 2, FACE_BOX, FACE_BOX);
       break;
     }
     // A department/studio mark on its own card. These ship around 13x8 in the
@@ -575,13 +872,25 @@ function drawRow(ctx, row, y, t) {
       drawToon(ctx, 'gary', pose, CX, y + 58, 54);
       break;
     }
-    case 'bigHeader': drawTextCentered(ctx, row.text, CX, y, PINK, row.scale, 'title'); break;
+    // Centred on the reachable box rather than on W/2: on a phone whose notch
+    // eats one side, those two are not the same point, and a full-bleed banner
+    // centred on the wrong one runs off under the cutout.
+    case 'bigHeader': drawTextCentered(ctx, row.text, safeBox().cx, y, PINK, row.scale, 'title'); break;
     case 'wall': {
-      const colW = (W - 28) / HR_WALL_COLS;
+      // The banner is full-bleed on purpose; a column of names flush to the
+      // bezel just looks clipped, so the wall keeps a little air.
+      const box = safeBox();
+      const inset = 8;
+      const colW = (box.width - inset * 2) / HR_WALL_COLS;
       HR_WALL.forEach((n, i) => {
         const col = i % HR_WALL_COLS;
         const line = Math.floor(i / HR_WALL_COLS);
-        drawText(ctx, n, 14 + col * colW, y + line * HR_WALL_ROW_H, FG, HR_WALL_SCALE);
+        // Centred in its own column. These names run from 11 to 26 characters,
+        // so a left edge shared by three of them left ragged gaps down the
+        // right of each column; centred, the block reads as three columns of
+        // names rather than one badly justified paragraph.
+        const cx = box.x0 + inset + (col + 0.5) * colW;
+        drawTextCentered(ctx, n, cx, y + line * HR_WALL_ROW_H, FG, HR_WALL_SCALE);
       });
       break;
     }
@@ -592,16 +901,42 @@ function drawRow(ctx, row, y, t) {
 }
 
 export class CreditsState {
-  constructor({ onDone }) { this.onDone = onDone; }
+  // Read by the FPS readout in main.js. A credit roll is the one screen whose
+  // whole job is to be looked at, and a diagnostic parked over it is in the
+  // shot — the same reasoning that already stands the readout down while the
+  // visualizer's titles are up.
+  static hidesFps = true;
+
+  // settings is optional: the sky only reads reducedMotion off it, and a caller
+  // that has no settings to hand still gets a (moving) starfield.
+  constructor({ onDone, settings }) { this.onDone = onDone; this.settings = settings || {}; }
   enter() {
     this.t = 0;
     this.atRest = false;
     this.script = layoutCredits();
     this.restT = Math.max(0, (H + this.script.lastY - REST_Y) / SCROLL_SPEED);
+    this.scrubHeldT = 0;
+    this.reduced = !!this.settings.reducedMotion;
+    this.stars = makeStars(STAR_COUNT);
     Audio.setBank(MEGAMIX_THEME);
     Input.setMenuButtons();
+    // Up/down here mean "scrub the crawl while held", not "move down a row". A
+    // wheel tick presses without ever releasing, so one flick of the wheel put
+    // the roll into fast-forward until the stuck-hold guard below noticed. The
+    // arrow keys are the scrub control; the wheel does nothing on this screen.
+    Input.wheelNav = false;
+    // Same guard CastState uses. actionForKey() resolves a key to a DIFFERENT
+    // action per context, so an arrow held across the transition into this
+    // screen registers its keydown under one action and its keyup under
+    // another — and the first one is then held forever, which reads as the
+    // crawl arriving already stuck in fast-forward.
+    Input.clearAll();
   }
-  exit() { Audio.setBank(null); }
+  exit() {
+    Audio.setBank(null);
+    Input.wheelNav = true;   // every other list still scrolls with the wheel
+    Input.clearAll(); // and never leak a held arrow out into the next screen
+  }
   update(dt) {
     // Hold an arrow to scrub. Forward runs at 1+SCRUB_RATE, back at
     // 1-SCRUB_RATE, so rewind is a touch slower than fast-forward — the crawl
@@ -611,6 +946,17 @@ export class CreditsState {
     if (Input.held('right') || Input.held('down')) rate += SCRUB_RATE;
     if (Input.held('left') || Input.held('up')) rate -= SCRUB_RATE;
     this.scrubbing = rate !== 1;
+    // Self-heal for a held action that never got its release (see enter()).
+    // Scrubbing crosses the whole crawl in restT/SCRUB_RATE seconds, so a hold
+    // still running well past that is not a finger — it is a lost keyup. Hand
+    // the actions back so the screen recovers instead of scrubbing forever.
+    this.scrubHeldT = this.scrubbing ? this.scrubHeldT + dt : 0;
+    if (this.scrubHeldT > SCRUB_STUCK_T) {
+      for (const a of ['left', 'right', 'up', 'down']) Input.release(a);
+      this.scrubHeldT = 0;
+      this.scrubbing = false;
+      rate = 1;
+    }
     this.t = Math.min(this.restT, Math.max(0, this.t + dt * rate));
     this.atRest = this.t >= this.restT;
     if (this.t > OPEN_GUARD_T && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
@@ -622,9 +968,10 @@ export class CreditsState {
     Input.endFrame();
   }
   draw(ctx) {
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(0, 0, W, H);
     const scrollY = H - this.t * SCROLL_SPEED;
+    // Full-bleed: the sky covers the whole canvas, safe area included. Only the
+    // things you must be able to READ get inset.
+    drawSky(ctx, this.stars, this.t, this.t * SCROLL_SPEED, this.reduced);
     for (const row of this.script.rows) {
       const y = scrollY + row.y;
       // Cull on the row's own extent. The 20u pad covers the few painters that
@@ -641,16 +988,23 @@ export class CreditsState {
     // A phone has no arrows to hold, so it is never told about scrubbing. And
     // once the crawl has settled on the closing card there is nothing left to
     // skip, so the prompt stops offering to skip and offers the way out.
-    const s = 0.75;
+    // Chrome, not content: pushed to the very bottom edge and set small so the
+    // legend stays available without competing with the crawl. (The mobile
+    // legibility floor that governs the wall of names deliberately does not
+    // apply here — this is a persistent hint you read once, not a credit.)
+    const s = HINT_SCALE;
     // "TAP TO BACK" is not a sentence — touch and keyboard need different words
     // for the same idea, so they get their own pair rather than sharing a verb.
     const touch = Input.isTouchDevice();
     const exit = touch
       ? (this.atRest ? 'TAP TO RETURN' : 'TAP TO SKIP')
       : `${Input.confirmVerb()} / ESC: ${this.atRest ? 'BACK' : 'SKIP'}`;
+    // Anchored to the reachable box, and lifted clear of a home indicator.
+    const box = safeBox();
+    const hintY = HINT_Y - box.bottom;
     if (!touch) {
-      drawText(ctx, '← → HOLD TO SCRUB', 8, H - 11, this.scrubbing ? GOLD : DIM, s, 'ui', UI_PLATE);
+      drawText(ctx, '← → HOLD TO SCRUB', box.x0 + 2, hintY, this.scrubbing ? GOLD : DIM, s, 'ui', UI_PLATE);
     }
-    drawText(ctx, exit, W - 8 - textWidth(exit, s), H - 11, DIM, s, 'ui', UI_PLATE);
+    drawText(ctx, exit, box.x1 - 2 - textWidth(exit, s), hintY, DIM, s, 'ui', UI_PLATE);
   }
 }

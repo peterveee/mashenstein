@@ -3,9 +3,9 @@
 // SettingsState uses in game/menus.js.
 //
 // Items: {label, act?, submenu?, adjust?}
-import { W, H } from '../engine/renderer.js';
+import { W, H, screen } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
-import { drawText, drawTextCentered, drawPanel } from '../engine/sprites.js';
+import { drawText, drawTextCentered, drawPanel, textYForMid, textWidth } from '../engine/sprites.js';
 import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
@@ -445,7 +445,7 @@ export function rootMenu(dev) {
       } },
       { label: 'CREDITS', act: () => {
         dev.close();
-        setState(new CreditsState({ onDone: () => dev.ctx.Flow.toHub() }));
+        setState(new CreditsState({ settings: dev.ctx.save.settings, onDone: () => dev.ctx.Flow.toHub() }));
       } },
       { label: 'VISUALISERS ▸', submenu: () => visualizersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
@@ -458,40 +458,173 @@ export function rootMenu(dev) {
 }
 
 // ------------------------------------------------------------------- render
+// One size for every screen in this menu. The root used to be drawn smaller
+// than its own submenus, which made "how deep am I" a question you answered by
+// squinting; a single size is both easier to read and one less thing to tune.
+// Portrait multiplies it by PORTRAIT_TEXT_S, which is picked so the lettering
+// comes out the same physical size in both orientations (~18 CSS px on a phone).
+const ROW_TEXT_S = 1.5;
+// The breadcrumb is a heading, so it outranks the rows it sits above.
+const HEADER_TEXT_S = 1.85;
 const ROW_H = 21;
-const MAX_ROWS = 10;
+// Portrait fill hands this overlay the whole phone (setDevPortraitFill). Rows
+// stay in logical units and the stretch makes them finger-sized for free: 17
+// units lands at ~42 CSS px on a 390-wide phone, which is the size a thumb
+// expects, and still leaves room for thirteen of them. Glyphs are the only
+// thing that has to fight the stretch.
+const PORTRAIT_ROW_H = 17;
+const PORTRAIT_TEXT_S = 1.75;
+
+// The header is one button — the whole strip above the first row goes back —
+// sized like one rather than like the line of text it carries: a bar tall
+// enough for a heading and an arrow a thumb can hit without aiming.
+const HEADER_H = 22;
+const PORTRAIT_HEADER_H = 30;
+// Arrow height as a fraction of the bar, in the square units the text transform
+// restores. Both orientations use it, so the arrow is always in proportion to
+// the header it sits in.
+const BACK_ARROW_F = 0.42;
+// Clearance below the last row, so a list that exactly fills the screen still
+// leaves the footer hint its line.
+const FOOT_GAP = 6;
+
+// One layout for the painter and for the pointer hit-test in index.js, so a tap
+// always lands on the row it is under. Both orientations run the same shape:
+// header band, then as many rows as fit above the footer.
+export function menuLayout() {
+  const fill = !!screen.portraitFill;
+  // Glyphs are drawn into a logical canvas that portrait then stretches
+  // vertically, so they are pre-compressed by exactly that factor and come out
+  // with normal proportions — the same trick the jukebox list uses.
+  const yScale = fill ? screen.cssH / (H * Math.max(0.001, screen.scale)) : 1;
+  // Portrait reaches the physical edges, so the notch and the home indicator
+  // are the overlay's problem: the header drops below the island and the footer
+  // lifts off the indicator. The pad applies either way, so the arrow is never
+  // jammed against the glass edge on a flat-topped phone.
+  const headerH = fill ? PORTRAIT_HEADER_H : HEADER_H;
+  const headerTop = (fill ? screen.safeTop : 0) + 4;
+  const listTop = headerTop + headerH;
+  const footY = H - (fill ? screen.safeBottom : 0) - 16;
+  const rowH = fill ? PORTRAIT_ROW_H : ROW_H;
+  const maxRows = Math.max(1, Math.floor((footY - FOOT_GAP - listTop) / rowH));
+  return {
+    fill, yScale, textS: fill ? PORTRAIT_TEXT_S : 1,
+    rowTextS: ROW_TEXT_S, headerTextS: HEADER_TEXT_S,
+    headerTop, crumbMid: headerTop + headerH / 2,
+    listTop, rowH, maxRows, footY,
+  };
+}
+
+// A left arrow drawn in square units whatever the canvas is doing to the axes:
+// the same y-compression the glyphs get, so it cannot come out as a stretched
+// wedge. `h` is its full height, and it is centred on (x, midY).
+function drawBackArrow(ctx, L, x, midY, h, color) {
+  ctx.save();
+  ctx.translate(x, midY);
+  if (L.fill) ctx.scale(1, 1 / L.yScale);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, h * 0.15);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(h * 0.06, -h * 0.42);
+  ctx.lineTo(-h * 0.34, 0);
+  ctx.lineTo(h * 0.06, h * 0.42);
+  ctx.moveTo(-h * 0.30, 0);
+  ctx.lineTo(h * 0.40, 0);
+  ctx.stroke();
+  ctx.restore();
+}
 
 export function drawMenu(ctx, dev) {
   const top = dev.top();
   if (!top) return;
+  const L = menuLayout();
+  // Text is the only thing the portrait stretch is allowed to touch: compress
+  // by yScale so the fill expands it back, and take the size back up so a
+  // phone-sized row is legible rather than merely tall.
+  const text = (str, x, y, color, scale = 1, centered = false) => {
+    const paint = centered ? drawTextCentered : drawText;
+    if (!L.fill) return paint(ctx, str, x, y, color, scale);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, 1 / L.yScale);
+    paint(ctx, str, 0, 0, color, scale * L.textS);
+    ctx.restore();
+  };
+  // One size for every row means the longest label decides nothing: the few
+  // lines that would run off the edge are shrunk to fit and the rest are left
+  // alone. Portrait needs this most — 390 CSS px where landscape has 693, and a
+  // stage row carries its plug requirement too — but a 27-character boss name
+  // can overrun either.
+  const fit = (str, scale, x, right = 8) => {
+    const w = textWidth(str, scale * L.textS);
+    const avail = W - x - right;
+    return w > avail ? scale * (avail / w) : scale;
+  };
 
-  ctx.fillStyle = 'rgba(11,11,20,0.86)';
-  ctx.fillRect(0, 0, W, H);
-  drawPanel(ctx, 8, 6, W - 16, H - 12, 3, 'rgba(20,18,34,0.95)');
+  // A rounded panel drawn in a stretched space has stretched corners, so
+  // portrait takes a plain full-bleed backing instead — opaque, because the
+  // frozen screen behind it is stretched too and reads as smeared ghosting
+  // through anything less.
+  if (L.fill) {
+    ctx.fillStyle = '#14121f';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = 'rgba(11,11,20,0.86)';
+    ctx.fillRect(0, 0, W, H);
+    drawPanel(ctx, 8, 6, W - 16, H - 12, 3, 'rgba(20,18,34,0.95)');
+  }
+
+  // A phone has no Backspace and no backquote, so the way out has to be visible
+  // rather than known: the whole header is the back button, and the arrow is
+  // what says so. At the root screen back IS close, which is the escape from the
+  // overlay itself. Desktop keeps the bare breadcrumb and its key hints.
+  const touch = Input.isTouchDevice();
+  const arrowH = BACK_ARROW_F * (L.listTop - L.headerTop) * L.yScale;
+  let crumbX = 14;
+  if (touch) {
+    const arrowX = 14 + arrowH * 0.34;
+    drawBackArrow(ctx, L, arrowX, L.crumbMid, arrowH, GOLD);
+    crumbX = arrowX + arrowH * 0.4 + (L.fill ? 16 : 7);
+    // A tint and a rule, so the header reads as its own surface rather than as
+    // the first row. The rule is ~1.5 CSS px in whichever axis scale is in force.
+    if (L.fill) {
+      ctx.fillStyle = 'rgba(255,255,255,0.045)';
+      ctx.fillRect(0, 0, W, L.listTop);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(0, L.listTop - (L.fill ? 0.6 : 1), W, L.fill ? 0.6 : 1);
+  }
 
   const crumbs = dev.stack.map((s) => s.title).join(' / ');
-  drawText(ctx, crumbs, 14, 12, GOLD);
+  const crumbS = fit(crumbs, L.headerTextS, crumbX);
+  text(crumbs, crumbX, textYForMid(L.crumbMid, crumbS * L.textS / L.yScale), GOLD, crumbS);
   // Name the controls the device in hand actually has: the phone that opened
   // this from the portrait card has no key to press and no ` to close with.
-  drawText(ctx, Input.isTouchDevice()
-    ? 'TAP A ROW TO PICK   TAP THE TOP BAR TO GO BACK'
-    : '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, H - 16, DIM, 0.75);
+  text(touch
+    ? 'TAP A ROW TO PICK   ← GOES BACK'
+    : '↑↓ MOVE  ←→ ADJUST  ENTER PICK  BKSP BACK  ` CLOSE', 14, L.footY, DIM, 0.75);
 
   // Scroll window so long lists (27 stages, every obstacle type) stay usable.
   const n = top.items.length;
-  const first = Math.max(0, Math.min(n - MAX_ROWS, top.idx - Math.floor(MAX_ROWS / 2)));
-  const shown = top.items.slice(first, first + MAX_ROWS);
+  const first = Math.max(0, Math.min(n - L.maxRows, top.idx - Math.floor(L.maxRows / 2)));
+  const shown = top.items.slice(first, first + L.maxRows);
 
   shown.forEach((item, i) => {
     const realIdx = first + i;
     const sel = realIdx === top.idx;
-    const y = 26 + i * ROW_H;
     const inert = !item.act && !item.submenu && !item.adjust;
-    const scale = top.title === 'DEV MENU' ? 1.2 : 1.5;
-    drawText(ctx, (sel ? '> ' : '  ') + item.label, 14, y, sel ? GOLD : inert ? DIM : FG, scale);
+    const label = (sel ? '> ' : '  ') + item.label;
+    const scale = fit(label, L.rowTextS, 14);
+    // The ink is centred in its row in both orientations: the label is sized
+    // against the row height the layout chose, not the other way round, and a
+    // line shrunk to fit still sits on the same centreline as its neighbours.
+    const y = textYForMid(L.listTop + (i + 0.5) * L.rowH, scale * L.textS / L.yScale);
+    text(label, 14, y, sel ? GOLD : inert ? DIM : FG, scale);
   });
 
-  if (n > MAX_ROWS) {
-    drawTextCentered(ctx, `${top.idx + 1}/${n}`, W - 34, H - 16, DIM, 0.75);
+  if (n > L.maxRows) {
+    text(`${top.idx + 1}/${n}`, W - 34, L.footY, DIM, 0.75, true);
   }
 }

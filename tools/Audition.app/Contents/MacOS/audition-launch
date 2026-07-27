@@ -1,0 +1,28 @@
+#!/bin/sh
+# Contents/MacOS -> Audition.app -> tools -> repo root
+REPO=$(cd "$(dirname "$0")/../../../.." && pwd)
+PY="$REPO/tools/.venv-audio/bin/python"
+LOG="/tmp/mashenstein-audition.log"
+
+if [ ! -x "$PY" ]; then
+  osascript -e 'display alert "Audition can not start" message "Missing tools/.venv-audio — run: python3 -m venv tools/.venv-audio && tools/.venv-audio/bin/pip install pedalboard pyobjc-framework-Cocoa"'
+  exit 1
+fi
+
+echo "--- $(date) ---" >> "$LOG"
+
+# LaunchServices can start this bundle under Rosetta, and the system python is
+# universal, so it would then run as x86_64 while the venv's numpy is arm64.
+# Note uname -m reports x86_64 inside Rosetta; hw.optional.arm64 tells the
+# truth either way.
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+  arch -arm64 "$PY" "$REPO/tools/audition.py" "$@" >> "$LOG" 2>&1
+else
+  "$PY" "$REPO/tools/audition.py" "$@" >> "$LOG" 2>&1
+fi
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+  TAIL=$(tail -n 6 "$LOG" | tr '"' "'")
+  osascript -e "display alert \"Audition exited with status $STATUS\" message \"$TAIL\""
+fi
+exit $STATUS

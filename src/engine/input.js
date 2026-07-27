@@ -74,6 +74,10 @@ class InputSys {
     this.context = 'default';
     this.menuKeys = false;      // menu key meanings without a full context switch
     this.suspended = false;     // lifecycle gate: hidden/locked/iPhone portrait
+    // A screen that reads up/down as something other than "move the cursor one
+    // row" opts out: a wheel tick synthesises a press with no matching release,
+    // which a list consumes in a frame and a continuous control does not.
+    this.wheelNav = true;
   }
 
   init() {
@@ -314,6 +318,7 @@ class InputSys {
     // Scroll wheel navigates lists in menu / hub / paused contexts.
     window.addEventListener('wheel', (e) => {
       if (this.suspended) return;
+      if (!this.wheelNav) return;
       if (!this.menuNav()) return;
       const ticks = Math.min(5, Math.ceil(Math.abs(e.deltaY) / 40));
       const action = e.deltaY > 0 ? 'down' : 'up';

@@ -15,10 +15,10 @@
 // Input.textHandler swallows every letter during TURDLE — the menu must behave
 // identically wherever it was opened from.
 import { Input } from '../engine/input.js';
-import { H, pushOverlayDraw, saveScreenshot, clientToLogical } from '../engine/renderer.js';
+import { H, pushOverlayDraw, saveScreenshot, clientToLogical, setDevPortraitFill } from '../engine/renderer.js';
 import { currentState } from '../engine/states.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
-import { rootMenu, drawMenu } from './menus.js';
+import { rootMenu, drawMenu, menuLayout } from './menus.js';
 
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
 
@@ -57,16 +57,17 @@ export const Dev = {
       }
       const top = this.top();
       if (!top) return;
+      // The same layout the painter used this frame — portrait moves every row.
+      const L = menuLayout();
       // The breadcrumb strip is the touch BACK. A phone has no Backspace and no
       // backquote, so without it a submenu reached by tapping is a room with no
       // door — and popping the last screen closes the overlay, which is the
       // touch CLOSE as well.
-      if (p.y < 20) { this.pop(); e.preventDefault(); return; }
-      const maxRows = 10, rowH = 21;
-      const first = Math.max(0, Math.min(top.items.length - maxRows, top.idx - Math.floor(maxRows / 2)));
-      const row = Math.floor((p.y - 20) / rowH);
+      if (p.y < L.listTop) { this.pop(); e.preventDefault(); return; }
+      const first = Math.max(0, Math.min(top.items.length - L.maxRows, top.idx - Math.floor(L.maxRows / 2)));
+      const row = Math.floor((p.y - L.listTop) / L.rowH);
       const idx = first + row;
-      if (idx < 0 || idx >= top.items.length || row >= maxRows) return;
+      if (idx < 0 || idx >= top.items.length || row >= L.maxRows) return;
       top.idx = idx;
       const item = top.items[idx];
       if (item.submenu) this.push(item.submenu(this));
@@ -139,14 +140,20 @@ export const Dev = {
 
   close() { this.open = false; this.stack = []; this.syncPortrait(); },
 
-  // An open overlay is its own portrait surface (main.js folds this.open into
-  // the lifecycle's portrait predicate), so the pause policy has to be recomputed
-  // whenever it opens or closes — a phone held still fires no other event.
+  // Two things follow the overlay's open state, and both only bite on a phone
+  // held upright: the canvas takes the whole screen instead of the 16:9 band
+  // (the renderer ignores the request in landscape), and the lifecycle stops
+  // treating portrait as a reason to pause — main.js folds this.open into its
+  // portrait predicate, and a phone held still fires no other event that would
+  // make it ask again.
   //
-  // Deferred by a microtask because nearly every menu action closes and then
-  // immediately setState()s: the policy must be read against the screen the
-  // action is leaving behind, not the one it is still standing on.
+  // The pause policy is deferred by a microtask because nearly every menu
+  // action closes and then immediately setState()s: it must be read against the
+  // screen the action is leaving behind, not the one it is still standing on.
+  // The canvas is not deferred — the overlay is painted from the very next
+  // frame, and that frame has to find the geometry it laid itself out for.
   syncPortrait() {
+    setDevPortraitFill(this.open);
     const notify = this.ctx && this.ctx.onOpenChange;
     if (!notify) return;
     if (typeof queueMicrotask === 'function') queueMicrotask(notify);

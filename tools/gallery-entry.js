@@ -34,6 +34,7 @@ import {
 } from '../src/game/plugs.js';
 import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
+import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -2428,6 +2429,33 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     }
   }
 
+}
+
+// ------------------------------------------- credits relay hand-off staging
+{
+  const grid = section('credits-handoff', 'Credits relay hand-off — bake-off (PAIR ships)',
+    'OPEN. The hand-off block between departments in the credits crawl. PAIR is what ships and is here as '
+    + 'the control: two figures either side of the portal, which reads as a tableau of the mechanic rather '
+    + 'than the mechanic happening. Every candidate calls the same painters the crawl does '
+    + '(src/game/credits-handoff.js), so what is on screen here is what would ship. '
+    + 'The block is 48u tall at full screen width; these tiles are the same height so the vertical crowding '
+    + 'is honest. Progress in the crawl is keyed to the block\'s position ON SCREEN, not to a free clock — '
+    + 'a candidate that animates a whole swap plays it out exactly as it scrolls past, which is why A and D '
+    + 'are judged on the whole cycle rather than on any one frame. Watch for: does it still read at a '
+    + 'glance while scrolling, and does it survive the two dialogue lines sitting directly underneath it.');
+
+  // Lorenzo -> Gnash, the crawl's first hand-off, so the bake-off is judged on
+  // a pair the screen actually uses rather than on a flattering one.
+  for (const v of HANDOFF_VARIANTS) {
+    tile(grid, v.name, v.note, 260, 48, (ctx, t) => {
+      const cycle = 3.4;
+      v.draw(ctx, {
+        from: 'lorenzo', to: 'gnash', t,
+        progress: (t % cycle) / cycle,
+        x: 0, y: 0, w: 260, h: 48,
+      });
+    }, { animated: true, wide: true });
+  }
 }
 
 // ---------------------------------------------------------------- driver

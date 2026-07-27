@@ -81,6 +81,7 @@ ENGINEERING: *"We don't do turns. We do tickets."*
 
 Technical Director — **Radhika Sethna**
 Lead Engine Programmer — **Otis Vandermeer**
+Principal Engineer, Core Systems — **George Simonidis**
 Rendering & Style-Pack Programming — **Ines Kowalczyk**
 Gameplay Systems Programming — **Tobias Nkemelu**
 Local-Only Netcode *(There Is No Netcode)* — **Department of One**, unstaffed by design
@@ -132,13 +133,14 @@ CAST: *"POYO."*
 **Miss Chomp** .................................... appetite consultant credited separately, tab pending
 **Ray M'n, Appendage-Optional** ................... limbs performed by stunt limbs, insured separately
 **Grumpos, Dad of Boy** ........................... "BOY" performed with range
-**Don K. Eggshell, PhD** .......................... played by himself, thesis available on request
 **Gary** .......................................... played by Gary (deceased), SAG-AFTRA status pending since hiring
 **Dolores** ........................................ played by Delores, still on shift
-*(The Dust Devil 9000 and the TURDLE turtle are deliberately absent — the Dust
-Devil for the same reason the in-game cast roll leaves him out, that he is a
-surprise and a credit spends him early, and the turtle because he has no
-portrait to give.)*
+*(Three deliberate absences. **Don K. Eggshell, PhD** closes the whole crawl with
+the sequel sting, and a villain who gets the last word should not also be a row
+in the cast roll. The **Dust Devil 9000** is left out for the same reason the
+in-game cast roll leaves him out — he is a surprise, and a credit spends him
+before the player has met him. The **TURDLE turtle** has no portrait to give,
+and a nameplate alone reads as filler beside the other faces.)*
 
 ---
 
@@ -148,6 +150,7 @@ QA Director — **Odell Petrosyan**
 QA Leads — **Ingrid Halvorsen**, **Chibuzo Amadi**
 Test Engineer, Fairness Simulation *(500-seed batches and counting)* — **Milo Standish**
 Compliance Testing, UNPLUGGED Mode *(Filed Under Protest)* — **Renata Szabo**
+Second Opinions — **Flora Crollini** *(she is aware you disagree)*
 
 *...and forty additional testers who lost to the Act II vacuum an average of eleven times each, which the studio considers a personal best.*
 
@@ -230,12 +233,14 @@ Forty-Year Losing Streak Liaison — *a rotating duty nobody volunteers for*
 
 **COMPLIANCE & RECORDS**
 Head of Compliance — **Solveig Amadi**
+Head of Governance — **Scott Mahony**
 Mandatory Training Module Authorship — *not Gary*
 Mandatory Training Module Delivery — **Gary**
 Certification & Small Print — **Theodora Blackwood-Osei**
 Records Retention — **Vikram Halloway**
 Filing, Physical — *the only department with hands*
-Audit — *nobody audits Gary*
+Internal Audit — **Samantha Bousias**
+Audit, Gary — *nobody audits Gary*
 
 **EMPLOYEE RELATIONS**
 Head of Employee Relations — **Corinne Achebe**

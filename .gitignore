@@ -4,3 +4,5 @@ dist/
 .playwright/
 .playwright-mcp/
 .env
+tools/.venv-audio/
+tools/.audition-recents.json

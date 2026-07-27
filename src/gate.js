@@ -12,6 +12,11 @@ const GAME_FONT_FACES = [
   "400 12px 'Permanent Marker'",
 ];
 const GAME_FONT_WAIT_MS = 4000;
+// The install card is a preview of the tile you are about to add, so it has to
+// name the same file the <link rel="apple-touch-icon"> does — and the dev
+// server serves a different one (build/build.js). __MASH_DEV__ is set by the
+// inline head script, which runs before this bundle.
+const ICON_SRC = window.__MASH_DEV__ === true ? 'icon-dev-180.png' : 'icon-180.png';
 const SHARE_SVG = `<svg class="mash-install-share" viewBox="0 0 24 24" aria-hidden="true">
   <path d="M8.2 10.5H6.4v9.1a1.4 1.4 0 0 0 1.4 1.4h8.4a1.4 1.4 0 0 0 1.4-1.4v-9.1h-1.8"/>
   <path d="M12 15.2V3.2"/><path d="M8.4 6.6 12 3l3.6 3.6"/>
@@ -80,7 +85,7 @@ function showInstallBlocker(platform) {
     root.innerHTML = `
       <main class="mash-install-card">
         <div class="mash-install-head">
-          <img class="mash-install-icon" src="icon-180.png" alt="">
+          <img class="mash-install-icon" src="${ICON_SRC}" alt="">
           <div>
             <div class="mash-install-eyebrow">${inApp ? 'THIS IS NOT REALLY A BROWSER' : 'FOUR TAPS, ONCE'}</div>
             <h1 id="install-blocker-title" data-dialog-heading tabindex="-1">${inApp ? 'OPEN IN SAFARI FIRST' : 'PLAY IT FULLSCREEN'}</h1>
@@ -190,7 +195,7 @@ function createGameDom() {
     <div class="mash-portrait-card">
       <div class="mash-portrait-brand">
         <div class="mash-portrait-wordmark" aria-hidden="true">MASHENSTEIN</div>
-        <img id="portrait-lorenzo-icon" class="mash-portrait-icon" src="icon-180.png" alt="">
+        <img id="portrait-lorenzo-icon" class="mash-portrait-icon" src="${ICON_SRC}" alt="">
       </div>
       <div class="mash-portrait-message">
         <svg class="mash-phone-turn" viewBox="0 0 190 145" aria-hidden="true">

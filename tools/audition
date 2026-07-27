@@ -1,0 +1,18 @@
+#!/bin/sh
+# Audition audio through an AU/VST3 plugin with its GUI open.
+# Uses the tools/.venv-audio virtualenv (pedalboard + pyobjc), not system python.
+#
+#   tools/audition
+#   tools/audition --plugin "Ozone 12" --preset "SHOPPING WASH"
+DIR=$(cd "$(dirname "$0")" && pwd)
+VENV="$DIR/.venv-audio/bin/python"
+
+if [ ! -x "$VENV" ]; then
+  echo "missing venv — create it with:" >&2
+  echo "  python3 -m venv tools/.venv-audio" >&2
+  echo "  tools/.venv-audio/bin/pip install pedalboard pyobjc-framework-Cocoa" >&2
+  exit 1
+fi
+
+# Waves and other shells spray objc duplicate-class warnings over stderr.
+exec "$VENV" "$DIR/audition.py" "$@" 2>&1 | grep -v '^objc\[' | grep -v 'ObjCPointerWarning'

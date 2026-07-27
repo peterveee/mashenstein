@@ -199,5 +199,50 @@ const bundle = outputFiles[0].text;
   assert(run.powerups.shieldStack === 1, 'selected hero keeps its starting shield');
 }
 
+// ------------------------------------------------------------ menu layout
+// One layout serves the painter and the pointer hit-test, so a drift between
+// them is a menu whose taps land on the wrong row. Landscape is pinned to the
+// numbers it has always drawn at; portrait only has to stay inside the phone.
+{
+  const { menuLayout } = await import('../src/dev/menus.js');
+  const { screen } = await import('../src/engine/renderer.js');
+  const { H } = await import('../src/engine/renderer.js');
+
+  const land = menuLayout();
+  assert(!land.fill && land.rowH === 21 && land.maxRows >= 9 && land.footY === H - 16,
+    'landscape keeps its row pitch and fills the panel with rows');
+  assert(land.listTop + land.maxRows * land.rowH <= land.footY,
+    'every landscape row fits above the footer');
+  // The breadcrumb is a heading: bigger than the rows it sits above, in a bar
+  // tall enough to hold it, in both orientations.
+  assert(land.headerTextS > land.rowTextS, 'the landscape header outsizes its rows');
+  assert(land.listTop - land.headerTop > land.rowH,
+    'the landscape header bar is taller than a row');
+
+  // A 390x844 phone: the canvas is stretched over the whole viewport, so the
+  // painter pre-compresses its glyphs by that factor.
+  Object.assign(screen, { portraitFill: true, cssH: 844, scale: 390 / 480, safeTop: 12, safeBottom: 9 });
+  const port = menuLayout();
+  assert(port.fill && Math.abs(port.yScale - 844 / (H * (390 / 480))) < 1e-9,
+    'portrait reports the vertical stretch its text has to cancel');
+  assert(port.headerTop >= screen.safeTop && port.crumbMid > port.headerTop
+    && port.listTop > port.crumbMid,
+    'the header clears the notch and the rows start below it');
+  assert(port.headerTextS > port.rowTextS, 'the portrait header outsizes its rows');
+  assert(port.rowTextS === land.rowTextS,
+    'menus and submenus share one row size in both orientations');
+  const headerPx = (port.listTop - port.headerTop) * (screen.cssH / H);
+  assert(headerPx >= 44, `the back header is a button-sized target (${Math.round(headerPx)} CSS px)`);
+  assert(port.listTop + port.maxRows * port.rowH <= port.footY,
+    'every portrait row fits above the footer and the home indicator');
+  // Logical units shrink; physical rows grow. A row has to stay thumb-sized in
+  // the units a finger actually works in, and the page has to be worth filling.
+  const rowPx = port.rowH * (screen.cssH / H);
+  assert(rowPx >= 44, `a portrait row is thumb-sized (${Math.round(rowPx)} CSS px)`);
+  assert(port.maxRows > land.maxRows,
+    'the filled portrait screen shows more rows than the landscape band');
+  Object.assign(screen, { portraitFill: false, cssH: H, scale: 1, safeTop: 0, safeBottom: 0 });
+}
+
 console.log(failed ? 'DEV MENU: FAILED' : 'DEV MENU: PASSED');
 process.exit(failed ? 1 : 0);

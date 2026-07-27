@@ -151,6 +151,7 @@ export const screen = {
 export const visualizerFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualizerFullscreen = false;
 let jukeboxPortrait = false;
+let devPortraitFill = false;
 
 // The game normally preserves its 16:9 logical frame with letterbox margins.
 // Screensaver visuals are an exception: they are decorative and can stretch
@@ -170,6 +171,18 @@ export function setJukeboxPortrait(on) {
   const next = !!on;
   if (next === jukeboxPortrait) return;
   jukeboxPortrait = next;
+  if (typeof window !== 'undefined' && canvas) resize();
+}
+
+// The dev overlay (local builds only) takes the same whole-phone canvas while
+// it is open, so a menu opened from the portrait card is read at a full page of
+// finger-sized rows rather than in the 16:9 band across the middle. It outranks
+// the visualizer's cover crop for the duration: a menu cropped top and bottom
+// by a fullscreen preset would lose its breadcrumb and its footer.
+export function setDevPortraitFill(on) {
+  const next = !!on;
+  if (next === devPortraitFill) return;
+  devPortraitFill = next;
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
@@ -455,6 +468,7 @@ function freshCanvasAfterWebglFailure() {
 
 export function initRenderer(platform = {}, persistence = {}) {
   visualizerFullscreen = false;
+  devPortraitFill = false;
   // The density seed limits initial high-DPI fill-rate; measured frame timing
   // decides where every device ultimately settles. phonePlatform picks the
   // lowest seed and caps the touch-chrome dpr; desktopPlatform skips the seed
@@ -541,8 +555,13 @@ function resize() {
   // Art is resolution-independent now, so fill the viewport at any fractional
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
-  const portraitFill = jukeboxPortrait && !visualizerFullscreen && winH > winW;
-  const fillViewport = visualizerFullscreen || portraitFill;
+  // An open dev overlay claims portrait for itself and outranks the cover crop
+  // (see setDevPortraitFill), so `coverFit` — not the visualizer flag — is what
+  // the rest of this function asks about.
+  const devFill = devPortraitFill && winH > winW;
+  const coverFit = visualizerFullscreen && !devFill;
+  const portraitFill = devFill || (jukeboxPortrait && !coverFit && winH > winW);
+  const fillViewport = coverFit || portraitFill;
   const cssW = fillViewport ? Math.round(winW) : Math.round(W * scale);
   const cssH = fillViewport ? Math.round(winH) : Math.round(H * scale);
   const dpr = window.devicePixelRatio || 1;
@@ -550,7 +569,7 @@ function resize() {
   let inputScaleY = scale;
   let inputLeft = 0;
   let inputTop = 0;
-  if (visualizerFullscreen) {
+  if (coverFit) {
     const cover = Math.max(winW / W, winH / H);
     const visibleW = winW / cover, visibleH = winH / cover;
     visualizerFrame.left = (W - visibleW) * 0.5;
@@ -562,9 +581,9 @@ function resize() {
     inputLeft = visualizerFrame.left;
     inputTop = visualizerFrame.top;
   } else if (portraitFill) {
-    // The portrait jukebox deliberately fills the viewport non-uniformly.
-    // Pointer coordinates must follow that same X/Y mapping or taps land
-    // above/below the row the player touched.
+    // The portrait jukebox — and the dev overlay — deliberately fill the
+    // viewport non-uniformly. Pointer coordinates must follow that same X/Y
+    // mapping or taps land above/below the row the player touched.
     visualizerFrame.left = 0; visualizerFrame.top = 0;
     visualizerFrame.right = W; visualizerFrame.bottom = H;
     inputScaleX = winW / W;
@@ -581,7 +600,7 @@ function resize() {
   // Preserve the renderer's existing rounded-CSS density contract outside
   // fullscreen mode; the visualizer presentation only changes the element's
   // CSS box, not the logical backing-store budget.
-  nativeDensity = (visualizerFullscreen ? scale : Math.round(W * scale) / W) * dpr;
+  nativeDensity = (coverFit ? scale : Math.round(W * scale) / W) * dpr;
   ladder = buildLadder(nativeDensity);
   adaptationEnabled = pinnedDensity == null && ladder.length > 1 && !frozen;
   if (rung < 0) {
@@ -599,11 +618,11 @@ function resize() {
   // Fullscreen visualizers use the viewport as a cover frame, preserving the
   // logical 16:9 aspect ratio instead of stretching circles and typography.
   // A little edge crop is preferable to visibly distorted artwork.
-  canvas.style.objectFit = visualizerFullscreen ? 'cover' : portraitFill ? 'fill' : '';
-  canvas.style.objectPosition = visualizerFullscreen ? 'center center' : '';
+  canvas.style.objectFit = coverFit ? 'cover' : portraitFill ? 'fill' : '';
+  canvas.style.objectPosition = coverFit ? 'center center' : '';
   canvas.style.imageRendering = 'auto';
-  const ox = visualizerFullscreen ? 0 : Math.floor((winW - cssW) / 2);
-  const oy = visualizerFullscreen ? 0 : Math.floor((winH - cssH) / 2);
+  const ox = coverFit ? 0 : Math.floor((winW - cssW) / 2);
+  const oy = coverFit ? 0 : Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
   // Cutout clearance for whoever is drawing, in the logical units they draw in.

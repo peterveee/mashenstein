@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node build/build.js",
-    "dev": "node build/build.js --watch",
+    "dev": "node build/dev.js",
+    "dev:once": "node build/build.js --watch",
     "test": "node tests/run-all.js",
     "gallery": "node tools/build-gallery.js",
     "archive": "node tools/archive-release.js",

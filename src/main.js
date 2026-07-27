@@ -553,9 +553,15 @@ function boot() {
       const visualizerTitlesVisible = visualizerActive && menuState.labelT < 6;
       // Touch devices with a letterbox margin get the readout out on #chrome,
       // in the dead black beside/above the game, rather than over the art.
-      const showChromeFps = save.settings.showFps && !visualizerActive
+      // A screen can stand the diagnostic down for as long as it is up, the
+      // same way the visualizer's titles do below. Read as a static off the
+      // constructor rather than an instanceof, matching how lifecycle.js reads
+      // portraitMode: a static survives the module-identity mismatches that
+      // make instanceof quietly fail.
+      const hidesFps = menuState?.constructor?.hidesFps === true;
+      const showChromeFps = save.settings.showFps && !visualizerActive && !hidesFps
         && Input.isTouchDevice() && chrome.mode !== 'none';
-      if (save.settings.showFps) {
+      if (save.settings.showFps && !hidesFps) {
         const fps = frameRate() || '--';
         // Render density rides along with the FPS: on a device you can only
         // look at, "blocky" and "which rung did it settle on" are the same
