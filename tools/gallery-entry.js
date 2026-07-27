@@ -29,7 +29,9 @@ import { getStylePack } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
-import { drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W } from '../src/game/plugs.js';
+import {
+  drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W, PLUG_FRAME_COLORS,
+} from '../src/game/plugs.js';
 import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 
@@ -595,6 +597,59 @@ function propNominalSize(name) {
       ? `${def.w}x${def.h} · no art — cut by ground()`
       : `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`;
     entityTile(grid, type, sub, e, style);
+  }
+}
+
+// ------------------------------------------------------------- 5b. the fliers
+// The three animated fliers, at the size they actually are and then frame by
+// frame. `drone` and `droneEye` are two bodies on ONE hitbox — makeObstacle
+// picks between them per instance, so a patrol is mixed — and `shooterDrone` is
+// the workhorse plus a muzzle, so it inherits the rotor by construction.
+//
+// The top row is the only one that reports the read: 12x7 through drawProp with
+// the 1.33x hazard overdraw and the 1.35x flier scale, which is exactly what
+// scrolls past at 112-160 px/s. The strips below are for catching a bad pose,
+// which motion hides and a static row does not.
+{
+  const FLIERS = [
+    ['drone', 'drone — workhorse', 'Spinning rotor, blinking lamp. The common body.'],
+    ['droneEye', 'drone — watcher', 'Second body on the same hitbox. Lens drifts on a slow 1.3s scan with five rotor turns inside it.'],
+    ['shooterDrone', 'shooter drone', 'Workhorse plus muzzle — shares the rotor painter.'],
+    ['buzzbird', 'buzzbird', 'Six-frame wingbeat, broad on the downstroke and feathered on the recovery. Faces left, into the scroll.'],
+  ];
+  const BOX = { w: 12, h: 7 };
+  const OVERDRAW = 4 / 3 * 1.35;
+  {
+    const grid = section('fliers-size', 'Fliers — true size in the lane',
+      'Drawn at the real 12x7 box with the hazard overdraw and flier scale applied. '
+      + 'The bar at the left of each tile is 24px — the hero\'s drawn height — for scale.');
+    for (const [name, label, note] of FLIERS) {
+      const frames = propFrames(name);
+      const dw = BOX.w * OVERDRAW;
+      const dh = BOX.h * OVERDRAW;
+      tile(grid, label, `${name} · ${frames}f @ ${propFps(name)}fps`, 56, 30, (ctx, t) => {
+        const f = frames > 1 ? Math.floor(t * propFps(name)) % frames : 0;
+        ctx.fillStyle = 'rgba(120,130,160,0.45)';
+        ctx.fillRect(5, 15 - 12, 1.5, 24);
+        drawProp(ctx, name, 24, 15 - dh / 2, dw, dh, f);
+      }, { animated: frames > 1, hires: 6, smooth: true });
+    }
+  }
+  {
+    const grid = section('fliers-frames', 'Fliers — frame strips',
+      'Every pose, static. Animation hides a bad frame; this does not.');
+    for (const [name, label, note] of FLIERS) {
+      const frames = propFrames(name);
+      const CELL = 26;
+      tile(grid, label, note, CELL * frames + 4, 30, (ctx) => {
+        const scale = 1.7;
+        const dw = BOX.w * scale;
+        const dh = BOX.h * scale;
+        for (let f = 0; f < frames; f++) {
+          drawProp(ctx, name, 2 + f * CELL + (CELL - dw) / 2, 15 - dh / 2, dw, dh, f);
+        }
+      }, { animated: false, hires: 4, smooth: true, wide: frames > 4 });
+    }
   }
 }
 
@@ -2140,6 +2195,239 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.restore();
     }, { animated: true, wide: true, hires: 4 });
   }
+}
+
+// ------------------------------------------------- plug row (was / is)
+// The CHALLENGE and TOASTER slots both changed; the MISSION slot is still
+// being decided in the bake-off below. These icons are never world props —
+// they are only ever drawn at size-3 of the plug box, which is 10x10 in the
+// stage-select list (PIP 13), 8x8 in the in-run HUD and 5x5 in the Trophy
+// Room's level records, and they spend most of their life at ALPHA_EMPTY.
+{
+  const OLD_ICONS = ['switch', 'plugTrophyLegacy', 'appliance'];
+  // Every size drawPlugRow is ever called at, and where from.
+  const PLUG_SIZES = [[13, 'stage select'], [11, 'in-run HUD'], [8, 'records']];
+
+  function plugRowTile(grid, label, note, icons, wide = true, frame = undefined) {
+    // 6 + rows(43/37/28) + gaps + right margin.
+    return tile(grid, label, note, 134, 26, (ctx) => {
+      let x = 6;
+      for (const [size, where] of PLUG_SIZES) {
+        drawPlugRow(ctx, x, 6, [true, true, true], undefined, size, icons, frame);
+        ctx.fillStyle = 'rgba(120,130,160,0.5)';
+        ctx.font = '4px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${size - 3}px · ${where}`, x + PLUG_ROW_W(size) / 2 - 2, 8 + size);
+        x += PLUG_ROW_W(size) + 6;
+      }
+    }, { animated: false, hires: 6, smooth: true, wide });
+  }
+
+  {
+    const grid = section('plug-row-was-is', 'Plug row — was / is',
+      'The real drawPlugRow at all three sizes it is called at, before and after. CHALLENGE: the old '
+      + 'trophy had no handles, so its silhouette was a tulip; a straight rim, so the top read as a lid; '
+      + 'and no contour on the stem or base, so against the tile\'s #181820 fill the foot dissolved. '
+      + 'TOASTER: the slot pointed at the `appliance` world prop, which reserves the top fifth of its box '
+      + 'for the toast launch and animates over 96 frames — drawn here with no frame argument it was a '
+      + 'squashed toaster stuck on frame 0 with a slice sticking out of the top. Its replacement is '
+      + 'HUD-only art that fills the box, the same split as hudCoin/coin. MISSION: the old icon spent '
+      + 'three colours on three unrelated ideas — a housing filling only the bottom two thirds of the box, '
+      + 'a 1px red lever, and a knob the same yellow as the trophy beside it. It went to a wall socket, and '
+      + 'then to a WORK ORDER — the socket read beautifully but drew the reward inside the column headed '
+      + 'PLUGS, so the row looked like one plug plus two other prizes instead of three plugs earned three '
+      + 'ways (see the MISSION bake-off below). '
+      + 'And the trophy went SILVER: the toaster is gold by name, and two warm metals in a three-slot row '
+      + 'smear together at 8px however different their silhouettes are. The row now runs cream / steel / '
+      + 'gold, which separates by hue before shape has to do any work.');
+    plugRowTile(grid, 'was', 'switch · plugTrophyLegacy · appliance — the shipped row before this pass.', OLD_ICONS);
+    plugRowTile(grid, 'then — socket', 'plugSocket · plugTrophy · plugToaster — the middle state, right art at 5px and the wrong noun.',
+      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    plugRowTile(grid, 'is', `${PLUG_ICONS.join(' · ')} — what ships now.`, PLUG_ICONS);
+  }
+
+  // How far the handles reach. The bowl's half-width is 0.26, so this is really
+  // a ratio question — at 0.44 the loops were the widest thing in the icon and
+  // it read as a cup with wings, but pulled in too far the silhouette goes back
+  // to the tulip the handles were added to fix. Judged at the three sizes it is
+  // actually drawn at, because at any larger size all three look fine.
+  {
+    const grid = section('trophy-handle-spread', 'CHALLENGE trophy — handle reach',
+      'Real drawPlugRow at all three call sizes. The number is how far the widest point of the handle '
+      + 'loop sits from centre as a fraction of the box; the bowl\'s half-width is 0.26 for reference. '
+      + 'The stroke adds another half-linewidth outside whatever it is set to.');
+    for (const [icon, label, note] of [
+      ['plugTrophyWide', '0.44 — was', 'As shipped before this pass. Handles wider than the bowl and nearly the full tile.'],
+      ['plugTrophy', '0.36 — now', 'Clearly outboard of the bowl without being the feature.'],
+      ['plugTrophyTight', '0.30 — tighter', 'Only just proud of the bowl. Watch for the silhouette closing back up into a tulip at 5px.'],
+    ]) {
+      plugRowTile(grid, label, `${note} (${icon})`, [PLUG_ICONS[0], icon, PLUG_ICONS[2]]);
+    }
+  }
+
+  // The frame is the last gold thing in the row. On a banked plug the border
+  // and the toaster it contains are the same hue, so the tile reads as one gold
+  // blob at 8px — the same collision that sent the trophy to silver, one layer
+  // out. Only `banked` is in question: live stays green and empty stays slate,
+  // because those two are carrying state rather than decoration.
+  {
+    const grid = section('plug-frame-colour', 'Plug frame colour bake-off',
+      'Real drawPlugRow with only PLUG_FRAME_COLORS.banked swapped. Each tile shows the three states '
+      + 'left to right — banked, live, not earned — at HUD size, then the banked row again at all three '
+      + 'call sizes. Judge the FIRST group: that is a fully-cleared stage, the state the row sits in '
+      + 'longest, and the one where a gold frame around a gold toaster loses the icon. Live green and '
+      + 'empty slate are identical in every tile.');
+    const FRAMES = [
+      ['was — gold', '#f6d33c', 'The same #f6d33c as the toaster icon and the coin counter. Read as earned, but flattened the toaster into its own border.'],
+      ['A — bone', '#e8e6de', 'Neutral warm white, within a shade of the MISSION board\'s own cream. Frames all three icons without claiming a hue any of them uses — though it is now close enough to slot 0 to be worth checking it does not fuse with it.'],
+      ['SHIPPED — steel', '#93a3ba', 'The trophy\'s metal, and what PLUG_FRAME_COLORS.banked is now. The quietest of the five, so the check is that it still reads as EARNED beside the slate empty frame rather than as another off state.'],
+      ['C — teal', '#48e0c8', 'The HUD\'s existing accent — the plug counter already writes in this colour, so the frame would agree with the number beside it.'],
+      ['D — dim bronze', '#a8842e', 'Keeps gold\'s "earned" association at about two thirds the brightness, so the toaster can out-value its own frame.'],
+    ];
+    for (const [label, banked, note] of FRAMES) {
+      const frame = { ...PLUG_FRAME_COLORS, banked };
+      // 5 + three HUD rows (37 each) + divider + the 13/11/8 ladder + margin.
+      tile(grid, label, `${banked} · ${note}`, 258, 26, (ctx) => {
+        let x = 5;
+        const states = [[[true, true, true], undefined], [[false, false, false], [true, true, true]],
+          [[false, false, false], undefined]];
+        for (const [bk, lv] of states) {
+          drawPlugRow(ctx, x, 6, bk, lv, 11, PLUG_ICONS, frame);
+          x += PLUG_ROW_W(11) + 5;
+        }
+        ctx.fillStyle = 'rgba(120,130,160,0.35)';
+        ctx.fillRect(x + 1, 5, 0.5, 15);
+        x += 7;
+        for (const size of [13, 11, 8]) {
+          drawPlugRow(ctx, x, 6, [true, true, true], undefined, size, PLUG_ICONS, frame);
+          x += PLUG_ROW_W(size) + 5;
+        }
+      }, { animated: false, hires: 6, smooth: true, wide: true });
+    }
+  }
+
+  // "More antialiased." The hairline is thinner than the pixel it lands in, so
+  // its coverage swings between nearly full and nearly none along the corner
+  // arcs — the ring looks stepped not because antialiasing is off but because a
+  // 0.35px line gives it almost no partial coverage to work with. A wide, very
+  // transparent pass underneath gives the edge room to ramp.
+  {
+    const grid = section('plug-frame-softness', 'Plug frame — edge softness',
+      'The frame is now two strokes: a 1.15px pass at 30% alpha, then the 0.35px hairline on top. Same '
+      + 'colour, and close to the same total ink, but the edge has about three times the falloff to ramp '
+      + 'across. Widening the hairline instead was tried long ago and a 1px ring read as a heavy border '
+      + 'that fought the icon. Look at the corner arcs, and at the 5px column where the effect is largest.');
+    for (const [label, haloAlpha, note] of [
+      ['was — hairline only', 0, 'A single 0.35px stroke. Watch the four corners step.'],
+      ['SHIPPED — hairline + halo', 0.3, 'The soft pass underneath. Same weight to the eye, continuous corners.'],
+      ['heavier halo — 0.5', 0.5, 'For reference. Starts to read as a glow rather than an edge, which is the thing to avoid.'],
+    ]) {
+      plugRowTile(grid, label, `haloAlpha ${haloAlpha} · ${note}`, PLUG_ICONS,
+        true, { ...PLUG_FRAME_COLORS, haloAlpha });
+    }
+  }
+
+  // Kept on purpose. The plug head was liked enough to be worth keeping drawable
+  // rather than rediscovering later from a screenshot — even though the question
+  // it lost has since been replaced by a different one it loses harder.
+  {
+    const grid = section('plug-head-parked', 'MISSION plug — parked alternative',
+      'NOT SHIPPED, NOT DEAD. A runner-up for the MISSION slot, kept whole so the drawing is not lost: '
+      + 'it is the mains plug the mechanic is named after, and the only option that put a cool teal in the '
+      + 'row. It lost to the SOCKET on small-size legibility — compare the 5px column, where the socket '
+      + 'still shows three separate marks and these prongs have merged into one bar. NOTE: the socket has '
+      + 'itself since been replaced by the work order, but that does NOT put the plug head back in — it '
+      + 'loses the newer question worse than the socket did, being even more literally the reward. It stays '
+      + 'here as the record of a legibility call, not as a candidate.');
+    plugRowTile(grid, 'socket', 'plugSocket · what the slot used to point at.',
+      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    plugRowTile(grid, 'parked — plug head', 'plugHead · prongs up, cord out of the bottom, teal body.',
+      ['plugHead', PLUG_ICONS[1], PLUG_ICONS[2]]);
+  }
+
+  // The MISSION slot, reopened and settled. Not a legibility complaint this time
+  // — the socket read fine. It drew the wrong noun.
+  {
+    const grid = section('mission-plug-bakeoff', 'MISSION plug — bake-off (A ships)',
+      'SETTLED: A, the work order, ships as PLUG_ICONS[0]. The column is headed PLUGS and the three icons '
+      + 'say how each plug was earned. Slot 0 being a WALL SOCKET broke that: the row read as one plug plus '
+      + 'two other prizes rather than as three plugs earned three ways, because the socket is the payout, '
+      + 'not the job. The replacement had to be the ASSIGNMENT — and had to be generic, since the mission is '
+      + '`reach` in only ten of the 27 stages (the rest are targets, cords, chase, rescue, onbeat, fuse, '
+      + 'escape, blackout), which is what rules out the obvious breaker switch. The trophy beside it already '
+      + 'worked this way: it stands for CHALLENGE, not for coins-or-no-damage. All three candidates hold a '
+      + 'cream or teal read so the row still separates cream / steel / gold by hue before shape has to work. '
+      + 'Judge the 5px column and the 22% row below it, not the big one.');
+    plugRowTile(grid, 'was — socket', 'plugSocket · read as the reward. This is the thing that was fixed.',
+      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    plugRowTile(grid, 'A — work order · SHIPS', 'plugOrder · cream board, teal clip proud of the top edge, two '
+      + 'ruled lines. The game\'s own fiction — you clock in for a SHIFT and the briefing hands you the job. '
+      + 'Same three-tier arrangement the socket won on. The ruled lines are deliberately THIN and mid-tone: '
+      + 'they merge at 5px whatever they weigh, so they are authored to merge into a soft grey texture on a '
+      + 'still-cream board rather than into a black bar that takes the tile over. A first pass had them thick '
+      + 'and near-black and the icon read as a device with a screen.',
+    ['plugOrder', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    plugRowTile(grid, 'B — finish flag · lost', 'plugFlag · 2x2 chequer on a teal pole. The most universal '
+      + '"this was the objective" mark, and the only asymmetric silhouette in the set. Watch the bottom '
+      + 'third going bare pole at 5px — the old switch icon\'s flaw upside down.',
+    ['plugFlag', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    plugRowTile(grid, 'C — objective marker · lost', 'plugTarget · teal disc, cream ring, dark pip. Safest at 5px '
+      + 'by construction: concentric rings have no thin gaps to lose. Costs flavour, and it is the only '
+      + 'round silhouette — check it against the trophy bowl at 5px, and against hudCoin.',
+    ['plugTarget', PLUG_ICONS[1], PLUG_ICONS[2]]);
+    // The state slot 0 is in for most of a run is EARNED, unlike the challenge
+    // and the toaster — a banked mission plug is what a cleared stage looks
+    // like. But an unplayed stage shows all three at 22%, and a whole locked
+    // cabinet is a list of those, so the empty read still has to hold up.
+    for (const [label, icon] of [['was — socket', 'plugSocket'], ['A — work order · SHIPS', 'plugOrder'],
+      ['B — finish flag', 'plugFlag'], ['C — objective marker', 'plugTarget']]) {
+      tile(grid, `${label} · not earned`, `${icon} at ALPHA_EMPTY 0.22, the three call sizes. An unplayed `
+        + 'stage row looks like this and a locked cabinet is nine of them.', 134, 26, (ctx) => {
+        let x = 6;
+        for (const [size, where] of PLUG_SIZES) {
+          drawPlugRow(ctx, x, 6, [false, false, false], undefined, size,
+            [icon, PLUG_ICONS[1], PLUG_ICONS[2]]);
+          ctx.fillStyle = 'rgba(120,130,160,0.5)';
+          ctx.font = '4px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(`${size - 3}px · ${where}`, x + PLUG_ROW_W(size) / 2 - 2, 8 + size);
+          x += PLUG_ROW_W(size) + 6;
+        }
+      }, { animated: false, hires: 6, smooth: true, wide: true });
+    }
+  }
+
+  // The state the CHALLENGE icon is in most of the time is NOT earned. If it
+  // does not survive 22% alpha at 5px it does not work, however good it looks
+  // at full strength.
+  {
+    const grid = section('plug-row-alpha', 'Plug row — banked / live / not earned',
+      'The three alphas drawPlugRow actually uses: ALPHA_BANKED 1.0, ALPHA_LIVE 0.5, ALPHA_EMPTY 0.22, '
+      + 'at HUD size. An unearned challenge and an ungrabbed toaster are the states these icons are in '
+      + 'for most of a run — frame colour does some of the work, and the question is how much is left '
+      + 'when the art is at 22%.');
+    for (const [label, icons] of [['was', OLD_ICONS], ['is', PLUG_ICONS]]) {
+      // 5 + three rows of 37 + gaps.
+      tile(grid, label, `${icons.join(' · ')}`, 131, 24, (ctx) => {
+        const states = [[[true, true, true], undefined, '1.0'],
+          [[false, false, false], [true, true, true], '0.5'],
+          [[false, false, false], undefined, '0.22']];
+        let x = 5;
+        states.forEach(([banked, live, tag]) => {
+          drawPlugRow(ctx, x, 5, banked, live, 11, icons);
+          ctx.fillStyle = 'rgba(120,130,160,0.5)';
+          ctx.font = '4px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(tag, x + PLUG_ROW_W(11) / 2 - 2, 18);
+          x += PLUG_ROW_W(11) + 5;
+        });
+      }, { animated: false, hires: 6, smooth: true, wide: true });
+    }
+  }
+
 }
 
 // ---------------------------------------------------------------- driver

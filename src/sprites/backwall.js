@@ -22,7 +22,10 @@ import { drawText, drawTextCentered, textWidth } from '../engine/sprites.js';
 // blastbot); the rest are a straight one-per-cabinet spread so no hero fronts
 // two machines. Nothing downstream depends on this being canon — an id that is
 // not a real toon just falls back to the genre motif.
-const CABINET_STAR = {
+// Exported so the promo renders (tools/render-social.js) can put a cabinet's own
+// star on its attract screen without keeping a second copy of the casting, which
+// would quietly go stale the first time one of these changes.
+export const CABINET_STAR = {
   plumber: 'lorenzo', speed: 'gnash', neon: 'b33p', frost: 'fernwick',
   crypt: 'grumpos', rhythm: 'mochi', cardboard: 'raymn', office: 'chompo',
   surge: 'gary',

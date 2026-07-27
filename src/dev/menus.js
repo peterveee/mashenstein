@@ -17,6 +17,7 @@ import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progres
 import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
+import { CreditsState } from '../game/credits.js';
 import { VISUALIZER_NAMES } from '../engine/visualizers.js';
 import { proseMenu } from './prose.js';
 
@@ -238,6 +239,7 @@ function scenesMenu(dev) {
       { label: 'FIELD GUIDE', act: go(() => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toHub() }))) },
       { label: 'SOUND TEST', act: go(() => setState(new SoundTestState({ onDone: () => Flow.toHub() }))) },
       { label: 'HOW TO PLAY', act: go(() => setState(new HowToPlayState({ onDone: () => Flow.toHub() }))) },
+      { label: 'CREDITS', act: go(() => setState(new CreditsState({ onDone: () => Flow.toHub() }))) },
       { label: 'OVERTIME', act: go(() => Flow.startOvertime(dev.seedLock ?? undefined)) },
       {
         label: 'MINIGAMES ▸',

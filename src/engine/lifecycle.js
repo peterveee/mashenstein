@@ -40,9 +40,28 @@ export function lifecyclePolicy({
   };
 }
 
-function portraitNow(win) {
+export function portraitNow(win) {
   if (win.matchMedia) return win.matchMedia('(orientation: portrait)').matches;
   return win.innerHeight > win.innerWidth;
+}
+
+// A screen declares how it presents in portrait with a static `portraitMode`;
+// anything without one keeps the landscape gate. This replaces an instanceof
+// check against the jukebox, and is sturdier than one: a static property is
+// still found across the module-identity mismatches that make `instanceof`
+// quietly fail.
+//
+// 'stretch' is the shipped jukebox presentation and is always honoured. The
+// frame-based modes belong to the portrait rollout and stay behind the diag
+// switch until that work is ready to put in front of testers, so marking a
+// screen portrait-capable cannot change what a tester sees until the switch is
+// deliberately set on a device.
+const SHIPPED_PORTRAIT_MODES = new Set(['stretch']);
+
+export function portraitAllowedFor(state, diagPortrait = false) {
+  const mode = state && state.constructor ? state.constructor.portraitMode : null;
+  if (!mode) return false;
+  return SHIPPED_PORTRAIT_MODES.has(mode) || !!diagPortrait;
 }
 
 const UPDATE_CHECK_TIMEOUT_MS = 10000;

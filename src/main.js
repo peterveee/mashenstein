@@ -26,11 +26,11 @@ import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
 import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
-import { LifecycleController, lifecyclePolicy } from './engine/lifecycle.js';
+import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
-import { consumeBenchDiag, releaseBenchRenderer } from './engine/diag.js';
+import { consumeBenchDiag, releaseBenchRenderer, readDiag } from './engine/diag.js';
 import { startTitleProfile, titleProfileActive, titleProfileFrame, titleProfileReportVisible, drawTitleProfile } from './engine/title-profile.js';
 import {
   startGameplayProfile, gameplayProfileActive, gameplayProfileWaiting,
@@ -443,12 +443,20 @@ function boot() {
   // leave the context suspended and the first gesture resumes this same
   // already-configured sequencer instead of creating it late.
   Audio.setVolumes(save.settings.volumes);
+  // One portrait predicate, shared by this boot-time seed and the lifecycle
+  // controller installed further down, so the two can never disagree about
+  // which screens are allowed to stay running sideways. Read the diag switch
+  // once here the way every other diag switch is read: changing it takes a
+  // reload regardless. No state is installed yet at this point, so this seed
+  // resolves to "not portrait-capable" — matching the landscape gate the old
+  // inline check applied by simply omitting allowPortrait.
+  const diagPortrait = !!readDiag().portrait;
+  const allowPortraitNow = () => portraitAllowedFor(currentState(), diagPortrait);
   Audio.setLifecyclePaused(lifecyclePolicy({
     ...platform,
     visible: !document.hidden,
-    portrait: window.matchMedia
-      ? window.matchMedia('(orientation: portrait)').matches
-      : window.innerHeight > window.innerWidth,
+    portrait: portraitNow(window),
+    allowPortrait: allowPortraitNow(),
   }).paused);
   Audio.ensure();
   Audio.setMuted(save.settings.muted);
@@ -655,13 +663,11 @@ function boot() {
     loop,
     input: Input,
     audio: Audio,
-    // The jukebox is a self-contained listening/visualizer surface and is
-    // intentionally usable in portrait. Keep the landscape gate everywhere
-    // else, including the title and gameplay states.
-    allowPortrait: () => {
-      const state = currentState();
-      return state instanceof SoundTestState || state?.constructor?.name === 'SoundTestState';
-    },
+    // Screens opt in by declaring a static portraitMode (see portraitAllowedFor);
+    // today that is the jukebox alone, a self-contained listening/visualizer
+    // surface intentionally usable in portrait. The landscape gate still covers
+    // everything else, including the title and gameplay states.
+    allowPortrait: allowPortraitNow,
     onPortraitJukebox: () => setStateFade(new SoundTestState({ onDone: () => Flow.toTitle({ fade: true }) })),
   });
   window.__mash_booted = true;

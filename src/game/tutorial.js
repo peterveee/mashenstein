@@ -107,6 +107,10 @@ const INTRO_ZOOM_START = 5.5;      // Tight on Gary — he fills the frame
 // Sections Gary will re-open before he gives up and marks it satisfactory.
 // Nobody gets stuck in training.
 const CONCEDE_AFTER = 3;
+// How close the challenge has to be before a spent cannon is handed back — see
+// grantChargeGrace. A screen-and-a-bit of warning, so the refund lands while the
+// drone is visible and reachable rather than as a surprise off-frame.
+const CHARGE_GRACE_RANGE = 150;
 const CLAW_DEATH_PAUSE = 0.5;
 
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
@@ -447,7 +451,40 @@ const STEPS = [
     // what the section asks for.
     requires: (t) => t.sawDuck,
     wrongWay: () => 'OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.',
-    setup(t) { t.obstacles = [makeObstacle('drone', t.spawnX())]; },
+    setup(t) {
+      const drone = makeObstacle('drone', t.spawnX());
+      // Two above the default 11. The fliers now draw at 1.35x over an unchanged
+      // box, and the art is bottom-anchored — all that extra size went UP, so the
+      // silhouette got much heavier while its lowest edge stayed put. At 11 the
+      // result is that a fully ducked Lorenzo has the drone drawn straight
+      // through his cap: a clean duck that looks like a collision.
+      //
+      // 13 is the top of the legal window and there is no more to be had. The
+      // hero's box is 14 standing and 7 ducked against the drone's 7, so the
+      // drone must sit below 14 to still catch someone who does not duck, and at
+      // or above 7 to let someone who does duck through. 13 keeps a standing hit
+      // by a single pixel and clears the crouch by six.
+      //
+      // It stays local to this section rather than moving the default, because a
+      // pellet only ever meets a prop below alt 12 (it leaves at the hero's own
+      // height with an 8px box) — so a drone at 13 cannot be shot, and the
+      // section that teaches the cannon needs one that can. Raising the default
+      // means raising the pellet with it, across every cabinet.
+      drone.alt = 13;
+      // 13 is the ceiling for the BOX and it is still not enough for the eye:
+      // Lorenzo's crouched art is taller than his crouched box, so a clean duck
+      // was passing with the drone's belly resting on his cap. The last few
+      // pixels are therefore art, not collision — see `artLift` in
+      // drawWorldEntity. Raising the box any further would mean a drone that a
+      // standing hero walks straight under.
+      //
+      // 3 rather than 5: five put clear daylight under it but had the drone
+      // reading as a separate object floating over the lane rather than a hazard
+      // the hero is passing beneath. Three is the smallest lift that stops the
+      // graze.
+      drone.artLift = 3;
+      t.obstacles = [drone];
+    },
   },
   {
     id: 'shield',
@@ -547,6 +584,10 @@ const STEPS = [
     again: () => 'IT GOT PAST. SHOOT THE NEXT ONE. THE CANNON IS SIGNED OUT TO YOU.',
     // Ducking the drone would clear it, but this section is about the cannon.
     requires: (t) => t.sawShotDown,
+    // One free recharge when the drone draws near — see grantChargeGrace. This
+    // is the only section that asks for a timed button, so it is the only one
+    // that can be failed by the timer instead of by the player.
+    chargeGrace: true,
     wrongWay: () => 'YOU AVOIDED IT. COMMENDABLE. NOT THE SECTION. SHOOT THE NEXT ONE.',
     setup(t) {
       t.obstacles = [makeObstacle('drone', t.spawnX())];
@@ -733,6 +774,7 @@ export class TutorialState {
     // payouts that follow the coins and the cannon sections, cleared when the
     // next section opens.
     this.freePlay = false;
+    this.freePlayHazards = false;
     this.shield = 0;
     // -1 is the opening beat: Gary explains why he is here, over an empty lane,
     // before section one spawns anything. settleT runs it out like any other
@@ -902,6 +944,7 @@ export class TutorialState {
       this.doneT = 0;
       this.speech = null;
       this.freePlay = false;
+      this.freePlayHazards = false;
       this.clearEntities();
       // The capsule goes back before he walks on. A shield bubble is a bright
       // ring around the hero's whole body, and the ending is a two-shot held at
@@ -938,6 +981,7 @@ export class TutorialState {
     this.misses = 0;
     this.settleT = 0;
     this.freePlay = false;
+    this.freePlayHazards = false;
     // A queued line belongs to the stretch that queued it. Arriving two
     // sections later, over a lane it is not describing, is worse than not
     // arriving at all.
@@ -992,8 +1036,36 @@ export class TutorialState {
     this.speech = null;
     this.zoneT = 0;
     this.freePlay = false;
+    this.freePlayHazards = false;
     this.startStep(this.stepIndex + 1);
     return step ? `TRAINING: SKIPPED ${step.label}` : 'TRAINING: SKIPPED INTRO';
+  }
+
+  // The one charity the cannon gets, once per attempt, in the section that
+  // teaches it.
+  //
+  // The recharge is 1.35s and the challenge arrives 2.18s after the section
+  // opens, so a player who tries the new button the moment they read about it —
+  // which is what a tutorial has just asked them to do — can be mid-cooldown
+  // when the only drone in the lane draws level, and lose the section to the
+  // timer rather than to aim. That is the confusing version of a cooldown: not
+  // "I missed", but "I pressed it and nothing happened."
+  //
+  // So the first time the challenge comes into range with a spent cannon, it is
+  // handed back full. Once. It is not a difficulty change — outside this section
+  // nothing calls it, and a player who still misses gets the reopen and the
+  // retry like anyone else. It only ever removes the failure that had nothing
+  // to do with the skill being taught.
+  grantChargeGrace() {
+    const step = this.step();
+    if (!step || !step.chargeGrace || this.gaveCharge) return;
+    if (this.player.abilityCd <= 0) return;
+    const heroX = this.playerWorldX();
+    const near = this.obstacles.some((ob) => ob.live
+      && ob.x + ob.w >= heroX && ob.x - heroX < CHARGE_GRACE_RANGE);
+    if (!near) return;
+    this.gaveCharge = true;
+    this.player.abilityCd = 0;
   }
 
   // What the player was seen doing while the challenge was alongside them.
@@ -1006,6 +1078,9 @@ export class TutorialState {
     this.sawShotDown = false;
     this.sawQbox = false;
     this.sawToaster = false;
+    // Per attempt, not per section: a reopen re-presents the challenge, so the
+    // retry gets the same single refund the opening attempt had.
+    this.gaveCharge = false;
   }
 
   // Section closed. The world does not stop; it just runs on for a beat.
@@ -1092,7 +1167,10 @@ export class TutorialState {
   // A miss costs a knock, not a life — and the shield, if it is still up, costs
   // nothing at all. The hazard breaks out of the way either way, so the hero is
   // never dragged along by something they already failed to clear.
-  knock(ob) {
+  // `label` is the floatie. It defaults to the section-failure wording, which is
+  // wrong in a free-play stretch: the section there has already been logged, so
+  // reporting INCOMPLETE over a pass reads as the pass being taken back.
+  knock(ob, label = 'INCOMPLETE') {
     if (this.shield > 0) {
       this.shield = 0;
       this.player.iframes = 1.2;
@@ -1109,7 +1187,7 @@ export class TutorialState {
     shake(3, 0.2);
     Audio.sfx('hit');
     if (ob) this.breakObstacle(ob);
-    this.floatText('INCOMPLETE', '#e04848', true);
+    this.floatText(label, '#e04848', true);
   }
 
   breakObstacle(ob) {
@@ -1190,6 +1268,8 @@ export class TutorialState {
   // over-payment, a lane that reads as the module having decided to like you.
   spawnPlayground() {
     this.freePlay = true;
+    // The one stretch in the module that cannot hurt you. Boxes pop on contact.
+    this.freePlayHazards = false;
     const x0 = this.worldX + VIEW_W;
     this.retireCoins();
     this.obstacles = [];
@@ -1238,23 +1318,40 @@ export class TutorialState {
   // can unload the cannon a few more times before the module ends.
   spawnShootGallery() {
     this.freePlay = true;
+    // A range of live hazards, not a reward lane. Shoot them or duck them; the
+    // one thing that must not work is walking through them.
+    this.freePlayHazards = true;
     const x0 = this.worldX + VIEW_W;
     this.obstacles = [];
-    // Drones at different altitudes — the cannon's bread and butter.
-    const droneAlts = [11, 11, 30, 44, 11];
-    for (let i = 0; i < droneAlts.length; i++) {
-      const d = makeObstacle('drone', x0 + 60 + i * 110);
-      d.alt = droneAlts[i];
-      this.obstacles.push(d);
-    }
-    // A buzzbird or two — unarmoured, satisfying pop.
-    this.obstacles.push(makeObstacle('buzzbird', x0 + 320));
-    this.obstacles.push(makeObstacle('buzzbird', x0 + 480));
-    // A couple of stacked crates on the ground — shoot 'em or jump 'em.
-    this.obstacles.push(makeObstacle('crate', x0 + 180, { n: 2 }));
-    this.obstacles.push(makeObstacle('crate', x0 + 400, { n: 3 }));
-    // A target for the sharpshooters.
-    this.obstacles.push(makeObstacle('target', x0 + 540));
+    // Two things to shoot, and then the way out. Both at the altitude the
+    // cannon actually reaches from a standing hero.
+    //
+    // Two separate things were wrong here. The cannon is on a 1.35s cooldown
+    // (1.8 x B-33P's 0.75 mult), which at training speed is 151px of lane per
+    // shot — and this held ten shootable props inside 660px, an average of 66px
+    // apart. Two thirds of them arrived while the orb was still refilling and
+    // sailed past untouched. Ten props and three possible shots does not read as
+    // a gallery; it reads as a cannon that is broken.
+    //
+    // Worse, most of them were out of reach even with a full charge. A pellet
+    // leaves at the hero's own height (player.y + 8) and its box spans 8px, so
+    // against entityBox it only ever meets a prop at alt < 12. A drone sits at
+    // 11 — which is why the section's own drone works — but a buzzbird defaults
+    // to 34 and a target to 40, so both wanted a jump-and-shoot the module never
+    // teaches. The row of things you could not hit was doing the confusing.
+    //
+    // So: one drone, one buzzbird pinned down to the same band, 170px apart —
+    // 1.52s, against a 1.35s recharge. A kill does NOT refund the cooldown, so
+    // that margin is the whole of it: one clear window each, with the orb
+    // visibly filling in between. The target prop is gone with them — at a
+    // height the cannon can reach it is a thing you run into rather than shoot,
+    // which teaches the opposite of the section.
+    const GAP = 170;
+    const SHOOTABLE_ALT = 11;
+    const drone = makeObstacle('drone', x0 + 60);           // what the section just taught
+    const bird = makeObstacle('buzzbird', x0 + 60 + GAP);   // unarmoured, different pop
+    bird.alt = SHOOTABLE_ALT;
+    this.obstacles.push(drone, bird);
     // And the way home, at the end of it. The last portal used to be a section
     // of its own — a spawn lead and a settle for a doorway with nothing to get
     // wrong. It goes where it was always going to be run through anyway: past
@@ -1263,7 +1360,7 @@ export class TutorialState {
     // The module borrowed two bodies to teach two things and hands the first one
     // back before the paperwork. The certificate is made out to whoever is
     // standing there at the end.
-    this.portal = { x: x0 + 660, hero: 'lorenzo', label: 'LORENZO', hit: false };
+    this.portal = { x: x0 + 60 + GAP + 150, hero: 'lorenzo', label: 'LORENZO', hit: false };
     this.sayIn(1.2, 'LAST PORTAL. BACK INTO THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.');
     this.freePlayUntilLaneClears(1.5);
   }
@@ -1566,6 +1663,7 @@ export class TutorialState {
     if (Input.pressed('ability')) this.useAbility();
     this.player.update(dt, Input, { speed: this.speed, gravityScale: 1, ice: false });
     if (this.player.duckAmount > 0.35) this.sawDuck = true;
+    this.grantChargeGrace();
     this.updateCamera(dt);
 
     this.updatePellets(dt);
@@ -1940,6 +2038,15 @@ export class TutorialState {
     const hit = this.hitObstacle();
     if (!hit) return;
     if (hit.def.isTarget) { this.popQbox(hit); return; }
+    // Two kinds of free-play stretch, and they cannot share this rule.
+    //
+    // The coin payout is a declared no-fail lane: nothing in it can hurt you,
+    // boxes pop on contact, and that is the whole promise the section makes. The
+    // shoot gallery is the opposite — it is a range of live hazards, and running
+    // a drone down with your face was quietly breaking it instead of hitting
+    // you, which taught that the cannon is optional and that drones are
+    // harmless. Both then carry into the real game as wrong.
+    if (this.freePlayHazards) { this.knock(hit, 'CONTACT'); return; }
     // Not a knock: it just breaks. The brief iframes keep a stack of crates
     // from being resolved one per frame as the hero ploughs through it.
     this.player.iframes = 0.4;

@@ -1,6 +1,6 @@
 // Platform gate, lifecycle race, loop pause, input suspension and audio policy.
 import { detectPlatform } from '../src/engine/platform.js';
-import { lifecyclePolicy, LifecycleController } from '../src/engine/lifecycle.js';
+import { lifecyclePolicy, LifecycleController, portraitAllowedFor } from '../src/engine/lifecycle.js';
 import { startLoop } from '../src/engine/loop.js';
 
 let failed = false;
@@ -51,6 +51,20 @@ assert(!lifecyclePolicy({ isAndroidPhone: true, standalone: true, portrait: true
 assert(!lifecyclePolicy({ isAndroidTablet: true, standalone: true, portrait: true }).paused,
   'Android tablet portrait keeps running (like iPad)');
 assert(lifecyclePolicy({ visible: false }).paused, 'every hidden platform pauses');
+
+// Portrait capability. Screens opt in with a static portraitMode; the shipped
+// jukebox presentation is always honoured, while the frame-based modes of the
+// portrait rollout stay dark until the diag switch is set on a device, so
+// marking a screen cannot change what a tester sees on its own.
+class NoPortrait {}
+class ShippedPortrait { static portraitMode = 'stretch'; }
+class RolloutPortrait { static portraitMode = 'frame'; }
+assert(!portraitAllowedFor(null), 'no state installed yet keeps the landscape gate');
+assert(!portraitAllowedFor(new NoPortrait()), 'a screen without portraitMode keeps the landscape gate');
+assert(portraitAllowedFor(new ShippedPortrait()), 'the shipped stretch surface is allowed in portrait');
+assert(portraitAllowedFor(new ShippedPortrait(), true), 'the shipped surface stays allowed with the diag switch on');
+assert(!portraitAllowedFor(new RolloutPortrait()), 'rollout portrait modes stay dark without the diag switch');
+assert(portraitAllowedFor(new RolloutPortrait(), true), 'the diag switch opens rollout portrait modes');
 
 class Events {
   constructor() { this.listeners = {}; }

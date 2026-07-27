@@ -275,7 +275,18 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const x = Math.round(e.x - camX);
   if (x < -40 || x > 520) return;
   const bottom = GROUND_Y - e.alt;
-  let y = Math.round(bottom - e.h);
+  // `artLift` raises the DRAWING without touching the box, for the case where a
+  // hazard's legal altitude and its readable altitude are not the same number.
+  // A flier's box has to stay low enough to catch a hero who does not duck, and
+  // the hero's crouched ART is taller than his crouched box — so at the highest
+  // legal altitude a clean duck can still look like it grazed the underside.
+  //
+  // Only ever positive, and only by a few pixels: this is art drawn ABOVE what
+  // can hit you, so it errs toward "that should have missed me". It stays
+  // believable because the standing hero's art is 24px against a box of 14 — far
+  // taller than any lift here — so a hero who fails to duck still visibly runs
+  // into the thing that hits him.
+  let y = Math.round(bottom - e.h) - (e.artLift || 0);
   if (e.def && (e.def.bob || (e.def && e.def.power))) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
   if (e.kind === 'pickup' && e.def.power) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
   // The golden appliance gets a more pronounced hover so it reads as its own
@@ -328,7 +339,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const sprName = e.def ? e.def.sprite : null;
   // Vector art first, keyed by entity TYPE so !-crates, targets, pipes and
   // switches get their own look instead of borrowing another prop's sprite.
-  const propName = hasProp(e.type) ? e.type : (hasProp(sprName) ? sprName : null);
+  // A per-instance skin overrides the type's own art (drones wear one of two
+  // bodies). Everything else — hitbox, debris, behaviour — still keys on type.
+  const propName = (e.skin && hasProp(e.skin)) ? e.skin
+    : (hasProp(e.type) ? e.type : (hasProp(sprName) ? sprName : null));
   const spr = propName ? null : (sprName ? getSprite(sprName) : null);
   if (!propName && !spr) { ctx.fillStyle = '#f0f'; ctx.fillRect(x, y, e.w, e.h); return; }
 

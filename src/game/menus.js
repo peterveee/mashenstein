@@ -7,7 +7,7 @@ import { Audio } from '../engine/audio.js';
 import { VISUALIZER_NAMES, clamp, createVisualizer, pickVisualizer, smooth } from '../engine/visualizers.js';
 import { defaultSettings } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
-import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, drawB33pPellet } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawB33pPellet } from '../engine/sprites.js';
 import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
   b33pTitleShotPose, B33P_TITLE_WINDUP_T,
@@ -1278,9 +1278,30 @@ const TITLE_FLAVOR_S = 1;
 // literal props that need an explanation.
 const TITLE_MENU_TEXT_S = 1.55;
 const TITLE_STATUS_TEXT_S = 1.15;
-const TITLE_CARD_LABEL_MID = 12;
-const TITLE_CARD_PROGRESS_Y = 25.5;
-const TITLE_CARD_STATUS_MID = 41;
+// A card's contents are one centred GROUP, not lines pinned to its edges. Fixed
+// y's had the heading 7 units under the top rule, the status 10 above the
+// bottom one and 21 units of nothing between the two — a hole the progress bar
+// only half bridges on a started file and doesn't bridge at all on a CLOCK IN
+// card, where the heading and its status read as belonging to different cards.
+// Every tier is measured from the INK (a glyph box is half ascender slack these
+// capitals never use), stacked on one gap, and the stack centred in the card, so
+// the slack ends up around the group instead of inside it.
+const TITLE_CARD_STACK_GAP = 5.5;
+const TITLE_CARD_BAR_H = 3;
+const TITLE_LABEL_INK = TEXT_INK_H * TITLE_MENU_TEXT_S;
+const TITLE_STATUS_INK = TEXT_INK_H * TITLE_STATUS_TEXT_S;
+const TITLE_CARD_STACK_TOP =
+  (TITLE_CARD_H - (TITLE_LABEL_INK + TITLE_STATUS_INK + TITLE_CARD_BAR_H + TITLE_CARD_STACK_GAP * 2)) / 2;
+const TITLE_CARD_LABEL_MID = TITLE_CARD_STACK_TOP + TITLE_LABEL_INK / 2;
+const TITLE_CARD_PROGRESS_Y = TITLE_CARD_STACK_TOP + TITLE_LABEL_INK + TITLE_CARD_STACK_GAP;
+const TITLE_CARD_STATUS_MID = TITLE_CARD_H - TITLE_CARD_STACK_TOP - TITLE_STATUS_INK / 2;
+// The bar's row is held even on a slot with no file, so a started shift and a
+// CLOCK IN sitting side by side keep their headings on one line across the row.
+// STAFF ONLY has no third tier at all, so its two words are their own block,
+// centred on the card and set on the same leading as the stack beside it.
+const TITLE_CARD_LINE1_MID =
+  (TITLE_CARD_H - (TITLE_LABEL_INK * 2 + TITLE_CARD_STACK_GAP)) / 2 + TITLE_LABEL_INK / 2;
+const TITLE_CARD_LINE2_MID = TITLE_CARD_LINE1_MID + TITLE_LABEL_INK + TITLE_CARD_STACK_GAP;
 // isTouchDevice(), not usingTouch: a phone should get the touch layout on its
 // FIRST paint, not only once a finger has landed. Both the renderer and the tap
 // hit-test read this, so a tap always lands on the card it looks like it does.
@@ -1940,7 +1961,7 @@ export class TitleState {
           const statusMid = y + TITLE_CARD_STATUS_MID;
           drawTextCentered(d, o.label, cx, textYForMid(labelMid, menuTextS), sel ? '#f3eaff' : '#e3e9f3', menuTextS, 'bold');
           if (o.progress != null) {
-            const barX = g.x + 10, barY = y + TITLE_CARD_PROGRESS_Y, barW = g.w - 20, barH = 3;
+            const barX = g.x + 10, barY = y + TITLE_CARD_PROGRESS_Y, barW = g.w - 20, barH = TITLE_CARD_BAR_H;
             d.fillStyle = sel ? 'rgba(221,196,239,0.22)' : 'rgba(111,133,158,0.24)';
             platePath(d, barX, barY, barW, barH, 1.5); d.fill();
             const fillW = barW * Math.max(0, Math.min(1, o.progress));
@@ -1952,8 +1973,8 @@ export class TitleState {
           drawTextCentered(d, o.status, cx, textYForMid(statusMid, TITLE_STATUS_TEXT_S), sel ? '#e4cdf7' : '#c0cbd9', TITLE_STATUS_TEXT_S, 'ui');
         } else {
           const staffColor = sel ? '#f3eaff' : '#e3e9f3';
-          drawTextCentered(d, 'STAFF', cx, textYForMid(y + 19, menuTextS), staffColor, menuTextS, 'bold');
-          drawTextCentered(d, 'ONLY', cx, textYForMid(y + 35, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
+          drawTextCentered(d, 'STAFF', cx, textYForMid(y + TITLE_CARD_LINE1_MID, menuTextS), staffColor, menuTextS, 'bold');
+          drawTextCentered(d, 'ONLY', cx, textYForMid(y + TITLE_CARD_LINE2_MID, menuTextS), sel ? '#dbc0f3' : '#aebbd0', menuTextS, 'bold');
         }
         d.restore();
       });
@@ -3325,11 +3346,24 @@ export const JUKEBOX = [
 // Match Settings' finger-sized scrolling list. BACK stays fixed below the
 // window so a long catalogue never shrinks the rows or pushes the exit target
 // off-screen.
+const JUKEBOX_TITLE_TOP = 12;
+const JUKEBOX_STATUS_TOP = 39;
+const JUKEBOX_BARS_BASE = 63;   // the level meter stands on this line
 const JUKEBOX_TOP = 68;
 const JUKEBOX_ROW = 23;
+const JUKEBOX_ROW_MIN = 16;
 const JUKEBOX_VISIBLE_ROWS = 6;
 const JUKEBOX_BACK_TOP = 216;
 const JUKEBOX_BACK_H = 25;
+const JUKEBOX_LIST_GAP = 10;    // list bottom -> BACK row
+const JUKEBOX_HINT_TOP = H - 14;
+// Air between a device cutout and this screen's own ink. Portrait stretches Y
+// by roughly 3x, so two logical px is a comfortable handful of real ones.
+const JUKEBOX_SAFE_PAD = 2;
+// Portrait fills the phone's height, so glyphs are drawn compressed in the
+// logical canvas and the CSS fill expands them back out; they also get to be
+// bigger, since a whole phone's worth of height is a lot of room for six rows.
+const PORTRAIT_MENU_S = 1.9;
 const LEFT_MENU_ITEM_S = 1.15;
 const VISUAL_MENU_FADE = 0.30;
 const VISUAL_GAP = 0.12;
@@ -3339,14 +3373,26 @@ const VISUAL_OUT_GAP = 0.10;
 const VISUAL_OUT_TOTAL = 0.45;
 
 export class SoundTestState {
+  // The listening/visualizer surface is deliberately usable in portrait: it
+  // fills the viewport non-uniformly and counter-scales its own type (see
+  // layout() and portraitTextYScale below). lifecycle.js reads this to decide
+  // the rotate overlay stays down here.
+  static portraitMode = 'stretch';
+
   constructor({ onDone, initialTrack = -1, startVisualizer = false, startVisualizerIndex = null }) {
     this.onDone = onDone;
     this.initialTrack = initialTrack;
     this.startVisualizerOnEnter = startVisualizer;
     this.startVisualizerIndex = Number.isInteger(startVisualizerIndex) ? startVisualizerIndex : null;
+    // Vertical layout is re-measured against the device's safe area every frame
+    // (see layout()); these are the letterboxed numbers it starts from.
+    this.visibleRows = JUKEBOX_VISIBLE_ROWS;
+    this.titleY = JUKEBOX_TITLE_TOP;
+    this.statusY = JUKEBOX_STATUS_TOP;
+    this.barsBase = JUKEBOX_BARS_BASE;
+    this.hintY = JUKEBOX_HINT_TOP;
     this.listY = JUKEBOX_TOP;
     this.rowH = JUKEBOX_ROW;
-    this.visibleRows = JUKEBOX_VISIBLE_ROWS;
     this.backY = JUKEBOX_BACK_TOP;
     this.backH = JUKEBOX_BACK_H;
     this.listStart = 0;
@@ -3366,6 +3412,7 @@ export class SoundTestState {
   }
   enter() {
     setJukeboxPortrait(true);
+    this.layout();
     const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < JUKEBOX.length
       ? this.initialTrack : -1;
     this.idx = initial >= 0 ? initial : 0;
@@ -3498,6 +3545,42 @@ export class SoundTestState {
       || Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back')
       || Input.pressed('jump') || Input.pressed('ability') || Input.pressed('pause');
   }
+  // Glyphs are drawn into a logical canvas that portrait then stretches
+  // vertically, so text is pre-compressed by exactly that factor to come out
+  // with normal proportions. Layout and painting both need the number.
+  portraitTextYScale() {
+    return screen.portraitFill
+      ? screen.cssH / (H * Math.max(0.001, screen.scale)) : 1;
+  }
+  // This is the one screen whose canvas is stretched over the WHOLE phone, so
+  // logical y=0 is the physical top edge — directly under a notch or Dynamic
+  // Island, which was clipping the SOUND TEST title. screen.safe* reports what
+  // the device itself says those cutouts take, so the header drops below the
+  // island, BACK and the hint lift off the home indicator, and the rows absorb
+  // the difference. Letterboxed (landscape, desktop) every inset reads 0 — the
+  // cutouts sit out in the black margin — and this is the fixed layout the
+  // screen has always had, to the pixel.
+  layout() {
+    const menuScale = screen.portraitFill ? PORTRAIT_MENU_S : 1;
+    const yScale = this.portraitTextYScale();
+    // Measured against the INK, not the glyph box: the box carries ascender and
+    // descender slack a cutout is welcome to have.
+    const titleInk = TEXT_INK_TOP * 2 * menuScale / yScale;
+    const hintInk = (TEXT_INK_TOP + TEXT_INK_H) * menuScale / yScale;
+    const drop = Math.max(0, screen.safeTop + JUKEBOX_SAFE_PAD - (JUKEBOX_TITLE_TOP + titleInk));
+    const lift = Math.max(0, screen.safeBottom + JUKEBOX_SAFE_PAD - (H - JUKEBOX_HINT_TOP - hintInk));
+    this.titleY = JUKEBOX_TITLE_TOP + drop;
+    this.statusY = JUKEBOX_STATUS_TOP + drop;
+    this.barsBase = JUKEBOX_BARS_BASE + drop;
+    this.hintY = JUKEBOX_HINT_TOP - lift;
+    this.listY = JUKEBOX_TOP + drop;
+    this.backY = JUKEBOX_BACK_TOP - lift;
+    this.backH = JUKEBOX_BACK_H;
+    // Rows give up whatever the header gained and the footer kept, never
+    // growing past the finger-sized height every other list uses.
+    this.rowH = Math.min(JUKEBOX_ROW, Math.max(JUKEBOX_ROW_MIN,
+      (this.backY - JUKEBOX_LIST_GAP - this.listY) / this.visibleRows));
+  }
   maxListStart() { return Math.max(0, JUKEBOX.length - this.visibleRows); }
   trackCounter(i) { return `${i + 1}.`; }
   keepSelectionVisible() {
@@ -3531,6 +3614,9 @@ export class SoundTestState {
   }
   update(dt) {
     this.t += dt;
+    // Rotating the phone or opening it in portrait moves every row, and taps are
+    // resolved against these same numbers — re-measure before reading a pointer.
+    this.layout();
     const n = JUKEBOX.length;
     const total = n + 1; // +1 for the trailing BACK row
     if (this.visualState !== 'list') {
@@ -3636,13 +3722,13 @@ export class SoundTestState {
   drawList(ctx, alpha = 1) {
     ctx.save();
     ctx.globalAlpha = alpha;
+    this.layout();
     // Portrait jukebox mode fills the phone vertically. Compensate only the
     // glyphs for the non-uniform CSS fill; rows and bars are allowed to use
     // the extra height, while text retains its normal physical proportions.
-    const portraitMenuScale = screen.portraitFill ? 1.9 : 1;
+    const portraitMenuScale = screen.portraitFill ? PORTRAIT_MENU_S : 1;
     const itemScale = LEFT_MENU_ITEM_S * portraitMenuScale;
-    const textYScale = screen.portraitFill
-      ? screen.cssH / (H * Math.max(0.001, screen.scale)) : 1;
+    const textYScale = this.portraitTextYScale();
     const menuText = (text, x, y, color, size, font) => {
       const renderedSize = (size == null ? 1 : size) * portraitMenuScale;
       if (textYScale === 1) return drawText(ctx, text, x, y, color, renderedSize, font);
@@ -3664,9 +3750,9 @@ export class SoundTestState {
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
     const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`), itemScale);
-    menuText('SOUND TEST', band.textX, 12, '#fff', 2, 'title');
+    menuText('SOUND TEST', band.textX, this.titleY, '#fff', 2, 'title');
     const status = this.playing >= 0 ? `NOW PLAYING: ${JUKEBOX[this.playing].name}` : 'STOPPED';
-    menuText(status, band.textX, 39, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
+    menuText(status, band.textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
     JUKEBOX.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
@@ -3724,11 +3810,11 @@ export class SoundTestState {
       for (let i = 0; i < bars; i++) {
         const hgt = 2 + Math.abs(Math.sin(this.t * 6 + i * 0.9)) * 7;
         ctx.fillStyle = '#48e0c8';
-        ctx.fillRect(band.textX + i * 6, 63 - hgt, 4, hgt);
+        ctx.fillRect(band.textX + i * 6, this.barsBase - hgt, 4, hgt);
       }
     }
     menuTextCentered(Input.isTouchDevice() ? 'TAP: PLAY/STOP   DRAG: SCROLL' : 'ENTER: PLAY/STOP   ESC: BACK',
-      W / 2, H - 14, '#5a5a68');
+      W / 2, this.hintY, '#5a5a68');
     ctx.restore();
   }
   draw(ctx) {
@@ -3774,15 +3860,18 @@ export class SoundTestState {
       surface.restore();
       // Keep the screensaver metadata quiet and out of the way: the track hugs
       // the lower-left edge while the current preset balances it on the right.
-      // A safe inset keeps both clear of rounded mobile display corners.
+      // A safe inset keeps both clear of rounded mobile display corners — plus
+      // whatever the device reports for a notch or home indicator, since a
+      // fullscreen visualizer reaches the physical screen edge the same way the
+      // portrait list does. Those read 0 on hardware with nothing to dodge.
       const portraitLabels = visualizerFrame.bottom - visualizerFrame.top
         > (visualizerFrame.right - visualizerFrame.left) * 1.35;
       const labelScale = portraitLabels ? 0.9 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
       const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
       const visualLabel = this.visualizer.name;
-      const safeLeft = visualizerFrame.left + labelInset;
-      const safeRight = visualizerFrame.right - labelInset;
+      const safeLeft = visualizerFrame.left + labelInset + screen.safeLeft;
+      const safeRight = visualizerFrame.right - labelInset - screen.safeRight;
       const trackWidth = textWidth(trackLabel, labelScale);
       const visualWidth = textWidth(visualLabel, labelScale);
       const maxWidth = Math.max(32, safeRight - safeLeft);
@@ -3799,9 +3888,9 @@ export class SoundTestState {
       const visualX = portraitLabels
         ? Math.max(safeLeft, (safeLeft + safeRight - fittedVisualWidth) * 0.5)
         : Math.min(W - labelInset - fittedVisualWidth, safeRight - fittedVisualWidth);
-      const labelY = portraitLabels
+      const labelY = (portraitLabels
         ? Math.min(H - 25, visualizerFrame.bottom - 28)
-        : Math.min(H - 14, visualizerFrame.bottom - 14);
+        : Math.min(H - 14, visualizerFrame.bottom - 14)) - screen.safeBottom;
       const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
       surface.save();
       surface.globalAlpha = visualAlpha * labelFade * 0.92;

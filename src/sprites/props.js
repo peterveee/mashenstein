@@ -94,8 +94,53 @@ function hudCell(ctx, w, h, charged) {
   }
 }
 
+// Cold metal for the CHALLENGE trophy, lit from the upper left — the same
+// direction as coin/hudCoin, so everything in a HUD row agrees about where the
+// light is. A gradient rather than a flat fill because in an 8x8 box a flat
+// fill leaves nothing to separate bowl from stem from base: the whole icon
+// reads as one lump.
+//
+// SILVER, not gold. The TOASTER plug beside it is gold — it is literally the
+// GOLDEN TOASTER — and two warm metal icons in a three-slot row read as one
+// smear at 8px however different their silhouettes are. Steel rather than
+// white silver: the MISSION plug on the other side is a cream board, so the
+// cool blue-grey is what keeps this from blurring into THAT instead. The
+// row now runs cool-cream / cool-steel / warm-gold, which separates by hue
+// before shape has to do any work.
+function trophySilver(ctx, w, h) {
+  const g = ctx.createLinearGradient(w * 0.22, 0, w * 0.86, h);
+  g.addColorStop(0, '#f4f8fd');
+  g.addColorStop(0.44, '#b9c4d4');
+  g.addColorStop(1, '#67748a');
+  return g;
+}
+// Cool dark contour rather than the shared purple-black OUTLINE: this draws on
+// the plug row's #181820 tile, where a neutral dark edge merges with the fill
+// and eats the foot.
+const TROPHY_INK = 'rgba(26,34,50,0.55)';
+// How far the trophy's handle loops reach from the centre, as a fraction of the
+// box. Was 0.44 with a 0.48 control point, which put the widest part of the
+// stroke essentially on the edge of the tile: against a bowl whose half-width is
+// 0.26 the handles were the widest thing in the icon, and at plug sizes the
+// trophy read as a cup with wings. 0.36 keeps the loops clearly outboard of the
+// bowl — which is what stops the silhouette reverting to a tulip — without them
+// being the feature.
+const TROPHY_HANDLE_SPREAD = 0.36;
+// Handle stroke weight, as a fraction of the box. Separate axis from the reach
+// above: spread decides where the loops sit, this decides how heavy they are.
+// Was 0.1, which at HUD size put a nearly one-pixel bar around a bowl whose own
+// contour is a 0.028 hairline — the handles read as cast iron bolted to sheet
+// metal. 0.07 still closes into a solid mark at 5px but stops out-weighing the
+// cup it belongs to.
+const TROPHY_HANDLE_WEIGHT = 0.07;
+
 // ------------------------------------------------------------- painters
 // Each: (ctx, w, h) drawing inside [0..w] x [0..h]. Ground props sit on h.
+// The eye drone's strip length. Declared up here because both the painter and
+// PROP_FRAMES need it and they must never disagree — a painter that cycles on a
+// different count from the table it is rasterized against jumps at the seam.
+const DRONE_EYE_FRAMES = 16;
+
 export const PROP_PAINTERS = {
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
@@ -544,21 +589,126 @@ export const PROP_PAINTERS = {
     plain(ctx, '#5a3212', (c) => rr(c, w * 0.22, h * 0.02, w * 0.56, h * 0.15, w * 0.08));
   },
   // --- flyers -----------------------------------------------------------
-  drone(ctx, w, h) {
+  // The lane runs two drones. They share one hitbox, one behaviour and one
+  // palette, and differ only in what sits on top — which at a 12x7 box is the
+  // entire silhouette. Which one an instance wears is fixed at spawn, so a row
+  // of them is a mixed patrol rather than a repeated sticker.
+  //
+  // Both replace a drone that was a lozenge under a straight bar: the bar read
+  // as a shelf, and nothing on it turned, so once the buzzbird beside it started
+  // flapping the drone looked switched off.
+
+  // The workhorse. Same silhouette as the old one, with the bar turned into a
+  // rotor that foreshortens through its cycle and a lamp that blinks on the
+  // beat. The rotor's width repeats every half turn, so a marked blade tip
+  // carries the direction — it orbits the mast and lands somewhere different
+  // every frame, which is what makes it spin rather than wobble.
+  drone(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    stroke(ctx, 'rgba(200,200,216,0.75)', Math.max(0.5, h * 0.12), (c) => { c.moveTo(w * 0.06, h * 0.16); c.lineTo(w * 0.94, h * 0.16); });
+    const ang = (frame / 6) * Math.PI * 2;
+    const span = 0.12 + 0.82 * Math.abs(Math.cos(ang)); // rotor seen edge-on to flat
+    const x0 = w * (0.5 - span / 2);
+    const x1 = w * (0.5 + span / 2);
+    // The bar's width repeats every half turn, so a marked blade tip carries the
+    // direction: it orbits the mast and is in a different place every frame.
+    stroke(ctx, 'rgba(200,200,216,0.75)', cappedLine(u, 0.4, 0.06, 1.3),
+      (c) => { c.moveTo(x0, h * 0.16); c.lineTo(x1, h * 0.16); });
+    plain(ctx, '#e8e0f8', (c) => c.arc(w * (0.5 + Math.cos(ang) * span * 0.5),
+      h * (0.16 + Math.sin(ang) * 0.035), Math.max(0.3, h * 0.05), 0, Math.PI * 2));
     fineShape(ctx, '#8858c8', u, (c) => rr(c, w * 0.14, h * 0.3, w * 0.72, h * 0.56, h * 0.26));
-    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.36, h * 0.56, h * 0.14, 0, Math.PI * 2));
+    // Lamp blinks rather than staring — a running machine, not a painted dot.
+    const lit = frame % 6 < 4;
+    plain(ctx, lit ? '#f6d33c' : '#7a6a2a', (c) => c.arc(w * 0.36, h * 0.56, h * 0.14, 0, Math.PI * 2));
     plain(ctx, '#c8b8e8', (c) => rr(c, w * 0.56, h * 0.44, w * 0.22, h * 0.16, h * 0.06));
-    stroke(ctx, '#5a3890', Math.max(0.5, h * 0.1), (c) => { c.moveTo(w * 0.28, h * 0.16); c.lineTo(w * 0.34, h * 0.32); c.moveTo(w * 0.72, h * 0.16); c.lineTo(w * 0.66, h * 0.32); });
+    stroke(ctx, '#5a3890', cappedLine(u, 0.35, 0.05, 1.1), (c) => {
+      c.moveTo(w * 0.34, h * 0.3); c.lineTo(w * 0.4, h * 0.3);
+      c.moveTo(w * 0.66, h * 0.3); c.lineTo(w * 0.6, h * 0.3);
+    });
   },
-  shooterDrone(ctx, w, h) {
-    PROP_PAINTERS.drone(ctx, w, h);
+  // The armed variant is the workhorse with a muzzle — it inherits the rotor and
+  // the blinking lamp by construction, so the two can never drift apart.
+  shooterDrone(ctx, w, h, frame = 0) {
+    PROP_PAINTERS.drone(ctx, w, h, frame);
     plain(ctx, '#e04848', (c) => c.arc(w * 0.5, h * 0.86, Math.max(w, h) * 0.08, 0, Math.PI * 2)); // muzzle
   },
-  buzzbird(ctx, w, h) {
+
+  // The watcher. A lens in a ring housing under a single rotor, with a thruster
+  // wash beneath. Surveillance rather than delivery — the one prop in the lane
+  // that looks back at you.
+  //
+  // Two speeds in one frame set, which is why it has sixteen frames where the
+  // workhorse has six. The rotor has to blur and the eye has to drift, and those
+  // are an order of magnitude apart: at the rotor's rate the lens snapped
+  // between positions like something malfunctioning. So the strip is cut for the
+  // SLOW half — sixteen steps across one lazy sweep, 1.3s end to end — and the
+  // rotor is given five whole turns inside that. Five and sixteen share no
+  // factors, so the rotor never lands twice in the same place and the two
+  // motions never visibly sync up.
+  droneEye(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    fineShape(ctx, '#f0a860', u, (c) => c.ellipse(w * 0.28, h * 0.42, w * 0.24, h * 0.34, -0.3, 0, Math.PI * 2)); // wing
+    const ph = (frame / DRONE_EYE_FRAMES) * Math.PI * 2;
+    const spin = ph * 5;                                  // five turns per sweep
+    const span = 0.2 + 0.6 * Math.abs(Math.cos(spin));
+    stroke(ctx, 'rgba(200,200,216,0.7)', cappedLine(u, 0.4, 0.055, 1.2),
+      (c) => { c.moveTo(w * (0.5 - span / 2), h * 0.14); c.lineTo(w * (0.5 + span / 2), h * 0.14); });
+    // Marked blade tip, as on the workhorse. It earns its place twice: it gives
+    // the rotor a direction instead of a wobble, and it is the only thing here
+    // that is unique per frame — the rotor's width is an |cos| and the lens is a
+    // sin, and those two symmetries line up, so without the tip frames 1 and 7
+    // are the same drawing.
+    plain(ctx, '#e8e0f8', (c) => c.arc(w * (0.5 + Math.cos(spin) * span * 0.5),
+      h * (0.14 + Math.sin(spin) * 0.03), Math.max(0.28, h * 0.045), 0, Math.PI * 2));
+    stroke(ctx, '#5a3890', cappedLine(u, 0.35, 0.05, 1.1),
+      (c) => { c.moveTo(w * 0.5, h * 0.14); c.lineTo(w * 0.5, h * 0.32); });
+    // Thruster wash under the housing, breathing on the slow clock so it reads
+    // as the machine idling rather than as a second flicker.
+    plain(ctx, `rgba(246,211,60,${(0.18 + 0.16 * (0.5 + 0.5 * Math.sin(ph))).toFixed(3)})`,
+      (c) => c.ellipse(w * 0.5, h * 0.96, w * 0.26, h * 0.1, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#8858c8', u, (c) => c.ellipse(w * 0.5, h * 0.58, w * 0.36, h * 0.3, 0, 0, Math.PI * 2));
+    // The lens drifts across and eases at each end, because sin is already
+    // slowest where it turns around — a scan that pauses to look rather than a
+    // metronome.
+    const look = Math.sin(ph) * w * 0.06;
+    plain(ctx, '#c8b8e8', (c) => c.arc(w * 0.5, h * 0.58, h * 0.2, 0, Math.PI * 2));
+    plain(ctx, '#f6d33c', (c) => c.arc(w * 0.5 + look, h * 0.58, h * 0.12, 0, Math.PI * 2));
+    plain(ctx, '#1a1028', (c) => c.arc(w * 0.5 + look * 1.3, h * 0.58, h * 0.05, 0, Math.PI * 2));
+  },
+  // Six frames of wingbeat. The drone hovers on rotors and holds still; this is
+  // the one flier that is alive, and a bird that tracks across the lane without
+  // moving a feather reads as a sticker. The body and head are fixed and only
+  // the wing works — a whole bird bouncing inside its own sprite fights the
+  // entity bob that is already moving it.
+  //
+  // Frame 0 is the neutral pose, identical to the old static art, because that
+  // is what reduced motion holds and what every off-lane caller (debris, the
+  // field guide, the gallery) draws.
+  //
+  // It faces LEFT. The hero runs left to right, so everything in the lane
+  // travels right to left across the screen — a bird with its beak on the
+  // trailing edge is flying backwards into the hero, tail first. The whole
+  // painter is drawn in its original right-facing coordinates and mirrored
+  // once, so the wing geometry below reads the way it was worked out.
+  buzzbird(ctx, w, h, frame = 0) {
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    PROP_PAINTERS.buzzbirdBody(ctx, w, h, frame);
+    ctx.restore();
+  },
+  buzzbirdBody(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const ph = (frame / 6) * Math.PI * 2;
+    const beat = Math.sin(ph);                          // -1 down, +1 up
+    // Sweep, tilt and thickness together. Height and tilt run off sin, which is
+    // symmetric about the top of the stroke — on its own that makes frames 1
+    // and 2 the same drawing, and the same for 4 and 5. Thickness runs off
+    // SIGNED cos instead, so the downstroke and the recovery are told apart:
+    // the wing is broad when it is pushing air and feathered on the way back,
+    // which is both what a wing does and what keeps all six frames distinct.
+    const wingY = h * (0.42 - beat * 0.24);
+    const wingAngle = -0.3 - beat * 0.75;
+    const wingRy = h * (0.30 - Math.cos(ph) * 0.09);
+    fineShape(ctx, '#f0a860', u, (c) => c.ellipse(w * 0.28, wingY, w * 0.24, wingRy, wingAngle, 0, Math.PI * 2)); // wing
     fineShape(ctx, '#d87830', u, (c) => c.ellipse(w * 0.58, h * 0.5, w * 0.34, h * 0.36, 0, 0, Math.PI * 2));
     plain(ctx, '#f6d33c', (c) => { c.moveTo(w * 0.9, h * 0.42); c.lineTo(w, h * 0.54); c.lineTo(w * 0.88, h * 0.62); c.closePath(); });
     plain(ctx, '#1a1028', (c) => c.arc(w * 0.74, h * 0.4, w * 0.06, 0, Math.PI * 2));
@@ -1074,7 +1224,77 @@ export const PROP_PAINTERS = {
       c.moveTo(w * 0.19, h * 0.9); c.lineTo(w * 0.68, h * 0.89);
     });
   },
-  goldTrophy(ctx, w, h) {
+  // PLUG_ICONS[1], the CHALLENGE plug. This is never a world prop: it is only
+  // ever drawn at size-3 of the plug box — 10x10 in the stage-select list,
+  // 8x8 in the in-run HUD, 5x5 in the Trophy Room's level records — and it
+  // spends most of its life at ALPHA_EMPTY (0.22), because an unearned
+  // challenge is the default state. Everything here is decided at those sizes.
+  //
+  // The previous drawing had no handles, so its silhouette was a tulip rather
+  // than a trophy; a straight rim, so the top read as a lid; and no contour at
+  // all on the stem and base, so against the plug tile's #181820 fill the foot
+  // dissolved and the cup floated. The wide-narrow-wide profile below is what
+  // the eye actually reads as "trophy" once the detail is gone at 5px.
+  plugTrophy(ctx, w, h) {
+    PROP_PAINTERS.plugTrophyAt(ctx, w, h, TROPHY_HANDLE_SPREAD);
+  },
+  // The trophy, with the handle reach as a parameter so it can be tuned against
+  // the sizes it actually renders at. Everything else is fixed.
+  plugTrophyAt(ctx, w, h, spread = TROPHY_HANDLE_SPREAD) {
+    const u = Math.max(w, h);
+    // Handles go down FIRST, behind the bowl, so their join is covered rather
+    // than seamed — a seam is the first thing to break up at 8 pixels. Open
+    // loops rather than solid ears: the hole does close at the smallest size,
+    // but the round outer sweep still reads as a handle where a triangle reads
+    // as a chip out of the rim.
+    //
+    // `spread` is how far the widest point of the loop sits from the centre, as
+    // a fraction of the box. The bowl's own half-width is 0.26, so this is the
+    // ratio that decides whether the handles look like part of the cup or like
+    // a pair of wings bolted to it — and the stroke adds another half-linewidth
+    // outside whatever it is set to.
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#8f9db2';
+    ctx.lineWidth = Math.max(0.32, u * TROPHY_HANDLE_WEIGHT);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(w * (0.5 + s * 0.23), h * 0.16);
+      ctx.quadraticCurveTo(w * (0.5 + s * (spread + 0.04)), h * 0.17, w * (0.5 + s * spread), h * 0.32);
+      ctx.quadraticCurveTo(w * (0.5 + s * (spread - 0.04)), h * 0.44, w * (0.5 + s * 0.13), h * 0.42);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Squat, wide bowl — short enough that the star has room without having to
+    // narrow the base to find it.
+    fineShape(ctx, trophySilver(ctx, w, h), u, (c) => {
+      c.moveTo(w * 0.24, h * 0.1);
+      c.lineTo(w * 0.76, h * 0.1);
+      c.quadraticCurveTo(w * 0.72, h * 0.44, w * 0.5, h * 0.52);
+      c.quadraticCurveTo(w * 0.28, h * 0.44, w * 0.24, h * 0.1);
+      c.closePath();
+    }, TROPHY_INK, 0.028);
+    // Rim band. The one horizontal that stops the top edge reading as a lid.
+    plain(ctx, '#f6faff', (c) => rr(c, w * 0.25, h * 0.1, w * 0.5, h * 0.065, h * 0.028));
+    // Dark star, not light: on a metal bowl the punched-out read carries much
+    // further down than an embossed one, which just goes the colour of the rim
+    // highlight and vanishes.
+    plain(ctx, 'rgba(30,40,58,0.62)', (c) => star(c, w * 0.5, h * 0.27, u * 0.145, u * 0.06, 5));
+    // Stem and a two-tier plinth, each with the same contour as the bowl so the
+    // foot stays a separate object on a dark tile instead of dissolving.
+    fineShape(ctx, '#a3aec0', u, (c) => rr(c, w * 0.44, h * 0.5, w * 0.12, h * 0.16, w * 0.03), TROPHY_INK, 0.026);
+    fineShape(ctx, '#c3cddd', u, (c) => rr(c, w * 0.28, h * 0.64, w * 0.44, h * 0.11, w * 0.035), TROPHY_INK, 0.026);
+    fineShape(ctx, '#8593a8', u, (c) => rr(c, w * 0.18, h * 0.75, w * 0.64, h * 0.16, w * 0.05), TROPHY_INK, 0.026);
+  },
+  // Handle-reach candidates, kept ONLY for the gallery's spread bake-off. They
+  // exist because the icon lives at 5-10px and the reach cannot be judged at any
+  // other size. Delete them with that section once a value is pinned.
+  plugTrophyWide(ctx, w, h) { PROP_PAINTERS.plugTrophyAt(ctx, w, h, 0.44); },   // as shipped before this pass
+  plugTrophyTight(ctx, w, h) { PROP_PAINTERS.plugTrophyAt(ctx, w, h, 0.30); },
+  // The pre-bake-off trophy, kept ONLY so the gallery's was/is section can show
+  // what changed. Nothing in the game references it; delete it with that
+  // section once the new one is pinned.
+  plugTrophyLegacy(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#f6d33c', u, (c) => {
       c.moveTo(w * 0.24, h * 0.08); c.lineTo(w * 0.76, h * 0.08);
@@ -1083,6 +1303,230 @@ export const PROP_PAINTERS = {
       c.closePath();
     });
     plain(ctx, '#c8a020', (c) => { rr(c, w * 0.42, h * 0.58, w * 0.16, h * 0.22, w * 0.03); rr(c, w * 0.26, h * 0.8, w * 0.48, h * 0.16, w * 0.05); });
+  },
+
+  // PLUG_ICONS[2], the TOASTER plug. HUD-only art, and deliberately NOT the
+  // `appliance` world prop above — the same split as hudCoin/coin and
+  // cellFull/battery, for the same reason.
+  //
+  // The world appliance cannot serve as this icon. It reserves the top fifth
+  // of its box for the toast launch and bottom-anchors the body in what is
+  // left, so in an 8x8 plug tile the toaster itself only ever got 8x6.4. Worse,
+  // the plug row calls drawProp with no frame, so it always drew frame 0 — and
+  // frame 0 is authored to start with the toast visibly raised, which meant the
+  // icon was a squashed toaster with a slice sticking out of the top of it.
+  // Dropping the toast returns that reserved fifth to the body, which is
+  // exactly the weight it was missing next to the trophy.
+  //
+  // Front-on rather than the world prop's three-quarter view: at 8px the
+  // receding side plane is one ambiguous pixel column, and spending it on the
+  // body instead buys the slot enough width to actually read.
+  plugToaster(ctx, w, h) {
+    const u = Math.max(w, h);
+    const g = ctx.createLinearGradient(w * 0.15, 0, w * 0.9, h);
+    g.addColorStop(0, '#f7cf62');
+    g.addColorStop(0.45, '#dfa523');
+    g.addColorStop(1, '#8a5f0e');
+    // Feet first, so the body's contour closes over the top of them.
+    plain(ctx, '#5a3c08', (c) => {
+      rr(c, w * 0.18, h * 0.8, w * 0.17, h * 0.15, w * 0.04);
+      rr(c, w * 0.65, h * 0.8, w * 0.17, h * 0.15, w * 0.04);
+    });
+    // Body fills the box. This is a HUD icon, not something standing in a
+    // lane, so there is no ground line to leave headroom for.
+    fineShape(ctx, g, u, (c) => rr(c, w * 0.06, h * 0.14, w * 0.88, h * 0.72, w * 0.15),
+      'rgba(58,36,4,0.55)', 0.03);
+    // Chrome top lip, directly analogous to the trophy's rim band: one bright
+    // horizontal hard against the top edge. This is what stopped the trophy
+    // reading as a flat lid and it does the same job here — a gradient alone
+    // has no EDGE in it, so the body stayed a plain lozenge no matter how much
+    // tone was in the fill.
+    plain(ctx, '#fff0b8', (c) => rr(c, w * 0.11, h * 0.163, w * 0.78, h * 0.055, h * 0.025));
+    // The slot. One dark horizontal below the lip carries the entire toaster
+    // read — without it this icon is a box with a knob.
+    plain(ctx, 'rgba(46,28,4,0.85)', (c) => rr(c, w * 0.19, h * 0.245, w * 0.62, h * 0.105, w * 0.045));
+    // Specular pair down the lit cheek: one broad streak and one thin one
+    // beside it. Two marks rather than one because a single soft band reads as
+    // a smudge, where a wide-then-narrow pair reads as a curved metal face
+    // catching the light — the same trick as the trophy's bowl streak.
+    plain(ctx, 'rgba(255,246,214,0.6)', (c) => rr(c, w * 0.145, h * 0.44, w * 0.085, h * 0.3, w * 0.04));
+    plain(ctx, 'rgba(255,246,214,0.3)', (c) => rr(c, w * 0.255, h * 0.47, w * 0.042, h * 0.25, w * 0.02));
+    // Shadowed lower tier, so the body has a lit half and a dark half instead
+    // of one even ramp. The trophy gets this from its plinth being a separate
+    // darker shape; a single-volume toaster has to be given it.
+    plain(ctx, 'rgba(58,36,4,0.32)', (c) => rr(c, w * 0.1, h * 0.72, w * 0.8, h * 0.11, w * 0.04));
+    // Lever breaks the right silhouette so the box has one asymmetric tell at
+    // any size, and carries its own nick of highlight so it reads as the same
+    // metal rather than a sticker.
+    fineShape(ctx, '#e8ae2c', u, (c) => rr(c, w * 0.82, h * 0.44, w * 0.15, h * 0.22, w * 0.05),
+      'rgba(58,36,4,0.55)', 0.028);
+    plain(ctx, 'rgba(255,246,214,0.55)', (c) => rr(c, w * 0.845, h * 0.47, w * 0.05, h * 0.1, w * 0.02));
+  },
+  // SUPERSEDED by plugOrder, and kept only so the gallery's was/is row can show
+  // what the MISSION slot used to be. Not referenced by PLUG_ICONS any more.
+  // Delete it alongside that gallery section.
+  //
+  // It was never a legibility failure — it is still the cleanest small-size
+  // drawing in the set, and the notes below on why it beat the red-lever switch
+  // and the plug head all still hold. It lost on MEANING: a wall socket is the
+  // reward, and drawing the reward inside the column headed PLUGS made the row
+  // read as one plug plus two other prizes. See plugOrder.
+  //
+  // The old icon it replaced spent three colours on three unrelated ideas: a
+  // pale blue housing occupying only the bottom two thirds of the box, a red
+  // lever at 0.14w — one pixel at HUD size — and a yellow knob the same colour
+  // as the trophy sitting next to it. Nothing in it was bigger than its smallest
+  // feature, which is backwards for an icon that has to survive 5x5.
+  //
+  // A wall socket, front-on: two slots over a round earth pin is the most
+  // recognizable three-mark arrangement available, and it is the one thing in
+  // the set that still resolves as three separate marks at 5px. Cream plate
+  // rather than white so it sits below the trophy's rim highlight in value,
+  // and cool-cream against the trophy's steel and the toaster's gold gives the
+  // row three distinct hues before shape has to do any work.
+  plugSocket(ctx, w, h) {
+    const u = Math.max(w, h);
+    fineShape(ctx, '#e6e3da', u, (c) => rr(c, w * 0.09, h * 0.05, w * 0.82, h * 0.9, w * 0.2),
+      'rgba(30,22,14,0.5)', 0.03);
+    plain(ctx, '#282420', (c) => {
+      rr(c, w * 0.28, h * 0.2, w * 0.13, h * 0.32, w * 0.055);
+      rr(c, w * 0.59, h * 0.2, w * 0.13, h * 0.32, w * 0.055);
+    });
+    plain(ctx, '#282420', (c) => c.arc(w * 0.5, h * 0.69, u * 0.115, 0, Math.PI * 2));
+  },
+  // PARKED, NOT DEAD. The runner-up for the MISSION slot: the mains plug
+  // itself, prongs up, cord out of the bottom — the object the whole mechanic
+  // is named after, and the only candidate that put a cool teal in the row.
+  // plugSocket won on small-size legibility (three separate marks still resolve
+  // at 5px, where these prongs merge), but this is kept whole and drawn in the
+  // gallery so the choice can be revisited without redrawing it. Swap
+  // PLUG_ICONS[0] to 'plugHead' and it ships as-is.
+  plugHead(ctx, w, h) {
+    const u = Math.max(w, h);
+    // Prongs first so the body caps them cleanly.
+    plain(ctx, '#cdd0dc', (c) => {
+      rr(c, w * 0.28, h * 0.04, w * 0.13, h * 0.32, w * 0.045);
+      rr(c, w * 0.59, h * 0.04, w * 0.13, h * 0.32, w * 0.045);
+    });
+    fineShape(ctx, '#48c8b0', u, (c) => rr(c, w * 0.14, h * 0.3, w * 0.72, h * 0.46, w * 0.15),
+      'rgba(12,40,36,0.5)', 0.03);
+    plain(ctx, 'rgba(230,255,248,0.5)', (c) => rr(c, w * 0.22, h * 0.37, w * 0.14, h * 0.26, w * 0.06));
+    // Cord stub out of the bottom, which is what stops the body reading as a
+    // plain lozenge once the prongs blur together.
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#2f3a52';
+    ctx.lineWidth = Math.max(0.4, u * 0.11);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, h * 0.74);
+    ctx.quadraticCurveTo(w * 0.5, h * 0.9, w * 0.72, h * 0.93);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  // ---- MISSION-slot bake-off — A (plugOrder) WON, and ships ------------------
+  // Why the socket was replaced at all: it draws the reward. The column is
+  // headed PLUGS and the three icons say how each plug was earned, but slot 0
+  // being a wall socket made the row read as one plug plus two other prizes
+  // instead of three plugs earned three ways. The winner had to be the
+  // ASSIGNMENT, not the payout.
+  //
+  // It also has to be generic. The mission is `reach` in only ten of the 27
+  // stages — the rest are targets, cords, chase, rescue, onbeat, fuse, escape
+  // and blackout — so a breaker switch depicts one mission in three. The trophy
+  // beside it gets this right already: it stands for CHALLENGE, not for
+  // coins-or-no-damage.
+  //
+  // All three candidates keep a cream or teal read so the row still separates by
+  // hue before shape has to do any work, and none of them is thinner anywhere
+  // than the socket's slots were — the 5px column in the Trophy Room records is
+  // the gate, same as last time.
+
+  // Candidate A, and the one that SHIPS as PLUG_ICONS[0]. Closest to the game's
+  // own fiction — you clock in for a SHIFT and the briefing hands you the job —
+  // and nobody looks at a clipboard and thinks they are collecting clipboards.
+  //
+  // Built on the same three-tier arrangement the socket won on: a mark at the
+  // top, then two below it, with the tiers spaced like the socket's
+  // slots-over-earth-pin rather than evenly. Cream board holds slot 0's existing
+  // place in the row's hue plan, and the clip spends the cool teal the plug head
+  // was liked for on the one feature that breaks the silhouette.
+  plugOrder(ctx, w, h) {
+    const u = Math.max(w, h);
+    // Board inset at the top so the clip can sit proud of it.
+    fineShape(ctx, '#e6e3da', u, (c) => rr(c, w * 0.095, h * 0.14, w * 0.81, h * 0.82, w * 0.17),
+      'rgba(30,22,14,0.5)', 0.03);
+    // Two ruled lines, not three. The board is barely five pixels tall in the
+    // records row and a third line closes both gaps; the second runs short so
+    // the pair reads as writing rather than as a grille.
+    //
+    // Thin and mid-tone rather than thick and near-black, which is the whole
+    // difference between this reading as a board and reading as a device with a
+    // screen in it. At 5px the two lines merge whatever they weigh — so they are
+    // authored to merge into a soft grey TEXTURE on a still-cream board, not
+    // into a black bar that takes over the tile. Same balance the socket keeps:
+    // its three marks are small against a dominant plate. Below 8px the identity
+    // is carried by hue and by the clip, which is what the row is designed for.
+    plain(ctx, '#4a453e', (c) => {
+      rr(c, w * 0.25, h * 0.42, w * 0.5, h * 0.105, w * 0.05);
+      rr(c, w * 0.25, h * 0.63, w * 0.33, h * 0.105, w * 0.05);
+    });
+    // The clip, and the only thing crossing the top edge. This is the
+    // asymmetric tell that keeps the icon off being a plain cream tile once the
+    // ruled lines blur together — the same job the toaster's lever does on its
+    // right-hand side.
+    fineShape(ctx, '#48c8b0', u, (c) => rr(c, w * 0.28, h * 0.02, w * 0.44, h * 0.21, w * 0.07),
+      'rgba(12,40,36,0.5)', 0.03);
+    plain(ctx, 'rgba(230,255,248,0.5)', (c) => rr(c, w * 0.33, h * 0.06, w * 0.13, h * 0.09, w * 0.04));
+  },
+
+  // Candidate B: the finish flag. The most universal "this was the objective"
+  // mark available, and the only candidate with an asymmetric silhouette — mass
+  // in the top corner, pole below — which is a different kind of shape from the
+  // trophy's centred cup and the toaster's filled box.
+  //
+  // Four cloth cells, never more: a 3x3 chequer at 5px is three pixels of
+  // dither and reads as grey noise, where 2x2 keeps every cell a pixel and a
+  // half on a side. Risk to judge in the 5px column is the opposite of the plug
+  // head's — not marks merging, but the bottom third being bare pole, which is
+  // the flaw the old switch icon had upside down.
+  plugFlag(ctx, w, h) {
+    const u = Math.max(w, h);
+    // Pole full height, so the cloth has a hard vertical to hang off. A flag
+    // without one is a rectangle.
+    fineShape(ctx, '#48c8b0', u, (c) => rr(c, w * 0.12, h * 0.04, w * 0.15, h * 0.92, w * 0.055),
+      'rgba(12,40,36,0.5)', 0.028);
+    const cw = w * 0.33, ch = h * 0.3, cx = w * 0.25, cy = h * 0.1;
+    fineShape(ctx, '#e6e3da', u, (c) => rr(c, cx, cy, cw * 2, ch * 2, w * 0.045),
+      'rgba(30,22,14,0.5)', 0.03);
+    // Dark cells on the diagonal. Drawn as plain rects inside the cream body so
+    // the chequer never grows a contour of its own at size.
+    plain(ctx, '#2b2a30', (c) => {
+      c.rect(cx, cy, cw, ch);
+      c.rect(cx + cw, cy + ch, cw, ch);
+    });
+    plain(ctx, 'rgba(230,255,248,0.45)', (c) => rr(c, w * 0.145, h * 0.12, w * 0.055, h * 0.3, w * 0.03));
+  },
+
+  // Candidate C: the objective marker. The safest of the three at 5px by
+  // construction — concentric rings have no thin gaps to lose, so nothing here
+  // is narrower than an eighth of the box and the icon cannot degrade into
+  // fewer marks than it started with.
+  //
+  // The cost is flavour: it says "objective" in the abstract where the work
+  // order says it in MASHENSTEIN's own voice. Also the only round silhouette in
+  // the row, which cuts both ways — distinct from the toaster's box, but worth
+  // checking against the trophy's bowl at 5px, and against hudCoin, which is a
+  // gold disc. The teal is what keeps it off reading as currency.
+  plugTarget(ctx, w, h) {
+    const u = Math.max(w, h);
+    fineShape(ctx, '#48c8b0', u, (c) => c.arc(w * 0.5, h * 0.5, u * 0.45, 0, Math.PI * 2),
+      'rgba(12,40,36,0.5)', 0.03);
+    plain(ctx, '#e6e3da', (c) => c.arc(w * 0.5, h * 0.5, u * 0.29, 0, Math.PI * 2));
+    plain(ctx, '#2b2a30', (c) => c.arc(w * 0.5, h * 0.5, u * 0.13, 0, Math.PI * 2));
+    // Upper-left specular, the same light direction as the trophy and the
+    // toaster, so the disc reads as a domed object rather than a printed roundel.
+    plain(ctx, 'rgba(230,255,248,0.4)', (c) => c.arc(w * 0.29, h * 0.25, u * 0.075, 0, Math.PI * 2));
   },
 };
 
@@ -1098,8 +1542,21 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // single drawImage — no per-frame vector work in the hot loop.
 export const PROP_FRAMES = {
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
+  buzzbird: 6,
+  drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
 };
-const PROP_FPS = { qcrate: 12, appliance: 24 };
+// A bird beats its wings faster than a cactus sways. At 16fps the six frames
+// come round about 2.7 times a second, which is quick enough to read as flapping
+// and slow enough that the individual poses still register.
+// Rotors read as spinning only well above the flap rate — at 11fps the six
+// poses strobe into a slow wobble instead of blurring. The eye drone is the
+// exception and runs SLOW: its strip is cut for the lens sweep, not the rotor,
+// so sixteen frames at 12fps is one unhurried 1.3s scan with the rotor's five
+// turns folded inside it.
+const PROP_FPS = {
+  qcrate: 12, appliance: 24, buzzbird: 16,
+  drone: 24, shooterDrone: 24, droneEye: 12,
+};
 
 // Visual overdraw: props drawn taller than their def box, bottom-anchored, so
 // the art gains stature without touching the hitbox (hazards already render
@@ -1117,19 +1574,57 @@ const PROP_DETAIL_SCALE = {
   snowman: 2, snowmanBig: 2,
   crate: 2, qcrate: 2, pipe: 2, switch: 2,
   zombieWalk: 2, icicle: 2,
-  buzzbird: 2, drone: 2, shooterDrone: 2,
+  buzzbird: 2, drone: 2, shooterDrone: 2, droneEye: 2,
   printer: 2, chair: 2,
   trafficCone: 2,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
   capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2,
   appliance: 2, cord: 2, resident: 2, dustdevil: 2,
+  // Plug-row icons. These ship at 5-10px, which is the range this table exists
+  // for: the painter gets a 2x box before supersampling, so a rim band, a
+  // toaster slot and a hairline contour survive as tone instead of snapping
+  // away. plugTrophyLegacy is here only to keep the gallery's was/is row an
+  // honest comparison — without it the old drawing would be handicapped by a
+  // rasterization difference rather than judged on the drawing.
+  plugOrder: 2, plugTrophy: 2, plugToaster: 2,
+  // Gallery-only: the pre-pass trophy for the was/is row, the two handle reaches
+  // either side of the shipped one, and the wall socket the MISSION slot used to
+  // point at. Same treatment as the shipped icon so those comparisons turn on
+  // the drawing rather than on a rasterization difference. Delete each alongside
+  // its gallery section.
+  plugTrophyLegacy: 2, plugTrophyWide: 2, plugTrophyTight: 2, plugSocket: 2,
+  // Parked MISSION-slot alternative. Keeps the shipped treatment so that if it
+  // is ever swapped in it needs no other change.
+  plugHead: 2,
+  // The two MISSION-slot candidates that lost to plugOrder. Kept drawable for
+  // the same reason as the trophy handle reaches: the bake-off section stays as
+  // the record of the decision, and it has to keep rendering to be worth
+  // anything. Delete them with that section.
+  plugFlag: 2, plugTarget: 2,
 };
 export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 
 // World-only visual size. Snowmen overdraw their unchanged collision boxes a
 // little farther so they feel substantial without making their jumps harder.
-const PROP_VISUAL_SCALE = { snowman: 1.15, snowmanBig: 1.15 };
+//
+// The fliers are here for readability rather than heft. A drone's box is 12x7,
+// which even with the standard 1.33x hazard overdraw draws about 16x9 against a
+// 24px hero — small enough that at speed it reads as a smudge in the lane
+// rather than as the thing you are meant to duck or shoot. 1.35 puts it at
+// roughly 22x13: unmistakable, and still visibly smaller than the hero.
+//
+// It stops there on purpose. This is ART over an UNCHANGED collision box, so
+// every step up widens the gap between what you see and what can hit you. At
+// 1.35 the total overdraw is 1.8x the box; 1.5 takes it to 2.0x, where a clean
+// pass under a drone starts to look like it should have connected. The error is
+// in the forgiving direction either way — you are only ever hit well inside the
+// art — but a hazard that looks bigger than it bites is still a hazard you
+// misjudge.
+const PROP_VISUAL_SCALE = {
+  snowman: 1.15, snowmanBig: 1.15,
+  drone: 1.35, shooterDrone: 1.35, buzzbird: 1.35, droneEye: 1.35,
+};
 export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
 
 // Refined props carry their own high-resolution hairline. The shared two-pass

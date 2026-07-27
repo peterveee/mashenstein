@@ -1160,6 +1160,9 @@ function expressionFor(id, pose = {}) {
     id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
     surprise: (pose.kind === 'jump' && !pose.stomp) || !!pose.faceSurprised,
+    // Opt-in startled brow. Nothing in the game sets it; see the branch it
+    // unlocks in drawEyes for why the surprise face needed its own shape.
+    browRaise: !!pose.browRaise,
     joy,
     cheer,
     // The narrowest window in the routine: a hit of the BIG move, held. The
@@ -1272,7 +1275,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   }
   // `brow` opts a face out of the shipped hairlines: 'none' draws nothing,
   // 'bushy' means drawHead paints hair brows over the top instead.
-  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.annoyed || ex.calling || ex.hmph || ex.focus || ex.mood === 'cocky' || ex.mood === 'gruff')) {
+  if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.annoyed || ex.calling || ex.hmph || ex.focus || ex.browRaise || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
     ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
@@ -1301,6 +1304,26 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
       ctx.lineTo(eyeX(-1) + 0.05 * u, inY);
       ctx.moveTo(eyeX(1) - 0.05 * u, inY);
       ctx.lineTo(eyeX(1) + 0.052 * u, outY);
+    } else if (ex.browRaise) {
+      // Both brows lifted straight up and held level: the startled brow.
+      //
+      // Opt-in via pose.browRaise and nothing in the game sets it — it exists
+      // because the surprise face (pose.faceSurprised) had no brow it could
+      // reach. Every other shape here belongs to a mood that fights it: the
+      // annoyed shapes win the mouth chain outright and take the round shocked
+      // mouth with them, the focus shape drives the inner ends DOWN and reads as
+      // a glare, and the counter-staff raise below is gated to Dolores. So a face
+      // could be surprised or it could have eyebrows, and not both.
+      //
+      // Lifted further than the counter-staff brow (0.104u against 0.092u) on
+      // that branch's own evidence: its comment records 0.104u as the point where
+      // the lift crowds the hairline and the face reads as startled, which is
+      // exactly the read it did not want and this one does.
+      const by = cy - 0.104 * u;
+      ctx.moveTo(eyeX(-1) - 0.05 * u, by + 0.004 * u);
+      ctx.lineTo(eyeX(-1) + 0.045 * u, by);
+      ctx.moveTo(eyeX(1) - 0.045 * u, by);
+      ctx.lineTo(eyeX(1) + 0.05 * u, by + 0.004 * u);
     } else if (ex.calling || ex.hmph) {
       // Raised and near-level: the counter-staff "next in line" brow, also used
       // for the idle brow-raise-at-nothing (hmph). Angling them would read as a

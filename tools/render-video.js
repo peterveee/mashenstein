@@ -1,5 +1,10 @@
 // Offline MP4 render of a jukebox visualizer driven by a rendered music bank.
 //
+// Dev tooling — this never ships. Nothing in src/ imports from tools/, the
+// build only bundles src/gate.js and src/main.js, and the dependency runs one
+// way: this file imports from src/, never the reverse. Output lands in dist/,
+// which is gitignored.
+//
 // The song comes from tools/lib/render-bank.js (the same DSP render-track.js
 // uses, so the video's audio is byte-identical to the WAV audition), and the
 // picture comes from src/engine/visualizers.js running in headless Chromium on
@@ -26,17 +31,21 @@
 //   --repeat=N  times to walk the song form                (default 1)
 //   --fps=N     video frame rate                           (default 60)
 //   --scale=N   resolution multiple of 480x270             (default 4 -> 1920x1080)
+//   --size=WxH  render an arbitrary frame, cover-cropped   (e.g. 1080x1350, IG 4:5)
+//   --fade=N    seconds of audio fade-out at the end       (default 0)
 //   --ss=N      supersample factor, downsampled in-page    (default 2)
 //   --pixel     draw at 480x270 and nearest-upscale instead of rendering native
-//   --crf=N     x264 quality, lower is better              (default 14)
+//   --crf=N     x264 quality, lower is better              (default 12)
 //   --seed=N    visualizer RNG seed                        (default 0x7042ade)
 //   --frames=N  stop after N frames (smoke test)           (default whole song)
+//   --workers=N parallel render workers                    (default min(4, cores-4))
+//   --no-gpu    rasterize on CPU (fallback; ~5x slower)
 //   --keep      leave the intermediate WAV directory on disk
 //
 // e.g.: node tools/render-video.js megamix "TOASTER SKY PARADE" dist/megamix-toasters.mp4
-import { writeFileSync, mkdtempSync, mkdirSync, rmSync, existsSync } from 'fs';
-import { tmpdir } from 'os';
-import { join, dirname, resolve } from 'path';
+import { writeFileSync, mkdtempSync, mkdirSync, rmSync, renameSync, existsSync } from 'fs';
+import { tmpdir, cpus } from 'os';
+import { join, dirname, basename, resolve } from 'path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import { renderBank, wavBuffer, SR } from './lib/render-bank.js';
@@ -70,12 +79,34 @@ const FPS = Math.max(1, Math.round(num('fps', 60)));
 const SCALE = Math.max(1, Math.round(num('scale', 4)));
 const PIXEL = !!flags.pixel;
 const SS = PIXEL ? 1 : Math.max(1, Math.round(num('ss', 2)));
-const CRF = num('crf', 14);
+const CRF = num('crf', 12);
+const FADE = Math.max(0, num('fade', 0));
+
+// --size=WxH renders to an arbitrary frame, e.g. 1080x1350 for an Instagram
+// 4:5 post. The logical 480x270 frame is scaled to *cover* it and centred, so a
+// portrait target crops the sides rather than distorting or letterboxing.
+const sizeArg = typeof flags.size === 'string' ? /^(\d+)x(\d+)$/.exec(flags.size) : null;
+if (flags.size && !sizeArg) {
+  console.error(`--size must look like 1080x1350, got "${flags.size}"`);
+  process.exit(1);
+}
+const SIZE = sizeArg ? { w: Number(sizeArg[1]), h: Number(sizeArg[2]) } : null;
+if (SIZE && PIXEL) {
+  console.error('--size and --pixel are incompatible: one crops to an arbitrary frame, the other preserves an integer nearest-neighbour upscale');
+  process.exit(1);
+}
+if (SIZE && (SIZE.w % 2 || SIZE.h % 2)) {
+  console.error(`--size must be even in both axes for yuv420p, got ${SIZE.w}x${SIZE.h}`);
+  process.exit(1);
+}
 // In pixel mode the canvas stays logical and ffmpeg does the nearest upscale;
 // otherwise the canvas is the finished frame and ffmpeg never resamples.
-const OUT_W = PIXEL ? W : W * SCALE;
-const OUT_H = PIXEL ? H : H * SCALE;
+const OUT_W = SIZE ? SIZE.w : (PIXEL ? W : W * SCALE);
+const OUT_H = SIZE ? SIZE.h : (PIXEL ? H : H * SCALE);
 const SEED = num('seed', 0x7042ade) >>> 0;
+// Each worker is a whole Chromium plus an x264 process, so leave the machine
+// some headroom rather than saturating every core.
+const WORKERS = Math.max(1, Math.round(num('workers', Math.min(4, Math.max(1, cpus().length - 4)))));
 
 const track = resolveOrExit(trackId);
 const visualIndex = /^\d+$/.test(String(visualArg))
@@ -97,8 +128,9 @@ const norm = peak > 0 ? 0.9 / peak : 1;
 const FRAMES = Math.min(Math.ceil(seconds * FPS), Math.round(num('frames', Infinity)) || Infinity);
 console.log(`audio      ${seconds.toFixed(1)}s, peak ${peak.toFixed(3)}, ${blocks * 2} bars`);
 console.log(`visualizer ${visualName} (#${visualIndex}), seed 0x${SEED.toString(16)}`);
-console.log(`video      ${FRAMES} frames @ ${FPS}fps, ${W * SCALE}x${H * SCALE}`
-  + (PIXEL ? ' (480x270 nearest-upscaled)' : `, drawn at ${OUT_W * SS}x${OUT_H * SS}`));
+console.log(`video      ${FRAMES} frames @ ${FPS}fps, ${OUT_W}x${OUT_H}`
+  + (PIXEL ? ' (480x270 nearest-upscaled)' : `, drawn at ${OUT_W * SS}x${OUT_H * SS}`)
+  + (SIZE ? `, cover-cropped from 16:9 (keeps ${(W * Math.max(OUT_W / W, OUT_H / H) > OUT_W ? OUT_W / Math.max(OUT_W / W, OUT_H / H) : W).toFixed(0)}/${W} logical px wide)` : ''));
 
 // -------------------------------------------------------- offline analysis
 
@@ -275,123 +307,221 @@ const html = `<!doctype html><meta charset="utf-8">
 <style>html,body{margin:0;background:#000}</style>
 <script>${bundleJs.replace(/<\/script>/g, '<\\/script>')}<\/script>`;
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 64, height: 64 } });
-await page.setContent(html, { waitUntil: 'load' });
+// Headless Chromium defaults to rasterizing Canvas2D on the CPU (SwiftShader),
+// which for a 4K canvas full of gradients and sprite blits is by far the most
+// expensive thing this tool does — enabling the real GPU measured ~5.6x faster
+// end to end. --no-gpu falls back for machines where ANGLE/Metal is unavailable.
+const GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'];
+const USE_GPU = flags.gpu !== 'false' && !flags['no-gpu'];
 
-await page.evaluate(({ index, seed, bpm, fps, w, h, outW, outH, ss }) => {
-  // The visualizer draws in logical 480x270 coordinates. Scaling the context
-  // instead of the finished bitmap means its gradients, strokes and 8x-baked
-  // prop sprites are all rasterized at output resolution — the same drawing
-  // code, just never asked to squeeze itself into 480x270 first.
-  const draw = document.createElement('canvas');
-  draw.width = outW * ss;
-  draw.height = outH * ss;
-  const dctx = draw.getContext('2d', { alpha: false });
-  dctx.scale(draw.width / w, draw.height / h);
-  dctx.lineJoin = 'round';
-  dctx.lineCap = 'round';
-  dctx.imageSmoothingEnabled = true;
-  dctx.imageSmoothingQuality = 'high';
+// The visualizer integrates state in update() and draws from it without ever
+// writing back — no RNG draws, no mutation in draw() or its helpers. So a
+// worker can reach any frame by replaying update() alone and will land in
+// exactly the state a serial run would have. Replay costs ~0.01ms/frame
+// against ~50-250ms to draw one, which is what makes splitting the song into
+// independent ranges practically free.
+async function renderRange(from, to, segmentPath, onProgress) {
+  const browser = await chromium.launch({ args: USE_GPU ? GPU_ARGS : [] });
+  const page = await browser.newPage({ viewport: { width: 64, height: 64 } });
+  await page.setContent(html, { waitUntil: 'load' });
 
-  // Supersampling is resolved here rather than in ffmpeg so the extra pixels
-  // never cross the CDP bridge — only the finished frame does.
-  const out = ss === 1 ? draw : document.createElement('canvas');
-  let octx = dctx;
-  if (ss !== 1) {
-    out.width = outW;
-    out.height = outH;
-    octx = out.getContext('2d', { alpha: false });
-    octx.imageSmoothingEnabled = true;
-    octx.imageSmoothingQuality = 'high';
-  }
+  await page.evaluate(({ index, seed, bpm, fps, w, h, outW, outH, ss, skip }) => {
+    // The visualizer draws in logical 480x270 coordinates. Scaling the context
+    // instead of the finished bitmap means its gradients, strokes and 8x-baked
+    // prop sprites are all rasterized at output resolution — the same drawing
+    // code, just never asked to squeeze itself into 480x270 first.
+    const draw = document.createElement('canvas');
+    draw.width = outW * ss;
+    draw.height = outH * ss;
+    const dctx = draw.getContext('2d', { alpha: false });
+    // Cover, not stretch: scale by the larger ratio and centre the overflow, so
+    // a portrait frame crops the sides instead of distorting the art. For a
+    // 16:9 target both ratios are equal and this is a plain uniform scale.
+    const fit = Math.max(draw.width / w, draw.height / h);
+    dctx.setTransform(fit, 0, 0, fit, (draw.width - w * fit) / 2, (draw.height - h * fit) / 2);
+    dctx.lineJoin = 'round';
+    dctx.lineCap = 'round';
+    dctx.imageSmoothingEnabled = true;
+    dctx.imageSmoothingQuality = 'high';
 
-  const vis = window.__mkVisualizer(index, seed, { bpm });
-  const dt = 1 / fps;
-  // One batch of frames per round trip: stepping and PNG-encoding in the page
-  // keeps the CDP traffic to the encoded images instead of raw pixels.
-  window.__batch = (chunk) => {
-    const pngs = [];
-    for (const a of chunk) {
+    // Supersampling is resolved here rather than in ffmpeg so the extra pixels
+    // never cross the CDP bridge — only the finished frame does.
+    const out = ss === 1 ? draw : document.createElement('canvas');
+    let octx = dctx;
+    if (ss !== 1) {
+      out.width = outW;
+      out.height = outH;
+      octx = out.getContext('2d', { alpha: false });
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = 'high';
+    }
+
+    const vis = window.__mkVisualizer(index, seed, { bpm });
+    const dt = 1 / fps;
+    const advance = (a) => {
       a.spectrum = Uint8Array.from(a.spectrum);
       vis.update(dt, a);
-      dctx.fillStyle = '#000';
-      dctx.fillRect(0, 0, w, h);
-      vis.draw(dctx);
-      if (ss !== 1) octx.drawImage(draw, 0, 0, outW, outH);
-      pngs.push(out.toDataURL('image/png').slice('data:image/png;base64,'.length));
+    };
+    // Replay this worker's lead-in without drawing.
+    for (const a of skip) advance(a);
+
+    // One discarded frame. Chromium rasterizes a canvas's very first draw on a
+    // different path — the surface is only promoted to GPU acceleration once it
+    // has been drawn to — so without this a worker's opening frame differs from
+    // the serial render by a few subpixels. Warming the destination makes the
+    // parallel output bit-identical (measured: 0 differing subpixels, where an
+    // unwarmed worker differed on ~70). draw() writes no state, so this costs
+    // one frame and changes nothing.
+    dctx.fillStyle = '#000';
+    dctx.fillRect(0, 0, w, h);
+    vis.draw(dctx);
+    if (ss !== 1) octx.drawImage(draw, 0, 0, outW, outH);
+
+    // One batch of frames per round trip: stepping and PNG-encoding in the page
+    // keeps the CDP traffic to the encoded images instead of raw pixels.
+    window.__batch = (chunk) => {
+      const pngs = [];
+      for (const a of chunk) {
+        advance(a);
+        dctx.fillStyle = '#000';
+        dctx.fillRect(0, 0, w, h);
+        vis.draw(dctx);
+        if (ss !== 1) octx.drawImage(draw, 0, 0, outW, outH);
+        pngs.push(out.toDataURL('image/png').slice('data:image/png;base64,'.length));
+      }
+      return pngs;
+    };
+  }, {
+    index: visualIndex, seed: SEED, bpm: track.bank.bpm, fps: FPS,
+    w: W, h: H, outW: OUT_W, outH: OUT_H, ss: SS,
+    // Lead-in frames are replayed inside the page so only this worker's own
+    // range crosses the bridge as images.
+    skip: analysis.slice(0, from),
+  });
+
+  // ffmpeg is started before the first frame and fed over a pipe, so encoding
+  // overlaps capture and a 1080p render never lands on disk as a PNG pile.
+  const ff = spawn('ffmpeg', [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-f', 'image2pipe', '-framerate', String(FPS), '-i', 'pipe:0',
+    // Nearest-neighbour keeps an integer upscale pixel-exact rather than soft.
+    ...(PIXEL ? ['-vf', `scale=${W * SCALE}:${H * SCALE}:flags=neighbor`] : []),
+    // -tune animation is aimed squarely at flat cel-style content like this:
+    // stronger deblocking across the big smooth sky gradient (which is where
+    // 8-bit banding would otherwise show) without eating the hard vector edges.
+    '-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation', '-crf', String(CRF),
+    '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.2',
+    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
+    '-an', '-f', 'mp4', segmentPath,
+  ], { stdio: ['pipe', 'inherit', 'inherit'] });
+
+  let ffError = null;
+  const ffDone = new Promise((done) => {
+    ff.on('error', (err) => { ffError = err; done(-1); });
+    ff.on('close', (code) => done(code));
+  });
+  ff.stdin.on('error', (err) => { ffError = ffError || err; });
+
+  const write = (buf) => new Promise((done, fail) => {
+    if (ffError) { fail(ffError); return; }
+    if (ff.stdin.write(buf)) done();
+    else ff.stdin.once('drain', done);
+  });
+
+  const BATCH = 20;
+  let bytes = 0;
+  for (let i = from; i < to; i += BATCH) {
+    const pngs = await page.evaluate((c) => window.__batch(c), analysis.slice(i, Math.min(i + BATCH, to)));
+    for (const png of pngs) {
+      const buf = Buffer.from(png, 'base64');
+      bytes += buf.length;
+      await write(buf);
     }
-    return pngs;
-  };
-}, {
-  index: visualIndex, seed: SEED, bpm: track.bank.bpm, fps: FPS,
-  w: W, h: H, outW: OUT_W, outH: OUT_H, ss: SS,
-});
+    onProgress(pngs.length);
+  }
+  await browser.close();
+
+  ff.stdin.end();
+  const status = await ffDone;
+  if (status !== 0) throw new Error(`ffmpeg failed (${ffError ? ffError.message : `exit ${status}`})`);
+  return bytes;
+}
 
 // ------------------------------------------------------------------ encode
 
-// ffmpeg is started before the first frame and fed over a pipe, so encoding
-// overlaps capture and a 1080p render never lands on disk as a PNG pile.
 mkdirSync(dirname(OUT), { recursive: true });
-const ff = spawn('ffmpeg', [
-  '-y', '-hide_banner', '-loglevel', 'error',
-  '-f', 'image2pipe', '-framerate', String(FPS), '-i', 'pipe:0',
-  '-i', wavPath,
-  // Nearest-neighbour keeps an integer upscale pixel-exact rather than soft.
-  ...(PIXEL ? ['-vf', `scale=${W * SCALE}:${H * SCALE}:flags=neighbor`] : []),
-  '-c:v', 'libx264', '-preset', 'slow', '-crf', String(CRF),
-  '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.2',
-  '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709',
-  '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
-  '-movflags', '+faststart', '-shortest',
-  OUT,
-], { stdio: ['pipe', 'inherit', 'inherit'] });
 
-let ffError = null;
-const ffDone = new Promise((done) => {
-  ff.on('error', (err) => { ffError = err; done(-1); });
-  ff.on('close', (code) => done(code));
-});
-ff.stdin.on('error', (err) => { ffError = ffError || err; });
+// An mp4 has no moov atom until the encode finishes, so the destination would
+// otherwise hold an unopenable file for the whole render — and a previous good
+// version would be gone from the first byte. Encode beside it and rename into
+// place only on success; same directory, so the rename is atomic.
+const PARTIAL = join(dirname(OUT), `.${basename(OUT)}.partial`);
 
-const write = (buf) => new Promise((done, fail) => {
-  if (ffError) { fail(ffError); return; }
-  if (ff.stdin.write(buf)) done();
-  else ff.stdin.once('drain', done);
-});
+// Ranges are contiguous and equal; every segment opens on its own IDR, so the
+// concat demuxer can stitch them without re-encoding.
+const bounds = [0];
+for (let k = 1; k <= WORKERS; k++) bounds.push(Math.round((FRAMES * k) / WORKERS));
+const ranges = [];
+for (let k = 0; k < WORKERS; k++) {
+  if (bounds[k + 1] > bounds[k]) {
+    ranges.push({ from: bounds[k], to: bounds[k + 1], path: join(work, `seg${k}.mp4`) });
+  }
+}
+console.log(`workers    ${ranges.length}${USE_GPU ? ', GPU rasterization' : ', CPU rasterization'}`);
 
-const BATCH = 20;
 let drawn = 0;
 let bytes = 0;
 const startedAt = process.hrtime.bigint();
-for (let i = 0; i < FRAMES; i += BATCH) {
-  const pngs = await page.evaluate((c) => window.__batch(c), analysis.slice(i, i + BATCH));
-  for (const png of pngs) {
-    const buf = Buffer.from(png, 'base64');
-    bytes += buf.length;
-    await write(buf);
-  }
-  drawn += pngs.length;
+const tick = (n) => {
+  drawn += n;
   const elapsed = Number(process.hrtime.bigint() - startedAt) / 1e9;
   const eta = (elapsed / drawn) * (FRAMES - drawn);
   process.stdout.write(`\rframes     ${drawn}/${FRAMES} (${((drawn / FRAMES) * 100).toFixed(1)}%) `
     + `${(drawn / elapsed).toFixed(1)} fps, eta ${eta.toFixed(0)}s   `);
+};
+
+try {
+  const sizes = await Promise.all(ranges.map((r) => renderRange(r.from, r.to, r.path, tick)));
+  bytes = sizes.reduce((a, b) => a + b, 0);
+} catch (err) {
+  cleanup();
+  console.error(`\n${err.message}`);
+  process.exit(1);
 }
 process.stdout.write(`\rframes     ${drawn}/${FRAMES} drawn, ${(bytes / 1e6).toFixed(0)}MB piped`
   + ' '.repeat(24) + '\n');
-await browser.close();
 
-console.log('encoding   flushing ffmpeg…');
-ff.stdin.end();
-const status = await ffDone;
+// Stitch the segments and mux the song in. -c:v copy means the video is never
+// re-encoded here, so joining costs seconds and loses nothing.
+console.log('encoding   joining segments + muxing audio…');
+const listPath = join(work, 'segments.txt');
+writeFileSync(listPath, ranges.map((r) => `file '${r.path}'\n`).join(''));
+const mux = spawn('ffmpeg', [
+  '-y', '-hide_banner', '-loglevel', 'error',
+  '-f', 'concat', '-safe', '0', '-i', listPath,
+  '-i', wavPath,
+  '-c:v', 'copy',
+  // Cutting a song short lands mid-waveform, which clicks. A short fade over
+  // the tail costs nothing musically and removes it.
+  ...(FADE > 0 ? ['-af', `afade=t=out:st=${Math.max(0, FRAMES / FPS - FADE).toFixed(3)}:d=${FADE}`] : []),
+  '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
+  '-movflags', '+faststart', '-shortest',
+  '-f', 'mp4', PARTIAL,
+], { stdio: ['ignore', 'inherit', 'inherit'] });
+const status = await new Promise((done) => {
+  mux.on('error', () => done(-1));
+  mux.on('close', (code) => done(code));
+});
 
 cleanup();
 if (status !== 0) {
-  console.error(`ffmpeg failed (${ffError ? ffError.message : `exit ${status}`})`);
+  rmSync(PARTIAL, { force: true });
+  console.error(`ffmpeg mux failed (exit ${status})`);
   process.exit(1);
 }
-if (!existsSync(OUT)) {
+if (!existsSync(PARTIAL)) {
   console.error('ffmpeg reported success but wrote no file');
   process.exit(1);
 }
+renameSync(PARTIAL, OUT);
 console.log(`\nwrote      ${OUT}`);

@@ -141,9 +141,12 @@ export function setSkyFx(on, time) {
 }
 
 // px = device pixels per logical pixel (what everything is pre-scaled by).
+// safeTop/right/bottom/left: how far a notch, Dynamic Island or home indicator
+// reaches INTO the drawn frame, in logical units — see resize().
 export const screen = {
   scale: 1, ox: 0, oy: 0, cssW: W, cssH: H, px: 1, portraitFill: false,
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
+  safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
 };
 export const visualizerFrame = { left: 0, top: 0, right: W, bottom: H };
 let visualizerFullscreen = false;
@@ -603,6 +606,22 @@ function resize() {
   const oy = visualizerFullscreen ? 0 : Math.floor((winH - cssH) / 2);
   canvas.style.left = ox + 'px';
   canvas.style.top = oy + 'px';
+  // Cutout clearance for whoever is drawing, in the logical units they draw in.
+  // Only the part of a reported inset that actually lands ON the canvas counts:
+  // letterboxed (desktop, landscape phones) the notch sits out in the black
+  // margin and nothing in the frame needs to move, which is why this stays 0
+  // there. A canvas stretched over the whole viewport — the portrait jukebox —
+  // or covering it (fullscreen visualizers) reaches the physical screen edge,
+  // so logical y=0 IS under the island and every pixel of the inset is real.
+  // Divided by the same input mapping pointers use, so all three modes convert
+  // with one formula.
+  const safe = safeInsets();
+  const safeScaleX = Math.max(0.001, inputScaleX);
+  const safeScaleY = Math.max(0.001, inputScaleY);
+  const safeTop = Math.max(0, safe.top - oy) / safeScaleY;
+  const safeBottom = Math.max(0, safe.bottom - (winH - oy - cssH)) / safeScaleY;
+  const safeLeft = Math.max(0, safe.left - ox) / safeScaleX;
+  const safeRight = Math.max(0, safe.right - (winW - ox - cssW)) / safeScaleX;
   // The world and overlay share one density: native on desktop, adaptive on
   // phones. Keeping both aligned avoids an extra resample in the final pass.
   const renderPx = pxW / W;
@@ -628,6 +647,7 @@ function resize() {
   Object.assign(screen, {
     scale, ox, oy, cssW, cssH, px: renderPx, dpx: pxW / W, portraitFill,
     inputScaleX, inputScaleY, inputLeft, inputTop,
+    safeTop, safeRight, safeBottom, safeLeft,
   });
   if (glfx.active) { glfx.resize(bw, bh); glfx.setTierFx(!isBloomSuppressed(renderPx)); }
   resizeChrome(winW, winH, ox, oy, phonePlatform ? Math.min(dpr, 2) : dpr);

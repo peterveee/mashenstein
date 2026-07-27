@@ -194,8 +194,27 @@ later section. It is swept only once it is behind the hero and off the frame.
 - The readiness orb beside the hero appears **only here**, with the power it
   belongs to — for the eight sections before this it was a meter for a control
   the player did not have. Same rule as the USE disc.
-- **On pass:** the shoot gallery — drones at five altitudes, two buzzbirds, two
-  crate stacks, a target — and then the way home at the end of it.
+- **On pass:** two things to shoot — one drone, one buzzbird, 170px apart — and
+  then the way home. It is not a gallery any more and does not want to be one.
+- **Two props, not ten**, for two separate reasons.
+  - **The cooldown.** The cannon recharges over 1.35s (1.8 × B-33P's 0.75
+    multiplier), which at 112 px/s is 151px of lane per shot. The old stretch
+    held five drones, two buzzbirds, two crate stacks and a target inside 660px
+    — 66px apart. Two thirds of them arrived while the orb was still refilling
+    and sailed past untouched. Ten props and three possible shots does not read
+    as a gallery, it reads as a cannon that is broken. 170px is 1.52s against a
+    1.35s recharge: one clear window each, with the orb visibly filling in
+    between. A kill does **not** refund the cooldown, so that 0.17s margin is
+    the whole of the budget — it is why the spacing is not tighter.
+  - **The altitude.** A pellet leaves at the hero's own height and its box is
+    8px, so it only ever meets a prop at **alt < 12**. A drone sits at 11 —
+    which is why the section's own drone is shootable — but a buzzbird defaults
+    to 34 and a target to 40. Both of those wanted a jump-and-shoot the module
+    never teaches, so most of what was in the lane could not be hit even on a
+    full charge. The buzzbird here is pinned to 11 with the drone.
+  - The **target** prop is gone with them. At a height the cannon can reach it
+    is a thing you run into rather than shoot, which teaches the opposite of the
+    section.
 
 **The last portal, at the end of the gallery.** It used to be section 10 of 10:
 a spawn lead and a settle for a doorway with nothing to get wrong in it. It now

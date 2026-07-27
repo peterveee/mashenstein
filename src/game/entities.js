@@ -9,7 +9,9 @@ export const OBSTACLES = {
   snowmanBig:  { w: 17, h: 14, sprite: 'snowmanBig', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
   barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true },
-  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 11, armored: true, action: 'duck', bob: true },
+  // Two bodies, one drone: the rotor workhorse and the watching eye. See `skin`
+  // in makeObstacle — it is a look, not a variant hazard.
+  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 11, armored: true, action: 'duck', bob: true, skins: ['drone', 'droneEye'] },
   buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, action: 'none', bob: true },
   shooterDrone: { w: 12, h: 7, sprite: 'drone', alt: 44, armored: true, action: 'none', shoots: true, bob: true },
   target:     { w: 12, h: 11,  sprite: 'capStar', alt: 40, breakable: true, action: 'none', isTarget: true, bob: true },
@@ -92,6 +94,12 @@ export function makeObstacle(type, worldX, opts = {}) {
     hp: opts.hp || 1,
     bobPhase: (worldX * 0.05) % (Math.PI * 2),
     gait: (worldX * 0.11) % (Math.PI * 2), // shamblers step out of lockstep with each other
+    // Which body this instance wears, when its type has more than one. Purely
+    // cosmetic — same box, same behaviour, same debris — so a row of drones is a
+    // mixed patrol instead of one sticker repeated. Derived from the spawn
+    // position exactly as bobPhase is, so it is stable per instance and
+    // identical on a replay rather than rolled from a live RNG.
+    skin: def.skins ? def.skins[Math.abs(Math.round(worldX * 0.13)) % def.skins.length] : null,
   };
 }
 

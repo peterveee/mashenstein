@@ -9,6 +9,7 @@ const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
 const { MEGAMIX_THEME } = await import('../src/data/megamix.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { VISUALIZER_NAMES } = await import('../src/engine/visualizers.js');
+const { portraitAllowedFor } = await import('../src/engine/lifecycle.js');
 
 let failed = false;
 function assert(cond, msg) {
@@ -18,6 +19,11 @@ function assert(cond, msg) {
 
 let returned = 0;
 const sound = new SoundTestState({ onDone: () => { returned++; } });
+// The rotate overlay stays down on this screen because the class declares its
+// portrait presentation. Losing the declaration would silently restore the
+// landscape gate here, which is the one regression the capability flag risks.
+assert(SoundTestState.portraitMode === 'stretch' && portraitAllowedFor(sound),
+  'the jukebox declares its portrait presentation and is allowed to stay sideways');
 sound.enter();
 assert(sound.visibleRows === 6 && sound.rowH === 23 && sound.listStart === 0,
   'sound test opens with six finger-sized scrolling rows');
