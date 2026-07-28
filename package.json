@@ -13,10 +13,15 @@
     "archive": "node tools/archive-release.js",
     "archive:gallery": "node tools/archive-gallery.js",
     "sim": "node tools/fairness-sim.js",
-    "sim:economy": "node tools/economy-sim.js"
+    "sim:economy": "node tools/economy-sim.js",
+    "mixer": "node tools/mixer.js",
+    "baseline": "node tools/make-baselines.js"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",
     "playwright": "^1.61.1"
+  },
+  "dependencies": {
+    "tone": "^15.1.22"
   }
 }

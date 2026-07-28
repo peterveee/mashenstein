@@ -9,26 +9,34 @@
 import esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createServer, request as httpRequest } from 'node:http';
 import { dirname, join } from 'node:path';
-import { networkInterfaces } from 'node:os';
+import { hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// The dev server's fixed address: http://192.168.2.37:8001/ on the network, and
-// http://127.0.0.1:8001/ on this machine. Change it here and nowhere else.
+// The dev server's fixed address — the same two URLs every run, on every
+// network, forever:
 //
-// The PORT is what actually has to be pinned — that is the half esbuild was
-// picking at random and the half that moves between runs. The host is left as
-// every-interface so both of those URLs answer at once. Naming the LAN address
-// here instead does pin the printed URL, but it stops 127.0.0.1 listening
-// altogether, which breaks local browsing and every Playwright script that
-// drives the game.
+//     http://localhost:8001/     from this machine
+//     http://MBP14.local:8001/   from a phone or tablet on the same wifi
+//
+// Change the port here and nowhere else.
+//
+// Both halves of that address have to be pinned deliberately. The PORT is the
+// half esbuild picks at random when left alone. The NAME is the half DHCP
+// moves: a lease change hands the machine a new 192.168.x.y without warning,
+// so any shortcut saved to a bare IP is one router reboot from dead. The
+// .local name is Bonjour's, and it follows the machine between networks.
+//
+// The host is left as every-interface so localhost and the LAN both answer at
+// once. Naming a single LAN address here instead does pin the printed URL, but
+// it stops 127.0.0.1 listening altogether, which breaks local browsing and
+// every Playwright script that drives the game.
 const DEV_HOST = '0.0.0.0';
 const DEV_PORT = 8001;
-// Where the network URL is expected to be, for the startup banner. Purely
-// informational — the machine's real address is detected and printed.
-const DEV_LAN_HINT = '192.168.2.37';
 const watch = process.argv.includes('--watch');
 
 // Load .env if present so MASH_TELEMETRY_URL persists across builds.
@@ -60,7 +68,13 @@ const options = {
   // stamped dist/game.js that enables dev mode.
   outdir: watch ? join(root, 'dist/.esbuild') : join(root, 'dist'),
   write: false,
-  logLevel: 'info',
+  // Warnings and errors only in watch mode. At 'info' esbuild's serve layer
+  // announces its own private loopback port on startup — a different number
+  // every run, printed above the one address this file works to keep fixed,
+  // which is precisely the confusion the proxy exists to end. Nothing else is
+  // lost: emit() names every file it writes on each rebuild, and a build that
+  // fails still prints the failure.
+  logLevel: watch ? 'warning' : 'info',
 };
 
 // Dev-only build stamp. Computed inside emit() so every watch rebuild carries a
@@ -226,6 +240,150 @@ function emit(result) {
   }
 }
 
+// The public dev server: it owns DEV_PORT and forwards everything to esbuild,
+// which is listening on loopback somewhere else.
+//
+// The indirection exists because esbuild's own server will not answer to the
+// address we want to bookmark. Since 0.25 it rejects any request whose Host
+// header is not `localhost`, `127.0.0.1`, or one of the IPv4 addresses the
+// machine held AT THE MOMENT serve() was called. Two consequences, both of
+// which look like a broken build rather than a network fact:
+//
+//   - A .local name is never on that list, so Bonjour — the one name that
+//     survives DHCP — is refused outright.
+//   - The list is frozen at startup, so a machine that changes network mid
+//     session begins answering its own phone with
+//     `403 Forbidden: The host "..." is not allowed`, at the very URL that
+//     worked an hour ago.
+//
+// Rewriting Host on the way through sidesteps both: esbuild only ever sees a
+// request for 127.0.0.1 and serves it, whatever name the phone asked for.
+// Which Host headers the proxy will answer to.
+//
+// Rewriting Host unconditionally would switch off the protection esbuild's
+// check exists to provide, which is against DNS rebinding: a hostile page can
+// let its own domain re-resolve to 127.0.0.1, have the browser fetch
+// http://evil.example:8001/, and then READ the reply, because as far as the
+// browser is concerned the origin is still evil.example. Against a watch build
+// that hands over the whole unminified source, sourcemaps and all.
+//
+// The attack needs a NAME that public DNS can point at a local address, so the
+// rule is about names, not addresses:
+//
+//   - Bare IP literals are safe by construction. A page can only have an IP for
+//     an origin if it was served from that IP, which on a private range means
+//     the attacker is already inside the network and does not need this.
+//   - `.local` is safe by reservation. RFC 6762 gives it to mDNS, so no public
+//     resolver will answer for it and it cannot be rebound. Any `.local` is
+//     allowed rather than just this machine's, so renaming the Mac cannot
+//     silently break the phone.
+//   - Every other name is refused — which is exactly the class the attack needs.
+//
+// Stricter than esbuild in one way (it accepts whatever addresses it saw at
+// startup, this refuses public IPs outright) and looser in the way that
+// matters: the name survives DHCP, and so does the bookmark.
+const PRIVATE_IPV4 = /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+
+function hostAllowed(header) {
+  if (!header) return false;
+  let host = header.trim().toLowerCase();
+  // Strip the port: [::1]:8001 keeps its brackets, name:8001 does not. A bare
+  // IPv6 literal has colons of its own, so only unbracketed forms get split.
+  if (host.startsWith('[')) {
+    host = host.slice(1, host.indexOf(']'));
+  } else if (host.split(':').length === 2) {
+    host = host.slice(0, host.lastIndexOf(':'));
+  }
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host.endsWith('.local')) return true;
+  if (PRIVATE_IPV4.test(host)) return true;
+  // IPv6 loopback, link-local (fe80::/10) and unique-local (fc00::/7).
+  if (host === '::1' || /^fe[89ab]|^f[cd]/.test(host)) return true;
+  return false;
+}
+
+function startProxy(host, port, upstreamPort) {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      if (!hostAllowed(req.headers.host)) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end(`403 - the dev server does not answer to the name "${req.headers.host}".\n`
+          + 'Reach it on localhost, a .local name, or a private LAN address.\n');
+        return;
+      }
+      const upstream = httpRequest({
+        host: '127.0.0.1',
+        port: upstreamPort,
+        method: req.method,
+        path: req.url,
+        headers: { ...req.headers, host: `127.0.0.1:${upstreamPort}` },
+        // Live reload holds an SSE connection open for the life of the tab.
+        // Its own socket per request keeps that from starving a pool.
+        agent: false,
+      }, (upstreamRes) => {
+        res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
+        upstreamRes.pipe(res);
+      });
+      upstream.on('error', () => {
+        if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
+        res.end('502 - the build server behind this port is not answering.\n');
+      });
+      req.pipe(upstream);
+    });
+    server.on('error', reject);
+    server.listen(port, host, () => resolve(server));
+  });
+}
+
+// Name whoever is sitting on the port, and say when they started. "A dev server
+// is probably still running" is unfalsifiable advice when you are certain you
+// did not start one — it is usually a forgotten background run, an editor task,
+// or another window. A PID and a start time settle it immediately.
+function whoHasPort(port) {
+  try {
+    const opts = { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] };
+    const pids = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], opts)
+      .split('\n').map((s) => s.trim()).filter(Boolean);
+    if (!pids.length) return [];
+    return execFileSync('ps', ['-o', 'pid=,lstart=,command=', '-p', pids.join(',')], opts)
+      .split('\n').map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// macOS decides incoming connections per BINARY, not per port, and its firewall
+// is on by default. The listening socket used to belong to esbuild's Go binary,
+// which has been approved on this machine; it now belongs to node, which may
+// not be. An unapproved binary is not refused, it is left hanging, so the
+// symptom is a phone that spins forever while localhost is perfectly fine.
+//
+// Worth knowing even once node is approved: the approval is recorded against an
+// absolute path, so upgrading node moves it and the approval has to be redone.
+// Best-effort throughout — any trouble reading the firewall means we say
+// nothing rather than cry wolf.
+function firewallBlocksDevices() {
+  if (process.platform !== 'darwin') return false;
+  const fw = '/usr/libexec/ApplicationFirewall/socketfilterfw';
+  try {
+    if (!existsSync(fw)) return false;
+    const opts = { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] };
+    if (!/State = 1/.test(execFileSync(fw, ['--getglobalstate'], opts))) return false;
+    return !execFileSync(fw, ['--listapps'], opts).includes(process.execPath);
+  } catch {
+    return false;
+  }
+}
+
+// The name to put on the Home Screen. macOS advertises <LocalHostName>.local
+// over Bonjour, which iOS and Android resolve on the same wifi without any
+// setup, and which keeps pointing at this machine after DHCP has moved it.
+function mdnsName() {
+  const name = hostname();
+  if (!name || name === 'localhost') return null;
+  return name.includes('.') ? name : `${name}.local`;
+}
+
 if (watch) {
   const ctx = await esbuild.context({
     ...options,
@@ -237,32 +395,38 @@ if (watch) {
     }],
   });
   await ctx.watch();
-  // ONE address, every run: http://192.168.2.37:8001/ from a device,
-  // http://127.0.0.1:8001/ from here. See DEV_HOST/DEV_PORT above.
-  //
-  // Called bare, esbuild's serve() picks an ephemeral port and binds wherever it
-  // likes, so the URL moved between runs — which breaks every bookmark, every
-  // phone tab left open on the last session, and every script that hardcodes it.
-  //
-  // Override either half for a one-off:
-  //   MASH_DEV_HOST=192.168.2.37 MASH_DEV_PORT=8002 npm run dev
+  // Override either half of the public address for a one-off:
+  //   MASH_DEV_HOST=127.0.0.1 MASH_DEV_PORT=8002 npm run dev
   const HOST = process.env.MASH_DEV_HOST || DEV_HOST;
   const PORT = Number(process.env.MASH_DEV_PORT) || DEV_PORT;
 
-  const serveOn = (host) => ctx.serve({ servedir: join(root, 'dist'), host, port: PORT });
-  let served;
+  // esbuild gets an ephemeral loopback port. Nothing bookmarks it and nothing
+  // off this machine reaches it — the proxy on PORT is the only way in — so the
+  // number is free to move between runs. PORT is the half that must not.
+  const upstream = await ctx.serve({
+    servedir: join(root, 'dist'),
+    host: '127.0.0.1',
+    port: 0,
+  });
+
   let boundHost = HOST;
   try {
-    served = await serveOn(HOST);
+    await startProxy(HOST, PORT, upstream.port);
   } catch (err) {
-    const msg = String(err.message);
     // A fixed PORT fails loudly when one is already running, where the old
     // ephemeral-port behaviour would silently start a SECOND server somewhere
     // else — two builds writing one dist/, and a stale tab serving neither. The
     // failure is correct; it just has to say what to do about it.
-    if (msg.includes('address already in use')) {
-      console.error(`\nPort ${PORT} is already in use — a dev server is probably still running.`);
-      console.error(`  see it:  lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+    if (err.code === 'EADDRINUSE') {
+      const holders = whoHasPort(PORT);
+      console.error(`\nPort ${PORT} is already in use, held by:`);
+      if (holders.length) {
+        for (const line of holders) console.error(`  ${line}`);
+        console.error('');
+      } else {
+        console.error('  (could not identify the process — try: '
+          + `lsof -nP -iTCP:${PORT} -sTCP:LISTEN)\n`);
+      }
       console.error(`  stop it: pkill -f 'build/dev.js'`);
       console.error(`  or pick another: MASH_DEV_PORT=8002 npm run dev\n`);
       // Its own code, so the supervisor can tell "someone else has the port,
@@ -274,32 +438,39 @@ if (watch) {
     // outright, which would leave no server at all rather than one at the wrong
     // number. Fall back to every interface and say so loudly, because the
     // promised URL is not the one you are getting.
-    if (msg.includes('cannot assign requested address') || msg.includes('assign requested')) {
+    if (err.code === 'EADDRNOTAVAIL') {
       console.error(`\n${HOST} is not an address this machine currently holds.`);
       console.error('  DHCP has probably moved it. Serving on all interfaces instead.');
       console.error(`  To make it permanent, change DEV_HOST in build/build.js.\n`);
-      served = await serveOn('0.0.0.0');
+      await startProxy('0.0.0.0', PORT, upstream.port);
       boundHost = '0.0.0.0';
     } else {
       throw err;
     }
   }
-  const { port } = served;
-  const lan = Object.values(networkInterfaces()).flat()
-    .find((n) => n && n.family === 'IPv4' && !n.internal);
+
   if (boundHost === '0.0.0.0') {
-    console.log(`dev server: http://127.0.0.1:${port}/`);
-    if (lan) console.log(`    device: http://${lan.address}:${port}/`);
-    // The port is ours to pin; the LAN address is DHCP's to hand out. If it has
-    // moved, say so once at startup rather than letting a stale bookmark fail
-    // silently on the phone.
-    if (lan && lan.address !== DEV_LAN_HINT) {
-      console.log(`            (was ${DEV_LAN_HINT} — DHCP moved it; update DEV_LAN_HINT in build/build.js)`);
+    const mdns = mdnsName();
+    const lan = Object.values(networkInterfaces()).flat()
+      .find((n) => n && n.family === 'IPv4' && !n.internal);
+    console.log(`dev server: http://localhost:${PORT}/`);
+    // Bonjour first, and labelled, because it is the one worth saving: the IP
+    // below is only today's lease. Some guest networks block mDNS between
+    // clients, which is the one case the IP is still needed for.
+    if (mdns) console.log(`    device: http://${mdns}:${PORT}/   <- save this one`);
+    if (lan) console.log(`            http://${lan.address}:${PORT}/   (today's lease; it moves)`);
+    if (firewallBlocksDevices()) {
+      console.log('');
+      console.log('  Devices cannot reach this yet: the macOS firewall has not been told');
+      console.log('  to let node accept connections, so a phone will hang rather than');
+      console.log('  fail. localhost is unaffected. Approve it once, then restart:');
+      console.log(`    sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add ${process.execPath}`);
+      console.log(`    sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp ${process.execPath}`);
     }
   } else {
     // Someone named a single interface via MASH_DEV_HOST, so localhost is NOT
     // listening. Print only the URL that actually answers.
-    console.log(`dev server: http://${boundHost}:${port}/  (localhost is not bound)`);
+    console.log(`dev server: http://${boundHost}:${PORT}/  (localhost is not bound)`);
   }
 } else {
   emit(await esbuild.build(options));

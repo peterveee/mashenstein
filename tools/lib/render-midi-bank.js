@@ -1,9 +1,9 @@
 // Offline MIDI export of a music bank — the same section/order song-form walk
-// as lib/render-bank.js, but writing notes instead of samples. The engine
+// as the audio renderer, but writing notes instead of samples. The engine
 // stores pitches as Hz (seq/chordSeq), so every lane is converted back to a
 // note number on the way out. Timbre can't survive the trip: each lane gets the
 // GM program that comes closest to its oscillator, and percussion goes to ch10.
-import { songBlocks } from './render-bank.js';
+import { songBlocks } from '../../src/engine/lanes.js';
 
 const PPQ = 96;          // ticks per quarter note
 const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
@@ -18,7 +18,12 @@ const LANE_TRACKS = [
   { name: 'Bass', ch: 0, prog: 38, lane: 'bass', dur: (b) => b.bassDur || 1.8, vel: 96 },
   { name: 'Lead', ch: 1, prog: 81, lane: 'lead', dur: (b) => b.leadDur || 1.2, vel: 92 },
   { name: 'Lead Harmony', ch: 2, prog: 81, lane: 'leadHarm', dur: (b) => b.harmDur || b.leadDur || 1.2, vel: 72 },
-  { name: 'Chords', ch: 3, prog: 82, lane: 'chords', dur: (b) => b.chordDur || 2.6, vel: 70 },
+  // Chords must carry a POLYPHONIC program. This was 82 — Lead 3 (calliope), the
+  // closest timbre — but Logic maps GM "Lead" programs onto its stock mono synth
+  // leads, and a three-note chord through a mono patch is one note or none. That,
+  // not the channel layout, is what kept silencing this track. Pad 3 (polysynth)
+  // is the square-family patch that is poly in every GM map.
+  { name: 'Chords', ch: 3, prog: 90, lane: 'chords', dur: (b) => b.chordDur || 2.6, vel: 70 },
   { name: 'Organ', ch: 5, prog: 16, lane: 'organChords', dur: (b) => b.organDur || 7.2, vel: 74 },
   { name: 'Twinkle', ch: 6, prog: 10, lane: 'twinkle', dur: (b) => b.twinkleDur || 6, vel: 58 },
   { name: 'Electro FX', ch: 7, prog: 103, lane: 'electroFx', dur: (b) => b.electroFxDur || 0.86, vel: 66 },
@@ -70,6 +75,14 @@ function track(events, meta = []) {
   return chunk('MTrk', bytes);
 }
 const nameMeta = (s) => [0x00, 0xff, 0x03, s.length, ...Buffer.from(s, 'ascii')];
+// Track name, and the GM program when patches are on. Deliberately NO initial CC7:
+// a channel volume at tick 0 imports into a DAW as a fader/automation point and
+// steps on the mix. It was once a guard against silent tracks, but that mystery
+// turned out to be a mono patch on the chord lane (see LANE_TRACKS), not a volume.
+const voiceMeta = (name, ch, prog, patches) => [
+  ...nameMeta(name),
+  ...(patches ? [0x00, 0xc0 | ch, prog] : []),
+];
 
 const note = (notes, ch, n, tick, lenTicks, vel) => {
   notes.push({ ch, n: clampNote(n), on: tick, off: tick + Math.max(1, Math.round(lenTicks)), vel });
@@ -112,18 +125,48 @@ function toEvents(notes) {
  * @param {object} [opts]
  * @param {number} [opts.repeat=1]   how many times to walk the song form
  * @param {string} [opts.title]      sequence name written to the tempo track
- * @returns {{buffer: Buffer, trackNames: string[], blocks: number, seconds: number}}
+ * @param {boolean} [opts.patches=false]  write each lane's General MIDI program, so a
+ *   DAW picks something like the right sound per track. Everything stays on channel
+ *   1: Logic turns a MULTI-channel file into External MIDI tracks routed by channel
+ *   — silent until pointed at a device — so the channel split must not ride along
+ *   (confirmed twice, most recently 2026-07-28: chords on channel 4 imported as an
+ *   External MIDI track). Off by default: with no programs at all, every track opens
+ *   as a grand piano and everything plays.
+ *
+ *   The one landmine with programs on: a chord lane's program must be POLYPHONIC —
+ *   see the Chords entry in LANE_TRACKS for the mono-lead trap that silenced it.
+ * @param {boolean} [opts.gmChannels=false]  the full GM layout — every lane on its
+ *   own MIDI channel with its program, for a hardware module or GM player that
+ *   plays all parts through one synth. Do not feed this to Logic (see above).
+ * @returns {{buffer, trackNames, tracks, blocks, seconds, trimmed, deadPitches}}
  */
-export function midiBuffer(bank, { repeat = 1, title = 'MASHENSTEIN' } = {}) {
+export function midiBuffer(bank, {
+  repeat = 1, title = 'MASHENSTEIN', gmChannels = false, patches = gmChannels,
+} = {}) {
   const blocks = songBlocks(bank, repeat);
   const tracks = [];
   const trackNames = [];
+  // What went into each track, so the CLI can say where a part actually starts. A
+  // lane that does not come in until section 3 looks like a broken export if all you
+  // do is play the first bars.
+  const written = [];
+  const record = (name, ch, notes) => {
+    written.push({
+      name, ch: ch + 1, notes: notes.length,
+      firstTick: Math.min(...notes.map((n) => n.on)),
+      lastTick: Math.max(...notes.map((n) => n.off)),
+    });
+  };
   let trimmed = 0;
   // chordSeq() yields [0,0,0] for a chord token it cannot parse, and the engine
   // duly plays those at 0 Hz — silent on a sine organ, a DC thump on a triangle
   // or square chord voice. log2(0) is -Infinity, so writing them out would put a
   // wall of bogus C-1 notes in the file. They are counted and dropped instead.
   let deadPitches = 0;
+
+  // Channel per lane, or everything on channel 1 — see gmChannels. Drums stay on 10
+  // either way: that is the one channel number every device agrees means percussion.
+  const ch = (want) => (gmChannels ? want : 0);
 
   // Tempo/meta track. The engine's bpm is the quarter-note tempo.
   const uspq = Math.round(60000000 / bank.bpm);
@@ -145,15 +188,16 @@ export function midiBuffer(bank, { repeat = 1, title = 'MASHENSTEIN' } = {}) {
         // chord lanes hold an array of simultaneous pitches; melodic lanes a scalar
         for (const hz of Array.isArray(v) ? v : [v]) {
           if (!(hz > 0)) { deadPitches++; continue; }
-          note(notes, L.ch, midiNote(hz), tick, L.dur(b) * TPS, L.vel);
+                note(notes, ch(L.ch), midiNote(hz), tick, L.dur(b) * TPS, L.vel);
         }
       }
     });
     if (!notes.length) continue;
     const { ev, trimmed: t } = toEvents(notes);
     trimmed += t;
-    tracks.push(track(ev, [...nameMeta(L.name), 0x00, 0xc0 | L.ch, L.prog]));
+    tracks.push(track(ev, voiceMeta(L.name, ch(L.ch), L.prog, patches)));
     trackNames.push(L.name);
+    record(L.name, ch(L.ch), notes);
   }
 
   for (const R of RUN_TRACKS) {
@@ -167,15 +211,16 @@ export function midiBuffer(bank, { repeat = 1, title = 'MASHENSTEIN' } = {}) {
         const dt = (R.span(b) * TPS) / GLISS_STEPS.length;
         GLISS_STEPS.forEach((semi, k) => {
           const vel = Math.round(R.vel * (0.6 + 0.4 * ((k + 1) / GLISS_STEPS.length))); // cresc. into the target
-          note(notes, R.ch, target + semi, (bi * 32 + s) * TPS + Math.round(k * dt), dt * 1.7, vel);
+          note(notes, ch(R.ch), target + semi, (bi * 32 + s) * TPS + Math.round(k * dt), dt * 1.7, vel);
         });
       }
     });
     if (!notes.length) continue;
     const { ev, trimmed: t } = toEvents(notes);
     trimmed += t;
-    tracks.push(track(ev, [...nameMeta(R.name), 0x00, 0xc0 | R.ch, R.prog]));
+    tracks.push(track(ev, voiceMeta(R.name, ch(R.ch), R.prog, patches)));
     trackNames.push(R.name);
+    record(R.name, ch(R.ch), notes);
   }
 
   // Drums. One MTrk per kit piece rather than a single lump, so each stem WAV
@@ -196,12 +241,15 @@ export function midiBuffer(bank, { repeat = 1, title = 'MASHENSTEIN' } = {}) {
     const name = `Drums: ${lane}`;
     tracks.push(track(ev, nameMeta(name)));
     trackNames.push(name);
+    record(name, 9, notes);
   }
 
   const header = chunk('MThd', [0, 1, 0, tracks.length, (PPQ >> 8) & 0xff, PPQ & 0xff]);
   return {
     buffer: Buffer.concat([header, ...tracks]),
     trackNames,
+    tracks: written,
+    ppq: PPQ,
     blocks: blocks.length,
     seconds: (blocks.length * 32 * (60 / bank.bpm)) / 4,
     trimmed,

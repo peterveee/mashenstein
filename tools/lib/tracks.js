@@ -1,57 +1,32 @@
-// Shared track-id resolution for the offline render tools, so render-track.js,
-// render-stems.js and render-midi.js can never disagree about what "megamix"
-// or "shop" means.
-import {
-  CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME,
-} from '../../src/data/cabinets.js';
-import { SHOP_THEME_BY_ID, COUNTER_DANCE_MIX_THEME } from '../../src/data/shop-themes.js';
-import { MEGAMIX_THEME } from '../../src/data/megamix.js';
+// Track-id resolution for the offline render tools.
+//
+// The registry itself moved to src/data/tracks.js, because the mixing desk and the
+// running game need it too — a saved mix is keyed by track id, and the game only
+// ever holds a bank object. This file is the node-side wrapper: the same
+// resolution, plus the CLI-friendly exit path.
+//
+// Importing this module also registers everything in src/data/imported/, so a song
+// that came in from a .mid is a track every CLI tool can render, export and mix —
+// the game's own bundle never pulls that folder in.
+export { resolveTrack, listTracks, trackIdOf, registerTrack } from '../../src/data/tracks.js';
+import { resolveTrack } from '../../src/data/tracks.js';
 
-// Friendly aliases for the two named themes plus the in-game shop theme. "shop"
-// resolves to COUNTER_DANCE_MIX_THEME — the Peter-approved bank both counters
-// actually play — rather than one of the parked audition candidates.
-const ALIASES = {
-  hub: { bank: HUB_THEME, slug: 'food-court', title: 'THE FOOD COURT' },
-  title: { bank: TITLE_THEME, slug: 'title-theme', title: 'EMPTY ARCADE' },
-  finale: { bank: FINALE_THEME, slug: 'finale-theme', title: 'ONE MORE SWITCH' },
-  megamix: { bank: MEGAMIX_THEME, slug: 'megamix', title: 'MONSTER MEGAMIX' },
-  shop: { bank: COUNTER_DANCE_MIX_THEME, slug: 'shop-theme', title: 'CHECKOUT PROMENADE' },
-};
-
-export function resolveTrack(trackId) {
-  if (ALIASES[trackId]) return { id: trackId, ...ALIASES[trackId] };
-  if (SHOP_THEME_BY_ID[trackId]) {
-    return { id: trackId, bank: SHOP_THEME_BY_ID[trackId], slug: trackId, title: trackId.toUpperCase() };
-  }
-  const cabinet = CABINET_BY_ID[trackId];
-  if (cabinet && cabinet.music) {
-    return { id: trackId, bank: cabinet.music, slug: `${trackId}-panic`, title: (cabinet.name || trackId).toUpperCase() };
-  }
-  return null;
-}
-
-// Every track id the resolver above accepts, so a picker never has to guess
-// or duplicate the resolution rules. Aliases first — they are the real
-// in-game cues — then cabinets, then the parked shop candidates.
-export function listTracks() {
-  const ids = [
-    ...Object.keys(ALIASES),
-    ...Object.keys(CABINET_BY_ID).filter((id) => CABINET_BY_ID[id].music),
-    ...Object.keys(SHOP_THEME_BY_ID),
-  ];
-  const seen = new Set();
-  return ids
-    .filter((id) => (seen.has(id) ? false : seen.add(id)))
-    .map((id) => {
-      const { bank, ...rest } = resolveTrack(id);
-      return rest;
-    });
+// Guarded, because that index is generated from a folder people edit: delete a bank
+// by hand and a static import turns every tool in here into a module-resolution stack
+// trace, including the one that repairs the list. A tool that still runs and says
+// what to do beats one that cannot start.
+try {
+  await import('../../src/data/imported/index.js');
+} catch (err) {
+  console.error(`src/data/imported is not loading, so imported songs are unavailable:`);
+  console.error(`  ${err.message || err}`);
+  console.error('  fix or remove the bank, then: node tools/import-midi.js --reindex');
 }
 
 export function resolveOrExit(trackId) {
   const track = resolveTrack(trackId);
   if (!track) {
-    console.error(`unknown track "${trackId}" — try one of: ${Object.keys(ALIASES).join(', ')}, a cabinet id, or a shop-theme id`);
+    console.error(`unknown track "${trackId}" — try one of: hub, title, finale, megamix, shop, a cabinet id, a shop-theme id, or an imported id (src/data/imported)`);
     process.exit(1);
   }
   return track;

@@ -37,7 +37,8 @@ import { writeFileSync, mkdtempSync, mkdirSync, rmSync, renameSync, existsSync }
 import { tmpdir } from 'os';
 import { join, dirname, basename, resolve } from 'path';
 import { spawn } from 'child_process';
-import { renderBank, wavBuffer } from './lib/render-bank.js';
+import { renderBankBrowser } from './lib/render-bank-browser.js';
+import { wavBuffer } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { bundleEntry, openArtPage } from './lib/art-page.js';
 import { pipeFrames, FRAME_BUFFER_SRC } from './lib/mp4-pipe.js';
@@ -123,7 +124,12 @@ console.log(`frame      ${OUT_W}x${OUT_H}, scene ${OUT_W}x${SCENE_H}${BAND ? ` +
 
 // ------------------------------------------------------------------- audio
 
-const { out: pcm, seconds, peak } = renderBank(track.bank, { repeat: 1 });
+const { outL, outR, seconds, peak } = await renderBankBrowser(track.bank, {
+  repeat: 1, trackId: track.id,
+});
+// One channel for the analyser below; the file stays stereo.
+const pcm = new Float32Array(outL.length);
+for (let i = 0; i < pcm.length; i++) pcm[i] = (outL[i] + outR[i]) / 2;
 const norm = peak > 0 ? 0.9 / peak : 1;
 const needed = FROM_SEC + TOTAL / FPS;
 if (seconds < needed) {
@@ -136,7 +142,7 @@ console.log(`audio      ${seconds.toFixed(1)}s rendered, peak ${peak.toFixed(3)}
 
 const work = mkdtempSync(join(tmpdir(), 'mash-reel-'));
 const wavPath = join(work, 'song.wav');
-writeFileSync(wavPath, wavBuffer(pcm, norm));
+writeFileSync(wavPath, wavBuffer([outL, outR], norm));
 const cleanup = () => rmSync(work, { recursive: true, force: true });
 
 // ---------------------------------------------------------- the frame painter

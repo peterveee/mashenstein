@@ -1,7 +1,7 @@
 // Procedural jukebox-only mash-up. Every existing jukebox melody is moved into
 // the same A-minor/C-major neighbourhood, then DJ-mixed over one 120 BPM house
 // rhythm section. No WAV asset is loaded or shipped.
-import { seq, chordSeq } from '../engine/audio.js';
+import { seq, chordSeq } from '../engine/notes.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
 

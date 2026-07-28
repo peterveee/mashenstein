@@ -112,5 +112,39 @@ it survives a restart.
   restart deliberately reseeds so a run that killed you isn't handed straight
   back — decide whether that stays true.
 
+### Bar editing in the mixing desk (arrangement pass)
+Repeat a range of bars and drop instruments out of the repeats, live, while the song
+plays — the build-up/breakdown move that is currently hand-typed into `order` arrays.
+Right-click a bar to mute a lane or the whole kit; select a range to duplicate, cut,
+paste or silence it; "Build up ▸ 8 bars" repeats a range and lets the kit back in one
+lane at a time. **Full plan written:**
+`~/.claude/plans/read-users-peter-claude-plans-it-is-diff-scalable-brooks.md`.
+
+- **What exists today:** the desk's arrangement grid is already bar-unit
+  (`buildArrangement()` in `tools/mixer-entry.js`), with a single-bar select
+  (`markBar`), a read-only piano-roll popup per bar (`showBar`), whole-lane
+  mute/solo, bar-range looping, and a working MIDI round-trip
+  (`tools/lib/midi-import.js`). None of it can edit `order`.
+- **The engine change is small:** expand `order` into a per-bar plan (`barPlan` in
+  `src/engine/lanes.js`) and swap ~6 lines of `scheduleStep`'s section lookup. For
+  every existing song the expansion is provably identical to today, which
+  `tests/null-test.js` confirms sample-for-sample.
+- **Two format additions:** an order entry may be `{s, bars, from, off}` — `bars: 1`
+  gives single-bar granularity, `off: ['snare','clap']` is the mute mask. Plain
+  numbers keep working.
+- **Saves to a layer**, `src/data/arrangements.js`, the way `src/data/mix.js`
+  already does: the game plays the edited version and `cabinets.js` — the note
+  strings and the arrangement rationale — is never machine-rewritten. Deleting an
+  entry reverts a song exactly.
+- **Watch out for:** lane arrays are shared by object identity across sections *and*
+  across lane keys (in `FINALE_THEME`, one array is on seven sections' `ohats` and
+  another section's `hats`), so any note write must deep-clone first. `order` also
+  reuses sections, so editing "bar 3" has to fork and repoint only bar 3 or bar 1
+  changes too.
+- **Follows on:** making `showBar`'s roll writable (needs a pitch range not derived
+  from current content, and one-shot note audition), then re-importing an edited
+  MIDI into *chosen lanes* of an existing song rather than minting a new bank —
+  which is what keeps mute masks and section sharing alive across a round trip.
+
 ## Done
 <!-- move shipped items here with a date -->

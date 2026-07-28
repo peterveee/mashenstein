@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 68MB of engine reference renders for the null test — make with `npm run baseline`
+baselines/
 .DS_Store
 .playwright/
 .playwright-mcp/

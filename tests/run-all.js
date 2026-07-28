@@ -17,6 +17,7 @@ const suites = [
   'tests/sound-test-menu.js',
   'tests/visualizers.js',
   'tests/megamix.js',
+  'tests/mix.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
@@ -43,6 +44,9 @@ const suites = [
   'tests/build-shell.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
+  // Last: it renders the engine offline in Chromium, which is slower than every
+  // other suite put together. MASH_NULL_ALL=1 widens it from two tracks to five.
+  'tests/null-test.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
 ];

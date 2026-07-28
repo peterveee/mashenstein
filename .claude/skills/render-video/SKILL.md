@@ -112,7 +112,7 @@ between frames.
 
 Don't eyeball a cut point — banks declare their own structure. A bank has
 `sections` plus an `order` array, and **each `order` entry is a two-bar block**
-(`songBlocks()` in `tools/lib/render-bank.js`). So:
+(`songBlocks()` in `src/engine/lanes.js`). So:
 
 ```
 blockSeconds = 32 * (60 / bank.bpm) / 4      // 32 sixteenth steps

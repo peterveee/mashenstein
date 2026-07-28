@@ -409,6 +409,47 @@ Each cabinet has a fully authored step-sequenced song with its own BPM, instrume
 - Debris materials (wood, stone, metal, soft, gold) have distinct timbral profiles.
 - Master trim for attack cues sits at 0.25×; individual SFX have per-cue volume trims to balance perceived loudness.
 
+### 8.4 The Mixing Desk
+
+Every lane runs through a channel strip (`src/engine/mixer.js`) rather than straight
+into a shared bus: fader, pan, three-band EQ, one send per aux, and up to six insert
+effects. Two shared sends — the engine's original tempo-synced Delay and a
+convolution Reverb — and a master bus, each built from the same parts as a channel.
+`npm run mixer` opens the desk on the game's own engine; "Save to game" writes
+`src/data/mix.js`, which the game and every render tool then read.
+
+**At defaults a strip is a pass-through, and this is load-bearing.** Every song was
+balanced by ear against the engine as it was before the desk existed, so:
+
+- Pan is a native `StereoPannerNode` fed **explicit stereo**, never `Tone.Channel`
+  (which downmixes to mono: 0.7071 at centre against native's 1.0000).
+- EQ is three serial biquads, never `Tone.EQ3` (a crossover splitter, not
+  transparent even flat).
+- The master limiter is **off by default** — a `DynamicsCompressorNode` carries 6ms
+  of lookahead that cannot be switched off, so merely having it in the path delays
+  everything.
+- `tests/null-test.js` renders the engine offline and compares it sample-for-sample
+  against reference dumps (`npm run baseline`, 5e-6 tolerance). It runs in `npm test`.
+
+**Stereo:** lanes are mono into the strip, made explicit stereo at the input so pan
+is unity at centre; `sweeps` and `gliss` build their own panners per voice and are
+left alone. Mid/side width is available per strip and is exactly transparent at 1.
+
+**Values in `mix.js` are relative trims in dB**, laid on top of whatever the bank and
+its sections computed — banks vary their own lanes per section, and an absolute value
+would flatten variation that was written on purpose.
+
+**One render path.** `tools/lib/render-bank-browser.js` runs `src/engine/audio.js`
+in headless Chromium under an `OfflineAudioContext`; every WAV, stem, MP4 and the
+desk's own audition come from it. The hand-written JS mirror it replaced generated
+naive (non-band-limited) waveforms and could not see `mix.js`, so everything it made
+was brighter than the game and unmixed. Nothing renders audio any other way.
+
+**Headroom:** no track peaks above full scale. Where one did, the fix was per-lane
+and measured — render each lane as a stem, read its signed value at the peak sample,
+and trim what is actually there (shop was kick + hats; its clap, despite the higher
+solo peak, contributed nothing at that sample).
+
 ---
 
 ## 9. CONTROLS
@@ -495,7 +536,7 @@ All platforms pause audio, input, rendering, and the game loop when the page/app
 
 - **Bundler:** esbuild (dev-time only — no runtime dependencies)
 - **Build command:** `npm run build` → `dist/index.html` (install gate) + `dist/game.js` (deferred bundle)
-- **Dev command:** `npm run dev` → watch + local server at `http://127.0.0.1:8002/`
+- **Dev command:** `npm run dev` → watch + server at `http://localhost:8001/`, and `http://MBP14.local:8001/` from a phone on the same wifi
 - **Archived releases:** versioned copies in `dist/v{N}/` for GitHub Pages history
 - **Minification:** production builds are minified; dev builds are not
 

@@ -2,7 +2,7 @@
 // music banks. Patterns are data: cells of {t: obstacleType, dx, y?, n?}.
 // dx is px from pattern origin; the spawner enforces fairness gaps between
 // action-required cells at spawn time, so patterns describe intent, not exact spacing.
-import { seq, chordSeq } from '../engine/audio.js';
+import { seq, chordSeq } from '../engine/notes.js';
 
 // Shared pattern helpers -----------------------------------------------------
 const P = (tier, cells, opts = {}) => ({ tier, cells, ...opts });

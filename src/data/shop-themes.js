@@ -1,7 +1,7 @@
 // Original procedural retail-lounge themes and their audition variants. The
 // approved counter bank below is imported by the live counter screens and
 // jukebox; no rendered audio asset is required or shipped.
-import { seq, chordSeq } from '../engine/audio.js';
+import { seq, chordSeq } from '../engine/notes.js';
 
 const beats = (pattern) => seq(pattern).map((v) => !!v);
 const KICK_LIGHT = beats('C1 . . . . . . . C1 . . . . . . .');

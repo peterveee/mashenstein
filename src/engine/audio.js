@@ -1,6 +1,11 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
+import { createMixer } from './mixer.js';
+import { MAX_DELAY_SECONDS } from './effects.js';
+import { LANES, laneUsesEcho } from './lanes.js';
+import { MIX, laneSettings } from '../data/mix.js';
+import { trackIdOf } from '../data/tracks.js';
 
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
@@ -68,6 +73,17 @@ export const DEBRIS_MATS = {
 class AudioSys {
   constructor() {
     this.ctx = null;
+    this.offline = false;  // true when driven by an OfflineAudioContext (render tools)
+    this.noiseSeed = null; // set for offline renders; null = Math.random()
+    // Shared delay, as it has always been tuned: dotted eighth, 0.35 feedback,
+    // 2800Hz damping, and the bank's own echoLevel unscaled.
+    // Loop region, in absolute 16th-steps. null = play the whole song form.
+    this.loopStart = null;
+    this.loopEnd = null;
+    this.delayDivision = 0.75;
+    this.delayFeedback = 0.35;
+    this.delayTone = 2800;
+    this.echoLevelScale = 1;
     this.master = null; this.sfxGain = null; this.musicGain = null;
     this.songTrim = null;
     this.musicTrim = 1;
@@ -117,19 +133,30 @@ class AudioSys {
     this._revSources = [];   // active reversed BufferSources
   }
 
-  ensure() {
+  // `ctxOverride` lets the offline render tools hand in an OfflineAudioContext so
+  // WAVs, stems and videos are produced by THIS engine rather than a reimplementation
+  // of it (see tools/lib/render-bank-browser.js). An offline context has no running
+  // clock and no speakers, so the realtime-only machinery — the lookahead interval
+  // and the rewind capture recorder — stays off; the caller drives scheduleStep()
+  // itself and calls startRendering().
+  ensure(ctxOverride = null) {
     if (this.ctx) {
       if (!this.lifecyclePaused && this.ctx.state !== 'running') this.resumeContext();
       return;
     }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    this.ctx = new AC();
+    if (ctxOverride) {
+      this.ctx = ctxOverride;
+      this.offline = true;
+    } else {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+    }
     // Some engines create a suspended context even when autoplay is allowed,
     // and require an explicit resume request. Try immediately; browsers with
     // a gesture requirement reject/hold it harmlessly, then the existing
     // gesture path calls ensure() again and resumes for real.
-    if (!this.lifecyclePaused && this.ctx.state === 'suspended') {
+    if (!this.offline && !this.lifecyclePaused && this.ctx.state === 'suspended') {
       const resumed = this.ctx.resume();
       if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
     }
@@ -180,6 +207,8 @@ class AudioSys {
     this.echoBus = this.ctx.createGain(); this.echoBus.gain.value = 1;
     this.echoSend = this.ctx.createGain(); this.echoSend.gain.value = 0.28;
     this.echoHp = this.ctx.createBiquadFilter(); this.echoHp.type = 'highpass'; this.echoHp.frequency.value = 500;
+    // One second, and deliberately not more — see growDelayLine, which is where a
+    // longer division gets the buffer it needs.
     this.delay = this.ctx.createDelay(1.0); this.delay.delayTime.value = 0.32;
     this.delayLp = this.ctx.createBiquadFilter(); this.delayLp.type = 'lowpass'; this.delayLp.frequency.value = 2800;
     this.delayFb = this.ctx.createGain(); this.delayFb.gain.value = 0.35;
@@ -190,10 +219,24 @@ class AudioSys {
     this.delayLp.connect(this.delayFb);
     this.delayFb.connect(this.delay);
     this.delayLp.connect(this.songTrim);
+    // Per-lane channel strips. Built here, before the capture recorder taps master
+    // (createMixer re-routes master through the trim and limiter, and a disconnect()
+    // at that point must not take the recorder's tap with it).
+    this.mixer = createMixer(this.ctx, {
+      musicBus: this.musicBus, echoBus: this.echoBus, master: this.master,
+      // The original echo's return leg: the mixer splices its EQ and level in
+      // between these two, so Delay 1 gets the same controls as the new auxes.
+      songTrim: this.songTrim, delayLp: this.delayLp,
+    });
+    // Offline renders seed the noise so a lane rendered on its own gets exactly the
+    // noise it had inside the full mix — that is what lets stems sum back to the
+    // mix. Live playback keeps Math.random(): a fresh noise floor every session is
+    // free variety, and nothing downstream depends on it repeating.
+    const rnd = this._noiseRandom();
     const len = Math.floor(this.ctx.sampleRate * 0.5);
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    for (let i = 0; i < len; i++) d[i] = rnd() * 2 - 1;
     // Crashes outlast the 0.5s one-shot buffer, and looping it drops a seam
     // partway through the hit — an audible bump at a fixed 0.5s offset that
     // has nothing to do with the tempo, so it reads as out of time. A longer
@@ -201,8 +244,9 @@ class AudioSys {
     const clen = Math.floor(this.ctx.sampleRate * 2.5);
     this.crashBuf = this.ctx.createBuffer(1, clen, this.ctx.sampleRate);
     const cd = this.crashBuf.getChannelData(0);
-    for (let i = 0; i < clen; i++) cd[i] = Math.random() * 2 - 1;
+    for (let i = 0; i < clen; i++) cd[i] = rnd() * 2 - 1;
     this.renderWeaponBuffers();
+    if (this.offline) return; // the caller drives scheduleStep() and startRendering()
     this.startSequencer();
     if (this.captureEnabled) this._startCapture();
     // Separate output for reversed audio — bypasses the capture node to
@@ -211,6 +255,98 @@ class AudioSys {
     this._rewindOut.gain.value = this.levels.master;
     this._rewindOut.connect(this.ctx.destination);
     if (this.lifecyclePaused && this.ctx.state === 'running') this.suspendContext();
+  }
+
+  // Deterministic noise for offline renders. Call before ensure() — the buffers are
+  // filled once there and never refilled.
+  setNoiseSeed(seed) { this.noiseSeed = seed; }
+
+  /**
+   * Loop a step range instead of the whole song form. Wrapping happens inside
+   * scheduleStep, at the point the step counter advances, so the loop is seamless
+   * rather than a jump applied a frame late from the UI.
+   * Pass no arguments to clear it.
+   */
+  setLoop(startStep = null, endStep = null) {
+    if (startStep == null || endStep == null || endStep <= startStep) {
+      this.loopStart = this.loopEnd = null;
+      return;
+    }
+    this.loopStart = Math.max(0, Math.floor(startStep));
+    this.loopEnd = Math.floor(endStep);
+    // Drop straight into the region if the playhead is outside it, so arming a loop
+    // takes effect on this pass rather than after the song wanders back round.
+    if (this.step < this.loopStart || this.step >= this.loopEnd) this.step = this.loopStart;
+  }
+
+  // ---- shared delay controls ------------------------------------------------
+  // The tempo-synced echo is the game's only "space", and until the desk existed it
+  // was fixed: a dotted eighth, 0.35 feedback, 2800Hz damping. Those remain the
+  // defaults; a song's mix can move them.
+  //
+  // `level` is a SCALE on whatever the bank asked for, not a replacement, so a
+  // section that pushes its own echoLevel for a payoff keeps that shape — the same
+  // relative-trim rule the lane faders follow.
+  setDelay({ division, feedback, tone, level } = {}) {
+    if (division != null) this.delayDivision = division;
+    if (feedback != null) this.delayFeedback = Math.max(0, Math.min(0.95, feedback));
+    if (tone != null) this.delayTone = Math.max(200, Math.min(16000, tone));
+    if (level != null) this.echoLevelScale = Math.max(0, level);
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (this.delay) {
+      const secs = this.delayTimeSeconds();
+      this.growDelayLine(secs).delayTime.setTargetAtTime(secs, t, 0.05);
+    }
+    if (this.delayFb) this.delayFb.gain.setTargetAtTime(this.delayFeedback, t, 0.05);
+    if (this.delayLp) this.delayLp.frequency.setTargetAtTime(this.delayTone, t, 0.05);
+  }
+
+  delayTimeSeconds() {
+    const beats = this.delayDivision ?? 0.75;   // dotted eighth
+    // Bounded by what a delay line can hold at all — an eight-bar division at a slow
+    // tempo asks for more than the longest buffer this engine will allocate.
+    return Math.min(MAX_DELAY_SECONDS, (60 / (this.bpm || 120)) * beats);
+  }
+
+  /**
+   * Swap in a longer delay line when a division needs one.
+   *
+   * A DelayNode's buffer is allocated at construction and never grows, so bar-length
+   * echoes need a new node. The obvious move — build the line at its maximum from
+   * the start — is wrong here: a DelayNode with a large maxDelayTime does NOT render
+   * the same samples as a small one at the same delay time. Measured at 1.7e-4 on
+   * Speed Zone against the engine baselines, which is the null test failing and
+   * every song's echo quietly moving. So the default line stays exactly the one
+   * ounce the songs were balanced against, and only a deliberately long division
+   * ever builds a bigger one.
+   */
+  growDelayLine(secs) {
+    if (!this.ctx || !this.delay || secs <= this.delay.maxDelayTime - 0.01) return this.delay;
+    const next = this.ctx.createDelay(Math.min(MAX_DELAY_SECONDS, Math.ceil(secs) + 1));
+    next.delayTime.value = this.delay.delayTime.value;
+    for (const [from, node] of [[this.echoHp, this.delay], [this.delayFb, this.delay]]) {
+      try { from.disconnect(node); } catch { /* not wired */ }
+    }
+    try { this.delay.disconnect(this.delayLp); } catch { /* not wired */ }
+    this.echoHp.connect(next);
+    this.delayFb.connect(next);
+    next.connect(this.delayLp);
+    this.delay = next;
+    return next;
+  }
+
+  // mulberry32: seeded so an offline render repeats exactly — see setNoiseSeed.
+  _noiseRandom() {
+    if (this.noiseSeed == null) return Math.random;
+    let a = this.noiseSeed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   }
 
   settleContext(promise) {
@@ -843,10 +979,19 @@ class AudioSys {
   // Bank: {bpm, bass:[...], lead:[...], hats:[...], kick:[...], snare:[...],
   // clap:[...]} arrays of 32 steps (2 bars of 16ths); melodic values are
   // frequency or null, percussion is boolean. Loops with A/B lead.
-  setBank(bank) {
+  // `mixOverride` plays a mix that is not (yet) in src/data/mix.js — the desk
+  // auditioning unsaved edits. Pass null for "no mix at all", undefined for "look
+  // it up". Level, pan, EQ and send edits go straight to the strips and need no
+  // re-bank; only a voice change has to come back through here.
+  setBank(bank, mixOverride = undefined) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
-    if (this.bank === bank) return;
+    // Compared against the bank as PASSED IN: applyMix may hand back a copy with
+    // the saved voice overrides merged, and comparing against that copy would make
+    // every re-selection look like a change.
+    if (this.sourceBank === bank && mixOverride === undefined) return;
+    this.sourceBank = bank;
+    bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
     this.musicTrim = bank?.musicTrim ?? 1;
     this.pendingStartDelay = bank ? 0.5 : 0;
@@ -866,8 +1011,87 @@ class AudioSys {
     this.step = 0; // songs start from the top (section order matters now)
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
-      if (this.delay) this.delay.delayTime.value = Math.min(0.9, (60 / bank.bpm) * 0.75); // dotted 8th
+      // follows delayDivision, and grows the line if this bpm makes it a long one
+      if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
     }
+  }
+
+  // Push a song's saved mix onto the channel strips, and merge any voice overrides
+  // into the bank. Returns the bank the sequencer should actually play — the same
+  // object when there is nothing to merge, so the common case allocates nothing.
+  //
+  // Voice keys merge UNDER sections (`{...bank, ...voice}` then sections spread over
+  // that at schedule time), so a section that sets the same key still wins. Lane
+  // trims are relative and live on the strips, so per-section variation survives.
+  applyMix(bank, mix = undefined) {
+    const entry = mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null);
+    if (this.mixer) {
+      this.mixer.reset();
+      // No family rule any more. A lane used to be on the delay because of what KIND
+      // of lane it was — melodic and fx echoed by default, percussion opted in — so a
+      // channel's echo answered to nothing you could point at, and turning one down
+      // left the rest of the family echoing in the same rhythm. Every send now starts
+      // at zero and comes from the mix, one channel at a time. The songs' echoes were
+      // written into src/data/mix.js as ordinary sends when this changed, so they
+      // sound exactly as they did and are editable where you can see them.
+      //
+      // laneUsesEcho still decides where the signal is TAPPED: lanes whose voices
+      // tap the wet node keep doing that (pre-fader, as the echo always was), and the
+      // rest route the whole lane in, so every strip's send is live either way.
+      for (const { key } of LANES) {
+        const strip = this.mixer.lane(key);
+        if (!strip) continue;
+        strip.setDryTap(bank ? !laneUsesEcho(bank, key) : false);
+        strip.setSend({ delay: 0 });
+      }
+      // The rack is already back at defaults from reset() above; retune the
+      // tempo-synced ones for this song's bpm, then lay the saved settings over.
+      this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800, level: 1 });
+      this.mixer.retune(bank?.bpm || this.bpm);
+      if (entry) {
+        this.mixer.setMasterTrim(entry.master || 0);
+        this.mixer.setLimiter(!!entry.limiter);
+        if (entry.masterEffects) this.mixer.setMasterEffects(entry.masterEffects, bank?.bpm || this.bpm);
+        for (const [id, patch] of Object.entries(entry.fx || {})) {
+          // Delay 1 is the engine's own echo; its time, feedback and damping live
+          // on the AudioSys nodes, so those params route there. Its EQ and return
+          // level are the mixer's, like every other aux.
+          if (id === 'delay') {
+            const { eq, level, pan, mute, effects, ...engineParams } = patch;
+            this.setDelay(engineParams);
+            this.mixer.setAux('delay', { eq, level, pan, mute }, bank?.bpm || this.bpm);
+          } else {
+            this.mixer.setAux(id, patch, bank?.bpm || this.bpm);
+          }
+          if (patch.effects) this.mixer.setAuxEffects(id, patch.effects, bank?.bpm || this.bpm);
+        }
+        for (const [key, raw] of Object.entries(entry.lanes || {})) {
+          const strip = this.mixer.lane(key);
+          if (!strip) continue;
+          const s = laneSettings(raw);
+          strip.setGain(s.gain);
+          strip.setPan(s.pan);
+          strip.setWidth(s.width ?? 1);
+          strip.setMute(s.mute);
+          strip.setEQ(s.eq);
+          // Every aux, not just the two that existed first — naming them here is
+          // how delay2/reverb2 got silently dropped. Nothing falls back to a family
+          // default now: a send that is not in the mix is a send at zero.
+          strip.setSend(s.send);
+          // The channel delay used to be a bespoke insert here; it is an ordinary
+          // entry in the effect chain now, so old mixes carrying `insert` are
+          // migrated rather than silently dropped.
+          const chain = raw?.effects ? [...raw.effects] : [];
+          if (raw?.insert && (raw.insert.mix ?? 0) > 0) chain.unshift({ id: 'chandelay', params: raw.insert });
+          if (chain.length) strip.setEffects(chain, bank?.bpm || this.bpm);
+        }
+      }
+    }
+    // Sends are final by here, so anything unused can be dropped from the graph.
+    if (this.mixer) this.mixer.pruneAuxes();
+
+    if (!bank || !entry || !entry.voice) return bank;
+    return { ...bank, ...entry.voice };
   }
 
   // Tempo and pitch warp independently: slow-mo drags the tempo without
@@ -1088,8 +1312,19 @@ class AudioSys {
 
   schedule() {
     if (!this.ctx || !this.bank) return;
-    const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
-    while (this.nextTime < this.ctx.currentTime + 0.12) {
+    while (this.nextTime < this.ctx.currentTime + 0.12) this.scheduleStep();
+  }
+
+  // One 16th step, scheduled at this.nextTime. Split out of schedule() so an
+  // offline render can walk the whole song up front: an OfflineAudioContext has no
+  // running clock, so every node must be scheduled before startRendering().
+  //
+  // The body is wrapped in a bare block purely to keep its original indentation.
+  // This was the inside of schedule()'s while-loop; re-indenting 560 lines of voice
+  // code would bury any real change in a diff nobody could review.
+  scheduleStep() {
+    {
+      const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       const s = this.step % 32;
       // Song form: bank.sections is a list of partial banks (lane overrides)
       // and bank.order the 2-bar-block sequence to play them in — so a track
@@ -1100,6 +1335,17 @@ class AudioSys {
         const sec = b.sections[order[Math.floor(this.step / 32) % order.length] % b.sections.length];
         if (sec) b = { ...this.bank, ...sec };
       }
+      // Where this lane's voices land. `lane()` is called at the top of each lane
+      // block below and repoints dry/wet at that lane's channel strip, so every
+      // voice created after it lands on its own fader, pan, EQ and sends. Without
+      // a mixer (headless tests, or before ensure()) both fall back to the shared
+      // buses and the graph is exactly what it was.
+      let dry = this.musicBus, wet = this.echoBus;
+      const lane = (key) => {
+        const strip = this.mixer && this.mixer.lane(key);
+        dry = strip ? strip.dry : this.musicBus;
+        wet = strip ? strip.wet : this.echoBus;
+      };
       const play = (freq, type, dur, gain, attack = 0.01, echo = true, delay = 0) => {
         if (freq == null) return;
         const t = this.nextTime + delay;
@@ -1110,13 +1356,17 @@ class AudioSys {
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(gain, t + Math.min(attack, dur * 0.45));
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(g); g.connect(this.musicBus);
-        if (echo) g.connect(this.echoBus);
+        o.connect(g); g.connect(dry);
+        if (echo) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
       };
       // Sections may push the echo send harder (e.g. an "echoing chords" payoff).
-      if (this.echoSend) this.echoSend.gain.setTargetAtTime(b.echoLevel != null ? b.echoLevel : 0.28, this.nextTime, 0.08);
+      if (this.echoSend) {
+        const lvl = (b.echoLevel != null ? b.echoLevel : 0.28) * this.echoLevelScale;
+        this.echoSend.gain.setTargetAtTime(lvl, this.nextTime, 0.08);
+      }
       if (b.bass) {
+        lane('bass');
         // Dry by default (the highpass strips most bass fundamentals anyway,
         // so echo there is usually just wasted CPU) — a bank can opt in with
         // bassEcho: true to catch the sawtooth/square harmonics in the echo,
@@ -1140,8 +1390,8 @@ class AudioSys {
           g.gain.setValueAtTime(0.0001, t);
           g.gain.exponentialRampToValueAtTime(bassGain, t + (b.bassAttack || 0.006));
           g.gain.exponentialRampToValueAtTime(0.0001, t + bassDur);
-          o.connect(filter); filter.connect(g); g.connect(this.musicBus);
-          if (bassEcho) g.connect(this.echoBus);
+          o.connect(filter); filter.connect(g); g.connect(dry);
+          if (bassEcho) g.connect(wet);
           o.start(t); o.stop(t + bassDur + 0.02);
           play(b.bass[s] * 0.5, 'sine', bassDur * 1.05,
             bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
@@ -1172,6 +1422,7 @@ class AudioSys {
         if (b.bass[s] != null) this.starRoot = b.bass[s]; // the star arpeggio follows the song's key
       }
       if (b.lead) {
+        lane('lead');
         const leadDur = spb * (b.leadDur || 1.2);
         const leadGain = b.leadGain ?? 0.06;
         play(b.lead[s], b.leadType || 'square', leadDur, leadGain, b.leadAttack || 0.01);
@@ -1180,12 +1431,18 @@ class AudioSys {
             leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
         }
       }
-      if (b.leadHarm) play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * (b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01); // parallel-3rds partner voice
+      // parallel-3rds partner voice
+      if (b.leadHarm) {
+        lane('leadHarm');
+        play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * (b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+      }
       if (b.twinkle && b.twinkle[s]) {
+        lane('twinkle');
         play(b.twinkle[s], 'sine', spb * (b.twinkleDur || 6), b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
         play(b.twinkle[s] * 2, 'sine', spb * (b.twinkleDur || 6) * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
       }
       if (b.electroFx && b.electroFx[s]) {
+        lane('electroFx');
         // Sparse deterministic "random" shop-machine flourishes. The grid
         // position selects one of three tiny electronic gestures, so offline
         // auditions and live playback stay identical on every loop.
@@ -1207,11 +1464,12 @@ class AudioSys {
           g.gain.setValueAtTime(0.0001, t);
           g.gain.exponentialRampToValueAtTime(gain, t + 0.003);
           g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-          o.connect(g); g.connect(this.musicBus); g.connect(this.echoBus);
+          o.connect(g); g.connect(dry); g.connect(wet);
           o.start(t); o.stop(t + dur + 0.02);
         }
       }
       if (b.sweeps && b.sweeps[s] && this.noiseBuf) {
+        lane('sweeps');
         // Heavily filtered air: a narrow band slowly opens and closes beneath
         // a low-pass ceiling. It should be felt as motion, not heard as hiss.
         const t = this.nextTime;
@@ -1232,11 +1490,12 @@ class AudioSys {
           const pan = this.ctx.createStereoPanner();
           const from = s % 2 ? 0.35 : -0.35;
           pan.pan.setValueAtTime(from, t); pan.pan.linearRampToValueAtTime(-from, t + dur);
-          g.connect(pan); pan.connect(this.musicBus);
-        } else g.connect(this.musicBus);
+          g.connect(pan); pan.connect(dry);
+        } else g.connect(dry);
         src.start(t); src.stop(t + dur + 0.03);
       }
       if (b.keyGliss && b.keyGliss[s]) {
+        lane('keyGliss');
         // keyboard-sweep glissando: discrete scale notes (a hand dragged up
         // the white keys) running an octave up into the target, cresc. slightly
         const fT = b.keyGliss[s] * this.detune;
@@ -1251,11 +1510,12 @@ class AudioSys {
           g.gain.setValueAtTime(0.0001, t);
           g.gain.exponentialRampToValueAtTime(gv * (0.6 + 0.4 * ((i + 1) / steps.length)), t + 0.006);
           g.gain.exponentialRampToValueAtTime(0.0001, t + dt * 1.7);
-          o.connect(g); g.connect(this.musicBus);
+          o.connect(g); g.connect(dry);
           o.start(t); o.stop(t + dt * 1.7 + 0.02);
         });
       }
       if (b.gliss && b.gliss[s]) {
+        lane('gliss');
         // glissando: sweep up from an octave below into the target note,
         // with echo taps panned left -> center -> right across the field
         const t = this.nextTime;
@@ -1270,7 +1530,7 @@ class AudioSys {
         g.gain.exponentialRampToValueAtTime(gv, t + 0.02);
         g.gain.setValueAtTime(gv, t + spb * 3);
         g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 4);
-        o.connect(g); g.connect(this.musicBus);
+        o.connect(g); g.connect(dry);
         const pans = [-0.8, 0.1, 0.8];
         pans.forEach((pv, e) => {
           const d = this.ctx.createDelay(2); d.delayTime.value = spb * 2 * (e + 1);
@@ -1278,18 +1538,20 @@ class AudioSys {
           g.connect(d); d.connect(eg);
           if (this.ctx.createStereoPanner) {
             const p = this.ctx.createStereoPanner(); p.pan.value = pv;
-            eg.connect(p); p.connect(this.musicBus);
+            eg.connect(p); p.connect(dry);
           } else {
-            eg.connect(this.musicBus);
+            eg.connect(dry);
           }
         });
         o.start(t); o.stop(t + spb * 4 + 0.02);
       }
       if (b.chords && b.chords[s]) {
+        lane('chords');
         // stab: all chord tones at once, short and punchy
         for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * (b.chordDur || 2.6), b.chordGain ?? 0.05, b.chordAttack || 0.01);
       }
       if (b.organChords && b.organChords[s]) {
+        lane('organChords');
         // Drawbar-style organ bed: sine partials at the common 8', 4', 2 2/3',
         // 2' and 1 1/3' relationships. It is a separate sustained lane, not a
         // replacement for the short keyboard stabs, so an arrangement can let
@@ -1312,6 +1574,7 @@ class AudioSys {
         }
       }
       if (b.organGliss && b.organGliss[s]) {
+        lane('organGliss');
         // A quick drawbar-organ slide played as discrete scale notes, like a
         // palm skimming the keys. This lane has its own timbre so the main
         // melody does not need to become square/organ-like just to host it.
@@ -1331,6 +1594,7 @@ class AudioSys {
         });
       }
       if (b.organSwoop && b.organSwoop[s]) {
+        lane('organSwoop');
         // Continuous drawbar-organ pitch glide: unlike organGliss's discrete
         // palm-run notes, every partial bends smoothly from one pitch into the
         // target for a clean dance-mix transition.
@@ -1350,11 +1614,12 @@ class AudioSys {
           g.gain.setValueAtTime(0.0001, t);
           g.gain.exponentialRampToValueAtTime(gain * level, t + 0.012);
           g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-          o.connect(g); g.connect(this.musicBus); g.connect(this.echoBus);
+          o.connect(g); g.connect(dry); g.connect(wet);
           o.start(t); o.stop(t + dur + 0.02);
         }
       }
       if (b.kick && b.kick[s]) {
+        lane('kick');
         // 808 kick: a long sine "boooom" that pitch-drops into a sub
         // fundamental for the thump, with a short noise click on the front so
         // it still reads as a hit on small speakers where the sub is felt more
@@ -1375,8 +1640,8 @@ class AudioSys {
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(0.42 * kg, t + 0.006);
         g.gain.exponentialRampToValueAtTime(0.001, t + tail);
-        o.connect(g); g.connect(this.musicBus);
-        if (b.echoEverything) g.connect(this.echoBus);
+        o.connect(g); g.connect(dry);
+        if (b.echoEverything) g.connect(wet);
         o.start(t); o.stop(t + tail + 0.04);
         // Click: a couple of ms of high-passed noise — the beater attack. Kept
         // very short and quiet so it's a transient "tk", not a hat on top.
@@ -1385,8 +1650,8 @@ class AudioSys {
         const cg = this.ctx.createGain();
         cg.gain.setValueAtTime(0.13 * kg, t);
         cg.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
-        src.connect(cf); cf.connect(cg); cg.connect(this.musicBus);
-        if (b.echoEverything) cg.connect(this.echoBus);
+        src.connect(cf); cf.connect(cg); cg.connect(dry);
+        if (b.echoEverything) cg.connect(wet);
         src.start(t); src.stop(t + 0.03);
         // Knock: a short mid punch (~200-300Hz) between the click and the sub.
         // The bass owns the low fundamentals and the sub boom competes with it
@@ -1402,23 +1667,25 @@ class AudioSys {
           kgn.gain.setValueAtTime(0.0001, t);
           kgn.gain.exponentialRampToValueAtTime(0.17 * kg * knock, t + 0.004);
           kgn.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-          k.connect(kgn); kgn.connect(this.musicBus);
-          if (b.echoEverything) kgn.connect(this.echoBus);
+          k.connect(kgn); kgn.connect(dry);
+          if (b.echoEverything) kgn.connect(wet);
           k.start(t); k.stop(t + 0.07);
         }
       }
       if (b.hats && b.hats[s]) {
+        lane('hats');
         const t = this.nextTime;
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 5200;
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.14 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-        src.connect(f); f.connect(g); g.connect(this.musicBus);
-        if (b.echoEverything) g.connect(this.echoBus);
+        src.connect(f); f.connect(g); g.connect(dry);
+        if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.07);
       }
       if (b.vox && b.vox[s]) {
+        lane('vox');
         // Vocal hit ("hey!"): sawtooth glottal buzz with a falling pitch bend,
         // shaped by two parallel bandpass formants; vowel alternates per slot.
         const t = this.nextTime;
@@ -1436,11 +1703,12 @@ class AudioSys {
         const fa = this.ctx.createBiquadFilter(); fa.type = 'bandpass'; fa.frequency.value = fm1; fa.Q.value = 5;
         const fb2 = this.ctx.createBiquadFilter(); fb2.type = 'bandpass'; fb2.frequency.value = fm2; fb2.Q.value = 8;
         o.connect(env); env.connect(fa); env.connect(fb2);
-        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
-        if (b.echoEverything) mix.connect(this.echoBus);
+        fa.connect(mix); fb2.connect(mix); mix.connect(dry);
+        if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + 0.2);
       }
       if (b.shout && b.shout[s]) {
+        lane('shout');
         // Vocal shout ("yeah!" / "alright!"): sawtooth voice through MOVING
         // formant filters — gliding vowels read as a word, not just a hit.
         const t = this.nextTime;
@@ -1479,11 +1747,12 @@ class AudioSys {
           fb2.frequency.linearRampToValueAtTime(F2, t + tt);
         }
         o.connect(env); env.connect(fa); env.connect(fb2);
-        fa.connect(mix); fb2.connect(mix); mix.connect(this.musicBus);
-        if (b.echoEverything) mix.connect(this.echoBus);
+        fa.connect(mix); fb2.connect(mix); mix.connect(dry);
+        if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
       }
       if (b.ohats && b.ohats[s]) {
+        lane('ohats');
         // open hat: same noise, lower cutoff, long sizzle tail
         const t = this.nextTime;
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
@@ -1491,11 +1760,12 @@ class AudioSys {
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.12 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-        src.connect(f); f.connect(g); g.connect(this.musicBus);
-        if (b.echoEverything) g.connect(this.echoBus);
+        src.connect(f); f.connect(g); g.connect(dry);
+        if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.24);
       }
       if (b.snare && b.snare[s]) {
+        lane('snare');
         // crisp crack: brighter noise band, short decay, just a hint of body
         const t = this.nextTime;
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
@@ -1503,8 +1773,8 @@ class AudioSys {
         const g = this.ctx.createGain();
         g.gain.setValueAtTime(0.32 * (b.drumGain ?? 1), t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-        src.connect(f); f.connect(g); g.connect(this.musicBus);
-        if (b.echoEverything) g.connect(this.echoBus);
+        src.connect(f); f.connect(g); g.connect(dry);
+        if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.11);
         const o = this.ctx.createOscillator(); const og = this.ctx.createGain();
         o.type = 'triangle';
@@ -1512,9 +1782,10 @@ class AudioSys {
         o.frequency.exponentialRampToValueAtTime(140, t + 0.05);
         og.gain.setValueAtTime(0.12 * (b.drumGain ?? 1), t);
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        o.connect(og); og.connect(this.musicBus); if (b.echoEverything) og.connect(this.echoBus); o.start(t); o.stop(t + 0.08);
+        o.connect(og); og.connect(dry); if (b.echoEverything) og.connect(wet); o.start(t); o.stop(t + 0.08);
       }
       if (b.crash && b.crash[s]) {
+        lane('crash');
         // Filtered crash: looped noise, bright on the transient and darkening
         // as it falls away — a lowpass envelope closes from crashOpen down to
         // crashClose across the hit, which is what makes it read as a cymbal
@@ -1533,14 +1804,15 @@ class AudioSys {
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(gain, t + 0.005); // near-instant transient so it reads as on the beat
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.musicBus);
+        src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(dry);
         // Percussion is dry on the echo bus by default; crashEcho opts this
         // lane in on its own, so a crash can trail off into the delay without
         // dragging the rest of the kit in with it.
-        if (b.crashEcho || b.echoEverything) g.connect(this.echoBus);
+        if (b.crashEcho || b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + dur + 0.03);
       }
       if (b.rim && b.rim[s]) {
+        lane('rim');
         // Rimshot: a stick cracking off the rim. The old version was two square
         // tones dead in 40ms — a bare click. This stacks three layers so it
         // reads as a struck object with a little tail: a noise SNAP for the
@@ -1564,13 +1836,13 @@ class AudioSys {
           o.connect(f);
           o.start(t); o.stop(t + 0.09);
         }
-        f.connect(g); g.connect(this.musicBus);
+        f.connect(g); g.connect(dry);
         // Only the ring trails into the echo, and softly — a dedicated low-gain
         // send taps it below the melodic lanes' level so it's a faint repeat,
         // not a wash. rimEcho scales it per-track (0 = dry); the snap and tonk
         // stay dry so the echo doesn't smear their transients.
         const re = this.ctx.createGain(); re.gain.value = b.rimEcho ?? 0.3;
-        g.connect(re); re.connect(this.echoBus);
+        g.connect(re); re.connect(wet);
         // Stick snap: a few ms of high-passed noise — the attack transient that
         // gives the click its bite before the ring takes over.
         const sn = this.ctx.createBufferSource(); sn.buffer = this.noiseBuf;
@@ -1578,8 +1850,8 @@ class AudioSys {
         const ng = this.ctx.createGain();
         ng.gain.setValueAtTime(lvl * 0.45, t);
         ng.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
-        sn.connect(nf); nf.connect(ng); ng.connect(this.musicBus);
-        if (b.echoEverything) ng.connect(this.echoBus);
+        sn.connect(nf); nf.connect(ng); ng.connect(dry);
+        if (b.echoEverything) ng.connect(wet);
         sn.start(t); sn.stop(t + 0.03);
         // Woody body: a low resonant "tonk" the click sits on, so the rimshot
         // has some weight instead of being pure top end.
@@ -1589,11 +1861,12 @@ class AudioSys {
         bo.frequency.exponentialRampToValueAtTime(300, t + 0.05);
         bg.gain.setValueAtTime(lvl * 0.38, t);
         bg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        bo.connect(bg); bg.connect(this.musicBus);
-        if (b.echoEverything) bg.connect(this.echoBus);
+        bo.connect(bg); bg.connect(dry);
+        if (b.echoEverything) bg.connect(wet);
         bo.start(t); bo.stop(t + 0.08);
       }
       if (b.clap && b.clap[s]) {
+        lane('clap');
         // three staggered high-passed bursts read as a clap
         for (let ci = 0; ci < 3; ci++) {
           const t = this.nextTime + ci * 0.012;
@@ -1603,8 +1876,8 @@ class AudioSys {
           g.gain.setValueAtTime((ci === 2 ? 0.26 : 0.16)
             * (b.drumGain ?? 1) * (b.clapGain ?? 1), t);
           g.gain.exponentialRampToValueAtTime(0.001, t + (ci === 2 ? 0.12 : 0.03));
-          src.connect(f); f.connect(g); g.connect(this.musicBus);
-          if (b.echoEverything) g.connect(this.echoBus);
+          src.connect(f); f.connect(g); g.connect(dry);
+          if (b.echoEverything) g.connect(wet);
           src.start(t); src.stop(t + 0.15);
         }
       }
@@ -1642,6 +1915,7 @@ class AudioSys {
       }
       this.nextTime += spb;
       this.step++;
+      if (this.loopEnd != null && this.step >= this.loopEnd) this.step = this.loopStart;
     }
   }
 
@@ -1654,7 +1928,13 @@ class AudioSys {
   songBeat() {
     if (!this.ctx || !this.bank) return null;
     const spb = (60 / (this.bpm * this.tempo)) / 4;
-    const ahead = (this.nextTime - this.ctx.currentTime) / spb;
+    // currentTime is where the graph has been rendered TO, not what has reached the
+    // ear: everything after it still has to cross the output buffer and the device.
+    // On built-in output that is a few milliseconds; on Bluetooth it is a fifth of a
+    // second, and a playhead that ignores it runs visibly ahead of the music. Offline
+    // renders report neither latency, so they are unaffected.
+    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    const ahead = (this.nextTime - (this.ctx.currentTime - out)) / spb;
     return (this.step - ahead) / 4;
   }
 
@@ -1712,40 +1992,7 @@ class AudioSys {
 
 export const Audio = new AudioSys();
 
-// Note helper: n('A2') -> frequency.
-const NOTES = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
-export function n(name) {
-  if (name == null) return null;
-  const m = /^([A-G]#?)(\d)$/.exec(name);
-  if (!m) return null;
-  const semitone = NOTES[m[1]] + (parseInt(m[2], 10) + 1) * 12;
-  return 440 * Math.pow(2, (semitone - 69) / 12);
-}
-// "A3min7 . . . F3maj7 . . ." -> 32-length array of frequency-arrays (or null).
-// Chord names: <note><octave> + maj | min | 7 | maj7 | min7 | 9 (default maj).
-const CHORD_IV = {
-  maj: [0, 4, 7], min: [0, 3, 7], 7: [0, 4, 7, 10],
-  maj7: [0, 4, 7, 11], min7: [0, 3, 7, 10], 9: [0, 4, 7, 14],
-};
-export function chordSeq(str) {
-  const toks = str.replace(/\|/g, ' ').trim().split(/\s+/);
-  const out = [];
-  for (let i = 0; i < 32; i++) {
-    const tk = toks[i % toks.length];
-    if (tk === '.') { out.push(null); continue; }
-    const m = tk.match(/^([A-G]#?\d+)(maj7|min7|maj|min|9|7)?$/);
-    if (!m) { out.push(null); continue; }
-    const root = n(m[1]);
-    const iv = CHORD_IV[m[2] || 'maj'];
-    out.push(iv.map((semi) => root * Math.pow(2, semi / 12)));
-  }
-  return out;
-}
-
-export function seq(str) {
-  // "A2 . . A2 | C3 . . ." -> 32-length note array (pads/truncates), '.' = rest
-  const toks = str.replace(/\|/g, ' ').trim().split(/\s+/);
-  const out = [];
-  for (let i = 0; i < 32; i++) out.push(n(toks[i % toks.length] === '.' ? null : toks[i % toks.length]));
-  return out;
-}
+// Re-exported for compatibility: these moved to ./notes.js to break the
+// audio -> tracks -> cabinets -> audio import cycle. New code should import
+// them from './notes.js' directly.
+export { n, chordSeq, seq } from './notes.js';

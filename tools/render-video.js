@@ -5,9 +5,10 @@
 // way: this file imports from src/, never the reverse. Output lands in dist/,
 // which is gitignored.
 //
-// The song comes from tools/lib/render-bank.js (the same DSP render-track.js
-// uses, so the video's audio is byte-identical to the WAV audition), and the
-// picture comes from src/engine/visualizers.js running in headless Chromium on
+// The song comes from the GAME'S OWN ENGINE via tools/lib/render-bank-browser.js
+// (the same render render-track.js writes, so the video's audio is byte-identical
+// to the WAV audition — and it carries src/data/mix.js, which the old JS mirror
+// could not see), and the picture comes from src/engine/visualizers.js in Chromium on
 // a real 480x270 Canvas2D — the same surface the game draws to. Frames are
 // stepped at a fixed dt instead of wall-clock, so the render is deterministic
 // and never drops a frame no matter how slow the capture is.
@@ -48,7 +49,8 @@ import { tmpdir, cpus } from 'os';
 import { join, dirname, basename, resolve } from 'path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
-import { renderBank, wavBuffer, SR } from './lib/render-bank.js';
+import { renderBankBrowser } from './lib/render-bank-browser.js';
+import { wavBuffer, SR } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { VISUALIZER_NAMES } from '../src/engine/visualizers.js';
 
@@ -123,8 +125,14 @@ const OUT = resolve(ROOT, outArg || `dist/${track.slug}-${visualSlug}.mp4`);
 // ------------------------------------------------------------------- audio
 
 console.log(`track      ${track.title} (${track.id}), ${REPEAT}x form`);
-const { out: pcm, seconds, blocks, peak } = renderBank(track.bank, { repeat: REPEAT });
-const norm = peak > 0 ? 0.9 / peak : 1;
+const { outL, outR, seconds, blocks, peak } = await renderBankBrowser(track.bank, {
+  repeat: REPEAT, trackId: track.id,
+});
+// The analyser downstream wants one channel, the way the game's own AnalyserNode
+// sees the master; the file itself stays stereo.
+const pcm = new Float32Array(outL.length);
+for (let i = 0; i < pcm.length; i++) pcm[i] = (outL[i] + outR[i]) / 2;
+const norm = 1;                       // unity: the mix is the point — see render-track.js
 const FRAMES = Math.min(Math.ceil(seconds * FPS), Math.round(num('frames', Infinity)) || Infinity);
 console.log(`audio      ${seconds.toFixed(1)}s, peak ${peak.toFixed(3)}, ${blocks * 2} bars`);
 console.log(`visualizer ${visualName} (#${visualIndex}), seed 0x${SEED.toString(16)}`);
@@ -262,7 +270,7 @@ console.log(`           bass ${avg('bass').toFixed(2)}/${max('bass').toFixed(2)}
 
 const work = mkdtempSync(join(tmpdir(), 'mash-video-'));
 const wavPath = join(work, 'song.wav');
-writeFileSync(wavPath, wavBuffer(pcm, norm));
+writeFileSync(wavPath, wavBuffer([outL, outR], norm));
 
 const cleanup = () => {
   if (!flags.keep) rmSync(work, { recursive: true, force: true });
