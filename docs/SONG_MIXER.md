@@ -103,17 +103,22 @@ half-speed really is the same mix at half speed.
 
 ### Project
 
-- **Status badge** — `saved`, or `unsaved changes` in red.
-- **Save to game** — writes this song into `src/data/mix.js` after a confirm. Only
-  this song: other songs holding unsaved edits are named in the dialog and left alone.
-- **⋯** — everything you do once an hour rather than once a minute:
+- **⋯** — everything you do once an hour rather than once a minute, saving included.
+  Writing the file is not a mix control, and a green Save button lit whether or not
+  there was anything to write — with a red badge beside it saying so a second time —
+  was the loudest thing in a header full of controls you actually touch.
+- **The dot on ⋯** — this song has changes that are not in `src/data/mix.js` yet.
+  Never an alarm: drafts are kept in `localStorage` and survive a reload, so the only
+  thing the dot is about is whether the *game* has heard the mix.
 
 | Menu item | Does |
 | --- | --- |
+| Save *song* to the game | writes this song into `src/data/mix.js` after a confirm. Only this song: other songs holding unsaved edits are named in the dialog and left alone. Reads *“song is saved”*, dimmed, when the file already matches |
 | Save every changed song | writes every dirty draft in one go |
 | Revert to the saved mix | throws this song's draft away (undoable) |
 | Reset every channel | zeroes every strip in this song (undoable) |
 | Render WAV | renders this song offline with the mix on the desk, writes `dist/<slug>-mix.wav`, and reports LUFS and peak |
+| Audition through a plugin… | the same render, opened in [`tools/audition`](../tools/audition.py) — a real AU over this mix, its own GUI, previewed before you keep it |
 | Export MIDI | downloads `<slug>.mid` — the notes, with GM patch names |
 | Import MIDI… | turns a `.mid` into a song, and switches the desk to it |
 | Export mix as JSON | all drafts, as a file |
@@ -162,6 +167,10 @@ strip below), **M** and **S**, the family mark, and the name.
   picked out. Percussion gets a single *hit* row. Silent bars say so.
 - **Double-click a bar** — play from there.
 - **Click a name** — select that channel.
+- **Double-click a name** — play from where that channel *comes in*: the first bar it
+  sounds in, marked in its row. A lane already playing in the first two bars starts
+  from the top instead — it comes in with the song, and skipping to bar 2 would only
+  cost you the bar it arrived on. Same double-click as the **strip head** below.
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
   window; it snaps to whole lanes and never takes the rack's last strip. Drag it up
@@ -194,7 +203,7 @@ A strip, top to bottom:
 
 | Part | Control | Range |
 | --- | --- | --- |
-| Head | number, name, family | click anywhere on the strip to select it |
+| Head | number, name, family | click anywhere on the strip to select it; **double-click the head** to play from where that channel comes in |
 | Body | **HIGH / MID / LOW** | ±18 dB — shelf at 4 kHz, peak at 1.2 kHz, shelf at 250 Hz |
 | Body | **DELAY SEND / REVERB SEND** | 0–2, 0 = shut |
 | Foot | **insert slots** | up to 6 effects |
@@ -345,8 +354,8 @@ it is written, but nothing is final until Peter commits it.
 ## Server routes
 
 The Node process behind the page does the things a browser cannot. `/save`, `/render`,
-`/midi` and `/import-midi` are wired to buttons; `/measure` is there for the command
-line.
+`/audition`, `/midi` and `/import-midi` are wired to buttons; `/measure` is there for
+the command line.
 
 | Route | Does |
 | --- | --- |
@@ -354,6 +363,7 @@ line.
 | `GET /midi?track=<id>&patches=1` | the song as a MIDI file |
 | `POST /import-midi?file=<name>` | a `.mid` in; a bank in `src/data/imported/`, a new track id, and the notes themselves back out |
 | `POST /render` | renders one track through the real engine with a mix applied, writes `dist/<slug>-mix.wav`, and reports peak / LUFS against a −16 LUFS target |
+| `POST /audition` | the same render, then opens `tools/audition` on it — the plugin host runs where the mixer runs, because that is where the plugins are |
 | `POST /measure` | the same measurement across many tracks without writing files — the half of "get the volume right" that a one-song desk cannot show |
 | `GET /tracks` | the track list |
 

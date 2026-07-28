@@ -188,7 +188,10 @@ export async function openRenderer({ headless = true } = {}) {
     return { outL, outR, seconds: meta.seconds, blocks, peak: meta.peak };
   }
 
-  return { render, close: () => browser.close() };
+  // isAlive because a long-lived caller keeps this handle warm for hours — see the
+  // mixer. Chromium can go away underneath it (a crash, a sleep, someone's pkill),
+  // and every render after that fails on a browser that is not there any more.
+  return { render, close: () => browser.close(), isAlive: () => browser.isConnected() };
 }
 
 /** One-shot convenience. Same shape as renderBank(), plus a second channel. */

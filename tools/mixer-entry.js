@@ -33,7 +33,7 @@ let track = null;
 let playing = false;
 let abHeld = false;
 
-const emptyMix = () => ({ master: 0, limiter: false, lanes: {}, voice: undefined });
+const emptyMix = () => ({ master: 0, masterPan: 0, limiter: false, lanes: {}, voice: undefined });
 const mixFor = (id) => draft[id] || saved[id] || emptyMix();
 // Compared on meaning, not on shape: resetting every channel leaves a draft of
 // empty defaults, which is not a change if nothing was saved for the track either.
@@ -46,12 +46,31 @@ function normalise(m) {
       && !s.send.reverb && (L?.send?.delay == null);
     if (!bare) lanes[k] = s;
   }
-  const out = { master: m.master || 0, limiter: !!m.limiter, lanes };
+  const out = { master: m.master || 0, masterPan: m.masterPan || 0, limiter: !!m.limiter, lanes };
   if (m.voice && Object.keys(m.voice).length) out.voice = m.voice;
-  if (!out.master && !out.limiter && !out.voice && !Object.keys(lanes).length) return null;
+  // The master's chain is a decision like any other, and it is compared as it is
+  // stored: absent is the untouched seed, [] is somebody having taken the seed out,
+  // and a track whose only change is one of those is still a track to save.
+  if (m.masterEffects) out.masterEffects = m.masterEffects;
+  if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.masterEffects
+      && !Object.keys(lanes).length) return null;
   return out;
 }
-const isDirty = (id) => JSON.stringify(normalise(draft[id])) !== JSON.stringify(normalise(saved[id]));
+/**
+ * Has this song been changed away from what the file holds?
+ *
+ * The draft is the only place an edit can live, so no draft is no change — whatever
+ * is saved for the song. Comparing straight through normalise() missed that: an
+ * absent draft normalises to null, a saved mix with anything in it does not, so every
+ * one of the 34 songs in mix.js read as dirty from the moment the desk opened, and
+ * reverting — which deletes the draft — put it straight back.
+ *
+ * A draft that EXISTS and normalises to null is a different thing and still counts:
+ * that is every channel reset to defaults, which is a change worth writing if the
+ * file holds anything else.
+ */
+const isDirty = (id) => draft[id] != null
+  && JSON.stringify(normalise(draft[id])) !== JSON.stringify(normalise(saved[id]));
 
 // Undo holds whole-mix snapshots per track. Slider drags coalesce: a continuous
 // drag is one gesture, so undo steps back over the whole move rather than one
@@ -141,8 +160,13 @@ function closeIcon() {
  * cases — so there is one of them, and adding a fourth kind of strip is one line.
  */
 function storeEffects(m, key, list) {
+  // The master keeps its list even when it is empty. The desk seeds an untouched
+  // master with a bypassed bus compressor, so "nobody has been here" and "there is
+  // deliberately nothing here" have to be different things on the way in — stored as
+  // absent and stored as [] — or taking the seed out only brings it back on the next
+  // read. Reset is what puts the seed back, which is what reset is for.
   if (key === '__master') {
-    if (list.length) m.masterEffects = list; else delete m.masterEffects;
+    m.masterEffects = list;
   } else if (key.startsWith('__aux:')) {
     const id = key.slice(6);
     m.fx = m.fx || {};
@@ -179,11 +203,14 @@ function insertSlots(key, label, rows) {
   // could mean by clicking an empty slot, and a menu to choose it from is a step for
   // nothing. Right-click does the same, for anyone who tries it.
   //
-  // One click on any strip, selected or not — the outline comes up under the pointer
-  // before the click lands, so you are aiming at something you can see, and making
-  // you select the strip first would be a click spent on what the click already says.
+  // The OUTLINE, and nothing else. The rest of the block is reserved height — the
+  // room the longest chain in the rack needs, which every strip holds so the slots
+  // land on one line — and a catalogue opening out of that empty space is a popup
+  // from a click that was aimed at the strip. One click on any strip, selected or
+  // not: the outline comes up under the pointer before the click lands, so you are
+  // always aiming at something you can see.
   const openHere = (ev) => {
-    if (ev.target !== el && !ev.target.classList.contains('addslot')) return;
+    if (!ev.target.classList.contains('addslot')) return;
     ev.preventDefault();
     ev.stopPropagation();
     selectLane(key);
@@ -516,7 +543,9 @@ function focusDevice(index) {
 function resetTarget(key) {
   const label = targetLabel(key);
   editMix((m) => {
-    if (key === '__master') { m.master = 0; m.limiter = false; delete m.masterEffects; }
+    if (key === '__master') {
+      m.master = 0; m.masterPan = 0; m.limiter = false; delete m.masterEffects;
+    }
     else if (key.startsWith('__aux:')) { if (m.fx) delete m.fx[key.slice(6)]; }
     else delete m.lanes[key];
   });
@@ -750,6 +779,9 @@ function buildLaneFilter(all) {
 
 function buildRack() {
   const rack = $('rack');
+  // Held across the clear: the sends live inside the rack, so emptying it detaches
+  // them, and this reference is what puts them back at the end of the row.
+  const sends = $('sendslot');
   rack.textContent = '';
   meters.length = 0;
   const mix = mixFor(trackId);
@@ -778,17 +810,19 @@ function buildRack() {
   lanes.forEach((lane) => rack.append(channelStrip(lane, mix, slotRows, laneNumbers.get(lane.key))));
 
   // The master goes in the left column — the one the arrangement spends on names —
-  // so the channels start on the same line their lanes do above. The sends stay
-  // pinned right, where they never scroll away from the channels feeding them. Same
-  // strip as a channel in both cases, because that is what they are: a fader, a
-  // chain of inserts and somewhere to send.
+  // so the channels start on the same line their lanes do above. Same strip as a
+  // channel in both cases, because that is what they are: a fader, a chain of
+  // inserts and somewhere to send.
   const slot = $('masterslot');
   slot.textContent = '';
   slot.append(masterStrip(mix, slotRows));
   buildLaneFilter(all);          // the switches live in the mixer's header now
-  const sends = $('sendslot');
+  // The sends are the last thing in the rack's own row, not a column beside it —
+  // see #sendslot: with room to spare they sit against the right edge, and when the
+  // channels overflow they queue up behind the last of them instead.
   sends.textContent = '';
   for (const def of AUXES) sends.append(sendStrip(def, mix, slotRows));
+  rack.append(sends);
 
   const special = selectedLane === '__master' || (selectedLane || '').startsWith('__aux:');
   if (selectedLane && !special && !lanes.some((l) => l.key === selectedLane)) selectedLane = null;
@@ -872,6 +906,29 @@ function btnRow(...kids) {
   row.className = 'ctlbtns';
   row.append(...kids);
   return row;
+}
+
+/**
+ * The master's limiter, on the line the channels keep M and S on. A button rather
+ * than a slot or a card: it is not an insert, it cannot be reordered, and it is the
+ * last thing on the path whatever else the master is carrying — which is exactly what
+ * being down here with the buttons, instead of up in the block with the chain, says.
+ *
+ * Off by default, and it says so by being unlit: the ceiling costs 6ms of output
+ * latency, and a mix that needs it to stay under is a mix to fix on the desk.
+ */
+function limiterButton(on) {
+  const btn = document.createElement('button');
+  btn.textContent = 'LIMITER';
+  btn.className = `limbtn${on ? ' on' : ''}`;
+  btn.title = `the master limiter, a ceiling at −1 dB on the way out — ${on ? 'on' : 'off'}`
+    + '\nit costs 6ms of output latency, so it is off unless you put it on';
+  btn.onclick = (ev) => {
+    ev.stopPropagation();
+    setLimiter(!on);
+    toast(`limiter ${on ? 'off' : 'on'}`);
+  };
+  return btn;
 }
 
 /** A stand-in for a control the master has no node for — see .gap-btns. */
@@ -1045,9 +1102,15 @@ function syncLaneButtons(key) {
 function channelStrip(lane, mix, slotRows, number) {
   const key = lane.key;
   const s = laneSettings(mix.lanes[key]);
-  const { el, body, foot } = stripShell(key, {
+  const { el, head, body, foot } = stripShell(key, {
     label: lane.label, tag: lane.group, colour: laneColour(key), tint: laneTint(key), number,
   });
+  // The head is the strip's handle, so double-clicking it plays the channel: from
+  // the bar it comes in on, which for anything that enters late is the only bar you
+  // wanted to hear. See playFromLaneStart.
+  head.title = 'click to show this strip’s devices below'
+    + ' — double-click to play from where this channel comes in';
+  head.addEventListener('dblclick', () => playFromLaneStart(key));
 
   const setEq = (band) => (x) => {
     editMix((m) => {
@@ -1212,11 +1275,13 @@ function sendStrip(def, mix, slotRows) {
 /**
  * The master bus. No EQ rows: there is no EQ node on the master path — a parametric
  * EQ in the insert slots is how you do it, and it is a better EQ than three fixed
- * bands anyway. The limiter is the pinned card below.
+ * bands anyway. The limiter is the last slot in the insert block, where the rest of
+ * the chain is: it is the LIMITER button under the fader, on the line the channels
+ * keep their M and S on. There used to be a summary line up here saying "limiter off"
+ * in words, and a checkbox on a card called "Master" in the panel below.
  */
 function masterStrip(mix, slotRows) {
-  const { el, body, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
-  body.append(deviceSummary('__master', mix.limiter ? 'limiter on' : 'limiter off'));
+  const { el, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
   const setMaster = (x) => { editMix((m) => { m.master = x; }, 'master'); Audio.mixer?.setMasterTrim(x); };
   const fb = faderBlock({
     value: mix.master || 0, min: -24, max: 12,
@@ -1224,10 +1289,21 @@ function masterStrip(mix, slotRows) {
     onInput: setMaster,
     onReset: (x) => { editMix((m) => { m.master = x; }); Audio.mixer?.setMasterTrim(x); },
   });
-  // The master has no panner and nothing to mute; an empty pan row and the gap that
-  // stands in for the buttons keep every strip's foot ending on one line.
-  foot.append(insertSlots('__master', 'master', slotRows), faderRow(fb.col), panRow(null),
-    gap('gap-btns'));
+  // The master's own balance, in the pot every other strip keeps its pan in. It is
+  // the last thing on the bus before the limiter, so it moves the whole mix rather
+  // than anything in it — which is what a master pan is for.
+  const pan = panKnob({
+    value: mix.masterPan || 0,
+    onInput: (x) => {
+      editMix((m) => { m.masterPan = x; }, 'masterPan');
+      Audio.mixer?.setMasterPan(x);
+    },
+  });
+  // Where a channel keeps M and S, the master keeps its limiter — under the fader and
+  // out of the insert block, which is the honest place for it. It is not in the chain
+  // and cannot be moved within it: it is the last thing before the speakers, always.
+  foot.append(insertSlots('__master', 'master', slotRows), faderRow(fb.col), panRow(pan.el),
+    btnRow(limiterButton(!!mix.limiter)));
   stripMenu(el, '__master', 'master');
   meters.push({ key: '__master', fill: fb.fill, peak: fb.peak, meter: fb.meter });
   return el;
@@ -1692,6 +1768,52 @@ $('timeline').ondblclick = (e) => {
   toast(`playing from bar ${barOf(at)}`);
 };
 
+// A lane in by the second bar counts as being in from the top: it starts with the
+// song, and dropping the playhead onto bar 2 to hear it would only cost you the bar
+// it came in on.
+const INTRO_BARS = 2;
+
+/**
+ * The bar a lane first plays in, counted from 0. Memoised against the bank, because
+ * the answer is a walk of every step of every block and the song does not change
+ * while you mix it — switching track swaps the bank and the cache goes with it.
+ */
+let laneStarts = { bank: null, map: new Map() };
+function firstBarOf(key) {
+  if (laneStarts.bank !== track.bank) {
+    const map = new Map();
+    // One cell per bar: the question is which bar, not which beat of it.
+    for (const row of laneActivity(track.bank, 1, 1)) {
+      const bar = row.density.findIndex((d) => d > 0);
+      if (bar >= 0) map.set(row.key, bar);
+    }
+    laneStarts = { bank: track.bank, map };
+  }
+  return laneStarts.map.get(key);
+}
+
+/**
+ * Double-click a channel — its strip head, or its name in the arrangement — and the
+ * song plays from where that channel comes in. A crash that only sounds in section
+ * three was otherwise a matter of pressing Play and waiting for it, or reading along
+ * the arrangement row for the first lit bar and double-clicking that.
+ *
+ * Lanes that are in from the top play from the top: see INTRO_BARS.
+ */
+function playFromLaneStart(key) {
+  selectLane(key);
+  const label = targetLabel(key);
+  const bar = firstBarOf(key);
+  // Only active lanes get a strip or an arrangement row, so this is a fallback and
+  // not a case you can click your way into.
+  if (bar == null) { jumpTo(0, { start: true }); toast(`${label} never plays — from the top`); return; }
+  const from = bar < INTRO_BARS ? 0 : bar;
+  jumpTo(from * 16, { start: true });
+  markBar(key, from);              // where it starts, marked in the row you can see it in
+  toast(from ? `playing ${label} from bar ${from + 1} — where it comes in`
+    : `${label} is in from the top — playing from bar 1`);
+}
+
 // ---- device panel ----------------------------------------------------------
 // The selected channel's effect chain, along the bottom. Strips carry only a
 // one-line summary; a 132px column cannot hold four parameters legibly, and most
@@ -1919,24 +2041,14 @@ function targetLabel(key) {
 
 function setEffects(key, list) {
   const bpm = track.bank.bpm;
-  if (key === '__master') {
-    editMix((m) => { if (list.length) m.masterEffects = list; else delete m.masterEffects; }, null);
-    Audio.mixer?.setMasterEffects(list, bpm);
-  } else if (key && key.startsWith('__aux:')) {
-    const id = key.slice(6);
-    editMix((m) => {
-      m.fx = m.fx || {};
-      m.fx[id] = { ...AUX_DEFAULTS[id], ...(m.fx[id] || {}) };
-      if (list.length) m.fx[id].effects = list; else delete m.fx[id].effects;
-    }, null);
-    Audio.mixer?.setAuxEffects(id, list, bpm);
-  } else {
-    editMix((m) => {
-      const L = laneOf(m, key);
-      if (list.length) L.effects = list; else delete L.effects;
-    }, null);
-    Audio.mixer?.lane(key)?.setEffects(list, bpm);
-  }
+  // Stored through storeEffects, not beside it: this used to carry its own copy of
+  // the same three branches, and the copies disagreed about what an empty master
+  // chain means — one wrote it, the other deleted it, and taking the seeded bus
+  // compressor off the master came straight back.
+  editMix((m) => storeEffects(m, key, list), null);
+  if (key === '__master') Audio.mixer?.setMasterEffects(list, bpm);
+  else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffects(key.slice(6), list, bpm);
+  else Audio.mixer?.lane(key)?.setEffects(list, bpm);
   // Rebuild the rack, not just the summary line: the per-effect bypass buttons live
   // on the strip and have to appear and disappear with the chain.
   buildRack();
@@ -1990,9 +2102,9 @@ function optionRow(label, options, value, onChange) {
 
 /**
  * The strip's OWN device, pinned as the first card in the panel: a send's delay or
- * reverb, the master's limiter. These used to be rows on the strip itself, where
- * they crowded out the return EQ and still had no room to be read — a note division
- * and a damping frequency need more than 132px of column.
+ * its reverb. These used to be rows on the strip itself, where they crowded out the
+ * return EQ and still had no room to be read — a note division and a damping
+ * frequency need more than 132px of column.
  *
  * It is not an insert: no bypass, no close, no dragging. It is what the strip is.
  */
@@ -2005,12 +2117,6 @@ function pinnedCard(key) {
   bar.append(h, badge);
   const grid = document.createElement('div'); grid.className = 'devgrid';
   card.append(bar, grid);
-
-  if (key === '__master') {
-    h.textContent = 'Master';
-    grid.append(checkRow('Limiter', !!mixFor(trackId).limiter, setLimiter));
-    return card;
-  }
 
   const def = AUXES.find((a) => a.id === key.slice(6));
   if (!def) return null;
@@ -2069,8 +2175,11 @@ function buildDevices() {
   }
   title.textContent = `effects (${targetLabel(selectedLane)})`;   // the CSS uppercases it
 
-  const pinned = selectedLane === '__master' || selectedLane.startsWith('__aux:')
-    ? pinnedCard(selectedLane) : null;
+  // A send's delay or reverb comes first: it is what the strip IS, and the inserts
+  // are things you put in front of it. The master has no card of its own — its
+  // limiter is a button under the fader, where nothing about the rack can put it
+  // anywhere but last.
+  const pinned = selectedLane.startsWith('__aux:') ? pinnedCard(selectedLane) : null;
   if (pinned) rack.append(pinned);
 
   const list = effectsOf(selectedLane);
@@ -2599,6 +2708,9 @@ function buildArrangement() {
     name.textContent = row.label;
     // No title here: markClipped() puts one on only if the name is actually cut off.
     name.onclick = () => selectLane(row.key);
+    // The same double-click the strip head takes, on the other copy of this name:
+    // play from the bar this lane comes in on.
+    name.ondblclick = () => playFromLaneStart(row.key);
     header.append(num, btns, icon, name);
     const bars = document.createElement('div');
     bars.className = 'arrbars';
@@ -2744,7 +2856,13 @@ function tick() {
     // behind the music, which is what "the playhead is early" looks like. phOffset is
     // milliseconds forward — positive moves it right.
     const shown = (beat * 4) + (phOffset / 1000) / spb;
-    const heardStep = (shown % totalSteps + totalSteps) % totalSteps;
+    // Before the first step is heard, this is NEGATIVE: the scheduler has queued the
+    // next step and nothing has left the speakers yet, so songBeat() backs off by
+    // more than the position it is backing off from. Wrapping that with a modulo puts
+    // it at the END of the song — which is the last bar the counter flashed, and the
+    // playhead jumping to the right edge, every single time play started. Before the
+    // top of the song is the top of the song, so it clamps rather than wraps.
+    const heardStep = Math.max(0, shown) % totalSteps;
     const frac = heardStep / totalSteps;
     $('playhead').style.left = (frac * 100) + '%';
     $('tnow').textContent = `${fmtTime(heardStep * spb)}/${fmtTime(loopSecs)}`;
@@ -2780,11 +2898,27 @@ function updateCpu() {
   el.classList.toggle('dirty', total > 45);   // a readout, not a label — see the header CSS
 }
 
+/**
+ * Where the work stands against the file. Not a badge in the header any more: the
+ * desk is for mixing, and a mix that is not in src/data/mix.js yet is not an alarm —
+ * drafts are kept in localStorage, so the only thing at stake is whether the game has
+ * heard it. So it is a dot on the drawer that holds Save, and the item inside says it
+ * in words, naming the song it would write.
+ */
 function updateStatus() {
   updateCpu();
   const d = isDirty(trackId);
-  $('status').textContent = d ? 'unsaved changes' : 'saved';
-  $('status').className = d ? 'dirty' : 'label';
+  $('more').classList.toggle('unsaved', d);
+  $('more').title = d ? `${track.title} has changes that are not in the game yet`
+    : 'the rest of it — save, files, reset, typeface';
+  // The label does not name the song — the menu is headed "this song", and an
+  // imported title like CHECKOUT-PROMENADE-GARY-BRIGHT-ORGAN-DANCE-MIX would set the
+  // width of the whole drawer. The name is in the tooltip, where it costs nothing.
+  const save = $('save');
+  save.textContent = d ? 'Save to game' : 'Saved — matches the file';
+  save.disabled = !d;
+  save.title = d ? `write ${track.title} into src/data/mix.js, which the game and every render tool read`
+    : `${track.title} already matches src/data/mix.js`;
 }
 
 // Everything that is not part of mixing lives behind one button — see #moremenu.
@@ -3297,6 +3431,9 @@ async function saveMix(ids) {
 }
 
 $('save').onclick = async () => {
+  // Shut the drawer before the dialog, not after it: confirm() blocks, and the menu
+  // would otherwise sit open behind it for as long as you took to read it.
+  closeMenu();
   if (!isDirty(trackId)) { toast(`${track.title} already matches the file`); return; }
   const others = Object.keys(draft).filter((id) => id !== trackId && isDirty(id));
   const ok = confirm(`Write ${track.title} to src/data/mix.js?\n\n`
@@ -3308,29 +3445,26 @@ $('save').onclick = async () => {
     + 'The game and every render tool read this file. Peter commits it, so nothing '
     + 'is final until you do.');
   if (!ok) { toast('save cancelled'); return; }
-  if (await saveMix([trackId])) {
-    $('status').textContent = 'written to src/data/mix.js';
-    toast(`${track.title} saved`);
-  }
+  // saveMix ran updateStatus, which is what turns the dot off and the menu item to
+  // "saved" — the toast is the part that says it out loud.
+  if (await saveMix([trackId])) toast(`${track.title} written to src/data/mix.js`);
 };
 
 // Everything at once, for when you have been across several songs and mean it.
 $('saveall').onclick = async () => {
+  closeMenu();                   // same as Save above: the dialog, not the drawer
   const dirty = Object.keys(draft).filter((id) => isDirty(id));
   if (!dirty.length) { toast('nothing to save — the file already matches'); return; }
   const names = dirty.map((id) => resolveTrack(id)?.title || id);
   const ok = confirm(`Write ${dirty.length} song${dirty.length === 1 ? '' : 's'} to `
     + `src/data/mix.js?\n\n  ${names.join('\n  ')}`);
   if (!ok) { toast('save cancelled'); return; }
-  if (await saveMix(dirty)) {
-    $('status').textContent = 'written to src/data/mix.js';
-    toast(`${dirty.length} songs saved`);
-  }
+  if (await saveMix(dirty)) toast(`${dirty.length} songs written to src/data/mix.js`);
 };
 
 $('resetsong').onclick = () => {
   pushUndo(null);
-  draft[trackId] = { master: 0, limiter: false, lanes: {} };
+  draft[trackId] = { master: 0, masterPan: 0, limiter: false, lanes: {} };
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
   toast(`every channel in ${track.title} reset — ⌘Z to undo`);

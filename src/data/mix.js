@@ -12,6 +12,7 @@
 // Shape, per track id (see src/data/tracks.js for the ids):
 //   {
 //     master: -1.5,          // dB on top of bank.musicTrim
+//     masterPan: 0,          // the whole bus, -1 left .. +1 right; 0 is a pass-through
 //     limiter: false,        // costs 6ms of output latency when on — see mixer.js
 //     lanes: {
 //       bass: {

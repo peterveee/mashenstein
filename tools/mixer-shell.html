@@ -16,6 +16,11 @@
      at 170 "Lead-Harmony" and "Hats-Closed" were both cut off. */
   --gut: 12px; --arrname: 212px; --namegap: 6px; --arrrow: 26px; --stripw: 118px;
     --solo: #d9a441;
+    /* The limiter is the one switch on the desk that is not teal when it is on. Teal
+       is every other ON, and this one is different in kind: it is the only control
+       that changes what leaves the desk rather than what happens inside it. Not red
+       and not amber either — those are mute and solo, on every strip. */
+    --lim: #a06ee0;
     /* Green means go, and only that: the transport's play button. */
     --go: #3fb950;
     /* Fader height is the desk's shock absorber: when the window is short the
@@ -77,24 +82,32 @@
   /* A tempo that is not the song's own — you are listening at it, not writing it. */
   header .readouts .stat > span + span.tweaked { color: var(--accent); }
   header .readouts .stat > span + span.draggy { cursor: ns-resize; }
-  /* What happens to the work: the file's state, the button that writes it, and the
-     drawer with everything else. Its own tray, like the transport and the loop
-     controls, so the end of the row is one cluster instead of three loose buttons. */
+  /* What happens to the work lives behind the drawer, not on the desk: the file is
+     not something you mix, and a green Save button lit whether or not there was
+     anything to save — with a red badge beside it saying so a second time — was the
+     loudest thing in a header full of controls you actually touch.
+     The tray stays, so the end of the row is still a cluster and not a loose button. */
   header .project { gap: 5px; padding: 3px; border-radius: 9px;
                     background: #262b33; border: 1px solid var(--line); }
   header .project button { border-color: transparent; background: #333a45;
                            border-radius: 6px; padding: 4px 9px; }
   header .project button:hover { background: #3e4753; }
-  header .project button.on { background: var(--accent); color: #10231f; }
-  header .project button.on:hover { background: #5fdcc2; }
-  /* The state of the file, as a badge rather than a word floating beside a button —
-     and gone entirely when there is nothing to say. */
-  header .project #status { padding: 3px 8px; border-radius: 6px; font-size: 10px;
-                            background: #1b1f26; border: 1px solid #2c323b; }
-  header .project #status:empty { display: none; }
-  header .project #status.dirty { color: var(--hot);
-                                  border-color: color-mix(in srgb, var(--hot) 45%, transparent);
-                                  background: color-mix(in srgb, var(--hot) 13%, #1b1f26); }
+  /* One mark for "this song is not in the file yet", on the button you press to do
+     something about it. Drafts survive a reload, so this is never an alarm — it is
+     the difference between the desk and the game, which is worth a dot and not a
+     badge.
+     Its own class rather than the desk's generic .dirty, which colours the text it
+     is put on: the mark is the dot, and the ⋯ stays white — a red glyph reads as
+     the button itself being the problem. */
+  #more { position: relative; }
+  #more.unsaved::after {
+    /* On the corner rather than inside it: sitting in the button's own padding, the
+       dot read as a fourth thing in a row of three. The ring is the tray behind it,
+       so the dot keeps its edge wherever the button's own colour goes. */
+    content: ''; position: absolute; top: -2px; right: -2px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--hot);
+    box-shadow: 0 0 0 2px #262b33;
+  }
   /* The loop controls are one thing, in the same tray as the transport. */
   .looptray { background: #262b33; border: 1px solid var(--line); border-radius: 9px;
               padding: 3px; gap: 3px; }
@@ -287,11 +300,17 @@
   #rackwrap { flex: 1; display: flex; min-height: 0; overflow-y: hidden;
               align-items: flex-start; background: var(--panel);
               border-bottom: 1px solid var(--line); }
-  /* scrollbar-gutter, so the horizontal scrollbar's 6px comes off the rack whether
-     or not it is showing — without it the channels stood 6px shorter than the sends
-     beside them the moment the rack overflowed, and every fader went out of line. */
-  #rack { flex: 1; display: flex; gap: 6px; padding: 10px; overflow-x: auto; overflow-y: hidden;
-          align-items: flex-start; scrollbar-gutter: stable; }
+  /* overflow-x: SCROLL, not auto — the six pixels are held whether or not there is
+     anything to scroll, so the strips are the same height on a song with seven
+     channels and a song with twenty. On auto, hiding a track group or widening the
+     window took the bar away and every fader in the rack jumped six pixels, which
+     reads as the desk twitching at a click that had nothing to do with it. It is
+     also what fitStrips measures — offsetHeight minus clientHeight — so the height
+     the strips are given already has the bar taken off it.
+     (scrollbar-gutter was here for this and cannot do it: it only ever reserves the
+     vertical gutter, and this rack has no vertical scrollbar to reserve.) */
+  #rack { flex: 1; display: flex; gap: 6px; padding: 10px; overflow-x: scroll; overflow-y: hidden;
+          align-items: flex-start; }
   /* The master, in the column the arrangement spends on names — so the first channel
      starts exactly where bar 1 starts above it, and a strip sits under the lane it
      belongs to all the way up the page. The 10px comes off for the rack's own left
@@ -335,12 +354,22 @@
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: #10231f; background: var(--accent); border-color: var(--accent); }
   #rackwrap.collapsed { display: none; }
-  /* The sends stay pinned right, where they never scroll away from the channels
-     feeding them. Same strips as the channels — same head, same insert slots,
-     same fader. */
-  #sendslot { padding: 10px 10px 10px 0; display: flex; gap: 6px; flex: none;
-              align-items: flex-start; border-left: 1px solid var(--line);
-              position: sticky; right: 0; }
+  /* The sends are the last two strips in the rack's own row. Same strips as the
+     channels — same head, same insert slots, same fader.
+
+     margin-left: auto, which is two behaviours in one property. With room to spare
+     the auto margin eats it and they sit against the right edge, where the desk's
+     shape is one line of channels and the returns at the end of it. When the
+     channels overflow there is no spare room for it to eat, it resolves to zero,
+     and they queue up immediately after the last channel — where scrolling to the
+     end of the rack finds them, rather than pinned over the strips still scrolling
+     underneath.
+
+     No rule down their left edge: the strips are already boxes with their own
+     borders, and a full-height line beside them drew a division the desk does not
+     have — the sends are strips in the same rack, not a separate panel. */
+  #sendslot { display: flex; gap: 6px; flex: none; align-items: flex-start;
+              margin-left: auto; }
   /* Three zones: a pinned name, a scrolling control area, and a pinned fader.
      The strips outgrew short windows once channel delay was added, and what got
      clipped was the instrument name at the top — the one thing you always need. */
@@ -378,8 +407,13 @@
      centre on each other whatever the name does. */
   .stripnum { position: absolute; left: 7px; top: 6px; height: 14px;
               display: flex; align-items: center;
-              font-size: 9px; color: #626b7a; font-variant-numeric: tabular-nums; }
-  .strip.selected .stripnum { color: var(--ink); }
+              font-size: 9px; color: #626b7a; font-variant-numeric: tabular-nums;
+              opacity: 0; transition: opacity .12s ease; }
+  /* Under the pointer only. The number answers "which strip is 7?" — a question you
+     ask of one strip at a time, when you are already on it — and fourteen digits down
+     the rack the rest of the time is a column of noise beside the names that are the
+     thing you actually read. The arrangement rows keep theirs: that IS the list. */
+  .strip:hover .stripnum { opacity: 1; }
   .strip .striphead {
     /* Barely there, and rising INTO the coloured rule at the bottom rather than
        away from it: the top of the head is plain panel, and the hue only shows in
@@ -404,6 +438,7 @@
   }
   .strip .striphead:hover h3 { color: #fff; }
   .strip .striphead:hover .stripnum { color: var(--ink); }
+  .strip.selected:hover .stripnum { color: var(--ink); }
   /* No colour bar beside the name: the family mark to its left is already drawn in
      the lane's colour, and two colour cues for one fact is one too many. */
   .arrname { padding-right: 4px; }
@@ -553,6 +588,13 @@
                     line-height: 1; border-radius: 4px; color: var(--dim); }
   /* The master has nothing to mute, and every strip's foot ends on one line. */
   .gap-btns { height: 18px; margin-top: 12px; }
+  /* The limiter takes the M/S line on the master: one button the width of the pair,
+     so the row lands where the eye already goes for a strip's switches. Spelled out
+     rather than abbreviated — there is one of it, and it has the room. */
+  .ctlbtns button.limbtn { width: 52px; letter-spacing: .02em; font-size: 9px; }
+  .ctlbtns button.limbtn:hover { border-color: var(--lim); }
+  .ctlbtns button.limbtn.on { background: var(--lim); border-color: var(--lim);
+                              color: #180f28; font-weight: 700; }
   /* A line of its own can afford a bigger pot than the slot beside the fader could,
      and the number inside the ring is the readout — at 34px it was nine pixels of
      type. Still smaller than the fader, which is the strip's main control. The SVG
@@ -617,7 +659,8 @@
   /* The overflow menu: the header was thirteen buttons wide and wrapping onto two
      rows, which cost the rack a whole line of window for things pressed once an
      hour. What stays out is what you use WHILE mixing — transport, limiter, A/B,
-     undo, save. */
+     undo. Saving is not one of them: it happens once, at the end, to a file the
+     desk does not otherwise talk about. */
   #moremenu { position: fixed; z-index: 13; display: none; min-width: 210px; padding: 5px 4px 7px;
               background: var(--panel2); border: 1px solid var(--line); border-radius: 7px;
               box-shadow: 0 12px 30px rgba(0,0,0,.6); }
@@ -625,6 +668,11 @@
   #moremenu button { display: block; width: 100%; text-align: left; border: 1px solid transparent;
                      background: none; padding: 5px 9px; font-size: 11.5px; color: var(--ink); }
   #moremenu button:hover { background: #313a47; color: var(--accent); }
+  /* "Plumber Panic is saved" is a fact, not an offer: it does not light up under the
+     pointer, because there is nothing there to press. */
+  #moremenu button:disabled, #moremenu button:disabled:hover {
+    background: none; color: var(--dim); font-size: 11px;
+  }
   #moremenu .ctxhead { font-size: 9px; color: var(--dim); text-transform: uppercase;
                        letter-spacing: .06em; padding: 6px 9px 4px; }
   #moremenu .morerow { display: flex; align-items: center; gap: 8px; padding: 2px 9px 4px;
@@ -823,8 +871,7 @@
      competing with the chains that are actually there, and the rack should read as
      the effects it has. Dimmer on hover than on the strip you are on: one is a
      target you could take, the other is where you already are. */
-  .fxbtns { cursor: pointer; }
-  .addslot { flex: 0 0 100%; box-sizing: border-box; height: 23px; margin-top: 2px;
+  .addslot { cursor: pointer; flex: 0 0 100%; box-sizing: border-box; height: 23px; margin-top: 2px;
              border: 1px dashed #343b46; border-radius: 4px;
              display: grid; place-items: center;
              opacity: 0; transition: opacity .12s ease; }
@@ -878,6 +925,8 @@
      someone added to it. Everything to its right is an insert. */
   .device.pinned { border-color: #4a5a72; background: #262c36; }
   .device.pinned h4 { color: var(--ink); text-align: left; }
+  /* The card is not draggable, so its bar does not offer the hand that says it is. */
+  .device.pinned .devbar { cursor: default; }
   .devbadge { font-size: 8.5px; color: var(--dim); letter-spacing: .06em; flex: none;
               border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; }
   .devnote { font-size: 9px; color: var(--dim); line-height: 1.35; max-width: 168px;
@@ -955,13 +1004,11 @@
     <button id="undo" disabled title="⌘Z">Undo</button>
   </div>
 
-  <!-- What happens to the work, kept together at the end of the row: the state of
-       the file, the button that writes it, and the drawer with the rest. One tray,
-       so they read as project actions rather than as three more mix controls. -->
+  <!-- The drawer, and nothing else: writing the file is not a mix control, so it
+       lives inside with the rest of what happens to the work. A dot here when this
+       song is not in the file yet. -->
   <div class="grp project">
-    <span id="status" class="label"></span>
-    <button id="save" class="on">Save to game</button>
-    <button id="more" title="the rest of it — files, reset, typeface">⋯</button>
+    <button id="more" title="the rest of it — save, files, reset, typeface">⋯</button>
   </div>
 </header>
 
@@ -1012,8 +1059,7 @@
 
 <div id="rackwrap">
   <div id="masterslot"></div>
-  <div id="rack"></div>
-  <div id="sendslot"></div>
+  <div id="rack"><div id="sendslot"></div></div>
 </div>
 
 <div id="devices">
@@ -1033,12 +1079,17 @@
   <span id="section"></span>
   <span id="peakinfo"></span>
   <span class="sp" style="flex:1"></span>
-  <span><b>space</b> play/pause · <b>double-click</b> the timeline to play from there · <b>L</b> loop · <b>1/2/4/8/0</b> loop bars · <b>←→</b> bar · <b>↑↓</b> channel · <b>M S R</b> mute/solo/reset · <b>B</b> bypass fx · <b>[ ]</b> playhead sync · <b>right-click</b> a strip · <b>⌘Z</b> undo</span>
+  <span><b>space</b> play/pause · <b>double-click</b> the timeline to play from there, a strip head to play from where that channel comes in · <b>L</b> loop · <b>1/2/4/8/0</b> loop bars · <b>←→</b> bar · <b>↑↓</b> channel · <b>M S R</b> mute/solo/reset · <b>B</b> bypass fx · <b>[ ]</b> playhead sync · <b>right-click</b> a strip · <b>⌘Z</b> undo</span>
 </footer>
 
 <!-- The header holds what you touch while mixing; everything else lives here. -->
 <div id="moremenu">
   <div class="ctxhead">this song</div>
+  <!-- First item, because it is what the drawer is most often opened for. It carries
+       its own state: disabled, dimmed and reading "Saved — matches the file" when
+       there is nothing to write, rather than a live button that answers with a toast.
+       updateStatus() sets both. -->
+  <button id="save">Save to game</button>
   <button id="saveall">Save every changed song</button>
   <button id="revert">Revert to the saved mix</button>
   <button id="resetsong">Reset every channel</button>

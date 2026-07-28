@@ -499,15 +499,29 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
   // applyMix() then silently killed on every song load by calling setLimiter().
   const masterOut = ctx.createGain();
   masterOut.gain.value = 1;
+
+  // The master balance, last thing on the bus and before the limiter — the limiter's
+  // ceiling is on what leaves, so nothing goes after it. Explicit stereo in, for the
+  // same reason the lane panners are: fed stereo, a native StereoPannerNode passes
+  // centre at ratio 1.0000, and at centre this has to be a wire (see the note at the
+  // top of this file, and tests/null-test.js, which proves it).
+  const masterPan = ctx.createStereoPanner();
+  masterPan.channelCount = 2;
+  masterPan.channelCountMode = 'explicit';
+  masterPan.channelInterpretation = 'speakers';
+  masterPan.pan.value = 0;
+
   const wireMaster = () => {
     if (!master) return;
     masterOut.disconnect();
+    masterPan.disconnect();
+    masterOut.connect(masterPan);
     if (limiterOn) {
-      Tone.connect(masterOut, limiter);
+      Tone.connect(masterPan, limiter);
       Tone.connect(limiter, ctx.destination);
     } else {
       limiter.disconnect();
-      masterOut.connect(ctx.destination);
+      masterPan.connect(ctx.destination);
     }
   };
   let masterSlot = null;
@@ -629,6 +643,9 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     },
     limiter,
     setMasterTrim(db) { masterTrim.gain.value = dbToGain(db); },
+    /** The whole bus, left or right. 0 is centre and is a pass-through. */
+    setMasterPan(p) { masterPan.pan.value = Math.max(-1, Math.min(1, p || 0)); },
+    get masterPan() { return masterPan.pan.value; },
     get limiterOn() { return limiterOn; },
     /** Costs 6ms of output latency whenever it is on — see the note where it is built. */
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
@@ -657,6 +674,7 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
       }
       for (const s of strips.values()) s._monitor(1);
       masterTrim.gain.value = 1;
+      masterPan.pan.value = 0;
     },
   };
 }

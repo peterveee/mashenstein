@@ -1050,6 +1050,7 @@ class AudioSys {
       this.mixer.retune(bank?.bpm || this.bpm);
       if (entry) {
         this.mixer.setMasterTrim(entry.master || 0);
+        this.mixer.setMasterPan(entry.masterPan || 0);
         this.mixer.setLimiter(!!entry.limiter);
         if (entry.masterEffects) this.mixer.setMasterEffects(entry.masterEffects, bank?.bpm || this.bpm);
         for (const [id, patch] of Object.entries(entry.fx || {})) {

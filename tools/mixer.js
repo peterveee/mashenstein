@@ -108,12 +108,19 @@ export function renderMixFile(mix) {
     // every song in the game for a chain nobody has touched.
     const masterFx = isDefaultMasterChain(e.masterEffects) ? null : e.masterEffects;
     // Skip tracks that carry no decisions at all, so the file only holds real edits.
-    if (!lanes && !e.master && !e.limiter && !e.voice && !e.fx && !masterFx) continue;
+    if (!lanes && !e.master && !e.masterPan && !e.limiter && !e.voice && !e.fx && !masterFx) continue;
     body += `  ${JSON.stringify(id)}: {\n`;
     if (e.master) body += `    master: ${round(e.master)},\n`;
+    if (e.masterPan) body += `    masterPan: ${round(e.masterPan)},\n`;
     if (e.limiter) body += '    limiter: true,\n';
-    if (masterFx && masterFx.length) {
-      body += `    masterEffects: ${fmtEffects(masterFx)},\n`;
+    // An empty chain is written out as an empty chain. The desk seeds an untouched
+    // master with the bus compressor, so a song that says nothing about its master
+    // gets it back on the next load — taking it off is a decision, and the file has
+    // to carry it or it does not survive the trip.
+    if (masterFx) {
+      body += masterFx.length
+        ? `    masterEffects: ${fmtEffects(masterFx)},\n`
+        : '    masterEffects: [],\n';
     }
     if (e.voice && Object.keys(e.voice).length) body += `    voice: ${JSON.stringify(e.voice)},\n`;
     if (e.fx && Object.keys(e.fx).length) {
@@ -156,11 +163,38 @@ function tail() {
 // renders repeatedly while a mix is being dialled in.
 let renderer = null;
 async function getRenderer() {
+  // A warm singleton that is never checked is one crash away from a desk that can
+  // only render again after a restart: Chromium goes away — a crash, a sleep, a
+  // stray pkill — and every render from then on comes back as "Target page, context
+  // or browser has been closed", which reads like a bug in the song.
+  if (renderer && !renderer.isAlive?.()) {
+    console.log('the render engine went away — starting another');
+    renderer = null;
+  }
   if (!renderer) {
     console.log('starting the render engine (headless Chromium)...');
     renderer = await openRenderer();
   }
   return renderer;
+}
+
+// Whether this is Chromium having died rather than the render itself failing. The
+// browser can also go down BETWEEN the liveness check and the render, so the retry
+// matters as much as the check.
+const engineGone = (err) => /target (page|browser|closed)|has been closed|browser has disconnected|browser closed/i
+  .test(String((err && err.message) || err));
+
+/** Render, and if the engine died under us, stand a new one up and try once more. */
+async function withRenderer(fn) {
+  try {
+    return await fn(await getRenderer());
+  } catch (err) {
+    if (!engineGone(err)) throw err;
+    console.log('the render engine died mid-render — starting another and retrying');
+    try { await renderer?.close(); } catch { /* it is already gone; that is the point */ }
+    renderer = null;
+    return fn(await getRenderer());
+  }
 }
 
 const readJson = async (req) => {
@@ -173,8 +207,7 @@ const readJson = async (req) => {
 async function renderTrack(trackId, mix, { repeat = 1, write = true } = {}) {
   const track = resolveTrack(trackId);
   if (!track) throw new Error(`unknown track ${trackId}`);
-  const r = await getRenderer();
-  const out = await r.render(track.bank, { repeat, mix, trackId });
+  const out = await withRenderer((r) => r.render(track.bank, { repeat, mix, trackId }));
   const m = loudness([out.outL, out.outR]);
   let file = null;
   if (write) {
