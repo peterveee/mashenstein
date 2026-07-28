@@ -2,6 +2,9 @@ node_modules/
 dist/
 # 68MB of engine reference renders for the null test — make with `npm run baseline`
 baselines/
+# every version of src/data/mix.js the mixer has overwritten — a safety net under a
+# mixing session, not a second history beside git. ⋯ → Restore a previous save.
+.mix-history/
 .DS_Store
 .playwright/
 .playwright-mcp/

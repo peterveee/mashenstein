@@ -15,6 +15,12 @@
      column beside it — wide enough for both, which the lane names were glad of too:
      at 170 "Lead-Harmony" and "Hats-Closed" were both cut off. */
   --gut: 12px; --arrname: 212px; --namegap: 6px; --arrrow: 26px; --stripw: 118px;
+    /* Where the fold column starts. It used to be the gutter plus four, which put the
+       chevrons a fifth of the name column in from the edge — far enough that the four
+       of them read as indented rather than as the desk's left margin. Everything that
+       lines up with them (the lane numbers, the caption width) is written off this,
+       so moving it moves the column and nothing else. */
+    --foldx: 6px;
     --solo: #d9a441;
     /* The limiter is the one switch on the desk that is not teal when it is on. Teal
        is every other ON, and this one is different in kind: it is the only control
@@ -153,7 +159,7 @@
               left: calc(var(--gut) + var(--arrname) + var(--namegap)); right: var(--gut); }
   /* The fold sits in the column the ruler is inset by — space that was empty, and
      exactly where the arrangement's fold is, so the two line up down the page. */
-  #tlhead { position: absolute; left: calc(var(--gut) + 4px); top: 0; height: 30px;
+  #tlhead { position: absolute; left: var(--foldx); top: 0; height: 30px;
             display: flex; align-items: center; gap: 8px; }
   /* Open: the ruler keeps its row and the section blocks take the one under it —
      half the height of an arrangement bar, because they are a key to the song's
@@ -184,6 +190,18 @@
   #loopregion { position: absolute; top: 0; bottom: 0; background: rgba(78,201,176,.16);
                 border-left: 2px solid var(--accent); border-right: 2px solid var(--accent);
                 pointer-events: none; display: none; }
+  /* The bars you have SELECTED, as opposed to the ones that are looping. White
+     rather than teal, and hatched rather than filled, so the two can overlap and
+     still be told apart — you very often loop the range you are about to edit. */
+  #selregion { position: absolute; top: 0; bottom: 0; pointer-events: none; display: none;
+               background: repeating-linear-gradient(45deg, rgba(255,255,255,.13) 0 4px,
+                                                     rgba(255,255,255,0) 4px 8px);
+               box-shadow: inset 1px 0 0 rgba(255,255,255,.55), inset -1px 0 0 rgba(255,255,255,.55); }
+  #selregion.show { display: block; }
+  /* A bar of the timeline whose arrangement drops lanes. Faint, because it is a
+     detail of a bar rather than a different kind of bar. */
+  #blocks .blk.muted { background-image: repeating-linear-gradient(45deg,
+                       rgba(0,0,0,.28) 0 3px, rgba(0,0,0,0) 3px 6px); }
   #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--hot);
               box-shadow: 0 0 6px var(--hot); pointer-events: none; left: 0; }
   /* The clock lives up in the transport now — the strip under the ruler was a whole
@@ -201,11 +219,11 @@
              display: flex; flex-direction: column;
              max-height: calc(var(--arrrow) * 8 + 30px); }
   #arrange.collapsed #arrgrid { display: none; }
-  /* The chevron starts where the rows' number column starts — the grid is inset by
-     the gutter and the cell by four, so the header has to be too, or the numbers run
-     down a line twelve pixels to the right of the button they belong under. */
+  /* The chevron starts where the rows' number column starts — both are written off
+     --foldx, the cell adding back its own four, or the numbers run down a line to
+     the right of the button they belong under. */
   #arrhead { display: flex; align-items: center; gap: 8px; flex: none;
-             padding: 4px var(--gut) 4px calc(var(--gut) + 4px); }
+             padding: 4px var(--gut) 4px var(--foldx); }
   /* A real scrollbar here, unlike the strips: with the panel capped at eight lanes
      there are usually more underneath, and nothing else on screen would say so. */
   /* The scrollbar eats 8px of the row width, so the right padding gives 8px back —
@@ -213,8 +231,11 @@
      columns stop lining up. */
   /* No bottom padding: the height is snapped to whole lanes, and six pixels of
      padding is six pixels of the NEXT lane showing through under the last one. */
+  /* Left inset follows the fold column, less the four the cell pads itself by, so the
+     numbers stay under the chevron. The width the cell gives back is taken out of the
+     name column below, which keeps the bars where the ruler expects them. */
   #arrgrid { overflow-y: auto; overflow-x: hidden;
-             padding: 0 calc(var(--gut) - 10px) 0 var(--gut); }
+             padding: 0 calc(var(--gut) - 10px) 0 calc(var(--foldx) - 4px); }
   /* Drawn, not overlaid: it is the only thing on screen that says there are more
      lanes under the ones you can see, and a thumb the colour of the panel says
      nothing at all. The track is always there so the space is never a surprise. */
@@ -228,7 +249,8 @@
      the bars still line up with the bar numbers. */
   /* Padding inside the cell, not around it: the cell's width is what the bar ruler
      above is inset by, so the buttons can have room without the columns drifting. */
-  .arrhead-cell { width: var(--arrname); flex: none; display: flex; align-items: center;
+  .arrhead-cell { width: calc(var(--arrname) + var(--gut) + 4px - var(--foldx));
+                  flex: none; display: flex; align-items: center;
                   gap: 4px; padding-left: 4px; }
   /* Same width as the fold button above it, centred, so the numbers run down the
      column the chevron starts. */
@@ -325,13 +347,14 @@
      an unlabelled rack. */
   #mixhead { display: flex; align-items: center; flex: none; gap: 0;
              background: var(--panel);
-             padding: 4px var(--gut) 4px calc(var(--gut) + 4px); }
+             padding: 4px var(--gut) 4px var(--foldx); }
   /* Folded: the caption row and nothing else. The family switches filter strips that
      are not on screen, so they would be four buttons that do nothing visible. */
   #mixhead.folded #lanefilter { display: none; }
   /* Exactly as wide as the column the master and the lane names share, so the buttons
      start where the strips start. */
-  #mixhead .capgrp { width: calc(var(--arrname) + var(--namegap) - 4px); flex: none;
+  #mixhead .capgrp { width: calc(var(--gut) + var(--arrname) + var(--namegap) - var(--foldx));
+                     flex: none;
                      display: flex; align-items: center; gap: 8px; }
   /* One button per track family, each the width of the strip it stands over. These
      hide channels from the RACK only — the arrangement keeps every lane, and nothing
@@ -620,6 +643,41 @@
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .devlink::after { content: ' \25BE'; color: var(--dim); }
   .devlink:hover { background: #2b3542; }
+  /* A channel playing a voice from the catalogue rather than the engine's own. Lit,
+     because it is the one thing on a strip that changes what the channel IS rather
+     than what has been done to it — and because a song that sounds unfamiliar should
+     say why on the face of the strip, not only in the mix file. */
+  .voicepick.on { color: var(--accent); border-color: #3d5a66; background: #1e2a30; }
+  /* A duplicated track with nothing chosen yet. It has no engine voice to fall back
+     on — the preset is the whole reason the strip exists — so it is silent until it
+     is given one, and a strip that is silent for a reason you can fix has to say so
+     on its face rather than in a tooltip. Warn, not error: nothing is broken. */
+  .voicepick.voiceneeded { color: var(--solo); border-color: #5b4a20;
+                           background: #2a2417; border-style: dashed; }
+  .voicepick.voiceneeded:hover { background: #332c1c; }
+  /* A channel on the engine's own voice, where the library has a name for what that
+     is. Dimmed and in the preset's own case rather than the row's upper case, because
+     it is a reading and not a setting: nothing is in the mix file, and there is no
+     "back" to go to. The lit state above is what a CHOICE looks like. */
+  .voicepick.voicenamed { color: var(--dim); text-transform: none; font-style: italic; }
+  .voicepick.voicenamed:hover { color: var(--ink); }
+  /* One preset along, either way, without opening the library — the fastest way to
+     hear a family is to hear it in order. Inside the button rather than beside it so
+     the row's box is unchanged (the whole rack's EQ lines up against it), and hidden
+     until the strip is under the pointer: forty channels do not need eighty arrows
+     sitting on them. The background is inherited so they mask the label's ends in
+     whichever of the row's three states it is in. */
+  .voicepick { position: relative; }
+  .voicestep { display: none; position: absolute; top: 0; bottom: 0; width: 13px;
+               align-items: center; justify-content: center; font-size: 12px;
+               line-height: 1; color: var(--dim); background-color: inherit; }
+  .voicestep-prev { left: 0; }
+  .voicestep-next { right: 0; }
+  /* Inboard of the next arrow, because it belongs to the same gesture: step through
+     the library, stop on one, open it up. Only drawn when there is a preset to open. */
+  .voiceedit { right: 13px; font-size: 10px; }
+  .voicepick:hover .voicestep { display: flex; }
+  .voicestep:hover { color: var(--accent); }
   .db { text-align: center; font-size: 11px; width: 100%; white-space: nowrap; }
   .db.typable { cursor: ns-resize; }
   .db.typable:hover { color: var(--accent); text-decoration: underline dotted; }
@@ -667,6 +725,9 @@
   #moremenu.show { display: block; }
   #moremenu button { display: block; width: 100%; text-align: left; border: 1px solid transparent;
                      background: none; padding: 5px 9px; font-size: 11.5px; color: var(--ink); }
+  /* `display: block` above out-specifies the browser's own rule for [hidden], so an
+     item that hides itself — Restore deleted tracks — needs saying twice. */
+  #moremenu button[hidden] { display: none; }
   #moremenu button:hover { background: #313a47; color: var(--accent); }
   /* "Plumber Panic is saved" is a fact, not an offer: it does not light up under the
      pointer, because there is nothing there to press. */
@@ -737,6 +798,349 @@
               stroke-width: 1.35; stroke-linejoin: round; stroke-linecap: round; }
   #songbtn { display: grid; place-items: center; padding: 4px 9px; }
   #nowsong { color: var(--ink); font-weight: 700; }
+  /* The voice library. Sixty-five presets in a context menu is a scroll you cannot
+     read; in columns by category it is a glance, the way the effect catalogue is.
+     Wider than the fx picker because a preset earns its place by what it is FOR, and
+     that takes a sentence. */
+  #voicepicker { position: fixed; z-index: 13; display: none; padding: 9px 8px;
+                 background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+                 box-shadow: 0 14px 34px rgba(0,0,0,.6);
+                 max-height: 76vh; max-width: 94vw; overflow: auto; }
+  /* Wraps rather than running off the edge. Eleven categories in one row put the
+     drums off-screen on the kick strip, which is the one place they are the answer. */
+  /* The search box spans the panel; the columns wrap underneath it. */
+  #voicepicker.show { display: block; max-width: min(1180px, 94vw); }
+  #voicepicker .voiceresults { display: flex; flex-wrap: wrap; gap: 4px 12px;
+                               align-items: flex-start; }
+  /* Lane, search and the way back, on one row. Engine default was a category of one
+     and spent a 150px column saying a single word; it is chrome, like the search. */
+  #voicepicker .voicehead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  #voicepicker .voicewho { font-size: 9px; letter-spacing: .07em; color: var(--dim);
+                           text-transform: uppercase; white-space: nowrap; }
+  #voicepicker .voicesearch { flex: 1; min-width: 140px; margin: 0; padding: 5px 8px;
+                              font: inherit; font-size: 11px; color: var(--ink);
+                              background: #1b2129; border: 1px solid var(--line);
+                              border-radius: 4px; }
+  /* Sized to its label rather than to a column, and outlined so it reads as the
+     control it is — the buttons in the columns below are borderless until hovered. */
+  #voicepicker .voicedefault { width: auto; flex: none; white-space: nowrap;
+                               background: #1b2129; border-color: var(--line); }
+  /* Drums or pitched, next to the lane's name because it is a fact about the lane —
+     the panel opens on the kind the strip plays, and `all` puts the library back. */
+  #voicepicker .voicekinds { display: flex; flex: none; gap: 2px; padding: 2px;
+                             background: #1b2129; border: 1px solid var(--line);
+                             border-radius: 4px; }
+  #voicepicker .voicekind { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
+                            letter-spacing: .04em; border-radius: 3px; }
+  #voicepicker .voicekind.on { background: #2f4a44; color: var(--accent); }
+  #voicepicker .voicesearch::placeholder { color: var(--dim); }
+  #voicepicker .voicesearch:focus { outline: none; border-color: var(--accent); }
+  #voicepicker .voicesearch-none { padding: 4px 6px; font-size: 11px; color: var(--dim); }
+  /* The way out of a filter that is hiding the answer, offered where the answer would
+     have been. */
+  #voicepicker .voicesearch-more { width: auto; margin-top: 4px; padding: 3px 6px;
+                                   font-size: 10px; color: var(--accent);
+                                   border-color: #3d5a66; }
+  /* Where Engine default sits on every other lane. A layer has none — see voiceRow —
+     so the space says what the lane IS instead of offering a choice that silences it. */
+  #voicepicker .voicewhy { font-size: 10px; line-height: 1.35; color: var(--dim);
+                           max-width: 260px; }
+  #voicepicker .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+  #voicepicker .fxgroup h5 { margin: 0 0 2px; padding: 0 6px; font-size: 9px; letter-spacing: .07em;
+                             color: var(--dim); text-transform: uppercase; font-weight: 400; }
+  #voicepicker button { display: flex; justify-content: space-between; align-items: baseline;
+                        gap: 10px; width: 100%; text-align: left; background: none;
+                        border: 1px solid transparent; padding: 4px 6px; font-size: 11px;
+                        border-radius: 4px; color: var(--ink); }
+  #voicepicker button:hover { background: #313a47; color: var(--accent); }
+  #voicepicker button.on { background: #2f4a44; color: var(--accent); }
+  /* Engine presets are the game's own voices, and saying so is the difference
+     between "a synth called Square" and "the sound this lane already makes". */
+  #voicepicker .vkind { color: #5d6470; font-size: 8.5px; letter-spacing: .06em; }
+  /* The reserved row on a lane that cannot take a preset. Present so the EQ below it
+     lands on the same line as every other strip's, quiet so it is not read as a
+     control that is broken. */
+  .voicenone { color: #454c58; cursor: default; background: #1c222a; border-style: dashed; }
+  .voicenone::after { content: none; }
+  #voicepicker button.on .vkind { color: var(--accent); }
+  /* Into the editor from the strip's own header, on hover — beside the ✎ on the voice
+     row and the two items on the right-click menu. Not in the preset picker: choosing
+     a sound and shaping one are different jobs, and the panel for the first was not
+     the place to hide the second.
+     Absolutely placed, not in the flow: the head's contents are aligned against every
+     other strip's to the pixel, and an inline button would move them. */
+  .stripedit { display: none; position: absolute; top: 2px; right: 3px; width: auto;
+               padding: 1px 3px; font-size: 10px; line-height: 1; color: var(--dim);
+               background: none; border: none; }
+  .striphead:hover .stripedit { display: block; }
+  .stripedit:hover { color: var(--accent); background: none; }
+  .stripedit::after { content: none; }
+
+  /* ---- The preset editor -----------------------------------------------------
+     A floating window like the keyboard, for the same reason: you leave it open and
+     keep working — play the song, move a fader, step a lane — while the sound changes
+     under you. Above the pickers in the stack and below the keyboard, which is the
+     order you reach for them in. */
+  /* ---- strip + editor, as ONE object ------------------------------------------
+     The wrapper carries everything that draws a container — border, radius, background,
+     the selected outline — and the strip and the panel inside it carry none of it. So
+     opening the editor does not put a second box next to a channel; it makes that
+     channel wider. A divider marks where the controls stop and the sound starts. */
+  .voicepair { display: flex; flex: none; align-items: stretch;
+               background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+               height: var(--striph, auto); min-height: 0; }
+  .voicepair.selected { border-color: #78828f; box-shadow: 0 0 0 1px rgba(197,206,220,.3); }
+  /* Both children give up their own frame — that is what makes the pair one object.
+     `.strip.selected` is listed explicitly to out-weigh it: it carries the selected
+     box-shadow, ties this rule on specificity and wins on order, which drew a bright
+     outline right round the inner strip and put a line straight down the join. Its
+     text treatments (white bold name) are wanted and are left alone. */
+  .voicepair > .strip,
+  .voicepair > .strip.selected,
+  .voicepair > #voiceedit { background: none; border: none; border-radius: 0;
+                            box-shadow: none; height: auto; }
+  /* The divider starts BELOW the head band, so the band — its wash and its coloured
+     rule — runs unbroken across the pair and reads as one header over one object.
+     Carried by the strip's body and foot rather than by the strip, because together
+     they are exactly everything under the header; the negative margin pushes the line
+     back out to the strip's true edge, past its padding. */
+  .voicepair > .strip .stripbody,
+  .voicepair > .strip .stripfoot { border-right: 1px solid var(--line);
+                                   margin-right: -7px; padding-right: 7px; }
+  /* The head bands meet and have to read as one, so they are the same height to the
+     pixel and their INNER corners are squared: two 5px radii facing each other put a
+     notch in the middle of what is meant to be one continuous band, which was the one
+     thing still giving the join away. */
+  /* -7px, not the -8px a lone strip uses: that extra pixel is there to cover the
+     strip's own 1px border, and inside the pair there is no border to cover — so it
+     overshot into the panel and left a hairline down the middle of the head band. */
+  .voicepair > .strip .striphead { margin: -6px -7px 5px; border-radius: 5px 0 0 0; }
+  .voicepair > #voiceedit .vehead { border-radius: 0 5px 0 0; }
+
+  /* The editor itself — inserted directly after the channel being edited, so the sound
+     and its controls are side by side and the thing you are shaping is the thing you
+     are looking at. Everything else shuffles right, which is what a rack does when you
+     put something in it.
+     A column with the ends pinned: the name at the top and Save at the bottom stay put,
+     and only the controls between them scroll. A MonoSynth is sixteen sliders — enough
+     to push a footer off the bottom, which put the one button the whole thing exists
+     for behind a scroll nobody knew was there. */
+  /* Three strips wide, written as three strips: the rack's own column and gap, so it
+     stays exactly three channels across whatever `--stripw` becomes. The width buys
+     the pot labels room to be read at the same size as HIGH/MID/LOW beside them —
+     at 310px they were 7px and squinting. */
+  #voiceedit { display: none; position: relative; flex: none;
+               width: calc(var(--stripw) * 3 + 12px); flex-direction: column;
+               height: var(--striph, auto); min-height: 0; overflow: hidden;
+               padding: 6px 8px 7px;
+               background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  #voiceedit.show { display: flex; }
+  #voiceedit .vehead, #voiceedit .veused, #voiceedit .venote, #voiceedit .vefoot { flex: none; }
+  /* The channel strips' own header, to the pixel: name over a tag over the coloured
+     rule, with the strip's own gradient washing into it. Same two lines, same fonts,
+     same 3px rule — so the panel's header and its strip's line up across the gap and
+     the pair reads as one thing. (`--lane`/`--lanedim` are copied from the strip when
+     the panel is placed.) */
+  #voiceedit .vehead { position: relative; display: block;
+                       margin: -6px -8px 10px; padding: 6px 6px 4px;
+                       min-height: 0;
+                       background: linear-gradient(180deg, rgba(0, 0, 0, 0) 52%, var(--lanedim, transparent));
+                       border-bottom: 3px solid var(--lane, var(--line));
+                       border-radius: 5px 5px 0 0; }
+  #voiceedit .vetitle { margin: 0; font-size: 11.5px; text-align: center; font-weight: 400;
+                        letter-spacing: .04em; color: var(--ink);
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The category, in the group tag's clothes — same size, same lane colour, same slot. */
+  #voiceedit .vetag { text-align: center; font-size: 8.5px; letter-spacing: .07em;
+                      text-transform: uppercase; color: var(--lane, var(--dim));
+                      opacity: .95; margin: 0 0 3px; }
+  /* Borderless, like every other ✕ on the desk — it was the one button here wearing a
+     box, which made it read as a control rather than as a way out. */
+  #voiceedit .veclose { position: absolute; top: 4px; right: 5px; width: auto; padding: 1px 4px;
+                        font-size: 11px; line-height: 1; color: var(--dim);
+                        background: none; border: none; }
+  #voiceedit .veclose:hover { color: var(--hot); background: none; }
+  #voiceedit .veclose::after { content: none; }
+  #voiceedit .vesub { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  /* Not inside a `.row`, so it misses `.row .k` and has to say the same thing itself —
+     and it takes the pick labels' width, so the synth dropdown starts on the same x as
+     every pill group below it. */
+  #voiceedit .vesublabel { flex: none; width: 74px; font-size: 9.5px; letter-spacing: .03em;
+                           color: var(--dim); text-transform: uppercase; }
+  #voiceedit .vesynth { flex: 1; width: auto; min-width: 0; font-size: 10.5px; padding: 4px 6px; }
+  /* A preset is library-wide, so who else plays it is the first thing worth knowing —
+     above the controls, not buried in a tooltip on the save button. */
+  #voiceedit .veused { margin: 0 0 6px; padding: 4px 7px; font-size: 10px; line-height: 1.4;
+                       color: var(--solo); background: #221d16;
+                       border: 1px solid #3a2f1d; border-radius: 4px; }
+  #voiceedit .venote { width: 100%; margin: 0; padding: 4px 6px; font: inherit;
+                       font-size: 9.5px; line-height: 1.4; color: var(--ink); resize: vertical;
+                       background: #1b2129; border: 1px solid var(--line); border-radius: 4px; }
+
+  /* ---- the save sheet ---------------------------------------------------------
+     How the preset is FILED, asked at the moment it is filed. Neither field is a
+     sound — you cannot hear a category — and while they sat in the panel they cost
+     two rows of controls on every edit. Over the controls rather than beside them,
+     because it is the last thing you do and the only thing you are doing. */
+  #voiceedit .vesheet { position: absolute; inset: 0; z-index: 2; display: flex;
+                        flex-direction: column; gap: 6px; padding: 10px;
+                        background: var(--panel2); border-radius: 5px; }
+  #voiceedit .vesheet h4 { margin: 0 0 2px; font-size: 11px; color: var(--ink);
+                           text-transform: none; letter-spacing: 0; }
+  #voiceedit .vefield { display: flex; flex-direction: column; gap: 3px; }
+  #voiceedit .vefield .k { font-size: 8px; letter-spacing: .05em; color: var(--dim);
+                           text-transform: uppercase; }
+  #voiceedit .vefield .fxsel { width: 100%; font-size: 10.5px; padding: 4px 5px; }
+  /* The name field. It used to live in the panel header and carried its styling with
+     it; moving it here left it on the browser default, which in a dark panel is a
+     white box. */
+  #voiceedit .vename { width: 100%; padding: 5px 7px; font: inherit; font-size: 11px;
+                       color: var(--ink); background: #1b2129;
+                       border: 1px solid var(--line); border-radius: 4px; }
+  #voiceedit .vename:focus { outline: none; border-color: var(--accent); }
+  /* Equal halves, the way the panel's own three are equal thirds. */
+  #voiceedit .vesheetfoot { display: flex; gap: 5px; margin-top: auto; }
+  #voiceedit .vesheetfoot > button { flex: 1 1 0; width: auto; min-width: 0; margin: 0;
+                                     padding: 6px 8px; font-size: 10.5px; }
+  #voiceedit .vesheetfoot .devlink::after { content: none; }
+  #voiceedit .venote:focus { outline: none; border-color: var(--accent); }
+  #voiceedit .venote::placeholder { color: var(--dim); }
+  /* The only part that scrolls. Its own scrollbar rather than the panel's, so the
+     name row and the save row stay where you left them. */
+  #voiceedit .verack { display: flex; flex-direction: column; gap: 0;
+                       flex: 1; min-height: 0; overflow-y: auto;
+                       /* Reserved, so the controls do not shift sideways the moment a
+                          taller synth makes the bar appear. */
+                       scrollbar-gutter: stable; }
+  /* The same 6px bar the rack and the device shelf use — narrow enough to read as an
+     edge rather than as a column, in a panel only three strips wide. */
+  #voiceedit .verack::-webkit-scrollbar { width: 6px; }
+  #voiceedit .verack::-webkit-scrollbar-track { background: transparent; }
+  #voiceedit .verack::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  #voiceedit .verack::-webkit-scrollbar-thumb:hover { background: #4a5361; }
+  /* A rule between sections, not a box around each. Six bordered cards inside a
+     bordered panel inside a bordered strip is three nested frames to say one thing,
+     and the frames were louder than the controls they held. A line and some air do
+     the same job — the title is what names the section, and it was doing that
+     already. */
+  #voiceedit .vegroup { width: auto; margin: 0; padding: 0; gap: 0;
+                        background: none; border: none; border-radius: 0; }
+  /* No rules at all in the end. A heading with space around it already says where one
+     section stops and the next starts; the line was a second answer to a question that
+     had been answered. Centred, like every other card title on the desk — the effects
+     rack does it, the send returns do it, and a panel inside the rack should not be
+     the one place that does not. */
+  #voiceedit .vegroup + .vegroup { margin-top: 15px; }
+  #voiceedit .vegroup .devbar { padding: 0 0 6px; }
+  #voiceedit .vegroup h4 { font-size: 11px; letter-spacing: .06em; }
+  /* Two columns of controls: an envelope reads as a shape when its four numbers are
+     side by side, and as a list when they are stacked. Tight enough for a 310px strip —
+     the label and the value share a line, and the slider gets the one under it. */
+  /* Three columns of pots that fill left-to-right. The effects rack's own .devgrid
+     flows the other way — down four rows, then into a new 168px column, which is right
+     for a panel that can grow sideways and wrong for one pinned to a strip's width: the
+     second column landed off the edge and every group came out as a single stack.
+     Both the flow and the fixed rows have to be undone, not just the columns. */
+  /* The ROW gap has to clear a POT, not a line of text. A potrow is its label stacked
+     straight onto a 42px ring, and `.vepot` pulls whatever follows up by 3px of its
+     own — so at the 1px this started on, a second row of pots put its labels 2px INTO
+     the rings above them. 11px leaves 8px of daylight. One number, and every card in
+     both editors depends on it: the synth groups, the drum sections and Taps are all
+     this same grid. */
+  #voiceedit .devgrid { display: grid; grid-auto-flow: row;
+                        grid-template-columns: repeat(4, 1fr);
+                        grid-template-rows: none; grid-auto-columns: auto; gap: 11px 2px; }
+  #voiceedit .devgrid .row { margin: 0; }
+
+  /* ---- pots -----------------------------------------------------------------
+     The name over the knob and the reading inside its ring — the layout of every
+     hardware panel, and the reason a pot fits in a third of the width a slider needed:
+     a slider has to be long enough to aim along, where a knob only has to be big
+     enough to grab. */
+  #voiceedit .potrow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  #voiceedit .potrow .k { font-size: 9.5px; letter-spacing: .03em; color: var(--dim);
+                          text-transform: uppercase; text-align: center; line-height: 1;
+                          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                          max-width: 100%; }
+  /* The unit belongs to the name, not to the reading — there is no room for it in the
+     ring, and it never changes, so it is chrome rather than data. */
+  #voiceedit .potrow .kunit { color: #5d6470; }
+  /* The same 42px as the pan pots on every strip: one knob size on the desk, so a
+     preset's filter feels like the pan it is sitting beside rather than like a smaller
+     relative of it. Four fit across because the LABEL is what sets the column width,
+     not the knob. */
+  #voiceedit .vepot { width: 42px; height: 42px; margin: 0 auto -3px; }
+  /* Small enough for `200ms` inside the ring — the reading is the point of a pot, and
+     a value abbreviated to fit is a pot you cannot read. */
+  #voiceedit .vepot .pottext { font-size: 8px; }
+  #voiceedit .vepot .potface { r: 13; }
+  #voiceedit .potrow .panin { font-size: 9px; }
+
+  /* ---- segmented pills --------------------------------------------------------
+     A set of four you can see beats a menu that hides three of them. Spans the group's
+     full width, so it reads as one control rather than as buttons that happen to be
+     adjacent. */
+  /* Label and pills on ONE line. `.devgrid .row` zeroes every row's margin and
+     out-specifies a bare `.segrow`, so this has to carry the same weight to land.
+     No margin of its own any more: keeping a pill row clear of the pots under it is
+     what the grid's row gap now does for every row alike, and a margin on top of that
+     spaced the pills differently from everything else in the same card. */
+  #voiceedit .devgrid .segrow { grid-column: 1 / -1; display: flex; flex-direction: row;
+                                align-items: center; gap: 8px; margin: 0; }
+  /* One width for every pick label, so the pill groups start on the same x down the
+     whole panel rather than stepping in and out with the length of the word. */
+  #voiceedit .segrow .k { flex: none; width: 74px; font-size: 9.5px; letter-spacing: .03em;
+                          color: var(--dim); text-transform: uppercase; }
+  #voiceedit .segrow .seg { flex: 1; min-width: 0; }
+  #voiceedit .seg { display: flex; gap: 2px; padding: 2px; background: #1b2129;
+                    border: 1px solid var(--line); border-radius: 6px; }
+  #voiceedit .segbtn { flex: 1; width: auto; margin: 0; padding: 3px 2px; font-size: 9.5px;
+                       font-weight: 700; letter-spacing: .04em; color: var(--dim);
+                       background: none; border: none; border-radius: 4px;
+                       white-space: nowrap; }
+  #voiceedit .segbtn::after { content: none; }
+  #voiceedit .segbtn:hover { background: #2b3542; color: var(--ink); }
+  /* Filled, with dark text on it — the selected pill is the one thing in the panel
+     that has to be readable at a glance from across the rack. */
+  #voiceedit .segbtn.on { background: var(--accent); color: #16211f; }
+  #voiceedit .segbtn.on:hover { background: var(--accent); color: #16211f; }
+  #voiceedit .veswitch { width: auto; flex: none; margin-left: auto; padding: 2px 8px;
+                         font-size: 9px; letter-spacing: .06em; }
+  #voiceedit .veswitch.on { background: #2f4a44; color: var(--accent); border-color: #2f4a44; }
+  /* The tap stepper: a count with a button either side, on one row. */
+  #voiceedit .veinline { display: flex; align-items: center; justify-content: space-between; }
+  #voiceedit .vestep { display: flex; align-items: center; gap: 2px; }
+  #voiceedit .vestep button { width: 20px; padding: 1px 0; text-align: center; }
+  #voiceedit .vestep .v { min-width: 16px; text-align: center; }
+  #voiceedit .devnote { grid-column: 1 / -1; }
+  /* Three buttons of one size, and no rule above them. The rule was fencing off a peak
+     readout and an UNSAVED flag that have both gone: the flag was the save button said
+     twice — it is dark until there is something to write — and the peak moved to the
+     save sheet, where it is next to the thing you would do about it. */
+  #voiceedit .vefoot { display: flex; align-items: stretch; gap: 5px; margin-top: 8px; }
+  /* Equal thirds: same flex, same padding, same font. The save button keeps its colour
+     but not extra width — a wider primary made the row read as two sizes of control. */
+  #voiceedit .vefoot > button { flex: 1 1 0; width: auto; min-width: 0; margin: 0;
+                                padding: 5px 6px; font-size: 10px; white-space: nowrap; }
+  /* The caret on .devlink says "this opens a menu". Nothing in this row does. */
+  #voiceedit .vefoot .devlink::after { content: none; }
+  #voiceedit .veclose::after, #voiceedit .veswitch::after, #voiceedit .vestep button::after { content: none; }
+  #voiceedit .vedanger:hover { background: #4a2f2f; color: #e08a8a; }
+  #voiceedit .vesave { color: var(--accent); background: #2f4a44; border: 1px solid #3d6a5e;
+                       border-radius: 4px; }
+  #voiceedit .vesave:disabled { color: #454c58; background: #1b2129; border-color: var(--line); }
+
+  /* The level, on the save sheet: the number, then what it means for the sound. Amber
+     only when there is something to do about it — a normal estimate is a reading, not
+     a warning. */
+  #voiceedit .velevel { display: flex; align-items: baseline; gap: 7px; padding: 5px 7px;
+                        background: #1b2129; border: 1px solid var(--line); border-radius: 4px; }
+  #voiceedit .velevelnum { flex: none; font-size: 11px; color: var(--ink);
+                           font-variant-numeric: tabular-nums; }
+  #voiceedit .velevelsays { font-size: 9px; line-height: 1.35; color: var(--dim); }
+  #voiceedit .velevel.bad { border-color: #3a2f1d; background: #221d16; }
+  #voiceedit .velevel.bad .velevelnum,
+  #voiceedit .velevel.bad .velevelsays { color: var(--solo); }
   #fxpicker .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 128px; }
   #fxpicker .fxgroup h5 { margin: 0 0 2px; padding: 0 6px; font-size: 9px; letter-spacing: .07em;
                           color: var(--dim); text-transform: uppercase; font-weight: 400; }
@@ -751,6 +1155,86 @@
   #ctxmenu button { display: block; width: 100%; text-align: left; border: 1px solid transparent;
                     background: none; padding: 5px 9px; font-size: 11px; color: var(--ink); }
   #ctxmenu button:hover { background: #313a47; border-color: transparent; color: var(--accent); }
+  /* ---- The on-screen keyboard -----------------------------------------------
+     A floating window, not a menu: it stays open while you work on a channel, so
+     nothing about it is dismiss-on-click. Above the pickers in the stack because
+     they are things you open, use and close, and this is a thing you play. */
+  #oskbtn { display: grid; place-items: center; padding: 4px 9px; }
+  .oskicon { width: 15px; height: 15px; }
+  .oskicon .body { fill: currentColor; }
+  #osk { position: fixed; z-index: 14; display: none; left: 0; top: 0;
+         background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+         box-shadow: 0 18px 44px rgba(0,0,0,.66); user-select: none; }
+  #osk.show { display: block; }
+  #osk .oskhead { display: flex; align-items: center; gap: 8px; padding: 6px 7px 6px 10px;
+                  border-bottom: 1px solid var(--line); cursor: grab; }
+  #osk .oskhead.dragging { cursor: grabbing; }
+  #osk .osktitle { font-size: 11px; color: var(--ink); font-weight: 700;
+                   text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  /* Why nothing is coming out — muted, or not the soloed channel. Only drawn when
+     there is something to say, and in the title bar rather than as a caption. */
+  #osk .oskwarn { font-size: 9px; color: var(--solo); text-transform: uppercase;
+                  letter-spacing: .05em; white-space: nowrap; }
+  #osk .sp { flex: 1; min-width: 12px; }
+  #osk .oskcatch, #osk .oskmidi { font-size: 10px; padding: 3px 8px; }
+  #osk .oskclose { padding: 2px 5px; line-height: 0; border-color: transparent;
+                   background: none; color: var(--dim); }
+  #osk .oskclose:hover { color: var(--hot); border-color: transparent; }
+  #osk .oskclose .pwr { width: 12px; height: 12px; fill: none; stroke: currentColor;
+                        stroke-width: 1.5; stroke-linecap: round; }
+  #osk .oskctl { display: flex; align-items: center; gap: 6px; padding: 7px 10px 5px; }
+  #osk .oskctl button { padding: 2px 8px; font-size: 10px; line-height: 1.4; }
+  #osk .oskoct { font-size: 11px; color: var(--accent); font-weight: 700;
+                 font-variant-numeric: tabular-nums; min-width: 26px; text-align: center; }
+  #osk .oskrange { font-size: 10px; color: var(--dim); margin-left: 4px; }
+  /* The channel is sounding — whatever it is sounding. A percussion lane's own note
+     is nowhere near this keyboard, and "the kick is playing" is still the answer. */
+  #osk .oskpulse { width: 7px; height: 7px; border-radius: 50%; background: #39414d;
+                   margin-left: auto; transition: background .05s ease; }
+  #osk .oskpulse.on { background: var(--accent); box-shadow: 0 0 6px rgba(78,201,176,.7); }
+  /* A note the keyboard cannot show lights the octave button that would reach it. */
+  #osk .oskctl button.offscreen { color: var(--accent); border-color: var(--accent); }
+  /* Absolute inside a relative box, whites then blacks: the blacks are painted after
+     so they sit over their neighbours without a z-index to keep in step. */
+  #osk .oskkeys { position: relative; height: 86px; margin: 0 10px; }
+  #osk .oskkey { position: absolute; top: 0; border-radius: 0 0 4px 4px;
+                 display: flex; flex-direction: column; justify-content: flex-end;
+                 align-items: center; gap: 2px; padding-bottom: 4px; cursor: pointer; }
+  #osk .oskkey.white { height: 86px; background: #d8dde6; border: 1px solid #9aa3b2;
+                       border-top: none; color: #737b8a; }
+  #osk .oskkey.black { height: 54px; background: #1a1d23; border: 1px solid #0d0f13;
+                       border-top: none; color: #7d8695; border-radius: 0 0 3px 3px; }
+  #osk .oskkey.white:hover { background: #eef1f6; }
+  #osk .oskkey.black:hover { background: #262b33; }
+  /* Two different things light a key, and they must not look the same. `lit` is YOU:
+     full accent, the same teal as everything else on this desk that is ON. `sung` is
+     the SONG playing through the channel — the same colour a shade back, so a part
+     running under your hands reads as the track rather than as your own playing. */
+  #osk .oskkey.white.sung { background: #a6e2d5; border-color: #7fc4b5; }
+  #osk .oskkey.black.sung { background: #2f6b60; border-color: #2f6b60; color: #cfe9e2; }
+  #osk .oskkey.white.lit { background: var(--accent); border-color: var(--accent); color: #10231f; }
+  #osk .oskkey.black.lit { background: var(--accent); border-color: var(--accent); color: #10231f; }
+  #osk .oskname { font-size: 8px; letter-spacing: .02em; opacity: .8; }
+  #osk .oskkey.black .oskname { display: none; }   /* no room, and C# is not the one you hunt for */
+  /* Which computer key plays which note — drawn only while the keyboard is catching
+     them, because a letter on a key you can only click is a letter that does
+     nothing. */
+  #osk .oskletter { font-size: 9px; font-weight: 700; opacity: .5; display: none; }
+  #osk.catching .oskletter { display: block; }
+  /* A drum channel gets the kit, not a piano: one pad per drum the song has. */
+  #osk .oskpads { display: flex; gap: 4px; margin: 10px; }
+  #osk .oskpad { width: 62px; height: 62px; border-radius: 5px; background: #2b313a;
+                 border: 1px solid var(--line); display: flex; flex-direction: column;
+                 align-items: center; justify-content: center; gap: 3px; cursor: pointer;
+                 color: var(--dim); text-align: center; }
+  #osk .oskpad:hover { border-color: var(--accent); color: var(--ink); }
+  /* Which one the desk is on. The pads all play; this is the one whose strip and
+     effects panel you are looking at. */
+  #osk .oskpad.sel { border-color: var(--ctl); color: var(--ink); }
+  #osk .oskpad.muted { opacity: .4; }
+  #osk .oskpad.sung { background: #2f6b60; border-color: #2f6b60; color: #cfe9e2; }
+  #osk .oskpad.lit { background: var(--accent); border-color: var(--accent); color: #10231f; }
+  #osk .oskpadname { font-size: 9px; letter-spacing: .04em; line-height: 1.15; padding: 0 3px; }
   #toast {
     position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%) translateY(8px);
     background: var(--panel2); border: 1px solid var(--accent); color: var(--ink);
@@ -779,7 +1263,7 @@
   /* Same indent and same gap as every other panel header: the four folds run down one
      line on the left edge, so a collapsed desk is four identical rows. */
   #devhead { display: flex; align-items: center; gap: 8px;
-             padding: 4px var(--gut) 4px calc(var(--gut) + 4px);
+             padding: 4px var(--gut) 4px var(--foldx);
              border-bottom: 1px solid var(--line); flex: none; }
   /* The same caption as TIMELINE, ARRANGEMENT and MIXER — three panels labelled one
      way and a fourth in bold ink was a heading that looked like a different rank. */
@@ -846,12 +1330,19 @@
      start, and a line across every strip was just another thing to look past. */
   /* Air either side of the insert block: it is a different kind of thing from the
      rows above it and the pot below, and it was reading as part of both. The fader
-     is sized from what is left, so it gives up the pixels. */
+     is sized from what is left, so it gives up the pixels.
+
+     Less of it underneath than above, because the block already ends in the empty
+     slot: a dashed outline is mostly air, so the separation from the fader is drawn
+     rather than reserved, and 22px of margin under it was the gap twice. Still a
+     little more above, where the sends stop at a solid row and the gap is the only
+     thing saying so — but not the 14px it was: the first slot sits 2px down inside
+     the block, which is a pixel or two of the same air already. */
   /* Top-aligned: a chain grows downwards from the first slot, so the first slot is
      on the same line on every strip — with the block bottom-aligned, a channel with
      one effect put it level with another channel's third. */
   .fxbtns { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px;
-            box-sizing: content-box; margin: 14px 0 22px; position: relative; }
+            box-sizing: content-box; margin: 10px 0 8px; position: relative; }
   /* Two pixels down: a 23px button in a 27px slot was hard against the top of it, and
      beside a strip whose slot is still an empty outline the two read as different
      heights. With the margin the stack sits centred in the block it is reserved. */
@@ -975,13 +1466,14 @@
     <button id="clearsolo" title="nothing is soloed">S</button>
   </div>
 
+
   <div class="grp looptray">
     <button id="looptoggle" title="loop the region shown on the timeline">Loop</button>
     <select id="loopbars" title="how many bars the loop covers">
-      <option value="1" selected>1 bar</option>
-      <option value="2">2 bars</option>
-      <option value="4">4 bars</option>
-      <option value="8">8 bars</option>
+      <option value="1" selected>1 Bar</option>
+      <option value="2">2 Bars</option>
+      <option value="4">4 Bars</option>
+      <option value="8">8 Bars</option>
       <option value="0">All</option>
     </select>
   </div>
@@ -1000,6 +1492,21 @@
   <div class="sp"></div>
 
   <div class="grp">
+    <!-- Play the selected channel. Over here rather than by the transport: the
+         transport is what the SONG does, and this is what you do. Two white keys and
+         the black between them — small enough to read at 15px, and a piano rather
+         than a computer keyboard, which is what it plays like. -->
+    <button id="oskbtn" title="play the selected channel from a keyboard" aria-label="on-screen keyboard">
+      <!-- One path, even-odd: the body is solid and the keys are HOLES in it, so the
+           black keys are whatever is behind the icon. That is what makes it read on
+           the panel and still read when the button lights up teal — a shape drawn in
+           currentColor would go light-on-light there and the piano would vanish.
+           The white keys divide only below the black ones, which is the half of a
+           piano you can actually see. -->
+      <svg viewBox="0 0 16 16" class="oskicon">
+        <path class="body" fill-rule="evenodd" d="M3 3.4h10a1.4 1.4 0 0 1 1.4 1.4v6.4a1.4 1.4 0 0 1-1.4 1.4H3a1.4 1.4 0 0 1-1.4-1.4V4.8A1.4 1.4 0 0 1 3 3.4Zm1.7 0h2.2v5.4H4.7Zm4.4 0h2.2v5.4H9.1ZM5.35 8.9h.9v3.7h-.9Zm4.4 0h.9v3.7h-.9Z"/>
+      </svg>
+    </button>
     <button id="ab" title="Hold to hear the saved mix">A/B saved</button>
     <button id="undo" disabled title="⌘Z">Undo</button>
   </div>
@@ -1025,6 +1532,9 @@
     <div id="ruler"></div>
     <div id="blocks"></div>
     <div id="loopregion"></div>
+    <!-- The bars picked in the arrangement grid, shown up here where the numbers
+         are: a range is a range of the song, not of one lane's row. -->
+    <div id="selregion"></div>
     <div id="playhead"></div>
   </div>
 </div>
@@ -1079,7 +1589,11 @@
   <span id="section"></span>
   <span id="peakinfo"></span>
   <span class="sp" style="flex:1"></span>
-  <span><b>space</b> play/pause · <b>double-click</b> the timeline to play from there, a strip head to play from where that channel comes in · <b>L</b> loop · <b>1/2/4/8/0</b> loop bars · <b>←→</b> bar · <b>↑↓</b> channel · <b>M S R</b> mute/solo/reset · <b>B</b> bypass fx · <b>[ ]</b> playhead sync · <b>right-click</b> a strip · <b>⌘Z</b> undo</span>
+  <!-- Keys only. The double-click and the playhead nudge are both discoverable where
+       they live — the timeline and strip heads carry the first in their tooltips, and
+       ⋯ → Playhead ms is the other one's home — and a footer that lists everything
+       stops being read at all. -->
+  <span><b>space</b> play/pause · <b>L</b> loop · <b>1/2/4/8/0</b> loop bars · <b>←→</b> bar · <b>↑↓</b> channel · <b>M S R</b> mute/solo/reset · <b>B</b> bypass fx · <b>keyboard</b> play the channel · <b>right-click</b> a strip · <b>⌘Z</b> undo</span>
 </footer>
 
 <!-- The header holds what you touch while mixing; everything else lives here. -->
@@ -1089,9 +1603,25 @@
        its own state: disabled, dimmed and reading "Saved — matches the file" when
        there is nothing to write, rather than a live button that answers with a toast.
        updateStatus() sets both. -->
+  <!-- One song, always: this drawer is headed "this song" and it means it. There is
+       deliberately no "save every changed song" — writing several mixes in one go
+       writes most of them from memory rather than from listening. -->
   <button id="save">Save to game</button>
-  <button id="saveall">Save every changed song</button>
   <button id="revert">Revert to the saved mix</button>
+  <!-- The song's shape, as opposed to its balance. Hidden until this song has an
+       arrangement at all, because on every other song it would be a button that
+       undoes nothing. -->
+  <button id="revertarr" hidden>Play the written arrangement</button>
+  <!-- The way back into a version of mix.js that has already been overwritten.
+       Revert above goes to what is on disk NOW; this goes to what was on disk before
+       one of this desk's earlier saves, from the copies kept in .mix-history/.
+       Loads into the draft, so it is audible and undoable before it is written — and
+       only ever into THIS song's draft, whichever save the copy was taken for. -->
+  <button id="history" title="put this song back to how it was in an earlier version of src/data/mix.js, from the copies kept every time this desk saves — this song only, no other is touched">Restore a previous save…</button>
+  <!-- Hidden until this song has a deleted track. Delete is the one edit whose undo
+       cannot live on the thing it removed — the row and the strip are both gone —
+       so its way back lives here. updateStatus() shows it and counts it. -->
+  <button id="restore" hidden>Restore deleted tracks…</button>
   <button id="resetsong">Reset every channel</button>
   <div class="ctxhead">files</div>
   <button id="renderwav" title="render this song offline through the real engine with this mix, and write dist/<slug>-mix.wav">Render WAV</button>
@@ -1099,8 +1629,12 @@
   <button id="midi" title="download this song as a MIDI file">Export MIDI</button>
   <button id="importmidi" title="turn a .mid into a song and switch to it — same filename replaces">Import MIDI…</button>
   <input id="midifile" type="file" accept=".mid,.midi,audio/midi" hidden>
-  <button id="export">Export mix as JSON</button>
-  <button id="import">Import mix JSON</button>
+  <!-- Export only. "Import mix JSON" pasted an entry straight onto whatever song was
+       on the desk, and a whole file straight onto every song at once — the two ways
+       one song's balance could land on another's parts. A mix is balanced by ear
+       against the song it was written for and means nothing on any other, so the desk
+       has no way to move one. This is a copy of your unsaved drafts, and that is all. -->
+  <button id="export" title="download your unsaved drafts as JSON — a copy to keep, not a way to load a mix onto a song">Export mix as JSON</button>
   <div class="ctxhead">desk</div>
   <label class="morerow"><span>Font</span><select id="font" title="typeface for the desk"></select></label>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
@@ -1116,6 +1650,17 @@
 <div id="ctxmenu"></div>
 <div id="notepop"></div>
 <div id="fxpicker"></div>
+<div id="voicepicker"></div>
+<!-- The preset editor. A window, not a menu, for the same reason the keyboard below is:
+     you leave it open and work — play the song, move a fader, hit a key — while the
+     sound changes under you. So it does not close on a click elsewhere, and its ✕ is
+     the only way out. Built in tools/mixer-voice-editor.js. -->
+<div id="voiceedit"></div>
+<!-- The on-screen keyboard. A window rather than a menu: it is something you leave
+     open while you work on a channel, so it does not close when you click away and it
+     goes where you put it. Built in mixer-entry.js — the keys change with the octave
+     and the channel. -->
+<div id="osk"></div>
 <div id="toast"></div>
 <div id="gate"><button id="start">Click to start audio</button></div>
 <pre id="err"></pre>

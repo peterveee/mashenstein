@@ -9,12 +9,12 @@
 import { W, H, screen } from '../engine/renderer.js';
 import { Rng } from '../engine/rng.js';
 import { Input } from '../engine/input.js';
-import { Audio } from '../engine/audio.js';
+import { Audio, PORTAL_CUE_FLASH_AT } from '../engine/audio.js';
 import { drawText, drawTextCentered, textWidth, textYForMid, wrapText, UI_PLATE } from '../engine/sprites.js';
 import { drawToon, drawToonFace } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { readPlatform } from '../engine/platform.js';
-import { drawHandoff, HANDOFF_SWAP_AT, HANDOFF_LINE_A_AT } from './credits-handoff.js';
+import { drawHandoff, HANDOFF_SWAP_AT, HANDOFF_LINE_A_AT, HANDOFF_LINE_B_AT } from './credits-handoff.js';
 import { MEGAMIX_THEME } from '../data/megamix.js';
 
 const GOLD = '#f6d33c';
@@ -65,7 +65,12 @@ const SCRUB_STUCK_T = 40;
 // Where the final row comes to rest. The crawl does NOT scroll away into an
 // empty screen and does NOT eject you: it settles on the closing socket /
 // sequel card and holds there, music still running, until you leave.
-const REST_Y = 200;
+// Where the LAST row (the copyright) comes to rest, in screen units. Lowered
+// from 200: the crawl now travels a little further before it stops, which sits
+// the closing card higher and leaves the bottom margin to the corner legends
+// rather than crowding them. The gap above the socket is what actually clears
+// the release line off the top — see the note on it in SCRIPT.
+const REST_Y = 188;
 // How far the two heroes in a relay stand either side of the portal. The
 // dialogue lines are centred on these same offsets so each line sits under the
 // character saying it — with the speaker prefixes gone, position and colour are
@@ -353,6 +358,14 @@ const SCRIPT = [
   { k: 'sub', text: 'ANIMATION', color: PINK },
   { k: 'role', role: 'Animation Director', name: 'Casimir Dubuque' },
   { k: 'role', role: 'Character Animation', name: 'Yara Delacroix-Osei' },
+  // The one credit in this crawl that names a real person. The relay run cycle
+  // is the fastest gait in the game (~4.4 strides/s into the portal, see
+  // credits-handoff.js), so conditioning is the joke that actually pays off
+  // something on screen.
+  // One line, not the doubled-up gag the neighbouring departments run. A real
+  // name is the only straight credit in the crawl, and the repeat joke would
+  // have made it read as another bit.
+  { k: 'role', role: 'Run Cycle Conditioning', name: 'Nathan Cook' },
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'AUDIO' },
@@ -561,7 +574,13 @@ const SCRIPT = [
   { k: 'rated' },
   { k: 'gap', px: 18 },
   { k: 'sub', text: 'A GENERAL APPLIANCE HOLDINGS RELEASE' },
-  { k: 'gap', px: 44 },
+  // Wide enough that this line is fully OFF the top once the crawl settles.
+  // The closing card is the one frame that holds still for as long as you let
+  // it, so it is the one frame where a half-cut line reads as a bug rather than
+  // as mid-scroll. At 44 the release line came to rest straddling y=0 with its
+  // top half sheared off; the card itself is unchanged, it just gets clear air
+  // above it now. Anything under ~53 puts that line back into the frame.
+  { k: 'gap', px: 66 },
 
   { k: 'socket' },
   { k: 'gap', px: 8 },
@@ -828,7 +847,7 @@ function drawRow(ctx, row, y, t) {
         drawText(ctx, row.a, Math.max(6, CX - HANDOFF_GAP - w), y, OUTGOING_INK, s);
         ctx.restore();
       }
-      const bAlpha = fade(HANDOFF_SWAP_AT + 0.06);
+      const bAlpha = fade(HANDOFF_LINE_B_AT);
       if (bAlpha > 0) {
         const w = textWidth(row.b, s);
         ctx.save();
@@ -915,6 +934,23 @@ export class CreditsState {
     this.atRest = false;
     this.script = layoutCredits();
     this.restT = Math.max(0, (H + this.script.lastY - REST_Y) / SCROLL_SPEED);
+    // The instant each hand-off block hits the swap, in crawl-clock seconds.
+    //
+    // Fired from the clock rather than from the painter on purpose: drawRow()
+    // runs every frame, so triggering there would retrigger for every frame the
+    // block sat near the swap. A block's progress is a linear function of t
+    // (progress = (t*SCROLL_SPEED - row.y) / (H + HANDOFF_H)), so the crossing
+    // happens at exactly one t — solve for it once here, then watch the clock
+    // step over it. Scrubbing backwards past a block re-arms it for free.
+    //
+    // Fired PORTAL_CUE_FLASH_AT seconds ahead of the crossing, not on it. The
+    // cue's flash sits that far into it, so triggering on the swap put the
+    // rising half over the incoming hero's exit and the flash a fifth of a
+    // second behind the flare. Leading it lands the flash on the flare and puts
+    // the rise where it belongs: under the outgoing hero's last few strides.
+    this.swapTs = this.script.rows
+      .filter((r) => r.k === 'handoffArt')
+      .map((r) => (HANDOFF_SWAP_AT * (H + HANDOFF_H) + r.y) / SCROLL_SPEED - PORTAL_CUE_FLASH_AT);
     this.scrubHeldT = 0;
     this.reduced = !!this.settings.reducedMotion;
     this.stars = makeStars(STAR_COUNT);
@@ -957,8 +993,18 @@ export class CreditsState {
       this.scrubbing = false;
       rate = 1;
     }
+    const prevT = this.t;
     this.t = Math.min(this.restT, Math.max(0, this.t + dt * rate));
     this.atRest = this.t >= this.restT;
+    // The swoosh, on the frame the clock crosses a hand-off's swap. Half-open
+    // on the left so a paused-exactly-on-it clock cannot fire twice, and only
+    // forwards — rewinding through a block re-arms it but stays silent, because
+    // a backwards swoosh is the one thing the sound cannot describe.
+    if (this.t > prevT) {
+      for (const swapT of this.swapTs) {
+        if (swapT > prevT && swapT <= this.t) Audio.sfx('portal');
+      }
+    }
     if (this.t > OPEN_GUARD_T && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {
       Audio.sfx('ui');
       this.onDone();

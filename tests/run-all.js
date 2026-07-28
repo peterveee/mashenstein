@@ -18,6 +18,18 @@ const suites = [
   'tests/visualizers.js',
   'tests/megamix.js',
   'tests/mix.js',
+  // The arrangement layer, beside the mix layer it mirrors: that one is what a song
+  // sounds like, this one is what plays when. Its first assertion is the one that
+  // matters — an empty layer hands every song back the bank it always had — which is
+  // tests/null-test.js's claim, made at the object rather than at the sample.
+  'tests/arrangement.js',
+  // The other half of the voice library: tests/voices.js proves the presets sound,
+  // this proves the desk can write one back into src/data/voices.js without
+  // disturbing the 1200 hand-written lines around it. Up here rather than beside its
+  // sibling because it needs no browser and runs in a blink.
+  'tests/voice-source.js',
+  'tests/layers.js',
+  'tests/preview.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
@@ -44,8 +56,10 @@ const suites = [
   'tests/build-shell.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
-  // Last: it renders the engine offline in Chromium, which is slower than every
-  // other suite put together. MASH_NULL_ALL=1 widens it from two tracks to five.
+  // Last two: both render the engine offline in Chromium, which is slower than every
+  // other suite put together. MASH_NULL_ALL=1 widens the null test from two tracks
+  // to five; tests/voices.js renders every voice in the catalogue once.
+  'tests/voices.js',
   'tests/null-test.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',

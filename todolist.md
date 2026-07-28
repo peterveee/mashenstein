@@ -120,6 +120,17 @@ paste or silence it; "Build up ▸ 8 bars" repeats a range and lets the kit back
 lane at a time. **Full plan written:**
 `~/.claude/plans/read-users-peter-claude-plans-it-is-diff-scalable-brooks.md`.
 
+- **LANDED 2026-07-29 — everything but §8.** The desk arranges: drag a range on the
+  grid, right-click for silence-a-lane / drop-the-kit / duplicate / build up /
+  breakdown / delete, hollow cells where a bar drops a lane, `⌘Z` over all of it, and
+  Save writes `src/data/arrangements.js` beside the mix. The engine reads bar plans
+  (`barPlan` in `lanes.js`, ~6 lines of `scheduleStep`) and takes an edit mid-song
+  via `Audio.setArrangement` without stopping. 84 assertions in
+  `tests/arrangement.js`, in `npm test`.
+- **Still open: §8** — re-importing a MIDI into an existing song's chosen lanes
+  rather than minting a new bank. The write path it needs (`writeBarNotes`,
+  `compactSections`) is built and tested; what is missing is the import dialog's
+  second mode and exporting from the bar plan.
 - **What exists today:** the desk's arrangement grid is already bar-unit
   (`buildArrangement()` in `tools/mixer-entry.js`), with a single-bar select
   (`markBar`), a read-only piano-roll popup per bar (`showBar`), whole-lane

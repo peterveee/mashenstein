@@ -428,6 +428,12 @@ balanced by ear against the engine as it was before the desk existed, so:
 - The master limiter is **off by default** — a `DynamicsCompressorNode` carries 6ms
   of lookahead that cannot be switched off, so merely having it in the path delays
   everything.
+- **The reverb's impulse response is seeded** (`makeReverb` in `effects.js`), not
+  Tone's. `Tone.Reverb` fills its IR from `Math.random`, so every render of every
+  song carrying reverb was a different file — measured 1.2e-1 apart between two
+  renders of the same track, against a 5e-6 tolerance. Stems stopped summing to
+  their mix and no baseline could match. Anything added to the catalogue that
+  generates a buffer needs the same check.
 - `tests/null-test.js` renders the engine offline and compares it sample-for-sample
   against reference dumps (`npm run baseline`, 5e-6 tolerance). It runs in `npm test`.
 
@@ -439,6 +445,14 @@ left alone. Mid/side width is available per strip and is exactly transparent at 
 its sections computed — banks vary their own lanes per section, and an absolute value
 would flatten variation that was written on purpose.
 
+**A save is scoped, and the version it replaces is kept.** The desk posts only the
+songs a save is about and the server merges them into the file as it stands, so a tab
+left open since the morning cannot write its stale copy of the other songs back over
+what has landed since. Every write first copies the file into `.mix-history/`
+(gitignored, last 300, named for the song and stamped to the second); **⋯ → Restore a
+previous save** loads one back into the desk as an unsaved draft. Undo covers the
+desk, git covers what has been committed, and this is what sits between them.
+
 **One render path.** `tools/lib/render-bank-browser.js` runs `src/engine/audio.js`
 in headless Chromium under an `OfflineAudioContext`; every WAV, stem, MP4 and the
 desk's own audition come from it. The hand-written JS mirror it replaced generated
@@ -449,6 +463,61 @@ was brighter than the game and unmixed. Nothing renders audio any other way.
 and measured — render each lane as a stem, read its signed value at the peak sample,
 and trim what is actually there (shop was kick + hats; its clap, despite the higher
 solo peak, contributed nothing at that sample).
+
+### 8.5 The Voice Library
+
+Every sound in the game is a branch in `scheduleStep()` — thirteen lines of
+oscillator, filter and envelope per bass flavour, in a function that must stay
+sample-identical for every song already balanced against it.
+[`src/data/voices.js`](../src/data/voices.js) is the other way to add one: a hundred
+and fifty-odd presets in a table, of four kinds.
+
+- **Engine presets** are the game's own hand-written voices, named. `bassFilteredSaw`,
+  `bass80s`, `leadBright`, the drawbar organ and the plain waveforms were reachable
+  only by typing a key into a bank. A preset *is* that set of keys: `applyMix` expands
+  it onto the bank and `scheduleStep` reads exactly what it always read, so they cost
+  no engine code at all.
+- **Tone presets** are synths built from `options`, played by
+  [`src/engine/voices.js`](../src/engine/voices.js). Nothing in the engine branches on
+  which one.
+- **Noise presets** are native nodes on the engine's own seeded noise buffer — a
+  filtered burst, an optional pitched body, optional taps. The snares, claps and hats
+  Tone could not provide (see the offline rule below).
+- **Drum-synth presets** (`ds` ids) are the Microtonic construction on the same seeded
+  buffer: an oscillator with a pitch envelope and a filtered noise source, each with
+  its own attack/decay/curve envelope, summed into a tanh drive. Either half can be
+  left out — a tom is all oscillator, a clap all noise. `_playDrum` in
+  `src/engine/voices.js` plays them; `tools/render-drum-auditions.js` writes one WAV
+  per preset and a kit demo.
+
+Rules the design turns on:
+
+- **Opt-in, per lane, by a bank key.** `bassVoice`, `kickVoice` and the rest name a
+  preset — on a bank, a section, or a song's `voice` block in `mix.js`. All three
+  already merge before the sequencer runs. Unset is inert: `playVoice` returns before
+  constructing anything, so a game whose songs name no presets renders exactly as it
+  always did. Nothing in the game uses one today.
+- **Thirteen lanes**: six melodic and all seven drums. Percussion holds hits rather
+  than notes, so a preset is struck at the lane's own pitch.
+- **Presets are not tied to a lane.** Category describes the sound; a bass preset on
+  the lead is a lead. The only exceptions are engine presets that are lane-specific
+  code paths, and they say so.
+- **A preset replaces the lane, it does not layer over it.** `bassRepeat`'s ghost note
+  is restated on the same preset; `leadBright`'s octave sine belongs to the engine's
+  lead and goes with it.
+- **The offline rule applies here too.** Tone's `PluckSynth` renders silent (an
+  AudioWorklet comb filter, like Freeverb) and `PolySynth` renders silent unless its
+  first trigger is at exactly t=0 — so polyphony is a pool of monophonic synths that
+  grows to the widest chord asked of it. Nothing uses `Tone.Noise`, which seeds from
+  `Math.random` and would stop two renders matching: every noisy preset — the noise
+  kind and the drum synth alike — is built on the engine's seeded buffer, so renders
+  stay sample-deterministic and stems sum to the mix. `tests/voices.js` renders every
+  preset, fails on a silent one, and checks a drum-synth render twice for identity.
+- **Levels are measured at both ends.** `tools/measure-voices.js` renders one note of
+  each lane's own voice and one note of each preset at unity, and writes both tables
+  back into the library; the engine divides one by the other. Melodic lanes land
+  within 0.1dB of the voice they replace. Re-run it after editing any preset's
+  options.
 
 ---
 

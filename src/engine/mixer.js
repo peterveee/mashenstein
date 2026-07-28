@@ -30,7 +30,7 @@
 //     a console EQ actually uses. So the EQ is native BiquadFilters, not EQ3.
 import * as Tone from 'tone';
 import { LANES } from './lanes.js';
-import { createEffect, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
+import { createEffect, makeReverb, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
@@ -191,7 +191,15 @@ function makeEq(ctx) {
   };
 }
 
-// Reverb is Tone.Reverb — convolution with a generated impulse response.
+// Reverb is convolution with a generated impulse response — ours, from
+// `makeReverb` in effects.js, not Tone.Reverb.
+//
+// Tone's builds the same kind of impulse and builds it from `Math.random`, which
+// made every render of every song carrying reverb a different file: two renders of
+// plumber measured 1.2e-1 apart, against a null-test tolerance of 5e-6. Stems
+// stopped summing to the mix they came from, and no baseline could ever match one.
+// Ours seeds the noise, which also makes a decay change immediate instead of a
+// promise to await.
 //
 // A hand-built Schroeder network (comb + allpass, the Freeverb topology) was tried
 // here to get roomSize/damping controls and cut the cost. It lost on both counts:
@@ -203,8 +211,6 @@ function makeEq(ctx) {
 //
 // So: decay and pre-delay from the reverb itself, and the send's own 3-band return
 // EQ for tone-shaping the tail — which is what a damping control does in practice.
-// Note a decay change rebuilds the impulse response asynchronously; the desk awaits
-// it rather than glitching mid-note.
 
 /** A tempo-syncable feedback delay, mirroring the engine's original echo chain. */
 function makeDelay(ctx) {
@@ -291,10 +297,13 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
       input = engine.input;
       engine.output.connect(eq.input);
     } else {
-      reverb = new Tone.Reverb({ decay: d.decay, preDelay: d.preDelay, wet: 1 });
+      // Ours rather than Tone.Reverb: same convolution, but the impulse response is
+      // generated from a fixed seed instead of Math.random, so a song renders to the
+      // same file twice and a stem sums back into its mix. See makeReverb.
+      reverb = makeReverb(ctx, { decay: d.decay, preDelay: d.preDelay, wet: 1 });
       input = ctx.createGain();
-      Tone.connect(input, reverb);
-      Tone.connect(reverb, eq.input);
+      input.connect(reverb.input);
+      reverb.output.connect(eq.input);
       readyPromises.push(reverb.ready);
     }
 
@@ -334,7 +343,37 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     }
   };
 
-  for (const { key } of LANES) {
+  /**
+   * Put one aux's return back in the mix, if `pruneAuxes` had taken it out.
+   *
+   * The counterpart to pruning, and the half that was missing: an aux nothing sent to
+   * was unhooked from the return, and only a whole `applyMix` ever hooked it back up.
+   * So raising a channel's reverb from zero made no sound at all — the send was live,
+   * the convolver was running, and its return was not connected to anything. It came
+   * back the moment something re-applied the mix, which on the desk meant holding A/B
+   * and letting go. That is the bug, not a slow impulse response.
+   *
+   * Called from `setSend` rather than by a prune sweep, because waking is the urgent
+   * direction: an aux that has just become unused is merely costing CPU until the next
+   * apply, but an aux that has just become used is silence where you asked for a sound.
+   */
+  const wakeAux = (id) => {
+    const a = auxes.get(id);
+    if (!a || a.active) return;
+    a.active = true;
+    a.monitor.connect(auxReturn);
+  };
+
+  /**
+   * Build one channel strip and put it in `strips`.
+   *
+   * A function rather than the loop body it used to be, because the engine's LANES is
+   * no longer the whole list: a LAYER is a lane that arrives with the mix, and the
+   * first moment it can be given a strip is applyMix. Everything below is unchanged —
+   * a layer's strip is an ordinary strip, wired the same way, so nothing downstream
+   * has to know which kind it got. See `ensureLane`.
+   */
+  const makeStrip = (key) => {
     // Dry input: every voice in the lane connects here. Forced to explicit stereo
     // so the panner downstream always sees two channels — see the pan note above.
     const dry = ctx.createGain();
@@ -449,7 +488,14 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
       /** Accepts any subset of aux ids, e.g. { delay: 1, reverb2: 0.3 }. */
       setSend(patch = {}) {
         for (const [id, v] of Object.entries(patch)) {
-          if (v != null && sends.has(id)) state.send[id] = v;
+          if (v != null && sends.has(id)) {
+            state.send[id] = v;
+            // A send raised off zero has to have somewhere to arrive — see wakeAux.
+            // Only ever upwards here: dropping the last send to zero leaves the return
+            // wired and silent until the next applyMix prunes it, which costs a little
+            // CPU and never costs a sound.
+            if (v > 0) wakeAux(id);
+          }
         }
         applyMute();
       },
@@ -475,7 +521,13 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
       _monitor: (g) => { monitor.gain.setTargetAtTime(g, ctx.currentTime, 0.01); },
     };
     strips.set(key, strip);
-  }
+    // A strip built while a send is soloed has to arrive already silenced on its dry
+    // path, or the layer you just made is the only channel you can hear.
+    if (soloedAux.size) strip._monitor(0);
+    return strip;
+  };
+
+  for (const { key } of LANES) makeStrip(key);
 
   // Master limiter — OFF by default, and deliberately so.
   //
@@ -548,6 +600,20 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
   return {
     lanes: LANES.map((l) => l.key),
     lane: (key) => strips.get(key),
+    /**
+     * The strip for a lane, built on demand if the engine's own list has never heard
+     * of it — which is what a LAYER is. Layers arrive with the mix rather than with
+     * the bank, so applyMix is the first moment one can be given a strip. See
+     * makeStrip, whose contract this is.
+     *
+     * Reconstructed by Claude from that contract after `git checkout` on this file
+     * discarded the working copy — compare against the original if it turns up.
+     */
+    ensureLane: (key) => {
+      if (!key) return null;
+      if (!strips.has(key)) makeStrip(key);
+      return strips.get(key);
+    },
     masterLevel: () => masterMeter.getValue(),
 
     /** Effects on the master bus, after the trim and before the limiter. */
@@ -620,7 +686,9 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
      * pulled at all, so an unused reverb costs exactly nothing. This game runs on
      * phones; two idle convolvers is not a rounding error there.
      *
-     * Called after the sends are set, so it sees the finished picture.
+     * Called after the sends are set, so it sees the finished picture. A send raised
+     * on its own — a fader move on the desk, with no apply behind it — wakes its aux
+     * from `setSend` instead; see wakeAux.
      */
     pruneAuxes() {
       for (const a of auxes.values()) {
@@ -650,7 +718,13 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     /** Costs 6ms of output latency whenever it is on — see the note where it is built. */
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
     clearSolo() { soloed.clear(); for (const s of strips.values()) s._applyMute(); },
-    /** Every reverb builds its IR asynchronously; offline renders must await this. */
+    /**
+     * Kept, and resolved. The reverb used to build its impulse response by rendering
+     * noise through its own offline context, so an offline render had to await it or
+     * the aux was silent for the whole track. Ours generates the buffer in a loop and
+     * is ready when it is constructed — but every caller that awaited this is right to,
+     * and will be again the day something here is asynchronous.
+     */
     ready: Promise.all(readyPromises),
     /** Reset every strip to unity — the state the songs were balanced against. */
     reset() {

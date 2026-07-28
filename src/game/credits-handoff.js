@@ -234,8 +234,13 @@ const IN_LEG = 0.45;
 // sync with the animation if the window above is retuned.
 export const HANDOFF_SWAP_AT = HANDOFF_ACTIVE_FROM + IN_LEG * ACTIVE_SPAN;
 // The outgoing hero's line lights just before the hand-off, so the words land
-// as they reach the portal rather than sitting up through the whole run-up.
-export const HANDOFF_LINE_A_AT = HANDOFF_SWAP_AT - 0.09;
+// as they reach the portal rather than sitting up through the whole run-up —
+// close enough to the swap that the line is still arriving as they vanish.
+export const HANDOFF_LINE_A_AT = HANDOFF_SWAP_AT - 0.04;
+// The reply comes almost on the incoming hero's heels. The two lines used to
+// sit 0.15 apart, which read as two statements; this close, it reads as one
+// exchange interrupted by the portal.
+export const HANDOFF_LINE_B_AT = HANDOFF_SWAP_AT + 0.02;
 
 export function drawHandoff(ctx, opts) {
   const v = HANDOFF_BY_ID[opts.variant || HANDOFF_VARIANT] || HANDOFF_BY_ID.pair;

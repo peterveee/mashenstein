@@ -6,13 +6,16 @@
 // emit is silently dropped on save. That is exactly how effect chains were lost:
 // they could be built, they sounded right, and Save to game quietly wrote a file
 // without them. This round-trips a mix that uses every corner.
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MIX, LANE_DEFAULTS, laneSettings } from '../src/data/mix.js';
-import { renderMixFile } from '../tools/mixer.js';
+import { renderMixFile, mergeMix, snapshotMix, freshImport } from '../tools/mixer.js';
+// What the DESK means by "this song has changed", which has to mean the same thing as
+// "renderMixFile would write something different" — see the last section.
+import { mixSignature } from '../tools/lib/mix-signature.js';
 import { AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
-import { EFFECT_BY_ID, MAX_EFFECTS, DEFAULT_MASTER_CHAIN } from '../src/engine/effects.js';
+import { EFFECT_BY_ID, MAX_EFFECTS, DEFAULT_MASTER_CHAIN, visibleParams } from '../src/engine/effects.js';
 import { LANE_KEYS } from '../src/engine/lanes.js';
 // The node-side registry, which is the one the desk saves against: a mix can be
 // dialled in on an imported song, and an entry for it is not a broken mix file.
@@ -33,8 +36,20 @@ assert(Object.keys(MIX).every((id) => trackIds.has(id)),
   'every mix entry names a track that exists');
 
 for (const [id, entry] of Object.entries(MIX)) {
+  // A duplicated track is a lane key the engine's own list has never heard of — it is
+  // minted by this entry's own `layers`, and it is only legal because of that. See
+  // tests/layers.js for what makes one.
+  const layerKeys = new Set((entry.layers || []).map((l) => l.key));
+  for (const l of entry.layers || []) {
+    assert(laneKeys.has(l.from), `${id}: layer "${l.key}" copies a real lane`);
+    assert(!laneKeys.has(l.key), `${id}: layer "${l.key}" does not shadow a lane of the song`);
+  }
+  for (const key of entry.off || []) {
+    assert(laneKeys.has(key), `${id}: deleted track "${key}" is a real lane`);
+  }
   for (const [key, lane] of Object.entries(entry.lanes || {})) {
-    assert(laneKeys.has(key), `${id}: lane "${key}" is a real lane`);
+    assert(laneKeys.has(key) || layerKeys.has(key),
+      `${id}: lane "${key}" is a real lane, or a layer this entry declares`);
     const s = laneSettings(lane);
     assert(s.gain >= -60 && s.gain <= 6, `${id}.${key}: gain ${s.gain} is inside the fader's range`);
     assert(s.pan >= -1 && s.pan <= 1, `${id}.${key}: pan is inside -1..1`);
@@ -51,6 +66,38 @@ for (const [id, entry] of Object.entries(MIX)) {
     assert(auxIds.has(aux), `${id}: fx "${aux}" is a real aux`);
     assert((patch.effects || []).every((e) => EFFECT_BY_ID[e.id]),
       `${id}: ${aux} return effects are all in the catalogue`);
+  }
+}
+
+// ---- every control the catalogue declares can be reached -------------------
+//
+// The desk hides some parameters depending on others: a synced delay shows a note
+// division and hides its millisecond TIME, and the reverse. Those rules are keyed on
+// the PARAMETER, not on whether the effect has the switch that drives it — and `sync`
+// defaults to ON, so the first effect to carry a free `delayMs` without a tempo switch
+// had its TIME row skipped in every state. The control existed, saved, loaded and
+// rendered; it simply never drew. Nothing caught it because nothing tests the desk's
+// parameter list against the catalogue's.
+//
+// This does, and it runs the desk's OWN rule rather than a copy of it — visibleParams
+// is what buildDevices iterates. Every combination of the two tempo switches, and the
+// invariant is that no effect can declare a parameter that no state of its own toggles
+// will show.
+for (const def of Object.values(EFFECT_BY_ID)) {
+  // Only the switches the effect ACTUALLY HAS may vary — that is the whole bug. Setting
+  // `sync` on an effect with no tempo switch describes a state the desk can never be in,
+  // and a test that does it passes on a card the desk draws wrong.
+  const states = ['sync', 'rateSync']
+    .filter((s) => def.params.includes(s))
+    .reduce((acc, s) => acc.flatMap((base) => [{ ...base, [s]: 0 }, { ...base, [s]: 1 }]), [{}]);
+  const seen = new Set();
+  for (const state of states) {
+    for (const p of visibleParams(def, { ...def.defaults, ...state })) seen.add(p);
+  }
+  for (const p of def.params) {
+    assert(seen.has(p), `${def.id}: "${p}" is drawn on the desk in at least one state`);
+    assert(def.defaults[p] !== undefined || p.includes('.'),
+      `${def.id}: "${p}" has a default, so a fresh insert opens at a known value`);
   }
 }
 
@@ -71,10 +118,17 @@ const sample = {
     fx: {
       delay: {
         division: 0.5, feedback: 0.4, tone: 3200, level: 0.8, pan: -0.3, mute: true,
+        // The return EQ. It was absent from this fixture, which is exactly why the
+        // serialiser could drop it for months without a test going red: the desk
+        // applies it to the live aux and keeps it in localStorage, so it survived
+        // everything except the Save it was meant to survive.
+        eq: { low: -3, mid: 1.5, high: -6 },
         effects: [{ id: 'filter', params: { type: 'highpass', frequency: 800, Q: 1 } }],
       },
       reverb: {
         decay: 3.4, preDelay: 0.02, level: 1.2, pan: 0.2,
+        // On a convolution reverb this IS the damping control — there is no other.
+        eq: { high: -4 },
         effects: [{ id: 'chorus', bypass: true, params: { depth: 0.5 } }],
       },
     },
@@ -94,6 +148,12 @@ const sample = {
         ],
       },
       kick: { gain: 1 },
+      // Stereo width: a real strip parameter with no desk control, so the only way
+      // it gets into a mix is by hand — and the serialiser used to erase it on the
+      // next Save. 0 is mono, and mono is a decision, so it has to survive a round
+      // trip like any other number.
+      hats: { width: 0 },
+      snare: { width: 1.6 },
     },
   },
 };
@@ -117,12 +177,19 @@ assert(JSON.stringify(wrote.lanes.bass.eq) === JSON.stringify(sent.lanes.bass.eq
   && JSON.stringify(wrote.lanes.bass.send) === JSON.stringify(sent.lanes.bass.send)
   && wrote.lanes.bass.pan === sent.lanes.bass.pan && wrote.lanes.bass.mute === true,
   'round-trip: a channel keeps its gain, pan, mute, sends and EQ');
+assert(wrote.lanes.hats.width === 0 && wrote.lanes.snare.width === 1.6,
+  'round-trip: a lane keeps its stereo width, mono included');
+assert(!('width' in (wrote.lanes.kick || {})),
+  'round-trip: a lane at the default width says nothing about it');
 for (const aux of ['delay', 'reverb']) {
   const a = wrote.fx[aux], b = sent.fx[aux];
   assert(Object.entries(b).every(([k, v]) => (k === 'effects'
     ? JSON.stringify(a[k]) === JSON.stringify(v.map((e) => (e.params && !Object.keys(e.params).length
       ? { id: e.id, ...(e.bypass ? { bypass: true } : {}) } : e)))
-    : a[k] === v)),
+    // `eq` is an object, and comparing it by identity is how it slipped through: a
+    // dropped key and a value that never arrives both read as "not ===", so the
+    // assertion could only ever have passed by the fixture not carrying one.
+    : (v && typeof v === 'object' ? JSON.stringify(a[k]) === JSON.stringify(v) : a[k] === v))),
     `round-trip: the ${aux} send keeps every setting, its return chain included`);
 }
 
@@ -175,6 +242,186 @@ assert(unity.plumber?.lanes?.lead?.send?.delay === 1,
 assert(Object.keys(AUX_DEFAULTS).every((id) => auxIds.has(id))
   && AUXES.every((a) => AUX_DEFAULTS[a.id]),
   'every aux has defaults and every set of defaults has an aux');
+
+// ---- saving one song without flattening the others --------------------------
+// The desk posts only the songs a Save is about, and the server folds them into the
+// file as it stands. It used to post its whole idea of the file — read when the page
+// loaded — so a tab open since the morning wrote the morning's copy of every other
+// song back over anything that had landed since.
+const onDisk = { plumber: { master: -2 }, shop: { master: -6 }, hub: { master: 1 } };
+const merged = mergeMix(onDisk, ['shop'], { shop: { master: -4.4 } });
+assert(merged.shop.master === -4.4, 'merge: the saved song takes the desk\'s value');
+assert(merged.plumber.master === -2 && merged.hub.master === 1,
+  'merge: every song the save was not about keeps what the FILE holds, not what the desk believed');
+assert(onDisk.shop.master === -6, 'merge: the mix on disk is not mutated in place');
+// Reset every channel leaves a draft that normalises to nothing. Saving it has to
+// take the entry OUT of the file, not leave the old one standing.
+assert(!('shop' in mergeMix(onDisk, ['shop'], { shop: null })),
+  'merge: a song saved with nothing in it is removed from the file');
+assert(!('shop' in mergeMix(onDisk, ['shop'], {})),
+  'merge: a song saved with no entry at all is removed too, not silently skipped');
+
+// ---- the version that was overwritten ---------------------------------------
+// Saving is not committing, and between two saves nothing held the version being
+// replaced: undo lives in the desk, and git only has what Peter has committed.
+const histDir = join(dir, 'history');
+const histFile = join(dir, 'tosnapshot.js');
+writeFileSync(histFile, renderMixFile({ plumber: { master: -3.3 } }));
+const snapName = snapshotMix('plumber', histDir, histFile);
+assert(/^mix-\d{4}-\d{2}-\d{2}T\d{6}-plumber\.js$/.test(snapName || ''),
+  'snapshot: named for the song that was saved and stamped to the second');
+const { MIX: snapped } = await import(join(histDir, snapName));
+assert(snapped.plumber.master === -3.3,
+  'snapshot: it is the file itself, so it loads as a module and reads back as a mix');
+// A byte copy, not a re-render: what comes back must be what was there, character
+// for character, or "restore" is a re-serialisation of a guess.
+assert(readFileSync(join(histDir, snapName), 'utf8') === readFileSync(histFile, 'utf8'),
+  'snapshot: byte-identical to the file it replaced');
+assert(snapshotMix('plumber', histDir, join(dir, 'not-a-file.js')) === null,
+  'snapshot: a first save with no file yet has nothing to lose, and says so');
+
+// ---- the desk's "changed" and the file's "different", held to each other -----
+//
+// The desk decides whether Save is even offered by reducing draft and file to what
+// mix.js can hold and comparing those — `mixSignature`. That reduction used to be a
+// hand-written list of fields inside the desk, sitting beside this serialiser's own
+// hand-written list of fields, and the two drifted apart: the sends were missing from
+// the desk's list entirely, and a channel's effect chain was missing whenever the
+// channel was otherwise at unity. The consequence was silent and one-directional — a
+// reverb decay or a chorus on an untouched lane left Save reading "Saved — matches the
+// file" with the button disabled, so the change stayed in one browser's localStorage,
+// the game never heard it, and the day that draft went away, so did the mix.
+//
+// Nothing red would have caught that, because each half was self-consistent. This is
+// the assertion that binds them: for every kind of decision a mix can carry, the desk
+// must call it a change EXACTLY when saving would write a different file. Both
+// directions matter — miss one and work is lost, invent one and the desk cries wolf.
+const sig = (e) => JSON.stringify(mixSignature(e));
+const rendered = (e) => renderMixFile({ plumber: e });
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+const varyBase = {
+  master: -1.5,
+  fx: { delay: { level: 0.8 }, reverb: { decay: 3.4, effects: [{ id: 'chorus' }] } },
+  lanes: {
+    bass: { gain: -2.5, send: { delay: 0.5 }, effects: [{ id: 'peq', params: { f1: 90, g1: 3 } }] },
+    // At unity and untouched: the channel a chorus could be added to without the desk
+    // noticing, because the old check called a lane with nothing but a chain "bare".
+    kick: {},
+  },
+};
+
+// Each of these changes what the game plays, so each has to reach the file — and the
+// desk has to know it would.
+const CHANGES = [
+  ['a fader', (m) => { m.lanes.bass.gain = -3; }],
+  ['a pan', (m) => { m.lanes.bass.pan = 0.4; }],
+  ['a mute', (m) => { m.lanes.bass.mute = true; }],
+  ['a stereo width', (m) => { m.lanes.bass.width = 0; }],
+  ['a delay send', (m) => { m.lanes.bass.send.delay = 1.2; }],
+  ['a reverb send', (m) => { m.lanes.bass.send.reverb = 0.4; }],
+  ['a channel EQ band', (m) => { m.lanes.bass.eq = { high: 4 }; }],
+  ['an effect added to a channel at unity', (m) => { m.lanes.kick.effects = [{ id: 'chorus' }]; }],
+  ['an effect added to a channel that already has one', (m) => { m.lanes.bass.effects.push({ id: 'chorus' }); }],
+  ['an effect taken off a channel', (m) => { m.lanes.bass.effects = []; }],
+  ['an effect parameter', (m) => { m.lanes.bass.effects[0].params.g1 = 5; }],
+  ['an effect bypassed', (m) => { m.lanes.bass.effects[0].bypass = true; }],
+  ['a channel added to the mix', (m) => { m.lanes.hats = { gain: -1 }; }],
+  ['the master trim', (m) => { m.master = -2; }],
+  ['the master pan', (m) => { m.masterPan = 0.3; }],
+  ['the limiter', (m) => { m.limiter = true; }],
+  ['the seeded master compressor switched on', (m) => {
+    m.masterEffects = DEFAULT_MASTER_CHAIN().map((e) => ({ ...e, bypass: false }));
+  }],
+  ['the seeded master compressor taken out', (m) => { m.masterEffects = []; }],
+  ['a duplicated track', (m) => { m.layers = [{ key: 'bass2', from: 'bass' }]; }],
+  ['a deleted track', (m) => { m.off = ['hats']; }],
+  ['a voice override', (m) => { m.voice = { bassVoice: 'roundMono' }; }],
+  ['the delay time', (m) => { m.fx.delay.division = 0.5; }],
+  ['the delay feedback', (m) => { m.fx.delay.feedback = 0.6; }],
+  ['the delay damping', (m) => { m.fx.delay.tone = 1200; }],
+  ['a return level', (m) => { m.fx.delay.level = 0.5; }],
+  ['a return pan', (m) => { m.fx.reverb.pan = -0.4; }],
+  ['a return muted', (m) => { m.fx.reverb.mute = true; }],
+  ['a return EQ band', (m) => { m.fx.reverb.eq = { high: 6 }; }],
+  ['the reverb decay', (m) => { m.fx.reverb.decay = 5; }],
+  ['the reverb pre-delay', (m) => { m.fx.reverb.preDelay = 0.05; }],
+  ['an effect added to a return', (m) => { m.fx.delay.effects = [{ id: 'filter' }]; }],
+  ['an effect taken off a return', (m) => { m.fx.reverb.effects = []; }],
+];
+
+// And each of these changes nothing the file can hold, so the desk must stay quiet.
+// Every one of them is something the desk does on its own: `editFx` writes a whole set
+// of defaults the first time you touch a send, the master arrives seeded with a
+// bypassed compressor, and a send dragged to zero is a send that is not there.
+const NON_CHANGES = [
+  ['a send touched and put back to its defaults', (m) => { m.fx.reverb = { ...AUX_DEFAULTS.reverb, decay: 3.4, effects: m.fx.reverb.effects }; }],
+  ['the other send written out at its defaults', (m) => { m.fx.delay = { ...AUX_DEFAULTS.delay, level: 0.8 }; }],
+  ['a send at an explicit zero', (m) => { m.lanes.kick.send = { delay: 0, reverb: 0 }; }],
+  ['a channel at its defaults', (m) => { m.lanes.snare = { gain: 0, pan: 0, mute: false }; }],
+  ['an empty effect chain', (m) => { m.lanes.kick.effects = []; }],
+  ['the master chain the desk seeds', (m) => { m.masterEffects = DEFAULT_MASTER_CHAIN(); }],
+  ['a fourth decimal place', (m) => { m.lanes.bass.gain = -2.5001; }],
+  ['an empty voice map', (m) => { m.voice = {}; }],
+  ['an empty layer list', (m) => { m.layers = []; }],
+];
+
+for (const [what, change] of [...CHANGES, ...NON_CHANGES]) {
+  const v = clone(varyBase);
+  change(v);
+  const wouldWrite = rendered(v) !== rendered(varyBase);
+  const deskSees = sig(v) !== sig(varyBase);
+  assert(wouldWrite === deskSees, `the desk sees ${what} exactly when the file would: `
+    + `${wouldWrite ? 'writes' : 'writes nothing'}, desk ${deskSees ? 'says changed' : 'says unchanged'}`);
+}
+
+// The same agreement on the songs that actually exist: saving one must leave the desk
+// reading "Saved — matches the file" rather than dirty against what it just wrote.
+const savedAll = await (async () => {
+  const p = join(dir, 'whole-mix.js');
+  writeFileSync(p, renderMixFile(MIX));
+  return (await import(p)).MIX;
+})();
+for (const [id, entry] of Object.entries(MIX)) {
+  assert(sig(savedAll[id]) === sig(entry), `${id}: a save leaves the desk clean, not dirty against itself`);
+}
+assert(Object.keys(savedAll).length === Object.keys(MIX).length,
+  'every song that has a mix still has one after a save');
+
+// ---- reading a file this process has just rewritten --------------------------
+//
+// Save merges the song being written into the file AS IT STANDS and rewrites the lot,
+// so the read behind that merge decides what happens to the other thirty-three songs.
+// Node caches an ES module by its full URL, which is why the readers bust the cache
+// with a counter in the query — and why there must be exactly ONE counter.
+//
+// There were two, `historySeq` and `importSeq`, both from zero, both used on mix.js.
+// When one reached a number the other had already used, `import()` returned that
+// earlier parse: the file as it had been minutes or hours before. Save then merged
+// into it, so saving one song put every other song back to an older version of itself
+// — silently, in the file the game reads, and in the desk's own idea of what is on
+// disk, which is what Revert reverts to. `shop` lost its voices, its delay EQ and its
+// distortion that way, to saves of `title` and `megamix`.
+//
+// The mechanism, first: a read after a write must see the write.
+const seq = join(dir, 'seq.js');
+const other = join(dir, 'seq-other.js');
+writeFileSync(other, 'export const MIX = {};\n');
+const reads = [];
+for (let i = 1; i <= 4; i++) {
+  writeFileSync(seq, `export const MIX = { v: ${i} };\n`);
+  reads.push((await freshImport(seq)).MIX.v);
+  await freshImport(other);      // another reader, between, as voiceRefs sat between saves
+}
+assert(JSON.stringify(reads) === '[1,2,3,4]',
+  'a file re-read after being rewritten comes back as it is now, not as node cached it');
+
+// And the shape of it, because the mechanism above cannot see a second counter added
+// somewhere else in the file. Every cache-busted import goes through `freshImport`, so
+// there is exactly one `?v=` in the source that builds one.
+const mixerSrc = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
+assert((mixerSrc.match(/\?v=\$\{/g) || []).length === 1,
+  'tools/mixer.js busts the module cache in exactly one place — new readers use freshImport');
 
 console.log(failed ? '\nMIX: FAILED' : '\nMIX: PASSED');
 process.exit(failed ? 1 : 0);

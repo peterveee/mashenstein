@@ -1,3 +1,6 @@
+import { baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES } from '../data/voices.js';
+import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
+
 // The sequencer's lane list, in mix order.
 //
 // This used to live in tools/lib/render-bank.js, where only the offline renderer
@@ -42,22 +45,215 @@ const DESK_ORDER = [
   'bass',
 ];
 
+/**
+ * ---- Layers ----------------------------------------------------------------
+ *
+ * A layer is a duplicated track: the same note arrays under a second lane key, so it
+ * can carry its own voice, fader, EQ, sends and effects. Everything downstream —
+ * `activeLanes`, `laneActivity`, the strips, the arrangement grid, the stem renderer
+ * — sees an ordinary lane, because by the time they look at the bank that is what it
+ * is. The only code that knows layers exist is here, `deskBank` below, and the one
+ * loop in `scheduleStep` that plays them.
+ *
+ * Layers are declared in the MIX (`entry.layers`), not in the song: the desk has
+ * never rewritten a composition file and this does not start. `deskBank` is what
+ * turns the declaration into lanes, and deleting the mix entry reverts the song
+ * exactly.
+ */
+
+/** The lane definitions a bank's layers stand for — LANES-shaped, so they mix in. */
+export function layerLanes(bank) {
+  const src = new Map(LANES.map((l) => [l.key, l]));
+  return (bank?.__layers || []).map(({ key, from }) => {
+    const base = src.get(from);
+    return {
+      key,
+      label: `${base?.label || from} ${key.slice(from.length)}`,
+      group: base?.group || 'melodic',
+      layerOf: from,
+    };
+  }).filter((l) => src.has(l.layerOf));
+}
+
+/** Every lane this bank can play: the engine's own, plus any layers laid over it. */
+export function laneList(bank) {
+  const layers = layerLanes(bank);
+  return layers.length ? [...LANES, ...layers] : LANES;
+}
+
+/**
+ * The bank the desk, the game and the renderers should actually play, given a mix.
+ *
+ * Two things a mix entry can say about the SHAPE of a song rather than its balance:
+ * `off` drops a lane out of it entirely (the desk's Delete track), and `layers` adds
+ * a copy of one (Duplicate track). Both are applied here, once, so there is a single
+ * answer to "what lanes does this song have" no matter who is asking.
+ *
+ * Returns the bank UNTOUCHED — the same object, not a copy — when the mix says
+ * neither, which is every song in the game today. That identity is what keeps
+ * tests/null-test.js sample-exact: nothing is cloned, re-keyed or re-ordered on the
+ * path that existed before layers did.
+ *
+ * The lane arrays are shared by reference into the layer, deliberately: they are read
+ * by the sequencer and never written, and one bank in the game has a single array on
+ * seven sections at once. A copy per layer would be megabytes for nothing.
+ */
+export function deskBank(bank, entry) {
+  if (!bank) return bank;
+  const off = (entry?.off || []).filter((k) => LANE_KEYS.includes(k));
+  // A layer whose source is gone — deleted, or renamed out of the engine — is not a
+  // lane, it is a row that plays nothing. Dropped here rather than half-built.
+  const layers = (entry?.layers || [])
+    .filter((l) => l && l.key && LANE_KEYS.includes(l.from) && !off.includes(l.from)
+      && !LANE_KEYS.includes(l.key) && seamFor(l.key));
+  if (!off.length && !layers.length) return bank;
+
+  const shape = (block) => {
+    const out = { ...block };
+    for (const key of off) delete out[key];
+    for (const { key, from } of layers) if (out[from]) out[key] = out[from];
+    return out;
+  };
+  const out = shape(bank);
+  // Sections are partial banks spread over the whole at schedule time, so a lane
+  // deleted from the top and left in a section would come back in that section, and a
+  // layer would fall back to the top-level part instead of following the section's.
+  if (Array.isArray(bank.sections)) out.sections = bank.sections.map(shape);
+  out.__layers = layers.map(({ key, from }) => ({ key, from }));
+  return out;
+}
+
+/**
+ * The same song with one lane left in it, sounding one note, once.
+ *
+ * This is what the desk's on-screen keyboard plays. Pressing a key has to sound the
+ * SELECTED CHANNEL — its voice, its gain, its note length, its tone-shaping, through
+ * its own strip — and a second synthesiser built to do that would have to know
+ * everything scheduleStep knows and would drift from it the first time either
+ * changed. So the sequencer plays it instead, handed a bank with nothing in it but
+ * the note: every other lane blanked, and the one lane holding a single step.
+ *
+ * Sections go, because a preview happens at no point in the song's form: left in,
+ * they would spread over the bank at schedule time and blank the lane again or
+ * re-voice it half way. `bpm` and every tone-shaping key stay exactly as they are —
+ * the note has to sound like the song, not like a default.
+ *
+ * `value` is a frequency. What a lane's step actually HOLDS is not always one — a
+ * percussion lane holds a boolean and carries its pitch as a bank key, a chord lane
+ * holds an array — so the three shapes are applied here, at the one place that knows
+ * which lane is which.
+ *
+ * `step` is which of the 32 it lands on, and it is not 0 on purpose: the sequencer
+ * fires its beat listeners on every fourth step, and a preview is not a beat.
+ */
+export function soloBank(bank, laneKey, value, step = 1) {
+  if (!bank || !laneKey) return null;
+  const base = baseLane(laneKey);
+  const perc = PERCUSSION_LANES.includes(base);
+  const out = { ...bank };
+  delete out.sections;
+  delete out.order;
+  for (const { key } of laneList(bank)) out[key] = null;
+  // Only the layer being played. The loop at the end of scheduleStep walks them all,
+  // and a layer still holding its notes would sound underneath the preview.
+  out.__layers = (bank.__layers || []).filter((L) => L.key === laneKey);
+  const hit = perc ? true : (CHORD_LANES.includes(base) ? [value] : value);
+  out[laneKey] = Array.from({ length: 32 }, (_, i) => (i === step ? hit : (perc ? false : null)));
+  // A preset kit is struck at the lane's own note, so the key you pressed becomes
+  // that note and the drum is tuned by the keyboard. The hand-written kit has its
+  // pitch drawn into it and ignores this, which is why every key sounds the same
+  // kick there — that is the sound, not a bug in the preview.
+  const seam = perc ? seamFor(laneKey) : null;
+  if (seam?.noteKey && value > 0) out[seam.noteKey] = value;
+  return out;
+}
+
 /** Active lanes, ordered for the desk. Anything unlisted keeps its LANES order. */
 export function deskLanes(bank, repeat = 1) {
   const rank = (key) => {
-    const i = DESK_ORDER.indexOf(key);
-    return i === -1 ? DESK_ORDER.length + LANE_KEYS.indexOf(key) : i;
+    // A layer sits immediately after the lane it copies — it is the same part, and a
+    // "bass 2" three strips away from the bass is a strip you have to go looking for.
+    // The tenth of a rank is the ordinal, so bass2 comes before bass3.
+    const base = baseLane(key);
+    const nudge = isLayer(key) ? (parseInt(key.slice(base.length), 10) || 0) / 100 : 0;
+    const i = DESK_ORDER.indexOf(base);
+    return (i === -1 ? DESK_ORDER.length + LANE_KEYS.indexOf(base) : i) + nudge;
   };
   return activeLanes(bank, repeat).slice().sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-/** Expand sections/order into the flat block list the sequencer walks. */
+// Bar plans, per bank and repeat count. The sequencer asks for one every sixteenth
+// and the desk asks for one every time it redraws, so expanding an order forty times
+// a second would be forty expansions a second.
+//
+// Keyed on the bank OBJECT, which is also the invalidation: applying an arrangement
+// returns a new bank, so an edited song is a cache miss rather than a stale plan.
+// `invalidateBarPlan` is for the desk pushing an edit onto the bank it is playing.
+const BAR_PLANS = new WeakMap();
+
+/**
+ * The song as BARS — `[{ sec, half, off }]`, one entry each.
+ *
+ * `order` has always been a list of two-bar blocks, which is why every build-up in
+ * the game is hand-typed: you cannot say "these two bars again, without the snare"
+ * in a list whose unit is the phrase. A bar plan is that list at half the grain, and
+ * a legacy numeric order expands to exactly what it always meant — section n, both
+ * its bars — so this is a finer ruler, not a different song. See
+ * `src/data/arrangements.js` for the format and `tests/arrangement.js` for the proof
+ * (it walks every step of every song against what scheduleStep computes itself).
+ */
+export function barPlan(bank, repeat = 1) {
+  let byRepeat = BAR_PLANS.get(bank);
+  if (!byRepeat) { byRepeat = new Map(); BAR_PLANS.set(bank, byRepeat); }
+  const hit = byRepeat.get(repeat);
+  if (hit) return hit;
+  const one = expandOrder(orderOf(bank), !!(bank.sections && bank.sections.length));
+  const plan = [];
+  for (let r = 0; r < repeat; r++) plan.push(...one);
+  byRepeat.set(repeat, plan);
+  return plan;
+}
+
+/** Drop a bank's memoised plan — for the desk editing the arrangement in place. */
+export function invalidateBarPlan(bank) { BAR_PLANS.delete(bank); }
+
+/**
+ * Each bar as the partial bank it plays: `[{ b, half, off }]`.
+ *
+ * `b` is the section merged over the bank, exactly as `scheduleStep` merges it, and
+ * `half` says which sixteen of its thirty-two steps this bar is. The mute mask is
+ * handed back rather than applied — "does this song contain a crash" and "is the
+ * crash silenced in bar 7" are different questions, and a lane muted everywhere must
+ * still get a strip or there is nothing to unmute it with.
+ */
+export function songBars(bank, repeat = 1) {
+  const has = !!(bank.sections && bank.sections.length);
+  return barPlan(bank, repeat).map((bar) => {
+    let b = bank;
+    if (has && bar.sec != null) {
+      // Modulo, as the sequencer has always done it (audio.js): an order entry past
+      // the end of the section list wraps rather than falling back to the bare bank.
+      // Nothing in the game is out of range — tests/arrangement.js asserts it — but
+      // matching the engine exactly is what makes this swap inaudible.
+      const sec = resolveSection(bank, bar.sec % bank.sections.length);
+      if (sec) b = { ...bank, ...sec };
+    }
+    return { b, half: bar.half, off: bar.off || null };
+  });
+}
+
+/**
+ * Expand sections/order into the flat block list the sequencer walks.
+ *
+ * Two bars to a block, as it always was, built on the bar plan so that everything
+ * downstream sees the same song. Callers that count blocks to size a render, or walk
+ * them to write a MIDI file, are asking a two-bar question; a mute mask is a per-bar
+ * answer and does not survive the trip.
+ */
 export function songBlocks(bank, repeat = 1) {
-  const order = bank.order || (bank.sections ? bank.sections.map((_, i) => i) : [0]);
+  const bars = songBars(bank, repeat);
   const blocks = [];
-  for (let r = 0; r < repeat; r++) {
-    for (const oi of order) blocks.push(bank.sections ? { ...bank, ...bank.sections[oi] } : bank);
-  }
+  for (let i = 0; i < bars.length; i += 2) blocks.push(bars[i].b);
   return blocks;
 }
 
@@ -67,8 +263,11 @@ export function songBlocks(bank, repeat = 1) {
  * the rack; the stem renderer uses it to skip writing silent files.
  */
 export function activeLanes(bank, repeat = 1) {
-  const blocks = songBlocks(bank, repeat);
-  return LANES.filter(({ key }) => blocks.some((b) => b[key] && b[key].some(Boolean)));
+  // Bars, not blocks, so a lane that only plays in the second half of one section is
+  // seen — and deliberately blind to the mute mask, which is an arrangement decision
+  // about a bar rather than a statement about what the song is made of.
+  const bars = songBars(bank, repeat);
+  return laneList(bank).filter(({ key }) => bars.some(({ b }) => b[key] && b[key].some(Boolean)));
 }
 
 /**
@@ -87,20 +286,24 @@ export function activeLanes(bank, repeat = 1) {
  * them for a chord.
  */
 export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
-  const blocks = songBlocks(bank, repeat);
-  // A block is 32 sixteenths = 2 bars, so a bar is 16 steps and a beat is 4.
+  const bars = songBars(bank, repeat);
+  // A bar is 16 sixteenths, so a beat is 4 of them.
   const stepsPerCell = 16 / cellsPerBar;
-  const cells = blocks.length * 2 * cellsPerBar;
+  const cells = bars.length * cellsPerBar;
   return activeLanes(bank, repeat).map((lane) => {
     const density = new Array(cells).fill(0);
     const steps = Array.from({ length: cells }, () => []);
-    blocks.forEach((b, bi) => {
-      const arr = b[lane.key];
-      if (!arr) return;
-      for (let c = 0; c < 2 * cellsPerBar; c++) {
+    bars.forEach((bar, bi) => {
+      const arr = bar.b[lane.key];
+      // A lane silenced in this bar reads exactly like a lane that plays nothing
+      // there, which is what the grid should shade: what you would HEAR. Which of the
+      // two it is belongs to the arrangement, and the desk draws that from the plan.
+      if (!arr || (bar.off && bar.off.includes(lane.key))) return;
+      for (let c = 0; c < cellsPerBar; c++) {
         let hits = 0;
-        const cell = bi * 2 * cellsPerBar + c;
-        for (let i = c * stepsPerCell; i < (c + 1) * stepsPerCell; i++) {
+        const cell = bi * cellsPerBar + c;
+        const from = bar.half * 16 + c * stepsPerCell;
+        for (let i = from; i < from + stepsPerCell; i++) {
           const v = arr[i];
           // Percussion lanes are booleans, melodic ones are Hz or an array of Hz.
           if (v === true || (typeof v === 'number' && v > 0) || (Array.isArray(v) && v.length)) hits++;
@@ -138,7 +341,21 @@ const ECHO_OPT_IN = {
  * broken, which is exactly how it was reported.
  */
 export function laneUsesEcho(bank, key, repeat = 1) {
-  const test = ECHO_OPT_IN[key];
+  // A layer answers the same question its source does: it is that part, and having
+  // the copy echo where the original is dry would be a difference nothing asked for.
+  const test = ECHO_OPT_IN[baseLane(key)];
   if (!test) return true; // melodic + fx lanes echo by default
-  return songBlocks(bank, repeat).some(test);
+  // Per bar: the flags it reads (`bassEcho`, `echoEverything`) are section-level, and
+  // a section can turn one on for one bar of a payoff.
+  return songBars(bank, repeat).some(({ b }) => test(b));
+}
+
+/**
+ * Does this lane reach the delay in THIS block? The per-song answer above is what the
+ * desk greys a send out on; the sequencer needs it per step, because a section can
+ * turn `echoEverything` on for the payoff and off again after it.
+ */
+export function laneEchoesIn(block, key) {
+  const test = ECHO_OPT_IN[baseLane(key)];
+  return test ? !!test(block) : true;
 }
