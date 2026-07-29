@@ -2,13 +2,14 @@
 // the same channel strip the game will use, and the same one the offline renderer
 // runs when it writes a WAV. Nothing here reimplements audio.
 import { Audio } from '../src/engine/audio.js';
-import { LANES, deskLanes, laneUsesEcho, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
+import { LANES, deskLanes as engineDeskLanes, laneUsesEcho, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import { ARRANGEMENTS, applyArrangement, arrangementIssues } from '../src/data/arrangements.js';
 import {
-  draftOf, entryOf, setLanesOff, silenceBars, deleteBars, duplicateBars, buildUp,
-  breakdown, barCount, DRUM_LANES,
+  draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
+  transposeBars, offsetBars, gainBars, copyBars, pasteBars,
+  insertSilence, copyLaneBars, writeBarNotes, patternStarts, barCount, removeLanes,
 } from './lib/arrangement-edit.js';
 import { noteName } from '../src/engine/notes.js';
 import { listTracks, resolveTrack, registerTrack } from '../src/data/tracks.js';
@@ -17,8 +18,17 @@ import { listTracks, resolveTrack, registerTrack } from '../src/data/tracks.js';
 // it, so nothing in that folder ships.
 import '../src/data/imported/index.js';
 import { MIX, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
-import { VOICES, VOICE_LANES, voicesFor, voicesByCategory, seamFor, isLayer, baseLane, defaultVoiceOf, KIT_CATEGORIES, PERCUSSION_LANES } from '../src/data/voices.js';
+import { VOICES, VOICE_LANES, voicesFor, voicesByCategory, seamFor, isLayer, baseLane, defaultVoiceOf, registerSongVoice, songVoiceKey, KIT_CATEGORIES, PERCUSSION_LANES, DEFAULT_ADDED_PERCUSSION_VOICE } from '../src/data/voices.js';
 import { createVoiceEditor } from './mixer-voice-editor.js';
+// The preset library, and the bench a preset with no channel of its own is heard on.
+import {
+  createVoiceLibrary, benchPlay, benchRoot, benchIsKit, foldIcon,
+  SCALES, SCALE_BY_ID, PITCH_CLASSES, inScale,
+} from './mixer-voice-library.js';
+// The step grid: what the kit PLAYS, as opposed to which bars let it through. It
+// writes through the same arrangement seam everything else in this section does.
+import { createStepSeq } from './mixer-step-seq.js';
+import { discardSongDraft, restoreSongDraft } from './lib/mixer-drafts.js';
 // What the desk means by "changed": a mix reduced to what src/data/mix.js can hold.
 // Shared with the serialiser's tests, which hold the two to each other.
 import { mixChanged } from './lib/mix-signature.js';
@@ -28,6 +38,17 @@ import { EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const LS_KEY = 'mash-mixer-draft';
+
+/** First letter up, the rest left alone — so FM Keys and dB survive it. */
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// The engine writes its lane names in lower case, because there they are keys into
+// stem files and mix entries rather than words anyone reads. On the desk they ARE
+// words anyone reads — a strip head, a pad, an arrangement row, half the toasts —
+// so they are capitalised here, at the one door they come through, rather than in
+// src/engine/lanes.js where renaming them would be renaming the game's data.
+const deskLanes = (bank, repeat = 1) =>
+  engineDeskLanes(bank, repeat).map((l) => ({ ...l, label: cap(l.label) }));
 
 // ---- state -----------------------------------------------------------------
 // `draft` holds unsaved edits per track id, so switching songs and coming back
@@ -142,8 +163,8 @@ function pushUndo(tag) {
 // one that is not: nothing on this desk writes to a song other than the one on it. See
 // the note over `restoreFrom`.
 
-function editMix(mutate, tag) {
-  pushUndo(tag);
+function editMix(mutate, tag, { undo = true } = {}) {
+  if (undo) pushUndo(tag);
   const cur = JSON.parse(JSON.stringify(mixFor(trackId)));
   mutate(cur);
   draft[trackId] = cur;
@@ -164,7 +185,7 @@ function toast(msg, ms = 2200) {
 
 function undo() {
   const step = undoStack.pop();
-  if (!step) { toast('nothing to undo'); return; }
+  if (!step) { toast('Nothing to undo'); return; }
   lastEditTag = null;
   // What the sequencer is playing, and what it is playing WITH — as opposed to what
   // the strips are doing to it. Everything else on this desk is a live node that
@@ -227,7 +248,7 @@ function rebank() {
   // Not setBank: that is the song-CHANGE door, and it mutes for half a second on the
   // way through. Choosing a preset is not a song change — it is a question about the
   // bar you are listening to, and the answer has to arrive in it. See reapplyBank.
-  Audio.reapplyBank(track.bank, mixFor(trackId));
+  Audio.reapplyBank(track.bank, mixFor(trackId), arrFor(trackId));
 }
 
 /** The IEC power mark — the same one Logic puts on the left of an insert slot. */
@@ -343,7 +364,7 @@ function insertSlots(key, label, rows) {
     const power = document.createElement('span');
     power.className = 'pwrhit';
     power.append(powerIcon());
-    power.title = `${e.bypass ? 'enable' : 'bypass'} ${def?.name || e.id}`;
+    power.title = `${e.bypass ? 'Enable' : 'Bypass'} ${def?.name || e.id}`;
     const toggle = () => {
       const next = list.map((x, j) => (j === i ? { ...x, bypass: !x.bypass } : x));
       editMix((m) => storeEffects(m, key, next), null);
@@ -360,7 +381,7 @@ function insertSlots(key, label, rows) {
     const remove = document.createElement('span');
     remove.className = 'rmhit';
     remove.append(closeIcon());
-    remove.title = `remove ${def?.name || e.id} from ${label}`;
+    remove.title = `Remove ${def?.name || e.id} from ${label}`;
     remove.onclick = (ev) => {
       ev.stopPropagation();
       setEffects(key, list.filter((_, j) => j !== i));
@@ -368,7 +389,7 @@ function insertSlots(key, label, rows) {
     };
     btn.append(power, name, remove);
     btn.title = `${def?.name || e.id} — click to open it below`
-      + `\nthe power mark ${e.bypass ? 'enables' : 'bypasses'} it without leaving the fader`;
+      + `\nThe power mark ${e.bypass ? 'enables' : 'bypasses'} it without leaving the fader`;
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (ev.altKey) { toggle(); return; }        // ⌥-click still works from anywhere
@@ -472,7 +493,7 @@ function insertSlots(key, label, rows) {
   if (list.length < slots && list.length < MAX_EFFECTS) {
     const add = document.createElement('div');
     add.className = 'addslot';
-    add.title = `add an effect to ${label}`;
+    add.title = `Add an effect to ${label}`;
     el.append(add);
   }
   return el;
@@ -633,7 +654,7 @@ function stripMenu(el, key, kind) {
       // What the track IS, before what has been done to it. Only channels: a send
       // return and the master are not tracks, and there is nothing to duplicate or
       // delete about them.
-      ...(kind === 'channel' ? trackMenuItems(key) : []),
+      ...(kind === 'channel' ? trackMenuItems(key, { x: ev.clientX, y: ev.clientY }) : []),
       { label: `Copy ${kind}`, run: () => copyStrip(key, kind) },
       clipboard && clipboard.kind === kind && {
         label: `Paste ${kind} from ${clipboard.from}`, run: () => pasteStrip(key, kind),
@@ -676,16 +697,15 @@ function openMenu(x, y, title, items) {
 }
 const closeMenu = () => {
   menu().classList.remove('show');
-  $('notepop').classList.remove('show');
+  $('regionedit').classList.remove('show');
   $('fxpicker').classList.remove('show');
   $('moremenu').classList.remove('show');
   $('songpicker').classList.remove('show');
   $('voicepicker').classList.remove('show');
 };
-// Anything that is not the popup itself dismisses it — including the next click on
-// the arrangement, which then opens its own.
+// Anything that is not the popup itself dismisses it.
 addEventListener('pointerdown', (e) => {
-  const inside = [menu(), $('notepop'), $('fxpicker'), $('moremenu'), $('songpicker'),
+  const inside = [menu(), $('regionedit'), $('fxpicker'), $('moremenu'), $('songpicker'),
     $('voicepicker')]
     .some((el) => el.contains(e.target));
   const opener = [$('more'), $('songbtn')].some((el) => el.contains(e.target))
@@ -827,6 +847,11 @@ function editFx(id, patch, tag) {
 }
 
 function loadTrack(id) {
+  // A bar selection and the open editor's DOM belong to the song they were built
+  // from. Carrying either across this boundary made the old pattern appear under the
+  // new song's name; touching it then wrote those old-looking cells into the new
+  // song. Clear the selection first and rebuild the grid from the new bank below.
+  selectedBar = null;
   trackId = id;
   track = resolveTrack(id);
   tempoOverride = null;                 // a new song brings its own tempo
@@ -838,6 +863,8 @@ function loadTrack(id) {
   buildRack();
   buildTimeline();
   buildArrangement();
+  stepSeq.songChanged();
+  voiceLibrary.songChanged();
   // The old song is dropped either way. Only doing it while `playing` trusted the
   // desk's own flag about what the engine was up to, and anything that had left the
   // two disagreeing turned a song switch into a second song's worth of controls
@@ -846,7 +873,7 @@ function loadTrack(id) {
   Audio.setBank(null);
   // A voice change has to come back through setBank; level edits do not, so the song
   // keeps playing without a gap while you mix.
-  if (playing) Audio.setBank(track.bank, mixFor(id));
+  if (playing) Audio.setBank(track.bank, mixFor(id), arrFor(id));
   applyToEngine(mixFor(id));
   loopAnchor = 0;              // a different song means a different timeline
   parkedAt = 0;
@@ -907,7 +934,7 @@ function slider({ min, max, step, value, fmt, onInput, reset }) {
   // Click the readout to type an exact value. A slider is fine for finding a
   // setting by ear and useless for dialling in one you already know.
   v.classList.add('typable');
-  v.title = 'drag to change · click to type a value';
+  v.title = 'Drag to change · click to type a value';
   const openEditor = () => {
     if (v.querySelector('input')) return;
     const box = document.createElement('input');
@@ -943,7 +970,7 @@ function slider({ min, max, step, value, fmt, onInput, reset }) {
   // it is not discoverable and a double-click on a range often reads as a drag.
   const doReset = () => { input.value = reset; v.textContent = fmt(reset); onInput(reset); };
   k.classList.add('resettable');
-  k.title = `reset to ${fmt(reset)}`;
+  k.title = `Reset to ${fmt(reset)}`;
   k.addEventListener('click', doReset);
   input.addEventListener('dblclick', doReset);
   wrap.append(head, input);
@@ -1083,7 +1110,7 @@ function stripShell(key, { label, tag, colour, tint, cls = '', number = null }) 
   const h = document.createElement('h3'); h.textContent = label;
   head.append(h, groupChip(tag));
   head.style.cursor = 'pointer';
-  head.title = 'click anywhere on this strip to show its devices below';
+  head.title = 'Click anywhere on this strip to show its devices below';
   const body = document.createElement('div'); body.className = 'stripbody';
   const foot = document.createElement('div'); foot.className = 'stripfoot';
   el.append(head, body, foot);
@@ -1145,12 +1172,12 @@ function limiterButton(on) {
   const btn = document.createElement('button');
   btn.textContent = 'LIMITER';
   btn.className = `limbtn${on ? ' on' : ''}`;
-  btn.title = `the master limiter, a ceiling at −1 dB on the way out — ${on ? 'on' : 'off'}`
+  btn.title = `The master limiter, a ceiling at −1 dB on the way out — ${on ? 'on' : 'off'}`
     + '\nit costs 6ms of output latency, so it is off unless you put it on';
   btn.onclick = (ev) => {
     ev.stopPropagation();
     setLimiter(!on);
-    toast(`limiter ${on ? 'off' : 'on'}`);
+    toast(`Limiter ${on ? 'off' : 'on'}`);
   };
   return btn;
 }
@@ -1261,7 +1288,7 @@ function muteSoloPair(key, label) {
   const mute = document.createElement('button');
   mute.textContent = 'M';
   mute.className = 'mutebtn warn' + (muted ? ' on' : '');
-  mute.title = `mute ${label} (M)`;
+  mute.title = `Mute ${label} (M)`;
   mute.onclick = (ev) => {
     ev.stopPropagation();
     setLaneMute(key, !mute.classList.contains('on'));
@@ -1269,7 +1296,7 @@ function muteSoloPair(key, label) {
   const solo = document.createElement('button');
   solo.textContent = 'S';
   solo.className = 'solobtn' + (soloed.has(key) ? ' on' : '');
-  solo.title = `solo ${label} — monitoring only, never saved (S)`;
+  solo.title = `Solo ${label} — monitoring only, never saved (S)`;
   solo.onclick = (ev) => {
     ev.stopPropagation();
     setLaneSolo(key, !solo.classList.contains('on'));
@@ -1307,8 +1334,8 @@ function updateSoloLight() {
   const btn = $('clearsolo');
   btn.classList.toggle('on', any);
   btn.title = any
-    ? `soloed: ${[...soloed, ...[...soloedAux].map((id) => `${id} send`)].join(', ')} — click to clear`
-    : 'nothing is soloed';
+    ? `Soloed: ${[...soloed, ...[...soloedAux].map((id) => `${id} send`)].join(', ')} — click to clear`
+    : 'Nothing is soloed';
 }
 
 function clearAllSolo() {
@@ -1318,7 +1345,7 @@ function clearAllSolo() {
   refreshOsk();
   for (const b of document.querySelectorAll('.strip.send .solobtn')) b.classList.remove('on');
   updateSoloLight();
-  if (had) toast('solo cleared');
+  if (had) toast('Solo cleared');
 }
 
 /**
@@ -1357,19 +1384,235 @@ function syncLaneButtons(key) {
 }
 
 /**
+ * The preset a lane is REALLY playing.
+ *
+ * `voice` names a library preset and `voiceParams` carries this song's own copy of
+ * one — see registerSongVoice. Where there is a copy it is what sounds, so it is what
+ * the strip has to label, what the ✎ has to open and what the editor has to edit. One
+ * answer, asked everywhere, so the desk cannot disagree with the engine about which
+ * sound a channel is making.
+ *
+ * Registering here as well as in the engine's own merge is not a duplicate: the rack
+ * paints before the first applyToEngine of a song, and a lane whose entry is not in
+ * the catalogue yet draws as ENGINE — the one thing it certainly is not.
+ */
+function laneVoiceId(laneKey) {
+  const seam = seamFor(laneKey);
+  if (!seam) return null;
+  const m = mixFor(trackId);
+  const params = m.voiceParams?.[seam.voiceKey];
+  if (params) return registerSongVoice(seam.voiceKey, trackId, params);
+  const chosen = m.voice?.[seam.voiceKey];
+  if (chosen) return chosen;
+  const independent = (m.layers || []).some((l) => l.key === laneKey && l.independent);
+  return independent ? DEFAULT_ADDED_PERCUSSION_VOICE : null;
+}
+
+/**
+ * An edit inside the voice editor, on a preset the SONG owns.
+ *
+ * A library preset is edited in place in the catalogue and saved to voices.js — the
+ * panel's own Save. A song's copy has no home in the catalogue to be saved from: it
+ * lives in this song's mix, so its edits are mix edits and this is where they land.
+ * That is what puts them in the draft, in the undo stack, in the dirty light and in
+ * the file the next Save writes — a preset copied into a song stops being a thing you
+ * can lose by reloading.
+ *
+ * Tagged per voice key so a slider drag coalesces into one undo step, exactly as a
+ * fader drag does.
+ *
+ * The `peak` that rides along is the editor's live estimate, and it is written here
+ * for one reason only: so the mix and the sound agree. Nothing measures it at save.
+ * A preset's peak is what `voiceGain` divides the lane's target by, which puts a new
+ * sound in the right ballpark so your fader stays where you put it — and if an edit
+ * has moved the loudness, the fader is right there and the song already saves it.
+ * The exact numbers are settled in a batch, on purpose, by tools/measure-voices.js,
+ * which is how the library has always worked too.
+ */
+function writeSongVoice(id, preset) {
+  const key = songVoiceKey(id, trackId);
+  if (!key) return;                     // a library preset: its home is voices.js
+  editMix((m) => {
+    m.voiceParams = { ...(m.voiceParams || {}), [key]: preset };
+  }, `voiceparams:${key}`);
+}
+
+/**
+ * Which of a song's voice keys name this preset.
+ *
+ * Both places a song can say so: its mix, where the desk put it, and its bank, where it
+ * was written by hand — including any one section, since a song can change voice
+ * part-way through. The answer is the set of keys to pin, because pinning writes a
+ * `voiceParams` entry per key and a song using the same preset on two lanes needs two.
+ */
+function voiceKeysUsing(id, voiceId) {
+  const keys = new Set();
+  const m = mixFor(id);
+  for (const [k, v] of Object.entries(m.voice || {})) if (v === voiceId) keys.add(k);
+  const named = (o) => {
+    if (!o) return;
+    for (const [k, v] of Object.entries(o)) if (k.endsWith('Voice') && v === voiceId) keys.add(k);
+  };
+  const bank = resolveTrack(id)?.bank;
+  named(bank);
+  for (const sec of bank?.sections || []) named(sec);
+  return [...keys];
+}
+
+/**
+ * Freeze a preset's CURRENT sound into the songs that play it, then let the library
+ * entry move on without them.
+ *
+ * The third answer to "this preset is in six songs", after updating them all and
+ * forking to a new name. Here the library entry keeps its id and its name and becomes
+ * the new sound, and the songs you tick stop tracking it: each gets its own copy of
+ * what it sounds like right now, written into its mix as `voiceParams`, which
+ * `laneVoiceId` reads in preference to the library. So they go on sounding exactly as
+ * they do today, whatever happens to the preset afterwards.
+ *
+ * That last clause is the cost, and it is silent: a song pinned today will not receive
+ * a fix made to that preset next month, and nothing on the desk will later explain why
+ * it did not move. Which is why this is per-song and opt-in rather than a mode.
+ *
+ * It writes SONGS THE DESK IS NOT ON, which `saveMix` exists to make impossible — see
+ * its note. The guard is right and this is genuinely the other case: that rule is there
+ * so mixes are not balanced from memory, and nothing here is balanced at all. Every
+ * written song is pinned to the sound it already makes, and each one still gets its own
+ * history snapshot on the way, so it stays as undoable as any other save.
+ */
+async function pinPresetInSongs(voiceId, preset, trackIds) {
+  const entries = {};
+  for (const id of trackIds) {
+    const keys = voiceKeysUsing(id, voiceId);
+    if (!keys.length) continue;          // it moved since the list was drawn; nothing to pin
+    const cur = JSON.parse(JSON.stringify(mixFor(id)));
+    cur.voiceParams = { ...(cur.voiceParams || {}) };
+    for (const k of keys) cur.voiceParams[k] = JSON.parse(JSON.stringify(preset));
+    entries[id] = cur;
+  }
+  const ids = Object.keys(entries);
+  if (!ids.length) return true;
+  // Into the drafts first, so a failed write leaves the pin visible and undoable on the
+  // desk rather than silently lost — the same place every other unsaved edit lives.
+  for (const id of ids) draft[id] = entries[id];
+  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  try {
+    const res = await fetch('/save', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids, entries }, null, 2),
+    });
+    const text = await res.text();
+    if (!res.ok) { await tell('Those songs were not pinned', escapeHtml(text)); return false; }
+    for (const id of ids) delete draft[id];
+    try {
+      const body = JSON.parse(text);
+      if (body?.mix) saved = body.mix;
+      else for (const id of ids) saved[id] = JSON.parse(JSON.stringify(entries[id]));
+    } catch {
+      for (const id of ids) saved[id] = JSON.parse(JSON.stringify(entries[id]));
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    updateStatus();
+    return true;
+  } catch (err) {
+    await tell('Those songs were not pinned', escapeHtml(String(err.message || err)));
+    return false;
+  }
+}
+
+/**
+ * Library presets carrying edits that are on the sound and nowhere else.
+ *
+ * The trap this closes: the editor writes straight into the catalogue entry, which is
+ * why an edit is audible everywhere the moment you make it and why it rides through a
+ * song change. Nothing on disk has moved, though — `Save to game` writes the song, not
+ * the library — so a reload puts the file's version back and the work is simply gone.
+ * The panel could not warn about it either: it forgets its state when it closes, and
+ * the loss happens later.
+ *
+ * A song's own copy is not in here. It lives in the draft mix, which is in
+ * localStorage from the moment it is touched, so it survives a reload by construction.
+ */
+const dirtyLibraryVoices = new Set();
+
+function markVoiceDirty(id, dirty) {
+  if (!id || songVoiceKey(id, trackId)) return;   // a copy is saved with its song
+  if (dirty) dirtyLibraryVoices.add(id); else dirtyLibraryVoices.delete(id);
+  updateStatus();
+}
+
+// The only moment the loss can still be prevented. Browsers will not show our words —
+// it is their own dialogue — but they show it, and that is the whole job: a reload
+// that would have quietly dropped an hour of sound design now asks first.
+addEventListener('beforeunload', (ev) => {
+  if (!dirtyLibraryVoices.size) return;
+  ev.preventDefault();
+  ev.returnValue = '';
+});
+
+/**
+ * Copy the sound on the panel into this song, as the song's own.
+ *
+ * Nothing is measured here. The copy keeps the peak of the preset it was made from,
+ * which puts it in the right ballpark, and if the edit has moved the loudness the
+ * channel fader is the control for that — the song saves it already. Exact peaks are
+ * settled in a batch by tools/measure-voices.js, which is where the library's have
+ * always come from; a preset that renders silent offline is reported there too.
+ *
+ * The lane then plays the copy rather than the preset it was made from, which is what
+ * moves the editor onto it: `syncVoiceEditorToLane` sees the lane's voice change and
+ * follows. From that moment every touch goes to the draft through `writeSongVoice`,
+ * and the song's own Save is what puts it on disk.
+ */
+function saveVoiceToSong(laneKey, preset) {
+  const seam = laneKey && seamFor(laneKey);
+  if (!seam) { toast('This lane cannot take a voice, so it cannot carry one'); return false; }
+  editMix((m) => {
+    m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: preset };
+  });
+  rebank();
+  applyToEngine(mixFor(trackId));
+  // Onto the copy, which is what the lane plays now. Then the repaint, which is also
+  // what puts the panel back beside its strip.
+  syncVoiceEditorToLane(laneKey);
+  buildRack();
+  refreshOsk();
+  toast(`${preset.label} is now ${targetLabel(laneKey)}’s own in ${track.title}`
+    + ' — save the song to keep it.', 4000);
+  return true;
+}
+
+/**
  * Choose what a lane is played BY.
  *
  * A voice is a bank key (`bassVoice`), so it merges onto the bank at schedule time
  * rather than being pushed at a live node the way a fader is — which means it is the
  * one control on this desk that has to go back through setBank to be heard. See
  * `rebank`, which `undo` needs for the same reason.
+ *
+ * Choosing a preset drops this song's copy of whatever was there. The copy was a
+ * version OF the old preset — its envelope, its filter, its name — so keeping it over
+ * the top of a new choice would mean picking Sub Sine and hearing the bass you had
+ * already shaped, with no way to tell why. Undo puts it back.
  */
 function setLaneVoice(laneKey, voiceId, { redraw = true } = {}) {
   const seam = seamFor(laneKey);
+  const before = mixFor(trackId);
+  const hadCopy = !!before.voiceParams?.[seam.voiceKey];
+  const independent = !!(before.layers || []).find((l) => l.key === laneKey && l.independent);
   editMix((m) => {
     const v = { ...(m.voice || {}) };
     if (voiceId) v[seam.voiceKey] = voiceId; else delete v[seam.voiceKey];
     m.voice = Object.keys(v).length ? v : undefined;
+    if (m.voiceParams?.[seam.voiceKey]) {
+      const p = { ...m.voiceParams };
+      delete p[seam.voiceKey];
+      m.voiceParams = Object.keys(p).length ? p : undefined;
+    }
+    if (voiceId && independent) {
+      m.layers = (m.layers || []).map((l) => l.key === laneKey
+        ? { ...l, label: VOICES[voiceId].label } : l);
+    }
   });
   rebank();
   // The editor goes where the lane goes — onto the new preset, or off the desk when
@@ -1382,9 +1625,14 @@ function setLaneVoice(laneKey, voiceId, { redraw = true } = {}) {
   // its strip is still inside the wrapper the pair shared.
   if (redraw || closed) buildRack();
   applyToEngine(mixFor(trackId));
+  if (independent) {
+    buildArrangement();
+    stepSeq.refresh();
+  }
   refreshOsk();                         // the keyboard names what it is playing with
-  toast(voiceId ? `${targetLabel(laneKey)} → ${VOICES[voiceId].label}`
-    : `${targetLabel(laneKey)} → the engine’s own voice`);
+  const gone = hadCopy ? ' — this song’s own copy dropped, ⌘Z to put it back' : '';
+  toast((voiceId ? `${targetLabel(laneKey)} → ${VOICES[voiceId].label}`
+    : `${targetLabel(laneKey)} → the engine’s own voice`) + gone);
 }
 
 /**
@@ -1405,7 +1653,7 @@ function stepVoice(laneKey, dir) {
   const seam = seamFor(laneKey);
   const groups = seam ? voicesByCategory(laneKey) : [];
   if (!groups.length) return null;
-  const chosen = mixFor(trackId).voice?.[seam.voiceKey];
+  const chosen = laneVoiceId(laneKey);
   const cur = chosen && VOICES[chosen];
   const [, list] = (cur && groups.find(([c]) => c === cur.category)) || groups[0];
   if (!list.length) return null;
@@ -1497,6 +1745,35 @@ function duplicateLane(key) {
   openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, newKey);
 }
 
+/** Add a silent, independently sequenced percussion channel from the step grid. */
+function addPercussionLane() {
+  const from = 'tom';
+  const newKey = nextLayerKey(from);
+  const newSeam = seamFor(newKey);
+  const extras = (mixFor(trackId).layers || []).filter((l) => l.independent
+    && PERCUSSION_LANES.includes(baseLane(l.key))).length;
+  const label = VOICES[DEFAULT_ADDED_PERCUSSION_VOICE]?.label
+    || `Sound ${PERCUSSION_LANES.length + extras + 1}`;
+  editMix((m) => {
+    m.layers = [...(m.layers || []), {
+      key: newKey, from, independent: true, label,
+    }];
+    m.lanes = m.lanes || {};
+    m.lanes[newKey] = {};
+    m.voice = {
+      ...(m.voice || {}),
+      [newSeam.voiceKey]: DEFAULT_ADDED_PERCUSSION_VOICE,
+    };
+  });
+  rebuildForShape();
+  stepSeq.refresh();
+  selectLane(newKey);
+  toast(`${label} added — choose what it plays`);
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .voicepick`);
+  const r = strip?.getBoundingClientRect();
+  openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, newKey);
+}
+
 /**
  * Delete a track from this song.
  *
@@ -1508,20 +1785,32 @@ function duplicateLane(key) {
  * Layers standing on the lane go with it. A layer of a part that is no longer in the
  * song is a row playing nothing.
  */
-function deleteLane(key) {
+async function deleteLane(key) {
   const label = targetLabel(key);
   const layer = isLayer(key);
+  const layerDef = (mixFor(trackId).layers || []).find((l) => l.key === key);
+  const independent = !!layerDef?.independent;
   const kids = layer ? [] : layersOf(key);
   const also = kids.length
     ? `\n\nThe ${kids.length} layer${kids.length === 1 ? '' : 's'} on it `
       + `(${kids.map((l) => targetLabel(l.key)).join(', ')}) ${kids.length === 1 ? 'goes' : 'go'} too.`
     : '';
-  const what = layer
-    ? `Delete ${label}? It is a duplicate, so this removes it and its settings.`
-    : `Delete ${label} from this mix?\n\nThe song keeps the part — it is this mix that`
-      + ' stops having the channel. ⋯ → Restore deleted tracks puts it back.';
-  if (!confirm(`${what}${also}`)) return;
+  const body = (layer
+    ? independent
+      ? 'It is an added sound, so this removes its pattern, mixer channel and settings.'
+      : 'It is a duplicate, so this removes it and its settings.'
+    : 'The song keeps the part — this song stops having the channel. <b>⌘Z puts it back.</b>')
+    + (also ? `<br><br>${escapeHtml(also.trim())}` : '');
+  if (!await ask(`Delete ${escapeHtml(label)}?`, body, 'Delete')) return;
   const drop = new Set([key, ...kids.map((l) => l.key)]);
+  // Pattern notes live in the arrangement while the channel itself lives in the
+  // mix. Capture and clean both before changing either, then make one undo snapshot
+  // so ⌘Z restores the complete instrument rather than only half of it.
+  const currentArrangement = arrDraftOf();
+  const cleanedArrangement = removeLanes(currentArrangement, drop);
+  const arrangementChanged = JSON.stringify(cleanedArrangement)
+    !== JSON.stringify(currentArrangement);
+  pushUndo(null);
   editMix((m) => {
     m.layers = (m.layers || []).filter((l) => !drop.has(l.key) && !drop.has(l.from));
     if (!m.layers.length) m.layers = undefined;
@@ -1537,7 +1826,15 @@ function deleteLane(key) {
         if (!Object.keys(m.voice).length) m.voice = undefined;
       }
     }
-  });
+  }, null, { undo: false });
+  if (arrangementChanged) {
+    const entry = entryOf(editBank(), cleanedArrangement);
+    arrDraft[trackId] = entry;
+    localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+    bankCache.sig = null;
+    Audio.setArrangement(entry);
+    buildTimeline();
+  }
   for (const k of drop) { soloed.delete(k); Audio.mixer?.lane(k)?.setSolo(false); }
   updateSoloLight();
   if (drop.has(selectedLane)) selectedLane = null;
@@ -1545,16 +1842,6 @@ function deleteLane(key) {
   toast(`${label} deleted — ⌘Z to undo`);
 }
 
-/** Put a deleted lane back. Its channel settings were kept, so it returns as it was. */
-function restoreLane(key) {
-  editMix((m) => {
-    m.off = (m.off || []).filter((k) => k !== key);
-    if (!m.off.length) m.off = undefined;
-  });
-  rebuildForShape();
-  selectLane(key);
-  toast(`${targetLabel(key)} restored`);
-}
 
 /**
  * The four things you can do to a TRACK, as opposed to the strip it is on: whether it
@@ -1565,7 +1852,7 @@ function restoreLane(key) {
  * Delete is last on purpose. It is the only item here that asks a question before it
  * does anything, and it is the only one you cannot undo by pressing it again.
  */
-function trackMenuItems(key) {
+function trackMenuItems(key, { x = innerWidth / 2, y = 120 } = {}) {
   const label = targetLabel(key);
   const muted = !!mixFor(trackId).lanes?.[key]?.mute;
   const solo = soloed.has(key);
@@ -1575,11 +1862,15 @@ function trackMenuItems(key) {
   // strip. Two items, because they are two jobs: which sound, and what that sound is
   // like. Only on lanes that can take a voice; the glisses and sweeps cannot.
   const seam = seamFor(key);
-  const chosen = seam && mixFor(trackId).voice?.[seam.voiceKey];
+  const chosen = seam && laneVoiceId(key);
   const preset = chosen && VOICES[chosen];
   return [
     { label: muted ? 'Unmute' : 'Mute', run: () => setLaneMute(key, !muted) },
     { label: solo ? 'Unsolo' : 'Solo', run: () => setLaneSolo(key, !solo) },
+    { label: 'Adjust entire track…', run: () => openRegionEditor(x, y, {
+      laneKey: key, from: selectedBar ? selFrom() : 0, to: selectedBar ? selTo() : 0,
+      wholeTrack: true,
+    }) },
     seam && { label: 'Change preset…', run: () => openVoicePickerFor(key) },
     // An engine preset is a bundle of bank keys the hand-written lane reads, not a
     // synth, so there is nothing for the editor to show. It is left off rather than
@@ -1648,22 +1939,88 @@ const voiceEditor = createVoiceEditor({
   sampleRate: () => Audio.ctx?.sampleRate || 44100,
   // A preset's name and category are what the picker and every strip label show, so
   // an edit to either has to reach the rack — and its level reaches the rack too,
-  // through `voiceGain`, once a save has measured it.
-  onChanged: () => buildRack(),
+  // through `voiceGain`, once a save has measured it. The library is filed BY those
+  // two, so a rename moves a row and a refile moves it to another column: it has to
+  // repaint or it goes on showing the preset under the name it no longer has.
+  onChanged: () => { buildRack(); voiceLibrary.refresh(); },
   // A never-saved preset takes its id from its name at the moment it is saved, so the
   // lane holding the old id has to be repointed at the new one — see `commit`.
   assign: (laneKey, id) => { if (laneKey) setLaneVoice(laneKey, id, { redraw: false }); },
+  // Where an edit lands when the preset is the song's own — see writeSongVoice.
+  onEdit: writeSongVoice,
+  saveToSong: saveVoiceToSong,
+  // Hold named songs on the sound they have now, so updating the preset leaves them
+  // alone. See pinPresetInSongs — it writes songs the desk is not on, which is the one
+  // place anything here does.
+  pinSongs: pinPresetInSongs,
+  onDirty: markVoiceDirty,
   // Detached, not just hidden: it is a rack item now, and a hidden one still sitting
   // between two strips would leave a gap in the row.
-  close: () => { dismissVoiceEditor(); buildRack(); },
+  //
+  // Docked in the preset library it FOLDS instead. There the ✕ is on a panel you are
+  // living in rather than one you opened for a moment, and tearing it down would lose
+  // which preset it was on — so the same button means "put this away" and the panel
+  // comes back exactly as it was. See setCollapsed.
+  close: () => {
+    if (voiceLibrary.slots && !voiceEditor.laneKey) { voiceLibrary.collapse('edit', true); return; }
+    dismissVoiceEditor();
+    buildRack();
+  },
 });
 
 /** Take the panel down, without asking for the rack repaint that `close` does. */
 function dismissVoiceEditor() {
-  voiceEditEl.classList.remove('show');
+  voiceEditEl.classList.remove('show', 'vefloat');
   voiceEditEl.remove();
   voiceEditor.forget();
 }
+
+// ---- the editor as a window -------------------------------------------------
+//
+// Opened from the preset library there is no lane and no strip, so the panel cannot be
+// a rack item: it floats, with the keyboard's manners. See placeVoiceEditor.
+
+const VE_POS_KEY = 'mash-mixer-voiceedit-pos';
+
+/** Put the floating editor somewhere on the screen, and remember where. */
+function placeFloatingEditor(x, y) {
+  const el = voiceEditEl;
+  if (x == null) {
+    let pos = null;
+    try { pos = JSON.parse(localStorage.getItem(VE_POS_KEY) || 'null'); } catch { pos = null; }
+    const r = el.getBoundingClientRect();
+    // First open: to the right of the library window, which opens centred — so the two
+    // are side by side rather than the editor landing on top of the list it came from.
+    x = pos?.x ?? Math.max(4, innerWidth - r.width - 40);
+    y = pos?.y ?? 120;
+  }
+  const r = el.getBoundingClientRect();
+  const left = clamp(x, 4, Math.max(4, innerWidth - r.width - 4));
+  const top = clamp(y, 4, Math.max(4, innerHeight - r.height - 4));
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  localStorage.setItem(VE_POS_KEY, JSON.stringify({ x: left, y: top }));
+}
+
+// Dragged by its header, like every other window here. Delegated from the panel rather
+// than bound to the header, because `build()` replaces the header on every repaint — a
+// listener on the header itself would survive exactly until the first slider moved.
+voiceEditEl.addEventListener('pointerdown', (ev) => {
+  if (!voiceEditEl.classList.contains('vefloat')) return;
+  const head = ev.target.closest('.vehead');
+  if (!head || ev.target.closest('button, input, select, textarea')) return;
+  ev.preventDefault();
+  const r = voiceEditEl.getBoundingClientRect();
+  const dx = ev.clientX - r.left;
+  const dy = ev.clientY - r.top;
+  const move = (e) => placeFloatingEditor(e.clientX - dx, e.clientY - dy);
+  const stop = () => { head.removeEventListener('pointermove', move); head.classList.remove('dragging'); };
+  head.classList.add('dragging');
+  try { head.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
+  head.addEventListener('pointermove', move);
+  head.addEventListener('pointerup', stop, { once: true });
+  head.addEventListener('pointercancel', stop, { once: true });
+});
 
 /**
  * Keep the editor pointed at whatever its lane is actually playing.
@@ -1689,8 +2046,7 @@ function dismissVoiceEditor() {
  */
 function syncVoiceEditorToLane(laneKey) {
   if (!voiceEditor.isOpen() || !laneKey || voiceEditor.laneKey !== laneKey) return false;
-  const seam = seamFor(laneKey);
-  const chosen = seam && mixFor(trackId).voice?.[seam.voiceKey];
+  const chosen = laneVoiceId(laneKey);
   const preset = chosen && VOICES[chosen];
   if (!preset || preset.kind === 'engine') { dismissVoiceEditor(); return true; }
   if (chosen === voiceEditor.editing) return false;
@@ -1714,7 +2070,23 @@ function syncVoiceEditorToLane(laneKey) {
 function placeVoiceEditor() {
   const el = voiceEditEl;
   const laneKey = voiceEditor.laneKey;
-  if (!voiceEditor.isOpen() || !laneKey) { el.remove(); return; }
+  if (!voiceEditor.isOpen()) { el.remove(); return; }
+  // Opened from the library there is no strip to sit beside, so it is a window instead
+  // of a rack item: parked on the body, out of the rack entirely, where a repaint
+  // cannot detach it. Returning here rather than falling through is the whole of it —
+  // everything below is about finding a strip and becoming one object with it.
+  if (!laneKey) {
+    // Inside the library, if it is open: that window has a slot down its right side
+    // and the three panels are one workspace. Floating is the fallback for a
+    // lane-free editor with no library behind it, which nothing opens today.
+    if (voiceLibrary.slots) { dockIntoLibrary(); return; }
+    if (el.parentElement !== document.body) document.body.append(el);
+    el.classList.remove('vedocked');
+    el.classList.add('vefloat');
+    placeFloatingEditor();
+    return;
+  }
+  el.classList.remove('vefloat', 'vedocked');
   const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
   // Not `close()`: this runs FROM buildRack, and close rebuilds the rack. Tearing the
   // panel down without asking for another repaint is the whole difference between
@@ -1755,12 +2127,11 @@ function placeVoiceEditor() {
 
 /** Open the editor on a lane's chosen preset, or on a new one copied from it. */
 function editVoice(laneKey, { isNew = false } = {}) {
-  const seam = seamFor(laneKey);
-  const chosen = seam && mixFor(trackId).voice?.[seam.voiceKey];
+  const chosen = laneVoiceId(laneKey);
   if (!chosen) {
     // Nothing to copy and nothing to edit. The engine's own voice is not a preset —
     // it is what plays when no preset is named — so there is no entry behind it.
-    toast('this lane is on the engine’s own voice. Choose a preset first, then edit it'
+    toast('This lane is on the engine’s own voice. Choose a preset first, then edit it'
       + ' — or copy one into a new preset.');
     return;
   }
@@ -1784,6 +2155,251 @@ function editVoice(laneKey, { isNew = false } = {}) {
   // button that did nothing.
   voiceEditEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
 }
+
+// ---- the preset library -----------------------------------------------------
+//
+// The catalogue with no song in front of it. See tools/mixer-voice-library.js — the
+// window, the patterns, and the bench a preset with no channel is heard on.
+
+const voiceLibrary = createVoiceLibrary({
+  el: $('voicelib'),
+  Audio,
+  // Read late and through a closure, for two reasons: the pattern follows the desk
+  // tempo including while you drag it, which is how you hear what a release really
+  // does — and `deskTempo` is declared several thousand lines below this, so naming it
+  // directly here would be reading a `const` before it exists.
+  bpm: () => deskTempo(),
+  /**
+   * The song's clock, for the pattern to lock onto — null when nothing is playing.
+   *
+   * Read straight off the sequencer rather than derived from the tempo readout. `spb`
+   * carries the warp multiplier, which the readout does not, and `nextTime`/`step` are
+   * the actual grid the song's own notes are being placed on — so a figure started
+   * against them is on the beat because it is on the same beat, not because two clocks
+   * were set to the same number and have not drifted yet.
+   */
+  sync: () => {
+    if (!playing || !Audio.ctx || !Audio.bpm) return null;
+    return {
+      time: Audio.nextTime,
+      step: Audio.step,
+      spb: (60 / (Audio.bpm * (Audio.tempo || 1))) / 4,
+    };
+  },
+  edit: editLibraryVoice,
+  file: () => voiceEditor.saveSheet(),
+  editing: () => voiceEditor.editing,
+  // The keyboard plays whatever is on the bench while the library is up, so it has to
+  // be told the moment that changes — otherwise it goes on naming the last preset.
+  scale: () => oskScale(),
+  onPick: () => refreshOsk(),
+  // The library rebuilt itself, which detached whatever was parked in it. Put them
+  // back — same contract `placeVoiceEditor` has with `buildRack`.
+  onLayout: () => dockIntoLibrary(),
+  onCollapse: onLibraryCollapse,
+  // Closing the library hands the keyboard back to the selected channel, and takes the
+  // editor with it: an editor left floating over the desk with no library behind it is
+  // a window with no way back to the list it came from.
+  onClose: () => {
+    if (voiceEditor.isOpen() && !voiceEditor.laneKey) dismissVoiceEditor();
+    // Put the desk back the way it was found: a keyboard the library switched on goes
+    // off with it. One the desk already had stays, and goes back to floating.
+    if (!oskWasOn) showOsk(false);
+    undockFromLibrary();
+    refreshOsk();
+  },
+});
+
+/**
+ * Open the editor on a library preset — no lane, no song, no strip.
+ *
+ * The one thing this does that `editVoice` does not is leave every song alone: there is
+ * no lane to point at the preset and nothing is written to any draft. Re-opening on the
+ * preset already showing is refused for the same reason it is on a lane — `open` takes
+ * the CURRENT sound as the baseline, so a second click would quietly make your unsaved
+ * edits the thing Revert goes back to.
+ */
+function editLibraryVoice(id) {
+  if (voiceEditor.isOpen() && !voiceEditor.laneKey && voiceEditor.editing === id) return true;
+  const wasDocked = voiceEditor.isOpen() && voiceEditor.laneKey;
+  // Marked BEFORE it is opened, not after it is placed. `open` builds the panel, and
+  // the panel reads this class to decide whether its ✕ is a close or a fold — so
+  // setting it on the way past would leave the first build wearing the wrong one.
+  voiceEditEl.classList.toggle('vedocked', !!voiceLibrary.slots);
+  if (!voiceEditor.open(id)) return false;
+  // A repaint rather than a re-place when the panel was docked to a strip. `.voicepair`
+  // is a wrapper `placeVoiceEditor` builds around the two of them, and only emptying
+  // the rack takes it away again — so floating the panel out of it on its own leaves
+  // that wrapper behind, drawing its border and its radius around a lone strip that has
+  // nothing beside it any more. buildRack rebuilds the strips and then calls
+  // placeVoiceEditor itself, which is what floats it.
+  if (wasDocked) buildRack(); else placeVoiceEditor();
+  return true;
+}
+
+/**
+ * Park the editor and the keyboard into the library's own slots.
+ *
+ * The three of them are one job — find a sound, shape it, play it — and they were three
+ * windows to open and arrange before any of that could start. So while the library is
+ * up it holds the other two: the editor down its right side, the keyboard along the
+ * bottom, both in boxes the library laid out for them.
+ *
+ * MOVED, not copied. `append` relocates a node it already holds, so these are the same
+ * elements the desk uses everywhere else — the editor that also docks beside a channel
+ * strip, the keyboard that also plays one. A second copy of either would be a second
+ * implementation of something that already works, and they would drift.
+ *
+ * Runs after every library repaint, because a repaint empties the window and detaches
+ * whatever was in it. Cheap: two `append` calls on nodes that are usually already
+ * where they belong.
+ */
+function dockIntoLibrary() {
+  const slots = voiceLibrary.slots;
+  if (!slots) return;
+  if (voiceEditor.isOpen() && !voiceEditor.laneKey && !voiceLibrary.isCollapsed('edit')) {
+    // Docked, so it gives up the floating window's frame and position — see .vedocked.
+    voiceEditEl.classList.add('vedocked');
+    voiceEditEl.classList.remove('vefloat');
+    slots.edit.append(voiceEditEl);
+  }
+  if (oskShown() && !voiceLibrary.isCollapsed('keys')) {
+    oskEl.classList.add('docked');
+    slots.keys.append(oskEl);
+    fitDockedKeys();
+  }
+}
+
+/**
+ * How wide the docked keyboard's band actually is, inside its frame.
+ *
+ * Zero when it is not docked, which is the signal to use the floating board's fixed
+ * two octaves: out on the desk it is a corner window with no band to fill.
+ */
+// The frame around the keys, per side — `#osk .oskkeys`'s own border. It is inside the
+// slot, so it is part of what the keys have to fit within.
+const OSK_CHASSIS = 5;
+
+function oskRoom() {
+  const slot = voiceLibrary.slots?.keys;
+  if (!slot || !oskEl.classList.contains('docked')) return 0;
+  return Math.max(0, slot.clientWidth - OSK_CHASSIS * 2);
+}
+
+/**
+ * Redraw the docked keyboard when the band it sits in has changed size.
+ *
+ * The keys are SIZED, not scaled — see `oskKeyPlan`. So filling a different width is a
+ * different number of keys rather than the same keys stretched, and the only thing this
+ * has to do is notice the width moved and ask for a rebuild.
+ *
+ * Guarded on the width it last drew for, because the rebuild re-docks, and re-docking
+ * calls this again. Without that it is a loop.
+ */
+let oskDrawnFor = -1;
+function fitDockedKeys() {
+  const room = oskRoom();
+  if (!room || room === oskDrawnFor) return;
+  buildOsk();
+}
+
+/**
+ * How many keys to draw, and how wide each one is.
+ *
+ * The other way round from where this started. It used to draw a fixed number — four
+ * octaves — and `zoom` them until they fitted, which meant the keys changed size with
+ * the scale: a pentatonic has seventeen where a chromatic board has twenty-nine, so the
+ * same band gave one 64px keys and the other 37px. Capping the key stopped the sparse
+ * scales looking absurd and left the band short instead, which is the complaint.
+ *
+ * Fixing the RANGE and deriving the width settles both. Three octaves is the span in
+ * every scale and in both homes — the span the computer keyboard reaches, see
+ * OSK_OCTAVES — so the instrument is the same instrument whatever you set the key to;
+ * the board always fills its band, because the width was chosen to make it; and a
+ * pentatonic gets wide keys because it has fewer notes to fit, which is the honest
+ * answer rather than a keyboard that shrinks its own range to keep them uniform.
+ *
+ * Sizing the KEY instead and deriving the count is the other way to settle it, and it
+ * was here for a while. It keeps a key the same width in every scale — but the band is
+ * a fixed width, so the count it derives is a RANGE that moves: a 50% wider key cost an
+ * octave, which is the property of the keyboard you actually play with.
+ *
+ * `DOCK_KEY_MIN` is a floor, not a target. Three octaves of a chromatic board in a
+ * narrow band is a row of slivers, and past that point range is the cheaper thing to
+ * give up — but only past it.
+ *
+ * The width is fractional on purpose. Rounding it down leaves up to a key's worth of
+ * bare band on the right; keys are positioned at `i * width`, so every key's left edge
+ * is the previous key's right edge exactly, and the only cost of a fraction is which
+ * device pixel the shared edge lands on.
+ */
+const DOCK_KEY_MIN = 26;                 // narrowest a docked white key may get, px
+function oskKeyPlan(perOctave) {
+  const room = oskRoom();
+  // Floating, or measured before there is anything to measure: the fixed board.
+  const full = perOctave * OSK_OCTAVES + 1;
+  if (!room) return { count: full, width: KEY_W, fills: false };
+  // Three octaves unless they would not be playable, and then as many as are — but never
+  // fewer than an octave and a note, because a keyboard that cannot reach its own octave
+  // is not one.
+  const count = room / full >= DOCK_KEY_MIN
+    ? full
+    : Math.max(perOctave + 1, Math.floor(room / DOCK_KEY_MIN));
+  return { count, width: room / count, fills: true };
+}
+
+/**
+ * A region of the library folded or unfolded.
+ *
+ * Folding the keyboard has to reach further than hiding it: while `Keyboard` is on it
+ * owns the letter keys, and a keyboard you have put away that is still swallowing M, S
+ * and R is a desk whose shortcuts have stopped working for no visible reason.
+ */
+function onLibraryCollapse(which, isCollapsed) {
+  if (which === 'keys') {
+    if (isCollapsed) { oskCatch = false; oskHeld.clear(); oskEl.remove(); }
+    else if (oskShown()) buildOsk();
+  }
+  if (which === 'edit' && isCollapsed) voiceEditEl.remove();
+  dockIntoLibrary();
+}
+
+/**
+ * Give them back to the desk. The library is going away and they are not its.
+ *
+ * The keyboard survives — it plays channels too, and closing the library is not a
+ * reason to stop playing — so it goes back to the body as a floating window at the
+ * position it last had. The editor does not: opened from the library it is editing a
+ * preset with no channel behind it, and a panel floating over the desk with no list to
+ * go back to is a window with no way out.
+ */
+function undockFromLibrary() {
+  const osk = oskEl;
+  osk.classList.remove('docked');
+  if (oskShown()) {
+    document.body.append(osk);
+    let pos = null;
+    try { pos = JSON.parse(localStorage.getItem(OSK_POS_KEY) || 'null'); } catch { pos = null; }
+    const r = osk.getBoundingClientRect();
+    oskPlace(pos?.x ?? innerWidth - r.width - 24, pos?.y ?? innerHeight - r.height - 54);
+    buildOsk();          // back to the selected channel's keys — see oskBench
+  } else {
+    document.body.append(osk);
+  }
+  voiceEditEl.classList.remove('vedocked');
+}
+
+// The keyboard comes with it. Playing a preset is most of what the library is FOR, and
+// making you find a button in the main toolbar first is a step between opening a
+// workspace and being able to use it. Whether it was on before is remembered, so
+// closing the library puts the desk back the way it was rather than leaving a keyboard
+// floating over it that you never asked for.
+let oskWasOn = false;
+$('voicelibbtn').onclick = () => {
+  oskWasOn = oskShown();
+  voiceLibrary.show(true);
+  if (!oskWasOn) showOsk(true);
+};
 
 /**
  * The voice button, on strips whose lane can take one.
@@ -1849,7 +2465,10 @@ function voiceRow(laneKey) {
   // when there is something to open: the engine's own voice is not a preset.
   const open = document.createElement('span');
   open.className = 'voicestep voiceedit';
-  open.textContent = '✎';
+  // `»`, not a pencil. A ✎ says "edit something" and leaves you to work out what and
+  // where; this says the editor opens, to the right, which is exactly where it appears —
+  // and it is the same mark that puts it away again, so the pair reads as one toggle.
+  open.append(foldIcon('right'));
   open.onclick = (ev) => {
     ev.stopPropagation();                       // the button under it opens the library
     editVoice(laneKey);
@@ -1858,7 +2477,7 @@ function voiceRow(laneKey) {
   // Re-run in place when an arrow moves the voice on. Setting textContent empties the
   // button, so the arrows go back in after the label every time.
   function paint() {
-    const chosen = mixFor(trackId).voice?.[seam.voiceKey];
+    const chosen = laneVoiceId(laneKey);
     const v = chosen && VOICES[chosen];
     const group = v ? ` in ${v.category}` : '';
     // What the lane is playing with nothing set, where the library has a name for it.
@@ -1883,13 +2502,13 @@ function voiceRow(laneKey) {
             + ' plays this by itself. Click to choose a preset instead.'
           : 'This lane plays the engine’s own hand-written voice.'
             + ' Click to play it through a synth from src/data/voices.js instead.';
-    prev.title = `previous preset${group}`;
-    next.title = `next preset${group}`;
+    prev.title = `Previous preset${group}`;
+    next.title = `Next preset${group}`;
     b.append(prev, next);
     // Only a preset has parameters. An engine voice is bank keys the hand-written
     // lane reads, and a lane on the default is not playing an entry at all.
     if (v && v.kind !== 'engine') {
-      open.title = `edit ${v.label} — its parameters, on the desk, heard as you move them`;
+      open.title = `Edit ${v.label} — its parameters, on the desk, heard as you move them`;
       b.append(open);
     }
   }
@@ -1942,8 +2561,8 @@ function openVoicePicker(x, y, laneKey) {
   const search = document.createElement('input');
   search.className = 'voicesearch';
   search.type = 'search';
-  search.placeholder = 'search presets…';
-  search.setAttribute('aria-label', 'search presets');
+  search.placeholder = 'Search presets…';
+  search.setAttribute('aria-label', 'Search presets');
 
   // The head row: what you are choosing for, how to find it, and the way back.
   //
@@ -1966,9 +2585,9 @@ function openVoicePicker(x, y, laneKey) {
   // a rule: `all` is one click away and the library is the same library — a snare
   // through a bass lane is a legitimate noise and this does not stop it.
   const KINDS = [
-    { id: 'all', label: 'all', keep: () => true },
-    { id: 'pitched', label: 'pitched', keep: (v) => !KIT_CATEGORIES.includes(v.category) },
-    { id: 'drums', label: 'drums', keep: (v) => KIT_CATEGORIES.includes(v.category) },
+    { id: 'all', label: 'All', keep: () => true },
+    { id: 'pitched', label: 'Pitched', keep: (v) => !KIT_CATEGORIES.includes(v.category) },
+    { id: 'drums', label: 'Drums', keep: (v) => KIT_CATEGORIES.includes(v.category) },
   ];
   let kind = PERCUSSION_LANES.includes(baseLane(laneKey)) ? 'drums' : 'pitched';
   const keepOf = (id) => KINDS.find((k) => k.id === id).keep;
@@ -1981,9 +2600,9 @@ function openVoicePicker(x, y, laneKey) {
     const c = document.createElement('button');
     c.className = 'voicekind' + (k.id === kind ? ' on' : '');
     c.textContent = k.label;
-    c.title = k.id === 'all' ? 'every preset in the library'
+    c.title = k.id === 'all' ? 'Every preset in the library'
       : k.id === 'drums' ? 'kicks, snares, claps, hats and percussion'
-        : 'everything that plays a note';
+        : 'Everything that plays a note';
     c.onclick = () => {
       kind = k.id;
       for (const other of chips.children) other.classList.toggle('on', other === c);
@@ -1998,7 +2617,7 @@ function openVoicePicker(x, y, laneKey) {
     // the lane IS instead of offering a choice that silences it.
     const why = document.createElement('span');
     why.className = 'voicewhy';
-    why.textContent = `a duplicate of ${targetLabel(baseLane(laneKey))} — it plays that`
+    why.textContent = `A duplicate of ${targetLabel(baseLane(laneKey))} — it plays that`
       + ' part with whatever you choose here';
     head.append(why);
   } else {
@@ -2007,7 +2626,7 @@ function openVoicePicker(x, y, laneKey) {
     // what that sounds like. A lane whose bank is tuned past every preset has no name
     // to show and reads `built in`, as it always did.
     const named = defaultVoiceOf(track?.bank, laneKey);
-    const def = entry(null, 'Engine default', named ? named.label : 'built in',
+    const def = entry(null, 'Engine default', named ? named.label : 'Built in',
       `What ${targetLabel(laneKey)} plays with nothing set — the hand-written voice the`
       + ' songs were composed on. Choosing it writes nothing to the mix file.'
       + (named ? `\n\nOn this song that is ${named.label} — ${named.note}` : ''));
@@ -2040,9 +2659,9 @@ function openVoicePicker(x, y, laneKey) {
       h5.textContent = category;
       g.append(h5);
       for (const v of matches) {
-        g.append(entry(v.id, v.label, v.kind === 'engine' ? 'built in' : '',
+        g.append(entry(v.id, v.label, v.kind === 'engine' ? 'Built in' : '',
           `${v.label} — ${v.note}`
-          + (v.lanes ? `\n\nOnly on: ${v.lanes.map((k) => VOICE_LANES[k].label).join(', ')}.` : '')));
+          + (v.lanes ? `\n\nOnly on: ${v.lanes.map((k) => cap(VOICE_LANES[k].label)).join(', ')}.` : '')));
       }
       results.append(g);
     }
@@ -2056,7 +2675,7 @@ function openVoicePicker(x, y, laneKey) {
       const none = document.createElement('div');
       none.className = 'fxgroup voicesearch-none';
       const elsewhere = kind === 'all' ? 0 : voicesFor(laneKey).filter(hit).length;
-      none.textContent = `nothing matches “${query.trim()}” in ${kind}`;
+      none.textContent = `Nothing matches “${query.trim()}” in ${kind}`;
       if (elsewhere) {
         const more = document.createElement('button');
         more.className = 'voicesearch-more';
@@ -2068,7 +2687,7 @@ function openVoicePicker(x, y, laneKey) {
         };
         none.append(more);
       } else {
-        none.textContent = `nothing matches “${query.trim()}”`;
+        none.textContent = `Nothing matches “${query.trim()}”`;
       }
       results.append(none);
     }
@@ -2103,7 +2722,7 @@ function channelStrip(lane, mix, slotRows, number) {
   // The head is the strip's handle, so double-clicking it plays the channel: from
   // the bar it comes in on, which for anything that enters late is the only bar you
   // wanted to hear. See playFromLaneStart.
-  head.title = 'click to show this strip’s devices below'
+  head.title = 'Click to show this strip’s devices below'
     + ' — double-click to play from where this channel comes in';
   head.addEventListener('dblclick', () => playFromLaneStart(key));
 
@@ -2112,13 +2731,13 @@ function channelStrip(lane, mix, slotRows, number) {
   // is where you point at a channel when you mean the channel, and hunting for a
   // 13px target inside a button is not where anyone looks first.
   const seam = seamFor(key);
-  const chosen = seam && mix.voice?.[seam.voiceKey];
+  const chosen = seam && laneVoiceId(key);
   const preset = chosen && VOICES[chosen];
   if (preset && preset.kind !== 'engine') {
     const pen = document.createElement('button');
     pen.className = 'stripedit';
-    pen.textContent = '✎';
-    pen.title = `edit ${preset.label} — its parameters, beside this strip`;
+    pen.append(foldIcon('right'));   // see the voice row's — same mark, same reason
+    pen.title = `Edit ${preset.label} — its parameters, beside this strip`;
     pen.onclick = (ev) => { ev.stopPropagation(); editVoice(key); };
     head.append(pen);
   }
@@ -2261,7 +2880,7 @@ function sendStrip(def, mix, slotRows) {
   const mute = document.createElement('button');
   mute.textContent = 'M';
   mute.className = 'mutebtn warn' + (cur.mute ? ' on' : '');
-  mute.title = `mute the ${def.name} return`;
+  mute.title = `Mute the ${def.name} return`;
   mute.onclick = (ev) => {
     ev.stopPropagation();
     const on = !mute.classList.contains('on');
@@ -2271,7 +2890,7 @@ function sendStrip(def, mix, slotRows) {
   const solo = document.createElement('button');
   solo.textContent = 'S';
   solo.className = 'solobtn' + (soloedAux.has(def.id) ? ' on' : '');
-  solo.title = `solo the ${def.name} return — monitoring only, never saved`;
+  solo.title = `Solo the ${def.name} return — monitoring only, never saved`;
   solo.onclick = (ev) => {
     ev.stopPropagation();
     const on = !solo.classList.contains('on');
@@ -2305,7 +2924,7 @@ function masterStrip(mix, slotRows) {
     // different gain from its neighbours'. The narrow range was buying fine control
     // near unity; the taper gives that to every fader on the desk — see FADER_SCALE.
     value: mix.master || 0,
-    title: 'master trim, on top of the bank’s own musicTrim',
+    title: 'Master trim, on top of the bank’s own musicTrim',
     onInput: setMaster,
     onReset: (x) => { editMix((m) => { m.master = x; }); Audio.mixer?.setMasterTrim(x); },
   });
@@ -2378,6 +2997,11 @@ const ARR_KEY = 'mash-mixer-arrh';
 // arrangement shut on every load with no way to tell why.
 const storedArrH = Number(localStorage.getItem(ARR_KEY));
 let userArrH = Number.isFinite(storedArrH) && storedArrH > 40 ? storedArrH : null;
+// A one-lane height can be useful while actively dragging, but restoring one on the
+// next load looks exactly like the arrangement has lost its other instruments. Keep
+// that temporary squeeze for the current session; stale one-lane preferences fall
+// back to automatic fitting once the rows have been built.
+let restoredArrH = userArrH != null;
 
 // The arrangement's height is always its header plus a whole number of lanes.
 const GRID_PAD = 0;                                  // #arrgrid has none, deliberately
@@ -2503,6 +3127,14 @@ function fitStrips() {
   const total = innerHeight - pageChrome();
   const arrange = $('arrange');
   const floor = arrangementFloor();
+  if (restoredArrH && laneCount() > 1) {
+    const oneLane = h($('arrhead')) + GRID_PAD + laneRowHeight();
+    if (userArrH <= oneLane + 1) {
+      userArrH = null;
+      localStorage.removeItem(ARR_KEY);
+    }
+    restoredArrH = false;
+  }
   // What the rack keeps whatever the arrangement asks for: a whole strip AND the
   // padding under it, so the rack never shows a strip cut off by its own bottom
   // edge. On a window too short for even that, the arrangement goes down to its
@@ -2512,9 +3144,16 @@ function fitStrips() {
   // legitimate thing to want, and the eight-lane floor is only the automatic answer.
   // Whole lanes only. A row cut in half is a row you cannot read and cannot click,
   // and the eye reads the cut as a rendering fault rather than as a boundary.
+  // Automatic fitting honours the eight-lane target computed above. `floor` used to
+  // be calculated and then discarded, allowing an early one-row measurement to pin
+  // the panel to one instrument. A user-dragged height still wins, including a
+  // deliberate one-lane squeeze during this session.
+  const wanted = userArrH != null
+    ? userArrH
+    : Math.max(arrangementWants(), Math.min(floor, ceiling));
   const arrH = arrange.classList.contains('collapsed')
     ? h(arrange)
-    : arrangeSnap(Math.min(userArrH != null ? userArrH : arrangementWants(), ceiling), Math.floor);
+    : arrangeSnap(Math.min(wanted, ceiling), Math.floor);
   if (!arrange.classList.contains('collapsed')) arrange.style.maxHeight = `${Math.round(arrH)}px`;
 
   const strips = Math.floor(total - arrH - rackPad());
@@ -2583,7 +3222,7 @@ function markClipped(root = document) {
     userArrH = null;
     localStorage.removeItem(ARR_KEY);
     fitStrips();
-    toast('arrangement back to fitting itself');
+    toast('Arrangement back to fitting itself');
   });
 })();
 
@@ -2676,14 +3315,19 @@ function buildTimeline() {
     // A bar that drops lanes is marked on the timeline as well as in the grid: the
     // build-up is a shape you should be able to see from the ruler down.
     if (bar.off?.length) d.classList.add('muted');
+    if (bar.delete?.length) d.classList.add('deleted');
     d.title = `Bar ${i + 1} · section ${sec + 1}, ${bar.half ? 'second' : 'first'} half`
       + ` · ${fmtTime(i * secsPerBar)} (${secsPerBar.toFixed(1)}s per bar)`
-      + (bar.off?.length ? `\nsilenced here: ${bar.off.join(', ')}` : '');
+      + (bar.off?.length ? `\nSilenced here: ${bar.off.join(', ')}` : '')
+      + (bar.delete?.length ? `\nDeleted here: ${bar.delete.join(', ')}` : '')
+      + (bar.transpose ? `\nTranspose: ${JSON.stringify(bar.transpose)}` : '')
+      + (bar.offset ? `\nTiming (1/32): ${JSON.stringify(bar.offset)}` : '')
+      + (bar.gain ? `\nGain dB: ${JSON.stringify(bar.gain)}` : '');
     // No number in the block: the ruler above counts the bars, and these say which
     // section they belong to. One row, one question.
     el.append(d);
   });
-  $('tnow').title = `where you are in ${track.title}, and how long it runs`;
+  $('tnow').title = `Where you are in ${track.title}, and how long it runs`;
   $('tnow').textContent = `0:00/${fmtTime(loopSecs)}`;
   $('barnow').textContent = `1/${plan.length}`;
 }
@@ -2708,7 +3352,10 @@ function applyLoop(atStep = null) {
   const { totalSteps } = songShape();
   if (!loopOn || !loopBars) { Audio.setLoop(); $('loopregion').style.display = 'none'; return; }
   const stepsPerBar = 16;                       // 16 sixteenths in a bar of 4/4
-  const from = atStep != null ? atStep : Audio.step;
+  // While a loop is already armed, changing its length must keep its start bar. If
+  // this is the first time it is being armed during playback, there is no loop start
+  // yet, so use the current transport position as before.
+  const from = atStep != null ? atStep : (Audio.loopStart != null ? Audio.loopStart : Audio.step);
   // Snap to a bar line, and to the song form rather than to absolute step count, so
   // the shaded region on the timeline is where the loop actually is.
   const barIndex = Math.floor((from % totalSteps) / stepsPerBar);
@@ -2726,14 +3373,14 @@ function applyLoop(atStep = null) {
 $('loopbars').onchange = () => {
   loopBars = +$('loopbars').value;
   applyLoop(playing ? null : loopAnchor);
-  toast(loopBars ? `looping ${loopBars} bar${loopBars > 1 ? 's' : ''}` : 'looping the whole song');
+  toast(loopBars ? `Looping ${loopBars} bar${loopBars > 1 ? 's' : ''}` : 'Looping the whole song');
 };
 
 $('looptoggle').onclick = () => {
   loopOn = !loopOn;
   $('looptoggle').classList.toggle('on', loopOn);
   applyLoop(playing ? null : loopAnchor);
-  toast(loopOn ? 'loop on' : 'loop off — playing the whole song');
+  toast(loopOn ? 'Loop on' : 'Loop off — playing the whole song');
 };
 
 /**
@@ -2756,6 +3403,7 @@ function jumpTo(step, { start = false } = {}) {
     $('playhead').style.left = `${(within / totalSteps) * 100}%`;
     $('tnow').textContent = `${fmtTime(within * spb)}/${fmtTime(loopSecs)}`;
     $('barnow').textContent = `${Math.floor(within / 16) + 1}/${totalSteps / 16}`;
+    stepSeq.follow(within);
     return;
   }
   const cycle = Math.floor(Audio.step / totalSteps) * totalSteps;
@@ -2772,6 +3420,34 @@ const timelineStep = (e) => {
   return Math.floor(clamp((e.clientX - r.left) / r.width, 0, 1) * songShape().totalSteps);
 };
 const barOf = (step) => Math.floor(step / 16) + 1;
+const timelineBar = (e) => Math.max(0, Math.min(songShape().bars.length - 1, barOf(timelineStep(e)) - 1));
+
+// Selecting structure is a timeline gesture. The arrangement grid can still add a
+// lane target to the same range, but the bar numbers and the ripple operations start
+// here, where the song's form is visible and easy to count.
+let timelineDrag = null;
+let timelineClickSuppress = false;
+$('barsarea').onpointerdown = (ev) => {
+  if (ev.button !== 0) return;
+  timelineClickSuppress = false;
+  const bar = timelineBar(ev);
+  const anchor = ev.shiftKey && selectedBar ? selFrom() : bar;
+  markBar(null, anchor, bar);
+  timelineDrag = { anchor, moved: false };
+  try { $('barsarea').setPointerCapture(ev.pointerId); } catch { /* browserless */ }
+};
+$('barsarea').onpointermove = (ev) => {
+  if (!timelineDrag || !(ev.buttons & 1)) return;
+  const bar = timelineBar(ev);
+  if (bar !== selTo()) timelineDrag.moved = true;
+  markBar(null, timelineDrag.anchor, bar);
+};
+$('barsarea').onpointerup = () => {
+  timelineClickSuppress = !!timelineDrag?.moved;
+  timelineDrag = null;
+};
+$('barsarea').onpointercancel = () => { timelineDrag = null; timelineClickSuppress = false; };
+$('barsarea').oncontextmenu = (ev) => timelineMenu(ev);
 
 // The section blocks under the ruler have been drawn all along and shown to nobody.
 // A fold is cheaper than the row they used to cost: songs whose form you are working
@@ -2781,7 +3457,7 @@ const SECTIONS_KEY = 'mash-mixer-sections';
 function setSectionsShown(on, refit = true) {
   $('timeline').classList.toggle('sections', on);
   $('tlfold').classList.toggle('folded', !on);
-  $('tlfold').title = on ? 'hide the song sections' : 'show the song sections';
+  $('tlfold').title = on ? 'Hide the song sections' : 'Show the song sections';
   localStorage.setItem(SECTIONS_KEY, on ? '1' : '0');
   if (refit) fitStrips();       // the timeline is chrome; the rack gets the difference
 }
@@ -2794,10 +3470,12 @@ setSectionsShown(localStorage.getItem(SECTIONS_KEY) === '1', false);
 $('timeline').onclick = (e) => {
   if (e.target.closest('#tlhead')) return;
   const at = timelineStep(e);
+  if (timelineClickSuppress) timelineClickSuppress = false;
+  else markBar(null, timelineBar(e));
   jumpTo(at);
-  toast(!playing ? `parked at bar ${barOf(at)} — double-click to play from here`
-    : loopBars && loopOn ? `looping ${loopBars} bar${loopBars > 1 ? 's' : ''} from bar ${barOf(at)}`
-    : `jumped to bar ${barOf(at)}`);
+  toast(!playing ? `Parked at bar ${barOf(at)} — double-click to play from here`
+    : loopBars && loopOn ? `Looping ${loopBars} bar${loopBars > 1 ? 's' : ''} from bar ${barOf(at)}`
+    : `Jumped to bar ${barOf(at)}`);
 };
 
 // Double-click plays from where you pointed. Stopped, reaching for Play and then
@@ -2806,7 +3484,7 @@ $('timeline').ondblclick = (e) => {
   if (e.target.closest('#tlhead')) return;
   const at = timelineStep(e);
   jumpTo(at, { start: true });
-  toast(`playing from bar ${barOf(at)}`);
+  toast(`Playing from bar ${barOf(at)}`);
 };
 
 // A lane in by the second bar counts as being in from the top: it starts with the
@@ -2854,7 +3532,7 @@ function playFromLaneStart(key) {
   const from = bar < INTRO_BARS ? 0 : bar;
   jumpTo(from * 16, { start: true });
   markBar(key, from);              // where it starts, marked in the row you can see it in
-  toast(from ? `playing ${label} from bar ${from + 1} — where it comes in`
+  toast(from ? `Playing ${label} from bar ${from + 1} — where it comes in`
     : `${label} is in from the top — playing from bar 1`);
 }
 
@@ -2902,7 +3580,7 @@ const paramLabel = (p) => PARAM_LABELS[p] || p.split('.')
  */
 function makeTypableDb(el, ctl, apply, fmt) {
   el.classList.add('typable');
-  el.title = 'drag to set the level · click to type it · double-click to reset';
+  el.title = 'Drag to set the level · click to type it · double-click to reset';
   const put = (x) => { const v = clamp(x, ctl.min, ctl.max); ctl.set(v); apply(v); return v; };
   const openEditor = () => {
     if (el.querySelector('input')) return;
@@ -3010,7 +3688,7 @@ function panKnob({ value, onInput }) {
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
   svg.addEventListener('dblclick', () => set(0));
-  svg.title = 'drag to pan · click the number to type · double-click to centre';
+  svg.title = 'Drag to pan · click the number to type · double-click to centre';
 
   // Type an exact value. The readout lives inside the SVG, so the editor is an HTML
   // input laid over the knob rather than a foreignObject — simpler, and it inherits
@@ -3134,7 +3812,7 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
   svg.addEventListener('dblclick', () => set(reset));
-  svg.title = 'drag to change · click the number to type · double-click to reset';
+  svg.title = 'Drag to change · click the number to type · double-click to reset';
 
   function openEditor() {
     if (holder.querySelector('.typein')) return;
@@ -3159,7 +3837,7 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
 
   // Click the label to reset, the way every slider on the desk does.
   k.classList.add('resettable');
-  k.title = `reset to ${fmt(reset)}`;
+  k.title = `Reset to ${fmt(reset)}`;
   k.addEventListener('click', () => set(reset));
 
   return { wrap, label: k, set: (x) => { val = clamp(x, min, max); draw(); } };
@@ -3212,7 +3890,7 @@ function targetLabel(key) {
   // A DELETED track has no row and no strip, so it is not in the desk's lane list —
   // and the one place it is still named is the menu that offers to put it back. The
   // engine's own list still knows it, which is what that falls through to.
-  return found?.label || LANES.find((l) => l.key === key)?.label || key;
+  return found?.label || cap(LANES.find((l) => l.key === key)?.label) || cap(key);
 }
 
 function setEffects(key, list) {
@@ -3353,10 +4031,10 @@ function buildDevices() {
     // The panel stays exactly as the user left it: folding it is their gesture, and
     // one that closed itself when a selection went away would move the whole desk
     // without being asked.
-    title.textContent = 'effects';
+    title.textContent = 'Effects';
     return;
   }
-  title.textContent = `effects (${targetLabel(selectedLane)})`;   // the CSS uppercases it
+  title.textContent = `Effects (${targetLabel(selectedLane)})`;   // the CSS uppercases it
 
   // A send's delay or reverb comes first: it is what the strip IS, and the inserts
   // are things you put in front of it. The master has no card of its own — its
@@ -3390,7 +4068,7 @@ function buildDevices() {
     const byp = document.createElement('button');
     byp.className = 'devtoggle' + (entry.bypass ? '' : ' on');
     byp.append(powerIcon());
-    byp.title = entry.bypass ? 'enable this effect' : 'bypass this effect';
+    byp.title = entry.bypass ? 'Enable this effect' : 'Bypass this effect';
     byp.onclick = () => {
       const next = list.map((e, j) => (j === i ? { ...e, bypass: !e.bypass } : e));
       editMix((m) => storeEffects(m, selectedLane, next), null);
@@ -3402,13 +4080,13 @@ function buildDevices() {
     const close = document.createElement('button');
     close.className = 'devclose';
     close.append(closeIcon());
-    close.title = `remove ${def ? def.name : entry.id} from this chain`;
+    close.title = `Remove ${def ? def.name : entry.id} from this chain`;
     close.onclick = () => {
       setEffects(selectedLane, list.filter((_, j) => j !== i));
       toast(`${def ? def.name : entry.id} removed`);
     };
     bar.append(byp, h, close);
-    bar.title = 'drag here to reorder';
+    bar.title = 'Drag here to reorder';
     bar.addEventListener('mousedown', (ev) => {
       if (ev.target.closest('button')) return;
       card.draggable = true;
@@ -3561,7 +4239,7 @@ function reserveDevices() {
   const bar = document.createElement('div');
   bar.className = 'devbar';
   const title = document.createElement('h4');
-  title.textContent = 'probe';
+  title.textContent = 'Probe';
   bar.append(title);
   const grid = document.createElement('div');
   grid.className = 'devgrid';
@@ -3693,7 +4371,7 @@ function addCard(first = false) {
   const full = effectsOf(selectedLane).length >= MAX_EFFECTS;
   btn.disabled = full;
   btn.title = full ? `${MAX_EFFECTS} effects is the limit on one strip`
-    : `add an effect to ${targetLabel(selectedLane)}`;
+    : `Add an effect to ${targetLabel(selectedLane)}`;
   btn.onclick = (ev) => {
     ev.stopPropagation();
     if (btn.disabled) return;
@@ -3706,7 +4384,7 @@ function addCard(first = false) {
 $('devfold').onclick = () => {
   const folded = $('devices').classList.toggle('collapsed');
   $('devfold').classList.toggle('folded', folded);
-  $('devfold').title = folded ? 'show the effects panel' : 'collapse the effects panel';
+  $('devfold').title = folded ? 'Show the effects panel' : 'Collapse the effects panel';
   fitStrips();                 // the strips just got a panel's worth of height back
 };
 
@@ -3743,16 +4421,22 @@ let arrCells = [];
 // same bar for a plain click, which is what every gesture that predates ranges still
 // produces, so the one-bar case needed no special handling anywhere.
 //
-// The playhead has the timeline to itself; this marks what you picked.
+// The timeline owns the song-range selection. A lane key is added only when an
+// arrangement row is the current target for lane-specific actions; the range itself
+// remains the same selection in both places.
 let selectedBar = null;
+let arrangementClipboard = null;
 
 const selFrom = () => (selectedBar ? Math.min(selectedBar.from, selectedBar.to) : 0);
 const selTo = () => (selectedBar ? Math.max(selectedBar.from, selectedBar.to) : 0);
 const selWidth = () => (selectedBar ? selTo() - selFrom() + 1 : 0);
 
 function markBar(key, from, to = from) {
-  selectedBar = key != null && from != null ? { key, from, to: to ?? from } : null;
+  selectedBar = from != null ? { key: key ?? null, from, to: to ?? from } : null;
   redrawSelection();
+  // The grid shows the selection, so selecting bars IS how you choose what it shows —
+  // one bar or eight, without a control of its own.
+  stepSeq.refresh();
 }
 
 /**
@@ -3769,7 +4453,8 @@ function redrawSelection() {
   // The range is marked on the lane you dragged in, because that is the lane the
   // menu's per-lane items will act on. Everything else about the range — delete,
   // duplicate, silence — is the whole song, and the timeline band says so.
-  const row = document.querySelector(`.arrrow[data-lane="${CSS.escape(selectedBar.key)}"]`);
+  const row = selectedBar.key == null ? null
+    : document.querySelector(`.arrrow[data-lane="${CSS.escape(selectedBar.key)}"]`);
   const cells = row?.querySelectorAll('.arrbar');
   if (cells) for (let b = selFrom(); b <= selTo(); b++) cells[b]?.classList.add('sel');
   drawSelRegion();
@@ -3801,8 +4486,24 @@ function drawSelRegion() {
 // touches a composition file: an edit lands in `src/data/arrangements.js`, and
 // deleting that entry puts the song back exactly as it was written.
 
+/**
+ * The song's OWN bank — layer lanes rewritten in, but the arrangement NOT applied.
+ *
+ * This is the bank the editing seam works against, and the distinction from
+ * `viewBank()` is load-bearing. `applyArrangement` appends an entry's layer sections
+ * onto `bank.sections`, and a draft built against that counts them twice: `sec` then
+ * addresses a list one longer than the file will have, the saved order points one
+ * past the end, and the bar falls back to the bare bank with the previous edit's
+ * notes gone. Only the SECOND edit to a song shows it, so it stayed invisible for as
+ * long as nothing wrote notes.
+ *
+ * `viewBank()` is still what everything that DRAWS the song wants — it is the song as
+ * it now plays. This is the song as it is written, which is what an edit is relative to.
+ */
+const editBank = () => deskBank(track?.bank, mixFor(trackId));
+
 /** This song as an editable bar list, built from whatever is in force for it. */
-const arrDraftOf = () => draftOf(viewBank(), arrFor(trackId));
+const arrDraftOf = () => draftOf(editBank(), arrFor(trackId));
 
 /**
  * Take an edited bar list and make it true — in the draft, in the engine, and on
@@ -3816,15 +4517,21 @@ const arrDraftOf = () => draftOf(viewBank(), arrFor(trackId));
  */
 function applyArrangementEdit(next, what) {
   if (next?.refused) { toast(next.refused); return false; }
+  // A painted note can introduce a drum lane the original song did not contain.
+  // Remember the lane set so that edit gets a strip immediately, while ordinary
+  // note moves avoid tearing down and rebuilding every control on the desk.
+  const lanesBefore = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
   pushUndo(null);
-  const bank = viewBank();
-  const entry = entryOf(bank, next);
-  const issues = arrangementIssues(track.bank, entry, LANE_KEYS);
+  // The song's own bank, not the arranged one — see `editBank`. Compaction counts
+  // `bank.sections` to number the layer, so handing it the arranged bank writes an
+  // index past the end of the list the file will actually have.
+  const entry = entryOf(editBank(), next);
+  const issues = arrangementIssues(track.bank, entry, deskLanes(editBank(), 1).map((l) => l.key));
   if (issues.length) {
     // Refused rather than written: an unplayable arrangement is silence with a
     // playhead running through it, and the desk should say so while there is still
     // something to undo it from.
-    toast(`that edit would not play — ${issues[0]}`, 6000);
+    toast(`That edit would not play — ${issues[0]}`, 6000);
     undo();
     return false;
   }
@@ -3832,25 +4539,343 @@ function applyArrangementEdit(next, what) {
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   bankCache.sig = null;                       // the song's shape changed under it
   Audio.setArrangement(entry);
+  // When playback is stopped, Audio.setArrangement only stores the patch because
+  // there is no live bank to swap. Keep the stopped desk's audition/keyboard bank in
+  // step as well; otherwise a mute appears in the grid but the next note audition
+  // still comes from the pre-edit arrangement. Playing uses the gap-free swap above.
+  if (!playing) applyToEngine(mixFor(trackId));
+  const lanesAfter = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
   buildTimeline();
-  buildArrangement();
+  if (lanesAfter !== lanesBefore) rebuildForShape();
+  else buildArrangement();
   applyLoop(Audio.step);
   updateStatus();
   if (what) toast(`${what} — ⌘Z to undo`);
   return true;
 }
 
-/** Back to the song as it was composed: no entry at all, which is how it reverts. */
-function clearArrangement() {
-  pushUndo(null);
-  arrDraft[trackId] = null;
-  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
-  bankCache.sig = null;
-  Audio.setArrangement(null);
-  buildTimeline();
-  buildArrangement();
-  updateStatus();
-  toast(`${track.title} back to its written arrangement — ⌘Z to undo`);
+/**
+ * The step grid.
+ *
+ * It edits notes rather than shape, but it lands in the same place: a note edit is a
+ * layer section on the arrangement, so it goes through `applyArrangementEdit` like a
+ * build-up does and inherits undo, the A/B, Save and Revert without knowing they exist.
+ *
+ * The bars it shows are the SELECTION — the same rule `barMenu` follows, so "select
+ * four bars, right-click, build up" and "select four bars and paint a fill" are the
+ * same gesture with two endings. With nothing selected it shows the bar being played,
+ * so opening it mid-loop lands you where you are listening.
+ */
+const stepSeq = createStepSeq({
+  el: $('stepseq'),
+  Audio,
+  bank: () => viewBank(),
+  editBank: () => editBank(),
+  draft: () => arrDraftOf(),
+  sel: () => {
+    if (selectedBar) return { from: selFrom(), to: selTo() };
+    const bars = songShape().bars.length;
+    const b = bars ? Math.floor((Audio.step || 0) / 16) % bars : 0;
+    return { from: b, to: b };
+  },
+  apply: (next, what) => applyArrangementEdit(next, what),
+  laneColour,
+  engineBank: () => engineBank(),
+  toast,
+  // The same row order and numbering the arrangement rows carry, so the two lists
+  // read as one list rather than two opinions about the kit.
+  kitLanes: () => deskLanes(viewBank(), 1).map((l) => l.key),
+  laneNumber: (key) => laneNumbers.get(key),
+  laneLabel: (key) => targetLabel(key),
+  addInstrument: () => addPercussionLane(),
+  menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
+  // Closed from its own × as well as from the button, so the button is told rather
+  // than assumed — the same reason `showOsk` sets the class instead of toggling it.
+  onClose: () => $('seqbtn').classList.remove('on'),
+});
+
+function showStepSeq(on) {
+  stepSeq.open(on);
+  $('seqbtn').classList.toggle('on', on);
+}
+
+/** Show the grid on a bar, selecting it first so the panel and the grid agree. */
+function openStepSeq(laneKey, bar) {
+  if (bar != null && !(selectedBar && bar >= selFrom() && bar <= selTo())) {
+    markBar(laneKey || 'kick', bar);
+  }
+  showStepSeq(true);
+}
+
+const activeMelodicLanes = () => deskLanes(viewBank(), 1)
+  .filter((l) => l.group === 'melodic').map((l) => l.key);
+const laneHasBarFlag = (draft, from, to, field, lane) => {
+  for (let i = from; i <= to; i++) {
+    if (!(draft.plan[i]?.[field] || []).includes(lane)) return false;
+  }
+  return true;
+};
+const pasteLane = (draft, from, lane, clip) => {
+  let out = draft;
+  for (let i = 0; i < clip.bars.length; i++) {
+    out = writeBarNotes(editBank(), out, from + i, lane, clip.bars[i]);
+  }
+  return out;
+};
+
+const barFieldValue = (bar, field, lane) => {
+  const value = bar?.[field];
+  if (typeof value === 'number') return value;
+  return Number.isFinite(value?.[lane]) ? value[lane] : 0;
+};
+
+/** One value when every selected bar/target agrees, otherwise null for "mixed". */
+const uniformRegionValue = (draft, from, to, field, lanes) => {
+  const values = new Set();
+  for (let bar = from; bar <= to; bar++) {
+    for (const lane of lanes) values.add(barFieldValue(draft.plan[bar], field, lane));
+  }
+  return values.size === 1 ? [...values][0] : null;
+};
+
+const rangeHasEveryFlag = (draft, from, to, field, lanes) => {
+  for (let bar = from; bar <= to; bar++) {
+    const flags = draft.plan[bar]?.[field] || [];
+    if (!lanes.every((lane) => flags.includes(lane))) return false;
+  }
+  return true;
+};
+
+const signed = (value) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}`;
+const timingText = (units) => {
+  if (!units) return 'On the grid';
+  let a = Math.abs(units); let b = 32;
+  while (b) { const next = a % b; a = b; b = next; }
+  const divisor = a || 1;
+  return `${units > 0 ? 'Delay' : 'Bring ahead'} ${Math.abs(units) / divisor}/${32 / divisor} note`;
+};
+
+/**
+ * The right-click editor for a selected bar range.
+ *
+ * Timeline opens whole-song structure plus all-melodic adjustments. A lane opens
+ * only that instrument's region operations. Exact values are staged here and one
+ * Apply creates one undo point; moving three sliders should not create thirty.
+ */
+function openRegionEditor(x, y, {
+  laneKey = null, from = selFrom(), to = selTo(), wholeTrack = false,
+} = {}) {
+  closeMenu();
+  const el = $('regionedit');
+  el.textContent = '';
+  const draft = arrDraftOf();
+  // Keep the selected range while looking at the whole track, so the scope switch
+  // can come back to exactly where it started without changing the selection itself.
+  const selectedFrom = from;
+  const selectedTo = to;
+  if (laneKey && wholeTrack) { from = 0; to = Math.max(0, draft.plan.length - 1); }
+  const n = to - from + 1;
+  const span = wholeTrack ? 'Entire track'
+    : n === 1 ? `Bar ${from + 1}` : `Bars ${from + 1}–${to + 1}`;
+  const melodic = activeMelodicLanes();
+  const lanes = laneKey ? [laneKey] : melodic;
+  const laneLabel = laneKey ? targetLabel(laneKey) : 'All melodic tracks';
+  const allSongLanes = deskLanes(viewBank(), 1).map((lane) => lane.key);
+
+  const head = document.createElement('div'); head.className = 'reghead';
+  const heading = document.createElement('div'); heading.className = 'regtitle';
+  heading.textContent = span;
+  const target = document.createElement('div'); target.className = 'regtarget';
+  target.textContent = laneKey && wholeTrack
+    ? `${laneLabel} · all ${n} bars in the song`
+    : laneKey
+    ? `${laneLabel} · changes only this track in the selected bars`
+    : 'Timeline · changes the song structure; adjustments target every melodic track';
+  heading.append(target);
+  const close = document.createElement('button'); close.className = 'regclose';
+  close.textContent = '×'; close.title = 'Close'; close.onclick = closeMenu;
+  head.append(heading, close); el.append(head);
+
+  if (laneKey) {
+    const scope = document.createElement('div'); scope.className = 'regscope';
+    const selected = document.createElement('button');
+    selected.textContent = selectedFrom === selectedTo
+      ? `Selected bar ${selectedFrom + 1}`
+      : `Selected bars ${selectedFrom + 1}–${selectedTo + 1}`;
+    selected.classList.toggle('on', !wholeTrack);
+    selected.onclick = () => openRegionEditor(x, y, {
+      laneKey, from: selectedFrom, to: selectedTo, wholeTrack: false,
+    });
+    const entire = document.createElement('button'); entire.textContent = 'Entire track';
+    entire.classList.toggle('on', wholeTrack);
+    entire.onclick = () => openRegionEditor(x, y, {
+      laneKey, from: selectedFrom, to: selectedTo, wholeTrack: true,
+    });
+    scope.append(selected, entire); el.append(scope);
+  }
+
+  const section = (caption) => {
+    const wrap = document.createElement('div'); wrap.className = 'regsection';
+    const cap = document.createElement('div'); cap.className = 'regcap'; cap.textContent = caption;
+    wrap.append(cap); el.append(wrap); return wrap;
+  };
+  const actionSection = (caption, actions) => {
+    const wrap = section(caption);
+    const grid = document.createElement('div'); grid.className = 'regactions';
+    for (const action of actions.filter(Boolean)) {
+      const button = document.createElement('button');
+      button.textContent = action.label; button.title = action.title || action.label;
+      button.disabled = !!action.disabled;
+      if (action.danger) button.classList.add('danger');
+      button.onclick = () => { closeMenu(); action.run(); };
+      grid.append(button);
+    }
+    wrap.append(grid);
+  };
+
+  const resetAction = laneKey && {
+    label: wholeTrack ? 'Reset track' : 'Reset region',
+    title: `Restore ${laneLabel} to its written state in ${span.toLowerCase()}`,
+    run: () => {
+      let next = arrDraftOf();
+      next = setLanesOff(next, from, to, [laneKey], false);
+      next = setLanesDeleted(next, from, to, [laneKey], false);
+      next = transposeBars(next, from, to, [laneKey], 0);
+      next = offsetBars(next, from, to, [laneKey], 0);
+      next = gainBars(next, from, to, [laneKey], 0);
+      applyArrangementEdit(next, wholeTrack
+        ? `${laneLabel} reset across the entire track`
+        : `${laneLabel} reset in ${span.toLowerCase()}`);
+    },
+  };
+
+  if (!laneKey) {
+    const allMuted = rangeHasEveryFlag(draft, from, to, 'off', allSongLanes);
+    actionSection('Song structure', [
+      { label: 'Cut', title: `Copy ${span.toLowerCase()}, then remove it from the song`, run: () => {
+        arrangementClipboard = { kind: 'bars', ...copyBars(editBank(), arrDraftOf(), from, to) };
+        applyArrangementEdit(deleteBars(arrDraftOf(), from, to), `${span} cut`);
+      }},
+      { label: 'Copy', title: `Copy ${span.toLowerCase()} with every track`, run: () => {
+        arrangementClipboard = { kind: 'bars', ...copyBars(editBank(), arrDraftOf(), from, to) };
+        toast(`${span} copied`);
+      }},
+      { label: 'Paste', title: `Insert the copied bars at bar ${from + 1}`,
+        disabled: arrangementClipboard?.kind !== 'bars',
+        run: () => applyArrangementEdit(pasteBars(editBank(), arrDraftOf(), from, arrangementClipboard), `Bars pasted at ${from + 1}`) },
+      { label: 'Repeat', title: `Duplicate ${span.toLowerCase()} once, immediately after it`,
+        run: () => applyArrangementEdit(duplicateBars(arrDraftOf(), from, to, 1), `${span} repeated`) },
+      { label: 'Insert silence', title: `Insert ${n} silent bar${n === 1 ? '' : 's'} at bar ${from + 1}`,
+        run: () => applyArrangementEdit(insertSilence(arrDraftOf(), from, n, allSongLanes), `Silence inserted at bar ${from + 1}`) },
+      { label: allMuted ? 'Unmute bars' : 'Mute bars',
+        title: `${allMuted ? 'Restore' : 'Silence'} every track in ${span.toLowerCase()} without removing the bars`,
+        run: () => applyArrangementEdit(setLanesOff(arrDraftOf(), from, to, allSongLanes, !allMuted), `${span} ${allMuted ? 'unmuted' : 'muted'}`) },
+      { label: 'Delete bars', danger: true, title: `Remove ${span.toLowerCase()} and move everything after it earlier`,
+        run: () => applyArrangementEdit(deleteBars(arrDraftOf(), from, to), `${span} deleted`) },
+    ]);
+  } else if (!wholeTrack) {
+    const muted = laneHasBarFlag(draft, from, to, 'off', laneKey);
+    const deleted = laneHasBarFlag(draft, from, to, 'delete', laneKey);
+    actionSection('Track in selected bars', [
+      { label: 'Edit notes…', title: `Open the step editor for ${laneLabel} in ${span.toLowerCase()}`,
+        run: () => openStepSeq(laneKey, from) },
+      { label: muted ? 'Unmute' : 'Mute', title: `${muted ? 'Unmute' : 'Mute'} ${laneLabel} in ${span.toLowerCase()}`,
+        run: () => applyArrangementEdit(setLanesOff(arrDraftOf(), from, to, [laneKey], !muted), `${laneLabel} ${muted ? 'unmuted' : 'muted'} in ${span.toLowerCase()}`) },
+      { label: deleted ? 'Restore' : 'Delete', danger: !deleted,
+        title: `${deleted ? 'Restore' : 'Remove'} ${laneLabel} in ${span.toLowerCase()} without changing the other tracks`,
+        run: () => applyArrangementEdit(setLanesDeleted(arrDraftOf(), from, to, [laneKey], !deleted), `${laneLabel} ${deleted ? 'restored' : 'deleted'} in ${span.toLowerCase()}`) },
+      { label: 'Copy track', title: `Copy only ${laneLabel} from ${span.toLowerCase()}`,
+        run: () => {
+          arrangementClipboard = { kind: 'lane', ...copyLaneBars(editBank(), arrDraftOf(), from, to, laneKey) };
+          toast(`${laneLabel} copied from ${span.toLowerCase()} — right-click another track to paste`);
+        }},
+      { label: 'Paste track', title: arrangementClipboard?.kind === 'lane'
+          ? `Paste ${targetLabel(arrangementClipboard.lane)} onto ${laneLabel} from bar ${from + 1}`
+          : 'Copy a track region first',
+        disabled: arrangementClipboard?.kind !== 'lane',
+        run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard), `${laneLabel} pasted from ${targetLabel(arrangementClipboard.lane)}`) },
+      resetAction,
+    ]);
+  } else if (wholeTrack) {
+    actionSection('Track-wide actions', [resetAction]);
+  }
+
+  const controlsSection = section(wholeTrack ? `Adjust ${laneLabel} across the whole song` : `Adjust ${laneLabel}`);
+  const controlsWrap = document.createElement('div'); controlsWrap.className = 'regcontrols';
+  controlsSection.append(controlsWrap);
+  const controls = [];
+  let applyButton = null;
+  const updateApply = () => { if (applyButton) applyButton.disabled = !controls.some((control) => control.dirty); };
+
+  const addControl = ({ field, label, min, max, step, format }) => {
+    const uniform = uniformRegionValue(draft, from, to, field, lanes);
+    let current = uniform ?? 0;
+    const row = document.createElement('div'); row.className = `regcontrol${uniform == null ? ' mixed' : ''}`;
+    const name = document.createElement('span'); name.textContent = label;
+    const range = document.createElement('input'); range.type = 'range';
+    range.min = min; range.max = max; range.step = step; range.value = current;
+    const number = document.createElement('input'); number.type = 'number';
+    number.min = min; number.max = max; number.step = step;
+    number.value = uniform == null ? '' : current; number.placeholder = 'mixed';
+    const reset = document.createElement('button'); reset.textContent = 'Reset'; reset.title = `Reset ${label.toLowerCase()} to zero`;
+    const readout = document.createElement('div'); readout.className = 'regread';
+    readout.textContent = uniform == null ? 'Mixed values in this selection' : format(current);
+    const control = { field, dirty: false, value: () => current };
+    const set = (raw) => {
+      if (!Number.isFinite(raw)) return;
+      current = clamp(Math.round(clamp(raw, min, max) / step) * step, min, max);
+      range.value = current; number.value = current;
+      readout.textContent = format(current);
+      control.dirty = true; row.classList.add('changed'); row.classList.remove('mixed');
+      updateApply();
+    };
+    range.oninput = () => set(+range.value);
+    number.oninput = () => { if (number.value !== '') set(+number.value); };
+    reset.onclick = () => set(0);
+    row.append(name, range, number, reset, readout);
+    controlsWrap.append(row); controls.push(control);
+  };
+
+  if (!laneKey || melodic.includes(laneKey)) {
+    addControl({ field: 'transpose', label: 'Transpose', min: -12, max: 12, step: 1,
+      format: (value) => value ? `${signed(value)} semitone${Math.abs(value) === 1 ? '' : 's'}` : 'Original pitch' });
+  }
+  addControl({ field: 'offset', label: 'Timing', min: -8, max: 8, step: 1, format: timingText });
+  addControl({ field: 'gain', label: 'Gain', min: -12, max: 12, step: 0.5,
+    format: (value) => value ? `${signed(value)} dB` : 'Original level' });
+
+  const foot = document.createElement('div'); foot.className = 'regfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.onclick = closeMenu;
+  applyButton = document.createElement('button'); applyButton.className = 'regapply';
+  applyButton.textContent = 'Apply changes'; applyButton.disabled = true;
+  applyButton.onclick = () => {
+    let next = arrDraftOf();
+    for (const control of controls.filter((item) => item.dirty)) {
+      if (control.field === 'transpose') next = transposeBars(next, from, to, lanes, control.value());
+      else if (control.field === 'offset') next = offsetBars(next, from, to, lanes, control.value());
+      else if (control.field === 'gain') next = gainBars(next, from, to, lanes, control.value());
+    }
+    closeMenu();
+    applyArrangementEdit(next, wholeTrack
+      ? `${laneLabel} adjusted across the entire track`
+      : `${laneLabel} adjusted in ${span.toLowerCase()}`);
+  };
+  foot.append(cancel, applyButton); el.append(foot);
+  el.onkeydown = (event) => { if (event.key === 'Escape') { event.stopPropagation(); closeMenu(); } };
+
+  el.style.left = `${x}px`; el.style.top = `${y}px`; el.classList.add('show');
+  const rect = el.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;
+  el.style.top = `${Math.max(6, Math.min(y, innerHeight - rect.height - 6))}px`;
+}
+
+function timelineMenu(ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const clicked = timelineBar(ev);
+  const inSel = selectedBar && clicked >= selFrom() && clicked <= selTo();
+  if (!inSel) markBar(null, clicked);
+  openRegionEditor(ev.clientX, ev.clientY, { from: selFrom(), to: selTo() });
 }
 
 /**
@@ -3865,41 +4890,8 @@ function barMenu(ev, laneKey, bar) {
   ev.stopPropagation();
   const inSel = selectedBar && bar >= selFrom() && bar <= selTo();
   if (!inSel) markBar(laneKey, bar);
-  const from = selFrom();
-  const to = selTo();
-  const n = to - from + 1;
-  const span = n === 1 ? `bar ${from + 1}` : `bars ${from + 1}-${to + 1}`;
-  const draft = arrDraftOf();
-  const barsOff = draft.plan[from]?.off || [];
-  const label = targetLabel(laneKey);
-  // The kit this song actually has. Writing `off: ['crash', 'rim']` into a song with
-  // neither would be harmless and would also be a line in a committed file claiming
-  // a decision nobody made.
-  const kit = DRUM_LANES.filter((k) => deskLanes(viewBank(), 1).some((l) => l.key === k));
-  const kitOut = kit.length > 0 && kit.every((k) => barsOff.includes(k));
-
-  const edit = (fn, what) => () => applyArrangementEdit(fn(arrDraftOf()), what);
-
-  closeMenu();
-  openMenu(ev.clientX, ev.clientY, `${span} · ${track.title}`, [
-    // The one-lane mute, first: "kick out of bar 7" is the commonest thing anyone
-    // does here, and it is what the right-click was asked for.
-    barsOff.includes(laneKey)
-      ? { label: `Bring ${label} back in ${span}`, run: edit((d) => setLanesOff(d, from, to, [laneKey], false), `${label} back in ${span}`) }
-      : { label: `Silence ${label} in ${span}`, run: edit((d) => setLanesOff(d, from, to, [laneKey], true), `${label} out of ${span}`) },
-    kitOut
-      ? { label: `Bring the kit back in ${span}`, run: edit((d) => setLanesOff(d, from, to, kit, false), `kit back in ${span}`) }
-      : { label: `Drop the kit out of ${span}`, run: edit((d) => setLanesOff(d, from, to, kit, true), `kit out of ${span}`) },
-    { label: `Silence everything in ${span}`, run: edit((d) => silenceBars(d, from, to), `${span} silenced`) },
-    { label: `Duplicate ${span}`, run: edit((d) => duplicateBars(d, from, to, 1), `${span} duplicated`) },
-    // Two passes is the shortest build-up that is still a build-up; eight is the
-    // classic. They repeat the range, so the song gets longer by n × passes bars.
-    { label: `Build up over ${span} ▸ 4 passes`, run: edit((d) => buildUp(d, from, to, 4, kit), `build-up over ${span}`) },
-    { label: `Break down over ${span} ▸ 4 passes`, run: edit((d) => breakdown(d, from, to, 4, kit), `breakdown over ${span}`) },
-    // Delete last, and spelled out: it is the one item here that makes the song
-    // shorter, and the only one whose result is not visible where you clicked.
-    { label: `Delete ${span} from the song`, run: edit((d) => deleteBars(d, from, to), `${span} deleted`) },
-  ]);
+  else if (selectedBar.key !== laneKey) markBar(laneKey, selFrom(), selTo());
+  openRegionEditor(ev.clientX, ev.clientY, { laneKey, from: selFrom(), to: selTo() });
 }
 
 /**
@@ -3941,98 +4933,16 @@ function regionShades(density) {
   return out;
 }
 
-/** Nearest MIDI semitone, for laying frequencies out on a keyboard. */
-const semitoneOf = (hz) => Math.round(12 * Math.log2(hz / 440) + 69);
-
-/**
- * A click on the arrangement opens the bar it landed in as a piano roll: sixteenths
- * across, pitch up the side. A list of the four notes under the pointer answered
- * "what is on this beat"; a bar of roll answers "what is the line doing", which is
- * the question you actually have when you are looking at a bar.
- *
- * Percussion has no pitch, so those lanes get the same grid one row high.
- */
-function showBar(x, y, row, bar, perBar) {
-  const steps = [];
-  for (let c = bar * perBar; c < (bar + 1) * perBar; c++) steps.push(...(row.steps?.[c] || []));
-  const el = $('notepop');
-  el.textContent = '';
-  el.style.setProperty('--lane', laneColour(row.key));
-  const head = document.createElement('div');
-  head.className = 'ctxhead';
-  head.textContent = `${row.label} · bar ${bar + 1}`;
-  el.append(head);
-
-  // Which pitches this bar uses. A contiguous run of semitones is a real keyboard
-  // and reads like one; a line that leaps more than two octaves would be mostly
-  // empty rows, so that falls back to just the notes it plays.
-  const semis = [];
-  for (const v of steps) {
-    if (typeof v === 'number' && v > 0) semis.push(semitoneOf(v));
-    else if (Array.isArray(v)) for (const f of v) if (f > 0) semis.push(semitoneOf(f));
-  }
-  const uniq = [...new Set(semis)].sort((a, b) => b - a);
-  let pitches = uniq;
-  if (uniq.length) {
-    const span = uniq[0] - uniq[uniq.length - 1];
-    if (span <= 23) {
-      pitches = [];
-      for (let s = uniq[0]; s >= uniq[uniq.length - 1]; s--) pitches.push(s);
-    }
-  }
-
-  const roll = document.createElement('div');
-  roll.className = 'roll';
-  const drawRow = (label, hit, isTonic) => {
-    const r = document.createElement('div');
-    r.className = 'rollrow';
-    const n = document.createElement('span');
-    n.className = 'rolln' + (isTonic ? ' tonic' : '');
-    n.textContent = label;
-    const cells = document.createElement('div');
-    cells.className = 'rollcells';
-    for (let i = 0; i < steps.length; i++) {
-      const c = document.createElement('div');
-      c.className = 'rollcell'
-        + (i % 4 === 0 && i ? ' downbeat' : '')
-        + (hit(i) ? ' on' : '');
-      cells.append(c);
-    }
-    r.append(n, cells);
-    roll.append(r);
-  };
-
-  if (pitches.length) {
-    for (const s of pitches) {
-      drawRow(noteName(440 * 2 ** ((s - 69) / 12)) || '', (i) => {
-        const v = steps[i];
-        if (typeof v === 'number' && v > 0) return semitoneOf(v) === s;
-        if (Array.isArray(v)) return v.some((f) => f > 0 && semitoneOf(f) === s);
-        return false;
-      }, s % 12 === 0);
-    }
-  } else if (steps.some((v) => v === true)) {
-    drawRow('hit', (i) => steps[i] === true);       // percussion has no pitch to plot
-  } else {
-    const quiet = document.createElement('div');
-    quiet.className = 'rollquiet';
-    quiet.textContent = 'silent in this bar';
-    roll.append(quiet);
-  }
-  el.append(roll);
-
-  el.style.left = `${x}px`; el.style.top = `${y}px`;
-  el.classList.add('show');
-  const r = el.getBoundingClientRect();
-  el.style.left = `${Math.max(4, Math.min(x + 8, innerWidth - r.width - 6))}px`;
-  el.style.top = `${Math.max(4, Math.min(y + 8, innerHeight - r.height - 6))}px`;
-}
-
 // The drag in progress across the grid, if any. A range is picked by pressing in one
 // bar and releasing in another; a press and release in the same bar is a click, and
 // still means what it always meant.
 let dragSel = null;
-addEventListener('pointerup', () => { dragSel = null; });
+let dragClickSuppress = false;
+addEventListener('pointerup', () => {
+  dragClickSuppress = !!dragSel?.moved;
+  dragSel = null;
+});
+addEventListener('pointercancel', () => { dragSel = null; dragClickSuppress = false; });
 
 function buildArrangement() {
   const grid = $('arrgrid');
@@ -4040,6 +4950,7 @@ function buildArrangement() {
   arrCells = [];
   // The bar plan, so each cell knows whether the arrangement silences its lane here.
   const plan = songShape().bars;
+  const patternStart = patternStarts(plan);
   // Beat resolution where there is room for it, bar resolution on long songs —
   // 256 cells across a row is still readable, 1024 is a smear. Counted off the plan,
   // because an arranged song is however many bars it is, not twice its order length.
@@ -4106,8 +5017,13 @@ function buildArrangement() {
       for (let beat = 0; beat < perBar; beat++) {
         const cell = bar * perBar + beat;
         const d = row.density[cell] ?? 0;
-        const openL = d > 0 && cell > 0 && row.density[cell - 1] > 0;
-        const openR = d > 0 && row.density[cell + 1] > 0;
+        // Regions stay joined inside one pattern, but stop cleanly at a pattern
+        // boundary. Without this the divider sits over one uninterrupted colour bar
+        // and reads as a ruler tick rather than a change in the music.
+        const openL = d > 0 && cell > 0 && row.density[cell - 1] > 0
+          && !(beat === 0 && patternStart[bar]);
+        const openR = d > 0 && row.density[cell + 1] > 0
+          && !(beat === perBar - 1 && patternStart[bar + 1]);
         const c = document.createElement('div');
         // The downbeat tick would cut a region in half, so it only marks bars that
         // start something — a rest, or the first beat of a region.
@@ -4124,29 +5040,58 @@ function buildArrangement() {
         }
         box.append(c);
       }
-      // A lane the arrangement silences here is drawn hollow — outlined in its own
-      // colour with nothing in it. That is a different thing from a bar the lane
-      // simply does not play in, which is empty, and you have to be able to tell
-      // them apart to build anything: one is a decision, the other is the music.
+      // A lane the arrangement silences here keeps its written colour but gets the
+      // muted treatment below. That is a different thing from deletion: the bar still
+      // occupies time and can be unmuted without restoring any notes.
       if (plan[bar]?.off?.includes(row.key)) {
         box.classList.add('barmuted');
-        box.style.background = 'transparent';
-        box.style.boxShadow = `inset 0 0 0 1px hsl(${laneHue(row.key)} 45% 34%)`;
+        box.title += '\nMuted here — the track remains written and the bar still occupies time';
+      }
+      if (plan[bar]?.delete?.includes(row.key)) {
+        box.classList.add('bardeleted');
+        box.title += '\nDeleted here — restore to bring this track back';
       }
       const where = `${row.label} · bar ${bar + 1}`;
       const notes = Array.from({ length: perBar }, (_, b) => cellNotes(row, bar * perBar + b)).join('  ');
-      const silenced = plan[bar]?.off?.length ? `\nsilenced here: ${plan[bar].off.join(', ')}` : '';
-      box.title = `${where}\n${notes}${silenced}\nright-click to arrange · drag to select a range`;
+      const silenced = plan[bar]?.off?.length ? `\nSilenced here: ${plan[bar].off.join(', ')}` : '';
+      const deleted = plan[bar]?.delete?.length ? `\nDeleted here: ${plan[bar].delete.join(', ')}` : '';
+      const edits = [
+        plan[bar]?.transpose?.[row.key] != null ? `Transpose ${plan[bar].transpose[row.key] > 0 ? '+' : ''}${plan[bar].transpose[row.key]}` : '',
+        plan[bar]?.offset?.[row.key] != null ? `Timing ${plan[bar].offset[row.key] > 0 ? '+' : ''}${plan[bar].offset[row.key]}/32` : '',
+        plan[bar]?.gain?.[row.key] != null ? `Gain ${plan[bar].gain[row.key] > 0 ? '+' : ''}${plan[bar].gain[row.key]} dB` : '',
+      ].filter(Boolean);
+      // Keep the most important melodic edit visible without opening a tooltip. The
+      // full details remain in `title`, while a compact +5/-7 badge makes a transposed
+      // bar immediately recognisable in the arrangement row.
+      const transpose = typeof plan[bar]?.transpose === 'number'
+        ? (row.group === 'melodic' ? plan[bar].transpose : null)
+        : plan[bar]?.transpose?.[row.key];
+      const offset = typeof plan[bar]?.offset === 'number'
+        ? plan[bar].offset
+        : plan[bar]?.offset?.[row.key];
+      const gain = typeof plan[bar]?.gain === 'number'
+        ? plan[bar].gain
+        : plan[bar]?.gain?.[row.key];
+      const badge = [
+        transpose != null && `${transpose > 0 ? '+' : ''}${transpose}`,
+        offset != null && `${offset > 0 ? '+' : ''}${offset}/32`,
+        gain != null && `${gain > 0 ? '+' : ''}${gain}dB`,
+      ].filter(Boolean).join(' · ');
+      if (badge) {
+        const meta = document.createElement('span');
+        meta.className = 'arrmeta';
+        meta.textContent = badge;
+        box.append(meta);
+      }
+      box.title = `${where}\n${notes}${silenced}${deleted}${edits.length ? `\n${edits.join(' · ')}` : ''}\nRight-click to arrange · drag to select a range`;
       const at = bar * 16;
       box.onclick = (ev) => {
+        if (dragClickSuppress) { dragClickSuppress = false; return; }
         jumpTo(at);
         selectLane(row.key);
         // Shift extends the selection from where it started, the way a list does.
         if (ev.shiftKey && selectedBar) markBar(selectedBar.key, selectedBar.from, bar);
         else markBar(row.key, bar);
-        // What is actually played here, not just how much of it. The grid says a
-        // lane is busy in this bar; this shows the bar.
-        showBar(ev.clientX, ev.clientY, row, bar, perBar);
         $('section').textContent = `${where} — ${notes}`;
         $('section').title = notes;
       };
@@ -4154,6 +5099,7 @@ function buildArrangement() {
       // the pointer can leave the bar it started in, which is the whole gesture.
       box.onpointerdown = (ev) => {
         if (ev.button !== 0) return;
+        dragClickSuppress = false;
         dragSel = { key: row.key, from: bar, moved: false };
       };
       box.onpointerenter = () => {
@@ -4164,7 +5110,7 @@ function buildArrangement() {
       // The bar menu: mute a lane here, drop the kit, duplicate, build up, delete.
       box.oncontextmenu = (ev) => barMenu(ev, row.key, bar);
       // Same as the timeline: double-click plays from what you are pointing at.
-      box.ondblclick = () => { jumpTo(at, { start: true }); toast(`playing from ${where}`); };
+      box.ondblclick = () => { jumpTo(at, { start: true }); toast(`Playing from ${where}`); };
       bars.append(box);
     }
     el.append(header, bars);
@@ -4183,7 +5129,7 @@ function setArrangeCollapsed(on) {
   if (arrange.classList.contains('collapsed') === on) return;
   arrange.classList.toggle('collapsed', on);
   $('arrfold').classList.toggle('folded', on);
-  $('arrfold').title = on ? 'show the arrangement' : 'collapse the arrangement';
+  $('arrfold').title = on ? 'Show the arrangement' : 'Collapse the arrangement';
 }
 
 $('arrfold').onclick = () => {
@@ -4198,7 +5144,7 @@ function setMixerFolded(on, refit = true) {
   $('rackwrap').classList.toggle('collapsed', on);
   $('mixhead').classList.toggle('folded', on);
   $('mixfold').classList.toggle('folded', on);
-  $('mixfold').title = on ? 'show the mixer' : 'collapse the mixer';
+  $('mixfold').title = on ? 'Show the mixer' : 'Collapse the mixer';
   localStorage.setItem(MIXER_KEY, on ? '1' : '0');
   if (refit) fitStrips();
 }
@@ -4263,13 +5209,15 @@ function tick() {
     $('playhead').style.left = (frac * 100) + '%';
     $('tnow').textContent = `${fmtTime(heardStep * spb)}/${fmtTime(loopSecs)}`;
     $('barnow').textContent = `${Math.floor(heardStep / 16) + 1}/${totalSteps / 16}`;
-    $('pos').textContent = `beat ${(beat % 4 + 1).toFixed(1)}`;
+    $('pos').textContent = `Beat ${(beat % 4 + 1).toFixed(1)}`;
     oskFollow(heardStep);
+    stepSeq.follow(heardStep);
   } else {
     oskFollow(null);
+    stepSeq.follow(null);
   }
   $('peakinfo').textContent = peakSeen > 0
-    ? `master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
+    ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
   requestAnimationFrame(tick);
 }
 
@@ -4294,7 +5242,7 @@ function updateCpu() {
   // something else again — nobody has measured what. Rather than quietly under-report,
   // the readout says how many are running and admits the figure does not cover them.
   const voiced = Object.entries(VOICE_LANES)
-    .filter(([, seam]) => VOICES[mix.voice?.[seam.voiceKey]])
+    .filter(([, seam]) => VOICES[mix.voice?.[seam.voiceKey]] || mix.voiceParams?.[seam.voiceKey])
     .map(([lane]) => lane);
   const el = $('cpu');
   el.textContent = `~${total.toFixed(0)}%${voiced.length ? '+' : ''}`;   // the caption beside it says CPU
@@ -4317,40 +5265,25 @@ function updateCpu() {
 function updateStatus() {
   updateCpu();
   const d = isDirty(trackId);
-  $('more').classList.toggle('unsaved', d);
-  $('more').title = d ? `${track.title} has changes that are not in the game yet`
-    : 'the rest of it — save, files, reset, typeface';
+  // A library preset carrying unsaved edits is a change to the game that Save to game
+  // will not write — it belongs to voices.js, and only the panel's own Save puts it
+  // there. So it lights the same lamp and says which sounds it means: the alternative
+  // is a desk that looks saved while an hour of sound design is one reload from gone.
+  const owed = [...dirtyLibraryVoices].map((id) => VOICES[id]?.label || id);
+  $('more').classList.toggle('unsaved', d || owed.length > 0);
+  $('more').title = [
+    d ? `${track.title} has changes that are not in the game yet` : '',
+    owed.length ? `Unsaved preset edits: ${owed.join(', ')} — these live in the library,`
+      + ' so Save to game does not write them. Use the editor’s own Save to Library.' : '',
+  ].filter(Boolean).join('\n') || 'The rest of it — save, files, reset, typeface';
   // The label does not name the song — the menu is headed "this song", and an
   // imported title like CHECKOUT-PROMENADE-GARY-BRIGHT-ORGAN-DANCE-MIX would set the
   // width of the whole drawer. The name is in the tooltip, where it costs nothing.
   const save = $('save');
-  save.textContent = d ? 'Save to game' : 'Saved — matches the file';
+  save.textContent = d ? 'Save song' : 'Saved — matches the file';
   save.disabled = !d;
-  save.title = d ? `write ${track.title} into src/data/mix.js, which the game and every render tool read`
-    : `${track.title} already matches src/data/mix.js`;
-  // The only way back for a deleted track, so it appears exactly when there is one —
-  // a permanent button for something most songs never do is a permanent question.
-  const off = mixFor(trackId).off || [];
-  const restore = $('restore');
-  restore.hidden = !off.length;
-  restore.textContent = `Restore deleted track${off.length === 1 ? '' : 's'} (${off.length})…`;
-  restore.title = off.length
-    ? `put back: ${off.map((k) => targetLabel(k)).join(', ')}`
-    : '';
-  // Same rule for the arrangement: the way back appears once there is something to
-  // go back from, and says how far the song has been moved from what was written.
-  const arr = arrFor(trackId);
-  const revertArr = $('revertarr');
-  if (revertArr) {
-    revertArr.hidden = !arr;
-    if (arr) {
-      const bars = songShape().bars;
-      const muted = bars.filter((b) => b.off?.length).length;
-      const written = barPlan(track.bank, 1).length;
-      revertArr.title = `back to the ${written} bars this song was composed with`
-        + ` (it plays ${bars.length} now${muted ? `, ${muted} of them dropping lanes` : ''})`;
-    }
-  }
+  save.title = d ? `Write ${track.title} into its own file, which the game and every render tool read`
+    : `${track.title} already matches its file`;
 }
 
 // Everything that is not part of mixing lives behind one button — see #moremenu.
@@ -4426,7 +5359,7 @@ const applyFont = () => {
   requestAnimationFrame(() => { reserveDevices(); fitStrips(); });
 };
 applyFont();
-fontSel.onchange = () => { applyFont(); toast(`set in ${fontSel.selectedOptions[0].textContent}`); };
+fontSel.onchange = () => { applyFont(); toast(`Set in ${fontSel.selectedOptions[0].textContent}`); };
 
 // How far behind the graph the speakers actually are, beyond what the browser owns
 // up to. songBeat() subtracts ctx.outputLatency already; Bluetooth, an interface
@@ -4484,7 +5417,7 @@ dragNumber($('bpm'), {
   value: deskTempo,
   set: setDeskTempo,
   range: 80, step: 1,
-  onClick: () => { if (tempoOverride != null) { setDeskTempo(track.bank.bpm); toast(`back to ${track.bank.bpm} bpm`); } },
+  onClick: () => { if (tempoOverride != null) { setDeskTempo(track.bank.bpm); toast(`Back to ${track.bank.bpm} bpm`); } },
 });
 
 // ---- on-screen keyboard -----------------------------------------------------
@@ -4506,24 +5439,128 @@ dragNumber($('bpm'), {
 // song's kit as pads, because two octaves that all play the same kick is a piano
 // pretending to be a drum machine.
 
+// Held, not looked up — the same reason `voiceEditEl` is. Docked into the preset
+// library this element is MOVED into that window, and the library rebuilds itself on
+// every keystroke in its search box: for the moment between the rebuild emptying the
+// old slots and the desk parking it into the new ones, the keyboard is detached, and
+// `getElementById` does not find a detached element. A lookup there comes back null and
+// takes the sequencer's own tick down with it.
+const oskEl = $('osk');
 const OSK_POS_KEY = 'mash-mixer-osk-pos';
-const OSK_OCTAVES = 2;                   // and the octave above's C, so it ends on one
-const KEY_W = 26;                        // white key width, px
-const BLACK_W = 17;
+
+// ---- the key the keyboard is in ---------------------------------------------
+//
+// A filter over a chromatic keyboard, not a re-lettering of it: the keys stay where a
+// piano puts them, the ones outside the key are dimmed, and the bench's figures land on
+// the ones inside. Remembered, because it is a preference about how you play rather
+// than a property of any song — see SCALES.
+//
+// Out-of-scale keys still SOUND. A guide that greys the wrong notes helps; one that
+// refuses them is an instrument arguing with you, and the accidental you wanted is
+// always the one it would have refused.
+const OSK_SCALE_KEY = 'mash-mixer-osk-scale';
+let oskScaleRoot = 0;
+let oskScaleId = 'chromatic';
+try {
+  const saved = JSON.parse(localStorage.getItem(OSK_SCALE_KEY) || 'null');
+  if (saved && SCALE_BY_ID[saved.id]) { oskScaleId = saved.id; oskScaleRoot = saved.root | 0; }
+} catch { /* the default key is C chromatic, which is no key at all */ }
+
+/** What the keyboard is set to — `{ root, steps }`, or null when it is chromatic. */
+function oskScale() {
+  const steps = SCALE_BY_ID[oskScaleId]?.steps;
+  return steps ? { root: oskScaleRoot, steps } : null;
+}
+
+function setOskScale({ root, id }) {
+  if (root != null) oskScaleRoot = ((root % 12) + 12) % 12;
+  if (id != null && SCALE_BY_ID[id]) oskScaleId = id;
+  localStorage.setItem(OSK_SCALE_KEY, JSON.stringify({ root: oskScaleRoot, id: oskScaleId }));
+  if (oskShown()) buildOsk();
+  voiceLibrary.refresh();          // the bench's readout is in this key too
+}
+// How many octaves the keys span, plus the octave above's C so it ends on one.
+//
+// Three, wherever it is. It is what the computer keyboard reaches — two full octaves of
+// letters and the start of a third, see QWERTY_SEMIS — so the board on screen and the
+// board under your fingers are the same instrument, and the letters stop at the edge of
+// it rather than a third of the way along.
+//
+// Docked it is a target rather than a fixed number: the band is only so wide, and if
+// three octaves of it would make the keys too narrow to play then the range gives. See
+// oskKeyPlan. It very rarely does — the point of naming it here is that the span is the
+// same question in both places, answered from the same number.
+const OSK_OCTAVES = 3;
+// The FLOATING board's key, in pixels. Out on the desk there is no band to divide, so
+// this is the size rather than the result of one — and the ratio the docked board's black
+// keys keep, since it is the only place the two widths are stated together.
+//
+// 39, not 26. It is the whole of how big the mini keyboard is: three octaves is the span
+// wherever it is drawn (see OSK_OCTAVES), so a wider key is a wider window, and at 26 it
+// was a keyboard you aimed a mouse at rather than one you played.
+const KEY_W = 39;                        // white key width, px
+const BLACK_W = 26;
+// ...and how tall each is AT that width. Not four independent numbers: a key is a shape,
+// and these four are it. Every board scales the set by whatever its own key width came
+// out at — see buildOskKeys — so the docked one in a wide band and the floating one in
+// its window are the same instrument at two sizes rather than two keyboards.
+const KEY_H = 129;
+const BLACK_H = 81;
 const WHITE_SEMIS = [0, 2, 4, 5, 7, 9, 11];
 /** Black key semitone -> the white key of its octave it sits after. */
 const BLACK_SEMIS = [[1, 0], [3, 1], [6, 3], [8, 4], [10, 5]];
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-// One hand on the computer keyboard, laid out like a piano: the home row is the white
-// keys, the row above it the black ones where a piano has them. Sixteen semitones,
-// which is as far as the row reaches.
+// The computer keyboard laid out the way every DAW lays it out: a PAIR of rows per
+// octave, whites on the row you rest on and blacks on the row above, where a piano has
+// them. The bottom pair is the lower octave — Z X C V B N M with S D G H J over it — and
+// the QWERTY pair is the one above, Q W E R T Y U with 2 3 5 6 7 over that. Two hands,
+// two octaves, and the shape under your fingers is the shape on the screen.
+//
+// It was one row before — A W S E D… — which is a piano's two rows folded onto a
+// keyboard's two rows once. That reaches sixteen semitones and then stops in the middle
+// of an octave, so anything wider than a fifth and a bit meant the octave buttons.
+//
+// The third octave gets what is left of the rows, which is C up to G — `[ = ]` carry on
+// past P exactly where the pattern puts them, F on the white key at the end of the row
+// and F# on the number key above the gap it leaves. `[` and `]` nudge the playhead when
+// the keyboard is not catching; while it is, they are notes, which is the same bargain M
+// S R B L already made.
+//
+// A keyboard is two pairs of rows and a bit, and G is where the bit runs out. The notes
+// past it are still drawn, still clickable, and still reachable by shifting the octave —
+// see setOskOctave.
 const QWERTY_SEMIS = {
-  a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
-  k: 12, o: 13, l: 14, p: 15, ';': 16,
+  z: 0, s: 1, x: 2, d: 3, c: 4, v: 5, g: 6, b: 7, h: 8, n: 9, j: 10, m: 11,
+  q: 12, 2: 13, w: 14, 3: 15, e: 16, r: 17, 5: 18, t: 19, 6: 20, y: 21, 7: 22, u: 23,
+  i: 24, 9: 25, o: 26, 0: 27, p: 28, '[': 29, '=': 30, ']': 31,
 };
+/**
+ * Unlabelled seconds — a key that plays a note some other key already draws.
+ *
+ * The bottom row ends on B and the note you want next is a C, which lives on the row
+ * above: a run up the octave has to leave the row it started on at the last step. `,` is
+ * that C without the jump — it is where your hand already is, one key past M.
+ *
+ * Not drawn on the keyboard, and deliberately. Q is what that note is called here; a key
+ * wearing two letters is a keyboard asking you which one you meant.
+ */
+const QWERTY_ALIASES = { ',': 12 };
 const SEMI_QWERTY = Object.fromEntries(Object.entries(QWERTY_SEMIS).map(([k, s]) => [s, k]));
 // The kit under the same hand: the home row, one letter per pad, left to right.
 const PAD_KEYS = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k'];
+// In a key the keys are all one kind and so are the letters: one per degree, straight
+// across. The piano's paired rows exist to mirror black keys and white ones and in a key
+// there are none to mirror — so these are whole rows, taken bottom upwards for the same
+// reason the piano's are: low notes under the low row.
+//
+// Three rows, because three octaves of a scale is more degrees than one row has letters
+// for. It was the home row alone, which ran out ten keys in and left the rest of the
+// board unlabelled — a keyboard that stops telling you what plays it half way along.
+const SCALE_KEYS = [
+  'z', 'x', 'c', 'v', 'b', 'n', 'm',
+  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';',
+  'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
+];
 /**
  * General MIDI's drum notes, for the pads.
  *
@@ -4538,12 +5575,13 @@ const GM_DRUMS = {
 
 let oskOct = 3;
 let oskLane = null;                      // the lane the keys on screen were built for
+let oskBenchId = null;                   // ...or the library preset, if the bench has one
 let oskCatch = false;                    // is the computer keyboard playing it?
 const oskHeld = new Set();               // held computer keys, so auto-repeat is one note
 
 const midiFreq = (m) => 440 * 2 ** ((m - 69) / 12);
 const midiName = (m) => `${NOTE_NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
-const oskShown = () => $('osk').classList.contains('show');
+const oskShown = () => oskEl.classList.contains('show');
 /** Master and the send returns are not played by anything — they are where things go. */
 const oskPlayable = (key) => !!key && !key.startsWith('__');
 
@@ -4574,10 +5612,58 @@ function laneOctave(key) {
   return clamp(Math.floor(Math.round(12 * Math.log2(low / 440) + 69) / 12) - 1, 0, 7);
 }
 
+/**
+ * The preset the keyboard should play instead of a channel, if any.
+ *
+ * While the library is open it owns the keys. That is the point of it being open: you
+ * are working on a preset, not on a channel, and the sound you want under your fingers
+ * is the one whose parameters are in front of you. It reverts to the selected channel
+ * the moment the library closes. See tools/mixer-voice-library.js.
+ */
+const oskBench = () => voiceLibrary.picked;
+
 /** Sound one key. The engine does the rest — see AudioSys.previewNote. */
 function oskPlay(midi) {
+  const bench = oskBench();
+  // On the bench a drum IS tuned by the key: a percussion lane's `noteKey` is what
+  // soloBank writes the pressed frequency into, and a preset kick you can play up and
+  // down is how you find out whether its pitch envelope holds together. That is the
+  // opposite of `oskHit` below, and deliberately so — there the kick belongs to a song.
+  if (bench) { benchPlay(Audio, bench, midiFreq(midi), { bpm: deskTempo() }); return; }
   if (!oskPlayable(selectedLane)) return;
-  Audio.previewNote(selectedLane, midiFreq(midi), { bank: engineBank() });
+  lanePreview(selectedLane, midiFreq(midi));
+}
+
+// ---- when a CHANNEL preview is allowed to sound ------------------------------
+//
+// The same rule the bench has, for the other half of the keyboard.
+//
+// `previewNote` schedules at `ctx.currentTime + 0.02`, and the audio clock advances in
+// blocks — several calls inside one block read the same `currentTime` and therefore ask
+// for the same instant. One note at a time that never happens; a SWEEP across the keys
+// fires as fast as pointermove does, and the notes land on a voice pool two slots deep
+// where Tone requires each slot's times to be non-decreasing. Two at one instant is a
+// thrown assert rather than a glide.
+//
+// So the desk hands out times rather than letting each key ask for one: the time you
+// asked for, or the earliest still legal, whichever is later. A millisecond apart is
+// inaudible in a glide, and it is all the assert wants.
+//
+// Keyed by LANE. The pool is per (lane, voice, echo), and a lane plays one voice at a
+// time — changing the voice builds a new pool with an empty timeline, and the mark
+// resetting with it is exactly right.
+const PREVIEW_GAP = 0.001;
+let previewLastAt = 0;
+let previewLastLane = null;
+
+function lanePreview(laneKey, freq) {
+  const ctx = Audio.ctx;
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  if (laneKey !== previewLastLane) { previewLastLane = laneKey; previewLastAt = 0; }
+  const t = Math.max(now + 0.02, previewLastAt + PREVIEW_GAP);
+  previewLastAt = t;
+  Audio.previewNote(laneKey, freq, { bank: engineBank(), at: t - now });
 }
 
 /**
@@ -4589,15 +5675,23 @@ function oskPlay(midi) {
  */
 function oskHit(laneKey) {
   if (!oskPlayable(laneKey)) return;
-  Audio.previewNote(laneKey, null, { bank: engineBank() });
+  // Through the same gate as the keys. A drag across the pads is a ROLL — the gesture
+  // most likely to ask for two hits on one drum inside a single audio block.
+  lanePreview(laneKey, null);
 }
 
 /** The channel, and what it is played by — the two things a preview is asking about. */
 function oskTitle() {
-  if (!oskPlayable(selectedLane)) return 'select a channel';
+  // Named as the library rather than as a lane, because it is not one. The bench lane
+  // the note actually goes down is an implementation detail of hearing a preset with no
+  // channel — putting `bass` in the title bar would claim the bass strip is involved,
+  // and the whole point of the bench is that no strip is.
+  const bench = oskBench();
+  if (bench) return `Library · ${VOICES[bench]?.label || bench}`;
+  if (!oskPlayable(selectedLane)) return 'Select a channel';
   const seam = seamFor(selectedLane);
   const voice = seam && VOICES[engineBank()?.[seam.voiceKey]];
-  return `${targetLabel(selectedLane)} · ${voice ? voice.label : 'engine voice'}`;
+  return `${targetLabel(selectedLane)} · ${voice ? voice.label : 'Engine voice'}`;
 }
 
 /**
@@ -4607,12 +5701,15 @@ function oskTitle() {
  * yourself two minutes ago otherwise reads as a broken keyboard.
  */
 function oskWhy() {
-  if (!oskPlayable(selectedLane)) return 'nothing to play';
+  // Nothing to say on the bench: it has no strip, so there is no mute, no solo and no
+  // fader that could be the reason — which is most of why the bench exists.
+  if (oskBench()) return null;
+  if (!oskPlayable(selectedLane)) return 'Nothing to play';
   // On a kit every pad is its own channel, so mute is a pad's business, not the
   // window's — it is drawn on the pad instead.
-  if (!oskIsKit() && Audio.mixer?.lane(selectedLane)?.state?.mute) return 'muted';
-  if (soloed.size && !soloed.has(selectedLane) && !oskIsKit()) return 'not the soloed channel';
-  if (soloedAux.size) return 'a send is soloed';
+  if (!oskIsKit() && Audio.mixer?.lane(selectedLane)?.state?.mute) return 'Muted';
+  if (soloed.size && !soloed.has(selectedLane) && !oskIsKit()) return 'Not the soloed channel';
+  if (soloedAux.size) return 'A send is soloed';
   return null;
 }
 
@@ -4622,13 +5719,14 @@ function oskFlash(el) {
   setTimeout(() => el.classList.remove('lit'), 130);
 }
 
-const oskKeyEl = (midi) => $('osk').querySelector(`.oskkey[data-midi="${midi}"]`);
+const oskKeyEl = (midi) => oskEl.querySelector(`.oskkey[data-midi="${midi}"]`);
 
 function buildOsk() {
-  const el = $('osk');
+  const el = oskEl;
   el.textContent = '';
   el.classList.toggle('catching', oskCatch);
   oskLane = selectedLane;
+  oskBenchId = oskBench();
 
   // The title bar is also the handle: a window you move by its name is the one thing
   // every floating panel has ever done, and it leaves the keys free to be keys.
@@ -4638,8 +5736,8 @@ function buildOsk() {
   title.className = 'osktitle';
   title.textContent = oskTitle();
   title.title = oskIsKit()
-    ? 'click a pad to hear that drum through its own channel — drag across them for a roll'
-    : 'click the keys to hear this channel — drag across them to glide';
+    ? 'Click a pad to hear that drum through its own channel — drag across them for a roll'
+    : 'Click the keys to hear this channel — drag across them to glide';
   // Not a caption under the keyboard, which is a line of text you read once and then
   // never again: a mark in the title bar, only when there is something to say.
   const warn = document.createElement('span');
@@ -4651,10 +5749,17 @@ function buildOsk() {
   sp.className = 'sp';
   const catchBtn = document.createElement('button');
   catchBtn.className = 'oskcatch';
-  catchBtn.textContent = 'catch keys';
+  // `Keyboard`, not `catch keys`. It is what the button turns on — the computer
+  // keyboard as an instrument — and every other control here is named for the thing
+  // rather than for the mechanism behind it.
+  catchBtn.textContent = 'Keyboard';
   catchBtn.classList.toggle('on', oskCatch);
-  catchBtn.title = 'play from the computer keyboard (A W S E D…). While this is on the '
-    + 'desk’s own letter shortcuts — M S R B L — are yours to play with instead.';
+  catchBtn.title = 'Play from the computer keyboard. Z X C V B N M is the lower octave '
+    + 'with its black keys on S D G H J, and Q W E R T Y U the one above with 2 3 5 6 7 '
+    + 'over it, carrying on through I O P and [ = ]. − and + shift the whole board, and '
+    + ', is the C above M for a run that ends where your hand already is.'
+    + '\n\nWhile this is on, the desk’s own shortcuts on those keys — M S R B L, the '
+    + 'loop-bar numbers, and [ ] for the playhead — are yours to play with instead.';
   catchBtn.onclick = () => setOskCatch(!oskCatch);
   const midiBtn = document.createElement('button');
   midiBtn.className = 'oskmidi';
@@ -4662,25 +5767,48 @@ function buildOsk() {
   midiBtn.classList.toggle('on', midiOn);
   const ins = midiOn ? midiInputs().map((i) => i.name) : [];
   midiBtn.title = midiOn
-    ? (ins.length ? `playing from ${ins.join(', ')} — click to stop listening`
-      : 'listening, but nothing is plugged in yet')
-    : 'play this channel from a MIDI keyboard. Notes only: the length and the level '
+    ? (ins.length ? `Playing from ${ins.join(', ')} — click to stop listening`
+      : 'Listening, but nothing is plugged in yet')
+    : 'Play this channel from a MIDI keyboard. Notes only: the length and the level '
       + 'are the channel’s own, as the song plays them.';
   midiBtn.onclick = () => setMidi(!midiOn);
   const close = document.createElement('button');
-  close.className = 'oskclose';
-  close.title = 'close the keyboard';
-  close.append(closeIcon());
-  close.onclick = () => showOsk(false);
+  // Folded rather than closed while it is part of the library's workspace — same
+  // reasoning as the editor's there. Out on the desk it is a window, and closing a
+  // window is closing it.
+  //
+  // Two different acts, so two different marks. A ✕ means gone, and using it for
+  // something that folds away and comes back is the button lying about what it does —
+  // you hesitate over a ✕ in a panel you have work in. A chevron pointing DOWN, the way
+  // this band collapses, says put-away and says which way.
+  //
+  // Closing gets the desk's standard mark — see `.popclose`. It was an SVG glyph here
+  // and a 19px ✕ on the preset library and an 11px `×` on the step sequencer, which is
+  // three controls wearing one job: a close button you have to identify on each panel
+  // is a close button you look for. Folding keeps its own mark, because it is a
+  // different act.
+  const folds = !!voiceLibrary.slots && oskEl.classList.contains('docked');
+  close.className = folds ? 'oskclose oskfold' : 'oskclose popclose';
+  close.title = folds ? 'Hide the keyboard — the bar below brings it back' : 'Close the keyboard';
+  if (folds) close.append(foldIcon('down')); else close.textContent = '✕';
+  close.onclick = () => (folds ? voiceLibrary.collapse('keys', true) : showOsk(false));
   head.append(title, warn, sp, midiBtn, catchBtn, close);
 
   const ctl = document.createElement('div');
   ctl.className = 'oskctl';
   // Lit whenever the channel sounds, whatever it sounds — the one readout that means
   // the same thing on a piano and on a kit.
+  //
+  // At the END of the two source buttons, in the title bar, in every layout. Anything
+  // that sounds the channel lights it — MIDI, the computer keyboard, or the song playing
+  // through it — so sitting in FRONT of MIDI it read as MIDI's own lamp, and away at the
+  // right-hand end of the control row it was a lamp belonging to nothing. After Keyboard
+  // it closes the group it is the readout for, and it is in the same place whether the
+  // keyboard is floating, docked, or drawing a kit's pads.
   const pulse = document.createElement('span');
   pulse.className = 'oskpulse';
-  pulse.title = 'the channel is sounding';
+  pulse.title = 'The channel is sounding';
+  head.insertBefore(pulse, close);
 
   // A drum channel is not played by a keyboard, it is played by pads — and by the
   // whole KIT's pads, not one channel's. A kick has one sound and one pitch: two
@@ -4688,20 +5816,45 @@ function buildOsk() {
   // the song actually has is an instrument you can play a beat on. Every pad goes
   // through its own channel strip, so this is the song's kit, mixed as it is mixed.
   if (oskIsKit()) {
-    // No octave to shift and no range to state, so there is no control row at all —
-    // the pulse goes up beside the name rather than alone on an empty band.
-    head.insertBefore(pulse, midiBtn);
+    // No octave to shift and no range to state, so there is no control row at all.
     el.append(head, buildOskPads());
   } else {
-    el.append(head, ctl, buildOskKeys(ctl, pulse));
+    // ONE row, wherever it is. The name, the octave, the range, the key and the two
+    // source buttons all lead left to right across a single band: what this is, where it
+    // is, what it plays in, and what plays it.
+    //
+    // Docked was already this. Floating kept the two-band version it started as — a title
+    // bar with a control row under it — which is two things to scan where there is width
+    // for one, and made the same keyboard a different panel depending on where it was
+    // sitting. `ctl` survives as the box the octave and scale controls are BUILT in; it
+    // is never appended, only emptied into the head.
+    const keys = buildOskKeys(ctl);
+    // In front of MIDI rather than after it: left to right the row reads what this is,
+    // where it is, and then what you can do to it.
+    for (const child of [...ctl.children]) head.insertBefore(child, midiBtn);
+    el.append(head, keys);
   }
   wireOskDrag(el, head);
 }
 
-/** The drum lanes this song has, in desk order — the kit, as it was assembled. */
-const oskKitLanes = () => deskLanes(viewBank(), 1)
-  .filter((l) => PERCUSSION_LANES.includes(baseLane(l.key)));
-const oskIsKit = () => oskPlayable(selectedLane)
+/**
+ * The drum lanes this song has, in desk order — the kit, as it was assembled.
+ *
+ * Guarded, because the keyboard can now be built before there is a song to build it
+ * from: the preset library switches it on as it opens, which can land in the moment
+ * between the page starting and a track being resolved. `viewBank` has nothing to
+ * return then, and `deskLanes` reads `.sections` off it without asking.
+ */
+const oskKitLanes = () => {
+  const bank = viewBank();
+  if (!bank) return [];
+  return deskLanes(bank, 1).filter((l) => PERCUSSION_LANES.includes(baseLane(l.key)));
+};
+// Pads are the SONG's kit — one pad per drum channel it has. The bench has no kit and
+// no channels: it is one preset, and the thing you want to do to a drum preset you are
+// shaping is play it up and down to hear its pitch envelope. So the bench always gets
+// keys, drum preset or not.
+const oskIsKit = () => !oskBench() && oskPlayable(selectedLane)
   && PERCUSSION_LANES.includes(baseLane(selectedLane));
 
 function buildOskPads() {
@@ -4726,7 +5879,7 @@ function buildOskPads() {
     pad.append(letter, name);
     const seam = seamFor(key);
     const voice = seam && VOICES[engineBank()?.[seam.voiceKey]];
-    pad.title = `play ${label} — ${voice ? voice.label : 'the engine’s own drum'}, through its own channel`;
+    pad.title = `Play ${label} — ${voice ? voice.label : 'the engine’s own drum'}, through its own channel`;
     pads.append(pad);
   }
   pads.addEventListener('pointerdown', (ev) => {
@@ -4748,15 +5901,19 @@ function buildOskPads() {
   return pads;
 }
 
-function buildOskKeys(ctl, pulse) {
+function buildOskKeys(ctl) {
+  // `−` and `+`, not `◀` and `▶`. An octave is a quantity you take some away from and
+  // add some to, and the arrows read as "seek" — the transport's own job. They are also
+  // the keystrokes now, which is only sayable because they are the keystrokes: an arrow
+  // on a button cannot tell you to press anything.
   const down = document.createElement('button');
-  down.textContent = '◀';
-  down.title = 'an octave down (Z while catching keys)';
+  down.textContent = '−';
+  down.title = 'An octave down ( the − key, while Keyboard is on )';
   down.className = 'oskdown';
   down.onclick = () => setOskOctave(oskOct - 1);
   const up = document.createElement('button');
-  up.textContent = '▶';
-  up.title = 'an octave up (X while catching keys)';
+  up.textContent = '+';
+  up.title = 'An octave up ( the = key, while Keyboard is on )';
   up.className = 'oskup';
   up.onclick = () => setOskOctave(oskOct + 1);
   const oct = document.createElement('span');
@@ -4764,16 +5921,74 @@ function buildOskKeys(ctl, pulse) {
   oct.textContent = `C${oskOct}`;
   const range = document.createElement('span');
   range.className = 'oskrange';
-  ctl.append(down, oct, up, range, pulse);
+
+  // ---- the key to play in.
+  //
+  // Two controls, because they are two questions — which note is home, and what kind of
+  // scale sits on it — and one combined list would be sixty entries saying twelve times
+  // five. Together they dim the keys outside the key and put the bench's figures inside
+  // it. See SCALES.
+  const scaleWrap = document.createElement('span');
+  scaleWrap.className = 'oskscale';
+  const scaleK = document.createElement('span');
+  scaleK.className = 'oskscalek';
+  scaleK.textContent = 'Scale';
+  const rootSel = document.createElement('select');
+  rootSel.className = 'fxsel oskroot';
+  for (let i = 0; i < 12; i++) {
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = PITCH_CLASSES[i];
+    if (i === oskScaleRoot) o.selected = true;
+    rootSel.append(o);
+  }
+  rootSel.title = 'Which note is home';
+  rootSel.onchange = () => setOskScale({ root: Number(rootSel.value) });
+  const kindSel = document.createElement('select');
+  kindSel.className = 'fxsel oskscalekind';
+  for (const s of SCALES) {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.label;
+    if (s.id === oskScaleId) o.selected = true;
+    kindSel.append(o);
+  }
+  kindSel.title = 'Notes outside the key are dimmed — they still play, because the'
+    + ' accidental you wanted is always the one a keyboard would have refused.'
+    + '\n\nThe bench’s figures land inside it: a triad in Minor comes out minor.';
+  kindSel.onchange = () => setOskScale({ id: kindSel.value });
+  // The root means nothing without a scale to sit on, and offering it there is offering
+  // a control that cannot do anything.
+  rootSel.disabled = oskScaleId === 'chromatic';
+  scaleWrap.append(scaleK, rootSel, kindSel);
+
+  ctl.append(down, oct, up, range, scaleWrap);
 
   const keys = document.createElement('div');
   keys.className = 'oskkeys';
-  const whites = OSK_OCTAVES * 7 + 1;
-  keys.style.width = `${whites * KEY_W}px`;
+  const sc0 = oskScale();
+  // How many keys the band takes, and how wide each is — see oskKeyPlan. In a key the
+  // unit is a DEGREE, chromatically it is a white key, so the plan is asked in the unit
+  // the layout is actually built from.
+  const plan = oskKeyPlan(sc0 ? sc0.steps.length : 7);
+  const KW = plan.width;
+  const scale = KW / KEY_W;               // everything else is this key, to proportion
+  const BW = BLACK_W * scale;
   const base = (oskOct + 1) * 12;
-  range.textContent = `${midiName(base)} – ${midiName(base + OSK_OCTAVES * 12)}`;
+  keys.style.width = `${plan.count * KW}px`;
+  // A key is a SHAPE, and the shape is the one the floating board has — see KEY_H.
+  //
+  // The heights used to be CSS, one pair of numbers for the floating board and another
+  // for the docked one, which meant the docked keys were whatever proportion its band
+  // width happened to make them: the same 132px key was a stub at 49 across and about
+  // right at 39. Deriving them from the width the plan chose is the only way a keyboard
+  // that sizes itself to a band can still look like a keyboard in every band.
+  keys.style.setProperty('--oskwhiteh', `${KEY_H * scale}px`);
+  keys.style.setProperty('--oskblackh', `${BLACK_H * scale}px`);
+  // Remembered so `fitDockedKeys` can tell whether the band has moved since — a rebuild
+  // re-docks, and re-docking asks it again.
+  oskDrawnFor = plan.fills ? oskRoom() : -1;
 
-  const addKey = (cls, semi, left, width) => {
+  const sc = oskScale();
+  const addKey = (cls, semi, left, width, letter) => {
     const k = document.createElement('div');
     k.className = `oskkey ${cls}`;
     k.dataset.midi = String(base + semi);
@@ -4781,21 +5996,68 @@ function buildOskKeys(ctl, pulse) {
     k.style.width = `${width}px`;
     const name = document.createElement('span');
     name.className = 'oskname';
-    name.textContent = midiName(base + semi);
-    const letter = document.createElement('span');
-    letter.className = 'oskletter';
-    letter.textContent = SEMI_QWERTY[semi] ? SEMI_QWERTY[semi].toUpperCase() : '';
-    k.append(letter, name);
+    // Only the C's are named. Every white key labelled is fifteen readings where you
+    // needed one: you find a note by counting from the nearest C, so the C's are the
+    // landmarks and the rest is the noise you count through. The octave is in the
+    // number, which is the part that was actually hard to see.
+    name.textContent = (base + semi) % 12 === 0 ? midiName(base + semi) : '';
+    const l = document.createElement('span');
+    l.className = 'oskletter';
+    l.textContent = (letter || '').toUpperCase();
+    k.append(l, name);
     keys.append(k);
     return k;
   };
-  for (let i = 0; i < whites; i++) {
-    addKey('white', Math.floor(i / 7) * 12 + WHITE_SEMIS[i % 7], i * KEY_W, KEY_W);
-  }
-  // After the whites, so they draw over them without a z-index to maintain.
-  for (let o = 0; o < OSK_OCTAVES; o++) {
-    for (const [semi, after] of BLACK_SEMIS) {
-      addKey('black', o * 12 + semi, (o * 7 + after + 1) * KEY_W - BLACK_W / 2, BLACK_W);
+
+  if (sc) {
+    // ---- in a key: only the notes of it, all the same key.
+    //
+    // Not a piano with the wrong notes greyed out. A scale has five or seven notes and
+    // a piano has twelve, so the black keys in a key are gaps — and a row of uniform
+    // keys with nothing between them is the whole point: every key belongs, so you can
+    // play it without reading it. GarageBand's scale mode, and for the same reason.
+    //
+    // The trade is real and worth naming: the notes outside the key are not on the
+    // keyboard at all now, where before they were dimmed and still playable. That is
+    // what choosing a key MEANS here — chromatic is one item up the list and gives the
+    // piano back.
+    // Exactly as many degrees as the band holds, counted up from the root — the RANGE
+    // is what gives when the width changes, not the size of the keys.
+    const offset = (((sc.root - (base % 12)) % 12) + 12) % 12;
+    const notes = [];
+    for (let i = 0; notes.length < plan.count; i++) {
+      notes.push(Math.floor(i / sc.steps.length) * 12 + offset + sc.steps[i % sc.steps.length]);
+      if (i > 512) break;                // a step list is never empty, but never loop forever
+    }
+    range.textContent = `${midiName(base + notes[0])} – ${midiName(base + notes[notes.length - 1])}`;
+    notes.forEach((semi, i) => {
+      const k = addKey('white scalekey', semi, i * KW, KW, SCALE_KEYS[i]);
+      // The ROOT is the landmark here, and it is the only one. C is where a piano's
+      // octaves visibly start, which is why it is the mark in chromatic — but in A minor
+      // pentatonic there is no C to count from, and labelling both leaves two competing
+      // answers to "where am I" on a keyboard that has no black keys to tell them apart.
+      const isTonic = ((base + semi - sc.root) % 12 + 12) % 12 === 0;
+      k.querySelector('.oskname').textContent = isTonic ? midiName(base + semi) : '';
+      k.classList.toggle('tonic', isTonic);
+    });
+  } else {
+    const whites = plan.count;
+    for (let i = 0; i < whites; i++) {
+      const semi = Math.floor(i / 7) * 12 + WHITE_SEMIS[i % 7];
+      addKey('white', semi, i * KW, KW, SEMI_QWERTY[semi]);
+    }
+    range.textContent = `${midiName(base)} – `
+      + `${midiName(base + Math.floor((whites - 1) / 7) * 12 + WHITE_SEMIS[(whites - 1) % 7])}`;
+    // After the whites, so they draw over them without a z-index to maintain. Only the
+    // ones that fall inside the drawn whites: the board can now end part way through an
+    // octave, exactly as a real one does, and a black key past the last white would hang
+    // off the end with nothing under it.
+    for (let o = 0; o * 7 < whites; o++) {
+      for (const [semi, after] of BLACK_SEMIS) {
+        const at = o * 7 + after + 1;
+        if (at >= whites) continue;
+        addKey('black', o * 12 + semi, at * KW - BW / 2, BW, SEMI_QWERTY[o * 12 + semi]);
+      }
     }
   }
 
@@ -4824,7 +6086,16 @@ function buildOskKeys(ctl, pulse) {
 /** The title bar moves the window. Everything it does is in its own tooltips. */
 function wireOskDrag(el, head) {
   head.addEventListener('pointerdown', (ev) => {
-    if (ev.target.closest('button')) return;
+    // Docked there is no window to move — it is a band in the library's workspace, and
+    // `#osk.docked .oskhead` already says so with `cursor: default`. Dragging it would
+    // also be the only thing on the desk that moved a `position: static` node.
+    if (el.classList.contains('docked')) return;
+    // A control in the title bar is a control, not a grab handle. `button` alone was
+    // enough while the head held nothing else; docked it also holds the two scale
+    // dropdowns, and `preventDefault` on a select's pointerdown is exactly what stops
+    // the list from opening — so the key and the scale could only be changed on the
+    // floating keyboard, which is a control that silently does nothing where it lives.
+    if (ev.target.closest('button, select, input')) return;
     ev.preventDefault();
     const r = el.getBoundingClientRect();
     const dx = ev.clientX - r.left;
@@ -4844,7 +6115,7 @@ function wireOskDrag(el, head) {
 
 /** Move the window, and keep it on the screen — including after a resize. */
 function oskPlace(x, y) {
-  const el = $('osk');
+  const el = oskEl;
   const r = el.getBoundingClientRect();
   const left = clamp(x, 4, Math.max(4, innerWidth - r.width - 4));
   const top = clamp(y, 4, Math.max(4, innerHeight - r.height - 4));
@@ -4867,12 +6138,21 @@ function setOskCatch(on) {
 /** The title follows the channel; the keys only get rebuilt if the channel moved. */
 function refreshOsk() {
   if (!oskShown()) return;
-  if (oskLane !== selectedLane) {
-    if (oskPlayable(selectedLane) && !oskIsKit()) oskOct = laneOctave(selectedLane);
+  // Arriving on the bench, or leaving it, changes what the keys ARE — a kit channel
+  // draws pads and the bench never does — so it counts as a move exactly as changing
+  // channel does. Relabelling alone would leave a row of the song's drum pads sitting
+  // under a title bar naming a preset none of them play.
+  if (oskLane !== selectedLane || oskBenchId !== oskBench()) {
+    const bench = oskBench();
+    // The bench opens where the preset was measured: A2, which lives in octave 2. A
+    // keyboard that opened at middle C would put the note the level was taken at two
+    // octaves below the lowest key.
+    if (bench) oskOct = 2;
+    else if (oskPlayable(selectedLane) && !oskIsKit()) oskOct = laneOctave(selectedLane);
     buildOsk();
     return;
   }
-  const el = $('osk');
+  const el = oskEl;
   const t = el.querySelector('.osktitle');
   if (t) t.textContent = oskTitle();
   const warn = el.querySelector('.oskwarn');
@@ -4884,12 +6164,17 @@ function refreshOsk() {
 }
 
 function showOsk(on) {
-  const el = $('osk');
+  const el = oskEl;
   el.classList.toggle('show', on);
   $('oskbtn').classList.toggle('on', on);
-  if (!on) { oskCatch = false; oskHeld.clear(); return; }
-  if (oskPlayable(selectedLane) && oskLane !== selectedLane) oskOct = laneOctave(selectedLane);
+  if (!on) { oskCatch = false; oskHeld.clear(); el.classList.remove('docked'); return; }
+  if (oskBench()) oskOct = 2;             // where A2 lives — see refreshOsk
+  else if (oskPlayable(selectedLane) && oskLane !== selectedLane) oskOct = laneOctave(selectedLane);
   buildOsk();
+  // Along the bottom of the library while that is open, rather than floating over it.
+  // Positioning is the floating window's business and is skipped entirely when docked —
+  // a `position: fixed` left/top on a node inside a flex row is a node somewhere else.
+  if (voiceLibrary.slots) { dockIntoLibrary(); return; }
   let pos = null;
   try { pos = JSON.parse(localStorage.getItem(OSK_POS_KEY) || 'null'); } catch { pos = null; }
   const r = el.getBoundingClientRect();
@@ -4910,7 +6195,7 @@ function oskTypedKey(e) {
   if (oskIsKit()) {
     const i = PAD_KEYS.indexOf(key);
     if (i === -1) return false;
-    const pad = $('osk').querySelectorAll('.oskpad')[i];
+    const pad = oskEl.querySelectorAll('.oskpad')[i];
     if (!pad) return false;
     if (e.repeat || oskHeld.has(key)) return true;
     oskHeld.add(key);
@@ -4918,9 +6203,27 @@ function oskTypedKey(e) {
     oskFlash(pad);
     return true;
   }
-  if (key === 'z') { setOskOctave(oskOct - 1); return true; }
-  if (key === 'x') { setOskOctave(oskOct + 1); return true; }
-  const semi = QWERTY_SEMIS[key];
+  // The octave, on the two keys drawn on the buttons: `−` and `+`, literally. `=` used
+  // to do the up as well, unshifted, which is the better keystroke — but it is the third
+  // octave's F# now, and a note that also jumped the board out from under the hand
+  // playing it is not a note you could use. Z and X went the same way, to C and D.
+  if (key === '-' || key === '_') { setOskOctave(oskOct - 1); return true; }
+  if (key === '+') { setOskOctave(oskOct + 1); return true; }
+  // In a key the letters run straight across the degrees drawn on screen, so the lookup
+  // is the keyboard itself rather than a semitone table — there is no fixed mapping from
+  // a letter to a note when which notes exist depends on the scale.
+  if (oskScale()) {
+    const i = SCALE_KEYS.indexOf(key);
+    if (i === -1) return false;
+    const k = oskEl.querySelectorAll('.oskkey')[i];
+    if (!k) return false;
+    if (e.repeat || oskHeld.has(key)) return true;
+    oskHeld.add(key);
+    oskPlay(Number(k.dataset.midi));
+    oskFlash(k);
+    return true;
+  }
+  const semi = QWERTY_SEMIS[key] ?? QWERTY_ALIASES[key];
   if (semi == null) return false;
   // Auto-repeat is the operating system, not you playing the note again.
   if (e.repeat || oskHeld.has(key)) return true;
@@ -4937,8 +6240,8 @@ function oskTypedKey(e) {
  * The other half of a keyboard on a mixing desk: pressing a key asks what a channel
  * sounds like, and watching it asks what the channel is DOING — which notes the part
  * is actually made of, where in the octave it sits, whether the twinkle you cannot
- * pick out of the mix is playing at all. It is the piano roll in #notepop, except
- * live and on the thing you are about to play yourself.
+ * pick out of the mix is playing at all — live, and on the thing you are about to
+ * play yourself.
  *
  * Driven from the desk's own playhead rather than from the sequencer, so it lands
  * with the ear: `heardStep` has already had the scheduler's lookahead and the
@@ -4951,11 +6254,14 @@ function oskFollow(heardStep) {
   const step = heardStep == null ? -1 : Math.floor(heardStep);
   if (step === oskStep) return;
   oskStep = step;
-  const el = $('osk');
+  const el = oskEl;
   for (const k of el.querySelectorAll('.sung')) k.classList.remove('sung');
   for (const b of el.querySelectorAll('.offscreen')) b.classList.remove('offscreen');
   el.querySelector('.oskpulse')?.classList.remove('on');
-  if (step < 0 || !oskPlayable(selectedLane)) return;
+  // Nothing to follow on the bench. These keys are playing a library preset, not a
+  // channel, so lighting them from the song's selected lane would be the keyboard
+  // reporting on a part none of them can sound.
+  if (step < 0 || oskBench() || !oskPlayable(selectedLane)) return;
   const b = viewBank();
   if (oskBlockCache.bank !== b) oskBlockCache = { bank: b, list: songBlocks(b, 1) };
   const list = oskBlockCache.list;
@@ -5018,7 +6324,7 @@ function onMidiMessage(e) {
   if ((status & 0xf0) !== 0x90 || !vel) return;
   if (!oskShown() || !oskPlayable(selectedLane)) return;
   if (oskIsKit()) {
-    const pads = [...$('osk').querySelectorAll('.oskpad')];
+    const pads = [...oskEl.querySelectorAll('.oskpad')];
     if (!pads.length) return;
     const named = GM_DRUMS[note];
     const pad = pads.find((p) => baseLane(p.dataset.lane) === named) || pads[note % pads.length];
@@ -5031,7 +6337,7 @@ function onMidiMessage(e) {
   // A note off the end of the keyboard still sounds — it is a real instrument's note,
   // not a click on a drawn key — so the arrow lights rather than nothing happening.
   if (k) oskFlash(k);
-  else $('osk').querySelector(note < (oskOct + 1) * 12 ? '.oskdown' : '.oskup')?.classList.add('offscreen');
+  else oskEl.querySelector(note < (oskOct + 1) * 12 ? '.oskdown' : '.oskup')?.classList.add('offscreen');
 }
 
 function attachMidi() {
@@ -5046,7 +6352,7 @@ async function setMidi(on) {
     return;
   }
   if (!navigator.requestMIDIAccess) {
-    toast('this browser has no Web MIDI — Chrome and Edge do');
+    toast('This browser has no Web MIDI — Chrome and Edge do');
     return;
   }
   try {
@@ -5066,17 +6372,22 @@ async function setMidi(on) {
 }
 
 addEventListener('keyup', (e) => { oskHeld.delete(e.key.toLowerCase()); });
-addEventListener('resize', () => { if (oskShown()) oskPlace(parseFloat($('osk').style.left) || 0, parseFloat($('osk').style.top) || 0); });
+addEventListener('resize', () => {
+  if (!oskShown()) return;
+  // Docked it has no position to keep — it has a width to re-fit instead.
+  if (oskEl.classList.contains('docked')) { fitDockedKeys(); return; }
+  oskPlace(parseFloat(oskEl.style.left) || 0, parseFloat(oskEl.style.top) || 0);
+});
 
 // ---- wiring ----------------------------------------------------------------
 // Loading a song is a thing you do a few times an hour, so it does not need a
 // control sitting open on the header; what you DO need at all times is which song
 // you are on, and that reads better in the footer where it has room for its name.
 const SONG_GROUPS = [
-  ['themes', 'theme'],
-  ['cabinets', 'cabinet'],
-  ['shop auditions', 'audition'],
-  ['imported', 'imported'],
+  ['Themes', 'theme'],
+  ['Cabinets', 'cabinet'],
+  ['Shop auditions', 'audition'],
+  ['Imported', 'imported'],
 ];
 
 function selectSong(id) {
@@ -5108,7 +6419,7 @@ function openSongs() {
       id.textContent = t.id;
       b.append(name, id);
       b.title = `${t.title} — ${t.id}`;
-      b.onclick = () => { closeMenu(); selectSong(t.id); toast(`loaded ${t.title}`); };
+      b.onclick = () => { closeMenu(); selectSong(t.id); toast(`Loaded ${t.title}`); };
       col.append(b);
     }
     el.append(col);
@@ -5137,12 +6448,16 @@ function setPlaying(on, fromStep = null) {
   playing = on;
   $('play').classList.toggle('on', playing);
   $('pause').disabled = !playing;
+  // The bench's play button says whether it would join the song or start beside it, and
+  // that answer changes here. Told rather than left to the next repaint: the library
+  // does not repaint on transport, so it would have gone on offering the wrong one.
+  voiceLibrary.syncChanged();
   peakSeen = 0;
   if (playing) {
     // Resume where the playhead was parked, not back at the top.
     const at = fromStep != null ? fromStep : parkedAt;
     startedAt = at;
-    Audio.setBank(track.bank, mixFor(trackId));
+    Audio.setBank(track.bank, mixFor(trackId), arrFor(trackId));
     applyToEngine(mixFor(trackId));
     Audio.step = at;
     applyLoop(at);
@@ -5169,11 +6484,12 @@ $('pause').onclick = () => { if (playing) setPlaying(false); };
 $('stop').onclick = () => {
   if (playing) setPlaying(false);
   jumpTo(startedAt);
-  toast(`stopped at bar ${Math.floor(startedAt / 16) + 1}`);
+  toast(`Stopped at bar ${Math.floor(startedAt / 16) + 1}`);
 };
 $('playstart').onclick = () => { jumpTo(0, { start: true }); };
 $('clearsolo').onclick = clearAllSolo;
 $('oskbtn').onclick = () => showOsk(!oskShown());
+$('seqbtn').onclick = () => showStepSeq(!stepSeq.isOpen());
 $('pause').disabled = true;
 
 // Lives on the master's pinned card, not in the toolbar: it is a property of the
@@ -5208,8 +6524,9 @@ async function refreshSaved() {
   try {
     const res = await fetch('/mix');
     if (!res.ok) throw new Error(String(res.status));
-    const { mix } = await res.json();
+    const { mix, arrangements } = await res.json();
     if (mix && typeof mix === 'object') saved = mix;
+    if (arrangements && typeof arrangements === 'object') savedArr = arrangements;
   } catch { /* keep the copy we have — see above */ }
 }
 
@@ -5217,46 +6534,24 @@ $('revert').onclick = async () => {
   // The file first, then the comparison. Reverting to a remembered version of the file
   // is how an afternoon's work goes back to a morning nobody asked for.
   await refreshSaved();
-  if (!isDirty(trackId)) { toast('nothing to revert — already matches the saved mix'); return; }
+  if (!isDirty(trackId)) { toast('Nothing to discard — this song already matches its file'); return; }
   pushUndo(null);
-  delete draft[trackId];
+  discardSongDraft(draft, arrDraft, trackId);
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
-  // Through rebuildForShape, not buildRack alone: the draft may have carried a
-  // duplicated or a deleted track, and throwing it away changes the lane list.
-  rebuildForShape(); updateStatus();
-  toast(`${track.title} reverted to the saved mix — ⌘Z to undo`);
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  // Through the whole song-state path, not buildRack alone: either draft may have
+  // changed the lane list, bar count, timeline or notes the engine is playing.
+  bankCache.sig = null;
+  Audio.setArrangement(arrFor(trackId));
+  buildTimeline();
+  rebuildForShape();
+  applyLoop(Audio.step);
+  stepSeq.refresh();
+  updateStatus();
+  toast(`Unsaved changes to ${track.title} discarded — ⌘Z to undo`);
 };
 
-/**
- * Put the song back to the arrangement it was WRITTEN with — the order in its bank,
- * before any of this desk's bar editing.
- *
- * Separate from Revert above because they undo different things: that one is about
- * balance, this one is about shape, and a song can want one back without the other.
- * Both are drafts until you save, and both are one ⌘Z away.
- */
-$('revertarr').onclick = () => {
-  closeMenu();
-  if (!arrFor(trackId)) { toast(`${track.title} already plays as it was written`); return; }
-  clearArrangement();
-};
 
-/**
- * Put back a track deleted from this song.
- *
- * Delete is the one desk edit with nothing left on screen to undo it from — the row
- * and the strip are both gone — so its way back cannot live on them. It lives here,
- * beside Revert, and appears only when there is something to restore.
- */
-$('restore').onclick = (ev) => {
-  ev.stopPropagation();
-  const off = mixFor(trackId).off || [];
-  if (!off.length) { toast('nothing deleted from this song'); return; }
-  const r = $('restore').getBoundingClientRect();
-  closeMenu();
-  openMenu(r.left, r.bottom + 4, `deleted from ${track.title}`,
-    off.map((key) => ({ label: `Restore ${targetLabel(key)}`, run: () => restoreLane(key) })));
-};
 
 $('undo').onclick = undo;
 
@@ -5278,6 +6573,7 @@ addEventListener('keydown', (e) => {
 
   if (e.code === 'Space') { e.preventDefault(); (playing ? $('pause') : $('play')).click(); return; }
   if (key === 'l') { $('looptoggle').click(); return; }
+  if (key === 'g') { $('seqbtn').click(); return; }   // g for grid
   if ('1248'.includes(e.key)) { $('loopbars').value = e.key; $('loopbars').onchange(); return; }
   if (key === '0') { $('loopbars').value = '0'; $('loopbars').onchange(); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -5305,7 +6601,7 @@ addEventListener('keydown', (e) => {
   // typing a guess, and listening again.
   if (e.key === '[' || e.key === ']') {
     setPhOffset(phOffset + (e.key === ']' ? 10 : -10));
-    toast(`playhead ${phOffset > 0 ? '+' : ''}${phOffset}ms — ] if it still lags, [ if it runs ahead`);
+    toast(`Playhead ${phOffset > 0 ? '+' : ''}${phOffset}ms — ] if it still lags, [ if it runs ahead`);
     return;
   }
   if (!selectedLane) return;
@@ -5318,7 +6614,7 @@ addEventListener('keydown', (e) => {
     if (!list.length) return;
     const anyOn = list.some((x) => !x.bypass);
     setEffects(selectedLane, list.map((x) => ({ ...x, bypass: anyOn })));
-    toast(anyOn ? 'all effects bypassed' : 'all effects on');
+    toast(anyOn ? 'All effects bypassed' : 'All effects on');
   }
 });
 
@@ -5332,7 +6628,7 @@ addEventListener('keydown', (e) => {
 // else on the desk keeps working meanwhile; the render happens over there.
 let rendering = false;
 async function renderJob(btn, route, working, describe) {
-  if (rendering) { toast('a render is already running'); return; }
+  if (rendering) { toast('A render is already running'); return; }
   rendering = true;
   const label = btn.textContent;
   btn.disabled = true;
@@ -5351,12 +6647,12 @@ async function renderJob(btn, route, working, describe) {
       // route existed answers 404, and "render failed" is a poor way to say
       // "restart the tool".
       toast(res && res.status === 404
-        ? `no ${route} route — this mixer is running older code, restart npm run mixer`
-        : `render failed${res ? ` (${res.status})` : ' — the mixer server is not answering'}`,
+        ? `No ${route} route — this mixer is running older code, restart npm run mixer`
+        : `Render failed${res ? ` (${res.status})` : ' — the mixer server is not answering'}`,
       6000);
       // Whatever the server has to say — a missing venv comes back this way, and it
       // comes with the two lines that fix it.
-      if (res && res.status !== 404) alert(`could not render:\n\n${await res.text()}`);
+      if (res && res.status !== 404) await tell('That render did not finish', escapeHtml(await res.text()));
       return;
     }
     toast(describe(await res.json()), 8000);
@@ -5374,7 +6670,7 @@ const measured = (info) => `${info.lufs.toFixed(1)} LUFS `
   + `peak ${info.peakDb.toFixed(1)} dBFS${info.clipping ? ' · ** CLIPPING **' : ''}`;
 
 $('renderwav').onclick = () => renderJob($('renderwav'), '/render',
-  `rendering ${track.title} — offline, slower than real time…`,
+  `Rendering ${track.title} — offline, slower than real time…`,
   (info) => `${info.file} · ${measured(info)}`);
 
 // The same render, straight into tools/audition: a real AU plugin over this mix,
@@ -5385,7 +6681,7 @@ $('renderwav').onclick = () => renderJob($('renderwav'), '/render',
 // The plugin window opens on the machine running the mixer, because that is the
 // machine the plugins are installed on.
 $('auditionwav').onclick = () => renderJob($('auditionwav'), '/audition',
-  `rendering ${track.title} for Audition — the plugin window follows…`,
+  `Rendering ${track.title} for Audition — the plugin window follows…`,
   (info) => `Audition opening on ${info.file} · ${measured(info)}`);
 
 // The notes, as MIDI. The server builds it from the same bank the desk is playing;
@@ -5404,7 +6700,7 @@ $('midi').onclick = async () => {
   try { res = await fetch(url); } catch { res = null; }
   if (!res || !res.ok || !/midi/.test(res.headers.get('content-type') || '')) {
     toast(res && res.status === 404
-      ? 'no MIDI route — this mixer is running older code, restart npm run mixer'
+      ? 'No MIDI route — this mixer is running older code, restart npm run mixer'
       : `MIDI failed${res ? ` (${res.status})` : ''}`);
     return;
   }
@@ -5414,6 +6710,66 @@ $('midi').onclick = async () => {
   a.click();
   URL.revokeObjectURL(a.href);
   toast(`${track.title} — ${a.download}`);
+};
+
+/**
+ * This song's edits, as a JSON file you name.
+ *
+ * The desk's own safety nets all live where the accident does: the draft is in this
+ * browser's localStorage, and .mix-history/ is beside the file a bad save overwrote.
+ * Both are gone if the thing that went wrong was the browser, the folder, or a server
+ * quietly running last week's code. This is the copy that is somewhere else.
+ *
+ * What it holds is the song AS THE DESK HAS IT — draft over file, which is what you
+ * are listening to — rather than only the unsaved half. A backup that restores to
+ * "whatever was on disk, plus the bits you had not saved" is not a copy of anything
+ * that ever played. `unsaved` records which of the two it was, because that is the
+ * fact you will want when you open the file in six weeks.
+ *
+ * Export only, and one song. See the note in mixer-shell.html: the import this used to
+ * have pasted one song's balance onto whichever song happened to be on the desk, and a
+ * mix means nothing away from the parts it was balanced against. The way back into a
+ * song is "Open an earlier version…", which cannot address another one.
+ */
+$('exportjson').onclick = async () => {
+  // Sortable, filename-safe, and no colons — Finder tolerates them, zip files do not.
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const suggested = `${track.slug || trackId}-${stamp}.json`;
+  const answered = ask('Export this song’s edits',
+    `<p>A copy of <b>${escapeHtml(track.title)}</b> exactly as the desk has it now —`
+    + ' every fader, effect, added lane and painted step.</p>'
+    + '<label class="askfield">File name'
+    + `<input id="exportname" type="text" spellcheck="false" value="${escapeHtml(suggested)}"></label>`,
+    'Export');
+  // After `ask` has written the body, before it is awaited. The name is the question,
+  // so the field takes the focus — and only the stem is selected, because the moment
+  // anyone renames one of these it is the stem they are renaming.
+  const field = $('askbody').querySelector('#exportname');
+  field.focus();
+  field.setSelectionRange(0, Math.max(0, suggested.length - '.json'.length));
+  if (!await answered) return;
+
+  let name = (field.value || '').trim().replace(/[/\\]+/g, '-');
+  if (!name) name = suggested;
+  if (!/\.json$/i.test(name)) name += '.json';
+
+  const payload = {
+    kind: 'mashenstein-song-edits',
+    version: 1,
+    song: trackId,
+    title: track.title,
+    exported: new Date().toISOString(),
+    unsaved: isDirty(trackId),
+    mix: JSON.parse(JSON.stringify(mixFor(trackId))),
+    arrangement: JSON.parse(JSON.stringify(arrFor(trackId) ?? null)),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`],
+    { type: 'application/json' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`${track.title} — ${name}${payload.unsaved ? ' (unsaved edits included)' : ''}`, 5000);
 };
 
 // MIDI in. The file goes to the server, which runs the same conversion the CLI does
@@ -5432,15 +6788,15 @@ $('midifile').onchange = async () => {
   const file = $('midifile').files[0];
   if (!file) return;
   $('midifile').value = '';
-  toast(`reading ${file.name}…`);
+  toast(`Reading ${file.name}…`);
   const res = await fetch(`/import-midi?file=${encodeURIComponent(file.name)}`, {
     method: 'POST', body: await file.arrayBuffer(),
   });
   const body = await res.text();
-  if (!res.ok) { alert(`could not import ${file.name}:\n\n${body}`); return; }
+  if (!res.ok) { await tell(`Could not import ${file.name}`, escapeHtml(body)); return; }
   const out = JSON.parse(body);
   if (!out.track) {                     // server older than this page
-    alert(`${file.name} → ${out.file}\n\nRestart npm run mixer to play it.`);
+    await tell(`Imported ${file.name}`, `Written to <b>${out.file}</b>.<br>Restart <b>npm run mixer</b> to play it.`);
     return;
   }
   const replaced = !!resolveTrack(out.track.id);
@@ -5451,22 +6807,18 @@ $('midifile').onchange = async () => {
   const lanes = out.assignments.map((a) => `${a.name} → ${a.lane}`).join('\n  ');
   const notes = (out.moved ? `${out.moved} notes moved onto the sixteenth grid.\n` : '')
     + (out.foreignDrums.length ? `GM percussion outside our kit: ${out.foreignDrums.join(', ')}\n` : '');
-  toast(`${replaced ? 'replaced' : 'imported'} ${out.track.title} — ${playing ? 'now playing' : 'loaded'}`);
-  alert(`${file.name} → ${out.file}\n\n`
-    + `${out.bpm} bpm, ${out.blocks} blocks → ${out.sections} sections\n\n`
-    + `  ${lanes}\n\n`
-    + (notes ? `${notes}\n` : '')
-    + `The desk is on it now, under "imported" as ${out.track.id}`
-    + `${replaced ? ' (it replaced the last import of that name)' : ''}.\n`
+  toast(`${replaced ? 'Replaced' : 'Imported'} ${out.track.title} — ${playing ? 'now playing' : 'loaded'}`);
+  await tell(`Imported ${escapeHtml(file.name)}`,
+    `<b>${out.bpm} bpm</b>, ${out.blocks} blocks → ${out.sections} sections, `
+    + `written to <b>${escapeHtml(out.file)}</b>.<br><br>`
+    + escapeHtml(lanes) + '<br><br>'
+    + (notes ? `${escapeHtml(notes)}<br>` : '')
+    + `The desk is on it now, under <b>imported</b> as ${escapeHtml(out.track.id)}`
+    + `${replaced ? ' (it replaced the last import of that name)' : ''}.<br><br>`
     + 'Timbres, glissandi and per-section overrides are not in a MIDI file — set '
-    + `those by hand in ${out.file}.`);
+    + `those by hand in ${escapeHtml(out.file)}.`);
 };
 
-$('export').onclick = () => {
-  const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'mix.json'; a.click();
-};
 
 // There is no matching import. Pasting a mix in took a track entry — any song's — and
 // made it the draft for whatever song happened to be on the desk, or took a whole file
@@ -5494,21 +6846,19 @@ $('export').onclick = () => {
  * file" — the shape Reset every channel leaves behind.
  */
 async function saveMix(id) {
-  const entries = { [id]: draft[id] ?? null };
-  // The arrangement layer goes with it, as the whole layer rather than one song:
-  // arrangements.js is small, it is rewritten whole, and sending only one song's
-  // would ask the server to merge a second file for no benefit. Only sent when this
-  // song actually has an arrangement edit — an untouched desk must not rewrite a
-  // file it has nothing to say about.
-  const arrangements = arrDirty(id) ? { ...savedArr, ...arrDraft } : null;
-  if (arrangements) for (const k of Object.keys(arrangements)) if (!arrangements[k]) delete arrangements[k];
+  const mixDirty = draft[id] != null && mixChanged(draft[id], saved[id]);
+  const arrangementDirty = arrDirty(id);
+  const patch = {};
+  if (mixDirty) patch.mix = JSON.parse(JSON.stringify(draft[id]));
+  if (arrangementDirty) patch.arrangement = JSON.parse(JSON.stringify(arrDraft[id] ?? null));
+  if (!Object.keys(patch).length) return true;
   const res = await fetch('/save', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ids: [id], entries, ...(arrangements ? { arrangements } : {}) }, null, 2),
+    body: JSON.stringify({ id, patch }, null, 2),
   });
   const text = await res.text();
-  if (!res.ok) { alert('save failed: ' + text); return false; }
-  delete draft[id];
+  if (!res.ok) { await tell('That save did not go through', escapeHtml(text)); return false; }
+  if (mixDirty) delete draft[id];
   // An older server answers 'ok' in plain text and has merged nothing; then the draft
   // we just wrote is the best account of the file we have. A current one sends the
   // file back, which is a better one.
@@ -5516,12 +6866,13 @@ async function saveMix(id) {
     const body = JSON.parse(text);
     if (body && body.mix) saved = body.mix;
     else throw new Error('no mix');
-    // Same for the arrangement layer: what came back is the file, so the desk stops
-    // holding an edit it has already written.
-    if (body.arrangements) { savedArr = body.arrangements; delete arrDraft[id]; }
+    // Same for the arrangement layer. Clear only the half this request actually
+    // wrote; an arrangement-only save must not discard a still-unsaved mix draft.
+    if (body.arrangements) savedArr = body.arrangements;
+    if (arrangementDirty) delete arrDraft[id];
   } catch {
-    if (entries[id]) saved[id] = JSON.parse(JSON.stringify(entries[id]));
-    if (arrangements) { savedArr[id] = arrDraft[id]; delete arrDraft[id]; }
+    if (mixDirty) saved[id] = JSON.parse(JSON.stringify(patch.mix));
+    if (arrangementDirty) { savedArr[id] = arrDraft[id] ?? null; delete arrDraft[id]; }
   }
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
@@ -5563,30 +6914,38 @@ function whenLabel(ms) {
  * track is not an edit you can hear your way out of, it is an evening gone.
  */
 async function restoreFrom(file) {
-  let mix;
+  let mix, arrangements;
   try {
     const res = await fetch(`/history/${encodeURIComponent(file)}`);
     if (!res.ok) throw new Error(await res.text());
-    ({ mix } = await res.json());
+    ({ mix, arrangements } = await res.json());
   } catch (err) {
-    toast(`could not read that snapshot — ${err.message || err}`, 6000);
+    toast(`Could not read that snapshot — ${err.message || err}`, 6000);
     return;
   }
   const entry = mix[trackId];
-  const ok = confirm(`Put ${track.title} back to how ${file} has it?\n\n`
-    + (entry ? '' : `That save has no mix for ${track.title} at all, so this takes every `
-      + 'channel back to its default.\n\n')
-    + (isDirty(trackId) ? `The unsaved changes on ${track.title} are replaced. ` : '')
-    + `No other song is touched, and nothing is written to src/data/mix.js until you Save.`);
-  if (!ok) { toast('restore cancelled'); return; }
+  const arrangement = arrangements?.[trackId] ?? null;
+  const ok = await ask(`Put ${escapeHtml(track.title)} back to that version?`,
+    (entry ? '' : `That version has nothing saved for this song, so this takes every `
+      + 'channel back to its default.<br><br>')
+    + (isDirty(trackId) ? 'The unsaved changes on it are replaced.<br><br>' : '')
+    + 'Nothing is written until you <b>Save song</b> — until then the game plays what it plays now.',
+    'Load it');
+  if (!ok) { toast('Restore cancelled'); return; }
   pushUndo(null);
-  // A song absent from a snapshot is a song that carried no decisions when it was
-  // taken — restoring it means going back to nothing, which is a real answer.
-  draft[trackId] = entry
-    ? JSON.parse(JSON.stringify(entry))
-    : { master: 0, masterPan: 0, limiter: false, lanes: {} };
+  // A song absent from either half carried no decisions there. Restore both halves:
+  // a historical balance over today's added lanes or painted notes is not a version
+  // that ever existed.
+  restoreSongDraft(draft, arrDraft, trackId, entry, arrangement);
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
-  rebuildForShape(); updateStatus();
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  bankCache.sig = null;
+  Audio.setArrangement(arrFor(trackId));
+  buildTimeline();
+  rebuildForShape();
+  applyLoop(Audio.step);
+  stepSeq.refresh();
+  updateStatus();
   toast(`${track.title} restored from ${file} — unsaved, ⌘Z to undo`, 6000);
 }
 
@@ -5601,42 +6960,92 @@ $('history').onclick = async (ev) => {
     if (!res.ok) throw new Error(String(res.status));
     ({ snapshots } = await res.json());
   } catch {
-    toast('no /history route — this mixer is running older code, restart npm run mixer', 6000);
+    toast('No /history route — this mixer is running older code, restart npm run mixer', 6000);
     return;
   }
   closeMenu();
   if (!snapshots.length) {
-    toast(`no previous saves of ${track.title} yet — one is kept every time you save it`, 5000);
+    toast(`No previous saves of ${track.title} yet — one is kept every time you save it`, 5000);
     return;
   }
   // Headed with the song, because it is the only song these can touch — see restoreFrom.
   // Every entry is a save of THIS song, so the list is times: the moments this mix
   // changed, newest first. A save of some other song moved nothing here, and an entry
   // for it would be a choice that does nothing you would recognise.
-  openMenu(r.left, r.bottom + 4, `put ${track.title} back to…`, snapshots.slice(0, 20).map((s) => ({
+  openMenu(r.left, r.bottom + 4, `Put ${track.title} back to…`, snapshots.slice(0, 20).map((s) => ({
     label: whenLabel(s.at),
     run: () => restoreFrom(s.file),
   })));
 };
+
+/**
+ * Ask something, in the desk rather than in the browser.
+ *
+ * `confirm()` opens a system panel headed with the PORT you happen to be on
+ * — "127.0.0.1:8010 says" — which reads like the page has done something wrong, and
+ * cannot say anything in bold. This is the same question asked by the tool asking it.
+ *
+ * Returns a promise for true/false. Enter confirms, Escape cancels, and clicking the
+ * backdrop cancels, because the safe answer is always "no".
+ */
+// The dialog body is HTML — that is what lets a filename be bold — so anything
+// arriving from a server or a file has to be escaped on the way in. Newlines become
+// breaks, because these are messages that were written as lines.
+const escapeHtml = (text) => String(text)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/\n/g, '<br>');
+
+/** Say something, in the desk. The `alert()` half of ask(). */
+const tell = (title, body) => ask(title, body, 'OK', { cancel: false });
+
+function ask(title, body, okLabel = 'Save song', { cancel = true } = {}) {
+  return new Promise((resolve) => {
+    $('asktitle').textContent = title;
+    $('askbody').innerHTML = body;
+    $('askok').textContent = okLabel;
+    // With nothing to cancel it is a statement, not a question: one button, and
+    // Escape closes it like any other.
+    $('askcancel').hidden = !cancel;
+    $('ask').classList.add('show');
+    $('askok').focus();
+    const done = (answer) => {
+      $('ask').classList.remove('show');
+      $('askok').onclick = null;
+      $('askcancel').onclick = null;
+      $('ask').onpointerdown = null;
+      removeEventListener('keydown', onKey, true);
+      resolve(answer);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
+    };
+    $('askok').onclick = () => done(true);
+    $('askcancel').onclick = () => done(false);
+    // The backdrop only — a click inside the box is not an answer.
+    $('ask').onpointerdown = (e) => { if (e.target === $('ask')) done(false); };
+    addEventListener('keydown', onKey, true);
+  });
+}
 
 $('save').onclick = async () => {
   // Shut the drawer before the dialog, not after it: confirm() blocks, and the menu
   // would otherwise sit open behind it for as long as you took to read it.
   closeMenu();
   if (!isDirty(trackId)) { toast(`${track.title} already matches the file`); return; }
-  const others = Object.keys(draft).filter((id) => id !== trackId && isDirty(id));
-  const ok = confirm(`Write ${track.title} to src/data/mix.js?\n\n`
-    + (others.length
-      ? `${others.length} other song${others.length === 1 ? '' : 's'} still hold unsaved `
-        + `changes and will be left alone:\n  `
-        + others.map((id) => resolveTrack(id)?.title || id).join('\n  ') + '\n\n'
-      : '')
-    + 'The game and every render tool read this file. Peter commits it, so nothing '
-    + 'is final until you do.');
-  if (!ok) { toast('save cancelled'); return; }
+  // Only this song. What the other songs are holding is their business — the desk
+  // saves one song at a time, so listing them was answering a question nobody asked
+  // in the moment they were trying to answer a different one.
+  const ok = await ask(
+    `Save ${track.title}?`,
+    `<b>The game will play it from now on.</b><br>`
+    + `Writes <b>src/data/songs/${trackId}.js</b>. The version it replaces is kept, `
+    + `so you can go back to it.`,
+  );
+  if (!ok) { toast('Save cancelled'); return; }
   // saveMix ran updateStatus, which is what turns the dot off and the menu item to
   // "saved" — the toast is the part that says it out loud.
-  if (await saveMix(trackId)) toast(`${track.title} written to src/data/mix.js`);
+  if (await saveMix(trackId)) toast(`${track.title} saved`);
 };
 
 // There is no "save every changed song". One Save, for the song you are on, named in
@@ -5664,7 +7073,7 @@ $('resetsong').onclick = () => {
   if (draft[trackId].voice && !Object.keys(draft[trackId].voice).length) delete draft[trackId].voice;
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   rebuildForShape(); updateStatus();
-  toast(`every channel in ${track.title} reset — ⌘Z to undo`);
+  toast(`Every channel in ${track.title} reset — ⌘Z to undo`);
 };
 
 // Web Audio needs a gesture before it will make a sound.

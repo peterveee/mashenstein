@@ -14,7 +14,7 @@ import { drawText, drawTextCentered, textWidth, textYForMid, wrapText, UI_PLATE 
 import { drawToon, drawToonFace } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { readPlatform } from '../engine/platform.js';
-import { drawHandoff, HANDOFF_SWAP_AT, HANDOFF_LINE_A_AT, HANDOFF_LINE_B_AT } from './credits-handoff.js';
+import { drawHandoff, handoffRunLeft, HANDOFF_SWAP_AT, HANDOFF_LINE_A_AT, HANDOFF_LINE_B_AT } from './credits-handoff.js';
 import { MEGAMIX_THEME } from '../data/megamix.js';
 
 const GOLD = '#f6d33c';
@@ -83,6 +83,20 @@ const HANDOFF_H = 48;
 const HANDOFF_GAP = 18;
 const OUTGOING_INK = '#48e0c8';
 const INCOMING_INK = '#f6d33c';
+// A line does not just belong to its speaker, it travels with them: each half
+// of the exchange is dragged along by the hero saying it and comes to rest in
+// the tuned slot above, so the words arrive with the runner instead of being
+// captioned under an empty stage.
+//
+// How far the outgoing line trails its speaker at the start of their run. NOT
+// the hero's own displacement — they cross ~290u in under two seconds, and text
+// moving at a sprint is text nobody reads. This is a sympathetic drag at roughly
+// a tenth of their speed: enough that the words are plainly travelling with the
+// runner, slow enough to read while they do. A line only ever trails BEHIND its
+// resting slot and never past it, so the settled composition is exactly what it
+// always was. (The reply's trail is not this — it is measured off the portal;
+// see 'handoffDuo' below.)
+const HANDOFF_LINE_CARRY = 34;
 
 // ---- the sky ---------------------------------------------------------------
 // Modelled on the ARCADE ART GALLERY visualizer's night sky (its `galleryStars`
@@ -829,30 +843,48 @@ function drawRow(ctx, row, y, t) {
       drawText(ctx, row.name, CX + gap, y, WHITE, 0.85);
       break;
     }
-    // The whole exchange on one baseline: the outgoing hero's line ends just
-    // left of the portal's column, the reply starts just right of it. Each half
-    // still arrives with the hero who says it — the reply does not sit on
-    // screen for seconds before anyone is there to have said it.
+    // The whole exchange on one baseline: the outgoing hero's line comes to rest
+    // just left of the portal's column, the reply just right of it. Neither is a
+    // caption. Each half arrives with the hero who says it AND travels with them
+    // — trailing behind the runner and settling into that slot as their leg of
+    // the relay finishes — so the words cross the screen the way the relay does,
+    // left to right, and the reply is never on screen before anyone is there to
+    // have said it.
     case 'handoffDuo': {
       const s = 0.85;
       const artY = y + (row.artDY || 0);
       const p = Math.max(0, Math.min(1, (H - artY) / (H + HANDOFF_H)));
       const fade = (from) => Math.max(0, Math.min(1, (p - from) / 0.10));
+      // The same box the art row hands the painter, so the two read one staging.
+      const left = handoffRunLeft({ progress: p, x: 0, y: artY, w: W, h: HANDOFF_H });
 
       const aAlpha = fade(HANDOFF_LINE_A_AT);
       if (aAlpha > 0) {
         const w = textWidth(row.a, s);
         ctx.save();
         ctx.globalAlpha = aAlpha;
-        drawText(ctx, row.a, Math.max(6, CX - HANDOFF_GAP - w), y, OUTGOING_INK, s);
+        // Trails the outgoing hero in from the left and lands in its slot on the
+        // frame the portal takes them — the words catch up as the runner stops.
+        drawText(ctx, row.a, Math.max(6, CX - HANDOFF_GAP - w - HANDOFF_LINE_CARRY * left.a), y, OUTGOING_INK, s);
         ctx.restore();
       }
       const bAlpha = fade(HANDOFF_LINE_B_AT);
       if (bAlpha > 0) {
         const w = textWidth(row.b, s);
+        const bx = Math.min(CX + HANDOFF_GAP, W - 6 - w);
+        // The reply comes out of the portal on the incoming hero's heels and is
+        // still catching up with itself as they run off, so it settles late —
+        // which is the half of the exchange that has the time to be watched.
+        //
+        // Its trail is not the outgoing line's: it starts left-aligned on the
+        // MIDDLE of the portal, the mouth it and the hero both come out of, and
+        // slides right into its slot behind them. Measured from wherever it
+        // settles rather than set as a distance, so a reply long enough to be
+        // pushed left off its slot still emerges from the portal and not from
+        // somewhere inside the gap the two halves keep.
         ctx.save();
         ctx.globalAlpha = bAlpha;
-        drawText(ctx, row.b, Math.min(CX + HANDOFF_GAP, W - 6 - w), y, INCOMING_INK, s);
+        drawText(ctx, row.b, bx - Math.max(0, bx - CX) * left.b, y, INCOMING_INK, s);
         ctx.restore();
       }
       break;

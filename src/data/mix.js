@@ -43,7 +43,16 @@
 //   }
 //
 // Solo is deliberately not persisted: it is a monitoring state, not a mix decision.
-export const MIX = {
+// Assembled from src/data/songs/ — one file per song, each carrying its own mix
+// under the line the desk writes below. This export is kept because the game, the
+// engine and every render tool ask for `MIX` and should not have to care where it
+// is kept; there is no longer a single file holding thirty-four songs' balances.
+import { MIX_BY_ID } from './songs/index.js';
+
+export const MIX = MIX_BY_ID;
+/* Legacy aggregate snapshot retained as a comment for recovery; the generated
+   per-song files above are now authoritative. */
+const LEGACY_MIX = {
   "after-hours-layaway-dolores": {
     master: 9.3,
     lanes: {
@@ -261,21 +270,23 @@ export const MIX = {
   },
   "megamix": {
     master: 1.9,
+    voice: {"clapVoice":"clapRoom","rimVoice":"taiko"},
     fx: { reverb: { decay: 1.5 } },
     lanes: {
-      lead: { gain: -7, pan: -0.04, send: { delay: 1 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }] },
-      leadHarm: { send: { delay: 1 } },
-      chords: { gain: -18.7, send: { delay: 0.64, reverb: 0.265 }, eq: { low: -1.7, mid: 5.1, high: 3.7 }, effects: [{ id: "doubler", params: { dryPan: -0.86, wetPan: 1, delayMs: 11, wet: 0.31, width: 0.38, frequency: 0.27, depth: 0.2, detune: 6 } }] },
+      lead: { gain: -10.4, send: { delay: 1, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }] },
+      leadHarm: { gain: -3.1, send: { delay: 1 } },
+      chords: { gain: -18.7, send: { delay: 0.64, reverb: 0.265 }, eq: { low: -1.7, mid: 5.1, high: 9.4 }, effects: [{ id: "doubler", params: { dryPan: -1, wetPan: 1, delayMs: 11, wet: 0.44, width: 1, frequency: 0.27, depth: 0.2, detune: 6 } }] },
       organSwoop: { gain: -9.5, send: { delay: 1 } },
       keyGliss: { gain: -8.1, send: { delay: 1 }, eq: { high: 2.3 }, effects: [{ id: "exciter", params: { drive: 0.57, timbre: 0.66, mix: 0.47 } }, { id: "pingpong" }] },
       gliss: { gain: -14.2, send: { delay: 0.69, reverb: 0.59 } },
       electroFx: { send: { delay: 1 } },
       sweeps: { send: { delay: 1 } },
-      rim: { send: { delay: 1 } },
+      rim: { gain: -2.7, pan: 0.248, send: { delay: 1, reverb: 0.38 }, effects: [{ id: "delay", params: { sync: 1, division: 0.5, feedback: 0.08, wet: 0.2 } }] },
       hats: { gain: -3, pan: -0.313, effects: [{ id: "exciter" }, { id: "delay", params: { division: 0.25 } }] },
-      kick: { send: { reverb: 0.11 }, eq: { low: 3.2 } },
+      kick: { gain: 0.2, send: { reverb: 0.11 }, eq: { low: 3.2 } },
       snare: { send: { reverb: 0.255 }, eq: { high: 3.6 } },
       ohats: { gain: -6.2, pan: -0.318, eq: { high: 3.5 } },
+      clap: { gain: -0.5, pan: 0.159, send: { delay: 0.235 }, effects: [{ id: "reverb" }] },
     },
   },
   "neon": {
@@ -386,6 +397,7 @@ export const MIX = {
     },
   },
 };
+void LEGACY_MIX;
 
 export const LANE_DEFAULTS = {
   gain: 0,

@@ -20,6 +20,8 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { openRenderer } from './lib/render-bank-browser.js';
 import { VOICES, VOICE_LANES, PERCUSSION_LANES } from '../src/data/voices.js';
+import { SONGS } from '../src/data/songs/index.js';
+import { writeSongFile } from './lib/song-file.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'src/data/voices.js');
@@ -36,6 +38,15 @@ const BANK = { bpm: 120, bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? A
 const measure = (render, id) => render(
   { ...BANK, bassVoice: id, bassGain: 1, bassDur: 8 },
   { repeat: 1, mix: null, trackId: null },
+);
+
+// The same measurement for a preset that is NOT in the library — a copy a song keeps
+// in its own mix, under `voiceParams`. It reaches the renderer the way the song hands
+// it over, through the mix, so there is nothing to write anywhere first. Identical
+// bank and identical pipeline, so the number means what every other peak here means.
+const measureCopy = (render, preset) => render(
+  { ...BANK, bassGain: 1, bassDur: 8 },
+  { repeat: 1, mix: { voiceParams: { bassVoice: preset } }, trackId: null },
 );
 
 // A single note on one lane, with nothing else in the song.
@@ -58,6 +69,7 @@ const oneNote = (lane) => {
 const tone = Object.values(VOICES).filter((v) => ['tone', 'noise', 'drum'].includes(v.kind));
 const peaks = {};
 const targets = {};
+const copies = [];
 const renderer = await openRenderer();
 try {
   // Half the calibration: what one note of each lane's OWN voice peaks at. Measured
@@ -78,19 +90,74 @@ try {
     console.log(`  ${v.id.padEnd(18)} ${(v.synth || v.kind).padEnd(14)} peak ${peak.toFixed(4)}${warn}`);
   }
 
+  // And the copies songs keep for themselves.
+  //
+  // A song can carry its own version of a preset — the desk's Save to Song — and it
+  // needs a peak for exactly the reason a library preset does: `voiceGain` divides the
+  // lane's target by it. Nothing measures one while it is being edited, deliberately;
+  // a copy inherits the peak of what it was made from, which is the right ballpark,
+  // and the fader is the control for the rest. This is where the numbers are settled,
+  // in a batch, on purpose — the same bargain the library has always had.
+  for (const [id, song] of Object.entries(SONGS)) {
+    const params = song.mix?.voiceParams;
+    if (!params) continue;
+    for (const [voiceKey, preset] of Object.entries(params)) {
+      const { peak } = await measureCopy(renderer.render, preset);
+      const was = preset.peak;
+      copies.push({ id, voiceKey, preset, peak });
+      const warn = peak <= 0 ? '  ** SILENT — it will not render **'
+        : peak < 0.02 ? '  (very quiet: check its envelope)' : '';
+      const moved = was > 0 ? ` (was ${Number(was).toFixed(4)})` : '';
+      console.log(`  ${id}/${voiceKey}`.padEnd(38)
+        + ` ${(preset.label || '?').padEnd(16)} peak ${peak.toFixed(4)}${moved}${warn}`);
+    }
+  }
 } finally {
   await renderer.close();
 }
 
-const silent = Object.entries(peaks).filter(([, p]) => !(p > 0)).map(([id]) => id);
+const silent = [
+  ...Object.entries(peaks).filter(([, p]) => !(p > 0)).map(([id]) => id),
+  ...copies.filter((c) => !(c.peak > 0)).map((c) => `${c.id}/${c.voiceKey}`),
+];
 if (silent.length) {
   console.error(`\n${silent.length} preset(s) render SILENT: ${silent.join(', ')}`);
   console.error('Fix or remove them — a silent preset sounds fine on the desk and '
     + 'is missing from every WAV, stem and video.');
 }
 
+/**
+ * The songs' own copies, back into the song files they came from.
+ *
+ * Not into the PEAKS block: a copy is not in the library and must not appear to be —
+ * its home is the `voiceParams` of one song's mix, under that song's own DESK WRITES
+ * BELOW HERE line. `writeSongFile` rewrites exactly that half, which is the same
+ * writer the mixing desk saves through, so a batch re-measure and a desk save leave
+ * the file in the same shape.
+ *
+ * A silent one is written anyway. The peak is reported and the exit code says so, but
+ * refusing to write would leave the file claiming a peak we have just proved wrong.
+ */
+function writeCopies() {
+  const bySong = new Map();
+  for (const c of copies) {
+    if (Number(c.preset.peak) === Number(c.peak.toFixed(4))) continue;   // already right
+    if (!bySong.has(c.id)) bySong.set(c.id, []);
+    bySong.get(c.id).push(c);
+  }
+  for (const [id, list] of bySong) {
+    const song = SONGS[id];
+    const mix = JSON.parse(JSON.stringify(song.mix));
+    for (const c of list) mix.voiceParams[c.voiceKey].peak = Number(c.peak.toFixed(4));
+    writeSongFile(ROOT, id, { mix, arrangement: song.arrangement || null });
+    console.log(`  wrote src/data/songs/${id}.js — ${list.map((c) => c.voiceKey).join(', ')}`);
+  }
+  return bySong.size;
+}
+
 if (DRY) {
   console.log('\n--dry: src/data/voices.js not written.');
+  if (copies.length) console.log(`--dry: ${copies.length} song copies not written either.`);
 } else {
   // Rewritten in place, formatted the way the file already is. The block is machine
   // -owned and says so; everything around it is hand-written and is not touched.
@@ -125,5 +192,8 @@ if (DRY) {
   writeFileSync(FILE, next);
   console.log(`\nwrote ${tone.length} preset peaks and ${Object.keys(targets).length}`
     + ' lane targets into src/data/voices.js');
+  const songs = writeCopies();
+  if (songs) console.log(`and ${copies.length} song copies across ${songs} song file(s)`);
+  else if (copies.length) console.log(`${copies.length} song copies were already correct`);
 }
 process.exit(silent.length ? 1 : 0);

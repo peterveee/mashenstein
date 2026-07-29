@@ -1,4 +1,7 @@
-import { baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES } from '../data/voices.js';
+import {
+  baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES,
+  DEFAULT_ADDED_PERCUSSION_VOICE,
+} from '../data/voices.js';
 import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
 
 // The sequencer's lane list, in mix order.
@@ -29,6 +32,7 @@ export const LANES = [
   { key: 'hats', label: 'hats-closed', group: 'drums' },
   { key: 'ohats', label: 'hats-open', group: 'drums' },
   { key: 'crash', label: 'crash', group: 'drums' },
+  { key: 'tom', label: 'tom', group: 'drums' },
 ];
 
 export const LANE_KEYS = LANES.map((l) => l.key);
@@ -41,7 +45,7 @@ export const LANE_KEYS = LANES.map((l) => l.key);
 // LANES itself is left alone: it numbers the stem files, and renaming those to suit
 // a UI layout would be the tail wagging the dog.
 const DESK_ORDER = [
-  'kick', 'snare', 'clap', 'hats', 'ohats', 'rim', 'crash',
+  'kick', 'snare', 'clap', 'hats', 'ohats', 'rim', 'crash', 'tom',
   'bass',
 ];
 
@@ -64,13 +68,14 @@ const DESK_ORDER = [
 /** The lane definitions a bank's layers stand for — LANES-shaped, so they mix in. */
 export function layerLanes(bank) {
   const src = new Map(LANES.map((l) => [l.key, l]));
-  return (bank?.__layers || []).map(({ key, from }) => {
+  return (bank?.__layers || []).map(({ key, from, label, independent }) => {
     const base = src.get(from);
     return {
       key,
-      label: `${base?.label || from} ${key.slice(from.length)}`,
+      label: label || `${base?.label || from} ${key.slice(from.length)}`,
       group: base?.group || 'melodic',
       layerOf: from,
+      independent: !!independent,
     };
   }).filter((l) => src.has(l.layerOf));
 }
@@ -111,7 +116,17 @@ export function deskBank(bank, entry) {
   const shape = (block) => {
     const out = { ...block };
     for (const key of off) delete out[key];
-    for (const { key, from } of layers) if (out[from]) out[key] = out[from];
+    for (const { key, from, independent } of layers) {
+      // Ordinary layers are doubles: same notes, separate voice and strip. Pattern-
+      // editor instruments are independent layers: a real silent lane until notes
+      // are painted into it. Preserve an arrangement delta that already names the
+      // layer; otherwise materialise 32 rests so it still gets a row and strip.
+      if (out[key] != null) continue;
+      if (independent) {
+        const length = Object.values(out).find((v) => Array.isArray(v))?.length || 32;
+        out[key] = new Array(length).fill(false);
+      } else if (out[from]) out[key] = out[from];
+    }
     return out;
   };
   const out = shape(bank);
@@ -119,7 +134,20 @@ export function deskBank(bank, entry) {
   // deleted from the top and left in a section would come back in that section, and a
   // layer would fall back to the top-level part instead of following the section's.
   if (Array.isArray(bank.sections)) out.sections = bank.sections.map(shape);
-  out.__layers = layers.map(({ key, from }) => ({ key, from }));
+  // Earlier builds created an independent lane with notes but no voice. The layer
+  // loop quite correctly skipped it, producing the particularly confusing state of
+  // a lit step and a percussion tally with no audio. Give only those independent
+  // lanes the same Tom preset new channels now receive explicitly. A chosen library
+  // or song-local voice is merged afterwards and still wins.
+  for (const { key, independent } of layers) {
+    if (!independent) continue;
+    const seam = seamFor(key);
+    if (!seam || entry?.voice?.[seam.voiceKey] || entry?.voiceParams?.[seam.voiceKey]) continue;
+    if (out[seam.voiceKey] == null) out[seam.voiceKey] = DEFAULT_ADDED_PERCUSSION_VOICE;
+  }
+  out.__layers = layers.map(({ key, from, independent, label }) => ({
+    key, from, ...(independent ? { independent: true } : {}), ...(label ? { label } : {}),
+  }));
   return out;
 }
 
@@ -218,7 +246,7 @@ export function barPlan(bank, repeat = 1) {
 export function invalidateBarPlan(bank) { BAR_PLANS.delete(bank); }
 
 /**
- * Each bar as the partial bank it plays: `[{ b, half, off }]`.
+ * Each bar as the partial bank it plays: `[{ b, half, off, delete }]`.
  *
  * `b` is the section merged over the bank, exactly as `scheduleStep` merges it, and
  * `half` says which sixteen of its thirty-two steps this bar is. The mute mask is
@@ -238,7 +266,7 @@ export function songBars(bank, repeat = 1) {
       const sec = resolveSection(bank, bar.sec % bank.sections.length);
       if (sec) b = { ...bank, ...sec };
     }
-    return { b, half: bar.half, off: bar.off || null };
+    return { b, half: bar.half, off: bar.off || null, delete: bar.delete || null };
   });
 }
 
@@ -267,7 +295,10 @@ export function activeLanes(bank, repeat = 1) {
   // seen — and deliberately blind to the mute mask, which is an arrangement decision
   // about a bar rather than a statement about what the song is made of.
   const bars = songBars(bank, repeat);
-  return laneList(bank).filter(({ key }) => bars.some(({ b }) => b[key] && b[key].some(Boolean)));
+  const independent = new Set((bank?.__layers || [])
+    .filter((l) => l.independent).map((l) => l.key));
+  return laneList(bank).filter(({ key }) => independent.has(key)
+    || bars.some(({ b }) => b[key] && b[key].some(Boolean)));
 }
 
 /**
@@ -298,7 +329,8 @@ export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
       // A lane silenced in this bar reads exactly like a lane that plays nothing
       // there, which is what the grid should shade: what you would HEAR. Which of the
       // two it is belongs to the arrangement, and the desk draws that from the plan.
-      if (!arr || (bar.off && bar.off.includes(lane.key))) return;
+      if (!arr || (bar.off && bar.off.includes(lane.key))
+        || (bar.delete && bar.delete.includes(lane.key))) return;
       for (let c = 0; c < cellsPerBar; c++) {
         let hits = 0;
         const cell = bi * cellsPerBar + c;
@@ -331,6 +363,7 @@ const ECHO_OPT_IN = {
   hats: (b) => !!b.echoEverything,
   ohats: (b) => !!b.echoEverything,
   crash: (b) => !!b.crashEcho || !!b.echoEverything,
+  tom: (b) => !!b.echoEverything,
   // `rim` is deliberately absent: it always taps the echo bus through its own
   // rimEcho send, unlike the rest of the kit.
 };

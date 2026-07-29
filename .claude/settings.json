@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs kill)",
+      "Bash(node -e ' *)",
+      "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/29985fc2-886d-4e3a-8612-fb2d4234a4b5/scratchpad/check-real-songs.js)",
+      "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/29985fc2-886d-4e3a-8612-fb2d4234a4b5/scratchpad/check-megamix-clap.js)",
+      "Bash(node tests/visualizers.js)",
+      "Bash(echo \"=== exit $? ===\")",
+      "Bash(node tests/arrangement.js)",
+      "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/78c82489-1a13-4309-96b0-064e5de02dcf/scratchpad/julia-res.mjs)",
+      "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/78c82489-1a13-4309-96b0-064e5de02dcf/scratchpad/julia-variants.mjs)",
+      "Bash(sed -i '' 's|// setContent has no base URL, so point the images at the files on disk.|// \\(images are already inlined above\\)|' julia-variants.mjs)",
+      "Bash(sed -i '' '/for \\(const img of document.querySelectorAll/d; /^}, OUT\\);$/d' julia-variants.mjs)",
+      "Bash(sed -i '' '/await sheet.evaluate\\(\\(dir\\) => {/d' julia-variants.mjs)",
+      "Bash(node julia-variants.mjs)",
+      "Bash(curl -s -o /dev/null -w \"8010: %{http_code}\\\\n\" --max-time 3 http://127.0.0.1:8010/)"
+    ]
+  }
+}

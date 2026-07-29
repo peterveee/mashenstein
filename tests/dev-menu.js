@@ -63,9 +63,12 @@ const bundle = outputFiles[0].text;
   // a visualizer doesn't fail this suite.
   const { VISUALIZER_NAMES } = await import('../src/engine/visualizers.js');
   assert(visualiserMenu
-    && visualiserMenu.items.length === VISUALIZER_NAMES.length
     && VISUALIZER_NAMES.every((name, i) => visualiserMenu.items[i].label.includes(name)),
     'visualisers submenu lists every available preset');
+  // The bench entries sort after the pack, the way every dev-only section does.
+  const benches = visualiserMenu.items.slice(VISUALIZER_NAMES.length);
+  assert(benches.length === 1 && benches[0].label.includes('AUDITION'),
+    'the megamix move audition sits after the preset list rather than inside it');
 
   // The underlying state must be frozen while the menu is up.
   const stateBefore = globalThis.window.__mash_state;

@@ -100,7 +100,14 @@ window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackI
   for (let i = 0; i < L.length; i++) { inter[i * 2] = L[i]; inter[i * 2 + 1] = R[i]; }
   window.__pcm = new Uint8Array(inter.buffer);
 
-  return { bytes: window.__pcm.length, frames: L.length, seconds: L.length / sampleRate, peak };
+  // The kit timeline the sequencer just laid down, in seconds from zero. This is
+  // the engine's own tally — the same one the live jukebox reads — so a rendered
+  // video reacts to the drums dropping out on exactly the bar they do, without
+  // anything downstream having to reimplement the arrangement. Small enough
+  // (a few thousand numbers for a long song) to ride back with the metadata.
+  const percussion = Array.from(Audio._percPending || []);
+
+  return { bytes: window.__pcm.length, frames: L.length, seconds: L.length / sampleRate, peak, percussion };
 };
 
 // Handed back as a file download rather than a base64 string over CDP. A two-minute
@@ -185,7 +192,7 @@ export async function openRenderer({ headless = true } = {}) {
     const outR = new Float32Array(meta.frames);
     for (let i = 0; i < meta.frames; i++) { outL[i] = inter[i * 2]; outR[i] = inter[i * 2 + 1]; }
 
-    return { outL, outR, seconds: meta.seconds, blocks, peak: meta.peak };
+    return { outL, outR, seconds: meta.seconds, blocks, peak: meta.peak, percussion: meta.percussion || [] };
   }
 
   // isAlive because a long-lived caller keeps this handle warm for hours — see the

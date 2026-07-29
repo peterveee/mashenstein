@@ -47,6 +47,13 @@ const fmtOrderEntry = (e) => {
   // every hand-written line in the banks. `JSON.stringify` would pack it to
   // `["clap","crash"]`, which is correct and reads like a log line.
   if (e.off && e.off.length) bits.push(`off: [${e.off.map((k) => `'${k}'`).join(', ')}]`);
+  if (e.delete && e.delete.length) bits.push(`delete: [${e.delete.map((k) => `'${k}'`).join(', ')}]`);
+  for (const key of ['transpose', 'offset', 'gain']) {
+    const map = e[key];
+    if (map == null) continue;
+    if (typeof map === 'number') bits.push(`${key}: ${round(map)}`);
+    else if (Object.keys(map).length) bits.push(`${key}: ${JSON.stringify(map)}`);
+  }
   return `{ ${bits.join(', ')} }`;
 };
 

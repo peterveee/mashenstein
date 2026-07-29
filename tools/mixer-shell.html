@@ -187,8 +187,8 @@
                  border-left: 1px solid rgba(0,0,0,.35); overflow: hidden; }
   #blocks .blk.second { border-left-color: rgba(0,0,0,.15); }
   #blocks .blk:first-child { border-left: 0; }
-  #loopregion { position: absolute; top: 0; bottom: 0; background: rgba(78,201,176,.16);
-                border-left: 2px solid var(--accent); border-right: 2px solid var(--accent);
+  #loopregion { position: absolute; top: 0; bottom: 0; background: rgba(78,201,176,.09);
+                border-left: 1px solid rgba(78,201,176,.58); border-right: 1px solid rgba(78,201,176,.58);
                 pointer-events: none; display: none; }
   /* The bars you have SELECTED, as opposed to the ones that are looping. White
      rather than teal, and hatched rather than filled, so the two can overlap and
@@ -198,10 +198,18 @@
                                                      rgba(255,255,255,0) 4px 8px);
                box-shadow: inset 1px 0 0 rgba(255,255,255,.55), inset -1px 0 0 rgba(255,255,255,.55); }
   #selregion.show { display: block; }
-  /* A bar of the timeline whose arrangement drops lanes. Faint, because it is a
-     detail of a bar rather than a different kind of bar. */
-  #blocks .blk.muted { background-image: repeating-linear-gradient(45deg,
-                       rgba(0,0,0,.28) 0 3px, rgba(0,0,0,0) 3px 6px); }
+  /* A muted timeline bar is still present: retain the section colour, add a light
+     hatch and M. A deleted bar gets the red X treatment used in the lane grid. */
+  #blocks .blk.muted { background-image: repeating-linear-gradient(135deg,
+                       rgba(78,201,176,.28) 0 3px, rgba(0,0,0,0) 3px 7px);
+                       box-shadow: inset 0 -2px 0 rgba(78,201,176,.9); }
+  #blocks .blk.muted::after { content: 'M'; position: absolute; left: 3px; top: 0;
+                              color: #06211c; font: 700 8px/10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #blocks .blk.deleted { background-image: repeating-linear-gradient(135deg,
+                         rgba(255,90,110,.32) 0 3px, rgba(0,0,0,0) 3px 7px);
+                         box-shadow: inset 0 -2px 0 rgba(255,90,110,.95); }
+  #blocks .blk.deleted::after { content: 'D'; position: absolute; left: 3px; top: 0;
+                                color: #5a101d; font: 500 8px/10px ui-monospace, SFMono-Regular, Menlo, monospace; }
   #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--hot);
               box-shadow: 0 0 6px var(--hot); pointer-events: none; left: 0; }
   /* The clock lives up in the transport now — the strip under the ruler was a whole
@@ -279,16 +287,48 @@
      plays, not sixteen separate targets. */
   .arrbar { flex: 1; display: flex; cursor: pointer; min-width: 0; position: relative; }
   .arrbar:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
-  /* The bar you clicked. White against black, and standing a few pixels proud of
-     the row: no single hue is legible against twenty-one lane colours — teal
-     vanished into the lead and the hats — but a marquee edge is legible on all of
-     them, and the height break catches the eye before the colour does. */
+  .arrmeta { position: absolute; z-index: 1; inset: 1px 2px auto 2px; overflow: hidden;
+             white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
+             color: #fff; font: 700 8px/11px ui-monospace, SFMono-Regular, Menlo, monospace;
+             text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+  /* The bar you clicked. A white edge sits inside the exact bar rectangle: no single
+     hue is legible against twenty-one lane colours, so the marquee has to be clear
+     without spilling into neighbouring bars or rows. */
   .arrbar.sel::after {
-    content: ''; position: absolute; inset: -3px -1px; pointer-events: none;
+    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 3;
     border-radius: 3px;
-    box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px rgba(0,0,0,.9),
-                0 0 9px rgba(255,255,255,.4);
+    border: 2px solid #fff;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.9), 0 0 6px rgba(255,255,255,.35);
   }
+  /* Muted is still written and still occupies time: keep the lane colour, dim the
+     notes beneath it, and stamp a small M. Deletion stays the hollow/red state below,
+     so the two edits cannot be mistaken for each other. */
+  .arrbar.barmuted { opacity: .72; }
+  .arrbar.barmuted::before { content: 'M'; position: absolute; z-index: 2; inset: 1px auto auto 2px;
+                             min-width: 11px; height: 11px; padding: 0 2px; border-radius: 3px;
+                             background: rgba(40, 210, 184, .72); color: #071310;
+                             font: 700 8px/11px ui-monospace, SFMono-Regular, Menlo, monospace;
+                             text-align: center; pointer-events: none; }
+  .arrbar.barmuted::after { content: ''; position: absolute; z-index: 1; inset: 0;
+                            pointer-events: none;
+                            background: repeating-linear-gradient(135deg,
+                              rgba(255,255,255,.14) 0 3px, rgba(255,255,255,0) 3px 7px); }
+  .arrbar.sel.barmuted::after { z-index: 3; border: 2px solid #fff;
+                                box-shadow: inset 0 0 0 1px rgba(0,0,0,.9),
+                                0 0 6px rgba(255,255,255,.35); }
+  .arrbar.sel.barmuted::before { z-index: 4; }
+  .arrbar.barmuted .arrmeta { padding-left: 15px; }
+  .arrbar.barmuted .arrcell { opacity: .42; }
+  .arrbar.bardeleted { opacity: .58; background-image: repeating-linear-gradient(135deg,
+                          rgba(255,90,110,.18) 0 3px, rgba(0,0,0,0) 3px 8px);
+                       box-shadow: inset 0 0 0 1px rgba(255,90,110,.62),
+                                   inset 0 -2px 0 rgba(255,90,110,.8); }
+  .arrbar.bardeleted::before { content: 'D'; position: absolute; z-index: 2; inset: 1px auto auto 2px;
+                               min-width: 11px; height: 11px; padding: 0 2px; border-radius: 3px;
+                               background: rgba(229,83,75,.78); color: #230d0d;
+                               font: 500 8px/11px ui-monospace, SFMono-Regular, Menlo, monospace;
+                               text-align: center; pointer-events: none; }
+  .arrbar.bardeleted .arrmeta { padding-left: 15px; }
   .arrcell { flex: 1; background: #23272e; margin-right: 1px; pointer-events: none; }
   /* A tick on every downbeat, so 64 beat-cells still read as bars at a glance. */
   .arrcell.barstart { box-shadow: inset 1px 0 0 #454c58; }
@@ -676,6 +716,9 @@
   /* Inboard of the next arrow, because it belongs to the same gesture: step through
      the library, stop on one, open it up. Only drawn when there is a preset to open. */
   .voiceedit { right: 13px; font-size: 10px; }
+  /* Small, because it sits between two 10px arrows in the same gesture and must not
+     out-shout them. */
+  .voiceedit .foldicon { width: 11px; height: 11px; stroke-width: 2.8; }
   .voicepick:hover .voicestep { display: flex; }
   .voicestep:hover { color: var(--accent); }
   .db { text-align: center; font-size: 11px; width: 100%; white-space: nowrap; }
@@ -710,10 +753,58 @@
   .insthead.on::before { content: '\25BE '; }
   /* Reset lives on the strip's right-click menu now. A button per strip was a whole
      row of height on all 14 of them to hold something you press once an hour. */
-  #ctxmenu { position: fixed; z-index: 12; display: none; min-width: 176px; padding: 4px;
+  #ctxmenu { position: fixed; z-index: 30; display: none; min-width: 176px; padding: 4px;
              background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
-             box-shadow: 0 10px 26px rgba(0,0,0,.55); }
-  #ctxmenu.show, #notepop.show { display: block; }
+             box-shadow: 0 10px 26px rgba(0,0,0,.55); max-height: 82vh; overflow-y: auto; }
+  #ctxmenu.show { display: block; }
+  /* The bar/region editor opened by right-clicking the timeline or one lane. It is
+     deliberately an inspector rather than another long menu: exact values stay in
+     view together and one Apply makes one undoable arrangement edit. */
+  #regionedit { position: fixed; z-index: 31; display: none; width: 340px;
+                max-width: calc(100vw - 12px); max-height: calc(100vh - 12px);
+                overflow: auto; padding: 0; background: var(--panel2);
+                border: 1px solid var(--line); border-radius: 8px;
+                box-shadow: 0 14px 34px rgba(0,0,0,.65); }
+  #regionedit.show { display: block; }
+  .reghead { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px 8px;
+             border-bottom: 1px solid var(--line); background: #20252d; }
+  .regtitle { flex: 1; min-width: 0; color: #fff; font-size: 12px; font-weight: 700; }
+  .regtarget { margin-top: 2px; color: var(--dim); font-size: 9.5px; font-weight: 400; }
+  .regclose { flex: none; width: 22px; height: 22px; padding: 0; border: none;
+              background: none; color: var(--dim); font-size: 17px; line-height: 1; }
+  .regclose:hover { color: #fff; border-color: transparent; }
+  .regscope { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 7px 10px;
+              border-bottom: 1px solid var(--line); background: #1d2229; }
+  #regionedit button { font-weight: 400; }
+  .regscope button { padding: 5px 7px; font-size: 10px; color: var(--dim); }
+  .regscope button.on { background: #2f4a44; border-color: #477266; color: #fff;
+                        font-weight: 500; }
+  .regsection { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .regsection:last-child { border-bottom: none; }
+  .regcap { margin-bottom: 6px; color: var(--dim); font-size: 8.5px;
+            letter-spacing: .07em; text-transform: uppercase; }
+  .regactions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .regactions button { min-width: 0; padding: 6px 5px; font-size: 10px;
+                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .regactions button.danger { color: #ff9aaa; }
+  .regactions button.danger:hover { border-color: #8c4350; }
+  .regcontrols { display: flex; flex-direction: column; gap: 10px; }
+  .regcontrol { display: grid; grid-template-columns: 78px minmax(0, 1fr) 66px 36px;
+                align-items: center; gap: 7px; }
+  .regcontrol > span { color: var(--ink); font-size: 10.5px; }
+  .regcontrol input[type=range] { min-width: 0; width: 100%; }
+  .regcontrol input[type=number] { width: 66px; min-width: 0; padding: 4px 5px;
+                                  font-size: 10.5px; font-variant-numeric: tabular-nums; }
+  .regcontrol button { width: 36px; padding: 4px 0; font-size: 9px; color: var(--dim); }
+  .regread { grid-column: 2 / 5; margin-top: -5px; color: var(--dim); font-size: 9px;
+             font-variant-numeric: tabular-nums; }
+  .regcontrol.changed > span, .regcontrol.changed .regread { color: var(--accent); }
+  .regcontrol.mixed .regread { font-style: italic; }
+  .regfoot { display: flex; justify-content: flex-end; align-items: center; gap: 6px;
+             padding: 8px 10px 10px; }
+  .regfoot .regapply { min-width: 112px; background: #2f4a44; border-color: #477266;
+                       color: #fff; font-weight: 500; }
+  .regfoot .regapply:disabled { background: none; border-color: var(--line); }
   /* The overflow menu: the header was thirteen buttons wide and wrapping onto two
      rows, which cost the rack a whole line of window for things pressed once an
      hour. What stays out is what you use WHILE mixing — transport, limiter, A/B,
@@ -742,24 +833,6 @@
   #moremenu .morerow input[type=number] { width: 62px; font-size: 11px; padding: 3px 6px; }
   #moremenu .morerow .unit { font-size: 10px; color: var(--dim); }
   #more { font-size: 15px; line-height: 1; padding: 3px 10px 6px; }
-  /* What one beat of one lane actually plays. Same furniture as the menu — it is
-     the same gesture, a click on something asking what is in it. */
-  #notepop { position: fixed; z-index: 12; display: none; padding: 6px 4px 5px;
-             background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
-             box-shadow: 0 10px 26px rgba(0,0,0,.55); min-width: 132px; }
-  #notepop .ctxhead { font-size: 9px; color: var(--dim); text-transform: uppercase;
-                      letter-spacing: .06em; padding: 0 8px 5px; }
-  /* A bar of the lane as a piano roll: sixteenths across, pitch up the side. */
-  #notepop .roll { display: flex; flex-direction: column; gap: 1px; padding: 2px 8px 4px; }
-  #notepop .rollrow { display: flex; align-items: center; gap: 7px; }
-  #notepop .rolln { width: 26px; flex: none; text-align: right; font-size: 9px;
-                    color: #666e7d; font-variant-numeric: tabular-nums; }
-  #notepop .rolln.tonic { color: var(--dim); }        /* the C of each octave */
-  #notepop .rollcells { display: flex; gap: 1px; }
-  #notepop .rollcell { width: 9px; height: 9px; border-radius: 2px; background: #23272e; }
-  #notepop .rollcell.downbeat { margin-left: 3px; }   /* a gap on every beat */
-  #notepop .rollcell.on { background: var(--lane); }
-  #notepop .rollquiet { font-size: 10px; color: #5d6470; padding: 2px 0 1px; }
   /* The effect catalogue, grouped and priced. It was a 22-line dropdown, which
      is a list you scroll rather than a list you read — and it hid what each effect
      costs, which is the whole reason the costs were measured. */
@@ -802,7 +875,7 @@
      read; in columns by category it is a glance, the way the effect catalogue is.
      Wider than the fx picker because a preset earns its place by what it is FOR, and
      that takes a sentence. */
-  #voicepicker { position: fixed; z-index: 13; display: none; padding: 9px 8px;
+  #voicepicker { position: fixed; z-index: 31; display: none; padding: 9px 8px;
                  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
                  box-shadow: 0 14px 34px rgba(0,0,0,.6);
                  max-height: 76vh; max-width: 94vw; overflow: auto; }
@@ -999,6 +1072,34 @@
                        border: 1px solid var(--line); border-radius: 4px; }
   #voiceedit .vename:focus { outline: none; border-color: var(--accent); }
   /* Equal halves, the way the panel's own three are equal thirds. */
+  /* What Update would reach, said where the buttons are. The panel already names these
+     songs at the top, and that is context you read once — this is the same fact at the
+     moment it becomes a decision. Amber, like every other "this is further-reaching than
+     it looks" on the desk. */
+  #voiceedit .vereach { margin: 2px 0 0; padding: 5px 7px; font-size: 9.5px; line-height: 1.4;
+                        color: var(--solo); background: #221d16;
+                        border: 1px solid #3a2f1d; border-radius: 4px; }
+  #voiceedit .vereachhead { margin-bottom: 3px; }
+  /* One song, one tick. The state is spelled out in words beside each name rather than
+     left to the box alone: "follows the update" and "keeps the sound it has" are the
+     two outcomes, and a column of bare checkboxes makes you work out which is which. */
+  #voiceedit .vereachrow { display: flex; align-items: center; gap: 6px;
+                           padding: 2px 0; cursor: pointer; }
+  #voiceedit .vereachrow input { width: 11px; height: 11px; margin: 0; flex: none;
+                                 accent-color: var(--accent); cursor: pointer; }
+  #voiceedit .vereachname { color: var(--ink); font-size: 10px; }
+  #voiceedit .vereachwhat { margin-left: auto; font-size: 9px; color: #7d7360; }
+  /* Pinned reads as settled rather than as a warning — it is the safe half of this. */
+  #voiceedit .vereachrow.pinned .vereachwhat { color: var(--accent); }
+  /* Not knowing is its own state and must not read like "nothing plays this". */
+  #voiceedit .vereachunknown { color: var(--hot); border-color: #4a2b28; background: #241a19; }
+  /* The far-reaching button, when it is far-reaching. Outlined rather than filled: it
+     stops being the obvious thing to press, which is the whole point, while staying
+     exactly where it was so it is never hunted for. */
+  #voiceedit .vesave.vefar { background: none; color: var(--solo); border-color: #5a4526; }
+  #voiceedit .vesave.vefar:hover { background: #2a2117; color: var(--solo); }
+  /* The fork. A normal secondary action — it is the SAFE one, so it wears no warning. */
+  #voiceedit .venew { white-space: nowrap; }
   #voiceedit .vesheetfoot { display: flex; gap: 5px; margin-top: auto; }
   #voiceedit .vesheetfoot > button { flex: 1 1 0; width: auto; min-width: 0; margin: 0;
                                      padding: 6px 8px; font-size: 10.5px; }
@@ -1047,9 +1148,15 @@
      the rings above them. 11px leaves 8px of daylight. One number, and every card in
      both editors depends on it: the synth groups, the drum sections and Taps are all
      this same grid. */
+  /* The column gap was 2px, which is a hairline — enough between two pots, whose knobs
+     leave their own air, and nothing at all between two pill groups, whose frames run
+     to the edge of their cell. SHAPE and SLOPE side by side read as one eight-button
+     control with a seam in it. Giving the grid a real column gap fixes both cases at
+     once: the frames stop touching, and the pots gain a little air they were short of
+     anyway. */
   #voiceedit .devgrid { display: grid; grid-auto-flow: row;
                         grid-template-columns: repeat(4, 1fr);
-                        grid-template-rows: none; grid-auto-columns: auto; gap: 11px 2px; }
+                        grid-template-rows: none; grid-auto-columns: auto; gap: 11px 8px; }
   #voiceedit .devgrid .row { margin: 0; }
 
   /* ---- pots -----------------------------------------------------------------
@@ -1057,9 +1164,13 @@
      hardware panel, and the reason a pot fits in a third of the width a slider needed:
      a slider has to be long enough to aim along, where a knob only has to be big
      enough to grab. */
-  #voiceedit .potrow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  /* `gap: 5px`, not 0. The name and the knob are two things, and set flush the label
+     reads as part of the ring rather than as a caption over it — which is what makes a
+     column of pots look like a wall. The knob's own -3px bottom margin was pulling the
+     next row up into the same crowd, so it goes too. */
+  #voiceedit .potrow { display: flex; flex-direction: column; align-items: center; gap: 5px; }
   #voiceedit .potrow .k { font-size: 9.5px; letter-spacing: .03em; color: var(--dim);
-                          text-transform: uppercase; text-align: center; line-height: 1;
+                          text-transform: uppercase; text-align: center; line-height: 1.15;
                           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                           max-width: 100%; }
   /* The unit belongs to the name, not to the reading — there is no room for it in the
@@ -1069,7 +1180,7 @@
      preset's filter feels like the pan it is sitting beside rather than like a smaller
      relative of it. Four fit across because the LABEL is what sets the column width,
      not the knob. */
-  #voiceedit .vepot { width: 42px; height: 42px; margin: 0 auto -3px; }
+  #voiceedit .vepot { width: 42px; height: 42px; margin: 0 auto; }
   /* Small enough for `200ms` inside the ring — the reading is the point of a pot, and
      a value abbreviated to fit is a pot you cannot read. */
   #voiceedit .vepot .pottext { font-size: 8px; }
@@ -1080,30 +1191,71 @@
      A set of four you can see beats a menu that hides three of them. Spans the group's
      full width, so it reads as one control rather than as buttons that happen to be
      adjacent. */
-  /* Label and pills on ONE line. `.devgrid .row` zeroes every row's margin and
-     out-specifies a bare `.segrow`, so this has to carry the same weight to land.
-     No margin of its own any more: keeping a pill row clear of the pots under it is
-     what the grid's row gap now does for every row alike, and a margin on top of that
-     spaced the pills differently from everything else in the same card. */
-  #voiceedit .devgrid .segrow { grid-column: 1 / -1; display: flex; flex-direction: row;
-                                align-items: center; gap: 8px; margin: 0; }
-  /* One width for every pick label, so the pill groups start on the same x down the
-     whole panel rather than stepping in and out with the length of the word. */
-  #voiceedit .segrow .k { flex: none; width: 74px; font-size: 9.5px; letter-spacing: .03em;
-                          color: var(--dim); text-transform: uppercase; }
-  #voiceedit .segrow .seg { flex: 1; min-width: 0; }
+  /* Name centred OVER its pills, and two picks to a row.
+     This was one line per pick — a 74px label column, then the pills across the rest
+     of the card — which is the shape a pick had when it was the only one in its group.
+     CARRIER and MODULATOR are a pair, and as two full-width lines they read as two
+     unrelated controls that happen to be adjacent, with most of the width spent on a
+     word. Stacked and halved they read as what they are, and they match `.potrow`
+     right next to them, which has always been a centred name over its control. */
+  /* 13.5px, which is the pot's 5 — see `.potrow` — plus the 8.6 of nothing that comes
+     before a pot's ring actually starts.
+     The two controls are not the same KIND of box. A pill row's top edge is its border,
+     so 5px of gap is 5px of visible space. A pot is a 42px SVG with the ring drawn at r13
+     in a 44-unit view, so its ink begins 8.6px down and the same 5px gap reads as 13.6.
+     Setting both rows to `gap: 5px` is the version of this that measures identical and
+     looks wrong, which is where this started: what the eye compares is the space between
+     the WORD and the CONTROL, and a transparent margin inside an SVG is part of it. */
+  #voiceedit .devgrid .segrow { grid-column: span 2; display: flex; flex-direction: column;
+                                align-items: stretch; gap: 13.5px; margin: 0; min-width: 0; }
+  /* Every pick is half a card, including one that is alone in its group.
+     It used to take the full width there, on the reasoning that half a card of pills
+     beside half a card of nothing looks unfinished. It does — but the cure was worse:
+     WAVE stretched to four columns gave four pills 90px each, so the one control in the
+     panel with the fewest, shortest labels became the biggest thing on it, and the
+     picks stopped being one recognisable size. A standard width beats a full one, and
+     the empty half beside a lone pick is quieter than a control shouting. */
+  #voiceedit .devgrid .segrow.segwide { grid-column: span 2; }
+  /* Alone in its group, a half-width pick sits in the MIDDLE of the four columns rather
+     than hard left with two columns of nothing beside it. It keeps the standard width —
+     one size for every pick is the point — and only its position changes, so WAVE under
+     `Oscillator` reads as the group's control rather than as the first of a row that
+     never arrived. */
+  #voiceedit .devgrid > .segrow:only-child { grid-column: 2 / span 2; }
+  /* ...except WAVE, which takes the whole card. It is the one pick with six or seven
+     options where the rest have two to four — see the note in pickRow. Written with
+     both classes so it out-specifies the centring rule above, which would otherwise
+     park it in the middle two columns at half the width it needs. */
+  #voiceedit .devgrid .segrow.segwide.segwave { grid-column: 1 / -1; }
+  /* 9.5px AND 1.15, the same as a pot's name — both numbers, because both are part of the
+     gap. A line-height of 1 gives the label no half-leading where the pot's 1.15 gives it
+     0.7px top and bottom, so with the same `gap` the pills still sat closer to their name
+     than the ring did to its. These sit in one grid on one row as each other, both
+     centred over their own control, and half a pixel of difference between two labels
+     doing the identical job is the kind of thing you feel as untidiness without
+     locating. See `.potrow .k`. */
+  #voiceedit .segrow .k { flex: none; width: auto; font-size: 9.5px; letter-spacing: .03em;
+                          color: var(--dim); text-transform: uppercase; text-align: center;
+                          line-height: 1.15; white-space: nowrap; overflow: hidden;
+                          text-overflow: ellipsis; }
+  #voiceedit .segrow .seg { flex: none; min-width: 0; }
   #voiceedit .seg { display: flex; gap: 2px; padding: 2px; background: #1b2129;
                     border: 1px solid var(--line); border-radius: 6px; }
-  #voiceedit .segbtn { flex: 1; width: auto; margin: 0; padding: 3px 2px; font-size: 9.5px;
-                       font-weight: 700; letter-spacing: .04em; color: var(--dim);
+  #voiceedit .segbtn { flex: 1; width: auto; margin: 0; padding: 2px 1px; font-size: 8.5px;
+                       font-weight: 700; letter-spacing: .02em; color: var(--dim);
                        background: none; border: none; border-radius: 4px;
-                       white-space: nowrap; }
+                       white-space: nowrap; min-width: 0; }
   #voiceedit .segbtn::after { content: none; }
   #voiceedit .segbtn:hover { background: #2b3542; color: var(--ink); }
   /* Filled, with dark text on it — the selected pill is the one thing in the panel
      that has to be readable at a glance from across the rack. */
   #voiceedit .segbtn.on { background: var(--accent); color: #16211f; }
   #voiceedit .segbtn.on:hover { background: var(--accent); color: #16211f; }
+  /* A control that does not currently apply — fat stack width on a single
+     oscillator, glide on a polyphonic preset. Greyed and inert rather than removed:
+     a row that vanishes takes its own explanation with it, and everything below it
+     jumps up into the gap while you are still looking at the pill that did it. */
+  #voiceedit .vedisabled { opacity: 0.32; pointer-events: none; }
   #voiceedit .veswitch { width: auto; flex: none; margin-left: auto; padding: 2px 8px;
                          font-size: 9px; letter-spacing: .06em; }
   #voiceedit .veswitch.on { background: #2f4a44; color: var(--accent); border-color: #2f4a44; }
@@ -1141,6 +1293,399 @@
   #voiceedit .velevel.bad { border-color: #3a2f1d; background: #221d16; }
   #voiceedit .velevel.bad .velevelnum,
   #voiceedit .velevel.bad .velevelsays { color: var(--solo); }
+  /* ---- The editor as a WINDOW -------------------------------------------------
+     Opened from the library there is no strip to sit beside, so it floats: the same
+     panel, the same controls, in the keyboard's clothes rather than the rack's. It
+     gives back the rack geometry it borrows from `.voicepair` — a fixed height tied to
+     `--striph` is a height that belongs to a row of strips — and takes a window's
+     frame, shadow and its own scroll. */
+  #voiceedit.vefloat { position: fixed; z-index: 14; left: 0; top: 0;
+                       height: auto; max-height: min(660px, 82vh);
+                       border-radius: 8px; box-shadow: 0 18px 44px rgba(0,0,0,.66); }
+  /* No lane behind it, so no lane colour: the header wears the desk's own line rather
+     than a wash borrowed from whichever strip was last placed. */
+  #voiceedit.vefloat .vehead { cursor: grab; border-radius: 7px 7px 0 0;
+                               background: none; border-bottom: 3px solid var(--line); }
+  #voiceedit.vefloat .vehead.dragging { cursor: grabbing; }
+  #voiceedit.vefloat .vetag { color: var(--dim); }
+
+  /* ---- and docked in the preset library ---------------------------------------
+     Its third home. Beside a strip it is a rack item with the rack's height; floating
+     it is a window; here it is a column of the library's own layout, so it gives up
+     the frame and the shadow and takes its height from the band it sits in. */
+  #voiceedit.vedocked { position: static; height: auto; align-self: stretch;
+                        min-height: 0; width: calc(var(--stripw) * 3 + 12px);
+                        background: none; border: none; border-radius: 0;
+                        box-shadow: none; padding: 0 0 0 2px; }
+  /* The width stays three strips — it is the column the controls were laid out for, and
+     widening it only stretched the gaps between things that were already the right
+     distance apart. What this panel has that the rack's does not is HEIGHT: full window
+     rather than one strip tall. So the extra room is spent down the page, where sixteen
+     pots stacked with rack-tight margins read as a wall. */
+  #voiceedit.vedocked .devgrid { row-gap: 15px; }
+  #voiceedit.vedocked .vegroup + .vegroup { margin-top: 24px; }
+  #voiceedit.vedocked .vegroup h4 { margin-bottom: 6px; }
+  #voiceedit.vedocked .row { margin-bottom: 5px; }
+  #voiceedit.vedocked .vesub { margin-bottom: 16px; }
+  #voiceedit.vedocked .vehead { margin: 0 0 10px; padding: 0 0 5px; border-radius: 0;
+                                background: none; border-bottom: 1px solid var(--line);
+                                cursor: default; }
+  #voiceedit.vedocked .vetag { color: var(--dim); }
+  /* Not a ✕ here — a chevron pointing the way it folds. See the note in build(). */
+  #voiceedit.vedocked .veclose { top: 0; right: 0; }
+  /* Written with both classes so it beats `#voiceedit .veclose` above, which sets its
+     own width and would otherwise leave the shared 28px box unapplied — and with it the
+     alignment against the window's close, which is the whole point of the shared box.
+     `right: 2px` is the last two pixels: the header's padding and the editor panel's
+     differ by exactly that. */
+  #voiceedit .veclose.vefold { width: 28px; height: 28px; padding: 0; right: 2px;
+                               line-height: 0; display: inline-grid; place-items: center; }
+  #voiceedit .vefold:hover { color: var(--accent); }
+
+  /* ---- The step grid -------------------------------------------------------------
+     One row per drum lane, sixteen squares a bar. A window like the library and the
+     keyboard: you leave it open, run the loop and move a snare while it plays.
+
+     The cells are sized as a click target rather than as a picture you read — 9px
+     squares are fine for the second and not for the first. Everything else is the
+     desk's own furniture: `--lane` for the lane's colour, `--accent` for on, the same
+     panel and line vars. */
+  #stepseq { position: fixed; z-index: 13; display: none; left: 0; top: 0;
+             flex-direction: column; padding: 9px 8px; width: min(1052px, calc(100vw - 16px)); max-height: 80vh;
+             background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+             box-shadow: 0 18px 44px rgba(0,0,0,.66); }
+  #stepseq.show { display: flex; }
+  #stepseq .ssqhead { display: flex; align-items: center; gap: 8px; flex: none;
+                      margin: -9px -8px 8px; padding: 8px 10px;
+                      border-bottom: 1px solid var(--line); cursor: grab; }
+  #stepseq.dragging .ssqhead { cursor: grabbing; }
+  #stepseq .ssqtitle { flex: 1; font-size: 11px; color: var(--ink); font-weight: 700;
+                       text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  #stepseq .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
+                      letter-spacing: .04em; color: var(--dim); background: #1b2129;
+                      border: 1px solid var(--line); border-radius: 3px; }
+  #stepseq .ssqlink.on { background: #2f4a44; color: var(--accent); border-color: #2f4a44; }
+  #stepseq .ssqx { width: auto; flex: none; padding: 2px 6px; font-size: 11px;
+                   line-height: 1; color: var(--dim); background: none; border: none; }
+  #stepseq .ssqx:hover { color: var(--hot); background: none; }
+  #stepseq .ssqadd { margin-left: -2px; font-size: 17px; color: #7f8998; }
+  #stepseq .ssqadd:hover { color: var(--ink); }
+  /* Shared edits reach beyond the bars visible in the grid. Name those bars before
+     the first cell, where the scope cannot be mistaken for a save-state indicator. */
+  #stepseq .ssqscope { display: flex; align-items: baseline; gap: 9px; flex: none;
+                       margin: -1px 0 7px; padding: 6px 8px;
+                       color: #aeb9c8; background: rgba(72,224,200,.07);
+                       border-left: 3px solid var(--accent); border-radius: 2px;
+                       font-size: 10px; line-height: 1.35; }
+  #stepseq .ssqscope strong { flex: none; color: var(--accent); font-size: 9px;
+                              text-transform: uppercase; letter-spacing: .09em; }
+  #stepseq .ssqscope span { min-width: 0; }
+  /* One scroller owns rulers AND lanes, so a wide selection cannot move out from under
+     its bar numbers. The sticky left edge is the channel rack; the pattern scrolls. */
+  #stepseq .ssqscroll { min-height: 0; overflow: auto; padding: 2px 0 4px;
+                        scrollbar-color: #4d5664 #171b21; }
+  #stepseq .ssqbody { width: max-content; min-width: 100%; }
+  /* The rows are the arrangement's rows: same height, same gutter, same number-then-name
+     header cell, so the two panels read as one track list rather than two opinions about
+     the kit. Only the cells to the right of it are different, because only they are. */
+  #stepseq .ssqrow { display: flex; align-items: center; height: 29px;
+                     gap: 8px; width: max-content; min-width: 100%; }
+  #stepseq .ssqlane { border-radius: 4px; }
+  #stepseq .ssqlane:hover { background: rgba(255,255,255,.018); }
+  #stepseq .ssqhead-cell { position: sticky; left: 0; z-index: 3; width: 190px; flex: none;
+                           display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px;
+                           align-self: stretch; background: var(--panel2);
+                           box-shadow: 1px 0 0 var(--line); }
+  #stepseq .ssqlane:hover .ssqhead-cell { background: #242a32; }
+  #stepseq .ssqnum { flex: none; width: 24px; text-align: center; font-size: 9.5px;
+                     color: #5c6473; font-variant-numeric: tabular-nums; }
+  #stepseq .ssqled { width: 7px; height: 7px; flex: none; border-radius: 50%;
+                     background: var(--lane); box-shadow: 0 0 7px var(--lane); opacity: .9; }
+  #stepseq .ssqlane.unused .ssqled { background: #4e5663; box-shadow: none; opacity: .45; }
+  #stepseq .ssqlane.muted .ssqled { background: var(--hot); box-shadow: none; opacity: .7; }
+  #stepseq .ssqname { flex: 1; min-width: 0; padding: 0; font-size: 12px; text-align: left;
+                      color: var(--dim); background: none; border: none; white-space: nowrap;
+                      overflow: hidden; text-overflow: ellipsis; text-transform: none; }
+  #stepseq .ssqrow:hover .ssqname { color: var(--ink); }
+  /* The lane's figure list. Faint until the row is under the pointer — seven of these
+     lit at once would be seven things asking to be clicked. */
+  #stepseq .ssqpick { width: 16px; height: 16px; flex: none; padding: 0; font-size: 9px;
+                      line-height: 1; border-radius: 3px; color: transparent;
+                      background: none; border: none; }
+  #stepseq .ssqrow:hover .ssqpick { color: var(--dim); background: #1b2129; }
+  #stepseq .ssqpick:hover { color: var(--accent) !important; }
+  /* A lane the song does not play yet. Still clickable — adding a rim is a click. */
+  #stepseq .ssqname.unused { color: var(--dim); opacity: .55; }
+  /* Silenced by the arrangement. The steps are still there, which is why the row is
+     struck through rather than hidden. */
+  #stepseq .ssqname.muted { color: var(--hot); text-decoration: line-through; }
+  #stepseq .ssqcells { display: flex; gap: 2px; padding-right: 8px; }
+  /* Darker than the panel, not the same as it. This window is --panel2, so an idle
+     cell drawn in that colour vanished and the grid read as four squares a bar. */
+  #stepseq .ssqcell { position: relative; width: 22px; height: 19px; flex: none; padding: 0;
+                      border-radius: 3px; border: 1px solid #303743; background: #171b21;
+                      box-shadow: inset 0 1px 0 rgba(255,255,255,.025),
+                                  inset 0 -2px 0 rgba(0,0,0,.28); cursor: pointer; }
+  /* Alternating groups and spacing already make the four-step beats legible. A second
+     hard rule on every beat made the grid busier without adding another meaning. */
+  #stepseq .ssqcell.group-alt { background: #1d232b; }
+  #stepseq .ssqcell:hover { border-color: #7b8798; transform: translateY(-1px); }
+  #stepseq .ssqcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #stepseq .ssqcell.on { background: var(--lane); border-color: rgba(255,255,255,.18);
+                         box-shadow: inset 0 2px 0 rgba(255,255,255,.26),
+                                     inset 0 -3px 0 rgba(0,0,0,.26),
+                                     0 1px 4px rgba(0,0,0,.35); }
+  /* Muted reads as "written but not let through": the hit is still drawn, dimmed. */
+  #stepseq .ssqcell.muted { opacity: .3; }
+  #stepseq .ssqcell.playing::after { content: ''; position: absolute; inset: -3px -2px;
+                                     border: 1px solid rgba(174,185,200,.38); border-radius: 4px;
+                                     box-shadow: 0 0 3px rgba(174,185,200,.08); pointer-events: none; }
+  /* The beat and bar gaps are on the shared classes, not on `.ssqcell`, because the
+     number strip is built out of the same per-step divs. Alignment by construction
+     rather than by a width calculation that has to know about every gap and margin. */
+  #stepseq .gap { margin-left: 7px; }                 /* a gap on every beat */
+  #stepseq .barstart { margin-left: 15px; }           /* a wider one on every bar */
+  #stepseq .ssqbars { height: 18px; }
+  #stepseq .ssqnums { height: 18px; margin-bottom: 5px; }
+  #stepseq .ssqbarnum { width: 22px; flex: none; font-size: 9.5px; line-height: 13px;
+                        color: #4d5563; font-variant-numeric: tabular-nums;
+                        white-space: nowrap; }
+  /* The bar label sits in the first cell of its bar and is allowed out of it — the
+     fifteen cells after it are empty, so there is nothing to run into. */
+  #stepseq .ssqbars .ssqbarnum { overflow: visible; color: var(--ink); font-weight: 700;
+                                 letter-spacing: .05em; text-transform: uppercase; }
+  /* A quiet backbeat hierarchy in the ruler: 1 and 3 anchor the count, while 2 and
+     4 stay present but sit back. The cell grouping below follows the same alternation. */
+  #stepseq .ssqnums .ssqbarnum.beat { color: #687383; font-weight: 600; }
+  #stepseq .ssqnums .ssqbarnum.beat.group-alt { color: #454e5b; font-weight: 400; }
+  #stepseq .ssqruler-label { z-index: 4; color: #626c7b; font-size: 8.5px;
+                             text-transform: uppercase; letter-spacing: .08em; }
+
+  /* ---- The preset library ------------------------------------------------------
+     The catalogue as a place. Same columns as the picker it is a sibling of — and it
+     borrows the picker's own furniture (`.fxgroup`, `.voicesearch`, `.voicekind`,
+     `.vkind`) rather than restating it, because it is the same list and a second set of
+     rules for it is a second thing to keep in step.
+     A window, like the keyboard and like the editor it opens: you leave it up and work
+     out of it, so nothing here is dismiss-on-click. */
+  /* One workspace, not three windows. Header across the top, list and editor side by
+     side in the middle, bench and keyboard along the bottom — the three things that
+     were separately opened and separately placed, laid out once. */
+  #voicelib { position: fixed; z-index: 13; display: none; left: 0; top: 0;
+              flex-direction: column; padding: 9px 8px;
+              width: min(1500px, 96vw); height: min(880px, 92vh);
+              background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+              box-shadow: 0 18px 44px rgba(0,0,0,.66); }
+  #voicelib.show { display: flex; }
+  /* Two columns. The editor runs the FULL height down the right because it is the
+     tallest thing here; the keyboard goes under the LIST rather than under both, so it
+     has the wide half to be wide in. `min-height: 0` throughout — the default
+     `min-height: auto` on a flex child ignores overflow, so without it the children
+     stretch the window past the screen instead of scrolling inside it. */
+  #voicelib .vlmain { display: flex; gap: 10px; flex: 1; min-height: 0; }
+  #voicelib .vlleft { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+  #voicelib .vledit { flex: none; display: flex; min-height: 0; align-self: stretch;
+                      border-left: 1px solid var(--line); padding-left: 10px; }
+  /* Empty until a preset is chosen — no border, no gap, so the columns have the width. */
+  #voicelib .vledit:empty { display: none; }
+  /* Folded: a rail wide enough to read the label down, and nothing else. */
+  #voicelib .vledit.collapsed { padding-left: 0; border-left: none; }
+  /* The band under the list: bench controls, then the keys. */
+  #voicelib .vlfoot { flex: none; display: flex; flex-direction: column;
+                      margin: 9px -8px -9px 0; padding: 8px 10px 9px 0;
+                      border-top: 1px solid var(--line); }
+  #voicelib .vlkeys:empty { display: none; }
+  #voicelib .vlkeys.collapsed { display: none; }
+  #voicelib .vlfoot .vlbench { margin: 0; }
+  #voicelib .vlkeys { display: flex; justify-content: center; margin-top: 8px; }
+  /* The way back from a folded region. Vertical beside the editor, horizontal under the
+     bench — each reads along the edge it would expand from, so the WORD lies where the
+     thing it names is about to appear. That placement is the whole signal; the chevron
+     that used to sit next to it said the same thing again, in a shape you had to read
+     past to reach the word. */
+  #voicelib .vlrail { width: auto; flex: none; align-self: stretch; padding: 6px 3px;
+                      font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+                      color: var(--dim); background: #1b2129;
+                      border: 1px solid var(--line); border-radius: 4px;
+                      writing-mode: vertical-rl;
+                      display: flex; align-items: center; justify-content: center; }
+  #voicelib .vlrail:hover { color: var(--accent); border-color: #3f6058; }
+  /* Full width, the way the editor's rail is full height. Each rail is the whole edge
+     of the space its panel will come back into, so its size says how much room is
+     waiting rather than making you aim at a tab. */
+  #voicelib .vlfoot > .vlrail { writing-mode: horizontal-tb; align-self: stretch;
+                                width: 100%; margin-top: 8px; padding: 5px 14px; }
+  /* Thin, like the editor's rack and the device shelf — a scrollbar in a panel this
+     dense should read as an edge rather than as a column. */
+  #voicelib .vlresults { scrollbar-gutter: stable; }
+  #voicelib .vlresults::-webkit-scrollbar { width: 6px; }
+  #voicelib .vlresults::-webkit-scrollbar-track { background: transparent; }
+  #voicelib .vlresults::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  #voicelib .vlresults::-webkit-scrollbar-thumb:hover { background: #4a5361; }
+  /* The header is also the handle — the one thing every floating panel has ever done. */
+  #voicelib .vlhead { display: flex; align-items: center; gap: 8px; flex: none;
+                      margin: -9px -8px 8px; padding: 8px 10px;
+                      border-bottom: 1px solid var(--line); cursor: grab; }
+  #voicelib .vlhead.dragging { cursor: grabbing; }
+  #voicelib .vltitle { font-size: 11px; color: var(--ink); font-weight: 700;
+                       text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  #voicelib .voicesearch { flex: 1; min-width: 140px; margin: 0; padding: 5px 8px;
+                           font: inherit; font-size: 11px; color: var(--ink);
+                           background: #1b2129; border: 1px solid var(--line);
+                           border-radius: 4px; }
+  #voicelib .voicesearch::placeholder { color: var(--dim); }
+  #voicelib .voicesearch:focus { outline: none; border-color: var(--accent); }
+  #voicelib .voicekinds { display: flex; flex: none; gap: 2px; padding: 2px;
+                          background: #1b2129; border: 1px solid var(--line); border-radius: 4px; }
+  #voicelib .voicekind { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
+                         letter-spacing: .04em; border-radius: 3px; }
+  #voicelib .voicekind.on { background: #2f4a44; color: var(--accent); }
+  /* What a preset is built from, as a filter. Sized for `Membrane (12)`. */
+  #voicelib .vlsynth { width: 118px; flex: none; font-size: 10.5px; padding: 4px 6px; }
+  /* ---- the standard close ------------------------------------------------------
+     One mark, one meaning, one size, on every window the desk puts up. They had drifted
+     — a 19px ✕ here, an 11px `×` on the step sequencer, an SVG glyph on the keyboard —
+     and a close button you have to find and identify on each panel is three controls
+     wearing one job. Borderless, because a ✕ is already a button shape; hot on hover,
+     because closing is the one thing here you might not have meant.
+     `.popclose` is the class; anything that closes a window wears it. */
+  /* A fixed square, not padding around a glyph. The ✕ and the fold chevrons sit in the
+     same column an inch apart — the window's close above the editor's put-away — and
+     boxes sized to their own contents put their centres six pixels out of line, which
+     is exactly the sort of thing you see without being able to name. Same box, same
+     centre, whatever mark is in it. */
+  .popclose, .vefold, .oskfold { width: 28px; height: 28px; flex: none; padding: 0;
+              display: inline-grid; place-items: center; }
+  .popclose { font-size: 19px; line-height: 1;
+              color: var(--dim); background: none; border: none; }
+  .popclose:hover { color: var(--hot); background: none; border-color: transparent; }
+  .popclose::after { content: none; }
+  /* ---- the bench strip
+     What is on the bench and the figure it is played with. Its own band above the
+     columns, because it is about the ONE preset you have chosen and everything below
+     it is about choosing another. */
+  #voicelib .vlbench { display: flex; align-items: center; gap: 6px; flex: none;
+                       margin: 0 0 9px; padding: 6px 8px;
+                       background: #1b2129; border: 1px solid var(--line); border-radius: 5px; }
+  #voicelib .vlbenchwhat { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink);
+                           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #voicelib .vlbenchwhat.none { color: var(--dim); }
+  /* Octave, as a stepper reading the note it lands on. One outlined group rather than
+     three loose buttons: − A2 + is one control, and the reading in the middle is the
+     part you look at. Same furniture as the kind chips above it. */
+  #voicelib .vloct { display: flex; flex: none; align-items: stretch; gap: 2px; padding: 2px;
+                     background: #1b2129; border: 1px solid var(--line); border-radius: 4px; }
+  #voicelib .vloctbtn { width: 20px; flex: none; padding: 2px 0; font-size: 11px;
+                        line-height: 1; text-align: center; border-radius: 3px; }
+  /* Tabular and fixed-width: the reading changes as you step, and a group that resizes
+     under the pointer moves the very button you are clicking. */
+  #voicelib .vloctnow { width: 34px; flex: none; padding: 2px 0; font-size: 10px;
+                        text-align: center; color: var(--accent); background: none;
+                        border: none; font-variant-numeric: tabular-nums; }
+  #voicelib .vloctnow:hover:not(:disabled) { background: #313a47; }
+  #voicelib .vloct button:disabled { opacity: .3; }
+  #voicelib .vlonce { width: auto; flex: none; padding: 3px 10px; font-size: 10px; }
+  /* Square, and the width of its own glyph: ▶ and ■ are one control in two states, and
+     a button that changes width when you press it reads as two buttons. */
+  #voicelib .vlplay { width: 26px; flex: none; padding: 3px 0; font-size: 10px;
+                      text-align: center; }
+  #voicelib .vlplay.on { background: #2f4a44; color: var(--accent); border-color: #3f6058; }
+  /* A song is playing, so pressing this joins it rather than starting something beside
+     it. Marked on the border only — it is a fact about what the button will do, not a
+     state of the button, and filling it would make it look already pressed. */
+  #voicelib .vlplay.sync { border-color: #3f6058; color: var(--accent); }
+  /* Wide enough for `I – V – ♭VII`, which is the longest thing in the list — a select
+     that ellipsises its own options is a select you have to open to read. */
+  #voicelib .vlpat { width: 124px; flex: none; font-size: 10.5px; padding: 3px 5px; }
+  #voicelib .vlrate { width: 62px; flex: none; font-size: 10.5px; padding: 3px 5px; }
+  /* ---- the catalogue: a grid of category drawers -------------------------------
+     It was a wrapping flex row of bare columns, which is a masonry layout without the
+     masonry: KICKS has twenty presets and ORGANS has four, so a row was as tall as its
+     tallest category and everything shorter left a hole under it. Worse, the wrap point
+     moved with the window, so the category you knew was third from the left was third
+     from the left at one width and second on the next row at another.
+     A grid fixes the columns. Each category is a CARD, so a hole under a short one reads
+     as the end of that card rather than as a gap in the list, and the cards line up on
+     both axes however many presets each has.
+     `auto-fill` rather than the three columns this pattern usually wants: the window is
+     1000–1500px wide and a preset row is a short name and a badge, so three columns would
+     be 480px of mostly nothing. The min is the width a card needs for its longest name,
+     and the count follows from the width you gave the window. */
+  /* `grid-auto-rows: min-content` is load-bearing, not tidiness. This box is a flex child
+     with a DEFINITE height — 550px once the editor and the keyboard dock into the
+     workspace — and auto rows in a definite-height grid get fitted to it: three rows came
+     out at exactly (550 − gaps) / 3, and since a card is `align-self: start` it kept its
+     own height and simply drew over the card below. Basses ran 66px into Bells & Mallets.
+     Sizing the rows to their content and letting the whole grid overflow is what makes
+     `overflow-y: auto` above the thing that handles the excess. */
+  #voicelib .vlresults { display: grid; gap: 7px;
+                         grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+                         grid-auto-rows: min-content;
+                         align-content: start; flex: 1; min-height: 0; overflow-y: auto; }
+  /* Stretched, not `align-self: start`: every card in a row is as tall as the tallest
+     one beside it, so a category with four presets is a card with room under them
+     rather than a short box floating above a hole. The grid already lines the cards up
+     on both axes; this is what makes them look like one shelf.
+     And NOT `overflow: hidden`, which is what was cutting the long ones off. Hiding
+     overflow zeroes a grid item's automatic minimum size, so the auto row sized itself
+     from the card's min-content rather than its real height and the last preset or two
+     were clipped mid-row. The rounded top corner it was there for belongs to the head,
+     which now carries its own radius. */
+  #voicelib .vlcat { border: 1px solid var(--line); border-radius: 6px; background: #1b2129;
+                     display: flex; flex-direction: column; }
+  /* A titled bar across the top of the card rather than a word floating above a column.
+     The category was an `h5` with nothing around it, so where one list ended and the next
+     began was a matter of counting the gap — the outline says it, and the filled bar says
+     which end of the card the name belongs to.
+     Not a control. It was briefly a button that shut the card, and it is a heading again:
+     everything in the library is visible, and the only thing that scrolls is the list. */
+  #voicelib .vlcathead { margin: 0; flex: none; padding: 6px 8px; background: #212832;
+                         border-bottom: 1px solid #262d38; border-radius: 5px 5px 0 0;
+                         font-size: 9px; letter-spacing: .07em; text-transform: uppercase;
+                         color: var(--dim); font-weight: 400;
+                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Grows into whatever height the row's tallest card set, so the spare room is INSIDE
+     the card, under the last preset, and the cards end on one line. */
+  #voicelib .vlcatlist { display: flex; flex-direction: column; gap: 1px; padding: 3px;
+                         flex: 1; }
+  #voicelib .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
+  #voicelib .fxgroup h5 { margin: 0 0 2px; padding: 0 6px; font-size: 9px; letter-spacing: .07em;
+                          color: var(--dim); text-transform: uppercase; font-weight: 400; }
+  /* Scoped to the ROWS, not to the window and not to the results grid.
+     This is a preset row: full width, name left, synth right. Written as `#voicelib
+     button` it was also every button in the editor and the keyboard, which now live
+     inside this window — so the octave steppers became 900px slabs, MIDI and catch keys
+     lost their frames, and `space-between` pushed every label to the edge of whatever
+     box it was in. Naming `.vlresults` fixed those and then caught the category heads,
+     which are buttons in the grid too. A rule this opinionated has to name the thing it
+     is describing, which is a row in a drawer. */
+  #voicelib .vlcatlist button { display: flex; justify-content: space-between;
+                     align-items: center; gap: 8px; width: 100%; text-align: left;
+                     margin: 0; background: none; border: 1px solid transparent;
+                     padding: 3px 5px; font-size: 11px; border-radius: 4px;
+                     color: var(--ink); }
+  #voicelib .vlcatlist button:hover { background: #313a47; color: var(--accent); }
+  #voicelib .vlcatlist button.on { background: #2f4a44; color: var(--accent); }
+  #voicelib .vlcatlist button::after { content: none; }
+  #voicelib .vlcatlist button > span:first-child { min-width: 0; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+  /* A badge rather than trailing grey text. Right-aligned either way, but a pill says
+     this is a PROPERTY of the row — the thing it is built from — where loose text at the
+     end of a line reads as more of the name. Kept very quiet: there is one on every row
+     of a hundred, so anything with real contrast becomes a second column you have to
+     read past to find a preset.
+     Quiet is not the same as unreadable, and this went past it twice. #6d7481 on #242c36
+     is 3:1, under the 4.5 a body colour needs, at a size where the shortfall bites
+     hardest; 9px at #8a93a1 cleared the threshold on paper and still read as something
+     you had to lean in for. 10px against the row's 11 keeps the badge subordinate to the
+     name — which is the whole reason it is quiet — and #a8b0bd is 6:1, comfortably
+     legible rather than technically legible. The padding goes with the type: 1px of it
+     under 10px type is a pill with the label wedged into it. */
+  #voicelib .vkind { flex: none; color: #a8b0bd; font-size: 10px; letter-spacing: .06em;
+                     padding: 2px 6px; border-radius: 3px; background: #242c36; }
+  #voicelib .vlcatlist button:hover .vkind { background: #2c3540; color: #bcc4d0; }
+  #voicelib .vlcatlist button.on .vkind { background: #24443d; color: var(--accent); }
+  #voicelib .voicesearch-none { padding: 4px 6px; font-size: 11px; color: var(--dim); }
   #fxpicker .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 128px; }
   #fxpicker .fxgroup h5 { margin: 0 0 2px; padding: 0 6px; font-size: 9px; letter-spacing: .07em;
                           color: var(--dim); text-transform: uppercase; font-weight: 400; }
@@ -1159,17 +1704,121 @@
      A floating window, not a menu: it stays open while you work on a channel, so
      nothing about it is dismiss-on-click. Above the pickers in the stack because
      they are things you open, use and close, and this is a thing you play. */
-  #oskbtn { display: grid; place-items: center; padding: 4px 9px; }
-  .oskicon { width: 15px; height: 15px; }
-  .oskicon .body { fill: currentColor; }
+  #oskbtn, #seqbtn { display: grid; place-items: center; padding: 4px 9px; }
+  .oskicon, .seqicon { width: 15px; height: 15px; }
+  .oskicon .body, .seqicon .body { fill: currentColor; }
   #osk { position: fixed; z-index: 14; display: none; left: 0; top: 0;
          background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
          box-shadow: 0 18px 44px rgba(0,0,0,.66); user-select: none; }
   #osk.show { display: block; }
-  #osk .oskhead { display: flex; align-items: center; gap: 8px; padding: 6px 7px 6px 10px;
+  /* ---- docked along the bottom of the preset library --------------------------
+     Its second home. Floating it is a window you place; here it is the bottom band of
+     a workspace, so it gives up the frame, the shadow and the position entirely — a
+     `position: fixed` left/top on a node inside a flex row puts it somewhere else. */
+  #osk.docked { position: static; background: none; border: none; border-radius: 0;
+                box-shadow: none;
+                /* The band is the width of the workspace, not of the keys in it. A scale
+                   with few notes no longer stretches to fill the slot — see
+                   DOCK_KEY_MAX — and without this the whole thing shrank to the
+                   keyboard, taking the title bar and the fold mark on the right of it
+                   left along with the keys. The chrome stays put; only the keys get
+                   shorter. */
+                width: 100%; }
+  /* Left-aligned, so the title starts on the same x as the first white key below it and
+     the band reads as one object rather than as a caption floating over a keyboard.
+     Centring it put the name off the left edge entirely once the keys got wide. */
+  #osk.docked .oskhead { border-bottom: none; cursor: default; padding: 0 2px 5px; }
+  /* Title left with the keys, buttons in the middle of the band, fold mark on the right.
+     Two spacers of equal flex is what centres the middle group without it caring how
+     wide the title on the left happens to be — a preset called `DS Crack Snare` would
+     otherwise shove the buttons off-centre by the difference. */
+  /* The fold stays out of the flow, pinned right, with padding held back for it: it is
+     the end of the row rather than another item in it. Docked only — floating, the ✕ is
+     an ordinary item at the end of the row. */
+  #osk.docked .oskhead { position: relative; padding-right: 34px; }
+  #osk.docked .oskfold { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
+  /* Every button in this band is the same control at the same size, with its label in
+     the middle of it — the desk's own button, which is what the editor's Revert/Delete
+     row beside it is too. Sized to the label rather than to the row: `flex: none` is
+     what stops a flex child from being handed the leftover width. */
+  #osk.docked .oskhead button {
+    flex: none; width: auto; min-width: 74px; padding: 4px 10px;
+    font-size: 10px; text-align: center;
+    /* The same fill and frame as the editor's Revert/Delete row a few pixels to the
+       right — they are the same kind of control and sat side by side looking like two
+       different toolkits. */
+    background: #232a33; border-color: #39414f; }
+  #osk.docked .oskhead button:hover {
+    background: #2b3542; border-color: var(--accent); }
+  /* Selected is selected, and it is the desk's own mark for it. The fill above carries an
+     element selector and so out-specifies `button.on` — which set the label to near-black
+     for an accent face it no longer had, leaving MIDI and Keyboard switched ON in dark
+     ink on this band's dark grey. Unreadable, and not what any other on control here
+     looks like. */
+  #osk.docked .oskhead button.on, #osk.docked .oskhead button.on:hover {
+    background: var(--accent); border-color: var(--accent); color: #10231f; }
+  /* The steppers are a glyph, not a word, so they are sized to the glyph. Written with
+     the parent class so they out-specify the rule above — `#osk.docked .oskhead button`
+     carries an element selector, which a plain `#osk.docked .oskup` cannot beat. */
+  #osk.docked .oskhead .oskdown, #osk.docked .oskhead .oskup { min-width: 34px; padding: 4px 0; }
+  /* And the fold is not a labelled button at all — it keeps its shared 28px square, or
+     the 74px minimum above makes it wide enough to sit under the button beside it. */
+  #osk.docked .oskhead .oskfold { min-width: 0; width: 28px; padding: 0; }
+  /* Neither of these is a menu, and `.devlink`'s caret would say they were. */
+  #osk.docked button::after { content: none; }
+  /* Folds down, and says so. Same mark as the editor's — see foldIcon. */
+  #osk .oskfold { line-height: 0; color: var(--dim); background: none; border: none; }
+  #osk .oskfold:hover { color: var(--accent); background: none; }
+  #osk .oskfold::after { content: none; }
+
+  /* ---- the fold mark ----------------------------------------------------------
+     Two hard mitred angles, drawn rather than typed. A `›` inherits the font's weight
+     and its idea of a corner, which at this size is thin and soft and reads as
+     decoration; this reads as a control. Square caps and a mitre join on purpose —
+     the point of the shape is that the angles are exact. */
+  .foldicon { width: 15px; height: 15px; display: block; fill: none;
+              stroke: currentColor; stroke-width: 2.4;
+              stroke-linecap: square; stroke-linejoin: miter; }
+  /* One chevron is a stepper; two is a panel. The pair is a toggle: `»` reveals the
+     editor, `«` puts it away, and the same two rotated a quarter turn do the keyboard.
+     So one shape means "this panel", and which way it points means which way it goes. */
+  .foldicon.fold-left { transform: rotate(180deg); }
+  .foldicon.fold-down { transform: rotate(90deg); }
+  .foldicon.fold-up { transform: rotate(-90deg); }
+  /* On the strip header, where the pencil was. A ✎ says "edit something"; this says
+     "the editor opens, over there" — which is the thing the button actually does, and
+     it is the same mark that closes it again. */
+  .stripedit .foldicon { width: 13px; height: 13px; stroke-width: 2.6; }
+  /* No heights here any more, for either board. A key is a shape — KEY_W by KEY_H, with
+     the black one inside it — and the builder scales that whole set by whatever width the
+     band gave it, so both boards are the same instrument at two sizes. Two hard-coded
+     pairs of heights is what made the docked one a stub: its keys are wider than the
+     floating board's, and the same 132px against 49 across is not the same key as 132
+     against 39. See buildOskKeys.
+     Only the type is still set here, and it does NOT scale: the labels are read at the
+     size labels are read at, whatever the key under them is doing. */
+  #osk.docked .oskkeys { margin: 0; }
+  #osk.docked .oskname { font-size: 10px; }
+  #osk.docked .oskletter { font-size: 9px; line-height: 11px; height: 11px;
+                           margin-bottom: 7px; }
+  /* Pads never dock — they are drawn for a percussion CHANNEL and the bench always
+     draws keys (see oskIsKit) — so they keep the scale they had. */
+  #osk.docked .oskpads { zoom: 1.35; margin: 0; }
+  /* ONE row, wherever the keyboard is: name, octave, range, key, and the two buttons that
+     say what plays it. Docked was already this; floating was a title bar with a control
+     row under it, which is two bands to scan where there is width for one and made the
+     same keyboard a different panel depending on where it was sitting. See buildOsk.
+     `flex-wrap` is the out: at a width that cannot take the row it becomes two, which is
+     where the floating board started rather than a layout that breaks. */
+  #osk .oskhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+                  padding: 6px 7px 6px 10px;
                   border-bottom: 1px solid var(--line); cursor: grab; }
   #osk .oskhead.dragging { cursor: grabbing; }
-  #osk .osktitle { font-size: 11px; color: var(--ink); font-weight: 700;
+  /* The name takes the left and every control takes the right, held apart by `.sp`. Sized
+     to itself, not to the row: without `flex: none` the octave group slides along by
+     however many characters the preset happens to be called, and picking a different one
+     moves the button you were about to press. */
+  #osk .osktitle { flex: none; font-size: 11px; color: var(--ink); font-weight: 700;
                    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
   /* Why nothing is coming out — muted, or not the soloed channel. Only drawn when
      there is something to say, and in the title bar rather than as a caption. */
@@ -1182,45 +1831,200 @@
   #osk .oskclose:hover { color: var(--hot); border-color: transparent; }
   #osk .oskclose .pwr { width: 12px; height: 12px; fill: none; stroke: currentColor;
                         stroke-width: 1.5; stroke-linecap: round; }
-  #osk .oskctl { display: flex; align-items: center; gap: 6px; padding: 7px 10px 5px; }
-  #osk .oskctl button { padding: 2px 8px; font-size: 10px; line-height: 1.4; }
+  /* The steppers, wherever they are drawn. `.oskctl` is the box they are BUILT in and it
+     is never appended to anything — see buildOsk — so a rule hung off it styled nothing. */
+  #osk .oskdown, #osk .oskup { padding: 2px 8px; font-size: 10px; line-height: 1.4; }
   #osk .oskoct { font-size: 11px; color: var(--accent); font-weight: 700;
                  font-variant-numeric: tabular-nums; min-width: 26px; text-align: center; }
-  #osk .oskrange { font-size: 10px; color: var(--dim); margin-left: 4px; }
+  /* `C2 – C5` is one reading, not three lines: in a flex row it otherwise takes the
+     narrowest box it can and stacks. It sits with the octave it describes rather than
+     being pushed to the far end — with one row there is no far end to push it to. */
+  #osk .oskrange { font-size: 10px; color: var(--dim); white-space: nowrap; }
+  /* The key to play in. Two controls with one label over the pair — they are one
+     setting asked as two questions.
+     Air either side of it, so it reads as its own thing. The row is one 10px gap between
+     every item, which makes eight controls in a line with nothing saying which belong
+     together — and there are three groups in it: the octave with the range it describes,
+     the key, and the two buttons that say what plays it. A wider gap at each seam is the
+     whole separation; a rule or a divider would be drawing a line where a space says it.
+     One margin per SEAM, not one per group — a matching margin on the scale's RIGHT would
+     add to MIDI's rather than replace it, and that seam came out 34px against 26. Each
+     seam is named once: the scale opens the middle group, MIDI opens the last. */
+  #osk .oskscale { display: flex; align-items: center; gap: 5px; margin-left: 16px; }
+  #osk .oskmidi { margin-left: 16px; }
+  #osk .oskscalek { font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+                    color: var(--dim); white-space: nowrap; }
+  #osk .oskroot { width: 52px; font-size: 10px; padding: 3px 4px; }
+  #osk .oskscalekind { width: 122px; font-size: 10px; padding: 3px 4px; }
+  #osk .oskroot:disabled { opacity: .4; }
+  /* Outside the key: still a key, still plays, just not one of the ones you are aiming
+     for. Enough contrast to scan past, not so little that it reads as broken or
+     disabled — a greyed-out key on a keyboard means "this will not sound". */
+  /* `offscale` survives for the chromatic-with-a-key case that no longer exists in the
+     layout — a key now draws only its own notes, so nothing is off it. Kept because it
+     costs nothing and the alternative is a rule that has to be re-derived if the piano
+     ever wants a scale drawn over it again. */
+  /* ---- every state below paints background-COLOR, never `background` -----------
+     The face is a colour PLUS a `background-clip` that keeps it out of the gap either
+     side of the key (see .oskkey.white), and the shorthand resets the clip along with
+     everything else — a lit key would bleed its accent into both gaps and a run of them
+     would go back to reading as one bar. Nor does any state touch the border, which is
+     what the gap is made of.
+     The modelling is `box-shadow`, which no state touches either, so a key keeps its
+     shape whatever colour it happens to be wearing. */
+  #osk .oskkey.white.offscale { background-color: #9aa2b0; color: #6a7280; }
+  #osk .oskkey.white.offscale:hover { background-color: #b6bdc9; }
+  #osk .oskkey.black.offscale { background-color: #131519; color: #3a4048; }
+  #osk .oskkey.black.offscale:hover { background-color: #1d2127; }
+  /* ---- in a key: one kind of key ---------------------------------------------
+     A scale has five or seven notes where a piano has twelve, so drawn as a piano it is
+     mostly gaps. Uniform keys means every key belongs and none has to be aimed past. The
+     root is marked, because the C's are no longer where the octaves visibly start — in A
+     minor pentatonic there is no C to count from.
+     Nothing about the key ITSELF changes here: same moulded white key, same air either
+     side. A scale is this keyboard with the notes you did not want taken out of it, not
+     a second instrument that happens to live in the same window. */
+  #osk .oskkey.scalekey.tonic { background-color: #c3cbd8; }
+  #osk .oskkey.scalekey.tonic:hover { background-color: #d5dce7; }
+  #osk .oskkey.scalekey.tonic .oskname { color: #4a525f; font-weight: 700; }
   /* The channel is sounding — whatever it is sounding. A percussion lane's own note
      is nowhere near this keyboard, and "the kick is playing" is still the answer. */
+  /* In the title bar, last of the MIDI/Keyboard group, so it takes the row's own gap and
+     nothing more. It used to end the control row below with `margin-left: auto`; here
+     that would shove it and the fold mark apart — the far end of the bar rather than the
+     end of the group it reads for. */
   #osk .oskpulse { width: 7px; height: 7px; border-radius: 50%; background: #39414d;
-                   margin-left: auto; transition: background .05s ease; }
+                   transition: background .05s ease; }
   #osk .oskpulse.on { background: var(--accent); box-shadow: 0 0 6px rgba(78,201,176,.7); }
   /* A note the keyboard cannot show lights the octave button that would reach it. */
-  #osk .oskctl button.offscreen { color: var(--accent); border-color: var(--accent); }
+  #osk .oskdown.offscreen, #osk .oskup.offscreen { color: var(--accent); border-color: var(--accent); }
+  /* ---- the board: a chassis with keys set into it -------------------------------
+     Built the way a small MIDI controller is: a dark frame all the way round, and every
+     key a separate moulded object with air either side of it. What was here before was
+     keys butted edge to edge with a hairline scratched between them — which is how a
+     piano is DIAGRAMMED, not how one looks, and at the docked size that hairline was the
+     only thing saying where one key ended and the next began.
+     `content-box` on purpose. The width is set inline in pixels by the builder and it is
+     the width of the KEYS; the frame is a border so it adds around that number rather
+     than eating into it. A border is also the only thing that could inset the keys at
+     all — they are absolutely positioned, so they lay out from the padding box and
+     padding would have moved them nowhere. The 5px is duplicated in JS as OSK_CHASSIS,
+     which is what fitDockedKeys has to leave room for; the same bargain KEY_W already
+     makes with the inline widths. */
+  #osk .oskkeys { position: relative; height: var(--oskwhiteh, 129px); margin: 0 10px 10px;
+                  box-sizing: content-box;
+                  border: 5px solid #0e1116; border-radius: 9px; background: #0e1116;
+                  box-shadow: 0 2px 7px rgba(0,0,0,.5),
+                              inset 0 1px 0 rgba(255,255,255,.055); }
   /* Absolute inside a relative box, whites then blacks: the blacks are painted after
      so they sit over their neighbours without a z-index to keep in step. */
-  #osk .oskkeys { position: relative; height: 86px; margin: 0 10px; }
-  #osk .oskkey { position: absolute; top: 0; border-radius: 0 0 4px 4px;
+  #osk .oskkey { position: absolute; top: 0; border-radius: 2px 2px 5px 5px;
                  display: flex; flex-direction: column; justify-content: flex-end;
                  align-items: center; gap: 2px; padding-bottom: 4px; cursor: pointer; }
-  #osk .oskkey.white { height: 86px; background: #d8dde6; border: 1px solid #9aa3b2;
-                       border-top: none; color: #737b8a; }
-  #osk .oskkey.black { height: 54px; background: #1a1d23; border: 1px solid #0d0f13;
-                       border-top: none; color: #7d8695; border-radius: 0 0 3px 3px; }
-  #osk .oskkey.white:hover { background: #eef1f6; }
-  #osk .oskkey.black:hover { background: #262b33; }
+  /* ---- a white key --------------------------------------------------------------
+     The air either side is a TRANSPARENT BORDER with the face clipped inside it, not a
+     narrower key. The layout puts keys on an exact pixel grid — see fitDockedKeys — and
+     taking two pixels off each width would have put every face back on a different
+     fraction of a pixel, which is the thing that made them look unequal in the first
+     place. Done this way the gap is the chassis seen between two keys rather than a line
+     painted on them, and the grid survives.
+     The moulding is all inset shadow: a shade where the frame overhangs the top, a lip
+     along the bottom, a highlight down the left edge. Shadows rather than a gradient
+     because `lit` and `sung` repaint the colour and a background-image would have gone
+     with it — this way a key keeps its shape the whole time it is sounding. */
+  #osk .oskkey.white { height: var(--oskwhiteh, 129px); background-color: #e9ecf2; color: #737b8a;
+                       border: none;
+                       border-left: 1px solid transparent;
+                       border-right: 1px solid transparent;
+                       background-clip: padding-box;
+                       box-shadow: inset 0 3px 4px -2px rgba(20,26,38,.40),
+                                   inset 0 -5px 5px -4px rgba(20,26,38,.45),
+                                   inset -3px 0 4px -3px rgba(20,26,38,.30),
+                                   inset 1px 0 0 rgba(255,255,255,.55); }
+  /* Shorter, darker, and sitting ON the whites rather than between them — so this one
+     gets a real drop shadow, which is the whole reason the black row reads as raised
+     above the white row instead of as holes cut in it.
+     Both heights come in from the builder, scaled off the key width the band gave it —
+     see BLACK_H. The white keys' LETTERS are placed off the black one too, so they sit
+     just below where the black row ends whatever size the board came out at. The
+     fallbacks are the floating board's own numbers, which is what they measure before the
+     first build sets them. */
+  #osk .oskkey.black { height: var(--oskblackh, 81px); background-color: #171b22; color: #7d8695;
+                       border: none; border-radius: 0 0 4px 4px;
+                       box-shadow: 0 2px 4px rgba(0,0,0,.55),
+                                   inset 0 1px 0 rgba(255,255,255,.10),
+                                   inset 0 -6px 6px -4px rgba(0,0,0,.75); }
+  #osk .oskkey.white:hover { background-color: #f2f4f8; }
+  #osk .oskkey.black:hover { background-color: #232833; }
   /* Two different things light a key, and they must not look the same. `lit` is YOU:
      full accent, the same teal as everything else on this desk that is ON. `sung` is
      the SONG playing through the channel — the same colour a shade back, so a part
      running under your hands reads as the track rather than as your own playing. */
-  #osk .oskkey.white.sung { background: #a6e2d5; border-color: #7fc4b5; }
-  #osk .oskkey.black.sung { background: #2f6b60; border-color: #2f6b60; color: #cfe9e2; }
-  #osk .oskkey.white.lit { background: var(--accent); border-color: var(--accent); color: #10231f; }
-  #osk .oskkey.black.lit { background: var(--accent); border-color: var(--accent); color: #10231f; }
-  #osk .oskname { font-size: 8px; letter-spacing: .02em; opacity: .8; }
+  #osk .oskkey.white.sung { background-color: #a6e2d5; }
+  #osk .oskkey.black.sung { background-color: #2f6b60; color: #cfe9e2; }
+  #osk .oskkey.white.lit { background-color: var(--accent); color: #10231f; }
+  /* A black key lit in the same bright accent as a white one stops being a black key —
+     in a chord the two rows merge into one colour and the shape you are playing
+     disappears. So it lights DARKER: unmistakably on, and still the dark row. */
+  #osk .oskkey.black.lit { background-color: #2c9c85; color: #eafaf5; }
+  /* ---- two label rows, and a key always has both ------------------------------
+     The note name and the letter are stacked bottom-up, so a key with a NAME on it
+     pushed its letter up a row while its neighbours' letters stayed on the floor — A sat
+     above C2 and S sat beside C2, one row lower. Every seventh letter out of line, which
+     is exactly where the eye is trying to count from.
+     Only the C's are named, so the row cannot be there only when it is filled: both
+     labels keep their line whether or not there is anything on it, and the letters run
+     straight across. `flex: none` because an empty box is one a flex column will
+     otherwise happily crush back to nothing. */
+  #osk .oskname { font-size: 8px; line-height: 10px; height: 10px; flex: none;
+                  letter-spacing: .02em; opacity: .8; }
   #osk .oskkey.black .oskname { display: none; }   /* no room, and C# is not the one you hunt for */
   /* Which computer key plays which note — drawn only while the keyboard is catching
      them, because a letter on a key you can only click is a letter that does
      nothing. */
-  #osk .oskletter { font-size: 9px; font-weight: 700; opacity: .5; display: none; }
+  /* Each kind of key gets its own ink rather than the key's own colour at half
+     opacity. Inherited and faded, the letter on a BLACK key was a dark grey at 50% over
+     a near-black face — W, E, T, Y and U were, in practice, not there.
+     A reminder of which computer key plays which note, glanced at while you learn the
+     row and ignored afterwards — so it sits well back from the note name, and further
+     back than it used to: smaller, lighter, and lifted clear of the name rather than
+     stacked on top of it. On a big key a bold dark letter stops being an annotation and
+     starts being what the key says it is.
+     The trade is named rather than hidden: these no longer clear 4.5:1 on the white face.
+     They are a legend for a keyboard whose keys are also labelled with their notes and
+     playable by mouse, not text anything has to be read from — and the alternative was a
+     legend loud enough to read the keyboard as. */
+  #osk .oskletter { font-size: 8px; line-height: 10px; height: 10px; flex: none;
+                    margin-bottom: 4px; font-weight: 500; display: none; }
   #osk.catching .oskletter { display: block; }
+  #osk .oskkey.white .oskletter { color: #7f8796; }
+  /* The black ones stay where they are. Darker on a near-black face is not "further
+     back", it is gone — which is the state W E T Y and U were already rescued from once
+     (see above). Recessive there is a job for the dim end of the LIGHT range, and this is
+     already at it. */
+  #osk .oskkey.black .oskletter { color: #6e7684; }
+  /* Up under the black keys, rather than a few pixels off the floor.
+     On a tall key the bottom is a long way from anything: a letter down there reads as a
+     second caption on the note name instead of as a legend for the key, and the eye has
+     to travel the whole key to get from the black row's letters to the white row's. Sat
+     just below where the black keys end, the two rows of letters are one band you read
+     across — which is what they are, and what they look like on the controller this
+     keyboard is drawn after.
+     `margin-bottom: auto` is what does it. An auto margin eats the free space before
+     `justify-content` gets a look in, so the letter takes its distance from the TOP while
+     the note name stays where it was, on the floor of the key. Positioning it from the
+     top is the only way to tie it to the black keys, which also start there. */
+  #osk .oskkey.white .oskletter { margin-top: calc(var(--oskblackh) + 14px);
+                                  margin-bottom: auto; }
+  /* Off-key faces are darker again. The black ones only get darker, so the light ink
+     holds; the white ones go grey, which eats a mid-tone letter — so theirs goes DARKER
+     rather than lighter. Being off the key is said by the face, not by making the label
+     hard to read: an unreadable letter on a playable key is just an unreadable letter. */
+  #osk .oskkey.white.offscale .oskletter { color: #3d434e; }
+  /* Lit and sung repaint the whole key, and the letter goes with them — the accent face
+     is bright enough that the key's own dark ink is the readable one. */
+  #osk .oskkey.lit .oskletter, #osk .oskkey.white.sung .oskletter { color: inherit; }
+  #osk .oskkey.black.sung .oskletter { color: #eaf5f2; }
   /* A drum channel gets the kit, not a piano: one pad per drum the song has. */
   #osk .oskpads { display: flex; gap: 4px; margin: 10px; }
   #osk .oskpad { width: 62px; height: 62px; border-radius: 5px; background: #2b313a;
@@ -1432,6 +2236,31 @@
   #gate { position: fixed; inset: 0; background: rgba(10,11,14,.94); display: flex;
           align-items: center; justify-content: center; z-index: 9; }
   #gate button { font-size: 15px; padding: 14px 26px; }
+  /* The desk's own dialog. A browser confirm() is a system panel that names the
+     PORT you are on, cannot be styled, and reads like the page has done something
+     wrong; this is the same question asked by the tool asking it. */
+  #ask { position: fixed; inset: 0; background: rgba(10,11,14,.72); z-index: 40;
+         display: none; align-items: center; justify-content: center; }
+  #ask.show { display: flex; }
+  #askbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.6); width: min(420px, 90vw); padding: 20px 22px 16px; }
+  #asktitle { font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+  #askbody { font-size: 12px; color: var(--dim); line-height: 1.5; margin-bottom: 18px; }
+  #askbody b { color: var(--ink); font-weight: 500; }
+  /* A question that needs a word back rather than a yes. The field is the thing being
+     answered, so it gets the room and the ink; Enter still means OK, as it does in
+     every other ask. */
+  #askbody .askfield { display: block; margin-top: 14px; font-size: 10px; color: var(--dim);
+                       text-transform: uppercase; letter-spacing: .06em; }
+  #askbody .askfield input { display: block; width: 100%; margin-top: 5px; padding: 7px 9px;
+                             font: inherit; font-size: 12px; color: var(--ink);
+                             background: #1b2129; border: 1px solid var(--line);
+                             border-radius: 4px; }
+  #askbody .askfield input:focus { outline: none; border-color: var(--accent); }
+  #askrow { display: flex; gap: 8px; justify-content: flex-end; }
+  #askrow button { padding: 7px 16px; font-size: 12px; }
+  #askok { background: var(--accent); border-color: var(--accent); color: #10221e; font-weight: 600; }
+  #askok:hover { filter: brightness(1.1); }
 </style>
 
 <header>
@@ -1439,37 +2268,37 @@
        where it is, what you are doing to it, and what happens to the result. -->
   <!-- Just the symbol: which song is loaded is in the footer, where its name has
        room, and opening one is a gesture you make a few times an hour. -->
-  <div class="grp"><button id="songbtn" title="load another song" aria-label="load another song">
+  <div class="grp"><button id="songbtn" title="Load another song" aria-label="Load another song">
     <svg viewBox="0 0 16 16" class="songicon"><path d="M2 4.4h4.8L8.2 6H14v7.2H2z"/><path d="M2 4.4V3h4l1.4 1.4"/></svg>
   </button></div>
 
   <div class="hdiv"></div>
 
   <div class="grp transport">
-    <button id="playstart" title="play from the top of the song">
+    <button id="playstart" title="Play from the top of the song">
       <!-- A rect, not a line: these icons are filled and never stroked, so a
            zero-width line draws nothing at all. -->
       <svg viewBox="0 0 16 16"><rect x="3" y="3.2" width="2.1" height="9.6" rx=".9"/><path d="M6.6 3.4 13 8l-6.4 4.6z"/></svg>
     </button>
-    <button id="stop" title="stop, and go back to where playback started">
+    <button id="stop" title="Stop, and go back to where playback started">
       <svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>
     </button>
-    <button id="play" class="playbtn" title="play (space)">
+    <button id="play" class="playbtn" title="Play (space)">
       <svg viewBox="0 0 16 16"><path d="M4.5 3l8 5-8 5z"/></svg>
     </button>
-    <button id="pause" title="pause where you are (space)">
+    <button id="pause" title="Pause where you are (space)">
       <svg viewBox="0 0 16 16"><rect x="4" y="3.5" width="3" height="9" rx="1"/><rect x="9" y="3.5" width="3" height="9" rx="1"/></svg>
     </button>
   </div>
 
   <div class="grp">
-    <button id="clearsolo" title="nothing is soloed">S</button>
+    <button id="clearsolo" title="Nothing is soloed">S</button>
   </div>
 
 
   <div class="grp looptray">
-    <button id="looptoggle" title="loop the region shown on the timeline">Loop</button>
-    <select id="loopbars" title="how many bars the loop covers">
+    <button id="looptoggle" title="Loop the region shown on the timeline">Loop</button>
+    <select id="loopbars" title="How many bars the loop covers">
       <option value="1" selected>1 Bar</option>
       <option value="2">2 Bars</option>
       <option value="4">4 Bars</option>
@@ -1483,10 +2312,10 @@
   <!-- Telemetry, not text: each number in its own recessed window, so the row scans
        as a set of readouts rather than as a sentence. -->
   <div class="grp readouts">
-    <span class="stat" title="bar under the playhead"><span class="label">Bar</span><span id="barnow">1</span></span>
-    <span class="stat" title="position in the song"><span class="label">Time</span><span id="tnow">0:00</span></span>
+    <span class="stat" title="Bar under the playhead"><span class="label">Bar</span><span id="barnow">1</span></span>
+    <span class="stat" title="Position in the song"><span class="label">Time</span><span id="tnow">0:00</span></span>
     <span class="stat"><span class="label">BPM</span><span id="bpm">—</span></span>
-    <span class="stat" title="rough load estimate"><span class="label">CPU</span><span id="cpu">~10%</span></span>
+    <span class="stat" title="Rough load estimate"><span class="label">CPU</span><span id="cpu">~10%</span></span>
   </div>
 
   <div class="sp"></div>
@@ -1496,7 +2325,7 @@
          transport is what the SONG does, and this is what you do. Two white keys and
          the black between them — small enough to read at 15px, and a piano rather
          than a computer keyboard, which is what it plays like. -->
-    <button id="oskbtn" title="play the selected channel from a keyboard" aria-label="on-screen keyboard">
+    <button id="oskbtn" title="Play the selected channel from a keyboard" aria-label="On-screen keyboard">
       <!-- One path, even-odd: the body is solid and the keys are HOLES in it, so the
            black keys are whatever is behind the icon. That is what makes it read on
            the panel and still read when the button lights up teal — a shape drawn in
@@ -1507,7 +2336,17 @@
         <path class="body" fill-rule="evenodd" d="M3 3.4h10a1.4 1.4 0 0 1 1.4 1.4v6.4a1.4 1.4 0 0 1-1.4 1.4H3a1.4 1.4 0 0 1-1.4-1.4V4.8A1.4 1.4 0 0 1 3 3.4Zm1.7 0h2.2v5.4H4.7Zm4.4 0h2.2v5.4H9.1ZM5.35 8.9h.9v3.7h-.9Zm4.4 0h.9v3.7h-.9Z"/>
       </svg>
     </button>
-    <button id="ab" title="Hold to hear the saved mix">A/B saved</button>
+    <!-- The step grid. Drawn as what it is: four beats of a bar, the first and third
+         struck. Filled squares are hits and hollow ones are rests, which is the same
+         reading the grid itself asks for — so the icon is a tiny picture of the thing
+         rather than a symbol you have to learn. -->
+    <button id="seqbtn" title="Step grid — what the kit plays, sixteen squares a bar (g)" aria-label="Step grid">
+      <svg viewBox="0 0 16 16" class="seqicon">
+        <path class="body" fill-rule="evenodd" d="M2 4.2h3.1v3.1H2Zm4.6 0h3.1v3.1H6.6Zm4.6 0h3.1v3.1h-3.1ZM2 8.7h3.1v3.1H2Zm4.6 0h3.1v3.1H6.6Zm4.6 0h3.1v3.1h-3.1Z" opacity=".34"/>
+        <path class="body" d="M2 4.2h3.1v3.1H2Zm9.2 0h3.1v3.1h-3.1ZM6.6 8.7h3.1v3.1H6.6Z"/>
+      </svg>
+    </button>
+    <button id="ab" title="Hold to hear the saved song">A/B saved</button>
     <button id="undo" disabled title="⌘Z">Undo</button>
   </div>
 
@@ -1515,18 +2354,18 @@
        lives inside with the rest of what happens to the work. A dot here when this
        song is not in the file yet. -->
   <div class="grp project">
-    <button id="more" title="the rest of it — save, files, reset, typeface">⋯</button>
+    <button id="more" title="The rest of it — save, files, reset, typeface">⋯</button>
   </div>
 </header>
 
-<div id="timeline" title="click to park the playhead here · double-click to play from here">
+<div id="timeline" title="Click to park the playhead here · double-click to play from here">
   <!-- Same fold, same place, same caption style as the arrangement below: the two
        rows are one column of panels, and this one had a hidden half. -->
   <div id="tlhead">
-    <button id="tlfold" class="foldbtn folded" title="show the song sections" aria-label="show the song sections">
+    <button id="tlfold" class="foldbtn folded" title="Show the song sections" aria-label="Show the song sections">
       <svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
     </button>
-    <span class="label">timeline</span>
+    <span class="label">Timeline</span>
   </div>
   <div id="barsarea">
     <div id="ruler"></div>
@@ -1542,10 +2381,10 @@
 <div id="arrange">
   <!-- The fold sits with the name it folds, on the left where the eye starts. -->
   <div id="arrhead">
-    <button id="arrfold" class="foldbtn" title="collapse the arrangement" aria-label="collapse the arrangement">
+    <button id="arrfold" class="foldbtn" title="Collapse the arrangement" aria-label="Collapse the arrangement">
       <svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
     </button>
-    <span class="label">arrangement</span>
+    <span class="label">Arrangement</span>
     <span class="sp" style="flex:1"></span>
   </div>
   <div id="arrgrid"></div>
@@ -1553,16 +2392,16 @@
 
 <!-- Drag to give the arrangement more or less of the window; double-click to hand
      it back to the automatic fit. -->
-<div id="arrsplit" title="drag to resize the arrangement · double-click to fit automatically"></div>
+<div id="arrsplit" title="Drag to resize the arrangement · double-click to fit automatically"></div>
 
 <!-- The mixer's header, with the track-family switches running along it above the
      strips they filter — one button per family, each as wide as a strip. -->
 <div id="mixhead">
   <div class="capgrp">
-    <button id="mixfold" class="foldbtn" title="collapse the mixer" aria-label="collapse the mixer">
+    <button id="mixfold" class="foldbtn" title="Collapse the mixer" aria-label="Collapse the mixer">
       <svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg>
     </button>
-    <span class="label">mixer</span>
+    <span class="label">Mixer</span>
   </div>
   <div id="lanefilter"></div>
 </div>
@@ -1574,7 +2413,7 @@
 
 <div id="devices">
   <div id="devhead">
-    <button id="devfold" class="foldbtn" title="collapse the effects panel" aria-label="collapse the effects panel">
+    <button id="devfold" class="foldbtn" title="Collapse the effects panel" aria-label="Collapse the effects panel">
       <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
     </button>
     <span id="devtitle" class="label"></span>
@@ -1584,7 +2423,7 @@
 </div>
 
 <footer>
-  <span id="nowsong" title="the song on the desk">—</span>
+  <span id="nowsong" title="The song on the desk">—</span>
   <span id="pos">—</span>
   <span id="section"></span>
   <span id="peakinfo"></span>
@@ -1593,12 +2432,12 @@
        they live — the timeline and strip heads carry the first in their tooltips, and
        ⋯ → Playhead ms is the other one's home — and a footer that lists everything
        stops being read at all. -->
-  <span><b>space</b> play/pause · <b>L</b> loop · <b>1/2/4/8/0</b> loop bars · <b>←→</b> bar · <b>↑↓</b> channel · <b>M S R</b> mute/solo/reset · <b>B</b> bypass fx · <b>keyboard</b> play the channel · <b>right-click</b> a strip · <b>⌘Z</b> undo</span>
+  <span><b>Space</b> Play/pause · <b>L</b> Loop · <b>1/2/4/8/0</b> Loop bars · <b>←→</b> Bar · <b>↑↓</b> Channel · <b>M S R</b> Mute/solo/reset · <b>B</b> Bypass FX · <b>Keyboard</b> Play the channel · <b>Right-click</b> A strip · <b>⌘Z</b> Undo</span>
 </footer>
 
 <!-- The header holds what you touch while mixing; everything else lives here. -->
 <div id="moremenu">
-  <div class="ctxhead">this song</div>
+  <div class="ctxhead">This song</div>
   <!-- First item, because it is what the drawer is most often opened for. It carries
        its own state: disabled, dimmed and reading "Saved — matches the file" when
        there is nothing to write, rather than a live button that answers with a toast.
@@ -1606,49 +2445,64 @@
   <!-- One song, always: this drawer is headed "this song" and it means it. There is
        deliberately no "save every changed song" — writing several mixes in one go
        writes most of them from memory rather than from listening. -->
-  <button id="save">Save to game</button>
-  <button id="revert">Revert to the saved mix</button>
-  <!-- The song's shape, as opposed to its balance. Hidden until this song has an
-       arrangement at all, because on every other song it would be a button that
-       undoes nothing. -->
-  <button id="revertarr" hidden>Play the written arrangement</button>
+  <button id="save">Save song</button>
+  <button id="revert" title="Throw away everything unsaved for this song — faders, effects and bar edits alike">Discard unsaved changes</button>
   <!-- The way back into a version of mix.js that has already been overwritten.
        Revert above goes to what is on disk NOW; this goes to what was on disk before
        one of this desk's earlier saves, from the copies kept in .mix-history/.
        Loads into the draft, so it is audible and undoable before it is written — and
        only ever into THIS song's draft, whichever save the copy was taken for. -->
-  <button id="history" title="put this song back to how it was in an earlier version of src/data/mix.js, from the copies kept every time this desk saves — this song only, no other is touched">Restore a previous save…</button>
-  <!-- Hidden until this song has a deleted track. Delete is the one edit whose undo
-       cannot live on the thing it removed — the row and the strip are both gone —
-       so its way back lives here. updateStatus() shows it and counts it. -->
-  <button id="restore" hidden>Restore deleted tracks…</button>
-  <button id="resetsong">Reset every channel</button>
-  <div class="ctxhead">files</div>
-  <button id="renderwav" title="render this song offline through the real engine with this mix, and write dist/<slug>-mix.wav">Render WAV</button>
-  <button id="auditionwav" title="render this mix and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it">Audition through a plugin…</button>
-  <button id="midi" title="download this song as a MIDI file">Export MIDI</button>
-  <button id="importmidi" title="turn a .mid into a song and switch to it — same filename replaces">Import MIDI…</button>
+  <button id="history" title="Put this song back to an earlier saved version — this song only, no other is touched">Open an earlier version…</button>
+  <button id="resetsong">Zero every channel</button>
+  <div class="ctxhead">Files</div>
+  <button id="renderwav" title="Render this song offline through the real engine and write its WAV">Render WAV</button>
+  <button id="auditionwav" title="Render this song and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it">Audition through a plugin…</button>
+  <button id="midi" title="Download this song as a MIDI file">Export MIDI</button>
+  <button id="importmidi" title="Turn a .mid into a song and switch to it — same filename replaces">Import MIDI…</button>
   <input id="midifile" type="file" accept=".mid,.midi,audio/midi" hidden>
   <!-- Export only. "Import mix JSON" pasted an entry straight onto whatever song was
        on the desk, and a whole file straight onto every song at once — the two ways
        one song's balance could land on another's parts. A mix is balanced by ear
        against the song it was written for and means nothing on any other, so the desk
-       has no way to move one. This is a copy of your unsaved drafts, and that is all. -->
-  <button id="export" title="download your unsaved drafts as JSON — a copy to keep, not a way to load a mix onto a song">Export mix as JSON</button>
-  <div class="ctxhead">desk</div>
-  <label class="morerow"><span>Font</span><select id="font" title="typeface for the desk"></select></label>
+       has no way to move one. This is a copy of your unsaved drafts, and that is all.
+
+       The way BACK is "Open an earlier version…" above, which reads .mix-history/ and
+       is song-locked by construction. This file is the copy you keep somewhere the
+       desk cannot reach — the one that survives a bad save, a cleared browser or a
+       server that turned out to be running last week's code. -->
+  <button id="exportjson" title="Save this song's mix and pattern edits to a JSON file you name — a copy the desk cannot lose">Export edits as JSON…</button>
+  <!-- The catalogue itself, which is not about this song and says so by being under its
+       own heading. Every other way into the preset editor goes through a strip, which
+       is right while you are mixing and wrong while you are working on the library:
+       it made a preset reachable only through a song that happened to play it, and a
+       preset nothing plays yet reachable not at all. -->
+  <div class="ctxhead">Library</div>
+  <button id="voicelibbtn" title="Every preset in src/data/voices.js — edit one, hear it on a bench with no channel strip on it, rename it or file it elsewhere. Nothing in there changes any song.">Preset library…</button>
+  <div class="ctxhead">Desk</div>
+  <label class="morerow"><span>Font</span><select id="font" title="Typeface for the desk"></select></label>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="morerow"><span>Playhead</span>
     <input id="phoffset" type="number" min="-300" max="300" step="5" value="50"
-           title="milliseconds to shift the playhead right — raise it if the line lags behind what you hear.
+           title="Milliseconds to shift the playhead right — raise it if the line lags behind what you hear.
 [ and ] nudge it by 10 while the song plays, which is the easier way to find it.">
     <span class="unit">ms</span>
   </label>
 </div>
+<!-- The desk's confirmation dialog — see ask() in mixer-entry.js. -->
+<div id="ask">
+  <div id="askbox">
+    <div id="asktitle"></div>
+    <div id="askbody"></div>
+    <div id="askrow">
+      <button id="askcancel">Cancel</button>
+      <button id="askok">Save song</button>
+    </div>
+  </div>
+</div>
 <div id="songpicker"></div>
 <div id="ctxmenu"></div>
-<div id="notepop"></div>
+<div id="regionedit"></div>
 <div id="fxpicker"></div>
 <div id="voicepicker"></div>
 <!-- The preset editor. A window, not a menu, for the same reason the keyboard below is:
@@ -1656,6 +2510,17 @@
      sound changes under you. So it does not close on a click elsewhere, and its ✕ is
      the only way out. Built in tools/mixer-voice-editor.js. -->
 <div id="voiceedit"></div>
+<!-- The preset library: the catalogue with no song in front of it. A window for the
+     same reason the two above are — you leave it open, pick a preset, edit it, hear it,
+     pick another. Built in tools/mixer-voice-library.js, which also owns the bench the
+     presets in it are auditioned on. -->
+<div id="voicelib"></div>
+<!-- The step grid: what the kit plays, sixteen squares a bar. A window for the same
+     reason as the others — you leave it open, play the loop and move a snare while it
+     runs. Built in tools/mixer-step-seq.js. It writes ARRANGEMENT deltas, so a step
+     edit lands below the desk's marker beside the mix and the composition is never
+     touched. -->
+<div id="stepseq"></div>
 <!-- The on-screen keyboard. A window rather than a menu: it is something you leave
      open while you work on a channel, so it does not close when you click away and it
      goes where you put it. Built in mixer-entry.js — the keys change with the octave

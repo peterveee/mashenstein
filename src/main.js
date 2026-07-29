@@ -5,6 +5,7 @@ import {
 } from './engine/renderer.js';
 import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
+import { VISUALIZER_NAMES, setMegamixAudition } from './engine/visualizers.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { save } from './engine/save.js';
@@ -19,7 +20,7 @@ import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
 import { STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
-import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState } from './game/menus.js';
+import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
 import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
@@ -54,6 +55,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=stage&cab=plumber&stage=plumber-1   — launch a specific stage
 //   ?goto=stage&cab=plumber                   — stage select for that cabinet
 //   ?goto=hub&hero=lorenzo                     — start hub as a specific hero
+//   ?goto=soundtest&audition                   — audition every megamix move
 //
 // Recognised goto values:
 //   title  tutorial  hub  howto  fieldguide  settings  cast  attract
@@ -125,9 +127,25 @@ function routeDevUrl(goto, p) {
     case 'intro':
       setState(new IntroState({ onDone: () => Flow.toTitle() }));
       break;
-    case 'soundtest':
-      setState(new SoundTestState({ onDone: () => Flow.toTitle() }));
+    // ?audition — open straight into the VJ MEGAMIX on its short dev cycle, so
+    // every transition in the set is shown and named within about forty seconds
+    // instead of one every sixteen bars.
+    case 'soundtest': {
+      const audition = p.has('audition');
+      setMegamixAudition(audition);
+      setState(new SoundTestState({
+        onDone: () => { setMegamixAudition(false); Flow.toTitle(); },
+        // The visualizer only starts over a playing track, so the audition
+        // cues the megamix song itself — the last row of the jukebox, and the
+        // one the mixer was written against.
+        ...(audition ? {
+          initialTrack: JUKEBOX.length - 1,
+          startVisualizer: true,
+          startVisualizerIndex: VISUALIZER_NAMES.indexOf('VJ MEGAMIX'),
+        } : {}),
+      }));
       break;
+    }
     // Built here rather than through Flow.startFinale so a preview lands back on
     // the title instead of the hub. Note it still sets sawEnding on the way out
     // — the same catch SCENES ▸ FINALE has always had.
@@ -550,7 +568,14 @@ function boot() {
       // The visualizer introduces itself with the track and preset names for
       // five seconds. Do not compete with that lower-third; the diagnostics
       // take its place only once those titles have faded cleanly away.
-      const visualizerTitlesVisible = visualizerActive && menuState.labelT < 6;
+      //
+      // A megamix audition is the exception, because it is a measuring surface:
+      // the frame cost IS what you opened it to look at, and its record tag
+      // re-announces on every handover, so yielding to the titles would keep the
+      // readout down almost the whole time. It also forces the readout up
+      // without touching the saved setting.
+      const auditioning = visualizerActive && menuState.visualizer?.audition === true;
+      const visualizerTitlesVisible = visualizerActive && !auditioning && menuState.labelT < 6;
       // Touch devices with a letterbox margin get the readout out on #chrome,
       // in the dead black beside/above the game, rather than over the art.
       // A screen can stand the diagnostic down for as long as it is up, the
@@ -561,7 +586,7 @@ function boot() {
       const hidesFps = menuState?.constructor?.hidesFps === true;
       const showChromeFps = save.settings.showFps && !visualizerActive && !hidesFps
         && Input.isTouchDevice() && chrome.mode !== 'none';
-      if (save.settings.showFps && !hidesFps) {
+      if ((save.settings.showFps || auditioning) && !hidesFps) {
         const fps = frameRate() || '--';
         // Render density rides along with the FPS: on a device you can only
         // look at, "blocky" and "which rung did it settle on" are the same

@@ -77,43 +77,57 @@ function drawPair(ctx, o) {
   drawToon(ctx, o.to, runPose(o.t, 0.5), cx + 44, floorY, TOON_H);
 }
 
-// A: the swap actually happens. One hero runs in and is clipped away into the
-// portal; the portal flares; the other emerges and runs on.
-function drawTransit(ctx, o) {
-  const cx = o.x + o.w / 2, floorY = o.y + o.h - 6;
+// Where the transit has got to: which hero is on stage, how far through their
+// own leg they are, and the x they are running at. Solved here rather than
+// inside the painter because the crawl needs the same answer — it carries each
+// dialogue line with the hero saying it (see handoffSpeakerDX below), and two
+// copies of this arithmetic would be two things to retune.
+//
+// Both legs start and finish fully off-stage: the outgoing hero enters from
+// beyond the left edge rather than fading up inside the frame, and the incoming
+// one keeps running until it is completely gone off the right.
+//
+// Neither leg uses a smoothstep. That curve starts AND ends at zero velocity,
+// which put a standing start on the incoming hero and a coast on the outgoing
+// one — the whole beat read slow. The approach accelerates into the portal; the
+// exit is flat out from the first frame, because a relay hands over at speed
+// rather than winding up afterwards.
+function transitAt(o) {
+  const cx = o.x + o.w / 2;
   // Remap the block's trip down the screen onto the shorter ACTIVE window, so
   // the same travel happens in half the time. Outside the window q clamps to 0
   // or 1, which parks whichever hero is on stage fully off-frame — so nothing
   // pops in or out, it is simply already gone.
   const q = clamp01((clamp01(o.progress) - HANDOFF_ACTIVE_FROM) / ACTIVE_SPAN);
-  const inLeg = IN_LEG;
+  if (q < IN_LEG) {
+    const k = clamp01(q / IN_LEG);
+    const travel = 0.45 * k + 0.55 * k * k;
+    return { cx, q, k, approach: true, x: lerp(o.x - ENTER_X, cx, travel) };
+  }
+  const k = clamp01((q - IN_LEG) / (1 - IN_LEG));
+  return { cx, q, k, approach: false, x: lerp(cx, o.x + o.w + ENTER_X, k) };
+}
+
+// A: the swap actually happens. One hero runs in and is clipped away into the
+// portal; the portal flares; the other emerges and runs on.
+function drawTransit(ctx, o) {
+  const floorY = o.y + o.h - 6;
+  const { cx, q, k, approach, x } = transitAt(o);
   portalAt(ctx, cx, floorY, o.t);
 
-  // Both legs start and finish fully off-stage: the outgoing hero enters from
-  // beyond the left edge rather than fading up inside the frame, and the
-  // incoming one keeps running until it is completely gone off the right.
-  //
-  // Neither leg uses a smoothstep. That curve starts AND ends at zero velocity,
-  // which put a standing start on the incoming hero and a coast on the outgoing
-  // one — the whole beat read slow. The approach accelerates into the portal;
-  // the exit is flat out from the first frame, because a relay hands over at
-  // speed rather than winding up afterwards.
   ctx.save();
-  if (q < inLeg) {
-    const k = clamp01(q / inLeg);
-    const travel = 0.45 * k + 0.55 * k * k;
+  if (approach) {
     clipSide(ctx, o, cx - 3, -1);
-    drawToon(ctx, o.from, gaitPose(o.t, accelPhase(k, A_CYCLES)), lerp(o.x - ENTER_X, cx, travel), floorY, TOON_H);
+    drawToon(ctx, o.from, gaitPose(o.t, accelPhase(k, A_CYCLES)), x, floorY, TOON_H);
   } else {
-    const k = clamp01((q - inLeg) / (1 - inLeg));
     clipSide(ctx, o, cx + 3, 1);
-    drawToon(ctx, o.to, gaitPose(o.t, (B_CYCLES * k) % 1), lerp(cx, o.x + o.w + ENTER_X, k), floorY, TOON_H);
+    drawToon(ctx, o.to, gaitPose(o.t, (B_CYCLES * k) % 1), x, floorY, TOON_H);
   }
   ctx.restore();
 
   // The flare is the hand-off's punctuation: it fires exactly on the frame the
   // outgoing hero is gone and the incoming one has not arrived.
-  const flare = Math.exp(-Math.pow((q - inLeg) * 16, 2));
+  const flare = Math.exp(-Math.pow((q - IN_LEG) * 16, 2));
   if (flare > 0.01) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -233,14 +247,40 @@ const IN_LEG = 0.45;
 // Derived, not hand-tuned, so the crawl's dialogue timing cannot drift out of
 // sync with the animation if the window above is retuned.
 export const HANDOFF_SWAP_AT = HANDOFF_ACTIVE_FROM + IN_LEG * ACTIVE_SPAN;
-// The outgoing hero's line lights just before the hand-off, so the words land
-// as they reach the portal rather than sitting up through the whole run-up —
-// close enough to the swap that the line is still arriving as they vanish.
-export const HANDOFF_LINE_A_AT = HANDOFF_SWAP_AT - 0.04;
+// The outgoing hero's line lights during the run-up, timed so it reaches full
+// strength exactly as they reach the portal. It used to light a tenth of that
+// window before the swap, because a line that sat still through the whole run-up
+// read as a caption waiting for someone to arrive under it. It does not sit
+// still any more — it travels with the hero (see handoffSpeakerDX) — and a
+// moving line needs to be up and legible while the running is still happening,
+// or the only part of the move you see is the last few frames of it.
+export const HANDOFF_LINE_A_AT = HANDOFF_SWAP_AT - 0.10;
 // The reply comes almost on the incoming hero's heels. The two lines used to
 // sit 0.15 apart, which read as two statements; this close, it reads as one
 // exchange interrupted by the portal.
 export const HANDOFF_LINE_B_AT = HANDOFF_SWAP_AT + 0.02;
+
+// How much of their own run each hero has STILL AHEAD of them: 1 at the moment
+// they start, 0 the moment they are done — the outgoing hero when the portal
+// takes them, the incoming one when they are gone off the right. It is the
+// fraction of the travel, not of the clock, so it carries the acceleration the
+// legs above are drawn with.
+//
+// The crawl hangs each dialogue line off this rather than off a curve of its
+// own: a line trails its speaker by this much and lands as they finish, so
+// retuning the staging up here moves the words with the legs. Zero for every
+// candidate but the transit — the others stand their heroes still, so their
+// dialogue has nothing to travel with.
+export function handoffRunLeft(opts) {
+  if ((opts.variant || HANDOFF_VARIANT) !== 'transit') return { a: 0, b: 0 };
+  const s = transitAt(opts);
+  // The approach's own travel curve, so the words accelerate into the portal
+  // exactly as the hero does; the exit is flat out, so its leg fraction IS its
+  // travel. A hero not on stage is not running: the outgoing one has landed
+  // (0), the incoming one has not started (1).
+  if (s.approach) return { a: 1 - (0.45 * s.k + 0.55 * s.k * s.k), b: 1 };
+  return { a: 0, b: 1 - s.k };
+}
 
 export function drawHandoff(ctx, opts) {
   const v = HANDOFF_BY_ID[opts.variant || HANDOFF_VARIANT] || HANDOFF_BY_ID.pair;

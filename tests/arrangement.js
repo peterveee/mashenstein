@@ -19,9 +19,16 @@ import {
   ARRANGEMENTS, applyArrangement, resolveSection, expandOrder, orderOf, arrangementIssues,
 } from '../src/data/arrangements.js';
 import {
-  draftOf, entryOf, planToOrder, setLanesOff, silenceBars, deleteBars, duplicateBars,
-  buildUp, breakdown, forkBar, writeBarNotes, compactSections, barCount, DRUM_LANES,
+  draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
+  gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
+  duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
+  compactSections, patternStarts, barCount,
+  DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
+import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
+import {
+  sharedPatternGroups, sharedPatternDescription, playheadCell, playheadWindow, drumRowOrder,
+} from '../tools/mixer-step-seq.js';
 import {
   LANE_KEYS, songBlocks, songBars, barPlan, activeLanes, laneActivity, laneUsesEcho,
 } from '../src/engine/lanes.js';
@@ -37,12 +44,46 @@ const banks = Object.fromEntries(tracks.map((t) => [t.id, t.bank]));
 const withSections = tracks.filter((t) => t.bank.sections?.length);
 const json = (v) => JSON.stringify(v);
 
+// ---- one song is always two draft halves ------------------------------------
+
+{
+  const mixes = {
+    plumber: { layers: [{ key: 'bass2', from: 'bass' }] },
+    shop: { master: -2 },
+  };
+  const arrangements = {
+    plumber: { order: [0], sections: [{ base: 0, rim: [true] }] },
+    shop: { order: [1] },
+  };
+  discardSongDraft(mixes, arrangements, 'plumber');
+  assert(!('plumber' in mixes) && !('plumber' in arrangements),
+    'discard removes both the added instruments and painted patterns for one song');
+  assert(mixes.shop.master === -2 && arrangements.shop.order[0] === 1,
+    'discard leaves every other song draft untouched');
+
+  restoreSongDraft(mixes, arrangements, 'plumber', { master: -4 }, { order: [2] });
+  assert(mixes.plumber.master === -4 && arrangements.plumber.order[0] === 2,
+    'history restore replaces the mix and arrangement as one moment');
+  restoreSongDraft(mixes, arrangements, 'plumber', null, null);
+  assert(mixes.plumber.master === 0 && arrangements.plumber === null,
+    'a historical version with no entries removes later instruments and patterns');
+  assert(mixes.shop.master === -2 && arrangements.shop.order[0] === 1,
+    'history restore cannot leak into a different song');
+}
+
 // ---- an empty layer is nothing at all ---------------------------------------
 
 assert(Object.keys(ARRANGEMENTS).length === 0 || Object.keys(ARRANGEMENTS).every((id) => banks[id]),
   'every arrangement entry names a real track');
-assert(tracks.every((t) => applyArrangement(t.bank, t.id) === t.bank),
-  `an unarranged song is handed back the SAME bank object, not a copy (${tracks.length} tracks)`);
+const unarrangedSongs = tracks.filter((t) => !ARRANGEMENTS[t.id]);
+const arrangedSongs = tracks.filter((t) => ARRANGEMENTS[t.id]);
+assert(unarrangedSongs.every((t) => applyArrangement(t.bank, t.id) === t.bank),
+  `a song with no arrangement is handed back the SAME bank object, not a copy `
+  + `(${unarrangedSongs.length} of ${tracks.length} tracks)`);
+// And a song WITH one must not be: it plays a different order, so it needs its own
+// object — the bank in the module is the composition and is never patched in place.
+assert(arrangedSongs.every((t) => applyArrangement(t.bank, t.id) !== t.bank),
+  `a song with an arrangement gets a patched copy (${arrangedSongs.length} arranged)`);
 // Identity is not a nicety: trackIdOf is a WeakMap on the bank, so a song handed a
 // clone would lose its own mix on the way to being played.
 assert(applyArrangement(banks.plumber, 'plumber', { plumber: {} }) === banks.plumber,
@@ -139,7 +180,8 @@ for (const t of tracks) {
   // The one cell size the desk uses for a long song, as well as the default.
   if (json(laneActivity(bank, 1, 1)) === json(legacyActivity(bank, 1, 1))) activitySame++;
   if (songBars(bank, 1).length === legacyBlocks(bank, 1).length * 2) barsSame++;
-  if (LANE_KEYS.every((k) => laneUsesEcho(bank, k) === legacyEcho(bank, k))) echoSame++;
+  if (LANE_KEYS.filter((k) => k !== 'tom')
+    .every((k) => laneUsesEcho(bank, k) === legacyEcho(bank, k))) echoSame++;
 }
 function legacyEcho(bank, key) {
   const blocks = legacyBlocks(bank, 1);
@@ -160,6 +202,8 @@ assert(activitySame === tracks.length * 2,
   `laneActivity is identical, cell for cell, at 4 cells a bar and at 1 (${tracks.length} songs)`);
 assert(echoSame === tracks.length,
   `laneUsesEcho answers the same for every lane of every song (${tracks.length} songs)`);
+assert(!laneUsesEcho(banks.plumber, 'tom'),
+  'the new tom lane follows the kit dry-by-default routing');
 
 // ---- resolveSection ----------------------------------------------------------
 
@@ -219,6 +263,37 @@ assert(roundTripped === withSections.length,
 const plumber = banks.plumber;
 const base = draftOf(plumber, null);
 assert(barCount(base) === orderOf(plumber).length * 2, 'a draft is one entry per bar');
+const basePatternStarts = patternStarts(base.plan);
+assert(!basePatternStarts[2] && basePatternStarts[4],
+  'pattern dividers ignore a repeated section and mark the actual section change');
+const firstShared = sharedPatternGroups(base.plan, 0, 0);
+assert(json(firstShared[0].bars) === json([0, 2]),
+  'shared-pattern scope names only matching halves of a repeated section');
+const openingShared = sharedPatternGroups(base.plan, 0, 1);
+assert(json(openingShared.map((g) => g.bars)) === json([[0, 2], [1, 3]]),
+  'a two-bar selection names both shared pattern groups without merging their halves');
+assert(sharedPatternDescription(base.plan, 0, 0) === 'Bar 1 pattern changes bars 1, 3',
+  'the sequencer can state the exact bars a shared edit will change');
+assert(json(playheadCell(31.875)) === json({ bar: 1, step: 15 }),
+  'the fractional audible playhead resolves to an integer pattern-grid column');
+assert(playheadCell(null) === null,
+  'no audible playhead clears the pattern-grid column');
+assert(json(playheadWindow(31.875, 8)) === json({ from: 0, to: 1 })
+  && json(playheadWindow(32, 8)) === json({ from: 2, to: 3 }),
+  'pattern follow pages through aligned two-bar windows');
+assert(json(playheadWindow(64, 5)) === json({ from: 4, to: 4 }),
+  'an odd final pattern page shows its remaining bar alone');
+const initialKitRows = drumRowOrder(['kick', 'hats']);
+assert(initialKitRows.length === 8 && initialKitRows.at(-1) === 'tom',
+  'the pattern editor starts with eight canonical drum rows, with tom as the eighth');
+const rowsAfterAddingSnare = drumRowOrder(['kick', 'snare', 'hats'], initialKitRows);
+assert(rowsAfterAddingSnare === initialKitRows
+  && rowsAfterAddingSnare.indexOf('snare') === initialKitRows.indexOf('snare'),
+  'adding the first note on an unused drum keeps its pattern-editor row in place');
+const rowsAfterExtraSound = drumRowOrder(['kick', 'hats', 'tom2'], initialKitRows);
+assert(rowsAfterExtraSound.slice(0, 8).every((key, i) => key === initialKitRows[i])
+  && rowsAfterExtraSound[8] === 'tom2',
+  'an additional percussion sound is appended after the fixed eight without moving them');
 
 const muted = setLanesOff(base, 4, 5, ['snare', 'clap']);
 assert(json(muted.plan[4].off) === json(['clap', 'snare']) && !base.plan[4].off,
@@ -240,6 +315,61 @@ const doubled = duplicateBars(base, 0, 1, 1);
 assert(barCount(doubled) === barCount(base) + 2
   && doubled.plan[2].sec === base.plan[0].sec && doubled.plan[4].sec === base.plan[2].sec,
   'duplicate puts the copy immediately after the range, not at the end');
+
+const barEdited = gainBars(offsetBars(transposeBars(base, 0, 1, ['bass'], 5), 0, 1, ['bass'], 1), 0, 1, ['bass'], -3);
+assert(barEdited.plan[0].transpose.bass === 5 && barEdited.plan[1].offset.bass === 1
+  && barEdited.plan[0].gain.bass === -3,
+  'transpose, 1/32 timing and gain stay scoped to the selected lane and bars');
+const barRoundTrip = expandOrder(planToOrder(barEdited.plan), true);
+assert(barRoundTrip[0].transpose.bass === 5 && barRoundTrip[1].offset.bass === 1
+  && barRoundTrip[0].gain.bass === -3,
+  'bar transpose, timing and gain survive order serialisation');
+const lowerBounds = gainBars(offsetBars(transposeBars(base, 0, 0, ['bass'], -12), 0, 0, ['bass'], -8), 0, 0, ['bass'], -12);
+const upperBounds = gainBars(offsetBars(transposeBars(base, 0, 0, ['bass'], 12), 0, 0, ['bass'], 8), 0, 0, ['bass'], 12);
+assert(lowerBounds.plan[0].transpose.bass === -12 && lowerBounds.plan[0].offset.bass === -8
+  && lowerBounds.plan[0].gain.bass === -12
+  && upperBounds.plan[0].transpose.bass === 12 && upperBounds.plan[0].offset.bass === 8
+  && upperBounds.plan[0].gain.bass === 12,
+  'the region editor boundaries are valid: ±12 semitones, ±1/4 note in 1/32 steps, and ±12 dB');
+const wholeTrackEdit = gainBars(offsetBars(transposeBars(base, 0, barCount(base) - 1, ['bass'], 7),
+  0, barCount(base) - 1, ['bass'], -3), 0, barCount(base) - 1, ['bass'], 2.5);
+assert(wholeTrackEdit.plan.every((bar) => bar.transpose?.bass === 7
+  && bar.offset?.bass === -3 && bar.gain?.bass === 2.5),
+  'the same region controls can cover every bar of one track');
+const deletedLane = setLanesDeleted(base, 0, 1, ['bass']);
+assert(deletedLane.plan[0].delete.includes('bass') && !deletedLane.plan[2].delete,
+  'bar deletion is reversible metadata and touches only the requested range');
+const restoredLane = setLanesDeleted(deletedLane, 0, 1, ['bass'], false);
+assert(!restoredLane.plan[0].delete && !entryOf(plumber, restoredLane),
+  'restoring a deleted lane removes the decision when nothing else changed');
+const extraLaneDraft = {
+  plan: [
+    { sec: 0, half: 0, off: ['snare', 'tom2'], transpose: { bass: 5, tom2: 7 } },
+    { sec: 0, half: 1, delete: ['tom2'], offset: { tom2: -1 }, gain: { tom2: -3 } },
+  ],
+  sections: [{ base: 0, kick: [true], tom2: [false, true] }],
+};
+const withoutExtraLane = removeLanes(extraLaneDraft, ['tom2']);
+assert(!withoutExtraLane.sections[0].tom2 && withoutExtraLane.sections[0].kick
+  && json(withoutExtraLane.plan[0].off) === json(['snare'])
+  && withoutExtraLane.plan[0].transpose.bass === 5
+  && withoutExtraLane.plan.every((bar) => !bar.delete?.includes('tom2')
+    && bar.transpose?.tom2 == null && bar.offset?.tom2 == null && bar.gain?.tom2 == null),
+  'deleting an independent sound removes its notes and bar edits without touching other lanes');
+assert(extraLaneDraft.sections[0].tom2 && extraLaneDraft.plan[0].off.includes('tom2'),
+  'removing a lane returns a new arrangement and leaves the prior undo snapshot intact');
+const clip = copyBars(plumber, base, 0, 1);
+const pasted = pasteBars(plumber, base, 2, clip);
+assert(pasted.plan.length === base.plan.length + 2
+  && pasted.plan[2].sec === base.plan[0].sec,
+  'copy/paste repeats a structural range at the insertion point');
+const silentInsert = insertSilence(base, 2, 2, ['bass', 'lead']);
+assert(silentInsert.plan[2].delete.includes('bass') && silentInsert.plan[3].delete.includes('lead')
+  && silentInsert.plan.length === base.plan.length + 2,
+  'insert silence adds the selected number of bars and keeps them silent');
+const laneClip = copyLaneBars(plumber, base, 0, 1, 'bass');
+assert(laneClip.bars.length === 2 && laneClip.bars[0].length === 16,
+  'track-region copy captures one instrument without copying the whole song');
 
 const built = buildUp(base, 0, 1, 4);
 assert(barCount(built) === barCount(base) + 6, 'a 4-pass build-up over 2 bars is 8 bars');
@@ -270,6 +400,9 @@ assert((fromSilence.plan[0].off || []).includes('bass'),
 const NEW = 999;
 const bankBefore = json(plumber);
 const written = writeBarNotes(plumber, base, 3, 'lead', new Array(16).fill(NEW));
+const editedPatternStarts = patternStarts(written.plan);
+assert(editedPatternStarts[3] && editedPatternStarts[4],
+  'a one-bar fork is visibly bounded on both sides as its own pattern');
 assert(json(plumber) === bankBefore, 'writing notes does not modify the bank in any way');
 assert(written.plan[3].sec !== written.plan[2].sec,
   'the edited bar forks: bar 3 gets a section of its own');
@@ -320,6 +453,63 @@ assert(twoWrites.sections.length === 2 && folded.sections.length === 1,
   'two bars given the same edit become one section in the file');
 assert(folded.plan[3].sec === folded.plan[1].sec, 'and both bars point at it');
 
+// ---- an edit that changed nothing leaves nothing ------------------------------
+//
+// The step grid writes a whole bar on every click, so toggling a hit on and then off
+// again hands back exactly the sixteen steps the bar already had. That has to come
+// out the far end as NO ENTRY AT ALL. Otherwise every song anyone opens and fiddles
+// with keeps an arrangement that does not arrange anything, and the null test starts
+// proving it about a file full of noise.
+//
+// plumber's bar 3 is the second half of section 0, and section 0 says nothing about
+// the kick — so the steps it plays are the bank's, which is the case a naive
+// "compare against the resolved section" gets wrong.
+const kickBar3 = plumber.kick.slice(16, 32);
+const noop = writeBarNotes(plumber, base, 3, 'kick', kickBar3);
+assert(noop.sections.length === 1, 'writing a bar forks it, even when the steps are unchanged');
+assert(json(noop.sections[0].kick) === json(plumber.kick),
+  'and the fork holds the whole lane, both halves of it');
+assert(entryOf(plumber, noop) === null,
+  'but a lane written back exactly as it was is not a decision, and leaves no entry');
+
+// The same for the first half, where the UNTOUCHED half is the one copied verbatim.
+const noopFirst = writeBarNotes(plumber, base, 2, 'kick', plumber.kick.slice(0, 16));
+assert(entryOf(plumber, noopFirst) === null, 'the same holds writing the first bar of a section');
+
+// On, then off again: two real writes, and still nothing to say at the end of them.
+const hitOn = plumber.kick.slice(16, 32).map((v, i) => (i === 5 ? true : v));
+const onThenOff = writeBarNotes(plumber, writeBarNotes(plumber, base, 3, 'kick', hitOn),
+  3, 'kick', kickBar3);
+assert(entryOf(plumber, writeBarNotes(plumber, base, 3, 'kick', hitOn)) !== null,
+  'adding a kick to bar 3 is an entry');
+assert(entryOf(plumber, onThenOff) === null, 'and taking it out again is not');
+
+// ---- writing the loop rather than the bar --------------------------------------
+//
+// plumber plays section 0 for bars 0-3, so "the hats are wrong in this loop" has to
+// change all four rather than fork one and leave three behind.
+
+const sharedEdit = writeBarNotesShared(plumber, base, 3, 'kick', new Array(16).fill(true));
+assert(json(plumber) === bankBefore, 'the shared write does not modify the bank either');
+const sharedSecs = new Set(sharedEdit.plan.slice(0, 4).map((b) => b.sec));
+assert(sharedSecs.size === 1, 'every bar that played the section is repointed at the fork together');
+assert(sharedEdit.plan[0].sec !== base.plan[0].sec, 'and it is a fork, not the bank section');
+const sharedFork = sharedEdit.sections[sharedEdit.plan[3].sec - plumber.sections.length];
+assert(sharedFork.base === 0 && sharedFork.kick.slice(16).every((v) => v === true),
+  'the delta carries the new steps at the edited half');
+assert(json(sharedFork.kick.slice(0, 16)) === json(plumber.kick.slice(0, 16)),
+  'and the other half of the loop is untouched');
+assert(entryOf(plumber, sharedEdit) !== null, 'a shared edit is a decision like any other');
+
+// A bar forked on its own is deliberately independent, and a later shared edit to the
+// section it came from must not reach back into it.
+const forkedThenShared = writeBarNotesShared(plumber,
+  writeBarNotes(plumber, base, 1, 'kick', new Array(16).fill(false)), 3, 'kick', new Array(16).fill(true));
+assert(forkedThenShared.plan[1].sec !== forkedThenShared.plan[3].sec,
+  'a bar forked on its own is left out of a later shared edit');
+const loneFork = forkedThenShared.sections[forkedThenShared.plan[1].sec - plumber.sections.length];
+assert(loneFork.kick.slice(16).every((v) => v === false), 'and keeps the edit it was given');
+
 const entry = entryOf(plumber, written);
 assert(entry && entry.order && entry.sections?.length === 1, 'a real edit does produce an entry');
 // Bars 0-1 still play section 0 whole, so they stay the number they always were.
@@ -349,6 +539,39 @@ survivesSave(plumber, 'plumber', written, 'a song with a forked bar');
 survivesSave(plumber, 'plumber', setLanesOff(base, 4, 5, ['snare', 'clap']), 'a song with muted bars');
 survivesSave(plumber, 'plumber', buildUp(base, 0, 1, 4), 'a build-up');
 survivesSave(plumber, 'plumber', deleteBars(base, 2, 3), 'a song with bars cut out of it');
+
+// ---- editing a song that ALREADY has an arrangement ----------------------------
+//
+// The second edit is the one that catches this, and only note editing can reach it:
+// `applyArrangement` appends the layer sections onto `bank.sections`, so a draft built
+// against the ARRANGED bank counts them twice. `sec` then addresses a list one longer
+// than the file will have, the saved order points one past the end, and the bar falls
+// back to the bare bank — the first edit's notes silently gone.
+//
+// So the editing seam is always handed the song's OWN bank. The desk keeps this with
+// `editBank()`, deliberately not `viewBank()`.
+
+const ON16 = new Array(16).fill(true);
+const firstSave = entryOf(plumber, writeBarNotes(plumber, draftOf(plumber, null), 3, 'kick', ON16));
+const secondSave = entryOf(plumber, writeBarNotes(plumber, draftOf(plumber, firstSave), 3, 'snare', ON16));
+assert(arrangementIssues(plumber, secondSave, LANE_KEYS).length === 0,
+  'a second edit to a song that already has an arrangement is playable');
+const reopenedView = applyArrangement(plumber, 'plumber', { plumber: secondSave });
+const reopenedBar = draftOf(plumber, secondSave).plan[3];
+const reopenedSec = resolveSection(reopenedView, reopenedBar.sec) || {};
+assert(reopenedSec.kick?.slice(16).every((v) => v === true)
+  && reopenedSec.snare?.slice(16).every((v) => v === true),
+  'and the bar plays BOTH edits — saving the second does not lose the first');
+assert(secondSave.sections.length === 1,
+  'the two edits fold into one delta rather than a chain of them');
+
+// The failure this pins, from the other side: build the draft against the arranged
+// bank and the same edit is unplayable. Better caught here than by a bar going quiet.
+const arrangedView = applyArrangement(plumber, 'plumber', { plumber: firstSave });
+const fromArranged = entryOf(arrangedView,
+  writeBarNotes(arrangedView, draftOf(arrangedView, firstSave), 3, 'snare', ON16));
+assert(arrangementIssues(plumber, fromArranged, LANE_KEYS).length > 0,
+  'while building the draft against the ARRANGED bank double-counts the layer and does not play');
 
 // The seven bare-loop cabinets are the awkward case: their bars point at no section
 // at all, so the first note edit has to give the others one to point at.
@@ -380,7 +603,8 @@ const fixture = {
   plumber: {
     // Up to 8, not 9: plumber's own 6 sections plus the 3 layer sections below make
     // nine, and they are addressed 0-8. The validator caught this fixture doing it.
-    order: [0, 0, { s: 1, bars: 1 }, { s: 1, bars: 1, from: 1, off: ['snare', 'clap'] },
+    order: [0, 0, { s: 1, bars: 1, transpose: { bass: 5 }, offset: { bass: 1 }, gain: { bass: -3 } },
+      { s: 1, bars: 1, from: 1, off: ['snare', 'clap'], delete: ['bass'] },
       { s: 2, off: ['crash'] }, 3, 4, 5, 6, 7, 8],
     sections: [
       { base: 1, lead: Array.from({ length: 32 }, (_, i) => (i % 4 === 0 ? 440 + i : null)) },
@@ -393,7 +617,7 @@ writeFileSync(arrPath, renderArrangementsFile(fixture, null));
 const { ARRANGEMENTS: back } = await import(arrPath);
 
 assert(json(back.plumber.order) === json(fixture.plumber.order),
-  'round-trip: the order survives — plain numbers, single bars, halves and mute masks');
+  'round-trip: the order survives — plain numbers, single bars, halves, lane delete and bar edits');
 assert(back.plumber.sections.length === 3 && back.plumber.sections[0].base === 1,
   'round-trip: layer sections survive, and keep what they are based on');
 assert(json(back.plumber.sections[0].lead) === json(fixture.plumber.sections[0].lead),
@@ -423,7 +647,13 @@ assert(rewritten.includes('export function applyArrangement')
 assert(rewritten.includes('The arrangement layer — written by the mixing desk'),
   'and the documented header above it');
 const rewrittenPath = join(tmp, 'rewritten.js');
-writeFileSync(rewrittenPath, rewritten);
+// The file's header imports the song folder relatively, which does not resolve from
+// a temp directory — pointed at the real one so what is imported is otherwise the
+// exact text the writer produced.
+writeFileSync(rewrittenPath, rewritten.replace(
+  "'./songs/index.js'",
+  JSON.stringify(new URL('../src/data/songs/index.js', import.meta.url).pathname),
+));
 const round2 = await import(rewrittenPath);
 assert(typeof round2.applyArrangement === 'function' && Object.keys(round2.ARRANGEMENTS).length === 0,
   'and the result is a module that still loads and still works');
@@ -436,6 +666,31 @@ assert(typeof round2.applyArrangement === 'function' && Object.keys(round2.ARRAN
 const { Audio } = await import('../src/engine/audio.js');
 const liveSong = banks.plumber;
 const composed = json(liveSong.order);
+Audio.bank = liveSong; Audio.sourceBank = liveSong; Audio.step = 40;
+
+// Reload used to build the live bank first and restore `Audio.arrangement` second.
+// The grid therefore reopened with the saved pattern while the scheduler still held
+// the composed song; touching any step called setArrangement and appeared to wake the
+// whole pattern up. The override must take part in the initial bank build.
+const reloadKick = [...(resolveSection(liveSong, 0)?.kick ?? liveSong.kick)];
+const addedKickAt = reloadKick.findIndex((v) => !v);
+reloadKick[addedKickAt] = true;
+const reloadSection = liveSong.sections.length;
+const reloadArrangement = {
+  order: [reloadSection],
+  sections: [{ base: 0, kick: reloadKick }],
+};
+Audio.setBank(liveSong, { lanes: {} }, reloadArrangement);
+assert(Audio.arrangement === reloadArrangement && barPlan(Audio.bank).length === 2,
+  'setBank loads the desk arrangement into the first scheduled bank after reload');
+const reloadedPattern = resolveSection(Audio.bank, barPlan(Audio.bank)[0].sec);
+assert(reloadedPattern.kick[addedKickAt] === true
+  && (resolveSection(liveSong, 0)?.kick ?? liveSong.kick)[addedKickAt] !== true,
+  'the reloaded bank immediately plays the added note without a wake-up edit');
+Audio.reapplyBank(liveSong, { lanes: {} }, reloadArrangement);
+const refreshedPattern = resolveSection(Audio.bank, barPlan(Audio.bank)[0].sec);
+assert(refreshedPattern.kick[addedKickAt] === true,
+  'a live preset refresh keeps the reloaded pattern in the scheduled bank');
 Audio.bank = liveSong; Audio.sourceBank = liveSong; Audio.step = 40;
 
 Audio.setArrangement({ order: [0, 0, { s: 1, bars: 1, off: ['kick'] }, 2], sections: [] });
@@ -458,6 +713,23 @@ assert(barPlan(Audio.bank).length === 2 && Audio.step === 4,
 Audio.setArrangement(null);
 assert(barPlan(Audio.bank).length === barPlan(liveSong).length,
   'and no arrangement at all is the song as it was composed');
+
+// The audio loop wraps at its selected range, while the tracker draws a position
+// from songBeat(). A one-bar loop must never report the end of the surrounding
+// two-bar phrase during that wrap.
+const savedClock = {
+  ctx: Audio.ctx, bpm: Audio.bpm, tempo: Audio.tempo, nextTime: Audio.nextTime,
+  step: Audio.step, loopStart: Audio.loopStart, loopEnd: Audio.loopEnd, bank: Audio.bank,
+};
+const loopSpb = (60 / 120) / 4;
+Audio.ctx = { currentTime: 10, outputLatency: 0 };
+Audio.bpm = 120; Audio.tempo = 1; Audio.nextTime = 10 + loopSpb * 2;
+Audio.bank = liveSong; Audio.step = 0; Audio.setLoop(0, 16);
+assert(Math.abs(Audio.songBeat() - 3.5) < 1e-9,
+  'a one-bar loop wraps its tracker within that bar, not at the end of bar 2');
+Audio.ctx = savedClock.ctx; Audio.bpm = savedClock.bpm; Audio.tempo = savedClock.tempo;
+Audio.nextTime = savedClock.nextTime; Audio.step = savedClock.step;
+Audio.loopStart = savedClock.loopStart; Audio.loopEnd = savedClock.loopEnd; Audio.bank = savedClock.bank;
 
 // The bug this pins: everything that re-applies a mix — a fader, a mute, a solo, an
 // effect, a rebuild — rebuilds the bank from the SONG. An arrangement that lived only

@@ -3,7 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Audio } = await import('../src/engine/audio.js');
-const { createVisualizer, pickVisualizer, VISUALIZER_NAMES } = await import('../src/engine/visualizers.js');
+const { createVisualizer, pickVisualizer, VISUALIZER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } = await import('../src/engine/visualizers.js');
 const { SoundTestState } = await import('../src/game/menus.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -45,6 +45,40 @@ assert(kaleidoCounts.every((count) => count >= 8 && count <= 24 && count % 2 ===
   && new Set(kaleidoCounts).size > 1,
   'kaleidoscope changes between dense and sparse phrase segment counts');
 
+const ringPresetIndices = [0, 3, 4, 5, 7, 9, 10, 11];
+for (const index of ringPresetIndices) {
+  const ringSeed = 0x13570000 + index;
+  const ringPreset = createVisualizer(index, ringSeed, { bpm: 120 });
+  const sampleAt = (beat) => {
+    ringPreset.update(0, { ...analysis, beat, beatPhase: beat % 1 });
+    ringPreset.draw(ctx);
+    return ringPreset.ringRotation;
+  };
+  sampleAt(64);
+  const events = ringPreset.ringRotationEvents.slice(0, 5);
+  const variedIntervals = events.every((event, i) => i === 0 || [4, 8, 16].includes(event.beat - events[i - 1].beat))
+    && new Set(events.slice(1).map((event, i) => event.beat - events[i].beat)).size > 1;
+  const boundedTurns = events.every((event) => event.turn >= Math.PI / 2 && event.turn <= Math.PI);
+  const smoothTransitions = events.every((event) => {
+    const before = sampleAt(event.beat - 0.25);
+    const atStart = sampleAt(event.beat);
+    const halfway = sampleAt(event.beat + 0.5);
+    const atEnd = sampleAt(event.beat + 1);
+    return Math.abs(before - event.baseRotation) < 1e-9
+      && Math.abs(atStart - event.baseRotation) < 1e-9
+      && Math.abs(halfway - (event.baseRotation + event.turn * 0.5)) < 1e-9
+      && Math.abs(atEnd - (event.baseRotation + event.turn)) < 1e-9;
+  });
+  const replay = createVisualizer(index, ringSeed, { bpm: 120 });
+  replay.update(0, { ...analysis, beat: 64, beatPhase: 0 });
+  const replayEvents = replay.ringRotationEvents.slice(0, 5);
+  const reproducible = replayEvents.length === events.length
+    && replayEvents.every((event, i) => event.beat === events[i].beat
+      && Math.abs(event.turn - events[i].turn) < 1e-9);
+  assert(boundedTurns && variedIntervals && smoothTransitions && reproducible,
+    `${VISUALIZER_NAMES[index]} ring rotation varies its 4/8/16-beat holds and smoothly transitions through reproducible 90–180 degree turns`);
+}
+
 const kaleidoTravel = createVisualizer(4, 0x12345678, { bpm: 120 });
 let maxSatelliteRadius = 0;
 for (let frame = 0; frame < 300; frame++) {
@@ -76,6 +110,70 @@ bubblestorm.update(0.5, analysis);
 assert(bubblestorm.name === 'CHROMA BUBBLESTORM' && bubblestorm.orbs.length === 84,
   'chroma bubblestorm reworks prismatic storm as a circular orb field');
 
+// --- acid julia dive --------------------------------------------------------
+// The escape-time field itself needs a real canvas, so what is checked here is
+// the state that drives it: the elastic sub-bass twist, the treble flash, and
+// the plunge looping onto a fresh boundary point instead of a pixelated wall.
+const acid = createVisualizer(16, 0x0ac1d000, { bpm: 120 });
+const quiet = { ...analysis, bass: 0.05, treble: 0.05, beat: 0, beatPhase: 0, beatPulse: 0 };
+for (let frame = 0; frame < 60; frame++) acid.update(1 / 60, { ...quiet, beat: frame / 30 });
+assert(acid.name === 'ACID JULIA DIVE' && Math.abs(acid.warp) < 1e-3,
+  'acid julia dive holds its baseline geometry while the sub-bass is quiet');
+
+acid.update(1 / 60, { ...quiet, bass: 0.95, beat: 2, beatPulse: 0.9 });
+const kickedWarp = acid.warp;
+const kickedShake = acid.shake;
+const kickedJitter = [acid.shakeX, acid.shakeY];
+let overshot = false;
+let peakWarp = Math.abs(kickedWarp);
+for (let frame = 0; frame < 45; frame++) {
+  acid.update(1 / 60, { ...quiet, beat: 2 + frame / 30 });
+  peakWarp = Math.max(peakWarp, Math.abs(acid.warp));
+  if (acid.warp * kickedWarp < 0) overshot = true;
+}
+assert(kickedWarp !== 0 && peakWarp > 0.3 && peakWarp <= 1.2 && overshot && Math.abs(acid.warp) < peakWarp * 0.2,
+  'a sub-bass hit twists the julia constant and lets it elastically snap back past centre');
+// The rattle offsets both axes while it lasts, stays within the bleed the
+// composite blits past the frame edge, and is gone a beat later.
+assert(kickedShake > 0.2 && kickedJitter.every((v) => v !== 0 && Math.abs(v) < 5)
+  && acid.shake === 0 && acid.shakeX === 0 && acid.shakeY === 0,
+  'the same hit rattles the camera on both axes and the rattle decays away');
+
+acid.update(1 / 60, { ...quiet, treble: 0.95, beat: 4 });
+assert(acid.flash > 0.8 && (acid.flashSwap === 1 || acid.whiteHeat > 0.5),
+  'a treble spike either swaps the palette phase or blows the outer trails white-hot');
+for (let frame = 0; frame < 15; frame++) acid.update(1 / 60, { ...quiet, beat: 4 + frame / 30 });
+assert(acid.flash === 0, 'the flash is spent inside a fifth of a second rather than held');
+
+const dives = new Set();
+let blended = false;
+let deepest = 0;
+for (let frame = 0; frame < 60 * 30; frame++) {
+  acid.update(1 / 60, { ...quiet, beat: 4 + frame / 30 });
+  deepest = Math.max(deepest, acid.zoomLog);
+  if (acid.blend < 1) blended = true;
+  dives.add(`${acid.center.x.toFixed(6)},${acid.center.y.toFixed(6)}`);
+}
+// 30s of plunge has to cover several dives, each ending before double precision
+// runs out — which is what the octave ceiling is for.
+assert(deepest > 3 && deepest <= 3.6 && dives.size > 2 && blended,
+  'the plunge loops every few seconds onto a fresh boundary point through a cross-fade');
+// Inverse iteration has to land on the set, not wander off to infinity.
+assert([...dives].every((key) => key.split(',').every((n) => Math.abs(Number(n)) < 2.2)),
+  'every dive target is a point on the julia set rather than a runaway coordinate');
+// The spring has to be home before the next kick, or a four-on-the-floor bar
+// leaves it permanently leaning instead of snapping.
+const settled = [];
+for (let frame = 0; frame < 60 * 4; frame++) {
+  const beat = 3 + frame / 30;
+  const kick = Math.pow(1 - (((beat % 1) + 1) % 1), 7);
+  acid.update(1 / 60, { ...quiet, bass: 0.12 + kick * 0.8, beat, beatPulse: kick });
+  // Sample just before each downbeat, where a settled spring is back at rest.
+  if (Math.abs(((beat % 1) + 1) % 1 - 0.97) < 0.017) settled.push(Math.abs(acid.warp));
+}
+assert(settled.length > 3 && settled.every((w) => w < 0.2),
+  'four-on-the-floor lets the twist return to baseline between kicks rather than leaning');
+
 const reactor = createVisualizer(3, 0x22446688, { bpm: 120 });
 reactor.update(0.5, { ...analysis, beat: 32.25, beatPhase: 0.25 });
 const reactorXs = reactor.reactors.map((p) => p.x);
@@ -84,6 +182,157 @@ assert(reactor.reactors.length === 3 && reactor.reactors.filter((p) => p.active)
   && reactor.reactors[0].x === reactor.focusX && reactor.reactors[0].y === reactor.focusY
   && reactor.reactors.slice(1).some((p, i) => p.x !== reactorXs[i + 1]),
   'monster reactor keeps one core central while up to two others cross beyond the screen');
+
+// --- overall loudness -------------------------------------------------------
+// `dynamics` is the song's current loudness against its own recent peak. The
+// presets fold it into a movement multiplier, so a breakdown should visibly
+// slow the picture down without ever freezing it.
+const QUIET = { level: 0.04, dynamics: 0.08 };
+const LOUD = { level: 0.5, dynamics: 1 };
+
+// Total distance travelled, ignoring the jumps where a particle wraps.
+const travelOf = (index, seed, loudness, sample, frames = 180) => {
+  const v = createVisualizer(index, seed, { bpm: 120 });
+  let previous = sample(v);
+  let travelled = 0;
+  for (let frame = 0; frame < frames; frame++) {
+    const beat = frame / 30;
+    v.update(1 / 60, { ...analysis, ...loudness, beat, beatPhase: beat % 1 });
+    const now = sample(v);
+    for (let i = 0; i < now.length; i++) {
+      const step = Math.abs(now[i] - previous[i]);
+      if (step < 20) travelled += step;
+    }
+    previous = now;
+  }
+  return { visualizer: v, travelled };
+};
+
+const dustY = (v) => v.dust.map((p) => p.y);
+const loudBed = travelOf(0, 0x5eed1234, LOUD, dustY);
+const quietBed = travelOf(0, 0x5eed1234, QUIET, dustY);
+assert(quietBed.travelled > 0 && quietBed.travelled < loudBed.travelled * 0.6,
+  'the shared dust bed drifts markedly less through a quiet passage without stopping dead');
+assert(quietBed.visualizer.motion > 0.3 && quietBed.visualizer.motion < 0.5
+  && loudBed.visualizer.motion > 0.98,
+  'near-silence keeps a movement floor rather than freezing, and full loudness runs at the designed speed');
+
+const starZ = (v) => v.stars.map((p) => p.z);
+const loudTunnel = travelOf(5, 0x77aa3311, LOUD, starZ);
+const quietTunnel = travelOf(5, 0x77aa3311, QUIET, starZ);
+assert(quietTunnel.travelled < loudTunnel.travelled * 0.6,
+  'deep-space wormhole coasts down the tunnel when the song drops out');
+
+const rainY = (v) => v.streams.map((s) => s.y);
+const loudRain = travelOf(9, 0x1133aa77, LOUD, rainY);
+const quietRain = travelOf(9, 0x1133aa77, QUIET, rainY);
+assert(quietRain.travelled < loudRain.travelled * 0.6,
+  'data rain falls slower through a quiet passage');
+
+// An analysis feed with no loudness fields has to behave exactly as it did
+// before this signal existed, which is what keeps the headless fallback, the
+// tests above, and any older recorded feed rendering identically.
+const bare = createVisualizer(5, 0x0c0ffee0, { bpm: 120 });
+const explicit = createVisualizer(5, 0x0c0ffee0, { bpm: 120 });
+for (let frame = 0; frame < 120; frame++) {
+  const beat = frame / 30;
+  bare.update(1 / 60, { ...analysis, beat, beatPhase: beat % 1 });
+  explicit.update(1 / 60, { ...analysis, ...LOUD, beat, beatPhase: beat % 1 });
+}
+assert(bare.motion === 1 && Math.abs(bare.flow - bare.t) < 1e-9
+  && bare.stars.every((p, i) => Math.abs(p.z - explicit.stars[i].z) < 1e-9),
+  'analysis without loudness fields runs at full movement, so `flow` tracks `t` exactly');
+
+const feed = Audio.musicAnalysis();
+assert(Number.isFinite(feed.level) && feed.level >= 0
+  && feed.dynamics >= 0 && feed.dynamics <= 1,
+  'musicAnalysis reports a bounded overall level and dynamics alongside the bands');
+assert(Number.isFinite(feed.drums) && feed.drums >= 0 && feed.drums <= 1
+  && typeof feed.drumless === 'boolean',
+  'musicAnalysis reports kit presence as a bounded density plus a drumless flag');
+
+// The tally itself, driven directly. A fake clock is the only way to age
+// scheduled hits past the playhead without rendering a whole song.
+const realCtx = Audio.ctx;
+const realBpm = Audio.bpm;
+Audio.ctx = { currentTime: 0 };
+Audio.bpm = 120;                       // half a second a beat
+Audio._percPending.length = 0;
+Audio._percHeard.length = 0;
+for (let i = 0; i < 4; i++) Audio._percPending.push(i * 0.5);   // a bar of kick and backbeat
+const kit = { drums: 0, drumless: false };
+Audio.ctx.currentTime = 2;
+for (let i = 0; i < 200; i++) Audio._readPercussion(kit);
+assert(kit.drums > 0.9 && kit.drumless === false && Audio._percPending.length === 0,
+  'four hits across the last bar read as a full kit once they have sounded');
+Audio.ctx.currentTime = 4;
+for (let i = 0; i < 200; i++) Audio._readPercussion(kit);
+assert(kit.drums < 0.05 && kit.drumless === true,
+  'two beats with nothing scheduled reads as a drumless section');
+
+// The onset. `drums` is a four-beat density and `beatPulse` is a ramp that ticks
+// whether or not anything played it; neither can say "a drum landed on THIS
+// frame". The drain doing work is exactly that event.
+Audio._percPending.length = 0;
+Audio._percHeard.length = 0;
+const onset = { drums: 0, drumless: false, hit: 0 };
+Audio.ctx.currentTime = 10;
+Audio._percPending.push(10.5);
+Audio._readPercussion(onset);
+assert(onset.hit === 0, 'a scheduled hit that has not sounded yet does not report an onset');
+Audio.ctx.currentTime = 10.6;
+Audio._readPercussion(onset);
+assert(onset.hit === 1, 'the frame a scheduled hit passes the playhead reports a full onset');
+const decayed = onset.hit;
+Audio._readPercussion(onset);
+assert(onset.hit > 0 && onset.hit < decayed,
+  'the onset falls away over the frames after the hit rather than latching on');
+for (let i = 0; i < 20; i++) Audio._readPercussion(onset);
+assert(onset.hit < 0.01, 'the onset returns to rest when nothing else is scheduled');
+Audio.ctx = realCtx;
+Audio.bpm = realBpm;
+Audio._percPending.length = 0;
+Audio._percHeard.length = 0;
+
+const liveFeed = Audio.musicAnalysis();
+assert(Number.isFinite(liveFeed.hit) && liveFeed.hit >= 0 && liveFeed.hit <= 1,
+  'musicAnalysis reports a bounded kit onset alongside the density');
+const noHitField = createVisualizer(0, 0x0be11e55, { bpm: 120 });
+noHitField.update(1 / 60, { ...analysis });
+assert(noHitField.hit === 0,
+  'analysis without an onset field reports no hit, so older feeds render unchanged');
+
+// --- drumless sections ------------------------------------------------------
+// `beatPulse` is the procedural clock and keeps ticking whether or not anything
+// is playing the beat. `pulse` is that tick weighted by the kit actually under
+// it, so a section arranged without drums stops punching.
+const withKit = createVisualizer(0, 0x0d00d1e5, { bpm: 120 });
+const noKit = createVisualizer(0, 0x0d00d1e5, { bpm: 120 });
+let kitPulse = 0;
+let barePulse = 0;
+// The first four seconds are the kit leaving, which is meant to be a gradual
+// read; what is measured is the settled state on the far side of that.
+for (let frame = 0; frame < 480; frame++) {
+  const beat = frame / 30;
+  const at = { ...analysis, beat, beatPhase: beat % 1, beatPulse: Math.pow(1 - (beat % 1), 5) };
+  withKit.update(1 / 60, { ...at, drums: 1, drumless: false });
+  noKit.update(1 / 60, { ...at, drums: 0, drumless: true });
+  if (frame < 240) continue;
+  kitPulse += withKit.pulse;
+  barePulse += noKit.pulse;
+}
+assert(barePulse > 0 && barePulse < kitPulse * 0.25
+  && noKit.groove < 0.05 && withKit.groove > 0.95,
+  'a drumless section keeps a trace of the bar line but drops most of the beat punch');
+assert(noKit.drumless === true && withKit.drumless === false
+  && Math.abs(withKit.pulse - withKit.beatPulse) < 1e-9,
+  'a full kit leaves the punch exactly as it was before the drum tally existed');
+
+const noDrumField = createVisualizer(5, 0x0d00d1e5, { bpm: 120 });
+noDrumField.update(1 / 60, { ...analysis, drums: undefined, drumless: undefined });
+assert(noDrumField.drums === 1 && noDrumField.drumless === false
+  && noDrumField.pulse === noDrumField.beatPulse,
+  'analysis without drum fields assumes a full kit, so older feeds render unchanged');
 
 const gallery = createVisualizer(12, 0x2468ace0, { bpm: 120 });
 gallery.update(1 / 60, analysis);
@@ -199,6 +448,84 @@ assert(toasterParade.toasters.length >= 64
   && toasterParade.toasters.some((p) => p.x < firstToasterX || p.x < -40),
   'toaster sky parade keeps about one fifth of the flock stocked, pops only their toast, and sends a few through flight loops plus periodic special editions');
 
+const codeRain = createVisualizer(15, 0x0c0de5a1, { bpm: 120 });
+const rainOpeningGrid = Array.from(codeRain.grid);
+const rainHeads = codeRain.columns.map((c) => c.head);
+let rainMessages = 0;
+let rainWordsSeen = 0;
+let rainSpinning = 0;
+let rainBackwards = 0;
+const rainWords = new Set();
+for (let frame = 0; frame < 3600; frame++) {
+  const beat = frame / 30;
+  codeRain.update(1 / 60, { ...analysis, beat, beatPhase: beat % 1 });
+  const worded = codeRain.columns.filter((c) => c.word);
+  rainMessages = Math.max(rainMessages, worded.length);
+  for (const c of worded) {
+    if (!rainWords.has(c.word)) rainWordsSeen++;
+    rainWords.add(c.word);
+    // The word has to fit the column it was given, or it would draw letters
+    // the trail has no rows for.
+    if (c.len !== c.word.length || c.spins.length !== c.word.length) rainMessages = 99;
+    for (const spin of c.spins) {
+      if (spin.angle > 0) rainSpinning++;
+      // Past a quarter turn the card is edge-on and then showing its back.
+      if (spin.angle > Math.PI / 2 && spin.angle < Math.PI * 1.5) rainBackwards++;
+    }
+  }
+}
+codeRain.draw(ctx);
+assert(codeRain.columns.length === 40 && codeRain.grid.length === 40 * 25
+  && codeRain.columns.every((c) => Number.isFinite(c.head) && c.head - c.len <= 25)
+  && codeRain.columns.some((c, i) => c.head !== rainHeads[i])
+  && codeRain.grid.some((g, i) => g !== rainOpeningGrid[i]),
+  'code rain falls column by column and churns its glyphs in place');
+assert(rainMessages === 1 && rainWordsSeen > 1 && rainWords.size > 1,
+  'code rain decodes one column at a time into a readable word, and not always the same one');
+assert(rainSpinning > 100 && rainBackwards > 20
+  && codeRain.columns.every((c) => !c.spins || c.spins.every((spin) => spin.angle < Math.PI * 2)),
+  'letters of a decoded word turn on their vertical axis, through the back of the card and round again');
+
+const rainReplay = createVisualizer(15, 0x0c0de5a1, { bpm: 120 });
+const replayWords = [];
+for (let frame = 0; frame < 3600; frame++) {
+  const beat = frame / 30;
+  rainReplay.update(1 / 60, { ...analysis, beat, beatPhase: beat % 1 });
+  for (const c of rainReplay.columns) if (c.word && !replayWords.includes(c.word)) replayWords.push(c.word);
+}
+assert(replayWords.length === rainWords.size && replayWords.every((word) => rainWords.has(word)),
+  'code rain spells the same words for the same seed');
+
+const rainHeadsOf = (v) => v.columns.map((c) => c.head);
+const loudCode = travelOf(15, 0x0c0de5a1, LOUD, rainHeadsOf);
+const quietCode = travelOf(15, 0x0c0de5a1, QUIET, rainHeadsOf);
+assert(quietCode.travelled > 0 && quietCode.travelled < loudCode.travelled * 0.6,
+  'code rain drifts down slowly through a quiet passage instead of racing');
+
+// A column the downbeat releases is snapped to exactly 0; one that simply ran
+// its timer out has gone past it. That makes the two mechanisms countable, and
+// with no kit playing the beat the first one should stop happening.
+const rainDrops = (drumless) => {
+  const v = createVisualizer(15, 0x0c0de5a1, { bpm: 120 });
+  let snapped = 0;
+  let timedOut = 0;
+  for (let frame = 0; frame < 1800; frame++) {
+    const beat = frame / 30;
+    const waiting = v.columns.map((c) => c.wait > 0);
+    v.update(1 / 60, { ...analysis, beat, beatPhase: beat % 1, drums: drumless ? 0 : 1, drumless });
+    v.columns.forEach((c, i) => {
+      if (!waiting[i] || c.wait > 0) return;
+      if (c.wait === 0) snapped++; else timedOut++;
+    });
+  }
+  return { snapped, timedOut };
+};
+const codeWithKit = rainDrops(false);
+const codeNoKit = rainDrops(true);
+assert(codeWithKit.snapped > 50 && codeNoKit.snapped < 5
+  && codeNoKit.timedOut > codeWithKit.timedOut,
+  'code rain only restarts its columns on the downbeat while a kit is playing it, and drizzles in on its own timers otherwise');
+
 const swarm = createVisualizer(4, 0x87654321, { bpm: 120 });
 const swarmBeats = [0.1, 8.1, 16.1, 24.1, 32.1, 40.1, 48.1];
 const swarmTargets = [];
@@ -273,6 +600,264 @@ Input.press('confirm');
 sound.update(1 / 60);
 Input.release('confirm');
 assert(sound.playing === -1 && Audio.bank === null, 'the next input operates the list normally');
+
+// --- the homage presets -----------------------------------------------------
+const TUNNEL = VISUALIZER_NAMES.indexOf('HYPER-VECTOR TUNNEL');
+const NEBULA = VISUALIZER_NAMES.indexOf('NEBULA RIBBON DRIFT');
+const GLASS = VISUALIZER_NAMES.indexOf('GLASS BLOB EQUALIZER');
+
+assert(VISUALIZER_NAMES[VISUALIZER_NAMES.length - 1] === 'VJ MEGAMIX'
+  && [TUNNEL, NEBULA, GLASS].every((i) => i > 0)
+  && [TUNNEL, NEBULA, GLASS].every((i, n, all) => n === 0 || i === all[n - 1] + 1),
+  'the homage presets sit together in the pack and the mixer stays last');
+
+// The tunnel accumulates a feedback buffer, which makes it one of the two places
+// in the pack where draw() owns state. A cross-fade paints both records in one
+// frame, so the advance has to be guarded on the clock or the warp doubles its
+// speed for the length of every transition.
+const tunnel = createVisualizer(TUNNEL, 0x70bb1e00, { bpm: 120 });
+assert(tunnel.ensureBuffers() === false,
+  'the tunnel reports no buffers under a stub canvas and falls back to drawing vectors straight to frame');
+tunnel.update(1 / 60, analysis);
+tunnel.draw(ctx);
+// The stub canvas deliberately fails the createImageData probe, which is what
+// keeps the buffer path off in Node — so the guard has to be exercised against
+// stand-in surfaces, or the one invariant that matters most here goes untested.
+const stubSurface = () => ({ canvas: document.createElement('canvas'), ctx: document.createElement('canvas').getContext('2d') });
+tunnel.buffersTried = true;
+tunnel.buffers = { front: stubSurface(), back: stubSurface(), bloom: stubSurface() };
+tunnel.update(1 / 60, analysis);
+tunnel.draw(ctx);
+const afterFirst = tunnel.feedbackAdvances;
+assert(afterFirst > 0, 'the tunnel advances its feedback buffer when it has one');
+tunnel.draw(ctx);
+assert(tunnel.feedbackAdvances === afterFirst,
+  'a second draw on the same frame does not advance the feedback tunnel again');
+tunnel.update(1 / 60, analysis);
+tunnel.draw(ctx);
+assert(tunnel.feedbackAdvances === afterFirst + 1,
+  'a fresh frame advances the feedback tunnel exactly once');
+
+// Zooms are chosen on the beat and held. A zoom that slides continuously reads
+// as drift; the whole Geiss signature is that it steps with the music.
+const zoomer = createVisualizer(TUNNEL, 0x70bb1e01, { bpm: 120 });
+const zoomTargets = new Set();
+let zoomChangedOffBeat = false;
+let lastZoomTarget = zoomer.zoomTarget;
+for (let frame = 0; frame < 480; frame++) {
+  const beat = frame / 30;
+  const before = Math.floor(zoomer.beat);
+  zoomer.update(1 / 60, { ...analysis, beat, beatPhase: beat % 1 });
+  if (zoomer.zoomTarget !== lastZoomTarget) {
+    if (Math.floor(zoomer.beat) === before) zoomChangedOffBeat = true;
+    lastZoomTarget = zoomer.zoomTarget;
+    zoomTargets.add(Number(zoomer.zoomTarget.toFixed(6)));
+  }
+}
+assert(zoomTargets.size >= 3 && !zoomChangedOffBeat,
+  'the tunnel picks a new zoom only as the beat turns over, and works through several of them');
+
+// The nebula bursts off the sequencer's kit tally, never off beatPulse. This is
+// the whole reason the kit-weighted signals exist: beatPulse keeps ticking
+// through a section arranged without drums, and a cloud detonating where nobody
+// played a drum is exactly the failure to avoid.
+const burst = createVisualizer(NEBULA, 0x11eb0000, { bpm: 120 });
+const noBurst = createVisualizer(NEBULA, 0x11eb0000, { bpm: 120 });
+for (let frame = 0; frame < 480; frame++) {
+  const beat = frame / 30;
+  const at = { ...analysis, beat, beatPhase: beat % 1, beatPulse: Math.pow(1 - (beat % 1), 5) };
+  burst.update(1 / 60, { ...at, drums: 1, drumless: false });
+  noBurst.update(1 / 60, { ...at, drums: 0, drumless: true });
+}
+assert(burst.detonations > 6 && noBurst.detonations === 0,
+  'the nebula detonates on the kit and stays still through a drumless section');
+assert(burst.heat >= 0 && burst.heat <= 1
+  && Number.isInteger(Math.round(burst.paletteStep * 7))
+  && burst.dust.length >= 96,
+  'the nebula keeps its palette walk bounded and quantised, so the sprite cache cannot grow without limit');
+
+// A shell travelling outward, not the whole cloud scaling up at once.
+const shock = createVisualizer(NEBULA, 0x11eb0001, { bpm: 120 });
+let reach = 0;
+let shrank = false;
+let live = 0;
+let previousR = 0;
+for (let frame = 0; frame < 200; frame++) {
+  const beat = frame / 30;
+  shock.update(1 / 60, {
+    ...analysis, beat, beatPhase: beat % 1, drums: 1, drumless: false,
+  });
+  if (shock.shockE <= 0) { previousR = 0; continue; }
+  live++;
+  // Within one detonation the shell only ever travels outward; a reset to zero
+  // is the next detonation starting, not the same one collapsing.
+  if (shock.shockR < previousR && previousR > 0) shrank = true;
+  previousR = shock.shockR;
+  reach = Math.max(reach, shock.shockR);
+}
+assert(live > 10 && !shrank && reach > 120,
+  'the nebula shockwave travels outward past the cloud rather than scaling it up in place');
+
+// The bargraph caps are the WMP tell: they snap up, hang, then accelerate down.
+const glass = createVisualizer(GLASS, 0x91a55000, { bpm: 120 });
+for (let frame = 0; frame < 40; frame++) glass.update(1 / 60, analysis);
+const risenPeaks = Array.from(glass.peaks);
+const quietSpectrum = new Uint8Array(128);
+let heldAt = null;
+for (let frame = 0; frame < 150; frame++) {
+  glass.update(1 / 60, { ...analysis, spectrum: quietSpectrum });
+  if (frame === 8) heldAt = Array.from(glass.peaks);
+}
+assert(risenPeaks.every((p) => p > 0.2),
+  'the equalizer caps rise to meet a loud spectrum');
+assert(heldAt.every((p, i) => p > risenPeaks[i] * 0.85),
+  'the caps hang at their peak for a beat before they start to fall');
+assert(Array.from(glass.peaks).every((p) => p >= 0 && p < 0.05)
+  && Array.from(glass.peakVel).every((v) => v > 0),
+  'the caps then accelerate down under gravity and settle at the floor');
+assert(glass.radii.length === 96
+  && Array.from(glass.radii).every((r) => Number.isFinite(r) && r > 0 && r < 200),
+  'the glass surface marches to a bounded closed contour');
+
+
+// --- VJ MEGAMIX -------------------------------------------------------------
+// The preset that plays the other presets. What matters is the clock: a record
+// holds for a full phrase and the handover lands ON the boundary, whatever the
+// song's own beat count is doing underneath.
+const MEGAMIX_INDEX = VISUALIZER_NAMES.indexOf('VJ MEGAMIX');
+assert(MEGAMIX_INDEX >= 0, 'the megamix is a browsable member of the preset pack');
+
+// Runs the megamix at 120bpm for `seconds`, optionally against a song whose beat
+// count restarts every `loopAt` beats, and reports every handover.
+function runMegamix(seed, seconds, loopAt = 0) {
+  const mix = createVisualizer(MEGAMIX_INDEX, seed, { bpm: 120 });
+  const played = [mix.current.name];
+  const moves = [];
+  const handoverBeats = [];
+  let songBeat = 0;
+  let last = mix.current.name;
+  for (let frame = 0; frame < seconds * 60; frame++) {
+    songBeat += (1 / 60) * 2;
+    mix.update(1 / 60, { ...analysis, beat: loopAt ? songBeat % loopAt : songBeat });
+    mix.draw(ctx);
+    if (mix.plan && !moves.includes(mix.plan.transition.name)) moves.push(mix.plan.transition.name);
+    if (mix.current.name !== last) {
+      last = mix.current.name;
+      played.push(last);
+      handoverBeats.push(mix.mixBeat);
+    }
+  }
+  return { mix, played, moves, handoverBeats };
+}
+
+const megamix = runMegamix(0x1234abcd, 200);
+assert(megamix.played.length >= 5
+  && megamix.handoverBeats.every((beat, i) => Math.abs(beat - (i + 1) * MEGAMIX_CYCLE_BEATS) <= 1),
+  'each record holds a full 16-bar phrase and hands over on the phrase boundary');
+assert(megamix.played.every((name, i) => i === 0 || name !== megamix.played[i - 1])
+  && !megamix.played.includes('VJ MEGAMIX'),
+  'the megamix never plays itself and never repeats a record back to back');
+
+// A jukebox song loops, which restarts the beat count it reports. The phrase
+// clock has to survive that: it is the one thing every transition is aimed at.
+const loopedRun = runMegamix(0x1234abcd, 200, 64);
+assert(loopedRun.played.length === megamix.played.length
+  && loopedRun.handoverBeats.every((beat, i) => Math.abs(beat - megamix.handoverBeats[i]) < 0.1),
+  'a song whose beat count restarts every phrase does not stall or double-trigger the mixer');
+
+const replay = runMegamix(0x1234abcd, 200);
+assert(JSON.stringify(replay.played) === JSON.stringify(megamix.played),
+  'a replayed seed deals the same records in the same order');
+
+// One long run should get through the whole pack rather than orbiting a few.
+const longRun = runMegamix(0x2468ace0, 1200);
+assert(new Set(longRun.played).size === VISUALIZER_NAMES.length - 1,
+  'a long run deals every other preset in the pack at least once');
+
+// Every move has to survive being drawn across its whole length, including the
+// clip-path and context-transform ones, and has to leave the context clean.
+for (const move of MEGAMIX_TRANSITIONS) {
+  const mix = createVisualizer(MEGAMIX_INDEX, 0x778899aa, { bpm: 120 });
+  let songBeat = 0;
+  while (!mix.plan) {
+    songBeat += (1 / 60) * 2;
+    mix.update(1 / 60, { ...analysis, beat: songBeat });
+  }
+  mix.plan.transition = move;
+  mix.plan.startBeat = mix.switchBeat - (move.align === 'centre' ? move.beats * 0.5 : move.beats);
+  mix.plan.endBeat = mix.plan.startBeat + move.beats;
+  const arriving = mix.plan.incoming.name;
+  const seen = [];
+  for (let frame = 0; frame < 60 * 6 && mix.plan; frame++) {
+    songBeat += (1 / 60) * 2;
+    mix.update(1 / 60, { ...analysis, beat: songBeat });
+    seen.push(mix.transitionAmount());
+    mix.draw(ctx);
+  }
+  // Sampled as spans rather than against an exact end value: the shortest move
+  // is 45 frames long, so its last drawn step still sits a little short of 1.
+  const drewIn = (lo, hi) => seen.some((p) => p > lo && p <= hi);
+  assert(drewIn(0, 0.2) && drewIn(0.4, 0.6) && drewIn(0.9, 1)
+    && !mix.plan && mix.current.name === arriving,
+    `${move.name} draws its whole length and lands the incoming record`);
+}
+
+// The dev audition: a short cycle that walks the whole move list in order, so
+// every transition can be judged rather than waited for.
+setMegamixAudition(true);
+const audition = createVisualizer(MEGAMIX_INDEX, 0x1234abcd, { bpm: 120 });
+setMegamixAudition(false);
+const auditioned = [];
+let auditionBeat = 0;
+let lastMove = null;
+// One full pass is every move times the audition cycle — 160 beats, which at
+// the 120bpm this drives is eighty seconds. Run past it so the wrap is covered.
+const auditionPass = MEGAMIX_TRANSITIONS.length * MEGAMIX_AUDITION_BEATS;
+for (let frame = 0; frame < 30 * (auditionPass + MEGAMIX_AUDITION_BEATS * 2); frame++) {
+  auditionBeat += (1 / 60) * 2;
+  audition.update(1 / 60, { ...analysis, beat: auditionBeat });
+  audition.draw(ctx);
+  if (audition.plan && audition.plan.transition !== lastMove) {
+    lastMove = audition.plan.transition;
+    auditioned.push(lastMove.name);
+  } else if (!audition.plan) lastMove = null;
+}
+const firstPass = auditioned.slice(0, MEGAMIX_TRANSITIONS.length);
+assert(audition.audition && audition.cycleBeats === MEGAMIX_AUDITION_BEATS
+  && firstPass.join('|') === MEGAMIX_TRANSITIONS.map((move) => move.name).join('|'),
+  'the audition walks every move in list order on its short cycle');
+// The heavy-preset rule substitutes a solo move for whichever one is due. An
+// audition must never lose the move it is showing, so it bypasses that rule
+// outright — which is what lets it deal the expensive presets too, and those are
+// the pairings worth watching the frame rate through.
+const heavyName = 'ACID JULIA DIVE';
+setMegamixAudition(true);
+const heavyAudition = createVisualizer(MEGAMIX_INDEX, 0x0badf00d, { bpm: 120 });
+setMegamixAudition(false);
+let heavyBeat = 0;
+const heavyMoves = [];
+for (let frame = 0; frame < 60 * 200; frame++) {
+  heavyBeat += (1 / 60) * 2;
+  heavyAudition.update(1 / 60, { ...analysis, beat: heavyBeat });
+  if (heavyAudition.plan && VISUALIZER_NAMES[heavyAudition.plan.index] === heavyName) {
+    heavyMoves.push(heavyAudition.plan.transition.name);
+  }
+}
+assert(heavyMoves.length > 0 && !heavyMoves.every((name) => name === 'BEAT STUTTER' || name === 'FLASH CUT'),
+  'an audition deals the expensive presets too, without swapping the move it is showing for a solo one');
+assert(createVisualizer(MEGAMIX_INDEX, 0x1234abcd, { bpm: 120 }).cycleBeats === MEGAMIX_CYCLE_BEATS,
+  'the audition switch does not leak into an ordinary megamix');
+
+// The corner tag names whichever record is up, so it can re-announce itself
+// mid-preset — the jukebox never switches visualizer while this one is running.
+const tagged = createVisualizer(MEGAMIX_INDEX, 0x1234abcd, { bpm: 120 });
+const tags = new Set();
+for (let frame = 0; frame < 60 * 140; frame++) {
+  tagged.update(1 / 60, { ...analysis, beat: frame * 2 / 60 });
+  tags.add(tagged.label);
+}
+assert(tags.size >= 3 && [...tags].every((tag) => tag.startsWith('MEGAMIX / ')),
+  'the corner tag follows the record on screen instead of naming the mixer forever');
 
 Input.clearAll();
 console.log(failed ? 'VISUALIZERS: FAILED' : 'VISUALIZERS: PASSED');

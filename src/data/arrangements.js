@@ -41,25 +41,19 @@
 // its ~200 lines of arrangement rationale; nothing in src/data/cabinets.js is ever
 // machine-rewritten.
 
+import { ARRANGEMENT_BY_ID } from './songs/index.js';
+
 // Written by the desk, and rewritten WHOLE on every save — so nothing inside the
 // object below survives, comments included. Anything worth saying about it is said
 // up here, above the line the generator starts at.
 //
 // Empty means every song plays exactly as it was composed, which is also what keeps
 // tests/null-test.js green.
-export const ARRANGEMENTS = {
-  "after-hours-layaway-gary-organ": {
-    order: [
-      { s: 0, bars: 1, from: 1, off: ["hats","kick","ohats","snare"] }, 0, 0, 0, 1, 1,
-    ],
-  },
-  "basket-bounce-dolores": {
-    order: [
-      { s: 0, off: ["hats","rim"] }, { s: 0, off: ["hats","rim"] }, { s: 0, off: ["hats"] }, { s: 0, off: ["hats"] }, { s: 0, off: ["hats"] }, { s: 0, off: ["hats"] }, 0, 0,
-      1, 1,
-    ],
-  },
-};
+// Assembled from src/data/songs/ — each song file carries its own arrangement.
+const GENERATED_ARRANGEMENTS = ARRANGEMENT_BY_ID;
+export const ARRANGEMENTS = Object.fromEntries(
+  Object.entries(GENERATED_ARRANGEMENTS).filter(([, entry]) => entry),
+);
 
 // ---- THE FORMAT, IN CODE ----------------------------------------------------
 // Everything from this line down is hand-written and is NOT machine-generated. The
@@ -107,6 +101,11 @@ export function expandOrder(order, hasSections = true) {
       // that the desk reads and the sequencer walks, and one `off` array on four
       // bars is four bars that change together the first time anything sorts it.
       if (e.off && e.off.length) bar.off = [...e.off];
+      if (e.delete && e.delete.length) bar.delete = [...e.delete];
+      for (const key of ['transpose', 'offset', 'gain']) {
+        if (e[key] == null) continue;
+        bar[key] = typeof e[key] === 'number' ? e[key] : { ...e[key] };
+      }
       plan.push(bar);
     }
   }
@@ -207,6 +206,20 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
       }
       for (const k of e.off || []) {
         if (laneKeys && !laneKeys.includes(k)) issues.push(`order[${i}] silences "${k}", which is not a lane`);
+      }
+      for (const k of e.delete || []) {
+        if (laneKeys && !laneKeys.includes(k)) issues.push(`order[${i}] deletes "${k}", which is not a lane`);
+      }
+      for (const key of ['transpose', 'offset', 'gain']) {
+        const map = e[key];
+        if (map == null) continue;
+        const values = typeof map === 'number' ? [['all', map]] : Object.entries(map);
+        for (const [lane, value] of values) {
+          if (lane !== 'all' && laneKeys && !laneKeys.includes(lane)) {
+            issues.push(`order[${i}] edits "${lane}", which is not a lane`);
+          }
+          if (!Number.isFinite(value)) issues.push(`order[${i}] has a non-numeric ${key}`);
+        }
       }
     }
   });

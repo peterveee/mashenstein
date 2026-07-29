@@ -73,17 +73,43 @@ export const VOICE_LANES = {
   // so each lane carries the note its voice is struck at — roughly where that drum
   // sits, and the preset's own envelope does the rest. Change it per song with the
   // lane's `...Note` key if a kick wants to be tuned to the bass.
-  kick: { voiceKey: 'kickVoice', durKey: 'kickDur', noteKey: 'kickNote', note: 55, label: 'kick' },
-  snare: { voiceKey: 'snareVoice', durKey: 'snareDur', noteKey: 'snareNote', note: 190, label: 'snare' },
-  clap: { voiceKey: 'clapVoice', durKey: 'clapDur', noteKey: 'clapNote', note: 320, label: 'clap' },
-  rim: { voiceKey: 'rimVoice', durKey: 'rimDur', noteKey: 'rimNote', note: 420, label: 'rim' },
-  hats: { voiceKey: 'hatsVoice', durKey: 'hatsDur', noteKey: 'hatsNote', note: 800, label: 'hats' },
-  ohats: { voiceKey: 'ohatsVoice', durKey: 'ohatsDur', noteKey: 'ohatsNote', note: 800, label: 'open hats' },
-  crash: { voiceKey: 'crashVoice', durKey: 'crashDur', noteKey: 'crashNote', note: 520, label: 'crash' },
+  //
+  // `trim` is the other half, and the reason these lanes read differently from the
+  // melodic ones. A drum lane has no `gainKey` — its level is not one number on the
+  // bank but a PRODUCT of the kit's trims, which is how a song tucks its whole kit
+  // down (`drumGain`) and then leans on one piece of it (`kickGain`). The
+  // hand-written voices have always multiplied these; see the lane blocks in
+  // scheduleStep. Each entry is `[key, default]`, and `laneTrim` divides by the
+  // default because that is the state LANE_TARGETS was measured in — so a bank that
+  // names none of them scales by exactly 1 and nothing moves.
+  kick: { voiceKey: 'kickVoice', durKey: 'kickDur', noteKey: 'kickNote', note: 55, label: 'kick',
+    trim: [['kickGain', 1], ['drumGain', 1]] },
+  snare: { voiceKey: 'snareVoice', durKey: 'snareDur', noteKey: 'snareNote', note: 190, label: 'snare',
+    trim: [['drumGain', 1]] },
+  clap: { voiceKey: 'clapVoice', durKey: 'clapDur', noteKey: 'clapNote', note: 320, label: 'clap',
+    trim: [['clapGain', 1], ['drumGain', 1]] },
+  // rim and crash carry a default that is NOT 1 — the engine reads `b.rimGain ?? 0.21`
+  // and `b.crashGain ?? 0.15`, so those are the levels their targets were measured at.
+  rim: { voiceKey: 'rimVoice', durKey: 'rimDur', noteKey: 'rimNote', note: 420, label: 'rim',
+    trim: [['rimGain', 0.21], ['drumGain', 1]] },
+  hats: { voiceKey: 'hatsVoice', durKey: 'hatsDur', noteKey: 'hatsNote', note: 800, label: 'hats',
+    trim: [['drumGain', 1]] },
+  ohats: { voiceKey: 'ohatsVoice', durKey: 'ohatsDur', noteKey: 'ohatsNote', note: 800, label: 'open hats',
+    trim: [['drumGain', 1]] },
+  crash: { voiceKey: 'crashVoice', durKey: 'crashDur', noteKey: 'crashNote', note: 520, label: 'crash',
+    trim: [['crashGain', 0.15], ['drumGain', 1]] },
+  tom: { voiceKey: 'tomVoice', durKey: 'tomDur', noteKey: 'tomNote', note: 130, label: 'tom',
+    trim: [['drumGain', 1]] },
 };
 
 /** Lanes whose bank holds booleans rather than frequencies. */
-export const PERCUSSION_LANES = ['kick', 'snare', 'clap', 'rim', 'hats', 'ohats', 'crash'];
+export const PERCUSSION_LANES = ['kick', 'snare', 'clap', 'rim', 'hats', 'ohats', 'crash', 'tom'];
+
+// A newly added step-sequencer channel must make a sound before it has been
+// customised. `tom` is the neutral authored percussion preset already used by the
+// canonical eighth lane; keeping the id here lets the engine repair older mixer
+// drafts that created an independent lane without naming any voice at all.
+export const DEFAULT_ADDED_PERCUSSION_VOICE = 'tom';
 
 /**
  * Lanes whose bank holds an ARRAY of frequencies per step — a chord, not a note.
@@ -176,6 +202,39 @@ export function voiceGain(voice, laneKey) {
   return target / peak;
 }
 
+/**
+ * The kit trims a bank applies to one drum lane, as a scale on `voiceGain`.
+ *
+ * A melodic lane states its level in one key and `voiceGain` steps aside when it does
+ * — "a bank that has been dialled in keeps its numbers". A drum lane has no such key:
+ * its level is the PRODUCT of the kit's trims (`drumGain` under the whole kit,
+ * `kickGain`/`clapGain`/`rimGain`/`crashGain` on one piece of it), which the
+ * hand-written voices multiply in and a preset had no way to see. So a song that
+ * tucked its kit down got that duck on the engine's own kick and full level on any
+ * preset chosen in its place — megamix's clap ran 17 dB hot, which is most of what
+ * its -16.5 dB fader was holding back.
+ *
+ * Relative to each key's DEFAULT, because that is the state the lane's target was
+ * measured in (tools/measure-voices.js renders one note with no trims set). A bank
+ * naming none of them scales by 1, which is why this moved nothing in the songs that
+ * play the hand-written kit.
+ *
+ * Read per note off the section-merged bank, like every other bank key, so a preset
+ * follows per-section trim changes the way the hand-written voice always has.
+ */
+export function laneTrim(bank, laneKey) {
+  const seam = seamFor(laneKey);
+  if (!seam?.trim || !bank) return 1;
+  let scale = 1;
+  for (const [key, dflt] of seam.trim) {
+    const v = bank[key] ?? dflt;
+    // A zero default would be a lane with no reference level to be relative to, and a
+    // zero trim is a muted lane — which is a legal thing for a song to ask for.
+    if (dflt > 0) scale *= v / dflt;
+  }
+  return scale;
+}
+
 // Noise presets — the snares, claps, hats and shakers. Built from native nodes on the
 // engine's own SEEDED noise buffer (`AudioSys.noiseBuf`), not from `Tone.Noise`: Tone
 // fills its buffer from `Math.random` at construction, so two renders of a song would
@@ -222,11 +281,11 @@ const NOISE = {
     note: 'Three closer, shorter bursts. Reads as one hand rather than a room full.',
     noise: { type: 'bandpass', freq: 2400, Q: 2, decay: 0.055 },
     taps: [0, 0.008, 0.016], tapFalloff: 0.7 },
-  clapRoom: { label: 'Room Clap', category: 'Claps', dur: 1,
-    note: 'Five bursts spread wider with a long tail on the last — a hall, not a '
-      + 'booth. Wants space in the arrangement.',
-    noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.2 },
-    taps: [0, 0.014, 0.03, 0.048, 0.07], tapFalloff: 0.82 },
+  clapRoom: { label: 'Big Room Clap', category: 'Claps', dur: 1,
+    note: 'Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants '
+      + 'space in the arrangement.',
+    noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.5, gain: 0.88 },
+    taps: [0, 0.014, 0.037, 0.058, 0.083], tapFalloff: 0.89 },
 
   hatClosed: { label: 'Closed Hat', category: 'Hats', dur: 0.5,
     note: 'A very short highpassed tick. The cheapest sound in the library and the '
@@ -325,6 +384,12 @@ const DRUM = {
       + 'the laser tom every drum synth ships and every second track uses once.',
     osc: { type: 'sawtooth', from: 1900, to: 50, sweep: 0.085, decay: 0.1, curve: 'exp', gain: 1 },
     drive: 0.5 },
+  dsCrackSnare2: { label: 'DS Crack Snare 2', category: 'Snares', dur: 1,
+    note: 'Tight and driven: a short square knock, highpassed air, everything over in a tenth '
+      + 'of a second. The backbeat for fast songs.',
+    osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
+    noise: { type: 'highpass', freq: 2900, Q: 0.8, decay: 0.3, gain: 1 },
+    drive: 0.35 },
 };
 
 // Measured, by tools/measure-voices.js — do not hand-edit either block.
@@ -337,7 +402,7 @@ const DRUM = {
 const LANE_TARGETS = {
   bass: 0.2118, lead: 0.1251, leadHarm: 0.0834, twinkle: 0.0365, chords: 0.1115,
   organChords: 0.034, kick: 0.3315, snare: 0.1615, clap: 0.1627, rim: 0.1977,
-  hats: 0.1127, ohats: 0.1147, crash: 0.1357
+  hats: 0.1127, ohats: 0.1147, crash: 0.1357, tom: 0.1824
 };
 
 // Categories, in picker order. Sound type, not lane — see the note at the top.
@@ -556,13 +621,13 @@ const ENGINE = {
 // length in 16th steps, and the envelope's release rings on past it.
 const TONE = {
   // ---- Basses -------------------------------------------------------------
-  roundMono: { label: 'Round Mono', category: 'Basses', synth: 'MonoSynth', dur: 1.8,
+  roundMono: { label: 'Round Mono 2', category: 'Basses', synth: 'MonoSynth', dur: 1.8,
     note: 'Saw through a lowpass that closes as the note decays — the classic synth bass.',
     options: {
       oscillator: { type: 'sawtooth' },
-      envelope: { attack: 0.006, decay: 0.2, sustain: 0.7, release: 0.25 },
-      filter: { type: 'lowpass', Q: 1.2, rolloff: -24 },
-      filterEnvelope: { attack: 0.004, decay: 0.14, sustain: 0.25, release: 0.3, baseFrequency: 120, octaves: 2.9 },
+      envelope: { attack: 0.001, decay: 1.24, sustain: 0.29, release: 0.8 },
+      filter: { type: 'lowpass', Q: 8.3, rolloff: -24 },
+      filterEnvelope: { attack: 0.001, decay: 1.22, sustain: 0.13, release: 0.3, baseFrequency: 870, octaves: 3.9 },
     } },
   fmGrowl: { label: 'FM Growl', category: 'Basses', synth: 'FMSynth', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
@@ -955,10 +1020,14 @@ const TONE = {
       + 'keep time.',
     options: { pitchDecay: 0.06, octaves: 1.4, oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.25 } } },
-  taiko: { label: 'Taiko', category: 'Percussion', synth: 'MembraneSynth', dur: 2.4,
-    note: 'Big, low and slow to die. Two of these are a whole arrangement.',
-    options: { pitchDecay: 0.14, octaves: 3, oscillator: { type: 'triangle' },
-      envelope: { attack: 0.002, decay: 0.9, sustain: 0, release: 0.8 } } },
+  taiko: { label: 'KW Blip', category: 'Percussion', synth: 'MembraneSynth', dur: 2.4,
+    note: 'Like a kraftwerk percussion blip',
+    options: {
+      pitchDecay: 0.037,
+      octaves: 6.3,
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.3 },
+    } },
   clave: { label: 'Clave', category: 'Percussion', synth: 'FMSynth', dur: 0.6,
     note: 'A hard, high, completely dry click with a pitch to it. Cuts through '
       + 'anything at almost no level.',
@@ -1163,13 +1232,19 @@ const TONE = {
     note: "A tiny detuned AM sine. Small, clean and easy to place under anything.",
     origin: "Tonejs/Presets AMSynth/Tiny",
     options: {"harmonicity":2,"oscillator":{"type":"amsine2","modulationType":"sine","harmonicity":1.01},"envelope":{"attack":0.006,"decay":4,"sustain":0.04,"release":1.2},"modulation":{"volume":13,"type":"amsine2","modulationType":"sine","harmonicity":12},"modulationEnvelope":{"attack":0.006,"decay":0.2,"sustain":0.2,"release":0.4}} },
+  roundMono2: { label: 'Square Tone', category: 'Plucks', synth: 'Synth', dur: 9.35,
+    note: 'Simple Square Tone',
+    options: {
+      oscillator: { type: 'square' },
+      envelope: { attack: 0.001, decay: 1.3, sustain: 0.06, release: 2.18 },
+    } },
 };
 
 // Measured peaks, filled in by tools/measure-voices.js. Kept beside the options they
 // belong to rather than in a generated file: a preset and its level are one thing,
 // and a second file would be one more thing to forget to regenerate.
 const PEAKS = {
-  roundMono: 0.9005, fmGrowl: 0.216, subSine: 0.6891, acidSquelch: 1.6469,
+  roundMono: 1.3233, fmGrowl: 0.216, subSine: 0.6891, acidSquelch: 1.6469,
   rubberBass: 0.6823, clangBass: 0.2115, detuneBass: 1.5362, monoBright: 0.8807,
   amHollow: 0.1073, duoDetune: 1.3948, glassLead: 0.2129, reedLead: 0.8357,
   screamLead: 2.1142, vibratoLead: 1.3321, fmKeys: 0.2185, epiano: 0.2199,
@@ -1182,7 +1257,7 @@ const PEAKS = {
   ringMod: 0.1355, hardFm: 0.2094, kickDeep: 0.6968, kickPunch: 0.6852,
   kickDirty: 0.6838, kickThud: 0.6895, snareFm: 0.2183, snareTrash: 3.2979,
   snareFlam: 2.5432, clapMetal: 2.5373, clapFm: 0.2417, hatTick: 1.3353,
-  hatSizzle: 0.6979, conga: 0.6912, taiko: 0.6927, clave: 0.2197, agogo: 2.5451,
+  hatSizzle: 0.6979, conga: 0.6912, taiko: 0.6496, clave: 0.2197, agogo: 2.5451,
   triangleDing: 1.5741, buzzRoll: 2.6694, kick808: 0.6984, kickTight: 0.6798,
   kickClick: 0.6796, tom: 0.6939, metalSnare: 2.6982, metalHatClosed: 1.5952,
   metalHatOpen: 2.3604, metalCrash: 2.4879, cowbell: 3.3186, woodBlock: 0.2169,
@@ -1193,11 +1268,12 @@ const PEAKS = {
   tpTreeTrunk: 0.6572, tpElectricCello: 0.2173, tpKalimba: 0.2195,
   tpThinSaws: 0.2098, tpHarmonics: 0.1082, tpTiny: 0.1531, snareCrisp: 0.4735,
   snareFat: 0.6486, snareTight: 0.4028, snareBrush: 0.8552, snareRim: 0.5081,
-  clap808: 0.2403, clapTight: 0.1879, clapRoom: 0.3391, hatClosed: 0.6624,
+  clap808: 0.2403, clapTight: 0.1879, clapRoom: 0.3915, hatClosed: 0.6624,
   hatOpen: 0.8555, hatPedal: 0.2968, shaker: 0.4313, tambourine: 0.8678,
   noiseSweep: 0.8056, dsKick: 0.7, dsKickHard: 0.7, dsSnare: 0.6935,
   dsSnareCrack: 0.7, dsClap: 0.2885, dsHatClosed: 0.7135, dsHatOpen: 0.8873,
-  dsShaker: 0.5496, dsTom: 0.7, dsRim: 0.6945, dsZap: 0.7
+  dsShaker: 0.5496, dsTom: 0.7, dsRim: 0.6945, dsZap: 0.7, dsCrackSnare2: 0.7,
+  roundMono2: 0.6687
 };
 
 export const VOICES = {};
@@ -1219,6 +1295,11 @@ export function voicesFor(laneKey) {
   const base = baseLane(laneKey);
   const layer = isLayer(laneKey);
   return Object.values(VOICES).filter((v) => {
+    // A song's own copy is not in the library. It lives in one song's mix and is put
+    // in the catalogue at play time so the engine can resolve it the one way it
+    // resolves everything — see registerSongVoice. Offering it here would put another
+    // song's private sound in this song's picker under a name it does not own.
+    if (v.songLocal) return false;
     // An ENGINE preset is a bundle of the bank keys the hand-written voice reads, and
     // a layer has no hand-written body to read them — choosing one would be a strip
     // that says it plays a filtered saw and makes no sound at all. Layers take the
@@ -1240,7 +1321,7 @@ const LANE_FIRST_CATEGORY = {
   bass: 'Basses', lead: 'Leads', leadHarm: 'Leads', chords: 'Keys',
   organChords: 'Organs', twinkle: 'Bells & Mallets',
   kick: 'Kicks', snare: 'Snares', clap: 'Claps',
-  hats: 'Hats', ohats: 'Hats', rim: 'Percussion', crash: 'Percussion',
+  hats: 'Hats', ohats: 'Hats', rim: 'Percussion', crash: 'Percussion', tom: 'Percussion',
 };
 
 /**
@@ -1302,6 +1383,67 @@ export function engineBankKeys(voice, laneKey) {
   const out = { ...(voice.bank || {}) };
   if (voice.osc && seam?.typeKey) out[seam.typeKey] = voice.osc;
   return out;
+}
+
+/**
+ * A song's own copy of a preset, put into the catalogue so the engine can find it.
+ *
+ * A preset is library-wide: `voice: { bassVoice: 'roundMono' }` names one, and every
+ * song naming it gets the same sound. That is right for a library and wrong for a
+ * song that wants ITS bass a shade darker — the only way to have that was to change
+ * roundMono for everybody. A song can now carry the whole preset in its own mix,
+ * under `voiceParams`, keyed by the same voice key.
+ *
+ * The copy is COMPLETE, not a diff against the library entry. So a song sounds the
+ * same next year whatever has happened to the preset it was copied from, which is the
+ * point of it being the song's own — and resolving it needs no lookup that could miss.
+ *
+ * Registering it under an id, rather than teaching the lookups about a second kind of
+ * voice, is what keeps this cheap: `voiceOf`, `voiceGain`, the voice rack and every
+ * schedule-time read go on resolving `VOICES[bank[voiceKey]]` exactly as they always
+ * have, and none of them needs to know the entry came from a song. The id is scoped
+ * by song and lane because that is what it belongs to — two songs overriding the same
+ * preset are two different sounds, and must not collide.
+ *
+ * Marked `songLocal` so `voicesFor` keeps it out of the library picker: it is in the
+ * catalogue to be PLAYED, not to be offered.
+ */
+export const songVoiceId = (voiceKey, trackId) => `${voiceKey}@${trackId || 'song'}`;
+
+/**
+ * The voice key an id is a song copy FOR, or null if it is an ordinary library preset.
+ *
+ * Asked with the song in hand rather than parsed loose, because "is this a copy" and
+ * "is this THIS song's copy" are different questions and only the second one is safe
+ * to write a mix from: the desk holds a draft per song, and answering the first would
+ * let one song's panel write into another song's voiceParams.
+ */
+export function songVoiceKey(id, trackId) {
+  if (!id || !VOICES[id]?.songLocal) return null;
+  const at = id.lastIndexOf('@');
+  if (at < 0) return null;
+  const key = id.slice(0, at);
+  return songVoiceId(key, trackId) === id ? key : null;
+}
+
+export function registerSongVoice(voiceKey, trackId, params) {
+  if (!voiceKey || !params) return null;
+  // An engine preset is bank keys rather than a synth — there are no parameters to
+  // carry, which is why the editor refuses to open one. A song copy of one would be
+  // an entry that expands to nothing.
+  const kind = params.kind || 'tone';
+  if (kind === 'engine') return null;
+  const id = songVoiceId(voiceKey, trackId);
+  VOICES[id] = {
+    ...params,
+    id,
+    kind,
+    // Same guard voiceGain applies: the lane's target is DIVIDED by this, so a zero
+    // here is not a quiet preset, it is a division by zero.
+    peak: params.peak > 0 ? params.peak : 1,
+    songLocal: true,
+  };
+  return id;
 }
 
 // ---- Naming what a lane already plays ---------------------------------------

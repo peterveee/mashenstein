@@ -4,6 +4,7 @@
 import { seq, chordSeq } from '../engine/notes.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
+import { SONGS } from './songs/index.js';
 
 const silence = seq('.');
 const chordSilence = chordSeq('.');
@@ -200,7 +201,14 @@ const mashSections = melodies.flatMap((melody, index) => {
   ];
 });
 
-export const MEGAMIX_THEME = {
+// How the mash-up was BUILT. Kept because it is the recipe — which hook came from
+// where, in what key, over which house rhythm — and because re-deriving it is the
+// only way to pick up new cabinet melodies.
+//
+// It is no longer what plays. The song was frozen into src/data/songs/megamix.js
+// (see tools/migrate-songs.js), so megamix has a file of its own like every other
+// song and no longer changes underneath you when a cabinet's melody is edited.
+export const MEGAMIX_COMPUTED = {
   bpm: 120,
   // Match the established jukebox loudness with one final bank-level trim.
   musicTrim: 2.24,
@@ -223,3 +231,6 @@ export const MEGAMIX_THEME = {
   sections: [...introSections, ...mashSections],
   order: [...introSections, ...mashSections].map((_, index) => index),
 };
+
+// What plays: the frozen song, one file like all the others.
+export const MEGAMIX_THEME = SONGS.megamix.bank;

@@ -3405,6 +3405,7 @@ export class SoundTestState {
     this.previousVisualizer = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
+    this.shownLabel = null;
     this.visualizerIndex = -1;
     this.lastVisualizerIndex = -1;
     this.fullscreenReady = false;
@@ -3453,6 +3454,7 @@ export class SoundTestState {
     this.previousVisualizer = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
+    this.shownLabel = null;
     this.visualizerIndex = -1;
     this.fullscreenReady = false;
     this.visualSwipe = null;
@@ -3626,6 +3628,14 @@ export class SoundTestState {
       if (this.visualState !== 'out' && (previous || next)) this.switchVisualizer(next ? 1 : -1);
       else if (!swipeHandled && this.visualizerInput()) this.wakeVisualizer();
       if (this.visualizer) this.visualizer.update(dt, Audio.musicAnalysis());
+      // The megamix changes record without the jukebox switching preset, so the
+      // corner tag is re-announced whenever the name it would print changes —
+      // not only when the player asks for a different preset.
+      const shownLabel = this.visualizer ? (this.visualizer.label || this.visualizer.name) : null;
+      if (shownLabel !== this.shownLabel) {
+        this.shownLabel = shownLabel;
+        this.labelT = 0;
+      }
       if (this.visualState !== 'out') this.labelT += dt;
       if (this.visualSwitchT > 0) {
         this.visualSwitchT = Math.max(0, this.visualSwitchT - dt);
@@ -3847,15 +3857,22 @@ export class SoundTestState {
     // underneath it, and WebGL/2D get the same fade and layer ordering.
     const drawVisualSurface = (surface) => {
       surface.save();
+      // `frameAlpha` travels with the context alpha. A preset is free to ASSIGN
+      // globalAlpha mid-frame — a few do — and without being told the weight it
+      // is being painted at, those parts of it punch straight through the fade
+      // and the swipe-switch at full strength.
+      const paint = (preset, alpha) => {
+        surface.globalAlpha = alpha;
+        preset.frameAlpha = alpha;
+        preset.draw(surface);
+        preset.frameAlpha = 1;
+      };
       if (this.previousVisualizer && this.visualSwitchT > 0) {
         const switchP = 1 - this.visualSwitchT / 0.35;
-        surface.globalAlpha = visualAlpha * (1 - switchP);
-        this.previousVisualizer.draw(surface);
-        surface.globalAlpha = visualAlpha * switchP;
-        this.visualizer.draw(surface);
+        paint(this.previousVisualizer, visualAlpha * (1 - switchP));
+        paint(this.visualizer, visualAlpha * switchP);
       } else {
-        surface.globalAlpha = visualAlpha;
-        this.visualizer.draw(surface);
+        paint(this.visualizer, visualAlpha);
       }
       surface.restore();
       // Keep the screensaver metadata quiet and out of the way: the track hugs
@@ -3869,7 +3886,7 @@ export class SoundTestState {
       const labelScale = portraitLabels ? 0.9 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
       const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
-      const visualLabel = this.visualizer.name;
+      const visualLabel = this.visualizer.label || this.visualizer.name;
       const safeLeft = visualizerFrame.left + labelInset + screen.safeLeft;
       const safeRight = visualizerFrame.right - labelInset - screen.safeRight;
       const trackWidth = textWidth(trackLabel, labelScale);

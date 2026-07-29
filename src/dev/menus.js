@@ -19,7 +19,7 @@ import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 import { CreditsState } from '../game/credits.js';
-import { VISUALIZER_NAMES } from '../engine/visualizers.js';
+import { VISUALIZER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } from '../engine/visualizers.js';
 import { proseMenu } from './prose.js';
 
 const GOLD = '#f6d33c';
@@ -255,10 +255,14 @@ function scenesMenu(dev) {
 
 function visualizersMenu(dev) {
   const previousState = currentState();
-  const launch = (index) => {
+  const launch = (index, audition = false) => {
+    // Set on every launch, not just the audition one, so the mode cannot leak
+    // from an audition into the next preset opened from this list.
+    setMegamixAudition(audition);
     dev.close();
     setState(new SoundTestState({
       onDone: () => {
+        setMegamixAudition(false);
         if (!previousState) return dev.ctx.Flow.toHub();
         setState(previousState);
         dev.reopenMenuAfterState(previousState);
@@ -268,12 +272,21 @@ function visualizersMenu(dev) {
       startVisualizerIndex: index,
     }));
   };
+  const megamixIndex = VISUALIZER_NAMES.indexOf('VJ MEGAMIX');
   const build = () => ({
     title: 'VISUALISERS',
-    items: VISUALIZER_NAMES.map((name, index) => ({
-      label: `${String(index + 1).padStart(2, '0')}  ${name}`,
-      act: () => launch(index),
-    })),
+    items: [
+      ...VISUALIZER_NAMES.map((name, index) => ({
+        label: `${String(index + 1).padStart(2, '0')}  ${name}`,
+        act: () => launch(index),
+      })),
+      // The audition sorts after the pack it is auditioning: it is a bench, not
+      // a preset, and it never ships.
+      ...(megamixIndex >= 0 ? [{
+        label: `--  AUDITION MEGAMIX MOVES  (${MEGAMIX_TRANSITIONS.length} x ${MEGAMIX_AUDITION_BEATS} BEATS)`,
+        act: () => launch(megamixIndex, true),
+      }] : []),
+    ],
   });
   return { ...build(), rebuild: build };
 }

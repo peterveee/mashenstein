@@ -8,7 +8,7 @@ import {
 } from './lanes.js';
 import { VoiceRack } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
-import { VOICE_LANES, voiceOf, voiceGain, engineBankKeys, seamFor } from '../data/voices.js';
+import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
 import { applyArrangement, resolveSection } from '../data/arrangements.js';
 
@@ -44,19 +44,31 @@ const MELODIC_TRIM = 3.5;                  // +10.9 dB
 /**
  * A mix's voice block, merged onto the bank the sequencer will play.
  *
- * The voice block first, because it is bank keys and it merges as bank keys. Then any
- * ENGINE preset named in it is expanded into the keys it stands for —
- * `{ bassVoice: 'engFilteredSaw' }` becomes `{ bassFilteredSaw: true }` — so the
- * hand-written voice in scheduleStep reads what it always read and there is no second
- * code path anywhere in the engine. A preset named on a lane it does not apply to
- * expands to nothing rather than to a surprise.
+ * The voice block first, because it is bank keys and it merges as bank keys. Then the
+ * song's OWN copies of presets, which take over the same keys — see registerSongVoice
+ * for why a copy is put in the catalogue rather than handled as a second kind of
+ * voice. Then any ENGINE preset still named after all that is expanded into the keys
+ * it stands for — `{ bassVoice: 'engFilteredSaw' }` becomes `{ bassFilteredSaw: true }`
+ * — so the hand-written voice in scheduleStep reads what it always read and there is
+ * no second code path anywhere in the engine. A preset named on a lane it does not
+ * apply to expands to nothing rather than to a surprise.
  *
- * Hands back the same object when there is nothing to merge, which is every song in
- * the game today: the null path allocates nothing and changes nothing.
+ * Copies last of the two, deliberately: `voice` says which preset the lane is on and
+ * `voiceParams` says what this song did to it, so the copy is the more specific answer
+ * and has to win. A song can also carry a copy with no `voice` entry at all — a sound
+ * that exists nowhere but in that song, which is what a preset saved to the song and
+ * never to the library is.
+ *
+ * Hands back the same object when there is nothing to merge, which is every song that
+ * has not been through the desk: the null path allocates nothing and changes nothing.
  */
-function withVoices(bank, entry) {
-  if (!bank || !entry || !entry.voice) return bank;
+function withVoices(bank, entry, trackId = null) {
+  if (!bank || !entry || (!entry.voice && !entry.voiceParams)) return bank;
   const out = { ...bank, ...entry.voice };
+  for (const [voiceKey, params] of Object.entries(entry.voiceParams || {})) {
+    const id = registerSongVoice(voiceKey, trackId, params);
+    if (id) out[voiceKey] = id;
+  }
   for (const key of Object.keys(VOICE_LANES)) {
     const keys = engineBankKeys(voiceOf(out, key), key);
     if (keys) Object.assign(out, keys);
@@ -201,10 +213,29 @@ class AudioSys {
       bass: 0,
       mid: 0,
       treble: 0,
+      // Broadband loudness of the mix right now, and that loudness measured
+      // against how loud this song has recently been. See musicAnalysis().
+      level: 0,
+      dynamics: 1,
       beat: null,
       beatPhase: 0,
       beatPulse: 0,
+      // How much kit is under the music. Counted off the sequencer rather than
+      // sniffed out of the spectrum — see scheduleStep's percussion tally.
+      drums: 0,
+      drumless: false,
+      // A single kit ONSET, spiking to 1 on the frame a hit is actually heard.
+      // `drums` is a four-beat density and `beatPulse` is a procedural ramp that
+      // ticks whether or not anything played it; neither can tell a preset "a
+      // drum just landed, now". This can, exactly, because the sequencer knows.
+      hit: 0,
     };
+    // Rolling loudness reference for `dynamics`, reset per song by setBank().
+    this._analysisPeak = 0;
+    // Percussion hits scheduleStep() has queued into the lookahead but that have
+    // not sounded yet, and the audio times of the ones that have. Also per song.
+    this._percPending = [];
+    this._percHeard = [];
     this.muted = false;
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
     this.cueGain = 1;
@@ -1240,20 +1271,24 @@ class AudioSys {
   // frequency or null, percussion is boolean. Loops with A/B lead.
   // `mixOverride` plays a mix that is not (yet) in src/data/mix.js — the desk
   // auditioning unsaved edits. Pass null for "no mix at all", undefined for "look
-  // it up". Level, pan, EQ and send edits go straight to the strips and need no
-  // re-bank; only a voice change has to come back through here.
-  setBank(bank, mixOverride = undefined) {
+  // it up". `arrangementOverride` is the desk's current pattern/order state: giving
+  // it here makes the first scheduled bank agree with the grid after a reload.
+  // Level, pan, EQ and send edits go straight to the strips and need no re-bank;
+  // only a voice change has to come back through here.
+  setBank(bank, mixOverride = undefined, arrangementOverride = undefined) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
     // the saved voice overrides merged, and comparing against that copy would make
     // every re-selection look like a change.
-    if (this.sourceBank === bank && mixOverride === undefined) return;
+    if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) return;
     this.sourceBank = bank;
-    // A new song has its own arrangement, or none. Cleared here rather than carried:
-    // the desk pushes the incoming song's straight after this, and a stale one would
-    // otherwise play the last song's bar plan over the new song's music.
-    this.arrangement = undefined;
+    // A new song has its own arrangement, or none. `undefined` means the ordinary
+    // game path should read the arrangement file; the desk passes its draft (or an
+    // explicit null) so applyMix builds the live bank from exactly what its grid is
+    // drawing. Setting it BEFORE applyMix is load-bearing — restoring it afterwards
+    // changes the flag but not the bank the scheduler has already received.
+    this.arrangement = arrangementOverride;
     // The voice rack is per song: a new bank, or the same bank with a different voice
     // chosen on the desk, wants its own synths. Nothing outlives this call, so
     // auditioning voices cannot silt the graph up with the ones you rejected. Safe to
@@ -1277,6 +1312,17 @@ class AudioSys {
         this.songTrim.gain.setValueAtTime(0.0001, now);
       }
     }
+    // `dynamics` is relative to the song playing and the kit tally belongs to its
+    // arrangement, so both start over with it. Carrying a loud song's peak into a
+    // quiet one would leave the visualizers stalled for the first half-minute of
+    // the new track, and carrying its hits over would credit it with a kit.
+    this._analysisPeak = 0;
+    this._analysis.level = 0;
+    this._analysis.dynamics = 1;
+    this._analysis.drums = 0;
+    this._analysis.drumless = false;
+    this._percPending.length = 0;
+    this._percHeard.length = 0;
     this.step = 0; // songs start from the top (section order matters now)
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
@@ -1304,8 +1350,11 @@ class AudioSys {
    * Falls back to setBank when the bank is not the one already up: that is a song
    * change whatever it was called, and it wants its gap.
    */
-  reapplyBank(bank, mixOverride = undefined) {
-    if (!bank || this.sourceBank !== bank || !this.bank) return this.setBank(bank, mixOverride);
+  reapplyBank(bank, mixOverride = undefined, arrangementOverride = undefined) {
+    if (!bank || this.sourceBank !== bank || !this.bank) {
+      return this.setBank(bank, mixOverride, arrangementOverride);
+    }
+    if (arrangementOverride !== undefined) this.arrangement = arrangementOverride;
     const entry = mixOverride !== undefined ? mixOverride : MIX[trackIdOf(bank)];
     // The MERGE only — not applyMix. The strips already hold this mix: a fader, a pan,
     // an EQ or a send edited on the desk goes straight to the channel and never comes
@@ -1313,7 +1362,14 @@ class AudioSys {
     // unity and re-push them, which drops any solo you were listening through and
     // rebuilds every effect chain — a lot of disturbance to answer a question about
     // one lane's timbre.
-    const merged = withVoices(deskBank(bank, entry), entry);
+    // `trackIdOf` on the bank as PASSED IN, not on the patched one: it is object-identity
+    // based, and deskBank hands back a new object with no id. The song's own preset
+    // copies are scoped by it — see registerSongVoice.
+    const id = trackIdOf(bank);
+    const arranged = this.arrangement !== undefined
+      ? applyArrangement(bank, id, { [id]: this.arrangement })
+      : applyArrangement(bank, id);
+    const merged = withVoices(deskBank(arranged, entry), entry, id);
     this.bank = merged;
     // Only the lanes whose voice actually changed lose their synths. Disposing the
     // whole rack here — what setBank does — would cut every ringing Tone note on every
@@ -1475,7 +1531,10 @@ class AudioSys {
     // Sends are final by here, so anything unused can be dropped from the graph.
     if (this.mixer) this.mixer.pruneAuxes();
 
-    return withVoices(bank, entry);
+    // `id` was read from the bank as passed in, above, before applyArrangement and
+    // deskBank patched it — which is exactly what the song's preset copies need to be
+    // scoped by. See registerSongVoice.
+    return withVoices(bank, entry, id);
   }
 
   // Tempo and pitch warp independently: slow-mo drags the tempo without
@@ -1757,7 +1816,13 @@ class AudioSys {
         // bank that states the lane's gain still wins — that is a song's own decision,
         // and it is also what lets tools/measure-voices.js render a preset at unity
         // to find its peak in the first place.
-        gain: (b[seam.gainKey] ?? voiceGain(v, key)) * gainScale,
+        //
+        // `laneTrim` is the drum lanes' version of that same "a song's own decision":
+        // they have no single gain key, so the kit trims the hand-written voices
+        // multiply in (drumGain, kickGain, …) have to be applied here or a preset
+        // ignores the song's balance entirely and arrives at full reference level.
+        // It is 1 on every melodic lane and on any bank that names no trims.
+        gain: (b[seam.gainKey] ?? voiceGain(v, key) * laneTrim(b, key)) * gainScale,
         detune: this.detune,
         dry,
         wet,
@@ -1877,17 +1942,86 @@ class AudioSys {
       // Lanes this bar does not pass on. Nulled rather than emptied: every lane block
       // below already reads `b.lane && b.lane[s]`, so a null lane is a lane that does
       // not play, on the one path the whole engine already takes for a silent one.
-      if (bar.off) { b = { ...b }; for (const k of bar.off) b[k] = null; }
+      if (bar.off || bar.delete) {
+        b = { ...b };
+        for (const k of [...(bar.off || []), ...(bar.delete || [])]) b[k] = null;
+      }
+      // Arrangement edits stay on the bar, so the authored section is never
+      // rewritten. Frequencies are shifted here after the section delta resolves;
+      // chords and layer lanes use the same recursive conversion as single notes.
+      const barValue = (map, key, fallback = 0) =>
+        typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
+      const semitone = (key) => barValue(bar.transpose, key);
+      const shift = (v, n) => Array.isArray(v)
+        ? v.map((x) => shift(x, n))
+        : typeof v === 'number' && v > 0 ? v * 2 ** (n / 12) : v;
+      const transposeKeys = new Set([
+        ...Object.keys(typeof bar.transpose === 'object' ? bar.transpose || {} : {}),
+        ...(typeof bar.transpose === 'number' ? Object.keys(b).filter((k) => !PERCUSSION_LANES.includes(k)) : []),
+      ]);
+      if (transposeKeys.size) {
+        b = { ...b };
+        for (const key of transposeKeys) {
+          const n = semitone(key);
+          if (n && Array.isArray(b[key])) b[key] = b[key].map((v) => shift(v, n));
+        }
+      }
+      // Kit tally for the visualizers. `b` is fully resolved by this point —
+      // section overrides merged, this bar's mute mask nulled out, and any lane
+      // the desk deleted already gone with it — so this is the arrangement's own
+      // answer to "is there a kit here", not a guess at transients in the
+      // spectrum. A bar that arranges the drums out reads as drumless on the
+      // exact step it does. A strip muted on the desk still counts, and should:
+      // that mute is monitoring, a state of the person listening rather than of
+      // the song, and it is the song the picture is supposed to be following.
+      // Queued at `nextTime` and only tallied once that time has passed, since
+      // this runs inside the lookahead window rather than at the audible edge.
+      const percussionKeys = [
+        ...PERCUSSION_LANES,
+        ...(b.__layers || []).filter((L) => PERCUSSION_LANES.includes(baseLane(L.key)))
+          .map((L) => L.key),
+      ];
+      if (percussionKeys.some((key) => b[key] && b[key][s])) {
+        this._percPending.push(this.nextTime);
+        // Only _readPercussion drains this, and it only runs while the jukebox
+        // visualizer is up — where the sequencer runs for the whole game. Aged
+        // out by playhead rather than capped by count, so gameplay stays bounded
+        // at a few seconds of sixteenths while an offline render, whose clock
+        // never advances past zero, keeps the song's entire kit timeline.
+        if (this._percPending.length > 128) {
+          const stale = this.ctx ? this.ctx.currentTime - 8 : -Infinity;
+          let drop = 0;
+          while (drop < this._percPending.length && this._percPending[drop] < stale) drop++;
+          if (drop) this._percPending.splice(0, drop);
+        }
+      }
       // Where this lane's voices land. `lane()` is called at the top of each lane
       // block below and repoints dry/wet at that lane's channel strip, so every
       // voice created after it lands on its own fader, pan, EQ and sends. Without
       // a mixer (headless tests, or before ensure()) both fall back to the shared
       // buses and the graph is exactly what it was.
       let dry = this.musicBus, wet = this.echoBus;
+      let laneOffset = 0;
+      const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
+      const scheduleAt = (delta = 0) => this.nextTime + laneOffset + delta;
       const lane = (key) => {
         const strip = this.mixer && this.mixer.lane(key);
-        dry = strip ? strip.dry : this.musicBus;
-        wet = strip ? strip.wet : this.echoBus;
+        const baseDry = strip ? strip.dry : this.musicBus;
+        const baseWet = strip ? strip.wet : this.echoBus;
+        laneOffset = offsetFor(key);
+        const db = barValue(bar.gain, key);
+        const scale = 10 ** (db / 20);
+        if (scale === 1) {
+          dry = baseDry; wet = baseWet;
+        } else {
+          // A short-lived per-bar bus keeps the adjustment on every voice shape,
+          // including hand-rolled percussion and Tone presets, without duplicating
+          // the many envelope implementations below.
+          const dg = this.ctx.createGain(); const wg = this.ctx.createGain();
+          dg.gain.value = scale; wg.gain.value = scale;
+          dg.connect(baseDry); wg.connect(baseWet);
+          dry = dg; wet = wg;
+        }
       };
       // Point a lane at its strip and offer it to the voice library, in that order —
       // playVoice needs `dry`/`wet` to be this lane's, and `lane()` is what sets them.
@@ -1898,7 +2032,7 @@ class AudioSys {
       // this is a guard rather than a rewrite — and why the null test stays green.
       const voiced = (key, value, opts = {}) => {
         lane(key);
-        return this.playVoice(key, b, value, { spb, dry, wet, ...opts });
+        return this.playVoice(key, b, value, { spb, dry, wet, delay: laneOffset, ...opts });
       };
       // Every oscillator voice on the desk goes through here — bass, lead, harmony,
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
@@ -1906,7 +2040,7 @@ class AudioSys {
       // (sweeps, gliss, keyGliss, organSwoop, vox, shout) apply it themselves.
       const play = (freq, type, dur, gain, attack = 0.01, echo = true, delay = 0) => {
         if (freq == null) return;
-        const t = this.nextTime + delay;
+        const t = scheduleAt(delay);
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();
         o.type = type;
@@ -1956,7 +2090,7 @@ class AudioSys {
           // Resonant low-pass saw bass: harmonic enough to survive small
           // speakers, but with the bright edge closing quickly into a round
           // sustained body. A quiet sine sub keeps the bottom anchored.
-          const t = this.nextTime;
+          const t = scheduleAt();
           const f = b.bass[s] * this.detune;
           const o = this.ctx.createOscillator(); o.type = 'sawtooth';
           o.frequency.setValueAtTime(f, t);
@@ -1999,7 +2133,7 @@ class AudioSys {
             // The ghost is the same voice, quieter and shorter. Restating it on the
             // hand-rolled square instead would put two different basses in one lane.
             this.playVoice('bass', b, b.bass[s], {
-              spb, dry, wet, echo: false, delay: spb * b.bassRepeat,
+              spb, dry, wet, echo: false, delay: laneOffset + spb * b.bassRepeat,
               durScale: b.bassRepeatDur ?? 0.8, gainScale: b.bassRepeatGain ?? 0.4,
             });
           } else {
@@ -2041,7 +2175,7 @@ class AudioSys {
         // Sparse deterministic "random" shop-machine flourishes. The grid
         // position selects one of three tiny electronic gestures, so offline
         // auditions and live playback stay identical on every loop.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const f = b.electroFx[s] * this.detune;
         const gain = b.electroFxGain ?? 0.012;
         const dur = spb * (b.electroFxDur || 0.86);
@@ -2068,7 +2202,7 @@ class AudioSys {
         lane('sweeps');
         // Heavily filtered air: a narrow band slowly opens and closes beneath
         // a low-pass ceiling. It should be felt as motion, not heard as hiss.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const dur = spb * (b.sweepDur || 10);
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
         const band = this.ctx.createBiquadFilter(); band.type = 'bandpass'; band.Q.value = 1.45;
@@ -2100,7 +2234,7 @@ class AudioSys {
         const dt = (spb * 3) / steps.length;
         const gv = (b.keyGlissGain != null ? b.keyGlissGain : 0.035) * MELODIC_TRIM;
         steps.forEach((semi, i) => {
-          const t = this.nextTime + i * dt;
+          const t = scheduleAt(i * dt);
           const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
           o.type = b.leadType || 'square';
           o.frequency.setValueAtTime(fT * Math.pow(2, semi / 12), t);
@@ -2116,7 +2250,7 @@ class AudioSys {
         lane('gliss');
         // glissando: sweep up from an octave below into the target note,
         // with echo taps panned left -> center -> right across the field
-        const t = this.nextTime;
+        const t = scheduleAt();
         const fT = b.gliss[s] * this.detune;
         const o = this.ctx.createOscillator();
         o.type = b.leadType || 'square';
@@ -2200,7 +2334,7 @@ class AudioSys {
         // Continuous drawbar-organ pitch glide: unlike organGliss's discrete
         // palm-run notes, every partial bends smoothly from one pitch into the
         // target for a clean dance-mix transition.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const target = b.organSwoop[s] * this.detune;
         const from = target * Math.pow(2, (b.organSwoopFromSemitones ?? -5) / 12);
         const dur = spb * (b.organSwoopDur || 3.2);
@@ -2229,7 +2363,7 @@ class AudioSys {
         // than heard. Body + click, the way an 808 actually stacks — nothing
         // in between. crashDur-style bank overrides (kickGain/kickTail) let a
         // sparser track lean on the boom or a busy one tighten it up.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const kg = (b.kickGain ?? 1) * (b.drumGain ?? 1);
         const tail = b.kickTail ?? 0.2;      // how long the sub rings out
         // Body: near-instant punch, pitch envelope from a snappy attack pitch
@@ -2277,7 +2411,7 @@ class AudioSys {
       }
       if (b.hats && b.hats[s] && !voiced('hats', b.hats[s], { echo: !!b.echoEverything })) {
         lane('hats');
-        const t = this.nextTime;
+        const t = scheduleAt();
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 5200;
         const g = this.ctx.createGain();
@@ -2291,7 +2425,7 @@ class AudioSys {
         lane('vox');
         // Vocal hit ("hey!"): sawtooth glottal buzz with a falling pitch bend,
         // shaped by two parallel bandpass formants; vowel alternates per slot.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const f0 = b.vox[s];
         const [fm1, fm2] = (s % 8 < 4) ? [750, 1150] : [600, 2000]; // "ah" / "ay"
         const o = this.ctx.createOscillator();
@@ -2315,7 +2449,7 @@ class AudioSys {
         lane('shout');
         // Vocal shout ("yeah!" / "alright!"): sawtooth voice through MOVING
         // formant filters — gliding vowels read as a word, not just a hit.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const f0 = b.shout[s] * this.detune;
         const word = (Math.floor(this.step / 32) + s) % 2 === 0 ? 'yeah' : 'alright';
         const dur = word === 'yeah' ? 0.32 : 0.46;
@@ -2358,7 +2492,7 @@ class AudioSys {
       if (b.ohats && b.ohats[s] && !voiced('ohats', b.ohats[s], { echo: !!b.echoEverything })) {
         lane('ohats');
         // open hat: same noise, lower cutoff, long sizzle tail
-        const t = this.nextTime;
+        const t = scheduleAt();
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 4200;
         const g = this.ctx.createGain();
@@ -2371,7 +2505,7 @@ class AudioSys {
       if (b.snare && b.snare[s] && !voiced('snare', b.snare[s], { echo: !!b.echoEverything })) {
         lane('snare');
         // crisp crack: brighter noise band, short decay, just a hint of body
-        const t = this.nextTime;
+        const t = scheduleAt();
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
         const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 0.7;
         const g = this.ctx.createGain();
@@ -2396,7 +2530,7 @@ class AudioSys {
         // decaying rather than a burst of static. The fixed highpass keeps the
         // low end out so it stays snarey and thin. Longer than the snare's
         // 90ms crack, short enough not to wash over the downbeat it leads to.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const dur = spb * (b.crashDur || 5);
         const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
         const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1200;
@@ -2416,6 +2550,26 @@ class AudioSys {
         if (b.crashEcho || b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + dur + 0.03);
       }
+      if (b.tom && b.tom[s] && !voiced('tom', b.tom[s], { echo: !!b.echoEverything })) {
+        lane('tom');
+        // Tuned tom: a rounded membrane-like pitch drop with just enough triangle
+        // edge to read above the bass. It is the eighth engine kit voice; choosing
+        // the catalogue's Tom or DS Tom replaces this through the same seam.
+        const t = scheduleAt();
+        const base = b.tomNote ?? 130;
+        const dur = b.tomDur ?? 0.28;
+        const level = 0.27 * (b.drumGain ?? 1);
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(base * 1.8, t);
+        o.frequency.exponentialRampToValueAtTime(base, t + Math.min(0.08, dur * 0.4));
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(level, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(dry);
+        if (b.echoEverything) g.connect(wet);
+        o.start(t); o.stop(t + dur + 0.03);
+      }
       if (b.rim && b.rim[s] && !voiced('rim', b.rim[s])) {
         lane('rim');
         // Rimshot: a stick cracking off the rim. The old version was two square
@@ -2425,7 +2579,7 @@ class AudioSys {
         // RING (pitch sagging slightly as it decays), and a low woody TONK
         // underneath for body. Two-stage decay out to ~75ms — a fast transient
         // then a brief ring, instead of one flat drop to silence.
-        const t = this.nextTime;
+        const t = scheduleAt();
         const lvl = (b.rimGain ?? 0.21) * (b.drumGain ?? 1);
         // Metallic ring: three inharmonic partials through a narrow bandpass.
         const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1750; f.Q.value = 3.6;
@@ -2474,7 +2628,7 @@ class AudioSys {
         lane('clap');
         // three staggered high-passed bursts read as a clap
         for (let ci = 0; ci < 3; ci++) {
-          const t = this.nextTime + ci * 0.012;
+          const t = scheduleAt(ci * 0.012);
           const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
           const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1500;
           const g = this.ctx.createGain();
@@ -2507,7 +2661,7 @@ class AudioSys {
       // octave/twelfth off whatever bass note the song last played, so it sits
       // in key over any cabinet's bank instead of needing a fixed-key bank.
       if (this.starMode && this.starBus) {
-        const t = this.nextTime;
+        const t = scheduleAt();
         const ratios = [1, 1.5, 2, 3];
         const f = this.starRoot * 4 * ratios[s % ratios.length] * this.detune;
         const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
@@ -2557,7 +2711,17 @@ class AudioSys {
     // renders report neither latency, so they are unaffected.
     const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
     const ahead = (this.nextTime - (this.ctx.currentTime - out)) / spb;
-    return (this.step - ahead) / 4;
+    let heardStep = this.step - ahead;
+    // The scheduler wraps `step` at the selected loop boundary, but the transport
+    // readout used to modulo against the whole song. A one-bar loop in a two-bar song
+    // could therefore flash the end of bar 2 before returning to beat 1. Keep the
+    // fractional clock inside the same range as the audio loop; the rest of the desk
+    // can still modulo it against the full song when drawing the timeline.
+    if (this.loopStart != null && this.loopEnd != null && this.loopEnd > this.loopStart) {
+      const span = this.loopEnd - this.loopStart;
+      heardStep = this.loopStart + ((heardStep - this.loopStart) % span + span) % span;
+    }
+    return heardStep / 4;
   }
 
   // Beat phase for rhythm cabinet: 0..1 within the current beat.
@@ -2577,6 +2741,62 @@ class AudioSys {
     return sum / ((b - a) * 255);
   }
 
+  /**
+   * Kit presence, from the sequencer's own tally rather than from the spectrum.
+   *
+   * scheduleStep() queues each percussion step at the audio time it will sound,
+   * up to 120ms ahead of the playhead; this drains that queue as those times
+   * pass, so what gets reported is what has been HEARD and not what is about to
+   * be. That is the whole reason to count it here instead of guessing at
+   * transients: the arrangement already knows, exactly, on the bar it happens.
+   *
+   * Density over a bar, rather than time-since-last-hit. A backbeat and a
+   * sixteenth-note hat pattern are both plainly "drums", but the gap between
+   * their hits differs fourfold, and any gap threshold loose enough to keep a
+   * sparse kick alive is also loose enough to call the tail of a fill drumless.
+   */
+  _readPercussion(out) {
+    if (!this.ctx) {
+      // No clock to age hits against. Fall back to whether the bank has a kit at
+      // all, which is the honest answer for the browserless path.
+      const extraPercussion = (this.bank?.__layers || [])
+        .filter((L) => PERCUSSION_LANES.includes(baseLane(L.key))).map((L) => L.key);
+      const kit = !!this.bank && (PERCUSSION_LANES.some((key) => this.bank[key])
+        || extraPercussion.some((key) => this.bank[key]?.some(Boolean)));
+      out.drums = kit ? 1 : 0;
+      out.drumless = !kit;
+      // No times to compare, so no onset can be identified. Zero, not 1: a
+      // preset that gates on `hit` should read "no hit information here" rather
+      // than a phantom drum on every browserless frame.
+      out.hit = 0;
+      return;
+    }
+    const now = this.ctx.currentTime;
+    // Whether the drain below moved anything is the onset: those are precisely
+    // the hits whose scheduled time passed during this frame.
+    const before = this._percHeard.length;
+    while (this._percPending.length && this._percPending[0] <= now) {
+      this._percHeard.push(this._percPending.shift());
+    }
+    // Full on the frame it lands, then a fast fall. Presets that want the bare
+    // event test it near 1; presets that want a short flare ride the decay.
+    out.hit = this._percHeard.length > before ? 1 : out.hit * 0.55;
+    const beatSeconds = 60 / (this.bpm * this.tempo);
+    const oldest = now - beatSeconds * 4;
+    while (this._percHeard.length && this._percHeard[0] < oldest) this._percHeard.shift();
+    // Four hits a bar — a plain kick and backbeat — counts as a full kit. A
+    // busier pattern cannot read as more than that, and a kick alone on 1 and 3
+    // lands at half, which is honest: there is a pulse, but there is no groove.
+    const density = Math.min(1, this._percHeard.length / 4);
+    out.drums += (density - out.drums) * 0.08;
+    // Deliberately raw where `drums` is smoothed: "this section has no kit in
+    // it" is a fact about the arrangement, and a preset that switches behaviour
+    // on it wants the switch to land on the bar line, not to fade across it.
+    // The list is in schedule order, so the most recent hit is the last one.
+    const last = this._percHeard[this._percHeard.length - 1];
+    out.drumless = !(last >= now - beatSeconds * 2);
+  }
+
   // Stable, allocation-free readout for the jukebox visualizer. The returned
   // object and typed arrays are owned by Audio and reused every frame. The
   // analyser values provide the organic response; songBeat() supplies the
@@ -2593,13 +2813,40 @@ class AudioSys {
       out.bass += (this._analysisBand(55, 240) - out.bass) * 0.34;
       out.mid += (this._analysisBand(240, 2200) - out.mid) * 0.30;
       out.treble += (this._analysisBand(2200, 9000) - out.treble) * 0.38;
+      // Overall loudness, from the time-domain window rather than the FFT: RMS
+      // is a true amplitude read, where averaging frequency bins is dB-shaped
+      // and lets one bright partial stand in for the whole mix. Attack is quick
+      // so a drop lands on time; release is slow so `level` describes the
+      // section being played instead of flickering between transients.
+      let sum = 0;
+      for (let i = 0; i < this._analysisWaveform.length; i++) {
+        const s = (this._analysisWaveform[i] - 128) / 128;
+        sum += s * s;
+      }
+      const rms = Math.sqrt(sum / this._analysisWaveform.length);
+      out.level += (rms - out.level) * (rms > out.level ? 0.45 : 0.12);
     } else {
       // Browserless tests and old Web Audio implementations still receive a
       // deterministic fallback driven by the sequencer clock.
       out.bass += ((this.bank ? 0.42 : 0) - out.bass) * 0.12;
       out.mid += ((this.bank ? 0.28 : 0) - out.mid) * 0.10;
       out.treble += ((this.bank ? 0.20 : 0) - out.treble) * 0.14;
+      out.level += ((this.bank ? 0.30 : 0) - out.level) * 0.12;
     }
+    // Quiet has to mean quiet *for this song*, not quiet in dBFS: a gently
+    // mastered track would otherwise read as one long lull and never move. The
+    // reference jumps to any new peak and decays over roughly half a minute, so
+    // an intro or a breakdown still sits below the chorus it neighbours rather
+    // than renormalising itself back up to full within a bar.
+    if (out.level > this._analysisPeak) this._analysisPeak = out.level;
+    else this._analysisPeak += (out.level - this._analysisPeak) * 0.0006;
+    // The square root is perceptual headroom: a passage 12dB down is a quarter
+    // of the amplitude but nothing like a quarter as loud, and a linear ratio
+    // there reads as the visualizer having simply stopped.
+    out.dynamics = this._analysisPeak > 0.01
+      ? Math.max(0, Math.min(1, Math.sqrt(out.level / this._analysisPeak)))
+      : 0;
+    this._readPercussion(out);
     out.beat = this.songBeat();
     if (out.beat == null) {
       out.beatPhase = 0;

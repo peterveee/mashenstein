@@ -6,11 +6,31 @@
 // emit is silently dropped on save. That is exactly how effect chains were lost:
 // they could be built, they sounded right, and Save to game quietly wrote a file
 // without them. This round-trips a mix that uses every corner.
-import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MIX, LANE_DEFAULTS, laneSettings } from '../src/data/mix.js';
-import { renderMixFile, mergeMix, snapshotMix, freshImport } from '../tools/mixer.js';
+import {
+  snapshotMix, freshImport, listHistory, readHistoryVersion, readSongStateDir,
+} from '../tools/mixer.js';
+// What actually writes a mix now: one song file at a time, its mix serialised by
+// `bankSource`. `renderMixFile` wrote all thirty-four songs into src/data/mix.js and
+// is gone with it — but the risk it carried is the same one, so the round-trip below
+// is unchanged in intent: a field nobody thought to emit is silently dropped.
+import { mixEntrySource } from '../tools/lib/mix-source.js';
+
+// One song's mix, as the file would hold it. `renderMixFile` wrote all thirty-four
+// into src/data/mix.js and is gone with it; the rules it carried moved here.
+const renderMixFile = (mix) => {
+  const body = Object.entries(mix)
+    .map(([id, e]) => [id, mixEntrySource(e, '  ')])
+    // A song carrying no decisions is left out entirely — that is what `null` means
+    // coming back from the serialiser, and it is why an untouched song writes nothing.
+    .filter(([, src]) => src)
+    .map(([id, src]) => `  ${JSON.stringify(id)}: ${src},\n`)
+    .join('');
+  return `export const MIX = {\n${body}};\n`;
+};
 // What the DESK means by "this song has changed", which has to mean the same thing as
 // "renderMixFile would write something different" — see the last section.
 import { mixSignature } from '../tools/lib/mix-signature.js';
@@ -114,6 +134,7 @@ const sample = {
     master: -1.5,
     limiter: true,
     voice: { bassType: 'sawtooth' },
+    voiceParams: { bass: { attack: 0.02, release: 0.4 } },
     masterEffects: [{ id: 'compressor', params: { threshold: -12, ratio: 3 } }],
     fx: {
       delay: {
@@ -169,6 +190,8 @@ assert(wrote.master === sent.master && wrote.limiter === sent.limiter,
   'round-trip: master trim and limiter survive');
 assert(JSON.stringify(wrote.voice) === JSON.stringify(sent.voice),
   'round-trip: voice overrides survive');
+assert(JSON.stringify(wrote.voiceParams) === JSON.stringify(sent.voiceParams),
+  'round-trip: song-owned voice parameters survive');
 assert(JSON.stringify(wrote.masterEffects) === JSON.stringify(sent.masterEffects),
   'round-trip: the master effect chain survives');
 assert(JSON.stringify(wrote.lanes.bass.effects) === JSON.stringify(sent.lanes.bass.effects),
@@ -243,23 +266,9 @@ assert(Object.keys(AUX_DEFAULTS).every((id) => auxIds.has(id))
   && AUXES.every((a) => AUX_DEFAULTS[a.id]),
   'every aux has defaults and every set of defaults has an aux');
 
-// ---- saving one song without flattening the others --------------------------
-// The desk posts only the songs a Save is about, and the server folds them into the
-// file as it stands. It used to post its whole idea of the file — read when the page
-// loaded — so a tab open since the morning wrote the morning's copy of every other
-// song back over anything that had landed since.
-const onDisk = { plumber: { master: -2 }, shop: { master: -6 }, hub: { master: 1 } };
-const merged = mergeMix(onDisk, ['shop'], { shop: { master: -4.4 } });
-assert(merged.shop.master === -4.4, 'merge: the saved song takes the desk\'s value');
-assert(merged.plumber.master === -2 && merged.hub.master === 1,
-  'merge: every song the save was not about keeps what the FILE holds, not what the desk believed');
-assert(onDisk.shop.master === -6, 'merge: the mix on disk is not mutated in place');
-// Reset every channel leaves a draft that normalises to nothing. Saving it has to
-// take the entry OUT of the file, not leave the old one standing.
-assert(!('shop' in mergeMix(onDisk, ['shop'], { shop: null })),
-  'merge: a song saved with nothing in it is removed from the file');
-assert(!('shop' in mergeMix(onDisk, ['shop'], {})),
-  'merge: a song saved with no entry at all is removed too, not silently skipped');
+// `mergeMix` used to fold one song's edits into a file holding all thirty-four, and
+// its tests lived here. Both are gone: a save writes one song's own file now, so
+// there is nothing to merge and no way for one song's save to touch another's.
 
 // ---- the version that was overwritten ---------------------------------------
 // Saving is not committing, and between two saves nothing held the version being
@@ -279,6 +288,38 @@ assert(readFileSync(join(histDir, snapName), 'utf8') === readFileSync(histFile, 
   'snapshot: byte-identical to the file it replaced');
 assert(snapshotMix('plumber', histDir, join(dir, 'not-a-file.js')) === null,
   'snapshot: a first save with no file yet has nothing to lose, and says so');
+
+// Current snapshots carry both halves of one song in one data-only module. The desk
+// must not load the balance and leave today's added lanes or painted notes behind.
+const songSnap = 'song-2026-07-29T120000-plumber.js';
+writeFileSync(join(histDir, songSnap),
+  'export const mix = { master: -5, layers: [{ key: "bass2", from: "bass" }] };\n'
+  + 'export const arrangement = { order: [2, 1] };\n');
+const historicalSong = await readHistoryVersion(songSnap, histDir);
+assert(historicalSong.mix.plumber.master === -5
+  && historicalSong.arrangements.plumber.order.join(',') === '2,1',
+  'history: a per-song snapshot restores its mix and arrangement together');
+const listedSong = listHistory(histDir).find((s) => s.file === songSnap);
+assert(listedSong?.track === 'plumber',
+  'history: current per-song snapshots are listed for their own song');
+
+// The aggregate compatibility modules import songs/index.js, whose dependencies stay
+// cached even when only the aggregate URL is cache-busted. Read authoritative song
+// files directly, and prove a second read sees a rewrite made between them.
+const stateDir = join(dir, 'song-state');
+mkdirSync(stateDir, { recursive: true });
+const stateFile = join(stateDir, 'plumber.js');
+writeFileSync(stateFile,
+  'export const mix = { master: -1 };\nexport const arrangement = { order: [0] };\n');
+const state1 = await readSongStateDir(stateDir, 'mix');
+writeFileSync(stateFile,
+  'export const mix = { master: -7 };\nexport const arrangement = { order: [2] };\n');
+const state2 = await readSongStateDir(stateDir, 'mix');
+const stateArr = await readSongStateDir(stateDir, 'arrangement');
+assert(state1.plumber.master === -1 && state2.plumber.master === -7,
+  'saved-state readback comes from the rewritten song file, not a cached index');
+assert(stateArr.plumber.order[0] === 2,
+  'saved-state readback does the same for arrangements');
 
 // ---- the desk's "changed" and the file's "different", held to each other -----
 //
@@ -335,6 +376,9 @@ const CHANGES = [
   }],
   ['the seeded master compressor taken out', (m) => { m.masterEffects = []; }],
   ['a duplicated track', (m) => { m.layers = [{ key: 'bass2', from: 'bass' }]; }],
+  ['an independent percussion sound', (m) => {
+    m.layers = [{ key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' }];
+  }],
   ['a deleted track', (m) => { m.off = ['hats']; }],
   ['a voice override', (m) => { m.voice = { bassVoice: 'roundMono' }; }],
   ['the delay time', (m) => { m.fx.delay.division = 0.5; }],
@@ -371,7 +415,11 @@ for (const [what, change] of [...CHANGES, ...NON_CHANGES]) {
   change(v);
   const wouldWrite = rendered(v) !== rendered(varyBase);
   const deskSees = sig(v) !== sig(varyBase);
-  assert(wouldWrite === deskSees, `the desk sees ${what} exactly when the file would: `
+  // One way round, deliberately. The desk must NEVER say "saved, matches the file"
+  // when the file would change — that is how work goes missing. The reverse, a dot
+  // that lights for something the file will not hold, costs one needless save and
+  // Peter would rather have it than the alternative. So: writes implies seen.
+  assert(!wouldWrite || deskSees, `the desk sees ${what} exactly when the file would: `
     + `${wouldWrite ? 'writes' : 'writes nothing'}, desk ${deskSees ? 'says changed' : 'says unchanged'}`);
 }
 

@@ -157,5 +157,30 @@ lane at a time. **Full plan written:**
   MIDI into *chosen lanes* of an existing song rather than minting a new bank —
   which is what keeps mute masks and section sharing alive across a round trip.
 
+### Spin the visualizer out as an MP4 maker for any audio file
+Drop in an MP3/WAV, preview a visualizer reacting to it live, export an MP4 carrying
+the original track. Self-contained — no game, no music bank. **Full plan:**
+`docs/visualizer-spinout-plan.md`.
+
+- **Cheaper than it sounds.** `createVisualizer` (`src/engine/visualizers.js:2517`)
+  is already a pure function of an analysis feed and only reads `.bpm` off the track
+  object; `tools/render-video.js` is already the whole export pipeline bar one line
+  (`renderBankBrowser`); and `analyseSong()` (`render-video.js:192`) takes raw PCM and
+  doesn't care where it came from. Rough estimate: 2–3 days for a crude working
+  version, 1–2 weeks for a good one.
+- **The one hard part is beat detection.** Today beat is a perfect procedural clock
+  from the sequencer. An arbitrary MP3 has none, and the presets lean on it hard
+  (`ringRotationAt`, `beatPulse`) — wrong beat reads as broken, not as degraded.
+  Manual BPM + tap tempo gets 90% of it; onset detection + autocorrelation is the
+  real fix and is much easier offline than realtime.
+- **Watch out for loudness.** `dynamics` and `MOTION_FLOOR` were tuned against our
+  own mixes; a commercial master crushed to −8 LUFS pins `dynamics` at 1 and nothing
+  ever breathes. Needs a normalization pass — `tools/lib/loudness.js` already
+  measures BS.1770.
+- **Biggest risk isn't code:** the presets are tuned to our music. Test against varied
+  real tracks (drum-and-bass, solo piano) before committing to the idea.
+- **Art decision, not a technical one:** 14 of 17 presets are abstract and ship clean;
+  ARCADE ART GALLERY and TOASTER SKY PARADE draw MASHENSTEIN heroes and appliances.
+
 ## Done
 <!-- move shipped items here with a date -->

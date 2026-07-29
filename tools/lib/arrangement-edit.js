@@ -32,6 +32,46 @@ import { LANES, LANE_KEYS } from '../../src/engine/lanes.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
+// Per-bar edits are deliberately lane-scoped. A number keeps the file compact for
+// the common "all lanes" case, while the desk normally writes the explicit map so a
+// bass edit cannot accidentally move the lead with it. Timing is measured in 1/32
+// notes: +8 is a quarter-note delay, -1 is one 1/32 note early.
+const BAR_MAPS = ['transpose', 'offset', 'gain'];
+const copyBarMaps = (from, to) => {
+  for (const key of BAR_MAPS) {
+    if (from?.[key] == null) continue;
+    if (typeof from[key] === 'number') to[key] = from[key];
+    else if (typeof from[key] === 'object') {
+      const map = Object.fromEntries(Object.entries(from[key])
+        .filter(([, v]) => Number.isFinite(v) && v !== 0));
+      if (Object.keys(map).length) to[key] = map;
+    }
+  }
+};
+const sameBarMap = (a, b, key) => JSON.stringify(a?.[key] || null) === JSON.stringify(b?.[key] || null);
+const copyBar = (bar) => {
+  const out = { sec: bar.sec, half: bar.half };
+  if (bar.off?.length) out.off = [...bar.off];
+  if (bar.delete?.length) out.delete = [...bar.delete];
+  copyBarMaps(bar, out);
+  return out;
+};
+const mapEdit = (draft, from, to, keys, field, value) => {
+  const [a, b] = range(draft, from, to);
+  const out = copy(draft);
+  const lanes = [...new Set((keys || []).filter(Boolean))];
+  for (let i = a; i <= b; i++) {
+    const cur = typeof out.plan[i][field] === 'object' ? { ...out.plan[i][field] } : {};
+    for (const k of lanes) {
+      if (value == null || value === 0) delete cur[k];
+      else cur[k] = value;
+    }
+    if (Object.keys(cur).length) out.plan[i][field] = cur;
+    else delete out.plan[i][field];
+  }
+  return out;
+};
+
 /** The kit, in the order a build-up lets it back in: floor up. */
 export const DRUM_LANES = LANES.filter((l) => l.group === 'drums').map((l) => l.key);
 const BUILD_ORDER = ['kick', 'hats', 'snare', 'clap', 'ohats', 'rim', 'crash']
@@ -93,7 +133,15 @@ export function entryOf(bank, draft) {
  */
 export function planToOrder(plan) {
   const order = [];
-  const sameOff = (a, b) => JSON.stringify(a?.off || null) === JSON.stringify(b?.off || null);
+  const sameOff = (a, b) => JSON.stringify(a?.off || null) === JSON.stringify(b?.off || null)
+    && JSON.stringify(a?.delete || null) === JSON.stringify(b?.delete || null)
+    && BAR_MAPS.every((key) => sameBarMap(a, b, key));
+  const addBarBits = (e, bar) => {
+    if (bar.off?.length) e.off = [...bar.off];
+    if (bar.delete?.length) e.delete = [...bar.delete];
+    copyBarMaps(bar, e);
+    return e;
+  };
   for (let i = 0; i < plan.length; i++) {
     const bar = plan[i];
     const next = plan[i + 1];
@@ -102,22 +150,20 @@ export function planToOrder(plan) {
     if (pairs) {
       // `sec` is null on a song with no sections, where the order has always been a
       // list of zeroes the engine never looks up. It writes back out as one.
-      if (!bar.off?.length) order.push(bar.sec ?? 0);
-      else order.push({ s: bar.sec ?? 0, off: [...bar.off] });
+      if (!bar.off?.length && !bar.delete?.length
+          && BAR_MAPS.every((key) => bar[key] == null)) order.push(bar.sec ?? 0);
+      else order.push(addBarBits({ s: bar.sec ?? 0 }, bar));
       i++;
       continue;
     }
-    const e = { s: bar.sec ?? 0, bars: 1 };
-    if (bar.half) e.from = bar.half;
-    if (bar.off?.length) e.off = [...bar.off];
-    order.push(e);
+    order.push(addBarBits({ s: bar.sec ?? 0, bars: 1, ...(bar.half ? { from: bar.half } : {}) }, bar));
   }
   return order;
 }
 
 // ---- arrangement edits: what plays where -------------------------------------
 
-const copy = (draft) => ({ plan: draft.plan.map((b) => ({ ...b, ...(b.off ? { off: [...b.off] } : {}) })), sections: clone(draft.sections) });
+const copy = (draft) => ({ plan: draft.plan.map(copyBar), sections: clone(draft.sections) });
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));
   const b = Math.min(draft.plan.length - 1, Math.max(from, to));
@@ -141,6 +187,125 @@ export function setLanesOff(draft, from, to, keys, off = true) {
     else delete out.plan[i].off;
   }
   return out;
+}
+
+/** Mark lanes absent for a bar without destroying their authored notes. */
+export const setLanesDeleted = (draft, from, to, keys, deleted = true) => {
+  const [a, b] = range(draft, from, to);
+  const out = copy(draft);
+  for (let i = a; i <= b; i++) {
+    const cur = new Set(out.plan[i].delete || []);
+    for (const k of keys || []) { if (deleted) cur.add(k); else cur.delete(k); }
+    if (cur.size) out.plan[i].delete = [...cur].sort();
+    else delete out.plan[i].delete;
+  }
+  return out;
+};
+
+/**
+ * Remove lanes that no longer exist from every part of an arrangement draft.
+ *
+ * Independent percussion channels own their notes, unlike an ordinary layer that
+ * doubles its source. Deleting one therefore has to remove both its layer definition
+ * from the mix and its note deltas here. Leaving the latter behind makes the sound
+ * reappear if the same generated lane key is added later.
+ */
+export function removeLanes(draft, keys) {
+  const drop = new Set((keys || []).filter(Boolean));
+  if (!drop.size) return draft;
+  const out = copy(draft);
+  for (const section of out.sections) {
+    for (const key of drop) delete section[key];
+  }
+  for (const bar of out.plan) {
+    for (const field of ['off', 'delete']) {
+      if (!bar[field]) continue;
+      bar[field] = bar[field].filter((key) => !drop.has(key));
+      if (!bar[field].length) delete bar[field];
+    }
+    for (const field of BAR_MAPS) {
+      if (!bar[field] || typeof bar[field] !== 'object') continue;
+      for (const key of drop) delete bar[field][key];
+      if (!Object.keys(bar[field]).length) delete bar[field];
+    }
+  }
+  return out;
+}
+
+/** Transpose one lane or a group of lanes by semitones over a bar range. */
+export const transposeBars = (draft, from, to, keys, semitones) =>
+  mapEdit(draft, from, to, keys, 'transpose', Number.isFinite(+semitones) ? +semitones : 0);
+
+/** Move a lane's notes in 1/32-note units over a bar range. */
+export const offsetBars = (draft, from, to, keys, units) =>
+  mapEdit(draft, from, to, keys, 'offset', Number.isFinite(+units) ? +units : 0);
+
+/** Apply a relative gain in dB to a lane over a bar range. */
+export const gainBars = (draft, from, to, keys, db) =>
+  mapEdit(draft, from, to, keys, 'gain', Number.isFinite(+db) ? +db : 0);
+
+/** Copy a complete structural bar range, including any song-owned note sections. */
+export function copyBars(bank, draft, from, to) {
+  const [a, b] = range(draft, from, to);
+  const base = bank.sections?.length || 0;
+  const bars = draft.plan.slice(a, b + 1).map(copyBar);
+  const used = [...new Set(bars.map((bar) => bar.sec).filter((sec) => sec != null && sec >= base))];
+  const remap = new Map(used.map((sec, i) => [sec, base + i]));
+  for (const bar of bars) if (remap.has(bar.sec)) bar.sec = remap.get(bar.sec);
+  return { bars, sections: used.map((sec) => clone(draft.sections[sec - base])) };
+}
+
+/** Paste copied structural bars at a bar boundary, preserving section deltas. */
+export function pasteBars(bank, draft, at, clip, times = 1) {
+  if (!clip?.bars?.length) return copy(draft);
+  const out = copy(draft);
+  const index = Math.max(0, Math.min(out.plan.length, at));
+  const base = bank.sections?.length || 0;
+  const pasted = [];
+  for (let t = 0; t < Math.max(1, times); t++) {
+    const layerMap = new Map();
+    const sectionStart = base + out.sections.length;
+    for (let i = 0; i < (clip.sections || []).length; i++) layerMap.set(base + i, sectionStart + i);
+    const sections = clone(clip.sections || []);
+    for (const sec of sections) if (sec?.base != null && layerMap.has(sec.base)) sec.base = layerMap.get(sec.base);
+    out.sections.push(...sections);
+    pasted.push(...clip.bars.map((bar) => {
+      const next = copyBar(bar);
+      if (layerMap.has(next.sec)) next.sec = layerMap.get(next.sec);
+      return next;
+    }));
+  }
+  out.plan.splice(index, 0, ...pasted);
+  return out;
+}
+
+/** Insert bars of silence, retaining the section identity but muting every lane. */
+export function insertSilence(draft, at, count, keys = LANE_KEYS) {
+  const out = copy(draft);
+  const n = Math.max(1, Math.floor(count || 1));
+  const index = Math.max(0, Math.min(out.plan.length, at));
+  const template = out.plan[Math.min(index, out.plan.length - 1)] || { sec: null, half: 0 };
+  const bars = Array.from({ length: n }, (_, i) => ({
+    sec: template.sec ?? null,
+    half: (template.half + i) % 2,
+    delete: [...keys].sort(),
+  }));
+  out.plan.splice(index, 0, ...bars);
+  return out;
+}
+
+/** Read one lane's sixteen steps for every bar in a range, ready for cross-lane paste. */
+export function copyLaneBars(bank, draft, from, to, lane) {
+  const [a, b] = range(draft, from, to);
+  const sections = sectionsOf(bank, draft);
+  const bars = [];
+  for (let i = a; i <= b; i++) {
+    const bar = draft.plan[i];
+    const sec = bar.sec != null ? resolveSection({ ...bank, sections }, bar.sec) : null;
+    const arr = sec?.[lane] ?? bank[lane];
+    bars.push(Array.from({ length: 16 }, (_, j) => clone(arr?.[bar.half * 16 + j] ?? null)));
+  }
+  return { lane, bars };
 }
 
 /** Every lane off, for a breakdown that keeps its bar count. */
@@ -276,29 +441,84 @@ export function forkBar(bank, draft, barIndex) {
 }
 
 /**
+ * The 32 steps a lane holds once `steps16` has gone into one half of it.
+ *
+ * Everything NOT being written is cloned out of what the bar plays now — resolved
+ * through the delta chain and the bank beneath it — because that array is very
+ * likely the same object as some other section's, and on some other lane besides.
+ *
+ * A section override replaces the WHOLE lane; the format has no half-lane. So
+ * writing the second bar of a section also freezes the first bar's half of that lane
+ * as a literal. It is inaudible — those sixteen values are copied verbatim — and only
+ * shows if the bank's own line for the lane is hand-edited afterwards, at which point
+ * these bars go on playing what they were given.
+ */
+function laneWith(bank, sections, sec, half, lane, steps16) {
+  const resolved = resolveSection({ ...bank, sections }, sec) || {};
+  const current = resolved[lane] ?? bank[lane];
+  const next = Array.from({ length: 32 }, (_, i) => (Array.isArray(current) ? clone(current[i] ?? null) : null));
+  for (let i = 0; i < 16; i++) next[half * 16 + i] = steps16[i] ?? null;
+  return next;
+}
+
+/**
  * Write sixteen steps of one lane into one bar.
  *
  * The bar forks first, then the lane is rebuilt as a fresh 32-step array — the bar
  * being written takes the new steps, its other half keeps what it played — and only
  * then does anything land in the draft. `steps16` is whatever the lane holds:
  * `true` for a percussion hit, a frequency, an array of them for a chord, `null` for
- * a rest.
+ * a rest. A drum grid should pass `false` rather than `null` for a step that is off,
+ * so the lane stays all-boolean and writes back out as `seq(...)` shorthand.
  */
 export function writeBarNotes(bank, draft, barIndex, lane, steps16) {
   const forked = forkBar(bank, draft, barIndex);
   const bar = forked.plan[barIndex];
   if (!bar) return forked;
   const idx = bar.sec - (bank.sections?.length || 0);
-  const section = forked.sections[idx];
-  // What the bar plays NOW, resolved through the delta chain and the bank beneath it.
-  const resolved = resolveSection({ ...bank, sections: sectionsOf(bank, forked) }, bar.sec) || {};
-  const current = resolved[lane] ?? bank[lane];
-  // Cloned, never written through: this array is very likely the same object as some
-  // other section's, and on some other lane besides.
-  const next = Array.from({ length: 32 }, (_, i) => (Array.isArray(current) ? clone(current[i] ?? null) : null));
-  for (let i = 0; i < 16; i++) next[bar.half * 16 + i] = steps16[i] ?? null;
-  section[lane] = next;
+  forked.sections[idx][lane] = laneWith(bank, sectionsOf(bank, forked), bar.sec, bar.half, lane, steps16);
   return forked;
+}
+
+/**
+ * The same write, but to every bar playing the same part.
+ *
+ * `writeBarNotes` forks, which is right when you are fixing one bar. This is the
+ * other gesture — "the hats are wrong in this loop" — where forking is exactly wrong:
+ * plumber plays section 0 for four bars, and editing the loop should change all four
+ * rather than leave three of them behind.
+ *
+ * The group forks ONCE. A bank section is not ours to write into, so a single delta
+ * is created and every bar that played that section is repointed at it together; a
+ * section that is already ours is written in place, and the bars pointing at it
+ * change with it, which is the whole point. Bars that were forked individually have a
+ * `sec` of their own and are deliberately left alone.
+ */
+export function writeBarNotesShared(bank, draft, barIndex, lane, steps16) {
+  const out = expandSectionless(bank, copy(draft));
+  const bar = out.plan[barIndex];
+  if (!bar) return out;
+  const sec = bar.sec;
+  const next = laneWith(bank, sectionsOf(bank, out), sec, bar.half, lane, steps16);
+  if (!isBankSection(bank, sec)) {
+    out.sections[sec - (bank.sections?.length || 0)][lane] = next;
+    return out;
+  }
+  const idx = sectionsOf(bank, out).length;
+  out.sections.push({ base: sec, [lane]: next });
+  for (const b of out.plan) if (b.sec === sec) b.sec = idx;
+  return out;
+}
+
+/**
+ * Pattern boundaries in an expanded bar plan.
+ *
+ * A section is the musical pattern and normally spans two bars. Comparing bars by
+ * index or half would put a divider through the middle of every pattern; comparing
+ * `sec` marks only the point where the arrangement actually changes to another one.
+ */
+export function patternStarts(plan) {
+  return plan.map((bar, i) => i > 0 && bar?.sec !== plan[i - 1]?.sec);
 }
 
 /**
@@ -311,6 +531,33 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16) {
 export function compactSections(bank, draft) {
   const base = bank.sections?.length || 0;
   const out = copy(draft);
+  // A lane holding exactly what it would have inherited is not a decision — it is an
+  // edit that was undone. Dropped here rather than on the keystroke, for the same
+  // reason orphaned sections are: undo needs it to still be there while you edit.
+  //
+  // This is what makes "toggle a step on, then off again" leave NOTHING in the file.
+  // Without it the section keeps `{ base: 0, hats: [...] }`, two keys rather than one,
+  // the passthrough below never fires, and a song silts up with arrangement entries
+  // that change nothing about it. Muting never hit this — `setLanesOff` writes the
+  // plan's `off` mask — so note editing is the first thing to put lane data in a
+  // section, and the first thing that can put back exactly what was already there.
+  //
+  // Resolved against the section list as it stands: only keys equal to what is
+  // inherited are removed, so nothing any section resolves to changes as we go.
+  //
+  // "Inherited" falls through to the BANK, the way the sequencer does and the way
+  // `laneWith` reads a lane to begin with — a section that overrides the snare says
+  // nothing about the kick, and the kick it plays is the bank's. Comparing against
+  // the resolved section alone would find `kick: undefined` there and keep every
+  // write for ever.
+  const view = { ...bank, sections: [...(bank.sections || []), ...out.sections] };
+  for (const s of out.sections) {
+    if (!s) continue;
+    const inherited = (s.base != null ? resolveSection(view, s.base) : null) || {};
+    for (const k of Object.keys(s)) {
+      if (k !== 'base' && JSON.stringify(s[k]) === JSON.stringify(inherited[k] ?? bank[k])) delete s[k];
+    }
+  }
   // Identical layer sections become one. Content, not identity: two bars given the
   // same edit by two separate gestures are the same bar as far as the file goes.
   const byContent = new Map();

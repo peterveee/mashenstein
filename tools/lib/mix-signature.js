@@ -121,6 +121,7 @@ export function mixSignature(m) {
   const fx = fxSig(m.fx);
   if (fx) out.fx = fx;
   if (m.voice && Object.keys(m.voice).length) out.voice = { ...m.voice };
+  if (m.voiceParams && Object.keys(m.voiceParams).length) out.voiceParams = JSON.parse(JSON.stringify(m.voiceParams));
   // The desk seeds every untouched master with a bypassed bus compressor, and the
   // serialiser will not write it — so a master somebody merely opened is not a change.
   // Taking the seed out IS one, and that is stored as [], which is not the seed.
@@ -130,13 +131,15 @@ export function mixSignature(m) {
   // The song's SHAPE — tracks duplicated onto it, tracks taken off it. Not a balance
   // decision like everything above, but a decision the file carries, so it is compared
   // like one: a mix whose only change is a deleted crash is still a mix to save.
-  // Projected to key/from, because that is all the file keeps of a layer.
+  // Independent pattern lanes also keep their mode and display label; ordinary
+  // duplicate layers still reduce to key/from exactly as before.
   const layers = (m.layers || []).filter((l) => l && l.key && l.from)
-    .map((l) => ({ key: l.key, from: l.from }));
+    .map((l) => ({ key: l.key, from: l.from,
+      ...(l.independent ? { independent: true } : {}), ...(l.label ? { label: l.label } : {}) }));
   const off = (m.off || []).filter(Boolean);
   if (layers.length) out.layers = layers;
   if (off.length) out.off = off;
-  if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.masterEffects
+  if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.voiceParams && !out.masterEffects
       && !out.fx && !out.layers && !out.off && !Object.keys(lanes).length) return null;
   return out;
 }

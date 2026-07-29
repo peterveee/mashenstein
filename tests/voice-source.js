@@ -165,8 +165,14 @@ const rewritten = await load(edited);
 assert(rewritten.VOICES.roundMono?.label === 'Round Mono, Edited'
   && rewritten.VOICES.roundMono?.options.envelope.attack === 0.5,
 'an edit to an existing preset lands on that preset');
-assert(rewritten.VOICES.roundMono?.options.filterEnvelope.baseFrequency === 120,
-  'and the keys the editor has no control for are carried through, not dropped');
+// Read from the source rather than hardcoded. The claim is that a key the editor has no
+// control for SURVIVES the round-trip — that is a statement about the serialiser, not
+// about what roundMono's filter happens to be tuned to this week. Pinned to a literal it
+// failed the first time that preset was re-voiced, which is a test reporting on the
+// wrong thing: the sound had changed, and the serialiser had not.
+assert(rewritten.VOICES.roundMono?.options.filterEnvelope.baseFrequency
+  === VOICES.roundMono.options.filterEnvelope.baseFrequency,
+'and the keys the editor has no control for are carried through, not dropped');
 assert(Object.keys(rewritten.VOICES).length === Object.keys(VOICES).length,
   'editing one preset does not add or lose another');
 assert(rewritten.VOICES.fmGrowl && JSON.stringify(rewritten.VOICES.fmGrowl) === JSON.stringify(VOICES.fmGrowl),

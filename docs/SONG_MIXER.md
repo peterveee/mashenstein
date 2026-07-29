@@ -155,23 +155,21 @@ recorder, notes written back into the bank) would be another.
   Writing the file is not a mix control, and a green Save button lit whether or not
   there was anything to write — with a red badge beside it saying so a second time —
   was the loudest thing in a header full of controls you actually touch.
-- **The dot on ⋯** — this song has changes that are not in `src/data/mix.js` yet.
+- **The dot on ⋯** — this song has changes that are not in its song file yet.
   Never an alarm: drafts are kept in `localStorage` and survive a reload, so the only
-  thing the dot is about is whether the *game* has heard the mix.
+  thing the dot is about is whether the *game* has heard the song.
 
 | Menu item | Does |
 | --- | --- |
-| Save *song* to the game | writes this song into `src/data/mix.js` after a confirm. Only this song: other songs holding unsaved edits are named in the dialog and left alone. Reads *“song is saved”*, dimmed, when the file already matches |
-| Save every changed song | writes every dirty draft in one go |
-| Revert to the saved mix | throws this song's draft away (undoable) |
-| Restore a previous save… | an earlier version of `src/data/mix.js` — this song out of it, or all of it. See [Going back](#going-back) |
-| Reset every channel | zeroes every strip in this song (undoable) |
-| Render WAV | renders this song offline with the mix on the desk, writes `dist/<slug>-mix.wav`, and reports LUFS and peak |
-| Audition through a plugin… | the same render, opened in [`tools/audition`](../tools/audition.py) — a real AU over this mix, its own GUI, previewed before you keep it |
+| Save song | writes this song into `src/data/songs/<id>.js` after a confirm. Mix, arrangement and editable notes are written together. |
+| Discard unsaved changes | throws this song's complete draft away (undoable) |
+| Open an earlier version… | loads an earlier complete version of this song, ready to review before saving. See [Going back](#going-back) |
+| Zero every channel | zeroes every strip in this song (undoable) |
+| Render WAV | renders this song offline and reports LUFS and peak |
+| Audition through a plugin… | the same song render, opened in [`tools/audition`](../tools/audition.py) — a real AU over it, previewed before you keep it |
 | Export MIDI | downloads `<slug>.mid` — the notes, with GM patch names |
 | Import MIDI… | turns a `.mid` into a song, and switches the desk to it |
-| Export mix as JSON | all drafts, as a file |
-| Import mix JSON | paste a whole file or one track entry |
+| Export song as JSON | all current song drafts, as a file |
 | Font | typeface for the desk — only fonts actually installed are offered |
 | Playhead *ms* | shifts the playhead right to match what you hear (default 50 ms; `[` and `]` nudge it by 10 while the song plays) |
 
@@ -184,6 +182,12 @@ length. The red line is the playhead; the teal band is the armed loop.
 
 - **Click** — park the playhead there (stopped) or jump there (playing).
 - **Double-click** — play from there.
+- **Drag across the timeline** — select a bar range. The hatched band is the current
+  structural selection, and it is the range used by copy, cut, repeat, silence and
+  delete.
+- **Right-click the timeline** — open the selected-bars editor. Its **Song
+  structure** buttons are cut/copy/paste, repeat, insert silence, mute and delete.
+  Beneath them, exact controls adjust every melodic track in the selection.
 - **Fold chevron** — reveals the **section blocks**: one coloured pair of bars per
   two-bar block, hued by which section it belongs to, so a verse/lift/bridge shape is
   readable at a glance. Remembered across reloads.
@@ -211,9 +215,8 @@ own sixteenths.
 Each row carries, left to right: the **track number** (desk order — the number on the
 strip below), **M** and **S**, the family mark, and the name.
 
-- **Click a bar** — parks the playhead there, selects that channel, and opens a
-  **piano roll** of that bar: sixteenths across, pitch up the side, C of each octave
-  picked out. Percussion gets a single *hit* row. Silent bars say so.
+- **Click a bar** — parks the playhead there, selects that channel, and marks the bar.
+  What it plays is named in the status line and in the cell's own tooltip.
 - **Double-click a bar** — play from there.
 - **Click a name** — select that channel.
 - **Double-click a name** — play from where that channel *comes in*: the first bar it
@@ -224,10 +227,14 @@ strip below), **M** and **S**, the family mark, and the name.
   below takes, mute · solo · duplicate · delete included. The row and the strip are two
   views of one track, so what you can do to it does not depend on which you were
   looking at. See [Duplicate and delete a track](#duplicate-and-delete-a-track).
-- **Drag across a row** — select a **range of bars**. `shift`-click extends one.
-  The range is marked on the row and hatched onto the timeline, where the bar
-  numbers are.
-- **Right-click a bar** — the arrangement menu. See below.
+- **Drag across a row** — select a **range of bars for that instrument**. This can
+  refine a timeline selection before a lane-specific operation.
+- **Right-click a bar** — open the same selected-bars editor targeted at that
+  instrument. Mute/delete/copy/paste stay above; exact transpose, timing and gain
+  controls stay together below.
+- **Selected bars / Entire track** — the scope switch at the top of a track editor
+  applies those same exact adjustments either to the current range or every bar of
+  that instrument.
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
   window; it snaps to whole lanes and never takes the rack's last strip. Drag it up
@@ -236,36 +243,75 @@ strip below), **M** and **S**, the family mark, and the name.
 
 The arrangement always shows *every* lane, whatever the mixer is filtered to.
 
-### Arranging — right-click a bar
+### Selected-bars editor
 
-Everything else on this desk is about **balance**. This is about the song's **shape**:
-which bars play, in what order, with what dropped out of them. It is the
-build-up/breakdown move that was hand-typed into `order` arrays until now.
+Right-clicking no longer opens a long list of fixed values. It opens one inspector
+showing the selected bars and the target at the top. Values are staged until
+**Apply changes**, so moving several controls creates one undo point.
 
-The scope is the **selection** if you right-clicked inside one, and the single bar
-otherwise — so "select four bars, right-click, duplicate" needs no modifier.
+The scope is the **timeline selection** if you right-clicked inside one, and the
+single bar otherwise. A row right-click adds the instrument target to that same
+range — so "select bars 1–4 on the timeline, right-click Bass, copy" is unambiguous.
+
+Right-click the **timeline** for whole-song structure:
 
 | Item | Does |
 | --- | --- |
-| Silence *lane* here | drops that one lane for these bars — "kick out of bar 7", the reason the menu exists. Reads *Bring … back in* when it is already out |
-| Drop the kit out | the whole kit in one item, and only the drums this song actually has |
-| Silence everything | every lane out, bar count unchanged — which is what a breakdown is |
-| Duplicate | the range again, immediately after itself |
-| Build up ▸ 4 passes | repeats the range four times and lets the kit in across the repeats: kick first, then snare, clap, hats. It **decides** what plays on those lanes, so building over bars you have just silenced does what you meant |
-| Break down ▸ 4 passes | the same thing the other way up — full kit first, thinning out |
-| Delete … from the song | the bars come out and everything after moves earlier. The song gets shorter. A song's last bar is refused |
+| Cut / Copy / Paste | moves the complete section, every track included |
+| Repeat | duplicates the selected range once, immediately after itself |
+| Insert silence | inserts the same number of empty bars at the selection start |
+| Mute bars | silences every track without changing the song length; right-click again to unmute |
+| Delete bars | removes the bars and moves everything after them earlier. The final bar is protected |
+
+Right-click an **arrangement lane** for that track only:
+
+| Item | Does |
+| --- | --- |
+| Edit notes | opens the selected bars in the step editor |
+| Mute / Unmute | silences or restores that track in the selected bars |
+| Delete / Restore | removes that track region while keeping its notes recoverable |
+| Copy track / Paste track | copies only that instrument's notes; paste may target a different instrument |
+| Reset region / Reset track | returns that track's bar edits to its written state (notes are kept) |
+
+Right-clicking a track name or mixer strip also offers **Adjust entire track…**,
+which opens the inspector directly on every bar. The scope switch can return to the
+previous bar selection without changing it.
+
+The adjustment controls are exact rather than presets:
+
+| Control | Range |
+| --- | --- |
+| Transpose | every semitone from `-12` to `+12`; shown on the arrangement as `+5`, `-7`, etc. Available for one melodic lane or every melodic track from the timeline |
+| Timing | every `1/32` step from a quarter-note early to a quarter-note late |
+| Gain | `-12` to `+12` dB in `0.5` dB steps |
 
 A bar where a lane is silenced draws **hollow** — outlined in the lane's colour with
 nothing in it — which is a different thing from a bar the lane simply does not play
 in, and you have to be able to tell them apart to build anything.
 
-Nothing here touches a composition file. Edits live in
-[`src/data/arrangements.js`](../src/data/arrangements.js), saved with the mix by the
-same button, and **⋯ → Play the written arrangement** puts a song back to the order
-it was composed with. Deleting its entry from that file does the same thing
-permanently. `⌘Z` undoes bar edits like any other, and the song does not stop while
-you make them: the sequencer takes the new arrangement from the next bar, with the
-playhead where it was — which is the only way to judge a build-up.
+Nothing here rewrites the composition above the song file's desk marker. Arrangement
+decisions are saved beside that song's notes and channel settings by **Save song**.
+**Discard unsaved changes** returns the arrangement and channel settings to the saved
+song together. `⌘Z` undoes a region edit like any other, and the song does not stop
+while you make it.
+
+### Step sequencer
+
+Open the **step-grid** button in the toolbar (or press **G**) to edit the drum pattern
+as sixteen sixteenths per bar. The selected arrangement bars are the sequencer's
+scope; with no selection it opens on the bar currently playing.
+
+- Click or drag across steps to paint or erase one undoable gesture. Enter/Space also
+  toggles the focused step.
+- **Groove ▾** lays down a complete kit figure; each lane's ▾ offers figures for that
+  instrument. Right-clicking a lane opens the same list.
+- **Selected bars** edits only the visible bars. **Shared pattern** changes every bar
+  that plays the same underlying part.
+- Click a channel name to silence or restore that lane in the shown bars without
+  deleting its steps. The playhead remains live while the song runs.
+
+Step edits are arrangement deltas saved with the song. They inherit the desk's undo,
+A/B and save path, and never rewrite the composition above the song-file desk marker.
 
 ---
 

@@ -25,6 +25,8 @@ import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/impor
 import { resolveTrack, listTracks, registerTrack } from './lib/tracks.js';
 import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
+import { writeSongFile, songPath, snapshotSongFile } from './lib/song-file.js';
+import { writeSongsIndex } from './lib/songs-index.js';
 // The sends' defaults, read from the engine rather than written out again here: a
 // value equal to its default is left out of the file, so a number that drifted apart
 // from the engine's would quietly stop being saved.
@@ -70,139 +72,14 @@ async function buildPage() {
   return shell.replace('/*__BUNDLE__*/', () => js);
 }
 
-// Emitted rather than JSON.stringify'd wholesale so the file stays readable and
-// reviewable in a diff — this is source that gets committed, not a blob.
-// Exported so it can be round-tripped in a test without standing a server up.
-export function renderMixFile(mix) {
-  const header = readFileSync(MIX_PATH, 'utf8').split('export const MIX')[0];
-  const ids = Object.keys(mix).sort();
-  if (!ids.length) return `${header}export const MIX = {};\n${tail()}`;
-
-  // An effect chain, written out so it stays readable in a diff. This was the one
-  // part of a mix the file did not carry: a chain could be built on the desk, sound
-  // right, and vanish the moment it was saved.
-  // A parameter name is emitted as source, so anything that is not a bare identifier
-  // has to be quoted: the nested compressors address their bands as `mid.threshold`,
-  // and an unquoted dot there is a syntax error in the file the whole game reads.
-  const fmtKey = (k) => (/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k));
-  const fmtParams = (params = {}) => Object.entries(params)
-    .filter(([, v]) => v != null)
-    .map(([k, v]) => `${fmtKey(k)}: ${typeof v === 'string' ? JSON.stringify(v) : round(v)}`)
-    .join(', ');
-  const fmtEffects = (list = []) => `[${list.map((e) => {
-    const bits = [`id: ${JSON.stringify(e.id)}`];
-    if (e.bypass) bits.push('bypass: true');
-    const p = fmtParams(e.params);
-    if (p) bits.push(`params: { ${p} }`);
-    return `{ ${bits.join(', ')} }`;
-  }).join(', ')}]`;
-
-  const laneLine = (key, L) => {
-    const parts = [];
-    if (L.gain) parts.push(`gain: ${round(L.gain)}`);
-    if (L.pan) parts.push(`pan: ${round(L.pan)}`);
-    // Compared against 1, not against falsy: width 0 is mono, which is a decision,
-    // and `if (L.width)` would drop it. There is no desk control for width yet — this
-    // is here so a value written into mix.js by hand survives the next Save rather
-    // than being quietly erased by a desk that never knew about it.
-    if (L.width != null && L.width !== 1) parts.push(`width: ${round(L.width)}`);
-    if (L.mute) parts.push('mute: true');
-    const send = L.send || {};
-    const sendParts = [];
-    // Anything but zero gets written. This used to skip `delay: 1` as "the default",
-    // which is exactly how a channel's echo stayed invisible: the value the engine
-    // used never reached the file. Both sends default to shut now.
-    if (send.delay) sendParts.push(`delay: ${round(send.delay)}`);
-    if (send.reverb) sendParts.push(`reverb: ${round(send.reverb)}`);
-    if (sendParts.length) parts.push(`send: { ${sendParts.join(', ')} }`);
-    const eq = L.eq || {};
-    const eqParts = [];
-    for (const b of ['low', 'mid', 'high']) if (eq[b]) eqParts.push(`${b}: ${round(eq[b])}`);
-    if (eqParts.length) parts.push(`eq: { ${eqParts.join(', ')} }`);
-    if (L.effects && L.effects.length) parts.push(`effects: ${fmtEffects(L.effects)}`);
-    return parts.length ? `      ${key}: { ${parts.join(', ')} },\n` : '';
-  };
-
-  let body = '';
-  for (const id of ids) {
-    const e = mix[id] || {};
-    const lanes = Object.entries(e.lanes || {})
-      .map(([k, L]) => laneLine(k, L)).filter(Boolean).join('');
-    // The desk seeds the master with a bypassed bus compressor, which is a starting
-    // point rather than a decision — writing it out would put a masterEffects line in
-    // every song in the game for a chain nobody has touched.
-    const masterFx = isDefaultMasterChain(e.masterEffects) ? null : e.masterEffects;
-    // The song's shape, as opposed to its balance: tracks duplicated on the desk and
-    // tracks deleted from it. Written before the lanes, because `bass2` in the lane
-    // list below only means anything once the layer that mints it has been declared.
-    const layers = (e.layers || []).filter((l) => l && l.key && l.from);
-    const off = (e.off || []).filter(Boolean);
-    // Everything this entry has to say, built before it is decided whether it has
-    // anything to say. Tracks that carry no decisions are skipped, so the file only
-    // holds real edits — and the test for that is now the lines themselves, rather
-    // than a second hand-written list of the fields below it. That list was a copy of
-    // a copy: it read `e.fx` as "the sends say something", so a mix whose only fx was
-    // a return put back to its defaults wrote an entry with nothing in it.
-    let ent = '';
-    if (e.master) ent += `    master: ${round(e.master)},\n`;
-    if (e.masterPan) ent += `    masterPan: ${round(e.masterPan)},\n`;
-    if (e.limiter) ent += '    limiter: true,\n';
-    // An empty chain is written out as an empty chain. The desk seeds an untouched
-    // master with the bus compressor, so a song that says nothing about its master
-    // gets it back on the next load — taking it off is a decision, and the file has
-    // to carry it or it does not survive the trip.
-    if (masterFx) {
-      ent += masterFx.length
-        ? `    masterEffects: ${fmtEffects(masterFx)},\n`
-        : '    masterEffects: [],\n';
-    }
-    if (layers.length) {
-      ent += `    layers: [${layers
-        .map((l) => `{ key: ${JSON.stringify(l.key)}, from: ${JSON.stringify(l.from)} }`)
-        .join(', ')}],\n`;
-    }
-    if (off.length) ent += `    off: ${JSON.stringify(off)},\n`;
-    if (e.voice && Object.keys(e.voice).length) ent += `    voice: ${JSON.stringify(e.voice)},\n`;
-    if (e.fx && Object.keys(e.fx).length) {
-      const d = e.fx.delay || {}, rv = e.fx.reverb || {};
-      // The return EQ, on both sends. The desk has always had these three rows — on a
-      // reverb they are the damping control in everything but name, since a
-      // convolution tail has no other — and applied them to the live aux, so they
-      // survived a refresh through localStorage and were lost on Save. A knob that
-      // works until you commit it is worse than one that does not work at all.
-      const eqLine = (eq = {}) => {
-        const bits = ['low', 'mid', 'high'].filter((b) => eq[b]).map((b) => `${b}: ${round(eq[b])}`);
-        return bits.length ? `eq: { ${bits.join(', ')} }` : null;
-      };
-      const dp = [];
-      if (d.division != null && d.division !== AUX_DEFAULTS.delay.division) dp.push(`division: ${round(d.division)}`);
-      if (d.feedback != null && d.feedback !== AUX_DEFAULTS.delay.feedback) dp.push(`feedback: ${round(d.feedback)}`);
-      if (d.tone != null && d.tone !== AUX_DEFAULTS.delay.tone) dp.push(`tone: ${round(d.tone)}`);
-      if (d.level != null && d.level !== AUX_DEFAULTS.delay.level) dp.push(`level: ${round(d.level)}`);
-      if (d.pan) dp.push(`pan: ${round(d.pan)}`);
-      if (d.mute) dp.push('mute: true');
-      if (eqLine(d.eq)) dp.push(eqLine(d.eq));
-      if (d.effects && d.effects.length) dp.push(`effects: ${fmtEffects(d.effects)}`);
-      const rp = [];
-      if (rv.decay != null && rv.decay !== AUX_DEFAULTS.reverb.decay) rp.push(`decay: ${round(rv.decay)}`);
-      if (rv.preDelay != null && rv.preDelay !== AUX_DEFAULTS.reverb.preDelay) rp.push(`preDelay: ${round(rv.preDelay)}`);
-      if (rv.level != null && rv.level !== AUX_DEFAULTS.reverb.level) rp.push(`level: ${round(rv.level)}`);
-      if (rv.pan) rp.push(`pan: ${round(rv.pan)}`);
-      if (rv.mute) rp.push('mute: true');
-      if (eqLine(rv.eq)) rp.push(eqLine(rv.eq));
-      if (rv.effects && rv.effects.length) rp.push(`effects: ${fmtEffects(rv.effects)}`);
-      const bits = [];
-      if (dp.length) bits.push(`delay: { ${dp.join(', ')} }`);
-      if (rp.length) bits.push(`reverb: { ${rp.join(', ')} }`);
-      if (bits.length) ent += `    fx: { ${bits.join(', ')} },\n`;
-    }
-    if (lanes) ent += `    lanes: {\n${lanes}    },\n`;
-    if (!ent) continue;
-    body += `  ${JSON.stringify(id)}: {\n${ent}  },\n`;
-  }
-  return `${header}export const MIX = {\n${body}};\n${tail()}`;
-}
-
+// `renderMixFile` used to live here: it rebuilt src/data/mix.js from all thirty-four
+// songs at once. It is deleted rather than merely unused, because while it existed a
+// desk or a server started before the songs moved could still call it — and it kept
+// "everything above `export const MIX`" as a header, so writing through it under the
+// new mix.js produced a file that imported the song folder AND redefined MIX beneath
+// it. That parses, exports, and silently shadows every song file. It cost a mix.
+//
+// One song is written by one function now: writeSongFile, in lib/song-file.js.
 const round = (n) => Math.round(n * 1000) / 1000;
 
 function tail() {
@@ -265,12 +142,11 @@ export function snapshotMix(label, dir = HISTORY_DIR, path = MIX_PATH, prefix = 
  * matching name rather than shown as a second entry — they are one moment, and a
  * list that showed both would ask you to pick a half.
  */
-function listHistory(dir = HISTORY_DIR) {
+export function listHistory(dir = HISTORY_DIR) {
   if (!existsSync(dir)) return [];
   const all = readdirSync(dir);
-  return all
+  const legacy = all
     .filter((f) => /^mix-.*\.js$/.test(f))
-    .sort().reverse()
     .map((file) => {
       // The label is what is left after `mix-<date>T<time>-`; the mtime is when the
       // copy was taken, which is the same instant the stamp records but does not
@@ -286,6 +162,25 @@ function listHistory(dir = HISTORY_DIR) {
         bytes: statSync(join(dir, file)).size,
       };
     });
+  // Current saves are one song file, one snapshot. Its data half exports `mix` and
+  // `arrangement` together, so there is no paired filename to find and no chance of
+  // restoring two different moments by accident.
+  const current = all
+    .filter((f) => /^song-\d{4}-\d{2}-\d{2}T\d{6}-.+\.js$/.test(f))
+    .map((file) => {
+      const m = /^song-(\d{4}-\d{2}-\d{2})T(\d{2})(\d{2})(\d{2})-(.+)\.js$/.exec(file);
+      const track = m?.[5] || '';
+      return {
+        file,
+        track,
+        arrangements: file,
+        at: statSync(join(dir, file)).mtimeMs,
+        date: m ? `${m[1]} ${m[2]}:${m[3]}:${m[4]}` : file,
+        label: track,
+        bytes: statSync(join(dir, file)).size,
+      };
+    });
+  return [...legacy, ...current].sort((a, b) => b.at - a.at);
 }
 
 /**
@@ -311,33 +206,105 @@ function listHistory(dir = HISTORY_DIR) {
 let importSeq = 0;
 export const freshImport = (path) => import(`${pathToFileURL(path).href}?v=${++importSeq}`);
 
+/**
+ * Read one exported desk-state field directly from every authoritative song file.
+ *
+ * Re-importing mix.js is not enough now that it imports songs/index.js: Node may give
+ * that dependency back from cache, which makes a save's readback report the version
+ * from before the save. Each song module gets the cache-buster itself here.
+ */
+export async function readSongStateDir(dir, field) {
+  if (!existsSync(dir)) return {};
+  const out = {};
+  const files = readdirSync(dir)
+    .filter((f) => f !== 'index.js' && f.endsWith('.js'))
+    .sort();
+  for (const file of files) {
+    const id = file.slice(0, -3);
+    const mod = await freshImport(join(dir, file));
+    if (mod[field] != null) out[id] = JSON.parse(JSON.stringify(mod[field]));
+  }
+  return out;
+}
+
 /** One snapshot's MIX, parsed by loading it — it is a module, so this is free. */
 async function readHistory(file, dir = HISTORY_DIR) {
   const path = join(dir, file);
   if (!existsSync(path)) return null;
-  const mod = await freshImport(path);
-  return mod.MIX || null;
+  const mod = await loadSnapshot(path);
+  return mod?.MIX || null;
+}
+
+/**
+ * Load a snapshot, whatever shape it is.
+ *
+ * New ones are data with no imports and load straight. The ones already in the
+ * folder are byte copies of src/data/mix.js from before the songs moved, and their
+ * header imports `./songs/index.js` — a path that does not exist from in here, so
+ * they will not load at all. That is a backup you cannot open, which is the whole
+ * job it had.
+ *
+ * So: the import lines are stripped and what is left is loaded from memory. Nothing
+ * in a snapshot needs them — a saved mix is numbers.
+ */
+async function loadSnapshot(path) {
+  try {
+    return await freshImport(path);
+  } catch (err) {
+    if (!/Cannot find module|ERR_MODULE_NOT_FOUND/.test(String(err && err.message))) throw err;
+    const text = readFileSync(path, 'utf8');
+    // Whatever those imports BOUND has to keep existing, or the file throws instead:
+    // the old mix.js and arrangements.js shims read `MIX_BY_ID` in their own bodies.
+    // Declared empty, which is the truth about a snapshot of a shim — it held no data
+    // of its own, only a pointer at the song folder.
+    const bound = [...text.matchAll(/^\s*import\s+\{([^}]*)\}/gm)]
+      .flatMap((m) => m[1].split(',').map((x) => x.trim().split(/\s+as\s+/).pop()))
+      .filter(Boolean);
+    const stripped = text.replace(/^\s*import\s.*$/gm, '');
+    const shim = bound.length ? `const ${bound.map((b) => `${b} = {}`).join(', ')};\n` : '';
+    const url = `data:text/javascript;base64,${Buffer.from(shim + stripped).toString('base64')}`;
+    console.log(`  (read ${path.split('/').pop()} without its imports — a snapshot from before the songs moved)`);
+    return import(url);
+  }
 }
 
 /** And its arrangement half, if there was one when it was taken. */
 async function readHistoryArrangements(file, dir = HISTORY_DIR) {
   const path = join(dir, file);
   if (!existsSync(path)) return null;
-  const mod = await freshImport(path);
+  const mod = await loadSnapshot(path);
   return mod.ARRANGEMENTS || null;
+}
+
+/** One historical moment in the map shape the desk consumes. */
+export async function readHistoryVersion(file, dir = HISTORY_DIR) {
+  if (file.startsWith('song-')) {
+    const m = /^song-\d{4}-\d{2}-\d{2}T\d{6}-(.+)\.js$/.exec(file);
+    const path = join(dir, file);
+    if (!m || !existsSync(path)) return null;
+    const id = m[1];
+    const mod = await loadSnapshot(path);
+    return {
+      mix: { [id]: mod.mix ?? null },
+      arrangements: { [id]: mod.arrangement ?? null },
+    };
+  }
+  const mix = await readHistory(file, dir);
+  if (!mix) return null;
+  const pair = `arr-${file.slice('mix-'.length)}`;
+  const arrangements = existsSync(join(dir, pair))
+    ? await readHistoryArrangements(pair, dir) : null;
+  return { mix, arrangements };
 }
 
 /** The mix as the FILE currently holds it, whatever this process last wrote. */
 async function readCurrentMix() {
-  const mod = await freshImport(MIX_PATH);
-  return JSON.parse(JSON.stringify(mod.MIX || {}));
+  return readSongStateDir(join(ROOT, 'src/data/songs'), 'mix');
 }
 
 /** The same, for the arrangement layer. Absent file is an empty layer, not an error. */
 async function readCurrentArrangements() {
-  if (!existsSync(ARRANGEMENTS_PATH)) return {};
-  const mod = await freshImport(ARRANGEMENTS_PATH);
-  return JSON.parse(JSON.stringify(mod.ARRANGEMENTS || {}));
+  return readSongStateDir(join(ROOT, 'src/data/songs'), 'arrangement');
 }
 
 /**
@@ -349,27 +316,6 @@ async function readCurrentArrangements() {
  */
 const snapshotArrangements = (label) => snapshotMix(label, HISTORY_DIR, ARRANGEMENTS_PATH, 'arr');
 
-/**
- * Fold a desk's edits into the mix that is on disk RIGHT NOW.
- *
- * The desk used to post the whole file — its own copy of all thirty-four songs,
- * read when the page loaded — so a save from a tab left open since this morning
- * wrote this morning's version of every OTHER song back over the file. Two tabs, or
- * a hand-edit between page load and save, and the loser never knew.
- *
- * Now it posts only the songs it means, and the merge happens here against the file
- * as it stands. `entries[id] == null` means the song carries no decisions any more,
- * which is a removal, not "leave it alone" — that is what Reset every channel writes.
- */
-export function mergeMix(current, ids, entries = {}) {
-  const out = { ...current };
-  for (const id of ids) {
-    const e = entries[id];
-    if (e == null) delete out[id];
-    else out[id] = e;
-  }
-  return out;
-}
 
 // One Chromium, opened on first use and kept warm. A launch is ~1s and the desk
 // renders repeatedly while a mix is being dialled in.
@@ -499,53 +445,66 @@ const LOUDNESS_TARGET = -16;
 
 const server = createServer(async (req, res) => {
   try {
-    // Write the mix file, keeping the version being replaced.
+    // Save one song: its mix and its arrangement, into its own file.
     //
-    // Two shapes, because a desk left open from before this route changed is still a
-    // desk holding an evening's work:
-    //   { ids, entries }  — the songs this save is about, merged HERE against the
-    //                       file as it stands. What the desk sends now.
-    //   { <trackId>: … }  — the whole file, as the desk used to post it. Taken as
-    //                       authoritative, which is what it was; the snapshot is what
-    //                       makes that survivable.
+    // One file per song is what makes this simple. It used to rewrite
+    // src/data/mix.js — thirty-four songs' balances in one file — so every save
+    // touched every song, two desks could not save at once, and "restore the mix"
+    // could only ever mean the whole file. Now a save is one song, and the version
+    // it replaced is copied aside under that song's own name.
+    //
+    // The music is never written. `writeSongFile` rewrites only what is below the
+    // desk's marker and refuses outright if the marker is missing.
     if (req.method === 'POST' && req.url === '/save') {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      const scoped = Array.isArray(body?.ids);
-      const ids = scoped ? body.ids : Object.keys(body);
-      const mix = scoped
-        ? mergeMix(await readCurrentMix(), body.ids, body.entries || {})
-        : body;
-      // Before the write, not after: the point is the file as it was a moment ago.
-      const label = ids.length === 1 ? ids[0] : `${ids.length}-songs`;
-      const snap = snapshotMix(label);
-      writeFileSync(MIX_PATH, renderMixFile(mix));
+      // New saves are partial patches: omitted `mix` or `arrangement` means preserve
+      // the other half already on disk; an explicit null means clear that half. The
+      // old `{ ids, entries, arrangements }` shape is still accepted for a tab that
+      // was open during the migration, but it uses the same presence semantics.
+      const patchMode = body?.patch && body?.id;
+      const ids = patchMode
+        ? [body.id]
+        : (Array.isArray(body?.ids) ? body.ids : Object.keys(body?.entries || body || {}));
+      const entries = body.entries || body || {};
+      const arrangements = body.arrangements || {};
+      const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
 
-      // The arrangement layer, written in the same breath and snapshotted into the
-      // same timestamped pair — a mix and an arrangement saved together have to come
-      // back together, or a restore gives you this evening's balance over last
-      // night's bar plan and no way to tell.
-      //
-      // `arrangements` absent means the desk did not send any, which is not the same
-      // as sending none: an older desk against this server must not silently wipe the
-      // file. Only an explicit object rewrites it.
-      let arrSnap = null;
-      if (body.arrangements && typeof body.arrangements === 'object') {
-        arrSnap = snapshotArrangements(label);
-        writeFileSync(ARRANGEMENTS_PATH, renderArrangementsFile(body.arrangements, ARRANGEMENTS_PATH));
+      const written = [];
+      const snaps = [];
+      for (const id of ids) {
+        if (!existsSync(songPath(ROOT, id))) {
+          res.writeHead(404, { 'content-type': 'text/plain' });
+          res.end(`no song file for "${id}" — src/data/songs/${id}.js does not exist`);
+          return;
+        }
+        const current = await freshImport(songPath(ROOT, id));
+        const mix = patchMode
+          ? (has(body.patch, 'mix') ? body.patch.mix : (current.mix ?? null))
+          : (has(entries, id) ? entries[id] : (current.mix ?? null));
+        const arrangement = patchMode
+          ? (has(body.patch, 'arrangement') ? body.patch.arrangement : (current.arrangement ?? null))
+          : (has(arrangements, id) ? arrangements[id] : (current.arrangement ?? null));
+        // Before the write, so the folder holds the version being replaced. Data
+        // only — see snapshotSongFile for why a copy of the whole file is no good.
+        const snap = snapshotSongFile(ROOT, id, HISTORY_DIR, stamp());
+        if (snap) snaps.push(snap);
+        writeSongFile(ROOT, id, {
+          mix,
+          arrangement,
+        });
+        written.push(id);
       }
+      // The folder's index, in case a song file was added while this was running.
+      writeSongsIndex(join(ROOT, 'src/data/songs'));
 
-      const n = Object.keys(mix).length;
-      console.log(`saved src/data/mix.js — ${ids.length} of ${n} track${n === 1 ? '' : 's'}`
-        + (snap ? `  (was: .mix-history/${snap})` : '')
-        + (arrSnap ? `\nsaved src/data/arrangements.js  (was: .mix-history/${arrSnap})` : ''));
+      console.log(`saved ${written.map((id) => `src/data/songs/${id}.js`).join(', ')}`
+        + (snaps.length ? `  (was: .mix-history/${snaps.join(', ')})` : ''));
       res.writeHead(200, { 'content-type': 'application/json' });
-      // The file re-read, not the object just written: the desk's idea of "what is on
-      // disk" then matches the disk exactly, including the three-decimal rounding the
-      // serialiser applies and any song another tab changed while this one was open.
+      // Read back off disk, so the desk's idea of what is saved matches the files.
       res.end(JSON.stringify({
-        ok: true, snapshot: snap, arrangementSnapshot: arrSnap,
+        ok: true, saved: written, snapshot: snaps[0] || null,
         mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
       }));
       return;
@@ -564,7 +523,9 @@ const server = createServer(async (req, res) => {
       // id longer than the cap does not match itself.
       const track = new URL(req.url, `http://${HOST}:${PORT}`).searchParams.get('track');
       const all = listHistory();
-      const snapshots = track ? all.filter((s) => s.label === slug(track)) : all;
+      const snapshots = track
+        ? all.filter((s) => s.track === track || (!s.track && s.label === slug(track)))
+        : all;
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ dir: '.mix-history', keep: HISTORY_KEEP, track, snapshots }));
       return;
@@ -573,14 +534,12 @@ const server = createServer(async (req, res) => {
       const file = decodeURIComponent(req.url.slice('/history/'.length));
       // Matched against the name we write, not merely checked for `..`: this reads a
       // path off the wire and hands it to import().
-      if (!/^mix-[\w.-]+\.js$/.test(file)) { res.writeHead(400); res.end('bad snapshot name'); return; }
-      const mix = await readHistory(file);
-      if (!mix) { res.writeHead(404); res.end('no such snapshot'); return; }
-      // Both halves of the moment, so a restore puts back the balance AND the bar
-      // plan it was made against. Null when that save predates the arrangement layer.
-      const pair = `arr-${file.slice('mix-'.length)}`;
-      const arrangements = existsSync(join(HISTORY_DIR, pair))
-        ? await readHistoryArrangements(pair) : null;
+      if (!/^(?:mix|song)-[\w.-]+\.js$/.test(file)) {
+        res.writeHead(400); res.end('bad snapshot name'); return;
+      }
+      const version = await readHistoryVersion(file);
+      if (!version) { res.writeHead(404); res.end('no such snapshot'); return; }
+      const { mix, arrangements } = version;
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ file, mix, arrangements }));
       return;
@@ -835,7 +794,9 @@ const server = createServer(async (req, res) => {
     // because "the saved mix" has to mean the one on disk now or it means nothing.
     if (req.method === 'GET' && req.url === '/mix') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ mix: await readCurrentMix() }));
+      res.end(JSON.stringify({
+        mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
+      }));
       return;
     }
 

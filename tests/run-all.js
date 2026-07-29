@@ -30,6 +30,15 @@ const suites = [
   'tests/voice-source.js',
   'tests/layers.js',
   'tests/preview.js',
+  // The other side of preview.js: that one is a note through a CHANNEL, this is a note
+  // through none — the preset library's bench, where a sound that belongs to no song is
+  // heard with no strip on it. Its sharpest claim is that the desk gets its channel
+  // strips back afterwards, including when the engine throws.
+  'tests/bench.js',
+  // The third of the trio, and the one about time rather than signal: what the rack
+  // does to a note that is ALREADY PLAYING when the preset under it is edited. Turning
+  // a knob on the desk used to stop the bar you were listening to.
+  'tests/voice-edit.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',

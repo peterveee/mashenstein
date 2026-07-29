@@ -96,8 +96,15 @@ const danceMix = SHOP_THEME_DANCE_MIX_VARIANTS[0];
 assert(SHOP_THEME_DANCE_MIX_VARIANTS.length === 1
   && SHOP_THEME_BY_ID[danceMix.id] === danceMix.bank,
   'Checkout Gary exposes its bright-organ Dance Mix renderer bank');
-assert(COUNTER_DANCE_MIX_THEME === danceMix.bank,
-  'both live counters and the jukebox share the approved procedural Dance Mix bank');
+// They used to be ONE object: `COUNTER_DANCE_MIX_THEME` was a pointer straight at
+// the audition's bank. That meant two track ids sharing one bank, and since a mix is
+// looked up by bank identity, only one of their two saved mixes could ever apply —
+// the audition's was dead weight in the file. One file per song ended the sharing:
+// same music, two songs, each with its own mix.
+assert(COUNTER_DANCE_MIX_THEME !== danceMix.bank,
+  'the shop theme and the audition it came from are separate songs now');
+assert(JSON.stringify(COUNTER_DANCE_MIX_THEME) === JSON.stringify(danceMix.bank),
+  'and until one of them is edited they still play exactly the same music');
 assert(danceMix.bank.musicTrim === 2.22,
   'the live Checkout Promenade mix is raised to the shared soundtrack loudness');
 assert(danceMix.bank.order.length === 23

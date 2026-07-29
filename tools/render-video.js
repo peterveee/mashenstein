@@ -125,7 +125,7 @@ const OUT = resolve(ROOT, outArg || `dist/${track.slug}-${visualSlug}.mp4`);
 // ------------------------------------------------------------------- audio
 
 console.log(`track      ${track.title} (${track.id}), ${REPEAT}x form`);
-const { outL, outR, seconds, blocks, peak } = await renderBankBrowser(track.bank, {
+const { outL, outR, seconds, blocks, peak, percussion } = await renderBankBrowser(track.bank, {
   repeat: REPEAT, trackId: track.id,
 });
 // The analyser downstream wants one channel, the way the game's own AnalyserNode
@@ -189,7 +189,7 @@ function fft(re, im) {
  * smoothing on the linear magnitudes, then dB mapped across [-100, -30] to 0..255.
  * `beat` comes from the bank's own tempo, matching songBeat()'s procedural clock.
  */
-function analyseSong(samples, bpm) {
+function analyseSong(samples, bpm, percussionAt = []) {
   const N = 256;             // engine's songAnalyser.fftSize
   const BINS = N / 2;
   const TAU_SMOOTH = 0.72;   // engine's smoothingTimeConstant
@@ -222,13 +222,35 @@ function analyseSong(samples, bpm) {
     return sum / ((b - a) * 255);
   };
 
+  // The engine's own kit timeline, not a second guess at it: renderBankBrowser
+  // hands back the times scheduleStep() queued while it laid the song down. Same
+  // four-beat density window and two-beat drumless gap _readPercussion() uses.
+  const hits = [...percussionAt].sort((a, b) => a - b);
+  const beatSeconds = 60 / bpm;
+  let hitAt = 0;
+  let heardFrom = 0;
+
   const frames = [];
   let bass = 0;
   let mid = 0;
   let treble = 0;
+  let level = 0;
+  let peak = 0;
+  let drums = 0;
+  let hit = 0;
   for (let f = 0; f < FRAMES; f++) {
     const t = f / FPS;
     const end = Math.round(t * SR);
+    // RMS over the unwindowed time-domain window, matching what the engine
+    // reads out of getByteTimeDomainData(). The byte quantisation the live path
+    // goes through is far below the resolution any of this drives.
+    let square = 0;
+    for (let i = 0; i < N; i++) {
+      const at = end - N + i;
+      const s = at >= 0 && at < samples.length ? samples[at] : 0;
+      square += s * s;
+    }
+    const rms = Math.sqrt(square / N);
     for (let i = 0; i < N; i++) {
       const at = end - N + i;
       re[i] = (at >= 0 && at < samples.length ? samples[at] : 0) * window[i];
@@ -246,11 +268,33 @@ function analyseSong(samples, bpm) {
     bass += (band(BASS) - bass) * 0.34;
     mid += (band(MID) - mid) * 0.30;
     treble += (band(TREBLE) - treble) * 0.38;
+    // Loudness, same shape as musicAnalysis(): fast attack / slow release on the
+    // level, a reference that jumps to new peaks and decays over ~30s, and a
+    // perceptual square root on the ratio. A rendered clip has to slow down in
+    // the same places the live jukebox does.
+    level += (rms - level) * (rms > level ? 0.45 : 0.12);
+    if (level > peak) peak = level;
+    else peak += (level - peak) * 0.0006;
+    const dynamics = peak > 0.01 ? Math.max(0, Math.min(1, Math.sqrt(level / peak))) : 0;
+
+    // Two indices walking the same sorted list: `hitAt` is the playhead and
+    // `heardFrom` the trailing edge of the four-beat window, so this stays O(1)
+    // a frame instead of rescanning the song's hits every sixtieth of a second.
+    const wasAt = hitAt;
+    while (hitAt < hits.length && hits[hitAt] <= t) hitAt++;
+    while (heardFrom < hitAt && hits[heardFrom] < t - beatSeconds * 4) heardFrom++;
+    drums += (Math.min(1, (hitAt - heardFrom) / 4) - drums) * 0.08;
+    const drumless = !(hitAt > 0 && hits[hitAt - 1] >= t - beatSeconds * 2);
+    // The onset, mirroring _readPercussion(): the playhead advancing over a hit
+    // IS the frame that hit is heard, which is the same test the engine makes
+    // when its pending queue drains. Same 0.55 fall, so a preset choreographed
+    // on `hit` cuts identically in a rendered clip and in the browser.
+    hit = hitAt > wasAt ? 1 : hit * 0.55;
 
     const beat = (t * bpm) / 60;
     const beatPhase = ((beat % 1) + 1) % 1;
     frames.push({
-      bass, mid, treble, beat, beatPhase,
+      bass, mid, treble, level, dynamics, drums, drumless, hit, beat, beatPhase,
       beatPulse: Math.pow(1 - beatPhase, 5),
       spectrum: Array.from(spectrum),
     });
@@ -259,12 +303,19 @@ function analyseSong(samples, bpm) {
 }
 
 console.log('analysing  song…');
-const analysis = analyseSong(pcm, track.bank.bpm);
+const analysis = analyseSong(pcm, track.bank.bpm, percussion);
 const avg = (key) => analysis.reduce((a, f) => a + f[key], 0) / analysis.length;
 const max = (key) => analysis.reduce((a, f) => Math.max(a, f[key]), 0);
+const min = (key) => analysis.reduce((a, f) => Math.min(a, f[key]), Infinity);
 console.log(`           bass ${avg('bass').toFixed(2)}/${max('bass').toFixed(2)}  `
   + `mid ${avg('mid').toFixed(2)}/${max('mid').toFixed(2)}  `
   + `treble ${avg('treble').toFixed(2)}/${max('treble').toFixed(2)}  (mean/peak)`);
+const drumlessFrames = analysis.filter((f) => f.drumless).length;
+console.log(`           level ${avg('level').toFixed(3)}/${max('level').toFixed(3)}  `
+  + `dynamics ${min('dynamics').toFixed(2)}-${max('dynamics').toFixed(2)} `
+  + `(mean ${avg('dynamics').toFixed(2)})`);
+console.log(`           kit ${percussion.length} hits, drums mean ${avg('drums').toFixed(2)}, `
+  + `drumless ${(drumlessFrames / analysis.length * 100).toFixed(0)}% of the song`);
 
 // ------------------------------------------------------------- scratch dir
 
@@ -311,7 +362,15 @@ try {
   process.exit(1);
 }
 
+// The game's faces, on the same stylesheet src/gate.js injects at boot. Only
+// EMERALD CODE RAIN draws real text, but it bakes a glyph atlas the first time
+// it draws, so the face has to be resident before any frame is rendered or the
+// whole clip keeps the fallback.
+const GAME_FONT_URL = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap';
+const GAME_FONT_FACES = ["400 32px 'Lilita One'", "500 12px 'Fredoka'", "400 12px 'Permanent Marker'"];
+
 const html = `<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="${GAME_FONT_URL}">
 <style>html,body{margin:0;background:#000}</style>
 <script>${bundleJs.replace(/<\/script>/g, '<\\/script>')}<\/script>`;
 
@@ -332,6 +391,9 @@ async function renderRange(from, to, segmentPath, onProgress) {
   const browser = await chromium.launch({ args: USE_GPU ? GPU_ARGS : [] });
   const page = await browser.newPage({ viewport: { width: 64, height: 64 } });
   await page.setContent(html, { waitUntil: 'load' });
+  // Offline or a slow font response falls back rather than failing the render:
+  // a clip in Trebuchet beats no clip at all.
+  await page.evaluate((faces) => Promise.all(faces.map((face) => document.fonts.load(face).catch(() => {}))), GAME_FONT_FACES);
 
   await page.evaluate(({ index, seed, bpm, fps, w, h, outW, outH, ss, skip }) => {
     // The visualizer draws in logical 480x270 coordinates. Scaling the context

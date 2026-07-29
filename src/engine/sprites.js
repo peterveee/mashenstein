@@ -207,7 +207,9 @@ const TITLE_FAMILY = "'Lilita One'";
 const MARKER_FAMILY = "'Permanent Marker'";
 const FALLBACK = "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif";
 const BODY_FONT = `${BODY_FAMILY}, ${FALLBACK}`;
-const TITLE_FONT = `${TITLE_FAMILY}, ${FALLBACK}`;
+// Exported for anything that rasterizes its own text off the game's faces
+// rather than through drawText — see onGameFontsChanged below.
+export const TITLE_FONT = `${TITLE_FAMILY}, ${FALLBACK}`;
 const MARKER_FONT = `${MARKER_FAMILY}, ${FALLBACK}`;
 
 // Text styles the game draws in. 'ui' is the default everywhere; 'bold' is the
@@ -311,6 +313,15 @@ function glyphSprite(ch, color, scale, style) {
   return g;
 }
 
+// Other modules that bake these faces into rasters of their own — the code
+// rain's glyph atlas — subscribe here rather than re-deriving the loading dance
+// below, which is subtle enough to be worth having in exactly one place.
+const fontListeners = new Set();
+export function onGameFontsChanged(fn) {
+  fontListeners.add(fn);
+  return () => fontListeners.delete(fn);
+}
+
 // The webfonts arrive after first paint, so anything measured or rasterized
 // against the fallback stack has to be thrown away once they land.
 //
@@ -326,7 +337,11 @@ function glyphSprite(ch, color, scale, style) {
 // So ask for the faces by name. That both starts the download and gives a
 // promise that resolves when they are genuinely usable.
 if (typeof document !== 'undefined' && document.fonts) {
-  const drop = () => { glyphCache.clear(); advCache.clear(); };
+  const drop = () => {
+    glyphCache.clear();
+    advCache.clear();
+    for (const fn of fontListeners) fn();
+  };
   if (document.fonts.load) {
     const faces = [
       `400 32px ${TITLE_FAMILY}`,

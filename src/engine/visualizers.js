@@ -2,6 +2,8 @@
 // game already presents a fixed 480x270 logical backbuffer, so keeping the
 // presets here makes the 2D fallback and the WebGL upload path identical.
 import { Rng } from './rng.js';
+import { screen } from './renderer.js';
+import { TITLE_FONT, onGameFontsChanged, drawText, textWidth } from './sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawApplianceFinish, drawProp, hasProp, propFrames, propFps } from '../sprites/props.js';
 
@@ -21,6 +23,15 @@ export const VISUALIZER_NAMES = [
   'ARCADE ART GALLERY',
   'TOASTER SKY PARADE',
   'CHROMA BUBBLESTORM',
+  'EMERALD CODE RAIN',
+  'ACID JULIA DIVE',
+  'HYPER-VECTOR TUNNEL',
+  'NEBULA RIBBON DRIFT',
+  'GLASS BLOB EQUALIZER',
+  // Not a scene of its own: a DJ that plays the rest of the pack, one 16-bar
+  // phrase each, and mixes between them on the downbeat. Kept last so every
+  // index above stays where it was.
+  'VJ MEGAMIX',
 ];
 
 const W = 480;
@@ -39,6 +50,25 @@ const TOASTER_SKY_SCHEMES = [
   { top: '#310a3c', mid: '#321044', bottom: '#0c0312', accent: '#ff70c8' },
 ];
 const TAU = Math.PI * 2;
+const RING_ROTATION_TRANSITION_BEATS = 1;
+const RING_ROTATION_INTERVALS = [4, 8, 16];
+const RING_ROTATION_MIN = Math.PI / 2;
+const RING_ROTATION_MAX = Math.PI;
+// How much movement survives total silence. A scene that stops dead reads as a
+// dropped frame rather than a quiet passage, so the floor keeps everything
+// drifting; the remaining range is what the song's own loudness buys back.
+const MOTION_FLOOR = 0.34;
+// Seconds-ish easing on the movement multiplier. Slow enough that one loud
+// transient cannot jolt the picture, fast enough to land inside a bar.
+const MOTION_EASE = 2.2;
+// How much of the beat punch survives a section with no kit in it. Not zero:
+// the bar line is still a real musical event, and the picture should breathe on
+// it — it just should not hit like a snare that nobody played.
+const PULSE_FLOOR = 0.18;
+// Kit presence eases more slowly than loudness. Drums arriving or leaving is a
+// structural change, so it should read as the arrangement turning a corner
+// rather than as the picture reacting to one bar.
+const GROOVE_EASE = 1.4;
 export const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 export const smooth = (v) => v * v * (3 - 2 * v);
 const rgba = (hex, a) => {
@@ -83,6 +113,90 @@ function seedDust(p, rng) {
   p.hue = rng.float();
 }
 
+// An offscreen canvas, or null where there is no real one. The createImageData
+// probe is the whole point and must not be softened to a typeof check: under
+// tests/dom-stub.js the context is a proxy that answers every unknown property
+// with a no-op, so a preset asking "did I get a canvas?" is told yes and then
+// accumulates a buffer nobody can read. Worse, the stub records every draw call
+// into an unbounded array, and the megamix long-run test draws tens of
+// thousands of frames. createImageData allocates but forces no GPU readback, so
+// this costs nothing in the browser where it succeeds.
+function makeSurface(w, h) {
+  if (typeof document === 'undefined') return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const probe = ctx.createImageData?.(2, 2);
+    if (!probe?.data || probe.data.length !== 16) return null;
+    return { canvas, ctx };
+  } catch { return null; }
+}
+
+// Value noise on a fixed lattice. Seeded from a literal rather than from any
+// preset's rng so the field is identical in every instance and consumes nobody's
+// stream — two presets asking for the same coordinate get the same answer, and a
+// preset's own seeded structure stays reproducible.
+const NOISE_SIZE = 64;
+const NOISE_MASK = NOISE_SIZE - 1;
+const NOISE_TABLE = (() => {
+  const table = new Float32Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE);
+  const noiseRng = new Rng(0x9e3779b9);
+  for (let i = 0; i < table.length; i++) table[i] = noiseRng.float();
+  return table;
+})();
+const noiseAt = (x, y, z) => NOISE_TABLE[
+  (((z & NOISE_MASK) * NOISE_SIZE) + (y & NOISE_MASK)) * NOISE_SIZE + (x & NOISE_MASK)
+];
+
+function valueNoise3(x, y, z) {
+  const xi = Math.floor(x); const yi = Math.floor(y); const zi = Math.floor(z);
+  const tx = smooth(x - xi); const ty = smooth(y - yi); const tz = smooth(z - zi);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const y0 = lerp(
+    lerp(noiseAt(xi, yi, zi), noiseAt(xi + 1, yi, zi), tx),
+    lerp(noiseAt(xi, yi + 1, zi), noiseAt(xi + 1, yi + 1, zi), tx), ty);
+  const y1 = lerp(
+    lerp(noiseAt(xi, yi, zi + 1), noiseAt(xi + 1, yi, zi + 1), tx),
+    lerp(noiseAt(xi, yi + 1, zi + 1), noiseAt(xi + 1, yi + 1, zi + 1), tx), ty);
+  return lerp(y0, y1, tz);
+}
+
+// A baked radial falloff, one canvas per colour and size bucket. glowDot() is
+// the right tool for the ten or so lights a preset places by hand; it allocates
+// a gradient per call, which is why the current busiest preset paints under a
+// hundred orbs. A preset wanting hundreds blits these instead. Bounded and
+// cleared wholesale the way the code-rain atlases are: the callers quantise
+// their colours, so the map holds a small fixed set and the guard only covers a
+// density change mid-session.
+const glowSprites = new Map();
+const GLOW_STEPS = [8, 12, 18, 26, 38];
+
+function glowSprite(hex, px) {
+  const size = GLOW_STEPS.reduce((best, step) => (Math.abs(step - px) < Math.abs(best - px) ? step : best), GLOW_STEPS[0]);
+  const key = `${hex}:${size}`;
+  const cached = glowSprites.get(key);
+  if (cached !== undefined) return cached;
+  const made = makeSurface(size, size);
+  if (!made) {
+    glowSprites.set(key, null);
+    return null;
+  }
+  const half = size / 2;
+  const g = made.ctx.createRadialGradient(half, half, 0, half, half, half);
+  g.addColorStop(0, rgba(hex, 1));
+  g.addColorStop(0.35, rgba(hex, 0.42));
+  g.addColorStop(1, rgba(hex, 0));
+  made.ctx.fillStyle = g;
+  made.ctx.fillRect(0, 0, size, size);
+  if (glowSprites.size > 48) glowSprites.clear();
+  const sprite = { canvas: made.canvas, size };
+  glowSprites.set(key, sprite);
+  return sprite;
+}
+
 class BaseVisualizer {
   constructor(seed, track = {}) {
     this.seed = seed >>> 0;
@@ -91,12 +205,25 @@ class BaseVisualizer {
     this.palette = pickPalette(this.rng);
     this.t = 0;
     this.beat = 0;
+    this.ringRotation = 0;
+    this.ringRotationRng = this.rng.stream('ring-rotation');
+    this.ringRotationEvents = [];
+    this.ringRotationTotal = 0;
+    this.ringRotationNextBeat = this.ringRotationRng.pick(RING_ROTATION_INTERVALS);
     this.prevBeat = 0;
     this.beatPhase = 0;
     this.beatPulse = 0;
     this.bass = 0;
     this.mid = 0;
     this.treble = 0;
+    this.level = 0;
+    this.dynamics = 1;
+    this.motion = 1;
+    this.flow = 0;
+    this.drums = 1;
+    this.drumless = false;
+    this.groove = 1;
+    this.pulse = 0;
     this.analysis = null;
     this.focusPhase = this.rng.float() * TAU;
     this.focusX = CX;
@@ -104,6 +231,43 @@ class BaseVisualizer {
     this.dust = makePool(96);
     this.dust.forEach((p) => seedDust(p, this.rng));
     this.name = 'VISUALIZER';
+    // What the corner tag says, when that is not simply the preset's name. Only
+    // the megamix uses it, to announce whichever record it currently has up.
+    this.label = null;
+    // Mirror of the `globalAlpha` the caller set before calling draw(). Almost
+    // everything here paints with rgba() fills, which the context alpha already
+    // scales — but a handful of places ASSIGN globalAlpha mid-frame, and those
+    // would otherwise punch through a fade at full strength. Multiply by this
+    // wherever globalAlpha is assigned rather than inherited. It matters twice:
+    // the jukebox's fade in and out of the screensaver, and the megamix, which
+    // paints two presets in one frame at different weights.
+    this.frameAlpha = 1;
+  }
+
+  ringRotationAt(beat) {
+    const safeBeat = Math.max(0, Number.isFinite(beat) ? beat : 0);
+    while (this.ringRotationNextBeat <= safeBeat) {
+      const event = {
+        beat: this.ringRotationNextBeat,
+        baseRotation: this.ringRotationTotal,
+        turn: this.ringRotationRng.range(RING_ROTATION_MIN, RING_ROTATION_MAX),
+      };
+      this.ringRotationEvents.push(event);
+      this.ringRotationTotal += event.turn;
+      this.ringRotationNextBeat += this.ringRotationRng.pick(RING_ROTATION_INTERVALS);
+    }
+    // Hold the added phase between events. At each event boundary, ease to
+    // the newly chosen angle over one beat. The
+    // preset-specific `t` rotations continue underneath this, so the focal
+    // rings retain their existing slight motion between dramatic turns.
+    for (let i = this.ringRotationEvents.length - 1; i >= 0; i--) {
+      const event = this.ringRotationEvents[i];
+      if (event.beat <= safeBeat) {
+        const transition = Math.min(1, (safeBeat - event.beat) / RING_ROTATION_TRANSITION_BEATS);
+        return event.baseRotation + event.turn * transition;
+      }
+    }
+    return 0;
   }
 
   update(dt, analysis = {}) {
@@ -113,6 +277,10 @@ class BaseVisualizer {
     this.beat = Number.isFinite(analysis.beat)
       ? analysis.beat
       : this.t * ((this.track.bpm || 112) / 60);
+    // Choose a seeded 4/8/16-beat hold and a 90–180 degree turn for each
+    // event. The added phase holds between boundaries, then transitions to the
+    // new angle over one beat; it remains reproducible for a given seed.
+    this.ringRotation = this.ringRotationAt(this.beat);
     this.beatPhase = Number.isFinite(analysis.beatPhase)
       ? analysis.beatPhase
       : ((this.beat % 1) + 1) % 1;
@@ -122,16 +290,49 @@ class BaseVisualizer {
     this.bass = clamp(analysis.bass ?? 0.25);
     this.mid = clamp(analysis.mid ?? 0.2);
     this.treble = clamp(analysis.treble ?? 0.15);
+    // Overall loudness. `level` is the broadband amplitude of the mix right now;
+    // `dynamics` is that level against the song's own recent peak, so a quiet
+    // passage reads quiet whether the master is hot or gentle. Both default to
+    // "full tilt" when the analysis omits them, which keeps every preset
+    // pixel-identical to its pre-loudness behaviour under a bare feed.
+    this.level = clamp(analysis.level ?? 0.5);
+    this.dynamics = clamp(analysis.dynamics ?? 1);
+    // One movement multiplier the presets fold into their speed terms, and a
+    // clock that advances at that rate. A preset drives its continuous drift
+    // from `flow` instead of `t` to slow down through a breakdown and run at its
+    // designed speed once the song is back up; at dynamics 1 the two are equal.
+    const motionTarget = MOTION_FLOOR + (1 - MOTION_FLOOR) * this.dynamics;
+    this.motion += (motionTarget - this.motion) * Math.min(1, Math.max(0, dt) * MOTION_EASE);
+    this.flow += Math.max(0, dt) * this.motion;
+    // How much kit is under the section, counted off the sequencer rather than
+    // guessed at from the spectrum, and a `drumless` flag for the bars that
+    // arrange the drums out entirely.
+    this.drums = clamp(analysis.drums ?? 1);
+    this.drumless = analysis.drumless === true;
+    // A single kit onset, full on the frame a drum is heard. `pulse` is the
+    // beat grid weighted by how much kit is under it — right for choreography
+    // that wants to sit ON the beat whether or not it was played. `hit` is the
+    // opposite: the drum itself, at the moment it lands, and nothing on the
+    // beats nobody played. Defaults to 0, so a feed without it is unchanged.
+    this.hit = clamp(analysis.hit ?? 0);
+    this.groove += (this.drums - this.groove) * Math.min(1, Math.max(0, dt) * GROOVE_EASE);
+    // `beatPulse` is the procedural clock: it keeps ticking on the beat whether
+    // or not anything is playing it, which is right for choreography and wrong
+    // for impact. `pulse` is that same tick weighted by the kit actually under
+    // it, so a drumless section stops punching and starts flowing while the
+    // beat-locked set pieces stay on the grid where they belong.
+    this.pulse = this.beatPulse * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove);
     // The focal object drifts through a soft Lissajous path. It is intentionally
-    // restrained so the motion feels designed rather than camera-shaky.
-    this.focusX = CX + Math.sin(this.t * 0.31 + this.focusPhase) * (25 + this.bass * 18);
-    this.focusY = CY + Math.cos(this.t * 0.23 + this.focusPhase * 0.7) * (14 + this.mid * 13);
+    // restrained so the motion feels designed rather than camera-shaky, and it
+    // draws in toward centre as the song quietens rather than touring the frame.
+    this.focusX = CX + Math.sin(this.flow * 0.31 + this.focusPhase) * (25 + this.bass * 18) * this.motion;
+    this.focusY = CY + Math.cos(this.flow * 0.23 + this.focusPhase * 0.7) * (14 + this.mid * 13) * this.motion;
     for (const p of this.dust) {
       p.life -= dt * (0.08 + this.treble * 0.28);
       if (p.life <= 0) seedDust(p, this.rng);
       p.px = p.x; p.py = p.y;
-      p.x += Math.sin(this.t * (0.35 + p.z * 0.4) + p.hue * TAU) * dt * (4 + this.mid * 12);
-      p.y -= dt * (2 + this.bass * 8) * p.z;
+      p.x += Math.sin(this.flow * (0.35 + p.z * 0.4) + p.hue * TAU) * dt * (4 + this.mid * 12) * this.motion;
+      p.y -= dt * (2 + this.bass * 8) * p.z * this.motion;
       if (p.y < -8) { p.y = H + 8; p.x = this.rng.float() * W; p.px = p.x; p.py = p.y; }
     }
   }
@@ -165,7 +366,9 @@ class BaseVisualizer {
     for (const p of this.dust) {
       const a = p.life * alpha * (0.25 + this.treble * 0.8);
       ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length], a);
-      ctx.lineWidth = 0.45 + p.z * (0.7 + this.beatPulse * 1.2);
+      // The shared bed thickens on the kit, not on the bar line, so a drumless
+      // section draws the dust as steady threads rather than a flickering pulse.
+      ctx.lineWidth = 0.45 + p.z * (0.7 + this.pulse * 1.2);
       ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke();
       if (p.z > 0.72) {
         ctx.fillStyle = rgba('#ffffff', a * 0.6);
@@ -200,15 +403,17 @@ class NeonCathedral extends BaseVisualizer {
       p.life -= dt * (0.38 + this.treble * 0.9);
       if (p.life <= 0) seedParticle(p, this.rng, this.focusX, this.focusY - 23, 0.55);
       p.px = p.x; p.py = p.y;
-      p.x += (p.x - this.focusX) * dt * (0.16 + this.beatPulse * 0.55);
-      p.y += (p.y - (this.focusY - 23)) * dt * (0.14 + this.beatPulse * 0.4);
+      // Quiet passages hold the sparks near the aperture instead of throwing
+      // them at the frame edge, so the portal reads as banked rather than idle.
+      p.x += (p.x - this.focusX) * dt * (0.16 + this.pulse * 0.55) * this.motion;
+      p.y += (p.y - (this.focusY - 23)) * dt * (0.14 + this.pulse * 0.4) * this.motion;
     }
   }
   draw(ctx) {
     this.backdrop(ctx, '#030713', '#170c33');
     const horizon = this.focusY - 24;
     const focusX = this.focusX;
-    const pulse = this.beatPulse;
+    const pulse = this.pulse;
     this.glowDot(ctx, focusX, horizon, 90 + this.bass * 55, this.palette[1], 0.22 + this.bass * 0.2);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -219,7 +424,7 @@ class NeonCathedral extends BaseVisualizer {
       ctx.strokeStyle = rgba(this.palette[(i + 1) % this.palette.length], 0.16 + pulse * 0.1);
       ctx.lineWidth = 1 + pulse * 1.8;
       ctx.beginPath();
-      ctx.ellipse(focusX, horizon, 22 + i * 13 + pulse * 8, 7 + i * 5, Math.sin(this.t * 0.4 + i) * 0.08, 0, TAU);
+      ctx.ellipse(focusX, horizon, 22 + i * 13 + pulse * 8, 7 + i * 5, this.ringRotation + Math.sin(this.t * 0.4 + i) * 0.08, 0, TAU);
       ctx.stroke();
     }
     // Thin volumetric beams make the beat feel like a camera flying through
@@ -287,16 +492,18 @@ class LiquidChrome extends BaseVisualizer {
     this.backdrop(ctx, '#050615', '#160b2b');
     // A very slow camera orbit gives the whole chrome field a sense of mass.
     // The tiny bass term lets the rotation lean into louder sections without
-    // turning the scene into a distracting spin.
+    // turning the scene into a distracting spin. Every continuous term here runs
+    // off `flow` rather than `t`, so the chrome congeals through a quiet passage
+    // and comes back up to speed with the song.
     ctx.save();
     ctx.translate(CX, CY);
-    ctx.rotate(this.t * 0.018 + this.bass * 0.008 * Math.sin(this.t * 0.35));
+    ctx.rotate(this.flow * 0.018 + this.bass * 0.008 * Math.sin(this.flow * 0.35));
     ctx.translate(-CX, -CY);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     const blobs = 5;
     for (let i = 0; i < blobs; i++) {
-      const a = this.t * (0.18 + i * 0.021) + i * 1.26;
+      const a = this.flow * (0.18 + i * 0.021) + i * 1.26;
       const x = this.focusX + Math.sin(a * 1.4) * (72 + this.mid * 34) + Math.cos(a * 0.7) * 34;
       const y = this.focusY + Math.cos(a * 1.1) * (40 + this.bass * 28) + Math.sin(a) * 20;
       const r = 28 + this.spectrumValue(this.analysis, i) * 16 + this.bass * 25;
@@ -315,7 +522,7 @@ class LiquidChrome extends BaseVisualizer {
       ctx.lineWidth = 2 + this.treble * 2;
       ctx.beginPath();
       for (let x = -20; x <= W + 20; x += 18) {
-        const y = this.focusY + (lane - 2.5) * 21 + Math.sin(x * 0.024 + this.t * (0.9 + lane * 0.05)) * (15 + this.mid * 23) + Math.sin(x * 0.057 - this.t * 0.6) * 8;
+        const y = this.focusY + (lane - 2.5) * 21 + Math.sin(x * 0.024 + this.flow * (0.9 + lane * 0.05)) * (15 + this.mid * 23) + Math.sin(x * 0.057 - this.flow * 0.6) * 8;
         if (x < 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -326,7 +533,7 @@ class LiquidChrome extends BaseVisualizer {
     // Specular arcs and a moving glass highlight push the blobs away from
     // "glowing circles" toward liquid objects with a real surface.
     for (let i = 0; i < 4; i++) {
-      const a = this.t * (0.24 + i * 0.03) + i * 1.7;
+      const a = this.flow * (0.24 + i * 0.03) + i * 1.7;
       ctx.strokeStyle = rgba(this.palette[(i + 2) % this.palette.length], 0.18 + this.treble * 0.16);
       ctx.lineWidth = 1 + this.treble * 1.6;
       ctx.beginPath();
@@ -336,12 +543,12 @@ class LiquidChrome extends BaseVisualizer {
     ctx.strokeStyle = rgba('#ffffff', 0.28 + this.treble * 0.24);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(95 + Math.sin(this.t * 0.7) * 20, 72 + Math.cos(this.t * 0.5) * 11);
-    ctx.bezierCurveTo(165, 52, 250, 88 + this.mid * 22, 382 + Math.cos(this.t * 0.8) * 18, 62 + this.bass * 20);
+    ctx.moveTo(95 + Math.sin(this.flow * 0.7) * 20, 72 + Math.cos(this.flow * 0.5) * 11);
+    ctx.bezierCurveTo(165, 52, 250, 88 + this.mid * 22, 382 + Math.cos(this.flow * 0.8) * 18, 62 + this.bass * 20);
     ctx.stroke();
-    ctx.strokeStyle = rgba('#ffffff', 0.12 + this.beatPulse * 0.2);
+    ctx.strokeStyle = rgba('#ffffff', 0.12 + this.pulse * 0.2);
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.ellipse(this.focusX, this.focusY, 120 + this.bass * 30, 53 + this.mid * 14, Math.sin(this.t * 0.2) * 0.4, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(this.focusX, this.focusY, 120 + this.bass * 30, 53 + this.mid * 14, Math.sin(this.flow * 0.2) * 0.4, 0, TAU); ctx.stroke();
     ctx.restore();
     this.drawDust(ctx, 0.62);
     ctx.restore();
@@ -386,7 +593,7 @@ class LaserGrid extends BaseVisualizer {
     const bw = W / bars;
     for (let i = 0; i < bars; i++) {
       const v = this.spectrumValue(this.analysis, i, bars);
-      const h = 12 + v * (50 + this.bass * 70) + this.beatPulse * (i % 3 === 0 ? 18 : 5);
+      const h = 12 + v * (50 + this.bass * 70) + this.pulse * (i % 3 === 0 ? 18 : 5);
       ctx.fillStyle = rgba(this.palette[i % 3], 0.3 + v * 0.52);
       ctx.fillRect(i * bw + 1, horizon - h, Math.max(2, bw - 2), h);
     }
@@ -400,10 +607,10 @@ class LaserGrid extends BaseVisualizer {
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
-    if (this.beatPulse > 0.02) {
-      ctx.strokeStyle = rgba(this.palette[3], this.beatPulse * 0.65);
+    if (this.pulse > 0.02) {
+      ctx.strokeStyle = rgba(this.palette[3], this.pulse * 0.65);
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(sunX, horizon + (sunY - 84) * 0.35, 35 + (1 - this.beatPulse) * 160, 10 + (1 - this.beatPulse) * 45, 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(sunX, horizon + (sunY - 84) * 0.35, 35 + (1 - this.pulse) * 160, 10 + (1 - this.pulse) * 45, 0, 0, TAU); ctx.stroke();
     }
     ctx.restore();
     this.drawDust(ctx, 0.82);
@@ -436,17 +643,19 @@ class MonsterReactor extends BaseVisualizer {
         continue;
       }
       p.active = i < reactorCount;
-      const travel = (this.t * p.speed + p.phase) % 1;
+      // The escort reactors cross on `flow`, so a breakdown slows their drift
+      // across the frame rather than teleporting them when the song returns.
+      const travel = (this.flow * p.speed + p.phase) % 1;
       p.x = -105 + travel * (W + 210);
-      p.y = p.lane + Math.sin(this.t * (0.55 + i * 0.12) + p.phase * TAU) * (12 + i * 4);
+      p.y = p.lane + Math.sin(this.flow * (0.55 + i * 0.12) + p.phase * TAU) * (12 + i * 4);
     }
     const lead = this.reactors[0];
     for (const p of this.sparks) {
       p.life -= dt * (0.55 + this.treble);
       if (p.life <= 0) seedParticle(p, this.rng, lead.x, lead.y, 0.6);
       p.px = p.x; p.py = p.y;
-      p.x += (p.x - lead.x) * dt * 0.08 + Math.cos(this.t * 2 + p.hue * TAU) * dt * 22;
-      p.y += (p.y - lead.y) * dt * 0.08 + Math.sin(this.t * 1.7 + p.hue * TAU) * dt * 22;
+      p.x += ((p.x - lead.x) * 0.08 + Math.cos(this.flow * 2 + p.hue * TAU) * 22) * dt * this.motion;
+      p.y += ((p.y - lead.y) * 0.08 + Math.sin(this.flow * 1.7 + p.hue * TAU) * 22) * dt * this.motion;
     }
   }
   draw(ctx) {
@@ -456,27 +665,27 @@ class MonsterReactor extends BaseVisualizer {
       const reactor = this.reactors[reactorIndex];
       if (!reactor.active) continue;
       const fx = reactor.x; const fy = reactor.y;
-      const core = (30 + this.bass * 26 + this.beatPulse * 12) * reactor.scale;
+      const core = (30 + this.bass * 26 + this.pulse * 12) * reactor.scale;
       this.glowDot(ctx, fx, fy, core * 3.2, this.palette[reactorIndex % this.palette.length], 0.32 + this.bass * 0.24);
       for (let ring = 0; ring < 4; ring++) {
         ctx.strokeStyle = rgba(this.palette[(ring + reactorIndex) % this.palette.length], 0.22 + this.mid * 0.15);
-        ctx.lineWidth = 1 + (ring === 0 ? this.beatPulse * 2 : 0);
-        ctx.beginPath(); ctx.ellipse(fx, fy, core + ring * 19 * reactor.scale, core * 0.53 + ring * 9 * reactor.scale, this.t * (ring % 2 ? -0.2 : 0.16), 0, TAU); ctx.stroke();
+        ctx.lineWidth = 1 + (ring === 0 ? this.pulse * 2 : 0);
+        ctx.beginPath(); ctx.ellipse(fx, fy, core + ring * 19 * reactor.scale, core * 0.53 + ring * 9 * reactor.scale, this.ringRotation + this.t * (ring % 2 ? -0.2 : 0.16), 0, TAU); ctx.stroke();
       }
       const coreGlow = ctx.createRadialGradient(fx - core * 0.24, fy - core * 0.3, 1, fx, fy, core);
       coreGlow.addColorStop(0, rgba('#ffffff', 0.82));
       coreGlow.addColorStop(0.14, rgba(this.palette[reactorIndex % this.palette.length], 0.72));
-      coreGlow.addColorStop(0.56, rgba(this.palette[(reactorIndex + 1) % this.palette.length], 0.34 + this.beatPulse * 0.24));
+      coreGlow.addColorStop(0.56, rgba(this.palette[(reactorIndex + 1) % this.palette.length], 0.34 + this.pulse * 0.24));
       coreGlow.addColorStop(1, rgba(this.palette[(reactorIndex + 1) % this.palette.length], 0));
       ctx.fillStyle = coreGlow;
       ctx.beginPath(); ctx.arc(fx, fy, core, 0, TAU); ctx.fill();
       ctx.strokeStyle = rgba('#ffffff', 0.55); ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(fx, fy, core * 0.62, 0.2, Math.PI * 1.45); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fx, fy, core * 0.62, this.ringRotation + 0.2, this.ringRotation + Math.PI * 1.45); ctx.stroke();
       for (let i = 0; i < 3; i++) {
         ctx.strokeStyle = rgba(this.palette[(i + 2 + reactorIndex) % this.palette.length], 0.2 + this.treble * 0.18);
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(fx, fy, core * (1.18 + i * 0.1), this.t * (0.6 + i * 0.12) + i, this.t * (0.6 + i * 0.12) + i + 0.9 + this.mid);
+        ctx.arc(fx, fy, core * (1.18 + i * 0.1), this.ringRotation + this.t * (0.6 + i * 0.12) + i, this.ringRotation + this.t * (0.6 + i * 0.12) + i + 0.9 + this.mid);
         ctx.stroke();
       }
       for (let i = 0; i < 7; i++) {
@@ -639,21 +848,22 @@ class ElectricKaleidoscope extends BaseVisualizer {
         p.radius += (p.slotRadius - p.radius) * Math.min(1, dt * 8);
         if (p.morphT >= 1) p.spawn = false;
       }
-      p.angle += dt * p.spin * (p.orbitRate + this.mid * 0.72 + this.beatPulse * 0.3);
+      p.angle += dt * p.spin * (p.orbitRate + this.mid * 0.72 + this.pulse * 0.3) * this.motion;
       // The satellites breathe radially across a much wider envelope than the
       // central bloom. At the outer crest their x/y positions can slip just
-      // beyond the logical canvas before being pulled back into formation.
+      // beyond the logical canvas before being pulled back into formation, and
+      // the excursion narrows toward the slot radius as the song quietens.
       p.radius = p.slotRadius
-        + Math.sin(this.t * p.travelRate + p.travelPhase) * (p.travelDistance + this.bass * 18)
-        + this.beatPulse * (8 + this.bass * 16);
-      p.rotation += dt * p.spin * (1.45 + this.mid * 0.42);
+        + Math.sin(this.flow * p.travelRate + p.travelPhase) * (p.travelDistance + this.bass * 18) * this.motion
+        + this.pulse * (8 + this.bass * 16);
+      p.rotation += dt * p.spin * (1.45 + this.mid * 0.42) * this.motion;
       p.mergeFlash = Math.max(0, p.mergeFlash - dt * 2.8);
     }
   }
   draw(ctx) {
     this.backdrop(ctx, '#050516', '#170b2d');
     const petals = this.symmetry;
-    const radius = 34 + this.bass * 36 + this.beatPulse * 10;
+    const radius = 34 + this.bass * 36 + this.pulse * 10;
     ctx.save(); ctx.translate(this.focusX, this.focusY); ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < petals; i++) {
       ctx.save();
@@ -669,12 +879,12 @@ class ElectricKaleidoscope extends BaseVisualizer {
       ctx.fill(); ctx.stroke();
       ctx.restore();
     }
-    ctx.strokeStyle = rgba('#ffffff', 0.4 + this.beatPulse * 0.3); ctx.lineWidth = 1;
+    ctx.strokeStyle = rgba('#ffffff', 0.4 + this.pulse * 0.3); ctx.lineWidth = 1;
     for (let i = 0; i < petals; i += 2) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(i * TAU / petals) * 112, Math.sin(i * TAU / petals) * 78); ctx.stroke(); }
     for (let i = 0; i < 6; i++) {
       ctx.strokeStyle = rgba(this.palette[(i + 1) % this.palette.length], 0.16 + this.treble * 0.14);
-      ctx.lineWidth = 1 + this.beatPulse;
-      ctx.beginPath(); ctx.arc(0, 0, radius * (0.7 + i * 0.32), this.t * 0.16 + i, this.t * 0.16 + i + 1.8); ctx.stroke();
+      ctx.lineWidth = 1 + this.pulse;
+      ctx.beginPath(); ctx.arc(0, 0, radius * (0.7 + i * 0.32), this.ringRotation + this.t * 0.16 + i, this.ringRotation + this.t * 0.16 + i + 1.8); ctx.stroke();
     }
     const core = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 0.72);
     core.addColorStop(0, rgba('#ffffff', 0.9));
@@ -682,7 +892,7 @@ class ElectricKaleidoscope extends BaseVisualizer {
     core.addColorStop(1, rgba(this.palette[0], 0));
     ctx.fillStyle = core; ctx.beginPath(); ctx.arc(0, 0, radius * 0.72, 0, TAU); ctx.fill();
     ctx.restore();
-    this.glowDot(ctx, this.focusX, this.focusY, radius * 2.2, this.palette[1], 0.18 + this.beatPulse * 0.2);
+    this.glowDot(ctx, this.focusX, this.focusY, radius * 2.2, this.palette[1], 0.18 + this.pulse * 0.2);
     // A musical swarm of smaller, lower-petal kaleidoscopes orbits the main
     // bloom. It expands 2 -> 4 -> 8 -> 16, then contracts again; surplus
     // blooms visibly travel to a distant partner and synchronize before they
@@ -695,11 +905,11 @@ class ElectricKaleidoscope extends BaseVisualizer {
       const mergeT = p.mergeTarget >= 0 ? smooth(p.mergeT) : 0;
       const birthT = p.spawn ? smooth(p.morphT) : 1;
       const alpha = (p.mergeTarget >= 0 ? 1 - mergeT * 0.55 : 1) * (0.2 + birthT * 0.8);
-      const r = p.size * (1 + this.beatPulse * 0.45 + p.mergeFlash * 0.18);
+      const r = p.size * (1 + this.pulse * 0.45 + p.mergeFlash * 0.18);
       const c = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
       this.glowDot(ctx, sx, sy, r * (2.4 + p.mergeFlash * 1.2), c, (0.1 + this.mid * 0.1) * alpha);
       ctx.save();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = this.frameAlpha * alpha;
       ctx.translate(sx, sy);
       // Fast, unmistakable full rotations: the satellites should read as
       // rotating kaleidoscopes, not petals that merely breathe in place.
@@ -709,11 +919,11 @@ class ElectricKaleidoscope extends BaseVisualizer {
       for (let i = 0; i < p.petals; i++) {
         ctx.save(); ctx.rotate(i * TAU / p.petals);
         ctx.fillStyle = rgba(this.palette[(i + Math.floor(p.hue * 4)) % this.palette.length], 0.2 + this.treble * 0.16);
-        ctx.strokeStyle = rgba(c, 0.35 + this.treble * 0.25); ctx.lineWidth = 0.7 + this.beatPulse * 0.7;
+        ctx.strokeStyle = rgba(c, 0.35 + this.treble * 0.25); ctx.lineWidth = 0.7 + this.pulse * 0.7;
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(r * 0.65, -r * 0.35, r * 1.5, 0); ctx.quadraticCurveTo(r * 0.65, r * 0.35, 0, 0); ctx.fill(); ctx.stroke();
         ctx.restore();
       }
-      ctx.fillStyle = rgba('#ffffff', 0.35 + this.beatPulse * 0.3); ctx.beginPath(); ctx.arc(0, 0, 1.5 + this.beatPulse * 1.4, 0, TAU); ctx.fill();
+      ctx.fillStyle = rgba('#ffffff', 0.35 + this.pulse * 0.3); ctx.beginPath(); ctx.arc(0, 0, 1.5 + this.pulse * 1.4, 0, TAU); ctx.fill();
       ctx.restore();
     }
     ctx.restore();
@@ -729,12 +939,14 @@ class DeepSpaceWormhole extends BaseVisualizer {
   }
   update(dt, a) {
     super.update(dt, a);
-    const speed = 0.16 + this.bass * 0.6 + this.beatPulse * 0.42;
+    // Flight speed down the tunnel is the whole read of this preset, so it takes
+    // the movement multiplier directly: a breakdown coasts, a chorus flies.
+    const speed = (0.16 + this.bass * 0.6 + this.pulse * 0.42) * this.motion;
     for (const p of this.stars) {
       p.px = p.x; p.py = p.y;
       p.z -= dt * speed;
       if (p.z <= 0.015) { p.z = 0.9 + this.rng.float() * 0.2; p.hue = this.rng.float(); }
-      const angle = p.hue * TAU + this.t * (0.08 + p.life * 0.12);
+      const angle = p.hue * TAU + this.flow * (0.08 + p.life * 0.12);
       const r = (1 - p.z) * 205;
       p.x = this.focusX + Math.cos(angle) * r;
       p.y = this.focusY + Math.sin(angle) * r * 0.54;
@@ -754,7 +966,7 @@ class DeepSpaceWormhole extends BaseVisualizer {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 7; i++) {
       ctx.strokeStyle = rgba(this.palette[i % this.palette.length], 0.13 + this.mid * 0.12);
-      ctx.beginPath(); ctx.ellipse(this.focusX, this.focusY, 28 + i * 21 + this.beatPulse * 9, 12 + i * 9, this.t * (0.08 + i * 0.01), 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(this.focusX, this.focusY, 28 + i * 21 + this.pulse * 9, 12 + i * 9, this.ringRotation + this.t * (0.08 + i * 0.01), 0, TAU); ctx.stroke();
     }
     for (const p of this.stars) {
       const alpha = clamp((1 - p.z) * 1.1) * (0.25 + this.treble * 0.9);
@@ -765,13 +977,13 @@ class DeepSpaceWormhole extends BaseVisualizer {
     if (this.treble > 0.16) {
       ctx.strokeStyle = rgba(this.palette[3], this.treble * 0.45);
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 54 + this.treble * 52, this.t * 0.7, this.t * 0.7 + 1.1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 54 + this.treble * 52, this.ringRotation + this.t * 0.7, this.ringRotation + this.t * 0.7 + 1.1); ctx.stroke();
     }
     ctx.fillStyle = '#01030c';
-    ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 13 + this.beatPulse * 5, 0, TAU); ctx.fill();
-    ctx.strokeStyle = rgba('#ffffff', 0.28 + this.beatPulse * 0.3);
+    ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 13 + this.pulse * 5, 0, TAU); ctx.fill();
+    ctx.strokeStyle = rgba('#ffffff', 0.28 + this.pulse * 0.3);
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 17 + this.beatPulse * 6, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(this.focusX, this.focusY, 17 + this.pulse * 6, 0, TAU); ctx.stroke();
     ctx.restore();
     this.drawDust(ctx, 0.9);
     this.modernFinish(ctx, 0.18);
@@ -827,16 +1039,19 @@ class PrismaticStorm extends BaseVisualizer {
   }
   update(dt, a) {
     super.update(dt, a);
+    // Shared with Chroma Bubblestorm below: the outward throw and the tumble
+    // both scale with loudness, so the storm settles into a slow swirl when the
+    // song drops out and re-erupts on the way back in.
     for (const p of this.shards) {
-      p.angle += dt * p.spin * (0.18 + this.mid * 0.9);
-      p.radius += dt * (7 + this.beatPulse * 36) * p.depth;
-      p.rotation += dt * p.turn * (0.55 + this.treble * 1.1 + this.beatPulse * 0.25);
+      p.angle += dt * p.spin * (0.18 + this.mid * 0.9) * this.motion;
+      p.radius += dt * (7 + this.pulse * 36) * p.depth * this.motion;
+      p.rotation += dt * p.turn * (0.55 + this.treble * 1.1 + this.pulse * 0.25) * this.motion;
       if (p.radius > 240) p.radius = 20 + this.rng.float() * 35;
     }
   }
   draw(ctx) {
     this.backdrop(ctx, '#10052c', '#020814');
-    const fx = this.focusX; const fy = this.focusY; const pulse = this.beatPulse;
+    const fx = this.focusX; const fy = this.focusY; const pulse = this.pulse;
     for (let i = 0; i < 6; i++) { const a = this.t * (0.08 + i * 0.012) + i; this.glowDot(ctx, fx + Math.cos(a) * 45, fy + Math.sin(a) * 28, 42 + this.bass * 28, this.palette[i % 4], 0.1); }
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let i = 0; i < 14; i++) {
@@ -850,10 +1065,10 @@ class PrismaticStorm extends BaseVisualizer {
       const s = p.size * (1 + (1 - p.depth) * 0.8 + pulse * 0.7); const color = this.palette[Math.floor(p.depth * 4) % 4];
       this.glowDot(ctx, x, y, s * 3.2, color, 0.08 + p.depth * 0.12);
       ctx.fillStyle = rgba(color, 0.25 + p.depth * 0.55 + this.treble * 0.2);
-      roundedTrianglePath(ctx, x, y, s, p.rotation, 0.25 + this.beatPulse * 0.04);
+      roundedTrianglePath(ctx, x, y, s, p.rotation, 0.25 + this.pulse * 0.04);
       ctx.fill();
-      ctx.strokeStyle = rgba('#ffffff', 0.22 + this.treble * 0.24 + this.beatPulse * 0.18);
-      ctx.lineWidth = 0.45 + this.beatPulse * 0.7;
+      ctx.strokeStyle = rgba('#ffffff', 0.22 + this.treble * 0.24 + this.pulse * 0.18);
+      ctx.lineWidth = 0.45 + this.pulse * 0.7;
       ctx.stroke();
     }
     for (let i = 0; i < 5; i++) {
@@ -877,7 +1092,7 @@ class ChromaBubblestorm extends PrismaticStorm {
   }
   draw(ctx) {
     this.backdrop(ctx, '#06172a', '#12052b');
-    const fx = this.focusX; const fy = this.focusY; const pulse = this.beatPulse;
+    const fx = this.focusX; const fy = this.focusY; const pulse = this.pulse;
     for (let i = 0; i < 6; i++) {
       const a = this.t * (0.08 + i * 0.012) + i;
       this.glowDot(ctx, fx + Math.cos(a) * 45, fy + Math.sin(a) * 28,
@@ -933,18 +1148,18 @@ class SingularityBloom extends BaseVisualizer {
     const swellBeats = this.bloomSwellBars * 4;
     const cycleBeat = ((this.beat % cycleBeats) + cycleBeats) % cycleBeats;
     const swell = cycleBeat < swellBeats ? Math.sin(Math.PI * cycleBeat / swellBeats) : 0;
-    this.bloomScale = 0.72 + swell * (2.7 + this.bass * 0.35) + this.beatPulse * 0.12;
+    this.bloomScale = 0.72 + swell * (2.7 + this.bass * 0.35) + this.pulse * 0.12;
     for (const p of this.orbiters) { p.angle += dt * p.speed * (0.45 + this.bass * 1.4); p.radius += Math.sin(this.t * 0.7 + p.hue * 8) * dt * 2; if (p.radius > 190) p.radius = 24; }
   }
   draw(ctx) {
-    this.backdrop(ctx, '#08020f', '#16051f'); const fx = this.focusX; const fy = this.focusY; const core = 17 + this.bass * 19 + this.beatPulse * 8;
+    this.backdrop(ctx, '#08020f', '#16051f'); const fx = this.focusX; const fy = this.focusY; const core = 17 + this.bass * 19 + this.pulse * 8;
     this.glowDot(ctx, fx, fy, (115 + this.bass * 55) * this.bloomScale, this.palette[3], 0.19 + this.bass * 0.18);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     ctx.translate(fx, fy); ctx.scale(this.bloomScale, this.bloomScale); ctx.translate(-fx, -fy);
-    for (let i = 0; i < 11; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.1 + this.mid * 0.12); ctx.lineWidth = 1 + (i === 0 ? this.beatPulse * 3 : 0); ctx.beginPath(); ctx.ellipse(fx, fy, 30 + i * 8 + this.bass * 18, 8 + i * 3, this.t * (0.18 + i * 0.011), 0, TAU); ctx.stroke(); }
+    for (let i = 0; i < 11; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.1 + this.mid * 0.12); ctx.lineWidth = 1 + (i === 0 ? this.pulse * 3 : 0); ctx.beginPath(); ctx.ellipse(fx, fy, 30 + i * 8 + this.bass * 18, 8 + i * 3, this.ringRotation + this.t * (0.18 + i * 0.011), 0, TAU); ctx.stroke(); }
     for (const p of this.orbiters) { const x = fx + Math.cos(p.angle) * p.radius; const y = fy + Math.sin(p.angle) * p.radius * p.tilt; const px = fx + Math.cos(p.angle - 0.06) * p.radius; const py = fy + Math.sin(p.angle - 0.06) * p.radius * p.tilt; ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.2 + this.treble * 0.8); ctx.lineWidth = 0.5 + p.z * 1.3; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke(); }
     const g = ctx.createRadialGradient(fx - core * 0.3, fy - core * 0.3, 0, fx, fy, core * 2.2); g.addColorStop(0, '#ffffff'); g.addColorStop(0.12, rgba(this.palette[1], 0.9)); g.addColorStop(0.36, rgba(this.palette[2], 0.5)); g.addColorStop(1, rgba(this.palette[2], 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(fx, fy, core * 2.2, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#010107'; ctx.beginPath(); ctx.arc(fx, fy, core, 0, TAU); ctx.fill(); ctx.strokeStyle = rgba('#ffffff', 0.5 + this.beatPulse * 0.3); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(fx, fy, core + 4 + this.beatPulse * 5, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#010107'; ctx.beginPath(); ctx.arc(fx, fy, core, 0, TAU); ctx.fill(); ctx.strokeStyle = rgba('#ffffff', 0.5 + this.pulse * 0.3); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(fx, fy, core + 4 + this.pulse * 5, 0, TAU); ctx.stroke();
     ctx.restore(); this.drawDust(ctx, 1.1); this.modernFinish(ctx, 0.2);
   }
 }
@@ -956,35 +1171,37 @@ class HolographicOcean extends BaseVisualizer {
     this.backdrop(ctx, '#02192b', '#050625'); const horizon = this.focusY + 14; const sunX = this.focusX + 36 * Math.sin(this.t * 0.22); const sunY = 76 + Math.cos(this.t * 0.31) * 12;
     this.glowDot(ctx, sunX, sunY, 60 + this.bass * 35, this.palette[1], 0.3 + this.mid * 0.16);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let row = 0; row < 18; row++) { const p = row / 18; const y = horizon + p * p * 150; const amp = 3 + p * (12 + this.bass * 26) + this.beatPulse * 5; ctx.strokeStyle = rgba(this.palette[(row + 1) % 4], 0.12 + p * 0.22 + this.mid * 0.1); ctx.lineWidth = 0.65 + p * 1.1; ctx.beginPath(); for (let x = -20; x <= W + 20; x += 12) { const wave = Math.sin(x * 0.028 + this.t * (1.2 + p) + row * 0.45) * amp + Math.sin(x * 0.065 - this.t * 0.7) * amp * 0.25; if (x === -20) ctx.moveTo(x, y + wave); else ctx.lineTo(x, y + wave); } ctx.stroke(); }
+    for (let row = 0; row < 18; row++) { const p = row / 18; const y = horizon + p * p * 150; const amp = 3 + p * (12 + this.bass * 26) + this.pulse * 5; ctx.strokeStyle = rgba(this.palette[(row + 1) % 4], 0.12 + p * 0.22 + this.mid * 0.1); ctx.lineWidth = 0.65 + p * 1.1; ctx.beginPath(); for (let x = -20; x <= W + 20; x += 12) { const wave = Math.sin(x * 0.028 + this.t * (1.2 + p) + row * 0.45) * amp + Math.sin(x * 0.065 - this.t * 0.7) * amp * 0.25; if (x === -20) ctx.moveTo(x, y + wave); else ctx.lineTo(x, y + wave); } ctx.stroke(); }
     for (let i = 0; i < 9; i++) { const y = horizon - 28 + i * 9 + Math.sin(this.t * 0.8 + i) * 4; ctx.strokeStyle = rgba(this.palette[i % 4], 0.15 + this.treble * 0.2); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y + Math.sin(this.t + i) * 5); ctx.stroke(); }
     for (const p of this.motes) { ctx.fillStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.18 + p.z * 0.55); ctx.beginPath(); ctx.arc(p.x, p.y, 0.6 + p.z * 1.15, 0, TAU); ctx.fill(); }
-    ctx.fillStyle = rgba('#ffffff', 0.35 + this.beatPulse * 0.3); ctx.beginPath(); ctx.arc(sunX, sunY, 12 + this.bass * 10, 0, TAU); ctx.fill(); ctx.restore();
+    ctx.fillStyle = rgba('#ffffff', 0.35 + this.pulse * 0.3); ctx.beginPath(); ctx.arc(sunX, sunY, 12 + this.bass * 10, 0, TAU); ctx.fill(); ctx.restore();
     this.drawDust(ctx, 0.9); this.modernFinish(ctx, 0.15);
   }
 }
 
 class DataRainAscension extends BaseVisualizer {
   constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[9]; this.streams = Array.from({ length: 38 }, () => ({ x: this.rng.float() * W, y: this.rng.float() * H, speed: 20 + this.rng.float() * 90, length: 5 + Math.floor(this.rng.float() * 15), phase: this.rng.float(), brightness: 0.2 + this.rng.float() * 0.8 })); }
-  update(dt, a) { super.update(dt, a); for (const s of this.streams) { s.y += dt * s.speed * (0.55 + this.treble * 1.5); if (s.y - s.length * 7 > H) { s.y = -this.rng.float() * 90; s.x = this.rng.float() * W; } } }
+  // Fall speed carries the loudness: quiet sections leave the rain hanging.
+  update(dt, a) { super.update(dt, a); for (const s of this.streams) { s.y += dt * s.speed * (0.55 + this.treble * 1.5) * this.motion; if (s.y - s.length * 7 > H) { s.y = -this.rng.float() * 90; s.x = this.rng.float() * W; } } }
   draw(ctx) {
-    this.backdrop(ctx, '#020610', '#071b25'); const fx = this.focusX; const fy = this.focusY; this.glowDot(ctx, fx, fy, 95 + this.bass * 55, this.palette[0], 0.14 + this.beatPulse * 0.22);
+    this.backdrop(ctx, '#020610', '#071b25'); const fx = this.focusX; const fy = this.focusY; this.glowDot(ctx, fx, fy, 95 + this.bass * 55, this.palette[0], 0.14 + this.pulse * 0.22);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (const s of this.streams) { for (let i = 0; i < s.length; i++) { const y = s.y - i * 7; const a = s.brightness * (1 - i / s.length) * (0.22 + this.treble * 0.65); ctx.fillStyle = rgba(this.palette[Math.floor((s.phase + i * 0.13) * 4) % 4], a); const w = 1 + ((i + Math.floor(this.t * 12 * s.phase)) % 3); ctx.fillRect(s.x + Math.sin(i * 2.4 + s.phase * 7) * 3, y, w, 2.3); } }
-    for (let i = 0; i < 10; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.14 + this.mid * 0.12); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(fx, fy, 18 + i * 12 + this.beatPulse * 9, this.t * (0.2 + i * 0.01) + i, this.t * (0.2 + i * 0.01) + i + 1.2); ctx.stroke(); }
+    for (let i = 0; i < 10; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.14 + this.mid * 0.12); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(fx, fy, 18 + i * 12 + this.pulse * 9, this.ringRotation + this.t * (0.2 + i * 0.01) + i, this.ringRotation + this.t * (0.2 + i * 0.01) + i + 1.2); ctx.stroke(); }
     ctx.fillStyle = '#eaffff'; polygonPath(ctx, fx, fy, 12 + this.bass * 9, 6, this.t * 0.5); ctx.fill(); ctx.restore(); this.drawDust(ctx, 1.2); this.modernFinish(ctx, 0.18);
   }
 }
 
 class FractalFlame extends BaseVisualizer {
   constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[10]; this.branches = makePool(68); this.branches.forEach((p) => { p.angle = this.rng.float() * TAU; p.radius = 16 + this.rng.float() * 100; p.length = 25 + this.rng.float() * 100; p.spin = -1 + this.rng.float() * 2; p.z = 0.25 + this.rng.float() * 0.75; p.hue = this.rng.float(); }); }
-  update(dt, a) { super.update(dt, a); for (const p of this.branches) { p.angle += dt * p.spin * (0.2 + this.mid); p.radius += dt * (4 + this.bass * 20); if (p.radius > 125) p.radius = 12 + this.rng.float() * 18; } }
+  // The flame keeps its shape when quiet but stops climbing and curling.
+  update(dt, a) { super.update(dt, a); for (const p of this.branches) { p.angle += dt * p.spin * (0.2 + this.mid) * this.motion; p.radius += dt * (4 + this.bass * 20) * this.motion; if (p.radius > 125) p.radius = 12 + this.rng.float() * 18; } }
   draw(ctx) {
-    this.backdrop(ctx, '#1b0506', '#10021c'); const fx = this.focusX; const fy = this.focusY; const core = 15 + this.bass * 24 + this.beatPulse * 8;
+    this.backdrop(ctx, '#1b0506', '#10021c'); const fx = this.focusX; const fy = this.focusY; const core = 15 + this.bass * 24 + this.pulse * 8;
     this.glowDot(ctx, fx, fy, 100 + this.bass * 40, this.palette[2], 0.24 + this.bass * 0.18);
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
-    for (const p of this.branches) { const x = fx + Math.cos(p.angle) * p.radius; const y = fy + Math.sin(p.angle) * p.radius * 0.72; const len = p.length * (0.7 + this.treble * 0.8 + this.beatPulse * 0.3); const tipX = x + Math.cos(p.angle + Math.sin(this.t * 1.4 + p.hue * 7) * 0.5) * len; const tipY = y + Math.sin(p.angle + Math.sin(this.t * 1.4 + p.hue * 7) * 0.5) * len * 0.55; ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.22 + p.z * 0.45); ctx.lineWidth = 0.5 + p.z * 1.6; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(x, y, tipX, tipY); ctx.stroke(); if (p.z > 0.45) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tipX + Math.cos(p.angle + 1.2) * 12, tipY + Math.sin(p.angle + 1.2) * 8); ctx.stroke(); } }
-    for (let i = 0; i < 7; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.2 + this.beatPulse * 0.15); ctx.lineWidth = 1 + (i === 0 ? this.beatPulse * 2 : 0); ctx.beginPath(); ctx.arc(fx, fy, core + i * 10, this.t * (0.2 + i * 0.03), this.t * (0.2 + i * 0.03) + 1.4 + this.mid); ctx.stroke(); }
+    for (const p of this.branches) { const x = fx + Math.cos(p.angle) * p.radius; const y = fy + Math.sin(p.angle) * p.radius * 0.72; const len = p.length * (0.7 + this.treble * 0.8 + this.pulse * 0.3); const tipX = x + Math.cos(p.angle + Math.sin(this.t * 1.4 + p.hue * 7) * 0.5) * len; const tipY = y + Math.sin(p.angle + Math.sin(this.t * 1.4 + p.hue * 7) * 0.5) * len * 0.55; ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * 4) % 4], 0.22 + p.z * 0.45); ctx.lineWidth = 0.5 + p.z * 1.6; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(x, y, tipX, tipY); ctx.stroke(); if (p.z > 0.45) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tipX + Math.cos(p.angle + 1.2) * 12, tipY + Math.sin(p.angle + 1.2) * 8); ctx.stroke(); } }
+    for (let i = 0; i < 7; i++) { ctx.strokeStyle = rgba(this.palette[i % 4], 0.2 + this.pulse * 0.15); ctx.lineWidth = 1 + (i === 0 ? this.pulse * 2 : 0); ctx.beginPath(); ctx.arc(fx, fy, core + i * 10, this.ringRotation + this.t * (0.2 + i * 0.03), this.ringRotation + this.t * (0.2 + i * 0.03) + 1.4 + this.mid); ctx.stroke(); }
     const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, core); g.addColorStop(0, '#fff5d6'); g.addColorStop(0.22, rgba(this.palette[1], 0.95)); g.addColorStop(0.7, rgba(this.palette[3], 0.45)); g.addColorStop(1, rgba(this.palette[3], 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(fx, fy, core, 0, TAU); ctx.fill(); ctx.restore();
     this.drawDust(ctx, 1.15); this.modernFinish(ctx, 0.16);
   }
@@ -1006,7 +1223,7 @@ class OscilloscopeOverdrive extends BaseVisualizer {
   update(dt, a) {
     super.update(dt, a);
     const wave = a?.waveform;
-    const amp = 29 + this.bass * 31 + this.mid * 18 + this.beatPulse * 8;
+    const amp = 29 + this.bass * 31 + this.mid * 18 + this.pulse * 8;
     const head = (this.t * (0.19 + this.bass * 0.05)) % 1;
     for (const p of this.trace) {
       const sample = wave?.length ? wave[Math.min(wave.length - 1, Math.floor(p.u * wave.length))] / 255 - 0.5 : Math.sin(p.u * TAU * 4 - this.t * 4) * 0.35;
@@ -1018,8 +1235,8 @@ class OscilloscopeOverdrive extends BaseVisualizer {
       p.life -= dt * (0.28 + this.treble * 0.85);
       if (p.life <= 0) seedParticle(p, this.rng, this.focusX, this.focusY, 0.78);
       p.px = p.x; p.py = p.y;
-      p.x += (p.x - this.focusX) * dt * (0.14 + this.beatPulse * 0.7) + Math.cos(this.t * 2.4 + p.hue * TAU) * dt * 13;
-      p.y += (p.y - this.focusY) * dt * (0.11 + this.beatPulse * 0.54) + Math.sin(this.t * 2 + p.hue * TAU) * dt * 13;
+      p.x += (p.x - this.focusX) * dt * (0.14 + this.pulse * 0.7) + Math.cos(this.t * 2.4 + p.hue * TAU) * dt * 13;
+      p.y += (p.y - this.focusY) * dt * (0.11 + this.pulse * 0.54) + Math.sin(this.t * 2 + p.hue * TAU) * dt * 13;
     }
     for (const p of this.smoke) {
       p.life -= dt * (0.08 + this.treble * 0.16);
@@ -1045,8 +1262,8 @@ class OscilloscopeOverdrive extends BaseVisualizer {
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(fx, fy); ctx.rotate(rotation); ctx.translate(-fx, -fy);
     for (let i = 0; i < 16; i++) {
       const a = i * TAU / 16; const length = 170 + this.bass * 105 + (i % 3) * 24;
-      ctx.strokeStyle = rgba(this.palette[i % this.palette.length], 0.09 + this.beatPulse * 0.2);
-      ctx.lineWidth = 0.7 + (i % 4 === 0 ? this.beatPulse * 2.4 : 0);
+      ctx.strokeStyle = rgba(this.palette[i % this.palette.length], 0.09 + this.pulse * 0.2);
+      ctx.lineWidth = 0.7 + (i % 4 === 0 ? this.pulse * 2.4 : 0);
       ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(a) * length, fy + Math.sin(a) * length * 0.62); ctx.stroke();
     }
     // Seven copies of the trace fan out around the focal point. Each copy has
@@ -1065,18 +1282,18 @@ class OscilloscopeOverdrive extends BaseVisualizer {
         const wobble = Math.sin(this.t * (1.1 + band * 0.04) + p.u * TAU * 2.5 + band) * (2 + this.treble * 5);
         const fade = 0.06 + (1 - ((p.age + n.age) * 0.5)) * (0.38 + this.treble * 0.48);
         ctx.strokeStyle = rgba(this.palette[(i + band + 1) % this.palette.length], fade);
-        ctx.lineWidth = 0.55 + (1 - p.age) * (1.35 + this.beatPulse * 2.2);
+        ctx.lineWidth = 0.55 + (1 - p.age) * (1.35 + this.pulse * 2.2);
         ctx.beginPath(); ctx.moveTo(p.x, p.y + offset + wobble); ctx.lineTo(n.x, n.y + offset + wobble); ctx.stroke();
       }
       const head = this.trace[headIndex];
-      this.glowDot(ctx, head.x, head.y + offset, 12 + this.treble * 10, this.palette[band % this.palette.length], 0.12 + this.beatPulse * 0.18);
-      ctx.fillStyle = rgba('#ffffff', 0.42 + this.beatPulse * 0.42); ctx.beginPath(); ctx.arc(head.x, head.y + offset, 1.4 + this.beatPulse * 1.8, 0, TAU); ctx.fill();
+      this.glowDot(ctx, head.x, head.y + offset, 12 + this.treble * 10, this.palette[band % this.palette.length], 0.12 + this.pulse * 0.18);
+      ctx.fillStyle = rgba('#ffffff', 0.42 + this.pulse * 0.42); ctx.beginPath(); ctx.arc(head.x, head.y + offset, 1.4 + this.pulse * 1.8, 0, TAU); ctx.fill();
       ctx.restore();
     }
-    for (let i = 0; i < 5; i++) { ctx.strokeStyle = rgba(this.palette[(i + 2) % this.palette.length], 0.18 + this.mid * 0.1); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(fx, fy, 26 + i * 15 + this.beatPulse * 10, rotation * (i + 1), rotation * (i + 1) + 1.5); ctx.stroke(); }
+    for (let i = 0; i < 5; i++) { ctx.strokeStyle = rgba(this.palette[(i + 2) % this.palette.length], 0.18 + this.mid * 0.1); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(fx, fy, 26 + i * 15 + this.pulse * 10, this.ringRotation + rotation * (i + 1), this.ringRotation + rotation * (i + 1) + 1.5); ctx.stroke(); }
     ctx.restore();
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const p of this.particles) { const alpha = p.life * (0.24 + this.treble * 0.85); ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length], alpha); ctx.lineWidth = 0.5 + p.z * (0.8 + this.beatPulse * 1.6); ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+    for (const p of this.particles) { const alpha = p.life * (0.24 + this.treble * 0.85); ctx.strokeStyle = rgba(this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length], alpha); ctx.lineWidth = 0.5 + p.z * (0.8 + this.pulse * 1.6); ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); ctx.stroke(); }
     ctx.restore();
     this.drawDust(ctx, 1.25); this.modernFinish(ctx, 0.18);
   }
@@ -1421,7 +1638,7 @@ class ArcadeArtGallery extends BaseVisualizer {
       // The art itself stays opaque; the cameo uses one foreground overlay
       // below, so all gallery content fades together rather than turning into
       // individually translucent sprites.
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = this.frameAlpha;
       ctx.translate(x, y);
       ctx.rotate(p.coinRain ? 0 : p.rotation);
       ctx.scale(scale * turnWidth, scale);
@@ -1824,7 +2041,7 @@ class ToasterSkyParade extends BaseVisualizer {
         const tx = p.drawX - p.speed * trail * 0.018;
         const ty = p.drawY + Math.sin(this.t * p.bobRate + p.phase - trail * 0.12) * p.bob * 0.18;
         ctx.save();
-        ctx.globalAlpha = (0.035 + this.beatPulse * 0.025) * (5 - trail) * (0.4 + p.depth * 0.6);
+        ctx.globalAlpha = this.frameAlpha * (0.035 + this.beatPulse * 0.025) * (5 - trail) * (0.4 + p.depth * 0.6);
         ctx.translate(tx, ty);
         ctx.rotate(p.rotation * (1 - trail * 0.035));
         ctx.scale(scale * (1 - trail * 0.035), scale * (1 - trail * 0.035));
@@ -1833,7 +2050,7 @@ class ToasterSkyParade extends BaseVisualizer {
       }
       this.glowDot(ctx, p.drawX, p.drawY, Math.max(w, h) * (0.65 + this.beatPulse * 0.25), color, 0.05 + p.depth * 0.07);
       ctx.save();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = this.frameAlpha;
       ctx.translate(p.drawX, p.drawY);
       ctx.rotate(p.rotation);
       ctx.scale(scale, scale);
@@ -1845,9 +2062,2338 @@ class ToasterSkyParade extends BaseVisualizer {
   }
 }
 
+// The film's title sequence photographed its glyphs through a mirror, which is
+// why the katakana read backwards. That mirroring is the one detail that
+// separates this from "green letters falling", so the kana set is rasterized
+// flipped and the readable latin set is kept upright beside it in the atlas.
+const RAIN_KANA = 'ｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ0123456789:.=*+-<>';
+const RAIN_LATIN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ?!';
+const RAIN_CELL_W = 12;
+const RAIN_ROW_H = 12;
+const RAIN_COLS = Math.ceil(W / RAIN_CELL_W);
+const RAIN_ROWS = Math.ceil(H / RAIN_ROW_H) + 2;
+// The atlas cell is wider than the layout cell: half-width katakana fall back
+// to whatever font the platform has for them, and a wider glyph should overhang
+// its column rather than get clipped at the raster edge.
+const RAIN_BOX = 16;
+const RAIN_FONT_PX = 14;
+// The kana are a terminal face; the decoded words are the game speaking, so
+// they come through in the marquee's own voice. Lilita One is wider than the
+// mono at the same em, hence the smaller size — a decoded word should sit in
+// the column, not shoulder its neighbours out of the way.
+const RAIN_KANA_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const RAIN_WORD_PX = 12.5;
+const RAIN_TIER_ALPHA = [0.62, 0.82, 0.94, 1];
+const RAIN_WORDS = ['MASHENSTEIN', 'UNPLUGGENING', 'INSERT COIN', 'PLAYER ONE', 'FREE PLAY', 'HIGH SCORE', 'GAME OVER', 'WAKE UP'];
+const rainAtlases = new Map();
+
+// One raster for the whole preset, blitted per glyph. Per-frame fillText would
+// re-rasterize ~500 vector outlines every frame; this is the same trade the
+// menu text makes in sprites.js, for the same reason.
+function rainAtlas(tiers, ss) {
+  const key = `${ss}|${tiers.join(',')}`;
+  const cached = rainAtlases.get(key);
+  if (cached) return cached;
+  const glyphs = RAIN_KANA + RAIN_LATIN;
+  const cell = Math.ceil(RAIN_BOX * ss);
+  const canvas = document.createElement('canvas');
+  canvas.width = cell * glyphs.length;
+  canvas.height = cell * tiers.length;
+  const x = canvas.getContext('2d');
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  for (let tier = 0; tier < tiers.length; tier++) {
+    x.fillStyle = tiers[tier];
+    for (let i = 0; i < glyphs.length; i++) {
+      const kana = i < RAIN_KANA.length;
+      x.font = kana ? `${RAIN_FONT_PX * ss}px ${RAIN_KANA_FONT}` : `400 ${RAIN_WORD_PX * ss}px ${TITLE_FONT}`;
+      x.save();
+      x.translate(i * cell + cell / 2, tier * cell + cell / 2);
+      if (kana) x.scale(-1, 1);
+      x.fillText(glyphs[i], 0, 0);
+      x.restore();
+    }
+  }
+  // Seeded tone is snapped to a handful of steps, so this map holds a small
+  // fixed set. The guard is only there for a density change mid-session.
+  if (rainAtlases.size > 8) rainAtlases.clear();
+  const atlas = { canvas, cell };
+  rainAtlases.set(key, atlas);
+  return atlas;
+}
+
+// The marquee face is a webfont that lands after first paint, so an atlas baked
+// against the fallback has to go the moment the real face arrives — the same
+// contract the menu glyph cache lives under.
+onGameFontsChanged(() => rainAtlases.clear());
+
+function rainLatinIndex(ch) {
+  const at = RAIN_LATIN.indexOf(ch);
+  return at < 0 ? -1 : RAIN_KANA.length + at;
+}
+
+class EmeraldCodeRain extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[15];
+    // The field only works monochrome, so the seeded palette is spent on which
+    // green it is — emerald through jade — rather than on four hues. Snapped to
+    // five steps so every seed shares one of five cached atlases.
+    const tone = Math.floor(this.rng.float() * 5) / 4;
+    this.tiers = [
+      mixHex('#159442', '#0f9377', tone),
+      mixHex('#2ae067', '#22ddad', tone),
+      mixHex('#9dffc0', '#99ffe8', tone),
+      mixHex('#e9fff0', '#e6fffb', tone),
+    ];
+    // Layout is seeded from the main stream; everything that churns per frame
+    // draws from its own, so a replayed seed lays the columns out identically.
+    this.rainRng = this.rng.stream('code-rain');
+    this.grid = new Uint8Array(RAIN_COLS * RAIN_ROWS);
+    for (let i = 0; i < this.grid.length; i++) this.grid[i] = this.rng.int(0, RAIN_KANA.length - 1);
+    this.columns = Array.from({ length: RAIN_COLS }, (_, i) => {
+      const c = { x: i * RAIN_CELL_W + RAIN_CELL_W / 2, flicker: this.rng.float() * TAU };
+      this.resetColumn(c, this.rng);
+      // Opening frame starts mid-fall so the screen is never empty on entry.
+      c.head = this.rng.range(-RAIN_ROWS * 0.5, RAIN_ROWS);
+      c.wait = this.rng.range(0, 0.35);
+      return c;
+    });
+    this.mutateAcc = 0;
+    this.lastPhrase = -1;
+  }
+
+  resetColumn(c, rng) {
+    c.head = -rng.range(0, 8);
+    c.speed = rng.range(7, 26);
+    c.len = Math.round(rng.range(6, 22));
+    c.depth = rng.range(0.45, 1);
+    c.wait = rng.range(0, 0.8);
+    c.word = null;
+    c.spins = null;
+    return c;
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    const step = Math.max(0, dt);
+    // Glyphs churn in place. Treble drives the rate, so hi-hats read as the
+    // screen thinking rather than as one more brightness bump. The accumulator
+    // is capped because a long dt (a tab regaining focus) should not spend a
+    // frame rewriting the whole grid.
+    this.mutateAcc = Math.min(this.mutateAcc + step * (25 + this.treble * 220) * this.motion, 240);
+    while (this.mutateAcc >= 1) {
+      this.mutateAcc -= 1;
+      this.grid[Math.floor(this.rainRng.float() * this.grid.length)] = this.rainRng.int(0, RAIN_KANA.length - 1);
+    }
+    // A section with no kit in it has a downbeat on paper and nothing playing
+    // it, and a field that snaps to that grid anyway reads as marching to a beat
+    // the listener cannot hear. With the drums out the columns go back to
+    // drizzling in on their own timers, and fall into step again when the kit
+    // comes back — which is the arrangement arriving, drawn.
+    const downbeat = !this.drumless && Math.floor(this.beat) !== Math.floor(this.prevBeat);
+    // Columns fall and glyphs churn at the song's own loudness, so a breakdown
+    // leaves the screen legible and nearly still instead of racing through it.
+    const fall = (0.5 + this.bass * 0.85 + this.pulse * 0.45) * this.motion;
+    for (let i = 0; i < this.columns.length; i++) {
+      const c = this.columns[i];
+      if (c.wait > 0) {
+        // A downbeat drops a share of the waiting columns in at once, so the
+        // field visibly restarts on the beat instead of drizzling at random.
+        if (downbeat && this.rainRng.chance(0.3)) c.wait = 0;
+        else { c.wait -= step; continue; }
+      }
+      // Each column reads its own spectrum band, which makes the rain lean
+      // with the mix without ever looking like a bar graph.
+      const band = 0.7 + this.spectrumValue(this.analysis, i, RAIN_COLS) * 0.8;
+      c.head += step * c.speed * fall * (c.word ? 0.45 : band);
+      if (c.spins) this.spinLetters(c, step);
+      if (c.head - c.len > RAIN_ROWS) this.resetColumn(c, this.rainRng);
+    }
+    // Every four bars, one column decodes out of the noise into a readable word
+    // and falls slower than the rest. Seeded from the phrase index rather than
+    // drawn live, so the same seed spells the same things in the same places.
+    // A message is only special while it is alone, so a phrase whose predecessor
+    // is still falling — long word, slow tempo — simply doesn't get one.
+    const phrase = Math.floor(this.beat / 16);
+    if (phrase !== this.lastPhrase && !this.columns.some((c) => c.word)) {
+      this.lastPhrase = phrase;
+      const word = RAIN_WORDS[((phrase * 7 + (this.seed >>> 11)) >>> 0) % RAIN_WORDS.length];
+      const c = this.columns[((phrase * 11 + (this.seed >>> 5)) >>> 0) % this.columns.length];
+      c.word = word;
+      c.len = word.length;
+      c.head = -this.rainRng.range(0, 3);
+      c.speed = this.rainRng.range(9, 13);
+      c.depth = 1;
+      c.wait = 0;
+      // One spin state per letter, staggered so the word never turns in unison.
+      c.spins = Array.from({ length: word.length }, () => ({
+        angle: 0,
+        rate: 0,
+        wait: this.rainRng.range(0.4, 5),
+      }));
+    }
+  }
+
+  // Letters in a decoded word turn on their own vertical axis now and then,
+  // like a card on a string: the glyph narrows to an edge, shows its back, and
+  // comes round again. One full turn per event rather than a continuous spin,
+  // so the word stays readable most of the time.
+  spinLetters(c, step) {
+    for (const s of c.spins) {
+      if (s.angle > 0) {
+        s.angle += step * s.rate * (1 + this.pulse * 0.5);
+        if (s.angle >= TAU) {
+          s.angle = 0;
+          s.wait = this.rainRng.range(1.2, 6);
+        }
+        continue;
+      }
+      s.wait -= step;
+      if (s.wait > 0) continue;
+      s.angle = 1e-4;
+      s.rate = this.rainRng.range(4.5, 8.5);
+    }
+  }
+
+  // The atlas is a pure function of (tone, density), so building it inside
+  // draw() keeps the preset's no-state-in-draw contract that lets the video
+  // tool render frame ranges in parallel workers.
+  glyphAtlas(ctx) {
+    if (typeof document === 'undefined') return null;
+    // The context arrives pre-scaled to device pixels — by screen.px in the
+    // game, by the output ratio in tools/render-video.js, which never runs a
+    // resize. Reading the transform covers both; otherwise a 1080p render
+    // would blit a 2x raster into a 4x frame and only the glyphs would be soft.
+    let density = screen.px || 1;
+    if (typeof ctx.getTransform === 'function') {
+      const m = ctx.getTransform();
+      if (m && Number.isFinite(m.a) && Number.isFinite(m.b)) density = Math.max(density, Math.hypot(m.a, m.b));
+    }
+    return rainAtlas(this.tiers, Math.max(2, Math.min(8, Math.ceil(density * 1.25))));
+  }
+
+  draw(ctx) {
+    this.backdrop(ctx, '#000406', '#010b06');
+    const atlas = this.glyphAtlas(ctx);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // A slow wash on the drifting focal point, so a flat grid still has a
+    // centre of gravity, plus a scan band that sweeps a bar at a time.
+    this.glowDot(ctx, this.focusX, this.focusY, 130 + this.bass * 70, this.tiers[1], 0.045 + this.pulse * 0.06);
+    const scanY = ((this.beat / 16) % 1) * (H + 80) - 40;
+    const scan = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+    scan.addColorStop(0, rgba(this.tiers[1], 0));
+    scan.addColorStop(0.5, rgba(this.tiers[1], 0.03 + this.mid * 0.03));
+    scan.addColorStop(1, rgba(this.tiers[1], 0));
+    ctx.fillStyle = scan;
+    ctx.fillRect(0, scanY - 30, W, 60);
+    if (atlas) {
+      for (let i = 0; i < this.columns.length; i++) {
+        const c = this.columns[i];
+        if (c.wait > 0) continue;
+        const headRow = Math.floor(c.head);
+        // Per-column flicker and a soft falloff away from the focal point stop
+        // forty identical columns from reading as wallpaper.
+        const flicker = 0.84 + Math.sin(this.flow * 7.3 + c.flicker) * 0.16;
+        const near = 1 - clamp(Math.abs(c.x - this.focusX) / W) * 0.4;
+        const lit = c.depth * flicker * near * clamp(0.86 + this.treble * 0.3 + this.pulse * 0.16, 0, 1.15);
+        for (let trail = 0; trail < c.len; trail++) {
+          const row = headRow - trail;
+          if (row < 0 || row * RAIN_ROW_H > H + RAIN_ROW_H) continue;
+          let glyph;
+          if (c.word) {
+            // The word reads downward as it falls, so the head carries its
+            // last letter and the tail its first.
+            glyph = rainLatinIndex(c.word[c.len - 1 - trail]);
+            if (glyph < 0) continue;
+          } else {
+            glyph = this.grid[(((row % RAIN_ROWS) + RAIN_ROWS) % RAIN_ROWS) * RAIN_COLS + i];
+          }
+          // A message holds its brightness the length of the word; ordinary
+          // trails fall away fast, which is what gives the field its depth.
+          const fade = c.word ? 1 - trail / (c.len * 2.4) : Math.pow(1 - trail / c.len, 1.35);
+          const tier = trail === 0 ? 3 : trail < 2 ? 2 : trail < 5 ? 1 : 0;
+          const y = row * RAIN_ROW_H + RAIN_ROW_H * 0.5;
+          ctx.globalAlpha = this.frameAlpha * clamp(fade * lit * RAIN_TIER_ALPHA[tier]);
+          // A turning letter is the same blit squeezed on x by the cosine of
+          // its angle, which is what a flat card rotating about a vertical axis
+          // actually projects to. Edge-on it vanishes; past that it reads
+          // reversed, exactly as the back of the card would.
+          const turn = c.spins ? c.spins[c.len - 1 - trail].angle : 0;
+          if (turn > 0) {
+            const face = Math.cos(turn);
+            ctx.save();
+            ctx.translate(c.x, y);
+            ctx.scale(face, 1);
+            // The edge of a turning card catches the light for an instant.
+            ctx.globalAlpha = clamp(ctx.globalAlpha * (1 + (1 - Math.abs(face)) * 0.8));
+            ctx.drawImage(atlas.canvas, glyph * atlas.cell, tier * atlas.cell, atlas.cell, atlas.cell,
+              -RAIN_BOX * 0.5, -RAIN_BOX * 0.5, RAIN_BOX, RAIN_BOX);
+            ctx.restore();
+          } else {
+            ctx.drawImage(atlas.canvas, glyph * atlas.cell, tier * atlas.cell, atlas.cell, atlas.cell,
+              c.x - RAIN_BOX * 0.5, y - RAIN_BOX * 0.5, RAIN_BOX, RAIN_BOX);
+          }
+          if (trail === 0) {
+            ctx.globalAlpha = this.frameAlpha;
+            this.glowDot(ctx, c.x, y, 8 + this.pulse * 5, this.tiers[2], 0.22 * lit);
+          }
+        }
+      }
+      ctx.globalAlpha = this.frameAlpha;
+    }
+    // The shared dust is palette-coloured, which would put pink and gold motes
+    // in a field that only works in one hue. Same pool, one green.
+    for (const p of this.dust) {
+      ctx.fillStyle = rgba(this.tiers[p.z > 0.7 ? 2 : 1], p.life * (0.05 + this.treble * 0.14));
+      ctx.fillRect(p.x, p.y, 1, 1 + p.z);
+    }
+    ctx.restore();
+    this.modernFinish(ctx, 0.3);
+  }
+}
+
+// The one genuinely per-pixel preset in the pack: a real escape-time Julia set,
+// re-solved every frame. The field is two thirds of the logical canvas and gets
+// scaled up on composite. That is not a shortcut for its own sake — measured on
+// a 2x screen, this size costs 6.4ms a frame and the full 480x270 costs 11.9ms,
+// which is 71% of a 60fps budget for one preset, and the megamix can put a
+// second preset in the same frame.
+//
+// What the magnification costs is structure, not just sharpness: at this size
+// the finest filigree is never computed rather than computed and blurred. That
+// is the trade, and it is a real one — see the composite blit in draw(), which
+// commits to it by turning smoothing off rather than half-hiding it.
+const JULIA_W = 320;
+const JULIA_H = 180;
+// Complex-plane width of the view at zoom 1. Julia sets live inside |z| < 2, so
+// this frames the whole thing before the dive starts.
+const JULIA_VIEW = 3.0;
+// Octaves per second, and how many of them one dive is worth. Deliberately a
+// constant: the brief wants a fixed hypnotic plunge, so the mix bends it by a
+// tenth at most and never drives it.
+const JULIA_PLUNGE_RATE = 0.6;
+const JULIA_PLUNGE_OCTAVES = 3.6;
+const JULIA_BLEND_TIME = 0.85;
+// Per-frame survival of the trail buffer. The higher figure is held through a
+// layer change so the outgoing fractal lingers long enough to cross-fade.
+const JULIA_TRAIL_FADE = 0.84;
+const JULIA_BLEND_FADE = 0.94;
+// What a settled pixel sums to once the geometric series of past frames has
+// converged. The per-frame contribution is derived from the fade to hold this
+// steady, because a fixed one does not: a fade of 0.84 sums to six times what
+// the frame put in, which turns a field with any breadth to it into white paste.
+const JULIA_TRAIL_GAIN = 1.8;
+// Damped spring for the sub-bass twist. It has to be *stiff*: settled inside a
+// quarter second, because four-on-the-floor at 124bpm is a kick every 0.48s and
+// a spring slower than that never gets home before the next one. Measured at the
+// original 1.25Hz the displacement simply accumulated and sat there — a
+// permanent lean, not a snap. Damped to overshoot once on the way back, which is
+// what reads as elastic rather than as a slider being dragged. Displacement is
+// normalised to roughly ±1 and converted per frame into a real shift in c,
+// against what the camera can survive at that depth.
+const JULIA_SPRING = 500;
+const JULIA_DAMP = 16;
+const JULIA_WARP_LIMIT = 1.2;
+const JULIA_BANDS = 3.1;
+// Budgets for how far the geometry may slide under the camera, in field pixels:
+// one for a full-force sub-bass twist, one for the idle wander. Both are turned
+// into a shift in c per frame — see sensitivity().
+const JULIA_TWIST_PIXELS = 52;
+const JULIA_DRIFT_PIXELS = 9;
+// Absolute ceiling on |δc| regardless of what the pixel budget allows. At zoom 1
+// the camera can survive an enormous shove, but past about this the seed stops
+// being the shape it was chosen for and every constant looks like the same blob.
+const JULIA_TWIST_MAX = 0.075;
+// How much of the frame a dive target should have filigree in, at depth. Well
+// under half: the void is half the composition, and a target that fills more
+// than this is in a thicket the field resolves as dust.
+const JULIA_TARGET_FILL = 0.38;
+// Iteration range. The floor sets how bold the filaments are — pushed higher and
+// the field resolves structure finer than a pixel, which lands as dust rather
+// than as crystal. The ceiling buys that detail back as the view narrows.
+const JULIA_ITER_MIN = 46;
+const JULIA_ITER_MAX = 78;
+// Output gain, so a bright field still has headroom to accumulate additively in
+// the trail buffer without clipping to flat white on the first frame.
+const JULIA_GAIN = 1;
+// c values chosen for the shapes the geometry has to make: interlocking
+// seahorses, lightning dendrites, dense spiral shells. Small |c| gives a fat
+// blobby set that looks like a lava lamp at every zoom level, so none are here.
+const JULIA_SEEDS = [
+  { r: -0.7269, i: 0.1889 },   // dendrite lightning
+  { r: -0.75, i: 0.1085 },     // seahorse valley
+  { r: -0.8, i: 0.156 },       // thick seahorse tails
+  { r: 0.285, i: 0.01 },       // near-Siegel spiral shells
+  { r: -0.70176, i: -0.3842 }, // interlocking spirals
+  { r: -0.835, i: -0.2321 },   // fine crystalline filigree
+  { r: -0.1, i: 0.651 },       // Douady rabbit ears
+  { r: 0.355, i: 0.355 },      // twisted galaxy arms
+];
+const ACID_HEX = ['#00ff00', '#00ffff', '#7c28ff', '#ff00ff'];
+const ACID_RAMP = ACID_HEX.map((hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+});
+const LOG2E = Math.LOG2E;
+
+class AcidJuliaDive extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[16];
+    // The acid ramp is the whole point of the preset, so the shared dust and the
+    // core glow take it instead of a seeded pack palette.
+    this.palette = ACID_HEX;
+    // Structure is seeded from its own stream; per-frame jitter has another, so
+    // a replayed seed dives through the same fractal regardless of frame rate.
+    this.juliaRng = this.rng.stream('julia');
+    this.acidRng = this.rng.stream('julia-acid');
+    const pick = this.juliaRng.pick(JULIA_SEEDS);
+    this.cBase = { r: pick.r, i: pick.i };
+    this.driftPhase = this.juliaRng.float() * TAU;
+    this.driftRate = 0.06 + this.juliaRng.float() * 0.05;
+    this.warp = 0;
+    this.warpVel = 0;
+    this.warpAngle = this.juliaRng.float() * TAU;
+    this.zoomLog = 0;
+    this.center = this.pickCenter();
+    this.blend = 1;
+    this.hueShift = this.juliaRng.float();
+    this.flash = 0;
+    this.flashSwap = 0;
+    this.whiteHeat = 0;
+    this.bassEnv = 0.25;
+    this.trebleEnv = 0.15;
+    this.shake = 0;
+    this.shakeX = 0;
+    this.shakeY = 0;
+    this.lut = new Uint8Array(512 * 3);
+    this.buffers = null;
+    this.buffersTried = false;
+    this.renderedT = -1;
+  }
+
+  // A point on the Julia set itself, found by inverse iteration: z -> ±sqrt(z-c)
+  // is attracted to the boundary from almost any start. Aiming the dive at a
+  // boundary point is what keeps fresh filigree arriving forever — aim at the
+  // interior or the exterior and a few seconds in the screen is flat colour.
+  boundaryPoint() {
+    const c = this.cBase;
+    let zr = this.juliaRng.range(-1, 1);
+    let zi = this.juliaRng.range(-1, 1);
+    for (let n = 0; n < 48; n++) {
+      const dr = zr - c.r;
+      const di = zi - c.i;
+      const m = Math.hypot(dr, di);
+      let sr = Math.sqrt(Math.max(0, (m + dr) * 0.5));
+      let si = Math.sqrt(Math.max(0, (m - dr) * 0.5));
+      if (di < 0) si = -si;
+      // Which of the two roots is taken is the random walk. Both land on the
+      // set, so the choice picks *where* on it rather than whether.
+      if (this.juliaRng.chance(0.5)) { sr = -sr; si = -si; }
+      zr = sr; zi = si;
+    }
+    return { x: zr, y: zi };
+  }
+
+  // Distance from a point to the set, in field pixels. Same estimate the kernel
+  // makes; kept separate and out of line because the kernel's copy is the
+  // hottest loop in the pack and should not be paying for a call per pixel.
+  boundaryPixels(zr, zi, cr, ci, maxIter, perPixel) {
+    let zr2 = zr * zr;
+    let zi2 = zi * zi;
+    let er = 1;
+    let ei = 0;
+    let n = 0;
+    while (n < maxIter && zr2 + zi2 < 256) {
+      const ndr = 2 * (zr * er - zi * ei);
+      ei = 2 * (zr * ei + zi * er);
+      er = ndr;
+      zi = 2 * zr * zi + ci;
+      zr = zr2 - zi2 + cr;
+      zr2 = zr * zr;
+      zi2 = zi * zi;
+      n++;
+    }
+    if (n >= maxIter) return Infinity; // inside the set: black, same as far away
+    const mod = Math.sqrt(zr2 + zi2);
+    const grad = Math.sqrt(er * er + ei * ei);
+    return grad > 1e-12 ? mod * Math.log(mod) / grad * perPixel : Infinity;
+  }
+
+  // Fraction of a coarse grid across the frame that would have a lit filament in
+  // it, at the given depth.
+  litFraction(x, y, zoom) {
+    const scale = JULIA_VIEW / JULIA_W / zoom;
+    const perPixel = 1 / scale;
+    const stepX = scale * (JULIA_W / 12);
+    const stepY = scale * (JULIA_H / 8);
+    let lit = 0;
+    for (let sy = -4; sy <= 4; sy++) {
+      for (let sx = -6; sx <= 6; sx++) {
+        if (this.boundaryPixels(x + sx * stepX, y + sy * stepY, this.cBase.r, this.cBase.i, JULIA_ITER_MAX, perPixel) < 2.5) lit++;
+      }
+    }
+    return lit / 117;
+  }
+
+  // Not every boundary point is worth diving at. Plenty sit on the outside of a
+  // big smooth lobe, where the far side of the frame is empty black for the
+  // whole six seconds, and plenty sit inside a thicket that resolves into dust
+  // the field cannot draw. Both are what an unbiased inverse iteration hands
+  // back most of the time. So: take a handful of candidates, look at how much of
+  // the frame each one fills at the depth the dive will actually reach, and keep
+  // the one nearest a target that is neither bare nor solid. One coarse grid per
+  // six seconds, and it decides what the preset looks like.
+  pickCenter() {
+    const zoom = Math.pow(2, JULIA_PLUNGE_OCTAVES * 0.7);
+    let best = null;
+    let bestMiss = Infinity;
+    for (let tries = 0; tries < 8; tries++) {
+      const candidate = this.boundaryPoint();
+      const miss = Math.abs(this.litFraction(candidate.x, candidate.y, zoom) - JULIA_TARGET_FILL);
+      if (miss < bestMiss) { bestMiss = miss; best = candidate; }
+      if (miss < 0.06) break;
+    }
+    return best;
+  }
+
+  // How far the camera's own boundary point moves for a unit shift in c, in
+  // complex units, measured by carrying dz/dc alongside dz/dz0 down the orbit.
+  //
+  // This is the number that makes the twist workable. The camera is parked on a
+  // point of the set found to full double precision, and a point that deep is
+  // not slightly sensitive to c — it can be a million times more sensitive to c
+  // than to its own position. The shove that folds the geometry gorgeously at
+  // zoom 1 hurls the entire set off a 20x screen and leaves the dive staring
+  // into black. Measuring the figure per frame is what lets the twist be
+  // expressed as "slide the geometry about this far" and stay true at any depth.
+  sensitivity(cr, ci, maxIter) {
+    let zr = this.center.x;
+    let zi = this.center.y;
+    let er = 1;
+    let ei = 0;
+    let wr = 0;
+    let wi = 0;
+    for (let n = 0; n < maxIter && zr * zr + zi * zi < 256; n++) {
+      const ndr = 2 * (zr * er - zi * ei);
+      ei = 2 * (zr * ei + zi * er);
+      er = ndr;
+      const nwr = 2 * (zr * wr - zi * wi) + 1;
+      wi = 2 * (zr * wi + zi * wr);
+      wr = nwr;
+      const nzi = 2 * zr * zi + ci;
+      zr = zr * zr - zi * zi + cr;
+      zi = nzi;
+    }
+    const grad = Math.hypot(er, ei);
+    const resp = Math.hypot(wr, wi);
+    return Number.isFinite(grad) && Number.isFinite(resp) && grad > 1e-12 ? resp / grad : 1e9;
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    // The spring is integrated explicitly, so a stalled tab handing back a
+    // half-second dt has to be clamped or it detonates.
+    const step = clamp(dt, 0, 1 / 20);
+    // Rising-edge detectors. The bands arrive already smoothed, so a "hit" is
+    // how far one has jumped above its own slower follower — that fires on the
+    // kick drum's attack instead of staying latched for the whole bar.
+    const bassJump = Math.max(0, this.bass - this.bassEnv);
+    this.bassEnv += (this.bass - this.bassEnv) * clamp(step * (this.bass > this.bassEnv ? 16 : 3));
+    const trebleJump = Math.max(0, this.treble - this.trebleEnv);
+    this.trebleEnv += (this.treble - this.trebleEnv) * clamp(step * (this.treble > this.trebleEnv ? 22 : 4.5));
+
+    if (bassJump > 0.05) {
+      // Sub-bass shoves c sharply, in a direction that itself walks a sine, so
+      // consecutive hits fold the geometry different ways instead of pumping it
+      // along one axis. Same impulse drives the speaker-cabinet shake.
+      this.warpAngle = Math.sin(this.flow * 0.83 + this.driftPhase) * Math.PI;
+      this.warpVel += (bassJump + this.beatPulse * 0.12) * 42;
+      this.shake = clamp(this.shake + bassJump * 2.6 + this.bass * 0.2);
+    }
+    this.warpVel += (-JULIA_SPRING * this.warp - JULIA_DAMP * this.warpVel) * step;
+    this.warp = clamp(this.warp + this.warpVel * step, -JULIA_WARP_LIMIT, JULIA_WARP_LIMIT);
+
+    if (trebleJump > 0.055) {
+      // Half the hi-hats throw the palette to its opposite phase, half blow the
+      // outermost trails to white. Alternating beats doing only one of them:
+      // a snare that always does the same trick stops registering as an event.
+      this.flash = 1;
+      this.flashSwap = this.acidRng.chance(0.5) ? 1 : 0;
+    }
+    this.flash = Math.max(0, this.flash - step * 7.5);
+    this.whiteHeat = clamp(this.treble * 0.12 + (this.flashSwap ? 0 : this.flash));
+
+    this.hueShift = (this.hueShift + step * (0.05 + this.mid * 0.07) * this.motion) % 1;
+    this.driftPhase += step * this.driftRate * this.motion;
+    this.zoomLog += step * JULIA_PLUNGE_RATE * (1 + this.bass * 0.12) * this.motion;
+    this.blend = Math.min(1, this.blend + step / JULIA_BLEND_TIME);
+    if (this.zoomLog >= JULIA_PLUNGE_OCTAVES) {
+      // Doubles run out of mantissa eventually and the fractal turns to mush, so
+      // the dive restarts on a fresh boundary point rather than zooming into a
+      // pixelated wall. Nothing pops: the trail buffer is still holding the
+      // outgoing layer and streams it outward while the new one blooms in, which
+      // is the cross-fade — and it costs no second escape-time pass per frame.
+      this.zoomLog = 0;
+      this.center = this.pickCenter();
+      this.blend = 0;
+    }
+
+    this.shake = Math.max(0, this.shake - step * 5.5);
+    // Squared, so a light kick barely moves and a drop rattles: the point is to
+    // read as a CRT sat on top of the speaker, not as a wobbly camera operator.
+    const jitter = this.shake * this.shake * 4.5;
+    this.shakeX = (this.acidRng.float() * 2 - 1) * jitter;
+    this.shakeY = (this.acidRng.float() * 2 - 1) * jitter * 0.7;
+  }
+
+  surface(w, h) {
+    if (typeof document === 'undefined') return null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      return ctx ? { canvas, ctx } : null;
+    } catch { return null; }
+  }
+
+  // Built on first draw, never in the constructor: this module is imported into
+  // Node by the render tools and by the test suite, where there is no real
+  // canvas. A preset that throws at construction takes the whole jukebox down.
+  ensureBuffers() {
+    if (this.buffersTried) return this.buffers !== null;
+    this.buffersTried = true;
+    const field = this.surface(JULIA_W, JULIA_H);
+    const trail = this.surface(W, H);
+    const image = field?.ctx.createImageData?.(JULIA_W, JULIA_H);
+    if (!field || !trail || !image?.data || image.data.length !== JULIA_W * JULIA_H * 4) return false;
+    // Opaque once. The kernel rewrites every pixel's RGB each frame and never
+    // touches alpha again.
+    image.data.fill(255);
+    this.buffers = { field, trail, image };
+    return true;
+  }
+
+  // The trail is a running accumulation, which makes it the one piece of this
+  // preset's state that lives in draw() rather than update(). Two callers care:
+  // the jukebox, where an empty buffer means the preset visibly fades up from
+  // nothing on entry, and render-video, whose parallel workers replay update()
+  // alone and would each start a segment with no trail. Both are fixed by
+  // seeding the buffer with what a settled one would hold — the same field,
+  // stamped at the scales and alphas the geometric fade would have left it at.
+  // It is an approximation for exactly as long as it matters: real frames are
+  // 80% of the buffer within ten frames.
+  warmTrail() {
+    const { field, trail } = this.buffers;
+    const ctx = trail.ctx;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let back = 24; back >= 1; back--) {
+      const scale = Math.pow(1.004, back);
+      const gw = W * scale;
+      const gh = H * scale;
+      ctx.globalAlpha = JULIA_TRAIL_GAIN * (1 - JULIA_TRAIL_FADE) * Math.pow(JULIA_TRAIL_FADE, back);
+      ctx.drawImage(field.canvas, (W - gw) * 0.5, (H - gh) * 0.5, gw, gh);
+    }
+    ctx.restore();
+  }
+
+  // Hue only — brightness is per-pixel, from the distance estimate. Rebuilt each
+  // frame so the ramp can cycle and flash, and read as a table so the inner loop
+  // never does a colour conversion.
+  //
+  // Two halves. 0-255 is the plain ramp; 256-511 is the same ramp mixed toward
+  // white by the current heat, which the kernel selects for pixels sitting on a
+  // filament core. That is the whole white-hot treble flash: one branch and the
+  // same two lookups, instead of a blend per channel per pixel.
+  buildLut() {
+    const lut = this.lut;
+    const shift = this.hueShift + (this.flashSwap ? this.flash * 0.5 : 0);
+    const heat = this.whiteHeat;
+    for (let i = 0; i < 256; i++) {
+      // sqrt spreads the low end so the neon bands stay evenly spaced along a
+      // filament instead of bunching into one glare against the boundary.
+      const slot = ((shift + Math.sqrt(i / 255) * JULIA_BANDS) % 1) * ACID_RAMP.length;
+      const from = ACID_RAMP[Math.floor(slot) % ACID_RAMP.length];
+      const to = ACID_RAMP[(Math.floor(slot) + 1) % ACID_RAMP.length];
+      const f = smooth(slot - Math.floor(slot));
+      const o = i * 3;
+      for (let ch = 0; ch < 3; ch++) {
+        const hue = (from[ch] + (to[ch] - from[ch]) * f) * JULIA_GAIN;
+        lut[o + ch] = hue;
+        lut[o + 768 + ch] = hue + (255 - hue) * heat;
+      }
+    }
+  }
+
+  renderField() {
+    const { field, image } = this.buffers;
+    const data = image.data;
+    // The warp punches the scale as well as c, so a sub-bass hit collapses the
+    // whole frame inward or blooms it outward depending on which way the spring
+    // is travelling — the same event, seen twice.
+    const zoom = Math.pow(2, this.zoomLog) * Math.max(0.3, 1 + this.warp * 0.28);
+    const scale = JULIA_VIEW / JULIA_W / zoom;
+    // Detail has to be bought back as the view narrows or the deep end of the
+    // dive resolves into a handful of fat filaments.
+    const maxIter = Math.round(clamp(JULIA_ITER_MIN + this.zoomLog * 7, JULIA_ITER_MIN, JULIA_ITER_MAX));
+    const inv = 1 / maxIter;
+    // Turn "the geometry may slide this many field pixels" into "c may move this
+    // far", against what this camera can actually survive at this depth.
+    const slide = scale / Math.max(1e-12, this.sensitivity(this.cBase.r, this.cBase.i, maxIter));
+    const reach = this.warp * Math.min(JULIA_TWIST_PIXELS * slide, JULIA_TWIST_MAX);
+    const drift = Math.min(JULIA_DRIFT_PIXELS * slide, JULIA_TWIST_MAX * 0.25);
+    const cr = this.cBase.r + Math.cos(this.driftPhase) * drift + Math.cos(this.warpAngle) * reach;
+    const ci = this.cBase.i + Math.sin(this.driftPhase * 1.31) * drift + Math.sin(this.warpAngle) * reach;
+    const ox = this.center.x;
+    const oy = this.center.y;
+    const lut = this.lut;
+    const halfW = JULIA_W * 0.5;
+    const halfH = JULIA_H * 0.5;
+    // The distance estimate comes out in complex units; filaments want to be a
+    // fixed number of *pixels* wide however far down the dive we are.
+    const perPixel = 1 / scale;
+    let p = 0;
+    for (let py = 0; py < JULIA_H; py++) {
+      const y0 = (py - halfH) * scale + oy;
+      for (let px = 0; px < JULIA_W; px++) {
+        let zr = (px - halfW) * scale + ox;
+        let zi = y0;
+        let zr2 = zr * zr;
+        let zi2 = zi * zi;
+        // Derivative of the orbit against its own start, carried along so an
+        // escaping pixel can be told how far it is from the set, rather than
+        // only how long it took to leave.
+        let er = 1;
+        let ei = 0;
+        let n = 0;
+        // Periodicity bail-out. Interior orbits fall onto an attracting cycle
+        // within a few steps; without this check every interior pixel pays the
+        // full iteration count, which at depth is most of the frame's cost.
+        let hr = zr;
+        let hi = zi;
+        let span = 8;
+        let mark = 8;
+        while (n < maxIter && zr2 + zi2 < 256) {
+          const ndr = 2 * (zr * er - zi * ei);
+          ei = 2 * (zr * ei + zi * er);
+          er = ndr;
+          zi = 2 * zr * zi + ci;
+          zr = zr2 - zi2 + cr;
+          zr2 = zr * zr;
+          zi2 = zi * zi;
+          n++;
+          const dr = zr - hr;
+          const di = zi - hi;
+          if (dr * dr + di * di < 1e-14) { n = maxIter; break; }
+          if (n === mark) { hr = zr; hi = zi; span <<= 1; mark = n + span; }
+        }
+        let o = 0;
+        let bright = 0;
+        if (n < maxIter) {
+          const mod = Math.sqrt(zr2 + zi2);
+          const lm = Math.log(mod);
+          const grad = Math.sqrt(er * er + ei * ei);
+          // Distance to the set itself, converted to pixels. Escape *time* alone
+          // paints the exterior in bands, and at this field resolution those
+          // alias into confetti wherever the filigree is finer than a pixel.
+          // Distance draws the boundary as a stroke that stays clean however
+          // fine the structure under it gets — which is the crystalline edge the
+          // whole preset is for.
+          const dn = grad > 1e-12 ? mod * lm / grad * perPixel : 1e9;
+          // A tight core for the crystal edge, plus a narrow halo to carry the
+          // colour bands a little way out from it. Both fall off fast: the field
+          // accumulates additively in the trail buffer, so anything with breadth
+          // to it lands on screen several times over.
+          const halo = 1 / (1 + dn * 0.7);
+          bright = 1 / (1 + dn * dn * 0.5) + halo * halo * 0.7;
+          if (bright > 1) bright = 1;
+          // Continuous escape value drives the hue. Raw iteration counts band
+          // the exterior into a staircase; this gives the ramp a smooth curve.
+          const s = (n + 1 - Math.log(lm) * LOG2E) * inv;
+          o = (s <= 0 ? 0 : s >= 1 ? 255 : (s * 255) | 0) * 3;
+          // Filament cores read from the white-hot half of the table.
+          if (bright > 0.62) o += 768;
+        }
+        data[p] = lut[o] * bright;
+        data[p + 1] = lut[o + 1] * bright;
+        data[p + 2] = lut[o + 2] * bright;
+        p += 4;
+      }
+    }
+    field.ctx.putImageData(image, 0, 0);
+  }
+
+  advanceTrail() {
+    const { field, trail } = this.buffers;
+    const ctx = trail.ctx;
+    // The trail canvas is never cleared. Each frame its own contents are copied
+    // back very slightly enlarged and a little dimmer, so old frames bleed
+    // outward *along* the plunge and decay like ink in water rather than sitting
+    // still and smearing. `copy` does the fade and the growth in one pass.
+    const fade = this.blend < 1 ? JULIA_BLEND_FADE : JULIA_TRAIL_FADE - this.treble * 0.06;
+    const grow = 1.004 + this.bass * 0.006;
+    const gw = W * grow;
+    const gh = H * grow;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalCompositeOperation = 'copy';
+    ctx.globalAlpha = fade;
+    ctx.drawImage(trail.canvas, (W - gw) * 0.5, (H - gh) * 0.5, gw, gh);
+    // A fresh layer arrives slightly oversized and settles inward as it fades
+    // up, so it reads as coming toward the camera like everything else.
+    const ease = smooth(this.blend);
+    const nw = W * (1 + (1 - ease) * 0.3);
+    const nh = H * (1 + (1 - ease) * 0.3);
+    // Derived from the fade rather than fixed, so a settled pixel always sums to
+    // the same place. It also means the slow fade held through a layer change
+    // automatically feeds the incoming fractal in gently instead of doubling the
+    // exposure at exactly the moment two layers are on screen at once.
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = JULIA_TRAIL_GAIN * (1 - fade) * (0.4 + 0.6 * ease);
+    ctx.drawImage(field.canvas, (W - nw) * 0.5, (H - nh) * 0.5, nw, nh);
+    ctx.restore();
+  }
+
+  draw(ctx) {
+    // Pure #000000, always. Every other layer here is additive on top of it.
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    if (!this.ensureBuffers()) {
+      // No ImageData available (Node, headless tools). Still a valid member of
+      // the pack: core, dust, vignette, no throw.
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      this.glowDot(ctx, this.focusX, this.focusY, 62 + this.bass * 48, ACID_HEX[1], 0.2 + this.beatPulse * 0.12);
+      ctx.restore();
+      this.drawDust(ctx, 0.6);
+      this.modernFinish(ctx, 0.3);
+      return;
+    }
+    // Guarded on the clock so the cross-fade between two presets, which draws
+    // both of them in one frame, cannot advance the trail twice.
+    if (this.renderedT !== this.t) {
+      const cold = this.renderedT < 0;
+      this.renderedT = this.t;
+      this.buildLut();
+      this.renderField();
+      if (cold) this.warmTrail();
+      this.advanceTrail();
+    }
+    // Blitted a few pixels oversized so the shake offset never drags a black
+    // edge into frame.
+    //
+    // Smoothing OFF, alone among the blits here. The field is solved well below
+    // the density it is shown at, and a smoothed magnification of it lands in
+    // the worst place available: too soft to be pixel art, too stepped to pass
+    // as continuous, because the trail feedback below resamples its own output
+    // every frame and crystallises the block edges back up faster than the
+    // filtering can knock them down. Nearest-neighbour commits instead — the
+    // structure is the same size either way, so this is the same picture read
+    // as deliberate rather than as a compromise, and it costs nothing.
+    // The trail's own accumulation stays smoothed; that is what makes it bleed.
+    const bleed = 5;
+    const bleedY = bleed * H / W;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.buffers.trail.canvas,
+      this.shakeX - bleed, this.shakeY - bleedY, W + bleed * 2, H + bleedY * 2);
+    ctx.globalCompositeOperation = 'lighter';
+    // One soft core, so the middle of the dive is not dead black on the frames
+    // where the camera is passing between filaments. The only non-fractal colour
+    // on screen, and it stays under a tenth alpha for that reason.
+    const core = ACID_HEX[Math.floor(this.hueShift * ACID_HEX.length) % ACID_HEX.length];
+    this.glowDot(ctx, CX + this.shakeX, CY + this.shakeY, 40 + this.bass * 46, core, 0.05 + this.beatPulse * 0.09);
+    ctx.restore();
+    this.drawDust(ctx, 0.45);
+    this.modernFinish(ctx, 0.3);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HYPER-VECTOR TUNNEL — the Winamp/Geiss/MilkDrop feedback warp.
+//
+// The whole preset is one idea: draw a little, then draw the LAST frame back on
+// top of itself slightly rotated and scaled, forever. Geiss's tunnels were a
+// per-pixel UV distortion; drawImage is affine-only, so a single blit can only
+// spin the whole plane at one rate. Three concentric clipped bands, each with
+// its own scale and twist, buy back the thing that actually reads as a vortex:
+// the middle of the screen rushing at a different rate from the edge.
+//
+// The buffer runs at 320x180 and is upscaled. That is not a compromise — the
+// warp is soft by construction, and the upscale IS the bloom.
+const PLASMA_W = 320;
+const PLASMA_H = 180;
+const PLASMA_HEX = ['#4df0ff', '#ff4de0', '#b6ff4d', '#f4faff'];
+// How much of the previous frame survives, and how bright the layer feeding it
+// is allowed to be. These two are one decision, not two: a pixel that is
+// re-drawn every frame settles at roughly INK / (1 - DECAY), so at 0.88 the
+// fresh layer is multiplied about eight times over. Draw the vectors at the
+// brightness you want to SEE and the tunnel ramps to white within a second.
+const PLASMA_DECAY = 0.88;
+const PLASMA_INK = 0.13;
+const PLASMA_BANDS = 3;
+// Zooms land on a beat and hold. A continuous zoom reads as drifting; a
+// quantised one reads as cut to the music, which is the Geiss signature.
+const PLASMA_ZOOM_LADDER = [1.006, 1.014, 1.022, 1.011, 1.030, 1.017];
+const PLASMA_LISSAJOUS = [[3, 2], [5, 4], [3, 4], [5, 2], [7, 4]];
+// Frames of feedback stamped on the first draw, so the tunnel opens settled
+// instead of fading up out of black. Sixteen leaves 0.88^16, about an eighth of
+// the brightness still to accumulate — invisible on entry in the jukebox, but
+// render-video's workers each start a segment cold, and a measurable dip landed
+// on exactly the frames where one worker's range began. Thirty is inside two
+// percent, and the cost is a one-off few milliseconds on the first draw only.
+const PLASMA_WARM_FRAMES = 30;
+
+class HyperVectorTunnel extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[17];
+    // The neon set is the point of the homage, so it replaces the seeded pack
+    // palette outright — drawDust and the core glow read from it too.
+    this.palette = PLASMA_HEX;
+    this.plasmaRng = this.rng.stream('plasma');
+    this.sparkRng = this.rng.stream('plasma-spark');
+    this.spokes = this.plasmaRng.int(5, 9);
+    this.twistDir = this.plasmaRng.chance(0.5) ? 1 : -1;
+    // Inner band zooms hardest and twists least, outer band the reverse. The
+    // slight scale spread between bands is also where the colour fringing comes
+    // from: a hue laid down fifteen frames ago sits at a different radius in
+    // each band, which is how MilkDrop got its chromatic edges too.
+    this.bandZoom = [1.5, 1.0, 0.62];
+    this.bandTwist = [0.45, 1.0, 1.65];
+    this.zoom = 1.012;
+    this.zoomTarget = 1.012;
+    this.zoomIndex = this.plasmaRng.int(0, PLASMA_ZOOM_LADDER.length - 1);
+    this.twist = 0;
+    this.lissPhase = 0;
+    this.lissRatio = this.plasmaRng.pick(PLASMA_LISSAJOUS);
+    this.lissPhrase = -1;
+    this.bloomGain = 0.4;
+    this.bassEnv = 0.25;
+    this.trebleEnv = 0.15;
+    this.sparks = makePool(48);
+    for (const p of this.sparks) this.seedSpark(p, true);
+    this.buffers = null;
+    this.buffersTried = false;
+    this.renderedT = -1;
+    // Real state, so a test can prove the guard below actually guards.
+    this.feedbackAdvances = 0;
+  }
+
+  seedSpark(p, cold = false) {
+    const rng = cold ? this.plasmaRng : this.sparkRng;
+    p.hue = rng.float();
+    p.x = rng.float() * TAU;                    // angle
+    p.y = cold ? rng.float() * 90 : 4 + rng.float() * 10;  // radius
+    p.z = 42 + rng.float() * 78;                // speed
+    p.life = cold ? rng.float() : 1;
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    // A backgrounded tab hands back one enormous dt. Every integrator here is
+    // explicit, so clamp once and use the clamped value throughout.
+    const step = clamp(dt, 0, 1 / 20);
+    const crossed = Math.floor(this.beat) !== Math.floor(this.prevBeat);
+    if (crossed) {
+      this.zoomIndex = (this.zoomIndex + 1 + this.plasmaRng.int(0, 2)) % PLASMA_ZOOM_LADDER.length;
+      // Quantised in value, eased in time. The ladder rung is chosen on the
+      // beat; getting there is smooth, so the picture never tears.
+      this.zoomTarget = 1 + (PLASMA_ZOOM_LADDER[this.zoomIndex] - 1) * (0.5 + this.bass);
+    }
+    // The kick itself, not the beat grid it sits on: a bar with no drum under it
+    // gets the ladder but not the surge.
+    const bassJump = Math.max(0, this.bass - this.bassEnv);
+    this.bassEnv += (this.bass - this.bassEnv) * clamp(step * 5, 0, 1);
+    this.zoom += (this.zoomTarget + this.hit * 0.02 + bassJump * 0.05 - this.zoom) * clamp(step * 8, 0, 1);
+    this.twist += step * (0.16 * this.twistDir + this.bass * 0.9 * this.twistDir) * this.motion;
+    this.lissPhase += step * (0.35 + this.mid * 0.9) * this.motion;
+    // A new figure every 8 bars, so the geometry has a shape you can follow
+    // rather than churning continuously.
+    const phrase = Math.floor(this.beat / 32);
+    if (phrase !== this.lissPhrase) {
+      this.lissPhrase = phrase;
+      this.lissRatio = this.plasmaRng.pick(PLASMA_LISSAJOUS);
+    }
+    const trebleJump = Math.max(0, this.treble - this.trebleEnv);
+    this.trebleEnv += (this.treble - this.trebleEnv) * clamp(step * 7, 0, 1);
+    if (trebleJump > 0.055) {
+      let budget = 12;
+      for (const p of this.sparks) {
+        if (budget <= 0) break;
+        if (p.life <= 0.06) { this.seedSpark(p); budget--; }
+      }
+    }
+    for (const p of this.sparks) {
+      p.y += step * p.z * (1 + this.treble * 2) * this.motion;
+      p.life -= step * (0.5 + this.treble * 0.8);
+      if (p.y > 210 || p.life <= 0) p.life = 0;
+    }
+    this.bloomGain += (0.35 + this.bass * 0.5 + this.pulse * 0.6 - this.bloomGain) * clamp(step * 4, 0, 1);
+  }
+
+  ensureBuffers() {
+    if (this.buffersTried) return this.buffers !== null;
+    this.buffersTried = true;
+    const a = makeSurface(PLASMA_W, PLASMA_H);
+    const b = makeSurface(PLASMA_W, PLASMA_H);
+    const bloom = makeSurface(PLASMA_W >> 1, PLASMA_H >> 1);
+    if (!a || !b || !bloom) return false;
+    for (const s of [a, b]) {
+      s.ctx.fillStyle = '#030308';
+      s.ctx.fillRect(0, 0, PLASMA_W, PLASMA_H);
+    }
+    this.buffers = { front: a, back: b, bloom };
+    return true;
+  }
+
+  // The fresh vector layer, in buffer coordinates. Everything the feedback loop
+  // will smear for the next fifteen frames is laid down here exactly once.
+  paintVectors(ctx, px, py) {
+    const scale = PLASMA_W / W;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    // Starburst. Aimed by the shared ring choreography so it turns on the same
+    // 4/8/16-beat holds the rest of the pack turns on.
+    const reach = (26 + this.mid * 52 + this.pulse * 30) * scale;
+    for (let i = 0; i < this.spokes; i++) {
+      const ang = this.ringRotation + this.twist * 0.3 + (i / this.spokes) * TAU;
+      const c = this.palette[i % this.palette.length];
+      ctx.strokeStyle = rgba(c, PLASMA_INK * (1 + this.mid * 0.8));
+      ctx.lineWidth = (0.8 + this.pulse * 1.6) * scale;
+      ctx.beginPath();
+      ctx.moveTo(px + Math.cos(ang) * 5 * scale, py + Math.sin(ang) * 5 * scale);
+      ctx.lineTo(px + Math.cos(ang) * reach, py + Math.sin(ang) * reach);
+      ctx.stroke();
+    }
+    // Lissajous figure. Sampled densely enough that the polyline reads as a
+    // curve once the feedback has smeared it.
+    const [rx, ry] = this.lissRatio;
+    const ax = (48 + this.mid * 44) * scale;
+    const ay = (30 + this.bass * 34) * scale;
+    ctx.strokeStyle = rgba(this.palette[1], PLASMA_INK * (0.9 + this.mid * 0.7));
+    ctx.lineWidth = (0.7 + this.mid * 1.1) * scale;
+    ctx.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const u = (i / 120) * TAU;
+      const x = px + Math.sin(u * rx + this.lissPhase) * ax;
+      const y = py + Math.sin(u * ry + this.lissPhase * 0.7) * ay;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Treble sparks, as short radial streaks rather than dots — the feedback
+    // gives them their tails, so they only need to be a hint of motion.
+    for (const p of this.sparks) {
+      if (p.life <= 0) continue;
+      const c = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      const cos = Math.cos(p.x); const sin = Math.sin(p.x);
+      const r0 = p.y * scale;
+      const r1 = (p.y + 7 + this.treble * 9) * scale;
+      ctx.strokeStyle = rgba(c, p.life * PLASMA_INK * (1.1 + this.treble * 1.2));
+      ctx.lineWidth = (0.5 + p.life * 0.9) * scale;
+      ctx.beginPath();
+      ctx.moveTo(px + cos * r0, py + sin * r0);
+      ctx.lineTo(px + cos * r1, py + sin * r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  advanceFeedback() {
+    const { front, back } = this.buffers;
+    const ctx = back.ctx;
+    const px = (this.focusX / W) * PLASMA_W;
+    const py = (this.focusY / H) * PLASMA_H;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    // Opaque, so the decay converges on the background instead of silting up
+    // toward grey the way an alpha-only fade does.
+    ctx.fillStyle = '#030308';
+    ctx.fillRect(0, 0, PLASMA_W, PLASMA_H);
+    ctx.imageSmoothingEnabled = true;
+    const outer = Math.hypot(PLASMA_W, PLASMA_H);
+    for (let i = 0; i < PLASMA_BANDS; i++) {
+      const rIn = (i / PLASMA_BANDS) * outer * 0.5;
+      const rOut = ((i + 1) / PLASMA_BANDS) * outer * 0.5 + 1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, rOut, 0, TAU);
+      if (rIn > 0) ctx.arc(px, py, rIn, 0, TAU, true);
+      ctx.clip();
+      ctx.translate(px, py);
+      ctx.rotate(this.twist * this.bandTwist[i] * 0.06);
+      const z = 1 + (this.zoom - 1) * this.bandZoom[i];
+      ctx.scale(z, z);
+      ctx.translate(-px, -py);
+      ctx.globalAlpha = PLASMA_DECAY;
+      ctx.drawImage(front.canvas, 0, 0);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    this.paintVectors(ctx, px, py);
+    // The bloom is built from the finished frame but deliberately NOT written
+    // back into it. Feeding an additive blur into the same buffer it was taken
+    // from makes the loop gain exceed one, and the whole screen ramps to white
+    // in about a second — the failure this decay was chosen to avoid, arriving
+    // by a different door. It gets composited against the frame in draw().
+    const { bloom } = this.buffers;
+    const bw = PLASMA_W >> 1; const bh = PLASMA_H >> 1;
+    bloom.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    bloom.ctx.globalCompositeOperation = 'source-over';
+    bloom.ctx.globalAlpha = 1;
+    bloom.ctx.clearRect(0, 0, bw, bh);
+    bloom.ctx.imageSmoothingEnabled = true;
+    bloom.ctx.drawImage(back.canvas, 0, 0, bw, bh);
+    this.buffers.front = back;
+    this.buffers.back = front;
+    this.feedbackAdvances++;
+  }
+
+  // Stamp a settled tunnel on the first draw. Two callers need it: the jukebox,
+  // where an empty buffer means the preset visibly fades up out of black on
+  // entry, and render-video, whose parallel workers each replay update() alone
+  // to reach their range and would otherwise all open on an empty screen.
+  //
+  // The buffer's memory is roughly 1/(1 - DECAY), about eight frames, so thirty
+  // stamps settle it comfortably. Worth knowing if a brightness step at a
+  // worker's first frame ever sends you back here: one was measured and traced
+  // instead to segment encoding, in a preset with no buffer to warm at all.
+  warmFeedback() {
+    for (let i = 0; i < PLASMA_WARM_FRAMES; i++) this.advanceFeedback();
+    this.feedbackAdvances = 0;
+  }
+
+  draw(ctx) {
+    this.backdrop(ctx, '#030308', '#050310');
+    if (!this.ensureBuffers()) {
+      // No real canvas. Still a member of the pack: the vector layer straight to
+      // frame, no feedback, no throw.
+      this.paintVectors(ctx, this.focusX, this.focusY);
+      this.drawDust(ctx, 0.5);
+      this.modernFinish(ctx, 0.3);
+      return;
+    }
+    // Guarded on the clock, because a cross-fade draws both records in one
+    // frame and the tunnel must not advance twice on a single tick.
+    if (this.renderedT !== this.t) {
+      const cold = this.renderedT < 0;
+      this.renderedT = this.t;
+      if (cold) this.warmFeedback();
+      this.advanceFeedback();
+    }
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.buffers.front.canvas, 0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp(this.bloomGain) * 0.34 * this.frameAlpha;
+    ctx.drawImage(this.buffers.bloom.canvas, 0, 0, W, H);
+    ctx.globalAlpha = this.frameAlpha;
+    // The present frame, crisp, on top of its own soft history. That contrast
+    // is the entire read of the preset: everything old is a smear, everything
+    // now has an edge.
+    ctx.globalCompositeOperation = 'lighter';
+    const [rx, ry] = this.lissRatio;
+    const hx = this.focusX + Math.sin(this.lissPhase * rx) * (48 + this.mid * 44);
+    const hy = this.focusY + Math.sin(this.lissPhase * ry * 0.7) * (30 + this.bass * 34);
+    this.glowDot(ctx, hx, hy, 7 + this.mid * 11, this.palette[3], 0.5 + this.pulse * 0.4);
+    this.glowDot(ctx, this.focusX, this.focusY, 26 + this.bass * 40, this.palette[0], 0.16 + this.pulse * 0.2);
+    ctx.restore();
+    this.drawDust(ctx, 0.5);
+    this.modernFinish(ctx, 0.3);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// NEBULA RIBBON DRIFT — the iTunes Magnetosphere homage.
+//
+// Magnetosphere's trick was never particle COUNT, it was that the cloud had
+// weight: it compressed as the bass built and burst on the kick. So the physics
+// is the feature here and the count is just enough to read as volume.
+//
+// Two things keep it cheap. Every particle is a blit from a baked glow sprite
+// rather than a gradient allocated per frame, and there is no depth sort at all
+// — everything composites with 'lighter', which is commutative, so sorting
+// hundreds of particles every frame would buy exactly nothing. Depth instead
+// comes from rendering the far half into a quarter-size buffer, where the
+// upscale blur IS the depth of field.
+const NEBULA_COUNT = 420;
+const NEBULA_FAR = 250;
+const NEBULA_FAR_W = 160;
+const NEBULA_FAR_H = 90;
+const NEBULA_RIBBONS = 3;
+// The ribbon is a filled strip, not a stroked curve, so its smoothness is node
+// count and nothing else — at 34 the outside of a wide coil reads as a polygon.
+const NEBULA_NODES = 52;
+const NEBULA_COOL = ['#6ec8ff', '#a98cff', '#4de0ff', '#dfe8ff'];
+const NEBULA_WARM = ['#ffc857', '#ff7a5c', '#ffd98a', '#fff2d8'];
+// Soft on purpose. The Julia dive springs at 500/16 because it had to settle
+// inside a quarter second under four-on-the-floor; this cloud should breathe
+// across a bar, so it is roughly twenty times looser.
+const NEBULA_SPRING = 26;
+const NEBULA_DAMP = 3.4;
+const NEBULA_SHOCK_SPEED = 260;
+// Only particles inside this band of the expanding shell take the impulse. That
+// is what makes a detonation read as a sphere travelling outward rather than as
+// the whole cloud scaling up at once.
+const NEBULA_SHOCK_BAND = 26;
+const NEBULA_FOV = 260;
+
+class NebulaRibbonDrift extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[18];
+    this.nebulaRng = this.rng.stream('nebula');
+    this.shimmerRng = this.rng.stream('nebula-shimmer');
+    this.palette = NEBULA_COOL.slice();
+    this.heat = 0;
+    this.paletteStep = 0;
+    this.squeeze = 0;
+    this.shockR = 0;
+    this.shockE = 0;
+    this.detonations = 0;
+    this.trebleEnv = 0.15;
+    this.yaw = this.nebulaRng.float() * TAU;
+    this.pitch = 0;
+    // Which beats of the bar this seed detonates on. A song is not obliged to
+    // put a kick on all four, and neither is the picture.
+    this.kickBeats = this.nebulaRng.pick([[0], [0, 2], [0, 2, 3]]);
+    this.cloud = Array.from({ length: NEBULA_COUNT }, () => ({
+      wx: 0, wy: 0, wz: 0, vx: 0, vy: 0, vz: 0, hx: 0, hy: 0, hz: 0, hue: 0, far: false,
+    }));
+    this.cloud.forEach((p, i) => {
+      // Even shell, not a uniform cube: the cube corners would read as a box.
+      const u = this.nebulaRng.float() * 2 - 1;
+      const ang = this.nebulaRng.float() * TAU;
+      const rad = 46 + this.nebulaRng.float() * 74;
+      const flat = Math.sqrt(Math.max(0, 1 - u * u));
+      p.hx = Math.cos(ang) * flat * rad;
+      p.hy = u * rad * 0.78;
+      p.hz = Math.sin(ang) * flat * rad;
+      p.wx = p.hx; p.wy = p.hy; p.wz = p.hz;
+      p.hue = this.nebulaRng.float();
+      p.far = i < NEBULA_FAR;
+    });
+    this.ribbons = Array.from({ length: NEBULA_RIBBONS }, (_, i) => ({
+      phase: this.nebulaRng.float() * TAU,
+      tilt: (this.nebulaRng.float() * 2 - 1) * 0.6,
+      radius: 62 + this.nebulaRng.float() * 46,
+      seed: this.nebulaRng.float() * 40,
+      near: i === NEBULA_RIBBONS - 1,
+      nodes: Array.from({ length: NEBULA_NODES }, () => ({ x: 0, y: 0, s: 0 })),
+    }));
+    this.far = null;
+    this.farTried = false;
+    this.renderedT = -1;
+  }
+
+  // Allocation-free: every caller reads the fields straight back off `this.proj`
+  // before the next call overwrites them.
+  project(x, y, z, out) {
+    const cy = Math.cos(this.yaw); const sy = Math.sin(this.yaw);
+    const cp = Math.cos(this.pitch); const sp = Math.sin(this.pitch);
+    const rx = x * cy - z * sy;
+    const rz = x * sy + z * cy;
+    const ry = y * cp - rz * sp;
+    const dz = y * sp + rz * cp;
+    const s = NEBULA_FOV / (NEBULA_FOV + dz);
+    out.x = CX + rx * s;
+    out.y = CY + ry * s;
+    out.s = s;
+    return out;
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    const step = clamp(dt, 0, 1 / 20);
+    // Camera drift takes `motion`; the physics below deliberately does not.
+    // A quiet passage should slow the CAMERA down, not change how a spring
+    // behaves — springs that ease with the mix stop reading as mass.
+    this.yaw += step * 0.14 * this.motion;
+    this.pitch = Math.sin(this.flow * 0.19) * 0.28;
+    this.squeeze += (this.bass - this.squeeze) * clamp(step * 2.2, 0, 1);
+    const trebleJump = Math.max(0, this.treble - this.trebleEnv);
+    this.trebleEnv += (this.treble - this.trebleEnv) * clamp(step * 7, 0, 1);
+    // The walk has to come back. Treble transients arrive far more often than
+    // once a second, so a rise this size against a slow fall just pins the
+    // palette at the warm end and the cool half of it is never seen.
+    this.heat = clamp(this.heat + trebleJump * 0.7 - step * 0.85);
+    // Quantised before it reaches glowSprite. A continuously varying hex would
+    // mint a new baked canvas every frame and thrash the cache; eight steps is
+    // invisible at these alphas and holds the map to a fixed handful.
+    this.paletteStep = Math.round(this.heat * 7) / 7;
+    for (let i = 0; i < this.palette.length; i++) {
+      this.palette[i] = mixHex(NEBULA_COOL[i], NEBULA_WARM[i], this.paletteStep);
+    }
+    // Detonation comes off the sequencer's own kit tally, never off beatPulse.
+    // beatPulse keeps ticking through a section with the drums arranged out, and
+    // a nebula bursting where nobody played a drum is exactly the failure the
+    // kit-weighted signals exist to prevent.
+    const crossed = Math.floor(this.beat) !== Math.floor(this.prevBeat);
+    const slot = ((Math.floor(this.beat) % 4) + 4) % 4;
+    if (crossed && !this.drumless && this.groove > 0.35 && this.kickBeats.includes(slot)) {
+      this.shockR = 0;
+      this.shockE = 0.55 + this.bass * 0.8 + this.drums * 0.5;
+      this.detonations++;
+    }
+    if (this.shockE > 0) {
+      this.shockR += step * NEBULA_SHOCK_SPEED * this.shockE;
+      this.shockE = Math.max(0, this.shockE - step * 1.1);
+      if (this.shockR > 320) this.shockE = 0;
+    }
+    const pull = 1 - this.squeeze * 0.55;
+    for (const p of this.cloud) {
+      const hx = p.hx * pull; const hy = p.hy * pull; const hz = p.hz * pull;
+      p.vx += (hx - p.wx) * NEBULA_SPRING * step;
+      p.vy += (hy - p.wy) * NEBULA_SPRING * step;
+      p.vz += (hz - p.wz) * NEBULA_SPRING * step;
+      if (this.shockE > 0) {
+        const r = Math.hypot(p.wx, p.wy, p.wz) || 0.0001;
+        if (Math.abs(r - this.shockR) < NEBULA_SHOCK_BAND) {
+          const kick = this.shockE * 210 * step;
+          p.vx += (p.wx / r) * kick;
+          p.vy += (p.wy / r) * kick;
+          p.vz += (p.wz / r) * kick;
+        }
+      }
+      const damp = 1 / (1 + NEBULA_DAMP * step);
+      p.vx *= damp; p.vy *= damp; p.vz *= damp;
+      p.wx += p.vx * step; p.wy += p.vy * step; p.wz += p.vz * step;
+    }
+  }
+
+  ensureFar() {
+    if (this.farTried) return this.far !== null;
+    this.farTried = true;
+    this.far = makeSurface(NEBULA_FAR_W, NEBULA_FAR_H);
+    return this.far !== null;
+  }
+
+  // Ribbon nodes in screen space for the current camera. Written into the
+  // ribbon's own preallocated node list rather than returned, so a frame
+  // allocates nothing.
+  layoutRibbon(ribbon, scale = 1) {
+    const proj = { x: 0, y: 0, s: 0 };
+    const coil = 0.4 + this.mid * 1.1;
+    for (let i = 0; i < NEBULA_NODES; i++) {
+      const u = i / (NEBULA_NODES - 1);
+      const ang = ribbon.phase + u * TAU * 1.6 + this.flow * 0.22;
+      const r = ribbon.radius * (0.55 + 0.45 * Math.sin(u * Math.PI));
+      // Mids drive the turbulence amplitude, which is what coils a smooth helix
+      // into a knot when the arrangement gets busy.
+      const n = valueNoise3(u * 3.1 + ribbon.seed, ribbon.seed, this.flow * coil);
+      const wob = (n - 0.5) * (26 + this.mid * 62);
+      const x = Math.cos(ang) * r + wob;
+      const y = (u - 0.5) * 128 * ribbon.tilt + wob * 0.5;
+      const z = Math.sin(ang) * r;
+      this.project(x, y, z, proj);
+      const node = ribbon.nodes[i];
+      node.x = proj.x * scale;
+      node.y = proj.y * scale;
+      node.s = proj.s;
+    }
+  }
+
+  // A tapered strip: down one edge, back up the other. Both ends pinch to
+  // nothing so the ribbon has no cut-off, and the whole body takes one gradient.
+  paintRibbon(ctx, ribbon, alpha, scale = 1) {
+    const nodes = ribbon.nodes;
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    if (!Number.isFinite(minX) || maxX - minX < 0.01) return;
+    const half = (i) => {
+      const u = i / (NEBULA_NODES - 1);
+      return Math.sin(Math.PI * u) * (3.2 + this.mid * 3.4) * nodes[i].s * scale;
+    };
+    const normal = (i) => {
+      const a = nodes[Math.max(0, i - 1)];
+      const b = nodes[Math.min(NEBULA_NODES - 1, i + 1)];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      return [-dy / len, dx / len];
+    };
+    ctx.beginPath();
+    for (let i = 0; i < NEBULA_NODES; i++) {
+      const [nx, ny] = normal(i); const h = half(i);
+      const x = nodes[i].x + nx * h; const y = nodes[i].y + ny * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let i = NEBULA_NODES - 1; i >= 0; i--) {
+      const [nx, ny] = normal(i); const h = half(i);
+      ctx.lineTo(nodes[i].x - nx * h, nodes[i].y - ny * h);
+    }
+    ctx.closePath();
+    const g = ctx.createLinearGradient(minX, minY, maxX, maxY);
+    g.addColorStop(0, rgba(this.palette[0], alpha * 0.85));
+    g.addColorStop(0.5, rgba('#ffffff', alpha * 0.5));
+    g.addColorStop(1, rgba(this.palette[1], alpha * 0.85));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = rgba('#ffffff', alpha * (0.12 + this.pulse * 0.3));
+    ctx.lineWidth = 0.5 * scale;
+    ctx.stroke();
+  }
+
+  paintCloud(ctx, far, scale = 1) {
+    const proj = { x: 0, y: 0, s: 0 };
+    for (const p of this.cloud) {
+      if (p.far !== far) continue;
+      this.project(p.wx, p.wy, p.wz, proj);
+      if (proj.s <= 0.02) continue;
+      const shimmer = 0.55 + 0.45 * Math.sin(p.hue * TAU + this.flow * 9);
+      const alpha = clamp(proj.s * (0.18 + this.treble * 0.62) * shimmer);
+      if (alpha < 0.012) continue;
+      const hex = this.palette[Math.floor(p.hue * this.palette.length) % this.palette.length];
+      const px = 9 + proj.s * (far ? 15 : 9) + this.pulse * 5;
+      const sprite = glowSprite(hex, px);
+      const x = proj.x * scale; const y = proj.y * scale;
+      if (!sprite) {
+        // No baked sprite (headless). Falls back to the hand-placed light so the
+        // preset still composes rather than drawing nothing.
+        this.glowDot(ctx, x, y, px * 0.5 * scale, hex, alpha);
+        continue;
+      }
+      const size = px * scale;
+      ctx.globalAlpha = alpha * this.frameAlpha;
+      ctx.drawImage(sprite.canvas, x - size * 0.5, y - size * 0.5, size, size);
+    }
+    ctx.globalAlpha = this.frameAlpha;
+  }
+
+  // Rebuilt wholesale from update() state, so it is idempotent — unlike the
+  // tunnel's feedback buffer this holds no history and drawing it twice yields
+  // the same pixels. The clock guard is purely an optimisation for the frames
+  // where a cross-fade paints this preset twice.
+  buildFar() {
+    const ctx = this.far.ctx;
+    const scale = NEBULA_FAR_W / W;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, NEBULA_FAR_W, NEBULA_FAR_H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const ribbon of this.ribbons) {
+      if (ribbon.near) continue;
+      this.layoutRibbon(ribbon, scale);
+      this.paintRibbon(ctx, ribbon, 0.5, scale);
+    }
+    const keepAlpha = this.frameAlpha;
+    this.frameAlpha = 1;
+    this.paintCloud(ctx, true, scale);
+    this.frameAlpha = keepAlpha;
+    ctx.globalAlpha = 1;
+  }
+
+  draw(ctx) {
+    // The void is pure black and opaque. Everything else is additive on it.
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    if (this.ensureFar()) {
+      if (this.renderedT !== this.t) {
+        this.renderedT = this.t;
+        this.buildFar();
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = 0.9 * this.frameAlpha;
+      ctx.drawImage(this.far.canvas, 0, 0, W, H);
+      ctx.globalAlpha = this.frameAlpha;
+    } else {
+      for (const ribbon of this.ribbons) {
+        if (ribbon.near) continue;
+        this.layoutRibbon(ribbon);
+        this.paintRibbon(ctx, ribbon, 0.4);
+      }
+      this.paintCloud(ctx, true);
+    }
+    for (const ribbon of this.ribbons) {
+      if (!ribbon.near) continue;
+      this.layoutRibbon(ribbon);
+      this.paintRibbon(ctx, ribbon, 0.75);
+    }
+    this.paintCloud(ctx, false);
+    // The compressed heart, so the middle of the cloud has somewhere to burst
+    // from rather than being a hole.
+    this.glowDot(ctx, CX, CY, 26 + this.bass * 44, this.palette[0], 0.1 + this.pulse * 0.22);
+    // The shell, fading as it goes. It has to die out well before it reaches the
+    // frame edge: a ring still carrying weight out there stops reading as a
+    // shockwave leaving the cloud and starts reading as a circle drawn round the
+    // picture, which is what it did at a flat alpha.
+    const reach = clamp(1 - this.shockR / 210);
+    if (this.shockE > 0.01 && reach > 0.01) {
+      ctx.strokeStyle = rgba(this.palette[2], clamp(this.shockE * reach * reach * 0.4));
+      ctx.lineWidth = (0.6 + this.shockE * 1.4) * reach;
+      ctx.beginPath();
+      ctx.ellipse(CX, CY, this.shockR, this.shockR * 0.74, 0, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.restore();
+    this.drawDust(ctx, 0.55);
+    this.modernFinish(ctx, 0.34);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GLASS BLOB EQUALIZER — the Windows Media Player homage.
+//
+// Not to be confused with LIQUID CHROME, which orbits five SEPARATE glowing
+// blobs. This one is a single fused surface with a bargraph behind it, which is
+// the actual WMP silhouette.
+//
+// The surface is a real metaball isosurface, marched RADIALLY: 96 rays out from
+// the centre, each walked until the field crosses the threshold. A per-pixel
+// raymarch would be the textbook approach and is what the modern references all
+// do, but it costs roughly twenty times the Julia dive's per-pixel kernel and
+// then has to be upscaled from a small buffer — soft edges, which is the exact
+// opposite of the crisp glass the look depends on. Marching outward instead
+// yields an ordered closed loop that smooths into a spline and stays sharp at
+// any device density, for a fraction of the arithmetic.
+//
+// The one thing it cannot do is let a lobe break off and float away, because
+// every radius is single-valued from the centre. That is an acceptable trade
+// for a body that is meant to hold together anyway.
+const BLOB_RAYS = 96;
+const BLOB_SAMPLES = 14;
+const BLOB_BALLS = 7;
+const BLOB_ISO = 1;
+const BLOB_MAX_R = 108;
+const EQ_BARS = 28;
+const EQ_SEGMENTS = 14;
+const EQ_GRAVITY = 1.6;
+const EQ_HANG = 0.35;
+const BLOB_TEMPS = ['#28e0a0', '#ff4fd0', '#ffb347', '#6a5cff'];
+
+class GlassBlobEqualizer extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[19];
+    this.blobRng = this.rng.stream('glass-blob');
+    this.balls = Array.from({ length: BLOB_BALLS }, () => ({
+      ang: this.blobRng.float() * TAU,
+      rate: 0.16 + this.blobRng.float() * 0.4,
+      // Spread matters more than it looks. Clustered tight against the centre
+      // every ball's falloff overlaps every other, the field goes radially
+      // symmetric and the marched surface comes out a circle — which is a lot
+      // of arithmetic to arrive at something arc() draws for free. Pushed out
+      // to a good fraction of the radius, the lobes actually read.
+      dist: 18 + this.blobRng.float() * 46,
+      weight: 300 + this.blobRng.float() * 520,
+      seed: this.blobRng.float() * 30,
+      x: 0,
+      y: 0,
+    }));
+    // Preallocated: the contour is rebuilt every frame and must not allocate.
+    this.radii = new Float32Array(BLOB_RAYS);
+    this.peaks = new Float32Array(EQ_BARS);
+    this.peakVel = new Float32Array(EQ_BARS);
+    this.peakHold = new Float32Array(EQ_BARS);
+    this.bars = new Float32Array(EQ_BARS);
+    this.rippleT = 0;
+    this.rippleE = 0;
+    this.temp = 0;
+    this.spec = 0;
+    this.trebleEnv = 0.15;
+    this.radius = 52;
+  }
+
+  // One bar of the graph. Deliberately not spectrumValue(): that walks the bins
+  // linearly, and this song's energy all lives in the bottom eighth of them, so
+  // a linear bargraph lights its first few columns and leaves two thirds of the
+  // width permanently dead. Bars are spaced logarithmically the way every real
+  // analyser spaces them, which is also how the ear spaces them.
+  bandValue(i) {
+    const spectrum = this.analysis?.spectrum;
+    if (!spectrum || !spectrum.length) return 0.25 + 0.2 * Math.sin(this.t * 2 + i * 0.7);
+    const lo = Math.pow(spectrum.length, i / EQ_BARS) - 1;
+    const hi = Math.pow(spectrum.length, (i + 1) / EQ_BARS) - 1;
+    const from = Math.min(spectrum.length - 1, Math.floor(lo));
+    const to = Math.min(spectrum.length, Math.max(from + 1, Math.ceil(hi)));
+    let peak = 0;
+    for (let k = from; k < to; k++) if (spectrum[k] > peak) peak = spectrum[k];
+    return peak / 255;
+  }
+
+  field(x, y) {
+    let sum = 0;
+    for (const b of this.balls) {
+      const dx = x - b.x; const dy = y - b.y;
+      sum += b.weight / (dx * dx + dy * dy + 24);
+    }
+    return sum;
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    const step = clamp(dt, 0, 1 / 20);
+    this.radius += ((46 + this.bass * 30) - this.radius) * clamp(step * 3, 0, 1);
+    for (const b of this.balls) {
+      b.ang += step * b.rate * this.motion;
+      const wob = valueNoise3(b.seed, this.flow * 0.5, b.seed * 0.5) - 0.5;
+      const d = b.dist * (1 + wob * 0.5);
+      b.x = Math.cos(b.ang + this.ringRotation) * d;
+      b.y = Math.sin(b.ang + this.ringRotation) * d * 0.82;
+    }
+    // Ripples ride the kit, so a section arranged without drums stops wobbling
+    // and just floats.
+    this.rippleT += step;
+    this.rippleE = Math.max(this.rippleE - step * 2.4, this.pulse * 0.9 + this.hit * 0.5);
+    const trebleJump = Math.max(0, this.treble - this.trebleEnv);
+    this.trebleEnv += (this.treble - this.trebleEnv) * clamp(step * 7, 0, 1);
+    this.spec = Math.max(this.spec - step * 7, trebleJump * 6);
+    this.temp = clamp(this.temp + trebleJump * 0.9 - step * 0.12);
+    for (let i = 0; i < EQ_BARS; i++) {
+      const v = clamp(this.bandValue(i));
+      this.bars[i] = v;
+      // Hardware bargraph behaviour: snap up, hang, then accelerate down. A
+      // linear fall reads as a slider; the hang and the acceleration are what
+      // make it read as a physical cap dropping.
+      if (v > this.peaks[i]) {
+        this.peaks[i] = v;
+        this.peakVel[i] = 0;
+        this.peakHold[i] = EQ_HANG;
+      } else if (this.peakHold[i] > 0) {
+        this.peakHold[i] -= step;
+      } else {
+        this.peakVel[i] += EQ_GRAVITY * step;
+        this.peaks[i] = Math.max(0, this.peaks[i] - this.peakVel[i] * step);
+      }
+    }
+    // Marched here rather than in draw(): it depends on nothing but the state
+    // settled above, and a cross-fade frame that painted this preset twice
+    // would otherwise march the whole surface twice for identical numbers.
+    this.buildContour();
+  }
+
+  // March each ray outward and take the first crossing of the threshold. The
+  // ripple is applied to the THRESHOLD rather than to the ball positions: that
+  // wobbles the skin like jelly without the balls visibly swimming about.
+  buildContour() {
+    const scale = this.radius / 52;
+    for (let i = 0; i < BLOB_RAYS; i++) {
+      const ang = (i / BLOB_RAYS) * TAU;
+      const cos = Math.cos(ang); const sin = Math.sin(ang) * 0.86;
+      const ripple = Math.sin(ang * 3 + this.rippleT * 7) * this.rippleE * 0.3
+        + Math.sin(ang * 5 - this.rippleT * 4.4) * this.rippleE * 0.18;
+      const iso = BLOB_ISO * (1 - ripple);
+      let lo = 4; let hi = BLOB_MAX_R * scale;
+      let found = hi;
+      for (let s = 1; s <= BLOB_SAMPLES; s++) {
+        const r = (s / BLOB_SAMPLES) * hi;
+        if (this.field(cos * r, sin * r) < iso) { found = r; lo = ((s - 1) / BLOB_SAMPLES) * hi; break; }
+      }
+      // One bisection pass off the bracketing samples. The march is coarse on
+      // purpose and this is what keeps the outline from stepping.
+      for (let k = 0; k < 4; k++) {
+        const mid = (lo + found) * 0.5;
+        if (this.field(cos * mid, sin * mid) < iso) found = mid; else lo = mid;
+      }
+      this.radii[i] = found;
+    }
+  }
+
+  // Catmull-Rom through the marched points, emitted as cubic Beziers. The loop
+  // is closed by construction, so the wrap-around indices just work.
+  contourPath(ctx, grow = 0, dy = 0) {
+    const pt = (i) => {
+      const k = ((i % BLOB_RAYS) + BLOB_RAYS) % BLOB_RAYS;
+      const ang = (k / BLOB_RAYS) * TAU;
+      const r = this.radii[k] + grow;
+      return [CX + Math.cos(ang) * r, CY + Math.sin(ang) * r * 0.86 + dy];
+    };
+    ctx.beginPath();
+    const [sx, sy] = pt(0);
+    ctx.moveTo(sx, sy);
+    for (let i = 0; i < BLOB_RAYS; i++) {
+      const [x0, y0] = pt(i - 1);
+      const [x1, y1] = pt(i);
+      const [x2, y2] = pt(i + 1);
+      const [x3, y3] = pt(i + 2);
+      ctx.bezierCurveTo(
+        x1 + (x2 - x0) / 6, y1 + (y2 - y0) / 6,
+        x2 - (x3 - x1) / 6, y2 - (y3 - y1) / 6,
+        x2, y2);
+    }
+    ctx.closePath();
+  }
+
+  drawGrid(ctx) {
+    const horizon = H * 0.58;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(this.palette[0], 0.1 + this.mid * 0.1);
+    ctx.lineWidth = 0.6;
+    for (let i = 0; i < 15; i++) {
+      const z = (i + ((this.beat * 0.25) % 1)) / 15;
+      const y = horizon + Math.pow(z, 1.8) * (H - horizon);
+      ctx.globalAlpha = (1 - z) * 0.5 * this.frameAlpha;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.globalAlpha = 0.28 * this.frameAlpha;
+    for (let i = -8; i <= 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(this.focusX + i * 6, horizon);
+      ctx.lineTo(CX + i * 58, H);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = this.frameAlpha;
+    ctx.restore();
+  }
+
+  // Inset from the bottom, not flush to it: in fullscreen the canvas is
+  // cover-cropped and a bargraph on the edge is the first thing a tall phone
+  // eats.
+  drawEqualizer(ctx) {
+    const bottom = H - 26;
+    const height = 74;
+    const slot = W / (EQ_BARS + 2);
+    const barW = slot * 0.66;
+    const left = slot;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const bright = 0.3 + this.mid * 0.5;
+    for (let i = 0; i < EQ_BARS; i++) {
+      const x = left + i * slot;
+      const v = this.bars[i];
+      // Three zone rects rather than fourteen segment rects, with one grille
+      // laid over the lot below. Same picture, a third of the fills.
+      const zones = [
+        [0, 0.55, this.palette[0]],
+        [0.55, 0.82, this.palette[2] || this.palette[1]],
+        [0.82, 1, '#ff5f6d'],
+      ];
+      for (const [from, to, hex] of zones) {
+        if (v <= from) continue;
+        const top = Math.min(v, to);
+        const y0 = bottom - top * height;
+        const y1 = bottom - from * height;
+        ctx.fillStyle = rgba(hex, bright);
+        ctx.fillRect(x, y0, barW, y1 - y0);
+      }
+      const py = bottom - this.peaks[i] * height;
+      ctx.fillStyle = rgba('#ffffff', 0.5 + this.treble * 0.4);
+      ctx.fillRect(x, py - 1.5, barW, 1.6);
+    }
+    ctx.restore();
+    // The grille: dark lines across the whole block, which is what turns a
+    // solid bar into lit segments.
+    ctx.save();
+    ctx.fillStyle = 'rgba(4,7,12,0.85)';
+    for (let s = 1; s < EQ_SEGMENTS; s++) {
+      const y = bottom - (s / EQ_SEGMENTS) * height;
+      ctx.fillRect(left, y - 0.6, W - left * 2 + barW, 1.2);
+    }
+    ctx.restore();
+  }
+
+  drawBlob(ctx) {
+    const hexA = BLOB_TEMPS[Math.floor(this.temp * 3.999) % BLOB_TEMPS.length];
+    const hexB = BLOB_TEMPS[(Math.floor(this.temp * 3.999) + 1) % BLOB_TEMPS.length];
+    const body = mixHex(hexA, hexB, (this.temp * 4) % 1);
+    // Contact shadow, so the glass sits in the scene instead of floating on it.
+    ctx.save();
+    this.contourPath(ctx, 1.5, 4);
+    ctx.fillStyle = 'rgba(2,4,8,0.4)';
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    this.contourPath(ctx);
+    const g = ctx.createLinearGradient(CX - 70, CY - 60, CX + 70, CY + 60);
+    g.addColorStop(0, rgba(body, 0.9));
+    g.addColorStop(0.55, rgba(mixHex(body, '#04060c', 0.45), 0.86));
+    g.addColorStop(1, rgba(mixHex(body, '#000000', 0.7), 0.9));
+    ctx.fillStyle = g;
+    ctx.fill();
+    // Subsurface scatter: light bleeding through the thin side, offset away
+    // from the key.
+    ctx.globalCompositeOperation = 'lighter';
+    const sss = ctx.createRadialGradient(CX - 22, CY - 20, 3, CX - 10, CY - 6, this.radius * 1.5);
+    sss.addColorStop(0, rgba('#ffffff', 0.5));
+    sss.addColorStop(0.35, rgba(body, 0.3));
+    sss.addColorStop(1, rgba(body, 0));
+    ctx.fillStyle = sss;
+    ctx.fill();
+    ctx.restore();
+    // Clipped passes: the specular band and the chrome sweep both need to stop
+    // at the silhouette.
+    ctx.save();
+    this.contourPath(ctx);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    const spec = ctx.createLinearGradient(CX - 60, CY - 62, CX + 20, CY - 6);
+    spec.addColorStop(0, rgba('#ffffff', 0));
+    spec.addColorStop(0.5, rgba('#ffffff', 0.28 + clamp(this.spec) * 0.5));
+    spec.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = spec;
+    ctx.fillRect(CX - 130, CY - 130, 260, 260);
+    const sweepAng = this.flow * 0.3;
+    const chrome = ctx.createLinearGradient(
+      CX + Math.cos(sweepAng) * -90, CY + Math.sin(sweepAng) * -90,
+      CX + Math.cos(sweepAng) * 90, CY + Math.sin(sweepAng) * 90);
+    chrome.addColorStop(0, rgba('#000000', 0));
+    chrome.addColorStop(0.42, rgba(this.palette[1], 0.16));
+    chrome.addColorStop(0.52, rgba('#ffffff', 0.3));
+    chrome.addColorStop(0.62, rgba(this.palette[0], 0.16));
+    chrome.addColorStop(1, rgba('#000000', 0));
+    ctx.fillStyle = chrome;
+    ctx.fillRect(CX - 130, CY - 130, 260, 260);
+    ctx.restore();
+    // Rim, then the same rim twice more nudged apart in cyan and magenta. Two
+    // extra strokes is all the dispersion needs to read.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    this.contourPath(ctx);
+    ctx.strokeStyle = rgba('#ffffff', 0.4 + clamp(this.spec) * 0.4);
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    const split = 0.6 + this.treble * 1.1;
+    this.contourPath(ctx, split);
+    ctx.strokeStyle = rgba('#4df0ff', 0.1 + this.treble * 0.3);
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    this.contourPath(ctx, -split);
+    ctx.strokeStyle = rgba('#ff4de0', 0.1 + this.treble * 0.3);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  draw(ctx) {
+    this.backdrop(ctx, '#0d1219', '#04060b');
+    this.drawGrid(ctx);
+    this.drawEqualizer(ctx);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    this.glowDot(ctx, CX, CY, this.radius * 2.1, this.palette[0], 0.1 + this.mid * 0.16);
+    ctx.restore();
+    this.drawBlob(ctx);
+    this.drawDust(ctx, 0.5);
+    this.modernFinish(ctx, 0.22);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// VJ MEGAMIX — the pack playing itself.
+//
+// One preset holds the screen for a full 16-bar phrase, then the next is cued in
+// and the two are mixed. Every blend LANDS on the downbeat rather than starting
+// on one, so the incoming scene is already up and running as the phrase turns
+// over; the two chop transitions move in eighth notes on top of that.
+//
+// There are no offscreen buffers here. Every preset lays an opaque backdrop and
+// then adds its light on top of it, so painting the incoming preset over the
+// outgoing one at alpha p is already a true A*(1-p) + B*p crossfade — its
+// additive layers land at exactly the same weight as its backdrop. The same
+// fact lets a clip path or a context transform carry the wipes for free. Two
+// presets in one frame is the whole cost, which is what the jukebox's own
+// swipe-switch has always paid.
+// ---------------------------------------------------------------------------
+
+// A full 16-bar phrase per record.
+export const MEGAMIX_CYCLE_BEATS = 64;
+// Dev audition cycle. A move lands every four bars instead of every sixteen,
+// and the list is walked in order rather than shuffled: long enough to see both
+// records settle either side of the blend, short enough that the whole set goes
+// past in about eighty seconds rather than five and a half minutes.
+export const MEGAMIX_AUDITION_BEATS = 16;
+// How far ahead the next record is cued. It updates unseen for this long before
+// the blend starts, so it arrives with its particle fields already moving rather
+// than from a standing start. Must be at least as long as the longest blend, and
+// is clamped to the cycle so the short audition cycle cues at the boundary.
+const MEGAMIX_PLAN_LEAD = 8;
+
+// Dev-only audition switch, reached from the dev menu's VISUALISERS list and
+// from ?goto=soundtest&audition. Both of those live behind Dev.enabled, which is
+// only ever true in an `npm run dev` build — so a shipped bundle has no way to
+// turn this on, exactly like every other dev surface.
+let megamixAudition = false;
+export function setMegamixAudition(on) { megamixAudition = !!on; }
+// Reaches every corner from anywhere the drifting focal point can be.
+const MEGAMIX_COVER_R = 320;
+const MEGAMIX_SHATTER_COLS = 16;
+const MEGAMIX_SHATTER_ROWS = 9;
+// Both quantized transitions move in eighth notes: fast enough to read as a
+// chop, slow enough that every step is unmistakably ON something.
+const MEGAMIX_CHOP_STEPS = 8;
+const MEGAMIX_VENETIAN_STRIPS = 9;
+// Nearly opaque on purpose: the readout has to stay readable through FLASH CUT,
+// which by design fills the frame with light at the exact moment you are trying
+// to read which move just fired.
+const MEGAMIX_READOUT_PLATE = 'rgba(3,4,12,0.88)';
+
+// `beats` is how long the move takes; `align` says which instant of it the
+// downbeat is — the end for a blend, the middle for a cut. `solo` marks the
+// moves that never put two presets in the same frame.
+export const MEGAMIX_TRANSITIONS = [
+  {
+    name: 'DISSOLVE',
+    beats: 4,
+    run(ctx, mix, from, to, p) {
+      const k = smooth(p);
+      if (k < 0.995) mix.paint(ctx, from, 1);
+      mix.paint(ctx, to, k);
+    },
+  },
+  {
+    name: 'DOUBLE EXPOSURE',
+    beats: 4,
+    run(ctx, mix, from, to, p) {
+      // Both records go down additively on a black bed, so the middle of the
+      // blend is the light of two scenes at once rather than one backdrop
+      // quietly hiding the other. The bump is what makes it bloom through the
+      // handover instead of passing through a muddy halfway house.
+      const k = smooth(p);
+      const bump = 1 + Math.sin(p * Math.PI) * 0.55;
+      ctx.save();
+      ctx.globalAlpha = mix.baseAlpha;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      mix.paint(ctx, from, Math.min(1, (1 - k) * bump));
+      mix.paint(ctx, to, Math.min(1, k * bump));
+      ctx.restore();
+    },
+  },
+  {
+    name: 'BLOCK SHATTER',
+    beats: 4,
+    run(ctx, mix, from, to, p) {
+      mix.paint(ctx, from, 1);
+      const order = mix.shatterOrder;
+      const step = Math.min(MEGAMIX_CHOP_STEPS, Math.floor(p * MEGAMIX_CHOP_STEPS + 1e-6));
+      const shown = Math.round(step / MEGAMIX_CHOP_STEPS * order.length);
+      if (!shown) return;
+      const cw = W / MEGAMIX_SHATTER_COLS;
+      const ch = H / MEGAMIX_SHATTER_ROWS;
+      const boxes = (start, end, inset) => {
+        for (let i = start; i < end; i++) {
+          const c = order[i];
+          ctx.rect((c % MEGAMIX_SHATTER_COLS) * cw + inset, Math.floor(c / MEGAMIX_SHATTER_COLS) * ch + inset,
+            cw - inset * 2, ch - inset * 2);
+        }
+      };
+      ctx.save();
+      ctx.beginPath();
+      // A quarter pixel of overlap, so neighbouring blocks cannot leave a
+      // hairline of the outgoing preset standing between them.
+      boxes(0, shown, -0.25);
+      ctx.clip();
+      mix.paint(ctx, to, 1);
+      ctx.restore();
+      // The batch that just landed keeps a lit edge for the rest of its eighth,
+      // which is what makes the chop read as ON the note rather than merely
+      // coincident with it.
+      const glow = (1 - (p * MEGAMIX_CHOP_STEPS - step)) * 0.5;
+      if (glow <= 0.02) return;
+      ctx.save();
+      ctx.globalAlpha = mix.baseAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(mix.palette[2], glow);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      boxes(Math.round((step - 1) / MEGAMIX_CHOP_STEPS * order.length), shown, 0.5);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  {
+    name: 'VENETIAN',
+    beats: 2,
+    run(ctx, mix, from, to, p) {
+      mix.paint(ctx, from, 1);
+      const k = smooth(p);
+      if (k <= 0.001) return;
+      // Each blind opens a little after the one above it, and alternate blinds
+      // open from opposite edges, so this reads as slats rather than as one
+      // curtain that happens to have been cut into strips.
+      const sh = H / MEGAMIX_VENETIAN_STRIPS;
+      const stagger = 0.45;
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i < MEGAMIX_VENETIAN_STRIPS; i++) {
+        const local = smooth(clamp((k - i / (MEGAMIX_VENETIAN_STRIPS - 1) * stagger) / (1 - stagger)));
+        if (local <= 0) continue;
+        const w = W * local;
+        ctx.rect(i % 2 ? W - w : 0, i * sh - 0.25, w, sh + 0.5);
+      }
+      ctx.clip();
+      mix.paint(ctx, to, 1);
+      ctx.restore();
+    },
+  },
+  {
+    name: 'IRIS',
+    beats: 2,
+    run(ctx, mix, from, to, p) {
+      mix.paint(ctx, from, 1);
+      const k = smooth(p);
+      const r = k * MEGAMIX_COVER_R;
+      if (r < 1) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mix.focusX, mix.focusY, r, 0, TAU);
+      ctx.clip();
+      mix.paint(ctx, to, 1);
+      ctx.restore();
+      // A lit rim on the opening, brightest while it is small: without it the
+      // new scene arrives as a hole cut in the old one.
+      ctx.save();
+      ctx.globalAlpha = mix.baseAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(mix.palette[1], 0.55 * (1 - k));
+      ctx.lineWidth = 1.5 + (1 - k) * 3;
+      ctx.beginPath();
+      ctx.arc(mix.focusX, mix.focusY, r, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  {
+    name: 'RADAR SWEEP',
+    beats: 4,
+    run(ctx, mix, from, to, p) {
+      mix.paint(ctx, from, 1);
+      if (p <= 0.002) return;
+      // One full turn per bar, with the leading edge lit: the wedge is a beam
+      // that repaints the screen as it passes.
+      const a0 = mix.sweepFrom;
+      const a1 = a0 + TAU * p;
+      const ex = CX + Math.cos(a1) * MEGAMIX_COVER_R;
+      const ey = CY + Math.sin(a1) * MEGAMIX_COVER_R;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.arc(CX, CY, MEGAMIX_COVER_R, a0, a1);
+      ctx.closePath();
+      ctx.clip();
+      mix.paint(ctx, to, 1);
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = mix.baseAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      const beam = ctx.createLinearGradient(CX, CY, ex, ey);
+      beam.addColorStop(0, rgba(mix.palette[2], 0));
+      beam.addColorStop(0.35, rgba(mix.palette[2], 0.5));
+      beam.addColorStop(1, rgba(mix.palette[2], 0));
+      ctx.strokeStyle = beam;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  {
+    name: 'PUSH',
+    beats: 2,
+    run(ctx, mix, from, to, p) {
+      // Two whole frames side by side, each clipped to its own share of the
+      // screen: the outgoing record slides off and drags the incoming one on.
+      const k = smooth(p);
+      const dx = mix.pushX * W * k;
+      const dy = mix.pushY * H * k;
+      const band = (ox, oy, child) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ox, oy, W, H);
+        ctx.clip();
+        ctx.translate(ox, oy);
+        mix.paint(ctx, child, 1);
+        ctx.restore();
+      };
+      band(-dx, -dy, from);
+      band(mix.pushX * W - dx, mix.pushY * H - dy, to);
+      const seamX = (mix.pushX > 0 ? W : 0) - dx;
+      const seamY = (mix.pushY > 0 ? H : 0) - dy;
+      ctx.save();
+      ctx.globalAlpha = mix.baseAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(mix.palette[3], 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (mix.pushX) { ctx.moveTo(seamX, 0); ctx.lineTo(seamX, H); } else { ctx.moveTo(0, seamY); ctx.lineTo(W, seamY); }
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+  {
+    name: 'ZOOM THROUGH',
+    beats: 4,
+    run(ctx, mix, from, to, p) {
+      // The outgoing scene magnifies past the camera while the incoming one
+      // holds still behind it. A push through, not a zoom out.
+      const k = smooth(p);
+      mix.paint(ctx, to, 1);
+      if (k >= 0.995) return;
+      const s = 1 + k * 2.2;
+      ctx.save();
+      ctx.translate(mix.focusX, mix.focusY);
+      ctx.scale(s, s);
+      ctx.translate(-mix.focusX, -mix.focusY);
+      mix.paint(ctx, from, 1 - k);
+      ctx.restore();
+    },
+  },
+  {
+    name: 'BEAT STUTTER',
+    beats: 4,
+    solo: true,
+    run(ctx, mix, from, to, p) {
+      // Never a blend: the two records simply alternate on the eighth, with the
+      // odds ramping toward the new one and the last two chops committed to it,
+      // so the chop lands rather than trailing off. One preset per frame makes
+      // this the cheap way to mix as well as the most obviously rhythmic.
+      const step = Math.min(MEGAMIX_CHOP_STEPS - 1, Math.floor(p * MEGAMIX_CHOP_STEPS));
+      const onNew = mix.stutterMask[step];
+      mix.paint(ctx, onNew ? to : from, 1);
+      if (step === 0 || onNew !== mix.stutterMask[step - 1]) {
+        mix.wash(ctx, '#ffffff', Math.pow(1 - (p * MEGAMIX_CHOP_STEPS - step), 5) * 0.28);
+      }
+    },
+  },
+  {
+    name: 'FLASH CUT',
+    beats: 1.5,
+    align: 'centre',
+    solo: true,
+    run(ctx, mix, from, to, p) {
+      // The only hard cut in the set, and the flash peaks exactly on it: the eye
+      // is still recovering when the new scene arrives, which is what makes a
+      // cut this abrupt read as intentional rather than as a dropped frame.
+      mix.paint(ctx, p < 0.5 ? from : to, 1);
+      const near = 1 - Math.abs(p - 0.5) * 2;
+      mix.wash(ctx, mixHex('#ffffff', mix.palette[1], 0.3), Math.pow(near, 2.2) * 0.7);
+    },
+  },
+];
+
+const MEGAMIX_SOLO_TRANSITIONS = MEGAMIX_TRANSITIONS.filter((move) => move.solo);
+const MEGAMIX_INDEX = VISUALIZER_NAMES.indexOf('VJ MEGAMIX');
+const MEGAMIX_ROSTER = VISUALIZER_NAMES.map((_, index) => index).filter((index) => index !== MEGAMIX_INDEX);
+// Presets whose frame is expensive enough that painting two of them at once is a
+// real risk on a phone. With one of these on either deck the mixer sticks to the
+// transitions that only ever paint ONE record per frame.
+const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE']
+  .map((name) => VISUALIZER_NAMES.indexOf(name))
+  .filter((index) => index >= 0));
+
+class VjMegamix extends BaseVisualizer {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[MEGAMIX_INDEX];
+    this.rosterRng = this.rng.stream('megamix-roster');
+    this.mixRng = this.rng.stream('megamix-mix');
+    this.childRng = this.rng.stream('megamix-child');
+    // Latched at construction rather than read per frame, so toggling the dev
+    // switch never changes a mixer that is already running.
+    this.audition = megamixAudition;
+    this.cycleBeats = this.audition ? MEGAMIX_AUDITION_BEATS : MEGAMIX_CYCLE_BEATS;
+    this.auditionStep = 0;
+    this.roster = [];
+    this.currentIndex = this.takeNextIndex();
+    this.current = this.spawn(this.currentIndex);
+    this.plan = null;
+    this.lastTransition = null;
+    // Its own phrase clock. `beat` restarts when a song loops and the
+    // screensaver can be opened mid-song, so this one is derived from that but
+    // only ever moves forward. See update() for what it does with a jump.
+    this.mixBeat = 0;
+    this.switchBeat = this.cycleBeats;
+    this.baseAlpha = 1;
+    this.label = `MEGAMIX / ${this.current.name}`;
+    // Re-rolled for every handover, so the same move never lands twice the same
+    // way: which blocks fall in which order, which chops keep the old record,
+    // where the sweep starts, which way the push travels.
+    this.shatterOrder = [];
+    this.stutterMask = [];
+    this.sweepFrom = 0;
+    this.pushX = 1;
+    this.pushY = 0;
+    this.rollTransitionShape();
+  }
+
+  spawn(index) {
+    return createVisualizer(index, (this.childRng.next() * 0xffffffff) >>> 0, this.track);
+  }
+
+  // Dealt from a shuffled deck rather than picked at random: one pass plays
+  // every preset in the pack exactly once before any of them comes round again.
+  takeNextIndex() {
+    if (!this.roster.length) {
+      // An audition deals the WHOLE pack, expensive presets included. It cannot
+      // lose the move it is auditioning to the heavy-preset substitution —
+      // pickTransition() bypasses that rule outright in this mode — and the
+      // costly pairings are exactly the ones worth watching the frame rate
+      // through, which is the other half of what this bench is for.
+      this.roster = this.rosterRng.shuffle(MEGAMIX_ROSTER);
+      // A reshuffle must not put the record that is already on the deck back on
+      // top of the pile.
+      if (this.roster.length > 1 && this.roster[0] === this.currentIndex) this.roster.push(this.roster.shift());
+    }
+    return this.roster.shift();
+  }
+
+  rollTransitionShape() {
+    const cells = MEGAMIX_SHATTER_COLS * MEGAMIX_SHATTER_ROWS;
+    this.shatterOrder = this.mixRng.shuffle(Array.from({ length: cells }, (_, i) => i));
+    this.stutterMask = Array.from({ length: MEGAMIX_CHOP_STEPS }, (_, i) => (
+      i >= MEGAMIX_CHOP_STEPS - 2 || this.mixRng.chance((i + 1) / (MEGAMIX_CHOP_STEPS + 1)) ? 1 : 0
+    ));
+    this.sweepFrom = this.mixRng.float() * TAU;
+    const dir = this.mixRng.int(0, 3);
+    this.pushX = dir === 0 ? 1 : dir === 1 ? -1 : 0;
+    this.pushY = dir === 2 ? 1 : dir === 3 ? -1 : 0;
+  }
+
+  pickTransition(nextIndex) {
+    // An audition walks the list in order and shows every move exactly once per
+    // pass, which is the whole point of it — nothing is skipped or repeated.
+    if (this.audition) {
+      const move = MEGAMIX_TRANSITIONS[this.auditionStep % MEGAMIX_TRANSITIONS.length];
+      this.auditionStep++;
+      this.lastTransition = move;
+      return move;
+    }
+    const pool = MEGAMIX_HEAVY.has(nextIndex) || MEGAMIX_HEAVY.has(this.currentIndex)
+      ? MEGAMIX_SOLO_TRANSITIONS
+      : MEGAMIX_TRANSITIONS;
+    let move = this.mixRng.pick(pool);
+    // Never the same move twice running. Half the point of the set is that you
+    // cannot predict how the next record is going to arrive.
+    if (pool.length > 1 && move === this.lastTransition) move = pool[(pool.indexOf(move) + 1) % pool.length];
+    this.lastTransition = move;
+    return move;
+  }
+
+  cue(boundary) {
+    const index = this.takeNextIndex();
+    const transition = this.pickTransition(index);
+    this.rollTransitionShape();
+    // A blend finishes on the downbeat, so the new scene is established as the
+    // phrase turns over. A cut puts its own moment — the frame inside the
+    // flash where the picture changes — on it instead.
+    const startBeat = transition.align === 'centre'
+      ? boundary - transition.beats * 0.5
+      : boundary - transition.beats;
+    return { index, transition, incoming: this.spawn(index), startBeat, endBeat: startBeat + transition.beats };
+  }
+
+  transitionAmount() {
+    const plan = this.plan;
+    if (!plan || this.mixBeat <= plan.startBeat) return 0;
+    return clamp((this.mixBeat - plan.startBeat) / (plan.endBeat - plan.startBeat));
+  }
+
+  update(dt, analysis) {
+    super.update(dt, analysis);
+    let step = this.beat - this.prevBeat;
+    // A song that loops hands back a beat count that restarts, and the first
+    // frame can arrive a long way into a song. Keep only the sub-beat remainder
+    // in those cases: the phrase clock loses the jump but stays locked to the
+    // song's downbeats, which is the half the transitions are aimed at.
+    if (!(step >= 0) || step > 4) step = ((step % 1) + 1) % 1;
+    this.mixBeat += step;
+    this.current.update(dt, analysis);
+    const lead = Math.min(MEGAMIX_PLAN_LEAD, this.cycleBeats);
+    if (!this.plan && this.mixBeat >= this.switchBeat - lead) this.plan = this.cue(this.switchBeat);
+    if (this.plan) {
+      this.plan.incoming.update(dt, analysis);
+      if (this.mixBeat >= this.plan.endBeat) {
+        this.current = this.plan.incoming;
+        this.currentIndex = this.plan.index;
+        this.switchBeat += this.cycleBeats;
+        this.plan = null;
+      }
+    }
+    // The corner tag names whichever record is actually on screen, and changes
+    // hands halfway through the blend.
+    const showing = this.plan && this.transitionAmount() >= 0.5 ? this.plan.incoming : this.current;
+    this.label = `MEGAMIX / ${showing.name}`;
+  }
+
+  // One preset, painted at a weight. `frameAlpha` goes along with the context
+  // alpha so the few presets that assign globalAlpha mid-frame stay inside the
+  // blend instead of punching through it at full strength.
+  paint(ctx, child, alpha) {
+    const a = this.baseAlpha * alpha;
+    if (!(a > 0.002)) return;
+    ctx.save();
+    ctx.globalAlpha = a;
+    child.frameAlpha = a;
+    child.draw(ctx);
+    child.frameAlpha = 1;
+    ctx.restore();
+  }
+
+  wash(ctx, color, alpha) {
+    const a = this.baseAlpha * alpha;
+    if (!(a > 0.004)) return;
+    ctx.save();
+    ctx.globalAlpha = clamp(a);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Dev audition readout. Deliberately plain and top-anchored: the jukebox's own
+  // titles own the bottom corners, and a move cannot be judged against chrome
+  // that sits in the middle of the picture it is trying to show.
+  auditionReadout(ctx) {
+    const move = this.plan ? this.plan.transition : this.lastTransition;
+    if (!move) return;
+    const p = this.transitionAmount();
+    const step = ((this.auditionStep - 1) % MEGAMIX_TRANSITIONS.length + MEGAMIX_TRANSITIONS.length)
+      % MEGAMIX_TRANSITIONS.length;
+    const title = `${String(step + 1).padStart(2, '0')}/${MEGAMIX_TRANSITIONS.length}  ${move.name}`;
+    const detail = `${move.beats} BEATS  ${move.align === 'centre' ? 'CUT ON' : 'LANDS ON'} THE DOWNBEAT`
+      + `${move.solo ? '  SOLO' : ''}`;
+    const pair = `${this.current.name} > ${this.plan ? this.plan.incoming.name : '...'}`;
+    const scale = 0.8;
+    const barW = 200;
+    const line = (text, y, color, s = scale) => drawText(ctx, text, (W - textWidth(text, s)) * 0.5, y, color, s, 'ui', MEGAMIX_READOUT_PLATE);
+    ctx.save();
+    ctx.globalAlpha = this.baseAlpha;
+    line(title, 12, '#ffffff');
+    line(detail, 24, '#7be0d0', 0.6);
+    line(pair, 34, '#c9a0ff', 0.6);
+    // The bar is the move's own progress, with a tick per beat of it, so a
+    // transition that drifts off the grid shows up here rather than by eye.
+    const barX = (W - barW) * 0.5;
+    ctx.fillStyle = MEGAMIX_READOUT_PLATE;
+    ctx.fillRect(barX - 2, 44, barW + 4, 7);
+    ctx.fillStyle = '#48e0c8';
+    ctx.fillRect(barX, 46, barW * p, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    for (let beat = 1; beat < move.beats; beat++) ctx.fillRect(barX + barW * (beat / move.beats), 45, 1, 5);
+    ctx.restore();
+  }
+
+  draw(ctx) {
+    // Whatever the jukebox's own fade has set is the ceiling for both records.
+    this.baseAlpha = ctx.globalAlpha;
+    const p = this.transitionAmount();
+    if (!this.plan || p <= 0) this.paint(ctx, this.current, 1);
+    else this.plan.transition.run(ctx, this, this.current, this.plan.incoming, p);
+    if (this.audition) this.auditionReadout(ctx);
+  }
+}
+
 export function createVisualizer(name, seed, track) {
   const index = typeof name === 'number' ? name : VISUALIZER_NAMES.indexOf(name);
-  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm];
+  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
 }
