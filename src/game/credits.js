@@ -79,8 +79,19 @@ const HANDOFF_DX = 44;
 const HANDOFF_H = 48;
 // Half the clear space the exchange leaves down the middle. The portal above
 // is 22u wide, so this keeps the gap a little wider than the thing it is a gap
-// for — the two halves must never look like one wrapped sentence.
-const HANDOFF_GAP = 18;
+// for — the two halves must never look like one wrapped sentence. 14 leaves 28
+// down the middle, which is still wider than the portal and about as tight as
+// that rule allows.
+//
+// Held to ONE number for both halves on purpose. Measured off the rendered ink
+// rather than the layout, an 18 here put each line 18.13u from the portal's
+// centre and 8.50u clear of its drawn edge — the same on both sides, on all
+// four hand-offs. So when the reply reads as sitting further out than the line
+// it answers, that is its length talking and not its position: it is four times
+// the lettering, and its weight carries away to the right. The fix for that is
+// to bring the WHOLE exchange in, which is this; giving the reply its own
+// smaller gap would buy the look by making the composition genuinely lopsided.
+const HANDOFF_GAP = 14;
 const OUTGOING_INK = '#48e0c8';
 const INCOMING_INK = '#f6d33c';
 // A line does not just belong to its speaker, it travels with them: each half

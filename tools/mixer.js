@@ -824,11 +824,15 @@ server.on('error', (err) => {
   throw err;
 });
 
-// Only when run as `npm run mixer`; importing this module (a test round-tripping
-// renderMixFile, say) must not take the port.
+// Only when run as `npm run mixer`; importing this module (a test round-tripping a
+// song file, say) must not take the port.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   server.listen(PORT, HOST, () => {
     console.log(`song mixer: http://${HOST}:${PORT}/`);
-    console.log(`  "Save to game" writes ${MIX_PATH.replace(ROOT + '/', '')}`);
+    // Named as the folder rather than as one file: a save rewrites the song you are
+    // on, below its own desk marker. Saying src/data/mix.js was true when every mix
+    // lived in one file and stopped being true the moment they did not — and a
+    // startup line that names the wrong file is how you go looking in the wrong diff.
+    console.log('  "Save to game" writes src/data/songs/<id>.js');
   });
 }
