@@ -7,9 +7,12 @@ own audio engine — every fader on screen moves the same channel strip the game
 use, and the same one the offline renderer runs when it writes a WAV, a stem or a
 video. Nothing in the tool reimplements audio.
 
-What it writes is [`src/data/mix.js`](../src/data/mix.js): per-song trims, pans, EQ,
-sends and effect chains, which the game and every render tool then read. Peter
-reviews and commits; the mixer never touches git.
+What it writes is the current song's source file: built-in songs live under
+[`src/data/songs/`](../src/data/songs/) and writable scratch songs under
+[`src/data/imported/`](../src/data/imported/). Per-song trims, pans, EQ, sends,
+effect chains, arrangements and note edits stay together in that file. Peter
+reviews and commits; the mixer never touches git. Scratch files remain outside the
+game catalogue.
 
 - **Port / host** — `MASH_MIXER_PORT=8011 npm run mixer`, `MASH_MIXER_HOST=0.0.0.0`
   to reach it from another machine. Port 8010 by default; if it is taken the process
@@ -44,10 +47,56 @@ are sized to the window every time anything moves.
 
 ### Song
 
-The **folder button** (far left) opens the song picker: every track in
-[`src/data/tracks.js`](../src/data/tracks.js), in three columns — *themes*,
-*cabinets*, *shop auditions* — with the track id beside each title. The song you are
-on shows in the footer, where its name has room, and is remembered across reloads.
+The **hamburger button** (far left) opens the unified Song Desk drawer. It slides over
+the desk with a backdrop. New/Open, up to five recently opened songs (MRU-first), a
+permanently visible title/ID search, and the action sections are open by default. The
+single-column song list is grouped as *themes*, *cabinets*, *shop auditions*, *scratch
+songs* and *MIDI imports*; each group starts collapsed and can be opened independently.
+The current song is highlighted; selecting
+one closes the drawer. The recent list is kept in browser localStorage.
+
+**New song…** creates a source-backed scratch song without adding it to the game. The
+dialog accepts a title, 1–64 bars, a **style**, and one of three starters: **Blank**
+(a visible silent melody lane), **Beat** (the style's own kit), or **Full Band** (the
+kit plus bass, chords and melody). The title is
+prefilled with an adjective-and-noun name no other song is using — `PINK SCOOTER`,
+`HAPPY DOLPHIN` — so a new song is memorable rather than `UNTITLED SONG 3`; clearing
+the field lets the server pick one. The other defaults are 8 bars, Blank, and Auto
+style. BPM starts **empty**, meaning "the tempo this style is written at"; a number
+typed in the 40–220 field still wins.
+
+The style is a **pack** — [`tools/lib/song-styles.js`](../tools/lib/song-styles.js) —
+and it decides the whole character of the generated song: its tempo, its key and mode,
+its harmony, its kit, its melodic grammar, which lanes it uses at all, and which voices
+those lanes play. Auto lets the creation seed pick one. The eight are *Electropop*
+(120 BPM, the engine's own voices — the starter the desk has always opened with),
+*Half-time Dirge* (72, reed organ and a taiko), *Surf Spy* (152, harmonic minor,
+plucked lead), *Boom Bap* (88, dorian sevenths on an electric piano), *Motorik Driver*
+(168, one chord and straight eighths), *Bell Box* (96, **no drums at all** — music box,
+celeste and a glass pad), *Parade March* (112, major, brass and strings) and *Dub
+Chamber* (76, one drop, organ skank, everything in the echo).
+
+Within a pack the stored creation seed picks the key, the progression, the harmonic
+rhythm, the kit patterns, the bass figure and the melody's rhythm and contour — so
+each new song is different while remaining repeatable and musical. Transposition is
+real: a pack's harmony and melody are written as scale degrees, so the same pack in D
+reads D minor, with per-lane registers keeping the bass and the tune where they were
+written for. Rhythm and contour are chosen separately, which is what gives a generated
+melody rests and syncopation rather than an unbroken run of eighth notes.
+
+A pack writes its instruments into the **bank** — `leadVoice`, `kickVoice` and the
+rest — because the instrument a song is composed for is part of the composition, and
+because the desk only ever rewrites the half of the file below its own marker. Every
+strip therefore opens at 0 dB with no mix at all, and the desk's voice picker shows the
+pack's choice as the lane's engine default; choosing a preset on the strip still
+overrides it. Each pack also carries a measured `drumGain`/`musicTrim` pair: preset
+voices are peak-matched to their lane, and a sustained pad at the same peak as the
+engine's short square blip is several LU louder, so the pair puts every pack's kit and
+instruments in the balance the Electropop starter has always had — and the trim also
+lands every pack on −22 LUFS, where the game's own songs measure, so the picker does
+not shout at you every third choice. Scratch songs can be
+edited, saved, rendered, exported and restored like built-in songs; marker-less legacy
+MIDI imports remain read-only.
 
 ### Transport
 
@@ -92,14 +141,40 @@ loop armed, clicking the timeline *moves the loop* rather than escaping it. Defa
 Tempo drags carry the tempo-synced delay and every division-based insert with them, so
 half-speed really is the same mix at half speed.
 
+### The four panel buttons
+
+Top right, before **A/B saved**, one square button per panel you can put on the desk —
+all four the same box, because they are the same kind of control:
+
+| Button | Opens | Key |
+| --- | --- | --- |
+| **piano keys** | the on-screen keyboard — play the selected channel | |
+| **step grid** | the kit's step sequencer, as a floating window | `G` |
+| **piano roll** | the selected channel's part, in the effects region | `N` |
+| **faders** | the preset library | |
+
+The grid and the roll are **two buttons because they are two panels**: either can be up
+without the other, and one control could not say which. The roll's button and the
+region's **Notes** chip are the same switch in two places and light together.
+
+Hovering any of them — and **A/B saved** and **Undo** beside them — brings up a tooltip
+card naming the panel, saying what it is for, and showing its key. A picture is not a
+label, so the sentence is the point; the browser's own one-line tooltip could not carry
+it. Reaching a button by keyboard shows the same card at once.
+
 ### ⌨ — play the selected channel
 
-The piano button, top right beside **A/B saved**, opens the **on-screen keyboard**: a
+The piano button opens the **on-screen keyboard**: a
 floating window that plays whatever channel is selected, and shows what it is playing
 while the song runs. Over on the right rather than by the transport, because the
 transport is what the *song* does and this is what *you* do. Drag it by its title bar;
 it remembers where you put it. It is a window rather than a menu — it stays open while
 you work, and clicking away does not close it.
+
+The desk remembers this workspace per song: whether the keyboard is visible, whether
+the step grid or piano roll is open, and which melodic lane the roll is editing. A
+song you have not visited yet inherits the current workspace once; returning to it
+restores its own layout. This is browser desk state, not a Save-to-game edit.
 
 | | |
 | --- | --- |
@@ -151,17 +226,23 @@ recorder, notes written back into the bank) would be another.
 
 ### Project
 
-- **⋯** — everything you do once an hour rather than once a minute, saving included.
-  Writing the file is not a mix control, and a green Save button lit whether or not
-  there was anything to write — with a red badge beside it saying so a second time —
-  was the loudest thing in a header full of controls you actually touch.
-- **The dot on ⋯** — this song has changes that are not in its song file yet.
-  Never an alarm: drafts are kept in `localStorage` and survive a reload, so the only
-  thing the dot is about is whether the *game* has heard the song.
+The **Song Desk drawer** keeps the project actions together: save or discard this
+song, open history, reset channels, render or audition, import/export MIDI and JSON,
+open the preset library, and adjust desk settings. The hamburger carries the existing
+unsaved-work dot. Drafts remain in `localStorage`; the dot means the current source
+file does not yet contain those changes.
+
+The **piano**, **step-grid** and **preset library** buttons share the header toolbar.
+The Arrangement header has a plain white **+** at its right edge. Clicking it stages a
+brand-new independent track and opens the preset selector beside the plus; the track is
+created only after a sound is chosen, so closing the selector leaves no empty channel.
+Then edit its pattern in the step grid or piano roll. Duplicate and delete stay on the
+arrangement track's right-click menu, with `⌘Z` restoring a deleted track.
 
 | Menu item | Does |
 | --- | --- |
-| Save song | writes this song into `src/data/songs/<id>.js` after a confirm. Mix, arrangement and editable notes are written together. |
+| Save song | writes this song into `src/data/songs/<id>.js`, or a scratch song into `src/data/imported/<id>.js`, after a confirm. Mix, arrangement and editable notes are written together. Scratch files remain outside the game. |
+| Delete scratch song… | appears for scratch songs only. After confirmation it removes the source module and its desk history, then clears that song's browser draft and recent entry. Built-in songs and legacy MIDI imports cannot be deleted here. |
 | Discard unsaved changes | throws this song's complete draft away (undoable) |
 | Open an earlier version… | loads an earlier complete version of this song, ready to review before saving. See [Going back](#going-back) |
 | Zero every channel | zeroes every strip in this song (undoable) |
@@ -201,7 +282,7 @@ eye. Two or three frames of display buffering leaves the line trailing the kick 
 everything else about it correct, so it is a **setting, dialled by eye**: press `]`
 while the song plays if the line still lags, `[` if it runs ahead. Ten milliseconds a
 press, shown in a toast, remembered per machine, and the same number lives in
-**⋯ → Playhead ms** if you would rather type it.
+**Song Desk → Playhead ms** if you would rather type it.
 
 ---
 
@@ -223,18 +304,15 @@ strip below), **M** and **S**, the family mark, and the name.
   sounds in, marked in its row. A lane already playing in the first two bars starts
   from the top instead — it comes in with the song, and skipping to bar 2 would only
   cost you the bar it arrived on. Same double-click as the **strip head** below.
-- **Right-click a name** (or anywhere in the row's header) — the same menu the strip
-  below takes, mute · solo · duplicate · delete included. The row and the strip are two
-  views of one track, so what you can do to it does not depend on which you were
-  looking at. See [Duplicate and delete a track](#duplicate-and-delete-a-track).
+- **Right-click a name** (or anywhere in the row's header) — the **track panel**:
+  name · sound · part · adjustments. This row is the track itself; the strip below is
+  its channel, and right-clicking that gives the signal-path menu instead. See
+  [Right-click a track](#right-click-a-track).
 - **Drag across a row** — select a **range of bars for that instrument**. This can
   refine a timeline selection before a lane-specific operation.
 - **Right-click a bar** — open the same selected-bars editor targeted at that
   instrument. Mute/delete/copy/paste stay above; exact transpose, timing and gain
   controls stay together below.
-- **Selected bars / Entire track** — the scope switch at the top of a track editor
-  applies those same exact adjustments either to the current range or every bar of
-  that instrument.
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
   window; it snaps to whole lanes and never takes the rack's last strip. Drag it up
@@ -253,6 +331,10 @@ The scope is the **timeline selection** if you right-clicked inside one, and the
 single bar otherwise. A row right-click adds the instrument target to that same
 range — so "select bars 1–4 on the timeline, right-click Bass, copy" is unambiguous.
 
+What you right-clicked stays the scope. The panel has no scope switch: a bar
+right-click only ever edits that track in those bars, and whole-track work is on the
+track's own menu. Nothing here can grow to cover the song while you are reading it.
+
 Right-click the **timeline** for whole-song structure:
 
 | Item | Does |
@@ -269,13 +351,13 @@ Right-click an **arrangement lane** for that track only:
 | --- | --- |
 | Edit notes | opens the selected bars in the step editor |
 | Mute / Unmute | silences or restores that track in the selected bars |
-| Delete / Restore | removes that track region while keeping its notes recoverable |
-| Copy track / Paste track | copies only that instrument's notes; paste may target a different instrument |
-| Reset region / Reset track | returns that track's bar edits to its written state (notes are kept) |
+| Delete here / Restore here | removes that track region while keeping its notes recoverable |
+| Copy / Paste | copies only that instrument's notes; paste may target a different instrument |
+| Reset | returns that track's bar edits to its written state (notes are kept) |
 
-Right-clicking a track name or mixer strip also offers **Adjust entire track…**,
-which opens the inspector directly on every bar. The scope switch can return to the
-previous bar selection without changing it.
+Whole-track work is not on this panel: **Delete track**, **Duplicate**, the preset and
+the track's name are on the [track panel](#right-click-a-track), which the row's
+header opens.
 
 The adjustment controls are exact rather than presets:
 
@@ -301,6 +383,13 @@ Open the **step-grid** button in the toolbar (or press **G**) to edit the drum p
 as sixteen sixteenths per bar. The selected arrangement bars are the sequencer's
 scope; with no selection it opens on the bar currently playing.
 
+It is a **floating window** — drag it by its title bar, it remembers where you put it,
+and clicking away does not close it. It is deliberately not one of the effects region's
+views: the region shows *this channel*, and the kit belongs to the song. So the grid and
+the piano roll are open **at the same time** if you want them — "move the snare while I
+look at the bassline" is one job, not two. They have a button each (**G** and **N**) for
+the same reason.
+
 - Click or drag across steps to paint or erase one undoable gesture. Enter/Space also
   toggles the focused step.
 - **Groove ▾** lays down a complete kit figure; each lane's ▾ offers figures for that
@@ -317,9 +406,23 @@ A/B and save path, and never rewrite the composition above the song-file desk ma
 
 ## Mixer
 
+### Strip-part switches
+
+First along the mixer's header, three buttons — **EQ**, **Sends**, **Effects** — all on
+by default, each hiding that part of every strip on the desk: the three EQ bands, the
+send rows, the insert slots. Master and send returns included. With all three off a
+strip is its voice, fader, pan pot and mute/solo pair, and the height the rows gave up
+goes to the faders — the balancing desk, for when balancing is all you are doing.
+
+Like the family switches beside them these are a **view, not a mix control**: a hidden
+EQ is still doing whatever it was set to, a hidden send still sends, and a hidden chain
+still plays. Nothing is bypassed, reset or muted, and the effect cards in the shelf
+below still open from the selected strip. All three may be off at once. Remembered
+across reloads.
+
 ### Track-family filters
 
-Along the mixer's header, one button per family present in this song — **drums**,
+Along the mixer's header after them, one button per family present in this song — **drums**,
 **melodic**, **fx**, **vocal** — with a count. They hide strips from the **rack only**:
 the arrangement keeps every lane, nothing is muted, and the song keeps sounding like
 the song while you work on four of its channels. Hiding the last visible family is
@@ -443,7 +546,7 @@ Points worth knowing:
 - **It is the one control that has to re-bank.** A fader moves a live node; a voice is
   a property of the song, so the sequencer is restarted around the change — half a
   second of silence, with the playhead left exactly where it was. Undo re-banks too.
-- Saved as a `voice` block in `src/data/mix.js`, per song, like everything else here.
+- Saved as a `voice` block in the song's source file, per song, like everything else here.
   **Engine default** is a real choice in the panel, not just the absence of one:
   putting a lane back writes nothing at all to the file.
 - **The CPU readout does not count them**, and says so: with any voice in use it reads
@@ -612,6 +715,26 @@ Grouped, and **priced** with each effect's measured cost as a percentage of one 
 The prices are not intuitive and are worth reading: a Phaser costs about 2% of a core
 — roughly 24× a Distortion, and more than twice anything else in the list.
 
+Every left/right control in the catalogue is called **BALANCE** — the Gain's, the
+Advanced Delay's, the Doubler's two. One word for one gesture, so there is nothing to
+learn per effect. (The saved parameter behind it still reads `pan`, `dryPan` or `wetPan`
+on the older three: the keys are what mixes on disk hold, and renaming those would read
+as a reset of every song carrying one.)
+
+#### Gain
+
+Two controls, in the order of the two questions: **how loud**, then **where**.
+
+| Control | Does |
+| --- | --- |
+| **GAIN** | ±24dB, where the strip's fader stops at +6. Some lanes are authored very quiet — the organ sits at 0.009 against the bass at 0.1 — and this reaches them. Anywhere in the chain, so it is also a trim before a distortion or a make-up after a compressor |
+| **BALANCE** | left/right, and the only one on the desk that is not the strip's own pot. Use it to place the output of an effect that has moved the image, or to keep the strip's pan free for the gesture you want to automate |
+
+**Centred, it is bit-for-bit the input** — a true balance, riding one side down from
+unity rather than the equal-power pan a strip uses, which would cost a mono lane 3dB off
+its mono sum just for being inserted. And it is **stereo out whatever goes in**, since a
+balance has nothing to move otherwise.
+
 #### Exciter
 
 The other two in the Drive group shape the **whole** signal, which is why opening the
@@ -697,13 +820,13 @@ control to each.
 | **TIME** | how far behind the original they come in, 11–60ms. Under about 10 the two fuse into one comb-filtered voice; past 50 they are an echo |
 | **RATE** / **DEPTH** | how fast the voices drift and how far. Without it the detune is static, which is the one thing a human never is. Slow is the useful half — the default is a third of a hertz |
 | **WIDTH** | how far apart the two voices sit |
-| **DRY PAN** / **WET PAN** | where each half goes, separately |
+| **DRY BALANCE** / **WET BALANCE** | where each half goes, separately |
 | **WET / DRY** | how much of the doubling you keep |
 
-**DRY PAN −1 with WET PAN +1 and WIDTH 0** is the oldest double-tracking trick there
-is: the original hard left, both doubles hard right. That is why there are two pan
-controls rather than one — placing the pair together and placing them apart are
-different gestures, and one knob cannot say both.
+**DRY BALANCE −1 with WET BALANCE +1 and WIDTH 0** is the oldest double-tracking trick
+there is: the original hard left, both doubles hard right. That is why there are two
+left/right controls rather than one — placing the pair together and placing them apart
+are different gestures, and one knob cannot say both.
 
 The detune is a **real varispeed pitch shift**, not a modulated delay imitating one,
 which is what separates this from the Chorus: measured, both voices land within 0.02
@@ -712,7 +835,7 @@ with no **Tempo Mode** — a drift that lands on the beat is a rhythm part, and 
 claim of the effect is that the second voice is not counting.
 
 Two things worth knowing. It is **stereo out whatever goes in**, so a mono lane comes
-out of it spread. And at WET 0 it is sample-exact transparent, dry pan included, so it
+out of it spread. And at WET 0 it is sample-exact transparent, dry balance included, so it
 costs nothing but CPU when it is turned down.
 
 Everything here has been verified to render in an offline context, because WAVs, stems
@@ -738,24 +861,38 @@ moves under you as you click between channels.
 
 ---
 
-## Right-click a strip
+## Right-click a track
 
-Or an arrangement row's header — same menu, same track.
+Where you right-click is what you get. The **arrangement row header** is the *track* —
+what it is called, what plays it, what it plays — and opens the **track panel**. The
+**mixer strip** is that track's *signal path*, and keeps a short channel menu. The two
+used to share one menu, which put one set of buttons behind two gestures and made the
+result of a right-click unguessable from the thing under the pointer.
 
-| Item | Notes |
+The track panel is the window a bar opens, scoped to the whole track: staged values,
+one **Apply changes**, one undo point. It is titled the way the desk names a track
+everywhere else — `Track 3. Bass`.
+
+**Mute and solo are not in it.** Both views already carry those buttons, permanently
+and with their state showing; a copy inside a panel you have to close to see the strip
+would be a worse switch than the one on the strip. Neither is **Edit notes…**: both
+note editors have a toolbar button and a key of their own (`G`, `N`), they open on the
+selected channel, and either can be left up while you work.
+
+| Section | Holds |
 | --- | --- |
-| Mute / Unmute | the same state as the strip's **M**, saved with the mix |
-| Solo / Unsolo | the same state as **S**, never saved |
-| Change preset… | the voice library, opened against this strip — the same panel the voice row opens. Only lanes a voice can play |
-| Edit *preset*… | its parameters, in the rack beside this strip — see [Editing a preset](#editing-a-preset-and-writing-new-ones). Absent on a lane playing the engine's own voice, which has no entry to edit |
-| New preset from *preset*… | a copy of it, onto this lane, leaving the original alone |
-| Duplicate | a second strip playing the same part — see below. Channels only, and only lanes a voice can play |
-| Delete *name*… | asks first, and says what goes with it — see below |
-| Copy channel / send / master | the whole strip |
-| Paste … | only onto the same kind of strip — a channel's sends mean nothing on a bus |
-| Paste *n* effects from … | works between any two strips: a chain means the same thing everywhere |
-| Bypass / enable all effects | |
-| Reset channel / send / master | back to defaults (`R`) — including the voice, so the channel goes back to the engine's own. A duplicated track keeps its preset: that is the lane, not a setting on it |
+| Track name | a desk-owned duplicate or added track's display name. Authored song lanes keep their source names, so the field is not shown for them |
+| Sound | **Change preset…** (the voice library against this strip), **Edit *preset*…** (its parameters in the rack beside it — see [Editing a preset](#editing-a-preset-and-writing-new-ones)), **New preset from this…** (a copy onto this lane, leaving the original alone). Only lanes a voice can play; the last two are absent on the engine's own voice, which has no entry to edit |
+| Track | **Duplicate** (a second strip playing the same part — see below), **Copy** / **Paste** (the part itself; paste may target a different instrument), **Clear** (empties every bar — the notes are gone, not flagged; the track, its channel and its sound stay, and `⌘Z` brings the part back), **Reset track**, **Delete track** (asks first, naming the track, and says what goes with it) |
+| Adjust | exact transpose, timing and gain across every bar of that track |
+
+Right-clicking a **channel strip** — or a send return, or the master — gives the five
+items about the signal path, built by the one function all three share: **Copy**,
+**Paste** (only onto the same kind of strip: a channel's sends mean nothing on a bus),
+**Paste *n* effects** (works between any two strips — a chain means the same thing
+everywhere), **Bypass / enable all effects**, and **Reset** back to defaults (`R`).
+Reset includes the voice, so the channel goes back to the engine's own; a duplicated
+track keeps its preset, because that is the lane, not a setting on it.
 
 ### Duplicate and delete a track
 
@@ -763,8 +900,8 @@ Every other edit on this desk is about **balance**. These two are about the song
 **shape** — which tracks it has — and they are the only edits that add or remove a
 strip and an arrangement row.
 
-Neither touches a composition file. Both are stored in the mix (`layers`, `off` in
-`src/data/mix.js`), applied by `deskBank()` in `src/engine/lanes.js`, and undone by
+Neither touches a composition file. Both are stored in the song's mix export
+(`layers`, `off`), applied by `deskBank()` in `src/engine/lanes.js`, and undone by
 `⌘Z` like any other edit. Deleting a song's mix entry puts it back exactly as it was
 composed.
 
@@ -793,10 +930,11 @@ standing on the track, which go with it — a layer of a part that is no longer 
 song is a row playing nothing. Deleting a **layer** removes it outright, settings and
 all; it only ever existed in this mix.
 
-The way back is **⋯ → Restore deleted tracks…**, which appears only when there is one
-and lists them by name. It is there because delete is the one edit with nothing left on
-screen to undo it *from*. A restored track comes back with the channel you had, not one
-at unity. `⌘Z` also works, and also brings back a deleted layer, which Restore does not.
+The Arrangement **+** is intentionally a single action: stage a new independent track
+and choose its preset from the selector beside the plus. The lane is not written until
+that choice is made; closing the selector cancels it. Structural choices such as
+duplicate and delete remain on the arrangement track's right-click menu. `⌘Z` also
+restores a deleted layer.
 
 ---
 
@@ -811,6 +949,8 @@ at unity. `⌘Z` also works, and also brings back a deleted layer, which Restore
 | `↑` `↓` | previous / next channel |
 | `M` `S` `R` | mute · solo · reset the selected channel |
 | `B` | bypass (or re-enable) every effect on the selected channel |
+| `G` | the kit's **step grid** — a window, open or shut |
+| `N` | the effects region's **Notes** view — the selected channel's part |
 | `[` `]` | playhead sync, ±10 ms — see below |
 | `⌘Z` | undo |
 
@@ -827,19 +967,19 @@ letters back.
 
 | Thing | Where it lives |
 | --- | --- |
-| Gains, pans, EQ, sends, mutes, effect chains, master trim, limiter | `src/data/mix.js`, on **Save to game** |
-| Which bars play, in what order, with what dropped out of them | `src/data/arrangements.js`, on the same button. The song's own file is never rewritten |
-| Duplicated tracks (`layers`) and deleted ones (`off`) | the same file, the same button. The song's own file is never rewritten |
-| Every version of that file this desk has overwritten | `.mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
-| Presets — new ones and edits to existing ones | `src/data/voices.js`, on the editor's own **Save to Library**. Library-wide, not per song, so it is a separate button from **Save to game** |
+| Gains, pans, EQ, sends, mutes, effect chains, master trim, limiter | the song's `mix` export, on **Save song** |
+| Which bars play, in what order, with what dropped out of them | the song's `arrangement` export, on the same button |
+| Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
+| Every version of a writable song this desk has overwritten | `.mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
+| Presets — new ones and edits to existing ones | `src/data/voices.js`, on the editor's own **Save to Library**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
 | Tempo drag | nowhere. The bpm belongs to the song. |
-| Hidden families, font, playhead offset, arrangement height, folds, last song | browser localStorage |
+| Hidden families, hidden strip parts, font, playhead offset, arrangement height, folds, last song | browser localStorage |
 
-`src/data/mix.js` is emitted as readable source rather than a JSON blob, because it is
+Song files are emitted as readable source rather than a JSON blob, because they are
 committed and reviewed in a diff. Only tracks carrying real decisions are written; a
-song you opened and did not change leaves no entry.
+song you opened and did not change leaves `mix = null` and `arrangement = null`.
 
 **Saving is not committing.** The game and every render tool read the file the moment
 it is written, but nothing is final until Peter commits it.
@@ -856,7 +996,7 @@ for what the save was about and stamped to the second:
 12KB, and the folder is gitignored — it is a safety net under a mixing session, not a
 second history beside git.
 
-**⋯ → Restore a previous save…** lists them, newest first, as *when* and *what*:
+**Song Desk → Open an earlier version…** lists them, newest first, as *when* and *what*:
 `21:30 today — shop-theme`. Pick one and it asks which:
 
 - **Restore *this song* from it** — the ordinary case. An evening on one mix, saved,
@@ -882,22 +1022,24 @@ open since the morning wrote the morning's copy of every *other* song back over
 anything that had landed since. Two tabs, or a hand-edit between load and save, and
 the loser never knew.
 
-The desk now sends only the songs the save is about, and the server folds them into
-the file as it stands on disk. What comes back is that file, re-read, which is what
-the desk then believes — so **A/B saved** and the dirty dot on ⋯ tell the truth about
-the file even after another tab, or a hand, has been in it.
+The desk now sends only the song the save is about, and the server rewrites that
+source file as it stands on disk. What comes back is re-read, which is what the desk
+then believes — so **A/B saved** and the dirty dot on the hamburger tell the truth
+about the file even after another tab, or a hand, has been in it.
 
 ---
 
 ## Server routes
 
-The Node process behind the page does the things a browser cannot. `/save`, `/history`,
-`/render`, `/audition`, `/midi` and `/import-midi` are wired to buttons; `/measure` is
-there for the command line.
+The Node process behind the page does the things a browser cannot. `/new-song`,
+`/save`, `/history`, `/render`, `/audition`, `/midi` and `/import-midi` are wired to
+buttons; `/measure` is there for the command line.
 
 | Route | Does |
 | --- | --- |
-| `POST /save` | copies `src/data/mix.js` into `.mix-history/`, then rewrites it. Takes `{ids, entries}` — the songs this save is about, merged here against the file as it stands — and answers with the file re-read. A whole-mix body, the shape the desk used to post, is still accepted and still taken as authoritative |
+| `POST /new-song` | accepts `{title, bpm, bars, template, style}` — template is `blank`, `beat` or `full-band`; style is `auto` or a pack id from `tools/lib/song-styles.js`; a null/absent `bpm` takes the style's own tempo. Writes a collision-safe, seeded source module under `src/data/imported/`, registers it as a writable scratch track, and returns `{file, style, key, bpm, track}` |
+| `POST /delete-song` | removes one writable scratch source and its desk-history snapshots; built-in and marker-less MIDI tracks are refused |
+| `POST /save` | snapshots and rewrites the selected built-in or scratch song source. It preserves the other desk-owned export when a patch omits it and answers with the files re-read |
 | `GET /history` | the snapshots, newest first |
 | `GET /history/<file>` | one of them, parsed. It is a module, so this is an `import()` — the name is matched against the pattern this process writes rather than merely checked for `..` |
 | `GET /midi?track=<id>&patches=1` | the song as a MIDI file |
@@ -913,7 +1055,7 @@ there for the command line.
 Renders are written at unity, **not** peak-normalised: normalising would silently undo
 the master trim you just set.
 
-The three voice routes are the only ones that write source *outside* `src/data/mix.js`,
+The three voice routes are the only ones that write source *outside* song files,
 and the only ones that drop the warm Chromium: `openRenderer` bundles once at open time,
 so measuring an edited preset in a browser holding the bundle from before the edit would
 measure the preset it replaced — silently, and with a plausible number.

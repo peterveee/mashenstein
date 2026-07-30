@@ -590,7 +590,14 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
   // Same muted-sink treatment as the lane meters: without a path to the
   // destination the analyser is not pulled and the master meter sits dead while
   // every channel meter moves.
-  const masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.6 });
+  // Two channels on the master alone, so the desk can show a stereo pair where every
+  // other strip shows one bar: the master is the one place a lopsided mix is worth
+  // seeing, and everywhere else the pan pot already tells you where the signal is.
+  // Tapped at the trim, which is BEFORE masterPan — the only node on the bus whose
+  // connections wireMaster() never tears down (see the masterOut note above). So the
+  // pair shows the imbalance the channels are making, not the master balance you have
+  // dialled on top of it.
+  const masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.6, channelCount: 2 });
   Tone.connect(masterTrim, masterMeter);
   const masterMeterSink = ctx.createGain();
   masterMeterSink.gain.value = 0;
@@ -614,7 +621,19 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
       if (!strips.has(key)) makeStrip(key);
       return strips.get(key);
     },
-    masterLevel: () => masterMeter.getValue(),
+    /**
+     * The master level as one number — the louder side, which is what a clip light and
+     * a peak readout are asking about. Callers that want the pair use masterLevels().
+     */
+    masterLevel: () => {
+      const v = masterMeter.getValue();
+      return Array.isArray(v) ? Math.max(v[0] || 0, v[1] || 0) : v;
+    },
+    /** [left, right], 0..1. */
+    masterLevels: () => {
+      const v = masterMeter.getValue();
+      return Array.isArray(v) ? [v[0] || 0, v[1] || 0] : [v || 0, v || 0];
+    },
 
     /** Effects on the master bus, after the trim and before the limiter. */
     setMasterEffects(list = [], bpm = 120) { return masterSlot ? masterSlot.set(list, bpm) : 0; },

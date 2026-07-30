@@ -1002,22 +1002,28 @@ export function createVoiceEditor({
 
     // Closed, or folded away — two different acts, so two different marks.
     //
-    // Docked in the library this panel does not go anywhere: it folds to a rail and
-    // comes back on the preset it was already on. A ✕ there is the button lying about
-    // what it does, and a ✕ is something you hesitate over when you have work in the
-    // panel behind it. A chevron pointing the way it collapses — right, into its rail —
-    // says put-away, and says which way. `folds` is set by the desk, which is the only
-    // thing that knows where this panel currently lives. See placeVoiceEditor.
+    // DOCKED, the panel does not go anywhere. Beside a strip it collapses back into the
+    // strip it belongs to, which reopens it from the same `»` on its header; in the
+    // library it folds to a rail and comes back on the preset it was already on. A ✕ in
+    // either place is the button lying about what it does, and a ✕ is something you
+    // hesitate over when you have work in the panel behind it. A chevron pointing the
+    // way it collapses says put-away, and says which way.
+    //
+    // A lane key means it is sitting against that lane's strip — see placeVoiceEditor,
+    // which docks it there or dismisses it, so there is no third state. `vedocked` is
+    // the library's dock. Only the floating window, which has neither, actually closes.
     const shut = document.createElement('button');
-    const folds = el.classList.contains('vedocked');
+    const folds = el.classList.contains('vedocked') || !!state.laneKey;
     shut.className = folds ? 'veclose vefold' : 'veclose popclose';
     // `«` — the mirror of the `»` that opened it. One pair, one meaning: this mark
     // reveals the editor, that one puts it away. Closing outright is a different act
     // and keeps the desk's standard ✕.
     if (folds) shut.append(foldIcon('left')); else shut.textContent = '✕';
-    shut.title = folds
-      ? 'Hide the editor — the rail down the side brings it back'
-      : 'Close the editor — unsaved changes stay on the sound until you revert';
+    shut.title = state.laneKey
+      ? 'Put the editor away — the » on the strip’s header brings it back'
+      : folds
+        ? 'Hide the editor — the rail down the side brings it back'
+        : 'Close the editor — unsaved changes stay on the sound until you revert';
     shut.onclick = () => close();
     head.append(shut);
     el.append(head);

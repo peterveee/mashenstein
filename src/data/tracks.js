@@ -36,16 +36,32 @@ const RUNTIME = new Map();
  * itself means. Registering an id a hand-written song already owns does nothing —
  * the built-in registries below always win, so an import cannot shadow the game.
  */
-export function registerTrack({ id, bank, title, slug }) {
+export function registerTrack({ id, bank, title, slug, group = 'imported', writable = false }) {
   if (!id || !bank) return null;
   if (ALIASES[id] || SHOP_THEME_BY_ID[id] || CABINET_BY_ID[id]?.music) return null;
-  RUNTIME.set(id, { bank, title: title || id.toUpperCase(), slug: slug || id });
+  RUNTIME.set(id, {
+    bank,
+    title: title || id.toUpperCase(),
+    slug: slug || id,
+    group,
+    writable: !!writable,
+  });
   // Never over the id a built-in already gave this bank. The moment an imported bank
   // is put IN the game — `music: COOL_SONG` on a cabinet — the same object is both
   // `cool-song` and `crypt`, and the game only knows it as `crypt`. If the desk
   // looked it up as `cool-song` it would mix one song and ship another.
   if (!ID_BY_BANK.has(bank)) ID_BY_BANK.set(bank, id);
   return resolveTrack(id);
+}
+
+/** Remove a runtime imported/scratch track without touching built-in game tracks. */
+export function unregisterTrack(id) {
+  if (!id || ALIASES[id] || SHOP_THEME_BY_ID[id] || CABINET_BY_ID[id]?.music) return false;
+  const current = RUNTIME.get(id);
+  if (!current) return false;
+  RUNTIME.delete(id);
+  if (ID_BY_BANK.get(current.bank) === id) ID_BY_BANK.delete(current.bank);
+  return true;
 }
 
 export function resolveTrack(trackId) {
@@ -75,7 +91,8 @@ export function listTracks() {
     ['theme', Object.keys(ALIASES)],
     ['cabinet', Object.keys(CABINET_BY_ID).filter((id) => CABINET_BY_ID[id].music)],
     ['audition', Object.keys(SHOP_THEME_BY_ID)],
-    ['imported', [...RUNTIME.keys()]],
+    ['imported', [...RUNTIME.entries()].filter(([, t]) => (t.group || 'imported') === 'imported').map(([id]) => id)],
+    ['scratch', [...RUNTIME.entries()].filter(([, t]) => t.group === 'scratch').map(([id]) => id)],
   ];
   const seen = new Set();
   const out = [];
@@ -84,7 +101,7 @@ export function listTracks() {
       if (seen.has(id)) continue;
       seen.add(id);
       const { bank, ...rest } = resolveTrack(id);
-      out.push({ ...rest, group });
+      out.push({ ...rest, group: rest.group || group, writable: rest.writable !== false });
     }
   }
   return out;

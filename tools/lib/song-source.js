@@ -123,7 +123,7 @@ export function bankSource(bank, indent = '') {
  * Below it is what the desk writes. The desk rewrites only that half, so a comment
  * anybody adds to the music stays where it was put.
  */
-export function songFile({ id, title, slug, group, bank, mix, arrangement, note }) {
+export function songFile({ id, title, slug, group, bank, mix, arrangement, note, seed }) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
     + (note ? `${note.split('\n').map((l) => `// ${l}`).join('\n')}\n//\n` : '')
@@ -134,7 +134,9 @@ export function songFile({ id, title, slug, group, bank, mix, arrangement, note 
     + `export const id = ${JSON.stringify(id)};\n`
     + `export const title = ${JSON.stringify(title)};\n`
     + `export const slug = ${JSON.stringify(slug)};\n`
-    + `export const group = ${JSON.stringify(group)};\n\n`
+    + `export const group = ${JSON.stringify(group)};\n`
+    + (seed == null ? '' : `export const seed = ${JSON.stringify(seed)};\n`)
+    + `\n`
     + `export const bank = ${bankSource(bank)};\n\n`;
 
   const tail = `// ---- THE DESK WRITES BELOW HERE ----------------------------------------------\n`

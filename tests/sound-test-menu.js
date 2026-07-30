@@ -54,19 +54,25 @@ function touchUp() {
   sound.update(1 / 60);
 }
 
+// `sourceBank`, not `bank`, throughout: these ask WHICH SONG is playing, and that is
+// the bank as chosen. `Audio.bank` is what the sequencer walks — the song after its
+// arrangement, its layers and its voice overrides have been folded in — so a song
+// whose mix duplicates a track or names a preset is a different object by the time it
+// gets there. Title's does both (a `bass2` layer on `tpAlienChorus`), which is what
+// made this read as "the title theme is not playing" while it was playing fine.
 const firstY = sound.listY + sound.rowH / 2;
 touchDown(firstY); touchUp();
-assert(sound.idx === 0 && sound.playing === 0 && Audio.bank === TITLE_THEME,
+assert(sound.idx === 0 && sound.playing === 0 && Audio.sourceBank === TITLE_THEME,
   'one stationary touch selects and plays a track');
 assert(Audio.pendingStartDelay === 0.5,
   'starting a jukebox track inserts a half-second silence before bar one');
 touchDown(firstY); touchUp();
-assert(sound.idx === 0 && sound.playing === -1 && Audio.bank === null,
+assert(sound.idx === 0 && sound.playing === -1 && Audio.sourceBank === null,
   'touching the playing track again stops it without losing selection');
 
 const secondY = sound.listY + sound.rowH * 1.5;
 touchDown(secondY); touchUp();
-assert(sound.idx === 1 && sound.playing === 1 && Audio.bank === HUB_THEME,
+assert(sound.idx === 1 && sound.playing === 1 && Audio.sourceBank === HUB_THEME,
   'touching another track switches directly to it');
 
 const swipeY = sound.listY + sound.rowH * 4;
@@ -74,14 +80,14 @@ touchDown(swipeY);
 touchMove(swipeY - sound.rowH * 3);
 touchUp();
 assert(sound.listStart === 3, 'an upward drag reveals three later tracks');
-assert(sound.playing === 1 && Audio.bank === HUB_THEME,
+assert(sound.playing === 1 && Audio.sourceBank === HUB_THEME,
   'dragging the list never changes or stops the playing track');
 
 touchDown(sound.listY + sound.rowH / 2); touchUp();
 assert(sound.idx === 3 && sound.playing === 3,
   'post-scroll hit-testing maps the first visible row to its real track');
 Input.press('confirm'); sound.update(1 / 60); Input.release('confirm'); Input.endFrame();
-assert(sound.playing === -1 && Audio.bank === null,
+assert(sound.playing === -1 && Audio.sourceBank === null,
   'keyboard confirmation uses the same stop toggle');
 Input.press('confirm'); sound.update(1 / 60); Input.release('confirm'); Input.endFrame();
 assert(sound.playing === 3, 'keyboard confirmation starts the selected track again');
@@ -91,7 +97,7 @@ sound.draw(ctx);
 assert(true, 'the scrolled sound test renders safely');
 
 touchDown(sound.backY + sound.backH / 2); touchUp();
-assert(returned === 1 && Audio.bank === null, 'the fixed touch BACK target stops playback and exits');
+assert(returned === 1 && Audio.sourceBank === null, 'the fixed touch BACK target stops playback and exits');
 
 Input.clearAll();
 Input.usingTouch = false;

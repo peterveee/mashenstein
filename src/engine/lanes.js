@@ -116,6 +116,15 @@ export function deskBank(bank, entry) {
   const shape = (block) => {
     const out = { ...block };
     for (const key of off) delete out[key];
+    // Scratch templates name silent lanes here so the Blank template can show an
+    // editable track without planting a fake note. Once that track is deleted, the
+    // marker must go with it: activeLanes intentionally trusts starterLanes, so
+    // leaving the key here would recreate the strip and arrangement row even though
+    // the lane data above was correctly removed.
+    if (Array.isArray(out.starterLanes)) {
+      out.starterLanes = out.starterLanes.filter((key) => !off.includes(key));
+      if (!out.starterLanes.length) delete out.starterLanes;
+    }
     for (const { key, from, independent } of layers) {
       // Ordinary layers are doubles: same notes, separate voice and strip. Pattern-
       // editor instruments are independent layers: a real silent lane until notes
@@ -142,6 +151,10 @@ export function deskBank(bank, entry) {
   for (const { key, independent } of layers) {
     if (!independent) continue;
     const seam = seamFor(key);
+    // Only percussion layers can use the generic Tom starter. Melodic lanes need
+    // an explicit library voice; assigning a drum preset here makes a new bass or
+    // lead row appear to be configured while silently routing it through noise.
+    if (!seam || !PERCUSSION_LANES.includes(baseLane(key))) continue;
     if (!seam || entry?.voice?.[seam.voiceKey] || entry?.voiceParams?.[seam.voiceKey]) continue;
     if (out[seam.voiceKey] == null) out[seam.voiceKey] = DEFAULT_ADDED_PERCUSSION_VOICE;
   }
@@ -297,7 +310,13 @@ export function activeLanes(bank, repeat = 1) {
   const bars = songBars(bank, repeat);
   const independent = new Set((bank?.__layers || [])
     .filter((l) => l.independent).map((l) => l.key));
+  // Scratch-song templates can deliberately expose a silent lane (the Blank
+  // template's lead) without planting a fake note just to make the strip appear.
+  // Hand-authored songs do not carry this marker, so their existing activity rule
+  // remains unchanged.
+  const starter = new Set(Array.isArray(bank?.starterLanes) ? bank.starterLanes : []);
   return laneList(bank).filter(({ key }) => independent.has(key)
+    || starter.has(key)
     || bars.some(({ b }) => b[key] && b[key].some(Boolean)));
 }
 

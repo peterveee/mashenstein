@@ -351,13 +351,19 @@ const extraLaneDraft = {
 };
 const withoutExtraLane = removeLanes(extraLaneDraft, ['tom2']);
 assert(!withoutExtraLane.sections[0].tom2 && withoutExtraLane.sections[0].kick
+  && withoutExtraLane.plan.length === extraLaneDraft.plan.length
   && json(withoutExtraLane.plan[0].off) === json(['snare'])
   && withoutExtraLane.plan[0].transpose.bass === 5
   && withoutExtraLane.plan.every((bar) => !bar.delete?.includes('tom2')
     && bar.transpose?.tom2 == null && bar.offset?.tom2 == null && bar.gain?.tom2 == null),
-  'deleting an independent sound removes its notes and bar edits without touching other lanes');
+  'deleting an independent sound removes its notes and bar edits without touching other lanes or song bars');
 assert(extraLaneDraft.sections[0].tom2 && extraLaneDraft.plan[0].off.includes('tom2'),
   'removing a lane returns a new arrangement and leaves the prior undo snapshot intact');
+// The desk holds the lane and its layers as a Set, and passes that straight in. This
+// asserted only against an array until Delete track threw on the Set and left the
+// strip on screen with the mix unchanged — the whole of the delete is downstream.
+assert(json(removeLanes(extraLaneDraft, new Set(['tom2']))) === json(withoutExtraLane),
+  'a lane set removes exactly what the same lanes as an array do');
 const clip = copyBars(plumber, base, 0, 1);
 const pasted = pasteBars(plumber, base, 2, clip);
 assert(pasted.plan.length === base.plan.length + 2
@@ -509,6 +515,39 @@ assert(forkedThenShared.plan[1].sec !== forkedThenShared.plan[3].sec,
   'a bar forked on its own is left out of a later shared edit');
 const loneFork = forkedThenShared.sections[forkedThenShared.plan[1].sec - plumber.sections.length];
 assert(loneFork.kick.slice(16).every((v) => v === false), 'and keeps the edit it was given');
+
+// ---- clearing a track ---------------------------------------------------------
+//
+// The desk's Clear writes empty bars rather than flagging the lane deleted: a flag
+// left every note in the file and in the roll, and Reset track undid the clear. This
+// is that write, and what it has to survive is the trip out to a saved arrangement
+// and back — the lane is only empty if the reopened song is empty too.
+const clearedLane = 'bass';
+const clearRest = new Array(16).fill(null);
+let cleared = base;
+for (let bar = 0; bar < base.plan.length; bar++) {
+  cleared = writeBarNotesShared(plumber, cleared, bar, clearedLane, clearRest);
+}
+const clearedNotes = (bank, order) => expandOrder(order, true).reduce((sum, bar) => {
+  const arr = (resolveSection(bank, bar.sec) || {})[clearedLane] ?? bank[clearedLane];
+  return sum + (Array.isArray(arr) ? arr.slice(bar.half * 16, bar.half * 16 + 16)
+    .filter((v) => v !== null && v !== false).length : 0);
+}, 0);
+const barsWithBass = expandOrder(orderOf(plumber), true)
+  .filter((bar) => clearedNotes(plumber, [{ s: bar.sec, bars: 1, from: bar.half }])).length;
+assert(clearedNotes(plumber, orderOf(plumber)) > 0
+  && barsWithBass === expandOrder(orderOf(plumber), true).length,
+'plumber plays bass in every bar, which is what a clear has to remove');
+const clearEntry = entryOf(plumber, cleared);
+const clearedBank = applyArrangement(plumber, 'cleared', { cleared: clearEntry });
+assert(clearedNotes(clearedBank, clearEntry.order) === 0,
+  'clearing a track empties every bar of it, through the arrangement a save would write');
+assert(json(plumber.bass) === json(resolveTrack('plumber').bank.bass),
+  'and the song it was cleared out of still has its own notes');
+// One delta per section, not one per bar: a section four bars long is emptied once.
+assert(clearEntry.sections.length <= (plumber.sections?.length || 0)
+  && clearEntry.sections.length < base.plan.length,
+'a shared clear forks each pattern once rather than once per bar');
 
 const entry = entryOf(plumber, written);
 assert(entry && entry.order && entry.sections?.length === 1, 'a real edit does produce an entry');

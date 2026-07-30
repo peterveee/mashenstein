@@ -128,6 +128,21 @@ assert(!deskLanes(gone, 1).some((l) => l.key === 'hats'),
 assert(deskLanes(gone, 1).length === deskLanes(bank, 1).length - 1,
   'and nothing else moves');
 
+// Scratch templates deliberately expose silent starter lanes. Their visibility
+// marker is part of the lane's shape and has to be removed with the lane itself.
+const scratchBank = {
+  bpm: 120,
+  lead: new Array(32).fill(null),
+  bass: new Array(32).fill(null),
+  starterLanes: ['lead', 'bass'],
+};
+const scratchGone = deskBank(scratchBank, { off: ['lead'] });
+assert(!scratchGone.starterLanes.includes('lead') && scratchGone.starterLanes.includes('bass'),
+  'deleting a scratch starter lane removes its silent-track visibility marker');
+assert(!deskLanes(scratchGone, 1).some((l) => l.key === 'lead')
+  && deskLanes(scratchGone, 1).some((l) => l.key === 'bass'),
+  'a deleted scratch starter has no strip or arrangement row while the other starter remains');
+
 // A layer of a deleted part would be a copy of nothing.
 const both = deskBank(bank, { off: ['bass'], layers: [{ key: 'bass2', from: 'bass' }] });
 assert(both.bass === undefined && both.bass2 === undefined,

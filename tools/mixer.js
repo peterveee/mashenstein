@@ -2,11 +2,12 @@
 //
 // Bundles tools/mixer-entry.js into tools/mixer-shell.html the same way
 // build-gallery.js does, then serves it — because unlike the gallery this tool
-// writes back. "Save to game" POSTs the whole mix and this process rewrites
-// src/data/mix.js, which the game and every render tool then read. Peter reviews
-// and commits; nothing here touches git.
+// writes back. "Save song" posts one song and this process rewrites that song's
+// source file, which the game and every render tool then read. Peter reviews and
+// commits; nothing here touches git.
 import { createServer } from 'http';
 import { spawn } from 'child_process';
+import { randomBytes } from 'crypto';
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync, rmSync,
   copyFileSync, readdirSync, statSync,
@@ -22,11 +23,13 @@ import { bankFromMidi } from './lib/midi-import.js';
 import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/imported-index.js';
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
 // src/data/imported/ as tracks, so an import is renderable without a restart.
-import { resolveTrack, listTracks, registerTrack } from './lib/tracks.js';
+import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
 import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
-import { writeSongFile, songPath, snapshotSongFile } from './lib/song-file.js';
+import { writeSongFile, writableSongPath, snapshotSongFile } from './lib/song-file.js';
 import { writeSongsIndex } from './lib/songs-index.js';
+import { newScratchSong } from './lib/new-song.js';
+import { randomSongName } from './lib/song-names.js';
 // The sends' defaults, read from the engine rather than written out again here: a
 // value equal to its default is left out of the file, so a number that drifted apart
 // from the engine's would quietly stop being saved.
@@ -51,6 +54,7 @@ const HISTORY_KEEP = 300;
 
 const HOST = process.env.MASH_MIXER_HOST || '127.0.0.1';
 const PORT = Number(process.env.MASH_MIXER_PORT) || 8010;
+const randomSongSeed = () => randomBytes(4).readUInt32LE(0);
 
 // Rebuilt per request so a save-and-refresh picks up engine edits without a restart.
 async function buildPage() {
@@ -299,12 +303,18 @@ export async function readHistoryVersion(file, dir = HISTORY_DIR) {
 
 /** The mix as the FILE currently holds it, whatever this process last wrote. */
 async function readCurrentMix() {
-  return readSongStateDir(join(ROOT, 'src/data/songs'), 'mix');
+  return {
+    ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'mix'),
+    ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'mix'),
+  };
 }
 
 /** The same, for the arrangement layer. Absent file is an empty layer, not an error. */
 async function readCurrentArrangements() {
-  return readSongStateDir(join(ROOT, 'src/data/songs'), 'arrangement');
+  return {
+    ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'arrangement'),
+    ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'arrangement'),
+  };
 }
 
 /**
@@ -443,8 +453,111 @@ async function renderTrack(trackId, mix, { repeat = 1, write = true } = {}) {
 // dialogue without anyone reaching for the volume between cabinets.
 const LOUDNESS_TARGET = -16;
 
+function idTaken(id, root, resolver) {
+  return existsSync(join(root, IMPORTED_DIR, `${id}.js`))
+    || existsSync(join(root, 'src/data/songs', `${id}.js`))
+    || !!resolver(id);
+}
+
+/** A New Song always gets a fresh scratch id; importing reuses an existing id. */
+export function newScratchId(title, root = ROOT, resolver = resolveTrack) {
+  const base = slugFor(title || randomSongName());
+  let id = base;
+  for (let i = 2; ; i++) {
+    if (!idTaken(id, root, resolver)) return id;
+    id = `${base}-${i}`;
+  }
+}
+
+/**
+ * The name an unnamed New Song is born with. Picking one whose slug is still free
+ * keeps the title and the filename saying the same thing — a numbered id would
+ * otherwise reappear behind a perfectly good name.
+ */
+export function newScratchName(root = ROOT, resolver = resolveTrack) {
+  return randomSongName({ isTaken: (name) => idTaken(slugFor(name), root, resolver) });
+}
+
 const server = createServer(async (req, res) => {
   try {
+    // Create a source-backed scratch song. It is registered immediately for this
+    // mixer tab, indexed beside MIDI imports, and deliberately kept out of the
+    // game's src/data/songs catalogue.
+    if (req.method === 'POST' && req.url === '/new-song') {
+      const body = await readJson(req);
+      let spec;
+      try {
+        const title = String(body?.title ?? '').trim() || newScratchName();
+        spec = newScratchSong({
+          id: newScratchId(title),
+          title,
+          bpm: body?.bpm,
+          bars: body?.bars,
+          template: body?.template,
+          // Absent or `auto` and the seed picks the style pack — see song-styles.js.
+          style: body?.style,
+          seed: body?.seed ?? randomSongSeed(),
+        });
+      } catch (err) {
+        res.writeHead(400, { 'content-type': 'text/plain' });
+        res.end(String(err.message || err));
+        return;
+      }
+      const file = join(ROOT, IMPORTED_DIR, `${spec.id}.js`);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, spec.source);
+      writeImportedIndex(ROOT);
+      const mod = await freshImport(file);
+      const registered = registerTrack({
+        id: spec.id,
+        bank: mod.bank,
+        title: mod.title,
+        slug: mod.slug,
+        group: 'scratch',
+        writable: true,
+      });
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        file: 'src/data/imported/' + `${spec.id}.js`,
+        // What the seed decided, so the desk can say it rather than leaving the style
+        // to be guessed at from the sound.
+        style: spec.styleLabel, key: spec.key, bpm: spec.bpm,
+        track: { id: registered.id, title: registered.title, slug: registered.slug,
+          group: 'scratch', writable: true, bank: registered.bank },
+      }));
+      return;
+    }
+
+    // Scratch sources are deliberately disposable. Deleting one is explicit and
+    // narrow: catalogue songs and marker-less MIDI imports can never be removed by
+    // this route, and the desk's local draft is discarded by the client afterwards.
+    if (req.method === 'POST' && req.url === '/delete-song') {
+      const body = await readJson(req);
+      const id = String(body?.id || '');
+      const track = resolveTrack(id);
+      const target = id ? writableSongPath(ROOT, id) : null;
+      const importedRoot = join(ROOT, IMPORTED_DIR) + '/';
+      if (!track || track.group !== 'scratch' || track.writable !== true
+        || !target || !target.startsWith(importedRoot)) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('only writable scratch songs can be deleted');
+        return;
+      }
+      rmSync(target);
+      if (existsSync(HISTORY_DIR)) {
+        for (const file of readdirSync(HISTORY_DIR)) {
+          if (file.startsWith('song-') && file.endsWith(`-${id}.js`)) {
+            rmSync(join(HISTORY_DIR, file), { force: true });
+          }
+        }
+      }
+      unregisterTrack(id);
+      writeImportedIndex(ROOT);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, id }));
+      return;
+    }
+
     // Save one song: its mix and its arrangement, into its own file.
     //
     // One file per song is what makes this simple. It used to rewrite
@@ -474,12 +587,13 @@ const server = createServer(async (req, res) => {
       const written = [];
       const snaps = [];
       for (const id of ids) {
-        if (!existsSync(songPath(ROOT, id))) {
+        const target = writableSongPath(ROOT, id);
+        if (!target) {
           res.writeHead(404, { 'content-type': 'text/plain' });
-          res.end(`no song file for "${id}" — src/data/songs/${id}.js does not exist`);
+          res.end(`no writable song file for "${id}" — legacy MIDI imports cannot be saved`);
           return;
         }
-        const current = await freshImport(songPath(ROOT, id));
+        const current = await freshImport(target);
         const mix = patchMode
           ? (has(body.patch, 'mix') ? body.patch.mix : (current.mix ?? null))
           : (has(entries, id) ? entries[id] : (current.mix ?? null));
@@ -496,7 +610,11 @@ const server = createServer(async (req, res) => {
         });
         written.push(id);
       }
-      // The folder's index, in case a song file was added while this was running.
+      // Keep whichever catalogue contains the saved file in sync. The generated
+      // index is what makes a new scratch source visible after a page rebuild.
+      if (written.some((id) => writableSongPath(ROOT, id)?.includes(`/${IMPORTED_DIR}/`))) {
+        writeImportedIndex(ROOT);
+      }
       writeSongsIndex(join(ROOT, 'src/data/songs'));
 
       console.log(`saved ${written.map((id) => `src/data/songs/${id}.js`).join(', ')}`
@@ -833,6 +951,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     // on, below its own desk marker. Saying src/data/mix.js was true when every mix
     // lived in one file and stopped being true the moment they did not — and a
     // startup line that names the wrong file is how you go looking in the wrong diff.
-    console.log('  "Save to game" writes src/data/songs/<id>.js');
+    console.log('  "Save song" writes src/data/songs/<id>.js; scratch songs use src/data/imported/<id>.js (outside the game)');
   });
 }

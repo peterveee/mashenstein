@@ -80,7 +80,11 @@ export function delaySeconds(params = {}, bpm = 120) {
 const PARAM_RANGES = {
   wet: { min: 0, max: 1, step: 0.01 },
   mix: { min: 0, max: 1, step: 0.01 },
+  // Every left/right control on the desk's effects is a BALANCE on the card, whatever
+  // the key behind it: `pan` is the Advanced Delay's, and predates the word. The keys
+  // are what saved mixes hold, so they stay as they are — see PARAM_LABELS.
   pan: { min: -1, max: 1, step: 0.02 },
+  balance: { min: -1, max: 1, step: 0.02 },
   tone: { min: 400, max: 12000, step: 100, unit: 'Hz', log: true },
   sync: { min: 0, max: 1, step: 1, toggle: true },
   delayMs: { min: 1, max: 1000, step: 1, unit: 'ms' },
@@ -107,10 +111,11 @@ const PARAM_RANGES = {
   // in the first one: 50 cents is a quarter tone and already a harmony part, and
   // everything that sounds like a second take is under 20.
   detune: { min: 0, max: 50, step: 1, unit: 'ct' },
-  // Its two pans. Separate names rather than one `pan` because the two halves of a
-  // doubler are placed independently — dry hard left against wet hard right is the
-  // whole point of the effect for some parts — and because they are not even the same
-  // law: one is a balance, one is an equal-power pan. See makeDoubler.
+  // Its two balances (DRY BALANCE / WET BALANCE on the card). Separate names rather
+  // than one, because the two halves of a doubler are placed independently — dry hard
+  // left against wet hard right is the whole point of the effect for some parts — and
+  // because they are not even the same law: one is a balance, one is an equal-power
+  // pan. See makeDoubler.
   dryPan: { min: -1, max: 1, step: 0.02 },
   wetPan: { min: -1, max: 1, step: 0.02 },
   windowSize: { min: 0.01, max: 0.2, step: 0.005, unit: 's' },
@@ -166,8 +171,9 @@ const PARAM_RANGES = {
  * It was a fixed section on every channel strip before the effect rack existed.
  * Two mechanisms for one job is one too many, so it moved in here — but it kept
  * two things Tone's delays do not give us: a note-division time that follows the
- * song's bpm, and a pan on the WET leg alone, so the source can sit left and its
- * repeats right. A Tone delay mixes wet and dry internally, which makes that
+ * song's bpm, and a BALANCE on the WET leg alone (`pan` in the params, from before the
+ * catalogue settled on one word for a left/right control), so the source can sit left
+ * and its repeats right. A Tone delay mixes wet and dry internally, which makes that
  * impossible.
  */
 function makeChannelDelay(ctx, params) {
@@ -361,24 +367,61 @@ function makeParametricEq(ctx, params) {
 }
 
 /**
- * Plain gain. Some lanes are authored very quiet — organ sits at 0.009 against the
- * bass at 0.1 — and the channel fader tops out at +6dB, which is not always enough
- * to bring one up to where it can be balanced at all. This has ±24dB of range and
- * can sit anywhere in the chain, so it doubles as a trim before a distortion or a
- * make-up gain after a compressor.
+ * Level and placement. Some lanes are authored very quiet — organ sits at 0.009 against
+ * the bass at 0.1 — and the channel fader tops out at +6dB, which is not always enough
+ * to bring one up to where it can be balanced at all. GAIN has ±24dB of range and can
+ * sit anywhere in the chain, so it doubles as a trim before a distortion or a make-up
+ * gain after a compressor.
+ *
+ * BALANCE is after it, in that order because it is the order of the two questions: how
+ * loud, then where. It is the utility every desk has and this one only had on the strip
+ * — so a lane that needs its repeats placed, or a second pass at the image after an
+ * effect has moved it, no longer has to spend the strip's own pot to get it.
+ *
+ * A BALANCE, not a pan, and the whole catalogue says balance for the same reason (the
+ * Doubler's dry leg got here first — see makeDoubler). A StereoPannerNode would have
+ * been one node instead of four, but its law is equal-power, and equal-power at centre
+ * is 0.707 a side: a mono lane would lose 3dB off its mono sum the moment a Gain was
+ * inserted, whether or not anything had been moved. This rides ONE side down from
+ * unity, so centred it is bit-for-bit the input — which is what an insert you reach for
+ * to fix a level has to be.
  */
 function makeGain(ctx, params) {
-  const node = ctx.createGain();
-  const state = { gain: 0, ...params };
-  const apply = () => { node.gain.setTargetAtTime(10 ** (state.gain / 20), ctx.currentTime, 0.02); };
+  const level = ctx.createGain();
+  const output = ctx.createGain();
+  const split = ctx.createChannelSplitter(2);
+  const merge = ctx.createChannelMerger(2);
+  const left = ctx.createGain();
+  const right = ctx.createGain();
+  // Two channels whatever arrives, or BALANCE has nothing to move on a mono lane: the
+  // up-mix duplicates, so it costs the signal nothing to make the pair.
+  for (const n of [level, output]) {
+    n.channelCount = 2; n.channelCountMode = 'explicit'; n.channelInterpretation = 'speakers';
+  }
+  level.connect(split);
+  split.connect(left, 0); left.connect(merge, 0, 0);
+  split.connect(right, 1); right.connect(merge, 0, 1);
+  merge.connect(output);
+  const state = { gain: 0, balance: 0, ...params };
+  const apply = () => {
+    const t = ctx.currentTime;
+    level.gain.setTargetAtTime(10 ** (state.gain / 20), t, 0.02);
+    const b = Math.max(-1, Math.min(1, state.balance ?? 0));
+    left.gain.setTargetAtTime(b <= 0 ? 1 : 1 - b, t, 0.02);
+    right.gain.setTargetAtTime(b >= 0 ? 1 : 1 + b, t, 0.02);
+  };
   apply();
   return {
-    input: node, output: node, _custom: true,
+    input: level, output, _custom: true,
     applyState: apply,
     setState: (patch) => { Object.assign(state, patch); apply(); },
-    connect: (dest) => (dest && dest.input ? node.connect(dest.input) : node.connect(dest)),
-    disconnect: () => { try { node.disconnect(); } catch { /* fine */ } },
-    dispose: () => { try { node.disconnect(); } catch { /* fine */ } },
+    connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
+    disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
+    dispose: () => {
+      for (const n of [level, split, left, right, merge, output]) {
+        try { n.disconnect(); } catch { /* fine */ }
+      }
+    },
   };
 }
 
@@ -1004,14 +1047,16 @@ const DOUBLER_VOICES = [
  *            8ms the two fuse into one comb-filtered voice; past 50 they are an echo.
  *   RATE     how fast the voices drift, and DEPTH how far. Without it the detune is
  *            static, which is the one thing a human never is.
- *   WIDTH    how far apart the two voices sit, and DRY PAN / WET PAN where each part
- *            goes. A mono lane comes out of here in stereo, and the two halves are
+ *   WIDTH    how far apart the two voices sit, and DRY BALANCE / WET BALANCE where each
+ *            part goes. A mono lane comes out of here in stereo, and the two halves are
  *            placed SEPARATELY on purpose: dry hard left and wet hard right is the
  *            oldest double-tracking trick there is, and it needs two controls to say.
+ *            (`dryPan`/`wetPan` in the params, which is what saved mixes hold — the
+ *            cards said PAN before the catalogue settled on one word for it.)
  *
- * The two pans are not the same law, which is deliberate. WET PAN places a source, so
- * it is the equal-power pan every desk uses. DRY PAN is a BALANCE — unity in both
- * channels at centre, one side pulled down as it moves — because the dry leg is the
+ * The two are not the same law, which is deliberate. WET BALANCE places a source, so it
+ * is the equal-power pan every desk uses. DRY BALANCE is a balance proper — unity in
+ * both channels at centre, one side pulled down as it moves — because the dry leg is the
  * signal the lane was mixed with, and an insert must not quietly cost it 3dB for being
  * switched on. Centred, it is bit-for-bit the input.
  *
@@ -1183,7 +1228,7 @@ function makeDoubler(ctx, params) {
       // table per 1/f seconds is tableSeconds·f of it per second.
       set(q.mod.playbackRate, tableSeconds * Math.max(0, state.frequency ?? 0) * q.v.rate, 0.05);
       set(q.depth.gain, swing, 0.05);
-      // WIDTH spreads the pair, WET PAN moves the pair. Both voices at +1 is what puts
+      // WIDTH spreads the pair, WET BALANCE moves the pair. Both at +1 is what puts
       // the whole doubled part in one speaker with the original in the other.
       set(q.pan.pan, Math.max(-1, Math.min(1, centre + q.v.pan * width)));
     }
@@ -1219,8 +1264,11 @@ function makeDoubler(ctx, params) {
 }
 
 export const EFFECTS = [
-  { id: 'gain', name: 'Gain', cost: 0.02, custom: makeGain,
-    params: ['gain'], defaults: { gain: 0 } },
+  // 0.03 rather than the 0.02 it cost as a lone GainNode: BALANCE is a splitter, two
+  // gains and a merger behind it. Re-measured by the same hand method as the rest of
+  // these, on a bench that reads the Parametric EQ at 0.148 against its listed 0.15.
+  { id: 'gain', name: 'Gain', cost: 0.03, custom: makeGain,
+    params: ['gain', 'balance'], defaults: { gain: 0, balance: 0 } },
   // `short` is what an insert slot shows: a 118px strip cannot hold "Multiband
   // Compressor", and a name cut off mid-word is worse than an abbreviation someone
   // chose. The full name stays everywhere there is room for it.

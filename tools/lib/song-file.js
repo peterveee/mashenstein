@@ -16,14 +16,31 @@ import { bankSource, DESK_MARKER } from './song-source.js';
 import { mixEntrySource } from './mix-source.js';
 
 export const songPath = (root, id) => join(root, 'src/data/songs', `${id}.js`);
+export const scratchSongPath = (root, id) => join(root, 'src/data/imported', `${id}.js`);
+
+/**
+ * The editable source for a track, if it has one. Built-in songs live in the
+ * catalogue; scratch songs use the same desk-owned tail beside MIDI imports.
+ * Legacy MIDI banks deliberately return null because they have no marker and
+ * saving them would silently throw away the distinction between composition and
+ * imported source.
+ */
+export function writableSongPath(root, id) {
+  const builtIn = songPath(root, id);
+  if (existsSync(builtIn)) return builtIn;
+  const scratch = scratchSongPath(root, id);
+  if (!existsSync(scratch)) return null;
+  const src = readFileSync(scratch, 'utf8');
+  return src.includes(DESK_MARKER) ? scratch : null;
+}
 
 /**
  * The mix and arrangement a song file currently holds, without importing it —
  * used by nothing yet, but the read half of this pair belongs beside the write half.
  */
 export function readSongFile(root, id) {
-  const path = songPath(root, id);
-  if (!existsSync(path)) return null;
+  const path = writableSongPath(root, id);
+  if (!path) return null;
   return readFileSync(path, 'utf8');
 }
 
@@ -36,8 +53,8 @@ export function readSongFile(root, id) {
  * hand, not one to write over.
  */
 export function writeSongFile(root, id, { mix = null, arrangement = null } = {}) {
-  const path = songPath(root, id);
-  if (!existsSync(path)) throw new Error(`no song file for "${id}"`);
+  const path = writableSongPath(root, id);
+  if (!path) throw new Error(`no writable song file for "${id}"`);
   const src = readFileSync(path, 'utf8');
   const at = src.indexOf(DESK_MARKER);
   if (at < 0) throw new Error(`${id}.js has no "${DESK_MARKER}" line — refusing to write over it`);
@@ -64,8 +81,8 @@ export function writeSongFile(root, id, { mix = null, arrangement = null } = {})
  * snapshot is that half, standing alone, loadable by itself for ever.
  */
 export function snapshotSongFile(root, id, dir, stamp) {
-  const path = songPath(root, id);
-  if (!existsSync(path)) return null;
+  const path = writableSongPath(root, id);
+  if (!path) return null;
   const src = readFileSync(path, 'utf8');
   const at = src.indexOf(DESK_MARKER);
   if (at < 0) return null;

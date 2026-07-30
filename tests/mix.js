@@ -121,6 +121,30 @@ for (const def of Object.values(EFFECT_BY_ID)) {
   }
 }
 
+// ---- one word for a left/right control -------------------------------------
+//
+// BALANCE. The KEYS behind them cannot be standardised — `pan` on the Advanced Delay
+// and `dryPan`/`wetPan` on the Doubler are what saved mixes hold, and renaming them
+// would read as a reset of every song carrying one — so the cards are where the one
+// word has to hold. Read from the desk's source because PARAM_LABELS is browser code:
+// importing tools/mixer-entry.js in Node runs a page.
+//
+// The failure this guards is silent and easy: paramLabel falls back to the KEY,
+// uppercased, so a new effect declaring `pan` and no label draws a control reading PAN
+// beside three that read BALANCE, and nothing but a screenshot would say so.
+const deskSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+const labels = deskSource.slice(deskSource.indexOf('const PARAM_LABELS = {'));
+const labelBlock = labels.slice(0, labels.indexOf('};'));
+for (const def of Object.values(EFFECT_BY_ID)) {
+  for (const p of def.params) {
+    if (!/pan|balance/i.test(p)) continue;
+    const label = new RegExp(`\\b${p}: '([^']*)'`).exec(labelBlock)?.[1];
+    assert(label && label.includes('BALANCE') && !label.includes('PAN'),
+      `${def.id}: "${p}" is labelled BALANCE on the card — got ${
+        label ? `"${label}"` : 'no label at all, so it draws as its own key'}`);
+  }
+}
+
 // The trims that stop the songs clipping. These are measured values (see the peak
 // apportionment in the handoff notes); if they move, the render is expected to move
 // with them — but they should never quietly vanish.

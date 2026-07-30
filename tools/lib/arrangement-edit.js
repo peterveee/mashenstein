@@ -210,8 +210,12 @@ export const setLanesDeleted = (draft, from, to, keys, deleted = true) => {
  * from the mix and its note deltas here. Leaving the latter behind makes the sound
  * reappear if the same generated lane key is added later.
  */
+// `keys` is anything you can iterate — the caller in the desk already holds the lane
+// and its layers as a Set, and a `.filter` on that throws where an array would not.
+// The whole of Delete track lives downstream of this call, so the failure was the
+// track staying on screen with nothing to say why.
 export function removeLanes(draft, keys) {
-  const drop = new Set((keys || []).filter(Boolean));
+  const drop = new Set([...(keys || [])].filter(Boolean));
   if (!drop.size) return draft;
   const out = copy(draft);
   for (const section of out.sections) {

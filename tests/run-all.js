@@ -18,11 +18,18 @@ const suites = [
   'tests/visualizers.js',
   'tests/megamix.js',
   'tests/mix.js',
+  'tests/mixer-layout.js',
   // The arrangement layer, beside the mix layer it mirrors: that one is what a song
   // sounds like, this one is what plays when. Its first assertion is the one that
   // matters — an empty layer hands every song back the bank it always had — which is
   // tests/null-test.js's claim, made at the object rather than at the sample.
   'tests/arrangement.js',
+  // Source-backed scratch creation: starter patterns, writable saves, history,
+  // collision-safe ids, and a mixed legacy/scratch imported index.
+  'tests/new-song.js',
+  // The note semantics under the piano roll: what a cell becomes when it is drawn,
+  // which is the difference between a bad pixel and a bank that throws.
+  'tests/piano-roll.js',
   // The other half of the voice library: tests/voices.js proves the presets sound,
   // this proves the desk can write one back into src/data/voices.js without
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its

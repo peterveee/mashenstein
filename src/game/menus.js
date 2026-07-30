@@ -1513,7 +1513,12 @@ export class TitleState {
     // Returning from settings, help, or another title-side screen should not
     // rewind a title theme that is already playing. Other screens replace the
     // bank, so this still starts the theme normally after gameplay or jukebox.
-    if (Audio.bank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
+    // `sourceBank` is the song as CHOSEN; `Audio.bank` is what the sequencer walks,
+    // after the arrangement, the layers and the voice overrides are folded in. The
+    // title's mix does two of those, so it never matches the raw theme and this read
+    // as "not playing" every time. Harmless only because setBank compares sourceBank
+    // itself and returns early — the guard was asking a question it could not answer.
+    if (Audio.sourceBank !== TITLE_THEME) Audio.setBank(TITLE_THEME);
     Input.setMenuButtons();
     setSceneGlow(true); // the marquee and cabinet screens get to glow
     // The title's foreground is already rendered at the selected device

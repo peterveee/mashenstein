@@ -8,7 +8,7 @@
 // Importing this module also registers everything in src/data/imported/, so a song
 // that came in from a .mid is a track every CLI tool can render, export and mix —
 // the game's own bundle never pulls that folder in.
-export { resolveTrack, listTracks, trackIdOf, registerTrack } from '../../src/data/tracks.js';
+export { resolveTrack, listTracks, trackIdOf, registerTrack, unregisterTrack } from '../../src/data/tracks.js';
 import { resolveTrack } from '../../src/data/tracks.js';
 
 // Guarded, because that index is generated from a folder people edit: delete a bank

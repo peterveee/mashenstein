@@ -1570,6 +1570,15 @@ export function defaultVoiceOf(bank, laneKey) {
 }
 
 function resolveDefault(bank, laneKey, seam) {
+  // A bank may name a preset outright — `leadVoice: 'musicBox'`. That IS what the lane
+  // plays with nothing chosen (voiceOf reads the same key at schedule time), so it is
+  // the answer, and looking for an engine preset that matches the bank's other keys
+  // would label the strip after a sound it is not making. Generated scratch songs are
+  // the first banks to do this: a style pack writes its instruments into the
+  // composition, and the desk has to read them back.
+  const named = VOICES[bank[seam.voiceKey]];
+  if (named && !named.songLocal && !(named.lanes && !named.lanes.includes(laneKey))) return named;
+
   const vocab = presetKeys(laneKey);
   const views = bankViews(bank, vocab);
   if (views.length > 1) {
