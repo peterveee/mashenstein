@@ -327,6 +327,49 @@
   .label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
   .dirty { color: var(--hot); font-weight: 700; }
 
+  /* ---- one scrollbar, in two sizes ------------------------------------------------
+     Every scroller used to be styled where it was declared, and two of them also set
+     `scrollbar-color`. That property is not additive: in Chrome, setting it (or
+     `scrollbar-width`) switches the element back to the STANDARD scrollbar and drops
+     the ::-webkit-scrollbar rules underneath it entirely. So the roll's bar was the
+     browser's own — fifteen pixels, its own track — while the arrangement's, ten
+     pixels away up the same right edge, was a drawn ten. Nothing sets the standard
+     properties now. One path, two sizes on it.
+
+     CHROME, the default: a 6px thumb on no track, for the things that scroll inside a
+     panel or a popover — the drawer, the two racks, the voice editor, the library.
+     There a wide gutter is a fifth of the thing you are reading. */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+  /* CONTENT, the exception: the arrangement and the roll are the desk's two big
+     fields, they scroll down the same right edge one above the other, and they now
+     carry the same bar at the same inset — that pair not matching is what this is
+     for. The gutter is exactly --rgut, the desk's right margin, so the bar rides
+     INSIDE the margin instead of eating it: content still stops on the margin line,
+     and the thumb floats in the air that was already there rather than sitting flush
+     against the window. The floating is the transparent border clipped to the padding
+     box — a scrollbar is always drawn at the element's border edge and there is no
+     other way to inset one. */
+  #arrgrid::-webkit-scrollbar,
+  #pianoroll .ssqscroll::-webkit-scrollbar,
+  #stepseq .ssqscroll::-webkit-scrollbar { width: var(--rgut); height: 12px; }
+  #arrgrid::-webkit-scrollbar-thumb,
+  #pianoroll .ssqscroll::-webkit-scrollbar-thumb,
+  #stepseq .ssqscroll::-webkit-scrollbar-thumb {
+                      background: var(--faint); background-clip: padding-box;
+                      border: 5px solid transparent; border-radius: 10px; }
+  #arrgrid::-webkit-scrollbar-thumb:hover,
+  #pianoroll .ssqscroll::-webkit-scrollbar-thumb:hover,
+  #stepseq .ssqscroll::-webkit-scrollbar-thumb:hover {
+                      background: var(--dim); background-clip: padding-box; }
+  /* Along the bottom there is no margin to ride in, so the horizontal one is the
+     thin bar with air around it instead of the wide one — the same 6px thumb the
+     rest of the desk scrolls by. */
+  #pianoroll .ssqscroll::-webkit-scrollbar-thumb:horizontal,
+  #stepseq .ssqscroll::-webkit-scrollbar-thumb:horizontal { border-width: 3px; border-radius: 6px; }
+
   /* The master strip is pinned right, so it never scrolls out of reach. */
   /* Transport position, DAW style: one segment per two-bar block of the song
      form, shaded by which section it plays, with the playhead riding over it. */
@@ -452,9 +495,12 @@
                           top: 50%; transform: translateY(-50%); }
   /* A real scrollbar here, unlike the strips: with the panel capped at eight lanes
      there are usually more underneath, and nothing else on screen would say so. */
-  /* The scrollbar eats 8px of the row width, so the right padding gives 8px back —
-     the rows and the bar ruler above them have to keep the same geometry or the
-     columns stop lining up. */
+  /* The gutter IS the right margin: --rgut of scrollbar and no right padding at all,
+     so the rows stop on the same line as the bar ruler above them and the thumb rides
+     in the margin rather than beside it. STABLE because the rows have to stop on that
+     line whether the panel scrolls or not — on `auto` a seven-lane song had no bar,
+     took the twenty pixels back, and every bar in the arrangement sat ten pixels wide
+     of the tick it belongs under. */
   /* No bottom padding: the height is snapped to whole lanes, and six pixels of
      padding is six pixels of the NEXT lane showing through under the last one. */
   /* Left inset follows the fold column, less the four the cell pads itself by, so the
@@ -465,16 +511,8 @@
      the desk's slack — the mixer folded away — it is what puts the extra height
      into the scroller instead of leaving a dead band under the last lane. */
   #arrgrid { flex: 1 1 auto; min-height: 0;
-             overflow-y: auto; overflow-x: hidden;
-             padding: 0 calc(var(--rgut) - 10px) 0 calc(var(--foldx) - 4px); }
-  /* Drawn, not overlaid: it is the only thing on screen that says there are more
-     lanes under the ones you can see, and a thumb the colour of the panel says
-     nothing at all. The track is always there so the space is never a surprise. */
-  #arrgrid::-webkit-scrollbar { width: 10px; }
-  #arrgrid::-webkit-scrollbar-track { background: var(--deep); border-radius: 5px; }
-  #arrgrid::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 5px;
-                                      border: 2px solid var(--deep); }
-  #arrgrid::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+             overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable;
+             padding: 0 0 0 calc(var(--foldx) - 4px); }
   .arrrow { display: flex; align-items: center; height: var(--arrrow); gap: var(--namegap); }
   /* Mute, solo, name — one cell, exactly as wide as the ruler above is inset, so
      the bars still line up with the bar numbers. */
@@ -663,70 +701,40 @@
   #lanefilter button.off { color: var(--faint); background: var(--well); border-color: var(--seam); }
   #partfilter button.off .grpicon,
   #lanefilter button.off .grpicon { opacity: .4; }
+  /* Still switched ON, but the desk is hiding it anyway because the window is short.
+     Struck through rather than dimmed: dim is what OFF already means here, and the
+     difference between "you turned this off" and "there is no room for this" is the
+     difference between a setting and a symptom. Nothing on the desk is ever hidden
+     without something saying so, and for these three blocks this is the something. */
+  #partfilter button.shed { color: var(--faint); border-style: dashed; }
+  #partfilter button.shed .lbl { text-decoration: line-through; }
+  #partfilter button.shed .grpicon { opacity: .45; }
   /* The rows themselves. Display, not audio: an EQ you cannot see is still doing
      whatever it was set to, and the sends and inserts keep working — this is the desk
      showing you less of them, on every strip at once, master and returns included. */
+  /* ---- the rack's shrink ladder -----------------------------------------------
+     A short window sheds the same three blocks the switches above hide, in the same
+     order every time: inserts, then sends, then EQ. What is left at the bottom is
+     the strip you balance on — name, voice, fader, dB, pan, mute/solo — and the
+     fader is the shock absorber the whole way down. The desk never scrolls a strip
+     body: a row half out of sight is a row you cannot read and cannot click, and
+     hiding the block outright is the honest version of the same shortage. The
+     header switch for the block says so — see #partfilter button.shed.
+
+     shed-* is the desk's doing and no-* is yours. Two sets of classes rather than
+     one, because growing the window back must restore exactly what is ticked and
+     nothing more. */
   #rackwrap.no-eq .eqrow,
+  #rackwrap.shed-eq .eqrow,
   #rackwrap.no-sends .sendrow,
-  #rackwrap.no-fx .fxbtns { display: none; }
-
-  /* ---- the rack's shrink ladder, rungs one and two --------------------------
-     A state of the WHOLE rack, like the part switches above and for the same
-     reason: --striph and --faderh are one height for every strip, stripChrome()
-     takes its maximum across all of them precisely so they stand level, and a
-     per-strip ladder would put the faders on three different lines. See
-     sizeStrips() for where the two thresholds are worked out.
-
-     Rung one, squeezed. The body has always scrolled in a short window; what it
-     never did was SAY so, and that silence is why every height in this file used to
-     carry a defensive floor a hundred pixels above what it needed. Two marks and the
-     ladder can be honest: a slim bar down the right edge, and a fade off the bottom
-     so a half-visible send row reads as a row that continues rather than as the last
-     one. Both scoped to the class, so a roomy window keeps the clean rack. */
-  #rackwrap.squeezed .stripbody {
-    scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
-    -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - 14px), transparent 100%);
-            mask-image: linear-gradient(to bottom, black 0, black calc(100% - 14px), transparent 100%);
-  }
-  #rackwrap.squeezed .stripbody::-webkit-scrollbar { display: block; width: 5px; height: 0; }
-  #rackwrap.squeezed .stripbody::-webkit-scrollbar-track { background: transparent; }
-  #rackwrap.squeezed .stripbody::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 3px; }
-  #rackwrap.squeezed .stripbody:hover::-webkit-scrollbar-thumb { background: var(--dim); }
-
-  /* Rung two, compact. Below the point where scrolling is worth doing the strip
-     stops pretending. What is left is the four controls you actually balance with —
-     name, fader, pan, mute/solo — and one chip counting what has been folded away,
-     which is the way back to it. Nothing is silently lost on any rung: that is the
-     whole design, and it is what lets the rack's floor sit here instead of at a full
-     uncompressed strip. */
-  #rackwrap.compact .stripbody { overflow: hidden; -webkit-mask-image: none; mask-image: none; }
-  #rackwrap.compact .stripbody > *:not(.stripsum) { display: none; }
-  #rackwrap.compact .fxbtns { display: none; }
-  /* The dead air between the foot's controls, and only that: the fader, the pan pot
-     and the mute/solo pair keep every pixel they had. A compact strip is the one you
-     balance on when the window is short, so shrinking the things you aim at to buy
-     back thirty pixels would be trading the wrong way round. */
-  #rackwrap.compact .stripfoot { padding-top: 4px; }
-  #rackwrap.compact .panrow { margin-top: 4px; }
-  #rackwrap.compact .ctlbtns { margin-top: 6px; }
-  /* Measuring one for real rather than adding up its parts — see
-     compactStripHeight(). Both of these are given --striph explicitly, which is the
-     number the measurement is trying to produce. */
+  #rackwrap.shed-sends .sendrow,
+  #rackwrap.no-fx .fxbtns,
+  #rackwrap.shed-fx .fxbtns { display: none; }
+  /* Measuring a rung for real rather than adding its parts up — see stripChromeAt().
+     Both of these are given --striph explicitly, which is the number the measurement
+     is trying to produce. */
   #rackwrap.measuring .strip,
   #rackwrap.measuring .voicepair { height: auto; }
-
-  /* The chip. Three counts and a click: how much of this channel is folded away, and
-     the way to get it back. Same furniture as the other "this is what it is set to"
-     rows on a strip — a well, a hairline and small caps. */
-  .stripsum { display: none; }
-  #rackwrap.compact .stripsum {
-    display: block; width: 100%; margin: 0; padding: 2px;
-    font-size: 9px; line-height: 1.25; letter-spacing: .04em; text-align: center;
-    color: var(--dim); background: var(--well);
-    border: 1px solid var(--line); border-radius: 3px;
-  }
-  #rackwrap.compact .stripsum.has { color: var(--ink); }
-  #rackwrap.compact .stripsum:hover { color: var(--ink); border-color: var(--dim); }
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
   #rackwrap.collapsed { display: none; }
@@ -778,8 +786,7 @@
                       display: flex; flex-direction: column; gap: 2px; padding-top: 2px;
                       scrollbar-width: none; -ms-overflow-style: none; }
   .strip .stripbody::-webkit-scrollbar { width: 0; height: 0; display: none; }
-  #rack::-webkit-scrollbar { height: 6px; }
-  #rack::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  /* The 6px bar itself is the desk's, from the block at the top. */
   /* The air between the rows and whatever the foot starts with belongs to the FOOT,
      not to the insert block: the block used to carry it as a top margin, so switching
      Effects off took the gap with it and left the fader hard against the last send
@@ -1185,12 +1192,9 @@
   #drawerclose { width: 28px; height: 28px; padding: 0; font-size: 20px; line-height: 1;
                  color: var(--dim); background: none; border-color: transparent; }
   #drawerclose:hover { color: var(--hot); }
-  #drawerbody { min-height: 0; overflow: auto; padding: 8px 10px 18px;
-                scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
-  #drawerbody::-webkit-scrollbar { width: 6px; }
-  #drawerbody::-webkit-scrollbar-track { background: transparent; }
-  #drawerbody::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 5px;
-                                         border: 1px solid transparent; background-clip: padding-box; }
+  /* The desk's own 6px bar, from the block at the top — no `scrollbar-width` and no
+     `scrollbar-color`, either of which would hand this back to the browser. */
+  #drawerbody { min-height: 0; overflow: auto; padding: 8px 10px 18px; }
   .drawersection { padding: 0 0 12px; margin: 0 0 10px; border-bottom: 1px solid var(--line); }
   .drawersection:last-child { border-bottom: 0; }
   .drawersection.collapsed { padding-bottom: 4px; }
@@ -1571,11 +1575,8 @@
                           taller synth makes the bar appear. */
                        scrollbar-gutter: stable; }
   /* The same 6px bar the rack and the device shelf use — narrow enough to read as an
-     edge rather than as a column, in a panel only three strips wide. */
-  #voiceedit .verack::-webkit-scrollbar { width: 6px; }
-  #voiceedit .verack::-webkit-scrollbar-track { background: transparent; }
-  #voiceedit .verack::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
-  #voiceedit .verack::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+     edge rather than as a column, in a panel only three strips wide. It comes from the
+     desk-wide block now; a --line thumb here was a bar you could not see. */
   /* A rule between sections, not a box around each. Six bordered cards inside a
      bordered panel inside a bordered strip is three nested frames to say one thing,
      and the frames were louder than the controls they held. A line and some air do
@@ -1846,7 +1847,7 @@
   #pianoroll { --keys: calc(var(--contentx) - var(--capx) + 6px);
              display: none; flex: 1; min-height: 0;
              flex-direction: column;
-             padding: 4px var(--rgut) 8px calc(var(--capx) - 6px);
+             padding: 4px 0 8px calc(var(--capx) - 6px);
              background: none; border: none; border-radius: 0; box-shadow: none; }
   #devices.collapsed #pianoroll { display: none !important; }
   :is(#stepseq,#pianoroll).show { display: flex; }
@@ -1893,9 +1894,19 @@
                               text-transform: uppercase; letter-spacing: .09em; }
   :is(#stepseq,#pianoroll) .ssqscope span { min-width: 0; }
   /* One scroller owns rulers AND lanes, so a wide selection cannot move out from under
-     its bar numbers. The sticky left edge is the channel rack; the pattern scrolls. */
-  :is(#stepseq,#pianoroll) .ssqscroll { min-height: 0; overflow: auto; padding: 2px 0 4px;
-                        scrollbar-color: var(--faint) var(--input); }
+     its bar numbers. The sticky left edge is the channel rack; the pattern scrolls.
+     The air above is a MARGIN, not padding: a scroll container's top padding pushes the
+     sticky constraint rect down with it, so the roll's rulers stuck two pixels low and
+     the keyboard and the playhead scrolled up through the slot above them. */
+  /* No `scrollbar-color` here — see the scrollbar block up top: it takes this element
+     off the desk's own bar and back onto the browser's. */
+  :is(#stepseq,#pianoroll) .ssqscroll { min-height: 0; overflow: auto;
+                        margin-top: 2px; padding: 0 0 4px; }
+  /* The roll's gutter is the desk's right margin, exactly as the arrangement's is —
+     the panel hands the margin down to the scroller rather than spending it itself, or
+     the two bars run down two lines twenty pixels apart. Stable so the field is the
+     same width whether the channel has three lanes or thirty. */
+  #pianoroll .ssqscroll { scrollbar-gutter: stable; }
   :is(#stepseq,#pianoroll) .ssqbody { position: relative; width: max-content; min-width: 100%; }
   /* One line down the whole field, positioned by `follow`. Hidden in the step grid,
      which says where the playhead is with a ring round the playing square — there a
@@ -2055,8 +2066,14 @@
      it and meet in the middle, which is what a keyboard looks like from above. All it
      draws is the strip of chassis down the left, and it stacks above the white rows so
      its key lands on top of them. */
-  #pianoroll .rollwhite .ssqhead-cell { z-index: 3; background: var(--panel2); }
-  #pianoroll .rollblack .ssqhead-cell { z-index: 4;
+  /* ---- the keyboard is ALWAYS in front ---------------------------------------------
+     A note is a rectangle that can be several cells long, and the field scrolls under a
+     sticky keyboard — so notes reach the column constantly and must pass behind it. The
+     numbers matter because they were once close enough to tie: a selected note is
+     lifted (see `.sel` below) and at the same z-index as a white key it won on DOM
+     order, drawing itself across the keys. Nothing in the field may reach these. */
+  #pianoroll .rollwhite .ssqhead-cell { z-index: 8; background: var(--panel2); }
+  #pianoroll .rollblack .ssqhead-cell { z-index: 9;
                        background: linear-gradient(to right, var(--panel2) 6px, transparent 6px); }
   #pianoroll .ssqlane:hover .ssqhead-cell { background: var(--panel2); }
   #pianoroll .rollblack.ssqlane:hover .ssqhead-cell {
@@ -2074,6 +2091,20 @@
      are constant, painted over whatever the row is shaded, so a line is the same line all
      the way down — which is what a divider is. */
   #pianoroll .ssqcells { gap: 0; padding-right: 8px; align-self: stretch; }
+  /* The rulers stay put while the keyboard moves under them. The roll is a whole
+     instrument now — eighty-eight rows, most of them off-screen — so vertical scrolling
+     is the normal way to work it, and a bar number that scrolls away with the notes is a
+     bar number you have to scroll back for. Sticky rather than lifted out of the
+     scroller: they have to keep moving SIDEWAYS with the bars, which is why they were
+     put in there in the first place. A backing of their own, or the notes show through. */
+  /* Above the keyboard as well as above the field: the corner where they cross belongs
+     to the ruler, and the keys run to the top of the panel. */
+  #pianoroll .ssqbars, #pianoroll .ssqnums { position: sticky; z-index: 10;
+                        background: var(--panel2); }
+  #pianoroll .ssqbars { top: 0; }
+  #pianoroll .ssqnums { top: 18px; }
+  /* The rows that are not drawn, as height and nothing else — see renderRows. */
+  :is(#stepseq,#pianoroll) .ssqpad { flex: none; pointer-events: none; }
   /* ---- the grid, once -------------------------------------------------------------
      One overlay over the whole field: a step line every 22px, a beat every four of
      those, a bar every sixteen. Brightest first, because the first background image is
@@ -2136,8 +2167,60 @@
      picture of where a part plays rather than a control with a bevel on it.
      z-index puts it over the grid overlay. */
   #pianoroll .ssqcell.on { z-index: 2; }
-  #pianoroll .ssqcell.on::before { content: ''; position: absolute; inset: 0;
+  /* LENGTH is width on the pseudo-element, `--len` steps of it, set by the grid.
+     Not a colspan and not a margin: a margin on a flex item moves every column after it
+     (see above), and spanning cells would mean the cell you click is not the cell the
+     note is on. The pseudo-element is free to overhang its own cell because it is out of
+     flow — nothing about a note may touch layout, and this does not.
+     It works here and would not in the step grid: the roll zeroes the beat and bar
+     margins, so every cell is exactly 22px and `n × 100%` lands on the gridline. The
+     grid keeps its margins, which is why it keeps one-step notes.
+     `inset: 0 auto 0 0` rather than `inset: 0` — a right edge of 0 and a width fight,
+     and `right` wins. */
+  #pianoroll .ssqcell.on::before { content: ''; position: absolute; inset: 0 auto 0 0;
+                           width: calc(var(--len, 1) * 100%);
                            background: var(--lane); border-radius: 2px; }
+  /* Which of the two gestures a press would begin. `move` on the body of a note,
+     `ew-resize` within a few pixels of its right end — the same as every DAW, and the
+     only way the edge is discoverable rather than found by accident. Notes on vox and
+     shout get `sizeable` withheld, so they say `move` all the way across. */
+  #pianoroll .ssqcell.on { cursor: move; }
+  #pianoroll .ssqcell.on.atedge { cursor: ew-resize; }
+  /* ---- and the same thing said by a mode --------------------------------------------
+     Auto reads where you press, so its cursors change under the pointer. The named
+     tools do one thing wherever they land, so they say so with one cursor and the
+     move/resize offers above are withdrawn — an offer the tool will not honour is
+     worse than no offer. Erase shows what it is about to take: the note under the
+     pointer goes red before it goes. */
+  #pianoroll:is(.tool-draw,.tool-paint,.tool-erase) :is(.ssqcell,.ssqcell.on,.ssqcell.on.atedge) {
+                        cursor: crosshair; }
+  #pianoroll.tool-erase .ssqcell.on:hover::before { background: var(--hot); }
+  /* Select never writes, so its pointer is the ordinary arrow over empty space and a
+     move cursor over a note — the two things it can do. */
+  #pianoroll.tool-select .ssqcell { cursor: default; }
+  #pianoroll.tool-select .ssqcell.on { cursor: move; }
+  /* ---- a set of notes ---------------------------------------------------------------
+     Picked out by a ring rather than by a colour: the lane's colour is what says which
+     part this is, and a selection that recoloured its notes would be saying the wrong
+     thing loudly. The ring sits on the note's own rectangle, so a four-step note is
+     ringed for its whole length. */
+  #pianoroll .ssqcell.on.sel { z-index: 3; }
+  #pianoroll .ssqcell.on.sel::before {
+                        outline: 2px solid var(--ink);
+                        outline-offset: -1px;
+                        filter: brightness(1.18); }
+  /* The rubber band. One element over the field, like the playhead, and it takes no
+     pointer events — it is drawn while the pointer is busy elsewhere. */
+  #pianoroll .ssqband { position: absolute; z-index: 6; pointer-events: none;
+                        border: 1px solid color-mix(in srgb, var(--accent) 85%, transparent);
+                        background: color-mix(in srgb, var(--accent) 14%, transparent);
+                        border-radius: 2px; }
+  /* The grab handle itself: a hairline at the note's right end, only while the pointer
+     is on it. Drawn on the ::after, which the roll's cells otherwise do not use. */
+  #pianoroll .ssqcell.on.atedge::after { content: ''; position: absolute; top: 0; bottom: 0;
+                           left: calc(var(--len, 1) * 100% - 2px); width: 2px; z-index: 3;
+                           background: color-mix(in srgb, var(--ink) 70%, transparent);
+                           border-radius: 1px; pointer-events: none; }
   #pianoroll .ssqcell:hover { background: var(--cellhover); }
   #pianoroll .ssqcell.on:hover { background: var(--lane); filter: brightness(1.15); }
   #pianoroll .ssqlane-pick { width: auto; max-width: 130px; flex: none; font-size: 10.5px;
@@ -2218,10 +2301,6 @@
   /* Thin, like the editor's rack and the device shelf — a scrollbar in a panel this
      dense should read as an edge rather than as a column. */
   #voicelib .vlresults { scrollbar-gutter: stable; }
-  #voicelib .vlresults::-webkit-scrollbar { width: 6px; }
-  #voicelib .vlresults::-webkit-scrollbar-track { background: transparent; }
-  #voicelib .vlresults::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
-  #voicelib .vlresults::-webkit-scrollbar-thumb:hover { background: var(--faint); }
   /* The header is also the handle — the one thing every floating panel has ever done. */
   #voicelib .vlhead { display: flex; align-items: center; gap: 8px; flex: none;
                       margin: -9px -8px 8px; padding: 8px 10px;
@@ -2830,9 +2909,9 @@
      anything to scroll. On auto, the bar appears the moment a chain outgrows the
      window and takes its height out of the cards, so the whole rack jumps as you add
      the effect that caused it. (scrollbar-gutter only reserves the vertical one.) */
-  /* The chain starts on the caption line, under the word EFFECTS that names it. On the
+  /* The chain starts on the caption line, under the switch that names the view. On the
      content line it was under the first CHANNEL instead, which says the wrong thing: the
-     rack is the chain on one channel — the one the caption names — not a row of things
+     rack is the chain on one channel — the one the header names — not a row of things
      belonging to the strips above it. */
   #devrack { flex: 1; min-height: 0; display: flex; gap: 8px;
              padding: 6px var(--rgut) 10px var(--capx);
@@ -2840,9 +2919,11 @@
              scrollbar-gutter: stable; }
   #devrack .devempty { align-self: center; }
   /* ---- the region's header, shared ------------------------------------------------
-     The view switch, then whatever the active view puts here. Quiet: it is a switch you
-     use occasionally, not the subject of the panel, and at the size the header's own font
-     gave it the chips were the loudest thing on the desk. */
+     The view switch stands where the caption used to, on the fold line: it names what you
+     are looking at, so the words EFFECTS and NOTES are said once each rather than one in
+     ink on the left and the other on a chip at the far right. Quiet all the same — it is a
+     switch you use occasionally, and at the header's own font size the chips were the
+     loudest thing on the desk. */
   #devhead .devviews { display: flex; flex: none; gap: 2px; padding: 2px;
                        background: var(--deep); border: 1px solid var(--line); border-radius: 5px; }
   #devhead .devviews .voicekind { width: auto; flex: none; padding: 2px 8px; font-size: 9.5px;
@@ -2850,14 +2931,21 @@
                        color: var(--dim); background: none; border: none; }
   #devhead .devviews .voicekind:hover { color: var(--ink); background: var(--panel2); }
   #devhead .devviews .voicekind.on { background: var(--primary); color: var(--accent); }
-  /* The active view's own controls, in the same row. `margin-left: auto` before it puts
-     the switch on the left with the title and the controls out on the right, so the row
-     reads left to right as: fold, what you are looking at, what you can do to it. */
+  /* The channel between them, centred in whatever the switch and the controls leave. It is
+     the subject rather than the heading now — the view is named by the chips — so it sits
+     off the left edge where nothing else on the desk starts, and centring it in the gap
+     rather than in the panel keeps it off the controls when the roll brings a wide bar.
+     min-width: 0 so a long channel name ellipses instead of shoving them apart. */
+  #devhead #devtitle { flex: 1; min-width: 0; text-align: center; white-space: nowrap;
+                       overflow: hidden; text-overflow: ellipsis; }
+  /* The active view's own controls, in the same row. `margin-left: auto` is belt and
+     braces behind the title's flex: 1 — with no title to stretch, the controls still sit
+     out on the right, so the row reads left to right as: fold, what you are looking at,
+     which channel, what you can do to it. */
   #devhead .ssqhostbar { display: flex; align-items: center; gap: 6px; flex: none;
                        margin-left: auto; }
   #devhead .ssqhostbar .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px; }
-  #devrack::-webkit-scrollbar { height: 6px; }
-  #devrack::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  /* The 6px bar itself is the desk's, from the block at the top. */
   /* Cards grow SIDEWAYS, not downwards: a long parameter list flows into a second
      column instead of making the panel scroll. The Parametric EQ's ten controls are
      the case that forced it. */
@@ -3015,7 +3103,10 @@
      taking that band out of the channel strips on every run where nothing failed.
      Capped and scrolled: a long stack trace is a page of text, and unbounded it
      would squeeze the desk above it down to its minimums over a runtime error. */
-  #err { color: var(--hot); white-space: pre-wrap; padding: 10px; font-size: 12px;
+  /* The desk's two margins here too — the trace starts on the same line as the word
+     in the footer above it rather than two pixels off it. */
+  #err { color: var(--hot); white-space: pre-wrap; font-size: 12px;
+         padding: 10px var(--rgut) 10px var(--foldx);
          flex: none; margin: 0; max-height: 30vh; overflow: auto;
          user-select: text; -webkit-user-select: text; }
   #err:empty { display: none; }
@@ -3275,15 +3366,16 @@
     <button id="devfold" class="foldbtn" title="Collapse the effects panel" aria-label="Collapse the effects panel">
       <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
     </button>
-    <span id="devtitle" class="label"></span>
-    <span class="sp" style="flex:1"></span>
-    <!-- Three views of one channel: what it sounds like, and what it plays. The chips are
+    <!-- Two views of one channel: what it sounds like, and what it plays. The chips are
          the desk's own switch furniture (`.voicekind`, as used by the voice picker and the
-         preset library) rather than tabs — same question, same control. -->
+         preset library) rather than tabs — same question, same control. They stand first,
+         on the caption line, because they are what names the view. -->
     <div class="voicekinds devviews" id="devviews">
       <button class="voicekind on" data-view="fx" title="This channel's effect chain">Effects</button>
       <button class="voicekind" data-view="notes" title="What this channel plays (n)">Notes</button>
     </div>
+    <!-- Which channel the view is of — the one thing the chips do not say. -->
+    <span id="devtitle" class="label"></span>
   </div>
   <div id="devrack"></div>
   <!-- The channel's other view, in the same space as its effects: what it PLAYS. Built by

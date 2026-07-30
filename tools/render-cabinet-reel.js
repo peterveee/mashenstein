@@ -40,6 +40,7 @@ import { spawn } from 'child_process';
 import { renderBankBrowser } from './lib/render-bank-browser.js';
 import { wavBuffer } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
+import { bpmOf } from '../src/data/arrangements.js';
 import { bundleEntry, openArtPage } from './lib/art-page.js';
 import { pipeFrames, FRAME_BUFFER_SRC } from './lib/mp4-pipe.js';
 import { CABINETS } from '../src/data/cabinets.js';
@@ -108,7 +109,7 @@ const BAND = Math.max(0, Math.min(OUT_H - 2,
 const SCENE_H = OUT_H - BAND;
 
 const track = resolveOrExit(trackId);
-const bpm = track.bank.bpm;
+const bpm = bpmOf(track.bank, track.id);
 const FRAMES_PER_CAB = Math.max(1, Math.round((FPS * 60 * BEATS) / bpm));
 const TOTAL = Math.min(FRAMES_PER_CAB * CABINETS.length, Math.round(num('frames', Infinity)) || Infinity);
 const OUT = resolve(ROOT, outArg || 'dist/social/nine-cabinets.mp4');

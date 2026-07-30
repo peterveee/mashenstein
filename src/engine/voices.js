@@ -191,7 +191,7 @@ export class VoiceRack {
     return semis ? Math.pow(2, semis / 12) : 1;
   }
 
-  play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true }) {
+  play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true, preview = false }) {
     const v = VOICES[voiceId];
     if (v && v.kind === 'noise') return this._playNoise(v, { time, gain, dry, wet, echo });
     if (v && v.kind === 'drum') return this._playDrum(v, { time, gain, dry, wet, echo });
@@ -215,12 +215,19 @@ export class VoiceRack {
     // notes across slots, which is right for everything else here, defeats both.
     const mono = v.mono === true;
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
-      mono ? 1 : notes.length * taps.length + 1);
+      mono ? 1 : notes.length * taps.length + 1, preview);
     if (!pool) return false;
     // A chord arrives as an array of frequencies; a melody as one number. Nulls are
     // rests, and a bank writes plenty of them.
-    for (const f of notes) {
-      if (f == null || !(f > 0)) continue;
+    //
+    // `dur` matches: one length for the whole chord, or one PER NOTE, positionally
+    // aligned with `freq`, which is how a piano roll that draws a rectangle per chord
+    // tone says that the tones are different lengths. A short array falls back to its
+    // first entry rather than to silence — a caller that says less than the chord
+    // needs has still said something about it.
+    notes.forEach((f, note) => {
+      const noteDur = Array.isArray(dur) ? (dur[note] ?? dur[0]) : dur;
+      if (f == null || !(f > 0)) return;
       for (let i = 0; i < taps.length; i++) {
         // Mono holds slot 0 rather than advancing. A chord handed to a mono preset
         // therefore sounds its last note, which is what a mono synth does with one —
@@ -236,14 +243,33 @@ export class VoiceRack {
         // The preset's own tuning rides on top of the song warp. Both are ratios, so
         // they simply multiply — a preset an octave down stays an octave down through
         // a tempo/pitch warp instead of drifting against it.
-        slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), dur, t, v.velocity ?? 1);
+        //
+        // ---- and the seatbelt ------------------------------------------------------
+        //
+        // Tone keeps a state timeline per oscillator and refuses a state added BEFORE
+        // one already on it. Overlap is fine — a note arriving while the last one still
+        // rings is a RESTART, which is what a synth does, and songs in the catalogue
+        // rely on it — but a note booked behind everything on that instance throws, and
+        // it throws inside the sequencer's lookahead, where the whole desk's script dies
+        // with it.
+        //
+        // The route that reached it is a note previewed WHILE THE SONG PLAYS: the
+        // sequencer is 120ms ahead and a key press lands at now + 20ms, behind it. That
+        // now has a pool of its own (see previewNote), which is the actual fix. This is
+        // the seatbelt for whatever else finds the same edge: one note goes missing
+        // instead of the page. Deliberately not a slot-picking scheme — rerouting a note
+        // to a different instance changes which note gets cut off, and that is a change
+        // to what existing songs sound like.
+        try {
+          slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t, v.velocity ?? 1);
+        } catch { continue; }
         // How far into the future this pool is committed. Notes are scheduled up to
         // 120ms ahead, so "is it playing" is not a question about now — and a pool
         // taken out of service has to outlive the ones already booked on it or they
         // go missing. See `_retire`.
-        pool.until = Math.max(pool.until, t + dur);
+        pool.until = Math.max(pool.until, t + noteDur);
       }
-    }
+    });
     return true;
   }
 
@@ -254,8 +280,11 @@ export class VoiceRack {
    * once and reused. They are still compared: a rebuilt mixer hands out new nodes,
    * and a pool wired to the old ones would play into a graph nothing is listening to.
    */
-  _pool(laneKey, voiceId, dry, wet, echo, want = 1) {
-    const key = `${laneKey}|${voiceId}|${echo ? 1 : 0}`;
+  _pool(laneKey, voiceId, dry, wet, echo, want = 1, preview = false) {
+    // A preview's synths are its own. The song is scheduled 120ms ahead and a preview
+    // lands in the middle of that; Tone will not accept a state before one already on
+    // an instrument's timeline, so sharing these threw. See previewNote in audio.js.
+    const key = `${laneKey}|${voiceId}|${echo ? 1 : 0}${preview ? '|preview' : ''}`;
     let pool = this.pools.get(key);
     // A rebuilt mixer hands out new strip nodes, and a pool wired to the old ones
     // would play into a graph nothing is listening to.
@@ -275,10 +304,16 @@ export class VoiceRack {
       this.pools.set(key, pool);
     }
 
-    const Ctor = SYNTHS[pool.spec.synth];
     // Grown, never shrunk. A chord that is five notes wide once is likely to be
     // again, and tearing slots down mid-song would cut whatever is ringing on them.
-    while (pool.slots.length < Math.max(1, want)) {
+    while (pool.slots.length < Math.max(1, want)) this._addSlot(pool, dry, wet, echo);
+    return pool;
+  }
+
+  /** One more instance of this pool's preset, wired to the same strip. */
+  _addSlot(pool, dry, wet, echo) {
+    const Ctor = SYNTHS[pool.spec.synth];
+    {
       const { opts, vibrato } = pool.spec;
       const synth = new Ctor(Object.keys(opts).length
         // Cloned per slot: Tone mutates the bag it is handed, and two slots sharing
@@ -313,9 +348,10 @@ export class VoiceRack {
       }
       out.connect(dry);
       if (echo && wet) out.connect(wet);
-      pool.slots.push({ synth, out, vib });
+      const slot = { synth, out, vib };
+      pool.slots.push(slot);
+      return slot;
     }
-    return pool;
   }
 
   /**

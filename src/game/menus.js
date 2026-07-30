@@ -35,6 +35,10 @@ import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
 import { MEGAMIX_SOURCE_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
+// The jukebox lists a tempo per song, and the desk can now save one onto a song's
+// arrangement — see bpmOf.
+import { bpmOf } from '../data/arrangements.js';
+import { trackIdOf } from '../data/tracks.js';
 import { totalPlugs, MAX_PLUGS, formatCoins, nextStage, stageUnlocked } from './progress.js';
 
 // See Input.confirmVerb — the word is shared with the in-run ACT card now, so
@@ -3348,6 +3352,10 @@ export const JUKEBOX = [
   ...MEGAMIX_SOURCE_TRACKS,
   { name: 'MASHENSTEIN: THE MONSTER MIX', bank: MEGAMIX_THEME },
 ];
+// The tempo a row reports is the one the song PLAYS at: the arrangement's when the
+// mixing desk has retuned it, else the tempo it was written at. Read through the same
+// seam the engine reads, so the list cannot disagree with what you are hearing.
+const jukeboxBpm = (tr) => Math.round(bpmOf(tr.bank, trackIdOf(tr.bank)));
 // Match Settings' finger-sized scrolling list. BACK stays fixed below the
 // window so a long catalogue never shrinks the rows or pushes the exit target
 // off-screen.
@@ -3764,7 +3772,7 @@ export class SoundTestState {
     };
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`), itemScale);
+    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`), itemScale);
     menuText('SOUND TEST', band.textX, this.titleY, '#fff', 2, 'title');
     const status = this.playing >= 0 ? `NOW PLAYING: ${JUKEBOX[this.playing].name}` : 'STOPPED';
     menuText(status, band.textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
@@ -3796,12 +3804,12 @@ export class SoundTestState {
         if (sel) menuText('>', markerX, titleY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
         menuText(`${this.trackCounter(i)} ${tr.name}`, titleX, titleY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
-        menuText(`(${tr.bank.bpm} BPM)`, titleX, bpmY,
+        menuText(`(${jukeboxBpm(tr)} BPM)`, titleX, bpmY,
           on ? '#48e0c8' : sel ? '#c9a0ff' : '#8b8ba0', LEFT_MENU_ITEM_S);
       } else {
         const textY = textYForMid(rowMid);
         if (sel) menuText('>', band.textX - 16, textY, on ? '#48e0c8' : '#c9a0ff', LEFT_MENU_ITEM_S);
-        menuText(`${this.trackCounter(i)} ${tr.name}  (${tr.bank.bpm} BPM)`, band.textX,
+        menuText(`${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`, band.textX,
           textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
       }
     });

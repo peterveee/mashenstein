@@ -14,7 +14,7 @@ import {
 // The generated songs' musical vocabulary, one pack per style — see song-styles.js.
 import { SONG_STYLES, STYLE_BY_ID, MODES } from '../tools/lib/song-styles.js';
 import { laneSource } from '../tools/lib/song-source.js';
-import { PERCUSSION_LANES, seamFor, voiceOf, defaultVoiceOf } from '../src/data/voices.js';
+import { PERCUSSION_LANES, VOICES, seamFor, voiceOf, defaultVoiceOf } from '../src/data/voices.js';
 import { readImported, writeImportedIndex } from '../tools/lib/imported-index.js';
 import {
   readSongFile, snapshotSongFile, writableSongPath, writeSongFile,
@@ -102,6 +102,12 @@ try {
   // voices. These assertions hold the packs to being genuinely different from each
   // other, and hold the generator to writing songs a person can read.
   const laneVoiceKey = (lane) => seamFor(lane)?.voiceKey;
+  // The register each pitched lane is allowed to land in, whatever the key. See the
+  // note over the per-lane check below for where these numbers come from.
+  const LANE_RANGE = {
+    bass: [60, 330], chords: [125, 500], organChords: [125, 500],
+    lead: [310, 1250], twinkle: [660, 2500],
+  };
   for (const style of SONG_STYLES) {
     const band = buildNewSongBank({ title: 'style', bars: 8, template: 'full-band', style: style.id, seed: 4242 });
     const beat = buildNewSongBank({ title: 'style', bars: 8, template: 'beat', style: style.id, seed: 4242 });
@@ -147,6 +153,13 @@ try {
   'the first pack is the engine\'s own sound, so seed 0 stays the canonical starter');
   assert(SONG_STYLES.slice(1).every((s) => s.lanes.band.every((lane) => s.bank[laneVoiceKey(lane)])),
     'every other pack gives each of its Full Band lanes a voice of its own');
+  // An ENGINE preset is a bundle of bank keys that only `withVoices` expands, and that
+  // returns early on a song with no mix — which every generated song is. Named in a
+  // pack it would be a lane claiming a filtered saw and playing the default instead.
+  assert(SONG_STYLES.every((s) => Object.entries(s.bank)
+    .filter(([key]) => key.endsWith('Voice'))
+    .every(([, id]) => VOICES[id] && VOICES[id].kind !== 'engine')),
+  'no pack names an engine preset, which would expand to nothing without a mix');
   // The kit/instrument balance itself is measured through the render pipeline rather
   // than asserted here — see the note in song-styles.js — but the two keys that carry
   // it have to stay sane: a `drumGain` only means anything beside a kit, and the pair
@@ -182,15 +195,20 @@ try {
     autoStyles.add(spec.style);
     autoRoots.add(spec.key);
     const notes = spec.bank.sections[0];
-    const pitched = Object.entries(notes)
-      .filter(([lane]) => !PERCUSSION_LANES.includes(lane))
-      .flatMap(([, lane]) => lane.flatMap((v) => (Array.isArray(v) ? v : [v])))
-      .filter((hz) => typeof hz === 'number');
-    // Transposition is what puts a generated song outside A minor, and the register
-    // rules are what keep it from arriving two octaves up. Bottom of the bass to top
-    // of the melody, across every style and key.
-    assert(pitched.every((hz) => hz > 55 && hz < 1600),
-      `seed ${seed} keeps every pitched lane inside a playable register`);
+    // Per LANE, not one range for the lot. Transposition is what puts a generated song
+    // outside A minor and the register rules are what keep it from arriving an octave
+    // out — but a single 55–2400 Hz band would pass a bass sitting at 1 kHz, which is
+    // exactly the failure worth catching. Each bound is the measured range of all
+    // eleven packs over 300 seeds, plus a semitone or two of headroom: bass C2–D#4,
+    // chords C3–A#4, lead E4–D6, and a bell line an octave over the melody F5–D7.
+    for (const [lane, arr] of Object.entries(notes)) {
+      if (PERCUSSION_LANES.includes(lane)) continue;
+      const [lo, hi] = LANE_RANGE[lane] || LANE_RANGE.lead;
+      const hz = arr.flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v) => typeof v === 'number');
+      assert(hz.every((v) => v >= lo && v <= hi),
+        `seed ${seed} keeps ${spec.style}'s ${lane} inside its own register `
+        + `(${Math.round(Math.min(...hz, Infinity))}–${Math.round(Math.max(...hz, 0))} Hz in ${lo}–${hi})`);
+    }
   }
   assert(autoStyles.size >= 6 && autoRoots.size >= 8,
     'auto styling spreads twenty-four seeds over most of the packs and many keys');

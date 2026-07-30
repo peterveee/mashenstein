@@ -14,7 +14,14 @@
 //   {
 //     order: [0, 0, { s: 1, bars: 1, off: ['snare', 'clap'] }, 1, 2, 3],
 //     sections: [ { base: 1, lead: [...] } ],   // appended AFTER the bank's own
+//     bpm: 104,                                 // the tempo it is played at
 //   }
+//
+// `bpm` is optional and overrides the bank's own. It is here rather than in the bank
+// because the desk writes this file and never the composition: the song stays written
+// at the tempo it was written at, and the arrangement says what it is played at —
+// which is the same relationship `order` already has with the bank's own order.
+// Absent means "the tempo it was composed at", so deleting it reverts exactly.
 //
 // An order entry is either a NUMBER — section n, both its bars, as it has always
 // been — or `{ s, bars, from, off }`:
@@ -68,6 +75,20 @@ export const ARRANGEMENTS = Object.fromEntries(
 export function orderOf(bank) {
   if (bank.order) return bank.order;
   return bank.sections ? bank.sections.map((_, i) => i) : [0];
+}
+
+/**
+ * The tempo a song is actually played at: its arrangement's, else the bank's own.
+ *
+ * `applyArrangement` already answers this for anything holding the arranged bank —
+ * the engine does. This is for the callers that only ever hold the composition and
+ * one number: the jukebox's `(96 BPM)`, a render's buffer length, a MIDI file's tempo
+ * meta. Every one of those read `bank.bpm` straight, so a song the desk had retuned
+ * was listed, sized and exported at a tempo it no longer plays at.
+ */
+export function bpmOf(bank, id, table = ARRANGEMENTS) {
+  const entry = id ? table[id] : null;
+  return entry?.bpm ?? bank?.bpm ?? 112;
 }
 
 /**
@@ -166,8 +187,12 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   if (!entry) return bank;
   const layer = entry.sections || [];
   const order = entry.order;
-  if (!layer.length && !order) return bank;
+  // A tempo counts on its own: an entry that says nothing but `bpm: 104` is a song
+  // played ten faster than it was written, and returning the bank here would hand
+  // back the composed tempo and lose it.
+  if (!layer.length && !order && entry.bpm == null) return bank;
   const out = { ...bank };
+  if (entry.bpm != null) out.bpm = entry.bpm;
   // Only when there is something to add: a bank with no sections must keep having
   // none, or `songBlocks` starts reading `sections[0]` of an empty list and every
   // block becomes the bare bank by accident rather than on purpose.
@@ -190,6 +215,13 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
   const sections = [...(bank.sections || []), ...(entry.sections || [])];
   const order = entry.order || orderOf(bank);
   if (!order.length) issues.push('the order is empty — a song needs at least one bar');
+  // A tempo of 0 divides by zero in every seconds-per-step in the engine, and a
+  // negative one schedules backwards. Range rather than mere finiteness because this
+  // is the one field a hand-edit can put a plausible-looking wrong number in — a
+  // millisecond value, say — and 20–400 is what a song can be played at.
+  if (entry.bpm != null && !(Number.isFinite(entry.bpm) && entry.bpm >= 20 && entry.bpm <= 400)) {
+    issues.push(`the tempo is ${entry.bpm} — a song plays between 20 and 400 bpm`);
+  }
   order.forEach((e, i) => {
     const s = typeof e === 'number' ? e : e?.s;
     if (typeof s !== 'number' || !Number.isInteger(s)) {

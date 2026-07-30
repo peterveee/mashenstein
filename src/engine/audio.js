@@ -5,6 +5,7 @@ import { createMixer } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
   laneList, laneUsesEcho, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
+  LANE_KEYS, stepLen, toneLen,
 } from './lanes.js';
 import { VoiceRack } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
@@ -40,6 +41,22 @@ import { applyArrangement, resolveSection } from '../data/arrangements.js';
  * against these numbers and would otherwise sit 10.9 dB below them.
  */
 const MELODIC_TRIM = 3.5;                  // +10.9 dB
+
+/**
+ * How long one note sounds, in seconds, for the voice rack.
+ *
+ * `len` is what `stepLen` said about this step: nothing, a number of steps, or one
+ * per chord tone. An array in gives an array out — the rack hands each tone of a
+ * chord its own length — and everything else stays a scalar, so a melodic lane's
+ * path through here is one multiply, in the order it was always written:
+ * `spb * dur * durScale`. That grouping is deliberate. Reassociating it would be
+ * a legal transformation of the arithmetic and an illegal one of the output, and
+ * tests/null-test.js compares samples.
+ */
+const noteSeconds = (len, fallback, spb, durScale = 1) => {
+  const one = (i) => spb * toneLen(len, fallback, i) * durScale;
+  return Array.isArray(len) ? len.map((_, i) => one(i)) : one(0);
+};
 
 /**
  * A mix's voice block, merged onto the bank the sequencer will play.
@@ -1366,6 +1383,7 @@ class AudioSys {
     // based, and deskBank hands back a new object with no id. The song's own preset
     // copies are scoped by it — see registerSongVoice.
     const id = trackIdOf(bank);
+    this.mixEntry = entry || null;
     const arranged = this.arrangement !== undefined
       ? applyArrangement(bank, id, { [id]: this.arrangement })
       : applyArrangement(bank, id);
@@ -1394,8 +1412,9 @@ class AudioSys {
    * in place would leave the plan it already computed standing — the song would keep
    * playing the old arrangement and nothing would say why.
    *
-   * `patch` is `{ order, sections }`, the same shape src/data/arrangements.js holds.
-   * Passing nothing puts the song back to what its bank was composed as.
+   * `patch` is `{ order, sections, bpm }`, the same shape src/data/arrangements.js
+   * holds. Passing nothing puts the song back to what its bank was composed as —
+   * including its composed tempo.
    */
   setArrangement(patch = null) {
     // Remembered as well as applied. Everything that re-applies a mix rebuilds the
@@ -1420,9 +1439,33 @@ class AudioSys {
     if (patch?.order?.length) next.order = [...patch.order];
     else if (source.order) next.order = [...source.order];
     else delete next.order;
-    if (patch?.sections?.length) next.sections = [...(source.sections || []), ...patch.sections];
-    else if (source.sections) next.sections = [...source.sections];
+    // SHAPED, not spliced raw. A duplicated lane and a deleted one are per-SECTION
+    // decisions — `deskBank` writes the layer's notes into every section that has the
+    // part and takes the deleted lane out of every one of them — and the bank being
+    // played has already had that done to it. Concatenating the song's own sections
+    // back in undid it for every section except the ones the edit itself wrote: a
+    // duplicated drum track went silent in every bar but the bar you had just drawn
+    // in (the grid went on drawing the beats, because it reads the shaped bank), and a
+    // deleted track came back and played. Both fixed themselves the moment anything
+    // touched a fader, because that path rebuilds through `applyMix`, which is the
+    // shape of the bug: this was the one door into the bank that skipped the shaping.
+    const list = patch?.sections?.length
+      ? [...(source.sections || []), ...patch.sections]
+      : (source.sections ? [...source.sections] : null);
+    if (list) next.sections = deskBank({ ...source, sections: list }, this.mixEntry).sections;
     else delete next.sections;
+    // The tempo, the same way round: the arrangement's while it names one, the song's
+    // own again the moment it stops. `this.bpm` is what scheduleStep divides by, so it
+    // moves with the bank or the edit is inaudible; the delay line follows because it
+    // is tempo-synced and a slower song wants a longer one.
+    const bpm = patch?.bpm ?? source.bpm;
+    if (bpm) {
+      next.bpm = bpm;
+      if (bpm !== this.bpm) {
+        this.bpm = bpm;
+        if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
+      }
+    }
     this.bank = next;
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
@@ -1439,6 +1482,10 @@ class AudioSys {
   // trims are relative and live on the strips, so per-section variation survives.
   applyMix(bank, mix = undefined) {
     const entry = mix !== undefined ? mix : (bank ? MIX[trackIdOf(bank)] : null);
+    // Remembered for `setArrangement`, which has to re-shape the song's sections
+    // without coming back through here — see the note there. A mix override is not
+    // otherwise recoverable: the desk's unsaved edits are in no file to look up.
+    this.mixEntry = entry || null;
     // The song's FORM, before anything else touches the bank: which bars play, in
     // which order, with which lanes dropped out of them. Read here because this is
     // already the one place a bank gets patched on its way to the sequencer — and
@@ -1788,7 +1835,7 @@ class AudioSys {
    * length in a bank. `delay`, `durScale` and `gainScale` exist for the written-in
    * repeats (bassRepeat), which are a second, softer statement of the same note.
    */
-  playVoice(key, b, value, { spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1 }) {
+  playVoice(key, b, value, { spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null }) {
     const seam = seamFor(key);
     const v = seam && voiceOf(b, key);
     // An ENGINE preset is not played here at all: it is a bundle of the bank keys the
@@ -1809,8 +1856,12 @@ class AudioSys {
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
         // A bank's own length key still wins over the preset's — a song that has been
-        // dialled in keeps its numbers when it changes voice.
-        dur: spb * (b[seam.durKey] ?? v.dur) * durScale,
+        // dialled in keeps its numbers when it changes voice — and a note that was
+        // drawn a length in the roll wins over both, because that is the most specific
+        // thing anybody has said about it. `len` is a number, or one per chord tone;
+        // the rack takes the array as it takes the chord. Absent, this is the
+        // expression that was always here.
+        dur: noteSeconds(len, b[seam.durKey] ?? v.dur, spb, durScale),
         // Derived, never hand-set: every synth peaks somewhere different, so the
         // level is the lane's own target scaled by this preset's measured peak. A
         // bank that states the lane's gain still wins — that is a song's own decision,
@@ -1827,6 +1878,8 @@ class AudioSys {
         dry,
         wet,
         echo,
+        // Its own synths while the song keeps its own — see previewNote.
+        preview: !!this._previewing,
       });
     }
     return true;
@@ -1898,9 +1951,25 @@ class AudioSys {
     // reach into an automation the song is in the middle of, so the send is taken out
     // of view for the one call. Each lane's own send is on its strip and untouched.
     this.echoSend = null;
+    // A preview gets its own synths, and this is the flag that says so — read in
+    // `playVoice`, which is the only place that reaches the rack.
+    //
+    // The reason is Tone's, and it is a hard rule rather than a preference: an
+    // instrument's oscillator keeps a state timeline, and a state may not be added
+    // BEFORE one already on it. The sequencer schedules a playing song 120ms into the
+    // future; a preview lands at `currentTime + 0.02`, which is in the middle of that.
+    // Sharing the pool therefore threw — "the time must be greater than or equal to the
+    // last scheduled time" — and took the desk's script with it, in the one situation
+    // where previews matter most: editing notes while the song plays.
+    //
+    // A separate pool costs a handful of nodes per lane you preview, and `_retire`
+    // clears them like any other. It is the whole fix: the song's timeline is never
+    // written to out of order, because nothing else writes to it.
+    this._previewing = true;
     try {
       this.scheduleStep();
     } finally {
+      this._previewing = false;
       this.bank = wasBank;
       this.step = wasStep;
       this.nextTime = wasNext;
@@ -1955,9 +2024,19 @@ class AudioSys {
       const shift = (v, n) => Array.isArray(v)
         ? v.map((x) => shift(x, n))
         : typeof v === 'number' && v > 0 ? v * 2 ** (n / 12) : v;
+      // A number means "everything", and everything has to mean the LANES: this used
+      // to take every non-percussion key of the bank and map `shift` over any array it
+      // found, which reached `order` (numbers, but harmlessly — `barPlan` reads
+      // `this.bank`, so the shifted copy is discarded) and `sections`/`__layers`
+      // (objects, returned unchanged). A `bassLen` array is the first thing it would
+      // genuinely corrupt: it would multiply note LENGTHS by 2^(n/12) and transposing
+      // a bar down would shorten every note in it.
       const transposeKeys = new Set([
         ...Object.keys(typeof bar.transpose === 'object' ? bar.transpose || {} : {}),
-        ...(typeof bar.transpose === 'number' ? Object.keys(b).filter((k) => !PERCUSSION_LANES.includes(k)) : []),
+        ...(typeof bar.transpose === 'number'
+          ? [...LANE_KEYS, ...(b.__layers || []).map((L) => L.key)]
+            .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
+          : []),
       ]);
       if (transposeKeys.size) {
         b = { ...b };
@@ -2030,9 +2109,15 @@ class AudioSys {
       // lane and has already scheduled the note, so the hand-written body is skipped.
       // A lane naming no preset returns false having touched nothing, which is why
       // this is a guard rather than a rewrite — and why the null test stays green.
+      // What the roll drew on this step of this lane, if anything: a length in steps,
+      // or one per chord tone. Read once per lane and passed down, so a preset voice
+      // and the hand-written body below it always agree about how long a note is —
+      // they are two ways of playing the same drawn rectangle, not two lanes.
+      const lenOf = (key) => stepLen(b, key, s);
       const voiced = (key, value, opts = {}) => {
         lane(key);
-        return this.playVoice(key, b, value, { spb, dry, wet, delay: laneOffset, ...opts });
+        return this.playVoice(key, b, value,
+          { spb, dry, wet, delay: laneOffset, len: lenOf(key), ...opts });
       };
       // Every oscillator voice on the desk goes through here — bass, lead, harmony,
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
@@ -2075,7 +2160,11 @@ class AudioSys {
         // so echo there is usually just wasted CPU) — a bank can opt in with
         // bassEcho: true to catch the sawtooth/square harmonics in the echo,
         // or echoEverything: true to send every lane (percussion included).
-        const bassDur = spb * (b.bassDur || 1.8);
+        // Every body below derives from this one number — the filtered saw's filter
+        // ramp, the 80s bass's three stacked oscillators, the ghost repeat — so the
+        // drawn length reaches all of them by being read here and nowhere else.
+        const bassLen = lenOf('bass');
+        const bassDur = spb * toneLen(bassLen, b.bassDur || 1.8);
         const bassGain = b.bassGain ?? 0.1;
         const bassEcho = !!b.bassEcho || !!b.echoEverything;
         // A Tone voice, if the bank names one, takes the lane whole — the three
@@ -2135,6 +2224,7 @@ class AudioSys {
             this.playVoice('bass', b, b.bass[s], {
               spb, dry, wet, echo: false, delay: laneOffset + spb * b.bassRepeat,
               durScale: b.bassRepeatDur ?? 0.8, gainScale: b.bassRepeatGain ?? 0.4,
+              len: bassLen,
             });
           } else {
             play(b.bass[s], b.bassType || 'square', bassDur * (b.bassRepeatDur ?? 0.8),
@@ -2145,7 +2235,7 @@ class AudioSys {
       }
       if (b.lead) {
         lane('lead');
-        const leadDur = spb * (b.leadDur || 1.2);
+        const leadDur = spb * toneLen(lenOf('lead'), b.leadDur || 1.2);
         const leadGain = b.leadGain ?? 0.06;
         // leadBright is an octave sine sitting ON the square lead — part of what the
         // hand-rolled lead IS, so it goes with it rather than doubling a Tone voice
@@ -2162,13 +2252,14 @@ class AudioSys {
       if (b.leadHarm) {
         lane('leadHarm');
         if (!voiced('leadHarm', b.leadHarm[s])) {
-          play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * (b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+          play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * toneLen(lenOf('leadHarm'), b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
         }
       }
       if (b.twinkle && b.twinkle[s] && !voiced('twinkle', b.twinkle[s])) {
         lane('twinkle');
-        play(b.twinkle[s], 'sine', spb * (b.twinkleDur || 6), b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
-        play(b.twinkle[s] * 2, 'sine', spb * (b.twinkleDur || 6) * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
+        const twinkleDur = spb * toneLen(lenOf('twinkle'), b.twinkleDur || 6);
+        play(b.twinkle[s], 'sine', twinkleDur, b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
+        play(b.twinkle[s] * 2, 'sine', twinkleDur * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
       }
       if (b.electroFx && b.electroFx[s]) {
         lane('electroFx');
@@ -2282,8 +2373,10 @@ class AudioSys {
         // A chord arrives as an array, and the rack takes it as one: it hands each
         // note its own slot out of the voice's pool, which is what `poly` is for.
         if (!voiced('chords', b.chords[s])) {
-          // stab: all chord tones at once, short and punchy
-          for (const cf of b.chords[s]) play(cf, b.chordType || 'square', spb * (b.chordDur || 2.6), b.chordGain ?? 0.05, b.chordAttack || 0.01);
+          // stab: all chord tones at once, short and punchy — and each as long as it
+          // was drawn, which is why the length is read per tone rather than per step.
+          const len = lenOf('chords');
+          b.chords[s].forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, b.chordDur || 2.6, i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
         }
       }
       if (b.organChords && b.organChords[s] && !voiced('organChords', b.organChords[s], { echo: b.organEcho !== false })) {
@@ -2292,14 +2385,17 @@ class AudioSys {
         // 2' and 1 1/3' relationships. It is a separate sustained lane, not a
         // replacement for the short keyboard stabs, so an arrangement can let
         // the organ hold the harmony while the original comping plays along.
-        const dur = spb * (b.organDur || 7.2);
+        const organLen = lenOf('organChords');
         const gain = b.organGain ?? 0.009;
         const attack = b.organAttack || 0.035;
         const echo = b.organEcho !== false;
         const drawbars = b.organBright
           ? [[1, 1], [2, 0.78], [3, 0.48], [4, 0.3], [6, 0.16]]
           : [[1, 1], [2, 0.62], [3, 0.32], [4, 0.2], [6, 0.1]];
-        for (const cf of b.organChords[s]) {
+        b.organChords[s].forEach((cf, i) => {
+          // Per tone: a drawn length belongs to the note, and all five drawbars of one
+          // note are that note. The pip below is an attack transient, not a length.
+          const dur = spb * toneLen(organLen, b.organDur || 7.2, i);
           for (const [ratio, level] of drawbars) play(cf * ratio, 'sine', dur, gain * level, attack, echo);
           // Hammond-style percussion: a short third-harmonic pip on the key
           // attack. Kept dry so repeated off-beat stabs stay crisp.
@@ -2307,7 +2403,7 @@ class AudioSys {
             play(cf * 3, 'sine', spb * (b.organPercussionDur || 0.62),
               gain * (b.organPercussionGain || 0.72), 0.002, false);
           }
-        }
+        });
       }
       if (b.organGliss && b.organGliss[s]) {
         lane('organGliss');

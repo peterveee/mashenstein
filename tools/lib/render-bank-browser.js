@@ -20,6 +20,7 @@ import { readFileSync, unlinkSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { songBlocks, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
+import { bpmOf } from '../../src/data/arrangements.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -51,7 +52,10 @@ const ENTRY = `
 import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
 import { MIX } from ${JSON.stringify(join(ROOT, 'src/data/mix.js'))};
 
-window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackId }) => {
+window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackId, arrangement }) => {
+  // The bank arrives carrying the tempo it is PLAYED at — resolved in Node, where a
+  // track id still means something, so a song the desk has retuned renders at the
+  // tempo it was retuned to. See the note over \`render\`.
   const spb = (60 / bank.bpm) / 4;                     // seconds per 16th step
   const steps = blocks * 32;
   const N = Math.ceil((steps * spb + tail) * sampleRate);
@@ -73,6 +77,13 @@ window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackI
   // An undefined mix means "use what is saved for this track"; null means "none".
   const entry = mix !== undefined ? mix : (trackId ? (MIX[trackId] || null) : null);
   Audio.setBank(bank, entry);
+
+  // Through the desk's own door, when a caller asks for one. \`setBank\` takes an
+  // arrangement as an argument and builds the bank in one go; \`setArrangement\` patches
+  // a bank that is already playing, which is the path every note and bar edit on the
+  // desk takes and therefore the path worth being able to render. Omitted, nothing is
+  // called and the render is exactly what it always was.
+  if (arrangement !== undefined) Audio.setArrangement(arrangement);
 
   // setBank opens the song half a second in, with a short fade, because live
   // playback has to mute whatever was left in the lookahead window. An offline
@@ -143,11 +154,26 @@ export async function openRenderer({ headless = true } = {}) {
   const bundleJs = built.outputFiles[0].text;
   const browser = await chromium.launch({ headless });
 
-  async function render(bank, { repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId } = {}) {
+  async function render(bank, {
+    repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement,
+  } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
     // because the bank reaches it as JSON.
     const id = trackId !== undefined ? trackId : trackIdOf(bank);
+    // The tempo the song is played at, written onto the bank before it crosses. The
+    // desk saves a retuned tempo onto the song's arrangement, and the page cannot look
+    // one up — `trackIdOf` on a JSON copy finds nothing, which is why the mix is
+    // resolved out here too. Sizing the buffer from the composed tempo while the
+    // engine played the arranged one would cut a slowed-down song off before its end.
+    //
+    // Tempo only. The rest of an arrangement — the order it plays its sections in, and
+    // any layer sections — is still NOT applied to an offline render, for the same
+    // bank-identity reason: `plumber` and `megamix` both render in their composed order
+    // rather than the arranged one. That gap predates this and is deliberately left
+    // alone here; closing it changes what every existing render sounds like.
+    const played = bpmOf(gated, id);
+    const forPage = played === gated.bpm ? gated : { ...gated, bpm: played };
     const blocks = songBlocks(gated, repeat).length;
 
     // A fresh page per render: Audio is a singleton and ensure() binds one context
@@ -166,7 +192,12 @@ export async function openRenderer({ headless = true } = {}) {
     try {
       meta = await page.evaluate(
         (args) => window.__renderBank(args),
-        { bank: gated, blocks, tail, seed, sampleRate: SR, mix, trackId: id },
+        // `arrangement` only when a caller named one: the key's mere presence is what
+        // the page tests, and `undefined` does not reliably survive the crossing.
+        {
+          bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
+          ...(arrangement !== undefined ? { arrangement } : {}),
+        },
       );
     } catch (err) {
       await page.close();

@@ -75,6 +75,12 @@ assert(entry.includes("const DESK_CHAIN = ['rackwrap', 'arrange', 'devices', 'de
   && entry.includes('function applyDeskChain()')
   && /function fitStrips\(\) \{\s*applyDeskChain\(\)/.test(entry),
   'the priority chain is written down once, in order, and re-run on every fit');
+// The arrangement is snapped to whole lanes, so it can never be the flex:1 one — and
+// what it cannot use has to pass DOWN the chain rather than stopping at the band. It
+// used to stop there, which boxed the piano roll into its own content height with a
+// slab of dead desk under it whenever the mixer was folded.
+assert(/DESK_CHAIN\s*\.filter\(\(id\) => id !== 'arrange'\)\s*\.find\(/.test(entry),
+  'the arrangement takes lanes, not slack, and passes the rest to the effects panel');
 assert(/#desk\.cramped \{[^}]*overflow-y: auto/s.test(shell)
   && /classList\.toggle\('cramped', cramped\)/.test(entry),
   'a window too short for every minimum scrolls the desk — the footer is never clipped');
@@ -98,7 +104,7 @@ assert(entry.includes('const deskPool = () => innerHeight')
 // deviceRoom() used to subtract a hypothetical one-lane arrangement while fitStrips
 // measured the ceiling against the effects panel's live height. Two different worlds,
 // and the reason dragging the effects handle shrank the arrangement instead.
-assert(/function rackFloor\(\) \{[\s\S]*?compactStripHeight\(\)[\s\S]*?rackPad\(\)/.test(entry)
+assert(/function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
   && /function deviceRoom\([\s\S]*?MIN\.mixer\(\)/.test(entry)
   && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('FADER_MIN')
   && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('laneRowHeight()'),
@@ -106,37 +112,56 @@ assert(/function rackFloor\(\) \{[\s\S]*?compactStripHeight\(\)[\s\S]*?rackPad\(
 assert(/function planDesk[\s\S]*?let rackH = room - arrH - devH/.test(entry),
   'the arrangement and the effects panel are sized independently and the rack takes the difference');
 
-// ---- the shrink ladder, and nothing lost on any rung -----------------------------
-// The old floor reserved a whole UNCOMPRESSED strip because .stripbody scrolls with
-// no scrollbar: a squeezed strip lost its EQ and send rows with nothing on screen to
-// say so. Give the scroll two marks and the floor can drop to a compact strip.
-assert(/#rackwrap\.squeezed \.stripbody \{[^}]*scrollbar-width: thin/s.test(shell)
-  && /#rackwrap\.squeezed \.stripbody \{[^}]*mask-image: linear-gradient/s.test(shell)
-  && /#rackwrap\.squeezed \.stripbody::-webkit-scrollbar \{[^}]*width: 5px/s.test(shell),
-  'a squeezed strip body says it is scrolling: a slim bar and a fade off the bottom');
-assert(shell.includes('#rackwrap.compact .stripbody > *:not(.stripsum) { display: none; }')
-  && shell.includes('#rackwrap.compact .fxbtns { display: none; }')
-  && /#rackwrap\.compact \.stripsum \{/.test(shell),
-  'a compact strip is name, fader, pan, mute/solo and the chip — and nothing else');
-assert(/classList\.toggle\('squeezed'/.test(entry)
-  && /classList\.add\('compact'\)/.test(entry)
-  && !/\.strip\.compact|\.strip\.squeezed/.test(shell),
-  'the ladder is a state of the whole rack, so every fader in it stays on one line');
-assert(entry.includes('function summaryChip(key)')
-  && entry.includes('function paintSummary(strip)')
-  && entry.includes("b.className = 'stripsum'")
-  && /function stripShell[\s\S]*?summaryChip\(key\)/.test(entry)
-  && /input\.dataset\.default = String\(reset\)/.test(entry),
-  'every strip carries the chip from stripShell, and every slider records its own default');
-const openFull = /function openFullStrips\([^]*?\n\}/.exec(entry)?.[0] || '';
-assert(openFull.includes('userDevH = MIN.devices()')
-  && openFull.includes('userArrH = MIN.arrange()')
-  && !openFull.includes('localStorage'),
-  'the chip buys height from the panels the handles govern, for this session only');
-assert(/function compactStripHeight[\s\S]*?classList\.add\('compact', 'measuring'\)/.test(entry)
-  && /function compactStripHeight[\s\S]*?setProperty\('--faderh'/.test(entry)
+// ---- the shrink ladder ------------------------------------------------------------
+// A short window sheds whole BLOCKS, in one fixed order, and says on the header switch
+// that it has. It never scrolls a strip body: the old floor reserved a whole
+// uncompressed strip precisely because .stripbody scrolls with no scrollbar, so a row
+// that went out of sight went without saying so.
+assert(entry.includes("const SHED_ORDER = ['effects', 'sends', 'eq']")
+  && /const shedClass = \(id\) => STRIP_PARTS\.find\(\(p\) => p\.id === id\)\.cls\.replace\('no-', 'shed-'\)/.test(entry),
+  'the ladder sheds inserts, then sends, then EQ — named once, in the switches own ids');
+assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.shed-eq \.eqrow,\s*#rackwrap\.no-sends \.sendrow,\s*#rackwrap\.shed-sends \.sendrow,\s*#rackwrap\.no-fx \.fxbtns,\s*#rackwrap\.shed-fx \.fxbtns \{ display: none; \}/.test(shell),
+  'shed-* hides exactly what no-* hides, as a separate set of classes');
+assert(!/#rackwrap\.(squeezed|compact)|\.stripsum/.test(shell)
+  && !/compactStripHeight|summaryChip|paintSummary|openFullStrips|classList\.(add|toggle)\('(compact|squeezed)'/.test(entry),
+  'nothing scrolls and no summary chip: a shed block is hidden outright, not squeezed');
+assert(/classList\.toggle\(shedClass\(id\), gone\.includes\(id\)\)/.test(entry)
+  && !/\.strip\.shed-/.test(shell),
+  'the rung is a state of the whole rack, so every fader in it stays on one line');
+// The affordance the whole ladder rests on: it may hide a block because it says so.
+assert(entry.includes('function markShedParts(gone)')
+  && /b\.classList\.toggle\('shed', shed\)/.test(entry)
+  && /#partfilter button\.shed \.lbl \{ text-decoration: line-through; \}/.test(shell)
+  && /b\.dataset\.part = p\.id/.test(entry),
+  'a block the desk hid is struck through on its own switch, distinct from one you turned off');
+// Two fader numbers, not one. With only the comfortable minimum to bargain with, the
+// ladder shed two blocks to save five pixels and handed the freed height to the fader.
+assert(entry.includes('const FADER_MIN = 48')
+  && entry.includes('const FADER_FLOOR = 34')
+  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_FLOOR\) shed\+\+/.test(entry)
+  && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(entry)
+  // The applied floor and the one the shed loop bargains with have to be the SAME
+  // number, or a strip is handed more content than height and its body scrolls.
+  && /rackWant = [\s\S]{0,400}?chrome \+ FADER_MIN \+ rackPad\(\)/.test(entry),
+  'the fader compresses past its comfortable minimum to keep one more block on screen');
+// Every number the ladder is steered by is measured at a NAMED rung rather than at
+// whichever one the rack is standing on, or the fit becomes a function of its own last
+// answer — a latch, where a short window once meant a short window forever.
+const atShedFn = /function atShed\(n, fn\)[^]*?\n\}/.exec(entry)?.[0] || '';
+assert(atShedFn.includes('wrap.classList.remove(...SHED_ORDER.map(shedClass))')
+  && atShedFn.includes("wrap.classList.add(...SHED_ORDER.slice(0, n).map(shedClass), 'measuring')")
+  && atShedFn.includes("wrap.style.setProperty('--faderh'")
+  && atShedFn.includes('finally'),
+  'measurements name the rung they want and always put the real one back');
+assert(/function measureChromeAt\(n\) \{\s*return atShed\(n,/.test(entry)
+  && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureChromeAt\(i\)\)/.test(entry)
+  && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
   && shell.includes('#rackwrap.measuring .voicepair { height: auto; }'),
-  'the rack floor is a measured compact strip with a pinned fader, not a number somebody typed');
+  'one chrome height per rung, measured off the ladder, and the floor is the last of them');
+// A block hidden by hand has no height left for the ladder to save by hiding it again.
+assert(/function applyStripParts\(\)[\s\S]*?forgetStripMetrics\(\)/.test(entry)
+  && /function buildRack\(\)[\s\S]*?forgetStripMetrics\(\)/.test(entry),
+  'the cached rungs are dropped when a part switch or a rack rebuild moves them')
 
 const arrangeHead = shell.indexOf('<div id="arrhead">');
 const addTrack = shell.indexOf('id="addtrackbtn"');
@@ -301,8 +326,12 @@ assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePicker
   // right rest for the lane's kind, and the delete flags taken off with them. A flag
   // left the notes in the file and in the roll, and Reset track undid the clear. Both
   // panels go through the one helper — shared here, forked in the bar panel.
+  //
+  // The note LENGTHS go with the notes, and the write says so explicitly: cleared bars
+  // that kept their lengths would give the next note drawn on one of those steps the
+  // length of whatever used to be there.
   && /label: 'Erase Notes'[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} erased`, \{ shared: true \}\)/.test(trackBranch)
-  && /function clearLaneBars\(laneKey, from, to, what, \{ shared = false \} = \{\}\) \{[\s\S]*?PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\) \? false : null[\s\S]*?const write = shared \? writeBarNotesShared : writeBarNotes[\s\S]*?setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], false\)[\s\S]*?write\(eb, next, bar, laneKey, empty\)/.test(entry)
+  && /function clearLaneBars\(laneKey, from, to, what, \{ shared = false \} = \{\}\) \{[\s\S]*?PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\) \? false : null[\s\S]*?const write = shared \? writeBarNotesShared : writeBarNotes[\s\S]*?setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], false\)[\s\S]*?write\(eb, next, bar, laneKey, empty, noLengths\)/.test(entry)
   && !/setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], true\)/.test(entry)
   // No Channel section and no Edit notes…: the first belongs to the strip, the second has
   // a toolbar button and a key of its own. Mute and solo stay out for the older reason —
@@ -464,7 +493,7 @@ assert(partfilter > 0 && lanefilter > partfilter,
   'the strip-part switches come before the track-family switches in the header');
 assert(/#partfilter button,\s*#lanefilter button \{[^}]*width:\s*var\(--stripw\)/s.test(shell),
   'both sets of switches are one strip wide, so they line up with the channels');
-assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.no-sends \.sendrow,\s*#rackwrap\.no-fx \.fxbtns \{\s*display: none/s
+assert(/#rackwrap\.no-eq \.eqrow,[\s\S]{0,200}?#rackwrap\.no-fx \.fxbtns,\s*#rackwrap\.shed-fx \.fxbtns \{ display: none; \}/
   .test(shell), 'the rack classes hide the EQ rows, the send rows and the insert slots');
 assert(/function eqRow[\s\S]*?classList\.add\('eqrow'\)/.test(entry)
   && /SHORT\[aux\.id\][\s\S]*?classList\.add\('sendrow'\)/.test(entry),

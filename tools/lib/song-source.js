@@ -12,6 +12,7 @@
 // The rule this file exists to keep: what comes back must equal what went in. A
 // song that reads beautifully and plays differently is worse than an ugly array.
 import { noteName, n, chord } from '../../src/engine/notes.js';
+import { isLenKey } from '../../src/engine/lanes.js';
 
 const NOTE_RE = /^[A-G]#?-?\d+$/;
 
@@ -84,9 +85,17 @@ export function laneSource(arr) {
 const isLane = (v) => Array.isArray(v) && v.length === 32
   && v.every((x) => x == null || typeof x === 'number' || typeof x === 'boolean' || Array.isArray(x));
 
-function valueSource(v, indent) {
+function valueSource(v, indent, key = null) {
   if (v === null) return 'null';
   if (Array.isArray(v)) {
+    // A lane's note LENGTHS are 32 numbers, so they look exactly like a lane of
+    // frequencies from here. They are written as plain numbers, always. Nothing in the
+    // grid happens to be a note frequency — the lowest is C-1 at 8.1758 Hz and no
+    // number of steps is that — so `laneSource` would fall back to JSON of its own
+    // accord today, but relying on that is relying on arithmetic to keep a promise
+    // about meaning: `bassLen: seq('. . . C1')` is a line that reads as music and is
+    // not, and one new octave of note names would produce it.
+    if (isLenKey(key)) return JSON.stringify(v);
     if (isLane(v)) return laneSource(v);
     // A list of objects — `sections`, most of the time. Recursed rather than
     // stringified: a section is a partial bank full of lanes, and dumping the lot as
@@ -106,7 +115,7 @@ function objectSource(obj, indent = '  ') {
   const inner = `${indent}  `;
   const lines = Object.entries(obj)
     .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `${inner}${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${valueSource(v, inner)},`);
+    .map(([k, v]) => `${inner}${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${valueSource(v, inner, k)},`);
   return `{\n${lines.join('\n')}\n${indent}}`;
 }
 

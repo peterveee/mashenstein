@@ -16,13 +16,13 @@ import { join } from 'node:path';
 import { listTracks, resolveTrack } from '../tools/lib/tracks.js';
 import { renderArrangementsFile } from '../tools/lib/arrangements-source.js';
 import {
-  ARRANGEMENTS, applyArrangement, resolveSection, expandOrder, orderOf, arrangementIssues,
+  ARRANGEMENTS, applyArrangement, resolveSection, expandOrder, orderOf, arrangementIssues, bpmOf,
 } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
-  compactSections, patternStarts, barCount,
+  compactSections, patternStarts, barCount, setTempo,
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
@@ -43,6 +43,25 @@ const tracks = listTracks().map((t) => resolveTrack(t.id)).filter((t) => t && t.
 const banks = Object.fromEntries(tracks.map((t) => [t.id, t.bank]));
 const withSections = tracks.filter((t) => t.bank.sections?.length);
 const json = (v) => JSON.stringify(v);
+
+/**
+ * Is this song's order the LEGACY form — a flat list of section indices?
+ *
+ * The equivalence checks below hold the bar-based rewrite to answering exactly what
+ * the code it replaced answered, and that question only has an answer for an order
+ * the old code could read. `{s: 0, bars: 1}` is the thing bars ADDED: a single bar of
+ * a section, which the legacy walk (`order[floor(step / 32)]`, `e < sections.length`)
+ * cannot express and the legacy blocks builder turns into a spread of `undefined`.
+ *
+ * This is not a hypothetical: a scratch song created with an odd bar count gets one —
+ * `orderForBars` in tools/lib/new-song.js has always ended an odd song on a single
+ * bar — so a five-bar song in the drawer used to fail three assertions here for a
+ * reason that had nothing to do with the song or the rewrite.
+ */
+const legacyOrder = (t) => orderOf(t.bank).every((e) => typeof e === 'number');
+const legacyTracks = tracks.filter(legacyOrder);
+const legacySections = withSections.filter(legacyOrder);
+const barLevel = tracks.filter((t) => !legacyOrder(t));
 
 // ---- one song is always two draft halves ------------------------------------
 
@@ -96,7 +115,7 @@ assert(applyArrangement(banks.plumber, 'plumber', { plumber: {} }) === banks.plu
 // step of every song, or the null test is where we would find out.
 let mismatches = 0;
 let stepsChecked = 0;
-for (const t of withSections) {
+for (const t of legacySections) {
   const bank = t.bank;
   const order = orderOf(bank);
   const plan = expandOrder(order, true);
@@ -112,9 +131,15 @@ for (const t of withSections) {
 }
 assert(mismatches === 0,
   `a legacy order expands to exactly what scheduleStep computes today `
-  + `(${withSections.length} songs, ${stepsChecked} steps)`);
-assert(withSections.every((t) => orderOf(t.bank).every((e) => e < t.bank.sections.length)),
+  + `(${legacySections.length} songs, ${stepsChecked} steps)`);
+assert(legacySections.every((t) => orderOf(t.bank).every((e) => e < t.bank.sections.length)),
   'no song\'s order points past its own section list, so the engine\'s wrap-around never fires');
+// The songs the legacy walk cannot describe are still held to the property that
+// matters for them: a bar-level entry is worth exactly the bars it claims, so the
+// plan is as long as the song says it is.
+assert(barLevel.every((t) => expandOrder(orderOf(t.bank), true).length
+  === orderOf(t.bank).reduce((sum, e) => sum + (typeof e === 'number' ? 2 : (e.bars ?? 2)), 0)),
+`a bar-level order expands to exactly the bars it names (${barLevel.length} songs)`);
 
 const sectionless = tracks.filter((t) => !t.bank.sections?.length);
 assert(sectionless.every((t) => expandOrder(orderOf(t.bank), false).every((b) => b.sec === null)),
@@ -171,7 +196,7 @@ const legacyActivity = (bank, repeat = 1, cellsPerBar = 4) => {
 };
 
 let blocksSame = 0, activitySame = 0, echoSame = 0, barsSame = 0;
-for (const t of tracks) {
+for (const t of legacyTracks) {
   const bank = t.bank;
   for (const repeat of [1, 2]) {
     if (json(songBlocks(bank, repeat)) === json(legacyBlocks(bank, repeat))) blocksSame++;
@@ -195,13 +220,13 @@ function legacyEcho(bank, key) {
   const test = ECHO[key];
   return test ? blocks.some(test) : true;
 }
-assert(blocksSame === tracks.length * 2,
-  `songBlocks built on bars is identical to what it returned before (${tracks.length} songs, repeat 1 and 2)`);
-assert(barsSame === tracks.length, 'and a song is exactly twice as many bars as it was blocks');
-assert(activitySame === tracks.length * 2,
-  `laneActivity is identical, cell for cell, at 4 cells a bar and at 1 (${tracks.length} songs)`);
-assert(echoSame === tracks.length,
-  `laneUsesEcho answers the same for every lane of every song (${tracks.length} songs)`);
+assert(blocksSame === legacyTracks.length * 2,
+  `songBlocks built on bars is identical to what it returned before (${legacyTracks.length} songs, repeat 1 and 2)`);
+assert(barsSame === legacyTracks.length, 'and a song is exactly twice as many bars as it was blocks');
+assert(activitySame === legacyTracks.length * 2,
+  `laneActivity is identical, cell for cell, at 4 cells a bar and at 1 (${legacyTracks.length} songs)`);
+assert(echoSame === legacyTracks.length,
+  `laneUsesEcho answers the same for every lane of every song (${legacyTracks.length} songs)`);
 assert(!laneUsesEcho(banks.plumber, 'tom'),
   'the new tom lane follows the kit dry-by-default routing');
 
@@ -629,6 +654,60 @@ assert(resolveSection(neonApplied, 0) && !Object.keys(resolveSection(neonApplied
 assert(entryOf(neon, compactSections(neon, draftOf(neon, neonEntry))) !== null
   && entryOf(neon, draftOf(neon, null)) === null,
   'while the same song untouched still writes nothing at all');
+
+// ---- the tempo ---------------------------------------------------------------
+//
+// The desk's bpm drag used to be audition-only and was lost the moment you left the
+// song. It is saved on the arrangement now, for the reason the order is: the song stays
+// written at the tempo it was written at, and the arrangement says what it is played
+// at. So the assertions worth having are the ones about NOT losing it — through another
+// edit, through a save, and back out again — plus the one that says a tempo equal to
+// the composed one leaves no trace.
+
+const writtenBpm = plumber.bpm;
+assert(typeof writtenBpm === 'number' && writtenBpm > 0, 'plumber is written at a tempo');
+
+const tempoOnly = entryOf(plumber, setTempo(draftOf(plumber, null), writtenBpm + 8));
+assert(json(tempoOnly) === json({ bpm: writtenBpm + 8 }),
+  'a song whose only change is its tempo writes the tempo alone — no order restating the bank\'s');
+assert(applyArrangement(plumber, 'plumber', { plumber: tempoOnly }).bpm === writtenBpm + 8,
+  'and the song plays at it');
+assert(applyArrangement(plumber, 'plumber', { plumber: tempoOnly }).order === plumber.order,
+  'while its order is untouched — a tempo change is not an arrangement rewrite');
+assert(bpmOf(plumber, 'plumber', { plumber: tempoOnly }) === writtenBpm + 8
+  && bpmOf(plumber, 'plumber', {}) === writtenBpm,
+  'bpmOf answers the same question for the callers that only hold one number');
+
+assert(entryOf(plumber, setTempo(draftOf(plumber, null), writtenBpm)) === null,
+  'a drag that lands back on the composed tempo is not a decision and leaves no entry');
+assert(entryOf(plumber, setTempo(draftOf(plumber, tempoOnly), null)) === null,
+  'and clicking the readout to go back clears it out again');
+
+// The trap this is here for: every bar edit builds its result through `copy`, so a
+// tempo carried on the draft rather than in `copy` would be dropped by the next mute.
+const afterBarEdit = entryOf(plumber,
+  setLanesOff(draftOf(plumber, tempoOnly), 2, 3, ['kick'], true));
+assert(afterBarEdit.bpm === writtenBpm + 8 && afterBarEdit.order.length,
+  'a bar edit made after a tempo change keeps the tempo AND the bars');
+const afterNoteEdit = entryOf(plumber,
+  writeBarNotes(plumber, draftOf(plumber, afterBarEdit), 3, 'kick', ON16));
+assert(afterNoteEdit.bpm === writtenBpm + 8 && afterNoteEdit.sections.length,
+  'and so does a note edit, which goes through compaction on the way out');
+
+assert(draftOf(plumber, afterNoteEdit).bpm === writtenBpm + 8,
+  'reopening the song reads the tempo back off the entry');
+assert(draftOf(plumber, null).bpm === null,
+  'while a song nobody retuned has no tempo of its own to state');
+
+assert(arrangementIssues(plumber, { bpm: 104 }, LANE_KEYS).length === 0,
+  'a tempo-only entry is playable');
+assert(arrangementIssues(plumber, { bpm: 0 }, LANE_KEYS).length > 0
+  && arrangementIssues(plumber, { bpm: -120 }, LANE_KEYS).length > 0
+  && arrangementIssues(plumber, { bpm: 12000 }, LANE_KEYS).length > 0,
+  'a tempo the sequencer cannot divide by is refused rather than played');
+
+survivesSave(plumber, 'plumber', setTempo(draftOf(plumber, null), 104),
+  'a song played at a tempo it was not written at');
 
 // ---- the file the desk writes ------------------------------------------------
 //

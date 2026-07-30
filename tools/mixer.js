@@ -26,6 +26,7 @@ import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/impor
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
 import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
+import { bpmOf } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile } from './lib/song-file.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
@@ -888,6 +889,11 @@ const server = createServer(async (req, res) => {
       const gm = q.get('gm') === '1';
       const midi = midiBuffer(track.bank, {
         repeat, title: track.title, gmChannels: gm, patches: gm || q.get('patches') === '1',
+        // The tempo the song is PLAYED at: the desk saves a retuned tempo onto the
+        // song's arrangement. Read off the files as they stand rather than the table
+        // this process started with, for the same reason the mix is — a server left
+        // running all day has the morning's version of everything it imported once.
+        bpm: bpmOf(track.bank, track.id, await readCurrentArrangements()),
       });
       console.log(`midi: ${track.slug}.mid — ${midi.trackNames.length} instrument tracks`);
       res.writeHead(200, {

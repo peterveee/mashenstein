@@ -11,40 +11,62 @@
 // The game does not import this file. src/data/tracks.js resolves imported songs
 // through a runtime registry precisely so a scratch import never reaches the build.
 import { registerTrack } from '../tracks.js';
+import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
+import * as BRAVE_DIVER from './brave-diver.js';
 import { CHOPIN3 } from './chopin3.js';
-import * as COSMIC_CACTUS from './cosmic-cactus.js';
-import * as COSMIC_PUPPET from './cosmic-puppet.js';
-import * as ELECTRIC_TANGO from './electric-tango.js';
+import * as CRIMSON_CAROUSEL from './crimson-carousel.js';
+import * as CRIMSON_MIRROR from './crimson-mirror.js';
+import * as DIZZY_TEMPLE from './dizzy-temple.js';
+import * as ELECTRIC_LANTERN from './electric-lantern.js';
+import * as ELECTRIC_SCOOTER from './electric-scooter.js';
+import * as FROZEN_DIVER from './frozen-diver.js';
 import * as FROZEN_HARBOUR from './frozen-harbour.js';
-import * as HAPPY_LADDER from './happy-ladder.js';
-import * as HAUNTED_WOMBAT from './haunted-wombat.js';
-import * as HUNGRY_PUPPET from './hungry-puppet.js';
+import * as HAPPY_WOMBAT from './happy-wombat.js';
+import * as HUNGRY_LADDER from './hungry-ladder.js';
 import * as LUCKY_PYLON from './lucky-pylon.js';
-import * as PAPER_PARADE from './paper-parade.js';
+import * as MARBLE_VOLCANO from './marble-volcano.js';
+import * as MIDNIGHT_ORBIT from './midnight-orbit.js';
+import { MIN3 } from './min3.js';
 import * as PINK_ENGINE from './pink-engine.js';
+import * as PLASTIC_OWL from './plastic-owl.js';
 import * as SALTY_TANGO from './salty-tango.js';
-import * as UNTITLED_SONG_2 from './untitled-song-2.js';
-import * as UNTITLED_SONG_3 from './untitled-song-3.js';
-import * as UNTITLED_SONG from './untitled-song.js';
-import * as VELVET_ENGINE from './velvet-engine.js';
+import * as SECRET_DIVER from './secret-diver.js';
+import * as THUNDER_LANTERN from './thunder-lantern.js';
+import * as THUNDER_ROBOT from './thunder-robot.js';
+import * as TINY_SUNDAE from './tiny-sundae.js';
+import * as VELVET_GARDEN from './velvet-garden.js';
+import * as WICKED_SUNDAE from './wicked-sundae.js';
+import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
+import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 
 export const IMPORTED_BY_ID = {
+  "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
+  "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
-  "cosmic-cactus": { bank: COSMIC_CACTUS.bank, title: COSMIC_CACTUS.title, group: "scratch", writable: true },
-  "cosmic-puppet": { bank: COSMIC_PUPPET.bank, title: COSMIC_PUPPET.title, group: "scratch", writable: true },
-  "electric-tango": { bank: ELECTRIC_TANGO.bank, title: ELECTRIC_TANGO.title, group: "scratch", writable: true },
+  "crimson-carousel": { bank: CRIMSON_CAROUSEL.bank, title: CRIMSON_CAROUSEL.title, group: "scratch", writable: true },
+  "crimson-mirror": { bank: CRIMSON_MIRROR.bank, title: CRIMSON_MIRROR.title, group: "scratch", writable: true },
+  "dizzy-temple": { bank: DIZZY_TEMPLE.bank, title: DIZZY_TEMPLE.title, group: "scratch", writable: true },
+  "electric-lantern": { bank: ELECTRIC_LANTERN.bank, title: ELECTRIC_LANTERN.title, group: "scratch", writable: true },
+  "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
+  "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
   "frozen-harbour": { bank: FROZEN_HARBOUR.bank, title: FROZEN_HARBOUR.title, group: "scratch", writable: true },
-  "happy-ladder": { bank: HAPPY_LADDER.bank, title: HAPPY_LADDER.title, group: "scratch", writable: true },
-  "haunted-wombat": { bank: HAUNTED_WOMBAT.bank, title: HAUNTED_WOMBAT.title, group: "scratch", writable: true },
-  "hungry-puppet": { bank: HUNGRY_PUPPET.bank, title: HUNGRY_PUPPET.title, group: "scratch", writable: true },
+  "happy-wombat": { bank: HAPPY_WOMBAT.bank, title: HAPPY_WOMBAT.title, group: "scratch", writable: true },
+  "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
   "lucky-pylon": { bank: LUCKY_PYLON.bank, title: LUCKY_PYLON.title, group: "scratch", writable: true },
-  "paper-parade": { bank: PAPER_PARADE.bank, title: PAPER_PARADE.title, group: "scratch", writable: true },
+  "marble-volcano": { bank: MARBLE_VOLCANO.bank, title: MARBLE_VOLCANO.title, group: "scratch", writable: true },
+  "midnight-orbit": { bank: MIDNIGHT_ORBIT.bank, title: MIDNIGHT_ORBIT.title, group: "scratch", writable: true },
+  "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "pink-engine": { bank: PINK_ENGINE.bank, title: PINK_ENGINE.title, group: "scratch", writable: true },
+  "plastic-owl": { bank: PLASTIC_OWL.bank, title: PLASTIC_OWL.title, group: "scratch", writable: true },
   "salty-tango": { bank: SALTY_TANGO.bank, title: SALTY_TANGO.title, group: "scratch", writable: true },
-  "untitled-song-2": { bank: UNTITLED_SONG_2.bank, title: UNTITLED_SONG_2.title, group: "scratch", writable: true },
-  "untitled-song-3": { bank: UNTITLED_SONG_3.bank, title: UNTITLED_SONG_3.title, group: "scratch", writable: true },
-  "untitled-song": { bank: UNTITLED_SONG.bank, title: UNTITLED_SONG.title, group: "scratch", writable: true },
-  "velvet-engine": { bank: VELVET_ENGINE.bank, title: VELVET_ENGINE.title, group: "scratch", writable: true },
+  "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
+  "thunder-lantern": { bank: THUNDER_LANTERN.bank, title: THUNDER_LANTERN.title, group: "scratch", writable: true },
+  "thunder-robot": { bank: THUNDER_ROBOT.bank, title: THUNDER_ROBOT.title, group: "scratch", writable: true },
+  "tiny-sundae": { bank: TINY_SUNDAE.bank, title: TINY_SUNDAE.title, group: "scratch", writable: true },
+  "velvet-garden": { bank: VELVET_GARDEN.bank, title: VELVET_GARDEN.title, group: "scratch", writable: true },
+  "wicked-sundae": { bank: WICKED_SUNDAE.bank, title: WICKED_SUNDAE.title, group: "scratch", writable: true },
+  "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
+  "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
 };
 
 for (const [id, entry] of Object.entries(IMPORTED_BY_ID)) registerTrack({ id, ...entry });

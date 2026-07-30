@@ -37,6 +37,61 @@ export const LANES = [
 
 export const LANE_KEYS = LANES.map((l) => l.key);
 
+/**
+ * ---- per-note lengths --------------------------------------------------------
+ *
+ * A lane may carry a parallel array under `${lane}Len`: how long the note on each
+ * step sounds, in STEPS, and ABSOLUTE rather than a multiple of the lane's own
+ * `*Dur`. The piano roll's resize handle is what writes it, and absolute is what
+ * makes the rectangle the roll draws true — as a multiplier, a one-step note on a
+ * bass whose `bassDur` is 1.8 would sound for nearly two steps and the drawing
+ * would be a lie.
+ *
+ * Absent is the ordinary case, and the cheap one: no bank in the game holds a Len
+ * array, `??` falls straight through to the lane's own length key, and the number
+ * that reaches an oscillator is the one that always did. That is what keeps
+ * tests/null-test.js sample-exact — so an all-null array is DELETED rather than
+ * written, and `withLengths` in tools/lib/arrangement-edit.js is where that happens.
+ *
+ * The key is spelled off the LANE, never off the lane's `*Dur` key: the seams
+ * disagree with the lane names (`chords` → `chordDur`, `leadHarm` → `harmDur`), and
+ * a `chordLen` sitting beside `chords` would be one letter away from the wrong
+ * array for ever.
+ */
+export const lenKey = (laneKey) => `${laneKey}Len`;
+
+/** Is this bank key a lane's lengths? Nothing else in a bank ends in `Len`. */
+export const isLenKey = (key) => typeof key === 'string' && /Len$/.test(key);
+
+/** A length is a real, positive number of steps. Anything else is not a length. */
+export const validLen = (v) => Number.isFinite(v) && v > 0;
+
+/**
+ * What a lane says about the length of the note on `step`: a number, an ARRAY of
+ * them on a chord lane — one per tone, aligned with the frequencies on that step —
+ * or null where it says nothing and the lane's own length stands.
+ */
+export function stepLen(bank, laneKey, step) {
+  const arr = bank?.[lenKey(laneKey)];
+  if (!Array.isArray(arr)) return null;
+  const at = arr[step];
+  if (Array.isArray(at)) return at;
+  return validLen(at) ? at : null;
+}
+
+/**
+ * One note's length in steps, out of whatever `stepLen` returned.
+ *
+ * `i` indexes the tone within a chord. A scalar covers the whole chord, which is
+ * what a hand-written `chordsLen: [4, ...]` plainly means by it; the roll writes
+ * per-tone arrays, because it draws a rectangle per tone and one length for three
+ * of them would restretch the two you were not dragging.
+ */
+export function toneLen(len, fallback, i = 0) {
+  const one = Array.isArray(len) ? len[i] : len;
+  return validLen(one) ? one : fallback;
+}
+
 // Desk order: the order the channel strips appear on the mixing desk, which is not
 // the same as the order the renderer walks. A desk reads kit first — kick, snare,
 // claps, hats, then the rest of the percussion — then bass, then everything
@@ -115,7 +170,10 @@ export function deskBank(bank, entry) {
 
   const shape = (block) => {
     const out = { ...block };
-    for (const key of off) delete out[key];
+    // The lengths go with the lane. Left behind they are harmless while the lane is
+    // gone and wrong the moment it comes back — a re-added bass would inherit the
+    // lengths of notes that no longer exist.
+    for (const key of off) { delete out[key]; delete out[lenKey(key)]; }
     // Scratch templates name silent lanes here so the Blank template can show an
     // editable track without planting a fake note. Once that track is deleted, the
     // marker must go with it: activeLanes intentionally trusts starterLanes, so
@@ -128,13 +186,23 @@ export function deskBank(bank, entry) {
     for (const { key, from, independent } of layers) {
       // Ordinary layers are doubles: same notes, separate voice and strip. Pattern-
       // editor instruments are independent layers: a real silent lane until notes
-      // are painted into it. Preserve an arrangement delta that already names the
-      // layer; otherwise materialise 32 rests so it still gets a row and strip.
+      // are painted into it. Percussion lanes start as booleans (the step grid
+      // toggles hits on/off); pitched lanes start as nulls (the piano roll writes
+      // frequencies). Preserve an arrangement delta that already names the layer;
+      // otherwise materialise 32 rests so it still gets a row and strip.
       if (out[key] != null) continue;
       if (independent) {
         const length = Object.values(out).find((v) => Array.isArray(v))?.length || 32;
-        out[key] = new Array(length).fill(false);
-      } else if (out[from]) out[key] = out[from];
+        const isDrum = PERCUSSION_LANES.includes(baseLane(from)) || PERCUSSION_LANES.includes(from);
+        out[key] = new Array(length).fill(isDrum ? false : null);
+      } else if (out[from]) {
+        out[key] = out[from];
+        // A double plays the same notes AT THE SAME LENGTHS. Without this the layer
+        // falls back to its own `*Dur` and a duplicated bass plays the part with
+        // every hand-drawn length thrown away, which reads as the copy being wrong
+        // rather than as a missing key.
+        if (out[lenKey(from)]) out[lenKey(key)] = out[lenKey(from)];
+      }
     }
     return out;
   };
@@ -194,7 +262,10 @@ export function soloBank(bank, laneKey, value, step = 1) {
   const out = { ...bank };
   delete out.sections;
   delete out.order;
-  for (const { key } of laneList(bank)) out[key] = null;
+  // The lengths go too. A preview happens at no step of the song, so a per-note
+  // length has nothing to be the length of — left in, the key you pressed would
+  // sound for however long the note that happens to live on step 1 does.
+  for (const { key } of laneList(bank)) { out[key] = null; delete out[lenKey(key)]; }
   // Only the layer being played. The loop at the end of scheduleStep walks them all,
   // and a layer still holding its notes would sound underneath the preview.
   out.__layers = (bank.__layers || []).filter((L) => L.key === laneKey);

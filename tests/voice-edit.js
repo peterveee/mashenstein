@@ -235,7 +235,58 @@ async function main() {
         '...without cutting the note the lane is still ringing');
     }
 
-    // ---- 8. nothing survives the rack ------------------------------------------
+    // ---- 8. a note may never be booked behind one already scheduled ---------------
+    //
+    // Tone keeps a state timeline per oscillator and refuses a state added before one
+    // already on it — it throws, inside the sequencer, and takes the page with it. Two
+    // ways that happens here, and both are ordinary desk use:
+    //
+    //   · a note DRAWN LONG over a part playing sixteenths — the ringing note holds a
+    //     slot and the pool has to find another one;
+    //   · a KEY PRESSED WHILE THE SONG PLAYS — the sequencer has scheduled 120ms into
+    //     the future and a preview lands at now + 20ms, which is behind it.
+    {
+      const id = install(VOICES.acidSquelch);
+      const t0 = ctx.currentTime + 0.5;
+      const long = (t, dur) => rack.play('bass', id, 220, {
+        time: t, dur, gain: 0.4, dry, wet, echo: true,
+      });
+      // Eight sixteenths at 120bpm, every one of them two beats long: by the third the
+      // first is still ringing, and every slot the pool started with is booked.
+      let threw = null;
+      try {
+        for (let i = 0; i < 8; i++) long(t0 + i * 0.125, 1);
+      } catch (e) { threw = e.message; }
+      const pool = poolOf('bass', id);
+      say(!threw, `eight overlapping long notes schedule without throwing${threw ? ` — ${threw}` : ''}`);
+      say(pool.slots.length === 2,
+        `and the pool does NOT grow to hold them (${pool.slots.length} voices): polyphony`
+        + ' is the preset\'s, and a note that outlasts its slot is cut off — which is what'
+        + ' the roll draws and what the engine has always done');
+      // Backwards on the same instance is the case Tone refuses outright. One note goes
+      // missing; the exception it replaces stopped the page mid-bar.
+      let backwardsThrew = null;
+      try { long(t0 - 0.4, 1); } catch (e) { backwardsThrew = e.message; }
+      say(!backwardsThrew,
+        `a note booked behind everything on its instance is dropped, not thrown${backwardsThrew ? ` — ${backwardsThrew}` : ''}`);
+
+      // Now the preview case: the same lane, a note in the PAST relative to what is
+      // already scheduled. It must not throw, and it must not land on the song's synths.
+      let previewThrew = null;
+      try {
+        rack.play('bass', id, 330, {
+          time: t0 - 0.4, dur: 0.2, gain: 0.4, dry, wet, echo: true, preview: true,
+        });
+      } catch (e) { previewThrew = e.message; }
+      say(!previewThrew,
+        `a preview behind the song's schedule does not throw${previewThrew ? ` — ${previewThrew}` : ''}`);
+      const previewPool = rack.pools.get(`bass|${id}|1|preview`);
+      say(previewPool && previewPool !== pool,
+        'because it plays on its own instances — the song\'s timeline is never written'
+        + ' to out of order');
+    }
+
+    // ---- 9. nothing survives the rack ------------------------------------------
     {
       const before = rack._retired.size;
       say(before > 0, 'there are retired pools still waiting to be disposed');

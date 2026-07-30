@@ -100,10 +100,13 @@ export function renderArrangementsFile(arrangements, path) {
     if (!entry) continue;
     const order = entry.order || [];
     const sections = entry.sections || [];
-    // A song with neither is a song nobody arranged. Skipped rather than written as
-    // an empty object, so the file holds decisions and nothing else.
-    if (!order.length && !sections.length) continue;
+    const bpm = entry.bpm ?? null;
+    // A song with none of the three is a song nobody arranged. Skipped rather than
+    // written as an empty object, so the file holds decisions and nothing else — and a
+    // tempo is a decision on its own, so `{ bpm: 104 }` is a whole entry.
+    if (!order.length && !sections.length && bpm == null) continue;
     body += `  ${JSON.stringify(id)}: {\n`;
+    if (bpm != null) body += `    bpm: ${bpm},\n`;
     if (order.length) {
       // Wrapped at eight entries a line: an order is read as a shape — where the
       // build-ups are, where the breakdown is — and a single 44-entry line is not a

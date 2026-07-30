@@ -10,7 +10,7 @@ import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, writeBarNotes, writeBarNotesShared, patternStarts,
-  barCount, removeLanes,
+  barCount, removeLanes, setTempo,
 } from './lib/arrangement-edit.js';
 import { noteName } from '../src/engine/notes.js';
 import { listTracks, resolveTrack, registerTrack, unregisterTrack } from '../src/data/tracks.js';
@@ -374,6 +374,10 @@ function undo() {
     // are both drawn from it. Handed over without stopping, like the edit was.
     bankCache.sig = null;
     Audio.setArrangement(arrFor(trackId));
+    // The tempo lives on the arrangement too, so undoing one is undoing the other —
+    // and a readout still showing the tempo the song no longer plays at is the half
+    // of the undo you can see.
+    pushTempo();
     buildTimeline();
   }
   if (step.trackId !== trackId) { selectSong(step.trackId); }
@@ -1043,9 +1047,9 @@ function editFx(id, patch, tag) {
     // Delay 1's time, feedback and damping are AudioSys nodes; its EQ, level, pan
     // and mute are the mixer's, like every other aux.
     Audio.setDelay(rest);
-    Audio.mixer.setAux('delay', { eq, level, pan, mute }, track.bank.bpm);
+    Audio.mixer.setAux('delay', { eq, level, pan, mute }, deskTempo());
   } else {
-    Audio.mixer.setAux(id, { ...rest, eq, level, pan, mute }, track.bank.bpm);
+    Audio.mixer.setAux(id, { ...rest, eq, level, pan, mute }, deskTempo());
   }
 }
 
@@ -1060,8 +1064,6 @@ function loadTrack(id) {
   selectedBar = null;
   trackId = id;
   track = resolveTrack(id);
-  tempoOverride = null;                 // a new song brings its own tempo
-  showTempo();
   // The same lane in a different song is played by a different preset, or by none —
   // the editor following its lane, by another route. Before buildRack, which is what
   // puts the panel back beside the strip once it knows which preset it is on.
@@ -1082,6 +1084,9 @@ function loadTrack(id) {
   // keeps playing without a gap while you mix.
   if (playing) Audio.setBank(track.bank, mixFor(id), arrFor(id));
   applyToEngine(mixFor(id));
+  // A new song brings its own tempo — its arrangement's, else the one it was written
+  // at. After applyToEngine, so the strips it retunes are this song's.
+  pushTempo();
   loopAnchor = 0;              // a different song means a different timeline
   parkedAt = 0;
   applyLoop(0);
@@ -1140,11 +1145,6 @@ function slider({ min, max, step, value, fmt, onInput, reset }) {
   head.append(k, v);
   const input = document.createElement('input');
   input.type = 'range'; input.min = min; input.max = max; input.step = step; input.value = value;
-  // What this row would read if nobody had touched it. Written down here because it
-  // is the only place that knows it, and the compact strip's summary chip needs to
-  // count the rows that are OFF their default without knowing what kind of row any
-  // of them is — see paintSummary.
-  input.dataset.default = String(reset);
   v.textContent = fmt(value);
   // Click the readout to type an exact value. A slider is fine for finding a
   // setting by ear and useless for dialling in one you already know.
@@ -1228,6 +1228,9 @@ let hiddenParts = new Set(JSON.parse(localStorage.getItem(PARTS_KEY) || '[]'));
 function applyStripParts() {
   const wrap = $('rackwrap');
   for (const p of STRIP_PARTS) wrap.classList.toggle(p.cls, hiddenParts.has(p.id));
+  // Every rung of the shrink ladder just changed height: a block hidden by hand has
+  // none left for the ladder to save by hiding it again.
+  forgetStripMetrics();
   // The height the rows gave up goes to the faders, and comes back off them again
   // when the rows return — fitStrips computes both from the window.
   requestAnimationFrame(fitStrips);
@@ -1239,7 +1242,9 @@ function buildPartFilter() {
   for (const p of STRIP_PARTS) {
     const b = document.createElement('button');
     const name = document.createElement('span');
+    name.className = 'lbl';        // what the struck-through `shed` state marks
     name.textContent = p.label;
+    b.dataset.part = p.id;         // how markShedParts finds it again
     b.append(partIcon(p.id), name);
     const shown = !hiddenParts.has(p.id);
     b.classList.toggle('off', !shown);
@@ -1349,12 +1354,6 @@ function buildRack() {
 
   const special = selectedLane === '__master' || (selectedLane || '').startsWith('__aux:');
   if (selectedLane && !special && !lanes.some((l) => l.key === selectedLane)) selectedLane = null;
-  // Filled in now rather than when the rack first goes compact, because the compact
-  // strip's height is MEASURED off one of these and an empty chip is a third of the
-  // height of a full one — the rack's whole floor came out short enough to clip the
-  // chip it had just been measured from.
-  for (const s of rack.querySelectorAll('.strip[data-lane]')) paintSummary(s);
-  paintSummary($('masterslot').querySelector('.strip[data-lane]'));
   requestAnimationFrame(fitStrips);
 
   // Never nothing: the device panel is the biggest surface on the desk, and opening
@@ -1390,12 +1389,6 @@ function stripShell(key, { label, tag, colour, tint, cls = '', number = null }) 
   head.style.cursor = 'pointer';
   head.title = 'Click anywhere on this strip to show its devices below';
   const body = document.createElement('div'); body.className = 'stripbody';
-  // First in the body, so on the bottom rung of the shrink ladder — where it is the
-  // only thing in there still showing — it sits directly under the name. Built for
-  // every strip rather than for channels alone: the master and the returns have
-  // inserts and sends of their own, and a rack where two strips out of twenty carry
-  // no chip reads as two strips that failed to draw one.
-  body.append(summaryChip(key));
   const foot = document.createElement('div'); foot.className = 'stripfoot';
   el.append(head, body, foot);
   // Any empty part of the strip selects it — hunting for a specific hit target on a
@@ -1704,7 +1697,10 @@ function laneVoiceId(laneKey) {
   const chosen = m.voice?.[seam.voiceKey];
   if (chosen) return chosen;
   const independent = (m.layers || []).some((l) => l.key === laneKey && l.independent);
-  return independent ? DEFAULT_ADDED_PERCUSSION_VOICE : null;
+  if (independent) {
+    return PERCUSSION_LANES.includes(baseLane(laneKey)) ? DEFAULT_ADDED_PERCUSSION_VOICE : null;
+  }
+  return null;
 }
 
 /**
@@ -2910,7 +2906,20 @@ function openVoicePicker(x, y, laneKey) {
     // A freshly added lane is only a proposal until its first sound is chosen. Commit
     // before closing so closeMenu does not treat this successful choice as a cancel.
     if (pendingAddTrack?.key === laneKey) {
-      commitPendingAddTrack(laneKey, id);
+      // If the user selected a pitched voice, re-key the pending track as a melodic
+      // independent lane instead of defaulting to a drum track. The voice the user
+      // picked is what the track IS, not whatever lane happened to be selected when
+      // they clicked +.
+      const voice = VOICES[id];
+      if (voice && !KIT_CATEGORIES.includes(voice.category)) {
+        const newFrom = 'lead';
+        const newKey = nextLayerKey(newFrom);
+        pendingAddTrack.key = newKey;
+        pendingAddTrack.from = newFrom;
+        commitPendingAddTrack(newKey, id);
+      } else {
+        commitPendingAddTrack(laneKey, id);
+      }
       closeMenu();
       return;
     }
@@ -3243,7 +3252,7 @@ function sendStrip(def, mix, slotRows) {
   // Values only, in the order the card lists them — a 132px strip has room for the
   // numbers or for their names, and the numbers are what you are checking.
   body.append(deviceSummary(key, def.type === 'delay'
-    ? `${fmtDelay(syncSeconds(cur.division, track.bank.bpm))} · ${cur.feedback.toFixed(2)}`
+    ? `${fmtDelay(syncSeconds(cur.division, deskTempo()))} · ${cur.feedback.toFixed(2)}`
       + ` · ${cur.tone >= 1000 ? `${(cur.tone / 1000).toFixed(1)}k` : cur.tone}`
     : `${cur.decay.toFixed(1)}s · pre ${(cur.preDelay * 1000).toFixed(0)}ms`));
 
@@ -3366,15 +3375,23 @@ function masterStrip(mix, slotRows) {
 
 // The fader is the desk's shock absorber. In a short window it gives up height so
 // the EQ and send rows above it stay on screen — they are read constantly while
-// balancing, where the fader is a grip you can still hit at 48px, with an exact dB
-// readout under it either way. Given room it takes all of it — there is no cap, so
-// the strips always fill the rack exactly and a tall window ends up with long
-// faders rather than a band of empty desk under short ones.
+// balancing, where the fader is a grip you can still hit, with an exact dB readout
+// under it either way. Given room it takes all of it — there is no cap, so the
+// strips always fill the rack exactly and a tall window ends up with long faders
+// rather than a band of empty desk under short ones.
+//
+// A comfortable height rather than a floor: this is the fader the rack ASKS for when
+// it is deciding how much of the window to want (see rackWant). What it will actually
+// settle for is FADER_FLOOR below.
 const FADER_MIN = 48;
-// A squeezed or compact strip's fader. Shorter than the full minimum, because by
-// this point the strip has already admitted it is not showing everything and says
-// so on its face — there is nothing left to protect by holding the extra eight.
-const FADER_SHORT = 40;
+// And how far it will compress to keep one more BLOCK on screen. Two numbers rather
+// than one, because with only the comfortable minimum to bargain with the ladder shed
+// far too eagerly: five pixels short of fitting the EQ, it would drop the EQ and the
+// sends together and then hand the ninety pixels that freed straight back to the
+// fader — a strip that was nearly all fader, with the rows you were reaching for
+// gone. A fader is still a fader at this height; three EQ bands you cannot see are
+// not an EQ.
+const FADER_FLOOR = 34;
 // The arrangement's automatic answer. Eight lanes is enough to read a song's shape
 // and the rest is a scroll. It is a TARGET, not a floor: the floor is one lane, and
 // calling the eight a floor is most of why this used to be hard to reason about.
@@ -3503,40 +3520,63 @@ function naturalHeight(body) {
  * view, which is the whole thing this is here to prevent.
  */
 /**
- * Measure the rack on a named rung rather than on the one it happens to be wearing.
+ * The rack's shrink ladder, in the order the blocks go. Inserts first — they are the
+ * one block you set once and then leave alone. Sends next. EQ last, because it is the
+ * one you are most likely to be reaching for while the window is small. Below the
+ * bottom of this list is the strip you balance on: name, voice, fader, dB, pan and
+ * mute/solo, with nothing left to take.
  *
- * Every number the ladder is steered by has to be independent of where the ladder
- * currently is, or the fit stops being a function of the window. Both directions bit:
- * asked while the rack was compact, stripChrome() measured rows that were
- * display:none and answered with almost nothing, which made the rack's full-strip
- * want almost nothing, which kept it compact — a latch a wider window could not
- * undo. And squeezeRoom() measuring the same hidden row made the compact threshold
- * itself move with the rung, so a fit could flip the rack between two rungs forever.
+ * The same three blocks the header switches hide, hidden the same way — see the
+ * #rackwrap.shed-* rules. A DIFFERENT set of classes from the switches, so growing
+ * the window back restores exactly what is ticked and nothing more.
+ */
+const SHED_ORDER = ['effects', 'sends', 'eq'];
+// One id space with the switches, and the class derived from theirs rather than
+// spelled again: the insert block is `effects` to a switch and `fx` to a stylesheet,
+// and writing that mapping down twice is how the two sets drift apart.
+const shedClass = (id) => STRIP_PARTS.find((p) => p.id === id).cls.replace('no-', 'shed-');
+
+/**
+ * Measure the rack `n` blocks into the ladder, rather than wherever it happens to be
+ * standing. Every number the fit is steered by has to be independent of the rung it
+ * is currently on, or the fit stops being a function of the window and starts being a
+ * function of its own last answer — which is a latch, and a short window once meant a
+ * short window forever.
  *
  * `measuring` also lifts --striph off .strip and .voicepair, which are given it
- * explicitly and would otherwise be answering the question with the last answer.
+ * explicitly and would otherwise answer the question with the previous answer. The
+ * fader is pinned for the same reason: left live, a strip measures taller on a tall
+ * window than on a short one and the rack's floor ratchets up as the window grows.
  */
-function onRung(rung, fn) {
+function atShed(n, fn) {
   const wrap = $('rackwrap');
-  const had = ['compact', 'squeezed'].filter((c) => wrap.classList.contains(c));
-  wrap.classList.remove('compact', 'squeezed');
-  if (rung) wrap.classList.add(rung);
-  wrap.classList.add('measuring');
-  // The fader is pinned on the bottom rung for the same reason: left to the live
-  // --faderh, a compact strip measures taller on a tall window than on a short one,
-  // and the rack's floor would ratchet up every time the window grew.
-  if (rung === 'compact') wrap.style.setProperty('--faderh', `${FADER_SHORT}px`);
+  const had = SHED_ORDER.map(shedClass).filter((c) => wrap.classList.contains(c));
+  wrap.classList.remove(...SHED_ORDER.map(shedClass));
+  wrap.classList.add(...SHED_ORDER.slice(0, n).map(shedClass), 'measuring');
+  wrap.style.setProperty('--faderh', `${FADER_FLOOR}px`);
   try {
     return fn();
   } finally {
     wrap.style.removeProperty('--faderh');
-    wrap.classList.remove('measuring', 'compact', 'squeezed');
+    wrap.classList.remove('measuring', ...SHED_ORDER.map(shedClass));
     wrap.classList.add(...had);
   }
 }
 
-function stripChrome() {
-  return onRung(null, () => {
+/**
+ * Everything in a strip whose height does not move with the fader — the voice row,
+ * the readout, the pan and the buttons are all fixed, so the fader is the only
+ * variable left. `n` blocks into the ladder.
+ *
+ * Measured across EVERY strip, not off the first one: the insert buttons live in the
+ * foot, so a channel with five effects on it stands a hundred pixels taller in the
+ * fixed parts than a channel with none, and sizing the rack from the first strip gave
+ * the busy ones a body too short for their own rows.
+ *
+ * Rounded up: a strip half a pixel short cuts the last row it is showing.
+ */
+function measureChromeAt(n) {
+  return atShed(n, () => {
     let chrome = 0;
     for (const s of document.querySelectorAll('.strip')) {
       const b = s.querySelector('.stripbody');
@@ -3552,55 +3592,37 @@ function stripChrome() {
 }
 
 /**
- * How tall one COMPACT strip stands: the bottom rung of the rack's shrink ladder,
- * and therefore the rack's hard floor.
- *
- * Measured off a real strip wearing the class rather than summed from its parts —
- * summing is the mistake naturalHeight() above is written to avoid, and this has the
- * same margins and gaps in it. Cached with the body row height beside it, because
- * the only two things that move either are the typeface and a rack rebuild, and both
- * call forgetStripMetrics().
+ * The four chrome heights, cached: one per rung of the ladder. Measuring all of them
+ * costs four passes over the rack, so it is done once and thrown away by
+ * forgetStripMetrics() when something that could move them moves — a rack rebuild, a
+ * typeface change, or a part switch, since a block you have already hidden by hand
+ * has no height for the ladder to save by hiding it again.
  */
-let compactH = 0;
-let bodyRowH = 0;
-const forgetStripMetrics = () => { compactH = 0; bodyRowH = 0; };
-function compactStripHeight() {
-  if (compactH) return compactH;
-  const s = document.querySelector('.strip[data-lane]');
-  // Asked before the first buildRack — applyFont() and reserveDevices() both run at
-  // load. A plausible number rather than a throw; the real one arrives with the
-  // first fit after the rack exists, and forgetStripMetrics() is what fetches it.
-  if (!s) return 132;
-  compactH = onRung('compact', () => Math.ceil(s.getBoundingClientRect().height));
-  return compactH;
+let chromeRungs = null;
+const forgetStripMetrics = () => { chromeRungs = null; };
+function stripChromeAt(n) {
+  if (!chromeRungs) {
+    // Asked before the first buildRack — applyFont() and reserveDevices() both run at
+    // load. Plausible numbers rather than a throw; the real ones arrive with the first
+    // fit after the rack exists, and forgetStripMetrics() is what fetches them.
+    if (!document.querySelector('.strip[data-lane]')) return [260, 220, 180, 140][n];
+    chromeRungs = SHED_ORDER.map((_, i) => measureChromeAt(i));
+    chromeRungs.push(measureChromeAt(SHED_ORDER.length));
+  }
+  return chromeRungs[n];
 }
 
-/** One row of a strip body, measured with the rack's rows actually showing. */
-function bodyRowHeight() {
-  if (bodyRowH) return bodyRowH;
-  bodyRowH = onRung(null, () => h(document.querySelector('.stripbody .row'))) || 22;
-  return bodyRowH;
-}
+/** What a full strip needs, and what the last one standing needs. */
+const stripChrome = () => stripChromeAt(0);
+const bareChrome = () => stripChromeAt(SHED_ORDER.length);
 
 /**
- * The least the rack may be: one compact strip plus the rack's own padding.
- *
- * A compact strip is a name, a fader, a pan pot, mute/solo and a chip counting what
- * is folded away — nothing in it can scroll out of sight, so this is a hard floor
- * with nothing hidden behind it. The floor it replaces was a whole UNCOMPRESSED
- * strip: stripChrome() + FADER_MIN + rackPad(), where stripChrome() is the MAX
- * across the rack, so one channel with five inserts set the floor for every other
- * one and the effects handle hit that wall a hundred pixels before the rack had
- * given up anything at all.
+ * The least the rack may be: a strip with every sheddable block gone and the fader at
+ * its own minimum, plus the rack's padding. Nothing is hidden behind this — there is
+ * no scrolled-away row under it, because the ladder hides whole blocks and says so on
+ * the header switch rather than letting a body scroll silently.
  */
-function rackFloor() { return compactStripHeight() + rackPad(); }
-
-/**
- * The room a SQUEEZED strip needs on top of a compact one: two rows of body. Below
- * that the scrolling is more chrome than content and the compact strip says more, so
- * this is where the ladder's second rung starts.
- */
-const squeezeRoom = () => 2 * bodyRowHeight();
+function rackFloor() { return bareChrome() + FADER_FLOOR + rackPad(); }
 
 /**
  * The least each region may be while it is OPEN, measured rather than written down:
@@ -3613,7 +3635,7 @@ const MIN = {
   timeline: () => h($('timeline')),
   /** Header and one lane. Whole lanes only, always — see arrangeSnap. */
   arrange: () => h($('arrhead')) + GRID_PAD + laneRowHeight(),
-  /** One compact strip and the rack's padding. */
+  /** A strip with every sheddable block gone, and the rack's padding. */
   mixer: () => rackFloor(),
   /**
    * A card's own controls — or, showing the roll, enough of a keyboard to play
@@ -3656,6 +3678,9 @@ function rollWants() {
   if (!scroll) return 0;
   return h($('devhead')) + h(roll.querySelector('.ssqscope'))
     + scroll.scrollHeight + px(roll, 'paddingTop') + px(roll, 'paddingBottom')
+    // The air above the rulers is the scroller's MARGIN — it has to be, or the sticky
+    // rulers stick below it — so it is outside scrollHeight and has to be added here.
+    + px(scroll, 'marginTop')
     + (scroll.offsetHeight - scroll.clientHeight);   // its own horizontal scrollbar
 }
 
@@ -3682,7 +3707,7 @@ const plannedArrangeHeight = () => ($('arrange').classList.contains('collapsed')
  * This handle borders the RACK and the EFFECTS PANEL and nothing else, so the
  * arrangement is not in the sum: whatever height it has when you grab the handle is
  * the height it still has when you let go. The only wall is the rack's own floor,
- * and that is now one compact strip rather than one uncompressed one.
+ * and that is now the bottom of the shrink ladder rather than a full strip.
  */
 function deviceRoom(arrH = plannedArrangeHeight()) {
   const room = deskPool()
@@ -3695,21 +3720,25 @@ function deviceRoom(arrH = plannedArrangeHeight()) {
 /**
  * Exactly one region in the desk is elastic, chosen in this order: the rack, then
  * the arrangement, then the effects panel, then the empty band at the end. Folding
- * the mixer grows the arrangement; folding the mixer and the arrangement grows the
- * effects panel; folding all three leaves one band of desk with the footer pinned
- * under it, which is what the footer used to travel up the screen instead of.
+ * the mixer grows the arrangement and then the effects panel; folding all three
+ * leaves one band of desk with the footer pinned under it, which is what the footer
+ * used to travel up the screen instead of.
  *
  * The arrangement is in the chain but never wears the class itself. It is snapped to
  * whole lanes (see arrangeSnap) and a flex-grown one would end on a half row — the
- * exact cut the snapping exists to prevent — so it grows by computed pixels and the
- * band at the end takes its sub-lane remainder.
+ * exact cut the snapping exists to prevent. It takes its lanes as computed pixels in
+ * planDesk instead, and whatever it cannot use passes DOWN the chain to the next
+ * region that can. That last part is the whole point: handing the arrangement's
+ * leftover to the empty band stopped it one step early, and with the mixer folded it
+ * boxed the piano roll into its own content height with three hundred pixels of dead
+ * desk underneath — a panel that had run out of room sitting above a band of nothing.
  */
 const DESK_CHAIN = ['rackwrap', 'arrange', 'devices', 'deskslack'];
 function applyDeskChain() {
-  const winner = DESK_CHAIN.find((id) => id === 'deskslack'
-    || !$(id).classList.contains('collapsed'));
-  const flexy = winner === 'arrange' ? 'deskslack' : winner;
-  for (const id of DESK_CHAIN) $(id).classList.toggle('greedy', id === flexy);
+  const winner = DESK_CHAIN
+    .filter((id) => id !== 'arrange')
+    .find((id) => id === 'deskslack' || !$(id).classList.contains('collapsed'));
+  for (const id of DESK_CHAIN) $(id).classList.toggle('greedy', id === winner);
 }
 
 /**
@@ -3723,8 +3752,8 @@ function applyDeskChain() {
  * Two rules govern all of it:
  *   SURPLUS goes rack → arrangement → effects → the band, which is DESK_CHAIN.
  *   SHORTAGE is paid in reverse: the effects panel gives back to its minimum, then
- *     the arrangement to one lane, then the rack down its ladder to one compact
- *     strip. Only when all of that is spent does the desk itself scroll — and the
+ *     the arrangement to one lane, then the rack down its ladder to a bare strip.
+ *     Only when all of that is spent does the desk itself scroll — and the
  *     header, the timeline and the footer are outside it either way.
  *
  * The arrangement and the effects panel are served INDEPENDENTLY of each other, and
@@ -3767,12 +3796,11 @@ function planDesk() {
   // Except while the panel below is showing the roll, where the rack wants no more
   // than its floor. Writing notes and balancing are different jobs, and the desk
   // does the one you are looking at: a roll is a keyboard four octaves tall where
-  // the tallest effect card is two hundred pixels, and holding a full uncompressed
-  // strip back from it leaves a part being read through a slot. Compact strips are
-  // the right context for note editing anyway — a name, a fader and a mute is what
-  // you want from a channel you are not currently balancing. The handle puts the
-  // strips back the moment you do want them, and switching to Effects restores them
-  // outright.
+  // the tallest effect card is two hundred pixels, and holding a full strip back
+  // from it leaves a part being read through a slot. A bare strip is the right
+  // context for note editing anyway — a name, a fader and a mute is what you want
+  // from a channel you are not currently balancing. The handle puts the blocks back
+  // the moment you do want them, and switching to Effects restores them outright.
   const rackWant = !rackOpen ? 0
     : showingRoll() ? MIN.mixer()
       : chrome + FADER_MIN + rackPad();
@@ -3795,28 +3823,38 @@ function planDesk() {
   // The rack takes the difference, and everything above is a claim against it.
   let rackH = room - arrH - devH;
 
+  // Has either handle been used? If so, neither neighbour gives in the first pass.
+  // A height set by hand is obviously not taken back to serve a preference — but nor
+  // is the OTHER panel's automatic one, and that is the less obvious half. The cost
+  // of a handle has to land on the rack the handle borders, never on the panel across
+  // the desk from it. Without this, dragging the effects panel up paid for itself by
+  // folding the arrangement down to one lane: the handle moving a panel it does not
+  // touch, which is the exact complaint this whole rewrite is answering.
+  const byHand = (arrOpen && userArrH != null) || (devOpen && userDevH != null);
+
   /**
    * Take `short` pixels back off the two neighbours: the effects panel first, then
    * the arrangement a whole lane at a time — the desk's priority order, run
-   * backwards. `dragged` says whether heights the user set by hand are fair game.
+   * backwards. `forced` says this is the second pass, where nothing is exempt because
+   * the rack is otherwise going below its floor.
    */
-  const clawBack = (short, dragged) => {
-    if (devOpen && (dragged || userDevH == null)) {
+  const clawBack = (short, forced) => {
+    if (devOpen && (forced || !byHand)) {
       const give = Math.min(short, devH - devMin);
       devH -= give;
       short -= give;
     }
-    if (short > 0 && arrOpen && (dragged || userArrH == null)) {
+    if (short > 0 && arrOpen && (forced || !byHand)) {
       arrH -= Math.min(Math.ceil(short / lane) * lane, arrH - arrMin);
     }
     rackH = room - arrH - devH;
   };
 
   // Two passes, and the difference between them is what makes a handle feel like a
-  // handle. An AUTOMATIC height is only ever a preference, so it yields all the way
-  // to its own minimum to let the rack show a full strip. A DRAGGED height is a
-  // claim the user made about this desk on this screen: it outranks the rack's
-  // preference, and is only taken back to keep the rack off the floor itself.
+  // handle. Left alone, the desk fits itself: both neighbours yield to their own
+  // minimums so the rack can show a full strip. Once a handle has been used, that
+  // claim outranks the rack's preference and the first pass stands down entirely —
+  // the second only runs to keep the rack off its own floor.
   //
   // With the rack folded both targets are zero and only the second pass can fire —
   // just enough to keep the two remaining panels inside the window.
@@ -3839,138 +3877,86 @@ function applyDesk({ arrOpen, rackOpen, devOpen, arrH, devH, chrome, rackH, cram
   // --devh would only fight it.
   if (devOpen && !$('devices').classList.contains('greedy'))
     document.documentElement.style.setProperty('--devh', `${Math.round(devH)}px`);
-  if (rackOpen) sizeStrips(Math.floor(rackH - rackPad()), chrome);
+  if (rackOpen) sizeStrips(Math.floor(rackH - rackPad()));
 }
 
 /**
- * The rack's three rungs, in one place. `strips` is the height a strip may occupy —
- * the rack's own height less its padding and its horizontal scrollbar.
+ * The rack's shrink ladder. `strips` is the height one strip may occupy — the rack's
+ * own height less its padding and its horizontal scrollbar.
  *
- *   full      strips >= chrome + FADER_MIN
- *               Everything on screen, and the fader takes all the slack. There is no
- *               cap on it, so a tall window ends up with long faders rather than a
- *               band of empty desk under short ones.
- *   squeezed  down to one compact strip plus a couple of rows
- *               The body scrolls, and SAYS so: a slim bar down its right edge and a
- *               fade off its bottom. There was no rung here before — the body
- *               scrolled silently, an EQ row went missing with nothing on screen to
- *               say it had, and every floor in this file was sized to prevent it.
- *   compact   below that
- *               Name, fader, pan, mute/solo, and a chip counting what is folded
- *               away. Nothing scrolls, so nothing can be lost.
+ * The fader goes first and goes furthest: it is the shock absorber, uncapped upwards
+ * so a tall window ends up with long faders rather than a band of empty desk, and
+ * squeezed all the way to FADER_FLOOR before any block is touched. When even that is not
+ * enough the desk starts shedding whole BLOCKS, in SHED_ORDER — inserts, then sends,
+ * then EQ — until a strip fits. It never scrolls a strip body: a row half out of
+ * sight is a row you cannot read and cannot click, and it goes without saying that it
+ * has gone. A hidden block says so on its header switch instead.
  *
- * The rung is a state of the whole rack rather than of one strip: --striph and
- * --faderh are root variables, stripChrome() takes its MAX across every strip
- * precisely so they all stand the same height, and a per-strip ladder would put the
- * faders on three different lines. The precedent is the part switches, which hide
- * rows on every strip at once for the same reason.
+ * The rung is a state of the whole rack rather than of one strip. --striph and
+ * --faderh are root variables, the chrome measurement takes its MAX across every
+ * strip precisely so they all stand level, and a per-strip ladder would put the
+ * faders on three different lines. The precedent is the part switches themselves,
+ * which hide a block on every strip at once for the same reason.
  */
-function sizeStrips(strips, chrome) {
+function sizeStrips(strips) {
   // Called before the first buildRack, from applyFont() and from the fold restore.
   // Nothing to size, and every measurement below would be zero.
   if (!document.querySelector('.strip[data-lane]')) return;
   const wrap = $('rackwrap');
   const root = document.documentElement.style;
-  const floorH = compactStripHeight();
 
-  if (strips < floorH + squeezeRoom()) {
-    const wasCompact = wrap.classList.contains('compact');
-    wrap.classList.remove('squeezed');
-    wrap.classList.add('compact');
-    // The docked preset editor takes --striph too, so on this rung it would be a
-    // full editor squashed into the height of a compact strip. Send it away rather
-    // than shrink it: the » on the strip head reopens it as soon as there is room.
-    if (!wasCompact && voiceEditEl.classList.contains('show')
-        && !voiceEditEl.classList.contains('vefloat')) {
-      dismissVoiceEditor();
-      toast('Preset editor closed — the rack is too short to hold it');
-    }
-    // Cheap, and no forced reflow in it: reading a slider's value and its recorded
-    // default touches no geometry. Done on every compact fit rather than only on the
-    // way in, so a rack rebuilt while already compact still gets its counts.
-    for (const s of document.querySelectorAll('.strip[data-lane]')) paintSummary(s);
-    // stripChrome() is a forced reflow per strip and the rows it measures are
-    // display:none in here — there is nothing left for it to tell us.
-    root.setProperty('--faderh', `${FADER_SHORT}px`);
-    root.setProperty('--striph', `${Math.max(floorH, Math.round(strips))}px`);
-    return;
+  // The fewest blocks that make a strip fit. Fewest, so the desk gives up as little
+  // as it has to and hands each block back at the same height it took it away at.
+  let shed = 0;
+  while (shed < SHED_ORDER.length && strips < stripChromeAt(shed) + FADER_FLOOR) shed++;
+  const chrome = stripChromeAt(shed);
+  const gone = SHED_ORDER.slice(0, shed);
+
+  const wasBare = wrap.classList.contains(shedClass(SHED_ORDER[SHED_ORDER.length - 1]));
+  for (const id of SHED_ORDER) wrap.classList.toggle(shedClass(id), gone.includes(id));
+  markShedParts(gone);
+
+  // The docked preset editor is given --striph too, so on the bottom rung it would be
+  // a full editor squashed into the height of a bare strip. Send it away rather than
+  // shrink it: the » on the strip head reopens it as soon as there is room.
+  if (!wasBare && shed === SHED_ORDER.length
+      && voiceEditEl.classList.contains('show')
+      && !voiceEditEl.classList.contains('vefloat')) {
+    dismissVoiceEditor();
+    toast('Preset editor closed — the rack is too short to hold it');
   }
-  wrap.classList.remove('compact');
-  wrap.classList.toggle('squeezed', strips < chrome + FADER_MIN);
-  const fader = Math.max(FADER_SHORT, strips - chrome);
+
+  // FADER_FLOOR, and the same number the shed loop above bargains with. They have to
+  // be the one number: floored at FADER_MIN while the loop was letting the strip down
+  // to chrome + FADER_FLOOR, a strip could be given fourteen pixels more content than
+  // height — and a strip body that overflows scrolls, silently, which is the one
+  // thing this whole ladder exists to avoid.
+  const fader = Math.max(FADER_FLOOR, strips - chrome);
   root.setProperty('--faderh', `${Math.round(fader)}px`);
   // Sized to the rack, never past it: there is no vertical scrollbar on the rack, so
   // a strip that wanted more would simply be cut off. `strips` already accounts for
   // the rack's padding and its horizontal scrollbar, so this fills the space exactly
   // and leaves the padding showing under the last strip.
-  root.setProperty('--striph', `${Math.max(floorH, Math.round(Math.min(strips, chrome + fader)))}px`);
+  root.setProperty('--striph', `${Math.round(Math.min(strips, chrome + fader))}px`);
 }
 
 /**
- * The compact strip's one control: how much of this channel is folded away, and the
- * way back to it.
+ * Mark the header switches for the blocks the desk is hiding of its own accord.
  *
- * There is deliberately no popover behind it. Nothing else on the desk shows a
- * channel's EQ, its sends and its inserts at full size except a channel strip — the
- * preset editor is about the voice, the right-click menu is about copying and
- * resetting, the region editor is about tracks and bars — so a fourth panel here
- * would be a third copy of controls that already exist twice, which is how a desk
- * grows a surface nobody can find. What the chip does instead is buy the height.
+ * The switch stays ON — it is still what you want, and it comes back the moment there
+ * is room — but it is struck through, so "there is no space for this" reads as a
+ * different thing from "you turned this off". This is the affordance the whole ladder
+ * rests on: the reason it is allowed to hide a block at all is that it says it has.
  */
-function summaryChip(key) {
-  const b = document.createElement('button');
-  b.className = 'stripsum';
-  b.onclick = (ev) => { ev.stopPropagation(); selectLane(key); openFullStrips(key); };
-  return b;
-}
-
-/**
- * What the chip says. Counted off the rows themselves rather than off the mix, so it
- * covers channels, returns and the master with one piece of code and stays right
- * when a row is added upstream: every slider records the value it would read
- * untouched, and a row away from that default is a setting you cannot see.
- */
-function paintSummary(strip) {
-  const el = strip?.querySelector('.stripsum');
-  if (!el) return;
-  const off = (sel) => [...strip.querySelectorAll(`${sel} input[type="range"]`)]
-    .filter((i) => i.dataset.default !== undefined
-      && Math.abs(+i.value - +i.dataset.default) > 1e-6).length;
-  const eq = off('.eqrow');
-  const snd = off('.sendrow');
-  const fx = effectsOf(strip.dataset.lane).length;
-  // Abbreviated hard, because it has one line of a 118px strip to live on and a
-  // second line would cost the fader below it. The tooltip spells all three out.
-  el.textContent = `${eq}EQ ${snd}SN ${fx}FX`;
-  el.classList.toggle('has', !!(eq || snd || fx));
-  const n = (x, one, many = `${one}s`) => `${x} ${x === 1 ? one : many}`;
-  el.title = `${n(eq, 'EQ band')} moved, ${n(snd, 'send')} open, ${n(fx, 'insert')}.`
-    + '\nThe strips are compact because the window is short.'
-    + ' Click to make room for the full ones.';
-}
-
-/**
- * Pay for full strips out of the two panels the handles already govern: the effects
- * panel down to its minimum first, and the arrangement down to one lane only if that
- * was not enough. Nothing here is a height the user could not have dragged to
- * themselves, which is the point — the chip is a shortcut, not a mode.
- *
- * Session only, no localStorage: this is an answer to "the window is short right
- * now", not a preference about the desk. A reload brings back whatever the handles
- * were actually left at, and double-clicking either handle undoes it immediately.
- */
-function openFullStrips(key) {
-  userDevH = MIN.devices();
-  fitStrips();
-  if ($('rackwrap').classList.contains('compact')) {
-    userArrH = MIN.arrange();
-    fitStrips();
+function markShedParts(gone) {
+  for (const b of $('partfilter').querySelectorAll('button[data-part]')) {
+    const off = hiddenParts.has(b.dataset.part);
+    const shed = !off && gone.includes(b.dataset.part);
+    b.classList.toggle('shed', shed);
+    if (!shed) continue;
+    b.title = `No room for ${STRIP_PARTS.find((p) => p.id === b.dataset.part).what}`
+      + ' — the window is too short. Give the mixer more height and it comes back.';
   }
-  toast($('rackwrap').classList.contains('compact')
-    ? 'Window is too short for full strips — this channel’s effects are in the panel below'
-    : 'Full strips. Double-click a splitter to put the panels back.');
-  document.querySelector(`.strip[data-lane="${CSS.escape(key)}"]`)
-    ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
 }
 
 /** Size the desk to the window. */
@@ -4069,7 +4055,7 @@ addEventListener('resize', () => {
     // deviceRoom() is measured against the arrangement's height as it stands and the
     // rack's own floor, so this trades rack for effects and nothing else: the
     // arrangement does not move, and the wall is the rack visibly down to one
-    // compact strip rather than an invisible one a hundred pixels short of it.
+    // bare strip rather than an invisible one a hundred pixels short of it.
     userDevH = clampDeviceH(asked);
     fitStrips();
   });
@@ -4192,7 +4178,7 @@ function songShape() {
   const bank = viewBank();
   const order = bank.order || (bank.sections ? bank.sections.map((_, i) => i) : [0]);
   const bars = barPlan(bank, 1);
-  const spb = (60 / deskTempo()) / 4;   // the tempo you are listening at, dragged or not
+  const spb = (60 / deskTempo()) / 4;   // the tempo this song plays at, dragged or written
   const totalSteps = bars.length * 16;
   return { order, bars, spb, totalSteps, loopSecs: totalSteps * spb };
 }
@@ -4207,7 +4193,7 @@ function buildTimeline() {
   // Bars of the same section share its hue, the second half a shade darker, so the
   // block structure still reads without having to count — and a single bar taken out
   // of a section still shows as that section's colour.
-  const secsPerBar = (60 / track.bank.bpm) * 4;
+  const secsPerBar = (60 / deskTempo()) * 4;
 
   // The ruler: a tick per bar, numbered often enough to read and rarely enough to
   // stay legible. Percentage positions, so it follows the window without rebuilding.
@@ -4826,7 +4812,7 @@ function targetLabel(key) {
 }
 
 function setEffects(key, list) {
-  const bpm = track.bank.bpm;
+  const bpm = deskTempo();
   // Stored through storeEffects, not beside it: this used to carry its own copy of
   // the same three branches, and the copies disagreed about what an empty master
   // chain means — one wrote it, the other deleted it, and taking the seeded bus
@@ -4925,7 +4911,7 @@ function pinnedCard(key) {
     grid.append(divisionRow('TIME', DELAY_DIVISIONS, cur.division,
       // What the line will actually run, not what the division asks for: past a few
       // bars the delay buffer is the limit and the readout should say so.
-      (beats) => fmtDelay(syncSeconds(beats, track.bank.bpm)),
+      (beats) => fmtDelay(syncSeconds(beats, deskTempo())),
       (beats) => editFx(def.id, { division: beats }, `${def.id}:division`)));
     fxSlider('feedback', 'FEEDBACK', {
       min: 0, max: 0.9, step: 0.01, value: cur.feedback,
@@ -4958,15 +4944,17 @@ function buildDevices() {
   rack.textContent = '';
   const title = $('devtitle');
   if (!selectedLane) {
-    // Still a headed panel with nothing chosen yet — a header that empties itself
-    // reads as a rendering fault, where the bare word reads as a panel waiting.
+    // Still a headed panel with nothing chosen yet — the switch names the view either
+    // way, and the words say what the empty rack below them is waiting for.
     // The panel stays exactly as the user left it: folding it is their gesture, and
     // one that closed itself when a selection went away would move the whole desk
     // without being asked.
-    title.textContent = 'Effects';
+    title.textContent = 'No channel';
     return;
   }
-  title.textContent = `Effects (${targetLabel(selectedLane)})`;   // the CSS uppercases it
+  // The channel alone: the chips beside it already say EFFECTS, and saying it twice on
+  // one line was what pushed the switch out to the far edge in the first place.
+  title.textContent = targetLabel(selectedLane);   // the CSS uppercases it
 
   // A send's delay or reverb comes first: it is what the strip IS, and the inserts
   // are things you put in front of it. The master has no card of its own — its
@@ -5066,7 +5054,7 @@ function buildDevices() {
     const patch = (p, tag) => {
       const next = list.map((e, j) => (j === i ? { ...e, params: { ...(e.params || {}), ...p } } : e));
       const link = liveChain(selectedLane)?.[i];
-      if (link) link.set(p, track.bank.bpm);
+      if (link) link.set(p, deskTempo());
       editMix((m) => storeEffects(m, selectedLane, next), tag);
       list[i] = next[i];
     };
@@ -5088,7 +5076,7 @@ function buildDevices() {
           // No space before the unit, as fmtDelay has it: on one line beside the
           // select the reading is fighting for its width, and "1/16 triplet" is
           // the wider thing to keep.
-          (beats) => `${(track.bank.bpm / (60 * beats)).toFixed(2)}Hz`,
+          (beats) => `${(deskTempo() / (60 * beats)).toFixed(2)}Hz`,
           (beats) => patch({ rateDivision: beats }, `fx:${selectedLane}:${i}:rate`)));
         continue;
       }
@@ -5099,7 +5087,7 @@ function buildDevices() {
       }
       if (pname === 'division') {
         grid.append(divisionRow('TIME', SYNC_DIVISIONS, entryParams.division ?? 0.5,
-          (beats) => fmtDelay(syncSeconds(beats, track.bank.bpm)),
+          (beats) => fmtDelay(syncSeconds(beats, deskTempo())),
           (beats) => patch({ division: beats }, `fx:${selectedLane}:${i}:div`)));
         continue;
       }
@@ -5481,6 +5469,7 @@ const arrDraftOf = () => draftOf(editBank(), arrFor(trackId));
  * leaving the transport where it is. You hear the change from the next bar, which is
  * the only way to judge a build-up — stopping the song to audition an edit to the
  * song is how you lose the thing you were listening for.
+ *
  */
 function applyArrangementEdit(next, what, { undo: undoable = true } = {}) {
   if (next?.refused) { toast(next.refused); return false; }
@@ -5599,6 +5588,8 @@ const pianoRoll = createPianoRoll({
   // `scale` in mixer-piano-roll.js.
   scale: () => ({ root: oskScaleRoot, id: oskScaleId }),
   setScale: (next) => setOskScale(next),
+  // The desk's own toast, so choosing a mouse mode says what that mode now does.
+  toast: (msg) => toast(msg),
   // No button of its own to un-light: the view switch in the region's header is what says
   // whether the roll is up, and `setDeskView` has already moved it by the time this runs.
   onClose: () => rememberSongLayout(),
@@ -5619,14 +5610,14 @@ function setDeskView(view, { remember = true } = {}) {
   if (remember) localStorage.setItem(VIEW_KEY, deskView);
   const notes = deskView === 'notes';
   $('devrack').style.display = notes ? 'none' : '';
-  // The caption said EFFECTS whatever was showing. It names the view as well as the
-  // channel now — buildDevices sets it for the rack, so this has to run after the swap
-  // and be re-set on every switch.
+  // The caption is the CHANNEL, and the two views can be looking at different ones —
+  // buildDevices sets it for the rack, so this has to run after the swap and be re-set
+  // on every switch.
   if (notes) {
     // The lane the roll actually landed on, not the selected one: a drum channel has no
     // roll, and `lane()` falls through to the first melodic lane. Naming the selection
     // there would put a caption over a part it is not showing.
-    $('devtitle').textContent = `Notes (${targetLabel(rollShownLane())})`;
+    $('devtitle').textContent = targetLabel(rollShownLane());
   } else {
     // buildDevices owns the caption for the rack, so switching back has to ask it rather
     // than guess — otherwise the header kept saying Notes over the effects.
@@ -5692,7 +5683,11 @@ const laneHasBarFlag = (draft, from, to, field, lane) => {
 const pasteLane = (draft, from, lane, clip) => {
   let out = draft;
   for (let i = 0; i < clip.bars.length; i++) {
-    out = writeBarNotes(editBank(), out, from + i, lane, clip.bars[i]);
+    // The lengths go with the notes. A clip copied before this existed has none, and
+    // sixteen nulls is the right thing to write for it: the destination's own lengths
+    // belonged to the notes being replaced.
+    const lengths = clip.lengths?.[i] || new Array(16).fill(null);
+    out = writeBarNotes(editBank(), out, from + i, lane, clip.bars[i], lengths);
   }
   return out;
 };
@@ -5715,12 +5710,16 @@ const pasteLane = (draft, from, lane, clip) => {
 function clearLaneBars(laneKey, from, to, what, { shared = false } = {}) {
   const rest = PERCUSSION_LANES.includes(baseLane(laneKey)) ? false : null;
   const empty = Array.from({ length: 16 }, () => rest);
+  // Cleared means cleared: the lengths of notes that are gone go with them, or the
+  // next note drawn on one of these steps inherits the length of whatever used to be
+  // there. `null` here, always — a length has no percussion form.
+  const noLengths = Array.from({ length: 16 }, () => null);
   const write = shared ? writeBarNotesShared : writeBarNotes;
   const eb = editBank();
   // The flags come off with the notes: a bar that was marked deleted and is now empty
   // would otherwise still read as deleted, over nothing.
   let next = setLanesDeleted(arrDraftOf(), from, to, [laneKey], false);
-  for (let bar = from; bar <= to; bar++) next = write(eb, next, bar, laneKey, empty);
+  for (let bar = from; bar <= to; bar++) next = write(eb, next, bar, laneKey, empty, noLengths);
   applyArrangementEdit(next, what);
 }
 
@@ -6733,34 +6732,80 @@ phInput.oninput = () => {
 };
 phInput.onblur = () => { phInput.value = String(phOffset); };
 
-// Tempo you can drag, for listening — half speed to hear what a reverb is really
-// doing, or up ten to check the kick still fits. It is never saved: the bpm belongs
-// to the song, not to its mix, and a desk that quietly rewrote it would change what
-// the game plays. Click puts the song's own tempo back.
-let tempoOverride = null;
-const deskTempo = () => tempoOverride ?? track?.bank?.bpm ?? 120;
+// Tempo you can drag — half speed to hear what a reverb is really doing, or up ten to
+// check the kick still fits, and then KEEP it if it was right.
+//
+// It used to be audition-only, on the reasoning that the bpm belongs to the song
+// rather than to its mix and a desk should not quietly rewrite the composition. The
+// first half of that is true and the conclusion was wrong: a tempo you drag and lose
+// is a decision the desk cannot make. It is saved on the ARRANGEMENT instead, which
+// is exactly the seam that already exists for this — the song stays written at the
+// tempo it was written at, and the arrangement says what it is played at, the same way
+// `order` overrides the bank's own order. So the drag is an ordinary song edit: ⌘Z
+// undoes it, the dot on the hamburger notices it, Save writes it, the game plays it,
+// and deleting the entry puts the composed tempo back.
+//
+// Click the readout to do exactly that.
+const deskTempo = () => arrFor(trackId)?.bpm ?? track?.bank?.bpm ?? 120;
+/** The tempo the song is WRITTEN at — what the arrangement's tempo is measured against. */
+const composedTempo = () => track?.bank?.bpm ?? 120;
 function showTempo() {
   const el = $('bpm');
-  el.textContent = String(Math.round(deskTempo()));
-  el.classList.toggle('tweaked', tempoOverride != null);
-  el.parentElement.title = tempoOverride != null
-    ? `Auditioning at ${Math.round(tempoOverride)} bpm — click to go back to ${track.bank.bpm}. Tempo is not saved with the mix.`
-    : 'Drag to change the tempo for listening — it is not saved with the mix';
+  const bpm = Math.round(deskTempo());
+  const own = bpm === Math.round(composedTempo());
+  el.textContent = String(bpm);
+  el.classList.toggle('tweaked', !own);
+  el.parentElement.title = own
+    ? 'Drag to change the tempo this song plays at — saved with the song'
+    : `Played at ${bpm} bpm, written at ${Math.round(composedTempo())}`
+      + ` — click to go back to that. Saved with the song.`;
 }
-function setDeskTempo(v) {
-  const bpm = clamp(Math.round(v), 40, 220);
-  tempoOverride = bpm === track?.bank?.bpm ? null : bpm;
+/**
+ * Put the tempo in force onto the engine, the echo and the readout.
+ *
+ * Audio.bpm is set here rather than left to the bank: a stopped desk has no live bank
+ * for `setArrangement` to swap, and the keyboard and the note auditions still have to
+ * play at the tempo the readout is showing.
+ */
+function pushTempo() {
+  const bpm = deskTempo();
   Audio.bpm = bpm;
   Audio.setDelay({});                 // the echo is tempo-synced, so it follows
   Audio.mixer?.retune(bpm);           // and so is every division-based insert
   showTempo();
+}
+function setDeskTempo(v) {
+  const bpm = clamp(Math.round(v), 40, 220);
+  if (bpm === Math.round(deskTempo())) return;
+  // Deliberately NOT through `applyArrangementEdit`. That path re-pushes the whole mix
+  // at the engine and rebuilds every row of the bar grid, which is right for an edit
+  // that moves a bar and wrong forty times during one drag: a tempo moves no bars and
+  // no lanes. What it does need is what every arrangement edit needs — an undo step,
+  // the draft, the engine, the screen — so those four are here rather than borrowed.
+  //
+  // One step per drag rather than one per pixel: pushUndo coalesces on the tag.
+  pushUndo('bpm');
+  // Null when the drag lands back on the composed tempo, so the entry goes away
+  // rather than restating what the bank already says — see entryOf. Built against the
+  // song's OWN bank, like every other entry — see editBank.
+  const entry = entryOf(editBank(),
+    setTempo(arrDraftOf(), bpm === Math.round(composedTempo()) ? null : bpm));
+  arrDraft[trackId] = entry;
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  Audio.setArrangement(entry);
+  pushTempo();
   buildTimeline();                    // the clock and the song length move with it
+  updateStatus();                     // and the dot that says the file has not heard it
 }
 dragNumber($('bpm'), {
   value: deskTempo,
   set: setDeskTempo,
   range: 80, step: 1,
-  onClick: () => { if (tempoOverride != null) { setDeskTempo(track.bank.bpm); toast(`Back to ${track.bank.bpm} bpm`); } },
+  onClick: () => {
+    if (Math.round(deskTempo()) === Math.round(composedTempo())) return;
+    setDeskTempo(composedTempo());
+    toast(`Back to ${Math.round(composedTempo())} bpm — the tempo this song is written at`);
+  },
 });
 
 // ---- on-screen keyboard -----------------------------------------------------
@@ -8091,6 +8136,7 @@ $('revert').onclick = async () => {
   // changed the lane list, bar count, timeline or notes the engine is playing.
   bankCache.sig = null;
   Audio.setArrangement(arrFor(trackId));
+  pushTempo();                 // the tempo is on the arrangement, so it went back too
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);
@@ -8491,6 +8537,7 @@ async function restoreFrom(file) {
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   bankCache.sig = null;
   Audio.setArrangement(arrFor(trackId));
+  pushTempo();                 // including the tempo that version was played at
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);

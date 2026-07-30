@@ -308,6 +308,36 @@ try {
   assert(trimmed > bare && trimmed < sounding,
     'and its fader moves it, like every other channel');
   assert(stripped < bare * 0.01, 'a deleted track is gone from the render, not just from the desk');
+
+  // ---- and it SURVIVES an arrangement edit ----------------------------------
+  // Every note and bar edit on the desk goes through `Audio.setArrangement`, which
+  // patches the bank being played rather than rebuilding it. A duplicated lane and a
+  // deleted one are per-SECTION decisions, so that patch has to shape the sections it
+  // splices in — it once spliced the song's own, raw, which took a duplicated track
+  // out of every bar the edit had not itself written and put a deleted one back.
+  //
+  // The lane lives ONLY in a section here, which is what every song written on the
+  // desk looks like and what makes the failure total silence rather than wrong notes:
+  // with nothing at the top level, a section with no layer lane has nothing to fall
+  // back to. The patch is what forking bar 1 produces — a delta over section 0 with
+  // only that bar pointed at it — and it changes no note, so the render must not move.
+  const sectioned = { bpm: 120, sections: [{ bass: bass.bass }], order: [0] };
+  const forkBar1 = { order: [{ s: 1, bars: 1 }, { s: 0, bars: 1, from: 1 }], sections: [{ base: 0 }] };
+  const dupMix = { layers: layer, voice: { bass2Voice: 'roundMono' } };
+  const secBare = rms(await renderer.render(sectioned, { repeat: 1, mix: null, trackId: null }));
+  const secDup = rms(await renderer.render(sectioned, { repeat: 1, mix: dupMix, trackId: null }));
+  const secEdited = rms(await renderer.render(sectioned,
+    { repeat: 1, mix: dupMix, trackId: null, arrangement: forkBar1 }));
+  const secGone = rms(await renderer.render(sectioned,
+    { repeat: 1, mix: { off: ['bass'] }, trackId: null, arrangement: forkBar1 }));
+
+  assert(secDup > secBare * 1.05,
+    `a lane that lives only in a section still duplicates (rms ${secBare.toFixed(5)} → ${secDup.toFixed(5)})`);
+  assert(Math.abs(secEdited - secDup) < secDup * 0.02,
+    `an arrangement edit leaves the duplicate playing in the bars it did not touch`
+    + ` (rms ${secDup.toFixed(5)} → ${secEdited.toFixed(5)})`);
+  assert(secGone < secBare * 0.01,
+    'and a deleted track stays deleted through one, rather than coming back');
 } finally {
   await renderer.close();
 }

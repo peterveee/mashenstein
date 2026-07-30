@@ -31,6 +31,9 @@ export const MODES = {
   dorian: { label: 'dorian', steps: [0, 2, 3, 5, 7, 9, 10] },
   ionian: { label: 'major', steps: [0, 2, 4, 5, 7, 9, 11] },
   harmonicMinor: { label: 'harmonic minor', steps: [0, 2, 3, 5, 7, 8, 11] },
+  // The flat second is the whole reason this one is here: a i–II stab in phrygian is
+  // a sound none of the other modes can make, and it is what techno does with one chord.
+  phrygian: { label: 'phrygian', steps: [0, 1, 3, 5, 7, 8, 10] },
 };
 
 /** `A2` -> `A`. A pitch class on its own, which is how a pack names its roots. */
@@ -158,7 +161,14 @@ const OFFBEATS = [2, 6, 10, 14, 18, 22, 26, 30];
  *
  * Measured against electropop, whose balance the desk has always opened with, and
  * re-measurable: render each pack's kit lanes and pitched lanes separately at a few
- * seeds with no mix, compare LUFS, and the gap should come out near electropop's.
+ * seeds with no mix, compare LUFS, and the gap should come out near electropop's. The
+ * one exception is Techno, which is meant to be kit-forward and says so where it
+ * states its numbers.
+ *
+ * One constraint on the voices themselves: a pack may only name TONE, NOISE or DRUM
+ * presets, never an `eng*` one. An engine preset is a bundle of bank keys that
+ * `withVoices` expands — and `withVoices` returns early when a song has no mix, which
+ * every generated song does. Named here, an engine preset would silently do nothing.
  *
  * `musicTrim` carries a second measured job on top of that one. It scales the whole
  * song bus, so it moves a pack's LEVEL without touching the balance the pair just
@@ -561,6 +571,180 @@ export const SONG_STYLES = [
       echoLevel: 0.5, bassEcho: true,
       kickVoice: 'kickDeep', snareVoice: 'snareCrisp', hatsVoice: 'hatSizzle',
       bassVoice: 'fmGrowl', organChordsVoice: 'amOrgan', leadVoice: 'glassLead',
+    },
+  },
+
+  {
+    id: 'house',
+    label: 'House',
+    note: 'Four-to-the-floor at 124: clap on the backbeat, open hat off it, piano stabs.',
+    bpm: 124,
+    mode: 'dorian',
+    roots: ['A', 'C', 'F', 'G', 'D'],
+    registers: { bass: 'E2', chord: 'C3' },
+    // Sevenths throughout. A house chord is not a triad, and the stab is the hook.
+    progressions: [
+      [[0, 'min7'], [3, 'min7']],
+      [[0, 'min7'], [5, 'maj7'], [3, 'min7'], [4, 'min7']],
+      [[0, 'min7'], [6, 'maj7']],
+    ],
+    // Never on the beat: the chord answers the kick rather than landing with it.
+    chordHits: [[2, 6], [6], [2]],
+    bassRhythms: [[0, 6, 8, 14, 16, 22, 24, 30], OFFBEATS, EIGHTHS],
+    bassLift: 4,
+    melodies: [{
+      lane: 'lead',
+      register: 'A4',
+      rhythms: [[0, 8, 16, 24], [6, 14, 22, 30], [0, 6, 12, 16, 22, 28]],
+      contours: [
+        [0, 2, 4, 2, 1, 0],
+        [4, 4, 2, 0, 2, 4],
+        [0, 4, 5, 4, 2, 0],
+      ],
+    }],
+    drums: {
+      kick: [QUARTERS, [0, 4, 8, 12, 14, 16, 20, 24, 28, 30]],
+      // A clap, not a snare — and the one pack that uses that lane.
+      clap: [BACKBEAT, [12, 28], [12, 28, 30]],
+      hats: [SIXTEENTHS, EIGHTHS, [0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 17, 18, 20, 22, 24, 26, 28, 30]],
+      // The open hat on the offbeat IS house. Everything else here is arrangement.
+      ohats: [OFFBEATS, [6, 14, 22, 30], [2, 10, 18, 26]],
+    },
+    lanes: {
+      beat: ['kick', 'clap', 'hats', 'ohats'],
+      band: ['kick', 'clap', 'hats', 'ohats', 'bass', 'chords', 'lead'],
+    },
+    bank: {
+      musicTrim: 0.76, drumGain: 1.09,
+      kickVoice: 'kickPunch', clapVoice: 'clapRoom', hatsVoice: 'hatTick', ohatsVoice: 'hatOpen',
+      bassVoice: 'tpBassy', chordsVoice: 'tpPianoetta', leadVoice: 'tpBah',
+    },
+  },
+
+  {
+    id: 'techno',
+    label: 'Techno',
+    note: 'Phrygian at 136: dirty kick, cowbell, acid bass rolling under one dark chord.',
+    bpm: 136,
+    mode: 'phrygian',
+    roots: ['A', 'D', 'F', 'C'],
+    // The lowest floor of any pack: all four of its roots land in octave two, so a
+    // rolling acid line is the same weight whichever key the seed picks.
+    registers: { bass: 'C2', chord: 'C3' },
+    // One chord, or one chord and the flat second above it. Techno's harmony is a
+    // colour rather than a journey, and phrygian is the darkest one on offer.
+    progressions: [
+      [[0, 'min']],
+      [[0, 'min'], [1, 'maj']],
+      [[0, 'min'], [4, 'min']],
+    ],
+    chordHits: [[6], [2, 10], [0]],
+    bassRhythms: [
+      OFFBEATS,
+      [0, 3, 6, 8, 11, 14, 16, 19, 22, 24, 27, 30],
+      [2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 22, 23, 26, 27, 30, 31],
+    ],
+    melodies: [{
+      lane: 'lead',
+      register: 'A4',
+      // Bleeps, not tunes: four notes or fewer, and long gaps between them.
+      rhythms: [[0, 16], [6, 22], [0, 6, 16, 22]],
+      contours: [
+        [0, 4, 1, 0],
+        [1, 0, 4, 1],
+        [4, 1, 0, 4],
+      ],
+    }],
+    drums: {
+      kick: [QUARTERS, [0, 4, 8, 12, 15, 16, 20, 24, 28, 31]],
+      clap: [[12, 28], BACKBEAT, [10, 26]],
+      hats: [SIXTEENTHS, EIGHTHS, [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]],
+      // The cowbell on the rim lane: the one piece of kit that says 909 out loud.
+      rim: [[0, 3, 8, 11, 16, 19, 24, 27], [6, 14, 22, 30], [2, 10, 18, 26]],
+    },
+    lanes: {
+      beat: ['kick', 'clap', 'hats', 'rim'],
+      band: ['kick', 'clap', 'hats', 'rim', 'bass', 'chords', 'lead'],
+    },
+    bank: {
+      // The one pack whose kit is MEANT to lead, and the only one measured against a
+      // target other than electropop's. Left alone its instruments came out 4.4 LU under
+      // the drums — sparse bleeps and one pad against relentless sixteenths — which is
+      // techno, right up to the point where the bass and the chord stop being audible.
+      // So the correction is partial: the kit still leads, by about 1.5 LU instead of 4.4.
+      musicTrim: 0.87, drumGain: 0.72,
+      kickVoice: 'kickDirty', clapVoice: 'clapTight', hatsVoice: 'metalHatClosed', rimVoice: 'cowbell',
+      bassVoice: 'acidSquelch', chordsVoice: 'breathPad', leadVoice: 'tpLectric',
+    },
+  },
+
+  {
+    id: 'electro',
+    label: 'Electro',
+    note: 'Robot pop at 126: a sequenced bell arpeggio, handclaps, hollow vocoder lead.',
+    bpm: 126,
+    mode: 'aeolian',
+    roots: ['C', 'A', 'F', 'G', 'D'],
+    registers: { bass: 'E2', chord: 'C3' },
+    // Two chords at most, held for a bar each. The interest is in the sequencer, not
+    // in the harmony — which is the whole trick of the records this is after.
+    progressions: [
+      [[0, 'min'], [5, 'maj']],
+      [[0, 'min']],
+      [[0, 'min7'], [5, 'maj7']],
+    ],
+    // Per BAR, not per beat: with a one-chord progression the block is the whole loop,
+    // so `[0, 8]` would have struck twice in bar one and left bar two empty.
+    chordHits: [[0], [0, 16]],
+    bassRhythms: [EIGHTHS, [0, 3, 6, 8, 11, 14, 16, 19, 22, 24, 27, 30], [0, 8, 16, 24]],
+    // The octave jump on the fifth sixteenth of every half bar: a sequenced bass line
+    // rather than a played one.
+    bassLift: 4,
+    melodies: [
+      {
+        lane: 'lead',
+        register: 'A4',
+        rhythms: [[0, 8, 16, 24], [0, 12, 16, 28], [0, 4, 8, 16, 20, 24]],
+        contours: [
+          [0, 2, 4, 2, 1, 0],
+          [4, 4, 2, 0, 2, 0],
+          [0, 0, 4, 2, 1, 0],
+        ],
+      },
+      // THE arpeggio. Four chord tones cycled over a sixteenth grid is a step
+      // sequencer running, and it is the one part of this pack that has to be there:
+      // a contour shorter than its rhythm repeats, which is what makes it a loop
+      // rather than a tune.
+      {
+        lane: 'twinkle',
+        register: 'A5',
+        rhythms: [SIXTEENTHS, EIGHTHS, OFFBEATS],
+        contours: [
+          [0, 2, 4, 2],
+          [0, 2, 4, 7],
+          [4, 2, 0, 2],
+        ],
+      },
+    ],
+    drums: {
+      kick: [QUARTERS, [0, 6, 8, 14, 16, 22, 24, 30], [0, 4, 8, 12, 16, 20, 24, 26, 28]],
+      // Handclaps where the snare would be. A machine kit with a snare in it is a
+      // different decade.
+      clap: [BACKBEAT, [12, 28], [8, 24]],
+      hats: [EIGHTHS, SIXTEENTHS, OFFBEATS],
+      // One electronic blip on the turnaround, on the rim lane.
+      rim: [[14, 30], [7, 15, 23, 31], [6, 22]],
+    },
+    lanes: {
+      beat: ['kick', 'clap', 'hats', 'rim'],
+      band: ['kick', 'clap', 'hats', 'rim', 'bass', 'chords', 'twinkle', 'lead'],
+    },
+    bank: {
+      // Measured like every other pack bar Techno: a machine kit is reserved by design
+      // here, so the sequencer and the bass carry the record rather than the drums.
+      musicTrim: 0.76, drumGain: 0.72,
+      kickVoice: 'kickClick', clapVoice: 'clap808', hatsVoice: 'dsHatClosed', rimVoice: 'zap',
+      bassVoice: 'roundMono', chordsVoice: 'padTriangle', twinkleVoice: 'fmBell', leadVoice: 'amHollow',
     },
   },
 ];

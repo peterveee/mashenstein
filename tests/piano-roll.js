@@ -14,8 +14,11 @@
 //   3. that the roll only offers lanes it can honestly draw
 //   4. that the whole thing lands in the arrangement, through the same writeBarNotes
 //      the step grid uses, without touching the composition
-import { noteCell, noteOn, pitchRows, laneSpan, autoRange, keyGeometry, midiFreq, freqMidi, rollEditable }
-  from '../tools/mixer-piano-roll.js';
+import {
+  noteCell, noteOn, pitchRows, laneSpan, autoRange, keyboardRange, keyGeometry,
+  midiFreq, freqMidi, rollEditable, ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
+} from '../tools/mixer-piano-roll.js';
+import { gestureFor, noteKey, movedNote, clampDelta, stretched } from '../tools/mixer-bar-grid.js';
 import { draftOf, writeBarNotes, entryOf } from '../tools/lib/arrangement-edit.js';
 import { seq, n } from '../src/engine/notes.js';
 
@@ -25,6 +28,7 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 
+const json = (v) => JSON.stringify(v);
 const A2 = n('A2');
 const row = (midi) => ({ midi, freq: midiFreq(midi) });
 const A2ROW = row(freqMidi(A2));
@@ -115,6 +119,21 @@ const silent = autoRange({}, 'bass');
 assert(silent.high - silent.low === 24,
   'a lane with nothing in it still opens somewhere playable');
 
+// ---- and the rows themselves are the whole instrument ---------------------------
+//
+// `autoRange` says where to OPEN. What you can reach is every key there is: a part whose
+// lowest note is C2 still has a C1 to click on, because the note you want next is as
+// often below the part as inside it. The old roll derived its rows from the part and
+// therefore refused exactly that note.
+const keys = keyboardRange(song, 'bass');
+assert(keys.low === 21 && keys.high === 108,
+  'the roll spans A0 to C8 — an eighty-eight key piano, whatever the part plays');
+assert(pitchRows(keys.low, keys.high).length === 88, 'which is eighty-eight rows');
+const deep = keyboardRange({ bass: [midiFreq(9)] }, 'bass');
+assert(deep.low === 9,
+  'and widens for a bank holding something off the end of the keyboard — a note that'
+  + ' exists must be reachable, or the roll is lying about the part');
+
 // ---- the keyboard's geometry ----------------------------------------------------------
 // Seven white keys span twelve semitones, so a real board's whites are uneven. If they
 // tile the octave exactly then the column is a keyboard; if they are all one row tall it
@@ -145,6 +164,80 @@ assert(opened.low === lowest - 2,
   'the bottom row is a tone under the lowest note the part plays');
 assert(opened.high >= laneSpan(bassish, 'bass').high,
   'and the top still contains the highest');
+
+// ---- what a press does -------------------------------------------------------------
+//
+// The interaction model as a table. Auto is modeless and reads the press; the named
+// tools each do one thing, so that neither a held modifier nor a six-pixel target is
+// ever the only way to reach a gesture.
+const press = (o) => gestureFor({ sizeable: true, ...o });
+assert(press({ on: false }) === 'draw' && press({ on: true }) === 'move'
+  && press({ on: true, edge: true }) === 'resize',
+  'Auto reads where you pressed: empty draws, a note moves, its right end resizes');
+assert(press({ on: true, edge: true, sizeable: false }) === 'move',
+  'except on a lane with no length to give — vox and shout move but do not stretch');
+assert(press({ alt: true, on: false }) === 'run' && press({ alt: true, on: true }) === 'run',
+  '⌥ is the momentary Paint, whatever is under it and whatever mode you are in');
+assert(press({ tool: 'draw', on: false }) === 'draw'
+  && press({ tool: 'draw', on: true }) === 'resize',
+  'Draw makes notes and takes hold of their length — it never moves one');
+assert(press({ tool: 'draw', on: true, sizeable: false }) === 'run',
+  'and on a lane with no length, drawing over a note is the plain toggle it always was');
+assert(press({ tool: 'paint', on: false }) === 'run' && press({ tool: 'paint', on: true }) === 'run',
+  'Paint is the step grid’s drag: a run of separate notes, or a run rubbed out');
+assert(press({ tool: 'erase', on: true }) === 'erase' && press({ tool: 'erase', on: false }) === 'erase',
+  'Erase erases, including from the empty cell you happened to start the drag on');
+assert(press({ tool: 'nonsense', on: false }) === 'draw',
+  'and an unknown tool is Auto rather than nothing at all');
+assert(ROLL_TOOL_IDS[0] === 'auto' && rollTool('draw') === 'draw' && rollTool(null) === 'auto',
+  'Auto is the default, and a remembered mode that no longer exists falls back to it');
+assert(ROLL_TOOLS.every((t) => t.hint && t.label),
+  'every mode says what it does — a mode you cannot see is one that surprises you');
+
+// ---- picking notes out in sets -----------------------------------------------------
+assert(press({ meta: true, on: false }) === 'marquee' && press({ meta: true, on: true }) === 'marquee',
+  '⌘ draws a rectangle round notes, in any mode and over anything');
+assert(press({ shift: true, on: true }) === 'select',
+  '⇧ on a note adds it to the set or takes it out');
+assert(press({ shift: true, on: false }) === 'draw',
+  'but ⇧ over empty space is not a selection gesture — there is nothing there to pick');
+assert(press({ tool: 'select', on: false }) === 'marquee'
+  && press({ tool: 'select', on: true }) === 'select',
+  'Select mode: empty space bands, a note is taken hold of');
+assert(press({ tool: 'select', alt: true, on: false }) === 'run',
+  'and ⌥ still borrows Paint out of it, so no mode is a dead end');
+
+// The arithmetic of moving a set: every note moves by the SAME amount, so a phrase
+// keeps its shape, and the whole set stops when its leading note reaches the edge.
+const bounds = { bars: 2, rows: 88 };
+const setOf = [{ bar: 0, step: 14, rowAt: 40 }, { bar: 1, step: 2, rowAt: 44 }];
+assert(json(movedNote(setOf[0], 4, -2, bounds)) === json({ bar: 1, step: 2, rowAt: 38 }),
+  'a note moved past the end of its bar lands in the next one');
+// Two bars is thirty-two steps, and the set's leading note is on step 18, so thirteen
+// is as far as the whole thing can go however far the pointer went.
+const clamped = clampDelta(setOf, 40, 0, bounds);
+assert(clamped.dStep === 13,
+  `a set dragged past the end of the song stops as a whole (${clamped.dStep} of the 40 asked for)`);
+assert(json(setOf.map((nt) => movedNote(nt, clamped.dStep, 0, bounds)).map((nt) => nt.bar * 16 + nt.step))
+  === json([27, 31]),
+  'and keeps its shape when it stops — four steps apart before, four steps apart after');
+assert(clampDelta(setOf, 0, -50, bounds).dRow === -40,
+  'the same upwards: the set stops when its highest note reaches the top of the keyboard');
+assert(clampDelta([], 5, 5, bounds).dStep === 0, 'and an empty set goes nowhere');
+
+// Stretching a set: BY the same amount, not TO the same length. A quarter note and two
+// sixteenths pulled out by a beat stay a quarter note and two sixteenths.
+assert(json(stretched([4, 1, 1], 4)) === json([8, 5, 5]),
+  'a set stretches by the same amount, so the phrase keeps its rhythm');
+assert(json(stretched([16, 1, 1], -12)) === json([4, 1, 1]),
+  'a whole note pulled back to a quarter leaves the sixteenths beside it at a step —'
+  + ' they cannot follow that far, and stopping is better than refusing the drag');
+assert(json(stretched([null, null], 3)) === json([4, 4]),
+  'notes with no length of their own are one step, so they end up alike — which is what'
+  + ' you would expect from a set that all looked the same');
+assert(json(stretched([8, 2], 0)) === json([8, 2]), 'and a drag that ends where it began changes nothing');
+assert(noteKey(3, 7, '48') === '3:7:48',
+  'a selected note is a PLACE — bar, step and row — so it survives a rebuild as a string');
 
 // ---- and it lands in the arrangement ----------------------------------------------
 const bank = {

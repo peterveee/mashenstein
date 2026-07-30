@@ -3,7 +3,7 @@
 // stores pitches as Hz (seq/chordSeq), so every lane is converted back to a
 // note number on the way out. Timbre can't survive the trip: each lane gets the
 // GM program that comes closest to its oscillator, and percussion goes to ch10.
-import { songBlocks } from '../../src/engine/lanes.js';
+import { songBlocks, stepLen, toneLen } from '../../src/engine/lanes.js';
 
 const PPQ = 96;          // ticks per quarter note
 const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
@@ -12,7 +12,9 @@ const midiNote = (hz) => Math.round(69 + 12 * Math.log2(hz / 440));
 const clampNote = (n) => Math.max(0, Math.min(127, n));
 
 // One track per lane. `dur` reads the block's own length override so phrasing
-// survives the export; the fallback is the engine's default for that lane.
+// survives the export; the fallback is the engine's default for that lane. It is
+// the LANE's length — a note drawn its own length in the piano roll carries a
+// `${lane}Len` entry, and that is read per note at the note itself, below.
 // Program bytes are GM number - 1 (the wire format is 0-based).
 const LANE_TRACKS = [
   { name: 'Bass', ch: 0, prog: 38, lane: 'bass', dur: (b) => b.bassDur || 1.8, vel: 96 },
@@ -142,6 +144,11 @@ function toEvents(notes) {
  */
 export function midiBuffer(bank, {
   repeat = 1, title = 'MASHENSTEIN', gmChannels = false, patches = gmChannels,
+  // The tempo to write into the file, for a caller that knows the song is played at
+  // one its bank does not name — the desk saves a retuned tempo onto the song's
+  // arrangement (see bpmOf). Defaults to the composed tempo, so nothing changes for a
+  // caller that has not thought about it.
+  bpm = bank.bpm,
 } = {}) {
   const blocks = songBlocks(bank, repeat);
   const tracks = [];
@@ -169,7 +176,7 @@ export function midiBuffer(bank, {
   const ch = (want) => (gmChannels ? want : 0);
 
   // Tempo/meta track. The engine's bpm is the quarter-note tempo.
-  const uspq = Math.round(60000000 / bank.bpm);
+  const uspq = Math.round(60000000 / bpm);
   tracks.push(track([], [
     ...nameMeta(title),
     0x00, 0xff, 0x51, 0x03, (uspq >> 16) & 0xff, (uspq >> 8) & 0xff, uspq & 0xff,
@@ -185,11 +192,14 @@ export function midiBuffer(bank, {
         const v = lane[s];
         if (!v) continue;
         const tick = (bi * 32 + s) * TPS;
+        // What the roll drew on this step, if anything: the note-off follows the
+        // rectangle rather than the lane, and a chord's tones can differ.
+        const len = stepLen(b, L.lane, s);
         // chord lanes hold an array of simultaneous pitches; melodic lanes a scalar
-        for (const hz of Array.isArray(v) ? v : [v]) {
-          if (!(hz > 0)) { deadPitches++; continue; }
-                note(notes, ch(L.ch), midiNote(hz), tick, L.dur(b) * TPS, L.vel);
-        }
+        (Array.isArray(v) ? v : [v]).forEach((hz, i) => {
+          if (!(hz > 0)) { deadPitches++; return; }
+          note(notes, ch(L.ch), midiNote(hz), tick, toneLen(len, L.dur(b), i) * TPS, L.vel);
+        });
       }
     });
     if (!notes.length) continue;
@@ -251,7 +261,7 @@ export function midiBuffer(bank, {
     tracks: written,
     ppq: PPQ,
     blocks: blocks.length,
-    seconds: (blocks.length * 32 * (60 / bank.bpm)) / 4,
+    seconds: (blocks.length * 32 * (60 / bpm)) / 4,
     trimmed,
     deadPitches,
   };

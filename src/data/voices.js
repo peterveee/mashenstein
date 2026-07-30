@@ -374,11 +374,11 @@ const DRUM = {
     noise: { type: 'lowpass', freq: 1400, Q: 0.7, decay: 0.03, gain: 0.18 },
     drive: 0.12 },
   dsRim: { label: 'DS Rim', category: 'Percussion', dur: 0.5,
-    note: 'A driven square knock and a narrow band of air, both gone in thirty '
-      + 'milliseconds. The stick sound the engine’s rim approximates, synthesised.',
-    osc: { type: 'square', from: 460, to: 405, sweep: 0.012, decay: 0.026, curve: 'exp', gain: 0.6 },
-    noise: { type: 'bandpass', freq: 4300, Q: 2.2, decay: 0.02, gain: 0.8 },
-    drive: 0.3 },
+    note: 'A driven square knock and a narrow band of air, both gone in thirty milliseconds. '
+      + 'The stick sound the engine’s rim approximates, synthesised.',
+    osc: { type: 'square', from: 460, to: 635, sweep: 0.012, decay: 0.12, curve: 'exp', gain: 0.13 },
+    noise: { type: 'bandpass', freq: 4300, Q: 2.2, decay: 0.235, gain: 0.44 },
+    drive: 0.24 },
   dsZap: { label: 'DS Zap', category: 'Rough & Electric', dur: 1,
     note: 'A sawtooth falling five octaves in under a tenth of a second, driven — '
       + 'the laser tom every drum synth ships and every second track uses once.',
@@ -390,6 +390,10 @@ const DRUM = {
     osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
     noise: { type: 'highpass', freq: 2900, Q: 0.8, decay: 0.3, gain: 1 },
     drive: 0.35 },
+  dsClosedHat2: { label: 'DS Closed Hat 2', category: 'Hats', dur: 0.5,
+    note: 'A resonant highpassed tick — sharper than the plain closed hat, closer to metal '
+      + 'without being metal.',
+    noise: { type: 'highpass', freq: 7800, Q: 1.6, decay: 0.305, gain: 1 } },
 };
 
 // Measured, by tools/measure-voices.js — do not hand-edit either block.
@@ -626,8 +630,8 @@ const TONE = {
     options: {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.001, decay: 1.24, sustain: 0.29, release: 0.8 },
-      filter: { type: 'lowpass', Q: 8.3, rolloff: -24 },
-      filterEnvelope: { attack: 0.001, decay: 1.22, sustain: 0.13, release: 0.3, baseFrequency: 870, octaves: 3.9 },
+      filter: { type: 'lowpass', Q: 2.9, rolloff: -24 },
+      filterEnvelope: { attack: 0.001, decay: 1.22, sustain: 0.13, release: 0.3, baseFrequency: 110, octaves: 3.9 },
     } },
   fmGrowl: { label: 'FM Growl', category: 'Basses', synth: 'FMSynth', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
@@ -1244,7 +1248,7 @@ const TONE = {
 // belong to rather than in a generated file: a preset and its level are one thing,
 // and a second file would be one more thing to forget to regenerate.
 const PEAKS = {
-  roundMono: 1.3233, fmGrowl: 0.216, subSine: 0.6891, acidSquelch: 1.6469,
+  roundMono: 1.183, fmGrowl: 0.216, subSine: 0.6891, acidSquelch: 1.6469,
   rubberBass: 0.6823, clangBass: 0.2115, detuneBass: 1.5362, monoBright: 0.8807,
   amHollow: 0.1073, duoDetune: 1.3948, glassLead: 0.2129, reedLead: 0.8357,
   screamLead: 2.1142, vibratoLead: 1.3321, fmKeys: 0.2185, epiano: 0.2199,
@@ -1272,8 +1276,8 @@ const PEAKS = {
   hatOpen: 0.8555, hatPedal: 0.2968, shaker: 0.4313, tambourine: 0.8678,
   noiseSweep: 0.8056, dsKick: 0.7, dsKickHard: 0.7, dsSnare: 0.6935,
   dsSnareCrack: 0.7, dsClap: 0.2885, dsHatClosed: 0.7135, dsHatOpen: 0.8873,
-  dsShaker: 0.5496, dsTom: 0.7, dsRim: 0.6945, dsZap: 0.7, dsCrackSnare2: 0.7,
-  roundMono2: 0.6687
+  dsShaker: 0.5496, dsTom: 0.7, dsRim: 0.4228, dsZap: 0.7, dsCrackSnare2: 0.7,
+  roundMono2: 0.6687, dsClosedHat2: 0.8192
 };
 
 export const VOICES = {};

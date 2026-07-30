@@ -72,9 +72,14 @@ const suites = [
   'tests/build-shell.js',
   'tests/smoke.js',
   'tests/touch-smoke.js',
-  // Last two: both render the engine offline in Chromium, which is slower than every
+  // Last three: all render the engine offline in Chromium, which is slower than every
   // other suite put together. MASH_NULL_ALL=1 widens the null test from two tracks
   // to five; tests/voices.js renders every voice in the catalogue once.
+  //
+  // Per-note duration — `bassLen` beside `bass`. Down here because its last five claims
+  // are about what comes out of the speakers: a length that reads correctly in the file
+  // and changes nothing about the sound is the one failure the unit half cannot see.
+  'tests/note-duration.js',
   'tests/voices.js',
   'tests/null-test.js',
   'tools/fairness-sim.js',

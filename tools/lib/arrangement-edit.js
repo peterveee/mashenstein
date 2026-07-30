@@ -28,7 +28,7 @@
 // Every function returns a NEW draft; none of them modify the one passed in, so the
 // desk's undo is a snapshot and nothing more.
 import { expandOrder, orderOf, resolveSection } from '../../src/data/arrangements.js';
-import { LANES, LANE_KEYS } from '../../src/engine/lanes.js';
+import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
@@ -90,7 +90,14 @@ const BUILD_ORDER = ['kick', 'hats', 'snare', 'clap', 'ohats', 'rim', 'crash']
 export function draftOf(bank, entry = null) {
   const layer = clone(entry?.sections || []);
   const hasSections = !!(bank.sections?.length || layer.length);
-  return { plan: expandOrder(entry?.order || orderOf(bank), hasSections), sections: layer };
+  return {
+    plan: expandOrder(entry?.order || orderOf(bank), hasSections),
+    sections: layer,
+    // The tempo the song is played at, as one number beside the bars. Null means "as
+    // composed" rather than 120: the bank's own tempo is not the draft's to restate,
+    // and `entryOf` compares against it to decide whether there is anything to write.
+    bpm: entry?.bpm ?? null,
+  };
 }
 
 /** How many bars the draft plays. */
@@ -106,20 +113,40 @@ const sectionsOf = (bank, draft) => [...(bank.sections || []), ...draft.sections
 const isBankSection = (bank, sec) => sec == null || sec < (bank.sections?.length || 0);
 
 /**
- * The draft as a file entry — `{ order, sections }` — or **null** when it says
+ * The draft as a file entry — `{ order, sections, bpm }` — or **null** when it says
  * nothing the bank does not already say.
  *
  * Null is the important half: an arrangement nobody changed leaves no entry, the
  * way a mix nobody changed leaves none, so `src/data/arrangements.js` holds
  * decisions rather than a copy of every song's shape.
+ *
+ * A tempo equal to the bank's own is not a decision either — it is a drag that ended
+ * back where it started — so it is dropped here, and a song whose ONLY change is its
+ * tempo writes `{ bpm }` alone rather than restating an order identical to the bank's.
  */
 export function entryOf(bank, draft) {
   const compacted = compactSections(bank, draft);
   const order = planToOrder(compacted.plan);
+  const bpm = draft.bpm != null && draft.bpm !== bank.bpm ? draft.bpm : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
-  if (same && !compacted.sections.length) return null;
+  if (same && !compacted.sections.length) return bpm == null ? null : { bpm };
   const out = { order };
   if (compacted.sections.length) out.sections = compacted.sections;
+  if (bpm != null) out.bpm = bpm;
+  return out;
+}
+
+/**
+ * Play this song at `bpm` — or, with null, at the tempo it was composed at.
+ *
+ * An arrangement edit like any other, so it lands in the same draft, undoes with the
+ * same ⌘Z and is written by the same Save. The clamp is the engine's playable range
+ * rather than the desk's drag range: a value typed or restored from a snapshot has to
+ * arrive somewhere the sequencer can divide by.
+ */
+export function setTempo(draft, bpm) {
+  const out = copy(draft);
+  out.bpm = bpm == null ? null : Math.min(400, Math.max(20, Math.round(bpm)));
   return out;
 }
 
@@ -163,7 +190,12 @@ export function planToOrder(plan) {
 
 // ---- arrangement edits: what plays where -------------------------------------
 
-const copy = (draft) => ({ plan: draft.plan.map(copyBar), sections: clone(draft.sections) });
+// Every edit below builds its result with this, which is why the tempo is carried
+// here rather than by each of them: a bar edit made after a tempo change must not
+// quietly put the song back to the tempo it was composed at.
+const copy = (draft) => ({
+  plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
+});
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));
   const b = Math.min(draft.plan.length - 1, Math.max(from, to));
@@ -219,7 +251,9 @@ export function removeLanes(draft, keys) {
   if (!drop.size) return draft;
   const out = copy(draft);
   for (const section of out.sections) {
-    for (const key of drop) delete section[key];
+    // The lengths go with the lane, or deleting a track and adding it back gives the
+    // new one the old one's note lengths — for notes that are not there any more.
+    for (const key of drop) { delete section[key]; delete section[lenKey(key)]; }
   }
   for (const bar of out.plan) {
     for (const field of ['off', 'delete']) {
@@ -298,18 +332,31 @@ export function insertSilence(draft, at, count, keys = LANE_KEYS) {
   return out;
 }
 
-/** Read one lane's sixteen steps for every bar in a range, ready for cross-lane paste. */
+/**
+ * Read one lane's sixteen steps for every bar in a range, ready for cross-lane paste.
+ *
+ * The note LENGTHS come with them, and they have to: a clip carrying notes alone
+ * would land on whatever lengths the destination bars already had, so pasting a
+ * bassline over a part somebody had drawn long notes into would play the new notes
+ * at the old one's lengths. Always present, so a paste always says something about
+ * length — sixteen nulls where the source had none, which clears the destination.
+ */
 export function copyLaneBars(bank, draft, from, to, lane) {
   const [a, b] = range(draft, from, to);
   const sections = sectionsOf(bank, draft);
   const bars = [];
+  const lengths = [];
   for (let i = a; i <= b; i++) {
     const bar = draft.plan[i];
     const sec = bar.sec != null ? resolveSection({ ...bank, sections }, bar.sec) : null;
-    const arr = sec?.[lane] ?? bank[lane];
-    bars.push(Array.from({ length: 16 }, (_, j) => clone(arr?.[bar.half * 16 + j] ?? null)));
+    const read = (key) => {
+      const arr = sec?.[key] ?? bank[key];
+      return Array.from({ length: 16 }, (_, j) => clone(arr?.[bar.half * 16 + j] ?? null));
+    };
+    bars.push(read(lane));
+    lengths.push(read(lenKey(lane)));
   }
-  return { lane, bars };
+  return { lane, bars, lengths };
 }
 
 /** Every lane off, for a breakdown that keeps its bar count. */
@@ -466,6 +513,35 @@ function laneWith(bank, sections, sec, half, lane, steps16) {
 }
 
 /**
+ * Put the notes AND their lengths into a section, in one operation.
+ *
+ * Two keys, written together, because a section holding new notes against old
+ * lengths is a section that plays a chord whose top note is four steps long
+ * because the note that used to be there was. Nothing may observe that state, not
+ * even between two statements — so both are computed and both are assigned here,
+ * or the lengths key is removed.
+ *
+ * `lengths16` is optional and usually absent: a drum grid, a groove figure and a
+ * pasted clip all say nothing about length. Absent means "leave the lengths as
+ * they are" — which for every song in the game is "there are none".
+ *
+ * An all-null result DELETES the key rather than writing 32 nulls. Three reasons,
+ * and the first is the one that matters: with no key at all the engine takes the
+ * path it took before per-note lengths existed, and tests/null-test.js stays
+ * sample-exact. `compactSections` cannot drop it for us — it only removes keys
+ * equal to what is inherited, and `undefined` never equals an array — so the file
+ * would silt up with `bassLen: [null × 32]` on every song anybody drew a note in.
+ */
+function putLane(section, bank, sections, sec, half, lane, steps16, lengths16) {
+  section[lane] = laneWith(bank, sections, sec, half, lane, steps16);
+  if (!lengths16) return;
+  const key = lenKey(lane);
+  const next = laneWith(bank, sections, sec, half, key, lengths16);
+  if (next.some((v) => (Array.isArray(v) ? v.some(validLen) : validLen(v)))) section[key] = next;
+  else delete section[key];
+}
+
+/**
  * Write sixteen steps of one lane into one bar.
  *
  * The bar forks first, then the lane is rebuilt as a fresh 32-step array — the bar
@@ -474,13 +550,20 @@ function laneWith(bank, sections, sec, half, lane, steps16) {
  * `true` for a percussion hit, a frequency, an array of them for a chord, `null` for
  * a rest. A drum grid should pass `false` rather than `null` for a step that is off,
  * so the lane stays all-boolean and writes back out as `seq(...)` shorthand.
+ *
+ * `lengths16` is the same sixteen steps as note LENGTHS, in steps — a number, an
+ * array of them on a chord lane (one per tone, aligned with the frequencies), or
+ * null for "as long as the lane says". Omit it entirely and the lengths are left
+ * alone; it is a sixth positional argument rather than a change of shape because
+ * every caller that has nothing to say about length should not have to say it.
  */
-export function writeBarNotes(bank, draft, barIndex, lane, steps16) {
+export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = null) {
   const forked = forkBar(bank, draft, barIndex);
   const bar = forked.plan[barIndex];
   if (!bar) return forked;
   const idx = bar.sec - (bank.sections?.length || 0);
-  forked.sections[idx][lane] = laneWith(bank, sectionsOf(bank, forked), bar.sec, bar.half, lane, steps16);
+  putLane(forked.sections[idx], bank, sectionsOf(bank, forked), bar.sec, bar.half,
+    lane, steps16, lengths16);
   return forked;
 }
 
@@ -498,18 +581,21 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16) {
  * change with it, which is the whole point. Bars that were forked individually have a
  * `sec` of their own and are deliberately left alone.
  */
-export function writeBarNotesShared(bank, draft, barIndex, lane, steps16) {
+export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, lengths16 = null) {
   const out = expandSectionless(bank, copy(draft));
   const bar = out.plan[barIndex];
   if (!bar) return out;
   const sec = bar.sec;
-  const next = laneWith(bank, sectionsOf(bank, out), sec, bar.half, lane, steps16);
+  const sections = sectionsOf(bank, out);
   if (!isBankSection(bank, sec)) {
-    out.sections[sec - (bank.sections?.length || 0)][lane] = next;
+    putLane(out.sections[sec - (bank.sections?.length || 0)], bank, sections,
+      sec, bar.half, lane, steps16, lengths16);
     return out;
   }
-  const idx = sectionsOf(bank, out).length;
-  out.sections.push({ base: sec, [lane]: next });
+  const idx = sections.length;
+  const section = { base: sec };
+  putLane(section, bank, sections, sec, bar.half, lane, steps16, lengths16);
+  out.sections.push(section);
   for (const b of out.plan) if (b.sec === sec) b.sec = idx;
   return out;
 }

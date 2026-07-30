@@ -52,6 +52,7 @@ import { createRequire } from 'module';
 import { renderBankBrowser } from './lib/render-bank-browser.js';
 import { wavBuffer, SR } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
+import { bpmOf } from '../src/data/arrangements.js';
 import { VISUALIZER_NAMES } from '../src/engine/visualizers.js';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
@@ -111,6 +112,10 @@ const SEED = num('seed', 0x7042ade) >>> 0;
 const WORKERS = Math.max(1, Math.round(num('workers', Math.min(4, Math.max(1, cpus().length - 4)))));
 
 const track = resolveOrExit(trackId);
+// The tempo the song is PLAYED at, which is what the beat clock has to run on: the
+// visualizers pulse off it, and a song the desk retuned would otherwise flash against
+// its own downbeats for the whole video. See bpmOf.
+const BPM = bpmOf(track.bank, track.id);
 const visualIndex = /^\d+$/.test(String(visualArg))
   ? Number(visualArg) % VISUALIZER_NAMES.length
   : VISUALIZER_NAMES.indexOf(String(visualArg).toUpperCase());
@@ -303,7 +308,7 @@ function analyseSong(samples, bpm, percussionAt = []) {
 }
 
 console.log('analysing  song…');
-const analysis = analyseSong(pcm, track.bank.bpm, percussion);
+const analysis = analyseSong(pcm, BPM, percussion);
 const avg = (key) => analysis.reduce((a, f) => a + f[key], 0) / analysis.length;
 const max = (key) => analysis.reduce((a, f) => Math.max(a, f[key]), 0);
 const min = (key) => analysis.reduce((a, f) => Math.min(a, f[key]), Infinity);
@@ -462,7 +467,7 @@ async function renderRange(from, to, segmentPath, onProgress) {
       return pngs;
     };
   }, {
-    index: visualIndex, seed: SEED, bpm: track.bank.bpm, fps: FPS,
+    index: visualIndex, seed: SEED, bpm: BPM, fps: FPS,
     w: W, h: H, outW: OUT_W, outH: OUT_H, ss: SS,
     // Lead-in frames are replayed inside the page so only this worker's own
     // range crosses the bridge as images.

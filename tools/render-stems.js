@@ -20,6 +20,7 @@ import { wavBuffer, rmsOf, dbfs } from './lib/wav.js';
 import { activeLanes } from '../src/engine/lanes.js';
 import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { resolveOrExit } from './lib/tracks.js';
+import { bpmOf } from '../src/data/arrangements.js';
 
 const [, , trackId = 'shop', repeatArg = '1', outArg = null] = process.argv;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
@@ -62,14 +63,14 @@ for (let n = 0; n < sum.length; n++) {
 }
 const residualDb = energy > 0 ? 10 * Math.log10(residual / energy) : -Infinity;
 
-const midi = midiBuffer(track.bank, { repeat: REPEAT, title: track.title });
+const midi = midiBuffer(track.bank, { repeat: REPEAT, title: track.title, bpm: bpmOf(track.bank, track.id) });
 const midiName = `${track.slug}.mid`;
 writeFileSync(join(DIR, midiName), midi.buffer);
 
 const droppedFromMidi = lanes.map((l) => l.key).filter((k) => MIDI_UNSUPPORTED_LANES.includes(k));
 
 const w = rows.reduce((m, r) => Math.max(m, r[0].length), 0);
-console.log(`${DIR} — ${lanes.length} stems + full mix, ${mix.seconds.toFixed(1)}s, ${REPEAT}x form (${mix.blocks * 2} bars at ${track.bank.bpm}bpm)`);
+console.log(`${DIR} — ${lanes.length} stems + full mix, ${mix.seconds.toFixed(1)}s, ${REPEAT}x form (${mix.blocks * 2} bars at ${bpmOf(track.bank, track.id)}bpm)`);
 for (const [file, peak, rms] of rows) console.log(`  ${file.padEnd(w)}  peak ${peak.padStart(10)}   rms ${rms}`);
 console.log(`  ${midiName.padEnd(w)}  ${midi.trackNames.length} instrument tracks`);
 console.log(`  stems sum to the mix at ${residualDb.toFixed(0)} dB residual (float rounding only)`);

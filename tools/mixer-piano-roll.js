@@ -33,8 +33,8 @@
 // A bare number on a chord lane throws inside scheduleStep and takes the whole render
 // page with it (see src/data/voices.js), which is why the array is built here rather
 // than left to whatever the last edit happened to leave behind.
-import { CHORD_LANES, PERCUSSION_LANES, baseLane } from '../src/data/voices.js';
-import { LANES } from '../src/engine/lanes.js';
+import { CHORD_LANES, PERCUSSION_LANES, baseLane, seamFor } from '../src/data/voices.js';
+import { LANES, validLen } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { SCALES, SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
 
@@ -133,6 +133,121 @@ export function noteOn({ midi }, value) {
 }
 
 /**
+ * ---- how long a note is -----------------------------------------------------------
+ *
+ * A lane's lengths sit in a parallel array (`bassLen` beside `bass`, see lanes.js),
+ * and on a CHORD lane each entry is itself an array: one length per tone, positionally
+ * aligned with the frequencies on that step.
+ *
+ * Positional alignment is the whole risk in that shape, and it is why these three
+ * functions exist rather than a line of arithmetic at each call site. `noteCell` sorts
+ * the chord — two ways of arriving at the same chord have to write the same array — so
+ * the lengths cannot be sorted separately: they are PAIRED with the frequencies, sorted
+ * together, and split apart again. Sort them apart once and a song plays the right
+ * notes at each other's lengths, which is the kind of bug that survives a listen.
+ */
+
+/**
+ * The lengths that go with `noteCell`'s notes.
+ *
+ * `drawn` is a length in steps, from the resize handle; null means "nothing was said",
+ * which is what a newly drawn note gets. A cleared note takes its length with it, and
+ * clearing a row that does not hold the note leaves both alone — the same guard
+ * `noteCell` has, for the same reason: an eraser dragged along a row must not take the
+ * length off the note above it any more than it takes the note.
+ */
+export function noteLength({ chord, midi, freq }, value, len, on, drawn = null) {
+  const one = validLen(drawn) ? drawn : null;
+  if (chord) {
+    const had = Array.isArray(value) ? value.filter((f) => f > 0) : [];
+    // A scalar on a chord step is the whole chord's length — what a hand-written
+    // `chordsLen: [4, …]` plainly means — so it spreads onto the tones that remain
+    // rather than being lost the first time one of them is edited.
+    const lens = Array.isArray(len) ? len : null;
+    const lenAt = (i) => (lens ? (validLen(lens[i]) ? lens[i] : null) : (validLen(len) ? len : null));
+    const mine = had.findIndex((f) => freqMidi(f) === midi);
+    const pairs = had
+      .map((f, i) => ({ f, len: lenAt(i) }))
+      .filter((p) => freqMidi(p.f) !== midi);
+    if (on) pairs.push({ f: freq, len: one ?? (mine >= 0 ? lenAt(mine) : null) });
+    pairs.sort((a, b) => a.f - b.f);
+    return pairs.some((p) => p.len != null) ? pairs.map((p) => p.len) : null;
+  }
+  if (on) {
+    if (one != null) return one;
+    // Drawing on a note that is ALREADY THERE is not a new note, and must leave its
+    // length alone: a paint-drag along a row passes over every note in its path, and a
+    // drag that flattened them back to one step would be a drag that quietly undid an
+    // afternoon's phrasing. A DIFFERENT note replacing this one is new, and inherits
+    // nothing — a monophonic lane holds one note, and it is not the one that was here.
+    const held = typeof value === 'number' && value > 0 ? value : null;
+    return held != null && freqMidi(held) === midi ? (validLen(len) ? len : null) : null;
+  }
+  const cur = typeof value === 'number' && value > 0 ? value : null;
+  return cur != null && freqMidi(cur) === midi ? null : len;
+}
+
+/**
+ * How long THIS row's note on this step is, in steps, or null for "nothing said".
+ *
+ * The row is a pitch, so on a chord lane it selects one tone out of the step — and the
+ * length that goes with it is the one at the same index. This is what the grid draws a
+ * rectangle from and what a move carries to the note's destination.
+ */
+export function noteSpan({ chord, midi }, value, len) {
+  if (chord) {
+    const i = Array.isArray(value) ? value.findIndex((f) => f > 0 && freqMidi(f) === midi) : -1;
+    if (i < 0) return null;
+    const one = Array.isArray(len) ? len[i] : len;
+    return validLen(one) ? one : null;
+  }
+  return validLen(len) ? len : null;
+}
+
+/**
+ * Can a note on this lane be given a length at all?
+ *
+ * Everything with a `*Dur` key can: the length overrides it. `vox` and `shout` cannot,
+ * and they are the reason this is a question rather than an assumption — their
+ * envelopes are hand-timed in absolute seconds ("hey!", "al-RIGHT"), the word is chosen
+ * by step index and the formant trajectory is keyed to it, so there is nothing for a
+ * length to override. They stay movable, because moving one is just another step; they
+ * get no resize handle, because there is nowhere to write what it would say.
+ */
+export const rollResizable = (key) => !!seamFor(baseLane(key));
+
+/**
+ * ---- how the mouse behaves ---------------------------------------------------------
+ *
+ * `auto` is the default and it is what a modern roll does: the pointer reads where you
+ * pressed and there is nothing to choose first. The other three are the same gestures
+ * as standing modes, and they are here for a plain reason — modeless asks you to HOLD
+ * A MODIFIER for the second gesture and to AIM at a six-pixel edge for the third, and
+ * neither of those is something a tool should require of everybody. Pick Draw and every
+ * press draws, wherever it lands.
+ *
+ * `hint` is what the desk says when you choose one. A mode you cannot see is a mode
+ * that will surprise you later, so choosing one says what it now does.
+ */
+export const ROLL_TOOLS = [
+  {
+    id: 'auto',
+    label: 'Auto',
+    hint: 'Auto — empty space draws, a note’s middle moves it, its right end lengthens it',
+  },
+  { id: 'draw', label: 'Draw', hint: 'Draw — every press makes a note; drag to set how long' },
+  {
+    id: 'select',
+    label: 'Select',
+    hint: 'Select — band notes, then move or stretch them together; arrows nudge, ⌫ deletes',
+  },
+  { id: 'paint', label: 'Paint', hint: 'Paint — drag to lay a run of separate notes' },
+  { id: 'erase', label: 'Erase', hint: 'Erase — drag over notes to rub them out' },
+];
+export const ROLL_TOOL_IDS = ROLL_TOOLS.map((t) => t.id);
+export const rollTool = (id) => (ROLL_TOOL_IDS.includes(id) ? id : 'auto');
+
+/**
  * The pitch rows to draw, highest first.
  *
  * A range, not a count: the roll shows what the part actually uses, so a two-note
@@ -183,6 +298,35 @@ export function laneSpan(bank, lane) {
  * on opening is the part at the bottom of the window and room above to write; scrolling
  * up is easy and hunting for your own bassline is not.
  */
+/**
+ * ---- the instrument, all of it ----------------------------------------------------
+ *
+ * A0 to C8: the eighty-eight keys of a piano, and the roll shows every one of them.
+ *
+ * It used to show a window derived from what the lane already played, padded to two
+ * octaves. That is a good answer to "where should this open" and a bad one to "what
+ * can I write": a part whose lowest note is C2 had no C1 to click on, so the note you
+ * wanted next was the one note the panel would not let you have. A range that is a
+ * function of the part is a range that argues with you the moment you want to leave it.
+ *
+ * So the range is the instrument's, fixed and complete, and where you ARE in it is a
+ * scroll position — which is what it is on a real keyboard. `autoRange` stays and does
+ * the job it was always really doing: deciding where to open.
+ *
+ * Widened if a bank ever holds something outside those keys. Nothing in the catalogue
+ * does — the lowest note anywhere is a D1 and the highest a C7 — but a bank is data
+ * and a note that exists must be reachable, or the roll is lying about the part.
+ */
+export const KEYBOARD_LOW = 21;    // A0
+export const KEYBOARD_HIGH = 108;  // C8
+export function keyboardRange(bank, lane) {
+  const span = laneSpan(bank, lane);
+  return {
+    low: Math.min(KEYBOARD_LOW, span ? span.low : KEYBOARD_LOW),
+    high: Math.max(KEYBOARD_HIGH, span ? span.high : KEYBOARD_HIGH),
+  };
+}
+
 const PAD = 2;
 const MIN_ROWS = 25;
 export function autoRange(bank, lane, fallback = 48) {
@@ -216,34 +360,41 @@ export function createPianoRoll({
   el, Audio, bank, editBank, draft, sel, apply, laneColour, engineBank,
   lane, setLane, editable, laneLabel = (key) => LABELS[key] || key,
   scale = () => ({ root: 0, id: 'chromatic' }), setScale = () => {},
+  toast = () => {},
   onClose = () => {},
 }) {
-  const SHIFT_KEY = 'mash-mixer-roll-shift';
-  // The range is DERIVED, not stored: it is what the lane plays, so a part that grows
-  // an octave grows the roll with it and there is no remembered number to go stale.
-  // What is remembered is a nudge off that, per lane, for when you want to write
-  // somewhere the part has not been yet.
-  let shift = {};
-  try { shift = JSON.parse(localStorage.getItem(SHIFT_KEY) || '{}'); } catch { shift = {}; }
+  // Which gesture the mouse performs. Remembered, because it is a decision about how
+  // you work rather than about this song — and shown in the header, because a mode you
+  // cannot see is one you will be surprised by.
+  const TOOL_KEY = 'mash-mixer-roll-tool';
+  let toolId = rollTool(localStorage.getItem(TOOL_KEY));
+  const setTool = (id) => {
+    toolId = rollTool(id);
+    localStorage.setItem(TOOL_KEY, toolId);
+    // The panel wears its mode, so the cursors can say which one it is in.
+    for (const t of ROLL_TOOL_IDS) el.classList.toggle(`tool-${t}`, t === toolId);
+    toast(ROLL_TOOLS.find((t) => t.id === toolId).hint);
+  };
 
   const isChord = () => CHORD_LANES.includes(baseLane(lane()));
-  const rangeOf = () => {
-    const key = lane();
-    const auto = autoRange(bank(), key);
-    const by = shift[key] || 0;
-    return { low: auto.low + by, high: auto.high + by, shifted: by !== 0 };
+  const rangeOf = () => keyboardRange(bank(), lane());
+  // Nothing is remembered about where you are in the instrument. The roll opens on the
+  // part — which is an answer it can always work out — and after that the scroll
+  // position is yours until you change lane or song. A stored offset per lane was the
+  // old design and it went with the derived range: a number that has to be kept in step
+  // with a part that moves under it is a number that goes wrong quietly.
+  const showPart = () => {
+    const span = laneSpan(bank(), lane());
+    // The middle of what the part plays, in the middle of the window: room above it and
+    // room below it, because with the whole keyboard there the note you want next is as
+    // often under the part as over it. A silent lane opens around middle C, which is
+    // where a hand goes.
+    const mid = span ? Math.round((span.low + span.high) / 2) : 60;
+    // Next frame: the panel is opened and measured in the same breath, and a window
+    // whose height is still zero puts the part wherever nothing is.
+    requestAnimationFrame(() => grid.scrollToRow(String(mid)));
   };
-  const nudge = (semis) => {
-    const key = lane();
-    shift[key] = (shift[key] || 0) + semis;
-    localStorage.setItem(SHIFT_KEY, JSON.stringify(shift));
-    grid.redraw();
-  };
-  const refit = () => {
-    delete shift[lane()];
-    localStorage.setItem(SHIFT_KEY, JSON.stringify(shift));
-    grid.redraw();
-  };
+  const byOctave = (n) => grid.scrollRows(n * 12);
 
   const grid = createBarGrid({
     el, Audio, bank, editBank, draft, sel, apply, engineBank, laneLabel,
@@ -252,6 +403,10 @@ export function createPianoRoll({
     // song and it lives in the page. See createBarGrid.
     wholeSong: true,
     docked: true,
+    // Eighty-eight rows, drawn a screenful at a time. ROW_H is the CSS row height and
+    // the spacers need it as a number — see the note on ROW_H above.
+    virtual: true,
+    rowHeight: ROW_H,
     // Its controls join the region's own header rather than starting a second row.
     headerHost: () => document.getElementById('devhead'),
     onClose,
@@ -263,10 +418,10 @@ export function createPianoRoll({
       const { root: scaleRoot, id: scaleId } = scale();
       const steps = SCALE_BY_ID[scaleId]?.steps || null;
       const { low, high } = rangeOf();
-      // The range is the part's own, so most lanes fit the window outright. A lead that
-      // walks four octaves will not, and that is what the wheel handler below is for —
-      // rows stay the step grid's height rather than shrinking to fit, because the two
-      // panels are two views of one song.
+      // Every key of the instrument, always — see keyboardRange. Only the ones in view
+      // are ever built (the grid's `virtual`), so this list being eighty-eight long
+      // costs nothing until you scroll to it. Rows stay the step grid's height rather
+      // than shrinking to fit, because the two panels are two views of one song.
       return pitchRows(low, high).map((midi) => ({
         key: String(midi),
         lane: key,
@@ -288,6 +443,20 @@ export function createPianoRoll({
     isOn: (row, value) => noteOn(row, value),
     withCell: (row, value, on) => noteCell({ ...row, chord: isChord() }, value, on),
 
+    // ---- and the four that make its notes have length
+    //
+    // A note is a rectangle here, so it can be dragged along the field and pulled out
+    // at its right edge, and both of those need to know what a length IS on this lane.
+    // The step grid answers none of them and gets neither gesture: a drum hit has no
+    // length, and there is nothing to move a kick to.
+    withLen: (row, value, len, on, drawn) =>
+      noteLength({ ...row, chord: isChord() }, value, len, on, drawn),
+    cellLen: (row, value, len) => noteSpan({ ...row, chord: isChord() }, value, len),
+    resizable: () => rollResizable(lane()),
+    movable: true,
+    tool: () => toolId,
+    selectable: true,
+
     preview: (row) => Audio.previewNote(row.lane, row.freq, { bank: engineBank() }),
 
     title: (c) => `${laneLabel(lane())} · ${c.barSpan}${c.linked ? ' · shared editing' : ''}`,
@@ -304,26 +473,52 @@ export function createPianoRoll({
         if (key === lane()) o.selected = true;
         picker.append(o);
       }
-      picker.onchange = () => { setLane(picker.value); grid.redraw(); };
+      // A lane change is a different part, so the view goes to where that part is —
+      // the roll has always opened on the notes rather than at C8.
+      picker.onchange = () => { setLane(picker.value); grid.redraw(); showPart(); };
 
+      // What the mouse does. `Auto` first and selected by default — it is the answer
+      // for most people most of the time — with the others there for anyone who would
+      // rather not hold a key or aim at an edge, which is a real requirement and not a
+      // preference. The title says the modifier, because a modifier nobody has been
+      // told about is a feature nobody has.
+      const tools = document.createElement('select');
+      tools.className = 'fxsel ssqtool';
+      for (const t of ROLL_TOOLS) {
+        const o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = t.label;
+        if (t.id === toolId) o.selected = true;
+        tools.append(o);
+      }
+      tools.title = 'What the mouse does.\n'
+        + 'Auto — empty space draws (drag to set the length), a note’s middle moves it,'
+        + ' its right end lengthens it.\n'
+        + 'Hold ⌘ to drag a rectangle round notes, ⇧-click to add one to the set,'
+        + ' then move or stretch them together.\n'
+        + 'With notes picked out: arrows nudge them (⇧ by a bar or an octave),'
+        + ' ⌥← ⌥→ shorten and lengthen, ⌫ takes them out, ⎋ lets them go.\n'
+        + 'Hold ⌥ at any time for Paint: a run of separate notes, or a run rubbed out.\n'
+        + 'Draw, Select, Paint and Erase each do one thing, with no modifier and no aiming.';
+      tools.onchange = () => setTool(tools.value);
+
+      // The whole keyboard is there; these are how you get about it without a
+      // trackpad. Scrolling, not re-ranging: there is nothing left to re-range.
       const down = document.createElement('button');
       down.className = 'ssqx';
       down.textContent = '−';
-      down.title = 'Move the window an octave down';
-      down.onclick = (ev) => { ev.stopPropagation(); nudge(-12); };
+      down.title = 'An octave lower';
+      down.onclick = (ev) => { ev.stopPropagation(); byOctave(1); };
       const up = document.createElement('button');
       up.className = 'ssqx';
       up.textContent = '+';
-      up.title = 'Move the window an octave up';
-      up.onclick = (ev) => { ev.stopPropagation(); nudge(12); };
-      // Only once you have moved off the part: a control that does nothing is a
-      // control you have to try before you learn it does nothing.
+      up.title = 'An octave higher';
+      up.onclick = (ev) => { ev.stopPropagation(); byOctave(-1); };
       const fit = document.createElement('button');
       fit.className = 'ssqlink';
-      fit.textContent = 'Fit to part';
-      fit.title = 'Back to the range this part actually plays';
-      fit.hidden = !rangeOf().shifted;
-      fit.onclick = (ev) => { ev.stopPropagation(); refit(); };
+      fit.textContent = 'Find the part';
+      fit.title = 'Back to where this part actually plays';
+      fit.onclick = (ev) => { ev.stopPropagation(); showPart(); };
 
       const root = document.createElement('select');
       root.className = 'fxsel ssqroot';
@@ -349,7 +544,7 @@ export function createPianoRoll({
         + ' accidental you wanted is always the one a keyboard would have refused.';
       kind.onchange = () => { setScale({ id: kind.value }); grid.redraw(); };
 
-      return [picker, down, up, fit, root, kind];
+      return [picker, tools, down, up, fit, root, kind];
     },
 
     // A key, not a track name — and a real one: white notes full width, black notes
@@ -390,11 +585,23 @@ export function createPianoRoll({
   }, { passive: false });
 
   return {
-    open: grid.open,
+    // Opening lands on the part, and so does arriving at a new song. Everywhere else
+    // the scroll position is left exactly where the hand put it — an edit must never
+    // move the instrument under you, which is why `build` keeps it.
+    open(on = true) {
+      grid.open(on);
+      if (on === false) return;
+      // The panel is rebuilt on open, so the mode's class goes back on with it.
+      for (const t of ROLL_TOOL_IDS) el.classList.toggle(`tool-${t}`, t === toolId);
+      showPart();
+    },
     close: grid.close,
     isOpen: grid.isOpen,
     refresh: grid.refresh,
     follow: grid.follow,
-    songChanged: grid.songChanged,
+    songChanged() {
+      grid.songChanged();
+      if (grid.isOpen()) showPart();
+    },
   };
 }

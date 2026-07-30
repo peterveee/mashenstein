@@ -38,8 +38,18 @@ game catalogue.
 | **Footer** | song title, beat, master peak, keyboard help |
 
 Timeline, arrangement, mixer and effects each have a **fold chevron** on the left of
-their caption. Folding gives the space to the panels that are still open — the strips
-are sized to the window every time anything moves.
+their caption, and the strips are sized to the window every time anything moves.
+
+**Where the space goes.** Exactly one region is elastic at a time, picked in this
+order: the **rack**, then the **arrangement**, then the **effects panel**, then an
+empty band of desk. Whatever a region cannot use passes on down that list — the
+arrangement is snapped to whole lanes, so once it is showing all of them the rest goes
+to the effects panel rather than stopping at the band. Fold the mixer and the
+arrangement grows and then the piano roll fills everything under it; fold all three
+and you get the plain band — with the footer still on the bottom of the window in
+every combination. Header,
+timeline and footer sit outside the resizable part of the page, so a window too short
+for every panel's minimum scrolls the desk rather than pushing them off the screen.
 
 ---
 
@@ -68,13 +78,16 @@ typed in the 40–220 field still wins.
 The style is a **pack** — [`tools/lib/song-styles.js`](../tools/lib/song-styles.js) —
 and it decides the whole character of the generated song: its tempo, its key and mode,
 its harmony, its kit, its melodic grammar, which lanes it uses at all, and which voices
-those lanes play. Auto lets the creation seed pick one. The eight are *Electropop*
+those lanes play. Auto lets the creation seed pick one. The eleven are *Electropop*
 (120 BPM, the engine's own voices — the starter the desk has always opened with),
 *Half-time Dirge* (72, reed organ and a taiko), *Surf Spy* (152, harmonic minor,
 plucked lead), *Boom Bap* (88, dorian sevenths on an electric piano), *Motorik Driver*
 (168, one chord and straight eighths), *Bell Box* (96, **no drums at all** — music box,
-celeste and a glass pad), *Parade March* (112, major, brass and strings) and *Dub
-Chamber* (76, one drop, organ skank, everything in the echo).
+celeste and a glass pad), *Parade March* (112, major, brass and strings), *Dub
+Chamber* (76, one drop, organ skank, everything in the echo), *House* (124, clap on the
+backbeat, open hat off it, seventh-chord piano stabs), *Techno* (136, phrygian, dirty
+kick and cowbell over a rolling acid bass) and *Electro* (126, robot pop — a sequenced
+bell arpeggio over handclaps, with a hollow vocoder-ish lead).
 
 Within a pack the stored creation seed picks the key, the progression, the harmonic
 rhythm, the kit patterns, the bass figure and the melody's rhythm and contour — so
@@ -94,7 +107,11 @@ voices are peak-matched to their lane, and a sustained pad at the same peak as t
 engine's short square blip is several LU louder, so the pair puts every pack's kit and
 instruments in the balance the Electropop starter has always had — and the trim also
 lands every pack on −22 LUFS, where the game's own songs measure, so the picker does
-not shout at you every third choice. Scratch songs can be
+not shout at you every third choice. Techno is the one deliberate exception: its kit is
+meant to lead, and its numbers keep it leading rather than flattening it to the pop
+balance. A pack may only name Tone, Noise or Drum presets — an `eng*` preset is a
+bundle of bank keys that nothing expands on a song with no mix, so it would silently
+do nothing. Scratch songs can be
 edited, saved, rendered, exported and restored like built-in songs; marker-less legacy
 MIDI imports remain read-only.
 
@@ -135,11 +152,13 @@ loop armed, clicking the timeline *moves the loop* rather than escaping it. Defa
 | --- | --- |
 | **Bar** | bar under the playhead, of the song's total |
 | **Time** | position / length of the song form |
-| **BPM** | **draggable.** Audition tempo, 40–220. Never saved — the bpm belongs to the song. Teal while overridden; click to go back to the song's own tempo. |
+| **BPM** | **draggable.** The tempo the song is played at, 40–220. **Saved with the song**, on its `arrangement` — the bank keeps the tempo it was written at. Teal while it differs from that; click to go back to it. |
 | **CPU** | rough load: the engine's own ~10% plus every active effect's measured cost. Red past 45%. Hover for what is running. |
 
 Tempo drags carry the tempo-synced delay and every division-based insert with them, so
-half-speed really is the same mix at half speed.
+half-speed really is the same mix at half speed. The drag is an ordinary song edit —
+⌘Z undoes it, the dot on the hamburger notices it, **Save song** writes it, and the game
+and every render tool then play the song at it.
 
 ### The four panel buttons
 
@@ -175,6 +194,12 @@ The desk remembers this workspace per song: whether the keyboard is visible, whe
 the step grid or piano roll is open, and which melodic lane the roll is editing. A
 song you have not visited yet inherits the current workspace once; returning to it
 restores its own layout. This is browser desk state, not a Save-to-game edit.
+
+Splitter positions are remembered too, and the desk now honours them further than it
+used to: the mixer's floor is a bare strip rather than a full-size one, so a height
+that was quietly clamped before is applied in full. The first launch after that
+change may not look quite like the last one — double-click either grip to go back to
+the automatic fit.
 
 | | |
 | --- | --- |
@@ -317,9 +342,11 @@ strip below), **M** and **S**, the family mark, and the name.
   channel, the piano roll for a pitched one.
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
-  window; it snaps to whole lanes and never takes the rack's last strip. Drag it up
-  past the first lane to fold the panel. **Double-click** hands the height back to the
-  automatic fit. The dragged height is remembered.
+  window; it snaps to whole lanes and never takes the rack below a bare strip.
+  It trades with the **rack only**: the effects panel stays exactly where you left it.
+  Drag it up past the first lane to fold the panel. **Double-click** hands the height
+  back to the automatic fit. The dragged height is remembered, and the grip is hidden
+  while the mixer is folded — there is nothing on the other side of it to trade with.
 
 The arrangement always shows *every* lane, whatever the mixer is filtered to.
 
@@ -486,6 +513,39 @@ A strip, top to bottom:
 - **Sends**: how a channel *reaches* the delay differs per lane (melodic voices tap it
   pre-fader, as the engine's echo always did; everything else routes the whole channel
   in post-fader). The row's tooltip says which.
+
+### When the window is short
+
+The fader is the shock absorber and goes first: uncapped upwards, so a tall window
+ends up with long faders rather than a band of empty desk, and squeezed down to a
+grip you can still hit before anything else is touched.
+
+When even that is not enough the desk starts **shedding whole blocks**, always in the
+same order — the same three blocks the switches at the top of the mixer hide:
+
+| Goes | Why in this order |
+| --- | --- |
+| 1. **Effects** | the insert slots: set once, then left alone |
+| 2. **Sends** | consulted, but not constantly |
+| 3. **EQ** | the one you are most likely reaching for while the window is small |
+
+What is left at the bottom is the strip you balance on: **name, voice, fader, dB
+readout, pan, mute/solo**. Nothing below that goes.
+
+**A strip body never scrolls.** A row half out of sight is a row you can neither read
+nor click, and it goes without saying that it has gone — so the desk hides the whole
+block instead and **strikes the block's switch through** in the header. That mark is
+what makes the shedding allowed: a switch that is still ticked but struck through
+reads as "there is no room for this", which is a different thing from the dimmed
+switch that means "you turned this off". Give the mixer more height and the block
+comes straight back.
+
+The desk never sheds something you have already hidden by hand, and growing the window
+back restores exactly what is ticked and nothing more.
+
+The docked preset editor is sent away when the rack reaches the bottom of the ladder:
+it is given the same height as a strip, and a full editor squashed to a bare one is no
+use to anybody. The `»` on the strip head reopens it as soon as there is room.
 
 ### Voice — what the channel is played by
 
@@ -697,6 +757,21 @@ path, and a Parametric EQ in an insert slot is a better EQ than three fixed band
 Six inserts per strip — channels, sends and master alike. The **slots** live on the
 strip; the **parameters** live in the panel along the bottom, where there is room for
 them.
+
+**Splitter** (the grip above the panel) — drag to trade height between the **rack and
+the effects panel**, and those two only: the arrangement does not move, whichever way
+you drag. It stops when the rack is visibly down to a bare strip rather than at an
+invisible wall well above it. **Double-click** hands the height back to the
+measured card height. The grip is hidden when either panel is folded, and the dragged
+height is remembered across reloads.
+
+The panel sizes itself to what it is *showing*, not to one number for both views: the
+effect cards ask for the tallest card in the catalogue, and the piano roll asks for
+its whole keyboard. Switching to **Notes** therefore gives the roll the room and puts
+the rack at the bottom of its shrink ladder — writing notes and balancing are
+different jobs, and a
+channel you are not balancing needs a name, a fader and a mute. Switching back to
+**Effects** restores the strips.
 
 ### Insert slots
 
@@ -987,12 +1062,13 @@ letters back.
 | --- | --- |
 | Gains, pans, EQ, sends, mutes, effect chains, master trim, limiter | the song's `mix` export, on **Save song** |
 | Which bars play, in what order, with what dropped out of them | the song's `arrangement` export, on the same button |
+| The tempo it is played at, when that is not the tempo it was written at | the same `arrangement` export, as `bpm` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
 | Every version of a writable song this desk has overwritten | `.mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
 | Presets — new ones and edits to existing ones | `src/data/voices.js`, on the editor's own **Save to Library**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
-| Tempo drag | nowhere. The bpm belongs to the song. |
+| Composition — the notes, the sections, the tempo the song is WRITTEN at | nowhere. Above the desk's marker in the song file, and never rewritten by it. |
 | Hidden families, hidden strip parts, font, playhead offset, arrangement height, folds, last song | browser localStorage |
 
 Song files are emitted as readable source rather than a JSON blob, because they are
