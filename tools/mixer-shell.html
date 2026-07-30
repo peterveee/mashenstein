@@ -394,6 +394,40 @@
      row of window spent on one number, a bar count the arrangement already marks,
      and a song length nobody was reading. */
   #tnow, #barnow { font-variant-numeric: tabular-nums; color: var(--ink); }
+  /* ---- the desk column --------------------------------------------------------
+     The four regions the window's height is divided between, and their two handles.
+     The header, the timeline, the footer and the error log are OUTSIDE it.
+
+     min-height: 0 so it can be squeezed below its own content, and overflow: hidden
+     so that when it is, the clipping happens in HERE. That is the whole reason this
+     box exists: the page used to clip its own last children, which are the footer
+     and the error log, so a short window took away the two things that tell you
+     where you are and what went wrong. Now the footer is unclippable by
+     construction rather than by arithmetic. */
+  #desk { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+          overflow: hidden; }
+  #desk > * { flex: none; }
+  /* Exactly one region is elastic at a time — the rack, then the arrangement, then
+     the effects panel, then the empty band. Which one is a decision the desk makes
+     on every fit (see applyDeskChain and DESK_CHAIN in mixer-entry.js) rather than
+     a flex:1 hardwired to the rack, which is what left the footer floating in
+     mid-screen the moment the rack was folded away. */
+  #desk > .greedy { flex: 1 1 auto; min-height: 0; }
+  /* The effects panel's height is a variable everywhere else. While it is the
+     elastic one, flex owns it instead, or --devh would fight the growth. */
+  #devices.greedy { height: auto; }
+  /* The band at the end of the chain, and the only one that is not a panel: with
+     the rack, the arrangement and the effects all folded away there is still a
+     window to fill, and an empty strip of desk is the honest thing to fill it with
+     — a closed console rather than a hole in the page. It also takes the sub-lane
+     remainder when the arrangement is the elastic one, which is snapped to whole
+     lanes and so cannot absorb the last few pixels itself. */
+  #deskslack { display: none; }
+  #deskslack.greedy { display: block; background: var(--panel); }
+  /* Last resort, and it should never fire: every region above has a minimum, and
+     they sum to about 500px. Below that the desk scrolls, because the alternative
+     is controls that are gone with no way to reach them. */
+  #desk.cramped { overflow-y: auto; }
   /* Which bars each instrument actually plays in. The songs are two-bar blocks in
      a section order, so "where is the crash" is otherwise a listening exercise. */
   /* Capped at eight lanes and scrolled beyond that. It used to take 42vh, which on
@@ -426,7 +460,12 @@
   /* Left inset follows the fold column, less the four the cell pads itself by, so the
      numbers stay under the chevron. The width the cell gives back is taken out of the
      name column below, which keeps the bars where the ruler expects them. */
-  #arrgrid { overflow-y: auto; overflow-x: hidden;
+  /* flex: 1 so the rows fill a panel taller than they are. With the arrangement
+     content-sized this changes nothing; when the arrangement is the region taking
+     the desk's slack — the mixer folded away — it is what puts the extra height
+     into the scroller instead of leaving a dead band under the last lane. */
+  #arrgrid { flex: 1 1 auto; min-height: 0;
+             overflow-y: auto; overflow-x: hidden;
              padding: 0 calc(var(--rgut) - 10px) 0 calc(var(--foldx) - 4px); }
   /* Drawn, not overlaid: it is the only thing on screen that says there are more
      lanes under the ones you can see, and a thumb the colour of the panel says
@@ -538,18 +577,16 @@
   #arrsplit.hidden { display: none; }
   #arrsplit:hover::after { background: var(--dim); }
   #arrsplit.dragging::after { background: var(--ink); }
-  /* fitStrips sets min-height here, in pixels: exactly one whole strip. That is the
-     floor the arrangement above shrinks against, and it is measured rather than
-     guessed because a strip's height depends on the longest effect chain in the
-     song, which no stylesheet can know. */
-  /* Never a vertical scrollbar here. The strips are sized to the rack instead — the
-     splitter reserves a whole strip plus its padding, so the only way to run out of
-     height is a window too short for one, and then the strip's own body scrolls (an
-     EQ row goes out of sight) with the fader and buttons staying where they are. */
+  /* Never a vertical scrollbar here. The strips are sized to the rack instead, and
+     the rack's floor is one COMPACT strip — see rackFloor() — so running out of
+     height puts the rack on its shrink ladder rather than cutting a strip off at
+     the fold. No flex here either: which region takes the desk's slack is set by
+     applyDeskChain, and the rack is only first in that queue rather than the
+     permanent holder of it. */
   /* The same panel as the timeline, the arrangement and the effects: the mixer was
      the one section showing the page through it, which read as a hole between two
      panels rather than as the third one. */
-  #rackwrap { flex: 1; display: flex; min-height: 0; overflow-y: hidden;
+  #rackwrap { display: flex; min-height: 0; overflow-y: hidden;
               align-items: flex-start; background: var(--panel);
               border-bottom: 1px solid var(--line); }
   /* overflow-x: SCROLL, not auto — the six pixels are held whether or not there is
@@ -632,6 +669,64 @@
   #rackwrap.no-eq .eqrow,
   #rackwrap.no-sends .sendrow,
   #rackwrap.no-fx .fxbtns { display: none; }
+
+  /* ---- the rack's shrink ladder, rungs one and two --------------------------
+     A state of the WHOLE rack, like the part switches above and for the same
+     reason: --striph and --faderh are one height for every strip, stripChrome()
+     takes its maximum across all of them precisely so they stand level, and a
+     per-strip ladder would put the faders on three different lines. See
+     sizeStrips() for where the two thresholds are worked out.
+
+     Rung one, squeezed. The body has always scrolled in a short window; what it
+     never did was SAY so, and that silence is why every height in this file used to
+     carry a defensive floor a hundred pixels above what it needed. Two marks and the
+     ladder can be honest: a slim bar down the right edge, and a fade off the bottom
+     so a half-visible send row reads as a row that continues rather than as the last
+     one. Both scoped to the class, so a roomy window keeps the clean rack. */
+  #rackwrap.squeezed .stripbody {
+    scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+    -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - 14px), transparent 100%);
+            mask-image: linear-gradient(to bottom, black 0, black calc(100% - 14px), transparent 100%);
+  }
+  #rackwrap.squeezed .stripbody::-webkit-scrollbar { display: block; width: 5px; height: 0; }
+  #rackwrap.squeezed .stripbody::-webkit-scrollbar-track { background: transparent; }
+  #rackwrap.squeezed .stripbody::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 3px; }
+  #rackwrap.squeezed .stripbody:hover::-webkit-scrollbar-thumb { background: var(--dim); }
+
+  /* Rung two, compact. Below the point where scrolling is worth doing the strip
+     stops pretending. What is left is the four controls you actually balance with —
+     name, fader, pan, mute/solo — and one chip counting what has been folded away,
+     which is the way back to it. Nothing is silently lost on any rung: that is the
+     whole design, and it is what lets the rack's floor sit here instead of at a full
+     uncompressed strip. */
+  #rackwrap.compact .stripbody { overflow: hidden; -webkit-mask-image: none; mask-image: none; }
+  #rackwrap.compact .stripbody > *:not(.stripsum) { display: none; }
+  #rackwrap.compact .fxbtns { display: none; }
+  /* The dead air between the foot's controls, and only that: the fader, the pan pot
+     and the mute/solo pair keep every pixel they had. A compact strip is the one you
+     balance on when the window is short, so shrinking the things you aim at to buy
+     back thirty pixels would be trading the wrong way round. */
+  #rackwrap.compact .stripfoot { padding-top: 4px; }
+  #rackwrap.compact .panrow { margin-top: 4px; }
+  #rackwrap.compact .ctlbtns { margin-top: 6px; }
+  /* Measuring one for real rather than adding up its parts — see
+     compactStripHeight(). Both of these are given --striph explicitly, which is the
+     number the measurement is trying to produce. */
+  #rackwrap.measuring .strip,
+  #rackwrap.measuring .voicepair { height: auto; }
+
+  /* The chip. Three counts and a click: how much of this channel is folded away, and
+     the way to get it back. Same furniture as the other "this is what it is set to"
+     rows on a strip — a well, a hairline and small caps. */
+  .stripsum { display: none; }
+  #rackwrap.compact .stripsum {
+    display: block; width: 100%; margin: 0; padding: 2px;
+    font-size: 9px; line-height: 1.25; letter-spacing: .04em; text-align: center;
+    color: var(--dim); background: var(--well);
+    border: 1px solid var(--line); border-radius: 3px;
+  }
+  #rackwrap.compact .stripsum.has { color: var(--ink); }
+  #rackwrap.compact .stripsum:hover { color: var(--ink); border-color: var(--dim); }
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
   #rackwrap.collapsed { display: none; }
@@ -2906,14 +3001,23 @@
               border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; }
   .devnote { font-size: 9px; color: var(--dim); line-height: 1.35; max-width: 168px;
              margin-top: 2px; }
-  /* Same two margins as the header at the other end of the desk. */
+  /* Same two margins as the header at the other end of the desk.
+
+     margin-top: auto is belt and braces and should never do anything: #desk above
+     is the elastic child and there is no free space left for an auto margin to eat.
+     If applyDeskChain ever leaves nothing greedy, this keeps the footer down — and
+     the gap shows in --bg rather than --panel, so the bug is visible instead of
+     looking like a deliberate band of desk. */
   footer { background: var(--panel); border-top: 1px solid var(--line);
-           padding: 6px var(--rgut) 6px var(--foldx);
+           padding: 6px var(--rgut) 6px var(--foldx); margin-top: auto;
            display: flex; gap: 16px; color: var(--dim); font-size: 11px; flex: none; }
   /* An empty <pre> is still a 20px band across the bottom of the desk, and it was
-     taking that band out of the channel strips on every run where nothing failed. */
+     taking that band out of the channel strips on every run where nothing failed.
+     Capped and scrolled: a long stack trace is a page of text, and unbounded it
+     would squeeze the desk above it down to its minimums over a runtime error. */
   #err { color: var(--hot); white-space: pre-wrap; padding: 10px; font-size: 12px;
-         flex: none; margin: 0; user-select: text; -webkit-user-select: text; }
+         flex: none; margin: 0; max-height: 30vh; overflow: auto;
+         user-select: text; -webkit-user-select: text; }
   #err:empty { display: none; }
   #gate { position: fixed; inset: 0; background: rgba(10,11,14,.94); display: flex;
           align-items: center; justify-content: center; z-index: 9; }
@@ -2934,11 +3038,31 @@
      every other ask. */
   #askbody .askfield { display: block; margin-top: 14px; font-size: 10px; color: var(--dim);
                        text-transform: uppercase; letter-spacing: .06em; }
-  #askbody .askfield input { display: block; width: 100%; margin-top: 5px; padding: 7px 9px;
+  /* Input and select share every rule. A select styled only by the browser sat on the
+     same LINE as its label while every text field sat under one, so a dialog with both
+     read as two different dialogs. */
+  #askbody .askfield input, #askbody .askfield select {
+                             display: block; width: 100%; box-sizing: border-box;
+                             margin-top: 5px; padding: 7px 9px;
                              font: inherit; font-size: 12px; color: var(--ink);
                              background: var(--input); border: 1px solid var(--line);
                              border-radius: 4px; }
-  #askbody .askfield input:focus { outline: none; border-color: var(--accent); }
+  #askbody .askfield input:focus, #askbody .askfield select:focus { outline: none; border-color: var(--accent); }
+  /* The desk's own `select { max-width: 320px }` keeps the header's dropdowns off the
+     transport. In a dialog it made the two selects 54px shorter than the three inputs
+     beside them, which is the whole of what "inconsistent" looked like on screen. */
+  #askbody .askfield select { max-width: none; }
+  /* A disabled field is showing you a value you are not choosing right now — the
+     template's own tempo — so it reads as a readout rather than as a broken box. */
+  #askbody .askfield input:disabled { color: var(--dim); background: color-mix(in srgb, var(--input) 55%, transparent); }
+  /* The one row where the control comes FIRST: a checkbox with its label beside it is
+     the shape every checkbox has, and stacking it would put a tick under a heading. */
+  #askbody .askcheck { display: flex; align-items: center; gap: 7px; margin-top: 10px;
+                       font-size: 11px; color: var(--ink); text-transform: none; letter-spacing: 0; }
+  #askbody .askcheck input { width: auto; margin: 0; padding: 0; accent-color: var(--accent); }
+  /* `display` above outranks the UA stylesheet's `[hidden] { display: none }`, so a row
+     the dialog hides — the style of a Blank song — would go on being drawn. */
+  #askbody .askfield[hidden], #askbody .askcheck[hidden] { display: none; }
   #askrow { display: flex; gap: 8px; justify-content: flex-end; }
   #askrow button { padding: 7px 16px; font-size: 12px; }
   #askok { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
@@ -3098,6 +3222,14 @@
   </div>
 </div>
 
+<!-- Everything the window's height is divided between: two panels, two handles, a
+     third panel and the band that soaks up whatever is left. The header, the
+     timeline, the footer and the error log are deliberately OUTSIDE it, which is
+     what makes the footer the last thing on the page and stops it travelling up the
+     screen when a panel folds. Exactly one child in here is elastic at a time —
+     see DESK_CHAIN and applyDeskChain() in tools/mixer-entry.js. -->
+<main id="desk">
+
 <div id="arrange">
   <!-- The fold sits with the name it folds, on the left where the eye starts. -->
   <div id="arrhead">
@@ -3159,6 +3291,15 @@
        rather than to a channel, so it is a window of its own further down this file. -->
   <div id="pianoroll"></div>
 </div>
+
+<!-- Last in the chain, and the only one of the four that is not a panel: when the
+     rack, the arrangement and the effects are all folded away there is still a
+     window to fill. It also takes the sub-lane remainder while the arrangement is
+     the elastic one — the arrangement is snapped to whole lanes, so the last few
+     pixels have to go somewhere that is not half a row. -->
+<div id="deskslack" aria-hidden="true"></div>
+
+</main>
 
 <footer>
   <span id="nowsong" title="The song on the desk">—</span>

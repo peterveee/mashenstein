@@ -311,8 +311,10 @@ strip below), **M** and **S**, the family mark, and the name.
 - **Drag across a row** — select a **range of bars for that instrument**. This can
   refine a timeline selection before a lane-specific operation.
 - **Right-click a bar** — open the same selected-bars editor targeted at that
-  instrument. Mute/delete/copy/paste stay above; exact transpose, timing and gain
-  controls stay together below.
+  instrument. Mute, the note verbs and Reset Edits stay above; exact transpose, timing
+  and gain controls stay together below.
+- **Double-click a bar** — open that lane's note editor: the step grid for a kit
+  channel, the piano roll for a pitched one.
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
   window; it snaps to whole lanes and never takes the rack's last strip. Drag it up
@@ -341,31 +343,41 @@ Right-click the **timeline** for whole-song structure:
 | --- | --- |
 | Cut / Copy / Paste | moves the complete section, every track included |
 | Repeat | duplicates the selected range once, immediately after itself |
-| Insert silence | inserts the same number of empty bars at the selection start |
-| Mute bars | silences every track without changing the song length; right-click again to unmute |
-| Delete bars | removes the bars and moves everything after them earlier. The final bar is protected |
+| Insert Silence | inserts the same number of empty bars at the selection start |
+| Mute Bars | silences every track without changing the song length; right-click again to unmute |
+| Delete Bars | removes the bars and moves everything after them earlier. The final bar is protected |
+| Transpose | the only adjustment here — see below |
 
 Right-click an **arrangement lane** for that track only:
 
 | Item | Does |
 | --- | --- |
-| Edit notes | opens the selected bars in the step editor |
 | Mute / Unmute | silences or restores that track in the selected bars |
-| Delete here / Restore here | removes that track region while keeping its notes recoverable |
-| Copy / Paste | copies only that instrument's notes; paste may target a different instrument |
-| Reset | returns that track's bar edits to its written state (notes are kept) |
+| Copy Notes / Paste Notes | copies only that instrument's notes; paste may target a different instrument |
+| Erase Notes | empties those bars of that track. The notes are gone, not flagged; `⌘Z` brings them back |
+| Reset Edits | sets that track's mute, transpose, timing and gain in those bars back to none. The notes are not touched |
 
-Whole-track work is not on this panel: **Delete track**, **Duplicate**, the preset and
+Whole-track work is not on this panel: **Delete Track**, **Duplicate**, the preset and
 the track's name are on the [track panel](#right-click-a-track), which the row's
-header opens.
+header opens. Neither panel offers *Edit notes* — **double-click a bar** opens the
+right editor for that lane, and both editors have a button and a key of their own.
+
+One verb, one meaning, in both lane panels: **Notes** is the part, **Edits** are the
+desk's bar-level adjustments, and **Track** is the channel and its row. Only *Delete
+Track* removes anything from the desk.
 
 The adjustment controls are exact rather than presets:
 
 | Control | Range |
 | --- | --- |
-| Transpose | every semitone from `-12` to `+12`; shown on the arrangement as `+5`, `-7`, etc. Available for one melodic lane or every melodic track from the timeline |
-| Timing | every `1/32` step from a quarter-note early to a quarter-note late |
-| Gain | `-12` to `+12` dB in `0.5` dB steps |
+| Transpose | every semitone from `-12` to `+12`; shown on the arrangement as `+5`, `-7`, etc. One melodic lane, or every melodic track at once from the timeline |
+| Timing | every `1/32` step from a quarter-note early to a quarter-note late. One track only |
+| Gain | `-12` to `+12` dB in `0.5` dB steps. One track only |
+
+Timing and gain are **not** on the timeline panel: nudging every melodic track by the
+same sixteenth moves nothing relative to anything, and a bar of gain across the whole
+band is the master fader with extra steps. Transpose does mean something across a
+section — a key change for four bars — so it stays.
 
 A bar where a lane is silenced draws **hollow** — outlined in the lane's colour with
 nothing in it — which is a different thing from a bar the lane simply does not play
@@ -562,7 +574,8 @@ tool read. Three ways in, all on the strip:
 
 - **`✎` on the strip's header**, on hover.
 - **`✎` on the voice row**, beside the `‹ ›` arrows.
-- **Right-click the strip** → *Edit …* and *New preset from …*, next to *Change preset…*
+- **Right-click the arrangement row** → *Edit Preset*, beside *Preset* — see
+  [Right-click a track](#right-click-a-track).
 
 Not in the preset picker. Choosing a sound and shaping one are different jobs, and the
 panel that answers the first is the wrong place to hide the second.
@@ -882,17 +895,22 @@ selected channel, and either can be left up while you work.
 | Section | Holds |
 | --- | --- |
 | Track name | a desk-owned duplicate or added track's display name. Authored song lanes keep their source names, so the field is not shown for them |
-| Sound | **Change preset…** (the voice library against this strip), **Edit *preset*…** (its parameters in the rack beside it — see [Editing a preset](#editing-a-preset-and-writing-new-ones)), **New preset from this…** (a copy onto this lane, leaving the original alone). Only lanes a voice can play; the last two are absent on the engine's own voice, which has no entry to edit |
-| Track | **Duplicate** (a second strip playing the same part — see below), **Copy** / **Paste** (the part itself; paste may target a different instrument), **Clear** (empties every bar — the notes are gone, not flagged; the track, its channel and its sound stay, and `⌘Z` brings the part back), **Reset track**, **Delete track** (asks first, naming the track, and says what goes with it) |
+| Sound | **Preset** (the voice library, opened against this strip) and **Edit Preset** (its parameters in the rack beside it — see [Editing a preset](#editing-a-preset-and-writing-new-ones)). Only lanes a voice can play; Edit Preset is absent on the engine's own voice, which has no entry to edit. Neither label carries the preset's name — that is on the line under the title |
+| Track | **Duplicate** (a second strip playing the same part — see below), **Copy Notes** / **Paste Notes** (the part itself; paste may target a different instrument), **Erase Notes** (empties every bar — the notes are gone, not flagged; the track, its channel and its sound stay, and `⌘Z` brings the part back), **Reset Edits**, **Delete Track** (asks first, naming the track, and says what goes with it) |
 | Adjust | exact transpose, timing and gain across every bar of that track |
 
+Making a **new preset** from this one is not here: the preset editor's own *Save as new*
+is the same gesture at the moment you actually want it — after you have moved something
+and decided to keep it, rather than before you have opened the panel.
+
 Right-clicking a **channel strip** — or a send return, or the master — gives the five
-items about the signal path, built by the one function all three share: **Copy**,
-**Paste** (only onto the same kind of strip: a channel's sends mean nothing on a bus),
-**Paste *n* effects** (works between any two strips — a chain means the same thing
-everywhere), **Bypass / enable all effects**, and **Reset** back to defaults (`R`).
-Reset includes the voice, so the channel goes back to the engine's own; a duplicated
-track keeps its preset, because that is the lane, not a setting on it.
+items about the signal path, built by the one function all three share: **Copy
+Channel**, **Paste Channel** (only onto the same kind of strip: a channel's sends mean
+nothing on a bus), **Paste *n* Effects** (works between any two strips — a chain means
+the same thing everywhere), **Bypass / Enable All Effects**, and **Reset Channel** back
+to defaults (`R`). Reset includes the voice, so the channel goes back to the engine's
+own; a duplicated track keeps its preset, because that is the lane, not a setting on
+it. The noun changes with the strip — *Copy Send*, *Reset Master*.
 
 ### Duplicate and delete a track
 

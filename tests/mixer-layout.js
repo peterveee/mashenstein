@@ -35,13 +35,108 @@ assert(entry.includes("const bar = $('devsplit')")
   && entry.includes("bar.addEventListener('pointermove'")
   && entry.includes("bar.addEventListener('dblclick'"),
   'effects splitter handles drag and automatic-fit gestures');
-assert(/const pageChrome = \(\) =>[\s\S]*?\$\('devsplit'\)/.test(entry)
-  && /function deviceRoom[\s\S]*?h\(\$\('devsplit'\)\)/.test(entry),
+assert(/function deviceRoom\([\s\S]*?h\(\$\('devsplit'\)\)/.test(entry),
   'layout calculations reserve the effects splitter');
 assert(entry.includes('function syncDeskSplitter()')
   && /function setDevicesFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
-  && /function setMixerFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry),
+  && /function setMixerFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
+  && /function setArrangeCollapsed[\s\S]*?syncDeskSplitter\(\)/.test(entry),
   'the handle hides when either adjacent panel is folded');
+assert(/function syncDeskSplitter\(\)[\s\S]*?\$\('arrsplit'\)\.classList\.toggle\('hidden'[\s\S]*?\$\('devsplit'\)\.classList\.toggle\('hidden'/.test(entry)
+  && !/\$\('arrsplit'\)\.classList\.toggle\('hidden', on\)/.test(entry),
+  'both handles are governed together, so neither outlives the panels it borders');
+
+// ---- the desk column: a pinned footer and one elastic region ---------------------
+// The footer used to travel. #rackwrap was the only flex:1 child of the page column
+// and folding the mixer is display:none, so with nothing elastic left the column
+// stacked from the top and the footer floated into the middle of the screen. The fix
+// is structural: the four resizable regions live in #desk, the footer is outside it,
+// and which region is elastic is a class the desk sets on every fit.
+const deskAt = shell.indexOf('<main id="desk">');
+const deskEnd = shell.indexOf('</main>');
+const footerAt = shell.indexOf('<footer>');
+assert(deskAt > 0 && deskEnd > deskAt && footerAt > deskEnd,
+  'the resizable regions are inside #desk and the footer is structurally after it');
+assert(shell.indexOf('<div id="arrange">') > deskAt
+  && shell.indexOf('<div id="rackwrap">') < deskEnd
+  && shell.indexOf('<div id="devices">') < deskEnd
+  && shell.indexOf('<div id="deskslack"') < deskEnd
+  && shell.indexOf('<div id="timeline"') < deskAt,
+  'arrangement, rack, effects and the slack band divide the desk; the timeline does not');
+assert(/#desk \{[^}]*flex: 1 1 auto[^}]*min-height: 0[^}]*flex-direction: column[^}]*overflow: hidden/s.test(shell),
+  '#desk takes the window, can be squeezed below its content, and clips itself first');
+assert(/#desk > \.greedy \{[^}]*flex: 1 1 auto[^}]*min-height: 0/s.test(shell)
+  && !/#rackwrap \{[^}]*flex: 1/s.test(shell),
+  'the elastic region is chosen by a class rather than hardwired to the rack');
+assert(shell.includes('#deskslack { display: none; }')
+  && /#deskslack\.greedy \{[^}]*background: var\(--panel\)/s.test(shell),
+  'the empty band is desk-coloured and exists only while it is the elastic one');
+assert(entry.includes("const DESK_CHAIN = ['rackwrap', 'arrange', 'devices', 'deskslack']")
+  && entry.includes('function applyDeskChain()')
+  && /function fitStrips\(\) \{\s*applyDeskChain\(\)/.test(entry),
+  'the priority chain is written down once, in order, and re-run on every fit');
+assert(/#desk\.cramped \{[^}]*overflow-y: auto/s.test(shell)
+  && /classList\.toggle\('cramped', cramped\)/.test(entry),
+  'a window too short for every minimum scrolls the desk — the footer is never clipped');
+assert(/footer \{[^}]*margin-top: auto/s.test(shell)
+  && /#err \{[^}]*max-height: 30vh[^}]*overflow: auto/s.test(shell),
+  'the footer cannot float even if the chain fails, and a stack trace cannot eat the desk');
+
+// ---- one minimum table, not six constants in five functions ----------------------
+assert(/const MIN = \{[\s\S]*?timeline:[\s\S]*?arrange:[\s\S]*?mixer:[\s\S]*?devices:[\s\S]*?\};/.test(entry)
+  && /const WANT = \{[\s\S]*?arrange:[\s\S]*?devices:[\s\S]*?\};/.test(entry)
+  && !entry.includes('Math.max(140,')
+  && !entry.includes('function arrangementFloor')
+  && !entry.includes('function capDevices'),
+  'every per-panel minimum lives in one table; the 140px floor and the eight-lane "floor" are gone');
+assert(entry.includes('const deskPool = () => innerHeight')
+  && !entry.includes('const pageChrome')
+  && !/const deskPool[\s\S]{0,300}?\$\('devices'\)/.test(entry),
+  'the pool is the window less the four things outside the desk — the effects panel is not chrome');
+
+// ---- a handle moves only the two panels it borders -------------------------------
+// deviceRoom() used to subtract a hypothetical one-lane arrangement while fitStrips
+// measured the ceiling against the effects panel's live height. Two different worlds,
+// and the reason dragging the effects handle shrank the arrangement instead.
+assert(/function rackFloor\(\) \{[\s\S]*?compactStripHeight\(\)[\s\S]*?rackPad\(\)/.test(entry)
+  && /function deviceRoom\([\s\S]*?MIN\.mixer\(\)/.test(entry)
+  && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('FADER_MIN')
+  && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('laneRowHeight()'),
+  'the effects handle clamps against the rack floor alone and cannot reach the arrangement');
+assert(/function planDesk[\s\S]*?let rackH = room - arrH - devH/.test(entry),
+  'the arrangement and the effects panel are sized independently and the rack takes the difference');
+
+// ---- the shrink ladder, and nothing lost on any rung -----------------------------
+// The old floor reserved a whole UNCOMPRESSED strip because .stripbody scrolls with
+// no scrollbar: a squeezed strip lost its EQ and send rows with nothing on screen to
+// say so. Give the scroll two marks and the floor can drop to a compact strip.
+assert(/#rackwrap\.squeezed \.stripbody \{[^}]*scrollbar-width: thin/s.test(shell)
+  && /#rackwrap\.squeezed \.stripbody \{[^}]*mask-image: linear-gradient/s.test(shell)
+  && /#rackwrap\.squeezed \.stripbody::-webkit-scrollbar \{[^}]*width: 5px/s.test(shell),
+  'a squeezed strip body says it is scrolling: a slim bar and a fade off the bottom');
+assert(shell.includes('#rackwrap.compact .stripbody > *:not(.stripsum) { display: none; }')
+  && shell.includes('#rackwrap.compact .fxbtns { display: none; }')
+  && /#rackwrap\.compact \.stripsum \{/.test(shell),
+  'a compact strip is name, fader, pan, mute/solo and the chip — and nothing else');
+assert(/classList\.toggle\('squeezed'/.test(entry)
+  && /classList\.add\('compact'\)/.test(entry)
+  && !/\.strip\.compact|\.strip\.squeezed/.test(shell),
+  'the ladder is a state of the whole rack, so every fader in it stays on one line');
+assert(entry.includes('function summaryChip(key)')
+  && entry.includes('function paintSummary(strip)')
+  && entry.includes("b.className = 'stripsum'")
+  && /function stripShell[\s\S]*?summaryChip\(key\)/.test(entry)
+  && /input\.dataset\.default = String\(reset\)/.test(entry),
+  'every strip carries the chip from stripShell, and every slider records its own default');
+const openFull = /function openFullStrips\([^]*?\n\}/.exec(entry)?.[0] || '';
+assert(openFull.includes('userDevH = MIN.devices()')
+  && openFull.includes('userArrH = MIN.arrange()')
+  && !openFull.includes('localStorage'),
+  'the chip buys height from the panels the handles govern, for this session only');
+assert(/function compactStripHeight[\s\S]*?classList\.add\('compact', 'measuring'\)/.test(entry)
+  && /function compactStripHeight[\s\S]*?setProperty\('--faderh'/.test(entry)
+  && shell.includes('#rackwrap.measuring .voicepair { height: auto; }'),
+  'the rack floor is a measured compact strip with a pinned fader, not a number somebody typed');
 
 const arrangeHead = shell.indexOf('<div id="arrhead">');
 const addTrack = shell.indexOf('id="addtrackbtn"');
@@ -147,7 +242,7 @@ assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key =
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
   // cannot take back and the only place the name has to be right.
-  && /label: 'Delete track', danger: true,[\s\S]*?run: \(\) => deleteLane\(laneKey\)/.test(entry)
+  && /label: 'Delete Track', danger: true,[\s\S]*?run: \(\) => deleteLane\(laneKey\)/.test(entry)
   && /ask\(`Delete \$\{number \? `track \$\{number\}, ` : ''\}\$\{escapeHtml\(label\)\}\?`/.test(entry)
   && /The other tracks and all song bars stay in place/.test(entry)
   && /function rebuildForShape\(\) \{[\s\S]*?bankCache = \{ bank: null, sig: null, out: null \};[\s\S]*?buildRack\(\);[\s\S]*?buildArrangement\(\);[\s\S]*?rebank\(\)/.test(entry)
@@ -167,8 +262,9 @@ const trackBranch = regionFn.match(/\} else if \(wholeTrack\) \{[\s\S]*?\n  \}\n
 assert(regionFn && barBranch && trackBranch
   // Same verb as the track panel, scoped to these bars — and it EMPTIES them. Forked
   // rather than shared: clearing bar 3 must not empty the other bars of its pattern.
-  && /label: 'Clear', danger: true,[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} cleared in \$\{span\.toLowerCase\(\)\}`\)/.test(barBranch)
-  && !/'Delete here'|'Restore here'|setLanesDeleted\([^)]*true\)/.test(barBranch)
+  && /label: 'Erase Notes', danger: true,[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} erased in \$\{span\.toLowerCase\(\)\}`\)/.test(barBranch)
+  && /label: 'Copy Notes'[\s\S]*?label: 'Paste Notes'/.test(barBranch)
+  && !/'Delete here'|'Restore here'|'Clear'|setLanesDeleted\([^)]*true\)/.test(barBranch)
   // Edit notes… is gone from BOTH panels: two buttons, two keys, and a double-click on
   // the bar itself already open the editor on the channel the right-click selected.
   && !/label: 'Edit notes…'/.test(regionFn)
@@ -192,18 +288,20 @@ assert(/function openTrackEditor\(x, y, key\) \{\s*openRegionEditor\(x, y, \{ la
 'the arrangement row opens the track panel and the strip no longer does');
 // The strip gets what the master and the sends have always had: five items about the
 // signal path, built by the one function all three share.
-assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{kind\}`[\s\S]*?label: `Reset \$\{kind\}`/.test(entry)
+assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S]*?label: `Reset \$\{Kind\}`/.test(entry)
+  && /const Kind = kind\[0\]\.toUpperCase\(\) \+ kind\.slice\(1\)/.test(entry)
   && /stripMenu\(el, key, 'channel'\)/.test(entry)
   && /stripMenu\(el, key, 'send'\)/.test(entry)
   && /stripMenu\(el, '__master', 'master'\)/.test(entry),
 'a channel strip gets the same channel menu as the master and the send returns');
-assert(/actionSection\('Sound', \[[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?editVoice\(laneKey\)[\s\S]*?editVoice\(laneKey, \{ isNew: true \}\)/.test(trackBranch)
-  && /Duplicate — layer \$\{layersOf\(laneKey\)\.length \+ 1\}/.test(trackBranch)
+assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey\)/.test(trackBranch)
+  && !/isNew: true/.test(trackBranch)
+  && /label: 'Duplicate',\s*title: layersOf\(laneKey\)\.length/.test(trackBranch)
   // Clear EMPTIES the lane rather than flagging it: rests written into every bar, the
   // right rest for the lane's kind, and the delete flags taken off with them. A flag
   // left the notes in the file and in the roll, and Reset track undid the clear. Both
   // panels go through the one helper — shared here, forked in the bar panel.
-  && /label: 'Clear'[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} cleared`, \{ shared: true \}\)/.test(trackBranch)
+  && /label: 'Erase Notes'[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} erased`, \{ shared: true \}\)/.test(trackBranch)
   && /function clearLaneBars\(laneKey, from, to, what, \{ shared = false \} = \{\}\) \{[\s\S]*?PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\) \? false : null[\s\S]*?const write = shared \? writeBarNotesShared : writeBarNotes[\s\S]*?setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], false\)[\s\S]*?write\(eb, next, bar, laneKey, empty\)/.test(entry)
   && !/setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], true\)/.test(entry)
   // No Channel section and no Edit notes…: the first belongs to the strip, the second has
@@ -215,6 +313,29 @@ assert(/actionSection\('Sound', \[[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?e
   && !/label: 'Edit notes…'/.test(trackBranch)
   && !/setLaneMute|setLaneSolo/.test(trackBranch),
 'the track panel carries the sound and the part, and nothing about the channel');
+// ---- one vocabulary across all three panels --------------------------------------
+//
+// Every button in the three right-click panels is Title Case, and the destructive ones
+// name the noun they act on. `Clear` / `Reset` / `Delete` were three words for "less
+// than there was" whose difference you had to already know; `Erase Notes`, `Reset
+// Adjustments` and `Delete Track` say it. The same verb means the same thing in the bar
+// panel and the track panel — only the heading's scope differs.
+const panelLabels = [...regionFn.matchAll(/label: (?:[\w?.\s]+\?\s*)?'([^']+)'(?:\s*:\s*'([^']+)')?/g)]
+  .flatMap((m) => [m[1], m[2]]).filter(Boolean);
+assert(panelLabels.length >= 12
+  && panelLabels.every((label) => label.split(' ').every((word) => /^(?:[A-Z]|\d|from$|in$|to$)/.test(word))),
+`every panel button is Title Case (${panelLabels.filter((l) => !l.split(' ').every((w) => /^(?:[A-Z]|\d|from$|in$|to$)/.test(w))).join(', ') || 'none stray'})`);
+assert(!/label: '(?:Clear|Reset|Reset track|Delete)'/.test(regionFn)
+  && panelLabels.includes('Erase Notes') && panelLabels.includes('Reset Edits')
+  && panelLabels.includes('Delete Track') && panelLabels.includes('Delete Bars')
+  && panelLabels.filter((l) => l === 'Erase Notes').length === 2
+  && panelLabels.filter((l) => l === 'Copy Notes').length === 2,
+'the destructive verbs name what they act on, and the notes verbs are shared by both lane panels');
+// Timing and gain are per-track. Across every melodic track at once they are a no-op and
+// the master fader respectively, so the timeline panel does not offer them.
+assert(/if \(laneKey\) \{\s*addControl\(\{ field: 'offset'[\s\S]*?addControl\(\{ field: 'gain'/.test(entry)
+  && /if \(!laneKey \|\| melodic\.includes\(laneKey\)\) \{\s*addControl\(\{ field: 'transpose'/.test(entry),
+'the timeline adjusts transpose only; timing and gain belong to a single track');
 // The title is the track, said the way the desk says it everywhere else, with no sub-line
 // under it explaining what a panel headed `Track 3. Rim` could possibly be about.
 assert(/heading\.textContent = laneKey[\s\S]*?wholeTrack \? `\$\{number \? `Track \$\{number\}\. ` : ''\}\$\{laneLabel\}`/.test(entry)
