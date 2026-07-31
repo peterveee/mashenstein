@@ -30,7 +30,11 @@ import {
 import { drawnSpan } from '../tools/mixer-bar-grid.js';
 import {
   draftOf, writeBarNotes, writeBarNotesShared, entryOf, removeLanes, copyLaneBars,
+  readBarLane,
 } from '../tools/lib/arrangement-edit.js';
+// A length that was PLAYED rather than drawn: the last case in this suite runs a take
+// through the recorder and out of the real renderer.
+import { createTake } from '../tools/lib/note-recorder.js';
 import { bankSource } from '../tools/lib/song-source.js';
 import { midiBuffer } from '../tools/lib/render-midi-bank.js';
 import { openRenderer } from '../tools/lib/render-bank-browser.js';
@@ -348,6 +352,11 @@ assert(lastTick(plain, 'Bass') === Math.round(1.8 * 24),
 // not change the sound is the one bug none of the assertions above can see.
 const A2LANE = () => [A2, ...new Array(31).fill(null)];
 const energy = (r) => r.outL.reduce((t, v) => t + v * v, 0);
+// Loudest instantaneous sample. The right measure for "is another oscillator running":
+// total energy over a window is interference-dominated between close pitches — two
+// sines a third apart can carry LESS energy than a different pair, while the peak of
+// the summed waveform still rises with every voice added.
+const peak = (r) => r.outL.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 const same = (a, b) => a.outL.length === b.outL.length
   && a.outL.every((v, i) => v === b.outL[i]);
 
@@ -403,6 +412,85 @@ try {
   });
   assert(same(shifted, written),
     'a transposed bar changes pitch and nothing else — the lengths are not frequencies');
+
+  // ---- and a length that was PLAYED, not drawn ------------------------------------
+  //
+  // Recording captures how long a key was held and writes it here, so the last claim of
+  // this suite is the one that closes the loop: a take goes through the real recorder,
+  // the real chained write, and comes out of the real renderer sounding longer. Written
+  // correctly and inaudible is the failure mode the object-level assertions in
+  // tests/note-recorder.js cannot see.
+  const recorded = async (hold) => {
+    const bank = { bpm: 120, sections: [{ bass: new Array(32).fill(null) }] };
+    let d = draftOf(bank);
+    const take = createTake({ read: (bar, key) => readBarLane(bank, d, bar, key) });
+    const t = take.add({ bar: 0, lane: 'bass', step: 0, midi: freqMidi(A2), freq: A2 });
+    if (hold) take.close(t, hold);
+    for (const e of take.entries()) {
+      d = writeBarNotesShared(bank, d, e.bar, e.lane, e.notes16, e.lengths16);
+    }
+    const entry = entryOf(bank, d);
+    return play({ ...bank, sections: [...bank.sections, ...entry.sections], order: entry.order });
+  };
+  // ---- a chord on a lane that is not a chord lane ---------------------------------
+  //
+  // `CHORD_LANES` names the two lanes whose hand-written playback loops over the step.
+  // The rack does not care: "the same sound is one voice on a bass lane and five on a
+  // chord lane". So a preset-voiced `lead` holding an array must sound as a chord, and
+  // sound like the same chord on a real chord lane — otherwise recording a pad into a
+  // new song writes a bank the engine plays wrong.
+  const chordOn = (lane, extra) => play({
+    [lane]: [[A2, third, fifth], ...new Array(31).fill(null)], ...extra,
+  });
+  const oneOn = (lane, extra) => play({
+    [lane]: [[A2], ...new Array(31).fill(null)], ...extra,
+  });
+  const leadOne = await oneOn('lead', { leadVoice: 'fmBell' });
+  const leadChord = await chordOn('lead', { leadVoice: 'fmBell' });
+  assert(energy(leadChord) > energy(leadOne) * 1.8,
+    `a chord on a PRESET-voiced lead sounds as three notes, not one`
+    + ` (energy ${energy(leadChord).toFixed(1)} against ${energy(leadOne).toFixed(1)})`);
+  // And on the ENGINE voice too, which is the whole point of the loops in scheduleStep:
+  // `play()` builds an oscillator per call, so a chord is three calls. Without them a
+  // lead had to be given a preset before it could hold a chord — a rule that contradicted
+  // what anybody could hear by pressing two keys at once.
+  //
+  // Asserted as a MONOTONIC rise across one, two and three tones rather than against a
+  // ratio. Three sines a third apart do not sum to three times the energy of one — they
+  // interfere — so a threshold picked to look right is a threshold that means nothing.
+  // "Each tone you add is audible" is the actual claim.
+  for (const lane of ['lead', 'bass', 'twinkle']) {
+    const at = async (tones) => peak(await play({
+      [lane]: [tones.length === 1 ? tones[0] : tones, ...new Array(31).fill(null)],
+    }));
+    const one = await at([A2]);
+    const two = await at([A2, third]);
+    const three = await at([A2, third, fifth]);
+    assert(two > one * 1.2 && three > two * 1.05,
+      `every tone added to a chord on the ENGINE-voiced ${lane} is another oscillator`
+      + ` (peak ${one.toFixed(3)} -> ${two.toFixed(3)} -> ${three.toFixed(3)})`);
+  }
+  const chordsOne = await oneOn('chords', { chordsVoice: 'fmBell' });
+  const chordsChord = await chordOn('chords', { chordsVoice: 'fmBell' });
+  const ratio = (a, b) => energy(a) / energy(b);
+  assert(Math.abs(ratio(leadChord, leadOne) - ratio(chordsChord, chordsOne)) < 0.05,
+    'and it thickens by the same ratio as the identical chord on a real chord lane —'
+    + ' the rack is lane-agnostic, so there is one polyphony rule and not two');
+  // The other half of the claim, and the reason `polyLane` needs the bank: an
+  // engine-voiced lane is hand-written `play(b.lead[s], …)` and must be left alone.
+  const engineLead = await play({ lead: A2LANE() });
+  assert(energy(engineLead) > 0,
+    'while a single note on any of them still renders exactly as before — tests/null-test'
+    + ' checks that claim at the sample, across two whole songs');
+
+  const stab = await recorded(null);
+  const sustained = await recorded(6);
+  assert(energy(stab) > 0,
+    'a note played into an empty lane sounds at all — the take reached the speakers');
+  assert(energy(sustained) > energy(stab) * 1.5,
+    `and a key held six steps rings for longer than one that was stabbed`
+    + ` (energy ${energy(sustained).toFixed(1)} against ${energy(stab).toFixed(1)}),`
+    + ` so a captured note-off is audible rather than merely written`);
 } finally {
   await renderer.close();
 }

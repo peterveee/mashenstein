@@ -112,3 +112,46 @@ export function loudness(channels, sampleRate = SR) {
 
 /** How many dB to move a track to land on a target loudness. */
 export const gainToTarget = (lufs, target = -16) => (Number.isFinite(lufs) ? target - lufs : 0);
+
+/**
+ * The K-weighted RMS of a whole render — a LEVEL, not a loudness measurement.
+ *
+ * `loudness()` above answers "how loud is this track", and to do that it has to gate:
+ * the quiet parts of a song are not what the song sounds like. That is the wrong
+ * question for one note of one voice. Half of such a render is the tail and the
+ * silence after it, the gate would keep a different fraction of it for a decaying
+ * blip than for a held pad, and the number would stop being comparable between the
+ * two — which is the entire job here.
+ *
+ * So: no gate, no blocks, the whole buffer. K-weighting stays, because that is the
+ * part that knows a 55 Hz thud carries less than a 2 kHz tick at the same amplitude.
+ * The result is proportional to the ENERGY one note puts into a fixed window, which
+ * is what has to match when a preset stands in for the voice it replaces — the same
+ * peak with half the energy is the sound arriving quieter, and that is exactly what
+ * peak-normalising the library got wrong.
+ *
+ * Comparable only between renders of the same length, which is why every render
+ * tools/measure-voices.js makes is one note in a 32-step bank at 120 BPM.
+ *
+ * @param {Float32Array[]} channels  [L] or [L, R]
+ * @returns {number} linear RMS amplitude, channel powers summed as in BS.1770
+ */
+export function noteLevel(channels, sampleRate = SR) {
+  const chans = channels.filter(Boolean);
+  const n = chans[0]?.length || 0;
+  if (!n) return 0;
+  const shelf = highShelf(sampleRate);
+  const hp = highPass(sampleRate);
+  const tmp = new Float64Array(n);
+  const filt = new Float64Array(n);
+  let power = 0;
+  for (const ch of chans) {
+    for (let i = 0; i < n; i++) tmp[i] = ch[i];
+    filterInto(tmp, filt, shelf);
+    filterInto(filt, tmp, hp);
+    let acc = 0;
+    for (let i = 0; i < n; i++) acc += tmp[i] * tmp[i];
+    power += acc / n;                    // channel weight 1.0, as above
+  }
+  return Math.sqrt(power);
+}

@@ -139,45 +139,43 @@ const OFFBEATS = [2, 6, 10, 14, 18, 22, 26, 30];
  *                composition, and because the desk rewrites only the half below
  *                its marker. Choosing a voice on a strip still overrides it.
  *
- * ---- Why the packs carry a drumGain -----------------------------------------
+ * ---- Why the packs carry a drumGain and a musicTrim -------------------------
  *
- * A preset is peak-matched to its lane, and voiceGain says why that is only a
- * starting point: "a pad and a stab at the same peak are not equally loud". Every
- * pack here plays sustained presets where the electropop starter played the
- * engine's short square blips, so measured through the render pipeline with no mix
- * at all — every fader at 0 dB, as a new scratch song is — the instruments came out
- * up to 6 LU hotter against the same kit. That is not a balance anybody chose.
+ * Two measured numbers, doing two different jobs, and both re-derived whenever the
+ * voice library is re-levelled — see tools/measure-voices.js, and `voiceGain` in
+ * src/data/voices.js for what a preset's level now means.
  *
- * So each pack states two measured numbers instead, and they work as a PAIR:
- * `drumGain` scales the pack's whole kit up by its measured excess (laneTrim
- * multiplies it in, so it reaches presets as well as the hand-written voices), and
- * `musicTrim` takes the same amount off the song bus. The kit therefore ends up
- * exactly where it was measured — no drum lane moves any closer to the ceiling than
- * it already was — and the instruments come down by the excess. There is no melodic
- * bus to turn down instead: a melodic lane's own gain key is deliberately NOT set,
- * because the engine reads `b[gainKey] ?? voiceGain(...)` and naming one REPLACES the
- * derived level with a hand-picked absolute, so the preset normalisation would stop
- * applying to that lane.
+ * `drumGain` sets the pack's KIT against its instruments. It reaches presets as well
+ * as the hand-written voices, because `laneTrim` multiplies it into the derived level
+ * — which is the only way a drum lane can be balanced at all, since a drum lane has no
+ * gain key of its own. Every pack is aimed at the kit sitting 0.8 LU under the music,
+ * which is what the electropop starter measured when it played the engine's own
+ * voices, and so the balance every pack was originally written against. Techno is the
+ * one exception and says so where it states its numbers.
  *
- * Measured against electropop, whose balance the desk has always opened with, and
- * re-measurable: render each pack's kit lanes and pitched lanes separately at a few
- * seeds with no mix, compare LUFS, and the gap should come out near electropop's. The
- * one exception is Techno, which is meant to be kit-forward and says so where it
- * states its numbers.
+ * `musicTrim` sets where the whole song LANDS. It scales the song bus, so it moves a
+ * pack's level without touching the balance `drumGain` just set — and the packs need
+ * it: left alone, a pad-and-celeste song with no kit in it measured 9 LU quieter than
+ * a house track, which is a style picker that shouts at you every third choice. Each
+ * one is set so the pack lands on -22.0 LUFS, where four of the game's own cabinet
+ * songs measure. Boom Bap is the one pack that stops short of it, at -22.3: its kick
+ * reaches the ceiling first, and a pack does not go through -1 dBFS to make a target.
+ *
+ * There is no melodic bus to turn down instead of the song bus. A melodic lane's own
+ * gain key is deliberately NOT set, because the engine reads `b[gainKey] ??
+ * voiceGain(...)` and naming one REPLACES the derived level with a hand-picked
+ * absolute — the preset normalisation would stop applying to that lane.
+ *
+ * Re-measurable, and re-measure them after any change to the library's levels: render
+ * each pack's full-band starter, then its kit lanes and its pitched lanes separately,
+ * with no mix at all — every fader at 0 dB, as a new scratch song is — and move
+ * `drumGain` by the error in kit-minus-music and `musicTrim` by the error in the full
+ * mix. Two rounds converge, because the two interact through the sum.
  *
  * One constraint on the voices themselves: a pack may only name TONE, NOISE or DRUM
  * presets, never an `eng*` one. An engine preset is a bundle of bank keys that
  * `withVoices` expands — and `withVoices` returns early when a song has no mix, which
  * every generated song does. Named here, an engine preset would silently do nothing.
- *
- * `musicTrim` carries a second measured job on top of that one. It scales the whole
- * song bus, so it moves a pack's LEVEL without touching the balance the pair just
- * set — and the packs needed it: a pad-and-celeste song with no kit in it at all
- * measured 9 LU louder than the electropop starter, which is a style picker that
- * shouts at you every third choice. Each trim is set so the pack lands on −22 LUFS,
- * where six of the game's own songs measure. Electropop keeps its historical 0.7 and
- * its 1.6 LU of quiet: it is the canonical starter, and every scratch song generated
- * before styles existed is in it.
  */
 export const SONG_STYLES = [
   {
@@ -226,10 +224,11 @@ export const SONG_STYLES = [
       beat: ['kick', 'snare', 'hats'],
       band: ['kick', 'snare', 'hats', 'bass', 'chords', 'lead'],
     },
-    // No voices at all: this pack IS the engine's own sound, and the songs written
-    // before styles existed are all in it. Naming presets here would silently
-    // re-voice the canonical starter.
-    bank: { musicTrim: 0.7 },
+    bank: {
+      musicTrim: 1.147, drumGain: 0.926,
+      kickVoice: 'stKickPunch', snareVoice: 'stSnareCrisp', hatsVoice: 'stHatTick',
+      bassVoice: 'stRoundMono', chordsVoice: 'stFmKeys', leadVoice: 'stMonoBright',
+    },
   },
 
   {
@@ -267,9 +266,9 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'tom', 'bass', 'organChords', 'lead'],
     },
     bank: {
-      musicTrim: 0.7,
-      kickVoice: 'kickDeep', snareVoice: 'snareBrush', tomVoice: 'taiko',
-      bassVoice: 'subSine', organChordsVoice: 'reedOrgan', leadVoice: 'vibratoLead',
+      musicTrim: 2.018, drumGain: 0.691,
+      kickVoice: 'stKickDeep', snareVoice: 'stSnareBrush', tomVoice: 'stTaiko',
+      bassVoice: 'stSubSine', organChordsVoice: 'stReedOrgan', leadVoice: 'stVibratoLead',
     },
   },
 
@@ -318,9 +317,9 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'hats', 'rim', 'bass', 'chords', 'lead'],
     },
     bank: {
-      musicTrim: 0.71, drumGain: 1.16,
-      kickVoice: 'kickTight', snareVoice: 'snareRim', hatsVoice: 'hatTick', rimVoice: 'clave',
-      bassVoice: 'tpBassGuitar', chordsVoice: 'clav', leadVoice: 'synthPluck',
+      musicTrim: 0.689, drumGain: 1.283,
+      kickVoice: 'stKickTight', snareVoice: 'stSnareRim', hatsVoice: 'stHatTick', rimVoice: 'stClave',
+      bassVoice: 'stTpBassGuitar', chordsVoice: 'stClav', leadVoice: 'stSynthPluck',
     },
   },
 
@@ -369,9 +368,9 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'hats', 'rim', 'bass', 'chords', 'lead'],
     },
     bank: {
-      musicTrim: 0.63, drumGain: 2.04,
-      kickVoice: 'kickThud', snareVoice: 'snareFat', hatsVoice: 'hatPedal', rimVoice: 'dsRim',
-      bassVoice: 'rubberBass', chordsVoice: 'epiano', leadVoice: 'celeste',
+      musicTrim: 1.249, drumGain: 1.086,
+      kickVoice: 'stKickThud', snareVoice: 'stSnareFat', hatsVoice: 'stHatPedal', rimVoice: 'stDsRim',
+      bassVoice: 'stRubberBass', chordsVoice: 'stEpiano', leadVoice: 'stCeleste',
     },
   },
 
@@ -410,9 +409,9 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'hats', 'ohats', 'bass', 'chords', 'lead'],
     },
     bank: {
-      musicTrim: 0.61, drumGain: 1.26,
-      kickVoice: 'kickTight', snareVoice: 'snareCrisp', hatsVoice: 'hatClosed', ohatsVoice: 'hatOpen',
-      bassVoice: 'detuneBass', chordsVoice: 'warmPad', leadVoice: 'duoDetune',
+      musicTrim: 1.214, drumGain: 0.736,
+      kickVoice: 'stKickTight', snareVoice: 'stSnareCrisp', hatsVoice: 'stHatClosed', ohatsVoice: 'stHatOpen',
+      bassVoice: 'stDetuneBass', chordsVoice: 'stWarmPad', leadVoice: 'stDuoDetune',
     },
   },
 
@@ -471,9 +470,9 @@ export const SONG_STYLES = [
       band: ['bass', 'chords', 'twinkle', 'lead'],
     },
     bank: {
-      musicTrim: 0.6,
-      rimVoice: 'woodBlock', tomVoice: 'triangleDing',
-      bassVoice: 'subSine', chordsVoice: 'glassPad', twinkleVoice: 'celeste', leadVoice: 'musicBox',
+      musicTrim: 1.506,
+      rimVoice: 'stWoodBlock', tomVoice: 'stTriangleDing',
+      bassVoice: 'stSubSine', chordsVoice: 'stGlassPad', twinkleVoice: 'stCeleste', leadVoice: 'stMusicBox',
     },
   },
 
@@ -521,9 +520,9 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'tom', 'bass', 'chords', 'lead'],
     },
     bank: {
-      musicTrim: 0.49, drumGain: 1.57,
-      kickVoice: 'kickThud', snareVoice: 'snareFlam', tomVoice: 'taiko',
-      bassVoice: 'roundMono', chordsVoice: 'synthStrings', leadVoice: 'reedLead',
+      musicTrim: 0.978, drumGain: 1.097,
+      kickVoice: 'stKickThud', snareVoice: 'stSnareFlam', tomVoice: 'stTaiko',
+      bassVoice: 'stRoundMono', chordsVoice: 'stSynthStrings', leadVoice: 'stReedLead',
     },
   },
 
@@ -563,14 +562,15 @@ export const SONG_STYLES = [
       band: ['kick', 'snare', 'hats', 'bass', 'organChords', 'lead'],
     },
     bank: {
-      // The one drop is the quietest kit here — two hits a bar — so this is the one
-      // pack whose measured correction goes the other way: kit down, song up.
-      musicTrim: 0.88, drumGain: 0.77,
+      // The one drop is the sparsest kit here — two hits a bar — and it is measured
+      // like every other pack: the gate the loudness runs through drops the silence
+      // between the hits, so what this balances is how the kit sits WHEN it plays.
+      musicTrim: 1.552, drumGain: 1.488,
       // The echo is the instrument here, so the bank turns it up and lets the bass
       // into it — the two keys speed.js uses for the same reason.
       echoLevel: 0.5, bassEcho: true,
-      kickVoice: 'kickDeep', snareVoice: 'snareCrisp', hatsVoice: 'hatSizzle',
-      bassVoice: 'fmGrowl', organChordsVoice: 'amOrgan', leadVoice: 'glassLead',
+      kickVoice: 'stKickDeep', snareVoice: 'stSnareCrisp', hatsVoice: 'stHatSizzle',
+      bassVoice: 'stFmGrowl', organChordsVoice: 'stAmOrgan', leadVoice: 'stGlassLead',
     },
   },
 
@@ -615,9 +615,9 @@ export const SONG_STYLES = [
       band: ['kick', 'clap', 'hats', 'ohats', 'bass', 'chords', 'lead'],
     },
     bank: {
-      musicTrim: 0.76, drumGain: 1.09,
-      kickVoice: 'kickPunch', clapVoice: 'clapRoom', hatsVoice: 'hatTick', ohatsVoice: 'hatOpen',
-      bassVoice: 'tpBassy', chordsVoice: 'tpPianoetta', leadVoice: 'tpBah',
+      musicTrim: 0.859, drumGain: 1.181,
+      kickVoice: 'stKickPunch', clapVoice: 'stClapRoom', hatsVoice: 'stHatTick', ohatsVoice: 'stHatOpen',
+      bassVoice: 'stTpBassy', chordsVoice: 'stTpPianoetta', leadVoice: 'stTpBah',
     },
   },
 
@@ -667,14 +667,14 @@ export const SONG_STYLES = [
       band: ['kick', 'clap', 'hats', 'rim', 'bass', 'chords', 'lead'],
     },
     bank: {
-      // The one pack whose kit is MEANT to lead, and the only one measured against a
-      // target other than electropop's. Left alone its instruments came out 4.4 LU under
-      // the drums — sparse bleeps and one pad against relentless sixteenths — which is
-      // techno, right up to the point where the bass and the chord stop being audible.
-      // So the correction is partial: the kit still leads, by about 1.5 LU instead of 4.4.
-      musicTrim: 0.87, drumGain: 0.72,
-      kickVoice: 'kickDirty', clapVoice: 'clapTight', hatsVoice: 'metalHatClosed', rimVoice: 'cowbell',
-      bassVoice: 'acidSquelch', chordsVoice: 'breathPad', leadVoice: 'tpLectric',
+      // The one pack whose kit is MEANT to lead, and the only one aimed at a balance
+      // other than electropop's: sparse bleeps and one pad against relentless
+      // sixteenths is techno, right up to the point where the bass and the chord stop
+      // being audible. So the kit leads by 1.5 LU rather than by whatever it happens
+      // to land on — see BALANCE_BY_ID in the note above.
+      musicTrim: 1.021, drumGain: 1.034,
+      kickVoice: 'stKickDirty', clapVoice: 'stClapTight', hatsVoice: 'stMetalHatClosed', rimVoice: 'stCowbell',
+      bassVoice: 'stAcidSquelch', chordsVoice: 'stBreathPad', leadVoice: 'stTpLectric',
     },
   },
 
@@ -742,9 +742,9 @@ export const SONG_STYLES = [
     bank: {
       // Measured like every other pack bar Techno: a machine kit is reserved by design
       // here, so the sequencer and the bass carry the record rather than the drums.
-      musicTrim: 0.76, drumGain: 0.72,
-      kickVoice: 'kickClick', clapVoice: 'clap808', hatsVoice: 'dsHatClosed', rimVoice: 'zap',
-      bassVoice: 'roundMono', chordsVoice: 'padTriangle', twinkleVoice: 'fmBell', leadVoice: 'amHollow',
+      musicTrim: 0.81, drumGain: 1.288,
+      kickVoice: 'stKickClick', clapVoice: 'stClap808', hatsVoice: 'stDsHatClosed', rimVoice: 'stZap',
+      bassVoice: 'stRoundMono', chordsVoice: 'stPadTriangle', twinkleVoice: 'stFmBell', leadVoice: 'stAmHollow',
     },
   },
 ];

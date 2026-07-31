@@ -25,55 +25,17 @@ export const bank = {
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
-// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
-// and nothing above it is ever touched by the desk.
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
   master: 1.1,
+  voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
-    kick: {
-      eq: {
-        high: 15,
-      },
-      effects: [
-        {
-          id: "reverb",
-        },
-      ],
-    },
-    clap: {
-      send: {
-        delay: 1.24,
-        reverb: 1.38,
-      },
-    },
-    hats: {
-      pan: -0.402,
-      eq: {
-        high: 8.9,
-      },
-    },
-    bass: {
-      eq: {
-        low: -6.4,
-        mid: -4.1,
-        high: 5.6,
-      },
-    },
-    lead: {
-      send: {
-        delay: 1,
-      },
-      effects: [
-        {
-          id: "pingpong",
-          params: {
-            wet: 0.39,
-            feedback: 0.23,
-          },
-        },
-      ],
-    },
+    kick: { eq: { high: 15 }, effects: [{ id: "reverb" }] },
+    clap: { send: { delay: 1.24, reverb: 1.38 } },
+    hats: { pan: -0.402, eq: { high: 8.9 } },
+    bass: { eq: { low: -6.4, mid: -4.1, high: 5.6 } },
+    lead: { send: { delay: 1 }, effects: [{ id: "pingpong", params: { wet: 0.39, feedback: 0.23 } }] },
   },
 };
 

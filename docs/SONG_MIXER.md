@@ -102,16 +102,29 @@ rest — because the instrument a song is composed for is part of the compositio
 because the desk only ever rewrites the half of the file below its own marker. Every
 strip therefore opens at 0 dB with no mix at all, and the desk's voice picker shows the
 pack's choice as the lane's engine default; choosing a preset on the strip still
-overrides it. Each pack also carries a measured `drumGain`/`musicTrim` pair: preset
-voices are peak-matched to their lane, and a sustained pad at the same peak as the
-engine's short square blip is several LU louder, so the pair puts every pack's kit and
-instruments in the balance the Electropop starter has always had — and the trim also
-lands every pack on −22 LUFS, where the game's own songs measure, so the picker does
-not shout at you every third choice. Techno is the one deliberate exception: its kit is
+overrides it. Each pack also carries a measured `drumGain`/`musicTrim` pair: `drumGain` puts the
+pack's kit 0.8 LU under its instruments — the balance the Electropop starter measured
+when it played the engine's own voices — and `musicTrim` lands the whole pack on
+−22 LUFS, where the game's own cabinet songs measure, so the picker does not shout at
+you every third choice. Both are re-derived by measurement whenever the voice library
+is re-levelled; see the note at the top of `tools/lib/song-styles.js` for how. Techno is the one deliberate exception: its kit is
 meant to lead, and its numbers keep it leading rather than flattening it to the pop
 balance. A pack may only name Tone, Noise or Drum presets — an `eng*` preset is a
 bundle of bank keys that nothing expands on a song with no mix, so it would silently
-do nothing. Scratch songs can be
+do nothing.
+
+Every voice a pack names is a **frozen starter** — `stRoundMono`, `stKickPunch` — held
+in the `STARTER` table of `src/data/voices.js` and written only by
+`tools/freeze-starter-voices.js`. They are complete copies of library presets, taken
+once, and nothing can edit them: `TABLES` in `tools/lib/voices-source.js` does not list
+`STARTER`, so `tableOf` cannot find one, the desk's voice editor refuses to open one,
+and `POST /voice-save` refuses to write one. That is what makes a starter a starter. The
+library preset each was copied from stays exactly as editable as it ever was, and every
+song naming a library preset goes on following your edits — but a song generated next
+month sounds like the pack was written to sound rather than like whatever the library
+holds by then. Starters are left out of the picker, since they would be a second row
+for a sound already listed; a lane already playing one still shows it, and duplicating
+one gives you an ordinary editable preset of your own. Scratch songs can be
 edited, saved, rendered, exported and restored like built-in songs; marker-less legacy
 MIDI imports remain read-only.
 
@@ -205,15 +218,115 @@ the automatic fit.
 | --- | --- |
 | **A melodic channel** | two octaves of keys, opened at the octave that channel's own part is written in. ◀ ▶ shift it. Click a key, or drag across them to glide. |
 | **A drum channel** | the song's whole **kit**, one pad per drum, rather than two octaves of keys that all play the same kick. Each pad plays its own channel; drag across them for a roll. |
-| **catch keys** | plays from the computer keyboard — `A W S E D F T G Y H U J` for notes, `Z` `X` for the octave, the home row for pads. While it is lit the desk's own letter shortcuts (`M S R B L`) are yours to play with; `Esc` gives them back. |
+| **Keyboard** | plays from the computer keyboard. `Z S X D C V G B H N J M` is the lower octave with its black keys, `Q 2 W 3 E R 5 T 6 Y 7 U` the one above, carrying on through `I O P` and `[ = ]`; `−` and `+` shift the whole board, and `,` is the C above M. The home row plays pads on a kit. While it is lit the desk's own letter shortcuts (`M S R B L`, the loop-bar numbers, `[` `]`) are yours to play with; `Esc` gives them back. Shifted keys are never claimed, which is what leaves `⇧R` free to arm recording with your hands still on the notes. |
 | **MIDI** | plays from a real MIDI keyboard over Web MIDI (Chrome and Edge). Ports that arrive after you switch it on are picked up too. On a kit, General MIDI's drum notes land on the right pads — 36 on the kick, 38 on the snare, 42 on the hats — and anything unmapped falls back to pad order. |
+| **Record** | writes what you play into the song. See below. |
 | **The dot** | lit whenever the channel is sounding — including a drum, whose own note is nowhere near this keyboard. |
 
-Notes only, from all three: **note-off and velocity are ignored on purpose.** A
-preview's length and level are the channel's own, the way its voice is — the note
-sounds exactly as the song plays it. Holding a key longer would need the voice rack to
-sustain, which the hand-written voices cannot do at all. Both are worth revisiting the
-day the desk plays notes *into* a song rather than only out of one.
+**Velocity is ignored on purpose**, from all three: a preview's level is the channel's
+own, the way its voice is, and a note at half of it is a preview of a mix decision
+nobody made. There is nowhere for it to go either — a bank has no per-note velocity
+field, because level is a property of the channel rather than of the note.
+
+Note-off *is* read now, and only recording has a use for it: see **Record**.
+
+#### Record
+
+Arm it and play, and the notes are kept. All three inputs write — the drawn keys, the
+computer keyboard and MIDI — because all three arrive at the same one-note seam.
+
+**Record is in the transport**, last, after Pause — where a record button has been on
+every deck since tape, because it arms what the transport is about to do. A red dot at
+rest; while it is writing the whole button goes red with a white dot in it, and the take's
+note count rides on its corner.
+
+**MIDI is on the right**, with the panel toggles, because that is what it is: *which
+instrument plays this channel* — the same question the ⌨ button answers.
+
+Neither needs this window. A MIDI keyboard is a real instrument, your eyes are on your
+hands or on the roll filling up, and a window you are not looking at is a window in the
+way. Only the *computer* keyboard needs the keys open, because that is where the desk
+hands its letters over.
+
+Recording is realtime: the transport rolls, you play along, and everything lands on the
+nearest sixteenth. The natural gesture is the desk's own — **loop two bars, arm, play,
+and hear it come round on the next pass.** Arming while stopped is legal and is the
+count-in you get for nothing: capture begins the instant you hit space. There is no
+click track to count you in with, and looping is a better one anyway, since you hear
+the bar before your entry on every single pass.
+
+| | |
+| --- | --- |
+| **Armed** (amber, hollow dot) | waiting for the transport. Nothing is being written yet. |
+| **Recording** (red, pulsing) | writing. The keyboard's border and the playhead say so too, and the header button carries the take's note count on its corner — a live tally of what you have played since arming, which clears when you disarm. It is not a pending count: the notes went into the song as you played them. |
+| `⇧R` | arm or stop, from anywhere on the desk. |
+| `Esc` | stop, and drop whatever has not been written yet — half a second's worth at most, since the take is written every beat. Use `⌘Z` for the part already in the song. |
+| `⌘Z` | a bar's worth of playing is one undo step. |
+
+**Keeping it.** Nothing to do to keep a take *on the desk* — each beat's worth goes
+straight into the song's arrangement draft, which is written to `localStorage` and is
+still there after a refresh. It is the same draft a painted note or a moved fader lands
+in, so the song shows as changed and `A/B saved` will hold it against what is on disk.
+
+To keep it **on disk you have to Save the song**, exactly as with every other edit. Until
+then it is a draft: `Revert` throws it away with the rest of them, and a song imported
+from a `.mid` cannot be saved at all.
+
+What it does and does not do:
+
+- **How long you hold a key becomes the note's length**, written into the lane's
+  `*Len` array exactly as the piano roll's resize handle writes it. On a chord channel
+  every tone keeps its own, so an arpeggio held down into a chord records as the shape
+  you played rather than as one block. Worth knowing what
+  that buys: a length is a *scheduled duration*, not a gate, and most of the
+  hand-written voices cannot sustain — so a three-second hold on a voice with a 200 ms
+  envelope still sounds like 200 ms. It is the difference between a stab and a held
+  note on the lanes that can ring, and nothing at all on a kick. Drums get no length.
+- **It only adds.** Recording never removes a note; erasing is the piano roll's job.
+  A recorder you could leave armed and a recorder that could delete are two different
+  tools, and this is the first one. Play a wrong note and it joins the part — `⌘Z`, or
+  rub it out in the roll. Notes accumulate across passes of the loop, so building a part
+  up one note at a time over several passes is exactly what it is for.
+- **Chords record on any pitched channel**, whatever it is voiced with — bass, lead,
+  harmony, twinkle and the two chord channels alike. Nothing has to be set up first.
+  Notes struck within about 45ms of each other are treated as one chord and land on the
+  same step, so a hand that spans a rounding boundary does not come out as a note plus a
+  dyad a step later.
+- **Four channels cannot**, and none of it is about the synth: the **drums** (a step is a
+  hit, not a pitch), the **gesture** channels — glissando, sweeps, organ swoop, electro fx
+  — where a step starts a shape whose timing lives inside the gesture rather than a note,
+  and **vox** / **shout**, where a step picks a *word* and the formant path is keyed to it.
+  Two words at once is not a chord. The desk says which, once per take.
+- **The piano roll is unchanged.** Clicking a new pitch on a step that already has a note
+  still *replaces* it, which is what you want on a single-note part; a step only behaves
+  chordally once it actually holds a chord, which is where it lets you pick one tone back
+  out of what you recorded.
+- **It changes the pattern, not one bar.** A note played into a looping section lands
+  in every bar that plays that part, which is the same choice the step grid's "edit all
+  repeats" makes. The alternative would put your note in bar 1 of a four-bar section and
+  bring it back every fourth pass, which reads as dropped notes rather than as an edit.
+- **Sixteenths are the floor**, so there is no quantise to turn off and no swing: a
+  bank holds sixteen steps to the bar and nothing between them. That is the format
+  rather than the recorder being coy about it.
+- **A drag is not a note.** A glide across the keys or a roll across the pads is a
+  gesture for *finding* a note, so only the press is recorded. A roll is a real musical
+  gesture and one day should be recordable; a glide never was.
+- **On a song imported from a .mid**, recording works and survives a refresh, but Save
+  is off on those songs — there is no desk marker to write below — so the take can never
+  reach disk. Arming says so.
+
+A take is buffered and written **once per beat**, not once per note: a note edit pushes
+an undo step, revalidates the arrangement and rebuilds the timeline, so a per-note commit
+would mean one undo step per key and a desk rebuild between them. A beat is about half a
+second at 120bpm, which is how long a note takes to appear in the roll after you play it.
+
+Those writes are free because they *coalesce*: edits less than 700ms apart collapse into
+one undo snapshot, so a continuous phrase is a single `⌘Z` rather than one per beat. Leave
+a gap longer than that and the next thing you play becomes its own undo step — which is
+the useful way round, because `⌘Z` then takes back the phrase you just played instead of
+the whole session. The intermediate writes are silent rather than toasting four times a
+bar. The engine takes each one without stopping, which is what lets you hear the take on
+the next pass.
 
 Nothing here is a second synthesiser. The sequencer plays the note, handed a bank with
 nothing in it but that note ([`soloBank`](../src/engine/lanes.js) →
@@ -228,7 +341,10 @@ the sequencer had already queued into its lookahead — so a preview opens it ag
 the song's own trim, or every key on a stopped desk would land 80 dB down. A song
 *change* still gets its half-second gap: that one is there so the old song's tail
 cannot run into the new one's downbeat, and a key pressed inside it is not a reason to
-hand the tail back.
+hand the tail back. Opening a song *stops* the one that was playing rather than merely
+ducking it — every note it still had sounding is cut, which a drawn note bars long
+needs and a note a step and a half long never did. What rings on is only what is past
+the channels: the reverb and echo returns, decaying with nothing left feeding them.
 
 While the song plays, the keys light with the notes coming through the channel — the
 part as it is played, in the octave it is played in. Notes above or below the two
@@ -236,8 +352,15 @@ octaves shown light the ◀ or ▶ button instead, which is both "there is more"
 way to go for it. On a kit, the whole row lights as the beat goes past.
 
 All three inputs — the drawn keys, the computer keyboard and MIDI — are callers of the
-same one-note seam, which is why the third one cost thirty lines. A fourth (a step
-recorder, notes written back into the bank) would be another.
+same one-note seam, which is why the third one cost thirty lines. Recording is the
+fourth, and cost about as little for the same reason: it hangs off the same two
+functions, and the part that decides what a note *is* it borrows from the piano roll
+rather than restating ([`note-recorder.js`](../tools/lib/note-recorder.js) owns the
+clock and the buffer, and nothing else).
+
+The fifth would be a **step recorder** — transport parked, each note landing on the
+playhead and advancing it — which is the same take buffer and the same flush with a
+different clock in front of it.
 
 ### Limiter · A/B · Undo
 
@@ -550,7 +673,11 @@ use to anybody. The `»` on the strip head reopens it as soon as there is room.
 ### Voice — what the channel is played by
 
 The button at the top of every strip that can take one: the six melodic lanes and all
-seven drums. It reads **ENGINE** until you change it, and lights teal when you have.
+seven drums. It lights teal when you have chosen one. Until you do it names, in dim
+italics, the hand-written voice the lane is *already* playing — `Square`, `Shop Bass`,
+`Arcade Kick` — because a strip that only said **ENGINE** was withholding what the
+library already knew. It falls back to **ENGINE** where a song's bank has been tuned
+past every preset, which is the honest answer rather than a name that is nearly right.
 
 Everything else on the strip is what has been *done to* a channel; this is what the
 channel *is*. Clicking it opens the **voice library**
@@ -597,9 +724,19 @@ Points worth knowing:
   the engine's own seeded buffer, with an optional pitched body — the hissing snares
   and claps), and the **drum synth** (`ds` presets): the Microtonic construction, an
   oscillator with a pitch envelope and a filtered noise source, each with its own
-  envelope, summed into a drive. None of them touch `Tone.Noise`, whose buffer comes
+  envelope, summed into a drive — plus, since, a struck **resonator** (a click into a
+  filter narrow enough to ring, which is what a rim, a clave and a snare shell are) and
+  a **metal cluster** (six inharmonic squares through a highpass — the 808's cymbal
+  circuit). None of them touch `Tone.Noise`, whose buffer comes
   from `Math.random` and would stop two renders of a song being identical — everything
   noisy here is built on the engine's seeded buffer, so stems still sum to the mix.
+- **The kit names itself.** The `Arcade` presets are the engine's own eight drums —
+  the 808 kick, the 2.6kHz snare crack, the three-burst clap, the two hats, the
+  rimshot, the tom and the filtered crash — written down so an untuned drum lane can
+  say what it plays. Five of them set no bank keys because their bodies read none, so
+  they name without appearing in the panel: *Engine default* is already the way back
+  to them. The three with knobs (kick, tom, crash) are ordinary entries you can pick,
+  which is how a song whose kick was tuned to `Shop Kick` gets the plain one back.
 - **A voice replaces the lane**, it does not sit on top of it. The written-in bass
   slapback comes back on the new voice; the lead's octave-sine brightener belongs to
   the engine's lead and goes with it. To put a second sound *under* a part rather than
@@ -665,11 +802,22 @@ silence per pixel. See `VoiceRack.refresh`.)
   pitched **body** under it, and its **taps**: the repeats that turn one hit into a
   clap, each with its own offset so an unevenly-spaced 808 clap stays unevenly spaced.
   A **drum-synth** preset (the `ds` kit) shows the Microtonic layout: an **oscillator**
-  section — waveform, a pitch that falls `PITCH → FALLS TO` over `SWEEP`, its own
-  attack/decay with an `EXP`/`LIN` curve — a **noise** section whose filter cutoff can
-  itself sweep, with the same envelope controls, a **drive**, and the taps. Either
-  section switches off whole: a tom is all oscillator, a clap all noise, and a preset
-  with neither is silent, which the save refuses.
+  section — waveform, a pitch that falls `PITCH → FALLS TO` over `SWEEP` in the shape
+  `SWEEP CURVE` names (`EXP` an even glide, `LIN` a hang then a plunge, `SNAP` the
+  analogue drum machine's own: the click, then the body), its own attack/hold/decay with
+  an `EXP`/`LIN` curve of its own — an **FM** section that bends it with a
+  second oscillator (`RATIO`, `INDEX` and an envelope of its own — clangs, bells, rims),
+  a `KNOCK` — the engine kick's own 300 Hz mid punch, as a level and nothing else —
+  a **noise** section whose filter cutoff can itself sweep, with a `COLOUR` and a
+  `SLOPE` as well as the envelope controls, a **ring** section (`STRIKE` into a
+  `RESONANCE` narrow enough to hold a pitch), a **metal** section (`PARTIALS` at a
+  `SPREAD` around a `PITCH`, through their own filter), the **drive** with its shaper
+  `SHAPE` and the `TONE` after it, a `SAG` on every envelope — the two-stage decay that
+  makes a drum read as struck rather than faded — and **feel**, behind a switch of its
+  own: per-hit `LEVEL`/`PITCH`/`TONE VAR`, with the two per-tap walks living in the
+  Taps card where there is something for them to walk. Every section switches off whole: a tom is all oscillator, a
+  clap all noise, a rim mostly ring, and a preset with none of them is silent, which
+  the save refuses.
 - **Pots, not sliders.** The desk's own knob at the desk's own size — the same 42px as
   the pan pot on every strip, sweeping from one end rather than from the centre — with
   the name above it and the reading inside it. Drag either axis, shift for fine, click
@@ -1045,14 +1193,21 @@ restores a deleted layer.
 | `G` | the kit's **step grid** — a window, open or shut |
 | `N` | the effects region's **Notes** view — the selected channel's part |
 | `[` `]` | playhead sync, ±10 ms — see below |
+| `⇧R` | arm or stop **recording** — opens the keyboard if it is shut |
 | `⌘Z` | undo |
 
 Keys never fire while you are typing into a field.
 
-While the on-screen keyboard is **catching keys**, the letters play notes instead:
-`A W S E D F T G Y H U J` up the octave, `Z` `X` to shift it, the home row for drum
-pads. `space`, the arrows and `⌘Z` still belong to the desk, and `Esc` hands the
-letters back.
+While the on-screen keyboard has **Keyboard** lit, the letters play notes instead:
+`Z S X D C V G B H N J M` is the lower octave with its black keys, `Q 2 W 3 E R 5 T 6 Y
+7 U` the one above, carrying on through `I O P` and `[ = ]`; `−` and `+` shift the whole
+board, `,` is the C above M, and the home row plays drum pads. `space`, the arrows and
+`⌘Z` still belong to the desk, and `Esc` hands the letters back.
+
+Shifted keys are never claimed by the on-screen keyboard, which is what leaves `⇧R`
+working while your hands are on the notes. Note that plain `R` is the channel reset and
+shifted `R` is record — the two are one keystroke apart on purpose, so that the one you
+reach for mid-take is the one with the modifier on it.
 
 ---
 
@@ -1141,7 +1296,7 @@ buttons; `/measure` is there for the command line.
 | `POST /render` | renders one track through the real engine with a mix applied, writes `dist/<slug>-mix.wav`, and reports peak / LUFS against a −16 LUFS target |
 | `POST /audition` | the same render, then opens `tools/audition` on it — the plugin host runs where the mixer runs, because that is where the plugins are |
 | `POST /measure` | the same measurement across many tracks without writing files — the half of "get the volume right" that a one-song desk cannot show |
-| `POST /voice-save` | writes one preset into `src/data/voices.js`, renders it to measure its peak, and splices that into `PEAKS`. A preset that renders silent is put back rather than saved |
+| `POST /voice-save` | writes one preset into `src/data/voices.js`, renders it to measure it, and splices the result into `LEVELS` and `PEAKS`. A preset that renders silent is put back rather than saved |
 | `POST /voice-delete` | removes a preset and its peak. Refused with `409` and the list of songs while any of them still names it, unless `force` |
 | `GET /voice-refs?id=<id>` | which songs play a preset — asked before a delete, shown across the top of the editor |
 | `GET /tracks` | the track list |

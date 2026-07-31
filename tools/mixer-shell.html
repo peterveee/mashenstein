@@ -314,9 +314,9 @@
                       border-color: transparent; background: var(--traybtn); color: var(--ink); }
   .transport button:hover { background: var(--traybtn-hi); border-color: transparent; color: #fff; }
   .transport button svg { fill: currentColor; }
-  .transport .playbtn { background: var(--go); color: var(--on-go); }
-  .transport .playbtn:hover { background: color-mix(in srgb, var(--go) 82%, var(--ink)); }
-  .transport .playbtn.on { box-shadow: 0 0 0 2px color-mix(in srgb, var(--go) 40%, transparent); }
+  /* Only green while actually playing — not at rest. */
+  .transport .playbtn.on { background: var(--go); color: var(--on-go); }
+  .transport .playbtn.on:hover { background: color-mix(in srgb, var(--go) 82%, var(--ink)); }
   .transport button:disabled { opacity: .4; }
   /* Lit whenever anything on the desk is soloed, anywhere — the one place that can
      always tell you, and the one click that puts it all back. */
@@ -433,6 +433,11 @@
                                 color: #5a101d; font: 500 8px/10px ui-monospace, SFMono-Regular, Menlo, monospace; }
   #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--hot);
               box-shadow: 0 0 6px var(--hot); pointer-events: none; left: 0; }
+  /* Recording, on the line that says where you are. It is already `--hot`, so this is
+     weight rather than colour — wider and lit harder. Reinforcement, not the signal: the
+     keyboard's own border and its pulsing dot are what actually tell you, and a playhead
+     that changed colour would be competing with the eight other things that use red. */
+  #playhead.recording { width: 3px; box-shadow: 0 0 12px var(--hot), 0 0 3px var(--hot); }
   /* The clock lives up in the transport now — the strip under the ruler was a whole
      row of window spent on one number, a bar count the arrangement already marks,
      and a song length nobody was reading. */
@@ -456,9 +461,6 @@
      a flex:1 hardwired to the rack, which is what left the footer floating in
      mid-screen the moment the rack was folded away. */
   #desk > .greedy { flex: 1 1 auto; min-height: 0; }
-  /* The effects panel's height is a variable everywhere else. While it is the
-     elastic one, flex owns it instead, or --devh would fight the growth. */
-  #devices.greedy { height: auto; }
   /* The band at the end of the chain, and the only one that is not a panel: with
      the rack, the arrangement and the effects all folded away there is still a
      window to fill, and an empty strip of desk is the honest thing to fill it with
@@ -554,6 +556,37 @@
      plays, not sixteen separate targets. */
   .arrbar { flex: 1; display: flex; cursor: pointer; min-width: 0; position: relative; }
   .arrbar:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
+  /* Tiny gain trim inside the header cell — barely there until hovered. */
+  /* The general range rules below are deliberately generous for the rack faders.
+     Keep this selector more specific: the arrangement trim is only a tiny nudge
+     before the bars, not a second full-size mixer control. */
+  .arrrow .arrgain { -webkit-appearance: none; appearance: none; width: 30px; height: 5px;
+                     flex: none; margin: 0 2px 0 1px; padding: 0; border-radius: 2px;
+                     cursor: ew-resize; background: var(--line2); border: none; display: none; }
+  .arrgainwrap { display: none; position: relative; flex: none; width: 30px; height: 5px;
+                 margin: 0 2px 0 1px; }
+  .arrgainwrap .arrgain { display: block; width: 30px; margin: 0; }
+  #arrange.track-gain-visible .arrrow .arrgainwrap { display: block; }
+  .arrrow .arrgain::-webkit-slider-runnable-track { height: 5px; border-radius: 2px;
+                                                     background: var(--line2); border: none; }
+  .arrrow .arrgain::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+                     width: 10px; height: 10px; border-radius: 50%; margin-top: -2.5px;
+                     background: var(--faint); border: none; box-shadow: none; }
+  .arrrow .arrgain::-moz-range-track { height: 5px; border-radius: 2px;
+                                       background: var(--line2); border: none; }
+  .arrrow .arrgain::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%;
+                                       background: var(--faint); border: none; }
+  .arrrow:hover .arrgain { background: var(--grid); }
+  .arrrow:hover .arrgain::-webkit-slider-thumb { background: var(--ctl); }
+  .arrgain:hover::-webkit-slider-thumb { background: var(--ctl-hi); }
+  .arrrow:not(:hover) .arrgain { opacity: .72; }
+  .arrgainreadout { display: none; position: absolute; z-index: 6; left: 50%; bottom: calc(100% + 4px);
+                    transform: translateX(-50%); width: max-content; padding: 3px 5px;
+                    border: 1px solid var(--line); border-radius: 3px; background: var(--panel2);
+                    color: var(--ink); font-size: 9px; line-height: 1;
+                    font-variant-numeric: tabular-nums; white-space: nowrap;
+                    pointer-events: none; box-shadow: 0 2px 6px color-mix(in srgb, var(--deep) 45%, transparent); }
+  .arrgainreadout.show { display: block; }
   .arrmeta { position: absolute; z-index: 1; inset: 1px 2px auto 2px; overflow: hidden;
              white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
              color: var(--lane-ink); font: 700 8px/11px ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -738,9 +771,7 @@
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
   #rackwrap.collapsed { display: none; }
-  /* The effects shelf has its own vertical handle, just as the arrangement does:
-     it is the boundary between the strips above and the controls below, not a
-     border that belongs to either panel. */
+  /* The devsplit handle borders the rack and the notes panel. */
   #devsplit { flex: none; height: 11px; background: var(--well); cursor: ns-resize;
               border-top: 1px solid var(--seam); border-bottom: 1px solid var(--seam);
               position: relative; touch-action: none; }
@@ -751,6 +782,82 @@
   #devsplit.hidden { display: none; }
   #devsplit:hover::after { background: var(--dim); }
   #devsplit.dragging::after { background: var(--ink); }
+
+  /* ---- Notes panel (piano roll) ---------------------------------------------
+     Sits between the mixer and the effects panel. Its height is negotiated by the
+     splitter above it; the effects panel below takes a fixed height. */
+  #notes { flex: none; display: flex; flex-direction: column;
+           background: var(--panel); border-top: 1px solid var(--line); }
+  #notes.collapsed { flex: 0 0 auto; }
+  #notes.collapsed #pianoroll { display: none; }
+  #notes.greedy { flex: 1 1 auto; min-height: 0; }
+  #notehead { display: flex; align-items: center; gap: var(--capgap);
+              padding: 4px var(--rgut) 4px var(--foldx);
+              border-bottom: 1px solid var(--line); flex: none; }
+
+  /* ---- The roll's controls, in the Notes header -----------------------------
+     They live out here rather than in a second row inside the panel: two headers
+     naming the same channel is a row of chrome for nothing. They used to be built
+     into #devhead, which was right while the roll and the effect cards were two
+     views of ONE region and wrong the moment those became two panels — a key
+     picker on a header labelled Effects belongs to nothing under it.
+
+     `mixer-piano-roll.js` hands them over already clustered — part, view, key —
+     and the grid appends the scope button after them. Four things to read, not
+     eight, and the fences between them are drawn here rather than as separator
+     elements so the grid can keep appending that button without knowing the rule.
+
+     Nothing in here is inside #pianoroll, so none of the roll's own control rules
+     reach it. That is why the sizes are restated: `.fxsel` is width:100% by
+     default, and eight of those in a flex row squeezed every select until its
+     text ran under its own arrow — "Square Tone" reading as "Square Tone✓". */
+  #notes.collapsed .ssqhostbar { display: none; }
+  #notehead .ssqhostbar { display: flex; align-items: center; gap: 10px;
+                          flex: none; margin-left: auto; }
+  .ssqhostbar .ssqgrp { display: flex; align-items: center; gap: 5px; }
+  /* Content-width, never squeezed: a native select clamped narrower than its text
+     runs the text under the arrow instead of eliding it (see .row.divrow .fxsel,
+     which pays for the same problem in a fixed-width card column). The max-widths
+     are a backstop for an unusually long part name, not the working size. */
+  .ssqhostbar .fxsel { width: auto; flex: none; margin-top: 0;
+                       font-size: 10px; padding: 3px 5px; }
+  .ssqhostbar .ssqlane-pick { max-width: 148px; }
+  .ssqhostbar .ssqscalekind { max-width: 120px; }
+  /* One control with two ends, not two more loose buttons in a row that already
+     had too many: shared frame, a hairline down the middle. */
+  .ssqhostbar .ssqoct { display: inline-flex; align-items: stretch; flex: none;
+                        background: var(--input); border: 1px solid var(--line);
+                        border-radius: 3px; overflow: hidden; }
+  /* line-height in PIXELS, not a ratio: 12 + 3 + 3 + the frame's 1 either side is
+     exactly the 20px the link beside it comes to, so the two sit on one line rather
+     than one of them a pixel proud of the other. */
+  .ssqhostbar .ssqoctbtn { width: 22px; flex: none; padding: 3px 0; font: inherit;
+                           font-size: 12px; line-height: 12px; text-align: center;
+                           color: var(--dim); background: none;
+                           border: 0; border-radius: 0; }
+  .ssqhostbar .ssqoctbtn + .ssqoctbtn { border-left: 1px solid var(--line); }
+  .ssqhostbar .ssqoctbtn:hover { color: var(--ink); background: var(--panel2); }
+  .ssqhostbar .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
+                         letter-spacing: .04em; color: var(--dim);
+                         background: var(--input); border: 1px solid var(--line);
+                         border-radius: 3px; }
+  .ssqhostbar .ssqlink:hover { color: var(--ink); border-color: var(--accent); }
+  .ssqhostbar .ssqlink.on { background: var(--primary); color: var(--accent);
+                            border-color: var(--primary); }
+  /* The fences. After the link's own padding, so the border it grows gets the same
+     breathing room on both sides. The rule is height-of-the-controls, not
+     height-of-the-header: one horizontal line still runs through the row. */
+  .ssqhostbar .ssqgrp + .ssqgrp,
+  .ssqhostbar .ssqgrp + .ssqlink { border-left: 1px solid var(--line);
+                                   padding-left: 8px; }
+
+  /* ---- Effects panel (bottom) -----------------------------------------------
+     Fixed height — grows to fit its cards, doesn't need a splitter. When the user
+     clicks an effect slot the panel auto-opens if collapsed. */
+  #devices { flex: none; display: flex; flex-direction: column;
+             background: var(--panel); border-top: 1px solid var(--line); }
+  #devices.collapsed { flex: 0 0 auto; }
+  #devices.collapsed #devrack { display: none; }
   /* The sends are the last two strips in the rack's own row. Same strips as the
      channels — same head, same insert slots, same fader.
 
@@ -1516,57 +1623,30 @@
      sound — you cannot hear a category — and while they sat in the panel they cost
      two rows of controls on every edit. Over the controls rather than beside them,
      because it is the last thing you do and the only thing you are doing. */
-  #voiceedit .vesheet { position: absolute; inset: 0; z-index: 2; display: flex;
-                        flex-direction: column; gap: 6px; padding: 10px;
-                        background: var(--panel2); border-radius: 5px; }
-  #voiceedit .vesheet h4 { margin: 0 0 2px; font-size: 11px; color: var(--ink);
-                           text-transform: none; letter-spacing: 0; }
-  #voiceedit .vefield { display: flex; flex-direction: column; gap: 3px; }
-  #voiceedit .vefield .k { font-size: 8px; letter-spacing: .05em; color: var(--dim);
-                           text-transform: uppercase; }
-  #voiceedit .vefield .fxsel { width: 100%; font-size: 10.5px; padding: 4px 5px; }
-  /* The name field. It used to live in the panel header and carried its styling with
-     it; moving it here left it on the browser default, which in a dark panel is a
-     white box. */
-  #voiceedit .vename { width: 100%; padding: 5px 7px; font: inherit; font-size: 11px;
-                       color: var(--ink); background: var(--input);
-                       border: 1px solid var(--line); border-radius: 4px; }
-  #voiceedit .vename:focus { outline: none; border-color: var(--accent); }
-  /* Equal halves, the way the panel's own three are equal thirds. */
-  /* What Update would reach, said where the buttons are. The panel already names these
-     songs at the top, and that is context you read once — this is the same fact at the
-     moment it becomes a decision. Amber, like every other "this is further-reaching than
-     it looks" on the desk. */
-  #voiceedit .vereach { margin: 2px 0 0; padding: 5px 7px; font-size: 9.5px; line-height: 1.4;
-                        color: var(--solo); background: var(--solo-wash);
-                        border: 1px solid var(--solo-line); border-radius: 4px; }
-  #voiceedit .vereachhead { margin-bottom: 3px; }
-  /* One song, one tick. The state is spelled out in words beside each name rather than
-     left to the box alone: "follows the update" and "keeps the sound it has" are the
-     two outcomes, and a column of bare checkboxes makes you work out which is which. */
-  #voiceedit .vereachrow { display: flex; align-items: center; gap: 6px;
-                           padding: 2px 0; cursor: pointer; }
-  #voiceedit .vereachrow input { width: 11px; height: 11px; margin: 0; flex: none;
-                                 accent-color: var(--accent); cursor: pointer; }
-  #voiceedit .vereachname { color: var(--ink); font-size: 10px; }
-  #voiceedit .vereachwhat { margin-left: auto; font-size: 9px; color: color-mix(in srgb, var(--solo) 45%, var(--dim)); }
-  /* Pinned reads as settled rather than as a warning — it is the safe half of this. */
-  #voiceedit .vereachrow.pinned .vereachwhat { color: var(--accent); }
-  /* Not knowing is its own state and must not read like "nothing plays this". */
-  #voiceedit .vereachunknown { color: var(--hot); border-color: var(--hot-line); background: var(--hot-wash); }
-  /* The far-reaching button, when it is far-reaching. Outlined rather than filled: it
-     stops being the obvious thing to press, which is the whole point, while staying
-     exactly where it was so it is never hunted for. */
-  #voiceedit .vesave.vefar { background: none; color: var(--solo); border-color: var(--solo-line); }
-  #voiceedit .vesave.vefar:hover { background: var(--solo-wash); color: var(--solo); }
-  /* The fork. A normal secondary action — it is the SAFE one, so it wears no warning. */
-  #voiceedit .venew { white-space: nowrap; }
-  #voiceedit .vesheetfoot { display: flex; gap: 5px; margin-top: auto; }
-  #voiceedit .vesheetfoot > button { flex: 1 1 0; width: auto; min-width: 0; margin: 0;
-                                     padding: 6px 8px; font-size: 10.5px; }
-  #voiceedit .vesheetfoot .devlink::after { content: none; }
-  #voiceedit .venote:focus { outline: none; border-color: var(--accent); }
-  #voiceedit .venote::placeholder { color: var(--dim); }
+  .vesheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex;
+                      align-items: center; justify-content: center;
+                      background: rgba(0,0,0,0.45); }
+  .vesheet-backdrop .vesheet { width: 340px; max-height: 90vh; overflow-y: auto;
+                               display: flex; flex-direction: column; gap: 6px;
+                               padding: 10px; background: var(--panel2);
+                               border-radius: 5px; }
+  .vesheet-backdrop .vesheet h4 { margin: 0 0 2px; font-size: 11px; color: var(--ink);
+                                  text-transform: none; letter-spacing: 0; }
+  .vesheet-backdrop .vefield { display: flex; flex-direction: column; gap: 3px; }
+  .vesheet-backdrop .vefield .k { font-size: 8px; letter-spacing: .05em; color: var(--dim);
+                                  text-transform: uppercase; }
+  .vesheet-backdrop .vefield .fxsel { width: 100%; font-size: 10.5px; padding: 4px 5px; }
+  .vesheet-backdrop .vename { width: 100%; padding: 5px 7px; font: inherit; font-size: 11px;
+                              color: var(--ink); background: var(--input);
+                              border: 1px solid var(--line); border-radius: 4px; box-sizing: border-box; }
+  .vesheet-backdrop .vename:focus { outline: none; border-color: var(--accent); }
+  .vesheet-backdrop .venew { white-space: nowrap; }
+  .vesheet-backdrop .vesheetfoot { display: flex; gap: 5px; margin-top: auto; }
+  .vesheet-backdrop .vesheetfoot > button { flex: 1 1 0; width: auto; min-width: 0; margin: 0;
+                                            padding: 6px 8px; font-size: 10.5px; }
+  .vesheet-backdrop .vesheetfoot .devlink::after { content: none; }
+  .vesheet-backdrop .venote:focus { outline: none; border-color: var(--accent); }
+  .vesheet-backdrop .venote::placeholder { color: var(--dim); }
   /* The only part that scrolls. Its own scrollbar rather than the panel's, so the
      name row and the save row stay where you left them. */
   #voiceedit .verack { display: flex; flex-direction: column; gap: 0;
@@ -1738,7 +1818,19 @@
   #voiceedit .vedanger:hover { background: var(--hot-wash); color: color-mix(in srgb, var(--hot) 62%, var(--ink)); }
   #voiceedit .vesave { color: var(--accent); background: var(--primary); border: 1px solid var(--accent-line);
                        border-radius: 4px; }
-  #voiceedit .vesave:disabled { color: var(--faintest); background: var(--input); border-color: var(--line); }
+  .vesheet-backdrop .venote::placeholder { color: var(--dim); }
+  .vesheet-backdrop .vesave { color: var(--accent); background: var(--primary);
+                              border: 1px solid var(--accent-line); border-radius: 4px; }
+  .vesheet-backdrop .vesave:disabled { color: var(--faintest); background: var(--input);
+                                       border-color: var(--line); }
+  .vesheet-backdrop .velevel { display: flex; align-items: baseline; gap: 7px; padding: 5px 7px;
+                               background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
+  .vesheet-backdrop .velevelnum { flex: none; font-size: 11px; color: var(--ink);
+                                  font-variant-numeric: tabular-nums; }
+  .vesheet-backdrop .velevelsays { font-size: 9px; line-height: 1.35; color: var(--dim); }
+  .vesheet-backdrop .velevel.bad { border-color: var(--solo-line); background: var(--solo-wash); }
+  .vesheet-backdrop .velevel.bad .velevelnum,
+  .vesheet-backdrop .velevel.bad .velevelsays { color: var(--solo); }
 
   /* The level, on the save sheet: the number, then what it means for the sound. Amber
      only when there is something to do about it — a normal estimate is a reading, not
@@ -1845,16 +1937,17 @@
      The 6px is the strip of chassis the keys sit on — .ssqkey starts at 6 inside the
      cell — so it comes off the padding here and is added back into the width. */
   #pianoroll { --keys: calc(var(--contentx) - var(--capx) + 6px);
-             display: none; flex: 1; min-height: 0;
+             display: flex; flex: 1; min-height: 0;
              flex-direction: column;
              padding: 4px 0 8px calc(var(--capx) - 6px);
              background: none; border: none; border-radius: 0; box-shadow: none; }
-  #devices.collapsed #pianoroll { display: none !important; }
-  :is(#stepseq,#pianoroll).show { display: flex; }
-  /* The roll's controls go into the region's header (see `headerHost` in
-     mixer-bar-grid.js) — two rows naming one channel is a row of chrome for nothing —
-     so it has no header of its own. The window keeps one, because a window needs a
-     title, a way out and something to drag. */
+  /* The roll is always visible when the notes panel is open; the panel's .collapsed
+     class hides it (see #notes.collapsed #pianoroll above).
+     The step sequencer window is display:none by default and uses .show to appear. */
+  #stepseq.show { display: flex; }
+  /* The roll's own built-in header is hidden: the notes panel provides the header
+     (#notehead) with the fold button and label, so there is no need for a second one
+     inside the scroll area. The step sequencer window keeps its header for dragging. */
   #pianoroll .ssqhead { display: none; }
   /* The window's header, which is also its handle. */
   #stepseq .ssqhead { display: flex; align-items: center; gap: 8px; flex: none;
@@ -2223,10 +2316,9 @@
                            border-radius: 1px; pointer-events: none; }
   #pianoroll .ssqcell:hover { background: var(--cellhover); }
   #pianoroll .ssqcell.on:hover { background: var(--lane); filter: brightness(1.15); }
-  #pianoroll .ssqlane-pick { width: auto; max-width: 130px; flex: none; font-size: 10.5px;
-                             padding: 3px 6px; }
-  #pianoroll .ssqroot, #pianoroll .ssqscalekind { width: auto; flex: none; font-size: 10px;
-                             padding: 3px 5px; }
+  /* The lane picker, the key and the scale used to be sized here. They are never
+     inside #pianoroll any more — `headerHost` puts them in the Notes header — so
+     their rules live with that header instead. See `.ssqhostbar` up there. */
   /* The shared cell's own states, undone. In the grid a cell is a switch and reads as
      one — a raised square that alternates shade by beat group, with a margin opening a
      gap every four. Here it is a slice of a continuous field, so the banding, the gaps
@@ -2489,6 +2581,51 @@
      it survives the button lighting up teal — a second colour would go light-on-light
      there and the picture would vanish at exactly the moment it is telling you something. */
   .oskicon .body, .seqicon .body, .rollicon .body { fill: currentColor; }
+  /* ---- MIDI in ---------------------------------------------------------------------
+     A five-pin DIN, which is what the socket on the back of a MIDI keyboard looks like.
+     Ring stroked, pins filled, both in currentColor — and NO colour rule of its own for
+     the lit state, deliberately. `button.on` already paints the teal background and sets
+     `color: var(--on-accent)` for whatever is drawn on it, exactly as it does for the
+     four icons beside this one. Overriding `color` here to teal was teal-on-teal: the
+     button lit up as a solid block with the socket invisible inside it. */
+  .midiicon .ring { fill: none; stroke: currentColor; stroke-width: 1.3; }
+  .midiicon .pin { fill: currentColor; stroke: none; }
+
+  /* ---- Record ----------------------------------------------------------------------
+     The colour is the state, and there are only two worth telling apart at a glance:
+     a red dot sitting in the row like every other button, and — while it is actually
+     writing — the whole button red with a white dot in it. That is what a record button
+     has looked like since tape, and it reads from across the room without being read.
+
+     `--hot` rather than a hand-picked red: it is the desk's own red, defined in all nine
+     themes including the parchment ones, and it is already the playhead's colour. */
+  .recicon .body { fill: var(--hot); }
+  /* Armed but not rolling — the transport has not started yet. Still the red-dot-on-black
+     resting look, with the ring lit and the dot breathing to say it is waiting on you. */
+  #recbtn.on { border-color: var(--hot); }
+  #recbtn.on .body { animation: recpulse 1.4s ease-in-out infinite; }
+  /* Rolling. White on red: the one state that should never be mistaken for any other. */
+  #recbtn.live { background: var(--hot); border-color: var(--hot); }
+  #recbtn.live .body { fill: #fff; animation: recpulse 1s ease-in-out infinite; }
+  /* The count rides on the corner rather than widening the button: the header has no
+     room to grow, and a number that pushed everything along as you played would move the
+     buttons out from under the pointer. Only ever drawn while a take is running. */
+  #recbtn { width: var(--ctlh); height: var(--ctlh); padding: 0; position: relative;
+            border-radius: 6px; border-color: transparent;
+            background: var(--traybtn); color: var(--ink); }
+  #recbtn:hover { background: var(--traybtn-hi); border-color: transparent; color: #fff; }
+  #recbtn svg { width: var(--ctlicon); height: var(--ctlicon); fill: currentColor; }
+  #recbtn[data-count]:not([data-count=""])::after {
+    content: attr(data-count); position: absolute; top: -5px; right: -5px;
+    min-width: 13px; padding: 0 2px; border-radius: 7px;
+    background: var(--hot); color: #fff;
+    font: 700 9px/13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-align: center; pointer-events: none;
+    box-shadow: 0 0 0 1.5px var(--panel);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #recbtn.on .body, #recbtn.live .body { animation: none; }
+  }
   #osk { position: fixed; z-index: 14; display: none; left: 0; top: 0;
          background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
          box-shadow: 0 18px 44px color-mix(in srgb, var(--deep) 66%, transparent); user-select: none; }
@@ -2607,7 +2744,33 @@
   #osk .oskwarn { font-size: 9px; color: var(--solo); text-transform: uppercase;
                   letter-spacing: .05em; white-space: nowrap; }
   #osk .sp { flex: 1; min-width: 12px; }
-  #osk .oskcatch, #osk .oskmidi { font-size: 10px; padding: 3px 8px; }
+  #osk .oskcatch, #osk .oskmidi, #osk .oskrec { font-size: 10px; padding: 3px 8px; }
+  /* ---- record ------------------------------------------------------------------
+     Two states that must not look alike: ARMED is waiting for the transport, LIVE is
+     writing notes into the song. Amber then red, which are `--solo` and `--hot` — the
+     desk's own two state colours, defined in every one of the nine themes including the
+     light ones. A third colour invented here would be a third thing to learn, and a
+     hand-picked red is the one that goes illegible on the parchment themes.
+
+     The dot is a `::before` rather than a child span on purpose: the buffered count is
+     written with `textContent`, which would take a child element out with it every time
+     a note landed. */
+  #osk .oskrec { font-variant-numeric: tabular-nums; }
+  #osk .oskrec::before { content: ''; display: inline-block; width: 7px; height: 7px;
+                         border-radius: 50%; margin-right: 5px; vertical-align: baseline;
+                         border: 1.5px solid currentColor; box-sizing: border-box; }
+  #osk .oskrec.on { color: var(--solo); border-color: var(--solo); }
+  #osk .oskrec.live { color: var(--hot); border-color: var(--hot); }
+  /* Filled only once it is actually recording — hollow reads as "ready", solid as "on",
+     and that is the whole distinction the two states are asking you to make. */
+  #osk .oskrec.live::before { background: currentColor; animation: recpulse 1s ease-in-out infinite; }
+  @keyframes recpulse { 50% { opacity: .25; } }
+  /* The window itself, so the state is legible from wherever your eyes are — you are
+     looking at your hands or at the timeline, not at one button in a title bar. */
+  #osk.recording { border-color: var(--hot); box-shadow: 0 0 0 1px var(--hot), 0 10px 34px #0009; }
+  @media (prefers-reduced-motion: reduce) {
+    #osk .oskrec.live::before { animation: none; }
+  }
   #osk .oskclose { padding: 2px 5px; line-height: 0; border-color: transparent;
                    background: none; color: var(--dim); }
   #osk .oskclose:hover { color: var(--hot); border-color: transparent; }
@@ -2878,74 +3041,22 @@
                          border-left: 0; border-top: 0;
                          border-right: 1px solid var(--line);
                          border-bottom: 1px solid var(--line); }
-  /* Device panel: the selected channel's effect chain, laid out across the bottom
-     where there is room for parameters — a 132px strip has none. */
-  /* FIXED height, sized for the tallest effect card rather than sized to whatever
-     is currently loaded. Auto-sizing meant the whole rack above jumped every time
-     an effect was added or removed, which is disconcerting when you are mid-mix.
-     Collapse it with the fold button if the space is needed. */
-  /* Height in a variable, not inline: an inline height beats any class, so folding
-     the panel left it collapsed but still holding its height open. */
-  /* The shadow is cast up over the rack's bottom edge. When the rack scrolls, its
-     own padding is below the fold and the strips are cut flush by the seam; a soft
-     edge says "there is more below" where a hard one just looks like a lost margin. */
-  #devices { flex: none; height: var(--devh, 204px); background: var(--panel);
-             border-top: 1px solid var(--line); display: flex; flex-direction: column;
-             box-shadow: 0 -7px 12px -7px color-mix(in srgb, var(--deep) 65%, transparent); z-index: 1; }
-  /* Folded when the user folds it and not before: a panel that opened and closed
-     under you as you moved between channels moved everything else with it. */
-  #devices.collapsed { height: auto; }
-  #devices.collapsed #devrack { display: none; }
-  /* Same indent and same gap as every other panel header: the four folds run down one
-     line on the left edge, so a collapsed desk is four identical rows. */
+  /* Effects panel: sits at the bottom with a fixed height. Border and background
+     are on the panel itself since there's no wrapper row. */
+  /* Same indent and same gap as every other panel header: the folds run down one
+     line on the left edge, so a collapsed desk is identical rows. */
   #devhead { display: flex; align-items: center; gap: var(--capgap);
              padding: 4px var(--rgut) 4px var(--foldx);
              border-bottom: 1px solid var(--line); flex: none; }
-  /* The same caption as TIMELINE, ARRANGEMENT and MIXER — three panels labelled one
-     way and a fourth in bold ink was a heading that looked like a different rank. */
-  /* One height for every card. A row of cards each stopping wherever its own last
-     control happened to land reads as clutter; a rack reads as a rack. */
-  /* overflow-x: SCROLL, not auto — the six pixels are held whether or not there is
-     anything to scroll. On auto, the bar appears the moment a chain outgrows the
-     window and takes its height out of the cards, so the whole rack jumps as you add
-     the effect that caused it. (scrollbar-gutter only reserves the vertical one.) */
-  /* The chain starts on the caption line, under the switch that names the view. On the
-     content line it was under the first CHANNEL instead, which says the wrong thing: the
-     rack is the chain on one channel — the one the header names — not a row of things
-     belonging to the strips above it. */
   #devrack { flex: 1; min-height: 0; display: flex; gap: 8px;
              padding: 6px var(--rgut) 10px var(--capx);
              overflow-x: scroll; overflow-y: auto; align-items: stretch;
              scrollbar-gutter: stable; }
   #devrack .devempty { align-self: center; }
-  /* ---- the region's header, shared ------------------------------------------------
-     The view switch stands where the caption used to, on the fold line: it names what you
-     are looking at, so the words EFFECTS and NOTES are said once each rather than one in
-     ink on the left and the other on a chip at the far right. Quiet all the same — it is a
-     switch you use occasionally, and at the header's own font size the chips were the
-     loudest thing on the desk. */
-  #devhead .devviews { display: flex; flex: none; gap: 2px; padding: 2px;
-                       background: var(--deep); border: 1px solid var(--line); border-radius: 5px; }
-  #devhead .devviews .voicekind { width: auto; flex: none; padding: 2px 8px; font-size: 9.5px;
-                       letter-spacing: .06em; text-transform: uppercase; border-radius: 3px;
-                       color: var(--dim); background: none; border: none; }
-  #devhead .devviews .voicekind:hover { color: var(--ink); background: var(--panel2); }
-  #devhead .devviews .voicekind.on { background: var(--primary); color: var(--accent); }
-  /* The channel between them, centred in whatever the switch and the controls leave. It is
-     the subject rather than the heading now — the view is named by the chips — so it sits
-     off the left edge where nothing else on the desk starts, and centring it in the gap
-     rather than in the panel keeps it off the controls when the roll brings a wide bar.
-     min-width: 0 so a long channel name ellipses instead of shoving them apart. */
-  #devhead #devtitle { flex: 1; min-width: 0; text-align: center; white-space: nowrap;
-                       overflow: hidden; text-overflow: ellipsis; }
-  /* The active view's own controls, in the same row. `margin-left: auto` is belt and
-     braces behind the title's flex: 1 — with no title to stretch, the controls still sit
-     out on the right, so the row reads left to right as: fold, what you are looking at,
-     which channel, what you can do to it. */
-  #devhead .ssqhostbar { display: flex; align-items: center; gap: 6px; flex: none;
-                       margin-left: auto; }
-  #devhead .ssqhostbar .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px; }
-  /* The 6px bar itself is the desk's, from the block at the top. */
+  /* The channel name after the panel label — "Effects (Bass)", "Notes (Lead)". */
+  #devhead #devtitle, #notehead #notetitle { color: var(--dim); font-weight: 400; }
+  #devhead #devtitle:empty, #notehead #notetitle:empty { display: none; }
+
   /* Cards grow SIDEWAYS, not downwards: a long parameter list flows into a second
      column instead of making the panel scroll. The Parametric EQ's ten controls are
      the case that forced it. */
@@ -3172,19 +3283,40 @@
   <div class="hdiv"></div>
 
   <div class="grp transport">
-    <button id="playstart" class="iconbtn" title="Play from the top of the song">
+    <button id="playstart" class="iconbtn" title="Play from the top of the song"
+            data-tip="Play from top"
+            data-tipsays="Jump to bar 1 and play. The song always starts from the beginning, whatever is looped or selected.">
       <!-- A rect, not a line: these icons are filled and never stroked, so a
            zero-width line draws nothing at all. -->
       <svg viewBox="0 0 16 16"><rect x="3" y="3.2" width="2.1" height="9.6" rx=".9"/><path d="M6.6 3.4 13 8l-6.4 4.6z"/></svg>
     </button>
-    <button id="stop" class="iconbtn" title="Stop, and go back to where playback started">
+    <button id="stop" class="iconbtn" title="Stop, and go back to where playback started"
+            data-tip="Stop"
+            data-tipsays="Stop playback and return to where it last started. Pause holds your place; Stop goes back to the top of the take.">
       <svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>
     </button>
-    <button id="play" class="iconbtn playbtn" title="Play (space)">
+    <button id="play" class="iconbtn playbtn" title="Play (space)"
+            data-tip="Play" data-tipkey="Space"
+            data-tipsays="Play from where the playhead is parked. Press again to pause where you are.">
       <svg viewBox="0 0 16 16"><path d="M4.5 3l8 5-8 5z"/></svg>
     </button>
-    <button id="pause" class="iconbtn" title="Pause where you are (space)">
+    <button id="pause" class="iconbtn" title="Pause where you are (space)"
+            data-tip="Pause" data-tipkey="Space"
+            data-tipsays="Pause and hold position. Press Play to carry on from here, or Stop to go back to the start of the take.">
       <svg viewBox="0 0 16 16"><rect x="4" y="3.5" width="3" height="9" rx="1"/><rect x="9" y="3.5" width="3" height="9" rx="1"/></svg>
+    </button>
+  </div>
+
+  <div class="grp">
+    <!-- Record, on its own next to the transport like the Solo button. A filled circle;
+         the colour carries the state: red dot at rest, whole button red with a white
+         dot while recording. -->
+    <button id="recbtn" class="iconbtn" aria-label="Record"
+            data-tip="Record" data-tipkey="⇧R"
+            data-tipsays="Play notes INTO the selected channel, from MIDI, the on-screen keys or the computer keyboard. Quantised to sixteenths, written everywhere that part repeats, and it only ever adds. ⌘Z takes a phrase back; Esc stops and drops whatever has not been written yet.">
+      <svg viewBox="0 0 16 16" class="recicon" aria-hidden="true">
+        <circle class="body" cx="8" cy="8" r="4.6"/>
+      </svg>
     </button>
   </div>
 
@@ -3283,6 +3415,31 @@
         <circle class="knob" cx="12.8" cy="6.7" r="1.25"/>
       </svg>
     </button>
+    <!-- MIDI, out here rather than only in the keyboard's title bar: playing from a MIDI
+         keyboard needs no on-screen keyboard at all — you are looking at your hands, or
+         at the roll filling up — and making you open a window you are not using to reach
+         the switch is a window in the way. The computer keys still need it, because that
+         is where the desk hands its letters over.
+
+         It sits with the panel and device toggles rather than with the transport, because
+         that is what it is: WHICH INSTRUMENT is playing the selected channel, the same
+         question the ⌨ button answers. Record is the transport's business and lives
+         there. -->
+    <button id="midibtn" class="iconbtn" aria-label="MIDI input"
+            data-tip="MIDI in"
+            data-tipsays="Play the selected channel from a MIDI keyboard, over Web MIDI (Chrome and Edge). No window needed — this and Record are all it takes. On a drum channel, General MIDI’s notes land on the right pads.">
+      <!-- A five-pin DIN: the socket on the back of the keyboard. Nothing to learn.
+           Body and pins are both currentColor, so the lit state inherits `button.on`'s
+           dark-on-teal like every other icon here and needs no colour of its own. -->
+      <svg viewBox="0 0 16 16" class="midiicon" aria-hidden="true">
+        <circle class="ring" cx="8" cy="8" r="6.1"/>
+        <circle class="pin" cx="8" cy="4.4" r="1.05"/>
+        <circle class="pin" cx="4.9" cy="5.9" r="1.05"/>
+        <circle class="pin" cx="11.1" cy="5.9" r="1.05"/>
+        <circle class="pin" cx="4.4" cy="9.4" r="1.05"/>
+        <circle class="pin" cx="11.6" cy="9.4" r="1.05"/>
+      </svg>
+    </button>
     <button id="ab"
             data-tip="A/B saved"
             data-tipsays="Hold to hear this song exactly as it is on disk. Release and your unsaved changes come straight back — nothing is written either way.">A/B saved</button>
@@ -3313,8 +3470,8 @@
   </div>
 </div>
 
-<!-- Everything the window's height is divided between: two panels, two handles, a
-     third panel and the band that soaks up whatever is left. The header, the
+<!-- Everything the window's height is divided between: four panels, three handles,
+     and the band that soaks up whatever is left. The header, the
      timeline, the footer and the error log are deliberately OUTSIDE it, which is
      what makes the footer the last thing on the page and stops it travelling up the
      screen when a panel folds. Exactly one child in here is elastic at a time —
@@ -3356,39 +3513,35 @@
   <div id="rack"><div id="sendslot"></div></div>
 </div>
 
-<!-- Drag to give the effects panel more or less of the window; double-click to hand
-     it back to the automatic height measured from the effect cards. -->
+<!-- Drag to give the notes panel more or less of the window; double-click to hand
+     it back to the automatic fit. -->
 <div id="devsplit" role="separator" aria-orientation="horizontal"
-     title="Drag to resize the effects panel · double-click to fit automatically"></div>
+     title="Drag to resize the notes panel · double-click to fit automatically"></div>
+
+<div id="notes">
+  <div id="notehead">
+    <button id="notefold" class="foldbtn" title="Collapse the notes panel" aria-label="Collapse the notes panel">
+      <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
+    </button>
+    <span class="label">Notes</span>
+    <span id="notetitle" class="label"></span>
+  </div>
+  <div id="pianoroll"></div>
+</div>
 
 <div id="devices">
   <div id="devhead">
     <button id="devfold" class="foldbtn" title="Collapse the effects panel" aria-label="Collapse the effects panel">
       <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
     </button>
-    <!-- Two views of one channel: what it sounds like, and what it plays. The chips are
-         the desk's own switch furniture (`.voicekind`, as used by the voice picker and the
-         preset library) rather than tabs — same question, same control. They stand first,
-         on the caption line, because they are what names the view. -->
-    <div class="voicekinds devviews" id="devviews">
-      <button class="voicekind on" data-view="fx" title="This channel's effect chain">Effects</button>
-      <button class="voicekind" data-view="notes" title="What this channel plays (n)">Notes</button>
-    </div>
-    <!-- Which channel the view is of — the one thing the chips do not say. -->
+    <span class="label">Effects</span>
     <span id="devtitle" class="label"></span>
   </div>
   <div id="devrack"></div>
-  <!-- The channel's other view, in the same space as its effects: what it PLAYS. Built by
-       tools/mixer-bar-grid.js. The kit's step grid is not in here — it belongs to the song
-       rather than to a channel, so it is a window of its own further down this file. -->
-  <div id="pianoroll"></div>
 </div>
 
-<!-- Last in the chain, and the only one of the four that is not a panel: when the
-     rack, the arrangement and the effects are all folded away there is still a
-     window to fill. It also takes the sub-lane remainder while the arrangement is
-     the elastic one — the arrangement is snapped to whole lanes, so the last few
-     pixels have to go somewhere that is not half a row. -->
+<!-- Last in the chain: when the rack, arrangement, notes and effects are all
+     folded away there is still a window to fill. -->
 <div id="deskslack" aria-hidden="true"></div>
 
 </main>

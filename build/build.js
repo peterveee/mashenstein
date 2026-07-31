@@ -473,5 +473,34 @@ if (watch) {
     console.log(`dev server: http://${boundHost}:${PORT}/  (localhost is not bound)`);
   }
 } else {
-  emit(await esbuild.build(options));
+  const result = await esbuild.build(options);
+  emit(result);
+
+  // The Song Mixer, as a standalone static page at /SongMixer/.
+  // Only in production builds — watch mode skips it for speed.
+  try {
+    const mixerResult = await esbuild.build({
+      entryPoints: [join(root, 'tools/mixer-entry.js')],
+      bundle: true,
+      format: 'iife',
+      target: ['es2020'],
+      minify: false,
+      outdir: join(root, 'dist'),
+      write: false,
+      logLevel: 'warning',
+      define: { __MASH_STATIC_MIXER__: 'true' },
+    });
+    const mixerJs = mixerResult.outputFiles[0].text;
+    const mixerShell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
+    const mixerSafe = mixerJs.replace(/<\/script/gi, '<\\/script');
+    const mixerHtml = mixerShell.replace('/*__BUNDLE__*/', () => mixerSafe);
+    const mixerDir = join(root, 'dist', 'SongMixer');
+    mkdirSync(mixerDir, { recursive: true });
+    writeFileSync(join(mixerDir, 'index.html'), mixerHtml);
+    console.log(`dist/SongMixer/index.html written (${(mixerHtml.length / 1024).toFixed(0)} KB mixer)`);
+  } catch (err) {
+    // The mixer is a dev tool; a broken mixer build does not block the game.
+    console.error('Song Mixer build failed (the game build is unaffected):');
+    console.error(err.message || err);
+  }
 }

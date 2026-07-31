@@ -1024,7 +1024,7 @@ export const bank = {
 export const mix = {
   master: 1.9,
   layers: [{ key: "tom2", from: "tom" }],
-  voice: {"clapVoice":"clapRoom","rimVoice":"taiko","tom2Voice":"snareTight"},
+  voice: {"clapVoice":"clapRoom","rimVoice":"taiko","tom2Voice":"snareTight","kickVoice":"kickMegamix","snareVoice":"snareEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","crashVoice":"crashEngine"},
   fx: { reverb: { decay: 1.5 } },
   lanes: {
     lead: { gain: -11.9, send: { delay: 1, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }, { id: "compressor" }] },

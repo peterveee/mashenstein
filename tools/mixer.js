@@ -36,8 +36,14 @@ import { randomSongName } from './lib/song-names.js';
 // from the engine's would quietly stop being saved.
 import { AUX_DEFAULTS } from '../src/engine/mixer.js';
 import {
-  readVoicesSource, writeVoicesSource, upsertPreset, deletePreset, setPeak, tableOf,
+  readVoicesSource, writeVoicesSource, upsertPreset, deletePreset, setMeasured,
+  readMeasured, tableOf,
 } from './lib/voices-source.js';
+import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
+import { VOICES } from '../src/data/voices.js';
+// Read once, at start-up: the starter set is written by tools/freeze-starter-voices.js,
+// which is a script somebody types, not something this server can cause to happen.
+const STARTER_IDS = new Set(Object.values(VOICES).filter((v) => v.starter).map((v) => v.id));
 
 const require = createRequire(import.meta.url);
 const esbuild = require('esbuild');
@@ -381,17 +387,26 @@ async function restartRenderer() {
   renderer = null;
 }
 
-// One note, held, with nothing else in the song — the same measurement
-// tools/measure-voices.js makes, so a peak saved from the desk and a peak from a full
-// re-measure are the same number rather than two conventions that nearly agree.
-const A2 = 110;
-const MEASURE_BANK = { bpm: 120, bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? A2 : null)) };
-
-/** The peak one note of a preset reaches through the render pipeline, at unity. */
-const measureVoice = (id) => withRenderer((r) => r.render(
-  { ...MEASURE_BANK, bassVoice: id, bassGain: 1, bassDur: 8 },
-  { repeat: 1, mix: null, trackId: null },
-).then((out) => out.peak));
+/**
+ * What one note of a preset reaches through the render pipeline, at unity.
+ *
+ * The bank, the lane and the arithmetic are tools/lib/measure-voice.js, which is also
+ * what tools/measure-voices.js measures the whole library with — so a level saved from
+ * the desk and a level from a full re-measure are the same number rather than two
+ * conventions that nearly agree.
+ *
+ * Takes the preset from the request and its current numbers from the SOURCE, because
+ * this process cannot see either: its own copy of src/data/voices.js was imported at
+ * start-up, and the entry being measured was written to the file a moment ago.
+ */
+const measureVoice = (id, preset, src) => withRenderer((r) => {
+  // What the RENDERER will play it at: it bundles the file that was just written, and
+  // the measured blocks in there still hold the previous numbers — or none at all, for
+  // a preset being saved for the first time. `measureVoiceAt` divides exactly that back
+  // out, so what it hands back is the preset at unity either way.
+  const voice = { ...preset, id, ...readMeasured(src, id) };
+  return measureVoiceAt(r.render, voice, homeLane(voice));
+});
 
 /**
  * Everywhere a preset is named: the saved mixes, and the banks themselves.
@@ -538,7 +553,10 @@ const server = createServer(async (req, res) => {
       const track = resolveTrack(id);
       const target = id ? writableSongPath(ROOT, id) : null;
       const importedRoot = join(ROOT, IMPORTED_DIR) + '/';
-      if (!track || track.group !== 'scratch' || track.writable !== true
+      // A style audition is a scratch song under its own heading — same directory, same
+      // marker, same disposability. See the group list in src/data/tracks.js.
+      const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition');
+      if (!madeHere || track.writable !== true
         || !target || !target.startsWith(importedRoot)) {
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('only writable scratch songs can be deleted');
@@ -724,17 +742,44 @@ const server = createServer(async (req, res) => {
 
     // ---- the voice library, written back ----------------------------------
     //
-    // A preset is data, so the desk can author one: the entry is rewritten in place
-    // in src/data/voices.js, then MEASURED, and the measured peak spliced into PEAKS.
+    // A preset is data, so the desk can author one: the entry is rewritten in place in
+    // src/data/voices.js, then MEASURED, and the measurement spliced into LEVELS and
+    // PEAKS.
     //
     // The measure is not optional and it is not a nicety. `voiceGain` derives a
-    // preset's level by dividing the lane's target by its measured peak, so a preset
-    // whose envelope moved and whose peak did not is a preset that is quietly the
+    // preset's gain by dividing the lane's target by its measured level, so a preset
+    // whose envelope moved and whose level did not is a preset that is quietly the
     // wrong loudness in every song and every render. Saving without measuring would
     // be the one thing this file's own comments warn against.
     if (req.method === 'POST' && req.url === '/voice-save') {
       const { id, preset, table } = await readJson(req);
       let src = readVoicesSource();
+      // The starter table is not writable and this is where that is enforced. A pack
+      // names these, and the whole reason they exist is that a song generated next
+      // month sounds like the pack was written to sound rather than like whatever the
+      // library holds by then — see STARTER in src/data/voices.js. `tableOf` cannot
+      // find one either, so without this the editor's `table` hint would have it write
+      // a SECOND entry under the same id into TONE, and the catalogue would hold two
+      // definitions of one sound.
+      if (STARTER_IDS.has(id)) {
+        res.writeHead(409, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is a starter sound — the New Song generator is written for it,`
+          + ' so it cannot be saved over. Use Save as new to keep your edit under its'
+          + ' own name.');
+        return;
+      }
+      // A song's own copy is keyed `chordsVoice@bitter-lullaby` — which lane of which
+      // song owns it — and that is not a usable identifier in a source file. `commit`
+      // in the editor takes a library name before it ever gets here, so an id like this
+      // arriving means the flag that says "this belongs to a song" was lost somewhere.
+      // Said plainly, because `upsertPreset` throwing on it reaches the desk as a 500
+      // and a stack trace in a terminal nobody is looking at.
+      if (!/^[A-Za-z_$][\w$]*$/.test(id)) {
+        res.writeHead(400, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is not a library name — it is a song's own copy of a preset.`
+          + ' Rename it and save again, and it becomes a preset of its own.');
+        return;
+      }
       const where = tableOf(src, id) || table;
       if (!where) {
         res.writeHead(400, { 'content-type': 'text/plain' });
@@ -747,9 +792,9 @@ const server = createServer(async (req, res) => {
       src = upsertPreset(src, id, preset, where);
       writeVoicesSource(src);
       await restartRenderer();          // or the render measures the preset it replaced
-      let peak;
+      let level; let peak;
       try {
-        peak = await measureVoice(id);
+        ({ level, peak } = await measureVoice(id, preset, src));
       } catch (err) {
         // Put the file back. A preset that cannot be rendered is one that would sit
         // in the catalogue sounding fine on the desk and missing from every export,
@@ -762,25 +807,30 @@ const server = createServer(async (req, res) => {
       }
       // Silent is a real outcome, not an error: Tone builds plenty of things that
       // make no sound. It is reported rather than saved, for the same reason.
-      if (!(peak > 0)) {
+      if (!(level > 0)) {
         writeVoicesSource(before);
         await restartRenderer();
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ id, peak: 0, silent: true, saved: false }));
+        res.end(JSON.stringify({ id, level: 0, peak: 0, silent: true, saved: false }));
         console.log(`"${id}" renders SILENT — not saved`);
         return;
       }
       // Nearly silent is its own hazard, and a worse one than it looks: `voiceGain`
-      // divides the lane's target by this number, so a preset measuring 0.0001 is not
-      // a quiet preset — it is one the engine multiplies by about eleven hundred, and
-      // whatever noise floor it has comes up with it. Saved anyway, because
-      // tools/measure-voices.js saves it too and the two must not disagree, but said.
-      const quiet = peak < 0.02;
-      writeVoicesSource(setPeak(src, id, peak));
-      console.log(`saved voice ${id} to src/data/voices.js — peak ${peak.toFixed(4)}`
+      // divides the lane's target by this number, so a preset measuring a thousandth
+      // of one is not a quiet preset — it is one the engine multiplies by about
+      // eleven hundred, and whatever noise floor it has comes up with it. Saved
+      // anyway, because tools/measure-voices.js saves it too and the two must not
+      // disagree, but said.
+      const quiet = level < 0.0004;
+      writeVoicesSource(setMeasured(src, id, { level, peak }));
+      console.log(`saved voice ${id} to src/data/voices.js — level ${level.toFixed(6)}`
+        + `  peak ${peak.toFixed(4)}`
         + (quiet ? '  ** very quiet: check its envelope **' : ''));
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ id, peak: Number(peak.toFixed(4)), silent: false, quiet, saved: true }));
+      res.end(JSON.stringify({
+        id, level: Number(level.toFixed(6)), peak: Number(peak.toFixed(4)),
+        silent: false, quiet, saved: true,
+      }));
       return;
     }
 

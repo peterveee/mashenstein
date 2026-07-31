@@ -65,27 +65,15 @@ export const bank = {
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
-// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
-// and nothing above it is ever touched by the desk.
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
   master: 0.7,
+  voice: {"kickVoice":"kickEngine","snareVoice":"snareEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine"},
   lanes: {
-    bass: {
-      send: {
-        delay: 1,
-      },
-    },
-    lead: {
-      send: {
-        delay: 1,
-      },
-    },
-    keyGliss: {
-      send: {
-        delay: 1,
-      },
-    },
+    bass: { send: { delay: 1 } },
+    lead: { send: { delay: 1 } },
+    keyGliss: { send: { delay: 1 } },
   },
 };
 

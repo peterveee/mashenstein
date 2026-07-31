@@ -7,10 +7,11 @@
 // as the four lines that changed, which is the only way a generated edit to a
 // hand-written file stays reviewable.
 //
-// Two machine-owned blocks already work this way: PEAKS and LANE_TARGETS are rewritten
-// wholesale by tools/measure-voices.js and say so in a comment. This module adds the
-// third move — a single peak spliced into PEAKS without disturbing the other hundred —
-// so saving one preset does not require re-measuring the entire library.
+// Three machine-owned blocks already work this way: LEVELS, PEAKS and LANE_TARGETS are
+// rewritten wholesale by tools/measure-voices.js and say so in a comment. This module
+// adds the third move — one preset's measurement spliced into LEVELS and PEAKS without
+// disturbing the other hundred — so saving one preset does not require re-measuring the
+// entire library.
 //
 // Nothing here parses JavaScript. It scans for the span of one entry, which needs
 // only brace matching that knows about strings and comments; the file is data, and
@@ -182,13 +183,17 @@ function optionsBlock(options, indent = 4) {
 }
 
 // The identity scalars, which share the head line the way the hand-written entries do:
-// what it is called, where it files, what builds it, how long it rings.
-const HEAD = ['label', 'category', 'lanes', 'synth', 'dur', 'velocity'];
+// what it is called, where it files, what builds it, how long it rings. `homeLane` is
+// here rather than below because it is filing too — the lane the level was measured on.
+// `kind` is normally derived from the table an entry sits in and never written; the one
+// table that has to state it is STARTER, which holds all three kinds at once.
+const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 
 // Everything that gets a line of its own, in the order it is worth reading: what the
 // sound is for, where it came from, then how it is built. `taps` and `tapFalloff`
 // share a line — they are two halves of one idea and both are short.
-const BODY = ['note', 'origin', 'options', 'osc', 'noise', 'body', 'drive', 'taps', 'tapFalloff'];
+const BODY = ['note', 'origin', 'options', 'additive', 'osc', 'knock', 'noise', 'ring', 'metal', 'body',
+  'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays'];
 
 /**
  * One catalogue entry, as source, indented to sit in a table.
@@ -197,9 +202,19 @@ const BODY = ['note', 'origin', 'options', 'osc', 'noise', 'body', 'drive', 'tap
  * line carries the identity, the note gets its own lines, and the shape of the sound
  * follows. A preset saved from the desk should be indistinguishable from one typed in.
  */
-export function emitEntry(id, preset) {
+// `factory` joins the derived list for the same reason `kind` is on it: the loops at the
+// bottom of voices.js set it on every entry in every table, so it says "this is in the
+// catalogue", which the entry's own presence in the catalogue already said. Written into
+// an entry it does two unhelpful things — it appears in the diff of every desk save, and
+// it moves: an entry that states it gets it from the spread, before `id`, where one that
+// does not gets it from the loop, after `kind`. That is a different key order for the
+// same preset, which is exactly what the round-trip in tests/voice-source.js compares.
+export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak', 'factory'] } = {}) {
   const v = { ...preset };
-  delete v.id; delete v.kind; delete v.peak;   // derived at load; never written here
+  // Derived at load — from the table an entry sits in, and from the measured blocks —
+  // so none of it is written into the entry itself. The exception is `kind` in the
+  // STARTER table, which is why the caller may say which keys are derived for it.
+  for (const k of derived) delete v[k];
   const has = (k) => v[k] !== undefined;
 
   const head = HEAD.filter(has).map((k) => `${key(k)}: ${flat(v[k])}`).join(', ');
@@ -208,12 +223,25 @@ export function emitEntry(id, preset) {
   if (has('note')) lines.push(`    note: ${str(v.note, 4)},`);
   if (has('origin')) lines.push(`    origin: ${str(v.origin, 4)},`);
   if (has('options')) lines.push(`    options: ${optionsBlock(v.options)},`);
+  // A block rather than one flat line: an additive preset carries nine drawbar levels plus
+  // its envelope, and `flat` would run all of that into a single unreadable line in a file
+  // whose whole point is that a saved preset looks like a typed one.
+  if (has('additive')) lines.push(`    additive: ${optionsBlock(v.additive)},`);
   if (has('osc')) lines.push(`    osc: ${flat(v.osc)},`);
+  if (has('knock')) lines.push(`    knock: ${flat(v.knock)},`);
   if (has('noise')) lines.push(`    noise: ${flat(v.noise)},`);
+  if (has('ring')) lines.push(`    ring: ${flat(v.ring)},`);
+  if (has('metal')) lines.push(`    metal: ${flat(v.metal)},`);
   if (has('body')) lines.push(`    body: ${flat(v.body)},`);
-  if (has('drive')) lines.push(`    drive: ${flat(v.drive)},`);
-  // The two tap keys travel together and are short — one line reads better than two.
-  const taps = ['taps', 'tapFalloff'].filter(has).map((k) => `${k}: ${flat(v[k])}`);
+  // Drive, its shape and the filter after it are one idea — how hard the summed
+  // sections are pushed and what is left standing afterwards — and all three are short.
+  const shaped = ['drive', 'shape'].filter(has).map((k) => `${k}: ${flat(v[k])}`);
+  if (shaped.length) lines.push(`    ${shaped.join(', ')},`);
+  if (has('tone')) lines.push(`    tone: ${flat(v.tone)},`);
+  if (has('humanize')) lines.push(`    humanize: ${flat(v.humanize)},`);
+  // The tap keys travel together and are short — one line reads better than four.
+  const taps = ['taps', 'tapFalloff', 'tapGains', 'tapDecays', 'tapDetune', 'tapTone'].filter(has)
+    .map((k) => `${k}: ${flat(v[k])}`);
   if (taps.length) lines.push(`    ${taps.join(', ')},`);
   // Anything this module has never heard of, so a key added to the catalogue by hand
   // survives being saved from the desk rather than being quietly dropped.
@@ -268,37 +296,74 @@ export function deletePreset(src, id) {
   let end = e.end;
   while (src[end] === ' ' || src[end] === '\t') end++;
   if (src[end] === '\n') end++;
-  return setPeak(src.slice(0, start) + src.slice(end), id, null);
+  return setMeasured(src.slice(0, start) + src.slice(end), id, { level: null, peak: null });
 }
 
 /**
- * Write one measured peak into the PEAKS block, leaving the other hundred alone.
+ * Write one measured number into one of the measured blocks, leaving the rest alone.
  *
  * The block is reflowed rather than patched in place: it is packed to 80 columns by
  * tools/measure-voices.js, so a longer number in the middle would push the line over
  * and a shorter one would leave it ragged. Same packing, same result — running the
  * full measure after this changes nothing but the numbers it re-measured.
  *
- * `peak === null` removes the entry, which is what a deleted preset needs.
+ * `value === null` removes the entry, which is what a deleted preset needs.
  */
-export function setPeak(src, id, peak) {
-  const m = /const PEAKS = \{([\s\S]*?)\n\};/.exec(src);
-  if (!m) throw new Error('src/data/voices.js has no PEAKS block');
-  const peaks = {};
+function setIn(src, block, id, value, digits) {
+  const re = new RegExp(`const ${block} = \\{([\\s\\S]*?)\\n\\};`);
+  const m = re.exec(src);
+  if (!m) throw new Error(`src/data/voices.js has no ${block} block`);
+  const values = {};
   for (const [, k, v] of m[1].matchAll(/([A-Za-z_$][\w$]*)\s*:\s*(-?[\d.eE+-]+)/g)) {
-    peaks[k] = Number(v);
+    values[k] = Number(v);
   }
-  if (peak === null) delete peaks[id]; else peaks[id] = Number(peak.toFixed(4));
+  if (value === null) delete values[id]; else values[id] = Number(value.toFixed(digits));
 
   const rows = [];
   let line = ' ';
-  for (const [k, p] of Object.entries(peaks)) {
+  for (const [k, p] of Object.entries(values)) {
     const piece = ` ${k}: ${p},`;
     if (line.length + piece.length > 80) { rows.push(line); line = ' '; }
     line += piece;
   }
   rows.push(line.replace(/,$/, ''));
-  return src.replace(/const PEAKS = \{[\s\S]*?\n\};/, () => `const PEAKS = {\n${rows.join('\n')}\n};`);
+  return src.replace(re, () => `const ${block} = {\n${rows.join('\n')}\n};`);
+}
+
+/**
+ * One preset's measured numbers, read back OUT of the source.
+ *
+ * For the desk's save, which has to know what the renderer is about to play a preset
+ * at — and cannot ask the catalogue, because the server's copy of src/data/voices.js
+ * was imported at start-up and the entry it is measuring was written a moment ago. The
+ * file is the only thing that knows, and the renderer bundles the file.
+ *
+ * The same defaults `VOICES` builds an entry with, so an id in neither block reads as
+ * the unmeasured preset it is rather than as a missing one.
+ */
+export function readMeasured(src, id) {
+  const of = (block, dflt) => {
+    const m = new RegExp(`const ${block} = \\{([\\s\\S]*?)\\n\\};`).exec(src);
+    const hit = m && new RegExp(`\\b${id}\\s*:\\s*(-?[\\d.eE+-]+)`).exec(m[1]);
+    return hit ? Number(hit[1]) : dflt;
+  };
+  return { level: of('LEVELS', 0), peak: of('PEAKS', 1) };
+}
+
+/**
+ * One preset's measurement, into both blocks at once.
+ *
+ * Both, always, because they are one measurement: `level` is what the preset is played
+ * at and `peak` is what it costs in headroom, and a save that moved one and left the
+ * other is a preset whose two numbers describe two different sounds. Six decimals on
+ * the level — a level runs an order of magnitude smaller than a peak, and four would
+ * quantise the quiet end of the library into steps you can hear.
+ */
+export function setMeasured(src, id, { level, peak }) {
+  let out = src;
+  if (level !== undefined) out = setIn(out, 'LEVELS', id, level, 6);
+  if (peak !== undefined) out = setIn(out, 'PEAKS', id, peak, 4);
+  return out;
 }
 
 export const readVoicesSource = () => readFileSync(VOICES_PATH, 'utf8');

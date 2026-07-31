@@ -35,13 +35,19 @@ assert(entry.includes("const bar = $('devsplit')")
   && entry.includes("bar.addEventListener('pointermove'")
   && entry.includes("bar.addEventListener('dblclick'"),
   'effects splitter handles drag and automatic-fit gestures');
-assert(/function deviceRoom\([\s\S]*?h\(\$\('devsplit'\)\)/.test(entry),
+// Bounded to the function's own body. `[\s\S]*?` is lazy but unbounded, so a regex
+// anchored on `function notesRoom(` happily reaches `h($('devsplit'))` in planDesk two
+// hundred lines below and passes however notesRoom is written.
+const notesRoomBody = /function notesRoom\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(notesRoomBody.includes("h($('devsplit'))"),
   'layout calculations reserve the effects splitter');
 assert(entry.includes('function syncDeskSplitter()')
   && /function setDevicesFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
   && /function setMixerFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
   && /function setArrangeCollapsed[\s\S]*?syncDeskSplitter\(\)/.test(entry),
   'the handle hides when either adjacent panel is folded');
+assert(/function setNotesFolded\([\s\S]*?syncDeskSplitter\(\);[\s\S]*?fitStrips\(\);[\s\S]*?requestAnimationFrame\(fitStrips\)/.test(entry),
+  'collapsing notes refits once after flex layout settles so the mixer takes the freed space');
 assert(/function syncDeskSplitter\(\)[\s\S]*?\$\('arrsplit'\)\.classList\.toggle\('hidden'[\s\S]*?\$\('devsplit'\)\.classList\.toggle\('hidden'/.test(entry)
   && !/\$\('arrsplit'\)\.classList\.toggle\('hidden', on\)/.test(entry),
   'both handles are governed together, so neither outlives the panels it borders');
@@ -71,7 +77,7 @@ assert(/#desk > \.greedy \{[^}]*flex: 1 1 auto[^}]*min-height: 0/s.test(shell)
 assert(shell.includes('#deskslack { display: none; }')
   && /#deskslack\.greedy \{[^}]*background: var\(--panel\)/s.test(shell),
   'the empty band is desk-coloured and exists only while it is the elastic one');
-assert(entry.includes("const DESK_CHAIN = ['rackwrap', 'arrange', 'devices', 'deskslack']")
+assert(entry.includes("const DESK_CHAIN = ['rackwrap', 'arrange', 'notes', 'deskslack']")
   && entry.includes('function applyDeskChain()')
   && /function fitStrips\(\) \{\s*applyDeskChain\(\)/.test(entry),
   'the priority chain is written down once, in order, and re-run on every fit');
@@ -89,8 +95,11 @@ assert(/footer \{[^}]*margin-top: auto/s.test(shell)
   'the footer cannot float even if the chain fails, and a stack trace cannot eat the desk');
 
 // ---- one minimum table, not six constants in five functions ----------------------
-assert(/const MIN = \{[\s\S]*?timeline:[\s\S]*?arrange:[\s\S]*?mixer:[\s\S]*?devices:[\s\S]*?\};/.test(entry)
-  && /const WANT = \{[\s\S]*?arrange:[\s\S]*?devices:[\s\S]*?\};/.test(entry)
+const minBody = /const MIN = \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
+const wantBody = /const WANT = \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
+assert(['timeline', 'arrange', 'mixer', 'notes', 'devices']
+  .every((k) => new RegExp(`^\\s*${k}:`, 'm').test(minBody))
+  && ['arrange', 'notes'].every((k) => new RegExp(`^\\s*${k}:`, 'm').test(wantBody))
   && !entry.includes('Math.max(140,')
   && !entry.includes('function arrangementFloor')
   && !entry.includes('function capDevices'),
@@ -105,12 +114,23 @@ assert(entry.includes('const deskPool = () => innerHeight')
 // measured the ceiling against the effects panel's live height. Two different worlds,
 // and the reason dragging the effects handle shrank the arrangement instead.
 assert(/function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
-  && /function deviceRoom\([\s\S]*?MIN\.mixer\(\)/.test(entry)
-  && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('FADER_MIN')
-  && !/function deviceRoom\([^]*?\n\}/.exec(entry)[0].includes('laneRowHeight()'),
-  'the effects handle clamps against the rack floor alone and cannot reach the arrangement');
-assert(/function planDesk[\s\S]*?let rackH = room - arrH - devH/.test(entry),
-  'the arrangement and the effects panel are sized independently and the rack takes the difference');
+  && notesRoomBody.includes('MIN.mixer()')
+  && !notesRoomBody.includes('FADER_MIN')
+  && !notesRoomBody.includes('laneRowHeight()'),
+  'the notes handle clamps against the rack floor alone and cannot reach the arrangement');
+// And it cannot reach it by construction, not just by not mentioning it: the arrangement
+// height arrives as an ARGUMENT, so the handle trades rack for notes and the arrangement
+// stays exactly where it is.
+assert(/function notesRoom\(arrH = plannedArrangeHeight\(\)\)/.test(entry)
+  && /const clampDeviceH = \(value, max = notesRoom\(\)\) => clamp\(value, MIN\.notes\(\), max\);/.test(entry),
+  'the notes height is clamped between its own minimum and that room, nothing else');
+assert(/function planDesk[\s\S]*?let rackH = room - arrH - notesH/.test(entry),
+  'the arrangement and the notes panel are sized independently and the rack takes the difference');
+// The effects panel is not in that sum at all — it takes what its cards need and is
+// outside the elastic chain, which is what "fixed height" means here.
+assert(/function planDesk[\s\S]*?const fxH = effectsNaturalHeight\(\);/.test(entry)
+  && !/const DESK_CHAIN = \[[^\]]*'devices'/.test(entry),
+  'while the effects panel has a fixed height and is outside the chain entirely');
 
 // ---- the shrink ladder ------------------------------------------------------------
 // A short window sheds whole BLOCKS, in one fixed order, and says on the header switch
@@ -175,6 +195,19 @@ assert(/#arrhead \{[^}]*position:\s*relative/s.test(shell)
 assert(/#addtrackbtn \{[^}]*color:\s*var\(--ctl-hi\)[^}]*font:\s*400 19px\/1/s.test(shell)
   && !shell.slice(0, addTrack).includes('class="addtrackicon"'),
   'Add Track is a light theme-coloured plus rather than a heavy icon button');
+assert(/\.arrrow \.arrgain \{[^}]*width:\s*30px[^}]*height:\s*5px/s.test(shell)
+  && /\.arrrow \.arrgain::-webkit-slider-thumb \{[^}]*width:\s*10px[^}]*height:\s*10px/s.test(shell)
+  && /\.arrrow \.arrgain::-webkit-slider-runnable-track \{[^}]*background:\s*var\(--line2\)/s.test(shell)
+  && /\.arrrow:not\(:hover\) \.arrgain \{ opacity:\s*\.72; \}/.test(shell),
+  'arrangement track volume trims are comfortably draggable with a visible rail');
+assert(/gainSlider\.className = 'arrgain'[\s\S]*?gainWrap\.append\(gainSlider, gainReadout\);\s*header\.append\(gainWrap\);\s*el\.append\(header, bars\)/.test(entry),
+  'each tiny volume trim is placed in the header immediately before its bars');
+assert(/\.arrgainreadout \{[^}]*position:\s*absolute[^}]*bottom:\s*calc\(100% \+ 4px\)[^}]*font-variant-numeric:\s*tabular-nums/s.test(shell)
+  && /gainReadout\.className = 'arrgainreadout'[\s\S]*?pointerdown[\s\S]*?gainReadout\.classList\.add\('show'\)[\s\S]*?pointerup/.test(entry),
+  'the hidden arrangement gain readout appears with the dB value only while dragging');
+assert(/setMixerFolded\([\s\S]*?arrange'\)\.classList\.toggle\('track-gain-visible', on\)/.test(entry)
+  && /#arrange\.track-gain-visible \.arrrow \.arrgainwrap \{ display: block; \}/.test(shell),
+  'arrangement gain trims are shown only while the Mixer is collapsed');
 assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addPercussionLane\(\)/.test(entry)
   && !entry.includes('openAddTrackPicker'),
   'the plus opens one new track and its preset selector without a choice menu');
@@ -303,7 +336,7 @@ assert(regionFn && barBranch && trackBranch
 // decides which — the arrangement row is the track, the mixer strip is its signal path.
 // Both used to open the track panel, which put one set of buttons behind two gestures and
 // made the result of a right-click unguessable from the thing under the pointer.
-assert(/function openTrackEditor\(x, y, key\) \{\s*openRegionEditor\(x, y, \{ laneKey: key, from: 0, to: 0, wholeTrack: true \}\)/.test(entry)
+assert(/function openTrackEditor\(x, y, key, options = \{\}\)[\s\S]*?wholeTrack: true, \.\.\.options/.test(entry)
   && /function trackMenu\(el, key\)[\s\S]*?openTrackEditor\(ev\.clientX, ev\.clientY, key\)/.test(entry)
   && /trackMenu\(header, row\.key\)/.test(entry)
   && !/openTrackEditor/.test(entry.slice(entry.indexOf('function stripMenu'),
@@ -378,12 +411,12 @@ assert(/const nameInput = layer && wholeTrack/.test(entry)
   && /const wrap = section\('Track name'\)/.test(entry)
   && /nameChanged = !!next[\s\S]*?updateApply\(\)/.test(entry)
   && /if \(nameChanged && label\)[\s\S]*?m\.layers = \(m\.layers \|\| \[\]\)\.map[\s\S]*?applyArrangementEdit\(next[\s\S]*?undo: !nameChanged/.test(entry)
-  && !/label: 'Rename track…'/.test(entry)
+  && /label: 'Rename Track…'[\s\S]*?focusName: true/.test(entry)
   && !/async function renameLane/.test(entry)
   && /customLayerLabel[\s\S]*?label: VOICES\[voiceId\]\.label/.test(entry),
   'the track panel names a desk-owned track at the top, and preserves it across preset changes');
 assert(entry.includes("const SONG_LAYOUT_KEY = 'mash-mixer-song-layout'")
-  && /function currentSongLayout\(\) \{[\s\S]*?keyboard:\s*oskShown\(\)[^}]*?view:\s*deskView[^}]*?grid:\s*stepSeq\.isOpen\(\)/.test(entry)
+  && /function currentSongLayout\(\) \{[\s\S]*?keyboard:\s*oskShown\(\)[^}]*?notes:\s*![^}]*?grid:\s*stepSeq\.isOpen\(\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?rememberSongLayout\(trackId\)[\s\S]*?restoreSongLayout\(id\)/.test(entry),
   'keyboard and both note editors are remembered as separate facts, and restored per song');
 assert(/function showStepSeq\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
@@ -391,16 +424,49 @@ assert(/function showStepSeq\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
   && /function showOsk\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry),
   'opening and closing the keyboard or either note editor updates its song layout');
 
-// The two note editors. They were one panel with two views and one button, which made
-// them exclusive — you could not look at the kit and the bassline together. Three things
-// keep them apart now and all three have to hold: the grid is a WINDOW outside #devices,
-// each has its OWN button, and neither open path touches the other's panel.
-const devicesEnd = shell.indexOf('<footer>', devices);
+// The two note editors, and the effects rack, are THREE separate places.
+//
+// This began as one panel with two views and one button, which made the roll and the kit
+// exclusive — you could not look at the bassline and the drums together. Splitting the
+// views apart fixed that; the roll then became its own panel (`#notes`) rather than a view
+// hosted inside the effects region, which is what removed `deskView` altogether.
+//
+// So the claim is no longer "the roll is a view inside the effects region". It is that
+// there are three independent surfaces and none of them can put another away:
+//   #notes    a desk region, in the elastic chain, holding the piano roll
+//   #devices  a desk region of its own, fixed height, outside the chain
+//   #stepseq  a floating window, outside #desk entirely
+const notesAt = shell.indexOf('<div id="notes">');
+const rollAt = shell.indexOf('<div id="pianoroll">');
 const stepseqAt = shell.indexOf('<div id="stepseq">');
-assert(shell.indexOf('<div id="pianoroll">') > devices
-  && shell.indexOf('<div id="pianoroll">') < devicesEnd
-  && stepseqAt > devicesEnd,
-  'the roll is a view inside the effects region and the step grid is not');
+assert(notesAt > 0 && rollAt > notesAt && rollAt < devices,
+  'the piano roll lives in its OWN desk region (#notes), above the effects panel');
+assert(devices > notesAt,
+  'and the effects panel is a sibling of it, not its host — no view switch between them');
+const rollSrc = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
+// The roll's controls follow the roll. While the two were views of one region they were
+// hosted in #devhead and that was right; once they became two panels it left a part
+// picker, an octave nudge, a key and a scale on a header labelled Effects, with nothing
+// under it they touched.
+assert(/headerHost:\s*\(\)\s*=>\s*document\.getElementById\('notehead'\)/.test(rollSrc),
+  'the roll\'s controls are hosted in the NOTES header, not the effects one');
+assert(!/#devhead\s+\.ssqhostbar/.test(shell)
+  && /#notehead \.ssqhostbar \{/.test(shell),
+  'and the stylesheet moved with them');
+// Clustered, not queued: seven controls in a row read as seven decisions. `group` makes
+// them three — what am I editing, where am I looking, what key is it in — and the header
+// rules a hairline between them. The scope button the grid appends is the fourth.
+assert(/return \[group\('part',[^\]]*group\('view',[^\]]*group\('key',/.test(rollSrc),
+  'the roll hands its controls over already clustered');
+assert(/\.ssqhostbar \.ssqgrp \+ \.ssqgrp,\s*\.ssqhostbar \.ssqgrp \+ \.ssqlink \{[^}]*border-left/s.test(shell),
+  'and the header fences the clusters — including the scope button it does not build');
+// `.fxsel` is width:100%. Eight of them in one flex row is eight squeezed selects, and a
+// native select clamped narrower than its text runs the text under its own arrow rather
+// than eliding it — "Square Tone" came out reading "Square Tone✓".
+assert(/\.ssqhostbar \.fxsel \{[^}]*width:\s*auto[^}]*flex:\s*none/s.test(shell),
+  'the selects in that row are content-width and unsqueezable');
+assert(stepseqAt > shell.indexOf('</main>'),
+  'while the step grid is a floating window outside the desk regions altogether');
 assert(/#stepseq \{[^}]*position:\s*fixed[^}]*z-index:\s*13/s.test(shell)
   && /#stepseq \.ssqhead \{[^}]*cursor:\s*grab/s.test(shell)
   // The property, not the word — the file explains in a comment why it does not pass one.
@@ -417,14 +483,29 @@ assert(/:is\(#stepseq,#pianoroll\) \.ssqx:not\(\.popclose\)/.test(shell)
   && !/:is\(#stepseq,#pianoroll\) \.ssqx \{/.test(shell)
   && /:is\(#stepseq,#pianoroll\) \.ssqx\.ssqadd \{[^}]*font-size:\s*17px/s.test(shell),
   'and the panel\'s small controls cannot shrink it, nor the guard shrink the +');
-assert(/\$\('seqbtn'\)\.onclick = \(\) => showStepSeq\(!stepSeq\.isOpen\(\)\)/.test(entry)
-  && /\$\('rollbtn'\)\.onclick = \(\) => showPianoRoll\(deskView !== 'notes'\)/.test(entry)
-  && /function setDeskView[\s\S]*?pianoRoll\.open\(notes\)/.test(entry)
-  && !/function setDeskView[\s\S]*?stepSeq\./.test(entry.slice(
-    entry.indexOf('function setDeskView'), entry.indexOf('function showStepSeq'))),
-  'one button each, and switching the region\'s view never opens or shuts the grid');
-assert(/\$\('rollbtn'\)\.classList\.toggle\('on', notes\)/.test(entry),
-  'the roll\'s toolbar light is set from the view, so it agrees with the Notes chip');
+// One button each, and each opens ONLY its own panel. The old form of this checked that
+// the view switch never reached `stepSeq`; with the views gone it is the simpler and
+// stronger claim — the roll's open path knows nothing about the grid, and vice versa.
+assert(/\$\('seqbtn'\)\.onclick = \(\) => showStepSeq\(!stepSeq\.isOpen\(\)\)/.test(entry),
+  'the grid has its own button, which toggles the grid');
+assert(/\$\('rollbtn'\)\.onclick = \(\) => showPianoRoll\(\$\('notes'\)\.classList\.contains\('collapsed'\)\)/
+  .test(entry),
+  'and the roll has its own, which folds or unfolds the notes region');
+{
+  const roll = /function showPianoRoll\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  const folded = /function setNotesFolded\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  assert(roll && !/stepSeq\./.test(roll) && folded && !/stepSeq\./.test(folded),
+    'opening the roll cannot open or shut the grid — you can work on the bassline and the'
+    + ' kit at the same time, which is the whole reason they were split apart');
+  const seq = /function showStepSeq\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  assert(seq && !/setNotesFolded|showPianoRoll/.test(seq),
+    'and opening the grid cannot fold the roll away either');
+}
+// The toolbar light comes off the panel's own folded state, so the button and the panel
+// cannot disagree about whether the roll is up.
+assert(/function setNotesFolded[\s\S]*?\$\('rollbtn'\)\.classList\.toggle\('on', !on\)/.test(entry),
+  'the roll’s toolbar light is set where the panel is folded, so it agrees with the'
+  + ' Notes chip and with the fold chevron');
 
 // The header's controls. They had grown five different heights and four different widths,
 // which reads as a row that was never set. One variable governs the height of everything
@@ -540,6 +621,322 @@ assert(/\.stripedit \{[^}]*z-index:\s*2[^}]*background:\s*color-mix/s.test(shell
   'the » draws over the strip name with its own backing rather than blending into it');
 assert(/\.voicepair > \.strip \.striphead:hover \.stripedit,\s*\.voicepair > \.strip \.stripedit \{\s*display: none/s
   .test(shell), 'the » is gone while the panel it opens is out, hover included');
+
+// ---- recording ---------------------------------------------------------------------
+//
+// The take buffer and the clock are unit-tested in tests/note-recorder.js. What cannot
+// be tested there is the WIRING, and every assertion below is here because the failure
+// it catches is invisible in a diff and audible only as "the recorder is broken".
+
+// The arm lives in the keyboard's own title bar, next to the two inputs it decides the
+// fate of, and it is built in JS like the other two rather than sitting in the markup.
+assert(/recBtn\.className = 'oskrec';/.test(entry)
+  && /head\.append\(title, warn, sp, midiBtn, catchBtn, recBtn, close\);/.test(entry),
+  'the Record button is built into the OSK head, between MIDI/Keyboard and the close');
+assert(/#osk \.oskrec\.on \{[^}]*var\(--solo\)/s.test(shell)
+  && /#osk \.oskrec\.live \{[^}]*var\(--hot\)/s.test(shell),
+  'armed and recording are two different colours, and both are the desk’s own state'
+  + ' variables so every theme including the light ones already defines them');
+assert(/#osk \.oskrec::before \{/.test(shell),
+  'the state dot is a pseudo-element — the buffered count is written with textContent'
+  + ' and would take a child span out with it on every note');
+
+// THE assertion. A glide across the keys and a roll across the pads arrive as
+// pointermove and fire as fast as the pointer does; recording them puts sixteen
+// semitones in a bar every time somebody goes looking for a note.
+assert(/function oskPlay\(midi, \{ record = true, src = null \} = \{\} \)?/.test(entry)
+  || /function oskPlay\(midi, \{ record = true, src = null \} = \{\}\) \{/.test(entry),
+  'oskPlay takes a record option, so a gesture can say it is not a note');
+assert(/function oskHit\(laneKey, \{ record = true, src = null \} = \{\}\) \{/.test(entry),
+  'and so does oskHit');
+assert(/keys\.addEventListener\('pointermove'[\s\S]{0,500}?oskPlay\([\s\S]*?\{ record: false \}\)/
+  .test(entry), 'a GLIDE across the keys is not recorded');
+assert(/pads\.addEventListener\('pointermove'[\s\S]{0,400}?oskHit\([^)]*\{ record: false \}\)/
+  .test(entry), 'and neither is a ROLL across the pads');
+
+// All three inputs name the finger they came from, or a note-off cannot find its
+// note-on and every note in the take would take the length of the last one.
+assert(/oskPlay\(Number\(k\.dataset\.midi\), \{ src: `p:\$\{ev\.pointerId\}` \}\)/.test(entry),
+  'a clicked key records under its pointer id');
+assert(/oskPlay\(midi, \{ src: `k:\$\{key\}` \}\)/.test(entry),
+  'a typed key records under the letter, which is what keyup will report');
+assert(/oskPlay\(note, \{ src: `m:\$\{note\}` \}\)/.test(entry),
+  'a MIDI note records under its note number');
+// The note-off half, which did not exist at all until recording had a use for it.
+assert(/if \(kind === 0x80 \|\| \(kind === 0x90 && !vel\)\) \{ recordOff\(`m:\$\{note\}`\); return; \}/
+  .test(entry),
+  'a MIDI note-off is an actual 0x80 OR a note-on at velocity zero — most keyboards'
+  + ' send the second, and reading only the first loses every length');
+assert(/addEventListener\('keyup'[\s\S]{0,300}?recordOff\(`k:\$\{key\}`\)/.test(entry),
+  'a computer key gets its length from the keyup that already stopped auto-repeat');
+assert(/for \(const type of \['pointerup', 'pointercancel'\]\)/.test(entry),
+  'and a pointer gets it from pointerup — pointercancel too, or a gesture ending some'
+  + ' other way leaves the note open and it takes the whole take’s length');
+
+// The one invariant that would be catastrophic and is cheap to reintroduce.
+assert(/function recordNote\([\s\S]*?\n\}/.test(entry)
+  && !/function recordNote\([\s\S]*?\n\}/.exec(entry)[0].includes('applyArrangementEdit'),
+  'recordNote NEVER commits — applyArrangementEdit pushes undo, revalidates the whole'
+  + ' arrangement and rebuilds the timeline, so a per-note commit would mean one undo'
+  + ' step per note and a desk rebuild on every key');
+assert(/function flushTake\([\s\S]*?writeBarNotesShared\(eb, d, bar, lane, notes16, lengths16\)/
+  .test(entry),
+  'a take is written SHARED — recording into a loop changes the pattern, or a note'
+  + ' played into bar 1 of a four-bar section returns every fourth pass');
+assert(/atStep: loopOn \? loopAnchor : Audio\.step/.test(entry),
+  'and re-arms the loop where it already was — applyLoop snaps to the bar it is given,'
+  + ' so re-arming from Audio.step walks a two-bar loop forward on every flush');
+
+// The flush boundaries. Each one of these is a way a take can be silently lost.
+for (const [fn, why] of [
+  ['function setPlaying', 'the transport stopping ends the take'],
+  ['function undo', 'undo writes the take first, so ⌘Z removes what you just played'],
+]) {
+  const body = new RegExp(`${fn}\\([\\s\\S]*?\\n\\}`).exec(entry)?.[0] || '';
+  assert(/endTake\(/.test(body), why);
+}
+
+// ---- the BEAT is the boundary, not the bar ----------------------------------------
+//
+// It was the bar line, and that was too slow to play against: at 120bpm you could play a
+// note and watch two seconds of nothing before it appeared in the roll — long enough to
+// think it had been missed and play it again. A beat is four times sooner and free,
+// because the undo steps coalesce.
+assert(/function recordFollow\([\s\S]*?Math\.floor\(heardStep \/ 4\)/.test(entry),
+  'the flush boundary is the BEAT — a bar line is two seconds at 120bpm, which is long'
+  + ' enough to look like the recorder missing the note');
+assert(/function recordFollow\([\s\S]*?if \(beat !== recLastBeat \|\| heardStep < recLastHeard\)/
+  .test(entry),
+  'and time going BACKWARDS counts as a crossing too — on a short loop the wrap is the'
+  + ' only signal there is');
+assert(!/recLastBar/.test(entry),
+  'and nothing still reads the bar counter it replaced — a stale one leaves the beat'
+  + ' tracking unseeded and flushes once for nothing on every play');
+assert(/undoTag: 'record'/.test(entry)
+  && /if \(undoable\) pushUndo\(undoTag\);/.test(entry),
+  'four writes a bar are free because they COALESCE — pushUndo already merges same-tagged'
+  + ' edits inside 700ms, so a continuous phrase is one ⌘Z rather than one per beat');
+
+// ---- everything the recorder uses is actually imported ---------------------------
+//
+// Twice now a function has been used here and left out of the import list. esbuild
+// bundles it happily — an undefined global is legal JavaScript until it runs — so the
+// first sign is a ReferenceError on the first recorded note. Cheap to check, and it
+// checks the whole module rather than the two that got caught by hand.
+{
+  const recorder = readFileSync(new URL('../tools/lib/note-recorder.js', import.meta.url), 'utf8');
+  const exported = [...recorder.matchAll(/^export (?:function|const) (\w+)/gm)].map((m) => m[1]);
+  // `[^}]*` rather than `[\s\S]*?`: an import list holds no braces, and a lazy match
+  // anchored on the first `import {` in the file swallows every import above this one.
+  const importRe = /import \{([^}]*)\} from '\.\/lib\/note-recorder\.js';/;
+  const importBlock = importRe.exec(entry)?.[1] || '';
+  const imported = new Set(importBlock.split(',').map((s) => s.trim()).filter(Boolean));
+  assert(imported.size > 0, 'the desk imports from note-recorder.js at all');
+  const body = entry.replace(importRe, '');
+  const missing = exported.filter((name) => new RegExp(`\\b${name}\\s*\\(`).test(body) && !imported.has(name));
+  assert(missing.length === 0,
+    `every note-recorder function the desk calls is in its import list (missing: ${JSON.stringify(missing)})`);
+  const unused = [...imported].filter((name) => !new RegExp(`\\b${name}\\s*\\(`).test(body));
+  assert(unused.length === 0,
+    `and nothing is imported that is not called (dead: ${JSON.stringify(unused)})`);
+}
+assert(/function flushTake\([\s\S]*?applyArrangementEdit\(d, null, \{/.test(entry),
+  'and EVERY write is silent — a toast four times a bar is not notice, it is weather');
+// The summary has to hang off the take ending, not off the last write: a beat flush has
+// almost always emptied the buffer by the time you disarm, so a toast on the final write
+// fired only if you stopped within half a second of playing.
+assert(/function endTake\([\s\S]*?if \(announce && recSessionNotes > 0\)[\s\S]*?toast\(/.test(entry),
+  'the "Recorded N notes" summary comes from endTake and the session totals, so it fires'
+  + ' whenever a take ends rather than only when the buffer happened to be non-empty');
+assert(/if \(recArmed\) endTake\('undo', \{ announce: false \}\);/.test(entry),
+  'except on undo — "Recorded 6 notes" a moment before taking them away is a lie about'
+  + ' what just happened');
+assert(/function discardTake\(\)[\s\S]*?recSessionNotes = 0;/.test(entry),
+  'and a discarded take resets the totals, or endTake announces one that was abandoned');
+
+// ---- a key still down when the take is flushed ------------------------------------
+//
+// The regression the beat flush caused, and the reason it is pinned here rather than left
+// to be noticed: clearing the take threw away the open-note tokens with it, so a note-off
+// arriving after a flush had nothing to attach a length to and the note kept the roll's
+// one-step default. Nearly invisible at a two-second bar flush — most notes are released
+// inside their own bar. Near-universal at 500ms.
+{
+  const body = /function flushTake\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  assert(!/recOpen\.clear\(\)/.test(body),
+    'a flush does NOT clear the held-note map — a key that is still down has not finished'
+    + ' being a note, and dropping it made every held note come out a sixteenth long');
+  assert(/carryHeld\(\)/.test(body),
+    'it re-adds the held notes to the fresh take instead, so their eventual note-off'
+    + ' still has somewhere to write a length');
+  assert(body.indexOf('applyArrangementEdit') < body.indexOf('carryHeld()'),
+    'and it does that AFTER the write, so the re-seeded notes read a draft that holds them');
+}
+assert(/function carryHeld\(\)[\s\S]*?recOpen\.set\(src, \{ \.\.\.held, token \}\)/.test(entry),
+  'carryHeld repoints the token and keeps everything else — `at` above all, so the length'
+  + ' is still measured from the original press rather than from the last flush');
+assert(/if \(src\) recOpen\.set\(src, \{ token, at: heard, bar, lane: laneKey, step: inBar, midi, freq \}\);/
+  .test(entry),
+  'which is why a held note records where it is as well as when — a re-add needs the bar,'
+  + ' lane, step and pitch, not just the token');
+assert(/function recCount\(\)[\s\S]*?recSessionNotes/.test(entry),
+  'the count on the button is the whole take, not the buffer: a buffered count would'
+  + ' flicker back to nothing four times a bar and read as notes being lost');
+assert(/const n = recArmed \? recSessionNotes : 0;/.test(entry),
+  'and it is gone the moment you disarm — a red badge left sitting there reads as a'
+  + ' PENDING count, something not yet dealt with, when the notes are already in the song');
+
+// ---- a chord stays a chord --------------------------------------------------------
+assert(/chordAnchor\(recChord, performance\.now\(\)/.test(entry),
+  'notes are anchored to the first of a cluster, or a chord whose notes land either side'
+  + ' of a rounding boundary splits into a note plus a dyad a step later');
+assert(/!polyLane\(editBank\(\), laneKey\) && laneKind\(laneKey\) !== 'perc' && !recChordWarned/
+  .test(entry),
+  'and a chord played into a lane that genuinely cannot hold one says so — one note out'
+  + ' of three kept silently is indistinguishable from the recorder dropping them');
+
+// ---- which lanes can hold a chord --------------------------------------------------
+//
+// Not `CHORD_LANES`. That named the two lanes whose hand-written playback loops over the
+// step, and it was the whole answer until the rack arrived — the rack is deliberately
+// lane-agnostic about polyphony, so what decides it is which code plays the step.
+assert(/stacks: \(lane\) => polyLane\(editBank\(\), lane\)/.test(entry),
+  'the recorder asks polyLane which lanes stack');
+{
+  const voices = readFileSync(new URL('../src/data/voices.js', import.meta.url), 'utf8');
+  const body = /export function polyLane\([\s\S]*?\n\}/.exec(voices)?.[0] || '';
+  assert(/PERCUSSION_LANES\.includes\(base\)\) return false/.test(body)
+    && /!MONO_LANES\.includes\(base\)/.test(body),
+    'and polyLane is now about the LANE alone — percussion holds booleans, the gesture'
+    + ' and word lanes hold one shape per step, and everything pitched can hold a chord');
+  assert(!/v\.kind !== 'engine'/.test(body),
+    'with no preset test left in it: the four hand-written pitched bodies loop over the'
+    + ' step now, so "which code plays it" no longer changes the answer');
+  const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+  assert(/const tonesOf = \(v\) => \(Array\.isArray\(v\)/.test(audio),
+    'scheduleStep resolves a step to a LIST of frequencies');
+  for (const lane of ['lead', 'bass', 'leadHarm', 'twinkle']) {
+    assert(new RegExp(`for \\(const \\w+ of tonesOf\\(b\\.${lane}\\[s\\]\\)\\)`).test(audio),
+      `and ${lane}'s hand-written body runs once per tone — free, because play() builds`
+      + ' its own oscillator per call, which is why two keys at once always sounded');
+  }
+  assert(/const bassRoot = tonesOf\(b\.bass\[s\]\)\[0\];/.test(audio),
+    'and the star arpeggio takes a chord\u2019s lowest tone as its root rather than the'
+    + ' whole array, which would have broken it');
+}
+// The roll stays VALUE-based, which is what keeps this change invisible to editing: most
+// rack-voiced lanes in the game are bass and lead, single-note parts where clicking a new
+// pitch on an occupied step is how you CORRECT a note. Only a step that already holds a
+// chord behaves chordally.
+assert(/const isChord = \(value\) => CHORD_LANES\.includes\(baseLane\(lane\(\)\)\) \|\| Array\.isArray\(value\);/
+  .test(readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8')),
+  'the roll decides chord-ness from the STEP VALUE, not from whether the lane could hold'
+  + ' one — so a click on a single-note lane still replaces, as it always has');
+
+// ---- MIDI and Record reach the song without the keyboard open ---------------------
+//
+// The gate was there so a song could not change for reasons you cannot see. The arm is
+// in the header now and stays lit whatever is shut, which serves that better than making
+// you open a window you are not looking at.
+for (const id of ['midibtn', 'recbtn']) {
+  assert(new RegExp(`id="${id}"[^>]*class="[^"]*\\biconbtn\\b`).test(shell),
+    `${id} is an icon button in the header, in the row with the other four`);
+  assert(new RegExp(`\\$\\('${id}'\\)\\.onclick`).test(entry),
+    `and ${id} is wired to the same function the keyboard's own button calls`);
+}
+const midiBody = /function onMidiMessage\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(!/if \(!oskShown\(\) \|\| !oskPlayable/.test(midiBody)
+  && /if \(!oskPlayable\(selectedLane\)\) return;/.test(midiBody),
+  'MIDI is NOT gated on the keyboard being open — a MIDI keyboard is a real instrument'
+  + ' and your eyes are on your hands, not on a drawn one. A channel to play is still'
+  + ' required, because that is where the notes would go.');
+// The one remaining `oskShown` in here is a guard on LIGHTING a drawn key, and it has to
+// sit after the note has sounded — in front of it, it would be the old gate again.
+assert(midiBody.indexOf('oskPlay(note') < midiBody.indexOf('if (!oskShown()) return;'),
+  'and the only thing still asking whether the keyboard is open is the key-lighting,'
+  + ' after the note has already played');
+assert(/const kit = oskKitLanes\(\);/.test(midiBody)
+  && !/querySelectorAll\('\.oskpad'\)/.test(midiBody),
+  'and a drum arrives off the SONG’s kit rather than off the drawn pads, so General MIDI'
+  + ' still lands on the right channel with the window shut');
+assert(/function oskTypedKey\(e\) \{\s*if \(!oskCatch \|\| !oskShown\(\)\) return false;/.test(entry),
+  'while the COMPUTER keys keep their gate — the desk’s letters are its shortcuts, and'
+  + ' oskCatch is the negotiated hand-over');
+const showOskBody = /function showOsk\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(!/recArmed = false/.test(showOskBody),
+  'closing the keyboard no longer disarms: the arm is in the header and closing a window'
+  + ' you were not playing with is not a reason to end a take');
+// Record belongs WITH the transport, not with the panel toggles on the right: those are
+// windows you open, this arms what the transport is about to do. Which side of the
+// transport group's closing tag it sits on is a spacing decision and deliberately not
+// pinned here — what matters is that it follows the transport and precedes the loop tray,
+// rather than living over by A/B and Undo where it started.
+{
+  const at = (id) => shell.indexOf(`id="${id}"`);
+  assert(at('recbtn') > at('pause'),
+    'Record comes after Pause — where a record button has been on every deck since tape');
+  assert(at('recbtn') < at('looptoggle') && at('recbtn') < at('ab'),
+    'and stays on the transport side of the header, not out with the panel toggles');
+  assert(at('midibtn') > at('rollbtn'),
+    'while MIDI stays over with the panel toggles — it answers which instrument plays the'
+    + ' channel, the same question the ⌨ button answers');
+}
+// Red dot at rest, white dot on red while rolling. The colour is the state.
+assert(/\.recicon \.body \{ fill: var\(--hot\); \}/.test(shell),
+  'the dot is red at rest — `--hot`, the desk’s own red, defined in all nine themes');
+assert(/#recbtn\.live \{[^}]*background: var\(--hot\)/s.test(shell)
+  && /#recbtn\.live \.body \{ fill: #fff/.test(shell),
+  'and recording is a WHITE dot on a RED button — the one state that must never be'
+  + ' mistaken for another');
+// The bug in the screenshot: `#midibtn.on { color: var(--accent) }` against
+// `button.on { background: var(--accent) }` is teal on teal, and the button lit up as a
+// solid block with the socket invisible inside it.
+assert(!/#midibtn\.on/.test(shell),
+  'MIDI has NO colour rule for its lit state — `button.on` already paints teal and sets'
+  + ' `--on-accent` for what is drawn on it, and overriding it was teal-on-teal');
+assert(/\.midiicon \.ring \{[^}]*stroke: currentColor/s.test(shell)
+  && /\.midiicon \.pin \{[^}]*fill: currentColor/s.test(shell),
+  'and the socket is drawn entirely in currentColor, so it inherits that contrast');
+assert(/recordFollow\(heardStep\);/.test(entry),
+  'and it is driven from the desk’s own playhead, so it sees the same step the line does');
+
+// One clock, hoisted, because two copies drift the moment anybody nudges [ or ].
+assert(/function heardStepNow\(\) \{[\s\S]*?phOffset \/ 1000/.test(entry),
+  'the heard step is one function, phOffset trim included');
+assert(/const heardStep = heardStepNow\(\)/.test(entry),
+  'the playhead reads it');
+assert(/function recordNote\([\s\S]*?heardStepNow\(\)/.test(entry),
+  'and so does the recorder — Audio.step is the scheduler’s FUTURE and carries a cycle'
+  + ' offset, so it must never be the thing a note is quantised against');
+
+// Shift is how ⇧R gets through hands that are on the notes.
+assert(/function oskTypedKey\(e\) \{[\s\S]{0,400}?if \(e\.shiftKey\) return false;/.test(entry),
+  'the keyboard declines everything shifted, which frees the shifted alphabet for good');
+const shortcuts = /addEventListener\('keydown', \(e\) => \{[\s\S]*?\n\}\);/.exec(entry)?.[0] || '';
+assert(shortcuts.indexOf("e.shiftKey && key === 'r'") > 0
+  && shortcuts.indexOf("e.shiftKey && key === 'r'") < shortcuts.indexOf("key === 'r'"),
+  '⇧R is tested BEFORE the plain-R reset — this handler lowercases the key and does not'
+  + ' look at Shift, so the wrong order resets the channel every time you try to arm');
+assert(/if \(recArmed\) \{[\s\S]{0,200}?discardTake\(\)/.test(entry),
+  'Escape throws the take away while recording — the gesture you need most and the one'
+  + ' there was previously nowhere to put');
+
+// Solo is per-song monitoring, and the desk deliberately keeps it across a mix
+// re-apply (reapplySolo). A song switch is the one boundary it must NOT cross: the
+// clear has to land before buildRack draws the new S buttons and before
+// applyToEngine hands reapplySolo the chance to put it back.
+const loadTrackBody = /function loadTrack\(id\) \{[\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(loadTrackBody.includes('dropSolo()'),
+  'opening a song clears solo — it belongs to the mix you left, not the one you opened');
+assert(loadTrackBody.indexOf('dropSolo()') < loadTrackBody.indexOf('buildRack()')
+  && loadTrackBody.indexOf('dropSolo()') < loadTrackBody.indexOf('applyToEngine('),
+  'and clears it before the rack is rebuilt and before reapplySolo could push it back');
+assert(/function dropSolo\(\) \{[\s\S]*?soloed\.delete\(key\)[\s\S]*?soloedAux\.delete\(id\)[\s\S]*?\n\}/.test(entry)
+  && !/function dropSolo\(\) \{[\s\S]*?\n\}/.exec(entry)[0].includes('toast('),
+  'dropSolo empties both solo sets — lanes and sends — and says nothing, because a'
+  + ' song switch is not the user clicking S');
+assert(/function clearAllSolo\(\) \{[\s\S]*?dropSolo\(\)[\s\S]*?toast\('Solo cleared'\)/.test(entry),
+  'while the S button still reports, over the same one implementation');
 
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

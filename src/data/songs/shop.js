@@ -176,56 +176,22 @@ export const bank = {
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
-// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
-// and nothing above it is ever touched by the desk.
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
   master: -2.3,
+  voice: {"kickVoice":"kickShop","snareVoice":"snareEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
-    kick: {
-      gain: -6,
-    },
-    hats: {
-      gain: -6,
-    },
-    clap: {
-      gain: -6,
-    },
-    lead: {
-      send: {
-        delay: 1,
-      },
-    },
-    leadHarm: {
-      send: {
-        delay: 1,
-      },
-    },
-    twinkle: {
-      send: {
-        delay: 1,
-      },
-    },
-    chords: {
-      send: {
-        delay: 1,
-      },
-    },
-    organChords: {
-      send: {
-        delay: 1,
-      },
-    },
-    organGliss: {
-      send: {
-        delay: 1,
-      },
-    },
-    organSwoop: {
-      send: {
-        delay: 1,
-      },
-    },
+    kick: { gain: -6 },
+    hats: { gain: -6 },
+    clap: { gain: -6 },
+    lead: { send: { delay: 1 } },
+    leadHarm: { send: { delay: 1 } },
+    twinkle: { send: { delay: 1 } },
+    chords: { send: { delay: 1 } },
+    organChords: { send: { delay: 1 } },
+    organGliss: { send: { delay: 1 } },
+    organSwoop: { send: { delay: 1 } },
   },
 };
 

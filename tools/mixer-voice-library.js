@@ -65,10 +65,10 @@ export function foldIcon(dir = 'right') {
  * The lane a preset is auditioned on.
  *
  * Pitched presets go through `bass`, and that is not an arbitrary pick: it is the lane
- * tools/mixer.js measures every preset's peak on — see MEASURE_BANK — and a preset's
- * level on every lane in the game is derived from that peak. Auditioning on the lane
- * the measurement was taken on is the one place where what you hear and what the
- * number claims are the same statement.
+ * a melodic preset's level is measured on — see homeLane in tools/lib/measure-voice.js
+ * — and a preset's gain on every lane in the game is derived from that level.
+ * Auditioning on the lane the measurement was taken on is the one place where what you
+ * hear and what the number claims are the same statement.
  *
  * A drum preset goes on the lane its category names, because a percussion lane is the
  * only kind that carries `noteKey` — the pitch a drum is struck at. A kick preset on a

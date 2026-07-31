@@ -93,6 +93,14 @@ export function listTracks() {
     ['audition', Object.keys(SHOP_THEME_BY_ID)],
     ['imported', [...RUNTIME.entries()].filter(([, t]) => (t.group || 'imported') === 'imported').map(([id]) => id)],
     ['scratch', [...RUNTIME.entries()].filter(([, t]) => t.group === 'scratch').map(([id]) => id)],
+    // Scratch songs in every mechanical sense — same file shape, same writable desk
+    // section — but they answer a question the others do not: what does a STYLE PACK
+    // sound like. One per pack, written by tools/style-auditions.js at a fixed seed,
+    // and the thing tools/adopt-style-voices.js reads a chosen sound back out of.
+    // Their own group because a dozen of them landing in Scratch songs buries whatever
+    // you were actually working on, and they are development scaffolding rather than
+    // material — which is also why the desk lists them last.
+    ['styleAudition', [...RUNTIME.entries()].filter(([, t]) => t.group === 'styleAudition').map(([id]) => id)],
   ];
   const seen = new Set();
   const out = [];

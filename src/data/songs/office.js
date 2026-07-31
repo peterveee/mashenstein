@@ -24,16 +24,12 @@ export const bank = {
 };
 
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
-// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
-// and nothing above it is ever touched by the desk.
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
+  voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
-    lead: {
-      send: {
-        delay: 1,
-      },
-    },
+    lead: { send: { delay: 1 } },
   },
 };
 

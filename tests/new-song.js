@@ -148,11 +148,18 @@ try {
     && new Set(SONG_STYLES.map((s) => s.mode)).size >= 4
     && new Set(styleBanks.map((b) => json(b.starterLanes))).size >= 5,
   'the packs disagree about tempo, mode and which lanes a full band even has');
-  assert(SONG_STYLES[0].id === 'electropop' && json(SONG_STYLES[0].bank) === json({ musicTrim: 0.7 })
-    && !Object.keys(banks['full-band']).some((k) => k.endsWith('Voice')),
-  'the first pack is the engine\'s own sound, so seed 0 stays the canonical starter');
-  assert(SONG_STYLES.slice(1).every((s) => s.lanes.band.every((lane) => s.bank[laneVoiceKey(lane)])),
-    'every other pack gives each of its Full Band lanes a voice of its own');
+  // Seed 0 takes the first pack, so the first pack is what the desk opens with and
+  // what every canonical example in this file is written against. It used to be the
+  // one pack that named no voices at all — "this pack IS the engine's own sound" —
+  // and it is not any more: it names presets like the other ten, because a starter
+  // that sounds like the engine's default square lead is the sound the packs exist
+  // to get away from. What has to hold is that it is still FIRST and still complete.
+  assert(SONG_STYLES[0].id === 'electropop',
+    'the first pack is electropop, so seed 0 stays the canonical starter');
+  assert(SONG_STYLES.every((s) => s.lanes.band.every((lane) => s.bank[laneVoiceKey(lane)])),
+    'every pack gives each of its Full Band lanes a voice of its own');
+  assert(banks['full-band'].starterLanes.every((lane) => banks['full-band'][laneVoiceKey(lane)]),
+    'and the starter the desk opens with arrives voiced, not on the engine default');
   // An ENGINE preset is a bundle of bank keys that only `withVoices` expands, and that
   // returns early on a song with no mix — which every generated song is. Named in a
   // pack it would be a lane claiming a filtered saw and playing the default instead.
@@ -169,7 +176,11 @@ try {
     if (g == null) return true;
     return g >= 0.5 && g <= 2.5 && s.lanes.band.some((lane) => PERCUSSION_LANES.includes(lane));
   }), 'every stated drumGain is a few dB of correction on a pack that has a kit');
-  assert(SONG_STYLES.every((s) => s.bank.musicTrim > 0.4 && s.bank.musicTrim < 1.7),
+  // A trim above 1 is not a mistake and stopped being unusual when the trims were
+  // re-derived: it is a quiet pack — a dirge at half speed, a bell box with no kit in
+  // it — brought UP to the -22 LUFS the catalogue sits at. What the range catches is a
+  // trim that has run away, which is a pack whose voices changed under it.
+  assert(SONG_STYLES.every((s) => s.bank.musicTrim > 0.4 && s.bank.musicTrim < 2.5),
     'every pack states a song trim inside the range the catalogue uses');
   assert(SONG_STYLES.every((s) => s.lanes.band.every((lane) => {
     const seam = seamFor(lane);

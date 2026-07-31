@@ -1,0 +1,47 @@
+// HALF-TIME DIRGE AUDITION — one song: what it plays, how it is arranged, how it sounds.
+//
+// Created in the Song Mixer as a full-band starter.
+// Half-time Dirge — 72 BPM in A minor. Half the tempo and half the backbeat: reed organ, sub bass, a taiko.
+//
+// The music below is the composition. Everything under THE DESK WRITES BELOW HERE
+// is written by `npm run mixer` and will be rewritten on every save — put notes
+// about the song up here, where they survive.
+import { seq, chordSeq } from '../../engine/notes.js';
+
+export const id = "audition-dirge";
+export const title = "HALF-TIME DIRGE AUDITION";
+export const slug = "audition-dirge";
+export const group = "styleAudition";
+export const seed = 368925;
+
+export const bank = {
+  bpm: 72,
+  musicTrim: 2.018,
+  drumGain: 0.691,
+  kickVoice: "stKickDeep",
+  snareVoice: "stSnareBrush",
+  tomVoice: "stTaiko",
+  bassVoice: "stSubSine",
+  organChordsVoice: "stReedOrgan",
+  leadVoice: "stVibratoLead",
+  starterLanes: ["kick","snare","tom","bass","organChords","lead"],
+  sections: [
+    {
+      kick: seq('C1 . . . . . . . . . . . . . . . | C1 . . . . . C1 . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . . . . . C1 . . . . . . . | . . . . . . . . C1 . . . . . C1 .').map((v) => !!v),
+      tom: seq('C1 . . . . . . . C1 . . . . . . . | C1 . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      bass: seq('A2 . . . . . . . A2 . . . . . . . | E2 . . . . . . . E2 . . . . . . .'),
+      organChords: chordSeq('A3min7 . . . . . . . A3min7 . . . . . . . | E3min7 . . . . . . . E3min7 . . . . . . .'),
+      lead: seq('A4 . . . . . C5 . . . . . . . . . | B4 . . . . . A4 . . . . . . . . .'),
+    },
+  ],
+  order: [0,0,0,0],
+};
+
+// ---- THE DESK WRITES BELOW HERE ----------------------------------------------
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,
+// and nothing above it is ever touched by the desk.
+
+export const mix = null;
+
+export const arrangement = null;

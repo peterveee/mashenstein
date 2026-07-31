@@ -30,6 +30,11 @@ const suites = [
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
+  // The fourth caller of the one-note seam: a note PLAYED into a song rather than
+  // drawn into one. Same note semantics as the roll — deliberately, it imports them —
+  // so what this pins is the half the roll never needed: a heard position rounded to a
+  // step, and a take that overdubs without deleting the part it landed on.
+  'tests/note-recorder.js',
   // The other half of the voice library: tests/voices.js proves the presets sound,
   // this proves the desk can write one back into src/data/voices.js without
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
@@ -46,6 +51,12 @@ const suites = [
   // does to a note that is ALREADY PLAYING when the preset under it is edited. Turning
   // a knob on the desk used to stop the bar you were listening to.
   'tests/voice-edit.js',
+  // Beside it because it is the same rig — a rack on a real context in Chromium — and
+  // the same subject from the other end: not what an edit does to a playing note, but
+  // what one particular control does to the SOUND. It renders three drum hits and three
+  // notes and counts their zero crossings, so it is a browser suite that finishes in
+  // about a second.
+  'tests/pitch-curve.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
@@ -80,6 +91,9 @@ const suites = [
   // are about what comes out of the speakers: a length that reads correctly in the file
   // and changes nothing about the sound is the one failure the unit half cannot see.
   'tests/note-duration.js',
+  // What a length that long does to the song AFTER it: opening another song has to
+  // stop the note that is still ringing, not merely duck it for half a second.
+  'tests/song-switch.js',
   'tests/voices.js',
   'tests/null-test.js',
   'tools/fairness-sim.js',

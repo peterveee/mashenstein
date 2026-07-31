@@ -10,7 +10,7 @@
 //
 // So `refresh` now has three answers, and this suite is the line between them:
 //
-//   nothing    the edit is read per note anyway — LENGTH, VELOCITY, TRANSPOSE, FINE,
+//   nothing    the edit is read per note anyway — LENGTH, TRANSPOSE, FINE,
 //              TAPS, FALLOFF, VOICING. Most of the panel, and none of it reaches Tone.
 //   set        push it onto the standing synths — envelopes, filters, waveforms,
 //              ratios. Same instances before and after: nothing was rebuilt, so there
@@ -104,7 +104,6 @@ async function main() {
       const synth = before.slots[0].synth;
       // Every control on the panel that is NOT built into a synth.
       VOICES[id].dur = 3.5;
-      VOICES[id].velocity = 0.4;
       VOICES[id].transpose = -12;
       VOICES[id].fine = 7;
       VOICES[id].taps = [0, 0.02];
@@ -112,9 +111,9 @@ async function main() {
       VOICES[id].mono = true;
       rack.refresh(id);
       const after = poolOf('bass', id);
-      say(after === before, 'length/velocity/tuning/taps/voicing: the pool is untouched');
+      say(after === before, 'length/tuning/taps/voicing: the pool is untouched');
       say(after && after.slots[0].synth === synth && !synth.disposed,
-        'length/velocity/tuning/taps/voicing: the synth is the same one, still alive');
+        'length/tuning/taps/voicing: the synth is the same one, still alive');
     }
 
     // ---- 2. envelopes, filters, waveforms: set on the standing synth -------------
@@ -284,6 +283,57 @@ async function main() {
       say(previewPool && previewPool !== pool,
         'because it plays on its own instances — the song\'s timeline is never written'
         + ' to out of order');
+    }
+
+    // ---- 8b. the game synth's tone filter is absent until asked for --------------
+    //
+    // The whole promise of an OPTIONAL section is that leaving it off costs nothing —
+    // no node, no change to a preset that shipped before it existed. That is invisible
+    // from the outside, so it is counted here: the rack is asked to build a note with
+    // the filter absent, present, and steeper, and the biquads it creates are tallied.
+    {
+      const made = [];
+      const realBiquad = ctx.createBiquadFilter.bind(ctx);
+      ctx.createBiquadFilter = () => { const f = realBiquad(); made.push(f); return f; };
+      const count = (id) => { made.length = 0; hit('lead', id); return made.length; };
+
+      const plain = install(VOICES.toneSquare);
+      VOICES[plain].vibrato = null;
+      say(count(plain) === 0, 'a game-synth note with no filter builds no filter node');
+
+      VOICES[plain].filter = { type: 'lowpass', freq: 900, Q: 0.7 };
+      say(count(plain) === 1, 'switching the filter on builds exactly one');
+      VOICES[plain].filter.Q = 12;
+      VOICES[plain].filter.slope = -24;
+      say(count(plain) === 2, 'a steeper slope is stages of the same filter, not a new kind');
+      // Shape and resonance are set outright and readable now; the FREQUENCY is
+      // scheduled for the note's own start time, so `.value` still reads the node's
+      // default here and asserting on it would be asserting on Web Audio's clock.
+      // Resonance lands on the first stage only — the ones behind it are there for the
+      // slope and would multiply the peak if they resonated too.
+      say(made.every((f) => f.type === 'lowpass'), '...and every stage is the shape asked for');
+      say(Math.abs(made[0].Q.value - 12) < 1e-3 && Math.abs(made[1].Q.value - 0.7071) < 1e-3,
+        '...with the resonance on the first stage and the rest flat');
+
+      // Noise carries its own pitch bandpass, so the tone filter is a SECOND node — the
+      // two must not be the same one, or filtering the tone would detune the note. This
+      // path needs the seeded buffer to play at all, hence a rack of its own.
+      const nrack = new VoiceRack(ctx, ctx.createBuffer(1, 4410, ctx.sampleRate));
+      const noisy = install(VOICES.toneSquare);
+      VOICES[noisy].waveform = 'noise';
+      VOICES[noisy].vibrato = null;
+      const nhit = () => {
+        made.length = 0;
+        nrack.play('lead', noisy, 220, {
+          time: ctx.currentTime + 0.05, dur: 0.4, gain: 0.5, dry, wet, echo: true,
+        });
+        return made.length;
+      };
+      const bare = nhit();
+      say(bare === 1, 'a noise note builds the one bandpass that gives it its pitch');
+      VOICES[noisy].filter = { type: 'highpass', freq: 3000, Q: 0.7 };
+      say(nhit() === bare + 1, '...and the tone filter arrives beside it, not instead of it');
+      nrack.dispose();
     }
 
     // ---- 9. nothing survives the rack ------------------------------------------

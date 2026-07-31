@@ -18,7 +18,8 @@ import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
-  readVoicesSource, entriesIn, emitEntry, upsertPreset, deletePreset, setPeak, tableOf,
+  readVoicesSource, entriesIn, emitEntry, upsertPreset, deletePreset, setMeasured,
+  readMeasured, tableOf,
 } from '../tools/lib/voices-source.js';
 import { VOICES } from '../src/data/voices.js';
 
@@ -43,9 +44,15 @@ const load = async (src) => {
 const tone = entriesIn(SRC, 'TONE');
 const noise = entriesIn(SRC, 'NOISE');
 const drums = entriesIn(SRC, 'DRUM');
-const wantTone = Object.values(VOICES).filter((v) => v.kind === 'tone');
-const wantNoise = Object.values(VOICES).filter((v) => v.kind === 'noise');
-const wantDrum = Object.values(VOICES).filter((v) => v.kind === 'drum');
+// The EDITABLE catalogue. A frozen starter carries a kind like anything else — it has
+// to, since STARTER holds all three — but it does not live in one of these tables, and
+// that is exactly the property that makes it frozen: `tableOf` cannot find it, so
+// nothing here can write it. Counting them here would be asserting that the thing the
+// editor cannot reach is reachable.
+const editable = Object.values(VOICES).filter((v) => !v.starter);
+const wantTone = editable.filter((v) => v.kind === 'tone');
+const wantNoise = editable.filter((v) => v.kind === 'noise');
+const wantDrum = editable.filter((v) => v.kind === 'drum');
 
 assert(tone.length === wantTone.length,
   `TONE: every entry is found (${tone.length} of ${wantTone.length})`);
@@ -76,7 +83,7 @@ assert(tableOf(SRC, 'neverExisted') === null, 'an unknown id is not claimed by a
 // that welds two words together, this is where it shows.
 let rt = SRC;
 for (const e of [...tone, ...noise, ...drums]) {
-  const { id, kind, peak, ...rest } = VOICES[e.id];
+  const { id, kind, level, peak, ...rest } = VOICES[e.id];
   rt = upsertPreset(rt, e.id, rest);
 }
 const after = await load(rt);
@@ -117,13 +124,29 @@ const NEW_DRUM = {
   noise: { type: 'lowpass', freq: 3000, Q: 0.7, decay: 0.02, gain: 0.4 },
   drive: 0.3,
 };
+// The additive stack. Its drawbars are the one ARRAY OF NUMBERS a preset carries that has
+// to come back as an array — the desk writes bars by index (`additive.bars.3`), and a
+// round trip that turned the list into `{ '3': 0.2 }` would load as a preset with no bars,
+// which is silence rather than a wrong sound.
+const NEW_ADDITIVE = {
+  label: 'Test Organ', category: 'Organs', synth: 'AdditiveSynth',
+  homeLane: 'organChords', dur: 6,
+  note: 'An additive stack the test made up.',
+  additive: {
+    bars: [0, 0, 1, 0.55, 0.3, 0.2, 0, 0.1, 0],
+    attack: 0.03, decay: 0, stretch: 0.02, damp: 0.5,
+    perc: { ratio: 3, gain: 0.7, attack: 0.002, decay: 0.08 },
+  },
+};
 
 let added = upsertPreset(SRC, 'testWobble', NEW_TONE, 'TONE');
-added = setPeak(added, 'testWobble', 0.876543);
+added = setMeasured(added, 'testWobble', { level: 0.0876543, peak: 0.876543 });
 added = upsertPreset(added, 'testClap', NEW_NOISE, 'NOISE');
-added = setPeak(added, 'testClap', 0.2);
+added = setMeasured(added, 'testClap', { level: 0.02, peak: 0.2 });
 added = upsertPreset(added, 'testThump', NEW_DRUM, 'DRUM');
-added = setPeak(added, 'testThump', 0.5);
+added = setMeasured(added, 'testThump', { level: 0.05, peak: 0.5 });
+added = upsertPreset(added, 'testOrgan', NEW_ADDITIVE, 'TONE');
+added = setMeasured(added, 'testOrgan', { level: 0.07, peak: 0.9 });
 const grown = await load(added);
 
 assert(grown.VOICES.testWobble?.kind === 'tone' && grown.VOICES.testClap?.kind === 'noise'
@@ -138,26 +161,49 @@ assert(grown.VOICES.testWobble?.note === NEW_TONE.note,
   'a note long enough to wrap comes back as the same string, spaces and all');
 assert(JSON.stringify(grown.VOICES.testClap?.taps) === JSON.stringify(NEW_NOISE.taps),
   'a tap list survives, in order');
-// The measurement is the point of the whole save path: a preset whose peak is the
-// placeholder is one that arrives at the wrong level on every lane.
+// A LIST, not an object with numeric keys. The desk writes drawbars by index, so if a
+// round trip turned `[0, 0, 1, …]` into `{ '0': 0, '2': 1, … }` the preset would load
+// with `Array.isArray(bars)` false and `_playAdditive` would refuse it — silence, and
+// silence that looks like the engine rather than like the emitter.
+assert(Array.isArray(grown.VOICES.testOrgan?.additive?.bars)
+  && JSON.stringify(grown.VOICES.testOrgan.additive.bars) === JSON.stringify(NEW_ADDITIVE.additive.bars),
+'an additive stack’s drawbars come back as a list, in order');
+assert(grown.VOICES.testOrgan?.additive?.perc?.ratio === 3
+  && grown.VOICES.testOrgan?.additive?.stretch === 0.02,
+'an additive preset’s nested percussion and character controls survive the trip');
+// The measurement is the point of the whole save path: a preset whose level is the
+// placeholder is one that arrives at the wrong level on every lane. Both numbers,
+// because a save writes both and a save that wrote one would leave the two describing
+// two different sounds.
+assert(grown.VOICES.testWobble?.level === 0.087654 && grown.VOICES.testClap?.level === 0.02,
+  'each carries the level that was spliced in, rounded the way the block is');
 assert(grown.VOICES.testWobble?.peak === 0.8765 && grown.VOICES.testClap?.peak === 0.2,
   'each carries the peak that was spliced in, rounded the way the block is');
-assert(Object.keys(grown.VOICES).length === Object.keys(VOICES).length + 3,
+// And the source can be read back for them, which is how the desk knows what the
+// renderer is about to play a preset at while its own copy of voices.js is stale.
+assert(readMeasured(added, 'testClap').level === 0.02
+  && readMeasured(added, 'testClap').peak === 0.2,
+'readMeasured finds both numbers it just wrote');
+assert(readMeasured(added, 'noSuchPreset').level === 0
+  && readMeasured(added, 'noSuchPreset').peak === 1,
+'and answers an unmeasured id with the defaults VOICES would have built it with');
+assert(Object.keys(grown.VOICES).length === Object.keys(VOICES).length + 4,
   'and nothing else appeared or vanished');
 
-// Splicing one peak must not disturb the other hundred — the block is machine-owned,
-// but it is machine-owned by tools/measure-voices.js too, and the two have to agree.
-const peaksOf = (m) => Object.fromEntries(Object.values(m.VOICES)
-  .filter((v) => v.peak !== undefined).map((v) => [v.id, v.peak]));
-const before = peaksOf({ VOICES });
-const now = peaksOf(grown);
+// Splicing one measurement must not disturb the other hundred — the blocks are
+// machine-owned, but they are machine-owned by tools/measure-voices.js too, and the
+// two have to agree.
+const measuredIn = (m) => Object.fromEntries(Object.values(m.VOICES)
+  .filter((v) => v.peak !== undefined).map((v) => [v.id, `${v.level}/${v.peak}`]));
+const before = measuredIn({ VOICES });
+const now = measuredIn(grown);
 assert(Object.entries(before).every(([id, p]) => now[id] === p),
-  `splicing a peak in leaves the other ${Object.keys(before).length} untouched`);
+  `splicing one in leaves the other ${Object.keys(before).length} untouched`);
 
 // ---- editing one in place ---------------------------------------------------
 
 const edited = upsertPreset(SRC, 'roundMono', {
-  ...(() => { const { id, kind, peak, ...r } = VOICES.roundMono; return r; })(),
+  ...(() => { const { id, kind, level, peak, ...r } = VOICES.roundMono; return r; })(),
   label: 'Round Mono, Edited',
   options: { ...VOICES.roundMono.options, envelope: { attack: 0.5, decay: 0.2, sustain: 0.7, release: 0.25 } },
 });
@@ -188,8 +234,8 @@ assert(Math.abs(editedLines) <= 2,
 // Round-tripping to byte identity is the strongest statement available: not "the
 // presets still load", but "the file is character-for-character the one we started
 // with", comments, blank lines, indentation and all.
-assert(deletePreset(deletePreset(deletePreset(added, 'testWobble'), 'testClap'), 'testThump') === SRC,
-  'adding three presets and deleting them again restores the file byte for byte');
+assert(deletePreset(deletePreset(deletePreset(deletePreset(added, 'testWobble'), 'testClap'), 'testThump'), 'testOrgan') === SRC,
+  'adding four presets and deleting them again restores the file byte for byte');
 
 // The last entry in a table is the case that catches a span starting at the id rather
 // than at the start of its line: the indentation left behind lands on the table's `};`.

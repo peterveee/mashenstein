@@ -349,6 +349,11 @@ export function createBarGrid({
   let bodyEl = null;
   let rendered = null;
   let scrollAt = { top: 0, left: 0 };
+  // How many rows are drawn is a measurement of the scroller, and the scroller's height
+  // is not the panel's to decide: folding the effects panel, dragging the desk splitter
+  // or making the window taller all hand it more room without moving the scroll. See
+  // `watchSize`.
+  let sizeWatch = null;
   // The notes picked out, as places — see `noteKey`. Survives a rebuild because it
   // holds strings rather than elements, and survives a move because whatever moves the
   // notes rebuilds the keys alongside them.
@@ -708,6 +713,39 @@ export function createBarGrid({
       // of whatever it was over.
       if (virtual) renderRows(ctx());
     }, { passive: true });
+    watchSize(scroll);
+  }
+
+  /**
+   * The rows follow the panel's height, not only its scroll.
+   *
+   * A virtual window is `clientHeight / rowHeight` rows wide, and until now that was
+   * measured at build and then only ever again when something scrolled. Everything that
+   * makes the panel TALLER without moving the scroll — folding the effects panel,
+   * dragging the desk splitter down, an octave button, the browser window growing —
+   * left the roll drawing the old number of rows, so the keyboard stopped halfway and
+   * the strip below it was bare spacer with the grid overlay showing through. Scrolling
+   * a single pixel put it right, which is what the bug looked like from the outside.
+   *
+   * Free when nothing moved: `renderRows` returns immediately if the window it computes
+   * is the one already drawn, so this may fire as often as the layout likes.
+   */
+  function watchSize(scroll) {
+    if (!virtual || typeof ResizeObserver !== 'function') return;
+    // One observer for the life of the panel, re-pointed at each rebuild's scroller —
+    // `build` replaces that element, and an observer left on the old one is watching
+    // something that is no longer in the page.
+    // A closed or folded panel measures zero, and zero is not an answer about how many
+    // rows to draw — `rowWindow` falls back to a fixed twenty there. Ignoring it leaves
+    // the last good window standing until the panel is really on screen again.
+    if (!sizeWatch) {
+      sizeWatch = new ResizeObserver(([entry]) => {
+        if (!(entry?.target?.clientHeight > 0)) return;
+        renderRows(ctx());
+      });
+    }
+    sizeWatch.disconnect();
+    sizeWatch.observe(scroll);
   }
 
   /**
@@ -1400,6 +1438,9 @@ export function createBarGrid({
     el.classList.toggle('show', on);
     if (!on) {
       pending.clear();
+      // Nothing to watch while it is shut, and the next `build` points it at the
+      // scroller it makes.
+      sizeWatch?.disconnect();
       headerHost?.()?.querySelector(`.ssqhostbar[data-of="${ns}"]`)?.remove();
       onClose();
       return;

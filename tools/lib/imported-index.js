@@ -39,12 +39,18 @@ export function readImported(root) {
     const title = bank
       ? (titleLiteral ? JSON.parse(titleLiteral[1]) : undefined)
       : (/^\/\/ (.+?) — imported from/m.exec(src) || [])[1];
+    // A song file may NAME its group, and one that does is taken at its word: the
+    // style auditions are scratch songs by shape but their own section in the picker,
+    // and the shape is all this scan can see. Only a written group counts — the file
+    // is the record, and a scan that inferred one would go on inferring it after the
+    // file said otherwise. Everything that does not name one is what it always was.
+    const groupLiteral = /^export const group\s*=\s*("(?:\\.|[^"])*")\s*;?/m.exec(src);
     out.push({
       id: file.replace(/\.js$/, ''),
       constName: bank ? null : m[1],
       bankExport: bank ? 'bank' : m[1],
       title: title || m[1],
-      group: bank ? 'scratch' : 'imported',
+      group: bank ? (groupLiteral ? JSON.parse(groupLiteral[1]) : 'scratch') : 'imported',
       writable: bank && src.includes('// ---- THE DESK WRITES BELOW HERE'),
       file,
     });

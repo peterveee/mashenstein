@@ -1,25 +1,49 @@
-// Measure every preset in the voice library, and write the peaks back into it.
+// Measure every preset in the voice library, and write the levels back into it.
 //
-// A preset's level cannot be hand-written. Tone's synths do not peak in the same
-// place for the same note — through this render pipeline a Synth reaches 0.99, a
+// A preset's level cannot be hand-written. Tone's synths do not put out the same
+// amount for the same note — through this render pipeline a Synth peaks at 0.99, a
 // MonoSynth 0.92, a DuoSynth 1.56, an FMSynth 0.32 and an AMSynth 0.19 — so the same
 // number would mean five different loudnesses, and with presets going on any lane
 // there is no one lane to tune them against by ear either.
 //
-// So: render each preset alone, at unity, on one lane, and record the peak it
-// reaches. `voiceGain()` divides the lane's own target by that number, and every
-// preset arrives at roughly the level the lane's hand-written voice arrives at.
+// So: render each preset alone, on the lane it is for, and record what it reaches.
+// `voiceGain()` divides the lane's own target by that number, and every preset arrives
+// at roughly the level the lane's hand-written voice arrives at.
 //
-// Usage: node tools/measure-voices.js          measure and rewrite the PEAKS block
-//        node tools/measure-voices.js --dry    print the table, change nothing
+// ---- what changed, and why ---------------------------------------------------
 //
-// Re-run it after editing any preset's `options`: an envelope edit moves the peak,
+// This measured a PEAK, and levelled the library by it. That is the wrong number and
+// tools/lib/loudness.js has said so at the top of the file all along: the engine's own
+// voices are blips that decay across the note, Tone's synths sustain, and matching
+// their peaks put `monoBright` 5.5 LU over the lead it replaced and `hatTick` 5.4 LU
+// under the hat it replaced. So the number that is divided is now `noteLevel` — the
+// K-weighted RMS of the render, which is the energy the note actually delivers. The
+// peak is still measured, because headroom is a real question, but it no longer sets
+// anybody's level.
+//
+// Three things follow, and all three are why a re-measure moves numbers that no edit
+// touched:
+//
+//   · every preset renders at its OWN `dur`, not one held note. How long a preset
+//     sounds is part of how loud it is, and it is a thing the preset decides.
+//   · a percussion preset renders on a percussion lane, where the lane supplies the
+//     note. A kick is struck at 55 Hz and a hat at 800; measuring both at A2 on the
+//     bass lane, as this did, is measuring neither.
+//   · everything renders DRY (`echoLevel: 0`). The melodic lanes reach the delay by
+//     default, and a lane's send is not a property of the preset sitting on it.
+//
+// Usage: node tools/measure-voices.js          measure and rewrite the tables
+//        node tools/measure-voices.js --dry    print them, change nothing
+//
+// Re-run it after editing any preset's `options`: an envelope edit moves the energy,
 // and a stale number is a preset that is quietly twice as loud as its neighbours.
 import { readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { openRenderer } from './lib/render-bank-browser.js';
-import { VOICES, VOICE_LANES, PERCUSSION_LANES } from '../src/data/voices.js';
+import { noteLevel } from './lib/loudness.js';
+import { oneNote, homeLane, measureVoiceAt } from './lib/measure-voice.js';
+import { VOICES, VOICE_LANES, voiceGain } from '../src/data/voices.js';
 import { SONGS } from '../src/data/songs/index.js';
 import { writeSongFile } from './lib/song-file.js';
 
@@ -27,89 +51,80 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'src/data/voices.js');
 const DRY = process.argv.includes('--dry');
 
-// One note, held, with nothing else in the song. A2 is low enough that a bass preset
-// is in its range and high enough that a bell is not absurd; the point is a number
-// that is comparable across presets, not a musical audition.
-const A2 = 110;
-const BANK = { bpm: 120, bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? A2 : null)) };
-
-// Measured on the bass lane with its gain forced to 1, so the number is the synth's
-// own peak and nothing else. `voiceGain` then scales it per lane.
-const measure = (render, id) => render(
-  { ...BANK, bassVoice: id, bassGain: 1, bassDur: 8 },
-  { repeat: 1, mix: null, trackId: null },
-);
-
-// The same measurement for a preset that is NOT in the library — a copy a song keeps
-// in its own mix, under `voiceParams`. It reaches the renderer the way the song hands
-// it over, through the mix, so there is nothing to write anywhere first. Identical
-// bank and identical pipeline, so the number means what every other peak here means.
-const measureCopy = (render, preset) => render(
-  { ...BANK, bassGain: 1, bassDur: 8 },
-  { repeat: 1, mix: { voiceParams: { bassVoice: preset } }, trackId: null },
-);
-
-// A single note on one lane, with nothing else in the song.
-//
-// Three shapes, because a bank holds three: percussion is booleans, the two chord
-// lanes hold an ARRAY of frequencies per step, and everything else holds one. A bare
-// number on a chord lane is not a quiet chord — `for (const cf of 110)` throws, and
-// the render dies with a page error rather than a bad number.
-const CHORD_LANES = ['chords', 'organChords'];
-const oneNote = (lane) => {
-  const value = PERCUSSION_LANES.includes(lane) ? true
-    : CHORD_LANES.includes(lane) ? [A2] : A2;
-  const rest = PERCUSSION_LANES.includes(lane) ? false : null;
-  return { bpm: 120, [lane]: Array.from({ length: 32 }, (_, i) => (i === 0 ? value : rest)) };
-};
-
 // Noise and drum-synth presets are measured too: they are built from native nodes
-// rather than a Tone class, but their level is derived from a measured peak exactly
-// the same way.
+// rather than a Tone class, but their level is derived exactly the same way.
 const tone = Object.values(VOICES).filter((v) => ['tone', 'noise', 'drum'].includes(v.kind));
+const levels = {};
 const peaks = {};
 const targets = {};
 const copies = [];
+let frames = 0;
+const sameWindow = (n, what) => {
+  if (!frames) frames = n;
+  else if (n !== frames) throw new Error(`${what} rendered ${n} frames, not ${frames} — `
+    + 'the levels are a mean over the render and stop being comparable');
+};
 const renderer = await openRenderer();
 try {
-  // Half the calibration: what one note of each lane's OWN voice peaks at. Measured
+  // Half the calibration: what one note of each lane's OWN voice reaches. Measured
   // rather than taken from the authored gain constants — those are pre-pipeline, and
   // the bass lane's 0.1 arrives as 0.06 by the time it reaches the master.
   for (const lane of Object.keys(VOICE_LANES)) {
-    const { peak } = await renderer.render(oneNote(lane), { repeat: 1, mix: null, trackId: null });
-    targets[lane] = peak;
-    console.log(`  lane ${lane.padEnd(13)} its own voice peaks at ${peak.toFixed(4)}`);
+    const out = await renderer.render(oneNote(lane), { repeat: 1, mix: null, trackId: null });
+    sameWindow(out.outL.length, `lane ${lane}`);
+    targets[lane] = { level: noteLevel([out.outL, out.outR]), peak: out.peak };
+    console.log(`  lane ${lane.padEnd(13)} its own voice: level ${targets[lane].level.toFixed(4)}`
+      + `  peak ${targets[lane].peak.toFixed(4)}`);
   }
   console.log('');
 
   for (const v of tone) {
-    const { peak } = await measure(renderer.render, v.id);
+    const lane = homeLane(v);
+    const { level, peak, frames: n } = await measureVoiceAt(renderer.render, v, lane);
+    sameWindow(n, v.id);
+    levels[v.id] = level;
     peaks[v.id] = peak;
-    const warn = peak <= 0 ? '  ** SILENT — it will not render **'
-      : peak < 0.02 ? '  (very quiet: check its envelope)' : '';
-    console.log(`  ${v.id.padEnd(18)} ${(v.synth || v.kind).padEnd(14)} peak ${peak.toFixed(4)}${warn}`);
+    // How far the preset MOVES on its own lane, which is the only reading here that
+    // says whether a re-measure is a formality or a re-mix.
+    const was = voiceGain(v, lane);
+    const now = targets[lane].level / (level > 0 ? level : 1);
+    const moved = was > 0 && level > 0 ? `  ${(20 * Math.log10(now / was)).toFixed(1).padStart(5)} dB` : '';
+    const warn = level <= 0 ? '  ** SILENT — it will not render **'
+      : level < 0.0004 ? '  (very quiet: check its envelope)' : '';
+    console.log(`  ${v.id.padEnd(18)} ${(v.synth || v.kind).padEnd(14)} ${lane.padEnd(6)}`
+      + ` level ${level.toFixed(4)}  peak ${peak.toFixed(4)}${moved}${warn}`);
   }
 
   // And the copies songs keep for themselves.
   //
   // A song can carry its own version of a preset — the desk's Save to Song — and it
-  // needs a peak for exactly the reason a library preset does: `voiceGain` divides the
+  // needs a level for exactly the reason a library preset does: `voiceGain` divides the
   // lane's target by it. Nothing measures one while it is being edited, deliberately;
-  // a copy inherits the peak of what it was made from, which is the right ballpark,
+  // a copy inherits the level of what it was made from, which is the right ballpark,
   // and the fader is the control for the rest. This is where the numbers are settled,
   // in a batch, on purpose — the same bargain the library has always had.
+  //
+  // On the copy's OWN lane, which its key names: a copy is not lane-agnostic the way a
+  // library preset is, it is one lane of one song's mix and nowhere else.
   for (const [id, song] of Object.entries(SONGS)) {
     const params = song.mix?.voiceParams;
     if (!params) continue;
     for (const [voiceKey, preset] of Object.entries(params)) {
-      const { peak } = await measureCopy(renderer.render, preset);
-      const was = preset.peak;
-      copies.push({ id, voiceKey, preset, peak });
-      const warn = peak <= 0 ? '  ** SILENT — it will not render **'
-        : peak < 0.02 ? '  (very quiet: check its envelope)' : '';
+      const lane = Object.keys(VOICE_LANES).find((k) => VOICE_LANES[k].voiceKey === voiceKey);
+      if (!lane) {
+        console.log(`  ${id}/${voiceKey}`.padEnd(38) + ' ** no such lane — skipped **');
+        continue;
+      }
+      const { level, peak, frames: n } = await measureVoiceAt(renderer.render, preset, lane,
+        { mix: { voiceParams: { [voiceKey]: preset } } });
+      sameWindow(n, `${id}/${voiceKey}`);
+      const was = preset.level;
+      copies.push({ id, voiceKey, preset, level, peak });
+      const warn = level <= 0 ? '  ** SILENT — it will not render **'
+        : level < 0.0004 ? '  (very quiet: check its envelope)' : '';
       const moved = was > 0 ? ` (was ${Number(was).toFixed(4)})` : '';
       console.log(`  ${id}/${voiceKey}`.padEnd(38)
-        + ` ${(preset.label || '?').padEnd(16)} peak ${peak.toFixed(4)}${moved}${warn}`);
+        + ` ${(preset.label || '?').padEnd(16)} level ${level.toFixed(4)}${moved}${warn}`);
     }
   }
 } finally {
@@ -117,8 +132,8 @@ try {
 }
 
 const silent = [
-  ...Object.entries(peaks).filter(([, p]) => !(p > 0)).map(([id]) => id),
-  ...copies.filter((c) => !(c.peak > 0)).map((c) => `${c.id}/${c.voiceKey}`),
+  ...Object.entries(levels).filter(([, p]) => !(p > 0)).map(([id]) => id),
+  ...copies.filter((c) => !(c.level > 0)).map((c) => `${c.id}/${c.voiceKey}`),
 ];
 if (silent.length) {
   console.error(`\n${silent.length} preset(s) render SILENT: ${silent.join(', ')}`);
@@ -139,58 +154,68 @@ if (silent.length) {
  * refusing to write would leave the file claiming a peak we have just proved wrong.
  */
 function writeCopies() {
+  const round = (x) => Number(x.toFixed(x < 0.01 ? 6 : 4));
   const bySong = new Map();
   for (const c of copies) {
-    if (Number(c.preset.peak) === Number(c.peak.toFixed(4))) continue;   // already right
+    // Already right in both numbers, or there is nothing to write.
+    if (Number(c.preset.level) === round(c.level)
+      && Number(c.preset.peak) === Number(c.peak.toFixed(4))) continue;
     if (!bySong.has(c.id)) bySong.set(c.id, []);
     bySong.get(c.id).push(c);
   }
   for (const [id, list] of bySong) {
     const song = SONGS[id];
     const mix = JSON.parse(JSON.stringify(song.mix));
-    for (const c of list) mix.voiceParams[c.voiceKey].peak = Number(c.peak.toFixed(4));
+    for (const c of list) {
+      mix.voiceParams[c.voiceKey].level = round(c.level);
+      mix.voiceParams[c.voiceKey].peak = Number(c.peak.toFixed(4));
+    }
     writeSongFile(ROOT, id, { mix, arrangement: song.arrangement || null });
     console.log(`  wrote src/data/songs/${id}.js — ${list.map((c) => c.voiceKey).join(', ')}`);
   }
   return bySong.size;
 }
 
-if (DRY) {
-  console.log('\n--dry: src/data/voices.js not written.');
-  if (copies.length) console.log(`--dry: ${copies.length} song copies not written either.`);
-} else {
-  // Rewritten in place, formatted the way the file already is. The block is machine
-  // -owned and says so; everything around it is hand-written and is not touched.
+// One `id: number,` per entry, wrapped at 80 columns, formatted the way the file
+// already is. A level is small enough that four decimals would quantise the quiet end
+// of the library into steps of a decibel, so those get six.
+const table = (name, values, digits = 4) => {
   const rows = [];
   let line = ' ';
-  for (const [id, p] of Object.entries(peaks)) {
-    const piece = ` ${id}: ${Number(p.toFixed(4))},`;
+  for (const [id, p] of Object.entries(values)) {
+    const piece = ` ${id}: ${Number(p.toFixed(digits))},`;
     if (line.length + piece.length > 80) { rows.push(line); line = ' '; }
     line += piece;
   }
   rows.push(line.replace(/,$/, ''));
-  const block = `const PEAKS = {\n${rows.join('\n')}\n};`;
+  return `const ${name} = {\n${rows.join('\n')}\n};`;
+};
 
-  const trows = [];
-  let tline = ' ';
-  for (const [lane, p] of Object.entries(targets)) {
-    const piece = ` ${lane}: ${Number(p.toFixed(4))},`;
-    if (tline.length + piece.length > 80) { trows.push(tline); tline = ' '; }
-    tline += piece;
-  }
-  trows.push(tline.replace(/,$/, ''));
-  const tblock = `const LANE_TARGETS = {\n${trows.join('\n')}\n};`;
+if (DRY) {
+  console.log('\n--dry: src/data/voices.js not written.');
+  if (copies.length) console.log(`--dry: ${copies.length} song copies not written either.`);
+} else {
+  // Rewritten in place. The blocks are machine-owned and say so; everything around
+  // them is hand-written and is not touched.
+  const block = table('PEAKS', peaks);
+  const lblock = table('LEVELS', levels, 6);
+
+  // A lane target is two numbers, so it gets a line each rather than a wrapped run.
+  const tblock = `const LANE_TARGETS = {\n${Object.entries(targets).map(
+    ([lane, t]) => `  ${lane}: { level: ${Number(t.level.toFixed(6))}, peak: ${Number(t.peak.toFixed(4))} },`,
+  ).join('\n').replace(/,$/, '')}\n};`;
 
   const src = readFileSync(FILE, 'utf8');
   const next = src
     .replace(/const LANE_TARGETS = \{[\s\S]*?\n\};/, () => tblock)
+    .replace(/const LEVELS = \{[\s\S]*?\n\};/, () => lblock)
     .replace(/const PEAKS = \{[\s\S]*?\n\};/, () => block);
   if (next === src) {
-    console.error('\nCould not find the PEAKS block in src/data/voices.js — not written.');
+    console.error('\nCould not find the LEVELS block in src/data/voices.js — not written.');
     process.exit(1);
   }
   writeFileSync(FILE, next);
-  console.log(`\nwrote ${tone.length} preset peaks and ${Object.keys(targets).length}`
+  console.log(`\nwrote ${tone.length} preset levels and ${Object.keys(targets).length}`
     + ' lane targets into src/data/voices.js');
   const songs = writeCopies();
   if (songs) console.log(`and ${copies.length} song copies across ${songs} song file(s)`);

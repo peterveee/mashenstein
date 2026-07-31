@@ -134,7 +134,7 @@ renumber the bass).
 | Section | Controls |
 | --- | --- |
 | **Head** | Track number, lane name, family badge. Click to select; double-click to play from lane entry. |
-| **Voice** | Button showing current voice (or "ENGINE" for default). `‹` `›` arrows cycle within category. Click opens the voice library panel. |
+| **Voice** | Button showing current voice, or — with none chosen — the engine voice the bank already plays, named in dim italics ("ENGINE" only where the bank matches no preset). `‹` `›` arrows cycle within category. Click opens the voice library panel. |
 | **EQ** | 3-band: HIGH shelf @4kHz, MID peak @1.2kHz, LOW shelf @250Hz. ±18 dB each. Transparent at 0 dB (serial biquad topology). |
 | **Sends** | DELAY SEND, REVERB SEND: 0–2 range. Per-lane tap point (melodic = pre-fader, others = post-fader). |
 | **Inserts** | Up to 6 effect slots. Click empty to open catalogue. Power button to bypass; × to remove. Drag to reorder. Right-click for context menu. |
@@ -195,13 +195,24 @@ Floating window — drag by title bar, remembers position.
 - **Melodic channel**: two octaves of piano keys in the channel's register. ◀ ▶ shift
   octaves. Click or drag across keys.
 - **Drum channel**: one pad per drum in the song's kit. Drag across pads for a roll.
-- **Catch keys**: computer keyboard input (`AW SED FTG YHUJ` for notes, home row for
-  pads, Z/X for octave). Esc releases keys back to desk shortcuts.
+- **Keyboard**: computer keyboard input, two-row DAW layout — `Z S X D C V G B H N J M`
+  is the lower octave with its black keys, `Q 2 W 3 E R 5 T 6 Y 7 U` the one above,
+  carrying on through `I O P` / `[ = ]`; `−`/`+` shift the octave, `,` is the C above M,
+  home row plays pads. Shifted keys are never claimed (that is what leaves `⇧R` free).
+  Esc releases keys back to desk shortcuts.
 - **MIDI**: Web MIDI input (Chrome/Edge). General MIDI drum note mapping (36→kick,
   38→snare, 42→hats). New ports detected after enabling.
+- **Record** (`⇧R`): arms; all three inputs then write into the bank. Realtime,
+  quantised to sixteenths, overdub, shared across repeats, buffered and flushed on the
+  beat. Held time becomes the note's `${lane}Len`. Esc discards the take.
+- **Record is in the transport group** (`#recbtn`, after `#pause`); **MIDI is in the
+  right-hand toggle group** (`#midibtn`). Neither needs the OSK:
+  `onMidiMessage` is gated only on a selected channel, and the GM drum map resolves
+  through `oskKitLanes()` rather than the drawn pad elements. Only the computer keyboard
+  still requires the window, via `oskCatch`.
 - Keys light up with the notes currently playing through that channel.
-- **Note-off and velocity are ignored** — preview length is the channel's own note
-  length. By design (voices don't sustain).
+- **Velocity is ignored** — level is the channel's, and a bank has no per-note velocity
+  field. **Note-off is read** only by the recorder, to measure how long a key was held.
 
 ### 9. Voice library & editor
 
@@ -433,12 +444,43 @@ musicBus → [songTrim] → [Master inserts (0–6)] → [Master trim]
 These are intentional constraints that another LLM should understand before
 suggesting enhancements:
 
-1. **Note-off and velocity are ignored** in the on-screen keyboard and MIDI input.
-   Voices don't support sustain; preview length is the channel's authored note
-   length. The keyboard is for auditioning, not recording.
+1. **Velocity is ignored** in the on-screen keyboard and MIDI input, and there is
+   nowhere for it to go: a bank has no per-note velocity field, because level is a
+   property of the channel. Adding one means a new `${lane}Vel` array, a `scheduleStep`
+   change, an offline-render change and fresh `tests/null-test.js` risk. Note-off *is*
+   read, and only recording uses it — see below.
 
-2. **No step recording / MIDI recording into the bank.** Notes can only be edited
-   via the step sequencer (drums) or piano roll (pitched), not performed in.
+2. **Recording is realtime and quantised to sixteenths.** All three live inputs (drawn
+   keys, computer keyboard, MIDI) write into the bank when armed; see
+   `tools/lib/note-recorder.js` for the clock and the take buffer, and the roll's
+   `noteCell`/`noteLength` for the note semantics it reuses. Constraints worth knowing
+   before extending it:
+   - **Sixteenths are the storage floor** — 16 steps per bar, nothing between them, so
+     there is no quantise-off and no swing. The only sub-sixteenth expression anywhere
+     is the per-*bar* `offset` map in 1/32 units.
+   - **Overdub only.** Recording adds notes; deletion stays with the grid and the roll.
+   - **Writes are shared** (`writeBarNotesShared`), so a note played into a looping
+     section changes every bar that plays that part.
+   - **Buffered, flushed on the BEAT** (~500ms at 120bpm), never per note:
+     `applyArrangementEdit` pushes undo, revalidates the arrangement and rebuilds the
+     timeline. The writes coalesce via `pushUndo`'s 700ms same-tag window, so a whole
+     take is one undo step; mid-take writes are silent.
+   - **Any pitched lane can hold a chord** — `polyLane(bank, lane)` in
+     src/data/voices.js, which is now `!PERCUSSION_LANES && !MONO_LANES`. `scheduleStep`
+     resolves a step through `tonesOf(v)` and each hand-written pitched body (bass, lead,
+     leadHarm, twinkle) runs once per tone; `play()` builds its own oscillator per call,
+     so polyphony there is a loop rather than a capability. `MONO_LANES` are the gesture
+     lanes plus vox/shout, where a step is a shape or a word and not a pitch. A scalar
+     yields one iteration, which is why tests/null-test.js is still sample-exact.
+   - The piano roll stays VALUE-based (`isChord(value)`): a step is chordal when it holds
+     an array, so click-to-replace on single-note parts is unchanged.
+   - Notes within ~45ms share a quantised step (`chordAnchor`) so a chord cannot split
+     across a rounding boundary.
+   - **Held time becomes `${lane}Len`**, but that is a scheduled duration rather than a
+     gate, and most hand-written voices cannot sustain — so long holds under-deliver on
+     the voices whose envelopes are short. Percussion gets no length.
+   - **No step recording yet** (transport parked, each note advancing the playhead).
+     Same take buffer, different clock in front of it.
 
 3. **The arrangement is bar-level**, not beat-level. You can mute/delete/transpose
    a lane for a whole bar, but not for (say) beat 3 of bar 4. Finer editing is in

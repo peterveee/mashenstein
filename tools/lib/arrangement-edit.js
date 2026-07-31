@@ -113,6 +113,34 @@ const sectionsOf = (bank, draft) => [...(bank.sections || []), ...draft.sections
 const isBankSection = (bank, sec) => sec == null || sec < (bank.sections?.length || 0);
 
 /**
+ * The sixteen raw values a bar plays on one bank key.
+ *
+ * Read through the delta chain, then fall through to the bank exactly as the sequencer
+ * does: a section that overrides the snare says nothing about the kick, and the kick it
+ * plays is the song's. Raw, not coerced — a boolean lane and a melodic one are the same
+ * read, and only the caller knows which it wanted.
+ *
+ * Any key, not just a lane's notes, because a lane's note LENGTHS are read the same way
+ * through the same chain.
+ *
+ * The read half of `laneWith`, which is the write. It lives here rather than in the
+ * panel that first needed it because it is the same read anywhere a bar is being
+ * edited, and a second copy is where an editor quietly starts reading the ARRANGED
+ * bank instead of the written one — a difference only the second edit to a song shows.
+ */
+export function readBarLane(bank, draft, barIndex, key) {
+  const bar = draft?.plan?.[barIndex];
+  if (!bar || !bank) return new Array(16).fill(null);
+  const resolved = (bar.sec != null
+    ? resolveSection({ ...bank, sections: sectionsOf(bank, draft) }, bar.sec)
+    : null) || {};
+  const arr = resolved[key] ?? bank[key];
+  if (!Array.isArray(arr)) return new Array(16).fill(null);
+  const at = bar.half * 16;
+  return Array.from({ length: 16 }, (_, i) => arr[at + i] ?? null);
+}
+
+/**
  * The draft as a file entry — `{ order, sections, bpm }` — or **null** when it says
  * nothing the bank does not already say.
  *

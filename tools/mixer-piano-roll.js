@@ -343,6 +343,21 @@ export function autoRange(bank, lane, fallback = 48) {
 }
 
 /**
+ * A cluster of header controls that belong to one question.
+ *
+ * The `data-grp` is for the stylesheet, not for script: the header draws the hairline
+ * between clusters off `.ssqgrp + .ssqgrp`, and the name is there so a rule can single
+ * one out later without counting positions in the row.
+ */
+function group(name, ...kids) {
+  const g = document.createElement('span');
+  g.className = 'ssqgrp';
+  g.dataset.grp = name;
+  g.append(...kids);
+  return g;
+}
+
+/**
  * @param lane        () => the lane being edited, chosen on the desk
  * @param setLane     (key) => tell the desk the roll moved to another lane
  * @param editable    () => [laneKey] — which lanes the picker may offer
@@ -376,7 +391,25 @@ export function createPianoRoll({
     toast(ROLL_TOOLS.find((t) => t.id === toolId).hint);
   };
 
-  const isChord = () => CHORD_LANES.includes(baseLane(lane()));
+  /**
+   * Is the cell being edited a chord cell?
+   *
+   * Two ways in, and the second one is deliberately about the VALUE rather than the lane.
+   *
+   * A chord lane is always chordal — that is what it is for. Anywhere else, a step is
+   * chordal exactly when it already HOLDS an array, which is the same rule the
+   * serialiser uses to decide how to write a lane out (`isChordLane` in
+   * tools/lib/song-source.js asks `arr.some(Array.isArray)`).
+   *
+   * Value-based rather than "is this lane poly-capable" on purpose. Most rack-voiced
+   * lanes in the game are `bass` and `lead` — single-note parts — and on those, clicking
+   * a different pitch on an occupied step is how you CORRECT a note. Making the whole
+   * lane chordal would turn that everyday gesture into stack-then-erase on 35 parts to
+   * gain something four of them wanted. So a click still replaces, and the chordal
+   * behaviour appears only on a step that already contains a chord — one you recorded —
+   * where it is what lets you pick a single tone back out of it.
+   */
+  const isChord = (value) => CHORD_LANES.includes(baseLane(lane())) || Array.isArray(value);
   const rangeOf = () => keyboardRange(bank(), lane());
   // Nothing is remembered about where you are in the instrument. The roll opens on the
   // part — which is an answer it can always work out — and after that the scroll
@@ -407,8 +440,12 @@ export function createPianoRoll({
     // the spacers need it as a number — see the note on ROW_H above.
     virtual: true,
     rowHeight: ROW_H,
-    // Its controls join the region's own header rather than starting a second row.
-    headerHost: () => document.getElementById('devhead'),
+    // Its controls join the NOTES panel's header rather than starting a second row.
+    // They used to land on `#devhead` — correct while the roll and the effect cards
+    // were two views of one region, and wrong the moment those became two panels: a
+    // key picker and an octave nudge on a header labelled Effects belong to nothing
+    // on screen under it.
+    headerHost: () => document.getElementById('notehead'),
     onClose,
 
     // Every row is a PITCH on one lane, which is the whole difference from the step
@@ -441,7 +478,7 @@ export function createPianoRoll({
 
     // ---- the three that make this the roll
     isOn: (row, value) => noteOn(row, value),
-    withCell: (row, value, on) => noteCell({ ...row, chord: isChord() }, value, on),
+    withCell: (row, value, on) => noteCell({ ...row, chord: isChord(value) }, value, on),
 
     // ---- and the four that make its notes have length
     //
@@ -450,8 +487,8 @@ export function createPianoRoll({
     // The step grid answers none of them and gets neither gesture: a drum hit has no
     // length, and there is nothing to move a kick to.
     withLen: (row, value, len, on, drawn) =>
-      noteLength({ ...row, chord: isChord() }, value, len, on, drawn),
-    cellLen: (row, value, len) => noteSpan({ ...row, chord: isChord() }, value, len),
+      noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn),
+    cellLen: (row, value, len) => noteSpan({ ...row, chord: isChord(value) }, value, len),
     resizable: () => rollResizable(lane()),
     movable: true,
     tool: () => toolId,
@@ -505,15 +542,23 @@ export function createPianoRoll({
       // The whole keyboard is there; these are how you get about it without a
       // trackpad. Scrolling, not re-ranging: there is nothing left to re-range.
       const down = document.createElement('button');
-      down.className = 'ssqx';
+      down.className = 'ssqoctbtn';
       down.textContent = '−';
       down.title = 'An octave lower';
+      down.setAttribute('aria-label', 'Scroll an octave lower');
       down.onclick = (ev) => { ev.stopPropagation(); byOctave(1); };
       const up = document.createElement('button');
-      up.className = 'ssqx';
+      up.className = 'ssqoctbtn';
       up.textContent = '+';
       up.title = 'An octave higher';
+      up.setAttribute('aria-label', 'Scroll an octave higher');
       up.onclick = (ev) => { ev.stopPropagation(); byOctave(-1); };
+      // One control, two ends — the pair reads as a single octave nudge rather than as
+      // two more loose buttons in a row that already has too many.
+      const oct = document.createElement('span');
+      oct.className = 'ssqoct';
+      oct.append(down, up);
+
       const fit = document.createElement('button');
       fit.className = 'ssqlink';
       fit.textContent = 'Find the part';
@@ -544,7 +589,12 @@ export function createPianoRoll({
         + ' accidental you wanted is always the one a keyboard would have refused.';
       kind.onchange = () => { setScale({ id: kind.value }); grid.redraw(); };
 
-      return [picker, tools, down, up, fit, root, kind];
+      // Three clusters, not seven controls in a queue. Each answers one question —
+      // what am I editing, where am I looking, what key is it in — and the header
+      // rules a hairline between them, so the row is read in three glances instead
+      // of scanned left to right. The scope button (`Edit one bar`) is appended by
+      // the grid itself and becomes the fourth.
+      return [group('part', picker, tools), group('view', oct, fit), group('key', root, kind)];
     },
 
     // A key, not a track name — and a real one: white notes full width, black notes

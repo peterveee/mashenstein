@@ -25,16 +25,25 @@
 // and hands back the peak it wrote.
 import * as Tone from 'tone';
 import { VOICES, VOICE_CATEGORIES } from '../src/data/voices.js';
+// The same K-weighted mean the server measures a save with. Pure arithmetic, no node
+// imports, so it bundles into the desk like anything else in tools/lib.
+import { noteLevel } from './lib/loudness.js';
 import { VoiceRack } from '../src/engine/voices.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
 import { foldIcon } from './mixer-voice-library.js';
 
 /**
- * The synth classes a preset may name, which is the allowlist in src/engine/voices.js
- * and not one entry more.
+ * The synths a preset may name, which is what `VoiceRack.play` will dispatch on and not
+ * one entry more.
  *
- * Everything here has been measured rendering under an OfflineAudioContext. Tone has
+ * Two of them are not Tone classes at all: GameSynth and AdditiveSynth are native Web
+ * Audio, dispatched by NAME in `play()` before the Tone allowlist is consulted, and they
+ * read `$`-prefixed keys off the entry rather than an `options` bag. They lead the list
+ * because that is the order the panels are worth reaching for, not because of what builds
+ * them.
+ *
+ * The Tone ones have each been measured rendering under an OfflineAudioContext. Tone has
  * classes that work perfectly in a browser and render pure silence there — PluckSynth
  * is built on an AudioWorklet, PolySynth needs its first trigger at exactly t=0 — and
  * a preset built on one of those would sound right in this editor and be missing from
@@ -42,6 +51,7 @@ import { foldIcon } from './mixer-voice-library.js';
  * make that unreachable.
  */
 export const EDITABLE_SYNTHS = [
+  'GameSynth', 'AdditiveSynth',
   'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth',
 ];
 
@@ -55,7 +65,7 @@ const MEASURE_DUR = 8 * ((60 / 120) / 4);                  // 8 steps at 120bpm 
 const MEASURE_TAIL = 2.6;                                  // room for the release
 
 /**
- * Render one note of a preset offline, here in the page, and return its peak.
+ * Render one note of a preset offline, here in the page, and return what it reaches.
  *
  * Built by the ENGINE'S OWN `VoiceRack`, not by a copy of it — the same class the
  * sequencer plays through, so a preset is measured by the thing that will play it and
@@ -100,7 +110,9 @@ async function measureRaw(voiceId, noiseBuf, sampleRate = 44100) {
   const d = buf.getChannelData(0);
   let peak = 0;
   for (let i = 0; i < d.length; i++) { const a = d[i] < 0 ? -d[i] : d[i]; if (a > peak) peak = a; }
-  return peak;
+  // Both, because both are carried on the preset and both move when an envelope does:
+  // `level` is what the engine plays it at, `peak` is what that costs in headroom.
+  return { level: noteLevel([d], sampleRate), peak };
 }
 
 // ---- parameter descriptions -------------------------------------------------
@@ -135,6 +147,12 @@ const splitOsc = (type, fallback = 'sine') => {
 const joinOsc = (voicing, shape) =>
   (voicing === 'single' || UNPREFIXABLE.includes(shape) ? shape : voicing + shape);
 const FILTER_TYPES = ['lowpass', 'highpass', 'bandpass', 'notch'];
+// The seeded buffer's colours (see `_noise` in src/engine/voices.js) and the slopes a
+// filter section can be cascaded to. White and -12 are what every preset written before
+// these existed already has, so both lists start on the old behaviour.
+const NOISE_COLORS = ['white', 'pink', 'brown', 'blue', 'violet'];
+const SLOPES = [-12, -24, -48];
+const DRIVE_SHAPES = ['tanh', 'fold', 'crush'];
 // Attack and release take Tone's whole curve set; decay takes two and asserts on
 // anything else — see `adsr`.
 const ENV_CURVES = ['linear', 'exponential', 'sine', 'cosine', 'bounce', 'ripple', 'step'];
@@ -158,6 +176,10 @@ const SHORT = {
   linear: 'LIN', exponential: 'EXP', cosine: 'COS', bounce: 'BNCE',
   ripple: 'RPPL', step: 'STEP',
   single: 'ONE', fat: 'FAT', am: 'AM', fm: 'FM',
+  // Noise colours and shaper shapes — same reasoning, and `violet` is the one word
+  // here nobody shortens the same way twice, so it is written down rather than cut.
+  white: 'WHT', pink: 'PNK', brown: 'BRN', blue: 'BLU', violet: 'VIO',
+  tanh: 'TANH', fold: 'FOLD', crush: 'CRSH',
   // The mono pick stores a boolean, and `false`/`true` on a pill says nothing about
   // what it does to the sound.
   false: 'POLY', true: 'MONO',
@@ -249,7 +271,187 @@ const adsr = (path, { sustain = true } = {}) => [
  * are written to a PATH inside the options object, so a key with no control survives
  * being edited and saved rather than being quietly dropped.
  */
+/**
+ * What stops a drum machine sounding like one, as three pots behind a switch.
+ *
+ * Every hit of a preset is the same waveform to the sample, and at sixteenths the ear
+ * hears that as a machine gun rather than as a player. A real hat moves a decibel and a
+ * few hertz per stroke. These are the sizes of those moves — and they are DETERMINISTIC
+ * (see `hitRandom` in src/engine/voices.js): the variation comes from when the hit is
+ * scheduled, so a stem still holds exactly the noise the full mix does.
+ *
+ * OPTIONAL, and three rows rather than five. A panel is pinned to a strip's width and
+ * every always-on control is paid for by every preset that will never use it — so this
+ * is a switch on a preset that wants feel, and the two per-TAP walks that used to sit
+ * here live in the Taps card, where there is something for them to walk.
+ *
+ * Shared by every native panel, because a hat is as often a NOISE preset as a DRUM one
+ * and "which table is it in" is not a reason for one to have feel and the other not.
+ * Declared above SYNTH_GROUPS rather than beside the tables that first used it: a `const`
+ * is in its temporal dead zone until its own line runs, so a group literal referencing it
+ * from higher up the file would throw on import rather than when the panel was opened.
+ */
+const FEEL_GROUP = {
+  title: 'Feel', optional: 'humanize',
+  onTip: 'Play every hit identically again',
+  offTip: 'Vary each hit a little — the difference between a machine and a player',
+  rows: [
+    n('$humanize.gain', 'LEVEL VAR', 0, 0.5, 0.01, fixed(2), 0),
+    n('$humanize.pitch', 'PITCH VAR', 0, 0.2, 0.005, fixed(3), 0),
+    n('$humanize.filter', 'TONE VAR', 0, 0.5, 0.01, fixed(2), 0),
+  ],
+};
+
+/**
+ * The nine drawbars, labelled the way they are labelled on the console.
+ *
+ * Footages, not ratios: 8′ is the fundamental, 4′ the octave above it, 16′ the octave
+ * below. Nobody who has touched one of these thinks in ratios, and the ratio is on the
+ * tooltip for anybody who does. The order is the console's — see DRAWBAR_RATIOS in
+ * src/engine/voices.js for why it does not ascend.
+ */
+const DRAWBAR_LABELS = ['16′', '5⅓′', '8′', '4′', '2⅔′', '2′', '1⅗′', '1⅓′', '1′'];
+const DRAWBAR_RATIO_TEXT = ['×0.5', '×1.5', '×1', '×2', '×3', '×4', '×5', '×6', '×8'];
+
+/**
+ * The DEFAULTS are the engine's own plain registration, not zeroes.
+ *
+ * `defaultsFor` writes every row's `def` onto a preset that has just been switched to this
+ * class, so a row defaulting to 0 is a bar pushed in — and nine of those is a synth that
+ * makes no sound at all. Starting on the registration the organ lane has always played
+ * means picking ADDITIVE from the dropdown hands you a drawbar organ, which is the same
+ * rule the optional drum sections follow: switching something on gives you the sound the
+ * engine already implied rather than silence to dig out of.
+ */
+const DRAWBAR_DEFAULTS = [0, 0, 1, 0.62, 0.32, 0.2, 0, 0.1, 0];
+
+const drawbarRows = () => DRAWBAR_LABELS.map((label, i) => ({
+  ...n(`$additive.bars.${i}`, label, 0, 1, 0.01, fixed(2), DRAWBAR_DEFAULTS[i]),
+  // A bar at zero builds no oscillator at all, which is worth saying on the control:
+  // pushing one fully in is out of the sound, not quiet in it.
+  tip: `${DRAWBAR_RATIO_TEXT[i]} the note. Fully in builds no oscillator at all.`,
+}));
+
 const SYNTH_GROUPS = {
+  /**
+   * Additive: a stack of sine partials, which is the drawbar organ and — once the
+   * partials come off the harmonic series — a good deal more. See `_playAdditive`.
+   *
+   * DRAWBARS leads because it is the sound; everything under CHARACTER is a way of
+   * bending that stack away from being an organ, and the envelope is the same four
+   * numbers every panel here has.
+   */
+  AdditiveSynth: [
+    { title: 'Drawbars', rows: drawbarRows() },
+    { title: 'Character', rows: [
+      pick('$additive.type', 'WAVE', ['sine', 'triangle'], 'sine'),
+      // The two knobs that stop this being only an organ, and each is one control where
+      // the honest version is nine — see the note over `_playAdditive`.
+      n('$additive.stretch', 'STRETCH', 0, 0.3, 0.002, fixed(3), 0),
+      n('$additive.damp', 'DAMP', 0, 3, 0.05, fixed(2), 0),
+      n('$additive.count', 'PARTIALS', 1, 9, 1, fixed(0), 9),
+    ] },
+    { title: 'Envelope', rows: [
+      n('$additive.attack', 'ATTACK', 0.001, 2, 0.001, secs, 0.01, 's'),
+      // Zero reads as NOTE rather than 0ms: it is the arcade shape — an exponential fall
+      // across the whole note — and a magic value you can see on the dial is a detent
+      // rather than a secret. SUSTAIN greys out with it, because a decay that runs to the
+      // end of the note has no plateau to hold.
+      n('$additive.decay', 'DECAY', 0, 4, 0.01,
+        (x) => (x > 0 ? secs(x) : 'NOTE'), 0, 's'),
+      n('$additive.sustain', 'SUSTAIN', 0, 1, 0.01, fixed(2), 0, '',
+        (v) => (v?.additive?.decay ?? 0) > 0),
+      n('$additive.release', 'RELEASE', 0, 4, 0.01, secs, 0.015, 's'),
+      pick('$additive.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+    ] },
+    // Every partial bends together, keeping its ratio — a registration arriving rather
+    // than a chord sliding apart. This is what `organSwoop` is.
+    { title: 'Pitch', optional: 'additive.pitch',
+      onTip: 'Take the bend out — the stack arrives at pitch',
+      offTip: 'Bend the whole registration into the note',
+      rows: [
+        n('$additive.pitch.from', 'FROM', 0.25, 4, 0.0001, fixed(4), 1, '×'),
+        n('$additive.pitch.to', 'TO', 0.25, 4, 0.0001, fixed(4), 1, '×'),
+        n('$additive.pitch.sweep', 'SWEEP', 0, 4, 0.01,
+          (x) => (x > 0 ? secs(x) : 'NOTE'), 0, 's'),
+      ] },
+    // The percussion register: one louder partial struck on the attack and gone long
+    // before the note is. Always dry, so repeated off-beat stabs stay crisp.
+    { title: 'Percussion', optional: 'additive.perc',
+      onTip: 'Take the key-attack pip out',
+      offTip: 'Strike one partial on the attack — the Hammond percussion register',
+      rows: [
+        n('$additive.perc.ratio', 'HARMONIC', 1, 8, 1, fixed(0), 3, '×'),
+        n('$additive.perc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 0.72),
+        n('$additive.perc.attack', 'ATTACK', 0.001, 0.1, 0.001, secs, 0.002, 's'),
+        // Seconds, not a fraction of the note: a real percussion register is a circuit
+        // constant — fast or slow whatever the player holds.
+        n('$additive.perc.decay', 'DECAY', 0.005, 1, 0.005, secs, 0.08, 's'),
+      ] },
+    FEEL_GROUP,
+    { title: 'Taps', taps: true },
+  ],
+  GameSynth: [
+    { title: 'Game Synth', rows: [
+      // `noise` is a fifth WAVEFORM rather than a fifth preset kind: it swaps the
+      // oscillator for the seeded buffer through a bandpass that tracks the note, so
+      // every other control on the panel goes on meaning what it meant.
+      { kind: 'pick', path: '$waveform', label: 'WAVE', options: ['sine', 'square', 'sawtooth', 'triangle', 'noise'], def: 'square' },
+      n('$attack', 'ATTACK', 0.001, 2, 0.001, secs, 0.01, 's'),
+      n('$release', 'RELEASE', 0, 0.5, 0.001, secs, 0.015, 's'),
+    ] },
+    // What turns a waveform into an arcade cabinet: WHERE the note comes in from.
+    // Defaults to off, so the presets that ship on this path are untouched.
+    //
+    // SWEEP is signed on purpose — the sign is the entire difference between a coin
+    // (falling into the note) and a power-up (climbing into it), and a magnitude pot
+    // beside a direction switch would be two controls saying one thing.
+    //
+    // No DEPTH or RATE rows here: `commonRows` already has VIB DEPTH and VIB RATE on
+    // these very keys, for every preset. `_playGame` now reads them like every other
+    // path, so a preset's wobble means one thing wherever it is played.
+    //
+    // VIB DELAY is the exception and is here rather than there because it is the one
+    // vibrato key only this path can honour: the Tone path's LFO lives in the pool and
+    // free-runs across notes, so it has no note-on for an onset to be measured from.
+    // A row in `commonRows` would be a control that silently does nothing on 260 of
+    // the 267 presets.
+    { title: 'Pitch', rows: [
+      n('$sweep', 'SWEEP', -48, 48, 1, fixed(0), 0, 'semi'),
+      n('$sweepTime', 'SWEEP TIME', 0.005, 0.5, 0.005, secs, 0.06, 's', (v) => !!v.sweep),
+      // WHERE the sweep spends its time, which is most of what it sounds like — an even
+      // glide, a hang-then-plunge, or a snap that is at the note before you hear it
+      // travel. See `pitchRamp` in the engine. Greyed with SWEEP TIME: with no sweep on
+      // the preset there is no ramp for either of them to shape.
+      pick('$sweepCurve', 'SWEEP CURVE', ['exp', 'lin', 'snap'], 'exp', (v) => !!v.sweep),
+      n('$vibrato.delay', 'VIB DELAY', 0, 2, 0.01, secs, 0, 's', (v) => (v?.vibrato?.depth ?? 0) > 0),
+    ] },
+    // A tone filter, between the source and the envelope. Switched OFF and absent by
+    // default rather than present at a wide-open 20 kHz: an absent section builds no
+    // node at all, so every preset that shipped before it is untouched, and "no filter"
+    // stays a different thing from "a filter doing nothing" — the same rule the drum
+    // panel's optional sections follow.
+    //
+    // Same keys as the noise and drum voices, because it is the same `_filterChain`:
+    // SHAPE and SLOPE are the filter, FREQ is where it starts, FALLS TO and SWEEP are
+    // where it goes and how long it takes. That last pair is the point of having it
+    // here — a static cutoff is a tone control, but a cutoff falling into a noise burst
+    // is an explosion, and one climbing out of a square is a power-up.
+    { title: 'Filter', optional: 'filter',
+      onTip: 'Take the filter out — the raw waveform',
+      offTip: 'Shape the waveform through a filter, and sweep it',
+      rows: [
+        pick('$filter.type', 'SHAPE', FILTER_TYPES, 'lowpass'),
+        pick('$filter.slope', 'SLOPE', SLOPES, -12),
+        n('$filter.freq', 'FREQ', 20, 18000, 20, hz, 4000, 'Hz'),
+        n('$filter.Q', 'RESONANCE', 0.1, 40, 0.1, fixed(1), 0.7),
+        // `to` equal to `freq` is what "no sweep" looks like to `_filterChain`, so the
+        // pot below it stays greyed until the two differ and the ramp actually exists.
+        n('$filter.to', 'FALLS TO', 20, 18000, 20, hz, 4000, 'Hz'),
+        n('$filter.sweep', 'SWEEP TIME', 0.005, 2, 0.005, secs, 0.12, 's',
+          (v) => v?.filter?.to != null && v.filter.to !== v.filter.freq),
+      ] },
+  ],
   Synth: [
     { title: 'Oscillator', rows: osc('oscillator', 'sine') },
     { title: 'Envelope', rows: adsr('envelope') },
@@ -344,9 +546,14 @@ const NOISE_GROUPS = [
   // LEVEL is in the same place in both editors, which is the whole of the point.
   { title: 'Burst', rows: [
     pick('$noise.type', 'SHAPE', FILTER_TYPES, 'bandpass'),
+    pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
+    pick('$noise.slope', 'SLOPE', SLOPES, -12),
     n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
     n('$noise.freq', 'FREQ', 100, 12000, 25, hz, 2600, 'Hz'),
-    n('$noise.Q', 'RESONANCE', 0.1, 8, 0.1, fixed(1), 0.7),
+    // Up to 40, where it used to stop at 8. A bandpass does not RING below about ten —
+    // it only colours — and a ringing filter is what a rim, a clave and the body of a
+    // snare are made of. The pot could not reach the sound.
+    n('$noise.Q', 'RESONANCE', 0.1, 40, 0.1, fixed(1), 0.7),
     n('$noise.decay', 'DECAY', 0.005, 1, 0.005, secs, 0.09),
   ] },
   // The body is what tells a snare from a hiss, and plenty of presets genuinely have
@@ -357,10 +564,14 @@ const NOISE_GROUPS = [
     rows: [
       pick('$body.type', 'WAVE', WAVES, 'triangle'),
       n('$body.gain', 'LEVEL', 0, 1, 0.005, fixed(3), 0.375),
-      n('$body.from', 'PITCH', 30, 1200, 5, hz, 210, 'Hz'),
-      n('$body.to', 'FALLS TO', 20, 1000, 5, hz, 140, 'Hz'),
+      // Up to 4 kHz, where these stopped at 1200 and 1000. A body is not always a thump:
+      // under a hat it is the metallic ping, and its harmonics have to land in the band
+      // the burst occupies or it is a knock underneath rather than a part of the sound.
+      n('$body.from', 'PITCH', 30, 4000, 5, hz, 210, 'Hz'),
+      n('$body.to', 'FALLS TO', 20, 4000, 5, hz, 140, 'Hz'),
       n('$body.decay', 'DECAY', 0.005, 0.5, 0.005, secs, 0.06),
     ] },
+  FEEL_GROUP,
   { title: 'Taps', taps: true },
 ];
 
@@ -381,11 +592,11 @@ const BODY_DEFAULT = { type: 'triangle', from: 210, to: 140, decay: 0.06, gain: 
 // three empty columns beside it. With WAVE first and CURVE seventh, both sections came
 // out five rows tall with DECAY and LEVEL each sitting alone on a row of four.
 //
-// So the two pills are adjacent — they cost two full rows wherever they go, and next to
-// each other they read as the section's two shape choices — and the knobs run in one
-// unbroken block behind them, which packs six into two rows and seven into two. Two
-// rows saved off the panel, and LEVEL lands in the same place in every section rather
-// than wherever its group happened to leave it.
+// So the pills are adjacent — they cost their rows wherever they go, and next to each
+// other they read as the section's shape choices, the two envelope shapes and the wave —
+// and the knobs run in one unbroken block behind them, which packs six into two rows and
+// seven into two. Rows saved off the panel, and LEVEL lands in the same place in every
+// section rather than wherever its group happened to leave it.
 const DRUM_GROUPS = [
   { title: 'Oscillator', optional: 'osc',
     onTip: 'Take the pitched half out — noise only',
@@ -393,12 +604,43 @@ const DRUM_GROUPS = [
     rows: [
       pick('$osc.type', 'WAVE', WAVES, 'sine'),
       pick('$osc.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      // Named for the SWEEP knob it shapes rather than called a second CURVE: this one is
+      // the pitch drop, the one above it is the level. `snap` is the analogue drum
+      // machine's own pitch envelope — hardest at the start, settled before the tail —
+      // and it is the difference between a kick that clicks and one that goes boing.
+      pick('$osc.pitchCurve', 'SWEEP CURVE', ['exp', 'lin', 'snap'], 'exp'),
       n('$osc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
+      // The engine kick's mid punch, as a level and nothing else — a fixed 300→180 Hz
+      // triangle, up in 4ms and gone in 50. It is the second oscillator a kick needs
+      // and the only one, so it is a pot rather than a section. Zero builds nothing.
+      n('$knock', 'KNOCK', 0, 1, 0.01, fixed(2), 0),
       n('$osc.from', 'PITCH', 20, 4000, 5, hz, 190, 'Hz'),
-      n('$osc.to', 'FALLS TO', 20, 2000, 5, hz, 52, 'Hz'),
+      // To 4 kHz rather than 2, so FALLS TO can reach where PITCH already could. A drum
+      // whose pitch rises is half the rims and every zap; capping the destination at
+      // half the origin's range made those a one-way trip.
+      n('$osc.to', 'FALLS TO', 20, 4000, 5, hz, 52, 'Hz'),
       n('$osc.sweep', 'SWEEP', 0.005, 1, 0.005, secs, 0.07),
       n('$osc.attack', 'ATTACK', 0.001, 0.5, 0.001, secs, 0.001),
+      n('$osc.hold', 'HOLD', 0, 0.5, 0.001, secs, 0),
       n('$osc.decay', 'DECAY', 0.01, 2, 0.005, secs, 0.35),
+      // The two-stage decay, as one pot: the level the section drops to in the first
+      // 20ms before the rest of DECAY carries it down. Zero is one plain decay, which
+      // is what every preset written before this had. It is what makes a drum read as
+      // STRUCK — one exponential is either a transient or a tail and cannot be both.
+      n('$osc.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
+    ] },
+  // The modulator, and the reason one oscillator can be a cowbell or a rim: a second
+  // oscillator bending the first one's pitch faster than the ear can follow, which is
+  // heard as a timbre rather than as a wobble.
+  { title: 'FM', optional: 'osc.fm',
+    onTip: 'Take the modulator out — the oscillator on its own',
+    offTip: 'Bend the oscillator with a second one — clangs, bells, rims',
+    rows: [
+      pick('$osc.fm.type', 'WAVE', WAVES, 'sine'),
+      n('$osc.fm.ratio', 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
+      n('$osc.fm.index', 'INDEX', 0, 8, 0.05, fixed(2), 1),
+      n('$osc.fm.attack', 'ATTACK', 0.001, 0.5, 0.001, secs, 0.001),
+      n('$osc.fm.decay', 'DECAY', 0.005, 2, 0.005, secs, 0.35),
     ] },
   { title: 'Noise', optional: 'noise',
     onTip: 'Take the noise half out — the oscillator on its own',
@@ -406,17 +648,62 @@ const DRUM_GROUPS = [
     rows: [
       pick('$noise.type', 'SHAPE', FILTER_TYPES, 'bandpass'),
       pick('$noise.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
+      pick('$noise.slope', 'SLOPE', SLOPES, -12),
       n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       n('$noise.freq', 'FREQ', 100, 12000, 25, hz, 2600, 'Hz'),
       n('$noise.to', 'SWEEPS TO', 100, 12000, 25, hz, 2600, 'Hz'),
       n('$noise.sweep', 'SWEEP', 0.005, 1.5, 0.005, secs, 0.12),
-      n('$noise.Q', 'RESONANCE', 0.1, 12, 0.1, fixed(1), 0.7),
+      n('$noise.Q', 'RESONANCE', 0.1, 40, 0.1, fixed(1), 0.7),
       n('$noise.attack', 'ATTACK', 0.001, 0.5, 0.001, secs, 0.001),
+      n('$noise.hold', 'HOLD', 0, 0.5, 0.001, secs, 0),
       n('$noise.decay', 'DECAY', 0.005, 1.5, 0.005, secs, 0.12),
+      n('$noise.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
+    ] },
+  // A click into a very narrow filter: struck, then ringing. Where the noise section
+  // is a burst you shape, this is a PITCH that arrives already decaying — the rim, the
+  // clave, the wood block, the shell under a snare.
+  { title: 'Ring', optional: 'ring',
+    onTip: 'Take the resonator out',
+    offTip: 'Strike a resonant filter — rims, claves, shells',
+    rows: [
+      pick('$ring.type', 'SHAPE', FILTER_TYPES, 'bandpass'),
+      pick('$ring.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      n('$ring.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
+      n('$ring.freq', 'PITCH', 40, 8000, 5, hz, 400, 'Hz'),
+      n('$ring.to', 'SWEEPS TO', 40, 8000, 5, hz, 400, 'Hz'),
+      // The one that changes what it IS rather than how it sounds: a couple of
+      // milliseconds is a stick, twenty is a mallet, past fifty it is a burst again.
+      n('$ring.hit', 'STRIKE', 0.0005, 0.05, 0.0005, secs, 0.002),
+      n('$ring.Q', 'RESONANCE', 1, 120, 0.5, fixed(1), 40),
+      n('$ring.decay', 'DECAY', 0.005, 2, 0.005, secs, 0.25),
+      n('$ring.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
+    ] },
+  // Six squares at inharmonic ratios through a highpass — the 808's cymbal circuit.
+  { title: 'Metal', optional: 'metal',
+    onTip: 'Take the cluster out',
+    offTip: 'Add a cluster of inharmonic squares — hats, cowbells, cymbals',
+    rows: [
+      pick('$metal.wave', 'WAVE', WAVES, 'square'),
+      pick('$metal.filter', 'SHAPE', FILTER_TYPES, 'highpass'),
+      n('$metal.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
+      n('$metal.freq', 'PITCH', 40, 4000, 5, hz, 800, 'Hz'),
+      // 0 collapses the cluster onto one note and 2 pulls the partials twice as far
+      // apart as the 808's. Everything between is a different metal.
+      n('$metal.spread', 'SPREAD', 0, 2, 0.01, fixed(2), 1),
+      n('$metal.count', 'PARTIALS', 1, 6, 1, fixed(0), 6),
+      n('$metal.hp', 'FILTER', 200, 12000, 25, hz, 3000, 'Hz'),
+      n('$metal.Q', 'RESONANCE', 0.1, 20, 0.1, fixed(1), 0.7),
+      n('$metal.decay', 'DECAY', 0.005, 3, 0.005, secs, 0.2),
+      n('$metal.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
   { title: 'Drive', rows: [
+    pick('$shape', 'SHAPE', DRIVE_SHAPES, 'tanh'),
     n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
+    // After the shaper, not before: what it is for is the fizz the drive just added.
+    n('$tone.freq', 'TONE', 200, 16000, 50, hz, 16000, 'Hz'),
   ] },
+  FEEL_GROUP,
   { title: 'Taps', taps: true },
 ];
 
@@ -428,65 +715,237 @@ const SECTION_DEFAULTS = {
   body: BODY_DEFAULT,
   osc: { type: 'sine', from: 190, to: 52, sweep: 0.07, decay: 0.35, curve: 'exp', gain: 1 },
   noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.12, gain: 1 },
+  ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.002, decay: 0.25, curve: 'exp', gain: 1 },
+  metal: { wave: 'square', freq: 800, spread: 1, count: 6, hp: 3000, Q: 0.7, decay: 0.2, gain: 1 },
+  // The modulator hangs off the oscillator rather than off the entry, which is the one
+  // section here whose key is a path — see `addSection`.
+  'osc.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 0.35 },
+  // Not zeroes: a section switched on with nothing in it is a switch that does
+  // nothing, and these are the sizes a hat actually moves by.
+  humanize: { gain: 0.08, filter: 0.05 },
+  // The additive sections, same rule: `_playAdditive`'s own `??` fallbacks, so switching
+  // one on starts from the sound the engine already implied. `pitch` opens on a fourth
+  // below, which is `organSwoop`'s own interval; `perc` on the third harmonic, which is
+  // the Hammond's.
+  'additive.pitch': { from: 0.7492, to: 1, sweep: 0 },
+  'additive.perc': { ratio: 3, gain: 0.72, attack: 0.002, decay: 0.08 },
+  // The game synth's tone filter opens WIDE and flat — a lowpass at 4 kHz with no
+  // resonance and `to` equal to `freq`, so switching it on takes nothing away and
+  // sweeps nowhere. Every other section here starts from the sound the engine already
+  // implied; this one has no such sound to start from, so it starts from silence's
+  // opposite: audibly the raw waveform, with all six pots ready to move.
+  filter: { type: 'lowpass', slope: -12, freq: 4000, to: 4000, Q: 0.7, sweep: 0.12 },
 };
+
+// ---- optional sections -------------------------------------------------------
+//
+// A section is present or absent, never present-and-zeroed: `body: { gain: 0 }` still
+// builds an oscillator per hit, and "no body" is a different sound from "a body at
+// zero". Switching one on seeds it from `_playDrum`'s own fallbacks, so it starts as
+// the sound the engine already implied rather than as a new one.
+//
+// FM is the section that made these three functions instead of two lines: it lives
+// INSIDE the oscillator, so its key is a path, and turning it on where there is no
+// oscillator has to bring one with it or the modulator would have nothing to bend.
+const sectionOn = (voice, key) => getAt(voice, `$${key}`) !== undefined;
+
+function addSection(voice, key) {
+  const parts = key.split('.');
+  for (let i = 0; i < parts.length; i++) {
+    const path = parts.slice(0, i + 1).join('.');
+    if (getAt(voice, `$${path}`) === undefined) {
+      setAt(voice, `$${path}`, { ...(SECTION_DEFAULTS[path] || {}) });
+    }
+  }
+}
+
+function dropSection(voice, key) {
+  const parts = key.split('.');
+  const owner = parts.length > 1 ? getAt(voice, `$${parts.slice(0, -1).join('.')}`) : voice;
+  if (owner) delete owner[parts[parts.length - 1]];
+}
+
+/**
+ * Whether a preset is a ONE-SHOT: a noise burst or a drum, which is over when it is
+ * over and has no note to be over the length of.
+ *
+ * The dispatch says it outright. `play` hands the pitched paths everything —
+ * `{ freq, time, dur, gain, detune, … }` — and hands these two:
+ *
+ *     if (v.kind === 'noise') return this._playNoise(v, { time, gain, dry, wet, echo });
+ *     if (v.kind === 'drum')  return this._playDrum(v,  { time, gain, dry, wet, echo });
+ *
+ * No `freq`, no `dur`, no `detune`. So LENGTH and FIXED LENGTH have no note length to
+ * set, TRANSPOSE and FINE have no note to shift — neither method calls `pitchShift` —
+ * and VIB DEPTH and VIB RATE have no oscillator to bend, because neither reads
+ * `v.vibrato` at all. Six pots that could not move a sample on a hat.
+ *
+ * What a one-shot's length and pitch actually are is already on its own panel, per
+ * section: DECAY, HOLD and SWEEP set how long it rings, PITCH and FALLS TO set where.
+ * That is not a workaround for the missing controls — it is why they are missing. A
+ * drum's pitch belongs to the drum, not to the note that triggered it.
+ */
+const isOneShot = (v) => v?.kind === 'noise' || v?.kind === 'drum';
+
+/**
+ * Whether a preset is played through the POOL — one Tone class from `SYNTHS`, built
+ * once and retriggered — or built from native nodes per note.
+ *
+ * The line `play()` itself draws: a noise or drum entry, GameSynth and AdditiveSynth
+ * all return before it reads `v.mono`, and none of them ever reaches a Tone
+ * constructor, so `buildSpec`'s `portamento` never reaches them either. Which makes
+ * VOICING and GLIDE two controls that cannot move those four paths a sample — see
+ * `commonRows`.
+ */
+const POOLED_SYNTHS = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth');
+const isPooled = (v) => !isOneShot(v) && POOLED_SYNTHS.includes(v?.synth);
 
 /**
  * The top section: what every preset has, whatever builds it.
  *
- * ---- why there is no GLIDE here ---------------------------------------------
+ * ---- and what only SOME of them have -----------------------------------------
  *
- * Every class in the allowlist extends Tone's `Monophonic`, which carries
- * `portamento`, so a glide control looks like two lines of work. It does nothing.
+ * "Common" used to mean every row here appeared on every panel, which is only honest
+ * while every row reaches every path. Two groups do not:
+ *
+ *   VOICING and GLIDE      `play` reads `v.mono` after it has already dispatched noise,
+ *                          drum, GameSynth and AdditiveSynth away, and `portamento` is
+ *                          a Tone constructor option on paths that build no Tone
+ *                          objects at all. Gated on `isPooled`.
+ *   LENGTH · FIXED LENGTH  the note itself, which a one-shot is never handed — see
+ *   TRANSPOSE · FINE       `isOneShot` for the dispatch line that proves it. Gated on
+ *   VIB DEPTH · VIB RATE   that, which leaves a drum's Note card holding TRIM alone.
+ *
+ * Absent rather than greyed, the same way MembraneSynth has no VOICING pills and
+ * MetalSynth's envelope has no SUSTAIN — a control that can never apply is removed,
+ * where one that does not apply YET is greyed.
+ *
+ * ---- what GLIDE is gated on twice --------------------------------------------
+ *
  * `Monophonic.setNote` only ramps when the note it is gliding FROM is still sounding:
  *
  *     if (this.portamento > 0 && this.getLevelAtTime(t) > 0.05)  ramp
  *     else                                                       setValueAtTime
  *
- * Portamento is a legato feature, and this rack has no legato: `play` round-robins
- * every note onto the next slot in the pool, whose previous note has long since
- * released, so the level at that moment is 0 and the second branch is always the one
- * taken. Measured — a rising line rendered at portamento 0 and 0.25 came out
- * SAMPLE-IDENTICAL, all 264,600 of them.
+ * Portamento is a legato feature, and a polyphonic preset has no legato: `play`
+ * round-robins every note onto the next slot in the pool, whose previous note has long
+ * since released, so the level at that moment is 0 and the second branch is always the
+ * one taken. Measured — a rising line rendered at portamento 0 and 0.25 came out
+ * SAMPLE-IDENTICAL, all 264,600 of them. Mono is what fixed it: one instance for the
+ * whole lane, which remembers what it was playing. Hence the `when`.
  *
- * Which also means the `portamento` already sitting in `tpBassy` and `tpBrassCircuit`
- * is doing nothing today. Making it real is an engine change — one slot per
- * monophonic lane and notes long enough to overlap — and it costs the release tails
- * the pool exists to protect.
+ * ---- and why VELOCITY is not here at all -------------------------------------
+ *
+ * Because nothing reads it. `$velocity` was written by this panel and by nothing else:
+ * the level a note plays at is `voiceGain(v, lane) × laneTrim × trim`, all of it read
+ * in scheduleStep, and no path in the rack looks at a preset's own velocity — not the
+ * pooled one, not the native ones, not `_playNoise` or `_playDrum`. Not one preset in
+ * the catalogue carries the key either, so removing the pot drops a control that had
+ * never moved a sample rather than a feature. TRIM is the control that does this job.
  */
-const commonRows = () => [
+const commonRows = (voice = {}) => [
   // Steps, not seconds: the engine multiplies by the song's seconds-per-16th, so a
   // preset holds for the same musical length at any tempo.
-  n('$dur', 'LENGTH', 0.25, 16, 0.05, fixed(2), 1, 'steps'),
-  n('$velocity', 'VELOCITY', 0.05, 1, 0.01, fixed(2), 1),
-  // Tuning. Two controls rather than one, because they are two jobs: TRANSPOSE moves
-  // the instrument to where it belongs in the arrangement and wants to land exactly
-  // on a semitone (a step of 1, so an octave is four detents of the wheel, not a
-  // number you have to aim at); FINE is the couple of cents that makes two layered
-  // voices beat instead of phase, and needs a step small enough that it could never
-  // hit a clean octave by accident. Both are ratios in the rack, so they multiply
-  // with the song's own pitch warp rather than fighting it.
-  n('$transpose', 'TRANSPOSE', -24, 24, 1, fixed(0), 0, 'st'),
-  n('$fine', 'FINE', -100, 100, 1, fixed(0), 0, 'cents'),
-  // Vibrato that belongs to the SOUND rather than to the channel. The desk already
-  // has a vibrato insert, and that is the right tool for "this channel wobbles";
-  // this is for a wobble that should follow the preset onto any lane and into any
-  // song. Depth 0 builds no node at all, so a preset that does not want one pays
-  // nothing for the control existing.
-  n('$vibrato.depth', 'VIB DEPTH', 0, 1, 0.01, fixed(2), 0),
-  n('$vibrato.rate', 'VIB RATE', 0.1, 12, 0.1, fixed(1), 5, 'Hz',
-    (v) => (v?.vibrato?.depth ?? 0) > 0),
+  // The hand-written engine voices use sub-quarter-step stabs, and Tone's release
+  // continues after the requested note length. Keep the editor below 0.25 steps so
+  // a preset can be made as short as those voices rather than sounding automatically
+  // longer just because it is a library preset. At 120 BPM, 0.05 steps is 6.25ms.
+  ...(isOneShot(voice) ? [] : [n('$dur', 'LENGTH', 0.05, 16, 0.01, fixed(2), 1, 'steps')]),
+  // The one row here every path honours: `trim` is folded into the note's gain in
+  // scheduleStep, BEFORE the rack is asked to play anything, so it lands on a hat
+  // exactly as it lands on a lead. Which is why it is also the only thing left on a
+  // one-shot's Note card.
+  n('$trim', 'TRIM', -6, 6, 0.1, fixed(1), 0, 'dB'),
+  // Everything from here to the vibrato is about the NOTE — how long it lasts and what
+  // pitch it lands on — which is why a one-shot has none of it. See `isOneShot`.
+  ...(isOneShot(voice) ? [] : [
+    // An absolute duration in seconds that overrides LENGTH and the tempo both — see
+    // `noteSeconds` in src/engine/audio.js, which returns it verbatim and stops. `0` is
+    // "not set" rather than "no length", which is why the pot bottoms out at nothing.
+    //
+    // The ceiling is 4 rather than 2 because a SOUND EFFECT is what this control is for
+    // once it is longer than a note — an explosion, a siren, a power-down — and those run
+    // past two seconds. `squareTone21` was already pinned at the old ceiling. Raising a
+    // maximum moves no preset: every stored value is what it was, there is simply more
+    // travel above it. Common to every PITCHED synth, because `fixedLength` is read in
+    // `noteSeconds` before the voice is dispatched and so has never been one path's.
+    n('$fixedLength', 'FIXED LENGTH', 0, 4, 0.001, fixed(3), 0, 'sec'),
+    // Tuning. Two controls rather than one, because they are two jobs: TRANSPOSE moves
+    // the instrument to where it belongs in the arrangement and wants to land exactly
+    // on a semitone (a step of 1, so an octave is four detents of the wheel, not a
+    // number you have to aim at); FINE is the couple of cents that makes two layered
+    // voices beat instead of phase, and needs a step small enough that it could never
+    // hit a clean octave by accident. Both are ratios in the rack, so they multiply
+    // with the song's own pitch warp rather than fighting it.
+    n('$transpose', 'TRANSPOSE', -24, 24, 1, fixed(0), 0, 'st'),
+    n('$fine', 'FINE', -100, 100, 1, fixed(0), 0, 'cents'),
+    // Vibrato that belongs to the SOUND rather than to the channel. The desk already
+    // has a vibrato insert, and that is the right tool for "this channel wobbles";
+    // this is for a wobble that should follow the preset onto any lane and into any
+    // song. Depth 0 builds no node at all, so a preset that does not want one pays
+    // nothing for the control existing.
+    //
+    // Both pots run far past what an instrument does, because the game synth is not an
+    // instrument. One unit of DEPTH is 100 cents on the native paths, so the top of the
+    // pot is a full octave of wobble — a siren rather than a singer — and the musical
+    // range (an instrument lives around 0.1–0.3) sits in the bottom twentieth. RATE runs
+    // to 60 Hz, which stops being a wobble somewhere around 20 and becomes timbre: at
+    // audio rate the LFO is frequency modulation and the sidebands are the sound.
+    //
+    // The bottom of a long pot is reachable rather than fiddly: shift-drag is a fifth of
+    // the travel and clicking the number types an exact one. And raising a maximum moves
+    // no preset — every stored value is what it was, there is simply more travel above
+    // it — which is the same trade FIXED LENGTH made when its ceiling went to four.
+    n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi'),
+    n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
+      (v) => (v?.vibrato?.depth ?? 0) > 0),
+  ]),
   // Mono holds one instance for the whole lane, so a new note cuts the last one off
   // — and, because that instance remembers what it was playing, GLIDE finally has a
   // pitch to slide from. Glide is greyed until mono is on for exactly that reason:
   // set it on a polyphonic preset and every note lands on a fresh voice with nothing
   // to glide from, and the control does nothing at all.
-  pick('$mono', 'VOICING', [false, true], false),
-  n('$portamento', 'GLIDE', 0, 0.5, 0.005, secs, 0, '', (v) => v?.mono === true),
+  //
+  // Both are absent, not greyed, on the four paths `play` dispatches before it reads
+  // `v.mono` — a drum has no pool to hold one instance of and no Tone synth to carry a
+  // portamento. See `isPooled`.
+  ...(isPooled(voice) ? [
+    pick('$mono', 'VOICING', [false, true], false),
+    n('$portamento', 'GLIDE', 0, 0.5, 0.005, secs, 0, '', (v) => v?.mono === true),
+  ] : []),
 ];
+
+/**
+ * The `$` sections that belong to a SYNTH CLASS rather than to every preset.
+ *
+ * Switching class replaces `options` wholesale, and these are the native half of the same
+ * idea: a preset that was an additive stack and is now a MonoSynth should not still be
+ * carrying nine drawbars. Derived from the panels themselves so a new class widens the set
+ * on its own rather than needing a second list kept in step.
+ *
+ * Minus whatever `commonRows` also owns — `vibrato` is on the GameSynth panel (for its
+ * DELAY, which only that path can honour) AND on every preset, and wiping a preset's
+ * vibrato because you changed its oscillator class would be a change to the sound nobody
+ * asked for.
+ *
+ * Asked for a POOLED preset, so `mono` and `portamento` count as common: they are shown
+ * on seven of the nine classes, and switching a MonoSynth to an FMSynth must not throw
+ * away a voicing that means the same thing on both.
+ */
+const SYNTH_SECTIONS = (() => {
+  const common = new Set(commonRows({ synth: 'Synth' })
+    .filter((r) => r.path.startsWith('$'))
+    .map((r) => r.path.slice(1).split('.')[0]));
+  const owned = new Set(Object.values(SYNTH_GROUPS)
+    .flatMap((groups) => groups.flatMap((g) => g.rows || []))
+    .filter((r) => r.path.startsWith('$'))
+    .map((r) => r.path.slice(1).split('.')[0]));
+  return [...owned].filter((k) => !common.has(k));
+})();
 
 // ---- paths ------------------------------------------------------------------
 
-// `$`-prefixed paths are on the entry itself (`dur`, `velocity`, `noise.freq`,
+// `$`-prefixed paths are on the entry itself (`dur`, `trim`, `noise.freq`,
 // `osc.type`); everything else is inside `options`, which is the bag Tone's
 // constructors take. One resolver, so a row does not have to know which it is —
 // and `$` paths dot the same way, because the entry's own sections are objects too.
@@ -500,7 +959,11 @@ function getAt(preset, path) {
 function setAt(preset, path, value) {
   const ks = keysOf(path);
   let o = rootOf(preset, path);
-  for (let i = 0; i < ks.length - 1; i++) o = (o[ks[i]] ||= {});
+  // An all-digit key means the container is a LIST, not an object. `additive.bars.3` is the
+  // fourth drawbar, and building `{ '3': … }` for it would round-trip through the source
+  // emitter as an object and read back as a preset with no bars — silent, and silent in a
+  // way that looks like the engine rather than like the editor.
+  for (let i = 0; i < ks.length - 1; i++) o = (o[ks[i]] ||= (/^\d+$/.test(ks[i + 1]) ? [] : {}));
   o[ks[ks.length - 1]] = value;
 }
 
@@ -512,6 +975,14 @@ export function idFromLabel(label, taken = VOICES) {
   let id = base;
   for (let i = 2; taken[id]; i++) id = `${base}${i}`;
   return id;
+}
+
+/** The raw id a label would produce, without checking whether it's taken. */
+function rawId(label) {
+  const words = String(label).replace(/[^A-Za-z0-9 ]+/g, ' ').trim().split(/\s+/);
+  let base = words.map((w, i) => (i ? w[0].toUpperCase() + w.slice(1) : w.toLowerCase())).join('');
+  if (!base || /^\d/.test(base)) base = `voice${base}`;
+  return base;
 }
 
 // ---- the panel --------------------------------------------------------------
@@ -552,9 +1023,9 @@ export function createVoiceEditor({
 
   const isOpen = () => !!state && el.classList.contains('show');
 
-  /** The entry as it will be written: no id, kind or peak — those are derived on load. */
+  /** The entry as it will be written: no id, kind, level or peak — all derived on load. */
   const asPreset = (v) => {
-    const { id, kind, peak, songLocal, ...rest } = v;
+    const { id, kind, level, peak, songLocal, ...rest } = v;
     return JSON.parse(JSON.stringify(rest));
   };
 
@@ -562,13 +1033,13 @@ export function createVoiceEditor({
    * The entry as a SONG carries it — the preset plus the two things voices.js would
    * otherwise stamp on it.
    *
-   * `kind` comes from the table a preset is filed in and `peak` from measuring it, so
-   * neither is written into the library file. A song's mix has no tables and no
-   * measuring pass of its own, so a copy has to carry both or it arrives as a toneless
-   * synth at the wrong level. `songLocal` is not carried: it describes where the entry
-   * came from, and registerSongVoice is what says that.
+   * `kind` comes from the table a preset is filed in, `level` and `peak` from measuring
+   * it, so none of the three is written into the library file. A song's mix has no
+   * tables and no measuring pass of its own, so a copy has to carry all three or it
+   * arrives as a toneless synth at the wrong level. `songLocal` is not carried: it
+   * describes where the entry came from, and registerSongVoice is what says that.
    */
-  const asSongPreset = (v) => ({ ...asPreset(v), kind: v.kind, peak: v.peak });
+  const asSongPreset = (v) => ({ ...asPreset(v), kind: v.kind, level: v.level, peak: v.peak });
 
   /**
    * An edit landed: make it audible, and start working out what it did to the level.
@@ -585,7 +1056,7 @@ export function createVoiceEditor({
    */
   const touched = () => {
     state.dirty = true;
-    state.measured = false;      // the peak on file no longer describes this sound
+    state.measured = false;      // the level on file no longer describes this sound
     refresh(state.id);
     // A song's copy has no file behind it, so this IS its save: the draft mix is where
     // it lives, and an edit that never reached it would be lost on the next applyMix
@@ -610,18 +1081,24 @@ export function createVoiceEditor({
   /**
    * What this edit did to the preset's loudness, as a RATIO.
    *
-   * The peak on file is measured through the whole render pipeline, offline, on the
-   * server; the peak measured here is the synth's own, in a bare context. They are not
-   * the same number and never will be — `roundMono` is 0.9005 on file and renders 1.29
-   * here. So the raw figure is never used directly. What is used is how much it MOVED:
+   * The numbers on file are measured through the whole render pipeline, offline, on the
+   * server; what is measured here is the synth's own output, in a bare context. They are
+   * not the same numbers and never will be — `roundMono` peaks at 1.18 on file and 1.29
+   * here. So the raw figures are never used directly. What is used is how much they
+   * MOVED:
    *
-   *   peak ≈ peak-on-file × (raw now ÷ raw when this opened)
+   *   level ≈ level-on-file × (raw level now ÷ raw level when this opened)
    *
-   * Everything between the synth and the master is linear in the synth's output —
-   * gains, pans, filters, sends — so the constant between the two scales divides out,
-   * and what is left is right whatever that constant happens to be. The exception is
-   * anything that is not linear, a limiter or a bus compressor; neither is in the path,
-   * because the peaks on file are all measured with no mix at all.
+   * and the same again for the peak. Everything between the synth and the master is
+   * linear in the synth's output — gains, pans, filters, sends — so the constant between
+   * the two scales divides out, and what is left is right whatever that constant happens
+   * to be. The exception is anything that is not linear, a limiter or a bus compressor;
+   * neither is in the path, because the numbers on file are all measured with no mix at
+   * all. The K-weighting the level carries is a pair of filters, so it is linear too.
+   *
+   * One caveat the peak did not have: this renders the preset for a fixed length, where
+   * the file measures it for its own `dur`. A `dur` edit therefore does not show up in
+   * the estimate. It shows up on save, which is the measurement that counts.
    *
    * It is an estimate and it is labelled as one. Saving measures the real thing.
    */
@@ -637,7 +1114,7 @@ export function createVoiceEditor({
     // Only the newest may write, or the level lands on whatever settled last.
     if (seq !== estimateSeq || state?.id !== id) return;
     if (raw == null) return;
-    if (!(raw > 0)) {
+    if (!(raw.level > 0)) {
       // Worth catching here rather than at save: this is the failure that is invisible
       // where you are standing, and now it is caught while you are still moving the
       // control that caused it.
@@ -646,10 +1123,14 @@ export function createVoiceEditor({
       return;
     }
     state.silent = false;
-    state.voice.peak = state.peakBaseline * (raw / state.rawBaseline);
+    // Both numbers ride their own ratio. They do not move together — an envelope that
+    // holds longer changes the energy and leaves the peak where it was, which is the
+    // whole reason the level is measured separately from the peak.
+    state.voice.level = state.levelBaseline * (raw.level / state.rawBaseline.level);
+    state.voice.peak = state.peakBaseline * (raw.peak / state.rawBaseline.peak);
     state.estimated = true;
     // The level is part of the preset, so a song's copy has to carry the new one too —
-    // this lands after `touched` wrote the shape, and the peak is the slow half.
+    // this lands after `touched` wrote the shape, and the level is the slow half.
     onEdit(state.id, asSongPreset(state.voice));
     // No refresh needed: `voiceGain` is read per note, so the next one is already at
     // the new level.
@@ -660,7 +1141,11 @@ export function createVoiceEditor({
   async function rebase() {
     try {
       const raw = await measureRaw(state.id, noiseBuf(), sampleRate());
-      if (raw > 0) { state.rawBaseline = raw; state.peakBaseline = state.voice.peak; }
+      if (raw.level > 0) {
+        state.rawBaseline = raw;
+        state.levelBaseline = state.voice.level;
+        state.peakBaseline = state.voice.peak;
+      }
     } catch { /* leave the old baseline; a stale ratio beats none */ }
   }
 
@@ -687,9 +1172,11 @@ export function createVoiceEditor({
       u.textContent = row.unit;
       r.label.append(' ', u);
     }
+    if (row.tip) r.wrap.title = row.tip;
     // The stored value can sit outside the pot's range — a hand-written preset is not
     // bound by what this editor thinks is a sensible maximum — and clamping it into
-    // view without saying so would silently change a sound by opening its editor.
+    // view without saying so would silently change a sound by opening its editor. Set
+    // after the row's own tip, because this is the more urgent of the two.
     if (typeof cur === 'number' && cur !== value) {
       r.label.prepend('* ');
       r.wrap.title = `On file as ${cur}, which is outside this control's range —`
@@ -846,6 +1333,32 @@ export function createVoiceEditor({
       r.label.textContent = 'FALLOFF';
       r.wrap.title = 'How much quieter each repeat is than the one before it';
       grid.append(r.wrap);
+      // The other two walks, beside the one that was always here. All three are per-TAP
+      // ratios and all three are meaningless with a single hit, so this is where they
+      // belong: a card that only exists once there is something to repeat. A clap made
+      // of one sound four times is a stutter; a real one is four hands, each landing a
+      // shade lower and duller than the last.
+      for (const walk of [
+        { key: 'tapDetune', label: 'PITCH', min: 0.8, max: 1.25, step: 0.005, fmt: fixed(3),
+          tip: 'How far each repeat is pitched from the one before it' },
+        { key: 'tapTone', label: 'TONE', min: 0.6, max: 1.4, step: 0.01, fmt: fixed(2),
+          tip: 'How much duller — or brighter — each repeat is than the one before it' },
+      ]) {
+        const w = knob({
+          min: walk.min, max: walk.max, step: walk.step, reset: 1, fmt: walk.fmt,
+          value: state.voice[walk.key] ?? 1,
+          // Exactly 1 is no walk at all, and a preset that does not walk should not
+          // carry a key saying so — same rule `taps` itself follows above.
+          onInput: (x) => {
+            if (x === 1) delete state.voice[walk.key];
+            else state.voice[walk.key] = x;
+            touched();
+          },
+        });
+        w.label.textContent = walk.label;
+        w.wrap.title = walk.tip;
+        grid.append(w.wrap);
+      }
     } else {
       const note = document.createElement('div');
       note.className = 'devnote';
@@ -868,14 +1381,14 @@ export function createVoiceEditor({
     // present: a preset with `body: { gain: 0 }` still builds an oscillator per hit,
     // and "no body" is a different sound from "a body at zero".
     if (group.optional) {
-      const on = state.voice[group.optional] !== undefined;
+      const on = sectionOn(state.voice, group.optional);
       const sw = document.createElement('button');
       sw.className = `devlink veswitch${on ? ' on' : ''}`;
       sw.textContent = on ? 'On' : 'Off';
       sw.title = on ? group.onTip : group.offTip;
       sw.onclick = () => {
-        if (state.voice[group.optional]) delete state.voice[group.optional];
-        else state.voice[group.optional] = { ...(SECTION_DEFAULTS[group.optional] || {}) };
+        if (on) dropSection(state.voice, group.optional);
+        else addSection(state.voice, group.optional);
         touched();
         build();
       };
@@ -917,34 +1430,40 @@ export function createVoiceEditor({
    * and the peak is a number you only act on at the moment you commit, so it moved to
    * the save sheet where it can say what to do about it. See `openSaveSheet`.
    */
-  /** Is there a song this panel could copy the preset into? See saveToSong. */
-  const canCopyToSong = () => !!(saveToSong && state?.laneKey && !state.voice?.songLocal);
+  /** Always false: opening from a lane now auto-copies into the song. */
+  const canCopyToSong = () => false;
 
   function paintFoot() {
     if (!foot) return;
-    // An unedited preset has nothing to write to the LIBRARY — that is what the
-    // disabled state has always said. It does have somewhere to go, though: copying
-    // it into the song is a reasonable first move, made BEFORE any editing, so that
-    // what follows lands on the song's own copy instead of on the shared preset. Left
-    // disabled, the only way to reach that button was to dirty the library entry
-    // first, which is precisely the thing a copy exists to avoid.
-    //
-    // And a library entry has one more thing to write with the sound untouched: its own
-    // NAME. Renaming and re-filing live in the save sheet, and this button is the way
-    // to the sheet — so on an unedited library preset the old rule made the one job you
-    // open the library to do unreachable, unless you first changed a sound you did not
-    // want to change. A song's own copy is excluded: its name is `bassVoice@plumber`,
-    // which describes where it lives rather than what it is called.
-    const canRefile = !state.isNew && !state.voice?.songLocal;
-    foot.saveBtn.disabled = !state.dirty && !state.isNew && !canCopyToSong() && !canRefile;
-    foot.saveBtn.textContent = canCopyToSong() ? 'Save…' : 'Save to Library';
-    foot.saveBtn.title = !state.dirty && canRefile && !canCopyToSong()
-      ? 'Rename this preset or file it under another category — the sound is unchanged'
-      : 'Where this sound goes: into the song as its own copy, or into src/data/voices.js'
-        + ' as a library preset every song can play';
+    // Only the library is a save target now. Opening from a lane auto-copies into
+    // the song, so the voice is always song-local by the time the panel appears.
+    // A library entry can still be renamed/refiled even when the sound is unchanged.
+    const factory = !!state.voice?.factory;
+    const canRefile = !state.isNew && !state.voice?.songLocal && !factory;
+    foot.saveBtn.disabled = !state.dirty && !state.isNew && !canRefile && !factory;
+    foot.saveBtn.textContent = factory ? 'Save as new' : 'Save to Library';
+    foot.saveBtn.title = factory
+      ? 'Factory presets cannot be overwritten — save your edits as a new preset'
+      : !state.dirty && canRefile
+        ? 'Rename this preset or file it under another category — the sound is unchanged'
+        : 'Write this into src/data/voices.js as a library preset every song can play';
   }
 
-  function build() {
+  /**
+   * Draw the panel.
+   *
+   * `keepScroll` is the reader's place in the rack, and it is kept by default. A rebuild
+   * replaces `.verack` — the one element that scrolls — and a fresh element starts at the
+   * top, so switching a section On threw the panel back to its header, away from the very
+   * controls the switch had just revealed. The offset belongs to the person reading the
+   * panel, not to the element drawing it, so it is carried across.
+   *
+   * It is dropped only where the panel stops being the same panel: a new preset, or a new
+   * synth class, where every card below the head is a different card and an inherited
+   * offset would land you somewhere arbitrary.
+   */
+  function build({ keepScroll = true } = {}) {
+    const wasAt = keepScroll ? el.querySelector('.verack')?.scrollTop || 0 : 0;
     el.textContent = '';
     const v = state.voice;
 
@@ -985,9 +1504,11 @@ export function createVoiceEditor({
         // that class's defaults rather than carrying the old keys across, where they
         // would sit in the file forever doing nothing.
         v.synth = syn.value;
-        v.options = defaultsFor(syn.value);
+        applyDefaults(v, syn.value);
         touched();
-        build();
+        // Every card below the head is a different card now, so the old offset means
+        // nothing — back to the top with it.
+        build({ keepScroll: false });
       };
       sub.append(synLabel('SYNTH'), syn);
     }
@@ -1031,20 +1552,12 @@ export function createVoiceEditor({
     // the whole point of dropping the badge was the vertical space it was spending.
     if (sub.childElementCount) el.append(sub);
 
-    // ---- who else plays it
-    if (state.used?.length) {
-      const used = document.createElement('div');
-      used.className = 'veused';
-      used.textContent = `${state.used.length} song${state.used.length === 1 ? '' : 's'} play`
-        + `${state.used.length === 1 ? 's' : ''} this: ${state.used.join(', ')}`;
-      used.title = 'A preset is library-wide. Editing it changes these songs too —'
-        + ' which is usually the point, and occasionally a surprise.';
-      el.append(used);
-    }
-
     // ---- the parameters
     const rack = document.createElement('div'); rack.className = 'verack';
-    const common = { title: 'Note', rows: commonRows() };
+    // "Note" is the wrong word for a card that no longer says anything about one. A
+    // one-shot is left with TRIM, which is a level — so the heading says LEVEL, and the
+    // panel stops implying there is a note length and a tuning somewhere further down.
+    const common = { title: isOneShot(v) ? 'Level' : 'Note', rows: commonRows(v) };
     const groups = v.kind === 'noise' ? NOISE_GROUPS
       : v.kind === 'drum' ? DRUM_GROUPS
         : (SYNTH_GROUPS[v.synth] || []);
@@ -1061,17 +1574,30 @@ export function createVoiceEditor({
     revert.className = 'devlink'; revert.textContent = 'Revert';
     revert.title = 'Put the sound back the way it was when this opened';
     revert.onclick = () => {
-      // `id` and `kind` are DERIVED — src/data/voices.js stamps them on load and the
-      // baseline is a preset as it would be written to the file, so neither is in it.
-      // Emptying the entry and refilling it from the baseline therefore dropped both,
-      // which left a MonoSynth with no kind: the picker stopped filing it, the editor
-      // drew it as a noise preset, and `voiceGain` lost the peak and re-levelled it.
+      // `id`, `kind`, `songLocal` and `starter` are DERIVED — src/data/voices.js and
+      // registerSongVoice stamp them on load, and the baseline is a preset as it would
+      // be written to the file, so none of them is in it. Emptying the entry and
+      // refilling it from the baseline therefore dropped all four.
+      //
+      // `kind` first: that left a MonoSynth with no kind — the picker stopped filing
+      // it, the editor drew it as a noise preset, and `voiceGain` re-levelled it.
+      //
+      // `songLocal` is worse, because it is silent until the next save. A song's own
+      // copy is keyed `chordsVoice@bitter-lullaby`, and `commit` reads the flag to know
+      // that going to the library means taking a library NAME first. Without it the
+      // copy looks like an ordinary preset, and Save posts that id to /voice-save —
+      // where `upsertPreset` rejects it as not usable as an identifier, which is the
+      // first anyone hears of it.
+      //
       // They are properties of the catalogue, not of the edit, so they are held across.
-      const { id, kind } = state.voice;
+      const { id, kind, songLocal, starter } = state.voice;
       Object.keys(state.voice).forEach((k) => delete state.voice[k]);
       Object.assign(state.voice, JSON.parse(JSON.stringify(state.baseline)), { id, kind });
-      // Back to the level it opened at too. The baseline peak is the one the ratio has
+      if (songLocal) state.voice.songLocal = true;
+      if (starter) state.voice.starter = true;
+      // Back to the level it opened at too. The baselines are what the ratios have
       // been measuring against all along, so this is exactly where it started.
+      state.voice.level = state.levelBaseline;
       state.voice.peak = state.peakBaseline;
       state.dirty = false;
       state.measured = !state.isNew;
@@ -1099,26 +1625,53 @@ export function createVoiceEditor({
       + ' src/data/voices.js as a library preset every song can play';
     save.onclick = () => openSaveSheet();
 
-    bar.append(revert, del, save);
+    bar.append(revert);
+    // Delete is only for the library browser — a channel strip can't delete the
+    // shared preset that other songs may depend on.
+    if (!state.laneKey) bar.append(del);
+    bar.append(save);
     el.append(bar);
     foot = { saveBtn: save };
     paintFoot();
+
+    // Last, not at the append: the rack takes its height from what is left over after
+    // the head and the foot, so putting it back before the foot is in would measure the
+    // scroll against a taller box and clamp the offset short. A rebuild that dropped
+    // rows — a section switched Off — clamps here on its own, which is right: there is
+    // no longer that far to scroll.
+    if (wasAt) rack.scrollTop = wasAt;
   }
 
-  /** A fresh options object for a class, from the schema's own defaults. */
-  function defaultsFor(synth) {
-    const out = {};
+  /**
+   * Put a preset onto a class's own defaults, having just been switched to it.
+   *
+   * Both halves of the schema, which is the change: a Tone class reads an `options` bag and
+   * the native ones read `$`-prefixed keys off the ENTRY, and this used to seed only the
+   * first. That was survivable while GameSynth was the only native class — `_playGame` has
+   * a `??` fallback for everything, so a preset with none of its keys written still made a
+   * noise — but an additive stack with no `bars` is not a synth with defaults, it is a
+   * synth that makes no sound at all, and "I picked it from the dropdown and got silence"
+   * is not a thing anybody should have to debug.
+   *
+   * Optional sections are skipped: they are switched on deliberately, and seeding their
+   * rows would write the section into the preset and leave every switch showing On.
+   */
+  function applyDefaults(voice, synth) {
+    // The options of one class mean nothing to another, and neither do its `$` sections —
+    // an additive preset's drawbars are not something a MonoSynth has any use for. Both
+    // are cleared, so switching class cannot leave keys in the file doing nothing forever.
+    voice.options = {};
+    for (const key of SYNTH_SECTIONS) delete voice[key];
     for (const g of SYNTH_GROUPS[synth] || []) {
+      if (g.optional || g.taps) continue;
       for (const row of g.rows || []) {
-        if (row.path.startsWith('$')) continue;
         // `derived` shares a property with another row and must not write it twice;
         // `when` rows do not apply to a preset in its default state, and writing them
         // anyway puts `count`/`spread` into every preset that will never be fat.
         if (row.derived || row.when) continue;
-        setAt({ options: out }, row.path, row.def);
+        setAt(voice, row.path, row.def);
       }
     }
-    return out;
   }
 
   // ---- saving --------------------------------------------------------------
@@ -1135,15 +1688,12 @@ export function createVoiceEditor({
    */
   async function openSaveSheet() {
     const v = state.voice;
-    // Settle the "who plays this" question BEFORE the buttons are drawn — see `open`.
-    // It is normally already answered by the time anyone reaches Save; this is for the
-    // path that goes straight there, which is the library's right-click.
-    if (state.used == null && !state.isNew && !v.songLocal && state.refs) {
-      const id = state.id;
-      try { await state.refs; } catch { /* the sheet says so below */ }
-      if (!state || state.id !== id) return;   // moved on while we waited
-    }
-    el.querySelector('.vesheet')?.remove();
+    // Remove any existing save sheet from the body (not from el — the sheet is
+    // a fixed overlay now, not a child of the editor panel).
+    document.querySelector('.vesheet-backdrop')?.remove();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'vesheet-backdrop';
+    backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) backdrop.remove(); });
     const sheet = document.createElement('div');
     sheet.className = 'vesheet';
 
@@ -1186,25 +1736,29 @@ export function createVoiceEditor({
     // ---- the level, said here because here is where you can do something about it.
     //
     // A preset's loudness on every lane is `voiceGain`: the lane's target divided by
-    // this peak. So the number itself is not the point — what it DOES to the level is,
-    // and a peak near zero is not a quiet preset, it is one the engine multiplies by
+    // this level. So the number itself is not the point — what it DOES to the gain is,
+    // and a level near zero is not a quiet preset, it is one the engine multiplies by
     // hundreds, bringing whatever noise floor it has up with it.
-    const p = Number(v.peak);
+    //
+    // The ENERGY of one note, not its peak: see the note over `voiceGain`. It reads
+    // an order of magnitude smaller than the peak this used to show, which is why the
+    // reading carries more decimals than a peak needed.
+    const p = Number(v.level);
     const lvl = document.createElement('div');
     lvl.className = 'velevel';
     const reading = document.createElement('span');
     reading.className = 'velevelnum';
-    reading.textContent = state.measured ? p.toFixed(4) : `≈ ${p.toFixed(4)}`;
+    reading.textContent = state.measured ? p.toFixed(5) : `≈ ${p.toFixed(5)}`;
     const says = document.createElement('span');
     says.className = 'velevelsays';
     if (state.silent || !(p > 0)) {
       lvl.classList.add('bad');
       says.textContent = 'Renders to nothing — saving will be refused';
       reading.textContent = 'Silent';
-    } else if (p < 0.02) {
+    } else if (p < 0.0004) {
       lvl.classList.add('bad');
-      // The multiplier, because "0.0004" means nothing and "×530" means everything.
-      says.textContent = `Very quiet — its level gets scaled up about ${Math.round(0.2118 / p)}×.`
+      // The multiplier, because "0.00002" means nothing and "×530" means everything.
+      says.textContent = `Very quiet — it gets scaled up about ${Math.round(0.0129 / p)}×.`
         + ' Check the envelope.';
     } else {
       says.textContent = state.measured ? 'Measured' : 'Estimated — measured properly on save';
@@ -1214,83 +1768,17 @@ export function createVoiceEditor({
 
     // ---- what saving over it would reach.
     //
-    // The panel says who plays a preset from the moment it opens, and that was not
-    // enough: it is context while you are turning knobs, and the question it answers
-    // only becomes a decision at the instant you press Save. So it is asked again here,
-    // where the buttons are — and where the alternative to reaching six songs is one
-    // click away rather than something you have to know about.
-    //
-    // Only on an existing library preset. A new one reaches nothing, and a song's own
-    // copy reaches exactly the song it lives in, which is not news.
-    let pinBoxes = [];
-    const inLibrary = !state.isNew && !v.songLocal;
-    // Three states, not two. "No songs play this" and "we could not find out" must not
-    // look the same, because one of them is a reason to press Update without thinking
-    // and the other is the opposite.
-    const known = state.used != null;
-    const reaches = inLibrary && known ? state.used : [];
-    // Unsafe means: pressing Update might change songs you have not been told about.
-    // An unknown answer counts, which is what makes the failure mode of the check
-    // cautious rather than silent.
-    const unsafe = inLibrary && (!known || reaches.length > 0);
-    if (inLibrary && !known) {
-      const warn = document.createElement('div');
-      warn.className = 'vereach vereachunknown';
-      warn.textContent = 'Could not check which songs play this';
-      warn.title = 'The desk asks the server which songs name this preset, and the answer'
-        + ' did not arrive. Updating would change every one of them, and there is no list'
-        + ' to show you — so Save as new is the safe move until it can be checked.';
-      sheet.append(warn);
-    } else if (reaches.length) {
-      const warn = document.createElement('div');
-      warn.className = 'vereach';
-      const n = reaches.length;
-      const head = document.createElement('div');
-      head.className = 'vereachhead';
-      head.textContent = `Updating changes ${n} song${n === 1 ? '' : 's'}`;
-      head.title = 'A preset is library-wide — these songs name this entry, so they play'
-        + ' whatever it becomes. Nothing breaks and nothing goes silent; the sound simply'
-        + ' moves under them.';
-      warn.append(head);
-
-      // A tick per song: keep this one on the sound it has, or let it follow.
-      //
-      // Unticked by default, which is what Update has always meant — the common edit is
-      // a fix, and a fix is wanted everywhere. Ticking is the deliberate act, because
-      // its consequence is the one that lasts: a pinned song stops tracking this preset
-      // for good, so a fix made to it next month will not reach that song and nothing
-      // will say why.
-      for (const song of reaches) {
-        const row = document.createElement('label');
-        row.className = 'vereachrow';
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.dataset.song = song;
-        const name = document.createElement('span');
-        name.className = 'vereachname';
-        name.textContent = song;
-        const what = document.createElement('span');
-        what.className = 'vereachwhat';
-        const paint = () => {
-          what.textContent = box.checked ? 'Keeps the sound it has' : 'Follows the update';
-          row.classList.toggle('pinned', box.checked);
-        };
-        box.onchange = paint;
-        paint();
-        row.title = `Ticked, ${song} gets its own copy of this sound and stops tracking`
-          + ' the preset — later changes to it will not reach this song. Unticked, it'
-          + ' plays whatever the preset becomes.';
-        row.append(box, name, what);
-        warn.append(row);
-      }
-      pinBoxes = [...warn.querySelectorAll('input[type=checkbox]')];
-      sheet.append(warn);
-    }
+    // Save as new is always available except on a brand-new unsaved preset —
+    // there's nothing to fork FROM. A song-local copy can be forked into the
+    // library just as well as a library preset can.
+    const offerFork = !state.isNew;
+    // Factory presets can only be forked — never overwritten.
+    const isFactory = !!v.factory;
 
     const bar = document.createElement('div'); bar.className = 'vesheetfoot';
     const cancel = document.createElement('button');
     cancel.className = 'devlink'; cancel.textContent = 'Cancel';
-    cancel.onclick = () => sheet.remove();
+    cancel.onclick = () => backdrop.remove();
 
     // Take the name, category and description off the sheet and onto the entry. Both
     // destinations want them: the library files a preset by them, and a song's copy
@@ -1304,120 +1792,81 @@ export function createVoiceEditor({
     };
 
     /**
-     * The other destination: this song's own copy, rather than the library.
-     *
-     * Offered only on a panel that was opened from a lane, because a copy belongs to a
-     * song and a lane is how it knows which — and hidden once the panel is ALREADY on
-     * a song copy, where every edit has been going into the mix all along and there is
-     * nothing left for a second button to do.
-     */
-    const toSong = document.createElement('button');
-    toSong.className = 'devlink vesong';
-    toSong.textContent = 'Save to Song';
-    toSong.title = 'Copy this sound into the song as its own, leaving the library preset'
-      + ' alone. It is measured on the way in, and saved with the song.';
-    toSong.onclick = async () => {
-      if (!takeFields()) return;
-      sheet.remove();
-      build();
-      await saveToSong(state.laneKey, asSongPreset(v));
-    };
-
-    /**
      * A SECOND preset, leaving this one as it is.
-     *
-     * Offered on anything already in the library, not only on something in use: a
-     * variant is a variant whether or not a song has got to it yet, and an option that
-     * appears and disappears depending on how many songs happen to name the preset is
-     * one you cannot learn.
      */
     const asNew = document.createElement('button');
     asNew.className = 'devlink venew';
     asNew.textContent = 'Save as new';
-    asNew.title = 'Write this sound as its own preset under this name, and put the one it'
-      + ' came from back exactly as it was — every song playing that keeps playing it';
+    asNew.title = 'Save this sound as a new library preset';
     asNew.onclick = () => {
       if (!takeFields()) return;
-      sheet.remove();
+      const wanted = rawId(nameBox.value.trim());
+      const clash = VOICES[wanted];
+      if (clash && clash !== state.voice) {
+        nameBox.focus();
+        nameBox.select();
+        nameBox.style.borderColor = 'var(--solo)';
+        if (!sheet.querySelector('.venamewarn')) {
+          const w = document.createElement('div');
+          w.className = 'venamewarn';
+          w.textContent = 'Please choose a unique name';
+          w.style.cssText = 'font-size:9px;color:var(--solo);margin-top:2px;';
+          nameBox.after(w);
+        }
+        return;
+      }
+      backdrop.remove();
       forkToNew();
     };
 
     const go = document.createElement('button');
     go.className = 'vesave';
-    // Named for what it does to the thing that already exists. "Save to Library" was
-    // true and was not the point: the point is that this entry is about to become
-    // something else, everywhere.
     go.textContent = state.isNew ? 'Save to Library' : 'Update';
     go.title = state.isNew
       ? 'Write this into src/data/voices.js as a library preset every song can play'
-      : reaches.length
-        ? `Change this preset in place — ${reaches.join(', ')}`
-          + ` ${reaches.length === 1 ? 'plays' : 'play'} it and will follow`
-        : inLibrary && !known
-          ? 'Change this preset in place — but which songs play it could not be checked,'
-            + ' so this may change songs that are not listed'
-          : 'Change this preset in place, in src/data/voices.js';
-    go.classList.toggle('vefar', unsafe);
+      : 'Change this preset in place, in src/data/voices.js';
     const send = async () => {
       if (!takeFields()) return;
-      const pinning = pinBoxes.filter((b) => b.checked).map((b) => b.dataset.song);
-      sheet.remove();
+      const wanted = rawId(nameBox.value.trim());
+      const clash = VOICES[wanted];
+      if (clash && clash !== state.voice) {
+        nameBox.focus();
+        nameBox.select();
+        nameBox.style.borderColor = 'var(--solo)';
+        if (!sheet.querySelector('.venamewarn')) {
+          const w = document.createElement('div');
+          w.className = 'venamewarn';
+          w.textContent = 'Please choose a unique name';
+          w.style.cssText = 'font-size:9px;color:var(--solo);margin-top:2px;';
+          nameBox.after(w);
+        }
+        return;
+      }
+      backdrop.remove();
       build();              // the header chip carries the category it was just given
       onChanged();          // and the picker files it under the same
-      // Pinned FIRST, and the library only if it worked.
-      //
-      // The order is the whole guarantee. Pin then update, and a failed update leaves
-      // songs holding a copy of the sound they already made — identical, harmless.
-      // Update then pin, and a failed pin leaves them following a change you had just
-      // said they should not follow, which is the one outcome this exists to prevent.
-      if (pinning.length) {
-        // The sound as it was when this panel OPENED, not as it is now: what those
-        // songs are being held at is what they sound like today, and the panel has been
-        // editing the catalogue entry in place ever since.
-        const held = { ...JSON.parse(JSON.stringify(state.baseline)), kind: v.kind, peak: state.peakBaseline };
-        const ok = await pinSongs(state.id, held, pinning);
-        if (!ok) {
-          toast('Nothing was saved — the songs could not be pinned, so the preset was'
-            + ' left alone too.', 5200);
-          return;
-        }
-        toast(`${pinning.join(', ')} pinned to the current sound`, 3000);
-      }
       commit();
     };
     go.onclick = send;
     // Enter anywhere but the description sends it; the description is the one field
     // where a newline is a reasonable thing to want.
-    //
-    // What Enter sends is the SAFE choice when there is an unsafe one. On a preset six
-    // songs play, the fast path must not be the one that changes six songs — a sheet
-    // that is a confirmation on most presets and a six-song edit on this one, from the
-    // same keystroke, is a keystroke you have to stop and think about every time. Here
-    // it forks; the update is a deliberate click.
     sheet.addEventListener('keydown', (ev) => {
       ev.stopPropagation();
-      if (ev.key === 'Escape') { sheet.remove(); return; }
+      if (ev.key === 'Escape') { backdrop.remove(); return; }
       if (ev.key !== 'Enter' || ev.target === note) return;
-      if (unsafe) asNew.click(); else send();
+      if (isFactory) asNew.click(); else send();
     });
-    // Least far-reaching first, in every combination. A song copy touches one song; a
-    // fork touches nothing at all; an update touches every song naming the preset. So
-    // the reversible ones lead and the far-reaching one is the deliberate reach past
-    // them — and Enter, which is the fast path, takes the update only when there is
-    // nothing for it to surprise.
-    const offerFork = inLibrary;
     bar.append(cancel);
-    if (canCopyToSong()) bar.append(toSong);
     if (offerFork) bar.append(asNew);
-    bar.append(go);
+    if (!isFactory) bar.append(go);
     sheet.append(bar);
-    el.append(sheet);
+    backdrop.append(sheet);
+    document.body.append(backdrop);
     // A new preset has a name to give it — that is the whole reason this sheet exists —
     // and an existing one is usually a confirm, so the button takes the focus and Enter
-    // is the whole interaction. Where songs are in the way, the focused button is the
-    // one that does not touch them, matching what Enter does above.
+    // is the whole interaction. Factory presets only offer Save as new.
     if (state.isNew) { nameBox.focus(); nameBox.select(); }
-    else if (unsafe) asNew.focus();
+    else if (isFactory) asNew.focus();
     else go.focus();
   }
 
@@ -1441,29 +1890,33 @@ export function createVoiceEditor({
     if (!v.label?.trim()) { toast('Give it a name first'); return; }
     const fromId = state.id;
     const fromLabel = state.baseline.label || fromId;
-    const newId = idFromLabel(v.label);
-    if (newId === fromId) {
-      // Same name, so the same key — there is no second preset to be had. Say which
-      // thing to change rather than silently doing the destructive one.
-      toast(`“${v.label}” is the name it already has. Give the new preset a different`
-        + ' name, or use Update to change this one.');
+    // Check the RAW id — idFromLabel would silently pick roundMono2.
+    const base = rawId(v.label);
+    if (base === fromId || (VOICES[base] && VOICES[base] !== v)) {
+      toast(`"${v.label}" is already taken. Give the new preset a different name.`);
       return;
     }
+    const newId = idFromLabel(v.label);  // safe: collision-free after the check
 
-    // The new entry: the sound as it stands, under its own key. `kind` and `peak` come
-    // across because both are derived on load and a fresh entry has neither yet — the
-    // peak is a guess until the save measures it, exactly as it is for a copy.
+    // The new entry: the sound as it stands, under its own key. `kind`, `level` and
+    // `peak` come across because all three are derived on load and a fresh entry has
+    // none of them yet — the two numbers are a guess until the save measures them,
+    // exactly as they are for a copy.
     const made = {
       ...JSON.parse(JSON.stringify(asPreset(v))),
-      id: newId, kind: v.kind, peak: v.peak,
+      id: newId, kind: v.kind, level: v.level, peak: v.peak,
     };
 
     // Put the original back — in memory, where every song on this desk reads it. Same
     // idiom as Revert: `id` and `kind` are properties of the catalogue rather than of
     // the edit, so they are held across the restore.
-    const { id, kind } = v;
+    const { id, kind, songLocal, starter } = v;
     Object.keys(v).forEach((k) => delete v[k]);
     Object.assign(v, JSON.parse(JSON.stringify(state.baseline)), { id, kind });
+    // Held across for the same reason Revert holds them — see the note there.
+    if (songLocal) v.songLocal = true;
+    if (starter) v.starter = true;
+    v.level = state.levelBaseline;
     v.peak = state.peakBaseline;
     onDirty(fromId, false);        // it is back to what the file holds, so nothing is owed
     refresh(fromId);               // and the next note it plays is the old sound again
@@ -1475,14 +1928,14 @@ export function createVoiceEditor({
     state.isNew = true;            // it has never been written, so `commit` files it fresh
     state.used = null;             // nothing plays it yet — that is the whole point
     state.baseline = asPreset(made);
+    state.levelBaseline = made.level;
     state.peakBaseline = made.peak;
     // A lane that was playing the old preset stays on it. Forking is explicitly about
     // NOT changing what anything already plays, and the lane is something that already
     // plays it — so unlike a rename, this does not repoint anything.
     await commit({ keepLane: true });
     // Said after the save, naming both, because the useful fact is what did NOT happen.
-    toast(`${made.label} saved as a new preset — ${fromLabel} is untouched, and every`
-      + ' song still plays it', 5200);
+    toast(`${made.label} saved as a new preset`, 3000);
     build();
     onChanged();
   }
@@ -1490,6 +1943,11 @@ export function createVoiceEditor({
   async function commit({ keepLane = false } = {}) {
     const v = state.voice;
     if (!v.label?.trim()) { toast('Give it a name first'); return; }
+    // Factory presets are read-only — use Save as new instead.
+    if (v.factory && !state.isNew) {
+      toast('Factory presets cannot be overwritten. Use Save as new to create your own.', 4000);
+      return;
+    }
 
     // A preset that has never been saved takes its id from its name, NOW — not from
     // the name it had when it was copied. `Round Mono copy` renamed to `Journey Bass`
@@ -1509,7 +1967,15 @@ export function createVoiceEditor({
     if (state.isNew || v.songLocal) {
       delete VOICES[state.id];              // or it counts as taken against itself
       delete v.songLocal;                   // it is about to be a library preset
-      const wanted = idFromLabel(v.label);
+      // Check the RAW id — not idFromLabel which would silently pick roundMono2.
+      const base = rawId(v.label);
+      if (VOICES[base] && VOICES[base] !== v) {
+        VOICES[state.id] = v;
+        v.songLocal = true;
+        toast(`"${v.label}" is already taken. Please choose a unique name.`);
+        return;
+      }
+      const wanted = idFromLabel(v.label);  // safe: collision-free after the check
       const moved = wanted !== state.id;
       state.id = wanted;
       v.id = wanted;
@@ -1530,6 +1996,13 @@ export function createVoiceEditor({
     const btn = foot.saveBtn;
     btn.disabled = true;
     const was = btn.textContent;
+    // DEBUG: prove the save path is reached and what name it would use.
+    if (!confirm(`Save preset as "${v.label}"?`)) {
+      btn.disabled = false;
+      btn.textContent = was;
+      paintFoot();
+      return;
+    }
     btn.textContent = 'Measuring…';
     try {
       const res = await fetch('/voice-save', {
@@ -1550,8 +2023,9 @@ export function createVoiceEditor({
           + ' the desk and be missing from every WAV, stem and video.');
         return;
       }
-      // The server's number replaces the estimate — it is the one the game will use,
-      // and any drift the ratio accumulated ends here.
+      // The server's numbers replace the estimates — they are the ones the game will
+      // use, and any drift the ratios accumulated ends here.
+      v.level = out.level;
       v.peak = out.peak;
       state.measured = true;
       state.estimated = false;
@@ -1560,17 +2034,17 @@ export function createVoiceEditor({
       onDirty(state.id, false);           // it is on disk now, so nothing is owed
       state.baseline = asPreset(v);
       // And this sound becomes what the next estimate is measured against, so edits
-      // after a save scale from the peak that was just written rather than from the
-      // one this panel opened on.
+      // after a save scale from the numbers that were just written rather than from
+      // the ones this panel opened on.
       await rebase();
       onChanged();
-      // A peak this low is not a quiet preset — the level is DERIVED from it, so the
+      // A level this low is not a quiet preset — the gain is DERIVED from it, so the
       // engine is about to multiply this sound by fifty or more, and anything in it
       // that was inaudible comes up with the rest.
       toast(out.quiet
-        ? `${v.label} saved, but it measured at peak ${out.peak} — so its level will be`
+        ? `${v.label} saved, but it measured at level ${out.level} — so it will be`
           + ' scaled up hugely to reach the lane. Check its envelope.'
-        : `${v.label} saved to src/data/voices.js — measured at peak ${out.peak}`,
+        : `${v.label} saved to src/data/voices.js — measured at level ${out.level}`,
       out.quiet ? 5200 : undefined);
     } catch (err) {
       toast(`Could not save: ${err.message || err}`);
@@ -1632,12 +2106,27 @@ export function createVoiceEditor({
       return null;
     }
 
+    // A starter opens only as a COPY. These are the sounds the New Song generator is
+    // written for, and they are frozen so that a song generated next month sounds like
+    // the pack was written to sound rather than like whatever the library holds by then
+    // — see STARTER in src/data/voices.js. Editing one in place is the exact thing that
+    // cannot be allowed to happen, and the server refuses it too. Copying one is not:
+    // that is a new preset in the library, which is yours to do anything with.
+    if (from.starter && !from.songLocal && !isNew) {
+      toast(`${from.label} is a starter sound — the New Song generator is written for`
+        + ' it, so it cannot be edited. Duplicate it to make one of your own.', 5200);
+      return null;
+    }
+
     let id = voiceId;
     let voice = from;
     if (isNew) {
       const label = `${from.label} copy`;
       id = idFromLabel(label);
-      voice = { ...JSON.parse(JSON.stringify(asPreset(from))), label, id, kind: from.kind, peak: from.peak };
+      voice = {
+        ...JSON.parse(JSON.stringify(asPreset(from))),
+        label, id, kind: from.kind, level: from.level, peak: from.peak,
+      };
       // Into the live catalogue at once, so the picker lists it and the lane can play
       // it before it has ever been saved. Discarding removes it again.
       VOICES[id] = voice;
@@ -1656,41 +2145,21 @@ export function createVoiceEditor({
       // What the live level is worked out from — see `runEstimate`. Both are of the
       // sound as it is RIGHT NOW, before anything has been touched, which is the only
       // moment the peak on file and the sound in the room are known to agree.
+      levelBaseline: voice.level,
       peakBaseline: voice.peak,
       rawBaseline: null,
     };
-    build();
+    // A different preset opens at its top, not where the last one happened to be left.
+    build({ keepScroll: false });
     el.classList.add('show');
 
     // The reference measurement, taken once. Until it lands there is no ratio to
     // scale by, so `runEstimate` leaves the level alone rather than guessing — which
     // is why it is fired here rather than lazily on the first edit.
     measureRaw(id, noiseBuf(), sampleRate())
-      .then((raw) => { if (state?.id === id && raw > 0) state.rawBaseline = raw; })
+      .then((raw) => { if (state?.id === id && raw.level > 0) state.rawBaseline = raw; })
       .catch(() => { /* no ratio; the level simply stays put until a save measures it */ });
 
-    // Who else plays it, fetched after the panel is up: it is context, not a gate, and
-    // the editor should not wait on the network to open.
-    //
-    // The promise is KEPT, though, because the save sheet does have to wait on it. There
-    // the same answer stops being context and becomes the difference between changing
-    // one preset and changing six songs — and a sheet that rendered before the fetch
-    // landed would show no warning at all on exactly the presets that need one, which is
-    // the worst possible way for it to be late.
-    if (!isNew) {
-      state.refs = fetch(`/voice-refs?id=${encodeURIComponent(id)}`)
-        .then((r) => r.json())
-        .then((out) => {
-          if (state?.id === id) { state.used = out.used; build(); }
-          return out.used;
-        })
-        .catch(() => {
-          // Unknown, and it must not read as "nothing plays this". Left null so the
-          // sheet says it could not check rather than quietly clearing the warning.
-          if (state?.id === id) state.used = null;
-          return null;
-        });
-    }
     return id;
   }
 

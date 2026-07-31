@@ -1,7 +1,7 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
-import { createMixer } from './mixer.js';
+import { createMixer, dbToGain } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
   laneList, laneUsesEcho, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
@@ -53,8 +53,14 @@ const MELODIC_TRIM = 3.5;                  // +10.9 dB
  * a legal transformation of the arithmetic and an illegal one of the output, and
  * tests/null-test.js compares samples.
  */
-const noteSeconds = (len, fallback, spb, durScale = 1) => {
-  const one = (i) => spb * toneLen(len, fallback, i) * durScale;
+const noteSeconds = (len, fallback, spb, durScale = 1, fixedLength = 0) => {
+  const one = (i) => {
+    // fixedLength is an absolute duration in seconds — a sound-design choice
+    // that overrides everything else. Zero or omission means not set.
+    if (fixedLength > 0) return fixedLength;
+    const requested = toneLen(len, fallback, i);
+    return spb * requested * durScale;
+  };
   return Array.isArray(len) ? len.map((_, i) => one(i)) : one(0);
 };
 
@@ -216,6 +222,12 @@ class AudioSys {
     // Built on the first note a lane with a Tone voice plays, and only then — see
     // playVoice. A game whose songs name no voices never constructs one.
     this.voices = null;
+    // One pair of gain nodes per lane, standing between everything a song schedules
+    // and the channel strip it plays through — see _laneGate. They exist so a song
+    // can be STOPPED rather than merely muted: a source node is fire-and-forget once
+    // it is started, so the only handle on a note that is still ringing is the node
+    // it is connected to. Cleared and re-made per song by setBank.
+    this._laneGates = new Map();
     this.songTrim = null;
     this.musicTrim = 1;
     this.pendingStartDelay = 0;
@@ -340,6 +352,8 @@ class AudioSys {
     }
     if (this.bank) this.songTrim.gain.setTargetAtTime(this.musicTrim, this.ctx.currentTime + 0.5, 0.01);
     this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.songTrim);
+    // Lane gates belong to the context that made them; a rebuilt graph starts with none.
+    this._laneGates.clear();
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
     // YMCK-style space: tempo-synced dotted-eighth echo. echoBus is a parallel
     // wet send — only melodic lanes (bass/lead/leadHarm/twinkle/chords, via
@@ -1292,6 +1306,66 @@ class AudioSys {
   // it here makes the first scheduled bank agree with the grid after a reload.
   // Level, pan, EQ and send edits go straight to the strips and need no re-bank;
   // only a voice change has to come back through here.
+  /**
+   * The gate one lane's notes play through, for as long as this song is the song.
+   *
+   * A scheduled source is fire-and-forget: `o.start(t); o.stop(t + dur)` and the note
+   * belongs to the graph, not to us. That was fine while every lane's length was a
+   * fraction of a step — setBank's half-second mute outlasted anything still ringing,
+   * so a song change sounded like a stop. The piano roll's per-note lengths broke that
+   * assumption: a drawn note can be bars long, and so can a sweep, a crash or the
+   * sustained organ. Those notes carried on into the next song, and the mute lifting
+   * after half a second is what handed them back — the old song, audibly playing
+   * underneath the new one.
+   *
+   * So everything the sequencer schedules is connected through this pair instead of
+   * straight to the strip. Disconnecting the pair stops the notes hanging off it dead,
+   * whatever their stop times said, and the next song builds its own.
+   *
+   * Keyed by lane rather than by strip, and re-pointed rather than replaced when a
+   * lane's strip changes underneath it (a layer arriving mid-song), so a Tone pool
+   * that connected to this gate when it was built stays connected to it.
+   */
+  _laneGate(key, dryDest, wetDest) {
+    if (!this.ctx || !dryDest || !wetDest) return null;
+    let gate = this._laneGates.get(key);
+    if (!gate) {
+      const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(dryDest);
+      const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(wetDest);
+      gate = { dry, wet, dryDest, wetDest };
+      this._laneGates.set(key, gate);
+      return gate;
+    }
+    if (gate.dryDest !== dryDest) {
+      try { gate.dry.disconnect(gate.dryDest); } catch { /* already gone */ }
+      gate.dry.connect(dryDest); gate.dryDest = dryDest;
+    }
+    if (gate.wetDest !== wetDest) {
+      try { gate.wet.disconnect(gate.wetDest); } catch { /* already gone */ }
+      gate.wet.connect(wetDest); gate.wetDest = wetDest;
+    }
+    return gate;
+  }
+
+  /**
+   * Stop every note this song still has sounding. The other half of setBank's mute.
+   *
+   * Silent by construction rather than by ramp: the trim is being slammed to 0.0001
+   * in the same call, at the same `now`, so there is nothing audible left for a
+   * disconnect to click on. What is left ringing after this is only what is already
+   * past the strips — the reverb and echo returns, which decay on their own with
+   * nothing left feeding them.
+   */
+  _cutLaneGates() {
+    for (const gate of this._laneGates.values()) {
+      gate.dry.gain.value = 0;
+      gate.wet.gain.value = 0;
+      try { gate.dry.disconnect(); } catch { /* already gone */ }
+      try { gate.wet.disconnect(); } catch { /* already gone */ }
+    }
+    this._laneGates.clear();
+  }
+
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
@@ -1312,6 +1386,12 @@ class AudioSys {
     // do here because setBank already opens the new song after a clean half-second
     // gap — there is no tail to cut off.
     if (this.voices) { this.voices.dispose(); this.voices = null; }
+    // And the same for the notes the rack does NOT play: the hand-written voices are
+    // plain source nodes with their own stop times, and a drawn length, a sweep or a
+    // crash can be longer than the gap this call opens. Only when a song was actually
+    // sounding — at the top of an offline render there is nothing to cut, and cutting
+    // there would put a node change into a render that has to stay sample-exact.
+    if (this.bank) this._cutLaneGates();
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
     this.musicTrim = bank?.musicTrim ?? 1;
@@ -1852,7 +1932,7 @@ class AudioSys {
     // is what a synth gets struck at.
     const freq = value === true ? (b[seam.noteKey] ?? seam.note) : value;
     if (freq != null) {
-      if (!this.voices) this.voices = new VoiceRack(this.ctx, this.noiseBuf);
+      if (!this.voices) this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf);
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
         // A bank's own length key still wins over the preset's — a song that has been
@@ -1861,7 +1941,7 @@ class AudioSys {
         // thing anybody has said about it. `len` is a number, or one per chord tone;
         // the rack takes the array as it takes the chord. Absent, this is the
         // expression that was always here.
-        dur: noteSeconds(len, b[seam.durKey] ?? v.dur, spb, durScale),
+        dur: noteSeconds(len, b[seam.durKey] ?? v.dur, spb, durScale, v.fixedLength),
         // Derived, never hand-set: every synth peaks somewhere different, so the
         // level is the lane's own target scaled by this preset's measured peak. A
         // bank that states the lane's gain still wins — that is a song's own decision,
@@ -1873,7 +1953,7 @@ class AudioSys {
         // multiply in (drumGain, kickGain, …) have to be applied here or a preset
         // ignores the song's balance entirely and arrives at full reference level.
         // It is 1 on every melodic lane and on any bank that names no trims.
-        gain: (b[seam.gainKey] ?? voiceGain(v, key) * laneTrim(b, key)) * gainScale,
+        gain: (b[seam.gainKey] ?? voiceGain(v, key) * laneTrim(b, key)) * gainScale * dbToGain(v.trim ?? 0),
         detune: this.detune,
         dry,
         wet,
@@ -2085,8 +2165,10 @@ class AudioSys {
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + delta;
       const lane = (key) => {
         const strip = this.mixer && this.mixer.lane(key);
-        const baseDry = strip ? strip.dry : this.musicBus;
-        const baseWet = strip ? strip.wet : this.echoBus;
+        const gate = this._laneGate(key, strip ? strip.dry : this.musicBus,
+          strip ? strip.wet : this.echoBus);
+        const baseDry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
+        const baseWet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
         laneOffset = offsetFor(key);
         const db = barValue(bar.gain, key);
         const scale = 10 ** (db / 20);
@@ -2123,6 +2205,23 @@ class AudioSys {
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
       // them at once, bank overrides included. The lanes that build their own nodes
       // (sweeps, gliss, keyGliss, organSwoop, vox, shout) apply it themselves.
+      /**
+       * One step's worth of frequencies, whether it holds a note or a chord.
+       *
+       * The hand-written pitched bodies below were each written for ONE frequency, and
+       * that — not the synthesis — is the only reason a `lead` could not hold a chord
+       * while `chords` could. `play()` builds its own oscillator per call, so running a
+       * body once per tone costs nothing and is exactly what the chord lanes already do.
+       * `twinkle` has always called `play` twice for a single note, which is the same
+       * fact from the other side: polyphony here is a loop, not a capability.
+       *
+       * A scalar yields one element, so every bank in the game takes the identical path
+       * it always did — see tests/null-test.js, which is what that claim is worth.
+       */
+      const tonesOf = (v) => (Array.isArray(v)
+        ? v.filter((f) => typeof f === 'number' && f > 0)
+        : (v == null ? [] : [v]));
+
       const play = (freq, type, dur, gain, attack = 0.01, echo = true, delay = 0) => {
         if (freq == null) return;
         const t = scheduleAt(delay);
@@ -2179,40 +2278,49 @@ class AudioSys {
           // Resonant low-pass saw bass: harmonic enough to survive small
           // speakers, but with the bright edge closing quickly into a round
           // sustained body. A quiet sine sub keeps the bottom anchored.
-          const t = scheduleAt();
-          const f = b.bass[s] * this.detune;
-          const o = this.ctx.createOscillator(); o.type = 'sawtooth';
-          o.frequency.setValueAtTime(f, t);
-          const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
-          filter.Q.value = b.bassFilterQ ?? 1.15;
-          filter.frequency.setValueAtTime(b.bassFilterOpen ?? 1150, t);
-          filter.frequency.exponentialRampToValueAtTime(b.bassFilterClose ?? 320, t + bassDur);
-          const g = this.ctx.createGain();
-          g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(bassGain, t + (b.bassAttack || 0.006));
-          g.gain.exponentialRampToValueAtTime(0.0001, t + bassDur);
-          g.gain.linearRampToValueAtTime(0, t + bassDur + 0.02 - 0.005);
-          o.connect(filter); filter.connect(g); g.connect(dry);
-          if (bassEcho) g.connect(wet);
-          o.start(t); o.stop(t + bassDur + 0.02);
-          play(b.bass[s] * 0.5, 'sine', bassDur * 1.05,
-            bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
+          //
+          // Each tone gets its own saw, its own filter and its own sub: a chord here is
+          // three of this bass, not one of it with three pitches, and a shared filter
+          // would be a different instrument.
+          for (const note of tonesOf(b.bass[s])) {
+            const t = scheduleAt();
+            const f = note * this.detune;
+            const o = this.ctx.createOscillator(); o.type = 'sawtooth';
+            o.frequency.setValueAtTime(f, t);
+            const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
+            filter.Q.value = b.bassFilterQ ?? 1.15;
+            filter.frequency.setValueAtTime(b.bassFilterOpen ?? 1150, t);
+            filter.frequency.exponentialRampToValueAtTime(b.bassFilterClose ?? 320, t + bassDur);
+            const g = this.ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(bassGain, t + (b.bassAttack || 0.006));
+            g.gain.exponentialRampToValueAtTime(0.0001, t + bassDur);
+            g.gain.linearRampToValueAtTime(0, t + bassDur + 0.02 - 0.005);
+            o.connect(filter); filter.connect(g); g.connect(dry);
+            if (bassEcho) g.connect(wet);
+            o.start(t); o.stop(t + bassDur + 0.02);
+            play(note * 0.5, 'sine', bassDur * 1.05,
+              bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
+          }
         } else if (b.bass80s && b.bass[s] != null) {
           // Compact 1980s-style synth bass: a square body for definition, a
           // rounded sine sub beneath it, and a very short octave tick on the
           // attack. No filterless saw drone and no compulsory ghost repeat.
-          const f = b.bass[s];
-          play(f, b.bass80sBodyType || 'square', bassDur,
-            bassGain * (b.bass80sBodyGain ?? 0.78), b.bassAttack || 0.004, bassEcho);
-          play(f * 0.5, 'sine', bassDur * 1.08,
-            bassGain * (b.bass80sSubGain ?? 0.34), 0.006, false);
-          // A real low-mid octave layer rather than a near-inaudible click: it
-          // carries the bass identity on phone speakers that cannot reproduce
-          // the sub fundamental.
-          play(f * 2, 'triangle', bassDur * 0.62,
-            bassGain * (b.bass80sOctaveGain ?? 0.34), 0.003, false);
+          for (const f of tonesOf(b.bass[s])) {
+            play(f, b.bass80sBodyType || 'square', bassDur,
+              bassGain * (b.bass80sBodyGain ?? 0.78), b.bassAttack || 0.004, bassEcho);
+            play(f * 0.5, 'sine', bassDur * 1.08,
+              bassGain * (b.bass80sSubGain ?? 0.34), 0.006, false);
+            // A real low-mid octave layer rather than a near-inaudible click: it
+            // carries the bass identity on phone speakers that cannot reproduce
+            // the sub fundamental.
+            play(f * 2, 'triangle', bassDur * 0.62,
+              bassGain * (b.bass80sOctaveGain ?? 0.34), 0.003, false);
+          }
         } else {
-          play(b.bass[s], b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+          for (const f of tonesOf(b.bass[s])) {
+            play(f, b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+          }
         }
         // bassRepeat: one softer restatement of the note N steps later — a
         // written-in slapback, not a delay tap, so it has no feedback tail and
@@ -2227,11 +2335,17 @@ class AudioSys {
               len: bassLen,
             });
           } else {
-            play(b.bass[s], b.bassType || 'square', bassDur * (b.bassRepeatDur ?? 0.8),
-              bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false, spb * b.bassRepeat);
+            for (const f of tonesOf(b.bass[s])) {
+              play(f, b.bassType || 'square', bassDur * (b.bassRepeatDur ?? 0.8),
+                bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false, spb * b.bassRepeat);
+            }
           }
         }
-        if (b.bass[s] != null) this.starRoot = b.bass[s]; // the star arpeggio follows the song's key
+        // The star arpeggio follows the song's key, and it wants a NOTE. A chord's
+        // lowest tone is its root, and tonesOf sorts nothing — but noteCell writes the
+        // array ascending, so [0] is the bottom of what was played.
+        const bassRoot = tonesOf(b.bass[s])[0];
+        if (bassRoot != null) this.starRoot = bassRoot;
       }
       if (b.lead) {
         lane('lead');
@@ -2241,10 +2355,15 @@ class AudioSys {
         // hand-rolled lead IS, so it goes with it rather than doubling a Tone voice
         // that has its own harmonics.
         if (!voiced('lead', b.lead[s])) {
-          play(b.lead[s], b.leadType || 'square', leadDur, leadGain, b.leadAttack || 0.01);
-          if (b.leadBright && b.lead[s]) {
-            play(b.lead[s] * 2, 'sine', leadDur * 0.68,
-              leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
+          // Once per tone. One note is one pass, which is the path every existing bank
+          // takes; a recorded chord is three, each with its own oscillator and its own
+          // bright octave over it.
+          for (const f of tonesOf(b.lead[s])) {
+            play(f, b.leadType || 'square', leadDur, leadGain, b.leadAttack || 0.01);
+            if (b.leadBright) {
+              play(f * 2, 'sine', leadDur * 0.68,
+                leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
+            }
           }
         }
       }
@@ -2252,16 +2371,24 @@ class AudioSys {
       if (b.leadHarm) {
         lane('leadHarm');
         if (!voiced('leadHarm', b.leadHarm[s])) {
-          play(b.leadHarm[s], b.harmType || b.leadType || 'square', spb * toneLen(lenOf('leadHarm'), b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+          for (const f of tonesOf(b.leadHarm[s])) {
+            play(f, b.harmType || b.leadType || 'square', spb * toneLen(lenOf('leadHarm'), b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+          }
         }
       }
       if (b.twinkle && b.twinkle[s] && !voiced('twinkle', b.twinkle[s])) {
         lane('twinkle');
         const twinkleDur = spb * toneLen(lenOf('twinkle'), b.twinkleDur || 6);
-        play(b.twinkle[s], 'sine', twinkleDur, b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
-        play(b.twinkle[s] * 2, 'sine', twinkleDur * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
+        for (const f of tonesOf(b.twinkle[s])) {
+          play(f, 'sine', twinkleDur, b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
+          play(f * 2, 'sine', twinkleDur * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
+        }
       }
-      if (b.electroFx && b.electroFx[s]) {
+      // `!voiced(...)` first, as every lane above reads: true means a preset owns the
+      // lane and has already scheduled the note, so the hand-written body is skipped. A
+      // song naming no preset returns false having touched nothing, which is why this is
+      // a guard rather than a rewrite — and why the null test stays green.
+      if (b.electroFx && b.electroFx[s] && !voiced('electroFx', b.electroFx[s])) {
         lane('electroFx');
         // Sparse deterministic "random" shop-machine flourishes. The grid
         // position selects one of three tiny electronic gestures, so offline
@@ -2289,7 +2416,10 @@ class AudioSys {
           o.start(t); o.stop(t + dur + 0.02);
         }
       }
-      if (b.sweeps && b.sweeps[s] && this.noiseBuf) {
+      // `sweeps` holds a marker rather than a pitch, so the seam supplies the note a
+      // synth is struck at — the same arrangement the kit uses. The `noiseBuf` guard
+      // stays on the hand-written body, which is the only half that needs one.
+      if (b.sweeps && b.sweeps[s] && !voiced('sweeps', b.sweeps[s]) && this.noiseBuf) {
         lane('sweeps');
         // Heavily filtered air: a narrow band slowly opens and closes beneath
         // a low-pass ceiling. It should be felt as motion, not heard as hiss.
@@ -2324,7 +2454,21 @@ class AudioSys {
         const steps = [-12, -10, -9, -7, -5, -4, -2, 0]; // natural-minor run
         const dt = (spb * 3) / steps.length;
         const gv = (b.keyGlissGain != null ? b.keyGlissGain : 0.035) * MELODIC_TRIM;
-        steps.forEach((semi, i) => {
+        // A run is ONE gesture rather than eight notes to pick eight sounds for, so a
+        // preset is played eight times at rising offsets — which is exactly what
+        // `bassRepeat` does with its ghost note, on the `delay` playVoice has always
+        // taken. `map` rather than `some`: `some` stops at the first truthy return and
+        // would schedule the first note of the run and none of the other seven.
+        //
+        // Undetuned, because the rack applies the song warp itself; the crescendo rides
+        // `gainScale`; and dry, because the hand-written body below is dry.
+        const runByVoice = steps.map((semi, i) => this.playVoice('keyGliss', b,
+          b.keyGliss[s] * Math.pow(2, semi / 12),
+          {
+            spb, dry, wet, echo: false, delay: laneOffset + i * dt,
+            gainScale: 0.6 + 0.4 * ((i + 1) / steps.length),
+          }))[0];
+        if (!runByVoice) steps.forEach((semi, i) => {
           const t = scheduleAt(i * dt);
           const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
           o.type = b.leadType || 'square';
@@ -2337,7 +2481,10 @@ class AudioSys {
           o.start(t); o.stop(t + dt * 1.7 + 0.02);
         });
       }
-      if (b.gliss && b.gliss[s]) {
+      // Echo left at the default rather than off: the hand-written body builds its own
+      // panned taps below, and the song's delay send is the closest a preset gets to
+      // them. A dry preset here would be the one swap that sounds like a mistake.
+      if (b.gliss && b.gliss[s] && !voiced('gliss', b.gliss[s])) {
         lane('gliss');
         // glissando: sweep up from an octave below into the target note,
         // with echo taps panned left -> center -> right across the field
@@ -2417,7 +2564,14 @@ class AudioSys {
         const partials = b.organBright
           ? [[1, 1], [2, 0.7], [3, 0.4], [4, 0.22]]
           : [[1, 1], [2, 0.55], [3, 0.25]];
-        steps.forEach((semi, i) => {
+        // Eight offsets, one preset — see the note on keyGliss above for why this is
+        // `map` and not `some`. A preset replaces the whole run including its drawbars:
+        // an additive stack is the obvious thing to put here, and it brings its own
+        // partials rather than borrowing the three below.
+        const runByVoice = steps.map((semi, i) => this.playVoice('organGliss', b,
+          b.organGliss[s] * Math.pow(2, semi / 12),
+          { spb, dry, wet, echo: false, delay: laneOffset + i * dt }))[0];
+        if (!runByVoice) steps.forEach((semi, i) => {
           const note = target * Math.pow(2, semi / 12);
           for (const [ratio, level] of partials) {
             play(note * ratio, 'sine', dt * 1.35, gain * level,
@@ -2425,7 +2579,7 @@ class AudioSys {
           }
         });
       }
-      if (b.organSwoop && b.organSwoop[s]) {
+      if (b.organSwoop && b.organSwoop[s] && !voiced('organSwoop', b.organSwoop[s])) {
         lane('organSwoop');
         // Continuous drawbar-organ pitch glide: unlike organGliss's discrete
         // palm-run notes, every partial bends smoothly from one pitch into the
@@ -2517,7 +2671,7 @@ class AudioSys {
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.07);
       }
-      if (b.vox && b.vox[s]) {
+      if (b.vox && b.vox[s] && !voiced('vox', b.vox[s])) {
         lane('vox');
         // Vocal hit ("hey!"): sawtooth glottal buzz with a falling pitch bend,
         // shaped by two parallel bandpass formants; vowel alternates per slot.
@@ -2541,7 +2695,7 @@ class AudioSys {
         if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + 0.2);
       }
-      if (b.shout && b.shout[s]) {
+      if (b.shout && b.shout[s] && !voiced('shout', b.shout[s])) {
         lane('shout');
         // Vocal shout ("yeah!" / "alright!"): sawtooth voice through MOVING
         // formant filters — gliding vowels read as a word, not just a hit.
