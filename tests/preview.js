@@ -106,11 +106,12 @@ assert(soloBank(bank, null, A2) === null, 'no channel, no note');
 assert(soloBank(bank, '__master', A2).__layers.length === 0,
   'master is not a lane: nothing sounds rather than everything');
 
-// A lane with no voice seam at all — the glisses, sweeps, vox and shout are played by
-// hand-written code and nothing else. They are still playable, and still take Hz.
+// A gesture lane — the glisses, sweeps, vox and shout have a hand-written body in the
+// engine, which stands down the moment a preset is named on the lane's seam. Either way
+// the preview is the same: a lane like any other, taking Hz at a step.
 const gliss = soloBank({ ...bank, gliss: Array(32).fill(null) }, 'gliss', A2, STEP);
-assert(gliss.gliss[STEP] === A2 && !seamFor('gliss'),
-  'a lane with no preset seam is still played — the engine’s own voice takes it');
+assert(gliss.gliss[STEP] === A2 && seamFor('gliss').voiceKey === 'glissVoice',
+  'a gesture lane previews like every other — whichever of the two is going to play it');
 
 // ---- the step it lands on --------------------------------------------------
 // Not a multiple of four: the sequencer hands every fourth step to its beat

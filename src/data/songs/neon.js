@@ -32,10 +32,10 @@ export const mix = {
   voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
     kick: { eq: { high: 15 }, effects: [{ id: "reverb" }] },
-    clap: { send: { delay: 1.24, reverb: 1.38 } },
+    clap: { send: { delay: 0.345, reverb: 1.38 } },
     hats: { pan: -0.402, eq: { high: 8.9 } },
     bass: { eq: { low: -6.4, mid: -4.1, high: 5.6 } },
-    lead: { send: { delay: 1 }, effects: [{ id: "pingpong", params: { wet: 0.39, feedback: 0.23 } }] },
+    lead: { send: { delay: 0.28 }, effects: [{ id: "pingpong", params: { wet: 0.39, feedback: 0.23 } }] },
   },
 };
 

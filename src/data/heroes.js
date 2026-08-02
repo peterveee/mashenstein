@@ -3,12 +3,12 @@ export const HEROES = [
   {
     id: 'lorenzo', name: 'LORENZO "WRENCHES" BRACCIANO', short: 'LORENZO', showFullName: true,
     tagline: 'STANDARD PLUMBING PROCEDURE.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.15, maxJumps: 1, canFloat: false,
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.10, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
-    skillDesc: 'JUMPS 15% HIGHER',
+    skillDesc: 'JUMPS 10% HIGHER',
     powerDesc: 'STOMPS OR SMASHES GROUND HAZARDS',
     abilityDesc: 'AIR STOMP OR GROUNDED WRENCH SMASH.',
     sidegrades: [
@@ -18,7 +18,7 @@ export const HEROES = [
   {
     id: 'gnash', name: 'GNASH THE NEEDLEMOUSE', short: 'GNASH',
     tagline: 'ALREADY THERE. WAITING.',
-    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 1, canFloat: false,
+    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.05, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'dash', cooldown: 3.5, label: 'SPIN DASH', callout: 'SPIN DASH' }, stomp: false,
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
@@ -93,7 +93,7 @@ export const HEROES = [
   {
     id: 'raymn', name: "RAY M'N, APPENDAGE-OPTIONAL", short: "RAY M'N",
     tagline: 'LIMBS WERE OUT OF BUDGET.',
-    speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 1, canFloat: false,
+    speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.03, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'fist', cooldown: 3, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, stomp: false, assemblyGrace: true,
     joke: 'THE INSURANCE FORM REQUIRES A LIMB COUNT. HE KEEPS WRITING "OPTIONAL."',

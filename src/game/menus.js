@@ -168,7 +168,8 @@ function titlePoseKey(id, pose, h) {
   return [
     id, qh, qt, pose.kind || '', pose.grounded ? 1 : 0,
     pose.facing === -1 ? -1 : 1, pose.menuAction || '',
-    pose.headless ? 1 : 0, pose.axeThrown ? 1 : 0, pose.axeReady ? 1 : 0,
+    pose.headless ? 1 : 0, pose.fistThrown ? 1 : 0,
+    pose.axeThrown ? 1 : 0, pose.axeReady ? 1 : 0,
     pose.stomp ? 1 : 0, pose.roll ? 1 : 0,
     pose.duckAmount == null ? '' : Math.round(Number(pose.duckAmount) * 8),
   ].join('|');
@@ -792,6 +793,14 @@ const SHOT_SPEED = 220;
 const SHOT_HIT_RADIUS = 12 * PARADE_K;
 // Raised cannon muzzle, rather than the old hip-height projectile line.
 const SHOT_Y = 268 - HERO_PARADE_H * 0.58;
+// Ray's and Grumpos's weapons begin at the same hand-height and hand-offset
+// as their parade rigs. B33P keeps the separate raised cannon line above.
+const TITLE_WEAPON_HAND_X = HERO_PARADE_H * 0.29;
+const TITLE_WEAPON_Y = 268 - HERO_PARADE_H * 0.48;
+// The projectile helpers use their own authored units: the fist is 40 units
+// wide-rigged and the axe is 24. Scale each to the 60px title toon separately.
+const TITLE_FIST_SCALE = HERO_PARADE_H / 40;
+const TITLE_AXE_SCALE = HERO_PARADE_H / 24;
 
 function drawInvader(ctx, t) {
   const pass = invaderPass(t);
@@ -834,24 +843,62 @@ function drawBolt(ctx, t, strikes) {
 }
 
 // Title ability shots: B33P uses the same pellet silhouette as gameplay; Ray
-// and Grumpos keep their actual fist and axe artwork in flight. All three can
-// hit another hero.
+// and Grumpos keep their actual fist and axe artwork in flight. The thrown
+// weapons use the same readable out/hold/return story as gameplay instead of
+// disappearing at the right edge.
+const TITLE_WEAPON_OUT_T = { fist: 0.42, axe: 0.55 };
+const TITLE_WEAPON_HOLD_T = { fist: 0.35, axe: 0.45 };
+const TITLE_WEAPON_RETURN_T = { fist: 0.42, axe: 0.5 };
+
+export function titleWeaponMotion(shot, t) {
+  if (!shot || (shot.kind !== 'fist' && shot.kind !== 'axe') || t < shot.tFired) return null;
+  const age = t - shot.tFired;
+  const outT = TITLE_WEAPON_OUT_T[shot.kind];
+  const defaultHoldAt = shot.tFired + outT;
+  const holdAt = shot.hoverAt ?? defaultHoldAt;
+  const dir = shot.dir || 1;
+  if (t < holdAt) {
+    return {
+      x: shot.x0 + age * SHOT_SPEED * dir,
+      age,
+      returning: false,
+      done: false,
+    };
+  }
+  const hoverX = shot.hoverX ?? (shot.x0 + (holdAt - shot.tFired) * SHOT_SPEED * dir);
+  const returnAt = shot.returnAt ?? (defaultHoldAt + TITLE_WEAPON_HOLD_T[shot.kind]);
+  if (t < returnAt) {
+    return { x: hoverX, age, returning: false, done: false };
+  }
+  const returnT = shot.returnT ?? TITLE_WEAPON_RETURN_T[shot.kind];
+  const returnP = Math.max(0, Math.min(1, (t - returnAt) / returnT));
+  const catchX = shot.source == null ? shot.x0 : heroX(shot.source, t) + TITLE_WEAPON_HAND_X * dir;
+  return {
+    x: hoverX + (catchX - hoverX) * returnP,
+    age,
+    returning: true,
+    done: returnP >= 1,
+  };
+}
+
 function drawShots(ctx, t, shots) {
   if (!shots) return;
   for (const shot of shots) {
     if (t < shot.tFired) continue;
+    if (shot.kind === 'fist' || shot.kind === 'axe') {
+      const motion = titleWeaponMotion(shot, t);
+      if (!motion || motion.done) continue;
+      if (shot.kind === 'fist') {
+        // Gameplay starts the fist's animation clock when the projectile is
+        // spawned, so the title version does the same instead of using the
+        // parade's absolute clock.
+        drawRocketFist(ctx, motion.x, shot.y, motion.age, motion.returning, TITLE_FIST_SCALE);
+      } else {
+        drawThrownAxe(ctx, motion.x, shot.y, motion.age * 14, TITLE_AXE_SCALE);
+      }
+      continue;
+    }
     const x = shot.x0 + (t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
-    if (shot.kind === 'fist' || HERO_PARADE[shot.source] === 'raymn') {
-      // Gameplay starts the fist's animation clock when the projectile is
-      // spawned, so the title version does the same instead of using the
-      // parade's absolute clock.
-      drawRocketFist(ctx, x, shot.y, t - shot.tFired);
-      continue;
-    }
-    if (shot.kind === 'axe') {
-      drawThrownAxe(ctx, x, shot.y, (t - shot.tFired) * 14);
-      continue;
-    }
     drawB33pPellet(ctx, x, shot.y);
   }
 }
@@ -1115,6 +1162,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
       const pose = {
         kind: 'run', grounded: true, time: t, menu: true,
         phase: (t * 1.5 + i * 0.37) % 1,
+        axeReady: id === 'grumpos',
       };
       let feetY = 268;
       if (entering) {
@@ -1130,6 +1178,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
         feetY -= action.feetLift * castH;
       }
       const titleShot = shots?.find((shot) => shot.source === i);
+      const titleShotMotion = titleShot && titleWeaponMotion(titleShot, t);
       // A tap startles whoever it lands on, overriding their signature beat —
       // getting poked takes priority over whatever bit they were mid-performing.
       const pokeAt = poke && poke.get(i);
@@ -1139,19 +1188,30 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
           // Raise first, then fire and recoil. The projectile uses the same
           // wind-up delay below, so it cannot leave before the arm is level.
           Object.assign(pose, b33pTitleShotPose(t - pokeAt));
-        } else if (titleShot?.kind === 'fist') {
+        } else if (titleShot?.kind === 'fist' && titleShotMotion) {
           pose.headless = true;
-        } else if (titleShot?.kind === 'axe') {
+        } else if (titleShot?.kind === 'axe' && titleShotMotion) {
           pose.axeThrown = true;
         } else {
           pose.kind = 'jump'; pose.grounded = false;
           feetY -= Math.sin(pokeP * Math.PI) * HERO_POKE_H;
         }
       }
-      // Once thrown, Grumpos keeps the axe off his back until the projectile
-      // leaves play; otherwise the normal carry pose restores it immediately
-      // after the short startle animation while the airborne axe is still out.
-      if (titleShot?.kind === 'axe') pose.axeThrown = true;
+      // Keep the thrown weapon off the hero until the title projectile has
+      // completed its return. This mirrors gameplay's `fistThrown` /
+      // `axeThrown` flags instead of restoring the hand or axe while it is
+      // still crossing the screen.
+      // The pending shot includes the windup interval. Leave Ray's hand and
+      // Grumpos's shoulder axe on the body until the weapon actually spawns;
+      // restore the axe as soon as the return motion is caught.
+      if (titleShot?.kind === 'fist') {
+        const thrown = !!(titleShotMotion && !titleShotMotion.done);
+        pose.headless = thrown;
+        // Gameplay hides the menu orbit while the actual fist is detached;
+        // only the projectile should remain visible during the throw.
+        pose.fistThrown = thrown;
+      }
+      if (titleShot?.kind === 'axe') pose.axeThrown = !!(titleShotMotion && !titleShotMotion.done);
       const edgeAlpha = paradeEdgeAlpha(hx);
       if (edgeAlpha <= 0) continue;
       const entryZoom = entering ? 1 + (1 - entryT / HERO_ENTRY_JUMP_T) * entryZoomExtra : 1;
@@ -1827,24 +1887,40 @@ export class TitleState {
                 sounded: false,
               });
               this.poke.set(hero, this.t);
-            } else if (HERO_PARADE[hero] === 'grumpos' && this.shots.some((shot) => shot.source === hero && shot.kind === 'axe')) {
+            } else if (HERO_PARADE[hero] === 'grumpos' && this.shots.some((shot) => {
+              if (shot.source !== hero || shot.kind !== 'axe') return false;
+              const motion = titleWeaponMotion(shot, this.t);
+              return !motion || !motion.done;
+            })) {
               this.poke.set(hero, this.t);
               Audio.sfx('jump');
             } else if (HERO_PARADE[hero] === 'raymn' || HERO_PARADE[hero] === 'grumpos') {
               const kind = HERO_PARADE[hero] === 'raymn' ? 'fist' : 'axe';
-              const dir = 1;
-              const tFired = this.t + B33P_TITLE_WINDUP_T;
-              this.shots.push({
-                id: `shot:${this.shotId++}`,
-                kind,
-                tFired,
-                x0: heroX(hero, tFired) + dir * 12,
-                y: SHOT_Y,
-                dir,
-                source: hero,
-                sounded: false,
+              const active = this.shots.some((shot) => {
+                if (shot.source !== hero || shot.kind !== kind) return false;
+                const motion = titleWeaponMotion(shot, this.t);
+                return !motion || !motion.done;
               });
-              this.poke.set(hero, this.t);
+              if (active) {
+                this.poke.set(hero, this.t);
+                Audio.sfx('jump');
+              } else {
+                const dir = 1;
+                const tFired = this.t + B33P_TITLE_WINDUP_T;
+                this.shots.push({
+                  id: `shot:${this.shotId++}`,
+                  kind,
+                  tFired,
+                  x0: heroX(hero, tFired) + dir * TITLE_WEAPON_HAND_X,
+                  y: TITLE_WEAPON_Y,
+                  dir,
+                  returnAt: tFired + TITLE_WEAPON_OUT_T[kind] + TITLE_WEAPON_HOLD_T[kind],
+                  returnT: TITLE_WEAPON_RETURN_T[kind],
+                  source: hero,
+                  sounded: false,
+                });
+                this.poke.set(hero, this.t);
+              }
             } else {
               this.poke.set(hero, this.t);
               Audio.sfx('jump');
@@ -1875,23 +1951,47 @@ export class TitleState {
         }
       }
     }
-    // Resolve b33p's shots: travel until a hit or the far edge.
+    // Resolve title shots. B33P's pellet is one-way; Ray's fist and Grumpos's
+    // axe stay alive through their hold and return so the title cannot show a
+    // second throw while the first weapon is still out.
     this.shots = this.shots.filter((shot) => {
       if (this.t < shot.tFired) return true;
       if (!shot.sounded) { shot.sounded = true; Audio.sfx('shoot'); }
-      const x = shot.x0 + (this.t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
-      if (x < -40 || x > W + 40) return false;
+      const weapon = shot.kind === 'fist' || shot.kind === 'axe';
+      const motion = weapon ? titleWeaponMotion(shot, this.t) : null;
+      if (weapon && (!motion || motion.done)) return false;
+      if (weapon && motion.returning) return true;
+      const x = motion
+        ? motion.x
+        : shot.x0 + (this.t - shot.tFired) * SHOT_SPEED * (shot.dir || 1);
+      if (!weapon && (x < -40 || x > W + 40)) return false;
+      if (weapon && shot.hit) return true;
       for (let i = 0; i < HERO_PARADE.length; i++) {
         if (i === shot.source || (shot.source == null && HERO_PARADE[i] === 'b33p')) continue;
         if (!heroOnScreen(i, this.t) || heroIsKnockedOut(i, this.t, this.tapBombs)) continue;
         if (Math.abs(heroX(i, this.t) - x) < SHOT_HIT_RADIUS) {
           this.explodeHero(shot.id, x, i, 1);
           Audio.sfx('hit');
+          if (weapon) {
+            shot.hit = true;
+            shot.hoverAt = this.t;
+            shot.hoverX = x;
+            return true;
+          }
           return false;
         }
       }
       const wisp = wispTapHit(this.t, x, shot.y, this.eaten, this.scatter, this.wispsDismissed);
-      if (wisp) { this.hitWisp(wisp); return false; }
+      if (wisp) {
+        this.hitWisp(wisp);
+        if (weapon) {
+          shot.hit = true;
+          shot.hoverAt = this.t;
+          shot.hoverX = x;
+          return true;
+        }
+        return false;
+      }
       return true;
     });
     // Prune spent tap-bombs: misses once their impact has fully faded, hits

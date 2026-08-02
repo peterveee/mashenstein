@@ -29,7 +29,7 @@ export const bank = {
 export const mix = {
   voice: {"kickVoice":"kickEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
-    lead: { send: { delay: 1 } },
+    lead: { send: { delay: 0.28 } },
   },
 };
 

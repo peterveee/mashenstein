@@ -119,10 +119,16 @@ in the `STARTER` table of `src/data/voices.js` and written only by
 once, and nothing can edit them: `TABLES` in `tools/lib/voices-source.js` does not list
 `STARTER`, so `tableOf` cannot find one, the desk's voice editor refuses to open one,
 and `POST /voice-save` refuses to write one. That is what makes a starter a starter. The
-library preset each was copied from stays exactly as editable as it ever was, and every
-song naming a library preset goes on following your edits — but a song generated next
-month sounds like the pack was written to sound rather than like whatever the library
-holds by then. Starters are left out of the picker, since they would be a second row
+library preset each was copied from is a read-only reference too; duplicate it to create
+an editable user preset. User presets live in the `USER_TONE`, `USER_NOISE` or
+`USER_DRUM` table and can be updated or deleted from the desk. Regular users edit a
+library copy and use **Save as New**; the local developer can additionally enable
+in-place library updates and library-preset creation/deletion. `npm run mixer` starts
+in DEV mode by default; add `?dev=0` to the URL for a regular-user tab, or set
+`MASH_MIXER_DEV_USER=0` for a server-wide regular-user session. In dev mode, **Save** offers **Update** or
+**Save as New**; the latter writes another library preset. Every song naming a
+library preset continues to use the shipped sound, while a song-local copy remains
+editable for that song. Starters are left out of the picker, since they would be a second row
 for a sound already listed; a lane already playing one still shows it, and duplicating
 one gives you an ordinary editable preset of your own. Scratch songs can be
 edited, saved, rendered, exported and restored like built-in songs; marker-less legacy
@@ -237,8 +243,7 @@ computer keyboard and MIDI — because all three arrive at the same one-note sea
 
 **Record is in the transport**, last, after Pause — where a record button has been on
 every deck since tape, because it arms what the transport is about to do. A red dot at
-rest; while it is writing the whole button goes red with a white dot in it, and the take's
-note count rides on its corner.
+rest; while it is writing the whole button goes red with a white dot in it.
 
 **MIDI is on the right**, with the panel toggles, because that is what it is: *which
 instrument plays this channel* — the same question the ⌨ button answers.
@@ -258,7 +263,7 @@ the bar before your entry on every single pass.
 | | |
 | --- | --- |
 | **Armed** (amber, hollow dot) | waiting for the transport. Nothing is being written yet. |
-| **Recording** (red, pulsing) | writing. The keyboard's border and the playhead say so too, and the header button carries the take's note count on its corner — a live tally of what you have played since arming, which clears when you disarm. It is not a pending count: the notes went into the song as you played them. |
+| **Recording** (red, pulsing) | writing. The keyboard's border and the playhead say so too, and the header button goes red with a pulsing white dot. |
 | `⇧R` | arm or stop, from anywhere on the desk. |
 | `Esc` | stop, and drop whatever has not been written yet — half a second's worth at most, since the take is written every beat. Use `⌘Z` for the part already in the song. |
 | `⌘Z` | a bar's worth of playing is one undo step. |
@@ -325,8 +330,9 @@ one undo snapshot, so a continuous phrase is a single `⌘Z` rather than one per
 a gap longer than that and the next thing you play becomes its own undo step — which is
 the useful way round, because `⌘Z` then takes back the phrase you just played instead of
 the whole session. The intermediate writes are silent rather than toasting four times a
-bar. The engine takes each one without stopping, which is what lets you hear the take on
-the next pass.
+bar. When the take ends, one completion toast reports the number of notes and the lanes,
+and reminds you that `⌘Z` undoes it and **Save** keeps it. The engine takes each write
+without stopping, which is what lets you hear the take on the next pass.
 
 Nothing here is a second synthesiser. The sequencer plays the note, handed a bank with
 nothing in it but that note ([`soloBank`](../src/engine/lanes.js) →
@@ -604,7 +610,7 @@ A strip, top to bottom:
 | Head | number, name, family | click anywhere on the strip to select it; **double-click the head** to play from where that channel comes in |
 | Body | **voice** | what the channel is played *by* — see below. Bass, lead, harmony and chords only |
 | Body | **HIGH / MID / LOW** | ±18 dB — shelf at 4 kHz, peak at 1.2 kHz, shelf at 250 Hz |
-| Body | **DELAY SEND / REVERB SEND** | 0–2, 0 = shut |
+| Body | **DELAY SEND / REVERB SEND** | 0–2, 0 = shut — absolute, and the same on every channel |
 | Foot | **insert slots** | up to 6 effects |
 | Foot | **pan pot** | −100…+100 |
 | Foot | **fader + meter + dB** | −60…+6 dB, console taper — see below |
@@ -612,6 +618,13 @@ A strip, top to bottom:
 
 - Every value is **relative**: 0 dB is "as authored". Banks vary their own lanes per
   section, and a trim rides on top of that rather than flattening it.
+- **The sends are the exception, and are absolute.** A send taps the whole channel and
+  nothing scales it on the way, so DELAY SEND 1.00 sends the same amount of the kick as
+  it does of the lead, in every bar of every song. It was not always so: the echo bus
+  was scaled by the playing section's `echoLevel`, a number the desk never showed — a
+  section saying `echoLevel: 0` swallowed the send whole and the control did nothing at
+  any position. That key is inert now, and each song's sends were rescaled by it so
+  nothing changed level.
 - **Any readout is a control**: drag it up and down to change it, `shift` for a fifth
   of the speed, click it to type an exact number, double-click to reset. The row's
   **label** is a reset button too.
@@ -1220,7 +1233,7 @@ reach for mid-take is the one with the modifier on it.
 | The tempo it is played at, when that is not the tempo it was written at | the same `arrangement` export, as `bpm` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
 | Every version of a writable song this desk has overwritten | `.mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
-| Presets — new ones and edits to existing ones | `src/data/voices.js`, on the editor's own **Save to Library**. Library-wide, not per song, so it is separate from **Save song** |
+| Presets — user-created sounds and edits | `src/data/voices.js`, in the `USER_*` tables, on the editor's own **Save**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
 | Composition — the notes, the sections, the tempo the song is WRITTEN at | nowhere. Above the desk's marker in the song file, and never rewritten by it. |
@@ -1296,8 +1309,8 @@ buttons; `/measure` is there for the command line.
 | `POST /render` | renders one track through the real engine with a mix applied, writes `dist/<slug>-mix.wav`, and reports peak / LUFS against a −16 LUFS target |
 | `POST /audition` | the same render, then opens `tools/audition` on it — the plugin host runs where the mixer runs, because that is where the plugins are |
 | `POST /measure` | the same measurement across many tracks without writing files — the half of "get the volume right" that a one-song desk cannot show |
-| `POST /voice-save` | writes one preset into `src/data/voices.js`, renders it to measure it, and splices the result into `LEVELS` and `PEAKS`. A preset that renders silent is put back rather than saved |
-| `POST /voice-delete` | removes a preset and its peak. Refused with `409` and the list of songs while any of them still names it, unless `force` |
+| `POST /voice-save` | writes one preset into `src/data/voices.js`, renders it to measure it, and splices the result into `LEVELS` and `PEAKS`. Regular users write `USER_*`; dev mode can also update or create library-table entries. A preset that renders silent is put back rather than saved |
+| `POST /voice-delete` | removes a user preset and its peak; dev mode may also remove a library preset. Refused with `409` and the list of songs while any of them still names it, unless `force` |
 | `GET /voice-refs?id=<id>` | which songs play a preset — asked before a delete, shown across the top of the editor |
 | `GET /tracks` | the track list |
 

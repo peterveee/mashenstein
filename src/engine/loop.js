@@ -57,13 +57,14 @@ export function startLoop({ update, draw, present }) {
       let steps = 0;
       while (acc >= TICK && steps < 8) { update(TICK); acc -= TICK; steps++; }
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
-      // Nothing interpolates between fixed steps, so a draw with no update
-      // behind it reproduces the previous frame pixel for pixel. On a 120 Hz
-      // ProMotion panel (every M1 iPad Pro) that is half of every second spent
-      // painting and uploading a picture already on screen — and the density
-      // controller reads that wasted cost as "this device cannot afford its
-      // native resolution", trading away sharpness you can see for frames you
-      // cannot.
+      // Display motion can use the fraction of the next fixed step already
+      // elapsed. States that opt into it can render a continuous position
+      // without changing the deterministic 60 Hz simulation. On a 120 Hz
+      // ProMotion panel (every M1 iPad Pro), a callback with no simulation step
+      // is still skipped below: that frame would otherwise cost a full render
+      // and upload solely to show the same simulation state again. The
+      // interpolation is therefore for the frames we actually present, not a
+      // reason to double the whole game's render budget.
       //
       // Skipping on steps === 0 alone would be wrong: a 60 Hz display's rAF
       // timestamps jitter either side of 16.67ms, so a frame arriving a hair
@@ -75,7 +76,8 @@ export function startLoop({ update, draw, present }) {
       // redundant frames to drop.
       rafAvgMs = rafAvgMs ? rafAvgMs * 0.9 + (dt * 1000) * 0.1 : dt * 1000;
       if (steps === 0 && rafAvgMs < PRESENT_FLOOR_MS) { schedule(); return; }
-      draw();
+      const renderAlpha = Math.max(0, Math.min(1, acc / TICK));
+      draw(renderAlpha);
       if (present) present(now);
       fpsFrames++;
       const fpsElapsed = now - fpsWindow;

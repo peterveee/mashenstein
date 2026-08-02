@@ -459,9 +459,12 @@ const ECHO_OPT_IN = {
 };
 
 /**
- * Does this lane reach the delay bus anywhere in the song? The desk greys out the
- * delay send where it does not — a control that silently does nothing reads as
- * broken, which is exactly how it was reported.
+ * Does this lane's own per-voice echo flag opt it in anywhere in the song?
+ *
+ * It no longer decides anything about routing: every channel taps its whole lane into
+ * the delay send, so what reaches the bus is the send and nothing else — see makeStrip.
+ * This survives as a reading of what the BANK asks for, which is what the bench uses to
+ * check a lane renders dry, and what the arrangement tests hold the old shape against.
  */
 export function laneUsesEcho(bank, key, repeat = 1) {
   // A layer answers the same question its source does: it is that part, and having

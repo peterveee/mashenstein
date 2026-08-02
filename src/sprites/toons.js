@@ -5017,7 +5017,7 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
       const waveX = Math.sin((pose.time || 0) * 8) * 0.1 * u;
       outlined(ctx, p.w, ow, (c) => c.ellipse(0.28 * u + waveX, cy - 0.62 * u, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
     } else if (!pose.headless) outlined(ctx, p.w, ow, (c) => c.ellipse(handOut * u + handSwing, handY - handLift, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
-    else if (pose.menu) {
+    else if (pose.menu && !pose.fistThrown) {
       const orbit = (pose.time || 0) * 8;
       outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
     }
@@ -5028,9 +5028,9 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
 // The in-flight fist and axe reuse the on-body art — same palette, same
 // two-pass outline — so the weapon stays the same object once it leaves the
 // hero instead of morphing into a generic projectile.
-export function drawRocketFist(ctx, x, y, t, returning = false) {
+export function drawRocketFist(ctx, x, y, t, returning = false, scale = 1) {
   const p = pal('raymn');
-  const u = 40;
+  const u = 40 * scale;
   const ow = Math.max(0.5, 0.016 * u);
   ctx.save();
   ctx.translate(x, y);
@@ -5050,9 +5050,9 @@ export function drawRocketFist(ctx, x, y, t, returning = false) {
   ctx.restore();
 }
 
-export function drawThrownAxe(ctx, x, y, rot) {
+export function drawThrownAxe(ctx, x, y, rot, scale = 1) {
   const p = pal('grumpos');
-  const u = 24;
+  const u = 24 * scale;
   const ow = Math.max(0.5, 0.03 * u);
   ctx.save();
   ctx.translate(x, y);

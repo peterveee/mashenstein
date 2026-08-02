@@ -30,7 +30,9 @@ const js = result.outputFiles[0].text;
 const shell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
 // </script> inside the bundle would terminate the tag early.
 const safe = js.replace(/<\/script/gi, '<\\/script');
-const html = shell.replace('/*__BUNDLE__*/', () => safe);
+const html = shell
+  .replace('/*__MIXER_DEV_USER__*/', 'false')
+  .replace('/*__BUNDLE__*/', () => safe);
 
 const outDir = join(root, 'dist', 'SongMixer');
 mkdirSync(outDir, { recursive: true });

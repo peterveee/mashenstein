@@ -559,7 +559,7 @@ function boot() {
       if (Dev.update(dt)) return;
       updateState(dt * Dev.timeScale);
     },
-    draw: () => {
+    draw: (renderAlpha) => {
       beginRenderFrame();
       let drawFpsReadout = null;
       const menuState = currentState();
@@ -685,7 +685,7 @@ function boot() {
         .includes(currentState()?.constructor?.name);
       const profileOn = titleProfileActive() || gameplayProfileActive();
       const drawStartedAt = profileOn && typeof performance !== 'undefined' ? performance.now() : 0;
-      drawState(bctx);
+      drawState(bctx, renderAlpha);
       const drawMs = profileOn ? performance.now() - drawStartedAt : 0;
       Dev.draw(bctx);
       if (drawFpsReadout) pushOverlayDraw(drawFpsReadout);

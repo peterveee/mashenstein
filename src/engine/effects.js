@@ -85,7 +85,7 @@ const PARAM_RANGES = {
   // are what saved mixes hold, so they stay as they are — see PARAM_LABELS.
   pan: { min: -1, max: 1, step: 0.02 },
   balance: { min: -1, max: 1, step: 0.02 },
-  tone: { min: 400, max: 12000, step: 100, unit: 'Hz', log: true },
+  tone: { min: 400, max: 20000, step: 100, unit: 'Hz', log: true },
   sync: { min: 0, max: 1, step: 1, toggle: true },
   delayMs: { min: 1, max: 1000, step: 1, unit: 'ms' },
   division: { min: 0, max: 1, step: 0.05, division: true },
@@ -120,14 +120,14 @@ const PARAM_RANGES = {
   wetPan: { min: -1, max: 1, step: 0.02 },
   windowSize: { min: 0.01, max: 0.2, step: 0.005, unit: 's' },
   decay: { min: 0.1, max: 10, step: 0.1, unit: 's' },
-  preDelay: { min: 0, max: 0.2, step: 0.002, unit: 's' },
+  preDelay: { min: 0.001, max: 0.2, step: 0.002, unit: 's', log: true },
   Q: { min: 0.1, max: 20, step: 0.1 },
   // A list, not a range: the desk draws a dropdown for anything with options.
   type: { options: ['lowpass', 'highpass', 'bandpass', 'notch'] },
   threshold: { min: -60, max: 0, step: 0.5, unit: 'dB' },
   ratio: { min: 1, max: 20, step: 0.5 },
-  attack: { min: 0.001, max: 1, step: 0.001, unit: 's' },
-  release: { min: 0.01, max: 2, step: 0.01, unit: 's' },
+  attack: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true },
+  release: { min: 0.01, max: 2, step: 0.01, unit: 's', log: true },
   knee: { min: 0, max: 40, step: 1, unit: 'dB' },
   // L7's own three. `ceiling` is where the output stops, which is not `threshold` —
   // on a limiter of this shape the two are independent and the gap between them IS

@@ -33,7 +33,7 @@
 // A bare number on a chord lane throws inside scheduleStep and takes the whole render
 // page with it (see src/data/voices.js), which is why the array is built here rather
 // than left to whatever the last edit happened to leave behind.
-import { CHORD_LANES, PERCUSSION_LANES, baseLane, seamFor } from '../src/data/voices.js';
+import { CHORD_LANES, PERCUSSION_LANES, baseLane, seamFor, voiceOf } from '../src/data/voices.js';
 import { LANES, validLen } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { SCALES, SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
@@ -205,16 +205,42 @@ export function noteSpan({ chord, midi }, value, len) {
 }
 
 /**
- * Can a note on this lane be given a length at all?
+ * The two lanes whose hand-written body ignores a length.
  *
- * Everything with a `*Dur` key can: the length overrides it. `vox` and `shout` cannot,
- * and they are the reason this is a question rather than an assumption — their
+ * `vox` and `shout` are the reason this is a question rather than an assumption: their
  * envelopes are hand-timed in absolute seconds ("hey!", "al-RIGHT"), the word is chosen
  * by step index and the formant trajectory is keyed to it, so there is nothing for a
- * length to override. They stay movable, because moving one is just another step; they
- * get no resize handle, because there is nowhere to write what it would say.
+ * length to override. They stay movable, because moving one is just another step.
+ *
+ * A LAYER of one is not on the list. A layer has no hand-written body — it is a preset
+ * and nothing else, which is why voicesFor hides the engine presets from it — so a
+ * length on `vox2` is honoured the way it is on any other lane.
  */
-export const rollResizable = (key) => !!seamFor(baseLane(key));
+const HAND_TIMED_LANES = new Set(['vox', 'shout']);
+
+/**
+ * Can a note on this lane be given a length at all?
+ *
+ * Everything with a `*Dur` key can: the length overrides it. That used to be the whole
+ * answer, because the two exceptions had no voice seam and so no `*Dur` — until they
+ * were given one, which handed them a resize handle nobody asked for and let the
+ * recorder write a `voxLen` the engine reads straight past.
+ *
+ * So the honest answer needs the bank, the same way `stacks` in tools/lib/note-recorder.js
+ * does and for the same reason: WHICH of the two bodies plays a gesture lane is a
+ * property of the song, not of the lane's name. `voiced()` in scheduleStep hands the
+ * step's length to the rack, and the hand-written body only runs when the rack declined
+ * it — so a preset on `vox` honours a length and the engine's own "hey!" does not. With
+ * no bank the answer is the conservative one, which is what it always was.
+ */
+export const rollResizable = (key, bank = null) => {
+  if (!seamFor(baseLane(key))) return false;
+  if (!HAND_TIMED_LANES.has(key)) return true;
+  // An ENGINE preset is not the rack playing the lane — it is a bundle of the bank keys
+  // the hand-written body already reads, so the hand-timed envelope is still what sounds.
+  const v = voiceOf(bank, key);
+  return !!v && v.kind !== 'engine';
+};
 
 /**
  * ---- how the mouse behaves ---------------------------------------------------------
@@ -489,7 +515,9 @@ export function createPianoRoll({
     withLen: (row, value, len, on, drawn) =>
       noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn),
     cellLen: (row, value, len) => noteSpan({ ...row, chord: isChord(value) }, value, len),
-    resizable: () => rollResizable(lane()),
+    // Read fresh, like `preview` below: putting a preset on a gesture lane is what
+    // gives its notes a length, so the handle has to appear the moment one is chosen.
+    resizable: () => rollResizable(lane(), engineBank()),
     movable: true,
     tool: () => toolId,
     selectable: true,

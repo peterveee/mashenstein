@@ -7,6 +7,8 @@ installDom();
 const { Input } = await import('../src/engine/input.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { TutorialState } = await import('../src/game/tutorial.js');
+const { drawWorldEntity } = await import('../src/game/draw.js');
+const { makeObstacle } = await import('../src/game/entities.js');
 const { ZOOM } = await import('../src/engine/camera.js');
 const { drawSpeech } = await import('../src/game/hud.js');
 
@@ -115,6 +117,21 @@ skippedIntro.devSkipSection('KeyN');
 assert(skippedIntro.camZoom === ZOOM && skippedIntro.introPhase === 4,
   'skipping the intro settles at the normal gameplay zoom');
 skippedIntro.exit();
+
+// Tutorial props use the fractional lane position; rounding them to whole
+// logical pixels made the 112px/s lane alternate between visibly different
+// movement distances at the settled 2x camera.
+const motionCalls = [];
+const motionCtx = new Proxy({ imageSmoothingEnabled: false }, {
+  get: (target, key) => key === 'drawImage'
+    ? (...args) => motionCalls.push(args)
+    : (key in target ? target[key] : () => {}),
+  set: (target, key, value) => { target[key] = value; return true; },
+});
+drawWorldEntity(motionCtx, makeObstacle('crate', 200), 100.25, 0,
+  { smoothMotion: true }, {});
+assert(motionCalls.some((args) => Number.isFinite(args[1]) && args[1] % 1 !== 0),
+  'tutorial world props retain fractional horizontal positions');
 
 tutorial.exit();
 console.log(failed ? 'TUTORIAL: FAILED' : 'TUTORIAL: PASSED');

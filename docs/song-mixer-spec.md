@@ -136,7 +136,7 @@ renumber the bass).
 | **Head** | Track number, lane name, family badge. Click to select; double-click to play from lane entry. |
 | **Voice** | Button showing current voice, or — with none chosen — the engine voice the bank already plays, named in dim italics ("ENGINE" only where the bank matches no preset). `‹` `›` arrows cycle within category. Click opens the voice library panel. |
 | **EQ** | 3-band: HIGH shelf @4kHz, MID peak @1.2kHz, LOW shelf @250Hz. ±18 dB each. Transparent at 0 dB (serial biquad topology). |
-| **Sends** | DELAY SEND, REVERB SEND: 0–2 range. Per-lane tap point (melodic = pre-fader, others = post-fader). |
+| **Sends** | DELAY SEND, REVERB SEND: 0–2 range. Absolute and identical on every channel — each taps its whole lane, so the same reading sends the same amount of kick as of lead, in every bar. (It used to be scaled by the playing section's `echoLevel`, which is why a send could do nothing at all; that key is inert now.) |
 | **Inserts** | Up to 6 effect slots. Click empty to open catalogue. Power button to bypass; × to remove. Drag to reorder. Right-click for context menu. |
 | **Pan** | −100…+100 pot. Drag either axis; double-click to centre. |
 | **Fader** | −60…+6 dB with console taper (unity at 75% travel). Meter with peak-hold (1.5s), red border on clip. |

@@ -32,7 +32,7 @@ export const mix = {
   master: 0.9,
   voice: {"kickVoice":"kickEngine","snareVoice":"snareEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine"},
   lanes: {
-    lead: { send: { delay: 1 } },
+    lead: { send: { delay: 0.28 } },
   },
 };
 

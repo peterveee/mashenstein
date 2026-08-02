@@ -194,6 +194,12 @@ export class RunState {
     this.rewindLockout = 0;
     this.rewindSpeedMul = 1;
     this.rewindFx = new TapeRewindEffect();
+    this.prevCamX = 0;
+    this.prevCamZoom = ZOOM;
+    this.prevCamPan = 0;
+    this.prevTRun = 0;
+    this.prevFinishPlayerX = PLAYER_X;
+    this.prevIntroRunX = PLAYER_X;
   }
 
   groundYAt(worldX) {
@@ -231,6 +237,24 @@ export class RunState {
     ctx.translate(0, gy - GROUND_Y + sink);
     fn();
     ctx.restore();
+  }
+
+  resetRenderInterpolation() {
+    this.prevCamX = this.camX;
+    this.prevCamZoom = this.camZoom;
+    this.prevCamPan = this.camPan;
+    this.prevTRun = this.tRun;
+    this.prevFinishPlayerX = this.finishPlayerX;
+    this.prevIntroRunX = this.introRunX;
+  }
+
+  captureRenderInterpolation() {
+    this.prevCamX = this.camX;
+    this.prevCamZoom = this.camZoom;
+    this.prevCamPan = this.camPan;
+    this.prevTRun = this.tRun;
+    this.prevFinishPlayerX = this.finishPlayerX;
+    this.prevIntroRunX = this.introRunX;
   }
 
   enter() {
@@ -441,6 +465,7 @@ export class RunState {
 
     this.styleName = this.corrupted.length ? 'pixel' : this.cabinet.style;
     this.style = getStylePack(this.styleName, this.save.settings);
+    this.renderSettings = { ...this.save.settings, smoothMotion: true };
     this.mirror = this.corrupted.includes('mirror');
 
     Audio.setBank(this.cabinet.music);
@@ -473,6 +498,7 @@ export class RunState {
     // key legend there is always something new to say.
     this.bonusT = this.challenge ? BONUS_TIME : 0;
     this.setButtons();
+    this.resetRenderInterpolation();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
     if (this.startingPowerup) {
       const id = this.startingPowerup;
@@ -662,6 +688,7 @@ export class RunState {
   // ------------------------------------------------------------------ update
   update(dt) {
     if (this.finished) { Input.endFrame(); return; }
+    this.captureRenderInterpolation();
     // Finish-tape beat: the world holds while the stage-clear card plays,
     // then the attempt resolves. Sits above the finishing dispatch — the
     // tape-cross in updateFinish arms it.
@@ -1604,6 +1631,15 @@ export class RunState {
         ob.gait += dt * 5;
         ob.vx = ob.def.vx * (1.6 + 0.9 * Math.sin(ob.gait));
       }
+      if (ob.def.airDrift) {
+        const { amp, speed } = ob.def.airDrift;
+        const phase = this.tRun * speed + ob.bobPhase;
+        if (ob.driftOriginX == null) ob.driftOriginX = ob.x - Math.sin(phase) * amp;
+        if (ob.def.airVx) ob.driftOriginX += ob.def.airVx * dt;
+        ob.x = ob.driftOriginX + Math.sin(phase) * amp;
+      } else if (ob.def.airVx) {
+        ob.x += ob.def.airVx * dt;
+      }
       if (ob.vx) ob.x += ob.vx * dt;
       if (ob.def.falls && !ob.fell) {
         // Telegraph, then drop when the player approaches.
@@ -1634,6 +1670,11 @@ export class RunState {
     for (const p of this.pickups) {
       if (!p.live) continue;
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
+      if (p.def.appliance && !p.toss && p._baseAlt != null) {
+        const wt = this.tRun;
+        p.alt = p._baseAlt + Math.sin(wt * 0.7 + p.bobPhase) * 6 + Math.sin(wt * 1.3 + p.bobPhase + 1.2) * 4;
+        p.x = p._baseX + Math.sin(wt * 0.5 + p.bobPhase + 2.5) * 10;
+      }
       if (!p.toss) continue;
       p.x += p.vx * dt;
       p.alt += p.vy * dt;
@@ -1940,8 +1981,11 @@ export class RunState {
     const at = this.stage.applianceAt * this.totalDist;
     if (this.camX + W > at) {
       this.applianceSpawned = true;
-      const alt = this.stage.applianceHigh ? 70 : 44;
-      this.pickups.push(makePickup('appliance', at + W, alt));
+      const alt = this.stage.applianceHigh ? 52 : 44;
+      const p = makePickup('appliance', at + W, alt);
+      p._baseAlt = alt;
+      p._baseX = p.x;
+      this.pickups.push(p);
     }
   }
 
@@ -2018,6 +2062,7 @@ export class RunState {
     this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
     clearParticles();
+    this.resetRenderInterpolation();
   }
 
   // ------------------------------------------------------------------ rewind
@@ -2245,6 +2290,7 @@ export class RunState {
     clearParticles();
     // On touch, rebuild the button set since the hero may have changed.
     this.setButtons();
+    this.resetRenderInterpolation();
   }
 
   // ------------------------------------------------------------------ collision
@@ -2636,7 +2682,7 @@ export class RunState {
   // already own bg/ground/post, so a `finish()` on the pack overrides this the
   // same way every other per-cabinet visual is overridden, with the pole
   // standing as the fallback for any pack that has not authored one yet.
-  drawFinishMarker(ctx, fx, gy, z) {
+  drawFinishMarker(ctx, fx, gy, z, t = this.tRun) {
     const flip = this.flip;
     // Throw progress, smoothstepped. Runs once on contact and sticks at 1, so
     // the lever holds its thrown pose for the rest of the held frame instead of
@@ -2674,7 +2720,7 @@ export class RunState {
       const peak = jumpHeightFor(HERO_BY_ID[this.relay.current]);
       const top = Math.round(gy - peak);
       const bot = Math.round(gy - peak * FLIP_BANDS[0].at);
-      const pulse = this.save.settings.reducedMotion ? 0.85 : 0.6 + 0.3 * Math.sin(this.tRun * 9);
+      const pulse = this.save.settings.reducedMotion ? 0.85 : 0.6 + 0.3 * Math.sin(t * 9);
       // Stood off to fx-34 rather than tucked against the pole. The BREAKER and
       // JUMP! plates hang off the box top and reach about 13px left of the
       // pole, and a short hero's target sits at exactly that height — B-33P's
@@ -2761,17 +2807,32 @@ export class RunState {
     // urgency without ever being absent, and needs no reduced-motion branch
     // because there is nothing to miss if it holds still.
     if (this.finishing && !flip) {
-      const bob = this.save.settings.reducedMotion ? 0 : Math.round(Math.sin(this.tRun * 9));
+      const bob = this.save.settings.reducedMotion ? 0 : Math.round(Math.sin(t * 9));
       drawTextCentered(ctx, 'JUMP!', 0, -26 + bob, '#fff0a0', 1, 'ui', UI_PLATE);
     }
     ctx.restore();
   }
 
   // ------------------------------------------------------------------ draw
-  draw(ctx) {
-    const cam = this.camX;
-    const z = this.camZoom;
-    const pan = this.camPan;
+  draw(ctx, renderAlpha = 0) {
+    const alpha = Math.max(0, Math.min(1, Number.isFinite(renderAlpha) ? renderAlpha : 0));
+    const mix = (previous, current) => this.paused
+      ? current
+      : previous + (current - previous) * alpha;
+    // The simulation and collision state stay on the fixed 60 Hz tick. Only
+    // the presentation camera, animation clock, and scripted screen anchors
+    // use the fractional remainder, so ordinary runner motion is continuous
+    // without predicting a future collision or changing gameplay timing.
+    const cam = mix(Number.isFinite(this.prevCamX) ? this.prevCamX : this.camX, this.camX);
+    const z = mix(Number.isFinite(this.prevCamZoom) ? this.prevCamZoom : this.camZoom, this.camZoom);
+    const pan = mix(Number.isFinite(this.prevCamPan) ? this.prevCamPan : this.camPan, this.camPan);
+    const renderT = mix(Number.isFinite(this.prevTRun) ? this.prevTRun : this.tRun, this.tRun);
+    const renderSettings = this.renderSettings || this.save.settings;
+    const heroScreenX = this.finishing
+      ? mix(Number.isFinite(this.prevFinishPlayerX) ? this.prevFinishPlayerX : this.finishPlayerX, this.finishPlayerX)
+      : this.introRunning
+        ? mix(Number.isFinite(this.prevIntroRunX) ? this.prevIntroRunX : this.introRunX, this.introRunX)
+        : PLAYER_X;
     ctx.save();
     if (this.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
     // Backgrounds stay in SCREEN space. Their layers are anchored to the
@@ -2787,7 +2848,7 @@ export class RunState {
     // whose "background" is screen furniture rather than scenery.
     ctx.save();
     ctx.translate(0, pan * (this.style.bgPan ?? 1));
-    this.style.bg(ctx, this.tRun, cam, this.cabinet, this.totalDist);
+    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist);
     ctx.restore();
 
     // ---- world band. Everything from here to post() draws through the camera,
@@ -2804,8 +2865,8 @@ export class RunState {
     // monochrome panel — they are the things you have to read at a glance.
     const drawActors = () => {
     const finishX = this.overtime ? Infinity : this.finishWorldX();
-    for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, this.tRun, this.style, this.save.settings), p.w);
-    for (const ob of this.obstacles) if (ob.live && ob.x < finishX) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
+    for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings), p.w);
+    for (const ob of this.obstacles) if (ob.live && ob.x < finishX) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
     for (const bite of this.chompBites) {
       const ob = bite.ob;
       const q = Math.max(0, Math.min(1, bite.t / bite.duration));
@@ -2826,11 +2887,11 @@ export class RunState {
       ctx.scale(scale, scale);
       ctx.translate(-fromX, -fromY);
       ctx.translate(0, terrainDy);
-      drawWorldEntity(ctx, ob, cam, this.tRun, this.style, this.save.settings);
+      drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings);
       ctx.restore();
     }
     for (const pr of this.projectiles) {
-      const x = Math.round(pr.x - cam), y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
+      const x = pr.x - cam, y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {
         ctx.fillStyle = '#101018';
         ctx.fillRect(x - 1, y - 1, 6, 6);
@@ -2870,14 +2931,14 @@ export class RunState {
     }
     };
     if (!this.style.actorsAbovePost) drawActors();
-    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, this.tRun, z));
-    if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, this.tRun));
+    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true));
+    if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, renderT, true));
     if (this.escapeWall != null) {
-      const x = Math.round(this.escapeWall - cam);
+      const x = this.escapeWall - cam;
       ctx.fillStyle = 'rgba(20,10,30,0.85)';
       ctx.fillRect(x - 100, 0, 100, H);
       ctx.fillStyle = '#8858c8';
-      for (let i = 0; i < 6; i++) ctx.fillRect(x - 4 + Math.sin(this.tRun * 6 + i) * 3, i * 45, 4, 30);
+      for (let i = 0; i < 6; i++) ctx.fillRect(x - 4 + Math.sin(renderT * 6 + i) * 3, i * 45, 4, 30);
     }
 
     // Finish line: a checkered pole + breaker lever, visible as you approach.
@@ -2886,8 +2947,8 @@ export class RunState {
     // screen x from the camera covers the approach and the run alike — and the
     // tape stays put across the frame the two swap over.
     if (!this.overtime && Number.isFinite(this.totalDist)) {
-      const fx = Math.round(this.finishScreenX());
-      if (fx - PLAYER_X < 560) this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z);
+      const fx = this.finishWorldX() - cam;
+      if (fx - PLAYER_X < 560) this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z, renderT);
       // No FINISH AHEAD blink before this. It sat centre-screen in the dialog
       // band for about two seconds, warning about a pole that arrives labelled
       // moments later — the HUD progress bar warms to gold across that same
@@ -2899,9 +2960,9 @@ export class RunState {
     if (!this.finishing && this.player.abilityCd <= 0 && (this.relay.current === 'lorenzo' || this.relay.current === 'chompo')) {
       const target = this.powerTarget();
       if (target) {
-        const tx = Math.round(target.x - cam + target.w / 2);
+        const tx = target.x - cam + target.w / 2;
         const ty = Math.round(this.groundYAt(target.x) - target.alt - target.h / 2);
-        const pulse = this.save.settings.reducedMotion ? 4 : 4 + Math.sin(this.tRun * 7);
+        const pulse = this.save.settings.reducedMotion ? 4 : 4 + Math.sin(renderT * 7);
         ctx.strokeStyle = 'rgba(246,211,60,0.65)';
         ctx.beginPath(); ctx.arc(tx, ty, Math.max(target.w, target.h) * 0.65 + pulse, 0, Math.PI * 2); ctx.stroke();
       }
@@ -2910,8 +2971,7 @@ export class RunState {
     // Player. During the opening run-in this is off the left edge, so the hero
     // draws his way in from beyond the frame (and stays out of sight behind an
     // ACT card, which lifts before he moves).
-    const heroScreenX = this.heroScreenX();
-    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, this.tRun, cam, this.mission.type === 'fuse',
+    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, renderT, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan,
       groundY: this.groundYAt(cam + heroScreenX),
         shield: this.powerups.shieldStack, settings: this.save.settings,
@@ -2931,7 +2991,7 @@ export class RunState {
     ctx.restore();
     // ---- end world band. post() is a treatment of the FRAME (scanlines, the
     // LCD conversion, vignettes), so it runs at screen scale like the bg did.
-    this.style.post(ctx, this.tRun);
+    this.style.post(ctx, renderT);
     if (this.style.actorsAbovePost) {
       ctx.save();
       applyWorld(ctx, z, pan);
@@ -2946,7 +3006,7 @@ export class RunState {
       // readable — the tension is squinting, not guessing. Drawn in screen
       // space with a screen-space radius: scaled with the zoom it would light
       // nearly the whole frame and the mission would stop being a mission.
-      const hsx = this.heroScreenX();   // follows the opening run-in, not the anchor
+      const hsx = heroScreenX;   // follows the opening run-in, not the anchor
       const px = (hsx + 6) * z;
       const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan);
       const r = 130;
@@ -2977,7 +3037,7 @@ export class RunState {
       // at the far side of the frame from the breaker it was describing. The
       // blackout overlay below already reads the same accessor for the same
       // reason.
-      const heroX = this.heroScreenX() * z;
+      const heroX = heroScreenX * z;
       for (const f of this.floaties) {
         drawFloatie(d, f, {
           heroX,

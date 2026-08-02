@@ -318,6 +318,13 @@
   .transport .playbtn.on { background: var(--go); color: var(--on-go); }
   .transport .playbtn.on:hover { background: color-mix(in srgb, var(--go) 82%, var(--ink)); }
   .transport button:disabled { opacity: .4; }
+  /* Panic is the emergency control, so it keeps a word instead of becoming another
+     icon to decode. It is red at rest as a warning, and never participates in the
+     transport's play/pause state. */
+  #panicbtn { min-width: 64px; padding: 4px 10px; background: var(--hot); color: #fff;
+              border-color: var(--hot); font-weight: 700; letter-spacing: .06em; }
+  #panicbtn:hover { background: color-mix(in srgb, var(--hot) 82%, #fff); border-color: transparent; }
+  #panicbtn:active { background: color-mix(in srgb, var(--hot) 72%, #000); }
   /* Lit whenever anything on the desk is soloed, anywhere — the one place that can
      always tell you, and the one click that puts it all back. */
   /* A letter, but an icon-sized one: it sits in the row of squares and is aimed at the
@@ -1595,6 +1602,9 @@
   #voiceedit .vetag { text-align: center; font-size: 8.5px; letter-spacing: .07em;
                       text-transform: uppercase; color: var(--lane, var(--dim));
                       opacity: .95; margin: 0 0 3px; }
+  #voiceedit .veblank { flex: 1; min-height: 120px; display: flex; align-items: center;
+                        justify-content: center; padding: 24px; text-align: center;
+                        color: var(--dim); font-size: 10px; line-height: 1.45; }
   /* Borderless, like every other ✕ on the desk — it was the one button here wearing a
      box, which made it read as a control rather than as a way out. */
   #voiceedit .veclose { position: absolute; top: 4px; right: 5px; width: auto; padding: 1px 4px;
@@ -2393,21 +2403,25 @@
   /* Thin, like the editor's rack and the device shelf — a scrollbar in a panel this
      dense should read as an edge rather than as a column. */
   #voicelib .vlresults { scrollbar-gutter: stable; }
-  /* The header is also the handle — the one thing every floating panel has ever done. */
-  #voicelib .vlhead { display: flex; align-items: center; gap: 8px; flex: none;
+  /* The header is also the handle — the one thing every floating panel has ever done.
+     Search is part of this row now, immediately before the close control. */
+  #voicelib .vlhead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex: none;
                       margin: -9px -8px 8px; padding: 8px 10px;
                       border-bottom: 1px solid var(--line); cursor: grab; }
   #voicelib .vlhead.dragging { cursor: grabbing; }
   #voicelib .vltitle { font-size: 11px; color: var(--ink); font-weight: 700;
                        text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
-  #voicelib .voicesearch { flex: 1; min-width: 140px; margin: 0; padding: 5px 8px;
+  #voicelib .voicesearch { flex: 1; min-width: 0; margin: 0; padding: 5px 8px;
                            font: inherit; font-size: 11px; color: var(--ink);
                            background: var(--input); border: 1px solid var(--line);
                            border-radius: 4px; }
   #voicelib .voicesearch::placeholder { color: var(--dim); }
   #voicelib .voicesearch:focus { outline: none; border-color: var(--accent); }
+  #voicelib .vlclose { margin-left: auto; }
   #voicelib .voicekinds { display: flex; flex: none; gap: 2px; padding: 2px;
                           background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
+  #voicelib .voicesources { display: flex; flex: none; gap: 2px; padding: 2px;
+                            background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
   #voicelib .voicekind { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
                          letter-spacing: .04em; border-radius: 3px; }
   #voicelib .voicekind.on { background: var(--primary); color: var(--accent); }
@@ -2556,6 +2570,9 @@
                      padding: 2px 6px; border-radius: 3px; background: var(--panel2); }
   #voicelib .vlcatlist button:hover .vkind { background: var(--hover); color: color-mix(in srgb, var(--dim) 55%, var(--ink)); }
   #voicelib .vlcatlist button.on .vkind { background: var(--accent-wash); color: var(--accent); }
+  #voicelib .vsource { flex: none; color: var(--dim); font-size: 9px; letter-spacing: .05em;
+                       padding: 2px 4px; border-radius: 3px; background: var(--input); }
+  #voicelib .vlcatlist button.on .vsource { color: var(--accent); background: var(--accent-wash); }
   #voicelib .voicesearch-none { padding: 4px 6px; font-size: 11px; color: var(--dim); }
   #fxpicker .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 128px; }
   #fxpicker .fxgroup h5 { margin: 0 0 2px; padding: 0 6px; font-size: 9px; letter-spacing: .07em;
@@ -2607,22 +2624,11 @@
   /* Rolling. White on red: the one state that should never be mistaken for any other. */
   #recbtn.live { background: var(--hot); border-color: var(--hot); }
   #recbtn.live .body { fill: #fff; animation: recpulse 1s ease-in-out infinite; }
-  /* The count rides on the corner rather than widening the button: the header has no
-     room to grow, and a number that pushed everything along as you played would move the
-     buttons out from under the pointer. Only ever drawn while a take is running. */
   #recbtn { width: var(--ctlh); height: var(--ctlh); padding: 0; position: relative;
             border-radius: 6px; border-color: transparent;
             background: var(--traybtn); color: var(--ink); }
   #recbtn:hover { background: var(--traybtn-hi); border-color: transparent; color: #fff; }
   #recbtn svg { width: var(--ctlicon); height: var(--ctlicon); fill: currentColor; }
-  #recbtn[data-count]:not([data-count=""])::after {
-    content: attr(data-count); position: absolute; top: -5px; right: -5px;
-    min-width: 13px; padding: 0 2px; border-radius: 7px;
-    background: var(--hot); color: #fff;
-    font: 700 9px/13px ui-monospace, SFMono-Regular, Menlo, monospace;
-    text-align: center; pointer-events: none;
-    box-shadow: 0 0 0 1.5px var(--panel);
-  }
   @media (prefers-reduced-motion: reduce) {
     #recbtn.on .body, #recbtn.live .body { animation: none; }
   }
@@ -2752,10 +2758,6 @@
      light ones. A third colour invented here would be a third thing to learn, and a
      hand-picked red is the one that goes illegible on the parchment themes.
 
-     The dot is a `::before` rather than a child span on purpose: the buffered count is
-     written with `textContent`, which would take a child element out with it every time
-     a note landed. */
-  #osk .oskrec { font-variant-numeric: tabular-nums; }
   #osk .oskrec::before { content: ''; display: inline-block; width: 7px; height: 7px;
                          border-radius: 50%; margin-right: 5px; vertical-align: baseline;
                          border: 1.5px solid currentColor; box-sizing: border-box; }
@@ -2901,17 +2903,17 @@
                                    inset 0 -6px 6px -4px rgba(0,0,0,.75); }
   #osk .oskkey.white:hover { background-color: #f2f4f8; }
   #osk .oskkey.black:hover { background-color: #232833; }
-  /* Two different things light a key, and they must not look the same. `lit` is YOU:
-     full accent, the same teal as everything else on this desk that is ON. `sung` is
-     the SONG playing through the channel — the same colour a shade back, so a part
-     running under your hands reads as the track rather than as your own playing. */
+  /* Three different things light a key. `lit` is the short audition flash; `held` is
+     YOU, and stays on until that input comes up; `sung` is the SONG playing through
+     the channel — the same colour a shade back, so a part running under your hands
+     reads as the track rather than as your own playing. */
   #osk .oskkey.white.sung { background-color: color-mix(in srgb, var(--accent) 55%, #fff); }
   #osk .oskkey.black.sung { background-color: color-mix(in srgb, var(--accent) 45%, var(--panel)); color: color-mix(in srgb, var(--accent) 26%, #fff); }
-  #osk .oskkey.white.lit { background-color: var(--accent); color: var(--on-accent); }
+  #osk .oskkey.white.lit, #osk .oskkey.white.held { background-color: var(--accent); color: var(--on-accent); }
   /* A black key lit in the same bright accent as a white one stops being a black key —
      in a chord the two rows merge into one colour and the shape you are playing
      disappears. So it lights DARKER: unmistakably on, and still the dark row. */
-  #osk .oskkey.black.lit { background-color: color-mix(in srgb, var(--accent) 78%, var(--panel)); color: color-mix(in srgb, var(--accent) 14%, #fff); }
+  #osk .oskkey.black.lit, #osk .oskkey.black.held { background-color: color-mix(in srgb, var(--accent) 78%, var(--panel)); color: color-mix(in srgb, var(--accent) 14%, #fff); }
   /* ---- two label rows, and a key always has both ------------------------------
      The note name and the letter are stacked bottom-up, so a key with a NAME on it
      pushed its letter up a row while its neighbours' letters stayed on the floor — A sat
@@ -2968,7 +2970,7 @@
   #osk .oskkey.white.offscale .oskletter { color: #3d434e; }
   /* Lit and sung repaint the whole key, and the letter goes with them — the accent face
      is bright enough that the key's own dark ink is the readable one. */
-  #osk .oskkey.lit .oskletter, #osk .oskkey.white.sung .oskletter { color: inherit; }
+  #osk .oskkey.lit .oskletter, #osk .oskkey.held .oskletter, #osk .oskkey.white.sung .oskletter { color: inherit; }
   #osk .oskkey.black.sung .oskletter { color: color-mix(in srgb, var(--accent) 14%, #fff); }
   /* A drum channel gets the kit, not a piano: one pad per drum the song has. */
   #osk .oskpads { display: flex; gap: 4px; margin: 10px; }
@@ -2982,7 +2984,7 @@
   #osk .oskpad.sel { border-color: var(--ctl); color: var(--ink); }
   #osk .oskpad.muted { opacity: .4; }
   #osk .oskpad.sung { background: color-mix(in srgb, var(--accent) 45%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 45%, var(--panel)); color: color-mix(in srgb, var(--accent) 26%, #fff); }
-  #osk .oskpad.lit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  #osk .oskpad.lit, #osk .oskpad.held { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   #osk .oskpadname { font-size: 9px; letter-spacing: .04em; line-height: 1.15; padding: 0 3px; }
   #toast {
     position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%) translateY(8px);
@@ -3210,6 +3212,9 @@
   footer { background: var(--panel); border-top: 1px solid var(--line);
            padding: 6px var(--rgut) 6px var(--foldx); margin-top: auto;
            display: flex; gap: 16px; color: var(--dim); font-size: 11px; flex: none; }
+  #songrole { color: var(--dim); font-size: 9px; font-weight: 700; letter-spacing: .08em;
+              border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
+              align-self: center; }
   /* An empty <pre> is still a 20px band across the bottom of the desk, and it was
      taking that band out of the channel strips on every run where nothing failed.
      Capped and scrolled: a long stack trace is a page of text, and unbounded it
@@ -3290,9 +3295,9 @@
            zero-width line draws nothing at all. -->
       <svg viewBox="0 0 16 16"><rect x="3" y="3.2" width="2.1" height="9.6" rx=".9"/><path d="M6.6 3.4 13 8l-6.4 4.6z"/></svg>
     </button>
-    <button id="stop" class="iconbtn" title="Stop, and go back to where playback started"
+    <button id="stop" class="iconbtn" title="Stop, silence all sound, and go back to where playback started"
             data-tip="Stop"
-            data-tipsays="Stop playback and return to where it last started. Pause holds your place; Stop goes back to the top of the take.">
+            data-tipsays="Stop playback, release held notes and silence every live sound, then return to where playback last started. Pause holds your place.">
       <svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>
     </button>
     <button id="play" class="iconbtn playbtn" title="Play (space)"
@@ -3446,6 +3451,9 @@
     <button id="undo" disabled
             data-tip="Undo" data-tipkey="⌘Z"
             data-tipsays="Back through mix and arrangement edits alike — a painted step, a moved fader, a bar dropped out of the song.">Undo</button>
+    <button id="panicbtn" aria-label="Panic: silence all MIDI and sound"
+            data-tip="Panic"
+            data-tipsays="Stop the transport, release held notes, turn off MIDI input and silence every live sound immediately. The next deliberate Play or key press restores audio.">PANIC</button>
   </div>
 
 </header>
@@ -3548,6 +3556,7 @@
 
 <footer>
   <span id="nowsong" title="The song on the desk">—</span>
+  <span id="songrole" title="Current mixer role"></span>
   <span id="pos">—</span>
   <span id="section"></span>
   <span id="peakinfo"></span>
@@ -3623,7 +3632,7 @@
   </section>
   <section class="drawersection" data-drawer-section="library">
   <button class="drawersectionhead drawersectiontoggle" type="button" aria-expanded="true"><span>Library</span></button>
-  <button id="voicelibbtn" title="Every preset in src/data/voices.js — edit one, hear it on a bench with no channel strip on it, rename it or file it elsewhere. Nothing in there changes any song.">Preset library…</button>
+  <button id="voicelibbtn" title="Browse read-only library presets and your editable user presets. Duplicate a library sound before editing it.">Preset library…</button>
   </section>
   <section class="drawersection" data-drawer-section="desk">
   <button class="drawersectionhead drawersectiontoggle" type="button" aria-expanded="true"><span>Desk</span></button>
@@ -3689,4 +3698,5 @@
     document.getElementById('err').textContent += (e && e.stack ? e.stack : m) + '\n';
   };
 </script>
+<script>window.__MASH_MIXER_DEV_USER__ = /*__MIXER_DEV_USER__*/;</script>
 <script>/*__BUNDLE__*/</script>

@@ -2,7 +2,7 @@
 // the same channel strip the game will use, and the same one the offline renderer
 // runs when it writes a WAV. Nothing here reimplements audio.
 import { Audio } from '../src/engine/audio.js';
-import { LANES, deskLanes as engineDeskLanes, laneUsesEcho, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
+import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import { ARRANGEMENTS, applyArrangement, arrangementIssues } from '../src/data/arrangements.js';
@@ -28,11 +28,11 @@ import { offeredVoices, offeredByCategory } from '../src/data/voices-in-play.js'
 // it, so nothing in that folder ships.
 import '../src/data/imported/index.js';
 import { MIX, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
-import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, registerSongVoice, songVoiceKey, KIT_CATEGORIES, PERCUSSION_LANES, DEFAULT_ADDED_PERCUSSION_VOICE, polyLane } from '../src/data/voices.js';
+import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, DEFAULT_ADDED_PERCUSSION_VOICE, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor } from './mixer-voice-editor.js';
 // The preset library, and the bench a preset with no channel of its own is heard on.
 import {
-  createVoiceLibrary, benchPlay, benchRoot, benchIsKit, foldIcon,
+  createVoiceLibrary, benchPlay, benchRoot, benchIsKit, benchLane, foldIcon,
   SCALES, SCALE_BY_ID, PITCH_CLASSES, inScale,
 } from './mixer-voice-library.js';
 // The step grid: what the kit PLAYS, as opposed to which bars let it through. It
@@ -52,12 +52,26 @@ import { newSongPlan } from './lib/new-song-plan.js';
 // What the desk means by "changed": a mix reduced to what src/data/mix.js can hold.
 // Shared with the serialiser's tests, which hold the two to each other.
 import { mixChanged } from './lib/mix-signature.js';
-import { DELAY_DIVISIONS, AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
+import { DELAY_DIVISIONS, AUXES, AUX_DEFAULTS, gainToDb, dbToGain } from '../src/engine/mixer.js';
 import { EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS, MAX_EFFECTS, ENGINE_BASE_COST, syncSeconds, DEFAULT_MASTER_CHAIN } from '../src/engine/effects.js';
 
 const $ = (id) => document.getElementById(id);
+// Dev mode: the local server is DEV by default. Only an explicit `?dev=0` makes
+// this tab a regular user session; static builds emit a false server flag and stay
+// USER even if somebody adds an unrelated query parameter.
+const _urlDev = new URLSearchParams(location.search).get('dev');
+const DEV_USER = _urlDev === '0' ? false : globalThis.__MASH_MIXER_DEV_USER__ === true;
+const DEV_OVERRIDDEN = _urlDev === '0';
+const role = $('songrole');
+if (role) {
+  role.textContent = DEV_USER ? 'DEV' : 'USER';
+  role.title = DEV_USER
+    ? `Developer mode${DEV_OVERRIDDEN ? ' (forced by ?dev=1)' : ''} — library presets can be updated in place`
+    : `Regular user mode${DEV_OVERRIDDEN ? ' (forced by ?dev=0)' : ''} — library presets can be saved as new user presets`;
+}
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const LS_KEY = 'mash-mixer-draft';
+const MIDI_LS_KEY = 'mash-mixer-midi-on';
 
 /** A browser-safe filename slug — the same logic as tools/lib/imported-index.js. */
 const slugForClient = (name) => String(name)
@@ -1199,7 +1213,25 @@ function dragNumber(el, { value, set, range, step, onClick }) {
   el.addEventListener('pointercancel', end);
 }
 
-function slider({ min, max, step, value, fmt, onInput, reset }) {
+function slider({ min, max, step, value, fmt, onInput, reset, curve, display }) {
+  // When `curve` is set, the HTML range stores a 0–1 POSITION and the value-space
+  // number is mapped through a power curve: value = max * (position ^ curve).
+  // This gives more fine-grained control at lower values — unity ends up at ~71%
+  // of the slider travel with curve=2 instead of dead centre.
+  const hasCurve = curve != null && curve > 0 && max > min;
+  const toPos = (val) => hasCurve ? (clamp(val, min, max) / (max - min)) ** (1 / curve) : val;
+  const fromPos = (pos) => hasCurve ? min + (max - min) * (clamp(pos, 0, 1) ** curve) : pos;
+  // The range input goes 0–1 in curve mode, or min–max in linear mode.
+  const rMin = hasCurve ? 0 : min;
+  const rMax = hasCurve ? 1 : max;
+  const rStep = hasCurve ? 0.001 : step;
+  const rVal = hasCurve ? toPos(value) : value;
+  // `display` lets callers show a different unit in the readout and type-in
+  // (e.g. dB on a send whose internal value is linear gain). When absent the
+  // raw value is shown and typed.
+  const show = display ? (v) => display.format(v) : fmt;
+  const parse = display ? (s) => display.parse(s) : null;
+
   const wrap = document.createElement('div');
   wrap.className = 'row';
   const head = document.createElement('div'); head.className = 'head';
@@ -1207,27 +1239,35 @@ function slider({ min, max, step, value, fmt, onInput, reset }) {
   const v = document.createElement('span'); v.className = 'v';
   head.append(k, v);
   const input = document.createElement('input');
-  input.type = 'range'; input.min = min; input.max = max; input.step = step; input.value = value;
-  v.textContent = fmt(value);
+  input.type = 'range'; input.min = rMin; input.max = rMax; input.step = rStep; input.value = rVal;
+  v.textContent = show(value);
   // Click the readout to type an exact value. A slider is fine for finding a
   // setting by ear and useless for dialling in one you already know.
   v.classList.add('typable');
   v.title = 'Drag to change · click to type a value';
+  const curveVal = () => hasCurve ? fromPos(+input.value) : +input.value;
   const openEditor = () => {
     if (v.querySelector('input')) return;
     const box = document.createElement('input');
     box.type = 'text'; box.className = 'typein';
-    box.value = String(+input.value);
+    // Show the displayed form so the user edits what they see (e.g. dB, not raw gain).
+    box.value = display ? display.format(curveVal()) : String(curveVal());
     v.textContent = '';
     v.append(box);
     box.focus(); box.select();
     const done = (commit) => {
-      const n = parseFloat(box.value);
-      if (commit && Number.isFinite(n)) {
-        input.value = clamp(n, min, max);
-        onInput(+input.value);
+      let n;
+      if (commit && parse) {
+        n = parse(box.value);
+        if (n == null) { v.textContent = show(curveVal()); return; } // unparseable — abort
+      } else {
+        n = parseFloat(box.value);
       }
-      v.textContent = fmt(+input.value);
+      if (commit && Number.isFinite(n)) {
+        input.value = hasCurve ? toPos(n) : clamp(n, min, max);
+        onInput(curveVal());
+      }
+      v.textContent = show(curveVal());
     };
     box.addEventListener('keydown', (ev) => {
       ev.stopPropagation();
@@ -1237,18 +1277,18 @@ function slider({ min, max, step, value, fmt, onInput, reset }) {
     box.addEventListener('blur', () => done(true));
   };
   dragNumber(v, {
-    value: () => +input.value,
-    set: (x) => { input.value = clamp(x, min, max); v.textContent = fmt(+input.value); onInput(+input.value); },
+    value: () => curveVal(),
+    set: (x) => { input.value = hasCurve ? toPos(clamp(x, min, max)) : clamp(x, min, max); v.textContent = show(curveVal()); onInput(curveVal()); },
     range: max - min,
     step,
     onClick: openEditor,
   });
-  input.addEventListener('input', () => { v.textContent = fmt(+input.value); onInput(+input.value); });
+  input.addEventListener('input', () => { v.textContent = show(curveVal()); onInput(curveVal()); });
   // Reset by clicking the label. Double-clicking the slider itself also works, but
   // it is not discoverable and a double-click on a range often reads as a drag.
-  const doReset = () => { input.value = reset; v.textContent = fmt(reset); onInput(reset); };
+  const doReset = () => { input.value = hasCurve ? toPos(reset) : reset; v.textContent = show(reset); onInput(reset); };
   k.classList.add('resettable');
-  k.title = `Reset to ${fmt(reset)}`;
+  k.title = `Reset to ${show(reset)}`;
   k.addEventListener('click', doReset);
   input.addEventListener('dblclick', doReset);
   wrap.append(head, input);
@@ -2400,10 +2440,13 @@ const voiceEditor = createVoiceEditor({
   sampleRate: () => Audio.ctx?.sampleRate || 44100,
   // A preset's name and category are what the picker and every strip label show, so
   // an edit to either has to reach the rack — and its level reaches the rack too,
-  // through `voiceGain`, once a save has measured it. The library is filed BY those
+  // through `voiceGain`, once a save has measured it. The user collection is filed BY those
   // two, so a rename moves a row and a refile moves it to another column: it has to
   // repaint or it goes on showing the preset under the name it no longer has.
   onChanged: () => { buildRack(); voiceLibrary.refresh(); },
+  onBlank: () => voiceLibrary.clearPick(),
+  ask,
+  isDevUser: () => DEV_USER,
   // A never-saved preset takes its id from its name at the moment it is saved, so the
   // lane holding the old id has to be repointed at the new one — see `commit`.
   assign: (laneKey, id) => { if (laneKey) setLaneVoice(laneKey, id, { redraw: false, autoCopy: false }); },
@@ -2511,7 +2554,7 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
   if (!preset || preset.kind === 'engine') { dismissVoiceEditor(); return true; }
   // Auto-copy a library preset into the song so the editor never mutates the shared
   // catalogue through a lane strip. Skipped when the lane was just repointed at the
-  // library by a Save to Library — that preset IS this sound, and copying it back
+  // library by a Save — that preset IS this sound, and copying it back
   // would undo the save.
   if (autoCopy && !preset.songLocal) {
     const seam = seamFor(laneKey);
@@ -2715,13 +2758,22 @@ const voiceLibrary = createVoiceLibrary({
  * edits the thing Revert goes back to.
  */
 function editLibraryVoice(id) {
-  if (voiceEditor.isOpen() && !voiceEditor.laneKey && voiceEditor.editing === id) return true;
+  if (voiceEditor.isOpen() && !voiceEditor.laneKey
+    && (voiceEditor.editing === id || voiceEditor.librarySource === id)) return voiceEditor.editing;
   const wasDocked = voiceEditor.isOpen() && voiceEditor.laneKey;
   // Marked BEFORE it is opened, not after it is placed. `open` builds the panel, and
   // the panel reads this class to decide whether its ✕ is a close or a fold — so
   // setting it on the way past would leave the first build wearing the wrong one.
   voiceEditEl.classList.toggle('vedocked', !!voiceLibrary.slots);
-  if (!voiceEditor.open(id)) return false;
+  // Built-in library sounds are reference material. Opening one from the library
+  // creates one hidden editor draft; the original remains untouched and no user
+  // preset is filed until Save as New.
+  const source = VOICES[id];
+  const updateLibrary = DEV_USER && !!source?.factory;
+  if (!voiceEditor.open(id, {
+    isNew: !!source?.factory && !updateLibrary,
+    allowLibraryUpdate: updateLibrary,
+  })) return false;
   // A repaint rather than a re-place when the panel was docked to a strip. `.voicepair`
   // is a wrapper `placeVoiceEditor` builds around the two of them, and only emptying
   // the rack takes it away again — so floating the panel out of it on its own leaves
@@ -2729,7 +2781,7 @@ function editLibraryVoice(id) {
   // nothing beside it any more. buildRack rebuilds the strips and then calls
   // placeVoiceEditor itself, which is what floats it.
   if (wasDocked) buildRack(); else placeVoiceEditor();
-  return true;
+  return voiceEditor.editing;
 }
 
 /**
@@ -2852,7 +2904,11 @@ function oskKeyPlan(perOctave) {
  */
 function onLibraryCollapse(which, isCollapsed) {
   if (which === 'keys') {
-    if (isCollapsed) { oskCatch = false; oskHeld.clear(); oskEl.remove(); }
+    if (isCollapsed) {
+      releaseOskSources('k:');
+      clearOskHeldVisuals();
+      oskCatch = false; oskHeld.clear(); oskEl.remove();
+    }
     else if (oskShown()) buildOsk();
   }
   if (which === 'edit' && isCollapsed) voiceEditEl.remove();
@@ -2894,6 +2950,16 @@ function openPresetLibrary() {
   closeMenu();
   oskWasOn = oskShown();
   voiceLibrary.show(true);
+  // The editor is part of the library workspace, even before a row has been picked.
+  // A previously folded editor is a remembered desk preference, not a reason for a
+  // fresh library opening to have no editor at all.
+  if (voiceLibrary.isCollapsed('edit')) voiceLibrary.collapse('edit', false);
+  if (!voiceLibrary.isCollapsed('edit')) {
+    if (voiceEditor.isOpen() && voiceEditor.laneKey) dismissVoiceEditor();
+    voiceEditEl.classList.add('vedocked');
+    if (!voiceEditor.isOpen()) voiceEditor.blank();
+    dockIntoLibrary();
+  }
   if (!oskWasOn) showOsk(true);
 }
 $('voicelibbtn').onclick = openPresetLibrary;
@@ -3060,7 +3126,7 @@ function openVoicePicker(x, y, laneKey) {
       // picked is what the track IS, not whatever lane happened to be selected when
       // they clicked +.
       const voice = VOICES[id];
-      if (voice && !KIT_CATEGORIES.includes(voice.category)) {
+      if (voice && !isKitVoice(voice)) {
         const newFrom = 'lead';
         const newKey = nextLayerKey(newFrom);
         pendingAddTrack.key = newKey;
@@ -3113,7 +3179,7 @@ function openVoicePicker(x, y, laneKey) {
   who.className = 'voicewho';
   who.textContent = `${targetLabel(laneKey)} voice`;
 
-  // Drums or not — the one split the catalogue's eleven categories do not make, and
+  // Drums or not — the one split the catalogue's categories do not make, and
   // the only one that is about the LANE. A lead strip has no use for five columns of
   // kit before it reaches the Leads, and a kick strip has none for six of pitched
   // synths after it, so the panel opens on the kind the lane plays. It is a view, not
@@ -3121,8 +3187,8 @@ function openVoicePicker(x, y, laneKey) {
   // through a bass lane is a legitimate noise and this does not stop it.
   const KINDS = [
     { id: 'all', label: 'All', keep: () => true },
-    { id: 'pitched', label: 'Pitched', keep: (v) => !KIT_CATEGORIES.includes(v.category) },
-    { id: 'drums', label: 'Drums', keep: (v) => KIT_CATEGORIES.includes(v.category) },
+    { id: 'pitched', label: 'Pitched', keep: (v) => !isKitVoice(v) },
+    { id: 'drums', label: 'Drums', keep: (v) => isKitVoice(v) },
   ];
   // The plus button is deliberately neutral: it is creating a new track, not adding
   // another Tom. Existing lanes still open on their useful lane-specific family.
@@ -3273,6 +3339,9 @@ function openVoicePicker(x, y, laneKey) {
   const r = el.getBoundingClientRect();
   el.style.left = `${Math.max(4, Math.min(x, innerWidth - r.width - 6))}px`;
   el.style.top = `${Math.max(4, Math.min(y, innerHeight - r.height - 6))}px`;
+  requestAnimationFrame(() => {
+    if (el.classList.contains('show')) search.focus({ preventScroll: true });
+  });
 }
 
 function channelStrip(lane, mix, slotRows, number) {
@@ -3327,28 +3396,61 @@ function channelStrip(lane, mix, slotRows, number) {
     // Every send starts shut and reads back what the mix actually stores — no family
     // default behind it, so a channel that echoes says so on its own face.
     const dflt = 0;
+    // Both sends share the same displayed dB ceiling so the two sliders look
+    // consistent. Reverb cheats: its +6 dB maps to gain 3.0 instead of 2.0
+    // (a 1.5× hotter scale), so the knob still reaches the higher ceiling.
+    const SEND_DB_MAX = 6;
+    const sendGainMax = aux.id === 'reverb' ? 3 : 2;
+    const gainScale = sendGainMax / dbToGain(SEND_DB_MAX);
+    const rawVal = mix.lanes[key]?.send?.[aux.id] ?? dflt;
+    // Same taper as the channel faders (FADER_SCALE). The slider stores a
+    // 0–1 POSITION; posToDb/dbToPos give it the same piecewise curve every
+    // fader on the desk uses. Unity at 75%, -10 dB at 50%, boost at the top.
+    const toDisplayDb = (g) => {
+      if (g <= 0.001) return FADER_DB_MIN;
+      return clamp(gainToDb(g / gainScale), FADER_DB_MIN, SEND_DB_MAX);
+    };
+    const fromDisplayDb = (db) => db <= FADER_DB_MIN ? 0 : dbToGain(db) * gainScale;
+    const fmtSend = (db) => {
+      if (db <= FADER_DB_MIN) return 'OFF';
+      return (db > 0 ? '+' : '') + db.toFixed(1);
+    };
+    const parseSend = (s) => {
+      const cleaned = String(s).replace(/dB|db|Db/gi, '').trim();
+      if (/^off$/i.test(cleaned)) return FADER_DB_MIN;
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? clamp(n, FADER_DB_MIN, SEND_DB_MAX) : null;
+    };
     const row = slider({
-      min: 0, max: 2, step: 0.005,
-      value: mix.lanes[key]?.send?.[aux.id] ?? dflt,
-      reset: dflt,
-      fmt: (x) => x.toFixed(2),
-      onInput: (x) => {
+      min: 0, max: 1, step: 0.001,
+      value: dbToPos(toDisplayDb(rawVal)),
+      reset: dbToPos(FADER_DB_MIN),
+      fmt: (pos) => fmtSend(posToDb(pos)),
+      display: {
+        format: (pos) => fmtSend(posToDb(pos)),
+        parse: (s) => {
+          const db = parseSend(s);
+          return db != null ? dbToPos(db) : null;
+        },
+      },
+      onInput: (pos) => {
+        const db = posToDb(pos);
+        const lin = fromDisplayDb(db);
         editMix((m) => {
           const L = laneOf(m, key);
-          L.send = { ...LANE_DEFAULTS.send, ...(L.send || {}), [aux.id]: x };
+          L.send = { ...LANE_DEFAULTS.send, ...(L.send || {}), [aux.id]: lin };
         }, `${aux.id}:${key}`);
-        Audio.mixer?.lane(key)?.setSend({ [aux.id]: x });
+        Audio.mixer?.lane(key)?.setSend({ [aux.id]: lin });
       },
     });
     row.label.textContent = SHORT[aux.id] || aux.id.toUpperCase();
     row.wrap.classList.add('sendrow');       // what the Sends switch in the header hides
-    // How the signal reaches the send is still per lane — melodic voices tap it
-    // pre-fader as the echo always did, the rest route the whole channel in — and it
-    // is worth saying, because it is the difference between an echo that follows the
-    // fader and one that does not.
-    row.wrap.title = aux.legacy && !laneUsesEcho(viewBank(), key)
-      ? `${aux.name} send — ${lane.label} feeds it post-fader (the whole channel)`
-      : `${aux.name} send`;
+    // Nothing to qualify any more. Every channel taps the whole lane into every send
+    // and no bank key scales it on the way, so this number IS the amount: the same
+    // reading sends the same amount of kick as it does of lead, in every bar of every
+    // song. It used to be worth whatever the playing section's `echoLevel` said, which
+    // is why the tooltip had a story to tell and the control could not be trusted.
+    row.wrap.title = `${aux.name} send`;
     body.append(row.wrap);
   }
 
@@ -4742,7 +4844,7 @@ function panKnob({ value, onInput }) {
  * Returns the same shape `slider` does (`{ wrap, label, set }`), so a caller can swap
  * one for the other without knowing which it has.
  */
-function knob({ min, max, step, value, fmt, onInput, reset }) {
+function knob({ min, max, step, value, fmt, onInput, reset, scale = 1 }) {
   const NS = 'http://www.w3.org/2000/svg';
   const wrap = document.createElement('div');
   wrap.className = 'row potrow';
@@ -4780,13 +4882,22 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
   };
   track.setAttribute('d', arcPath(-SWEEP, SWEEP));
 
+  // A scale above one gives the low end more physical travel without changing the
+  // stored range. Envelope times opt into this shared response; ordinary desk knobs
+  // remain linear because their values do not represent elapsed time.
+  const curve = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const valueAt = (position) => min + (max - min) * Math.pow(clamp(position, 0, 1), curve);
+  const positionAt = (x) => {
+    const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
+    return Math.pow(frac, 1 / curve);
+  };
   let val = clamp(value, min, max);
+  let position = positionAt(val);
   const draw = () => {
-    const frac = (max - min) ? (val - min) / (max - min) : 0;
-    const deg = -SWEEP + frac * SWEEP * 2;
+    const deg = -SWEEP + position * SWEEP * 2;
     // Nothing to draw at the floor — an arc of zero length still paints a round cap,
     // which reads as a value slightly above the minimum rather than as the minimum.
-    arc.setAttribute('d', frac < 0.004 ? '' : arcPath(-SWEEP, deg));
+    arc.setAttribute('d', position < 0.004 ? '' : arcPath(-SWEEP, deg));
     text.textContent = fmt(val);
   };
   draw();
@@ -4794,9 +4905,11 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
   const set = (x) => {
     const stepped = Math.round(x / step) * step;
     val = clamp(Number(stepped.toFixed(6)), min, max);
+    position = positionAt(val);
     draw();
     onInput(val);
   };
+  const setPosition = (x) => set(valueAt(x));
 
   let dragging = false, lastX = 0, lastY = 0, moved = 0, fromText = false;
   svg.addEventListener('pointerdown', (e) => {
@@ -4813,7 +4926,7 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
     // Whichever axis moved more wins, so neither grip feels wrong. A full sweep in
     // about 150px, a fifth of that with shift — the same feel as the desk's faders.
     const px = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-    set(val + px * ((max - min) / 150) * (e.shiftKey ? 0.2 : 1));
+    setPosition(position + (px / 150) * (e.shiftKey ? 0.2 : 1));
   });
   const stop = () => {
     if (dragging && fromText && moved < 3) openEditor();
@@ -4850,7 +4963,7 @@ function knob({ min, max, step, value, fmt, onInput, reset }) {
   k.title = `Reset to ${fmt(reset)}`;
   k.addEventListener('click', () => set(reset));
 
-  return { wrap, label: k, set: (x) => { val = clamp(x, min, max); draw(); } };
+  return { wrap, label: k, set: (x) => { val = clamp(x, min, max); position = positionAt(val); draw(); } };
 }
 
 /** A one-line labelled checkbox — a whole row plus a full-width button was three
@@ -5015,13 +5128,41 @@ function pinnedCard(key) {
       fmt: (x) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : String(x)) + ' Hz',
     });
   } else {
+    // Log taper: decay spans 0.1–10s (100×), pre-delay spans 0.001–0.2s (200×).
+    // Tiny differences at the short end matter — a 2ms vs 10ms pre-delay is the
+    // difference between intimacy and distance.
+    const logSliders = (mn, mx) => {
+      const toPos = (v) => Math.log(v / mn) / Math.log(mx / mn);
+      const fromPos = (p) => mn * Math.pow(mx / mn, p);
+      return { toPos, fromPos };
+    };
+    const decLog = logSliders(0.1, 10);
     fxSlider('decay', 'DECAY', {
-      min: 0.1, max: 10, step: 0.1, value: cur.decay,
-      reset: AUX_DEFAULTS[def.id].decay, fmt: (x) => `${x.toFixed(1)}s`,
+      min: 0, max: 1, step: 0.001,
+      value: decLog.toPos(cur.decay),
+      reset: decLog.toPos(AUX_DEFAULTS[def.id].decay),
+      fmt: (pos) => `${decLog.fromPos(pos).toFixed(1)}s`,
+      display: {
+        format: (pos) => `${decLog.fromPos(pos).toFixed(1)}s`,
+        parse: (s) => {
+          const n = parseFloat(String(s).replace(/[^0-9.\-+eE]/g, ''));
+          return Number.isFinite(n) ? clamp(decLog.toPos(n), 0, 1) : null;
+        },
+      },
     });
+    const preLog = logSliders(0.001, 0.2);
     fxSlider('preDelay', 'PRE-DELAY', {
-      min: 0, max: 0.2, step: 0.002, value: cur.preDelay,
-      reset: AUX_DEFAULTS[def.id].preDelay, fmt: (x) => `${(x * 1000).toFixed(0)}ms`,
+      min: 0, max: 1, step: 0.001,
+      value: preLog.toPos(cur.preDelay || 0.001),
+      reset: preLog.toPos(AUX_DEFAULTS[def.id].preDelay),
+      fmt: (pos) => `${(preLog.fromPos(pos) * 1000).toFixed(0)}ms`,
+      display: {
+        format: (pos) => `${(preLog.fromPos(pos) * 1000).toFixed(0)}ms`,
+        parse: (s) => {
+          const n = parseFloat(String(s).replace(/[^0-9.\-+eE]/g, ''));
+          return Number.isFinite(n) ? clamp(preLog.toPos(n / 1000), 0, 1) : null;
+        },
+      },
     });
     const note = document.createElement('div');
     note.className = 'devnote';
@@ -5202,15 +5343,32 @@ function buildDevices() {
         continue;
       }
       const val = entryParams[pname] ?? rng.min;
+      // Log taper for parameters that span a wide ratio (frequency, attack, etc.).
+      // The slider stores a 0–1 position; the displayed value follows a log curve
+      // so tiny adjustments at the low end are as easy to reach as big ones at the top.
+      const useLog = rng.log && rng.min > 0;
+      const logToPos = (v) => Math.log(v / rng.min) / Math.log(rng.max / rng.min);
+      const logFromPos = (p) => rng.min * Math.pow(rng.max / rng.min, p);
+      const unitFmt = (x) => (rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
+        : rng.unit === 's' ? (x * 1000).toFixed(0) + 'ms'
+        : x.toFixed(rng.step >= 1 ? 0 : 2)) + (rng.unit && rng.unit !== 's' ? ' ' + rng.unit : '');
       const row = slider({
-        min: rng.min, max: rng.max, step: rng.step, value: val,
-        reset: def.defaults[pname] ?? rng.min,
-        fmt: (x) => (rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
-          : rng.unit === 's' ? (x * 1000).toFixed(0) + 'ms'
-          : x.toFixed(rng.step >= 1 ? 0 : 2)) + (rng.unit && rng.unit !== 's' ? ' ' + rng.unit : ''),
+        min: useLog ? 0 : rng.min,
+        max: useLog ? 1 : rng.max,
+        step: useLog ? 0.001 : rng.step,
+        value: useLog ? logToPos(val) : val,
+        reset: useLog ? logToPos(def.defaults[pname] ?? rng.min) : (def.defaults[pname] ?? rng.min),
+        fmt: (x) => unitFmt(useLog ? logFromPos(x) : x),
+        display: useLog ? {
+          format: (pos) => unitFmt(logFromPos(pos)),
+          parse: (s) => {
+            const n = parseFloat(String(s).replace(/[^0-9.\-+eE]/g, ''));
+            return Number.isFinite(n) ? clamp(logToPos(n), 0, 1) : null;
+          },
+        } : undefined,
         // Update the live node directly; a full chain rebuild on every drag would
         // retrigger LFOs and click.
-        onInput: (x) => patch({ [pname]: x }, `fx:${selectedLane}:${i}:${pname}`),
+        onInput: (x) => patch({ [pname]: useLog ? logFromPos(x) : x }, `fx:${selectedLane}:${i}:${pname}`),
       });
       row.label.textContent = paramLabel(pname);
       grid.append(row.wrap);
@@ -5558,12 +5716,13 @@ const arrDraftOf = () => draftOf(editBank(), arrFor(trackId));
  */
 function applyArrangementEdit(next, what, {
   undo: undoable = true, atStep = null, undoTag = null,
+  render = true, persist = true, rearmLoop = true,
 } = {}) {
   if (next?.refused) { toast(next.refused); return false; }
   // A painted note can introduce a drum lane the original song did not contain.
   // Remember the lane set so that edit gets a strip immediately, while ordinary
   // note moves avoid tearing down and rebuilding every control on the desk.
-  const lanesBefore = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
+  const lanesBefore = render ? deskLanes(viewBank(), 1).map((l) => l.key).join('\0') : null;
   // `null` never coalesces, which is right for a gesture that ends — a drawn note, a
   // pasted clip. A performance has no ending, so recording tags its writes and the run
   // of them collapses into the one snapshot `pushUndo` already knows how to make.
@@ -5582,7 +5741,7 @@ function applyArrangementEdit(next, what, {
     return false;
   }
   arrDraft[trackId] = entry;
-  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  if (persist) localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   bankCache.sig = null;                       // the song's shape changed under it
   Audio.setArrangement(entry);
   // When playback is stopped, Audio.setArrangement only stores the patch because
@@ -5590,18 +5749,20 @@ function applyArrangementEdit(next, what, {
   // step as well; otherwise a mute appears in the grid but the next note audition
   // still comes from the pre-edit arrangement. Playing uses the gap-free swap above.
   if (!playing) applyToEngine(mixFor(trackId));
-  const lanesAfter = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
-  buildTimeline();
-  if (lanesAfter !== lanesBefore) rebuildForShape();
-  else buildArrangement();
+  if (render) {
+    const lanesAfter = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
+    buildTimeline();
+    if (lanesAfter !== lanesBefore) rebuildForShape();
+    else buildArrangement();
+  }
   // `atStep` is which bar the loop should re-arm from, and it matters as soon as an
   // edit can land while the song is running. `applyLoop` snaps to the bar containing
   // the step it is given, so re-arming from `Audio.step` moves a multi-bar loop forward
   // whenever the scheduler happens to be past its first bar — a two-bar loop written
   // into during its second bar comes back as bars 2-3. A caller that knows the loop
   // did not move says so by passing `loopAnchor`.
-  applyLoop(atStep != null ? atStep : Audio.step);
-  updateStatus();
+  if (rearmLoop) applyLoop(atStep != null ? atStep : Audio.step);
+  if (render) updateStatus();
   if (what) toast(`${what} — ⌘Z to undo`);
   return true;
 }
@@ -6636,7 +6797,7 @@ function updateStatus() {
   $('navbtn').title = [
     d ? `${track.title} has changes that are not in its song file yet` : '',
     owed.length ? `Unsaved preset edits: ${owed.join(', ')} — these live in the library,`
-      + ' so Save song does not write them. Use the editor’s own Save to Library.' : '',
+      + ' so Save song does not write them. Use the editor’s own Save.' : '',
   ].filter(Boolean).join('\n') || 'Open songs and file actions';
   // The label does not name the song — the menu is headed "this song", and an
   // imported title like CHECKOUT-PROMENADE-GARY-BRIGHT-ORGAN-DANCE-MIX would set the
@@ -7076,6 +7237,35 @@ let oskLane = null;                      // the lane the keys on screen were bui
 let oskBenchId = null;                   // ...or the library preset, if the bench has one
 let oskCatch = false;                    // is the computer keyboard playing it?
 const oskHeld = new Set();               // held computer keys, so auto-repeat is one note
+// Preview notes that are still sounding, keyed by the same `src` as recordOff —
+// `k:a` for the computer A key, `m:60` for MIDI note 60. On note-off the engine
+// triggers the synth's release envelope instead of letting a fixed sequencer
+// length cut it off.
+const previewHeld = new Map();           // src → { laneKey, freq }
+const oskHeldVisuals = new Map();        // src → the key or pad it is holding lit
+
+function oskHoldVisual(src, el) {
+  if (!src || !el) return;
+  const previous = oskHeldVisuals.get(src);
+  if (previous && previous !== el) {
+    oskHeldVisuals.delete(src);
+    if (![...oskHeldVisuals.values()].includes(previous)) previous.classList.remove('held');
+  }
+  oskHeldVisuals.set(src, el);
+  el.classList.add('held');
+}
+
+function oskReleaseVisual(src) {
+  const el = oskHeldVisuals.get(src);
+  if (!el) return;
+  oskHeldVisuals.delete(src);
+  if (![...oskHeldVisuals.values()].includes(el)) el.classList.remove('held');
+}
+
+function clearOskHeldVisuals() {
+  for (const el of oskHeldVisuals.values()) el.classList.remove('held');
+  oskHeldVisuals.clear();
+}
 
 /**
  * ---- recording -------------------------------------------------------------------
@@ -7104,9 +7294,11 @@ let recGrid = 1;                         // sixteenths. The format has nothing f
 let recLastBeat = -1;
 let recLastHeard = 0;
 let recChord = null;                     // the note that anchors the current cluster
-let recSessionNotes = 0;                 // everything played since arming, for the count
+let recSessionNotes = 0;                 // everything played since arming, for the completion toast
 const recSessionLanes = new Set();       // ...and which channels it went to, for the toast
 let recChordWarned = false;              // the monophonic warning, once per take
+let recUndoPushed = false;                // one undo snapshot for the whole take
+let recLiveDirty = false;                 // beat commits waiting for final persistence/redraw
 const recOpen = new Map();
 
 const recording = () => recArmed && playing;
@@ -7236,7 +7428,6 @@ function recordNote(laneKey, midi, freq, src) {
   // the original press either way, so the length is measured from where the note really
   // started rather than from wherever the last flush happened to be.
   if (src) recOpen.set(src, { token, at: heard, bar, lane: laneKey, step: inBar, midi, freq });
-  recCount();
 }
 
 /**
@@ -7283,8 +7474,29 @@ function recordOff(src) {
   recTake.close(held.token, heldLength(held.at, heard, { grid: recGrid, span }));
 }
 
+/** Finish every kind of preview input, not just its recording token. */
+function releasePreview(src) {
+  const held = previewHeld.get(src);
+  if (!held) return;
+  Audio.releasePreviewNote(held.laneKey, held.freq);
+  previewHeld.delete(src);
+}
+
+function oskRelease(src) {
+  recordOff(src);
+  releasePreview(src);
+  oskReleaseVisual(src);
+}
+
+function releaseOskSources(prefix) {
+  const sources = new Set([
+    ...recOpen.keys(), ...previewHeld.keys(), ...oskHeldVisuals.keys(),
+  ]);
+  for (const src of sources) if (src.startsWith(prefix)) oskRelease(src);
+}
+
 /**
- * Hand the take to the song, as one arrangement edit per bar's worth of playing.
+ * Hand the take to the song, as one arrangement edit per buffered beat.
  *
  * This is the bar grid's `commit()` with the selection replaced by the take, and for
  * the same reasons: each bar is written on its own, and each write is CHAINED onto the
@@ -7294,9 +7506,16 @@ function recordOff(src) {
  * PATTERN: plumber plays section 0 for four bars, and a note forked into bar 1 alone
  * would come back every fourth pass — which reads as dropped notes rather than as an
  * edit. Shared is what makes a two-bar loop behave the way the ear expects.
+ *
+ * Beat commits deliberately skip the expensive desk redraw, synchronous localStorage
+ * write and loop re-arm. Those are presentation/save work, not audio work; doing all
+ * three every 500ms starves the sequencer while somebody is playing into it. The live
+ * arrangement still receives the note at the beat, and the final take boundary does
+ * the one redraw and persistence pass.
  */
 function flushTake(reason) {
-  if (!recTake?.count()) return;
+  const live = reason === 'beat';
+  if (!recTake?.count()) return false;
   const eb = editBank();
   let d = arrDraftOf();
   const entries = recTake.entries();
@@ -7319,20 +7538,39 @@ function flushTake(reason) {
   // Four writes a bar is four times the notice anyway, and a toast twice a second is not
   // notice, it is weather.
   //
-  // `undoTag` is what makes those writes free: `pushUndo` coalesces same-tagged edits
-  // inside 700ms, so a continuous phrase is ONE snapshot however often it is written. It
-  // is also better than the bar-line version was — that made an undo step per bar.
-  applyArrangementEdit(d, null, {
+  // One snapshot covers the whole take. Beat commits can be separated by more than the
+  // ordinary 700ms gesture coalescing window, so do not rely on the generic tag alone.
+  const committed = applyArrangementEdit(d, null, {
+    undo: !recUndoPushed,
     undoTag: 'record',
-    // The loop has not moved — this is a flush on a beat, and the take is being played
-    // INTO that loop. Without this the region walks forward a bar on every flush.
+    // The loop has not moved — note recording changes lane data, not the loop region.
     atStep: loopOn ? loopAnchor : Audio.step,
+    render: !live,
+    persist: !live,
+    rearmLoop: !live,
   });
+  if (!committed) return false;
+  recUndoPushed = true;
+  recLiveDirty = live;
   // After the write, so the re-seeded notes read a draft that already holds them.
   carryHeld();
+  if (!live) {
+    stepSeq.refresh();
+    pianoRoll.refresh();
+  }
+  return true;
+}
+
+/** Finish a take whose beat commits already reached the live engine. */
+function finalizeLiveTake() {
+  if (!recLiveDirty) return;
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  buildTimeline();
+  buildArrangement();
   stepSeq.refresh();
   pianoRoll.refresh();
-  recCount();
+  updateStatus();
+  recLiveDirty = false;
 }
 
 /**
@@ -7354,7 +7592,7 @@ function discardTake() {
   // The session totals go too, or `endTake` announces a take that was just abandoned.
   recSessionNotes = 0;
   recSessionLanes.clear();
-  recCount();
+  recUndoPushed = false;
   return n;
 }
 
@@ -7374,8 +7612,9 @@ function discardTake() {
  * "Recorded 6 notes" a moment before taking them away is a lie about what just happened.
  */
 function endTake(reason, { announce = true } = {}) {
-  if (recTake) for (const src of [...recOpen.keys()]) recordOff(src);
+  if (recTake) for (const src of [...recOpen.keys()]) oskRelease(src);
   flushTake(reason);
+  finalizeLiveTake();
   if (announce && recSessionNotes > 0) {
     const lanes = [...recSessionLanes].map(targetLabel).join(', ');
     toast(`Recorded ${recSessionNotes} note${recSessionNotes === 1 ? '' : 's'}`
@@ -7383,6 +7622,7 @@ function endTake(reason, { announce = true } = {}) {
   }
   recSessionNotes = 0;
   recSessionLanes.clear();
+  recUndoPushed = false;
 }
 
 /**
@@ -7413,29 +7653,6 @@ function recordFollow(heardStep) {
 }
 
 /**
- * The count, on both Record buttons.
- *
- * Everything played since ARMING, not what is sitting in the buffer: the buffer empties
- * four times a bar now, so a buffered count would flicker back to nothing while you
- * were still playing and read as notes being lost. What you want to know is how much of
- * this take there is.
- *
- * Gone the moment you disarm, and that matters. It is a LIVE counter — "this take is
- * eleven notes so far" — and a red badge still sitting there afterwards reads as a
- * pending count, something you have not dealt with yet. Nothing is pending: the notes
- * went into the song as you played them. An idle badge would be inventing an obligation.
- */
-function recCount() {
-  const n = recArmed ? recSessionNotes : 0;
-  for (const btn of [oskEl.querySelector('.oskrec'), $('recbtn')]) {
-    if (!btn) continue;
-    const label = n ? `Record · ${n}` : 'Record';
-    if (btn.id === 'recbtn') btn.dataset.count = n ? String(n) : '';
-    else btn.textContent = label;
-  }
-}
-
-/**
  * Arm, or stop.
  *
  * Arming OPENS the keyboard if it is closed, which is what lets the gate below stay in
@@ -7458,6 +7675,8 @@ function setRecord(on) {
     recLastHeard = heard ?? 0;
     recSessionNotes = 0;
     recSessionLanes.clear();
+    recUndoPushed = false;
+    recLiveDirty = false;
     recChord = null;
     recChordWarned = false;
     // An imported .mid has no desk marker, so Save is off on it — see `writable`. The
@@ -7491,7 +7710,6 @@ function syncRecordUi() {
   $('midibtn')?.classList.toggle('on', midiOn);
   oskEl.classList.toggle('recording', recording());
   $('playhead').classList.toggle('recording', recording());
-  recCount();
 }
 
 /**
@@ -7513,10 +7731,27 @@ function oskPlay(midi, { record = true, src = null } = {}) {
   // It is also why recording is unreachable from here: a preset on the bench has no
   // channel, and the lane its note goes down is an implementation detail of hearing a
   // sound with no strip on it. There is no lane for a take to be written to.
-  if (bench) { benchPlay(Audio, bench, midiFreq(midi), { bpm: deskTempo() }); return; }
+  if (bench) {
+    const freq = midiFreq(midi);
+    // Only Tone-pool synths sustain — GameSynth, noise and drum are one-shots
+    // whose full envelope is scheduled at note-on and cannot be note-off'd.
+    const bv = VOICES[bench];
+    if (src && bv && bv.kind === 'tone' && bv.synth !== 'GameSynth' && bv.synth !== 'AdditiveSynth') {
+      previewHeld.set(src, { laneKey: benchLane(bv), freq });
+    }
+    benchPlay(Audio, bench, freq, { bpm: deskTempo() });
+    return;
+  }
   if (!oskPlayable(selectedLane)) return;
-  lanePreview(selectedLane, midiFreq(midi));
-  if (record) recordNote(selectedLane, midi, midiFreq(midi), src);
+  const freq = midiFreq(midi);
+  if (src) {
+    const lv = voiceOf(engineBank(), selectedLane);
+    if (lv && lv.kind === 'tone' && lv.synth !== 'GameSynth' && lv.synth !== 'AdditiveSynth') {
+      previewHeld.set(src, { laneKey: selectedLane, freq });
+    }
+  }
+  lanePreview(selectedLane, freq);
+  if (record) recordNote(selectedLane, midi, freq, src);
 }
 
 // ---- when a CHANNEL preview is allowed to sound ------------------------------
@@ -7740,9 +7975,9 @@ function buildOsk() {
     el.append(head, keys);
   }
   wireOskDrag(el, head);
-  // The head has just been replaced, so the lamp and the buffered count have to be put
-  // back onto the new button — a rebuild mid-take is an octave change or a channel
-  // change, not the take ending.
+  // The head has just been replaced, so the lamp state has to be put back onto the new
+  // button — a rebuild mid-take is an octave change or a channel change, not the take
+  // ending.
   syncRecordUi();
 }
 
@@ -7796,7 +8031,9 @@ function buildOskPads() {
     if (!pad) return;
     ev.preventDefault();
     try { pads.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
-    oskHit(pad.dataset.lane, { src: `p:${ev.pointerId}` });
+    const src = `p:${ev.pointerId}`;
+    oskHit(pad.dataset.lane, { src });
+    oskHoldVisual(src, pad);
     oskFlash(pad);
   });
   // A drag across the pads is a roll, the same gesture a glide is on the keys — and
@@ -7804,14 +8041,18 @@ function buildOskPads() {
   pads.addEventListener('pointermove', (ev) => {
     if (!ev.buttons) return;
     const pad = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.oskpad');
-    if (!pad || pad.classList.contains('lit')) return;
+    const src = `p:${ev.pointerId}`;
+    if (!pad || oskHeldVisuals.get(src) === pad
+      || pad.classList.contains('lit') || pad.classList.contains('held')) return;
+    oskReleaseVisual(src);
     oskHit(pad.dataset.lane, { record: false });
+    oskHoldVisual(src, pad);
     oskFlash(pad);
   });
-  // A pad has no length to measure, so this exists only to let go of the token — a
-  // recorder that leaked one per hit would hold the whole take's worth of them.
+  // A pad has no length to measure, but its preview still needs an explicit release;
+  // the shared helper also lets go of any recorder token without leaking one per hit.
   for (const type of ['pointerup', 'pointercancel']) {
-    pads.addEventListener(type, (ev) => recordOff(`p:${ev.pointerId}`));
+    pads.addEventListener(type, (ev) => oskRelease(`p:${ev.pointerId}`));
   }
   return pads;
 }
@@ -7984,22 +8225,29 @@ function buildOskKeys(ctl) {
     ev.preventDefault();
     // Captured so a glide off the end of the keyboard still ends the gesture here.
     try { keys.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
-    oskPlay(Number(k.dataset.midi), { src: `p:${ev.pointerId}` });
+    const src = `p:${ev.pointerId}`;
+    oskPlay(Number(k.dataset.midi), { src });
+    oskHoldVisual(src, k);
     oskFlash(k);
   });
   keys.addEventListener('pointermove', (ev) => {
     if (!ev.buttons) return;
     const k = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.oskkey');
-    if (!k || k.classList.contains('lit')) return;
+    const src = `p:${ev.pointerId}`;
+    if (!k || oskHeldVisuals.get(src) === k
+      || k.classList.contains('lit') || k.classList.contains('held')) return;
     // A glide is one gesture looking for one note, not a run of notes to keep.
-    oskPlay(Number(k.dataset.midi), { record: false });
+    releasePreview(src);
+    oskReleaseVisual(src);
+    oskPlay(Number(k.dataset.midi), { record: false, src });
+    oskHoldVisual(src, k);
     oskFlash(k);
   });
   // Lifting the finger is where a clicked note gets its length. `pointercancel` too:
   // the gesture ending some other way is still the key coming up, and a note left open
   // would take the length of everything played after it.
   for (const type of ['pointerup', 'pointercancel']) {
-    keys.addEventListener(type, (ev) => recordOff(`p:${ev.pointerId}`));
+    keys.addEventListener(type, (ev) => oskRelease(`p:${ev.pointerId}`));
   }
 
   return keys;
@@ -8052,6 +8300,7 @@ function setOskOctave(n) {
 }
 
 function setOskCatch(on) {
+  if (!on) releaseOskSources('k:');
   oskCatch = !!on && oskShown();
   oskHeld.clear();
   if (oskShown()) buildOsk();
@@ -8090,13 +8339,15 @@ function showOsk(on) {
   el.classList.toggle('show', on);
   $('oskbtn').classList.toggle('on', on);
   if (!on) {
+    releaseOskSources('p:');
+    releaseOskSources('k:');
+    clearOskHeldVisuals();
     oskCatch = false; oskHeld.clear(); el.classList.remove('docked');
     // Closing the keyboard no longer disarms. It used to, because the arm lived in here
     // and a recorder running behind a shut window was a song changing invisibly — but
     // the arm is in the header now and stays lit, so closing a window you were not
     // playing with is not a reason to end a take. Any keys still HELD are closed, since
     // their note-off is going with the window.
-    if (recArmed) for (const src of [...recOpen.keys()]) if (src.startsWith('p:')) recordOff(src);
     syncRecordUi();
     rememberSongLayout();
     return;
@@ -8154,7 +8405,9 @@ function oskTypedKey(e) {
     if (!pad) return false;
     if (e.repeat || oskHeld.has(key)) return true;
     oskHeld.add(key);
-    oskHit(pad.dataset.lane, { src: `k:${key}` });
+    const src = `k:${key}`;
+    oskHit(pad.dataset.lane, { src });
+    oskHoldVisual(src, pad);
     oskFlash(pad);
     return true;
   }
@@ -8174,7 +8427,9 @@ function oskTypedKey(e) {
     if (!k) return false;
     if (e.repeat || oskHeld.has(key)) return true;
     oskHeld.add(key);
-    oskPlay(Number(k.dataset.midi), { src: `k:${key}` });
+    const src = `k:${key}`;
+    oskPlay(Number(k.dataset.midi), { src });
+    oskHoldVisual(src, k);
     oskFlash(k);
     return true;
   }
@@ -8184,8 +8439,11 @@ function oskTypedKey(e) {
   if (e.repeat || oskHeld.has(key)) return true;
   oskHeld.add(key);
   const midi = (oskOct + 1) * 12 + semi;
-  oskPlay(midi, { src: `k:${key}` });
-  oskFlash(oskKeyEl(midi));
+  const src = `k:${key}`;
+  const k = oskKeyEl(midi);
+  oskPlay(midi, { src });
+  oskHoldVisual(src, k);
+  oskFlash(k);
   return true;
 }
 
@@ -8278,7 +8536,10 @@ function onMidiMessage(e) {
   // A note-off is either an actual 0x80 or a note-on at velocity zero, which is how
   // most keyboards send one. It was discarded outright until recording existed to have
   // a use for it; now it is the only thing that knows how long a note was.
-  if (kind === 0x80 || (kind === 0x90 && !vel)) { recordOff(`m:${note}`); return; }
+  if (kind === 0x80 || (kind === 0x90 && !vel)) {
+    oskRelease(`m:${note}`);
+    return;
+  }
   if (kind !== 0x90) return;
   // No `oskShown()` any more. A MIDI keyboard is a real instrument sitting in front of
   // you: your eyes are on your hands or on the roll filling up, not on a drawn keyboard,
@@ -8296,16 +8557,20 @@ function onMidiMessage(e) {
     if (!kit.length) return;
     const named = GM_DRUMS[note];
     const lane = (kit.find((l) => baseLane(l.key) === named) || kit[note % kit.length]).key;
-    oskHit(lane, { src: `m:${note}` });
-    oskFlash(oskEl.querySelector(`.oskpad[data-lane="${CSS.escape(lane)}"]`));
+    const src = `m:${note}`;
+    const pad = oskEl.querySelector(`.oskpad[data-lane="${CSS.escape(lane)}"]`);
+    oskHit(lane, { src });
+    oskHoldVisual(src, pad);
+    oskFlash(pad);
     return;
   }
-  oskPlay(note, { src: `m:${note}` });
+  const src = `m:${note}`;
+  oskPlay(note, { src });
   if (!oskShown()) return;
   const k = oskKeyEl(note);
   // A note off the end of the keyboard still sounds — it is a real instrument's note,
   // not a click on a drawn key — so the arrow lights rather than nothing happening.
-  if (k) oskFlash(k);
+  if (k) { oskHoldVisual(src, k); oskFlash(k); }
   else oskEl.querySelector(note < (oskOct + 1) * 12 ? '.oskdown' : '.oskup')?.classList.add('offscreen');
 }
 
@@ -8313,15 +8578,16 @@ function attachMidi() {
   for (const input of midiInputs()) input.onmidimessage = onMidiMessage;
 }
 
-async function setMidi(on) {
+async function setMidi(on, { announce = true } = {}) {
   if (!on) {
     for (const input of midiInputs()) input.onmidimessage = null;
     midiOn = false;
+    localStorage.removeItem(MIDI_LS_KEY);
     // Anything still held loses its note-off with the port, so close it here rather than
     // leaving the note open to take the length of whatever is played next.
-    for (const src of [...recOpen.keys()]) if (src.startsWith('m:')) recordOff(src);
+    releaseOskSources('m:');
     $('midibtn')?.classList.toggle('on', false);
-    toast('MIDI off');
+    if (announce) toast('MIDI off');
     if (oskShown()) buildOsk();
     return;
   }
@@ -8336,6 +8602,7 @@ async function setMidi(on) {
     return;
   }
   midiOn = true;
+  localStorage.setItem(MIDI_LS_KEY, '1');
   attachMidi();
   // A keyboard plugged in after the desk was opened is the ordinary case, not the
   // exception: the browser hands over the ports it has, and the rest arrive later.
@@ -8352,7 +8619,7 @@ addEventListener('keyup', (e) => {
   // The same event, now also carrying a length. It already existed to stop auto-repeat
   // being heard as a run of notes, which is the same fact about the key from the other
   // side: this is when it came up.
-  recordOff(`k:${key}`);
+  oskRelease(`k:${key}`);
 });
 addEventListener('resize', () => {
   if (!oskShown()) return;
@@ -8664,6 +8931,42 @@ $('deletesong').onclick = deleteScratchSong;
 // four buttons instead of one that changes its mind.
 let startedAt = 0;
 
+function releaseHeldPreviews() {
+  for (const held of previewHeld.values()) {
+    Audio.releasePreviewNote(held.laneKey, held.freq);
+  }
+  previewHeld.clear();
+  clearOskHeldVisuals();
+  oskHeld.clear();
+}
+
+/** Stop every live note and scheduled sound without changing the MIDI switch. */
+function silenceAll() {
+  releaseHeldPreviews();
+  // Stop closes MIDI-held recording tokens too, but leaves the MIDI ports attached.
+  releaseOskSources('m:');
+  voiceLibrary.stopPattern();
+  if (recArmed) setRecord(false);
+  if (playing) setPlaying(false);
+  else if (Audio.bank) Audio.setBank(null);
+  Audio.panic();
+  if (oskShown()) {
+    oskStep = -1;
+    refreshOsk();
+  }
+}
+
+/** The header's emergency cut: no held input or scheduled sound survives it. */
+function panicAll() {
+  const restoreMidi = midiOn;
+  setMidi(false, { announce: false });
+  silenceAll();
+  if (restoreMidi) setMidi(true, { announce: false });
+  toast(restoreMidi
+    ? 'PANIC — all sound silenced and MIDI restored'
+    : 'PANIC — all sound silenced and MIDI off');
+}
+
 /** Start or stop the transport, optionally from a given step. */
 function setPlaying(on, fromStep = null) {
   // Before `playing` changes, so `recording()` is still true and the take can measure
@@ -8714,11 +9017,13 @@ function setPlaying(on, fromStep = null) {
 $('play').onclick = () => { if (!playing) setPlaying(true); };
 $('pause').onclick = () => { if (playing) setPlaying(false); };
 $('stop').onclick = () => {
-  if (playing) setPlaying(false);
-  jumpTo(startedAt);
-  toast(`Stopped at bar ${Math.floor(startedAt / 16) + 1}`);
+  const at = startedAt;
+  silenceAll();
+  jumpTo(at);
+  toast(`Stopped at bar ${Math.floor(at / 16) + 1}`);
 };
 $('playstart').onclick = () => { jumpTo(0, { start: true }); };
+$('panicbtn').onclick = panicAll;
 $('clearsolo').onclick = clearAllSolo;
 $('oskbtn').onclick = () => showOsk(!oskShown());
 // The header's pair. Same two functions the keyboard's own buttons call, so there is one
@@ -9392,5 +9697,9 @@ $('start').onclick = async () => {
     }
   }
   selectSong(trackId);
+  // If MIDI was on last session, turn it back on now (needs a user gesture).
+  if (localStorage.getItem(MIDI_LS_KEY)) setMidi(true, { announce: false });
+  // If the preset library was open last session, open it again.
+  if (localStorage.getItem('mash-mixer-library-open')) openPresetLibrary();
   tick();
 };

@@ -274,6 +274,11 @@ export class VoiceRack {
     // Pools taken out of service but still sounding — see `_retire`. Keyed by their
     // own disposal timer so `dispose` can cancel one that has not fired yet.
     this._retired = new Map();
+    // Active preview notes, keyed by `${laneKey}|${freq}` → { slot }.
+    // A note-off calls `triggerRelease` on the stored synth so a held key sustains
+    // and a released one decays through its envelope instead of ringing for a fixed
+    // sequencer length.
+    this._activePreviews = new Map();
   }
 
   /**
@@ -320,7 +325,8 @@ export class VoiceRack {
    * a MonoSynth's filter has one of its own, and a retired pool must outlive the
    * slowest of them or holding it back would have bought nothing. A release written in
    * Tone's note notation ('8n') is not a number of seconds and is not read; the one
-   * second floor covers every one of those in the catalogue.
+   * second floor covers every one of those in the catalogue. The editor allows ten
+   * seconds now, so the retirement window must cover that full envelope too.
    */
   static tailOf(spec) {
     let longest = 0;
@@ -332,7 +338,7 @@ export class VoiceRack {
       }
     };
     walk(spec?.opts);
-    return Math.min(6, Math.max(1, longest)) + 0.1;
+    return Math.min(10, Math.max(1, longest)) + 0.1;
   }
 
   /**
@@ -372,7 +378,10 @@ export class VoiceRack {
     if (v && v.kind === 'noise') return this._playNoise(v, { time, gain, dry, wet, echo });
     if (v && v.kind === 'drum') return this._playDrum(v, { time, gain, dry, wet, echo });
     if (v && v.synth === 'GameSynth') {
-      return this._playGame(v, { freq, time, dur, gain, detune, dry, wet, echo });
+      // A previewed note plays the full one-shot envelope — the decay needs room to
+      // reach silence, and the preset's `dur` is a sequencer default, not a
+      // sound-design parameter. 4 s is enough for any exponential ramp to hit -80 dB.
+      return this._playGame(v, { freq, time, dur: preview ? 4 : dur, gain, detune, dry, wet, echo });
     }
     // Before the allowlist, not after: `SYNTHS` holds Tone classes, so a native synth that
     // reached that line would find nothing under its name and return false, which looks
@@ -446,7 +455,17 @@ export class VoiceRack {
         // to a different instance changes which note gets cut off, and that is a change
         // to what existing songs sound like.
         try {
-          slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
+          if (preview) {
+            // A previewed note uses triggerAttack so a later note-off can release it.
+            // Release any previous note at this (lane, freq) first — the same key
+            // pressed again restarts rather than stacking.
+            const noteKey = `${laneKey}|${f.toFixed(2)}`;
+            this._releasePreview(noteKey);
+            slot.synth.triggerAttack(f * detune * VoiceRack.pitchShift(v), t, 1);
+            this._activePreviews.set(noteKey, { slot });
+          } else {
+            slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
+          }
         } catch { continue; }
         // How far into the future this pool is committed. Notes are scheduled up to
         // 120ms ahead, so "is it playing" is not a question about now — and a pool
@@ -676,7 +695,7 @@ export class VoiceRack {
       // however many notes apart they were added — which is what lets `refresh` diff
       // one spec against the catalogue and know what the whole pool is holding.
       // `until` is when the last note scheduled on it ends; see `_retire`.
-      pool = { voiceId, dry, wet, echo, slots: [], next: 0, until: 0,
+      pool = { voiceId, dry, wet, echo, preview, slots: [], next: 0, until: 0,
         spec: VoiceRack.buildSpec(VOICES[voiceId]) };
       this.pools.set(key, pool);
     }
@@ -1073,7 +1092,11 @@ export class VoiceRack {
       // could expose is one more control on a panel pinned to a strip's width. It is
       // the second oscillator a kick needs and the only one, so it is a pot, not a
       // section. Zero, the default, builds nothing at all.
-      if (v.knock > 0) {
+      //
+      // Gated on the oscillator section being present: the knock is the oscillator's
+      // midrange punch layer. When the oscillator is switched off there is nothing for
+      // the knock to sit under, and it fires alone as an orphaned thwack.
+      if (o && v.knock > 0) {
         const k = ctx.createOscillator();
         const kg = ctx.createGain();
         k.type = 'triangle';
@@ -1575,10 +1598,47 @@ export class VoiceRack {
     }
   }
 
+  /**
+   * Dispose only the pools created for an on-screen preview.
+   *
+   * A mixer can be playing its own Tone pools at the same time as the desk's
+   * preset bench. Cutting the whole rack here would stop the song just because
+   * somebody compared two sounds, so preview pools carry their own flag and are
+   * the only ones this operation touches.
+   */
+  stopPreview() {
+    for (const [key, pool] of [...this.pools]) {
+      if (!pool.preview) continue;
+      this.pools.delete(key);
+      this._disposePool(pool);
+    }
+    for (const [timer, pool] of [...this._retired]) {
+      if (!pool.preview) continue;
+      clearTimeout(timer);
+      this._retired.delete(timer);
+      this._disposePool(pool);
+    }
+    this._activePreviews.clear();
+  }
+
+  /** Release a previewed note — the other half of triggerAttack above. */
+  releasePreview(laneKey, freq) {
+    const noteKey = `${laneKey}|${freq.toFixed(2)}`;
+    this._releasePreview(noteKey);
+  }
+
+  _releasePreview(noteKey) {
+    const entry = this._activePreviews.get(noteKey);
+    if (!entry) return;
+    try { entry.slot.synth.triggerRelease(this.ctx.currentTime); } catch { /* ignore */ }
+    this._activePreviews.delete(noteKey);
+  }
+
   dispose() {
     for (const [timer, pool] of this._retired) { clearTimeout(timer); this._disposePool(pool); }
     this._retired.clear();
     for (const pool of this.pools.values()) this._disposePool(pool);
     this.pools.clear();
+    this._activePreviews.clear();
   }
 }

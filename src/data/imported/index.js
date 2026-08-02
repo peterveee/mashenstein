@@ -41,12 +41,17 @@ import * as DIZZY_TEMPLE from './dizzy-temple.js';
 import * as ELECTRIC_BEETLE from './electric-beetle.js';
 import * as ELECTRIC_LANTERN from './electric-lantern.js';
 import * as ELECTRIC_SCOOTER from './electric-scooter.js';
+import * as FROZEN_BEETLE from './frozen-beetle.js';
 import * as FROZEN_DIVER from './frozen-diver.js';
 import * as FROZEN_HARBOUR from './frozen-harbour.js';
 import * as GLASS_OWL from './glass-owl.js';
 import * as GLASS_VOLCANO from './glass-volcano.js';
+import * as GOLDEN_PIGEON from './golden-pigeon.js';
 import * as HAPPY_ANCHOR from './happy-anchor.js';
+import * as HAPPY_MEADOW from './happy-meadow.js';
 import * as HAPPY_WOMBAT from './happy-wombat.js';
+import * as HAUNTED_SIREN from './haunted-siren.js';
+import * as HAUNTED_SUNDAE from './haunted-sundae.js';
 import * as HUNGRY_LADDER from './hungry-ladder.js';
 import * as LUCKY_PYLON from './lucky-pylon.js';
 import * as MARBLE_ROCKET from './marble-rocket.js';
@@ -56,6 +61,7 @@ import * as MIDNIGHT_ORBIT from './midnight-orbit.js';
 import * as MIDNIGHT_PIGEON from './midnight-pigeon.js';
 import { MIN3 } from './min3.js';
 import * as PAPER_CAROUSEL from './paper-carousel.js';
+import * as PAPER_TIGER from './paper-tiger.js';
 import * as PINK_ENGINE from './pink-engine.js';
 import * as PINK_MIRROR from './pink-mirror.js';
 import * as PINK_ORBIT from './pink-orbit.js';
@@ -67,6 +73,7 @@ import * as RUSTY_TYPHOON from './rusty-typhoon.js';
 import * as SALTY_CANYON from './salty-canyon.js';
 import * as SALTY_TANGO from './salty-tango.js';
 import * as SALTY_TEMPLE from './salty-temple.js';
+import * as SECRET_BALLOON from './secret-balloon.js';
 import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
@@ -116,12 +123,17 @@ export const IMPORTED_BY_ID = {
   "electric-beetle": { bank: ELECTRIC_BEETLE.bank, title: ELECTRIC_BEETLE.title, group: "scratch", writable: true },
   "electric-lantern": { bank: ELECTRIC_LANTERN.bank, title: ELECTRIC_LANTERN.title, group: "scratch", writable: true },
   "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
+  "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
   "frozen-harbour": { bank: FROZEN_HARBOUR.bank, title: FROZEN_HARBOUR.title, group: "scratch", writable: true },
   "glass-owl": { bank: GLASS_OWL.bank, title: GLASS_OWL.title, group: "scratch", writable: true },
   "glass-volcano": { bank: GLASS_VOLCANO.bank, title: GLASS_VOLCANO.title, group: "scratch", writable: true },
+  "golden-pigeon": { bank: GOLDEN_PIGEON.bank, title: GOLDEN_PIGEON.title, group: "scratch", writable: true },
   "happy-anchor": { bank: HAPPY_ANCHOR.bank, title: HAPPY_ANCHOR.title, group: "scratch", writable: true },
+  "happy-meadow": { bank: HAPPY_MEADOW.bank, title: HAPPY_MEADOW.title, group: "scratch", writable: true },
   "happy-wombat": { bank: HAPPY_WOMBAT.bank, title: HAPPY_WOMBAT.title, group: "scratch", writable: true },
+  "haunted-siren": { bank: HAUNTED_SIREN.bank, title: HAUNTED_SIREN.title, group: "scratch", writable: true },
+  "haunted-sundae": { bank: HAUNTED_SUNDAE.bank, title: HAUNTED_SUNDAE.title, group: "scratch", writable: true },
   "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
   "lucky-pylon": { bank: LUCKY_PYLON.bank, title: LUCKY_PYLON.title, group: "scratch", writable: true },
   "marble-rocket": { bank: MARBLE_ROCKET.bank, title: MARBLE_ROCKET.title, group: "scratch", writable: true },
@@ -131,6 +143,7 @@ export const IMPORTED_BY_ID = {
   "midnight-pigeon": { bank: MIDNIGHT_PIGEON.bank, title: MIDNIGHT_PIGEON.title, group: "scratch", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "paper-carousel": { bank: PAPER_CAROUSEL.bank, title: PAPER_CAROUSEL.title, group: "scratch", writable: true },
+  "paper-tiger": { bank: PAPER_TIGER.bank, title: PAPER_TIGER.title, group: "scratch", writable: true },
   "pink-engine": { bank: PINK_ENGINE.bank, title: PINK_ENGINE.title, group: "scratch", writable: true },
   "pink-mirror": { bank: PINK_MIRROR.bank, title: PINK_MIRROR.title, group: "scratch", writable: true },
   "pink-orbit": { bank: PINK_ORBIT.bank, title: PINK_ORBIT.title, group: "scratch", writable: true },
@@ -142,6 +155,7 @@ export const IMPORTED_BY_ID = {
   "salty-canyon": { bank: SALTY_CANYON.bank, title: SALTY_CANYON.title, group: "scratch", writable: true },
   "salty-tango": { bank: SALTY_TANGO.bank, title: SALTY_TANGO.title, group: "scratch", writable: true },
   "salty-temple": { bank: SALTY_TEMPLE.bank, title: SALTY_TEMPLE.title, group: "scratch", writable: true },
+  "secret-balloon": { bank: SECRET_BALLOON.bank, title: SECRET_BALLOON.title, group: "scratch", writable: true },
   "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },

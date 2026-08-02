@@ -566,9 +566,12 @@ export const SONG_STYLES = [
       // like every other pack: the gate the loudness runs through drops the silence
       // between the hits, so what this balances is how the kit sits WHEN it plays.
       musicTrim: 1.552, drumGain: 1.488,
-      // The echo is the instrument here, so the bank turns it up and lets the bass
-      // into it — the two keys speed.js uses for the same reason.
-      echoLevel: 0.5, bassEcho: true,
+      // The echo is the instrument here, and it used to be asked for with the two keys
+      // speed.js uses (`echoLevel: 0.5, bassEcho: true`). Both are inert now: how much
+      // of a channel reaches the delay is that channel's DELAY send and nothing else,
+      // and a new song arrives with `mix: null` — no sends at all. Writing them into
+      // every new dub song would be writing keys that do nothing, so this pack asks
+      // for the sound it can have and the echo is dialled on the desk.
       kickVoice: 'stKickDeep', snareVoice: 'stSnareCrisp', hatsVoice: 'stHatSizzle',
       bassVoice: 'stFmGrowl', organChordsVoice: 'stAmOrgan', leadVoice: 'stGlassLead',
     },

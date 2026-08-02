@@ -16,7 +16,8 @@
 //   noteLength   the parallel length, with the per-tone chord array PAIRED with the
 //                frequencies, sorted together and split apart again. That positional
 //                alignment is the whole risk in the format and it is solved there.
-//   rollResizable  can this lane hold a length at all — `vox` and `shout` cannot.
+//   rollResizable  can this lane hold a length at all — `vox` and `shout` cannot, unless
+//                a preset has taken the lane off their hand-timed envelopes.
 //
 // Re-deriving any of those here would be a second opinion about the bank format, and
 // two opinions is one more than a format can survive.

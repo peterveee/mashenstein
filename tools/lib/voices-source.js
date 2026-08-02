@@ -23,8 +23,11 @@ import { fileURLToPath } from 'url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const VOICES_PATH = join(ROOT, 'src/data/voices.js');
 
-/** The tables an editor may write to. ENGINE is bank keys the engine reads — see below. */
+/** The built-in tables. ENGINE is bank keys the engine reads — see below. */
 export const TABLES = { tone: 'TONE', noise: 'NOISE', drum: 'DRUM' };
+/** The editable user tables, kept separate from the read-only library tables. */
+export const USER_TABLES = { tone: 'USER_TONE', noise: 'USER_NOISE', drum: 'USER_DRUM' };
+const ALL_TABLES = [...Object.values(TABLES), ...Object.values(USER_TABLES)];
 
 // ---- scanning ---------------------------------------------------------------
 
@@ -107,7 +110,7 @@ export function entriesIn(src, name) {
 
 /** Which table an id lives in, or null if it is not in the file. */
 export function tableOf(src, id) {
-  for (const name of Object.values(TABLES)) {
+  for (const name of ALL_TABLES) {
     if (entriesIn(src, name).some((e) => e.id === id)) return name;
   }
   return null;
@@ -202,14 +205,11 @@ const BODY = ['note', 'origin', 'options', 'additive', 'osc', 'knock', 'noise', 
  * line carries the identity, the note gets its own lines, and the shape of the sound
  * follows. A preset saved from the desk should be indistinguishable from one typed in.
  */
-// `factory` joins the derived list for the same reason `kind` is on it: the loops at the
-// bottom of voices.js set it on every entry in every table, so it says "this is in the
-// catalogue", which the entry's own presence in the catalogue already said. Written into
-// an entry it does two unhelpful things — it appears in the diff of every desk save, and
-// it moves: an entry that states it gets it from the spread, before `id`, where one that
-// does not gets it from the loop, after `kind`. That is a different key order for the
-// same preset, which is exactly what the round-trip in tests/voice-source.js compares.
-export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak', 'factory'] } = {}) {
+// `factory` and `user` are derived from the table an entry lives in. Written into an
+// entry they would both appear in every desk diff and could disagree with the table,
+// so the loader stamps them instead. That is also what keeps the round-trip in
+// tests/voice-source.js comparing the same runtime shape.
+export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak', 'factory', 'user'] } = {}) {
   const v = { ...preset };
   // Derived at load — from the table an entry sits in, and from the measured blocks —
   // so none of it is written into the entry itself. The exception is `kind` in the

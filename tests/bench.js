@@ -216,6 +216,8 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
     mixer: {},
     previewNote(lane, freq, { at }) { times.push(Number((now + at).toFixed(6))); return true; },
   };
+  let previewCuts = 0;
+  fakeAudio.stopPreview = () => { previewCuts++; };
   const player = createPatternPlayer({
     Audio: fakeAudio, bpm: () => 120, root: () => 110,
   });
@@ -247,6 +249,17 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
       `${p.id} schedules strictly forwards — two notes at one instant is a thrown assert, not a chord`);
     assert(times.every((t) => t >= 100), `${p.id} never schedules into the past`);
   }
+
+  // A running figure keeps its beat, but switching presets must cut the old bench
+  // output before the next pump schedules the new voice. Re-pointing at that same
+  // voice is not a switch and must not keep clearing it.
+  now = 280;
+  player.start('roundMono');
+  player.setVoice('kickDeep');
+  assert(previewCuts === 1, 'switching an active audition cuts the old preset once');
+  player.setVoice('kickDeep');
+  assert(previewCuts === 1, 'pointing at the already-playing preset does not cut it again');
+  player.stop();
 
   // The catch-up: a tab that was away, so every overdue step wants the same "now".
   // Before MIN_GAP this filled the console with Tone's strictly-greater assert.

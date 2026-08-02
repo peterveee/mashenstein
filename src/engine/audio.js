@@ -4,7 +4,7 @@ import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
 import { createMixer, dbToGain } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
-  laneList, laneUsesEcho, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
+  laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen,
 } from './lanes.js';
 import { VoiceRack } from './voices.js';
@@ -208,14 +208,14 @@ class AudioSys {
     this.offline = false;  // true when driven by an OfflineAudioContext (render tools)
     this.noiseSeed = null; // set for offline renders; null = Math.random()
     // Shared delay, as it has always been tuned: dotted eighth, 0.35 feedback,
-    // 2800Hz damping, and the bank's own echoLevel unscaled.
+    // 2800Hz damping. How MUCH of a channel reaches it is the channel's send and
+    // nothing else — see the echo bus in ensure().
     // Loop region, in absolute 16th-steps. null = play the whole song form.
     this.loopStart = null;
     this.loopEnd = null;
     this.delayDivision = 0.75;
     this.delayFeedback = 0.35;
     this.delayTone = 2800;
-    this.echoLevelScale = 1;
     this.master = null; this.sfxGain = null; this.musicGain = null;
     // Built on the first portal cue and never rebuilt — see portalVerbSend().
     this.portalSend = null; this.portalVerb = null;
@@ -228,6 +228,9 @@ class AudioSys {
     // it is started, so the only handle on a note that is still ringing is the node
     // it is connected to. Cleared and re-made per song by setBank.
     this._laneGates = new Map();
+    // Preset-bench notes get their own gates so changing an audition never cuts a
+    // song lane. They belong to this context just like the song gates do.
+    this._benchGates = new Map();
     this.songTrim = null;
     this.musicTrim = 1;
     this.pendingStartDelay = 0;
@@ -293,6 +296,9 @@ class AudioSys {
     this.captureEnabled = true;
     this._revTimer = null;   // interval for reverse-chunk scheduling
     this._revSources = [];   // active reversed BufferSources
+    // A mixer panic is a momentary emergency cut, not a saved mute. The next
+    // deliberate play/preview/SFX action opens the buses again.
+    this.panicked = false;
   }
 
   // `ctxOverride` lets the offline render tools hand in an OfflineAudioContext so
@@ -354,14 +360,23 @@ class AudioSys {
     this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.songTrim);
     // Lane gates belong to the context that made them; a rebuilt graph starts with none.
     this._laneGates.clear();
+    this._benchGates.clear();
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
     // YMCK-style space: tempo-synced dotted-eighth echo. echoBus is a parallel
-    // wet send — only melodic lanes (bass/lead/leadHarm/twinkle/chords, via
-    // play()'s echo flag) route into it, so percussion and vocal one-shots
-    // (kick/hats/snare/clap/vox/shout) stay dry regardless of echoLevel,
-    // instead of relying on the highpass below to filter them out after the
-    // fact (it doesn't — clap/vox sit well above 500Hz and used to leak
-    // through). The highpass still keeps stray low end from muddying repeats.
+    // wet send, and every channel reaches it through its own DELAY send on the
+    // mixer — nothing else decides how much goes.
+    //
+    // It used to be scaled here, twice over: the bus sat at 0.28 and every
+    // scheduled step re-aimed it at the playing section's `echoLevel`. That made a
+    // channel's send a RELATIVE control over a number the desk never showed — a
+    // section saying `echoLevel: 0` swallowed the send whole, and the same send
+    // was worth 4x more in one section of a song than another. Measured on
+    // plumber: kick at DELAY SEND 2.00 rendered 3.9e-8 through its opening section
+    // and 3.3e-3 through its last. So the bus is unity and the send is the whole
+    // truth: full send on the kick is full send on the lead, in every bar.
+    //
+    // The highpass below stays. It is not a level control — it keeps stray low end
+    // out of the repeats so the echo does not muddy the mix.
     //
     // Gain staging: the send used to tap musicGain (post-fader), so echo was
     // implicitly scaled by the music volume. echoBus taps the lane gains
@@ -370,12 +385,12 @@ class AudioSys {
     // follows the music volume setting. (No cycle: musicGain doesn't feed
     // echoBus.)
     this.echoBus = this.ctx.createGain(); this.echoBus.gain.value = 1;
-    this.echoSend = this.ctx.createGain(); this.echoSend.gain.value = 0.28;
+    this.echoSend = this.ctx.createGain(); this.echoSend.gain.value = 1;
     this.echoHp = this.ctx.createBiquadFilter(); this.echoHp.type = 'highpass'; this.echoHp.frequency.value = 500;
     // One second, and deliberately not more — see growDelayLine, which is where a
     // longer division gets the buffer it needs.
     this.delay = this.ctx.createDelay(1.0); this.delay.delayTime.value = 0.32;
-    this.delayLp = this.ctx.createBiquadFilter(); this.delayLp.type = 'lowpass'; this.delayLp.frequency.value = 2800;
+    this.delayLp = this.ctx.createBiquadFilter(); this.delayLp.type = 'lowpass'; this.delayLp.frequency.value = 4500;
     this.delayFb = this.ctx.createGain(); this.delayFb.gain.value = 0.35;
     this.echoBus.connect(this.echoSend);
     this.echoSend.connect(this.echoHp);
@@ -384,11 +399,13 @@ class AudioSys {
     this.delayLp.connect(this.delayFb);
     this.delayFb.connect(this.delay);
     this.delayLp.connect(this.songTrim);
-    // Per-lane channel strips. Built here, before the capture recorder taps master
-    // (createMixer re-routes master through the trim and limiter, and a disconnect()
-    // at that point must not take the recorder's tap with it).
+    // Per-lane channel strips. The mixer owns the song-side master chain, so pass it
+    // the music bus and return that chain into the shared global master. SFX stays
+    // directly on the global master; a song's -19dB title trim must not attenuate UI
+    // cues or tutorial feedback.
     this.mixer = createMixer(this.ctx, {
-      musicBus: this.musicBus, echoBus: this.echoBus, master: this.master,
+      musicBus: this.musicBus, echoBus: this.echoBus,
+      master: this.musicGain, destination: this.master,
       // The original echo's return leg: the mixer splices its EQ and level in
       // between these two, so Delay 1 gets the same controls as the new auxes.
       songTrim: this.songTrim, delayLp: this.delayLp,
@@ -449,14 +466,14 @@ class AudioSys {
   // was fixed: a dotted eighth, 0.35 feedback, 2800Hz damping. Those remain the
   // defaults; a song's mix can move them.
   //
-  // `level` is a SCALE on whatever the bank asked for, not a replacement, so a
-  // section that pushes its own echoLevel for a payoff keeps that shape — the same
-  // relative-trim rule the lane faders follow.
-  setDelay({ division, feedback, tone, level } = {}) {
+  // No `level` here any more. It scaled the echo BUS, on top of the section's own
+  // `echoLevel` — two hidden multipliers between a send and what you heard. How loud
+  // the delay comes back is the aux return's level on the desk, and how much goes in
+  // is the channel's send: one control each, both visible.
+  setDelay({ division, feedback, tone } = {}) {
     if (division != null) this.delayDivision = division;
     if (feedback != null) this.delayFeedback = Math.max(0, Math.min(0.95, feedback));
-    if (tone != null) this.delayTone = Math.max(200, Math.min(16000, tone));
-    if (level != null) this.echoLevelScale = Math.max(0, level);
+    if (tone != null) this.delayTone = Math.max(200, Math.min(this.ctx.sampleRate / 2, tone));
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     if (this.delay) {
@@ -553,6 +570,63 @@ class AudioSys {
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.levels.master, this.ctx.currentTime, 0.02);
   }
 
+  /**
+   * Cut every live output immediately.
+   *
+   * This is intentionally stronger than muting the master: the desk can have
+   * long notes, preview envelopes, echo tails and a MIDI key whose note-off
+   * never arrived. Lane gates and the preset rack are dropped so music cannot
+   * keep scheduling or resume from an old held voice, while the buses stay in
+   * place for the next explicit sound the user asks for.
+   */
+  panic() {
+    this.panicked = true;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const cut = (node) => {
+      if (!node?.gain) return;
+      node.gain.cancelScheduledValues(t);
+      node.gain.setValueAtTime(0, t);
+    };
+    cut(this.master);
+    cut(this.musicGain);
+    cut(this.sfxGain);
+    cut(this.musicBus);
+    cut(this.starBus);
+    cut(this.songTrim);
+    cut(this._rewindOut);
+    this._cutLaneGates();
+    if (this.voices) { this.voices.dispose(); this.voices = null; }
+    this._percPending.length = 0;
+    this._percHeard.length = 0;
+    if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
+    this._revSources = [];
+    // The realtime scheduler must not recreate gates after the cut. `setBank`
+    // will force a clean re-bank because sourceBank is cleared as well.
+    this.bank = null;
+    this.sourceBank = null;
+    this.nextTime = t + 0.1;
+  }
+
+  /** Re-open buses after a panic when a new deliberate sound is requested. */
+  resumeAfterPanic() {
+    if (!this.panicked) return;
+    this.panicked = false;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const restore = (node, value) => {
+      if (!node?.gain) return;
+      node.gain.cancelScheduledValues(t);
+      node.gain.setValueAtTime(value, t);
+    };
+    restore(this.master, this.muted ? 0 : this.levels.master);
+    restore(this.musicGain, this.levels.music);
+    restore(this.sfxGain, this.levels.sfx);
+    restore(this.musicBus, this.rewindMode ? 0.0001 : (this.starMode ? 0.32 : 1));
+    restore(this.starBus, this.starMode ? 1.5 : 0);
+    if (this._rewindOut) restore(this._rewindOut, this.muted ? 0 : this.levels.master);
+  }
+
   setVolumes(volumes = {}) {
     for (const key of ['master', 'music', 'sfx']) {
       if (Number.isFinite(volumes[key])) this.levels[key] = Math.max(0, Math.min(1, volumes[key]));
@@ -645,7 +719,10 @@ class AudioSys {
     src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
     // A quiet send into the arcade echo makes the blast occupy the room, while
     // the dry SFX path stays restrained enough not to jump over the title music.
-    const echo = this.ctx.createGain(); echo.gain.value = 0.14;
+    // 0.039 is the 0.14 this was tuned at, times the 0.28 the echo bus used to sit
+    // at: the bus is unity now, and this is the one send into it that is not a
+    // channel on the desk, so it carries its own trim to sound exactly as it did.
+    const echo = this.ctx.createGain(); echo.gain.value = 0.039;
     g.connect(echo); echo.connect(this.echoBus);
     src.start(t); src.stop(t + 1.55);
 
@@ -1142,6 +1219,7 @@ class AudioSys {
   }
 
   sfx(name, opt = {}) {
+    this.resumeAfterPanic();
     if (!this.ctx) return;
     this.cueGain = SFX_TRIM[name] ?? 1;
     const combo = opt.combo || 0;
@@ -1347,6 +1425,18 @@ class AudioSys {
     return gate;
   }
 
+  /** The dry/wet gates used only by the preset library's bench. */
+  _benchGate(key) {
+    if (!this.ctx || !this.musicBus || !this.echoBus) return null;
+    let gate = this._benchGates.get(key);
+    if (gate) return gate;
+    const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(this.musicBus);
+    const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(this.echoBus);
+    gate = { dry, wet };
+    this._benchGates.set(key, gate);
+    return gate;
+  }
+
   /**
    * Stop every note this song still has sounding. The other half of setBank's mute.
    *
@@ -1366,6 +1456,22 @@ class AudioSys {
     this._laneGates.clear();
   }
 
+  _cutBenchGates() {
+    for (const gate of this._benchGates.values()) {
+      gate.dry.gain.value = 0;
+      gate.wet.gain.value = 0;
+      try { gate.dry.disconnect(); } catch { /* already gone */ }
+      try { gate.wet.disconnect(); } catch { /* already gone */ }
+    }
+    this._benchGates.clear();
+  }
+
+  /** Stop the preset-library audition without touching the song or its strips. */
+  stopPreview() {
+    this._cutBenchGates();
+    this.voices?.stopPreview?.();
+  }
+
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
@@ -1373,6 +1479,8 @@ class AudioSys {
     // the saved voice overrides merged, and comparing against that copy would make
     // every re-selection look like a change.
     if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) return;
+    this.resumeAfterPanic();
+    this.stopPreview();
     this.sourceBank = bank;
     // A new song has its own arrangement, or none. `undefined` means the ordinary
     // game path should read the arrangement file; the desk passes its draft (or an
@@ -1600,20 +1708,21 @@ class AudioSys {
       // written into src/data/mix.js as ordinary sends when this changed, so they
       // sound exactly as they did and are editable where you can see them.
       //
-      // laneUsesEcho still decides where the signal is TAPPED: lanes whose voices
-      // tap the wet node keep doing that (pre-fader, as the echo always was), and the
-      // rest route the whole lane in, so every strip's send is live either way.
+      // Nor is there a rule about where the signal is TAPPED any more: the send takes
+      // the whole lane on every strip (see makeStrip), so a channel reaches the delay
+      // because its send is up and for no other reason. It used to tap only the voices
+      // that set their own echo flag, which made the knob dead on a dry lane and dead
+      // on any preset that declares itself dry — a control that silently does nothing.
       // laneList, not LANES: a layer needs a strip of its own, and it arrives with the
       // mix rather than with the engine, so this is the first moment it can be built.
       for (const { key } of laneList(bank)) {
         const strip = this.mixer.ensureLane(key);
         if (!strip) continue;
-        strip.setDryTap(bank ? !laneUsesEcho(bank, key) : false);
         strip.setSend({ delay: 0 });
       }
       // The rack is already back at defaults from reset() above; retune the
       // tempo-synced ones for this song's bpm, then lay the saved settings over.
-      this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800, level: 1 });
+      this.setDelay({ division: 0.75, feedback: 0.35, tone: 2800 });
       this.mixer.retune(bank?.bpm || this.bpm);
       if (entry) {
         this.mixer.setMasterTrim(entry.master || 0);
@@ -1941,6 +2050,7 @@ class AudioSys {
         // thing anybody has said about it. `len` is a number, or one per chord tone;
         // the rack takes the array as it takes the chord. Absent, this is the
         // expression that was always here.
+        //
         dur: noteSeconds(len, b[seam.durKey] ?? v.dur, spb, durScale, v.fixedLength),
         // Derived, never hand-set: every synth peaks somewhere different, so the
         // level is the lane's own target scaled by this preset's measured peak. A
@@ -1963,6 +2073,11 @@ class AudioSys {
       });
     }
     return true;
+  }
+
+  /** Release a note sounded by previewNote — the note-off half of a key press. */
+  releasePreviewNote(laneKey, freq) {
+    if (this.voices) this.voices.releasePreview(laneKey, freq);
   }
 
   /**
@@ -1990,6 +2105,7 @@ class AudioSys {
    * On a melodic lane it is a rest, and nothing sounds.
    */
   previewNote(laneKey, freq, { bank = null, at = 0.02 } = {}) {
+    this.resumeAfterPanic();
     const src = bank || this.bank;
     if (!this.ctx || !src || !laneKey) return false;
     const one = soloBank(src, laneKey, freq, PREVIEW_STEP);
@@ -2164,9 +2280,11 @@ class AudioSys {
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + delta;
       const lane = (key) => {
-        const strip = this.mixer && this.mixer.lane(key);
-        const gate = this._laneGate(key, strip ? strip.dry : this.musicBus,
-          strip ? strip.wet : this.echoBus);
+        const strip = this._previewing ? null : (this.mixer && this.mixer.lane(key));
+        const gate = this._previewing
+          ? this._benchGate(key)
+          : this._laneGate(key, strip ? strip.dry : this.musicBus,
+            strip ? strip.wet : this.echoBus);
         const baseDry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
         const baseWet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
         laneOffset = offsetFor(key);
@@ -2248,11 +2366,11 @@ class AudioSys {
         if (echo) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
       };
-      // Sections may push the echo send harder (e.g. an "echoing chords" payoff).
-      if (this.echoSend) {
-        const lvl = (b.echoLevel != null ? b.echoLevel : 0.28) * this.echoLevelScale;
-        this.echoSend.gain.setTargetAtTime(lvl, this.nextTime, 0.08);
-      }
+      // The echo bus is not touched per bar any more. A section used to push it with
+      // its own `echoLevel`, which is why a mix's delay sends were only ever worth
+      // what the section said — see the note over echoBus in ensure(). `echoLevel`
+      // survives in the banks as inert song data; the sends carry the same shape,
+      // where the desk can see them.
       if (b.bass) {
         lane('bass');
         // Dry by default (the highpass strips most bass fundamentals anyway,

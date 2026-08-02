@@ -77,32 +77,32 @@ export const mix = {
   lanes: {
     lead: {
       send: {
-        delay: 1,
+        delay: 0.2,
       },
     },
     leadHarm: {
       send: {
-        delay: 1,
+        delay: 0.2,
       },
     },
     twinkle: {
       send: {
-        delay: 1,
+        delay: 0.2,
       },
     },
     chords: {
       send: {
-        delay: 1,
+        delay: 0.2,
       },
     },
     organChords: {
       send: {
-        delay: 1,
+        delay: 0.2,
       },
     },
     rim: {
       send: {
-        delay: 1,
+        delay: 0.06,
       },
     },
   },

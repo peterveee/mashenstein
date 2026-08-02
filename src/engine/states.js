@@ -174,14 +174,14 @@ function drawTransition(ctx, amount) {
   ctx.restore();
 }
 
-export function drawState(ctx) {
+export function drawState(ctx, renderAlpha = 0) {
   // Chrome (touch buttons) is committed centrally, every frame, regardless of
   // which state is current. A state that wants buttons declares them via
   // paintChrome during its draw; commitChromeFrame then repaints only if their
   // signature changed since last frame (an empty frame clears once, then
   // no-ops), so active gameplay sees no flicker and idle screens no churn.
   beginChromeFrame();
-  current && current.draw && current.draw(ctx);
+  current && current.draw && current.draw(ctx, renderAlpha);
   commitChromeFrame();
   if (fade > 0) {
     if (transitionStyle === 'fade') {

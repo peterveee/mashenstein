@@ -15,7 +15,7 @@
 // So: the catalogue with no song in front of it. Pick any preset, hear it on a bench,
 // edit it with the same editor, file it with the same Save.
 
-import { VOICES, VOICE_CATEGORIES, KIT_CATEGORIES, seamFor } from '../src/data/voices.js';
+import { VOICES, VOICE_CATEGORIES, isKitVoice, seamFor } from '../src/data/voices.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -70,9 +70,10 @@ export function foldIcon(dir = 'right') {
  * Auditioning on the lane the measurement was taken on is the one place where what you
  * hear and what the number claims are the same statement.
  *
- * A drum preset goes on the lane its category names, because a percussion lane is the
- * only kind that carries `noteKey` — the pitch a drum is struck at. A kick preset on a
- * melodic lane has no note to be struck at and simply does not sound.
+ * A drum preset goes on its measured `homeLane`, because `Audition` deliberately mixes
+ * drums and pitched basses. A percussion lane is the only kind that carries `noteKey`
+ * — the pitch a drum is struck at. A kick preset on a melodic lane has no note to be
+ * struck at and simply does not sound.
  *
  * `rim` is never a destination. It is the one kit lane that always taps the echo bus
  * rather than opting in — see ECHO_OPT_IN in src/engine/lanes.js — so a rim bench would
@@ -83,8 +84,14 @@ export function foldIcon(dir = 'right') {
 const BENCH_LANES = {
   Kicks: 'kick', Snares: 'snare', Claps: 'clap', Hats: 'hats', Percussion: 'hats',
 };
-export const benchLane = (voice) => BENCH_LANES[voice?.category] || 'bass';
-export const benchIsKit = (voice) => KIT_CATEGORIES.includes(voice?.category);
+export const benchLane = (voice) => {
+  // Audition is intentionally mixed: drum entries carry their measured home lane,
+  // while pitched entries fall through to the bass bench. Rim remains on the dry hats
+  // bench because the rim lane is permanently echo-connected.
+  const lane = voice?.homeLane || BENCH_LANES[voice?.category] || 'bass';
+  return lane === 'rim' ? 'hats' : lane;
+};
+export const benchIsKit = (voice) => isKitVoice(voice);
 
 /** A2 — the note tools/mixer.js measures a preset at, so the bench opens where it did. */
 export const BENCH_NOTE = 110;
@@ -282,7 +289,16 @@ export const PATTERNS = [
   { id: 'offbeat', label: 'Off-beat', cell: [null, [0]], title: 'Every other step — a backbeat at 1/4, off-beat hats at 1/8' },
   { id: 'octaves', label: 'Octaves', cell: [[0], [12]], title: 'The note and the octave above it, alternating' },
   { id: 'fifths', label: 'Fifths', cell: [[0], [7]], title: 'The note and the fifth above it, alternating' },
-  { id: 'arp', label: 'Arpeggio', cell: [[0], [4], [7], [12], [7], [4]], title: 'A major triad, up and back down' },
+  { id: 'arp', label: 'Arpeggio', cell: [
+    // major, up 2 octaves and back down
+    [0], [4], [7], [12], [16], [19], [24], [19], [16], [12], [7], [4],
+    // minor, up 2 octaves and back down
+    [0], [3], [7], [12], [15], [19], [24], [19], [15], [12], [7], [3],
+    // dominant 7th, up 2 octaves and back down
+    [0], [4], [7], [10], [12], [16], [19], [22], [24], [22], [19], [16], [12], [10], [7], [4],
+    // major 7th, up 2 octaves and back down
+    [0], [4], [7], [11], [12], [16], [19], [23], [24], [23], [19], [16], [12], [11], [7], [4],
+  ], title: 'Major, minor, 7th and Maj7 arpeggios — up two octaves and back down' },
   { id: 'chord', label: 'Chord', cell: [[0, 4, 7]], title: 'A major triad, struck together' },
   // ---- progressions
   //
@@ -290,27 +306,44 @@ export const PATTERNS = [
   // is sweet on the tonic honks on the fourth, a release that is tight on one root
   // smears the moment the harmony moves under it. One chord cannot tell you that.
   //
-  // `slow` says a progression wants a bar per chord — see setPattern. Both are major
-  // triads on their degree, which is what these two progressions are in every song that
-  // has ever used them.
+  // `slow` says a progression wants a bar per chord — see setPattern. Triads are all
+  // major; the scale quantiser spells them into the chosen key. Repeated entries hold
+  // the chord for that many bars, so a progression can breathe rather than ticking
+  // through one chord per bar.
   {
-    id: 'I-IV-V',
-    label: 'I – IV – V',
+    id: 'I-IV-V-IV',
+    label: 'I – IV – V – IV',
     slow: true,
-    cell: [triad(0), triad(5), triad(7)],
-    title: 'The three-chord progression, a bar each. Tests a preset against a moving root'
-      + ' — a filter that is sweet on the tonic can honk on the fourth.',
+    cell: [triad(0), triad(0), triad(5), triad(5), triad(7), triad(7), triad(5), triad(5)],
+    title: 'The four-chord rock staple, two bars each — eight bars total.',
   },
   {
-    id: 'I-V-bVII',
-    label: 'I – V – ♭VII',
+    id: 'I-V-vi-IV',
+    label: 'I – V – vi – IV',
     slow: true,
-    // ♭VII, ten semitones up, not the leading-tone triad on the major seventh: the
-    // diminished vii° is a passing chord nobody writes a progression out of, and
-    // "I V VII" in anything with guitars on it means the flat seven.
-    cell: [triad(0), triad(7), triad(10)],
-    title: 'The rock cadence, a bar each — the ♭VII, ten semitones up, not the'
-      + ' diminished chord on the major seventh',
+    cell: [triad(0), triad(0), triad(7), triad(7), triad(9), triad(9), triad(5), triad(5)],
+    title: 'The pop progression, two bars each — eight bars total.',
+  },
+  {
+    id: 'I-I-ii-iii',
+    label: 'I – I – ii – iii',
+    slow: true,
+    cell: [triad(0), triad(0), triad(0), triad(0), triad(2), triad(2), triad(4), triad(4)],
+    title: 'Four bars on the tonic, then two each walking up — 1111 1111 1111 1111 2222 2222 3333 3333.',
+  },
+  {
+    id: 'I-V-bVII-bVII',
+    label: 'I – V – ♭VII – ♭VII',
+    slow: true,
+    cell: [triad(0), triad(0), triad(7), triad(7), triad(10), triad(10), triad(10), triad(10)],
+    title: 'The rock cadence, flat seven held for four bars — eight bars total.',
+  },
+  {
+    id: 'ii-V-I-I',
+    label: 'ii – V – I – I',
+    slow: true,
+    cell: [triad(2), triad(2), triad(7), triad(7), triad(0), triad(0), triad(0), triad(0)],
+    title: 'The jazz turnaround — four bars on the tonic to hear the decay.',
   },
 ];
 
@@ -359,9 +392,12 @@ export function createPatternPlayer({
     if (timer != null) clearInterval(timer);
     timer = null;
     ix = 0;
-    // What is already queued still sounds — those notes are scheduled and gone. But
-    // nothing new has to line up behind a figure that has been stopped, and the first
-    // key pressed after hitting stop should be immediate rather than held back by the
+    // Cut the notes already queued on the bench pool too — they were scheduled ahead
+    // of the clock, and a stop that only halts the scheduler still lets the lookahead
+    // play out. The pattern stops being heard the instant you ask it to.
+    Audio?.stopPreview?.();
+    // Nothing new must line up behind the stopped figure either, and the first key
+    // pressed after hitting stop should be immediate rather than held back by the
     // tail of it. See benchReset.
     benchReset();
     onStep(null);
@@ -455,8 +491,14 @@ export function createPatternPlayer({
     start,
     stop,
     toggle: (id) => (running() ? stop() : start(id)),
-    /** Point it at another preset without dropping the beat — the A/B of sound design. */
-    setVoice: (id) => { voiceId = id; },
+    /** Point it at another preset, cutting the old bench before the next note. */
+    setVoice: (id) => {
+      if (id !== voiceId && running()) {
+        Audio.stopPreview?.();
+        benchReset();
+      }
+      voiceId = id;
+    },
     get voice() { return voiceId; },
     get pattern() { return pattern; },
     get rate() { return rate; },
@@ -473,7 +515,7 @@ export function createPatternPlayer({
     setPattern: (id) => {
       pattern = PATTERN_BY_ID[id] || pattern;
       ix = 0;
-      if (pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
+      if (pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['4'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
     /** Audition choices are transient and must not masquerade as song state. */
@@ -533,15 +575,22 @@ export function createVoiceLibrary({
   // because what lives in these slots is the desk's, not the library's: a folded
   // keyboard must stop catching keystrokes, and an unfolded one has to be built.
   onCollapse = () => {},
-}) {
+  }) {
   let slots = null;
   // Put away, not shut. Closing a region here used to tear the panel down — the editor
   // forgot which preset it was on, the keyboard went back to the desk — which made the
   // ✕ a much bigger act than it looks like on a workspace you are living in. These two
   // just fold: what is in them keeps its state and comes back untouched.
+  const FOLD_KEY = 'mash-mixer-voicelib-folds';
   const collapsed = { edit: false, keys: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLD_KEY) || 'null');
+    collapsed.edit = saved?.edit === true;
+    collapsed.keys = saved?.keys === true;
+  } catch { /* clean defaults */ }
   function setCollapsed(which, on) {
     collapsed[which] = !!on;
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(collapsed)); } catch { /* no storage */ }
     build();
     onCollapse(which, collapsed[which]);
   }
@@ -566,9 +615,17 @@ export function createVoiceLibrary({
     return rail;
   }
   const POS_KEY = 'mash-mixer-voicelib-pos';
+  const LIBRARY_OPEN_KEY = 'mash-mixer-library-open';
   let query = '';
   let kind = 'all';
+  let source = 'all';
   let picked = null;
+  let searchInput = null;
+  // `picked` is the row the user chose. A library row opens as a hidden editor draft,
+  // though, and the bench must hear that draft rather than the immutable source row.
+  // Keep the two ids separate so the list can still mark the source while every sound
+  // path follows the thing whose controls are actually changing.
+  let heard = null;
   let synth = 'any';        // which Tone class (or noise/drum construction) to show
   // Octaves away from the preset's own root. A bass auditioned where a lead sits tells
   // you nothing about either, and the note a preset was MEASURED at is the bottom of a
@@ -590,7 +647,8 @@ export function createVoiceLibrary({
    * struck at its lane's own pitch, which is a property of the drum and not of any key.
    */
   const shiftedRoot = () => {
-    const v = VOICES[picked];
+    const id = editing?.() || heard || picked;
+    const v = VOICES[id] || VOICES[picked];
     let hz = benchRoot(v);
     const sc = scale();
     if (sc && sc.steps && !benchIsKit(v)) {
@@ -613,8 +671,13 @@ export function createVoiceLibrary({
 
   const KINDS = [
     { id: 'all', label: 'All', keep: () => true },
-    { id: 'pitched', label: 'Pitched', keep: (v) => !KIT_CATEGORIES.includes(v.category) },
-    { id: 'drums', label: 'Drums', keep: (v) => KIT_CATEGORIES.includes(v.category) },
+    { id: 'pitched', label: 'Pitched', keep: (v) => !isKitVoice(v) },
+    { id: 'drums', label: 'Drums', keep: (v) => isKitVoice(v) },
+  ];
+  const SOURCES = [
+    { id: 'all', label: 'All', keep: () => true },
+    { id: 'library', label: 'Library', keep: (v) => !!v.factory },
+    { id: 'user', label: 'My presets', keep: (v) => !!v.user },
   ];
 
   // ---- what a preset is BUILT from -------------------------------------------
@@ -651,7 +714,7 @@ export function createVoiceLibrary({
   function synthsPresent() {
     const n = {};
     for (const v of Object.values(VOICES)) {
-      if (v.kind === 'engine' || v.songLocal) continue;
+      if (v.kind === 'engine' || v.songLocal || v.draft) continue;
       const s = synthOf(v);
       n[s] = (n[s] || 0) + 1;
     }
@@ -673,6 +736,7 @@ export function createVoiceLibrary({
   function grouped() {
     const q = query.trim().toLowerCase();
     const keep = KINDS.find((k) => k.id === kind).keep;
+    const keepSource = SOURCES.find((s) => s.id === source).keep;
     // The synth is searchable as well as filterable: typing "fm" should find the FM
     // presets, which is what anyone who knows the catalogue would expect it to do.
     const hit = (v) => !q
@@ -680,19 +744,25 @@ export function createVoiceLibrary({
     const bySynth = (v) => synth === 'any' || synthOf(v) === synth;
     return VOICE_CATEGORIES
       .map((c) => [c, Object.values(VOICES).filter((v) => v.category === c
-        && v.kind !== 'engine' && !v.songLocal && keep(v) && bySynth(v) && hit(v))])
+        && v.kind !== 'engine' && !v.songLocal && !v.draft && keep(v) && keepSource(v)
+        && bySynth(v) && hit(v))])
       .filter(([, list]) => list.length);
   }
 
   function pick(id) {
+    const scrollTop = el.querySelector('.vlresults')?.scrollTop || 0;
+    const opened = edit(id);
+    if (!opened) return;
     picked = id;
-    if (!edit(id)) return;
+    heard = typeof opened === 'string' ? opened : (editing?.() || id);
     // Follows without stopping. Auditioning one preset after another against the same
     // figure is how you tell two of them apart, and a player that stopped on every
     // click would make that four clicks per comparison instead of one.
-    player.setVoice(id);
+    player.setVoice(heard);
     onPick(id);
     build();
+    const results = el.querySelector('.vlresults');
+    if (results) results.scrollTop = scrollTop;
   }
 
   function build() {
@@ -705,8 +775,8 @@ export function createVoiceLibrary({
     const title = document.createElement('span');
     title.className = 'vltitle';
     title.textContent = 'Preset library';
-    title.title = 'Every preset in src/data/voices.js. This is the library itself, not a'
-      + ' choice for a channel — nothing here changes any song.';
+    title.title = 'Built-in Library presets are read-only; My presets are editable. This'
+      + ' browser is not a choice for a channel — nothing here changes any song.';
 
     const chips = document.createElement('div');
     chips.className = 'voicekinds';
@@ -721,12 +791,28 @@ export function createVoiceLibrary({
       chips.append(c);
     }
 
+    const sources = document.createElement('div');
+    sources.className = 'voicesources';
+    for (const s of SOURCES) {
+      const c = document.createElement('button');
+      c.className = 'voicekind' + (s.id === source ? ' on' : '');
+      c.textContent = s.label;
+      c.title = s.id === 'library'
+        ? 'Built-in reference presets. They are read-only; duplicate one to edit it.'
+        : s.id === 'user'
+          ? 'Your editable presets'
+          : 'Built-in and user presets';
+      c.onclick = () => { source = s.id; build(); };
+      sources.append(c);
+    }
+
     const search = document.createElement('input');
     search.className = 'voicesearch';
     search.type = 'search';
     search.placeholder = 'Search presets…';
     search.value = query;
     search.setAttribute('aria-label', 'Search presets');
+    searchInput = search;
     search.addEventListener('input', () => { query = search.value; drawList(); });
     // Escape clears the filter first and closes the window only when it is already
     // empty — one key, and it never throws away a search you were still reading.
@@ -763,7 +849,10 @@ export function createVoiceLibrary({
     close.title = 'Close the library';
     close.onclick = () => show(false);
 
-    head.append(title, chips, syn, search, close);
+    // Keep the search with the library controls. It is the last field before the
+    // close button, so the close stays at the far edge instead of looking like part
+    // of the filter group.
+    head.append(title, sources, chips, syn, search, close);
 
     const results = document.createElement('div');
     results.className = 'vlresults';
@@ -802,18 +891,28 @@ export function createVoiceLibrary({
         body.className = 'vlcatlist';
         for (const v of list) {
           const btn = document.createElement('button');
-          btn.className = v.id === editing() ? 'on' : '';
+          btn.className = v.id === editing() || v.id === picked ? 'on' : '';
           const n = document.createElement('span');
           n.textContent = v.label;
+          const origin = document.createElement('span');
+          origin.className = 'vsource';
+          origin.textContent = v.user ? 'User' : 'Library';
           const k = document.createElement('span');
           k.className = 'vkind';
           k.textContent = synthLabel(v);
           btn.title = `${v.label}${v.note ? ` — ${v.note}` : ''}`
             + `\n\nBuilt from: ${synthOf(v)}`
-            + '\n\nClick to edit it and put it on the bench.'
+            + (v.user
+              ? '\n\nClick to edit your preset.'
+              : '\n\nLibrary preset — click to duplicate it before editing.')
             + '\nRight-click to rename it or file it elsewhere.';
-          btn.append(n, k);
-          btn.onclick = () => pick(v.id);
+          btn.append(n, origin, k);
+          btn.onclick = (ev) => {
+            // The first click can select/audition while the editor is hidden. A
+            // double-click is the explicit gesture that brings that editor back.
+            if (ev.detail >= 2 && collapsed.edit) setCollapsed('edit', false);
+            pick(v.id);
+          };
           // Rename and refile without going through the editor's controls first. It
           // still ENDS in the editor's save sheet: that is the one place a preset is
           // written to voices.js, and it measures the sound on the way, so a second
@@ -821,7 +920,7 @@ export function createVoiceLibrary({
           btn.oncontextmenu = (ev) => {
             ev.preventDefault();
             pick(v.id);
-            if (editing() === v.id) file();
+            if (v.user && editing() === v.id) file();
           };
           body.append(btn);
         }
@@ -893,7 +992,8 @@ export function createVoiceLibrary({
   function buildBench() {
     const bar = document.createElement('div');
     bar.className = 'vlbench';
-    const v = VOICES[picked];
+    const id = editing?.() || heard || picked;
+    const v = VOICES[id] || VOICES[picked];
 
     const what = document.createElement('span');
     what.className = 'vlbenchwhat' + (v ? '' : ' none');
@@ -950,7 +1050,10 @@ export function createVoiceLibrary({
     once.textContent = 'Hit';
     once.title = 'Sound it once';
     once.disabled = !picked;
-    once.onclick = () => benchPlay(Audio, picked, shiftedRoot(), { bpm: bpm() });
+    once.onclick = () => {
+      const id = editing?.() || heard || picked;
+      benchPlay(Audio, id, shiftedRoot(), { bpm: bpm() });
+    };
 
     const play = document.createElement('button');
     play.className = 'vlplay' + (player.running() ? ' on' : '');
@@ -968,7 +1071,11 @@ export function createVoiceLibrary({
           + ' follows the song’s tempo from there'
         : 'Play the pattern, so the sound keeps going while you change it';
     play.disabled = !picked;
-    play.onclick = () => { player.toggle(picked); build(); };
+    play.onclick = () => {
+      const id = editing?.() || heard || picked;
+      player.toggle(id);
+      build();
+    };
 
     const pat = document.createElement('select');
     pat.className = 'fxsel vlpat';
@@ -1037,11 +1144,13 @@ export function createVoiceLibrary({
 
   function show(on) {
     el.classList.toggle('show', on);
+    try { localStorage.setItem(LIBRARY_OPEN_KEY, on ? '1' : ''); } catch { /* no storage */ }
     if (!on) {
       // The pattern is a sound, and a sound whose window has gone is a sound with no
       // control left to stop it.
       player.stop();
       picked = null;
+      heard = null;
       onClose();
       return;
     }
@@ -1050,6 +1159,31 @@ export function createVoiceLibrary({
     try { pos = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch { pos = null; }
     const r = el.getBoundingClientRect();
     place(pos?.x ?? Math.max(4, (innerWidth - r.width) / 2), pos?.y ?? 70);
+    requestAnimationFrame(() => {
+      if (isShown()) searchInput?.focus({ preventScroll: true });
+    });
+  }
+
+  /**
+   * The transport moved: say whether pressing play would now join the song.
+   *
+   * In place rather than a repaint. Starting a song must not rebuild this window —
+   * the search box is in it, and a rebuild mid-word takes the caret with it — and
+   * one button's class and tooltip is the whole of what changed.
+   */
+  function syncChanged() {
+    const btn = isShown() && el.querySelector('.vlplay');
+    if (!btn) return;
+    const locked = !!sync();
+    btn.classList.toggle('on', player.running());
+    btn.classList.toggle('sync', locked && !player.running());
+    btn.textContent = player.running() ? '■' : '▶';
+    btn.title = player.running()
+      ? 'Stop the pattern'
+      : locked
+        ? 'Play the pattern in time with the song — it waits for the next beat, and'
+          + ' follows the song’s tempo from there'
+        : 'Play the pattern, so the sound keeps going while you change it';
   }
 
   return {
@@ -1057,38 +1191,33 @@ export function createVoiceLibrary({
     isShown,
     toggle: () => show(!isShown()),
     /** Repaint: the editor renamed or refiled something and the columns have moved. */
-    refresh: () => { if (isShown()) build(); },
-    /**
-     * The transport moved: say whether pressing play would now join the song.
-     *
-     * In place rather than a repaint. Starting a song must not rebuild this window —
-     * the search box is in it, and a rebuild mid-word takes the caret with it — and
-     * one button's class and tooltip is the whole of what changed.
-     */
-    syncChanged: () => {
-      const btn = isShown() && el.querySelector('.vlplay');
-      if (!btn) return;
-      const locked = !!sync();
-      btn.classList.toggle('sync', locked && !player.running());
-      btn.title = player.running()
-        ? 'Stop the pattern'
-        : locked
-          ? 'Play the pattern in time with the song — it waits for the next beat, and'
-            + ' follows the song’s tempo from there'
-          : 'Play the pattern, so the sound keeps going while you change it';
+    refresh: () => {
+      if (!isShown()) return;
+      // Save as New changes the editor's id from the transient draft to the persisted
+      // user preset. Follow that re-key immediately or the next Hit/pattern would ask
+      // VoiceRack for the draft that commit just removed.
+      const live = editing?.();
+      if (live && live !== heard) {
+        heard = live;
+        player.setVoice(live);
+      }
+      build();
     },
+    clearPick: () => { player.stop(); picked = null; heard = null; },
+    syncChanged,
     /** The two boxes the desk parks its editor and its keyboard into, or null. */
     get slots() { return isShown() ? slots : null; },
     /** Fold a region away, or bring it back. See setCollapsed. */
     collapse: (which, on) => setCollapsed(which, on),
     isCollapsed: (which) => !!collapsed[which],
-    stopPattern: () => player.stop(),
+    stopPattern: () => { player.stop(); syncChanged(); },
     songChanged: () => {
       player.reset();
+      heard = null;
       octave = 0;
       if (isShown()) build();
     },
     /** The preset the keyboard should play instead of the selected channel, if any. */
-    get picked() { return isShown() ? picked : null; },
+    get picked() { return isShown() ? (editing?.() || heard || picked) : null; },
   };
 }

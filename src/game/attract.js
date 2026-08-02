@@ -123,8 +123,8 @@ export class AttractState {
     if (!this.done && this.run.tRun > this.limit) this.done = true; // watchdog
   }
 
-  draw(ctx) {
-    this.run.draw(ctx);
+  draw(ctx, renderAlpha = 0) {
+    this.run.draw(ctx, renderAlpha);
     // Banner above EVERYTHING, including the hero overlay.
     const name = this.name;
     if (this.devMode) {

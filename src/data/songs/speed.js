@@ -71,9 +71,9 @@ export const mix = {
   master: 0.7,
   voice: {"kickVoice":"kickEngine","snareVoice":"snareEngine","clapVoice":"clapEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine"},
   lanes: {
-    bass: { send: { delay: 1 } },
-    lead: { send: { delay: 1 } },
-    keyGliss: { send: { delay: 1 } },
+    bass: { send: { delay: 0.16 } },
+    lead: { send: { delay: 0.16 } },
+    keyGliss: { send: { delay: 0.16 } },
   },
 };
 

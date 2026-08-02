@@ -109,7 +109,7 @@ export const mix = {
       gain: -1.2,
       pan: 0.923,
       send: {
-        delay: 1.555,
+        delay: 0.81,
         reverb: 0.475,
       },
       eq: {
@@ -121,13 +121,13 @@ export const mix = {
       gain: 3.7,
       pan: -0.211,
       send: {
-        delay: 0.595,
+        delay: 0.31,
       },
     },
     leadHarm: {
       pan: 0.07,
       send: {
-        delay: 1.015,
+        delay: 0.53,
       },
       eq: {
         high: 5.7,
@@ -136,7 +136,7 @@ export const mix = {
     twinkle: {
       pan: 0.24,
       send: {
-        delay: 1.765,
+        delay: 0.92,
       },
       eq: {
         low: -2.6,
@@ -148,13 +148,13 @@ export const mix = {
       gain: 3.6,
       pan: -0.326,
       send: {
-        delay: 2,
+        delay: 1.04,
       },
     },
     chords: {
       gain: -2.8,
       send: {
-        delay: 1.69,
+        delay: 0.88,
         reverb: 0.61,
       },
       effects: [
@@ -178,14 +178,14 @@ export const mix = {
     lead: {
       pan: -0.169,
       send: {
-        delay: 1.335,
+        delay: 0.695,
       },
     },
     bass2: {
       gain: -9,
       pan: 0.42,
       send: {
-        delay: 0.595,
+        delay: 0.31,
       },
     },
   },

@@ -337,10 +337,10 @@ assert(updates - beforePause.updates <= 1 && draws === beforePause.draws + 1,
   'resume starts fresh without catch-up ticks');
 loopCtl.stop();
 
-// Presentation cap on a high-refresh display. The simulation is fixed at 60 Hz
-// and nothing interpolates between steps, so on a 120 Hz ProMotion panel every
-// other callback has no new state to show. Presenting it anyway costs a full
-// re-render plus a full-resolution texture upload for a pixel-identical frame —
+// Presentation cap on a high-refresh display. The simulation is fixed at 60 Hz,
+// so on a 120 Hz ProMotion panel every other callback has no new simulation
+// state to show. Presenting it anyway costs a full re-render plus a
+// full-resolution texture upload for a frame the display cannot improve —
 // exactly the budget the density controller would otherwise spend on resolution.
 updates = 0; draws = 0;
 const proMotion = startLoop({ update: () => updates++, draw: () => draws++ });
@@ -356,6 +356,15 @@ const sixtyHz = startLoop({ update: () => updates++, draw: () => draws++ });
 for (let i = 0; i < 60; i++) runFrame(1000 / 60);
 assert(draws === 60, 'a 60 Hz display still presents every single frame');
 sixtyHz.stop();
+
+// Presented frames expose the fractional remainder between fixed simulation
+// ticks so moving states can render a continuous lane position.
+const alphaSamples = [];
+const alphaLoop = startLoop({ update() {}, draw: (alpha) => alphaSamples.push(alpha) });
+runFrame(17);
+assert(alphaSamples.length === 1 && alphaSamples[0] >= 0 && alphaSamples[0] <= 1,
+  'presented frames receive a bounded fixed-step interpolation fraction');
+alphaLoop.stop();
 
 // Input is a separate import after the loop globals are installed.
 const { installDom } = await import('./dom-stub.js');

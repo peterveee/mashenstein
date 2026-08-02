@@ -73,18 +73,18 @@ export const mix = {
   lanes: {
     lead: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     leadHarm: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     chords: {
       gain: 6,
       send: {
-        delay: 1,
+        delay: 0.12,
         reverb: 1.295,
       },
       eq: {
@@ -93,12 +93,12 @@ export const mix = {
     },
     organChords: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     rim: {
       send: {
-        delay: 1,
+        delay: 0.0048,
       },
     },
   },

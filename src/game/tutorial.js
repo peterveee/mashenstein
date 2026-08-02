@@ -247,7 +247,7 @@ function drawLamps(ctx, camX) {
   // fogged one.
   ctx.globalCompositeOperation = 'lighter';
   for (let i = first; i <= last; i++) {
-    const x = Math.round(i * LAMP_GAP - camX);
+    const x = i * LAMP_GAP - camX;
     const cone = ctx.createLinearGradient(0, LAMP_TOP, 0, GROUND_Y);
     cone.addColorStop(0, 'rgba(255,226,158,0.26)');
     cone.addColorStop(0.5, 'rgba(255,222,158,0.13)');
@@ -317,12 +317,13 @@ const TRAINING_PACK = {
     // The scroll ticks are the only thing in the lane that reports speed. Same
     // 24px cadence the pixel pack uses, so the sense of pace carries over.
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(Math.round(x), GROUND_Y + 8, 10, 2);
+    for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(x, GROUND_Y + 8, 10, 2);
   },
   // Not part of the style-pack contract — drawWorldEntity never asks for it —
   // but it lives on the pack because it is backdrop, and the backdrop is the
   // one thing this screen authors.
   lights: drawLamps,
+  smoothMotion: true,
   post() {},
   decorate: null,
 };
@@ -716,6 +717,8 @@ export class TutorialState {
     this.settings = (save && save.settings) || {};
     this.t = 0;
     this.worldX = 0;
+    this.prevWorldX = 0;
+    this.prevT = 0;
     this.speed = TRAINING_SPEED;   // eased to a stop for the ending
     this.camPan = 0;
     this.camZoom = ZOOM;
@@ -819,6 +822,8 @@ export class TutorialState {
     this.speed = 0;
     this.camZoom = INTRO_ZOOM_START;
     this.camPan = 0;
+    this.prevWorldX = this.worldX;
+    this.prevT = this.t;
     this.introPhase = 0;
     // Gary starts off-screen left, walking to centre.
     this.garyIntroX = GARY_ENTRY_START_X;
@@ -1582,6 +1587,8 @@ export class TutorialState {
   // ---- update --------------------------------------------------------------
 
   update(dt) {
+    this.prevWorldX = this.worldX;
+    this.prevT = this.t;
     this.t += dt;
     updateShake(dt, () => this.rng.float());
     updateParticles(dt);
@@ -2107,8 +2114,20 @@ export class TutorialState {
 
   // ---- draw ----------------------------------------------------------------
 
-  draw(ctx) {
-    const cam = this.worldX;
+  draw(ctx, renderAlpha = 0) {
+    const alpha = Math.max(0, Math.min(1, Number.isFinite(renderAlpha) ? renderAlpha : 0));
+    // The simulation remains fixed-step. Interpolate the camera and animation
+    // clock between the last two completed states, keeping the lane and every
+    // obstacle on one continuous camera clock without predicting into the
+    // future. Paused updates deliberately hold the current state.
+    const previousWorldX = Number.isFinite(this.prevWorldX) ? this.prevWorldX : this.worldX;
+    const previousT = Number.isFinite(this.prevT) ? this.prevT : this.t;
+    const cam = this.paused
+      ? this.worldX
+      : previousWorldX + (this.worldX - previousWorldX) * alpha;
+    const renderT = this.paused
+      ? this.t
+      : previousT + (this.t - previousT) * alpha;
     const z = this.camZoom;
     const pan = this.camPan;
 
@@ -2124,21 +2143,21 @@ export class TutorialState {
     TRAINING_PACK.lights(ctx, cam);
 
     for (const pu of this.retiredPickups) {
-      drawWorldEntity(ctx, pu, cam, this.t, TRAINING_PACK, this.settings);
+      drawWorldEntity(ctx, pu, cam, renderT, TRAINING_PACK, this.settings);
     }
     for (const ob of this.retiredObstacles) {
-      drawWorldEntity(ctx, ob, cam, this.t, TRAINING_PACK, this.settings);
+      drawWorldEntity(ctx, ob, cam, renderT, TRAINING_PACK, this.settings);
     }
-    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, this.t, z);
+    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, renderT, z, true);
     for (const pu of this.pickups) {
-      if (pu.live) drawWorldEntity(ctx, pu, cam, this.t, TRAINING_PACK, this.settings);
+      if (pu.live) drawWorldEntity(ctx, pu, cam, renderT, TRAINING_PACK, this.settings);
     }
     for (const ob of this.obstacles) {
-      if (ob.live) drawWorldEntity(ctx, ob, cam, this.t, TRAINING_PACK, this.settings);
+      if (ob.live) drawWorldEntity(ctx, ob, cam, renderT, TRAINING_PACK, this.settings);
     }
-    if (this.portal && !this.portal.hit) drawPortal(ctx, this.portal, cam, this.t, z);
+    if (this.portal && !this.portal.hit) drawPortal(ctx, this.portal, cam, renderT, z, true);
     for (const pr of this.pellets) {
-      const x = Math.round(pr.x - cam), y = Math.round(GROUND_Y - pr.alt - 4);
+      const x = pr.x - cam, y = Math.round(GROUND_Y - pr.alt - 4);
       ctx.fillStyle = '#f6d33c';
       ctx.beginPath(); ctx.arc(x + 3, y + 2, 3, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff0a0';
@@ -2172,7 +2191,7 @@ export class TutorialState {
     if (this.introPhase < 4) {
       this.drawIntroCharacters(ctx, z, pan);
     } else {
-      drawHeroSprite(ctx, this.player, this.player.heroId, this.t, cam, false, {
+      drawHeroSprite(ctx, this.player, this.player.heroId, renderT, cam, false, {
         settings: this.settings, shield: this.shield, zoom: z, pan,
         pose: stopped ? this.outroPose() : null,
         specialOrb: this.hasPower(),

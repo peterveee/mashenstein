@@ -64,22 +64,22 @@ export const mix = {
   lanes: {
     lead: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     leadHarm: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     chords: {
       send: {
-        delay: 1,
+        delay: 0.12,
       },
     },
     rim: {
       send: {
-        delay: 1,
+        delay: 0.0048,
       },
     },
   },

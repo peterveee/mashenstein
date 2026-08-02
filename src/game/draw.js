@@ -272,7 +272,8 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 }
 
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
-  const x = Math.round(e.x - camX);
+  const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
+  const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
   if (x < -40 || x > 520) return;
   const bottom = GROUND_Y - e.alt;
   // `artLift` raises the DRAWING without touching the box, for the case where a
@@ -291,7 +292,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (e.kind === 'pickup' && e.def.power) y += Math.round(Math.sin(t * 3 + e.bobPhase) * 2);
   // The golden appliance gets a more pronounced hover so it reads as its own
   // thing — a deliberate prize, not scenery you run past.
-  if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 5);
+  if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 3);
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
   if (e.kind === 'obstacle' && e.def.ground) {
@@ -453,8 +454,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }
 
-export function drawPortal(ctx, portal, camX, t, zoom = ZOOM) {
-  const x = Math.round(portal.x - camX);
+export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = false) {
+  const x = smoothMotion ? portal.x - camX : Math.round(portal.x - camX);
   const pulse = Math.round(Math.sin(t * 5) * 2);
   drawProp(ctx, 'portal', x, GROUND_Y - 40 - pulse, 12, 40 + pulse);
   ctx.fillStyle = '#48e0c8';
@@ -476,8 +477,8 @@ export function drawPortal(ctx, portal, camX, t, zoom = ZOOM) {
   ctx.restore();
 }
 
-export function drawCopter(ctx, copter, camX, t) {
-  const x = Math.round(copter.x - camX);
+export function drawCopter(ctx, copter, camX, t, smoothMotion = false) {
+  const x = smoothMotion ? copter.x - camX : Math.round(copter.x - camX);
   const y = Math.round(GROUND_Y - copter.alt - 16);
   drawProp(ctx, 'eggshell', x - 12, y - 8, 24, 20);
   // rotor blur

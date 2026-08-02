@@ -37,13 +37,14 @@ import { randomSongName } from './lib/song-names.js';
 import { AUX_DEFAULTS } from '../src/engine/mixer.js';
 import {
   readVoicesSource, writeVoicesSource, upsertPreset, deletePreset, setMeasured,
-  readMeasured, tableOf,
+  readMeasured, tableOf, TABLES, USER_TABLES,
 } from './lib/voices-source.js';
 import { measureVoiceAt, homeLane } from './lib/measure-voice.js';
 import { VOICES } from '../src/data/voices.js';
 // Read once, at start-up: the starter set is written by tools/freeze-starter-voices.js,
 // which is a script somebody types, not something this server can cause to happen.
 const STARTER_IDS = new Set(Object.values(VOICES).filter((v) => v.starter).map((v) => v.id));
+const LIBRARY_IDS = new Set(Object.values(VOICES).filter((v) => v.factory).map((v) => v.id));
 
 const require = createRequire(import.meta.url);
 const esbuild = require('esbuild');
@@ -61,6 +62,9 @@ const HISTORY_KEEP = 300;
 
 const HOST = process.env.MASH_MIXER_HOST || '127.0.0.1';
 const PORT = Number(process.env.MASH_MIXER_PORT) || 8010;
+// This process is the development server, so every page it serves starts as DEV.
+// Regular-user mode is a per-tab choice in mixer-entry.js: append `?dev=0`.
+const DEV_USER = true;
 const randomSongSeed = () => randomBytes(4).readUInt32LE(0);
 
 // Rebuilt per request so a save-and-refresh picks up engine edits without a restart.
@@ -80,7 +84,9 @@ async function buildPage() {
   });
   const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   const shell = readFileSync(join(ROOT, 'tools/mixer-shell.html'), 'utf8');
-  return shell.replace('/*__BUNDLE__*/', () => js);
+  return shell
+    .replace('/*__MIXER_DEV_USER__*/', () => String(DEV_USER))
+    .replace('/*__BUNDLE__*/', () => js);
 }
 
 // `renderMixFile` used to live here: it rebuilt src/data/mix.js from all thirty-four
@@ -752,8 +758,22 @@ const server = createServer(async (req, res) => {
     // wrong loudness in every song and every render. Saving without measuring would
     // be the one thing this file's own comments warn against.
     if (req.method === 'POST' && req.url === '/voice-save') {
-      const { id, preset, table } = await readJson(req);
+      const { id, preset, table, library: requestedLibrary } = await readJson(req);
       let src = readVoicesSource();
+      const existingTable = tableOf(src, id);
+      const devUpdate = DEV_USER && req.headers['x-mixer-role'] === 'dev';
+      const libraryTable = LIBRARY_IDS.has(id)
+        || (existingTable && Object.values(TABLES).includes(existingTable));
+      const devLibraryCreate = devUpdate && requestedLibrary === true && !existingTable
+        && Object.values(TABLES).includes(table);
+      // Built-in library entries are shipped reference sounds, not user documents.
+      // A client-side guard makes the UI clear, but this server-side check is the
+      // actual boundary so a stale page or hand-written request cannot overwrite one.
+      if (libraryTable && !devUpdate) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is a library preset and cannot be edited. Save it as a new user preset.`);
+        return;
+      }
       // The starter table is not writable and this is where that is enforced. A pack
       // names these, and the whole reason they exist is that a song generated next
       // month sounds like the pack was written to sound rather than like whatever the
@@ -780,10 +800,19 @@ const server = createServer(async (req, res) => {
           + ' Rename it and save again, and it becomes a preset of its own.');
         return;
       }
-      const where = tableOf(src, id) || table;
+      const where = existingTable || table;
       if (!where) {
         res.writeHead(400, { 'content-type': 'text/plain' });
-        res.end(`no table for "${id}" — a new preset has to say whether it is TONE, NOISE or DRUM`);
+        res.end(`no table for "${id}" — a new preset has to say whether it is user TONE, NOISE or DRUM`);
+        return;
+      }
+      if (!Object.values(USER_TABLES).includes(where)
+        && !(devUpdate && (libraryTable || devLibraryCreate)
+          && Object.values(TABLES).includes(where))) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end(devUpdate
+          ? 'presets must be saved to a USER_* table or an existing library table'
+          : 'new presets must be saved to a USER_* table; built-in library tables are read-only');
         return;
       }
       // Written before it is measured, because the measurement runs the real engine
@@ -836,6 +865,17 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && req.url === '/voice-delete') {
       const { id, force } = await readJson(req);
+      const sourceTable = tableOf(readVoicesSource(), id);
+      const devDelete = DEV_USER && req.headers['x-mixer-role'] === 'dev';
+      const libraryTable = Object.values(TABLES).includes(sourceTable);
+      // Deletion is narrower than editing: only an entry currently stored in a
+      // USER_* table is a user preset. A dev may also remove a library entry; unknown
+      // ids and library deletes from a regular user are refused.
+      if (!Object.values(USER_TABLES).includes(sourceTable) && !(devDelete && libraryTable)) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is not an editable user preset and cannot be deleted.`);
+        return;
+      }
       const used = await voiceRefs(id);
       // Refused rather than warned about, unless the desk says it asked: a song that
       // loses its voice does not break, it just quietly plays something else, and

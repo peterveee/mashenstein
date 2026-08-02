@@ -58,7 +58,7 @@ export const AUXES = [
 ];
 
 export const AUX_DEFAULTS = {
-  delay: { division: 0.75, feedback: 0.35, tone: 2800, level: 1, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 } },
+  delay: { division: 0.75, feedback: 0.35, tone: 4500, level: 1, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 } },
   reverb: { decay: 2.2, preDelay: 0.012, level: 1, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 } },
 };
 
@@ -228,7 +228,7 @@ function makeDelay(ctx) {
       const t = ctx.currentTime;
       if (division != null) this.state.division = division;
       if (feedback != null) this.state.feedback = Math.max(0, Math.min(0.95, feedback));
-      if (tone != null) this.state.tone = Math.max(200, Math.min(16000, tone));
+      if (tone != null) this.state.tone = Math.max(200, Math.min(ctx.sampleRate / 2, tone));
       line.delayTime.setTargetAtTime(Math.min(0.9, (60 / (bpm || 120)) * this.state.division), t, 0.05);
       fb.gain.setTargetAtTime(this.state.feedback, t, 0.05);
       lp.frequency.setTargetAtTime(this.state.tone, t, 0.05);
@@ -240,10 +240,10 @@ function makeDelay(ctx) {
  * Build one strip per lane plus the shared master chain.
  *
  * @param {BaseAudioContext} ctx
- * @param {object} buses  { musicBus, echoBus, master } — all created by audio.js.
+ * @param {object} buses  { musicBus, echoBus, master, destination } — all created by audio.js.
  *                        The strips feed musicBus/echoBus, so the existing echo
  *                        topology is untouched; `master` is re-routed through the
- *                        master trim and limiter on its way to the destination.
+ *                        song master trim and limiter to `destination`.
  * @returns {{ lane(key): Strip, setMasterTrim(db), lanes: string[], setAux(), limiter, ready: Promise }}
  */
 // Delay time as a fraction of a beat — the same musical lengths every other synced
@@ -251,7 +251,9 @@ function makeDelay(ctx) {
 // the songs were written against), so that stays the default.
 export const DELAY_DIVISIONS = TEMPO_DIVISIONS;
 
-export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp }) {
+export function createMixer(ctx, {
+  musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp,
+}) {
   Tone.setContext(ctx);
 
   // Every aux returns to songTrim, not musicBus, so a return is scaled by the
@@ -380,8 +382,11 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     dry.channelCount = 2;
     dry.channelCountMode = 'explicit';
     dry.channelInterpretation = 'speakers';
-    // Wet input: only voices whose own echo flag is set, preserving the engine's
-    // existing per-voice behaviour (bass80s' body echoes, its sub does not).
+    // Wet input: the inlet the engine's per-voice echo flag has always aimed at.
+    // Nothing downstream of it here — the delay send taps the WHOLE lane now, see
+    // below — but it stays because it is the destination `lane()` hands to every
+    // voice, and because without a mixer (headless renders, before ensure()) that
+    // destination is the shared echoBus and the flag still does its old job.
     const wet = ctx.createGain();
 
     const vol = ctx.createGain();
@@ -390,16 +395,6 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     panner.pan.value = 0;
 
     const laneEq = makeEq(ctx);
-
-    // Lanes the engine keeps dry (percussion, vocals, bass without bassEcho) have
-    // no voice wired to `wet`, so their delay send had nothing to send and the
-    // control sat there doing nothing. This routes the whole lane into the send
-    // path instead, which makes the send live on every strip. It changes nothing
-    // by default because those lanes' send defaults to 0 — see applyMix.
-    const dryTap = ctx.createGain();
-    dryTap.gain.value = 0;
-    dry.connect(dryTap);
-    dryTap.connect(wet);
 
     const widthNode = makeWidth(ctx);
 
@@ -417,15 +412,24 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     widthNode.output.connect(monitor);
     monitor.connect(musicBus);            // the strip's only route to the mix
 
-    // One send per aux. The legacy delay taps `wet` — the per-voice echo routing
-    // the songs were written against — so its gain has to carry the fader itself,
-    // because `wet` is fed by the voices pre-fader. Every other aux taps `vol`,
-    // which is already post-fader.
+    // One send per aux. The legacy delay taps `dry` — the WHOLE lane, pre-fader —
+    // so its gain has to carry the fader itself. Every other aux taps `vol`, which
+    // is already post-fader.
+    //
+    // It used to tap `wet`, which is fed only by voices whose own echo flag is set,
+    // and that made the send a control you could not trust: a lane the engine keeps
+    // dry (percussion, vox), or one carrying a preset that declares itself dry
+    // (`addShopOrgan`, `shopOrgan2`), had nothing arriving at the send and the knob
+    // did nothing at any position. Every channel can reach the delay now; a channel
+    // that should not is a send at zero, which is a thing you can see.
+    //
+    // Level is unchanged wherever the whole lane echoed already: `wet` is fed by the
+    // same voice outputs `dry` is, so for those lanes this taps the identical signal.
     const sends = new Map();
     for (const def of AUXES) {
       const g = ctx.createGain();
       g.gain.value = def.legacy ? def.defaultSend : 0;
-      if (def.legacy) wet.connect(g);
+      if (def.legacy) dry.connect(g);
       else vol.connect(g);
       g.connect(auxes.get(def.id).input);
       sends.set(def.id, g);
@@ -500,13 +504,6 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
         applyMute();
       },
       /**
-       * Feed the whole lane into the delay send, for lanes whose voices never tap
-       * it themselves. Set once per bank by applyMix; the send level still decides
-       * how much actually goes.
-       */
-      setDryTap(on) { dryTap.gain.value = on ? 1 : 0; },
-
-      /**
        * Replace this channel's effect chain. `list` is [{ id, params }] in order.
        * Rebuilt wholesale rather than diffed: chains are two or three links long and
        * a rebuild is microseconds, where a diff is a source of subtle wrongness.
@@ -570,10 +567,10 @@ export function createMixer(ctx, { musicBus, echoBus, master, songTrim, delayLp 
     masterOut.connect(masterPan);
     if (limiterOn) {
       Tone.connect(masterPan, limiter);
-      Tone.connect(limiter, ctx.destination);
+      Tone.connect(limiter, destination);
     } else {
       limiter.disconnect();
-      masterPan.connect(ctx.destination);
+      masterPan.connect(destination);
     }
   };
   let masterSlot = null;

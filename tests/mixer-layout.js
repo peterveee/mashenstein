@@ -6,14 +6,179 @@ import { readFileSync } from 'node:fs';
 
 const shell = readFileSync(new URL('../tools/mixer-shell.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+const librarySource = readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../tools/mixer-voice-editor.js', import.meta.url), 'utf8');
+const voiceSource = readFileSync(new URL('../src/data/voices.js', import.meta.url), 'utf8');
+const server = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
 const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url), 'utf8');
+const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 
 let failed = false;
 function assert(cond, msg) {
   if (!cond) { console.error('FAIL:', msg); failed = true; }
   else console.log('ok:', msg);
 }
+
+assert(!/schedulePreview|previewNote/.test(touchedBody)
+  && !/let previewTimer|const schedulePreview/.test(editor),
+  'editing a drum or noise parameter does not schedule an unsolicited note preview');
+
+const envelopeTimeRows = editor.match(/envTime\(/g) || [];
+assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
+  && /const ENV_TIME_SCALE = 2;/.test(editor)
+  && /n\(path, label, min, ENV_MAX_SECONDS, step/.test(editor)
+  && /\{ \.\.\.opts, scale: ENV_TIME_SCALE \}/.test(editor)
+  && envelopeTimeRows.length >= 19
+  && /SUSTAIN', 0, 100, 1/.test(editor)
+  && /write: \(v\) => v \/ 100/.test(editor),
+  'all envelope time controls share a 10-second maximum and sustain is edited as 0–100%');
+
+const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1 \}\)/.test(entrySource)
+  && /Math\.pow\(clamp\(position, 0, 1\), curve\)/.test(entrySource)
+  && /setPosition\(position \+ \(px \/ 150\)/.test(entrySource)
+  && /scale: row\.scale/.test(editor),
+  'all envelope controls use the shared non-linear knob response');
+
+assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.test(
+  librarySource)
+  && /const keepSource = SOURCES\.find/.test(
+    librarySource)
+  && /className = 'vsource'/.test(
+    librarySource),
+  'the preset library distinguishes read-only Library sounds from editable My presets');
+assert(/head\.append\(title, sources, chips, syn, search, close\)/.test(
+  librarySource)
+  && /#voicelib \.vlclose \{ margin-left: auto; \}/.test(shell)
+  && !/const searchRow = document\.createElement\('div'\)/.test(
+    librarySource),
+  'the preset search sits in the top header immediately before the far-right close');
+assert(/searchInput = search/.test(librarySource)
+  && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
+  'opening the preset library focuses the Search presets field');
+assert(/if \(voiceLibrary\.isCollapsed\('edit'\)\) voiceLibrary\.collapse\('edit', false\)/.test(entry)
+  && /if \(localStorage\.getItem\('mash-mixer-library-open'\)\) openPresetLibrary\(\)/.test(entry),
+  'opening or restoring the preset library reveals its blank editor workspace');
+assert(shell.includes('id="panicbtn"')
+  && /#panicbtn \{[^}]*background: var\(--hot\)/.test(shell)
+  && shell.indexOf('id="panicbtn"') > shell.indexOf('id="undo"'),
+  'the mixer header exposes a visibly urgent Panic button on the right');
+assert(/function silenceAll\(\)[\s\S]*?Audio\.panic\(\)/.test(entry)
+  && /function panicAll\(\)[\s\S]*?const restoreMidi = midiOn[\s\S]*?setMidi\(false, \{ announce: false \}\)[\s\S]*?silenceAll\(\)[\s\S]*?if \(restoreMidi\) setMidi\(true, \{ announce: false \}\)/.test(entry)
+  && /async function setMidi\(on, \{ announce = true \} = \{\}\)/.test(entry),
+  'Panic temporarily disables MIDI input and restores it only when it was already on');
+assert(/toast\(restoreMidi[\s\S]*?MIDI restored[\s\S]*?MIDI off/.test(entry),
+  'Panic reports whether MIDI was restored or left off');
+const stopClick = /\$\('stop'\)\.onclick = \(\) => \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
+assert(/function silenceAll\(\)[\s\S]*?releaseOskSources\('m:'\)/.test(entry)
+  && /silenceAll\(\)[\s\S]*?jumpTo\(at\)/.test(stopClick)
+  && !/setMidi\(/.test(stopClick)
+  && /id="stop"[^>]*data-tipsays="[^"]*release held notes and silence every live sound/.test(shell)
+  && !/id="stop"[^>]*data-tipsays="[^"]*turn off MIDI input/.test(shell),
+  'Stop silences held notes without changing MIDI and explains its silence-only behavior');
+assert(/panic\(\)[\s\S]*?this\._cutLaneGates\(\)[\s\S]*?this\.voices\.dispose\(\)[\s\S]*?this\.bank = null/.test(audio)
+  && /resumeAfterPanic\(\)[\s\S]*?this\.levels\.master/.test(audio)
+  && /previewNote\([^\n]*\)[\s\S]*?this\.resumeAfterPanic\(\)/.test(audio),
+  'the audio engine cuts live buses and held voices, then restores on a deliberate preview');
+assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
+  && /const isUserPreset = \(voice\) =>/.test(editor)
+  && /const libraryOwner =/.test(editor)
+  && /v\.songOrigin === 'library'/.test(editor)
+  && /const songOrigin = params\.songOrigin/.test(voiceSource)
+  && /const songSourceId = params\.songSourceId/.test(voiceSource)
+  && /draft: true/.test(editor)
+  && /if \(draft\) \{\s*delete VOICES\[fromId\]/.test(editor)
+  && /librarySource: isNew && !laneKey \? voiceId : null/.test(editor)
+  && /if \(isLibraryPreset\(from\) && !isNew/.test(editor)
+  && /const canDelete = !state\.laneKey && !state\.librarySource/.test(editor)
+  && /isDevUser\(\) && isLibraryPreset\(v\)/.test(editor)
+  && /foot\.revertBtn\.disabled = dev \? !state\.dirty : false/.test(editor)
+  && /if \(state\.isNew\) \{[\s\S]*?delete VOICES\[state\.id\]/.test(editor)
+  && /del\.textContent = 'Delete'/.test(editor)
+  && /if \(!isUserPreset\(v\) && !devLibrary\)/.test(editor)
+  && /const ok = await ask\(/.test(editor)
+  && !/confirm\(state\.isNew/.test(editor)
+  && /function blank\(\)/.test(editor)
+  && /No preset selected/.test(editor)
+  && /if \(libraryWindow\) \{ blank\(\); onChanged\(\); \}/.test(editor)
+  && /const nameClash = \(wanted\) =>/.test(editor)
+  && /wanted !== state\.id && clash !== state\.voice/.test(editor)
+  && /userTableFor\(v\.kind\)/.test(editor)
+  && /asNew\.textContent = 'Save as New'/.test(editor)
+  && !/Save User Preset/.test(editor)
+  && /asNew\.title = isLibrary && canUpdateLibrary/.test(editor)
+  && /libraryUpdate/.test(editor)
+  && /libraryTableFor/.test(editor)
+  && /state\.libraryNew/.test(editor)
+  && /requestedLibrary/.test(server)
+  && /devLibraryCreate/.test(server)
+  && /const devDelete =/.test(server)
+  && !/confirm\(`Save preset as/.test(editor)
+  && editor.indexOf('if (state.laneKey && assign) assign(state.laneKey, newId);')
+    < editor.indexOf('await commit({ keepLane: true });')
+  && /state\.voice\?\.songLocal/.test(touchedBody)
+  && /VOICES\[state\.id\] = state\.voice;/.test(touchedBody)
+  && touchedBody.indexOf('VOICES[state.id] = state.voice;')
+    < touchedBody.indexOf('refresh(state.id);')
+  && /const songUserSource = !!\(v\.songLocal && v\.songOrigin === 'user'/.test(editor)
+  && /const canUpdate = !state\.isNew && \(v\.songLocal/.test(editor)
+  && /const songUserUpdate = !state\.isNew && v\.songLocal/.test(editor)
+  && /const saveId = songUserUpdate \? v\.songSourceId : state\.id/.test(editor)
+  && /const btn = foot\.saveBtn \|\| foot\.updateBtn \|\| foot\.saveNewBtn/.test(editor)
+  && /const canSubmit = libraryDraft \|\| state\.isNew \|\| canUpdate/.test(editor)
+  && /const userLibraryEditor = !isDevUser\(\) && !state\.laneKey/.test(editor)
+  && /const userLibraryCancel = !isDevUser\(\) && !state\.laneKey/.test(editor)
+  && /revert\.textContent = userLibraryCancel \? 'Cancel' : 'Revert'/.test(editor)
+  && /state\.voice\?\.songLocal\n\s*\? 'Save this song-local copy/.test(editor)
+  && /saveNew\.onclick = \(\) => openSaveSheet\('new'\)/.test(editor)
+  && /update\.onclick = \(\) => openSaveSheet\('update'\)/.test(editor)
+  && /if \(userLibraryEditor\) \{[\s\S]*?bar\.append\(saveNew\)[\s\S]*?bar\.append\(update\)/.test(editor)
+  && /async function openSaveSheet\(action = 'choose'\)/.test(editor)
+  && /const showAsNew = offerFork/.test(editor)
+  && /const showCommit = canSubmit/.test(editor)
+  && /const DEV_USER = true/.test(server)
+  && /allowLibraryUpdate/.test(entry)
+  && shell.includes('window.__MASH_MIXER_DEV_USER__ = /*__MIXER_DEV_USER__*/;')
+  && /const _urlDev = new URLSearchParams\(location\.search\)\.get\('dev'\)/.test(entry)
+  && /const DEV_USER = _urlDev === '0' \? false : globalThis\.__MASH_MIXER_DEV_USER__ === true/.test(entry)
+  && /mixerShell\s*\.replace\('\/\*__MIXER_DEV_USER__\*\/', 'false'\)/.test(
+    readFileSync(new URL('../build/build.js', import.meta.url), 'utf8'))
+  && /if \(!Object\.values\(USER_TABLES\)\.includes\(sourceTable\) && !\(devDelete && libraryTable\)\)/.test(server),
+  'library presets use one hidden editor draft, role-specific save/delete rules, and deletes use the desk dialog');
+assert(shell.indexOf('<span id="songrole"') > shell.indexOf('<span id="nowsong"')
+  && /const role = \$\('songrole'\)/.test(entry)
+  && /role\.textContent = DEV_USER \? 'DEV' : 'USER'/.test(entry),
+  'the footer identifies the current mixer role after the song name');
+assert(/v\.kind === 'engine' \|\| v\.songLocal \|\| v\.draft/.test(
+  readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /!v\.songLocal && !v\.draft/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /voiceEditor\.librarySource === id/.test(entry)
+  && /const scrollTop = el\.querySelector\('\.vlresults'\)\?\.scrollTop/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /if \(results\) results\.scrollTop = scrollTop/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /ev\.detail >= 2 && collapsed\.edit/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /setCollapsed\('edit', false\)/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /let heard = null/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /player\.setVoice\(heard\)/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /const id = editing\?\.\(\) \|\| heard \|\| picked/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8')),
+  'unsaved library drafts stay out of the preset list, repeated source clicks reuse them, and every audition path follows the editable draft');
+assert(/const FOLD_KEY = 'mash-mixer-voicelib-folds'/.test(
+  readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /localStorage\.setItem\(FOLD_KEY/.test(
+    readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
+  && /if \(!voiceLibrary\.isCollapsed\('edit'\)\)/.test(entry)
+  && /voiceEditor\.blank\(\)/.test(entry)
+  && /onBlank: \(\) => voiceLibrary\.clearPick\(\)/.test(entry)
+  && /\n  ask,/.test(entry),
+  'the library restores the editor unless explicitly hidden and keeps a blank editor after deletion');
 
 const rack = shell.indexOf('<div id="rackwrap">');
 const split = shell.indexOf('<div id="devsplit"');
@@ -212,8 +377,9 @@ assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addPercussionLane\(\)/.test(entry)
   && !entry.includes('openAddTrackPicker'),
   'the plus opens one new track and its preset selector without a choice menu');
 assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*?closeMenu\(\)/.test(entry)
+  && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry)
   && /#voicepicker button\.voiceclose \{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font-size:\s*23px/s.test(shell),
-  'the preset selector has the large preset-editor close button');
+  'the preset selector has the large close button and focuses Search presets');
 assert(/id="font"[^>]*>[\s\S]*?<\/select>\s*<\/label>\s*<label[^>]*>\s*<span>Theme<\/span>\s*<select id="theme"/s.test(shell),
   'the colour theme selector sits beside the font selector in Desk settings');
 assert(entry.includes("const THEME_KEY = 'mash-mixer-theme'")
@@ -638,8 +804,7 @@ assert(/#osk \.oskrec\.on \{[^}]*var\(--solo\)/s.test(shell)
   'armed and recording are two different colours, and both are the desk’s own state'
   + ' variables so every theme including the light ones already defines them');
 assert(/#osk \.oskrec::before \{/.test(shell),
-  'the state dot is a pseudo-element — the buffered count is written with textContent'
-  + ' and would take a child span out with it on every note');
+  'the armed/recording state dot is a pseudo-element, so the button has no extra badge element');
 
 // THE assertion. A glide across the keys and a roll across the pads arrive as
 // pointermove and fire as fast as the pointer does; recording them puts sixteen
@@ -649,25 +814,37 @@ assert(/function oskPlay\(midi, \{ record = true, src = null \} = \{\} \)?/.test
   'oskPlay takes a record option, so a gesture can say it is not a note');
 assert(/function oskHit\(laneKey, \{ record = true, src = null \} = \{\}\) \{/.test(entry),
   'and so does oskHit');
-assert(/keys\.addEventListener\('pointermove'[\s\S]{0,500}?oskPlay\([\s\S]*?\{ record: false \}\)/
-  .test(entry), 'a GLIDE across the keys is not recorded');
+assert(/keys\.addEventListener\('pointermove'[\s\S]{0,300}?oskHeldVisuals\.get\(src\) === k[\s\S]{0,300}?releasePreview\(src\)[\s\S]{0,200}?oskPlay\([\s\S]{0,200}?\{ record: false, src \}\)/
+  .test(entry), 'a GLIDE releases the previous preview and is not recorded');
 assert(/pads\.addEventListener\('pointermove'[\s\S]{0,400}?oskHit\([^)]*\{ record: false \}\)/
   .test(entry), 'and neither is a ROLL across the pads');
 
 // All three inputs name the finger they came from, or a note-off cannot find its
 // note-on and every note in the take would take the length of the last one.
-assert(/oskPlay\(Number\(k\.dataset\.midi\), \{ src: `p:\$\{ev\.pointerId\}` \}\)/.test(entry),
+assert(/const src = `p:\$\{ev\.pointerId\}`;[\s\S]{0,120}?oskPlay\(Number\(k\.dataset\.midi\), \{ src \}\)/.test(entry),
   'a clicked key records under its pointer id');
-assert(/oskPlay\(midi, \{ src: `k:\$\{key\}` \}\)/.test(entry),
+assert(/const src = `k:\$\{key\}`;[\s\S]{0,120}?oskPlay\(midi, \{ src \}\)/.test(entry),
   'a typed key records under the letter, which is what keyup will report');
-assert(/oskPlay\(note, \{ src: `m:\$\{note\}` \}\)/.test(entry),
+assert(/const src = `m:\$\{note\}`;[\s\S]{0,120}?oskPlay\(note, \{ src \}\)/.test(entry),
   'a MIDI note records under its note number');
+assert(/function oskHoldVisual\(src, el\)[\s\S]{0,300}?classList\.add\('held'\)/.test(entry)
+  && /function oskReleaseVisual\(src\)[\s\S]{0,250}?classList\.remove\('held'\)/.test(entry)
+  && /\.oskkey\.white\.held/.test(shell) && /\.oskpad\.held/.test(shell),
+  'a held input keeps its key or pad highlighted until its release');
+// One release closes both halves of a held preview: the recording token, when armed,
+// and the audio voice, which is what mouse release used to miss.
+assert(/function releasePreview\(src\)[\s\S]{0,180}Audio\.releasePreviewNote\(held\.laneKey, held\.freq\)/
+  .test(entry)
+  && /function oskRelease\(src\)[\s\S]{0,100}releasePreview\(src\)/.test(entry)
+  && /pads\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)\)/.test(entry)
+  && /keys\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)/.test(entry),
+  'mouse release closes both the recording token and the sounding preview note');
 // The note-off half, which did not exist at all until recording had a use for it.
-assert(/if \(kind === 0x80 \|\| \(kind === 0x90 && !vel\)\) \{ recordOff\(`m:\$\{note\}`\); return; \}/
+assert(/if \(kind === 0x80 \|\| \(kind === 0x90 && !vel\)\) \{[\s\S]*?oskRelease\(`m:\$\{note\}`\);[\s\S]*?return; \}/
   .test(entry),
   'a MIDI note-off is an actual 0x80 OR a note-on at velocity zero — most keyboards'
   + ' send the second, and reading only the first loses every length');
-assert(/addEventListener\('keyup'[\s\S]{0,300}?recordOff\(`k:\$\{key\}`\)/.test(entry),
+assert(/addEventListener\('keyup'[\s\S]{0,300}?oskRelease\(`k:\$\{key\}`\)/.test(entry),
   'a computer key gets its length from the keyup that already stopped auto-repeat');
 assert(/for \(const type of \['pointerup', 'pointercancel'\]\)/.test(entry),
   'and a pointer gets it from pointerup — pointercancel too, or a gesture ending some'
@@ -742,6 +919,17 @@ assert(/undoTag: 'record'/.test(entry)
 }
 assert(/function flushTake\([\s\S]*?applyArrangementEdit\(d, null, \{/.test(entry),
   'and EVERY write is silent — a toast four times a bar is not notice, it is weather');
+{
+  const body = /function flushTake\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  assert(/const live = reason === 'beat'/.test(body)
+    && /render: !live/.test(body)
+    && /persist: !live/.test(body)
+    && /rearmLoop: !live/.test(body),
+    'beat recording commits keep the live arrangement current without rebuilding the desk,'
+    + ' writing storage, or re-arming the loop on every boundary');
+  assert(/function finalizeLiveTake\([\s\S]*?localStorage\.setItem\(ARRANGE_KEY/.test(entry),
+    'the deferred recording persistence and redraw happen once when the take ends');
+}
 // The summary has to hang off the take ending, not off the last write: a beat flush has
 // almost always emptied the buffer by the time you disarm, so a toast on the final write
 // fired only if you stopped within half a second of playing.
@@ -779,12 +967,11 @@ assert(/if \(src\) recOpen\.set\(src, \{ token, at: heard, bar, lane: laneKey, s
   .test(entry),
   'which is why a held note records where it is as well as when — a re-add needs the bar,'
   + ' lane, step and pitch, not just the token');
-assert(/function recCount\(\)[\s\S]*?recSessionNotes/.test(entry),
-  'the count on the button is the whole take, not the buffer: a buffered count would'
-  + ' flicker back to nothing four times a bar and read as notes being lost');
-assert(/const n = recArmed \? recSessionNotes : 0;/.test(entry),
-  'and it is gone the moment you disarm — a red badge left sitting there reads as a'
-  + ' PENDING count, something not yet dealt with, when the notes are already in the song');
+assert(!/function recCount\(/.test(entry) && !/recCount\(\)/.test(entry)
+  && !/Record · \$\{n\}/.test(entry) && !/data-count/.test(entry) && !/data-count/.test(shell),
+  'recording has no live note-count badge; the transport only communicates armed/recording state');
+assert(/let recSessionNotes = 0;[\s\S]*?if \(announce && recSessionNotes > 0\)[\s\S]*?toast\(/.test(entry),
+  'the completion toast still keeps the session total and reports what was recorded when the take ends');
 
 // ---- a chord stays a chord --------------------------------------------------------
 assert(/chordAnchor\(recChord, performance\.now\(\)/.test(entry),

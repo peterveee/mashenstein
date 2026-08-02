@@ -9,7 +9,7 @@
 //   · what it writes, the module system reads back as the same preset  — round trip
 //   · what it does not write, it does not touch                        — byte identity
 //
-// Both are checked against the real file with all 104 editable presets in it, not
+// Both are checked against the real file with all editable presets in it, not
 // against a fixture, because the fixture that matters is the one on disk: the imported
 // Tone.js presets are JSON-stringified with double quotes, several notes are broken
 // across lines with `+`, and the whole file is littered with braces inside strings.
@@ -44,22 +44,28 @@ const load = async (src) => {
 const tone = entriesIn(SRC, 'TONE');
 const noise = entriesIn(SRC, 'NOISE');
 const drums = entriesIn(SRC, 'DRUM');
-// The EDITABLE catalogue. A frozen starter carries a kind like anything else — it has
-// to, since STARTER holds all three — but it does not live in one of these tables, and
-// that is exactly the property that makes it frozen: `tableOf` cannot find it, so
-// nothing here can write it. Counting them here would be asserting that the thing the
-// editor cannot reach is reachable.
+const userTone = entriesIn(SRC, 'USER_TONE');
+const userNoise = entriesIn(SRC, 'USER_NOISE');
+const userDrums = entriesIn(SRC, 'USER_DRUM');
+const allTone = [...tone, ...userTone];
+const allNoise = [...noise, ...userNoise];
+const allDrums = [...drums, ...userDrums];
+// The source-backed catalogue. A frozen starter carries a kind like anything else — it
+// has to, since STARTER holds all three — but it does not live in one of the writable
+// tables, and that is exactly the property that makes it frozen: `tableOf` cannot find
+// it, so nothing here can write it. Counting it as a table entry would be asserting
+// that the thing the editor cannot reach is reachable.
 const editable = Object.values(VOICES).filter((v) => !v.starter);
 const wantTone = editable.filter((v) => v.kind === 'tone');
 const wantNoise = editable.filter((v) => v.kind === 'noise');
 const wantDrum = editable.filter((v) => v.kind === 'drum');
 
-assert(tone.length === wantTone.length,
-  `TONE: every entry is found (${tone.length} of ${wantTone.length})`);
-assert(noise.length === wantNoise.length,
-  `NOISE: every entry is found (${noise.length} of ${wantNoise.length})`);
-assert(drums.length === wantDrum.length,
-  `DRUM: every entry is found (${drums.length} of ${wantDrum.length})`);
+assert(allTone.length === wantTone.length,
+  `TONE and USER_TONE: every entry is found (${allTone.length} of ${wantTone.length})`);
+assert(allNoise.length === wantNoise.length,
+  `NOISE and USER_NOISE: every entry is found (${allNoise.length} of ${wantNoise.length})`);
+assert(allDrums.length === wantDrum.length,
+  `DRUM and USER_DRUM: every entry is found (${allDrums.length} of ${wantDrum.length})`);
 // The failure mode this guards is a scanner counting `oscillator: {` as an entry.
 // It does not throw — it silently reports a table with three times as many presets
 // in it as there are, and then replaces the wrong span.
@@ -69,12 +75,21 @@ assert(noise.every((e) => VOICES[e.id]?.kind === 'noise'),
   'NOISE: nothing nested inside a preset is mistaken for one');
 assert(drums.every((e) => VOICES[e.id]?.kind === 'drum'),
   'DRUM: nothing nested inside a preset is mistaken for one');
+assert(userTone.every((e) => VOICES[e.id]?.kind === 'tone' && VOICES[e.id]?.user),
+  'USER_TONE: every entry is a user preset');
+assert(userNoise.every((e) => VOICES[e.id]?.kind === 'noise' && VOICES[e.id]?.user),
+  'USER_NOISE: every entry is a user preset');
+assert(userDrums.every((e) => VOICES[e.id]?.kind === 'drum' && VOICES[e.id]?.user),
+  'USER_DRUM: every entry is a user preset');
 assert(tableOf(SRC, 'roundMono') === 'TONE' && tableOf(SRC, 'clap808') === 'NOISE'
   && tableOf(SRC, 'dsKick') === 'DRUM',
 'a preset is found in the table it lives in');
 assert(tableOf(SRC, 'engFilteredSaw') === null,
   'an ENGINE preset is in neither editable table — it is bank keys, not a synth');
 assert(tableOf(SRC, 'neverExisted') === null, 'an unknown id is not claimed by a table');
+assert(SRC.includes('const USER_TONE = {') && SRC.includes('const USER_NOISE = {')
+  && SRC.includes('const USER_DRUM = {'),
+  'the editable user tables exist separately from the read-only library tables');
 
 // ---- the round trip ---------------------------------------------------------
 
@@ -82,7 +97,7 @@ assert(tableOf(SRC, 'neverExisted') === null, 'an unknown id is not claimed by a
 // the emitter drops a key, quotes a number, or breaks a note across lines in a way
 // that welds two words together, this is where it shows.
 let rt = SRC;
-for (const e of [...tone, ...noise, ...drums]) {
+for (const e of [...allTone, ...allNoise, ...allDrums]) {
   const { id, kind, level, peak, ...rest } = VOICES[e.id];
   rt = upsertPreset(rt, e.id, rest);
 }
@@ -94,8 +109,12 @@ const changed = Object.keys(VOICES).filter((id) => {
 assert(!changed.length,
   `all ${Object.keys(VOICES).length} presets survive being written and read back`
   + (changed.length ? ` — ${changed.slice(0, 5).join(', ')} did not` : ''));
-assert(entriesIn(rt, 'TONE').length === tone.length && entriesIn(rt, 'NOISE').length === noise.length
-  && entriesIn(rt, 'DRUM').length === drums.length,
+assert(entriesIn(rt, 'TONE').length === tone.length
+  && entriesIn(rt, 'NOISE').length === noise.length
+  && entriesIn(rt, 'DRUM').length === drums.length
+  && entriesIn(rt, 'USER_TONE').length === userTone.length
+  && entriesIn(rt, 'USER_NOISE').length === userNoise.length
+  && entriesIn(rt, 'USER_DRUM').length === userDrums.length,
 'and rewriting every entry adds and loses none');
 
 // ---- adding one -------------------------------------------------------------
@@ -138,6 +157,15 @@ const NEW_ADDITIVE = {
     perc: { ratio: 3, gain: 0.7, attack: 0.002, decay: 0.08 },
   },
 };
+
+// A user entry must round-trip through a USER_* table without inheriting the
+// library/factory marker that makes built-in sounds read-only.
+const userSource = upsertPreset(SRC, 'testUserPreset', NEW_TONE, 'USER_TONE');
+const userLoaded = await load(userSource);
+assert(tableOf(userSource, 'testUserPreset') === 'USER_TONE'
+  && userLoaded.VOICES.testUserPreset?.user === true
+  && !userLoaded.VOICES.testUserPreset?.factory,
+  'a user preset is distinct from a library preset after it is loaded');
 
 let added = upsertPreset(SRC, 'testWobble', NEW_TONE, 'TONE');
 added = setMeasured(added, 'testWobble', { level: 0.0876543, peak: 0.876543 });

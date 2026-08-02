@@ -20,7 +20,8 @@
 //         pan: -0.1,         // -1 left .. +1 right
 //         width: 1,          // stereo image: 1 as-is, 0 mono, 2 wide
 //         mute: false,
-//         send: { delay: 1, reverb: 0.15 },   // delay 1 = the echo the bank asked for
+//         send: { delay: 1, reverb: 0.15 },   // absolute: 1 sends the whole channel, and
+                                            // sends the same amount whichever lane it is
 //         insert: { division: 0.5, feedback: 0.3, tone: 4000, mix: 0.25, pan: 0.8 },
 //                                             // this channel's OWN delay; mix 0 = off
 //         eq: { low: 2, mid: 0, high: -3 },   // dB at 250Hz / 1.2kHz / 4kHz
@@ -37,7 +38,7 @@
 //     fx: {                                   // the shared sends the lanes feed
 //       delay:  { division: 0.75,             // beats: 1=1/4, 0.75=dotted 1/8, 0.5=1/8...
 //                 feedback: 0.35, tone: 2800, // repeats, and their damping in Hz
-//                 level: 1 },                 // SCALE on the bank's own echoLevel
+//                 level: 1 },                 // how loud the return comes back
 //       reverb: { decay: 2.2, preDelay: 0.012 },
 //     },
 //   }

@@ -167,8 +167,15 @@ assert(seamFor('kick2').note === VOICE_LANES.kick.note && seamFor('kick2').noteK
   'a percussion layer is struck at the same note its source is, and can be retuned on its own');
 assert(seamFor('organChords2').typeKey === undefined,
   'a layer of a lane with no waveform key has none either');
-assert(seamFor('sweeps2') === null && seamFor('gliss2') === null,
-  'a lane no voice can play cannot be layered — a layer with no voice is silence');
+// The gestures used to be the exception here: no seam, so nothing to layer. They have
+// one now — a preset on the real lane makes the engine stand its hand-written body down
+// — and a layer of one is a preset and nothing else, so it layers like any other lane.
+assert(seamFor('sweeps2').voiceKey === 'sweeps2Voice' && seamFor('gliss2').voiceKey === 'gliss2Voice',
+  'the gesture lanes carry a seam of their own now, so they layer like the rest');
+assert(LANE_KEYS.every((k) => seamFor(k) && seamFor(`${k}2`)),
+  'and there is no lane left that cannot be: every one the engine ships has a seam');
+assert(seamFor('nosuchlane2') === null && seamFor('nosuchlane') === null && seamFor('') === null,
+  'while a key whose base is not a lane has none — a layer of nothing is silence');
 
 // ---- what a layer is allowed to play ---------------------------------------
 const forLayer = voicesFor('bass2');

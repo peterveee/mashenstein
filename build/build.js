@@ -493,7 +493,9 @@ if (watch) {
     const mixerJs = mixerResult.outputFiles[0].text;
     const mixerShell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
     const mixerSafe = mixerJs.replace(/<\/script/gi, '<\\/script');
-    const mixerHtml = mixerShell.replace('/*__BUNDLE__*/', () => mixerSafe);
+    const mixerHtml = mixerShell
+      .replace('/*__MIXER_DEV_USER__*/', 'false')
+      .replace('/*__BUNDLE__*/', () => mixerSafe);
     const mixerDir = join(root, 'dist', 'SongMixer');
     mkdirSync(mixerDir, { recursive: true });
     writeFileSync(join(mixerDir, 'index.html'), mixerHtml);
