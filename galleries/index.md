@@ -48,3 +48,4 @@ Do not edit by hand.
 | 2026-07-26 | `cee72c1` | [2026-07-26-cee72c1.html](2026-07-26-cee72c1.html) | Archive published build 2a1172d |
 | 2026-07-26 | `716e8e8` | [2026-07-26-716e8e8.html](2026-07-26-716e8e8.html) | Add offline MIDI export and rendering tools |
 | 2026-07-27 | `f6bf283` | [2026-07-27-f6bf283.html](2026-07-27-f6bf283.html) | Remove deprecated check-devtap and probe scripts |
+| 2026-08-02 | `136ef1c` | [2026-08-02-136ef1c.html](2026-08-02-136ef1c.html) | Archive published build 48bef85 |
