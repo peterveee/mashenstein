@@ -120,7 +120,7 @@ assert(entriesIn(rt, 'TONE').length === tone.length
 // ---- adding one -------------------------------------------------------------
 
 const NEW_TONE = {
-  label: 'Test Wobble', category: 'Basses', synth: 'MonoSynth', dur: 1.5,
+  label: 'Test Wobble', category: 'Bass', synth: 'MonoSynth', dur: 1.5,
   // Long enough to need wrapping, which is where a naive emitter loses the space
   // between the last word of one line and the first word of the next.
   note: 'A preset the test invents to prove the desk can add one, with a note long '
@@ -133,12 +133,12 @@ const NEW_TONE = {
   },
 };
 const NEW_NOISE = {
-  label: 'Test Clap', category: 'Claps', dur: 1, note: 'A clap the test made up.',
+  label: 'Test Clap', category: 'Clap', dur: 1, note: 'A clap the test made up.',
   noise: { type: 'bandpass', freq: 1900, Q: 1.4, decay: 0.11 },
   taps: [0, 0.011, 0.023], tapFalloff: 0.78,
 };
 const NEW_DRUM = {
-  label: 'Test Thump', category: 'Kicks', dur: 1, note: 'A drum-synth kick the test made up.',
+  label: 'Test Thump', category: 'Kick', dur: 1, note: 'A drum-synth kick the test made up.',
   osc: { type: 'sine', from: 180, to: 50, sweep: 0.05, decay: 0.4, curve: 'exp', gain: 1 },
   noise: { type: 'lowpass', freq: 3000, Q: 0.7, decay: 0.02, gain: 0.4 },
   drive: 0.3,
@@ -148,7 +148,7 @@ const NEW_DRUM = {
 // round trip that turned the list into `{ '3': 0.2 }` would load as a preset with no bars,
 // which is silence rather than a wrong sound.
 const NEW_ADDITIVE = {
-  label: 'Test Organ', category: 'Organs', synth: 'AdditiveSynth',
+  label: 'Test Organ', category: 'Organ', synth: 'AdditiveSynth',
   homeLane: 'organChords', dur: 6,
   note: 'An additive stack the test made up.',
   additive: {

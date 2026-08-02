@@ -344,41 +344,41 @@ export function laneTrim(bank, laneKey) {
 //   taps   optional repeats, milliseconds apart. A clap is one hit heard four times
 //          in a small room, and `tapFalloff` is how much quieter each one is.
 const NOISE = {
-  snareCrisp: { label: 'Snare', category: 'Snares', dur: 1,
+  snareCrisp: { label: 'Snare', category: 'Snare', dur: 1,
     note: 'The engine’s own snare as a preset: a bright noise band, a short decay and '
       + 'a hint of body. The one every song already uses.',
     noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.09 },
     body: { type: 'triangle', from: 210, to: 140, decay: 0.06, gain: 0.375 } },
-  snareFat: { label: 'Fat Snare', category: 'Snares', dur: 1,
+  snareFat: { label: 'Fat Snare', category: 'Snare', dur: 1,
     note: 'Lower band, longer tail and much more body — a snare that carries a '
       + 'backbeat on its own rather than sitting on top of one.',
     noise: { type: 'bandpass', freq: 1700, Q: 0.5, decay: 0.16 },
     body: { type: 'triangle', from: 180, to: 110, decay: 0.11, gain: 0.6 } },
-  snareTight: { label: 'Tight Snare', category: 'Snares', dur: 1,
+  snareTight: { label: 'Tight Snare', category: 'Snare', dur: 1,
     note: 'Gated: cut off almost before it starts. Sits under a busy hat pattern '
       + 'without smearing it.',
     noise: { type: 'bandpass', freq: 3200, Q: 1.1, decay: 0.045 },
     body: { type: 'triangle', from: 240, to: 170, decay: 0.03, gain: 0.3 } },
-  snareBrush: { label: 'Brush', category: 'Snares', dur: 1,
+  snareBrush: { label: 'Brush', category: 'Snare', dur: 1,
     note: 'All air and no crack — a highpassed sweep with no body at all. The quiet '
       + 'backbeat for the lounge themes.',
     noise: { type: 'highpass', freq: 4200, Q: 0.4, decay: 0.13 } },
-  snareRim: { label: 'Rimshot', category: 'Snares', dur: 1,
+  snareRim: { label: 'Rimshot', category: 'Snare', dur: 1,
     note: 'Narrow, high and instant, with a hard pitched knock. The stick rather '
       + 'than the skin.',
     noise: { type: 'bandpass', freq: 5000, Q: 3, decay: 0.03 },
     body: { type: 'square', from: 420, to: 320, decay: 0.02, gain: 0.5 } },
 
-  clap808: { label: 'Clap', category: 'Claps', dur: 1,
+  clap808: { label: 'Clap', category: 'Clap', dur: 1,
     note: 'Four bursts a few milliseconds apart, each quieter than the last — which '
       + 'is all a clap is: one hit heard several times in a small room.',
     noise: { type: 'bandpass', freq: 1900, Q: 1.4, decay: 0.11 },
     taps: [0, 0.011, 0.023, 0.036], tapFalloff: 0.78 },
-  clapTight: { label: 'Tight Clap', category: 'Claps', dur: 1,
+  clapTight: { label: 'Tight Clap', category: 'Clap', dur: 1,
     note: 'Three closer, shorter bursts. Reads as one hand rather than a room full.',
     noise: { type: 'bandpass', freq: 2400, Q: 2, decay: 0.055 },
     taps: [0, 0.008, 0.016], tapFalloff: 0.7 },
-  clapRoom: { label: 'Big Room Clap', category: 'Claps', dur: 1,
+  clapRoom: { label: 'Big Room Clap', category: 'Clap', dur: 1,
     note: 'Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants '
       + 'space in the arrangement.',
     noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.5, gain: 0.88 },
@@ -399,7 +399,7 @@ const NOISE = {
   // an open hat that do not share a timbre read as two players, which is the thing a
   // kit is not — so the only differences here are the decay and the tiny drop in cutoff
   // a real hat has when it is not clamped shut.
-  hatFoil: { label: '= Foil Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  hatFoil: { label: '= Foil Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'Thinner and brighter than the plain closed hat, with a barely-there metallic '
       + 'ping under the air. Sixteenths of it sit above a mix rather than in it.',
     noise: { type: 'highpass', freq: 9200, Q: 0.9, decay: 0.021 },
@@ -407,20 +407,20 @@ const NOISE = {
     // not the fundamental, which is why the body pitch reads low for a hat. Kept
     // inside the desk's own PITCH range (30–1200 Hz) so the pot can reach it.
     body: { type: 'square', from: 1150, to: 980, decay: 0.014, gain: 0.045 } },
-  hatFoilOpen: { label: '= Foil Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  hatFoilOpen: { label: '= Foil Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The Foil hat unclamped: the same band a shade lower, ringing for a quarter '
       + 'of a second, with the ping stretched to match.',
     noise: { type: 'highpass', freq: 8400, Q: 0.9, decay: 0.27 },
     body: { type: 'square', from: 3100, to: 2600, decay: 0.05, gain: 0.045 } },
-  shaker: { label: 'Shaker', category: 'Percussion', dur: 0.5,
+  shaker: { label: 'Shaker', category: 'Perc', dur: 0.5,
     note: 'A soft band with no attack to speak of. Sixteenths of this sit under '
       + 'anything without competing.',
     noise: { type: 'bandpass', freq: 6000, Q: 1.1, decay: 0.06 } },
-  tambourine: { label: 'Tambourine', category: 'Percussion', dur: 1,
+  tambourine: { label: 'Tambourine', category: 'Perc', dur: 1,
     note: 'Bright, jangly and slightly longer, with a touch of pitch in it.',
     noise: { type: 'highpass', freq: 5200, Q: 0.6, decay: 0.14 },
     body: { type: 'square', from: 900, to: 780, decay: 0.05, gain: 0.12 } },
-  noiseSweep: { label: 'Noise Hit', category: 'Rough & Electric', dur: 2,
+  noiseSweep: { label: 'Noise Hit', category: 'FX', dur: 2,
     note: 'A wide unfiltered burst with a long fall. Not a drum so much as an '
       + 'impact — good on a crash lane, or on a downbeat that needs an edge.',
     noise: { type: 'lowpass', freq: 9000, Q: 0.3, decay: 0.45 } },
@@ -442,31 +442,31 @@ const NOISE = {
 // works here the way it works everywhere. Same seeded buffer as the NOISE table, so
 // renders stay deterministic and stems still sum to the mix.
 const DRUM = {
-  dsKick: { label: 'DS Kick', category: 'Kicks', dur: 1,
+  dsKick: { label: 'DS Kick', category: 'Kick', dur: 1,
     note: 'The drum-synth 808: a sine dropping an octave and a half into a long sub '
       + 'tail, with a filtered click on the front and a little drive to round it.',
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.045, decay: 0.45, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 3200, Q: 0.7, decay: 0.015, gain: 0.4 },
     drive: 0.2 },
-  dsKickHard: { label: 'DS Hard Kick', category: 'Kicks', dur: 1,
+  dsKickHard: { label: 'DS Hard Kick', category: 'Kick', dur: 1,
     note: 'Faster drop, shorter tail, and pushed hard into the shaper — the kick for '
       + 'a mix where the soft one disappears.',
     osc: { type: 'sine', from: 230, to: 55, sweep: 0.03, decay: 0.22, curve: 'exp', gain: 1 },
     noise: { type: 'bandpass', freq: 1100, Q: 1, decay: 0.018, gain: 0.6 },
     drive: 0.55 },
-  dsSnare: { label: 'DS Snare', category: 'Snares', dur: 1,
+  dsSnare: { label: 'DS Snare', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band '
       + 'of noise that rings a little longer than the body does.',
     osc: { type: 'triangle', from: 210, to: 165, sweep: 0.04, decay: 0.11, curve: 'exp', gain: 0.7 },
     noise: { type: 'bandpass', freq: 2100, Q: 0.8, decay: 0.17, gain: 1 },
     drive: 0.18 },
-  dsSnareCrack: { label: 'DS Crack Snare', category: 'Snares', dur: 1,
+  dsSnareCrack: { label: 'DS Crack Snare', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over '
       + 'in a tenth of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 200, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
     noise: { type: 'highpass', freq: 2900, Q: 0.8, decay: 0.085, gain: 1 },
     drive: 0.35 },
-  dsClap: { label: 'DS Clap', category: 'Claps', dur: 1,
+  dsClap: { label: 'DS Clap', category: 'Clap', dur: 1,
     note: 'Four bursts through a band that slides DOWN as it decays — the room going '
       + 'dull after the hit, which is what the filter sweep is for.',
     noise: { type: 'bandpass', freq: 1550, to: 1050, sweep: 0.12, Q: 1.3, decay: 0.15, gain: 1 },
@@ -484,46 +484,46 @@ const DRUM = {
   // of what separates a hat from a burst of hiss — a struck cymbal brightens for the
   // first few milliseconds and then darkens for the rest of its life, and a fixed
   // filter can only ever do one of those.
-  hatSnap: { label: '= Snap Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  hatSnap: { label: '= Snap Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'The cutoff climbs an octave as it decays, so the tick opens rather than just '
       + 'stopping — a chirp too fast to hear as one. Driven a little to keep the front edge.',
     noise: { type: 'highpass', freq: 6200, to: 11000, sweep: 0.028, Q: 1.6, decay: 0.03, gain: 1 },
     drive: 0.3 },
-  hatSnapOpen: { label: '= Snap Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  hatSnapOpen: { label: '= Snap Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The same hat held open: the sweep runs the other way over four tenths of a '
       + 'second, so the wash goes dull as it dies the way a real cymbal does.',
     noise: { type: 'highpass', freq: 8000, to: 5200, sweep: 0.4, Q: 1.2, decay: 0.42, gain: 1 },
     drive: 0.25 },
-  hatGrit: { label: '= Grit Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  hatGrit: { label: '= Grit Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'A resonant band with a square oscillator sitting in it, pushed hard into the '
       + 'shaper. Dirty and mid-forward — the hat for a mix where the bright ones vanish.',
     osc: { type: 'square', from: 3900, to: 1950, sweep: 0.006, decay: 0.028, curve: 'lin', gain: 0.16 },
     noise: { type: 'bandpass', freq: 5600, to: 3600, sweep: 0.05, Q: 4.5, decay: 0.038, gain: 1 },
     drive: 0.5 },
-  hatGritOpen: { label: '= Grit Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  hatGritOpen: { label: '= Grit Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The Grit hat let go: half a second of resonant sizzle falling away to a low '
       + 'band, with the square knock still on the front.',
     osc: { type: 'square', from: 3900, to: 1950, sweep: 0.01, decay: 0.055, curve: 'lin', gain: 0.13 },
     noise: { type: 'bandpass', freq: 5600, to: 2600, sweep: 0.45, Q: 4.2, decay: 0.5, gain: 1 },
     drive: 0.5 },
 
-  dsShaker: { label: 'DS Shaker', category: 'Percussion', dur: 0.5,
+  dsShaker: { label: 'DS Shaker', category: 'Perc', dur: 0.5,
     note: 'The one drum here with an ATTACK: the noise fades in over twenty '
       + 'milliseconds, which is the whole difference between a shaker and a hat.',
     noise: { type: 'bandpass', freq: 6300, Q: 1.4, attack: 0.018, decay: 0.05, gain: 1 } },
-  dsTom: { label: 'DS Tom', category: 'Percussion', homeLane: 'tom', dur: 1,
+  dsTom: { label: 'DS Tom', category: 'Tom', homeLane: 'tom', dur: 1,
     note: 'A sine falling an octave over a tenth of a second with a soft lowpassed '
       + 'skin sound on the front. Tune it with the lane note key.',
     osc: { type: 'sine', from: 220, to: 105, sweep: 0.11, decay: 0.32, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 1400, Q: 0.7, decay: 0.03, gain: 0.18 },
     drive: 0.12 },
-  dsRim: { label: 'DS Rim', category: 'Percussion', dur: 0.5,
+  dsRim: { label: 'DS Rim', category: 'Perc', dur: 0.5,
     note: 'A driven square knock and a narrow band of air, both gone in thirty milliseconds. '
       + 'The stick sound the engine’s rim approximates, synthesised.',
     osc: { type: 'square', from: 460, to: 635, sweep: 0.012, decay: 0.12, curve: 'exp', gain: 0.13 },
     noise: { type: 'bandpass', freq: 4300, Q: 2.2, decay: 0.235, gain: 0.44 },
     drive: 0.24 },
-  dsZap: { label: 'DS Zap', category: 'Rough & Electric', dur: 1,
+  dsZap: { label: 'DS Zap', category: 'FX', dur: 1,
     note: 'A sawtooth falling five octaves in under a tenth of a second, driven — '
       + 'the laser tom every drum synth ships and every second track uses once.',
     osc: { type: 'sawtooth', from: 1900, to: 50, sweep: 0.085, decay: 0.1, curve: 'exp', gain: 1 },
@@ -538,37 +538,37 @@ const DRUM = {
   //
   // They are here as much to be read as to be played: each one is the smallest preset
   // that shows what one of those does.
-  rimRing: { label: '= Ring Rim', category: 'Audition', homeLane: 'rim', dur: 0.5,
+  rimRing: { label: '= Ring Rim', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'A stick crack over a filter narrow enough to ring — the pitch is the '
       + 'resonance, not an oscillator, so it arrives already dying. The rim the old '
       + 'construction could only approximate.',
     noise: { type: 'highpass', freq: 3800, slope: -24, color: 'violet', decay: 0.008, gain: 0.28 },
     ring: { freq: 1720, Q: 110, hit: 0.0015, decay: 0.13, gain: 1.1 },
     drive: 0.15 },
-  rimWood: { label: '= Wood Rim', category: 'Audition', homeLane: 'rim', dur: 0.5,
+  rimWood: { label: '= Wood Rim', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'Lower and rounder, struck with a softer stick: a square knock on the front '
       + 'and a shell ringing under it. Sits where a wood block sits without being one.',
     osc: { type: 'square', from: 1900, to: 1750, sweep: 0.006, decay: 0.012, curve: 'lin', gain: 0.16 },
     ring: { freq: 780, Q: 80, hit: 0.004, decay: 0.2, gain: 1.2 },
     tone: { freq: 7000 } },
-  rimClang: { label: '= Clang Rim', category: 'Audition', homeLane: 'rim', dur: 0.5,
+  rimClang: { label: '= Clang Rim', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'One oscillator bent by another at an unmusical ratio, then folded. Metal '
       + 'rather than wood — the rim for a song with no acoustic pretensions at all.',
     osc: { type: 'square', from: 520, to: 470, sweep: 0.02, decay: 0.11, curve: 'exp', gain: 0.8,
       fm: { type: 'sine', ratio: 3.7, index: 2.2, decay: 0.03 } },
     noise: { type: 'highpass', freq: 5200, slope: -24, decay: 0.02, gain: 0.3 },
     drive: 0.25, shape: 'fold' },
-  hatCluster: { label: '= Cluster Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  hatCluster: { label: '= Cluster Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'Six inharmonic squares through a steep highpass — the 808 cymbal circuit, '
       + 'natively, at about half the cost of the Tone class that hides the same ratios.',
     metal: { freq: 540, spread: 1, count: 6, hp: 8200, Q: 0.8, slope: -24, decay: 0.042 },
     humanize: { gain: 0.08 } },
-  hatClusterOpen: { label: '= Cluster Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  hatClusterOpen: { label: '= Cluster Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The same six partials held for half a second, with the highpass a little '
       + 'lower so the body of the cluster comes through as it rings.',
     metal: { freq: 540, spread: 1, count: 6, hp: 6800, Q: 0.9, slope: -24, decay: 0.46 },
     humanize: { gain: 0.06 } },
-  snarePink: { label: '= Pink Snare', category: 'Audition', homeLane: 'snare', dur: 1,
+  snarePink: { label: '= Pink Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'Pink noise instead of white, so the body is in the noise rather than borrowed '
       + 'from the oscillator under it. Varies a little per hit, which is what a snare '
       + 'played by hands does.',
@@ -576,14 +576,14 @@ const DRUM = {
     noise: { type: 'bandpass', freq: 2200, Q: 1.1, color: 'pink', slope: -24, decay: 0.16, gain: 1 },
     drive: 0.2,
     humanize: { gain: 0.12, filter: 0.08 } },
-  clapHands: { label: '= Hands Clap', category: 'Audition', homeLane: 'clap', dur: 1,
+  clapHands: { label: '= Hands Clap', category: 'Clap', homeLane: 'clap', dur: 1,
     note: 'Four bursts that each land a shade duller than the last, none of them quite '
       + 'the same twice. The tap walk and the per-hit variation are the whole idea: it '
       + 'is four hands rather than one sound repeated.',
     noise: { type: 'bandpass', freq: 1800, to: 1200, sweep: 0.14, Q: 1.5, decay: 0.14, gain: 1 },
     humanize: { gain: 0.18, filter: 0.12 },
     taps: [0, 0.009, 0.019, 0.031], tapFalloff: 0.82, tapTone: 0.93 },
-  kickCrush: { label: '= Crushed Kick', category: 'Audition', homeLane: 'kick', dur: 1,
+  kickCrush: { label: '= Crushed Kick', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'An ordinary 808 drop through the bit crusher, with the tone control pulling '
       + 'the top off what that adds. Hardware, rather than a distortion pedal.',
     osc: { type: 'sine', from: 190, to: 48, sweep: 0.04, decay: 0.3, curve: 'exp', gain: 1 },
@@ -603,7 +603,7 @@ const DRUM = {
   //
   // Levels are stated RELATIVE to each preset's loudest section, because a preset is
   // levelled by measurement (see `voiceGain`) rather than by the engine's own gains.
-  kickEngine: { label: '= Engine Kick', category: 'Audition', homeLane: 'kick', dur: 1,
+  kickEngine: { label: '= Engine Kick', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'The game’s own kick, written down: a sine dropping 165 to 48 Hz with a short '
       + 'highpassed beater click and the 300 Hz knock that lets it read on a phone.',
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.05, attack: 0.006, decay: 0.305, curve: 'exp', gain: 1 },
@@ -638,43 +638,43 @@ const DRUM = {
   // and by different amounts. There is no one number that is right at every level. The
   // song these were transcribed from is where they have to be right, so that is where
   // they were measured; anywhere else they run a little hot.
-  kickShop: { label: '= Shop Kick', category: 'Audition', homeLane: 'kick', dur: 1,
+  kickShop: { label: '= Shop Kick', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'The engine kick as the shop and the Gary themes tune it: the sub ring cut '
       + 'short and the knock halved, so a busy bar does not become one long boom.',
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.05, attack: 0.006, decay: 0.2287, curve: 'exp', gain: 1 },
     knock: 0.202,
     noise: { type: 'highpass', freq: 1900, Q: 1, decay: 0.0198, gain: 0.31 },
     trim: -0.42 },
-  kickMegamix: { label: '= Megamix Kick', category: 'Audition', homeLane: 'kick', dur: 1,
+  kickMegamix: { label: '= Megamix Kick', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'The hardest front of the three and the shortest tail — it has to cut through '
       + 'every other cabinet playing at once.',
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.05, attack: 0.006, decay: 0.1982, curve: 'exp', gain: 1 },
     knock: 0.227,
     noise: { type: 'highpass', freq: 1900, Q: 1, decay: 0.0198, gain: 0.31 },
     trim: -1.15 },
-  snareEngine: { label: '= Engine Snare', category: 'Audition', homeLane: 'snare', dur: 1,
+  snareEngine: { label: '= Engine Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'The game’s own snare: a 2.6 kHz band of noise with a triangle body falling '
       + '210 to 140 Hz under it. The backbeat every song was balanced against.',
     osc: { type: 'triangle', from: 210, to: 140, sweep: 0.05, decay: 0.1031, curve: 'exp', gain: 0.375 },
     noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.1437, gain: 1 } },
-  clapEngine: { label: '= Engine Clap', category: 'Audition', homeLane: 'clap', dur: 1,
+  clapEngine: { label: '= Engine Clap', category: 'Clap', homeLane: 'clap', dur: 1,
     note: 'The game’s own clap: three highpassed bursts twelve milliseconds apart, the '
       + 'LAST of them the loudest and four times as long — two slaps, then the room.',
     noise: { type: 'highpass', freq: 1500, Q: 1, decay: 0.0544, gain: 1 },
     taps: [0, 0.012, 0.024], tapGains: [1, 1, 1.625], tapDecays: [0.0544, 0.0544, 0.2092] },
-  hatEngine: { label: '= Engine Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  hatEngine: { label: '= Engine Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty '
       + 'milliseconds. The tick under two thirds of the soundtrack.',
     noise: { type: 'highpass', freq: 5200, Q: 1, decay: 0.0932, gain: 1 } },
-  ohatEngine: { label: '= Engine Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  ohatEngine: { label: '= Engine Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The game’s own open hat: the same noise a thousand hertz lower, left to '
       + 'sizzle for a fifth of a second.',
     noise: { type: 'highpass', freq: 4200, Q: 1, decay: 0.4232, gain: 1 } },
-  tomEngine: { label: '= Engine Tom', category: 'Audition', homeLane: 'tom', dur: 1,
+  tomEngine: { label: '= Engine Tom', category: 'Tom', homeLane: 'tom', dur: 1,
     note: 'The game’s own tom: a triangle falling most of an octave onto the lane’s own '
       + 'note. Tuned by the lane, the way the engine tunes it.',
     osc: { type: 'triangle', from: 234, to: 130, sweep: 0.08, attack: 0.004, decay: 0.4606, curve: 'exp', gain: 1 } },
-  rimEngine: { label: '= Engine Rim', category: 'Audition', homeLane: 'rim', dur: 0.5,
+  rimEngine: { label: '= Engine Rim', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'The game’s own rimshot: three inharmonic squares sagging as they ring through '
       + 'a narrow band, a stick snap over the top and a woody tonk underneath — with the '
       + 'two-stage decay that makes it a strike rather than a fade.',
@@ -682,7 +682,7 @@ const DRUM = {
     noise: { type: 'highpass', freq: 3200, Q: 1, decay: 0.0165, gain: 0.45 },
     metal: { wave: 'square', freq: 1720, to: 1617, sweep: 0.06, ratios: [1, 1.5291, 1.9477], count: 3,
       filter: 'bandpass', hp: 1750, Q: 3.6, decay: 0.1, sag: 0.16, sagAt: 0.02, gain: 1 } },
-  crashEngine: { label: '= Engine Crash', category: 'Audition', homeLane: 'crash', dur: 5,
+  crashEngine: { label: '= Engine Crash', category: 'Crash', homeLane: 'crash', dur: 5,
     note: 'The game’s own crash: bright on the transient and darkening as it falls, a '
       + 'lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays '
       + 'off the 2.5-second buffer rather than looping the short one.',
@@ -694,13 +694,13 @@ const DRUM = {
   // (megamix), and this is the finale's 7 steps at 126, which is 833ms rather than 1250.
   // A third song wanting a third length needs a third preset, or the lane keeps the
   // hand-written crash, which reads the tempo for itself.
-  crashFinale: { label: '= Finale Crash', category: 'Audition', homeLane: 'crash', dur: 7,
+  crashFinale: { label: '= Finale Crash', category: 'Crash', homeLane: 'crash', dur: 7,
     note: 'The finale’s crash: the same closing lowpass as the engine’s, two thirds the '
       + 'length, because the finale runs at 126 and asks for seven steps of it.',
     noise: { type: 'lowpass', freq: 9000, to: 1100, sweep: 0.8333, Q: 0.7, attack: 0.005, decay: 1.0495, gain: 1 },
     tone: { type: 'highpass', freq: 1200, Q: 1 } },
 
-  dsCrackSnare2: { label: 'DS Crack Snare 2', category: 'Snares', dur: 1,
+  dsCrackSnare2: { label: 'DS Crack Snare 2', category: 'Snare', dur: 1,
     note: 'Tight and driven: a short square knock, highpassed air, everything over in a tenth '
       + 'of a second. The backbeat for fast songs.',
     osc: { type: 'square', from: 255, to: 440, sweep: 0.025, decay: 0.05, curve: 'exp', gain: 0.55 },
@@ -710,7 +710,7 @@ const DRUM = {
     note: 'A resonant highpassed tick — sharper than the plain closed hat, closer to metal '
       + 'without being metal.',
     noise: { type: 'highpass', freq: 6275, Q: 5.1, decay: 0.3, gain: 1.72, to: 2800, sweep: 0.31 } },
-  engineCrash: { label: '= Engine Crash', category: 'Audition', homeLane: 'crash', dur: 5,
+  engineCrash: { label: '= Engine Crash', category: 'Crash', homeLane: 'crash', dur: 5,
     note: 'The game’s own crash: bright on the transient and darkening as it falls, a lowpass '
       + 'closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the '
       + '2.5-second buffer rather than looping the short one.',
@@ -727,19 +727,19 @@ const DRUM = {
   // These are deliberately all drum-synth entries: the family resemblance is in
   // the construction, not just in the label. They are starting points for listening,
   // not claims of component-level recreations of the original hardware.
-  ds909Kick: { label: '=909 Kick', category: 'Audition', homeLane: 'kick', dur: 2,
+  ds909Kick: { label: '=909 Kick', category: 'Kick', homeLane: 'kick', dur: 2,
     note: 'A compact 909-style kick: hard beater click, fast pitch drop and a firm '
       + 'low body that stays out of the sub for the next bass note.',
     osc: { type: 'sine', from: 185, to: 45, sweep: 0.035, attack: 0.001, decay: 0.42, curve: 'exp', gain: 1 },
     noise: { type: 'highpass', freq: 2600, Q: 1.2, decay: 0.012, gain: 0.34 },
     drive: 0.28 },
-  ds909KickPunch: { label: '=909 Kick Punch', category: 'Audition', homeLane: 'kick', dur: 1,
+  ds909KickPunch: { label: '=909 Kick Punch', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'A shorter, louder 909-style kick with a more obvious front edge and a '
       + 'tighter tail for four-on-the-floor patterns.',
     osc: { type: 'sine', from: 225, to: 52, sweep: 0.025, attack: 0.001, decay: 0.24, curve: 'exp', gain: 1 },
     noise: { type: 'bandpass', freq: 1450, Q: 1.1, decay: 0.018, gain: 0.52 },
     drive: 0.42 },
-  ds909Snare: { label: '=909 Snare', category: 'Audition', homeLane: 'snare', dur: 1,
+  ds909Snare: { label: '=909 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A bright 909-style snare: a pitched shell under a wide, slightly metallic noise '
       + 'burst with enough decay to carry a backbeat.',
     osc: { type: 'triangle', from: 135, to: 285, sweep: 0.03, decay: 0.165, curve: 'exp', gain: 0.72, hold: 0 },
@@ -747,111 +747,111 @@ const DRUM = {
     noise: { type: 'bandpass', freq: 1950, Q: 0.8, decay: 0.88, gain: 1.62, hold: 0.019, attack: 0.001, color: 'white', slope: -24, sweep: 0.155 },
     drive: 0.42, shape: 'fold',
     trim: 1.6 },
-  ds909SnareCrack: { label: '=909 Snare Crack', category: 'Audition', homeLane: 'snare', dur: 1,
+  ds909SnareCrack: { label: '=909 Snare Crack', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A sharper 909-style snare variant with a square shell and high-passed '
       + 'wire noise for a more aggressive dance-floor backbeat.',
     osc: { type: 'square', from: 260, to: 190, sweep: 0.022, decay: 0.06, curve: 'exp', gain: 0.5 },
     noise: { type: 'highpass', freq: 3100, Q: 0.9, decay: 0.12, gain: 1 },
     drive: 0.34 },
-  ds909Clap: { label: '=909 Clap', category: 'Audition', homeLane: 'clap', dur: 1,
+  ds909Clap: { label: '=909 Clap', category: 'Clap', homeLane: 'clap', dur: 1,
     note: 'A dry 909-style clap built from four close bursts, with a bright first hit '
       + 'and a short room-like tail on the last hand.',
     noise: { type: 'bandpass', freq: 1850, to: 1200, sweep: 0.11, Q: 1.5, decay: 0.14, gain: 1 },
     taps: [0, 0.009, 0.019, 0.032], tapFalloff: 0.82 },
-  ds909Hat: { label: '=909 Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  ds909Hat: { label: '=909 Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'A crisp 909-style closed hat: bright metallic air with a quick filter '
       + 'movement that leaves room for fast sixteenths.',
     noise: { type: 'highpass', freq: 7200, to: 10500, sweep: 0.018, Q: 1.5, decay: 0.035, gain: 1 },
     drive: 0.24 },
-  ds909OpenHat: { label: '=909 Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  ds909OpenHat: { label: '=909 Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The open partner to =909 Hat: the same bright attack opening into a '
       + 'controlled metallic wash instead of a long cymbal tail.',
     noise: { type: 'highpass', freq: 7600, to: 5200, sweep: 0.35, Q: 1.2, decay: 0.38, gain: 1 },
     drive: 0.2 },
-  ds909Tom: { label: '=909 Tom', category: 'Audition', homeLane: 'tom', dur: 1,
+  ds909Tom: { label: '=909 Tom', category: 'Tom', homeLane: 'tom', dur: 1,
     note: 'A tuned 909-style tom with a clean electronic pitch fall and a small '
       + 'low skin click at the front of the note.',
     osc: { type: 'sine', from: 260, to: 125, sweep: 0.08, decay: 0.34, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 1500, Q: 0.8, decay: 0.025, gain: 0.2 },
     drive: 0.12 },
-  ds909Rim: { label: '=909 Rim', category: 'Audition', homeLane: 'rim', dur: 0.5,
+  ds909Rim: { label: '=909 Rim', category: 'Perc', homeLane: 'rim', dur: 0.5,
     note: 'A hard 909-style rim hit: a short square tick over a narrow resonant '
       + 'ring that makes the stick sound cut through a busy pattern.',
     osc: { type: 'square', from: 980, to: 760, sweep: 0.008, decay: 0.03, curve: 'lin', gain: 0.22 },
     noise: { type: 'highpass', freq: 4300, Q: 2.2, decay: 0.018, gain: 0.36 },
     ring: { freq: 1650, Q: 95, hit: 0.001, decay: 0.1, gain: 1 },
     drive: 0.2 },
-  ds909Crash: { label: '=909 Crash', category: 'Audition', homeLane: 'crash', dur: 5,
+  ds909Crash: { label: '=909 Crash', category: 'Crash', homeLane: 'crash', dur: 5,
     note: 'A bright 909-style crash with a dense front and a high end that darkens '
       + 'as it decays, intended for phrase changes rather than every bar.',
     noise: { type: 'lowpass', freq: 9200, to: 2400, sweep: 0.9, Q: 0.8, decay: 1.35, gain: 1 },
     metal: { wave: 'square', freq: 610, spread: 1, count: 6, hp: 3300, Q: 0.8, decay: 0.65, gain: 0.8 },
     drive: 0.28 },
 
-  dsCr78Kick: { label: '=CR78 Kick', category: 'Audition', homeLane: 'kick', dur: 1,
+  dsCr78Kick: { label: '=CR78 Kick', category: 'Kick', homeLane: 'kick', dur: 1,
     note: 'A small, soft CR78-style kick with a short low thump and a little wooden '
       + 'front edge rather than a long club sub.',
     osc: { type: 'sine', from: 135, to: 55, sweep: 0.02, attack: 0.001, decay: 0.22, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 1100, Q: 0.8, decay: 0.02, gain: 0.26 } },
-  dsCr78Snare: { label: '=CR78 Snare', category: 'Audition', homeLane: 'snare', dur: 1,
+  dsCr78Snare: { label: '=CR78 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A polite CR78-style snare with a low paper-like body and a muted noise '
       + 'burst that sits behind a melody instead of dominating it.',
     osc: { type: 'triangle', from: 175, to: 125, sweep: 0.025, decay: 0.09, curve: 'exp', gain: 0.62 },
     noise: { type: 'bandpass', freq: 1450, Q: 0.8, decay: 0.1, gain: 0.72 } },
-  dsCr78Hat: { label: '=CR78 Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  dsCr78Hat: { label: '=CR78 Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'A dry, dusty CR78-style hat with a lower cutoff and a short envelope that '
       + 'keeps the machine pulse present without sounding glossy.',
     noise: { type: 'highpass', freq: 4800, Q: 0.7, decay: 0.055, gain: 0.8 } },
-  dsCr78Clap: { label: '=CR78 Clap', category: 'Audition', homeLane: 'clap', dur: 1,
+  dsCr78Clap: { label: '=CR78 Clap', category: 'Clap', homeLane: 'clap', dur: 1,
     note: 'A small CR78-style handclap made from three close, slightly dull bursts '
       + 'with more box than brightness.',
     noise: { type: 'bandpass', freq: 1250, to: 900, sweep: 0.08, Q: 1.1, decay: 0.1, gain: 0.82 },
     taps: [0, 0.012, 0.026], tapFalloff: 0.7 },
-  dsCr78Cowbell: { label: '=CR78 Cowbell', category: 'Audition', homeLane: 'tom', dur: 1,
+  dsCr78Cowbell: { label: '=CR78 Cowbell', category: 'Perc', homeLane: 'tom', dur: 1,
     note: 'A compact CR78-style cowbell with a square attack and a restrained resonant '
       + 'ring, tuned to stay characterful without taking over the kit.',
     osc: { type: 'square', from: 540, to: 505, sweep: 0.004, decay: 0.13, curve: 'exp', gain: 0.5 },
     ring: { freq: 820, Q: 28, hit: 0.001, decay: 0.2, gain: 0.82 },
     drive: 0.12 },
-  dsCr78Tom: { label: '=CR78 Tom', category: 'Audition', homeLane: 'tom', dur: 1,
+  dsCr78Tom: { label: '=CR78 Tom', category: 'Tom', homeLane: 'tom', dur: 1,
     note: 'A rounded CR78-style tom with a short pitch drop, tuned for simple fills '
       + 'and little call-and-response figures.',
     osc: { type: 'sine', from: 220, to: 145, sweep: 0.055, decay: 0.28, curve: 'exp', gain: 1 } },
 
-  ds808Kick: { label: '=808 Kick', category: 'Audition', homeLane: 'kick', dur: 3,
+  ds808Kick: { label: '=808 Kick', category: 'Kick', homeLane: 'kick', dur: 3,
     note: 'A long 808-style sub kick: deep sine drop, soft front click and a tail '
       + 'that can become the bass line when it is tuned in a pattern.',
     osc: { type: 'sine', from: 170, to: 36, sweep: 0.06, attack: 0.001, decay: 0.78, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 2200, Q: 0.7, decay: 0.02, gain: 0.25 },
     drive: 0.12 },
-  ds808Snare: { label: '=808 Snare', category: 'Audition', homeLane: 'snare', dur: 1,
+  ds808Snare: { label: '=808 Snare', category: 'Snare', homeLane: 'snare', dur: 1,
     note: 'A round 808-style snare with a low electronic shell under a broad, slightly '
       + 'darker noise body than the sharper 909 family.',
     osc: { type: 'triangle', from: 190, to: 145, sweep: 0.035, decay: 0.13, curve: 'exp', gain: 0.62 },
     noise: { type: 'bandpass', freq: 1750, Q: 0.7, decay: 0.18, gain: 1 },
     drive: 0.16 },
-  ds808Clap: { label: '=808 Clap', category: 'Audition', homeLane: 'clap', dur: 1,
+  ds808Clap: { label: '=808 Clap', category: 'Clap', homeLane: 'clap', dur: 1,
     note: 'A wide 808-style clap with a low, roomy burst and four taps that spread '
       + 'into a soft machine-room tail.',
     noise: { type: 'bandpass', freq: 1450, to: 950, sweep: 0.16, Q: 1, decay: 0.18, gain: 1 },
     taps: [0, 0.012, 0.027, 0.046], tapFalloff: 0.86 },
-  ds808Hat: { label: '=808 Hat', category: 'Audition', homeLane: 'hats', dur: 0.5,
+  ds808Hat: { label: '=808 Hat', category: 'Hats', homeLane: 'hats', dur: 0.5,
     note: 'The characteristic 808-style closed cymbal: six inharmonic metal partials '
       + 'through a highpass, clipped to a very short electronic tick.',
     metal: { freq: 540, spread: 1, count: 6, hp: 7600, Q: 0.9, slope: -24, decay: 0.04 },
     humanize: { gain: 0.05 } },
-  ds808OpenHat: { label: '=808 Open Hat', category: 'Audition', homeLane: 'ohats', dur: 2,
+  ds808OpenHat: { label: '=808 Open Hat', category: 'Hats', homeLane: 'ohats', dur: 2,
     note: 'The open 808-style cymbal partner: the same inharmonic cluster left ringing '
       + 'with a lower filter so its body is audible as it fades.',
     metal: { freq: 540, spread: 1, count: 6, hp: 6100, Q: 0.9, slope: -24, decay: 0.42 },
     humanize: { gain: 0.04 } },
-  ds808Cowbell: { label: '=808 Cowbell', category: 'Audition', homeLane: 'tom', dur: 1,
+  ds808Cowbell: { label: '=808 Cowbell', category: 'Perc', homeLane: 'tom', dur: 1,
     note: 'A bright 808-style cowbell with two inharmonic struck tones, a hard attack '
       + 'and the unmistakable short metallic ring.',
     osc: { type: 'square', from: 540, to: 510, sweep: 0.004, decay: 0.11, curve: 'exp', gain: 0.55 },
     ring: { freq: 805, Q: 34, hit: 0.001, decay: 0.18, gain: 1 },
     drive: 0.18 },
-  ds808Tom: { label: '=808 Tom', category: 'Audition', homeLane: 'tom', dur: 2,
+  ds808Tom: { label: '=808 Tom', category: 'Tom', homeLane: 'tom', dur: 2,
     note: 'A deep 808-style tom with a long sine drop and a clean, rounded tail for '
       + 'syncopated fills and tuned percussion lines.',
     osc: { type: 'sine', from: 215, to: 92, sweep: 0.1, decay: 0.48, curve: 'exp', gain: 1 },
@@ -898,13 +898,45 @@ const LANE_TARGETS = {
 
 // Categories, in picker order. Sound type, not lane — see the note at the top.
 export const VOICE_CATEGORIES = [
-  'Basses', 'Leads', 'Keys', 'Pads', 'Organs', 'Bells & Mallets',
-  'Plucks', 'Brass & Strings', 'Rough & Electric',
-  // The kit, split by what a drum IS rather than lumped together: at twenty-nine
-  // entries one "Drums" column was a list you had to read, where five are lists you
-  // can glance at — and the lane you opened puts its own kind first.
-  'Kicks', 'Snares', 'Claps', 'Hats', 'Percussion', 'Audition',
+  'Bass', 'Lead', 'Pad', 'Keys', 'Pluck', 'Organ', 'Bells', 'Orch', 'FX',
+  // The kit, split by what a drum IS rather than lumped together. The lane you opened
+  // puts its own kind first, but the seven drum groups stay together in the picker.
+  'Kick', 'Snare', 'Hats', 'Clap', 'Tom', 'Crash', 'Perc',
 ];
+
+const LEGACY_CATEGORY = {
+  Basses: 'Bass', Leads: 'Lead', Pads: 'Pad', Plucks: 'Pluck', Organs: 'Organ',
+  'Bells & Mallets': 'Bells', 'Brass & Strings': 'Orch', 'Rough & Electric': 'FX',
+  Kicks: 'Kick', Snares: 'Snare', Claps: 'Clap', Hats: 'Hats', Percussion: 'Perc',
+};
+
+const LEGACY_ROLE_IDS = {
+  Tom: new Set(['engTom', 'tom', 'dsTom', 'tomEngine', 'ds909Tom', 'dsCr78Tom', 'ds808Tom']),
+  Crash: new Set(['engCrash', 'engFinaleCrash', 'metalCrash', 'crashEngine', 'crashFinale', 'engineCrash', 'ds909Crash']),
+  FX: new Set(['zap', 'stZap', 'dsZap']),
+  Orch: new Set(['breathPad', 'tpAlienChorus', 'tpDelicateWind', 'stBreathPad']),
+  Perc: new Set(['dsCr78Cowbell', 'ds808Cowbell']),
+};
+
+const CATEGORY_FOR_HOME_LANE = {
+  kick: 'Kick', snare: 'Snare', clap: 'Clap', hats: 'Hats', ohats: 'Hats',
+  tom: 'Tom', crash: 'Crash', rim: 'Perc',
+};
+
+/** Normalize category metadata from old song-local preset snapshots. */
+export function normalizeVoiceCategory(voice) {
+  const old = voice?.category;
+  const category = LEGACY_CATEGORY[old] || old;
+  const id = voice?.id || '';
+  for (const [role, ids] of Object.entries(LEGACY_ROLE_IDS)) {
+    if (ids.has(id)) return role;
+  }
+  if (old === 'Audition') {
+    if (/cowbell/i.test(voice?.label || '')) return 'Perc';
+    return CATEGORY_FOR_HOME_LANE[voice?.homeLane] || 'Bass';
+  }
+  return category;
+}
 
 // Why there is no noise-based drum here — no snare with a real snap, no closed hat
 // that hisses. `Tone.Noise` fills its buffer from `Math.random` at construction, so
@@ -939,57 +971,57 @@ const quoted = (table) => Object.fromEntries(
 );
 
 const ENGINE = {
-  engSquare: { label: 'Square', category: 'Leads', osc: 'square',
+  engSquare: { label: 'Square', category: 'Lead', osc: 'square',
     note: 'The arcade default — what most lanes play if nothing says otherwise.' },
-  engSaw: { label: 'Sawtooth', category: 'Leads', osc: 'sawtooth',
+  engSaw: { label: 'Sawtooth', category: 'Lead', osc: 'sawtooth',
     note: 'Brighter and harsher, all harmonics present. The Speed Zone lead.' },
-  engTriangle: { label: 'Triangle', category: 'Leads', osc: 'triangle',
+  engTriangle: { label: 'Triangle', category: 'Lead', osc: 'triangle',
     note: 'Soft and hollow, almost a flute. Frost Fortress and Crypt Shift.' },
   engSine: { label: 'Sine', category: 'Keys', osc: 'sine',
     note: 'One harmonic and nothing else. Disappears in a busy mix, which is '
       + 'sometimes exactly the job.' },
   engFilteredSaw: {
-    label: 'Filtered Saw', category: 'Basses', lanes: ['bass'],
+    label: 'Filtered Saw', category: 'Bass', lanes: ['bass'],
     bank: { bassFilteredSaw: true },
     note: 'Saw through a resonant lowpass that shuts as the note decays. Bright '
       + 'edge, round body, quiet sine sub underneath.',
   },
   engFilteredSawOpen: {
-    label: 'Filtered Saw, Open', category: 'Basses', lanes: ['bass'],
+    label: 'Filtered Saw, Open', category: 'Bass', lanes: ['bass'],
     bank: { bassFilteredSaw: true, bassFilterOpen: 2200, bassFilterClose: 520, bassFilterQ: 1.6 },
     note: 'The same, with the filter opening further and resonating harder — more '
       + 'growl, less weight.',
   },
   eng80s: {
-    label: '80s Bass', category: 'Basses', lanes: ['bass'],
+    label: '80s Bass', category: 'Bass', lanes: ['bass'],
     bank: { bass80s: true },
     note: 'Square body, sine sub, and a real octave layer above — built to survive '
       + 'a phone speaker that cannot reproduce the fundamental.',
   },
   eng80sSaw: {
-    label: '80s Bass, Saw', category: 'Basses', lanes: ['bass'],
+    label: '80s Bass, Saw', category: 'Bass', lanes: ['bass'],
     bank: { bass80s: true, bass80sBodyType: 'sawtooth' },
     note: 'The same construction with a sawtooth body: harder, more front.',
   },
   engBright: {
-    label: 'Bright Octave', category: 'Leads',
+    label: 'Bright Octave', category: 'Lead',
     bank: { leadBright: true },
     note: 'The lane’s own waveform with a quiet octave sine laid on top. Adds air '
       + 'without changing the character underneath.',
   },
   engDrawbar: {
-    label: 'Drawbar Organ', category: 'Organs', lanes: ['organChords'],
+    label: 'Drawbar Organ', category: 'Organ', lanes: ['organChords'],
     bank: {},
     note: 'Sine partials at 8′, 4′, 2⅔′, 2′ and 1⅓′ — the organ lane’s own voice.',
   },
   engDrawbarBright: {
-    label: 'Drawbar Organ, Bright', category: 'Organs', lanes: ['organChords'],
+    label: 'Drawbar Organ, Bright', category: 'Organ', lanes: ['organChords'],
     bank: { organBright: true },
     note: 'The upper drawbars pulled further out. Cuts through where the soft '
       + 'registration sits under everything.',
   },
   engDrawbarPerc: {
-    label: 'Drawbar + Percussion', category: 'Organs', lanes: ['organChords'],
+    label: 'Drawbar + Percussion', category: 'Organ', lanes: ['organChords'],
     bank: { organPercussion: true },
     note: 'Hammond-style key-attack pip on the third harmonic, kept dry so repeated '
       + 'off-beat stabs stay crisp.',
@@ -1001,73 +1033,73 @@ const ENGINE = {
   // they come from. Levels are deliberately absent — a preset is a timbre, and the
   // fader is where a level belongs.
   ...quoted({
-    engTitleBass: { label: 'Title Bass', category: 'Basses', lanes: ['bass'],
+    engTitleBass: { label: 'Title Bass', category: 'Bass', lanes: ['bass'],
       bank: { bassType: 'sine', bassAttack: 0.18, bassDur: 7.4 },
       note: 'The nocturne bass from the title theme: a sine so slow to arrive it is felt '
         + 'before it is heard, and it holds for most of two bars.' },
-    engFinaleBass: { label: 'Finale Bass', category: 'Basses', lanes: ['bass'],
+    engFinaleBass: { label: 'Finale Bass', category: 'Bass', lanes: ['bass'],
       bank: { bassType: 'square', bassAttack: 0.001, bassDur: 0.95 },
       note: 'Short, hard and square — the house-arrangement bass from the finale, one '
         + 'note per step with no overlap.' },
-    engFinaleBassRepeat: { label: 'Finale Bass, Ghosted', category: 'Basses', lanes: ['bass'],
+    engFinaleBassRepeat: { label: 'Finale Bass, Ghosted', category: 'Bass', lanes: ['bass'],
       bank: { bassType: 'sawtooth', bassDur: 3.2, bassRepeat: 3, bassRepeatDur: 0.7, bassRepeatGain: 0.38 },
       note: 'Sawtooth with a written-in slapback three steps later — a delay locked to '
         + 'the grid, with no tail. The finale’s lift.' },
-    engMegamixBass: { label: 'Megamix Bass', category: 'Basses', lanes: ['bass'],
+    engMegamixBass: { label: 'Megamix Bass', category: 'Bass', lanes: ['bass'],
       bank: {
         bassFilteredSaw: true, bassFilterOpen: 820, bassFilterClose: 260, bassFilterQ: 0.9,
         bassFilteredSawSubGain: 0.21, bassEcho: false,
       },
       note: 'The filtered saw dialled darker and rounder than default, with the sub '
         + 'brought up. Holds a mix together under everything else in the megamix.' },
-    engShopBass: { label: 'Shop Bass', category: 'Basses', lanes: ['bass'],
+    engShopBass: { label: 'Shop Bass', category: 'Bass', lanes: ['bass'],
       bank: {
         bassFilteredSaw: true, bassFilterOpen: 1100, bassFilterClose: 310, bassFilterQ: 1.1,
         bassFilteredSawSubGain: 0.22, bassType: 'sine', bassAttack: 0.003, bassDur: 1.08, bassEcho: false,
       },
       note: 'The shop theme’s filtered saw: brighter than the megamix’s and shorter, so '
         + 'it bounces rather than sustains.' },
-    engLoungeBass: { label: 'Lounge Bass', category: 'Basses', lanes: ['bass'],
+    engLoungeBass: { label: 'Lounge Bass', category: 'Bass', lanes: ['bass'],
       bank: { bassType: 'triangle', bassDur: 1.25 },
       note: 'Soft triangle, no filter, one note per beat. Dolores’ counter music.' },
-    engWalkingBass: { label: 'Walking Bass', category: 'Basses', lanes: ['bass'],
+    engWalkingBass: { label: 'Walking Bass', category: 'Bass', lanes: ['bass'],
       bank: { bassType: 'sine', bassDur: 1.85, bassRepeat: 3, bassRepeatDur: 0.55, bassRepeatGain: 0.22 },
       note: 'Sine with a quiet ghost note three steps behind — the shuffle in Gary’s '
         + 'pawn-shop themes.' },
-    engBright80sBass: { label: '80s Bass, Shop', category: 'Basses', lanes: ['bass'],
+    engBright80sBass: { label: '80s Bass, Shop', category: 'Bass', lanes: ['bass'],
       bank: { bass80s: true, bassType: 'triangle', bassAttack: 0.003, bassDur: 0.94, bassRepeat: 0 },
       note: 'The 80s stack with a triangle body and a very short note — the bright-organ '
         + 'shop auditions.' },
 
-    engTitleLead: { label: 'Title Lead', category: 'Leads', lanes: ['lead'],
+    engTitleLead: { label: 'Title Lead', category: 'Lead', lanes: ['lead'],
       bank: { leadType: 'sine', leadAttack: 0.16, leadDur: 5.5 },
       note: 'A sine that swells in over a sixth of a second and holds. The title theme, '
         + 'remembered from an empty arcade.' },
-    engFinaleLead: { label: 'Finale Lead', category: 'Leads', lanes: ['lead'],
+    engFinaleLead: { label: 'Finale Lead', category: 'Lead', lanes: ['lead'],
       bank: { leadType: 'sawtooth', leadAttack: 0.006, leadDur: 1.7 },
       note: 'Sawtooth, fast attack, overlapping notes. The finale’s hook.' },
-    engMegamixLead: { label: 'Megamix Lead', category: 'Leads', lanes: ['lead'],
+    engMegamixLead: { label: 'Megamix Lead', category: 'Lead', lanes: ['lead'],
       bank: { leadType: 'triangle', leadAttack: 0.008, leadDur: 1.25 },
       note: 'Triangle with a little length on it — soft enough to sit inside a mix '
         + 'carrying every other cabinet at once.' },
-    engShopLead: { label: 'Shop Lead', category: 'Leads', lanes: ['lead'],
+    engShopLead: { label: 'Shop Lead', category: 'Lead', lanes: ['lead'],
       bank: { leadType: 'triangle', leadAttack: 0.012, leadBright: true, leadBrightGain: 0.16, leadDur: 1.55 },
       note: 'Triangle with the octave-sine brightener on top: the shop’s lead, which '
         + 'needs air to read over the organ.' },
-    engCounterLead: { label: 'Counter Lead', category: 'Leads', lanes: ['lead'],
+    engCounterLead: { label: 'Counter Lead', category: 'Lead', lanes: ['lead'],
       bank: { leadType: 'triangle', leadAttack: 0.006, leadDur: 0.82 },
       note: 'Short triangle stabs — Dolores’ side of the shop auditions.' },
 
-    engTitleHarm: { label: 'Title Harmony', category: 'Leads', lanes: ['leadHarm'],
+    engTitleHarm: { label: 'Title Harmony', category: 'Lead', lanes: ['leadHarm'],
       bank: { harmType: 'triangle', harmAttack: 0.28, harmDur: 6.2 },
       note: 'The slowest voice in the game: a triangle taking more than a quarter of a '
         + 'second to arrive, under the title lead.' },
-    engSineHarm: { label: 'Sine Harmony', category: 'Leads', lanes: ['leadHarm'],
+    engSineHarm: { label: 'Sine Harmony', category: 'Lead', lanes: ['leadHarm'],
       bank: { harmType: 'sine', harmDur: 1.35 },
       note: 'A plain sine third. Adds width to a lead without adding harmonics to fight '
         + 'with it — the shop themes’ partner voice.' },
 
-    engTitleChords: { label: 'Title Chords', category: 'Pads', lanes: ['chords'],
+    engTitleChords: { label: 'Title Chords', category: 'Pad', lanes: ['chords'],
       bank: { chordType: 'triangle', chordAttack: 0.35, chordDur: 7.6 },
       note: 'Held triangle chords with a third of a second of attack. A pad in all but '
         + 'name, and the title theme’s bed.' },
@@ -1083,28 +1115,28 @@ const ENGINE = {
       note: 'Triangle chords with room to ring — the retail-jazz comping under the shop '
         + 'themes.' },
 
-    engShopOrgan: { label: 'Shop Organ', category: 'Organs', lanes: ['organChords'],
+    engShopOrgan: { label: 'Shop Organ', category: 'Organ', lanes: ['organChords'],
       bank: {
         organBright: true, organPercussion: true, organAttack: 0.004, organDur: 1.02,
         organEcho: false, organPercussionDur: 0.52, organPercussionGain: 0.9,
       },
       note: 'Bright drawbars, key-click percussion, short and dry. The shop theme’s '
         + 'organ, and the most worked-on sound in the game.' },
-    engLayawayOrgan: { label: 'Layaway Organ', category: 'Organs', lanes: ['organChords'],
+    engLayawayOrgan: { label: 'Layaway Organ', category: 'Organ', lanes: ['organChords'],
       bank: {
         organBright: true, organPercussion: true, organAttack: 0.002, organDur: 0.58,
         organEcho: false, organPercussionDur: 0.34, organPercussionGain: 0.82,
       },
       note: 'The same registration cut much shorter — chops rather than chords.' },
-    engHeldOrgan: { label: 'Held Organ', category: 'Organs', lanes: ['organChords'],
+    engHeldOrgan: { label: 'Held Organ', category: 'Organ', lanes: ['organChords'],
       bank: { organAttack: 0.045, organDur: 7.4, organEcho: true },
       note: 'Soft drawbars held across two bars, with the echo on. The organ as a bed '
         + 'rather than a rhythm part.' },
 
-    engTitleTwinkle: { label: 'Title Twinkle', category: 'Bells & Mallets', lanes: ['twinkle'],
+    engTitleTwinkle: { label: 'Title Twinkle', category: 'Bells', lanes: ['twinkle'],
       bank: { twinkleAttack: 0.06, twinkleDur: 7 },
       note: 'Long, soft and slow to arrive. The title theme’s dissolving high end.' },
-    engShopTwinkle: { label: 'Shop Twinkle', category: 'Bells & Mallets', lanes: ['twinkle'],
+    engShopTwinkle: { label: 'Shop Twinkle', category: 'Bells', lanes: ['twinkle'],
       bank: { twinkleAttack: 0.003, twinkleDur: 0.62 },
       note: 'Short and immediate — a ping rather than a shimmer.' },
   }),
@@ -1128,16 +1160,16 @@ const ENGINE = {
   // defaults, which is what lets a shop-kick bank be put back to the plain one.
   // `ENGINE_DEFAULTS` is what makes an unset key and a key set to its default read
   // as the same thing, in both directions.
-  engKick: { label: 'Arcade Kick', category: 'Kicks', lanes: ['kick'],
+  engKick: { label: 'Arcade Kick', category: 'Kick', lanes: ['kick'],
     bank: { kickTail: 0.2, kickKnock: 1 },
     note: 'The engine’s own 808, stacked the way an 808 stacks: a sine body dropping '
       + '165Hz to 48Hz in 50ms and ringing for a fifth of a second, a 2ms high-passed '
       + 'click on the front, and a 300Hz triangle knock that cuts through the bass.' },
-  engSnare: { label: 'Arcade Snare', category: 'Snares', lanes: ['snare'], nameOnly: true,
+  engSnare: { label: 'Arcade Snare', category: 'Snare', lanes: ['snare'], nameOnly: true,
     note: 'The engine’s own crack — a 2.6kHz noise band gone in 90ms with a triangle '
       + 'body falling 210Hz to 140Hz under it. Crisp rather than acoustic; there is '
       + 'no bank key that changes it.' },
-  engClap: { label: 'Arcade Clap', category: 'Claps', lanes: ['clap'], nameOnly: true,
+  engClap: { label: 'Arcade Clap', category: 'Clap', lanes: ['clap'], nameOnly: true,
     note: 'Three high-passed noise bursts 12ms apart, the last one louder and four '
       + 'times as long — the stagger is what reads as hands rather than one hit.' },
   engHat: { label: 'Arcade Hat', category: 'Hats', lanes: ['hats'], nameOnly: true,
@@ -1145,35 +1177,35 @@ const ENGINE = {
   engOpenHat: { label: 'Arcade Open Hat', category: 'Hats', lanes: ['ohats'], nameOnly: true,
     note: 'The closed hat’s noise with the cutoff dropped to 4.2kHz and the decay let '
       + 'out to 220ms — the same cymbal, unclamped.' },
-  engRim: { label: 'Arcade Rim', category: 'Percussion', lanes: ['rim'], nameOnly: true,
+  engRim: { label: 'Arcade Rim', category: 'Perc', lanes: ['rim'], nameOnly: true,
     note: 'A stick off the rim in three layers: a high-passed snap, three detuned '
       + 'square partials ringing through a narrow bandpass and sagging as they go, '
       + 'and a woody 430Hz tonk underneath. Out in 75ms, with the ring alone trailing '
       + 'into the echo.' },
-  engTom: { label: 'Arcade Tom', category: 'Percussion', lanes: ['tom'],
+  engTom: { label: 'Arcade Tom', category: 'Tom', lanes: ['tom'],
     bank: { tomDur: 0.28 },
     note: 'A triangle dropping most of an octave onto the lane’s own note — rounded '
       + 'like a membrane, with just enough edge to read above the bass.' },
-  engCrash: { label: 'Arcade Crash', category: 'Percussion', lanes: ['crash'],
+  engCrash: { label: 'Arcade Crash', category: 'Crash', lanes: ['crash'],
     bank: { crashDur: 5, crashOpen: 9000, crashClose: 1100 },
     note: 'Looped noise under a lowpass that closes from 9kHz to 1.1kHz across five '
       + 'steps, which is what makes it decay like a cymbal instead of stopping like a '
       + 'burst of static. The low end is filtered out so it stays thin.' },
 
   ...quoted({
-    engShopKick: { label: 'Shop Kick', category: 'Kicks', lanes: ['kick'],
+    engShopKick: { label: 'Shop Kick', category: 'Kick', lanes: ['kick'],
       bank: { kickTail: 0.15, kickKnock: 0.5 },
       note: 'The engine’s 808 with the sub ring shortened and the front knock up, so a '
         + 'busy bar does not become one long boom. The shop and Gary themes.' },
-    engCounterKick: { label: 'Counter Kick', category: 'Kicks', lanes: ['kick'],
+    engCounterKick: { label: 'Counter Kick', category: 'Kick', lanes: ['kick'],
       bank: { kickTail: 0.12, kickKnock: 0.38 },
       note: 'Shorter still and softer on the front — Dolores’ themes, where the kick '
         + 'keeps time rather than carrying weight.' },
-    engMegamixKick: { label: 'Megamix Kick', category: 'Kicks', lanes: ['kick'],
+    engMegamixKick: { label: 'Megamix Kick', category: 'Kick', lanes: ['kick'],
       bank: { kickTail: 0.13, kickKnock: 0.56 },
       note: 'The hardest front of the three, and a short tail: it has to cut through '
         + 'every other cabinet playing at once.' },
-    engFinaleCrash: { label: 'Finale Crash', category: 'Percussion', lanes: ['crash'],
+    engFinaleCrash: { label: 'Finale Crash', category: 'Crash', lanes: ['crash'],
       bank: { crashDur: 7 },
       note: 'The long crash from the finale — near two bars of decay, where the engine’s '
         + 'default is a short splash.' },
@@ -1184,8 +1216,8 @@ const ENGINE = {
 // are the reference. `peak` is measured (tools/measure-voices.js); `dur` is a note
 // length in 16th steps, and the envelope's release rings on past it.
 const TONE = {
-  // ---- Basses -------------------------------------------------------------
-  roundMono: { label: 'Round Mono 2', category: 'Basses', synth: 'MonoSynth', dur: 1.8,
+  // ---- Bass ---------------------------------------------------------------
+  roundMono: { label: 'Round Mono 2', category: 'Bass', synth: 'MonoSynth', dur: 1.8,
     note: 'Saw through a lowpass that closes as the note decays — the classic synth bass.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1193,7 +1225,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2.9, rolloff: -24 },
       filterEnvelope: { attack: 0.001, decay: 1.22, sustain: 0.13, release: 0.3, baseFrequency: 110, octaves: 3.9 },
     } },
-  fmGrowl: { label: 'FM Growl', category: 'Basses', synth: 'FMSynth', dur: 1.8,
+  fmGrowl: { label: 'FM Growl', category: 'Bass', synth: 'FMSynth', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5, modulationIndex: 6,
@@ -1201,10 +1233,10 @@ const TONE = {
       envelope: { attack: 0.005, decay: 0.25, sustain: 0.5, release: 0.3 },
       modulationEnvelope: { attack: 0.002, decay: 0.18, sustain: 0.1, release: 0.2 },
     } },
-  subSine: { label: 'Sub Sine', category: 'Basses', synth: 'Synth', dur: 2.2,
+  subSine: { label: 'Sub Sine', category: 'Bass', synth: 'Synth', dur: 2.2,
     note: 'Pure weight, no harmonics. Wants room underneath it and a lead up top.',
     options: { oscillator: { type: 'sine' }, envelope: { attack: 0.012, decay: 0.3, sustain: 0.8, release: 0.4 } } },
-  acidSquelch: { label: 'Acid Squelch', category: 'Basses', synth: 'MonoSynth', dur: 1.2,
+  acidSquelch: { label: 'Acid Squelch', category: 'Bass', synth: 'MonoSynth', dur: 1.2,
     note: 'High resonance and a fast filter sweep — the 303 move. Short notes only.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1212,7 +1244,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 8, rolloff: -24 },
       filterEnvelope: { attack: 0.002, decay: 0.09, sustain: 0.1, release: 0.15, baseFrequency: 180, octaves: 4 },
     } },
-  rubberBass: { label: 'Rubber', category: 'Basses', synth: 'MonoSynth', dur: 1.6,
+  rubberBass: { label: 'Rubber', category: 'Bass', synth: 'MonoSynth', dur: 1.6,
     note: 'Triangle through a soft filter with a slow-ish attack. Bounces rather than punches.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1221,7 +1253,7 @@ const TONE = {
       filterEnvelope: { attack: 0.023, decay: 0.2, sustain: 0.3, release: 0.3, baseFrequency: 100, octaves: 4.6, attackCurve: 'exponential' },
     },
     transpose: -12 },
-  clangBass: { label: 'Clang', category: 'Basses', synth: 'FMSynth', dur: 1.4,
+  clangBass: { label: 'Clang', category: 'Bass', synth: 'FMSynth', dur: 1.4,
     note: 'Inharmonic FM — metal in the attack, pitch underneath. Reads as industrial.',
     options: {
       harmonicity: 3.01, modulationIndex: 12,
@@ -1229,7 +1261,7 @@ const TONE = {
       envelope: { attack: 0.002, decay: 0.3, sustain: 0.2, release: 0.2 },
       modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
     } },
-  detuneBass: { label: 'Wide Detune', category: 'Basses', synth: 'DuoSynth', dur: 1.8,
+  detuneBass: { label: 'Wide Detune', category: 'Bass', synth: 'DuoSynth', dur: 1.8,
     note: 'Two monosynths a few cents apart. Big, and the dearest bass here.',
     options: {
       harmonicity: 1.008, vibratoAmount: 0.02, vibratoRate: 3,
@@ -1237,8 +1269,8 @@ const TONE = {
       voice1: { oscillator: { type: 'square' }, envelope: { attack: 0.012, decay: 0.2, sustain: 0.7, release: 0.3 } },
     } },
 
-  // ---- Leads --------------------------------------------------------------
-  monoBright: { label: 'Bright Mono', category: 'Leads', synth: 'MonoSynth', dur: 1.2,
+  // ---- Lead ---------------------------------------------------------------
+  monoBright: { label: 'Bright Mono', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
     note: 'Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.',
     options: {
       oscillator: { type: 'square' },
@@ -1246,7 +1278,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 600, octaves: 3.2 },
     } },
-  amHollow: { label: 'AM Hollow', category: 'Leads', synth: 'AMSynth', dur: 1.2,
+  amHollow: { label: 'AM Hollow', category: 'Lead', synth: 'AMSynth', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a synth.',
     options: {
       harmonicity: 2,
@@ -1254,14 +1286,14 @@ const TONE = {
       envelope: { attack: 0.008, decay: 0.2, sustain: 0.6, release: 0.3 },
       modulationEnvelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.3 },
     } },
-  duoDetune: { label: 'Duo Detune', category: 'Leads', synth: 'DuoSynth', dur: 1.4,
+  duoDetune: { label: 'Duo Detune', category: 'Lead', synth: 'DuoSynth', dur: 1.4,
     note: 'A detuned pair under a slow vibrato. The widest lead here, and two synths per note.',
     options: {
       harmonicity: 1.005, vibratoAmount: 0.12, vibratoRate: 5,
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.02, decay: 0.2, sustain: 0.7, release: 0.4 } },
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.03, decay: 0.2, sustain: 0.7, release: 0.4 } },
     } },
-  glassLead: { label: 'Glass', category: 'Leads', synth: 'FMSynth', dur: 1.2,
+  glassLead: { label: 'Glass', category: 'Lead', synth: 'FMSynth', dur: 1.2,
     note: 'High harmonicity, short modulation — thin and clear, sits over a dense mix.',
     options: {
       harmonicity: 5, modulationIndex: 3,
@@ -1269,7 +1301,7 @@ const TONE = {
       envelope: { attack: 0.004, decay: 0.2, sustain: 0.5, release: 0.3 },
       modulationEnvelope: { attack: 0.002, decay: 0.15, sustain: 0.1, release: 0.2 },
     } },
-  reedLead: { label: 'Reed', category: 'Brass & Strings', synth: 'MonoSynth', dur: 1.6,
+  reedLead: { label: 'Reed', category: 'Orch', synth: 'MonoSynth', dur: 1.6,
     note: 'Slow attack into a narrow filter — a clarinet-ish breath rather than a stab.',
     options: {
       oscillator: { type: 'square' },
@@ -1277,7 +1309,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.08, decay: 0.2, sustain: 0.6, release: 0.3, baseFrequency: 400, octaves: 2 },
     } },
-  screamLead: { label: 'Scream', category: 'Rough & Electric', synth: 'MonoSynth', dur: 1.2,
+  screamLead: { label: 'Scream', category: 'FX', synth: 'MonoSynth', dur: 1.2,
     note: 'Resonance up near self-oscillation. Unsubtle on purpose.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1285,7 +1317,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 12, rolloff: -24 },
       filterEnvelope: { attack: 0.01, decay: 0.3, sustain: 0.5, release: 0.2, baseFrequency: 800, octaves: 3 },
     } },
-  vibratoLead: { label: 'Vibrato Voice', category: 'Leads', synth: 'DuoSynth', dur: 1.8,
+  vibratoLead: { label: 'Vibrato Voice', category: 'Lead', synth: 'DuoSynth', dur: 1.8,
     note: 'Heavy, slow vibrato on a near-unison pair — the closest thing here to someone singing.',
     options: {
       harmonicity: 1.002, vibratoAmount: 0.35, vibratoRate: 5.5,
@@ -1318,7 +1350,7 @@ const TONE = {
       filter: { type: 'bandpass', Q: 3, rolloff: -12 },
       filterEnvelope: { attack: 0.001, decay: 0.08, sustain: 0.2, release: 0.1, baseFrequency: 700, octaves: 2.5 },
     } },
-  toyPiano: { label: 'Toy Piano', category: 'Bells & Mallets', synth: 'FMSynth', dur: 2,
+  toyPiano: { label: 'Toy Piano', category: 'Bells', synth: 'FMSynth', dur: 2,
     note: 'Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.',
     options: {
       harmonicity: 4.02, modulationIndex: 6,
@@ -1330,11 +1362,11 @@ const TONE = {
     note: 'A triangle with a gentle envelope. Does its job and gets out of the way.',
     options: { oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.5, sustain: 0.3, release: 0.6 } } },
 
-  // ---- Pads ---------------------------------------------------------------
-  padTriangle: { label: 'Triangle Pad', category: 'Pads', synth: 'Synth', dur: 3.2,
+  // ---- Pad ----------------------------------------------------------------
+  padTriangle: { label: 'Triangle Pad', category: 'Pad', synth: 'Synth', dur: 3.2,
     note: 'Slow in, slow out. The attack is heard as an arrival, so it wants held sections.',
     options: { oscillator: { type: 'triangle' }, envelope: { attack: 0.12, decay: 0.4, sustain: 0.7, release: 0.9 } } },
-  warmPad: { label: 'Warm Pad', category: 'Pads', synth: 'MonoSynth', dur: 4,
+  warmPad: { label: 'Warm Pad', category: 'Pad', synth: 'MonoSynth', dur: 4,
     note: 'Saw behind a filter that opens slowly. The most ordinary pad there is, and it works.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1342,7 +1374,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.5, decay: 0.5, sustain: 0.7, release: 1, baseFrequency: 200, octaves: 2.6 },
     } },
-  glassPad: { label: 'Glass Pad', category: 'Pads', synth: 'AMSynth', dur: 4,
+  glassPad: { label: 'Glass Pad', category: 'Pad', synth: 'AMSynth', dur: 4,
     note: 'Ring modulation over a long swell — shimmering rather than warm.',
     options: {
       harmonicity: 3.01,
@@ -1350,7 +1382,7 @@ const TONE = {
       envelope: { attack: 0.3, decay: 0.5, sustain: 0.7, release: 1.4 },
       modulationEnvelope: { attack: 0.6, decay: 0.4, sustain: 0.6, release: 1 },
     } },
-  breathPad: { label: 'Breath', category: 'Pads', synth: 'DuoSynth', dur: 4.5,
+  breathPad: { label: 'Breath', category: 'Orch', synth: 'DuoSynth', dur: 4.5,
     note: 'Two slightly detuned voices swelling together. Big and slow; expensive per note.',
     options: {
       harmonicity: 1.01, vibratoAmount: 0.08, vibratoRate: 2.5,
@@ -1358,8 +1390,8 @@ const TONE = {
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.5, decay: 0.4, sustain: 0.7, release: 1.6 } },
     } },
 
-  // ---- Organs -------------------------------------------------------------
-  amOrgan: { label: 'AM Organ', category: 'Organs', synth: 'AMSynth', dur: 2.6,
+  // ---- Organ --------------------------------------------------------------
+  amOrgan: { label: 'AM Organ', category: 'Organ', synth: 'AMSynth', dur: 2.6,
     note: 'Held and slightly beating, the way an organ with two drawbars out is.',
     options: {
       harmonicity: 1,
@@ -1367,7 +1399,7 @@ const TONE = {
       envelope: { attack: 0.02, decay: 0.1, sustain: 0.9, release: 0.35 },
       modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.8, release: 0.3 },
     } },
-  fullOrgan: { label: 'Full Organ', category: 'Organs', synth: 'FMSynth', dur: 3,
+  fullOrgan: { label: 'Full Organ', category: 'Organ', synth: 'FMSynth', dur: 3,
     note: 'All stops out: harmonically dense and completely flat in level, like a key held down.',
     options: {
       harmonicity: 2, modulationIndex: 2,
@@ -1375,7 +1407,7 @@ const TONE = {
       envelope: { attack: 0.01, decay: 0.01, sustain: 1, release: 0.2 },
       modulationEnvelope: { attack: 0.01, decay: 0.01, sustain: 1, release: 0.2 },
     } },
-  reedOrgan: { label: 'Reed Organ', category: 'Organs', synth: 'MonoSynth', dur: 3,
+  reedOrgan: { label: 'Reed Organ', category: 'Organ', synth: 'MonoSynth', dur: 3,
     note: 'A wheezier, narrower organ — harmonium rather than Hammond.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1384,8 +1416,8 @@ const TONE = {
       filterEnvelope: { attack: 0.05, decay: 0.1, sustain: 0.8, release: 0.3, baseFrequency: 500, octaves: 1.5 },
     } },
 
-  // ---- Bells & Mallets ----------------------------------------------------
-  fmBell: { label: 'FM Bell', category: 'Bells & Mallets', synth: 'FMSynth', dur: 1.2,
+  // ---- Bells --------------------------------------------------------------
+  fmBell: { label: 'FM Bell', category: 'Bells', synth: 'FMSynth', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3, modulationIndex: 8,
@@ -1393,7 +1425,7 @@ const TONE = {
       envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     } },
-  celeste: { label: 'Celeste', category: 'Bells & Mallets', synth: 'FMSynth', dur: 4,
+  celeste: { label: 'Celeste', category: 'Bells', synth: 'FMSynth', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 7, modulationIndex: 4,
@@ -1401,7 +1433,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 1.6, sustain: 0.01, release: 1.6 },
       modulationEnvelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
     } },
-  marimba: { label: 'Marimba', category: 'Bells & Mallets', synth: 'FMSynth', dur: 1.4,
+  marimba: { label: 'Marimba', category: 'Bells', synth: 'FMSynth', dur: 1.4,
     note: 'Wooden and short. The mallet is the whole sound; there is no sustain to speak of.',
     options: {
       harmonicity: 4, modulationIndex: 3,
@@ -1409,13 +1441,13 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.35 },
       modulationEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 },
     } },
-  tubularBell: { label: 'Tubular Bell', category: 'Bells & Mallets', synth: 'MetalSynth', dur: 4,
+  tubularBell: { label: 'Tubular Bell', category: 'Bells', synth: 'MetalSynth', dur: 4,
     note: 'Metal partials, long ring. Loud and inharmonic — one per bar is plenty.',
     options: {
       harmonicity: 5.1, modulationIndex: 20, resonance: 3000, octaves: 1.2,
       envelope: { attack: 0.001, decay: 1.8, release: 1.2 },
     } },
-  musicBox: { label: 'Music Box', category: 'Bells & Mallets', synth: 'FMSynth', dur: 3,
+  musicBox: { label: 'Music Box', category: 'Bells', synth: 'FMSynth', dur: 3,
     note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
     options: {
       harmonicity: 6.03, modulationIndex: 7,
@@ -1424,8 +1456,8 @@ const TONE = {
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.1 },
     } },
 
-  // ---- Plucks -------------------------------------------------------------
-  synthPluck: { label: 'Synth Pluck', category: 'Plucks', synth: 'MonoSynth', dur: 0.9,
+  // ---- Pluck --------------------------------------------------------------
+  synthPluck: { label: 'Synth Pluck', category: 'Pluck', synth: 'MonoSynth', dur: 0.9,
     note: 'Filter slams shut immediately. Short, bright, and gone.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1433,10 +1465,10 @@ const TONE = {
       filter: { type: 'lowpass', Q: 4, rolloff: -24 },
       filterEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1, baseFrequency: 300, octaves: 4 },
     } },
-  harpPluck: { label: 'Harp', category: 'Plucks', synth: 'Synth', dur: 2,
+  harpPluck: { label: 'Harp', category: 'Pluck', synth: 'Synth', dur: 2,
     note: 'A triangle with no sustain at all — the string is let go the moment it is struck.',
     options: { oscillator: { type: 'triangle' }, envelope: { attack: 0.002, decay: 0.7, sustain: 0, release: 0.7 } } },
-  koto: { label: 'Koto', category: 'Plucks', synth: 'FMSynth', dur: 1.6,
+  koto: { label: 'Koto', category: 'Pluck', synth: 'FMSynth', dur: 1.6,
     note: 'Bright inharmonic pluck with a fast decay. Reads as a struck string.',
     options: {
       harmonicity: 2.51, modulationIndex: 9,
@@ -1445,8 +1477,8 @@ const TONE = {
       modulationEnvelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.15 },
     } },
 
-  // ---- Brass & Strings ----------------------------------------------------
-  brassStab: { label: 'Brass Stab', category: 'Brass & Strings', synth: 'MonoSynth', dur: 1.4,
+  // ---- Orch ---------------------------------------------------------------
+  brassStab: { label: 'Brass Stab', category: 'Orch', synth: 'MonoSynth', dur: 1.4,
     note: 'Filter rises through the note the way a horn section leans into one.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1454,14 +1486,14 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.12, decay: 0.2, sustain: 0.7, release: 0.2, baseFrequency: 300, octaves: 3 },
     } },
-  synthStrings: { label: 'Synth Strings', category: 'Brass & Strings', synth: 'DuoSynth', dur: 4,
+  synthStrings: { label: 'Synth Strings', category: 'Orch', synth: 'DuoSynth', dur: 4,
     note: 'The string-machine sound: two detuned saws, slow on, slow off.',
     options: {
       harmonicity: 1.006, vibratoAmount: 0.05, vibratoRate: 4,
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.2, decay: 0.3, sustain: 0.85, release: 1 } },
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.3, decay: 0.3, sustain: 0.85, release: 1.2 } },
     } },
-  hornSwell: { label: 'Horn Swell', category: 'Brass & Strings', synth: 'FMSynth', dur: 3,
+  hornSwell: { label: 'Horn Swell', category: 'Orch', synth: 'FMSynth', dur: 3,
     note: 'Slow crescendo with the harmonics arriving after the fundamental, as a brass note does.',
     options: {
       harmonicity: 1, modulationIndex: 5,
@@ -1470,8 +1502,8 @@ const TONE = {
       modulationEnvelope: { attack: 0.4, decay: 0.3, sustain: 0.7, release: 0.4 },
     } },
 
-  // ---- Rough & Electric ---------------------------------------------------
-  buzzSaw: { label: 'Buzz Saw', category: 'Rough & Electric', synth: 'MonoSynth', dur: 1.2,
+  // ---- FX -----------------------------------------------------------------
+  buzzSaw: { label: 'Buzz Saw', category: 'FX', synth: 'MonoSynth', dur: 1.2,
     note: 'Filter wide open, no envelope on it. Raw, and deliberately unmusical.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -1479,20 +1511,20 @@ const TONE = {
       filter: { type: 'highpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.001, decay: 0.05, sustain: 1, release: 0.1, baseFrequency: 80, octaves: 0.2 },
     } },
-  metalHit: { label: 'Metal Hit', category: 'Rough & Electric', synth: 'MetalSynth', dur: 1,
+  metalHit: { label: 'Metal Hit', category: 'FX', synth: 'MetalSynth', dur: 1,
     note: 'Clang with no pitch centre worth speaking of. Percussion that follows the notes.',
     options: {
       harmonicity: 12, modulationIndex: 32, resonance: 800, octaves: 1.5,
       envelope: { attack: 0.001, decay: 0.3, release: 0.2 },
     } },
-  drumTone: { label: 'Drum Tone', category: 'Rough & Electric', synth: 'MembraneSynth', dur: 1,
+  drumTone: { label: 'Drum Tone', category: 'FX', synth: 'MembraneSynth', dur: 1,
     note: 'A pitched drum — the note bends down into a thud. Tuned toms from a melody line.',
     options: {
       pitchDecay: 0.05, octaves: 4,
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
     } },
-  ringMod: { label: 'Ring Mod', category: 'Rough & Electric', synth: 'AMSynth', dur: 1.4,
+  ringMod: { label: 'Ring Mod', category: 'FX', synth: 'AMSynth', dur: 1.4,
     note: 'Inharmonic ring modulation — the pitch is in there but so is a second one.',
     options: {
       harmonicity: 2.47,
@@ -1500,7 +1532,7 @@ const TONE = {
       envelope: { attack: 0.004, decay: 0.2, sustain: 0.6, release: 0.3 },
       modulationEnvelope: { attack: 0.004, decay: 0.2, sustain: 0.6, release: 0.3 },
     } },
-  hardFm: { label: 'Hard FM', category: 'Rough & Electric', synth: 'FMSynth', dur: 1.2,
+  hardFm: { label: 'Hard FM', category: 'FX', synth: 'FMSynth', dur: 1.2,
     note: 'Modulation index high enough to be noise with a pitch in it.',
     options: {
       harmonicity: 1.41, modulationIndex: 24,
@@ -1515,53 +1547,53 @@ const TONE = {
   // the two deterministic percussion classes — no noise, so they read as electronic
   // rather than acoustic, which is exactly what an 808 is. `taps` gives the clap
   // shape without noise: the same strike heard several times, each quieter.
-  kickDeep: { label: 'Deep Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 3,
+  kickDeep: { label: 'Deep Kick', category: 'Kick', synth: 'MembraneSynth', dur: 3,
     note: 'A long, slow pitch drop into a sub that outlasts the bar. One per phrase, '
       + 'or it turns the low end to mud.',
     options: { pitchDecay: 0.12, octaves: 8, oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 1.1, sustain: 0, release: 1 } } },
-  kickPunch: { label: 'Punch Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 1.2,
+  kickPunch: { label: 'Punch Kick', category: 'Kick', synth: 'MembraneSynth', dur: 1.2,
     note: 'Triangle body and a fast drop — more middle than an 808, so it survives '
       + 'a mix with a busy bass under it.',
     options: { pitchDecay: 0.025, octaves: 5, oscillator: { type: 'triangle' },
       envelope: { attack: 0.001, decay: 0.28, sustain: 0, release: 0.25 } } },
-  kickDirty: { label: 'Dirty Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 1.2,
+  kickDirty: { label: 'Dirty Kick', category: 'Kick', synth: 'MembraneSynth', dur: 1.2,
     note: 'A square body makes the drop buzz on the way down. Distorted without a '
       + 'distortion on it.',
     options: { pitchDecay: 0.05, octaves: 6, oscillator: { type: 'square' },
       envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.3 } } },
-  kickThud: { label: 'Thud', category: 'Kicks', synth: 'MembraneSynth', dur: 1,
+  kickThud: { label: 'Thud', category: 'Kick', synth: 'MembraneSynth', dur: 1,
     note: 'Barely any pitch movement — a dull knock rather than a boom. Sits under '
       + 'a mix instead of leading it.',
     options: { pitchDecay: 0.01, octaves: 1.5, oscillator: { type: 'sine' },
       envelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.18 } } },
 
-  snareFm: { label: 'FM Snare', category: 'Snares', synth: 'FMSynth', dur: 1,
+  snareFm: { label: 'FM Snare', category: 'Snare', synth: 'FMSynth', dur: 1,
     note: 'High modulation index and a fast decay: enough inharmonic clatter to read '
       + 'as a snare without a grain of noise in it.',
     options: { harmonicity: 3.7, modulationIndex: 28,
       oscillator: { type: 'square' }, modulation: { type: 'sawtooth' },
       envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.12 },
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.06 } } },
-  snareTrash: { label: 'Trash Snare', category: 'Snares', synth: 'MetalSynth', dur: 1.4,
+  snareTrash: { label: 'Trash Snare', category: 'Snare', synth: 'MetalSynth', dur: 1.4,
     note: 'Dense, ringing and slightly too long. Industrial — it wants a slow tempo '
       + 'and a lot of space.',
     options: { harmonicity: 6.4, modulationIndex: 40, resonance: 1200, octaves: 2,
       envelope: { attack: 0.001, decay: 0.3, release: 0.2 } } },
-  snareFlam: { label: 'Flam Snare', category: 'Snares', synth: 'MetalSynth', dur: 1,
+  snareFlam: { label: 'Flam Snare', category: 'Snare', synth: 'MetalSynth', dur: 1,
     note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with '
       + 'a thicker front.',
     options: { harmonicity: 8, modulationIndex: 22, resonance: 1600, octaves: 1.4,
       envelope: { attack: 0.001, decay: 0.14, release: 0.1 } },
     taps: [0, 0.022], tapFalloff: 0.85 },
 
-  clapMetal: { label: 'Metal Clap', category: 'Claps', synth: 'MetalSynth', dur: 1,
+  clapMetal: { label: 'Metal Clap', category: 'Clap', synth: 'MetalSynth', dur: 1,
     note: 'The clap shape — four strikes a few milliseconds apart — on struck metal '
       + 'instead of noise. Harder and more electronic than the real thing.',
     options: { harmonicity: 9, modulationIndex: 26, resonance: 2400, octaves: 1.2,
       envelope: { attack: 0.001, decay: 0.09, release: 0.06 } },
     taps: [0, 0.012, 0.025, 0.038], tapFalloff: 0.76 },
-  clapFm: { label: 'FM Clap', category: 'Claps', synth: 'FMSynth', dur: 1,
+  clapFm: { label: 'FM Clap', category: 'Clap', synth: 'FMSynth', dur: 1,
     note: 'Three short FM cracks in quick succession. Drier than the metal clap and '
       + 'easier to fit under a vocal.',
     options: { harmonicity: 5.1, modulationIndex: 20,
@@ -1581,16 +1613,16 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.22, release: 0.16 } } },
 
   // `homeLane` is the lane tools/measure-voices.js measures a preset ON. It matters
-  // only on the kit, where the LANE supplies the note: the Percussion category covers
+  // only on the kit, where the LANE supplies the note: the Perc category covers
   // both the claves and the drums, and measuring a taiko at the rim lane's 420 Hz
   // levels it against a pitch nobody strikes it at. Everything without one is measured
   // where its category says — see HOME_LANES in the tool.
-  conga: { label: 'Conga', category: 'Percussion', homeLane: 'tom', synth: 'MembraneSynth', dur: 1.2,
+  conga: { label: 'Conga', category: 'Perc', homeLane: 'tom', synth: 'MembraneSynth', dur: 1.2,
     note: 'A tuned hand drum: enough pitch left in it to play a line rather than '
       + 'keep time.',
     options: { pitchDecay: 0.06, octaves: 1.4, oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.25 } } },
-  taiko: { label: 'KW Blip', category: 'Percussion', homeLane: 'tom', synth: 'MembraneSynth', dur: 2.4,
+  taiko: { label: 'KW Blip', category: 'Perc', homeLane: 'tom', synth: 'MembraneSynth', dur: 2.4,
     note: 'Like a kraftwerk percussion blip',
     options: {
       pitchDecay: 0.037,
@@ -1598,34 +1630,34 @@ const TONE = {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.3 },
     } },
-  clave: { label: 'Clave', category: 'Percussion', synth: 'FMSynth', dur: 0.6,
+  clave: { label: 'Clave', category: 'Perc', synth: 'FMSynth', dur: 0.6,
     note: 'A hard, high, completely dry click with a pitch to it. Cuts through '
       + 'anything at almost no level.',
     options: { harmonicity: 3.02, modulationIndex: 8,
       oscillator: { type: 'sine' }, modulation: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 },
       modulationEnvelope: { attack: 0.001, decay: 0.02, sustain: 0, release: 0.02 } } },
-  agogo: { label: 'Agogo', category: 'Percussion', synth: 'MetalSynth', dur: 1.4,
+  agogo: { label: 'Agogo', category: 'Perc', synth: 'MetalSynth', dur: 1.4,
     note: 'A struck bell with two clear partials and a medium ring — a cowbell with '
       + 'better manners.',
     options: { harmonicity: 4.2, modulationIndex: 12, resonance: 3200, octaves: 0.9,
       envelope: { attack: 0.001, decay: 0.24, release: 0.18 } } },
-  triangleDing: { label: 'Triangle', category: 'Percussion', homeLane: 'tom', synth: 'MetalSynth', dur: 6,
+  triangleDing: { label: 'Triangle', category: 'Perc', homeLane: 'tom', synth: 'MetalSynth', dur: 6,
     note: 'Very high, very thin, and rings for bars. One on a downbeat is plenty.',
     options: { harmonicity: 16, modulationIndex: 18, resonance: 9000, octaves: 0.6,
       envelope: { attack: 0.001, decay: 2.6, release: 2 } } },
-  buzzRoll: { label: 'Buzz Roll', category: 'Percussion', synth: 'MetalSynth', dur: 1,
+  buzzRoll: { label: 'Buzz Roll', category: 'Perc', synth: 'MetalSynth', dur: 1,
     note: 'Six strikes across a sixteenth, dying away — a drag, or a machine failing '
       + 'to start.',
     options: { harmonicity: 7, modulationIndex: 24, resonance: 2000, octaves: 1.3,
       envelope: { attack: 0.001, decay: 0.05, release: 0.04 } },
     taps: [0, 0.008, 0.016, 0.024, 0.032, 0.04], tapFalloff: 0.84 },
-  // ---- Drums & Percussion -------------------------------------------------
+  // ---- Drum sources --------------------------------------------------------
   // Struck at the lane's own note (VOICE_LANES), because a drum lane holds booleans.
   // All oscillator-based: see the note by VOICE_CATEGORIES for why none of these
   // hiss. They go on a melodic lane perfectly well, and a tuned kick following a
   // bass line is a real sound rather than a mistake.
-  kick808: { label: '808 Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 2,
+  kick808: { label: '808 Kick', category: 'Kick', synth: 'MembraneSynth', dur: 2,
     note: 'Sine with a deep pitch drop into a long sub. The 808, which is what the '
       + 'engine’s own kick is modelled on.',
     options: {
@@ -1633,7 +1665,7 @@ const TONE = {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.5, sustain: 0, release: 0.5 },
     } },
-  kickTight: { label: 'Tight Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 1,
+  kickTight: { label: 'Tight Kick', category: 'Kick', synth: 'MembraneSynth', dur: 1,
     note: 'The same shape with the tail cut short — for a busy bar where a long '
       + 'boom would smear into the next hit.',
     options: {
@@ -1641,7 +1673,7 @@ const TONE = {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.16 },
     } },
-  kickClick: { label: 'Click Kick', category: 'Kicks', synth: 'MembraneSynth', dur: 1,
+  kickClick: { label: 'Click Kick', category: 'Kick', synth: 'MembraneSynth', dur: 1,
     note: 'A square body makes the attack a knock rather than a thump. Reads on a '
       + 'phone speaker where a sub does not.',
     options: {
@@ -1649,7 +1681,7 @@ const TONE = {
       oscillator: { type: 'square' },
       envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.3 },
     } },
-  tom: { label: 'Tom', category: 'Percussion', homeLane: 'tom', synth: 'MembraneSynth', dur: 1.6,
+  tom: { label: 'Tom', category: 'Tom', homeLane: 'tom', synth: 'MembraneSynth', dur: 1.6,
     note: 'A shallower pitch drop leaves the note audible — a drum you can write a '
       + 'melody on.',
     options: {
@@ -1657,7 +1689,7 @@ const TONE = {
       oscillator: { type: 'triangle' },
       envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
     } },
-  metalSnare: { label: 'Metal Snare', category: 'Snares', synth: 'MetalSynth', dur: 1,
+  metalSnare: { label: 'Metal Snare', category: 'Snare', synth: 'MetalSynth', dur: 1,
     note: 'Inharmonic partials in place of a wire snare. Electronic, not acoustic.',
     options: {
       harmonicity: 8, modulationIndex: 22, resonance: 1600, octaves: 1.4,
@@ -1681,14 +1713,14 @@ const TONE = {
   // and it is why this reads as a machine's cymbal where the noise pairs read as a
   // stick on metal. Both halves carry identical partials — only the envelope differs,
   // which is what a pedal does to a real hat.
-  hat808: { label: '= 808 Hat', category: 'Audition', homeLane: 'hats', synth: 'MetalSynth', dur: 0.5,
+  hat808: { label: '= 808 Hat', category: 'Hats', homeLane: 'hats', synth: 'MetalSynth', dur: 0.5,
     note: 'The drum-machine closed hat: six detuned squares through a high resonance, '
       + 'gone in forty milliseconds. Metallic in a way no filtered noise gets to.',
     options: {
       harmonicity: 5.1, modulationIndex: 32, resonance: 7200, octaves: 1.2,
       envelope: { attack: 0.001, decay: 0.04, release: 0.02 },
     } },
-  hat808Open: { label: '= 808 Open Hat', category: 'Audition', homeLane: 'ohats', synth: 'MetalSynth', dur: 2,
+  hat808Open: { label: '= 808 Open Hat', category: 'Hats', homeLane: 'ohats', synth: 'MetalSynth', dur: 2,
     note: 'The same six partials left to ring for half a second. The open hat that '
       + 'answers = 808 Hat — use them as a pair or neither.',
     options: {
@@ -1696,20 +1728,20 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.44, release: 0.32 },
     } },
 
-  metalCrash: { label: 'Metal Crash', category: 'Percussion', homeLane: 'crash', synth: 'MetalSynth', dur: 6,
+  metalCrash: { label: 'Metal Crash', category: 'Crash', homeLane: 'crash', synth: 'MetalSynth', dur: 6,
     note: 'Long, dense and loud. One per section, not one per bar.',
     options: {
       harmonicity: 5.1, modulationIndex: 40, resonance: 3000, octaves: 2,
       envelope: { attack: 0.001, decay: 2.4, release: 1.6 },
     } },
-  cowbell: { label: 'Cowbell', category: 'Percussion', synth: 'MetalSynth', dur: 0.8,
+  cowbell: { label: 'Cowbell', category: 'Perc', synth: 'MetalSynth', dur: 0.8,
     note: 'Two fixed partials and a fast decay. It is the 808 cowbell, and it is '
       + 'never subtle.',
     options: {
       harmonicity: 3.5, modulationIndex: 16, resonance: 2200, octaves: 0.6,
       envelope: { attack: 0.001, decay: 0.12, release: 0.08 },
     } },
-  woodBlock: { label: 'Wood Block', category: 'Percussion', synth: 'FMSynth', dur: 0.6,
+  woodBlock: { label: 'Wood Block', category: 'Perc', synth: 'FMSynth', dur: 0.6,
     note: 'A short knock with almost no tail. Good for rim, and for a tick that '
       + 'keeps time without taking up room.',
     options: {
@@ -1718,7 +1750,7 @@ const TONE = {
       envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.03 },
     } },
-  zap: { label: 'Zap', category: 'Percussion', synth: 'MembraneSynth', dur: 0.6,
+  zap: { label: 'Zap', category: 'FX', synth: 'MembraneSynth', dur: 0.6,
     note: 'A pitch drop so fast it is heard as a click with a direction. Laser, or '
       + 'a very electronic rim.',
     options: {
@@ -1742,23 +1774,23 @@ const TONE = {
   // randomises its buffer read-offset on every trigger (Noise.js:98), so two hits in
   // one render differ, let alone two renders. Our own noise presets use the engine's
   // seeded buffer instead — see the NOISE table.
-  tpBah: { label: 'Bah', category: 'Leads', synth: 'MonoSynth', dur: 1.4,
+  tpBah: { label: 'Bah', category: 'Lead', synth: 'MonoSynth', dur: 1.4,
     note: "A bandpassed saw with a vowel in it — the filter sits where a voice’s formant would. Tone.js’s own preset.",
     origin: "Tonejs/Presets MonoSynth/Bah",
     options: {"oscillator":{"type":"sawtooth"},"filter":{"Q":2,"type":"bandpass","rolloff":-24},"envelope":{"attack":0.01,"decay":0.1,"sustain":0.2,"release":0.6},"filterEnvelope":{"attack":0.02,"decay":0.4,"sustain":1,"release":0.7,"releaseCurve":"linear","baseFrequency":20,"octaves":5}} },
-  tpBassGuitar: { label: 'Bass Guitar', category: 'Basses', synth: 'MonoSynth', dur: 1.8,
+  tpBassGuitar: { label: 'Bass Guitar', category: 'Bass', synth: 'MonoSynth', dur: 1.8,
     note: "An FM square through a lowpass, voiced to sit where a plucked electric bass sits.",
     origin: "Tonejs/Presets MonoSynth/BassGuitar",
     options: {"oscillator":{"type":"fmsquare5","modulationType":"triangle","modulationIndex":2,"harmonicity":0.501},"filter":{"Q":1,"type":"lowpass","rolloff":-24},"envelope":{"attack":0.01,"decay":0.1,"sustain":0.4,"release":2},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0.8,"release":1.5,"baseFrequency":50,"octaves":4.4}} },
-  tpBassy: { label: 'Bassy', category: 'Basses', synth: 'MonoSynth', dur: 1.8,
+  tpBassy: { label: 'Bassy', category: 'Bass', synth: 'MonoSynth', dur: 1.8,
     note: "Built from explicit partials rather than a waveform name, with a resonant lowpass over it. Fat and slightly hollow.",
     origin: "Tonejs/Presets MonoSynth/Bassy",
     options: {"portamento":0.08,"oscillator":{"partials":[2,1,3,2,0.4]},"filter":{"Q":4,"type":"lowpass","rolloff":-48},"envelope":{"attack":0.04,"decay":0.06,"sustain":0.4,"release":1},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0.6,"release":1.5,"baseFrequency":50,"octaves":3.4}} },
-  tpBrassCircuit: { label: 'Brass Circuit', category: 'Brass & Strings', synth: 'MonoSynth', dur: 1.6,
+  tpBrassCircuit: { label: 'Brass Circuit', category: 'Orch', synth: 'MonoSynth', dur: 1.6,
     note: "A slow filter swell over a saw — the horn-section lean, done with an envelope.",
     origin: "Tonejs/Presets MonoSynth/BrassCircuit",
     options: {"portamento":0.01,"oscillator":{"type":"sawtooth"},"filter":{"Q":2,"type":"lowpass","rolloff":-24},"envelope":{"attack":0.1,"decay":0.1,"sustain":0.6,"release":0.5},"filterEnvelope":{"attack":0.05,"decay":0.8,"sustain":0.4,"release":1.5,"baseFrequency":2000,"octaves":1.5}} },
-  tpCoolGuy: { label: 'Cool Guy', category: 'Leads', synth: 'MonoSynth', dur: 1.4,
+  tpCoolGuy: { label: 'Cool Guy', category: 'Lead', synth: 'MonoSynth', dur: 1.4,
     note: "Pulse-width modulation: the waveform’s duty cycle moves under the note, which reads as chorus without one.",
     origin: "Tonejs/Presets MonoSynth/CoolGuy",
     options: {"oscillator":{"type":"pwm","modulationFrequency":1},"filter":{"Q":6,"rolloff":-24},"envelope":{"attack":0.025,"decay":0.3,"sustain":0.9,"release":2},"filterEnvelope":{"attack":0.245,"decay":0.131,"sustain":0.5,"release":2,"baseFrequency":20,"octaves":7.2,"exponent":2}} },
@@ -1766,55 +1798,55 @@ const TONE = {
     note: "A square through a gentle lowpass with a piano-ish decay. Toy upright rather than grand.",
     origin: "Tonejs/Presets MonoSynth/Pianoetta",
     options: {"oscillator":{"type":"square"},"filter":{"Q":2,"type":"lowpass","rolloff":-12},"envelope":{"attack":0.005,"decay":3,"sustain":0,"release":0.45},"filterEnvelope":{"attack":0.001,"decay":0.32,"sustain":0.9,"release":3,"baseFrequency":700,"octaves":2.3}} },
-  tpPizz: { label: 'Pizz', category: 'Plucks', synth: 'MonoSynth', dur: 0.8,
+  tpPizz: { label: 'Pizz', category: 'Pluck', synth: 'MonoSynth', dur: 0.8,
     note: "Highpassed and cut off immediately — pizzicato strings, all attack and no body.",
     origin: "Tonejs/Presets MonoSynth/Pizz",
     options: {"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}} },
-  tpAlienChorus: { label: 'Alien Chorus', category: 'Pads', synth: 'Synth', dur: 4,
+  tpAlienChorus: { label: 'Alien Chorus', category: 'Orch', synth: 'Synth', dur: 4,
     note: "Ten detuned sines spread across sixty cents. Enormous, and the dearest preset in the library by some way.",
     origin: "Tonejs/Presets Synth/AlienChorus",
     options: {"oscillator":{"type":"fatsine4","spread":60,"count":10},"envelope":{"attack":0.4,"decay":0.01,"sustain":1,"attackCurve":"sine","releaseCurve":"sine","release":0.4}} },
-  tpDelicateWind: { label: 'Delicate Wind Part', category: 'Pads', synth: 'Synth', dur: 5,
+  tpDelicateWind: { label: 'Delicate Wind Part', category: 'Orch', synth: 'Synth', dur: 5,
     note: "Two full seconds of attack. Not a note so much as a slow arrival — it needs a held section to be heard at all.",
     origin: "Tonejs/Presets Synth/DelicateWindPart",
     options: {"portamento":0,"oscillator":{"type":"square4"},"envelope":{"attack":2,"decay":1,"sustain":0.2,"release":2}} },
-  tpDropPulse: { label: 'Drop Pulse', category: 'Plucks', synth: 'Synth', dur: 0.9,
+  tpDropPulse: { label: 'Drop Pulse', category: 'Pluck', synth: 'Synth', dur: 0.9,
     note: "A narrow pulse wave with a fast decay. Thin, hard and very retro.",
     origin: "Tonejs/Presets Synth/DropPulse",
     options: {"oscillator":{"type":"pulse","width":0.8},"envelope":{"attack":0.01,"decay":0.05,"sustain":0.2,"releaseCurve":"bounce","release":0.4}} },
-  tpLectric: { label: 'Lectric', category: 'Leads', synth: 'Synth', dur: 1.4,
+  tpLectric: { label: 'Lectric', category: 'Lead', synth: 'Synth', dur: 1.4,
     note: "Portamento of 0.2 means every note slides into the next. A lead that will not sit still.",
     origin: "Tonejs/Presets Synth/Lectric",
     options: {"portamento":0.2,"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.03,"decay":0.1,"sustain":0.2,"release":0.02}} },
-  tpMarimba: { label: 'Marimba', category: 'Bells & Mallets', synth: 'Synth', dur: 2,
+  tpMarimba: { label: 'Marimba', category: 'Bells', synth: 'Synth', dur: 2,
     note: "Odd partials only, struck and left to ring. Woodier than the FM marimba beside it.",
     origin: "Tonejs/Presets Synth/Marimba",
     options: {"oscillator":{"partials":[1,0,2,0,3]},"envelope":{"attack":0.001,"decay":1.2,"sustain":0,"release":1.2}} },
-  tpSteelpan: { label: 'Steelpan', category: 'Bells & Mallets', synth: 'Synth', dur: 2.4,
+  tpSteelpan: { label: 'Steelpan', category: 'Bells', synth: 'Synth', dur: 2.4,
     note: "A custom partial set, detuned three ways. Metallic and warm at once.",
     origin: "Tonejs/Presets Synth/Steelpan",
     options: {"oscillator":{"type":"fatcustom","partials":[0.2,1,0,0.5,0.1],"spread":40,"count":3},"envelope":{"attack":0.001,"decay":1.6,"sustain":0,"release":1.6}} },
-  tpSuperSaw: { label: 'Super Saw', category: 'Leads', synth: 'Synth', dur: 1.4,
+  tpSuperSaw: { label: 'Super Saw', category: 'Lead', synth: 'Synth', dur: 1.4,
     note: "Three sawtooths thirty cents apart — the trance lead, and the widest single sound here.",
     origin: "Tonejs/Presets Synth/SuperSaw",
     options: {"oscillator":{"type":"fatsawtooth","count":3,"spread":30},"envelope":{"attack":0.01,"decay":0.1,"sustain":0.5,"release":0.4,"attackCurve":"exponential"}} },
-  tpTreeTrunk: { label: 'Tree Trunk', category: 'Plucks', synth: 'Synth', dur: 1,
+  tpTreeTrunk: { label: 'Tree Trunk', category: 'Pluck', synth: 'Synth', dur: 1,
     note: "A short sine knock with a little sustain behind it. Hollow and wooden.",
     origin: "Tonejs/Presets Synth/TreeTrunk",
     options: {"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.1,"sustain":0.1,"release":1.2}} },
-  tpElectricCello: { label: 'Electric Cello', category: 'Brass & Strings', synth: 'FMSynth', dur: 3,
+  tpElectricCello: { label: 'Electric Cello', category: 'Orch', synth: 'FMSynth', dur: 3,
     note: "High modulation index over a triangle: bowed rather than struck, with a bite on the attack.",
     origin: "Tonejs/Presets FMSynth/ElectricCello",
     options: {"harmonicity":3.01,"modulationIndex":14,"oscillator":{"type":"triangle"},"envelope":{"attack":0.2,"decay":0.3,"sustain":0.1,"release":1.2},"modulation":{"type":"square"},"modulationEnvelope":{"attack":0.01,"decay":0.5,"sustain":0.2,"release":0.1}} },
-  tpKalimba: { label: 'Kalimba', category: 'Bells & Mallets', synth: 'FMSynth', dur: 2.4,
+  tpKalimba: { label: 'Kalimba', category: 'Bells', synth: 'FMSynth', dur: 2.4,
     note: "Harmonicity 8 and almost no modulation — a thumb piano’s clean, high, quick ring.",
     origin: "Tonejs/Presets FMSynth/Kalimba",
     options: {"harmonicity":8,"modulationIndex":2,"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":2,"sustain":0.1,"release":2},"modulation":{"type":"square"},"modulationEnvelope":{"attack":0.002,"decay":0.2,"sustain":0,"release":0.2}} },
-  tpThinSaws: { label: 'Thin Saws', category: 'Leads', synth: 'FMSynth', dur: 1.4,
+  tpThinSaws: { label: 'Thin Saws', category: 'Lead', synth: 'FMSynth', dur: 1.4,
     note: "Harmonicity below 1, so the modulator sits under the carrier. Reedy and narrow.",
     origin: "Tonejs/Presets FMSynth/ThinSaws",
     options: {"harmonicity":0.5,"modulationIndex":1.2,"oscillator":{"type":"fmsawtooth","modulationType":"sine","modulationIndex":20,"harmonicity":3},"envelope":{"attack":0.05,"decay":0.3,"sustain":0.1,"release":1.2},"modulation":{"volume":0,"type":"triangle"},"modulationEnvelope":{"attack":0.35,"decay":0.1,"sustain":1,"release":0.01}} },
-  tpHarmonics: { label: 'Harmonics', category: 'Organs', synth: 'AMSynth', dur: 2.6,
+  tpHarmonics: { label: 'Harmonics', category: 'Organ', synth: 'AMSynth', dur: 2.6,
     note: "Ring modulation at almost exactly four times the carrier — the partials line up, so it reads as an organ stop.",
     origin: "Tonejs/Presets AMSynth/Harmonics",
     options: {"harmonicity":3.999,"oscillator":{"type":"square"},"envelope":{"attack":0.03,"decay":0.3,"sustain":0.7,"release":0.8},"modulation":{"volume":12,"type":"square6"},"modulationEnvelope":{"attack":2,"decay":3,"sustain":0.8,"release":0.1}} },
@@ -1822,13 +1854,13 @@ const TONE = {
     note: "A tiny detuned AM sine. Small, clean and easy to place under anything.",
     origin: "Tonejs/Presets AMSynth/Tiny",
     options: {"harmonicity":2,"oscillator":{"type":"amsine2","modulationType":"sine","harmonicity":1.01},"envelope":{"attack":0.006,"decay":4,"sustain":0.04,"release":1.2},"modulation":{"volume":13,"type":"amsine2","modulationType":"sine","harmonicity":12},"modulationEnvelope":{"attack":0.006,"decay":0.2,"sustain":0.2,"release":0.4}} },
-  roundMono2: { label: 'Plain Square', category: 'Leads', synth: 'Synth', dur: 7.7,
+  roundMono2: { label: 'Plain Square', category: 'Lead', synth: 'Synth', dur: 7.7,
     note: 'Simple Square Tone',
     options: {
       oscillator: { type: 'square' },
       envelope: { attack: 0.001, decay: 0.39, sustain: 0.06, release: 0.14 },
     } },
-  toneSquare: { label: 'Square Tone', category: 'Leads', synth: 'GameSynth', dur: 1,
+  toneSquare: { label: 'Square Tone', category: 'Lead', synth: 'GameSynth', dur: 1,
     note: 'A direct single-oscillator square-wave replacement for the engine voice.',
     options: {
       oscillator: { type: 'square' },
@@ -1842,16 +1874,16 @@ const TONE = {
     vibrato: { depth: 0, rate: 10.9 },
     mono: false,
     portamento: 0 },
-  toneSawtooth: { label: 'Sawtooth Tone', category: 'Leads', synth: 'GameSynth', dur: 1.2,
+  toneSawtooth: { label: 'Sawtooth Tone', category: 'Lead', synth: 'GameSynth', dur: 1.2,
     note: 'A direct single-oscillator sawtooth replacement for the engine voice.',
     fixedLength: 0.063, waveform: 'sawtooth', attack: 0.01, release: 0.015, trim: 0 },
-  toneTriangle: { label: 'Triangle Tone', category: 'Leads', synth: 'GameSynth', dur: 1.2,
+  toneTriangle: { label: 'Triangle Tone', category: 'Lead', synth: 'GameSynth', dur: 1.2,
     note: 'A direct single-oscillator triangle replacement for the engine voice.',
     fixedLength: 0.063, waveform: 'triangle', attack: 0.01, release: 0.015, trim: 0 },
   toneSine: { label: 'Sine Tone', category: 'Keys', synth: 'GameSynth', dur: 1.2,
     note: 'A direct single-oscillator sine replacement for the engine voice.',
     fixedLength: 0.063, waveform: 'sine', attack: 0.01, release: 0.015, trim: 0 },
-  squareTone2: { label: 'Square Tone', category: 'Leads', synth: 'GameSynth', dur: 1,
+  squareTone2: { label: 'Square Tone', category: 'Lead', synth: 'GameSynth', dur: 1,
     note: 'A direct single-oscillator square-wave replacement for the engine voice.',
     options: {
       oscillator: { type: 'square' },
@@ -1867,7 +1899,7 @@ const TONE = {
     portamento: 0,
     starter: false,
     transpose: 0 },
-  fmGrowl2: { label: 'FM Growl', category: 'Basses', synth: 'FMSynth', dur: 1.8,
+  fmGrowl2: { label: 'FM Growl', category: 'Bass', synth: 'FMSynth', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5,
@@ -1886,7 +1918,7 @@ const TONE = {
       envelope: { attack: 0.01, decay: 0.5, sustain: 0.3, release: 0.6 },
     },
     starter: false },
-  kalimba: { label: 'Kalimba', category: 'Bells & Mallets', synth: 'FMSynth', dur: 2.4,
+  kalimba: { label: 'Kalimba', category: 'Bells', synth: 'FMSynth', dur: 2.4,
     note: 'Harmonicity 8 and almost no modulation — a thumb piano’s clean, high, quick ring.',
     origin: 'Tonejs/Presets FMSynth/Kalimba',
     options: {
@@ -1924,47 +1956,47 @@ const TONE = {
   // The last two are here to show the thing is not only an organ: `stretch` spreads the
   // partials off the harmonic series and `damp` makes the top of the stack decay first,
   // which between them are the difference between a Hammond and a struck bar.
-  addDrawbar: { label: 'Drawbar Organ', category: 'Organs', homeLane: 'organChords',
+  addDrawbar: { label: 'Drawbar Organ', category: 'Organ', homeLane: 'organChords',
     synth: 'AdditiveSynth', dur: 7.2,
     note: 'Sine partials at 8′, 4′, 2⅔′, 2′ and 1⅓′ — the organ lane’s own voice, with '
       + 'the drawbars finally out where you can reach them.',
     additive: { bars: [0, 0, 1, 0.62, 0.32, 0.2, 0, 0.1, 0], attack: 0.035, decay: 0 } },
-  addDrawbarBright: { label: 'Drawbar Organ, Bright', category: 'Organs', homeLane: 'organChords',
+  addDrawbarBright: { label: 'Drawbar Organ, Bright', category: 'Organ', homeLane: 'organChords',
     synth: 'AdditiveSynth', dur: 7.2,
     note: 'The upper drawbars pulled further out. Cuts through where the soft '
       + 'registration sits under everything.',
     additive: { bars: [0, 0, 1, 0.78, 0.48, 0.3, 0, 0.16, 0], attack: 0.035, decay: 0 } },
-  addDrawbarPerc: { label: 'Drawbar + Percussion', category: 'Organs', homeLane: 'organChords',
+  addDrawbarPerc: { label: 'Drawbar + Percussion', category: 'Organ', homeLane: 'organChords',
     synth: 'AdditiveSynth', dur: 7.2,
     note: 'Bright registration with a third-harmonic pip on the key attack, kept dry so '
       + 'repeated off-beat stabs stay crisp.',
     additive: { bars: [0, 0, 1, 0.78, 0.48, 0.3, 0, 0.16, 0], attack: 0.035, decay: 0,
       perc: { ratio: 3, gain: 0.72, attack: 0.002, decay: 0.078 } } },
-  addShopOrgan: { label: 'Shop Organ', category: 'Organs', homeLane: 'organChords',
+  addShopOrgan: { label: 'Shop Organ', category: 'Organ', homeLane: 'organChords',
     synth: 'AdditiveSynth', dur: 1.02,
     note: 'The shop theme’s own: bright, percussive, short and dry — comping rather than '
       + 'holding, so it sits under the lead instead of over it.',
     additive: { bars: [0, 0, 1, 0.78, 0.48, 0.3, 0, 0.16, 0], attack: 0.004, decay: 0,
       echo: false, perc: { ratio: 3, gain: 0.9, attack: 0.002, decay: 0.072 } } },
-  addSwoop: { label: 'Organ Swoop', category: 'Organs', homeLane: 'organChords',
+  addSwoop: { label: 'Organ Swoop', category: 'Organ', homeLane: 'organChords',
     synth: 'AdditiveSynth', dur: 3.2,
     note: 'Every partial bends up a fourth into the note together, so the registration '
       + 'arrives rather than slides apart. The dance-mix transition.',
     additive: { bars: [0, 0, 1, 0.5, 0.22, 0, 0, 0, 0], attack: 0.012, decay: 0,
       pitch: { from: 0.7492, to: 1, sweep: 0 } } },
-  addBell: { label: 'Struck Bell', category: 'Bells & Mallets', homeLane: 'twinkle',
+  addBell: { label: 'Struck Bell', category: 'Bells', homeLane: 'twinkle',
     synth: 'AdditiveSynth', dur: 8,
     note: 'The same stack pulled off the harmonic series and damped from the top down. '
       + 'Inharmonic and struck is a bell; either one alone is a siren or an organ.',
     additive: { bars: [0.3, 0.15, 1, 0.7, 0.45, 0.3, 0.2, 0.15, 0.1],
       attack: 0.001, decay: 0, release: 0.35, stretch: 0.06, damp: 1.4 } },
-  addGlassPad: { label: 'Glass Pad', category: 'Pads', homeLane: 'chords',
+  addGlassPad: { label: 'Glass Pad', category: 'Pad', homeLane: 'chords',
     synth: 'AdditiveSynth', dur: 8,
     note: 'Barely stretched and lightly damped, arriving slowly — the top of the stack '
       + 'thins out as it holds, which is what stops an additive pad sounding like an organ.',
     additive: { bars: [0.2, 0, 1, 0.55, 0.2, 0.28, 0, 0.12, 0.08],
       attack: 0.35, decay: 0.3, sustain: 0.6, release: 1.2, stretch: 0.012, damp: 0.4 } },
-  shopOrgan2: { label: 'Shop Organ 2', category: 'Organs', homeLane: 'organChords', synth: 'AdditiveSynth', dur: 6.92,
+  shopOrgan2: { label: 'Shop Organ 2', category: 'Organ', homeLane: 'organChords', synth: 'AdditiveSynth', dur: 6.92,
     note: 'The shop theme’s own: bright, percussive, short and dry — comping rather than '
       + 'holding, so it sits under the lead instead of over it.',
     additive: {
@@ -1979,7 +2011,7 @@ const TONE = {
     starter: false,
     trim: 3,
     fixedLength: 1.103 },
-  squareOrgan: { label: 'Square Organ', category: 'Organs', synth: 'GameSynth', dur: 1,
+  squareOrgan: { label: 'Square Organ', category: 'Organ', synth: 'GameSynth', dur: 1,
     note: 'A direct single-oscillator square-wave replacement for the engine voice.',
     options: {
       oscillator: { type: 'square' },
@@ -1998,7 +2030,7 @@ const TONE = {
     filter: { type: 'lowpass', slope: -12, freq: 10840, to: 1420, Q: 3.4, sweep: 0.12 } },
 
   // ---- requested 80s bass auditions --------------------------------------
-  bass80sMono: { label: '=BASS 80s Mono', category: 'Audition', synth: 'MonoSynth', dur: 1.8,
+  bass80sMono: { label: '=BASS 80s Mono', category: 'Bass', synth: 'MonoSynth', dur: 1.8,
     note: 'A brassy 80s mono bass: sawtooth into a fast low-pass sweep with a short '
       + 'pluck at the front and a solid held bottom.',
     options: {
@@ -2007,7 +2039,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 2.4, rolloff: -24 },
       filterEnvelope: { attack: 0.002, decay: 0.28, sustain: 0.18, release: 0.2, baseFrequency: 110, octaves: 3.8 },
     } },
-  bass80sFM: { label: '=BASS 80s FM', category: 'Audition', synth: 'FMSynth', dur: 1.8,
+  bass80sFM: { label: '=BASS 80s FM', category: 'Bass', synth: 'FMSynth', dur: 1.8,
     note: 'A bright digital 80s bass: a sine body with a square modulator, tuned for '
       + 'the glassy attack of an FM workstation under a pop groove.',
     options: {
@@ -2018,7 +2050,7 @@ const TONE = {
       envelope: { attack: 0.003, decay: 0.34, sustain: 0.36, release: 0.24 },
       modulationEnvelope: { attack: 0.002, decay: 0.18, sustain: 0.22, release: 0.16 },
     } },
-  bass80sDuo: { label: '=BASS 80s Duo', category: 'Audition', synth: 'DuoSynth', dur: 2,
+  bass80sDuo: { label: '=BASS 80s Duo', category: 'Bass', synth: 'DuoSynth', dur: 2,
     note: 'A wide 80s chorus-style bass: detuned saw and square voices with a gentle '
       + 'vibrato that gives a mono line a larger stereo-era silhouette.',
     options: {
@@ -2028,7 +2060,7 @@ const TONE = {
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.006, decay: 0.28, sustain: 0.55, release: 0.3 } },
       voice1: { oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.32, sustain: 0.42, release: 0.34 } },
     } },
-  bass80sSynth: { label: '=BASS 80s Synth', category: 'Audition', synth: 'Synth', dur: 1.6,
+  bass80sSynth: { label: '=BASS 80s Synth', category: 'Bass', synth: 'Synth', dur: 1.6,
     note: 'A clean 80s synth bass with a pulse-like square tone, quick decay and a '
       + 'small release that keeps repeated eighth notes from becoming clicks.',
     options: {
@@ -2039,7 +2071,7 @@ const TONE = {
   // ---- requested TB-303-style acid bass auditions -----------------------
   // These use MonoSynth's saw/square, resonant low-pass, filter envelope and
   // portamento controls as style starting points rather than hardware copies.
-  bass303Squelch: { label: '=303 Squelch', category: 'Audition', synth: 'MonoSynth', dur: 1.1,
+  bass303Squelch: { label: '=303 Squelch', category: 'Bass', synth: 'MonoSynth', dur: 1.1,
     note: 'A tight TB-303-style acid bass with a sharp resonant squelch, fast filter snap and a little glide.',
     options: {
       portamento: 0.045,
@@ -2048,7 +2080,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 14, rolloff: -24 },
       filterEnvelope: { attack: 0.001, decay: 0.1, sustain: 0.08, release: 0.12, baseFrequency: 110, octaves: 4.5 },
     } },
-  bass303Rubber: { label: '=303 Rubber', category: 'Audition', synth: 'MonoSynth', dur: 1.35,
+  bass303Rubber: { label: '=303 Rubber', category: 'Bass', synth: 'MonoSynth', dur: 1.35,
     note: 'A rubbery TB-303-style square bass with a rounded pluck, resonant vowel and smooth acid glide.',
     options: {
       portamento: 0.065,
@@ -2057,7 +2089,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 10, rolloff: -24 },
       filterEnvelope: { attack: 0.002, decay: 0.16, sustain: 0.12, release: 0.16, baseFrequency: 145, octaves: 3.6 },
     } },
-  bass303DeepGlide: { label: '=303 Deep Glide', category: 'Audition', synth: 'MonoSynth', dur: 1.7,
+  bass303DeepGlide: { label: '=303 Deep Glide', category: 'Bass', synth: 'MonoSynth', dur: 1.7,
     note: 'A darker TB-303-style saw bass with a long low glide, restrained resonance and a weighty held tail.',
     options: {
       portamento: 0.12,
@@ -2066,7 +2098,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 8, rolloff: -24 },
       filterEnvelope: { attack: 0.003, decay: 0.28, sustain: 0.16, release: 0.22, baseFrequency: 85, octaves: 3.2 },
     } },
-  bass303Bite: { label: '=303 Bite', category: 'Audition', synth: 'MonoSynth', dur: 0.95,
+  bass303Bite: { label: '=303 Bite', category: 'Bass', synth: 'MonoSynth', dur: 0.95,
     note: 'A percussive TB-303-style square bite with a hard filter accent for clipped, driving acid phrases.',
     options: {
       portamento: 0.025,
@@ -2075,7 +2107,7 @@ const TONE = {
       filter: { type: 'lowpass', Q: 16, rolloff: -24 },
       filterEnvelope: { attack: 0.001, decay: 0.07, sustain: 0.05, release: 0.1, baseFrequency: 125, octaves: 5 },
     } },
-  bass303Pulse: { label: '=303 Pulse', category: 'Audition', synth: 'MonoSynth', dur: 1.25,
+  bass303Pulse: { label: '=303 Pulse', category: 'Bass', synth: 'MonoSynth', dur: 1.25,
     note: 'A lively TB-303-style saw pulse with medium resonance, a bright accent and just enough sustain for riffs.',
     options: {
       portamento: 0.04,
@@ -2093,7 +2125,7 @@ const TONE = {
 // a new sound. Keeping the kind in the table name means loading remains as simple as
 // the library tables above and the source writer can preserve the same readable shape.
 const USER_TONE = {
-  amHollow2: { label: 'AM Hollow 2', category: 'Leads', synth: 'AMSynth', dur: 1.2,
+  amHollow2: { label: 'AM Hollow 2', category: 'Lead', synth: 'AMSynth', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a '
       + 'synth.',
     options: {
@@ -2103,7 +2135,7 @@ const USER_TONE = {
       envelope: { attack: 0.008, decay: 0.2, sustain: 0.6, release: 0.3 },
       modulationEnvelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.3 },
     } },
-  sawtoothTone2: { label: 'Sawtooth Tone2', category: 'Leads', synth: 'GameSynth', dur: 1.2,
+  sawtoothTone2: { label: 'Sawtooth Tone2', category: 'Lead', synth: 'GameSynth', dur: 1.2,
     note: 'A direct single-oscillator sawtooth replacement for the engine voice.',
     fixedLength: 0.063,
     waveform: 'sawtooth',
@@ -2111,7 +2143,7 @@ const USER_TONE = {
     release: 0.015,
     trim: 0,
     starter: false },
-  sintone: { label: 'Sintone', category: 'Leads', synth: 'GameSynth', dur: 1,
+  sintone: { label: 'Sintone', category: 'Lead', synth: 'GameSynth', dur: 1,
     note: 'A direct single-oscillator square-wave replacement for the engine voice.',
     options: {
       oscillator: { type: 'square' },
@@ -2128,6 +2160,13 @@ const USER_TONE = {
     starter: false },
 };
 const USER_NOISE = {
+  bigRoomClap: { label: 'Big Room Clap', category: 'Clap', dur: 1,
+    note: 'Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants '
+      + 'space in the arrangement.',
+    noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.355, gain: 0.88 },
+    taps: [0, 0.014, 0.028, 0.048], tapFalloff: 0.82, tapDetune: 0.94, tapTone: 0.97,
+    starter: false,
+    trim: 3 },
 };
 const USER_DRUM = {
 };
@@ -2223,7 +2262,8 @@ const LEVELS = {
   stAcidSquelch: 0.06367, stBreathPad: 0.119482, stTpLectric: 0.031326,
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.023577, stPadTriangle: 0.101497, stFmBell: 0.018029,
-  stAmHollow: 0.01455, sawtoothTone2: 0.011265, sintone: 0.02496
+  stAmHollow: 0.01455, sawtoothTone2: 0.011265, sintone: 0.02496,
+  bigRoomClap: 0.019534
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -2301,7 +2341,7 @@ const PEAKS = {
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.5916,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
-  sawtoothTone2: 0.4101, sintone: 0.6553
+  sawtoothTone2: 0.4101, sintone: 0.6553, bigRoomClap: 0.3628
 };
 
 /**
@@ -2330,7 +2370,7 @@ const PEAKS = {
  * the one way a starter sound is ever meant to change.
  */
 const STARTER = {
-  stKickPunch: { label: 'Punch Kick (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 1.2,
+  stKickPunch: { label: 'Punch Kick (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 1.2,
     note: 'Triangle body and a fast drop — more middle than an 808, so it survives a mix with '
       + 'a busy bass under it.',
     options: {
@@ -2339,7 +2379,7 @@ const STARTER = {
       oscillator: { type: 'triangle' },
       envelope: { attack: 0.001, decay: 0.28, sustain: 0, release: 0.25 },
     } },
-  stSnareCrisp: { label: 'Snare (starter)', category: 'Snares', kind: 'noise', dur: 1,
+  stSnareCrisp: { label: 'Snare (starter)', category: 'Snare', kind: 'noise', dur: 1,
     note: 'The engine’s own snare as a preset: a bright noise band, a short decay and a hint '
       + 'of body. The one every song already uses.',
     noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.09 },
@@ -2353,7 +2393,7 @@ const STARTER = {
       octaves: 1,
       envelope: { attack: 0.001, decay: 0.02, release: 0.01 },
     } },
-  stRoundMono: { label: 'Round Mono 2 (starter)', category: 'Basses', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
+  stRoundMono: { label: 'Round Mono 2 (starter)', category: 'Bass', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
     note: 'Saw through a lowpass that closes as the note decays — the classic synth bass.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2371,7 +2411,7 @@ const STARTER = {
       envelope: { attack: 0.005, decay: 0.8, sustain: 0.1, release: 0.8 },
       modulationEnvelope: { attack: 0.004, decay: 0.4, sustain: 0.05, release: 0.5 },
     } },
-  stMonoBright: { label: 'Bright Mono (starter)', category: 'Leads', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
+  stMonoBright: { label: 'Bright Mono (starter)', category: 'Lead', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
     note: 'Square through an opening filter: the arcade lead with an envelope the raw '
       + 'oscillator cannot give it.',
     options: {
@@ -2380,7 +2420,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 600, octaves: 3.2 },
     } },
-  stKickDeep: { label: 'Deep Kick (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 3,
+  stKickDeep: { label: 'Deep Kick (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 3,
     note: 'A long, slow pitch drop into a sub that outlasts the bar. One per phrase, or it '
       + 'turns the low end to mud.',
     options: {
@@ -2389,11 +2429,11 @@ const STARTER = {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 1.1, sustain: 0, release: 1 },
     } },
-  stSnareBrush: { label: 'Brush (starter)', category: 'Snares', kind: 'noise', dur: 1,
+  stSnareBrush: { label: 'Brush (starter)', category: 'Snare', kind: 'noise', dur: 1,
     note: 'All air and no crack — a highpassed sweep with no body at all. The quiet backbeat '
       + 'for the lounge themes.',
     noise: { type: 'highpass', freq: 4200, Q: 0.4, decay: 0.13 } },
-  stTaiko: { label: 'KW Blip (starter)', category: 'Percussion', kind: 'tone', homeLane: 'tom', synth: 'MembraneSynth', dur: 2.4,
+  stTaiko: { label: 'KW Blip (starter)', category: 'Perc', kind: 'tone', homeLane: 'tom', synth: 'MembraneSynth', dur: 2.4,
     note: 'Like a kraftwerk percussion blip',
     options: {
       pitchDecay: 0.037,
@@ -2401,13 +2441,13 @@ const STARTER = {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.3 },
     } },
-  stSubSine: { label: 'Sub Sine (starter)', category: 'Basses', kind: 'tone', synth: 'Synth', dur: 2.2,
+  stSubSine: { label: 'Sub Sine (starter)', category: 'Bass', kind: 'tone', synth: 'Synth', dur: 2.2,
     note: 'Pure weight, no harmonics. Wants room underneath it and a lead up top.',
     options: {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.012, decay: 0.3, sustain: 0.8, release: 0.4 },
     } },
-  stReedOrgan: { label: 'Reed Organ (starter)', category: 'Organs', kind: 'tone', synth: 'MonoSynth', dur: 3,
+  stReedOrgan: { label: 'Reed Organ (starter)', category: 'Organ', kind: 'tone', synth: 'MonoSynth', dur: 3,
     note: 'A wheezier, narrower organ — harmonium rather than Hammond.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2415,7 +2455,7 @@ const STARTER = {
       filter: { type: 'bandpass', Q: 2, rolloff: -12 },
       filterEnvelope: { attack: 0.05, decay: 0.1, sustain: 0.8, release: 0.3, baseFrequency: 500, octaves: 1.5 },
     } },
-  stVibratoLead: { label: 'Vibrato Voice (starter)', category: 'Leads', kind: 'tone', synth: 'DuoSynth', dur: 1.8,
+  stVibratoLead: { label: 'Vibrato Voice (starter)', category: 'Lead', kind: 'tone', synth: 'DuoSynth', dur: 1.8,
     note: 'Heavy, slow vibrato on a near-unison pair — the closest thing here to someone singing.',
     options: {
       harmonicity: 1.002,
@@ -2424,7 +2464,7 @@ const STARTER = {
       voice0: { oscillator: { type: 'triangle' }, envelope: { attack: 0.05, decay: 0.2, sustain: 0.8, release: 0.4 } },
       voice1: { oscillator: { type: 'sine' }, envelope: { attack: 0.07, decay: 0.2, sustain: 0.8, release: 0.4 } },
     } },
-  stKickTight: { label: 'Tight Kick (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 1,
+  stKickTight: { label: 'Tight Kick (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 1,
     note: 'The same shape with the tail cut short — for a busy bar where a long boom would '
       + 'smear into the next hit.',
     options: {
@@ -2433,11 +2473,11 @@ const STARTER = {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.16 },
     } },
-  stSnareRim: { label: 'Rimshot (starter)', category: 'Snares', kind: 'noise', dur: 1,
+  stSnareRim: { label: 'Rimshot (starter)', category: 'Snare', kind: 'noise', dur: 1,
     note: 'Narrow, high and instant, with a hard pitched knock. The stick rather than the skin.',
     noise: { type: 'bandpass', freq: 5000, Q: 3, decay: 0.03 },
     body: { type: 'square', from: 420, to: 320, decay: 0.02, gain: 0.5 } },
-  stClave: { label: 'Clave (starter)', category: 'Percussion', kind: 'tone', synth: 'FMSynth', dur: 0.6,
+  stClave: { label: 'Clave (starter)', category: 'Perc', kind: 'tone', synth: 'FMSynth', dur: 0.6,
     note: 'A hard, high, completely dry click with a pitch to it. Cuts through anything at '
       + 'almost no level.',
     options: {
@@ -2448,7 +2488,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.04 },
       modulationEnvelope: { attack: 0.001, decay: 0.02, sustain: 0, release: 0.02 },
     } },
-  stTpBassGuitar: { label: 'Bass Guitar (starter)', category: 'Basses', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
+  stTpBassGuitar: { label: 'Bass Guitar (starter)', category: 'Bass', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
     note: 'An FM square through a lowpass, voiced to sit where a plucked electric bass sits.',
     origin: 'Tonejs/Presets MonoSynth/BassGuitar',
     options: {
@@ -2465,7 +2505,7 @@ const STARTER = {
       filter: { type: 'bandpass', Q: 3, rolloff: -12 },
       filterEnvelope: { attack: 0.001, decay: 0.08, sustain: 0.2, release: 0.1, baseFrequency: 700, octaves: 2.5 },
     } },
-  stSynthPluck: { label: 'Synth Pluck (starter)', category: 'Plucks', kind: 'tone', synth: 'MonoSynth', dur: 0.9,
+  stSynthPluck: { label: 'Synth Pluck (starter)', category: 'Pluck', kind: 'tone', synth: 'MonoSynth', dur: 0.9,
     note: 'Filter slams shut immediately. Short, bright, and gone.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2473,7 +2513,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 4, rolloff: -24 },
       filterEnvelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1, baseFrequency: 300, octaves: 4 },
     } },
-  stKickThud: { label: 'Thud (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 1,
+  stKickThud: { label: 'Thud (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 1,
     note: 'Barely any pitch movement — a dull knock rather than a boom. Sits under a mix '
       + 'instead of leading it.',
     options: {
@@ -2482,7 +2522,7 @@ const STARTER = {
       oscillator: { type: 'sine' },
       envelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.18 },
     } },
-  stSnareFat: { label: 'Fat Snare (starter)', category: 'Snares', kind: 'noise', dur: 1,
+  stSnareFat: { label: 'Fat Snare (starter)', category: 'Snare', kind: 'noise', dur: 1,
     note: 'Lower band, longer tail and much more body — a snare that carries a backbeat on its '
       + 'own rather than sitting on top of one.',
     noise: { type: 'bandpass', freq: 1700, Q: 0.5, decay: 0.16 },
@@ -2490,13 +2530,13 @@ const STARTER = {
   stHatPedal: { label: 'Pedal Hat (starter)', category: 'Hats', kind: 'noise', dur: 0.5,
     note: 'Duller and lower — the hat closing under a foot rather than being struck.',
     noise: { type: 'bandpass', freq: 4000, Q: 1.6, decay: 0.05 } },
-  stDsRim: { label: 'DS Rim (starter)', category: 'Percussion', kind: 'drum', dur: 0.5,
+  stDsRim: { label: 'DS Rim (starter)', category: 'Perc', kind: 'drum', dur: 0.5,
     note: 'A driven square knock and a narrow band of air, both gone in thirty milliseconds. '
       + 'The stick sound the engine’s rim approximates, synthesised.',
     osc: { type: 'square', from: 460, to: 635, sweep: 0.012, decay: 0.12, curve: 'exp', gain: 0.13 },
     noise: { type: 'bandpass', freq: 4300, Q: 2.2, decay: 0.235, gain: 0.44 },
     drive: 0.24 },
-  stRubberBass: { label: 'Rubber (starter)', category: 'Basses', kind: 'tone', synth: 'MonoSynth', dur: 1.6,
+  stRubberBass: { label: 'Rubber (starter)', category: 'Bass', kind: 'tone', synth: 'MonoSynth', dur: 1.6,
     note: 'Triangle through a soft filter with a slow-ish attack. Bounces rather than punches.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2515,7 +2555,7 @@ const STARTER = {
       envelope: { attack: 0.002, decay: 1.2, sustain: 0.06, release: 1 },
       modulationEnvelope: { attack: 0.001, decay: 0.25, sustain: 0.01, release: 0.3 },
     } },
-  stCeleste: { label: 'Celeste (starter)', category: 'Bells & Mallets', kind: 'tone', synth: 'FMSynth', dur: 4,
+  stCeleste: { label: 'Celeste (starter)', category: 'Bells', kind: 'tone', synth: 'FMSynth', dur: 4,
     note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
     options: {
       harmonicity: 7,
@@ -2532,7 +2572,7 @@ const STARTER = {
   stHatOpen: { label: 'Open Hat (starter)', category: 'Hats', kind: 'noise', dur: 2,
     note: 'The same band left to ring for a third of a second.',
     noise: { type: 'highpass', freq: 6500, Q: 0.7, decay: 0.33 } },
-  stDetuneBass: { label: 'Wide Detune (starter)', category: 'Basses', kind: 'tone', synth: 'DuoSynth', dur: 1.8,
+  stDetuneBass: { label: 'Wide Detune (starter)', category: 'Bass', kind: 'tone', synth: 'DuoSynth', dur: 1.8,
     note: 'Two monosynths a few cents apart. Big, and the dearest bass here.',
     options: {
       harmonicity: 1.008,
@@ -2541,7 +2581,7 @@ const STARTER = {
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.008, decay: 0.2, sustain: 0.7, release: 0.3 } },
       voice1: { oscillator: { type: 'square' }, envelope: { attack: 0.012, decay: 0.2, sustain: 0.7, release: 0.3 } },
     } },
-  stWarmPad: { label: 'Warm Pad (starter)', category: 'Pads', kind: 'tone', synth: 'MonoSynth', dur: 4,
+  stWarmPad: { label: 'Warm Pad (starter)', category: 'Pad', kind: 'tone', synth: 'MonoSynth', dur: 4,
     note: 'Saw behind a filter that opens slowly. The most ordinary pad there is, and it works.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2549,7 +2589,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 1, rolloff: -12 },
       filterEnvelope: { attack: 0.5, decay: 0.5, sustain: 0.7, release: 1, baseFrequency: 200, octaves: 2.6 },
     } },
-  stDuoDetune: { label: 'Duo Detune (starter)', category: 'Leads', kind: 'tone', synth: 'DuoSynth', dur: 1.4,
+  stDuoDetune: { label: 'Duo Detune (starter)', category: 'Lead', kind: 'tone', synth: 'DuoSynth', dur: 1.4,
     note: 'A detuned pair under a slow vibrato. The widest lead here, and two synths per note.',
     options: {
       harmonicity: 1.005,
@@ -2558,7 +2598,7 @@ const STARTER = {
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.02, decay: 0.2, sustain: 0.7, release: 0.4 } },
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.03, decay: 0.2, sustain: 0.7, release: 0.4 } },
     } },
-  stWoodBlock: { label: 'Wood Block (starter)', category: 'Percussion', kind: 'tone', synth: 'FMSynth', dur: 0.6,
+  stWoodBlock: { label: 'Wood Block (starter)', category: 'Perc', kind: 'tone', synth: 'FMSynth', dur: 0.6,
     note: 'A short knock with almost no tail. Good for rim, and for a tick that keeps time '
       + 'without taking up room.',
     options: {
@@ -2569,7 +2609,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.06 },
       modulationEnvelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.03 },
     } },
-  stTriangleDing: { label: 'Triangle (starter)', category: 'Percussion', kind: 'tone', homeLane: 'tom', synth: 'MetalSynth', dur: 6,
+  stTriangleDing: { label: 'Triangle (starter)', category: 'Perc', kind: 'tone', homeLane: 'tom', synth: 'MetalSynth', dur: 6,
     note: 'Very high, very thin, and rings for bars. One on a downbeat is plenty.',
     options: {
       harmonicity: 16,
@@ -2578,7 +2618,7 @@ const STARTER = {
       octaves: 0.6,
       envelope: { attack: 0.001, decay: 2.6, release: 2 },
     } },
-  stGlassPad: { label: 'Glass Pad (starter)', category: 'Pads', kind: 'tone', synth: 'AMSynth', dur: 4,
+  stGlassPad: { label: 'Glass Pad (starter)', category: 'Pad', kind: 'tone', synth: 'AMSynth', dur: 4,
     note: 'Ring modulation over a long swell — shimmering rather than warm.',
     options: {
       harmonicity: 3.01,
@@ -2587,7 +2627,7 @@ const STARTER = {
       envelope: { attack: 0.3, decay: 0.5, sustain: 0.7, release: 1.4 },
       modulationEnvelope: { attack: 0.6, decay: 0.4, sustain: 0.6, release: 1 },
     } },
-  stMusicBox: { label: 'Music Box (starter)', category: 'Bells & Mallets', kind: 'tone', synth: 'FMSynth', dur: 3,
+  stMusicBox: { label: 'Music Box (starter)', category: 'Bells', kind: 'tone', synth: 'FMSynth', dur: 3,
     note: 'Thin, high and slightly sour, with the click of the comb in the attack.',
     options: {
       harmonicity: 6.03,
@@ -2597,7 +2637,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 1, sustain: 0.01, release: 1 },
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.1 },
     } },
-  stSnareFlam: { label: 'Flam Snare (starter)', category: 'Snares', kind: 'tone', synth: 'MetalSynth', dur: 1,
+  stSnareFlam: { label: 'Flam Snare (starter)', category: 'Snare', kind: 'tone', synth: 'MetalSynth', dur: 1,
     note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with a thicker '
       + 'front.',
     options: {
@@ -2608,7 +2648,7 @@ const STARTER = {
       envelope: { attack: 0.001, decay: 0.14, release: 0.1 },
     },
     taps: [0, 0.022], tapFalloff: 0.85 },
-  stSynthStrings: { label: 'Synth Strings (starter)', category: 'Brass & Strings', kind: 'tone', synth: 'DuoSynth', dur: 4,
+  stSynthStrings: { label: 'Synth Strings (starter)', category: 'Orch', kind: 'tone', synth: 'DuoSynth', dur: 4,
     note: 'The string-machine sound: two detuned saws, slow on, slow off.',
     options: {
       harmonicity: 1.006,
@@ -2617,7 +2657,7 @@ const STARTER = {
       voice0: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.2, decay: 0.3, sustain: 0.85, release: 1 } },
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.3, decay: 0.3, sustain: 0.85, release: 1.2 } },
     } },
-  stReedLead: { label: 'Reed (starter)', category: 'Brass & Strings', kind: 'tone', synth: 'MonoSynth', dur: 1.6,
+  stReedLead: { label: 'Reed (starter)', category: 'Orch', kind: 'tone', synth: 'MonoSynth', dur: 1.6,
     note: 'Slow attack into a narrow filter — a clarinet-ish breath rather than a stab.',
     options: {
       oscillator: { type: 'square' },
@@ -2635,7 +2675,7 @@ const STARTER = {
       octaves: 1.8,
       envelope: { attack: 0.001, decay: 0.22, release: 0.16 },
     } },
-  stFmGrowl: { label: 'FM Growl (starter)', category: 'Basses', kind: 'tone', synth: 'FMSynth', dur: 1.8,
+  stFmGrowl: { label: 'FM Growl (starter)', category: 'Bass', kind: 'tone', synth: 'FMSynth', dur: 1.8,
     note: 'Modulated sine with a hard edge on the attack. Cuts through a busy kit.',
     options: {
       harmonicity: 1.5,
@@ -2645,7 +2685,7 @@ const STARTER = {
       envelope: { attack: 0.005, decay: 0.25, sustain: 0.5, release: 0.3 },
       modulationEnvelope: { attack: 0.002, decay: 0.18, sustain: 0.1, release: 0.2 },
     } },
-  stAmOrgan: { label: 'AM Organ (starter)', category: 'Organs', kind: 'tone', synth: 'AMSynth', dur: 2.6,
+  stAmOrgan: { label: 'AM Organ (starter)', category: 'Organ', kind: 'tone', synth: 'AMSynth', dur: 2.6,
     note: 'Held and slightly beating, the way an organ with two drawbars out is.',
     options: {
       harmonicity: 1,
@@ -2654,7 +2694,7 @@ const STARTER = {
       envelope: { attack: 0.02, decay: 0.1, sustain: 0.9, release: 0.35 },
       modulationEnvelope: { attack: 0.1, decay: 0.1, sustain: 0.8, release: 0.3 },
     } },
-  stGlassLead: { label: 'Glass (starter)', category: 'Leads', kind: 'tone', synth: 'FMSynth', dur: 1.2,
+  stGlassLead: { label: 'Glass (starter)', category: 'Lead', kind: 'tone', synth: 'FMSynth', dur: 1.2,
     note: 'High harmonicity, short modulation — thin and clear, sits over a dense mix.',
     options: {
       harmonicity: 5,
@@ -2664,12 +2704,12 @@ const STARTER = {
       envelope: { attack: 0.004, decay: 0.2, sustain: 0.5, release: 0.3 },
       modulationEnvelope: { attack: 0.002, decay: 0.15, sustain: 0.1, release: 0.2 },
     } },
-  stClapRoom: { label: 'Big Room Clap (starter)', category: 'Claps', kind: 'noise', dur: 1,
+  stClapRoom: { label: 'Big Room Clap (starter)', category: 'Clap', kind: 'noise', dur: 1,
     note: 'Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants '
       + 'space in the arrangement.',
     noise: { type: 'bandpass', freq: 1500, Q: 0.9, decay: 0.5, gain: 0.88 },
     taps: [0, 0.014, 0.037, 0.058, 0.083], tapFalloff: 0.89 },
-  stTpBassy: { label: 'Bassy (starter)', category: 'Basses', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
+  stTpBassy: { label: 'Bassy (starter)', category: 'Bass', kind: 'tone', synth: 'MonoSynth', dur: 1.8,
     note: 'Built from explicit partials rather than a waveform name, with a resonant lowpass '
       + 'over it. Fat and slightly hollow.',
     origin: 'Tonejs/Presets MonoSynth/Bassy',
@@ -2690,7 +2730,7 @@ const STARTER = {
       envelope: { attack: 0.005, decay: 3, sustain: 0, release: 0.45 },
       filterEnvelope: { attack: 0.001, decay: 0.32, sustain: 0.9, release: 3, baseFrequency: 700, octaves: 2.3 },
     } },
-  stTpBah: { label: 'Bah (starter)', category: 'Leads', kind: 'tone', synth: 'MonoSynth', dur: 1.4,
+  stTpBah: { label: 'Bah (starter)', category: 'Lead', kind: 'tone', synth: 'MonoSynth', dur: 1.4,
     note: 'A bandpassed saw with a vowel in it — the filter sits where a voice’s formant '
       + 'would. Tone.js’s own preset.',
     origin: 'Tonejs/Presets MonoSynth/Bah',
@@ -2700,7 +2740,7 @@ const STARTER = {
       envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.6 },
       filterEnvelope: { attack: 0.02, decay: 0.4, sustain: 1, release: 0.7, releaseCurve: 'linear', baseFrequency: 20, octaves: 5 },
     } },
-  stKickDirty: { label: 'Dirty Kick (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 1.2,
+  stKickDirty: { label: 'Dirty Kick (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 1.2,
     note: 'A square body makes the drop buzz on the way down. Distorted without a distortion '
       + 'on it.',
     options: {
@@ -2709,7 +2749,7 @@ const STARTER = {
       oscillator: { type: 'square' },
       envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.3 },
     } },
-  stClapTight: { label: 'Tight Clap (starter)', category: 'Claps', kind: 'noise', dur: 1,
+  stClapTight: { label: 'Tight Clap (starter)', category: 'Clap', kind: 'noise', dur: 1,
     note: 'Three closer, shorter bursts. Reads as one hand rather than a room full.',
     noise: { type: 'bandpass', freq: 2400, Q: 2, decay: 0.055 },
     taps: [0, 0.008, 0.016], tapFalloff: 0.7 },
@@ -2723,7 +2763,7 @@ const STARTER = {
       octaves: 1.5,
       envelope: { attack: 0.001, decay: 0.05, release: 0.02 },
     } },
-  stCowbell: { label: 'Cowbell (starter)', category: 'Percussion', kind: 'tone', synth: 'MetalSynth', dur: 0.8,
+  stCowbell: { label: 'Cowbell (starter)', category: 'Perc', kind: 'tone', synth: 'MetalSynth', dur: 0.8,
     note: 'Two fixed partials and a fast decay. It is the 808 cowbell, and it is never subtle.',
     options: {
       harmonicity: 3.5,
@@ -2732,7 +2772,7 @@ const STARTER = {
       octaves: 0.6,
       envelope: { attack: 0.001, decay: 0.12, release: 0.08 },
     } },
-  stAcidSquelch: { label: 'Acid Squelch (starter)', category: 'Basses', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
+  stAcidSquelch: { label: 'Acid Squelch (starter)', category: 'Bass', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
     note: 'High resonance and a fast filter sweep — the 303 move. Short notes only.',
     options: {
       oscillator: { type: 'sawtooth' },
@@ -2740,7 +2780,7 @@ const STARTER = {
       filter: { type: 'lowpass', Q: 8, rolloff: -24 },
       filterEnvelope: { attack: 0.002, decay: 0.09, sustain: 0.1, release: 0.15, baseFrequency: 180, octaves: 4 },
     } },
-  stBreathPad: { label: 'Breath (starter)', category: 'Pads', kind: 'tone', synth: 'DuoSynth', dur: 4.5,
+  stBreathPad: { label: 'Breath (starter)', category: 'Orch', kind: 'tone', synth: 'DuoSynth', dur: 4.5,
     note: 'Two slightly detuned voices swelling together. Big and slow; expensive per note.',
     options: {
       harmonicity: 1.01,
@@ -2749,7 +2789,7 @@ const STARTER = {
       voice0: { oscillator: { type: 'triangle' }, envelope: { attack: 0.35, decay: 0.4, sustain: 0.8, release: 1.4 } },
       voice1: { oscillator: { type: 'sawtooth' }, envelope: { attack: 0.5, decay: 0.4, sustain: 0.7, release: 1.6 } },
     } },
-  stTpLectric: { label: 'Lectric (starter)', category: 'Leads', kind: 'tone', synth: 'Synth', dur: 1.4,
+  stTpLectric: { label: 'Lectric (starter)', category: 'Lead', kind: 'tone', synth: 'Synth', dur: 1.4,
     note: 'Portamento of 0.2 means every note slides into the next. A lead that will not sit '
       + 'still.',
     origin: 'Tonejs/Presets Synth/Lectric',
@@ -2758,7 +2798,7 @@ const STARTER = {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.03, decay: 0.1, sustain: 0.2, release: 0.02 },
     } },
-  stKickClick: { label: 'Click Kick (starter)', category: 'Kicks', kind: 'tone', synth: 'MembraneSynth', dur: 1,
+  stKickClick: { label: 'Click Kick (starter)', category: 'Kick', kind: 'tone', synth: 'MembraneSynth', dur: 1,
     note: 'A square body makes the attack a knock rather than a thump. Reads on a phone '
       + 'speaker where a sub does not.',
     options: {
@@ -2767,7 +2807,7 @@ const STARTER = {
       oscillator: { type: 'square' },
       envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.3 },
     } },
-  stClap808: { label: 'Clap (starter)', category: 'Claps', kind: 'noise', dur: 1,
+  stClap808: { label: 'Clap (starter)', category: 'Clap', kind: 'noise', dur: 1,
     note: 'Four bursts a few milliseconds apart, each quieter than the last — which is all a '
       + 'clap is: one hit heard several times in a small room.',
     noise: { type: 'bandpass', freq: 1900, Q: 1.4, decay: 0.11 },
@@ -2776,7 +2816,7 @@ const STARTER = {
     note: 'A resonant highpassed tick — sharper than the plain closed hat, closer to metal '
       + 'without being metal.',
     noise: { type: 'highpass', freq: 7800, Q: 1.2, decay: 0.032, gain: 1 } },
-  stZap: { label: 'Zap (starter)', category: 'Percussion', kind: 'tone', synth: 'MembraneSynth', dur: 0.6,
+  stZap: { label: 'Zap (starter)', category: 'FX', kind: 'tone', synth: 'MembraneSynth', dur: 0.6,
     note: 'A pitch drop so fast it is heard as a click with a direction. Laser, or a very '
       + 'electronic rim.',
     options: {
@@ -2785,13 +2825,13 @@ const STARTER = {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.08 },
     } },
-  stPadTriangle: { label: 'Triangle Pad (starter)', category: 'Pads', kind: 'tone', synth: 'Synth', dur: 3.2,
+  stPadTriangle: { label: 'Triangle Pad (starter)', category: 'Pad', kind: 'tone', synth: 'Synth', dur: 3.2,
     note: 'Slow in, slow out. The attack is heard as an arrival, so it wants held sections.',
     options: {
       oscillator: { type: 'triangle' },
       envelope: { attack: 0.12, decay: 0.4, sustain: 0.7, release: 0.9 },
     } },
-  stFmBell: { label: 'FM Bell (starter)', category: 'Bells & Mallets', kind: 'tone', synth: 'FMSynth', dur: 1.2,
+  stFmBell: { label: 'FM Bell (starter)', category: 'Bells', kind: 'tone', synth: 'FMSynth', dur: 1.2,
     note: 'Struck and metallic, decaying rather than held — a bell at long lengths.',
     options: {
       harmonicity: 3,
@@ -2801,7 +2841,7 @@ const STARTER = {
       envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
       modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
     } },
-  stAmHollow: { label: 'AM Hollow (starter)', category: 'Leads', kind: 'tone', synth: 'AMSynth', dur: 1.2,
+  stAmHollow: { label: 'AM Hollow (starter)', category: 'Lead', kind: 'tone', synth: 'AMSynth', dur: 1.2,
     note: 'Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a '
       + 'synth.',
     options: {
@@ -2892,30 +2932,27 @@ export function voicesFor(laneKey) {
 // so the order is only a guess about intent — but opening the kick's picker with the
 // drums eleventh, off the right-hand edge, was a guess in the wrong direction.
 const LANE_FIRST_CATEGORY = {
-  bass: 'Basses', lead: 'Leads', leadHarm: 'Leads', chords: 'Keys',
-  organChords: 'Organs', twinkle: 'Bells & Mallets',
-  kick: 'Kicks', snare: 'Snares', clap: 'Claps',
-  hats: 'Hats', ohats: 'Hats', rim: 'Percussion', crash: 'Percussion', tom: 'Percussion',
+  bass: 'Bass', lead: 'Lead', leadHarm: 'Lead', chords: 'Keys',
+  organChords: 'Organ', twinkle: 'Bells',
+  kick: 'Kick', snare: 'Snare', clap: 'Clap',
+  hats: 'Hats', ohats: 'Hats', rim: 'Perc', crash: 'Crash', tom: 'Tom',
 };
 
-/**
- * The five kit categories, which travel together — and which are also the whole of
- * the answer to "drums or not": everything else in the catalogue is pitched.
- */
-export const KIT_CATEGORIES = ['Kicks', 'Snares', 'Claps', 'Hats', 'Percussion'];
+/** The seven kit categories, which travel together in the picker. */
+export const KIT_CATEGORIES = ['Kick', 'Snare', 'Hats', 'Clap', 'Tom', 'Crash', 'Perc'];
 
-/** A mixed filing category can still contain a drum; its home lane says which. */
+/** The seven kit categories are the drum boundary; special audition lanes are not. */
 export function isKitVoice(voice) {
-  return KIT_CATEGORIES.includes(voice?.category) || PERCUSSION_LANES.includes(voice?.homeLane);
+  return KIT_CATEGORIES.includes(voice?.category);
 }
 
 /**
  * Grouped for the picker: `[category, voices[]]`, empty categories dropped.
  *
  * The lane's own kind comes first — and on a drum lane the rest of the KIT follows
- * it, before the melodic categories. Splitting the drums into five columns is only
- * an improvement if they stay next to each other: a kick strip that opened on Kicks
- * and then put Snares eleventh, behind Pads and Organs, would be worse than the one
+ * it, before the melodic categories. Splitting the drums into seven columns is only
+ * an improvement if they stay next to each other: a kick strip that opened on Kick
+ * and then put Snare eleventh, behind Pad and Organ, would be worse than the one
  * long column it replaced.
  */
 export function voicesByCategory(laneKey) {
@@ -3057,6 +3094,7 @@ export function registerSongVoice(voiceKey, trackId, params) {
     ...params,
     id,
     kind,
+    category: normalizeVoiceCategory(params),
     // Same guard voiceGain applies: the lane's target is DIVIDED by these, so a zero
     // is not a quiet preset, it is a division by zero. A copy saved before levels
     // existed carries no level at all, and passing that straight through is what lets

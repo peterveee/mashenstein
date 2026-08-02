@@ -134,12 +134,48 @@ let trackId = (lastSong && resolveTrack(lastSong)) ? lastSong : (Object.keys(sav
 let track = null;
 let playing = false;
 let abHeld = false;
+
+// Arrangement note language is a desk preference, not song data. The cells remain the
+// hit targets and accessibility surface; this choice only changes how their activity is
+// painted. `solid` is deliberately the simplest fallback and the first-run default.
+const NOTE_VISUALS = [
+  ['solid', 'Solid'],
+  ['pulse', 'Fine Pulse Dots'],
+  ['trail', 'Elastic Trails'],
+];
+const NOTE_VISUAL_KEY = 'mash-mixer-note-visual';
+const NOTE_ANIMATION_KEY = 'mash-mixer-note-animation';
+const savedNoteVisual = localStorage.getItem(NOTE_VISUAL_KEY);
+const savedNoteVisualIsValid = NOTE_VISUALS.some(([id]) => id === savedNoteVisual);
+// Retired trail variants become the unified Elastic Trails language instead of
+// unexpectedly dropping an existing desk back to Solid on the next load.
+let noteVisualMode = savedNoteVisual == null
+  ? 'solid'
+  : (savedNoteVisualIsValid ? savedNoteVisual : 'trail');
+const savedNoteAnimation = localStorage.getItem(NOTE_ANIMATION_KEY);
+let noteAnimation = savedNoteAnimation == null
+  ? !matchMedia('(prefers-reduced-motion: reduce)').matches
+  : savedNoteAnimation === 'on';
+let arrCellsPerBar = 1;
+let arrPlayingCells = [];
+// The sixteenth those marks were set off by, so a second attack on the same mark can be
+// told apart from the first one still being held.
+let arrPlayingAt = null;
+const arrEchoCells = new Set();
+const arrEchoTimers = new Map();
+const ARR_ECHO_DURATION = 720;
 // Add Track is a two-step gesture: hold the new lane here while its preset picker is
 // open, and only write it into the song after the user chooses what it plays. Closing
 // the picker therefore cannot leave an empty channel behind.
 let pendingAddTrack = null;
 
 const emptyMix = () => ({ master: 0, masterPan: 0, limiter: false, lanes: {}, voice: undefined });
+const emptyLaneMix = () => ({
+  ...LANE_DEFAULTS,
+  eq: { ...LANE_DEFAULTS.eq },
+  send: { ...LANE_DEFAULTS.send },
+  effects: [],
+});
 /**
  * The mix in force for a song — and always in the shape the desk edits.
  *
@@ -182,6 +218,13 @@ function currentSongLayout() {
   return { keyboard: oskShown(), notes: !$('notes').classList.contains('collapsed'), grid: stepSeq.isOpen() };
 }
 
+function notesOpenInLayout(layout) {
+  if (!layout) return null;
+  if (layout.notes != null) return layout.notes === true;
+  if (layout.view != null) return layout.view === 'notes';
+  return null;
+}
+
 function rememberSongLayout(id = trackId) {
   if (restoringSongLayout || !id || !track || !resolveTrack(id)) return;
   songLayouts[id] = currentSongLayout();
@@ -199,10 +242,11 @@ function restoreSongLayout(id) {
     // Restore which panels were open. The old `editor` / `view` keys are from when
     // Effects and Notes shared one region; `notes` is the new key for the independent
     // notes panel. If neither is present, leave both panels at their defaults.
-    if (layout.notes != null) setNotesFolded(!layout.notes, false);
-    else if (layout.view != null) setNotesFolded(layout.view !== 'notes', false);
-    stepSeq.open(layout.grid === true || layout.editor === 'step');
-    $('seqbtn').classList.toggle('on', stepSeq.isOpen());
+    const notesOpen = notesOpenInLayout(layout);
+    if (notesOpen != null) setNotesFolded(!notesOpen, false);
+    stepSeqWanted = layout.grid === true || layout.editor === 'step';
+    stepSeq.open(stepSeqWanted);
+    $('seqbtn').classList.toggle('on', stepSeqWanted);
     showOsk(layout.keyboard === true);
   } finally {
     restoringSongLayout = false;
@@ -392,14 +436,34 @@ addEventListener('scroll', hideTip, true);
 addEventListener('blur', hideTip);
 
 let toastTimer = null;
+/**
+ * How long a message stays up, and why it is a multiplier rather than a new default.
+ *
+ * A toast on this desk lands in the corner while your eyes are on the thing you just
+ * changed — a fader, a note, an effect you dropped — so the clock starts before you
+ * look at it, not when it appears. At 2.2s the sentence was usually gone by the time
+ * you turned your head, which makes it a flicker rather than a message.
+ *
+ * The call sites say RELATIVE length — "this warning is longer than that confirmation"
+ * — and that ordering is right; it was only the floor that was wrong. So they keep
+ * their numbers and the stretch lands here, where raising it raises all of them
+ * together. Capped, because past ten seconds a message stops reading as a reply to
+ * something you did and starts reading as a thing stuck on the screen.
+ */
+const TOAST_STRETCH = 2;
+const TOAST_MAX_MS = 10000;
 // `ms: 0` holds the toast until something replaces it — for a job that takes longer
-// than a message about it should be on screen, like an offline render.
+// than a message about it should be on screen, like an offline render. It is not
+// stretched, because it is not a duration.
 function toast(msg, ms = 2200) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  if (ms) toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  if (ms) {
+    toastTimer = setTimeout(() => t.classList.remove('show'),
+      Math.min(TOAST_MAX_MS, ms * TOAST_STRETCH));
+  }
 }
 
 function undo() {
@@ -517,11 +581,10 @@ function closeIcon() {
  * cases — so there is one of them, and adding a fourth kind of strip is one line.
  */
 function storeEffects(m, key, list) {
-  // The master keeps its list even when it is empty. The desk seeds an untouched
-  // master with a bypassed bus compressor, so "nobody has been here" and "there is
-  // deliberately nothing here" have to be different things on the way in — stored as
-  // absent and stored as [] — or taking the seed out only brings it back on the next
-  // read. Reset is what puts the seed back, which is what reset is for.
+  // The master keeps its list even when it is empty — the one strip that does. It is
+  // stored rather than deleted so this branch stays the same shape as the aux one
+  // beside it, and so a future seed here (there was one once: a bypassed bus
+  // compressor) cannot come back on the next read after being taken off.
   if (key === '__master') {
     m.masterEffects = list;
   } else if (key.startsWith('__aux:')) {
@@ -824,7 +887,63 @@ function faderBlock({ value, onInput, onReset, title, stereo }) {
     min: FADER_DB_MIN, max: FADER_DB_MAX, step: 0.1,
   }, (x) => { show(x); onInput(x); }, fmt);
   col.append(fw, db);
-  return { col, fw, db, fill, peak, chans, meter, fader };
+  const sync = (x) => { fader.value = dbToPos(x); show(clamp(x, FADER_DB_MIN, FADER_DB_MAX)); };
+  return { col, fw, db, fill, peak, chans, meter, fader, sync };
+}
+
+/**
+ * The same master trim in the header: one horizontal fader whose rail is also a
+ * larger stereo meter. The dB readout only appears during the gesture, so the control
+ * remains a single slider rather than becoming a labelled control with a second box.
+ */
+function masterToolbarBlock({ value, onInput, onReset, title }) {
+  const col = document.createElement('div'); col.className = 'mastertoolbar-control';
+  const rail = document.createElement('div'); rail.className = 'master-fader-rail';
+  const fader = document.createElement('input');
+  fader.type = 'range'; fader.className = 'master-fader';
+  fader.min = 0; fader.max = 1; fader.step = 0.002;
+  fader.setAttribute('aria-label', 'Master volume');
+  if (title) fader.title = title;
+  const meter = document.createElement('div');
+  meter.className = 'meter stereo toolbar-meter'; meter.setAttribute('aria-hidden', 'true');
+  const chans = [];
+  for (let i = 0; i < 2; i++) {
+    const fill = document.createElement('i');
+    const peak = document.createElement('b');
+    meter.append(fill, peak);
+    chans.push({ fill, peak });
+  }
+  const readout = document.createElement('span');
+  readout.className = 'master-fader-readout'; readout.setAttribute('aria-live', 'polite');
+  const fmt = (x) => (x > 0 ? '+' : '') + Number(x).toFixed(1);
+  const dbOf = () => Math.round(posToDb(+fader.value) * 10) / 10;
+  let hideTimer = 0;
+  const hideReadout = () => {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => readout.classList.remove('show'), 700);
+  };
+  const show = (x, transient = true) => {
+    const text = `${fmt(x)} dB`;
+    readout.textContent = text;
+    fader.setAttribute('aria-valuetext', text);
+    if (!transient) return;
+    readout.classList.add('show');
+    hideReadout();
+  };
+  const sync = (x) => {
+    fader.value = dbToPos(x);
+    show(clamp(x, FADER_DB_MIN, FADER_DB_MAX), false);
+  };
+  sync(value);
+  fader.addEventListener('pointerdown', () => show(dbOf()));
+  fader.addEventListener('input', () => { const x = dbOf(); show(x); onInput(x); });
+  const reset = () => { sync(0); show(0); (onReset || onInput)(0); };
+  fader.addEventListener('pointerup', hideReadout);
+  fader.addEventListener('pointercancel', hideReadout);
+  fader.addEventListener('dblclick', reset);
+  rail.append(meter, readout, fader);
+  col.append(rail);
+  return { col, rail, fader, readout, chans, meter, sync };
 }
 
 /**
@@ -1004,7 +1123,7 @@ function focusDevice(index) {
     void card.offsetWidth;                 // restart the animation on a repeat click
     card.classList.add('flash');
   });
-  fitStrips();
+  scheduleDeskFit();
 }
 
 /** Put one target back to defaults — the right-click menu, and the R key. */
@@ -1091,10 +1210,11 @@ function applyToEngine(mix) {
   // takes to the engine, and a desk holding an edit the engine has forgotten is a
   // grid drawing bars nobody can hear.
   Audio.arrangement = arrFor(trackId) || null;
-  // The seeded master compressor has to exist in the ENGINE's chain too, or the
-  // desk's card index and the live chain index drift apart and the first slider drag
-  // on the master writes to the wrong node. Bypassed, so it is skipped in the wiring
-  // and the render is unchanged.
+  // Whatever the desk seeds the master with has to exist in the ENGINE's chain too,
+  // or the desk's card index and the live chain index drift apart and the first
+  // slider drag on the master writes to the wrong node. The seed is empty now, so
+  // this is a no-op in practice — it stays because the two indices have to agree
+  // however the seed is filled in, and effectsOf reads the same fallback.
   appliedBank = Audio.applyMix(track?.bank || null,
     m.masterEffects ? m : { ...m, masterEffects: DEFAULT_MASTER_CHAIN() });
   // The mix arrived by resetting every strip, and the reset took the engine's solo
@@ -1122,6 +1242,9 @@ function editFx(id, patch, tag) {
 
 function loadTrack(id) {
   pendingAddTrack = null;
+  // A deferred grid open belongs to the song whose button was clicked. If a song
+  // switch wins the race, cancel that intent unless the grid is already visible.
+  stepSeqWanted = stepSeq.isOpen();
   rememberSongLayout(trackId);
   // Solo does not travel between songs. It is monitoring on one channel of one mix,
   // and the same lane key in the next song is a different part played by a different
@@ -1131,6 +1254,11 @@ function loadTrack(id) {
   // otherwise push the old solo straight back onto the new mix.
   dropSolo();
   const hasSongLayout = !!songLayouts[id];
+  // Apply a remembered closed Notes state before the rack/song build. The shell starts
+  // with Notes open, so waiting for restoreSongLayout below would build a whole piano
+  // roll only to hide it again — exactly the first-use pause this layout state is meant
+  // to avoid.
+  if (notesOpenInLayout(songLayouts[id]) === false) setNotesFolded(true, false);
   // A bar selection and the open editor's DOM belong to the song they were built
   // from. Carrying either across this boundary made the old pattern appear under the
   // new song's name; touching it then wrote those old-looking cells into the new
@@ -1143,6 +1271,7 @@ function loadTrack(id) {
   // puts the panel back beside the strip once it knows which preset it is on.
   syncVoiceEditorToLane(voiceEditor.laneKey);
   buildRack();
+  syncMasterControls(mixFor(id).master || 0);
   buildTimeline();
   buildArrangement();
   stepSeq.songChanged();
@@ -1165,7 +1294,10 @@ function loadTrack(id) {
   // at. After applyToEngine, so the strips it retunes are this song's.
   pushTempo();
   loopAnchor = 0;              // a different song means a different timeline
+  pendingLoopAnchor = null;
   parkedAt = 0;
+  locA = null;                 // locators don't carry across songs
+  locB = null;
   applyLoop(0);
   if (hasSongLayout) restoreSongLayout(id);
   // A song without a record inherits the current desk once, then owns its own state.
@@ -1296,6 +1428,36 @@ function slider({ min, max, step, value, fmt, onInput, reset, curve, display }) 
 }
 
 const meters = [];
+let masterStripControl = null;
+let masterToolbarControl = null;
+
+function syncMasterControls(value) {
+  masterStripControl?.sync(value);
+  masterToolbarControl?.sync(value);
+}
+
+function setMasterControlValue(value, tag = null) {
+  editMix((m) => { m.master = value; }, tag);
+  Audio.mixer?.setMasterTrim(value);
+  syncMasterControls(value);
+}
+
+function buildMasterToolbar() {
+  const mount = $('mastertoolbar');
+  if (!mount || masterToolbarControl) return;
+  masterToolbarControl = masterToolbarBlock({
+    value: mixFor(trackId).master || 0,
+    title: 'Master trim, on top of the bank’s own musicTrim',
+    onInput: (x) => setMasterControlValue(x, 'master'),
+    onReset: (x) => setMasterControlValue(x),
+  });
+  mount.replaceChildren(masterToolbarControl.col);
+}
+
+// Arrangement volume rails share the channel meters' level source, but keep their
+// own small DOM readout so the track header remains live even when its mixer strip
+// is filtered out of the rack.
+const arrangementMeters = new Map();
 
 // Which families of track the desk is showing. A view, not a mix control: the song
 // keeps playing every lane, so what you hear while you work on the drums is the song
@@ -1414,6 +1576,7 @@ function buildRack() {
   forgetStripMetrics();
   rack.textContent = '';
   meters.length = 0;
+  masterStripControl = null;
   const mix = mixFor(trackId);
   const all = deskLanes(viewBank(), 1);
   // Track numbers come from the whole song, not from what is on screen: hiding the
@@ -1449,6 +1612,10 @@ function buildRack() {
   const slot = $('masterslot');
   slot.textContent = '';
   slot.append(masterStrip(mix, slotRows));
+  if (masterToolbarControl) {
+    meters.push({ key: '__master-toolbar', master: true, horizontal: true,
+      chans: masterToolbarControl.chans, meter: masterToolbarControl.meter });
+  }
   buildLaneFilter(all);          // the switches live in the mixer's header now
   buildPartFilter();             // and the switches for which parts of a strip it shows
   applyStripParts();
@@ -1474,7 +1641,9 @@ function buildRack() {
  * and a foot pinned to the bottom. Feet are bottom-anchored in all of them, which
  * is what puts every fader in the rack on one line.
  */
-function stripShell(key, { label, tag, colour, tint, cls = '', number = null }) {
+function stripShell(key, {
+  label, tag, sublabel = null, colour, tint, cls = '', number = null,
+}) {
   const el = document.createElement('div');
   el.className = `strip ${cls}`.trim();
   el.dataset.lane = key;
@@ -1492,7 +1661,15 @@ function stripShell(key, { label, tag, colour, tint, cls = '', number = null }) 
     head.append(n);
   }
   const h = document.createElement('h3'); h.textContent = label;
-  head.append(h, groupChip(tag));
+  head.append(h);
+  if (sublabel != null) {
+    const sub = document.createElement('div');
+    sub.className = 'stripsub';
+    sub.textContent = sublabel;
+    head.append(sub);
+  } else {
+    head.append(groupChip(tag));
+  }
   head.style.cursor = 'pointer';
   head.title = 'Click anywhere on this strip to show its devices below';
   const body = document.createElement('div'); body.className = 'stripbody';
@@ -1597,8 +1774,8 @@ function deviceSummary(key, text) {
 //
 // They live on the ARRANGEMENT rows, not on the strips. On a 118px strip the mark
 // had to be 10px to sit beside the word, and at 10px a microphone and a drum are the
-// same smudge; an arrangement row is 26px tall with room to its left, so the same
-// mark reads there and the strip keeps the plain word.
+// same smudge; the two-line arrangement header gives the same mark room beside the
+// track name, so the strip keeps the plain word.
 // `head` is drawn filled — a quaver without a filled note head is a stem with a
 // flag on it, which is not a note at all.
 const GROUP_ICONS = {
@@ -1856,6 +2033,69 @@ function laneVoiceId(laneKey) {
   return null;
 }
 
+/** The preset identity shown anywhere the desk names a channel. */
+function presetForLane(laneKey) {
+  const chosen = laneVoiceId(laneKey);
+  return (chosen && VOICES[chosen])
+    || (isIndependentLane(laneKey)
+      ? VOICES[DEFAULT_ADDED_PERCUSSION_VOICE]
+      : defaultVoiceOf(track?.bank, laneKey));
+}
+
+function presetHeadingFor(laneKey) {
+  const preset = presetForLane(laneKey);
+  return {
+    name: preset?.label || targetLabel(laneKey),
+    type: preset?.category ? String(preset.category).toUpperCase() : null,
+  };
+}
+
+/**
+ * Retitle one arrangement row after its preset changed.
+ *
+ * The row is the track and the strip is its channel, but both are titled with the same
+ * thing: the name of the preset playing the lane. Only the strip was being repainted on
+ * a voice change, so choosing a sound from the row's own right-click menu renamed the
+ * strip and left the row behind — the one place you were looking.
+ *
+ * In place rather than through buildArrangement, because nothing about the SHAPE of the
+ * song changed: the bars, the meters and the playback marks are all still correct, and
+ * rebuilding the grid to write two words would throw them away under a moving playhead.
+ * The lane's own name and family are read back off the row, so a lane with no preset
+ * falls back to exactly what buildArrangement drew.
+ */
+function refreshLaneIdentity(laneKey) {
+  const row = $('arrgrid')?.querySelector(`.arrrow[data-lane="${CSS.escape(laneKey)}"]`);
+  if (!row) return;
+  const preset = presetForLane(laneKey);
+  const name = row.querySelector('.arrname');
+  const category = row.querySelector('.arrpresetcat');
+  if (name) {
+    name.textContent = preset?.label || row.dataset.laneLabel || targetLabel(laneKey);
+    // markClipped caches the full name to put back as a tooltip; leaving the old one
+    // there would title the new name with the preset it replaced.
+    delete name.dataset.full;
+    markClipped(row);
+  }
+  if (category) category.textContent = preset?.category || cap(row.dataset.group || 'track');
+}
+
+function renderPresetHeading(el, laneKey) {
+  el.textContent = '';
+  if (!laneKey) return;
+  const heading = presetHeadingFor(laneKey);
+  const name = document.createElement('span');
+  name.className = 'panelpreset';
+  name.textContent = heading.name;
+  el.append(name);
+  if (heading.type) {
+    const type = document.createElement('span');
+    type.className = 'paneltype';
+    type.textContent = heading.type;
+    el.append(type);
+  }
+}
+
 /**
  * An edit inside the voice editor, on a preset the SONG owns.
  *
@@ -2073,51 +2313,24 @@ function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {})
   // The editor goes where the lane goes — onto the new preset, or off the desk when
   // the lane is sent back to the engine. See syncVoiceEditorToLane.
   const closed = syncVoiceEditorToLane(laneKey, { autoCopy });
-  // A voice change touches one row on one strip, so the arrows step without rebuilding
-  // the rack: the button under the pointer survives, and with it the hover the next
-  // arrow click needs. Everything else opens the library, which closes on the way out
-  // anyway, so it takes the ordinary rebuild. A closed editor forces one either way —
-  // its strip is still inside the wrapper the pair shared.
+  // A voice change updates the strip's header and the arrangement identity together.
+  // The picker owns the interaction now, so the rack can repaint normally after a choice.
   if (redraw || closed) buildRack();
   applyToEngine(mixFor(trackId));
-  if (independent) {
-    buildArrangement();
-    stepSeq.refresh();
-    pianoRoll.refresh();
-  }
+  // The strip is only half of what names this preset. The track row names it too — and
+  // the row is where the right-click that changes it usually starts — so a choice that
+  // repainted only the rack left the row you clicked still reading the sound you had
+  // just replaced. An independent lane can also change its LABEL here, which moves the
+  // row's name as well as its preset, so that one goes through a full rebuild.
+  if (independent) buildArrangement(); else refreshLaneIdentity(laneKey);
+  // Both note editors title themselves with the preset name as well, and both no-op
+  // when they are closed. See rebuildForShape.
+  stepSeq.refresh();
+  pianoRoll.refresh();
   refreshOsk();                         // the keyboard names what it is playing with
   const gone = hadCopy ? ' — this song’s own copy dropped, ⌘Z to put it back' : '';
   toast((voiceId ? `${targetLabel(laneKey)} → ${VOICES[voiceId].label}`
     : `${targetLabel(laneKey)} → the engine’s own voice`) + gone);
-}
-
-/**
- * The preset one along, in the group this strip is already in.
- *
- * Auditioning a family is the commonest thing anyone does with the library — you know
- * you want a kick, and which kick is a question for your ears — and doing it through
- * the panel meant open, find the column, click, listen, open again. The arrows are
- * that loop with the panel taken out of it.
- *
- * It stays inside ONE category on purpose: stepping off the end of Kicks into Snares
- * would answer a question nobody asked. With nothing chosen the arrows are the way in
- * to the group the picker itself opens on — the lane's own kind — from either end.
- *
- * Returns the voice it moved to, or null if there was nowhere to go.
- */
-function stepVoice(laneKey, dir) {
-  const seam = seamFor(laneKey);
-  const groups = seam ? offeredByCategory(laneKey, { keep: laneVoiceId(laneKey) }) : [];
-  if (!groups.length) return null;
-  const chosen = laneVoiceId(laneKey);
-  const cur = chosen && VOICES[chosen];
-  const [, list] = (cur && groups.find(([c]) => c === cur.category)) || groups[0];
-  if (!list.length) return null;
-  const at = cur ? list.findIndex((v) => v.id === cur.id) : (dir > 0 ? -1 : 0);
-  const next = list[(((at + dir) % list.length) + list.length) % list.length];
-  if (!next || next.id === chosen) return null;
-  setLaneVoice(laneKey, next.id, { redraw: false });
-  return next;
 }
 
 // ---- tracks: duplicate, delete, restore -------------------------------------
@@ -2216,7 +2429,8 @@ function duplicateLane(key) {
   // the next thing you were going to open anyway, and opening it says so more plainly
   // than a toast about a strip you have not looked at yet.
   toast(`${targetLabel(newKey)} added — choose the voice it plays`);
-  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .voicepick`);
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .strippreset`)
+    || document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .striphead`);
   const r = strip?.getBoundingClientRect();
   openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, newKey);
 }
@@ -2234,7 +2448,9 @@ function commitPendingAddTrack(laneKey, voiceId) {
       ...(voiceId && VOICES[voiceId] ? { label: VOICES[voiceId].label } : { label: pending.label }),
     }];
     m.lanes = m.lanes || {};
-    m.lanes[pending.key] = {};
+    // A newly-added channel is deliberately independent of the selected lane. Keep
+    // the neutral state explicit so no live strip, send, EQ, or insert can leak into it.
+    m.lanes[pending.key] = emptyLaneMix();
     const voice = { ...(m.voice || {}) };
     if (voiceId) voice[seam.voiceKey] = voiceId;
     else delete voice[seam.voiceKey];
@@ -2399,11 +2615,12 @@ function openTrackEditor(x, y, key, options = {}) {
  * Open the preset picker against a lane's own strip.
  *
  * The picker is placed at a point, because it is normally opened by clicking one. A
- * menu item has no such point, so it borrows the strip's voice row — which is where
- * the answer is going to appear anyway.
+ * menu item has no such point, so it borrows the strip's preset name — which is where
+ * the answer appears anyway.
  */
 function openVoicePickerFor(laneKey) {
-  const row = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"] .voicepick`);
+  const row = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"] .strippreset`)
+    || document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"] .striphead`);
   const r = row?.getBoundingClientRect();
   selectLane(laneKey);
   openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, laneKey);
@@ -2642,6 +2859,45 @@ function placeVoiceEditor() {
   pair.classList.toggle('selected', strip.classList.contains('selected'));
   // `append` MOVES a node it already holds, so this is also the re-place.
   pair.append(el);
+
+  // An expanded channel is one object, so it gets one identity. The strip already
+  // owns the authoritative name and type; copying those into a shared header prevents
+  // the editor's library label from disagreeing with the channel beside it. The editor
+  // keeps its own header data for its floating/library homes, where there is no strip.
+  let pairHead = [...pair.children].find((child) => child.classList.contains('voicepairhead'));
+  if (!pairHead) {
+    pairHead = document.createElement('div');
+    pairHead.className = 'voicepairhead';
+    pair.append(pairHead);
+  }
+  pairHead.textContent = '';
+  const stripTitle = strip.querySelector('.striphead h3');
+  const sharedTitle = document.createElement('h3');
+  sharedTitle.className = 'voicepairtitle strippreset';
+  sharedTitle.textContent = stripTitle?.textContent || targetLabel(laneKey);
+  sharedTitle.title = stripTitle?.title || `Change the preset for ${targetLabel(laneKey)}`;
+  sharedTitle.setAttribute('role', 'button');
+  sharedTitle.tabIndex = 0;
+  const choosePreset = (ev) => {
+    ev.stopPropagation();
+    selectLane(laneKey);
+    openVoicePicker(ev.clientX, ev.clientY, laneKey);
+  };
+  sharedTitle.addEventListener('click', choosePreset);
+  sharedTitle.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    ev.preventDefault();
+    const r = sharedTitle.getBoundingClientRect();
+    choosePreset({ clientX: r.left, clientY: r.bottom, stopPropagation() {} });
+  });
+  pairHead.append(sharedTitle);
+  const stripType = strip.querySelector('.striphead .stripsub');
+  if (stripType) {
+    const sharedType = document.createElement('div');
+    sharedType.className = 'voicepairtype';
+    sharedType.textContent = stripType.textContent;
+    pairHead.append(sharedType);
+  }
 }
 
 /**
@@ -2853,23 +3109,30 @@ function fitDockedKeys() {
 /**
  * How many keys to draw, and how wide each one is.
  *
- * The other way round from where this started. It used to draw a fixed number — four
- * octaves — and `zoom` them until they fitted, which meant the keys changed size with
- * the scale: a pentatonic has seventeen where a chromatic board has twenty-nine, so the
- * same band gave one 64px keys and the other 37px. Capping the key stopped the sparse
- * scales looking absurd and left the band short instead, which is the complaint.
+ * ONE rule, in both homes: a key is the size the piano's key is, and the RANGE gives. The
+ * space is whatever the space is — the band's, docked; the title bar's, floating — and
+ * what changes with the key you play in is how far up the keyboard reaches, not how big
+ * it is. Pick a pentatonic and you get the same keys, more of them, spanning further.
  *
- * Fixing the RANGE and deriving the width settles both. Three octaves is the span in
- * every scale and in both homes — the span the computer keyboard reaches, see
- * OSK_OCTAVES — so the instrument is the same instrument whatever you set the key to;
- * the board always fills its band, because the width was chosen to make it; and a
- * pentatonic gets wide keys because it has fewer notes to fit, which is the honest
- * answer rather than a keyboard that shrinks its own range to keep them uniform.
+ * It was the other way round, and both of the ways it was wrong are worth keeping:
  *
- * Sizing the KEY instead and deriving the count is the other way to settle it, and it
- * was here for a while. It keeps a key the same width in every scale — but the band is
- * a fixed width, so the count it derives is a RANGE that moves: a 50% wider key cost an
- * octave, which is the property of the keyboard you actually play with.
+ * It first drew a fixed number — four octaves — and `zoom`ed them until they fitted, so
+ * the keys changed size with the scale: a pentatonic has seventeen where a chromatic
+ * board has twenty-nine, and the same band gave one 64px keys and the other 37px.
+ *
+ * Fixing the RANGE at three octaves and deriving the width fixed that within a scale and
+ * moved it between them. Three octaves of a pentatonic is sixteen keys where a piano has
+ * twenty-two, so the same band divided sixteen ways gave a key half again as wide — and a
+ * key is a shape, the heights come off the width (see sizeOskKeys), so it came out half
+ * again as TALL. The keyboard changed size when you chose a key, which is the same
+ * complaint one layer along. Floating it did not even fill: a window is as wide as the
+ * widest thing in it, which is the title bar, so the sparse board just left bare frame.
+ *
+ * So the reference is a CHROMATIC board — `OSK_KEYS`, three octaves of white keys — and
+ * every scale gets that key at that size, however many of them the space holds. Docked
+ * the piano's key is the band divided by twenty-two; floating it is KEY_W, which is the
+ * number the window was built around. Both are the same sentence with a different width
+ * in it.
  *
  * `DOCK_KEY_MIN` is a floor, not a target. Three octaves of a chromatic board in a
  * narrow band is a row of slivers, and past that point range is the cheaper thing to
@@ -2881,17 +3144,34 @@ function fitDockedKeys() {
  * device pixel the shared edge lands on.
  */
 const DOCK_KEY_MIN = 26;                 // narrowest a docked white key may get, px
+// The floating window's inside width, as last measured — see fillFloatingKeys. Zero until
+// the keyboard has been in the document once, which is the one draw that cannot know it.
+let oskFloatRoom = 0;
 function oskKeyPlan(perOctave) {
   const room = oskRoom();
-  // Floating, or measured before there is anything to measure: the fixed board.
-  const full = perOctave * OSK_OCTAVES + 1;
-  if (!room) return { count: full, width: KEY_W, fills: false };
-  // Three octaves unless they would not be playable, and then as many as are — but never
-  // fewer than an octave and a note, because a keyboard that cannot reach its own octave
-  // is not one.
-  const count = room / full >= DOCK_KEY_MIN
-    ? full
-    : Math.max(perOctave + 1, Math.floor(room / DOCK_KEY_MIN));
+  // ---- floating: the width is the title bar's, and the key is KEY_W.
+  //
+  // Rounding rather than flooring the fit is what closes the last few pixels: the count
+  // that fits best, and then the exact width for it, which is never more than half a key
+  // from KEY_W — a key you would have to measure to tell from the piano's.
+  if (!room) {
+    const fit = oskFloatRoom ? Math.round(oskFloatRoom / KEY_W) : 0;
+    // Nothing measured yet, or a title bar shorter than the keys: then the keys are the
+    // widest thing in the window and it is they that set its width.
+    if (fit <= OSK_KEYS) return { count: OSK_KEYS, width: KEY_W, fills: false };
+    return { count: fit, width: oskFloatRoom / fit, fills: false };
+  }
+  // ---- docked: the width is the band's, and the key is the band divided by a piano.
+  //
+  // Which makes the count a piano's count as well — the same arithmetic backwards — so it
+  // is stated rather than derived. The range is what moves: twenty-two pentatonic keys is
+  // four octaves and a bit where twenty-two white ones is three.
+  const wide = room / OSK_KEYS;
+  if (wide >= DOCK_KEY_MIN) return { count: OSK_KEYS, width: wide, fills: true };
+  // Too narrow for a playable key at that count, so the count is what a playable key
+  // leaves — but never fewer than an octave and a note, because a keyboard that cannot
+  // reach its own octave is not one.
+  const count = Math.max(perOctave + 1, Math.floor(room / DOCK_KEY_MIN));
   return { count, width: room / count, fills: true };
 }
 
@@ -2971,122 +3251,6 @@ $('addtrackbtn').onclick = (ev) => {
 };
 
 /**
- * The voice button, on strips whose lane can take one.
- *
- * It reads as a device summary because that is what it is — the row says what the
- * channel IS, the way the send returns' summary says what the delay is set to. ENGINE
- * is the default and it is a real choice in the list, not an escape from the menu: a
- * lane that has never been given a voice and a lane you have put back are the same
- * lane, and the mix file says nothing about either.
- */
-function voiceRow(laneKey) {
-  // Lanes with no seam still reserve the row. The organ swoop, the glisses, the
-  // sweeps and the vocal one-shots are bespoke gestures rather than a note played by
-  // a voice, so there is nothing to choose — but without the space, their EQ starts
-  // one row higher than everything beside them and the rack stops lining up. Same
-  // reason every strip reserves the same insert block.
-  const seam = seamFor(laneKey);
-  if (!seam) {
-    // A disabled BUTTON, not a div: the row only lines up if it is the same element
-    // with the same box as the real one. A div picked up different metrics and left
-    // the FX strips' EQ four pixels low, which is exactly the misalignment this is
-    // here to fix.
-    const spacer = document.createElement('button');
-    spacer.disabled = true;
-    spacer.className = 'devlink voicenone';
-    spacer.textContent = '—';
-    spacer.title = 'This lane is a bespoke gesture in the engine, not a note played by'
-      + ' a voice, so there is no preset to choose.';
-    return spacer;
-  }
-  // A duplicate layer has no engine voice to fall back on. An independent editor lane
-  // also uses layer-shaped storage, but it is a new empty track, not a copy of Tom.
-  const independent = isIndependentLane(laneKey);
-  const layer = isLayer(laneKey) && !independent;
-  const b = document.createElement('button');
-  b.onclick = (ev) => {
-    ev.stopPropagation();
-    selectLane(laneKey);
-    openVoicePicker(ev.clientX, ev.clientY, laneKey);
-  };
-
-  // One along, either way, without opening the library — see stepVoice. They live
-  // INSIDE the button rather than beside it: the row's box is what every strip's EQ
-  // lines up against, and a wrapper around it is the kind of four-pixel change that
-  // takes the whole rack out of alignment. Hidden until the strip is under the
-  // pointer, so a rack of forty channels is not a rack of eighty arrows.
-  const arrow = (dir, glyph) => {
-    const s = document.createElement('span');
-    s.className = `voicestep voicestep-${dir > 0 ? 'next' : 'prev'}`;
-    s.textContent = glyph;
-    s.onclick = (ev) => {
-      ev.stopPropagation();                     // the button under it opens the library
-      if (stepVoice(laneKey, dir)) paint();
-    };
-    return s;
-  };
-  const prev = arrow(-1, '‹');
-  const next = arrow(1, '›');
-
-  // And into the preset itself. It sits with the arrows because it belongs to the same
-  // gesture — step through the library, stop on one, open it up — and it appears only
-  // when there is something to open: the engine's own voice is not a preset.
-  const open = document.createElement('span');
-  open.className = 'voicestep voiceedit';
-  // `»`, not a pencil. A ✎ says "edit something" and leaves you to work out what and
-  // where; this says the editor opens, to the right, which is exactly where it appears —
-  // and it is the same mark that puts it away again, so the pair reads as one toggle.
-  open.append(foldIcon('right'));
-  open.onclick = (ev) => {
-    ev.stopPropagation();                       // the button under it opens the library
-    editVoice(laneKey);
-  };
-
-  // Re-run in place when an arrow moves the voice on. Setting textContent empties the
-  // button, so the arrows go back in after the label every time.
-  function paint() {
-    const chosen = laneVoiceId(laneKey);
-    const v = chosen && VOICES[chosen];
-    const group = v ? ` in ${v.category}` : '';
-    // What the lane is playing with nothing set, where the library has a name for it.
-    // Two thirds of the time it has one, because the engine presets were mined from
-    // these banks — so `ENGINE` was a label withholding what it knew. Lower case and
-    // unlit, because it is a reading rather than a setting: nothing is in the mix file
-    // and clicking away from it changes nothing to go back to.
-    const named = (!v && !layer)
-      ? (independent ? VOICES[DEFAULT_ADDED_PERCUSSION_VOICE] : defaultVoiceOf(track?.bank, laneKey))
-      : null;
-    b.className = 'devlink voicepick'
-      + (v ? ' on' : layer ? ' voiceneeded' : named ? ' voicenamed' : '');
-    b.textContent = v ? v.label.toUpperCase()
-      : layer ? 'PICK A VOICE' : named ? named.label : 'ENGINE';
-    b.title = v
-      ? `${v.label} — ${v.note}\n\nClick to choose another, or go back to the engine’s own voice.`
-      : layer
-        ? `${targetLabel(laneKey)} is a duplicate of ${targetLabel(baseLane(laneKey))} and`
-          + ' plays nothing until it is given a voice — two lanes on the same voice would'
-          + ' be the original, louder, rather than a layer.\n\nClick to choose one.'
-        : named
-          ? `The engine’s own voice here, and the library has a name for it:`
-            + ` ${named.label} — ${named.note}\n\nNothing is set in the mix file — the bank`
-            + ' plays this by itself. Click to choose a preset instead.'
-          : 'This lane plays the engine’s own hand-written voice.'
-            + ' Click to play it through a synth from src/data/voices.js instead.';
-    prev.title = `Previous preset${group}`;
-    next.title = `Next preset${group}`;
-    b.append(prev, next);
-    // Only a preset has parameters. An engine voice is bank keys the hand-written
-    // lane reads, and a lane on the default is not playing an entry at all.
-    if (v && v.kind !== 'engine') {
-      open.title = `Edit ${v.label} — its parameters, on the desk, heard as you move them`;
-      b.append(open);
-    }
-  }
-  paint();
-  return b;
-}
-
-/**
  * The voice library, as a panel.
  *
  * Sixty-five presets in a context menu is a scrolling list you cannot read, so this
@@ -3155,7 +3319,7 @@ function openVoicePicker(x, y, laneKey) {
     return btn;
   };
 
-  // The search box. A hundred presets in eleven columns is quick to scan when you
+  // The search box. A hundred presets in sixteen columns is quick to scan when you
   // know roughly where you are going and slow when you only know the word — so
   // typing filters the lot, across labels AND the descriptions, which is where words
   // like "808", "gated" or "detune" actually live.
@@ -3180,8 +3344,8 @@ function openVoicePicker(x, y, laneKey) {
   who.textContent = `${targetLabel(laneKey)} voice`;
 
   // Drums or not — the one split the catalogue's categories do not make, and
-  // the only one that is about the LANE. A lead strip has no use for five columns of
-  // kit before it reaches the Leads, and a kick strip has none for six of pitched
+  // the only one that is about the LANE. A lead strip has no use for seven columns of
+  // kit before it reaches the Lead, and a kick strip has none for nine of pitched
   // synths after it, so the panel opens on the kind the lane plays. It is a view, not
   // a rule: `all` is one click away and the library is the same library — a snare
   // through a bass lane is a legitimate noise and this does not stop it.
@@ -3217,7 +3381,7 @@ function openVoicePicker(x, y, laneKey) {
   for (const k of KINDS) chips.append(chipFor(k));
   head.append(who, chips, search);
   if (layer) {
-    // A layer has no engine default to go back to — see voiceRow. The space says what
+    // A layer has no engine default to go back to — see the strip preset name. The space says what
     // the lane IS instead of offering a choice that silences it.
     const why = document.createElement('span');
     why.className = 'voicewhy';
@@ -3258,8 +3422,7 @@ function openVoicePicker(x, y, laneKey) {
 
   // Nothing about EDITING a preset lives here. This panel answers "which sound",
   // which is a different question from "what should this sound be like" — and the way
-  // into the second is on the strip itself: the ✎ on the voice row, the ✎ on the
-  // header, and the two items on the right-click menu.
+  // into the second is on the strip header and the two items on the right-click menu.
 
   const results = document.createElement('div');
   results.className = 'voiceresults';
@@ -3347,35 +3510,55 @@ function openVoicePicker(x, y, laneKey) {
 function channelStrip(lane, mix, slotRows, number) {
   const key = lane.key;
   const s = laneSettings(mix.lanes[key]);
+  const seam = seamFor(key);
+  const preset = presetForLane(key);
   const { el, head, body, foot } = stripShell(key, {
-    label: lane.label, tag: lane.group, colour: laneColour(key), tint: laneTint(key), number,
+    label: preset?.label || lane.label,
+    sublabel: preset?.category || null,
+    tag: lane.group, colour: laneColour(key), tint: laneTint(key), number,
   });
   // The head is the strip's handle, so double-clicking it plays the channel: from
   // the bar it comes in on, which for anything that enters late is the only bar you
   // wanted to hear. See playFromLaneStart.
   head.title = 'Click to show this strip’s devices below'
     + ' — double-click to play from where this channel comes in';
-  head.addEventListener('dblclick', () => playFromLaneStart(key));
+  head.addEventListener('dblclick', (ev) => {
+    if (!ev.target.closest('.strippreset')) playFromLaneStart(key);
+  });
 
-  // Into the preset editor from the header, on hover. The voice row a few pixels
-  // below has the same ✎ and has had all along; this one is here because the header
-  // is where you point at a channel when you mean the channel, and hunting for a
-  // 13px target inside a button is not where anyone looks first.
-  const seam = seamFor(key);
-  const chosen = seam && laneVoiceId(key);
-  const preset = chosen && VOICES[chosen];
+  const presetName = head.querySelector('h3');
+  if (seam && presetName) {
+    presetName.classList.add('strippreset');
+    presetName.setAttribute('role', 'button');
+    presetName.tabIndex = 0;
+    presetName.title = preset
+      ? `Change ${preset.label} on ${lane.label}`
+      : `Choose a preset for ${lane.label}`;
+    const choosePreset = (ev) => {
+      ev.stopPropagation();
+      selectLane(key);
+      openVoicePicker(ev.clientX, ev.clientY, key);
+    };
+    presetName.addEventListener('click', choosePreset);
+    presetName.addEventListener('dblclick', (ev) => ev.stopPropagation());
+    presetName.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      const r = presetName.getBoundingClientRect();
+      choosePreset({ clientX: r.left, clientY: r.bottom, stopPropagation() {} });
+    });
+  }
+
+  // Into the preset editor from the header, on hover. Choosing a different preset is
+  // the name itself; this small mark remains only for editing the selected preset.
   if (preset && preset.kind !== 'engine') {
     const pen = document.createElement('button');
     pen.className = 'stripedit';
-    pen.append(foldIcon('right'));   // see the voice row's — same mark, same reason
+    pen.append(foldIcon('right'));   // same fold mark as the docked editor
     pen.title = `Edit ${preset.label} — its parameters, beside this strip`;
     pen.onclick = (ev) => { ev.stopPropagation(); editVoice(key); };
     head.append(pen);
   }
-
-  // Above the EQ, in the place the send returns keep their device summary: what the
-  // channel is comes before what has been done to it.
-  body.append(voiceRow(key));
 
   const setEq = (band) => (x) => {
     editMix((m) => {
@@ -3591,7 +3774,7 @@ function sendStrip(def, mix, slotRows) {
  */
 function masterStrip(mix, slotRows) {
   const { el, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
-  const setMaster = (x) => { editMix((m) => { m.master = x; }, 'master'); Audio.mixer?.setMasterTrim(x); };
+  const setMaster = (x) => setMasterControlValue(x, 'master');
   const fb = faderBlock({
     // The same fader as every channel, which it did not used to be: this one ran
     // −24…+12, so the master was the one strip that could be pushed somewhere none
@@ -3604,8 +3787,10 @@ function masterStrip(mix, slotRows) {
     stereo: true,
     title: 'Master trim, on top of the bank’s own musicTrim',
     onInput: setMaster,
-    onReset: (x) => { editMix((m) => { m.master = x; }); Audio.mixer?.setMasterTrim(x); },
+    onReset: (x) => setMasterControlValue(x),
   });
+  masterStripControl = fb;
+  syncMasterControls(mix.master || 0);
   // The master's own balance, in the pot every other strip keeps its pan in. It is
   // the last thing on the bus before the limiter, so it moves the whole mix rather
   // than anything in it — which is what a master pan is for.
@@ -3656,7 +3841,14 @@ const FADER_FLOOR = 34;
 // The arrangement's automatic answer. Eight lanes is enough to read a song's shape
 // and the rest is a scroll. It is a TARGET, not a floor: the floor is one lane, and
 // calling the eight a floor is most of why this used to be hard to reason about.
-const ARR_AUTO_LANES = 8;
+// Read from the shell rather than written here twice: the CSS cap on #arrange is the
+// same eight, and the two being separate numbers is a bug waiting for the day one of
+// them is changed.
+const ARR_AUTO_LANES = () => {
+  const n = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--arrmax-lanes'));
+  return Number.isFinite(n) && n >= 1 ? n : 8;
+};
 // The effects panel below its own header: enough for one card's controls. Below it
 // the panel is a title bar with a sliver under it, which tells you nothing and
 // still costs the height.
@@ -3683,22 +3875,19 @@ const h = (el) => (el ? el.getBoundingClientRect().height : 0);
 const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]) || 0;
 
 /**
- * Every pixel #desk has to divide between its four regions and their two handles:
- * the window, less the four things that live outside the desk and are never
+ * Every pixel #desk has to divide between its four regions:
+ * the window, less the things that live outside the desk and are never
  * negotiated with.
  *
- * Note what is NOT in here: the effects panel. The list this replaced counted
- * #devices as page chrome, so the arrangement's ceiling was computed against the
- * effects panel's live height while the effects panel's room was computed against a
- * hypothetical one-lane arrangement — two different worlds, and the reason dragging
- * the effects handle moved the arrangement, a panel that handle does not border.
- * Everything inside the desk is allocated, not subtracted.
+ * Note what is NOT in here: the effects panel is allocated by planDesk, not treated as
+ * page chrome. Its natural or dragged height is subtracted there alongside the other
+ * desk regions, while every border hit area remains layout-free.
  */
 const deskPool = () => innerHeight
   - h(document.querySelector('header')) - h($('timeline'))
   - h(document.querySelector('footer')) - h($('err'));
 
-// A height the user dragged the splitter to, which beats the automatic fit until
+// A height the user dragged the Notes border to, which beats the automatic fit until
 // they double-click it away. Kept across reloads: it is a preference about this
 // screen, not about the mix.
 const ARR_KEY = 'mash-mixer-arrh';
@@ -3713,44 +3902,75 @@ let userArrH = Number.isFinite(storedArrH) && storedArrH > 40 ? storedArrH : nul
 // back to automatic fitting once the rows have been built.
 let restoredArrH = userArrH != null;
 
-// A height the user dragged the effects splitter to. Like the arrangement height,
-// this is a preference about the desk rather than a mix edit, so it lives outside
-// the song draft and returns on the next visit. Double-clicking the handle clears it
-// and lets the measured card height take over again.
+// A height the user dragged the Notes border to. Like the arrangement height, this
+// is a preference about the desk rather than a mix edit, so it lives outside the song
+// draft and returns on the next visit. Double-clicking the border clears it and lets
+// the measured roll height take over again. DEV_KEY remains the persisted key for
+// compatibility with existing mixer sessions.
 const DEV_KEY = 'mash-mixer-devh';
 const storedDevH = Number(localStorage.getItem(DEV_KEY));
 let userDevH = Number.isFinite(storedDevH) && storedDevH > 40 ? storedDevH : null;
 const clampDeviceH = (value, max = notesRoom()) => clamp(value, MIN.notes(), max);
 
-// The arrangement's height is always its header plus a whole number of lanes.
-const GRID_PAD = 0;                                  // #arrgrid has none, deliberately
+// Effects has its own remembered height. This is the panel's content room below
+// its header, kept separate from DEV_KEY, which belongs to Notes.
+const FX_KEY = 'mash-mixer-fxh';
+const storedFxH = Number(localStorage.getItem(FX_KEY));
+let userFxH = Number.isFinite(storedFxH) && storedFxH > DEV_MIN_EXTRA ? storedFxH : null;
+
+// The arrangement's height is its header, its landing, the panel rule, and a whole
+// number of row stacks. Every term is MEASURED off the live elements, so changing
+// --arrrow, --arrgap, --arrgrid-pad or the header's control size in the shell moves
+// the snap with it and nothing here needs touching.
+//
+// The gap belongs to the stack: leaving it out makes the last visible row spill below
+// a snapped height. There is no trailing gap, so N rows carry N-1 of them.
 const laneRowHeight = () => h(document.querySelector('.arrrow')) || 26;
+const laneRowGap = () => px($('arrgrid'), 'rowGap');
+const laneStackHeight = (count) => count * laneRowHeight()
+  + Math.max(0, count - 1) * laneRowGap();
+// The landing under the last visible row. It is #arrange's padding, NOT #arrgrid's:
+// inside the scroller it is scroll content, which is only under the last row when you
+// happen to be scrolled to the bottom — every other scroll position spent it on the
+// gap and the top few pixels of the next lane, so a panel that had snapped correctly
+// still showed a sliver of a row it had not made room for.
+const laneLanding = () => px($('arrange'), 'paddingBottom');
+const arrangeChrome = () => h($('arrhead')) + laneLanding()
+  + px($('arrange'), 'borderBottomWidth');
 const laneCount = () => document.querySelectorAll('.arrrow').length || 1;
 /**
  * How many whole lanes fit in `px` of arrangement. Below one is a fold, not a row.
  *
  * The epsilon is load-bearing. Heights come from getBoundingClientRect and are
- * fractional, so a request built as "the header plus eight lanes" divides back out
- * to 7.99999… and Math.floor hands back seven — the automatic fit was one lane short
+ * fractional, so a request built as "the header plus an eight-row stack" divides back
+ * out to 7.99999… and Math.floor hands back seven — the automatic fit was one row short
  * of what it had just asked for, on every window tall enough to grant it.
  */
-const lanesIn = (px, round = Math.round) =>
-  round((px - h($('arrhead')) - GRID_PAD) / laneRowHeight() + 1e-6);
+const lanesIn = (px, round = Math.round) => {
+  const row = laneRowHeight();
+  const gap = laneRowGap();
+  const body = px - arrangeChrome();
+  return round((body + gap) / (row + gap) + 1e-6);
+};
 /**
  * The nearest height that shows whole lanes, at least one. Rounding to the NEAREST is
- * right under the hand on the splitter — half a lane either way should settle on the
+ * right under the hand on the border — half a lane either way should settle on the
  * one you meant. It is wrong against a ceiling: rounding up there hands the rack back
  * a few pixels it was promised, and a strip four pixels short scrolls its last send
  * row out of sight. So the automatic fit passes Math.floor.
  */
-const arrangeSnap = (px, round = Math.round) => h($('arrhead')) + GRID_PAD
-  + clamp(lanesIn(px, round), 1, laneCount()) * laneRowHeight();
+const arrangeSnap = (px, round = Math.round) => arrangeChrome()
+  + laneStackHeight(clamp(lanesIn(px, round), 1, laneCount()));
 
-/** And the most it can use: every lane at once. */
+/**
+ * And the most it can use: every lane at once. The scroller's content is now exactly
+ * the row stacks — the landing lives outside it — so its scrollHeight adds straight
+ * onto the chrome.
+ */
 function arrangementWants() {
   const arrange = $('arrange');
   if (arrange.classList.contains('collapsed')) return h(arrange);
-  return h($('arrhead')) + $('arrgrid').scrollHeight;
+  return arrangeChrome() + $('arrgrid').scrollHeight;
 }
 
 /**
@@ -3784,7 +4004,7 @@ function naturalHeight(body) {
  * The rack's shrink ladder, in the order the blocks go. Inserts first — they are the
  * one block you set once and then leave alone. Sends next. EQ last, because it is the
  * one you are most likely to be reaching for while the window is small. Below the
- * bottom of this list is the strip you balance on: name, voice, fader, dB, pan and
+ * bottom of this list is the strip you balance on: name, type, fader, dB, pan and
  * mute/solo, with nothing left to take.
  *
  * The same three blocks the header switches hide, hidden the same way — see the
@@ -3825,9 +4045,9 @@ function atShed(n, fn) {
 }
 
 /**
- * Everything in a strip whose height does not move with the fader — the voice row,
- * the readout, the pan and the buttons are all fixed, so the fader is the only
- * variable left. `n` blocks into the ladder.
+ * Everything in a strip whose height does not move with the fader — the header,
+ * readout, pan and buttons are all fixed, so the fader is the only variable left.
+ * `n` blocks into the ladder.
  *
  * Measured across EVERY strip, not off the first one: the insert buttons live in the
  * foot, so a channel with five effects on it stands a hundred pixels taller in the
@@ -3866,7 +4086,9 @@ function stripChromeAt(n) {
     // Asked before the first buildRack — applyFont() and reserveDevices() both run at
     // load. Plausible numbers rather than a throw; the real ones arrive with the first
     // fit after the rack exists, and forgetStripMetrics() is what fetches them.
-    if (!document.querySelector('.strip[data-lane]')) return [260, 220, 180, 140][n];
+    // These are only a pre-build safety estimate. Keep them aligned with the current
+    // selector-free strip: the preset now lives in the header and adds no body row.
+    if (!document.querySelector('.strip[data-lane]')) return [230, 190, 150, 110][n];
     chromeRungs = SHED_ORDER.map((_, i) => measureChromeAt(i));
     chromeRungs.push(measureChromeAt(SHED_ORDER.length));
   }
@@ -3894,8 +4116,8 @@ function rackFloor() { return bareChrome() + FADER_FLOOR + rackPad(); }
 const MIN = {
   /** Fixed by CSS at 30 or 44; the sections fold is the only thing that moves it. */
   timeline: () => h($('timeline')),
-  /** Header and one lane. Whole lanes only, always — see arrangeSnap. */
-  arrange: () => h($('arrhead')) + GRID_PAD + laneRowHeight(),
+  /** Header and one row. Whole rows only, always — see arrangeSnap. */
+  arrange: () => arrangeChrome() + laneStackHeight(1),
   /** A strip with every sheddable block gone, and the rack's padding. */
   mixer: () => rackFloor(),
   /** The notes panel: header plus enough of a keyboard to play against. */
@@ -3909,18 +4131,30 @@ const MIN = {
 const WANT = {
   arrange: () => (userArrH != null ? userArrH
     : Math.min(arrangementWants(),
-      h($('arrhead')) + GRID_PAD + laneRowHeight() * ARR_AUTO_LANES)),
+      arrangeChrome() + laneStackHeight(ARR_AUTO_LANES()))),
   /** Notes panel wants enough height for the roll. */
   notes: () => (userDevH != null ? userDevH : (autoDevH || 204)),
 };
 
 // The height the effect cards themselves ask for, measured by reserveDevices().
 let autoDevH = 0;
-/** Effects panel natural height — its content, not negotiable. */
+/** Effects panel height — its content by default, or the user's dragged height. */
 const effectsNaturalHeight = () => {
   if ($('devices').classList.contains('collapsed')) return 0;
-  return h($('devhead')) + (autoDevH || DEV_MIN_EXTRA);
+  return h($('devhead')) + (userFxH != null ? userFxH : (autoDevH || DEV_MIN_EXTRA));
 };
+
+/** Maximum effects room while leaving the other open panels at their floors. */
+function effectsRoom() {
+  const arrH = $('arrange').classList.contains('collapsed')
+    ? h($('arrange')) : plannedArrangeHeight();
+  const notesH = $('notes').classList.contains('collapsed')
+    ? h($('notes')) : Math.max(MIN.notes(), userDevH ?? MIN.notes());
+  const rackH = $('rackwrap').classList.contains('collapsed') ? 0 : MIN.mixer();
+  return Math.max(DEV_MIN_EXTRA, Math.floor(deskPool()
+    - h($('mixhead')) - arrH - notesH - rackH - h($('devhead'))));
+}
+const clampEffectsH = (value) => clamp(value, DEV_MIN_EXTRA, effectsRoom());
 
 /** The height the arrangement will be given, from preferences and content alone. */
 const plannedArrangeHeight = () => ($('arrange').classList.contains('collapsed')
@@ -3929,12 +4163,12 @@ const plannedArrangeHeight = () => ($('arrange').classList.contains('collapsed')
 
 /**
  * What the notes panel is allowed to take — the room between the rack's floor and
- * the effects panel's fixed height at the bottom.
+ * the effects panel's selected height at the bottom.
  */
 function notesRoom(arrH = plannedArrangeHeight()) {
   const fxH = effectsNaturalHeight();
   const room = deskPool()
-    - h($('arrsplit')) - h($('devsplit')) - h($('mixhead'))
+    - h($('mixhead'))
     - arrH
     - ($('rackwrap').classList.contains('collapsed') ? 0 : MIN.mixer())
     - fxH;
@@ -3944,7 +4178,7 @@ function notesRoom(arrH = plannedArrangeHeight()) {
 /**
  * Exactly one region in the desk is elastic, chosen in this order: the rack, then
  * the arrangement, then the notes panel, then the empty band at the end. The effects
- * panel at the bottom has a fixed height and is outside the chain.
+ * panel has its own selected height and is outside that elastic chain.
  */
 const DESK_CHAIN = ['rackwrap', 'arrange', 'notes', 'deskslack'];
 function applyDeskChain() {
@@ -3957,9 +4191,9 @@ function applyDeskChain() {
 /**
  * Who gets which pixels, worked out before anything is written.
  *
- * The effects panel at the bottom has a FIXED height — it takes what its cards need
- * and no more. If the window is too short, the notes panel gives up height first,
- * then the arrangement, then the rack.
+ * The effects panel at the bottom takes its natural or manually selected height. If
+ * that leaves the window short, the Mixer gives up its room first; only then do the
+ * other panels surrender space to preserve their minimums.
  */
 function planDesk() {
   const arrOpen = !$('arrange').classList.contains('collapsed');
@@ -3979,7 +4213,7 @@ function planDesk() {
   // flex layout but effectsNaturalHeight() returns 0. Account for it so the rack
   // doesn't get over-allocated height that the header then steals.
   const fxCollapsedHeader = (!$('devices').classList.contains('collapsed') || fxH > 0) ? 0 : h($('devhead'));
-  const fixed = h($('arrsplit')) + h($('devsplit')) + h($('mixhead'))
+  const fixed = h($('mixhead'))
     + (arrOpen ? 0 : h($('arrange')))
     + (notesOpen ? 0 : h($('notes')))
     + fxH + fxCollapsedHeader;
@@ -3991,7 +4225,7 @@ function planDesk() {
     : notesOpen ? MIN.mixer()
       : chrome + FADER_MIN + rackPad();
   const room = deskPool() - fixed;
-  const lane = laneRowHeight();
+  const lane = laneRowHeight() + laneRowGap();
 
   let arrH = !arrOpen ? 0
     : arrangeSnap(rackOpen ? WANT.arrange()
@@ -3999,7 +4233,8 @@ function planDesk() {
   let notesH = notesOpen ? Math.max(notesMin, WANT.notes()) : 0;
   let rackH = room - arrH - notesH;
 
-  const byHand = (arrOpen && userArrH != null) || (notesOpen && userDevH != null);
+  const byHand = (arrOpen && userArrH != null)
+    || (notesOpen && userDevH != null) || userFxH != null;
 
   const clawBack = (short, forced) => {
     if (notesOpen && (forced || !byHand)) {
@@ -4031,7 +4266,7 @@ function applyDesk({ arrOpen, rackOpen, notesOpen, arrH, notesH, fxH, chrome, ra
   } else {
     $('notes').style.height = `${Math.round(notesH)}px`;
   }
-  // Effects panel: fixed natural height.
+  // Effects panel: natural or manually selected height.
   if (fxH > 0) {
     $('devices').style.height = `${Math.round(fxH)}px`;
   } else {
@@ -4123,7 +4358,50 @@ function markShedParts(gone) {
 function fitStrips() {
   applyDeskChain();
   applyDesk(planDesk());
-  markClipped();
+  // Name clipping is a tooltip convenience, not part of the layout decision. Reading
+  // scrollWidth/clientWidth immediately after the flex writes above forces the browser
+  // to finish the whole desk reflow in the same task that opened a panel. Defer that
+  // read so a fold only does the measurements needed to keep playback alive.
+  scheduleMarkClipped();
+}
+
+// Panel folds can change several flex constraints at once. Coalesce all of the
+// resulting requests into one frame, after the browser has applied the new classes,
+// rather than measuring once before flex settles and again afterwards.
+let deskFitPending = 0;
+let deskFitSettle = false;
+function scheduleDeskFit(settle = false) {
+  deskFitSettle ||= settle;
+  if (deskFitPending) return;
+  deskFitPending = requestAnimationFrame(() => {
+    deskFitPending = 0;
+    fitStrips();
+    // Flex assigns the newly freed/claimed panel pixels in this frame, while the
+    // rack's strip height is written by fitStrips. A fold therefore gets one bounded
+    // follow-up measurement so that the cards fill the new rack height instead of
+    // leaving the old card height and a blank band below it.
+    if (deskFitSettle) {
+      deskFitSettle = false;
+      deskFitPending = requestAnimationFrame(() => {
+        deskFitPending = 0;
+        fitStrips();
+      });
+    }
+  });
+}
+
+let clippedMarkPending = 0;
+function scheduleMarkClipped() {
+  if (clippedMarkPending) return;
+  const run = () => {
+    clippedMarkPending = 0;
+    markClipped();
+  };
+  if (typeof requestIdleCallback === 'function') {
+    clippedMarkPending = requestIdleCallback(run, { timeout: 400 });
+  } else {
+    clippedMarkPending = setTimeout(run, 0);
+  }
 }
 
 /**
@@ -4140,27 +4418,38 @@ function markClipped(root = document) {
   }
 }
 
-// The splitter. Dragging it is a claim about how much arrangement you want to see;
+// Every border sizes the panel ABOVE it, so a handler never lives on the element it
+// resizes. This is the first one: the top border of Notes, which is the Arrangement's
+// bottom edge. Dragging it is a claim about how much Arrangement you want to see;
 // double-clicking it withdraws the claim.
 (() => {
-  const bar = $('arrsplit');
+  const edge = $('notes');
   let from = 0, startH = 0, dragging = false;
-  bar.addEventListener('pointerdown', (e) => {
+  edge.addEventListener('pointerdown', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
     dragging = true;
     from = e.clientY;
     startH = h($('arrange'));
-    bar.classList.add('dragging');
-    try { bar.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    edge.classList.add('edge-dragging');
+    try { edge.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
     e.preventDefault();
   });
-  bar.addEventListener('pointermove', (e) => {
+  edge.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const asked = startH + (e.clientY - from);
+    const dy = e.clientY - from;
+    const asked = startH + dy;
+    const notesCollapsed = $('notes').classList.contains('collapsed');
     // Pulled up past the first lane: fold it away. Half a lane is not a thing to
-    // leave someone looking at, and the fold is where they were heading anyway.
+    // leave someone looking at, and the fold is where they were heading anyway. If
+    // Notes is the folded side of this border, dragging upward across it opens it —
+    // the room the arrangement gives up has to go somewhere you can see.
     if (lanesIn(asked) < 1) {
       setArrangeCollapsed(true);
       userArrH = null;
+      if (notesCollapsed && dy < 0) setNotesFolded(false, false);
     } else {
       setArrangeCollapsed(false);
       userArrH = arrangeSnap(asked);
@@ -4170,13 +4459,17 @@ function markClipped(root = document) {
   const stop = () => {
     if (!dragging) return;
     dragging = false;
-    bar.classList.remove('dragging');
+    edge.classList.remove('edge-dragging');
     if (userArrH != null) localStorage.setItem(ARR_KEY, String(Math.round(userArrH)));
     else localStorage.removeItem(ARR_KEY);
   };
-  bar.addEventListener('pointerup', stop);
-  bar.addEventListener('pointercancel', stop);
-  bar.addEventListener('dblclick', () => {
+  edge.addEventListener('pointerup', stop);
+  edge.addEventListener('pointercancel', stop);
+  edge.addEventListener('dblclick', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
     userArrH = null;
     localStorage.removeItem(ARR_KEY);
     fitStrips();
@@ -4191,48 +4484,143 @@ function markClipped(root = document) {
 let fitPending = 0;
 addEventListener('resize', () => {
   cancelAnimationFrame(fitPending);
-  fitPending = requestAnimationFrame(fitStrips);
+  fitPending = requestAnimationFrame(() => {
+    fitStrips();
+    updateArrangementNoteScale();
+  });
 });
 
-// The second splitter is the inverse of the arrangement one: moving it DOWN gives
-// the effects cards more room, moving it UP gives the strips more room. It keeps the
-// current height live while dragging and only writes the preference when the gesture
-// ends, so a resize cannot fill localStorage with intermediate pixels.
+// The second resize edge is the top border of the Mixer header, which is Notes'
+// BOTTOM edge: moving it DOWN gives Notes more room, moving it UP gives Notes less.
+// That is the opposite sense from when this handler sat on Notes' own top border, and
+// the reason every sign in here is inverted from the Effects handler below — that one
+// still grows a panel upward, this one grows it downward. It keeps the current height
+// live while dragging and only writes the preference when the gesture ends, so a
+// resize cannot fill localStorage with intermediate pixels.
 (() => {
-  const bar = $('devsplit');
-  let from = 0, startH = 0, dragging = false;
-  bar.addEventListener('pointerdown', (e) => {
+  const edge = $('mixhead');
+  const panel = $('notes');
+  let from = 0, startH = 0, startCollapsed = false, dragging = false;
+  edge.addEventListener('pointerdown', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
     dragging = true;
     from = e.clientY;
-    startH = $('notes').classList.contains('collapsed') ? 0 : h($('notes'));
-    bar.classList.add('dragging');
-    try { bar.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    startH = h(panel);
+    startCollapsed = panel.classList.contains('collapsed');
+    edge.classList.add('edge-dragging');
+    try { edge.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
     e.preventDefault();
   });
-  bar.addEventListener('pointermove', (e) => {
+  edge.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const asked = startH - (e.clientY - from);
-    // deviceRoom() is measured against the arrangement's height as it stands and the
-    // rack's own floor, so this trades rack for effects and nothing else: the
-    // arrangement does not move, and the wall is the rack visibly down to one
-    // bare strip rather than an invisible one a hundred pixels short of it.
-    userDevH = clampDeviceH(asked);
+    const dy = e.clientY - from;
+    // A folded Notes panel starts at its header height, which is below the normal
+    // open minimum. A downward drag must open it immediately; keep the gesture's
+    // distance above the minimum so the panel grows with the pointer from there.
+    const asked = startCollapsed && dy > 0
+      ? MIN.notes() + dy
+      : startH + dy;
+    const mixerCollapsed = $('rackwrap').classList.contains('collapsed');
+    // Like Arrangement, Notes folds once its open minimum would be crossed. Dragging
+    // back across that same boundary reopens it and restores the roll's content. If
+    // Mixer is folded, moving the border UP gives that side room instead — the Mixer
+    // is below this border now, so it is an upward drag that hands it space.
+    if (startCollapsed && dy > 0) {
+      setNotesFolded(false, false);
+      userDevH = clampDeviceH(asked);
+    } else if (asked <= MIN.notes()) {
+      setNotesFolded(true, false);
+      userDevH = null;
+      if (mixerCollapsed && dy < 0) setMixerFolded(false, false);
+    } else {
+      setNotesFolded(false, false);
+      userDevH = clampDeviceH(asked);
+      if (mixerCollapsed && dy < 0) setMixerFolded(false, false);
+    }
     fitStrips();
   });
   const stop = () => {
     if (!dragging) return;
     dragging = false;
-    bar.classList.remove('dragging');
+    edge.classList.remove('edge-dragging');
     if (userDevH != null) localStorage.setItem(DEV_KEY, String(Math.round(userDevH)));
+    else localStorage.removeItem(DEV_KEY);
   };
-  bar.addEventListener('pointerup', stop);
-  bar.addEventListener('pointercancel', stop);
-  bar.addEventListener('dblclick', () => {
+  edge.addEventListener('pointerup', stop);
+  edge.addEventListener('pointercancel', stop);
+  edge.addEventListener('dblclick', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
     userDevH = null;
     localStorage.removeItem(DEV_KEY);
     reserveDevices();
     fitStrips();
     toast('Notes panel back to fitting itself');
+  });
+})();
+
+// Effects uses its top border as the resize edge. Moving it UP grows the shelf and
+// takes room from the Mixer; moving it DOWN gives the Mixer room back. A folded shelf
+// opens on the first upward movement, just like Notes.
+(() => {
+  const edge = $('devices');
+  let from = 0, startH = 0, startCollapsed = false, dragging = false;
+  edge.addEventListener('pointerdown', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
+    dragging = true;
+    from = e.clientY;
+    startH = h(edge);
+    startCollapsed = edge.classList.contains('collapsed');
+    edge.classList.add('edge-dragging');
+    try { edge.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    e.preventDefault();
+  });
+  edge.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - from;
+    const asked = startCollapsed && dy < 0
+      ? MIN.devices() - dy
+      : startH - dy;
+    const bodyH = asked - h($('devhead'));
+    if (startCollapsed && dy < 0) {
+      setDevicesFolded(false, false);
+      userFxH = clampEffectsH(bodyH);
+    } else if (asked <= MIN.devices()) {
+      setDevicesFolded(true, false);
+      userFxH = null;
+    } else {
+      setDevicesFolded(false, false);
+      userFxH = clampEffectsH(bodyH);
+    }
+    fitStrips();
+  });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    edge.classList.remove('edge-dragging');
+    if (userFxH != null) localStorage.setItem(FX_KEY, String(Math.round(userFxH)));
+    else localStorage.removeItem(FX_KEY);
+  };
+  edge.addEventListener('pointerup', stop);
+  edge.addEventListener('pointercancel', stop);
+  edge.addEventListener('dblclick', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.top - 6 || e.clientY > r.top + 6
+        || e.target.closest?.('button')) return;
+    userFxH = null;
+    localStorage.removeItem(FX_KEY);
+    reserveDevices();
+    fitStrips();
+    toast('Effects panel back to fitting itself');
   });
 })();
 
@@ -4310,20 +4698,18 @@ const laneColour = (key, l = 55) => hueColour(laneHue(key), l);
  * one formula now, so a theme with no palette of its own tints correctly whatever
  * colour its panel is. */
 const laneTint = (key) => `color-mix(in srgb, ${laneColour(key)} 24%, transparent)`;
-/* How much of the track's colour a bar of this density gets. On slate the colour is
- * lighter than the panel, so a third of it already reads as "there is something here";
- * on paper the palette is darker than the panel and a third of it is a smudge you
- * cannot rank against its neighbours. Same direction either way — more density is
- * more colour — but a pale desk needs most of the colour before any of the range is
- * visible, so the light themes get a floor under it rather than a different rule. */
-const barMix = (shade) => (panelIsLight
-  ? Math.round(Math.min(96, 54 + shade * 0.6))
-  : Math.round(shade * 1.1));
-const arrangementBarColour = (key, shade) => themeTrackColour(key)
-  ? `color-mix(in srgb, ${themeTrackColour(key)} ${barMix(shade)}%, var(--panel))`
-  : `hsl(${laneHue(key)} 58% ${shade.toFixed(0)}%)`;
-/** What shows through a playing bar's rests — the same wash, over the panel. */
-const arrangementBarTint = (key) => `color-mix(in srgb, ${laneColour(key)} 20%, var(--panel))`;
+const arrangementBarColour = (key, shade = 56) => {
+  const themed = themeTrackColour(key);
+  if (themed) return themed;
+  // This is the original Solid fill: a strong lane colour, never a panel wash. Clamp
+  // only protects custom density callers; the shared active field uses the full 56%
+  // solid shade below.
+  return `hsl(${laneHue(key)} 58% ${Math.min(62, Math.max(44, shade)).toFixed(0)}%)`;
+};
+/** A lane's active bar is the original Solid field; the selected note language supplies the
+ * darker marks on top. Keeping this in one helper also makes recorded notes match the
+ * bars that were drawn from the arrangement. */
+const arrangementBarField = (key) => arrangementBarColour(key, 56);
 
 /**
  * How long the song is, and what it is made of — in BARS.
@@ -4375,7 +4761,86 @@ function heardStepNow() {
   if (beat == null || !track) return null;
   const { spb, totalSteps } = songShape();
   if (!(totalSteps > 0)) return null;
-  return Math.max(0, (beat * 4) + (phOffset / 1000) / spb) % totalSteps;
+  const at = beat * 4;
+  const led = Math.max(0, at + (phOffset / 1000) / spb);
+  // `phOffset` moves the line FORWARD, and forward from the last few milliseconds of a
+  // lap is past the end of it. Modulo against the whole song does not catch that when a
+  // loop is armed — the song is longer than the loop — so for `phOffset` milliseconds
+  // every lap the desk read a step in the bar AFTER the loop, and lit its first note.
+  // Wrap against the range the transport is actually turning round in instead.
+  return wrappedPlaybackStep(led, at, totalSteps);
+}
+
+// The arrangement marks need a small amount of paint lead so the mark is on the glass
+// when the attack reaches the ear. Two separate things put it behind the music. The
+// frame this is computed in is composited on the NEXT screen refresh, which is one
+// frame at best; and each note language spends a slice of its own keyframes getting
+// to full strength, so the moment it READS as a hit is later than the moment the class
+// went on. Lead by both, per language, rather than by one number that can only be
+// right for one of them.
+const ARRANGEMENT_PAINT_LEAD_MS = 24;
+// Half of each language's time to peak. Leading by the whole of it would start the
+// flourish visibly before the note; half puts the accent on the beat while the onset
+// still reads as belonging to it.
+const NOTE_VISUAL_LEAD_MS = { solid: 0, pulse: 10, trail: 45 };
+function arrangementVisualLeadMs() {
+  if (!noteAnimation) return ARRANGEMENT_PAINT_LEAD_MS;
+  return ARRANGEMENT_PAINT_LEAD_MS + (NOTE_VISUAL_LEAD_MS[noteVisualMode] ?? 0);
+}
+
+/**
+ * The range the playhead at `step` is turning round in, in song-relative steps.
+ *
+ * Inside an armed loop that is the LOOP, on every lap including the first: the transport
+ * turns round at its end, so nothing drawn past it is ever heard, and what follows it is
+ * its own start rather than the next bar. Outside the region — the intro of a song whose
+ * loop starts part-way in, or the lookahead still draining after Loop was armed — the
+ * song itself is the range, so a step that has left the region is never dragged back
+ * into it.
+ *
+ * One function for both edges. Two would be two places to decide which range a step
+ * belongs to, and a loop that ends on the last bar of the song makes them disagree:
+ * its end IS the song's end, but its start is not the song's.
+ */
+function playbackWrapRange(step, totalSteps) {
+  const { loopStart, loopEnd } = Audio;
+  if (loopStart != null && loopEnd != null && loopEnd > loopStart
+    && step >= loopStart && step < loopEnd) {
+    return { start: loopStart, end: Math.min(loopEnd, totalSteps) };
+  }
+  return { start: 0, end: totalSteps };
+}
+
+/** Where the playhead this step belongs to will next WRAP. */
+function playbackWrapStep(step, totalSteps) {
+  return playbackWrapRange(step, totalSteps).end;
+}
+
+/**
+ * A position carried forward by a lead, brought back inside the range it belongs to.
+ *
+ * The range is chosen from `at` — where the transport actually is — never from the led
+ * position. Choosing it from the led position is the bug this exists to stop: once the
+ * lead has crossed the end of the loop it is no longer inside the region, so it would
+ * pick the whole song and be left exactly where it should not be.
+ */
+function wrappedPlaybackStep(led, at, totalSteps) {
+  const { start, end } = playbackWrapRange(at, totalSteps);
+  const span = end - start;
+  if (!(span > 0)) return led;
+  return start + ((led - start) % span + span) % span;
+}
+
+/**
+ * Do not let the paint lead cross a wrap. The next bar becomes eligible only when the
+ * heard playhead itself gets there — otherwise the lead spills over the end of the loop
+ * and lights the first note of the bar AFTER it, a note that is never played.
+ */
+function arrangementVisualStep(step) {
+  if (step == null) return null;
+  const { spb, totalSteps } = songShape();
+  const lead = arrangementVisualLeadMs() / 1000 / spb;
+  return Math.min(playbackWrapStep(step, totalSteps) - 1e-6, step + lead);
 }
 
 function buildTimeline() {
@@ -4434,89 +4899,253 @@ function buildTimeline() {
   });
   $('tnow').title = `Where you are in ${track.title}, and how long it runs`;
   $('tnow').textContent = `0:00/${fmtTime(loopSecs)}`;
+  // Reserve both sides of the slash at the song's widest bar number. Without this,
+  // the readout grows when 999 becomes 1000 and nudges the whole header to the right.
+  const barDigits = String(Math.max(1, plan.length)).length;
+  $('barnow').style.width = `${barDigits * 2 + 1}ch`;
   $('barnow').textContent = `1/${plan.length}`;
 }
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-// Loop length in bars; 0 means the whole song form. The length defaults to 1 bar
-// because that is the mixing gesture — park on a bar, move a fader, listen again —
-// but the loop itself starts OFF, so pressing play gives you the whole song.
-let loopBars = 1;
+// Loop region is defined by two locator pins on the timeline rather than by bar
+// counts. The loop starts OFF, so pressing play gives you the whole song.
+// Click the timeline to place locators; click a locator to clear it.
+let locA = null;              // first locator step (null = not placed)
+let locB = null;              // second locator step
 let loopOn = false;
-// Two different positions, and they were one for too long. `loopAnchor` is where the
-// LOOP REGION starts, which has to sit on a bar line. `parkedAt` is where the
-// playhead is, to the step — Play resumes exactly where you paused, because "carry
-// on from here" is what a pause means; rounding it to the bar threw away the last
-// three beats every time.
+// Two different positions. `loopAnchor` is the start of the LOOP REGION (the
+// lesser of the two locators). `parkedAt` is where the playhead is, to the step
+// — Play resumes exactly where you paused.
 let loopAnchor = 0;
+let pendingLoopAnchor = null;
+let pendingSeekStep = null;
 let parkedAt = 0;
 
-/** Arm the loop over `loopBars` starting at the bar containing `atStep`. */
+/**
+ * Resolve the range the transport should loop.
+ *
+ * The highlighted bar range is the desk's primary selection. Alt-click locators are
+ * retained as a fallback for the older locator workflow, but they must not override a
+ * range the user has visibly selected in the timeline or arrangement.
+ */
+function currentLoopBounds() {
+  const { totalSteps } = songShape();
+  if (selectedBar) {
+    const totalBars = Math.max(1, Math.floor(totalSteps / 16));
+    const from = clamp(Math.min(selectedBar.from, selectedBar.to), 0, totalBars - 1);
+    const to = clamp(Math.max(selectedBar.from, selectedBar.to), from, totalBars - 1);
+    return { start: from * 16, end: Math.min(totalSteps, (to + 1) * 16) };
+  }
+  if (locA != null && locB != null) {
+    return { start: Math.min(locA, locB), end: Math.max(locA, locB) };
+  }
+  return null;
+}
+
+function syncLoopButton() {
+  const button = $('looptoggle');
+  const bounds = currentLoopBounds();
+  const bars = bounds ? Math.max(1, Math.round((bounds.end - bounds.start) / 16)) : 0;
+  button.textContent = loopOn
+    ? (bars ? `Loop ${bars} Bar${bars === 1 ? '' : 's'}` : 'Loop On')
+    : 'Loop Off';
+  button.classList.toggle('on', loopOn);
+  button.setAttribute('aria-pressed', loopOn ? 'true' : 'false');
+  if (loopOn && bounds) showLoopUi(bounds.start, bounds.end, songShape().totalSteps);
+}
+
+function syncLoopAnchor() {
+  if (!pendingLoopAnchor || Audio.pendingLoop != null) return;
+  if (Audio.loopStart === pendingLoopAnchor.start && Audio.loopEnd === pendingLoopAnchor.end) {
+    loopAnchor = pendingLoopAnchor.start;
+    pendingLoopAnchor = null;
+    $('loopregion').classList.remove('pending');
+  }
+}
+
+function syncPendingSeek() {
+  if (pendingSeekStep == null || Audio.pendingStep != null) return;
+  pendingSeekStep = null;
+  $('selregion').classList.remove('pending');
+}
+
+/** Arm the highlighted range, or the two song-relative locators. */
 function applyLoop(atStep = null) {
   const { totalSteps } = songShape();
-  if (!loopOn || !loopBars) { Audio.setLoop(); $('loopregion').style.display = 'none'; return; }
-  const stepsPerBar = 16;                       // 16 sixteenths in a bar of 4/4
-  // While a loop is already armed, changing its length must keep its start bar. If
-  // this is the first time it is being armed during playback, there is no loop start
-  // yet, so use the current transport position as before.
-  const from = atStep != null ? atStep : (Audio.loopStart != null ? Audio.loopStart : Audio.step);
-  // Snap to a bar line, and to the song form rather than to absolute step count, so
-  // the shaded region on the timeline is where the loop actually is.
-  const barIndex = Math.floor((from % totalSteps) / stepsPerBar);
-  const start = barIndex * stepsPerBar;
-  const end = Math.min(totalSteps, start + loopBars * stepsPerBar);
-  const cycle = Math.floor(Audio.step / totalSteps) * totalSteps;
-  Audio.setLoop(cycle + start, cycle + end);
+  const bounds = currentLoopBounds();
+  pendingLoopAnchor = null;
+  pendingSeekStep = null;
+  $('selregion').classList.remove('pending');
+  $('loopregion').classList.remove('pending');
+  syncLoopButton();
+  if (!loopOn || !bounds) {
+    Audio.setLoop();
+    hideLoopUi();
+    return;
+  }
+  const { start, end } = bounds;
+  if (end <= start) { Audio.setLoop(); hideLoopUi(); return; }
+  // Both selection bars and locator positions are relative to this song, not to
+  // whichever whole-song cycle the scheduler happened to be in when Loop was pressed.
+  // Keeping the engine bounds in that same coordinate space makes every re-arm land on
+  // the same region.
+  Audio.setLoop(start, end);
   loopAnchor = start;
+  showLoopUi(start, end, totalSteps);
+}
+
+function hideLoopUi() {
+  $('loopregion').style.display = 'none';
+  $('loopregion').classList.remove('pending');
+  showLocatorUi();
+}
+
+function showLoopUi(start, end, totalSteps) {
   const reg = $('loopregion');
   reg.style.display = '';
   reg.style.left = (start / totalSteps * 100) + '%';
   reg.style.width = ((end - start) / totalSteps * 100) + '%';
+  showLocatorUi(totalSteps);
 }
 
-$('loopbars').onchange = () => {
-  loopBars = +$('loopbars').value;
-  applyLoop(playing ? null : loopAnchor);
-  toast(loopBars ? `Looping ${loopBars} bar${loopBars > 1 ? 's' : ''}` : 'Looping the whole song');
-};
+// Locator placement is independent of whether the loop is armed. Hiding the pins when
+// Loop was off made Alt-click appear to do nothing and made it impossible to check the
+// two positions before enabling playback.
+function showLocatorUi(totalSteps = songShape().totalSteps) {
+  const span = Math.max(1, totalSteps);
+  for (const [id, step] of [['locatorA', locA], ['locatorB', locB]]) {
+    const pin = $(id);
+    pin.style.display = step == null ? 'none' : '';
+    if (step != null) pin.style.left = (step / span * 100) + '%';
+  }
+}
+
+/** Place or clear a locator at the given step. Returns which locator changed. */
+function toggleLocator(step) {
+  const within = ((Math.floor(step) % songShape().totalSteps) + songShape().totalSteps) % songShape().totalSteps;
+  // Clicking on an existing locator clears it
+  if (locA === within) { locA = null; applyLoop(); return 'A-cleared'; }
+  if (locB === within) { locB = null; applyLoop(); return 'B-cleared'; }
+  // Place at the first empty slot
+  if (locA == null) { locA = within; applyLoop(); return 'A'; }
+  if (locB == null) { locB = within; applyLoop(); return 'B'; }
+  // Both are set — replace the nearer one
+  const dA = Math.abs(locA - within);
+  const dB = Math.abs(locB - within);
+  if (dA <= dB) { locA = within; } else { locB = within; }
+  applyLoop();
+  return dA <= dB ? 'A' : 'B';
+}
+
+/**
+ * Arm the loop but do NOT jump the playhead — for "Play from start" where the
+ * song should play from the beginning and only loop once it reaches the region.
+ *
+ * Uses Audio.setLoop() (the same proven path as applyLoop) then immediately
+ * overrides the step back to 0, so the scheduler plays from the top and wraps
+ * when it hits the region naturally.
+ */
+function applyLoopNoJump() {
+  const { totalSteps } = songShape();
+  const bounds = currentLoopBounds();
+  pendingLoopAnchor = null;
+  pendingSeekStep = null;
+  $('selregion').classList.remove('pending');
+  $('loopregion').classList.remove('pending');
+  if (!loopOn || !bounds) {
+    Audio.setLoop();
+    hideLoopUi();
+    return;
+  }
+  const { start, end } = bounds;
+  if (end <= start) { Audio.setLoop(); hideLoopUi(); return; }
+  // Arm the loop through the exact same path as applyLoop — setLoop validates
+  // the bounds, sets loopStart/loopEnd, and would jump the playhead into the
+  // region. We override the jump immediately after so the song starts from 0.
+  Audio.setLoop(start, end);
+  Audio.step = 0;  // override setLoop's jump — play from the top
+  loopAnchor = start;
+  showLoopUi(start, end, totalSteps);
+}
 
 $('looptoggle').onclick = () => {
   loopOn = !loopOn;
-  $('looptoggle').classList.toggle('on', loopOn);
-  applyLoop(playing ? null : loopAnchor);
-  toast(loopOn ? 'Loop on' : 'Loop off — playing the whole song');
+  applyLoop();
+  if (loopOn) {
+    const bounds = currentLoopBounds();
+    if (!bounds) {
+      toast('Loop on — select a bar range, or Alt-click the timeline to place locators');
+    } else {
+      toast(`Loop on — bars ${barOf(bounds.start)} to ${barOf(bounds.end - 1)}`);
+    }
+  } else {
+    toast('Loop off — playing the whole song');
+  }
+};
+
+// Clicking directly on a locator pin clears it.
+$('locatorA').onclick = (e) => {
+  e.stopPropagation();
+  if (locA != null) { locA = null; applyLoop(); toast('Locator A cleared'); }
+};
+$('locatorB').onclick = (e) => {
+  e.stopPropagation();
+  if (locB != null) { locB = null; applyLoop(); toast('Locator B cleared'); }
 };
 
 /**
- * Move the playhead. The sequencer's step counter IS the position, so seeking is
- * just moving it and letting the lookahead refill from now. With a bar loop armed,
- * this moves the loop rather than escaping it — which is the point of having one.
+ * Move the playhead. While playing, an ordinary seek is queued for the next bar
+ * boundary so the current bar is allowed to finish. With a bar loop armed, the
+ * destination stays inside that loop rather than escaping it.
  *
  * Stopped, it parks the position instead, so Play starts from where you last
  * pointed; `start: true` (a double-click) skips the wait and plays from there.
  */
-function jumpTo(step, { start = false } = {}) {
+function jumpTo(step, { start = false, immediate = false } = {}) {
   const { totalSteps, spb, loopSecs } = songShape();
   const within = ((Math.floor(step) % totalSteps) + totalSteps) % totalSteps;
+  // Moving the transport by hand is a request to look at that part of the song, so it
+  // undoes a scroll that had told the roll to stop following.
+  stepSeq.armFollow?.();
+  pianoRoll.armFollow?.();
   if (!playing) {
     parkedAt = within;                              // Play resumes on this step
-    loopAnchor = Math.floor(within / 16) * 16;      // the loop region wants the bar
     if (start) { setPlaying(true, within); return; }
     // Nothing is running to move the playhead, so put it where the click was.
     applyLoop(within);
     $('playhead').style.left = `${(within / totalSteps) * 100}%`;
     $('tnow').textContent = `${fmtTime(within * spb)}/${fmtTime(loopSecs)}`;
-    $('barnow').textContent = `${Math.floor(within / 16) + 1}/${totalSteps / 16}`;
+    $('barnow').textContent = `${barOf(within)}/${totalSteps / 16}`;
     stepSeq.follow(within);
     pianoRoll.follow(within);
     return;
   }
-  const cycle = Math.floor(Audio.step / totalSteps) * totalSteps;
-  Audio.setLoop();                       // release, move, then re-arm around the new spot
-  Audio.step = cycle + within;
+  if (start && within === 0) {
+    // A running loop has audio already queued ahead of the transport. Rewinding only
+    // `Audio.step` leaves those loop notes audible before the restart. Re-enter the
+    // transport so setBank cuts that queue, resets the song, and then arms the loop
+    // without jumping into it.
+    setPlaying(false);
+    setPlaying(true, 0);
+    return;
+  }
+  if (!immediate) {
+    // A normal click is a musical seek, not a transport restart. Let the current
+    // bar finish before moving the scheduler so the change lands like a live deck.
+    pendingLoopAnchor = null;
+    $('loopregion').classList.remove('pending');
+    Audio.setStepAtBoundary(within);
+    pendingSeekStep = within;
+    $('selregion').classList.add('pending');
+    return;
+  }
+  Audio.setLoop();                       // explicit transport actions move immediately
+  pendingSeekStep = null;
+  $('selregion').classList.remove('pending');
+  Audio.step = within;
   Audio.nextTime = Audio.ctx.currentTime + 0.03;
-  applyLoop(cycle + within);
+  applyLoop(within);
 }
 
 // The bars area, not the whole strip: the ruler is inset by the arrangement's name
@@ -4565,6 +5194,7 @@ function setSectionsShown(on, refit = true) {
   $('tlfold').classList.toggle('folded', !on);
   $('tlfold').title = on ? 'Hide the song sections' : 'Show the song sections';
   localStorage.setItem(SECTIONS_KEY, on ? '1' : '0');
+  syncPanelResizeEdges();
   if (refit) fitStrips();       // the timeline is chrome; the rack gets the difference
 }
 $('tlfold').onclick = (e) => {
@@ -4573,14 +5203,64 @@ $('tlfold').onclick = (e) => {
 };
 setSectionsShown(localStorage.getItem(SECTIONS_KEY) === '1', false);
 
+// Timeline uses its bottom border as the resize edge. It has two useful heights —
+// the ruler alone and the ruler plus section blocks — so dragging down opens the
+// latter and dragging back up folds it away. The desk below absorbs the difference.
+(() => {
+  const edge = $('timeline');
+  let from = 0, startH = 0, dragging = false;
+  edge.addEventListener('pointerdown', (e) => {
+    const r = edge.getBoundingClientRect();
+    if (!edge.classList.contains('edge-resizable')
+        || e.clientY < r.bottom - 6 || e.clientY > r.bottom + 6
+        || e.target.closest?.('button')) return;
+    dragging = true;
+    from = e.clientY;
+    startH = h(edge);
+    edge.classList.add('edge-dragging');
+    try { edge.setPointerCapture(e.pointerId); } catch { /* not a real pointer */ }
+    e.preventDefault();
+  });
+  edge.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const asked = startH + (e.clientY - from);
+    if (asked > 30) setSectionsShown(true, false);
+    else setSectionsShown(false, false);
+    fitStrips();
+  });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    edge.classList.remove('edge-dragging');
+  };
+  edge.addEventListener('pointerup', stop);
+  edge.addEventListener('pointercancel', stop);
+})();
+
 $('timeline').onclick = (e) => {
   if (e.target.closest('#tlhead')) return;
   const at = timelineStep(e);
-  if (timelineClickSuppress) timelineClickSuppress = false;
-  else markBar(null, timelineBar(e));
-  jumpTo(at);
+  if (timelineClickSuppress) { timelineClickSuppress = false; return; }
+  // Alt-click (or option-click) places/clears a locator instead of seeking.
+  if (e.altKey) {
+    const which = toggleLocator(at);
+    if (which === 'A-cleared' || which === 'B-cleared') {
+      toast(`Locator cleared`);
+    } else {
+      toast(`Locator ${which} set at bar ${barOf(at)}`);
+    }
+    return;
+  }
+  const bar = timelineBar(e);
+  markBar(null, bar);
+  // While a loop is playing, choosing a different bar is a loop edit, not a seek.
+  // Seeking here tears down the live scheduler just as the boundary handoff is being
+  // queued, which can leave playback silent until the transport is restarted.
+  const target = bar * 16;
+  if (!(playing && loopOn)) jumpTo(playing ? target : at);
+  const looping = loopOn && locA != null && locB != null;
   toast(!playing ? `Parked at bar ${barOf(at)} — double-click to play from here`
-    : loopBars && loopOn ? `Looping ${loopBars} bar${loopBars > 1 ? 's' : ''} from bar ${barOf(at)}`
+    : looping ? `Looping bars ${barOf(Math.min(locA, locB))} to ${barOf(Math.max(locA, locB))}`
     : `Jumped to bar ${barOf(at)}`);
 };
 
@@ -4983,10 +5663,10 @@ function checkRow(label, checked, onChange) {
 
 function effectsOf(key) {
   const mix = mixFor(trackId);
-  // The master opens with a bypassed bus compressor rather than an empty rack. It is
-  // seeded on the way OUT rather than stored, so every song gets it — including the
-  // ones that already have a saved mix — and no song gains a masterEffects line in
-  // mix.js for a chain nobody has touched.
+  // The master opens EMPTY — nothing on the bus until you put it there. The seed is
+  // read on the way OUT rather than stored, so whatever it is applies to every song,
+  // including the ones that already have a saved mix, and no song gains a
+  // masterEffects line in mix.js for a chain nobody has touched.
   if (key === '__master') return mix.masterEffects || DEFAULT_MASTER_CHAIN();
   if (key && key.startsWith('__aux:')) return mix.fx?.[key.slice(6)]?.effects || [];
   return mix.lanes[key]?.effects || [];
@@ -5173,12 +5853,11 @@ function pinnedCard(key) {
   return card;
 }
 
-/** Keep the Notes and Effects panel headers in sync with the selected channel. */
+/** Keep the Effects panel header in sync with the selected channel. The Notes header
+ *  carries no preset: the roll is the selected strip's part, and the strip already
+ *  names the sound. */
 function updatePanelTitles() {
-  const name = selectedLane && !selectedLane.startsWith('__')
-    ? ` (${targetLabel(selectedLane)})` : '';
-  $('devtitle').textContent = name;
-  $('notetitle').textContent = name;
+  renderPresetHeading($('devtitle'), selectedLane);
 }
 
 function buildDevices() {
@@ -5441,7 +6120,7 @@ function fitDevices() {
   requestAnimationFrame(() => {
     // A dragged height is a deliberate answer about how much of the shelf to see;
     // do not grow it behind the user's back when a taller card is opened.
-    if (userDevH != null) return;
+    if (userFxH != null) return;
     // Folded, the rack is display:none and every card measures zero — a measurement
     // taken there would hand the panel back a height of nothing to unfold into.
     if ($('devices').classList.contains('collapsed')) return;
@@ -5560,24 +6239,28 @@ function addCard(first = false) {
   return btn;
 }
 /**
- * A handle borders exactly two panels and is only a handle while both are open.
- * #arrsplit is between Arrangement and Mixer; #devsplit is between Mixer and Notes.
- * The effects panel at the bottom has no splitter — it takes a fixed height.
+ * Every panel boundary is a real resize edge: Timeline/Arrangement, Arrangement/
+ * Notes, Notes/Mixer and Mixer/Effects. Their hit areas stay active even when one
+ * side is folded, so dragging can reopen that side. The Mixer is the flexible region
+ * that gives up space first.
+ *
+ * The element a hit area hangs off is the panel BELOW the border, not the one being
+ * resized: #notes draws the Arrangement's bottom edge and #mixhead draws the Notes
+ * panel's. That is why the two drag handlers look swapped relative to their names.
  */
-function syncDeskSplitter() {
-  const arr = $('arrange').classList.contains('collapsed');
-  const rack = $('rackwrap').classList.contains('collapsed');
-  const notes = $('notes').classList.contains('collapsed');
-  $('arrsplit').classList.toggle('hidden', arr || rack);
-  $('devsplit').classList.toggle('hidden', rack || notes);
+function syncPanelResizeEdges() {
+  $('timeline').classList.add('edge-resizable');
+  $('mixhead').classList.add('edge-resizable');
+  $('notes').classList.add('edge-resizable');
+  $('devices').classList.add('edge-resizable');
 }
 
 function setDevicesFolded(on, refit = true) {
   $('devices').classList.toggle('collapsed', on);
   $('devfold').classList.toggle('folded', on);
   $('devfold').title = on ? 'Show the effects panel' : 'Collapse the effects panel';
-  syncDeskSplitter();
-  if (refit) fitStrips();
+  syncPanelResizeEdges();
+  if (refit) scheduleDeskFit(true);
 }
 
 $('devfold').onclick = () => setDevicesFolded(!$('devices').classList.contains('collapsed'));
@@ -5600,7 +6283,14 @@ function selectLane(key) {
   for (const el of document.querySelectorAll('.arrrow')) {
     el.classList.toggle('sel', el.dataset.lane === key);
   }
+  // Do not leave the previous lane's playback accent behind until the next beat
+  // after selection moves; the selected-only cue should change immediately.
+  clearArrangementPlayback();
   buildDevices();
+  // The roll is scoped through lane(), so changing the strip selection must repaint it
+  // immediately while it is open. Without this, the panel header follows the click but
+  // the roll keeps the previous lane's rows and notes until another roll gesture occurs.
+  pianoRoll.refresh();
   // The Notes panel is this channel's part, so moving the selection redraws the roll.
   // The roll's own `lane()` already follows the selection; the panel stays open at
   // whatever fold state the user left it in.
@@ -5628,13 +6318,65 @@ const selFrom = () => (selectedBar ? Math.min(selectedBar.from, selectedBar.to) 
 const selTo = () => (selectedBar ? Math.max(selectedBar.from, selectedBar.to) : 0);
 const selWidth = () => (selectedBar ? selTo() - selFrom() + 1 : 0);
 
+let selectionEditorsDirty = false;
+let selectionRefreshIdle = 0;
+
+function paintSelectionEditors() {
+  selectionEditorsDirty = false;
+  stepSeq.refresh();
+  pianoRoll.refresh();
+}
+
+function scheduleSelectionEditors() {
+  selectionEditorsDirty = true;
+  if (!playing) {
+    paintSelectionEditors();
+    return;
+  }
+  // A large piano roll or drum grid can take longer than the audio lookahead. Let
+  // the browser paint it only when there is idle time; playback remains authoritative
+  // and the timeline/loop overlay already show the new selection immediately.
+  if (typeof requestIdleCallback !== 'function' || selectionRefreshIdle) return;
+  selectionRefreshIdle = requestIdleCallback(() => {
+    selectionRefreshIdle = 0;
+    if (selectionEditorsDirty) paintSelectionEditors();
+  });
+}
+
+function flushSelectionEditors() {
+  if (selectionRefreshIdle && typeof cancelIdleCallback === 'function') {
+    cancelIdleCallback(selectionRefreshIdle);
+  }
+  selectionRefreshIdle = 0;
+  if (selectionEditorsDirty) paintSelectionEditors();
+}
+
 function markBar(key, from, to = from) {
   selectedBar = from != null ? { key: key ?? null, from, to: to ?? from } : null;
+  syncLoopButton();
+  if (loopOn) {
+    const bounds = currentLoopBounds();
+    if (playing && bounds && Audio.loopStart != null && Audio.loopEnd != null) {
+      // Keep the current bar intact. The audio engine swaps to the newest selection
+      // at the next bar line, so selecting bars mid-playback never cuts a bar in half
+      // or jumps into the middle of the newly selected range.
+      pendingSeekStep = null;
+      $('selregion').classList.remove('pending');
+      Audio.setLoopAtBoundary(bounds.start, bounds.end);
+      pendingLoopAnchor = { start: bounds.start, end: bounds.end };
+      $('loopregion').classList.add('pending');
+    } else {
+      applyLoop();
+    }
+  }
   redrawSelection();
   // The grid shows the selection, so selecting bars IS how you choose what it shows —
   // one bar or eight, without a control of its own.
-  stepSeq.refresh();
-  pianoRoll.refresh();
+  scheduleSelectionEditors();
+  // The piano roll is a whole-song view, so its last scroll position can be nowhere
+  // near the bar just selected. Keep the selection visible on both axes; a large
+  // range is centred by the roll rather than pretending the whole thing can fit.
+  pianoRoll.focusRange(selFrom(), selTo());
 }
 
 /**
@@ -5799,7 +6541,7 @@ const stepSeq = createStepSeq({
   // read as one list rather than two opinions about the kit.
   kitLanes: () => deskLanes(viewBank(), 1).map((l) => l.key),
   laneNumber: (key) => laneNumbers.get(key),
-  laneLabel: (key) => targetLabel(key),
+  laneLabel: (key) => presetHeadingFor(key).name,
   addInstrument: () => addPercussionLane(),
   menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
   // Closed from its own × as well as from the button, so the button is told rather
@@ -5809,8 +6551,15 @@ const stepSeq = createStepSeq({
 
 // The roll follows the SELECTED CHANNEL. It had its own `rollLane` while it was a window
 // of its own — a strip click yanking a floating panel would have been two things fighting
-// — but it lives in that channel's panel now, under a header naming the channel, beside
-// that channel's effects. Not following would be the odd behaviour.
+// — but it lives in that channel's panel now, under a header naming the channel, and
+// directly above the rack whose selected strip is doing the choosing. Not following
+// would be the odd behaviour.
+//
+// The panel sits between the arrangement and the mixer because it is driven from both:
+// openNoteEditor() enters it by double-clicking an arrangement cell, and the strip
+// selection below scopes it. It used to sit under the rack, next to that channel's
+// effects, which grouped it with a panel that does not drive it and put the whole rack
+// between the roll and the double-click that opens it.
 const rollLanes = () => deskLanes(viewBank(), 1).map((l) => l.key).filter(rollEditable);
 
 // Which part the roll is actually showing. A drum channel has no roll, so the selection
@@ -5837,14 +6586,13 @@ const pianoRoll = createPianoRoll({
   apply: (next, what) => applyArrangementEdit(next, what),
   laneColour,
   engineBank: () => engineBank(),
+  // The channel is chosen on the desk. The roll shows whichever one is selected and no
+  // longer offers a picker of its own, so there is nothing to tell the desk back.
   lane: rollShownLane,
-  setLane: (key) => selectLane(key),
-  editable: rollLanes,
-  laneLabel: (key) => targetLabel(key),
+  laneLabel: (key) => presetHeadingFor(key).name,
   // The key, shared with the on-screen keyboard rather than copied: see the note on
-  // `scale` in mixer-piano-roll.js.
+  // `scale` in mixer-piano-roll.js. Read-only — the keyboard is where it is chosen.
   scale: () => ({ root: oskScaleRoot, id: oskScaleId }),
-  setScale: (next) => setOskScale(next),
   // The desk's own toast, so choosing a mouse mode says what that mode now does.
   toast: (msg) => toast(msg),
   // No button of its own to un-light: the notes panel's fold button is what says
@@ -5855,32 +6603,72 @@ const pianoRoll = createPianoRoll({
 // ---- the bottom row's two panels ------------------------------------------------
 //
 // Effects and Notes are now independent, side-by-side panels. Each folds on its
-// own, and the vertical splitter between them lets you give more room to the one
-// you are working on. The kit's step grid remains a floating window — it belongs to
-// the song, not to a channel.
+// own, and either panel's border lets you give more room to the panel you are working
+// on. The kit's step grid remains a floating window — it belongs to the song, not to a
+// channel.
 
 /** Fold or unfold the notes (piano roll) panel. */
 function setNotesFolded(on, refit = true) {
+  const needsBuild = !on && !pianoRoll.isOpen();
   $('notes').classList.toggle('collapsed', on);
   $('notefold').classList.toggle('folded', on);
   $('notefold').title = on ? 'Show the notes panel' : 'Collapse the notes panel';
   $('rollbtn').classList.toggle('on', !on);
-  syncDeskSplitter();
+  syncPanelResizeEdges();
   if (refit) {
-    fitStrips();
-    // The rack becomes the greedy flex child when notes collapse. The immediate fit
-    // updates its plan, but the browser settles the new flex height after this event;
-    // mirror the separator drag's next layout turn so the strips fill that space too.
-    requestAnimationFrame(fitStrips);
+    scheduleDeskFit(true);
+  }
+  if (needsBuild) {
+    // A song can restore with Notes folded, in which case loadTrack deliberately did
+    // not build the roll. Do that work after the fold/layout task, not inside the click
+    // handler that is competing with the audio scheduler.
+    schedulePianoRollOpen();
+  }
+}
+
+let pianoRollOpenPending = 0;
+function schedulePianoRollOpen() {
+  if (pianoRollOpenPending) return;
+  const run = () => {
+    pianoRollOpenPending = 0;
+    if ($('notes').classList.contains('collapsed') || pianoRoll.isOpen()) return;
+    pianoRoll.open(true);
+  };
+  if (typeof requestIdleCallback === 'function') {
+    pianoRollOpenPending = requestIdleCallback(run, { timeout: 250 });
+  } else {
+    pianoRollOpenPending = setTimeout(run, 0);
   }
 }
 
 $('notefold').onclick = () => setNotesFolded(!$('notes').classList.contains('collapsed'));
 
 function showStepSeq(on) {
-  stepSeq.open(on);
+  stepSeqWanted = on;
+  if (on && !stepSeq.isOpen()) {
+    scheduleStepSeqOpen();
+  } else {
+    stepSeq.open(on);
+  }
   $('seqbtn').classList.toggle('on', on);
   rememberSongLayout();
+}
+
+let stepSeqWanted = false;
+let stepSeqOpenPending = 0;
+function scheduleStepSeqOpen() {
+  if (stepSeqOpenPending) return;
+  const run = () => {
+    stepSeqOpenPending = 0;
+    if (!stepSeqWanted || stepSeq.isOpen()) return;
+    stepSeq.open(true);
+    rememberSongLayout();
+  };
+  if (typeof requestIdleCallback === 'function') {
+    stepSeqOpenPending = requestIdleCallback(run, { timeout: 250 });
+  } else {
+    stepSeqOpenPending = setTimeout(run, 0);
+  }
 }
 
 function showPianoRoll(on) {
@@ -6386,24 +7174,116 @@ function cellSteps(row, cell) {
 
 const cellNotes = (row, cell) => cellSteps(row, cell).join(' ');
 
+/** Return the pitched values represented by one activity cell. */
+function noteFrequencies(values) {
+  return values.flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((value) => typeof value === 'number' && value > 0);
+}
+
+/** Keep every percussion hit visible when a long song forces several sixteenths into
+ * one visual cell. Return the exact fractional slots so the renderer can place a
+ * rounded pattern-mixer hit at each boolean attack. */
+function percussionHitPositions(values) {
+  return values.reduce((out, value, index) => {
+    if (value === true) out.push(index);
+    return out;
+  }, []);
+}
+
 /**
- * One lightness per cell, averaged over the run of playing beats it belongs to, so
- * a contiguous stretch draws as a single even block. Shading each cell by its own
- * density instead made a region that plays throughout look like a bar chart of
- * itself, which says more about the sixteenths than about the arrangement.
+ * Place melodic marks on the vertical pitch contour of their lane. Percussion has no
+ * pitch and stays centred; chords use the centre of their notes, with the same stable
+ * lane range so a melody does not jump around merely because another cell is empty.
  */
-function regionShades(density) {
-  const out = new Array(density.length).fill(0);
-  for (let i = 0; i < density.length;) {
-    if (!(density[i] > 0)) { i++; continue; }
-    let j = i;
-    let sum = 0;
-    while (j < density.length && density[j] > 0) { sum += density[j]; j++; }
-    const shade = 26 + Math.min(1, (sum / (j - i)) * 1.6) * 30;
-    out.fill(shade, i, j);
-    i = j;
+function noteVisualGeometry(values, range) {
+  const freqs = noteFrequencies(values);
+  if (!freqs.length || !range) return { y: '50%', span: '0px' };
+  const midis = freqs.map((hz) => 69 + 12 * Math.log2(hz / 440));
+  const centre = midis.reduce((sum, midi) => sum + midi, 0) / midis.length;
+  // Use the taller arrangement row: keep a small air margin, but let the contour
+  // occupy most of the available pitch space so dots and the SVG trail agree.
+  const y = 12 + (1 - ((centre - range.min) / range.span)) * 76;
+  const spread = Math.min(10, Math.max(0, (Math.max(...midis) - Math.min(...midis)) * 1.8));
+  return { y: `${clamp(y, 12, 88).toFixed(1)}%`, span: `${spread.toFixed(1)}px` };
+}
+
+/** Flatten a bar's visual cells into note events without confusing sequential notes
+ * with a chord. A cell can contain several original sixteenths when a long song is
+ * compressed; each event keeps its slot so the miniature marks retain rhythm. */
+function melodicMovementPoints(steps, range) {
+  if (!range || !steps.length) return [];
+  const points = [];
+  steps.forEach((values, cellIndex) => {
+    const slots = Math.max(1, values.length);
+    values.forEach((value, slot) => {
+      const frequencies = noteFrequencies([value]);
+      if (!frequencies.length) return;
+      const x = ((cellIndex + (slot + 0.5) / slots) / steps.length) * 100;
+      points.push({
+        x,
+        y: Number.parseFloat(noteVisualGeometry(frequencies, range).y),
+      });
+    });
+  });
+  return points;
+}
+
+/** The visible note heads use the same bar coordinates as the trail. Chord tones
+ * share an x position but keep separate y positions; sequential tones move across
+ * the bar instead of looking like a stack. */
+function melodicDotPoints(steps, range) {
+  if (!range || !steps.length) return [];
+  const points = [];
+  steps.forEach((values, cellIndex) => {
+    const slots = Math.max(1, values.length);
+    values.forEach((value, slot) => {
+      const frequencies = noteFrequencies([value]);
+      const x = ((cellIndex + (slot + 0.5) / slots) / steps.length) * 100;
+      for (const hz of frequencies) {
+        points.push({ x, y: Number.parseFloat(noteVisualGeometry([hz], range).y), cellIndex, slot });
+      }
+    });
+  });
+  return points;
+}
+
+/** Draw one smooth contour through the melodic note centres. It is deliberately a
+ * visual shorthand, not a second piano roll: the dots still carry the attacks and
+ * the curve only carries the movement of the line between them. */
+function melodicMovementPath(steps, range) {
+  const points = melodicMovementPoints(steps, range);
+  return melodicMovementPathFromPoints(points);
+}
+
+function melodicMovementPathFromPoints(points) {
+  if (points.length < 2) return '';
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
-  return out;
+  return path;
+}
+
+/** Fade the last note toward the next bar only when that next bar continues the
+ * phrase. This keeps a melodic line legible across a bar boundary without inventing
+ * a trail into silence. */
+function melodicMovementTailPath(last, next) {
+  if (!last || !next || last.x >= 99.5) return '';
+  const span = 100 - last.x;
+  const targetY = last.y + (next.y - last.y) * .4;
+  const c1x = last.x + span * .34;
+  const c2x = 100 - span * .22;
+  const c1y = last.y + (targetY - last.y) * .2;
+  const c2y = targetY;
+  return `M ${last.x.toFixed(2)} ${last.y.toFixed(2)} C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, 100 ${targetY.toFixed(2)}`;
 }
 
 // The drag in progress across the grid, if any. A range is picked by pressing in one
@@ -6420,28 +7300,52 @@ addEventListener('pointercancel', () => { dragSel = null; dragClickSuppress = fa
 function buildArrangement() {
   const grid = $('arrgrid');
   grid.textContent = '';
+  clearArrangementPlayback();
   arrCells = [];
+  arrangementMeters.clear();
+  const arrange = $('arrange');
+  if (arrange) {
+    arrange.dataset.noteVisual = noteVisualMode;
+    arrange.dataset.noteAnimation = noteAnimation ? 'on' : 'off';
+  }
   // The bar plan, so each cell knows whether the arrangement silences its lane here.
   const plan = songShape().bars;
   const patternStart = patternStarts(plan);
-  // Beat resolution where there is room for it, bar resolution on long songs —
-  // 256 cells across a row is still readable, 1024 is a smear. Counted off the plan,
-  // because an arranged song is however many bars it is, not twice its order length.
-  const perBar = plan.length * 4 <= 300 ? 4 : 1;
+  // Keep the actual sixteenth grid wherever it remains legible. Four cells per bar
+  // made every beat look like one note, which erased hats, syncopation and melodic
+  // movement. The breakpoints cap the total at roughly 256 cells across a row while
+  // preserving the finest useful rhythm for short songs.
+  const perBar = [16, 8, 4, 2, 1].find((cells) => plan.length * cells <= 256) || 1;
+  arrCellsPerBar = perBar;
   // Every lane, whatever the mixer is showing: the arrangement is the song, and a
   // song does not lose its drums because you are looking at the melody.
   const view = viewBank();
   const desk = deskLanes(view, 1).map((l) => l.key);
   const rows = laneActivity(view, 1, perBar);
   rows.sort((a, b) => desk.indexOf(a.key) - desk.indexOf(b.key));
+  const pitchRanges = new Map();
+  for (const row of rows) {
+    const midis = row.steps.flatMap(noteFrequencies)
+      .map((hz) => 69 + 12 * Math.log2(hz / 440));
+    if (midis.length) {
+      const min = Math.min(...midis);
+      const max = Math.max(...midis);
+      pitchRanges.set(row.key, { min, span: Math.max(1, max - min) });
+    }
+  }
 
   rows.forEach((row) => {
     const el = document.createElement('div');
     el.className = 'arrrow';
     el.dataset.lane = row.key;
+    // What this row says when it has no preset to name. Kept on the row so a retitle
+    // after a voice change can fall back to the same two words this build used, without
+    // rebuilding the grid to find them again — see refreshLaneIdentity.
+    el.dataset.laneLabel = row.label;
+    el.dataset.group = row.group || '';
     el.style.setProperty('--lane', laneColour(row.key));
-    // The track header: mute and solo on the far left as Logic has them, then the
-    // name. Same two buttons as the strip, same state — see muteSoloPair.
+    // The track header follows Logic's two-line hierarchy: identity above, controls
+    // below. The number spans both lines; the bars sit alongside the upper line.
     const header = document.createElement('div');
     header.className = 'arrhead-cell';
     // Desk order, numbered — the way you refer to a track out loud ("mute 3") and
@@ -6453,41 +7357,135 @@ function buildArrangement() {
     btns.className = 'arrbtns';
     btns.append(...muteSoloPair(row.key, row.label));
     const icon = groupIcon(row.group);
+    icon.classList.add('arrtrack-icon');
+    const top = document.createElement('div');
+    top.className = 'arrtrack-top';
+    const preset = presetForLane(row.key);
+    const category = document.createElement('span');
+    category.className = 'arrpresetcat';
+    category.textContent = preset?.category || cap(row.group || 'track');
     const name = document.createElement('div');
     name.className = 'arrname';
-    name.textContent = row.label;
+    name.textContent = preset?.label || row.label;
     // No title here: markClipped() puts one on only if the name is actually cut off.
-    name.onclick = () => selectLane(row.key);
-    // The same double-click the strip head takes, on the other copy of this name:
-    // play from the bar this lane comes in on.
-    name.ondblclick = () => playFromLaneStart(row.key);
+    //
+    // The name is not a button. Changing what plays a track is the row's right-click
+    // menu and nothing else — see the Sound section in openRegionEditor — because the
+    // name is the first thing you point at on a track, and pointing at a track has to
+    // stay safe.
+    //
+    // Selecting is what a plain click does, and it is the WHOLE header that does it: the
+    // number, the family mark, the name, the type and the space around them are all the
+    // same track, and a click that landed on the number and did nothing read as a dead
+    // row. Only the controls with a job of their own opt out — M and S stop the click
+    // themselves, and the level slider is a drag.
+    header.addEventListener('click', () => selectLane(row.key));
+    // The same double-click the strip head takes: play from the bar this lane comes in
+    // on. Not on those same controls, where a double-click is two presses of a control
+    // rather than a gesture on the track.
+    header.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('.arrbtns, .arrgain')) return;
+      playFromLaneStart(row.key);
+    });
     // The TRACK panel, and only here. The row is the track — what it plays, what plays
     // it, whether it is in the song — and the strip below is its channel. Both used to
     // open this, which meant two routes to one window and a right-click whose result you
     // could not predict from where you clicked. On the header cell only: the bars keep
     // their right-click for the bar menu.
     trackMenu(header, row.key);
-    header.append(num, btns, icon, name);
+    const bottom = document.createElement('div');
+    bottom.className = 'arrtrack-bottom';
+    top.append(name, category);
+    bottom.append(btns);
+    header.append(num, icon, top, bottom);
     const bars = document.createElement('div');
     bars.className = 'arrbars';
-    // Runs of playing beats are one region, not a row of chips: a lane that plays
-    // right through a bar should look like a bar of that lane. The shade comes from
-    // the run's average density so the block is one colour, and the 1px gutter
-    // between cells is bridged rather than removed — the cells have to stay the same
-    // width in every row or the columns stop lining up with the ruler.
-    const runShade = regionShades(row.density);
+    // Runs of playing beats are one region, not a row of chips. The chosen visual
+    // language paints the note marks; the cells themselves stay the same width so the
+    // columns continue to line up with the ruler.
     // A whole bar is the unit you pick, whatever resolution the shading is drawn at:
     // the cells inside a bar are a picture of it, and the bar is the target.
     const barCount = Math.ceil(row.density.length / perBar);
     for (let bar = 0; bar < barCount; bar++) {
       const box = document.createElement('div');
-      box.className = 'arrbar';
+      const playing = row.density.slice(bar * perBar, (bar + 1) * perBar).some((v) => v > 0);
+      box.className = `arrbar${playing ? ' has-notes' : ''}`;
+      const barColour = arrangementBarField(row.key);
+      box.style.setProperty('--bar-colour', barColour);
       // A bar this lane plays in is tinted its own colour end to end, so the rests
       // inside it read as part of the bar rather than as the gap between two bars.
       // The tint also fills the gutters between beats, which is what makes a bar
       // with a hit on every other beat still look like one bar.
-      const playing = row.density.slice(bar * perBar, (bar + 1) * perBar).some((v) => v > 0);
-      if (playing) box.style.background = arrangementBarTint(row.key);
+      if (playing) {
+        box.style.background = barColour;
+      }
+      // Melodic detail is carried by the same fixed-size dots as percussion. The
+      // smooth bar-wide trail uses those exact note positions, so compression
+      // preserves rhythm without making the line drift from the marks.
+      const barSteps = row.steps.slice(bar * perBar, (bar + 1) * perBar);
+      const nextBarSteps = row.steps.slice((bar + 1) * perBar, (bar + 2) * perBar);
+      const barPoints = row.group === 'melodic'
+        ? melodicMovementPoints(barSteps, pitchRanges.get(row.key))
+        : [];
+      const nextBarPoints = row.group === 'melodic'
+        ? melodicMovementPoints(nextBarSteps, pitchRanges.get(row.key))
+        : [];
+      const movement = row.group === 'melodic'
+        ? melodicMovementPath(barSteps, pitchRanges.get(row.key))
+        : '';
+      const tail = melodicMovementTailPath(barPoints.at(-1), nextBarPoints[0]);
+      const melodicDots = row.group === 'melodic'
+        ? melodicDotPoints(barSteps, pitchRanges.get(row.key))
+        : [];
+      if (movement || tail) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        line.classList.add('arrmelodyline');
+        line.setAttribute('viewBox', '0 0 100 100');
+        line.setAttribute('preserveAspectRatio', 'none');
+        line.setAttribute('aria-hidden', 'true');
+        if (movement) {
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', movement);
+          line.append(path);
+        }
+        if (tail) {
+          const fadeId = `arrtrailfade-${row.key.replace(/[^a-z0-9_-]/gi, '_')}-${bar}`;
+          const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+          const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+          gradient.id = fadeId;
+          // Keep the handoff solid until the final few pixels of the bar. Using
+          // bar-space coordinates avoids making a long tail look prematurely faded.
+          gradient.setAttribute('x1', '94'); gradient.setAttribute('y1', '0');
+          gradient.setAttribute('x2', '100'); gradient.setAttribute('y2', '0');
+          gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+          const solid = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+          solid.setAttribute('offset', '0'); solid.setAttribute('stop-color', 'var(--trail-thread)');
+          solid.setAttribute('stop-opacity', '.74');
+          const fade = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+          fade.setAttribute('offset', '1'); fade.setAttribute('stop-color', 'var(--trail-thread)');
+          fade.setAttribute('stop-opacity', '.42');
+          gradient.append(solid, fade); defs.append(gradient); line.append(defs);
+          const tailPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          tailPath.classList.add('arrtrailtail');
+          tailPath.setAttribute('d', tail);
+          tailPath.style.stroke = `url(#${fadeId})`;
+          line.append(tailPath);
+        }
+        box.append(line);
+      }
+      for (const point of melodicDots) {
+        const dot = document.createElement('span');
+        dot.className = 'arrmicrodot';
+        dot.dataset.cell = String(point.cellIndex);
+        // The sixteenth INSIDE that cell this attack belongs to. A compressed song puts
+        // several of them in one cell, and the playback accent has to follow the note
+        // rather than the box it is drawn in.
+        dot.dataset.slot = String(point.slot);
+        dot.setAttribute('aria-hidden', 'true');
+        dot.style.setProperty('--micro-x', `${point.x.toFixed(2)}%`);
+        dot.style.setProperty('--micro-y', `${point.y.toFixed(1)}%`);
+        box.append(dot);
+      }
       for (let beat = 0; beat < perBar; beat++) {
         const cell = bar * perBar + beat;
         const d = row.density[cell] ?? 0;
@@ -6501,14 +7499,49 @@ function buildArrangement() {
         const c = document.createElement('div');
         // The downbeat tick would cut a region in half, so it only marks bars that
         // start something — a rest, or the first beat of a region.
-        c.className = 'arrcell' + (perBar > 1 && beat === 0 && !openL ? ' barstart' : '');
+        const note = d > 0;
+        c.className = 'arrcell'
+          + (perBar > 1 && beat === 0 && !openL ? ' barstart' : '')
+          + (note ? ' note' : '');
+        if (note) {
+          c.style.setProperty('--note-strength', String(clamp(d, 0, 1)));
+          c.style.setProperty('--note-tilt', `${(((bar * perBar + beat) * 17) % 7) - 3}deg`);
+          const values = row.steps[cell] || [];
+          const frequencies = noteFrequencies(values);
+          // Which sixteenths inside this cell are attacks. One character per slot, read
+          // back by the playback accent so a note on the second half of a cell is set
+          // off when it sounds and not when the playhead reaches the cell.
+          c.dataset.hits = (values.length ? values : [true])
+            .map((value) => (value === true || noteFrequencies([value]).length ? '1' : '0')).join('');
+          const hasChord = values.some((value) => Array.isArray(value)
+            && noteFrequencies([value]).length > 1);
+          if (hasChord) c.classList.add('chord');
+          if (row.group === 'melodic' && frequencies.length) {
+            // One visual cell can represent a whole bar in a long song. Keep the
+            // actual attacks visible at their local time positions; only tones in
+            // the same source step share an x coordinate and read as a chord.
+            c.classList.add('micro-notes');
+          }
+          const percussionHits = percussionHitPositions(values);
+          if (percussionHits.length) {
+            c.classList.add('percussion');
+            const slots = values.length;
+            for (const index of percussionHits) {
+              const hit = document.createElement('span');
+              hit.className = 'arrhit';
+              hit.dataset.slot = String(index);
+              hit.setAttribute('aria-hidden', 'true');
+              hit.style.left = `${(((index + 0.5) / slots) * 100).toFixed(1)}%`;
+              c.append(hit);
+            }
+          }
+          const geometry = noteVisualGeometry(values, pitchRanges.get(row.key));
+          c.style.setProperty('--note-y', geometry.y);
+          c.style.setProperty('--note-span', geometry.span);
+        }
         if (d > 0) {
-          // Hue identifies the channel, lightness carries density — so a busy hat bar
-          // reads brighter than a single hit without changing what colour "hats" is.
-          const col = arrangementBarColour(row.key, runShade[cell]);
-          c.style.background = col;
-          if (openR) c.style.boxShadow = `1px 0 0 0 ${col}`;
-          c.style.borderRadius = `${openL ? 0 : 3}px ${openR ? 0 : 3}px ${openR ? 0 : 3}px ${openL ? 0 : 3}px`;
+          if (noteVisualMode === 'solid') c.style.background = 'transparent';
+          else c.style.background = 'transparent';
         } else if (playing) {
           c.style.background = 'transparent';        // the bar's own tint shows through
         }
@@ -6561,7 +7594,8 @@ function buildArrangement() {
       const at = bar * 16;
       box.onclick = (ev) => {
         if (dragClickSuppress) { dragClickSuppress = false; return; }
-        jumpTo(at);
+        const selectionChanges = !selectedBar || selFrom() !== bar || selTo() !== bar;
+        if (!(playing && loopOn && selectionChanges)) jumpTo(at);
         selectLane(row.key);
         // Shift extends the selection from where it started, the way a list does.
         if (ev.shiftKey && selectedBar) markBar(selectedBar.key, selectedBar.from, bar);
@@ -6594,8 +7628,8 @@ function buildArrangement() {
       box.ondblclick = () => openNoteEditor(row.key, bar);
       bars.append(box);
     }
-    // Tiny gain trim inside the header cell, between the name and the bars.
-    // No number shown — it mirrors the mixer fader bi-directionally.
+    // Expanded gain/VU control in the lower header line, below the name and beside M/S.
+    // The thumb controls gain while the rail shows the live channel level.
     const gainSlider = document.createElement('input');
     gainSlider.type = 'range';
     gainSlider.className = 'arrgain';
@@ -6607,6 +7641,13 @@ function buildArrangement() {
     gainSlider.value = dbToPos(curGain);
     const gainWrap = document.createElement('span');
     gainWrap.className = 'arrgainwrap';
+    const vu = document.createElement('span');
+    vu.className = 'arrvumeter';
+    vu.title = `${row.label} live level (smoothed RMS)`;
+    vu.setAttribute('aria-hidden', 'true');
+    const vuFill = document.createElement('i');
+    const vuPeak = document.createElement('b');
+    vu.append(vuFill, vuPeak);
     const gainReadout = document.createElement('span');
     gainReadout.className = 'arrgainreadout';
     const showGain = (db) => { gainReadout.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)}`; };
@@ -6634,23 +7675,169 @@ function buildArrangement() {
     // Untagged, so the reset is its own undo step rather than being coalesced into the
     // drag before it — the same bargain the channel fader's reset makes.
     gainSlider.addEventListener('dblclick', () => setGain(0));
-    gainWrap.append(gainSlider, gainReadout);
-    header.append(gainWrap);
-    el.append(header, bars);
+    gainWrap.append(vu, gainSlider, gainReadout);
+    arrangementMeters.set(row.key, { meter: vu, fill: vuFill, peak: vuPeak,
+      shown: 0, held: 0, heldAt: 0 });
+    bottom.append(gainWrap);
+    // Keep the two-line header self-contained so future lower-row controls can be
+    // added beside M/S without moving the track identity or the bar grid.
+    const main = document.createElement('div');
+    main.className = 'arrrow-main';
+    main.append(header, bars);
+    el.append(main);
     grid.append(el);
     arrCells.push({ key: row.key, bars });
   });
   redrawSelection();            // the rows are new; the selection is not
+  updateArrangementNoteScale();
+}
+
+/** Keep note marks readable as more bars share the same width. Five pixels is the
+ * authored maximum; narrow bars scale down from their actual rendered width, and all
+ * note languages consume the same variable so percussion and melodic marks agree. */
+function updateArrangementNoteScale() {
+  const arrange = $('arrange');
+  const bar = arrange?.querySelector('.arrbar');
+  if (!arrange || !bar) return;
+  const width = bar.getBoundingClientRect().width;
+  if (!width) return;
+  const size = clamp(width * 0.12, 3, 5);
+  arrange.style.setProperty('--arr-note-size', `${size.toFixed(2)}px`);
+}
+
+function stopArrangementEcho(cell) {
+  const timer = arrEchoTimers.get(cell);
+  if (timer != null) clearTimeout(timer);
+  arrEchoTimers.delete(cell);
+  arrEchoCells.delete(cell);
+  cell.classList.remove('echoing');
+}
+
+/** Leave one selected-track mark behind briefly as a visual playback echo. */
+function startArrangementEcho(cell) {
+  if (!cell || noteVisualMode !== 'trail' || !noteAnimation) return;
+  stopArrangementEcho(cell);
+  cell.classList.remove('playing');
+  // Restart the CSS fade if this mark was echoed again before its previous tail died.
+  void cell.offsetWidth;
+  cell.classList.add('echoing');
+  arrEchoCells.add(cell);
+  arrEchoTimers.set(cell, setTimeout(() => stopArrangementEcho(cell), ARR_ECHO_DURATION));
+}
+
+/** Remove the active playback cue and any fading echoes. */
+function clearArrangementPlayback() {
+  for (const cell of arrPlayingCells) cell.classList.remove('playing');
+  for (const cell of arrEchoCells) cell.classList.remove('echoing');
+  for (const timer of arrEchoTimers.values()) clearTimeout(timer);
+  arrEchoCells.clear();
+  arrEchoTimers.clear();
+  arrPlayingCells = [];
+  arrPlayingAt = null;
+}
+
+/**
+ * Follow the heard transport position without rebuilding the arrangement. The note
+ * cells are already the semantic surface; playback only changes the small set that the
+ * current beat lands on. Keeping the same references avoids restarting a CSS flourish
+ * on every animation frame.
+ */
+function followArrangementVisual(step) {
+  const next = [];
+  let at = null;
+  if (step != null && track && arrCells.length) {
+    const totalSteps = songShape().totalSteps;
+    at = Math.max(0, Math.floor(step)) % Math.max(1, totalSteps);
+    const bar = Math.floor(at / 16);
+    const within = at % 16;
+    // One drawn cell can stand for several sixteenths in a long song. `slot` is which
+    // of them is sounding, and it is what the marks are matched against — the cell is
+    // only the box they are drawn in.
+    const perCell = 16 / arrCellsPerBar;
+    const cellIndex = Math.floor(within / perCell);
+    const slot = within - cellIndex * perCell;
+    const selectedArrangementLane = selectedLane
+      && arrCells.some((row) => row.key === selectedLane)
+      ? selectedLane
+      : null;
+    for (const row of arrCells) {
+      // A full-desk playback cue is useful when no track is selected. Once the
+      // user chooses a lane, keep the animated accent on that lane so the rows
+      // remain readable while the rest still show their static note language.
+      if (selectedArrangementLane && row.key !== selectedArrangementLane) continue;
+      const barEl = row.bars.children[bar];
+      const cell = barEl?.querySelectorAll('.arrcell')[cellIndex];
+      if (!cell) continue;
+      if (!cell.classList.contains('note') && !cell.classList.contains('recording-note')) continue;
+      // A cell whose attacks are all on other sixteenths is not playing yet. Cells
+      // written by the recorder carry no map, so they light on the whole cell as before.
+      const hits = cell.dataset.hits;
+      if (hits && hits[slot] !== '1') continue;
+      next.push(cell);
+      for (const hit of cell.querySelectorAll(`.arrhit[data-slot="${slot}"]`)) next.push(hit);
+      for (const dot of barEl.querySelectorAll(`.arrmicrodot[data-cell="${cellIndex}"][data-slot="${slot}"]`)) {
+        next.push(dot);
+      }
+    }
+  }
+  const same = next.length === arrPlayingCells.length
+    && next.every((cell, i) => cell === arrPlayingCells[i]);
+  // The same marks on a NEW sixteenth are a second attack, not the first one still
+  // ringing, so the step has to be part of the comparison as well as the set.
+  if (same && at === arrPlayingAt) return;
+  const nextSet = new Set(next);
+  const rehit = next.some((cell) => arrPlayingCells.includes(cell));
+  for (const cell of arrPlayingCells) {
+    cell.classList.remove('playing');
+    if (!nextSet.has(cell)) startArrangementEcho(cell);
+  }
+  for (const cell of arrEchoCells) {
+    if (nextSet.has(cell)) stopArrangementEcho(cell);
+  }
+  // Removing and re-adding the class in one frame does not restart a CSS animation
+  // on its own. Only pay for the reflow when a mark is actually struck twice running.
+  if (rehit) void $('arrange').offsetWidth;
+  for (const cell of next) cell.classList.add('playing');
+  arrPlayingCells = next;
+  arrPlayingAt = at;
+}
+
+/** Locate the visible arrangement cell that owns a recorded note's quantised step. */
+function arrangementCellFor(lane, bar, step) {
+  const row = arrCells.find((entry) => entry.key === lane);
+  const barEl = row?.bars.children[bar];
+  if (!barEl) return null;
+  const cellIndex = arrCellsPerBar === 1 ? 0 : Math.floor(step / (16 / arrCellsPerBar));
+  return barEl.querySelectorAll('.arrcell')[cellIndex] || null;
+}
+
+/**
+ * Paint a newly recorded note immediately, without asking the desk to rebuild. The
+ * recorder's beat flush can then keep doing its cheap live write; the final take redraw
+ * replaces this provisional mark with the authoritative arrangement data.
+ */
+function markRecordedVisual(lane, bar, step, open) {
+  const cell = arrangementCellFor(lane, bar, step);
+  if (!cell) return;
+  cell.classList.add('note', 'recording-note');
+  cell.style.setProperty('--note-strength', '1');
+  cell.style.setProperty('--note-tilt', `${(((bar * arrCellsPerBar + step) * 17) % 7) - 3}deg`);
+  const barEl = cell.parentElement;
+  barEl?.classList.add('has-notes');
+  if (barEl && !barEl.style.background) {
+    barEl.style.background = arrangementBarField(lane);
+  }
+  cell.classList.toggle('recording-note', open);
 }
 
 function setArrangeCollapsed(on) {
   const arrange = $('arrange');
   const changed = arrange.classList.contains('collapsed') !== on;
   arrange.classList.toggle('collapsed', on);
-  // Before the early return, so the handles always match the folds even when the
+  // Before the early return, so the resize edges always match the folds even when the
   // fold itself has not changed: there is nothing to drag the height of when the
   // arrangement is shut, and a handle for it says there is.
-  syncDeskSplitter();
+  syncPanelResizeEdges();
   if (!changed) return;
   $('arrfold').classList.toggle('folded', on);
   $('arrfold').title = on ? 'Show the arrangement' : 'Collapse the arrangement';
@@ -6658,7 +7845,7 @@ function setArrangeCollapsed(on) {
 
 $('arrfold').onclick = () => {
   setArrangeCollapsed(!$('arrange').classList.contains('collapsed'));
-  fitStrips();
+  scheduleDeskFit(true);
 };
 
 // The mixer folds like the panels above and below it. The family switches stay in
@@ -6668,11 +7855,10 @@ function setMixerFolded(on, refit = true) {
   $('rackwrap').classList.toggle('collapsed', on);
   $('mixhead').classList.toggle('folded', on);
   $('mixfold').classList.toggle('folded', on);
-  $('arrange').classList.toggle('track-gain-visible', on);
   $('mixfold').title = on ? 'Show the mixer' : 'Collapse the mixer';
-  syncDeskSplitter();
+  syncPanelResizeEdges();
   localStorage.setItem(MIXER_KEY, on ? '1' : '0');
-  if (refit) fitStrips();
+  if (refit) scheduleDeskFit(true);
 }
 $('mixfold').onclick = () => setMixerFolded(!$('rackwrap').classList.contains('collapsed'));
 setMixerFolded(localStorage.getItem(MIXER_KEY) === '1', false);
@@ -6688,16 +7874,36 @@ const PEAK_HOLD = 1400;       // ms the line sits before it starts sliding down
 const PEAK_FALL = 30;         // percent per second once it does
 let meterAt = 0;
 
+function updateArrangementMeter(readout, lin, now, dt) {
+  const value = typeof lin === 'number' ? lin : 0;
+  const db = 20 * Math.log10(Math.max(1e-6, value));
+  const pos = clamp((db + 48) / 48 * 100, 0, 100);
+  readout.shown = Math.max(pos, (readout.shown ?? 0) - METER_FALL * dt);
+  readout.fill.style.width = `${readout.shown}%`;
+  if (pos >= (readout.held ?? 0)) {
+    readout.held = pos;
+    readout.heldAt = now;
+  } else if (now - (readout.heldAt || 0) > PEAK_HOLD) {
+    readout.held = Math.max(readout.shown, readout.held - PEAK_FALL * dt);
+  }
+  readout.peak.style.left = `${readout.held || 0}%`;
+  readout.peak.style.opacity = readout.held > 0.5 ? '1' : '0';
+  readout.meter.classList.toggle('clip', value >= 1);
+}
+
 function tick() {
   const now = performance.now();
   const dt = meterAt ? Math.min(0.25, (now - meterAt) / 1000) : 0;
   meterAt = now;
+  syncLoopAnchor();
+  syncPendingSeek();
   if (Audio.mixer) {
+    const laneLevels = new Map();
     for (const mt of meters) {
       // One number for a mono meter, [L, R] for the master's pair. Everything below is
       // per-channel and reads the same either way; the clip light and the session peak
       // take the louder side, which is the side that clipped.
-      const v = mt.key === '__master' ? Audio.mixer.masterLevels()
+      const v = mt.master || mt.key === '__master' ? Audio.mixer.masterLevels()
         : mt.key.startsWith('__aux:') ? Audio.mixer.auxLevel(mt.key.slice(6))
         : Audio.mixer.lane(mt.key)?.level();
       const vals = Array.isArray(v) ? v : [v];
@@ -6709,16 +7915,26 @@ function tick() {
         const db = 20 * Math.log10(Math.max(1e-6, lin));
         const pos = clamp((db + 48) / 48 * 100, 0, 100);
         ch.shown = Math.max(pos, (ch.shown ?? 0) - METER_FALL * dt);
-        ch.fill.style.height = `${ch.shown}%`;
+        if (mt.horizontal) ch.fill.style.width = `${ch.shown}%`;
+        else ch.fill.style.height = `${ch.shown}%`;
         if (pos >= (ch.held ?? 0)) { ch.held = pos; ch.heldAt = now; }
         else if (now - (ch.heldAt || 0) > PEAK_HOLD) {
           ch.held = Math.max(ch.shown, ch.held - PEAK_FALL * dt);
         }
-        ch.peak.style.bottom = `${ch.held || 0}%`;
+        if (mt.horizontal) ch.peak.style.left = `${ch.held || 0}%`;
+        else ch.peak.style.bottom = `${ch.held || 0}%`;
         ch.peak.style.opacity = ch.held > 0.5 ? '1' : '0';
       });
+      laneLevels.set(mt.key, loudest);
       mt.meter.classList.toggle('clip', loudest >= 1);
       if (mt.key === '__master' && loudest > peakSeen) peakSeen = loudest;
+    }
+    // Use the already-read channel level where the rack has a strip; only filtered
+    // lanes need a second lookup, so every arrangement VU still follows the same
+    // engine meter source without doubling normal visible-lane reads.
+    for (const [key, readout] of arrangementMeters) {
+      const lin = laneLevels.has(key) ? laneLevels.get(key) : Audio.mixer.lane(key)?.level();
+      updateArrangementMeter(readout, lin, now, dt);
     }
   }
   const beat = Audio.songBeat();
@@ -6730,11 +7946,14 @@ function tick() {
     $('tnow').textContent = `${fmtTime(heardStep * spb)}/${fmtTime(loopSecs)}`;
     $('barnow').textContent = `${Math.floor(heardStep / 16) + 1}/${totalSteps / 16}`;
     $('pos').textContent = `Beat ${(beat % 4 + 1).toFixed(1)}`;
+    const visualStep = arrangementVisualStep(heardStep);
+    followArrangementVisual(visualStep);
     oskFollow(heardStep);
     stepSeq.follow(heardStep);
     pianoRoll.follow(heardStep);
     recordFollow(heardStep);
   } else {
+    followArrangementVisual(null);
     oskFollow(null);
     stepSeq.follow(null);
     pianoRoll.follow(null);
@@ -6857,7 +8076,12 @@ $('drawerclose').onclick = closeMenu;
 $('drawerbackdrop').onclick = closeMenu;
 addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && $('navdrawer').classList.contains('show')) {
-    ev.preventDefault(); closeMenu();
+    // Stopped as well as handled, and immediately: Escape is the desk's panic, and that
+    // handler listens on this same window. Closing the drawer you just opened is not a
+    // reason to cut the sound as well.
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    closeMenu();
   }
 });
 $('navdrawer').addEventListener('click', (ev) => {
@@ -6972,6 +8196,41 @@ themeSel.onchange = () => {
   applyTheme();
   refreshThemeColours();
   toast(`Set ${themeSel.selectedOptions[0].textContent} theme`);
+};
+
+// The arrangement's note language is a desk preference beside Theme. It is deliberately
+// not part of a song: changing how a pattern is seen must never dirty or rewrite music.
+const noteVisualSel = $('notevisual');
+for (const [id, label] of NOTE_VISUALS) {
+  const option = document.createElement('option');
+  option.value = id; option.textContent = label;
+  noteVisualSel.append(option);
+}
+noteVisualSel.value = noteVisualMode;
+const noteAnimationInput = $('noteanimation');
+noteAnimationInput.checked = noteAnimation;
+
+function applyNoteVisualPreferences({ render = true } = {}) {
+  const arrange = $('arrange');
+  if (arrange) {
+    arrange.dataset.noteVisual = noteVisualMode;
+    arrange.dataset.noteAnimation = noteAnimation ? 'on' : 'off';
+  }
+  localStorage.setItem(NOTE_VISUAL_KEY, noteVisualMode);
+  localStorage.setItem(NOTE_ANIMATION_KEY, noteAnimation ? 'on' : 'off');
+  if (render && track) buildArrangement();
+}
+
+applyNoteVisualPreferences({ render: false });
+noteVisualSel.onchange = () => {
+  noteVisualMode = noteVisualSel.value;
+  applyNoteVisualPreferences();
+  toast(`Showing ${noteVisualSel.selectedOptions[0].textContent}`);
+};
+noteAnimationInput.onchange = () => {
+  noteAnimation = noteAnimationInput.checked;
+  applyNoteVisualPreferences({ render: false });
+  toast(noteAnimation ? 'Note playback accents on' : 'Note playback accents off');
 };
 
 // How far behind the graph the speakers actually are, beyond what the browser owns
@@ -7138,18 +8397,18 @@ function setOskScale({ root, id }) {
   if (oskShown()) buildOsk();
   voiceLibrary.refresh();          // the bench's readout is in this key too
 }
-// How many octaves the keys span, plus the octave above's C so it ends on one.
+// How many octaves a PIANO draws here — three, plus the octave above's C so it ends on
+// one. It is what the computer keyboard reaches: two full octaves of letters and the
+// start of a third, see QWERTY_SEMIS, so the board on screen and the board under your
+// fingers are the same instrument and the letters stop at the edge of it rather than a
+// third of the way along.
 //
-// Three, wherever it is. It is what the computer keyboard reaches — two full octaves of
-// letters and the start of a third, see QWERTY_SEMIS — so the board on screen and the
-// board under your fingers are the same instrument, and the letters stop at the edge of
-// it rather than a third of the way along.
-//
-// Docked it is a target rather than a fixed number: the band is only so wide, and if
-// three octaves of it would make the keys too narrow to play then the range gives. See
-// oskKeyPlan. It very rarely does — the point of naming it here is that the span is the
-// same question in both places, answered from the same number.
+// It is not the span in a KEY. A scale gets the same key at the same size and as many of
+// them as the space holds — see oskKeyPlan — so three octaves of white keys is what sets
+// how big a key is, and a pentatonic drawn with that key reaches four and a bit.
 const OSK_OCTAVES = 3;
+// The piano's own count, which is the reference every board is drawn against.
+const OSK_KEYS = 7 * OSK_OCTAVES + 1;
 // The FLOATING board's key, in pixels. Out on the desk there is no band to divide, so
 // this is the size rather than the result of one — and the ratio the docked board's black
 // keys keep, since it is the only place the two widths are stated together.
@@ -7159,6 +8418,9 @@ const OSK_OCTAVES = 3;
 // was a keyboard you aimed a mouse at rather than one you played.
 const KEY_W = 39;                        // white key width, px
 const BLACK_W = 26;
+// A black key as a fraction of a white one. The layout is built in units of a key rather
+// than in pixels — see buildOskKeys — so this, not BLACK_W, is what it positions with.
+const BLACK_UNIT = BLACK_W / KEY_W;
 // ...and how tall each is AT that width. Not four independent numbers: a key is a shape,
 // and these four are it. Every board scales the set by whatever its own key width came
 // out at — see buildOskKeys — so the docked one in a wide band and the floating one in
@@ -7332,8 +8594,8 @@ function laneOctave(key) {
   for (const sec of b?.sections || []) scan(sec);
   // A percussion lane holds booleans and a silent one holds nothing: both land here,
   // and the middle of the keyboard is as good an answer as there is.
-  if (low == null) return 3;
-  return clamp(Math.floor(Math.round(12 * Math.log2(low / 440) + 69) / 12) - 1, 0, 7);
+  if (low == null) return clampOskOctave(3);
+  return clampOskOctave(Math.floor(Math.round(12 * Math.log2(low / 440) + 69) / 12) - 1);
 }
 
 /**
@@ -7357,8 +8619,10 @@ const oskBench = () => voiceLibrary.picked;
  */
 function recRegion() {
   const { totalSteps } = songShape();
-  if (loopOn && loopBars > 0) {
-    return { from: loopAnchor, span: Math.min(loopBars * 16, totalSteps) };
+  if (loopOn && locA != null && locB != null) {
+    const start = Math.min(locA, locB);
+    const end = Math.max(locA, locB);
+    return { from: start, span: end - start };
   }
   return { from: 0, span: totalSteps };
 }
@@ -7427,6 +8691,7 @@ function recordNote(laneKey, midi, freq, src) {
   // FRESH take if a flush lands while the key is still down — see `carryHeld`. `at` is
   // the original press either way, so the length is measured from where the note really
   // started rather than from wherever the last flush happened to be.
+  markRecordedVisual(laneKey, bar, inBar, true);
   if (src) recOpen.set(src, { token, at: heard, bar, lane: laneKey, step: inBar, midi, freq });
 }
 
@@ -7472,6 +8737,7 @@ function recordOff(src) {
   if (heard == null) return;
   const { span } = recRegion();
   recTake.close(held.token, heldLength(held.at, heard, { grid: recGrid, span }));
+  markRecordedVisual(held.lane, held.bar, held.step, false);
 }
 
 /** Finish every kind of preview input, not just its recording token. */
@@ -7574,7 +8840,8 @@ function finalizeLiveTake() {
 }
 
 /**
- * Drop what has not been written yet. What Escape means while recording.
+ * Drop what has not been written yet. Part of what ⎋ means while recording — the panic
+ * takes this with it, so the take ends where the sound did.
  *
  * Note what this is NOT: it is not "throw the take away". The take is written every beat,
  * so by the time you reach for Escape almost all of it is already in the song and the
@@ -7688,7 +8955,7 @@ function setRecord(on) {
       toast('Select a channel first — that is where the notes would go');
     } else {
       toast(playing
-        ? `Recording into ${targetLabel(selectedLane)} — ⇧R to stop, Esc to throw it away`
+        ? `Recording into ${targetLabel(selectedLane)} — ⇧R to stop, ⎋ to stop everything`
         : `Armed on ${targetLabel(selectedLane)} — recording starts when the song does`);
     }
   } else {
@@ -7848,6 +9115,11 @@ const oskKeyEl = (midi) => oskEl.querySelector(`.oskkey[data-midi="${midi}"]`);
 
 function buildOsk() {
   const el = oskEl;
+  // What the ends of the range ARE moves with the board — a key with a high root reaches
+  // further above its base C than a chromatic one, and docking changes how many keys
+  // there are to reach with. So the octave is held to them here, where every rebuild
+  // passes, rather than only where it is set.
+  oskOct = clampOskOctave(oskOct);
   el.textContent = '';
   el.classList.toggle('catching', oskCatch);
   oskLane = selectedLane;
@@ -7883,8 +9155,8 @@ function buildOsk() {
     + 'with its black keys on S D G H J, and Q W E R T Y U the one above with 2 3 5 6 7 '
     + 'over it, carrying on through I O P and [ = ]. − and + shift the whole board, and '
     + ', is the C above M for a run that ends where your hand already is.'
-    + '\n\nWhile this is on, the desk’s own shortcuts on those keys — M S R B L, the '
-    + 'loop-bar numbers, and [ ] for the playhead — are yours to play with instead.';
+    + '\n\nWhile this is on, the desk’s own shortcuts on those keys — M S R B L'
+    + ' and [ ] for the playhead — are yours to play with instead.';
   catchBtn.onclick = () => setOskCatch(!oskCatch);
   const midiBtn = document.createElement('button');
   midiBtn.className = 'oskmidi';
@@ -7910,7 +9182,8 @@ function buildOsk() {
     + 'written into the bars the loop is playing, everywhere that part repeats.'
     + '\n\nHow long you hold a key becomes the note’s length. Recording only ADDS notes; '
     + 'taking one out is the piano roll’s job.'
-    + '\n\nA bar’s worth of playing is one ⌘Z. Esc throws the take away. ⇧R from anywhere.';
+    + '\n\nA bar’s worth of playing is one ⌘Z. ⎋ stops everything and drops whatever has '
+    + 'not been written yet. ⇧R from anywhere.';
   recBtn.onclick = () => setRecord(!recArmed);
   const close = document.createElement('button');
   // Folded rather than closed while it is part of the library's workspace — same
@@ -7973,6 +9246,8 @@ function buildOsk() {
     // where it is, and then what you can do to it.
     for (const child of [...ctl.children]) head.insertBefore(child, midiBtn);
     el.append(head, keys);
+    // Only now is there a window to measure — see fillFloatingKeys.
+    fillFloatingKeys(head, keys);
   }
   wireOskDrag(el, head);
   // The head has just been replaced, so the lamp state has to be put back onto the new
@@ -8057,6 +9332,67 @@ function buildOskPads() {
   return pads;
 }
 
+/**
+ * Put a built row of keys at a width.
+ *
+ * A key is a SHAPE, and the shape is the one the floating board has — see KEY_H. The
+ * heights used to be CSS, one pair of numbers for the floating board and another for the
+ * docked one, which meant the docked keys were whatever proportion its band width
+ * happened to make them: the same 132px key was a stub at 49 across and about right at
+ * 39. Deriving every other measurement from the width — the black keys, both heights — is
+ * the only way a keyboard that sizes itself to a band still looks like a keyboard in
+ * every band.
+ */
+function sizeOskKeys(keys, width) {
+  const scale = width / KEY_W;            // everything else is this key, to proportion
+  keys.style.width = `${(Number(keys.dataset.count) || 0) * width}px`;
+  keys.style.setProperty('--oskwhiteh', `${KEY_H * scale}px`);
+  keys.style.setProperty('--oskblackh', `${BLACK_H * scale}px`);
+  for (const k of keys.children) {
+    k.style.left = `${Number(k.dataset.at) * width}px`;
+    k.style.width = `${Number(k.dataset.wide) * width}px`;
+  }
+}
+
+/**
+ * Measure the floating window, and give it the keys that fit in it.
+ *
+ * Docked, the band states its width and `oskKeyPlan` divides it. Floating, the width is
+ * the title bar's — a window is as wide as the widest thing in it — and the keys cannot
+ * know it until they are in the document with it. So the row is built at the count the
+ * plan can reach on its own, measured here, and built once more if the answer moved.
+ *
+ * Kept in `oskFloatRoom` rather than being applied to the keys directly, because the
+ * count is the answer to more than one question: `oskBoard` reads the same plan to work
+ * out how far the board reaches, and a row with more keys on it than the plan admits to
+ * would let the octave buttons walk off the top of the range.
+ */
+const OSK_GUTTER = 10;                   // `.oskkeys` margin, per side — see the CSS
+function fillFloatingKeys(head, keys) {
+  if (oskEl.classList.contains('docked')) return;
+  // The head's box IS the window's content width — it is a block in a shrink-to-fit
+  // panel. Zero while the keyboard is hidden, which is nothing to fit to.
+  const room = head.getBoundingClientRect().width - (OSK_GUTTER + OSK_CHASSIS) * 2;
+  if (!(room > 0) || Math.abs(room - oskFloatRoom) < 0.5) return;
+  oskFloatRoom = room;
+  // More keys is further up the keyboard, and the octave was held to the range the
+  // narrower board could reach — see clampOskOctave. Start again rather than patch it:
+  // the second pass measures the same width and stops there.
+  const oct = clampOskOctave(oskOct);
+  if (oct !== oskOct) { oskOct = oct; buildOsk(); return; }
+  // Replaced whole rather than compared first: the measurement can move the count, the
+  // width or neither, and rebuilding one row is cheaper than working out which.
+  const row = oskKeyRow();
+  keys.replaceWith(row.keys);
+  head.querySelector('.oskrange').textContent = row.label;
+  // The board can have grown wider than the screen has room for to the right of where the
+  // window sits. `oskPlace` is what keeps a window on it, and it otherwise only runs when
+  // the window is moved or first opened.
+  const x = parseFloat(oskEl.style.left);
+  const y = parseFloat(oskEl.style.top);
+  if (Number.isFinite(x) && Number.isFinite(y)) oskPlace(x, y);
+}
+
 function buildOskKeys(ctl) {
   // `−` and `+`, not `◀` and `▶`. An octave is a quantity you take some away from and
   // add some to, and the arrows read as "seek" — the transport's own job. They are also
@@ -8064,14 +9400,25 @@ function buildOskKeys(ctl) {
   // on a button cannot tell you to press anything.
   const down = document.createElement('button');
   down.textContent = '−';
-  down.title = 'An octave down ( the − key, while Keyboard is on )';
   down.className = 'oskdown';
   down.onclick = () => setOskOctave(oskOct - 1);
   const up = document.createElement('button');
   up.textContent = '+';
-  up.title = 'An octave up ( the = key, while Keyboard is on )';
   up.className = 'oskup';
   up.onclick = () => setOskOctave(oskOct + 1);
+  // Dimmed at the ends of the instrument rather than removed or disabled: the pair is a
+  // readout of where you are in the range as much as it is a control, and one that
+  // vanishes is a row whose buttons move under your hand. Disabling them would take the
+  // tooltip with it, which is the half of this that says WHY the button stopped.
+  const { lo, hi } = oskOctaveRange();
+  down.classList.toggle('atend', oskOct <= lo);
+  up.classList.toggle('atend', oskOct >= hi);
+  down.title = oskOct <= lo
+    ? `As low as the keyboard goes — ${midiName(OSK_LOW_MIDI)} is the bottom of the range`
+    : 'An octave down ( the − key, while Keyboard is on )';
+  up.title = oskOct >= hi
+    ? `As high as the keyboard goes — ${midiName(OSK_HIGH_MIDI)} is the top of the range`
+    : 'An octave up ( the = key, while Keyboard is on )';
   const oct = document.createElement('span');
   oct.className = 'oskoct';
   oct.textContent = `C${oskOct}`;
@@ -8118,38 +9465,43 @@ function buildOskKeys(ctl) {
 
   ctl.append(down, oct, up, range, scaleWrap);
 
+  const row = oskKeyRow();
+  range.textContent = row.label;
+  return row.keys;
+}
+
+/**
+ * The keys themselves, and the reading of what they span.
+ *
+ * Its own function because it gets built twice on a floating board: once at the count the
+ * plan can work out on its own, and again once the window has been measured and the plan
+ * knows how many keys the window actually holds. See fillFloatingKeys.
+ */
+function oskKeyRow() {
   const keys = document.createElement('div');
   keys.className = 'oskkeys';
-  const sc0 = oskScale();
-  // How many keys the band takes, and how wide each is — see oskKeyPlan. In a key the
-  // unit is a DEGREE, chromatically it is a white key, so the plan is asked in the unit
-  // the layout is actually built from.
-  const plan = oskKeyPlan(sc0 ? sc0.steps.length : 7);
-  const KW = plan.width;
-  const scale = KW / KEY_W;               // everything else is this key, to proportion
-  const BW = BLACK_W * scale;
+  let label = '';
+  // How many keys there are and how wide each one is — the space's answer, with the
+  // instrument's own ends taken off it. See oskBoard.
+  const plan = oskBoard();
   const base = (oskOct + 1) * 12;
-  keys.style.width = `${plan.count * KW}px`;
-  // A key is a SHAPE, and the shape is the one the floating board has — see KEY_H.
-  //
-  // The heights used to be CSS, one pair of numbers for the floating board and another
-  // for the docked one, which meant the docked keys were whatever proportion its band
-  // width happened to make them: the same 132px key was a stub at 49 across and about
-  // right at 39. Deriving them from the width the plan chose is the only way a keyboard
-  // that sizes itself to a band can still look like a keyboard in every band.
-  keys.style.setProperty('--oskwhiteh', `${KEY_H * scale}px`);
-  keys.style.setProperty('--oskblackh', `${BLACK_H * scale}px`);
+  keys.dataset.count = String(plan.count);
   // Remembered so `fitDockedKeys` can tell whether the band has moved since — a rebuild
   // re-docks, and re-docking asks it again.
   oskDrawnFor = plan.fills ? oskRoom() : -1;
 
   const sc = oskScale();
-  const addKey = (cls, semi, left, width, letter) => {
+  // Laid out in UNITS OF A KEY — `at` is how many keys along it starts, `wide` how many
+  // it covers — with `sizeOskKeys` the only place a key becomes pixels. Two callers ask
+  // for the same row at two widths: the plan's, and then whatever the frame turned out
+  // to be once the head could be measured (see fillFloatingKeys). A row that exists only
+  // in pixels cannot be asked the second question without being built again.
+  const addKey = (cls, semi, at, wide, letter) => {
     const k = document.createElement('div');
     k.className = `oskkey ${cls}`;
     k.dataset.midi = String(base + semi);
-    k.style.left = `${left}px`;
-    k.style.width = `${width}px`;
+    k.dataset.at = String(at);
+    k.dataset.wide = String(wide);
     const name = document.createElement('span');
     name.className = 'oskname';
     // Only the C's are named. Every white key labelled is fifteen readings where you
@@ -8185,9 +9537,9 @@ function buildOskKeys(ctl) {
       notes.push(Math.floor(i / sc.steps.length) * 12 + offset + sc.steps[i % sc.steps.length]);
       if (i > 512) break;                // a step list is never empty, but never loop forever
     }
-    range.textContent = `${midiName(base + notes[0])} – ${midiName(base + notes[notes.length - 1])}`;
+    label = `${midiName(base + notes[0])} – ${midiName(base + notes[notes.length - 1])}`;
     notes.forEach((semi, i) => {
-      const k = addKey('white scalekey', semi, i * KW, KW, SCALE_KEYS[i]);
+      const k = addKey('white scalekey', semi, i, 1, SCALE_KEYS[i]);
       // The ROOT is the landmark here, and it is the only one. C is where a piano's
       // octaves visibly start, which is why it is the mark in chromatic — but in A minor
       // pentatonic there is no C to count from, and labelling both leaves two competing
@@ -8200,9 +9552,9 @@ function buildOskKeys(ctl) {
     const whites = plan.count;
     for (let i = 0; i < whites; i++) {
       const semi = Math.floor(i / 7) * 12 + WHITE_SEMIS[i % 7];
-      addKey('white', semi, i * KW, KW, SEMI_QWERTY[semi]);
+      addKey('white', semi, i, 1, SEMI_QWERTY[semi]);
     }
-    range.textContent = `${midiName(base)} – `
+    label = `${midiName(base)} – `
       + `${midiName(base + Math.floor((whites - 1) / 7) * 12 + WHITE_SEMIS[(whites - 1) % 7])}`;
     // After the whites, so they draw over them without a z-index to maintain. Only the
     // ones that fall inside the drawn whites: the board can now end part way through an
@@ -8212,10 +9564,12 @@ function buildOskKeys(ctl) {
       for (const [semi, after] of BLACK_SEMIS) {
         const at = o * 7 + after + 1;
         if (at >= whites) continue;
-        addKey('black', o * 12 + semi, at * KW - BW / 2, BW, SEMI_QWERTY[o * 12 + semi]);
+        addKey('black', o * 12 + semi, at - BLACK_UNIT / 2, BLACK_UNIT, SEMI_QWERTY[o * 12 + semi]);
       }
     }
   }
+
+  sizeOskKeys(keys, plan.width);
 
   // One listener on the container rather than one per key, so a drag across the
   // keyboard glides — which is how you find the note you are after.
@@ -8250,7 +9604,7 @@ function buildOskKeys(ctl) {
     keys.addEventListener(type, (ev) => oskRelease(`p:${ev.pointerId}`));
   }
 
-  return keys;
+  return { keys, label };
 }
 
 /** The title bar moves the window. Everything it does is in its own tooltips. */
@@ -8294,8 +9648,65 @@ function oskPlace(x, y) {
   localStorage.setItem(OSK_POS_KEY, JSON.stringify({ x: left, y: top }));
 }
 
+// The ends of the instrument: A0 and C8, a grand piano's own. Past them in either
+// direction is not a register anything plays — a sub-bass rumble the desk cannot even
+// meter and a whistle above the top of the treble staff — and every voice in the rack is
+// tuned for the span between them. The keyboard shifts by whole octaves, so this is a
+// limit on the OCTAVE the board sits at rather than on each key: the whole span it draws
+// has to land inside them.
+const OSK_LOW_MIDI = 21;                 // A0
+const OSK_HIGH_MIDI = 108;               // C8
+
+/**
+ * The board as it will actually be drawn: how many keys, how wide, and what they span.
+ *
+ * One answer to a question the layout and the octave buttons both ask, and they have to
+ * agree on it. `oskKeyPlan` says how many keys the SPACE holds; this is where the piano's
+ * own ends have their say, and the two are not the same number.
+ *
+ * Where they part is a sparse key in a wide window. Thirty-five pentatonic degrees is
+ * nearly seven octaves — more than A0 to C8 holds — so there is no octave to sit at that
+ * puts both ends inside the range, and the clamp, asked to satisfy two limits that cannot
+ * both be met, honoured the bottom one and drew up to F#8. The keys past the end come off
+ * instead: a board that stops at the top of the instrument, which is what a keyboard with
+ * eighty-eight keys does too.
+ *
+ * `at(i)` is the i-th key in semitones above the base C — the same walk both branches of
+ * `oskKeyRow` make, written once so the range cannot be worked out from a different
+ * keyboard than the one on screen. `base` is always a C, so the offset from it up to the
+ * root IS the root.
+ */
+function oskBoard() {
+  const sc = oskScale();
+  const plan = oskKeyPlan(sc ? sc.steps.length : 7);
+  const at = sc
+    ? (i) => Math.floor(i / sc.steps.length) * 12 + sc.root + sc.steps[i % sc.steps.length]
+    : (i) => Math.floor(i / 7) * 12 + WHITE_SEMIS[i % 7];
+  const low = at(0);
+  // The lowest octave this board may sit at is fixed by its bottom key, so the highest
+  // note it could ever reach is measured from there — and any key past that is a key the
+  // instrument does not have.
+  const lo = Math.ceil((OSK_LOW_MIDI - low) / 12) - 1;
+  const ceiling = OSK_HIGH_MIDI - (lo + 1) * 12;
+  let count = plan.count;
+  while (count > 1 && at(count - 1) > ceiling) count--;
+  return { count, width: plan.width, fills: plan.fills, lo, low, high: at(count - 1) };
+}
+
+/** Which octaves the board may sit at and still draw inside A0 – C8. */
+function oskOctaveRange() {
+  const { lo, high } = oskBoard();
+  // Never crossed: `oskBoard` has already taken off any key that would make it so.
+  return { lo, hi: Math.max(lo, Math.floor((OSK_HIGH_MIDI - high) / 12) - 1) };
+}
+
+function clampOskOctave(n) {
+  const { lo, hi } = oskOctaveRange();
+  return clamp(n, lo, hi);
+}
+
 function setOskOctave(n) {
-  oskOct = clamp(n, 0, 7);
+  oskOct = clampOskOctave(n);
   if (oskShown()) buildOsk();
 }
 
@@ -8318,7 +9729,7 @@ function refreshOsk() {
     // The bench opens where the preset was measured: A2, which lives in octave 2. A
     // keyboard that opened at middle C would put the note the level was taken at two
     // octaves below the lowest key.
-    if (bench) oskOct = 2;
+    if (bench) oskOct = clampOskOctave(2);
     else if (oskPlayable(selectedLane) && !oskIsKit()) oskOct = laneOctave(selectedLane);
     buildOsk();
     return;
@@ -8352,7 +9763,7 @@ function showOsk(on) {
     rememberSongLayout();
     return;
   }
-  if (oskBench()) oskOct = 2;             // where A2 lives — see refreshOsk
+  if (oskBench()) oskOct = clampOskOctave(2);   // where A2 lives — see refreshOsk
   else if (oskPlayable(selectedLane) && oskLane !== selectedLane) oskOct = laneOctave(selectedLane);
   buildOsk();
   // Along the bottom of the library while that is open, rather than floating over it.
@@ -8378,24 +9789,13 @@ function oskTypedKey(e) {
   // notes. Without this, `r` is a semitone and the desk never sees the shortcut.
   if (e.shiftKey) return false;
   const key = e.key.toLowerCase();
-  // Escape means the biggest thing there is to back out of. While a take is running
-  // that is the recording: a panic-stop is the thing you want under your hand when a take
-  // is going wrong, and there is nowhere else to put it. Otherwise it is the keys.
-  if (key === 'escape') {
-    if (recArmed) {
-      const n = discardTake();
-      setRecord(false);
-      // Careful about what this claims. The take is written every beat, so Escape drops
-      // the last half-second at most — ⌘Z is what takes back the part already in the
-      // song, and saying otherwise would send you looking for notes that are still there.
-      toast(n
-        ? `Stopped — ${n} note${n === 1 ? '' : 's'} dropped. ⌘Z for what was already written`
-        : 'Recording off — ⌘Z to take back what was recorded');
-      return true;
-    }
-    setOskCatch(false);
-    return true;
-  }
+  // Escape is the panic now, and the keyboard does not claim it. It used to mean the
+  // biggest thing there was to back out of — the take while one was running, key-catching
+  // otherwise — but an emergency cut that stops working whenever this window is up is not
+  // one you can rely on, and both of the old meanings are inside the panic anyway: it
+  // stops the transport, disarms the take and drops what has not been written. Handing
+  // the letters back is what the ⌨ button in the title bar is for.
+  if (key === 'escape') return false;
   // A kit is one row of pads, so the home row is all it needs and Z/X have nothing
   // to shift. Everything else on the keyboard falls back to the desk.
   if (oskIsKit()) {
@@ -8956,7 +10356,15 @@ function silenceAll() {
   }
 }
 
-/** The header's emergency cut: no held input or scheduled sound survives it. */
+/**
+ * The emergency cut, on ⎋: no held input or scheduled sound survives it.
+ *
+ * It was a red button in the header as well, which is one control too many for what it
+ * does — Stop already silences everything you can hear, and the part panic adds on top
+ * (dropping and re-attaching MIDI, so a note-off that never arrived cannot leave a key
+ * down) is worth a key you can hit without aiming a mouse at it. Bound in the desk's
+ * keyboard handler, where every other context has already had its refusal.
+ */
 function panicAll() {
   const restoreMidi = midiOn;
   setMidi(false, { announce: false });
@@ -8967,7 +10375,10 @@ function panicAll() {
     : 'PANIC — all sound silenced and MIDI off');
 }
 
-/** Start or stop the transport, optionally from a given step. */
+/** Start or stop the transport, optionally from a given step.
+ *  When `fromStep` is 0 and loop is on with locators set, the loop is armed
+ *  WITHOUT jumping — the song plays from the start and begins looping only
+ *  when it reaches the locator region naturally. */
 function setPlaying(on, fromStep = null) {
   // Before `playing` changes, so `recording()` is still true and the take can measure
   // the keys that are still down against the position the music actually stopped at.
@@ -8989,7 +10400,13 @@ function setPlaying(on, fromStep = null) {
     Audio.setBank(track.bank, mixFor(trackId), arrFor(trackId));
     applyToEngine(mixFor(trackId));
     Audio.step = at;
-    applyLoop(at);
+    // "Play from start" with loop on: arm the selected loop region but don't jump
+    // the playhead into it — let the song play from 0 and naturally enter the loop.
+    if (fromStep === 0 && loopOn && currentLoopBounds()) {
+      applyLoopNoJump();
+    } else {
+      applyLoop(at);
+    }
     // The beat the take starts on, so the first boundary the playhead crosses is a real
     // crossing rather than a flush measured against a stale `-1`.
     recLastBeat = Math.floor((at % Math.max(1, songShape().totalSteps)) / 4);
@@ -8999,7 +10416,6 @@ function setPlaying(on, fromStep = null) {
     // still snaps to the bar that contains it.
     const { totalSteps } = songShape();
     parkedAt = ((Audio.step % totalSteps) + totalSteps) % totalSteps;
-    loopAnchor = Math.floor(parkedAt / 16) * 16;
     Audio.setLoop();
     Audio.setBank(null);
     // setBank(null) is the game's "no song" state: applyMix zeroes every send and
@@ -9010,6 +10426,7 @@ function setPlaying(on, fromStep = null) {
     // made them look like they needed an A/B to wake up. The engine should always
     // carry the mix you are looking at, playing or not.
     applyToEngine(mixFor(trackId));
+    flushSelectionEditors();
   }
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
@@ -9019,11 +10436,10 @@ $('pause').onclick = () => { if (playing) setPlaying(false); };
 $('stop').onclick = () => {
   const at = startedAt;
   silenceAll();
-  jumpTo(at);
+  jumpTo(at, { immediate: true });
   toast(`Stopped at bar ${Math.floor(at / 16) + 1}`);
 };
 $('playstart').onclick = () => { jumpTo(0, { start: true }); };
-$('panicbtn').onclick = panicAll;
 $('clearsolo').onclick = clearAllSolo;
 $('oskbtn').onclick = () => showOsk(!oskShown());
 // The header's pair. Same two functions the keyboard's own buttons call, so there is one
@@ -9114,6 +10530,25 @@ addEventListener('keydown', (e) => {
   // half way up a run is not a shortcut anyone asked for. Everything it does not
   // claim falls through, so space still plays the song and ⌘Z still undoes.
   if (oskTypedKey(e)) { e.preventDefault(); return; }
+  // ⎋ is PANIC — what the red button in the header used to be. Everything that has a
+  // smaller thing to back out of has already taken this key before it gets here: an open
+  // dialog, menu or drawer, and a grid holding a selection. What is left is a desk with
+  // nothing in front of it, where the only thing Escape could sensibly mean is "stop".
+  //
+  // The unwritten end of a take goes with it, which is what Escape meant while recording
+  // when the on-screen keyboard was catching keys. Careful about what that claims: the
+  // take is written every beat, so this drops the last half-second at most and ⌘Z is what
+  // takes back the part already in the song.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    const dropped = recArmed ? discardTake() : 0;
+    panicAll();
+    if (dropped) {
+      toast(`PANIC — all sound silenced · ${dropped} unwritten note${dropped === 1 ? '' : 's'}`
+        + ' dropped, ⌘Z for what was already recorded');
+    }
+    return;
+  }
   const lanes = deskLanes(viewBank(), 1);
   const idx = lanes.findIndex((l) => l.key === selectedLane);
   const key = e.key.toLowerCase();
@@ -9129,8 +10564,6 @@ addEventListener('keydown', (e) => {
   if (key === 'l') { $('looptoggle').click(); return; }
   if (key === 'g') { $('seqbtn').click(); return; }   // g for grid — the kit's window
   if (key === 'n') { $('rollbtn').click(); return; }  // n for notes — this channel's part
-  if ('1248'.includes(e.key)) { $('loopbars').value = e.key; $('loopbars').onchange(); return; }
-  if (key === '0') { $('loopbars').value = '0'; $('loopbars').onchange(); return; }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
     const { totalSteps } = songShape();
@@ -9664,6 +11097,7 @@ $('resetsong').onclick = () => {
 // Web Audio needs a gesture before it will make a sound. Refresh the authoritative
 // per-file state first so a scratch song opened from the previous session starts with
 // its saved mix/arrangement rather than the empty defaults in MIX.
+buildMasterToolbar();
 $('start').onclick = async () => {
   Audio.ensure();
   $('gate').remove();

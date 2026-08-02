@@ -23,7 +23,12 @@ const save = { slot, persist() {} };
 let returned = 0;
 const shop = new ShopState({ save, flow: { toHub: () => { returned++; } } });
 shop.enter();
-assert(Audio.bank === COUNTER_DANCE_MIX_THEME,
+// `sourceBank`, not `bank`: setBank keeps what it was HANDED, and publishes the bank
+// the sequencer reads through applyMix — which returns a merged copy as soon as the
+// song has a saved mix, so identity against the theme object only ever held while the
+// shop had no mix. What is being asked here is which song was chosen, and that is the
+// one setBank was given.
+assert(Audio.sourceBank === COUNTER_DANCE_MIX_THEME,
   'Gary counter activation starts the approved procedural Dance Mix');
 
 assert(shop.options().length === 15, 'the fullest shop contains fifteen rows');
@@ -104,12 +109,12 @@ assert(returned === 3, 'one touch on fixed BACK exits the shop');
 
 const benchAudio = new BenchState({ save, flow: { toHub() {} } });
 benchAudio.enter();
-assert(Audio.bank === COUNTER_DANCE_MIX_THEME,
+assert(Audio.sourceBank === COUNTER_DANCE_MIX_THEME,
   'Dolores counter activation starts the approved procedural Dance Mix');
 benchAudio.exit();
-assert(Audio.bank === HUB_THEME, 'leaving Dolores restores the Food Court theme');
+assert(Audio.sourceBank === HUB_THEME, 'leaving Dolores restores the Food Court theme');
 shop.exit();
-assert(Audio.bank === HUB_THEME, 'leaving Gary restores the Food Court theme');
+assert(Audio.sourceBank === HUB_THEME, 'leaving Gary restores the Food Court theme');
 
 Input.clearAll();
 console.log(failed ? 'SHOP MENU: FAILED' : 'SHOP MENU: PASSED');

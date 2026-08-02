@@ -44,7 +44,10 @@ for (const c of VOICE_CATEGORIES.filter((x) => !KIT_CATEGORIES.includes(x))) {
 
 // A drum goes on a percussion lane because that is the only kind carrying `noteKey` —
 // the pitch a drum is struck at. On a melodic lane it has no note and does not sound.
-const KIT_EXPECT = { Kicks: 'kick', Snares: 'snare', Claps: 'clap', Hats: 'hats', Percussion: 'hats' };
+const KIT_EXPECT = {
+  Kick: 'kick', Snare: 'snare', Hats: 'hats', Clap: 'clap',
+  Tom: 'tom', Crash: 'crash', Perc: 'hats',
+};
 for (const [cat, lane] of Object.entries(KIT_EXPECT)) {
   assert(benchLane({ category: cat }) === lane, `${cat} is heard on the ${lane} lane`);
   assert(PERCUSSION_LANES.includes(lane), `${lane} is a percussion lane, so it carries a note key`);
@@ -94,6 +97,12 @@ assert(benchRoot(voice('kickDeep')) === seamFor('kick').note,
 assert(benchRoot(null) === 110, 'and nothing at all still gives a note rather than NaN');
 assert(benchIsKit(voice('kickDeep')) && !benchIsKit(voice('roundMono')),
   'kit and pitched are told apart by category, which is what the bench lane is chosen from');
+assert(benchLane(voice('tom')) === 'tom' && benchLane(voice('crashEngine')) === 'crash',
+  'actual Tom and Crash presets bench on their own lanes');
+assert(benchIsKit(voice('ds808Cowbell')) && benchLane(voice('ds808Cowbell')) === 'tom',
+  'Perc cowbell remains a kit preset on its technical tom lane');
+assert(!benchIsKit(voice('dsZap')) && benchLane(voice('dsZap')) === 'bass',
+  'FX zap remains non-drum on the bench');
 
 // ---- the borrow is put back --------------------------------------------------
 benchReset();   // the high-water mark is module state; each block starts from nothing
@@ -157,37 +166,46 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
 // whole reason these exist: the root moves under the filter and the release.
 {
   const progs = PATTERNS.filter((p) => p.slow);
-  assert(progs.length === 2, 'both progressions are offered');
+  assert(progs.map((p) => p.id).join(' ')
+    === 'I-IV-V-IV I-V-vi-IV I-I-ii-iii I-V-bVII-bVII ii-V-I-I',
+    'every progression is offered, in the order the menu reads them');
   const byId = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
 
-  const iiv = byId['I-IV-V'];
-  assert(!!iiv, 'I – IV – V is in the list');
-  assert(iiv.cell.length === 3, 'and is three chords');
-  assert(iiv.cell.every((c) => c && c.length === 3), 'each of them a triad');
-  // Degrees, as semitones from the root: tonic, fourth, fifth.
-  assert(iiv.cell.map((c) => c[0]).join(',') === '0,5,7', 'rooted on I, IV and V');
-  assert(iiv.cell.every((c) => c[1] - c[0] === 4 && c[2] - c[0] === 7),
-    'every chord a major triad — a third and a fifth above its own root');
+  // Eight bars, two to a chord. A chord that lasts one bar at this rate is gone before
+  // a long release has said anything, which is the one thing these are here to hear.
+  assert(progs.every((p) => p.cell.length === 8), 'each of them eight bars long');
+  assert(progs.every((p) => p.cell.every((c) => c && c.length === 3)), 'every bar a triad');
+  assert(progs.every((p) => p.cell.every((c) => c[1] - c[0] === 4 && c[2] - c[0] === 7)),
+    'and every triad major — a third and a fifth above its own root, spelled into the'
+    + ' chosen key by the quantiser');
+  assert(progs.every((p) => p.cell.every((c, i) => i % 2 === 0 || c[0] === p.cell[i - 1][0])),
+    'held two bars each, so the harmony moves under the filter slowly enough to judge');
 
-  const rock = byId['I-V-bVII'];
-  assert(!!rock, 'I – V – ♭VII is in the list');
-  assert(rock.cell.map((c) => c[0]).join(',') === '0,7,10',
+  const rock = byId['I-IV-V-IV'];
+  assert(!!rock, 'I – IV – V – IV is in the list');
+  // Degrees, as semitones from the root: tonic, fourth, fifth, and back to the fourth.
+  assert(rock.cell.map((c) => c[0]).join(',') === '0,0,5,5,7,7,5,5',
+    'rooted on I, IV, V and IV again — the rock staple, not a I – IV – V that stops'
+    + ' on the dominant');
+
+  const flatSeven = byId['I-V-bVII-bVII'];
+  assert(!!flatSeven, 'I – V – ♭VII – ♭VII is in the list');
+  assert(flatSeven.cell.map((c) => c[0]).join(',') === '0,0,7,7,10,10,10,10',
     'rooted on I, V and the FLAT seven — ten semitones, the rock cadence, not the'
-    + ' diminished triad on the major seventh');
-  assert(rock.cell.every((c) => c[1] - c[0] === 4 && c[2] - c[0] === 7),
-    'and every chord a major triad');
+    + ' diminished triad on the major seventh — held for four bars');
 
-  // A progression at a sixteenth is three chords in half a beat, which is a strum.
+  // A progression at a sixteenth is eight chords in two beats, which is a strum.
   // Choosing one takes the rate down with it — but only downward, and only past 1/2.
   const p = createPatternPlayer({ Audio: { ctx: null }, bpm: () => 120, root: () => 110 });
   p.setRate('16');
-  p.setPattern('I-IV-V');
-  assert(p.rate.steps >= 8, 'picking a progression at 1/16 gives it room — a chord per bar');
+  p.setPattern('I-IV-V-IV');
+  assert(p.rate.steps === 16, 'picking a progression at 1/16 gives it room — a bar per cell,'
+    + ' which is what makes a chord written twice last two bars');
   p.setRate('2');
-  p.setPattern('I-V-bVII');
+  p.setPattern('I-V-bVII-bVII');
   assert(p.rate.id === '2', 'a rate already slow enough is a deliberate choice, and is left alone');
   p.setRate('1');
-  p.setPattern('I-IV-V');
+  p.setPattern('I-IV-V-IV');
   assert(p.rate.id === '1', 'and so is one slower still — the nudge never speeds anything up');
   p.setRate('16');
   p.setPattern('repeat');
@@ -255,6 +273,10 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
   // voice is not a switch and must not keep clearing it.
   now = 280;
   player.start('roundMono');
+  // From here, not from the top of the block: `stop()` cuts the bench too, and the loop
+  // above stopped the player once per figure. What is being counted is what SETVOICE
+  // does, so the count starts where that question does.
+  previewCuts = 0;
   player.setVoice('kickDeep');
   assert(previewCuts === 1, 'switching an active audition cuts the old preset once');
   player.setVoice('kickDeep');

@@ -15,7 +15,7 @@
 // So: the catalogue with no song in front of it. Pick any preset, hear it on a bench,
 // edit it with the same editor, file it with the same Save.
 
-import { VOICES, VOICE_CATEGORIES, isKitVoice, seamFor } from '../src/data/voices.js';
+import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -70,8 +70,8 @@ export function foldIcon(dir = 'right') {
  * Auditioning on the lane the measurement was taken on is the one place where what you
  * hear and what the number claims are the same statement.
  *
- * A drum preset goes on its measured `homeLane`, because `Audition` deliberately mixes
- * drums and pitched basses. A percussion lane is the only kind that carries `noteKey`
+ * A drum preset goes on its measured `homeLane`. A percussion lane is the only kind
+ * that carries `noteKey`
  * — the pitch a drum is struck at. A kick preset on a melodic lane has no note to be
  * struck at and simply does not sound.
  *
@@ -82,13 +82,16 @@ export function foldIcon(dir = 'right') {
  * without having to reach into the echo at all.
  */
 const BENCH_LANES = {
-  Kicks: 'kick', Snares: 'snare', Claps: 'clap', Hats: 'hats', Percussion: 'hats',
+  Kick: 'kick', Snare: 'snare', Hats: 'hats', Clap: 'clap', Tom: 'tom', Crash: 'crash', Perc: 'hats',
 };
 export const benchLane = (voice) => {
-  // Audition is intentionally mixed: drum entries carry their measured home lane,
-  // while pitched entries fall through to the bass bench. Rim remains on the dry hats
-  // bench because the rim lane is permanently echo-connected.
-  const lane = voice?.homeLane || BENCH_LANES[voice?.category] || 'bass';
+  // Drum entries carry their measured home lane, while pitched entries fall through
+  // to the bass bench. Rim remains on the dry hats bench because the rim lane is
+  // permanently echo-connected.
+  const home = voice?.homeLane;
+  const lane = !isKitVoice(voice) && PERCUSSION_LANES.includes(home)
+    ? 'bass'
+    : home || BENCH_LANES[voice?.category] || 'bass';
   return lane === 'rim' ? 'hats' : lane;
 };
 export const benchIsKit = (voice) => isKitVoice(voice);
@@ -505,17 +508,19 @@ export function createPatternPlayer({
     /**
      * Choose a figure — and, for a progression, give it room.
      *
-     * A progression read at a sixteenth is three chords in half a beat, which is not a
+     * A progression read at a sixteenth is eight chords in two beats, which is not a
      * progression and is not what anyone picking one is asking for. So a `slow` pattern
-     * arriving at a fast rate takes a bar per chord. Only DOWNWARD, and only past 1/2:
-     * a rate you have already set slower than that is a deliberate choice and is left
-     * alone, and the dropdown visibly moves when this fires, so it is a nudge rather
-     * than a rule you have to discover.
+     * arriving at a fast rate takes a WHOLE BAR per cell — which is what makes the
+     * repeated entries mean what the titles say they mean: two cells of the same triad
+     * are two bars of that chord, not two quarter notes of it. Only DOWNWARD, and only
+     * past 1/2: a rate you have already set slower than that is a deliberate choice and
+     * is left alone, and the dropdown visibly moves when this fires, so it is a nudge
+     * rather than a rule you have to discover.
      */
     setPattern: (id) => {
       pattern = PATTERN_BY_ID[id] || pattern;
       ix = 0;
-      if (pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['4'];
+      if (pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
     /** Audition choices are transient and must not masquerade as song state. */

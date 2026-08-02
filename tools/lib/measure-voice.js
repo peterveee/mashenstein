@@ -58,8 +58,8 @@ export const oneNote = (lane) => {
  * this did until the levels were re-derived, levelled every drum in the library against
  * a pitch nothing plays it at.
  *
- * A preset's own `homeLane` wins: the Percussion category holds the claves and the
- * drums together, and a taiko belongs on the tom lane rather than at the rim's 420 Hz.
+ * A preset's own `homeLane` wins: the Perc category holds the claves and the drums
+ * together, and a technical tom lane can still carry a named percussion sound.
  *
  * `rim` is a measuring lane here even though the desk's audition bench refuses it — the
  * bench's objection is that rim always taps the echo bus, and `oneNote` turns the echo
@@ -68,9 +68,16 @@ export const oneNote = (lane) => {
  * measured before and keeps the melodic half of the table comparable across the change.
  */
 export const HOME_LANES = {
-  Kicks: 'kick', Snares: 'snare', Claps: 'clap', Hats: 'hats', Percussion: 'rim',
+  Kick: 'kick', Snare: 'snare', Clap: 'clap', Hats: 'hats', Tom: 'tom', Crash: 'crash',
+  Perc: 'rim',
 };
-export const homeLane = (v) => v.homeLane || HOME_LANES[v.category] || 'bass';
+export const homeLane = (v) => {
+  // `dsZap` has a special crash audition render, but remains FX rather than a drum.
+  // Old song-local copies may retain that technical home lane, so do not let it
+  // change measurement routing after category normalization.
+  if (v?.category === 'FX' && PERCUSSION_LANES.includes(v.homeLane)) return 'bass';
+  return v?.homeLane || HOME_LANES[v?.category] || 'bass';
+};
 
 /**
  * One preset, on its lane, at unity — measured through the path it is really played by.

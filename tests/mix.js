@@ -249,25 +249,27 @@ const { MIX: empty } = await (async () => {
 assert(Object.keys(empty).length === 0,
   'a track with no decisions in it is left out of the file entirely');
 
-// The desk shows a bypassed bus compressor on every master. Switching it on and back
-// off again leaves that seed sitting in the draft, and writing it out would give
-// every song in the game a masterEffects line for a chain nobody has touched.
+// The master opens with an EMPTY chain. Adding an effect and taking it off again
+// leaves that empty list sitting in the draft, and writing it out would give every
+// song in the game a masterEffects line for a chain nobody has anything on.
 const { MIX: seeded } = await (async () => {
   const p = join(dir, 'seeded.js');
   writeFileSync(p, renderMixFile({ plumber: { masterEffects: DEFAULT_MASTER_CHAIN() } }));
   return import(p);
 })();
+assert(DEFAULT_MASTER_CHAIN().length === 0,
+  'the master bus starts with no plugins on it at all');
 assert(Object.keys(seeded).length === 0,
   'the master chain the desk seeds is a starting point, not a decision, and is not written out');
 
 const { MIX: touched } = await (async () => {
   const p = join(dir, 'touched.js');
-  const on = DEFAULT_MASTER_CHAIN().map((e) => ({ ...e, bypass: false }));
+  const on = [{ id: 'compressor', params: { threshold: -12, ratio: 2 } }];
   writeFileSync(p, renderMixFile({ plumber: { masterEffects: on } }));
   return import(p);
 })();
 assert(touched.plumber?.masterEffects?.length === 1 && !touched.plumber.masterEffects[0].bypass,
-  'switching the seeded master compressor ON is a decision, and is written out');
+  'putting a compressor on the master bus is a decision, and is written out');
 
 // ---- defaults --------------------------------------------------------------
 // Both sends shut. A lane used to default to the echo if it was a melodic one, which
@@ -395,10 +397,12 @@ const CHANGES = [
   ['the master trim', (m) => { m.master = -2; }],
   ['the master pan', (m) => { m.masterPan = 0.3; }],
   ['the limiter', (m) => { m.limiter = true; }],
-  ['the seeded master compressor switched on', (m) => {
-    m.masterEffects = DEFAULT_MASTER_CHAIN().map((e) => ({ ...e, bypass: false }));
+  ['a compressor put on the master bus', (m) => {
+    m.masterEffects = [{ id: 'compressor', params: { threshold: -12, ratio: 2 } }];
   }],
-  ['the seeded master compressor taken out', (m) => { m.masterEffects = []; }],
+  ['that master compressor bypassed', (m) => {
+    m.masterEffects = [{ id: 'compressor', bypass: true, params: { threshold: -12, ratio: 2 } }];
+  }],
   ['a duplicated track', (m) => { m.layers = [{ key: 'bass2', from: 'bass' }]; }],
   ['an independent percussion sound', (m) => {
     m.layers = [{ key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' }];
@@ -420,8 +424,8 @@ const CHANGES = [
 
 // And each of these changes nothing the file can hold, so the desk must stay quiet.
 // Every one of them is something the desk does on its own: `editFx` writes a whole set
-// of defaults the first time you touch a send, the master arrives seeded with a
-// bypassed compressor, and a send dragged to zero is a send that is not there.
+// of defaults the first time you touch a send, the master arrives with an empty chain
+// on it, and a send dragged to zero is a send that is not there.
 const NON_CHANGES = [
   ['a send touched and put back to its defaults', (m) => { m.fx.reverb = { ...AUX_DEFAULTS.reverb, decay: 3.4, effects: m.fx.reverb.effects }; }],
   ['the other send written out at its defaults', (m) => { m.fx.delay = { ...AUX_DEFAULTS.delay, level: 0.8 }; }],

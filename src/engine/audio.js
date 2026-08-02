@@ -13,6 +13,12 @@ import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBank
 import { trackIdOf } from '../data/tracks.js';
 import { applyArrangement, resolveSection } from '../data/arrangements.js';
 
+// The scheduler runs on the main thread, alongside panel builds and layout work. A
+// quarter-second of queued audio gives those unavoidable UI tasks room to finish
+// without reaching the audible edge; scheduled timestamps do not move, and preview
+// notes use their separate path below.
+const SEQUENCER_LOOKAHEAD = 0.25;
+
 /**
  * How much louder the melodic voices play than they were authored.
  *
@@ -213,6 +219,11 @@ class AudioSys {
     // Loop region, in absolute 16th-steps. null = play the whole song form.
     this.loopStart = null;
     this.loopEnd = null;
+    this.pendingLoop = null;
+    this.pendingStep = null;
+    // A locator loop can be armed while the transport is still playing the intro.
+    // Keep songBeat() on that intro until the scheduler has actually wrapped once.
+    this.loopHasWrapped = false;
     this.delayDivision = 0.75;
     this.delayFeedback = 0.35;
     this.delayTone = 2800;
@@ -450,15 +461,74 @@ class AudioSys {
    * Pass no arguments to clear it.
    */
   setLoop(startStep = null, endStep = null) {
+    this.pendingLoop = null;
+    this.pendingStep = null;
     if (startStep == null || endStep == null || endStep <= startStep) {
       this.loopStart = this.loopEnd = null;
+      this.loopHasWrapped = false;
       return;
     }
     this.loopStart = Math.max(0, Math.floor(startStep));
     this.loopEnd = Math.floor(endStep);
+    this.loopHasWrapped = false;
     // Drop straight into the region if the playhead is outside it, so arming a loop
     // takes effect on this pass rather than after the song wanders back round.
     if (this.step < this.loopStart || this.step >= this.loopEnd) this.step = this.loopStart;
+  }
+
+  /**
+   * Change an armed loop without interrupting the bar that is already playing.
+   * The scheduler swaps these bounds at the next bar boundary, or at the current
+   * loop's end when that comes first.
+   */
+  setLoopAtBoundary(startStep = null, endStep = null) {
+    this.pendingStep = null;
+    if (startStep == null || endStep == null || endStep <= startStep
+      || this.loopStart == null || this.loopEnd == null) {
+      this.setLoop(startStep, endStep);
+      return;
+    }
+    const nextBar = this.step % 16 === 0 ? this.step : (Math.floor(this.step / 16) + 1) * 16;
+    const boundary = Math.min(this.loopEnd, nextBar);
+    const pendingBoundary = this.pendingLoop && this.pendingLoop.boundary > this.step
+      ? this.pendingLoop.boundary : boundary;
+    this.pendingLoop = {
+      start: Math.max(0, Math.floor(startStep)),
+      end: Math.floor(endStep),
+      boundary: pendingBoundary,
+    };
+  }
+
+  applyPendingLoop() {
+    if (!this.pendingLoop || this.step < this.pendingLoop.boundary) return false;
+    this.loopStart = this.pendingLoop.start;
+    this.loopEnd = this.pendingLoop.end;
+    this.pendingLoop = null;
+    this.step = this.loopStart;
+    this.loopHasWrapped = true;
+    return true;
+  }
+
+  /** Queue a playing seek for the next bar boundary instead of cutting the bar. */
+  setStepAtBoundary(step) {
+    this.pendingLoop = null;
+    const target = Math.max(0, Math.floor(step));
+    const nextBar = this.step % 16 === 0 ? this.step : (Math.floor(this.step / 16) + 1) * 16;
+    const boundary = this.loopEnd == null ? nextBar : Math.min(this.loopEnd, nextBar);
+    const inLoop = this.loopStart != null && this.loopEnd != null
+      && (target < this.loopStart || target >= this.loopEnd);
+    this.pendingStep = {
+      step: inLoop ? this.loopStart : target,
+      boundary,
+    };
+  }
+
+  applyPendingStep() {
+    if (!this.pendingStep || this.step < this.pendingStep.boundary) return false;
+    this.step = this.pendingStep.step;
+    this.pendingStep = null;
+    this.loopHasWrapped = false;
+    return true;
   }
 
   // ---- shared delay controls ------------------------------------------------
@@ -1549,7 +1619,7 @@ class AudioSys {
    *
    * So: re-merge the bank, push the mix back onto the strips, and leave the transport
    * exactly where it is. `step` is not reset, `nextTime` is not moved, and songTrim is
-   * not touched — the notes already in the 120ms lookahead play on their old voice and
+   * not touched — the notes already in the quarter-second lookahead play on their old voice and
    * everything after them is the new one.
    *
    * Falls back to setBank when the bank is not the one already up: that is a song
@@ -1993,7 +2063,7 @@ class AudioSys {
 
   schedule() {
     if (!this.ctx || !this.bank) return;
-    while (this.nextTime < this.ctx.currentTime + 0.12) this.scheduleStep();
+    while (this.nextTime < this.ctx.currentTime + SEQUENCER_LOOKAHEAD) this.scheduleStep();
   }
 
   /**
@@ -2152,7 +2222,7 @@ class AudioSys {
     //
     // The reason is Tone's, and it is a hard rule rather than a preference: an
     // instrument's oscillator keeps a state timeline, and a state may not be added
-    // BEFORE one already on it. The sequencer schedules a playing song 120ms into the
+    // BEFORE one already on it. The sequencer schedules a playing song a quarter-second into the
     // future; a preview lands at `currentTime + 0.02`, which is in the middle of that.
     // Sharing the pool therefore threw — "the time must be greater than or equal to the
     // last scheduled time" — and took the desk's script with it, in the one situation
@@ -2184,6 +2254,7 @@ class AudioSys {
   // code would bury any real change in a diff nobody could review.
   scheduleStep() {
     {
+      if (!this.applyPendingStep()) this.applyPendingLoop();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       // Song form: bank.sections is a list of partial banks (lane overrides) and
       // bank.order the sequence to play them in — so a track can progress
@@ -2280,8 +2351,11 @@ class AudioSys {
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + delta;
       const lane = (key) => {
-        const strip = this._previewing ? null : (this.mixer && this.mixer.lane(key));
-        const gate = this._previewing
+        // Preview notes use their own synth timeline, but they still belong to the
+        // selected channel. Keep them on that channel's live strip so its inserts,
+        // EQ, fader, and both sends are the same ones shown in the desk.
+        const strip = this.mixer && this.mixer.lane(key);
+        const gate = this._previewing && !strip
           ? this._benchGate(key)
           : this._laneGate(key, strip ? strip.dry : this.musicBus,
             strip ? strip.wet : this.echoBus);
@@ -3059,7 +3133,13 @@ class AudioSys {
       }
       this.nextTime += spb;
       this.step++;
-      if (this.loopEnd != null && this.step >= this.loopEnd) this.step = this.loopStart;
+      if (this.applyPendingStep() || this.applyPendingLoop()) {
+        // The selected range changed on this bar line; the new range owns the next
+        // scheduled step, so do not run the old loop's wrap after it.
+      } else if (this.loopEnd != null && this.step >= this.loopEnd) {
+        this.step = this.loopStart;
+        this.loopHasWrapped = true;
+      }
     }
   }
 
@@ -3085,7 +3165,8 @@ class AudioSys {
     // could therefore flash the end of bar 2 before returning to beat 1. Keep the
     // fractional clock inside the same range as the audio loop; the rest of the desk
     // can still modulo it against the full song when drawing the timeline.
-    if (this.loopStart != null && this.loopEnd != null && this.loopEnd > this.loopStart) {
+    if (this.loopStart != null && this.loopEnd != null && this.loopEnd > this.loopStart
+      && (this.loopStart === 0 || this.loopHasWrapped)) {
       const span = this.loopEnd - this.loopStart;
       heardStep = this.loopStart + ((heardStep - this.loopStart) % span + span) % span;
     }
@@ -3113,7 +3194,7 @@ class AudioSys {
    * Kit presence, from the sequencer's own tally rather than from the spectrum.
    *
    * scheduleStep() queues each percussion step at the audio time it will sound,
-   * up to 120ms ahead of the playhead; this drains that queue as those times
+   * up to a quarter-second ahead of the playhead; this drains that queue as those times
    * pass, so what gets reported is what has been HEARD and not what is about to
    * be. That is the whole reason to count it here instead of guessing at
    * transients: the arrangement already knows, exactly, on the bar it happens.

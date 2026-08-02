@@ -107,9 +107,9 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 
 | ID | Label | Waveform | Category |
 |----|-------|----------|----------|
-| `toneSquare` | Square Tone | square | Leads |
-| `toneSawtooth` | Sawtooth Tone | sawtooth | Leads |
-| `toneTriangle` | Triangle Tone | triangle | Leads |
+| `toneSquare` | Square Tone | square | Lead |
+| `toneSawtooth` | Sawtooth Tone | sawtooth | Lead |
+| `toneTriangle` | Triangle Tone | triangle | Lead |
 | `toneSine` | Sine Tone | sine | Keys |
 
 ### Why It Exists
@@ -176,20 +176,20 @@ Filtered noise bursts with an optional pitched body — the snare, clap, hat, an
 
 | ID | Label | Category | Key Feature |
 |----|-------|----------|-------------|
-| `snareCrisp` | Snare | Snares | Engine's own snare — bright band, short decay, triangle body |
-| `snareFat` | Fat Snare | Snares | Lower band, longer tail, more body |
-| `snareTight` | Tight Snare | Snares | Gated — cut off almost before it starts |
-| `snareBrush` | Brush | Snares | Highpassed sweep, no body |
-| `snareRim` | Rimshot | Snares | Narrow, high, instant — the stick not the skin |
-| `clap808` | Clap | Claps | 4 bursts, 11–36ms apart |
-| `clapTight` | Tight Clap | Claps | 3 closer, shorter bursts |
-| `clapRoom` | Big Room Clap | Claps | 5 bursts spread wider, long tail |
+| `snareCrisp` | Snare | Snare | Engine's own snare — bright band, short decay, triangle body |
+| `snareFat` | Fat Snare | Snare | Lower band, longer tail, more body |
+| `snareTight` | Tight Snare | Snare | Gated — cut off almost before it starts |
+| `snareBrush` | Brush | Snare | Highpassed sweep, no body |
+| `snareRim` | Rimshot | Snare | Narrow, high, instant — the stick not the skin |
+| `clap808` | Clap | Clap | 4 bursts, 11–36ms apart |
+| `clapTight` | Tight Clap | Clap | 3 closer, shorter bursts |
+| `clapRoom` | Big Room Clap | Clap | 5 bursts spread wider, long tail |
 | `hatClosed` | Closed Hat | Hats | Very short highpassed tick (28ms) |
 | `hatOpen` | Open Hat | Hats | Same band ringing for 330ms |
 | `hatPedal` | Pedal Hat | Hats | Duller, lower — foot-closing sound |
-| `shaker` | Shaker | Percussion | Soft band, no attack |
-| `tambourine` | Tambourine | Percussion | Bright with pitch body |
-| `noiseSweep` | Noise Hit | Rough & Electric | Wide unfiltered burst, long fall |
+| `shaker` | Shaker | Perc | Soft band, no attack |
+| `tambourine` | Tambourine | Perc | Bright with pitch body |
+| `noiseSweep` | Noise Hit | FX | Wide unfiltered burst, long fall |
 
 ---
 
@@ -366,18 +366,18 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 
 | ID | Label | Category | Osc | Noise | Drive | Key Feature |
 |----|-------|----------|-----|-------|-------|-------------|
-| `dsKick` | DS Kick | Kicks | sine 165→48, 0.45s decay | lowpass click, 15ms | 0.20 | 808-style sub kick |
-| `dsKickHard` | DS Hard Kick | Kicks | sine 230→55, 0.22s decay | bandpass click, 18ms | 0.55 | Faster, harder, pushed into shaper |
-| `dsSnare` | DS Snare | Snares | triangle 210→165, 0.11s | bandpass 2100Hz, 0.17s | 0.18 | Two-source snare, noise outlasts body |
-| `dsSnareCrack` | DS Crack Snare | Snares | square 255→200, 50ms | highpass 2900Hz, 85ms | 0.35 | Tight, driven — backbeat for fast songs |
-| `dsClap` | DS Clap | Claps | (none) | bandpass 1550→1050 sweep, 4 taps | — | Filter sweeps down as clap decays |
+| `dsKick` | DS Kick | Kick | sine 165→48, 0.45s decay | lowpass click, 15ms | 0.20 | 808-style sub kick |
+| `dsKickHard` | DS Hard Kick | Kick | sine 230→55, 0.22s decay | bandpass click, 18ms | 0.55 | Faster, harder, pushed into shaper |
+| `dsSnare` | DS Snare | Snare | triangle 210→165, 0.11s | bandpass 2100Hz, 0.17s | 0.18 | Two-source snare, noise outlasts body |
+| `dsSnareCrack` | DS Crack Snare | Snare | square 255→200, 50ms | highpass 2900Hz, 85ms | 0.35 | Tight, driven — backbeat for fast songs |
+| `dsClap` | DS Clap | Clap | (none) | bandpass 1550→1050 sweep, 4 taps | — | Filter sweeps down as clap decays |
 | `dsHatClosed` | DS Closed Hat | Hats | (none) | highpass 7800Hz, 32ms | — | Resonant highpassed tick |
 | `dsHatOpen` | DS Open Hat | Hats | (none) | highpass 6800Hz, 420ms | — | Same band left ringing |
-| `dsShaker` | DS Shaker | Percussion | (none) | bandpass 6300Hz, 18ms attack | — | Only drum with an attack ramp |
-| `dsTom` | DS Tom | Percussion | sine 220→105, 0.32s | lowpass skin, 30ms | 0.12 | Pitched tom, tune via lane note |
-| `dsRim` | DS Rim | Percussion | square 460→635, 0.12s | bandpass 4300Hz, 0.23s | 0.24 | Stick sound, both sections gone in 30ms |
-| `dsZap` | DS Zap | Rough & Electric | sawtooth 1900→50, 85ms | (none) | 0.50 | Laser tom — saw falls 5 octaves |
-| `dsCrackSnare2` | DS Crack Snare 2 | Snares | square 255→440, 50ms | highpass 2900Hz, 0.3s | 0.35 | Variant with rising pitch |
+| `dsShaker` | DS Shaker | Perc | (none) | bandpass 6300Hz, 18ms attack | — | Only drum with an attack ramp |
+| `dsTom` | DS Tom | Tom | sine 220→105, 0.32s | lowpass skin, 30ms | 0.12 | Pitched tom, tune via lane note |
+| `dsRim` | DS Rim | Perc | square 460→635, 0.12s | bandpass 4300Hz, 0.23s | 0.24 | Stick sound, both sections gone in 30ms |
+| `dsZap` | DS Zap | FX | sawtooth 1900→50, 85ms | (none) | 0.50 | Laser tom — saw falls 5 octaves |
+| `dsCrackSnare2` | DS Crack Snare 2 | Snare | square 255→440, 50ms | highpass 2900Hz, 0.3s | 0.35 | Variant with rising pitch |
 | `dsClosedHat2` | DS Closed Hat 3 | Hats | (none) | highpass 6275→2800 sweep, Q=5.1 | — | Sweeping resonant closed hat |
 | `hatSnap` | = Snap Hat | Hats | (none) | highpass 6200→11000, Q=1.6, 30ms | 0.30 | Cutoff climbs as it decays |
 | `hatSnapOpen` | = Snap Open Hat | Hats | (none) | highpass 8000→5200, 0.42s | 0.25 | The sweep the other way — a cymbal darkening |
@@ -388,14 +388,14 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 
 | ID | Label | Category | What it demonstrates |
 |----|-------|----------|----------------------|
-| `rimRing` | = Ring Rim | Percussion | **Resonator**: a violet-noise crack over a Q=90 ring at 1720 Hz |
-| `rimWood` | = Wood Rim | Percussion | **Resonator + tone**: square knock, Q=60 shell at 780 Hz, lowpassed at 7k |
-| `rimClang` | = Clang Rim | Percussion | **FM + fold**: ratio 3.7, index 2.2, folded rather than clipped |
+| `rimRing` | = Ring Rim | Perc | **Resonator**: a violet-noise crack over a Q=90 ring at 1720 Hz |
+| `rimWood` | = Wood Rim | Perc | **Resonator + tone**: square knock, Q=60 shell at 780 Hz, lowpassed at 7k |
+| `rimClang` | = Clang Rim | Perc | **FM + fold**: ratio 3.7, index 2.2, folded rather than clipped |
 | `hatCluster` | = Cluster Hat | Hats | **Metal cluster**: the 808's six partials, −24 dB/oct highpass, humanised |
 | `hatClusterOpen` | = Cluster Open Hat | Hats | The same cluster held for 460ms |
-| `snarePink` | = Pink Snare | Snares | **Coloured noise + slope + humanise**: pink at −24 dB/oct |
-| `clapHands` | = Hands Clap | Claps | **tapTone + humanise**: four hands, none of them identical |
-| `kickCrush` | = Crushed Kick | Kicks | **crush + tone**: bit-crushed 808 with the top pulled off |
+| `snarePink` | = Pink Snare | Snare | **Coloured noise + slope + humanise**: pink at −24 dB/oct |
+| `clapHands` | = Hands Clap | Clap | **tapTone + humanise**: four hands, none of them identical |
+| `kickCrush` | = Crushed Kick | Kick | **crush + tone**: bit-crushed 808 with the top pulled off |
 
 **The engine's own kit, transcribed.** All eight hand-written drums in `scheduleStep`, stated as data. Not new sounds — the point is the claim: everything the engine's kit does, this construction can now say. Verified by rendering each lane twice, the engine's own voice and then the preset, and comparing band by band:
 

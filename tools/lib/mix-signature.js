@@ -122,9 +122,9 @@ export function mixSignature(m) {
   if (fx) out.fx = fx;
   if (m.voice && Object.keys(m.voice).length) out.voice = { ...m.voice };
   if (m.voiceParams && Object.keys(m.voiceParams).length) out.voiceParams = JSON.parse(JSON.stringify(m.voiceParams));
-  // The desk seeds every untouched master with a bypassed bus compressor, and the
-  // serialiser will not write it — so a master somebody merely opened is not a change.
-  // Taking the seed out IS one, and that is stored as [], which is not the seed.
+  // Every untouched master starts empty, and the serialiser will not write an empty
+  // chain — so a master somebody merely opened is not a change, and neither is one
+  // they put an effect on and took straight back off.
   if (m.masterEffects && !isDefaultMasterChain(m.masterEffects)) {
     out.masterEffects = chainSig(m.masterEffects) || [];
   }

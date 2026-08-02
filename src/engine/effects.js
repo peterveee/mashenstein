@@ -1395,31 +1395,29 @@ export const MAX_EFFECTS = 6;
 export const ENGINE_BASE_COST = 10;
 
 /**
- * What the master chain starts with: a bus compressor, BYPASSED.
+ * What the master chain starts with: NOTHING.
  *
- * It is there so the master opens with the thing you would reach for already in
- * place at a sane bus setting — slow attack, 2:1, enough release to breathe — rather
- * than sending you to the picker to find it. A bypassed effect is skipped in the
- * wiring rather than turned down (see makeChainSlot), so an untouched seed costs no
- * CPU and renders bit-identically, which is what keeps the null test intact.
+ * It used to open with a bypassed bus compressor, on the theory that the thing you
+ * would reach for should already be in place. In practice it is a slot that is off
+ * sitting on every master, and a control that does nothing is worse than one you have
+ * to go and fetch — the picker is one click away. An empty bus is also the honest
+ * reading of the strip: what you see on the master is what the master is doing.
  *
- * Its position is already the right one and is not a choice the seed makes: the
- * master chain runs after the master trim and BEFORE the limiter, so this shapes the
- * dynamics and the limiter catches whatever is still over. A compressor AFTER a
- * limiter would put peaks back above the ceiling the limiter had just set, which is
- * why no desk offers that order.
+ * The order the picker inserts into is unchanged and is not a choice the seed was
+ * making: the master chain runs after the master trim and BEFORE the limiter, so a
+ * compressor you add shapes the dynamics and the limiter catches whatever is still
+ * over. A compressor AFTER a limiter would put peaks back above the ceiling the
+ * limiter had just set, which is why no desk offers that order.
  *
  * A function, not a constant: each track needs its own copy to edit.
  */
-export const DEFAULT_MASTER_CHAIN = () => ([
-  { id: 'compressor', bypass: true, params: { threshold: -12, ratio: 2, attack: 0.03, release: 0.25 } },
-]);
+export const DEFAULT_MASTER_CHAIN = () => ([]);
 
 /**
- * True if a master chain is still exactly the untouched seed. The seed is not an
- * edit, so a track carrying only this is not a track with a mix — without it every
- * song in the game would gain a masterEffects line in mix.js the first time the desk
- * saved anything.
+ * True if a master chain is still exactly the untouched seed — which is to say empty.
+ * The seed is not an edit, so a track carrying only this is not a track with a mix:
+ * without it every song in the game would gain a masterEffects line in mix.js the
+ * first time the desk saved anything.
  */
 export function isDefaultMasterChain(list = []) {
   const seed = DEFAULT_MASTER_CHAIN();

@@ -10,14 +10,16 @@
 //
 // `showBar`'s read-only roll derived its rows from the notes already in the bar,
 // which is fine for reading and useless for writing: there is nowhere to put a note
-// the bar does not already contain. So the rows come from a ROOT AND A SCALE — the
-// same two controls the on-screen keyboard uses, and the same remembered preference,
-// because "what key am I working in" is one answer per person and not one per panel.
+// the bar does not already contain. So the rows are the whole instrument — see
+// `keyboardRange` — and the key only SHADES them.
 //
 // Out-of-scale rows are dimmed, never removed. A guide that greys the wrong notes
 // helps; one that refuses them is an instrument arguing with you, and the accidental
 // you wanted is always the one it would have refused. That is the on-screen
-// keyboard's rule, and this is the same instrument.
+// keyboard's rule, and this is the same instrument — which is why the key comes FROM
+// that keyboard and is not chosen a second time in here. "What key am I working in" is
+// one answer per person, and a second control for it is a second answer waiting to
+// disagree.
 //
 // ---- what a cell holds ------------------------------------------------------------
 //
@@ -36,7 +38,7 @@
 import { CHORD_LANES, PERCUSSION_LANES, baseLane, seamFor, voiceOf } from '../src/data/voices.js';
 import { LANES, validLen } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
-import { SCALES, SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
+import { SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
 
 const LABELS = Object.fromEntries(
   LANES.map((l) => [l.key, l.label.charAt(0).toUpperCase() + l.label.slice(1)]),
@@ -52,34 +54,117 @@ const BLACK = new Set([1, 3, 6, 8, 10]);
 /**
  * ---- the keyboard's geometry ----------------------------------------------------
  *
- * A real board: SEVEN white keys spanning TWELVE semitones, so a white key is its own
- * row plus the half-row of each black beside it.
- *
- *   C 1.5   D 2   E 1.5   F 1.5   G 2   A 2   B 1.5   =  12
- *
- * That sum is the test. If the whites tile the octave it is a keyboard; if they are all
- * the same height it is twelve equal bars, and no amount of width or colour makes twelve
- * equal bars read as seven whites with five blacks between them. Equal heights were tried
- * and that is exactly how they looked.
- *
- * The trade: a white key does not line up 1:1 with the field row beside it. That is fine,
- * because the keyboard is not what you aim at — the FIELD is one equal row per semitone
- * and always will be. This column is the axis and the preview, and a keyboard that looks
- * like a keyboard is worth more here than one that lines up with a grid.
+ * The field follows the small compromise used by piano-roll keyboards: the seven white
+ * faces stay equal, while the chromatic rows are grouped so C–E occupies three white-key
+ * heights across five rows and F–B occupies four white-key heights across seven rows.
+ * That keeps the important white-key boundaries flush without pretending every pitch
+ * centre can be perfectly aligned at once. The desk's physical keyboard supplies the
+ * black-key proportions, and this geometry is shared by the roll's rows and hit map.
  */
-const BLACK_ABOVE = new Set([0, 2, 5, 7, 9]);   // C D F G A — a black key sits above
-const BLACK_BELOW = new Set([2, 4, 7, 9, 11]);  // D E G A B — and below
 // Matches `#pianoroll .ssqrow.ssqlane` in mixer-shell.html. Pixels, because the shape is
 // a keyboard's rather than a fraction of a container.
 const ROW_H = 19;
+const WHITE_PITCHES = [0, 2, 4, 5, 7, 9, 11];
+const BLACK_AFTER = new Map([[1, 0], [3, 1], [6, 3], [8, 4], [10, 5]]);
+const WHITE_HEIGHT_RATIO = 12 / 7;
+const BLACK_PITCH_RATIO = 26 / 39;
+const CE_ROW_RATIO = (3 * WHITE_HEIGHT_RATIO) / 5;
+const FB_ROW_RATIO = (4 * WHITE_HEIGHT_RATIO) / 7;
+const DESCENDING_PITCHES = [0, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 
-/** Where one key sits, in pixels relative to its own row. */
+/** The grouped chromatic row height for a MIDI pitch. */
+export function pianoRowHeight(midi, rowH = ROW_H) {
+  const pc = ((midi % 12) + 12) % 12;
+  return rowH * (pc <= 4 ? CE_ROW_RATIO : FB_ROW_RATIO);
+}
+
+/** The grouped row's offset from the high-C edge of its octave. */
+export function pianoRowOffset(midi, rowH = ROW_H) {
+  const pc = ((midi % 12) + 12) % 12;
+  let top = 0;
+  for (const pitch of DESCENDING_PITCHES) {
+    if (pitch === pc) return top;
+    top += pianoRowHeight(pitch, rowH);
+  }
+  return top;
+}
+
+/** The phase that makes C/F row bottoms and B/E row tops meet white-key edges. */
+export function pianoKeyPhase(rowH = ROW_H) {
+  const whiteHeight = rowH * WHITE_HEIGHT_RATIO;
+  return pianoRowHeight(0, rowH) - whiteHeight;
+}
+
+/** Where one key sits, in pixels relative to its own chromatic row. */
 export function keyGeometry(midi, rowH = ROW_H) {
   const pc = ((midi % 12) + 12) % 12;
-  if (BLACK.has(pc)) return { black: true, top: 0, height: rowH };
-  const up = BLACK_ABOVE.has(pc) ? rowH / 2 : 0;
-  const down = BLACK_BELOW.has(pc) ? rowH / 2 : 0;
-  return { black: false, top: -up, height: rowH + up + down };
+  const whiteHeight = rowH * WHITE_HEIGHT_RATIO;
+  // pitchRows() is highest first. Geometry is LOCAL to that pitch's own grouped row,
+  // so subtract its descending row origin from the physical keyboard position. The
+  // phase is what makes the C/F bottoms and B/E tops coincide with the equal white-key
+  // boundaries. The resulting small overlaps are intentional: the key faces remain
+  // equal while the pitch rows make the C–E/F–B group boundaries readable.
+  const rowFromC = pianoRowOffset(midi, rowH);
+  const phase = pianoKeyPhase(rowH);
+  if (BLACK.has(pc)) {
+    const height = whiteHeight * BLACK_PITCH_RATIO;
+    const after = BLACK_AFTER.get(pc);
+    // `after` counts whites upwards from C; the roll runs downwards, hence 7 - after.
+    // The black face is centred on that physical white-key seam.
+    return {
+      black: true,
+      top: phase + (7 - after) * whiteHeight - rowFromC - height / 2,
+      height,
+    };
+  }
+  const white = WHITE_PITCHES.indexOf(pc);
+  const whiteFromC = white === 0 ? 0 : 7 - white;
+  return {
+    black: false,
+    top: phase + whiteFromC * whiteHeight - rowFromC,
+    height: whiteHeight,
+  };
+}
+
+/**
+ * Build the complete vertical geometry for a pitch range at one scale.
+ *
+ * `before` and `after` are physical-key caps: row flow remains pitch-owned, while the
+ * body gets enough room to show every key face at the top and bottom of an arbitrary
+ * range. The row objects carry the same key face geometry that the header and tests use.
+ */
+export function pianoLayout(lowMidi, highMidi, rowH = ROW_H) {
+  let top = 0;
+  let minKeyTop = Infinity;
+  let maxKeyBottom = -Infinity;
+  const rows = pitchRows(lowMidi, highMidi).map((midi) => {
+    const height = pianoRowHeight(midi, rowH);
+    const keyFace = keyGeometry(midi, rowH);
+    minKeyTop = Math.min(minKeyTop, top + keyFace.top);
+    maxKeyBottom = Math.max(maxKeyBottom, top + keyFace.top + keyFace.height);
+    const row = { midi, top, height, keyFace };
+    top += height;
+    return row;
+  });
+  const before = Number.isFinite(minKeyTop) ? Math.max(0, -minKeyTop) : 0;
+  const after = Number.isFinite(maxKeyBottom)
+    ? Math.max(0, maxKeyBottom - top) : 0;
+  return { rows, before, after, height: before + top + after, pitchUnit: rowH };
+}
+
+/** Move a note face from its equal chromatic row centre to its physical key centre. */
+export function keyCenterOffset(midi, rowH = ROW_H) {
+  const key = keyGeometry(midi, rowH);
+  return key.top + key.height / 2 - pianoRowHeight(midi, rowH) / 2;
+}
+
+/** Whether a drawn note rectangle is sounding at the heard sixteenth. */
+export function noteActiveAt(step, bar, at, span = 1) {
+  if (!Number.isFinite(step)) return false;
+  const heard = Math.floor(step);
+  const start = Number(bar) * 16 + Number(at);
+  const length = Math.max(1, Math.floor(Number(span) || 1));
+  return Number.isFinite(start) && heard >= start && heard < start + length;
 }
 
 /**
@@ -259,15 +344,25 @@ export const ROLL_TOOLS = [
   {
     id: 'auto',
     label: 'Auto',
-    hint: 'Auto — empty space draws, a note’s middle moves it, its right end lengthens it',
+    hint: 'Auto — empty space draws, a note’s middle moves it, its right end lengthens it;'
+      + ' click a note to pick it out, right-click to rub it out',
   },
-  { id: 'draw', label: 'Draw', hint: 'Draw — every press makes a note; drag to set how long' },
+  {
+    id: 'draw',
+    label: 'Draw',
+    hint: 'Draw — every press makes a note; drag to set how long, right-click to rub out',
+  },
   {
     id: 'select',
     label: 'Select',
-    hint: 'Select — band notes, then move or stretch them together; arrows nudge, ⌫ deletes',
+    hint: 'Select — band notes, then move or stretch them together; arrows nudge,'
+      + ' ⌫ or right-click deletes',
   },
-  { id: 'paint', label: 'Paint', hint: 'Paint — drag to lay a run of separate notes' },
+  {
+    id: 'paint',
+    label: 'Paint',
+    hint: 'Paint — drag to lay a run of separate notes, right-drag to rub a run out',
+  },
   { id: 'erase', label: 'Erase', hint: 'Erase — drag over notes to rub them out' },
 ];
 export const ROLL_TOOL_IDS = ROLL_TOOLS.map((t) => t.id);
@@ -369,44 +464,38 @@ export function autoRange(bank, lane, fallback = 48) {
 }
 
 /**
- * A cluster of header controls that belong to one question.
- *
- * The `data-grp` is for the stylesheet, not for script: the header draws the hairline
- * between clusters off `.ssqgrp + .ssqgrp`, and the name is there so a rule can single
- * one out later without counting positions in the row.
- */
-function group(name, ...kids) {
-  const g = document.createElement('span');
-  g.className = 'ssqgrp';
-  g.dataset.grp = name;
-  g.append(...kids);
-  return g;
-}
-
-/**
- * @param lane        () => the lane being edited, chosen on the desk
- * @param setLane     (key) => tell the desk the roll moved to another lane
- * @param editable    () => [laneKey] — which lanes the picker may offer
+ * @param lane        () => the lane being edited, chosen on the desk — the roll follows
+ *                    the selected channel and has no picker of its own.
  * @param scale       () => { root, id } — the key, INJECTED rather than read from
  *                    localStorage, because the on-screen keyboard holds it in module
  *                    state as well as on disk. A second copy here would agree with the
  *                    keyboard until one of them was changed and then quietly disagree
  *                    for the rest of the session, which is the whole failure mode
- *                    sharing the preference was meant to avoid.
- * @param setScale    ({ root, id }) => the desk's own setter, so changing the key in the
- *                    roll re-dims the keyboard's keys too.
+ *                    sharing the preference was meant to avoid. Read-only here: the
+ *                    keyboard is where a key is chosen, and the roll only dims by it.
+ * @param pitchSize   optional base vertical pitch size in pixels. It is an input to the
+ *                    geometry, not a CSS-only scale, so a future zoom control can change
+ *                    it while preserving the pitch under the viewport.
  * See `createBarGrid` for the rest; they are passed straight through.
  */
 export function createPianoRoll({
   el, Audio, bank, editBank, draft, sel, apply, laneColour, engineBank,
-  lane, setLane, editable, laneLabel = (key) => LABELS[key] || key,
-  scale = () => ({ root: 0, id: 'chromatic' }), setScale = () => {},
+  lane, laneLabel = (key) => LABELS[key] || key,
+  scale = () => ({ root: 0, id: 'chromatic' }),
+  pitchSize = ROW_H,
   toast = () => {},
   onClose = () => {},
 }) {
+  let pitchUnit = Number.isFinite(Number(pitchSize)) && Number(pitchSize) > 0
+    ? Number(pitchSize) : ROW_H;
+  let rollPadding = { before: 0, after: 0 };
+  const applyPitchUnitStyle = () => {
+    el.style.setProperty('--roll-pitch-unit', `${pitchUnit}px`);
+  };
+  applyPitchUnitStyle();
   // Which gesture the mouse performs. Remembered, because it is a decision about how
-  // you work rather than about this song — and shown in the header, because a mode you
-  // cannot see is one you will be surprised by.
+  // you work rather than about this song — and shown beside the field, because a mode
+  // you cannot see is one you will be surprised by.
   const TOOL_KEY = 'mash-mixer-roll-tool';
   let toolId = rollTool(localStorage.getItem(TOOL_KEY));
   const setTool = (id) => {
@@ -415,6 +504,194 @@ export function createPianoRoll({
     // The panel wears its mode, so the cursors can say which one it is in.
     for (const t of ROLL_TOOL_IDS) el.classList.toggle(`tool-${t}`, t === toolId);
     toast(ROLL_TOOLS.find((t) => t.id === toolId).hint);
+  };
+
+  const TOOL_TITLE = 'What the mouse does.\n'
+    + 'Auto — empty space draws (drag to set the length), a note’s middle moves it,'
+    + ' its right end lengthens it, a click picks it out.\n'
+    + 'RIGHT-CLICK rubs a note out, in every mode — right-drag rubs out a run.\n'
+    + 'Hold ⌘ to drag a rectangle round notes, ⇧-click to add one to the set,'
+    + ' then move or stretch them together.\n'
+    + 'With notes picked out: arrows nudge them (⇧ by a bar or an octave),'
+    + ' ⌥← ⌥→ shorten and lengthen, ⌫ takes them out, ⎋ lets them go.\n'
+    + 'Hold ⌥ at any time for Paint: a run of separate notes, or a run rubbed out.\n'
+    + 'Draw, Select, Paint and Erase each do one thing, with no modifier and no aiming.';
+
+  /**
+   * What the mouse does — the roll's only control besides the zoom.
+   *
+   * `Auto` first and selected by default: it is the answer for most people most of the
+   * time, with the others there for anyone who would rather not hold a key or aim at an
+   * edge, which is a real requirement and not a preference. The title says the
+   * modifiers, because a modifier nobody has been told about is a feature nobody has.
+   *
+   * It sits under the zoom in the blank half of the key column rather than in the NOTES
+   * header, so the mode you are in is beside the field it applies to instead of at the
+   * far end of a row you are not looking at while you draw.
+   *
+   * Built rather than a `<select>`, and the reason is the LIST, not the closed field.
+   * `appearance: none` styles the box and nothing else: the popup a select opens is the
+   * operating system's, in the operating system's colours, at the operating system's row
+   * height — a slab of Aqua grey dropped over a desk that has nine themes. So the field
+   * is a button, the list is ours, and every colour in both comes from the same
+   * variables as the channel strip.
+   *
+   * What that costs is the behaviour a select gives free, which is why it is all here:
+   * the arrow keys, Home and End, Enter and Escape, a click outside, and the flip
+   * upwards when the list would run off the bottom of the window.
+   */
+  const toolPicker = () => {
+    const field = document.createElement('button');
+    field.type = 'button';
+    field.className = 'rolltool';
+    field.title = TOOL_TITLE;
+    // A listbox is announced by the field, not by the TOOL heading over it — that
+    // heading is a bare span and names the control on screen to nobody else.
+    field.setAttribute('role', 'combobox');
+    field.setAttribute('aria-haspopup', 'listbox');
+    field.setAttribute('aria-expanded', 'false');
+    field.setAttribute('aria-label', 'Tool — what the mouse does');
+    const value = document.createElement('span');
+    value.className = 'rolltool-value';
+    field.append(value);
+
+    // In the BODY, not in the panel. The key column is `overflow: hidden` — it has to
+    // be, it is a clipped viewport onto a keyboard taller than the desk — so a list
+    // drawn inside it would be cut off at the first edge it reached. Fixed to the
+    // window, placed against the field's own rectangle each time it opens.
+    const menu = document.createElement('div');
+    menu.className = 'rolltool-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', 'Tool');
+    menu.hidden = true;
+
+    let open = false;
+    let active = 0;
+
+    const paint = () => {
+      value.textContent = ROLL_TOOLS.find((t) => t.id === toolId).label;
+      for (const o of options) {
+        const on = o.dataset.tool === toolId;
+        o.classList.toggle('on', on);
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+    };
+
+    // `active` is the row the keyboard is on, which is not the row that is chosen —
+    // arrowing down a list has to be able to pass over the current tool without
+    // switching to everything on the way.
+    const setActive = (i) => {
+      active = (i + options.length) % options.length;
+      options.forEach((o, n) => o.classList.toggle('active', n === active));
+      field.setAttribute('aria-activedescendant', options[active].id);
+    };
+
+    const choose = (id) => {
+      setTool(id);
+      paint();
+      closeMenu({ focus: true });
+    };
+
+    const options = ROLL_TOOLS.map((t, i) => {
+      const o = document.createElement('div');
+      o.className = 'rolltool-option';
+      o.id = `rolltool-opt-${t.id}`;
+      o.setAttribute('role', 'option');
+      o.dataset.tool = t.id;
+      o.textContent = t.label;
+      o.title = t.hint;
+      // pointerdown, not click. The dismissal below listens on pointerdown too, so by
+      // the time a click fired the list would be gone and the press would land on the
+      // note field underneath it — which in Draw is a note you did not ask for.
+      o.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        choose(t.id);
+      });
+      o.addEventListener('pointerenter', () => setActive(i));
+      return o;
+    });
+    menu.append(...options);
+
+    const onDocDown = (ev) => {
+      if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
+    };
+    // Anything that moves the field out from under the list closes it rather than
+    // chasing it. Capturing, because the scroll that matters is a panel's, not the
+    // window's, and a scroll event does not bubble.
+    const onDismiss = () => closeMenu();
+
+    const closeMenu = ({ focus = false } = {}) => {
+      if (!open) return;
+      open = false;
+      menu.hidden = true;
+      menu.remove();
+      field.setAttribute('aria-expanded', 'false');
+      field.removeAttribute('aria-activedescendant');
+      document.removeEventListener('pointerdown', onDocDown, true);
+      window.removeEventListener('resize', onDismiss, true);
+      window.removeEventListener('scroll', onDismiss, true);
+      if (focus) field.focus();
+    };
+
+    const openMenu = () => {
+      if (open) return;
+      open = true;
+      document.body.append(menu);
+      menu.hidden = false;
+      field.setAttribute('aria-expanded', 'true');
+      setActive(Math.max(0, ROLL_TOOLS.findIndex((t) => t.id === toolId)));
+      const r = field.getBoundingClientRect();
+      menu.style.minWidth = `${Math.round(r.width)}px`;
+      menu.style.left = `${Math.round(r.left)}px`;
+      // Measured after it is in the page, because a list that has never been laid out
+      // has no height to compare the room below against.
+      const height = menu.offsetHeight;
+      const below = window.innerHeight - r.bottom;
+      const flip = below < height + 8 && r.top > below;
+      menu.style.top = `${Math.round(flip ? r.top - height - 3 : r.bottom + 3)}px`;
+      field.classList.toggle('flipped', flip);
+      document.addEventListener('pointerdown', onDocDown, true);
+      window.addEventListener('resize', onDismiss, true);
+      window.addEventListener('scroll', onDismiss, true);
+    };
+
+    field.onclick = (ev) => {
+      ev.stopPropagation();
+      if (open) closeMenu({ focus: true }); else openMenu();
+    };
+    // Every one of these is stopped as well as handled. The desk listens for arrows,
+    // Escape, ⌫ and the space bar at the document, where they nudge notes, drop a
+    // selection and start the transport — a `<select>` swallowed them by being a
+    // select, and a button has to say so.
+    field.onkeydown = (ev) => {
+      if (ev.key === 'Tab') { closeMenu(); return; }
+      if (ev.key === 'Escape') {
+        if (!open) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeMenu({ focus: true });
+        return;
+      }
+      if (!open) {
+        if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openMenu();
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(ev.key)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.key === 'ArrowDown') setActive(active + 1);
+      else if (ev.key === 'ArrowUp') setActive(active - 1);
+      else if (ev.key === 'Home') setActive(0);
+      else if (ev.key === 'End') setActive(options.length - 1);
+      else choose(options[active].dataset.tool);
+    };
+
+    paint();
+    return field;
   };
 
   /**
@@ -434,9 +711,65 @@ export function createPianoRoll({
    * gain something four of them wanted. So a click still replaces, and the chordal
    * behaviour appears only on a step that already contains a chord — one you recorded —
    * where it is what lets you pick a single tone back out of it.
-   */
+  */
   const isChord = (value) => CHORD_LANES.includes(baseLane(lane())) || Array.isArray(value);
   const rangeOf = () => keyboardRange(bank(), lane());
+  // A roll preview uses triggerAttack for sustained Tone voices, so it needs an
+  // explicit note-off just like a held keyboard key. Keep every pitch touched by one
+  // paint/move gesture and release the set when its pointer goes up.
+  const previewNotes = new Map();
+  const previewRollNote = (row) => {
+    const ok = Audio.previewNote(row.lane, row.freq, { bank: engineBank() });
+    if (ok) previewNotes.set(`${row.lane}|${row.freq.toFixed(2)}`, {
+      laneKey: row.lane, freq: row.freq,
+    });
+    return ok;
+  };
+  const releaseRollNotes = () => {
+    for (const { laneKey, freq } of previewNotes.values()) {
+      Audio.releasePreviewNote(laneKey, freq);
+    }
+    previewNotes.clear();
+  };
+  // Which key face your finger is currently holding down, so the sweep lights the key
+  // it is sounding rather than the one you first pressed. `:hover` cannot do this: the
+  // pointer is captured by the key you started on, so the browser keeps hovering THAT
+  // one all the way up the board. Its own class, not `playing` — that one belongs to
+  // the playhead's projection and is cleared wholesale every step (see syncPlayingKeys),
+  // which would wipe your held key twice a beat while the song runs.
+  let heldKey = null;
+  const holdRollKey = (el) => {
+    if (heldKey === el) return;
+    heldKey?.classList.remove('held');
+    heldKey = el || null;
+    heldKey?.classList.add('held');
+  };
+  /**
+   * The end of a keyboard gesture, whatever ended it: every sounding preview off, and
+   * the held mark with them.
+   *
+   * ONE function, called from every ending there is — pointerup, pointercancel, the
+   * next pointerdown, the window losing the pointer or the tab. A note started with
+   * `triggerAttack` sustains until something says otherwise, so a missed release is not
+   * a cosmetic bug: it is a tone that runs under the whole song until you reload the
+   * desk. Cheap to call when nothing is held, which is what lets it go everywhere.
+   */
+  const endRollGesture = () => {
+    releaseRollNotes();
+    holdRollKey(null);
+  };
+  // The backstop. Capture routes `pointerup` to the key you pressed, but the roll is a
+  // VIRTUAL grid — a redraw while your finger is down can destroy that element, and a
+  // listener on a node that no longer exists releases nothing. These fire on the window,
+  // which outlives every key: whatever the desk was doing, the pointer coming up or the
+  // page going away ends the note.
+  for (const type of ['pointerup', 'pointercancel']) {
+    addEventListener(type, endRollGesture);
+  }
+  addEventListener('blur', endRollGesture);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) endRollGesture();
+  });
   // Nothing is remembered about where you are in the instrument. The roll opens on the
   // part — which is an answer it can always work out — and after that the scroll
   // position is yours until you change lane or song. A stored offset per lane was the
@@ -453,7 +786,76 @@ export function createPianoRoll({
     // whose height is still zero puts the part wherever nothing is.
     requestAnimationFrame(() => grid.scrollToRow(String(mid)));
   };
-  const byOctave = (n) => grid.scrollRows(n * 12);
+  /**
+   * The first bar of the song this lane writes anything in, or null if it is silent.
+   *
+   * Read through the grid rather than off the bank, so it sees the song as laid out —
+   * sections resolved, repeats expanded, pending edits included. A bar index off the
+   * bank would be an index into a part, and the roll's axis is the arrangement.
+   */
+  const hasNote = (v) => (Array.isArray(v)
+    ? v.some(hasNote) : typeof v === 'number' && v > 0);
+  const firstSoundingBar = (key) => {
+    const bars = grid.plan?.length || 0;
+    for (let b = 0; b < bars; b++) {
+      if (grid.readBar(b, key).some(hasNote)) return b;
+    }
+    return null;
+  };
+  /**
+   * Put the window where this lane's notes are.
+   *
+   * Three answers, in the order they are worth having:
+   *
+   * The selected bars, when the lane actually plays in them — switching channel to
+   * compare the same point in the song should stay at that point. `needRows` is what
+   * makes that conditional: the selection is an answer about TIME and `sel()` always
+   * has one (with nothing picked out it names the bar under the playhead), so focusing
+   * it says nothing about pitch on a lane that is silent there.
+   *
+   * Otherwise the lane's first written bar — the same place clicking that bar would
+   * take you, on both axes.
+   *
+   * Otherwise the part's own octave, which is all a silent lane can offer.
+   */
+  const focusSelection = () => {
+    const chosen = sel?.();
+    if (chosen && grid.focusRange(chosen.from, chosen.to, { needRows: true })) return;
+    const first = firstSoundingBar(lane());
+    if (first != null && grid.focusRange(first, first, { needRows: true })) return;
+    showPart();
+  };
+  /**
+   * Fit the window to the lane the desk is now on.
+   *
+   * The roll has no picker of its own any more — the channel is chosen on the desk, and
+   * every route to that (a strip, an arrangement row, the menu, a deleted lane falling
+   * through to the next one) lands in `refresh`. So the lane change is detected here
+   * rather than announced from twenty call sites: the part on the new channel can be
+   * two octaves from the last one, and with all eighty-eight keys in the field that is
+   * an empty window until you go looking for it.
+   *
+   * Only when it actually changed. `refresh` is also every edit and every selection
+   * repaint, and a roll that re-centres itself while you are writing into it is the
+   * instrument moving under your hand.
+   */
+  let fittedLane = null;
+  const fitLane = () => {
+    if (!grid.isOpen()) return;
+    const key = lane();
+    if (key === fittedLane) return;
+    fittedLane = key;
+    // Now, not next frame. The panel is already open and measured — the frame's delay
+    // is only needed when it is being built — and clicking a bar in the arrangement
+    // selects the lane BEFORE it selects the bar. Deferred, this fit would land after
+    // that bar was focused and take the view somewhere else; synchronous, the bar you
+    // clicked has the last word, which is the one it should have.
+    focusSelection();
+  };
+  // Selection is stored by the shared grid as note locations. Keep the callback
+  // placeholder alive while that grid builds, then replace it with the projection
+  // onto the physical key faces once the grid exists.
+  let syncSelectedKeys = () => {};
 
   const grid = createBarGrid({
     el, Audio, bank, editBank, draft, sel, apply, engineBank, laneLabel,
@@ -462,15 +864,58 @@ export function createPianoRoll({
     // song and it lives in the page. See createBarGrid.
     wholeSong: true,
     docked: true,
-    // Eighty-eight rows, drawn a screenful at a time. ROW_H is the CSS row height and
-    // the spacers need it as a number — see the note on ROW_H above.
+    // No `Edit one bar` / `Edit all repeats` switch on this header: the roll edits the
+    // bar you click, always. The step grid keeps the switch for the times the answer is
+    // "the hats are wrong in this whole song".
+    scopeToggle: false,
+    // Eighty-eight rows, drawn a screenful at a time. The base pitch size is dynamic so
+    // a future zoom control can rebuild this same grid without a second geometry path.
     virtual: true,
-    rowHeight: ROW_H,
-    // Its controls join the NOTES panel's header rather than starting a second row.
-    // They used to land on `#devhead` — correct while the roll and the effect cards
-    // were two views of one region, and wrong the moment those became two panels: a
-    // key picker and an octave nudge on a header labelled Effects belong to nothing
-    // on screen under it.
+    rowHeight: () => pitchUnit,
+    rowHeightOf: (row) => row.height,
+    rowPadding: () => rollPadding,
+    rulerHeader: () => {
+      // Same word-in-caps in the same 9.5px the channel strip gives DELAY SEND and
+      // MID, because these are the same kind of thing: the name of the control under
+      // it. Two of them now — the zoom and the mouse mode are separate fields, spaced
+      // apart rather than run together as one stack with a single heading.
+      const fieldLabel = (text) => {
+        const el = document.createElement('span');
+        el.className = 'rollzoom-label';
+        el.textContent = text;
+        return el;
+      };
+      const zoom = document.createElement('span');
+      zoom.className = 'rollzoom';
+      zoom.title = 'Piano-roll pitch zoom';
+      zoom.setAttribute('aria-label', 'Piano-roll pitch zoom');
+      // 1.5 exists because the step from 1× to 2× is the one people actually want
+      // halved: 19px rows are tight for aiming at a black key and 38px shows barely two
+      // octaves. Nothing here rounds — the key geometry is all ratios (12/7, 26/39) and
+      // 0.5× has been handing it 9.5px rows since the day it was written.
+      for (const factor of [0.5, 1, 1.5, 2]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rollzoom-button';
+        button.dataset.zoom = String(factor);
+        button.textContent = `${factor}×`;
+        button.title = `Pitch zoom ${factor}×`;
+        button.setAttribute('aria-label', `Pitch zoom ${factor} times`);
+        button.setAttribute('aria-pressed', Math.abs(pitchUnit / ROW_H - factor) < 1e-9
+          ? 'true' : 'false');
+        if (button.getAttribute('aria-pressed') === 'true') button.classList.add('on');
+        button.onclick = (ev) => {
+          ev.stopPropagation();
+          setPitchSize(ROW_H * factor);
+        };
+        zoom.append(button);
+      }
+      return [fieldLabel('ZOOM'), zoom, fieldLabel('TOOL'), toolPicker()];
+    },
+    // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
+    // row of its own. There are none left to put there: the zoom and the mouse mode live
+    // in the blank half of the key column, beside the field they act on. Kept because it
+    // is also what stops the grid building a header of its own inside the scroll area.
     headerHost: () => document.getElementById('notehead'),
     onClose,
 
@@ -481,22 +926,37 @@ export function createPianoRoll({
       const { root: scaleRoot, id: scaleId } = scale();
       const steps = SCALE_BY_ID[scaleId]?.steps || null;
       const { low, high } = rangeOf();
+      const layout = pianoLayout(low, high, pitchUnit);
+      rollPadding = { before: layout.before, after: layout.after };
       // Every key of the instrument, always — see keyboardRange. Only the ones in view
       // are ever built (the grid's `virtual`), so this list being eighty-eight long
-      // costs nothing until you scroll to it. Rows stay the step grid's height rather
-      // than shrinking to fit, because the two panels are two views of one song.
-      return pitchRows(low, high).map((midi) => ({
+      // costs nothing until you scroll to it. The white key faces remain equal, while
+      // the pitch rows use the grouped C–E/F–B heights described above.
+      return layout.rows.map(({ midi, top, height, keyFace }) => ({
         key: String(midi),
         lane: key,
         midi,
+        top,
+        height,
+        keyFace,
         freq: midiFreq(midi),
         label: `${PITCH_CLASSES[midi % 12]}${Math.floor(midi / 12) - 1}`,
         colour: laneColour(key),
+        // Do not move the note artwork to force exact centre alignment. The grouped
+        // rows are the deliberate visual compromise: the note, its hit region, and its
+        // keyboard face all belong to the same measured row, while the white faces keep
+        // their equal physical size.
+        cssVars: { '--roll-note-y': '0px' },
+        hitOffset: 0,
         className: (BLACK.has(midi % 12) ? 'rollblack' : 'rollwhite')
-          // Named the way the on-screen keyboard names them, and coloured the same way:
-          // an offscale key gets its own face rather than a dimmed one. Dimming made a
-          // white key render grey, which reads as a third kind of key instead of as
-          // "not in this scale" — see the CSS.
+          // `rollwhite`/`rollblack` is the KEYBOARD and nothing else may change it: this
+          // one is always chromatic, twelve keys an octave in the colours a piano gives
+          // them, whatever key the song is in — and the field's rows wear those same two
+          // colours, so a row says which key it is without you tracking back to the
+          // board. The scale classes below therefore draw NOTHING — not a face, not a
+          // shade, not a rule. They are kept as the answer to "is this row in the key"
+          // for anything that wants to ask, and the CSS asks nothing of them: the field
+          // says pitch and time, and the key is on the keyboard that sets it.
           + (steps ? (inScale(midi, scaleRoot, steps) ? ' scalekey' : ' offscale') : '')
           + (steps && midi % 12 === scaleRoot ? ' rollroot' : ''),
       }));
@@ -521,109 +981,12 @@ export function createPianoRoll({
     movable: true,
     tool: () => toolId,
     selectable: true,
+    selectionChanged: () => syncSelectedKeys(),
 
-    preview: (row) => Audio.previewNote(row.lane, row.freq, { bank: engineBank() }),
+    preview: previewRollNote,
+    previewRelease: releaseRollNotes,
 
     title: (c) => `${laneLabel(lane())} · ${c.barSpan}${c.linked ? ' · shared editing' : ''}`,
-
-    headerExtra: () => {
-      const { root: scaleRoot, id: scaleId } = scale();
-      const picker = document.createElement('select');
-      picker.className = 'fxsel ssqlane-pick';
-      picker.title = 'Which part this roll is editing';
-      for (const key of editable()) {
-        const o = document.createElement('option');
-        o.value = key;
-        o.textContent = laneLabel(key);
-        if (key === lane()) o.selected = true;
-        picker.append(o);
-      }
-      // A lane change is a different part, so the view goes to where that part is —
-      // the roll has always opened on the notes rather than at C8.
-      picker.onchange = () => { setLane(picker.value); grid.redraw(); showPart(); };
-
-      // What the mouse does. `Auto` first and selected by default — it is the answer
-      // for most people most of the time — with the others there for anyone who would
-      // rather not hold a key or aim at an edge, which is a real requirement and not a
-      // preference. The title says the modifier, because a modifier nobody has been
-      // told about is a feature nobody has.
-      const tools = document.createElement('select');
-      tools.className = 'fxsel ssqtool';
-      for (const t of ROLL_TOOLS) {
-        const o = document.createElement('option');
-        o.value = t.id;
-        o.textContent = t.label;
-        if (t.id === toolId) o.selected = true;
-        tools.append(o);
-      }
-      tools.title = 'What the mouse does.\n'
-        + 'Auto — empty space draws (drag to set the length), a note’s middle moves it,'
-        + ' its right end lengthens it.\n'
-        + 'Hold ⌘ to drag a rectangle round notes, ⇧-click to add one to the set,'
-        + ' then move or stretch them together.\n'
-        + 'With notes picked out: arrows nudge them (⇧ by a bar or an octave),'
-        + ' ⌥← ⌥→ shorten and lengthen, ⌫ takes them out, ⎋ lets them go.\n'
-        + 'Hold ⌥ at any time for Paint: a run of separate notes, or a run rubbed out.\n'
-        + 'Draw, Select, Paint and Erase each do one thing, with no modifier and no aiming.';
-      tools.onchange = () => setTool(tools.value);
-
-      // The whole keyboard is there; these are how you get about it without a
-      // trackpad. Scrolling, not re-ranging: there is nothing left to re-range.
-      const down = document.createElement('button');
-      down.className = 'ssqoctbtn';
-      down.textContent = '−';
-      down.title = 'An octave lower';
-      down.setAttribute('aria-label', 'Scroll an octave lower');
-      down.onclick = (ev) => { ev.stopPropagation(); byOctave(1); };
-      const up = document.createElement('button');
-      up.className = 'ssqoctbtn';
-      up.textContent = '+';
-      up.title = 'An octave higher';
-      up.setAttribute('aria-label', 'Scroll an octave higher');
-      up.onclick = (ev) => { ev.stopPropagation(); byOctave(-1); };
-      // One control, two ends — the pair reads as a single octave nudge rather than as
-      // two more loose buttons in a row that already has too many.
-      const oct = document.createElement('span');
-      oct.className = 'ssqoct';
-      oct.append(down, up);
-
-      const fit = document.createElement('button');
-      fit.className = 'ssqlink';
-      fit.textContent = 'Find the part';
-      fit.title = 'Back to where this part actually plays';
-      fit.onclick = (ev) => { ev.stopPropagation(); showPart(); };
-
-      const root = document.createElement('select');
-      root.className = 'fxsel ssqroot';
-      for (let i = 0; i < 12; i++) {
-        const o = document.createElement('option');
-        o.value = String(i); o.textContent = PITCH_CLASSES[i];
-        if (i === scaleRoot) o.selected = true;
-        root.append(o);
-      }
-      root.title = 'Which note is home';
-      root.disabled = scaleId === 'chromatic';
-      root.onchange = () => { setScale({ root: Number(root.value) }); grid.redraw(); };
-
-      const kind = document.createElement('select');
-      kind.className = 'fxsel ssqscalekind';
-      for (const s of SCALES) {
-        const o = document.createElement('option');
-        o.value = s.id; o.textContent = s.label;
-        if (s.id === scaleId) o.selected = true;
-        kind.append(o);
-      }
-      kind.title = 'Notes outside the key are dimmed — they still play, because the'
-        + ' accidental you wanted is always the one a keyboard would have refused.';
-      kind.onchange = () => { setScale({ id: kind.value }); grid.redraw(); };
-
-      // Three clusters, not seven controls in a queue. Each answers one question —
-      // what am I editing, where am I looking, what key is it in — and the header
-      // rules a hairline between them, so the row is read in three glances instead
-      // of scanned left to right. The scope button (`Edit one bar`) is appended by
-      // the grid itself and becomes the fourth.
-      return [group('part', picker, tools), group('view', oct, fit), group('key', root, kind)];
-    },
 
     // A key, not a track name — and a real one: white notes full width, black notes
     // narrower and darker, which is the picture every hand already has. Only the C is
@@ -631,20 +994,122 @@ export function createPianoRoll({
     // read past; one landmark an octave is how a keyboard has always said where you are.
     rowHeader: (row) => {
       const key = document.createElement('button');
-      const g = keyGeometry(row.midi);
-      key.className = 'ssqkey';
-      // Positioned in pixels rather than by the row, because a white key is taller than
-      // its row — see keyGeometry. The row still owns the pitch; this only draws it.
+      const g = row.keyFace;
+      key.className = `ssqkey ${g.black ? 'keyblack' : 'keywhite'}`;
+      key.dataset.row = row.key;
+      // Positioned relative to the chromatic row's origin. A physical white key spans
+      // several field rows and a black key crosses the seam between two white faces;
+      // the row still owns the pitch, this only draws the instrument-shaped face.
       key.style.top = `${g.top}px`;
       key.style.height = `${g.height}px`;
       key.textContent = row.midi % 12 === 0 ? row.label : '';
       key.title = `Play ${row.label}`;
       key.setAttribute('aria-label', `Play ${row.label}`);
-      key.onclick = () => Audio.previewNote(row.lane, row.freq, { bank: engineBank() });
+      let pointerPreview = false;
+      key.addEventListener('pointerdown', (ev) => {
+        pointerPreview = true;
+        ev.preventDefault();
+        // Anything still sounding belongs to a gesture that is over. Normally there is
+        // nothing, and on the day the release was missed this is what keeps the desk
+        // from stacking a second note on top of a stuck one.
+        endRollGesture();
+        previewRollNote(row);
+        holdRollKey(key);
+        // Captured so a sweep that runs off the end of the keyboard — into the field,
+        // past the top row, outside the window — still ends on this element.
+        try { key.setPointerCapture(ev.pointerId); } catch { /* browserless */ }
+      });
+      // A sweep is ONE gesture looking for one note, not a chord you built by dragging:
+      // the key you leave comes up as the key you arrive at goes down, which is what
+      // your hand does on a real keyboard and what the mini keyboard already does (see
+      // its `pointermove` in mixer-entry.js). The pointer is captured by the key you
+      // pressed, so every move arrives here — `elementFromPoint` is what says which key
+      // you are actually over, since capture does not move hit testing.
+      key.addEventListener('pointermove', (ev) => {
+        if (!pointerPreview || !ev.buttons) return;
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const next = under?.closest?.('.ssqkey');
+        if (!next || next === heldKey) return;
+        const midi = Number(next.dataset.row);
+        if (!Number.isFinite(midi)) return;
+        releaseRollNotes();
+        // The face knows which pitch it is and the lane is whichever channel the roll is
+        // showing — the same two things `rows()` builds a row out of.
+        previewRollNote({ lane: lane(), freq: midiFreq(midi) });
+        holdRollKey(next);
+      });
+      // Up, cancelled, or the gesture taken away some other way: all of them are the
+      // finger coming off, and all of them release. `pointerup` is guaranteed to land
+      // here by the capture above; the window-level backstop below covers the one case
+      // capture cannot — the key being destroyed under the pointer by a redraw.
+      key.addEventListener('pointerup', () => {
+        endRollGesture();
+        // Normally the click follows pointerup and consumes this flag. Clear it on
+        // the next turn too, so a cancelled/native-suppressed click cannot poison the
+        // next keyboard activation.
+        setTimeout(() => { pointerPreview = false; }, 0);
+      });
+      key.addEventListener('pointercancel', () => {
+        pointerPreview = false;
+        endRollGesture();
+      });
+      key.onclick = () => {
+        // Pointer activation already had a down/up pair; suppress the button click
+        // so it cannot start a second preview after the note-off.
+        if (pointerPreview) { pointerPreview = false; return; }
+        previewRollNote(row);
+        setTimeout(releaseRollNotes, 120);
+      };
       return [key];
     },
   });
-  grid.setRulerLabel('Keys');
+  // The corner names the strip it sits on, not the column beneath it: the keyboard says
+  // what it is by being a keyboard. Naming the top strip BAR is what lets every bar
+  // number below be a bare number stacked over its own beat 1.
+  grid.setRulerLabel('Bar');
+
+  let selectedKeys = [];
+  const clearSelectedKeys = () => {
+    for (const key of selectedKeys) key.classList.remove('selected');
+    selectedKeys = [];
+  };
+  syncSelectedKeys = () => {
+    clearSelectedKeys();
+    if (!grid.isOpen()) return;
+    const seen = new Set();
+    for (const cell of el.querySelectorAll('.ssqcell.on:is(.sel,.edited)')) {
+      const key = el.querySelector(`.ssqkeys .ssqkey[data-row="${cell.dataset.row}"]`);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      key.classList.add('selected');
+      selectedKeys.push(key);
+    }
+  };
+
+  // Project the sounding note rectangles back to their row-header keys. Looking only
+  // for `.playing.on` caught a note on its first sixteenth and then dropped its key for
+  // the rest of a longer rectangle; use the same drawn span the roll shows instead.
+  // Keep this here, beside the piano-roll wrapper, rather than teaching the generic
+  // step grid about pitch faces.
+  let playingKeys = [];
+  const clearPlayingKeys = () => {
+    for (const key of playingKeys) key.classList.remove('playing');
+    playingKeys = [];
+  };
+  const syncPlayingKeys = (step) => {
+    clearPlayingKeys();
+    if (!grid.isOpen() || !Number.isFinite(step)) return;
+    const seen = new Set();
+    for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted)')) {
+      const span = Number(cell.style.getPropertyValue('--len')) || 1;
+      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span)) continue;
+      const key = el.querySelector(`.ssqkeys .ssqkey[data-row="${cell.dataset.row}"]`);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      key.classList.add('playing');
+      playingKeys.push(key);
+    }
+  };
 
   // The wheel scrolls PITCH, which is the axis this panel is about. A trackpad's
   // horizontal component still reaches the scroller underneath, so a two-finger swipe
@@ -662,24 +1127,71 @@ export function createPianoRoll({
     if (scroll.scrollTop !== before) ev.preventDefault();
   }, { passive: false });
 
+  /** Change the pitch scale while keeping the same MIDI row under the viewport. */
+  const setPitchSize = (next) => {
+    const value = Number(next);
+    if (!Number.isFinite(value) || value <= 0 || value === pitchUnit) return false;
+    const anchor = grid.captureRowAnchor();
+    pitchUnit = value;
+    applyPitchUnitStyle();
+    if (grid.isOpen()) {
+      grid.redraw();
+      grid.restoreRowAnchor(anchor);
+    }
+    return true;
+  };
+
   return {
-    // Opening lands on the part, and so does arriving at a new song. Everywhere else
-    // the scroll position is left exactly where the hand put it — an edit must never
-    // move the instrument under you, which is why `build` keeps it.
+    // Opening lands on the selected bar when there is one, otherwise on the part, and
+    // so does arriving at a new song. Everywhere else the scroll position is left
+    // exactly where the hand put it — an edit must never move the instrument under
+    // you, which is why `build` keeps it.
     open(on = true) {
+      if (on === false) {
+        clearPlayingKeys();
+        clearSelectedKeys();
+      }
       grid.open(on);
       if (on === false) return;
+      syncSelectedKeys();
       // The panel is rebuilt on open, so the mode's class goes back on with it.
       for (const t of ROLL_TOOL_IDS) el.classList.toggle(`tool-${t}`, t === toolId);
-      showPart();
+      // A selected bar is the user's current question. Focus it after the new panel
+      // has entered layout; with no selection, retain the older "find this part"
+      // opening behaviour.
+      fittedLane = lane();
+      requestAnimationFrame(focusSelection);
     },
-    close: grid.close,
+    close() {
+      clearPlayingKeys();
+      clearSelectedKeys();
+      grid.close();
+    },
     isOpen: grid.isOpen,
-    refresh: grid.refresh,
-    follow: grid.follow,
+    setPitchSize,
+    refresh() {
+      clearPlayingKeys();
+      grid.refresh();
+      syncSelectedKeys();
+      // After the rebuild: the new lane's rows have to exist before the window can be
+      // put over them.
+      fitLane();
+    },
+    follow(step) {
+      grid.follow(step);
+      syncSelectedKeys();
+      syncPlayingKeys(step);
+    },
+    armFollow: grid.armFollow,
     songChanged() {
+      clearPlayingKeys();
       grid.songChanged();
-      if (grid.isOpen()) showPart();
+      syncSelectedKeys();
+      fittedLane = lane();
+      if (grid.isOpen()) requestAnimationFrame(focusSelection);
+    },
+    focusRange(from, to) {
+      return grid.focusRange(from, to);
     },
   };
 }

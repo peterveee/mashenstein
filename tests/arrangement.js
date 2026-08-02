@@ -837,7 +837,8 @@ assert(barPlan(Audio.bank).length === barPlan(liveSong).length,
 // two-bar phrase during that wrap.
 const savedClock = {
   ctx: Audio.ctx, bpm: Audio.bpm, tempo: Audio.tempo, nextTime: Audio.nextTime,
-  step: Audio.step, loopStart: Audio.loopStart, loopEnd: Audio.loopEnd, bank: Audio.bank,
+  step: Audio.step, loopStart: Audio.loopStart, loopEnd: Audio.loopEnd,
+  loopHasWrapped: Audio.loopHasWrapped, bank: Audio.bank,
 };
 const loopSpb = (60 / 120) / 4;
 Audio.ctx = { currentTime: 10, outputLatency: 0 };
@@ -845,9 +846,18 @@ Audio.bpm = 120; Audio.tempo = 1; Audio.nextTime = 10 + loopSpb * 2;
 Audio.bank = liveSong; Audio.step = 0; Audio.setLoop(0, 16);
 assert(Math.abs(Audio.songBeat() - 3.5) < 1e-9,
   'a one-bar loop wraps its tracker within that bar, not at the end of bar 2');
+// A locator loop can be armed while Play from start is still in the intro. The clock
+// must not present the loop's end before the scheduler has reached locator A.
+Audio.step = 0; Audio.setLoop(32, 64); Audio.step = 0;
+assert(Audio.songBeat() < 0,
+  'an armed locator loop leaves the song clock in the intro until locator A is reached');
+Audio.loopHasWrapped = true;
+assert(Audio.songBeat() > 7.5,
+  'after the scheduler wraps, the song clock is normalized inside the locator span');
 Audio.ctx = savedClock.ctx; Audio.bpm = savedClock.bpm; Audio.tempo = savedClock.tempo;
 Audio.nextTime = savedClock.nextTime; Audio.step = savedClock.step;
-Audio.loopStart = savedClock.loopStart; Audio.loopEnd = savedClock.loopEnd; Audio.bank = savedClock.bank;
+Audio.loopStart = savedClock.loopStart; Audio.loopEnd = savedClock.loopEnd;
+Audio.loopHasWrapped = savedClock.loopHasWrapped; Audio.bank = savedClock.bank;
 
 // The bug this pins: everything that re-applies a mix — a fader, a mute, a solo, an
 // effect, a rebuild — rebuilds the bank from the SONG. An arrangement that lived only

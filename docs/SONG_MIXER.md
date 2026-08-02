@@ -32,22 +32,30 @@ game catalogue.
 | **Header** | what is loaded, how it plays, where it is, what happens to the work |
 | **Timeline** | where you are in the song, in bars |
 | **Arrangement** | which instrument plays in which bar, and what it plays there |
+| **Notes** | the piano roll for the selected channel, over the bars you picked |
 | **Mixer** | the rack: master, channels, send returns |
 | **Effects** | the selected strip's device chain, with room for parameters |
 | **Keyboard** | a floating window: play the selected channel, and watch it play |
 | **Footer** | song title, beat, master peak, keyboard help |
 
-Timeline, arrangement, mixer and effects each have a **fold chevron** on the left of
-their caption, and the strips are sized to the window every time anything moves.
+Timeline, arrangement, notes, mixer and effects each have a **fold chevron** on the
+left of their caption, and the strips are sized to the window every time anything
+moves.
+
+**Why Notes sits where it does.** It is driven from both sides of that position.
+Double-clicking a cell in the arrangement directly above is what opens the roll on
+that lane and that bar; the selected strip in the mixer directly below is what the
+roll stays scoped to. Effects keeps the bottom, hanging off the rack it belongs to.
 
 **Where the space goes.** Exactly one region is elastic at a time, picked in this
-order: the **rack**, then the **arrangement**, then the **effects panel**, then an
-empty band of desk. Whatever a region cannot use passes on down that list — the
-arrangement is snapped to whole lanes, so once it is showing all of them the rest goes
-to the effects panel rather than stopping at the band. Fold the mixer and the
-arrangement grows and then the piano roll fills everything under it; fold all three
-and you get the plain band — with the footer still on the bottom of the window in
-every combination. Header,
+order: the **rack**, then the **arrangement**, then the **notes panel**, then an
+empty band of desk. That is a priority, not a position — it says who absorbs slack,
+and it is unrelated to the order the panels appear in down the page. Whatever a region
+cannot use passes on down that list — the arrangement is snapped to whole lanes, so
+once it is showing all of them the rest goes to the notes panel rather than stopping
+at the band. Fold the mixer and the arrangement grows and then the piano roll takes
+what is left; fold all three and you get the plain band — with the footer still on the
+bottom of the window in every combination. Header,
 timeline and footer sit outside the resizable part of the page, so a window too short
 for every panel's minimum scrolls the desk rather than pushing them off the screen.
 
@@ -224,7 +232,7 @@ the automatic fit.
 | --- | --- |
 | **A melodic channel** | two octaves of keys, opened at the octave that channel's own part is written in. ◀ ▶ shift it. Click a key, or drag across them to glide. |
 | **A drum channel** | the song's whole **kit**, one pad per drum, rather than two octaves of keys that all play the same kick. Each pad plays its own channel; drag across them for a roll. |
-| **Keyboard** | plays from the computer keyboard. `Z S X D C V G B H N J M` is the lower octave with its black keys, `Q 2 W 3 E R 5 T 6 Y 7 U` the one above, carrying on through `I O P` and `[ = ]`; `−` and `+` shift the whole board, and `,` is the C above M. The home row plays pads on a kit. While it is lit the desk's own letter shortcuts (`M S R B L`, the loop-bar numbers, `[` `]`) are yours to play with; `Esc` gives them back. Shifted keys are never claimed, which is what leaves `⇧R` free to arm recording with your hands still on the notes. |
+| **Keyboard** | plays from the computer keyboard. `Z S X D C V G B H N J M` is the lower octave with its black keys, `Q 2 W 3 E R 5 T 6 Y 7 U` the one above, carrying on through `I O P` and `[ = ]`; `−` and `+` shift the whole board, and `,` is the C above M. The home row plays pads on a kit. While it is lit the desk's own letter shortcuts (`M S R B L`, `[` `]`) are yours to play with; `Alt-click` the timeline to place the two loop locators. `Esc` gives the shortcuts back. Shifted keys are never claimed, which is what leaves `⇧R` free to arm recording with your hands still on the notes. |
 | **MIDI** | plays from a real MIDI keyboard over Web MIDI (Chrome and Edge). Ports that arrive after you switch it on are picked up too. On a kit, General MIDI's drum notes land on the right pads — 36 on the kick, 38 on the snare, 42 on the hats — and anything unmapped falls back to pad order. |
 | **Record** | writes what you play into the song. See below. |
 | **The dot** | lit whenever the channel is sounding — including a drum, whose own note is nowhere near this keyboard. |
@@ -713,14 +721,14 @@ Two ways in, and the quick one is on the strip:
   each end: one preset along, within the group the strip is already in. Auditioning a
   family — which kick, which pad — is the commonest thing anyone does with the library,
   and this is that loop with the panel taken out of it. It stays inside one category on
-  purpose; stepping off the end of Kicks into Snares would answer a question nobody
+  purpose; stepping off the end of Kick into Snare would answer a question nobody
   asked. With **ENGINE** showing, the arrows are the way in to the lane's own kind.
 - **Clicking the row** opens the panel, which is where you go to jump families, read
   what a preset is for, or search.
 
 Points worth knowing:
 
-- **Drums or pitched, at the top of the panel.** The one split the eleven categories do
+- **Drums or pitched, at the top of the panel.** The one split the sixteen categories do
   not make, and the only one that is about the lane rather than the sound: a lead strip
   opens on `pitched`, a drum strip on `drums`, and `all` is one click away. A search
   that finds nothing under the filter says so and offers what the rest of the library

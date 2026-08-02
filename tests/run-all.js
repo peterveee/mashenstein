@@ -20,6 +20,7 @@ const suites = [
   'tests/megamix.js',
   'tests/mix.js',
   'tests/mixer-layout.js',
+  'tests/mixer-loop.js',
   // The arrangement layer, beside the mix layer it mirrors: that one is what a song
   // sounds like, this one is what plays when. Its first assertion is the one that
   // matters — an empty layer hands every song back the bank it always had — which is

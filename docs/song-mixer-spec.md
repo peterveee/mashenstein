@@ -112,11 +112,15 @@ window — drag by title bar, remembers position.
 - Click a lane name to mute/restore that drum in the visible bars
 - Playhead stays live while song runs
 
-### 5. Piano Roll (effects region view, `N`)
+### 5. Notes panel — Piano Roll (`N`)
 
-For pitched/melodic lanes. Opens in the effects panel region as an alternative view
-to the effects rack. Edits the selected channel's part for the selected bars. Same
-window, same write path, same undo/save integration as the step sequencer.
+For pitched/melodic lanes. Its own panel between the Arrangement and the Mixer, with
+its own fold. Edits the selected channel's part for the selected bars. Same write
+path, same undo/save integration as the step sequencer.
+
+It sits there because both of its drivers are adjacent: double-clicking an arrangement
+cell above selects that lane, marks that bar and opens the roll, and the selected strip
+in the rack below is what the roll stays scoped to.
 
 ### 6. Mixer rack
 
@@ -222,8 +226,8 @@ Floating window — drag by title bar, remembers position.
 - **Synth presets**: built from Tone.js classes (MonoSynth, FMSynth, AMSynth,
   MembraneSynth, MetalSynth, NoiseSynth, DrumSynth).
 
-Categories: Bass, Lead, Pad, Keys, Organ, Brass, Strings, Bell, FX, Kick, Snare, Hat,
-Percussion.
+Categories: Bass, Lead, Pad, Keys, Pluck, Organ, Bells, Orch, FX, Kick, Snare, Hats,
+Clap, Tom, Crash, Perc.
 
 **Voice editor**: opens inline on the strip (widens it). Edits mutate the catalogue
 entry and hot-reload the synth. Parameters grouped by function (oscillator, filter,

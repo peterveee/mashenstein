@@ -13,6 +13,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { openRenderer } from './lib/render-bank-browser.js';
 import { wavBuffer, dbfs } from './lib/wav.js';
+import { homeLane } from './lib/measure-voice.js';
 import { VOICES, VOICE_LANES } from '../src/data/voices.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,7 +23,6 @@ mkdirSync(outDir, { recursive: true });
 // Where each preset is most at home. The sound is the same anywhere — a drum-synth
 // preset carries its own tuning — but each lane has its own measured level target,
 // and auditioning on the lane it will actually be chosen on auditions that too.
-const LANE_FOR = { Kicks: 'kick', Snares: 'snare', Claps: 'clap', Hats: 'hats', Percussion: 'rim' };
 const LANE_OVERRIDE = { dsHatOpen: 'ohats', dsZap: 'crash' };
 
 const steps = (hits, value = true) => Array.from({ length: 32 }, (_, i) => (hits.includes(i) ? value : false));
@@ -31,7 +31,7 @@ const drums = Object.values(VOICES).filter((v) => v.kind === 'drum');
 const renderer = await openRenderer();
 try {
   for (const v of drums) {
-    const lane = LANE_OVERRIDE[v.id] || LANE_FOR[v.category] || 'crash';
+    const lane = LANE_OVERRIDE[v.id] || homeLane(v);
     const bank = {
       bpm: 120,
       [lane]: steps([0, 8, 16, 24]),

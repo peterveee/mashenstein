@@ -1,7 +1,7 @@
-// The mixer has two adjustable vertical boundaries: the arrangement splitter and
-// the new boundary between the channel rack and the effects shelf. Keep the live
-// page contract in a small source test so a future shell edit cannot leave the
-// handle unrendered, uncounted by the layout math, or detached from its drag code.
+// The mixer has four adjustable vertical boundaries: Timeline/Arrangement,
+// Arrangement/Mixer, Mixer/Notes and Notes/Effects. Keep the live page contract in a
+// small source test so a future shell edit cannot leave a border unrendered, uncounted
+// by the layout math, or detached from its drag code.
 import { readFileSync } from 'node:fs';
 
 const shell = readFileSync(new URL('../tools/mixer-shell.html', import.meta.url), 'utf8');
@@ -11,6 +11,8 @@ const editor = readFileSync(new URL('../tools/mixer-voice-editor.js', import.met
 const voiceSource = readFileSync(new URL('../src/data/voices.js', import.meta.url), 'utf8');
 const server = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
 const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url), 'utf8');
+const piano = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
+const barGrid = readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.url), 'utf8');
 const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 
@@ -60,10 +62,12 @@ assert(/searchInput = search/.test(librarySource)
 assert(/if \(voiceLibrary\.isCollapsed\('edit'\)\) voiceLibrary\.collapse\('edit', false\)/.test(entry)
   && /if \(localStorage\.getItem\('mash-mixer-library-open'\)\) openPresetLibrary\(\)/.test(entry),
   'opening or restoring the preset library reveals its blank editor workspace');
-assert(shell.includes('id="panicbtn"')
-  && /#panicbtn \{[^}]*background: var\(--hot\)/.test(shell)
-  && shell.indexOf('id="panicbtn"') > shell.indexOf('id="undo"'),
-  'the mixer header exposes a visibly urgent Panic button on the right');
+assert(!shell.includes('id="panicbtn"') && !/#panicbtn/.test(shell)
+  && !/\$\('panicbtn'\)/.test(entry),
+  'Panic is a key, not a button — the header no longer carries one to aim a mouse at');
+assert(/if \(e\.key === 'Escape'\) \{[\s\S]{0,300}?panicAll\(\)/.test(entry)
+  && /id="stop"[^>]*data-tipsays="[^"]*⎋ is the panic version of this/.test(shell),
+  '⎋ runs the panic from the desk, and Stop’s tooltip is where the key is written down');
 assert(/function silenceAll\(\)[\s\S]*?Audio\.panic\(\)/.test(entry)
   && /function panicAll\(\)[\s\S]*?const restoreMidi = midiOn[\s\S]*?setMidi\(false, \{ announce: false \}\)[\s\S]*?silenceAll\(\)[\s\S]*?if \(restoreMidi\) setMidi\(true, \{ announce: false \}\)/.test(entry)
   && /async function setMidi\(on, \{ announce = true \} = \{\}\)/.test(entry),
@@ -72,7 +76,7 @@ assert(/toast\(restoreMidi[\s\S]*?MIDI restored[\s\S]*?MIDI off/.test(entry),
   'Panic reports whether MIDI was restored or left off');
 const stopClick = /\$\('stop'\)\.onclick = \(\) => \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
 assert(/function silenceAll\(\)[\s\S]*?releaseOskSources\('m:'\)/.test(entry)
-  && /silenceAll\(\)[\s\S]*?jumpTo\(at\)/.test(stopClick)
+  && /silenceAll\(\)[\s\S]*?jumpTo\(at, \{ immediate: true \}\)/.test(stopClick)
   && !/setMidi\(/.test(stopClick)
   && /id="stop"[^>]*data-tipsays="[^"]*release held notes and silence every live sound/.test(shell)
   && !/id="stop"[^>]*data-tipsays="[^"]*turn off MIDI input/.test(shell),
@@ -81,6 +85,21 @@ assert(/panic\(\)[\s\S]*?this\._cutLaneGates\(\)[\s\S]*?this\.voices\.dispose\(\
   && /resumeAfterPanic\(\)[\s\S]*?this\.levels\.master/.test(audio)
   && /previewNote\([^\n]*\)[\s\S]*?this\.resumeAfterPanic\(\)/.test(audio),
   'the audio engine cuts live buses and held voices, then restores on a deliberate preview');
+assert(/const SEQUENCER_LOOKAHEAD = 0\.25;/.test(audio)
+  && /while \(this\.nextTime < this\.ctx\.currentTime \+ SEQUENCER_LOOKAHEAD\)/.test(audio),
+  'the realtime scheduler keeps a quarter-second of audio queued while the desk lays out');
+assert(/const strip = this\.mixer && this\.mixer\.lane\(key\);/.test(audio)
+  && /this\._previewing && !strip/.test(audio)
+  && /this\._laneGate\(key, strip \? strip\.dry : this\.musicBus/.test(audio),
+  'keyboard previews keep their separate synth timeline but use the selected channel strip');
+assert(/setLoopAtBoundary\([\s\S]*?const nextBar[\s\S]*?const boundary = Math\.min\(this\.loopEnd, nextBar\)/.test(audio)
+  && /applyPendingLoop\([\s\S]*?this\.pendingLoop\.boundary[\s\S]*?this\.loopStart = this\.pendingLoop\.start[\s\S]*?this\.pendingLoop = null/.test(audio)
+  && /this\.applyPendingLoop\(\)[\s\S]*?else if \(this\.loopEnd/.test(audio),
+  'a loop-range change is applied by the audio scheduler at the next bar boundary');
+assert(/setStepAtBoundary\([\s\S]*?const nextBar[\s\S]*?this\.pendingStep/.test(audio)
+  && /applyPendingStep\([\s\S]*?this\.pendingStep\.boundary[\s\S]*?this\.step = this\.pendingStep\.step[\s\S]*?this\.pendingStep = null/.test(audio)
+  && /function jumpTo\([\s\S]*?Audio\.setStepAtBoundary\(within\)/.test(entry),
+  'a normal playing seek is applied by the audio scheduler at the next bar boundary');
 assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && /const isUserPreset = \(voice\) =>/.test(editor)
   && /const libraryOwner =/.test(editor)
@@ -180,42 +199,114 @@ assert(/const FOLD_KEY = 'mash-mixer-voicelib-folds'/.test(
   && /\n  ask,/.test(entry),
   'the library restores the editor unless explicitly hidden and keeps a blank editor after deletion');
 
+// Arrangement, Notes, Mixer, Effects. Notes is above the rack because it is driven
+// from both sides of that position: the arrangement's double-click opens it and the
+// selected strip below scopes it. Effects stays last, hanging off the rack it belongs
+// to. Order is asserted here because both resize handlers depend on it — each border
+// sizes the panel above it, so moving a panel silently repoints a drag.
+const arrangePanel = shell.indexOf('<div id="arrange">');
+const notes = shell.indexOf('<div id="notes">');
+const mixhead = shell.indexOf('<div id="mixhead">');
 const rack = shell.indexOf('<div id="rackwrap">');
-const split = shell.indexOf('<div id="devsplit"');
 const devices = shell.indexOf('<div id="devices">');
-assert(rack >= 0 && split > rack && devices > split,
-  'effects splitter sits between the mixer rack and effects panel');
-assert(/#devsplit \{[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell)
-  && shell.includes('#devsplit.hidden { display: none; }'),
-  'effects splitter has a touch-safe resize cursor and fold state');
-assert(/id="devsplit"[^>]*role="separator"[^>]*aria-orientation="horizontal"/.test(shell),
-  'effects splitter exposes a horizontal separator role');
+assert(arrangePanel >= 0 && notes > arrangePanel && mixhead > notes && rack > mixhead
+  && devices > rack
+  && !shell.includes('id="arrsplit"') && !shell.includes('id="devsplit"'),
+  'the resizable panels meet directly, Notes between Arrangement and Mixer, no splitter bars');
+// One rule per boundary. #arrange draws the Arrangement/Notes line and #mixhead draws
+// the Notes/Mixer one; a border-top on #notes as well would double the first to 2px.
+assert(!/#notes \{[^}]*border-top/s.test(shell)
+  && /#mixhead \{[^}]*border-top:\s*1px solid var\(--line\)/s.test(shell)
+  && /#arrange \{[^}]*border-bottom:\s*1px solid var\(--line\)/s.test(shell),
+  'each panel boundary is drawn by exactly one border');
+assert(/#mixhead::before,[\s\S]*?#notes::before \{[^}]*pointer-events:\s*none/s.test(shell)
+  && /#mixhead\.edge-resizable::before,[\s\S]*?#notes\.edge-resizable::before \{[^}]*pointer-events:\s*auto[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell),
+  'panel borders have invisible, touch-safe resize hit areas');
+assert(/#timeline::after \{[^}]*pointer-events:\s*none/s.test(shell)
+  && /#timeline\.edge-resizable::after \{[^}]*pointer-events:\s*auto[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell)
+  && /#devices::before \{[^}]*pointer-events:\s*none/s.test(shell)
+  && /#devices\.edge-resizable::before \{[^}]*pointer-events:\s*auto[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell),
+  'Timeline and Effects borders also have transparent, touch-safe resize hit areas');
 
 assert(entry.includes("const DEV_KEY = 'mash-mixer-devh'")
   && entry.includes('localStorage.setItem(DEV_KEY')
   && entry.includes('localStorage.removeItem(DEV_KEY'),
-  'effects height is remembered and resettable');
-assert(entry.includes("const bar = $('devsplit')")
-  && entry.includes("bar.addEventListener('pointerdown'")
-  && entry.includes("bar.addEventListener('pointermove'")
-  && entry.includes("bar.addEventListener('dblclick'"),
-  'effects splitter handles drag and automatic-fit gestures');
+  'notes height is remembered and resettable');
+assert(entry.includes("const edge = $('mixhead')")
+  && entry.includes("const edge = $('notes')")
+  && entry.includes("const edge = $('devices')")
+  && entry.includes("const edge = $('timeline')")
+  && (entry.match(/edge\.addEventListener\('pointerdown'/g) || []).length >= 4
+  && (entry.match(/edge\.addEventListener\('pointermove'/g) || []).length >= 4
+  && (entry.match(/edge\.addEventListener\('dblclick'/g) || []).length >= 2,
+  'all panel borders handle drag gestures, with reset gestures on remembered heights');
 // Bounded to the function's own body. `[\s\S]*?` is lazy but unbounded, so a regex
-// anchored on `function notesRoom(` happily reaches `h($('devsplit'))` in planDesk two
-// hundred lines below and passes however notesRoom is written.
+// anchored on `function notesRoom(` happily reaches unrelated layout code below and
+// passes however notesRoom is written.
 const notesRoomBody = /function notesRoom\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
-assert(notesRoomBody.includes("h($('devsplit'))"),
-  'layout calculations reserve the effects splitter');
-assert(entry.includes('function syncDeskSplitter()')
-  && /function setDevicesFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
-  && /function setMixerFolded[\s\S]*?syncDeskSplitter\(\)/.test(entry)
-  && /function setArrangeCollapsed[\s\S]*?syncDeskSplitter\(\)/.test(entry),
-  'the handle hides when either adjacent panel is folded');
-assert(/function setNotesFolded\([\s\S]*?syncDeskSplitter\(\);[\s\S]*?fitStrips\(\);[\s\S]*?requestAnimationFrame\(fitStrips\)/.test(entry),
-  'collapsing notes refits once after flex layout settles so the mixer takes the freed space');
-assert(/function syncDeskSplitter\(\)[\s\S]*?\$\('arrsplit'\)\.classList\.toggle\('hidden'[\s\S]*?\$\('devsplit'\)\.classList\.toggle\('hidden'/.test(entry)
-  && !/\$\('arrsplit'\)\.classList\.toggle\('hidden', on\)/.test(entry),
-  'both handles are governed together, so neither outlives the panels it borders');
+assert(notesRoomBody.includes("h($('mixhead'))")
+  && !notesRoomBody.includes("h($('arrsplit'))")
+  && !notesRoomBody.includes("h($('devsplit'))"),
+  'layout calculations leave no height for standalone splitter bars');
+assert(entry.includes('function syncPanelResizeEdges()')
+  && /\$\('mixhead'\)\.classList\.add\('edge-resizable'\)/.test(entry)
+  && /\$\('notes'\)\.classList\.add\('edge-resizable'\)/.test(entry)
+  && /\$\('timeline'\)\.classList\.add\('edge-resizable'\)/.test(entry)
+  && /\$\('devices'\)\.classList\.add\('edge-resizable'\)/.test(entry)
+  && /function setDevicesFolded[\s\S]*?syncPanelResizeEdges\(\)/.test(entry)
+  && /function setMixerFolded[\s\S]*?syncPanelResizeEdges\(\)/.test(entry)
+  && /function setArrangeCollapsed[\s\S]*?syncPanelResizeEdges\(\)/.test(entry),
+  'resize hit areas follow the adjacent panels’ fold state');
+assert(/function scheduleDeskFit\([^)]*\)[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
+  && /function scheduleDeskFit\([\s\S]*?deskFitSettle[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
+  && /function setNotesFolded\([\s\S]*?syncPanelResizeEdges\(\);[\s\S]*?scheduleDeskFit\(true\)/.test(entry)
+  && /function setDevicesFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry)
+  && /function setMixerFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry),
+  'panel folds coalesce their refit and get one bounded settled measurement for strip height');
+assert(/function fitStrips\(\)[\s\S]*?scheduleMarkClipped\(\)/.test(entry)
+  && /function scheduleMarkClipped\(\)[\s\S]*?requestIdleCallback/.test(entry),
+  'nonessential clipping reads are deferred out of the panel-fold task');
+assert(/function notesOpenInLayout\([\s\S]*?layout\.notes[\s\S]*?layout\.view/.test(entry)
+  && /const hasSongLayout = !!songLayouts\[id\];[\s\S]*?notesOpenInLayout\(songLayouts\[id\]\) === false[\s\S]*?setNotesFolded\(true, false\)/.test(entry),
+  'a remembered folded Notes panel stays lazy during the song load');
+assert(/function showStepSeq\(on\)[\s\S]*?scheduleStepSeqOpen\(\)/.test(entry)
+  && /function scheduleStepSeqOpen\(\)[\s\S]*?requestIdleCallback/.test(entry)
+  && /function scheduleStepSeqOpen\(\)[\s\S]*?stepSeq\.open\(true\)/.test(entry),
+  'the first step-grid open is deferred out of the playback click task');
+// Notes is now sized from the border BELOW it, so every sign in its handler is the
+// mirror of the old one: a downward drag grows it and opens it when folded, and it is
+// an UPWARD drag that hands room back to the Mixer underneath. Pinned because getting
+// a sign wrong here inverts a gesture without breaking anything that throws.
+const notesDrag = /const edge = \$\('mixhead'\)[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
+assert(notesDrag.includes("const panel = $('notes')")
+  && /startH = h\(panel\)/.test(notesDrag)
+  && /startCollapsed && dy > 0\s*\?\s*MIN\.notes\(\) \+ dy\s*:\s*startH \+ dy/.test(notesDrag)
+  && /asked <= MIN\.notes\(\)[\s\S]*?setNotesFolded\(true, false\)[\s\S]*?userDevH = null/.test(notesDrag)
+  && /asked <= MIN\.notes\(\)[\s\S]*?setNotesFolded\(false, false\)[\s\S]*?userDevH = clampDeviceH\(asked\)/.test(notesDrag)
+  && /startCollapsed && dy > 0[\s\S]*?setNotesFolded\(false, false\)[\s\S]*?userDevH = clampDeviceH\(asked\)/.test(notesDrag)
+  && /mixerCollapsed && dy < 0[\s\S]*?setMixerFolded\(false, false\)/.test(notesDrag)
+  && !/mixerCollapsed && dy > 0/.test(notesDrag),
+  'the Notes/Mixer border grows Notes downward and reopens the Mixer on an upward drag');
+// The Arrangement keeps its original sense — its border moved from the Mixer's top
+// edge to the Notes panel's, but it is the same physical boundary, so a downward drag
+// still grows it. What changed is which panel it reopens on the way up.
+const arrDrag = /const edge = \$\('notes'\)[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
+assert(/startH = h\(\$\('arrange'\)\)/.test(arrDrag)
+  && /const asked = startH \+ dy/.test(arrDrag)
+  && /lanesIn\(asked\) < 1[\s\S]*?setArrangeCollapsed\(true\)[\s\S]*?userArrH = null/.test(arrDrag)
+  && /notesCollapsed && dy < 0[\s\S]*?setNotesFolded\(false, false\)/.test(arrDrag),
+  'the Arrangement/Notes border sizes the Arrangement and reopens Notes when it folds');
+assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
+  && /let userFxH =/.test(entry)
+  && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)
+  && /function fitDevices\([\s\S]*?if \(userFxH != null\) return/.test(entry)
+  && /const byHand = [\s\S]*?userFxH != null/.test(entry),
+  'Effects remembers a dragged height and keeps automatic fitting from overwriting it');
+assert(/const edge = \$\('devices'\)[\s\S]*?startCollapsed && dy < 0[\s\S]*?setDevicesFolded\(false, false\)[\s\S]*?userFxH = clampEffectsH/.test(entry)
+  && /const edge = \$\('devices'\)[\s\S]*?asked <= MIN\.devices\(\)[\s\S]*?setDevicesFolded\(true, false\)[\s\S]*?userFxH = null/.test(entry),
+  'dragging upward on folded Effects opens and grows it, while dragging to its floor folds it');
+assert(/const edge = \$\('timeline'\)[\s\S]*?const asked = startH \+ \(e\.clientY - from\)[\s\S]*?asked > 30[\s\S]*?setSectionsShown\(true, false\)/.test(entry),
+  'dragging down on the folded Timeline restores its section row and takes the difference from the desk');
 
 // ---- the desk column: a pinned footer and one elastic region ---------------------
 // The footer used to travel. #rackwrap was the only flex:1 child of the page column
@@ -274,7 +365,7 @@ assert(entry.includes('const deskPool = () => innerHeight')
   && !/const deskPool[\s\S]{0,300}?\$\('devices'\)/.test(entry),
   'the pool is the window less the four things outside the desk — the effects panel is not chrome');
 
-// ---- a handle moves only the two panels it borders -------------------------------
+// ---- a handle moves only the panels it borders -----------------------------------
 // deviceRoom() used to subtract a hypothetical one-lane arrangement while fitStrips
 // measured the ceiling against the effects panel's live height. Two different worlds,
 // and the reason dragging the effects handle shrank the arrangement instead.
@@ -291,11 +382,13 @@ assert(/function notesRoom\(arrH = plannedArrangeHeight\(\)\)/.test(entry)
   'the notes height is clamped between its own minimum and that room, nothing else');
 assert(/function planDesk[\s\S]*?let rackH = room - arrH - notesH/.test(entry),
   'the arrangement and the notes panel are sized independently and the rack takes the difference');
-// The effects panel is not in that sum at all — it takes what its cards need and is
-// outside the elastic chain, which is what "fixed height" means here.
+// The effects panel is not in the elastic chain — it takes its natural height or a
+// remembered manual height, and the Mixer yields room for either one.
 assert(/function planDesk[\s\S]*?const fxH = effectsNaturalHeight\(\);/.test(entry)
+  && /effectsNaturalHeight[\s\S]*?userFxH/.test(entry)
+  && /const byHand = [\s\S]*?userFxH != null/.test(entry)
   && !/const DESK_CHAIN = \[[^\]]*'devices'/.test(entry),
-  'while the effects panel has a fixed height and is outside the chain entirely');
+  'Effects has a natural or dragged height outside the elastic chain, with Mixer give-up space');
 
 // ---- the shrink ladder ------------------------------------------------------------
 // A short window sheds whole BLOCKS, in one fixed order, and says on the header switch
@@ -307,6 +400,8 @@ assert(entry.includes("const SHED_ORDER = ['effects', 'sends', 'eq']")
   'the ladder sheds inserts, then sends, then EQ — named once, in the switches own ids');
 assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.shed-eq \.eqrow,\s*#rackwrap\.no-sends \.sendrow,\s*#rackwrap\.shed-sends \.sendrow,\s*#rackwrap\.no-fx \.fxbtns,\s*#rackwrap\.shed-fx \.fxbtns \{ display: none; \}/.test(shell),
   'shed-* hides exactly what no-* hides, as a separate set of classes');
+assert(/#rackwrap:is\(\.no-eq, \.shed-eq\):is\(\.no-sends, \.shed-sends\):is\(\.no-fx, \.shed-fx\)[\s\S]*?\.strip\[data-lane\]:not\(\.master\):not\(\.send\) \.stripbody \{ display: none; \}/.test(shell),
+  'channel strips collapse the empty former-selector body when all optional blocks are absent');
 assert(!/#rackwrap\.(squeezed|compact)|\.stripsum/.test(shell)
   && !/compactStripHeight|summaryChip|paintSummary|openFullStrips|classList\.(add|toggle)\('(compact|squeezed)'/.test(entry),
   'nothing scrolls and no summary chip: a shed block is hidden outright, not squeezed');
@@ -343,6 +438,10 @@ assert(/function measureChromeAt\(n\) \{\s*return atShed\(n,/.test(entry)
   && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
   && shell.includes('#rackwrap.measuring .voicepair { height: auto; }'),
   'one chrome height per rung, measured off the ladder, and the floor is the last of them');
+assert(entry.includes('return [230, 190, 150, 110][n]')
+  && !entry.includes('return [260, 220, 180, 140][n]')
+  && !entry.includes('body.append(voiceRow(key))'),
+  'the pre-build strip sizing estimate matches the selector-free channel layout');
 // A block hidden by hand has no height left for the ladder to save by hiding it again.
 assert(/function applyStripParts\(\)[\s\S]*?forgetStripMetrics\(\)/.test(entry)
   && /function buildRack\(\)[\s\S]*?forgetStripMetrics\(\)/.test(entry),
@@ -353,6 +452,67 @@ const addTrack = shell.indexOf('id="addtrackbtn"');
 assert(arrangeHead >= 0 && addTrack > arrangeHead
   && shell.slice(arrangeHead, addTrack).includes('Arrangement'),
   'the Add Track plus lives in the Arrangement header');
+assert(/--arrrow-compact:\s*26px/.test(shell)
+  && /--arrrow-main:\s*24px/.test(shell)
+  && /--arrgap:\s*4px/.test(shell)
+  && /--arrrow:\s*48px/.test(shell)
+  && /--arrgrid-pad:\s*8px/.test(shell)
+  && /#arrange\.compact\s*\{[^}]*--arrrow:\s*var\(--arrrow-compact\); --arrrow-main:\s*var\(--arrrow-compact\)/s.test(shell)
+  && /#arrange\.compact \.arrtrack-bottom\s*\{\s*display:\s*none;/.test(shell),
+  'arrangement rows use the compact height without losing the named compact mode');
+// The control line keeps the row's landing under it: at 44px with no padding the mute
+// and solo buttons ended flush on the row's bottom edge.
+assert(/\.arrtrack-bottom \{[^}]*padding-bottom:\s*6px/s.test(shell)
+  && /\.arrpresetcat \{[^}]*top:\s*-1px/s.test(shell),
+  'the control line lands above the row edge and the preset category is optically centred');
+assert(/\.arrrow\.sel \{[^}]*z-index:\s*4/s.test(shell)
+  && /\.arrrow\.sel::after \{[^}]*z-index:\s*8[^}]*pointer-events:\s*none[^}]*border:/s.test(shell)
+  && /\.arrrow\.sel \.arrname \{[^}]*font-weight:\s*600/s.test(shell)
+  && /\.strip\.selected h3 \{[^}]*font-weight:\s*600/s.test(shell),
+  'selected track labels use semibold rather than extra-bold width');
+assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^}]*min-height:\s*var\(--arrrow\)/s.test(shell)
+  && /\.arrrow-main \{[^}]*flex:\s*0 0 var\(--arrrow\)/s.test(shell)
+  && /--arrhead-gap:\s*8px/.test(shell)
+  && /\.arrhead-cell \{[^}]*width:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ 4px - var\(--foldx\)\)[^}]*display:\s*grid[^}]*grid-template-columns:\s*var\(--ctlh\) 17px var\(--arrhead-gap\) minmax\(0, 1fr\)[^}]*padding-left:\s*4px; padding-right:\s*var\(--arrhead-gap\)/s.test(shell)
+  && /\.arrtrack-icon \{[^}]*grid-column:\s*2[^}]*grid-row:\s*1 \/ span 2/s.test(shell)
+  && /\.arrtrack-top, \.arrtrack-bottom \{[^}]*grid-column:\s*4/s.test(shell)
+  && /\.arrtrack-top \{[^}]*grid-row:\s*1/s.test(shell)
+  && /\.arrtrack-bottom \{[^}]*grid-row:\s*2/s.test(shell)
+  && /#arrange \{[^}]*max-height:\s*calc\(var\(--arrhead-h\)\s*\+ var\(--arrrow\) \* var\(--arrmax-lanes\)\s*\+ var\(--arrgap\) \* \(var\(--arrmax-lanes\) - 1\)\s*\+ var\(--arrgrid-pad\) \+ 1px\)/s.test(shell)
+  && /#arrgrid \{[^}]*padding:\s*0 0 0 calc\(var\(--foldx\) - 4px\)[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
+  && /const preset = presetForLane\(row\.key\)[\s\S]*?preset\?\.category[\s\S]*?preset\?\.label/.test(entry)
+  && /const top = document\.createElement\('div'\)[\s\S]*?top\.className = 'arrtrack-top'[\s\S]*?category\.className = 'arrpresetcat'[\s\S]*?const bottom = document\.createElement\('div'\)[\s\S]*?bottom\.className = 'arrtrack-bottom'[\s\S]*?top\.append\(name, category\)[\s\S]*?bottom\.append\(btns\)[\s\S]*?header\.append\(num, icon, top, bottom\)[\s\S]*?bottom\.append\(gainWrap\)[\s\S]*?main\.append\(header, bars\)[\s\S]*?el\.append\(main\)/.test(entry),
+  'arrangement track headers use Logic-style identity and control rows');
+assert(/const laneRowGap = \(\) => px\(\$\('arrgrid'\), 'rowGap'\);/.test(entry)
+  && /const laneStackHeight = \(count\) => count \* laneRowHeight\(\)[\s\S]*?Math\.max\(0, count - 1\) \* laneRowGap\(\)/.test(entry)
+  && /const laneLanding = \(\) => px\(\$\('arrange'\), 'paddingBottom'\);/.test(entry)
+  && /const arrangeChrome = \(\) => h\(\$\('arrhead'\)\) \+ laneLanding\(\)[\s\S]*?borderBottomWidth/.test(entry)
+  && /const lanesIn = \(px, round = Math\.round\) => \{[\s\S]*?const body = px - arrangeChrome\(\)[\s\S]*?return round\(\(body \+ gap\) \/ \(row \+ gap\) \+ 1e-6\)/.test(entry)
+  && /const arrangeSnap = \(px, round = Math\.round\) => arrangeChrome\(\)[\s\S]*?laneStackHeight\(/.test(entry)
+  && /arrangeChrome\(\) \+ laneStackHeight\(ARR_AUTO_LANES\(\)\)/.test(entry)
+  && /const lane = laneRowHeight\(\) \+ laneRowGap\(\)/.test(entry),
+  'arrangement resizing snaps to the rendered row stack, including its inter-row gap')
+// The landing under the last row is the panel's padding, not the scroller's. Inside
+// #arrgrid it was scroll content, so a mid-scroll arrangement spent it on the gap and
+// the top sliver of the next lane — the panel showed part of a row it had not sized
+// for. Everything the snap depends on is measured or written off the shell variables,
+// so a future change to --arrrow moves the cap, the fit and the landing together.
+assert(/#arrange \{[^}]*padding-bottom:\s*var\(--arrgrid-pad\)/s.test(shell)
+  && /#arrange\.collapsed \{ padding-bottom: 0; \}/.test(shell)
+  && !/#arrgrid \{[^}]*padding:[^;]*var\(--arrgrid-pad\)/s.test(shell)
+  && /--arrhead-h:\s*calc\(var\(--ctlh\) \+ var\(--arrhead-pad\) \* 2\)/.test(shell)
+  && /--arrmax-lanes:\s*8/.test(shell)
+  && /#arrhead \{[^}]*padding:\s*var\(--arrhead-pad\) var\(--rgut\) var\(--arrhead-pad\) var\(--foldx\)/s.test(shell)
+  && /const ARR_AUTO_LANES = \(\) => \{[\s\S]*?getPropertyValue\('--arrmax-lanes'\)[\s\S]*?Number\.isFinite\(n\) && n >= 1 \? n : 8/.test(entry)
+  && /return arrangeChrome\(\) \+ \$\('arrgrid'\)\.scrollHeight;/.test(entry),
+  'the arrangement landing is fixed panel chrome, so every scroll position shows whole lanes')
+// The track separator. A pseudo-element in the gap, not a border: a border would add
+// height and put the panel back off its lane boundaries. `+` so it never draws above
+// the first row or below the last, and ink-mixed so the one rule serves the light
+// themes as well as the dark ones.
+assert(/\.arrrow \+ \.arrrow::before \{[^}]*position:\s*absolute[^}]*height:\s*1px[^}]*top:\s*calc\(var\(--arrgap\) \/ -2 - 0\.5px\)[^}]*background:\s*color-mix\(in srgb, var\(--ink\) 6%, transparent\)/s.test(shell)
+  && !/\.arrrow \{[^}]*border-top/s.test(shell),
+  'tracks are divided by a hairline in the row gap that costs no height');
 assert(/#arrhead \{[^}]*position:\s*relative/s.test(shell)
   && /#arrhead #addtrackbtn \{[^}]*left:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ var\(--namegap\) - 24px\)[^}]*transform:\s*translateY\(-50%\)/s.test(shell)
   && /#addtrackbtn \{[^}]*color:\s*var\(--ctl-hi\)[^}]*font:\s*400 19px\/1/s.test(shell),
@@ -360,19 +520,33 @@ assert(/#arrhead \{[^}]*position:\s*relative/s.test(shell)
 assert(/#addtrackbtn \{[^}]*color:\s*var\(--ctl-hi\)[^}]*font:\s*400 19px\/1/s.test(shell)
   && !shell.slice(0, addTrack).includes('class="addtrackicon"'),
   'Add Track is a light theme-coloured plus rather than a heavy icon button');
-assert(/\.arrrow \.arrgain \{[^}]*width:\s*30px[^}]*height:\s*5px/s.test(shell)
-  && /\.arrrow \.arrgain::-webkit-slider-thumb \{[^}]*width:\s*10px[^}]*height:\s*10px/s.test(shell)
-  && /\.arrrow \.arrgain::-webkit-slider-runnable-track \{[^}]*background:\s*var\(--line2\)/s.test(shell)
-  && /\.arrrow:not\(:hover\) \.arrgain \{ opacity:\s*\.72; \}/.test(shell),
-  'arrangement track volume trims are comfortably draggable with a visible rail');
-assert(/gainSlider\.className = 'arrgain'[\s\S]*?gainWrap\.append\(gainSlider, gainReadout\);\s*header\.append\(gainWrap\);\s*el\.append\(header, bars\)/.test(entry),
-  'each tiny volume trim is placed in the header immediately before its bars');
+assert(/\.arrrow \.arrgain \{[^}]*width:\s*96px[^}]*height:\s*16px[^}]*display:\s*block/s.test(shell)
+  && /\.arrrow \.arrgain::-webkit-slider-thumb \{[^}]*width:\s*14px[^}]*height:\s*14px/s.test(shell)
+  && /\.arrrow \.arrgain::-webkit-slider-runnable-track \{[^}]*height:\s*8px[^}]*background:\s*transparent/s.test(shell)
+  && /\.arrvumeter \{[^}]*height:\s*8px[^}]*background:\s*var\(--deep\)/s.test(shell)
+  && /\.arrvumeter i \{[^}]*width:\s*0%[^}]*linear-gradient/s.test(shell)
+  && /\.arrpresetcat \{[^}]*margin-left:\s*auto[^}]*text-align:\s*right/s.test(shell)
+  && /#arrgrid \{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
+  && /\.arrbars \{[^}]*align-self:\s*stretch[^}]*gap:\s*4px[^}]*height:\s*auto/s.test(shell)
+  && /\.arrbar \{[^}]*padding-inline:\s*4px/s.test(shell)
+  && /\.arrbar \{[^}]*border-radius:\s*3px/s.test(shell)
+  && /\.arrbar \.arrcell:last-child \{[^}]*margin-right:\s*0/s.test(shell),
+  'arrangement track volume controls share the VU rail and bars have an equal visual inset');
+assert(/gainSlider\.className = 'arrgain'[\s\S]*?gainWrap\.append\(vu, gainSlider, gainReadout\);\s*arrangementMeters\.set\(row\.key[\s\S]*?bottom\.append\(gainWrap\);[\s\S]*?main\.append\(header, bars\);\s*el\.append\(main\)/.test(entry),
+  'each volume control combines the fader and live VU meter in the lower header row');
 assert(/\.arrgainreadout \{[^}]*position:\s*absolute[^}]*bottom:\s*calc\(100% \+ 4px\)[^}]*font-variant-numeric:\s*tabular-nums/s.test(shell)
   && /gainReadout\.className = 'arrgainreadout'[\s\S]*?pointerdown[\s\S]*?gainReadout\.classList\.add\('show'\)[\s\S]*?pointerup/.test(entry),
   'the hidden arrangement gain readout appears with the dB value only while dragging');
-assert(/setMixerFolded\([\s\S]*?arrange'\)\.classList\.toggle\('track-gain-visible', on\)/.test(entry)
-  && /#arrange\.track-gain-visible \.arrrow \.arrgainwrap \{ display: block; \}/.test(shell),
-  'arrangement gain trims are shown only while the Mixer is collapsed');
+assert(/\.arrtrack-bottom \{[^}]*gap:\s*var\(--arrhead-gap\)/s.test(shell)
+  && /\.arrgainwrap \{[^}]*display:\s*flex[^}]*flex:\s*1 1 auto[^}]*width:\s*auto[^}]*min-width:\s*96px/s.test(shell)
+  && /\.arrgainwrap \.arrgain \{[^}]*flex:\s*1 1 auto[^}]*width:\s*100%/s.test(shell)
+  && !entry.includes('track-gain-visible')
+  && !shell.includes('track-gain-visible'),
+  'arrangement volume controls remain visible while the Mixer is open or collapsed');
+assert(/function updateArrangementMeter\(readout, lin, now, dt\)[\s\S]*?readout\.fill\.style\.width[\s\S]*?readout\.peak\.style\.left[\s\S]*?readout\.meter\.classList\.toggle\('clip'/.test(entry)
+  && /const arrangementMeters = new Map\(\)/.test(entry)
+  && /for \(const \[key, readout\] of arrangementMeters\)[\s\S]*?updateArrangementMeter\(readout, lin, now, dt\)/.test(entry),
+  'arrangement VU fills and peak markers follow the live lane meter path');
 assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addPercussionLane\(\)/.test(entry)
   && !entry.includes('openAddTrackPicker'),
   'the plus opens one new track and its preset selector without a choice menu');
@@ -407,11 +581,127 @@ assert(/data-mixer-theme="midday"[\s\S]*?--selected-ink: #27323a[\s\S]*?--lane-i
   && shell.includes('.arrrow.sel .arrname { color: var(--selected-ink)')
   && shell.includes('.strip.selected h3 { color: var(--selected-ink)'),
   'Midday uses dark text for selected tracks and lane labels on its light surfaces');
+// A struck note flashes away from the field it sits on, and on paper that is the
+// opposite direction from slate: the marks are lighter than their bar there, so a
+// hardcoded brightness(0) inverted them for a tenth of a second.
+assert(/:root \{[\s\S]*?--note-flash: 0; --note-flash-soft: \.2;/.test(shell)
+  && ['light', 'midday', 'dawn'].every((theme) => new RegExp(
+    `data-mixer-theme="${theme}"[\\s\\S]*?--note-flash: 2\\.2; --note-flash-soft: 1\\.7;`).test(shell))
+  && !/filter: brightness\(0\)/.test(shell)
+  && /@keyframes arrTrailEcho[\s\S]*?brightness\(var\(--note-flash, 0\)\)[\s\S]*?brightness\(var\(--note-flash-soft, \.2\)\)/.test(shell),
+  'the arrangement note flash is the theme\'s own direction — ink on the dark desks, white on the light ones');
+assert(/#arrange \.arrbar:not\(\.has-notes\) \{ background-color: var\(--cell\); \}/.test(shell)
+  && /#arrange \.arrbar:not\(\.has-notes\) \.arrcell \{ background: transparent; \}/.test(shell),
+  'a silent bar is the same rectangle as a playing one, in the neutral cell colour');
 assert(entry.includes('const TRACK_PALETTES = {')
   && entry.includes('themeTrackColour')
   && entry.includes('arrangementBarColour')
   && entry.includes('refreshThemeColours'),
   'alternate themes use finite track palettes and refresh shared track views');
+assert(/id="notevisual"[^>]*>/.test(shell)
+  && /id="noteanimation"[^>]*type="checkbox"/.test(shell),
+  'Desk settings expose note visual language and an animation toggle beside Theme');
+assert(entry.includes("const NOTE_VISUAL_KEY = 'mash-mixer-note-visual'")
+  && entry.includes("const NOTE_ANIMATION_KEY = 'mash-mixer-note-animation'")
+  && entry.includes("['solid', 'Solid']")
+  && entry.includes("['pulse', 'Fine Pulse Dots']")
+  && entry.includes("['trail', 'Elastic Trails']")
+  && !entry.includes("['trail-muted'")
+  && !entry.includes("['trail-line'")
+  && !entry.includes("['trail-soft'")
+  && /applyNoteVisualPreferences\(\{ render: false \}\)/.test(entry),
+  'the three note languages and animation preference are persisted as desk state');
+assert(/data-note-visual="solid"/.test(shell)
+  && /data-note-visual="pulse"/.test(shell)
+  && /data-note-visual="trail"/.test(shell)
+  && !/data-note-visual="trail-(muted|line|soft)"/.test(shell)
+  && !/#arrange\[data-note-visual="solid"\] \.arrbar\.has-notes \{/.test(shell)
+  && /data-note-animation="on"/.test(shell)
+  && /arrPulseBloom/.test(shell)
+  && /arrTrailTug/.test(shell)
+  && /arrTrailEcho/.test(shell)
+  && /\.arrcell\.note\.echoing::before/.test(shell)
+  && /@keyframes arrTrailTug[\s\S]*?scale\(2\); filter: brightness\(var\(--note-flash, 0\)\)[\s\S]*?100%[\s\S]*?filter: brightness\(1\)/.test(shell)
+  && /@keyframes arrTrailEcho[\s\S]*?opacity: var\(--trail-dot-opacity, \.98\)[\s\S]*?100%[\s\S]*?opacity: var\(--trail-dot-opacity, \.98\)/.test(shell)
+  && /arrPercussionFlash/.test(shell)
+  && /#arrange \{[^}]*--arr-note-size:\s*5px/.test(shell)
+  && /\.arrcell\.note \.arrhit[\s\S]*?width:\s*var\(--arr-note-size\); height:\s*var\(--arr-note-size\)[\s\S]*?border-radius:\s*50%/.test(shell)
+  && /\.arrcell\.note\.percussion \{[^}]*overflow:\s*visible/.test(shell)
+  && /\.arrcell\.note\.percussion::before[\s\S]*?display:\s*none/.test(shell)
+  && /\.arrcell\.note::before[\s\S]*?width:\s*var\(--arr-note-size\); height:\s*var\(--arr-note-size\)/.test(shell)
+  && /\.arrmicrodot \{[^}]*width:\s*var\(--arr-note-size\); height:\s*var\(--arr-note-size\)/.test(shell)
+  && /\.arrcell\.note\.micro-notes::before[\s\S]*?display:\s*none !important/.test(shell)
+  && /micro-notes\.playing \.arrmicrodot[\s\S]*?animation:\s*arrPulseBloom/.test(shell)
+  && /micro-notes\.playing \.arrmicrodot[\s\S]*?animation:\s*arrTrailTug/.test(shell)
+  && /#arrange\[data-note-visual="trail"\] \.arrmelodyline \{[^}]*display:\s*block/.test(shell)
+  && /\.arrmelodyline \{[^}]*inset:\s*0; width:\s*100%/.test(shell)
+  && /#arrange\[data-note-visual="trail"\] \.arrbar \.arrcell \{[^}]*margin-right:\s*0/.test(shell)
+  && /--trail-dot:\s*color-mix\(in srgb, var\(--bar-colour, var\(--lane\)\) 45%, var\(--deep\)\)/.test(shell)
+  && /--trail-thread:\s*color-mix\(in srgb, var\(--bar-colour, var\(--lane\)\) 82%, var\(--deep\)\)/.test(shell)
+  && /var\(--deep\)/.test(shell),
+  'the three note languages use bright fields with tinted Elastic Trails marks and playback animation is opt-in');
+assert(/box\.className = `arrbar\$\{playing \? ' has-notes' : ''\}`/.test(entry)
+  && /const barColour = arrangementBarField\(row\.key\)[\s\S]*?box\.style\.setProperty\('--bar-colour', barColour\)/.test(entry)
+  && /c\.className = 'arrcell'[\s\S]*?note \? ' note' : ''/.test(entry)
+  && /const perBar = \[16, 8, 4, 2, 1\]\.find\(\(cells\) => plan\.length \* cells <= 256\)/.test(entry)
+  && /function noteVisualGeometry\(values, range\)/.test(entry)
+  && /const y = 12 \+ \(1 - \(\(centre - range\.min\) \/ range\.span\)\) \* 76/.test(entry)
+  && /function melodicMovementPoints\(steps, range\)/.test(entry)
+  && /function melodicDotPoints\(steps, range\)/.test(entry)
+  && /function melodicMovementTailPath\(last, next\)/.test(entry)
+  && /function percussionHitPositions\(values\)/.test(entry)
+  && /hit\.className = 'arrhit'/.test(entry)
+  && /document\.createElementNS\('http:\/\/www\.w3\.org\/2000\/svg', 'svg'\)/.test(entry)
+  && /classList\.add\('arrmelodyline'\)/.test(entry)
+  && /const barSteps = row\.steps\.slice\(bar \* perBar, \(bar \+ 1\) \* perBar\)[\s\S]*?melodicMovementPath\(barSteps, pitchRanges/.test(entry)
+  && /const nextBarPoints = row\.group === 'melodic'[\s\S]*?const tail = melodicMovementTailPath\(barPoints\.at\(-1\), nextBarPoints\[0\]\)/.test(entry)
+  && /classList\.add\('arrtrailtail'\)/.test(entry)
+  && /gradient\.setAttribute\('x1', '94'\)[\s\S]*?gradient\.setAttribute\('x2', '100'\)[\s\S]*?gradientUnits', 'userSpaceOnUse'/.test(entry)
+  && /c\.classList\.add\('percussion'\)/.test(entry)
+  && /c\.classList\.add\('micro-notes'\)/.test(entry)
+  && /dot\.className = 'arrmicrodot'/.test(entry)
+  && /dot\.dataset\.cell = String\(point\.cellIndex\)/.test(entry)
+  && /dot\.dataset\.slot = String\(point\.slot\)/.test(entry)
+  && /hit\.dataset\.slot = String\(index\)/.test(entry)
+  && /const hasChord = values\.some\(\(value\) => Array\.isArray\(value\)/.test(entry)
+  && /--note-y/.test(entry)
+  && /function followArrangementVisual\(step\)/.test(entry)
+  && /const selectedArrangementLane = selectedLane[\s\S]*?arrCells\.some\(\(row\) => row\.key === selectedLane\)/.test(entry)
+  && /arrmicrodot\[data-cell="\$\{cellIndex\}"\]\[data-slot="\$\{slot\}"\]/.test(entry)
+  && /if \(selectedArrangementLane && row\.key !== selectedArrangementLane\) continue/.test(entry)
+  && /function markRecordedVisual\(lane, bar, step, open\)/.test(entry),
+  'arrangement visuals keep fine timing and pitch-aware marks on the existing cells');
+
+// A drawn cell is not a sixteenth once a song is long enough to compress them, so the
+// playback accent has to be aimed at the ATTACK inside it, not at the box.
+assert(/c\.dataset\.hits = \(values\.length \? values : \[true\]\)/.test(entry)
+  && /const perCell = 16 \/ arrCellsPerBar;[\s\S]*?const cellIndex = Math\.floor\(within \/ perCell\);[\s\S]*?const slot = within - cellIndex \* perCell;/.test(entry)
+  && /const hits = cell\.dataset\.hits;\s*\n\s*if \(hits && hits\[slot\] !== '1'\) continue;/.test(entry)
+  && /arrhit\[data-slot="\$\{slot\}"\]/.test(entry),
+  'a note on the second half of a compressed cell is set off when it sounds, not when'
+  + ' the playhead reaches the cell it is drawn in');
+
+// Two attacks on the same mark are two events. Without the step in the comparison the
+// second one inherits the first one's flourish and never restarts.
+assert(/let arrPlayingAt = null;/.test(entry)
+  && /if \(same && at === arrPlayingAt\) return;/.test(entry)
+  && /const rehit = next\.some\(\(cell\) => arrPlayingCells\.includes\(cell\)\)/.test(entry)
+  && /if \(rehit\) void \$\('arrange'\)\.offsetWidth;/.test(entry)
+  && /arrPlayingAt = at;/.test(entry),
+  'a re-struck mark restarts its animation rather than holding the previous one');
+assert(/const arrEchoCells = new Set\(\)/.test(entry)
+  && /function startArrangementEcho\(cell\)/.test(entry)
+  && /cell\.classList\.add\('echoing'\)/.test(entry)
+  && /if \(!nextSet\.has\(cell\)\) startArrangementEcho\(cell\)/.test(entry),
+  'selected-track playback leaves a short fading visual echo behind each note');
+assert(/function updateArrangementNoteScale\(\)[\s\S]*?const size = clamp\(width \* 0\.12, 3, 5\)/.test(entry)
+  && /redrawSelection\(\);[\s\S]*?updateArrangementNoteScale\(\);/.test(entry)
+  && /fitStrips\(\);[\s\S]*?updateArrangementNoteScale\(\);/.test(entry),
+  'arrangement note marks scale down with rendered bar width while five pixels remains the maximum');
+assert(/recordNote\([\s\S]*?markRecordedVisual\(laneKey, bar, inBar, true\)/.test(entry)
+  && /recordOff\([\s\S]*?markRecordedVisual\(held\.lane, held\.bar, held\.step, false\)/.test(entry)
+  && /function flushTake\([\s\S]*?render: !live/.test(entry),
+  'recorded notes appear immediately while beat commits still avoid full desk redraws');
 
 // ---- the theme ramp ---------------------------------------------------------------
 // The desk used to carry about two hundred hardcoded slate hexes, which is why every
@@ -430,8 +720,8 @@ assert(/--on-accent: #eafaf5/.test(shell),
 assert(/\.transport \{[^}]*background: var\(--tray\)/s.test(rules)
   && /\.transport button \{[^}]*background: var\(--traybtn\)/s.test(rules)
   && /#ruler \.tick \{[^}]*background: var\(--grid\)/s.test(rules)
-  && rules.includes('.arrcell.barstart { box-shadow: inset 1px 0 0 var(--grid); }'),
-  'the transport tray and the bar ticks take their colour from the theme');
+  && rules.includes('.arrcell.barstart { box-shadow: none; }'),
+  'the transport tray and ruler ticks take their colour from the theme, while bar gaps replace inset ticks');
 // A cast shadow the width of the desk, from a drawer that is shut.
 assert(!/#navdrawer \{[^}]*box-shadow/s.test(rules)
   && /#navdrawer\.show \{[^}]*box-shadow/s.test(rules),
@@ -445,13 +735,16 @@ const strayHexes = (rules.match(/#[0-9a-fA-F]{6}\b/g) || []).length;
 assert(strayHexes <= 42, `the rules carry ${strayHexes} literal hexes; only the keyboards, the fader cap and the badge inks should be fixed`);
 assert(!/hsl\(\$\{laneHue\(key\)\} 3[02]% 1[25]%\)/.test(entry)
   && entry.includes('let panelIsLight = false')
-  && /const barMix = \(shade\)[\s\S]*?panelIsLight/.test(entry),
-  'lane tints mix toward the surface instead of assuming Midnight\'s dark one');
+  && /const arrangementBarColour = \(key, shade = 56\) => \{[\s\S]*?const themed = themeTrackColour\(key\)[\s\S]*?58%/.test(entry)
+  && /const arrangementBarField = \(key\) => arrangementBarColour\(key, 56\)/.test(entry),
+  'lane tints and active bars use the original strong theme-aware Solid colour');
 assert(/colour: hueColour\(hue\), tint: hueTint\(hue\)/.test(entry),
   'the send returns take the theme\'s palette rather than a raw teal and purple');
 const addTrackFn = entry.match(/function addPercussionLane\(anchor = null\) \{[\s\S]*?\n\}/)?.[0] || '';
 assert(/pendingAddTrack = \{[\s\S]*?openVoicePicker\(x, y, newKey\)/.test(addTrackFn)
   && !addTrackFn.includes('editMix(')
+  && /const emptyLaneMix = \(\) =>/.test(entry)
+  && /m\.lanes\[pending\.key\] = emptyLaneMix\(\)/.test(entry)
   && /function commitPendingAddTrack[\s\S]*?m\.layers[\s\S]*?m\.lanes\[pending\.key\][\s\S]*?voice\[seam\.voiceKey\]/.test(entry)
   && /const pick = \(id\)[\s\S]*?commitPendingAddTrack\(laneKey, id\)[\s\S]*?closeMenu\(\)/.test(entry),
   'Add Track waits for a preset before creating the independent lane');
@@ -600,7 +893,7 @@ assert(/function showStepSeq\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
 // So the claim is no longer "the roll is a view inside the effects region". It is that
 // there are three independent surfaces and none of them can put another away:
 //   #notes    a desk region, in the elastic chain, holding the piano roll
-//   #devices  a desk region of its own, fixed height, outside the chain
+//   #devices  a desk region of its own, natural or dragged height, outside the chain
 //   #stepseq  a floating window, outside #desk entirely
 const notesAt = shell.indexOf('<div id="notes">');
 const rollAt = shell.indexOf('<div id="pianoroll">');
@@ -610,27 +903,70 @@ assert(notesAt > 0 && rollAt > notesAt && rollAt < devices,
 assert(devices > notesAt,
   'and the effects panel is a sibling of it, not its host — no view switch between them');
 const rollSrc = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
-// The roll's controls follow the roll. While the two were views of one region they were
-// hosted in #devhead and that was right; once they became two panels it left a part
-// picker, an octave nudge, a key and a scale on a header labelled Effects, with nothing
-// under it they touched.
-assert(/headerHost:\s*\(\)\s*=>\s*document\.getElementById\('notehead'\)/.test(rollSrc),
-  'the roll\'s controls are hosted in the NOTES header, not the effects one');
-assert(!/#devhead\s+\.ssqhostbar/.test(shell)
-  && /#notehead \.ssqhostbar \{/.test(shell),
-  'and the stylesheet moved with them');
-// Clustered, not queued: seven controls in a row read as seven decisions. `group` makes
-// them three — what am I editing, where am I looking, what key is it in — and the header
-// rules a hairline between them. The scope button the grid appends is the fourth.
-assert(/return \[group\('part',[^\]]*group\('view',[^\]]*group\('key',/.test(rollSrc),
-  'the roll hands its controls over already clustered');
-assert(/\.ssqhostbar \.ssqgrp \+ \.ssqgrp,\s*\.ssqhostbar \.ssqgrp \+ \.ssqlink \{[^}]*border-left/s.test(shell),
-  'and the header fences the clusters — including the scope button it does not build');
-// `.fxsel` is width:100%. Eight of them in one flex row is eight squeezed selects, and a
-// native select clamped narrower than its text runs the text under its own arrow rather
-// than eliding it — "Square Tone" came out reading "Square Tone✓".
-assert(/\.ssqhostbar \.fxsel \{[^}]*width:\s*auto[^}]*flex:\s*none/s.test(shell),
-  'the selects in that row are content-width and unsqueezable');
+// The roll's header row is empty, and that is the point. It once held a lane picker (the
+// channel is chosen on the desk), an octave nudge (the whole instrument is there to
+// scroll), a root and a scale (the on-screen keyboard owns the key), `Find the part`, and
+// the grid's scope switch — every one of them either a second way to do something the desk
+// already does or a decision the roll should not be asking for, on the row that has to stay
+// readable while notes are drawn under it.
+assert(!/ssqlane-pick|ssqoctbtn|ssqscalekind|ssqroot|Find the part/.test(rollSrc)
+  && !/setLane|setScale|SCALES\b|headerExtra/.test(rollSrc),
+  'the roll puts nothing in the notes header');
+// `headerHost` stays: it is also what keeps the grid from building a second header inside
+// the scroll area, and a host given nothing to hold gets no bar at all rather than an
+// empty span holding a gap open in someone else\'s header.
+assert(/headerHost:\s*\(\)\s*=>\s*document\.getElementById\('notehead'\)/.test(rollSrc)
+  && /if \(kids\.length\) \{/.test(barGrid),
+  'and an empty host bar is never appended');
+// What is left — the zoom, and what the mouse does — sits in the blank left half of the
+// key column, beside the field both act on rather than at the far end of a header row.
+// The two fields themselves are pinned further down, with the rest of that gutter's rules;
+// this is the one measurement that keeps them OFF the keys: `.ssqkey` starts at 50% + 3px,
+// so that is where the panel has to stop.
+assert(/#pianoroll \.rollzoom-panel \{[^}]*width:\s*calc\(50% \+ 3px\)/s.test(shell),
+  'the control gutter ends exactly where the key faces begin');
+assert(/scopeToggle:\s*false/.test(rollSrc)
+  && /scopeToggle = true/.test(barGrid)
+  && /let linked = scopeToggle &&/.test(barGrid),
+  'the roll edits the bar you click, with no scope switch and nothing remembered to'
+  + ' change that behind its back');
+assert(/const previewNotes = new Map\(\)[\s\S]*?const releaseRollNotes = \(\) => \{[\s\S]*?Audio\.releasePreviewNote\(laneKey, freq\)/.test(rollSrc)
+  && /preview: previewRollNote,[\s\S]*?previewRelease: releaseRollNotes/.test(rollSrc),
+  'piano-roll previews release every sustained pitch when the drawing gesture ends');
+assert(/pointerdown[\s\S]*?previewRollNote\(row\)[\s\S]*?pointerup[\s\S]*?endRollGesture/.test(rollSrc),
+  'piano-roll key previews also have an explicit pointer note-off');
+// A sweep up the keyboard is one gesture looking for one note: the key you leave comes
+// up as the key you arrive at goes down. `elementFromPoint` is the only thing that can
+// say which key that is — the pointer is captured by the key you pressed, so neither
+// `pointerenter` nor `:hover` ever reaches the rest of the board.
+assert(/key\.addEventListener\('pointermove'[\s\S]*?document\.elementFromPoint[\s\S]*?closest\?\.\('\.ssqkey'\)/.test(rollSrc)
+  && /if \(!next \|\| next === heldKey\) return;[\s\S]*?releaseRollNotes\(\);[\s\S]*?previewRollNote\(/.test(rollSrc)
+  && /setPointerCapture/.test(rollSrc),
+  'sweeping the roll’s keyboard glides — the note you were holding is released as the'
+  + ' next one sounds, and the gesture is captured so it can end off the board');
+// The one that matters: a triggerAttack with no release is a tone that runs under the
+// whole song. Every ending has to reach the same teardown, INCLUDING the endings the
+// key element cannot see — a virtual redraw can destroy it mid-gesture, and a listener
+// on a node that no longer exists releases nothing.
+assert(/const endRollGesture = \(\) => \{\s*releaseRollNotes\(\);\s*holdRollKey\(null\);/.test(rollSrc)
+  && /for \(const type of \['pointerup', 'pointercancel'\]\) \{\s*addEventListener\(type, endRollGesture\);/.test(rollSrc)
+  && /addEventListener\('blur', endRollGesture\)/.test(rollSrc)
+  && /if \(document\.hidden\) endRollGesture\(\)/.test(rollSrc)
+  && /pointerdown[\s\S]*?endRollGesture\(\);\s*previewRollNote\(row\)/.test(rollSrc),
+  'and no sweep can leave a note stuck: pointer up, cancel, the window losing focus, the'
+  + ' tab going away and the next key press all run the same release');
+// Your finger and the playhead are two different lights. `playing` is cleared wholesale
+// every step, so a held key drawn with it would go dark twice a beat while the song runs.
+assert(/heldKey\?\.classList\.remove\('held'\)/.test(rollSrc)
+  && /heldKey\?\.classList\.add\('held'\)/.test(rollSrc)
+  && /#pianoroll \.rollwhite \.ssqkey\.held \{[^}]*background-color:\s*var\(--accent\)/s.test(shell)
+  && shell.indexOf('.ssqkey.held') > shell.indexOf('.ssqkey.playing'),
+  'the key under your finger has its own mark, declared after playback so it wins while'
+  + ' the song is running under it');
+// The rules for that row went with the controls — including `#devhead .ssqhostbar`, which
+// styled them back when the roll and the effect cards were two views of one region.
+assert(!/\.ssqhostbar/.test(shell),
+  'and the stylesheet keeps no rules for a control row nothing builds');
 assert(stepseqAt > shell.indexOf('</main>'),
   'while the step grid is a floating window outside the desk regions altogether');
 assert(/#stepseq \{[^}]*position:\s*fixed[^}]*z-index:\s*13/s.test(shell)
@@ -672,6 +1008,9 @@ assert(/\$\('rollbtn'\)\.onclick = \(\) => showPianoRoll\(\$\('notes'\)\.classLi
 assert(/function setNotesFolded[\s\S]*?\$\('rollbtn'\)\.classList\.toggle\('on', !on\)/.test(entry),
   'the roll’s toolbar light is set where the panel is folded, so it agrees with the'
   + ' Notes chip and with the fold chevron');
+assert(/function setNotesFolded[\s\S]*?needsBuild = !on && !pianoRoll\.isOpen\(\)/.test(entry)
+  && /function schedulePianoRollOpen\([\s\S]*?pianoRoll\.open\(true\)/.test(entry),
+  'opening Notes after a folded startup initializes the roll after the layout task');
 
 // The header's controls. They had grown five different heights and four different widths,
 // which reads as a row that was never set. One variable governs the height of everything
@@ -687,7 +1026,7 @@ assert(/--ctlh: 30px; --ctlicon: 17px;/.test(shell)
 // The fold column and the lane numbers under it take the same square, from the same
 // variable — a hand-set 22 next to the menu's 30 is what put them off one another.
 assert(/\.foldbtn \{ width: var\(--ctlh\); height: var\(--ctlh\);/.test(shell)
-  && /\.arrnum \{ flex: none; width: var\(--ctlh\);/.test(shell),
+  && /\.arrnum \{[^}]*grid-column:\s*1[^}]*grid-row:\s*1 \/ span 2[^}]*width:\s*var\(--ctlh\)/s.test(shell),
   'the panel folds are the hamburger\'s square, and the lane numbers run down it');
 const header = shell.slice(shell.indexOf('<header>'), shell.indexOf('</header>'));
 const iconOnly = ['navbtn', 'playstart', 'stop', 'play', 'pause', 'clearsolo',
@@ -701,6 +1040,249 @@ assert(!/\.transport button \{[^}]*(width|height):/s.test(shell)
   // `(?<!-)` so `stroke-width` on the hamburger is not read as a size.
   && !/\.(oskicon|seqicon|rollicon|preseticon|hamburger) \{[^}]*(?<!-)width:/s.test(shell),
   'and none of them sizes itself, so the row cannot drift apart again');
+assert(/<div id="mastertoolbar" class="grp"[^>]*aria-label="Master volume"><\/div>/.test(header)
+  && /function masterToolbarBlock\(\{ value, onInput, onReset, title \}\)/.test(entry)
+  && /master-fader-rail/.test(entry)
+  && /master-fader-readout/.test(entry)
+  && !/mastertoolbar-label/.test(entry)
+  && /meter\.className = 'meter stereo toolbar-meter'/.test(entry)
+  && /function setMasterControlValue\(value, tag = null\)[\s\S]*?Audio\.mixer\?\.setMasterTrim\(value\)[\s\S]*?syncMasterControls\(value\)/.test(entry)
+  && /meters\.push\(\{ key: '__master-toolbar', master: true, horizontal: true,[\s\S]*?masterToolbarControl\.chans/.test(entry)
+  && /mt\.horizontal\) ch\.fill\.style\.width/.test(entry)
+  && /const v = mt\.master \|\| mt\.key === '__master' \? Audio\.mixer\.masterLevels\(\)/.test(entry)
+  && /#mastertoolbar \.master-fader-rail \{[^}]*height:\s*34px/s.test(shell)
+  && /header \.sp \{[^}]*display:\s*none/s.test(shell)
+  && /#mastertoolbar \{[^}]*flex:\s*1 1 250px/s.test(shell)
+  && /#mastertoolbar \{[^}]*justify-content:\s*center/s.test(shell)
+  && /#mastertoolbar \.mastertoolbar-control \{[^}]*width:\s*min\(100%,\s*300px\)/s.test(shell)
+  && /#mastertoolbar input\.master-fader::-webkit-slider-thumb \{[^}]*border-radius:\s*50%/s.test(shell)
+  && /#mastertoolbar \.meter\.toolbar-meter \{[^}]*height:\s*18px/s.test(shell),
+  'the toolbar exposes one larger horizontal stereo master slider on the shared master bus');
+// The two-pixel top and bottom are written through --roll-rowpad-top and
+// --roll-rowpad-bottom, which are zero on every row but the field's first and last —
+// those two are taller than their pitch by the keyboard's caps (see renderRows), and a
+// note in them must still be drawn the size of every other note.
+assert(/#pianoroll \.ssqcell\.on::before \{[\s\S]*?inset:\s*calc\(2px \+ var\(--roll-rowpad-top, 0px\)\) auto\s*calc\(2px \+ var\(--roll-rowpad-bottom, 0px\)\) 1px;[\s\S]*?width:\s*calc\(var\(--len, 1\) \* 100% - 2px\)/.test(shell)
+  && /#pianoroll \.ssqcell\.on\.atedge::after \{[\s\S]*?top:\s*calc\(2px \+ var\(--roll-rowpad-top, 0px\)\);[\s\S]*?bottom:\s*calc\(2px \+ var\(--roll-rowpad-bottom, 0px\)\)/.test(shell),
+  'piano-roll note marks leave a clear vertical gap and a smaller horizontal gap');
+// A row carrying a cap is taller than its pitch, so the nearest-row arbitration takes the
+// cap back off before it measures a centre — and the scroller keeps no air under the
+// field, or the rules stop short of the bar the field scrolls on.
+assert(/const lead = Number\(rowEl\.dataset\.lead\) \|\| 0/.test(barGrid)
+  && /const trail = Number\(rowEl\.dataset\.trail\) \|\| 0/.test(barGrid)
+  && /const centre = rect\.top \+ lead \+ \(rect\.height - lead - trail\) \/ 2/.test(barGrid)
+  && /#pianoroll \.ssqscroll \{[^}]*padding-bottom:\s*0/s.test(shell),
+  'the folded caps move no note hit region, and the field runs down to the scrollbar');
+// --keytrim narrows the key column and shifts the roll left by the same number of
+// pixels, so it has to come off BOTH the width and the panel's left padding.
+assert(/#pianoroll \{[^}]*--keytrim:\s*\d+(?:\.\d+)?px/s.test(shell)
+  && /#pianoroll \{[^}]*--keys:\s*calc\(var\(--contentx\) - var\(--capx\) \+ 6px - var\(--keytrim\)\)/s.test(shell)
+  // The LEFT is what this is about — the top and bottom are air and free to change.
+  && /#pianoroll \{[^}]*padding:[^;]*calc\(var\(--capx\) - 6px - var\(--keytrim\)\)/s.test(shell)
+  && !/ssqrules/.test(shell)
+  && /#pianoroll \.ssqcell \{ box-shadow:\s*inset 1px 0 0 var\(--seam\); \}/.test(shell)
+  && /#pianoroll \.ssqcell\.beat \{ box-shadow:\s*inset 1px 0 0 var\(--grid\); \}/.test(shell)
+  && /#pianoroll \.ssqcell\.downbeat \{[\s\S]*?box-shadow:\s*inset 1px 0 0 color-mix\(in srgb, var\(--grid\) 75%, var\(--grid-hi\)\)/.test(shell)
+  && /#pianoroll \.ssqcell\.barstart \{ box-shadow:\s*inset 2px 0 0 var\(--grid-hi\); \}/.test(shell)
+  && !/#pianoroll \.ssqbarnum[^}]*box-shadow/s.test(shell)
+  && /#pianoroll \.ssqkey \{[^}]*left:\s*calc\(50% \+ 3px\); right:\s*0/s.test(shell)
+  && /#pianoroll \.ssqkey\.keyblack \{[^}]*left:\s*calc\(50% \+ 3px\)[^}]*width:\s*31\.5%/s.test(shell),
+  'the piano faces and direct beat rules share the fixed keyboard field origin');
+// The rule under the count is the field's top edge, so it starts at the field's own x=0
+// rather than running across the ZOOM gutter and the head of the keyboard — and it is a
+// divider, `--line`, not the bar line's `--grid-hi`.
+assert(!/#pianoroll \.ssqruler \{[^}]*border-bottom/s.test(shell)
+  && /#pianoroll \.ssqruler::after \{[^}]*left:\s*calc\(var\(--keys\) \+ var\(--keyseam\)\)[^}]*background:\s*var\(--line\)/s.test(shell),
+  'the ruler closes over the note field only, at the same origin the field starts at');
+// The key column's header cells paint nothing: the gutter beside the keys is the panel's
+// own colour, and a `--panel2` strip in front of it is a stripe down the left of the roll.
+assert(!/#pianoroll \.rollwhite \.ssqhead-cell \{[^}]*panel2/s.test(shell)
+  && !/#pianoroll \.rollblack \.ssqhead-cell \{[^}]*panel2/s.test(shell)
+  && /#pianoroll \.rollwhite \.ssqhead-cell \{[^}]*background:\s*none/s.test(shell)
+  && /#pianoroll \.ssqlane:hover \.ssqhead-cell \{[^}]*background:\s*none/s.test(shell),
+  'nothing paints a bed in front of the key column gutter');
+// The chassis strip at the key ends must cover a GUTTER, never live canvas: a note on
+// step 1 draws 1px into its cell, so an overlay sitting straight on the field clips its
+// leading edge. Both scrollers carry the same --keyseam margin — the ruler as well as the
+// note viewport, or the bar numbers come off their bar lines.
+assert(/#pianoroll \{[^}]*--keyseam:\s*\d+(?:\.\d+)?px/s.test(shell)
+  && /#pianoroll \.ssqdock::after \{[^}]*left:\s*var\(--keys\)[^}]*width:\s*var\(--keyseam\)/s.test(shell)
+  && /#pianoroll \.ssqruler-track \{[^}]*margin:\s*0 0 0 var\(--keyseam\)/s.test(shell)
+  && /#pianoroll \.ssqdock \.ssqscroll \{[^}]*margin-left:\s*var\(--keyseam\)/s.test(shell),
+  'the key-end chassis strip covers a gutter both scrollers leave, not the first step');
+assert(/#pianoroll \.ssqcell\.on \{[^}]*translateY\(var\(--roll-note-y, 0px\)\)/s.test(shell)
+  && !/#pianoroll \.ssqcell\.on::before \{[^}]*translateY/s.test(shell)
+  && !/#pianoroll \.ssqcell\.on\.atedge::after \{[^}]*translateY/s.test(shell)
+  && /rowHeightOf:\s*\(row\) => row\.height/.test(piano)
+  && /const layout = pianoLayout\(low, high, pitchUnit\)/.test(piano)
+  && /rowHeight:\s*\(\) => pitchUnit/.test(piano)
+  && /rowPadding:\s*\(\) => rollPadding/.test(piano)
+  && /rulerHeader:\s*\(\) =>/.test(piano)
+  // Four factors, and 1.5 is not a special case: every height here is a ratio, so the
+  // half-steps cost nothing but a button.
+  && /for \(const factor of \[0\.5, 1, 1\.5, 2\]\)/.test(piano)
+  && /button\.textContent = `\$\{factor\}×`/.test(piano)
+  // Which is only true while the buttons DIVIDE the gutter rather than each demanding
+  // its own text's width — a fifth factor must stay a one-line change.
+  && /#pianoroll \.rollzoom \{[^}]*width:\s*100%/s.test(shell)
+  && /#pianoroll \.rollzoom-button \{[^}]*flex:\s*1 1 0[^}]*min-width:\s*0/s.test(shell)
+  && /setPitchSize\(ROW_H \* factor\)/.test(piano)
+  && /height, keyFace/.test(piano)
+  && /const setPitchSize = \(next\)/.test(piano)
+  && /const anchor = grid\.captureRowAnchor\(\)/.test(piano)
+  && /grid\.restoreRowAnchor\(anchor\)/.test(piano)
+  && /setPitchSize,/.test(piano)
+  && /#pianoroll \.ssqrow\.ssqlane \{ height: var\(--roll-pitch-unit, 19px\); \}/.test(shell)
+  && /#pianoroll \.rollzoom-button\.on \{[^}]*var\(--accent\)/s.test(shell)
+  && /cssVars:\s*\{ '--roll-note-y': '0px' \}/.test(piano)
+  && /hitOffset:\s*0/.test(piano)
+  && /if \(row\.cssVars\)[\s\S]*?rowEl\.style\.setProperty\(name, value\)/.test(barGrid)
+  && /const rowHeightAt = \(row\)/.test(barGrid)
+  && /rowPositions = \[0\]/.test(barGrid)
+  && /rowPadding = \(\) => \(\{ before: 0, after: 0 \}\)/.test(barGrid)
+  && /captureRowAnchor/.test(barGrid)
+  && /restoreRowAnchor/.test(barGrid)
+  && /rowEl\.style\.height = `\$\{height \+ lead \+ trail\}px`/.test(barGrid),
+  'the piano-roll uses grouped per-pitch row geometry without moving note hit regions');
+// The room the top and bottom key faces need beyond their own rows is the KEY COLUMN'S.
+// The field folds it into its first and last rows instead of opening and closing with
+// cell-less spacers, so the time rules reach both edges of the panel while every row
+// bottom in between stays where it was — and the key column keeps its spacers.
+assert(/const headroom = win\.from === 0 \? win\.padTop : 0/.test(barGrid)
+  && /const footroom = win\.to === list\.length - 1 \? win\.padBottom : 0/.test(barGrid)
+  && /appendPad\(win\.padTop, \{ field: !headroom \}\)/.test(barGrid)
+  && /appendPad\(win\.padBottom, \{ field: !footroom \}\)/.test(barGrid)
+  && /const lead = firstRowOfField \? headroom : 0/.test(barGrid)
+  && /const trail = row === rows\[rows\.length - 1\] \? footroom : 0/.test(barGrid)
+  && /rowEl\.style\.setProperty\('--roll-rowpad-top', `\$\{lead\}px`\)/.test(barGrid)
+  && /rowEl\.style\.setProperty\('--roll-rowpad-bottom', `\$\{trail\}px`\)/.test(barGrid)
+  && /fixedRow\.style\.height = `\$\{height\}px`/.test(barGrid),
+  'the field folds the keyboard caps into its end rows, so the grid reaches top and bottom');
+assert(/const cellAt = \(x, y\) => \{[\s\S]*?direct\.classList\.contains\('on'\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?Number\.isFinite\(offset\)[\s\S]*?cellFor\(nearest\.key, direct\.dataset\.bar, direct\.dataset\.step\)/.test(barGrid)
+  && /pointerdown', \(ev\) => \{[\s\S]*?const cell = cellAt\(ev\.clientX, ev\.clientY\)/.test(barGrid)
+  && /pointermove', \(ev\) => \{[\s\S]*?const cell = cellAt\(ev\.clientX, ev\.clientY\)/.test(barGrid)
+  && /const dRow = targetRow[\s\S]*?rowAtOf\(targetRow\.key\) - rowAtOf\(drag\.row\.key\)/.test(barGrid),
+  'piano-roll clicks, hover and vertical drags resolve through the physical key hit map');
+assert(/#pianoroll \.ssqhead-cell \{[^}]*pointer-events:\s*none/s.test(shell)
+  && /#pianoroll \.ssqkey \{[^}]*pointer-events:\s*auto/s.test(shell)
+  && /#pianoroll \.rollwhite \.ssqhead-cell \{[^}]*background:\s*none/s.test(shell)
+  && /#pianoroll \.rollblack \.ssqhead-cell \{[^}]*background:\s*none/s.test(shell),
+  'transparent pitch headers leave the tiled white faces visible and clickable beneath black keys');
+assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.append\(keys, scroll\)/.test(barGrid)
+  && /const zoom = document\.createElement\('div'\)[\s\S]*?zoom\.className = 'rollzoom-panel'[\s\S]*?zoom\.append\(\.\.\.rulerHeader\(c\)\)/.test(barGrid)
+  && /if \(docked\) \{[\s\S]*?const track = document\.createElement\('div'\)[\s\S]*?track\.className = 'ssqruler-track'/.test(barGrid)
+  && /rulerHeader:\s*\(\) =>/.test(piano)
+  && /const fieldLabel = \(text\) => \{[\s\S]*?el\.className = 'rollzoom-label'[\s\S]*?el\.textContent = text/.test(piano)
+  && /return \[fieldLabel\('ZOOM'\), zoom, fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /button\.dataset\.zoom = String\(factor\)/.test(piano),
+  'the zoom and the mouse mode are two separately titled fields in the fixed keyboard gutter');
+assert(/#pianoroll \.ssqruler-label \{[^}]*position:\s*relative[^}]*padding:\s*0/s.test(shell)
+  // On the arrangement's own right-hand tag column, written as the variables that put it
+  // there — the header cell's padding and the gap after it, less the roll's own trim.
+  && /#pianoroll \.ssqruler-label-text \{[^}]*right:\s*calc\(var\(--namegap\) \+ var\(--arrhead-gap\) - var\(--keytrim\)\)/s.test(shell)
+  && !/#pianoroll \.ssqruler-label-text \{[^}]*left:/s.test(shell)
+  // `.arrpresetcat` value for value — the label it now stands under.
+  && /\.arrpresetcat \{[^}]*font-size:\s*9px/s.test(shell)
+  && /\.arrpresetcat \{[^}]*letter-spacing:\s*\.04em/s.test(shell)
+  && /#pianoroll \.ssqruler-label \{[^}]*font-size:\s*9px[^}]*letter-spacing:\s*\.04em[^}]*line-height:\s*13px/s.test(shell)
+  && /#pianoroll \.ssqruler \.ssqruler-label \{[^}]*justify-content:\s*flex-end[^}]*text-align:\s*right/s.test(shell)
+  && /#pianoroll \.rollzoom-panel \{[^}]*flex-direction:\s*column[^}]*align-items:\s*flex-start/s.test(shell)
+  && /#pianoroll \.rollzoom-panel \{[^}]*position:\s*absolute[^}]*pointer-events:\s*none/s.test(shell)
+  && /#pianoroll \.rollzoom-panel > \* \{[^}]*pointer-events:\s*auto/s.test(shell)
+  && /#pianoroll \.rollzoom-label \{[^}]*text-transform:\s*none/s.test(shell)
+  // The channel strip's own row label, matched value for value — see `.row .k`.
+  && /#pianoroll \.rollzoom-label \{[^}]*font-size:\s*9\.5px/s.test(shell)
+  && /#pianoroll \.rollzoom-label \{[^}]*letter-spacing:\s*\.03em/s.test(shell)
+  && /#pianoroll \.rollzoom-label \{[^}]*color:\s*var\(--dim\)/s.test(shell)
+  // A visibly wider gap between the two fields than between a label and its control.
+  && /#pianoroll \.rollzoom \+ \.rollzoom-label \{[^}]*margin-top:\s*9px/s.test(shell),
+  'the Bar and Beat labels sit flush against the field they name and the roll titles its two fields in the strip’s own label type');
+// The ruler names each strip once, in its corner, and the numbers below are bare — so a
+// bar number stacks on the `1` of its own first beat instead of being pushed four
+// characters right of the barline by a word the corner already said. The floating step
+// grid has no corner label, so it keeps the prefix on every number.
+assert(/grid\.setRulerLabel\('Bar'\)/.test(piano)
+  && /strip\('ssqbars', rulerLabel, \(b, i\) => \(i === 0 \? \(rulerLabel \? `\$\{b \+ 1\}` : `Bar \$\{b \+ 1\}`\) : null\)\)/.test(barGrid)
+  && /strip\('ssqnums', 'Beat',/.test(barGrid)
+  && !/setRulerLabel\('Keys'\)/.test(piano)
+  // And the INK lands where the box does. The boxes never disagreed — ruler cell n and
+  // lane cell n are the same per-step div with every margin zeroed — but tabular figures
+  // centre a `1` in a `0`-wide advance, which floated beat 1's digit off the barline its
+  // cell starts on while a `6` stacked above it sat almost on one. The tracking and the
+  // uppercasing went with the word they were for.
+  && /#pianoroll \.ssqbarnum \{[^}]*font-variant-numeric:\s*normal/s.test(shell)
+  && /#pianoroll \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*0[^}]*text-transform:\s*none/s.test(shell)
+  // The step grid keeps both — there the number is still the phrase "Bar 12".
+  && /:is\(#stepseq,#pianoroll\) \.ssqbarnum \{[^}]*tabular-nums/s.test(shell)
+  && /:is\(#stepseq,#pianoroll\) \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*\.05em[^}]*text-transform:\s*uppercase/s.test(shell),
+  'the docked roll names its ruler BAR once in the corner and numbers the bars bare, over their own beat 1');
+// The mouse-mode picker is the desk's, not the platform's — and the point of that is
+// the LIST. `appearance: none` only ever styled the closed box; the popup a `<select>`
+// opens is the OS's, in the OS's colours, on a desk that has nine themes.
+assert(!/createElement\('select'\)|fxsel|ssqtool/.test(piano)
+  && /field\.className = 'rolltool'/.test(piano)
+  && /menu\.className = 'rolltool-menu'/.test(piano)
+  && /menu\.setAttribute\('role', 'listbox'\)/.test(piano)
+  && /o\.setAttribute\('role', 'option'\)/.test(piano)
+  && /#pianoroll \.rollzoom-panel \.rolltool \{[^}]*background:\s*var\(--input\)/s.test(shell)
+  && /#pianoroll \.rollzoom-panel \.rolltool::after \{[^}]*currentColor/s.test(shell)
+  && /#pianoroll \.rollzoom-panel \.rolltool::after \{[^}]*pointer-events:\s*none/s.test(shell)
+  // Our list, drawn from the same variables as the strip, and hideable — `hidden` is a
+  // display:none that the menu's own `display: flex` would otherwise beat.
+  && /\.rolltool-menu \{[^}]*position:\s*fixed/s.test(shell)
+  && /\.rolltool-menu \{[^}]*background:\s*var\(--panel\)/s.test(shell)
+  && /\.rolltool-menu\[hidden\] \{ display: none; \}/.test(shell)
+  // Where the cursor is and which tool you are in are two states, never one colour.
+  && /\.rolltool-option\.active \{[^}]*var\(--hover\)/s.test(shell)
+  && /\.rolltool-option\.on \{[^}]*var\(--accent\)/s.test(shell),
+  'the roll tool picker is a listbox of the desk’s own, closed field and open list alike');
+// A select swallowed the arrows, Escape and the space bar by being a select. A button
+// has to say so, or arrowing down the tool list nudges the notes behind it, Escape drops
+// the selection and space starts the transport.
+assert(/field\.onkeydown = \(ev\) =>/.test(piano)
+  && /\['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '\]\.includes\(ev\.key\)/.test(piano)
+  && /ev\.preventDefault\(\);\s*ev\.stopPropagation\(\);/.test(piano)
+  && /if \(ev\.key === 'Tab'\) \{ closeMenu\(\); return; \}/.test(piano)
+  // The list is dismissed on anything that moves the field out from under it, and the
+  // listeners come off with it — an open menu must never outlive its own picker.
+  && /document\.addEventListener\('pointerdown', onDocDown, true\)/.test(piano)
+  && /document\.removeEventListener\('pointerdown', onDocDown, true\)/.test(piano)
+  && /window\.addEventListener\('scroll', onDismiss, true\)/.test(piano)
+  && /window\.removeEventListener\('scroll', onDismiss, true\)/.test(piano)
+  // Chosen on pointerdown, because the dismissal listens on pointerdown too: a click
+  // would land after the list had gone, on the note field underneath it.
+  && /o\.addEventListener\('pointerdown', \(ev\) => \{[\s\S]*?choose\(t\.id\)/.test(piano)
+  // And it flips up when there is no room below, rather than off the bottom of the window.
+  && /const flip = below < height \+ 8 && r\.top > below/.test(piano),
+  'the picker carries the keyboard, dismissal and flip-up a native select gave for free');
+assert(/#pianoroll \.rollwhite \.ssqkey\.playing \{[^}]*var\(--accent\)/s.test(shell)
+  && /#pianoroll \.ssqkey\.keyblack\.playing \{[^}]*var\(--accent\)/s.test(shell),
+  'playback colours both white and black piano-key faces');
+assert(/selectionChanged\s*=\s*\(\)\s*=>\s*{}/.test(barGrid)
+  && /cell\.classList\.toggle\('sel'[\s\S]*?selectionChanged\(\)/.test(barGrid)
+  && /let editedKey = null/.test(barGrid)
+  && /if \(on\) editedKey = edit[\s\S]*?else editedKey = null/.test(barGrid)
+  && /cell\.classList\.toggle\('edited', paint\)/.test(barGrid)
+  && /f\.on && editedKey === noteKey\(f\.b, f\.i, row\.key\)/.test(barGrid)
+  && /if \(!keys\.length \|\| keys\.some\(\(key\) => key !== editedKey\)\) editedKey = null/.test(barGrid)
+  && /selectionChanged:\s*\(\)\s*=>\s*syncSelectedKeys\(\)/.test(piano)
+  && /\.ssqkeys \.ssqkey\[data-row="\$\{cell\.dataset\.row\}"\]/.test(piano)
+  && /\.ssqkey\.selected\s*\{[^}]*var\(--accent\)/s.test(shell)
+  && /\.ssqlane:has\(\.ssqcell\.on\.edited\) \.ssqkey/.test(shell)
+  && /\.rollwhite\.ssqlane:has\(\.ssqcell\.on\.edited\) \.ssqkey[\s\S]*?background-color:[^;]*var\(--accent\)/.test(shell)
+  && /\.rollblack\.ssqlane:has\(\.ssqcell\.on\.edited\) \.ssqkey[\s\S]*?background-color:[^;]*var\(--accent\)/.test(shell)
+  // The note you just drew is RINGED, never refilled: `--lane` is the channel, and a
+  // note in a colour no channel has is the roll pointing at the wrong strip. The fill
+  // is therefore absent from this rule, and playback puts no mark on a roll note at
+  // all — the playhead already says where we are.
+  && /#pianoroll \.ssqcell\.on\.edited::before \{(?:(?!\}|background)[\s\S])*var\(--accent\)/.test(shell)
+  && !/\.ssqcell\.on:is\([^)]*\.playing[^)]*\)::before/.test(shell),
+  'selected and edited notes keep the playback-style highlight on their matching physical keys, '
+  + 'and are marked on the note by a ring rather than by a fill that loses the lane colour');
+assert(/#barnow \{[^}]*white-space:\s*nowrap[^}]*text-align:\s*right/s.test(shell)
+  && /const barDigits = String\(Math\.max\(1, plan\.length\)\)\.length;/.test(entry)
+  && /barnow'\)\.style\.width = `\$\{barDigits \* 2 \+ 1\}ch`/.test(entry),
+  'the bar counter reserves its widest current/total value so digit changes do not move the header');
 
 // The panel buttons are pictures, so the tooltip is the only place their NAME and their
 // purpose are written down. Two ways for that to rot silently: a button loses its
@@ -750,13 +1332,65 @@ assert(/function eqRow[\s\S]*?classList\.add\('eqrow'\)/.test(entry)
 // against the last send row.
 assert(/\.strip \.stripfoot \{[^}]*padding-top:\s*10px/s.test(shell),
   'the foot reserves the air above whatever it starts with');
+assert(/\.strip \.stripbody \{[^}]*flex:\s*0 0 auto/s.test(shell)
+  && /\.strip \.stripfoot \{[^}]*flex:\s*1 1 auto[^}]*display:\s*flex[^}]*flex-direction:\s*column/s.test(shell)
+  && /\.faderrow \{[^}]*align-items:\s*stretch[^}]*flex:\s*1 1 auto[^}]*min-height:\s*var\(--faderh\)/s.test(shell)
+  && /\.strip \.faderrow \.faderwrap \{[^}]*flex:\s*1 1 auto[^}]*height:\s*auto/s.test(shell)
+  && /\.strip \.faderrow \.fader,[\s\S]*?\.strip \.faderrow \.meter \{[^}]*height:\s*100%/s.test(shell),
+  'channel strips give spare height to the fader while pan and mute/solo stay pinned below');
 assert(/\.fxbtns \{[^}]*margin:\s*0 0 8px/s.test(shell),
   'the insert block carries only the gap under it, so hiding it cannot take the one above');
-// Scoped to .stripbody on purpose: the voice editor's own panels use .devlink and are
-// spaced to their own layout, and every strip carries this row, so the EQ under it
-// lines up across the rack only while the air above and below is the same everywhere.
+// Device summaries still get their body spacing, but channel identity now belongs in
+// the header. The picker button and its old stepping arrows must not return as a second
+// channel control.
 assert(/\.stripbody > \.devlink \{\s*margin: 5px 0 6px/.test(shell),
-  'the voice row has air on both sides, on every strip and nowhere else');
+  'device summaries keep their body spacing');
+assert(/function presetForLane\(laneKey\)[\s\S]*?defaultVoiceOf\(track\?\.bank, laneKey\)/.test(entry)
+  && /function presetHeadingFor\(laneKey\)[\s\S]*?String\(preset\.category\)\.toUpperCase\(\)/.test(entry)
+  && /function updatePanelTitles\(\)[\s\S]*?renderPresetHeading\(\$\('devtitle'\), selectedLane\)/.test(entry)
+  && /function selectLane\(key\)[\s\S]*?buildDevices\(\)[\s\S]*?pianoRoll\.refresh\(\)/.test(entry)
+  && /#devhead \.panelpreset \{[^}]*text-transform:\s*none/s.test(shell)
+  && /#devhead \.paneltype \{[^}]*text-transform:\s*uppercase/s.test(shell),
+  'the effects heading carries the active preset name and uppercase type, and strip selection refreshes the roll');
+// The Notes header is the word alone. The preset belongs to the strip and the effects
+// panel; naming it a third time over the roll was noise.
+assert(!entry.includes("$('notetitle')") && !shell.includes('notetitle')
+  && /<span class="label">Notes<\/span>\s*<\/div>/.test(shell),
+  'the Notes header shows no preset');
+const channelStrip = entry.slice(entry.indexOf('function channelStrip'), entry.indexOf('function sendStrip'));
+assert(channelStrip.includes('label: preset?.label || lane.label')
+  && channelStrip.includes('sublabel: preset?.category || null')
+  && channelStrip.includes("presetName.classList.add('strippreset')")
+  && channelStrip.includes('openVoicePicker(ev.clientX, ev.clientY, key)')
+  && !entry.includes('function voiceRow')
+  && !entry.includes('function stepVoice')
+  && !shell.includes('.voicestep'),
+  'channel strips show the current preset above its type and use that name to choose');
+assert(/\.strip h3\.strippreset \{[^}]*cursor:\s*pointer/s.test(shell)
+  && /\.strip \.stripsub \{[^}]*text-transform:\s*uppercase/s.test(shell)
+  && /\.strip \.stripsub \{[^}]*margin:\s*3px 0 3px/s.test(shell),
+  'the preset title is clickable and the preset type is an uppercase, spaced subheader');
+// The row and the strip are two copies of one name, so both have to answer a click the
+// same way and both have to be repainted when the answer changes. Choosing a preset used
+// to repaint only the rack, which left the row you had just right-clicked still reading
+// the preset it no longer played.
+assert(/function setLaneVoice[\s\S]*?if \(independent\) buildArrangement\(\); else refreshLaneIdentity\(laneKey\);[\s\S]*?stepSeq\.refresh\(\);[\s\S]*?pianoRoll\.refresh\(\);/
+  .test(entry)
+  && /function refreshLaneIdentity\(laneKey\)[\s\S]*?\.arrname[\s\S]*?\.arrpresetcat[\s\S]*?delete name\.dataset\.full;[\s\S]*?markClipped\(row\);[\s\S]*?category\.textContent = preset\?\.category/
+    .test(entry),
+  'choosing a preset renames the arrangement row as well as the strip');
+// A click on a track selects it wherever it lands, and changing what plays the track is
+// the right-click menu — the name is not a button. Half a header that answered a click
+// and half that did not read as a dead row.
+const arrangementFn = entry.slice(entry.indexOf('function buildArrangement'));
+assert(/header\.addEventListener\('click', \(\) => selectLane\(row\.key\)\)/.test(arrangementFn)
+  && /header\.addEventListener\('dblclick'[\s\S]*?closest\('\.arrbtns, \.arrgain'\)[\s\S]*?playFromLaneStart\(row\.key\)/
+    .test(arrangementFn)
+  && !/name\.addEventListener\('click'/.test(arrangementFn)
+  && !/openVoicePicker\([^)]*row\.key\)/.test(arrangementFn)
+  && /mute\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry)
+  && /solo\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry),
+  'anywhere on a track header selects the track, M/S and the level opt out, and the name never opens the picker');
 assert(entry.includes("const PARTS_KEY = 'mash-mixer-hidden-parts'")
   && entry.includes('localStorage.setItem(PARTS_KEY'),
   'which parts are hidden is remembered across reloads');
@@ -787,6 +1421,11 @@ assert(/\.stripedit \{[^}]*z-index:\s*2[^}]*background:\s*color-mix/s.test(shell
   'the » draws over the strip name with its own backing rather than blending into it');
 assert(/\.voicepair > \.strip \.striphead:hover \.stripedit,\s*\.voicepair > \.strip \.stripedit \{\s*display: none/s
   .test(shell), 'the » is gone while the panel it opens is out, hover included');
+assert(/function placeVoiceEditor\(\)[\s\S]*?voicepairhead[\s\S]*?strip\.querySelector\('\.striphead h3'\)[\s\S]*?sharedTitle\.addEventListener\('click', choosePreset\)[\s\S]*?strip\.querySelector\('\.striphead \.stripsub'\)/.test(entry)
+  && /\.voicepair \{[^}]*position:\s*relative/s.test(shell)
+  && /\.voicepairhead \{[^}]*align-items:\s*center/s.test(shell)
+  && /\.voicepair > \.strip \.striphead > h3,[\s\S]*?\.voicepair > #voiceedit \.vehead > \.vetag \{ visibility: hidden; \}/.test(shell),
+  'an expanded channel uses one centered strip identity instead of a separate editor preset heading');
 
 // ---- recording ---------------------------------------------------------------------
 //
@@ -860,9 +1499,38 @@ assert(/function flushTake\([\s\S]*?writeBarNotesShared\(eb, d, bar, lane, notes
   .test(entry),
   'a take is written SHARED — recording into a loop changes the pattern, or a note'
   + ' played into bar 1 of a four-bar section returns every fourth pass');
-assert(/atStep: loopOn \? loopAnchor : Audio\.step/.test(entry),
-  'and re-arms the loop where it already was — applyLoop snaps to the bar it is given,'
-  + ' so re-arming from Audio.step walks a two-bar loop forward on every flush');
+assert(/let locA = null[\s\S]*?let locB = null/.test(entry)
+  && /function currentLoopBounds\(\)[\s\S]*?selectedBar[\s\S]*?16/.test(entry)
+  && /function applyLoop\([\s\S]*?currentLoopBounds\(\)[\s\S]*?Audio\.setLoop\(start, end\)/.test(entry)
+  && /function applyLoopNoJump\([\s\S]*?Audio\.setLoop\(start, end\)[\s\S]*?Audio\.step = 0/.test(entry)
+  && /function jumpTo\([\s\S]*?start && within === 0[\s\S]*?setPlaying\(false\)[\s\S]*?setPlaying\(true, 0\)/.test(entry)
+  && /function syncLoopButton\([\s\S]*?button\.textContent = loopOn[\s\S]*?bars === 1[\s\S]*?Loop Off/.test(entry)
+  && /function syncLoopAnchor\([\s\S]*?Audio\.loopStart === pendingLoopAnchor\.start[\s\S]*?loopAnchor = pendingLoopAnchor\.start/.test(entry)
+  && !/function syncLoopAnchor\(\) \{[^}]*currentLoopBounds\(\)/.test(entry)
+  && /function markBar\([\s\S]*?Audio\.setLoopAtBoundary\(bounds\.start, bounds\.end\)[\s\S]*?classList\.add\('pending'\)/.test(entry)
+  && /function markBar\([\s\S]*?scheduleSelectionEditors\(\)/.test(entry)
+  && /function scheduleSelectionEditors\([\s\S]*?requestIdleCallback/.test(entry)
+  && /function setPlaying\([\s\S]*?flushSelectionEditors\(\)/.test(entry)
+  && /function syncLoopAnchor\([\s\S]*?classList\.remove\('pending'\)/.test(entry)
+  && /function syncPendingSeek\([\s\S]*?Audio\.pendingStep[\s\S]*?selregion[\s\S]*?classList\.remove\('pending'\)/.test(entry)
+  && /function jumpTo\([\s\S]*?Audio\.setStepAtBoundary\(within\)[\s\S]*?pendingSeekStep = within[\s\S]*?selregion[\s\S]*?classList\.add\('pending'\)/.test(entry)
+  && /function markBar\([\s\S]*?pendingSeekStep = null[\s\S]*?selregion[\s\S]*?Audio\.setLoopAtBoundary/.test(entry)
+  && /\$\('timeline'\)\.onclick = \(e\) => \{[\s\S]*?const target = bar \* 16[\s\S]*?if \(!\(playing && loopOn\)\) jumpTo\(playing \? target : at\)/.test(entry)
+  && /box\.onclick = \(ev\) => \{[\s\S]*?const selectionChanges[\s\S]*?if \(!\(playing && loopOn && selectionChanges\)\) jumpTo\(at\)/.test(entry)
+  && /id="looptoggle"[^>]*aria-pressed="false"[^>]*>Loop Off<\/button>/.test(shell)
+  && /#loopregion \{[^}]*border: 1px solid color-mix\(in srgb, var\(--accent\) 58%, transparent\)/.test(shell)
+  && /#loopregion\.pending/.test(shell)
+  && /#selregion\.pending/.test(shell)
+  && /@keyframes loopPendingPulse/.test(shell),
+  'the loop uses the highlighted bar range before locator fallback, keeps song-relative'
+  + ' bounds, and Play from start restores step 0 after arming so the intro is heard');
+assert(/function hideLoopUi\([\s\S]*?showLocatorUi\(\)/.test(entry)
+  && /function showLocatorUi\([\s\S]*?step == null \? 'none' : ''/.test(entry)
+  && /if \(e\.altKey\) \{[\s\S]*?toggleLocator\(at\)/.test(entry),
+  'locator pins remain visible when looping is off and Alt-click is their placement gesture');
+assert(!/id="loopbars"/.test(shell)
+  && !/1\/2\/4\/8\/0[^<]*Loop bars/.test(shell),
+  'the old loop-bars control and keyboard hint are gone');
 
 // The flush boundaries. Each one of these is a way a take can be silently lost.
 for (const [fn, why] of [
@@ -1090,6 +1758,75 @@ assert(/recordFollow\(heardStep\);/.test(entry),
 // One clock, hoisted, because two copies drift the moment anybody nudges [ or ].
 assert(/function heardStepNow\(\) \{[\s\S]*?phOffset \/ 1000/.test(entry),
   'the heard step is one function, phOffset trim included');
+assert(/const ARRANGEMENT_PAINT_LEAD_MS = 24;/.test(entry)
+  && /const NOTE_VISUAL_LEAD_MS = \{ solid: 0, pulse: 10, trail: 45 \};/.test(entry)
+  && /function arrangementVisualLeadMs\(\) \{[\s\S]*?ARRANGEMENT_PAINT_LEAD_MS \+ \(NOTE_VISUAL_LEAD_MS\[noteVisualMode\] \?\? 0\)/.test(entry)
+  && /const lead = arrangementVisualLeadMs\(\) \/ 1000 \/ spb;/.test(entry)
+  && /const visualStep = arrangementVisualStep\(heardStep\)/.test(entry)
+  && /followArrangementVisual\(visualStep\)/.test(entry),
+  'arrangement highlights lead the attack by a frame plus the language’s own ramp,'
+  + ' so the mark peaks on the beat instead of after it');
+
+// The lead used to be clamped only at the END OF THE SONG, so a loop that stopped
+// mid-song had the lead spill past its last bar and light the first note of the bar
+// after — a note the transport never plays.
+assert(/function playbackWrapRange\(step, totalSteps\) \{[\s\S]*?const \{ loopStart, loopEnd \} = Audio;[\s\S]*?step >= loopStart && step < loopEnd\) \{[\s\S]*?start: loopStart, end: Math\.min\(loopEnd, totalSteps\)/.test(entry)
+  && /function playbackWrapStep\(step, totalSteps\) \{\s*return playbackWrapRange\(step, totalSteps\)\.end;/.test(entry)
+  && /return Math\.min\(playbackWrapStep\(step, totalSteps\) - 1e-6, step \+ lead\);/.test(entry),
+  'and the lead stops at the LOOP’s end, not just the song’s, so looping never lights'
+  + ' the first note of the bar after the loop');
+
+// …and neither does the playhead itself. `phOffset` is a lead too — the screen trim —
+// and applied to the last few milliseconds of a lap it lands past the end of the loop.
+// Modulo against the whole song cannot catch that, because the song is longer than the
+// loop: for phOffset milliseconds every lap the desk read a step in the bar AFTER the
+// loop and lit its first note in the arrangement, the roll and the step grid at once.
+assert(/function heardStepNow\(\) \{[\s\S]*?const at = beat \* 4;[\s\S]*?const led = Math\.max\(0, at \+ \(phOffset \/ 1000\) \/ spb\);[\s\S]*?return wrappedPlaybackStep\(led, at, totalSteps\);/.test(entry)
+  && !/return Math\.max\(0, \(beat \* 4\) \+ \(phOffset \/ 1000\) \/ spb\) % totalSteps;/.test(entry),
+  'the heard step wraps against the range the transport turns round in, not against the'
+  + ' whole song, so the screen trim can never carry the line past the loop’s end');
+
+// The arithmetic itself, run rather than matched.
+{
+  const src = /function playbackWrapRange\(step, totalSteps\) \{[\s\S]*?\nfunction wrappedPlaybackStep\(led, at, totalSteps\) \{[\s\S]*?\n\}/.exec(entry)?.[0] || '';
+  const build = (loopStart, loopEnd) => new Function('Audio', `${src}
+    return { playbackWrapRange, playbackWrapStep, wrappedPlaybackStep };`)({ loopStart, loopEnd });
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+
+  // 64 steps of song, no loop: the trim still wraps at the end of the song.
+  const song = build(null, null);
+  assert(near(song.wrappedPlaybackStep(64.4, 63.6, 64), 0.4)
+    && near(song.wrappedPlaybackStep(20.4, 20, 64), 20.4)
+    && song.playbackWrapStep(20, 64) === 64,
+    'with no loop armed the trim wraps at the end of the song, exactly as it always did');
+
+  // Bars 2–3 of that song looped. The trim carries the line off the end of bar 3 —
+  // it must come back at bar 2, never appear in bar 4.
+  const mid = build(16, 32);
+  assert(near(mid.wrappedPlaybackStep(32.4, 31.6, 64), 16.4)
+    && near(mid.wrappedPlaybackStep(31.9, 31.6, 64), 31.9)
+    && mid.playbackWrapStep(20, 64) === 32,
+    'a trim that runs off the end of a mid-song loop lands at the loop’s start, not in'
+    + ' the bar after it');
+
+  // A negative trim — [ pulled the line back — at the top of a lap belongs at the END
+  // of the loop, which is the music playing then, not at the end of the song.
+  assert(near(mid.wrappedPlaybackStep(15.8, 16.05, 64), 31.8),
+    'and a trim pulled the other way lands at the loop’s end, not the song’s');
+
+  // The case that makes a single range function load-bearing: a loop whose end IS the
+  // song's end. Read the end and the start separately and they disagree about which
+  // range this step is in, and the line wraps to the top of the SONG mid-loop.
+  const tail = build(48, 64);
+  assert(near(tail.wrappedPlaybackStep(64.2, 63.6, 64), 48.2),
+    'a loop ending on the song’s last bar still wraps to the LOOP’s start');
+
+  // Outside the region — the intro before the loop is reached, or the lookahead still
+  // draining after Loop was armed — nothing drags the line into the loop.
+  assert(near(mid.wrappedPlaybackStep(8.4, 8, 64), 8.4)
+    && mid.playbackWrapStep(8, 64) === 64,
+    'and a step outside the region is never dragged into it');
+}
 assert(/const heardStep = heardStepNow\(\)/.test(entry),
   'the playhead reads it');
 assert(/function recordNote\([\s\S]*?heardStepNow\(\)/.test(entry),
@@ -1104,9 +1841,11 @@ assert(shortcuts.indexOf("e.shiftKey && key === 'r'") > 0
   && shortcuts.indexOf("e.shiftKey && key === 'r'") < shortcuts.indexOf("key === 'r'"),
   '⇧R is tested BEFORE the plain-R reset — this handler lowercases the key and does not'
   + ' look at Shift, so the wrong order resets the channel every time you try to arm');
-assert(/if \(recArmed\) \{[\s\S]{0,200}?discardTake\(\)/.test(entry),
-  'Escape throws the take away while recording — the gesture you need most and the one'
-  + ' there was previously nowhere to put');
+assert(/const dropped = recArmed \? discardTake\(\) : 0;\s*\n\s*panicAll\(\)/.test(entry)
+  && !/if \(key === 'escape'\)[\s\S]{0,200}?discardTake\(\)/.test(entry),
+  'the panic takes the unwritten end of a take with it, and the on-screen keyboard no'
+  + ' longer claims ⎋ for itself — an emergency cut that stops working when a window is'
+  + ' up is not one you can reach for');
 
 // Solo is per-song monitoring, and the desk deliberately keeps it across a mix
 // re-apply (reapplySolo). A song switch is the one boundary it must NOT cross: the

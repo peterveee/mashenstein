@@ -87,6 +87,23 @@ export function playheadWindow(step, barCount, width = 2) {
 }
 
 /**
+ * The scroll offset that puts a content range in the middle of a viewport.
+ *
+ * A short range is shown whole, with equal air on either side. If it is wider than
+ * the viewport, the best useful answer is its middle — the same rule the roll uses
+ * for a selected bar whose notes span more pitches than the panel can show.
+ */
+export function centeredRangeOffset(start, end, viewSize) {
+  const a = Math.min(start, end);
+  const b = Math.max(start, end);
+  const size = Math.max(0, viewSize);
+  const span = b - a;
+  return span <= size
+    ? a - (size - span) / 2
+    : (a + b - size) / 2;
+}
+
+/**
  * How many steps wide a note is DRAWN, which is not always how long it sounds.
  *
  * Truncated at the next note on the row, and at the end of the field: a rectangle
@@ -104,6 +121,8 @@ export function playheadWindow(step, barCount, width = 2) {
  */
 /** Rows built either side of the visible window, so a scroll never shows a gap. */
 const OVERSCAN = 6;
+/** And the same either side sideways, in whole bars — see `colWindow`. */
+const BAR_OVERSCAN = 1;
 
 /**
  * The arrows, as a step and a row.
@@ -153,8 +172,15 @@ const ARROWS = {
  */
 export function gestureFor({
   tool = 'auto', alt = false, meta = false, shift = false,
-  on = false, edge = false, sizeable = false,
+  on = false, edge = false, sizeable = false, secondary = false,
 } = {}) {
+  // The right button rubs out. Before every other rule, because that is what makes it
+  // worth having: an eraser that is always under your other finger, in every mode, with
+  // no modifier and nothing to aim at. It is what FL, Reaper and Cubase all do, and it
+  // is the reason a LEFT click on a note is free to mean "pick this one out" instead of
+  // destroying it — which is what it used to do, and what made an abandoned drag
+  // (press, think better of it, release) cost you the note.
+  if (secondary) return 'erase';
   // ⌘ (⌃ off a Mac) draws a rectangle round notes, in any mode. That is the standard
   // escape hatch wherever drawing owns the empty-space drag, and it is why Select can
   // be a mode you rarely have to visit.
@@ -269,6 +295,7 @@ export function drawnSpan(field, at, len) {
  *                    and which of those it is matters — tests/preview.js pins it.
  * @param preview     (row, value) => sound it. Called only on the way IN: a drag that
  *                    erases twelve steps should not play twelve notes.
+ * @param previewRelease () => release every preview started by the current gesture.
  * @param title       (ctx) => the window's title line
  * @param headerExtra (ctx) => [HTMLElement] — buttons between the title and the ✕
  * @param rowHeader   (row, ctx) => [HTMLElement] — the sticky left cell's contents
@@ -276,7 +303,7 @@ export function drawnSpan(field, at, len) {
  */
 export function createBarGrid({
   el, Audio, bank, editBank, draft, sel, apply, engineBank, onClose = () => {},
-  ns = 'grid', rows, isOn, withCell, preview = () => {},
+  ns = 'grid', rows, isOn, withCell, preview = () => {}, previewRelease = () => {},
   // ---- lengths, and the gestures that need them
   //
   // A panel that says nothing about length gets the behaviour it had before lengths
@@ -286,9 +313,13 @@ export function createBarGrid({
   // beat is not a gesture anybody performs on a kit.
   withLen = () => null, cellLen = () => null, resizable = () => false, movable = false,
   // A panel whose rows are an INSTRUMENT rather than a track list: it shows all of
-  // them and only draws the ones in view. `rowHeight` is the pixel height of one row,
-  // which the panel owns (it is in the CSS) and the spacers need in numbers.
-  virtual = false, rowHeight = 0,
+  // them and only draws the ones in view. `rowHeight` is the fallback pixel height
+  // of one row; an instrument may provide `rowHeightOf(row)` for a deliberate,
+  // shared variable row layout. The spacers and hit map use the same measurements.
+  // `rowPadding` accounts for a physical instrument whose first/last key extends
+  // beyond the first/last editable pitch row.
+  virtual = false, rowHeight = 0, rowHeightOf = null,
+  rowPadding = () => ({ before: 0, after: 0 }),
   // Which gesture a press performs — see `gestureFor`. `auto` reads where you pressed;
   // the named tools each do one thing, for when holding a modifier or aiming at a
   // note's edge is not something you want to have to do.
@@ -296,18 +327,27 @@ export function createBarGrid({
   // Whether notes can be picked out in sets: ⌘-drag a rectangle round them, ⇧-click to
   // add one, then move, stretch or delete the lot as one edit.
   selectable = false,
+  // A hosted editor may project the selected notes into another visual surface (the
+  // piano roll lights its matching key faces). The grid owns selection; the host owns
+  // what that selection means outside the cells.
+  selectionChanged = () => {},
   // A pattern panel is scoped to the bars you selected and pages two at a time as the
   // song plays. A piano roll is not: it shows the whole part and scrolls, because a
   // melody is a shape across bars and a two-bar window cannot show you one. `docked`
   // goes with it — a panel that shows everything wants the width of the page, and it
   // gives up the floating frame, the remembered position and the drag to get it.
   wholeSong = false, docked = false,
+  // Whether this panel offers the shared-editing switch. Off, the panel forks the bar
+  // you click and never touches the other bars playing it — the unlinked behaviour,
+  // pinned rather than remembered, so a switch thrown in the other panel cannot change
+  // what this one does behind its back.
+  scopeToggle = true,
   // Where the panel's own controls go. Given a host, they are placed INTO it rather than
   // into a header of their own — so a docked panel adds its controls to the row the region
   // already has instead of stacking a second row under it. Two headers naming the same
   // channel is a row of chrome for nothing.
   headerHost = null,
-  title, headerExtra = () => [], rowHeader = () => [], lead = () => [],
+  title, headerExtra = () => [], rulerHeader = () => [], rowHeader = () => [], lead = () => [],
   laneLabel = (key) => key,
 }) {
   const POS_KEY = `mash-mixer-${ns}-pos`;
@@ -321,7 +361,7 @@ export function createBarGrid({
   // this bar" and "the hats are wrong in this song" — and neither is a good default
   // for the other, so it is a switch rather than a guess. Remembered, because whoever
   // wants one of them usually wants it for a while.
-  let linked = localStorage.getItem(LINK_KEY) === '1';
+  let linked = scopeToggle && localStorage.getItem(LINK_KEY) === '1';
 
   // Edits made but not yet handed to the desk, keyed by the bar and the LANE they
   // land on — which is the unit `writeBarNotes` takes, and the reason a roll drawing
@@ -346,9 +386,28 @@ export function createBarGrid({
   // where you are in an eighty-eight-row instrument is not something a repaint may
   // take away from you.
   let rowList = [];
+  let rowPositions = [0];
+  let rowInsets = { before: 0, after: 0 };
   let bodyEl = null;
+  let fixedBodyEl = null;
+  let rulerEl = null;
   let rendered = null;
   let scrollAt = { top: 0, left: 0 };
+  // The field's geometry as last MEASURED — one step's width, and the width of the
+  // viewport it scrolls in. Held across rebuilds so a folded region, which measures
+  // nothing, still windows its bars against the numbers it had. See `colWindow`.
+  let stepPx = 0;
+  let fieldPx = 0;
+  // Whether the transport is still allowed to drag the field sideways. A hand that
+  // scrolls the roll left or right during playback is looking at something, and the
+  // playhead walking the view back off it a sixteenth later is the field arguing with
+  // its owner. `followX` goes false on the first horizontal move this panel did not
+  // make, and comes back when the cursor is comfortably on screen again — scroll back
+  // to the playhead and it takes over once more, which is how you ask for it without
+  // a control. `autoLeftAt` is the last position the transport set, so the scroll event
+  // it causes can be told apart from yours.
+  let followX = true;
+  let autoLeftAt = null;
   // How many rows are drawn is a measurement of the scroller, and the scroller's height
   // is not the panel's to decide: folding the effects panel, dragging the desk splitter
   // or making the window taller all hand it more room without moving the scroll. See
@@ -358,14 +417,92 @@ export function createBarGrid({
   // holds strings rather than elements, and survives a move because whatever moves the
   // notes rebuilds the keys alongside them.
   let selection = new Set();
+  // The one note last changed by this editor. Unlike selection this is a visual edit
+  // marker: it stays on the written note after the pointer is released, so a stopped roll
+  // still tells you what you just changed. A new note replaces it immediately.
+  let editedKey = null;
+  let editScope = null;
   let marquee = null;       // the rubber band, while one is being drawn
 
   const isOpen = () => el.classList.contains('show');
   const barSpan = () => (range.from === range.to
     ? `bar ${range.from + 1}` : `bars ${range.from + 1}-${range.to + 1}`);
 
+  // Keep row geometry in one place. The piano roll intentionally groups its
+  // chromatic rows into two small families, but the step grid remains uniform because
+  // its rows are tracks rather than pitches. `rowPositions[i]` is the top of row i in
+  // the body, and the last entry is the body's complete pitch/track height.
+  const baseRowHeight = () => {
+    const value = typeof rowHeight === 'function' ? Number(rowHeight()) : Number(rowHeight);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const rowHeightAt = (row) => {
+    const fallback = baseRowHeight();
+    const measured = typeof rowHeightOf === 'function' ? Number(rowHeightOf(row)) : fallback;
+    if (Number.isFinite(measured) && measured > 0) return measured;
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+  };
+  const readRowPadding = () => {
+    const value = typeof rowPadding === 'function' ? rowPadding() : rowPadding;
+    return {
+      before: Math.max(0, Number(value?.before) || 0),
+      after: Math.max(0, Number(value?.after) || 0),
+    };
+  };
+  const rebuildRowPositions = () => {
+    rowInsets = readRowPadding();
+    rowPositions = [rowInsets.before];
+    for (const row of rowList) {
+      rowPositions.push(rowPositions[rowPositions.length - 1] + rowHeightAt(row));
+    }
+  };
+  const rowTotal = () => rowOffset(rowList.length) + rowInsets.after;
+  const rowOffset = (index) => {
+    const i = Math.max(0, Math.min(rowList.length, Number(index) || 0));
+    return rowPositions[i] || 0;
+  };
+  const rowAtOffset = (offset) => {
+    const total = rowList.length;
+    if (!total) return -1;
+    const y = Math.max(0, Number(offset) || 0);
+    if (y >= rowPositions[total]) return total - 1;
+    let low = 0;
+    let high = total;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (rowPositions[middle + 1] <= y) low = middle + 1;
+      else high = middle;
+    }
+    return Math.min(total - 1, low);
+  };
+
   /** What the panel hands its callbacks: everything they could reasonably ask. */
   const ctx = () => ({ plan, range, linked, barSpan: barSpan(), bank: bank() });
+
+  /** Keep docked piano-roll chrome aligned without making it another scroller. */
+  const syncDockedChrome = (scroll) => {
+    if (!docked || !scroll) return;
+    rulerEl?.style.setProperty('--roll-scroll-x', `${scroll.scrollLeft}px`);
+    if (fixedBodyEl) fixedBodyEl.style.transform = `translateY(${-scroll.scrollTop}px)`;
+  };
+
+  /**
+   * Record where the scroller is, and notice when it was you who moved it sideways.
+   *
+   * Every horizontal move this panel makes on purpose leaves its target in `autoLeftAt`
+   * or lands on the position already in `scrollAt`, so anything else — wheel, trackpad,
+   * scrollbar, a keyboard's arrow — is the hand, and the transport gives up the time
+   * axis until the playhead is back in view. A pixel of slack because a scroller may
+   * land fractionally off what it was handed.
+   */
+  const noteScroll = (scroll) => {
+    const left = scroll.scrollLeft;
+    if (left !== scrollAt.left) {
+      if (autoLeftAt != null && Math.abs(left - autoLeftAt) <= 1) autoLeftAt = null;
+      else followX = false;
+    }
+    scrollAt = { top: scroll.scrollTop, left };
+  };
 
   /**
    * The sixteen raw values a bar plays on one bank key.
@@ -452,6 +589,9 @@ export function createBarGrid({
       lengths[step] = nextLen;
     }
     pending.set(key, { notes, lengths });
+    const edit = noteKey(b, step, row.key);
+    if (on) editedKey = edit;
+    else editedKey = null;
     return true;
   }
 
@@ -525,6 +665,7 @@ export function createBarGrid({
   const stepClasses = (b, i) => (i % 4 === 0 ? ' beat' : '')
     + (Math.floor(i / 4) % 2 ? ' group-alt' : '')
     + (i % 4 === 0 && i ? ' gap' : '')
+    + (i === 0 ? ' downbeat' : '')
     + (i === 0 && b !== range.from ? ' barstart' : '');
 
   function build() {
@@ -567,26 +708,32 @@ export function createBarGrid({
     shut.title = 'close';
     shut.onclick = () => open(false);
 
-    const link = document.createElement('button');
-    link.className = 'ssqlink' + (linked ? ' on' : '');
-    // "Selected bars" is the pattern panel's word for it. A roll has no selection — it
-    // shows the whole song — so there the choice is between the one bar you click and
-    // every bar that plays the same part.
-    link.textContent = linked ? 'Edit all repeats'
-      : (wholeSong ? 'Edit one bar' : 'Edit selected bars');
-    link.setAttribute('aria-pressed', linked ? 'true' : 'false');
-    link.title = linked
-      ? 'Editing every bar that plays this part — plumber holds section 0 for four bars,'
-        + ' and all four change together'
-      : 'Editing only the bar you click; the other bars playing the same part are left'
-        + ' as they were';
-    if (!linked && wholeSong) link.title = 'Editing only the bar you click — the other bars'
-      + ' playing the same part are left as they were';
-    link.onclick = () => {
-      linked = !linked;
-      localStorage.setItem(LINK_KEY, linked ? '1' : '0');
-      build();
+    // The shared-editing switch, where the panel has one. A panel without it contributes
+    // nothing to the header and stays unlinked — see `scopeToggle`.
+    const scopeSwitch = () => {
+      const link = document.createElement('button');
+      link.className = 'ssqlink' + (linked ? ' on' : '');
+      // "Selected bars" is the pattern panel's word for it. A roll has no selection — it
+      // shows the whole song — so there the choice is between the one bar you click and
+      // every bar that plays the same part.
+      link.textContent = linked ? 'Edit all repeats'
+        : (wholeSong ? 'Edit one bar' : 'Edit selected bars');
+      link.setAttribute('aria-pressed', linked ? 'true' : 'false');
+      link.title = linked
+        ? 'Editing every bar that plays this part — plumber holds section 0 for four bars,'
+          + ' and all four change together'
+        : 'Editing only the bar you click; the other bars playing the same part are left'
+          + ' as they were';
+      if (!linked && wholeSong) link.title = 'Editing only the bar you click — the other bars'
+        + ' playing the same part are left as they were';
+      link.onclick = () => {
+        linked = !linked;
+        localStorage.setItem(LINK_KEY, linked ? '1' : '0');
+        build();
+      };
+      return [link];
     };
+    const scopeEls = scopeToggle ? scopeSwitch() : [];
 
     const host = headerHost?.();
     if (host) {
@@ -596,15 +743,19 @@ export function createBarGrid({
       // grid closing took the roll's controls away with it — the close path removed the
       // first one it found, which was not its own.
       host.querySelector(`.ssqhostbar[data-of="${ns}"]`)?.remove();
-      const bar = document.createElement('span');
-      bar.className = 'ssqhostbar';
-      bar.dataset.of = ns;
       // No title and no ✕ out here: the region's header already names the channel, and the
-      // way out is the view switch beside it.
-      bar.append(...lead(c), ...headerExtra(c), link);
-      host.append(bar);
+      // way out is the view switch beside it. A panel with nothing to contribute adds no
+      // bar at all rather than an empty span holding a gap open in someone else's header.
+      const kids = [...lead(c), ...headerExtra(c), ...scopeEls];
+      if (kids.length) {
+        const bar = document.createElement('span');
+        bar.className = 'ssqhostbar';
+        bar.dataset.of = ns;
+        bar.append(...kids);
+        host.append(bar);
+      }
     } else {
-      head.append(...lead(c), titleEl, ...headerExtra(c), link, shut);
+      head.append(...lead(c), titleEl, ...headerExtra(c), ...scopeEls, shut);
       el.append(head);
     }
 
@@ -619,13 +770,16 @@ export function createBarGrid({
       el.append(scope);
     }
 
-    // Rulers and lanes live in ONE scroll surface. Keeping the rulers outside the
-    // body's horizontal scroller made a wide selection lie: the steps moved while
-    // their bar and beat numbers stayed behind. The row headers are sticky inside
-    // this surface, which is the channel-rack behaviour — names stay put while the
-    // pattern moves under them.
+    // The docked piano roll has one scrollable surface: the note canvas. Its rulers
+    // and pitch keyboard are fixed chrome, synchronized to that surface below. The
+    // floating step grid keeps its original single-surface layout.
     const scroll = document.createElement('div');
     scroll.className = 'ssqscroll';
+    const ruler = docked ? document.createElement('div') : null;
+    if (ruler) {
+      ruler.className = 'ssqruler';
+      ruler.style.setProperty('--roll-scroll-x', `${scrollAt.left}px`);
+    }
 
     // ---- the ruler: bars on one line, beats on the next
     //
@@ -642,7 +796,11 @@ export function createBarGrid({
       rowEl.className = `ssqrow ${cls}`;
       const pad = document.createElement('div');
       pad.className = 'ssqhead-cell ssqruler-label';
-      pad.textContent = label;
+      const labelEl = document.createElement('span');
+      labelEl.className = 'ssqruler-label-text';
+      labelEl.textContent = label;
+      pad.append(labelEl);
+      if (cls === 'ssqbars' && !docked) pad.append(...rulerHeader(c));
       const cellsEl = document.createElement('div');
       cellsEl.className = 'ssqcells';
       for (let b = range.from; b <= range.to; b++) {
@@ -654,10 +812,22 @@ export function createBarGrid({
           cellsEl.append(n);
         }
       }
-      rowEl.append(pad, cellsEl);
-      scroll.append(rowEl);
+      if (docked) {
+        const track = document.createElement('div');
+        track.className = 'ssqruler-track';
+        track.append(cellsEl);
+        rowEl.append(pad, track);
+        ruler.append(rowEl);
+      } else {
+        rowEl.append(pad, cellsEl);
+        scroll.append(rowEl);
+      }
     };
-    strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? `Bar ${b + 1}` : null));
+    // Name the strip once, or name every number — not both. Where the ruler has a corner
+    // label (the docked roll's BAR) the numbers are bare, so `12` sits directly over the
+    // `1` of its own first beat instead of being pushed four characters to the right of
+    // the barline by a word that the corner already said.
+    strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? (rulerLabel ? `${b + 1}` : `Bar ${b + 1}`) : null));
     strip('ssqnums', 'Beat', (b, i) => (i % 4 === 0 ? `${i / 4 + 1}` : null));
 
     // ---- a row per whatever the panel says a row is
@@ -669,29 +839,44 @@ export function createBarGrid({
     // is one absolutely-positioned element and `follow` moves it. Which panel actually
     // shows it is a CSS decision — the step grid keeps its ring round the playing
     // square, because there a cell is a switch and the ring is what says "this one".
-    // The grid, as ONE element. It was three gradients on every row — twenty-five
-    // paints of the same three lines — and before that an inset shadow on every cell,
-    // which is six thousand of them across sixteen bars. One overlay draws the whole
-    // field once, and the lines are continuous by construction rather than by every row
-    // happening to agree.
-    const rules = document.createElement('div');
-    rules.className = 'ssqrules';
-    body.append(rules);
     playhead = document.createElement('div');
     playhead.className = 'ssqplayhead';
     playhead.hidden = true;
     body.append(playhead);
     const list = rows(c) || [];
+    const nextEditScope = wholeSong ? String(list[0]?.lane ?? '') : null;
+    if (wholeSong && editScope !== null && nextEditScope !== editScope) editedKey = null;
+    editScope = nextEditScope;
     rowIndex = new Map(list.map((r) => [String(r.key), r]));
     rowList = list;
+    rebuildRowPositions();
     bodyEl = body;
+    fixedBodyEl = null;
     // The cells are gone with the rest of the panel, so this draw is never a no-op
     // however little the window moved.
     rendered = null;
     scroll.append(body);
+    if (docked) {
+      rulerEl = ruler;
+      const surface = document.createElement('div');
+      surface.className = 'ssqdock';
+      const keys = document.createElement('div');
+      keys.className = 'ssqkeys';
+      fixedBodyEl = document.createElement('div');
+      fixedBodyEl.className = 'ssqkeys-body';
+      const zoom = document.createElement('div');
+      zoom.className = 'rollzoom-panel';
+      zoom.append(...rulerHeader(c));
+      keys.append(zoom, fixedBodyEl);
+      surface.append(keys, scroll);
+      // Rulers and the keyboard are pinned siblings of the only scroll viewport.
+      el.append(ruler, surface);
+    } else {
+      rulerEl = null;
+      el.append(scroll);
+    }
     // In the page BEFORE the rows are drawn: which rows are in view is a measurement,
     // and a measurement of something that is not in the document yet is zero.
-    el.append(scroll);
     // Rows first, THEN the scroll position. The other way round the panel is only as
     // tall as its rulers at the moment the scroll is set, the browser clamps it to
     // nothing, and every rebuild quietly walks you back to the top of the keyboard.
@@ -703,15 +888,18 @@ export function createBarGrid({
     scroll.scrollTop = scrollAt.top;
     scroll.scrollLeft = scrollAt.left;
     scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+    syncDockedChrome(scroll);
     // And once more if the clamp moved it — a shorter song, or a panel that has just
     // been resized, can leave the remembered position past the end.
     renderRows(c);
     scroll.addEventListener('scroll', () => {
-      scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      noteScroll(scroll);
+      syncDockedChrome(scroll);
       // Only the rows, and only when the window has actually moved on: this fires on
       // every frame of a scroll, and rebuilding the header would take the pointer out
       // of whatever it was over.
       if (virtual) renderRows(ctx());
+      syncDockedChrome(scroll);
     }, { passive: true });
     watchSize(scroll);
   }
@@ -719,7 +907,7 @@ export function createBarGrid({
   /**
    * The rows follow the panel's height, not only its scroll.
    *
-   * A virtual window is `clientHeight / rowHeight` rows wide, and until now that was
+   * A virtual window is roughly `clientHeight / baseRowHeight()` rows wide, and until now that was
    * measured at build and then only ever again when something scrolled. Everything that
    * makes the panel TALLER without moving the scroll — folding the effects panel,
    * dragging the desk splitter down, an octave button, the browser window growing —
@@ -736,7 +924,7 @@ export function createBarGrid({
     // `build` replaces that element, and an observer left on the old one is watching
     // something that is no longer in the page.
     // A closed or folded panel measures zero, and zero is not an answer about how many
-    // rows to draw — `rowWindow` falls back to a fixed twenty there. Ignoring it leaves
+    // rows to draw — `rowWindow` falls back to a base-height estimate there. Ignoring it leaves
     // the last good window standing until the panel is really on screen again.
     if (!sizeWatch) {
       sizeWatch = new ResizeObserver(([entry]) => {
@@ -783,11 +971,17 @@ export function createBarGrid({
     if (!bodyEl) return;
     const list = rowList;
     const win = rowWindow(list.length);
-    if (rendered && rendered.from === win.from && rendered.to === win.to) return;
-    rendered = win;
+    const bars = colWindow();
+    if (rendered && rendered.from === win.from && rendered.to === win.to
+      && rendered.barFrom === bars.from && rendered.barTo === bars.to) return;
+    // Not remembered when the bar window was a guess: the panel had no layout to measure,
+    // and a guess that agrees with the real window by luck would otherwise keep its
+    // guessed spacers — a field a few bars wide over a song of sixty.
+    rendered = bars.estimated ? null : { ...win, barFrom: bars.from, barTo: bars.to };
     cols = new Map();
     lit = [];
     for (const old of [...bodyEl.querySelectorAll('.ssqrow, .ssqpad')]) old.remove();
+    fixedBodyEl?.replaceChildren();
     const pad = (h) => {
       if (!(h > 0)) return null;
       const d = document.createElement('div');
@@ -795,32 +989,115 @@ export function createBarGrid({
       d.style.height = `${h}px`;
       return d;
     };
-    const top = pad(win.padTop);
-    if (top) bodyEl.append(top);
-    for (const row of list.slice(win.from, win.to + 1)) {
+    const appendPad = (height, { field = true } = {}) => {
+      if (field) {
+        const top = pad(height);
+        if (top) bodyEl.append(top);
+      }
+      if (fixedBodyEl) {
+        const side = pad(height);
+        if (side) fixedBodyEl.append(side);
+      }
+    };
+    // ---- the keyboard's headroom is the KEYBOARD'S -------------------------------
+    // The top key face stands above its own row — a white C is taller than one
+    // chromatic step — so `rowPadding.before` opens both bodies with a spacer that
+    // height (see pianoLayout). In the KEY COLUMN that is the room the face needs. In
+    // the FIELD it is a band with no cells in it, which means no time rules and no bar
+    // lines, sitting against the top edge of the panel: the grid appears to stop short
+    // of its own top.
+    //
+    // So the field folds that height into its first row instead of spacing it out. Row
+    // bottoms, row heights below it and the body's total height are all unchanged — the
+    // top row simply begins where the field begins, and its cells carry their rules up
+    // to the edge. The note drawn in it is pushed back down by --roll-rowpad-top so the
+    // top pitch is still drawn at its own size, and rowAtOffset already reads that band
+    // as row 0, so a click in it lands where it looks like it lands.
+    //
+    // Only when the window starts at row 0. Any other padTop is undrawn rows above the
+    // viewport, which is what a spacer is actually for.
+    //
+    // The bottom cap is the same argument upside down: the lowest key face hangs below
+    // its own row, and left as a spacer it put a ruleless band between the last bar line
+    // and the horizontal scrollbar — the field stopping short of its own bottom while
+    // the keyboard beside it ran on. So the last row of the field carries it too, and
+    // the rules reach the scroller's floor.
+    const headroom = win.from === 0 ? win.padTop : 0;
+    const footroom = win.to === list.length - 1 ? win.padBottom : 0;
+    appendPad(win.padTop, { field: !headroom });
+    const rows = list.slice(win.from, win.to + 1);
+    let firstRowOfField = true;
+    for (const row of rows) {
       const rowEl = document.createElement('div');
       const muted = mutedIn(range.from, row.lane);
       rowEl.className = 'ssqrow ssqlane'
         + (row.unused ? ' unused' : '')
         + (muted ? ' muted' : '')
         + (row.className ? ` ${row.className}` : '');
+      const height = rowHeightAt(row);
+      const lead = firstRowOfField ? headroom : 0;
+      const trail = row === rows[rows.length - 1] ? footroom : 0;
+      firstRowOfField = false;
+      if (height > 0) rowEl.style.height = `${height + lead + trail}px`;
+      if (lead > 0) rowEl.style.setProperty('--roll-rowpad-top', `${lead}px`);
+      if (trail > 0) rowEl.style.setProperty('--roll-rowpad-bottom', `${trail}px`);
+      // What the row carries beyond its own pitch, so the arbitration in nearestRow can
+      // take it back off: a folded cap moves the box's centre, not the pitch's.
+      if (lead > 0) rowEl.dataset.lead = String(lead);
+      if (trail > 0) rowEl.dataset.trail = String(trail);
       if (row.colour) rowEl.style.setProperty('--lane', row.colour);
       rowEl.dataset.row = row.key;
+      if (row.cssVars) {
+        for (const [name, value] of Object.entries(row.cssVars)) {
+          rowEl.style.setProperty(name, value);
+        }
+      }
 
       const headCell = document.createElement('div');
       headCell.className = 'ssqhead-cell';
       headCell.append(...rowHeader(row, c));
       if (row.contextMenu) rowEl.oncontextmenu = (ev) => row.contextMenu(ev, row);
+      if (docked) {
+        const fixedRow = document.createElement('div');
+        fixedRow.className = rowEl.className;
+        fixedRow.dataset.row = row.key;
+        if (height > 0) fixedRow.style.height = `${height}px`;
+        if (row.colour) fixedRow.style.setProperty('--lane', row.colour);
+        if (row.cssVars) {
+          for (const [name, value] of Object.entries(row.cssVars)) {
+            fixedRow.style.setProperty(name, value);
+          }
+        }
+        if (row.contextMenu) fixedRow.oncontextmenu = (ev) => row.contextMenu(ev, row);
+        fixedRow.append(headCell);
+        fixedBodyEl.append(fixedRow);
+      } else {
+        rowEl.append(headCell);
+      }
 
       const cells = document.createElement('div');
       cells.className = 'ssqcells';
+      // The bars outside the window, as width and nothing else — see `colWindow`.
+      const colPad = (w) => {
+        if (!(w > 0)) return;
+        const d = document.createElement('div');
+        d.className = 'ssqcolpad';
+        d.style.width = `${w}px`;
+        cells.append(d);
+      };
+      colPad(bars.padLeft);
       // The row is read WHOLE before a single cell is built, because how wide a note
       // is drawn depends on the note after it: a four-step note with another note two
       // steps later is drawn two steps long. The roll must not draw one rectangle
       // through another — they still both sound, and the engine lets them ring
       // together, but a picture of overlapping notes is a picture of nothing.
+      //
+      // Whole meaning the WINDOW, since that is what is built: a long note in the last
+      // bar drawn cannot see the note in the bar after it and is drawn its full length
+      // for as long as that bar is the last one. It is the overscan bar, off screen, and
+      // the scroll that brings it into view rebuilds it against its neighbour.
       const field = [];
-      for (let b = range.from; b <= range.to; b++) {
+      for (let b = bars.from; b <= bars.to; b++) {
         const pair = readPair(b, row.lane);
         const off = mutedIn(b, row.lane);
         for (let i = 0; i < 16; i++) {
@@ -833,6 +1110,7 @@ export function createBarGrid({
         cell.type = 'button';
         cell.className = 'ssqcell' + stepClasses(f.b, f.i)
           + (f.on ? ' on' : '')
+          + (f.on && editedKey === noteKey(f.b, f.i, row.key) ? ' edited' : '')
           + (f.off ? ' muted' : '');
         cell.dataset.bar = f.b;
         cell.dataset.step = f.i;
@@ -853,11 +1131,14 @@ export function createBarGrid({
         if (!cols.has(col)) cols.set(col, []);
         cols.get(col).push(cell);
       });
-      rowEl.append(headCell, cells);
+      colPad(bars.padRight);
+      rowEl.append(cells);
       bodyEl.append(rowEl);
     }
-    const bottom = pad(win.padBottom);
-    if (bottom) bodyEl.append(bottom);
+    appendPad(win.padBottom, { field: !footroom });
+    // Virtual rows are replaced while the user scrolls. Let a host re-project its
+    // selection after the new physical row headers have arrived.
+    selectionChanged();
   }
 
   /**
@@ -869,23 +1150,182 @@ export function createBarGrid({
    * grid is eight drums and a spacer would be machinery for nothing.
    */
   function rowWindow(total) {
-    if (!virtual || !(rowHeight > 0)) {
-      return { from: 0, to: total - 1, padTop: 0, padBottom: 0 };
+    if (!virtual || !(baseRowHeight() > 0) || !total) {
+      return { from: 0, to: total - 1, padTop: rowOffset(0), padBottom: rowTotal() - rowOffset(total) };
     }
     const scroll = el.querySelector('.ssqscroll');
     // Where the rows begin inside the scroller: under the two ruler strips, and under
     // the shared-editing banner when there is one. Measured rather than assumed —
     // both of those come and go.
     const top = rowsTop(scroll);
-    const height = scroll?.clientHeight || (rowHeight * 20);
-    const first = Math.max(0, Math.floor((scrollAt.top - top) / rowHeight) - OVERSCAN);
-    const last = Math.min(total - 1, first + Math.ceil(height / rowHeight) + OVERSCAN * 2);
+    const height = scroll?.clientHeight || (baseRowHeight() * 20);
+    const visibleTop = Math.max(0, scrollAt.top - top);
+    const first = Math.max(0, rowAtOffset(visibleTop) - OVERSCAN);
+    const last = Math.min(total - 1,
+      rowAtOffset(visibleTop + height) + OVERSCAN);
     return {
       from: first,
       to: Math.max(first, last),
-      padTop: first * rowHeight,
-      padBottom: Math.max(0, (total - 1 - last) * rowHeight),
+      padTop: rowOffset(first),
+      padBottom: Math.max(0, rowTotal() - rowOffset(last + 1)),
     };
+  }
+
+  /**
+   * How wide one step is drawn, measured off the ruler.
+   *
+   * The ruler is built out of the same per-step divs as a row and is never windowed, so
+   * it is always there to ask — and in the roll every step is exactly one width with no
+   * gap between them, because `#pianoroll .gap, #pianoroll .barstart` zero the beat and
+   * bar margins the step grid uses. That is what makes the field's geometry arithmetic
+   * rather than a search through cells that may not be drawn.
+   */
+  function stepWidth() {
+    const cell = (rulerEl || el).querySelector('.ssqbars .ssqbarnum');
+    const w = cell ? cell.getBoundingClientRect().width : 0;
+    if (w > 0) stepPx = w;
+    // The last good answer while the region is folded: a panel with no layout measures
+    // zero, and zero is not an answer about how wide a bar is — see `colWindow`.
+    return w > 0 ? w : stepPx;
+  }
+
+  /** Where a column stands in the field, in body coordinates. Null before there is one. */
+  function fieldX(b, i) {
+    const w = stepWidth();
+    if (!(w > 0)) return null;
+    return ((b - range.from) * 16 + i) * w;
+  }
+
+  /**
+   * Which BARS to build cells for — the sideways half of `renderRows`'s window.
+   *
+   * The roll shows the WHOLE SONG across, and a row of it is sixteen cells a bar: sixty
+   * four bars is a thousand cells on every row, and seventy-five rows of that is
+   * seventy-seven thousand buttons to build every time anything asks for a repaint. That
+   * is a second of blocked main thread, and the sequencer schedules on the main thread —
+   * so a zoom, a scroll or a note edit made the song being played stumble. Nothing about
+   * it was zoom's fault; zoom at 0.5x is merely where it shows worst, because half-height
+   * rows put twice as many of them on screen.
+   *
+   * So the bars near the viewport are built and the rest are two spacers, exactly as the
+   * rows are. The body keeps its full width — the scrollbar is honest and the grid
+   * overlay still spans the song — and the playhead is measured off the ruler rather
+   * than off a cell, since the column being heard has none once you scroll away from it.
+   *
+   * The whole range, always, for the panel that has not asked for this: the step grid
+   * draws two bars and a window would be machinery for nothing.
+   *
+   * A panel with no layout — folded, or building for the first time — measures zero, and
+   * zero must NOT fall through to "the whole song": that is the sixty-thousand-cell build
+   * this exists to prevent, and it is reachable, because the region can be folded shut
+   * while the roll is still the view it holds. So it guesses, and says it guessed:
+   * `estimated` keeps the drawn window from being remembered as a good one, and the
+   * measurement that follows the panel back into the page replaces it.
+   */
+  function colWindow() {
+    const whole = { from: range.from, to: range.to, padLeft: 0, padRight: 0 };
+    if (!virtual || !wholeSong) return whole;
+    const scroll = el.querySelector('.ssqscroll');
+    const measured = scroll?.clientWidth || 0;
+    if (measured > 0) fieldPx = measured;
+    const barW = stepWidth() * 16;
+    // Nothing has ever been measured: there is no pixel to size a spacer in, so the
+    // whole range is the only answer that keeps the field the width of the song.
+    if (!(barW > 0)) return whole;
+    const estimated = !(measured > 0);
+    const width = fieldPx > 0 ? fieldPx : barW * 4;
+    const first = Math.max(range.from,
+      range.from + Math.floor(scrollAt.left / barW) - BAR_OVERSCAN);
+    const last = Math.max(first, Math.min(range.to,
+      range.from + Math.floor((scrollAt.left + width) / barW) + BAR_OVERSCAN));
+    return {
+      from: first,
+      to: last,
+      padLeft: (first - range.from) * barW,
+      padRight: Math.max(0, (range.to - last) * barW),
+      estimated,
+    };
+  }
+
+  /**
+   * Bring a selected bar/range into the roll's view.
+   *
+   * The piano roll is a whole-song field, so repainting it must not page it to the
+   * current selection by itself. Selection is a separate gesture, though, and that
+   * gesture should leave the selected time and the notes written in it visible. The
+   * method is kept on the shared grid because both axes are its geometry: the ruler
+   * owns time, and the row list owns the pitch/track axis.
+   *
+   * `needRows` reports whether the pitch axis actually found anything to centre on.
+   * Time is always answerable — a bar exists whether or not it is played — but a lane
+   * that is silent in those bars gives the row axis nothing, and a caller that only
+   * wanted "show me this part" needs to know that so it can fall back to the whole
+   * lane rather than accept a window still parked over the previous lane's octave.
+   */
+  function focusRange(from, to, { needRows = false } = {}) {
+    if (!wholeSong || !isOpen()) return false;
+    const scroll = el.querySelector('.ssqscroll');
+    if (!scroll || !plan.length) return false;
+
+    const firstBar = Math.max(range.from, Math.min(range.to, Math.min(from, to)));
+    const lastBar = Math.max(firstBar, Math.min(range.to, Math.max(from, to)));
+
+    // Time first. The ruler has one cell per step even when virtual rows are not
+    // currently drawn, so a selected bar can always be found without depending on the
+    // pitch window that happened to be visible before the selection.
+    const rulerRoot = docked ? el : scroll;
+    const ruler = [...rulerRoot.querySelectorAll('.ssqbars .ssqbarnum')];
+    const firstAt = (firstBar - range.from) * 16;
+    const lastAt = (lastBar - range.from + 1) * 16 - 1;
+    const startCell = ruler[firstAt];
+    const endCell = ruler[lastAt] || startCell;
+    if (startCell && endCell) {
+      const sr = scroll.getBoundingClientRect();
+      const left = startCell.getBoundingClientRect().left - sr.left + scroll.scrollLeft;
+      const right = endCell.getBoundingClientRect().right - sr.left + scroll.scrollLeft;
+      const max = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      scroll.scrollLeft = Math.max(0, Math.min(max,
+        centeredRangeOffset(left, right, scroll.clientWidth)));
+      syncDockedChrome(scroll);
+    }
+
+    // Then pitch/row. Cache each lane's bar once: a piano roll has one row per pitch,
+    // so reading the same lane separately for all 88 rows would turn a small focus
+    // gesture into 88 identical arrangement reads per bar.
+    let firstRow = Infinity;
+    let lastRow = -1;
+    for (let b = firstBar; b <= lastBar; b++) {
+      const valuesByLane = new Map();
+      for (let i = 0; i < rowList.length; i++) {
+        const row = rowList[i];
+        if (!valuesByLane.has(row.lane)) valuesByLane.set(row.lane, readBar(b, row.lane));
+        const values = valuesByLane.get(row.lane);
+        if (values.some((value) => isOn(row, value))) {
+          firstRow = Math.min(firstRow, i);
+          lastRow = Math.max(lastRow, i);
+        }
+      }
+    }
+    const foundRows = lastRow >= firstRow && baseRowHeight() > 0;
+    if (foundRows) {
+      // One quiet row of air keeps a selected note from sitting against the edge when
+      // the bar's notes fit. A broad pitch span naturally falls through to the middle.
+      firstRow = Math.max(0, firstRow - 1);
+      lastRow = Math.min(rowList.length - 1, lastRow + 1);
+      const top = rowsTop(scroll) + rowOffset(firstRow);
+      const bottom = rowsTop(scroll) + rowOffset(lastRow + 1);
+      const max = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      scroll.scrollTop = Math.max(0, Math.min(max,
+        centeredRangeOffset(top, bottom, scroll.clientHeight)));
+      syncDockedChrome(scroll);
+    }
+
+    scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+    syncDockedChrome(scroll);
+    if (virtual) renderRows(ctx());
+    // The time axis moved either way, so the caller's fallback only has the pitch axis
+    // left to answer for.
+    return needRows ? foundRows : true;
   }
 
   // ---- the gesture -----------------------------------------------------------------
@@ -904,6 +1344,7 @@ export function createBarGrid({
     const i = Number(cell.dataset.step);
     if (!setCell(row, b, i, paint)) return;
     cell.classList.toggle('on', paint);
+    cell.classList.toggle('edited', paint);
     cell.setAttribute('aria-pressed', paint ? 'true' : 'false');
     // Only on the way in. A drag that erases twelve steps should not play twelve
     // notes, and hearing the one you just added is the whole point of the preview.
@@ -934,10 +1375,9 @@ export function createBarGrid({
   // on a note's BODY moves it, a press on its right EDGE lengthens it, and both are
   // decided on the way down and committed on the way up.
   //
-  // Nothing happens until the pointer has travelled. That threshold is the whole
-  // reason a click still works: press and release on a note erases it, exactly as it
-  // did before any of this existed, and a slightly shaky hand does not silently move
-  // somebody's melody one step to the right.
+  // Nothing happens until the pointer has travelled. That threshold is the whole reason
+  // a click still works: press and release on a note picks it out, and a slightly shaky
+  // hand does not silently move somebody's melody one step to the right.
   //
   // Only where the panel says `movable`. In the step grid a press on a filled cell
   // still begins an erase-drag, because a drum hit has no length to grab and dragging
@@ -945,9 +1385,21 @@ export function createBarGrid({
   const EDGE_PX = 6;         // how much of a note's right end grabs its length
   const TRAVEL_PX = 4;       // how far a press must move before it is a drag
 
+  /**
+   * Is this the secondary (right) button — the eraser?
+   *
+   * `button` says which one changed, `buttons` which are held — either will do, and
+   * asking both means this reads the same on a press as on the moves that follow it.
+   *
+   * Deliberately NOT ⌃-click. The OS turns that into a right click on a Mac and the
+   * `contextmenu` handler below swallows the menu either way, but `button` still
+   * arrives as 0 — and pretending otherwise would take ⌃ away from the marquee it
+   * has on every other platform.
+   */
+  const isSecondary = (ev) => ev.button === 2 || ev.buttons === 2;
+
   let drag = null;
 
-  const cellAt = (x, y) => cellFrom(document.elementFromPoint(x, y));
   const cellOf = (cell) => ({
     row: rowOf(cell), b: Number(cell.dataset.bar), i: Number(cell.dataset.step),
   });
@@ -957,6 +1409,46 @@ export function createBarGrid({
   const spanOf = (cell) => Number(cell.style.getPropertyValue('--len')) || 1;
   const cellFor = (rowKey, b, i) => el.querySelector(
     `.ssqcell[data-row="${CSS.escape(String(rowKey))}"][data-bar="${b}"][data-step="${i}"]`);
+
+  /**
+   * The cell under a pointer, including an instrument whose visible pitch centres do
+   * not sit in the middle of its equal-height layout rows.
+   *
+   * `elementFromPoint` still supplies TIME: on a long note its pseudo-element resolves
+   * to the note's starting cell, which is exactly what selection and resize need. Pitch
+   * comes from the nearest visible key centre. Without this second half, moving the blue
+   * face left its empty-grid clicks and hover cursors in the old chromatic row.
+   */
+  const cellAt = (x, y) => {
+    const direct = cellFrom(document.elementFromPoint(x, y));
+    if (!direct || !bodyEl) return direct;
+    // A visible note wins its own pixels. Physical pitch centres can be slightly
+    // closer than one note face is tall, so nearest-centre arbitration at the shared
+    // edge could otherwise select the neighbour through a note you plainly clicked.
+    if (direct.classList.contains('on')) return direct;
+    const visible = [...bodyEl.querySelectorAll('.ssqlane[data-row]')];
+    if (!visible.length) return direct;
+    let nearest = null;
+    let distance = Infinity;
+    for (const rowEl of visible) {
+      const row = rowIndex.get(rowEl.dataset.row);
+      if (!row) continue;
+      const rect = rowEl.getBoundingClientRect();
+      const offset = Number(row.hitOffset);
+      // The first and last rows of the field may be carrying the keyboard's caps (see
+      // renderRows). Measure the centre of the PITCH inside the box, or the two rows at
+      // the ends of the range would pull clicks towards a centre they do not have.
+      const lead = Number(rowEl.dataset.lead) || 0;
+      const trail = Number(rowEl.dataset.trail) || 0;
+      const centre = rect.top + lead + (rect.height - lead - trail) / 2
+        + (Number.isFinite(offset) ? offset : 0);
+      const away = Math.abs(y - centre);
+      if (away < distance) { nearest = row; distance = away; }
+    }
+    return nearest
+      ? (cellFor(nearest.key, direct.dataset.bar, direct.dataset.step) || direct)
+      : direct;
+  };
 
   const showLen = (cell, span) => {
     if (span > 1) cell.style.setProperty('--len', String(span));
@@ -1001,6 +1493,7 @@ export function createBarGrid({
     alt: ev.altKey,
     meta: selectable && (ev.metaKey || ev.ctrlKey),
     shift: selectable && ev.shiftKey,
+    secondary: isSecondary(ev),
     on: isOn(row, readBar(Number(cell.dataset.bar), row.lane)[Number(cell.dataset.step)] ?? null),
     edge: atRightEnd(cell, ev.clientX),
     sizeable: resizable(row),
@@ -1017,9 +1510,11 @@ export function createBarGrid({
     for (const cell of el.querySelectorAll('.ssqcell')) {
       cell.classList.toggle('sel', selection.size > 0 && isSelected(cell));
     }
+    selectionChanged();
   }
 
   function select(keys, { add = false } = {}) {
+    if (!keys.length || keys.some((key) => key !== editedKey)) editedKey = null;
     if (!add) selection = new Set();
     for (const k of keys) selection.add(k);
     paintSelection();
@@ -1145,18 +1640,21 @@ export function createBarGrid({
       });
       return;
     }
-    // How far the set is going, from the GEOMETRY rather than from what is under the
-    // pointer. `elementFromPoint` cannot answer this any more: a note is one rectangle
-    // several cells wide and a pseudo-element is hit-tested as part of the element it
-    // belongs to, so every point along a long note reports the cell the note starts on
-    // — which is how the first version of this looked like a move that did nothing.
-    // Steps are one width apart and rows one height apart, so the answer is arithmetic.
+    // Horizontal distance is arithmetic: a long note's pseudo-element reports its
+    // starting cell everywhere along the rectangle. Vertical distance is not — a piano
+    // roll can place pitches on physical key centres — so resolve that half through the
+    // same hit map as clicks and hover.
     const r = drag.cell.getBoundingClientRect();
     const set = dragSet(drag);
     const bounds = { bars: plan.length, rows: rowList.length };
+    const targetCell = cellAt(e.clientX, e.clientY);
+    const targetRow = targetCell && rowOf(targetCell);
+    const dRow = targetRow
+      ? rowAtOf(targetRow.key) - rowAtOf(drag.row.key)
+      : Math.round((e.clientY - drag.y) / r.height);
     const want = clampDelta(set,
       Math.round((e.clientX - drag.x) / r.width),
-      Math.round((e.clientY - drag.y) / r.height), bounds);
+      dRow, bounds);
     if (drag.delta && drag.delta.dStep === want.dStep && drag.delta.dRow === want.dRow) return;
     drag.delta = want;
     // ---- the whole set moves, and it has to LOOK like the whole set moving ----------
@@ -1190,13 +1688,27 @@ export function createBarGrid({
     if (!d) return;
     if (!d.moved) {
       // Nothing was previewed, because nothing moved — so there is nothing to put back.
-      // This was a click, and a click is what it always was: `begin` reads the note that
-      // is there and erases it. Two presses have already done their work by the time
-      // they get here and must not be undone by it — one that DREW a note (a tap on an
-      // empty cell leaves a one-step note, as it always did) and one that PICKED notes
-      // out (clicking a note you have selected keeps it; ⌫ is how a selection goes).
+      // This was a click, and what a click means depends on what it landed on.
+      //
+      // On a note, in a panel that has a selection: it PICKS THAT NOTE OUT. It used to
+      // erase it, and the cost of that was the gesture you abandon — press a note, think
+      // better of it, release without travelling the four pixels, and the note was gone.
+      // There was also no way to merely point at a note without destroying it, which
+      // left the whole selection system (⌫, the arrows, ⌥← ⌥→) reachable only by
+      // holding a modifier. Erasing is the right button's job now.
+      //
+      // Everywhere else it is the toggle it always was: the step grid has no selection
+      // to put a note into, so a tap on a hat still takes it out.
+      //
+      // Two presses have already done their work by the time they get here and must not
+      // be undone by it — one that DREW a note (a tap on an empty cell leaves a one-step
+      // note, as it always did) and one that arrived inside a selection (clicking a note
+      // you have picked out keeps the set; ⌫ is how a selection goes).
       if (cancelled) { endBand(); return; }
-      if (!d.drawn && !d.set.length) begin(d.cell);
+      if (!d.drawn && !d.set.length) {
+        if (selectable && (d.mode === 'move' || d.mode === 'resize')) select([keyOfCell(d.cell)]);
+        else begin(d.cell);
+      }
       paint = null;
       commit();
       return;
@@ -1281,8 +1793,15 @@ export function createBarGrid({
   }
 
   el.addEventListener('pointerdown', (ev) => {
-    const cell = cellFrom(ev.target);
+    // Left draws, right erases, and the wheel button is nobody's gesture — a press it
+    // does not understand should leave the field exactly as it found it rather than
+    // pick a meaning at random.
+    if (ev.button !== 0 && ev.button !== 2) return;
+    const cell = cellAt(ev.clientX, ev.clientY);
     if (!cell) return;
+    // A missed pointerup (window switch, browser cancellation, or a prior gesture
+    // ending outside the panel) must not leave a Tone preview in its sustain stage.
+    previewRelease();
     ev.preventDefault();
     const row = rowOf(cell);
     if (!row) return;
@@ -1290,7 +1809,9 @@ export function createBarGrid({
     const g = gestureAt(cell, row, ev);
     // A press that is not about the selection drops it, so there is always a way out:
     // click anywhere. ⇧ and ⌘ are the two that build on what is already picked out.
-    if (selectable && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !isSelected(cell)) {
+    const cellKey = keyOfCell(cell);
+    if (selectable && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey
+      && !isSelected(cell) && cellKey !== editedKey) {
       clearSelection();
     }
     if (g === 'marquee') {
@@ -1298,6 +1819,7 @@ export function createBarGrid({
     } else if (g === 'select') {
       // ⇧ adds one or takes one out; a plain press in Select mode is "just this one",
       // and dragging from it moves whatever is now picked out.
+      if (cellKey !== editedKey) editedKey = null;
       if (ev.shiftKey) {
         const key = keyOfCell(cell);
         if (selection.has(key)) selection.delete(key);
@@ -1328,8 +1850,13 @@ export function createBarGrid({
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', stop);
       removeEventListener('pointercancel', stop);
-      if (drag) { endDrag(e?.type === 'pointercancel'); return; }
+      if (drag) {
+        try { endDrag(e?.type === 'pointercancel'); }
+        finally { previewRelease(); }
+        return;
+      }
       paint = null;
+      previewRelease();
       commit();
     };
     addEventListener('pointermove', move);
@@ -1337,12 +1864,23 @@ export function createBarGrid({
     addEventListener('pointercancel', stop);
   });
 
+  // The right button is the eraser, so over the field it cannot also be the browser's
+  // menu — "Reload" and "Save Image As" sitting on top of the note you just rubbed out
+  // is the menu winning an argument it should not be in.
+  //
+  // Only over the CELLS. The row headers have menus of their own (`row.contextMenu`),
+  // the header and the ruler have none and should keep the browser's, and a blanket
+  // handler on the panel would take the first away and the second with it.
+  el.addEventListener('contextmenu', (ev) => {
+    if (cellAt(ev.clientX, ev.clientY)) ev.preventDefault();
+  });
+
   // The cursor says which of the two a press would begin, so the edge is discoverable
   // rather than something you find by accident. Only written when it changes: this runs
   // on every pointer move over the panel.
   el.addEventListener('pointermove', (ev) => {
     if (!movable || drag) return;
-    const cell = cellFrom(ev.target);
+    const cell = cellAt(ev.clientX, ev.clientY);
     const row = cell && rowOf(cell);
     // The handle is only offered where pressing would actually take it — so it goes
     // quiet in Paint, Draw and Erase, where the answer does not depend on aim.
@@ -1366,7 +1904,15 @@ export function createBarGrid({
   addEventListener('keydown', (ev) => {
     if (!selectable || !selection.size || !isOpen()) return;
     if (ev.target?.closest?.('input, select, textarea, [contenteditable="true"]')) return;
-    if (ev.key === 'Escape') { clearSelection(); return; }
+    // Stopped outright, like the arrows below: Escape is the desk's panic, and letting go
+    // of a selection is not an emergency. Only ever reached with notes actually picked
+    // out — with none, this listener has already returned and the panic is what ⎋ means.
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      clearSelection();
+      return;
+    }
     if (ev.key === 'Backspace' || ev.key === 'Delete') {
       ev.preventDefault();
       deleteSelection();
@@ -1401,6 +1947,10 @@ export function createBarGrid({
     paint = null;
     commit();
   });
+  el.addEventListener('keyup', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') previewRelease();
+  });
+  addEventListener('blur', previewRelease);
 
   // ---- the window --------------------------------------------------------------------
 
@@ -1437,6 +1987,7 @@ export function createBarGrid({
   function open(on = true) {
     el.classList.toggle('show', on);
     if (!on) {
+      previewRelease();
       pending.clear();
       // Nothing to watch while it is shut, and the next `build` points it at the
       // scroller it makes.
@@ -1454,6 +2005,39 @@ export function createBarGrid({
     place(pos?.x ?? Math.max(4, (innerWidth - r.width) / 2), pos?.y ?? 90);
   }
 
+  /** Capture the pitch and fractional position at a viewport anchor. */
+  function captureRowAnchor(at = 0.5) {
+    const scroll = el.querySelector('.ssqscroll');
+    if (!scroll || !rowList.length || !(baseRowHeight() > 0)) return null;
+    const y = scroll.scrollTop - rowsTop(scroll) + scroll.clientHeight * at;
+    const index = rowAtOffset(y);
+    const row = rowList[index];
+    if (!row) return null;
+    const height = rowHeightAt(row);
+    const fraction = height > 0
+      ? Math.max(0, Math.min(1, (y - rowOffset(index)) / height)) : 0.5;
+    return { key: String(row.key), fraction, at };
+  }
+
+  /** Restore a previously captured pitch anchor after row geometry changes. */
+  function restoreRowAnchor(anchor) {
+    if (!anchor) return;
+    const index = rowList.findIndex((row) => String(row.key) === String(anchor.key));
+    const scroll = el.querySelector('.ssqscroll');
+    if (index < 0 || !scroll) return;
+    const row = rowList[index];
+    const height = rowHeightAt(row);
+    const fraction = Math.max(0, Math.min(1, Number(anchor.fraction) || 0));
+    const at = Math.max(0, Math.min(1, Number(anchor.at) || 0.5));
+    const target = rowOffset(index) + height * fraction;
+    const want = rowsTop(scroll) + target - scroll.clientHeight * at;
+    const max = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    scroll.scrollTop = Math.max(0, Math.min(max, want));
+    scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+    syncDockedChrome(scroll);
+    if (virtual) renderRows(ctx());
+  }
+
   return {
     open,
     close: () => open(false),
@@ -1462,6 +2046,8 @@ export function createBarGrid({
     refresh: () => { autoBar = null; if (isOpen()) build(); },
     /** Repaint without clearing the auto-page — for a control inside the panel. */
     redraw: build,
+    captureRowAnchor,
+    restoreRowAnchor,
     /**
      * Put a row where it can be seen, and hold it there.
      *
@@ -1474,34 +2060,52 @@ export function createBarGrid({
     scrollToRow(key, at = 0.5) {
       const i = rowList.findIndex((r) => String(r.key) === String(key));
       const scroll = el.querySelector('.ssqscroll');
-      if (i < 0 || !scroll || !(rowHeight > 0)) return;
-      const want = rowsTop(scroll) + i * rowHeight - scroll.clientHeight * at + rowHeight;
+      if (i < 0 || !scroll || !(baseRowHeight() > 0)) return;
+      const want = rowsTop(scroll) + rowOffset(i) - scroll.clientHeight * at
+        + rowHeightAt(rowList[i]);
       scroll.scrollTop = Math.max(0, want);
       scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      syncDockedChrome(scroll);
       if (virtual) renderRows(ctx());
     },
+    /**
+     * Let the transport have the time axis back.
+     *
+     * Scrolling the roll sideways while it plays turns the follow off — see `follow` —
+     * and moving the transport on purpose is the other way of saying "show me there",
+     * so the desk calls this on a seek.
+     */
+    armFollow() { followX = true; autoLeftAt = null; },
+    /** Focus a whole-song bar/range without changing the selection or its contents. */
+    focusRange,
     /** Move the window by whole rows — an octave at a time, in the roll's case. */
     scrollRows(n) {
       const scroll = el.querySelector('.ssqscroll');
-      if (!scroll || !(rowHeight > 0)) return;
-      scroll.scrollTop = Math.max(0, scroll.scrollTop + n * rowHeight);
+      if (!scroll || !(baseRowHeight() > 0)) return;
+      scroll.scrollTop = Math.max(0, scroll.scrollTop + n * baseRowHeight());
       scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      syncDockedChrome(scroll);
       if (virtual) renderRows(ctx());
     },
     /** A hard context boundary: no pending gesture or old-song DOM crosses it. */
     songChanged() {
+      previewRelease();
       pending.clear();
       paint = null;
       drag = null;
       selection = new Set();
       endBand();
       scrollAt = { top: 0, left: 0 };
+      followX = true;
+      autoLeftAt = null;
       rendered = null;
       plan = [];
       range = { from: 0, to: 0 };
       cols = new Map();
       lit = [];
       autoBar = null;
+      editedKey = null;
+      editScope = null;
       if (isOpen()) build();
     },
     /**
@@ -1516,26 +2120,42 @@ export function createBarGrid({
       for (const c of lit) c.classList.remove('playing');
       lit = [];
       const at = playheadCell(step);
-      if (!at) return;
+      // Stopping re-arms the follow: wherever you scrolled to while it played, the next
+      // transport starts by owning the view again.
+      if (!at) { followX = true; autoLeftAt = null; return; }
       if (wholeSong) {
-        // Every bar is already drawn, so there is nothing to re-page — the view follows
-        // by SCROLLING, which is what a roll does. Only when the column has actually left
-        // the visible strip: scrolling on every step would drag the field out from under
-        // a hand that had scrolled somewhere else on purpose.
+        // The whole song is in the field, so there is nothing to re-page — the view
+        // follows by SCROLLING, which is what a roll does. Only when the column has
+        // actually left the visible strip: scrolling on every step would drag the field
+        // out from under a hand that had scrolled somewhere else on purpose.
+        //
+        // The ring goes on the cells of that column where there are any, but the LINE is
+        // placed off the ruler's geometry — the field only builds the bars near the
+        // viewport, so the column being heard has no cell of its own the moment you
+        // scroll away from it, and the transport is exactly when you want to be able to.
         lit = cols.get(kof(at.bar, at.step)) || [];
         for (const c of lit) c.classList.add('playing');
-        const first = lit[0];
-        if (playhead && first) {
+        const x = fieldX(at.bar, at.step);
+        if (playhead && x != null) {
           playhead.hidden = false;
-          playhead.style.left = `${first.offsetLeft}px`;
-          playhead.style.width = `${first.offsetWidth}px`;
+          playhead.style.left = `${x}px`;
+          playhead.style.width = `${stepWidth()}px`;
         }
         const scroll = el.querySelector('.ssqscroll');
-        if (scroll && first) {
-          const x = first.offsetLeft;
+        if (scroll && x != null) {
           const pad = scroll.clientWidth * 0.25;
-          if (x < scroll.scrollLeft + pad || x > scroll.scrollLeft + scroll.clientWidth - pad) {
+          const off = x < scroll.scrollLeft + pad
+            || x > scroll.scrollLeft + scroll.clientWidth - pad;
+          // In the comfortable middle of the strip the roll is following whether it
+          // moved or not, so this is also where a hand that scrolled away and then came
+          // back hands the time axis over again.
+          if (!off) followX = true;
+          else if (followX) {
             scroll.scrollLeft = Math.max(0, x - pad);
+            // The position as it landed, not as it was asked for: a scroller near the
+            // end of the song clamps, and the difference would read as a hand.
+            autoLeftAt = scroll.scrollLeft;
+            syncDockedChrome(scroll);
           }
         }
         return;

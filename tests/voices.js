@@ -19,6 +19,7 @@ import { SONG_STYLES } from '../tools/lib/song-styles.js';
 import {
   VOICES, VOICE_LANES, VOICE_CATEGORIES, PERCUSSION_LANES,
   voicesFor, voicesByCategory, voiceOf, voiceGain, engineBankKeys, defaultVoiceOf,
+  normalizeVoiceCategory, registerSongVoice, isKitVoice,
 } from '../src/data/voices.js';
 import { quotesInPlay, offeredVoices, offeredByCategory } from '../src/data/voices-in-play.js';
 import { LANE_KEYS } from '../src/engine/lanes.js';
@@ -47,7 +48,12 @@ const tone = all.filter((v) => v.kind === 'tone');
 const engine = all.filter((v) => v.kind === 'engine');
 const noise = all.filter((v) => v.kind === 'noise');
 const drum = all.filter((v) => v.kind === 'drum');
-const KIT = ['Kicks', 'Snares', 'Claps', 'Hats', 'Percussion'];
+const KIT = ['Kick', 'Snare', 'Hats', 'Clap', 'Tom', 'Crash', 'Perc'];
+const OLD_CATEGORIES = [
+  'Basses', 'Leads', 'Pads', 'Organs', 'Bells & Mallets', 'Plucks',
+  'Brass & Strings', 'Rough & Electric', 'Kicks', 'Snares', 'Claps',
+  'Percussion', 'Audition',
+];
 
 // ---- shape -----------------------------------------------------------------
 assert(tone.length > 0 && engine.length > 0 && noise.length > 0 && drum.length > 0,
@@ -64,15 +70,48 @@ for (const c of KIT) {
 // Snares, claps and hats were the library's biggest hole: the engine has exactly one
 // of each with no parameters, so they cannot come from harvesting — only from a
 // preset built on the seeded noise buffer.
-for (const c of ['Snares', 'Claps', 'Hats']) {
+for (const c of ['Snare', 'Clap', 'Hats']) {
   assert(noise.some((v) => v.category === c), `${c}: is covered by noise presets`);
 }
-// A drum lane opens on its own kind. Eleven columns with the drums last was the
-// reason this ordering exists at all.
-for (const [lane, want] of [['kick', 'Kicks'], ['snare', 'Snares'], ['clap', 'Claps'],
-  ['hats', 'Hats'], ['crash', 'Percussion']]) {
+assert(!all.some((v) => OLD_CATEGORIES.includes(v.category)),
+  'no loaded preset remains in an old or internal category');
+// A drum lane opens on its own kind. The category order is lane-aware rather than
+// alphabetical.
+for (const [lane, want] of [['kick', 'Kick'], ['snare', 'Snare'], ['clap', 'Clap'],
+  ['hats', 'Hats'], ['crash', 'Crash'], ['tom', 'Tom']]) {
   assert(voicesByCategory(lane)[0]?.[0] === want,
     `${lane}: opens on ${want}, not on whatever is first alphabetically`);
+}
+
+assert(normalizeVoiceCategory({ id: 'tom', category: 'Percussion' }) === 'Tom',
+  'old tom metadata normalizes to Tom');
+assert(normalizeVoiceCategory({ id: 'ds808Cowbell', category: 'Audition', homeLane: 'tom', label: 'Cowbell' }) === 'Perc',
+  'cowbell audition metadata normalizes to Perc');
+assert(normalizeVoiceCategory({ id: 'breathPad', category: 'Pads' }) === 'Orch',
+  'vocal-like pad metadata normalizes to Orch');
+for (const [old, next] of Object.entries({
+  Basses: 'Bass', Leads: 'Lead', Pads: 'Pad', Keys: 'Keys', Plucks: 'Pluck',
+  Organs: 'Organ', 'Bells & Mallets': 'Bells', 'Brass & Strings': 'Orch',
+  'Rough & Electric': 'FX', Kicks: 'Kick', Snares: 'Snare', Hats: 'Hats',
+  Claps: 'Clap', Percussion: 'Perc',
+})) {
+  assert(normalizeVoiceCategory({ category: old }) === next,
+    `${old} song metadata normalizes to ${next}`);
+}
+assert(normalizeVoiceCategory({ id: 'dsZap', category: 'Audition', homeLane: 'crash' }) === 'FX',
+  'old crash-lane zap metadata remains FX');
+
+const legacySongVoice = registerSongVoice('legacy-tom', 'category-migration', {
+  id: 'tom', kind: 'tone', category: 'Percussion', homeLane: 'tom',
+  synth: 'MonoSynth', dur: 1, level: 1, peak: 1, options: {},
+});
+assert(VOICES[legacySongVoice]?.category === 'Tom',
+  'song-local old tom copies load with the Tom category');
+delete VOICES[legacySongVoice];
+assert(!isKitVoice(VOICES.dsZap) && homeLane(VOICES.dsZap) === 'bass',
+  'FX zap remains non-drum outside its special crash audition render');
+for (const [id, lane] of [['tom', 'tom'], ['crashEngine', 'crash'], ['ds808Cowbell', 'tom']]) {
+  assert(homeLane(VOICES[id]) === lane, `${id}: measures on its correct home lane`);
 }
 
 for (const v of all) {

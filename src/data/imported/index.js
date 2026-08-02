@@ -24,12 +24,16 @@ import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
 import * as BITTER_LULLABY from './bitter-lullaby.js';
+import * as BITTER_MARKET from './bitter-market.js';
 import * as BRAVE_COMET from './brave-comet.js';
 import * as BRAVE_DIVER from './brave-diver.js';
 import * as BRAVE_SIREN from './brave-siren.js';
 import { CHOPIN3 } from './chopin3.js';
 import * as CHROME_DOLPHIN from './chrome-dolphin.js';
+import * as CHROME_MEADOW from './chrome-meadow.js';
+import * as CHROME_SUNDAE from './chrome-sundae.js';
 import * as COSMIC_LULLABY from './cosmic-lullaby.js';
+import * as COSMIC_PYLON from './cosmic-pylon.js';
 import * as CRIMSON_BEETLE from './crimson-beetle.js';
 import * as CRIMSON_CAROUSEL from './crimson-carousel.js';
 import * as CRIMSON_DIVER from './crimson-diver.js';
@@ -39,7 +43,9 @@ import * as DIZZY_LADDER from './dizzy-ladder.js';
 import * as DIZZY_MIRROR from './dizzy-mirror.js';
 import * as DIZZY_TEMPLE from './dizzy-temple.js';
 import * as ELECTRIC_BEETLE from './electric-beetle.js';
+import * as ELECTRIC_CAROUSEL from './electric-carousel.js';
 import * as ELECTRIC_LANTERN from './electric-lantern.js';
+import * as ELECTRIC_MIRROR from './electric-mirror.js';
 import * as ELECTRIC_SCOOTER from './electric-scooter.js';
 import * as FROZEN_BEETLE from './frozen-beetle.js';
 import * as FROZEN_DIVER from './frozen-diver.js';
@@ -52,7 +58,10 @@ import * as HAPPY_MEADOW from './happy-meadow.js';
 import * as HAPPY_WOMBAT from './happy-wombat.js';
 import * as HAUNTED_SIREN from './haunted-siren.js';
 import * as HAUNTED_SUNDAE from './haunted-sundae.js';
+import * as HUNGRY_CANYON from './hungry-canyon.js';
 import * as HUNGRY_LADDER from './hungry-ladder.js';
+import * as JOLLY_ORBIT from './jolly-orbit.js';
+import * as LUCKY_CACTUS from './lucky-cactus.js';
 import * as LUCKY_PYLON from './lucky-pylon.js';
 import * as MARBLE_ROCKET from './marble-rocket.js';
 import * as MARBLE_TANGO from './marble-tango.js';
@@ -60,6 +69,7 @@ import * as MARBLE_VOLCANO from './marble-volcano.js';
 import * as MIDNIGHT_ORBIT from './midnight-orbit.js';
 import * as MIDNIGHT_PIGEON from './midnight-pigeon.js';
 import { MIN3 } from './min3.js';
+import * as NEON_SIREN from './neon-siren.js';
 import * as PAPER_CAROUSEL from './paper-carousel.js';
 import * as PAPER_TIGER from './paper-tiger.js';
 import * as PINK_ENGINE from './pink-engine.js';
@@ -68,6 +78,7 @@ import * as PINK_ORBIT from './pink-orbit.js';
 import * as PLASTIC_OWL from './plastic-owl.js';
 import * as ROYAL_HARBOUR from './royal-harbour.js';
 import * as ROYAL_WALTZ from './royal-waltz.js';
+import * as RUBBER_PUPPET from './rubber-puppet.js';
 import * as RUSTY_COMET from './rusty-comet.js';
 import * as RUSTY_TYPHOON from './rusty-typhoon.js';
 import * as SALTY_CANYON from './salty-canyon.js';
@@ -78,9 +89,14 @@ import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
 import * as SILVER_PYLON from './silver-pylon.js';
+import * as SLEEPY_FALCON from './sleepy-falcon.js';
+import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
+import * as THUNDER_JUKEBOX from './thunder-jukebox.js';
+import * as THUNDER_KITTEN from './thunder-kitten.js';
 import * as THUNDER_LANTERN from './thunder-lantern.js';
 import * as THUNDER_ROBOT from './thunder-robot.js';
+import * as THUNDER_SCOOTER from './thunder-scooter.js';
 import * as TINY_SUNDAE from './tiny-sundae.js';
 import * as VELVET_GARDEN from './velvet-garden.js';
 import * as VELVET_KITTEN from './velvet-kitten.js';
@@ -106,12 +122,16 @@ export const IMPORTED_BY_ID = {
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
   "bitter-lullaby": { bank: BITTER_LULLABY.bank, title: BITTER_LULLABY.title, group: "scratch", writable: true },
+  "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
   "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
   "brave-siren": { bank: BRAVE_SIREN.bank, title: BRAVE_SIREN.title, group: "scratch", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
   "chrome-dolphin": { bank: CHROME_DOLPHIN.bank, title: CHROME_DOLPHIN.title, group: "scratch", writable: true },
+  "chrome-meadow": { bank: CHROME_MEADOW.bank, title: CHROME_MEADOW.title, group: "scratch", writable: true },
+  "chrome-sundae": { bank: CHROME_SUNDAE.bank, title: CHROME_SUNDAE.title, group: "scratch", writable: true },
   "cosmic-lullaby": { bank: COSMIC_LULLABY.bank, title: COSMIC_LULLABY.title, group: "scratch", writable: true },
+  "cosmic-pylon": { bank: COSMIC_PYLON.bank, title: COSMIC_PYLON.title, group: "scratch", writable: true },
   "crimson-beetle": { bank: CRIMSON_BEETLE.bank, title: CRIMSON_BEETLE.title, group: "scratch", writable: true },
   "crimson-carousel": { bank: CRIMSON_CAROUSEL.bank, title: CRIMSON_CAROUSEL.title, group: "scratch", writable: true },
   "crimson-diver": { bank: CRIMSON_DIVER.bank, title: CRIMSON_DIVER.title, group: "scratch", writable: true },
@@ -121,7 +141,9 @@ export const IMPORTED_BY_ID = {
   "dizzy-mirror": { bank: DIZZY_MIRROR.bank, title: DIZZY_MIRROR.title, group: "scratch", writable: true },
   "dizzy-temple": { bank: DIZZY_TEMPLE.bank, title: DIZZY_TEMPLE.title, group: "scratch", writable: true },
   "electric-beetle": { bank: ELECTRIC_BEETLE.bank, title: ELECTRIC_BEETLE.title, group: "scratch", writable: true },
+  "electric-carousel": { bank: ELECTRIC_CAROUSEL.bank, title: ELECTRIC_CAROUSEL.title, group: "scratch", writable: true },
   "electric-lantern": { bank: ELECTRIC_LANTERN.bank, title: ELECTRIC_LANTERN.title, group: "scratch", writable: true },
+  "electric-mirror": { bank: ELECTRIC_MIRROR.bank, title: ELECTRIC_MIRROR.title, group: "scratch", writable: true },
   "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
   "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
@@ -134,7 +156,10 @@ export const IMPORTED_BY_ID = {
   "happy-wombat": { bank: HAPPY_WOMBAT.bank, title: HAPPY_WOMBAT.title, group: "scratch", writable: true },
   "haunted-siren": { bank: HAUNTED_SIREN.bank, title: HAUNTED_SIREN.title, group: "scratch", writable: true },
   "haunted-sundae": { bank: HAUNTED_SUNDAE.bank, title: HAUNTED_SUNDAE.title, group: "scratch", writable: true },
+  "hungry-canyon": { bank: HUNGRY_CANYON.bank, title: HUNGRY_CANYON.title, group: "scratch", writable: true },
   "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
+  "jolly-orbit": { bank: JOLLY_ORBIT.bank, title: JOLLY_ORBIT.title, group: "scratch", writable: true },
+  "lucky-cactus": { bank: LUCKY_CACTUS.bank, title: LUCKY_CACTUS.title, group: "scratch", writable: true },
   "lucky-pylon": { bank: LUCKY_PYLON.bank, title: LUCKY_PYLON.title, group: "scratch", writable: true },
   "marble-rocket": { bank: MARBLE_ROCKET.bank, title: MARBLE_ROCKET.title, group: "scratch", writable: true },
   "marble-tango": { bank: MARBLE_TANGO.bank, title: MARBLE_TANGO.title, group: "scratch", writable: true },
@@ -142,6 +167,7 @@ export const IMPORTED_BY_ID = {
   "midnight-orbit": { bank: MIDNIGHT_ORBIT.bank, title: MIDNIGHT_ORBIT.title, group: "scratch", writable: true },
   "midnight-pigeon": { bank: MIDNIGHT_PIGEON.bank, title: MIDNIGHT_PIGEON.title, group: "scratch", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
+  "neon-siren": { bank: NEON_SIREN.bank, title: NEON_SIREN.title, group: "scratch", writable: true },
   "paper-carousel": { bank: PAPER_CAROUSEL.bank, title: PAPER_CAROUSEL.title, group: "scratch", writable: true },
   "paper-tiger": { bank: PAPER_TIGER.bank, title: PAPER_TIGER.title, group: "scratch", writable: true },
   "pink-engine": { bank: PINK_ENGINE.bank, title: PINK_ENGINE.title, group: "scratch", writable: true },
@@ -150,6 +176,7 @@ export const IMPORTED_BY_ID = {
   "plastic-owl": { bank: PLASTIC_OWL.bank, title: PLASTIC_OWL.title, group: "scratch", writable: true },
   "royal-harbour": { bank: ROYAL_HARBOUR.bank, title: ROYAL_HARBOUR.title, group: "scratch", writable: true },
   "royal-waltz": { bank: ROYAL_WALTZ.bank, title: ROYAL_WALTZ.title, group: "scratch", writable: true },
+  "rubber-puppet": { bank: RUBBER_PUPPET.bank, title: RUBBER_PUPPET.title, group: "scratch", writable: true },
   "rusty-comet": { bank: RUSTY_COMET.bank, title: RUSTY_COMET.title, group: "scratch", writable: true },
   "rusty-typhoon": { bank: RUSTY_TYPHOON.bank, title: RUSTY_TYPHOON.title, group: "scratch", writable: true },
   "salty-canyon": { bank: SALTY_CANYON.bank, title: SALTY_CANYON.title, group: "scratch", writable: true },
@@ -160,9 +187,14 @@ export const IMPORTED_BY_ID = {
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
   "silver-pylon": { bank: SILVER_PYLON.bank, title: SILVER_PYLON.title, group: "scratch", writable: true },
+  "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
+  "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
+  "thunder-jukebox": { bank: THUNDER_JUKEBOX.bank, title: THUNDER_JUKEBOX.title, group: "scratch", writable: true },
+  "thunder-kitten": { bank: THUNDER_KITTEN.bank, title: THUNDER_KITTEN.title, group: "scratch", writable: true },
   "thunder-lantern": { bank: THUNDER_LANTERN.bank, title: THUNDER_LANTERN.title, group: "scratch", writable: true },
   "thunder-robot": { bank: THUNDER_ROBOT.bank, title: THUNDER_ROBOT.title, group: "scratch", writable: true },
+  "thunder-scooter": { bank: THUNDER_SCOOTER.bank, title: THUNDER_SCOOTER.title, group: "scratch", writable: true },
   "tiny-sundae": { bank: TINY_SUNDAE.bank, title: TINY_SUNDAE.title, group: "scratch", writable: true },
   "velvet-garden": { bank: VELVET_GARDEN.bank, title: VELVET_GARDEN.title, group: "scratch", writable: true },
   "velvet-kitten": { bank: VELVET_KITTEN.bank, title: VELVET_KITTEN.title, group: "scratch", writable: true },

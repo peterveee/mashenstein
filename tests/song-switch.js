@@ -2,7 +2,7 @@
 //
 // `setBank` has always answered that with half a second of silence: the trim is
 // slammed down, the new song is scheduled behind the gap, and whatever was left in
-// the 120ms lookahead dies unheard. That worked for as long as every note was shorter
+// the quarter-second lookahead dies unheard. That worked for as long as every note was shorter
 // than the gap — a bass note is 1.8 steps, a lead 1.2 — but a note is a source node
 // with its own stop time, and nothing was ever holding one. When the trim came back
 // up, anything still running came back up with it.

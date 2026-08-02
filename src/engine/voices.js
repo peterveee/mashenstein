@@ -448,7 +448,7 @@ export class VoiceRack {
         // with it.
         //
         // The route that reached it is a note previewed WHILE THE SONG PLAYS: the
-        // sequencer is 120ms ahead and a key press lands at now + 20ms, behind it. That
+        // sequencer is a quarter-second ahead and a key press lands at now + 20ms, behind it. That
         // now has a pool of its own (see previewNote), which is the actual fix. This is
         // the seatbelt for whatever else finds the same edge: one note goes missing
         // instead of the page. Deliberately not a slot-picking scheme — rerouting a note
@@ -468,7 +468,7 @@ export class VoiceRack {
           }
         } catch { continue; }
         // How far into the future this pool is committed. Notes are scheduled up to
-        // 120ms ahead, so "is it playing" is not a question about now — and a pool
+        // a quarter-second ahead, so "is it playing" is not a question about now — and a pool
         // taken out of service has to outlive the ones already booked on it or they
         // go missing. See `_retire`.
         pool.until = Math.max(pool.until, t + noteDur);
@@ -677,7 +677,7 @@ export class VoiceRack {
    * and a pool wired to the old ones would play into a graph nothing is listening to.
    */
   _pool(laneKey, voiceId, dry, wet, echo, want = 1, preview = false) {
-    // A preview's synths are its own. The song is scheduled 120ms ahead and a preview
+    // A preview's synths are its own. The song is scheduled a quarter-second ahead and a preview
     // lands in the middle of that; Tone will not accept a state before one already on
     // an instrument's timeline, so sharing these threw. See previewNote in audio.js.
     const key = `${laneKey}|${voiceId}|${echo ? 1 : 0}${preview ? '|preview' : ''}`;
@@ -1453,7 +1453,7 @@ export class VoiceRack {
    *
    * Disposing a pool disposes its synths, and disposing a synth mid-note is a hard
    * stop: the note you are listening to ends on the spot, and any note already booked
-   * in the 120ms lookahead never sounds at all. That is fine when the audio is muted
+   * in the quarter-second lookahead never sounds at all. That is fine when the audio is muted
    * around it — `setBank` opens after a deliberate half-second gap — and it is what
    * you can hear on the desk, where the song is playing and the whole point is to keep
    * listening while you work.

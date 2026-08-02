@@ -74,9 +74,9 @@ export function mixEntrySource(entry, indent = '') {
   const i3 = `${indent}    `;
   const lanes = Object.entries(e.lanes || {})
     .map(([k, L]) => laneLine(k, L, i3)).filter(Boolean).join('');
-  // The desk seeds every master with a bypassed bus compressor. That is a starting
-  // point, not a decision, and writing it out would put a masterEffects line in every
-  // song in the game for a chain nobody has touched.
+  // Every master starts EMPTY. An empty chain is a starting point, not a decision,
+  // and writing it out would put a masterEffects line in every song in the game for a
+  // bus nobody has put anything on.
   const masterFx = isDefaultMasterChain(e.masterEffects) ? null : e.masterEffects;
   const layers = (e.layers || []).filter((l) => l && l.key && l.from);
   const off = (e.off || []).filter(Boolean);
@@ -87,9 +87,10 @@ export function mixEntrySource(entry, indent = '') {
   if (e.master) body += `${i2}master: ${round(e.master)},\n`;
   if (e.masterPan) body += `${i2}masterPan: ${round(e.masterPan)},\n`;
   if (e.limiter) body += `${i2}limiter: true,\n`;
-  // An empty chain is written as an empty chain: taking the seeded compressor OFF is
-  // a decision, and the file has to carry it or it does not survive the trip.
-  if (masterFx) body += `${i2}masterEffects: ${masterFx.length ? fmtEffects(masterFx) : '[]'},\n`;
+  // Only a chain with something in it reaches the file. Emptying a master puts it back
+  // where it started, and where it started is not a line in mix.js — the `[]` branch
+  // that used to record "the seed was taken off" has nothing left to record.
+  if (masterFx?.length) body += `${i2}masterEffects: ${fmtEffects(masterFx)},\n`;
   if (layers.length) {
     body += `${i2}layers: [${layers
       .map((l) => `{ key: ${JSON.stringify(l.key)}, from: ${JSON.stringify(l.from)}`

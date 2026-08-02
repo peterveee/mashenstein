@@ -4,7 +4,7 @@
 // The desk's preset editor calls `Audio.refreshVoice` on every touch of every control,
 // and the rack used to answer all of them the same way — dispose the pool. To the rack
 // that is a cache being dropped. To the ear it is the note that was sounding, stopped
-// dead, plus every note already booked in the 120ms lookahead going missing. Turning
+// dead, plus every note already booked in the quarter-second lookahead going missing. Turning
 // one knob cost you the bar you were listening to, which is the bar the question was
 // about.
 //
@@ -242,7 +242,7 @@ async function main() {
     //
     //   · a note DRAWN LONG over a part playing sixteenths — the ringing note holds a
     //     slot and the pool has to find another one;
-    //   · a KEY PRESSED WHILE THE SONG PLAYS — the sequencer has scheduled 120ms into
+    //   · a KEY PRESSED WHILE THE SONG PLAYS — the sequencer has scheduled a quarter-second into
     //     the future and a preview lands at now + 20ms, which is behind it.
     {
       const id = install(VOICES.acidSquelch);

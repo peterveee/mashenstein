@@ -16,9 +16,12 @@
 //      the step grid uses, without touching the composition
 import {
   noteCell, noteOn, pitchRows, laneSpan, autoRange, keyboardRange, keyGeometry,
+  pianoRowHeight, pianoKeyPhase, pianoLayout, noteActiveAt,
   midiFreq, freqMidi, rollEditable, ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
 } from '../tools/mixer-piano-roll.js';
-import { gestureFor, noteKey, movedNote, clampDelta, stretched } from '../tools/mixer-bar-grid.js';
+import {
+  gestureFor, noteKey, movedNote, clampDelta, stretched, centeredRangeOffset,
+} from '../tools/mixer-bar-grid.js';
 import { draftOf, writeBarNotes, entryOf } from '../tools/lib/arrangement-edit.js';
 import { seq, n } from '../src/engine/notes.js';
 
@@ -134,26 +137,83 @@ assert(deep.low === 9,
   'and widens for a bank holding something off the end of the keyboard — a note that'
   + ' exists must be reachable, or the roll is lying about the part');
 
+// Selection focus uses the same rule on time and pitch: a small range fits whole,
+// while a range wider than the viewport exposes its useful middle.
+assert(centeredRangeOffset(100, 122, 60) === 81,
+  'a short selected range is centred with all of it visible');
+assert(centeredRangeOffset(100, 300, 60) === 170,
+  'a range wider than the viewport centres its middle instead of overscrolling');
+
 // ---- the keyboard's geometry ----------------------------------------------------------
-// Seven white keys span twelve semitones, so a real board's whites are uneven. If they
-// tile the octave exactly then the column is a keyboard; if they are all one row tall it
-// is twelve equal bars, which is what equal heights looked like and why they went back.
+// The white faces remain equal, while the chromatic rows are grouped: five rows from
+// C through E fill three white-key heights, and seven rows from F through B fill four.
 const ROW = 19;
 const octave = [...Array(12).keys()].map((pc) => keyGeometry(60 + pc, ROW));
 const whites = octave.filter((k) => !k.black);
 const blacks = octave.filter((k) => k.black);
 assert(whites.length === 7 && blacks.length === 5,
   'twelve semitones are seven white keys and five black ones');
-assert(whites.reduce((t, k) => t + k.height, 0) === 12 * ROW,
-  'and the whites tile the octave exactly — no gaps, no overlaps');
-assert(blacks.every((k) => k.height === ROW && k.top === 0),
-  'a black key is one row, on its own row: no note is harder to hit than any other');
-assert(keyGeometry(60, ROW).height === ROW * 1.5 && keyGeometry(60, ROW).top === -ROW / 2,
-  'C reaches up into C# and stops where B meets it');
-assert(keyGeometry(62, ROW).height === ROW * 2,
-  'D has a black key either side, so it is two rows tall');
-assert(keyGeometry(64, ROW).height === ROW * 1.5 && keyGeometry(64, ROW).top === 0,
-  'E reaches down into D# and stops where F meets it');
+const whiteHeight = ROW * (12 / 7);
+assert(whites.every((k) => k.height === whiteHeight),
+  'every white key has the same physical height');
+assert(Math.abs(whites.reduce((t, k) => t + k.height, 0) - ROW * 12) < 1e-9,
+  'seven white keys tile the twelve-semitone octave');
+const blackPitchRatio = 26 / 39;
+const blackHeight = whiteHeight * blackPitchRatio;
+assert(blacks.every((k) => k.height === blackHeight),
+  'black keys use the physical keyboard pitch width');
+const geometryAt = (unit) => {
+  const w = unit * (12 / 7);
+  const ce = pianoRowHeight(60, unit);
+  const fb = pianoRowHeight(65, unit);
+  const layout = pianoLayout(60, 72, unit);
+  const byMidi = new Map(layout.rows.map((row) => [row.midi, row]));
+  const rowTop = (midi) => layout.before + byMidi.get(midi).top;
+  const rowBottom = (midi) => rowTop(midi) + byMidi.get(midi).height;
+  const keyTop = (midi) => rowTop(midi) + byMidi.get(midi).keyFace.top;
+  const keyBottom = (midi) => keyTop(midi) + byMidi.get(midi).keyFace.height;
+  const descendingWhites = [72, 71, 69, 67, 65, 64, 62, 60];
+  const blackSeams = new Map([[70, 2], [68, 3], [66, 4], [63, 6], [61, 7]]);
+  return {
+    w, ce, fb, layout, byMidi, rowTop, rowBottom, keyTop, keyBottom,
+    descendingWhites, blackSeams,
+  };
+};
+
+for (const unit of [12, ROW, 30]) {
+  const g = geometryAt(unit);
+  assert(Math.abs(5 * g.ce - 3 * g.w) < 1e-9
+    && Math.abs(7 * g.fb - 4 * g.w) < 1e-9,
+    `unit ${unit}: C–E and F–B rows end flush with equal white-key spans`);
+  assert(Math.abs(5 * g.ce + 7 * g.fb - 12 * unit) < 1e-9,
+    `unit ${unit}: grouped rows preserve one octave's total height`);
+  assert(Math.abs(pianoKeyPhase(unit) - (g.ce - g.w)) < 1e-9,
+    `unit ${unit}: the key phase is derived from the C–E group, not a fixed pixel offset`);
+  assert(Math.abs(g.rowBottom(60) - g.keyBottom(60)) < 1e-9
+    && Math.abs(g.rowBottom(65) - g.keyBottom(65)) < 1e-9,
+    `unit ${unit}: C and F row bottoms meet their key bottoms`);
+  assert(Math.abs(g.rowTop(71) - g.keyTop(71)) < 1e-9
+    && Math.abs(g.rowTop(64) - g.keyTop(64)) < 1e-9,
+    `unit ${unit}: B and E row tops meet their key tops`);
+  assert(g.descendingWhites.every((midi, i) => Math.abs(g.keyTop(midi) - i * g.w) < 1e-9),
+    `unit ${unit}: equal white faces tile the octave after the phase correction`);
+  assert([...g.blackSeams].every(([midi, seam]) => {
+    const row = g.byMidi.get(midi);
+    return Math.abs(g.rowTop(midi) + row.keyFace.top + row.keyFace.height / 2 - seam * g.w) < 1e-9;
+  }), `unit ${unit}: black keys remain centred over their white-key seams`);
+}
+
+const standard = pianoLayout(21, 108, ROW);
+const expanded = pianoLayout(9, 120, ROW);
+assert(standard.before > 0 && standard.after > 0,
+  'the standard 88-key range has room for both end-key faces');
+assert(expanded.before > 0 && expanded.after > 0,
+  'an expanded range also derives complete end-key padding');
+
+assert(noteActiveAt(3.8, 0, 3, 1), 'a key lights for the sixteenth where its note begins');
+assert(noteActiveAt(5.2, 0, 3, 4), 'and remains lit across the note rectangle’s full length');
+assert(!noteActiveAt(7, 0, 3, 4) && !noteActiveAt(null, 0, 3, 4),
+  'the key goes dark at note-off and whenever playback stops');
 
 // The range opens with the part at the BOTTOM of the window and room above it, rather
 // than snapped to an octave that leaves the part floating in the middle.
@@ -189,6 +249,26 @@ assert(press({ tool: 'erase', on: true }) === 'erase' && press({ tool: 'erase', 
   'Erase erases, including from the empty cell you happened to start the drag on');
 assert(press({ tool: 'nonsense', on: false }) === 'draw',
   'and an unknown tool is Auto rather than nothing at all');
+
+// ---- the right button ----------------------------------------------------------------
+//
+// The eraser is always under your other finger. It answers before the tool, before the
+// modifiers and before what it landed on, because a rule with exceptions is one you
+// have to remember — and the whole point of putting erase on the right button was to
+// free a LEFT click on a note to mean "pick this one out" rather than destroy it.
+for (const tool of ROLL_TOOL_IDS) {
+  assert(press({ secondary: true, tool, on: true }) === 'erase'
+    && press({ secondary: true, tool, on: false }) === 'erase',
+    `right-click rubs out in ${tool} too — the eraser is not a mode you have to be in`);
+}
+assert(press({ secondary: true, meta: true, on: true }) === 'erase'
+  && press({ secondary: true, shift: true, on: true }) === 'erase'
+  && press({ secondary: true, alt: true, on: true }) === 'erase'
+  && press({ secondary: true, on: true, edge: true }) === 'erase',
+  'and no modifier and no six-pixel edge can turn it into something else');
+assert(press({ secondary: false, on: true }) === 'move',
+  'while the left button on a note is still the move it was — right-click took the'
+  + ' erase off it, not the drag');
 assert(ROLL_TOOL_IDS[0] === 'auto' && rollTool('draw') === 'draw' && rollTool(null) === 'auto',
   'Auto is the default, and a remembered mode that no longer exists falls back to it');
 assert(ROLL_TOOLS.every((t) => t.hint && t.label),
