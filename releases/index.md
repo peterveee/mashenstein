@@ -35,3 +35,4 @@ Written by `tools/archive-release.js` on every push to `main`. Do not edit by ha
 | 2026-07-22 | `8658bfa` | [2026-07-22-8658bfa.html](2026-07-22-8658bfa.html) | Add camera module for world rendering and zoom management |
 | 2026-07-22 | `0af2e2d` | [2026-07-22-0af2e2d.html](2026-07-22-0af2e2d.html) | Refactor asset gallery: enhance navigation, improve layout, and update styles |
 | 2026-07-26 | `2a1172d` | [2026-07-26-2a1172d.html](2026-07-26-2a1172d.html) | tighten up tutorial pt1. pacdeath sound, better streamers, no magnifier loupe/copy on touch |
+| 2026-07-28 | `48bef85` | [2026-07-28-48bef85.html](2026-07-28-48bef85.html) | Enhance mixer functionality and UI |
