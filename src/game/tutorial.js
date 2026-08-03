@@ -26,7 +26,12 @@ import {
   GROUND_Y, ZOOM, VIEW_W, applyWorld, framingFor, easeZoom, easePan,
 } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
-import { Audio } from '../engine/audio.js';
+import {
+  Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT, PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
+} from '../engine/audio.js';
+
+// The portal's height off the ground, as in RunState — how far above it a player misses.
+const PORTAL_H = 40;
 import { Rng } from '../engine/rng.js';
 import {
   burst, shardBurst, spawnFoil, foilBurst,
@@ -1981,7 +1986,32 @@ export class TutorialState {
     }
 
     if (this.portal && !this.portal.hit) {
-      const pbox = { x: this.portal.x, y: GROUND_Y - 40, w: 12, h: 40 };
+      const pbox = { x: this.portal.x, y: GROUND_Y - PORTAL_H, w: 12, h: PORTAL_H };
+      // The same swoosh, at the same strength, fired the same way round as in a real
+      // run — see RunState.updatePortal, which explains why it goes off before the
+      // crossing rather than on it. The tutorial has its own world and its own portal
+      // rather than borrowing RunState's, so anything added there has to be added here
+      // too or the one place the portal is TAUGHT is the one place it makes no sound.
+      if (!this.portal.cued && this.speed > 0) {
+        const toGo = this.portal.x - this.playerWorldX();
+        // Led by the shape's own seam, not by the bare constant: stretching the cue
+        // moves where its middle falls, and hand-authoring 0.20 here would fire a
+        // two-and-a-half-times-longer swoosh a quarter of the way through its approach.
+        // The rise, unconditionally — see RunState.updatePortal for why this half
+        // cannot wait to find out whether the portal is taken.
+        // Shorter than the whole gesture — its peak is ~0.25s in rather than ~0.49s —
+        // which brings the lead down near the 0.162s in which a late jump can still
+        // clear. Close enough that the arc is usually already decided, so it is worth
+        // asking: someone visibly airborne and going over gets no sound at all. A jump
+        // begun inside the last quarter second still slips through, and nothing can see
+        // that coming; the fall in the crossing handler is the half that is never wrong.
+        const eta = toGo / this.speed;
+        if (eta <= portalCueFlashAt(PORTAL_RELAY_IN)
+          && this.player.feetAt(eta, 1) < PORTAL_H) {
+          this.portal.cued = true;
+          Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN });
+        }
+      }
       if (overlaps(this.playerBox(), pbox)) this.tagIn();
     }
   }
@@ -2033,6 +2063,8 @@ export class TutorialState {
     this.player.abilityCd = 0;
     this.setButtons();
     Audio.sfx('tag');
+    // The fall, on the crossing itself — the half that means a tag actually happened.
+    Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY_OUT });
     burst(this.playerWorldX() + 6, GROUND_Y - this.player.y - 8, 14, 80, 0.5, '#48e0c8', 1, 80,
       () => this.rng.float());
   }

@@ -1490,7 +1490,18 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
     if (!ctx) return null;
     const node = def.custom(ctx, params);
     node.applyState(bpm);
-    return { def, node, set: (patch, b) => node.setState(patch, b ?? bpm) };
+    return {
+      def,
+      node,
+      set: (patch, b) => node.setState(patch, b ?? bpm),
+      // A hand-written effect reaches its params through setState, which ramps them
+      // from ctx.currentTime and takes no time argument. Rather than pretend, say so:
+      // custom effects are not eligible for a scheduled transition, and the desk keeps
+      // them out of a variant instead of letting one arrive a beat early.
+      setAt: () => {
+        throw new Error(`effects: "${id}" applies immediately and cannot be moved at an audio time`);
+      },
+    };
   }
   if (!Tone[def.tone]) return null;
   const opts = { ...def.defaults, ...params };
@@ -1506,23 +1517,100 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   // LFO-driven effects sit silent until started.
   if (def.start && typeof node.start === 'function') { try { node.start(); } catch { /* already running */ } }
   const merged = { ...opts };
+  // The desk's vocabulary is note divisions and sync flags; Tone's is seconds and hertz.
+  // Both doors into this node go through the same translation, so a scheduled change
+  // and an immediate one cannot drift apart over what "1/8 dotted" means.
+  const resolve = (patch, b) => {
+    Object.assign(merged, patch);
+    const out = { ...patch };
+    if (def.timed) {
+      delete out.sync; delete out.division; delete out.delayMs;
+      out.delayTime = delaySeconds(merged, b);
+    }
+    if (def.params.includes('rateSync')) {
+      delete out.rateSync; delete out.rateDivision;
+      out.frequency = rateHz(merged, b);
+    }
+    return out;
+  };
   return {
     def,
     node,
-    set: (patch, b = bpm) => {
-      Object.assign(merged, patch);
-      const out = { ...patch };
-      if (def.timed) {
-        delete out.sync; delete out.division; delete out.delayMs;
-        out.delayTime = delaySeconds(merged, b);
-      }
-      if (def.params.includes('rateSync')) {
-        delete out.rateSync; delete out.rateDivision;
-        out.frequency = rateHz(merged, b);
-      }
-      applyParams(node, out);
-    },
+    set: (patch, b = bpm) => applyParams(node, resolve(patch, b)),
+    /** The same change at an audio time. rampParams refuses the params that cannot move. */
+    setAt: (patch, when, seconds = 0, b = bpm) => rampParams(ctx, node, resolve(patch, b), when, seconds),
   };
+}
+
+/**
+ * Move an AudioParam to a value AT AN AUDIO TIME, rather than now.
+ *
+ * Every setter on the desk writes `.value`, which lands at the next render quantum.
+ * That is exactly right for a fader you are dragging. A musical transition is a
+ * different question: the change has to arrive on a downbeat the scheduler handed to
+ * the audio thread a quarter of a second before it sounds, so "now" is already too
+ * late and a frame timer is not accurate enough to make up the difference.
+ *
+ * `cancelAndHoldAtTime` rather than `cancelScheduledValues`, because a ramp needs a
+ * value to start FROM, and `param.value` cannot report a time that has not been
+ * rendered yet. Reading it would take the value NOW and ramp from there — on a param
+ * that is already moving, a step backwards followed by a slide.
+ *
+ * Returns the time the move completes, so a caller can chain from it.
+ */
+export function rampParam(ctx, param, target, when, seconds = 0, { log = false } = {}) {
+  if (!param) return when;
+  const at = Math.max(when, ctx.currentTime);
+  if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(at);
+  else { param.cancelScheduledValues(at); param.setValueAtTime(param.value, at); }
+  // A "snap" is still a ramp, just a very short one. Stepping a gain that has audio
+  // running through it is a discontinuity in the waveform, and a discontinuity is a
+  // click — which is exactly what bringing a lane back in on a downbeat would do to a
+  // note that is still ringing from before it. Four milliseconds is under a fifth of a
+  // cycle at the bottom of hearing: heard as an edge, not as a fade.
+  const secs = seconds > 0 ? seconds : SNAP_SECONDS;
+  // Log for anything measured in Hz. A filter swept linearly from 700Hz to 18k spends
+  // almost the whole ramp above 10k and does nothing you can hear until the last
+  // instant; exponentially it sweeps by ear, an even number of octaves per second.
+  // Both ends have to be non-zero — an exponential ramp through zero is undefined.
+  if (log && target > 0 && param.value > 0) param.exponentialRampToValueAtTime(target, at + secs);
+  else param.linearRampToValueAtTime(target, at + secs);
+  return at + secs;
+}
+
+// The shortest move that is an edge rather than a click. See rampParam.
+const SNAP_SECONDS = 0.004;
+
+// Parameters measured in Hz, which have to sweep by octaves rather than by hertz.
+const LOG_PARAMS = new Set(['frequency', 'baseFrequency', 'delayTime']);
+
+/**
+ * The future-timed twin of applyParams: the same dotted-path walk, written as ramps at
+ * an audio time instead of as `.value` now.
+ *
+ * A target that is not an AudioParam — an oscillator `type`, a Chebyshev `order`, any
+ * plain property on the node — THROWS. There is no way to schedule a property
+ * assignment on the audio thread, and both honest alternatives are wrong: a wall-clock
+ * timer is neither sample-accurate nor safe in a backgrounded tab, and applying it
+ * immediately puts the change a quarter of a second before the boundary it was asked
+ * for. So the two sides of a transition may differ on numbers a param can slide
+ * between, and on nothing else. The desk refuses to save a pair that differs otherwise.
+ */
+export function rampParams(ctx, node, patch = {}, when = 0, seconds = 0) {
+  const c = ctx || Tone.getContext();
+  for (const [k, v] of Object.entries(patch)) {
+    if (v == null) continue;
+    const path = k.split('.');
+    let obj = node;
+    for (let i = 0; i < path.length - 1 && obj; i++) obj = obj[path[i]];
+    if (!obj) continue;
+    const leaf = path[path.length - 1];
+    const cur = obj[leaf];
+    if (!(cur && typeof cur === 'object' && 'value' in cur)) {
+      throw new Error(`effects: "${k}" is not automatable — it cannot be moved at an audio time`);
+    }
+    rampParam(c, cur, v, when, seconds, { log: LOG_PARAMS.has(leaf) });
+  }
 }
 
 export function applyParams(node, patch = {}) {

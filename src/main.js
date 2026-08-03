@@ -7,7 +7,22 @@ import { startLoop, frameRate } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
 import { VISUALIZER_NAMES, setMegamixAudition } from './engine/visualizers.js';
 import { Input } from './engine/input.js';
-import { Audio } from './engine/audio.js';
+import { Audio, PORTAL_RELAY, PORTAL_RELAY_GAIN } from './engine/audio.js';
+
+/**
+ * The swoosh that opens a level, fired at the PRESS rather than at the level.
+ *
+ * setState only queues: the shutter takes ~0.29s to close, the incoming state's enter()
+ * runs at the covered midpoint, and the reveal takes another ~0.29s. Fired from
+ * RunState.enter the cue's loudest moment landed 0.2s AFTER the picture had finished
+ * arriving — too late to answer the button and too late to greet the level.
+ *
+ * From here it answers the press immediately and peaks 0.08s before the reveal
+ * completes, so the swell rides the wipe and lands as the level appears. Which is also
+ * the honest reading of the sound: the player is going through a doorway, and the wipe
+ * IS the doorway.
+ */
+const levelOpenCue = () => Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY });
 import { save } from './engine/save.js';
 import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
@@ -281,6 +296,7 @@ const Flow = {
   launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
+    levelOpenCue();
     // Breaker-box bonus: consumed by the next stage run only (not boss/overtime).
     const flags = save.slot.campaign.storyFlags;
     const startingPowerup = flags.pendingPowerup || null;
@@ -314,6 +330,7 @@ const Flow = {
   },
 
   startBoss(cabId, seedOverride, initialHeroId, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+    levelOpenCue();
     setState(new BossState({
       bossCab: cabId, save,
       seed: seedOverride ?? ((Date.now() ^ 0xb055) >>> 0),

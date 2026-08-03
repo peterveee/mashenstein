@@ -125,3 +125,185 @@ export function mixEntrySource(entry, indent = '') {
 
   return body ? `{\n${body}${indent}}` : null;
 }
+
+// ---- variants: the same song, heard another way -----------------------------------
+//
+// A patch plays by the opposite rule to a mix, and it has to.
+//
+// In a mix an omitted field means "default" — that is the whole point of everything
+// above, and it is what keeps a song file a list of decisions instead of a wall of
+// zeroes. In a PATCH an omitted field means "leave this alone", so the two readings of a
+// missing `mute` are "not muted" and "don't touch the mute", which are not the same
+// answer. Run a patch through mixEntrySource and every decision that happens to equal a
+// default disappears: `mute: false` is the whole of "bring the lead back in", and it is
+// unwritable there. So is a send closed to zero, and a pan returned to centre.
+//
+// Two serializers, two rules. This one emits every key the patch carries and nothing it
+// does not.
+
+const fmtVal = (v) => (typeof v === 'string' ? JSON.stringify(v)
+  : typeof v === 'boolean' ? String(v) : round(v));
+
+// What a treatment may carry. An allowlist rather than a list of things to strip, so a
+// field added to a mix one day is inert in a variant until somebody has decided it can
+// move at a bar line — see Audio.rampMix for which of them actually can.
+const PATCH_TOP_KEYS = new Set(['master', 'masterPan', 'masterEffects', 'fx', 'lanes']);
+const PATCH_LANE_KEYS = new Set(['gain', 'pan', 'width', 'mute', 'send', 'eq', 'effects']);
+const PATCH_AUX_KEYS = new Set(['level', 'pan', 'eq', 'effects']);
+const WHENS = ['level1', 'level2', 'level3', 'boss', 'cleared', 'always'];
+const QUANTIZE = ['immediate', 'beat', 'bar', 'phrase'];
+const EXIT_KEYS = ['quantize', 'crossfadeBars', 'loopRelease', 'swellBars', 'swellTo', 'treatBars'];
+
+/**
+ * Everything wrong with a set of variants, as sentences. Empty means it is fine.
+ *
+ * Checked when the desk saves rather than when the game plays: a treatment that cannot
+ * work should fail in front of the person writing it, not go quiet in a level six
+ * screens away from the thing that caused it.
+ */
+export function validateVariants(variants) {
+  const errs = [];
+  for (const [name, raw] of Object.entries(variants || {})) {
+    const list = Array.isArray(raw) ? raw : [raw];
+    if (!list.length) { errs.push(`"${name}" has no treatments in it`); continue; }
+    const seen = new Set();
+    list.forEach((t, i) => {
+      const at = `"${name}"[${i}]`;
+      const when = t.when ?? 'always';
+      if (!WHENS.includes(when)) errs.push(`${at}: "${when}" is not a condition — one of ${WHENS.join(', ')}`);
+      if (seen.has(when)) errs.push(`${at}: "${when}" is listed twice, and only the first can ever play`);
+      seen.add(when);
+      if (when === 'always' && i !== list.length - 1) {
+        errs.push(`${at}: "always" matches everything, so nothing listed after it can ever play`);
+      }
+      for (const k of Object.keys(t.patch || {})) {
+        if (!PATCH_TOP_KEYS.has(k)) errs.push(`${at}: "${k}" changes the song itself and cannot move while it plays`);
+      }
+      for (const [lane, L] of Object.entries(t.patch?.lanes || {})) {
+        for (const k of Object.keys(L || {})) {
+          if (!PATCH_LANE_KEYS.has(k)) errs.push(`${at}: lane ${lane} has no mix control called "${k}"`);
+        }
+      }
+      for (const [aux, A] of Object.entries(t.patch?.fx || {})) {
+        for (const k of Object.keys(A || {})) {
+          if (!PATCH_AUX_KEYS.has(k)) errs.push(`${at}: ${aux} "${k}" rebuilds the effect rather than moving it`);
+        }
+      }
+      if (t.loop && !(t.loop.fromBar >= 1 && t.loop.toBar >= t.loop.fromBar)) {
+        errs.push(`${at}: bars ${t.loop.fromBar}-${t.loop.toBar} are not a range`);
+      }
+      if (t.treatment && !Array.isArray(t.treatment)) {
+        errs.push(`${at}: "treatment" is a list of effects, not ${typeof t.treatment}`);
+      }
+      for (const e of t.treatment || []) {
+        if (!e || typeof e.id !== 'string') errs.push(`${at}: a treatment effect has no id`);
+      }
+      if ((t.treatment || []).length > 6) {
+        errs.push(`${at}: ${t.treatment.length} effects on the treatment leg — the slot holds 6`);
+      }
+      if (t.gap != null && !(t.gap >= 0 && t.gap <= 2)) {
+        errs.push(`${at}: a ${t.gap}s gap before the treatment starts is not a length of silence`);
+      }
+      if (t.exit?.treatBars != null && !(t.exit.treatBars >= 0 && t.exit.treatBars <= 8)) {
+        errs.push(`${at}: a ${t.exit.treatBars}-bar treatment fade is not a length`);
+      }
+      if (t.exit?.swellBars != null && !(t.exit.swellBars >= 0 && t.exit.swellBars <= 4)) {
+        errs.push(`${at}: a ${t.exit.swellBars}-bar reverb swell is not a length`);
+      }
+      if (t.exit?.swellTo != null && !(t.exit.swellTo >= 0 && t.exit.swellTo <= 8)) {
+        errs.push(`${at}: a reverb return of ${t.exit.swellTo} at the peak of the swell is out of range`);
+      }
+      const q = t.exit?.quantize;
+      if (q != null && !(QUANTIZE.includes(q) || (typeof q === 'number' && q > 0))) {
+        errs.push(`${at}: "${q}" is not a boundary — one of ${QUANTIZE.join(', ')}, or a number of bars`);
+      }
+    });
+    // No `always` entry required. The engine already falls back to the song's own saved
+    // mix when nothing matches (see resolve in music-director.js), and demanding one here
+    // banned the most obvious thing the conditions are FOR: treating the first visit
+    // specially and leaving every other visit alone. The two rules above are real — a
+    // duplicate condition can never play, and nothing after `always` can either.
+  }
+  return errs;
+}
+
+function patchLaneLine(key, L, indent) {
+  const parts = [];
+  for (const k of ['gain', 'pan', 'width', 'mute']) {
+    if (L[k] !== undefined) parts.push(`${k}: ${fmtVal(L[k])}`);
+  }
+  if (L.send !== undefined) {
+    parts.push(`send: { ${Object.entries(L.send || {}).filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `${fmtKey(k)}: ${round(v)}`).join(', ')} }`);
+  }
+  if (L.eq !== undefined) {
+    parts.push(`eq: { ${['low', 'mid', 'high'].filter((b) => L.eq[b] !== undefined)
+      .map((b) => `${b}: ${round(L.eq[b])}`).join(', ')} }`);
+  }
+  if (L.effects !== undefined) parts.push(`effects: ${fmtEffects(L.effects)}`);
+  return parts.length ? `${indent}${key}: { ${parts.join(', ')} },\n` : '';
+}
+
+function patchSource(patch, indent) {
+  const i2 = `${indent}  `;
+  const i3 = `${indent}    `;
+  let body = '';
+  if (patch.master !== undefined) body += `${i2}master: ${round(patch.master)},\n`;
+  if (patch.masterPan !== undefined) body += `${i2}masterPan: ${round(patch.masterPan)},\n`;
+  if (patch.masterEffects !== undefined) body += `${i2}masterEffects: ${fmtEffects(patch.masterEffects)},\n`;
+  if (patch.fx !== undefined) {
+    const bits = [];
+    for (const [aux, A] of Object.entries(patch.fx || {})) {
+      const p = [];
+      for (const k of ['level', 'pan']) if (A[k] !== undefined) p.push(`${k}: ${round(A[k])}`);
+      if (A.eq !== undefined) {
+        p.push(`eq: { ${['low', 'mid', 'high'].filter((b) => A.eq[b] !== undefined)
+          .map((b) => `${b}: ${round(A.eq[b])}`).join(', ')} }`);
+      }
+      if (A.effects !== undefined) p.push(`effects: ${fmtEffects(A.effects)}`);
+      if (p.length) bits.push(`${aux}: { ${p.join(', ')} }`);
+    }
+    if (bits.length) body += `${i2}fx: { ${bits.join(', ')} },\n`;
+  }
+  if (patch.lanes !== undefined) {
+    const lanes = Object.entries(patch.lanes || {})
+      .map(([k, L]) => patchLaneLine(k, L || {}, i3)).filter(Boolean).join('');
+    if (lanes) body += `${i2}lanes: {\n${lanes}${i2}},\n`;
+  }
+  return body ? `{\n${body}${indent}}` : '{}';
+}
+
+/**
+ * A song's variants as source, or **null** when none of them says anything.
+ *
+ * Same null contract as mixEntrySource: a song with no cabinet treatment writes
+ * `export const variants = null` rather than an empty shape.
+ */
+export function variantsSource(variants, indent = '') {
+  const names = Object.entries(variants || {}).filter(([, raw]) => {
+    const list = Array.isArray(raw) ? raw : [raw];
+    return list.some((t) => t && (t.patch || t.loop || t.gap != null || t.treatment?.length));
+  });
+  if (!names.length) return null;
+  const i2 = `${indent}  `;
+  const i3 = `${indent}    `;
+  const i4 = `${indent}      `;
+  let body = '';
+  for (const [name, raw] of names) {
+    const list = Array.isArray(raw) ? raw : [raw];
+    body += `${i2}${fmtKey(name)}: [\n`;
+    for (const t of list) {
+      const bits = [`${i4}when: ${JSON.stringify(t.when ?? 'always')},\n`];
+      if (t.loop) bits.push(`${i4}loop: { fromBar: ${t.loop.fromBar}, toBar: ${t.loop.toBar} },\n`);
+      if (t.treatment?.length) bits.push(`${i4}treatment: ${fmtEffects(t.treatment)},\n`);
+      if (t.gap != null) bits.push(`${i4}gap: ${round(t.gap)},\n`);
+      if (t.patch) bits.push(`${i4}patch: ${patchSource(t.patch, i4)},\n`);
+      const exit = EXIT_KEYS.filter((k) => t.exit?.[k] != null)
+        .map((k) => `${k}: ${fmtVal(t.exit[k])}`);
+      if (exit.length) bits.push(`${i4}exit: { ${exit.join(', ')} },\n`);
+      body += `${i3}{\n${bits.join('')}${i3}},\n`;
+    }
+    body += `${i2}],\n`;
+  }
+  return `{\n${body}${indent}}`;
+}

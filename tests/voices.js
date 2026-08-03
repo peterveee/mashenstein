@@ -241,6 +241,26 @@ assert(drum.some((v) => v.osc && v.noise) && drum.some((v) => v.osc && !v.noise)
   && drum.some((v) => !v.osc && v.noise),
 'the drum table exercises both sources together and each on its own');
 
+// The VL-1 trio is deliberately plain: these are the hardware's three little rhythm
+// syllables, not modern kit variations. Keep the recipes pinned here so a later editor
+// change cannot quietly turn Pi/Po into a generic rim or Sha into an unfiltered hat.
+const vl1Pi = VOICES.vl1Pi;
+const vl1Po = VOICES.vl1Po;
+const vl1Sha = VOICES.vl1Sha;
+assert(vl1Pi?.category === 'Perc' && vl1Po?.category === 'Perc' && vl1Sha?.category === 'Perc',
+  'VL-1 Pi, Po and Sha are grouped as percussion');
+assert(vl1Pi?.osc?.type === 'square' && vl1Pi.osc.from === 1000 && vl1Pi.osc.to === 1000
+  && vl1Pi.osc.decay === 0.02 && vl1Pi.tone?.type === 'highpass'
+  && vl1Pi.tone.freq === 800,
+  'VL-1 Pi is the higher, twenty-millisecond filtered square tick');
+assert(vl1Po?.osc?.type === 'square' && vl1Po.osc.from === 500 && vl1Po.osc.to === 500
+  && vl1Po.osc.decay === 0.03 && vl1Po.tone?.type === 'lowpass'
+  && vl1Po.tone.freq === 2500,
+  'VL-1 Po is the lower, thirty-millisecond low-passed square pop');
+assert(!vl1Sha?.osc && vl1Sha?.noise?.type === 'highpass' && vl1Sha.noise.freq === 3000
+  && vl1Sha.noise.decay === 0.16,
+  'VL-1 Sha is a filtered white-noise burst with a 160-millisecond decay');
+
 for (const v of engine) {
   // ...or a name for a body with no keys to set at all. The snare, clap, hats and rim
   // read nothing but their gain trims, so naming what they play and offering a choice

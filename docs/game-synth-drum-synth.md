@@ -310,9 +310,9 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `osc.type` | `'sine'` | Oscillator waveform |
-| `osc.from` | `190` | Starting frequency in Hz |
-| `osc.to` | `52` | Ending frequency in Hz |
-| `osc.sweep` | `0.07` | Pitch sweep duration in seconds |
+| `osc.from` | `190` | Starting frequency in Hz — the desk's `FREQUENCY` |
+| `osc.to` | `52` | Ending frequency in Hz. The desk does not show this number: its `AMOUNT` pot is the interval between the two, signed, in semitones (`12·log2(to/from)`), so tuning a drum leaves the size of its drop alone. Presets still store hertz |
+| `osc.sweep` | `0.07` | Pitch sweep duration in seconds — the desk's `RATE`, up to 10 s |
 | `osc.pitchCurve` | `'exp'` | The pitch sweep's shape: `'exp'`, `'lin'` or `'snap'` — see [Pitch curves](#pitch-curves) |
 | `osc.attack` | `0.001` | Osc amp attack time |
 | `osc.decay` | `0.35` | Osc amp decay time |

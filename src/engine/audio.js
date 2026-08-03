@@ -1,7 +1,7 @@
 // Web Audio: procedural SFX + a lookahead step-sequencer with per-cabinet
 // pattern banks. Lazy init on first user gesture; ctx.resume() on every gesture (iOS).
 import { renderCue, CONTACT_CUE, LAUNCH_CUE } from './weapon-sfx.js';
-import { createMixer, dbToGain } from './mixer.js';
+import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
@@ -128,6 +128,83 @@ const ATTACK_MASTER_TRIM = 0.25;
 // the cue this many seconds early. Firing it on the crossing instead put the
 // rising half over the outgoing hero's exit, which reads as a beat late.
 export const PORTAL_CUE_FLASH_AT = 0.20;
+/**
+ * The relay swoosh: what a hero being swapped out for another one sounds like.
+ *
+ * Two legs crossing in stereo, one going out and one coming in, and nothing at the seam
+ * — no flash and no thump. The low sine the cue carries by default lands square in the
+ * middle of the swoosh, which is where a swoosh wants nothing to happen; without it the
+ * gesture is the whole sound. `swell` is load-bearing: the incoming leg was written as a
+ * departure and attacks in 4% of its length, which dragged forward by `overlap` arrives
+ * with nothing in front of it and reads as a drum hit. Measured, that is a 79ms rise
+ * against 188ms for the cue this replaced; at 0.5 it is 316ms and unmistakably a build.
+ *
+ * Picked by ear from renders — `node tools/render-cues.js portal:wired@9`.
+ */
+export const PORTAL_RELAY = {
+  stretch: 2.4, thump: 0, flash: 0, pan: 1, overlap: 0.18,
+  q: 0.8, spread: 1.6, wet: 1.4, swell: 0.5, body: 1,
+};
+
+/**
+ * How loud to fire it. RMS -33 dBFS, which is where `tag` sits — the cue that fires
+ * alongside it on a swap — with peak still under `boom` (-11.7), the loudest thing the
+ * game already plays.
+ *
+ * Came down twice as the cue grew its low end, and for two different reasons. First from
+ * 9 to 7, because `body` put 2.3dB of RMS on it for free and took it past that ceiling —
+ * MORE SUBSTANCE IS NOT MORE LEVEL. Then from 7 to 5.5 by ear, because weight reads as
+ * loudness: a cue with bottom end in it does not need as much of everything else to be
+ * heard, and the number that was right without one is too much with one.
+ */
+export const PORTAL_RELAY_GAIN = 5.5;
+
+/**
+ * The two halves, fired at the two moments that are actually knowable.
+ *
+ * A player can jump as late as 0.162s before a portal and still clear it — measured from
+ * BASE_JUMP_V and GRAVITY against the portal's 40-unit height — while the whole cue needs
+ * 0.488s of lead for its loudest moment to land on the crossing. Three times longer than
+ * the window in which the outcome is decided, so no amount of prediction can tell you in
+ * time whether the portal is being taken. It was tried; it fired on every late jump.
+ *
+ * Split, neither half has to know. IN is the rise, and it plays because a portal is there
+ * — take it or jump it, all it ever says is "doorway". OUT is the fall, fired on the
+ * crossing itself, which needs no lead at all because it has already happened.
+ *
+ * OUT drops the swell: that floor exists because the fall, dragged under an approach,
+ * arrived with nothing in front of it and read as a drum hit. Here there IS something in
+ * front of it — the rise, still ringing — so it can attack the way it was written to.
+ */
+export const PORTAL_RELAY_IN = { ...PORTAL_RELAY, legs: 'in', stretch: 1.2 };
+export const PORTAL_RELAY_OUT = { ...PORTAL_RELAY, legs: 'out', swell: 0 };
+
+/**
+ * The rise is the quiet half, and deliberately.
+ *
+ * It plays on approach whether or not the portal is taken, so it has to be able to be
+ * wrong without being annoying — and keeping it under the fall is what makes going
+ * through pay off. Arriving at a doorway and going through one should not be the same
+ * size of event.
+ */
+export const PORTAL_RELAY_IN_GAIN = 4;
+
+/**
+ * The credits' version: the same gesture, given room to breathe.
+ *
+ * In a run the rise has to be short because nobody has decided yet whether they are
+ * taking the portal, and a long approach is a long chance to be wrong. The credits have
+ * no such problem — the four hand-offs are on a schedule computed at load, tens of
+ * seconds apart, each with about 4.8s of runway before its swap. Nothing to predict and
+ * nothing to collide with, so the swoosh can take its time.
+ *
+ * The lead follows automatically: portalCueFlashAt scales with `stretch`, and the credits
+ * subtract exactly that from each swap time.
+ */
+export const PORTAL_RELAY_CREDITS = { ...PORTAL_RELAY, stretch: 3 };
+
+/** Where the flash lands for a given portalSwoosh `stretch` — what a caller must lead by. */
+export const portalCueFlashAt = (shape) => PORTAL_CUE_FLASH_AT * (shape?.stretch ?? 1);
 
 // The portal's room. Decay is deliberately longer than the cue itself (~0.5s):
 // the tail outlasting the swoosh is what sells the doorway as opening onto
@@ -145,7 +222,15 @@ const PORTAL_VERB_DECAY = 1.6;
 const PORTAL_VERB_SEND = 0.9;
 
 const SFX_TRIM = {
-  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74, impact: 1.08,
+  blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
+  // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
+  // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
+  // playContact's fallback — gnash and mochi have no baked contact cue — and that path
+  // sets cueGain from ATTACK_MASTER_TRIM instead, landing at -11.8 dBFS peak / -33.8
+  // RMS, alongside `hit`. Through the dead door it summed its three layers to +0.8
+  // dBFS: clipping on its own, before any music was under it. Matched to the live
+  // path so the two ways into the same cue cannot disagree.
+  impact: ATTACK_MASTER_TRIM,
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
@@ -556,9 +641,15 @@ class AudioSys {
 
   delayTimeSeconds() {
     const beats = this.delayDivision ?? 0.75;   // dotted eighth
+    // The WARPED clock, not the bank's own. A song under a speed burst or a star is
+    // playing faster than it was written, and a division left at the written tempo is
+    // no longer that division: at a 1.12 warp the first repeat lands a third of a 16th
+    // late and every repeat after it compounds, which is heard as the echo flamming
+    // against the kit rather than as a delay.
+    //
     // Bounded by what a delay line can hold at all — an eight-bar division at a slow
     // tempo asks for more than the longest buffer this engine will allocate.
-    return Math.min(MAX_DELAY_SECONDS, (60 / (this.bpm || 120)) * beats);
+    return Math.min(MAX_DELAY_SECONDS, (60 / ((this.bpm || 120) * (this.tempo || 1))) * beats);
   }
 
   /**
@@ -1191,7 +1282,36 @@ class AudioSys {
   // NOTE the cue does NOT start at the crossing — its flash is
   // PORTAL_CUE_FLASH_AT into it, so the caller has to fire it that far ahead or
   // the rise lands on the wrong hero. See CreditsState.enter().
-  portalSwoosh() {
+  /**
+   * @param {object} shape  How long and how wide, with 1 meaning exactly as authored.
+   *   stretch — scales the sweeps AND the seam, so the flash stays at the joint
+   *   q       — resonance of the swept bands: up is whistly, down is airy hiss
+   *   spread  — how far the bands travel, which is how much movement you hear
+   *   wet     — how much of it goes into the room
+   *   thump   — the low sine under the seam. 0 takes it out entirely.
+   *   flash   — the two-partial discharge at the seam. 0 takes it out entirely.
+   *   pan     — how far the two legs travel across the stereo field. 0 is centred.
+   *   overlap — seconds of the exit pulled back UNDER the approach, so the leg going
+   *             out and the leg coming in cross rather than queue.
+   *   legs    — 'both', or one half of the gesture on its own. The two legs of this cue
+   *             answer different questions and can be fired at different moments: 'in'
+   *             is a hero arriving at a doorway, 'out' is one going through it. Split,
+   *             the rise can play on approach — whether or not the portal is taken —
+   *             and the fall can wait for the crossing, which is the only moment that is
+   *             actually knowable. See RunState.updatePortal.
+   *   body    — bottom end under the gesture. 0 is none.
+   *   swell   — a FLOOR under each leg's attack, as a fraction of its own length. The
+   *             exit leg attacks in 4% of its duration by design, because it was written
+   *             as a departure that starts bright and falls away; dragged forward by
+   *             `overlap` that same attack arrives with nothing in front of it and reads
+   *             as a drum hit. Raising the floor makes it swell in instead.
+   * Defaults reproduce the original cue sample for sample; the credits rely on that.
+   */
+  portalSwoosh({
+    stretch = 1, q: qMul = 1, spread = 1, wet: wetMul = 1,
+    thump = 1, flash = 1, pan: panSpread = 0, overlap = 0, swell = 0, legs = 'both',
+    body = 0,
+  } = {}) {
     if (!this.ctx || !this.noiseBuf) return;
     const t = this.ctx.currentTime;
     const q = this.cueGain;
@@ -1223,16 +1343,16 @@ class AudioSys {
     // it is the band's movement that reads as something travelling past. peakAt
     // places the loudest moment within the sweep, which is what separates an
     // approach (loudest as it arrives) from a departure (loudest as it leaves).
-    const sweep = (at, dur, f0, f1, gain, Q, peakAt, wet = 0) => {
+    const sweep = (at, dur, f0, f1, gain, Q, peakAt, wet = 0, panFrom = 0, panTo = 0) => {
       const src = this.ctx.createBufferSource();
       src.buffer = this.noiseBuf; src.loop = true;
       const bp = this.ctx.createBiquadFilter();
-      bp.type = 'bandpass'; bp.Q.value = Q;
+      bp.type = 'bandpass'; bp.Q.value = Q * qMul;
       bp.frequency.setValueAtTime(f0, at);
       bp.frequency.exponentialRampToValueAtTime(f1, at + dur);
       const g = this.ctx.createGain();
       const peak = gain * q;
-      const hold = Math.max(0.006, dur * peakAt);
+      const hold = Math.max(0.006, dur * Math.max(peakAt, swell));
       // LINEAR attack, unlike every other cue in here. Those all attack in 8ms,
       // where the curve is inaudible; a swoosh crescendos over a fifth of a
       // second, and an exponential ramp across that long spends most of it near
@@ -1250,26 +1370,73 @@ class AudioSys {
       g.gain.exponentialRampToValueAtTime(peak * 0.03, at + dur - rel);
       g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
       g.gain.linearRampToValueAtTime(0, at + dur + 0.02 - 0.005);
-      src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
-      if (wet > 0) g.connect(wetTap(wet));
+      src.connect(bp); bp.connect(g);
+      // A MOVING pan, not a placed one: something that passes you crosses the field
+      // while it goes, and that movement is most of what reads as travel. Skipped
+      // entirely at pan 0, so the centred cue is the same graph it always was.
+      let out = g;
+      if (panSpread > 0 && this.ctx.createStereoPanner) {
+        const pn = this.ctx.createStereoPanner();
+        pn.pan.setValueAtTime(panFrom * panSpread, at);
+        pn.pan.linearRampToValueAtTime(panTo * panSpread, at + dur);
+        g.connect(pn); out = pn;
+      }
+      out.connect(this.sfxGain);
+      if (wet > 0) out.connect(wetTap(wet * wetMul));
       src.start(at); src.stop(at + dur + 0.02);
     };
 
-    const SWAP = PORTAL_CUE_FLASH_AT;
-    // Approach: band climbing, level climbing, loudest at the doorway. Rising
-    // pitch is the whole tell that this hero is going somewhere, not just
-    // running — the same reason the animation accelerates into the portal.
-    // Approach: band climbing, level climbing, loudest at the doorway. Rising
-    // pitch is the whole tell that this hero is going somewhere, not just
-    // running — the same reason the animation accelerates into the portal.
-    // Driest layer in the cue: this hero is still on THIS side of the doorway,
-    // and a wet approach makes the room arrive before the portal does.
-    sweep(t, 0.24, 240, 2800, 0.17, 1.6, 0.86, 0.3);
-    // Exit: the mirror. Starts bright and open at full level, falls away dark.
-    // Longer than the approach so the tail carries past the flash, matching the
-    // exit leg being the longer of the two on screen. Wet — by now the room is
-    // open and the hero is leaving through it.
-    sweep(t + SWAP + 0.01, 0.32, 2600, 170, 0.14, 1.4, 0.04, 0.85);
+    // The seam moves with the sweeps, or a stretched cue would flash a fifth of a
+    // second in with half a second of approach still to run. Callers that fire this
+    // ahead of a crossing have to lead by the same amount — see portalCueFlashAt.
+    const SWAP = PORTAL_CUE_FLASH_AT * stretch;
+    // Widening pushes each band's ENDS apart rather than sliding the whole range, so a
+    // wider sweep travels further in the same direction rather than becoming a different
+    // sound. `up`/`dn` because the approach climbs and the exit falls.
+    const up = (f0, f1) => [f0 / spread, f1 * spread];
+    const dn = (f0, f1) => [f0 * spread, f1 / spread];
+    // Fired on its own, the fall IS the cue: it starts when it is asked to, because
+    // there is no approach in front of it to wait for and its seam is its own beginning.
+    const seam = legs === 'out' ? 0 : SWAP;
+
+    // Approach: band climbing, level climbing, loudest at the doorway. Rising pitch is
+    // the whole tell that this hero is going somewhere, not just running — the same
+    // reason the animation accelerates into the portal. Driest layer in the cue: this
+    // hero is still on THIS side of the doorway, and a wet approach makes the room
+    // arrive before the portal does.
+    if (legs !== 'out') sweep(t, 0.24 * stretch, ...up(240, 2800), 0.17, 1.6, 0.86, 0.3, -1, 0);
+
+    // Exit: the mirror. Starts bright and open at full level, falls away dark. Longer
+    // than the approach so the tail carries past the seam, matching the exit leg being
+    // the longer of the two on screen. Wet — by now the room is open and the hero is
+    // leaving through it. `overlap` slides it back under the approach, which is the
+    // difference between a relay and a queue.
+    if (legs !== 'in') {
+      sweep(t + (legs === 'out' ? 0 : SWAP + 0.01 - overlap * stretch), 0.32 * stretch,
+        ...dn(2600, 170), 0.14, 1.4, 0.04, 0.85, 0, 1);
+    }
+
+    // Bottom end that SWELLS rather than knocks.
+    //
+    // The cue used to get its weight from a 95Hz sine dropped under the seam, and that
+    // WAS the knock: a transient in the middle of a swoosh, in the one place a swoosh
+    // wants nothing to happen. This does the same job by the same means as everything
+    // else in here — a second swept band, well below the first, on the same envelope —
+    // so the weight arrives with the gesture instead of interrupting it.
+    //
+    // Broad Q, because this is a bed and not a note, and nearly dry: the send's highpass
+    // would eat most of it anyway, and low end in a tail is the fastest way to turn a
+    // room into mud. Louder than the bands above it because it is doing its work an
+    // octave and a half down, where the ear needs more of it to hear the same amount.
+    if (body > 0) {
+      if (legs !== 'out') {
+        sweep(t, 0.24 * stretch, ...up(70, 240), 0.20 * body, 0.7, 0.86, 0.08, -0.6, 0);
+      }
+      if (legs !== 'in') {
+        sweep(t + (legs === 'out' ? 0 : SWAP + 0.01 - overlap * stretch), 0.32 * stretch,
+          ...dn(260, 55), 0.22 * body, 0.7, 0.04, 0.15, 0, 0.6);
+      }
+    }
 
     // The flash at the seam. Teal energy rather than a bell: two partials a
     // fifth apart bending UP and out, which reads as a discharge instead of a
@@ -1279,19 +1446,29 @@ class AudioSys {
     // Fully into the room. This is the portal, and the tail it throws is what
     // makes the doorway sound like it opens onto somewhere much bigger than the
     // corridor the crawl is scrolling through.
-    this.osc('triangle', 700, 1500, 0.13, 0.085, SWAP - 0.02, dryWet(1));
-    this.osc('sine', 1050, 2250, 0.10, 0.05, SWAP - 0.02, dryWet(1));
+    if (flash > 0) {
+      this.osc('triangle', 700, 1500, 0.13, 0.085 * flash, Math.max(0, seam - 0.02), dryWet(1));
+      this.osc('sine', 1050, 2250, 0.10, 0.05 * flash, Math.max(0, seam - 0.02), dryWet(1));
+    }
     // ...and a short thump under it. Noise sweeps alone have no bottom, and on
     // laptop speakers the hand-off has to feel like something happened. Kept
     // nearly dry — the send's highpass would eat most of it anyway, and low end
     // in a tail is the fastest way to turn a room into mud.
-    this.osc('sine', 95, 42, 0.16, 0.16, SWAP - 0.01, dryWet(0.12));
+    // THE KNOCK. Deliberate — noise sweeps have no bottom and this gives the handoff a
+    // body on laptop speakers — but it is the loudest single element in the cue and it
+    // lands square in the middle of the swoosh, which is exactly where a swoosh wants
+    // nothing to happen. `thump: 0` takes it out; expect a thinner cue on small speakers.
+    if (thump > 0) this.osc('sine', 95, 42, 0.16, 0.16 * thump, Math.max(0, seam - 0.01), dryWet(0.12));
   }
 
   sfx(name, opt = {}) {
     this.resumeAfterPanic();
     if (!this.ctx) return;
-    this.cueGain = SFX_TRIM[name] ?? 1;
+    // `opt.gain` scales this ONE firing, on top of the cue's own trim. For a cue used in
+    // two places that want it at two strengths — the portal swoosh is a background swap
+    // in the credits and the thing that announces a level starting — which is otherwise
+    // a choice between changing it for both or copying it into a second name.
+    this.cueGain = (SFX_TRIM[name] ?? 1) * (opt.gain ?? 1);
     const combo = opt.combo || 0;
     // opt.pitch is the direct form, for cues that want spread rather than a
     // combo ladder — the fireworks detune every shot so no two bursts twin.
@@ -1356,7 +1533,7 @@ class AudioSys {
       case 'launch': this.playLaunch(opt.hero, pitch); break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
-      case 'portal': this.portalSwoosh(); break;
+      case 'portal': this.portalSwoosh(opt.shape); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
@@ -1542,7 +1719,13 @@ class AudioSys {
     this.voices?.stopPreview?.();
   }
 
-  setBank(bank, mixOverride = undefined, arrangementOverride = undefined) {
+  // `gap` is the silence this opens before the new song starts, and half a second is
+  // what every caller wants: long enough that the old song's tail cannot run into the
+  // new downbeat, short enough to read as a cut rather than a stop. It is a parameter
+  // because the cabinet screen has a shutter closing over it — about 0.29s of it — and
+  // whether the remainder is heard as a beat of silence or as a mistake is a thing to
+  // decide by ear rather than by argument. See MusicDirector.play.
+  setBank(bank, mixOverride = undefined, arrangementOverride = undefined, { gap = 0.5 } = {}) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
@@ -1573,16 +1756,16 @@ class AudioSys {
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
     this.musicTrim = bank?.musicTrim ?? 1;
-    this.pendingStartDelay = bank ? 0.5 : 0;
+    this.pendingStartDelay = bank ? gap : 0;
     if (this.songTrim) {
       const now = this.ctx.currentTime;
       this.songTrim.gain.cancelScheduledValues(now);
       if (bank) {
         // Mute any notes left in the old lookahead window, then open the new
-        // bank after a clean half-second gap.
+        // bank after a clean gap.
         this.songTrim.gain.setValueAtTime(0.0001, now);
-        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + 0.5, 0.01);
-        this.nextTime = now + 0.5;
+        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + gap, 0.01);
+        this.nextTime = now + gap;
       } else {
         this.songTrim.gain.setValueAtTime(0.0001, now);
       }
@@ -1598,6 +1781,12 @@ class AudioSys {
     this._analysis.drumless = false;
     this._percPending.length = 0;
     this._percHeard.length = 0;
+    // A loop belongs to the song that armed it. Nothing cleared it here while only the
+    // desk ever looped — the desk arms its range after selecting a track, so it never
+    // noticed. The cabinet screen loops too now, and without this, backing out of one
+    // to the food court left the HUB THEME playing the cabinet's four bars over and over.
+    // Takes the early branch in setLoop and returns without touching `step`.
+    this.setLoop();
     this.step = 0; // songs start from the top (section order matters now)
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
@@ -1843,10 +2032,144 @@ class AudioSys {
     return withVoices(bank, entry, id);
   }
 
+  /**
+   * Move the strips to another mix AT AN AUDIO TIME, without touching the transport.
+   *
+   * applyMix is the other half of setBank and behaves like it: `mixer.reset()` puts all
+   * forty strips back to unity and every effect chain is rebuilt from scratch. That is
+   * right for loading a song and wrong for changing how the one that is playing is
+   * presented — it cuts every reverb tail, drops any solo you were listening through,
+   * and none of it can be aimed at a bar line the sequencer handed to the audio thread a
+   * quarter of a second ago. This walks the same fields and writes them as ramps.
+   *
+   * `step`, `nextTime`, `bpm`, `songTrim` and the voice rack are untouched, so the notes
+   * already inside the lookahead ring straight through the change.
+   *
+   * The two mixes may differ on the NUMBERS in an effect chain and not on its SHAPE: a
+   * link added, removed or reordered disposes the whole slot, and there is no audio time
+   * you can schedule a graph edit for. Such a pair is rejected — and rejected BEFORE
+   * anything moves, so a refused transition leaves the desk exactly as it was rather
+   * than half-applied.
+   *
+   * `mix` must be a whole resolved mix, not a patch. `mixEntry` is what setArrangement
+   * re-shapes the song's sections through, and `deskBank`/`withVoices` read `layers`,
+   * `off` and `voice` off it; a partial handed in here would quietly delete a duplicated
+   * lane the next time the arrangement changed.
+   *
+   * Returns the time the move completes.
+   */
+  rampMix(mix, when = this.ctx ? this.ctx.currentTime : 0, seconds = 0) {
+    if (!this.mixer) return when;
+    const entry = mix || null;
+    const bpm = this.bank?.bpm || this.bpm;
+
+    // Every lane the song has, not only the ones the target names. A lane the target
+    // leaves out goes back to its defaults — what mixer.reset() would have done for it,
+    // and the only reading under which a variant can TAKE SOMETHING AWAY rather than
+    // only add to what is already up.
+    const keys = new Set(laneList(this.bank).map((l) => l.key));
+    for (const k of Object.keys(entry?.lanes || {})) keys.add(k);
+
+    // Validate every chain first. Nothing below this point may throw.
+    const chains = [['__master', this.mixer.masterEffects, entry?.masterEffects || []]];
+    for (const def of this.mixer.auxes) {
+      chains.push([`__aux:${def.id}`, this.mixer.auxEffects(def.id), entry?.fx?.[def.id]?.effects || []]);
+    }
+    for (const key of keys) {
+      const strip = this.mixer.lane(key);
+      if (strip) chains.push([key, strip.effects, entry?.lanes?.[key]?.effects || []]);
+    }
+    for (const [target, live, want] of chains) {
+      if (live.length !== want.length) {
+        throw new Error(`rampMix: ${target} has ${live.length} effects and the target has ${want.length}`
+          + ' — a chain can be re-tuned at a bar line but not rebuilt at one');
+      }
+      for (let i = 0; i < want.length; i++) {
+        if (live[i].def.id !== want[i].id) {
+          throw new Error(`rampMix: ${target}[${i}] is "${live[i].def.id}" and the target is "${want[i].id}"`
+            + ' — both sides of a transition must agree on the shape of their chains');
+        }
+        if (!!live[i].bypassed !== !!want[i].bypass) {
+          throw new Error(`rampMix: ${target}[${i}] changes its bypass, which re-wires the chain`);
+        }
+      }
+    }
+
+    for (const key of keys) {
+      const strip = this.mixer.lane(key);
+      if (!strip) continue;
+      const s = laneSettings(entry?.lanes?.[key]);
+      strip.rampTo({
+        gain: s.gain, mute: s.mute, pan: s.pan, width: s.width ?? 1, eq: s.eq, send: s.send,
+      }, when, seconds);
+    }
+
+    // Level, balance and EQ per aux — never decay, preDelay or the delay's own timing.
+    // Those rebuild a buffer or retune a live delay line, which are node changes, and a
+    // variant is not allowed to ask for one. See the aux notes in mixer.rampAux.
+    for (const def of this.mixer.auxes) {
+      const patch = entry?.fx?.[def.id];
+      const d = AUX_DEFAULTS[def.id];
+      this.mixer.rampAux(def.id, {
+        level: patch?.level ?? d.level,
+        pan: patch?.pan ?? d.pan,
+        eq: { ...d.eq, ...(patch?.eq || {}) },
+      }, when, seconds);
+    }
+
+    this.mixer.rampMaster({ master: entry?.master || 0, masterPan: entry?.masterPan || 0 }, when, seconds);
+
+    for (const [target, , want] of chains) {
+      for (let i = 0; i < want.length; i++) {
+        if (want[i].params) this.mixer.rampEffectParams(target, i, want[i].params, when, seconds, bpm);
+      }
+    }
+
+    // No pruneAuxes. Raising a send wakes its return from setSend (see wakeAux), which
+    // is the urgent direction; an aux left connected and silent costs a little CPU and
+    // never costs a sound, and disconnecting one at a bar line would cut its tail.
+    this.mixEntry = entry;
+    return when + seconds;
+  }
+
   // Tempo and pitch warp independently: slow-mo drags the tempo without
   // dropping the key, invincibility winds both up a whole tone.
-  setWarp(tempo, pitch = tempo) { this.tempo = tempo; this.detune = pitch; }
+  setWarp(tempo, pitch = tempo) {
+    const moved = tempo !== this.tempo;
+    this.tempo = tempo;
+    this.detune = pitch;
+    // The run loop calls this every frame with whatever the powerups currently say,
+    // so the retime has to be gated on an actual change — a mixer retune per frame
+    // would be hundreds of Web Audio parameter writes a second for nothing.
+    if (moved) this.retimeSync();
+  }
   setDetune(d) { this.setWarp(d, d); }
+
+  /**
+   * Re-derive every tempo-synced time in the mix against the warped clock.
+   *
+   * Tempo-synced times are stored as note divisions but written to the graph as plain
+   * seconds, once, when the bank loads. Warping the transport afterwards leaves those
+   * seconds describing a tempo nothing is playing at any more. This is the same work
+   * setBank does on a bank change, pointed at `bpm * tempo`.
+   *
+   * The delay line slides rather than jumps: a delayTime step resamples whatever is
+   * still ringing in the buffer, and 50ms of glide turns a click into the tape-style
+   * pitch slur you would want from a gear change anyway.
+   *
+   * What this does NOT reach: tempo-synced effects sitting on a channel STRIP, which
+   * are baked by strip.setEffects at bank load. No cabinet song currently uses one —
+   * the drift-prone sends are all on the shared echo and the aux returns — but a song
+   * that grows a synced strip tremolo will need it, and the retune belongs there too.
+   */
+  retimeSync() {
+    if (!this.ctx) return;
+    const secs = this.delayTimeSeconds();
+    if (this.delay) {
+      this.growDelayLine(secs).delayTime.setTargetAtTime(secs, this.ctx.currentTime, 0.05);
+    }
+    if (this.mixer) this.mixer.retune((this.bpm || 120) * (this.tempo || 1));
+  }
 
   // Invincibility: duck the theme and bring up the star arpeggio over it, so
   // it still reads as the same song — just electrified.
@@ -3129,7 +3452,14 @@ class AudioSys {
       if (s % 4 === 0) {
         const beatIdx = Math.floor(this.step / 4);
         const when = this.nextTime;
-        for (const fn of this.beatListeners) fn(beatIdx, when);
+        // `step` as well as the beat index, and `when` read BEFORE the increment below,
+        // so a listener gets the absolute position and the exact audio time it will
+        // sound at. A musical transition needs both: `step % 16` is the bar line and
+        // `when` is the only clock precise enough to schedule automation against — a
+        // frame callback is a quarter of a second adrift by the time it runs. beatIdx
+        // alone is not enough, because it stops being a bar count the moment a loop
+        // wraps to a start that is not on a bar.
+        for (const fn of this.beatListeners) fn(beatIdx, when, this.step);
       }
       this.nextTime += spb;
       this.step++;

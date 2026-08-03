@@ -28,7 +28,9 @@ import {
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
 import {
   sharedPatternGroups, sharedPatternDescription, playheadCell, playheadWindow, drumRowOrder,
+  KITS,
 } from '../tools/mixer-step-seq.js';
+import { VOICES, isKitVoice } from '../src/data/voices.js';
 import {
   LANE_KEYS, songBlocks, songBars, barPlan, activeLanes, laneActivity, laneUsesEcho,
 } from '../src/engine/lanes.js';
@@ -309,16 +311,41 @@ assert(json(playheadWindow(31.875, 8)) === json({ from: 0, to: 1 })
 assert(json(playheadWindow(64, 5)) === json({ from: 4, to: 4 }),
   'an odd final pattern page shows its remaining bar alone');
 const initialKitRows = drumRowOrder(['kick', 'hats']);
-assert(initialKitRows.length === 8 && initialKitRows.at(-1) === 'tom',
-  'the pattern editor starts with eight canonical drum rows, with tom as the eighth');
+assert(json(initialKitRows) === json(['kick', 'hats']),
+  'the pattern editor shows the percussion the song actually plays, not the canonical eight');
+assert(json(drumRowOrder(['bass', 'kick', 'lead', 'hats'])) === json(['kick', 'hats']),
+  'and only the percussion — the melodic channels belong to the roll');
+assert(json(drumRowOrder(['hats', 'kick'])) === json(['hats', 'kick']),
+  'in the order the desk hands them over, so the two track lists read as one list');
 const rowsAfterAddingSnare = drumRowOrder(['kick', 'snare', 'hats'], initialKitRows);
-assert(rowsAfterAddingSnare === initialKitRows
-  && rowsAfterAddingSnare.indexOf('snare') === initialKitRows.indexOf('snare'),
-  'adding the first note on an unused drum keeps its pattern-editor row in place');
-const rowsAfterExtraSound = drumRowOrder(['kick', 'hats', 'tom2'], initialKitRows);
-assert(rowsAfterExtraSound.slice(0, 8).every((key, i) => key === initialKitRows[i])
-  && rowsAfterExtraSound[8] === 'tom2',
-  'an additional percussion sound is appended after the fixed eight without moving them');
+assert(json(rowsAfterAddingSnare) === json(['kick', 'hats', 'snare']),
+  'a drum that arrives is appended rather than inserted — a row must never move under'
+  + ' the pointer painting into the row below it');
+const rowsAfterErasing = drumRowOrder(['kick', 'hats'], rowsAfterAddingSnare);
+assert(rowsAfterErasing === rowsAfterAddingSnare,
+  'and erasing a lane’s last note leaves its row standing, drawn unused — the row must'
+  + ' not vanish under the pointer that emptied it');
+const rowsAfterExtraSound = drumRowOrder(['kick', 'hats', 'tom2'], rowsAfterAddingSnare);
+assert(json(rowsAfterExtraSound) === json(['kick', 'hats', 'snare', 'tom2']),
+  'an added percussion sound is appended after the drums the song has, without moving them');
+assert(json(drumRowOrder(['kick', 'hats'], rowsAfterExtraSound))
+  === json(['kick', 'hats', 'snare']),
+  'and an added sound whose channel is gone is the one row that leaves on its own');
+// The kits of sounds. A typo'd preset id here is silent — the lane simply keeps the
+// voice it had, or falls back to Tom — so it is checked rather than looked at.
+const kitPairs = KITS.flatMap(([name, voices]) =>
+  Object.entries(voices).map(([lane, id]) => ({ name, lane, id })));
+const badLane = kitPairs.filter(({ lane }) => !DRUM_LANES.includes(lane));
+const badVoice = kitPairs.filter(({ id }) => !VOICES[id] || !isKitVoice(VOICES[id]));
+const engineVoice = kitPairs.filter(({ id }) => VOICES[id]?.kind === 'engine');
+assert(KITS.length > 0 && !badLane.length,
+  `every kit names drum lanes only${badLane.map((b) => ` (${b.name}: ${b.lane})`).join('')}`);
+assert(!badVoice.length,
+  `and names a kit voice that exists${badVoice.map((b) => ` (${b.name}: ${b.id})`).join('')}`);
+assert(!engineVoice.length,
+  'and none of them is an engine preset, so an ADDED drum can play it too — an engine'
+  + ' voice is a bundle of bank keys a hand-written lane reads, and a layer has none'
+  + `${engineVoice.map((b) => ` (${b.name}: ${b.id})`).join('')}`);
 
 const muted = setLanesOff(base, 4, 5, ['snare', 'clap']);
 assert(json(muted.plan[4].off) === json(['clap', 'snare']) && !base.plan[4].off,

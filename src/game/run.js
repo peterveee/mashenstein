@@ -3,7 +3,11 @@
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
 import { Input } from '../engine/input.js';
-import { Audio } from '../engine/audio.js';
+import {
+  Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
+  PORTAL_RELAY_GAIN, PORTAL_RELAY_IN_GAIN, portalCueFlashAt,
+} from '../engine/audio.js';
+import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
@@ -84,6 +88,9 @@ const FLOAT_BASE_Y = 128;
 // opposite of the play controls, and CONTINUE/EXIT are not symbols anyone
 // shares. Laid out to match the pause copy above them — see drawPaused.
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
+// The portal's height off the ground — how far a player has to be above it to miss.
+const PORTAL_H = 40;
+
 const PAUSE_BUTTONS = [
   // 'pause' toggles, so it resumes from here; 'escape' while already paused is
   // the quit half of the Escape key's behaviour. Both actions already existed —
@@ -468,7 +475,16 @@ export class RunState {
     this.renderSettings = { ...this.save.settings, smoothMotion: true };
     this.mirror = this.corrupted.includes('mirror');
 
-    Audio.setBank(this.cabinet.music);
+    // Not setBank. The cabinet screen has usually been playing this very song, in its
+    // own treatment, since the stage list opened — so this hands that treatment over to
+    // the level's mix on the next bar line and keeps the clock: no gap, no restart, the
+    // band simply arrives. When nothing was playing it (a dev ?stage= URL, a retry from
+    // the results screen) it falls back to exactly the setBank this line used to be.
+    MusicDirector.enterStage(this.cabinet.music);
+    // No opening cue here — it fires at the PRESS instead. See levelOpenCue in main.js:
+    // enter() runs at the shutter's covered midpoint, which is already a third of a
+    // second after the button that caused it, and by the time the swoosh peaked from
+    // here the picture had been up for a fifth of a second. The wipe IS the doorway.
     Audio.setDetune(1);
     this.invActive = false;
     this.lastCoinSprayT = -1;
@@ -523,6 +539,10 @@ export class RunState {
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
     // setContext already dropped the paused screen's borrowed key mapping.
     Audio.setDetune(1); Audio.setInvincible(false);
+    // Nothing here changes the song — the results screen deliberately keeps playing it —
+    // but a handover still waiting for its bar line has to be settled. See endStage:
+    // quit inside the first two bars and it would otherwise land on the results screen.
+    MusicDirector.endStage();
   }
 
   setButtons() {
@@ -844,9 +864,12 @@ export class RunState {
     if (this.rewindFx.visible) this.rewindFx.tick(dt);
 
     // Invincibility winds tempo and pitch up a whole tone together, where the
-    // pitch shift is the point.
+    // pitch shift is the point. A speed burst leans on the tempo ALONE: the key
+    // stays put, so the track reads as the same song played harder rather than
+    // as the star's electrified one, and the two stack without either gimmick
+    // eating the other.
     const star = this.powerups.isInvincible() ? 1.08 : 1;
-    Audio.setWarp(star, star);
+    Audio.setWarp(star * this.powerups.musicTempoMultiplier(), star);
     const wdt = dt;   // world time (the hit-jolt affects world, not score accrual)
 
     this.tRun += wdt;
@@ -1549,7 +1572,49 @@ export class RunState {
       this.tutor('firstPortal', 'RUN THROUGH THE PORTAL TO TAG IN THE NEXT HERO.');
     }
     if (this.portal) {
-      const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - 40, w: 12, h: 40 };
+      const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - PORTAL_H, w: 12, h: PORTAL_H };
+      // The same swoosh the level opens with, because it is the same fiction: a hero
+      // going through a doorway. Quieter here — that one is once a level and can afford
+      // to be an event, this one is every eighteen seconds and has to be furniture.
+      //
+      // Fired AHEAD of the crossing rather than on it. The cue's own flash is
+      // PORTAL_CUE_FLASH_AT into the sound (see portalSwoosh), so firing it when the
+      // player actually touches the portal would put the brightest moment a fifth of a
+      // second after they were already through it. The credits handoff solves this the
+      // same way; this is the arithmetic version, since here the crossing is a position
+      // rather than a time: distance to go, over how fast the world is moving.
+      //
+      // Same 3.5x as the level opener, not the 1.8x this started at. Level start has a
+      // thinned-out cabinet treatment under it — drums and bass, no tune — where this has
+      // the whole band, so the same number is not the same loudness and 1.8x vanished.
+      // `tag` still fires with it in doSwitch and still carries the event; this is the
+      // swoosh under it. Peak lands at -12.4 dBFS, under `boom` (-11.7), the loudest cue
+      // the game already has, so there is no new headroom problem.
+      if (!this.portal.cued && this.speed > 0) {
+        const toGo = this.portal.x - (this.camX + PLAYER_X);
+        // Led by the shape's own seam, not by the bare constant: stretching the cue
+        // moves where its middle falls, and hand-authoring 0.20 here would fire a
+        // two-and-a-half-times-longer swoosh a quarter of the way through its approach.
+        // The RISE only, and unconditionally — this says "doorway", not "tag". It has
+        // to start about half a second out for its own peak to land where the player
+        // reaches the portal, and half a second out nobody has decided anything yet: a
+        // jump begun as late as 0.162s before it still clears, which is a third of the
+        // lead the sound needs. Predicting it was tried and fired on every late jump.
+        // So the rise plays whether the portal is taken or not, and the fall — the half
+        // that means a tag actually happened — waits for the crossing in doSwitch.
+        // Shorter than the whole gesture — its peak is ~0.25s in rather than ~0.49s —
+        // which brings the lead down near the 0.162s in which a late jump can still
+        // clear. Close enough that the arc is usually already decided, so it is worth
+        // asking: someone visibly airborne and going over gets no sound at all. A jump
+        // begun inside the last quarter second still slips through, and nothing can see
+        // that coming; the fall in the crossing handler is the half that is never wrong.
+        const eta = toGo / this.speed;
+        if (eta <= portalCueFlashAt(PORTAL_RELAY_IN)
+          && this.player.feetAt(eta, this.powerups.gravityMultiplier()) < PORTAL_H) {
+          this.portal.cued = true;
+          Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN });
+        }
+      }
       if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox)) {
         this.doSwitch();
         this.portal = null;
@@ -1579,6 +1644,10 @@ export class RunState {
     this.usedHeroes.add(result.to);
     this.setButtons();
     Audio.sfx('tag');
+    // The FALL, on the crossing itself — the half that only sounds when a hero has
+    // actually gone through. No lead needed: it has already happened, and this leg puts
+    // its weight 47ms in. See PORTAL_RELAY_OUT.
+    Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY_OUT });
     this.score += 100;
     burst(px + 6, GROUND_Y - this.player.y - 8, 14, 80, 0.5, '#48e0c8', 1, 80, () => this.fxRng.float());
     const hero = HERO_BY_ID[result.to];

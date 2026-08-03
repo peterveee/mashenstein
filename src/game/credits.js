@@ -9,7 +9,7 @@
 import { W, H, screen } from '../engine/renderer.js';
 import { Rng } from '../engine/rng.js';
 import { Input } from '../engine/input.js';
-import { Audio, PORTAL_CUE_FLASH_AT } from '../engine/audio.js';
+import { Audio, PORTAL_RELAY_CREDITS, portalCueFlashAt } from '../engine/audio.js';
 import { drawText, drawTextCentered, textWidth, textYForMid, wrapText, UI_PLATE } from '../engine/sprites.js';
 import { drawToon, drawToonFace } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
@@ -39,6 +39,15 @@ const BODY_W = W - 64;
 const SCROLL_SPEED = 30;
 // Guards the same confirm/tap press that opened this screen from the dev menu
 // from also being read as "skip" on the first frame.
+// The relay swoosh, under the megamix rather than over it: this is one credit block
+// handing over to the next, which is the same gesture a hero tag is, but it is scenery
+// here and an event there. 3.5dB under the in-game firing (PORTAL_RELAY_GAIN 9).
+//
+// Levelled by RMS against what it is being kept under, not by the multiplier: a longer
+// swoosh sustains for more of its own length, so the same number measures hotter the
+// more it is stretched.
+const CREDITS_SWAP_GAIN = 2.9;
+
 const OPEN_GUARD_T = 0.3;
 
 // Portrait column for the STARRING block. Fixed x rather than hung off the end
@@ -986,14 +995,21 @@ export class CreditsState {
     // happens at exactly one t — solve for it once here, then watch the clock
     // step over it. Scrubbing backwards past a block re-arms it for free.
     //
-    // Fired PORTAL_CUE_FLASH_AT seconds ahead of the crossing, not on it. The
-    // cue's flash sits that far into it, so triggering on the swap put the
-    // rising half over the incoming hero's exit and the flash a fifth of a
-    // second behind the flare. Leading it lands the flash on the flare and puts
-    // the rise where it belongs: under the outgoing hero's last few strides.
+    // Fired AHEAD of the crossing, not on it. The cue's weight sits that far into
+    // it, so triggering on the swap put the rising half over the incoming hero's
+    // exit and the punch a fifth of a second behind the flare. Leading it lands
+    // the weight on the flare and puts the rise where it belongs: under the
+    // outgoing hero's last few strides.
+    //
+    // Asked of the SHAPE rather than hardcoded, because the credits cue is six times
+    // longer than the bare one this used to fire and its middle moved with it — 0.60s
+    // in, not 0.20s. Each swap has ~4.8s of runway and the four of them are tens of
+    // seconds apart, so there is nothing for a lead that long to collide with. See
+    // portalCueFlashAt and PORTAL_RELAY_CREDITS.
     this.swapTs = this.script.rows
       .filter((r) => r.k === 'handoffArt')
-      .map((r) => (HANDOFF_SWAP_AT * (H + HANDOFF_H) + r.y) / SCROLL_SPEED - PORTAL_CUE_FLASH_AT);
+      .map((r) => (HANDOFF_SWAP_AT * (H + HANDOFF_H) + r.y) / SCROLL_SPEED
+        - portalCueFlashAt(PORTAL_RELAY_CREDITS));
     this.scrubHeldT = 0;
     this.reduced = !!this.settings.reducedMotion;
     this.stars = makeStars(STAR_COUNT);
@@ -1045,7 +1061,9 @@ export class CreditsState {
     // a backwards swoosh is the one thing the sound cannot describe.
     if (this.t > prevT) {
       for (const swapT of this.swapTs) {
-        if (swapT > prevT && swapT <= this.t) Audio.sfx('portal');
+        if (swapT > prevT && swapT <= this.t) {
+          Audio.sfx('portal', { gain: CREDITS_SWAP_GAIN, shape: PORTAL_RELAY_CREDITS });
+        }
       }
     }
     if (this.t > OPEN_GUARD_T && (Input.pressed('confirm') || Input.pressed('back') || Input.pressed('pointer'))) {

@@ -132,6 +132,9 @@ async function measureRaw(voiceId, noiseBuf, sampleRate = 44100) {
 // this size. Units live on the label where they need saying, not on every reading.
 const secs = (x) => (x < 1 ? `${Math.round(x * 1000)}ms` : `${x.toFixed(1)}s`);
 const hz = (x) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : String(Math.round(x)));
+// Signed, because on a bipolar control the sign IS the reading: `+12` and `12` are the
+// same number and opposite sounds.
+const semis = (x) => `${x > 0 ? '+' : ''}${x.toFixed(1)}`;
 const fixed = (d) => (x) => x.toFixed(d);
 const ENV_MAX_SECONDS = 10;
 const ENV_TIME_SCALE = 2;
@@ -143,6 +146,46 @@ const ENV_TIME_SCALE = 2;
 const envTime = (path, label, min, step, fmt, def, unit = 's', when = null, opts = {}) =>
   n(path, label, min, ENV_MAX_SECONDS, step, fmt, def, unit, when,
     { ...opts, scale: ENV_TIME_SCALE });
+
+// A pitch pot that has to cover the whole drum range at once — a 40 Hz sub and a 6 kHz
+// zap are the same knob — and that is the envelope times' problem again: spread
+// linearly, nine tenths of the travel sits above the register anything is actually
+// tuned in, and the octave a kick lives in is a few pixels wide. So the same power
+// response, steeper because the span is wider: the bottom two octaves get real
+// distance and the ceiling is still at the stop. Steps of 1 Hz, because at 50 Hz five
+// is a semitone and a half.
+const OSC_HZ_MAX = 10000;
+const OSC_HZ_SCALE = 3;
+const oscHz = (path, label, def, opts = {}) =>
+  n(path, label, 20, OSC_HZ_MAX, 1, hz, def, 'Hz', null, { scale: OSC_HZ_SCALE, ...opts });
+
+// ---- the drum oscillator's pitch pair, the way Microtonic states it ----------
+//
+// A destination in hertz is the wrong number to hold in your hand. `52` means nothing
+// until you have also read `190` off the pot beside it, the same drop is a different
+// pair of numbers at every tuning, and moving the FREQUENCY silently rewrote how far
+// the drum fell. So the panel states it the way the machine this section is modelled
+// on does: a FREQUENCY, and an AMOUNT the pitch envelope moves it BY — signed, in
+// semitones, zero at the centre detent, and unchanged when the tuning changes.
+//
+// The CATALOGUE still stores `osc.to` in hertz. That is what the engine ramps to, what
+// every preset on file already holds, and what `_playDrum` reads without knowing this
+// panel exists — so AMOUNT is a view of the ratio between the two, not a new field. A
+// preset saved before this change reads back as whatever interval it always was.
+const AMOUNT_SEMIS = 96;                 // ±8 octaves, which is Microtonic's own span
+// The destination is a frequency an oscillator has to actually reach. Beyond the top
+// of hearing there is nothing left to sweep to, and an exponential ramp cannot aim at
+// zero — so the ratio is honoured until it runs out of audio band, then it stops.
+const SWEEP_HZ_FLOOR = 1;
+const SWEEP_HZ_CEIL = 20000;
+const clampHz = (x) => Math.min(SWEEP_HZ_CEIL, Math.max(SWEEP_HZ_FLOOR, x));
+const oscFrom = (v) => getAt(v, '$osc.from') ?? SECTION_DEFAULTS.osc.from;
+const oscTo = (v) => getAt(v, '$osc.to') ?? SECTION_DEFAULTS.osc.to;
+/** The interval between the oscillator's two frequencies, in semitones. */
+const amountOf = (v) => 12 * Math.log2(clampHz(oscTo(v)) / Math.max(1e-6, oscFrom(v)));
+/** ...and back: where a given AMOUNT lands from a given tuning. Two decimals, because
+ *  a whole hertz is most of a semitone down at the bottom of the range. */
+const toneAt = (from, semis) => Math.round(clampHz(from * 2 ** (semis / 12)) * 100) / 100;
 
 const WAVES = ['sine', 'square', 'sawtooth', 'triangle', 'pwm', 'pulse'];
 // Tone spells an oscillator's voicing as a PREFIX on its type: `fatsawtooth`,
@@ -633,22 +676,41 @@ const DRUM_GROUPS = [
     rows: [
       pick('$osc.type', 'WAVE', WAVES, 'sine'),
       pick('$osc.curve', 'CURVE', ['exp', 'lin'], 'exp'),
-      // Named for the SWEEP knob it shapes rather than called a second CURVE: this one is
+      // Named for the RATE knob it shapes rather than called a second CURVE: this one is
       // the pitch drop, the one above it is the level. `snap` is the analogue drum
       // machine's own pitch envelope — hardest at the start, settled before the tail —
       // and it is the difference between a kick that clicks and one that goes boing.
-      pick('$osc.pitchCurve', 'SWEEP CURVE', ['exp', 'lin', 'snap'], 'exp'),
+      pick('$osc.pitchCurve', 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp'),
       n('$osc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       // The engine kick's mid punch, as a level and nothing else — a fixed 300→180 Hz
       // triangle, up in 4ms and gone in 50. It is the second oscillator a kick needs
       // and the only one, so it is a pot rather than a section. Zero builds nothing.
       n('$knock', 'KNOCK', 0, 1, 0.01, fixed(2), 0),
-      n('$osc.from', 'PITCH', 20, 4000, 5, hz, 190, 'Hz'),
-      // To 4 kHz rather than 2, so SWEEP TO can reach where PITCH already could. A drum
-      // whose pitch rises is half the rims and every zap; capping the destination at
-      // half the origin's range made those a one-way trip.
-      n('$osc.to', 'SWEEP TO', 20, 4000, 5, hz, 52, 'Hz'),
-      n('$osc.sweep', 'SWEEP', 0.005, 1, 0.005, secs, 0.07),
+      oscHz('$osc.from', 'FREQUENCY', 190, {
+        // Tuning a drum is not the same gesture as changing how far it falls, so the
+        // destination travels with the tuning and AMOUNT stays where it was put. Without
+        // this, dragging FREQUENCY up flattens the drop to nothing on the way.
+        after: (now, v, was) => {
+          if (!(was > 0) || !(now > 0)) return;
+          setAt(v, '$osc.to', toneAt(now, 12 * Math.log2(clampHz(oscTo(v)) / was)));
+        },
+      }),
+      // The pitch envelope's DEPTH, and the one control here that is not stored as it is
+      // shown — see the block above `AMOUNT_SEMIS`. Up as readily as down: a drum whose
+      // pitch rises is half the rims and every zap.
+      n('$osc.to', 'AMOUNT', -AMOUNT_SEMIS, AMOUNT_SEMIS, 0.5, semis, 0, 'semi', null, {
+        origin: 0,
+        tip: 'How far the pitch envelope moves the tuning, in semitones — up as readily'
+          + ' as down. Centre is no sweep at all',
+        read: (_to, v) => amountOf(v),
+        write: (x, v) => toneAt(oscFrom(v), x),
+      }),
+      // How long the pitch takes to get there — the third of the trio, and an envelope
+      // time like any other, so it takes the shared ten-second ceiling and the shared
+      // response. Past about a second it stops being a drum's drop and becomes a siren,
+      // which is a sound this section could not previously make.
+      envTime('$osc.sweep', 'RATE', 0.005, 0.005, secs, 0.07, 's', null,
+        { tip: 'How long the pitch takes to travel the AMOUNT' }),
       envTime('$osc.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
       envTime('$osc.hold', 'HOLD', 0, 0.001, secs, 0),
       envTime('$osc.decay', 'DECAY', 0.01, 0.005, secs, 0.35),
@@ -770,28 +832,70 @@ const SECTION_DEFAULTS = {
 //
 // A section is present or absent, never present-and-zeroed: `body: { gain: 0 }` still
 // builds an oscillator per hit, and "no body" is a different sound from "a body at
-// zero". Switching one on seeds it from `_playDrum`'s own fallbacks, so it starts as
-// the sound the engine already implied rather than as a new one.
+// zero". Switching one on for the FIRST time seeds it from `_playDrum`'s own fallbacks,
+// so it starts as the sound the engine already implied rather than as a new one.
 //
-// FM is the section that made these three functions instead of two lines: it lives
-// INSIDE the oscillator, so its key is a path, and turning it on where there is no
-// oscillator has to bring one with it or the modulator would have nothing to bend.
+// But a switch you have already used is a BYPASS, not a delete. Off has to be something
+// you can undo — half of sound design is taking a part out to hear what it was doing —
+// and a section that came back holding factory defaults instead of the two minutes of
+// tuning you had just put into it made Off a decision you could not take back. So what
+// is switched off is HELD, and On puts it back exactly as it was left.
+//
+// ---- where the hold lives ---------------------------------------------------
+//
+// On the preset, under `bypassed`, and therefore in voices.js. It cannot live in the
+// panel: the panel forgets everything on a reload, which would make "as I left it" true
+// for an afternoon and false the next morning — and a hold that survives a reload has
+// to be written down somewhere, and the preset is the only thing that gets written.
+//
+// It cannot live in the SECTION either, as `osc: { off: true }`, because presence IS the
+// switch everywhere downstream: `_playDrum` builds an oscillator for any `osc` it finds,
+// and a section that is switched off but still audible is the one outcome worse than
+// forgetting. `bypassed` is a key the engine never reads, holding sections that are not
+// where the engine looks — so the sound of a preset with holds in it is the sound of the
+// same preset with them stripped out, which is what makes this safe.
+//
+// Keyed by the section's PATH, so `osc` and `osc.fm` are separate holds. It travels with
+// the preset by construction: a copy, a Save as New and a song's own version of a sound
+// are all deep copies of the entry, and each carries what its switches were holding.
 const sectionOn = (voice, key) => getAt(voice, `$${key}`) !== undefined;
+
+const HELD = 'bypassed';
+const holdOn = (voice, key) => voice?.[HELD]?.[key];
+const copy = (o) => JSON.parse(JSON.stringify(o));
 
 function addSection(voice, key) {
   const parts = key.split('.');
   for (let i = 0; i < parts.length; i++) {
     const path = parts.slice(0, i + 1).join('.');
-    if (getAt(voice, `$${path}`) === undefined) {
-      setAt(voice, `$${path}`, { ...(SECTION_DEFAULTS[path] || {}) });
-    }
+    if (getAt(voice, `$${path}`) !== undefined) continue;
+    const held = holdOn(voice, path);
+    setAt(voice, `$${path}`, held ? copy(held) : { ...(SECTION_DEFAULTS[path] || {}) });
+    // What has just been put back is live again, and the copy that was held is now the
+    // stale one. A nested hold is NOT released with it: a preset can have had its FM
+    // switched off first and its oscillator second, and each remembers its own.
+    releaseHold(voice, path);
   }
 }
 
 function dropSection(voice, key) {
   const parts = key.split('.');
   const owner = parts.length > 1 ? getAt(voice, `$${parts.slice(0, -1).join('.')}`) : voice;
-  if (owner) delete owner[parts[parts.length - 1]];
+  if (!owner) return;
+  const leaf = parts[parts.length - 1];
+  // Whatever was in it, including any section nested inside it — an oscillator switched
+  // off takes its modulator with it, and both come back together.
+  if (owner[leaf] !== undefined) (voice[HELD] ||= {})[key] = copy(owner[leaf]);
+  delete owner[leaf];
+}
+
+/** Drop one hold, and the whole bag with the last of them: a preset that has never used
+ *  a switch carries no `bypassed` key, and one that has stopped using them stops too. */
+function releaseHold(voice, key) {
+  const bag = voice?.[HELD];
+  if (!bag) return;
+  delete bag[key];
+  if (!Object.keys(bag).length) delete voice[HELD];
 }
 
 /**
@@ -1202,14 +1306,27 @@ export function createVoiceEditor({
   // reopened panel keeps testing guards against elements that are no longer on screen.
   let rowGuards = [];
 
+  // `read`/`write` take the whole voice beside the value, because a pot is not always a
+  // view of one stored number: AMOUNT is the RATIO of the oscillator's two frequencies,
+  // so it cannot be read without the other one. `after` is the other half of that —
+  // FREQUENCY has to carry the destination with it, or moving it would change an
+  // interval the user set on a different pot.
   const numRow = (row) => {
     const raw = getAt(state.voice, row.path);
-    const cur = row.read ? row.read(raw) : raw;
+    const cur = row.read ? row.read(raw, state.voice) : raw;
     const value = typeof cur === 'number' ? Math.min(row.max, Math.max(row.min, cur)) : row.def;
     const r = knob({
       min: row.min, max: row.max, step: row.step, value, reset: row.def, fmt: row.fmt,
-      scale: row.scale,
-      onInput: (x) => { setAt(state.voice, row.path, row.write ? row.write(x) : x); touched(); syncRows(); },
+      scale: row.scale, origin: row.origin,
+      onInput: (x) => {
+        setAt(state.voice, row.path, row.write ? row.write(x, state.voice) : x);
+        // `raw` is what the path held BEFORE this move: an `after` that has to keep a
+        // RELATION intact needs both ends of the change, and by now the voice only
+        // carries the new one.
+        row.after?.(x, state.voice, raw);
+        touched();
+        syncRows();
+      },
     });
     r.label.textContent = row.label;
     // The unit, quietly, after the name — `SWEEP oct`, `FROM Hz`. The reading itself
@@ -1227,7 +1344,9 @@ export function createVoiceEditor({
     // after the row's own tip, because this is the more urgent of the two.
     if (typeof cur === 'number' && cur !== value) {
       r.label.prepend('* ');
-      r.wrap.title = `On file as ${row.fmt(raw)}, which is outside this control's range —`
+      // In the POT's unit, not the file's: a derived control stores hertz and reads
+      // semitones, and "on file as 10000.0" under a knob marked `semi` says nothing.
+      r.wrap.title = `On file as ${row.fmt(cur)}, which is outside this control's range —`
         + ' moving the pot will change it';
     }
     if (row.when) rowGuards.push({ el: r.wrap, when: row.when });
@@ -1433,7 +1552,11 @@ export function createVoiceEditor({
       const sw = document.createElement('button');
       sw.className = `devlink veswitch${on ? ' on' : ''}`;
       sw.textContent = on ? 'On' : 'Off';
-      sw.title = on ? group.onTip : group.offTip;
+      // A held section says so on the way back in. Off is a bypass once you have used
+      // it, and a switch that looks identical either way gives you no reason to believe
+      // that — which is exactly when you leave it on and mute the pots by hand instead.
+      const held = !on && holdOn(state.voice, group.optional) !== undefined;
+      sw.title = on ? group.onTip : held ? 'Put it back as you left it' : group.offTip;
       sw.onclick = () => {
         if (on) dropSection(state.voice, group.optional);
         else addSection(state.voice, group.optional);
@@ -1699,6 +1822,8 @@ export function createVoiceEditor({
       // been measuring against all along, so this is exactly where it started.
       state.voice.level = state.levelBaseline;
       state.voice.peak = state.peakBaseline;
+      // The holds come and go with it, at no cost: `bypassed` is part of the preset, so
+      // the baseline either had it or did not, and Put Back is already the whole answer.
       state.dirty = false;
       state.measured = !state.isNew;
       state.estimated = false;

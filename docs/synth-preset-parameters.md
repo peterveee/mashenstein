@@ -5,12 +5,25 @@
 > Labels are shown **as rendered** (label + unit, e.g. `CUTOFF Hz`).
 >
 > **Naming standard:** Roland/Korg conventions. All filter frequency knobs are `CUTOFF`,
-> all filter type selectors are `TYPE`, and all sweep destinations are `SWEEP TO`.
+> all filter type selectors are `TYPE`, and all sweep destinations are `SWEEP TO` —
+> except the drum oscillator's, which is Microtonic's `FREQUENCY` / `AMOUNT` / `RATE`
+> instead: a tuning, a signed depth in semitones, and a time. See its section below.
 >
 > **Envelope ranges:** every exposed envelope time control tops out at 10 seconds.
 > Every envelope time knob uses the same non-linear response, with extra travel at the
 > short-time end; ordinary non-envelope knobs remain linear.
 > Sustain is shown and edited as 0–100%, while the engine continues to store 0–1.
+>
+> **Optional sections** (every `On`/`Off` switch in the panel) are a **bypass, not a
+> delete**: what is switched off is kept on the preset under `bypassed`, keyed by the
+> section's path (`osc`, `osc.fm`, …), and `On` puts it back exactly as it was left —
+> across reloads, and through every copy of the preset, because `bypassed` is written to
+> `voices.js` and to a song's own version of a sound like any other key. A section that
+> has never been on still opens on the engine's own defaults, and the last hold to be
+> switched back on takes the `bypassed` key with it.
+>
+> Nothing reads `bypassed` at play time. A preset carrying holds sounds exactly like the
+> same preset with them deleted — which is what makes it safe to keep them in the file.
 
 ---
 
@@ -220,16 +233,27 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 |---|---|---|---|---|---|
 | `WAVE` | `$osc.type` | — | — | sine | — |
 | `CURVE` | `$osc.curve` | — | — | exp | — |
-| `SWEEP CURVE` | `$osc.pitchCurve` | — | — | exp | — |
+| `RATE CURVE` | `$osc.pitchCurve` | — | — | exp | — |
 | `LEVEL` | `$osc.gain` | 0 | 2 | 1 | — |
 | `KNOCK` | `$knock` | 0 | 1 | 0 | — |
-| `PITCH` | `$osc.from` | 20 | 4000 | 190 | Hz |
-| `SWEEP TO` | `$osc.to` | 20 | 4000 | 52 | Hz |
-| `SWEEP` | `$osc.sweep` | 0.005 | 1 | 0.07 | s |
+| `FREQUENCY` | `$osc.from` | 20 | 10000 | 190 | Hz |
+| `AMOUNT` | `$osc.to` | -96 | +96 | 0 | semi |
+| `RATE` | `$osc.sweep` | 0.005 | 10 | 0.07 | s |
 | `ATTACK` | `$osc.attack` | 0.001 | 10 | 0.001 | s |
 | `HOLD` | `$osc.hold` | 0 | 10 | 0 | s |
 | `DECAY` | `$osc.decay` | 0.01 | 10 | 0.35 | s |
 | `SAG` | `$osc.sag` | 0 | 1 | 0 | — |
+
+`AMOUNT` is the one control here that is not stored as it is shown. The catalogue keeps
+the destination in hertz (`osc.to`) because that is what `_playDrum` ramps to and what
+every preset on file already holds; the pot shows the **interval** between the two
+frequencies — `12·log2(to/from)` — centred on zero, where the engine skips the ramp
+entirely. Moving `FREQUENCY` carries `osc.to` with it so the interval is preserved, and
+the destination is held inside 1 Hz–20 kHz, so ±96 semitones is only fully reachable
+from the lower tunings.
+
+`FREQUENCY` uses the non-linear knob response (a cubic, against the envelope times'
+quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 
 #### FM Section (optional, nested under oscillator)
 | Label | Path | Min | Max | Default | Unit |

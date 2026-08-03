@@ -37,11 +37,117 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
   'all envelope time controls share a 10-second maximum and sustain is edited as 0–100%');
 
 const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
-assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1 \}\)/.test(entrySource)
+assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null \}\)/
+  .test(entrySource)
   && /Math\.pow\(clamp\(position, 0, 1\), curve\)/.test(entrySource)
   && /setPosition\(position \+ \(px \/ 150\)/.test(entrySource)
-  && /scale: row\.scale/.test(editor),
+  && /scale: row\.scale, origin: row\.origin/.test(editor),
   'all envelope controls use the shared non-linear knob response');
+
+// The drum oscillator states its pitch envelope the way the machine it models does:
+// a tuning, a signed DEPTH in semitones, and a time. The depth is a view of the two
+// stored frequencies — nothing in the catalogue or the engine changed shape for it —
+// so the pot has to fill from the centre and the tuning has to carry the destination.
+assert(/oscHz\('\$osc\.from', 'FREQUENCY'/.test(editor)
+  && /'AMOUNT', -AMOUNT_SEMIS, AMOUNT_SEMIS, 0\.5, semis, 0, 'semi'/.test(editor)
+  && /const AMOUNT_SEMIS = 96;/.test(editor)
+  && /origin: 0,/.test(editor)
+  && /read: \(_to, v\) => amountOf\(v\)/.test(editor)
+  && /write: \(x, v\) => toneAt\(oscFrom\(v\), x\)/.test(editor)
+  && /setAt\(v, '\$osc\.to', toneAt\(now, 12 \* Math\.log2/.test(editor)
+  && /envTime\('\$osc\.sweep', 'RATE'/.test(editor)
+  && /arcPath\(originDeg, deg\)/.test(entrySource),
+  'the drum oscillator is FREQUENCY / AMOUNT (±96 semi, centred) / RATE over the stored hertz');
+
+// ---- Off is a bypass, not a delete -------------------------------------------
+//
+// A switched-off section comes back exactly as it was left. This one is run rather than
+// grepped: "it forgot my oscillator" is a behaviour, and the ways to get it wrong —
+// seeding defaults over a hold, handing one preset's section to another, letting a
+// nested hold outlive its parent — all pass a regex that only checks the words.
+//
+// The real functions, lifted out of the module. Importing it is not on: the editor is a
+// browser module that reaches for `document` at load.
+const lift = (re, what) => {
+  const m = re.exec(editor);
+  if (!m) throw new Error(`mixer-layout: could not lift ${what} out of the editor source`);
+  return m[0];
+};
+const bypass = new Function(`
+  ${lift(/const rootOf = [^\n]*;/, 'rootOf')}
+  ${lift(/const keysOf = [^\n]*;/, 'keysOf')}
+  ${lift(/function getAt\(preset, path\) \{[\s\S]*?\n\}/, 'getAt')}
+  ${lift(/function setAt\(preset, path, value\) \{[\s\S]*?\n\}/, 'setAt')}
+  ${lift(/const BODY_DEFAULT = [^\n]*;/, 'BODY_DEFAULT')}
+  ${lift(/const SECTION_DEFAULTS = \{[\s\S]*?\n\};/, 'SECTION_DEFAULTS')}
+  ${lift(/const HELD = [^\n]*;/, 'HELD')}
+  ${lift(/const holdOn = [^\n]*;/, 'holdOn')}
+  ${lift(/const copy = [^\n]*;/, 'copy')}
+  ${lift(/function addSection\([\s\S]*?\n\}/, 'addSection')}
+  ${lift(/function dropSection\([\s\S]*?\n\}/, 'dropSection')}
+  ${lift(/function releaseHold\([\s\S]*?\n\}/, 'releaseHold')}
+  return { addSection, dropSection, SECTION_DEFAULTS };
+`)();
+
+{
+  const { addSection, dropSection, SECTION_DEFAULTS } = bypass;
+
+  // The report itself: tune it, switch it off, switch it back on.
+  const kick = { osc: { type: 'sine', from: 2000, to: 500, sweep: 0.07 } };
+  dropSection(kick, 'osc');
+  assert(kick.osc === undefined, 'switching a section off takes it out of the preset entirely');
+  assert(kick.bypassed?.osc?.from === 2000,
+    '...and onto `bypassed`, which is on the preset and therefore in the file');
+  addSection(kick, 'osc');
+  assert(kick.osc?.from === 2000 && kick.osc?.to === 500,
+    'switching it back on returns the values it was left at, not the factory ones');
+  assert(kick.bypassed === undefined,
+    'and the bag goes with the last hold in it — a preset that uses no switch carries none');
+
+  // ...and a section that has never been on still opens on the sound the engine implied.
+  const fresh = {};
+  addSection(fresh, 'osc');
+  assert(fresh.osc?.from === SECTION_DEFAULTS.osc.from,
+    'a section switched on for the first time still seeds from the engine defaults');
+
+  // Nested: FM lives inside the oscillator, and each remembers its own.
+  const rim = { osc: { from: 400, to: 400, fm: { ratio: 5.2, index: 3 } } };
+  dropSection(rim, 'osc.fm');
+  dropSection(rim, 'osc');
+  addSection(rim, 'osc');
+  assert(rim.osc.from === 400 && rim.osc.fm === undefined,
+    'a section switched off after its child comes back without it — that is how it was left');
+  addSection(rim, 'osc.fm');
+  assert(rim.osc.fm?.ratio === 5.2,
+    'and the child is still held separately, at the values it had when it went off');
+
+  // Switching a CHILD on where the parent is bypassed brings the parent's hold with it,
+  // rather than seeding a default oscillator over the top of one that was tuned.
+  const clave = { osc: { from: 1200, to: 900, fm: { ratio: 7, index: 2 } } };
+  dropSection(clave, 'osc');
+  addSection(clave, 'osc.fm');
+  assert(clave.osc.from === 1200 && clave.osc.fm?.ratio === 7,
+    'turning a nested section on rebuilds its parent from the hold, not from defaults');
+
+  // A hold belongs to the preset it is on, so a copy carries its own — which is what
+  // Save as New, a lane copy and a song's own version of a sound all are.
+  const hat = { osc: { from: 8000, to: 8000 } };
+  dropSection(hat, 'osc');
+  const hat2 = JSON.parse(JSON.stringify(hat));
+  addSection(hat2, 'osc');
+  addSection(hat, 'osc');
+  assert(hat2.osc.from === 8000 && hat.osc.from === 8000,
+    'a copy of a preset carries the holds too — each switch answers for its own preset');
+
+  // The engine never reads `bypassed`, so a preset carrying holds must be, to the ear,
+  // the same preset with them deleted.
+  const played = { kind: 'drum', osc: { from: 60, to: 40 }, noise: { freq: 3000 } };
+  dropSection(played, 'noise');
+  const { bypassed, ...audible } = played;
+  assert(bypassed?.noise?.freq === 3000 && JSON.stringify(audible)
+    === JSON.stringify({ kind: 'drum', osc: { from: 60, to: 40 } }),
+    'a hold is inert — everything the engine reads is what it would be with no hold at all');
+}
 
 assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.test(
   librarySource)
@@ -583,9 +689,11 @@ assert(/function updateArrangementMeter\(readout, lin, now, dt\)[\s\S]*?readout\
   && /const arrangementMeters = new Map\(\)/.test(entry)
   && /for \(const \[key, readout\] of arrangementMeters\)[\s\S]*?updateArrangementMeter\(readout, lin, now, dt\)/.test(entry),
   'arrangement VU fills and peak markers follow the live lane meter path');
-assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addPercussionLane\(\)/.test(entry)
+assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.test(entry)
+  && !entry.includes('missingKitPieces')
   && !entry.includes('openAddTrackPicker'),
-  'the plus opens one new track and its preset selector without a choice menu');
+  'the plus opens one new track and its preset selector without a choice menu — which'
+  + ' sound it is IS the choice, and the library is where that is made');
 assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*?closeMenu\(\)/.test(entry)
   && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry)
   && /#voicepicker button\.voiceclose \{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font-size:\s*23px/s.test(shell),
@@ -776,7 +884,7 @@ assert(!/hsl\(\$\{laneHue\(key\)\} 3[02]% 1[25]%\)/.test(entry)
   'lane tints and active bars use the original strong theme-aware Solid colour');
 assert(/colour: hueColour\(hue\), tint: hueTint\(hue\)/.test(entry),
   'the send returns take the theme\'s palette rather than a raw teal and purple');
-const addTrackFn = entry.match(/function addPercussionLane\(anchor = null\) \{[\s\S]*?\n\}/)?.[0] || '';
+const addTrackFn = entry.match(/function addBlankTrack\(anchor = null, \{ drumsOnly = false \} = \{\}\) \{[\s\S]*?\n\}/)?.[0] || '';
 assert(/pendingAddTrack = \{[\s\S]*?openVoicePicker\(x, y, newKey\)/.test(addTrackFn)
   && !addTrackFn.includes('editMix(')
   && /const emptyLaneMix = \(\) =>/.test(entry)
@@ -784,13 +892,39 @@ assert(/pendingAddTrack = \{[\s\S]*?openVoicePicker\(x, y, newKey\)/.test(addTra
   && /function commitPendingAddTrack[\s\S]*?m\.layers[\s\S]*?m\.lanes\[pending\.key\][\s\S]*?voice\[seam\.voiceKey\]/.test(entry)
   && /const pick = \(id\)[\s\S]*?commitPendingAddTrack\(laneKey, id\)[\s\S]*?closeMenu\(\)/.test(entry),
   'Add Track waits for a preset before creating the independent lane');
-assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addPercussionLane\(ev\.currentTarget\)/.test(entry)
+assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.test(entry)
   && /const plusRect = anchor\?\.getBoundingClientRect/.test(entry),
   'the new-track preset selector opens beside the Arrangement plus');
+// The preset the user picked is what the track IS. A pitched one re-keys it to a melodic
+// lane; a kit one re-keys it onto the piece of the kit it belongs to, which is what hands
+// it that drum's figures, its place in the row order and its share of a groove.
+assert(/const CATEGORY_LANE = \{[\s\S]*?Kick: 'kick'/.test(entry)
+  && /function kitLaneOf\(voice\)[\s\S]*?if \(voice\.homeLane\) return voice\.homeLane;/.test(entry)
+  && /voice\.category === 'Hats' && \/open\/i\.test/.test(entry)
+  && /const home = voice && isKitVoice\(voice\) \? kitLaneOf\(voice\) : 'lead';/.test(entry)
+  && /if \(voice && home && home !== pendingAddTrack\.from && !blocked\)/.test(entry),
+  'an added track is re-keyed onto the lane its chosen preset belongs to — a clap staged'
+  + ' as a tom would stay a tom playing a clap, offered tom figures');
+// Everything the PATTERN EDITOR's plus can make is a drum. The picker is where a new
+// track decides what it is, and a pad chosen there would re-key itself to a melodic lane
+// — a channel the grid it was added from cannot show a single note of.
+assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drumsOnly: true \}\)/g) || []).length === 2
+  && /\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\);/.test(entry)
+  && /const drumsOnly = pending\s*\n\s*\? !!pendingAddTrack\?\.drumsOnly\s*\n\s*: PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\)/.test(entry)
+  && /const KINDS = drumsOnly \? \[\{ id: 'drums', label: 'Drums', keep: isDrumChoice \}\]/.test(entry)
+  // A drum lane is booleans: a step says a hit happens and carries no pitch, so a melodic
+  // preset there is a synth struck at one note over and over. Every route into the picker
+  // — the strip, the row menu, the drum editor — refuses it, in both directions of the
+  // rule: the lane's own preset is still shown, or a drum would have no entry to be on.
+  && /const isDrumChoice = \(v\) => isKitVoice\(v\) \|\| \(chosen && v\?\.id === chosen\)/.test(entry)
+  && /if \(!drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
+  && /const blocked = home === 'lead' && pendingAddTrack\.drumsOnly;/.test(entry),
+  'both pattern editors can only add drums — the picker holds nothing but the kit and the'
+  + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
 assert(/const isIndependentLane = \(key\)[\s\S]*?const layer = isLayer\(laneKey\) && !independent/.test(entry)
   && /A duplicate of \$\{targetLabel\(baseLane\(laneKey\)\)\}/.test(entry),
   'independent tracks are not presented as duplicates of Tom in the voice picker');
-assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key === laneKey[\s\S]*?let kind = pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(entry),
+assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(entry),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
@@ -999,17 +1133,205 @@ assert(/heldKey\?\.classList\.remove\('held'\)/.test(rollSrc)
   && shell.indexOf('.ssqkey.held') > shell.indexOf('.ssqkey.playing'),
   'the key under your finger has its own mark, declared after playback so it wins while'
   + ' the song is running under it');
-// The rules for that row went with the controls — including `#devhead .ssqhostbar`, which
-// styled them back when the roll and the effect cards were two views of one region.
-assert(!/\.ssqhostbar/.test(shell),
-  'and the stylesheet keeps no rules for a control row nothing builds');
+// The roll's own control row is still gone — including `#devhead .ssqhostbar`, which
+// styled it back when the roll and the effect cards were two views of one region. The
+// only `.ssqhostbar` the stylesheet knows about now is the KIT's, in its own strip.
+assert(!/#devhead \.ssqhostbar/.test(shell)
+  && /#notehead \.ssqhostbar \{/.test(shell),
+  'the only control row with rules is the one that is built');
 assert(stepseqAt > shell.indexOf('</main>'),
   'while the step grid is a floating window outside the desk regions altogether');
 assert(/#stepseq \{[^}]*position:\s*fixed[^}]*z-index:\s*13/s.test(shell)
   && /#stepseq \.ssqhead \{[^}]*cursor:\s*grab/s.test(shell)
-  // The property, not the word — the file explains in a comment why it does not pass one.
-  && !/headerHost\s*:/.test(seq),
+  // The WINDOW hands the grid no host, so the grid builds it that header. The docked kit
+  // is the same factory with a host, and it is the flag that tells the two apart.
+  && /createStepSeq\(\{[\s\S]*?el: \$\('stepseq'\)[\s\S]*?\n\}\);/.exec(entry)?.[0]
+       .includes('headerHost') === false,
   'the step grid is a draggable window with a header of its own, not a hosted view');
+
+// ---- the kit, docked in the Notes panel ------------------------------------------
+//
+// The same pattern editor, in the room a percussion channel used to leave empty. Second
+// INSTANCE, not second file: the house figures, the kits, the row order and the write
+// path are the kit itself and there has to be one of each.
+const kitAt = shell.indexOf('<div id="kitroll">');
+assert(kitAt > shell.indexOf('<div id="pianoroll">') && kitAt < shell.indexOf('<div id="mixhead">')
+  && kitAt < shell.indexOf('</main>'),
+  'the kit is the roll\'s sibling inside the Notes panel, not a third region and not a window');
+assert(/createStepSeq\(\{[\s\S]*?el: \$\('stepseq'\)/.test(entry)
+  && /createStepSeq\(\{[\s\S]*?el: \$\('kitroll'\)/.test(entry)
+  && !entry.includes('mixer-drum-roll.js')
+  && /const kitRoll = createStepSeq\(\{[\s\S]*?docked: true,\s*\n\s*wholeSong: true,\s*\n\s*scopeToggle: false/.test(entry)
+  && /const kitRoll = createStepSeq\(\{[\s\S]*?headerHost: \(\) => \$\('notehead'\)/.test(entry),
+  'one factory and two instances: the window keeps its bars and its shared-editing switch,'
+  + ' the docked kit shows the whole song and edits the bar you click');
+// The kit is the pattern editor and looks like it: pads, a gap on every beat, a wider
+// one at every bar line, a ring round the playing square. So the FIELD's geometry cannot
+// be arithmetic — a grid whose bars are not all the same width (the first has no bar line
+// in front of it) has no bar width to multiply by, and a spacer sized that way walks the
+// song away from the ruler it is counted by. It is measured off the ruler instead, which
+// is built whole while the rows are windowed.
+assert(!/#kitroll \.ssqcell \{/.test(shell)
+  && !/#kitroll \.gap/.test(shell)
+  && !/#kitroll \.ssqcells \{/.test(shell)
+  && /function fieldX\(b, i\)[\s\S]*?if \(cell\) return cell\.offsetLeft - cells\[0\]\.offsetLeft;/.test(barGrid)
+  && /function barGap\(\)[\s\S]*?parseFloat\(getComputedStyle\(cell\)\.marginLeft\) \|\| 0/.test(barGrid)
+  && /function colWindow\(\)[\s\S]*?edges\.push\(edgeAt\(b\) \?\? 0\)/.test(barGrid)
+  // And it is read off one held element rather than a querySelectorAll per bar: this
+  // runs on every scroll frame and again on every step of playback.
+  // Its own list, not the container's `children`: the selection band lives in that
+  // container too, so `children[0]` was the band and every measurement taken off "cell
+  // zero" was taken off the thing the measurement was positioning.
+  && /const rulerCells = \(\) => barCells;/.test(barGrid)
+  && /if \(cls === 'ssqbars'\) barCells\.push\(n\);/.test(barGrid),
+  'the docked kit keeps the pattern editor\'s own pads and spacing, and the field measures'
+  + ' the ruler rather than multiplying a step width by sixteen');
+// The kit's controls go in the panel's own header row, beside its name — the row a region
+// already has, rather than a second row of chrome under it eating the field. They are
+// built only when there are any, so the roll gets no bar and no gap where one would be,
+// and they go with the editor: a folded panel has nothing on screen to control.
+assert(/#notehead \.ssqhostbar \{[^}]*display:\s*flex/s.test(shell)
+  && /#notes\.collapsed #notehead \.ssqhostbar \{[^}]*display:\s*none/s.test(shell)
+  // A hidden editor is not rebuilt, so its controls have to be taken out of the header
+  // by the same class that took its field out of the panel.
+  && /#notes\.kitless #notehead \.ssqhostbar\[data-of="kit"\] \{[^}]*display:\s*none/s.test(shell)
+  && /bar\.dataset\.of = ns;/.test(barGrid)
+  && /headerHost: \(\) => \$\('notehead'\)/.test(entry)
+  && /const kids = \[\.\.\.lead\(c\), \.\.\.headerExtra\(c\), \.\.\.scopeEls\];\s*\n\s*if \(kids\.length\) \{/.test(barGrid)
+  && !/rulerHeaderAt/.test(barGrid)
+  && !shell.includes('id="kitbar"')
+  && /#kitroll \{[^}]*--keys:\s*calc\(var\(--contentx\) - var\(--capx\)\)/s.test(shell),
+  'the kit\'s controls sit in the panel header and fold away with it, and a panel with no'
+  + ' controls to contribute gets no bar at all');
+// How far a one-bar figure goes, and what it does to what is already there. Both are
+// CHOSEN — in the menu about to act, cycled in place so the change is visible before a
+// figure is picked — and both are remembered, so the same click keeps meaning one thing.
+assert(/const scope = \(\) => \{[\s\S]*?actionRange \? \(actionRange\(\) \|\| range\) : \(wholeSong \? sel\(\) : range\)/.test(barGrid)
+  && /actionRange: applyBars \? \(\) => applyBars\(figureScope\) : null/.test(seq)
+  && /applyBars: \(kind\) => \{[\s\S]*?if \(kind === 'song'\) return null;[\s\S]*?if \(kind === 'selection' && selectedBar\)/.test(entry)
+  && /function layDown\(byLane, \{ add = false \} = \{\}\) \{[\s\S]*?const a = scope\(\);[\s\S]*?for \(let b = a\.from; b <= a\.to; b\+\+\)/.test(barGrid)
+  && /const was = add \? readBar\(b, lane\) : null;[\s\S]*?steps\.map\(\(on, i\) => \(on \|\| !!was\?\.\[i\]\)\)/.test(barGrid)
+  && /function toggleMute\(lane\) \{[\s\S]*?setLanesOff\(draft\(\), a\.from, a\.to/.test(barGrid)
+  // And the title says which bars, in words, above the items about to write them.
+  && /\? 'the whole song' : barWords\(a\)/.test(barGrid),
+  'a figure lands in the bar being played, the bars you select or the whole song, and'
+  + ' either replaces what the row plays or adds to it');
+// And the RULER says which bars they are — the timeline's own way of saying it about
+// the same selection, rather than a wash over the steps you are trying to read. Both
+// note editors draw it, and both let you make it: the ruler is a control here as it is
+// on the timeline, with the same shift-extend and the same drag.
+assert(/n\.className = 'ssqbarnum' \+ stepClasses\(b, i\) \+ \(inSel \? ' insel' : ''\)/.test(barGrid)
+  && /const picked = selectedBars\?\.\(\) \|\| null;/.test(barGrid)
+  && !barGrid.includes('scopeBand')
+  // The timeline's own gradient, drawn as ONE band per strip: 45° stripes on a 22px box
+  // restart at every box, which is a seam every twenty-two pixels instead of a hatch.
+  // One band over the whole ruler, not one per strip: two of them is two blocks with a
+  // seam and the hatch angle starting again in the second.
+  && /function placeSelBand\(\)[\s\S]*?selBand\.classList\.add\('show'\)/.test(barGrid)
+  && /:is\(#pianoroll,#kitroll\) \.ssqselclip \{[^}]*z-index:\s*11[^}]*overflow:\s*hidden[^}]*left:\s*calc\(var\(--keys\) \+ var\(--keyseam\)\)/s.test(shell)
+  && /:is\(#pianoroll,#kitroll\) \.ssqselband \{[^}]*translateX\(calc\(-1 \* var\(--roll-scroll-x, 0px\)\)\)/s.test(shell)
+  && /:is\(#pianoroll,#kitroll\) \.ssqselband \{[^}]*repeating-linear-gradient\(45deg,/s.test(shell)
+  && /:is\(#pianoroll,#kitroll\) \.ssqselband \{[\s\S]*?var\(--selected-ink\) 13%/s.test(shell)
+  && /#selregion \{[^}]*repeating-linear-gradient\(45deg,/s.test(shell)
+  && /:is\(#pianoroll,#kitroll\) \.ssqruler \.ssqbarnum \{[^}]*cursor:\s*pointer/s.test(shell),
+  'the bars picked out are hatched on the ruler exactly as the timeline hatches the same'
+  + ' selection — not washed over the steps');
+// The drag is delegated from the panel root and finished on the window, because marking
+// a selection repaints the panel: a listener on the cell would hear one move and no more.
+assert(/if \(onSelectBars\) \{[\s\S]*?el\.addEventListener\('pointerdown'[\s\S]*?if \(ev\.shiftKey && cur\) \{ rulerDrag = \{ anchor: cur\.from \}; onSelectBars\(cur\.from, b\); return; \}/.test(barGrid)
+  && /addEventListener\('pointermove', \(ev\) => \{\s*\n\s*if \(!rulerDrag/.test(barGrid)
+  && /const cell = document\.elementFromPoint\(ev\.clientX, ev\.clientY\)\?\.closest\?\.\('\.ssqbarnum'\)/.test(barGrid)
+  && (entry.match(/onSelectBars: \(from, to\) => markBar\(selectedBar\?\.key \?\? null, from, to, \{ focus: false \}\)/g) || []).length === 2
+  // …and without re-centring: the bars are already in front of you, and centring on
+  // every move of that drag walks the field out from under the pointer.
+  && /function markBar\(key, from, to = from, \{ focus = true \} = \{\}\)/.test(entry)
+  && /if \(focus\) \{\s*\n\s*pianoRoll\.focusRange/.test(entry)
+  && /selectedBars, onSelectBars,/.test(piano),
+  'and both editors can SET it from their ruler — one selection, changed wherever you'
+  + ' happen to be looking');
+// And put it away again. A ruler that can only ever select has no way out of a selection,
+// and every action on this panel reads "the bars I select" differently once there are none.
+assert(/if \(cur && b >= cur\.from && b <= cur\.to\) \{ rulerDrag = \{ anchor: b, armed: true \}; return; \}/.test(barGrid)
+  && /if \(rulerDrag\.armed\) \{\s*\n\s*if \(b === rulerDrag\.anchor\) return;\s*\n\s*rulerDrag\.armed = false;/.test(barGrid)
+  && /const endDrag = \(\) => \{\s*\n\s*if \(rulerDrag\?\.armed\) onSelectBars\(null\);/.test(barGrid)
+  && /function markBar\(key, from, to = from, \{ focus = true \} = \{\}\) \{\s*\n\s*selectedBar = from != null \?/.test(entry),
+  'a click on a region you already have puts it away, while holding the press and'
+  + ' dragging starts a new one from that bar');
+// And a way out that needs no aim. A selection is a mode — it decides what a groove lands
+// in, what a region edit acts on, what the loop plays — so the toolbar names it beside the
+// bar and the tempo, and carries the one control that unambiguously means "put it away".
+assert(/<button id="selclear"/.test(shell)
+  && /function syncSelReadout\(\)[\s\S]*?stat\.hidden = !selectedBar;[\s\S]*?from === to \? `\$\{from \+ 1\}` : `\$\{from \+ 1\}-\$\{to \+ 1\}`/.test(entry)
+  && /function redrawSelection\(\) \{\s*\n\s*syncSelReadout\(\);/.test(entry)
+  && /\$\('selclear'\)\.onclick = \(ev\) => \{ ev\.stopPropagation\(\); markBar\(null, null\); \}/.test(entry),
+  'the toolbar names the bars picked out and carries the ✕ that clears them');
+// And the loop, on that same readout: `currentLoopBounds` reads the picked-out bars
+// before anything else, so "loop" has always meant "loop these" — it was only the UI that
+// kept them apart. Two buttons over one state, so the readout hears about either.
+// One control, two halves: the switch, and the bars it switches over. They were always
+// one thing — `currentLoopBounds` reads the picked-out bars before anything else — and
+// standing at opposite ends of the toolbar was the only reason they did not look it.
+assert(/<span class="loopsel">\s*\n\s*<button id="looptoggle"/.test(shell)
+  && /<span class="selrange" id="selstat" hidden/.test(shell)
+  && /\.loopsel #looptoggle \{[^}]*border-top-right-radius:\s*0/s.test(shell)
+  && /\.selrange \{[^}]*border-radius:\s*0 6px 6px 0/s.test(shell)
+  && /\.selrange\[hidden\] \{[^}]*display:\s*none/s.test(shell)
+  && /function currentLoopBounds\(\)[\s\S]*?if \(selectedBar\) \{/.test(entry)
+  && /function syncLoopButton\(\)[\s\S]*?syncSelReadout\(\);/.test(entry)
+  && /\$\('looptoggle'\)\.title = loopOn/.test(entry),
+  'the loop switch and the bars it plays are one control, and the range half goes away'
+  + ' when there are no bars to name');
+// The note editors are drawn from the bar list, so an edit to the SHAPE has to reach
+// them — repeating bars used to repaint the arrangement and leave the editor below it
+// drawing the bars the song no longer had.
+assert(/const planBefore = render \? JSON\.stringify\(arrDraftOf\(\)\?\.plan \?\? null\) : null;/.test(entry)
+  && /if \(JSON\.stringify\(next\?\.plan \?\? null\) !== planBefore\) \{\s*\n\s*stepSeq\.refresh\(\);\s*\n\s*pianoRoll\.refresh\(\);\s*\n\s*kitRoll\.refresh\(\);/.test(entry),
+  'a change to the bars themselves repaints the note editors, and a note edit does not —'
+  + ' the panel that made it has already redrawn, and a whole-song field is not cheap');
+assert(/const SCOPES = \[\s*\n\s*\['bar', 'the bar being played'\]/.test(seq)
+  && /let figureScope = readStored\(SCOPE_KEY/.test(seq)
+  && /let figureAdds = readStored\(MODE_KEY/.test(seq)
+  && /function scopeButton\(\)[\s\S]*?Apply to: \$\{at\[1\]\} ▾[\s\S]*?setFigureScope\(id\); grid\.refresh\(\);/.test(seq)
+  && /function modeButton\(\)[\s\S]*?figureAdds \? 'Add' : 'Replace'[\s\S]*?setFigureAdds\(!figureAdds\)/.test(seq)
+  && /headerExtra: \(\) => \[kitButton\(\), grooveButton\(\), \.\.\.\(docked \? \[scopeButton\(\)\] : \[\]\), modeButton\(\)\]/.test(seq)
+  && !seq.includes('settingItems'),
+  'both settings are controls on that strip rather than lines inside the menus they'
+  + ' govern — the scope only where a panel shows more than it acts on');
+// One list of rhythms, the same on every row. Per-lane figure lists meant the same menu
+// in the same place held something different on each line, so there was nothing to learn.
+assert(/const FIGURES = \[/.test(seq)
+  && !seq.includes('PATTERNS')
+  && /const items = FIGURES\.map\(\(\[label, s\]\) => \(\{/.test(seq)
+  && /\['Sixteenths', 'xxxxxxxxxxxxxxxx'\]/.test(seq)
+  && /\['On the 4', '\.\.\.\.\.\.\.\.\.\.\.\.x\.\.\.'\]/.test(seq)
+  // Named the way the figures are said out loud, and no near-duplicates: the & of 2
+  // and 4 is two hits of the offbeat, and belongs to the House grooves rather than to
+  // a row's own list.
+  && /\['Offbeat', OFFBEAT\]/.test(seq)
+  && /\['Four on the floor', FOUR\]/.test(seq)
+  && /add: figureAdds/.test(seq)
+  && !/\[[^\]]*', AND\]/.test(/const FIGURES = \[[\s\S]*?\];/.exec(seq)?.[0] || ''),
+  'every drum is offered the same rhythms — a rhythm is not the property of a drum, and'
+  + ' a menu that holds a different list on every row is one you have to open to read');
+assert(/onPickLane: \(lane, el\) => \{[\s\S]*?selectLane\(lane\);[\s\S]*?openVoicePicker\(/.test(entry)
+  && /if \(onPickLane\) \{[\s\S]*?name\.onclick = \(ev\) => onPickLane\(row\.lane, ev\.currentTarget\);[\s\S]*?\} else \{[\s\S]*?name\.onclick = \(\) => grid\.toggleMute\(row\.lane\);/.test(seq)
+  && /#kitroll \.ssqlane\.current \.ssqhead-cell \{[^}]*var\(--accent\)/s.test(shell),
+  'docked, a track name is the channel AND its preset — it puts the desk on that drum and'
+  + ' opens the library at it; in the window it is still the arrangement mute it was');
+// A kit is SOUNDS. One edit, so one ⌘Z takes the whole kit back off — a loop over
+// setLaneVoice would be six edits, six re-banks and six steps to undo.
+const applyKitFn = /function applyKit\(name, voices\)[\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(applyKitFn.match(/editMix\(/g)?.length === 1
+  && !applyKitFn.includes('setLaneVoice(')
+  && /applyKit: \(name, voices\) => applyKit\(name, voices\)/.test(entry)
+  && /export const KITS = \[/.test(seq),
+  'a whole kit of sounds is one mix edit and one undo step, and never touches a step');
+assert(/kitRoll\.songChanged\(\)/.test(entry)
+  && /function paintSelectionEditors\(\)[\s\S]*?kitRoll\.refresh\(\)/.test(entry)
+  && /pianoRoll\.armFollow\?\.\(\);\s*\n\s*kitRoll\.armFollow\?\.\(\);/.test(entry)
+  && /pianoRoll\.focusRange\(selFrom\(\), selTo\(\)\);\s*\n(\s*\/\/[^\n]*\n)*\s*kitRoll\.focusRange\(selFrom\(\), selTo\(\)\);/.test(entry),
+  'and the kit is wired wherever the roll is: the song changing, the selection moving,'
+  + ' the transport arming and following');
 // A window needs the desk's standard close, and this one wears `.popclose` — but an ID in
 // front of a class beats a bare class, so the panel's own small-control rule was silently
 // shrinking it back to the 11px × that `.popclose` exists to abolish. The `:not()` is what
@@ -1017,9 +1339,9 @@ assert(/#stepseq \{[^}]*position:\s*fixed[^}]*z-index:\s*13/s.test(shell)
 assert(/createBarGrid[\s\S]*?shut\.className = 'ssqx popclose'/.test(
   readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.url), 'utf8')),
   'the window\'s close is the desk\'s shared one, not a mark of its own');
-assert(/:is\(#stepseq,#pianoroll\) \.ssqx:not\(\.popclose\)/.test(shell)
-  && !/:is\(#stepseq,#pianoroll\) \.ssqx \{/.test(shell)
-  && /:is\(#stepseq,#pianoroll\) \.ssqx\.ssqadd \{[^}]*font-size:\s*17px/s.test(shell),
+assert(/:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx:not\(\.popclose\)/.test(shell)
+  && !/:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx \{/.test(shell)
+  && /:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx\.ssqadd \{[^}]*font-size:\s*17px/s.test(shell),
   'and the panel\'s small controls cannot shrink it, nor the guard shrink the +');
 // One button each, and each opens ONLY its own panel. The old form of this checked that
 // the view switch never reached `stepSeq`; with the views gone it is the simpler and
@@ -1248,9 +1570,12 @@ assert(/grid\.setRulerLabel\('Bar'\)/.test(piano)
   // uppercasing went with the word they were for.
   && /#pianoroll \.ssqbarnum \{[^}]*font-variant-numeric:\s*normal/s.test(shell)
   && /#pianoroll \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*0[^}]*text-transform:\s*none/s.test(shell)
+  // The docked kit numbers its bars the same way, for the same reason.
+  && /#kitroll \.ssqbarnum \{[^}]*font-variant-numeric:\s*normal/s.test(shell)
+  && /#kitroll \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*0[^}]*text-transform:\s*none/s.test(shell)
   // The step grid keeps both — there the number is still the phrase "Bar 12".
-  && /:is\(#stepseq,#pianoroll\) \.ssqbarnum \{[^}]*tabular-nums/s.test(shell)
-  && /:is\(#stepseq,#pianoroll\) \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*\.05em[^}]*text-transform:\s*uppercase/s.test(shell),
+  && /:is\(#stepseq,#pianoroll,#kitroll\) \.ssqbarnum \{[^}]*tabular-nums/s.test(shell)
+  && /:is\(#stepseq,#pianoroll,#kitroll\) \.ssqbars \.ssqbarnum \{[^}]*letter-spacing:\s*\.05em[^}]*text-transform:\s*uppercase/s.test(shell),
   'the docked roll names its ruler BAR once in the corner and numbers the bars bare, over their own beat 1');
 // The mouse-mode picker is the desk's, not the platform's — and the point of that is
 // the LIST. `appearance: none` only ever styled the closed box; the popup a `<select>`
@@ -1388,31 +1713,40 @@ assert(/function presetForLane\(laneKey\)[\s\S]*?defaultVoiceOf\(track\?\.bank, 
   && /#devhead \.panelpreset \{[^}]*text-transform:\s*none/s.test(shell)
   && /#devhead \.paneltype \{[^}]*text-transform:\s*uppercase/s.test(shell),
   'the effects heading carries the active preset name and uppercase type, and strip selection refreshes the roll');
-// The Notes header is the word, and then the preset whose part is on the roll — which
-// is not always the selected strip: a percussion channel has no roll at all, and there
-// the header is the word alone because there is nothing on screen to name.
+// The Notes header is the word, and then the preset whose part is ON SCREEN — which is
+// not always the selected strip: with the master selected the roll still shows a lane.
+// On the kit it is the selected drum, the one whose row the column marks. Only a channel
+// with neither editor leaves the word standing alone.
 const notesPanelSync = /function syncNotesPanel\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
 assert(!entry.includes("$('notetitle')") && !shell.includes('notetitle')
-  && /<span class="label">Notes<\/span>[\s\S]*?<span id="notepreset"><\/span>/.test(shell)
+  && /<span class="label" id="notelabel">Notes<\/span>[\s\S]*?<span id="notepreset"><\/span>/.test(shell)
   && /#notehead #notepreset \{[^}]*text-transform:\s*none/s.test(shell)
   && /#notehead #notepreset:empty \{[^}]*display:\s*none/s.test(shell)
-  && /\$\('notepreset'\)\.textContent = hide \? '' : presetHeadingFor\(rollShownLane\(\)\)\.name;/.test(notesPanelSync),
-  'the Notes header names the preset the roll is showing, and nothing on a drum channel');
+  && /<span class="label" id="notelabel">Notes<\/span>/.test(shell)
+  && /\$\('notelabel'\)\.textContent = kind === 'kit' \? 'Drum editor' : 'Notes';/.test(notesPanelSync)
+  && /\$\('notepreset'\)\.textContent = kind === 'roll' \? presetHeadingFor\(rollShownLane\(\)\)\.name : '';/.test(notesPanelSync),
+  'the panel is named for what is in it — Notes and the preset on the roll, or the Drum'
+  + ' editor, which is every drum in the song at once and so names no channel at all');
 
-// A drum channel takes the roll out of the panel rather than falling through to the
-// first melodic lane. The PANEL does not move: not its fold, not its height, not the
-// desk around it — clicking between a drum strip and a melodic one must not resize
-// anything. What is left is an empty field, which is where the pattern will be drawn.
-assert(/const laneHidesRoll = \(key\) => !!key && !key\.startsWith\('__'\) && !rollEditable\(key\)/.test(entry)
-  && /const notesRollUp = \(\) => !\$\('notes'\)\.classList\.contains\('collapsed'\) && !laneHidesRoll\(selectedLane\)/.test(entry)
-  && /\$\('notes'\)\.classList\.toggle\('rollless', hide\)/.test(notesPanelSync)
+// A drum channel takes the roll out of the panel and puts the KIT in, rather than
+// falling through to the first melodic lane. The PANEL does not move: not its fold, not
+// its height, not the desk around it — clicking between a drum strip and a melodic one
+// must not resize anything. A channel with neither editor leaves it empty, as before.
+assert(/const editorFor = \(key\) => \{[\s\S]*?if \(PERCUSSION_LANES\.includes\(baseLane\(key\)\)\) return 'kit';[\s\S]*?return rollEditable\(key\) \? 'roll' : null;/.test(entry)
+  && /const laneHidesRoll = \(key\) => editorFor\(key\) !== 'roll'/.test(entry)
+  && /const notesRollUp = \(\) => notesOpen\(\) && editorFor\(selectedLane\) === 'roll'/.test(entry)
+  && /const notesKitUp = \(\) => notesOpen\(\) && editorFor\(selectedLane\) === 'kit'/.test(entry)
+  && /\$\('notes'\)\.classList\.toggle\('rollless', kind !== 'roll'\)/.test(notesPanelSync)
+  && /\$\('notes'\)\.classList\.toggle\('kitless', kind !== 'kit'\)/.test(notesPanelSync)
   && !notesPanelSync.includes('setNotesFolded')
   && !notesPanelSync.includes('scheduleDeskFit')
   && !notesPanelSync.includes('style.height')
-  && /function selectLane\(key\)[\s\S]*?syncNotesPanel\(\)[\s\S]*?pianoRoll\.refresh\(\)/.test(entry)
+  && /function selectLane\(key\)[\s\S]*?syncNotesPanel\(\)[\s\S]*?pianoRoll\.refresh\(\)[\s\S]*?kitRoll\.refresh\(\)/.test(entry)
   && /#notes\.rollless #pianoroll \{[^}]*display:\s*none/s.test(shell)
-  && !/#notes\.rollless \{/.test(shell),
-  'a percussion channel hides the roll and leaves the panel exactly where it was');
+  && /#notes\.kitless #kitroll \{[^}]*display:\s*none/s.test(shell)
+  && !/#notes\.rollless \{/.test(shell)
+  && !/#notes\.kitless \{/.test(shell),
+  'a percussion channel swaps the roll for the kit and leaves the panel exactly where it was');
 // Two things follow from the roll being absent rather than folded: nothing builds a
 // roll for a channel that has none, and the panel's floor cannot fall by the height of
 // the strip that went with it — a cramped desk would claw the difference back on every

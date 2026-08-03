@@ -481,6 +481,9 @@ export function autoRange(bank, lane, fallback = 48) {
 export function createPianoRoll({
   el, Audio, bank, editBank, draft, sel, apply, laneColour, engineBank,
   lane, laneLabel = (key) => LABELS[key] || key,
+  // The desk's bar selection, drawn on this ruler and changed from it — the same drag
+  // the timeline has, on the same selection. See createBarGrid.
+  selectedBars = null, onSelectBars = null,
   scale = () => ({ root: 0, id: 'chromatic' }),
   pitchSize = ROW_H,
   toast = () => {},
@@ -859,6 +862,7 @@ export function createPianoRoll({
 
   const grid = createBarGrid({
     el, Audio, bank, editBank, draft, sel, apply, engineBank, laneLabel,
+    selectedBars, onSelectBars,
     ns: 'roll',
     // The two that make this a roll rather than a pattern editor: it shows the whole
     // song and it lives in the page. See createBarGrid.

@@ -350,7 +350,6 @@
   header .readouts .stat > span + span { min-width: 3ch; }
   header .readouts #tnow { min-width: 9ch; }   /* 0:00/0:00 */
   header .readouts #cpu { min-width: 5ch; }    /* ~100% — the + past that is rare */
-  header .readouts .stat > span + span.dirty { color: var(--hot); text-shadow: none; }
   /* A tempo that is not the song's own — you are listening at it, not writing it. */
   header .readouts .stat > span + span.tweaked { color: var(--accent); }
   header .readouts .stat > span + span.draggy { cursor: ns-resize; }
@@ -406,6 +405,28 @@
   .looptray button { border-color: transparent; background: var(--traybtn);
                     border-radius: 6px; padding: 4px 9px; white-space: nowrap; }
   .looptray button.on { background: var(--accent); color: var(--on-accent); }
+  /* ---- the loop and the bars it plays, as one control ------------------------------
+     Two halves of one button rather than two controls: the switch, and what it is
+     switching over. They share the tray's own button surface and a single radius, split
+     by one seam, so the pair reads as one object with a range in it. The range half is
+     hidden when nothing is picked out — there the switch is looping the locators or
+     nothing, and a bar range with no bars in it is a window with the glass out. */
+  .loopsel { display: flex; align-items: stretch; gap: 0; }
+  .loopsel #looptoggle { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .loopsel:has(#selstat:not([hidden])) #looptoggle { padding-right: 8px; }
+  .selrange { display: flex; align-items: center; gap: 4px; padding: 0 5px 0 7px;
+              border-radius: 0 6px 6px 0; background: var(--traybtn);
+              box-shadow: inset 1px 0 0 var(--line);
+              color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: .02em;
+              white-space: nowrap; }
+  .selrange[hidden] { display: none; }
+  #selnow { min-width: 3ch; text-align: center;
+            text-shadow: 0 0 8px color-mix(in srgb, var(--selected-ink) 26%, transparent); }
+  /* The way out, on the thing it puts away. */
+  .selrange .selclear { width: 15px; height: 15px; flex: none; padding: 0; border: 0;
+              border-radius: 3px; background: none; color: var(--dim);
+              font-size: 12px; line-height: 15px; cursor: pointer; }
+  .selrange .selclear:hover { color: var(--hot); background: var(--hover); border-color: transparent; }
   select, button, input[type=number] {
     background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
     border-radius: 4px; padding: 5px 9px; font: inherit; cursor: pointer;
@@ -469,20 +490,24 @@
      other way to inset one. */
   #arrgrid::-webkit-scrollbar,
   #pianoroll .ssqscroll::-webkit-scrollbar,
+  #kitroll .ssqscroll::-webkit-scrollbar,
   #stepseq .ssqscroll::-webkit-scrollbar { width: var(--rgut); height: var(--rollbarh, 12px); }
   #arrgrid::-webkit-scrollbar-thumb,
   #pianoroll .ssqscroll::-webkit-scrollbar-thumb,
+  #kitroll .ssqscroll::-webkit-scrollbar-thumb,
   #stepseq .ssqscroll::-webkit-scrollbar-thumb {
                       background: var(--faint); background-clip: padding-box;
                       border: 5px solid transparent; border-radius: 10px; }
   #arrgrid::-webkit-scrollbar-thumb:hover,
   #pianoroll .ssqscroll::-webkit-scrollbar-thumb:hover,
+  #kitroll .ssqscroll::-webkit-scrollbar-thumb:hover,
   #stepseq .ssqscroll::-webkit-scrollbar-thumb:hover {
                       background: var(--dim); background-clip: padding-box; }
   /* Along the bottom there is no margin to ride in, so the horizontal one is the
      thin bar with air around it instead of the wide one — the same 6px thumb the
      rest of the desk scrolls by. */
   #pianoroll .ssqscroll::-webkit-scrollbar-thumb:horizontal,
+  #kitroll .ssqscroll::-webkit-scrollbar-thumb:horizontal,
   #stepseq .ssqscroll::-webkit-scrollbar-thumb:horizontal { border-width: 3px; border-radius: 6px; }
   /* The effects rack is the third field down that right edge, so its vertical bar is
      the same wide inset one — flush against the window it read as a different desk to
@@ -1225,16 +1250,37 @@
   #notes { position: relative; flex: none; display: flex; flex-direction: column;
            background: var(--panel); }
   #notes.collapsed { flex: 0 0 auto; }
-  #notes.collapsed #pianoroll { display: none; }
-  /* A percussion channel has no roll — no pitch axis to put one on, and the step grid
-     is where its bars are edited. The panel used to fall through to the first melodic
-     lane, so selecting the kick left the lead's part on screen under a header that
-     named it: a part you could edit while looking at the wrong strip.
-     The ROLL goes, the PANEL stays: same height, same place, an empty field until a
-     pitched channel is chosen. Collapsing it as well made every click between a drum
-     strip and a melodic one resize the whole desk, and the room is not spare anyway —
-     the pattern belongs in it, and will be drawn there. */
+  #notes.collapsed #pianoroll,
+  #notes.collapsed #kitroll { display: none; }
+  /* A percussion channel has no roll — no pitch axis to put one on. The panel used to
+     fall through to the first melodic lane, so selecting the kick left the lead's part
+     on screen under a header that named it: a part you could edit while looking at the
+     wrong strip. Then the roll simply went, and the panel sat empty.
+     Now the KIT goes there: the same room, one row per drum the song has. The two
+     classes are what say which editor is up, and a channel can have neither — a gesture
+     lane builds its own timing inside the gesture and there is nothing a grid can
+     honestly draw for it, so both are on and the panel is empty as before.
+     The ROLL or the KIT changes; the PANEL never does. Same height, same place, whatever
+     is selected. Collapsing it made every click between a drum strip and a melodic one
+     resize the whole desk. */
   #notes.rollless #pianoroll { display: none; }
+  #notes.kitless #kitroll { display: none; }
+  /* The editor's controls, in the panel's own header beside its name — the row a region
+     already has, rather than a second row of chrome under it. Every pixel a strip of
+     their own would take is a pixel of field.
+     The grid builds this bar only when it has something to put in it, so the roll — whose
+     zoom and tool live in the blank half of its key column — gets no bar and no gap where
+     one would be. And it goes away with the editor: a folded panel is a panel with no
+     editor on screen, and controls for something you cannot see are controls for nothing.
+     The `+` is set at 17px so it reads as the arrangement's own add control, and a 17px
+     glyph brings its whole line box with it — held to the row's height instead. */
+  #notehead .ssqhostbar { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
+  #notehead .ssqhostbar .ssqx.ssqadd { height: 18px; line-height: 18px; padding: 0 2px; }
+  #notes.collapsed #notehead .ssqhostbar { display: none; }
+  /* A hidden editor is not rebuilt — that is the point of hiding it — so its controls are
+     still in the header when the other one takes the panel. `data-of` is the panel that
+     put them there, and the class on #notes says which panel is up. */
+  #notes.kitless #notehead .ssqhostbar[data-of="kit"] { display: none; }
   #notes.greedy { flex: 1 1 auto; min-height: 0; }
   /* No rule under the caption. Arrangement and Mixer draw none under theirs, and this
      one was the only header on the desk with a line beneath the words — it read as a
@@ -2556,6 +2602,49 @@
   #pianoroll .ssqdock .ssqscroll { width: 0; flex: 1 1 0; min-width: 0;
                                    margin-top: 0; margin-left: var(--keyseam); }
   #pianoroll .ssqdock .ssqbody .ssqrow { gap: 0; }
+  /* `#selregion`'s own gradient and edges — the timeline says this about this same
+     selection, and two drawings of one fact is two things to learn.
+     ONE band across the whole ruler: both number strips and the air between them. Per
+     strip it was two blocks with a seam between them and the hatch angle starting again
+     in the second, which reads as two selections rather than one region. Per CELL it is
+     worse still — 45° stripes on a 22px box restart at every box.
+     It hangs in a clip that begins where the field begins, so a selection scrolled to the
+     left edge can never reach the BAR and BEAT labels, and it travels sideways on the
+     same `--roll-scroll-x` the ruler's own cells ride. */
+  :is(#pianoroll,#kitroll) .ssqruler .ssqcells { user-select: none; }
+  /* Above the number strips, not behind them. The roll's are `position: sticky` at
+     z-index 10 and carry the panel's own background, so a band under them showed only in
+     the 5px of air below the beats — a hatched sliver along the bottom of the ruler. The
+     hatch is 13% ink, so the numbers read straight through it, exactly as the timeline's
+     own band reads over its ticks. */
+  :is(#pianoroll,#kitroll) .ssqselclip { position: absolute; z-index: 11; overflow: hidden;
+                      top: 0; bottom: 0; right: 0; pointer-events: none;
+                      left: calc(var(--keys) + var(--keyseam)); }
+  :is(#pianoroll,#kitroll) .ssqselband { position: absolute; top: 0; bottom: 0;
+                      display: none; pointer-events: none;
+                      transform: translateX(calc(-1 * var(--roll-scroll-x, 0px)));
+                      background: repeating-linear-gradient(45deg,
+                                    color-mix(in srgb, var(--selected-ink) 13%, transparent) 0 4px,
+                                    rgba(255,255,255,0) 4px 8px);
+                      box-shadow: inset 1px 0 0 color-mix(in srgb, var(--selected-ink) 55%, transparent),
+                                  inset -1px 0 0 color-mix(in srgb, var(--selected-ink) 55%, transparent); }
+  :is(#pianoroll,#kitroll) .ssqselband.show { display: block; }
+  /* The numbers under it come forward, so the band reads as being over the ruler rather
+     than as the ruler having gone dim. */
+  :is(#pianoroll,#kitroll) .ssqbarnum.insel { position: relative; z-index: 3; color: var(--ink); }
+  :is(#pianoroll,#kitroll) .ssqbars .ssqbarnum.insel { font-weight: 700; }
+  /* The ruler is a control: it picks bars out, a drag across it picks a range, and a
+     click on a region you already have puts it away.
+     Its cells fill the strip they are in. A number is a 13px line box and the strip is
+     18px, so centred as text it left two and a half pixels of nothing above and below —
+     and the two strips together made a five-pixel band across the middle of the ruler
+     where the pointer found no cell and the drag stopped dead. The number sits where it
+     always did; the box it is in now reaches the edges of its row. */
+  :is(#pianoroll,#kitroll) .ssqruler .ssqrow { align-items: stretch; }
+  :is(#pianoroll,#kitroll) .ssqruler .ssqcells { height: 100%; align-items: stretch; }
+  :is(#pianoroll,#kitroll) .ssqruler .ssqbarnum { cursor: pointer; height: 100%;
+                      display: flex; align-items: center; }
+
   /* The roll is always visible when the notes panel is open; the panel's .collapsed
      class hides it (see #notes.collapsed #pianoroll above).
      The step sequencer window is display:none by default and uses .show to appear. */
@@ -2569,12 +2658,12 @@
                       margin: -9px -8px 8px; padding: 8px 10px;
                       border-bottom: 1px solid var(--line); cursor: grab; }
   #stepseq.dragging .ssqhead { cursor: grabbing; }
-  :is(#stepseq,#pianoroll) .ssqtitle { flex: 1; font-size: 11px; color: var(--ink); font-weight: 700;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqtitle { flex: 1; font-size: 11px; color: var(--ink); font-weight: 700;
                        text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
-  :is(#stepseq,#pianoroll) .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlink { width: auto; flex: none; padding: 3px 8px; font-size: 10px;
                       letter-spacing: .04em; color: var(--dim); background: var(--input);
                       border: 1px solid var(--line); border-radius: 3px; }
-  :is(#stepseq,#pianoroll) .ssqlink.on { background: var(--primary); color: var(--accent); border-color: var(--primary); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlink.on { background: var(--primary); color: var(--accent); border-color: var(--primary); }
   /* `:not(.popclose)` is the whole point of this line. The window's ✕ already wears the
      desk's standard close — 28px square, a 19px mark, the same one on the keyboard, the
      preset library and the voice editor — but an ID in front of a class outranks a bare
@@ -2582,25 +2671,25 @@
      That is exactly the drift `.popclose` was written to end (see the note there, which
      names this panel as one of the three). The small box is for the panel's OWN little
      controls, like the `+`; the close is not one of them. */
-  :is(#stepseq,#pianoroll) .ssqx:not(.popclose) {
+  :is(#stepseq,#pianoroll,#kitroll) .ssqx:not(.popclose) {
                    width: auto; flex: none; padding: 2px 6px; font-size: 11px;
                    line-height: 1; color: var(--dim); background: none; border: none; }
-  :is(#stepseq,#pianoroll) .ssqx:not(.popclose):hover { color: var(--hot); background: none; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqx:not(.popclose):hover { color: var(--hot); background: none; }
   /* Written `.ssqx.ssqadd` to match the specificity the `:not()` above added — a plain
      `.ssqadd` is one class lighter and lost its 17px glyph to it, which is a `+` shrunk to
      the size of the text beside it. */
-  :is(#stepseq,#pianoroll) .ssqx.ssqadd { margin-left: -2px; font-size: 17px; color: color-mix(in srgb, var(--dim) 82%, var(--panel)); }
-  :is(#stepseq,#pianoroll) .ssqx.ssqadd:hover { color: var(--ink); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqx.ssqadd { margin-left: -2px; font-size: 17px; color: color-mix(in srgb, var(--dim) 82%, var(--panel)); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqx.ssqadd:hover { color: var(--ink); }
   /* Shared edits reach beyond the bars visible in the grid. Name those bars before
      the first cell, where the scope cannot be mistaken for a save-state indicator. */
-  :is(#stepseq,#pianoroll) .ssqscope { display: flex; align-items: baseline; gap: 9px; flex: none;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqscope { display: flex; align-items: baseline; gap: 9px; flex: none;
                        margin: -1px 0 7px; padding: 6px 8px;
                        color: color-mix(in srgb, var(--dim) 55%, var(--ink)); background: color-mix(in srgb, var(--accent) 7%, transparent);
                        border-left: 3px solid var(--accent); border-radius: 2px;
                        font-size: 10px; line-height: 1.35; }
-  :is(#stepseq,#pianoroll) .ssqscope strong { flex: none; color: var(--accent); font-size: 9px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqscope strong { flex: none; color: var(--accent); font-size: 9px;
                               text-transform: uppercase; letter-spacing: .09em; }
-  :is(#stepseq,#pianoroll) .ssqscope span { min-width: 0; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqscope span { min-width: 0; }
   /* One scroller owns rulers AND lanes, so a wide selection cannot move out from under
      its bar numbers. The sticky left edge is the channel rack; the pattern scrolls.
      The air above is a MARGIN, not padding: a scroll container's top padding pushes the
@@ -2608,7 +2697,7 @@
      the keyboard and the playhead scrolled up through the slot above them. */
   /* No `scrollbar-color` here — see the scrollbar block up top: it takes this element
      off the desk's own bar and back onto the browser's. */
-  :is(#stepseq,#pianoroll) .ssqscroll { min-height: 0; overflow: auto;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqscroll { min-height: 0; overflow: auto;
                         margin-top: 2px; padding: 0 0 4px; }
   /* The roll's gutter is the desk's right margin, exactly as the arrangement's is —
      the panel hands the margin down to the scroller rather than spending it itself, or
@@ -2619,88 +2708,88 @@
      scrollbar is right under it, so a gap left the bar lines stopping short of the bar
      the field scrolls on. Scrolled home the rules now run to the scroller's floor. */
   #pianoroll .ssqscroll { scrollbar-gutter: stable; padding-bottom: 0; }
-  :is(#stepseq,#pianoroll) .ssqbody { position: relative; width: max-content; min-width: 100%; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqbody { position: relative; width: max-content; min-width: 100%; }
   /* One line down the whole field, positioned by `follow`. Hidden in the step grid,
      which says where the playhead is with a ring round the playing square — there a
      cell is a switch, and the ring is what points at one. */
-  :is(#stepseq,#pianoroll) .ssqplayhead { position: absolute; top: 0; bottom: 0;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqplayhead { position: absolute; top: 0; bottom: 0;
                       pointer-events: none; z-index: 2; display: none; }
   #pianoroll .ssqplayhead { display: block; background: color-mix(in srgb, var(--ink) 9%, transparent);
                       box-shadow: inset 1px 0 0 0 color-mix(in srgb, var(--ink) 55%, transparent); }
   /* The rows are the arrangement's rows: same height, same gutter, same number-then-name
      header cell, so the two panels read as one track list rather than two opinions about
      the kit. Only the cells to the right of it are different, because only they are. */
-  :is(#stepseq,#pianoroll) .ssqrow { display: flex; align-items: center; height: 29px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqrow { display: flex; align-items: center; height: 29px;
                      gap: 8px; width: max-content; min-width: 100%; }
-  :is(#stepseq,#pianoroll) .ssqlane { border-radius: 4px; }
-  :is(#stepseq,#pianoroll) .ssqlane:hover { background: var(--rowhover); }
-  :is(#stepseq,#pianoroll) .ssqhead-cell { position: sticky; left: 0; z-index: 3; width: 190px; flex: none;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlane { border-radius: 4px; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlane:hover { background: var(--rowhover); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqhead-cell { position: sticky; left: 0; z-index: 3; width: 190px; flex: none;
                            display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px;
                            align-self: stretch; background: var(--panel2);
                            box-shadow: 1px 0 0 var(--line); }
-  :is(#stepseq,#pianoroll) .ssqlane:hover .ssqhead-cell { background: var(--panel2); }
-  :is(#stepseq,#pianoroll) .ssqnum { flex: none; width: 24px; text-align: center; font-size: 9.5px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlane:hover .ssqhead-cell { background: var(--panel2); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqnum { flex: none; width: 24px; text-align: center; font-size: 9.5px;
                      color: var(--faint); font-variant-numeric: tabular-nums; }
-  :is(#stepseq,#pianoroll) .ssqled { width: 7px; height: 7px; flex: none; border-radius: 50%;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqled { width: 7px; height: 7px; flex: none; border-radius: 50%;
                      background: var(--lane); box-shadow: 0 0 7px var(--lane); opacity: .9; }
-  :is(#stepseq,#pianoroll) .ssqlane.unused .ssqled { background: var(--faintest); box-shadow: none; opacity: .45; }
-  :is(#stepseq,#pianoroll) .ssqlane.muted .ssqled { background: var(--hot); box-shadow: none; opacity: .7; }
-  :is(#stepseq,#pianoroll) .ssqname { flex: 1; min-width: 0; padding: 0; font-size: 12px; text-align: left;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlane.unused .ssqled { background: var(--faintest); box-shadow: none; opacity: .45; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqlane.muted .ssqled { background: var(--hot); box-shadow: none; opacity: .7; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqname { flex: 1; min-width: 0; padding: 0; font-size: 12px; text-align: left;
                       color: var(--dim); background: none; border: none; white-space: nowrap;
                       overflow: hidden; text-overflow: ellipsis; text-transform: none; }
-  :is(#stepseq,#pianoroll) .ssqrow:hover .ssqname { color: var(--ink); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqrow:hover .ssqname { color: var(--ink); }
   /* The lane's figure list. Faint until the row is under the pointer — seven of these
      lit at once would be seven things asking to be clicked. */
-  :is(#stepseq,#pianoroll) .ssqpick { width: 16px; height: 16px; flex: none; padding: 0; font-size: 9px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqpick { width: 16px; height: 16px; flex: none; padding: 0; font-size: 9px;
                       line-height: 1; border-radius: 3px; color: transparent;
                       background: none; border: none; }
-  :is(#stepseq,#pianoroll) .ssqrow:hover .ssqpick { color: var(--dim); background: var(--input); }
-  :is(#stepseq,#pianoroll) .ssqpick:hover { color: var(--accent) !important; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqrow:hover .ssqpick { color: var(--dim); background: var(--input); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqpick:hover { color: var(--accent) !important; }
   /* A lane the song does not play yet. Still clickable — adding a rim is a click. */
-  :is(#stepseq,#pianoroll) .ssqname.unused { color: var(--dim); opacity: .55; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqname.unused { color: var(--dim); opacity: .55; }
   /* Silenced by the arrangement. The steps are still there, which is why the row is
      struck through rather than hidden. */
-  :is(#stepseq,#pianoroll) .ssqname.muted { color: var(--hot); text-decoration: line-through; }
-  :is(#stepseq,#pianoroll) .ssqcells { display: flex; gap: 2px; padding-right: 8px; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqname.muted { color: var(--hot); text-decoration: line-through; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcells { display: flex; gap: 2px; padding-right: 8px; }
   /* Darker than the panel, not the same as it. This window is --panel2, so an idle
      cell drawn in that colour vanished and the grid read as four squares a bar. */
-  :is(#stepseq,#pianoroll) .ssqcell { position: relative; width: 22px; height: 19px; flex: none; padding: 0;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell { position: relative; width: 22px; height: 19px; flex: none; padding: 0;
                       border-radius: 3px; border: 1px solid var(--line2); background: var(--input);
                       box-shadow: inset 0 1px 0 rgba(255,255,255,.025),
                                   inset 0 -2px 0 rgba(0,0,0,.28); cursor: pointer; }
   /* Alternating groups and spacing already make the four-step beats legible. A second
      hard rule on every beat made the grid busier without adding another meaning. */
-  :is(#stepseq,#pianoroll) .ssqcell.group-alt { background: var(--well); }
-  :is(#stepseq,#pianoroll) .ssqcell:hover { border-color: color-mix(in srgb, var(--dim) 82%, var(--panel)); transform: translateY(-1px); }
-  :is(#stepseq,#pianoroll) .ssqcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  :is(#stepseq,#pianoroll) .ssqcell.on { background: var(--lane); border-color: rgba(255,255,255,.18);
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell.group-alt { background: var(--well); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell:hover { border-color: color-mix(in srgb, var(--dim) 82%, var(--panel)); transform: translateY(-1px); }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell.on { background: var(--lane); border-color: rgba(255,255,255,.18);
                          box-shadow: inset 0 2px 0 rgba(255,255,255,.26),
                                      inset 0 -3px 0 rgba(0,0,0,.26),
                                      0 1px 4px rgba(0,0,0,.35); }
   /* Muted reads as "written but not let through": the hit is still drawn, dimmed. */
-  :is(#stepseq,#pianoroll) .ssqcell.muted { opacity: .3; }
-  :is(#stepseq,#pianoroll) .ssqcell.playing::after { content: ''; position: absolute; inset: -3px -2px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell.muted { opacity: .3; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcell.playing::after { content: ''; position: absolute; inset: -3px -2px;
                                      border: 1px solid color-mix(in srgb, var(--ink) 38%, transparent); border-radius: 4px;
                                      box-shadow: 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent); pointer-events: none; }
   /* The beat and bar gaps are on the shared classes, not on `.ssqcell`, because the
      number strip is built out of the same per-step divs. Alignment by construction
      rather than by a width calculation that has to know about every gap and margin. */
-  :is(#stepseq,#pianoroll) .gap { margin-left: 7px; }                 /* a gap on every beat */
-  :is(#stepseq,#pianoroll) .barstart { margin-left: 15px; }           /* a wider one on every bar */
-  :is(#stepseq,#pianoroll) .ssqbars { height: 18px; }
-  :is(#stepseq,#pianoroll) .ssqnums { height: 18px; margin-bottom: 5px; }
-  :is(#stepseq,#pianoroll) .ssqbarnum { width: 22px; flex: none; font-size: 9.5px; line-height: 13px;
+  :is(#stepseq,#pianoroll,#kitroll) .gap { margin-left: 7px; }                 /* a gap on every beat */
+  :is(#stepseq,#pianoroll,#kitroll) .barstart { margin-left: 15px; }           /* a wider one on every bar */
+  :is(#stepseq,#pianoroll,#kitroll) .ssqbars { height: 18px; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqnums { height: 18px; margin-bottom: 5px; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqbarnum { width: 22px; flex: none; font-size: 9.5px; line-height: 13px;
                         color: var(--faintest); font-variant-numeric: tabular-nums;
                         white-space: nowrap; }
   /* The bar label sits in the first cell of its bar and is allowed out of it — the
      fifteen cells after it are empty, so there is nothing to run into. */
-  :is(#stepseq,#pianoroll) .ssqbars .ssqbarnum { overflow: visible; color: var(--ink); font-weight: 700;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqbars .ssqbarnum { overflow: visible; color: var(--ink); font-weight: 700;
                                  letter-spacing: .05em; text-transform: uppercase; }
   /* A quiet backbeat hierarchy in the ruler: 1 and 3 anchor the count, while 2 and
      4 stay present but sit back. The cell grouping below follows the same alternation. */
-  :is(#stepseq,#pianoroll) .ssqnums .ssqbarnum.beat { color: var(--faint); font-weight: 600; }
-  :is(#stepseq,#pianoroll) .ssqnums .ssqbarnum.beat.group-alt { color: var(--faintest); font-weight: 400; }
-  :is(#stepseq,#pianoroll) .ssqruler-label { z-index: 4; color: var(--faint); font-size: 8.5px;
+  :is(#stepseq,#pianoroll,#kitroll) .ssqnums .ssqbarnum.beat { color: var(--faint); font-weight: 600; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqnums .ssqbarnum.beat.group-alt { color: var(--faintest); font-weight: 400; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqruler-label { z-index: 4; color: var(--faint); font-size: 8.5px;
                              text-transform: uppercase; letter-spacing: .08em; }
 
   /* ---- the roll: a keyboard down the side, a field of bars across -----------------
@@ -2908,10 +2997,10 @@
                         position: relative; top: auto; }
   #pianoroll .ssqruler .ssqruler-label { justify-content: flex-end; text-align: right; }
   /* The rows that are not drawn, as height and nothing else — see renderRows. */
-  :is(#stepseq,#pianoroll) .ssqpad { flex: none; pointer-events: none; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqpad { flex: none; pointer-events: none; }
   /* And the bars that are not drawn, as width and nothing else — see colWindow. The
      field is the whole song across; only the bars near the viewport are built. */
-  :is(#stepseq,#pianoroll) .ssqcolpad { flex: none; pointer-events: none; }
+  :is(#stepseq,#pianoroll,#kitroll) .ssqcolpad { flex: none; pointer-events: none; }
   /* No overlay: the time rules belong to the note cells that own the time. Every
      sixteenth gets a very faint edge, beat starts get a lighter edge, and bar starts
      get the strongest one. The ruler rows stay deliberately clean. These rules come
@@ -3161,6 +3250,104 @@
   /* Playback is the one mark that is not per-cell: the playhead is the single element
      above the rows, while the beat and bar rules belong to their cells. */
   #pianoroll .ssqcell.playing::after { content: none; }
+
+  /* ---- the kit, docked ------------------------------------------------------------
+     The step grid in the Notes panel, where a pitched channel has its roll. It takes its
+     LOOK from the shared rules above — a step is a switch, a row is a track, the head
+     cell is number-then-name — and its SHAPE from the roll: one scrolling viewport, a
+     ruler pinned over it, the track names pinned beside it. Last in the file because
+     both of those are what it is overriding.
+     None of the window it is not: no frame, no shadow, no remembered position, no drag.
+     The region owns all of that already. */
+  #kitroll { --keyseam: 2px; --rollbarh: 12px;
+             --keys: calc(var(--contentx) - var(--capx));
+             display: flex; flex: 1; min-height: 0; flex-direction: column;
+             padding: 0 0 0 var(--capx);
+             background: none; border: none; border-radius: 0; box-shadow: none; }
+  /* The names land exactly where the arrangement's names do and the bars start where its
+     bars start: --contentx is that x and --capx is the line the fold buttons run down.
+     The same derivation as the roll's --keys, without the 6px of keyboard chassis and
+     the --keytrim nudge, because there is no keyboard here to make room for. */
+  #kitroll .ssqhead { display: none; }
+  #kitroll .ssqruler { position: relative; flex: none; overflow: hidden; margin-top: 0;
+                       background: var(--panel); }
+  #kitroll .ssqruler::after { content: ''; position: absolute; z-index: 1;
+                       left: calc(var(--keys) + var(--keyseam)); right: 0; bottom: 0;
+                       height: 1px; background: var(--line); pointer-events: none; }
+  #kitroll .ssqruler .ssqrow { width: 100%; min-width: 0; gap: 0; }
+  #kitroll .ssqruler .ssqhead-cell { width: var(--keys); flex: 0 0 var(--keys);
+                       box-sizing: border-box; background: transparent; box-shadow: none; }
+  #kitroll .ssqruler .ssqbars, #kitroll .ssqruler .ssqnums { position: relative; }
+  /* BAR and BEAT name the two strips, right-aligned against the field they count —
+     the roll's own rule, and the corner is free for it because the kit's controls are
+     in a strip of their own above the panel rather than in here. */
+  #kitroll .ssqruler .ssqruler-label { justify-content: flex-end; text-align: right; }
+  #kitroll .ssqruler-label { position: relative; overflow: hidden; white-space: nowrap;
+                       padding: 0; font-size: 9px; letter-spacing: .04em; line-height: 13px; }
+  #kitroll .ssqruler-label-text { position: absolute; top: 50%; transform: translateY(-50%);
+                       right: var(--namegap); white-space: nowrap; }
+  /* Bare numbers, so the same two rules the roll needs: tabular figures pad a `1` out to
+     a `0`'s width and float it off its own bar line, and the tracking and uppercasing
+     were for the word "BAR" that is no longer in front of them. */
+  #kitroll .ssqbarnum { font-variant-numeric: normal; }
+  #kitroll .ssqbars .ssqbarnum { letter-spacing: 0; text-transform: none; }
+  #kitroll .ssqruler-track { width: 0; min-width: 0; flex: 1 1 0; overflow: hidden;
+                       margin: 0 0 0 var(--keyseam); padding: 0; }
+  #kitroll .ssqruler-track .ssqcells { width: max-content; flex: none; margin: 0; padding: 0;
+                       transform: translateX(calc(-1 * var(--roll-scroll-x, 0px))); }
+  #kitroll .ssqdock { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
+  /* The name column, as ONE surface from the ruler's corner to the last track — --panel2,
+     the same bed the shared head cell paints, so it does not read as six cells of a
+     lighter colour stacked on a panel. */
+  #kitroll .ssqkeys { position: relative; display: flex; flex-direction: column;
+                      width: var(--keys); flex: 0 0 var(--keys); min-height: 0;
+                      overflow: hidden; margin-bottom: var(--rollbarh);
+                      background: var(--panel2); }
+  #kitroll .ssqkeys-body { position: relative; flex: 1; min-height: 0; width: 100%;
+                           will-change: transform; }
+  #kitroll .ssqkeys-body .ssqrow { width: 100%; min-width: 0; gap: 0; }
+  #kitroll .ssqkeys-body .ssqhead-cell { position: relative; width: var(--keys);
+                           min-width: var(--keys); }
+  /* The divider between the names and the field. The head cell's own `1px 0 0` shadow
+     cannot draw it — the column is overflow:hidden, which is what clips the names as
+     they translate with the scroll, so the shadow falls outside it. It hangs off the
+     dock instead, and both scrollers start --keyseam past it so the first step of bar 1
+     is whole and clickable. Same argument as the roll's chassis strip above. */
+  #kitroll .ssqdock::after { content: ''; position: absolute; z-index: 7;
+                       left: var(--keys); top: 0; bottom: var(--rollbarh);
+                       width: 1px; background: var(--line); pointer-events: none; }
+  #kitroll .ssqdock .ssqscroll { width: 0; flex: 1 1 0; min-width: 0;
+                       margin-top: 0; margin-left: var(--keyseam); }
+  #kitroll .ssqscroll { scrollbar-gutter: stable; padding-bottom: 0; }
+  #kitroll .ssqdock .ssqbody .ssqrow { gap: 0; }
+  /* ---- the window's own field, in the page --------------------------------------
+     Nothing here about how a step LOOKS: the pads, the gap on every beat, the wider one
+     at every bar line and the ring round the playing square are all the shared rules
+     above, and this is the same editor. The roll flattens all of that because a pitched
+     row is a continuous field; a kit is switches, and switches are what it draws.
+     What the geometry needs instead is on the JS side: `fieldX` and `colWindow` measure
+     the ruler's own cells rather than multiplying a step width, because a field with a
+     gap on every beat has no single bar width to multiply by. See mixer-bar-grid.js. */
+  /* The playhead LINE is the roll's mark, for a field where the column being heard is
+     often scrolled off. Here the ring round the playing square says it, exactly as it
+     does in the window — this is the same editor and it should read as one. */
+  #kitroll .ssqplayhead { display: none; }
+  /* ---- the bars picked out --------------------------------------------------------
+     On the RULER, where the timeline says the same thing about the same selection — a
+     band across the numbers, in the ink the desk uses for what is selected. It was a
+     wash over the steps for a day, and a field with a tint across four bars of it is a
+     field you read twice: once for what it plays and once for what the tint means.
+     Both strips, so the block reads as one region rather than a line over the bar
+     numbers, and the two edges close it at the ends.
+     The ruler is also where a selection is MADE here, the same drag as the timeline's —
+     so the numbers take a pointer and say so. */
+  /* ---- which channel the desk is on -----------------------------------------------
+     Clicking a name here selects that channel, so this list has to say which one is
+     selected — otherwise the strip below, the effects panel and the on-screen keyboard
+     are all pointed at a row that does not look any different from the rest. The accent
+     edge is the mark the arrangement puts on its own selected row. */
+  #kitroll .ssqlane.current .ssqhead-cell { box-shadow: inset 2px 0 0 var(--accent); }
+  #kitroll .ssqlane.current .ssqname { color: var(--ink); font-weight: 700; }
 
 
   /* ---- The preset library ------------------------------------------------------
@@ -4171,9 +4358,21 @@
   </div>
 
 
+  <!-- The loop and the bars it plays, as one control. They were always one thing —
+       `currentLoopBounds` reads the picked-out bars before anything else, so "loop" has
+       always meant "loop these" — and standing at opposite ends of the toolbar was the
+       only reason they did not look it. The range half is absent when nothing is picked
+       out, where the button is looping the locators or nothing and has no bars to name. -->
   <div class="grp looptray">
-    <button id="looptoggle" title="Loop the highlighted timeline or arrangement range"
-            aria-pressed="false">Loop Off</button>
+    <span class="loopsel">
+      <button id="looptoggle" title="Loop the highlighted timeline or arrangement range"
+              aria-pressed="false">Loop Off</button>
+      <span class="selrange" id="selstat" hidden title="The bars picked out">
+        <span id="selnow">—</span>
+        <button id="selclear" class="selclear" title="Clear the selection"
+                aria-label="Clear the selection">×</button>
+      </span>
+    </span>
   </div>
 
   <div class="hdiv"></div>
@@ -4344,12 +4543,22 @@
     <button id="notefold" class="foldbtn" title="Collapse the notes panel" aria-label="Collapse the notes panel">
       <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
     </button>
-    <span class="label">Notes</span>
-    <!-- Which preset's part the roll is showing, in brackets. Empty — and the roll
-         itself gone — while a percussion channel is selected. -->
+    <!-- The panel is named for what is IN it. A pitched channel puts its part on the
+         roll, so it is Notes and the preset playing them; a percussion channel puts the
+         whole kit in, so it is the Drum editor and there is no one channel to name —
+         every drum in the song is on screen at once and choosing a strip changes only
+         which row is marked. See syncNotesPanel. -->
+    <span class="label" id="notelabel">Notes</span>
+    <!-- Which preset's part is on screen, in brackets. Empty on the kit, and on a
+         channel with no editor at all. -->
     <span id="notepreset"></span>
   </div>
   <div id="pianoroll"></div>
+  <!-- The same panel's other editor. A percussion channel has no pitch axis, so where
+       the roll would be there is the KIT instead: one row per drum the song has, across
+       the whole song. It is the step grid's second instance and not a second step grid —
+       same figures, same grooves, same write path. See `docked` in mixer-step-seq.js. -->
+  <div id="kitroll"></div>
 </div>
 
 <!-- The mixer's header. Two sets of switches: which parts each strip shows — EQ,
@@ -4438,6 +4647,34 @@
   <button id="history" title="Put this song back to an earlier saved version — this song only, no other is touched">Open an earlier version…</button>
   <button id="resetsong">Zero every channel</button>
   <button id="deletesong" class="dangeraction" title="Permanently remove this scratch source and its desk history" hidden>Delete scratch song…</button>
+  </section>
+  <!-- The cabinet screen: what this song sounds like while the player is choosing a
+       level, before it opens up into the level itself. The mix you are listening to
+       right now is the LEVEL; this hangs a second presentation off it. -->
+  <section class="drawersection" data-drawer-section="cabinet">
+  <button class="drawersectionhead drawersectiontoggle" type="button" aria-expanded="true"><span>Cabinet screen</span></button>
+  <!-- Deliberately not next to Save. Capturing a treatment is not saving the song, and
+       the two being adjacent is how somebody writes their cabinet mix over their level
+       mix. It takes the current DRAFT — dirty the mix, capture, then discard. -->
+  <button id="applytocab" title="Take the mix and loop you are listening to now and make them what plays on this cabinet's stage-select screen. The level keeps the saved mix, and moves to it on a bar line.">Use this mix on the cabinet screen…</button>
+  <button id="loadcab" title="Put the stored cabinet mix back on the faders as a draft, so it can be heard, changed and captured again">Open the cabinet mix…</button>
+  <button id="auditioncab" title="Play the cabinet mix, then hand over to the saved mix at the next boundary — what the player hears when they launch a level">Hear the change</button>
+  <label class="drawerrow"><span>Plays when</span><select id="cabwhen" title="How far into the cabinet the player has to be for this treatment to be the one that plays"></select></label>
+  <label class="drawerrow"><span>Change on</span><select id="cabquantize" title="Which musical boundary the level's mix arrives on"></select></label>
+  <label class="drawerrow"><span>Band arrives</span>
+    <input id="cabxfade" type="number" min="0" max="4" step="0.5" value="0"
+           title="Bars over which the lanes and sends move. 0 lands them on the boundary.">
+    <span class="unit">bars</span>
+  </label>
+  <!-- Its own length, and not the one above. The band arriving is a moment and wants
+       the downbeat; an effect coming off is a gesture and wants time. -->
+  <label class="drawerrow"><span>Effects lift</span>
+    <input id="cabtreat" type="number" min="0" max="8" step="0.5" value="1.5"
+           title="Bars over which the cabinet's own effects fade away. Blank follows the band.">
+    <span class="unit">bars</span>
+  </label>
+  <label class="drawerrow"><span>Loop</span><select id="cablooprelease" title="When the cabinet screen's loop lets go"></select></label>
+  <button id="clearcab" class="dangeraction" title="Take the cabinet mix off this song — its stage-select screen goes back to playing the saved mix">Clear cabinet mix</button>
   </section>
   <section class="drawersection" data-drawer-section="files">
   <button class="drawersectionhead drawersectiontoggle" type="button" aria-expanded="true"><span>Render / Files</span></button>

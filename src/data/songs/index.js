@@ -91,3 +91,12 @@ export const MIX_BY_ID = Object.fromEntries(
 export const ARRANGEMENT_BY_ID = Object.fromEntries(
   Object.entries(SONGS).map(([id, s]) => [id, s.arrangement ?? null]),
 );
+
+/** `{ id: variants }` for the songs that carry alternate presentations of themselves. */
+// A variant is the same composition heard another way — the cabinet screen's treatment
+// of a level's theme, so far. Filtered like MIX_BY_ID rather than kept with nulls,
+// because "this song has no other presentation" is the ordinary case and every song
+// would otherwise carry an entry saying nothing.
+export const VARIANTS_BY_ID = Object.fromEntries(
+  Object.entries(SONGS).filter(([, s]) => s.variants).map(([id, s]) => [id, s.variants]),
+);

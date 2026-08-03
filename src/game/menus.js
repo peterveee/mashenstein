@@ -169,7 +169,10 @@ function titlePoseKey(id, pose, h) {
     id, qh, qt, pose.kind || '', pose.grounded ? 1 : 0,
     pose.facing === -1 ? -1 : 1, pose.menuAction || '',
     pose.headless ? 1 : 0, pose.fistThrown ? 1 : 0,
-    pose.axeThrown ? 1 : 0, pose.axeReady ? 1 : 0,
+    // Matches drawToon's opt-out test — an absent flag draws the axe, so it
+    // must not key the same as an explicit false or a cooled-down title toon
+    // would serve a cached frame with the axe still on his back.
+    pose.axeThrown ? 1 : 0, pose.axeReady === false ? 0 : 1,
     pose.stomp ? 1 : 0, pose.roll ? 1 : 0,
     pose.duckAmount == null ? '' : Math.round(Number(pose.duckAmount) * 8),
   ].join('|');

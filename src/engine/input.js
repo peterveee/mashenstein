@@ -334,7 +334,7 @@ class InputSys {
     if (this.context === 'run' && !this.menuKeys && (code === 'ArrowRight' || code === 'KeyD')) return 'ability';
     // The food court is both a walkable room and a small chooser. Keep its
     // vertical navigation separate from the physical jump so Space can lift
-    // the avatar while Up/Down continue to move the TALK/SWAP selection.
+    // the avatar while Up/Down stay reserved for its chip selection.
     if (this.context === 'hub') {
       if (code === 'ArrowUp' || code === 'KeyW') return 'up';
       if (code === 'ArrowDown' || code === 'KeyS') return 'down';

@@ -196,7 +196,8 @@ const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 // sound is for, where it came from, then how it is built. `taps` and `tapFalloff`
 // share a line — they are two halves of one idea and both are short.
 const BODY = ['note', 'origin', 'options', 'additive', 'osc', 'knock', 'noise', 'ring', 'metal', 'body',
-  'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays'];
+  'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
+  'bypassed'];
 
 /**
  * One catalogue entry, as source, indented to sit in a table.
@@ -243,6 +244,11 @@ export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak'
   const taps = ['taps', 'tapFalloff', 'tapGains', 'tapDecays', 'tapDetune', 'tapTone'].filter(has)
     .map((k) => `${k}: ${flat(v[k])}`);
   if (taps.length) lines.push(`    ${taps.join(', ')},`);
+  // What the panel's On/Off switches are holding — sections that are switched OFF, kept
+  // so that switching one back on returns the sound it had rather than a factory one.
+  // See the note above `sectionOn` in tools/mixer-voice-editor.js. Last, and as a block:
+  // no part of it is played, and a held section is as big as the live one it came from.
+  if (has('bypassed')) lines.push(`    bypassed: ${optionsBlock(v.bypassed)},`);
   // Anything this module has never heard of, so a key added to the catalogue by hand
   // survives being saved from the desk rather than being quietly dropped.
   for (const k of Object.keys(v)) {

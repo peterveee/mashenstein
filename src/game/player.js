@@ -224,6 +224,19 @@ export class Player {
   }
 
   // World-space hitbox (bottom at groundY - y).
+  /**
+   * Where the feet will be, in units above the ground, `t` seconds from now — assuming
+   * no further input. 0 means standing on it.
+   *
+   * Ballistic rather than a simulation: it cannot know about a jump that has not been
+   * pressed yet. That bounds what it is good for — it is only worth asking over a span
+   * short enough that the arc is already decided. See RunState.updatePortal.
+   */
+  feetAt(t, gravityScale = 1) {
+    if (this.grounded) return 0;
+    return Math.max(0, this.y + this.vy * t - 0.5 * this.gravity * gravityScale * t * t);
+  }
+
   box(camX, groundY, screenX = PLAYER_X) {
     const x = camX + screenX;
     const bottom = groundY - this.y;

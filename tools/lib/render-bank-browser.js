@@ -52,11 +52,16 @@ const ENTRY = `
 import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
 import { MIX } from ${JSON.stringify(join(ROOT, 'src/data/mix.js'))};
 
-window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackId, arrangement }) => {
+window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackId, arrangement, warp }) => {
   // The bank arrives carrying the tempo it is PLAYED at — resolved in Node, where a
   // track id still means something, so a song the desk has retuned renders at the
   // tempo it was retuned to. See the note over \`render\`.
-  const spb = (60 / bank.bpm) / 4;                     // seconds per 16th step
+  //
+  // A warp is NOT a tempo: setWarp scales the step clock while the mix's delay and
+  // pre-delay times stay baked against the bank's own bpm, which is exactly what the
+  // game does to a song under a speed burst or a star. Rendering a warp as a bpm
+  // change would re-time those echoes and hide the drift the render exists to audition.
+  const spb = (60 / bank.bpm) / 4 / (warp ? warp.tempo : 1);   // seconds per 16th step
   const steps = blocks * 32;
   const N = Math.ceil((steps * spb + tail) * sampleRate);
   const ctx = new OfflineAudioContext(2, N, sampleRate);
@@ -84,6 +89,10 @@ window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackI
   // desk takes and therefore the path worth being able to render. Omitted, nothing is
   // called and the render is exactly what it always was.
   if (arrangement !== undefined) Audio.setArrangement(arrangement);
+
+  // After setBank: setBank re-reads the mix, and the warp has to be the last word
+  // on the clock before the first step is scheduled.
+  if (warp) Audio.setWarp(warp.tempo, warp.pitch);
 
   // setBank opens the song half a second in, with a short fade, because live
   // playback has to mute whatever was left in the lookahead window. An offline
@@ -155,7 +164,7 @@ export async function openRenderer({ headless = true } = {}) {
   const browser = await chromium.launch({ headless });
 
   async function render(bank, {
-    repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement,
+    repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
   } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
@@ -197,6 +206,10 @@ export async function openRenderer({ headless = true } = {}) {
         {
           bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
           ...(arrangement !== undefined ? { arrangement } : {}),
+          // Normalised here so the page never has to guess: a warp is always both
+          // numbers, and pitch defaults to unity rather than to tempo — the game's
+          // speed burst moves the clock and leaves the key alone.
+          ...(warp ? { warp: { tempo: warp.tempo ?? 1, pitch: warp.pitch ?? 1 } } : {}),
         },
       );
     } catch (err) {

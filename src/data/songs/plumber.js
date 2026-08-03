@@ -120,3 +120,28 @@ export const arrangement = {
     },
   ],
 };
+
+export const variants = {
+  select: [
+    {
+      when: "always",
+      loop: { fromBar: 1, toBar: 4 },
+      treatment: [{ id: "filter", params: { type: "highpass", frequency: 520, Q: 0.9 } }],
+      gap: 0.15,
+      patch: {
+        fx: { reverb: { level: 1.4 } },
+        lanes: {
+          lead: { mute: true },
+          leadHarm: { mute: true },
+          bass: { send: { reverb: 0.32 } },
+          kick: { send: { reverb: 0.26 } },
+          snare: { send: { reverb: 0.6 } },
+          hats: { send: { reverb: 0.18 } },
+          ohats: { send: { reverb: 0.18 } },
+          clap: { send: { reverb: 0.3 } },
+        },
+      },
+      exit: { quantize: "beat", crossfadeBars: 0, loopRelease: "atTransition", swellBars: 0.5, swellTo: 2.8, treatBars: 1.5 },
+    },
+  ],
+};

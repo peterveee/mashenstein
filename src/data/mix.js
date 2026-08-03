@@ -48,9 +48,32 @@
 // under the line the desk writes below. This export is kept because the game, the
 // engine and every render tool ask for `MIX` and should not have to care where it
 // is kept; there is no longer a single file holding thirty-four songs' balances.
-import { MIX_BY_ID } from './songs/index.js';
+import { MIX_BY_ID, VARIANTS_BY_ID } from './songs/index.js';
 
 export const MIX = MIX_BY_ID;
+
+// Alternate presentations of a song — the same composition, the same clock, heard
+// another way. So far there is one kind: `select`, what a cabinet's theme sounds like
+// on the stage-select screen before the level opens it up.
+//
+//   variants: {
+//     select: [                          // ordered; first `when` that matches wins, and
+//       {                                // anything unmatched plays the saved mix as-is
+//         when: 'level1',                // 'level1'|'level2'|'level3'|'boss'|'cleared'|'always'
+//         loop: { fromBar: 1, toBar: 4 },// 1-based, inclusive; null = the whole form
+//         patch: { lanes: { lead: { mute: true } } },   // FIELD-level over this song's mix:
+//                                        // named fields change, everything else stands
+//         exit: { quantize: 'bar', crossfadeBars: 1, loopRelease: 'atTransition' },
+//       },
+//     ],
+//   }
+//
+// A patch may move faders, pans, widths, mutes, EQ, sends, aux return level/pan/EQ,
+// the master trim and pan, and the PARAMETERS of an effect both sides already have. It
+// may not add or remove an effect, change a reverb's decay, retune the shared delay,
+// switch the limiter, or touch `layers`/`off`/`voice` — those are graph or bank changes,
+// and there is no audio time you can schedule one for. See Audio.rampMix.
+export const VARIANTS = VARIANTS_BY_ID;
 /* Legacy aggregate snapshot retained as a comment for recovery; the generated
    per-song files above are now authoritative. */
 const LEGACY_MIX = {

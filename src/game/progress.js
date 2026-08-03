@@ -170,6 +170,29 @@ export function unlockedCabinets(slot) {
   return CABINETS.filter((c) => cabinetUnlocked(slot, c.id));
 }
 
+/**
+ * How far into a cabinet the player is, as one word — what its stage-select screen
+ * should sound like.
+ *
+ * The cabinet's theme starts when that screen opens, before any level has been chosen,
+ * so its treatment cannot depend on which level you are about to play. It depends on
+ * how much of the cabinet is open, which is this. Exactly one answer, decided here:
+ * a song file lists treatments against these words and the first match wins, and
+ * precedence being settled in one place is what stops `level3` quietly swallowing
+ * `boss` in every song that lists them in the wrong order.
+ *
+ * `boss` before `cleared` because bossAvailable already requires cleared — the boss
+ * standing unbeaten is the more specific fact, and the one you came back for.
+ */
+export function cabinetMusicState(slot, cabId) {
+  if (bossAvailable(slot, cabId)) return 'boss';
+  if (slot.campaign.cleared[cabId]) return 'cleared';
+  const open = STAGES.filter((s) => s.cabinet === cabId && stageUnlocked(slot, s)).length;
+  if (open >= 3) return 'level3';
+  if (open === 2) return 'level2';
+  return 'level1';
+}
+
 export function bossAvailable(slot, cabId) {
   // Bosses gate cabinets 3, 6, 9 (neon, rhythm, surge) once their 3 stages are cleared.
   if (!['neon', 'rhythm', 'surge'].includes(cabId)) return false;

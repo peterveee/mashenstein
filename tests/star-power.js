@@ -41,6 +41,36 @@ run.update(1 / 60);
 run.exit();
 assert(!Audio.starMode, 'exiting a run clears the star layer');
 
+// ---- the speed burst warps the clock, not the key -------------------------
+const warpRun = new RunState({ stage, save, seed: 11, difficulty: 1, skipRunIn: true, onEnd: () => {} });
+warpRun.enter();
+const restDelay = Audio.delayTimeSeconds();
+
+warpRun.powerups.grab('speed');
+warpRun.update(1 / 60);
+assert(Audio.tempo > 1, `a speed burst leans the song forward (tempo ${Audio.tempo.toFixed(3)})`);
+assert(Audio.detune === 1, `a speed burst leaves the key where it was (detune ${Audio.detune})`);
+// The whole point of the warp being tempo-only: the two powerups are different
+// sensations, and one must not quietly become the other.
+assert(Audio.tempo !== 1.08, 'a speed burst is not just the star by another name');
+
+// The echo has to follow the warped clock. Left at the written tempo, a dotted
+// eighth lands a third of a 16th late on the first repeat and compounds from
+// there, which is heard as flamming rather than as a delay.
+const warpedDelay = Audio.delayTimeSeconds();
+const wanted = restDelay / Audio.tempo;
+assert(Math.abs(warpedDelay - wanted) < 1e-9,
+  `the echo retimes to the warp (${(warpedDelay * 1000).toFixed(1)}ms, wanted ${(wanted * 1000).toFixed(1)}ms)`);
+
+// Two ticks, not one: the warp is written at the top of update() and the powerup
+// timers run further down, so the frame a burst expires on still carries its tempo.
+warpRun.powerups.active.speed.t = 0.001;
+warpRun.update(1 / 60);
+warpRun.update(1 / 60);
+assert(Audio.tempo === 1, 'the tempo drops back when the burst runs out');
+assert(Math.abs(Audio.delayTimeSeconds() - restDelay) < 1e-9, 'and the echo goes back with it');
+warpRun.exit();
+
 // Aura + afterimages + additive pass render for every hero rig.
 const ctx = document.createElement('canvas').getContext('2d');
 for (const hero of HEROES) {

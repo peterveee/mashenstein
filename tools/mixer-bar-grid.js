@@ -342,6 +342,21 @@ export function createBarGrid({
   // pinned rather than remembered, so a switch thrown in the other panel cannot change
   // what this one does behind its back.
   scopeToggle = true,
+  // The bars an ACTION reaches, which is not always the bars on SCREEN.
+  //
+  // A pattern panel shows the bars you selected and acts on exactly those, so the two are
+  // the same thing there. A whole-song panel shows the lot, and there they are not: a
+  // figure is a bar long and the field is the song, so something has to say how far it
+  // goes. `null` from this means the whole of what is shown — for the kit that is "you
+  // picked out four bars, so those four; you picked nothing, so all of it", which is what
+  // a rhythm chosen from a whole-song editor means. Clamped into `range` either way, so a
+  // stale selection cannot write past the end of a shorter song.
+  actionRange = null,
+  // The desk's bar selection, and how to change it. A whole-song panel draws the song,
+  // so the bars picked out of it are part of what it is showing — and the ruler is where
+  // a selection is made everywhere else on this desk, so it is where one is made here.
+  // Null from `selectedBars` means nothing is picked out.
+  selectedBars = null, onSelectBars = null,
   // Where the panel's own controls go. Given a host, they are placed INTO it rather than
   // into a header of their own — so a docked panel adds its controls to the row the region
   // already has instead of stacking a second row under it. Two headers naming the same
@@ -391,6 +406,20 @@ export function createBarGrid({
   let bodyEl = null;
   let fixedBodyEl = null;
   let rulerEl = null;
+  // The hatched band over the bars picked out. ONE element across the whole ruler — both
+  // number strips and the air between them — because two of them, one per strip, is two
+  // blocks with a seam and a restarted hatch angle rather than one region. It hangs in a
+  // clip that starts where the field starts, so it can never reach the corner labels, and
+  // it travels sideways on the same `--roll-scroll-x` the ruler's own cells do.
+  let selBand = null;
+  // The bars strip's own cell container, held rather than looked up: it is the time axis
+  // as MEASURED, and both the playhead and the bar window read it — see `rulerCells`.
+  let barCellsEl = null;
+  // The bars strip's cells, as a list of their own. NOT `barCellsEl.children`: the
+  // selection band lives in that container too, so `children[0]` was the band and every
+  // measurement taken off "cell zero" was taken off the thing being positioned by it —
+  // the band walked itself to the start of the song, one repaint at a time.
+  let barCells = [];
   let rendered = null;
   let scrollAt = { top: 0, left: 0 };
   // The field's geometry as last MEASURED — one step's width, and the width of the
@@ -425,8 +454,25 @@ export function createBarGrid({
   let marquee = null;       // the rubber band, while one is being drawn
 
   const isOpen = () => el.classList.contains('show');
-  const barSpan = () => (range.from === range.to
-    ? `bar ${range.from + 1}` : `bars ${range.from + 1}-${range.to + 1}`);
+  const barWords = (r) => (r.from === r.to
+    ? `bar ${r.from + 1}` : `bars ${r.from + 1}-${r.to + 1}`);
+  const barSpan = () => barWords(range);
+  /** The bars an action lands in — see `actionRange`. The shown bars, unless asked. */
+  const scope = () => {
+    const want = actionRange ? (actionRange() || range) : (wholeSong ? sel() : range);
+    const from = Math.max(range.from, Math.min(want.from ?? range.from, range.to));
+    return { from, to: Math.max(from, Math.min(want.to ?? from, range.to)) };
+  };
+  /**
+   * The bars in words. "The whole song" rather than "bars 1-64" when that is what it is:
+   * the number is a thing to check and the phrase is a thing to read, and this appears in
+   * a menu title above the item that is about to act on them.
+   */
+  const actionSpan = () => {
+    const a = scope();
+    return wholeSong && range.to > range.from && a.from === range.from && a.to === range.to
+      ? 'the whole song' : barWords(a);
+  };
 
   // Keep row geometry in one place. The piano roll intentionally groups its
   // chromatic rows into two small families, but the step grid remains uniform because
@@ -477,7 +523,12 @@ export function createBarGrid({
   };
 
   /** What the panel hands its callbacks: everything they could reasonably ask. */
-  const ctx = () => ({ plan, range, linked, barSpan: barSpan(), bank: bank() });
+  const ctx = () => ({
+    plan, range, linked, barSpan: barSpan(), bank: bank(),
+    // The bars a figure, a groove or a mute would land in, and the words for them. The
+    // same as `range` on a panel that shows what it acts on — see `actionRange`.
+    action: scope(), actionSpan: actionSpan(),
+  });
 
   /** Keep docked piano-roll chrome aligned without making it another scroller. */
   const syncDockedChrome = (scroll) => {
@@ -628,33 +679,145 @@ export function createBarGrid({
   }
 
   /**
-   * Stage sixteen steps on a lane across every bar on screen, then commit once.
+   * Stage sixteen steps on a lane across every bar in scope, then commit once.
    *
    * The selection is the scope, as it is everywhere else here: one bar selected puts
-   * the figure in that bar, four puts it in four.
+   * the figure in that bar, four puts it in four. On a panel that shows the whole song
+   * that is the desk's selection rather than the bars on screen — see `actionRange`.
    */
-  function layDown(byLane) {
+  function layDown(byLane, { add = false } = {}) {
     // A figure is new notes, so the lengths that were there belonged to notes that are
     // not. Sixteen nulls rather than "say nothing": laying a groove over a part
     // somebody had drawn long notes into must not play the new one at the old lengths.
     const cleared = Array.from({ length: 16 }, () => null);
+    const a = scope();
     for (const [lane, steps] of Object.entries(byLane)) {
-      for (let b = range.from; b <= range.to; b++) {
-        pending.set(kof(b, lane), { notes: steps.slice(), lengths: cleared.slice() });
+      for (let b = a.from; b <= a.to; b++) {
+        // ADD keeps what the bar already plays and puts the figure on top of it, so
+        // "on 2 and 4" and then "fill" is a backbeat with a fill in it rather than a
+        // fill on its own. Only a hit can be added — a figure's rests say nothing about
+        // the steps they fall on, which is what makes the two modes different: REPLACE
+        // is the whole bar as drawn, rests and all.
+        const was = add ? readBar(b, lane) : null;
+        const notes = add
+          ? steps.map((on, i) => (on || !!was?.[i]))
+          : steps.slice();
+        pending.set(kof(b, lane), { notes, lengths: cleared.slice() });
       }
     }
     commit();
   }
 
-  /** Mute the lane across the shown bars, or let it back in — the channel mute. */
+  /** Mute the lane across the bars in scope, or let it back in — the channel mute. */
   function toggleMute(lane) {
-    const off = !mutedIn(range.from, lane);
-    apply(setLanesOff(draft(), range.from, range.to, [lane], off),
-      `${laneLabel(lane)} ${off ? 'out of' : 'back in'} ${barSpan()}`);
+    const a = scope();
+    const off = !mutedIn(a.from, lane);
+    apply(setLanesOff(draft(), a.from, a.to, [lane], off),
+      `${laneLabel(lane)} ${off ? 'out of' : 'back in'} ${actionSpan()}`);
     build();
   }
 
+  /**
+   * The hatched band across the bars picked out, over the ruler.
+   *
+   * One element per strip rather than a background on each cell: the timeline draws this
+   * selection as 45° stripes, and stripes on a 22px box restart at every box — twenty-two
+   * pixels of hatch, a seam, twenty-two more. Measured through `fieldX` like everything
+   * else on this axis, so it lands on the same x as the numbers it covers.
+   */
+  function placeSelBand() {
+    if (!selBand) return;
+    const picked = selectedBars?.() || null;
+    const from = picked ? Math.max(range.from, picked.from) : null;
+    const to = picked ? Math.min(range.to, picked.to) : null;
+    const left = from != null && to != null && to >= from ? fieldX(from, 0) : null;
+    const right = left == null ? null : fieldX(to, 15);
+    if (left == null || right == null) { selBand.classList.remove('show'); return; }
+    selBand.classList.add('show');
+    selBand.style.left = `${left}px`;
+    selBand.style.width = `${Math.max(0, right + stepWidth() - left)}px`;
+  }
+
   // ---- drawing ---------------------------------------------------------------------
+
+  /**
+   * Picking bars out, on the ruler — the gesture the timeline already has.
+   *
+   * Delegated from the panel's own root and finished on the WINDOW, because marking a
+   * selection repaints this panel: the cell the drag started on is thrown away and
+   * rebuilt mid-gesture, so a listener living on it would hear the first move and no
+   * others. `elementFromPoint` asks the page what is under the pointer NOW, which is the
+   * rebuilt cell, so the drag keeps working across every repaint it causes.
+   */
+  let rulerDrag = null;
+  /**
+   * Which bar the pointer is over, including where it is over NOTHING.
+   *
+   * A ruler is not a solid row of cells: a beat opens a 7px gap in front of it and a bar
+   * line a 15px one, and both are MARGINS — outside every cell's box, so a press that
+   * lands in one hits the container and the drag stops dead at exactly the bar lines you
+   * are most likely to aim at. The strips have their own dead pixels above and below the
+   * numbers for the same reason.
+   *
+   * So: the cell if there is one, and otherwise the bar whose column the x falls in,
+   * found by halving rather than by walking a thousand cells on every pointermove.
+   */
+  const barUnder = (ev) => {
+    const cell = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.ssqbarnum');
+    const hit = cell ? Number(cell.dataset.bar) : NaN;
+    if (Number.isFinite(hit)) return hit;
+    const cells = rulerCells();
+    if (!cells.length) return null;
+    const rulerBox = (rulerEl || el).querySelector('.ssqbars')?.parentElement?.getBoundingClientRect();
+    if (!rulerBox || ev.clientY < rulerBox.top || ev.clientY > rulerBox.bottom) return null;
+    const leftOf = (b) => cells[(b - range.from) * 16].getBoundingClientRect().left;
+    if (ev.clientX < leftOf(range.from)) return null;
+    let lo = range.from;
+    let hi = range.to;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (leftOf(mid) <= ev.clientX) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  };
+  if (onSelectBars) {
+    el.addEventListener('pointerdown', (ev) => {
+      // Anywhere in the ruler, not only on a cell — `barUnder` is what decides whether
+      // there is a bar there, and the gaps between the cells are part of the ruler.
+      if (ev.button !== 0 || !ev.target?.closest?.('.ssqruler, .ssqbars, .ssqnums')) return;
+      const b = barUnder(ev);
+      if (b == null) return;
+      ev.preventDefault();
+      const cur = selectedBars?.();
+      // ⇧ extends from where the selection starts, exactly as it does on the timeline.
+      if (ev.shiftKey && cur) { rulerDrag = { anchor: cur.from }; onSelectBars(cur.from, b); return; }
+      // Pressing INSIDE the selection does not decide yet. Released where it went down
+      // it is a click on the region, and a click on a region you already have means you
+      // are done with it — that is the way OUT, which a select-only ruler has no other
+      // gesture for. Dragged, it is the start of a new one from the bar under the
+      // pointer, so keeping the press held is how you pick again without a detour.
+      if (cur && b >= cur.from && b <= cur.to) { rulerDrag = { anchor: b, armed: true }; return; }
+      rulerDrag = { anchor: b };
+      onSelectBars(b, b);
+    });
+    addEventListener('pointermove', (ev) => {
+      if (!rulerDrag || !(ev.buttons & 1)) return;
+      const b = barUnder(ev);
+      if (b == null) return;
+      // Still on the bar it went down on: not a drag yet, and still a possible clear.
+      if (rulerDrag.armed) {
+        if (b === rulerDrag.anchor) return;
+        rulerDrag.armed = false;
+      }
+      onSelectBars(rulerDrag.anchor, b);
+    });
+    const endDrag = () => {
+      if (rulerDrag?.armed) onSelectBars(null);
+      rulerDrag = null;
+    };
+    addEventListener('pointerup', endDrag);
+    addEventListener('pointercancel', endDrag);
+  }
 
   /**
    * Where a step sits in the count, as classes.
@@ -803,13 +966,23 @@ export function createBarGrid({
       if (cls === 'ssqbars' && !docked) pad.append(...rulerHeader(c));
       const cellsEl = document.createElement('div');
       cellsEl.className = 'ssqcells';
+      if (cls === 'ssqbars') { barCellsEl = cellsEl; barCells = []; }
+      const picked = selectedBars?.() || null;
       for (let b = range.from; b <= range.to; b++) {
+        const inSel = !!picked && b >= picked.from && b <= picked.to;
         for (let i = 0; i < 16; i++) {
           const n = document.createElement('div');
-          n.className = 'ssqbarnum' + stepClasses(b, i);
+          // The bars picked out, marked on the ruler itself rather than washed over the
+          // field. The timeline says a selection the same way — a band across the numbers
+          // — and this is the same selection, so it should not be a second language. It
+          // also leaves the steps alone, which is what you are actually reading.
+          n.className = 'ssqbarnum' + stepClasses(b, i) + (inSel ? ' insel' : '');
+          n.dataset.bar = String(b);
+          n.dataset.step = String(i);
           const t = text(b, i);
           if (t != null) n.textContent = t;
           cellsEl.append(n);
+          if (cls === 'ssqbars') barCells.push(n);
         }
       }
       if (docked) {
@@ -827,6 +1000,7 @@ export function createBarGrid({
     // label (the docked roll's BAR) the numbers are bare, so `12` sits directly over the
     // `1` of its own first beat instead of being pushed four characters to the right of
     // the barline by a word that the corner already said.
+    selBand = null;
     strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? (rulerLabel ? `${b + 1}` : `Bar ${b + 1}`) : null));
     strip('ssqnums', 'Beat', (b, i) => (i % 4 === 0 ? `${i / 4 + 1}` : null));
 
@@ -858,6 +1032,14 @@ export function createBarGrid({
     scroll.append(body);
     if (docked) {
       rulerEl = ruler;
+      if (selectedBars) {
+        const clip = document.createElement('div');
+        clip.className = 'ssqselclip';
+        selBand = document.createElement('div');
+        selBand.className = 'ssqselband';
+        clip.append(selBand);
+        ruler.append(clip);
+      }
       const surface = document.createElement('div');
       surface.className = 'ssqdock';
       const keys = document.createElement('div');
@@ -885,6 +1067,9 @@ export function createBarGrid({
     // worth keeping: `build` runs on every commit, and an edit that moved the field
     // under your hand would make working in the middle of a part impossible.
     renderRows(c);
+    // After the rows: the ruler is measured for this, and a ruler in a panel with no
+    // layout yet measures nothing.
+    placeSelBand();
     scroll.scrollTop = scrollAt.top;
     scroll.scrollLeft = scrollAt.left;
     scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
@@ -892,6 +1077,7 @@ export function createBarGrid({
     // And once more if the clamp moved it — a shorter song, or a panel that has just
     // been resized, can leave the remembered position past the end.
     renderRows(c);
+    placeSelBand();
     scroll.addEventListener('scroll', () => {
       noteScroll(scroll);
       syncDockedChrome(scroll);
@@ -1027,9 +1213,13 @@ export function createBarGrid({
     appendPad(win.padTop, { field: !headroom });
     const rows = list.slice(win.from, win.to + 1);
     let firstRowOfField = true;
+    // The row-level mark reads off the bars a mute would ACT on, which on a whole-song
+    // panel is the selection rather than bar 1. The per-cell `off` below stays per bar:
+    // that one is a fact about the cell it is drawn in.
+    const actionFrom = scope().from;
     for (const row of rows) {
       const rowEl = document.createElement('div');
-      const muted = mutedIn(range.from, row.lane);
+      const muted = mutedIn(actionFrom, row.lane);
       rowEl.className = 'ssqrow ssqlane'
         + (row.unused ? ' unused' : '')
         + (muted ? ' muted' : '')
@@ -1189,11 +1379,51 @@ export function createBarGrid({
     return w > 0 ? w : stepPx;
   }
 
-  /** Where a column stands in the field, in body coordinates. Null before there is one. */
+  /**
+   * The ruler's own cells — one per step of every bar in the range, always built.
+   *
+   * The rows are windowed and the ruler is not, which is what makes it the thing to
+   * measure the time axis off: the column being heard, or the bar a spacer has to stand
+   * in for, has a cell here whether or not the field currently draws one.
+   *
+   * The container is held from `build` rather than looked up. This is read per bar while
+   * a window is worked out and again on every step of playback, and a `querySelectorAll`
+   * of a thousand cells inside that loop is the kind of thing that makes a scroll drop
+   * frames — `children[n]` off one element is free.
+   */
+  const rulerCells = () => barCells;
+
+  /**
+   * Where a column stands in the field, in body coordinates. Null before there is one.
+   *
+   * MEASURED, not multiplied. A step grid puts a gap on every beat and a wider one at
+   * every bar line, so the columns are not evenly spaced and `step × width` is a
+   * different picture from the one on screen — by a whole bar's worth after fifteen of
+   * them. The ruler and the field are built out of the same per-step divs carrying the
+   * same beat and bar classes, so the ruler's own x IS the field's x, by construction.
+   * The arithmetic is kept for the frame before there is a layout to measure.
+   */
   function fieldX(b, i) {
+    const cells = rulerCells();
+    const cell = cells[(b - range.from) * 16 + i];
+    // Against the first cell of the range, not against the offset parent — that is the
+    // ruler, whose own x starts a track column and a seam away from where the field's
+    // does. Cell zero IS x zero in both, by construction.
+    if (cell) return cell.offsetLeft - cells[0].offsetLeft;
     const w = stepWidth();
     if (!(w > 0)) return null;
     return ((b - range.from) * 16 + i) * w;
+  }
+
+  /**
+   * The width of the gap a bar line opens in front of a bar, measured once.
+   *
+   * Every bar but the first in the range carries it, so one cell is the answer for all
+   * of them — and the one call to `getComputedStyle` stays out of the per-bar loop.
+   */
+  function barGap() {
+    const cell = rulerCells()[16];
+    return cell ? (parseFloat(getComputedStyle(cell).marginLeft) || 0) : 0;
   }
 
   /**
@@ -1228,21 +1458,54 @@ export function createBarGrid({
     const scroll = el.querySelector('.ssqscroll');
     const measured = scroll?.clientWidth || 0;
     if (measured > 0) fieldPx = measured;
-    const barW = stepWidth() * 16;
+    const cells = rulerCells();
+    const bars = range.to - range.from + 1;
+    const tail = cells[cells.length - 1];
+    // Every x here is against cell zero — see fieldX.
+    const origin = cells[0] ? cells[0].offsetLeft : 0;
+    const total = tail ? tail.offsetLeft + tail.offsetWidth - origin : 0;
     // Nothing has ever been measured: there is no pixel to size a spacer in, so the
     // whole range is the only answer that keeps the field the width of the song.
-    if (!(barW > 0)) return whole;
+    if (cells.length < bars * 16 || !(total > 0)) return whole;
     const estimated = !(measured > 0);
-    const width = fieldPx > 0 ? fieldPx : barW * 4;
-    const first = Math.max(range.from,
-      range.from + Math.floor(scrollAt.left / barW) - BAR_OVERSCAN);
-    const last = Math.max(first, Math.min(range.to,
-      range.from + Math.floor((scrollAt.left + width) / barW) + BAR_OVERSCAN));
+    const width = fieldPx > 0 ? fieldPx : total;
+    // ---- off the RULER, bar by bar ------------------------------------------------
+    //
+    // Not a bar width times an index. A step grid opens a gap on every beat and a wider
+    // one at every bar line, so its bars are not even all the same width — the first one
+    // in the range has no bar line in front of it — and a spacer sized by multiplication
+    // walks the field away from the ruler that counts it, a little further with every bar.
+    //
+    // `edges[b]` is where bar b BEGINS with its own bar-line gap left out, because the
+    // first bar the field draws still carries that margin itself: counted in the spacer
+    // as well, it would be counted twice and the field would sit a gap to the right of
+    // its own numbers.
+    const gap = barGap();
+    const edgeAt = (b) => {
+      const cell = cells[(b - range.from) * 16];
+      if (!cell) return null;
+      return cell.offsetLeft - origin - (b === range.from ? 0 : gap);
+    };
+    const edges = [];
+    for (let b = range.from; b <= range.to; b++) edges.push(edgeAt(b) ?? 0);
+    const edgeOf = (b) => edges[b - range.from];
+    // A spacer is a flex item like any cell, so it brings one more column gap with it —
+    // the field sat two pixels right of its own ruler at every scroll position but home.
+    // Taken off the spacer rather than off the cells, because the cells are the thing
+    // being lined up.
+    const flexGap = parseFloat(getComputedStyle(barCellsEl).columnGap) || 0;
+    const spacer = (px) => Math.max(0, px - flexGap);
+    let first = range.to;
+    while (first > range.from && edgeOf(first) > scrollAt.left) first--;
+    let last = first;
+    while (last < range.to && edgeOf(last + 1) < scrollAt.left + width) last++;
+    first = Math.max(range.from, first - BAR_OVERSCAN);
+    last = Math.min(range.to, Math.max(first, last + BAR_OVERSCAN));
     return {
       from: first,
       to: last,
-      padLeft: (first - range.from) * barW,
-      padRight: Math.max(0, (range.to - last) * barW),
+      padLeft: first > range.from ? spacer(edgeOf(first)) : 0,
+      padRight: last >= range.to ? 0 : spacer(total - edgeOf(last + 1)),
       estimated,
     };
   }
@@ -2191,13 +2454,16 @@ export function createBarGrid({
     readBar,
     /** Is this lane silenced in this bar by the arrangement? */
     mutedIn,
-    /** Stage whole lanes across the shown bars and commit once — figures, grooves. */
+    /** Stage whole lanes across the bars in scope and commit once — figures, grooves. */
     layDown,
     toggleMute,
     barSpan,
+    /** And the bars an action reaches, for a menu that has to name them — see `scope`. */
+    actionSpan,
     setRulerLabel(label) { rulerLabel = label; },
     get linked() { return linked; },
     get range() { return range; },
+    get action() { return scope(); },
     get plan() { return plan; },
   };
 }

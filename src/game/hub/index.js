@@ -20,7 +20,8 @@ import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
 import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, ARCADE_PLAY_COST } from '../../data/progression.js';
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
-import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage } from '../progress.js';
+import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
+import { MusicDirector } from '../../engine/music-director.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -603,21 +604,23 @@ function drawCeilingLight(ctx, x, y, lit, viewX = x, viewWidth = HUB_VIEW_W) {
   ctx.restore();
 }
 
-// Walking up to a hero offers two things, and neither of them is guessable from
-// the world: you can hear what they have to say, or you can BE them. Their name
-// and those two actions share the bottom contextual row, so identity and verbs
-// read as one sentence and no interface floats over the cast.
+// Walking up to a hero offers exactly one thing you could not have worked out
+// from the world: you can BE them. Their name and that verb share the bottom
+// contextual row, so identity and action read as one sentence and no interface
+// floats over the cast.
 //
-// The alternative was mapping them to different inputs (DOWN talks, ENTER
-// swaps), which reads fine in a manual and not at all on a screen — and on touch
-// it would have meant "dwell to talk, tap to swap", two gestures on the same
-// character telling you nothing about themselves. Two labelled chips say what
-// both actions are, and are hit the same way on a phone as on a keyboard.
-const NPC_MENU = [{ id: 'talk', label: 'TALK' }, { id: 'swap', label: 'SWAP' }];
+// TALK used to sit beside it. It was a button for something that already
+// happens on its own — stand with somebody for 0.8s and they speak (see the
+// dwell greeting in update) — so the chip was offering to do the thing the
+// character had just done unprompted, which makes the automatic line look like
+// a malfunction rather than the point. Standing there IS talking to them.
+const NPC_MENU = [{ id: 'swap', label: 'SWAP' }];
 // Not everyone in the concourse is a body you can wear — Gary runs the shop and
-// is not in HEROES. Offering SWAP on him would be a button that silently does
-// the wrong thing, so he gets a one-item chooser instead.
-function npcMenuFor(npc) { return npc && npc.swappable === false ? NPC_MENU.slice(0, 1) : NPC_MENU; }
+// Dolores the bench, and neither is in HEROES. With TALK gone there is nothing
+// left to offer them, so they carry a name and no chips at all: they still
+// greet you, and confirm falls through to the counter they are standing behind,
+// which is the only thing you actually came over to press.
+function npcMenuFor(npc) { return npc && npc.swappable === false ? [] : NPC_MENU; }
 const NPC_CHIP_W = 34, NPC_CHIP_H = 16, NPC_CHIP_GAP = 3;
 const NPC_NAME_GAP = 8;
 // How far short of the back wall a hero has to stop.
@@ -633,8 +636,14 @@ const NPC_CHIP_MARGIN = NPC_CHIP_W + NPC_CHIP_GAP + 14;
 function npcPromptLayout(npc, opts = npcMenuFor(npc), anchorX = W / 2) {
   const name = npc.name || HERO_BY_ID[npc.id].short;
   const nameW = textWidth(name, 1, 'ui');
-  const chipsW = opts.length * NPC_CHIP_W + (opts.length - 1) * NPC_CHIP_GAP;
-  const totalW = nameW + NPC_NAME_GAP + chipsW;
+  // Counter staff have no chips at all, so the row is the bare name — and the
+  // name has to centre on ITSELF. Carrying the gap (or a negative chipsW from
+  // the joining term) would hang the label off to one side of a person who has
+  // nothing standing next to them.
+  const chipsW = opts.length
+    ? NPC_NAME_GAP + opts.length * NPC_CHIP_W + (opts.length - 1) * NPC_CHIP_GAP
+    : 0;
+  const totalW = nameW + chipsW;
   const x = Math.max(4, Math.min(W - totalW - 4, anchorX - totalW / 2));
   const y = H - 39;
   return {
@@ -948,7 +957,7 @@ export class HubState {
   }
 
   // The furthest right an NPC may stand. Short of the player's own limit by a
-  // chip row's worth, so their TALK/SWAP pair always has somewhere to be drawn
+  // chip row's worth, so their SWAP chip always has somewhere to be drawn
   // — the camera stops at the wall, so anything past it is simply never shown.
   npcFarX() { return this.width - 20 - NPC_CHIP_MARGIN; }
 
@@ -1336,9 +1345,10 @@ export class HubState {
       const nearBench = visualBenchHit && Math.abs(visualBenchHit.x - this.px) < 26;
       if (tappedStation && ((onSelf && Math.abs(tappedStation.x - this.px) < 26) || nearBench)) this.interact(tappedStation);
       // Tapping a hero does NOT act on them. It used to run chooseNpc, which
-      // with TALK selected just replayed their line — a second, invisible way to
-      // do a thing the chips already do visibly, and the only one that could
-      // fire by accident while you were trying to walk. The chips are the whole
+      // back when TALK led the chooser just replayed their line — a second,
+      // invisible way to do a thing that happens by itself, and the only one
+      // that could fire by accident while you were trying to walk. The chip is
+      // the whole
       // interface now; a tap on the hero themselves falls through and walks —
       // but it walks to a spot BESIDE them (standBesideX) rather than to their
       // own x. Walking onto somebody's exact position stood the two sprites
@@ -1517,25 +1527,30 @@ export class HubState {
     //
     // The chooser moves on ArrowUp/ArrowDown. The hub input context keeps those
     // as navigation actions while reserving Space for the avatar's jump.
-    const chooser = !!this.focusNpc;
+    // Only a focus that actually OFFERS something is a chooser. Gary and
+    // Dolores draw a name and no chips, and a confirm with nothing on screen to
+    // answer it has to reach the counter behind them instead of being eaten.
+    const chooser = !!this.focusNpc && npcMenuFor(this.focusNpc).length > 0;
     // Confirm follows the focus, so it always does what the chips say it will.
     if (Input.pressed('confirm')) {
-      if (this.focusNpc) this.chooseNpc(this.focusNpc);
+      if (chooser) this.chooseNpc(this.focusNpc);
       else if (near) this.interact(near);
     }
-    // The chooser resets to TALK whenever the hero beside you changes, so it
-    // never opens already pointing at SWAP on someone you just walked up to.
+    // The chooser resets to its first chip whenever the hero beside you changes,
+    // so it never opens already pointing somewhere you did not put it.
     if ((npc?.id ?? null) !== this.dwellNpcId) {
       this.dwellNpcId = npc?.id ?? null;
       this.npcMenuIdx = 0;
       this.npcDwell = 0;
       this.greeted = false;
     }
-    // Heroes still greet you unprompted the first time you stand with them —
-    // that ambience got removed along with the old dwell-to-talk binding, which
-    // it was tangled up with, and the concourse went quiet. It is not redundant
-    // with the TALK chip: talkTo() walks HUB_LINES in order (slot.hub.npcSeen),
-    // so the greeting is their opener and the chip is everything after it.
+    // Standing with somebody IS talking to them: 0.8s alongside and they speak,
+    // no button. This is now the ONLY way their lines come out, and it is not a
+    // single canned greeting — talkTo() walks HUB_LINES in order and remembers
+    // its place per hero (slot.hub.npcSeen), so leaving and coming back gets
+    // their next line rather than the same hello forever. `greeted` is reset by
+    // the block above whenever the hero beside you changes, which is what makes
+    // approaching somebody the gesture that advances them.
     if (npc) {
       this.npcDwell += dt;
       if (!this.greeted && this.npcDwell >= 0.8) { this.greeted = true; this.talkTo(npc); }
@@ -1602,6 +1617,7 @@ export class HubState {
   // Whichever chip is lit.
   chooseNpc(npc) {
     const opts = npcMenuFor(npc);
+    if (!opts.length) return;   // counter staff: a name, no verbs
     const pick = opts[Math.min(this.npcMenuIdx || 0, opts.length - 1)];
     if (pick.id === 'swap') this.swapTo(npc);
     else this.talkTo(npc);
@@ -1748,7 +1764,7 @@ export class HubState {
       //
       // So does being addressed: the hero you are actually talking to stops and
       // turns to you, the way anybody would. That is worth having for its own
-      // sake, but it also steadies the chips — the TALK/SWAP window is 18 units
+      // sake, but it also steadies the chip — the SWAP window is 18 units
       // wide and a wandering hero crosses it at 10 units a second, so standing
       // beside one who had not noticed you meant the chips appeared, slid away
       // and came back while you had not moved at all.
@@ -2239,7 +2255,10 @@ export class HubState {
       // name what is tappable and then get out of the way.
       drawTextCentered(ctx, Input.isTouchDevice()
         ? 'TAP TO WALK, TAP AGAIN TO ENTER, A POSTER TO READ'
-        : 'LEFT/RIGHT WALK   SPACE JUMP   UP/DOWN PICK   ENTER CONFIRM', W / 2, H - 48, '#8a8a98', HINT_S);
+        // UP/DOWN PICK left with the TALK chip. One chip is not a list, so the
+        // legend was teaching a keypress that now does nothing — and the intro
+        // line is the last place to spend a clause on a no-op.
+        : 'LEFT/RIGHT WALK   SPACE JUMP   ENTER CONFIRM', W / 2, H - 48, '#8a8a98', HINT_S);
       ctx.restore();
     }
     // The same speech card the stages use — portrait, name header, words —
@@ -3027,6 +3046,14 @@ const LIST_TOP = 74, LIST_BOTTOM = 250, ROW_MIN = 28, ROW_MAX = 48;
 export class StageSelectState {
   constructor({ save, cab, flow }) { this.save = save; this.cab = cab; this.flow = flow; this.listY = LIST_TOP; this.rowH = ROW_MAX; }
   enter() {
+    // The cabinet's own theme starts here, and keeps playing through the stage list, the
+    // briefing and into the level itself — where it opens up rather than restarting. See
+    // MusicDirector, and run.js where the handover happens.
+    //
+    // This one IS a song change (the food court's theme is a different composition), so
+    // it takes setBank's gap. It happens behind a fully closed shutter — states.js runs
+    // enter() at the covered midpoint — which hides most but not all of it.
+    MusicDirector.play(this.cab.music, 'select', cabinetMusicState(this.save.slot, this.cab.id));
     this.corrupt = null;
     const opts = this.options();
     this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));

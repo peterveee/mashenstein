@@ -7,6 +7,12 @@ import { randomPowerPickup } from './powerups.js';
 export const REACT_FLOOR = 0.25;      // seconds of reaction after previous action
 export const REACT_FLOOR_MAX = 0.2;   // at highest tiers / UNPLUGGED
 
+// Coin lattice: one spacing used both across and up, so a block reads as a
+// square grid rather than a stretched one. The floor is the resting altitude of
+// a coin sitting on the ground.
+export const COIN_GAP = 14;
+export const COIN_FLOOR = 8;
+
 // Worst-case airtime among heroes: heavy Grumpos (gravity ×1.25).
 export function worstAirtime() { return (2 * BASE_JUMP_V * 0.9) / (GRAVITY * 1.25); }
 
@@ -50,9 +56,8 @@ export class Spawner {
       let baseX = this.nextX;
       let lastX = baseX;
       for (const cell of pat.cells) {
-        if (cell.t === 'coinArc') {
-          this.spawnCoinArc(baseX + cell.dx, cell.n || 4, speed, pickups, jumpHeightFn);
-          lastX = Math.max(lastX, baseX + cell.dx + (cell.n || 4) * 14);
+        if (cell.t === 'coins') {
+          lastX = Math.max(lastX, baseX + cell.dx + this.spawnCoins(baseX + cell.dx, cell, pickups, jumpHeightFn));
           continue;
         }
         const def = OBSTACLES[cell.t];
@@ -80,13 +85,49 @@ export class Spawner {
     }
   }
 
-  // Coins traced along the actual jump parabola (reachable by construction).
-  spawnCoinArc(x0, n, speed, pickups, jumpHeightFn) {
+  // Coin formations. Every shape is anchored on the ground line at COIN_FLOOR
+  // and clamped to the current hero's jump envelope, so anything laid down here
+  // is reachable by construction — the same guarantee the arc always had.
+  // Returns the formation's width in px so fill() can advance past it.
+  spawnCoins(x0, cell, pickups, jumpHeightFn) {
     const hMax = (jumpHeightFn ? jumpHeightFn() : 45) * 0.85;
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0.5 : i / (n - 1);
-      const alt = 8 + hMax * Math.sin(Math.PI * t);
-      pickups.push(makePickup('coin', x0 + i * 14, alt));
+    const put = (dx, alt) => pickups.push(makePickup('coin', x0 + dx, COIN_FLOOR + alt));
+    switch (cell.shape || 'arc') {
+      // The jump parabola itself. n IS the shape: four coins sample the hump
+      // coarsely enough to read as a triangle, seven or more as a curve.
+      case 'arc': {
+        const n = cell.n || 7;
+        for (let i = 0; i < n; i++) {
+          const t = n === 1 ? 0.5 : i / (n - 1);
+          put(i * COIN_GAP, hMax * Math.sin(Math.PI * t));
+        }
+        return (n - 1) * COIN_GAP;
+      }
+      // A slab you punch through on the way up. Rows are clamped to the jump
+      // envelope, so a short hero never sees a row they cannot touch.
+      case 'block': {
+        const cols = cell.cols || 3;
+        const rows = Math.min(cell.rows || 3, 1 + Math.floor(hMax / COIN_GAP));
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) put(c * COIN_GAP, r * COIN_GAP);
+        }
+        return (cols - 1) * COIN_GAP;
+      }
+      // A flat run along the ground: pure reward, no input, a breather between
+      // two hazards. Reads as a straight line precisely because it is one.
+      case 'line': {
+        const n = cell.n || 6;
+        for (let i = 0; i < n; i++) put(i * COIN_GAP, 0);
+        return (n - 1) * COIN_GAP;
+      }
+      // A ramp climbing one coin per step, which telegraphs the jump before the
+      // player reaches it. Clamped flat once the steps top out the envelope.
+      case 'stair': {
+        const n = cell.n || 5;
+        for (let i = 0; i < n; i++) put(i * COIN_GAP, Math.min(i * COIN_GAP, hMax));
+        return (n - 1) * COIN_GAP;
+      }
+      default: return 0;
     }
   }
 }

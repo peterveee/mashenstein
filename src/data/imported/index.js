@@ -41,6 +41,7 @@ import * as CRIMSON_ENGINE from './crimson-engine.js';
 import * as CRIMSON_MIRROR from './crimson-mirror.js';
 import * as DIZZY_LADDER from './dizzy-ladder.js';
 import * as DIZZY_MIRROR from './dizzy-mirror.js';
+import * as DIZZY_ROBOT from './dizzy-robot.js';
 import * as DIZZY_TEMPLE from './dizzy-temple.js';
 import * as ELECTRIC_BEETLE from './electric-beetle.js';
 import * as ELECTRIC_CAROUSEL from './electric-carousel.js';
@@ -50,6 +51,7 @@ import * as ELECTRIC_SCOOTER from './electric-scooter.js';
 import * as FROZEN_BEETLE from './frozen-beetle.js';
 import * as FROZEN_DIVER from './frozen-diver.js';
 import * as FROZEN_HARBOUR from './frozen-harbour.js';
+import * as FROZEN_SCOOTER from './frozen-scooter.js';
 import * as GLASS_OWL from './glass-owl.js';
 import * as GLASS_VOLCANO from './glass-volcano.js';
 import * as GOLDEN_PIGEON from './golden-pigeon.js';
@@ -79,6 +81,7 @@ import * as PLASTIC_OWL from './plastic-owl.js';
 import * as ROYAL_HARBOUR from './royal-harbour.js';
 import * as ROYAL_WALTZ from './royal-waltz.js';
 import * as RUBBER_PUPPET from './rubber-puppet.js';
+import * as RUBBER_SUNDAE from './rubber-sundae.js';
 import * as RUSTY_COMET from './rusty-comet.js';
 import * as RUSTY_TYPHOON from './rusty-typhoon.js';
 import * as SALTY_CANYON from './salty-canyon.js';
@@ -139,6 +142,7 @@ export const IMPORTED_BY_ID = {
   "crimson-mirror": { bank: CRIMSON_MIRROR.bank, title: CRIMSON_MIRROR.title, group: "scratch", writable: true },
   "dizzy-ladder": { bank: DIZZY_LADDER.bank, title: DIZZY_LADDER.title, group: "scratch", writable: true },
   "dizzy-mirror": { bank: DIZZY_MIRROR.bank, title: DIZZY_MIRROR.title, group: "scratch", writable: true },
+  "dizzy-robot": { bank: DIZZY_ROBOT.bank, title: DIZZY_ROBOT.title, group: "scratch", writable: true },
   "dizzy-temple": { bank: DIZZY_TEMPLE.bank, title: DIZZY_TEMPLE.title, group: "scratch", writable: true },
   "electric-beetle": { bank: ELECTRIC_BEETLE.bank, title: ELECTRIC_BEETLE.title, group: "scratch", writable: true },
   "electric-carousel": { bank: ELECTRIC_CAROUSEL.bank, title: ELECTRIC_CAROUSEL.title, group: "scratch", writable: true },
@@ -148,6 +152,7 @@ export const IMPORTED_BY_ID = {
   "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
   "frozen-harbour": { bank: FROZEN_HARBOUR.bank, title: FROZEN_HARBOUR.title, group: "scratch", writable: true },
+  "frozen-scooter": { bank: FROZEN_SCOOTER.bank, title: FROZEN_SCOOTER.title, group: "scratch", writable: true },
   "glass-owl": { bank: GLASS_OWL.bank, title: GLASS_OWL.title, group: "scratch", writable: true },
   "glass-volcano": { bank: GLASS_VOLCANO.bank, title: GLASS_VOLCANO.title, group: "scratch", writable: true },
   "golden-pigeon": { bank: GOLDEN_PIGEON.bank, title: GOLDEN_PIGEON.title, group: "scratch", writable: true },
@@ -177,6 +182,7 @@ export const IMPORTED_BY_ID = {
   "royal-harbour": { bank: ROYAL_HARBOUR.bank, title: ROYAL_HARBOUR.title, group: "scratch", writable: true },
   "royal-waltz": { bank: ROYAL_WALTZ.bank, title: ROYAL_WALTZ.title, group: "scratch", writable: true },
   "rubber-puppet": { bank: RUBBER_PUPPET.bank, title: RUBBER_PUPPET.title, group: "scratch", writable: true },
+  "rubber-sundae": { bank: RUBBER_SUNDAE.bank, title: RUBBER_SUNDAE.title, group: "scratch", writable: true },
   "rusty-comet": { bank: RUSTY_COMET.bank, title: RUSTY_COMET.title, group: "scratch", writable: true },
   "rusty-typhoon": { bank: RUSTY_TYPHOON.bank, title: RUSTY_TYPHOON.title, group: "scratch", writable: true },
   "salty-canyon": { bank: SALTY_CANYON.bank, title: SALTY_CANYON.title, group: "scratch", writable: true },

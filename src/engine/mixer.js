@@ -30,7 +30,7 @@
 //     a console EQ actually uses. So the EQ is native BiquadFilters, not EQ3.
 import * as Tone from 'tone';
 import { LANES } from './lanes.js';
-import { createEffect, makeReverb, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
+import { createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
@@ -115,6 +115,8 @@ function makeWidth(ctx) {
     input,
     output: merge,
     set(w) { side.gain.setTargetAtTime(Math.max(0, Math.min(2, w)), ctx.currentTime, 0.03); },
+    /** The same move at an audio time — see rampParam. */
+    ramp(w, when, seconds) { rampParam(ctx, side.gain, Math.max(0, Math.min(2, w)), when, seconds); },
   };
 }
 
@@ -187,6 +189,12 @@ function makeEq(ctx) {
       if (l != null) low.gain.value = l;
       if (m != null) mid.gain.value = m;
       if (h != null) high.gain.value = h;
+    },
+    /** The same move at an audio time — see rampParam. */
+    ramp({ low: l, mid: m, high: h } = {}, when, seconds) {
+      if (l != null) rampParam(ctx, low.gain, l, when, seconds);
+      if (m != null) rampParam(ctx, mid.gain, m, when, seconds);
+      if (h != null) rampParam(ctx, high.gain, h, when, seconds);
     },
   };
 }
@@ -389,8 +397,28 @@ export function createMixer(ctx, {
     // destination is the shared echoBus and the flag still does its old job.
     const wet = ctx.createGain();
 
+    // The gate and the fader are two nodes, not one, and the line between them is the
+    // line this whole file already draws: SOLO IS MONITORING AND IS NEVER SAVED; MUTE IS
+    // PART OF THE MIX AND IS.
+    //
+    // `vol` is the GATE, and solo alone owns it: 1 or 0, written with `.value`, because
+    // solo has to be instant and it fires on every strip at once.
+    // `pres` is the LEVEL — the fader and the mute together, since a mute is only a
+    // fader all the way down — and it is the one place a scheduled ramp ever lands.
+    //
+    // Putting mute on the gate instead looks reasonable and is wrong, which cost an
+    // afternoon: applyMix arms a treatment through setMute and a transition leaves it
+    // through a ramp, so a lane the cabinet screen silenced was muted on one node and
+    // un-muted on the other, and never came back when the level started.
+    //
+    // They were one node to begin with, which had the matching problem from the other
+    // side: soloing any channel rewrote the same AudioParam a transition was ramping.
+    // Multiplied together they are the value that node held — a gate of 1 times the
+    // fader is the fader — so splitting them is a pass-through change.
     const vol = ctx.createGain();
     vol.gain.value = 1;
+    const pres = ctx.createGain();
+    pres.gain.value = 1;
     const panner = ctx.createStereoPanner();
     panner.pan.value = 0;
 
@@ -407,14 +435,23 @@ export function createMixer(ctx, {
     // The channel path: fader, pan, EQ, then the effect chain (spliced in by
     // rewireChain below), then the stereo width stage into the music bus.
     dry.connect(vol);
-    vol.connect(panner);
+    vol.connect(pres);
+    pres.connect(panner);
     panner.connect(laneEq.input);
     widthNode.output.connect(monitor);
     monitor.connect(musicBus);            // the strip's only route to the mix
 
-    // One send per aux. The legacy delay taps `dry` — the WHOLE lane, pre-fader —
-    // so its gain has to carry the fader itself. Every other aux taps `vol`, which
-    // is already post-fader.
+    // One send per aux, all tapping `pres` — post-gate, post-fader — so a send node
+    // carries the send AMOUNT and nothing else.
+    //
+    // The legacy delay used to tap `dry`, pre-fader, and multiply the fader back into
+    // its own gain to compensate, while every other aux tapped `vol` and got the fader
+    // for free. Two routes to the same place by different arithmetic, and both of them
+    // meant mute and solo had to reach into the send gains to silence a channel.
+    // Tapping the fader's OUTPUT makes the gate and the fader implicit for every aux
+    // equally, so nothing has to reach into a send gain to silence a channel — which is
+    // what lets a ramped send survive you hitting solo. See the note where vol and pres
+    // are built.
     //
     // It used to tap `wet`, which is fed only by voices whose own echo flag is set,
     // and that made the send a control you could not trust: a lane the engine keeps
@@ -422,15 +459,11 @@ export function createMixer(ctx, {
     // (`addShopOrgan`, `shopOrgan2`), had nothing arriving at the send and the knob
     // did nothing at any position. Every channel can reach the delay now; a channel
     // that should not is a send at zero, which is a thing you can see.
-    //
-    // Level is unchanged wherever the whole lane echoed already: `wet` is fed by the
-    // same voice outputs `dry` is, so for those lanes this taps the identical signal.
     const sends = new Map();
     for (const def of AUXES) {
       const g = ctx.createGain();
-      g.gain.value = def.legacy ? def.defaultSend : 0;
-      if (def.legacy) dry.connect(g);
-      else vol.connect(g);
+      g.gain.value = def.defaultSend;
+      pres.connect(g);
       g.connect(auxes.get(def.id).input);
       sends.set(def.id, g);
     }
@@ -459,16 +492,19 @@ export function createMixer(ctx, {
     // Solo is a monitoring state, so it is resolved here rather than by Tone's
     // global solo bus: the wet path has to follow it too, and it must never be
     // written into a saved mix.
-    const applyMute = () => {
-      const silenced = state.mute || (soloed.size > 0 && !soloed.has(key));
-      const g = silenced ? 0 : dbToGain(state.gain);
-      vol.gain.value = g;
-      for (const def of AUXES) {
-        const node = sends.get(def.id);
-        // Pre-fader taps carry the fader here; post-fader taps already have it.
-        node.gain.value = def.legacy ? g * (state.send[def.id] ?? 0)
-          : (silenced ? 0 : (state.send[def.id] ?? 0));
-      }
+    //
+    // It reaches ONLY the gate, and the gate is upstream of both the fader and the send
+    // taps — so silencing a channel silences its sends without this writing them, and
+    // without stepping on a ramp a transition has scheduled there.
+    const applySolo = () => {
+      vol.gain.value = (soloed.size > 0 && !soloed.has(key)) ? 0 : 1;
+    };
+
+    // The fader, with the mute folded in — one param, so a mix and a transition move a
+    // lane's level through the same door whichever of the two things they are changing.
+    const applyLevel = () => {
+      pres.gain.cancelScheduledValues(ctx.currentTime);
+      pres.gain.value = state.mute ? 0 : dbToGain(state.gain);
     };
 
     const strip = {
@@ -476,14 +512,17 @@ export function createMixer(ctx, {
       dry,
       wet,
       get state() { return state; },
-      setGain(db) { state.gain = db; applyMute(); },
+      // Both write the fader, and both cancel whatever was scheduled on it: you have
+      // just taken manual control of this lane, and a transition's ramp arriving on top
+      // of the number you dialled is the wrong answer to that.
+      setGain(db) { state.gain = db; applyLevel(); },
+      setMute(m) { state.mute = !!m; applyLevel(); },
       setPan(p) { state.pan = Math.max(-1, Math.min(1, p)); panner.pan.value = state.pan; },
       /** 1 = as recorded, 0 = mono, 2 = pushed wide. */
       setWidth(w) { state.width = w; widthNode.set(w); },
-      setMute(m) { state.mute = !!m; applyMute(); },
       setSolo(on) {
         if (on) soloed.add(key); else soloed.delete(key);
-        for (const s of strips.values()) s._applyMute();
+        for (const s of strips.values()) s._applySolo();
       },
       setEQ(patch = {}) {
         Object.assign(state.eq, patch);
@@ -492,16 +531,17 @@ export function createMixer(ctx, {
       /** Accepts any subset of aux ids, e.g. { delay: 1, reverb2: 0.3 }. */
       setSend(patch = {}) {
         for (const [id, v] of Object.entries(patch)) {
-          if (v != null && sends.has(id)) {
-            state.send[id] = v;
-            // A send raised off zero has to have somewhere to arrive — see wakeAux.
-            // Only ever upwards here: dropping the last send to zero leaves the return
-            // wired and silent until the next applyMix prunes it, which costs a little
-            // CPU and never costs a sound.
-            if (v > 0) wakeAux(id);
-          }
+          if (v == null || !sends.has(id)) continue;
+          state.send[id] = v;
+          const g = sends.get(id).gain;
+          g.cancelScheduledValues(ctx.currentTime);
+          g.value = v;
+          // A send raised off zero has to have somewhere to arrive — see wakeAux.
+          // Only ever upwards here: dropping the last send to zero leaves the return
+          // wired and silent until the next applyMix prunes it, which costs a little
+          // CPU and never costs a sound.
+          if (v > 0) wakeAux(id);
         }
-        applyMute();
       },
       /**
        * Replace this channel's effect chain. `list` is [{ id, params }] in order.
@@ -513,8 +553,46 @@ export function createMixer(ctx, {
       /** Temporarily take one effect out of the chain, without losing its settings. */
       setEffectBypass(index, on) { slot.setBypass(index, on); },
 
+      /**
+       * Everything a presentation variant can move on this channel, AT AN AUDIO TIME.
+       *
+       * Absolute targets, not deltas against the authored mix. A ratio cannot express a
+       * send that starts at zero — "put reverb on the kick" where the song's own mix has
+       * none is exactly the case a cabinet treatment is made of — so the caller resolves
+       * what the lane should sound like and says so.
+       *
+       * `mute` folds into the level as a fade to silence rather than touching the gate.
+       * The gate belongs to monitoring; a variant that hides the lead has not muted it,
+       * and the desk should go on showing what the song says.
+       *
+       * `state` is deliberately NOT written. It describes the mix AS AUTHORED, which is
+       * what the desk draws and what pruneAuxes counts. A target that has not arrived is
+       * not that yet, and recording it here would make the faders jump a quarter of a
+       * second before the sound did.
+       */
+      rampTo({ gain, mute, pan, width, eq, send } = {}, when, seconds = 0) {
+        if (gain != null || mute != null) {
+          rampParam(ctx, pres.gain, mute ? 0 : dbToGain(gain ?? state.gain), when, seconds);
+        }
+        if (pan != null) rampParam(ctx, panner.pan, Math.max(-1, Math.min(1, pan)), when, seconds);
+        if (width != null) widthNode.ramp(width, when, seconds);
+        if (eq) laneEq.ramp(eq, when, seconds);
+        for (const [id, v] of Object.entries(send || {})) {
+          if (v == null || !sends.has(id)) continue;
+          if (v > 0) wakeAux(id);
+          rampParam(ctx, sends.get(id).gain, v, when, seconds);
+        }
+      },
+
       level: () => meter.getValue(),
-      _applyMute: applyMute,
+      _slot: slot,
+      // The gate and the fader, reachable so a test can prove which of them monitoring
+      // writes to. That split is the whole reason a transition survives you hitting
+      // solo, and it is invisible from outside without these.
+      _vol: vol,
+      _pres: pres,
+      _sends: sends,
+      _applySolo: applySolo,
       _monitor: (g) => { monitor.gain.setTargetAtTime(g, ctx.currentTime, 0.01); },
     };
     strips.set(key, strip);
@@ -573,10 +651,32 @@ export function createMixer(ctx, {
       masterPan.connect(destination);
     }
   };
+  // The TREATMENT path: a second way through the music, for effects that only one
+  // presentation of a song wants.
+  //
+  // A cabinet screen putting a high-pass across the whole mix cannot do it on the master
+  // chain, because coming off it again is a graph edit — makeChainSlot disposes the whole
+  // slot and rebuilds it — and there is no audio time you can schedule that for. Nor can
+  // it be left in place at a harmless setting: a Tone.Filter highpass at 20Hz is a real
+  // biquad with real phase shift, not a wire, so "the level plays the song's own mix"
+  // would stop being true.
+  //
+  // So the music splits in two and the two legs cross-fade. The filter lives on the wet
+  // leg and is never removed while it can be heard; it is simply faded away from, and
+  // torn down later when nothing is going through it. At rest — dry 1, wet 0, empty
+  // slot — this is `x * 1 + x * 0`, which is exactly `x`, and the null test proves it.
+  const treatDry = ctx.createGain();
+  const treatWet = ctx.createGain();
+  treatDry.gain.value = 1;
+  treatWet.gain.value = 0;
+  let treatSlot = null;
   let masterSlot = null;
   if (master) {
     master.disconnect();
-    master.connect(masterTrim);
+    master.connect(treatDry);
+    treatDry.connect(masterTrim);
+    treatWet.connect(masterTrim);
+    treatSlot = makeChainSlot(ctx, master, treatWet);
     // Master chain sits after the trim and before the limiter, so anything here is
     // the last thing to touch the mix — which is where a bus compressor or a final
     // EQ belongs.
@@ -696,6 +796,77 @@ export function createMixer(ctx, {
       for (const a of auxes.values()) if (a.engine) a.engine.set(bpm, a.state);
     },
 
+    // ---- scheduled moves, for presentation variants --------------------------
+    // The same three things setMasterTrim/setMasterPan/setAux do, written at an audio
+    // time instead of now. Absolute targets throughout — see strip.rampTo.
+
+    // ---- the treatment leg ---------------------------------------------------
+
+    /** Load the treatment chain. Silent until rampTreatment brings the leg in. */
+    setTreatment(list = [], bpm = 120) { return treatSlot ? treatSlot.set(list, bpm) : 0; },
+    get treatment() { return treatSlot ? treatSlot.chain : []; },
+
+    /**
+     * Cross-fade between the two legs at an audio time — `wet` 1 is all treatment, 0 is
+     * all dry, and the dry leg is always its complement so the two sum to unity.
+     *
+     * EQUAL GAIN, not equal power. The usual square-root law is for two UNCORRELATED
+     * sources, where the sum is a power sum; these two are the same music by two routes,
+     * so they add arithmetically and an equal-power pair would bulge 3dB in the middle of
+     * every transition. The filtered leg is not identical to the dry one, so the sum is
+     * not perfectly flat either — but arithmetic is the far closer model of the two.
+     */
+    rampTreatment(wet, when, seconds = 0) {
+      const w = Math.max(0, Math.min(1, wet));
+      rampParam(ctx, treatWet.gain, w, when, seconds);
+      rampParam(ctx, treatDry.gain, 1 - w, when, seconds);
+    },
+
+    /** Take the treatment chain out. Only safe once the leg is silent. */
+    clearTreatment() { if (treatSlot) treatSlot.set([]); },
+    _treat: { dry: treatDry, wet: treatWet },
+
+    /** The master trim and balance. */
+    rampMaster({ master, masterPan: mp } = {}, when, seconds = 0) {
+      if (master != null) rampParam(ctx, masterTrim.gain, dbToGain(master), when, seconds);
+      if (mp != null) rampParam(ctx, masterPan.pan, Math.max(-1, Math.min(1, mp)), when, seconds);
+    },
+
+    /**
+     * One aux return's level, balance and EQ.
+     *
+     * Level, pan and EQ only. `decay` and `preDelay` regenerate the impulse response
+     * synchronously — a buffer swap, not a parameter — and there is no audio time you
+     * can schedule that for. A variant that wants a bigger room asks for more send and
+     * more return, which is what the two ends of this actually are.
+     */
+    rampAux(id, { level, pan, eq } = {}, when, seconds = 0) {
+      const a = auxes.get(id);
+      if (!a) return;
+      if (level != null) rampParam(ctx, a.level.gain, level, when, seconds);
+      if (pan != null) rampParam(ctx, a.panner.pan, Math.max(-1, Math.min(1, pan)), when, seconds);
+      if (eq) a.eq.ramp(eq, when, seconds);
+    },
+
+    /**
+     * Parameters on ONE link of a live effect chain.
+     *
+     * Parameters only. Adding, removing or reordering a link disposes every node in the
+     * slot and rebuilds it (see makeChainSlot.set) — a graph edit, with a dropped tail
+     * and a click in it, and no time you can schedule it for. So a caller asking for one
+     * gets an error rather than a rewire in the middle of a bar: the two sides of a
+     * transition have to agree on the SHAPE of their chains, and only on the numbers may
+     * they differ.
+     */
+    rampEffectParams(target, index, params, when, seconds = 0, bpm = 120) {
+      const slot = target === '__master' ? masterSlot
+        : target.startsWith('__aux:') ? auxes.get(target.slice(6))?.slot
+          : strips.get(target)?._slot;
+      const link = slot?.chain?.[index];
+      if (!link) throw new Error(`mixer: no effect at ${target}[${index}] to ramp`);
+      link.setAt(params, when, seconds, bpm);
+    },
+
     /**
      * Unhook auxes nothing is sending to. A ConvolverNode is not free just because
      * its input is silent — but a node with no path to the destination is never
@@ -733,7 +904,7 @@ export function createMixer(ctx, {
     get limiterOn() { return limiterOn; },
     /** Costs 6ms of output latency whenever it is on — see the note where it is built. */
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
-    clearSolo() { soloed.clear(); for (const s of strips.values()) s._applyMute(); },
+    clearSolo() { soloed.clear(); for (const s of strips.values()) s._applySolo(); },
     /**
      * Kept, and resolved. The reverb used to build its impulse response by rendering
      * noise through its own offline context, so an offline render had to await it or
@@ -762,6 +933,14 @@ export function createMixer(ctx, {
         a.monitor.gain.value = 1;
         if (a.reverb) { a.reverb.decay = a.state.decay; a.reverb.preDelay = a.state.preDelay; }
       }
+      // The treatment leg goes back to being a wire. A cabinet screen's filter belongs to
+      // that screen, and applyMix runs on every song change — without this, backing out
+      // of one to the food court would take the high-pass along with it.
+      treatDry.gain.cancelScheduledValues(ctx.currentTime);
+      treatWet.gain.cancelScheduledValues(ctx.currentTime);
+      treatDry.gain.value = 1;
+      treatWet.gain.value = 0;
+      if (treatSlot) treatSlot.set([]);
       for (const s of strips.values()) s._monitor(1);
       masterTrim.gain.value = 1;
       masterPan.pan.value = 0;

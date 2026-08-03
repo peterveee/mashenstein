@@ -13,7 +13,7 @@ import { join } from 'path';
 import { bankSource, DESK_MARKER } from './song-source.js';
 // A mix is written by its own rules — defaults left out, so the file holds decisions
 // and a save produces a diff of what changed. See mix-source.js.
-import { mixEntrySource } from './mix-source.js';
+import { mixEntrySource, variantsSource } from './mix-source.js';
 
 export const songPath = (root, id) => join(root, 'src/data/songs', `${id}.js`);
 export const scratchSongPath = (root, id) => join(root, 'src/data/imported', `${id}.js`);
@@ -52,17 +52,22 @@ export function readSongFile(root, id) {
  * would overwrite the music. A song that has lost its marker is a song to fix by
  * hand, not one to write over.
  */
-export function writeSongFile(root, id, { mix = null, arrangement = null } = {}) {
+export function writeSongFile(root, id, { mix = null, arrangement = null, variants = null } = {}) {
   const path = writableSongPath(root, id);
   if (!path) throw new Error(`no writable song file for "${id}"`);
   const src = readFileSync(path, 'utf8');
   const at = src.indexOf(DESK_MARKER);
   if (at < 0) throw new Error(`${id}.js has no "${DESK_MARKER}" line — refusing to write over it`);
 
+  // Everything below the marker is rewritten WHOLE, so anything the caller does not
+  // hand over is not preserved — it is deleted. That is why /save re-reads what the
+  // file already holds for the exports the patch does not mention: saving a fader must
+  // not take the cabinet treatment with it.
   const body = `${DESK_MARKER} ----------------------------------------------\n`
     + `// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.\n\n`
     + `export const mix = ${(mix && mixEntrySource(mix)) || 'null'};\n\n`
-    + `export const arrangement = ${arrangement ? bankSource(arrangement) : 'null'};\n`;
+    + `export const arrangement = ${arrangement ? bankSource(arrangement) : 'null'};\n\n`
+    + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n`;
 
   writeFileSync(path, src.slice(0, at) + body);
   return path;

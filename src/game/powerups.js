@@ -101,6 +101,21 @@ export class Powerups {
     return !a ? 1 : (a.level >= 2 ? 1.4 : 1.25);
   }
 
+  // What a speed burst does to the MUSIC, which is not what it does to the
+  // world. The world goes 1.25-1.4x; the song only leans forward, because the
+  // mix's delays and reverb pre-delays are timed against the bank's own bpm and
+  // a warp that large slides every echo off the beat.
+  //
+  // The floor here is perception, not taste: under SFX and a moving hero, a
+  // tempo change under ~10% is not heard as the music speeding up, it is heard
+  // as nothing. A gear change you cannot detect is worse than none, so these sit
+  // clear of that floor and accept a few ms of echo drift over a 10-second
+  // burst — a delay repeat lands ~12% early, which reads as urgency, not error.
+  musicTempoMultiplier() {
+    const a = this.active.speed;
+    return !a ? 1 : (a.level >= 2 ? 1.18 : 1.12);
+  }
+
   gravityMultiplier() {
     const a = this.active.lowgrav;
     return !a ? 1 : (a.level >= 2 ? 0.5 : 0.65);

@@ -28,6 +28,7 @@ import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile } from './lib/song-file.js';
+import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
 import { randomSongName } from './lib/song-names.js';
@@ -625,6 +626,20 @@ const server = createServer(async (req, res) => {
         const arrangement = patchMode
           ? (has(body.patch, 'arrangement') ? body.patch.arrangement : (current.arrangement ?? null))
           : (has(arrangements, id) ? arrangements[id] : (current.arrangement ?? null));
+        // Same presence semantics for the cabinet treatments — and load-bearing, because
+        // writeSongFile rewrites the whole tail of the file. Without this line, saving a
+        // fader on a song would silently delete the treatment its cabinet screen plays.
+        const variants = patchMode
+          ? (has(body.patch, 'variants') ? body.patch.variants : (current.variants ?? null))
+          : (current.variants ?? null);
+        const bad = validateVariants(variants);
+        if (bad.length) {
+          // In front of whoever wrote it, rather than going quiet in a level six screens
+          // away from the thing that caused it.
+          res.writeHead(422, { 'content-type': 'text/plain' });
+          res.end(`"${id}" cabinet treatments:\n  ${bad.join('\n  ')}`);
+          return;
+        }
         // Before the write, so the folder holds the version being replaced. Data
         // only — see snapshotSongFile for why a copy of the whole file is no good.
         const snap = snapshotSongFile(ROOT, id, HISTORY_DIR, stamp());
@@ -632,6 +647,7 @@ const server = createServer(async (req, res) => {
         writeSongFile(ROOT, id, {
           mix,
           arrangement,
+          variants,
         });
         written.push(id);
       }

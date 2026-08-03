@@ -3455,7 +3455,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // The axe is the DEEPEST layer — slung flat on his back, so every limb
   // draws over it: mid-celebrate and mid-jump the arms swing up across the
   // blade, and hidden behind it they read as amputated at the shoulder.
-  if (spec.back === 'axe' && !pose.axeThrown && pose.axeReady) {
+  // `axeReady` is opt-OUT, not opt-in: the axe is part of him, and only the run
+  // has any reason to take it off his back (thrown, or still recharging). Every
+  // other draw site — the concourse, credits, the tutorial — was silently
+  // shipping a Grumpos with no axe simply by not knowing the flag existed.
+  if (spec.back === 'axe' && !pose.axeThrown && pose.axeReady !== false) {
     // Anchored to the SHOULDER, not the head: the blade peeks over the
     // deltoid beside the beard. Head-anchored, the handle vanished behind
     // the skull and the blade sat at crown height — an axe growing out of

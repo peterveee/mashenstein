@@ -21,7 +21,15 @@ import * as FINALE from './songs/finale.js';
 
 // Shared pattern helpers -----------------------------------------------------
 const P = (tier, cells, opts = {}) => ({ tier, cells, ...opts });
-const coinArc = (dx, n = 4) => ({ t: 'coinArc', dx, n });
+// Coin formations. The spawner owns the geometry and the reachability clamp;
+// these just name the shape. The arc is a sine hump sampled at n points, so n
+// IS its shape — four coins sample it at 0/.87/.87/0 and read as a flat-topped
+// triangle, five as a tent. Seven is the first count that reads as a curve, and
+// that is the look the tutorial has always had.
+const coinArc = (dx, n = 7) => ({ t: 'coins', shape: 'arc', dx, n });
+const coinBlock = (dx, cols = 3, rows = 3) => ({ t: 'coins', shape: 'block', dx, cols, rows });
+const coinLine = (dx, n = 6) => ({ t: 'coins', shape: 'line', dx, n });
+const coinStair = (dx, n = 5) => ({ t: 'coins', shape: 'stair', dx, n });
 const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
 const BASE_PATTERNS = [
@@ -29,16 +37,20 @@ const BASE_PATTERNS = [
   P(0, [{ t: 'cactus', dx: 0 }, coinArc(60)]),
   P(0, [{ t: 'crate', dx: 0 }]),
   P(0, [{ t: 'crate', dx: 0, n: 2 }]), // a double stack reads as a real wall even at tier 0
-  P(0, [coinArc(0, 5)]),
+  // The flat run is the breather beat. Tier 1 so the cabinets that drop tier 0
+  // (Crypt, Corporate) keep it — every cabinet should own all four shapes.
+  P(1, [coinLine(0, 7)]),
   P(1, [{ t: 'cactus', dx: 0 }, { t: 'cactus', dx: 26 }]),
-  P(1, [{ t: 'cactusBig', dx: 0 }, coinArc(80)]),
+  P(1, [{ t: 'cactusBig', dx: 0 }]),
   P(1, [{ t: 'crate', dx: 0 }, { t: 'crate', dx: 40, n: 2 }]), // low then high: a two-beat read
   P(1, [{ t: 'buzzbird', dx: 0, y: 60 }]),
   P(1, [{ t: 'drone', dx: 0, y: 26 }]), // low flyer: duck under
+  P(1, [{ t: 'cactus', dx: 0 }, coinBlock(64)]),                // punch up through the slab
+  P(1, [coinStair(0), { t: 'crate', dx: 84 }]),                 // the ramp telegraphs the crate
   P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
   P(2, [{ t: 'cactus', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
   P(2, [{ t: 'barrel', dx: 0 }]),
-  P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }, coinArc(50)]),
+  P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }]),
 ];
 
 // Frost Fortress keeps the shared jump timing and difficulty curve, but wears
@@ -100,12 +112,12 @@ export const CABINETS = [
     music: SPEED.bank,
     patterns: [
       ...BASE_PATTERNS,
-      P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60, 6)]),
+      P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60)]),
       P(0, [{ t: 'trafficCone', dx: 0 }]),
       P(1, [{ t: 'boostPad', dx: 0 }, { t: 'cactus', dx: 120 }]),
       P(1, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 40 }]),
       P(2, [{ t: 'gap', dx: 0, w: 56 }]),           // collapsing road: a pit
-      P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100, 5)]),
+      P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100)]),
       P(2, [{ t: 'barrel', dx: 0 }, { t: 'barrel', dx: 140 }]),
       P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'trafficCone', dx: 60 }]),
     ],
