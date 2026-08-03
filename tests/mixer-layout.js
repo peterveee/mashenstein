@@ -1417,8 +1417,21 @@ assert(/const laneHidesRoll = \(key\) => !!key && !key\.startsWith\('__'\) && !r
 // roll for a channel that has none, and the panel's floor cannot fall by the height of
 // the strip that went with it — a cramped desk would claw the difference back on every
 // click onto the kick.
+// The window the roll is scrolled to survives neither trip: `display: none` — the fold
+// uses it and so does rollless — destroys the scroll box, and the roll comes back at
+// the top of the keyboard. fitLane only reacts to the LANE changing, and coming back to
+// the lane you left is not a change, so the roll has to be told the window itself went
+// away. Drums → the melodic channel you were just on was the case that landed on C8.
+const rollFit = /const fitLane = \(\)[\s\S]*?\n  \};/.exec(piano)?.[0] || '';
+assert(/forgetFit\(\) \{ fittedLane = null; \}/.test(piano)
+  && /if \(key === fittedLane\) return;/.test(rollFit)
+  && /pianoRoll\.forgetFit\(\);[\s\S]{0,400}?schedulePianoRollOpen\(\);/.test(notesPanelSync + entry.slice(entry.indexOf('function syncNotesPanel')))
+  && /const reopening = !on && !needsBuild && hasRoll && pianoRoll\.isOpen\(\)/.test(entry)
+  && /\} else if \(reopening\) \{\s*pianoRoll\.forgetFit\(\);\s*pianoRoll\.refresh\(\);/.test(entry)
+  && /if \(notesRollUp\(\)\) pianoRoll\.refresh\(\);/.test(entry),
+  'a roll that was taken off screen is re-fitted to its part when it comes back, on either trip');
 assert(/function schedulePianoRollOpen\([\s\S]*?if \(!notesRollUp\(\) \|\| pianoRoll\.isOpen\(\)\) return/.test(entry)
-  && /function setNotesFolded\([\s\S]*?const needsBuild = !on && !pianoRoll\.isOpen\(\) && !laneHidesRoll\(selectedLane\)/.test(entry)
+  && /function setNotesFolded\([\s\S]*?const hasRoll = !laneHidesRoll\(selectedLane\);[\s\S]*?const needsBuild = !on && !pianoRoll\.isOpen\(\) && hasRoll;/.test(entry)
   && /notes: \(\) => h\(\$\('notehead'\)\) \+ rollScopeH\(\) \+ DEV_MIN_ROLL/.test(entry)
   && /function rollScopeH\(\) \{[\s\S]*?if \(now\) lastRollScopeH = now;[\s\S]*?return lastRollScopeH;/.test(entry),
   'no roll is built for a channel that has none, and the panel floor survives its absence');

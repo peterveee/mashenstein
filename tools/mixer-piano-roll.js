@@ -1183,6 +1183,17 @@ export function createPianoRoll({
       syncPlayingKeys(step);
     },
     armFollow: grid.armFollow,
+    /**
+     * Forget which lane the window was fitted to, so the next refresh fits it again.
+     *
+     * The panel can lose its roll entirely while it is still open — a percussion
+     * channel has no part to show, see the desk's `laneHidesRoll` — and a box that has
+     * been `display: none` comes back with its scroll position gone: at the top of the
+     * keyboard, which is C8 and almost never where the part is. `fitLane` cannot see
+     * that, because the lane it is looking at may not have changed across the trip; the
+     * roll it fitted did. This is the desk saying the window itself went away.
+     */
+    forgetFit() { fittedLane = null; },
     songChanged() {
       clearPlayingKeys();
       grid.songChanged();

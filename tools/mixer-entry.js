@@ -6374,7 +6374,9 @@ function selectLane(key) {
   // The roll is scoped through lane(), so changing the strip selection must repaint it
   // immediately while it is open. Without this, the panel header follows the click but
   // the roll keeps the previous lane's rows and notes until another roll gesture occurs.
-  pianoRoll.refresh();
+  // Not while it is off screen: a hidden roll paints nothing, and the fit it would take
+  // from the drum channel it is standing in for is a window onto the wrong part.
+  if (notesRollUp()) pianoRoll.refresh();
   // The Notes panel is this channel's part, so moving the selection redraws the roll.
   // The roll's own `lane()` already follows the selection; the panel stays open at
   // whatever fold state the user left it in.
@@ -6710,14 +6712,30 @@ function syncNotesPanel() {
   // What is ON THE ROLL, not what is selected: with the master selected the roll still
   // shows a lane, and the caption has to name the part you are looking at.
   $('notepreset').textContent = hide ? '' : presetHeadingFor(rollShownLane()).name;
-  // Coming back: the roll may never have been built, or was left unbuilt while the
-  // panel had nothing to show. Same idle-time build the fold uses.
-  if (changed && !hide) schedulePianoRollOpen();
+  if (!changed || hide) return;
+  // Coming back. The roll's window has to be re-fitted to the part whatever lane this
+  // is: hiding the panel took its scroll position with it, so an unfitted roll opens
+  // at the top of the keyboard — C8, with the part four octaves below the field. The
+  // fit is keyed on the lane CHANGING, and coming back to the lane you left is not a
+  // change, which is exactly the trip that was landing on C8. See forgetFit.
+  pianoRoll.forgetFit();
+  // And the roll may never have been built at all, or was left unbuilt while the panel
+  // had nothing to show. Same idle-time build the fold uses.
+  schedulePianoRollOpen();
 }
 
 /** Fold or unfold the notes (piano roll) panel. */
 function setNotesFolded(on, refit = true) {
-  const needsBuild = !on && !pianoRoll.isOpen() && !laneHidesRoll(selectedLane);
+  const hasRoll = !laneHidesRoll(selectedLane);
+  const needsBuild = !on && !pianoRoll.isOpen() && hasRoll;
+  // Unfolding a roll that is already built. The fold hides it with `display: none`,
+  // which takes the scroll position with it, and the lane has not changed, so nothing
+  // would fit the window again — it came back at the top of the keyboard. Same trip
+  // and same fix as the rollless one in syncNotesPanel. Only on a real fold change:
+  // the border drag calls this on every pointermove, and a refresh per move would be
+  // a rebuild of the whole roll per frame.
+  const reopening = !on && !needsBuild && hasRoll && pianoRoll.isOpen()
+    && $('notes').classList.contains('collapsed');
   $('notes').classList.toggle('collapsed', on);
   $('notefold').classList.toggle('folded', on);
   $('notefold').title = on ? 'Show the notes panel' : 'Collapse the notes panel';
@@ -6731,6 +6749,9 @@ function setNotesFolded(on, refit = true) {
     // not build the roll. Do that work after the fold/layout task, not inside the click
     // handler that is competing with the audio scheduler.
     schedulePianoRollOpen();
+  } else if (reopening) {
+    pianoRoll.forgetFit();
+    pianoRoll.refresh();
   }
 }
 
