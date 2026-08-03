@@ -98,17 +98,64 @@ const suites = [
   // What a length that long does to the song AFTER it: opening another song has to
   // stop the note that is still ringing, not merely duck it for half a second.
   'tests/song-switch.js',
+  // And the mirror image of it: a cabinet's treatment handing over to a level's mix
+  // must do the opposite — keep the clock, keep the note ringing, change only the
+  // presentation. Same claim, opposite sign. The first is the clock, in counters; the
+  // second is the sound, in samples, and it is the one that caught a muted lane never
+  // coming back — a failure every counter in the first was too happy to see.
+  'tests/music-variant.js',
+  'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
 ];
 
+// The suites that launch a real Chromium and render the engine offline. They are the
+// whole cost of a run: most of them finish in a blink, but tests/voices.js renders every
+// preset in the catalogue and takes minutes on its own, which is more than the rest of
+// the file put together.
+//
+// So they are ON DEMAND. `npm test` is the fast gate — the one worth running between
+// edits and on every push — and `npm run test:all` is the full one. They also need a
+// browser binary that `npm ci` does not install, so a machine that has never run
+// `npx playwright install chromium` fails all of them at the launch rather than at an
+// assertion; that is the second reason not to fire them off unasked.
+const browserSuites = new Set([
+  'tests/mixer-loop.js',
+  'tests/voice-edit.js',
+  'tests/pitch-curve.js',
+  'tests/sfx-routing.js',
+  'tests/note-duration.js',
+  'tests/song-switch.js',
+  'tests/music-variant.js',
+  'tests/music-variant-render.js',
+  'tests/voices.js',
+  'tests/null-test.js',
+]);
+
+// A browser suite renamed out of the list above would quietly rejoin the fast gate and
+// take the deploy down with it, which is exactly the failure this split exists to stop.
+// Cheaper to notice here than in CI.
+for (const s of browserSuites) {
+  if (!suites.includes(s)) throw new Error(`browserSuites lists ${s}, which is not in suites`);
+}
+
+const withBrowser = process.argv.includes('--all') || process.env.MASH_ALL === '1';
+const selected = suites.filter((s) => withBrowser || !browserSuites.has(s));
+const skipped = suites.filter((s) => !selected.includes(s));
+
 let failed = 0;
-for (const suite of suites) {
+for (const suite of selected) {
   console.log(`\n=== ${suite} ===`);
   const r = spawnSync('node', [join(root, suite)], { stdio: 'inherit', env: { ...process.env, SEEDS: process.env.SEEDS || '100' } });
   if (r.status !== 0) failed++;
+}
+// Said out loud, every time. A gate that silently covers less than it looks like it
+// covers is worse than a slow one.
+if (skipped.length) {
+  console.log(`\nskipped ${skipped.length} browser suite(s): ${skipped.join(', ')}`);
+  console.log('  run them with:  npm run test:all   (needs: npx playwright install chromium)');
 }
 console.log(failed ? `\n${failed} SUITE(S) FAILED` : '\nALL SUITES PASSED');
 process.exit(failed ? 1 : 0);

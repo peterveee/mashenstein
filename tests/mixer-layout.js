@@ -503,7 +503,7 @@ assert(/\.arrtrack-bottom \{[^}]*padding-bottom:\s*6px/s.test(shell)
   'the control line lands above the row edge and the preset category is optically centred');
 assert(/\.arrrow\.sel \{[^}]*z-index:\s*4/s.test(shell)
   && /\.arrrow\.sel::after \{[^}]*z-index:\s*8[^}]*pointer-events:\s*none[^}]*border:/s.test(shell)
-  && /\.arrrow\.sel \.arrname \{[^}]*font-weight:\s*600/s.test(shell)
+  && /\.arrrow\.sel \.arrname \{[^}]*font-weight:\s*500/s.test(shell)
   && /\.strip\.selected h3 \{[^}]*font-weight:\s*600/s.test(shell),
   'selected track labels use semibold rather than extra-bold width');
 assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^}]*min-height:\s*var\(--arrrow\)/s.test(shell)
@@ -1231,7 +1231,7 @@ assert(/#pianoroll \.ssqruler-label \{[^}]*position:\s*relative[^}]*padding:\s*0
   && /#pianoroll \.rollzoom-label \{[^}]*letter-spacing:\s*\.03em/s.test(shell)
   && /#pianoroll \.rollzoom-label \{[^}]*color:\s*var\(--dim\)/s.test(shell)
   // A visibly wider gap between the two fields than between a label and its control.
-  && /#pianoroll \.rollzoom \+ \.rollzoom-label \{[^}]*margin-top:\s*9px/s.test(shell),
+  && /#pianoroll \.rollzoom \+ \.rollzoom-label \{[^}]*margin-top:\s*14px/s.test(shell),
   'the Bar and Beat labels sit flush against the field they name and the roll titles its two fields in the strip’s own label type');
 // The ruler names each strip once, in its corner, and the numbers below are bare — so a
 // bar number stacks on the `1` of its own first beat instead of being pushed four

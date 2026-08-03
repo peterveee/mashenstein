@@ -750,10 +750,10 @@
      low — the caps have no descenders to fill the space the name's do. */
   .arrpresetcat { flex: none; margin-left: auto; color: var(--faint); font-size: 9px; line-height: 1;
                   letter-spacing: .04em; text-transform: uppercase; text-align: right;
-                  position: relative; top: -1px; }
+               ß   position: relative; top: -1px; }
   .arrbtns { display: flex; gap: 2px; flex: none; }
   .arrbtns button { width: 19px; height: 18px; padding: 0; font-size: 9.5px; line-height: 1;
-                    border-radius: 3px; color: var(--dim); }
+                    border-radiußs: 3px; color: var(--dim); }
   /* Same size as a channel strip's title: it is the same name, and reading it at
      two sizes in two places made them feel like two different lists. */
   .arrname { flex: 1; min-width: 0; font-size: 12px; color: var(--dim); text-align: left;
@@ -769,7 +769,7 @@
   .arrrow.sel::after { content: ''; position: absolute; inset: 0; z-index: 8;
                         pointer-events: none; border: 1px solid color-mix(in srgb, var(--selected-ink) 72%, transparent);
                         border-radius: inherit; }
-  .arrrow.sel .arrname { color: var(--selected-ink); font-weight: 600; }
+  .arrrow.sel .arrname { color: var(--selected-ink); font-weight: 500; }
   .arrbars { flex: 1; align-self: stretch; display: flex; gap: 4px; height: auto;
              margin-top: 0; position: relative; }
   /* A bar is the unit you point at — the beats inside it are a picture of what it

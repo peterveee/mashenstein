@@ -22,6 +22,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    # The browser suites are on demand (see tests/run-all.js) — they cost minutes, most
+    # of it tests/voices.js rendering every preset in the catalogue, and they are run by
+    # hand with `npm run test:all` when the engine's sound is what changed.
+    #
+    # So nothing you TRIGGER waits for them: a push and a manual run both take the fast
+    # gate and deploy in about a minute. Only the weekly scheduled run pays the full
+    # price, which keeps a browser-side regression from sitting undiscovered forever
+    # without ever standing between you and a deploy you asked for.
+    env:
+      FULL_TESTS: ${{ github.event_name == 'schedule' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -37,8 +47,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm ci` installs the playwright package but NOT its browsers, so the runner has
+      # no chrome-headless-shell to launch. Only fetched for the full run — a push never
+      # opens a browser, so it should not spend a minute downloading one.
+      - name: Cache Playwright browsers
+        if: env.FULL_TESTS == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Playwright pins its browser build to the package version, so the lockfile
+          # is the cache key: bumping playwright fetches a matching browser.
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Chromium alone — the renderer never asks for the other two. Re-run even on a
+      # cache hit: the download no-ops, and the system libraries it pulls in are not
+      # part of the cached directory.
+      - name: Install Chromium
+        if: env.FULL_TESTS == 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Test
+        if: env.FULL_TESTS != 'true'
         run: npm test
+
+      - name: Test (including browser suites)
+        if: env.FULL_TESTS == 'true'
+        run: npm run test:all
 
       - name: Build
         run: npm run build
