@@ -1226,13 +1226,37 @@
            background: var(--panel); }
   #notes.collapsed { flex: 0 0 auto; }
   #notes.collapsed #pianoroll { display: none; }
+  /* A percussion channel has no roll — no pitch axis to put one on, and the step grid
+     is where its bars are edited. The panel used to fall through to the first melodic
+     lane, so selecting the kick left the lead's part on screen under a header that
+     named it: a part you could edit while looking at the wrong strip.
+     The ROLL goes, the PANEL stays: same height, same place, an empty field until a
+     pitched channel is chosen. Collapsing it as well made every click between a drum
+     strip and a melodic one resize the whole desk, and the room is not spare anyway —
+     the pattern belongs in it, and will be drawn there. */
+  #notes.rollless #pianoroll { display: none; }
   #notes.greedy { flex: 1 1 auto; min-height: 0; }
   /* No rule under the caption. Arrangement and Mixer draw none under theirs, and this
      one was the only header on the desk with a line beneath the words — it read as a
      seam inside the panel rather than the edge of it. The boundary is already there:
      the ruler under it is --panel2 against the header's --panel. */
+  /* No bottom padding: the roll is the panel's content and it starts where the caption
+     row ends. The fold button already carries its own 30px of height, so the words have
+     air above and below them without a gap held open under the header as well. */
   #notehead { display: flex; align-items: center; gap: var(--capgap);
-              padding: 4px var(--rgut) 4px var(--foldx); flex: none; }
+              padding: 4px var(--rgut) 0 var(--foldx); flex: none; }
+
+  /* After the panel's name, the preset whose part is on the roll: "NOTES  Grand Piano".
+     The roll follows the selected strip and the strip names its own sound, so this was
+     left off for a while — but the roll is the one panel that can be showing a channel
+     you did not select (a drum strip has no roll, and before that a melodic fallback
+     stood in), and the caption has to name what is on screen. Empty on a percussion
+     channel, where there is no roll to name.
+     Keep the preset's case — only the word NOTES is uppercase. */
+  #notehead #notepreset { color: var(--ink); font-size: 11px; text-transform: none;
+                          letter-spacing: 0; min-width: 0; overflow: hidden;
+                          text-overflow: ellipsis; white-space: nowrap; }
+  #notehead #notepreset:empty { display: none; }
 
   /* The NOTES header carries the fold button and the panel's name, and nothing else.
      The roll's controls used to sit out here — a lane picker, an octave nudge, a root
@@ -2363,7 +2387,10 @@
      shelf the controls were sitting under. Drawn as a strip from the canvas's own x=0
      (`--keys` plus the `--keyseam` gutter, the same origin both scrollers start at) it is
      the top edge of the note field and nothing else. */
-  #pianoroll .ssqruler { position: relative; flex: none; overflow: hidden; margin-top: 2px;
+  /* Flush against the Notes caption — no margin above it. The ruler and the header are
+     the same `--panel` surface, so a gap there is invisible as a gap and only shows up
+     as the bar numbers sitting lower than they need to. */
+  #pianoroll .ssqruler { position: relative; flex: none; overflow: hidden; margin-top: 0;
                          background: var(--panel); }
   #pianoroll .ssqruler::after { content: ''; position: absolute; z-index: 1;
                          left: calc(var(--keys) + var(--keyseam)); right: 0; bottom: 0;
@@ -3862,9 +3889,9 @@
   #devrack .devempty { align-self: center; }
   /* The active sound after the panel label — preset name first, then its type:
      "Arcade Kick  KICK". Keep the preset's case; only the type is uppercase.
-     Effects only: the Notes header says NOTES and nothing else. Which preset the
-     part plays is a mixer question, answered by the selected strip; repeating it
-     over the roll named the same sound twice on one screen. */
+     The Notes header names a preset too now, but differently and for a different
+     reason — see #notepreset: this one names the channel you selected, that one names
+     the part on the roll, which is not always the same channel. */
   #devhead #devtitle { display: inline-flex; align-items: baseline;
                        gap: 8px; color: var(--dim); font-weight: 400;
                        text-transform: none; }
@@ -4318,6 +4345,9 @@
       <svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg>
     </button>
     <span class="label">Notes</span>
+    <!-- Which preset's part the roll is showing, in brackets. Empty — and the roll
+         itself gone — while a percussion channel is selected. -->
+    <span id="notepreset"></span>
   </div>
   <div id="pianoroll"></div>
 </div>

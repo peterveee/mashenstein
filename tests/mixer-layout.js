@@ -228,10 +228,46 @@ assert(/#timeline::after \{[^}]*pointer-events:\s*none/s.test(shell)
   && /#devices\.edge-resizable::before \{[^}]*pointer-events:\s*auto[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell),
   'Timeline and Effects borders also have transparent, touch-safe resize hit areas');
 
+// The three heights are written together, through one function, or the window stamp
+// they are scaled by on the next load describes only whichever one was dragged last.
+const rememberHeights = /function rememberDeskHeights\(\)[\s\S]*?\n\}/.exec(entry)?.[0] || '';
 assert(entry.includes("const DEV_KEY = 'mash-mixer-devh'")
-  && entry.includes('localStorage.setItem(DEV_KEY')
-  && entry.includes('localStorage.removeItem(DEV_KEY'),
-  'notes height is remembered and resettable');
+  && rememberHeights.includes('set(ARR_KEY, userArrH)')
+  && rememberHeights.includes('set(DEV_KEY, userDevH)')
+  && rememberHeights.includes('set(FX_KEY, userFxH)')
+  && rememberHeights.includes('localStorage.removeItem(key)')
+  && rememberHeights.includes('localStorage.setItem(DESK_VH_KEY'),
+  'panel heights are remembered and resettable, all three at once with the window they were chosen on');
+// Absolute pixels, so the same screen gets the same desk back. A shorter window scales
+// them down rather than letting a desktop-sized Notes panel eat a laptop screen — and
+// only down, and only in memory: the stored numbers still describe the big screen.
+assert(/const deskScale = [\s\S]*?Math\.min\(1, innerHeight \/ storedDeskVh\)/.test(entry)
+  && /const restoredDeskH = \(value, floor\) =>[\s\S]*?value \* deskScale/.test(entry)
+  && entry.includes('let userArrH = restoredDeskH(storedArrH')
+  && entry.includes('let userDevH = restoredDeskH(storedDevH')
+  && entry.includes('let userFxH = restoredDeskH(storedFxH'),
+  'remembered heights come back at their own size, scaled down only when the window is shorter than the one they were set on');
+// Which panels you left shut is desk furniture, not song data: it is global, and it is
+// applied at load. Notes is the exception — it belongs to the song, and restoreSongLayout
+// carries it. Written only when the fold actually changes, because the border drags call
+// these setters on every pointermove.
+assert(/const ARR_FOLD_KEY = 'mash-mixer-arr-folded'/.test(entry)
+  && /const FX_FOLD_KEY = 'mash-mixer-fx-folded'/.test(entry)
+  && /const MIXER_KEY = 'mash-mixer-rack-folded'/.test(entry)
+  && /setArrangeCollapsed\(localStorage\.getItem\(ARR_FOLD_KEY\) === '1'\)/.test(entry)
+  && /setDevicesFolded\(localStorage\.getItem\(FX_FOLD_KEY\) === '1', false\)/.test(entry)
+  && /setMixerFolded\(localStorage\.getItem\(MIXER_KEY\) === '1', false\)/.test(entry),
+  'every desk fold is remembered globally and restored on load');
+for (const [fn, key] of [['setArrangeCollapsed', 'ARR_FOLD_KEY'],
+  ['setDevicesFolded', 'FX_FOLD_KEY'], ['setMixerFolded', 'MIXER_KEY']]) {
+  const body = new RegExp(`function ${fn}\\([\\s\\S]*?\\n\\}`).exec(entry)?.[0] || '';
+  // Either shape of the same gate: `if (changed) setItem(...)`, or an early
+  // `if (!changed) return;` with the write below it.
+  const guarded = new RegExp(`if \\(changed\\) localStorage\\.setItem\\(${key}`).test(body)
+    || new RegExp(`if \\(!changed\\) return;[\\s\\S]*?localStorage\\.setItem\\(${key}`).test(body);
+  assert(/const changed = /.test(body) && guarded,
+    `${fn} writes its fold only when the fold moved, not on every frame of a drag`);
+}
 assert(entry.includes("const edge = $('mixhead')")
   && entry.includes("const edge = $('notes')")
   && entry.includes("const edge = $('devices')")
@@ -1352,11 +1388,40 @@ assert(/function presetForLane\(laneKey\)[\s\S]*?defaultVoiceOf\(track\?\.bank, 
   && /#devhead \.panelpreset \{[^}]*text-transform:\s*none/s.test(shell)
   && /#devhead \.paneltype \{[^}]*text-transform:\s*uppercase/s.test(shell),
   'the effects heading carries the active preset name and uppercase type, and strip selection refreshes the roll');
-// The Notes header is the word alone. The preset belongs to the strip and the effects
-// panel; naming it a third time over the roll was noise.
+// The Notes header is the word, and then the preset whose part is on the roll — which
+// is not always the selected strip: a percussion channel has no roll at all, and there
+// the header is the word alone because there is nothing on screen to name.
+const notesPanelSync = /function syncNotesPanel\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
 assert(!entry.includes("$('notetitle')") && !shell.includes('notetitle')
-  && /<span class="label">Notes<\/span>\s*<\/div>/.test(shell),
-  'the Notes header shows no preset');
+  && /<span class="label">Notes<\/span>[\s\S]*?<span id="notepreset"><\/span>/.test(shell)
+  && /#notehead #notepreset \{[^}]*text-transform:\s*none/s.test(shell)
+  && /#notehead #notepreset:empty \{[^}]*display:\s*none/s.test(shell)
+  && /\$\('notepreset'\)\.textContent = hide \? '' : presetHeadingFor\(rollShownLane\(\)\)\.name;/.test(notesPanelSync),
+  'the Notes header names the preset the roll is showing, and nothing on a drum channel');
+
+// A drum channel takes the roll out of the panel rather than falling through to the
+// first melodic lane. The PANEL does not move: not its fold, not its height, not the
+// desk around it — clicking between a drum strip and a melodic one must not resize
+// anything. What is left is an empty field, which is where the pattern will be drawn.
+assert(/const laneHidesRoll = \(key\) => !!key && !key\.startsWith\('__'\) && !rollEditable\(key\)/.test(entry)
+  && /const notesRollUp = \(\) => !\$\('notes'\)\.classList\.contains\('collapsed'\) && !laneHidesRoll\(selectedLane\)/.test(entry)
+  && /\$\('notes'\)\.classList\.toggle\('rollless', hide\)/.test(notesPanelSync)
+  && !notesPanelSync.includes('setNotesFolded')
+  && !notesPanelSync.includes('scheduleDeskFit')
+  && !notesPanelSync.includes('style.height')
+  && /function selectLane\(key\)[\s\S]*?syncNotesPanel\(\)[\s\S]*?pianoRoll\.refresh\(\)/.test(entry)
+  && /#notes\.rollless #pianoroll \{[^}]*display:\s*none/s.test(shell)
+  && !/#notes\.rollless \{/.test(shell),
+  'a percussion channel hides the roll and leaves the panel exactly where it was');
+// Two things follow from the roll being absent rather than folded: nothing builds a
+// roll for a channel that has none, and the panel's floor cannot fall by the height of
+// the strip that went with it — a cramped desk would claw the difference back on every
+// click onto the kick.
+assert(/function schedulePianoRollOpen\([\s\S]*?if \(!notesRollUp\(\) \|\| pianoRoll\.isOpen\(\)\) return/.test(entry)
+  && /function setNotesFolded\([\s\S]*?const needsBuild = !on && !pianoRoll\.isOpen\(\) && !laneHidesRoll\(selectedLane\)/.test(entry)
+  && /notes: \(\) => h\(\$\('notehead'\)\) \+ rollScopeH\(\) \+ DEV_MIN_ROLL/.test(entry)
+  && /function rollScopeH\(\) \{[\s\S]*?if \(now\) lastRollScopeH = now;[\s\S]*?return lastRollScopeH;/.test(entry),
+  'no roll is built for a channel that has none, and the panel floor survives its absence');
 const channelStrip = entry.slice(entry.indexOf('function channelStrip'), entry.indexOf('function sendStrip'));
 assert(channelStrip.includes('label: preset?.label || lane.label')
   && channelStrip.includes('sublabel: preset?.category || null')

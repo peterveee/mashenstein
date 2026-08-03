@@ -213,8 +213,9 @@ function saveSongLayouts() {
 
 function currentSongLayout() {
   // Which panels are open: the on-screen keyboard, the step grid window, and whether
-  // the notes panel (piano roll) is visible. Effects panel state is not recorded —
-  // it defaults to open on every visit.
+  // the notes panel (piano roll) is visible. The Arrangement, Mixer and Effects folds
+  // are NOT in here — they are desk furniture and are remembered globally, next to the
+  // panel heights, so they do not change under you when you switch songs.
   return { keyboard: oskShown(), notes: !$('notes').classList.contains('collapsed'), grid: stepSeq.isOpen() };
 }
 
@@ -1176,6 +1177,28 @@ function laneOf(mix, key) {
 // to the master in buildRack.
 const LANE_KEY = 'mash-mixer-lane';
 let selectedLane = localStorage.getItem(LANE_KEY) || null;
+
+/**
+ * Whether the selected channel puts the roll away.
+ *
+ * A percussion channel is booleans on a step grid and a gesture lane builds its own
+ * timing — neither has a pitch axis, so neither has a part the roll can show. It used
+ * to fall through to the first melodic lane, which meant selecting the kick left the
+ * lead's notes on screen: an editor you could type into while looking at another
+ * channel's strip. Now the panel keeps its header and drops the roll until a pitched
+ * channel is chosen.
+ *
+ * Only real lanes. The master and the buses are not "a channel with no roll", they are
+ * not a channel's part at all, and the roll keeps showing whatever it was on — the same
+ * fallback rollShownLane() has always done for them.
+ *
+ * The PANEL is not affected: it keeps its height and its place, and only the roll comes
+ * out of it. Folding it away as well made every click between a drum strip and a melodic
+ * one resize the desk, and the space is wanted anyway — the pattern goes there.
+ */
+const laneHidesRoll = (key) => !!key && !key.startsWith('__') && !rollEditable(key);
+/** There is a roll on screen: the panel is unfolded, and on a channel that has one. */
+const notesRollUp = () => !$('notes').classList.contains('collapsed') && !laneHidesRoll(selectedLane);
 const fxOf = (mix) => Object.fromEntries(AUXES.map((a) => [a.id, {
   ...AUX_DEFAULTS[a.id],
   ...(mix.fx?.[a.id] || {}),
@@ -1276,9 +1299,11 @@ function loadTrack(id) {
   buildArrangement();
   stepSeq.songChanged();
   pianoRoll.songChanged();
-  // The piano roll is always visible when the notes panel is open. Make sure it
-  // renders its content on initial load and after song switches.
-  if (!$('notes').classList.contains('collapsed')) pianoRoll.open(true);
+  // The piano roll is visible whenever the notes panel is open on a channel that has
+  // one. Make sure it renders its content on initial load and after song switches —
+  // and that the header names the new song's preset, which is rarely the old one's.
+  syncNotesPanel();
+  if (notesRollUp()) pianoRoll.open(true);
   voiceLibrary.songChanged();
   // The old song is dropped either way. Only doing it while `playing` trusted the
   // desk's own flag about what the engine was up to, and anything that had left the
@@ -2327,6 +2352,7 @@ function setLaneVoice(laneKey, voiceId, { redraw = true, autoCopy = true } = {})
   // when they are closed. See rebuildForShape.
   stepSeq.refresh();
   pianoRoll.refresh();
+  syncNotesPanel();                     // the Notes header names the preset on the roll
   refreshOsk();                         // the keyboard names what it is playing with
   const gone = hadCopy ? ' — this song’s own copy dropped, ⌘Z to put it back' : '';
   toast((voiceId ? `${targetLabel(laneKey)} → ${VOICES[voiceId].label}`
@@ -3887,15 +3913,29 @@ const deskPool = () => innerHeight
   - h(document.querySelector('header')) - h($('timeline'))
   - h(document.querySelector('footer')) - h($('err'));
 
+// The window height the remembered panel sizes were dragged on. The sizes themselves
+// are absolute pixels — coming back to the desk you left is the whole point of keeping
+// them — but a height set on a tall display would swallow a laptop screen whole. A
+// shorter window scales them all by the ratio the desk itself shrank by, so the panels
+// keep their proportions, and the STORED numbers are left alone: plug the big screen
+// back in and you get the desk you set up on it, not the squeezed version.
+const DESK_VH_KEY = 'mash-mixer-deskvh';
+const storedDeskVh = Number(localStorage.getItem(DESK_VH_KEY));
+const deskScale = Number.isFinite(storedDeskVh) && storedDeskVh > 200
+  ? Math.min(1, innerHeight / storedDeskVh)
+  : 1;
+// Clamped on the way in: a stale or nonsense height (drag hard upwards and it goes
+// negative) would otherwise pin a panel shut on every load with no way to tell why.
+const restoredDeskH = (value, floor) => (Number.isFinite(value) && value > floor
+  ? Math.round(value * deskScale)
+  : null);
+
 // A height the user dragged the Notes border to, which beats the automatic fit until
 // they double-click it away. Kept across reloads: it is a preference about this
 // screen, not about the mix.
 const ARR_KEY = 'mash-mixer-arrh';
-// Clamped on the way in: a dragged height is remembered across reloads, and a stale
-// or nonsense one (drag hard upwards and it goes negative) would otherwise pin the
-// arrangement shut on every load with no way to tell why.
 const storedArrH = Number(localStorage.getItem(ARR_KEY));
-let userArrH = Number.isFinite(storedArrH) && storedArrH > 40 ? storedArrH : null;
+let userArrH = restoredDeskH(storedArrH, 40);
 // A one-lane height can be useful while actively dragging, but restoring one on the
 // next load looks exactly like the arrangement has lost its other instruments. Keep
 // that temporary squeeze for the current session; stale one-lane preferences fall
@@ -3909,14 +3949,34 @@ let restoredArrH = userArrH != null;
 // compatibility with existing mixer sessions.
 const DEV_KEY = 'mash-mixer-devh';
 const storedDevH = Number(localStorage.getItem(DEV_KEY));
-let userDevH = Number.isFinite(storedDevH) && storedDevH > 40 ? storedDevH : null;
+let userDevH = restoredDeskH(storedDevH, 40);
 const clampDeviceH = (value, max = notesRoom()) => clamp(value, MIN.notes(), max);
 
 // Effects has its own remembered height. This is the panel's content room below
 // its header, kept separate from DEV_KEY, which belongs to Notes.
 const FX_KEY = 'mash-mixer-fxh';
 const storedFxH = Number(localStorage.getItem(FX_KEY));
-let userFxH = Number.isFinite(storedFxH) && storedFxH > DEV_MIN_EXTRA ? storedFxH : null;
+let userFxH = restoredDeskH(storedFxH, DEV_MIN_EXTRA);
+
+/**
+ * Write the three dragged panel heights and the window they belong to.
+ *
+ * All three together, never one on its own: the window stamp is what the next load
+ * scales them by, so a single height written on a laptop would leave the other two
+ * claiming to have been chosen there too, at their full desktop size.
+ *
+ * Called when a gesture ENDS, not while it runs — the drag handlers move these values
+ * every frame, and localStorage is not a place to put a frame loop.
+ */
+function rememberDeskHeights() {
+  const set = (key, value) => (value == null
+    ? localStorage.removeItem(key)
+    : localStorage.setItem(key, String(Math.round(value))));
+  set(ARR_KEY, userArrH);
+  set(DEV_KEY, userDevH);
+  set(FX_KEY, userFxH);
+  localStorage.setItem(DESK_VH_KEY, String(Math.round(innerHeight)));
+}
 
 // The arrangement's height is its header, its landing, the panel rule, and a whole
 // number of row stacks. Every term is MEASURED off the live elements, so changing
@@ -4107,6 +4167,16 @@ const bareChrome = () => stripChromeAt(SHED_ORDER.length);
  */
 function rackFloor() { return bareChrome() + FADER_FLOOR + rackPad(); }
 
+// The roll's scope strip, measured while it is up and kept while it is not. Zero only
+// before the roll has ever been built, which is the same nothing the old direct
+// measurement returned then.
+let lastRollScopeH = 0;
+function rollScopeH() {
+  const now = h($('pianoroll').querySelector('.ssqscope'));
+  if (now) lastRollScopeH = now;
+  return lastRollScopeH;
+}
+
 /**
  * The least each region may be while it is OPEN, measured rather than written down:
  * every one of these moves with the typeface, and two of them move with the song. A
@@ -4120,9 +4190,12 @@ const MIN = {
   arrange: () => arrangeChrome() + laneStackHeight(1),
   /** A strip with every sheddable block gone, and the rack's padding. */
   mixer: () => rackFloor(),
-  /** The notes panel: header plus enough of a keyboard to play against. */
-  notes: () => h($('notehead'))
-    + h($('pianoroll').querySelector('.ssqscope')) + DEV_MIN_ROLL,
+  /** The notes panel: header plus enough of a keyboard to play against. The scope
+   *  strip is measured when it is on screen and REMEMBERED when it is not — a drum
+   *  channel takes the roll out of the panel (see laneHidesRoll), and a floor that
+   *  drops by the height of a hidden strip would let a cramped desk claw back room
+   *  from the panel every time the selection landed on the kick. */
+  notes: () => h($('notehead')) + rollScopeH() + DEV_MIN_ROLL,
   /** Effects panel: header plus room for one card row. */
   devices: () => h($('devhead')) + DEV_MIN_EXTRA,
 };
@@ -4198,12 +4271,14 @@ function applyDeskChain() {
 function planDesk() {
   const arrOpen = !$('arrange').classList.contains('collapsed');
   const rackOpen = !$('rackwrap').classList.contains('collapsed');
+  // The FOLD, and only the fold. A panel with its roll out is still open and still
+  // holds its room — see laneHidesRoll.
   const notesOpen = !$('notes').classList.contains('collapsed');
 
   if (restoredArrH && laneCount() > 1) {
     if (userArrH <= MIN.arrange() + 1) {
       userArrH = null;
-      localStorage.removeItem(ARR_KEY);
+      rememberDeskHeights();
     }
     restoredArrH = false;
   }
@@ -4460,8 +4535,7 @@ function markClipped(root = document) {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
-    if (userArrH != null) localStorage.setItem(ARR_KEY, String(Math.round(userArrH)));
-    else localStorage.removeItem(ARR_KEY);
+    rememberDeskHeights();
   };
   edge.addEventListener('pointerup', stop);
   edge.addEventListener('pointercancel', stop);
@@ -4471,7 +4545,7 @@ function markClipped(root = document) {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     userArrH = null;
-    localStorage.removeItem(ARR_KEY);
+    rememberDeskHeights();
     fitStrips();
     toast('Arrangement back to fitting itself');
   });
@@ -4546,8 +4620,10 @@ addEventListener('resize', () => {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
-    if (userDevH != null) localStorage.setItem(DEV_KEY, String(Math.round(userDevH)));
-    else localStorage.removeItem(DEV_KEY);
+    rememberDeskHeights();
+    // The same drag folds and unfolds Notes as it crosses the panel's minimum, and
+    // that fold belongs to the song, not to the desk.
+    rememberSongLayout();
   };
   edge.addEventListener('pointerup', stop);
   edge.addEventListener('pointercancel', stop);
@@ -4557,7 +4633,7 @@ addEventListener('resize', () => {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     userDevH = null;
-    localStorage.removeItem(DEV_KEY);
+    rememberDeskHeights();
     reserveDevices();
     fitStrips();
     toast('Notes panel back to fitting itself');
@@ -4606,8 +4682,7 @@ addEventListener('resize', () => {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
-    if (userFxH != null) localStorage.setItem(FX_KEY, String(Math.round(userFxH)));
-    else localStorage.removeItem(FX_KEY);
+    rememberDeskHeights();
   };
   edge.addEventListener('pointerup', stop);
   edge.addEventListener('pointercancel', stop);
@@ -4617,7 +4692,7 @@ addEventListener('resize', () => {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     userFxH = null;
-    localStorage.removeItem(FX_KEY);
+    rememberDeskHeights();
     reserveDevices();
     fitStrips();
     toast('Effects panel back to fitting itself');
@@ -5853,9 +5928,9 @@ function pinnedCard(key) {
   return card;
 }
 
-/** Keep the Effects panel header in sync with the selected channel. The Notes header
- *  carries no preset: the roll is the selected strip's part, and the strip already
- *  names the sound. */
+/** Keep the Effects panel header in sync with the selected channel. Notes names a
+ *  preset too, but its own one — see syncNotesPanel: Effects is always the selected
+ *  strip, the roll is not. */
 function updatePanelTitles() {
   renderPresetHeading($('devtitle'), selectedLane);
 }
@@ -6255,15 +6330,21 @@ function syncPanelResizeEdges() {
   $('devices').classList.add('edge-resizable');
 }
 
+// Folded or not survives a reload, like the Mixer's fold and the panel heights.
+const FX_FOLD_KEY = 'mash-mixer-fx-folded';
 function setDevicesFolded(on, refit = true) {
+  const changed = $('devices').classList.contains('collapsed') !== on;
   $('devices').classList.toggle('collapsed', on);
   $('devfold').classList.toggle('folded', on);
   $('devfold').title = on ? 'Show the effects panel' : 'Collapse the effects panel';
   syncPanelResizeEdges();
+  // Only on a real change — the border drag calls this on every pointermove.
+  if (changed) localStorage.setItem(FX_FOLD_KEY, on ? '1' : '0');
   if (refit) scheduleDeskFit(true);
 }
 
 $('devfold').onclick = () => setDevicesFolded(!$('devices').classList.contains('collapsed'));
+setDevicesFolded(localStorage.getItem(FX_FOLD_KEY) === '1', false);
 
 
 
@@ -6287,6 +6368,9 @@ function selectLane(key) {
   // after selection moves; the selected-only cue should change immediately.
   clearArrangementPlayback();
   buildDevices();
+  // Drums or pitched decides whether there is a roll in the panel at all. Before the
+  // refresh below, so a roll on its way out is not repainted first.
+  syncNotesPanel();
   // The roll is scoped through lane(), so changing the strip selection must repaint it
   // immediately while it is open. Without this, the panel header follows the click but
   // the roll keeps the previous lane's rows and notes until another roll gesture occurs.
@@ -6607,9 +6691,33 @@ const pianoRoll = createPianoRoll({
 // on. The kit's step grid remains a floating window — it belongs to the song, not to a
 // channel.
 
+/**
+ * Put the roll away, or bring it back, for the channel that is now selected.
+ *
+ * Two things move together: the roll itself, and the preset named in the header. They
+ * are one function because they answer the same question — what part is on screen —
+ * and a header naming a preset with no roll under it is the bug this replaced.
+ *
+ * Nothing about the LAYOUT moves. Neither the fold nor the panel's height is touched:
+ * the panel is the same box either way, empty while the selection has no part for it,
+ * and the desk around it does not shift when you click from a drum strip to a melodic
+ * one. Both of those are also why this can run on every selection change.
+ */
+function syncNotesPanel() {
+  const hide = laneHidesRoll(selectedLane);
+  const changed = $('notes').classList.contains('rollless') !== hide;
+  $('notes').classList.toggle('rollless', hide);
+  // What is ON THE ROLL, not what is selected: with the master selected the roll still
+  // shows a lane, and the caption has to name the part you are looking at.
+  $('notepreset').textContent = hide ? '' : presetHeadingFor(rollShownLane()).name;
+  // Coming back: the roll may never have been built, or was left unbuilt while the
+  // panel had nothing to show. Same idle-time build the fold uses.
+  if (changed && !hide) schedulePianoRollOpen();
+}
+
 /** Fold or unfold the notes (piano roll) panel. */
 function setNotesFolded(on, refit = true) {
-  const needsBuild = !on && !pianoRoll.isOpen();
+  const needsBuild = !on && !pianoRoll.isOpen() && !laneHidesRoll(selectedLane);
   $('notes').classList.toggle('collapsed', on);
   $('notefold').classList.toggle('folded', on);
   $('notefold').title = on ? 'Show the notes panel' : 'Collapse the notes panel';
@@ -6631,7 +6739,9 @@ function schedulePianoRollOpen() {
   if (pianoRollOpenPending) return;
   const run = () => {
     pianoRollOpenPending = 0;
-    if ($('notes').classList.contains('collapsed') || pianoRoll.isOpen()) return;
+    // Nothing to build for a channel that has no roll — and building one would paint
+    // some other lane's part into a hidden panel, ready to flash up on the next fold.
+    if (!notesRollUp() || pianoRoll.isOpen()) return;
     pianoRoll.open(true);
   };
   if (typeof requestIdleCallback === 'function') {
@@ -6641,7 +6751,13 @@ function schedulePianoRollOpen() {
   }
 }
 
-$('notefold').onclick = () => setNotesFolded(!$('notes').classList.contains('collapsed'));
+$('notefold').onclick = () => {
+  setNotesFolded(!$('notes').classList.contains('collapsed'));
+  // Notes is the one fold that belongs to the song rather than to the desk — the roll
+  // you were editing is context for that melody. pagehide records it eventually; do it
+  // on the click so a crash or a hard reload does not lose the fold.
+  rememberSongLayout();
+};
 
 function showStepSeq(on) {
   stepSeqWanted = on;
@@ -6673,6 +6789,12 @@ function scheduleStepSeqOpen() {
 
 function showPianoRoll(on) {
   setNotesFolded(!on);
+  // Unfolding a panel that has no roll to show would be a button doing nothing. The
+  // fold still happens — it is remembered for the next pitched channel — but say why
+  // the roll did not arrive, and where that channel's bars actually are.
+  if (on && laneHidesRoll(selectedLane)) {
+    toast(`${presetHeadingFor(selectedLane).name} has no roll — its bars are on the step grid`);
+  }
   rememberSongLayout();
 }
 
@@ -7830,6 +7952,10 @@ function markRecordedVisual(lane, bar, step, open) {
   cell.classList.toggle('recording-note', open);
 }
 
+// Folded or not is remembered like the panel heights are, and for the same reason: it
+// is a statement about this desk rather than about the mix, so the desk you come back
+// to is the one you left.
+const ARR_FOLD_KEY = 'mash-mixer-arr-folded';
 function setArrangeCollapsed(on) {
   const arrange = $('arrange');
   const changed = arrange.classList.contains('collapsed') !== on;
@@ -7839,6 +7965,9 @@ function setArrangeCollapsed(on) {
   // arrangement is shut, and a handle for it says there is.
   syncPanelResizeEdges();
   if (!changed) return;
+  // Only on a real change: the border drag calls this every frame, and a fold that has
+  // not moved is not worth a write.
+  localStorage.setItem(ARR_FOLD_KEY, on ? '1' : '0');
   $('arrfold').classList.toggle('folded', on);
   $('arrfold').title = on ? 'Show the arrangement' : 'Collapse the arrangement';
 }
@@ -7847,17 +7976,21 @@ $('arrfold').onclick = () => {
   setArrangeCollapsed(!$('arrange').classList.contains('collapsed'));
   scheduleDeskFit(true);
 };
+setArrangeCollapsed(localStorage.getItem(ARR_FOLD_KEY) === '1');
 
 // The mixer folds like the panels above and below it. The family switches stay in
 // the header while it is folded — they are what you are about to unfold it for.
 const MIXER_KEY = 'mash-mixer-rack-folded';
 function setMixerFolded(on, refit = true) {
+  const changed = $('rackwrap').classList.contains('collapsed') !== on;
   $('rackwrap').classList.toggle('collapsed', on);
   $('mixhead').classList.toggle('folded', on);
   $('mixfold').classList.toggle('folded', on);
   $('mixfold').title = on ? 'Show the mixer' : 'Collapse the mixer';
   syncPanelResizeEdges();
-  localStorage.setItem(MIXER_KEY, on ? '1' : '0');
+  // Only on a real change — the Notes border drag unfolds the rack on every frame it
+  // is dragged upwards, and each of those was a localStorage write.
+  if (changed) localStorage.setItem(MIXER_KEY, on ? '1' : '0');
   if (refit) scheduleDeskFit(true);
 }
 $('mixfold').onclick = () => setMixerFolded(!$('rackwrap').classList.contains('collapsed'));
