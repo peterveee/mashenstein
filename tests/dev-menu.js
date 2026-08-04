@@ -70,6 +70,26 @@ const bundle = outputFiles[0].text;
   assert(benches.length === 1 && benches[0].label.includes('AUDITION'),
     'the megamix move audition sits after the preset list rather than inside it');
 
+  // The tuning constants get a reference view in the menu; the working surface
+  // is the strip, which deliberately lives outside it. This suite builds
+  // WITHOUT the tunable plugin, so nothing is registered here — which is
+  // exactly the case worth pinning: the menu has to say so rather than render
+  // an empty group that looks like there is nothing to tune.
+  for (const label of ['PHYSICS ▸', 'GAIT ▸']) {
+    const item = dev.top().items.find((it) => it.label === label);
+    assert(!!item && !!item.submenu, `${label} is a top-level dev-menu submenu`);
+    const sub = item && item.submenu(dev);
+    assert(sub && sub.items.some((it) => /NO TUNABLES REGISTERED/.test(it.label)),
+      `${label} says so plainly when the build was not plugin-transformed`);
+  }
+
+  // The strip must not be claiming arrow keys in a build where nothing can be
+  // tuned — ArrowRight is the ability during a run.
+  dom.key('Backquote'); frames(4);
+  dom.key('KeyT'); frames(2);
+  dom.key('Backquote'); frames(4);
+  assert(dev.open, 'the menu still reopens after a tune-mode toggle');
+
   // The underlying state must be frozen while the menu is up.
   const stateBefore = globalThis.window.__mash_state;
   frames(30);

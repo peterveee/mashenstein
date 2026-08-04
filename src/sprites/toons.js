@@ -891,6 +891,35 @@ export const ACTIVE_LOCOMOTION_STYLE = 'enhanced';
 const usesEnhancedLocomotion = (pose) =>
   (pose && pose.motionStyle ? pose.motionStyle : ACTIVE_LOCOMOTION_STYLE) === 'enhanced';
 
+// ---- gait ---------------------------------------------------------------
+// How far each foot travels along the ground and how high it clears it, both
+// as fractions of leg length so a short hero and a tall one walk the same
+// walk. The heavy variants are Grumpos: he plants rather than reaches, and a
+// full-length stride on that mass reads as a scurry.
+const STRIDE_RUN = 0.55;
+const STRIDE_RUN_HEAVY = 0.36;
+const LIFT_RUN = 0.5;
+const LIFT_RUN_HEAVY = 0.3;
+
+// ---- squash and stretch -------------------------------------------------
+// Velocity stretches the moving figure, but much less than the legacy 18%
+// pull: the limbs carry the jump's story, so the whole body should only
+// breathe with their momentum rather than turn rubbery in free fall. The
+// reference is the speed at which the stretch reaches full — it wants to be
+// near player.js's terminal fall so a long drop arrives at the maximum.
+const AIR_STRETCH_Y = 0.095;
+const AIR_STRETCH_X = 0.052;
+const AIR_STRETCH_VY_REF = 520;
+// Landing squash: the arrival flattens and widens for the length of the
+// controller's landing timer.
+const LAND_SQUASH_Y = 0.28;
+const LAND_SQUASH_X = 0.32;
+// Must equal LANDED_T in src/game/player.js, which is what actually counts the
+// timer down. Deliberately NOT imported: src/sprites does not reach into
+// src/game. If they drift, the squash blend runs past the end of its clock —
+// tests/tunables.js asserts the two literals agree.
+const SQUASH_T = 0.12;
+
 // Title-parade personality beats are a public rendering contract, just like
 // gameplay poses. Keeping their pose inputs here lets the title and gallery use
 // the exact same choreography instead of maintaining two lookalike lists.
@@ -2382,8 +2411,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // move the bulge, because it points across the leg rather than along it.
   let legSeg = (duck ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
-  const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? 0.36 : 0.55);
-  const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? 0.3 : 0.5);
+  const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN);
+  const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN);
   let footF, footB, kneeF = 1, kneeB = 1;
   if (run) {
     footF = gaitFoot(pose.phase || 0, stride, lift);
@@ -5092,12 +5121,9 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {
     if (usesEnhancedLocomotion(pose) && !pose.stomp) {
-      // Velocity stretches the moving figure, but much less than the legacy
-      // 18% pull. The limbs now carry the jump's story; the whole body should
-      // only breathe with their momentum, not turn rubbery in free fall.
-      const speed = Math.min(1, Math.abs(Number(pose.vy) || 0) / 520);
-      sy = 1 + 0.095 * speed;
-      sx = 1 - 0.052 * speed;
+      const speed = Math.min(1, Math.abs(Number(pose.vy) || 0) / AIR_STRETCH_VY_REF);
+      sy = 1 + AIR_STRETCH_Y * speed;
+      sx = 1 - AIR_STRETCH_X * speed;
     } else {
       const st = pose.stomp ? 0.25 : Math.min(0.18, Math.abs(pose.vy || 0) / 700);
       sy = 1 + st;
@@ -5121,7 +5147,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
     sx *= 0.9 + 0.1 * crouch;
   }
   const q = pose.squash || 0;
-  if (q > 0) { sy *= 1 - 0.28 * q; sx *= 1 + 0.32 * q; }
+  if (q > 0) { sy *= 1 - LAND_SQUASH_Y * q; sx *= 1 + LAND_SQUASH_X * q; }
   ctx.save();
   if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
   ctx.translate(cx, feetY);
@@ -5457,7 +5483,7 @@ export function poseFromPlayer(player, t) {
     // Ordinary input uses the controller's entry/exit blend.
     duckAmount: forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
     duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
-    squash: Math.max(0, Math.min(1, (player.landedT || 0) / 0.12)),
+    squash: Math.max(0, Math.min(1, (player.landedT || 0) / SQUASH_T)),
     lean: player.dashT > 0 ? 0.26 * Math.min(1, player.dashT / 0.2) : 0,
     roll: !!player.rolling,
     float: !!player.floating,

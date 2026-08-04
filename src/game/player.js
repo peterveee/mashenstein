@@ -4,6 +4,37 @@ import { HERO_BY_ID } from '../data/heroes.js';
 
 export const GRAVITY = 900;
 export const BASE_JUMP_V = 320;
+// Grumpos falls harder than he rises. Exported because spawner.js sizes its
+// reaction runway off the worst airtime in the cast, and that worst case is
+// this multiplier applied to the longest jump — one number, read in both
+// places, rather than a 1.25 that has to be found twice to be changed once.
+export const HEAVY_GRAVITY_MULT = 1.25;
+// Air jumps launch shorter than the one off the ground, so a double is a
+// reach rather than a second full arc.
+export const AIR_JUMP_SCALE = 0.85;
+// Variable jump: releasing above this snaps down to it. Low enough that a tap
+// is visibly a hop, high enough that the cut never reads as hitting a ceiling.
+export const VARIABLE_JUMP_CUT = 60;
+// Terminal fall speed. A long drop stops accelerating before it outruns the
+// player's ability to place the landing.
+export const TERMINAL_VY = -520;
+// A stomp is a commitment: the descent is faster than gravity earned.
+export const STOMP_GRAVITY_MULT = 2.2;
+// Landing squash timer. toons.js drives the visual squash off this same
+// duration under the name SQUASH_T — they must agree or the squash outlives
+// its blend. Not imported: src/sprites must not reach into src/game.
+export const LANDED_T = 0.12;
+// Ice landing slide (visual/control feel).
+export const ICE_SLIDE_T = 0.35;
+// The drop has enough time to read and settle; releasing is a touch faster so
+// controls never feel sticky. Collision stays crouched through most of the
+// recovery via hitH's duckAmount threshold.
+export const DUCK_IN_T = 0.14;
+export const DUCK_OUT_T = 0.1;
+// The walk cycle is driven by scroll speed, not by wall time, so the stride
+// stays planted as the run accelerates: anim advances at world.speed / this.
+// Lower means faster legs at the same speed.
+export const ANIM_SPEED_DIVISOR = 40;
 // The runner anchor: a fixed WORLD offset from camX, which the camera then
 // magnifies into a screen position (23.3% of the frame at ZOOM 2). Everything
 // right of it is runway, so this is really a reaction-time dial — the view is
@@ -32,7 +63,7 @@ export function jumpHeightFor(hero) {
   return (v * v) / (2 * GRAVITY);
 }
 export function airtimeFor(hero) {
-  const g = hero.heavy ? GRAVITY * 1.25 : GRAVITY;
+  const g = hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY;
   return (2 * BASE_JUMP_V * hero.jumpMult) / g;
 }
 
@@ -106,7 +137,7 @@ export class Player {
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
   set abilityCd(value) { this.abilityCooldowns[this.heroId] = Math.max(0, value); }
 
-  get gravity() { return this.hero.heavy ? GRAVITY * 1.25 : GRAVITY; }
+  get gravity() { return this.hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY; }
   get maxJumps() {
     let m = this.hero.maxJumps;
     if (this.mods.includes('cape')) m += 1;
@@ -126,10 +157,7 @@ export class Player {
 
   updateDuckBlend(dt, target) {
     const before = this.duckAmount;
-    // The drop has enough time to read and settle; releasing is a touch faster
-    // so controls never feel sticky. Collision stays crouched through most of
-    // the recovery via hitH's threshold above.
-    const duration = target ? 0.14 : 0.1;
+    const duration = target ? DUCK_IN_T : DUCK_OUT_T;
     this.duckAmount = Math.max(0, Math.min(1,
       before + (target ? 1 : -1) * dt / duration));
     this.duckDirection = this.duckAmount > before ? 1
@@ -140,7 +168,7 @@ export class Player {
     if (this.rollT > 0 || this.stumbleT > 0) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
-      this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? 0.85 : 1);
+      this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
       this.jumps++;
       this.grounded = false;
       this.ducking = false;
@@ -152,7 +180,7 @@ export class Player {
   }
 
   update(dt, input, world) {
-    this.anim += dt * (world ? world.speed / 40 : 8);
+    this.anim += dt * (world ? world.speed / ANIM_SPEED_DIVISOR : 8);
     if (this.iframes > 0) this.iframes -= dt;
     for (const id of Object.keys(this.abilityCooldowns)) {
       this.abilityCooldowns[id] = Math.max(0, this.abilityCooldowns[id] - dt);
@@ -191,15 +219,15 @@ export class Player {
     const holdDuck = input.held('duck');
 
     // Variable jump: release early = short hop.
-    if (!holdJump && this.vy > 60 && this.hero.variableJump) this.vy = 60;
+    if (!holdJump && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
 
     // Float (Mochi): hold jump while falling caps fall speed.
     const floatCap = this.mods.includes('wide') ? -45 : -60;
     this.floating = !this.grounded && holdJump && this.hero.canFloat && this.vy < 0;
-    const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : -520);
+    const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : TERMINAL_VY);
 
     if (!this.grounded) {
-      this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt * (this.stomping ? 2.2 : 1);
+      this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt * (this.stomping ? STOMP_GRAVITY_MULT : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
       if (this.y <= 0) {
@@ -209,8 +237,8 @@ export class Player {
         const wasStomp = this.stomping;
         this.stomping = false;
         this.vy = 0;
-        this.landedT = 0.12;
-        if (world && world.ice) this.slideT = 0.35;
+        this.landedT = LANDED_T;
+        if (world && world.ice) this.slideT = ICE_SLIDE_T;
         this.ducking = holdDuck && this.rollT <= 0;
         this.updateDuckBlend(dt, this.ducking);
         return { landed: true, stompLand: wasStomp };

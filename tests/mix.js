@@ -75,7 +75,11 @@ for (const [id, entry] of Object.entries(MIX)) {
     assert(s.pan >= -1 && s.pan <= 1, `${id}.${key}: pan is inside -1..1`);
     for (const [aux, v] of Object.entries(lane.send || {})) {
       assert(auxIds.has(aux), `${id}.${key}: send "${aux}" is a real aux`);
-      assert(v >= 0 && v <= 2, `${id}.${key}: ${aux} send is inside 0..2`);
+      // The desk's send sliders share a +6 dB face, but reverb runs a 1.5× hotter
+      // scale so its ceiling is gain 3.0, not 2.0 — see SEND_DB_MAX/sendGainMax in
+      // tools/mixer-entry.js. The bound here is the same ceiling the knob can reach.
+      const max = aux === 'reverb' ? 3 : 2;
+      assert(v >= 0 && v <= max, `${id}.${key}: ${aux} send is inside 0..${max}`);
     }
     const chain = lane.effects || [];
     assert(chain.length <= MAX_EFFECTS, `${id}.${key}: at most ${MAX_EFFECTS} effects`);

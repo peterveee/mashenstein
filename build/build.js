@@ -14,6 +14,8 @@ import { createServer, request as httpRequest } from 'node:http';
 import { dirname, join } from 'node:path';
 import { hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
+// Watch builds only — see the `plugins` line in `options` below.
+import { tunablePlugin } from '../tools/lib/tunable-plugin.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -62,6 +64,11 @@ const options = {
   target: ['es2020'],
   minify: !watch,
   sourcemap: watch ? 'inline' : false,
+  // Rewrites the tunable constants from `const` to `let` and hands the dev
+  // strip a setter for each, so physics and gait can be moved while the game
+  // runs. Watch only: a production bundle keeps `const` and keeps its constant
+  // folding in the 60Hz hot path. tests/tunables.js asserts this ternary.
+  plugins: watch ? [tunablePlugin()] : [],
   // We write both public outputs ourselves after putting the gate into the
   // template. In watch mode esbuild's serve layer also exposes its in-memory
   // outputs; park those under a private URL so raw /game.js cannot shadow the
@@ -387,7 +394,11 @@ function mdnsName() {
 if (watch) {
   const ctx = await esbuild.context({
     ...options,
-    plugins: [{
+    // Appended to `options.plugins`, not substituted for them: spreading
+    // `options` and then assigning `plugins` would silently drop the tunable
+    // rewrite, and the only symptom would be a dev strip whose numbers move
+    // while the game ignores them.
+    plugins: [...options.plugins, {
       name: 'emit-html',
       setup(build) {
         build.onEnd((result) => { if (!result.errors.length) emit(result); });

@@ -103,6 +103,12 @@ export const HERO_CALLOUT = Object.fromEntries(
   Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
 );
 const BASE_SPEED = 160;
+// The run accelerates on a square root, so the early seconds gain quickly and
+// the late ones barely move — a stage feels like it is building without ever
+// outrunning the reaction runway the spawner guarantees. The cap is what the
+// ramp is allowed to reach; overtime raises both.
+const SPEED_RAMP_K = 0.03;
+const SPEED_RAMP_CAP = 1.6;
 // The hero is off stage when a level opens: he sprints in from beyond the left
 // edge to the running anchor (PLAYER_X) before the world goes live. Behind an
 // ACT card he waits out of frame until it lifts; on a card-less stage the
@@ -699,8 +705,8 @@ export class RunState {
     const hero = HERO_BY_ID[this.relay.current];
     const ramp = this.overtime
       ? 1 + 0.045 * Math.sqrt(this.tRun)
-      : 1 + 0.03 * Math.sqrt(this.tRun);
-    const capped = Math.min(this.overtime ? 2.4 : 1.6, ramp);
+      : 1 + SPEED_RAMP_K * Math.sqrt(this.tRun);
+    const capped = Math.min(this.overtime ? 2.4 : SPEED_RAMP_CAP, ramp);
     return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) * this.powerups.speedMultiplier() *
       (this.player.dashT > 0 ? 1.8 : this.player.rollT > 0 ? 1.25 : this.player.stumbleT > 0 ? 0.72 : 1);
   }

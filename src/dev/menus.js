@@ -20,6 +20,11 @@ import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, 
 import { CastState } from '../game/cast.js';
 import { CreditsState } from '../game/credits.js';
 import { VISUALIZER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } from '../engine/visualizers.js';
+import { GROUPS, byGroup } from '../../tools/lib/tunables.js';
+import { readOne, defaultOf, knows, changed, tuningAvailable } from './tunables.js';
+import { nudge, revertTuning, resyncRun } from './tune-store.js';
+import { derived, TuneStrip } from './tune-strip.js';
+import { PAN_MAX } from '../engine/camera.js';
 import { proseMenu } from './prose.js';
 
 const GOLD = '#f6d33c';
@@ -376,6 +381,102 @@ function spawnMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
+// The reference view for the tuning constants. The strip (`T` during a run) is
+// the working surface — it leaves the game running, which is the only way to
+// judge a stride. This is the other half: full names, the whole group at once,
+// and the derived block spelled out rather than compressed onto one line.
+//
+// Adjusting from here freezes the frame, which is fine for the numbers you read
+// rather than watch — a jump height or a fairness gap tells you the answer
+// without anything having to move.
+function tuneMenu(dev, group) {
+  const build = () => {
+    const rows = byGroup(group);
+    const items = [];
+    if (!tuningAvailable()) {
+      items.push({ label: 'NO TUNABLES REGISTERED', act: null });
+      items.push({ label: 'this is not a watch build (npm run dev)', act: null });
+      return { title: group.toUpperCase(), items };
+    }
+    const run = dev.run();
+    for (const row of rows) {
+      if (!knows(row.name)) continue;
+      const v = readOne(row.name);
+      const moved = v !== defaultOf(row.name);
+      const shown = row.fmt > 0 ? v.toFixed(row.fmt) : String(Math.round(v));
+      items.push({
+        label: `${row.name}: ${shown}${moved ? ` (was ${defaultOf(row.name)})` : ''}`,
+        adjust: (d) => { nudge(row.name, d * row.step, run); },
+      });
+    }
+
+    // ---- derived: what the numbers above actually cost --------------------
+    const d = derived(run);
+    items.push({ label: '─── derived ───', act: null });
+    if (!run) {
+      items.push({ label: 'no run active — start a stage for live figures', act: null });
+    } else {
+      items.push({ label: `HERO: ${d.hero} jumpMult ${d.jumpMult} maxJumps ${d.maxJumps}`, act: null });
+      items.push({ label: `JUMP HEIGHT: ${d.jump.toFixed(1)}px   AIRTIME: ${d.air.toFixed(3)}s`, act: null });
+      items.push({ label: `SPEED NOW: ${Math.round(d.speed)} px/s`, act: null });
+      if (d.gap != null) {
+        items.push({ label: `FAIR GAP jump>duck: ${Math.round(d.gap)}px  (react ${d.react})`, act: null });
+        items.push({ label: `RUNWAY: ${d.runway.toFixed(2)}s   MARGIN: ${d.margin.toFixed(3)}s`, act: null });
+      }
+      if (d.pan != null) {
+        items.push({
+          label: `CAMERA: peak ${Math.round(d.peak)}px  pan ${Math.round(d.pan)}/${Math.round(PAN_MAX)}  zoom ${d.zoom.toFixed(2)}`,
+          act: null,
+        });
+      } else {
+        items.push({ label: 'CAMERA: jump to measure the crane', act: null });
+      }
+      // Declared fairness estimate vs what the cast can actually produce. The
+      // spawner sizes every jump gap off the former, so if it sits below the
+      // latter the guaranteed runway is short for whoever can outjump it.
+      //
+      // Stated rather than flagged: worstAirtime() is
+      // (2·BASE_JUMP_V·0.9)/(GRAVITY·1.25), so this ratio does not move when
+      // anything on this screen moves. It is a fact about the spawner, not a
+      // consequence of your tuning — which is exactly why it is worth printing
+      // where somebody will read it rather than warning about it every frame.
+      items.push({
+        label: `WORST AIRTIME: declared ${d.worst.toFixed(3)}s vs cast max ${d.castMax.toFixed(3)}s`,
+        act: null,
+      });
+      if (d.airtimeUnderstated) {
+        const short = (d.castMax - d.worst) * d.speed;
+        items.push({
+          label: `  understated by ${Math.round((d.castMax - d.worst) * 1000)}ms = ${Math.round(short)}px of runway here`,
+          act: null,
+        });
+      }
+    }
+    for (const w of d.warn) items.push({ label: `! ${w}`, act: null });
+
+    items.push({ label: '─── actions ───', act: null });
+    const moved = changed().length;
+    items.push({
+      label: `COPY CONSTANTS${moved ? ` (${moved} changed)` : ' (nothing changed)'}`,
+      act: () => dev.copyConstants(),
+    });
+    items.push({
+      label: 'REVERT ALL',
+      act: () => {
+        const n = revertTuning();
+        dev.say(n ? `REVERTED ${n}` : 'NOTHING TO REVERT');
+        if (run) resyncRun(run);
+      },
+    });
+    items.push({
+      label: `LIVE STRIP: ${TuneStrip.on ? 'ON' : 'off'} — press T with the menu closed`,
+      act: () => { TuneStrip.toggle(); },
+    });
+    return { title: group.toUpperCase(), items };
+  };
+  return { ...build(), rebuild: build };
+}
+
 function runMenu(dev) {
   const build = () => {
     const r = dev.run();
@@ -464,6 +565,8 @@ export function rootMenu(dev) {
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },
+      { label: 'PHYSICS ▸', submenu: () => tuneMenu(dev, GROUPS[0]) },
+      { label: 'GAIT ▸', submenu: () => tuneMenu(dev, GROUPS[1]) },
       { label: 'INFO ▸', submenu: () => infoMenu(dev) },
     ],
   });

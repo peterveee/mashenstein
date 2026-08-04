@@ -19,8 +19,17 @@ import { H, pushOverlayDraw, saveScreenshot, clientToLogical, setDevPortraitFill
 import { currentState } from '../engine/states.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
 import { rootMenu, drawMenu, menuLayout } from './menus.js';
+import { TuneStrip, drawTuneStrip, tuneHelp } from './tune-strip.js';
+import { loadTuning, revertTuning, resyncRun } from './tune-store.js';
+import { sourceLines } from './tunables.js';
+import { TUNABLES } from '../../tools/lib/tunables.js';
 
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
+
+// Keys allowed to auto-repeat while held. The menu's row cursor and the tuning
+// strip's value nudge both want a held key to keep going; everything else is a
+// one-shot action where a repeat would fire it dozens of times.
+const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export const Dev = {
   enabled: false,
@@ -35,10 +44,17 @@ export const Dev = {
   toastT: 0,
   touchUnlock: { count: 0, t: 0 },
   reopenAfterState: null,
+  lastRun: null,      // identity of the run we last pushed sync-hooked tunables into
 
   install(ctx) {
     if (!this.enabled || this.ctx) return;
     this.ctx = ctx;
+    // Restore last session's tuning now rather than at module-eval: the
+    // registry only finishes filling once every transformed module has been
+    // evaluated, and link order is esbuild's business, not ours.
+    const { applied, dropped } = loadTuning();
+    if (applied.length) this.say(`TUNING RESTORED (${applied.length})`);
+    if (dropped.length) console.warn('[tune] dropped:', dropped.join(', '));
     window.addEventListener('keydown', (e) => this.onKey(e), { capture: true });
     const game = document.getElementById('game');
     game && game.addEventListener('pointerdown', (e) => {
@@ -193,10 +209,57 @@ export const Dev = {
     this.say(`SPEED x${next}`);
   },
 
+  // Tune-mode keys. Returns true when the key was consumed, so the caller's
+  // ordinary closed-menu shortcuts never see an arrow meant for a constant.
+  handleTuneKey(e) {
+    const run = this.run();
+    switch (e.code) {
+      case 'ArrowUp': TuneStrip.move(-1); break;
+      case 'ArrowDown': TuneStrip.move(1); break;
+      case 'ArrowLeft': case 'ArrowRight': {
+        const said = TuneStrip.adjust(e.code === 'ArrowRight' ? 1 : -1, e.shiftKey, run);
+        if (said) this.say(said);
+        break;
+      }
+      case 'KeyG': TuneStrip.cycleGroup(e.shiftKey ? -1 : 1); break;
+      case 'KeyC': this.copyConstants(); break;
+      case 'KeyR': {
+        const n = revertTuning();
+        this.say(n ? `REVERTED ${n} CONSTANT${n === 1 ? '' : 'S'}` : 'NOTHING TO REVERT');
+        if (run) resyncRun(run);
+        break;
+      }
+      default: return false;
+    }
+    e.preventDefault();
+    return true;
+  },
+
+  // The bridge back to source. Only what moved, grouped by file, formatted the
+  // way the file already writes it — so the paste is the two lines that changed
+  // rather than twenty-four that did not.
+  copyConstants() {
+    const text = sourceLines(TUNABLES);
+    if (!text) { this.say('NOTHING CHANGED'); return; }
+    const n = text.split('\n').filter((l) => l.startsWith('  const')).length;
+    const done = () => this.say(`COPIED ${n} CONSTANT${n === 1 ? '' : 'S'}`);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, () => { console.log(text); done(); });
+        return;
+      }
+    } catch (err) { /* fall through to the console */ }
+    console.log(text);
+    done();
+  },
+
   // ------------------------------------------------------------------ input
   onKey(e) {
     if (!this.enabled) return;
-    if (e.repeat && e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return;
+    // ArrowLeft/Right join the repeat allowance because holding one is how the
+    // tuning strip is used at all: a constant you can only step by tapping is a
+    // constant you never sweep, and sweeping is the point.
+    if (e.repeat && !REPEATABLE.has(e.code)) return;
 
     if (e.code === 'Backquote') {
       this.open ? this.close() : this.openMenu();
@@ -215,6 +278,17 @@ export const Dev = {
     if (!this.open) {
       // Closed-menu shortcuts: speed, pause, frame-step, bot takeover, skip.
       const cur = typeof window !== 'undefined' ? window.__mash_cur : null;
+
+      // Tune mode owns the arrows while it is on, and must be asked first:
+      // ArrowRight is the ability key during a run and the section-skip below,
+      // so the claim has to be explicit and opt-in rather than ambient.
+      if (e.code === 'KeyT' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        this.say(TuneStrip.toggle() ? `TUNE ON — ${tuneHelp()}` : 'TUNE OFF');
+        e.preventDefault();
+        return;
+      }
+      if (TuneStrip.on && this.handleTuneKey(e)) return;
+
       if (e.code === 'BracketLeft') { this.cycleSpeed(-1); e.preventDefault(); }
       else if (e.code === 'BracketRight') { this.cycleSpeed(1); e.preventDefault(); }
       else if (e.code === 'Backslash') { this.paused = !this.paused; this.say(this.paused ? 'PAUSED' : 'RESUMED'); e.preventDefault(); }
@@ -267,6 +341,17 @@ export const Dev = {
   update(dt) {
     if (!this.enabled) return false;
     if (this.toastT > 0) this.toastT -= dt;
+    // The camera readout reports the peak the run actually reached, so it has
+    // to watch every frame rather than model a trajectory it cannot predict.
+    if (TuneStrip.on) TuneStrip.observe(this.run());
+    // A new run builds a new Spawner, which takes its own copy of REACT_FLOOR.
+    // Push the tuned values into it once, on the frame it appears, or the
+    // stream you are watching silently uses the shipped spacing.
+    const r = this.run();
+    if (r !== this.lastRun) {
+      this.lastRun = r;
+      if (r) resyncRun(r);
+    }
 
     if (this.reopenAfterState && currentState() === this.reopenAfterState) {
       this.reopenAfterState = null;
@@ -289,7 +374,11 @@ export const Dev = {
     // Queue above every hero/HUD/effect overlay, or the frozen run's own HUD
     // composites on top of the menu. Headless has no overlay target, so fall
     // back to drawing directly — same contract states.js uses for the shutter.
-    const paint = (d) => { if (this.open) drawMenu(d, this); else this.drawStatusStrip(d); };
+    const paint = (d) => {
+      if (this.open) { drawMenu(d, this); return; }
+      drawTuneStrip(d, this);
+      this.drawStatusStrip(d);
+    };
     if (!pushOverlayDraw(paint)) paint(ctx);
   },
 

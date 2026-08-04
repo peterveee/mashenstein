@@ -42,6 +42,16 @@ const suites = [
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
   // sibling because it needs no browser and runs in a blink.
   'tests/voice-source.js',
+  // The same shape of claim for gameplay numbers: that the constants the dev
+  // strip moves still exist, under those names, as plain numbers, in the files
+  // the manifest names — and that the rewrite which makes them movable never
+  // reaches a production build. Pure source reading, so it runs in a blink.
+  'tests/tunables.js',
+  // The behavioural half: builds the bundle the way `npm run dev` does and
+  // proves a setter reaches the arithmetic across a module boundary, that a
+  // stored tuning cannot poison a later session, and that COPY CONSTANTS emits
+  // a diff rather than a dump.
+  'tests/tune-store.js',
   'tests/layers.js',
   'tests/preview.js',
   // The other side of preview.js: that one is a note through a CHANNEL, this is a note
