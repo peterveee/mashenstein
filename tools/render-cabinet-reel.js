@@ -112,7 +112,7 @@ const track = resolveOrExit(trackId);
 const bpm = bpmOf(track.bank, track.id);
 const FRAMES_PER_CAB = Math.max(1, Math.round((FPS * 60 * BEATS) / bpm));
 const TOTAL = Math.min(FRAMES_PER_CAB * CABINETS.length, Math.round(num('frames', Infinity)) || Infinity);
-const OUT = resolve(ROOT, outArg || 'dist/social/nine-cabinets.mp4');
+const OUT = resolve(ROOT, outArg || 'work/social/nine-cabinets.mp4');
 
 // Bars, not seconds, so an offset can never land the reel off the beat grid the
 // cuts are computed against. Every bank in the game is in 4/4.

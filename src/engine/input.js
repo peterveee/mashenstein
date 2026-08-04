@@ -68,6 +68,7 @@ class InputSys {
     this.touches = new Map();   // pointerId -> {x0, y0, t0, action}
     this.holds = [];            // [{action, at}] releases owed to lifted taps
     this.padPrev = new Set();
+    this.padConnected = false;  // any pad seen by the last poll; see rewindAvailable()
     this.onAnyGesture = null;   // audio unlock hook
     this.usingTouch = false;
     this.swipeLeft = false;     // menu back gesture, consumed by the current state
@@ -350,6 +351,18 @@ class InputSys {
     return null;
   }
 
+  // Whether this player can reach rewind at all. Rewind is a HELD 'left', which
+  // the touch layout has no room for and never binds — see RunState.setButtons,
+  // which offers jump/ability/pause and nothing else. Recording snapshots for a
+  // control the player cannot press is pure cost, so both halves of the feature
+  // ask this first: the audio capture node (main.js) and the simulation
+  // snapshot ring (run.js).
+  //
+  // A pad overrides the touch verdict rather than being folded into it: a
+  // controller paired to an iPad CAN hold left, and the poll refreshes this
+  // every frame, so pairing one mid-run starts recording from that frame on.
+  rewindAvailable() { return !this.isTouchDevice() || this.padConnected; }
+
   // True on touch-first devices (or once a touch has actually happened).
   // Used to bypass keyboard-finicky content like the breaker-box minigames.
   isTouchDevice() {
@@ -490,8 +503,10 @@ class InputSys {
     if (this.suspended) { this.clearAll(); return; }
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const now = new Set();
+    let connected = false;
     for (const pad of pads) {
       if (!pad) continue;
+      connected = true;
       pad.buttons.forEach((b, i) => {
         if (!b.pressed || !GAMEPAD_MAP[i]) return;
         now.add(this.padAction(i));
@@ -508,6 +523,7 @@ class InputSys {
     for (const a of now) if (!this.padPrev.has(a)) this.press(a);
     for (const a of this.padPrev) if (!now.has(a)) this.release(a);
     if (now.size) this.onAnyGesture && this.onAnyGesture();
+    this.padConnected = connected;
     this.padPrev = now;
   }
 

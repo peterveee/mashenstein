@@ -17,7 +17,7 @@ import { homeLane } from './lib/measure-voice.js';
 import { VOICES, VOICE_LANES } from '../src/data/voices.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = join(root, 'audio', 'renders', 'auditions', 'drum-synth');
+const outDir = join(root, 'work', 'auditions', 'drum-synth');
 mkdirSync(outDir, { recursive: true });
 
 // Where each preset is most at home. The sound is the same anywhere — a drum-synth

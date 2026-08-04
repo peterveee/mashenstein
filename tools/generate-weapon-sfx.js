@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { CUES, renderCue } from '../src/engine/weapon-sfx.js';
 
 const RATE = 44100;
-const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../audio/renders/weapons');
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../work/weapons');
 
 function wavBytes(samples) {
   const bytes = Buffer.alloc(44 + samples.length * 2);

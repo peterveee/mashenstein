@@ -14,6 +14,32 @@ import { rr, shape, plain, stroke } from './props.js';
 import { GENRE_MOTIFS } from './arcade.js';
 import { TOON_SPECS, drawToon } from './toons.js';
 import { drawText, drawTextCentered, textWidth } from '../engine/sprites.js';
+import { readPlatform } from '../engine/platform.js';
+
+// Phone, NOT "is this a touch device" — the same line credits.js draws for its
+// own legibility pass, and for the same reason: an iPad reports a coarse
+// pointer and has the screen to read the full-detail wall perfectly well. Only
+// the phone is short of millimetres.
+//
+// Cached, because this is consulted inside painters that run every frame and
+// readPlatform() builds a matchMedia query each call. `setPhoneDressing` is the
+// tools' way in: the gallery has to be able to paint BOTH variants side by side
+// on a desktop, which auto-detection alone can never give it. null = detect.
+let phoneOverride = null;
+let phoneDetected = null;
+export function setPhoneDressing(on = null) { phoneOverride = on; }
+export function phoneDressing() {
+  if (phoneOverride != null) return phoneOverride;
+  if (phoneDetected == null) {
+    try {
+      const p = (typeof window !== 'undefined' && window.__mash_platform) || readPlatform();
+      phoneDetected = !!(p.isIphone || p.isAndroidPhone);
+    } catch {
+      phoneDetected = false; // headless tests and odd embeddings get the wide board
+    }
+  }
+  return phoneDetected;
+}
 
 // Who is on the poster for which machine. A cover needs a face — the genre icon
 // alone is a pictogram, and three pictograms in a row is signage, not
@@ -578,6 +604,25 @@ const MENU_ROWS = [
   { item: 'WATER', price: 'MARKET PRICE' },
 ];
 
+// The same board, told to a phone. Five rows set to a shared measure land at
+// about two logical pixels of cap height, which is roughly 0.8mm on a handset —
+// under a millimetre, and well below the ~1.3mm floor the credits screen
+// already established as the point where the game's own type stops reading.
+//
+// The fix cannot be "set the five rows larger", because the panel is the width
+// it is: at a readable size only about fifteen characters fit across, so a row
+// is one short word and one short price and there is room for two of them. The
+// board therefore tells a DIFFERENT joke rather than a shrunk version of the
+// same one — the plug economy is still the whole gag, but it lands as a single
+// comparison you take in at a glance instead of a five-line menu you read.
+// Nothing is struck and nothing is corrected: a marker hand is texture, and
+// texture is the first thing to go when there are only two lines to carry the
+// joke.
+const MENU_ROWS_PHONE = [
+  { item: 'FOOD', price: '2 PLUGS' },
+  { item: 'WATER', price: '40 PLUGS' },
+];
+
 // Hand-lettering at two pixels of cap height. Setting the marker FACE and
 // stopping there does not work: at the size this board sets its corrections,
 // every typeface — marker, script, or the body face in a different colour —
@@ -635,6 +680,10 @@ function paintMenuBoard(ctx, x, y, w, h, o) {
   const X = (f) => x + w * f, Y = (f) => y + h * f;
   const u = olU(w);
   const bx = X(MENU_PANEL_X), by = Y(0.07), bw = w * MENU_PANEL_W, bh = h * 0.50;
+  // Same housing, same silhouette, same three objects on the wall — only what is
+  // PRINTED on them changes. A phone board that also moved its panel would stop
+  // being the same fixture photographed on a smaller screen.
+  const phone = phoneDressing();
 
   // Housing, with the light box behind the panel still faintly on.
   shape(ctx, '#2a2438', u, (c) => rr(c, bx, by, bw, bh, w * 0.012));
@@ -651,23 +700,50 @@ function paintMenuBoard(ctx, x, y, w, h, o) {
   // Set in the display face, not the UI face. Signage inside the fiction and
   // the game's own interface reading in the same type flattens the illusion —
   // and this is a headline, which is what a display face is for.
-  const hs = fitScale('HOT & FRESH', bw * 0.72, 0.60, 'title');
+  // The cap rises on a phone for the same reason the rows do — the header was
+  // never measure-limited, it was sitting on its 0.60 ceiling, so it simply
+  // stayed small while everything under it grew. The vertical placement is
+  // written against hs, so the line re-centres in the strip on its own.
+  const hs = fitScale('HOT & FRESH', bw * 0.72, phone ? 1.10 : 0.60, 'title');
   drawTextCentered(ctx, 'HOT & FRESH', bx + bw * 0.5, hy + hh * 0.5 - hs * 4.6, '#2c1016', hs, 'title');
 
   // One type size for the whole board: a menu whose lines are each set to their
   // own measure reads as a ransom note, so the narrowest fit wins and every row
   // is set at it. The 4-space gap is the minimum leader between item and price.
-  const colX = bx + bw * 0.07, colR = bx + bw * 0.93;
-  let S = 0.5;
-  for (const r of MENU_ROWS) S = Math.min(S, fitScale(`${r.item}    ${r.price}`, colR - colX, 0.5));
+  //
+  // The phone cap is 2.8x the wide board's, which puts a row's caps at about
+  // 6px of the logical frame — near 2mm on a handset, comfortably past the
+  // ~1.3mm floor the credits screen settled on. Two rows this short clear the
+  // measure with room to spare, so here the CAP is what sets the size and
+  // fitScale is the guard rather than the decision; the pitch below is picked
+  // against exactly this number, which is why it is not simply raised further.
+  const rows = phone ? MENU_ROWS_PHONE : MENU_ROWS;
+  const cap = phone ? 1.4 : 0.5;
+  // Two rows want the panel's whole depth, not the top third of it: the pitch
+  // opens up and the pair sits centred in the space under the header.
+  const row0 = phone ? 0.38 : 0.29, rowStep = phone ? 0.30 : 0.145;
+  // Phone type reaches nearer the panel edges — at this size the printed margin
+  // is width the words need more than the board needs air.
+  const colX = bx + bw * (phone ? 0.05 : 0.07), colR = bx + bw * (phone ? 0.95 : 0.93);
+  let S = cap;
+  for (const r of rows) S = Math.min(S, fitScale(`${r.item}    ${r.price}`, colR - colX, cap));
+  // Leader dots and the gaps around them ride the type rather than the bay, so
+  // fatter lettering is not strung together by the hairline dotting that suited
+  // two-pixel text. The SQUARE ROOT of the type's growth, not the growth: scaled
+  // linearly the phone board's dots came out as four fat blobs with a single
+  // stray one under the longer price, which reads as damage rather than as a
+  // leader. A leader is a fine rule — it has to stay finer than the words it
+  // binds, and it needs enough dots to look like a run. 0.5 is the shipped
+  // board's own S, so this is exactly 1 there and the wide board is untouched.
+  const lead = Math.sqrt(S / 0.5);
   // Glyphs are drawn from the top of a cell whose em box starts one unit down
   // (see glyphSprite in engine/sprites.js), so for a line of capitals set at
   // scale S: the cap top lands about 3S below the draw y, the cap bottom about
   // 7.2S, and the middle — where a strike belongs — about 5.1S.
   const capTop = (ry) => ry + S * 3, mid = (ry) => ry + S * 5.1, base = (ry) => ry + S * 7.2;
 
-  MENU_ROWS.forEach((r, i) => {
-    const ry = by + bh * (0.29 + i * 0.145);
+  rows.forEach((r, i) => {
+    const ry = by + bh * (row0 + i * rowStep);
     const gone = r.strike === 'all';
     const pw = textWidth(r.price, S);
     // Struck items stay legible. Faded to 0.38 they went under the strike rule
@@ -679,8 +755,8 @@ function paintMenuBoard(ctx, x, y, w, h, o) {
 
     // Dot leader. A menu's rows are bound left-to-right by these; without them
     // the item and the price read as two separate columns of words.
-    const d1 = colR - pw - w * 0.014, dot = Math.max(0.3, w * 0.004);
-    for (let dx = colX + textWidth(r.item, S) + w * 0.014; dx < d1; dx += w * 0.018) {
+    const d1 = colR - pw - w * 0.014 * lead, dot = Math.max(0.3, w * 0.004 * lead);
+    for (let dx = colX + textWidth(r.item, S) + w * 0.014 * lead; dx < d1; dx += w * 0.018 * lead) {
       plain(ctx, gone ? 'rgba(200,200,216,0.13)' : 'rgba(200,200,216,0.28)',
         (c) => c.rect(dx, base(ry), dot, dot));
     }
@@ -717,7 +793,11 @@ function paintMenuBoard(ctx, x, y, w, h, o) {
   // which is the only reason it is still accurate.
   const sx = X(0.74), sy = Y(0.10), sw = w * 0.20, sh = h * 0.26;
   shape(ctx, '#1e1a2c', u, (c) => rr(c, sx, sy, sw, sh, w * 0.010));
-  const ss = fitScale('SERVING', sw * 0.80, 0.40);
+  // Both side cards were capped rather than measure-bound, so on a phone they
+  // simply stayed at the size that suits a monitor. Lifting the ceilings hands
+  // the decision to the card's own width, which is the constraint that actually
+  // matters — the numbers here are only high enough to stop binding.
+  const ss = fitScale('SERVING', sw * 0.80, phone ? 0.62 : 0.40);
   drawTextCentered(ctx, 'NOW', sx + sw * 0.5, sy + sh * 0.10, 'rgba(200,200,216,0.65)', ss);
   drawTextCentered(ctx, 'SERVING', sx + sw * 0.5, sy + sh * 0.10 + ss * 10, 'rgba(200,200,216,0.65)', ss);
   drawTextCentered(ctx, '0', sx + sw * 0.5, sy + sh * 0.48, '#f6d33c', ss * 2.6);
@@ -726,21 +806,32 @@ function paintMenuBoard(ctx, x, y, w, h, o) {
   // same marker that has been fixing the prices.
   const gx = X(0.755), gy = Y(0.42), gw = w * 0.20, gh = h * 0.17;
   shape(ctx, '#ded8c8', u, (c) => rr(c, gx, gy, gw, gh, w * 0.008));
-  const gs = fitScale('GRADE', gw * 0.62, 0.32);
+  const gs = fitScale('GRADE', gw * 0.62, phone ? 0.55 : 0.32);
   drawTextCentered(ctx, 'GRADE', gx + gw * 0.5, gy + gh * 0.09, 'rgba(20,16,28,0.70)', gs);
   // The printed grade, crossed out, and the one the marker awarded instead —
   // stacked rather than overlaid, because a re-grade written ON the C just
   // reads as a smudge at this size.
-  const cs = gs * 3.0, cy = gy + gh * 0.22;
+  //
+  // The phone card keeps the strike and loses the award. A+++ is four marker
+  // glyphs across a fifth of a bay, which is the smallest thing on the whole
+  // wall — it cannot be made to read at handset size, and a scrawl you cannot
+  // resolve is not a joke, it is a stain on the card. Struck alone the C still
+  // says what matters: somebody graded this place, and somebody disagreed. The
+  // freed lower third goes to the C, which is now centred in the space under
+  // the label rather than sitting at the top of a stack it no longer heads.
+  const cs = gs * (phone ? 4.0 : 3.0);
+  const cy = phone ? gy + gh * 0.62 - cs * 5.1 : gy + gh * 0.22;
   drawTextCentered(ctx, 'C', gx + gw * 0.5, cy, '#2c2438', cs);
   handStrike(ctx, gx + gw * 0.26, gx + gw * 0.74, cy + cs * 5,
-    Math.max(0.4, w * 0.006), o.seed + 3, '#c83c3c');
-  const as = Math.min(gs * 1.15, fitScale('A+++', gw * 0.72, 0.4, 'marker'));
-  ctx.save();
-  ctx.translate(gx + gw * 0.5 - textWidth('A+++', as, 'marker') / 2, gy + gh * 0.74);
-  ctx.rotate(-0.13);
-  drawScrawl(ctx, 'A+++', 0, 0, MARKER_INK_DARK, as, o.seed + 9);
-  ctx.restore();
+    Math.max(0.4, w * 0.006 * (phone ? 1.6 : 1)), o.seed + 3, '#c83c3c');
+  if (!phone) {
+    const as = Math.min(gs * 1.15, fitScale('A+++', gw * 0.72, 0.4, 'marker'));
+    ctx.save();
+    ctx.translate(gx + gw * 0.5 - textWidth('A+++', as, 'marker') / 2, gy + gh * 0.74);
+    ctx.rotate(-0.13);
+    drawScrawl(ctx, 'A+++', 0, 0, MARKER_INK_DARK, as, o.seed + 9);
+    ctx.restore();
+  }
 }
 
 // ========================================================== 5. party decor

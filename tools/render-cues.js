@@ -115,7 +115,7 @@ async function main() {
   }
 
   const names = args.length ? args : DEFAULTS;
-  const outDir = join(ROOT, 'audio', 'renders', 'sfx');
+  const outDir = join(ROOT, 'work', 'sfx');
   mkdirSync(outDir, { recursive: true });
 
   // A fresh page per cue: Audio is a singleton and `ensure` binds one context for its

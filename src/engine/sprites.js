@@ -389,6 +389,16 @@ export const UI_PANEL = 'rgba(28,32,48,0.72)';
 // edge of a piece of glass rather than as a drawn outline.
 export const UI_PANEL_BORDER = 'rgba(255,255,255,0.14)';
 
+// What sits under a shadowed panel. A flat offset silhouette rather than a
+// blurred drop shadow: `shadowBlur` is specified in DEVICE pixels and ignores
+// the transform, so the blurred version measured only 12% darker than the scene
+// at its darkest and was gone within 1.25 logical px — a hairline that cost
+// about 85% of the panel's draw time, most of it on the iPad, where the blur is
+// dearest and its falloff narrowest. Much weaker than the 0.3 the blur carried:
+// an unblurred edge reads harder at the same alpha, and the blur's own measured
+// weight was only ever 12% against the scene — a hairline, not a drop shadow.
+export const UI_PANEL_LIFT = 'rgba(0,0,0,0.10)';
+
 // A UI box that owns its own backing. Every panel in the HUD comes through
 // here, which is what makes the whole overlay read as one set of objects
 // rather than a pile of unrelated widgets.
@@ -403,16 +413,15 @@ export const UI_PANEL_BORDER = 'rgba(255,255,255,0.14)';
 export function drawPanel(ctx, x, y, w, h, r = 3, fill = UI_PANEL, opts = null) {
   ctx.save();
   if (opts && opts.shadow) {
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetY = 1;
+    // Drawn before the plate rather than as a shadow on it, so the lift is one
+    // ordinary fill. See UI_PANEL_LIFT for why the blur went.
+    platePath(ctx, x, y + 1, w, h, r);
+    ctx.fillStyle = UI_PANEL_LIFT;
+    ctx.fill();
   }
   platePath(ctx, x, y, w, h, r);
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
   if (opts && opts.border) {
     // Inset by half the stroke so the hairline sits inside the fill instead of
     // straddling its edge, where it would fringe against the scene.

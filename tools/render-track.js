@@ -11,7 +11,7 @@
 // for the old behaviour when you need a loud reference file.
 //
 // Usage: node tools/render-track.js [trackId] [repeats] [outPath] [--normalise]
-// e.g.:  node tools/render-track.js plumber 2 dist/plumber-panic.wav
+// e.g.:  node tools/render-track.js plumber 2 work/tracks/plumber-panic.wav
 import { writeFileSync } from 'fs';
 import { renderBankBrowser } from './lib/render-bank-browser.js';
 import { wavBuffer, rmsOf, dbfs } from './lib/wav.js';
@@ -22,7 +22,7 @@ const NORMALISE = process.argv.includes('--normalise');
 const [trackId = 'plumber', repeatArg = '2', outArg = null] = args;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 2);
 const track = resolveOrExit(trackId);
-const OUT = outArg || `dist/${track.slug}.wav`;
+const OUT = outArg || `work/tracks/${track.slug}.wav`;
 
 const { outL, outR, seconds, blocks, peak } = await renderBankBrowser(track.bank, {
   repeat: REPEAT, trackId: track.id,

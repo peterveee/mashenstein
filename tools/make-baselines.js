@@ -16,7 +16,7 @@ import { resolveOrExit } from './lib/tracks.js';
 import { MIX } from '../src/data/mix.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DIR = join(ROOT, 'baselines/engine');
+const DIR = join(ROOT, 'work/baselines/engine');
 const DEFAULT = ['plumber', 'speed', 'title', 'shop', 'megamix'];
 
 const ids = process.argv.slice(2).filter((a) => !a.startsWith('--'));

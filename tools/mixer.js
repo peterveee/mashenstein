@@ -56,7 +56,7 @@ const MIX_PATH = join(ROOT, 'src/data/mix.js');
 const ARRANGEMENTS_PATH = join(ROOT, 'src/data/arrangements.js');
 // Every version of mix.js this process has overwritten, oldest kept last. Gitignored:
 // it is a safety net under a session, not a second history beside git.
-const HISTORY_DIR = join(ROOT, '.mix-history');
+const HISTORY_DIR = join(ROOT, 'work/mix-history');
 // Roughly a month of hard mixing at a save every few minutes. Small files — a whole
 // mix is ~12KB — so the cap is about keeping the folder readable, not about disk.
 const HISTORY_KEEP = 300;
@@ -670,7 +670,7 @@ const server = createServer(async (req, res) => {
       writeSongsIndex(join(ROOT, 'src/data/songs'));
 
       console.log(`saved ${written.map((id) => `src/data/songs/${id}.js`).join(', ')}`
-        + (snaps.length ? `  (was: .mix-history/${snaps.join(', ')})` : ''));
+        + (snaps.length ? `  (was: work/mix-history/${snaps.join(', ')})` : ''));
       res.writeHead(200, { 'content-type': 'application/json' });
       // Read back off disk, so the desk's idea of what is saved matches the files.
       res.end(JSON.stringify({
@@ -697,7 +697,7 @@ const server = createServer(async (req, res) => {
         ? all.filter((s) => s.track === track || (!s.track && s.label === slug(track)))
         : all;
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ dir: '.mix-history', keep: HISTORY_KEEP, track, snapshots }));
+      res.end(JSON.stringify({ dir: 'work/mix-history', keep: HISTORY_KEEP, track, snapshots }));
       return;
     }
     if (req.method === 'GET' && req.url.startsWith('/history/')) {

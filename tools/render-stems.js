@@ -12,7 +12,7 @@
 // the printed dBFS column tells you which ones those are.
 //
 // Usage: node tools/render-stems.js [trackId|shop|megamix|hub|…] [repeats] [outDir]
-// e.g.:  node tools/render-stems.js shop 1 dist/stems/shop-theme
+// e.g.:  node tools/render-stems.js shop 1 work/stems/shop-theme
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { openRenderer } from './lib/render-bank-browser.js';
@@ -25,7 +25,7 @@ import { bpmOf } from '../src/data/arrangements.js';
 const [, , trackId = 'shop', repeatArg = '1', outArg = null] = process.argv;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
-const DIR = outArg || `dist/stems/${track.slug}`;
+const DIR = outArg || `work/stems/${track.slug}`;
 mkdirSync(DIR, { recursive: true });
 
 // One Chromium for the whole folder: a launch costs about a second and a twelve

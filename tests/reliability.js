@@ -109,20 +109,26 @@ for (let i = 0; i < 900 && !airborneFinish; i++) run.update(1 / 60);
 assert(airborneFinish && airborneFinish.success, 'jumping cannot clear the stage finish plane');
 
 run = makeRun(); run.enter();
-// The final stretch keeps what the player can still fight and sweeps the rest.
-// "The rest" is now everything inside the marker's clear lane as well as
-// everything past the pole: an enemy standing against the flagpole is a hazard
-// using the goal as cover, and the approach to the finish is deliberately empty
-// ground. So the survivor is placed well back, and BOTH an in-lane enemy and a
-// past-the-pole one have to go.
+// The final stretch keeps everything this side of the tape and sweeps only what
+// is past it. The clear lane is a PLACEMENT rule — where the spawners may stop
+// laying track — and enforcing it retroactively here deleted things that were
+// already drawn and already in front of the player, which reads as the last few
+// metres of the level evaporating as you reach the pole. So the in-lane enemy
+// and the in-lane pickup both survive, and only the one past the pole goes:
+// that one the draw gate never painted, so nothing visibly disappears.
 const finalEnemy = makeObstacle('zombie', run.finishWorldX() - 400);
 const laneEnemy = makeObstacle('zombie', run.finishWorldX() - 24);
 const postFinishEnemy = makeObstacle('zombie', run.finishWorldX() + 24);
 run.obstacles = [finalEnemy, laneEnemy, postFinishEnemy];
+const lanePickup = makePickup('battery', run.finishWorldX() - 100, 10);
+const postFinishPickup = makePickup('battery', run.finishWorldX() + 40, 10);
+run.pickups = [lanePickup, postFinishPickup];
 run.startFinishRun();
-assert(run.obstacles.includes(finalEnemy)
-  && !run.obstacles.includes(laneEnemy) && !run.obstacles.includes(postFinishEnemy),
-  'the final stretch keeps enemies before the finish but clears the marker lane and beyond');
+assert(run.obstacles.includes(finalEnemy) && run.obstacles.includes(laneEnemy)
+  && !run.obstacles.includes(postFinishEnemy),
+  'the final stretch keeps every enemy this side of the tape and clears only past it');
+assert(run.pickups.includes(lanePickup) && !run.pickups.includes(postFinishPickup),
+  'a pickup that scrolled into the marker lane is not deleted out from under the player');
 
 run.player.iframes = 0;
 run.obstacles = [makeObstacle('zombie', run.playerWorldX())];

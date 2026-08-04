@@ -495,8 +495,12 @@ function boot() {
   buildAllSprites();
 
   // Touch players cannot rewind, so do not create the continuously-running
-  // audio capture node on coarse-pointer devices.
-  Audio.setCaptureEnabled(!Input.isTouchDevice());
+  // audio capture node on coarse-pointer devices. Same capability the snapshot
+  // ring asks (run.js), so the two halves of rewind can never disagree about
+  // whether the feature exists. Read once here because the capture node is a
+  // boot-time fixture; no pad has been polled yet, so this is exactly the
+  // coarse-pointer test it has always been.
+  Audio.setCaptureEnabled(Input.rewindAvailable());
   // Prime Web Audio before the title state is installed. Browsers/builds that
   // permit autoplay now begin the menu theme immediately; stricter browsers
   // leave the context suspended and the first gesture resumes this same

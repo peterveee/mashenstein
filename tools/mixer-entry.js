@@ -11247,7 +11247,7 @@ $('midi').onclick = async () => {
  * This song's edits, as a JSON file you name.
  *
  * The desk's own safety nets all live where the accident does: the draft is in this
- * browser's localStorage, and .mix-history/ is beside the file a bad save overwrote.
+ * browser's localStorage, and work/mix-history/ is beside the file a bad save overwrote.
  * Both are gone if the thing that went wrong was the browser, the folder, or a server
  * quietly running last week's code. This is the copy that is somewhere else.
  *
@@ -11439,7 +11439,7 @@ async function saveMix(id) {
 
 // ---- restore a previous save -------------------------------------------------
 //
-// Every write to src/data/mix.js copies the version it replaces into .mix-history/.
+// Every write to src/data/mix.js copies the version it replaces into work/mix-history/.
 // This is the way back into one. It does NOT write anything: the snapshot is loaded
 // into the draft, so it arrives as an ordinary unsaved edit — audible immediately,
 // ⌘Z away from being undone, and only in the file once you Save it.

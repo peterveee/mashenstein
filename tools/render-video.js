@@ -43,7 +43,7 @@
 //   --no-gpu    rasterize on CPU (fallback; ~5x slower)
 //   --keep      leave the intermediate WAV directory on disk
 //
-// e.g.: node tools/render-video.js megamix "TOASTER SKY PARADE" dist/megamix-toasters.mp4
+// e.g.: node tools/render-video.js megamix "TOASTER SKY PARADE" work/video/megamix-toasters.mp4
 import { writeFileSync, mkdtempSync, mkdirSync, rmSync, renameSync, existsSync } from 'fs';
 import { tmpdir, cpus } from 'os';
 import { join, dirname, basename, resolve } from 'path';
@@ -125,7 +125,7 @@ if (visualIndex < 0) {
 }
 const visualName = VISUALIZER_NAMES[visualIndex];
 const visualSlug = visualName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-const OUT = resolve(ROOT, outArg || `dist/${track.slug}-${visualSlug}.mp4`);
+const OUT = resolve(ROOT, outArg || `work/video/${track.slug}-${visualSlug}.mp4`);
 
 // ------------------------------------------------------------------- audio
 

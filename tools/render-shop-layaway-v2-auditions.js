@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { SHOP_THEME_LAYAWAY_V2_VARIANTS } from '../src/data/shop-themes.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = join(root, 'audio', 'renders', 'auditions', 'shop-theme');
+const outDir = join(root, 'work', 'auditions', 'shop-theme');
 mkdirSync(outDir, { recursive: true });
 
 for (const variant of SHOP_THEME_LAYAWAY_V2_VARIANTS) {

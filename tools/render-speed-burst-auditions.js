@@ -24,7 +24,7 @@ import { resolveOrExit } from './lib/tracks.js';
 import { Powerups } from '../src/game/powerups.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = join(root, 'audio', 'renders', 'auditions', 'speed-burst');
+const outDir = join(root, 'work', 'auditions', 'speed-burst');
 
 // The three worth hearing by default: the slowest song (longest delay times, so
 // the most drift), the one you meet first, and the fastest — which is also the

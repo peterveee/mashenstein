@@ -32,6 +32,7 @@ import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST } from './finishMarker
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 import { TapeRewindEffect } from './rewindFx.js';
+import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 
 export { GROUND_Y };
 // The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
@@ -439,6 +440,22 @@ const finishLineX = () => VIEW_W - 72;
 // over one screen-second at cruising speed — enough that the last thing to
 // leave the frame before the pole arrives is ground.
 const FINISH_CLEAR = 160;
+
+// The blackout mission's brown-out ramp. Built in local space so the same
+// object serves every frame wherever the hero has walked to; keyed on the
+// context as well as the radius because a backend change replaces the
+// backbuffer canvas underneath it.
+let blackoutGrad = null, blackoutGradR = 0, blackoutGradCtx = null;
+function blackoutGradient(ctx, r) {
+  if (blackoutGrad && blackoutGradR === r && blackoutGradCtx === ctx) return blackoutGrad;
+  blackoutGrad = ctx.createRadialGradient(0, 0, r * 0.35, 0, 0, r);
+  blackoutGrad.addColorStop(0, 'rgba(8,6,12,0)');
+  blackoutGrad.addColorStop(0.6, 'rgba(8,6,12,0.28)');
+  blackoutGrad.addColorStop(1, 'rgba(8,6,12,0.58)');
+  blackoutGradR = r;
+  blackoutGradCtx = ctx;
+  return blackoutGrad;
+}
 
 // --- THE FLIP --------------------------------------------------------------
 // The stage's last input, and the only one that is pure expression. The hero
@@ -1367,9 +1384,12 @@ export class RunState {
     // Leave the final approach clean: nothing new is allowed to appear past
     // the breaker, and the finish run itself has no hazards or pickups.
     if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
+      const spawnAt = updateProfileMark();
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
         this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
-      this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery());
+      this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(),
+        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
+      updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
     // Swept every frame, not just on the frame the portal appears: the drip
@@ -1558,14 +1578,22 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     // The final stretch remains part of the level. Keep anything the player
     // can still reach before the tape, but never show content beyond it.
-    // The same clear lane the spawner respects, applied to whatever is already
-    // out there: the mission can complete late, after the lane was filled on the
-    // assumption that the run continued, and this is the only chance to sweep it.
-    // Measured off each entity's RIGHT edge, so a wide crate cannot lean into
-    // the marker just because its origin cleared the line.
-    const finishX = this.finishWorldX() - FINISH_CLEAR;
-    this.obstacles = this.obstacles.filter((ob) => ob.x + (ob.w || 0) < finishX);
-    this.pickups = this.pickups.filter((p) => p.x + (p.w || 8) < finishX);
+    //
+    // The wall is the TAPE, not the clear lane. FINISH_CLEAR is a placement
+    // rule — it tells the spawners where they may stop laying track — and
+    // enforcing it retroactively deleted things that were already on screen
+    // and already in front of the player, so a battery that scrolled in
+    // perfectly legibly vanished the instant the finish armed. Anything this
+    // side of the tape stays and stays collectable; the finish run is live, so
+    // "still reachable" is the truth here, not a courtesy.
+    //
+    // Past the tape is the only thing that goes, and it goes because the draw
+    // gate already refuses to paint it (see the finishX gate in draw) and the
+    // run ends before the hero gets there. Same wall as that gate, deliberately:
+    // the sweep may only remove what was never visible in the first place.
+    const finishX = this.finishWorldX();
+    this.obstacles = this.obstacles.filter((ob) => ob.x < finishX);
+    this.pickups = this.pickups.filter((p) => p.x < finishX);
     this.projectiles = [];
     this.chompBites = [];
     this.portal = null;
@@ -1625,10 +1653,11 @@ export class RunState {
       // slide, which keeps the ending one gesture rather than two. He is still
       // graded on the catch, so the hop earns him nothing: that is the CLUNK.
       //
-      // The rig has five poses (idle, run, jump, duck, celebrate) and none of
-      // them is a hero holding a pole, so the descent currently reads with the
-      // jump pose. A proper cling is a shared-painter change across all eight
-      // heroes and is the outstanding art debt on this whole mechanic.
+      // The descent hangs off the JUMP pose with `cling` blended over it (see
+      // CLING in toons.js): one hand on the pole above the head, the other arm
+      // dangling, and the idle's own legs lifted and leaned. Front-on, because
+      // the celebration this hands off to is front-on and a hero who rides down
+      // in profile and lands facing you has swapped bodies on the last frame.
       const caught = Math.max(this.player.grounded ? 0 : this.player.y, 0);
       // The hop's own height, for the walk-up: enough above the cap to read as
       // a deliberate little jump onto it rather than a stumble.
@@ -2765,12 +2794,24 @@ export class RunState {
     if (this.overtime || !this.stage || this.applianceSpawned) return;
     const at = this.stage.applianceAt * this.totalDist;
     if (this.camX + W > at) {
-      this.applianceSpawned = true;
       const alt = this.stage.applianceHigh ? 52 : 44;
       // Same clearance the cords get. It rides high enough that most ground
       // hazards never touch the test, but the one appliance a stage offers is
       // the worst possible thing to strand behind a shooter drone.
-      const x = this.clearOfHazards(at + W, PICKUPS.appliance.w, alt, PICKUPS.appliance.h, Infinity);
+      //
+      // And the same wall the lane gets. This one used to pass Infinity, so a
+      // late appliance could come to rest inside the finishing straight or past
+      // the tape entirely — where the draw gate refuses to paint it. It is a
+      // bonus rather than a mission piece, so unlike spawnObjective it takes the
+      // full clear lane rather than squeezing into the last slot before the pole.
+      const maxX = this.finishWorldX() - FINISH_CLEAR - PICKUPS.appliance.w;
+      const x = this.clearOfHazards(Math.min(at + W, maxX), PICKUPS.appliance.w, alt, PICKUPS.appliance.h, maxX);
+      // No legal spot this frame — a hazard is sitting on the last one. Try
+      // again next frame rather than write the stage's only appliance off: the
+      // blocker is usually a shambler walking out of the way. `applianceSpawned`
+      // is set only on success, so the "one per stage" rule still holds.
+      if (x == null) return;
+      this.applianceSpawned = true;
       const p = makePickup('appliance', x, alt);
       p._baseAlt = alt;
       p._baseX = p.x;
@@ -2859,13 +2900,18 @@ export class RunState {
   // Record a snapshot on the fixed cadence during normal forward play.
   // After recording, discard the oldest if the buffer is full.
   recordRewindFrame(dt) {
-    if (REWIND_DISABLED) return;
+    // Asked every frame rather than once per run so a pad paired mid-run starts
+    // recording. The ring allocates its records lazily, so a run that never
+    // captures never pays for one — there is nothing to tear down here.
+    if (REWIND_DISABLED || !Input.rewindAvailable()) return;
     this.rewindCaptureT += dt;
     if (this.rewindCaptureT < REWIND_STEP) return;
     this.rewindCaptureT -= REWIND_STEP;
     // The ring hands back the record to overwrite, which once it is full is the
     // oldest one — so recycling and discarding the oldest are the same act.
+    const captureAt = updateProfileMark();
     this.writeRewindSnapshot(this.rewindFrames.slotForWrite());
+    updateProfileAdd('rewindMs', captureAt);
   }
 
   // Record everything the rewind needs to restore — camera, player, relay,
@@ -3847,12 +3893,15 @@ export class RunState {
       const px = (hsx + 6) * z;
       const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan);
       const r = 130;
-      const g = ctx.createRadialGradient(px, py, r * 0.35, px, py, r);
-      g.addColorStop(0, 'rgba(8,6,12,0)');
-      g.addColorStop(0.6, 'rgba(8,6,12,0.28)');
-      g.addColorStop(1, 'rgba(8,6,12,0.58)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
+      // Only the centre moves, so the ramp is built once in local space and
+      // carried to the hero by the transform. Rebuilt in place it cost a
+      // gradient and its colour-stop table every frame of every blackout stage,
+      // immediately ahead of a full-frame fill.
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.fillStyle = blackoutGradient(ctx, r);
+      ctx.fillRect(-px, -py, W, H);
+      ctx.restore();
     }
     ctx.restore();
 

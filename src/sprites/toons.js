@@ -1066,47 +1066,45 @@ export function b33pTitleShotPose(age) {
 // rather than coming down it, and the one moment the whole finish marker was
 // built around was the one moment the hero was not acting on it.
 //
-// A cling is hands ABOVE the head on the pole's own column, feet drawn up and
-// clamped under him, and — this is the part that makes it read — a body that
-// swings while the hands do not. The grip is the fixed point; everything else
-// is weight hanging off it.
+// A cling is THE IDLE POSE with one arm extended to the pole, and a smile. That
+// is the whole specification, and it is short on purpose: three earlier cuts of
+// this pose each invented their own body — a tuck, a lean, a bowed knee, a
+// stance, a dangling counterweight arm, bones stretched to 2.4x — and every
+// invention was a way of not being the pose it claimed to be quoting. The
+// hero's idle is already a finished, front-on, legible drawing that the player
+// has watched for hours. It does not need help; it needs one arm moved.
 //
-// Per hero, because the cast's whole design is that they do the same verb
-// differently, and a shared cling would be the one animation where they all
-// look alike. The knobs:
-//   gripUp  hand height above the shoulder, in arm lengths (1 ≈ full reach)
-//   handX   how far the hands sit either side of the pole's column, in u
-//   stagger how much HIGHER the near hand grips than the far one, in arm
-//           lengths — a staggered grip is a climber's, a level one is a
-//           passenger's
-//   bow     extra leg-segment slack; the IK spends it bowing the knees outward
-//   footY   how far the feet ride below the hips, in leg lengths — small is
-//           tucked up tight, large is dangling
-//   footX   gap between the feet, in u. Zero is ankles crossed and prim
-//   swing   amplitude of the body's sway under the fixed grip
-//   flail   0..1 of the far arm let go and thrown out for balance
-const CLING_DEFAULT = { gripUp: 0.95, handX: 0.07, stagger: 0.08, bow: 0.2, footY: 0.55, footX: 0.05, swing: 1, flail: 0 };
+// Which arm: the one on the pole's side, the BACK one at this rig's default
+// yaw. It reaches OUT and slightly up, at the end of a real unstretched arm,
+// and lands on the column. Nothing else in the figure changes — not the other
+// arm, not the legs, not the breathing.
+//
+// The single knob:
+//   gripUp  0..1 of the height available to a straight arm once the run out to
+//           the pole is paid for. 1 is as high as he can reach with the elbow
+//           locked; lower values bend the elbow and slide the hand down the
+//           pole. The hand is always ON the pole — its x is not negotiable —
+//           so this is the only choice the pose has left to make.
+//
+// PLAYABLE HEROES ONLY. Gary and Dolores work the shop and the serving line —
+// neither of them will ever run a stage, so neither will ever touch a finish
+// marker, and a bespoke pole ride for them would be a tuning pass nobody can
+// reach. They fall through to the default.
+const CLING_DEFAULT = { gripUp: 0.9 };
 const CLING = {
-  // Sliding a pole is a plumber's commute. Square grip, feet clamped, one small
-  // bounce per beat — he has done this before and he is not thinking about it.
-  lorenzo: { gripUp: 0.98, handX: 0.075, stagger: 0.10, bow: 0.24, footY: 0.55, footX: 0.045, swing: 0.9, flail: 0 },
-  // Loose everywhere: a high lazy grip, legs swinging wide open. The only one
-  // whose cling looks like showing off.
-  gnash:   { gripUp: 1.04, handX: 0.09, stagger: 0.30, bow: 0.34, footY: 0.42, footX: 0.11, swing: 1.5, flail: 0 },
-  // Terrified and tidy. Hands low and close, knees up under his chin, almost no
-  // sway — he is holding the pole rather than riding it.
-  fernwick:{ gripUp: 0.86, handX: 0.055, stagger: 0.05, bow: 0.10, footY: 0.30, footX: 0.02, swing: 0.45, flail: 0 },
-  // A machine on a rail. Level grip, straight arms, no sway worth the name; the
-  // legs hang plumb because nothing about this is a balance problem for him.
-  b33p:    { gripUp: 1.00, handX: 0.07, stagger: 0, bow: 0.02, footY: 0.78, footX: 0.03, swing: 0.15, flail: 0 },
-  // One hand, and it was not his idea. The free arm is out for balance and the
-  // legs are doing their own panicking.
-  gary:    { gripUp: 0.92, handX: 0.06, stagger: 0.22, bow: 0.3, footY: 0.5, footX: 0.10, swing: 1.8, flail: 1 },
-  // Composed. Both hands level, ankles together, descending like it is a lift.
-  dolores: { gripUp: 0.95, handX: 0.06, stagger: 0.03, bow: 0.14, footY: 0.6, footX: 0, swing: 0.4, flail: 0 },
-  // A bear hug, not a grip: hands close overhead, elbows wide, knees clamped
-  // round the pole. The heavy rig cannot reach as high proportionally anyway.
-  grumpos: { gripUp: 0.80, handX: 0.1, stagger: 0.04, bow: 0.42, footY: 0.62, footX: 0.02, swing: 0.7, flail: 0 },
+  // A plumber's commute: he has done this before and he is not thinking about
+  // it, so he reaches without straightening the elbow.
+  lorenzo: { gripUp: 0.86 },
+  // Showing off — the highest reach in the cast, arm locked out.
+  gnash:   { gripUp: 1.0 },
+  // Terrified and tidy: holding the pole rather than riding it, so the hand
+  // comes in low and the elbow stays folded.
+  fernwick:{ gripUp: 0.62 },
+  // A machine on a rail. Straight arm, level as a gantry.
+  b33p:    { gripUp: 0.95 },
+  // The heavy rig's arm is half again as long and cannot reach as high
+  // proportionally; a bear's grab, not a gymnast's.
+  grumpos: { gripUp: 0.72 },
 };
 // The exotic rigs have no hands to grip with, so their cling is a whole-body
 // answer, applied in drawToon and read again inside each painter:
@@ -1125,24 +1123,47 @@ const CLING_RIG = {
   // down a pole is just swimming with extra steps.
   raymn:  { squeeze: 0.12, grab: 1, tilt: 0.08 },
 };
-// Cling is a blend, not a switch: the hero catches the pole over a few frames
-// so the arms travel up into the grip instead of teleporting into it.
+// How much of the pole ride the run has asked for, 0..1.
 function clingAmount(pose) {
   return Math.max(0, Math.min(1, Number(pose && pose.cling) || 0));
 }
+// How far into it the FIGURE is. The BODY is a switch, not a blend — he is
+// either standing beside the pole or he is airborne, and a body halfway between
+// a jump pose and an idle is neither of them — so it cuts at the ramp's
+// midpoint, which is the frame he catches. Everything that has to TRAVEL (the
+// step aside, the arm going out to the pole) runs on the half of the ramp after
+// that cut, so the reach is a gesture the eye can follow rather than a hand
+// teleporting onto a stick.
+function clingSettle(pose) {
+  return Math.max(0, Math.min(1, (clingAmount(pose) - 0.5) / 0.25));
+}
 // Where the pole stands in the hero's own space while he is on it, as a
-// fraction of draw height. He does NOT ride it down the middle: centred, both
-// arms run up the centre line and cross his own face, and two body-coloured
-// limbs over a 6px head merge into a slab with a hat on it — the pose loses its
+// fraction of draw height. He does NOT ride it down the middle: centred, the
+// arm runs up the centre line and crosses his own face, and a body-coloured
+// limb over a 6px head merges into a slab with a hat on it — the pose loses its
 // face, which is the most expressive thing the rig has. Beside it, the face is
-// clear, the arms are out in silhouette against open sky, and the shape reads
-// as a hero holding something at arm's length above him.
+// clear, the arm is out in silhouette against open sky, and the shape reads as
+// a hero holding something at arm's length above him.
+//
+// Sized to a REAL ARM, which is the only thing that sets it now that the pose
+// is the idle plus a reach. The light rigs socket the shoulder about 0.12u out
+// and own 0.286u of arm; leaving 0.21u of that to the horizontal run puts the
+// column here and keeps two thirds of the reach available as height, so the arm
+// goes out AND up and the elbow still has something to bend. Pushed further out
+// — 0.42 was tried — the horizontal run eats the whole arm, the solver has no
+// vertical left to give, and every hero reaches the pole along a dead-flat bar
+// with the elbow locked, which is the one shape an arm cannot make.
 //
 // The figure shifts, not the pole: the marker's geometry is load-bearing (the
 // plunger he lands on is centred on the pole, and the hero's foot anchor has to
 // stay where the sim put it), so this is a drawing offset that eases in and out
 // with the grip and leaves every number outside the painter alone.
-const CLING_POLE_X = 0.3;
+const CLING_POLE_X = 0.33;
+// Half the idle stance: how far out from centre a standing foot plants, as a
+// fraction of draw height. The cling measures its own stance against this, so
+// "how far apart are his feet on the pole" is answered in the units of the pose
+// everyone already knows the hero by.
+const STAND_FOOT_X = 0.105;
 
 function celebrateMotion(id, t, reworked = false) {
   const seed = FACE_SEED[id] || 0;
@@ -1284,14 +1305,25 @@ function expressionFor(id, pose = {}) {
   const blinkGap = pose.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
   const blinkPhase = (t + seed) % blinkGap;
   const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate' || pose.stomp || pose.roll || pose.float;
+  // The pole ride is the moment the stage is WON, and the face is the only part
+  // of the hero that can say so — the body is busy holding on. It borrows the
+  // JUMP pose to hang off, though, and the jump face is `surprise`: the whole
+  // cast rode the finish marker down wearing the expression of someone who has
+  // just stepped off a ledge. Clinging takes the celebration face instead, held
+  // for the length of the slide.
+  const clinging = clingAmount(pose) > 0.35;
   // Face-only moods let a running cameo react without switching its body into
   // a celebration animation. Production poses do not set these flags.
-  const joy = pose.kind === 'celebrate' || !!pose.faceJoy;
+  const joy = pose.kind === 'celebrate' || !!pose.faceJoy || clinging;
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
   const cm = joy ? celebrateMotion(id, t, reworkedCelebration) : null;
-  const cheer = !!(cm && cm.peak);
+  // Clinging cheers throughout. Squeezed-shut ^ ^ eyes are the between-beats
+  // half of the celebration, and a hero who slides the whole pole with his eyes
+  // closed reads as asleep on it; `cheer` is the open-eyed, open-mouthed half,
+  // which is the "wheeee" this pose wants and keeps the eyes in the face.
+  const cheer = clinging || !!(cm && cm.peak);
   // Dolores never breaks posture — no wave, no lean — so all her idle life has
   // to carry on the face. She rotates through a handful of micro-beats on a slot
   // cycle: a call to a queue that has not existed in years (brows up, eyes past
@@ -1344,7 +1376,7 @@ function expressionFor(id, pose = {}) {
     // BROW_L_SCALE is the one that needs it.
     id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
-    surprise: (pose.kind === 'jump' && !pose.stomp) || !!pose.faceSurprised,
+    surprise: !clinging && ((pose.kind === 'jump' && !pose.stomp) || !!pose.faceSurprised),
     // Opt-in startled brow. Nothing in the game sets it; see the branch it
     // unlocks in drawEyes for why the surprise face needed its own shape.
     browRaise: !!pose.browRaise,
@@ -1357,9 +1389,15 @@ function expressionFor(id, pose = {}) {
     // the old short peak window swaps his pale beard-mouth between two shapes
     // mid-hold, which reads as the mouth blinking out. Keep his stern mouth
     // registered throughout the study; production retains the rare grin.
-    beam: id === 'grumpos' && reworkedCelebration
-      ? false
-      : !!(cm && cm.peak && cm.move),
+    // Clinging is the one held pose that wants the grin ON for its whole
+    // length: Grumpos's mouth is a gap in a beard with three states, and the
+    // stern one under a pair of delighted eyes reads as a glitch rather than as
+    // stoicism. Everywhere else the rare-grin rule stands.
+    beam: clinging
+      ? true
+      : id === 'grumpos' && reworkedCelebration
+        ? false
+        : !!(cm && cm.peak && cm.move),
     effort: !!(pose.stomp || pose.roll || pose.headless),
     // Even Grumpos's scowl unclenches now and then: mid-run the face drops
     // to neutral for a couple of seconds out of every eight or so, seeded so
@@ -2352,7 +2390,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
-  const cling = clingAmount(pose), clingStyle = CLING[id] || CLING_DEFAULT;
+  const cling = clingSettle(pose), clingStyle = CLING[id] || CLING_DEFAULT;
   const cm = pose.kind === 'celebrate'
     ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose))
     : null;
@@ -2470,10 +2508,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   } : armDims;
   const legWF = legW * (1 + 0.06 * turnDepth);
   const legWB = legW * (1 - 0.12 * turnDepth);
-  const run = pose.kind === 'run';
+  // Clinging IS the idle pose. Not a variation on it, not the airborne pose
+  // eased toward it — the same body, standing, with one thing changed: the
+  // arm on the pole side reaches out and takes the pole. Every previous cut of
+  // this invented its own legs (a tuck, a lean, a bow, a stance) on top of the
+  // JUMP pose the slide arrives in, and every invention was a way of not being
+  // the pose it was supposed to be quoting. So the kind is overridden here,
+  // once, at the top: from this line down the whole painter believes he is
+  // standing, which is the only way "exactly the idle" can survive a hundred
+  // downstream branches asking `jump ?` for themselves.
+  const clung = clingAmount(pose) > 0.5;
+  const run = !clung && pose.kind === 'run';
   const walk = run && !!pose.walk;
-  const jump = pose.kind === 'jump';
-  const duck = pose.kind === 'duck';
+  const jump = !clung && pose.kind === 'jump';
+  const duck = !clung && pose.kind === 'duck';
   const enhancedMotion = usesEnhancedLocomotion(pose);
   const airV = jump ? Math.max(-1, Math.min(1, (Number(pose.vy) || 0) / 460)) : 0;
   // Player physics uses positive Y/velocity upward and negative downward.
@@ -2624,38 +2672,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // only a hair of slack. Sizing it off |hipY|/2 quietly doubles that slack,
     // and the IK's sideways bulge grows as sqrt(slack), so the thighs bow out
     // past the leather either side of him.
-    footF = [0.105 * u, 0]; footB = [-0.105 * u, 0]; kneeB = -1;
+    footF = [STAND_FOOT_X * u, 0]; footB = [-STAND_FOOT_X * u, 0]; kneeB = -1;
     legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
   }
-
-  // Clinging: the legs come up off whatever the airborne pose had and clamp
-  // under the hips. Applied as a blend on TOP of the chain above rather than as
-  // another branch in it, so the catch eases in from the real jump pose — the
-  // hero's legs travel up into the clamp, which is the half of the move that
-  // says he grabbed something.
-  //
-  // The sway lives here and not on the hands: hands are the fixed point, the
-  // body is what hangs. Both feet take the same signed offset so they swing
-  // together — scissoring reads as running in mid-air.
-  if (cling > 0) {
-    const st = clingStyle;
-    const sway = Math.sin((pose.time || 0) * 7.5) * 0.035 * u * st.swing * cling;
-    // The feet come ACROSS to the pole as well as up: he is beside the stick,
-    // so shins that stayed under his own hips would leave him clinging by the
-    // hands with his legs running in mid-air. They land short of the column —
-    // the pole is notionally between the ankles, and drawing them dead on it
-    // hides both feet behind it.
-    const toPole = CLING_POLE_X * u * 0.72;
-    const near = [toPole + sway + st.footX * u, hipY + legL * (st.footY + 0.06)];
-    const far = [toPole + sway - st.footX * u, hipY + legL * st.footY];
-    footF = [footF[0] + (near[0] - footF[0]) * cling, footF[1] + (near[1] - footF[1]) * cling];
-    footB = [footB[0] + (far[0] - footB[0]) * cling, footB[1] + (far[1] - footB[1]) * cling];
-    // Knees bow outward, one to each side, and the slack that lets them do it
-    // is `bow`. Both signs positive-outward: a clamped leg's knee has to clear
-    // the pole the shin is wrapped around.
-    kneeF = 1; kneeB = -1;
-    legSeg *= 1 + st.bow * cling;
-  }
+  // No cling branch here, and that is the point. `clung` sent the whole painter
+  // down the STAND path above, so the legs a hero rides the pole with are the
+  // legs he idles on — same targets, same knee signs, same near-straight bones,
+  // same front-facing shoes — and there is nothing left for a cling to adjust.
 
   // In motion the near leg keeps a longer, clearer stride while the far leg
   // tucks behind the body. Their hip roots are separated instead of sharing
@@ -2698,24 +2721,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the joint under the shoulder in every pose.
   let armSeg = armL * 0.55;
   let armSegF = armL * 1.1 - armSeg;
-  // Clinging stretches the arms. It has to: this cast's shoulder sits at 0.5u
-  // and its arm is 0.29u long, so a hand at full reach straight up lands at
-  // 0.76u — which is the middle of the hero's own FACE. The first cut of the
-  // pose put ten heroes' palms over their own eyes. A hand on a pole belongs
-  // above the crown, so the bones lengthen to put it there and the arms read as
-  // a cartoon's do when it hauls itself up something. The heavy rig barely
-  // moves (its arm nearly reaches already); the light rigs stretch by about
-  // three quarters, and the cap keeps that from becoming spaghetti on any
-  // future rig with a shorter arm.
-  const clingGripY = headY - (heavy ? 0.2 : 0.21) * u;
-  if (cling > 0) {
-    // Measured on the diagonal, because the grip is now up AND across: the pole
-    // stands off his side, so the hand has further to go than the height alone
-    // says and an arm sized for the vertical falls short of the stick.
-    const need = Math.hypot(CLING_POLE_X * u, shoulderY - clingGripY) / Math.max(1e-6, armSeg + armSegF);
-    const stretch = 1 + (Math.min(2.1, Math.max(1, need)) - 1) * cling;
-    armSeg *= stretch; armSegF *= stretch;
-  }
+  // Nothing stretches for the cling. An earlier cut lengthened the bones by up
+  // to 2.4x to put a fist above the crown on a pole he was hanging from; the
+  // pose is not a hang any more, it is a hero standing beside a pole with a
+  // hand ON it, and a hand at the end of a real arm is the whole reason the
+  // step-aside below is sized the way it is.
   // Celebrating is front-on, so the arms root at the torso's shoulder
   // corners; at the run cycle's mid-chest attach, the front arm draws over
   // the torso and reads as growing out of the chest. The heavy rig roots at
@@ -2777,49 +2787,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // back, as [x, y]. Null the rest of the time, which is also the flag the
   // back-slung disc and the draw order below both test.
   let celShield = null;
-  if (cling > 0) {
-    // Both hands on the pole, which stands off his leading side (see
-    // CLING_POLE_X — the figure has been stepped away from it). They do NOT
-    // move: the sway below swings the body under this grip, and a hand that
-    // drifts with the body turns a grip into a slap.
-    const st = clingStyle;
-    // The column, in this figure's own space. `handX` spreads the two hands
-    // around it rather than placing them either side of the body, so both fists
-    // close on the same stick — a hand on each side of the hero is not a grip,
-    // it is a shrug.
-    const poleX = CLING_POLE_X * u;
-    // The near hand grips higher than the far one by `stagger`, so the arms
-    // form a climber's ladder rather than a symmetrical hang. Level (b33p,
-    // dolores) is a deliberate reading of its own, not an absence of one.
-    // Hand height is measured DOWN from the grip line (just over the crown),
-    // not up from the shoulder: the whole point of the stretch above is that
-    // the top of this pose is fixed to the head, so `gripUp` reads as "how far
-    // up the pole this hero managed to get" against a line that means the same
-    // thing on every rig.
-    const gripY = (up) => clingGripY + armL * (1 - up);
-    const nearTarget = [poleX + st.handX * u * 0.5, gripY(st.gripUp + st.stagger)];
-    const farTarget = [poleX - st.handX * u * 0.5, gripY(st.gripUp)];
-    // Placed, not reach()ed: the bones were just lengthened to make this exact
-    // target land at full extension, so extending it again overshoots the pole.
-    const gripF = nearTarget;
-    const gripB = farTarget;
-    // The free arm, for the hero who only got one hand on it: thrown out and
-    // down, away from the pole, at the height a windmilling arm actually lives.
-    const loose = [shB - armL * 1.0, armY + armL * 0.35];
-    const farHand = st.flail > 0
-      ? [gripB[0] + (loose[0] - gripB[0]) * st.flail, gripB[1] + (loose[1] - gripB[1]) * st.flail]
-      : gripB;
-    // Blend out of whatever the jump pose had. At cling 0 this branch returns
-    // the plain airborne arms, so the catch can ease in over a few frames.
-    const airF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]);
-    const airB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]);
-    handF = [airF[0] + (gripF[0] - airF[0]) * cling, airF[1] + (gripF[1] - airF[1]) * cling];
-    handB = [airB[0] + (farHand[0] - airB[0]) * cling, airB[1] + (farHand[1] - airB[1]) * cling];
-    // Elbows out, both sides: an arm reaching straight up over the head has
-    // nowhere else to put its joint, and winging them outward is what makes the
-    // grip read as a grip from the front.
-    elbF = sideF; elbB = sideB;
-  } else if (pose.kind === 'celebrate') {
+  if (pose.kind === 'celebrate') {
     // Victory choreography, one flavor per hero.
     const ct = pose.time || 0;
     const pump = Math.sin(ct * 6) * 0.05 * u;
@@ -3295,6 +3263,28 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     }
   }
 
+  // THE ONE CHANGE THE CLING MAKES. Everything above ran as a stand, so what is
+  // in handF/handB right now is the idle's own pair of arms, breathing and all.
+  // The pole-side one reaches out and takes the pole; the other is not touched,
+  // and neither is anything else in the figure.
+  //
+  // Solved, not posed: the hand goes ON the column, so its x is fixed and the
+  // only free choice is height — and the most height available is whatever
+  // vertical is left in a real, unstretched arm once the horizontal run out to
+  // the pole has been paid for. `gripUp` spends a fraction of that, so a low
+  // value bends the elbow rather than pulling the hand off the stick.
+  if (cling > 0) {
+    const dx = CLING_POLE_X * u - shB;
+    const total = armSeg + armSegF;
+    const lift = Math.sqrt(Math.max(0, total * total - dx * dx)) * clingStyle.gripUp;
+    const grip = [CLING_POLE_X * u, armY - lift];
+    handB = [handB[0] + (grip[0] - handB[0]) * cling, handB[1] + (grip[1] - handB[1]) * cling];
+    // Elbow BELOW the shoulder-to-hand line. Above it is the only other option
+    // and it puts the joint over the hero's own shoulder, which reads as a
+    // wing rather than as an arm reaching for something.
+    elbB = -sideB;
+  }
+
   // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with
   // their own arm, not as a final pass: the back hand must occlude behind the
   // torso like the rest of the back arm, or a run cycle reads as two clapping.
@@ -3441,6 +3431,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
 
   // Standing, legs root at their own hips and feet face the camera; in
   // motion they share the center hip and the feet read as profile shoes.
+  // Clinging comes through here as standing, so it takes the front-on branch
+  // for free — which is also what the celebration it hands off to uses, so the
+  // hero does not change bodies on the last frame of the slide.
   const hipAt = (side) => (frontLegs
     ? side * HIP_HALF * u
     : turned ? (side > 0 ? hipNearX : hipFarX) : hipRun);
@@ -5503,8 +5496,13 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // Step aside for the pole. Humanoids only: the armless rigs cling with their
   // whole body and belong ON the column, and stepping them off it would just
   // detach them from the thing they are supposed to be holding.
-  if (clingAmt > 0 && spec.rig !== 'pika' && spec.rig !== 'blob' && spec.rig !== 'disc' && spec.rig !== 'ray') {
-    ctx.translate(-CLING_POLE_X * u * clingAmt, 0);
+  //
+  // On the SETTLE, not the raw amount, so the sidestep and the arm going out
+  // finish on the same frame. Split between the two ramps, the hand arrived at
+  // a column the body had only half stepped away from and stopped short of it.
+  const clingStep = clingSettle(pose);
+  if (clingStep > 0 && spec.rig !== 'pika' && spec.rig !== 'blob' && spec.rig !== 'disc' && spec.rig !== 'ray') {
+    ctx.translate(-CLING_POLE_X * u * clingStep, 0);
   }
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);

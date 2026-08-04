@@ -7,6 +7,9 @@ import {
   setDensityPin, rendererDiagnostics, rendererBackend,
   resetRenderProfileStats, renderProfileStats, setRenderProfile,
 } from './renderer.js';
+import {
+  resetUpdateProfileStats, updateProfileStats, setUpdateProfile,
+} from './update-profile.js';
 import { drawText } from './sprites.js';
 
 const SETTLE_MS = 800;
@@ -32,6 +35,7 @@ function resetWindow(now) {
   sumDrawMs = 0;
   sumBlitMs = 0;
   resetRenderProfileStats();
+  resetUpdateProfileStats();
 }
 
 function finish() {
@@ -40,6 +44,7 @@ function finish() {
   phase = 'done';
   setDensityPin(savedPin);
   setRenderProfile(false);
+  setUpdateProfile(false);
 }
 
 export function startGameplayProfile({ restorePin } = {}) {
@@ -65,6 +70,7 @@ function begin(now) {
   setDensityPin(rd.density);
   profileDensity = rendererDiagnostics().density;
   setRenderProfile(true);
+  setUpdateProfile(true);
   phase = 'settle';
   resetWindow(now);
 }
@@ -72,6 +78,11 @@ function begin(now) {
 function completeWindow(now) {
   const elapsed = Math.max(1, now - phaseStartedAt);
   const stats = renderProfileStats();
+  // The update half counts its OWN frames: on a fast panel the loop skips
+  // presentation on callbacks that ran no simulation step, so dividing update
+  // time by the presented-frame count would report a per-frame cost for frames
+  // that never did the work.
+  const upd = updateProfileStats();
   results.push({
     label: `WINDOW ${windowIndex + 1}`,
     fps: Math.round(frames * 1000 / elapsed),
@@ -82,6 +93,11 @@ function completeWindow(now) {
     display: frames ? stats.displayMs / frames : 0,
     uploads: stats.uploads || 0,
     uploadMpx: (stats.uploadPixels || 0) / 1000000,
+    update: upd.frames ? upd.updateMs / upd.frames : 0,
+    updateP95: upd.p95Ms,
+    updateWorst: upd.worstMs,
+    rewind: upd.frames ? upd.rewindMs / upd.frames : 0,
+    spawn: upd.frames ? upd.spawnMs / upd.frames : 0,
   });
   windowIndex++;
   if (windowIndex >= WINDOW_COUNT) finish();
@@ -111,10 +127,19 @@ export function gameplayProfileFrame(now, { drawMs = 0, blitMs = 0 } = {}, inGam
   if (now - phaseStartedAt >= WINDOW_MS) completeWindow(now);
 }
 
+// Column x offsets shared by the header and the values, so the two cannot drift
+// apart the way a hand-spaced header string does every time a column is added.
+const COLS = {
+  fps: 96, update: 128, updateP95: 168,
+  draw: 208, blit: 246, paint: 284, submit: 326, upload: 370,
+};
+
 function drawBox(ctx, title, rows, note) {
-  const boxW = 420;
+  const boxW = 470;
   const rowH = 22;
-  const boxH = 50 + rows.length * rowH;
+  // Two note lines: the upload column needs a legend, and the update split
+  // needs somewhere to live that does not cost the table another column.
+  const boxH = 61 + rows.length * rowH;
   const x = (W - boxW) / 2;
   const y = Math.max(4, (H - boxH) / 2);
   ctx.fillStyle = 'rgba(5,6,14,0.97)';
@@ -123,22 +148,43 @@ function drawBox(ctx, title, rows, note) {
   ctx.lineWidth = 0.5;
   ctx.strokeRect(x, y, boxW, boxH);
   drawText(ctx, title, x + 10, y + 8, '#8ef0c0', 0.75, 'bold');
-  drawText(ctx, 'FPS   DRAW  BLIT  PAINT  SUBMIT  UPLOAD', x + 10, y + 24, '#9aa0b4', 0.55, 'ui');
+  const head = (label, key) => drawText(ctx, label, x + COLS[key], y + 24, '#9aa0b4', 0.55, 'ui');
+  head('FPS', 'fps');
+  head('UPD', 'update');
+  head('U95', 'updateP95');
+  head('DRAW', 'draw');
+  head('BLIT', 'blit');
+  head('PAINT', 'paint');
+  head('SUBM', 'submit');
+  head('UPLOAD', 'upload');
   rows.forEach((r, i) => {
     const rowY = y + 37 + i * rowH;
     const ink = r.fps >= 58 ? '#8ef0c0' : r.fps >= 45 ? '#f0d88e' : '#f08e9e';
     const upload = rendererBackend() === 'webgl'
       ? `${r.uploads}/${r.uploadMpx.toFixed(1)}M`
       : `${r.display.toFixed(1)}ms`;
+    const cell = (text, key, colour = '#d8dce6') =>
+      drawText(ctx, text, x + COLS[key], rowY, colour, 0.58, 'ui');
     drawText(ctx, r.label, x + 10, rowY, ink, 0.62, 'bold');
-    drawText(ctx, `${r.fps}`, x + 102, rowY, ink, 0.62, 'bold');
-    drawText(ctx, r.draw.toFixed(1), x + 137, rowY, '#d8dce6', 0.58, 'ui');
-    drawText(ctx, r.blit.toFixed(1), x + 178, rowY, '#d8dce6', 0.58, 'ui');
-    drawText(ctx, r.paint.toFixed(1), x + 219, rowY, '#d8dce6', 0.58, 'ui');
-    drawText(ctx, r.submit.toFixed(1), x + 263, rowY, '#d8dce6', 0.58, 'ui');
-    drawText(ctx, upload, x + 315, rowY, '#b9c9e3', 0.58, 'ui');
+    drawText(ctx, `${r.fps}`, x + COLS.fps, rowY, ink, 0.62, 'bold');
+    // The update columns are tinted apart from the render ones: the single
+    // question this report exists to answer is which half of the frame the time
+    // went to, and that reads faster as two colours than as eight numbers.
+    cell(r.update.toFixed(1), 'update', '#e8c9f0');
+    cell(r.updateP95.toFixed(1), 'updateP95', '#e8c9f0');
+    cell(r.draw.toFixed(1), 'draw');
+    cell(r.blit.toFixed(1), 'blit');
+    cell(r.paint.toFixed(1), 'paint');
+    cell(r.submit.toFixed(1), 'submit');
+    cell(upload, 'upload', '#b9c9e3');
   });
-  drawText(ctx, note, x + 10, y + boxH - 9, '#7e879d', 0.5, 'ui');
+  drawText(ctx, note, x + 10, y + boxH - 20, '#7e879d', 0.5, 'ui');
+  const last = rows[rows.length - 1];
+  const split = last
+    ? `UPD = simulation half, avg/95th. WORST ${last.updateWorst.toFixed(1)}ms`
+      + `  REWIND ${last.rewind.toFixed(2)}ms  SPAWN ${last.spawn.toFixed(2)}ms`
+    : 'UPD = simulation half of the frame, average and 95th percentile';
+  drawText(ctx, split, x + 10, y + boxH - 9, '#7e879d', 0.5, 'ui');
 }
 
 export function drawGameplayProfile(ctx) {

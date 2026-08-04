@@ -37,7 +37,7 @@ import { resolveTrack } from '../src/data/tracks.js';
 import { MIX } from '../src/data/mix.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const BASELINE_DIR = join(ROOT, 'baselines/engine');
+export const BASELINE_DIR = join(ROOT, 'work/baselines/engine');
 
 // Float32 comparison, not bit-equality: Web Audio is allowed to sum in a different
 // order between runs. 5e-6 is about -106dBFS — six orders of magnitude below

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = join(root, 'scratchpad');
+const outDir = join(root, 'work', 'local');
 const outFile = join(outDir, 'mixer-bright-fields-dark-notes.svg');
 
 const W = 1600;

@@ -2,7 +2,7 @@
 //
 // Dev tooling — this never ships. Nothing in src/ imports from tools/, the build
 // only bundles src/gate.js and src/main.js, and the dependency runs one way: this
-// file imports from src/, never the reverse. Output lands in dist/social/, which
+// file imports from src/, never the reverse. Output lands in work/social/, which
 // is gitignored.
 //
 // Scenes:
@@ -219,7 +219,7 @@ if (!CABINETS.some((c) => c.id === SEED_FROM)) {
 const PER_CYCLE = Math.max(1, Math.round(CYCLE * FPS));
 const FULL = PER_CYCLE * REPEATS;
 const TOTAL = Math.min(FULL, Math.round(num('frames', Infinity)) || Infinity);
-const OUT = resolve(ROOT, outArg || `dist/social/loop-${sceneArg}.mp4`);
+const OUT = resolve(ROOT, outArg || `work/social/loop-${sceneArg}.mp4`);
 
 console.log(`scene      ${sceneArg}`);
 console.log(`loop       ${PER_CYCLE} frames x ${REPEATS} = ${TOTAL} frames, `

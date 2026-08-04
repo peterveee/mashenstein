@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(join(fileURLToPath(import.meta.url), '..', '..'));
-const outDir = resolve(process.argv[2] || join(root, 'audio', 'renders', 'sfx'));
+const outDir = resolve(process.argv[2] || join(root, 'work', 'sfx'));
 const SR = 44100;
 const TAIL = 0.04;
 

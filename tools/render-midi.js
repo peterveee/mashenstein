@@ -1,7 +1,7 @@
 // CLI for the MIDI export. The walk itself lives in lib/render-midi-bank.js,
 // shared with render-stems.js so a stem folder's .mid always matches its WAVs.
 // Usage: node tools/render-midi.js [trackId] [repeats] [outPath] [--patches|--gm-channels]
-// e.g.:  node tools/render-midi.js hub 1 dist/food-court.mid
+// e.g.:  node tools/render-midi.js hub 1 work/midi/food-court.mid
 //
 // Every part is written on channel 1 (drums on 10), because Logic turns a
 // multi-channel file into External MIDI tracks routed by channel — silent until
@@ -20,7 +20,7 @@ const PATCHES = GM || process.argv.includes('--patches');
 const [trackId = 'hub', repeatArg = '1', outArg = null] = args;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
-const OUT = outArg || `dist/${track.slug}.mid`;
+const OUT = outArg || `work/midi/${track.slug}.mid`;
 
 const { buffer, trackNames, tracks, ppq, blocks, seconds, trimmed, deadPitches } =
   midiBuffer(track.bank, {

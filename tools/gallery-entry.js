@@ -24,7 +24,7 @@ import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
-import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE } from '../src/sprites/backwall.js';
+import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE, setPhoneDressing } from '../src/sprites/backwall.js';
 import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
   setContour, setInkScale, setInkDensity,
@@ -1648,6 +1648,28 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
         }
       }, { animated: true, wide: true });
   }
+
+  // The menu board twice: what a monitor gets, and what a phone gets. Both are
+  // painted through HUB_ZOOM, because a 1:1 bay tile understates every size on
+  // this wall by a third and "can you read it" is not a question a lie about
+  // scale can answer. Hold a handset against the pair — the tiles are the width
+  // the board really is on screen — and the wide board's rows are the ones that
+  // vanish.
+  const PZ = 1.3;
+  const boardTile = (name, sub, phone) => tile(grid, name, sub, BAY_W * PZ, WALL_H * PZ,
+    (ctx, t) => {
+      ctx.save();
+      setPhoneDressing(phone);
+      try {
+        ctx.scale(PZ, PZ);
+        drawWallBay(ctx, 0, 0, BAY_W, WALL_H, 'menuboard', { t, seed: 3, lit: 1, pal: litPal });
+      } finally {
+        setPhoneDressing(null);
+        ctx.restore();
+      }
+    }, { animated: true });
+  boardTile('Menu board — wide', 'shipped: five rows, ~2px caps, marker corrections', false);
+  boardTile('Menu board — phone', 'two rows at the panel’s own measure, no marker hand', true);
 }
 
 // The eye ring is currently 0.02u wide on an eye 0.11u across, while the body
@@ -3135,20 +3157,26 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // visibly not holding — and it was the outstanding art debt on the marker.
 {
   const grid = section('finish-cling', 'Finish cling — the pole ride, per hero',
-    'The catch, the ride and the landing, for every hero. This is a real pose now, not the jump pose: '
-    + 'hands on the pole above the head, feet clamped under, and the body swinging under a grip that does '
-    + 'not move. '
+    'The catch, the ride and the landing, for every PLAYABLE hero. This is a real pose now, not the jump '
+    + 'pose: one hand on the pole above the head, the other arm hanging, legs falling under him, and the '
+    + 'body swinging under a grip that does not move. Gary and Dolores are not here — they work the shop '
+    + 'and the serving line and will never run a stage, so they will never touch a finish marker. '
     + '<b>Row 1</b> is each hero clinging, live, with the pole they are holding drawn behind them. '
     + '<b>Row 2</b> is the blend, left to right: airborne, catching, clinging, letting go — the same '
     + '0..1 the run drives, so an arm that pops on the way in pops here too. '
-    + '<br><br>Two decisions worth knowing before judging it. The figure stands BESIDE the pole rather '
-    + 'than on it: centred, both arms run up the centre line and cross the face, and two body-coloured '
-    + 'limbs over a 6px head merge into a slab. And the arms STRETCH — the shoulder sits at 0.5u with a '
-    + '0.29u arm, so a hand at full reach lands in the middle of the hero\'s own face; the bones lengthen '
-    + 'to put it above the crown instead. Per hero, because the cast does every other verb differently: '
-    + 'Gnash grips loose and staggered, B-33P hangs plumb, Gary has one hand on it and one arm out, '
-    + 'Fernwick is tucked up tight, Grumpos bear-hugs. Mochi squeezes, Raymn gathers his gloves, and '
-    + 'Chompo — who has no hands at all — bites it.');
+    + '<br><br>Three decisions worth knowing before judging it. The figure stands BESIDE the pole rather '
+    + 'than on it: centred, the arm runs up the centre line and crosses the face, and a body-coloured '
+    + 'limb over a 6px head merges into a slab. ONE hand grips, and it is the FAR one — two arms up the '
+    + 'same column is a chin-up, not a slide, and reaching across behind the torso leaves only the clean '
+    + 'stretch above the shoulder in silhouette while the near arm dangles, which is what sells the '
+    + 'weight. And that arm STRETCHES: the shoulder sits at 0.5u with a 0.29u arm, so a hand at full '
+    + 'reach lands in the middle of the hero\'s own face; the bone lengthens to put it above the crown. '
+    + 'The legs are the IDLE legs, front-on, lifted and leaned — front-on because the celebration this '
+    + 'hands off to is front-on, and a hero who rides down in profile and lands facing you has swapped '
+    + 'bodies on the last frame. Per hero from there: Gnash grips high and flings the loose arm out, '
+    + 'B-33P hangs plumb, Fernwick is tucked up tight with his free arm pinned to his side, Grumpos '
+    + 'bear-hugs. Mochi squeezes, Raymn gathers his gloves, and Chompo — who has no hands at all — '
+    + 'bites it.');
 
   const CW = 96, CH = 128, GY = 116;
   const poleAt = (ctx, x, h) => {
@@ -3163,7 +3191,13 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     tile(grid, label, sub, CW, CH, (ctx, t) => {
       laneStrip(ctx, CW, CH, GY);
       const x = CW / 2 - 6;
-      poleAt(ctx, x + 0.3 * 26, 104);
+      // The pole goes where drawToon is TOLD to draw, not 0.3u off it. The
+      // step-aside is inside the painter — it translates the figure 0.3u left
+      // and puts the hands back at 0.3u right, which lands them exactly on the
+      // caller's x. Adding the offset out here counted it twice, so these tiles
+      // showed the whole cast gripping a stick a full 0.6u from their fists and
+      // made a pose that was fine at the hands look like it had missed.
+      poleAt(ctx, x, 104);
       const a = typeof amount === 'function' ? amount(t) : amount;
       drawToon(ctx, id, {
         kind: 'jump', grounded: false, vy: 90, time: t, phase: 0, facing: 1, cling: a,
@@ -3171,7 +3205,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     }, { animated: true, hires: 6, smooth: true });
   };
 
-  for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'gary', 'dolores', 'grumpos', 'mochi', 'chompo', 'raymn']) {
+  for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'grumpos', 'mochi', 'chompo', 'raymn']) {
     clingTile(`${id} — clinging`, `cling: 1, live sway. The pole is drawn where the marker's mast stands relative to him.`, id, 1);
   }
   // The blend. Four fixed readings rather than a loop: a pose that only works

@@ -31,7 +31,7 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const [trackId = 'plumber', repeatArg = '1', filter = null] = args;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
-const outDir = join(root, 'audio', 'renders', 'auditions', 'voice');
+const outDir = join(root, 'work', 'auditions', 'voice');
 mkdirSync(outDir, { recursive: true });
 
 // The song's own saved mix underneath, so the audition is the song as it is heard —

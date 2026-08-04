@@ -164,6 +164,27 @@ assert(staples.every((s) => s > unpeelShare), `every staple is more common than 
 assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');
 
+// --- The drip respects the finish marker's clear lane ----------------------
+// It drops further ahead of the camera than the pattern lane does, so it was
+// the one source that could still land a capsule or a cell inside the finishing
+// straight. That drop scrolled in, sat there collectable, and then the finish
+// swept it — which is the last few metres of the level evaporating in view. The
+// wall is the fix; the sweep no longer covers for it.
+{
+  const wall = 40000;
+  const wallDrip = new DripSpawner(new Rng(99), bench);
+  const walled = [];
+  for (let i = 0; i < 400; i++) wallDrip.update(1, i * 240, walled, false);
+  assert(walled.length > 0, 'unwalled drip drops something to compare against');
+  const capped = [];
+  const cappedDrip = new DripSpawner(new Rng(99), bench);
+  for (let i = 0; i < 400; i++) cappedDrip.update(1, i * 240, capped, false, false, wall);
+  assert(capped.length > 0, 'the walled drip still drops everything short of the wall');
+  const over = capped.filter((d) => d.x + d.w > wall);
+  assert(over.length === 0, `nothing drips past the wall (${over.length} did)`);
+  assert(walled.some((d) => d.x + d.w > wall), 'the wall test would be vacuous without it');
+}
+
 // --- No two capsules within a screen of each other ------------------------
 // The drip and the !-box prize run off different clocks, so the only way a
 // pair ends up side by side is one source ignoring the other's last drop.

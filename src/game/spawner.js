@@ -1,6 +1,6 @@
 // Seeded pattern spawner with COMPUTED fairness. DOM-free so the headless
 // fairness sim can import it directly.
-import { OBSTACLES, makeObstacle, makePickup } from './entities.js';
+import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from './entities.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
 import { randomPowerPickup } from './powerups.js';
 
@@ -166,6 +166,10 @@ export class Spawner {
 export const POWER_MIN_GAP = 480;   // one screen of world px
 
 // Capsule/battery drip spawner (kept separate from patterns; verified reachable).
+// Every drop the drip makes — capsule or cell — wears the same 8px box, so one
+// width covers both wall tests below.
+const DRIP_W = PICKUPS.battery.w;
+
 export class DripSpawner {
   constructor(rng, benchLevels) {
     this.rng = rng;
@@ -187,7 +191,14 @@ export class DripSpawner {
     this.lastPowerType = type;
   }
 
-  update(dt, worldX, pickups, oneHit, batteryFull = false) {
+  // `stopX` is the same wall Spawner.fill respects — the finish marker's clear
+  // approach. The drip used to ignore it, and it drops FURTHER out than the
+  // pattern lane does, so the last capsule or cell of a stage could land inside
+  // the finishing straight: it scrolled in, it was collectable, and then it was
+  // deleted the moment the finish armed. Holding rather than skipping matches
+  // the crowding rule below, and both tests are made before the type is rolled
+  // so a hold cannot disturb the seeded order of prizes.
+  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
@@ -195,7 +206,7 @@ export class DripSpawner {
       // Too close to a prize that just dropped: hold the capsule rather than
       // skip it, and retry shortly — the world scrolls the gap open in about a
       // second, so the drip keeps its cadence instead of losing a beat.
-      if (!this.canPlacePower(x)) {
+      if (!this.canPlacePower(x) || x + DRIP_W > stopX) {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rng.range(12, 18);
@@ -205,8 +216,13 @@ export class DripSpawner {
       }
     }
     if (!oneHit && this.batteryTimer <= 0) {
-      this.batteryTimer = this.rng.range(20, 30);
-      if (!batteryFull) pickups.push(makePickup('battery', worldX + 480 + 100, 10));
+      const x = worldX + 480 + 100;
+      if (x + DRIP_W > stopX) {
+        this.batteryTimer = 0.5;
+      } else {
+        this.batteryTimer = this.rng.range(20, 30);
+        if (!batteryFull) pickups.push(makePickup('battery', x, 10));
+      }
     }
   }
 }

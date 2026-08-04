@@ -3,7 +3,7 @@
 // Dev tooling — this never ships. Nothing in src/ imports from tools/, the
 // build only bundles src/gate.js and src/main.js, and the dependency runs one
 // way: this file imports from src/, never the reverse. Output lands in
-// dist/social/, which is gitignored.
+// work/social/, which is gitignored.
 //
 // Four sets, from docs/social-teaser-plan.md:
 //
@@ -23,7 +23,7 @@
 //
 // Usage: node tools/render-social.js [set] [--flags]
 //   set          all | posters | styles | cabinets | menuboard  (default all)
-//   --out=DIR    output directory                       (default dist/social)
+//   --out=DIR    output directory                       (default work/social)
 //   --ss=N       supersample factor, reduced in-page     (default 2)
 //   --hero=ID    hero for the styles sheet               (default lorenzo)
 //   --crop=N     logical scene units per styles tile     (default 176)
@@ -63,7 +63,7 @@ for (const s of sets) {
   }
 }
 
-const OUT_DIR = resolve(ROOT, typeof flags.out === 'string' ? flags.out : 'dist/social');
+const OUT_DIR = resolve(ROOT, typeof flags.out === 'string' ? flags.out : 'work/social');
 const SS = Math.max(1, Math.round(num('ss', 2)));
 const HERO = typeof flags.hero === 'string' ? flags.hero : 'lorenzo';
 if (!TOON_SPECS[HERO]) {

@@ -400,7 +400,7 @@ musicBus → [songTrim] → [Master inserts (0–6)] → [Master trim]
 
 ### Saving
 1. Desk posts the current song's mix + arrangement as JSON to the server.
-2. Server takes a byte-copy snapshot of the existing file (`.mix-history/` folder,
+2. Server takes a byte-copy snapshot of the existing file (`work/mix-history/` folder,
    kept for ~300 saves).
 3. Server reads the current source file, finds the desk marker, replaces everything
    below it with the new mix + arrangement data.

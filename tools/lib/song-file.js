@@ -77,7 +77,7 @@ export function writeSongFile(root, id, { mix = null, arrangement = null, varian
  * Copy aside what the desk is about to overwrite — and ONLY that.
  *
  * Not a byte copy of the song file. A song file imports the note helpers and the
- * shared constants by relative path, so a copy of one sitting in .mix-history/
+ * shared constants by relative path, so a copy of one sitting in work/mix-history/
  * cannot be loaded from there: the backup is unreadable exactly when it is needed,
  * which is how a morning's work on megamix nearly went for good.
  *

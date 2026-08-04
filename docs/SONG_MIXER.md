@@ -1240,7 +1240,7 @@ reach for mid-take is the one with the modifier on it.
 | Which bars play, in what order, with what dropped out of them | the song's `arrangement` export, on the same button |
 | The tempo it is played at, when that is not the tempo it was written at | the same `arrangement` export, as `bpm` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
-| Every version of a writable song this desk has overwritten | `.mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
+| Every version of a writable song this desk has overwritten | `work/mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
 | Presets — user-created sounds and edits | `src/data/voices.js`, in the `USER_*` tables, on the editor's own **Save**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
@@ -1260,7 +1260,7 @@ Undo covers the desk; git covers what has been committed. **Between them sat not
 — two saves in an evening and the first one was gone, because the only copy of it was
 the file the second one overwrote.
 
-So every write copies the file it is about to replace into **`.mix-history/`**, named
+So every write copies the file it is about to replace into **`work/mix-history/`**, named
 for what the save was about and stamped to the second:
 `mix-2026-07-28T213011-shop-theme.js`. The last 300 are kept, a whole mix is about
 12KB, and the folder is gitignored — it is a safety net under a mixing session, not a

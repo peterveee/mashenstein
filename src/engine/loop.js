@@ -1,5 +1,7 @@
 // Fixed-timestep loop: update always ticks at 60 Hz regardless of display rate,
 // and presentation is capped to that same rate (see the skip in frame()).
+import { updateProfileMark, noteUpdateFrame } from './update-profile.js';
+
 export const TICK = 1 / 60;
 // A display whose average rAF interval is under 0.9 of a tick is running faster
 // than the simulation and has redundant frames to drop. 60 Hz sits above this
@@ -129,8 +131,14 @@ export function startLoop({ update, draw, present }) {
       }
       acc += dt;
       let steps = 0;
+      const updateAt = updateProfileMark();
       while (acc >= TICK && steps < 8) { update(TICK); acc -= TICK; steps++; }
       if (steps === 8) acc = 0; // running hopelessly behind: drop time, stay interactive
+      // Only callbacks that actually stepped the simulation are sampled. On a
+      // 120Hz panel half of them run zero steps, and folding those zeroes in
+      // would drag the percentile down until it described the display's cadence
+      // instead of the cost of the work.
+      if (updateAt && steps) noteUpdateFrame(performance.now() - updateAt);
       // Display motion can use the fraction of the next fixed step already
       // elapsed. States that opt into it can render a continuous position
       // without changing the deterministic 60 Hz simulation. On a 120 Hz

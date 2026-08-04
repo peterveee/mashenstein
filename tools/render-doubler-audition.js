@@ -20,7 +20,7 @@ import { wavBuffer, rmsOf, dbfs } from './lib/wav.js';
 import { resolveTrack } from '../src/data/tracks.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outPath = resolve(process.argv[2] || join(root, 'audio', 'renders', 'auditions', 'misc', 'doubler-audition.wav'));
+const outPath = resolve(process.argv[2] || join(root, 'work', 'auditions', 'misc', 'doubler-audition.wav'));
 
 const TRACK = 'plumber';
 const LANE = 'lead';

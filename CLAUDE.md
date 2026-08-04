@@ -2,26 +2,37 @@
 
 ## Where generated files go
 
-Nothing generated belongs in the repo root. Every tool that writes a file writes it
-into one of these, and new tools follow the same rule.
+Nothing generated belongs in the repo root. Everything untracked goes under `work/`,
+the one drawer that is always safe to delete; the two tracked destinations are for
+things worth keeping. Every tool that writes a file writes it into one of these, and
+new tools follow the same rule.
 
 | Output | Goes to | Tracked? |
 | --- | --- | --- |
-| Rendered SFX cues | `audio/renders/sfx/` | no |
-| Weapon candidate sweeps | `audio/renders/weapons/` | no |
-| Audition sweeps (drums, voices, shop themes, …) | `audio/renders/auditions/<topic>/` | no |
-| Engine reference renders for the null test | `baselines/` | no |
-| Screenshots worth keeping — an approved look, a spec | `docs/shots/<topic>/` | **yes** |
-| Throwaway verification shots, one-off scripts | `local/` | no |
+| Rendered SFX cues | `work/sfx/` | no |
+| Weapon candidate sweeps | `work/weapons/` | no |
+| Audition sweeps (drums, voices, shop themes, …) | `work/auditions/<topic>/` | no |
+| Promo art and teaser clips | `work/social/` | no |
+| Song bounces, stems, visualizer videos | `work/{tracks,stems,video}/` | no |
+| MIDI exports of a song bank | `work/midi/` | no |
+| Engine reference renders for the null test | `work/baselines/` | no |
+| Throwaway verification shots, one-off scripts | `work/local/` | no |
+| Song versions the mixer has overwritten | `work/mix-history/` | no |
 | Build output | `dist/` | no |
+| Screenshots worth keeping — an approved look, a spec | `docs/shots/<topic>/` | **yes** |
 | Archived gallery snapshots | `galleries/` | **yes** |
 
-`audio/renders/**/*.wav`, `local/`, `dist/`, and `baselines/` are gitignored. READMEs
-beside the renders stay tracked, so a listening index can live next to its files.
+`work/` and `dist/` are gitignored, and those two lines are the whole rule. `dist/`
+stays separate because it is the published site — the Pages workflow uploads it as
+the deploy artifact.
+
+Prose that describes a render — a listening index, a README naming what each cue is —
+is not itself generated, so it goes to `docs/audio/` and is tracked. Nothing tracked
+lives inside `work/`; that is what makes the drawer disposable.
 
 ### Audio renders are derived, never source
 
-The game synthesizes every SFX live through Web Audio — nothing under `audio/renders/`
+The game synthesizes every SFX live through Web Audio — nothing under `work/`
 is loaded at runtime. It exists so cues can be auditioned, and it is all reproducible:
 
 - `node tools/render-sfx.js` — the ten procedural cues, deterministic from code
@@ -37,4 +48,4 @@ reproducible from code, so check before discarding it.
 
 When a look is approved, the screenshot is the spec: commit it to
 `docs/shots/<topic>/` with a name that says what it shows. Shots taken only to confirm
-a change rendered go to `local/` and are never committed.
+a change rendered go to `work/local/` and are never committed.

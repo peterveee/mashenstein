@@ -448,7 +448,7 @@ would flatten variation that was written on purpose.
 **A save is scoped, and the version it replaces is kept.** The desk posts only the
 songs a save is about and the server merges them into the file as it stands, so a tab
 left open since the morning cannot write its stale copy of the other songs back over
-what has landed since. Every write first copies the file into `.mix-history/`
+what has landed since. Every write first copies the file into `work/mix-history/`
 (gitignored, last 300, named for the song and stamped to the second); **⋯ → Restore a
 previous save** loads one back into the desk as an unsaved draft. Undo covers the
 desk, git covers what has been committed, and this is what sits between them.
@@ -620,8 +620,9 @@ All platforms pause audio, input, rendering, and the game loop when the page/app
 | `build/` | Build script, service worker, HTML template, icons |
 | `tests/` | Test suites (migration, difficulty, renderer, density, reliability, boss, story, etc.) |
 | `tools/` | Gallery builder, release archiver, fairness/economy simulators, icon renderer |
-| `docs/` | Design specs, command history |
-| `scratchpad/` | Debug HTML, verification scripts |
+| `docs/` | Design specs, command history, listening indexes |
+| `dist/` | Build output — the published site. Gitignored |
+| `work/` | Everything else generated: renders, baselines, throwaway shots and scripts, mixer history. Gitignored, always safe to delete |
 
 ### 12.3 Testing
 

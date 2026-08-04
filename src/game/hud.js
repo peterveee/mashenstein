@@ -283,25 +283,38 @@ function drawGoalToast(ctx, run) {
   ctx.restore();
 }
 
+// The ramp only ever differs by where its centre sits, so it is built in local
+// space and positioned by the transform instead of being rebuilt — colour-stop
+// table and all — on every frame the toast is up. Keyed on the context as well
+// as the radius because the backbuffer is replaced on a backend change.
+let tickGrad = null, tickGradR = 0, tickGradCtx = null;
+function goldTickGradient(ctx, r) {
+  if (tickGrad && tickGradR === r && tickGradCtx === ctx) return tickGrad;
+  tickGrad = ctx.createLinearGradient(-r, -r, r, r);
+  tickGrad.addColorStop(0, '#ffe07a');
+  tickGrad.addColorStop(1, '#f0b419');
+  tickGradR = r;
+  tickGradCtx = ctx;
+  return tickGrad;
+}
+
 // The banked-plug mark: a gold disc with a dark check cut through it. Same gold
 // as the coin, because both mean "you have this now".
 function drawGoldTick(ctx, cx, cy, r) {
-  const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  grad.addColorStop(0, '#ffe07a');
-  grad.addColorStop(1, '#f0b419');
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
   ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fillStyle = goldTickGradient(ctx, r);
+  ctx.fill();
   ctx.strokeStyle = '#7a5200';
   ctx.lineWidth = r * 0.36;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(cx - r * 0.45, cy);
-  ctx.lineTo(cx - r * 0.12, cy + r * 0.36);
-  ctx.lineTo(cx + r * 0.48, cy - r * 0.38);
+  ctx.moveTo(-r * 0.45, 0);
+  ctx.lineTo(-r * 0.12, r * 0.36);
+  ctx.lineTo(r * 0.48, -r * 0.38);
   ctx.stroke();
   ctx.restore();
 }

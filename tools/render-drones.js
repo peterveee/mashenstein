@@ -2,7 +2,7 @@
 //
 // Dev tooling — this never ships. Nothing in src/ imports from tools/, the
 // dependency runs one way (this file imports from src/), and output lands in
-// dist/social/ alongside the other social exports, which is gitignored.
+// work/social/ alongside the other social exports, which is gitignored.
 //
 // The picture is the game's own droneEye prop painter running in headless
 // Chromium on a real Canvas2D, so what flies past is the same art the lane
@@ -33,7 +33,7 @@
 //   --frames=N    stop after N frames (smoke test)
 //   --no-gpu      fall back to software rasterization
 //
-// e.g.: node tools/render-drones.js dist/social/drone-swarm.mp4 --seconds=20
+// e.g.: node tools/render-drones.js work/social/drone-swarm.mp4 --seconds=20
 import { writeFileSync, mkdtempSync, mkdirSync, rmSync, existsSync, statSync, renameSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname, resolve, basename } from 'path';
@@ -121,7 +121,7 @@ const LOG_H = SIZE ? Math.round(LOG_W * SIZE.h / SIZE.w) : Math.round(H / ZOOM);
 const AREA_K = (LOG_W * LOG_H) / (W * H);
 const TOTAL = Math.round(SECONDS * FPS);
 const FRAMES = Math.min(TOTAL, Math.round(num('frames', Infinity)) || Infinity);
-const OUT = resolve(ROOT, positional[0] || 'dist/social/drone-swarm.mp4');
+const OUT = resolve(ROOT, positional[0] || 'work/social/drone-swarm.mp4');
 
 console.log(`scene   ${SECONDS}s — 1 drone, then 2, then the sky fills, then black`);
 console.log(`frame   ${LOG_W}x${LOG_H} logical`
