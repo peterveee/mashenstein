@@ -1154,11 +1154,16 @@ function clingSettle(pose) {
 // vertical left to give, and every hero reaches the pole along a dead-flat bar
 // with the elbow locked, which is the one shape an arm cannot make.
 //
-// The figure shifts, not the pole: the marker's geometry is load-bearing (the
-// plunger he lands on is centred on the pole, and the hero's foot anchor has to
-// stay where the sim put it), so this is a drawing offset that eases in and out
-// with the grip and leaves every number outside the painter alone.
-const CLING_POLE_X = 0.33;
+// THE POLE MOVES, NOT THE HERO. The first cut had it the other way round — a
+// drawing offset that stepped the figure aside for the ride — and the cost only
+// showed at the end of it: the plunger is what he lands on, the plunger was
+// centred on the pole, so a hero who rode down beside the pole had to slide
+// back across onto the cap before he could celebrate. The marker wears the
+// offset instead: its mast stands this far RIGHT of its plunger, which puts the
+// hero on the cap he is going to land on for the whole descent, already centred
+// and already facing front when the celebration takes over. See POLE_STANDOFF
+// in finishMarker.js, which is this number in the marker's own pixels.
+export const CLING_POLE_X = 0.33;
 // Half the idle stance: how far out from centre a standing foot plants, as a
 // fraction of draw height. The cling measures its own stance against this, so
 // "how far apart are his feet on the pole" is answered in the units of the pose
@@ -5493,16 +5498,20 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // running speed is a distraction, not atmosphere.
   const xSign = (pose.facing === -1 ? -1 : 1) * (sx < 0 ? -1 : 1);
   const prevLight = armLight(u, xSign, !lod && opts.light !== false, opts.lit == null ? 1 : opts.lit);
-  // Step aside for the pole. Humanoids only: the armless rigs cling with their
-  // whole body and belong ON the column, and stepping them off it would just
-  // detach them from the thing they are supposed to be holding.
+  // No sidestep for anyone with arms. The hero stands exactly where the sim put
+  // him for the whole ride — which is over the plunger — and the marker's mast
+  // is what stands off to the right, by CLING_POLE_X of this same draw height.
+  // He is centred on the cap he is about to land on from the first frame of the
+  // slide, so the handoff to the celebration moves nothing.
   //
-  // On the SETTLE, not the raw amount, so the sidestep and the arm going out
-  // finish on the same frame. Split between the two ramps, the hand arrived at
-  // a column the body had only half stepped away from and stopped short of it.
+  // The armless rigs are the exception, and have to be: they cling with their
+  // whole BODY, so the body has to be on the column, and the column is now the
+  // thing that moved. They step out to meet it and step back as they let go —
+  // which is the shuffle the whole cast used to do, kept for the three heroes
+  // who have no other way to hold anything.
   const clingStep = clingSettle(pose);
-  if (clingStep > 0 && spec.rig !== 'pika' && spec.rig !== 'blob' && spec.rig !== 'disc' && spec.rig !== 'ray') {
-    ctx.translate(-CLING_POLE_X * u * clingStep, 0);
+  if (clingStep > 0 && CLING_RIG[heroId]) {
+    ctx.translate(CLING_POLE_X * u * clingStep, 0);
   }
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);

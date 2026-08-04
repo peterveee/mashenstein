@@ -51,3 +51,4 @@ Do not edit by hand.
 | 2026-08-02 | `136ef1c` | [2026-08-02-136ef1c.html](2026-08-02-136ef1c.html) | Archive published build 48bef85 |
 | 2026-08-04 | `0e2705c` | [2026-08-04-0e2705c.html](2026-08-04-0e2705c.html) | Implement tuning mode key management and enhance dev menu interactions |
 | 2026-08-05 | `b86f772` | [2026-08-05-b86f772.html](2026-08-05-b86f772.html) | Tidy the repo root, consolidate rendered audio, warn on mix drift |
+| 2026-08-05 | `95ba639` | [2026-08-05-95ba639.html](2026-08-05-95ba639.html) | Add comprehensive tests for camera framing, frame health, pot coverage, rewind pooling, and toon ink scale |

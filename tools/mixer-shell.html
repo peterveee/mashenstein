@@ -4254,9 +4254,6 @@
          flex: none; margin: 0; max-height: 30vh; overflow: auto;
          user-select: text; -webkit-user-select: text; }
   #err:empty { display: none; }
-  #gate { position: fixed; inset: 0; background: rgba(10,11,14,.94); display: flex;
-          align-items: center; justify-content: center; z-index: 9; }
-  #gate button { font-size: 15px; padding: 14px 26px; }
   /* The desk's own dialog. A browser confirm() is a system panel that names the
      PORT you are on, cannot be styled, and reads like the page has done something
      wrong; this is the same question asked by the tool asking it. */
@@ -4765,7 +4762,6 @@
      mixer-entry.js. -->
 <div id="tip" role="tooltip" aria-hidden="true"></div>
 <div id="toast"></div>
-<div id="gate"><button id="start">Click to start audio</button></div>
 <pre id="err"></pre>
 
 <script>

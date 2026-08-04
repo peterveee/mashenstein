@@ -26,6 +26,7 @@
 // every candidate has to leave room for them in the same places.
 
 import { drawProp, propFrames, propFps } from '../sprites/props.js';
+import { CLING_POLE_X } from '../sprites/toons.js';
 
 // The pole's height is a gameplay constant, not a drawing one: at 80px
 // Lorenzo's 89px peak carried him clean off the top and into the HUD chips on a
@@ -41,6 +42,32 @@ export const POLE_H = 96;
 // the flag prop (whose own shaft is 5 at this art size), so the cloth stays the
 // size it wants while the mast under it gets finer.
 export const POLE_W = 2;
+
+// Where the plunger's centre sits relative to the marker anchor. The hero has
+// to land dead on this — it is the cap he stands on to celebrate — so run.js
+// snaps him to it rather than stopping him wherever the dash's last frame fell.
+export const PLUNGER_CX = POLE_W / 2;
+// How far RIGHT of the plunger the mast stands, in marker pixels.
+//
+// The marker's anchor is the PLUNGER — the thing the hero lands on and
+// celebrates on top of — and the pole is offset from it, rather than the two
+// sharing a centre line and the hero shuffling sideways between the ride and
+// the payoff. It is exactly one hero's reach: he rides down standing over the
+// cap with his pole-side arm out, and when he lets go he is already where he
+// needs to be.
+//
+// 24 is HERO_DRAW_H. It is not imported: that constant lives in draw.js, which
+// imports run.js, which imports this file — a three-module cycle to fetch one
+// integer is worse than the integer.
+//
+// NOT rounded, and the arithmetic is exact rather than eyeballed. The mast and
+// the plunger are drawn off the same PLUNGER_CX base offset, so with the hero
+// centred on the plunger, mast centre = anchor + POLE_STANDOFF + PLUNGER_CX and
+// hand = anchor + PLUNGER_CX + reach — equal precisely when this is the reach.
+// Round it and the hand sits a pixel off the shaft it is supposed to be
+// holding, which at lane size is the difference between gripping a pole and
+// pointing at one.
+export const POLE_STANDOFF = CLING_POLE_X * 24;
 
 // The flag props are authored SQUARE and the pole they hang on is 96 tall, so
 // every flag variant is drawn in two pieces: the art supplies the top — cloth,
@@ -953,19 +980,31 @@ const stage = (thrown, a, b) => Math.max(0, Math.min(1, (thrown - a) / (b - a)))
 // The plunger's cap, and so the floor the hero ends the stage standing on.
 // REST is the height of the cap's top surface above the ground with nothing on
 // it; TRAVEL is how far it goes down under him.
-export const PLUNGER_REST = 20;
+// 11, down from 20. At 20 there were eight clear pixels of bare shaft between
+// the flange and the cap and the thing read as a lamp-post with a lid — and
+// standing a hero on top of it put him nearly a third of his own height above
+// the lane on a 4px stick. A plunger is a squat object; the cap wants to look
+// like it is sitting on its housing, not carried above it.
+export const PLUNGER_REST = 11;
+// The top of the housing the cap comes down onto, above ground. It has to fall
+// with the cap: left at its old 7.5 against an 11px rest there was a single
+// pixel of shaft between the two and the stroke had nowhere to go, so the
+// housing gets shorter by nearly as much as the cap came down and the daylight
+// between them — which is the stroke — survives.
+const FLANGE_TOP = 3.2;
 // It goes nearly the whole way down. At 5 the cap stopped three quarters of the
 // way up its own post with a visible length of shaft still showing under it,
 // which reads as a button that stuck rather than a breaker that was MADE — and
 // the hero standing on it barely moved, so the one moment his weight is meant
 // to be the thing that throws the switch had no weight in it.
 //
-// 8.2, not the full 9.5: it stops a hair proud of the flange. Bottomed flush,
-// the cap and the housing merge into one shape and there is nowhere left for
-// the rebound below to happen — a spring needs somewhere to spring FROM, and a
-// sliver of daylight under the cap is what says the stroke ended against a
-// spring rather than against the floor.
-const PLUNGER_TRAVEL = 8.2;
+// Derived, not picked, so lowering the cap cannot quietly drive it through its
+// own housing: the stroke is whatever daylight there is between the underside
+// of the cap at rest and the top of the flange, plus the 0.3 of overlap that
+// stops the two reading as separate objects at the bottom of the stroke. It
+// used to be a literal 8.2 tuned against a 20px rest, and at 15 that number
+// would have buried the cap in the base.
+const PLUNGER_TRAVEL = PLUNGER_REST - 4.6 - FLANGE_TOP + 0.3;
 
 // How far the cap has travelled at a given point in the chain — and the reason
 // this is a function rather than a lerp: it OVERSHOOTS and settles. He lands on
@@ -980,13 +1019,13 @@ function plungerTravel(thrown) {
   // decelerate before it lands.
   const drive = stage(thrown, 0, 0.09);
   const settle = stage(thrown, 0.09, 0.52);
-  // ONE definite bounce, then a much smaller second one, then still. 3.6px of
-  // rebound off an 8.2px stroke is nearly half the travel given back — big
-  // enough to see at lane size, which the old 2.2 spread over 2.6 cycles was
-  // not: that read as a wobble, and a wobble is a loose part, not a spring.
-  // Decay is cubed so the second rebound is a third of the first rather than
-  // most of it.
-  const ring = Math.sin(settle * Math.PI * 2) * (1 - settle) ** 3 * 3.6;
+  // ONE definite bounce, then a much smaller second one, then still. Nearly
+  // half the travel given back — big enough to see at lane size, which the old
+  // 2.2 spread over 2.6 cycles was not: that read as a wobble, and a wobble is
+  // a loose part, not a spring. Written as a FRACTION of the stroke rather than
+  // the 3.6px it used to be, so a shorter plunger rings proportionally instead
+  // of springing further than it travelled.
+  const ring = Math.sin(settle * Math.PI * 2) * (1 - settle) ** 3 * (PLUNGER_TRAVEL * 0.44);
   return PLUNGER_TRAVEL * (drive * drive) - ring;
 }
 
@@ -997,7 +1036,11 @@ export function plungerStandY(thrown) {
 // The plunger. Cap travels down onto the base and stays down — it is a breaker
 // being made, not a button being tapped.
 function plunger(ctx, fx, gy, { thrown, live }) {
-  const cx = fx + POLE_W / 2;
+  const cx = fx + PLUNGER_CX;
+  // The shaft's top, which is the one number the cap's height owns: it has to
+  // start just under the cap at rest or a grey stick pokes out above it. Was
+  // hardcoded to gy - 16 against a 20px rest; derived, it follows the cap down.
+  const shaftTop = PLUNGER_REST - 4;
   const push = stage(thrown, 0, 0.12);
   const drop = plungerTravel(thrown);
   // SUNK. The foot used to be a slab resting on the ground line, which reads as
@@ -1026,13 +1069,13 @@ function plunger(ctx, fx, gy, { thrown, live }) {
   // SHORTENS as the cap comes down, which is what going into a housing looks
   // like. Growing it with the stroke (the first attempt) pushed a grey stick
   // out of the bottom of the base and into the ground.
-  inked(ctx, '#5d7385', (c) => rr(c, cx - 2, gy - 16 + drop, 4, 18 - drop, 1.4), { lw: 0.4 });
+  inked(ctx, '#5d7385', (c) => rr(c, cx - 2, gy - shaftTop + drop, 4, shaftTop + 2 - drop, 1.4), { lw: 0.4 });
   ctx.save();
   ctx.strokeStyle = 'rgba(11,11,20,0.4)';
   ctx.lineWidth = 0.7;
   ctx.lineCap = 'round';
   for (let i = 0; i < 3; i++) {
-    const y = gy - 14.6 + drop + i * (2.4 - push * 1.1);
+    const y = gy - (shaftTop - 1.4) + drop + i * (2.4 - push * 1.1);
     ctx.beginPath();
     ctx.moveTo(cx - 2.6, y + 0.5);
     ctx.quadraticCurveTo(cx, y - 0.5, cx + 2.6, y + 0.5);
@@ -1042,22 +1085,22 @@ function plunger(ctx, fx, gy, { thrown, live }) {
   // The flange: one rounded body with a contour on it, not a black slab with a
   // smaller slab on top. The top light stays a fill, clipped inside the same
   // rounded shape so it cannot run out past the corner radius.
-  inked(ctx, '#33445a', (c) => rr(c, cx - 10, gy - 7.5, 20, 10, 2.4));
+  inked(ctx, '#33445a', (c) => rr(c, cx - 10, gy - FLANGE_TOP, 20, FLANGE_TOP + 2.5, 2.4));
   ctx.save();
   ctx.beginPath();
-  rr(ctx, cx - 10, gy - 7.5, 20, 10, 2.4);
+  rr(ctx, cx - 10, gy - FLANGE_TOP, 20, FLANGE_TOP + 2.5, 2.4);
   ctx.clip();
   ctx.fillStyle = '#4d6172';
-  ctx.fillRect(cx - 10, gy - 7.5, 20, 1.6);
+  ctx.fillRect(cx - 10, gy - FLANGE_TOP, 20, 1.6);
   ctx.restore();
   // Anchor bolts through the flange, at ground level where they would be.
   for (const bx2 of [cx - 8, cx + 6]) {
-    inked(ctx, '#8496a8', (c) => rr(c, bx2, gy - 4, 2, 2, 0.9), { lw: 0.35 });
+    inked(ctx, '#8496a8', (c) => rr(c, bx2, gy - Math.min(4, FLANGE_TOP - 1.4), 2, 2, 0.9), { lw: 0.35 });
   }
   // The cap. Red, domed, and proud of everything else on the marker: it is the
   // only thing here the player is meant to touch, so it is the only thing here
   // wearing a colour nothing else wears.
-  const capY = gy - 20 + drop;
+  const capY = gy - PLUNGER_REST + drop;
   // DOMED, and the roundest thing on the marker. It is the one part the player
   // is asked to hit, so it gets the softest silhouette in the set — a hard
   // black-edged bar was the single worst offender in the old drawing, reading
@@ -1840,15 +1883,20 @@ FINISH_MARKER_VARIANTS.push({
     // sequence, it just starts everything within the same breath: by the time
     // the current is halfway up the pole the flag is already climbing it.
     const raise = stage(s.thrown, 0.06, 0.5);
-    if (raise > 0) wakingFlag(ctx, fx, gy, 'flagWave', s, Math.min(1, raise * (s.live ? 1.8 : 0.7)));
-    else deadFlag(ctx, fx, gy);
+    // The mast, its flag and the current running up it all stand POLE_STANDOFF
+    // right of the anchor; the plunger, the cable and the box stay on it. That
+    // gap is one hero's reach, and it is the whole reason the slide now ends
+    // with the hero already centred on the cap instead of stepping onto it.
+    const px = fx + POLE_STANDOFF;
+    if (raise > 0) wakingFlag(ctx, px, gy, 'flagWave', s, Math.min(1, raise * (s.live ? 1.8 : 0.7)));
+    else deadFlag(ctx, px, gy);
     cable(ctx, fx, gy, s);
     readoutBox(ctx, fx, gy, s);
     plunger(ctx, fx, gy, s);
     // The surge starts at the plunger, a hair behind the lamps — close enough
     // that it reads as one event with an order inside it rather than as four
     // things taking turns.
-    poleSurge(ctx, fx, gy, { ...s, thrown: stage(s.thrown, 0.04, 0.6) });
+    poleSurge(ctx, px, gy, { ...s, thrown: stage(s.thrown, 0.04, 0.6) });
   },
 });
 
@@ -1877,6 +1925,8 @@ export const MARKER_RIGHT_EXTENT = {
   panelWake: 40, panelConduit: 40, panelSign: 40,
   // The plunger family stands its box off to the right, so it needs the most
   // clear lane of anything in the set — and it is what the 72px margin was
-  // widened to hold.
+  // widened to hold. Unchanged by POLE_STANDOFF: the mast and its flag stepped
+  // right, but the flag's cloth ends around 39px out and the box is still the
+  // far edge of the object at 68.
   plunger: 68,
 };

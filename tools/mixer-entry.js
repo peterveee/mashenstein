@@ -12060,13 +12060,38 @@ function mergeCabMix(base, patch) {
   return out;
 }
 
-// Web Audio needs a gesture before it will make a sound. Refresh the authoritative
-// per-file state first so a scratch song opened from the previous session starts with
-// its saved mix/arrangement rather than the empty defaults in MIX.
+// Web Audio needs a gesture before it will make a sound — but only for SOUND, not for
+// the desk. So the desk builds on load and the gesture is whatever you were going to do
+// anyway: the first click or key anywhere unlocks the context, and the click on PLAY is
+// itself that gesture, so nothing is ever lost to the unlock. A page whose only content
+// is a button that says "click here to see the page" was a step in front of every
+// refresh, and refresh is how you work here.
+//
+// The graph is built now, on a context the browser may hand back suspended; ensure() is
+// idempotent and resumes it, so calling it again from the gesture is the whole unlock.
+// Refresh the authoritative per-file state first so a scratch song opened from the
+// previous session starts with its saved mix/arrangement rather than the empty defaults
+// in MIX.
 buildMasterToolbar();
-$('start').onclick = async () => {
+
+// Capture phase, so the unlock lands before the handler for the same click runs — press
+// PLAY on a cold page and the transport starts on a context that is already resuming.
+// The MIDI restore rides here rather than at boot because requestMIDIAccess is the one
+// piece that genuinely wants a gesture.
+let unlocked = false;
+function unlockAudio() {
   Audio.ensure();
-  $('gate').remove();
+  // Two listeners, one unlock: whichever of pointer and key comes first spends the
+  // other's turn too, and setMidi is not something to run twice.
+  if (unlocked) return;
+  unlocked = true;
+  if (localStorage.getItem(MIDI_LS_KEY)) setMidi(true, { announce: false });
+}
+addEventListener('pointerdown', unlockAudio, { capture: true, once: true });
+addEventListener('keydown', unlockAudio, { capture: true, once: true });
+
+void (async () => {
+  Audio.ensure();
   await refreshSaved();
   // In the static deployed mixer, if the desk would open on an authored game song,
   // auto-create a blank scratch song instead so the tester lands on their own content.
@@ -12097,9 +12122,7 @@ $('start').onclick = async () => {
     }
   }
   selectSong(trackId);
-  // If MIDI was on last session, turn it back on now (needs a user gesture).
-  if (localStorage.getItem(MIDI_LS_KEY)) setMidi(true, { announce: false });
   // If the preset library was open last session, open it again.
   if (localStorage.getItem('mash-mixer-library-open')) openPresetLibrary();
   tick();
-};
+})();

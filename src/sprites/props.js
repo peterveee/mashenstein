@@ -2604,6 +2604,14 @@ const PROP_VISUAL_SCALE = {
   drone: 1.35, shooterDrone: 1.35, buzzbird: 1.35, droneEye: 1.35,
 };
 export function propVisualScale(name) { return PROP_VISUAL_SCALE[name] || 1; }
+// The largest any prop's art is scaled up from its box. Culling needs it: an
+// entity whose BOX is off screen can still have ink on it, and the bound has to
+// come from the art rather than from a number someone guessed once.
+export function maxPropVisualScale() {
+  let m = 1;
+  for (const v of Object.values(PROP_VISUAL_SCALE)) if (v > m) m = v;
+  return m;
+}
 
 // Refined props carry their own high-resolution hairline. The shared two-pass
 // hazard rim would sit outside it as a second broad border at desktop scale,
@@ -2630,11 +2638,96 @@ export function propBoxCentred(name) { return BOX_CENTRED_PROPS.has(name); }
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
 export function propFps(name) { return PROP_FPS[name] || 11; }
 
+// --- cache accounting -------------------------------------------------------
+// Every entry in this cache is a canvas that is never freed, and every one of
+// them is built lazily on the first frame that draws it. Both of those are
+// things worth being able to see a number for: the resident total says how
+// close a long session is to the canvas memory iOS will eventually take back,
+// and a creation that happens while the visible world is being drawn IS the
+// hitch — a 96-frame appliance walking on screen rasterizes a fresh canvas on
+// ~96 consecutive frames.
+//
+// Resident bytes and creations are counted always: they only tick when a canvas
+// is built, which is rare, and eviction will need the total. Hits and misses
+// are per-draw and so are gated behind the profiler.
+let cacheBytes = 0;
+let cacheCreations = 0;
+let cacheProfile = null;
+// Set while the visible world is being painted, so a creation can be blamed on
+// the frame the player was watching rather than on warm-up.
+let inVisibleDraw = false;
+
+export function setPropCacheProfile(on) {
+  cacheProfile = on ? { hits: 0, misses: 0, creations: 0, visibleMisses: 0, bytes: 0 } : null;
+}
+// Session totals and per-window counters are named apart on purpose: they answer
+// different questions (how much is resident overall vs what did THIS window
+// build), and folding them into one `creations` key let the zeroed profile
+// fallback silently overwrite the real total.
+export function propCacheStats() {
+  const p = cacheProfile;
+  return {
+    entries: cache.size,
+    residentBytes: cacheBytes,
+    creations: cacheCreations,
+    hits: p ? p.hits : 0,
+    misses: p ? p.misses : 0,
+    windowCreations: p ? p.creations : 0,
+    visibleMisses: p ? p.visibleMisses : 0,
+    windowBytes: p ? p.bytes : 0,
+  };
+}
+export function resetPropCacheProfile() { if (cacheProfile) setPropCacheProfile(true); }
+// run.js brackets its world/actor painting with this. Anything built inside the
+// bracket was art the game needed before it had been prepared.
+export function setPropDrawPhase(on) { inVisibleDraw = on; }
+
+// Drop every cached canvas whose prop is not named in `keepNames`. Keys all
+// begin `name|`, so the prop is the prefix; glow and spark entries are keyed by
+// colour rather than by prop and are a few KB each, so they stay.
+//
+// This exists because warming a stage up front is the opposite trade from
+// building art lazily: it removes the hitch and raises the resident total, and
+// nothing here was ever freed. One stage is ~56MB of canvas, and the code has
+// a comment elsewhere about iOS reclaiming canvas memory out from under a page
+// that holds too much — so the ceiling has to be a real one.
+export function evictPropsExcept(keepNames) {
+  let freed = 0;
+  for (const [key, c] of cache) {
+    const cut = key.indexOf('|');
+    const name = cut < 0 ? key : key.slice(0, cut);
+    if (name === 'glow' || name === 'spark' || keepNames.has(name)) continue;
+    freed += c.width * c.height * 4;
+    cache.delete(key);
+  }
+  cacheBytes -= freed;
+  return freed;
+}
+
+function cacheGet(key) {
+  const hit = cache.get(key);
+  if (cacheProfile) { if (hit) cacheProfile.hits++; else cacheProfile.misses++; }
+  return hit;
+}
+
+function cacheSet(key, c) {
+  cacheBytes += c.width * c.height * 4;
+  cacheCreations++;
+  if (cacheProfile) {
+    cacheProfile.creations++;
+    cacheProfile.bytes += c.width * c.height * 4;
+    if (inVisibleDraw) cacheProfile.visibleMisses++;
+  }
+  cache.set(key, c);
+  return c;
+}
+
 // Rasterize any vector painter into the shared cache at SS x its logical size.
 // The key is the caller's whole identity — name, size, and anything else that
 // changes the pixels (a frame index here, a palette id in sprites/arcade.js).
 export function rasterize(key, w, h, paintFn) {
-  if (cache.has(key)) return cache.get(key);
+  const hit = cacheGet(key);
+  if (hit) return hit;
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w * SS));
   c.height = Math.max(1, Math.round(h * SS));
@@ -2643,7 +2736,7 @@ export function rasterize(key, w, h, paintFn) {
   x.lineJoin = 'round';
   x.lineCap = 'round';
   paintFn(x, w, h);
-  cache.set(key, c);
+  cacheSet(key, c);
   return c;
 }
 
@@ -2661,7 +2754,8 @@ export function propSprite(name, w, h, frame = 0) {
 export function propTinted(name, w, h, color, frame = 0) {
   const f = frame % propFrames(name);
   const key = `${name}|${w}x${h}|${color}|${f}`;
-  if (cache.has(key)) return cache.get(key);
+  const hit = cacheGet(key);
+  if (hit) return hit;
   const src = propSprite(name, w, h, f);
   if (!src) return null;
   const c = document.createElement('canvas');
@@ -2671,7 +2765,7 @@ export function propTinted(name, w, h, color, frame = 0) {
   x.globalCompositeOperation = 'source-in';
   x.fillStyle = color;
   x.fillRect(0, 0, c.width, c.height);
-  cache.set(key, c);
+  cacheSet(key, c);
   return c;
 }
 
@@ -2680,7 +2774,8 @@ export function propTinted(name, w, h, color, frame = 0) {
 export function propRimPair(name, w, h, color, axis, frame = 0) {
   const f = frame % propFrames(name);
   const key = `${name}|${w}x${h}|rim|${color}|${axis}|${f}`;
-  if (cache.has(key)) return cache.get(key);
+  const hit = cacheGet(key);
+  if (hit) return hit;
   const sil = propTinted(name, w, h, color, f);
   if (!sil) return null;
   const pad = propDetailScale(name) * SS;
@@ -2691,14 +2786,15 @@ export function propRimPair(name, w, h, color, axis, frame = 0) {
   const [dx, dy] = axis === 'x' ? [pad, 0] : [0, pad];
   x.drawImage(sil, pad - dx, pad - dy);
   x.drawImage(sil, pad + dx, pad + dy);
-  cache.set(key, c);
+  cacheSet(key, c);
   return c;
 }
 
 // Soft radial glow (for power capsules and other shiny things) — cached.
 export function glowSprite(color, r = 16) {
   const key = `glow|${color}|${r}`;
-  if (cache.has(key)) return cache.get(key);
+  const hit = cacheGet(key);
+  if (hit) return hit;
   const c = document.createElement('canvas');
   c.width = c.height = r * 2 * 4;
   const x = c.getContext('2d');
@@ -2707,14 +2803,15 @@ export function glowSprite(color, r = 16) {
   g.addColorStop(1, 'rgba(0,0,0,0)');
   x.fillStyle = g;
   x.fillRect(0, 0, c.width, c.height);
-  cache.set(key, c);
+  cacheSet(key, c);
   return c;
 }
 
 // A soft 4-point sparkle (for coin twinkles and anything shiny) — cached.
 export function sparkSprite(color) {
   const key = `spark|${color}`;
-  if (cache.has(key)) return cache.get(key);
+  const hit = cacheGet(key);
+  if (hit) return hit;
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const x = c.getContext('2d');
@@ -2736,7 +2833,7 @@ export function sparkSprite(color) {
   x.beginPath();
   x.arc(0, 0, 5, 0, Math.PI * 2);
   x.fill();
-  cache.set(key, c);
+  cacheSet(key, c);
   return c;
 }
 

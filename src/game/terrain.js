@@ -23,15 +23,38 @@ export function terrainGroundY(cabinet, worldX, baseY = 232) {
   return baseY - terrainHeight(cabinet, worldX);
 }
 
-export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232) {
+// `viewW` is the world width actually on screen this frame. It runs inside the
+// zoomed world transform, so W here was never the visible width — at the
+// resting 1.6 the frame shows 300 units and this walked 480, painting a third
+// of its columns past the right edge; on a phone at 2.2 it showed 218 and still
+// walked 480. Callers that have no camera to ask (tutorial, hub) keep W.
+export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W) {
   if (!PROFILES[cabinet && cabinet.id]) return;
-  const gaps = (obstacles || []).filter((ob) => ob.live && ob.def && ob.def.isGap);
-  const inGap = (worldX) => gaps.some((g) => worldX >= g.x && worldX <= g.x + g.w);
+  // Overscan one step so the line's last segment still leaves the frame rather
+  // than stopping visibly short of it.
+  const right = Math.min(W, Math.ceil(viewW) + 2);
+  // Gaps used to be re-filtered into a new array every frame, and the closure
+  // below was invoked once per column per pass — 482 calls a frame against a
+  // list that is almost always empty. Narrowed to the columns being drawn and
+  // hoisted out of the loop.
+  const gaps = [];
+  for (const ob of obstacles || []) {
+    if (!ob.live || !ob.def || !ob.def.isGap) continue;
+    if (ob.x + ob.w < camX || ob.x > camX + right) continue;
+    gaps.push(ob);
+  }
+  const inGap = (worldX) => {
+    for (let i = 0; i < gaps.length; i++) {
+      const g = gaps[i];
+      if (worldX >= g.x && worldX <= g.x + g.w) return true;
+    }
+    return false;
+  };
 
   ctx.fillStyle = cabinet.groundDark;
-  for (let x = 0; x <= W; x += 2) {
+  for (let x = 0; x <= right; x += 2) {
     const worldX = camX + x;
-    if (inGap(worldX)) continue;
+    if (gaps.length && inGap(worldX)) continue;
     const y = terrainGroundY(cabinet, worldX, baseY);
     ctx.fillRect(x, y, 3, baseY - y + 4);
   }
@@ -40,9 +63,9 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   let drawing = false;
-  for (let x = 0; x <= W; x += 2) {
+  for (let x = 0; x <= right; x += 2) {
     const worldX = camX + x;
-    if (inGap(worldX)) { drawing = false; continue; }
+    if (gaps.length && inGap(worldX)) { drawing = false; continue; }
     const y = terrainGroundY(cabinet, worldX, baseY);
     if (!drawing) { ctx.moveTo(x, y); drawing = true; }
     else ctx.lineTo(x, y);

@@ -18,6 +18,7 @@ import { Input } from '../engine/input.js';
 import { H, pushOverlayDraw, saveScreenshot, clientToLogical, setDevPortraitFill } from '../engine/renderer.js';
 import { currentState } from '../engine/states.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
+import { propCacheStats } from '../sprites/props.js';
 import { rootMenu, drawMenu, menuLayout } from './menus.js';
 import { TuneStrip, drawTuneStrip, tuneHelp } from './tune-strip.js';
 import { loadTuning, revertTuning, resyncRun } from './tune-store.js';
@@ -119,7 +120,14 @@ export const Dev = {
       else if (item.act) { item.act(); this.refresh(); }
       e.preventDefault();
     }, { capture: true });
-    if (typeof window !== 'undefined') window.__mash_dev = this;
+    if (typeof window !== 'undefined') {
+      window.__mash_dev = this;
+      // Art-cache counters, for the diagnostics panel and for driving a
+      // measurement from outside the page. Every entry in that cache is a
+      // canvas that is never freed, so the resident total is worth being able
+      // to read on a device rather than inferring from a crash.
+      window.__mash_art = propCacheStats;
+    }
   },
 
   // ---------------------------------------------------------------- helpers

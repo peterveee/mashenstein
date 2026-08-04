@@ -24,8 +24,9 @@ Make gameplay as smooth and reliable as possible by removing frame hitches first
 | Update-side profiling | **Done 2026-08-05** — `src/engine/update-profile.js`, UPD/U95 columns + rewind/spawn split in the report |
 | HUD panel `shadowBlur` | **Done 2026-08-05** — blur replaced by a flat 1px offset at alpha 0.10, approved; ~78% cheaper. A bitmap cache was tried first and reverted (regressed at high density) |
 | Per-frame gradients | **Done 2026-08-05** — gold tick and blackout cached; star aura deliberately left alone |
-| Art warm-up / spritesheets / eviction | **Not done** — cache still unbounded and lazy; new props made it worse |
-| Camera-derived culling | **Not done** — stale ±40/520 cull only (`draw.js:327-328`) |
+| Art warm-up + cache eviction | **Done 2026-08-05** — `src/game/art-warmup.js`; worst-second canvas builds fell 40→3 (frost-1), 12→3 (plumber-1). Resident canvas bounded by an 80MB high-water evict on cabinet change. Test: `tests/art-warmup.js` |
+| Camera-derived culling | **Done 2026-08-05** — entities, projectiles and terrain now culled against the frame's own interpolated zoom. Measured: only 35–39% of live entities were ever on screen; zero visible-but-culled across 2,150 frames |
+| Spritesheet strips | **Not done** — the remaining phase 2 idea; would cut canvas *count* (96 per appliance size) rather than bytes |
 | Overlay second upload | Premise confirmed, and now **measured at ~2 uploads/frame in gameplay** — see phase 5 |
 
 ### First reading from the new profiler (2026-08-05, headless Chromium, WebGL 2.5×)
@@ -158,9 +159,34 @@ rasterize that happened inside the visible draw loop), and resident cache bytes.
     overstated this one.
 - **(Needs Peter's visual sign-off, not a silent change.)** `droneEye` is the only drone skin *not* in `SELF_OUTLINED_PROPS` (`props.js:2611-2615`), so it takes the 5-canvas-per-frame rim path across its 16 frames (~80 canvases on first sight). If the omission is an oversight, adding it is a one-liner that removes the most expensive first-sight case — but it drops the hazard rim, so compare screenshots first.
 
-## Phase 2 — Pre-build animated artwork before it appears
+## Phase 2 — Pre-build animated artwork before it appears — DONE
 
-### Why this is the headline smoothness win
+**Measured before and after, same three stages, 20s of play each:**
+
+| stage | worst second (canvases built) | seconds that built anything |
+|---|---|---|
+| frost-1 | **40 → 3** | 10/19 → 2/19 |
+| plumber-1 | **12 → 3** | 8/20 → 2/19 |
+| crypt-1 | 9 → 4 | 7/19 → 3/20 |
+
+Built: `src/game/art-warmup.js` (job list from the real cabinet pattern tables,
+frame-zero-first ordering, cooperative 2ms-per-frame stepping during the ACT
+banner / zone card / run-in), cache accounting in `props.js`
+(`propCacheStats`, resident bytes, and a `setPropDrawPhase` bracket so a canvas
+built *during* a visible frame is counted separately), and `evictPropsExcept`
+driven by an 80MB high-water mark on cabinet change.
+
+**The trade this makes, stated plainly:** warming raised resident canvas from
+~7–11MB to ~51–56MB per stage. That is the point — the memory was always going
+to be spent, the change is spending it when nothing is moving instead of during
+play — but it is why the eviction ceiling is not optional. A session that moves
+between cabinets now drops the previous one's art rather than accumulating.
+
+Not done, and the obvious next step if canvas *count* becomes the problem
+(iOS cares about both): bake an animation's frames into one strip per
+(name, size, variant) instead of one canvas per frame.
+
+### Why this was the headline smoothness win
 
 All prop art is rasterized lazily on first draw (`rasterize`, `props.js:2636-2648`) at 8× supersample (plus a detail-2 multiplier for most props — a 256× pixel oversample vs logical size). A hazard prop that is not self-outlined builds **five** canvases on first sight of each frame (sprite + two tints + two rim pairs, `draw.js:452-461`). Misses are correlated: a newly visible 96-frame appliance mints a fresh ~352×288 canvas on ~96 consecutive frames — a **four-second tail of per-frame hitches** every time one first appears.
 
@@ -187,9 +213,35 @@ The cache (`props.js:2436`) is a module-private `Map` with **no eviction, no siz
 - Warm only frames reachable in the selected stage; prefer frame-zero-plus-strips over exhaustive per-frame warming when the budget is tight.
 - The glyph cache flushes on density-rung changes (`src/engine/sprites.js:283`), i.e. exactly when the adaptive controller is reacting to slow frames — re-warm the HUD glyph set through the same queue instead of letting it fault in.
 
-## Phase 3 — Stop drawing outside the visible camera
+## Phase 3 — Stop drawing outside the visible camera — DONE
 
-### The current geometry (all changed since the original plan)
+**Measured:** across plumber-1, frost-1 and crypt-1 (2,150 frames, ~14,000
+live-entity-frames), only **35–39% of live entities were ever inside the visible
+band** — the rest were drawn and thrown away. **Zero** entities were culled while
+visible, at any point.
+
+Shipped:
+- A per-frame band derived from the frame's own interpolated `cam` and `z`
+  (never `ZOOM`/`VIEW_W`, which the tune strip can move between frames).
+- `CULL_MARGIN` derived from the widest def's art *overhang* beyond its box,
+  plus the rim ring, the smear trail and shake headroom — not a hand-picked
+  number. The old `x < -40 || x > 520` was written for a 480-wide unzoomed view
+  and had been admitting nearly twice the visible band since zoom tiers landed.
+- Pickups and obstacles culled at the call site, *before* `drawAtGround` pays
+  its terrain samples, transform and closure. Obstacles cull before the smear
+  loop, so the saving is multiplied by up to `SMEAR_STEPS` redraws.
+- Projectiles, which had **no cull of any kind** — a thrown axe that outran the
+  camera kept drawing and sampling terrain for as long as it lived.
+- `drawTerrain` now walks the visible width plus overscan instead of a fixed
+  480, and its gap list is built once per frame, narrowed to the drawn columns,
+  instead of a fresh `filter()` plus 482 closure invocations.
+
+Still open from this phase: the style packs' ground renderers keep their own
+fixed-`W` loops (`stylePacks/index.js`), and chomp-bites remain deliberately
+unculled because they are drawn away from their world x while flying to the
+mouth — a position-based cull would clip them.
+
+### The geometry this was built against
 
 Zoom is now tiered and mutable: desktop resting **1.6** (`ZOOM_NORMAL`, `run.js:279`) → 300 world px visible; desktop "zoom in" and tablets **2.0** → 240; phones **2.2** → 218; pull-back floor **1.3** (`ZOOM_MIN`) → 369. `applyFraming` runs **every frame** (`run.js:578`) and `ZOOM`/`VIEW_W`/`VIEW_H` are live `let` bindings behind `setRestingZoom` (`camera.js:72-76`). In dev builds `ZOOM_NORMAL` is tunable 1–3 from the tune strip (`tools/lib/tunables.js:94`), so the resting zoom can change between any two frames.
 

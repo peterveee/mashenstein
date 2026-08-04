@@ -5,7 +5,7 @@ installDom();
 const { Input } = await import('../src/engine/input.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { setState, updateState } = await import('../src/engine/states.js');
-const { RunState } = await import('../src/game/run.js');
+const { RunState, FINISH_CLEAR } = await import('../src/game/run.js');
 const { BossState } = await import('../src/game/boss.js');
 const { MinigameState } = await import('../src/game/minigames/index.js');
 const { HubState } = await import('../src/game/hub/index.js');
@@ -210,16 +210,20 @@ shortRun.update(1 / 60);
 assert(shortResult?.failDetail === 'CORDS 3/4', 'mission failure reports the exact objective shortfall');
 
 // Objective replacements are capped to the last drawable spot before the
-// breaker, and suppressed once that spot is no longer ahead of the viewport.
+// breaker — which is FINISH_CLEAR back from it, the same wall the pattern lane
+// and the drip stop at, not a token gap that leaves a cord standing on the
+// plunger — and suppressed once that spot is no longer ahead of the viewport.
+// The camera is parked so the cap, not the screen edge, is the binding limit —
+// with room for the hazard nudge to move the piece and still land inside it.
 const objectiveRun = new RunState({ stage: shortStage, save, seed: 48, difficulty: 1, skipRunIn: true, onEnd() {} });
 objectiveRun.enter(); objectiveRun.pickups = [];
-objectiveRun.camX = objectiveRun.finishCameraX() - VIEW_W;
+objectiveRun.camX = objectiveRun.finishWorldX() - FINISH_CLEAR - PICKUPS.cord.w - VIEW_W - 130;
 const spawnedCord = objectiveRun.spawnObjective('cord', 30);
 const lastCord = objectiveRun.pickups.at(-1);
 assert(spawnedCord && lastCord.x >= objectiveRun.camX + VIEW_W
-  && lastCord.x + PICKUPS.cord.w + 24 <= objectiveRun.finishWorldX(),
-  'a late cord spawns ahead of view and before the finish');
-objectiveRun.camX = objectiveRun.finishWorldX() - PICKUPS.resident.w - 24 - VIEW_W + 1;
+  && lastCord.x + PICKUPS.cord.w + FINISH_CLEAR <= objectiveRun.finishWorldX(),
+  'a late cord spawns ahead of view and clear of the finish approach');
+objectiveRun.camX = objectiveRun.finishWorldX() - PICKUPS.resident.w - FINISH_CLEAR - VIEW_W + 1;
 const beforeResidents = objectiveRun.pickups.length;
 assert(!objectiveRun.spawnObjective('resident', 0) && objectiveRun.pickups.length === beforeResidents,
   'an objective is not spawned when no reachable runway remains');
@@ -229,6 +233,23 @@ const carriedB = makePickup('resident', 0, 0); carriedB.following = true;
 objectiveRun.pickups = [carriedA, carriedB];
 assert(objectiveRun.missionCount() === 3 && objectiveRun.missionSatisfied(),
   'rescue progress includes delivered and currently-following residents');
+
+// ?startAt / ?finish drop the camera mid-stage and pre-fill the lane in one
+// pass. That pass used to fill to infinity, which at ?finish=3 — inside the
+// spawner's own lookahead of the tape — parked a crate stack at the foot of the
+// pole. The shortcut for LOOKING at the marker was the only thing that ever put
+// clutter beside it, so the wall is checked at the tightest lead a warp can ask
+// for, across seeds, rather than at a comfortable one.
+for (const seed of [11, 12, 13, 14, 15]) {
+  const warpStage = { ...stage, durationSec: 60 };
+  const warped = new RunState({ stage: warpStage, save, seed, difficulty: 1, skipRunIn: true,
+    devStartPercent: 0.99, onEnd() {} });
+  warped.enter();
+  const wall = warped.finishWorldX() - FINISH_CLEAR;
+  const intruder = [...warped.obstacles, ...warped.pickups].find((e) => e.x + e.w > wall);
+  assert(!intruder, `a warped-in start leaves the finish approach clear (seed ${seed}`
+    + (intruder ? `, ${intruder.type} ${Math.round(intruder.x + intruder.w - wall)}px past the wall)` : ')'));
+}
 
 const fullDrip = new DripSpawner(new Rng(1), {});
 fullDrip.batteryTimer = 0;

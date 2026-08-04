@@ -29,6 +29,12 @@ import { PLAYER_X } from './player.js';
 
 export const HERO_DRAW_W = 18;
 export const HERO_DRAW_H = 24;
+// A hero's screen x is the LEFT EDGE of his 12px collision slot; his drawing is
+// centred half a slot further on. Anything lining the hero up with a fixed
+// point in the world has to add this or it aims the wrong part of him at it —
+// the finish snap did exactly that and parked him six pixels right of the
+// plunger he was supposed to be standing in the middle of.
+export const HERO_CENTER_OFF = 6;
 // How long an incoming hero burns in for after a tag. Sits just inside the
 // portal's own discharge (PORTAL_SPEND_TIME) on purpose: the hero should have
 // finished arriving while the column is still visibly collapsing, so the two
@@ -220,7 +226,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   // able to say "stand there and wave", or the hero holds whatever stride frame
   // the treadmill died on.
   const pose = opts.pose ? { ...poseFromPlayer(player, t), ...opts.pose } : poseFromPlayer(player, t);
-  const cx = Math.round(opts.screenX ?? PLAYER_X) + 6; // center of the 12px slot
+  const cx = Math.round(opts.screenX ?? PLAYER_X) + HERO_CENTER_OFF; // center of the 12px slot
   const feetY = Math.round((opts.groundY ?? GROUND_Y) - player.y); // feet follow rolling terrain
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;

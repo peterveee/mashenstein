@@ -28,11 +28,13 @@ import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, drawTo
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
-import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST } from './finishMarker.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H } from './draw.js';
+import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
+import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
+import { beginStageArtWarmup, stepArtWarmup, artWarmupPending } from './art-warmup.js';
 
 export { GROUND_Y };
 // The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
@@ -431,6 +433,14 @@ const INTRO_RUN_EXP = 1.8;
 // captured at module-eval would plant the tape for a frame width the game is no
 // longer showing — which is exactly the extra space that appeared past the
 // flagpole when the camera pulled back to 1.6 and this did not.
+// It survives the mast's step to the right unchanged, and has to: 72 is already
+// this margin's ceiling. A late mission cord has to fit between the screen edge
+// and the FINISH_CLEAR wall, which needs finishLineX() >= FINISH_CLEAR + the
+// piece's width — 168 of the 240 the view is wide — so every pixel added here
+// comes straight out of the window a replacement objective can still spawn in,
+// and there are none spare. The marker does not need them anyway: its right
+// extent is set by the readout box standing off at 34, not by the mast, and the
+// flag's cloth still ends a good 29px inside the box's far edge.
 const finishLineX = () => VIEW_W - 72;
 // The clear lane in front of the marker: how much empty ground the spawner has
 // to leave before the flagpole. An obstacle parked against the pole is a hazard
@@ -439,7 +449,31 @@ const finishLineX = () => VIEW_W - 72;
 // sitting in the one part of the frame the finale needs clean. 160 is a little
 // over one screen-second at cruising speed — enough that the last thing to
 // leave the frame before the pole arrives is ground.
-const FINISH_CLEAR = 160;
+export const FINISH_CLEAR = 160;
+
+// How far outside the visible band an entity can still put ink on screen, and
+// therefore how far past the edges the render cull has to keep drawing.
+//
+// Derived rather than picked: hazards draw 4/3 up from their hitbox, a prop can
+// scale further again, the hazard rim rings sit a pixel outside that, a smear
+// ghost trails up to SMEAR_MAX_PX behind, and the whole frame can be shaken.
+// The old hand-written cull was `x < -40 || x > 520` — written for a 480-wide
+// unzoomed view, which stopped existing when the camera gained zoom tiers, and
+// by then it was admitting most of a screen's worth of invisible entities.
+// The visibility test already compares against the entity's own box, so what
+// this has to cover is only how far the ART reaches BEYOND that box, not the
+// whole of it.
+const CULL_MARGIN = (() => {
+  let widest = 0;
+  for (const table of [OBSTACLES, PICKUPS]) {
+    for (const def of Object.values(table)) if (def && def.w > widest) widest = def.w;
+  }
+  // Art is centred on the box, so the overhang is half the growth.
+  const overhang = widest * ((4 / 3) * maxPropVisualScale() - 1) / 2;
+  const RIM = 1;              // rim rings sit one pixel outside the art
+  const SHAKE_HEADROOM = 8;
+  return Math.ceil(overhang + RIM + SMEAR_MAX_PX + SHAKE_HEADROOM);
+})();
 
 // The blackout mission's brown-out ramp. Built in local space so the same
 // object serves every frame wherever the hero has walked to; keyed on the
@@ -784,6 +818,10 @@ export class RunState {
     // knows where to put their thumb.
     this.zoneCard = !!act && this.stage.id === 'plumber-1' && Input.isTouchDevice();
     this.zoneCardT = 0;
+    // Queue this stage's artwork. Normally the briefing has already started it
+    // and most of it is built by now; a dev launch that skips the briefing
+    // starts it here and drains it across the banner and the run-in instead.
+    beginStageArtWarmup(this.cabinet);
     // Off-screen entrance. Armed on the same fresh-entry gate as the card (so a
     // death-restart drops the hero straight onto the anchor), but independent of
     // the card's seen/done fade: it plays on every first entry, card or not. A
@@ -855,12 +893,20 @@ export class RunState {
 
     // ?startAt=N — pre-fill the world so the camera doesn't start in empty space,
     // and mark any checkpoints behind us as already reached.
+    //
+    // The pre-fill obeys the finish wall exactly as the live one does. It used
+    // to fill to infinity, which nobody noticed at 30% — but ?finish=3 drops the
+    // camera less than a lane's lookahead from the tape, so the one fill that
+    // ran laid patterns straight through the finishing straight and parked a
+    // crate stack at the foot of the pole. The shortcut for LOOKING at the
+    // marker was the only thing that ever put clutter next to it.
     if (this.devStartPercent > 0 && Number.isFinite(this.totalDist)) {
       const startSp = this.baseSpeed();
       const hero = HERO_BY_ID[this.relay.current];
+      const stopX = this.finishWorldX() - FINISH_CLEAR;
       this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
-      this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
-      this.drip.update(0, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery());
+      this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero), stopX);
+      this.drip.update(0, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX);
       for (let i = 0; i < this.checkpoints.length; i++) {
         if (this.distance >= this.checkpoints[i]) this.checkpointHit[i] = true;
       }
@@ -1222,6 +1268,15 @@ export class RunState {
       this.updatePauseMenu();
       Input.endFrame();
       return;
+    }
+    // Nothing the player controls is moving until the run-in ends, so this is
+    // the budget the artwork gets. Two milliseconds a frame leaves the banner
+    // and the card their own frame time; if the queue is still going when play
+    // starts it simply falls back to being built on demand, as it always was.
+    if (artWarmupPending() && (this.introFreeze > 0 || this.zoneCard || this.introRunning)) {
+      const at = updateProfileMark();
+      stepArtWarmup(2);
+      updateProfileAdd('warmupMs', at);
     }
     // ACT banner: hold the world still so the milestone lands before the run.
     // Shake still ticks — the glitch jolt belongs to the banner, not after it.
@@ -1627,7 +1682,20 @@ export class RunState {
     if (this.dead) return;
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
-    if (!this.flip && this.finishPlayerX + 6 >= this.finishScreenX()) {
+    // Where the dash ends: the hero's CENTRE standing on the plunger's centre.
+    // finishPlayerX is the left edge of his 12px slot and his drawing is centred
+    // HERO_CENTER_OFF further on (see drawHeroSprite), so the comparison and the
+    // snap both have to carry that term — matched against the raw edge, he
+    // parked half a slot right of the cap, which is what the celebration looked
+    // like it was standing beside rather than on.
+    const seatX = this.finishScreenX() + PLUNGER_CX - HERO_CENTER_OFF;
+    if (!this.flip && this.finishPlayerX >= seatX) {
+      // SNAPPED, not left wherever this frame's step happened to fall. He rides
+      // the pole down standing on this cap and then celebrates on it, and both
+      // are drawn from his centre — a frame-rate-dependent pixel or two of
+      // drift puts him visibly off the thing he is standing on, and the reach
+      // that has to land on the mast is measured from here too.
+      this.finishPlayerX = seatX;
       // The frozen camera is deliberately short of the goal; the hero's
       // screen-space run completes the remaining distance.
       this.distance = this.totalDist;
@@ -2700,9 +2768,16 @@ export class RunState {
   // that gate and skip it. So: slide the last one back to the final spot that
   // still fits, and once even that has fallen behind the screen edge, stop
   // offering pieces that cannot be taken.
+  //
+  // The wall is FINISH_CLEAR, the same one the pattern lane and the drip stop
+  // at, not a token 24px of daylight. A late cord or resident used to be placed
+  // at the very foot of the pole — standing on the plunger, close enough to
+  // read as part of the marker — which is exactly the clutter the clear
+  // approach exists to prevent. A piece is a piece whether the mission wants it
+  // or the lane placed it.
   spawnObjective(type, alt) {
     const def = PICKUPS[type];
-    const maxX = this.finishWorldX() - def.w - 24;
+    const maxX = this.finishWorldX() - FINISH_CLEAR - def.w;
     const x = this.clearOfHazards(Math.min(this.camX + W + 80, maxX), def.w, alt, def.h, maxX);
     if (x == null || x < this.camX + VIEW_W) return false;
     this.pickups.push(makePickup(type, x, alt));
@@ -3608,7 +3683,15 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ draw
+  // Bracketed so the prop cache can tell art built for a frame the player was
+  // watching (a hitch) from art built ahead of time. try/finally because a
+  // throw here must not leave every later warm-up job counted as a visible miss.
   draw(ctx, renderAlpha = 0) {
+    setPropDrawPhase(true);
+    try { this.drawFrame(ctx, renderAlpha); } finally { setPropDrawPhase(false); }
+  }
+
+  drawFrame(ctx, renderAlpha = 0) {
     const alpha = Math.max(0, Math.min(1, Number.isFinite(renderAlpha) ? renderAlpha : 0));
     const mix = (previous, current) => this.paused
       ? current
@@ -3652,14 +3735,30 @@ export class RunState {
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
-    if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y);
+    if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z);
 
     // Entities. On a converting style (lcd) the whole cast is held back past
     // post() with the hero, so enemies and pickups stay in colour against the
     // monochrome panel — they are the things you have to read at a glance.
     const drawActors = () => {
     const finishX = this.overtime ? Infinity : this.finishWorldX();
-    for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings), p.w);
+    // Visible world band for THIS frame, taken from the interpolated camera and
+    // zoom rather than from ZOOM or VIEW_W. Both of those are live bindings the
+    // tune strip can move between frames, and the frame's own z drifts
+    // continuously between the resting tier and the 1.3 pull-back — so anything
+    // precomputed goes stale silently. (The parallax constant in the style packs
+    // captured ZOOM at module load and never saw the change from 2 to 1.6; this
+    // is the same trap, one loop further in.)
+    const cullLeft = cam - CULL_MARGIN;
+    const cullRight = cam + W / z + CULL_MARGIN;
+    // Culled here rather than inside drawWorldEntity because by the time that
+    // runs the frame has already paid drawAtGround's terrain samples, a
+    // transform and a closure for an entity it is about to reject.
+    const onScreen = (e) => e.x + e.w >= cullLeft && e.x <= cullRight;
+    for (const p of this.pickups) {
+      if (!p.live || p.x >= finishX || !onScreen(p)) continue;
+      this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings), p.w);
+    }
     // How far the world slid since the previous simulation step, which for a
     // thing standing still in world space IS its screen motion — obstacles do
     // not move, the camera does. Taken from the camera rather than from
@@ -3683,6 +3782,9 @@ export class RunState {
     const smearSteps = Math.max(1, Math.min(SMEAR_STEPS, Math.round(Math.abs(smearPx) * z)));
     for (const ob of this.obstacles) {
       if (!ob.live || ob.x >= finishX) continue;
+      // Before the smear loop, which redraws the entity up to SMEAR_STEPS times
+      // — so this is the one cull whose saving is multiplied.
+      if (!onScreen(ob)) continue;
       // The boost pad is a marking on the floor, so it lies in the floor's
       // plane and sinks a little further into it than a thing that merely
       // rests there. Everything else keeps the old seating.
@@ -3739,6 +3841,11 @@ export class RunState {
       ctx.restore();
     }
     for (const pr of this.projectiles) {
+      // Projectiles had no cull of any kind: a thrown axe that outran the
+      // camera was drawn, and sampled the terrain to find its ground, for as
+      // long as it stayed alive. They are small, so the margin covers them
+      // comfortably without a per-type width.
+      if (pr.x < cullLeft || pr.x > cullRight) continue;
       const x = pr.x - cam, y = Math.round(this.groundYAt(pr.x) - pr.alt - 4);
       if (pr.type === 'enemyShot') {
         ctx.fillStyle = '#101018';

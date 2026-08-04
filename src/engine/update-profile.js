@@ -22,7 +22,7 @@ let samples = null;
 let sampleCount = 0;
 
 export function resetUpdateProfileStats() {
-  stats = { updateMs: 0, rewindMs: 0, spawnMs: 0, worstMs: 0, frames: 0 };
+  stats = { updateMs: 0, rewindMs: 0, spawnMs: 0, warmupMs: 0, worstMs: 0, frames: 0 };
   if (!samples) samples = new Float64Array(MAX_SAMPLES);
   sampleCount = 0;
 }
@@ -59,7 +59,7 @@ export function noteUpdateFrame(ms) {
 }
 
 export function updateProfileStats() {
-  if (!stats) return { updateMs: 0, rewindMs: 0, spawnMs: 0, worstMs: 0, frames: 0, p95Ms: 0 };
+  if (!stats) return { updateMs: 0, rewindMs: 0, spawnMs: 0, warmupMs: 0, worstMs: 0, frames: 0, p95Ms: 0 };
   return { ...stats, p95Ms: percentile(0.95) };
 }
 

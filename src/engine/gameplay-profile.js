@@ -10,6 +10,7 @@ import {
 import {
   resetUpdateProfileStats, updateProfileStats, setUpdateProfile,
 } from './update-profile.js';
+import { setPropCacheProfile, propCacheStats } from '../sprites/props.js';
 import { drawText } from './sprites.js';
 
 const SETTLE_MS = 800;
@@ -36,6 +37,7 @@ function resetWindow(now) {
   sumBlitMs = 0;
   resetRenderProfileStats();
   resetUpdateProfileStats();
+  setPropCacheProfile(true);
 }
 
 function finish() {
@@ -45,6 +47,7 @@ function finish() {
   setDensityPin(savedPin);
   setRenderProfile(false);
   setUpdateProfile(false);
+  setPropCacheProfile(false);
 }
 
 export function startGameplayProfile({ restorePin } = {}) {
@@ -83,7 +86,12 @@ function completeWindow(now) {
   // time by the presented-frame count would report a per-frame cost for frames
   // that never did the work.
   const upd = updateProfileStats();
+  const art = propCacheStats();
   results.push({
+    artCreated: art.windowCreations,
+    artVisibleMisses: art.visibleMisses,
+    artResidentMB: art.residentBytes / 1048576,
+    artEntries: art.entries,
     label: `WINDOW ${windowIndex + 1}`,
     fps: Math.round(frames * 1000 / elapsed),
     draw: frames ? sumDrawMs / frames : 0,
@@ -139,7 +147,7 @@ function drawBox(ctx, title, rows, note) {
   const rowH = 22;
   // Two note lines: the upload column needs a legend, and the update split
   // needs somewhere to live that does not cost the table another column.
-  const boxH = 61 + rows.length * rowH;
+  const boxH = 72 + rows.length * rowH;
   const x = (W - boxW) / 2;
   const y = Math.max(4, (H - boxH) / 2);
   ctx.fillStyle = 'rgba(5,6,14,0.97)';
@@ -178,13 +186,23 @@ function drawBox(ctx, title, rows, note) {
     cell(r.submit.toFixed(1), 'submit');
     cell(upload, 'upload', '#b9c9e3');
   });
-  drawText(ctx, note, x + 10, y + boxH - 20, '#7e879d', 0.5, 'ui');
+  drawText(ctx, note, x + 10, y + boxH - 31, '#7e879d', 0.5, 'ui');
   const last = rows[rows.length - 1];
   const split = last
     ? `UPD = simulation half, avg/95th. WORST ${last.updateWorst.toFixed(1)}ms`
       + `  REWIND ${last.rewind.toFixed(2)}ms  SPAWN ${last.spawn.toFixed(2)}ms`
     : 'UPD = simulation half of the frame, average and 95th percentile';
-  drawText(ctx, split, x + 10, y + boxH - 9, '#7e879d', 0.5, 'ui');
+  drawText(ctx, split, x + 10, y + boxH - 20, '#7e879d', 0.5, 'ui');
+  // Art built DURING a visible frame is the hitch this phase exists to remove,
+  // so it gets its own colour: green once a stage can be played without
+  // rasterizing anything, red for however many are left.
+  if (last) {
+    const miss = last.artVisibleMisses;
+    drawText(ctx, `ART built-in-frame ${miss}  (of ${last.artCreated} built)`,
+      x + 10, y + boxH - 9, miss ? '#f08e9e' : '#8ef0c0', 0.5, 'ui');
+    drawText(ctx, `CACHE ${last.artEntries} canvases, ${last.artResidentMB.toFixed(0)}MB resident`,
+      x + 250, y + boxH - 9, last.artResidentMB > 250 ? '#f08e9e' : '#b9c9e3', 0.5, 'ui');
+  }
 }
 
 export function drawGameplayProfile(ctx) {

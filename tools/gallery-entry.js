@@ -49,7 +49,7 @@ import {
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
 import {
   FINISH_MARKER_BY_ID, drawFinishMarkerArt,
-  BREAKER_BOX_VARIANTS, plungerStandY,
+  BREAKER_BOX_VARIANTS, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
 import { PLAYER_X } from '../src/game/player.js';
 
@@ -3157,62 +3157,69 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // visibly not holding — and it was the outstanding art debt on the marker.
 {
   const grid = section('finish-cling', 'Finish cling — the pole ride, per hero',
-    'The catch, the ride and the landing, for every PLAYABLE hero. This is a real pose now, not the jump '
-    + 'pose: one hand on the pole above the head, the other arm hanging, legs falling under him, and the '
-    + 'body swinging under a grip that does not move. Gary and Dolores are not here — they work the shop '
-    + 'and the serving line and will never run a stage, so they will never touch a finish marker. '
-    + '<b>Row 1</b> is each hero clinging, live, with the pole they are holding drawn behind them. '
-    + '<b>Row 2</b> is the blend, left to right: airborne, catching, clinging, letting go — the same '
-    + '0..1 the run drives, so an arm that pops on the way in pops here too. '
-    + '<br><br>Three decisions worth knowing before judging it. The figure stands BESIDE the pole rather '
-    + 'than on it: centred, the arm runs up the centre line and crosses the face, and a body-coloured '
-    + 'limb over a 6px head merges into a slab. ONE hand grips, and it is the FAR one — two arms up the '
-    + 'same column is a chin-up, not a slide, and reaching across behind the torso leaves only the clean '
-    + 'stretch above the shoulder in silhouette while the near arm dangles, which is what sells the '
-    + 'weight. And that arm STRETCHES: the shoulder sits at 0.5u with a 0.29u arm, so a hand at full '
-    + 'reach lands in the middle of the hero\'s own face; the bone lengthens to put it above the crown. '
-    + 'The legs are the IDLE legs, front-on, lifted and leaned — front-on because the celebration this '
-    + 'hands off to is front-on, and a hero who rides down in profile and lands facing you has swapped '
-    + 'bodies on the last frame. Per hero from there: Gnash grips high and flings the loose arm out, '
-    + 'B-33P hangs plumb, Fernwick is tucked up tight with his free arm pinned to his side, Grumpos '
-    + 'bear-hugs. Mochi squeezes, Raymn gathers his gloves, and Chompo — who has no hands at all — '
-    + 'bites it.');
+    'Every playable hero running the whole finale on the REAL marker, on a loop: catch the pole, ride it '
+    + 'down, land on the plunger, celebrate. Not a pose sheet — the marker art, the plunger travel and '
+    + 'the hero are all the shipping code at the shipping size, so what these tiles are actually testing '
+    + 'is the ALIGNMENT. Two things to watch on each one: the hand has to land on the mast, and the feet '
+    + 'have to land in the middle of the cap. '
+    + 'Gary and Dolores are not here — they work the shop and the serving line, will never run a stage '
+    + 'and so will never touch a finish marker. '
+    + '<br><br>The pose is the hero\'s own IDLE with exactly two changes: the pole-side arm reaches out '
+    + 'and takes the mast, and he is smiling. Three earlier cuts each invented a body for this — a tuck, '
+    + 'a lean, a bowed knee, a dangling counterweight arm, bones stretched to 2.4x — and every invention '
+    + 'was a way of not being the pose it claimed to be quoting. The idle is already a finished, '
+    + 'front-on, legible drawing the player has watched for hours; it needed one arm moved. Front-on also '
+    + 'settles the handoff: the celebration is front-on, so a hero who rides down in profile and lands '
+    + 'facing you would swap bodies on the last frame. '
+    + '<br><br>And the MARKER wears the offset, not the hero. The mast stands one hero-reach right of the '
+    + 'plunger, so he rides the whole way down already centred on the cap he is about to land on — where '
+    + 'before, the two shared a centre line and he had to shuffle sideways between the ride and the '
+    + 'payoff. Mochi, Chompo and Raymn are the exception: no arms, so they hold the pole with their whole '
+    + 'body and step out to it, which is the only shuffle left in the sequence.');
 
-  const CW = 96, CH = 128, GY = 116;
-  const poleAt = (ctx, x, h) => {
-    ctx.fillStyle = '#3fb45e';
-    ctx.fillRect(x - 1, GY - h, 2, h);
-    ctx.fillStyle = 'rgba(10,40,20,0.5)';
-    ctx.fillRect(x - 1.4, GY - h, 0.5, h);
+  // The full finale on a loop: run in, catch, ride, land, payoff, hold.
+  const CTW = 122, CTH = 132, CGY = 120, CFX = 52;
+  const RIDE_AT = 1.5, RIDE_FOR = 0.9, HOLD = 2.6;
+  const CCYCLE = RIDE_AT + RIDE_FOR + HOLD;
+  const clingBeat = (t) => {
+    const c = t % CCYCLE;
+    const ride = Math.max(0, Math.min(1, (c - RIDE_AT) / RIDE_FOR));
+    // Same shape the run drives: the grab comes on fast because a catch is an
+    // event, and it lets go over the last of the ride as the feet find the cap.
+    const cling = Math.min(1, ride / 0.14) * (1 - Math.max(0, (ride - 0.86) / 0.14));
+    const raw = c < RIDE_AT + RIDE_FOR ? 0 : Math.min(1, (c - RIDE_AT - RIDE_FOR) / 0.18);
+    return {
+      c, ride, cling, running: c < RIDE_AT,
+      thrown: raw * raw * (3 - 2 * raw), live: true, armed: c < RIDE_AT + RIDE_FOR,
+      t, reducedMotion: false,
+    };
   };
-  // Seated where the run seats him: feet a little above the plunger cap, which
-  // is what the slide is easing toward the whole way down.
-  const clingTile = (label, sub, id, amount) => {
-    tile(grid, label, sub, CW, CH, (ctx, t) => {
-      laneStrip(ctx, CW, CH, GY);
-      const x = CW / 2 - 6;
-      // The pole goes where drawToon is TOLD to draw, not 0.3u off it. The
-      // step-aside is inside the painter — it translates the figure 0.3u left
-      // and puts the hands back at 0.3u right, which lands them exactly on the
-      // caller's x. Adding the offset out here counted it twice, so these tiles
-      // showed the whole cast gripping a stick a full 0.6u from their fists and
-      // made a pose that was fine at the hands look like it had missed.
-      poleAt(ctx, x, 104);
-      const a = typeof amount === 'function' ? amount(t) : amount;
-      drawToon(ctx, id, {
-        kind: 'jump', grounded: false, vy: 90, time: t, phase: 0, facing: 1, cling: a,
-      }, x, GY - 26, 26);
-    }, { animated: true, hires: 6, smooth: true });
-  };
-
   for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'grumpos', 'mochi', 'chompo', 'raymn']) {
-    clingTile(`${id} — clinging`, `cling: 1, live sway. The pole is drawn where the marker's mast stands relative to him.`, id, 1);
-  }
-  // The blend. Four fixed readings rather than a loop: a pose that only works
-  // at 1 is a pose that pops on, and the catch is the frame the player is
-  // actually looking at.
-  for (const [a, name] of [[0, 'airborne (cling 0)'], [0.35, 'catching (0.35)'], [1, 'clinging (1)'], [0.6, 'letting go (0.6)']]) {
-    clingTile(`blend · ${name}`, 'lorenzo, same pose data the slide drives, held at one value.', 'lorenzo', a);
+    tile(grid, `${id} — the whole finale`,
+      'Catch, ride, land, celebrate. Watch the hand against the mast and the feet against the cap.',
+      CTW, CTH, (ctx, t) => {
+        laneStrip(ctx, CTW, CTH, CGY);
+        const s = clingBeat(t);
+        FINISH_MARKER_BY_ID.plunger.draw(ctx, CFX, CGY, s);
+        // The hero stands on the cap itself, so his feet ride plungerStandY —
+        // he bounces with the thing he is standing on rather than hovering
+        // while it moves under him, exactly as run.js seats him.
+        const seat = CGY - plungerStandY(s.thrown);
+        if (s.running) {
+          const run = Math.min(1, (s.c / RIDE_AT) ** 1.4);
+          drawToon(ctx, id, pose('run', t, { lean: 0.14 }), 6 + run * (CFX + PLUNGER_CX - 6), CGY, 24);
+        } else {
+          // The descent: he catches high and comes down accelerating onto the
+          // cap, which is a fall with a hand on a pole rather than a lift being
+          // lowered — the same easing the slide uses.
+          const drop = s.ride * s.ride;
+          const y = s.armed ? seat - (1 - drop) * 46 : seat;
+          drawToon(ctx, id, {
+            kind: s.armed ? 'jump' : 'celebrate', grounded: !s.armed, vy: 90,
+            time: t, phase: 0, facing: 1, cling: s.cling,
+          }, CFX + PLUNGER_CX, y, 24);
+        }
+      }, { animated: true, hires: 5, smooth: true, wide: true });
   }
 }
 
