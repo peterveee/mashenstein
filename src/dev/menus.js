@@ -470,7 +470,10 @@ function tuneMenu(dev, group) {
     });
     items.push({
       label: `LIVE STRIP: ${TuneStrip.on ? 'ON' : 'off'} — press T with the menu closed`,
-      act: () => { TuneStrip.toggle(); },
+      // Through dev.setTuneMode rather than TuneStrip.toggle: the strip coming
+      // up also takes the arrow keys off the game and makes the run
+      // invulnerable, and a second door into the same state must do all of it.
+      act: () => { dev.setTuneMode(!TuneStrip.on); },
     });
     return { title: group.toUpperCase(), items };
   };

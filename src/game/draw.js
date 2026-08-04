@@ -298,7 +298,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (e.kind === 'obstacle' && e.def.ground) {
     ctx.fillStyle = 'rgba(8,6,12,0.28)';
     ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = settings.highContrast ? 'rgba(224,72,72,0.85)' : 'rgba(224,72,72,0.32)';
+    ctx.fillStyle = 'rgba(224,72,72,0.32)';
     ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
   }
   if (e.def && e.def.beatSync) {

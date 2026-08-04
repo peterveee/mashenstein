@@ -194,7 +194,11 @@ export function drawTuneStrip(ctx, dev) {
   if (from < 0) from = 0;
   const window = rows.slice(from, from + SHOW);
 
-  const head = `TUNE ${GROUPS[TuneStrip.group]}${moved ? ` (${moved} moved)` : ''}`;
+  // The header states what the strip has taken over, because both are silent
+  // otherwise: arrows no longer reach the hero, and hits no longer count.
+  const head = `TUNE ${GROUPS[TuneStrip.group]}${moved ? ` (${moved} moved)` : ''}`
+    + '  ·  arrows=tuner (jump SPACE/W · duck S · rewind A · ability X/D)'
+    + `${run && run.devInvuln ? '  ·  INVULN' : ''}`;
   const consts = window.map((r) => {
     const v = readOne(r.name);
     const sel = r === TuneStrip.current();

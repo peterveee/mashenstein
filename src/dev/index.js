@@ -21,7 +21,7 @@ import { drawText, drawPanel } from '../engine/sprites.js';
 import { rootMenu, drawMenu, menuLayout } from './menus.js';
 import { TuneStrip, drawTuneStrip, tuneHelp } from './tune-strip.js';
 import { loadTuning, revertTuning, resyncRun } from './tune-store.js';
-import { sourceLines } from './tunables.js';
+import { sourceLines, tuningAvailable } from './tunables.js';
 import { TUNABLES } from '../../tools/lib/tunables.js';
 
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
@@ -30,6 +30,25 @@ const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
 // strip's value nudge both want a held key to keep going; everything else is a
 // one-shot action where a repeat would fire it dozens of times.
 const REPEATABLE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+// Keys the tuning strip takes away from the game while it is on.
+//
+// Every one of them is a live gameplay action during a run — ArrowUp is jump,
+// ArrowDown is duck, ArrowLeft is the rewind, ArrowRight is the ability, and
+// Shift is the ability again. Tuning with them while they still reached the
+// player meant every nudge also fired a wrench or scrubbed the run backwards.
+//
+// They are safe to take precisely because each has an alternate binding that
+// tune mode does NOT touch, so the hero stays drivable while you tune:
+//
+//   jump    Space, W        duck     S
+//   rewind  A               ability  X, D
+//
+// That is the whole reason to claim these five rather than suspending Input
+// outright: watching the hero move is the point of tuning without a pause.
+const TUNE_CLAIMED = new Set([
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight',
+]);
 
 export const Dev = {
   enabled: false,
@@ -56,6 +75,16 @@ export const Dev = {
     if (applied.length) this.say(`TUNING RESTORED (${applied.length})`);
     if (dropped.length) console.warn('[tune] dropped:', dropped.join(', '));
     window.addEventListener('keydown', (e) => this.onKey(e), { capture: true });
+    // The matching half of the claim. Without it a keyup for a swallowed
+    // keydown still reaches Input, and an action Input never saw pressed gets
+    // released — harmless today, but it is the kind of asymmetry that leaves an
+    // ability stuck on the frame the strip is switched off.
+    window.addEventListener('keyup', (e) => {
+      if (!this.enabled || this.open || !TuneStrip.on) return;
+      if (!TUNE_CLAIMED.has(e.code)) return;
+      e.preventDefault();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }, { capture: true });
     const game = document.getElementById('game');
     game && game.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch' && e.pointerType !== 'mouse') return;
@@ -209,6 +238,43 @@ export const Dev = {
     this.say(`SPEED x${next}`);
   },
 
+  // Turn the tuning strip on or off, and everything that goes with it.
+  //
+  // Two things beyond the strip's own state. Input.clearAll() releases anything
+  // already held, so an ability being pressed at the moment the strip comes up
+  // does not stay held by a keyup this listener is about to swallow. And the
+  // run goes invulnerable: tuning means deliberately entering values that get
+  // the hero killed, and a run that ends on the first bad number takes the
+  // thing you are studying off the screen.
+  setTuneMode(on) {
+    if (on === TuneStrip.on) return;
+    // Refuse to take the arrow keys off the game when there is nothing to tune
+    // with them. Without the bundle transform there are no registered
+    // constants, so claiming jump/duck/rewind/ability would cost the run its
+    // controls and buy nothing.
+    if (on && !tuningAvailable()) {
+      this.say('NO TUNABLES — needs a watch build (npm run dev)');
+      return;
+    }
+    TuneStrip.toggle();
+    Input.clearAll();
+    this.applyTuneInvuln(this.run());
+    this.say(on ? `TUNE ON — ${tuneHelp()}` : 'TUNE OFF');
+  },
+
+  // Invulnerability is the strip's to grant and the strip's to take back, but
+  // only if it was the one that granted it — INVULNERABLE in the RUN menu is a
+  // separate switch and turning the strip off must not silently undo it.
+  applyTuneInvuln(run) {
+    if (!run) return;
+    if (TuneStrip.on) {
+      if (!run.devInvuln) { run.devInvuln = true; run.__tuneGrantedInvuln = true; }
+    } else if (run.__tuneGrantedInvuln) {
+      run.devInvuln = false;
+      run.__tuneGrantedInvuln = false;
+    }
+  },
+
   // Tune-mode keys. Returns true when the key was consumed, so the caller's
   // ordinary closed-menu shortcuts never see an arrow meant for a constant.
   handleTuneKey(e) {
@@ -283,8 +349,19 @@ export const Dev = {
       // ArrowRight is the ability key during a run and the section-skip below,
       // so the claim has to be explicit and opt-in rather than ambient.
       if (e.code === 'KeyT' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        this.say(TuneStrip.toggle() ? `TUNE ON — ${tuneHelp()}` : 'TUNE OFF');
+        this.setTuneMode(!TuneStrip.on);
         e.preventDefault();
+        return;
+      }
+      // Claimed keys are swallowed whether or not the strip does something with
+      // them: stopImmediatePropagation is what actually keeps them out of the
+      // game, since Input listens on window in the bubble phase and this
+      // listener is a capture-phase one registered on the same target.
+      // preventDefault alone would still have let the ability fire.
+      if (TuneStrip.on && TUNE_CLAIMED.has(e.code)) {
+        this.handleTuneKey(e);
+        e.preventDefault();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
         return;
       }
       if (TuneStrip.on && this.handleTuneKey(e)) return;
@@ -350,7 +427,7 @@ export const Dev = {
     const r = this.run();
     if (r !== this.lastRun) {
       this.lastRun = r;
-      if (r) resyncRun(r);
+      if (r) { resyncRun(r); this.applyTuneInvuln(r); }
     }
 
     if (this.reopenAfterState && currentState() === this.reopenAfterState) {

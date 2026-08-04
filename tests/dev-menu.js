@@ -267,5 +267,80 @@ const bundle = outputFiles[0].text;
   Object.assign(screen, { portraitFill: false, cssH: H, scale: 1, safeTop: 0, safeBottom: 0 });
 }
 
+// ------------------------------------------------- tune mode claims its keys
+// Every key the tuning strip uses is a live gameplay action during a run:
+// ArrowUp jumps, ArrowDown ducks, ArrowLeft rewinds, ArrowRight fires the
+// ability, and Shift fires it too. Tuning with them while they still reached
+// the player meant every nudge also threw a wrench or scrubbed the run
+// backwards. preventDefault does not stop that — Input listens on window in the
+// bubble phase — so the strip must call stopImmediatePropagation as well.
+//
+// This build IS plugin-transformed, so the constants are registered and the
+// strip is allowed to take the keys.
+{
+  const { tunablePlugin } = await import('../tools/lib/tunable-plugin.js');
+  const tuned = await esbuild.build({
+    entryPoints: [join(root, 'src/main.js')],
+    bundle: true, format: 'iife', write: false, target: ['es2022'],
+    logLevel: 'silent', plugins: [tunablePlugin()],
+  });
+  const dom = installDom();
+  globalThis.window.__MASH_BUILD__ = 'test-build';
+  new Function(tuned.outputFiles[0].text)();
+  const frames = (n) => { for (let i = 0; i < n; i++) dom.frame(16.7); };
+  frames(5);
+  const dev = globalThis.window.__mash_dev;
+
+  // Fire a key and report what the handler did with the event.
+  const probe = (code, shiftKey = false) => {
+    let prevented = false, stopped = false;
+    dom.fire('win:keydown', {
+      code, repeat: false, shiftKey,
+      preventDefault: () => { prevented = true; },
+      stopImmediatePropagation: () => { stopped = true; },
+    });
+    return { prevented, stopped };
+  };
+
+  const CLAIMED = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'];
+
+  // Off by default: the arrows belong to the game until you ask for them.
+  for (const code of CLAIMED) {
+    const r = probe(code);
+    assert(!r.stopped, `${code} reaches the game while tune mode is off`);
+  }
+
+  dev.setTuneMode(true);
+  assert(dev.toast && /TUNE ON/.test(dev.toast), 'a transformed build lets tune mode turn on');
+  for (const code of CLAIMED) {
+    const r = probe(code);
+    assert(r.prevented && r.stopped,
+      `${code} is withheld from the game while tune mode is on `
+      + '(stopImmediatePropagation, not just preventDefault)');
+  }
+  // The alternates have to survive, or the hero cannot be driven while tuning —
+  // and watching the hero move is the entire reason the strip does not pause.
+  for (const code of ['Space', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyX']) {
+    const r = probe(code);
+    assert(!r.stopped, `${code} still reaches the game while tuning (alternate binding)`);
+  }
+  // And the keyup half, or an ability pressed as the strip came up stays held.
+  {
+    let stopped = false;
+    dom.fire('win:keyup', {
+      code: 'ShiftLeft',
+      preventDefault: () => {},
+      stopImmediatePropagation: () => { stopped = true; },
+    });
+    assert(stopped, 'the matching keyup is withheld too, so nothing sticks held');
+  }
+
+  dev.setTuneMode(false);
+  for (const code of CLAIMED) {
+    const r = probe(code);
+    assert(!r.stopped, `${code} is handed back to the game when tune mode goes off`);
+  }
+}
+
 console.log(failed ? 'DEV MENU: FAILED' : 'DEV MENU: PASSED');
 process.exit(failed ? 1 : 0);

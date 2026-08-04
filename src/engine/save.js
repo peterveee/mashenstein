@@ -12,7 +12,6 @@ export function defaultSettings() {
     reducedMotion: false,
     reducedFlashing: false,
     screenShake: 1,
-    highContrast: false,
     showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
     fancyFx: true,    // WebGL bloom/vignette (when available)
@@ -74,6 +73,10 @@ function normalizeSettings(settings) {
   if (oldVersion < RENDER_DENSITY_VERSION) next.renderDensityByBackend['2d'] = 0;
   next.renderDensityVersion = RENDER_DENSITY_VERSION;
   delete next.renderDensity;
+  // HIGH CONTRAST OUTLINES retired: it ringed every obstacle in a white box at
+  // hitbox size, which never lined up with art drawn 4/3 bigger. Anyone who had
+  // it on is still carrying the flag; drop it so it cannot be read back.
+  delete next.highContrast;
   return { settings: next, densityHistoryMigrated: oldVersion < RENDER_DENSITY_VERSION };
 }
 

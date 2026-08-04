@@ -171,6 +171,30 @@ for (const rel of ['src/game/player.js', 'src/game/run.js', 'src/sprites/toons.j
   }
 }
 
+// ---- 8. the strip's own keys collide with nothing ---------------------------
+// T toggles, G cycles the group, C copies, R reverts. None may be a gameplay
+// binding, or turning the strip on would be the last thing it ever did quietly.
+// The claimed arrow/shift keys ARE gameplay bindings and are withheld
+// deliberately — tests/dev-menu.js covers that; this covers the rest.
+{
+  const input = read('src/engine/input.js');
+  const block = input.slice(input.indexOf('const DEFAULT_KEYS'), input.indexOf('const GAMEPAD_MAP'));
+  const bound = new Set(block.match(/'([A-Za-z0-9]+)'/g).map((s) => s.slice(1, -1)));
+  for (const code of ['KeyT', 'KeyG', 'KeyC', 'KeyR']) {
+    ok(!bound.has(code), `${code} (tuning strip) is not bound to a game action`);
+  }
+  // And the keys it takes away must each still have an alternate, or the hero
+  // becomes undrivable while tuning.
+  const dev = read('src/dev/index.js');
+  ok(/TUNE_CLAIMED\s*=\s*new Set\(\[[^\]]*'ArrowUp'[^\]]*'ArrowDown'[^\]]*'ArrowLeft'[^\]]*'ArrowRight'[^\]]*'ShiftLeft'[^\]]*'ShiftRight'/s.test(dev),
+    'the claimed set is exactly the six gameplay keys the strip needs');
+  for (const [action, alt] of [['jump', 'Space'], ['duck', 'KeyS'], ['left', 'KeyA'], ['ability', 'KeyX']]) {
+    const line = block.match(new RegExp(`${action}:\\s*\\[([^\\]]*)\\]`));
+    ok(line && line[1].includes(`'${alt}'`),
+      `${action} keeps an unclaimed alternate (${alt}) so the hero stays drivable while tuning`);
+  }
+}
+
 console.log(`\ntunables: ${TUNABLES.length} constants across ${TUNABLE_FILES.length} files`);
 if (failures) {
   console.error(`TUNABLES: FAILED (${failures})`);

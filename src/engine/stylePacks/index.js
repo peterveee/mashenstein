@@ -1567,19 +1567,7 @@ const FACTORIES = {
 
 export function getStylePack(name, settings) {
   const f = FACTORIES[name] || FACTORIES.pixel;
-  const s = settings || {};
-  const pack = f(s);
-  // Accessibility: high-contrast outlines on every obstacle, in every style.
-  if (s.highContrast) {
-    const inner = pack.decorate;
-    pack.decorate = (ctx, e, x, y) => {
-      if (inner) inner(ctx, e, x, y);
-      if (e.kind === 'obstacle') {
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.strokeRect(x - 0.5, y - 0.5, e.w + 1, e.h + 1);
-      }
-    };
-  }
+  const pack = f(settings || {});
   if (!pack.decorate) pack.decorate = null;
   return pack;
 }
