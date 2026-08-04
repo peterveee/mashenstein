@@ -128,7 +128,7 @@ export const BOSS_DEFLECT_SHORT = [
 
 // Food-court hero chatter (drawn via drawSpeech, one line per visit, cycling
 // in order). Beyond the file-level deadpan rule, each pool follows:
-//   - One running bit per hero, set by CAST.md's summary of them. Every new
+//   - One running bit per hero, set by docs/CAST.md's summary of them. Every new
 //     line is a fresh variation on that same bit, not a new trait or joke
 //     type — Lorenzo is wounded professional pride about plumbing, not "guy
 //     who's mad about things"; B-33P's cyan gag rides every line, even the

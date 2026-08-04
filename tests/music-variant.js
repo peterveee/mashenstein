@@ -284,6 +284,33 @@ async function main() {
     MusicDirector.endStage();
     r.quitLate = { fired: calls.length, variantId: MusicDirector.current().variantId };
 
+    // ---- 'immediate' loop release, from the last step of a one-bar loop -----------
+    // The case that made this exist. A one-bar loop's only bar line IS its wrap, and its
+    // last beat boundary is the wrap too — so tying the release to the mix change made
+    // pressing anywhere in the final beat cost a whole extra pass of the bar.
+    arm();
+    recordRamps();
+    Audio.setLoop(112, 128);
+    Audio.step = 127;                          // the very last step of the loop
+    MusicDirector.request(null, { quantize: 'beat', loopRelease: 'immediate' });
+    const ranOn = [];
+    for (let i = 0; i < 6; i++) { ranOn.push(Audio.step); Audio.scheduleStep(); }
+    r.releaseNow = { loop: [Audio.loopStart, Audio.loopEnd], ranOn };
+
+    // ---- a refused change must still let the loop go -----------------------------
+    // The two are unhooked deliberately. A mix change that rampMix refuses is a
+    // disappointment; a cabinet screen's four-bar loop running for the whole level with
+    // no way out is a bug you cannot play through, and returning early did both at once.
+    Audio.rampMix = realRampMix;
+    arm();
+    const realRamp = Audio.rampMix.bind(Audio);
+    Audio.rampMix = () => { throw new Error('deliberate refusal'); };
+    run(5);
+    MusicDirector.request(null);
+    run(30);
+    Audio.rampMix = realRamp;
+    r.refused = { loopStart: Audio.loopStart, loopEnd: Audio.loopEnd, ranPast: Audio.step };
+
     // ---- resolving a treatment against the song's own mix ------------------------
     // Field-level: naming `mute` must not take the lane's authored reverb send with it.
     Audio.rampMix = realRampMix;
@@ -350,6 +377,13 @@ async function main() {
   'soloing a channel mid-crossfade leaves the fader and the sends of every other one exactly as they were');
   assert(out.soloTouchesGateOnly.after.gate === 0 && out.soloTouchesGateOnly.after.kickGate === 1,
     'because a solo writes the gate and nothing else');
+
+  assert(out.releaseNow.loop[0] === null && out.releaseNow.ranOn[1] === 128,
+    "'let go as soon as the level starts' runs on from the last step of a one-bar loop, "
+    + 'where waiting for a boundary would have cost the whole bar again');
+
+  assert(out.refused.loopStart === null && out.refused.loopEnd === null && out.refused.ranPast > 16,
+    'a refused mix change still releases the loop — a treatment that cannot apply must not strand the song in four bars');
 
   assert(out.authored.quantize === 'beat' && out.authored.firedAtStep === 8,
     'the treatment\u2019s own quantize is what steers — asked at step 5, it lands on the next beat at 8');

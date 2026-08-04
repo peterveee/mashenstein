@@ -1,6 +1,6 @@
 // Fake AAA end-credits crawl. Dev-menu only for now (see 'CREDITS' under
 // SCENES in src/dev/menus.js) — there is no production route to it yet.
-// CREDITS.md at the repo root is the prose original; this is the shipped cut of
+// docs/CREDITS.md is the prose original; this is the shipped cut of
 // it. The two carry the same roles, names and jokes, but not the same
 // presentation — the screen drops the markdown's screenplay-style handoff
 // headings in favour of drawing the handoff, and adds art rows the document has
@@ -147,6 +147,29 @@ function withAlpha(hex, a) {
   return v;
 }
 
+// The far plane. White only, no twinkle and almost no parallax — everything
+// that makes the field above it read as individual stars is exactly what this
+// must not do. Its whole job is to stop the gaps between the real stars being
+// empty black, which is what gives the near ones something to be in front of.
+// Drawn in one path with one fill, so the whole plane costs one call.
+//
+// It was first cut at 0.2u and 0.13 alpha, on the theory that a far plane
+// should sit at the threshold of visibility. It sat under it: a 0.2u circle is
+// sub-pixel at every scale the game is played at, so the antialiaser was
+// already halving it before the 0.34 scrim took another third. The floor here
+// is the scrim, not taste — anything that has to survive it has to start above
+// it. These are still comfortably the dimmest and smallest things in the sky.
+//
+// SETTLED at the middle of the three the lab section shows: 0.32-0.65u at 0.21,
+// halfway between the cut nobody could find and the one that answered it. The
+// low setting is the bug; the high one is legible enough that the specks start
+// reading as small stars, which is the one thing a far plane must not do — the
+// moment you can pick an individual mote out of it, it has stopped being the
+// back of the room and joined the field in front of it.
+const DUST_COUNT = 140;
+const DUST_PARALLAX = 0.018;
+const DUST_ALPHA = 0.21;
+
 function makeStars(n) {
   const rng = new Rng(STAR_SEED);
   const out = [];
@@ -161,6 +184,18 @@ function makeStars(n) {
       depth: 0.25 + rng.float() * 0.75,
     });
   }
+  return out;
+}
+
+// Its own seed, so adding or resizing the dust cannot reshuffle the star field
+// the layout has been judged against.
+// The radii are arguments only so the lab section can rebuild the rejected
+// sub-pixel cut without a second copy of this; the crawl always takes the
+// defaults.
+function makeDust(n, r0 = 0.32, rVary = 0.33) {
+  const rng = new Rng(STAR_SEED + '-dust');
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ x: rng.float() * W, y: rng.float() * H, r: r0 + rng.float() * rVary });
   return out;
 }
 
@@ -187,7 +222,7 @@ const COMET_TRAVEL = 2.4;
 // the first twenty integers — it drew 7 comets where 12 were asked for, with a
 // hundred seconds of empty sky in the middle. `salt` separates the draws so a
 // slot's chance, direction and height are independent of each other.
-function hash01(n, salt = 0) {
+export function hash01(n, salt = 0) {
   let x = Math.imul(n | 0, 374761393) + Math.imul(salt | 0, 668265263) + 1442695040;
   x = Math.imul(x ^ (x >>> 13), 1274126177);
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
@@ -208,7 +243,13 @@ function drawComet(ctx, t) {
   const y = y0 + phase * drop;
   // Long enough to read as a comet under the scrim. At 44u it was a scratch on
   // the lens; at ~70 the taper has room to be a tail.
-  const len = 66 + hash01(slot, 4) * 32;
+  //
+  // Up about a fifth again once the flecks existed. Nothing was wrong with 66-98
+  // on its own — but a fleck is now 20-34u with a lit head, which is a third of
+  // a comet, and the two events have to be told apart at a glance or the rare
+  // one stops being an occasion. The gap between them is the point, so when the
+  // small one grew the big one had to.
+  const len = 82 + hash01(slot, 4) * 38;
   // Fade in and out at the ends so it arrives and leaves rather than popping.
   const fade = Math.sin(phase * Math.PI);
   const tx = x - dir * len;
@@ -220,7 +261,7 @@ function drawComet(ctx, t) {
   g.addColorStop(0.28, withAlpha('#c8d4ff', 0.4 * fade));
   g.addColorStop(1, withAlpha('#c8d4ff', 0));
   ctx.strokeStyle = g;
-  ctx.lineWidth = 1.7;
+  ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(x, y);
@@ -228,23 +269,99 @@ function drawComet(ctx, t) {
   ctx.stroke();
   // A soft halo under the head, so the bright point has somewhere to sit — the
   // same trick the stars' additive blend plays, one size up.
-  const halo = ctx.createRadialGradient(x, y, 0, x, y, 5.5);
+  const halo = ctx.createRadialGradient(x, y, 0, x, y, 6.6);
   halo.addColorStop(0, withAlpha('#ffffff', 0.5 * fade));
   halo.addColorStop(1, withAlpha('#c8d4ff', 0));
   ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+  ctx.arc(x, y, 6.6, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = withAlpha('#ffffff', 0.95 * fade);
   ctx.beginPath();
-  ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+  ctx.arc(x, y, 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Micro-meteors: the comet's small change. One comet every ~28 seconds is a
+// rare event by design, and between them the sky only twinkles — so the field
+// reads as still for half a minute at a time. These fill that gap without
+// competing for it: a few units long, gone in under a second, dim enough to sit
+// under the scrim as motion you notice rather than an object you look at. Same
+// slot machinery as the comet, so they stay reproducible and stay rationed.
+//
+// Retuned after the first cut could not be found on screen. Three things were
+// wrong at once and each on its own was nearly enough to hide them: 9-16u is a
+// tenth of a screen, 0.62s is a blink, and a 0.41 peak alpha through the scrim
+// lands under the dimmest star in the field. A thing that only appears when you
+// already know where to look is not an effect. Half again as long, half again
+// as slow, and bright enough to be caught out of the corner of an eye.
+//
+// Both cuts are kept as tunings rather than the first being deleted, and
+// drawFlecks takes one, so the gallery's lab section can run them side by side
+// off this code instead of a copy of it. Same contract the hand-off bake-off
+// keeps: a rejected setting is only worth anything if it still renders.
+export const FLECK_WAS = {
+  cycle: 2.1, chance: 0.55, travel: 0.62, len: 9, lenVary: 7,
+  peak: 0.55, width: 0.9, head: 0,
+};
+// Rationed back after the retune worked. Frequency and visibility are separate
+// dials and only the second one was ever wrong: at one every 2.4s the sky had
+// something crossing it 40% of the time, which stops being punctuation and
+// becomes weather. The size and brightness stay exactly where they landed —
+// they are what made a fleck findable at all — and the cycle takes the whole
+// correction. One every ~5.6s, on screen ~17% of the time.
+export const FLECK_IS = {
+  cycle: 2.8, chance: 0.5, travel: 0.95, len: 20, lenVary: 14,
+  peak: 0.9, width: 1.2, head: 0.9,
+};
+
+function drawFlecks(ctx, t, s = FLECK_IS) {
+  const slot = Math.floor(t / s.cycle);
+  // Salted well clear of the comet's draws, or a comet slot and a fleck slot
+  // that share an index would fire together every time.
+  if (hash01(slot, 11) > s.chance) return;
+  const phase = (t - slot * s.cycle) / s.travel;
+  if (phase >= 1) return;
+  const dir = hash01(slot, 12) < 0.5 ? 1 : -1;
+  // Anywhere but the middle band, where the names are brightest and a moving
+  // line closest to them is a distraction rather than a depth cue.
+  const lane = hash01(slot, 13);
+  const y0 = lane < 0.6 ? 10 + lane * H * 0.36 : H * 0.72 + (lane - 0.6) * H * 0.6;
+  const span = W * 0.55;
+  const x0 = hash01(slot, 14) * (W - span * 0.5) - (dir > 0 ? span * 0.5 : 0);
+  const x = x0 + dir * phase * span;
+  const y = y0 + phase * 9;
+  const len = s.len + hash01(slot, 15) * s.lenVary;
+  const fade = Math.sin(phase * Math.PI) * s.peak;
+  const tx = x - dir * len, ty = y - 9 * (len / span);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createLinearGradient(x, y, tx, ty);
+  g.addColorStop(0, withAlpha('#ffffff', 0.95 * fade));
+  g.addColorStop(0.35, withAlpha('#c8d4ff', 0.4 * fade));
+  g.addColorStop(1, withAlpha('#c8d4ff', 0));
+  ctx.strokeStyle = g;
+  ctx.lineWidth = s.width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+  // A bright head on the leading end. The comet has one for the same reason:
+  // a tapered line alone is a scratch, a line with a point at the front is a
+  // thing travelling. Small enough that it cannot be mistaken for the comet's.
+  if (s.head <= 0) { ctx.restore(); return; }
+  ctx.fillStyle = withAlpha('#ffffff', 0.9 * fade);
+  ctx.beginPath();
+  ctx.arc(x, y, s.head, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
 const wrapY = (v) => ((v % H) + H) % H;
 
-function drawSky(ctx, stars, t, scroll, reduced) {
+function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
   ctx.fillStyle = '#05060f';
   ctx.fillRect(0, 0, W, H);
 
@@ -271,6 +388,20 @@ function drawSky(ctx, stars, t, scroll, reduced) {
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
+  // Dust first and under everything: it is the back of the room. One path, one
+  // fill, one alpha — it has no per-mote state to vary and must not look like it
+  // does. The beat reaches it at a third of the stars' strength, so the far
+  // plane breathes with the mix instead of sitting inert behind a field that
+  // does not.
+  ctx.fillStyle = withAlpha('#ffffff',
+    Math.min(0.5, (tune.dustAlpha == null ? DUST_ALPHA : tune.dustAlpha) + pulse * 0.1));
+  ctx.beginPath();
+  for (const d of dust) {
+    const y = wrapY(d.y - scroll * DUST_PARALLAX);
+    ctx.moveTo(d.x + d.r, y);
+    ctx.arc(d.x, y, d.r, 0, Math.PI * 2);
+  }
+  ctx.fill();
   for (const s of stars) {
     const y = wrapY(s.y - scroll * s.depth * STAR_PARALLAX);
     const tw = reduced ? 0.8 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.rate + s.phase));
@@ -283,13 +414,31 @@ function drawSky(ctx, stars, t, scroll, reduced) {
   ctx.restore();
 
   // Motion is the whole point of a comet, so reduced motion simply gets none.
-  if (!reduced) drawComet(ctx, t);
+  // The flecks are smaller, faster and far more frequent, which makes them the
+  // stronger of the two arguments for that setting, not the weaker.
+  if (!reduced) {
+    if (tune.comet !== false) drawComet(ctx, t);
+    if (tune.flecks !== null) drawFlecks(ctx, t, tune.flecks || FLECK_IS);
+  }
 
   // The scrim is what makes the crawl readable over all of the above. Without
   // it the brightest stars sit at the same value as DIM body text.
   ctx.fillStyle = 'rgba(5,6,15,0.34)';
   ctx.fillRect(0, 0, W, H);
 }
+
+// The sky, on its own, for the gallery's lab section to render. It is not a
+// preview or a reimplementation: it is drawSky, with the crawl's own star field
+// and the crawl's own tunings, so a tile showing dust off next to dust on is
+// showing the two things the game would actually draw. `tune` carries what the
+// bake-off varies — dust alpha, which fleck cut, whether the comet fires — and
+// defaults to exactly what the credits roll with.
+export function drawCreditsSky(ctx, opts = {}) {
+  const stars = opts.stars || makeStars(STAR_COUNT);
+  const dust = opts.dust === null ? [] : (opts.dust || makeDust(DUST_COUNT));
+  drawSky(ctx, stars, dust, opts.t || 0, (opts.t || 0) * SCROLL_SPEED, !!opts.reduced, opts.tune || {});
+}
+export { makeStars, makeDust, STAR_COUNT, DUST_COUNT };
 
 // ---- safe area -------------------------------------------------------------
 // The crawl is full-bleed: HUMAN RESOURCES is measured to span the real screen,
@@ -919,7 +1068,13 @@ function drawRow(ctx, row, y, t) {
     // of whatever frame the loop happened to be on when it scrolled in.
     case 'handoffArt': {
       const progress = Math.max(0, Math.min(1, (H - y) / (H + HANDOFF_H)));
-      drawHandoff(ctx, { from: row.from, to: row.to, t, progress, x: 0, y, w: W, h: HANDOFF_H });
+      // `crossing` is how long that progress takes in seconds, which is what the
+      // portal's spend strip is cut against — the block owns the number because
+      // it owns both terms of it.
+      drawHandoff(ctx, {
+        from: row.from, to: row.to, t, progress, x: 0, y, w: W, h: HANDOFF_H,
+        crossing: (H + HANDOFF_H) / SCROLL_SPEED,
+      });
       break;
     }
     case 'castRole': {
@@ -1013,6 +1168,7 @@ export class CreditsState {
     this.scrubHeldT = 0;
     this.reduced = !!this.settings.reducedMotion;
     this.stars = makeStars(STAR_COUNT);
+    this.dust = makeDust(DUST_COUNT);
     Audio.setBank(MEGAMIX_THEME);
     Input.setMenuButtons();
     // Up/down here mean "scrub the crawl while held", not "move down a row". A
@@ -1078,7 +1234,7 @@ export class CreditsState {
     const scrollY = H - this.t * SCROLL_SPEED;
     // Full-bleed: the sky covers the whole canvas, safe area included. Only the
     // things you must be able to READ get inset.
-    drawSky(ctx, this.stars, this.t, this.t * SCROLL_SPEED, this.reduced);
+    drawSky(ctx, this.stars, this.dust, this.t, this.t * SCROLL_SPEED, this.reduced);
     for (const row of this.script.rows) {
       const y = scrollY + row.y;
       // Cull on the row's own extent. The 20u pad covers the few painters that

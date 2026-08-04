@@ -113,6 +113,14 @@ let saved = JSON.parse(JSON.stringify(MIX));
 let draft = {};
 try { draft = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { draft = {}; }
 
+// Which songs have a cabinet mix sitting on the faders — `trackId → the condition it was
+// loaded for. "Load cabinet mix onto the desk" deliberately puts a treatment into the
+// ordinary draft, because a mix you cannot see is one you cannot adjust; the cost is that
+// for as long as it is there, the draft is NOT the level's mix, and Save cannot tell the
+// difference. So the desk remembers, and says so before writing. Cleared the moment the
+// draft stops being on loan: re-captured, discarded, or undone back to the level.
+const cabOnDesk = {};
+
 // The arrangement layer, kept exactly as the mix is: what the file holds, and what
 // has been edited on top of it. Stored in the FILE's shape (`{order, sections}`)
 // rather than the editor's bar list, because that is the compact form — a song's
@@ -8528,10 +8536,20 @@ function updateStatus() {
   // width of the whole drawer. The name is in the tooltip, where it costs nothing.
   const save = $('save');
   const writable = track?.writable !== false;
+  // Which of the three halves this press would write, named rather than implied. A save
+  // that says only "Save song" is a save you have to remember the state of the desk to
+  // predict, and the mix half is the one that quietly eats a level when you guess wrong.
+  const halves = [
+    draft[trackId] != null && mixChanged(draft[trackId], saved[trackId]) ? 'the mix' : null,
+    arrDirty(trackId) ? 'the arrangement' : null,
+    variantDirty(trackId) ? 'the cabinet screen' : null,
+  ].filter(Boolean);
   save.textContent = !writable ? 'Read-only MIDI import' : d ? 'Save song' : 'Saved — matches the file';
   save.disabled = !writable || !d;
   save.title = !writable ? 'This legacy MIDI import has no desk-owned file section to save'
-    : d ? `Write ${track.title} into its own source file`
+    : d ? `Write ${halves.join(' and ')} into src/data/songs/${trackId}.js`
+      + (cabOnDesk[trackId] ? `\n\nWARNING: the desk is showing the "${cabOnDesk[trackId]}" cabinet`
+        + ' mix, not the level mix. Capture it back to the cabinet screen first.' : '')
       : `${track.title} already matches its file`;
   const deleteButton = $('deletesong');
   if (deleteButton) {
@@ -11021,6 +11039,7 @@ $('revert').onclick = async () => {
   if (!isDirty(trackId)) { toast('Nothing to discard — this song already matches its file'); return; }
   pushUndo(null);
   discardSongDraft(draft, arrDraft, trackId);
+  delete cabOnDesk[trackId];
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   // Through the whole song-state path, not buildRack alone: either draft may have
@@ -11577,16 +11596,30 @@ $('save').onclick = async () => {
   // Only this song. What the other songs are holding is their business — the desk
   // saves one song at a time, so listing them was answering a question nobody asked
   // in the moment they were trying to answer a different one.
+  // Spelled out, because a save writes up to three independent things and which ones is
+  // not visible on the faders. "the mix" is the level's own sound; the cabinet screen is
+  // a separate leg and is written separately.
+  const halves = [
+    draft[trackId] != null && mixChanged(draft[trackId], saved[trackId]) ? 'the mix — what the level plays' : null,
+    arrDirty(trackId) ? 'the arrangement' : null,
+    variantDirty(trackId) ? 'the cabinet screen' : null,
+  ].filter(Boolean);
   const ok = await ask(
     `Save ${track.title}?`,
-    isDeskSong(track)
+    (cabOnDesk[trackId]
+      ? `<p class="warn">The desk is showing the <b>${escapeHtml(cabOnDesk[trackId])}</b> cabinet mix, `
+        + 'loaded onto the faders — not the level mix. Saving now writes it as the thing the '
+        + '<b>level</b> plays. Capture it back to the cabinet screen instead.</p>'
+      : '')
+    + `<p>Writes <b>${halves.join('</b>, <b>')}</b>.</p>`
+    + (isDeskSong(track)
       ? `<b>This ${track.group === 'styleAudition' ? 'style audition' : 'scratch song'} stays `
         + `outside the game catalogue.</b><br>`
-        + `Writes <b>src/data/imported/${trackId}.js</b>. The version it replaces is kept, `
+        + `Into <b>src/data/imported/${trackId}.js</b>. The version it replaces is kept, `
         + `so you can go back to it.`
       : `<b>The game will play it from now on.</b><br>`
-        + `Writes <b>src/data/songs/${trackId}.js</b>. The version it replaces is kept, `
-        + `so you can go back to it.`,
+        + `Into <b>src/data/songs/${trackId}.js</b>. The version it replaces is kept, `
+        + `so you can go back to it.`),
   );
   if (!ok) { toast('Save cancelled'); return; }
   // saveMix ran updateStatus, which is what turns the dot off and the menu item to
@@ -11651,6 +11684,7 @@ const CAB_QUANTIZE = [
   ['immediate', 'straight away'],
 ];
 const CAB_LOOP_RELEASE = [
+  ['immediate', 'let go as soon as the level starts'],
   ['atTransition', 'let go with the change'],
   ['atLoopEnd', 'play the loop out first'],
 ];
@@ -11845,10 +11879,12 @@ $('loadcab').onclick = () => {
     applyLoopNoJump();
     syncLoopButton();
   }
+  cabOnDesk[trackId] = e.when ?? 'always';
   applyToEngine(mixFor(trackId));
   rebuildForShape();
   updateStatus();
-  toast(`Cabinet mix on the desk — this is the DRAFT, so Discard puts the level back`);
+  toast('Cabinet mix on the desk — this is the DRAFT, so Discard puts the level back. '
+    + 'Capture it again when you are done; do not Save it as the song.');
 };
 
 $('applytocab').onclick = async () => {
@@ -11868,7 +11904,9 @@ $('applytocab').onclick = async () => {
   }
   const ok = await ask('Use this mix on the cabinet screen?',
     cabSummary(diff, loop, when)
-    + '<p>The saved mix is untouched — it stays what the level plays.</p>',
+    + '<p>These edits <b>move</b>: they come off the desk and onto the cabinet screen, so the '
+    + 'faders go back to the level mix and the level keeps playing exactly what it plays now. '
+    + '⌘Z brings them back if you want another pass.</p>',
     'Use it');
   if (!ok) return;
 
@@ -11884,10 +11922,78 @@ $('applytocab').onclick = async () => {
   // rather than explained in an error later.
   list.sort((a, b) => ((a.when ?? 'always') === 'always' ? 1 : 0) - ((b.when ?? 'always') === 'always' ? 1 : 0));
   variantDraft[trackId] = { ...(variantFor(trackId) || {}), select: list };
+
+  // The edits have MOVED. They belong to the cabinet screen now, so they come off the
+  // song — otherwise the draft still holds them, `mixDirty` is still true, and the next
+  // Save writes the cabinet mix over the level as well as into the treatment. That is
+  // what happened to SPEED ZONE: six lanes muted and a chebyshev on the master, saved as
+  // the thing the level plays, with the treatment then stored as a diff against itself.
+  //
+  // Only the fields that were CARRIED are put back. A refused edit — a new layer, a voice
+  // swap — was never in the patch, so it is not the cabinet screen's and stays on the desk
+  // as an ordinary unsaved song edit. `pushUndo` above the change, so ⌘Z brings the whole
+  // cabinet mix back onto the faders if you want another pass at it.
+  pushUndo('applytocab');
+  delete cabOnDesk[trackId];
+  const reverted = cabRevert(cur, base, diff);
+  if (mixChanged(reverted, saved[trackId])) draft[trackId] = reverted;
+  else delete draft[trackId];
+  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  applyToEngine(mixFor(trackId));
+  rebuildForShape();
+
   cabSyncControls();
   updateStatus();
-  toast(`Cabinet screen set for ${track.title} — Save song to write it`);
+  const left = isDirty(trackId) && draft[trackId] != null;
+  toast(`Cabinet screen set for ${track.title} — the desk is back on the level mix.`
+    + (left ? ' What it could not carry is still an unsaved song edit.' : ' Save song to write it.'));
 };
+
+/**
+ * The capture, undone: `cur` with every field the cabinet patch took put back to `base`.
+ *
+ * The exact inverse of `cabDiff`, and it has to stay that way — anything the patch
+ * carries is a field the level must go back to holding its own value for, or the two
+ * mixes drift into each other. A field absent from `base` is DELETED rather than set to
+ * a default, because that is the difference between a mix that records a decision and a
+ * mix that records every knob on the desk.
+ */
+function cabRevert(cur, base, { patch, treatment }) {
+  const out = JSON.parse(JSON.stringify(cur));
+  const put = (obj, key, from) => {
+    if (from && Object.prototype.hasOwnProperty.call(from, key)) obj[key] = JSON.parse(JSON.stringify(from[key]));
+    else delete obj[key];
+  };
+
+  for (const k of ['master', 'masterPan']) if (k in patch) put(out, k, base);
+
+  for (const [key, lane] of Object.entries(patch.lanes || {})) {
+    const o = out.lanes?.[key];
+    if (!o) continue;
+    const b = base.lanes?.[key] || {};
+    for (const f of ['gain', 'pan', 'width', 'mute']) if (f in lane) put(o, f, b);
+    for (const id of Object.keys(lane.send || {})) put(o.send || (o.send = {}), id, b.send);
+    for (const bnd of Object.keys(lane.eq || {})) put(o.eq || (o.eq = {}), bnd, b.eq);
+    if (lane.effects) put(o, 'effects', b);
+    for (const sub of ['send', 'eq']) if (o[sub] && !Object.keys(o[sub]).length) delete o[sub];
+    if (!Object.keys(o).length) delete out.lanes[key];
+  }
+  if (out.lanes && !Object.keys(out.lanes).length) delete out.lanes;
+
+  for (const [id, aux] of Object.entries(patch.fx || {})) {
+    const o = out.fx?.[id];
+    if (!o) continue;
+    const b = base.fx?.[id] || {};
+    for (const f of ['level', 'pan', 'eq']) if (f in aux) put(o, f, b);
+    if (!Object.keys(o).length) delete out.fx[id];
+  }
+  if (out.fx && !Object.keys(out.fx).length) delete out.fx;
+
+  // The treatment is the tail of the master chain past what the level already had, so the
+  // level's chain is exactly what `base` held — including holding nothing.
+  if (treatment?.length) put(out, 'masterEffects', base);
+  return out;
+}
 
 $('clearcab').onclick = async () => {
   if (!variantFor(trackId)) { toast('This song has no cabinet mix'); return; }

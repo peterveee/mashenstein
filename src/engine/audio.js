@@ -827,7 +827,15 @@ class AudioSys {
   // dest overrides where the tone lands. Everything in the game wants the SFX
   // bus and says nothing; a cue routing itself through its own send (the portal
   // swoosh and its reverb) passes one in.
-  osc(type, f0, f1, dur, gain = 0.2, when = 0, dest = null) {
+  // `hold` is the fraction of `dur` spent at full level before the decay
+  // starts. It defaults to 0, which is this cue set's house envelope: attack in
+  // 8ms, then decay exponentially across the whole length. That is right for
+  // every blip, bonk and ping here — and wrong for anything meant to SUSTAIN.
+  // An exponential run from full to silence is 13dB down a fifth of the way in,
+  // so a one-second tone asked to hold is inaudible for most of its own
+  // duration. The slide whistle is the first cue that has to last as long as
+  // the thing it describes, and this is what lets it.
+  osc(type, f0, f1, dur, gain = 0.2, when = 0, dest = null, hold = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + when;
     const o = this.ctx.createOscillator();
@@ -835,15 +843,19 @@ class AudioSys {
     o.type = type;
     o.frequency.setValueAtTime(Math.max(1, f0), t);
     if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    const sustain = Math.max(0.008, Math.min(0.95, hold) * dur);
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
+    if (sustain > 0.008) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     o.connect(g); g.connect(dest || this.sfxGain);
     o.start(t); o.stop(t + dur + 0.02);
   }
 
-  noise(dur, gain = 0.2, filterType = 'lowpass', freq = 800, when = 0) {
+  // Same `hold` as osc() above, for the same reason: a breath layer under a
+  // sustained tone has to sustain with it or the tone goes bare halfway through.
+  noise(dur, gain = 0.2, filterType = 'lowpass', freq = 800, when = 0, hold = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + when;
     const src = this.ctx.createBufferSource();
@@ -851,8 +863,10 @@ class AudioSys {
     const f = this.ctx.createBiquadFilter();
     f.type = filterType; f.frequency.value = freq;
     const g = this.ctx.createGain();
+    const sustain = Math.max(0.008, Math.min(0.95, hold) * dur);
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
+    if (sustain > 0.008) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     src.connect(f); f.connect(g); g.connect(this.sfxGain);
@@ -1307,6 +1321,76 @@ class AudioSys {
    *             as a drum hit. Raising the floor makes it swell in instead.
    * Defaults reproduce the original cue sample for sample; the credits rely on that.
    */
+  // The speed ramp's payout. It used to borrow 'dash' — one bandpassed noise
+  // swish at 0.18 — which is a body moving, not a machine firing, and at that
+  // gain it sat under the music where the thing it reports is the single most
+  // generous event in the lane.
+  //
+  // NO LOW SINE. The first pass opened with a 190->58Hz kick for "the shove in
+  // the legs", and a descending sine under a transient is the exact recipe for
+  // a kick drum — it read as percussion, which put the cue on the beat grid
+  // instead of on the event. Everything here now RISES, because the one thing
+  // the cue has to say is that you got faster.
+  //
+  // A short high click for the attack (an edge, not a thump), a sawtooth sweep
+  // as the body, a detuned square above it for fizz, two noise bands for air —
+  // the live filter cannot sweep, so two overlapping bursts fake the rise —
+  // and a bright tail that resolves upward instead of just stopping.
+  // Roughly twice the level of the first pass, and half again as long. The
+  // reason it went unnoticed was not only gain: it was 0.16s of mostly HIGH
+  // noise, and high noise is the first thing a busy mix masks — every cabinet's
+  // music has hats and the arcade room tone sits right on top of it. The sweep
+  // now starts down at 200Hz where nothing else in the cue lives, and holds
+  // long enough (0.3s) to register as an event rather than a tick.
+  // Fourth pass, on the note that the payout still felt weak next to its own
+  // telegraph. Two things were wrong and neither was the top end. The cue had
+  // no WEIGHT — everything lived at 200Hz and up, so it was bright and thin
+  // where the thing it describes is the hero being shoved — and it was short
+  // where the tick run leading into it had been getting steadily longer. So: a
+  // saw an octave below the sweep for body, everything up a few dB, and the
+  // upward resolve held longer so the cue ENDS on the rise rather than getting
+  // out of the way of it. Still nothing descending anywhere — a falling layer
+  // auditioned as a kick drum, and that is what got the first pass thrown out.
+  //
+  // Fifth pass: LENGTH. Everything above was about level and weight, and the
+  // cue still ran out before the event did — the hero is visibly still being
+  // carried when the sound has already finished, and a payout that stops early
+  // reports a smaller thing than happened. Layer durations are up ~1.8x, to
+  // about 0.6s. Only the durations: the sweep travels the same 200->1500Hz, it
+  // just takes longer to get there, so the cue is a shove rather than a snap.
+  // The attack edge does NOT stretch — a transient that lengthens stops being
+  // a transient — and the rising layers are staggered further apart so the
+  // second half of the cue is still climbing rather than merely ringing out.
+  boostWhoosh() {
+    if (!this.ctx) return;
+    this.noise(0.035, 0.26, 'highpass', 4500);          // attack edge
+    this.osc('sawtooth', 100, 750, 0.6, 0.24);          // body, an octave down
+    this.osc('sawtooth', 200, 1500, 0.55, 0.38);        // the sweep, body
+    this.osc('square', 300, 2200, 0.42, 0.2, 0.01);     // fizz above it
+    this.noise(0.3, 0.3, 'bandpass', 900);              // air, low band
+    this.noise(0.5, 0.34, 'bandpass', 2800, 0.06);      // air, rising
+    this.osc('triangle', 1568, 2350, 0.34, 0.26, 0.22); // resolves up, late
+  }
+
+  // The approach tick. Deliberately tiny — it fires several times as the hero
+  // closes on a pad and the pads are common, so anything with a body would
+  // become the loudest repeated thing in a run. Pitch rises with the arm, so
+  // the sequence itself is the telegraph rather than any single blip.
+  boostTick(pitch = 1) {
+    if (!this.ctx) return;
+    // Third pass on the level. The first two treated this as a click; the
+    // problem is that a click has almost no ENERGY however loud you make its
+    // peak — the ear integrates over roughly 50ms, so a 30ms blip at 0.12 is
+    // quieter to listen to than a 60ms tone at 0.12 even though a meter says
+    // otherwise. It is now long enough to be heard rather than merely detected,
+    // and the sine under it carries a pitch the square alone does not.
+    // Trimmed about 3dB off that pass. The length is what made it audible, so
+    // the length stays and only the level comes down — a run of seven or eight
+    // of these was sitting on top of the music rather than under it.
+    this.osc('square', 1500 * pitch, 1500 * pitch, 0.06, 0.14);
+    this.osc('sine', 750 * pitch, 750 * pitch, 0.085, 0.11);
+  }
+
   portalSwoosh({
     stretch = 1, q: qMul = 1, spread = 1, wet: wetMul = 1,
     thump = 1, flash = 1, pan: panSpread = 0, overlap = 0, swell = 0, legs = 'both',
@@ -1533,6 +1617,8 @@ class AudioSys {
       case 'launch': this.playLaunch(opt.hero, pitch); break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
+      case 'boost': this.boostWhoosh(); break;
+      case 'boostTick': this.boostTick(pitch); break;
       case 'portal': this.portalSwoosh(opt.shape); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
@@ -1592,11 +1678,61 @@ class AudioSys {
       case 'lose': [400, 350, 300, 200].forEach((f, i) => this.osc('sawtooth', f, f * 0.9, 0.16, 0.12, i * 0.12)); break;
       case 'pacDeath': this.pacDeath(); break;
       case 'checkpoint': this.osc('triangle', 700, 1400, 0.15, 0.14); break;
+      // The plunger bottoming out. A latch, not a beep: a hard tick of noise for
+      // the contact faces meeting, a short woody knock under it for the mass
+      // behind them, and one high pip that decays instantly so the cue has an
+      // edge at lane volume. `when` lets the caller line it up with the frame
+      // the cap actually lands on — the sound is the bottom of the stroke, not
+      // the start of it, and the two are a sixth of a second apart.
+      case 'clickHard': {
+        const w = Math.max(0, opt.when || 0);
+        this.noise(0.02, 0.5, 'highpass', 3400, w);
+        this.osc('square', 220 * pitch, 90 * pitch, 0.055, 0.16, w);
+        this.osc('sine', 1650 * pitch, 1650 * pitch, 0.022, 0.12, w);
+        break;
+      }
       case 'boom': this.explosion(); break;
       // ---- Fireworks. Three burst shapes so a long results screen never
       // repeats the same crack twice in a row; the caller also detunes each.
       // The mortar going up: air, not tone. Rising sine underneath it only to
       // give the ear something to track to the top of the arc.
+      // The pole ride. A slide whistle is a GLISS with a breath under it: a
+      // sine sweeping down over the whole descent, a second one a hair detuned
+      // so it beats rather than sitting dead still, and a thin band of noise for
+      // the air in the tube. `dur` is passed in because the slide's length is
+      // the grade — a high catch is a longer ride and has to be a longer whistle
+      // or the sound stops describing what is happening on screen.
+      //
+      // Down, not up: the hero is descending. An upward gliss here read as a
+      // question being asked at the exact moment the stage answers one.
+      case 'slideWhistle': {
+        // Ceiling raised with the pole ride itself: the descent now runs up to
+        // ~1.1s and a whistle that stopped at 0.9 left the last stretch silent,
+        // which reads as the sound being cut off rather than the slide ending.
+        const d = Math.max(0.18, Math.min(1.5, opt.dur || 0.4));
+        // `when` delays the whole cue. The walk-up path hops before it slides,
+        // and a downward gliss that starts on the way UP describes the wrong
+        // half of the move — so the caller hands us the length of the rise and
+        // the whistle waits it out.
+        const w = Math.max(0, Math.min(1, opt.when || 0));
+        // Loud enough to be the sound of the moment. At 0.09 it was mixed like
+        // background texture and lost under the landing thump and the payoff
+        // chain that follow it — it is a gag, and a gag you have to strain for
+        // is not one. The detuned twin carries most of the lift: two sines a
+        // few cents apart beat against each other and the wobble is what makes
+        // it read as a slide whistle rather than a tone sweep.
+        // Held flat until the very end. A slide whistle is one continuous tone
+        // for as long as the hand is moving — the level must not tell a story
+        // the pitch is not telling, and a whistle that ebbs while the hero is
+        // still coming down reads as the sound losing interest in him. HOLD is
+        // the last fraction of the cue given over to the release, and it is
+        // barely more than a stop: the tone lands, then it is gone.
+        const HOLD = 0.92;
+        this.osc('sine', 1500 * pitch, 420 * pitch, d, 0.17, w, null, HOLD);
+        this.osc('sine', 1508 * pitch, 424 * pitch, d, 0.11, w, null, HOLD);
+        this.noise(d, 0.05, 'bandpass', 1800, w, HOLD);
+        break;
+      }
       case 'fizzUp':
         this.noise(0.3, 0.09, 'bandpass', 1500);
         this.osc('sine', 260 * pitch, 880 * pitch, 0.3, 0.045);

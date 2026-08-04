@@ -113,8 +113,12 @@ function webglStub() {
   });
   r.initRenderer(platform, { savedDensities: { webgl: 1.5, '2d': 1.5 } });
   const d = r.rendererDiagnostics();
-  assert(platform.isAndroidTablet && d.rung === 0 && d.density === d.native,
-    'an Android tablet seeds at native and ignores old phone-style density history');
+  // Seeds at the TOP of its ladder, which on a panel this dense is the 1440p
+  // cap rather than native (8x here) — the point of the case is that a tablet
+  // starts at the ceiling and ignores phone-style persisted history, not which
+  // number the ceiling happens to be.
+  assert(platform.isAndroidTablet && d.rung === 0 && d.density === Math.min(d.native, 1440 / 270),
+    'an Android tablet seeds at its ladder ceiling and ignores old phone-style density history');
   assert(dom.chromeCanvas.width === 3840,
     'an Android tablet does not receive the phone-only 2x touch-chrome cap');
 }
@@ -405,6 +409,40 @@ function webglStub() {
   base = clears();
   r.beginChromeFrame(); r.commitChromeFrame();
   assert(clears() - base === 0, 'a second empty frame does not clear again');
+}
+
+// --- the 1440p ceiling -------------------------------------------------------
+// A 5K desktop panel: native lands above 10x, which on the WebGL path would
+// mean re-uploading a 4920x2768 world canvas every frame to present art drawn
+// at 480x270. The ladder caps at 1440p instead. A pin is deliberately exempt,
+// so native stays reachable for side-by-side comparison.
+{
+  installDom({ locationSearch: '', innerWidth: 2460, innerHeight: 1384, devicePixelRatio: 2 });
+  const r = await import('../src/engine/renderer.js?d-cap-5k');
+  r.initRenderer(detectPlatform({ ua: MAC_UA, screenW: 2460, screenH: 1384 }));
+  const d = r.rendererDiagnostics();
+  assert(d.native > 10, `a 5K panel reports its true native density (${d.native})`);
+  assert(Math.abs(d.density - 1440 / 270) < 1e-6,
+    `and renders at the 1440p ceiling instead (${d.density})`);
+  assert(Math.round(480 * d.density) === 2560 && Math.round(270 * d.density) === 1440,
+    'which is exactly a 2560x1440 backing store');
+  assert(d.ladder.every((v) => v <= 1440 / 270 + 1e-6),
+    'no rung on the ladder sits above the cap');
+  r.setDensityPin(d.native);
+  assert(Math.abs(r.rendererDiagnostics().density - d.native) < 1e-6,
+    'an explicit ?density pin still reaches native');
+  r.setDensityPin(null);
+}
+
+// A display below the cap is untouched by it — the ceiling is still native, and
+// a laptop that never asked for this keeps the 1:1 rendering it always had.
+{
+  installDom({ locationSearch: '', innerWidth: 1440, innerHeight: 900, devicePixelRatio: 1 });
+  const r = await import('../src/engine/renderer.js?d-cap-small');
+  r.initRenderer(detectPlatform({ ua: MAC_UA, screenW: 1440, screenH: 900 }));
+  const d = r.rendererDiagnostics();
+  assert(d.native < 1440 / 270, `native sits below the cap (${d.native})`);
+  assert(d.density === d.native, 'so the ladder ceiling is still native, unchanged');
 }
 
 console.log(failed ? 'DENSITY: FAILED' : 'DENSITY: PASSED');

@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(join(fileURLToPath(import.meta.url), '..', '..'));
-const outDir = resolve(process.argv[2] || join(root, 'audio', 'sfx-renders'));
+const outDir = resolve(process.argv[2] || join(root, 'audio', 'renders', 'sfx'));
 const SR = 44100;
 const TAIL = 0.04;
 
@@ -215,7 +215,10 @@ function render(name) {
   // cash rings out longer than the other blips; give it room for the tail.
   // portal has to hold its own length PLUS the reverb tail, or the audition cuts
   // off the very thing being auditioned.
-  const len = name === 'pacDeath' ? 1.9 : name === 'cash' ? 0.85 : name === 'portal' ? 2.5 : 0.6;
+  const len = name === 'pacDeath' ? 1.9 : name === 'cash' ? 0.85 : name === 'portal' ? 2.5
+    : name === 'clickHard' ? 0.25
+    : name === 'slideWhistle' ? 1.2
+    : (name === 'boostApproach' || name === 'boostMiss') ? 2.4 : name === 'boost' ? 1 : 0.6;
   const out = new Float32Array(Math.ceil(len * SR));
   if (name === 'pacDeath') pacDeath(out, 0);
   else if (name === 'coin') {
@@ -236,6 +239,53 @@ function render(name) {
     noiseBurst(out, bell, 0.012, 0.13, 'highpass', 7000); // striker
     for (const [ratio, amp] of barModes) {
       tone(out, bell, 0.62 * (ratio < 3 ? 1 : 0.55), 'sine', 784 * ratio, 784 * ratio, 0.18 * amp);
+    }
+  } else if (name === 'boost' || name === 'boostApproach' || name === 'boostMiss') {
+    // Mirror of AudioSys.boostWhoosh(). NOTHING here descends: an earlier pass
+    // opened with a 190->58Hz sine for the kick and the whole cue auditioned as
+    // a kick drum, which is what got it thrown out.
+    //
+    // 'boostApproach' is the cue in context — the accelerating approach ticks
+    // and then the whoosh — because the ticks are the half you cannot judge
+    // alone. A single blip tells you nothing; the RATE is the telegraph.
+    const whoosh = (t0) => {
+      noiseBurst(out, t0, 0.035, 0.26, 'highpass', 4500);
+      tone(out, t0, 0.6, 'sawtooth', 100, 750, 0.24);
+      tone(out, t0, 0.55, 'sawtooth', 200, 1500, 0.38);
+      tone(out, t0 + 0.01, 0.42, 'square', 300, 2200, 0.2);
+      noiseBurst(out, t0, 0.3, 0.3, 'bandpass', 900);
+      noiseBurst(out, t0 + 0.06, 0.5, 0.34, 'bandpass', 2800);
+      tone(out, t0 + 0.22, 0.34, 'triangle', 1568, 2350, 0.26);
+    };
+    // The tick, at the level AudioSys.boostTick() now uses.
+    const tick = (t0, pitch) => {
+      tone(out, t0, 0.06, 'square', 1500 * pitch, 1500 * pitch, 0.14);
+      tone(out, t0, 0.085, 'sine', 750 * pitch, 750 * pitch, 0.11);
+    };
+    if (name === 'boost') whoosh(0);
+    else {
+      // Same interval and pitch ramp run.js drives the live ticks with: the
+      // gap closes from 0.2s to 0.06s and the pitch rises 0.85 -> 1.35 as the
+      // pad comes in.
+      let at = 0;
+      for (let n = 0; n < 14 && at < 1.05; n++) {
+        const arm = Math.min(1, 0.12 + n * 0.085);
+        tick(at, 0.85 + 0.5 * arm);
+        at += 0.2 - 0.14 * arm;
+      }
+      // The two endings, rendered as a pair because neither is judgeable on
+      // its own — only against the approach they follow and against each
+      // other. HIT: the run carries on climbing 1.35 -> 2.9 straight over the
+      // whoosh. MISS: it turns over and falls 1.2 -> 0.22 in 0.18s, ending far
+      // below where the approach started.
+      if (name === 'boostApproach') {
+        whoosh(at);
+        for (let n = 0; n * 0.045 < 0.34; n++) {
+          tick(at + n * 0.045, 1.35 + 1.55 * ((n * 0.045) / 0.34));
+        }
+      } else for (let n = 0; n * 0.04 < 0.18; n++) {
+        tick(at + n * 0.04, 0.22 + 1.0 * (1 - (n * 0.04) / 0.18));
+      }
     }
   } else if (name === 'portal') {
     // Mirror of AudioSys.portalSwoosh(): two swept-band noise rushes around a
@@ -306,6 +356,27 @@ function render(name) {
 
     bandLimit(wet, 240, 3600);
     convolveInto(out, wet, normalizeIR(reverbImpulse(VERB_DECAY, 0.018)));
+  } else if (name === 'clickHard') {
+    // Mirror of the live 'clickHard' cue: the plunger bottoming out. Contact
+    // faces, mass, and one high pip that is gone before you can name it.
+    noiseBurst(out, 0, 0.02, 0.5, 'highpass', 3400);
+    tone(out, 0, 0.055, 'square', 220, 90, 0.16);
+    tone(out, 0, 0.022, 'sine', 1650, 1650, 0.12);
+  } else if (name === 'slideWhistle') {
+    // Mirror of the live 'slideWhistle' cue, rendered at the length a PERFECT
+    // catch actually asks for (~0.95s of ride). The cue is duration-driven —
+    // run.js hands it the descent's own length — so auditioning it at the
+    // default 0.4 would judge a sound the game never plays at the moment that
+    // matters. Note the file is peak-normalised below, so this WAV shows the
+    // SHAPE; the gain change that made it audible in-game shows up in the mix,
+    // not here.
+    // `hold` here is the same 0.92 the live cue now passes to osc(): flat until
+    // the very end, then a fast release. Rendered at 1.0s, the length a PERFECT
+    // catch asks for.
+    const d = 1.0;
+    tone(out, 0, d, 'sine', 1500, 420, 0.17, 0.92);
+    tone(out, 0, d, 'sine', 1508, 424, 0.11, 0.92);
+    noiseBurst(out, 0, d, 0.05, 'bandpass', 1800);
   } else if (name === 'power') {
     [523, 659, 784, 1047].forEach((f, i) => tone(out, i * 0.07, 0.09, 'triangle', f, f, 0.15));
   } else if (name === 'waka') {
@@ -334,7 +405,7 @@ function render(name) {
 }
 
 mkdirSync(outDir, { recursive: true });
-for (const name of ['cash', 'power', 'coin', 'waka', 'pacDeath', 'portal']) {
+for (const name of ['cash', 'power', 'coin', 'waka', 'pacDeath', 'portal', 'boost', 'boostApproach', 'boostMiss', 'slideWhistle', 'clickHard']) {
   const path = join(outDir, `${name}.wav`);
   writeFileSync(path, render(name));
   console.log(path);

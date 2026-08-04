@@ -69,6 +69,45 @@ export function stroke(ctx, col, w, pathFn) {
   ctx.stroke();
 }
 
+// The lightning bolt, in the 28x18 cell grid both battery drawings are laid out
+// on, so the HUD cell and the world pickup are the same mark and can only ever
+// be fixed together.
+//
+// Placed by CENTROID, not by bounding box. A bolt is a diagonal with its mass in
+// the broad upper-left arm and a thin tail trailing below-right, so a placement
+// that centres its extents leaves the shape itself reading low and left of the
+// cell it sits in. These points put the centroid on the body's centre of (12, 9)
+// — the earlier bounding-box placement had it at (13, 9.5), which is invisible
+// at 11px of HUD cell and unmissable at pickup size.
+const BOLT_PTS = [[13, 4.5], [9, 10], [12, 10], [11, 13.5], [15, 8], [12, 8]];
+const boltPath = (c, X, Y) => {
+  BOLT_PTS.forEach(([bx, by], i) => (i ? c.lineTo(X(bx), Y(by)) : c.moveTo(X(bx), Y(by))));
+  c.closePath();
+};
+
+// Where the world battery's art sits inside its painter box. The HUD art spans
+// X 1.5..26.5 and Y 2.5..15.5 of the cell grid — 25 units by 13 — so the pickup
+// takes the box's full width and lets that aspect decide its height, centred.
+// Shared with BATTERY_FOCUS below so the drawing and anything aiming at the
+// drawing are reading off one layout.
+const batteryGrid = (w, h) => {
+  const AW = w * 0.96, AH = AW * (13 / 25);
+  return {
+    X: (n) => w * 0.02 + ((n - 1.5) / 25) * AW,
+    Y: (n) => (h - AH) / 2 + ((n - 2.5) / 13) * AH,
+  };
+};
+// The centre of the battery's CELL, as fractions of its painter box — the point
+// an effect should radiate from. Not the box centre and not the silhouette's:
+// the nub hangs off the right, which drags both about a pixel right of the green
+// cell the eye actually tracks. On an 8px sprite that is 11% of its width, and a
+// halo centred there visibly leaks out from beside the battery instead of from
+// inside it. Vertically the cell is already the box centre; only x moves.
+export const BATTERY_FOCUS = (() => {
+  const { X, Y } = batteryGrid(1, 1);
+  return { x: X(12), y: Y(9) };
+})();
+
 // One HUD battery cell, laid out on a 28x18 grid and scaled into the box:
 // rounded body, terminal nub on the right, lightning bolt through the middle.
 // A spent cell keeps the full silhouette in outline rather than vanishing, so
@@ -77,11 +116,7 @@ function hudCell(ctx, w, h, charged) {
   const X = (n) => (w * n) / 28, Y = (n) => (h * n) / 18;
   const body = (c) => rr(c, X(1.5), Y(2.5), X(21), Y(13), X(3.5));
   const nub = (c) => rr(c, X(23), Y(6), X(3.5), Y(6), X(1.5));
-  const bolt = (c) => {
-    c.moveTo(X(14), Y(5)); c.lineTo(X(10), Y(10.5)); c.lineTo(X(13), Y(10.5));
-    c.lineTo(X(12), Y(14)); c.lineTo(X(16), Y(8.5)); c.lineTo(X(13), Y(8.5));
-    c.closePath();
-  };
+  const bolt = (c) => boltPath(c, X, Y);
   if (charged) {
     plain(ctx, '#74c947', body);
     stroke(ctx, '#4d9433', X(1.5), body);
@@ -524,10 +559,16 @@ export const PROP_PAINTERS = {
     const u = Math.max(w, h);
     // Square base — rounded rect sitting on the ground line
     fineShape(ctx, '#e86020', u, (c) => rr(c, w * 0.14, h * 0.78, w * 0.72, h * 0.18, w * 0.06));
-    // Tapered cone body
+    // Tapered cone body with a BLUNT top. A real cone is moulded, not
+    // sharpened — and a true point is the first thing to vanish at gameplay
+    // size anyway, so the apex was spending its only pixel on a spike. The
+    // straight sides run to y=0.19 and a short quadratic caps them, which puts
+    // the crown at about 0.13h and leaves a dome roughly a twelfth of the box
+    // across.
     const conePath = (c) => {
       c.moveTo(w * 0.22, h * 0.82);
-      c.lineTo(w * 0.5, h * 0.08);
+      c.lineTo(w * 0.458, h * 0.19);
+      c.quadraticCurveTo(w * 0.5, h * 0.075, w * 0.542, h * 0.19);
       c.lineTo(w * 0.78, h * 0.82);
       c.closePath();
     };
@@ -545,7 +586,9 @@ export const PROP_PAINTERS = {
     conePath(ctx);
     ctx.clip();
     const bandH = h * 0.05;
-    for (const by of [h * 0.55, h * 0.36]) {
+    // Bands sit lower on the body: high up they crowded the tip and left
+    // the widest, most visible part of the cone plain orange.
+    for (const by of [h * 0.60, h * 0.44]) {
       const half = w * 0.18 + (w * 0.60) * ((h * 0.82 - by) / (h * 0.74));
       plain(ctx, '#f8f8ff', (c) => {
         c.moveTo(w * 0.5 - half, by - bandH);
@@ -744,19 +787,32 @@ export const PROP_PAINTERS = {
     ctx.lineWidth = Math.max(0.2, u * 0.018);
     ctx.stroke();
 
-    // Fine embossed rim and stamp survive the 16-to-8 downsample as tonal
-    // detail instead of becoming the thick dark washer in the old sprite.
+    // A fine embossed rim survives the 16-to-8 downsample as tonal detail
+    // instead of becoming the thick dark washer in the old sprite. No centre
+    // stamp: at pickup size it read as an odd dark oval, not an engraving.
     stroke(ctx, 'rgba(166,111,16,0.72)', Math.max(0.18, u * 0.017), (c) => {
       c.ellipse(w / 2, h / 2, w * 0.33, h * 0.35, 0, 0, Math.PI * 2);
     });
-    plain(ctx, 'rgba(181,124,18,0.58)', (c) => c.ellipse(w * 0.51, h * 0.53, w * 0.105, h * 0.18, 0, 0, Math.PI * 2));
     plain(ctx, 'rgba(255,251,204,0.9)', (c) => c.ellipse(w * 0.35, h * 0.29, w * 0.075, h * 0.095, -0.45, 0, Math.PI * 2));
   },
+  // Laid out landscape with the terminal on the RIGHT, the same way round as
+  // the HUD's `cellFull`: a pickup that points one way and the meter it feeds
+  // pointing the other made the player read them as two different objects.
+  //
+  // Drawn on hudCell's own 28x18 grid rather than on eyeballed fractions of the
+  // box, so the two are the same battery at two sizes. That matters because the
+  // pickup's def box is SQUARE (8x8): fitting the art to that box turns a
+  // battery into a lozenge, and the family resemblance goes with it. Instead the
+  // art takes the box's full width and lets its height fall where the HUD
+  // proportions put it — around half the box — with PROP_VISUAL_SCALE paying
+  // back the presence that flatter silhouette costs. The chunky pickup greens
+  // stay: this one still has to hold up as a thing in the world.
   battery(ctx, w, h) {
     const u = Math.max(w, h);
-    fineShape(ctx, '#48c848', u, (c) => rr(c, w * 0.16, h * 0.14, w * 0.68, h * 0.82, w * 0.14));
-    plain(ctx, '#2a8a2a', (c) => rr(c, w * 0.34, h * 0.02, w * 0.32, h * 0.14, w * 0.05));
-    plain(ctx, '#eaffea', (c) => { c.moveTo(w * 0.56, h * 0.28); c.lineTo(w * 0.36, h * 0.56); c.lineTo(w * 0.5, h * 0.56); c.lineTo(w * 0.44, h * 0.86); c.lineTo(w * 0.66, h * 0.5); c.lineTo(w * 0.5, h * 0.5); c.closePath(); });
+    const { X, Y } = batteryGrid(w, h);
+    fineShape(ctx, '#48c848', u, (c) => rr(c, X(1.5), Y(2.5), X(22.5) - X(1.5), Y(15.5) - Y(2.5), (X(5) - X(1.5))));
+    plain(ctx, '#2a8a2a', (c) => rr(c, X(23), Y(6), X(26.5) - X(23), Y(12) - Y(6), X(3) - X(1.5)));
+    plain(ctx, '#eaffea', (c) => boltPath(c, X, Y));
   },
   // --- HUD-only art -----------------------------------------------------
   // The status-pill battery cells. These are NOT the `battery` pickup above:
@@ -769,8 +825,8 @@ export const PROP_PAINTERS = {
   // the sprite cache is keyed by name; a flag would collide on one entry.
   cellFull(ctx, w, h) { hudCell(ctx, w, h, true); },
   cellEmpty(ctx, w, h) { hudCell(ctx, w, h, false); },
-  // The coin beside them. The world `coin` is a flat disc with a stamped
-  // centre, which at 12 units in a dark panel reads as a washer; this one is a
+  // The coin beside them. The world `coin` is a flat disc with an embossed
+  // rim, which at 12 units in a dark panel reads as a washer; this one is a
   // lit sphere — gradient plus a warm rim — so it holds its shape and stays
   // legibly gold against the slate fill.
   hudCoin(ctx, w, h) {
@@ -1071,16 +1127,11 @@ export const PROP_PAINTERS = {
     plain(ctx, '#8a8a98', (c) => { rr(c, w * 0.02, h * 0.34, w * 0.16, h * 0.34, h * 0.06); rr(c, w * 0.82, h * 0.34, w * 0.16, h * 0.34, h * 0.06); });
     stroke(ctx, '#e04848', Math.max(0.5, h * 0.12), (c) => { c.moveTo(w * 0.28, h * 0.52); c.lineTo(w * 0.72, h * 0.52); });
   },
-  boostPad(ctx, w, h) {
-    const u = Math.max(w, h);
-    shape(ctx, '#f6d33c', u, (c) => rr(c, 0, h * 0.1, w, h * 0.8, h * 0.35));
-    plain(ctx, '#e07820', (c) => {
-      for (let i = 0; i < 3; i++) {
-        const x = w * (0.16 + i * 0.26);
-        c.moveTo(x, h * 0.24); c.lineTo(x + w * 0.16, h * 0.5); c.lineTo(x, h * 0.76); c.closePath();
-      }
-    });
-  },
+  // The speed ramp. Bake-off winner (candidate A, black and gold): the drawing
+  // lives with the other candidates further down so the section that decided
+  // it stays honest, and this is the one line that ships it. The pre-bake-off
+  // pad is kept as boostPadLegacy.
+  boostPad(ctx, w, h, frame = 0) { PROP_PAINTERS.rampChevron(ctx, w, h, frame); },
   target(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#fff', u, (c) => c.arc(w / 2, h / 2, w * 0.46, 0, Math.PI * 2));
@@ -1528,11 +1579,880 @@ export const PROP_PAINTERS = {
     // toaster, so the disc reads as a domed object rather than a printed roundel.
     plain(ctx, 'rgba(230,255,248,0.4)', (c) => c.arc(w * 0.29, h * 0.25, u * 0.075, 0, Math.PI * 2));
   },
+
+  // ==================================================================
+  // BAKE-OFF CANDIDATES — GALLERY ONLY. Nothing in src/ draws these yet.
+  // Each one is a complete prop painter with real cached frames, so what
+  // the gallery animates is exactly what would ship the moment a name is
+  // swapped into an entity def (the ramps) or into drawPortal(). Delete a
+  // losing candidate together with its gallery section.
+  //
+  // Every painter here is FLAT-FILL ONLY — no canvas gradients. The frame
+  // test in tests/props.js traces animated painters through a recording
+  // proxy, and a proxy has no gradient object to add stops to.
+  // ==================================================================
+
+  // --- SPEED RAMP ---------------------------------------------------
+  // The shipped boostPad is a 14x4 decal: a yellow lozenge with three
+  // static chevrons. At lane speed it is a smear on the floor, it never
+  // announces itself on approach, and because nothing about it moves it
+  // never confirms that it fired. Each candidate keeps that 14x4 hitbox
+  // exactly and buys presence on the one axis a floor pad has spare —
+  // HEIGHT, via PROP_TALL's bottom-anchored overdraw — plus motion.
+
+  // A — SHIPS as boostPad. The pad, done properly, and nothing above it: the
+  // whole thing is the pad, and the whole animation happens inside it.
+  //
+  // Black and gold, borrowed from the gate candidate's marquee. Gold-on-gold
+  // was the first pass's weakness — an orange chevron on a yellow deck is a
+  // two-step of the same hue, so at lane speed the pad collapsed into one warm
+  // smear and the chase inside it was invisible. Gold on near-black is the
+  // widest value gap the palette has, so the chevrons stay separate marks all
+  // the way down to the 5px they occupy on screen.
+  //
+  // The earlier version threw fading darts up off the leading edge. They read
+  // well but they were art OUTSIDE the pad, above the floor line, on a prop
+  // that cannot hurt you and does not want that much attention.
+  // It is a TRENCH, not a slab. The pad sat proud of the floor casting a
+  // shadow, which put a 9px kerb in a lane the hero runs flat along; sunk in,
+  // it stops being an obstacle-shaped thing that happens not to be one. The
+  // recess is drawn rather than cut — a prop painter cannot carve the ground —
+  // so everything here is doing the job an actual hole would: a dark well, a
+  // lit rim on the FAR side only (light comes from above and in front, so a
+  // real trench catches it on its back wall), no bottom contour and no cast
+  // shadow. A drop shadow is the one mark that would give it away as sitting
+  // on top, which is why the pad no longer has one.
+  rampChevron(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const p = (frame % 8) / 8;
+    // Sunk further than the first trench pass. The mouth starts a third of the
+    // way down the cell and the well runs off the BOTTOM of the raster, so the
+    // ground itself is what ends the drawing — the art carries no bottom edge
+    // of its own to give away that it is a decal sat on the floor.
+    const top = h * 0.46, band = h * 0.9;
+    // The floor's own lip, above the recess: a thin dark line the ground
+    // appears to break along.
+    plain(ctx, 'rgba(10,8,18,0.45)', (c) => rr(c, 0, top - h * 0.11, w, h * 0.14, h * 0.04));
+    // Corners stay nearly square. A rounded box is an OBJECT sitting on the
+    // floor; a cut in the floor has crisp ends, and that one difference did
+    // more for the recess than any amount of shading.
+    fineShape(ctx, '#171c2b', u, (c) => rr(c, 0, top, w, band, h * 0.07), 'rgba(6,6,14,0.65)', 0.018);
+    // Far wall catching the light, and a gold rail sat on it. One rail, not
+    // two: two boxed the chevrons in and the pad read as a crate lid.
+    plain(ctx, 'rgba(120,132,164,0.35)', (c) => rr(c, w * 0.015, top + h * 0.02, w * 0.97, h * 0.09, h * 0.03));
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.03, top + h * 0.075, w * 0.94, h * 0.04, h * 0.02));
+    // Chevrons. Every sloped edge is EXACTLY 45 degrees: the arm's horizontal
+    // run is half the chevron's height, and the inner edge is the outer edge
+    // translated straight back along x, which preserves both slopes exactly.
+    // The painter box and the world draw box share an aspect ratio, so 45 in
+    // here is still 45 on screen. Chunk comes from the thickness `t`, not from
+    // steepening the arms — a fatter dart was the old failure.
+    // The band ends exactly at the ground line, and the chevron is exactly as
+    // tall as the band — so the POINT lands dead centre of what you can see.
+    // Running the band off the bottom of the cell looked more like a trench but
+    // pushed every point down into the last quarter of the visible mark, which
+    // is the one thing a chevron cannot survive.
+    const dx = w * 0.03, dy = top + h * 0.16, dw = w * 0.94, dh = h - dy;
+    const run = dh * 0.5, t = dh * 0.5, step = w * 0.23;
+    ctx.save();
+    ctx.beginPath();
+    rr(ctx, dx, dy, dw, dh, h * 0.05);
+    ctx.clip();
+    for (let i = -1; i < 5; i++) {
+      const cx = dx + (i + p) * step;
+      plain(ctx, '#f6d33c', (c) => {
+        c.moveTo(cx - run, dy);
+        c.lineTo(cx, dy + run);
+        c.lineTo(cx - run, dy + dh);
+        c.lineTo(cx - run - t, dy + dh);
+        c.lineTo(cx - t, dy + run);
+        c.lineTo(cx - run - t, dy);
+        c.closePath();
+      });
+    }
+    ctx.restore();
+    // The leading lip flashes on the half-cycle the chevrons arrive at it, so
+    // the pad has a beat as well as a direction.
+    plain(ctx, p < 0.5 ? '#fff6d0' : 'rgba(255,246,208,0.35)',
+      (c) => rr(c, w * 0.9, dy + dh * 0.06, w * 0.045, dh * 0.88, h * 0.04));
+  },
+
+  // The pad as it shipped before the bake-off, kept drawable so the WAS tile
+  // in that section stays an honest comparison rather than showing the new art
+  // twice. Delete it with the section.
+  boostPadLegacy(ctx, w, h) {
+    const u = Math.max(w, h);
+    shape(ctx, '#f6d33c', u, (c) => rr(c, 0, h * 0.1, w, h * 0.8, h * 0.35));
+    plain(ctx, '#e07820', (c) => {
+      for (let i = 0; i < 3; i++) {
+        const x = w * (0.16 + i * 0.26);
+        c.moveTo(x, h * 0.24); c.lineTo(x + w * 0.16, h * 0.5); c.lineTo(x, h * 0.76); c.closePath();
+      }
+    });
+  },
+
+  // B: stop drawing a decal and draw a RAMP. The silhouette itself says
+  // "up and forward" before any colour does, which is the one thing a flat
+  // pad can never do — and it is the only candidate whose shape survives
+  // being seen for a sixth of a second.
+  rampWedge(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const p = (frame % 8) / 8;
+    const lip = h * 0.26;
+    const deck = (c) => {
+      c.moveTo(w * 0.02, h * 0.96);
+      c.lineTo(w * 0.14, h * 0.72);
+      c.quadraticCurveTo(w * 0.55, lip + h * 0.02, w * 0.88, lip);
+      c.lineTo(w * 0.96, lip + h * 0.12);
+      c.lineTo(w * 0.96, h * 0.96);
+      c.closePath();
+    };
+    plain(ctx, 'rgba(16,10,28,0.28)', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.5, h * 0.04, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#f6d33c', u, deck, 'rgba(44,28,8,0.5)', 0.02);
+    ctx.save();
+    ctx.beginPath();
+    deck(ctx);
+    ctx.clip();
+    // Shaded body along the FLOOR, not under the deck surface. The first pass
+    // shaded everything below the top curve, which left a hairline of gold
+    // around a solid orange lump — the wedge lost the one thing it was drawn
+    // for, which is a lit surface climbing away from a dark base.
+    plain(ctx, '#c08420', (c) => {
+      c.moveTo(0, h);
+      c.lineTo(0, h * 0.86);
+      c.quadraticCurveTo(w * 0.55, h * 0.62, w, h * 0.5);
+      c.lineTo(w, h);
+      c.closePath();
+    });
+    // Chevrons climbing the deck, sheared to lie along the slope rather than
+    // standing upright on a ramp that is not flat.
+    for (let i = -1; i < 5; i++) {
+      const q = (i + p) / 4;
+      const tx = w * (0.04 + q * 0.9);
+      const ty = h * 0.9 - q * (h * 0.9 - lip) + h * 0.12;
+      plain(ctx, '#e07820', (c) => {
+        c.moveTo(tx, ty - h * 0.16);
+        c.lineTo(tx + w * 0.1, ty - h * 0.05);
+        c.lineTo(tx, ty + h * 0.06);
+        c.lineTo(tx - w * 0.05, ty + h * 0.06);
+        c.lineTo(tx + w * 0.05, ty - h * 0.05);
+        c.lineTo(tx - w * 0.05, ty - h * 0.16);
+        c.closePath();
+      });
+    }
+    ctx.restore();
+    plain(ctx, '#fff6d0', (c) => rr(c, w * 0.78, lip - h * 0.04, w * 0.19, h * 0.09, h * 0.04));
+    for (let i = 0; i < 3; i++) {
+      const q = (p + i / 3) % 1;
+      plain(ctx, `rgba(255,232,140,${(0.95 - q * 0.72).toFixed(2)})`,
+        (c) => rr(c, w * (0.62 + q * 0.36), lip - h * (0.06 + q * 0.24),
+          w * (0.14 + 0.12 * (1 - q)), h * 0.05, h * 0.025));
+    }
+  },
+
+  // C: a floor vent with a turbine under it. The only candidate that is a
+  // MACHINE rather than a marking — it is doing something whether or not
+  // anyone is standing on it, and the plume gives it a silhouette above the
+  // floor that survives being scrolled past.
+  rampTurbine(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const a = (frame % 8) * (Math.PI / 8);
+    const p = (frame % 8) / 8;
+    const top = h * 0.6;
+    const cx = w * 0.5, cy = top + h * 0.19;
+    const r = Math.min(w * 0.26, h * 0.16); // the window the fan lives inside
+    plain(ctx, 'rgba(16,10,28,0.28)', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.5, h * 0.045, 0, 0, Math.PI * 2));
+    // Plume first: it belongs behind the housing it is coming out of. Tapered
+    // and warm-bright at the mouth — the first pass drew flat discs at 25%
+    // alpha, which over a dark lane is smoke, not thrust.
+    for (let i = 0; i < 3; i++) {
+      const q = (p + i / 3) % 1;
+      plain(ctx, `rgba(190,255,244,${(0.8 - q * 0.66).toFixed(2)})`,
+        (c) => rr(c, cx - w * (0.1 + q * 0.2), top - q * h * 0.55 - h * 0.04,
+          w * (0.2 + q * 0.4), h * 0.07, h * 0.035));
+    }
+    fineShape(ctx, '#2b2a30', u, (c) => rr(c, 0, top, w, h * 0.37, h * 0.07), 'rgba(10,8,18,0.55)', 0.022);
+    plain(ctx, '#141420', (c) => c.arc(cx, cy, r * 1.16, 0, Math.PI * 2));
+    // The fan is CLIPPED to its window. Unclipped, four blades on a 4px-tall
+    // pad throw a pinwheel out the top of the housing and the thing stops
+    // reading as a vent at all.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.translate(cx, cy);
+    ctx.rotate(a);
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      plain(ctx, '#48c8b0', (c) => c.ellipse(r * 0.52, 0, r * 0.5, r * 0.24, 0.45, 0, Math.PI * 2));
+    }
+    ctx.restore();
+    plain(ctx, '#e6e3da', (c) => c.arc(cx, cy, r * 0.2, 0, Math.PI * 2));
+    // Two slats across the window, so it reads as a vent you are looking INTO
+    // rather than a propeller bolted to the floor.
+    plain(ctx, 'rgba(20,18,30,0.7)', (c) => {
+      c.rect(cx - r * 1.2, cy - r * 0.5, r * 2.4, r * 0.16);
+      c.rect(cx - r * 1.2, cy + r * 0.34, r * 2.4, r * 0.16);
+    });
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.03, top + h * 0.32, w * 0.94, h * 0.05, h * 0.025));
+    for (let i = 0; i < 2; i++) {
+      const q = (p + i / 2) % 1;
+      plain(ctx, `rgba(255,255,255,${(0.85 - q * 0.7).toFixed(2)})`,
+        (c) => c.arc(w * (0.26 + i * 0.48), top - q * h * 0.5, w * 0.05, 0, Math.PI * 2));
+    }
+  },
+
+  // D: the loudest option — a gate you run THROUGH. Its art is as tall as
+  // the hero, so it is legible from the far edge of the screen and the
+  // player can commit to the lane early. The cost is that a 24px structure
+  // over a 4px hitbox is the biggest art-to-box lie in the game; it is only
+  // defensible because a boost pad cannot hurt you.
+  rampGate(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const p = (frame % 8) / 8;
+    const chev = (c, cx, y0, y1) => {
+      const m = (y0 + y1) / 2;
+      c.moveTo(cx, y0);
+      c.lineTo(cx + w * 0.1, m);
+      c.lineTo(cx, y1);
+      c.lineTo(cx - w * 0.05, y1);
+      c.lineTo(cx + w * 0.05, m);
+      c.lineTo(cx - w * 0.05, y0);
+      c.closePath();
+    };
+    plain(ctx, 'rgba(16,10,28,0.28)', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.5, h * 0.03, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.06, h * 0.9, w * 0.88, h * 0.075, h * 0.035),
+      'rgba(44,28,8,0.5)', 0.016);
+    ctx.save();
+    ctx.beginPath();
+    rr(ctx, w * 0.06, h * 0.9, w * 0.88, h * 0.075, h * 0.035);
+    ctx.clip();
+    for (let i = -1; i < 4; i++) plain(ctx, '#e07820', (c) => chev(c, w * (0.06 + (i + p) * 0.3), h * 0.9, h * 0.975));
+    ctx.restore();
+    for (const px of [w * 0.04, w * 0.82]) {
+      fineShape(ctx, '#2b2a30', u, (c) => rr(c, px, h * 0.24, w * 0.14, h * 0.68, w * 0.05),
+        'rgba(10,8,18,0.55)', 0.016);
+      plain(ctx, '#48c8b0', (c) => rr(c, px + w * 0.03, h * 0.27, w * 0.08, h * 0.6, w * 0.035));
+    }
+    fineShape(ctx, '#1f2436', u, (c) => rr(c, 0, h * 0.05, w, h * 0.2, h * 0.045), 'rgba(8,8,16,0.55)', 0.016);
+    ctx.save();
+    ctx.beginPath();
+    rr(ctx, w * 0.04, h * 0.08, w * 0.92, h * 0.14, h * 0.03);
+    ctx.clip();
+    for (let i = -1; i < 4; i++) plain(ctx, '#f6d33c', (c) => chev(c, w * (0.04 + (i + p) * 0.3), h * 0.08, h * 0.22));
+    ctx.restore();
+    // Chasing bulbs: one lit, advancing. A marquee is the arcade's own way
+    // of saying "this way", which is the fiction the whole game sits in.
+    for (let i = 0; i < 5; i++) {
+      const lit = i === Math.floor(p * 8) % 5;
+      plain(ctx, lit ? '#fff6d0' : 'rgba(246,211,60,0.35)',
+        (c) => c.arc(w * (0.12 + i * 0.19), h * 0.27, w * (lit ? 0.055 : 0.04), 0, Math.PI * 2));
+    }
+  },
+
+  // --- OBJECTIVE FLAG -----------------------------------------------
+  // The existing plugFlag is a 2x2 chequer on a pole, authored for the 5px
+  // MISSION slot and static. These four are the same idea drawn to be seen:
+  // every one of them ripples, and every one is authored SQUARE so it still
+  // works as a plug-row icon if it ends up back there instead of, or as
+  // well as, standing in the world.
+
+  // A: the classic, waving. Chequer cloth on a teal pole with a gold
+  // finial, the sheet twisting on a travelling wave rather than sliding.
+  flagWave(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const ph = ((frame % 8) / 8) * Math.PI * 2;
+    flagPole(ctx, w, h, u);
+    fineShape(ctx, '#f6d33c', u, (c) => c.arc(w * 0.16, h * 0.075, w * 0.09, 0, Math.PI * 2),
+      'rgba(50,34,6,0.5)', 0.026);
+    chequerCloth(ctx, u, w * 0.2, h * 0.12, w * 0.97, h * 0.62, h * 0.055, ph, frame % 8);
+  },
+
+  // B: not a race flag at all — a pennant with the game's own lightning
+  // bolt on it. The most asymmetric silhouette of the four and the only one
+  // that reads as ENERGY rather than as a finish line, which matters when
+  // the thing being marked is a plug socket.
+  flagPennant(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const ph = ((frame % 8) / 8) * Math.PI * 2;
+    const x0 = w * 0.2, x1 = w * 0.99, y0 = h * 0.1, y1 = h * 0.6;
+    const amp = h * 0.06;
+    flagPole(ctx, w, h, u);
+    const pennant = (c) => {
+      c.moveTo(x0, y0);
+      c.quadraticCurveTo(x0 + (x1 - x0) * 0.5, y0 + Math.sin(ph) * amp * 1.6,
+        x1, (y0 + y1) / 2 + Math.sin(ph + 1.2) * amp * 2);
+      c.quadraticCurveTo(x0 + (x1 - x0) * 0.5, y1 + Math.sin(ph + 0.6) * amp * 1.6, x0, y1);
+      c.closePath();
+    };
+    fineShape(ctx, '#48c8b0', u, pennant, 'rgba(10,34,30,0.55)', 0.028);
+    ctx.save();
+    ctx.beginPath();
+    pennant(ctx);
+    ctx.clip();
+    // The bolt shears with the snap instead of sitting flat on a moving
+    // sheet — a printed mark that ignores the cloth is what makes a waving
+    // flag read as a sticker.
+    const k = Math.sin(ph + 0.4) * 0.14;
+    ctx.save();
+    ctx.transform(1, 0, k, 1, -k * (y0 + y1) / 2, 0);
+    plain(ctx, '#e6e3da', (c) => {
+      const bx = x0 + (x1 - x0) * 0.24, by = y0 + (y1 - y0) * 0.14;
+      const bw = (x1 - x0) * 0.34, bh = (y1 - y0) * 0.72;
+      c.moveTo(bx + bw * 0.62, by);
+      c.lineTo(bx, by + bh * 0.56);
+      c.lineTo(bx + bw * 0.44, by + bh * 0.56);
+      c.lineTo(bx + bw * 0.3, by + bh);
+      c.lineTo(bx + bw, by + bh * 0.38);
+      c.lineTo(bx + bw * 0.5, by + bh * 0.38);
+      c.closePath();
+    });
+    ctx.restore();
+    plain(ctx, 'rgba(230,255,248,0.4)', (c) => c.rect(x0, y0, (x1 - x0) * 0.07, y1 - y0));
+    ctx.restore();
+  },
+
+  // C: flag plus a rotating beacon. The lamp sweeps a full turn over the
+  // eight frames, so this is the only candidate with motion that does not
+  // depend on the cloth — it still animates at 5px, where a ripple has
+  // nowhere to happen.
+  flagBeacon(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const f = frame % 8;
+    const beam = (f / 8) * Math.PI * 2;
+    // Two cones, not one: a short bright throw inside a longer soft one. A
+    // single low-alpha wedge a whole box long went olive over the lane and
+    // read as a stain rather than as light.
+    plain(ctx, 'rgba(255,214,90,0.16)', (c) => {
+      c.moveTo(w * 0.16, h * 0.13);
+      c.arc(w * 0.16, h * 0.13, w * 0.72, beam - 0.3, beam + 0.3);
+      c.closePath();
+    });
+    plain(ctx, 'rgba(255,238,170,0.34)', (c) => {
+      c.moveTo(w * 0.16, h * 0.13);
+      c.arc(w * 0.16, h * 0.13, w * 0.36, beam - 0.24, beam + 0.24);
+      c.closePath();
+    });
+    flagPole(ctx, w, h, u);
+    chequerCloth(ctx, u, w * 0.2, h * 0.34, w * 0.96, h * 0.74, h * 0.045, (f / 8) * Math.PI * 2, f);
+    plain(ctx, '#2b2a30', (c) => rr(c, w * 0.05, h * 0.13, w * 0.22, h * 0.07, w * 0.025));
+    fineShape(ctx, Math.cos(beam) > 0.35 ? '#fff6d0' : '#f6d33c', u,
+      (c) => c.arc(w * 0.16, h * 0.14, w * 0.11, Math.PI, 0), 'rgba(50,34,6,0.5)', 0.026);
+  },
+
+  // D: the literal reading of the name. Cream cloth carrying the plug the
+  // whole mechanic is named after — the only candidate that says WHICH
+  // objective, not just that there is one. Judge whether the prongs survive
+  // the ripple, since that is where it can fall apart.
+  flagPlug(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const ph = ((frame % 8) / 8) * Math.PI * 2;
+    const x0 = w * 0.2, x1 = w * 0.97, y0 = h * 0.12, y1 = h * 0.62;
+    const amp = h * 0.055;
+    flagPole(ctx, w, h, u);
+    fineShape(ctx, '#f6d33c', u, (c) => c.arc(w * 0.16, h * 0.075, w * 0.09, 0, Math.PI * 2),
+      'rgba(50,34,6,0.5)', 0.026);
+    const cloth = (c) => clothPath(c, x0, y0, x1, y1, amp, ph);
+    fineShape(ctx, '#e6e3da', u, cloth, 'rgba(30,22,14,0.5)', 0.028);
+    ctx.save();
+    ctx.beginPath();
+    cloth(ctx);
+    ctx.clip();
+    const cx = x0 + (x1 - x0) * 0.52;
+    const cy = (y0 + y1) / 2 + clothWave(0.52, ph, amp);
+    const s = (y1 - y0) * 0.62;
+    // Prongs proud of the body, body clearly narrower than it is wide, cord
+    // thin. Every one of those is what keeps this off reading as one dark
+    // blob once the sheet is moving and the whole mark is 4px across.
+    plain(ctx, '#2f8f84', (c) => {
+      c.rect(cx - s * 0.3, cy - s * 0.54, s * 0.16, s * 0.44);
+      c.rect(cx + s * 0.14, cy - s * 0.54, s * 0.16, s * 0.44);
+    });
+    plain(ctx, '#2b2a30', (c) => rr(c, cx - s * 0.46, cy - s * 0.14, s * 0.92, s * 0.5, s * 0.14));
+    stroke(ctx, '#2b2a30', Math.max(0.18, u * 0.032), (c) => {
+      c.moveTo(cx + s * 0.1, cy + s * 0.36);
+      c.quadraticCurveTo(cx + s * 0.56, cy + s * 0.46, cx + s * 0.6, cy + s * 0.04);
+    });
+    plain(ctx, 'rgba(24,16,34,0.14)', (c) => {
+      const bu = (0.1 + ((frame % 8) / 8) * 0.9) % 1;
+      c.rect(x0 + (x1 - x0) * bu - (x1 - x0) * 0.08, y0 - amp * 2, (x1 - x0) * 0.16, (y1 - y0) + amp * 4);
+    });
+    ctx.restore();
+    ctx.beginPath();
+    cloth(ctx);
+    ctx.strokeStyle = 'rgba(30,22,14,0.5)';
+    ctx.lineWidth = Math.max(0.2, u * 0.028);
+    ctx.stroke();
+  },
+
+  // --- RELAY PORTAL -------------------------------------------------
+  // The shipped portal is three ellipses: a translucent teal blob, a ring,
+  // and a highlight arc, pulsed 2px by drawPortal(). It is the hinge of the
+  // whole run — you change hero through it — and it currently looks like a
+  // decal. All four candidates are drawn into the same 12x40-ish column so
+  // the pass-through box stays where the player has learned it is; what
+  // changes is entirely what happens INSIDE that column.
+
+  // A: a built object. Posts, a dome and a thickness, with the energy as a
+  // membrane climbing the opening. Reads as ARCHITECTURE — something the
+  // arcade installed — which is the most legible thing to run at.
+  portalArch(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const p = (frame % 12) / 12;
+    // Opening widened to 60% of the column and the crown flattened. The first
+    // pass was a 52%-wide semicircular arch with a gold cap on top, which from
+    // any distance was a bottle, not a doorway.
+    const ix0 = w * 0.2, ix1 = w * 0.8, itop = h * 0.16, ibot = h * 0.98;
+    plain(ctx, 'rgba(72,224,200,0.24)', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.52, h * 0.026, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#48c8b0', u, (c) => archPath(c, w * 0.03, w * 0.97, h * 0.04, h * 0.99),
+      'rgba(10,34,30,0.55)', 0.012);
+    plain(ctx, '#2f8f84', (c) => archPath(c, w * 0.12, w * 0.88, h * 0.1, h * 0.99));
+    ctx.save();
+    ctx.beginPath();
+    archPath(ctx, ix0, ix1, itop, ibot);
+    ctx.clip();
+    plain(ctx, '#0d3336', (c) => c.rect(0, 0, w, h));
+    for (let i = 0; i < 6; i++) {
+      const q = ((i / 6) + p) % 1;
+      const s = Math.sin(q * Math.PI);
+      plain(ctx, `rgba(196,255,244,${(0.28 + 0.6 * s).toFixed(2)})`,
+        (c) => c.ellipse(w * 0.5, ibot - q * (ibot - itop), w * 0.3 * (0.55 + 0.45 * s), h * 0.02, 0, 0, Math.PI * 2));
+    }
+    plain(ctx, 'rgba(210,255,246,0.32)', (c) => rr(c, w * 0.43, itop, w * 0.14, ibot - itop, w * 0.07));
+    ctx.restore();
+    ctx.beginPath();
+    archPath(ctx, ix0, ix1, itop, ibot);
+    ctx.strokeStyle = 'rgba(8,26,26,0.5)';
+    ctx.lineWidth = Math.max(0.2, u * 0.012);
+    ctx.stroke();
+    plain(ctx, 'rgba(230,255,248,0.45)', (c) => rr(c, w * 0.06, h * 0.4, w * 0.05, h * 0.42, w * 0.025));
+    // Gold sill rather than a gold crown: it reads as a threshold you step
+    // over, and it is the mark that anchors the whole thing to the floor.
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.06, h * 0.93, w * 0.88, h * 0.055, h * 0.022));
+    plain(ctx, 'rgba(10,34,30,0.4)', (c) => {
+      for (const [rx, ry] of [[0.105, 0.24], [0.895, 0.24], [0.105, 0.88], [0.895, 0.88]]) {
+        c.moveTo(w * rx + w * 0.035, h * ry);
+        c.arc(w * rx, h * ry, w * 0.035, 0, Math.PI * 2);
+      }
+    });
+  },
+
+  // B: no object at all — a tear. White-hot core, teal bleed, a magenta
+  // fringe down one edge, and a jagged outline that re-cuts itself every
+  // frame. The most "this should not be here" of the four, and the only one
+  // whose edges never settle.
+  portalRift(ctx, w, h, frame = 0) {
+    const f = frame % 12;
+    // Eleven samples a side, joined by curves rather than straight segments.
+    // The first pass used seven and lineTo, which is fine at the 14px the lane
+    // draws — and reads as a stack of faceted slabs the moment anything draws
+    // it bigger, which the credits hand-off does. Facet length scales with the
+    // draw size; a curve does not.
+    const N = 11;
+    const jag = (i, seed) => Math.sin((i * 2.7 + f * 1.31 + seed) * 1.7) * w * 0.055;
+    const rift = (grow, off = 0) => (c) => {
+      const pts = [];
+      for (let side = -1; side <= 1; side += 2) {
+        for (let n = 0; n <= N; n++) {
+          const i = side < 0 ? n : N - n;
+          const t01 = i / N;
+          const taper = Math.sin(t01 * Math.PI);
+          // Both the width and the jitter fade out at the ends, so the cut
+          // closes to a point instead of a blunt stub.
+          const half = (w * 0.145 * Math.pow(taper, 0.75) + w * 0.012) * grow;
+          const x = w * 0.5 + off + side * half + jag(i, side * 3) * taper;
+          const y = h * (0.03 + t01 * 0.94);
+          // The two tips are entered twice: a repeated control point pulls the
+          // smoothing onto it, so the ends stay sharp while everything between
+          // them rounds off.
+          if (i === 0 || i === N) pts.push([x, y]);
+          pts.push([x, y]);
+        }
+      }
+      smoothClosedPath(c, pts);
+    };
+    // A dark halo under everything, and a dark core surround inside the teal.
+    // Neither shows on the packs the rift was drawn against — over crypt or
+    // neon they are invisible — and both are what saves it on the light ones.
+    // The read test put this over all nine cabinets and the white core simply
+    // disappeared into the doodle sheet and the frost sky: a light-on-light
+    // shape with no dark anywhere in it has nothing to be seen against, and
+    // this is the one prop in the game the player has to aim at.
+    plain(ctx, 'rgba(16,10,28,0.3)', rift(2.7));
+    plain(ctx, 'rgba(72,224,200,0.16)', rift(2.3));
+    // Chromatic fringe: the same cut, offset a twentieth of the column, so
+    // the edge separates into colour the way a bad signal does.
+    plain(ctx, 'rgba(232,116,214,0.3)', rift(1.3, -w * 0.05));
+    plain(ctx, 'rgba(72,224,200,0.62)', rift(1.25));
+    plain(ctx, 'rgba(10,52,54,0.85)', rift(0.78));
+    plain(ctx, '#eafff8', rift(0.46));
+    for (let i = 0; i < 3; i++) {
+      const q = ((f / 12) + i / 3) % 1;
+      plain(ctx, `rgba(234,255,248,${(0.75 * (1 - q)).toFixed(2)})`,
+        (c) => c.arc(w * (0.5 + (i - 1) * 0.22 * q), h * (0.9 - q * 0.8), w * 0.05, 0, Math.PI * 2));
+    }
+  },
+
+  // C: a column of spinning rings. Each ring is one horizontal ellipse
+  // whose width tracks its own phase, so the stack reads as one surface
+  // rotating rather than as nine separate hoops. No frame, no housing —
+  // pure effect, and the cheapest of the four to read at true size.
+  portalRings(ctx, w, h, frame = 0) { portalRingsArt(ctx, w, h, frame); },
+
+  // The two AFTERMATH strips of the shipped portal. Both are the same drawing
+  // as portalRings with a state argument — see portalRingsArt for what each
+  // state does and why they exist as separate cached painters rather than as
+  // extra frames on the live cycle.
+  portalRingsSpent(ctx, w, h, frame = 0) {
+    portalRingsArt(ctx, w, h, 0, { spend: frame / (PORTAL_SPEND_FRAMES - 1) });
+  },
+  portalRingsWilt(ctx, w, h, frame = 0) {
+    portalRingsArt(ctx, w, h, 0, { wilt: frame / (PORTAL_WILT_FRAMES - 1) });
+  },
+
+  // D: the fiction, taken literally. MASHENSTEIN is an arcade and the
+  // mechanic is called plugging in — so the way through is a screen on a
+  // plinth with a cable running out of it. Vortex, scanlines, a live LED.
+  // The only candidate that could not belong to any other game.
+  portalTube(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    const p = (frame % 12) / 12;
+    plain(ctx, 'rgba(16,10,28,0.3)', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.5, h * 0.022, 0, 0, Math.PI * 2));
+    stroke(ctx, '#48c8b0', Math.max(0.35, w * 0.085), (c) => {
+      c.moveTo(w * 0.24, h * 0.94);
+      c.quadraticCurveTo(w * -0.08, h * 0.88, w * 0.04, h * 0.99);
+    });
+    // Wider, squarer plinth and a squarer bezel. Round corners on a tall
+    // silver slab is a phone; an arcade tube is a heavy frame with a small
+    // radius, and it needs a base you can see it is bolted to.
+    fineShape(ctx, '#2b2a30', u, (c) => rr(c, w * 0.02, h * 0.85, w * 0.96, h * 0.14, h * 0.012),
+      'rgba(8,8,16,0.55)', 0.012);
+    fineShape(ctx, '#8f9bb0', u, (c) => rr(c, w * 0.02, h * 0.02, w * 0.96, h * 0.85, w * 0.09),
+      'rgba(26,34,50,0.6)', 0.014);
+    plain(ctx, '#39414f', (c) => rr(c, w * 0.08, h * 0.05, w * 0.84, h * 0.79, w * 0.07));
+    const sx = w * 0.13, sy = h * 0.075, sw = w * 0.74, sh = h * 0.75;
+    plain(ctx, '#0d1c24', (c) => rr(c, sx, sy, sw, sh, w * 0.06));
+    ctx.save();
+    ctx.beginPath();
+    rr(ctx, sx, sy, sw, sh, w * 0.06);
+    ctx.clip();
+    ctx.save();
+    ctx.translate(sx + sw / 2, sy + sh / 2);
+    for (let i = 0; i < 5; i++) {
+      const q = ((i / 5) + p) % 1;
+      stroke(ctx, `rgba(72,224,200,${(0.85 * q).toFixed(2)})`, Math.max(0.25, w * 0.06),
+        (c) => c.ellipse(0, 0, sw * (0.06 + 0.42 * (1 - q)), sh * (0.04 + 0.46 * (1 - q)), 0,
+          p * 6.3 + i, p * 6.3 + i + 4.2));
+    }
+    plain(ctx, '#eafff8', (c) => c.ellipse(0, 0, sw * 0.1, sh * 0.05, 0, 0, Math.PI * 2));
+    ctx.restore();
+    plain(ctx, 'rgba(8,20,26,0.32)', (c) => {
+      for (let y = sy; y < sy + sh; y += h * 0.035) c.rect(sx, y, sw, h * 0.013);
+    });
+    ctx.restore();
+    plain(ctx, p < 0.5 ? '#f6d33c' : 'rgba(246,211,60,0.3)',
+      (c) => c.arc(w * 0.5, h * 0.92, w * 0.055, 0, Math.PI * 2));
+  },
 };
+
+// ------------------------------------------------- relay portal states
+// How long the two aftermath strips are, in frames and in seconds. The frame
+// counts are what the raster cache stores; the times are what drawPortal()
+// divides elapsed seconds by. They live here rather than at the call site
+// because the strips are cut for them: six frames over a third of a second is
+// a discharge, six frames over half a second is a wilt, and swapping either
+// number without recutting the other would change what the drawing means.
+export const PORTAL_SPEND_FRAMES = 6, PORTAL_SPEND_TIME = 0.34;
+export const PORTAL_WILT_FRAMES = 6, PORTAL_WILT_TIME = 0.5;
+// Where the discharge ends and the collapse begins, as a fraction of a spend.
+// The blowout is deliberately shorter than one frame's worth of the strip is
+// wide: it has to land entirely on frame 0 so the brightest moment is the
+// frame the hero is standing in the doorway, not the one after it.
+const PORTAL_FLASH = 0.2;
+// props.js otherwise hardcodes every colour. The portal is the exception
+// because its aftermath is a continuous fade of the SAME hardware rather than
+// a second palette — writing out six darkened variants of five colours would
+// be thirty constants nobody could keep in step with the live five.
+function portalRgb(c) {
+  const n = parseInt(String(c).replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function portalMix(a, b, t) {
+  const A = portalRgb(a), B = portalRgb(b);
+  return `rgb(${Math.round(A[0] + (B[0] - A[0]) * t)},${Math.round(A[1] + (B[1] - A[1]) * t)},${Math.round(A[2] + (B[2] - A[2]) * t)})`;
+}
+const PORTAL_INK = '#12262a';   // what dead portal hardware darkens toward
+
+// The shipped relay portal, in three states.
+//
+// LIVE (both zeroes) is the drawing as authored: a bolted plate with thirteen
+// hoops of light standing on it.
+//
+// SPEND is a hero going THROUGH. It opens on a white blowout — the shaft and
+// every hoop overdriven for one frame — and then the hoops sink into the slot
+// and go out, leaving the plinth dark. The hoops do not fade in place: they
+// are pulled down into the thing they came out of, because a doorway that has
+// just been used should look emptied rather than switched off. The three that
+// appear to come forward with the hero are particles, thrown by the run — a
+// cached sprite cannot follow something that has left its own box.
+//
+// WILT is a hero going OVER. No flash, nothing discharges: the column simply
+// sags — the stack compresses toward the plate, the hoops narrow and dim, the
+// shaft thins out. The plinth stays mostly lit, because nothing was spent. It
+// has to read as clearly DIFFERENT from a spend at a glance and while moving
+// off the back of the frame, which is the whole reason it is a separate strip
+// rather than a shorter spend.
+//
+// Both are separate painters rather than extra frames on portalRings because
+// propSprite() takes frame indices modulo PROP_FRAMES — a seventh frame on a
+// twelve-frame cycle would silently be frame 0 of the live loop.
+function portalRingsArt(ctx, w, h, frame = 0, state = {}) {
+  // spend is null for a LIVE portal and 0..1 for one being spent — a spend of
+  // exactly 0 is the discharge frame, not the live drawing, so the two cannot
+  // share a value.
+  const { spend = null, wilt = 0 } = state;
+  const s = spend == null ? 0 : spend;
+  const u = Math.max(w, h);
+  const p = (frame % 12) / 12;
+  const RINGS = 13;             // thirteen thin hoops, not nine fat ones
+  const BASE_Y = h * 0.945;
+  const WIDEST = 0.44;          // half-width of the widest ring, in w
+  // The blowout, and how far the hoops have collapsed. The flash is gone by
+  // the second frame of the strip; the sink runs the whole length of it.
+  const flash = spend == null ? 0 : Math.max(0, 1 - s / PORTAL_FLASH);
+  const sink = s;
+  // How dead the hardware looks. A spend kills it; a miss only dims it,
+  // because a portal nobody used has not spent anything.
+  const plinthOff = Math.min(1, s * 0.85 + wilt * 0.3);
+  const lampOff = Math.min(1, s * 1.15 + wilt * 0.45);
+  const dark = (c, amount) => portalMix(c, PORTAL_INK, amount);
+  // The base is a BOLTED PLATE, not a disc. An ellipse of light under a
+  // column of light is more of the same substance, so it floated: it read as
+  // the bottom ring rather than as the thing the rings come out of. This is
+  // hard-edged, flat-bottomed, wider than the widest ring (0.88w), and it
+  // has a front face and two feet — a fabricated object sitting ON a floor,
+  // which is the only way a stack of light gets anchored to one.
+  plain(ctx, 'rgba(10,26,28,0.35)', (c) => rr(c, w * 0.03, h * 0.975, w * 0.94, h * 0.022, h * 0.008));
+  // Feet first, so the plate's own contour closes over their tops.
+  plain(ctx, dark('#2a6f68', plinthOff * 0.7), (c) => {
+    rr(c, w * 0.07, BASE_Y + h * 0.03, w * 0.12, h * 0.045, h * 0.008);
+    rr(c, w * 0.81, BASE_Y + h * 0.03, w * 0.12, h * 0.045, h * 0.008);
+  });
+  // Front face: the thickness you are looking at slightly from above.
+  fineShape(ctx, dark('#2f8f84', plinthOff * 0.7), u,
+    (c) => rr(c, w * 0.05, BASE_Y + h * 0.006, w * 0.9, h * 0.045, h * 0.01),
+    'rgba(8,30,28,0.6)', 0.01);
+  // Top plate, proud of the front face on both sides so it reads as a lip.
+  // It takes the discharge: the rim is the part of the hardware closest to the
+  // slot, so it is the part that should look overdriven when the slot blows.
+  fineShape(ctx, flash > 0 ? portalMix('#48c8b0', '#ffffff', flash * 0.8) : dark('#48c8b0', plinthOff * 0.75), u,
+    (c) => rr(c, w * 0.01, BASE_Y - h * 0.022, w * 0.98, h * 0.034, h * 0.009),
+    'rgba(8,30,28,0.6)', 0.01);
+  // The slot the column rises out of, and the light standing in it.
+  plain(ctx, 'rgba(8,38,40,0.8)', (c) => rr(c, w * 0.33, BASE_Y - h * 0.016, w * 0.34, h * 0.018, h * 0.006));
+  if (lampOff < 1) {
+    ctx.globalAlpha = 1 - lampOff;
+    // The slot flares wider than its own light for the length of the flash —
+    // this is the only place the discharge has anywhere to go.
+    const lampW = w * (0.28 + 0.34 * flash);
+    plain(ctx, '#c8fff0', (c) => rr(c, w * 0.5 - lampW / 2, BASE_Y - h * 0.013, lampW, h * 0.009, h * 0.004));
+    ctx.globalAlpha = 1;
+  }
+  // The shaft of light, stopping ON the plinth rather than running through it.
+  // It blows out with the flash, then goes down with the hoops.
+  const shaftAlpha = Math.max(0, (0.16 + 0.5 * flash) * (1 - sink) * (1 - wilt * 0.88));
+  const shaftTop = h * 0.07 + (BASE_Y - h * 0.165) * Math.max(sink, wilt * 0.5);
+  if (shaftAlpha > 0.01) {
+    const shaftW = w * (0.2 + 0.14 * flash);
+    plain(ctx, `rgba(200,255,240,${shaftAlpha.toFixed(3)})`,
+      (c) => rr(c, w * 0.5 - shaftW / 2, shaftTop, shaftW, Math.max(0, BASE_Y - h * 0.025 - shaftTop), w * 0.1));
+  }
+  for (let i = 0; i < RINGS; i++) {
+    const t01 = i / (RINGS - 1);
+    const a = p * Math.PI * 2 + t01 * 3.2;
+    // Where this hoop sits, once the state has had its way with it. A spend
+    // drags every hoop down onto the slot; a wilt compresses the stack toward
+    // the plate without moving the bottom of it, which is what makes one read
+    // as draining and the other as slumping.
+    const y0 = h * 0.075 + t01 * (BASE_Y - h * 0.11);
+    const y = y0 + (BASE_Y - h * 0.02 - y0) * (sink * sink * (1 - t01 * 0.35) + wilt * 0.5);
+    // Wide hoops narrow as they go: the column closes as much as it falls.
+    const halfW = w * (0.14 + (WIDEST - 0.14) * Math.abs(Math.cos(a)))
+      * (1 - sink * 0.85) * (1 - wilt * 0.42) * (1 + flash * 0.08);
+    if (halfW < w * 0.01) continue;
+    const ring = (c) => c.ellipse(w * 0.5, y, halfW, h * 0.015, 0, 0, Math.PI * 2);
+    // BOTH passes fade together. Fading only the bright one leaves the dark
+    // backing behind at full strength — a spent portal ended on a grey smear
+    // standing where the column had been, and a wilted one went muddy rather
+    // than dim, because the separation pass was outliving the thing it was
+    // separating.
+    ctx.globalAlpha = Math.max(0, (1 - sink) * (1 - wilt * 0.62));
+    // A dark pass under every ring. Over crypt or neon it is invisible; over
+    // the doodle sheet and the frost sky it is the only reason the pale half
+    // of the stack does not dissolve into the background. Same two-pass trick
+    // the plug row's frame uses, and the same reason. Kept only a little
+    // wider than the hoop it backs — at twice the width it stopped reading as
+    // separation and started reading as a thick grey donut with a bright
+    // core, which is what made the column look coarse rather than fine.
+    stroke(ctx, 'rgba(10,30,34,0.28)', Math.max(0.3, w * 0.058), ring);
+    // Lit half and shadowed half. The flash overrides both — a discharge has
+    // no near side and far side — and the wilt drags both toward the dim
+    // teal, so the stack loses its contrast before it loses its shape.
+    const lit = Math.cos(a) > 0 ? '#c8fff0' : '#3fa9a0';
+    const col = flash > 0 ? portalMix(lit, '#ffffff', flash)
+      : wilt > 0 ? portalMix(lit, '#2a6f68', wilt * 0.8) : lit;
+    // The discharge is BLOOM, not weight. Widening the hoop's own stroke was
+    // the first attempt and it read as the hoops getting chunky — a thicker
+    // white band is a fatter object, not a brighter one. Light spills OUTWARD
+    // instead: two wide, faint passes of the same colour around the hoop, with
+    // the core stroke left at exactly the width it has when the portal is
+    // idle. Nothing about the hoop changes except what surrounds it.
+    if (flash > 0) {
+      const core = ctx.globalAlpha;
+      for (const [mult, a01] of [[4.4, 0.1], [2.2, 0.26]]) {
+        ctx.globalAlpha = core * flash * a01;
+        stroke(ctx, col, Math.max(0.4, w * 0.034 * mult), ring);
+      }
+      ctx.globalAlpha = core;
+    }
+    stroke(ctx, col, Math.max(0.2, w * 0.034), ring);
+    ctx.globalAlpha = 1;
+  }
+  // The two loose sparks orbiting the column. They are the first thing to go
+  // in either state: they are the portal's idle fidget, and a portal that has
+  // discharged or given up is not fidgeting.
+  const sparkAlpha = Math.max(0, 1 - Math.max(sink * 2.2, wilt * 1.6));
+  if (sparkAlpha > 0.01) {
+    ctx.globalAlpha = sparkAlpha;
+    for (let i = 0; i < 2; i++) {
+      const a = p * Math.PI * 2 * (i ? -1 : 1) + i * 2.1;
+      plain(ctx, flash > 0 ? '#ffffff' : '#fff6d0',
+        (c) => c.arc(w * (0.5 + 0.42 * Math.cos(a)), h * (0.3 + i * 0.34 + 0.06 * Math.sin(a)), w * 0.04, 0, Math.PI * 2));
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ------------------------------------------- bake-off candidate helpers
+// Shared by the flag and portal candidates above. Hoisted function
+// declarations, so they can live next to the block they serve rather than
+// at the top of a file whose other helpers are all shipped.
+
+// The height of a rippling sheet at 0..1 across it. Amplitude grows toward
+// the fly end, because the hoist is nailed to a pole and cannot move.
+function clothWave(t01, phase, amp) {
+  return Math.sin(phase + t01 * 4.6) * amp * (0.25 + t01);
+}
+
+// One cloth outline. The bottom edge runs the same wave a fifth of a cycle
+// behind the top one, so the sheet TWISTS instead of sliding up and down as
+// a rigid band. Control points are placed so each quadratic passes through
+// the sampled midpoint.
+function clothPath(c, x0, y0, x1, y1, amp, phase) {
+  const dx = x1 - x0;
+  const top = (t01) => y0 + clothWave(t01, phase, amp);
+  const bot = (t01) => y1 + clothWave(t01, phase + 0.9, amp);
+  c.moveTo(x0, top(0));
+  for (let i = 1; i <= 4; i++) {
+    const a = (i - 1) / 4, b = i / 4, m = (a + b) / 2;
+    c.quadraticCurveTo(x0 + dx * m, top(m) * 2 - (top(a) + top(b)) / 2, x0 + dx * b, top(b));
+  }
+  c.lineTo(x1, bot(1));
+  for (let i = 4; i >= 1; i--) {
+    const a = i / 4, b = (i - 1) / 4, m = (a + b) / 2;
+    c.quadraticCurveTo(x0 + dx * m, bot(m) * 2 - (bot(a) + bot(b)) / 2, x0 + dx * b, bot(b));
+  }
+  c.closePath();
+}
+
+// Cream sheet, two dark cells on the diagonal, a travelling fold shadow,
+// and the contour restated on top so the ripple keeps an edge over the dark
+// cells at any size. The cells ride the local wave rather than sitting flat.
+function chequerCloth(ctx, u, x0, y0, x1, y1, amp, phase, frame) {
+  const cloth = (c) => clothPath(c, x0, y0, x1, y1, amp, phase);
+  fineShape(ctx, '#e6e3da', u, cloth, 'rgba(30,22,14,0.5)', 0.028);
+  ctx.save();
+  ctx.beginPath();
+  cloth(ctx);
+  ctx.clip();
+  const cw = (x1 - x0) / 2, ch = (y1 - y0) / 2;
+  plain(ctx, '#2b2a30', (c) => {
+    for (const [ix, iy] of [[0, 0], [1, 1]]) {
+      const shift = clothWave((ix + 0.5) / 2, phase, amp);
+      const ry = iy === 0 ? y0 - amp * 1.5 : y0 + ch;
+      c.rect(x0 + ix * cw, ry + shift, cw, ch + amp * 1.5);
+    }
+  });
+  plain(ctx, 'rgba(24,16,34,0.14)', (c) => {
+    const bu = (0.1 + (frame / 8) * 0.9) % 1;
+    c.rect(x0 + (x1 - x0) * bu - (x1 - x0) * 0.08, y0 - amp * 2, (x1 - x0) * 0.16, (y1 - y0) + amp * 4);
+  });
+  ctx.restore();
+  ctx.beginPath();
+  cloth(ctx);
+  ctx.strokeStyle = 'rgba(30,22,14,0.5)';
+  ctx.lineWidth = Math.max(0.2, u * 0.028);
+  ctx.stroke();
+}
+
+// The shared pole: full height, teal, with a lit left edge. A flag without
+// a hard vertical to hang off is a rectangle.
+function flagPole(ctx, w, h, u) {
+  fineShape(ctx, '#3ba894', u, (c) => rr(c, w * 0.09, h * 0.06, w * 0.14, h * 0.92, w * 0.055),
+    'rgba(10,34,30,0.55)', 0.026);
+  plain(ctx, 'rgba(230,255,248,0.45)', (c) => rr(c, w * 0.115, h * 0.16, w * 0.05, h * 0.3, w * 0.025));
+}
+
+// A closed path through `pts` with every corner rounded off: each point is used
+// as a quadratic control and the curve passes through the midpoints between
+// them. Straight segments between sampled points look identical to this at the
+// size a prop is authored for and fall apart as facets the moment something
+// draws it larger, because facet length scales with the draw and curvature
+// does not. Repeat a point to hold a corner sharp.
+function smoothClosedPath(c, pts) {
+  const n = pts.length;
+  if (n < 3) return;
+  const mid = (i, j) => [(pts[i][0] + pts[j][0]) / 2, (pts[i][1] + pts[j][1]) / 2];
+  const [sx, sy] = mid(n - 1, 0);
+  c.moveTo(sx, sy);
+  for (let i = 0; i < n; i++) {
+    const [mx, my] = mid(i, (i + 1) % n);
+    c.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+  }
+  c.closePath();
+}
+
+// A doorway outline: two uprights closed by a semicircular head.
+function archPath(c, x0, x1, top, bottom) {
+  const r = (x1 - x0) / 2;
+  c.moveTo(x0, bottom);
+  c.lineTo(x0, top + r);
+  c.arc(x0 + r, top + r, r, Math.PI, 0, false);
+  c.lineTo(x1, bottom);
+  c.closePath();
+}
 
 // ------------------------------------------------------------- cache
 const cache = new Map();
 const SS = 8; // supersample factor for the offscreen rasterization
+
+// Which drawing the relay portal ships. Every place that paints a portal —
+// the run, the tutorial, the credits hand-off, the menu legend — reads this,
+// so swapping the art is one edit rather than four that can drift apart.
+export const PORTAL_SPRITE = 'portalRings';
+// Its aftermath: the strip played when a hero goes THROUGH one, and the strip
+// played when one goes over the top. Both are cut to portalRings' geometry, so
+// they are named next to it — swapping PORTAL_SPRITE to another candidate means
+// cutting these two again, not just repointing them.
+export const PORTAL_SPENT_SPRITE = 'portalRingsSpent';
+export const PORTAL_WILT_SPRITE = 'portalRingsWilt';
+// The box the portal is AUTHORED in. Every caller sizes off this rather than
+// picking its own width: the old portal was an ellipse and did not care how it
+// was stretched, but a cut with a taper and a jitter does — the credits were
+// drawing it 22 wide by 40 tall, which is 1.7x the authored proportion, and it
+// fattened every curve into a slab.
+export const PORTAL_ART_W = 14, PORTAL_ART_H = 44;
+export const portalArtWidth = (h) => Math.round(h * (PORTAL_ART_W / PORTAL_ART_H));
 
 export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 
@@ -1544,6 +2464,18 @@ export const PROP_FRAMES = {
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
   buzzbird: 6,
   drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
+  // Bake-off candidates. Eight frames for the ramps and flags — one chevron
+  // cell and one cloth cycle respectively, so the loop point is the art's own
+  // period rather than an arbitrary count. The portals get twelve: they are
+  // the largest art in the set and a six-frame vortex strobes.
+  boostPad: 8,
+  rampChevron: 8, rampWedge: 8, rampTurbine: 8, rampGate: 8,
+  flagWave: 8, flagPennant: 8, flagBeacon: 8, flagPlug: 8,
+  portalArch: 12, portalRift: 12, portalRings: 12, portalTube: 12,
+  // Not loops. These two are STRIPS: frame 0 is the moment of the event and
+  // the last frame is where the drawing rests until it scrolls off. drawPortal
+  // clamps into them off a timer rather than cycling them off the clock.
+  portalRingsSpent: PORTAL_SPEND_FRAMES, portalRingsWilt: PORTAL_WILT_FRAMES,
 };
 // A bird beats its wings faster than a cactus sways. At 16fps the six frames
 // come round about 2.7 times a second, which is quick enough to read as flapping
@@ -1556,6 +2488,14 @@ export const PROP_FRAMES = {
 const PROP_FPS = {
   qcrate: 12, appliance: 24, buzzbird: 16,
   drone: 24, shooterDrone: 24, droneEye: 12,
+  // Bake-off candidates. The ramps run fast: a chevron chase reads as speed
+  // only when it outruns the lane scroll. Cloth is the opposite — a flag
+  // ripple at 16fps is a flutter, at 10 it is a wave. The portals sit in
+  // between, slow enough that the vortex turns rather than flickers.
+  boostPad: 16,
+  rampChevron: 16, rampWedge: 16, rampTurbine: 20, rampGate: 14,
+  flagWave: 10, flagPennant: 10, flagBeacon: 10, flagPlug: 10,
+  portalArch: 12, portalRift: 14, portalRings: 12, portalTube: 12,
 };
 
 // Visual overdraw: props drawn taller than their def box, bottom-anchored, so
@@ -1563,6 +2503,21 @@ const PROP_FPS = {
 // 1.33x their box — bigger art is generous, never unfair).
 export const PROP_TALL = {
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
+  // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
+  // entire proposal for three of the four: the pad cannot get wider without
+  // lying about where the boost starts, so everything it gains it gains
+  // upward. rampGate takes that furthest — 4.5 puts its art at roughly the
+  // hero's own height, which is the point of it and also the objection to it.
+  // The winner ships at 1.35, down from the 2.4 it was proposed at. 2.4 was
+  // headroom for the thrown darts; 1.7 was that minus the darts; 1.35 is the
+  // trench, which wants to be a groove in the floor rather than a kerb the
+  // hero appears to be about to trip over. The hitbox is still 14x4.
+  // 1.15, down again from 1.35. Nothing can be drawn BELOW the ground line, so
+  // "deeper in the floor" only ever means "less of it standing above the
+  // floor" — the depth is bought by making the whole mark flatter, not by
+  // moving it down. The hitbox is still 14x4.
+  boostPad: 1.15,
+  rampChevron: 1.15, rampWedge: 3, rampTurbine: 3.25, rampGate: 4.5,
 };
 export function propTall(name) { return PROP_TALL[name] || 1; }
 
@@ -1602,6 +2557,15 @@ const PROP_DETAIL_SCALE = {
   // the record of the decision, and it has to keep rendering to be worth
   // anything. Delete them with that section.
   plugFlag: 2, plugTarget: 2,
+  // Bake-off candidates. The ramps and flags are small enough to need the
+  // double box — a flag's chequer at 5px and a chevron's inner notch are
+  // exactly the marks this table exists to keep. The portals are NOT here on
+  // purpose: at 14x44 they are already the biggest vector art in the game, and
+  // doubling them would quadruple a twelve-frame cache for detail SS is
+  // already resolving.
+  boostPad: 2, boostPadLegacy: 2,
+  rampChevron: 2, rampWedge: 2, rampTurbine: 2, rampGate: 2,
+  flagWave: 2, flagPennant: 2, flagBeacon: 2, flagPlug: 2,
 };
 export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 
@@ -1622,6 +2586,20 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 // art — but a hazard that looks bigger than it bites is still a hazard you
 // misjudge.
 const PROP_VISUAL_SCALE = {
+  // The battery keeps the HUD's 25:13 proportions inside a square 8x8 def box,
+  // so its art only fills about half the box's height. Without this it reads as
+  // a smaller pickup than the coin it spawns beside, which is backwards — it is
+  // the more valuable of the two.
+  //
+  // Capped at 1.15 rather than pushed further, and the cap comes from the
+  // HITBOX, not from taste. Overdraw on a HAZARD is generous — art wider than
+  // the box means a hit that looked like it should have connected does not. On a
+  // PICKUP the same overdraw runs the other way: art you can visibly touch
+  // without collecting. The standard 4/3 inflation already puts this at ~11.5px
+  // of drawing across an 8px box, about 1.8px of overhang a side, which is in
+  // the same range as the coin beside it. 1.3 took it past 13px and made the
+  // battery the one pickup whose nose you could run through for nothing.
+  battery: 1.15,
   snowman: 1.15, snowmanBig: 1.15,
   drone: 1.35, shooterDrone: 1.35, buzzbird: 1.35, droneEye: 1.35,
 };
@@ -1638,6 +2616,16 @@ const SELF_OUTLINED_PROPS = new Set([
 export function propHazardRim(name) {
   return !SELF_OUTLINED_PROPS.has(name);
 }
+
+// Props whose painter centres its art in the box instead of standing it on the
+// box floor. Nearly everything here is a ground prop, so the draw path anchors
+// art to the bottom — correct for a cactus, wrong for the battery, whose HUD
+// proportions leave the box half empty ABOVE and BELOW the drawing. Anchored to
+// the floor, that spare room all collects on top: the art rides ~3px high of its
+// own hitbox, and anything the draw path centres on the box — the heal halo —
+// centres 3px below the thing it is meant to be haloing.
+const BOX_CENTRED_PROPS = new Set(['battery']);
+export function propBoxCentred(name) { return BOX_CENTRED_PROPS.has(name); }
 
 export function propFrames(name) { return PROP_FRAMES[name] || 1; }
 export function propFps(name) { return PROP_FPS[name] || 11; }

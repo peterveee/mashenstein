@@ -9,7 +9,10 @@
 // Every painter fills a box and owns its own layout inside it, so the credits
 // crawl (a 48u band at full screen width) and a gallery tile (a small wide
 // card) can call the identical code with different geometry.
-import { drawProp } from '../sprites/props.js';
+import {
+  drawProp, propFrames, propFps, PORTAL_SPRITE, portalArtWidth,
+  PORTAL_SPENT_SPRITE, PORTAL_SPEND_FRAMES, PORTAL_SPEND_TIME,
+} from '../sprites/props.js';
 import { drawToon } from '../sprites/toons.js';
 
 const TOON_H = 34;
@@ -46,9 +49,110 @@ function accelPhase(k, cycles) {
   return (cycles * (0.55 * k + 0.45 * k * k)) % 1;
 }
 
-function portalAt(ctx, cx, floorY, t, h = 40, w = 22) {
-  const hh = h + Math.round(Math.sin(t * 5) * 2);
-  drawProp(ctx, 'portal', cx - w / 2, floorY - hh, w, hh);
+// The portal's drawn height. At 40 it stood only a shade taller than the 34u
+// heroes running through it and read as a gadget between them rather than as
+// the way out; 50 is half again their height, which is the proportion the run
+// itself uses (a 44u portal over a smaller hero) without matching it exactly.
+const PORTAL_H = 50;
+// Width comes from the art's own proportion, not from a number picked back
+// when the portal was an ellipse: 22 wide by 40 tall stretched the cut to 1.7x
+// its authored width and every curve in it read as a facet.
+// `spent` is seconds since a hero went through, or null while the portal is
+// still live. A used portal stops being a loop and becomes a STRIP, clamped to
+// its last frame — the identical rule drawPortal() follows in the run, off the
+// identical art. The crawl showing a different aftermath to the game would make
+// one of the two a lie about what the machine does.
+function portalAt(ctx, cx, floorY, t, spent = null, h = PORTAL_H, w = portalArtWidth(PORTAL_H)) {
+  const x = cx - w / 2, top = floorY - h;
+  // The column's light, 1 while live and 0 once the collapse has finished. The
+  // motes go out WITH it, for the reason the run's floor glow does: they are
+  // the portal's light on the air, so they cannot outlive the light.
+  const lit = spent == null ? 1 : Math.max(0, 1 - spent / PORTAL_SPEND_TIME);
+  // The field orbits the column, so half of it belongs BEHIND the art. Drawing
+  // the far side first and the near side after is what makes it read as one
+  // ring of motes going round rather than a flat sprinkle stuck on the front.
+  if (lit > 0.02) portalMotes(ctx, cx, floorY, t, h, w, false, lit);
+  if (spent != null) {
+    const f = Math.min(PORTAL_SPEND_FRAMES - 1,
+      Math.max(0, Math.floor((spent / PORTAL_SPEND_TIME) * PORTAL_SPEND_FRAMES)));
+    drawProp(ctx, PORTAL_SPENT_SPRITE, x, top, w, h, f);
+  } else {
+    // Fixed height, cycling frames: the art animates itself now, and a height
+    // that breathed would cache the whole frame set once per pixel of pulse.
+    const f = Math.floor(t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
+    drawProp(ctx, PORTAL_SPRITE, x, top, w, h, f);
+  }
+  if (lit > 0.02) portalMotes(ctx, cx, floorY, t, h, w, true, lit);
+}
+
+// The credits' own embellishment on the shipped portal: a fine field of motes
+// spiralling up the column and being drawn into it.
+//
+// This exists only here, and deliberately. The run paints the same portal at
+// 14x44 with a dozen other things moving and a frame budget it can lose; the
+// crawl paints ONE of them on an otherwise empty starfield, at 50 tall, with
+// nothing else animating in the band. So the credits can afford the detail the
+// run cannot, and it is the screen where the portal is finally the subject.
+//
+// STATELESS on purpose. A particle pool would need owning, resetting per
+// hand-off block, and keeping out of the live game's pool (the same objection
+// drawBlast answers below); every mote here is a pure function of its index and
+// the clock, so the field costs one loop and nothing to maintain.
+const MOTE_N = 34;
+const TAU = Math.PI * 2;
+// Irrational strides, so the three per-mote parameters never come back into
+// step with each other and the field never bands into visible rows.
+const frac = (v) => v - Math.floor(v);
+function portalMotes(ctx, cx, floorY, t, h, w, near, lit = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < MOTE_N; i++) {
+    const r1 = frac(i * 0.6180339887);   // how wide it orbits
+    const r2 = frac(i * 0.7548776662);   // how fast it climbs
+    const r3 = frac(i * 0.5698402910);   // where in the climb it starts
+    // 0 at the plinth, 1 at the top of the column, then straight back to 0 —
+    // the wrap is invisible because a mote is fully faded at both ends.
+    const k = frac(t * (0.3 + r2 * 0.55) + r3);
+    // Angle accumulates with the CLIMB rather than with the clock, so a mote
+    // that rises quickly also whips round quickly: one speed, not two.
+    const a = r3 * TAU + k * TAU * (1.7 + r1 * 1.6);
+    const depth = Math.sin(a);
+    if ((depth > 0) !== near) continue;
+    // The orbit funnels in as it rises — the field is being swallowed, which
+    // is the only reason a portal would have one.
+    const rad = w * (0.5 + r1 * 1.8) * (1 - 0.5 * k);
+    const x = cx + Math.cos(a) * rad;
+    const y = floorY - h * (0.04 + 0.95 * k);
+    // A mote in front is nearer, so it is bigger and brighter than the same
+    // mote half a turn later. Sizes stay well under a unit: the ask was finer,
+    // and anything at 1u reads as a bead next to a 0.3u hoop.
+    const front = 0.5 + 0.5 * depth;
+    const fade = Math.sin(Math.PI * k) ** 0.7 * lit;
+    ctx.globalAlpha = fade * (0.18 + 0.5 * front);
+    // A quarter of them are the plinth's warm white; the rest are the teal the
+    // rings are lit in. Set by index, so a mote keeps its colour for its whole
+    // climb instead of flickering between the two.
+    ctx.fillStyle = i % 4 === 0 ? '#fff6d0' : '#a8ffe8';
+    ctx.beginPath();
+    ctx.arc(x, y, 0.16 + 0.34 * front, 0, TAU);
+    ctx.fill();
+    // The fastest third leave a short trail along their own path. Two dimmer
+    // copies a few hundredths of a climb behind is cheaper than a real streak
+    // and, at this size, indistinguishable from one.
+    if (r2 > 0.66) {
+      for (let s = 1; s <= 2; s++) {
+        const ks = k - s * 0.018;
+        if (ks <= 0) break;
+        const as = r3 * TAU + ks * TAU * (1.7 + r1 * 1.6);
+        ctx.globalAlpha = fade * (0.18 + 0.5 * front) * (0.45 / s);
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(as) * (w * (0.5 + r1 * 1.8) * (1 - 0.5 * ks)),
+          floorY - h * (0.04 + 0.95 * ks), 0.14 + 0.2 * front, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
 }
 
 // Clip to one side of a vertical line, so the portal genuinely swallows a
@@ -113,7 +217,11 @@ function transitAt(o) {
 function drawTransit(ctx, o) {
   const floorY = o.y + o.h - 6;
   const { cx, q, k, approach, x } = transitAt(o);
-  portalAt(ctx, cx, floorY, o.t);
+  // Once the hero is through, the portal is SPENT — the same state the run puts
+  // it in, played off the same six-frame strip. Seconds since the swap, not a
+  // fraction of it: the strip is cut for a third of a second and stretching it
+  // over a block's crossing would turn a discharge into a slow dissolve.
+  portalAt(ctx, cx, floorY, o.t, approach ? null : (q - IN_LEG) * ACTIVE_SPAN * crossingSeconds(o));
 
   ctx.save();
   if (approach) {
@@ -131,12 +239,30 @@ function drawTransit(ctx, o) {
   if (flare > 0.01) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const eye = floorY - 20;
-    const g = ctx.createRadialGradient(cx, eye, 0, cx, eye, 34 * flare + 6);
+    // The light comes OUT OF THE SLOT, so that is where it is centred: the plate
+    // is the emitter and the column is what the emitter throws. Centred on the
+    // column's mid-height instead, the halo outlived its own source — the rings
+    // collapse onto the plate a third of a second after the swap, leaving a ball
+    // of light hanging in empty air above a dark plinth with nothing under it
+    // that could be making it.
+    const src = floorY - PORTAL_H * 0.06;
+    const r = 46 * flare + 6;
+    // Taller than wide, and scaled about the slot rather than about the middle
+    // of the halo. A round glow at the base reads as a puddle on a floor; this
+    // one is thrown UP the column, which is the direction the hardware points.
+    ctx.translate(cx, src);
+    ctx.scale(1, 1.25);
+    const g = ctx.createRadialGradient(0, -r * 0.28, 0, 0, -r * 0.28, r);
     g.addColorStop(0, `rgba(220,255,246,${(0.85 * flare).toFixed(3)})`);
     g.addColorStop(1, 'rgba(72,224,200,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(o.x, o.y, o.w, o.h);
+    // Fill the GRADIENT's own square, not the block's box. The box is 48u tall
+    // and the glow is wider than that, so filling the box sliced the halo flat
+    // across the top and bottom — a soft round light with two hard horizontal
+    // edges through it. Nothing clips the crawl at this point, and a glow that
+    // reaches a few units into the empty gap above and below the block is what
+    // a light spilling out of a doorway is supposed to do.
+    ctx.fillRect(-r, -r * 1.28, r * 2, r * 2);
     ctx.restore();
   }
 }
@@ -243,6 +369,14 @@ export const HANDOFF_ACTIVE_TO = 0.66;
 const ACTIVE_SPAN = HANDOFF_ACTIVE_TO - HANDOFF_ACTIVE_FROM;
 // Share of the ACTIVE window spent approaching the portal; the rest is the exit.
 const IN_LEG = 0.45;
+
+// How long a block takes to cross the screen, in seconds — the bridge between
+// `progress` (which is a position, so the beat plays where it can be seen) and
+// the portal's spend strip (which is cut in real seconds). The crawl passes its
+// own figure, (H + HANDOFF_H) / SCROLL_SPEED; the default is that same sum, for
+// gallery tiles that only have a box and a progress to hand.
+const CROSSING_SECONDS = (270 + 48) / 30;
+const crossingSeconds = (o) => o.crossing || CROSSING_SECONDS;
 
 // Derived, not hand-tuned, so the crawl's dialogue timing cannot drift out of
 // sync with the animation if the window above is retuned.

@@ -18,13 +18,44 @@
 // claims, esbuild.build() throws and the watch build prints the error. The
 // alternative — a silently dead row in the strip that moves a number nothing
 // reads — is the kind of bug that costs an afternoon.
-import { readFile } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 import { dirname, join, relative } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { TUNABLES } from './tunables.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const REGISTRY = join(ROOT, 'src/dev/tunables.js');
+const MANIFEST = join(ROOT, 'tools/lib/tunables.js');
+
+// The manifest as it is ON DISK right now, not as it was when this module was
+// first imported.
+//
+// The watch server builds the plugin once and then rebuilds the bundle for the
+// life of the process. The import above is resolved at that first moment and
+// never again, so a row added to the manifest afterwards was invisible to the
+// transform no matter how many rebuilds followed — while the BUNDLE, which
+// imports the same manifest through the graph, picked the row up immediately.
+// The strip therefore listed a constant the transform had never made
+// assignable, and the only symptom was a slider that moved a number nothing
+// read. Twice that cost a debugging session that had nothing to do with the
+// game. Re-importing under the file's mtime gets a fresh module each time it
+// actually changes, and costs one stat per build otherwise.
+//
+// Caveat worth knowing: esbuild reuses a cached onLoad result for a file that
+// has not changed, so a manifest edit ALONE still will not re-transform an
+// untouched source file. Adding a tunable edits both, which is the case this
+// covers.
+let liveRows = null;
+let liveMtimeMs = 0;
+async function rowsFromDisk() {
+  const { mtimeMs } = await stat(MANIFEST);
+  if (mtimeMs !== liveMtimeMs) {
+    const mod = await import(`${pathToFileURL(MANIFEST).href}?v=${mtimeMs}`);
+    liveRows = mod.TUNABLES;
+    liveMtimeMs = mtimeMs;
+  }
+  return liveRows;
+}
 
 // Blank every byte inside a string literal or a comment, preserving length and
 // line structure, so the declaration search looks at code and only code. Shares
@@ -109,15 +140,29 @@ export function registrationFor(rel, names, registryPath) {
     + `__registerTunables(${JSON.stringify(rel)}, {\n${pairs}\n});\n`;
 }
 
-export function tunablePlugin(rows = TUNABLES) {
+const indexRows = (rows) => {
   const byFile = new Map();
   for (const row of rows) {
     if (!byFile.has(row.file)) byFile.set(row.file, []);
     byFile.get(row.file).push(row.name);
   }
+  return byFile;
+};
+
+/**
+ * `rows` pins the manifest — tests pass their own and get exactly it. Called
+ * with nothing, the plugin re-reads the manifest from disk at the start of
+ * every build, so a watch server that has been up for hours still transforms
+ * against the rows that are on disk now.
+ */
+export function tunablePlugin(rows = null) {
+  let byFile = indexRows(rows || TUNABLES);
   return {
     name: 'mash-tunables',
     setup(build) {
+      // Once per build rather than per file: onLoad runs for every .js in the
+      // graph, and the manifest cannot change midway through a single build.
+      if (!rows) build.onStart(async () => { byFile = indexRows(await rowsFromDisk()); });
       build.onLoad({ filter: /\.js$/ }, async (args) => {
         const rel = relative(ROOT, args.path);
         const names = byFile.get(rel);

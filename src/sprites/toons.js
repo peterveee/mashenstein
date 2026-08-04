@@ -4,7 +4,7 @@
 // and cached/supersampled for tiny static sites (HUD faces, hub NPCs).
 // Colors come from HERO_SPRITES palettes so pixel and toon stay in sync.
 import { HERO_SPRITES } from './heroes.js';
-import { bakeSS } from '../engine/renderer.js';
+import { bakeSS, screen, W, H } from '../engine/renderer.js';
 
 const OUTLINE_A = 0.32, SKIN_OUTLINE_A = 0.2;
 let OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
@@ -40,11 +40,11 @@ const APRON_OUTLINE = 'rgb(120,110,132)';
 // the same fraction of `u` in the body rig as it is in the face crops, so an
 // ow-relative eye would silently double in weight on the HUD cells.
 //
-// Still outstanding: the Math.max floors below are absolute, so at the in-run
-// u=24 they bind and hand back a heavier-than-proportional line — the frown
-// lands ~3x its intended width. They exist so a hairline survives a near-1:1
-// render, which no longer describes how this game is scaled. Worth making
-// scale-aware, but as its own change, tuned against these widths.
+// The floors those widths carry used to be absolute, so at the in-run u=24 they
+// bound and handed back a heavier-than-proportional line — the frown landing
+// ~3x its intended width, and worse the further the camera pushed in. They are
+// now scale-aware: see hair() below. The widths themselves are unchanged, and
+// at 1:1 so is every number they produce.
 // ------------------------------------------------------------------ the brows
 // Declared above INK because INK defaults to them.
 //
@@ -54,14 +54,12 @@ const APRON_OUTLINE = 'rgb(120,110,132)';
 // bold brow was never the defect: it is the mark the expression hangs on, and on
 // the scowling half of the cast it is most of the characterisation.
 //
-// The floor is deliberately NOT scaled with the width, so the restore lands
-// unevenly. BROW_W * u only clears BROW_MIN above u=21: the 60u menus and cast
-// parade get the full 0.6 -> 1.08 back, the ~34u HUD cell 0.38 -> 0.61, and the
-// 24u in-run sprite only 0.38 -> 0.43, because down there the floor was already
-// carrying the line and still nearly is. Matching the gallery's boldest cells at
-// 24u too would mean lifting BROW_MIN, which is the scale-aware floor rework the
-// INK comment below already calls for — worth doing as its own change, tuned
-// against every stroke, not smuggled in behind the brows.
+// BROW_MIN is a floor on the FINISHED image, not on the world width — it keeps
+// the hairline from disappearing on a HUD cell and steps out of the way once
+// the camera is pushed in (see hair() below). BROW_W * u clears it above u=21
+// at 1:1: the 60u menus and cast parade draw the full 1.08, the ~34u HUD cell
+// 0.61, and the 24u in-run sprite 0.43 rather than the 0.38 the floor used to
+// hold it at.
 const BROW_W = 0.018, BROW_MIN = 0.38;
 // Tone. The brow is the only face mark drawn at FULL palette ink (`p.e`, the
 // same near-black as the pupils) at the heaviest face width, so the restored
@@ -119,6 +117,84 @@ export function setInk({
   SKIN_OUTLINE = `rgba(26,16,40,${+Math.min(1, SKIN_OUTLINE_A * alpha).toFixed(3)})`;
 }
 
+// ---------------------------------------------------- scale-aware ink floors
+// Every stroke width in this file is written `hair(px, w)`: `w` is the width
+// the drawing actually wants, in u-relative world units, and `px` is the floor
+// that keeps the mark from vanishing at a near-1:1 render. The floor used to be
+// absolute, which made it a floor on the WORLD width — so it stopped being a
+// hairline guarantee and became a minimum thickness that grew with the camera.
+// At the tutorial's 5.5x push-in every small mark was pinned to its floor and
+// the whole cast came back inked like a colouring book: the mouth ~3x its
+// intended width, the eye rings and face lines heavier than the body contour
+// enclosing them (the defect the thin-face pass was supposed to have fixed).
+//
+// The floor is now stated in LOGICAL 480x270 pixels and converted into world
+// units against the live draw scale, which is what it always meant. At scale 1
+// — HUD cells, menus, cast parade, every baked face crop — hair() returns
+// exactly what Math.max returned before, so nothing outside a zoomed camera
+// moves. Past that the floor gets out of the way and the art stays
+// proportional: at 5.5x a 0.55px floor is 0.1u, so the ink the widths ask for
+// is the ink that lands.
+let inkScale = 1;       // logical px per world unit at the current draw scale
+let inkBake = 0;        // supersample factor while painting into a cache bake
+const hair = (px, w) => Math.max(px / inkScale, w);
+// The context arrives pre-scaled by device density (screen.px) or, inside a
+// bake, by the supersample factor — neither of which is a change in how big the
+// figure is drawn, so both are divided back out. What's left is camera zoom and
+// any explicit sprite scaling, which are.
+//
+// The one target that is NOT density-scaled is the WebGL upload canvas, which
+// stays exactly the logical frame and is stretched to the display afterwards —
+// so a canvas measuring 480x270 on the nose is taken at face value. Offscreen
+// canvases owned by the tools (gallery cells, the mixer) never resize the game,
+// so screen.px is 1 there and their own transform is the whole answer.
+// A gallery cell that MAGNIFIES a hero to make a stroke legible is not showing
+// a camera push-in, and must not be inked like one: the ink bake-off blows the
+// 24u in-run sprite up ~5x purely so the eye can see it. Pin the scale to the
+// zoom being simulated (1 for a menu, 2 for a run) and the cell reports the ink
+// the game actually draws, at whatever size it is displayed. null = measure it.
+let inkScaleLock = null;
+export function setInkScale(n = null) { inkScaleLock = n; }
+// The same escape hatch for RESOLUTION: the gallery paints every tile through a
+// supersampling transform the way cached() does, and that extra density is not
+// a bigger drawing. Tools say so once, around the paint, and every tile's world
+// zoom then reads true. 0 = measure it.
+export function setInkDensity(n = 0) { inkBake = n; }
+function drawScale(ctx) {
+  if (inkScaleLock != null) return inkScaleLock;
+  const m = ctx.getTransform ? ctx.getTransform() : null;
+  if (!m) return 1;
+  const s = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c));
+  const logicalFrame = ctx.canvas && ctx.canvas.width === W && ctx.canvas.height === H;
+  const dev = inkBake || (logicalFrame ? 1 : screen.px) || 1;
+  return s > 0 && dev > 0 ? s / dev : 1;
+}
+
+// ------------------------------------------------------------- contour taper
+// The body contour is the one width in the file that is NOT a floor: it is a
+// flat fraction of u, so it scales with the figure and stays exactly as heavy,
+// proportionally, at every camera. That is the correct default and it is what
+// keeps a 34px HUD cell readable — but at the tutorial's 5.5x push-in it means
+// ~2 logical px of dark on each edge of every limb, and with the floored marks
+// now behaving it is the heaviest thing left in the frame.
+//
+// So the contour thins as the figure grows, the way inked art does: a drawing
+// blown up to a poster is not re-inked with a 5x pen. `taper` is the exponent
+// on that trade — 0 is the old flat-fraction contour and 1 is a contour of
+// constant FINISHED width, which is a wire and loses the silhouette against a
+// dark room. The shipped half is the square root: the contour grows with the
+// square root of the zoom rather than with the zoom, so at 2x the in-run figure
+// goes 0.384u -> 0.27u and at the intro's 5.5x, 0.384u -> 0.16u. Picked off the
+// contour bake-off against 0.25 and 0.33, which both still read inked at 5.5x.
+// Never applied below 1:1, where the contour is already fighting for its life
+// and hair()'s floor is carrying it.
+const CONTOUR_TAPER = 0.5;
+// The dial, defaulted to the shipped value, for the gallery's contour bake-off.
+export const CONTOUR = { taper: CONTOUR_TAPER };
+export function setContour({ taper = CONTOUR_TAPER } = {}) { CONTOUR.taper = taper; }
+const contour = (w) => (inkScale > 1 && CONTOUR.taper > 0
+  ? w / Math.pow(inkScale, CONTOUR.taper) : w);
+
 // The eyebrow hairline. Split out of the inline literal it used to be so the
 // floor is nameable — it is the interesting half.
 //
@@ -128,14 +204,9 @@ export function setInk({
 // dial. A bold brow was never the defect: it is the mark the expression hangs
 // on, and on the scowling half of the cast it is most of the characterisation.
 //
-// The floor is deliberately NOT scaled with it, so the restore lands unevenly.
-// BROW_W * u only clears BROW_MIN above u=21: the 60u menus and cast parade get
-// the full 0.6 -> 1.08 back, the ~34u HUD cell 0.38 -> 0.61, and the 24u in-run
-// sprite only 0.38 -> 0.43, because down there the floor was already carrying
-// the line and still nearly is. Matching the gallery's boldest cells at 24u too
-// would mean lifting BROW_MIN, which is the scale-aware floor rework the INK
-// comment above already calls for — worth doing as its own change, tuned
-// against every stroke, not smuggled in behind the brows.
+// The floor is a finished-image floor, not a world one — see BROW_MIN's note
+// above and hair() below. BROW_W * u clears it above u=21 at 1:1, so the 60u
+// menus and cast parade draw the full 1.08 and the 24u in-run sprite 0.43.
 // p.e arrives as a palette hex: lighten it toward white by `l`, then lay it
 // down at opacity `a`. Lightening rides on the ink itself so it works the same
 // over every ground the brow crosses — pale hide on grumpos, a dark blue head
@@ -647,10 +718,10 @@ function drawWrench(ctx, x, y, angle, u, ow) {
   ctx.translate(x, y);
   ctx.rotate(angle);
   const steel = '#a8b0b8', steelHi = '#e5edf2';
-  outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) =>
+  outlined(ctx, steel, hair(0.5, ow * 0.65), (c) =>
     roundRectPath(c, -0.055 * u, -0.026 * u, 0.31 * u, 0.052 * u, 0.022 * u));
   // Open-ended head: two jaws with a clear V-shaped bite between them.
-  outlined(ctx, steel, Math.max(0.5, ow * 0.65), (c) => {
+  outlined(ctx, steel, hair(0.5, ow * 0.65), (c) => {
     c.moveTo(0.205 * u, -0.05 * u);
     c.lineTo(0.315 * u, -0.13 * u);
     c.lineTo(0.405 * u, -0.075 * u);
@@ -661,7 +732,7 @@ function drawWrench(ctx, x, y, angle, u, ow) {
     c.closePath();
   });
   ctx.strokeStyle = steelHi;
-  ctx.lineWidth = Math.max(0.45, ow * 0.45);
+  ctx.lineWidth = hair(0.45, ow * 0.45);
   ctx.beginPath();
   ctx.moveTo(0.01 * u, -0.009 * u);
   ctx.lineTo(0.235 * u, -0.009 * u);
@@ -832,7 +903,7 @@ function muscleLimb(ctx, x1, y1, x2, y2, segU, segF, dir, fill, ow, d) {
     ctx.save();
     ctx.globalAlpha *= 0.42 * d.crease;
     ctx.strokeStyle = SKIN_OUTLINE;
-    ctx.lineWidth = Math.max(0.45, ow * 0.52);
+    ctx.lineWidth = hair(0.45, ow * 0.52);
     ctx.beginPath();
     ctx.moveTo(ax, ay);
     ctx.quadraticCurveTo(
@@ -987,6 +1058,91 @@ export function b33pTitleShotPose(age) {
     squash: Math.sin(Math.min(1, t / 0.4) * Math.PI) * 0.35,
   };
 }
+
+// ------------------------------------------------------------------- clinging
+//
+// The pole ride at the end of a stage. Before this the descent borrowed the JUMP
+// pose, which is a hero with nothing to hold: he read as falling past the pole
+// rather than coming down it, and the one moment the whole finish marker was
+// built around was the one moment the hero was not acting on it.
+//
+// A cling is hands ABOVE the head on the pole's own column, feet drawn up and
+// clamped under him, and — this is the part that makes it read — a body that
+// swings while the hands do not. The grip is the fixed point; everything else
+// is weight hanging off it.
+//
+// Per hero, because the cast's whole design is that they do the same verb
+// differently, and a shared cling would be the one animation where they all
+// look alike. The knobs:
+//   gripUp  hand height above the shoulder, in arm lengths (1 ≈ full reach)
+//   handX   how far the hands sit either side of the pole's column, in u
+//   stagger how much HIGHER the near hand grips than the far one, in arm
+//           lengths — a staggered grip is a climber's, a level one is a
+//           passenger's
+//   bow     extra leg-segment slack; the IK spends it bowing the knees outward
+//   footY   how far the feet ride below the hips, in leg lengths — small is
+//           tucked up tight, large is dangling
+//   footX   gap between the feet, in u. Zero is ankles crossed and prim
+//   swing   amplitude of the body's sway under the fixed grip
+//   flail   0..1 of the far arm let go and thrown out for balance
+const CLING_DEFAULT = { gripUp: 0.95, handX: 0.07, stagger: 0.08, bow: 0.2, footY: 0.55, footX: 0.05, swing: 1, flail: 0 };
+const CLING = {
+  // Sliding a pole is a plumber's commute. Square grip, feet clamped, one small
+  // bounce per beat — he has done this before and he is not thinking about it.
+  lorenzo: { gripUp: 0.98, handX: 0.075, stagger: 0.10, bow: 0.24, footY: 0.55, footX: 0.045, swing: 0.9, flail: 0 },
+  // Loose everywhere: a high lazy grip, legs swinging wide open. The only one
+  // whose cling looks like showing off.
+  gnash:   { gripUp: 1.04, handX: 0.09, stagger: 0.30, bow: 0.34, footY: 0.42, footX: 0.11, swing: 1.5, flail: 0 },
+  // Terrified and tidy. Hands low and close, knees up under his chin, almost no
+  // sway — he is holding the pole rather than riding it.
+  fernwick:{ gripUp: 0.86, handX: 0.055, stagger: 0.05, bow: 0.10, footY: 0.30, footX: 0.02, swing: 0.45, flail: 0 },
+  // A machine on a rail. Level grip, straight arms, no sway worth the name; the
+  // legs hang plumb because nothing about this is a balance problem for him.
+  b33p:    { gripUp: 1.00, handX: 0.07, stagger: 0, bow: 0.02, footY: 0.78, footX: 0.03, swing: 0.15, flail: 0 },
+  // One hand, and it was not his idea. The free arm is out for balance and the
+  // legs are doing their own panicking.
+  gary:    { gripUp: 0.92, handX: 0.06, stagger: 0.22, bow: 0.3, footY: 0.5, footX: 0.10, swing: 1.8, flail: 1 },
+  // Composed. Both hands level, ankles together, descending like it is a lift.
+  dolores: { gripUp: 0.95, handX: 0.06, stagger: 0.03, bow: 0.14, footY: 0.6, footX: 0, swing: 0.4, flail: 0 },
+  // A bear hug, not a grip: hands close overhead, elbows wide, knees clamped
+  // round the pole. The heavy rig cannot reach as high proportionally anyway.
+  grumpos: { gripUp: 0.80, handX: 0.1, stagger: 0.04, bow: 0.42, footY: 0.62, footX: 0.02, swing: 0.7, flail: 0 },
+};
+// The exotic rigs have no hands to grip with, so their cling is a whole-body
+// answer, applied in drawToon and read again inside each painter:
+//   squeeze  vertical stretch, as a fraction — the body elongates along the pole
+//   grab     0..1 of "limbs up and gathered at the top", whatever that rig's
+//            limbs happen to be (Mochi's nubs, Raymn's fins)
+//   tilt     radians of lean, for the rigs that ride the pole side-on
+const CLING_RIG = {
+  // A rice ball squeezed up the pole: tall, thin, nubs stretched over the top.
+  mochi:  { squeeze: 0.16, grab: 1, tilt: 0 },
+  // No arms and no legs — he has teeth. Chompo bites the pole and rides down
+  // hanging off his own jaw, which is the only cling in the cast that is also
+  // a threat. Tilted, because a disc gripping with its mouth cannot be level.
+  chompo: { squeeze: 0.06, grab: 0, tilt: -0.22 },
+  // Fins wrapped, body streaming upward — he is the one hero for whom sliding
+  // down a pole is just swimming with extra steps.
+  raymn:  { squeeze: 0.12, grab: 1, tilt: 0.08 },
+};
+// Cling is a blend, not a switch: the hero catches the pole over a few frames
+// so the arms travel up into the grip instead of teleporting into it.
+function clingAmount(pose) {
+  return Math.max(0, Math.min(1, Number(pose && pose.cling) || 0));
+}
+// Where the pole stands in the hero's own space while he is on it, as a
+// fraction of draw height. He does NOT ride it down the middle: centred, both
+// arms run up the centre line and cross his own face, and two body-coloured
+// limbs over a 6px head merge into a slab with a hat on it — the pose loses its
+// face, which is the most expressive thing the rig has. Beside it, the face is
+// clear, the arms are out in silhouette against open sky, and the shape reads
+// as a hero holding something at arm's length above him.
+//
+// The figure shifts, not the pole: the marker's geometry is load-bearing (the
+// plunger he lands on is centred on the pole, and the hero's foot anchor has to
+// stay where the sim put it), so this is a drawing offset that eases in and out
+// with the grip and leaves every number outside the painter alone.
+const CLING_POLE_X = 0.3;
 
 function celebrateMotion(id, t, reworked = false) {
   const seed = FACE_SEED[id] || 0;
@@ -1238,7 +1394,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     if (ex.joy && !ex.cheer) {
       // delight, robot dialect: the LEDs bend into little ^ arcs
       ctx.strokeStyle = p.w;
-      ctx.lineWidth = Math.max(0.55, 0.017 * u) * INK.face;
+      ctx.lineWidth = hair(0.55, 0.017 * u) * INK.face;
       for (const sx of [-1, 1]) {
         ctx.beginPath();
         ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
@@ -1254,14 +1410,14 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     // the tiny directional cue.
     const lookX = (ex.focus ? 0.012 : 0) * u;
     for (const sx of [-1, 1]) {
-      outlined(ctx, p.w, Math.max(0.28, 0.008 * u) * INK.face, (c) =>
+      outlined(ctx, p.w, hair(0.28, 0.008 * u) * INK.face, (c) =>
         roundRectPath(c, eyeX(sx) + lookX - lw, cy - lh, lw * 2, lh * 2, Math.min(lw, lh) * 0.8));
     }
     return;
   }
   if (ex.blink) {
     ctx.strokeStyle = p.e;
-    ctx.lineWidth = Math.max(0.44, 0.014 * u) * INK.face;
+    ctx.lineWidth = hair(0.44, 0.014 * u) * INK.face;
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(eyeX(sx) - 0.035 * u, cy);
@@ -1273,7 +1429,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   // Happy-arc eyes: squeezed shut between cheers, the classic ^ ^ of delight.
   if (ex.joy && !ex.cheer) {
     ctx.strokeStyle = p.e;
-    ctx.lineWidth = Math.max(0.5, 0.015 * u) * INK.face;
+    ctx.lineWidth = hair(0.5, 0.015 * u) * INK.face;
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(eyeX(sx) - 0.04 * u, cy + 0.02 * u);
@@ -1295,7 +1451,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     const eyeRy = (ex.annoyed
       ? (ex.madStyle === 2 ? 0.062 : ex.madStyle === 1 ? 0.05 : 0.046)
       : 0.065) * u;
-    outlined(ctx, '#fff', Math.max(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, eyeRy, 0, 0, Math.PI * 2));
+    outlined(ctx, '#fff', hair(0.4, 0.011 * u) * INK.face, (c) => c.ellipse(eyeX(sx), cy, 0.055 * u, eyeRy, 0, 0, Math.PI * 2));
     // Calling looks further off than focus does — past you, at the head of the
     // queue — and level rather than down.
     const lookX = ((ex.calling ? 0.026 : ex.focus ? 0.012 : rollUp ? 0.018 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.032 * u;
@@ -1308,7 +1464,7 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
     ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
-    ctx.lineWidth = Math.max(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
+    ctx.lineWidth = hair(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
     ctx.beginPath();
     if (ex.annoyed && ex.madStyle === 1) {
       // One brow up: her left held flat and high (skeptical), the other lowered
@@ -1375,13 +1531,13 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
 }
 function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = Math.max(0.55, ow * 0.4) * INK.face;
+  ctx.lineWidth = hair(0.55, ow * 0.4) * INK.face;
   ctx.beginPath();
   if (ex.joy) {
     // An actual smile: a filled D-grin that widens into a whoop on the peaks.
     const w = (ex.cheer ? 0.085 : 0.065) * u, d = (ex.cheer ? 0.075 : 0.038) * u;
     ctx.stroke();
-    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => {
+    outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => {
       c.moveTo(cx - w, cy - 0.012 * u);
       c.quadraticCurveTo(cx, cy + d * 1.9, cx + w, cy - 0.012 * u);
       c.closePath();
@@ -1393,7 +1549,7 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
     // counter, not shouting — a rounder mouth reads as a gasp, which is the
     // surprise face, not this one.
     ctx.stroke();
-    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy + 0.008 * u, 0.042 * u, 0.025 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy + 0.008 * u, 0.042 * u, 0.025 * u, 0, 0, Math.PI * 2));
     return;
   }
   if (ex.annoyed) {
@@ -1412,7 +1568,7 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   }
   if (ex.surprise) {
     ctx.stroke();
-    outlined(ctx, p.m || p.e, Math.max(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => c.ellipse(cx, cy, 0.035 * u, 0.045 * u, 0, 0, Math.PI * 2));
     return;
   } else if (ex.effort) {
     ctx.moveTo(cx - 0.05 * u, cy + 0.015 * u); ctx.lineTo(cx + 0.055 * u, cy - 0.005 * u);
@@ -1422,7 +1578,7 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   else if (spec.mouth === 'grille') {
     // speaker grille: three glowing ticks instead of lips
     ctx.strokeStyle = p.w;
-    ctx.lineWidth = Math.max(0.38, ow * 0.28) * INK.face;
+    ctx.lineWidth = hair(0.38, ow * 0.28) * INK.face;
     for (let i = -1; i <= 1; i++) {
       ctx.moveTo(cx + i * 0.034 * u, cy - 0.018 * u);
       ctx.lineTo(cx + i * 0.034 * u, cy + 0.018 * u);
@@ -1658,7 +1814,7 @@ function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
   for (const sx of [-1, 1]) {
     const ox = cx + sx * (sep + 0.045 * u), oy = cy - 0.086 * u - lift;   // outer, over the temple
     const ix = cx + sx * (sep - 0.052 * u), iy = cy - 0.05 * u + drop - lift - arch; // inner, toward the nose
-    outlined(ctx, p.m, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
+    outlined(ctx, p.m, hair(0.3, ow * 0.3) * INK.face, (c) => {
       c.moveTo(ox, oy + 0.015 * u);
       c.quadraticCurveTo(cx + sx * sep, oy - 0.016 * u, ix, iy - 0.009 * u);
       c.lineTo(ix, iy + 0.009 * u);
@@ -1753,7 +1909,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // as its partner leaves that space looking empty.
     for (const sx of [-1, 1]) {
       const lift = sx > 0 && spec.head === 'cap' && lorenzoFace().tilt ? R * 0.12 : 0;
-      outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) =>
+      outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) =>
         c.ellipse(hx + sx * R * 0.95, hy + R * 0.08 - lift, R * 0.2, R * 0.28, 0, 0, Math.PI * 2));
     }
   }
@@ -1833,9 +1989,9 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // compared to, so dropping it buys more distance than any recolour of it
       // could. `was` keeps its badge, being the historical record.
       const ey = hy - R * cap.emblem;
-      outlined(ctx, p.a, Math.max(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, ey, R * 0.22, 0, Math.PI * 2));
+      outlined(ctx, p.a, hair(0.6, ow * 0.6), (c) => c.arc(hx + R * 0.12, ey, R * 0.22, 0, Math.PI * 2));
       // Tiny crossed-tool mark instead of a familiar letter emblem.
-      ctx.strokeStyle = p.h; ctx.lineWidth = Math.max(0.6, ow * 0.55);
+      ctx.strokeStyle = p.h; ctx.lineWidth = hair(0.6, ow * 0.55);
       ctx.beginPath();
       ctx.moveTo(hx + R * 0.02, ey - R * 0.1); ctx.lineTo(hx + R * 0.22, ey + R * 0.1);
       ctx.moveTo(hx + R * 0.22, ey - R * 0.1); ctx.lineTo(hx + R * 0.02, ey + R * 0.1);
@@ -1913,7 +2069,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       for (let i = 0; i < 3; i++) {
         const q = (rt * 0.8 + i / 3) % 1;
         ctx.globalAlpha = (1 - q) * 0.7;
-        ctx.lineWidth = Math.max(0.5, ow * (1 - q * 0.55));
+        ctx.lineWidth = hair(0.5, ow * (1 - q * 0.55));
         ctx.beginPath();
         ctx.arc(tipX, tipY, R * (0.2 + q * 0.95), 0, Math.PI * 2);
         ctx.stroke();
@@ -1922,13 +2078,13 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     }
     dot(ctx, tipX, tipY, R * 0.13, Math.sin((pose.time || 0) * 6) > 0 ? p.a : p.w);
     // faceplate: a dark screen, not a face — the LED eyes live on it
-    outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => roundRectPath(c, hx - R * 0.62, hy - R * 0.28, R * 1.24, R * 0.95, R * 0.3));
+    outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) => roundRectPath(c, hx - R * 0.62, hy - R * 0.28, R * 1.24, R * 0.95, R * 0.3));
     if (!lod) {
       dot(ctx, hx - R * 0.3, hy - R * 0.68, R * 0.1, p.w);
       dot(ctx, hx + R * 0.3, hy - R * 0.68, R * 0.1, p.w);
       // bolt "ears" pin the dome together at the temples
-      outlined(ctx, p.p, Math.max(0.5, ow * 0.5), (c) => c.arc(hx - R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
-      outlined(ctx, p.p, Math.max(0.5, ow * 0.5), (c) => c.arc(hx + R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
+      outlined(ctx, p.p, hair(0.5, ow * 0.5), (c) => c.arc(hx - R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
+      outlined(ctx, p.p, hair(0.5, ow * 0.5), (c) => c.arc(hx + R * 0.98, hy + R * 0.12, R * 0.16, 0, Math.PI * 2));
       // specular gloss: a crescent on the upper-left of the dome plus a glint
       // dot — silver only reads as polished metal once light lands on it
       ctx.save();
@@ -1979,7 +2135,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     });
     // The folded band along the bottom, a shade darker than the crown. Traced
     // just inside the hat's own bottom edge so it never spills past the paper.
-    outlined(ctx, '#c8c8dc', Math.max(0.5, ow * 0.6), (c) => {
+    outlined(ctx, '#c8c8dc', hair(0.5, ow * 0.6), (c) => {
       c.moveTo(hx - R * 0.92, capY);
       c.lineTo(hx + R * 0.9, capY + R * 0.04);
       c.lineTo(hx + R * 0.96, capY - R * 0.3);
@@ -2012,7 +2168,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = p.w;
-      ctx.lineWidth = Math.max(0.4, ow * 0.5);
+      ctx.lineWidth = hair(0.4, ow * 0.5);
       for (const k of [0.6, 0.86]) {
         ctx.beginPath();
         ctx.arc(hx, hy, R * k, Math.PI * 1.08, Math.PI * 1.92);
@@ -2022,7 +2178,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // An even-width elastic rather than one that flares at the temples: the
       // old ends were twice the depth of the middle and ran down the sides of
       // her face like sideburns. Same band, same line, just cut level.
-      outlined(ctx, p.a, Math.max(0.4, ow * 0.5), (c) => {
+      outlined(ctx, p.a, hair(0.4, ow * 0.5), (c) => {
         c.moveTo(hx - R * 1.0, hy - R * 0.46);
         c.quadraticCurveTo(hx, hy - R * 0.74, hx + R * 0.98, hy - R * 0.38);
         c.lineTo(hx + R * 0.98, hy - R * 0.25);
@@ -2037,7 +2193,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   if (spec.head === 'jackal') {
     // Front-facing muzzle matches the paired eyes; the ears, cheek tuft and
     // tail carry the animal silhouette without mixing profile/front views.
-    outlined(ctx, p.s, Math.max(0.6, ow * 0.7), (c) => c.ellipse(hx + R * 0.08, hy + R * 0.4, R * 0.7, R * 0.46, 0, 0, Math.PI * 2));
+    outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) => c.ellipse(hx + R * 0.08, hy + R * 0.4, R * 0.7, R * 0.46, 0, 0, Math.PI * 2));
     dot(ctx, hx + R * 0.08, hy + R * 0.16, R * 0.17, p.e);
   }
   if (id === 'grumpos') {
@@ -2052,7 +2208,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     ctx.beginPath();
     blockHead(ctx);
     ctx.clip();
-    ctx.strokeStyle = p.a; ctx.lineWidth = Math.max(1.2, R * 0.22);
+    ctx.strokeStyle = p.a; ctx.lineWidth = hair(1.2, R * 0.22);
     ctx.beginPath();
     // The vertex slides UP the same solved line (it stays collinear with eye
     // center and beard end, so the angle through the eye is untouched) to sit
@@ -2111,7 +2267,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u;
   drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
   if (faceEx.brow === 'bushy' && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow);
-  if (spec.nose) outlined(ctx, p.n, Math.max(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
+  if (spec.nose) outlined(ctx, p.n, hair(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
   if (spec.mustache && !lod && ex.joy) {
     // Celebration only: the one time Lorenzo's mouth is visible at all. A wide
     // open grin with the top row of teeth showing, drawn BEFORE the mustache so
@@ -2126,7 +2282,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       c.quadraticCurveTo(mx, top + d * 1.9, mx + w, top);
       c.closePath();
     };
-    outlined(ctx, '#5d1a26', Math.max(0.5, ow * 0.5), grin);
+    outlined(ctx, '#5d1a26', hair(0.5, ow * 0.5), grin);
     // Teeth: a white band hugging the upper lip, clipped to the mouth so it can
     // never spill past the corners at any scale.
     ctx.save();
@@ -2143,7 +2299,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // the whole thing up and flicks the tips higher, the way a real smile does.
     const lift = ex.joy ? (ex.cheer ? 0.022 : 0.012) * u : 0;
     const tip = ex.joy ? (ex.cheer ? 0.026 : 0.014) * u : 0;
-    outlined(ctx, p.m, Math.max(0.33, ow * 0.33) * INK.face, (c) => {
+    outlined(ctx, p.m, hair(0.33, ow * 0.33) * INK.face, (c) => {
       c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
       c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
       // The notch between the lobes has to clear the NOSE, which is a circle
@@ -2163,21 +2319,21 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // opens during surprise and tightens into a stern Dad-of-War frown.
     const mouthY = hy + R * 0.58;
     if (ex.surprise) {
-      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
+      outlined(ctx, p.s, hair(0.3, ow * 0.3) * INK.face, (c) => c.ellipse(hx, mouthY, R * 0.22, R * 0.27, 0, 0, Math.PI * 2));
       dot(ctx, hx, mouthY + R * 0.04, R * 0.11, p.e);
     } else if (ex.beam) {
       // The one beat he lets it show: on a held pose of the victory flex the
       // stern gap opens into a broad grin, then shuts again. Keyed to `beam`,
       // not `cheer` — cheer covers half the routine, and a Grumpos who grins
       // for half his victory dance isn't Grumpos.
-      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => {
+      outlined(ctx, p.s, hair(0.3, ow * 0.3) * INK.face, (c) => {
         c.moveTo(hx - R * 0.34, mouthY - R * 0.09);
         c.quadraticCurveTo(hx, mouthY + R * 0.36, hx + R * 0.34, mouthY - R * 0.09);
         c.closePath();
       });
     } else {
-      outlined(ctx, p.s, Math.max(0.3, ow * 0.3) * INK.face, (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
-      ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.41, ow * 0.36) * INK.face;
+      outlined(ctx, p.s, hair(0.3, ow * 0.3) * INK.face, (c) => roundRectPath(c, hx - R * 0.3, mouthY - R * 0.12, R * 0.6, R * 0.25, R * 0.1));
+      ctx.strokeStyle = p.e; ctx.lineWidth = hair(0.41, ow * 0.36) * INK.face;
       ctx.beginPath();
       // Relaxed, the stern arc irons out flat — the frown is the default,
       // not the only setting.
@@ -2196,6 +2352,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
+  const cling = clingAmount(pose), clingStyle = CLING[id] || CLING_DEFAULT;
   const cm = pose.kind === 'celebrate'
     ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose))
     : null;
@@ -2288,8 +2445,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   } : null;
   // The near arm carries more of the silhouette; the far arm is narrower and
   // pulled toward the torso. This is the depth cue the old front-on rig lacked.
-  const armWF = armW * (1 + 0.1 * turnDepth);
-  const armWB = armW * (1 - 0.14 * turnDepth);
+  // Clinging thins them. Two body-coloured arms at full width, run up the
+  // centre line and crossing the face, merge into ONE mass — the hero reads as
+  // hiding behind a slab rather than holding a pole. Thinner, they stay two
+  // limbs with the face between them, which is the whole silhouette.
+  const clingThin = 1 - 0.28 * cling;
+  const armWF = armW * (1 + 0.1 * turnDepth) * clingThin;
+  const armWB = armW * (1 - 0.14 * turnDepth) * clingThin;
   const armDimsF = armDims && turned ? {
     ...armDims,
     shoulderW: armDims.shoulderW * (1 + 0.1 * turnDepth),
@@ -2466,6 +2628,35 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
   }
 
+  // Clinging: the legs come up off whatever the airborne pose had and clamp
+  // under the hips. Applied as a blend on TOP of the chain above rather than as
+  // another branch in it, so the catch eases in from the real jump pose — the
+  // hero's legs travel up into the clamp, which is the half of the move that
+  // says he grabbed something.
+  //
+  // The sway lives here and not on the hands: hands are the fixed point, the
+  // body is what hangs. Both feet take the same signed offset so they swing
+  // together — scissoring reads as running in mid-air.
+  if (cling > 0) {
+    const st = clingStyle;
+    const sway = Math.sin((pose.time || 0) * 7.5) * 0.035 * u * st.swing * cling;
+    // The feet come ACROSS to the pole as well as up: he is beside the stick,
+    // so shins that stayed under his own hips would leave him clinging by the
+    // hands with his legs running in mid-air. They land short of the column —
+    // the pole is notionally between the ankles, and drawing them dead on it
+    // hides both feet behind it.
+    const toPole = CLING_POLE_X * u * 0.72;
+    const near = [toPole + sway + st.footX * u, hipY + legL * (st.footY + 0.06)];
+    const far = [toPole + sway - st.footX * u, hipY + legL * st.footY];
+    footF = [footF[0] + (near[0] - footF[0]) * cling, footF[1] + (near[1] - footF[1]) * cling];
+    footB = [footB[0] + (far[0] - footB[0]) * cling, footB[1] + (far[1] - footB[1]) * cling];
+    // Knees bow outward, one to each side, and the slack that lets them do it
+    // is `bow`. Both signs positive-outward: a clamped leg's knee has to clear
+    // the pole the shin is wrapped around.
+    kneeF = 1; kneeB = -1;
+    legSeg *= 1 + st.bow * cling;
+  }
+
   // In motion the near leg keeps a longer, clearer stride while the far leg
   // tucks behind the body. Their hip roots are separated instead of sharing
   // one front-on center line.
@@ -2505,8 +2696,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // is long, the elbow swung up BEHIND the shoulder — 0.046u above it just
   // standing, and it only got worse as the arm lengthened. An even split keeps
   // the joint under the shoulder in every pose.
-  const armSeg = armL * 0.55;
-  const armSegF = armL * 1.1 - armSeg;
+  let armSeg = armL * 0.55;
+  let armSegF = armL * 1.1 - armSeg;
+  // Clinging stretches the arms. It has to: this cast's shoulder sits at 0.5u
+  // and its arm is 0.29u long, so a hand at full reach straight up lands at
+  // 0.76u — which is the middle of the hero's own FACE. The first cut of the
+  // pose put ten heroes' palms over their own eyes. A hand on a pole belongs
+  // above the crown, so the bones lengthen to put it there and the arms read as
+  // a cartoon's do when it hauls itself up something. The heavy rig barely
+  // moves (its arm nearly reaches already); the light rigs stretch by about
+  // three quarters, and the cap keeps that from becoming spaghetti on any
+  // future rig with a shorter arm.
+  const clingGripY = headY - (heavy ? 0.2 : 0.21) * u;
+  if (cling > 0) {
+    // Measured on the diagonal, because the grip is now up AND across: the pole
+    // stands off his side, so the hand has further to go than the height alone
+    // says and an arm sized for the vertical falls short of the stick.
+    const need = Math.hypot(CLING_POLE_X * u, shoulderY - clingGripY) / Math.max(1e-6, armSeg + armSegF);
+    const stretch = 1 + (Math.min(2.1, Math.max(1, need)) - 1) * cling;
+    armSeg *= stretch; armSegF *= stretch;
+  }
   // Celebrating is front-on, so the arms root at the torso's shoulder
   // corners; at the run cycle's mid-chest attach, the front arm draws over
   // the torso and reads as growing out of the chest. The heavy rig roots at
@@ -2568,7 +2777,49 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // back, as [x, y]. Null the rest of the time, which is also the flag the
   // back-slung disc and the draw order below both test.
   let celShield = null;
-  if (pose.kind === 'celebrate') {
+  if (cling > 0) {
+    // Both hands on the pole, which stands off his leading side (see
+    // CLING_POLE_X — the figure has been stepped away from it). They do NOT
+    // move: the sway below swings the body under this grip, and a hand that
+    // drifts with the body turns a grip into a slap.
+    const st = clingStyle;
+    // The column, in this figure's own space. `handX` spreads the two hands
+    // around it rather than placing them either side of the body, so both fists
+    // close on the same stick — a hand on each side of the hero is not a grip,
+    // it is a shrug.
+    const poleX = CLING_POLE_X * u;
+    // The near hand grips higher than the far one by `stagger`, so the arms
+    // form a climber's ladder rather than a symmetrical hang. Level (b33p,
+    // dolores) is a deliberate reading of its own, not an absence of one.
+    // Hand height is measured DOWN from the grip line (just over the crown),
+    // not up from the shoulder: the whole point of the stretch above is that
+    // the top of this pose is fixed to the head, so `gripUp` reads as "how far
+    // up the pole this hero managed to get" against a line that means the same
+    // thing on every rig.
+    const gripY = (up) => clingGripY + armL * (1 - up);
+    const nearTarget = [poleX + st.handX * u * 0.5, gripY(st.gripUp + st.stagger)];
+    const farTarget = [poleX - st.handX * u * 0.5, gripY(st.gripUp)];
+    // Placed, not reach()ed: the bones were just lengthened to make this exact
+    // target land at full extension, so extending it again overshoots the pole.
+    const gripF = nearTarget;
+    const gripB = farTarget;
+    // The free arm, for the hero who only got one hand on it: thrown out and
+    // down, away from the pole, at the height a windmilling arm actually lives.
+    const loose = [shB - armL * 1.0, armY + armL * 0.35];
+    const farHand = st.flail > 0
+      ? [gripB[0] + (loose[0] - gripB[0]) * st.flail, gripB[1] + (loose[1] - gripB[1]) * st.flail]
+      : gripB;
+    // Blend out of whatever the jump pose had. At cling 0 this branch returns
+    // the plain airborne arms, so the catch can ease in over a few frames.
+    const airF = reach(shF, armY, [shF + sideF * 0.18 * u, armY - armL * 0.4]);
+    const airB = reach(shB, armY, [shB + sideB * 0.18 * u, armY - armL * 0.4]);
+    handF = [airF[0] + (gripF[0] - airF[0]) * cling, airF[1] + (gripF[1] - airF[1]) * cling];
+    handB = [airB[0] + (farHand[0] - airB[0]) * cling, airB[1] + (farHand[1] - airB[1]) * cling];
+    // Elbows out, both sides: an arm reaching straight up over the head has
+    // nowhere else to put its joint, and winging them outward is what makes the
+    // grip read as a grip from the front.
+    elbF = sideF; elbB = sideB;
+  } else if (pose.kind === 'celebrate') {
     // Victory choreography, one flavor per hero.
     const ct = pose.time || 0;
     const pump = Math.sin(ct * 6) * 0.05 * u;
@@ -3051,10 +3302,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // a pushed-back arm reads as a bright bead floating off the far wrist.
   const handDeco = (x, y, back = 0) => {
     if (id === 'grumpos') {
-      outlined(ctx, recede(p.g, back), Math.max(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
+      outlined(ctx, recede(p.g, back), hair(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
       dot(ctx, x, y, 0.028 * u, recede(p.s, back));
     } else if (spec.plumber) {
-      outlined(ctx, recede(p.w, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+      outlined(ctx, recede(p.w, back), hair(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
     } else if (spec.hands) {
       // Bare hands in the face's own color. Without them the sleeve simply
       // stops: the arm is one flat slab of tunic from shoulder to fingertip,
@@ -3063,7 +3314,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // proportion to the arm it terminates instead of a mitt on a twig.
       // `p.hand` opts a palette out of the face-colour default — see b33p,
       // whose face is a near-black plate that reads as a hole on a grey arm.
-      outlined(ctx, recede(p.hand || p.s, back), Math.max(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
+      outlined(ctx, recede(p.hand || p.s, back), hair(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
     }
   };
   // The depth rig gets this front-on too. Rooted at the near shoulder the arm
@@ -3157,7 +3408,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // outline, merging limb into shoulder with no seam of any kind.
     if (!turned) return;
     ctx.strokeStyle = id === 'grumpos' ? SKIN_OUTLINE : OUTLINE;
-    ctx.lineWidth = Math.max(0.55, ow * 0.7);
+    ctx.lineWidth = hair(0.55, ow * 0.7);
     ctx.beginPath();
     if (nearSign < 0) ctx.ellipse(x, y, r, r * 0.82, 0, Math.PI / 2, Math.PI * 1.5);
     else ctx.ellipse(x, y, r, r * 0.82, 0, -Math.PI / 2, Math.PI / 2);
@@ -3176,7 +3427,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     });
     // A small cream tip helps the tapered tail read separately from the body.
-    outlined(ctx, p.s, Math.max(0.5, ow * 0.65), (c) => {
+    outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) => {
       c.moveTo(tipX, tipY);
       c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
       c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
@@ -3216,13 +3467,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const g = fieldRamps(ctx);
       if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
       ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = Math.max(0.5, ow * 0.65);
+      ctx.lineWidth = hair(0.5, ow * 0.65);
       ctx.beginPath();
       if (nearSign < 0) ctx.ellipse(hipX, legRootY, rx, ry, 0, Math.PI / 2, Math.PI * 1.5);
       else ctx.ellipse(hipX, legRootY, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
     }
-    outlined(ctx, footFill, Math.max(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + footDx, footF[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+    outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + footDx, footF[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
   };
   // How far the near arm seats INBOARD and BELOW the raw shoulder point. It is
   // applied as a translate around the whole limb — root, hand, glove and
@@ -3418,7 +3669,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ctx.save();
         ctx.lineCap = 'butt';
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = Math.max(0.6, ow * 1.3);
+        ctx.lineWidth = hair(0.6, ow * 1.3);
         ctx.beginPath();
         for (const f of [0.42, 0.6, 0.78]) {
           const bx = elbowX + nx * barrel * f, by = elbowY + ny * barrel * f;
@@ -3430,10 +3681,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       }
       // Hinge pin: the one mark that says the bend is a joint and not a kink in
       // a bent pipe. Same translucent ink as the bore, so they read as a set.
-      if (!lod) outlined(ctx, OUTLINE, Math.max(0.5, ow * 0.4), (c) => c.arc(elbowX, elbowY, gunW * 0.34, 0, Math.PI * 2));
+      if (!lod) outlined(ctx, OUTLINE, hair(0.5, ow * 0.4), (c) => c.arc(elbowX, elbowY, gunW * 0.34, 0, Math.PI * 2));
       // Bore sized off the barrel, not a fixed 0.045u — at the slimmer gauge a
       // fixed bore stood proud of the barrel it is supposed to be a hole in.
-      outlined(ctx, OUTLINE, Math.max(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, gunW * 0.5, 0, Math.PI * 2));
+      outlined(ctx, OUTLINE, hair(0.6, ow * 0.5), (c) => c.arc(muzzleX, muzzleY, gunW * 0.5, 0, Math.PI * 2));
       if (cheer && !lod) {
         // Victory salute: he empties a few rounds into the sky. The pellets are
         // derived from the clock rather than tracked as state — three in flight
@@ -3510,7 +3761,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       c.closePath();
     });
     if (!lod) {
-      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = Math.max(0.6, ow * 0.55);
+      ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = hair(0.6, ow * 0.55);
       ctx.beginPath(); ctx.moveTo(axx - 0.44 * u, axy - 0.16 * u); ctx.lineTo(axx - 0.3 * u, axy - 0.1 * u); ctx.stroke();
     }
   }
@@ -3533,10 +3784,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the body, so a symmetric pose reads lopsided. Exception: grumpos's
   // celebrate clap, whose arms BOTH draw in the front pass — an arm back here
   // reads as clapping from behind his back.
-  const clapFront = pose.kind === 'celebrate' && (
+  // Cling deliberately does NOT join this group, though it was drawn here for a
+  // while. Both arms in front puts the far one straight across the eyes on the
+  // way to a pole that stands off to the side. Left in the ordinary split — far
+  // arm in the back pass, near arm in front — the crossing limb passes BEHIND
+  // the head and only the near arm shows, which is what a body turned toward
+  // something it is holding actually looks like.
+  const clapFront = (pose.kind === 'celebrate' && (
     id === 'grumpos'
     || (reworkedCelebration && (id === 'dolores' || id === 'fernwick'))
-  );
+  ));
   const raisedArmStudyFront = pose.kind === 'celebrate'
     && reworkedCelebration
     && (id === 'lorenzo' || id === 'gary');
@@ -3561,7 +3818,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (stand && !raisedArmStudyFront) drawFrontArm();
   }
   limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, recede(p.p, farShade), ow);
-  outlined(ctx, recede(footFill, farShade), Math.max(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+  outlined(ctx, recede(footFill, farShade), hair(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
   if (frontLegs) drawFrontLeg();
 
   // Grumpos needs an actual pelvis between torso and thighs. Previously each
@@ -3584,7 +3841,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Only the exposed lower rim gets an outline. A full oval would draw a
     // seam across the abdomen and make the pelvis another stuck-on object.
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(0.55, ow * 0.7);
+    ctx.lineWidth = hair(0.55, ow * 0.7);
     ctx.beginPath();
     ctx.ellipse(pelvisCx, pelvisY, pelvisRx, pelvisRy, 0, 0, Math.PI);
     ctx.stroke();
@@ -3656,7 +3913,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.beginPath(); torsoPath(ctx); ctx.clip();
     ctx.globalAlpha *= 0.22;
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(0.6, ow * 0.75);
+    ctx.lineWidth = hair(0.6, ow * 0.75);
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(px - torsoHalf * 0.82, pecY - 0.045 * u);
@@ -3699,7 +3956,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Original production-model stripe: a single broad cubic stroke rooted
     // at the tattooed shoulder and returning to that side at the waist.
     ctx.strokeStyle = p.a;
-    ctx.lineWidth = Math.max(1.4, headR * 0.29);
+    ctx.lineWidth = hair(1.4, headR * 0.29);
     // Same side as the face streak — they are one continuous marking.
     const ts = spec.tatSide ?? -1;
     // Paint is on the skin, so every point of the stripe rides the run bob as
@@ -3731,13 +3988,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Chest screen with alternating status lights, plus a hull seam at the
     // waist — the torso reads as plated machine, not a onesie.
     const px = torsoCx;
-    outlined(ctx, p.s, Math.max(0.5, ow * 0.55), (c) =>
+    outlined(ctx, p.s, hair(0.5, ow * 0.55), (c) =>
       roundRectPath(c, px - torsoHalf * 0.52, torsoTop + 0.045 * u, torsoHalf * 1.04, 0.1 * u, 0.02 * u));
     const beat = Math.sin((pose.time || 0) * 5) > 0;
     dot(ctx, px - torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.a : p.w);
     dot(ctx, px + torsoHalf * 0.24, torsoTop + 0.095 * u, 0.018 * u, beat ? p.w : p.a);
     ctx.strokeStyle = p.p;
-    ctx.lineWidth = Math.max(0.6, ow * 0.5);
+    ctx.lineWidth = hair(0.6, ow * 0.5);
     ctx.beginPath();
     ctx.moveTo(px - torsoHalf * 0.85, hipY - 0.055 * u);
     ctx.lineTo(px + torsoHalf * 0.85, hipY - 0.055 * u);
@@ -3840,19 +4097,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.save();
     ctx.beginPath(); torsoPath(ctx); ctx.clip();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(0.4, ow * 0.5);
+    ctx.lineWidth = hair(0.4, ow * 0.5);
     ctx.beginPath();
     roundRectPath(ctx, px - pocketHalf, pocketY, pocketHalf * 2, pocketH, pocketH * 0.22);
     ctx.stroke();
     // Tool head poking out of it, in the cap-badge gold so the two read as the
     // same trade. Short: anything longer becomes a stripe at 24px.
     ctx.strokeStyle = p.m;
-    ctx.lineWidth = Math.max(0.5, 0.014 * u);
+    ctx.lineWidth = hair(0.5, 0.014 * u);
     ctx.beginPath();
     ctx.moveTo(px + pocketHalf * 0.42, pocketY + pocketH * 0.5);
     ctx.lineTo(px + pocketHalf * 0.42, pocketY - pocketH * 0.34);
     ctx.stroke();
-    outlined(ctx, p.a, Math.max(0.4, ow * 0.4), (c) =>
+    outlined(ctx, p.a, hair(0.4, ow * 0.4), (c) =>
       roundRectPath(c, px + pocketHalf * 0.18, pocketY - pocketH * 0.62, pocketHalf * 0.48, pocketH * 0.4, pocketH * 0.12));
     ctx.restore();
     }
@@ -3867,10 +4124,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     if (!stand) strapOverArm = () => strapStroke([sideF], armY + 0.05 * u);
     ctx.strokeStyle = p.m; ctx.lineWidth = 0.055 * u;
     ctx.beginPath(); ctx.moveTo(px - torsoHalf * 0.88, beltY); ctx.lineTo(px + torsoHalf * 0.88, beltY); ctx.stroke();
-    outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => roundRectPath(c, px - 0.035 * u, beltY - 0.033 * u, 0.07 * u, 0.06 * u, 0.012 * u));
+    outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => roundRectPath(c, px - 0.035 * u, beltY - 0.033 * u, 0.07 * u, 0.06 * u, 0.012 * u));
   }
   if (spec.nameTag && !lod && !duck) {
-    outlined(ctx, p.w, Math.max(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
+    outlined(ctx, p.w, hair(0.6, ow * 0.5), (c) => roundRectPath(c, torsoHalf * 0.15, torsoTop + 0.05 * u, 0.09 * u, 0.06 * u, 0.01 * u));
   }
 
   // front limbs — in profile (run/jump) the near leg and arm cross the body, so
@@ -3950,7 +4207,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // and matching their color makes it read as depth, not a second garment.
     // It follows the flare, or the A-line opens past its edges.
     const wUnder = wTop * flare * 0.92;
-    outlined(ctx, p.w, Math.max(0.5, ow * 0.5), (c) => {
+    outlined(ctx, p.w, hair(0.5, ow * 0.5), (c) => {
       c.moveTo(px - wTop * 0.96 * depthScaleAt(-1), topYAt(-1));
       c.lineTo(px + wTop * 0.96 * depthScaleAt(1), topYAt(1));
       c.lineTo(px + wUnder * depthScaleAt(1) + sway, tipYAt(1) - 0.022 * u);
@@ -3973,7 +4230,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const topX = px + f * wTop * depthScale;
       const bx = px + f * wHem * depthScale + sway + drag(drivenGain * 0.45 * lead, 0.055 * u);
       const by = tipYAt(f) + drag(drivenGain * 0.45 * rise, 0.045 * u);
-      outlined(ctx, p.w, Math.max(0.6, ow * 0.7), (c) => {
+      outlined(ctx, p.w, hair(0.6, ow * 0.7), (c) => {
         c.moveTo(topX - panelHalf, topYAt(f));
         c.lineTo(topX + panelHalf, topYAt(f));
         // Each strap widens toward its tip in step with the flare — held to a
@@ -3996,7 +4253,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const bandBottom = 0.035 * u;
       // Curved upper and lower rims turn the belt into a band around a barrel,
       // while the shortened far edge shows it disappearing around his side.
-      outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => {
+      outlined(ctx, p.g, hair(0.5, ow * 0.55), (c) => {
         c.moveTo(px - leftHalf, leftY - bandTop);
         c.quadraticCurveTo(px, beltY - bandTop + waistBow, px + rightHalf, rightY - bandTop);
         c.lineTo(px + rightHalf, rightY + bandBottom);
@@ -4016,7 +4273,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.restore();
       dot(ctx, px + nearSign * beltHalf * 0.08, beltY + waistBow + nearSign * beltSlope * 0.08, 0.034 * u, p.w);
     } else {
-      outlined(ctx, p.g, Math.max(0.5, ow * 0.55), (c) => roundRectPath(c, px - beltHalf, beltY - 0.03 * u, beltHalf * 2, 0.065 * u, 0.02 * u));
+      outlined(ctx, p.g, hair(0.5, ow * 0.55), (c) => roundRectPath(c, px - beltHalf, beltY - 0.03 * u, beltHalf * 2, 0.065 * u, 0.02 * u));
       dot(ctx, px, beltY + 0.002 * u, 0.034 * u, p.w);
     }
   }
@@ -4044,7 +4301,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.save();
       ctx.globalAlpha *= 0.45;
       ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = Math.max(0.5, ow * 0.4);
+      ctx.lineWidth = hair(0.5, ow * 0.4);
       ctx.beginPath();
       ctx.moveTo(px + sway * 0.5, top + 0.03 * u);
       ctx.lineTo(px + sway, hemY - 0.01 * u);
@@ -4052,8 +4309,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.restore();
     }
     // belt over the waist, covering the skirt's top seam; gold buckle
-    outlined(ctx, p.p, Math.max(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
-    outlined(ctx, p.a, Math.max(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
+    outlined(ctx, p.p, hair(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
+    outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
   if (spec.apron && !duck) {
     // A bib apron, which is one shape and not two: bib, waist and skirt are cut
@@ -4141,12 +4398,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         // counter size.
         const tagW = 0.12 * u, tagH = 0.066 * u;
         const tagX = px - tagW / 2, tagY = bibTop + 0.028 * u;
-        outlined(ctx, p.w, Math.max(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
+        outlined(ctx, p.w, hair(0.4, ow * 0.5), (c) => roundRectPath(c, tagX, tagY, tagW, tagH, 0.014 * u), APRON_OUTLINE);
         ctx.save();
         ctx.beginPath(); roundRectPath(ctx, tagX, tagY, tagW, tagH, 0.014 * u); ctx.clip();
         ctx.fillStyle = p.b; ctx.fillRect(tagX, tagY, tagW, tagH * 0.42);
         ctx.restore();
-        ctx.strokeStyle = '#5a5546'; ctx.lineWidth = Math.max(0.32, ow * 0.32);
+        ctx.strokeStyle = '#5a5546'; ctx.lineWidth = hair(0.32, ow * 0.32);
         ctx.beginPath();
         ctx.moveTo(tagX + tagW * 0.24, tagY + tagH * 0.74);
         ctx.lineTo(tagX + tagW * 0.76, tagY + tagH * 0.74);
@@ -4162,7 +4419,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.save();
       ctx.globalAlpha *= 0.5;
       ctx.strokeStyle = APRON_OUTLINE;
-      ctx.lineWidth = Math.max(0.4, ow * 0.45);
+      ctx.lineWidth = hair(0.4, ow * 0.45);
       ctx.beginPath();
       ctx.moveTo(px - wWaist, waistY);
       ctx.lineTo(px + wWaist, waistY);
@@ -4170,7 +4427,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.restore();
       // A pocket, because every apron in every cafeteria has exactly one and it
       // always has a pen in it.
-      outlined(ctx, p.b, Math.max(0.4, ow * 0.45),
+      outlined(ctx, p.b, hair(0.4, ow * 0.45),
         (c) => roundRectPath(c, px + wWaist * 0.06, waistY + 0.045 * u, 0.1 * u, 0.075 * u, 0.014 * u), APRON_OUTLINE);
       // ...and in the standing pose nothing repaints the bib after this, so the
       // tag lands here — expected on a counter server.
@@ -4185,7 +4442,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
 
   // head (or the stump of one)
   if (pose.headless) {
-    outlined(ctx, p.s, Math.max(0.6, ow * 0.8), (c) => c.ellipse(torsoCx, torsoTop, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.s, hair(0.6, ow * 0.8), (c) => c.ellipse(torsoCx, torsoTop, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
   } else {
     // Head rides the SAME half-lean as the torso (leanX * 0.5). Given the full
     // leanX it sits a half-lean ahead of the body, and the torso's back edge
@@ -4198,7 +4455,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const drawCelShield = () => {
     const [sx, sy] = celShield;
     outlined(ctx, p.w, ow, (c) => c.arc(sx, sy, 0.15 * u, 0, Math.PI * 2));
-    outlined(ctx, p.a, Math.max(0.5, ow * 0.65), (c) => c.arc(sx, sy, 0.095 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, hair(0.5, ow * 0.65), (c) => c.arc(sx, sy, 0.095 * u, 0, Math.PI * 2));
     dot(ctx, sx, sy, 0.035 * u, OUTLINE);
   };
   const drawFarArm = () => {
@@ -4252,7 +4509,7 @@ function drawRoll(ctx, spec, p, pose, u, ow) {
   ctx.restore();
   // speed arcs trailing behind
   ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = Math.max(1, ow * 0.6);
+  ctx.lineWidth = hair(1, ow * 0.6);
   ctx.globalAlpha *= 0.45;
   ctx.beginPath(); ctx.arc(-r * 1.5, -r, r * 0.45, -0.6, 0.6); ctx.stroke();
   ctx.beginPath(); ctx.arc(-r * 1.9, -r, r * 0.3, -0.6, 0.6); ctx.stroke();
@@ -4269,10 +4526,10 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
     ctx.translate(0, -0.27 * u);
     ctx.rotate((t || 0) * 12);
     outlined(ctx, p.b, ow, (c) => c.arc(0, 0, 0.29 * u, 0, Math.PI * 2));
-    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
-    outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, hair(0.6, ow * 0.8), (c) => c.arc(-0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
+    outlined(ctx, p.a, hair(0.6, ow * 0.8), (c) => c.arc(0.29 * u, 0, 0.06 * u, 0, Math.PI * 2));
     drawEyes(ctx, p, u, 0, -0.05 * u, lod, expressionFor(id, { ...pose, effort: true }));
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0, 0.09 * u, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, hair(0.6, ow * 0.5), (c) => c.ellipse(0, 0.09 * u, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
     ctx.restore();
     return;
   }
@@ -4287,32 +4544,32 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   }
   // feet stubs peeking below
   const step = pose.kind === 'run' ? Math.sin(ph) * 0.06 * u : 0;
-  outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(-0.13 * u + step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
-  outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => c.ellipse(0.13 * u - step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+  outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) => c.ellipse(-0.13 * u + step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
+  outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) => c.ellipse(0.13 * u - step, -0.035 * u, 0.07 * u, 0.045 * u, 0, 0, Math.PI * 2));
   // body
   outlined(ctx, p.b, ow, (c) => c.ellipse(0, cy, rx, ry, 0, 0, Math.PI * 2));
   // arm nubs (rotate up while floating)
   const nubY = pose.float || pose.kind === 'celebrate' ? cy - ry * 0.55 : cy + ry * 0.15;
-  outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(-rx - 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
-  outlined(ctx, p.a, Math.max(0.6, ow * 0.8), (c) => c.arc(rx + 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
+  outlined(ctx, p.a, hair(0.6, ow * 0.8), (c) => c.arc(-rx - 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
+  outlined(ctx, p.a, hair(0.6, ow * 0.8), (c) => c.arc(rx + 0.01 * u, nubY, 0.07 * u, 0, Math.PI * 2));
   // face lives on the body
   const ex = expressionFor(id, pose);
   drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod, ex);
   if (ex.joy) {
     // Mochi grins with her whole face; the grin widens on every peak.
     const w = (ex.cheer ? 0.085 : 0.06) * u, d = (ex.cheer ? 0.08 : 0.04) * u;
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => {
+    outlined(ctx, p.m, hair(0.6, ow * 0.5), (c) => {
       c.moveTo(0.01 * u - w, cy + ry * 0.28);
       c.quadraticCurveTo(0.01 * u, cy + ry * 0.28 + d * 1.9, 0.01 * u + w, cy + ry * 0.28);
       c.closePath();
     });
   } else if (ex.surprise || pose.float) {
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.045 * u, 0.055 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, hair(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.045 * u, 0.055 * u, 0, 0, Math.PI * 2));
   } else if (ex.blink) {
-    ctx.strokeStyle = p.m; ctx.lineWidth = Math.max(0.8, ow * 0.65);
+    ctx.strokeStyle = p.m; ctx.lineWidth = hair(0.8, ow * 0.65);
     ctx.beginPath(); ctx.arc(0.01 * u, cy + ry * 0.25, 0.05 * u, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
   } else {
-    outlined(ctx, p.m, Math.max(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, hair(0.6, ow * 0.5), (c) => c.ellipse(0.01 * u, cy + ry * 0.3, 0.05 * u, 0.035 * u, 0, 0, Math.PI * 2));
   }
   ctx.restore();
 }
@@ -4325,7 +4582,7 @@ function pikaEyes(ctx, p, u, cx, cy, lod, ex) {
   const sep = 0.11 * u;
   if (lod) { dot(ctx, cx - sep, cy, 0.045 * u, p.e); dot(ctx, cx + sep, cy, 0.045 * u, p.e); return; }
   if (ex.blink) {
-    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(0.9, 0.025 * u); ctx.lineCap = 'round';
+    ctx.strokeStyle = p.e; ctx.lineWidth = hair(0.9, 0.025 * u); ctx.lineCap = 'round';
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(cx + sx * sep - 0.04 * u, cy);
@@ -4335,7 +4592,7 @@ function pikaEyes(ctx, p, u, cx, cy, lod, ex) {
     return;
   }
   if (ex.joy && !ex.cheer) { // ^ ^ delight
-    ctx.strokeStyle = p.e; ctx.lineWidth = Math.max(1, 0.03 * u); ctx.lineCap = 'round';
+    ctx.strokeStyle = p.e; ctx.lineWidth = hair(1, 0.03 * u); ctx.lineCap = 'round';
     for (const sx of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(cx + sx * sep - 0.045 * u, cy + 0.02 * u);
@@ -4350,14 +4607,14 @@ function pikaEyes(ctx, p, u, cx, cy, lod, ex) {
     // what reads as gaze, so both aiming at the nose reads cross-eyed.
     const csep = sep * 0.86;
     for (const sx of [-1, 1]) {
-      outlined(ctx, p.e, Math.max(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * csep, cy, 0.05 * u, 0.07 * u, 0, 0, Math.PI * 2));
+      outlined(ctx, p.e, hair(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * csep, cy, 0.05 * u, 0.07 * u, 0, 0, Math.PI * 2));
       dot(ctx, cx + sx * (csep - 0.022 * u), cy - 0.012 * u, 0.024 * u, p.w);
     }
     return;
   }
   const rY = ex.surprise || ex.cheer ? 0.085 : 0.07;
   for (const sx of [-1, 1]) {
-    outlined(ctx, p.e, Math.max(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * sep, cy, 0.05 * u, rY * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.e, hair(0.5, 0.012 * u), (c) => c.ellipse(cx + sx * sep, cy, 0.05 * u, rY * u, 0, 0, Math.PI * 2));
     dot(ctx, cx + sx * sep - 0.016 * u, cy - 0.022 * u, 0.02 * u, p.w);
   }
 }
@@ -4407,7 +4664,16 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
     ctx.rotate(0.06 * Math.sin(t * 5));
     cy -= 0.03 * u * (1 + Math.sin(t * 9)) * 0.5;
   }
-  const armsUp = pose.float || celebrate || enhancedJump;
+  // Clinging, both nubs go over the top of her and stay there: she has hauled
+  // herself onto the pole and is riding it as one squeezed handful. The body
+  // stretch itself comes from drawToon; what belongs here is where the nubs go
+  // and the wobble of a soft thing hanging by two of them.
+  const clingPika = clingAmount(pose);
+  if (clingPika > 0) {
+    cy -= 0.05 * u * clingPika;
+    ctx.rotate(0.05 * Math.sin(t * 8) * clingPika);
+  }
+  const armsUp = pose.float || celebrate || enhancedJump || clingPika > 0.4;
 
   // tail: star-tipped stalk, drawn on the LEFT in rig space so it trails behind
   // (the drawToon wrapper mirrors the whole rig with facing, keeping it correct).
@@ -4513,8 +4779,8 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
 
   // arm nubs (rotate up while floating / celebrating)
   const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedDuck ? 0.42 : 0.2);
-  outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(-rx - 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
-  outlined(ctx, p.b, Math.max(0.6, ow * 0.9), (c) => c.arc(rx + 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
+  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(-rx - 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
+  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(rx + 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
 
   // face — rides a small bounce on the run; cheeks lag + squash for a jiggle.
   // Kept subtle: the body already squashes at the same frequency, so a large
@@ -4545,20 +4811,20 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   }
   if (!lod) dot(ctx, 0, faceY + 0.08 * u, 0.012 * u, p.e);
   if (ex.joy || ex.surprise) {
-    outlined(ctx, p.m, Math.max(0.6, 0.014 * u), (c) => c.ellipse(0, faceY + 0.15 * u, 0.05 * u, ex.cheer ? 0.06 * u : 0.04 * u, 0, 0, Math.PI * 2));
+    outlined(ctx, p.m, hair(0.6, 0.014 * u), (c) => c.ellipse(0, faceY + 0.15 * u, 0.05 * u, ex.cheer ? 0.06 * u : 0.04 * u, 0, 0, Math.PI * 2));
   } else {
     // the goofy-face tongue, flapping with the stride (see `loll` above)
     if (loll && !lod) {
       const flap = Math.sin(2 * ph) * 0.012 * u;
       const tx = 0.03 * u, ty = faceY + 0.13 * u;
-      outlined(ctx, cheek, Math.max(0.6, ow * 0.8), (c) => {
+      outlined(ctx, cheek, hair(0.6, ow * 0.8), (c) => {
         c.moveTo(tx - 0.025 * u, ty);
         c.quadraticCurveTo(tx - 0.032 * u, ty + 0.06 * u + flap, tx, ty + 0.062 * u + flap);
         c.quadraticCurveTo(tx + 0.032 * u, ty + 0.06 * u + flap, tx + 0.025 * u, ty);
         c.closePath();
       });
     }
-    ctx.strokeStyle = p.m; ctx.lineWidth = Math.max(0.8, 0.02 * u); ctx.lineCap = 'round';
+    ctx.strokeStyle = p.m; ctx.lineWidth = hair(0.8, 0.02 * u); ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(-0.05 * u, faceY + 0.12 * u);
     ctx.quadraticCurveTo(-0.025 * u, faceY + 0.16 * u, 0, faceY + 0.13 * u);
@@ -4728,6 +4994,15 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     ? biteWave(reworkedCelebrate.cycle * 2)
     : Math.abs(Math.sin(mt * 6))); // shipped two-stage bite; legacy keeps the air-chomp
   else if (pose.kind === 'jump') loDeg = 32;
+  // Clinging: the jaw clamps. Chompo has no hands, so she rides the pole by
+  // biting it, and the mouth has to be OPEN — but held, not chewing — with the
+  // pole notionally filling the wedge. A shallow gape with a small strain
+  // tremor on it; a wide one reads as a yawn on the way down.
+  const clingDisc = clingAmount(pose);
+  if (clingDisc > 0) {
+    const bite = 26 + Math.sin((pose.time || 0) * 14) * 2.5;
+    loDeg += (bite - loDeg) * clingDisc;
+  }
   const thetaUp = upDeg * Math.PI / 180, thetaLo = loDeg * Math.PI / 180;
 
   // Walk: the head/body/hair bob up and down with each step (feet stay planted,
@@ -4788,7 +5063,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
       ctx.save();
       ctx.translate(snackX, snackY);
       ctx.rotate(travel * 1.8);
-      outlined(ctx, '#f6d33c', Math.max(0.5, ow * 0.65), (c) => {
+      outlined(ctx, '#f6d33c', hair(0.5, ow * 0.65), (c) => {
         c.moveTo(0, -snackR);
         c.lineTo(snackR, 0);
         c.lineTo(0, snackR);
@@ -4828,7 +5103,7 @@ function drawDisc(ctx, id, p, pose, u, ow, lod) {
     const gy = ay + 0.065 * u; // sole plants slightly into the ground line (y=0)
     ctx.save();
     ctx.translate(ax, ay); ctx.scale(1.15, 1.15); ctx.translate(-ax, -ay);
-    outlined(ctx, p.f, Math.max(0.6, ow * 0.8), (c) => {
+    outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) => {
       c.moveTo(ax - 0.03 * u, ay + 0.004 * u);                                          // heel top, back of the ankle
       c.quadraticCurveTo(ax + 0.016 * u, ay - 0.014 * u, ax + 0.05 * u, ay + 0.012 * u); // vamp over the instep
       c.lineTo(ax + 0.094 * u, gy - 0.004 * u);                                         // pointed toe at the ground
@@ -4970,14 +5245,19 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   const handLift = run ? Math.sin(ph) * 0.035 * u : jump ? (0.045 + 0.035 * airApex) * u : 0;
   // Floating shoes—no connecting legs.
   const shoeSpread = duck && enhancedMotion ? 0.165 : 0.13;
-  const shoeLift = jump ? (0.09 + 0.07 * airApex) * u : 0;
-  const backShoeX = -shoeSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
-  const frontShoeX = shoeSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
+  // Clinging: Raymn has no arms and no legs, so his grip is the gloves gathered
+  // over the top of him and the shoes drawn up underneath — a swimmer's shape
+  // with a pole through it. The body's own stretch and cant come from drawToon.
+  const clingRay = clingAmount(pose);
+  const shoeLift = (jump ? (0.09 + 0.07 * airApex) * u : 0) + clingRay * 0.13 * u;
+  const clingSpread = 1 - 0.45 * clingRay;   // ankles draw together on the pole
+  const backShoeX = -shoeSpread * clingSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
+  const frontShoeX = shoeSpread * clingSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
   const backTilt = -0.08 - (run ? Math.sin(ph) * 0.1 : 0);
   const frontTilt = 0.08 + (run ? Math.sin(ph) * 0.1 : 0);
-  outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
+  outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
   outlined(ctx, p.f, ow, (c) => c.ellipse(backShoeX, backShoeY, 0.125 * u, 0.063 * u, backTilt, 0, Math.PI * 2));
-  outlined(ctx, p.w, Math.max(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));
+  outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));
   outlined(ctx, p.f, ow, (c) => c.ellipse(frontShoeX, frontShoeY, 0.125 * u, 0.063 * u, frontTilt, 0, Math.PI * 2));
   // Torso and scarf.
   outlined(ctx, p.b, ow, (c) => roundRectPath(c, -0.165 * u, cy - 0.2 * u, 0.33 * u, 0.4 * u, 0.09 * u));
@@ -5033,7 +5313,7 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
       const iy = cy - 0.69 * u;
       ctx.save();
       ctx.globalAlpha *= impact;
-      ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = Math.max(0.6, ow * 0.8);
+      ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = hair(0.6, ow * 0.8);
       ctx.beginPath();
       for (const a of [-Math.PI / 2, -0.35, Math.PI + 0.35]) {
         ctx.moveTo(Math.cos(a) * 0.03 * u, iy + Math.sin(a) * 0.03 * u);
@@ -5045,6 +5325,17 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   } else {
     // Shipped celebration: both gloves rise and the front one waves.
     const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
+    // The grip, taking priority over every other glove arrangement: both hands
+    // meet over his head on the pole's column, a glove-width apart so they read
+    // as two hands rather than one white lump. Blended in with the catch.
+    if (clingRay > 0 && !cheer && !pose.headless) {
+      const gx = 0.09 * u, gy = cy - 0.62 * u;
+      const bx = -handOut * u - handSwing, fx = handOut * u + handSwing;
+      const bxc = bx + (-gx - bx) * clingRay, byc = backHandY + (gy - backHandY) * clingRay;
+      const fxc = fx + (gx - fx) * clingRay, fyc = (handY - handLift) + (gy - (handY - handLift)) * clingRay;
+      outlined(ctx, p.w, ow, (c) => c.ellipse(bxc, byc, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+      outlined(ctx, p.w, ow, (c) => c.ellipse(fxc, fyc, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+    } else {
     outlined(ctx, p.w, ow, (c) => c.ellipse(-handOut * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
     if (cheer) {
       const waveX = Math.sin((pose.time || 0) * 8) * 0.1 * u;
@@ -5053,6 +5344,7 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
     else if (pose.menu && !pose.fistThrown) {
       const orbit = (pose.time || 0) * 8;
       outlined(ctx, p.w, ow, (c) => c.arc(0.5 * u + Math.sin(orbit) * 0.08 * u, handY - 0.16 * u - Math.abs(Math.cos(orbit)) * 0.08 * u, 0.105 * u, 0, Math.PI * 2));
+    }
     }
   }
 }
@@ -5064,7 +5356,9 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
 export function drawRocketFist(ctx, x, y, t, returning = false, scale = 1) {
   const p = pal('raymn');
   const u = 40 * scale;
-  const ow = Math.max(0.5, 0.016 * u);
+  const prevInkScale = inkScale;
+  inkScale = drawScale(ctx);
+  const ow = hair(0.5, contour(0.016 * u));
   ctx.save();
   ctx.translate(x, y);
   if (returning) ctx.scale(-1, 1);
@@ -5072,7 +5366,7 @@ export function drawRocketFist(ctx, x, y, t, returning = false, scale = 1) {
   ctx.lineCap = 'round';
   // a flicker of rocket exhaust off the wrist
   const flick = 1 + 0.35 * Math.sin((t || 0) * 40);
-  outlined(ctx, p.f, Math.max(0.4, ow * 0.5), (c) => {
+  outlined(ctx, p.f, hair(0.4, ow * 0.5), (c) => {
     c.moveTo(-0.09 * u, -0.045 * u);
     c.lineTo(-0.2 * u * flick, 0);
     c.lineTo(-0.09 * u, 0.045 * u);
@@ -5081,12 +5375,15 @@ export function drawRocketFist(ctx, x, y, t, returning = false, scale = 1) {
   // the glove itself: the same ellipse the ray rig wears on the body
   outlined(ctx, p.w, ow, (c) => c.ellipse(0, 0, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
   ctx.restore();
+  inkScale = prevInkScale;
 }
 
 export function drawThrownAxe(ctx, x, y, rot, scale = 1) {
   const p = pal('grumpos');
   const u = 24 * scale;
-  const ow = Math.max(0.5, 0.03 * u);
+  const prevInkScale = inkScale;
+  inkScale = drawScale(ctx);
+  const ow = hair(0.5, contour(0.03 * u));
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rot || 0);
@@ -5102,12 +5399,13 @@ export function drawThrownAxe(ctx, x, y, rot, scale = 1) {
     c.closePath();
   });
   ctx.strokeStyle = '#eaf8ff';
-  ctx.lineWidth = Math.max(0.6, ow * 0.55);
+  ctx.lineWidth = hair(0.6, ow * 0.55);
   ctx.beginPath();
   ctx.moveTo(-0.24 * u, -0.22 * u);
   ctx.lineTo(-0.1 * u, -0.16 * u);
   ctx.stroke();
   ctx.restore();
+  inkScale = prevInkScale;
 }
 
 // ---------------------------------------------------------------- API
@@ -5116,7 +5414,9 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   if (!spec) return;
   const p = pal(heroId);
   const u = h;
-  const ow = Math.max(0.3, 0.016 * h) * INK.body; // whisper-light contour
+  const prevInkScale = inkScale;
+  inkScale = drawScale(ctx);
+  const ow = hair(0.3, contour(0.016 * h)) * INK.body; // whisper-light contour
   const lod = h < 16;
   let sx = 1, sy = 1;
   if (!pose.grounded && pose.kind === 'jump') {
@@ -5148,6 +5448,16 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   }
   const q = pose.squash || 0;
   if (q > 0) { sy *= 1 - LAND_SQUASH_Y * q; sx *= 1 + LAND_SQUASH_X * q; }
+  // The armless rigs cling with their whole body, so their version of the pose
+  // is a scale and a tilt rather than a limb arrangement — applied here, where
+  // the figure transform already lives, and read again inside each painter for
+  // the parts that are theirs (Mochi's nubs, Raymn's fins, Chompo's jaw).
+  const clingAmt = clingAmount(pose);
+  const rigCling = clingAmt > 0 ? CLING_RIG[heroId] : null;
+  if (rigCling) {
+    sy *= 1 + rigCling.squeeze * clingAmt;
+    sx *= 1 - rigCling.squeeze * 0.75 * clingAmt;
+  }
   ctx.save();
   if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
   ctx.translate(cx, feetY);
@@ -5166,6 +5476,9 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
     ctx.scale(spec.figureScaleX || 1, spec.figureScaleY || 1);
   }
   if (pose.lean) ctx.rotate(pose.lean);
+  // Chompo hangs off his own jaw and Raymn streams off the pole at an angle;
+  // both need the whole figure canted, and neither has a joint to do it with.
+  if (rigCling && rigCling.tilt) ctx.rotate(rigCling.tilt * clingAmt);
   if (cm) {
     if (cm.tilt) ctx.rotate(cm.tilt);
     // a flat turn-around: squeeze the sprite through zero width and back
@@ -5187,6 +5500,12 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // running speed is a distraction, not atmosphere.
   const xSign = (pose.facing === -1 ? -1 : 1) * (sx < 0 ? -1 : 1);
   const prevLight = armLight(u, xSign, !lod && opts.light !== false, opts.lit == null ? 1 : opts.lit);
+  // Step aside for the pole. Humanoids only: the armless rigs cling with their
+  // whole body and belong ON the column, and stepping them off it would just
+  // detach them from the thing they are supposed to be holding.
+  if (clingAmt > 0 && spec.rig !== 'pika' && spec.rig !== 'blob' && spec.rig !== 'disc' && spec.rig !== 'ray') {
+    ctx.translate(-CLING_POLE_X * u * clingAmt, 0);
+  }
   if (spec.rig === 'pika') drawPika(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'blob') drawBlob(ctx, heroId, p, pose, u, ow, lod);
   else if (spec.rig === 'disc') drawDisc(ctx, heroId, p, pose, u, ow, lod);
@@ -5194,6 +5513,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   else drawHumanoid(ctx, heroId, spec, p, pose, u, ow, lod);
   disarmLight(prevLight);
   ctx.restore();
+  inkScale = prevInkScale;
 }
 
 // The raw face paint: nominal framing per rig. Extents vary a lot between
@@ -5204,7 +5524,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h, light = true) {
   ctx.lineCap = 'round';
   // head+hat spans ~0.5u; fit that span to the box height
   const u = (h * 0.92) / 0.5;
-  const ow = Math.max(0.6, 0.032 * (h * 2)) * INK.body;
+  const ow = hair(0.6, contour(0.032 * (h * 2))) * INK.body;
   // Face crops are supersampled and cached, so the light is worth arming even
   // for a HUD cell — but only once the head is big enough to hold a ramp. The
   // blob/disc branch nests a whole drawToon, which arms its own.
@@ -5230,7 +5550,13 @@ function inkBounds(size, paint) {
     c.width = c.height = size;
     const x = c.getContext('2d');
     x.save();
+    // Measured at a pinned 1:1 ink scale: this result is cached per hero for
+    // the life of the page, so it must not depend on whichever camera happened
+    // to trigger the first measurement.
+    const prevInkScale = inkScale, prevBake = inkBake;
+    inkScale = 1; inkBake = 1;
     paint(x);
+    inkScale = prevInkScale; inkBake = prevBake;
     x.restore();
     const { data } = x.getImageData(0, 0, size, size);
     if (data.length !== size * size * 4) return null;
@@ -5422,7 +5748,12 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   ctx.translate(x + w / 2, y + h / 2);
   ctx.scale(s, s);
   ctx.translate(-cx, -cy);
+  // Read the scale AFTER the fit, so the floors answer to the size the face
+  // actually lands at rather than to the box it was asked for.
+  const prevInkScale = inkScale;
+  inkScale = drawScale(ctx);
   paintFace(ctx, heroId, spec, 0, 0, w, h, light);
+  inkScale = prevInkScale;
   ctx.restore();
 }
 
@@ -5440,7 +5771,13 @@ function cached(key, w, h, paint) {
   c.height = Math.max(1, h * SS);
   const x = c.getContext('2d');
   x.scale(SS, SS);
+  // The bake is blitted back at its logical size, so SS is resolution, not
+  // size: the ink floors have to be measured against the logical space here,
+  // not against the supersampled one.
+  const prevBake = inkBake;
+  inkBake = SS;
   paint(x);
+  inkBake = prevBake;
   toonCache.set(key, c);
   return c;
 }
@@ -5484,8 +5821,16 @@ export function poseFromPlayer(player, t) {
     duckAmount: forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
     duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / SQUASH_T)),
-    lean: player.dashT > 0 ? 0.26 * Math.min(1, player.dashT / 0.2) : 0,
+    // Whichever is stronger. A dash is a hard 0.26; a boost pad is a shallower
+    // 0.17 that holds a beat longer, so the two do not read as the same move.
+    lean: Math.max(
+      player.dashT > 0 ? 0.26 * Math.min(1, player.dashT / 0.2) : 0,
+      player.boostT > 0 ? 0.17 * Math.min(1, player.boostT / 0.28) : 0,
+    ),
     roll: !!player.rolling,
+    // The pole ride. A blend, not a flag: the run hands over how much of the
+    // grip has been taken so the arms travel into it.
+    cling: Math.max(0, Math.min(1, player.cling || 0)),
     float: !!player.floating,
     stomp: !!player.stomping,
     headless: player.headless > 0 || player.fistThrown,

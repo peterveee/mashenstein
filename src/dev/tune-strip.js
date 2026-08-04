@@ -10,8 +10,8 @@
 // Keys are claimed only while tune mode is on, because ArrowLeft/ArrowRight are
 // the ability during a run and the section-skip in the dev key branch.
 import { drawText, drawPanel } from '../engine/sprites.js';
-import { H, W } from '../engine/renderer.js';
-import { TUNABLES, GROUPS, byGroup } from '../../tools/lib/tunables.js';
+import { W } from '../engine/renderer.js';
+import { TUNABLES, GROUPS, byGroup, byName } from '../../tools/lib/tunables.js';
 import { readOne, defaultOf, knows, tuningAvailable, changed } from './tunables.js';
 import { nudge, revertTuning } from './tune-store.js';
 import { jumpHeightFor, airtimeFor } from '../game/player.js';
@@ -67,7 +67,19 @@ export const TuneStrip = {
   adjust(dir, coarse, run) {
     const row = this.current();
     if (!row) return null;
-    const v = nudge(row.name, dir * (coarse ? row.coarse : row.step), run);
+    return this.adjustNamed(row.name, dir, coarse, run);
+  },
+
+  /**
+   * Nudge one named constant whatever is selected, for the constants that have
+   * their own key. Zoom earns one: it is the number you want to sweep WHILE
+   * watching something else, and having to leave the row you were tuning to
+   * reach it is how a comparison gets lost.
+   */
+  adjustNamed(name, dir, coarse, run) {
+    const row = byName(name);
+    if (!row || !knows(name)) return null;
+    const v = nudge(name, dir * (coarse ? row.coarse : row.step), run);
     return v == null ? null : `${row.short} ${fmt(row, v)}`;
   },
 
@@ -176,9 +188,21 @@ export function drawTuneStrip(ctx, dev) {
   if (!TuneStrip.on) return 0;
   const rows = TuneStrip.rows();
   if (!tuningAvailable() || !rows.length) {
-    const msg = 'TUNE: no tunables registered (not a watch build?)';
-    drawPanel(ctx, 2, H - 44, 8 + msg.length * 4, 11, 2, 'rgba(11,11,20,0.86)');
-    drawText(ctx, msg, 6, H - 41, HOT, 0.75);
+    // Two different faults, and telling a watch build it might not be one sends
+    // you looking in the wrong place. If OTHER groups registered, the bundle is
+    // transformed and only THIS group is missing — which has one cause: the
+    // plugin is built once at watch-server start and captures the manifest as
+    // it was then, so rows added to tools/lib/tunables.js since are absent from
+    // the running bundle however many times esbuild has rebuilt it.
+    const declared = byGroup(GROUPS[TuneStrip.group]).length;
+    const msg = tuningAvailable() && declared
+      ? `TUNE ${GROUPS[TuneStrip.group]}: ${declared} declared, 0 in this bundle`
+        + ' — restart the watch build'
+      : 'TUNE: no tunables registered (not a watch build?)';
+    // Same berth as the strip proper, so the message appears where the panel
+    // it stands in for would have been rather than somewhere else entirely.
+    drawPanel(ctx, 2, 2, 8 + msg.length * 4, 11, 2, 'rgba(11,11,20,0.86)');
+    drawText(ctx, msg, 6, 5, HOT, 0.75);
     return 12;
   }
 
@@ -211,12 +235,18 @@ export function drawTuneStrip(ctx, dev) {
   const line2 = derivedLine(d);
   const warnLine = d.warn.length ? `! ${d.warn.join(' · ')}` : null;
 
-  // Sized to its own content and parked ABOVE the status strip, which owns
-  // H-30. Overlapping it hid the warning row behind the crash counter — the one
-  // line most worth reading was the one covered up.
+  // Parked at the TOP of the frame. It used to sit just above the status strip
+  // at the bottom, which put it straight through the band the game is played
+  // in: the ground line, the hero and every obstacle approaching him all live
+  // in the lower third, so the panel covered the exact thing being tuned. That
+  // is tolerable for a number you read between attempts and useless for one you
+  // judge while it moves — a smear or a gait change has to be watched, not
+  // sampled. The HUD pills it now overlaps are the cheaper thing to lose: they
+  // are read once, they are not what any of these constants affect, and the
+  // strip only exists while a dev build is deliberately tuning.
   const lineCount = 3 + (warnLine ? 1 : 0);
   const hgt = 5 + lineCount * 9;
-  const top = H - 34 - hgt;
+  const top = 2;
   const w = Math.min(W - 4, 8 + Math.max(
     head.length, line2.length, constW, warnLine ? warnLine.length : 0,
   ) * 4);
@@ -237,7 +267,7 @@ export function drawTuneStrip(ctx, dev) {
 }
 
 export function tuneHelp() {
-  return '↑↓ pick  ←→ move  shift x10  G group  C copy  R revert  T off';
+  return '↑↓ pick  ←→ move  +/- zoom  shift x10  G group  C copy  R revert  T off';
 }
 
 export { revertTuning };

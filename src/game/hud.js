@@ -145,15 +145,26 @@ const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 // coin readout would be a second thing to keep in sync with this one. A caller
 // with no cells to show (oneHit false, maxBattery() 0) gets exactly the coin
 // half of the pill.
+// The pill's own width, as a function rather than a local, because the finish
+// plate below it is sized to match: two stacked panels of different widths read
+// as two unrelated readouts that happen to be near each other, and the whole
+// point of that plate is that it belongs to this one.
+function statusPillW(run) {
+  const cells = run.oneHit ? 0 : run.maxBattery();
+  const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
+  // A floor of two digits: a lone '0' left the coin sitting in a pocket of
+  // dead panel, and the pill twitched wider the moment it hit 10.
+  const countW = Math.max(textWidth(formatCoins(run.coins), 1, 'bold'), textWidth('00', 1, 'bold'));
+  const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
+  return PILL_PAD * 2 + cellsW + splitW + COIN_D + 3 + countW;
+}
+
 export function drawStatusPill(ctx, run) {
   const cells = run.oneHit ? 0 : run.maxBattery();
   const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
   const count = formatCoins(run.coins);
-  // A floor of two digits: a lone '0' left the coin sitting in a pocket of
-  // dead panel, and the pill twitched wider the moment it hit 10.
-  const countW = Math.max(textWidth(count, 1, 'bold'), textWidth('00', 1, 'bold'));
   const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
-  const pillW = PILL_PAD * 2 + cellsW + splitW + COIN_D + 3 + countW;
+  const pillW = statusPillW(run);
   drawPanel(ctx, PILL_X, PILL_Y, pillW, PILL_H, 6.5, undefined, PANEL);
 
   let x = PILL_X + PILL_PAD;
@@ -169,7 +180,11 @@ export function drawStatusPill(ctx, run) {
   }
   drawProp(ctx, 'hudCoin', x, PILL_CY - COIN_D / 2, COIN_D, COIN_D);
   drawCoinGlitter(ctx, x, PILL_CY - COIN_D / 2, COIN_D, run);
-  rawDrawText(ctx, count, x + COIN_D + 3, textY(PILL_CY), '#ffffff', 1, 'bold');
+  // The count goes gold while the finish bonus is walking into it, so the number
+  // that is CHANGING is the one that catches the eye — the plate below is the
+  // source, this is the destination, and for a second they are the same colour.
+  const paying = run.flipCoins && run.flipCoins.left > 0;
+  rawDrawText(ctx, count, x + COIN_D + 3, textY(PILL_CY), paying ? '#f6d33c' : '#ffffff', 1, 'bold');
   // One-hit runs have no cells to show, so the pill states the terms instead —
   // on its own panel under it, red-edged, where the row of cells would have
   // been. A panel rather than a bare plated line: it is a standing readout of
@@ -181,6 +196,60 @@ export function drawStatusPill(ctx, run) {
       { border: 'rgba(224,72,72,0.4)', shadow: true });
     rawDrawText(ctx, WARN, PILL_X + wp, textY(wy + wh / 2, 0.85), '#e04848', 0.85, 'bold');
   }
+}
+
+// The finish plate: the ONE card the flip prints. One line — the word BONUS,
+// the coin, and the number still owed — hung off the left edge of the status
+// pill and drained coin by coin into the count above.
+//
+// One card, one corner. The grade used to print as a floatie over the hero —
+// which at the end of a stage means over the flagpole, top right — while the
+// coins it was describing arrived top left. Same event, opposite corners, and
+// the eye had to be in two places to read one reward. Here the word, the number
+// and the destination are all within a few pixels of each other, and the count
+// above going gold at the same moment ties the last knot.
+//
+// Two lines, and they are two different statements. The top one is the VERDICT
+// — what you did and what it scored — and it is the only place the grade is
+// named, so it stays. The bottom one is the PAYOUT arriving, labelled BONUS and
+// carrying the coin so it cannot be mistaken for points, metres or seconds.
+//
+// The number shown is what is still OWED, so the plate empties as the pill
+// fills. Two numbers moving in opposite directions is the whole animation.
+function drawCoinBonus(ctx, run) {
+  const b = run.flipCoins;
+  if (!b || !(b.alpha > 0)) return;
+  const D = 10, GAP = 3, PAD = 5, ROW = 13;
+  const head = `${b.label}  +${b.points}`;
+  const LABEL = 'BONUS';
+  const labelW = textWidth(LABEL, 0.85, 'bold');
+  // Sized off the widest reading each line will ever show, so the plate does not
+  // shrink under its own count as the coins leave it.
+  const coinRow = labelW + GAP * 2 + D + GAP + textWidth(`${b.total}`, 1, 'bold');
+  // Flush with the pill above, never narrower — the two panels share a left AND
+  // a right edge, so they read as one block of run state rather than as a card
+  // that happened to land under the HUD. Content still sets the floor: a grade
+  // wider than the pill grows the plate instead of being clipped by it.
+  const w = Math.max(statusPillW(run), PAD * 2 + Math.max(textWidth(head, 0.85, 'bold'), coinRow));
+  const h = ROW * 2 + 5;
+  const x = PILL_X;
+  // Under the one-hit warning when that row is present; otherwise the first
+  // thing below the pill.
+  const y = PILL_Y + PILL_H + 3 + (run.oneHit ? 16 : 0);
+  ctx.save();
+  ctx.globalAlpha = b.alpha;
+  // Rides a couple of pixels up into place rather than blinking on.
+  ctx.translate(0, (1 - b.alpha) * 3);
+  drawPanel(ctx, x, y, w, h, 5, undefined, PANEL_GOLD);
+  rawDrawText(ctx, head, x + PAD, textY(y + 3 + ROW / 2, 0.85), '#ffffff', 0.85, 'bold');
+  // The word sits quieter than the number beside it: it is a label that never
+  // changes, and the thing worth looking at is the count coming down.
+  const cy = y + 3 + ROW + ROW / 2;
+  rawDrawText(ctx, LABEL, x + PAD, textY(cy, 0.85), 'rgba(255,255,255,0.7)', 0.85, 'bold');
+  const coinX = x + PAD + labelW + GAP * 2;
+  drawProp(ctx, 'hudCoin', coinX, cy - D / 2, D, D);
+  rawDrawText(ctx, `${b.left}`, coinX + D + GAP, textY(cy), '#f6d33c', 1, 'bold');
+  ctx.restore();
 }
 
 // Goal toasts: a plug landing is the one mid-run event worth interrupting for,
@@ -333,6 +402,7 @@ export function drawHud(ctx, run) {
   // readouts you actually steer by. Landing a plug now announces itself.
   drawStatusPill(ctx, run);
   drawGoalToast(ctx, run);
+  drawCoinBonus(ctx, run);
 
   // The live gauges, bottom-left: the ability nameplate and any running
   // power-up timers stacked above it. The hero-following orb owns the special
@@ -345,7 +415,16 @@ export function drawHud(ctx, run) {
   // the band below the ground line and there is no screen left underneath it.
   // Power-ups are the transient half of this group, so they are the half that
   // moves.
-  const GAUGE_X = 14;
+  // Shared geometry for the group: the inset before a label's text, the gap
+  // from a donut's edge to its panel, and the power-up donut's radius. Named
+  // because the nameplate below is placed off the same numbers rather than
+  // restating the arithmetic.
+  const LABEL_PAD = 5, RING_GAP = 5, SHELF_R = 5;
+  // The whole group hangs off the status pill's left edge, so the top-left
+  // banner and the bottom-left readouts start on one line down the screen
+  // instead of two edges a few pixels apart. GAUGE_X is a donut *centre*, so it
+  // sits one radius in from that line.
+  const GAUGE_X = PILL_X + SHELF_R;
   // Shares the keyboard hint line's midline (hy = H - 17, 12 tall) so the two
   // bottom-edge readouts sit level across the screen instead of each hanging at
   // its own height — and it puts the ability panel directly opposite the hint
@@ -355,9 +434,9 @@ export function drawHud(ctx, run) {
   // midline. Returns the panel's right edge, so a row of them can be laid end
   // to end. `show` false measures without drawing, which is how a blinking
   // entry holds its slot instead of collapsing the row.
-  const gauge = (cx, cy, r, thick, frac, color, label, ink, scale, halo, show = true) => {
-    const LP = 5, LH = scale < 1 ? 12 : 14;
-    const lx = cx + r + 5;
+  const gauge =(cx, cy, r, thick, frac, color, label, ink, scale, halo, show = true) => {
+    const LP = LABEL_PAD, LH = scale < 1 ? 12 : 14;
+    const lx = cx + r + RING_GAP;
     const lw = LP * 2 + textWidth(label, scale, 'bold');
     if (show) {
       drawRingGauge(ctx, cx, cy, r, thick, frac, color);
@@ -382,10 +461,15 @@ export function drawHud(ctx, run) {
     // quiet nameplate here; its cooldown lives beside the hero in world space.
     const hero = HERO_BY_ID[run.relay.current];
     const label = hero.ability.label;
-    const LP = 5, LH = 14;
+    const LP = LABEL_PAD, LH = 14;
     const lw = LP * 2 + textWidth(label, 1, 'bold');
-    drawPanel(ctx, GAUGE_X, GAUGE_CY - LH / 2, lw, LH, 4, undefined, PANEL);
-    rawDrawText(ctx, label, GAUGE_X + LP, textY(GAUGE_CY, 1), '#48e0c8', 1, 'bold');
+    // Not GAUGE_X, which is a donut centre and this entry has no donut: the
+    // plate goes on the same line the donuts and the status pill start on, so
+    // the left column reads as one edge top to bottom. The power-up names above
+    // step in past their donuts; the nameplate is the flush one.
+    const ax = PILL_X;
+    drawPanel(ctx, ax, GAUGE_CY - LH / 2, lw, LH, 4, undefined, PANEL);
+    rawDrawText(ctx, label, ax + LP, textY(GAUGE_CY, 1), '#48e0c8', 1, 'bold');
   }
 
   // Power-up timers sit in a single row on the shelf above the ability, each in
@@ -421,7 +505,7 @@ export function drawHud(ctx, run) {
     const over = a.level > run.powerups.levelOf(id);
     // Blinking measures but does not draw, so the entry keeps its slot and the
     // rest of the row does not shuffle sideways twice a second.
-    const right = gauge(px, SHELF_CY, 5, 2.7, a.t / a.t0, def.color,
+    const right = gauge(px, SHELF_CY, SHELF_R, 2.7, a.t / a.t0, def.color,
       `${def.name}${over ? '+' : ''}`, def.color, 0.8,
       over && { alpha: 0.5, color: def.color, width: 1, r: 7.5 }, !blink);
     px = right + 11;   // panel edge, a gap, then the next donut's radius
@@ -483,7 +567,16 @@ export function drawHud(ctx, run) {
   // that moves is the panel's left edge, and it moves *through* the head — the
   // clip below is set at the tag's trailing edge, so the shrinking panel wipes
   // the sentence with the same motion that closes it. One gesture, not two.
-  const objective = (tag, tagColor, text, ink, y, scale, fold = 0) => {
+  // `alpha` is the whole-panel fade. Only the BONUS line ever uses it — see
+  // bonusAlpha below — and it wraps rather than being threaded through the
+  // layout so the fold, the clip and the two-part text keep working untouched.
+  const objective = (tag, tagColor, text, ink, y, scale, fold = 0, alpha = 1) => {
+    if (alpha <= 0) return;
+    if (alpha < 1) { ctx.save(); ctx.globalAlpha *= alpha; }
+    drawObjective(tag, tagColor, text, ink, y, scale, fold);
+    if (alpha < 1) ctx.restore();
+  };
+  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0) => {
     const TP = 5, GAP = 5;
     const h = scale < 1 ? 12 : 14;
     const cy = y + h / 2;
@@ -536,6 +629,22 @@ export function drawHud(ctx, run) {
   // The BONUS panel's fold clock. Held open while bonusT is running, eased shut
   // over its last half-second.
   const fold = 1 - smoothstep(Math.min(1, Math.max(0, run.bonusT ?? 0) / BONUS_FOLD));
+  // The BONUS line — and only that one — leaves before the marker arrives. It is
+  // a statement of what is still being ASKED, and by the time the flagpole is on
+  // screen there is nothing left to ask: the challenge is already whatever it
+  // is, and the results card is seconds away with the verdict on it. Staying up,
+  // it spends the entire finale sitting in the same band as the flag.
+  //
+  // GOAL stays. It is one short line, it is the run's own title bar, and the
+  // second row was the one actually landing next to the pole.
+  //
+  // Driven by DISTANCE, not by the finish run arming: the pole is drawn from 560
+  // out and the dash arms later than that, so a fade keyed to the dash was still
+  // printing over the marker for the whole approach — which is the shot it
+  // ruins. Gone by 360 out, about half a second of fade at running speed, so it
+  // reads as one demand lifting rather than as the HUD blinking.
+  const remain = Number.isFinite(run.totalDist) ? run.totalDist - run.distance : Infinity;
+  const bonusAlpha = run.finishing ? 0 : 1 - smoothstep(Math.min(1, Math.max(0, (560 - remain) / 200)));
   if (!run.overtime && run.stage) {
     const m = run.mission;
     let prog = '';
@@ -549,13 +658,13 @@ export function drawHud(ctx, run) {
       const tail = done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`;
       objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)',
         [`${fitRight(c.desc, textWidth(` ${tail}`, 0.85))} `, tail],
-        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold);
+        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold, bonusAlpha);
     } else if (run.challenge) {
       // Folded, this one keeps the verdict rather than the description: a missed
       // challenge is a tombstone, and the words that matter are the last three.
       objective('BONUS', 'rgba(255,255,255,0.3)',
         [`${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `, 'NOT THIS TIME'],
-        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85, fold);
+        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85, fold, bonusAlpha);
     }
   } else {
     objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
@@ -958,14 +1067,14 @@ export function drawFailBanner(ctx, text) {
 // `heroX` is the hero's column in SCREEN space, already through the zoom —
 // this layer is unscaled, so a world offset here would leave every card
 // trailing behind the hero.
-export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1 } = {}) {
+export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeftOf = null } = {}) {
   // Impact words (PEW, BOY.) center over the hero's head; anything longer
   // shares one left edge at the hero column and rags rightward into the
   // direction of travel — centering long lines on a hero this near the screen
   // edge just shoved each one to its own x. In mirror mode the shared edge is
   // on the right and text rags leftward.
-  const floatX = mirror ? W - heroX - 6 : heroX + 6;
-  const edgeX = mirror ? W - heroX : heroX;
+  let floatX = mirror ? W - heroX - 6 : heroX + 6;
+  let edgeX = mirror ? W - heroX : heroX;
   const short = f.text.length <= 5;
   const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
   const topY = Math.max(38, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y)));
@@ -973,7 +1082,18 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1 } = {}) {
   // light packs.
   const tw = Math.max(...lines.map((line) => textWidth(line)));
   const PADX = 5;
-  const bx = short ? floatX - tw / 2 - PADX : (mirror ? edgeX - tw - PADX : edgeX - PADX);
+  let bx = short ? floatX - tw / 2 - PADX : (mirror ? edgeX - tw - PADX : edgeX - PADX);
+  // Clear of the finish marker. Floaties rise from the hero's column, and at
+  // the end of a stage the hero's column IS the flagpole — so the card that
+  // says what you just scored prints across the flag it is describing, over the
+  // one three seconds of the level built to be looked at. Given a limit, the
+  // whole card slides left until its right edge is off the pole; it is moved
+  // bodily, panel and text together, so the ragged left edge the long lines
+  // share stays a straight edge.
+  if (keepLeftOf != null) {
+    const dx = Math.min(0, keepLeftOf - (bx + tw + PADX * 2));
+    bx += dx; floatX += dx; edgeX += dx;
+  }
   ctx.save();
   ctx.globalAlpha = alpha;
   drawPanel(ctx, Math.round(bx), topY - 4, tw + PADX * 2, lines.length * LINE_H + 8, 4,

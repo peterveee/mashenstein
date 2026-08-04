@@ -7,9 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const outPath = resolve(process.argv[2] || join(root, 'dist', 'plumber-audio-audition.wav'));
+const outPath = resolve(process.argv[2] || join(root, 'audio', 'renders', 'auditions', 'misc', 'plumber-audio-audition.wav'));
 const musicPath = join(root, 'dist', 'plumber-panic.wav');
-const effectsDir = join(root, 'audio', 'weapon-candidates');
+const effectsDir = join(root, 'audio', 'renders', 'weapons');
 const GAP_S = 0.35;
 const MUSIC_GAP_S = 0.8;
 const ATTACK_MASTER_TRIM = 0.25;
@@ -76,7 +76,7 @@ for (const name of effects) {
   const attackTrim = GAINS[name] == null ? 1 : ATTACK_MASTER_TRIM;
   append(samples, clip, (GAINS[name] ?? 1) * attackTrim);
   cursor += clip.length;
-  index.push({ start, end: cursor, label: name, source: join('audio', 'weapon-candidates', name) });
+  index.push({ start, end: cursor, label: name, source: join('audio', 'renders', 'weapons', name) });
   append(samples, silence(GAP_S)); cursor += Math.round(GAP_S * SR);
 }
 

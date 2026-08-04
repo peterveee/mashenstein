@@ -9,7 +9,7 @@
 // so every save rewrote all of them and two desks could not save at once without one
 // clobbering the other. A per-song file cannot have that problem.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 import { bankSource, DESK_MARKER } from './song-source.js';
 // A mix is written by its own rules — defaults left out, so the file holds decisions
 // and a save produces a diff of what changed. See mix-source.js.
@@ -93,10 +93,51 @@ export function snapshotSongFile(root, id, dir, stamp) {
   if (at < 0) return null;
   mkdirSync(dir, { recursive: true });
   const name = `song-${stamp}-${id}.js`;
+  const data = src.slice(at).replace(/^\/\/.*$/gm, '').trimStart();
   writeFileSync(join(dir, name),
     `// ${id} — the mix and arrangement as they stood before a save at ${stamp}.\n`
-    + `// Data only, no imports: a backup has to be readable on its own.\n`
     + `// Put it back with the desk's "Open an earlier version…".\n\n`
-    + src.slice(at).replace(/^\/\/.*$/gm, '').trimStart());
+    + notesImport(root, dir, data)
+    + data);
   return name;
+}
+
+/**
+ * The one import a snapshot may need, aimed from where the snapshot LIVES.
+ *
+ * An arrangement is not numbers. `bankSource` writes its note rows in the same
+ * `seq('E2 . . .')` shorthand the banks are authored in, and that is a function — one
+ * the song file imports two lines above the marker, which is exactly the half a
+ * snapshot does not copy. So a snapshot of any song with a re-noted arrangement
+ * threw `ReferenceError: seq is not defined` the moment you tried to open it: the
+ * backup was unreadable precisely when it was wanted. It cost the SPEED ZONE mix.
+ *
+ * The header used to promise "no imports". It could not keep that promise and hold
+ * an arrangement, so it makes a smaller one instead: at most this line, resolved
+ * against the snapshot's own folder rather than copied from the song's, and written
+ * only when the body actually calls a helper.
+ *
+ * The helper list is READ from notes.js rather than written out here. A hand-kept list
+ * is the same bug waiting: add a shorthand to the note helpers, teach `bankSource` to
+ * emit it, and every snapshot taken after that is unopenable again — discovered, as
+ * this one was, on the day someone needs a backup. Reading the exports means the list
+ * cannot fall behind. An unused import costs nothing; a missing one costs a mix.
+ */
+export function notesImport(root, dir, body) {
+  const used = noteHelpers(root)
+    .filter((fn) => new RegExp(`\\b${fn}\\(`).test(body));
+  if (!used.length) return '';
+  let rel = relative(dir, join(root, 'src/engine/notes.js')).split('\\').join('/');
+  if (!rel.startsWith('.')) rel = `./${rel}`;
+  return `// The note shorthand the arrangement below is written in.\n`
+    + `import { ${used.join(', ')} } from '${rel}';\n\n`;
+}
+
+/** Every function src/engine/notes.js exports, so the list above cannot go stale. */
+let helperCache = null;
+function noteHelpers(root) {
+  if (helperCache) return helperCache;
+  const src = readFileSync(join(root, 'src/engine/notes.js'), 'utf8');
+  helperCache = [...src.matchAll(/^export function (\w+)/gm)].map((m) => m[1]);
+  return helperCache;
 }

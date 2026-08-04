@@ -9,7 +9,11 @@ const { Audio } = await import('../src/engine/audio.js');
 const { TutorialState } = await import('../src/game/tutorial.js');
 const { drawWorldEntity } = await import('../src/game/draw.js');
 const { makeObstacle } = await import('../src/game/entities.js');
-const { ZOOM } = await import('../src/engine/camera.js');
+// Held as the module, not destructured. ZOOM is a live binding now — the
+// resting framing is resolved per device and per setting — and `const { ZOOM }`
+// would snapshot whatever it happened to be at import time, then compare the
+// tutorial's settled camera against a number the game had already moved on from.
+const camera = await import('../src/engine/camera.js');
 const { drawSpeech } = await import('../src/game/hud.js');
 
 let failed = false;
@@ -112,9 +116,9 @@ deathCueTutorial.exit();
 
 const skippedIntro = new TutorialState({ onDone: () => {} });
 skippedIntro.enter();
-assert(skippedIntro.camZoom > ZOOM, 'the staged intro starts at its close-up zoom');
+assert(skippedIntro.camZoom > camera.ZOOM, 'the staged intro starts at its close-up zoom');
 skippedIntro.devSkipSection('KeyN');
-assert(skippedIntro.camZoom === ZOOM && skippedIntro.introPhase === 4,
+assert(skippedIntro.camZoom === camera.ZOOM && skippedIntro.introPhase === 4,
   'skipping the intro settles at the normal gameplay zoom');
 skippedIntro.exit();
 

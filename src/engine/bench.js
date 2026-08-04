@@ -14,6 +14,7 @@
 //                           there is no upload at all
 // If 2D holds a rung that WebGL cannot, the upload is the ceiling.
 import { setDensityPin, suppressSkyFx, rendererDiagnostics, rendererBackend, W, H } from './renderer.js';
+import { frameHealth } from './loop.js';
 import { drawText, textWidth } from './sprites.js';
 
 // Every standard rung plus native. Native goes last so the run ends on the
@@ -30,6 +31,11 @@ let phaseEndsAt = 0;
 let measuring = false;
 let frames = 0;
 let measuredAt = 0;
+// Dropped frames at the start of the measurement, so each rung reports the ones
+// it caused rather than the session's running total. A 2500ms average cannot
+// show these at all: a rung that hitches twenty times still averages 60 and
+// prints as a clean row, which is exactly the row someone would then trust.
+let dropsAt = 0;
 const results = [];
 
 export function benchActive() { return active; }
@@ -98,6 +104,7 @@ export function benchFrame(now) {
     measuring = true;
     frames = 0;
     measuredAt = now;
+    dropsAt = frameHealth().hitchTotal;
     phaseEndsAt = now + MEASURE_MS;
     return;
   }
@@ -109,6 +116,7 @@ export function benchFrame(now) {
     density,
     sky,
     fps: elapsed > 0 ? Math.round((frames * 1000) / elapsed) : 0,
+    drops: frameHealth().hitchTotal - dropsAt,
     px: Math.round(W * density) + 'x' + Math.round(H * density),
   });
   advance(now);
@@ -132,13 +140,21 @@ export function drawBench(ctx) {
   drawText(ctx, head, x + 6, y + 5, '#8ef0c0', 0.6, 'bold');
   let ly = y + 17;
   for (const r of results) {
-    // 60 is the target; anything at or above it is the rung we can afford.
-    const ink = r.fps >= 58 ? '#8ef0c0' : r.fps >= 45 ? '#f0d88e' : '#f08e9e';
+    // 60 is the target; anything at or above it is the rung we can afford. A
+    // rung that drops frames is not clean even at 60, so the row goes amber on
+    // the drop count alone — smoothness is the thing being measured, and the
+    // average is the one number that cannot see it.
+    const ink = r.drops > 2 ? '#f0d88e'
+      : r.fps >= 58 ? '#8ef0c0' : r.fps >= 45 ? '#f0d88e' : '#f08e9e';
     const tag = r.sky ? '+SKY' : `${Math.round(r.density * 100) / 100}x`;
     drawText(ctx, tag, x + 6, ly, ink, 0.6, 'bold');
     drawText(ctx, r.px, x + 40, ly, '#9aa0b4', 0.6, 'ui');
     const f = `${r.fps}`;
     drawText(ctx, f, x + boxW - 8 - textWidth(f, 0.6, 'bold'), ly, ink, 0.6, 'bold');
+    if (r.drops) {
+      const d = `!${r.drops}`;
+      drawText(ctx, d, x + boxW - 26 - textWidth(d, 0.6, 'bold'), ly, '#f6b45c', 0.6, 'bold');
+    }
     ly += 11;
   }
   if (active) {

@@ -14,6 +14,11 @@ export function defaultSettings() {
     screenShake: 1,
     showFps: false,
     assistSpeed: 100, // 80 | 90 | 100
+    // Camera framing. false = NORMAL (the pulled-back 1.6), true = ZOOM IN (the
+    // original 2). Only consulted on a desktop: a handheld always gets the
+    // closer framing, because on a screen that small the hero is what is at
+    // risk of becoming unreadable. See ZOOM_NORMAL/ZOOM_CLOSE in game/run.js.
+    zoomIn: false,
     fancyFx: true,    // WebGL bloom/vignette (when available)
     // A WebGL canvas upload and a direct 2D blit can sustain very different
     // densities on the same device. Keep their learned ceilings separate so a

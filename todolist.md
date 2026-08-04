@@ -6,6 +6,22 @@ mattering.
 
 ## Ideas
 
+### A shorter menu-board gag for phones
+The board behind Dolores (`MENU_ROWS` in src/sprites/backwall.js) is the one
+piece of hub signage that does not survive a regular-sized phone. Everything
+else in the food court reads fine; this one is five item/price rows with
+strikethroughs and substitute notes, and its scale is fitted to the LONGEST row
+(`fitScale` over every line), so the whole board shrinks to whatever "WATER /
+MARKET PRICE" needs. At HUB_ZOOM 1.3 on a ~23-degree phone picture that is
+below reading size, and the joke is entirely in the words.
+
+Not a zoom problem — the hub framing is right, and it is deliberately the same
+on every device (see the note on HUB_ZOOM). The fix is fewer, shorter rows on a
+phone: a two- or three-line variant of the same gag, chosen off the same
+platform tier that picks the camera framing in game/run.js, set at a scale that
+can actually be read. Bigger type on the existing five rows would only overflow
+the panel.
+
 ### "You can afford an upgrade" nudge
 A proactive reminder that pops when your coins first cross the price of the
 cheapest bench upgrade you can still buy — a gentle "go treat yourself at the

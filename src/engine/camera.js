@@ -29,7 +29,12 @@ export const GROUND_Y = 232;
 // frame holds GROUND_Y / ZOOM world px above the groundline — 116 here against
 // 103 at 2.25 — and the 13 extra, plus the apron the crane spends, are between
 // them enough that an ordinary double jump now fits with NO pull-back at all.
-export const ZOOM = 2;
+// `let`, not `const`, and deliberately so: setRestingZoom below rewrites it and
+// the two view dimensions together, and every module that imports them sees the
+// new values through ESM's live bindings without a single call site changing.
+// The alternative — turning them into functions — would have touched eighteen
+// call sites to say exactly the same thing.
+export let ZOOM = 2;
 // How far the dolly is allowed to pull back for a tall jump. Against
 // GROUND_Y + PAN_MAX it clears 173px of hero altitude, which covers everything
 // short of a mochi carrying both the cape and the triple mod.
@@ -45,9 +50,30 @@ export const ZOOM_MIN = 1.3;
 // always see what you are about to land on — and the apron, which is the only
 // thing that was ever down there, is what pays for it.
 export const PAN_MAX = H - GROUND_Y;
-// The world the frame shows at rest: 240 x 135.
-export const VIEW_W = W / ZOOM;
-export const VIEW_H = H / ZOOM;
+// The world the frame shows at rest: 240 x 135 at ZOOM 2, 300 x 168.75 at 1.6.
+export let VIEW_W = W / ZOOM;
+export let VIEW_H = H / ZOOM;
+
+// Change the resting magnification, and everything derived from it with it.
+//
+// This exists because those derived numbers are not decoration: VIEW_W decides
+// how far ahead the game considers "on screen", which sets when an enemy may
+// fire, where the finish tape is planted, and how wide a scatter reaches. Left
+// at the shipped 2 while the camera pulled back to 1.6, the frame grew but none
+// of those did — the tape stayed 168 world px from the camera and simply landed
+// further from the right edge than it was ever tuned to, which is the extra
+// space past the flagpole. Anything reading VIEW_W has to move when the zoom
+// does or it is quietly answering a question about a frame that no longer
+// exists.
+//
+// Callers that cache their own value derived from these — run.js's finish line
+// is the one — must recompute after calling this, which is why it is a single
+// choke point rather than three assignments spread about.
+export function setRestingZoom(z) {
+  ZOOM = z;
+  VIEW_W = W / z;
+  VIEW_H = H / z;
+}
 
 // Headroom the dolly keeps above the hero's crown before it starts pulling back.
 const HEAD_MARGIN = 10;

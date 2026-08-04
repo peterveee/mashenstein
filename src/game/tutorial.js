@@ -34,7 +34,7 @@ import {
 const PORTAL_H = 40;
 import { Rng } from '../engine/rng.js';
 import {
-  burst, shardBurst, spawnFoil, foilBurst,
+  burst, shardBurst, spawnShard, spawnFoil, foilBurst,
   updateParticles, drawParticles, clearParticles,
 } from '../engine/particles.js';
 import {
@@ -42,7 +42,11 @@ import {
   keyLegendWidth, drawRoundButton, UI_PANEL_BORDER,
 } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal } from './draw.js';
+// The lane has to settle into the SAME resting frame a real stage does, or the
+// tutorial teaches a camera the game then changes. run.js owns that decision
+// because it owns the two framings; no cycle, run.js has never imported this.
+import { applyFraming } from './run.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, TAG_FLASH_TIME } from './draw.js';
 import { drawToon } from '../sprites/toons.js';
 import { makeObstacle, makePickup, entityBox, overlaps, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
@@ -528,7 +532,7 @@ const STEPS = [
     brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED ONE ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
-      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'mochi', label: 'MOCHI', hit: false };
+      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'mochi', hit: false };
     },
   },
   {
@@ -564,7 +568,7 @@ const STEPS = [
     // The portal spawns just ahead of the player — close enough to reach during
     // the settle, far enough that the floatie is read before it arrives.
     onPass(t) {
-      t.portal = { x: t.worldX + PLAYER_X + 90, hero: 'b33p', label: 'B-33P', hit: false };
+      t.portal = { x: t.worldX + PLAYER_X + 90, hero: 'b33p', hit: false };
       t.say('ANOTHER PORTAL, ANOTHER BODY. NORMAL HERE. STRAIGHT THROUGH.');
     },
   },
@@ -726,6 +730,7 @@ export class TutorialState {
     this.prevT = 0;
     this.speed = TRAINING_SPEED;   // eased to a stop for the ending
     this.camPan = 0;
+    applyFraming(save && save.settings);
     this.camZoom = ZOOM;
     this.outro = null;
     this.player = null;
@@ -1168,7 +1173,14 @@ export class TutorialState {
       this.retiredPickups.push(...this.pickups.filter((pu) => pu.live));
       this.pickups = [];
     }
-    if (this.portal && !this.portal.hit) this.retiredPortals.push(this.portal);
+    // Hit portals retire too, now that a used one has something left to show.
+    // A missed one starts wilting from here — retireAttempt runs on the frame
+    // the section is judged, which for a portal section is the frame the hero
+    // went past it.
+    if (this.portal) {
+      if (this.portal.spent == null && this.portal.wilt == null) this.portal.wilt = 0;
+      this.retiredPortals.push(this.portal);
+    }
     this.obstacles = [];
     this.pellets = [];
     this.portal = null;
@@ -1370,7 +1382,7 @@ export class TutorialState {
     // The module borrowed two bodies to teach two things and hands the first one
     // back before the paperwork. The certificate is made out to whoever is
     // standing there at the end.
-    this.portal = { x: x0 + 60 + GAP + 150, hero: 'lorenzo', label: 'LORENZO', hit: false };
+    this.portal = { x: x0 + 60 + GAP + 150, hero: 'lorenzo', hit: false };
     this.sayIn(1.2, 'LAST PORTAL. BACK INTO THE BODY YOU CLOCKED IN WITH. HR IS FIRM ON THAT ONE.');
     this.freePlayUntilLaneClears(1.5);
   }
@@ -1680,7 +1692,7 @@ export class TutorialState {
 
     this.updatePellets(dt);
     this.updateEntities(dt);
-    this.sweepRetiredEntities();
+    this.sweepRetiredEntities(dt);
 
     if (this.settleT > 0) {
       this.settleT -= dt;
@@ -2016,11 +2028,19 @@ export class TutorialState {
     }
   }
 
-  sweepRetiredEntities() {
+  sweepRetiredEntities(dt) {
     const left = this.worldX - 8;
     this.retiredObstacles = this.retiredObstacles.filter((ob) => ob.x + ob.w > left);
     this.retiredPickups = this.retiredPickups.filter((pu) => pu.x + pu.w > left);
     this.retiredPortals = this.retiredPortals.filter((portal) => portal.x + 12 > left);
+    // Retired props are inert, but a retired PORTAL is still finishing a
+    // sentence: its collapse or its wilt runs on here until the camera has
+    // carried it away.
+    if (this.portal?.spent != null) this.portal.spent += dt;
+    for (const portal of this.retiredPortals) {
+      if (portal.spent != null) portal.spent += dt;
+      else if (portal.wilt != null) portal.wilt += dt;
+    }
   }
 
   collect(pu) {
@@ -2059,14 +2079,28 @@ export class TutorialState {
   // section's onPass still works.
   tagIn() {
     this.portal.hit = true;
+    // Starts the discharge strip. The portal is not removed here — retireAttempt
+    // hands it to retiredPortals, which keeps drawing it while it collapses and
+    // rides off the back of the frame. See RunState.portalDischarge for what the
+    // two kinds of particle mean; the tutorial has its own world and its own
+    // portal, so anything added there has to be added here too or the one place
+    // the portal is TAUGHT is the one place it does not react.
+    this.portal.spent = 0;
     this.player.setHero(this.portal.hero);
+    this.player.tagFlashT = TAG_FLASH_TIME;
     this.player.abilityCd = 0;
     this.setButtons();
     Audio.sfx('tag');
     // The fall, on the crossing itself — the half that means a tag actually happened.
     Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY_OUT });
-    burst(this.playerWorldX() + 6, GROUND_Y - this.player.y - 8, 14, 80, 0.5, '#48e0c8', 1, 80,
-      () => this.rng.float());
+    const cx = this.portal.x + 6;
+    const rand = () => this.rng.float();
+    burst(cx, GROUND_Y - 26, 12, 54, 0.34, '#c8fff0', 1, 14, rand);
+    burst(cx, GROUND_Y - 8, 8, 40, 0.28, '#48e0c8', 1, 30, rand);
+    for (let i = 0; i < 3; i++) {
+      spawnShard(cx, GROUND_Y - 32 + i * 9, this.speed * (1.15 + i * 0.08), -6 - i * 3,
+        0.3 + i * 0.04, i ? '#3fa9a0' : '#c8fff0', 7 - i * 1.6, 1.4, 0, 0, Infinity);
+    }
   }
 
   // Free play: the lane is full and none of it can fail you. Boxes pop, crates
@@ -2180,14 +2214,17 @@ export class TutorialState {
     for (const ob of this.retiredObstacles) {
       drawWorldEntity(ctx, ob, cam, renderT, TRAINING_PACK, this.settings);
     }
-    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, renderT, z, true);
+    for (const portal of this.retiredPortals) drawPortal(ctx, portal, cam, renderT, z, true, this.settings);
     for (const pu of this.pickups) {
       if (pu.live) drawWorldEntity(ctx, pu, cam, renderT, TRAINING_PACK, this.settings);
     }
     for (const ob of this.obstacles) {
       if (ob.live) drawWorldEntity(ctx, ob, cam, renderT, TRAINING_PACK, this.settings);
     }
-    if (this.portal && !this.portal.hit) drawPortal(ctx, this.portal, cam, renderT, z, true);
+    // Hit portals keep drawing: they are mid-collapse until retireAttempt moves
+    // them into retiredPortals, and hiding them for those frames would put a
+    // hole exactly where the discharge is.
+    if (this.portal) drawPortal(ctx, this.portal, cam, renderT, z, true, this.settings);
     for (const pr of this.pellets) {
       const x = pr.x - cam, y = Math.round(GROUND_Y - pr.alt - 4);
       ctx.fillStyle = '#f6d33c';

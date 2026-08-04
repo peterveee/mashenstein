@@ -25,6 +25,7 @@
 
 export const PHYSICS = 'physics';
 export const GAIT = 'gait';
+export const MOTION = 'motion';
 
 // `sync` names a live object property that shadows the constant once a run is
 // under way, and must be written alongside it. Without this the slider moves
@@ -76,9 +77,30 @@ export const TUNABLES = [
   // when they drift apart rather than silently letting the blend overrun.
   { file: 'src/sprites/toons.js', name: 'SQUASH_T', short: 'SQUASH_T', group: GAIT, step: 0.01, coarse: 0.05, min: 0.02, max: 0.6, fmt: 3 },
   { file: 'src/sprites/toons.js', name: 'RUN_HEAD_TURN', short: 'HEAD_TURN', group: GAIT, step: 1, coarse: 5, min: 0, max: 45, fmt: 0 },
+
+  // ---- motion: velocity smear on obstacles -------------------------------
+  // A judder cue has to be judged moving, at the size it will be played at, so
+  // these are on the strip rather than settled in a gallery bake-off. STEPS 0
+  // is the off position and the honest A/B — flip it while a stage is running.
+  { file: 'src/game/run.js', name: 'SMEAR_STEPS', short: 'SMEAR_STEPS', group: MOTION, step: 1, coarse: 4, min: 0, max: 24, fmt: 0 },
+  { file: 'src/game/run.js', name: 'SMEAR_ALPHA', short: 'SMEAR_ALPHA', group: MOTION, step: 0.02, coarse: 0.1, min: 0, max: 0.8, fmt: 2 },
+  { file: 'src/game/run.js', name: 'SMEAR_SPAN', short: 'SMEAR_SPAN', group: MOTION, step: 0.1, coarse: 0.5, min: 0, max: 3, fmt: 2 },
+  { file: 'src/game/run.js', name: 'SMEAR_MAX_PX', short: 'SMEAR_MAX', group: MOTION, step: 1, coarse: 5, min: 1, max: 60, fmt: 0 },
+  // The camera's resting magnification, shown as the zoom itself (ships at 2,
+  // matching camera.js) rather than as a multiplier — the framing is what you
+  // are picturing, not a factor to apply to it. Bound below at 1: VIEW_W-derived
+  // spawn and cull distances do not follow it, so far enough out the extra frame
+  // shows emptiness and pop-in rather than more game. Also on +/- (dev/index.js).
+  { file: 'src/game/run.js', name: 'ZOOM_NORMAL', short: 'ZOOM', group: MOTION, step: 0.05, coarse: 0.25, min: 1, max: 3, fmt: 2 },
+  // The ZOOM IN framing, which is also what every handheld gets. On a desktop
+  // dev build set to NORMAL this row moves a number the running game is not
+  // reading — which is the point: it is here so the other framing can be checked
+  // and changed from the same strip.
+  { file: 'src/game/run.js', name: 'ZOOM_CLOSE', short: 'ZOOM_CLOSE', group: MOTION, step: 0.05, coarse: 0.25, min: 1, max: 3, fmt: 2 },
+  { file: 'src/game/run.js', name: 'ZOOM_PHONE', short: 'ZOOM_PHONE', group: MOTION, step: 0.05, coarse: 0.25, min: 1, max: 3, fmt: 2 },
 ];
 
-export const GROUPS = [PHYSICS, GAIT];
+export const GROUPS = [PHYSICS, GAIT, MOTION];
 
 // Files the plugin has to transform, in a stable order.
 export const TUNABLE_FILES = [...new Set(TUNABLES.map((t) => t.file))];

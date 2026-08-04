@@ -12,7 +12,9 @@ import {
   drawToon, drawRocketFist, drawThrownAxe, titleParadeAction,
   b33pTitleShotPose, B33P_TITLE_WINDUP_T,
 } from '../sprites/toons.js';
-import { drawProp, hasProp, glowSprite, propFrames, propFps, propSprite } from '../sprites/props.js';
+import {
+  drawProp, hasProp, glowSprite, propFrames, propFps, propSprite, PORTAL_SPRITE, portalArtWidth,
+} from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 import { readPlatform } from '../engine/platform.js';
 
@@ -3398,9 +3400,9 @@ export class FieldGuideState {
       return;
     }
     if (key === '_portal') {
-      const pulse = Math.round(Math.sin(this.t * 5) * 2);
-      const h = 20 + pulse;
-      drawProp(ctx, 'portal', cx - 6, top(h), 12, h);
+      const h = 22, pw = portalArtWidth(h);
+      const f = Math.floor(this.t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
+      drawProp(ctx, PORTAL_SPRITE, cx - pw / 2, top(h), pw, h, f);
       return;
     }
     if (key === '_pipe') { drawProp(ctx, 'pipe', cx - 7, top(18), 14, 18); return; }
@@ -4130,6 +4132,7 @@ export class SettingsState {
     const s = this.save.settings;
     return [
       { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
+      { label: `CAMERA: ${s.zoomIn ? 'ZOOM IN' : 'NORMAL'}`, act: () => { s.zoomIn = !s.zoomIn; } },
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
       { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },

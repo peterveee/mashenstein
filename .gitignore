@@ -5,9 +5,18 @@ baselines/
 # every version of src/data/mix.js the mixer has overwritten — a safety net under a
 # mixing session, not a second history beside git. ⋯ → Restore a previous save.
 .mix-history/
+# every rendered wav — sfx cues, weapon candidates, audition sweeps. All of it is
+# regenerable from tools/ (render-sfx, render-cues, render-*-auditions) and nothing
+# loads it at runtime; the game synthesizes its audio live. READMEs beside them stay.
+audio/renders/**/*.wav
+
+# one drawer for throwaway verification shots and one-off scripts, so they stop
+# collecting in the repo root. Anything worth keeping goes to docs/shots/ instead.
+local/
 .DS_Store
 .playwright/
 .playwright-mcp/
 .env
 tools/.venv-audio/
 tools/.audition-recents.json
+scratchpad/

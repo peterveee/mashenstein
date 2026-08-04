@@ -227,7 +227,11 @@ function clearIntro(run) {
   const held = run.camX;
   for (let i = 0; i < 10; i++) run.update(TICK); // < FINALE_HOLD (0.25s)
   assert(run.camX === held && result === null, 'camera locked and run unresolved mid-hold');
-  for (let i = 0; i < 60 && !result; i++) run.update(TICK);
+  // Long enough for the LONGEST band hold plus FINALE_HOLD, with room to spare.
+  // The hold is a tuning number — it grew from well under a second to a few
+  // seconds when the payoff became a five-beat chain — so this waits on the
+  // result rather than on a tick count that silently encodes one value of it.
+  for (let i = 0; i < 60 * 8 && !result; i++) run.update(TICK);
   assert(result && result.success, 'run resolves successfully after the hold');
 }
 

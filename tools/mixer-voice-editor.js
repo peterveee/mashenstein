@@ -159,6 +159,13 @@ const OSC_HZ_SCALE = 3;
 const oscHz = (path, label, def, opts = {}) =>
   n(path, label, 20, OSC_HZ_MAX, 1, hz, def, 'Hz', null, { scale: OSC_HZ_SCALE, ...opts });
 
+// Vibrato depth has the same shape of problem as the drum pitch pot, one range down:
+// the pot runs to a full octave because the game synth is allowed to be a siren, but
+// everything that sounds like an INSTRUMENT happens under half a semitone. Cubed, that
+// bottom half-semitone owns a third of the sweep — near enough the same exponent, for
+// near enough the same reason. See the row itself for what the numbers work out to.
+const VIB_DEPTH_SCALE = 3;
+
 // ---- the drum oscillator's pitch pair, the way Microtonic states it ----------
 //
 // A destination in hertz is the wrong number to hold in your hand. `52` means nothing
@@ -934,6 +941,45 @@ const POOLED_SYNTHS = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== '
 const isPooled = (v) => !isOneShot(v) && POOLED_SYNTHS.includes(v?.synth);
 
 /**
+ * WHICH TAP KEYS EACH PATH READS — the taps card, per path, from the engine outwards.
+ *
+ * `taps` is not a percussion feature: `play` reads `v.taps` and `v.tapFalloff` for every
+ * pooled Tone class, one slot per repeat, and five presets in the catalogue use it there
+ * (`clapMetal`, `clapFm`, `buzzRoll`, `snareFlam`, `stSnareFlam` — four MetalSynths and an
+ * FMSynth). The card was on the noise, drum and additive panels only, so those five
+ * carried a tap array nothing on screen could show or change.
+ *
+ * The WALKS are the other half of the same rule, in the other direction: a card that draws
+ * every knob everywhere would put a TONE pot on AdditiveSynth, whose path never reads
+ * `tapTone`, and a pot that cannot move a sample is worse than an absent one because you
+ * spend an afternoon believing it. So each path states what it reads:
+ *
+ *   pooled Tone   taps, tapFalloff                     `play`
+ *   noise         + tapGains, tapDecays, tapTone        `_playNoise`
+ *   drum          + tapGains, tapDecays, tapTone,       `_playDrum`
+ *                   tapDetune
+ *   AdditiveSynth + tapDetune                           `_playAdditive`
+ *   GameSynth     none — no card at all                 `_playGame` has no tap loop
+ *
+ * `bigRoomClap` is the inverse mistake already on file: a noise preset carrying
+ * `tapDetune: 0.94`, which `_playNoise` does not read. Left alone rather than "fixed" —
+ * teaching the path to read it would add a pitch walk to a shipped sound.
+ */
+const TAP_KEYS = (v) => ({
+  gains: isOneShot(v),
+  // A drum reads `tapDecays` INSIDE its noise section — no section, nothing to override,
+  // so on a drum built from oscillators alone the pot would be inert.
+  decays: isOneShot(v) && (v?.kind !== 'drum' || !!v?.noise),
+  tone: isOneShot(v),
+  detune: v?.kind === 'drum' || v?.synth === 'AdditiveSynth',
+});
+
+// Appended rather than written into each class, because the reason is one reason: every
+// pooled class reaches the same tap loop in `play`. A per-class copy would be seven places
+// for a new class to be forgotten in.
+for (const s of POOLED_SYNTHS) (SYNTH_GROUPS[s] ||= []).push({ title: 'Taps', taps: true });
+
+/**
  * The top section: what every preset has, whatever builds it.
  *
  * ---- and what only SOME of them have -----------------------------------------
@@ -983,9 +1029,12 @@ const commonRows = (voice = {}) => [
   // continues after the requested note length. Keep the editor below 0.25 steps so
   // a preset can be made as short as those voices rather than sounding automatically
   // longer just because it is a library preset. At 120 BPM, 0.05 steps is 6.25ms.
-  // GameSynth presets ignore these for previews (they play as full one-shots) and
-  // treat them as sequencer fallbacks only — not sound-design parameters.
-  ...(isOneShot(voice) || voice?.synth === 'GameSynth' ? [] : [n('$dur', 'LENGTH', 0.05, 16, 0.01, fixed(2), 1, 'steps')]),
+  // GameSynth is not excluded, though a preview does ignore it: `_playGame` is handed a
+  // fixed 4 s so the decay has room to reach silence. In a SONG it reads `dur` like every
+  // other path, and eight presets on that path are in the catalogue — hiding the row made
+  // a length that governs them unreachable, which is a bigger lie than a pot you cannot
+  // hear while auditioning. See tests/pot-coverage.js.
+  ...(isOneShot(voice) ? [] : [n('$dur', 'LENGTH', 0.05, 16, 0.01, fixed(2), 1, 'steps')]),
   // The one row here every path honours: `trim` is folded into the note's gain in
   // scheduleStep, BEFORE the rack is asked to play anything, so it lands on a hat
   // exactly as it lands on a lead. Which is why it is also the only thing left on a
@@ -993,7 +1042,13 @@ const commonRows = (voice = {}) => [
   n('$trim', 'TRIM', -6, 6, 0.1, fixed(1), 0, 'dB'),
   // Everything from here to the vibrato is about the NOTE — how long it lasts and what
   // pitch it lands on — which is why a one-shot has none of it. See `isOneShot`.
-  ...(isOneShot(voice) || voice?.synth === 'GameSynth' ? [] : [
+  // GameSynth is NOT excluded from this block, unlike LENGTH above, because `_playGame`
+  // reads every key in it: `fixedLength` in `noteSeconds` before dispatch, transpose and
+  // fine through `VoiceRack.pitchShift`, and vibrato depth/rate on its own LFO. All eight
+  // GameSynth presets in the catalogue carry a `fixedLength` — hiding the row hid a value
+  // that was already governing them in every song, and left the panel's own VIB DELAY row
+  // greyed forever behind a depth no control could set.
+  ...(isOneShot(voice) ? [] : [
     // An absolute duration in seconds that overrides LENGTH and the tempo both — see
     // `noteSeconds` in src/engine/audio.js, which returns it verbatim and stops. `0` is
     // "not set" rather than "no length", which is why the pot bottoms out at nothing.
@@ -1027,11 +1082,19 @@ const commonRows = (voice = {}) => [
     // to 60 Hz, which stops being a wobble somewhere around 20 and becomes timbre: at
     // audio rate the LFO is frequency modulation and the sidebands are the sound.
     //
+    // Which is why DEPTH is the one pot here with a CUBIC response, the same one the
+    // drum pitch pot uses for the same reason: linearly, the whole singing range was
+    // four percent of the travel, so the smallest move the mouse can make jumped clean
+    // over it and the pot only ever read as "off" or "seasick". Cubed, 0–0.5 semitones
+    // gets a third of the sweep and the octave is still at the stop. It changes no
+    // stored value — only where on the ring a given one sits.
+    //
     // The bottom of a long pot is reachable rather than fiddly: shift-drag is a fifth of
     // the travel and clicking the number types an exact one. And raising a maximum moves
     // no preset — every stored value is what it was, there is simply more travel above
     // it — which is the same trade FIXED LENGTH made when its ceiling went to four.
-    n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi'),
+    n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi',
+      null, { scale: VIB_DEPTH_SCALE }),
     n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
       (v) => (v?.vibrato?.depth ?? 0) > 0),
   ]),
@@ -1077,6 +1140,49 @@ const SYNTH_SECTIONS = (() => {
     .map((r) => r.path.slice(1).split('.')[0]));
   return [...owned].filter((k) => !common.has(k));
 })();
+
+/**
+ * EVERY PRESET KEY THIS PANEL PUTS A CONTROL ON, for one voice.
+ *
+ * Exported for tests/pot-coverage.js, which reads the engine's own `v.<key>` accesses out
+ * of src/engine/voices.js and src/engine/audio.js and asserts the two sets match: a key a
+ * play path reads and this panel does not draw is a preset setting nobody can see (which
+ * is how eight GameSynth `fixedLength`s, five pooled tap arrays and `clapEngine`'s whole
+ * shape went missing), and a control this panel draws that no path reads is a pot that
+ * cannot move a sample. Both are the same bug seen from either end, and neither is
+ * catchable by looking at one file.
+ *
+ * ROOT keys only — `vibrato.rate` counts as `vibrato` — because that is the granularity
+ * the engine's reads have too: `_playGame` takes `v.vibrato` and picks it apart itself.
+ * Non-`$` rows are Tone constructor options, which reach the rack inside `options`.
+ */
+export function panelKeys(voice = {}) {
+  const keys = new Set();
+  const groups = voice.kind === 'noise' ? NOISE_GROUPS
+    : voice.kind === 'drum' ? DRUM_GROUPS
+      : (SYNTH_GROUPS[voice.synth] || []);
+  const add = (row) => {
+    if (!row?.path) return;
+    keys.add(row.path.startsWith('$') ? row.path.slice(1).split('.')[0] : 'options');
+  };
+  commonRows(voice).forEach(add);
+  for (const g of groups) {
+    // An optional section's key can itself be a path — the drum's `osc.fm`, the additive's
+    // `additive.perc` — and the root is the granularity the engine's reads have.
+    if (g.optional) keys.add(g.optional.split('.')[0]);
+    if (g.taps) {
+      keys.add('taps');
+      keys.add('tapFalloff');
+      const t = TAP_KEYS(voice);
+      if (t.gains) keys.add('tapGains');
+      if (t.decays) keys.add('tapDecays');
+      if (t.tone) keys.add('tapTone');
+      if (t.detune) keys.add('tapDetune');
+    }
+    (g.rows || []).flat(Infinity).forEach(add);
+  }
+  return keys;
+}
 
 // ---- paths ------------------------------------------------------------------
 
@@ -1447,6 +1553,7 @@ export function createVoiceEditor({
   const tapsGroup = () => {
     const grid = document.createElement('div'); grid.className = 'devgrid vetaps';
     const taps = state.voice.taps || [0];
+    const tapKeys = TAP_KEYS(state.voice);
 
     const head = document.createElement('div'); head.className = 'row veinline';
     const k = document.createElement('span'); k.className = 'k'; k.textContent = 'HITS';
@@ -1482,6 +1589,11 @@ export function createVoiceEditor({
     head.append(k, box);
     grid.append(head);
 
+    // FALLOFF and the per-hit LEVEL pots below read the same thing — a hit's level — so
+    // dragging one has to move the other or the card contradicts itself mid-drag. Set by
+    // the LEVEL loop, and a no-op until then.
+    let syncLevels = () => {};
+
     if (taps.length > 1) {
       taps.slice(1).forEach((t, i) => {
         const r = knob({
@@ -1495,7 +1607,7 @@ export function createVoiceEditor({
       const r = knob({
         min: 0.2, max: 1, step: 0.01, value: state.voice.tapFalloff ?? 0.78, reset: 0.78,
         fmt: fixed(2),
-        onInput: (x) => { state.voice.tapFalloff = x; touched(); },
+        onInput: (x) => { state.voice.tapFalloff = x; syncLevels(); touched(); },
       });
       r.label.textContent = 'FALLOFF';
       r.wrap.title = 'How much quieter each repeat is than the one before it';
@@ -1505,12 +1617,18 @@ export function createVoiceEditor({
       // belong: a card that only exists once there is something to repeat. A clap made
       // of one sound four times is a stutter; a real one is four hands, each landing a
       // shade lower and duller than the last.
+      //
+      // Per PATH, though, not per card: `_playAdditive` never reads `tapTone` and
+      // `_playNoise` never reads `tapDetune`, and a pot on a path that cannot hear it is
+      // worse than no pot at all. See `TAP_KEYS`.
       for (const walk of [
         { key: 'tapDetune', label: 'PITCH', min: 0.8, max: 1.25, step: 0.005, fmt: fixed(3),
+          on: tapKeys.detune,
           tip: 'How far each repeat is pitched from the one before it' },
         { key: 'tapTone', label: 'TONE', min: 0.6, max: 1.4, step: 0.01, fmt: fixed(2),
+          on: tapKeys.tone,
           tip: 'How much duller — or brighter — each repeat is than the one before it' },
-      ]) {
+      ].filter((w) => w.on)) {
         const w = knob({
           min: walk.min, max: walk.max, step: walk.step, reset: 1, fmt: walk.fmt,
           value: state.voice[walk.key] ?? 1,
@@ -1533,6 +1651,70 @@ export function createVoiceEditor({
         + 'becomes a clap — which is all a clap is: one sound heard several times in a '
         + 'small room.';
       grid.append(note);
+    }
+
+    /**
+     * The two per-HIT overrides, which the falloff and the walks cannot say.
+     *
+     * `_playNoise` and `_playDrum` read `tapGains[i]` in place of `tapFalloff ** i` and
+     * `tapDecays[i]` in place of the noise section's own decay. The engine's own clap is
+     * the sound that needs them — three bursts at 0.16, 0.16 and 0.26, the LAST the
+     * loudest and four times the length, which is two slaps and then the room. No curve
+     * through those points is a falloff, so `clapEngine` states them outright. It was the
+     * one preset in the catalogue whose shape the panel could not draw at all.
+     *
+     * An array, so a knob writes the WHOLE list: materialised from what each hit is
+     * sounding at now, so moving hit 3 leaves 1 and 2 where they were rather than
+     * snapping them to a default. Back to the derived values on every hit and the key
+     * goes away again — the rule `taps` and the walks already follow.
+     *
+     * From two hits up, and before that only if a value is already on file. With ONE hit
+     * `tapGains[0]` is the preset's level and `tapDecays[0]` is its decay — both already
+     * pots on the panel above, reaching the same sound — so this is a duplicate rather
+     * than a hidden capability. A stored array still draws, because a value that exists
+     * has to be visible somewhere.
+     */
+    const decayDflt = state.voice.kind === 'drum'
+      ? (state.voice.noise?.decay ?? 0.12)
+      : (state.voice.noise?.decay ?? 0.09);
+    for (const ov of [
+      { key: 'tapGains', label: 'LEVEL', on: tapKeys.gains, min: 0, max: 2, step: 0.005,
+        fmt: fixed(3), dflt: (i) => (state.voice.tapFalloff ?? 1) ** i,
+        tip: 'This hit\'s own level, in place of the falloff' },
+      { key: 'tapDecays', label: 'DECAY', on: tapKeys.decays,
+        min: 0.005, max: 0.6, step: 0.001, fmt: secs, dflt: () => decayDflt,
+        tip: 'This hit\'s own length, in place of the section decay' },
+    ]) {
+      const stored = state.voice[ov.key];
+      if (!ov.on || (taps.length < 2 && !Array.isArray(stored))) continue;
+      const near = (a, b) => Math.abs(a - b) < 1e-6;
+      const pots = [];
+      for (let i = 0; i < taps.length; i++) {
+        const w = knob({
+          min: ov.min, max: ov.max, step: ov.step, fmt: ov.fmt, reset: ov.dflt(i),
+          value: state.voice[ov.key]?.[i] ?? ov.dflt(i),
+          onInput: (x) => {
+            const list = Array.from({ length: taps.length },
+              (_, j) => state.voice[ov.key]?.[j] ?? ov.dflt(j));
+            list[i] = x;
+            if (list.every((y, j) => near(y, ov.dflt(j)))) delete state.voice[ov.key];
+            else state.voice[ov.key] = list.map((y) => Number(y.toFixed(4)));
+            touched();
+          },
+        });
+        w.label.textContent = `${ov.label} ${i + 1}`;
+        w.wrap.title = ov.tip;
+        grid.append(w.wrap);
+        pots.push([i, w.set]);
+      }
+      // Only while the preset is still deriving them from the falloff. Once it lists its
+      // own levels, the falloff is not what those hits are playing at any more, and
+      // dragging it must not quietly rewrite them.
+      if (ov.key === 'tapGains') {
+        syncLevels = () => {
+          if (!state.voice.tapGains) pots.forEach(([i, set]) => set(ov.dflt(i)));
+        };
+      }
     }
     return grid;
   };
@@ -1955,7 +2137,15 @@ export function createVoiceEditor({
         // `when` rows do not apply to a preset in its default state, and writing them
         // anyway puts `count`/`spread` into every preset that will never be fat.
         if (row.derived || row.when) continue;
-        setAt(voice, row.path, row.def);
+        // `def` is in the POT's units, not the preset's — SUSTAIN reads 0-100 % over a
+        // stored 0-1, and a row with a `write` is exactly the row where those differ.
+        // Seeding the raw default put `sustain: 50` into the options bag, and Tone's
+        // assertRange threw the moment the rack built a Synth from it. The pot's own
+        // conversion is the one that belongs here, called the way each kind calls it:
+        // numbers take (value, voice), pickers take (voice, option).
+        setAt(voice, row.path, row.write
+          ? (row.kind === 'pick' ? row.write(voice, row.def) : row.write(row.def, voice))
+          : row.def);
       }
     }
   }

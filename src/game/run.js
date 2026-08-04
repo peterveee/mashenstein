@@ -1,7 +1,8 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
-import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan, setRestingZoom } from '../engine/camera.js';
+import { readPlatform } from '../engine/platform.js';
 import { Input } from '../engine/input.js';
 import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
@@ -10,8 +11,8 @@ import {
 import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
-import { burst, shardBurst, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PLATE, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawB33pPellet } from '../engine/sprites.js';
+import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
+import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawB33pPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
@@ -27,7 +28,8 @@ import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, drawTo
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
-import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter } from './draw.js';
+import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST } from './finishMarker.js';
+import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H } from './draw.js';
 import { drawTerrain, terrainGroundY } from './terrain.js';
 import { TapeRewindEffect } from './rewindFx.js';
 
@@ -35,11 +37,17 @@ export { GROUND_Y };
 // The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
-export const HERO_SCREEN_X = PLAYER_X * ZOOM;
 // Stage-clear: a short beat on the finish frame so the tape-cross registers.
 // The scene change itself is the CRT shutter in states.js — this used to close
 // an iris to black first, which meant fading out twice back to back.
 const FINALE_HOLD = 0.25;
+// And a second at the end, after everything has finished happening. The band's
+// own hold is sized to fit the CHAIN — slide, click, lamps, current, flag, coin
+// tally — so it runs out on the last event rather than after it, and the scene
+// cut away on the frame the last coin landed. This is the beat where nothing is
+// moving except the hero celebrating on the plunger and the flag flying over
+// him, which is the picture the whole marker exists to produce.
+const FINALE_TAIL = 1;
 // How long an ACT card holds the world still. It is a reading budget, not a
 // flourish: the cards run 56–76 characters over two lines, and at 2s — with the
 // last 0.3 of that spent fading out — the longest of them was off screen before
@@ -65,14 +73,138 @@ const ZONE_CARD_ARM = 0.4;
 // Rewind: hold Left Arrow / A to reverse time, up to 10 seconds at ~30 fps.
 // Snapshots capture the full world state; popping them restores it.
 const REWIND_SECONDS = 10;
-const REWIND_FPS = 30;
+// 15, not 30. Capturing costs a full pass over the live world, so the rate is
+// the single biggest lever on what recording costs — and the coarser reverse
+// motion it produces is wanted rather than tolerated: rewind is a tape effect,
+// and tape is not smooth.
+const REWIND_FPS = 15;
 const REWIND_STEP = 1 / REWIND_FPS;
 const REWIND_MAX_FRAMES = REWIND_SECONDS * REWIND_FPS;
-// Rewind plays back at 2× speed: pop 2 snapshots per normal frame.
-const REWIND_SPEED = 2;
+// Snapshots popped per 60Hz tick. This is a rate in SNAPSHOTS, so it has to
+// move with REWIND_FPS or the playback speed changes: one snapshot now covers
+// 1/15s of recorded time instead of 1/30s, and popping two of them per tick
+// would run the tape back twice as fast as it always has. One preserves the
+// speed the game shipped with.
+const REWIND_SPEED = 1;
+// ?norewind — diagnostic only. Recording is the largest steady allocation
+// source in a run even pooled, so this is the switch that says whether a given
+// run's scattered dropped frames are coming from here at all. Rewind itself
+// simply finds an empty buffer and does nothing, so a level is still playable
+// while testing. Read once: the flag is a lab switch, not a setting.
+const REWIND_DISABLED = typeof window !== 'undefined'
+  && typeof URLSearchParams !== 'undefined'
+  && new URLSearchParams(window.location.search).has('norewind');
 // Cooldown after release: rewind continues decelerating for this many seconds
 // so the animation winds down in step with the tape-stop audio (~1.0s).
 const REWIND_COOLDOWN = 0.55;
+
+// ---------------------------------------------------------- rewind recycling
+// Recording used to allocate a whole snapshot — plus a fresh clone of every
+// live entity, plus a Set per entity that tracks what it has hit — on every
+// capture, then drop the lot a few seconds later. That is a steady garbage
+// stream sitting behind a large retained buffer, and it costs frames the way
+// this game actually loses them: not as a lower average rate, but as scattered
+// collection pauses that hold one image on screen for an extra refresh or two.
+//
+// Everything below recycles instead. It is safe because no snapshot ever
+// escapes this file: restoreRewindSnapshot copies every field out into live
+// objects rather than adopting the recorded ones, so a record and its contents
+// can be overwritten the moment the ring comes back round to them.
+
+// Shallow-copy src's own fields onto dst, reusing dst. Stale fields left by
+// whatever the slot held before are removed, so a recycled object never carries
+// a property its new occupant does not have — a slot that held a flyer must not
+// leave wing state on the crate that replaces it. Both loops are
+// allocation-free, and the delete pass only bites when a slot changes shape.
+function assignInto(src, dst) {
+  for (const k in src) dst[k] = src[k];
+  for (const k in dst) if (!(k in src)) delete dst[k];
+  return dst;
+}
+
+// assignInto copies a Set by REFERENCE, which would leave the recorded snapshot
+// pointing at a Set the live entity goes on mutating — the recorded past would
+// then change to match the present, which is precisely what a snapshot must not
+// do. Set fields are therefore re-copied by value, into the Set already in the
+// slot where there is one.
+function copySetInto(src, prev) {
+  if (!src) return null;
+  if (prev instanceof Set) {
+    prev.clear();
+    for (const v of src) prev.add(v);
+    return prev;
+  }
+  return new Set(src);
+}
+
+function copyArrayInto(src, prev) {
+  const out = prev || [];
+  out.length = src.length;
+  for (let i = 0; i < src.length; i++) out[i] = src[i];
+  return out;
+}
+
+// Copy the live members of src into dst's pooled objects, returning how many
+// were written. The array is deliberately NOT truncated to that count: the
+// objects past the end are the pool, and dropping them would mean allocating
+// again the moment the entity count ticks back up — which, with obstacles
+// streaming in and out constantly, is every few captures. Readers use the
+// returned count, never the array length.
+function copyEntitiesInto(src, dst, setKeys, filterLive = true) {
+  let n = 0;
+  for (let i = 0; i < src.length; i++) {
+    const e = src[i];
+    if (filterLive && !e.live) continue;
+    let slot = dst[n];
+    if (!slot) slot = dst[n] = {};
+    assignInto(e, slot);
+    if (setKeys) {
+      for (let k = 0; k < setKeys.length; k++) {
+        const key = setKeys[k];
+        if (e[key]) slot[key] = copySetInto(e[key], slot[key]);
+      }
+    }
+    n++;
+  }
+  return n;
+}
+
+const OBSTACLE_SETS = ['hitIds', 'rollContactIds'];
+const PROJECTILE_SETS = ['hitIds'];
+const EMPTY_SETS = [];
+
+// Fixed-capacity ring of snapshot records. Records are never discarded, only
+// overwritten, so after the first ten seconds of a run the buffer stops
+// allocating entirely. Popped records stay in the ring for the next capture to
+// write into — restore has already copied out everything it needs by then.
+class RewindRing {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.slots = [];
+    this.start = 0;
+    this.length = 0;
+  }
+
+  // Keeps the allocated records: a retry after a death should not have to pay
+  // for the buffer a second time.
+  reset() { this.start = 0; this.length = 0; }
+
+  // The record the next capture should write into. Once the ring is full this
+  // is the oldest record, whose contents are what "discard the oldest" means
+  // here — there is nothing to unlink and nothing to collect.
+  slotForWrite() {
+    const i = (this.start + this.length) % this.capacity;
+    if (this.length < this.capacity) this.length++;
+    else this.start = (this.start + 1) % this.capacity;
+    return this.slots[i] || (this.slots[i] = {});
+  }
+
+  pop() {
+    if (!this.length) return null;
+    this.length--;
+    return this.slots[(this.start + this.length) % this.capacity];
+  }
+}
 // Seconds after a rewind before another can be triggered.
 const REWIND_LOCKOUT = 3.0;
 
@@ -90,6 +222,31 @@ const FLOAT_BASE_Y = 128;
 const PAUSE_MENU_W = 156, PAUSE_MENU_H = 26;
 // The portal's height off the ground — how far a player has to be above it to miss.
 const PORTAL_H = 40;
+// How far ahead of a boost pad the approach begins. 56 was about a third of a
+// second at mid speed, which fits only three or four ticks in — too few to
+// read as an accelerating sequence, and a sequence is the entire point. 104 is
+// closer to two thirds of a second and lands seven or eight, while still being
+// well under a screen width so a pad in the distance is not already chattering.
+const BOOST_ARM_RANGE = 104;
+// How long the miss tail runs once a pad has gone past unclaimed. The rising
+// ticks used to hold at full pitch for as long as the pad stayed on screen,
+// which told a player who had just jumped clean over it that the opportunity
+// was still coming. Long enough to hear the pitch fall away, short enough that
+// it is over before the next thing in the lane arrives.
+const BOOST_MISS_TAIL = 0.18;
+// The other half of that answer. On CONTACT the tick run does not stop — it
+// carries on climbing straight through the payout, so the same line that was
+// the telegraph becomes the reward. Miss and it turns over and falls off a
+// cliff; hit and it keeps going. One shape, two endings, and they are the
+// opposite of each other, which is the only reason either one is legible.
+const BOOST_HIT_TAIL = 0.34;
+// How long the pad flares after it pays out. Short: this is a confirmation,
+// not an effect — the hero is already gone by the time it fades.
+const BOOST_FLARE_T = 0.3;
+// How long the hero leans into the kick and the floor streaks past them.
+// Longer than the pad's own flare: the pad is behind you almost immediately,
+// and the thing the boost is actually about is what it did to YOU.
+const BOOST_LEAN_T = 0.5;
 
 const PAUSE_BUTTONS = [
   // 'pause' toggles, so it resumes from here; 'escape' while already paused is
@@ -99,9 +256,6 @@ const PAUSE_BUTTONS = [
   { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
 ];
 
-export const HERO_CALLOUT = Object.fromEntries(
-  Object.values(HERO_BY_ID).map((hero) => [hero.id, hero.ability.callout]),
-);
 const BASE_SPEED = 160;
 // The run accelerates on a square root, so the early seconds gain quickly and
 // the late ones barely move — a stage feels like it is building without ever
@@ -109,6 +263,130 @@ const BASE_SPEED = 160;
 // ramp is allowed to reach; overtime raises both.
 const SPEED_RAMP_K = 0.03;
 const SPEED_RAMP_CAP = 1.6;
+// The two resting framings, and which one a device gets.
+//
+// NORMAL pulls the camera back to 1.6. Two independent arguments land on that
+// number. It puts the hero at 14.2% of frame height, which is where Super Mario
+// World has big Mario (32px of 224) — a proportion that has had a long time to
+// be judged. And of every value in the range that read well on a 32" panel it
+// is the only one keeping the frame's derived numbers whole: VIEW_W lands on
+// exactly 300, the headroom above the groundline on 145, the frame's top world
+// y on 87. All three are integers at 2 as well, and every other candidate turns
+// them into repeating decimals for nothing.
+//
+// It also cuts how far anything crosses the eye per frame by 20%, which is the
+// one lever on strobing that costs framing rather than pace.
+const ZOOM_NORMAL = 1.6;
+// CLOSE is the framing the game shipped with: the desktop ZOOM IN option, and
+// what a tablet always gets.
+//
+// The reason a handheld does not pull back is the opposite of the one above.
+// Pulling back trades apparent size for a wider frame — a good trade on a
+// monitor an arm's length away, a bad one on a screen measured in inches. An
+// iPad at this zoom already shows a SMALLER hero in your vision (3.6 degrees)
+// than a 32" monitor does at NORMAL (4.3). Handhelds are the devices that can
+// least afford to pull back, not the ones that should. A tablet counts as one
+// for the same reason: an iPad is held far closer than a desk monitor, so its
+// picture is not the wide angle its diagonal suggests.
+const ZOOM_CLOSE = 2;
+// A phone goes closer still, and the arithmetic is not close.
+//
+// In landscape the 16:9 canvas is letterboxed into the phone's SHORT side, so
+// an iPhone's picture is about 23 degrees wide — under half a 32" monitor's 54.
+// At CLOSE that puts the hero at 2.3 degrees against the monitor's 4.3 at
+// NORMAL: barely half the apparent size, which is why it reads fine on a big
+// phone and tiny on an ordinary one. 2.2 lifts it to 2.5 degrees. That is still
+// only 59% of the desktop reading, so this is a modest correction rather than an
+// overshoot — even 2.4 would only reach 65%.
+//
+// The cost is runway: VIEW_W falls from 240 to 218, about 9% less warning of
+// what is coming, which on a touch device is the thing being spent. 2.2 is
+// chosen as the point where legibility is meaningfully better and that bill is
+// still small; going further starts buying size with reaction time.
+const ZOOM_PHONE = 2.2;
+
+// The platform read is cached — it cannot change within a session — while the
+// zoom values are re-read every time, so the dev strip can still move them live.
+let framingTier = null;
+function tier() {
+  if (framingTier === null) {
+    let p = null;
+    try {
+      p = (typeof window !== 'undefined' && window.__mash_platform) || readPlatform();
+    } catch { p = null; }
+    framingTier = !p || p.isDesktop ? 'desktop'
+      : (p.isIphone || p.isAndroidPhone) ? 'phone'
+        : 'tablet';
+  }
+  return framingTier;
+}
+
+/**
+ * Resolve the framing this device and this player want, and apply it — which
+ * moves VIEW_W, VIEW_H and everything reading them, not just the magnification.
+ *
+ * Cheap enough to call every frame, and it is: that is what lets the dev strip
+ * sweep the zoom without leaving the frame's derived numbers describing a view
+ * that is no longer on screen.
+ */
+export function applyFraming(settings) {
+  const t = tier();
+  const want = t === 'phone' ? ZOOM_PHONE
+    : t === 'tablet' ? ZOOM_CLOSE
+      : (settings && settings.zoomIn) ? ZOOM_CLOSE : ZOOM_NORMAL;
+  if (want !== ZOOM) setRestingZoom(want);
+  return want;
+}
+
+// Velocity smear on the world's obstacles.
+//
+// A display holds each frame still until the next one replaces it, so a shape
+// crossing a lot of visual angle per frame is shown as a row of separate
+// stationary images rather than as something moving — which the eye reads as
+// strobing. It gets worse the bigger the screen, because the angle per frame
+// grows with it while the pixels per frame do not change at all. Film never had
+// this problem: a physical shutter smears the subject across the frame it is
+// exposing, and that smear is the cue that fuses the images back into motion.
+//
+// So we draw it. Each obstacle is painted a few extra times along the path it
+// travelled since the last frame, fading with distance, which is the same cue
+// arrived at by arithmetic instead of by optics.
+//
+// The CEILING on ghosts per obstacle, not a fixed count — the draw derives what
+// this frame's travel actually needs and stops here. Each one is a full redraw
+// of the entity, so this is the budget: at 10 a fast frame costs eleven draws
+// per obstacle and a slow one still costs two.
+//
+// STEPS 0 turns it off — it is the honest comparison, not a disabled feature.
+//
+// Off by default, and the reason is worth keeping: tried against the real
+// strobing on a 5K panel it read as blur rather than as motion. That is what
+// the arithmetic predicts. Smear works by supplying the cue a shutter would
+// have left, and it only helps for motion the eye is NOT following — a shape
+// being tracked is already smeared across the retina, so painting more of it on
+// only softens the art. At 0.95 degrees of visual angle per frame the ghosts
+// would have to sit about a pixel apart to fuse, which is ~88 redraws of every
+// obstacle, and even then the eye's own pursuit is doing the opposite job.
+//
+// Left switched off rather than deleted because it costs one comparison on the
+// draw and answers a question that will be asked again. What it is NOT is a
+// fix for the underlying problem: that is angular velocity, and the numbers
+// that move it are BASE_SPEED, SPEED_RAMP_CAP and the camera's ZOOM.
+const SMEAR_STEPS = 0;
+// Peak opacity of the nearest ghost. The furthest fades to nothing, so this is
+// the top of a ramp rather than a flat wash.
+const SMEAR_ALPHA = 0.3;
+// Multiplier on the distance actually travelled since the previous frame. 1 is
+// physically honest — exactly what a 360° shutter would capture. Above 1
+// exaggerates, which is often what reads best, since a real shutter is open for
+// only part of a frame and we are competing with a display that holds its image
+// for all of one.
+const SMEAR_SPAN = 1;
+// Ceiling on how far a single frame may smear, in world pixels. Guards the one
+// frame after a rewind or a checkpoint restore, where the camera can jump a long
+// way and the "distance travelled since last frame" is a teleport rather than
+// motion. Without it that frame paints ghosts across half the screen.
+const SMEAR_MAX_PX = 14;
 // The hero is off stage when a level opens: he sprints in from beyond the left
 // edge to the running anchor (PLAYER_X) before the world goes live. Behind an
 // ACT card he waits out of frame until it lifts; on a card-less stage the
@@ -139,7 +417,28 @@ const INTRO_RUN_EXP = 1.8;
 // It sizes the dash rather than aiming it: the hero runs at finishScreenX(),
 // which is this whenever the finish arms on time, and less when a late-completed
 // objective armed it with the pole already part of the way in.
-const FINISH_LINE_X = VIEW_W - 32;
+//
+// The margin was 32, and 32 is not a margin — the switch's housing alone runs to
+// 26px right of the pole, so the whole payoff of the stage's last input happened
+// in the last six pixels of the frame, with the sparks off the contact thrown
+// straight out of shot. 72 clears the widest switch in the bake-off plus its
+// forward sparks (see MARKER_RIGHT_EXTENT in finishMarker.js) and leaves the
+// marker standing IN the lane rather than pinned to the edge of it. The cost is
+// 40px off the dash, which is about a third of a second of victory lap; the run
+// is exactly as long as it was either way, since totalDist is untouched.
+// A function, not a constant: VIEW_W now follows the resting zoom, and a value
+// captured at module-eval would plant the tape for a frame width the game is no
+// longer showing — which is exactly the extra space that appeared past the
+// flagpole when the camera pulled back to 1.6 and this did not.
+const finishLineX = () => VIEW_W - 72;
+// The clear lane in front of the marker: how much empty ground the spawner has
+// to leave before the flagpole. An obstacle parked against the pole is a hazard
+// wearing the goal as camouflage, a coin behind it is bait the player has to
+// choose between and the flip, and anything PAST it is unreachable content
+// sitting in the one part of the frame the finale needs clean. 160 is a little
+// over one screen-second at cruising speed — enough that the last thing to
+// leave the frame before the pole arrives is ground.
+const FINISH_CLEAR = 160;
 
 // --- THE FLIP --------------------------------------------------------------
 // The stage's last input, and the only one that is pure expression. The hero
@@ -159,18 +458,64 @@ const FINISH_LINE_X = VIEW_W - 32;
 // 46px (B-33P, jumpMult 0.9) through 57px (most of the cast) to 75px (Lorenzo,
 // 1.15), and higher again off Mochi's second jump — a fixed pixel band would
 // hand PERFECT to Lorenzo for free and put it permanently out of B-33P's reach.
+//
+// `hold` is how long the finish frame is held before the results card. Every one
+// of them now clears FLIP_THROW with about a second and a half to spare: the
+// chain finishes with the flag flying, and THEN the frame sits there so the
+// player can register what they just did. At the old holds the celebration was
+// arriving and being taken away inside the same second.
+// `coins` is a SECOND currency on the same grade, and it is deliberately tiny
+// next to the points. Points are run score; coins are the meta economy, banked
+// across every stage forever, and a per-stage stipend moves the income ratio for
+// the whole cast at once. So the ladder is small enough that the flip is a
+// garnish on a stage's coin haul rather than a reason to play for it, and steep
+// enough that PERFECT is worth five times a scraped FLIP.
 const FLIP_BANDS = [
-  { id: 'perfect', at: 0.70, label: 'PERFECT FLIP', bonus: 300, hold: 0.9, shake: 6 },
-  { id: 'clean',   at: 0.35, label: 'CLEAN FLIP',   bonus: 150, hold: 0.6, shake: 4 },
-  { id: 'flip',    at: 0,    label: 'FLIP',         bonus: 60,  hold: 0.45, shake: 3 },
+  { id: 'perfect', at: 0.70, label: 'PERFECT FLIP', bonus: 300, coins: 10, hold: 3.1, shake: 6 },
+  { id: 'clean',   at: 0.35, label: 'CLEAN FLIP',   bonus: 150, coins: 5,  hold: 2.9, shake: 4 },
+  { id: 'flip',    at: 0,    label: 'FLIP',         bonus: 60,  coins: 2,  hold: 2.7, shake: 3 },
 ];
 // Reached on the ground: he shoulders it over. Still a clear, still a beat.
-const FLIP_CLUNK = { id: 'clunk', label: 'CLUNK', bonus: 0, hold: 0.35, shake: 2 };
-const FLIP_THROW = 0.18;   // seconds the lever takes to swing through its arc
-// The verdict card rides higher than the run's usual chatter row: it is printed
-// with the hero standing at the pole, and the pole's own signage occupies the
-// standard row at exactly that column.
-const FLIP_CARD_Y = 92;
+const FLIP_CLUNK = { id: 'clunk', label: 'CLUNK', bonus: 0, coins: 0, hold: 2.5, shake: 2 };
+// The bonus plate's own clock, in seconds after the flip resolves. It waits for
+// the payoff chain to finish (FLIP_THROW) before it shows: the coins are what
+// the flag being up is WORTH, and paying out over the top of the chain would put
+// two things to watch on screen at once. Then one coin every STEP walks out of
+// the plate and into the pill, so the total is spent rather than granted.
+// The plate appears on the flip itself — it is the verdict card as well as the
+// coin tally — and the coins start moving once the marker's chain has had its
+// moment, so the two payoffs do not compete for the same second.
+const FLIP_COIN_WAIT = 0.7;
+const FLIP_COIN_LEAD = 0.22;   // plate fades in this long before the first coin moves
+const FLIP_COIN_STEP = 0.075;  // seconds per coin
+// How far BELOW its own foot anchor each hero's celebration reaches, as a
+// fraction of draw height. The celebrate cycle is a hop with a tuck in it, and
+// the tuck swings the boots under the anchor — so a hero seated exactly on the
+// plunger cap spends part of every cycle with his feet inside it.
+//
+// Measured, not guessed, and measured for the WHOLE cast rather than for the
+// hero who happened to be on screen: each celebration was rendered across 40
+// frames of its cycle and the lowest non-transparent pixel found. Gary reaches
+// furthest at 1.75px of a 26px draw; Mochi barely leaves the anchor at 0.25.
+// Re-derive the same way if the celebration painters change.
+//
+// Module scope rather than a static field on RunState: a static initialiser that
+// names its own class makes the bundler emit `_RunState`, and the smoke test
+// reads that name out of window.__mash_state to know where it is.
+const CELEBRATE_DIP = {
+  lorenzo: 0.043, gnash: 0.043, fernwick: 0.043, b33p: 0.043, mochi: 0.010,
+  chompo: 0.043, gary: 0.067, dolores: 0.043, raymn: 0.024, grumpos: 0.058,
+};
+// Seconds the payoff takes to run. It was 0.18 when the whole event was a lever
+// swinging through its arc. The marker's payoff is now a five-beat CHAIN — push,
+// a spark crawling the cable to the box, lamps, current up the pole, flag — and
+// each beat has to be seen as a separate event or the whole point of splitting
+// the trigger out of the housing is lost. 1.4 gives the spark alone about half
+// a second to cross, which is the beat that has to read as travelling.
+//
+// It has to fit inside the held frame, which is FINALE_HOLD + the band's own
+// hold — see FLIP_BANDS, which were lengthened to match.
+const FLIP_THROW = 1.4;
 
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
@@ -200,7 +545,7 @@ export class RunState {
     this.devStartPercent = opts.devStartPercent || 0; // 0–1; skip to N% of the stage
     this.devHits = [];
     // Rewind: rolling snapshot buffer + capture timer.
-    this.rewindFrames = [];
+    this.rewindFrames = new RewindRing(REWIND_MAX_FRAMES);
     this.rewindCaptureT = 0;
     this.rewinding = false;
     this.rewindCooldown = 0;
@@ -226,6 +571,11 @@ export class RunState {
   // nothing else) and only pulls the zoom back for what is left over. Most
   // single jumps (57px against 103px of headroom) still move neither.
   updateCamera(dt) {
+    // Re-resolved every frame so a settings change, or the dev strip moving
+    // ZOOM_NORMAL, takes effect with VIEW_W and the finish line following it
+    // rather than describing a frame that is no longer on screen. A no-op in
+    // the overwhelming case where nothing has changed.
+    applyFraming(this.renderSettings || this.save.settings);
     const heroX = this.playerWorldX();
     const lift = GROUND_Y - this.groundYAt(heroX);   // rolling terrain owes headroom too
     const want = framingFor(this.player.y, lift);
@@ -239,15 +589,36 @@ export class RunState {
   // seat on the LOWEST ground across the drawn footprint (max y — every part
   // of the base touches or embeds), and sink ground-sitters a further pixel so
   // their bottom edge reads as planted rather than resting on a tangent.
-  drawAtGround(ctx, worldX, fn, footW = 0, sink = 0) {
-    let gy = this.groundYAt(worldX + footW / 2);
-    if (footW > 0) {
-      const over = footW * (4 / 3) / 2; // drawn half-width, centered on the box
-      const cx = worldX + footW / 2;
+  // `conformCam` opts a prop into following the terrain's ANGLE as well as its
+  // height: pass the camera x and the draw is rotated about the centre of its
+  // footprint to the local slope. Seating alone leaves a wide flat prop lying
+  // level on a hill with daylight under one end, which is what the boost pad
+  // did — and a pad is a marking ON the floor, so it has to lie in the floor's
+  // plane the way paint would. It is opt-in because most props should NOT do
+  // this: a crate or a cactus stands upright on a slope, it does not lean.
+  //
+  // A conforming prop seats on the ground under its CENTRE rather than on the
+  // lowest point of its footprint. The lowest-point rule exists to stop a flat
+  // base floating at one end, and rotating to the slope solves that properly;
+  // keeping both would bury the pad by the full rise of the hill.
+  drawAtGround(ctx, worldX, fn, footW = 0, sink = 0, conformCam = null) {
+    const cx = worldX + footW / 2;
+    const conform = conformCam != null && footW > 0;
+    let gy = this.groundYAt(cx);
+    const over = footW * (4 / 3) / 2; // drawn half-width, centered on the box
+    if (footW > 0 && !conform) {
       gy = Math.max(gy, this.groundYAt(cx - over), this.groundYAt(cx + over));
     }
     ctx.save();
     ctx.translate(0, gy - GROUND_Y + sink);
+    if (conform) {
+      const rise = this.groundYAt(cx + over) - this.groundYAt(cx - over);
+      const angle = Math.atan2(rise, over * 2);
+      const sx = cx - conformCam;
+      ctx.translate(sx, GROUND_Y);
+      ctx.rotate(angle);
+      ctx.translate(-sx, -GROUND_Y);
+    }
     fn();
     ctx.restore();
   }
@@ -311,10 +682,12 @@ export class RunState {
     this.dead = false;
     this.finished = false;
     this.finaleT = null;        // finish-line hold timer; null = not crossed yet
+    this.flipSlide = null;      // pole ride between the catch and the plunger
     this.finishing = false;
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
     this.flip = null;           // graded at the breaker; null until contact
+    this.flipCoins = null;      // the grade's coin payout, mid-transfer into the pill
     // Off-screen entrance. Defaulted here to the resting anchor so a restart or
     // any early position read is safe; the opener below arms the actual run-in.
     this.introRunning = false;
@@ -495,7 +868,7 @@ export class RunState {
     this.invActive = false;
     this.lastCoinSprayT = -1;
     Audio.setInvincible(false);
-    this.rewindFrames = [];
+    this.rewindFrames.reset();
     this.rewindCaptureT = 0;
     this.rewinding = false;
     this.rewindCooldown = 0;
@@ -715,6 +1088,12 @@ export class RunState {
   update(dt) {
     if (this.finished) { Input.endFrame(); return; }
     this.captureRenderInterpolation();
+    // The marker's own clock, advanced on EVERY path including the finale hold.
+    // The cloth's frame index used to come off tRun, which deliberately stops
+    // when the hold starts — so the flag froze mid-wave at the exact moment the
+    // hold exists to show it off. A flag that stops moving the instant it is
+    // raised reads as a picture of a flag.
+    this.markerT = (this.markerT || 0) + dt;
     // Finish-tape beat: the world holds while the stage-clear card plays,
     // then the attempt resolves. Sits above the finishing dispatch — the
     // tape-cross in updateFinish arms it.
@@ -726,7 +1105,61 @@ export class RunState {
       // stretches it to as much as 1.15s, and a second of motionless sparks off
       // a lever that never finishes swinging reads as a hang. So the two things
       // that are still playing get their time: the throw and its debris.
-      if (this.flip) this.flip.t += dt;
+      // The slide comes first and the chain waits for it: flip.t is the payoff
+      // chain's clock, and nothing should be flipping while the hero is still
+      // coming down the pole. Catching high therefore costs you a longer slide
+      // before the same payoff, which is the grade being paid in TIME as well
+      // as in points — the one thing a bigger number cannot say on its own.
+      if (this.flipSlide) {
+        const sl = this.flipSlide;
+        sl.t += dt;
+        const p = Math.min(1, sl.t / sl.dur);
+        // How much of the grip he has taken. It comes on fast (the catch is an
+        // event, not a transition) but not instantly, so the arms are seen
+        // travelling up onto the pole; on the walk-up path it waits out the hop,
+        // because there is nothing to hold until he is off the ground. It lets
+        // go over the last of the ride, which is what turns the cling back into
+        // a landing pose as his feet find the cap.
+        const grab = Math.min(1, Math.max(0, (p - sl.hop) / 0.14));
+        this.player.cling = grab * (1 - Math.max(0, (p - 0.86) / 0.14));
+        if (p < sl.hop) {
+          // The hop. Only the walk-up path has one: he was never in the air, so
+          // he gives himself the small jump the slide needs to exist at all.
+          // Eased OUT, because a hop decelerates into its own peak.
+          const h = p / sl.hop;
+          this.player.y = PLUNGER_REST + (sl.from - PLUNGER_REST) * (1 - (1 - h) * (1 - h));
+        } else {
+          // The ride down. Accelerating, because it is a fall with hands on the
+          // pole rather than a lift being lowered — and it ends on the CAP, not
+          // on the floor. He finishes the stage standing on the thing he came
+          // down to press.
+          const d = (p - sl.hop) / (1 - sl.hop);
+          this.player.y = PLUNGER_REST + (sl.from - PLUNGER_REST) * (1 - d * d);
+        }
+        if (p >= 1) {
+          this.player.y = this.plungerSeat(0);
+          this.flipSlide = null;
+          this.player.cling = 0;   // hands off; the celebrate pose owns him now
+          Audio.sfx('land');
+        }
+      } else if (this.flip) {
+        const was = this.flip.t;
+        this.flip.t += dt;
+        // The click is the cap BOTTOMING OUT, not the hero arriving: those are
+        // a sixth of a second apart, and a latch that fires early reads as a
+        // different object making the noise. Caught as a threshold crossing on
+        // the chain's own clock rather than scheduled ahead, so it cannot drift
+        // if the hold is retimed or a frame is dropped.
+        const bottom = 0.09 * FLIP_THROW;
+        if (was < bottom && this.flip.t >= bottom) Audio.sfx('clickHard');
+        // Standing ON the plunger, so his feet ride its travel: it gives under
+        // his weight, springs back a little past where it settles, and he goes
+        // with it. Reading the cap's own height rather than tweening the hero
+        // separately is what keeps the two from drifting apart — there is one
+        // number and both of them use it.
+        this.player.y = this.plungerSeat(Math.min(1, this.flip.t / FLIP_THROW));
+      }
+      this.updateFlipCoins(dt);
       updateParticles(dt);
       for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
       if (this.finaleT <= 0) this.endRun(true);
@@ -934,10 +1367,17 @@ export class RunState {
     // Leave the final approach clean: nothing new is allowed to appear past
     // the breaker, and the finish run itself has no hazards or pickups.
     if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
-      this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero));
+      this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
+        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
       this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery());
     }
     this.spawnApplianceMaybe();
+    // Swept every frame, not just on the frame the portal appears: the drip
+    // capsule and the appliance both spawn at their own clock a little further
+    // out than the portal does, so either can land in the column afterwards.
+    if (this.portal && this.portal.spent == null && this.portal.wilt == null) {
+      this.clearPortalLane(this.portal.x);
+    }
     this.checkCheckpoints();
     this.collide();
 
@@ -1004,8 +1444,8 @@ export class RunState {
   }
 
   finishWorldX() { return this.totalDist + PLAYER_X; }
-  finishCameraX() { return this.finishWorldX() - FINISH_LINE_X; }
-  // Where the tape sits on screen. FINISH_LINE_X exactly when the finish run
+  finishCameraX() { return this.finishWorldX() - finishLineX(); }
+  // Where the tape sits on screen. finishLineX() exactly when the finish run
   // arms, and nearer than that when the objective was only met after the camera
   // had already carried the pole part of the way in — a late rescue is allowed
   // to shorten the victory lap, but it must not make the pole jump back out to
@@ -1104,6 +1544,13 @@ export class RunState {
     }
   }
 
+  // Where this hero's feet have to sit for the celebration to land ON the cap
+  // rather than through it.
+  plungerSeat(thrown) {
+    const dip = CELEBRATE_DIP[this.relay.current] || 0.043;
+    return plungerStandY(thrown) + dip * HERO_DRAW_H;
+  }
+
   startFinishRun() {
     if (this.finishing) return;
     this.finishing = true;
@@ -1111,9 +1558,14 @@ export class RunState {
     this.finishPlayerX = PLAYER_X;
     // The final stretch remains part of the level. Keep anything the player
     // can still reach before the tape, but never show content beyond it.
-    const finishX = this.finishWorldX();
-    this.obstacles = this.obstacles.filter((ob) => ob.x < finishX);
-    this.pickups = this.pickups.filter((p) => p.x < finishX);
+    // The same clear lane the spawner respects, applied to whatever is already
+    // out there: the mission can complete late, after the lane was filled on the
+    // assumption that the run continued, and this is the only chance to sweep it.
+    // Measured off each entity's RIGHT edge, so a wide crate cannot lean into
+    // the marker just because its origin cleared the line.
+    const finishX = this.finishWorldX() - FINISH_CLEAR;
+    this.obstacles = this.obstacles.filter((ob) => ob.x + (ob.w || 0) < finishX);
+    this.pickups = this.pickups.filter((p) => p.x + (p.w || 8) < finishX);
     this.projectiles = [];
     this.chompBites = [];
     this.portal = null;
@@ -1160,7 +1612,58 @@ export class RunState {
       this.speechQueue = [];
       this.floaties = [];
       this.resolveFlip();
-      this.finaleT = FINALE_HOLD + this.flip.band.hold;
+      // The slide. resolveFlip has already graded the CATCH — it reads
+      // player.y, so it must run before anything here moves the hero — and from
+      // that point the hero is on the pole, riding down to the plunger. The
+      // plunger is what fires the chain, so a jump now reaches the trigger the
+      // only way it physically could.
+      //
+      // BOTH paths slide, because both paths have to end with the plunger
+      // visibly depressed and the hero standing on it. Airborne, he catches the
+      // pole wherever he is and rides down. On foot he hops straight up a little
+      // above the cap and rides down from there — a short slide instead of no
+      // slide, which keeps the ending one gesture rather than two. He is still
+      // graded on the catch, so the hop earns him nothing: that is the CLUNK.
+      //
+      // The rig has five poses (idle, run, jump, duck, celebrate) and none of
+      // them is a hero holding a pole, so the descent currently reads with the
+      // jump pose. A proper cling is a shared-painter change across all eight
+      // heroes and is the outstanding art debt on this whole mechanic.
+      const caught = Math.max(this.player.grounded ? 0 : this.player.y, 0);
+      // The hop's own height, for the walk-up: enough above the cap to read as
+      // a deliberate little jump onto it rather than a stumble.
+      const from = this.player.grounded ? PLUNGER_REST + 16 : Math.max(caught, PLUNGER_REST + 6);
+      this.flipSlide = {
+        from,
+        t: 0,
+        // `hop` is the fraction of the move spent going UP. Zero when he is
+        // already airborne — there is nothing to hop, he is holding the pole.
+        hop: this.player.grounded ? 0.36 : 0,
+        // Time scales with how far he has to come, so a PERFECT visibly takes
+        // longer to ride down than a scraped FLIP, floored so a low catch is
+        // still a slide rather than a snap.
+        //
+        // Slower than a fall, on purpose: hands on a pole is a CONTROLLED
+        // descent, and the first pass ran it at roughly free-fall speed — the
+        // hero arrived before the eye had registered he was holding anything,
+        // and the whistle over it was gone in a fifth of a second. At these
+        // numbers a PERFECT catch takes about a second to come down, which is
+        // long enough to watch and long enough to hear.
+        // The divisor is the part that was wrong, not the clamps. A catch
+        // happens between 26 and about 57 pixels up — that is the whole range
+        // the cast can reach — so dividing by 95 put every grade on the 0.45
+        // floor and the "scales with height" comment described nothing. At 40
+        // a PERFECT rides for a full second, a scraped FLIP for two thirds of
+        // one, and the two are visibly different lengths of hold.
+        dur: this.player.grounded ? 0.85 : Math.max(0.65, Math.min(1.45, from / 40)),
+      };
+      // The whistle covers the DESCENT only, so it starts when he starts coming
+      // down — on the hop path that is after the rise, or the sound describes a
+      // fall that has not begun.
+      const ride = this.flipSlide.dur * (1 - this.flipSlide.hop);
+      Audio.sfx('slideWhistle', { dur: ride, when: this.flipSlide.dur * this.flipSlide.hop });
+      this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
+        + (this.flipSlide ? this.flipSlide.dur : 0);
     }
     // Post-contact: the hold is running, the lever is swinging. Nothing else
     // to simulate — update()'s finaleT branch owns the frame from here.
@@ -1191,6 +1694,17 @@ export class RunState {
     const points = Math.round(band.bonus * sMult);
     this.score += points;
     this.flip = { band, id: band.id, frac: Math.max(0, frac), points, t: 0 };
+    // The grade's ONE card. It carries the label, the points and the coins, and
+    // it is the bonus plate under the status pill — see drawCoinBonus. Coins
+    // are not added to this.coins here: the count-up owns the transfer, one
+    // coin at a time, so the number in the pill is always the number the player
+    // has, and the plate visibly empties into it.
+    if (band.bonus > 0) {
+      this.flipCoins = {
+        label: band.label, points, total: band.coins, left: band.coins,
+        t: 0, doneT: null, delay: FLIP_COIN_WAIT, alpha: 0,
+      };
+    }
 
     const lx = this.finishWorldX();
     const ly = this.groundYAt(lx);
@@ -1202,8 +1716,47 @@ export class RunState {
       Audio.sfx(band.id === 'perfect' ? 'perfect' : 'power');
       burst(lx + 12, ly - 24, band.id === 'perfect' ? 26 : 14, 110, 0.6, '#f6d33c', 2, 80, () => this.fxRng.float());
     }
-    this.floatText(points ? `${band.label}  +${points}` : band.label,
-      band.id === 'clunk' ? '#8a99a8' : '#f6d33c', { base: FLIP_CARD_Y });
+    // No floatie. The verdict used to print as a card in the run's own chatter
+    // stack, which rises from the hero's column — and at the end of a stage the
+    // hero is at the flagpole, so the card announcing the reward landed in the
+    // top RIGHT, over the marker, while the coins it was talking about arrived
+    // in the pill at the top LEFT. Two popups, opposite corners, one event. The
+    // plate under the pill says all of it in the place the coins are going.
+    //
+    // A CLUNK still prints nothing at all: it is the grade worth zero, and the
+    // marker already says so — plain raise, no surge, no sparks.
+  }
+
+  // Walks the flip's coin payout out of the bonus plate and into the status
+  // pill, one coin per FLIP_COIN_STEP. Runs on the finale hold's own dt rather
+  // than off tRun, which stops the moment the hold starts.
+  //
+  // The while loop rather than one coin a frame: at 0.075s a coin, a dropped
+  // frame would otherwise stretch the whole tally, and the last coin has to
+  // land before the results card takes the screen.
+  updateFlipCoins(dt) {
+    const b = this.flipCoins;
+    if (!b) return;
+    b.t += dt;
+    while (b.left > 0 && b.t >= b.delay + (b.total - b.left) * FLIP_COIN_STEP) {
+      b.left--;
+      this.coins += 1;
+      // Every coin ticks, climbing a semitone or so each time — the run-up is
+      // the point, and it lands on the highest note as the plate empties.
+      Audio.sfx('coin', { pitch: 1 + 0.05 * (b.total - b.left - 1) });
+    }
+    if (b.left === 0 && b.doneT == null) b.doneT = b.t;
+    // The plate's own opacity, computed here rather than in the HUD: every
+    // number that decides it is already in this file, and the drawing side has
+    // no clock of its own during the hold.
+    //
+    // It fades IN on the flip and then never fades out. It is not a popup that
+    // has said its piece — it is run state, sitting in the row with the cells
+    // and the coins, and it stays there for as long as they do. The scene ends
+    // and it goes with the scene. A plate that dissolved on its own left the
+    // last seconds of the hold with a hero celebrating next to nothing, and put
+    // a deadline on reading a number the player had just earned.
+    b.alpha = Math.max(0, Math.min(1, b.t / FLIP_COIN_LEAD));
   }
 
   // ------------------------------------------------------------------ ability
@@ -1555,21 +2108,52 @@ export class RunState {
   }
 
   // ------------------------------------------------------------------ relay
-  clearPortalApproach(portalX) {
+  // Two separate keep-clear rules, because they protect different things.
+  //
+  // The APPROACH is about fairness: an obstacle that wants a jump or a duck in
+  // the run-up gets deleted, since the portal already owns that input window.
+  //
+  // The COLUMN is about the portal itself. The art is 14px wide with a face
+  // hung over the top of it, so anything sharing those pixels — a !-box, a
+  // buzzbird, a capsule, a coin arc — is drawn ON the portal. A reward there is
+  // unreadable and a hazard there is worse: you cannot dodge it without missing
+  // the tag. Nothing lives in the column, prize or threat. The appliance is the
+  // one thing that cannot simply be deleted (it spawns once a stage and the
+  // mission wants it), so it gets pushed clear instead.
+  clearPortalLane(portalX) {
     const approachStart = portalX - 48;
     const portalEnd = portalX + 12;
+    const colStart = portalX - 20, colEnd = portalX + 32;
     for (const ob of this.obstacles) {
-      if (ob.live && ob.def.action !== 'none' && ob.x < portalEnd && ob.x + ob.w > approachStart) ob.live = false;
+      if (!ob.live) continue;
+      const start = ob.def.action !== 'none' ? approachStart : colStart;
+      const end = ob.def.action !== 'none' ? portalEnd : colEnd;
+      if (ob.x < end && ob.x + ob.w > start) ob.live = false;
+    }
+    for (const p of this.pickups) {
+      if (!p.live || p.x >= colEnd || p.x + p.w <= colStart) continue;
+      if (p.type === 'appliance') {
+        p.x = colEnd;
+        if (p._baseX != null) p._baseX = p.x;
+      } else p.live = false;
     }
   }
 
   updatePortal(dt) {
     if (this.portal) {
       if (this.portal.x < this.camX - 30) this.portal = null;
+      // A portal that has been used or gone over is no longer a thing in the
+      // lane, it is a thing that HAPPENED — it keeps drawing its aftermath
+      // strip (see drawPortal) and rides off the back of the frame like any
+      // other prop. Nothing else spawns while it does: portals are eighteen
+      // seconds apart at their tightest and a corpse lives half a second, so
+      // holding the slot costs nothing and guarantees one portal on screen.
+      else if (this.portal.spent != null) this.portal.spent += dt;
+      else if (this.portal.wilt != null) this.portal.wilt += dt;
     } else if (this.relay.portalDue()) {
       const hero = this.relay.next;
-      this.portal = { x: this.camX + W + 40, hero, label: `${HERO_BY_ID[hero].short} - ${HERO_CALLOUT[hero]}` };
-      this.clearPortalApproach(this.portal.x);
+      this.portal = { x: this.camX + W + 40, hero };
+      this.clearPortalLane(this.portal.x);
       this.relay.portalSpawned();
       // Names the TAG, because this is the moment the word gets taught: the
       // mastery track pays out on 'EVERY PERFECT TAG' and the intro opens on a
@@ -1577,7 +2161,7 @@ export class RunState {
       // shop description for a thing they had never been told they were doing.
       this.tutor('firstPortal', 'RUN THROUGH THE PORTAL TO TAG IN THE NEXT HERO.');
     }
-    if (this.portal) {
+    if (this.portal && this.portal.spent == null && this.portal.wilt == null) {
       const pbox = { x: this.portal.x, y: this.groundYAt(this.portal.x) - PORTAL_H, w: 12, h: PORTAL_H };
       // The same swoosh the level opens with, because it is the same fiction: a hero
       // going through a doorway. Quieter here — that one is once a level and can afford
@@ -1621,9 +2205,18 @@ export class RunState {
           Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN });
         }
       }
-      if (overlaps(this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X)), pbox)) {
+      const hbox = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
+      if (overlaps(hbox, pbox)) {
         this.doSwitch();
-        this.portal = null;
+        this.portal.spent = 0;
+      } else if (pbox.x + pbox.w < hbox.x) {
+        // Gone over the top. Measured against the same two boxes the crossing
+        // is, one frame later: once the portal's right edge is behind the
+        // hero's left one, no jump can still take it. The column sags from
+        // here, which is the only feedback a missed tag has ever had — before
+        // this a portal you cleared scrolled away looking exactly like one you
+        // were still able to reach.
+        this.portal.wilt = 0;
       }
     }
   }
@@ -1643,10 +2236,33 @@ export class RunState {
     this.speech = { text, t: 2.8, who: null };
   }
 
+  // What a spent portal throws, and the reason it is thrown at the PORTAL
+  // rather than at the hero: this used to be a teal puff at the player's chest,
+  // which read as the hero doing something rather than as the doorway reacting.
+  //
+  // Two kinds, meaning two different things. The pop is the column discharging
+  // — almost no gravity, because it is light and light does not fall. The three
+  // flat chunks are hoops dragged FORWARD out of the stack in the hero's wake:
+  // they leave at a little over the world's own speed, so they pull ahead of
+  // the plinth and thin out around the hero instead of hanging where the portal
+  // was. The sprite's own hoops sink into the slot at the same moment (see
+  // portalRingsArt), so the stack empties from both ends.
+  portalDischarge(x) {
+    const cx = x + 6;
+    const rand = () => this.fxRng.float();
+    burst(cx, GROUND_Y - 26, 12, 54, 0.34, '#c8fff0', 1, 14, rand);
+    burst(cx, GROUND_Y - 8, 8, 40, 0.28, '#48e0c8', 1, 30, rand);
+    for (let i = 0; i < 3; i++) {
+      spawnShard(cx, GROUND_Y - 32 + i * 9, this.speed * (1.15 + i * 0.08), -6 - i * 3,
+        0.3 + i * 0.04, i ? '#3fa9a0' : '#c8fff0', 7 - i * 1.6, 1.4, 0, 0, Infinity);
+    }
+  }
+
   doSwitch() {
     const px = this.camX + PLAYER_X;
     const result = this.relay.switchHero();
     this.player.setHero(result.to);
+    this.player.tagFlashT = TAG_FLASH_TIME;
     this.usedHeroes.add(result.to);
     this.setButtons();
     Audio.sfx('tag');
@@ -1655,7 +2271,7 @@ export class RunState {
     // its weight 47ms in. See PORTAL_RELAY_OUT.
     Audio.sfx('portal', { gain: PORTAL_RELAY_GAIN, shape: PORTAL_RELAY_OUT });
     this.score += 100;
-    burst(px + 6, GROUND_Y - this.player.y - 8, 14, 80, 0.5, '#48e0c8', 1, 80, () => this.fxRng.float());
+    this.portalDischarge(this.portal ? this.portal.x : px);
     const hero = HERO_BY_ID[result.to];
     if (hero.stomp) this.stompBreak();
     if (hero.startShield && this.powerups.shieldStack === 0) this.powerups.shieldStack = 1;
@@ -1725,6 +2341,58 @@ export class RunState {
       }
       if (ob.fell && ob.alt > 0 && ob.def.falls) {
         ob.alt = Math.max(0, ob.alt - 320 * dt);
+      }
+      // The boost pad is the one prop that GIVES you something, and until now
+      // it was the only one that never acknowledged you. Two states, both
+      // art-only: `arm` rises as the hero closes on it, which drives the
+      // chevron chase faster the nearer you get, and `firedT` is a short flare
+      // the instant it pays out. Nothing here touches the hitbox or the boost.
+      if (ob.def.isBoost) {
+        const gap = ob.x - this.playerWorldX();
+        // Once the pad's trailing edge is behind the hero it can no longer be
+        // claimed — jumped clean over, most likely. `arm` clamped at 1 for as
+        // long as the pad stayed on screen, so the telegraph went on climbing
+        // at full pitch after the chance had gone, which reads as "still
+        // coming" at exactly the moment it means the opposite.
+        if (!ob.used && !ob.missed && gap + ob.w < 0) { ob.missed = true; ob.missT = BOOST_MISS_TAIL; }
+        if (ob.missed) {
+          ob.missT = Math.max(0, ob.missT - dt);
+          ob.arm = ob.missT / BOOST_MISS_TAIL;      // the chase winds down with it
+        } else {
+          ob.arm = Math.max(0, Math.min(1, 1 - gap / BOOST_ARM_RANGE));
+        }
+        if (ob.firedT > 0) ob.firedT = Math.max(0, ob.firedT - dt);
+        // Ticks that speed up and rise in pitch as the pad closes — the
+        // sequence is the telegraph, not any one blip. Stops the instant the
+        // pad pays out, so the tick never talks over the whoosh.
+        if (ob.arm > 0.12 && !ob.used && !ob.missed) {
+          ob.tickT = (ob.tickT || 0) - dt;
+          if (ob.tickT <= 0) {
+            ob.tickT = 0.2 - 0.14 * ob.arm;
+            Audio.sfx('boostTick', { pitch: 0.85 + 0.5 * ob.arm });
+          }
+        } else if (ob.used && ob.hitT > 0) {
+          // Contact: the run CARRIES ON up, over the top of the whoosh. It
+          // used to stop dead so as not to talk over the payout, but stopping
+          // is what the miss does — the two endings have to differ, and a line
+          // that keeps climbing is the only one that reads as reward.
+          ob.hitT = Math.max(0, ob.hitT - dt);
+          ob.tickT = (ob.tickT || 0) - dt;
+          if (ob.tickT <= 0) {
+            ob.tickT = 0.045;
+            Audio.sfx('boostTick', { pitch: 1.35 + 1.55 * (1 - ob.hitT / BOOST_HIT_TAIL) });
+          }
+        } else if (ob.missed && ob.missT > 0) {
+          // The same tick, falling — fast, and a long way. It ends far BELOW
+          // where the rising run began rather than merely stopping: silence
+          // after a rise is ambiguous, it could be the pad or it could be the
+          // mix, and a pitch that drops off a cliff is unmistakably a negative.
+          ob.tickT = (ob.tickT || 0) - dt;
+          if (ob.tickT <= 0) {
+            ob.tickT = 0.04;
+            Audio.sfx('boostTick', { pitch: 0.22 + 1.0 * (ob.missT / BOOST_MISS_TAIL) });
+          }
+        }
       }
       if (ob.def.beatSync) ob.h = 10 + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
       if (ob.def.shoots) {
@@ -1974,14 +2642,17 @@ export class RunState {
       this.missionTimers.cord -= dt;
       if (this.missionTimers.cord <= 0 && m.count + this.pickups.filter((p) => p.def.cord).length < m.n) {
         this.missionTimers.cord = (this.totalDist / this.speed) / (m.n + 2);
-        this.spawnObjective('cord', this.fxRng.pick([10, 30, 46]));
+        // A piece that could not be placed clear of the lane's hazards is not a
+        // piece the mission gives up on — come back for it in a moment, by
+        // which time the stretch being offered is different ground.
+        if (!this.spawnObjective('cord', this.fxRng.pick([10, 30, 46]))) this.missionTimers.cord = 0.6;
       }
     }
     if (m.type === 'rescue') {
       this.missionTimers.resident -= dt;
       if (this.missionTimers.resident <= 0 && m.count < m.n) {
         this.missionTimers.resident = (this.totalDist / this.speed) / (m.n + 1.5);
-        this.spawnObjective('resident', 0);
+        if (!this.spawnObjective('resident', 0)) this.missionTimers.resident = 0.6;
       }
     }
     if (this.challenge && this.challenge.type === 'coins') this.challenge.count = this.coins;
@@ -2001,10 +2672,49 @@ export class RunState {
   // still fits, and once even that has fallen behind the screen edge, stop
   // offering pieces that cannot be taken.
   spawnObjective(type, alt) {
-    const x = Math.min(this.camX + W + 80, this.finishWorldX() - PICKUPS[type].w - 24);
-    if (x < this.camX + VIEW_W) return false;
+    const def = PICKUPS[type];
+    const maxX = this.finishWorldX() - def.w - 24;
+    const x = this.clearOfHazards(Math.min(this.camX + W + 80, maxX), def.w, alt, def.h, maxX);
+    if (x == null || x < this.camX + VIEW_W) return false;
     this.pickups.push(makePickup(type, x, alt));
     return true;
+  }
+
+  // Objectives are not placed by the Spawner: they appear on a mission timer at
+  // a fixed distance ahead, dropped into a lane that was filled seconds ago and
+  // knows nothing about them. So a cord could land in a cactus's shadow — right
+  // beside it, at ground height — where the only line to the piece runs through
+  // the spikes. The mission demands the piece; the lane says you cannot have it
+  // without taking the hit. That is not a difficulty spike, it is a dead end.
+  //
+  // Nudge the piece downstream until it stands in the clear. HAZARD_CLEAR is
+  // LANDING room rather than a fairness gap like Spawner.fairGap: you only have
+  // to be able to come down beside the piece and take it, not to be given a
+  // fresh input window for it.
+  //
+  // Height is part of the test. A cord strung above a cactus is collected by the
+  // very jump that clears the cactus — a good beat, not an unfair one — so only
+  // hazards that share the piece's band push it. And only HAZARDS: boost pads
+  // and breakable bonus targets are things you want to be next to.
+  //
+  // Returns null when there is no clear spot left before the breaker, which the
+  // caller treats the same way as being past it: skip this piece and offer the
+  // next one later, rather than plant one that cannot be taken.
+  clearOfHazards(x, w, alt, h, maxX) {
+    const PAD = 30;         // landing room either side, in world units
+    const BAND = 4;         // slack above a hazard's crown before it stops mattering
+    const inBand = (ob) => alt < ob.alt + ob.h + BAND && alt + h > ob.alt - BAND;
+    const threat = (ob) => ob.live && !ob.def.isBoost && !ob.def.isTarget && !ob.def.isSwitch;
+    // Several passes: clearing one hazard can walk the piece into the next.
+    for (let pass = 0; pass < 8; pass++) {
+      let moved = false;
+      for (const ob of this.obstacles) {
+        if (!threat(ob) || !inBand(ob)) continue;
+        if (x < ob.x + ob.w + PAD && x + w > ob.x - PAD) { x = ob.x + ob.w + PAD; moved = true; }
+      }
+      if (!moved) break;
+    }
+    return x > maxX ? null : x;
   }
 
   // The HUD no longer carries a standing plug tally, so the moment a plug comes
@@ -2057,7 +2767,11 @@ export class RunState {
     if (this.camX + W > at) {
       this.applianceSpawned = true;
       const alt = this.stage.applianceHigh ? 52 : 44;
-      const p = makePickup('appliance', at + W, alt);
+      // Same clearance the cords get. It rides high enough that most ground
+      // hazards never touch the test, but the one appliance a stage offers is
+      // the worst possible thing to strand behind a shooter drone.
+      const x = this.clearOfHazards(at + W, PICKUPS.appliance.w, alt, PICKUPS.appliance.h, Infinity);
+      const p = makePickup('appliance', x, alt);
       p._baseAlt = alt;
       p._baseX = p.x;
       this.pickups.push(p);
@@ -2133,6 +2847,7 @@ export class RunState {
     this.finishT = 0;
     this.finishPlayerX = PLAYER_X;
     this.flip = null;
+    this.flipCoins = null;
     this.dead = false;
     this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
@@ -2144,113 +2859,119 @@ export class RunState {
   // Record a snapshot on the fixed cadence during normal forward play.
   // After recording, discard the oldest if the buffer is full.
   recordRewindFrame(dt) {
+    if (REWIND_DISABLED) return;
     this.rewindCaptureT += dt;
     if (this.rewindCaptureT < REWIND_STEP) return;
     this.rewindCaptureT -= REWIND_STEP;
-    this.rewindFrames.push(this.makeRewindSnapshot());
-    if (this.rewindFrames.length > REWIND_MAX_FRAMES) this.rewindFrames.shift();
+    // The ring hands back the record to overwrite, which once it is full is the
+    // oldest one — so recycling and discarding the oldest are the same act.
+    this.writeRewindSnapshot(this.rewindFrames.slotForWrite());
   }
 
-  // Deep-snapshot everything the rewind needs to restore: camera, player,
-  // relay, world entities, spawners, powerups, RNG streams, mission state.
-  makeRewindSnapshot() {
-    // Clone world entities, preserving def references.
-    const cloneObs = (arr) => arr.filter((e) => e.live).map((e) => {
-      const c = { ...e };
-      if (c.hitIds) c.hitIds = new Set(c.hitIds);
-      if (c.rollContactIds) c.rollContactIds = new Set(c.rollContactIds);
-      return c;
-    });
-    const cloneProj = (arr) => arr.filter((p) => p.live).map((p) => {
-      const c = { ...p };
-      if (c.hitIds) c.hitIds = new Set(c.hitIds);
-      return c;
-    });
+  // Record everything the rewind needs to restore — camera, player, relay,
+  // world entities, spawners, powerups, RNG streams, mission state — INTO an
+  // existing record handed over by the ring, reusing its objects, arrays and
+  // Sets rather than building a new graph every capture. See the recycling
+  // helpers above for why this is safe: restoreRewindSnapshot copies every
+  // field back out, so nothing here is ever aliased into the live world.
+  writeRewindSnapshot(s) {
+    // Camera & run
+    s.camX = this.camX; s.camZoom = this.camZoom; s.camPan = this.camPan;
+    s.distance = this.distance; s.tRun = this.tRun; s.score = this.score; s.coins = this.coins;
+    s.battery = this.battery; s.damageTaken = this.damageTaken; s.speedBoost = this.speedBoost;
+    s.coinCombo = this.coinCombo; s.coinComboT = this.coinComboT;
+    s.powerupsCollected = this.powerupsCollected;
+    s.hintT = this.hintT; s.bonusT = this.bonusT;
 
-    // Clone powerup active state.
-    const activeClone = {};
-    for (const [id, a] of Object.entries(this.powerups.active)) {
-      activeClone[id] = { ...a };
+    // Player mutable state. Written field by field rather than by assignInto:
+    // Player carries far more than the rewind restores, and listing what is
+    // recorded is what keeps the two halves of this pair honest with each other.
+    const p = this.player;
+    const ps = s.player || (s.player = {});
+    ps.heroId = p.heroId; ps.y = p.y; ps.vy = p.vy; ps.jumps = p.jumps;
+    ps.powerJumpBonus = p.powerJumpBonus; ps.ducking = p.ducking;
+    ps.duckAmount = p.duckAmount; ps.duckDirection = p.duckDirection;
+    ps.floating = p.floating; ps.iframes = p.iframes; ps.anim = p.anim;
+    ps.stomping = p.stomping; ps.dashT = p.dashT; ps.rollT = p.rollT;
+    ps.compressT = p.compressT; ps.stumbleT = p.stumbleT;
+    ps.rollBashed = p.rollBashed; ps.rollDeflectUsed = p.rollDeflectUsed;
+    ps.rollPlows = p.rollPlows; ps.deflectFlashT = p.deflectFlashT;
+    ps.powerPoseT = p.powerPoseT; ps.powerType = p.powerType;
+    ps.spannerFlurryT = p.spannerFlurryT; ps.spannerFlurryCd = p.spannerFlurryCd;
+    ps.spannerFlurryHitIds = copySetInto(p.spannerFlurryHitIds, ps.spannerFlurryHitIds);
+    ps.relayCharge = p.relayCharge; ps.chargeFlashT = p.chargeFlashT;
+    ps.fistThrown = p.fistThrown; ps.axeThrown = p.axeThrown;
+    ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
+    ps.hazardEaten = p.hazardEaten; ps.grounded = p.grounded;
+    ps.slideT = p.slideT; ps.landedT = p.landedT;
+    ps.abilityCooldowns = assignInto(p.abilityCooldowns, ps.abilityCooldowns || {});
+    ps.abilityCd = p.abilityCd;
+    ps.rollContactIds = copySetInto(p.rollContactIds, ps.rollContactIds);
+
+    // Relay
+    s.relayCurrent = this.relay.current; s.relayNext = this.relay.next;
+    s.relayBag = copyArrayInto(this.relay.bag, s.relayBag);
+    s.relaySpawned = this.relay.spawned; s.relayElapsed = this.relay.elapsed;
+    s.relayTimer = this.relay.portalTimer; s.relayEvery = this.relay.portalEvery;
+    s.relayLastTagLine = this.relay.lastTagLine;
+    s.relayLastTagLineT = this.relay.lastTagLineT;
+
+    // Powerups
+    s.shieldStack = this.powerups.shieldStack;
+    const active = s.activePowerups || (s.activePowerups = {});
+    for (const id in active) if (!(id in this.powerups.active)) delete active[id];
+    for (const id in this.powerups.active) {
+      active[id] = assignInto(this.powerups.active[id], active[id] || {});
     }
 
-    // Player mutable state snapshot.
-    const p = this.player;
-    const ps = {
-      heroId: p.heroId, y: p.y, vy: p.vy, jumps: p.jumps,
-      powerJumpBonus: p.powerJumpBonus, ducking: p.ducking, duckAmount: p.duckAmount,
-      duckDirection: p.duckDirection, floating: p.floating,
-      iframes: p.iframes, anim: p.anim,
-      stomping: p.stomping, dashT: p.dashT, rollT: p.rollT,
-      compressT: p.compressT, stumbleT: p.stumbleT,
-      rollBashed: p.rollBashed, rollDeflectUsed: p.rollDeflectUsed,
-      rollPlows: p.rollPlows, deflectFlashT: p.deflectFlashT,
-      powerPoseT: p.powerPoseT, powerType: p.powerType,
-      spannerFlurryT: p.spannerFlurryT, spannerFlurryCd: p.spannerFlurryCd,
-      spannerFlurryHitIds: p.spannerFlurryHitIds ? new Set(p.spannerFlurryHitIds) : null,
-      relayCharge: p.relayCharge, chargeFlashT: p.chargeFlashT,
-      fistThrown: p.fistThrown, axeThrown: p.axeThrown,
-      headless: p.headless, assemblyGraceUsed: p.assemblyGraceUsed,
-      hazardEaten: p.hazardEaten, grounded: p.grounded,
-      slideT: p.slideT, landedT: p.landedT,
-      abilityCooldowns: { ...p.abilityCooldowns }, abilityCd: p.abilityCd,
-      rollContactIds: p.rollContactIds ? new Set(p.rollContactIds) : null,
-    };
+    // World entities. Counts, not array lengths — the arrays keep their spare
+    // objects as a pool (see copyEntitiesInto).
+    s.obstacles = s.obstacles || [];
+    s.obstacleCount = copyEntitiesInto(this.obstacles, s.obstacles, OBSTACLE_SETS);
+    s.pickups = s.pickups || [];
+    s.pickupCount = copyEntitiesInto(this.pickups, s.pickups, null);
+    s.projectiles = s.projectiles || [];
+    s.projectileCount = copyEntitiesInto(this.projectiles, s.projectiles, PROJECTILE_SETS);
+    s.chompBites = s.chompBites || [];
+    s.chompBiteCount = copyEntitiesInto(this.chompBites, s.chompBites, null, false);
+    s.portal = this.portal ? assignInto(this.portal, s.portal || {}) : null;
+    s.copter = this.copter ? assignInto(this.copter, s.copter || {}) : null;
 
-    return {
-      // Camera & run
-      camX: this.camX, camZoom: this.camZoom, camPan: this.camPan,
-      distance: this.distance, tRun: this.tRun, score: this.score, coins: this.coins,
-      battery: this.battery, damageTaken: this.damageTaken, speedBoost: this.speedBoost,
-      coinCombo: this.coinCombo, coinComboT: this.coinComboT,
-      powerupsCollected: this.powerupsCollected,
-      hintT: this.hintT, bonusT: this.bonusT,
-      // Player
-      player: ps,
-      // Relay
-      relayCurrent: this.relay.current, relayNext: this.relay.next,
-      relayBag: this.relay.bag.slice(),
-      relaySpawned: this.relay.spawned, relayElapsed: this.relay.elapsed,
-      relayTimer: this.relay.portalTimer, relayEvery: this.relay.portalEvery,
-      relayLastTagLine: this.relay.lastTagLine, relayLastTagLineT: this.relay.lastTagLineT,
-      // Powerups
-      shieldStack: this.powerups.shieldStack,
-      activePowerups: activeClone,
-      // World entities
-      obstacles: cloneObs(this.obstacles),
-      pickups: this.pickups.filter((p) => p.live).map((p) => ({ ...p })),
-      projectiles: cloneProj(this.projectiles),
-      chompBites: this.chompBites.map((b) => ({ ...b })),
-      portal: this.portal ? { ...this.portal } : null,
-      copter: this.copter ? { ...this.copter } : null,
-      // Spawners
-      spawnerNextX: this.spawner.nextX,
-      spawnerLastPatternIdx: this.spawner.lastPatternIdx,
-      spawnerLastActionX: this.spawner.lastActionX,
-      spawnerLastActionKind: this.spawner.lastActionKind,
-      dripCapsuleTimer: this.drip.capsuleTimer,
-      dripBatteryTimer: this.drip.batteryTimer,
-      dripLastPowerX: this.drip.lastPowerX,
-      dripLastPowerType: this.drip.lastPowerType,
-      // RNG streams (state is just the internal counter)
-      rngFx: this.fxRng.state,
-      rngSpeech: this.speechRng.state,
-      rngRelay: this.relay.rng.state,
-      rngSpawn: this.spawner.rng.state,
-      rngDrip: this.drip.rng.state,
-      // Mission / challenge
-      mission: JSON.parse(JSON.stringify(this.mission)),
-      challenge: this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null,
-      applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
-      fuseHeld: this.fuseHeld,
-      escapeWall: this.escapeWall,
-      // Misc
-      finishing: this.finishing, finishT: this.finishT, finishPlayerX: this.finishPlayerX,
-      flip: this.flip ? { ...this.flip } : null,
-      usedHeroes: new Set(this.usedHeroes),
-      exitSpoken: new Set(this.exitSpoken),
-      checkpointHit: this.checkpointHit.slice(),
-      snapshot: null, // death checkpoint not carried across rewind
-    };
+    // Spawners
+    s.spawnerNextX = this.spawner.nextX;
+    s.spawnerLastPatternIdx = this.spawner.lastPatternIdx;
+    s.spawnerLastActionX = this.spawner.lastActionX;
+    s.spawnerLastActionKind = this.spawner.lastActionKind;
+    s.dripCapsuleTimer = this.drip.capsuleTimer;
+    s.dripBatteryTimer = this.drip.batteryTimer;
+    s.dripLastPowerX = this.drip.lastPowerX;
+    s.dripLastPowerType = this.drip.lastPowerType;
+
+    // RNG streams (state is just the internal counter)
+    s.rngFx = this.fxRng.state;
+    s.rngSpeech = this.speechRng.state;
+    s.rngRelay = this.relay.rng.state;
+    s.rngSpawn = this.spawner.rng.state;
+    s.rngDrip = this.drip.rng.state;
+
+    // Mission / challenge. Still a JSON round-trip: these are small, arbitrarily
+    // shaped, and nested, and a wrong deep copy here silently corrupts objective
+    // progress — which is worth more than the allocation it costs at 15 Hz.
+    s.mission = JSON.parse(JSON.stringify(this.mission));
+    s.challenge = this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null;
+    s.applianceSpawned = this.applianceSpawned; s.applianceGot = this.applianceGot;
+    s.fuseHeld = this.fuseHeld;
+    s.escapeWall = this.escapeWall;
+
+    // Misc
+    s.finishing = this.finishing; s.finishT = this.finishT;
+    s.finishPlayerX = this.finishPlayerX;
+    s.flip = this.flip ? assignInto(this.flip, s.flip || {}) : null;
+    s.usedHeroes = copySetInto(this.usedHeroes, s.usedHeroes);
+    s.exitSpoken = copySetInto(this.exitSpoken, s.exitSpoken);
+    s.checkpointHit = copyArrayInto(this.checkpointHit, s.checkpointHit);
+    s.snapshot = null; // death checkpoint not carried across rewind
+    return s;
   }
 
   // Restore the world from a rewind snapshot. Operates in-place on existing
@@ -2307,20 +3028,25 @@ export class RunState {
       this.powerups.active[id] = { ...a };
     }
 
-    // World entities: deep-restore preserving def references.
-    this.obstacles = s.obstacles.map((e) => {
-      const c = { ...e };
-      if (c.hitIds) c.hitIds = new Set(c.hitIds);
-      if (c.rollContactIds) c.rollContactIds = new Set(c.rollContactIds);
-      return c;
-    });
-    this.pickups = s.pickups.map((p) => ({ ...p }));
-    this.projectiles = s.projectiles.map((p) => {
-      const c = { ...p };
-      if (c.hitIds) c.hitIds = new Set(c.hitIds);
-      return c;
-    });
-    this.chompBites = s.chompBites.map((b) => ({ ...b }));
+    // World entities: deep-restore preserving def references. These go back
+    // into the live world, so unlike the recording side they must be fresh
+    // objects — the record stays intact for the next pop. Read to the recorded
+    // COUNT, not the array length: everything past the count is pool.
+    const restoreEntities = (arr, n, setKeys) => {
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const c = { ...arr[i] };
+        for (let k = 0; k < setKeys.length; k++) {
+          if (c[setKeys[k]]) c[setKeys[k]] = new Set(c[setKeys[k]]);
+        }
+        out.push(c);
+      }
+      return out;
+    };
+    this.obstacles = restoreEntities(s.obstacles, s.obstacleCount, OBSTACLE_SETS);
+    this.pickups = restoreEntities(s.pickups, s.pickupCount, EMPTY_SETS);
+    this.projectiles = restoreEntities(s.projectiles, s.projectileCount, PROJECTILE_SETS);
+    this.chompBites = restoreEntities(s.chompBites, s.chompBiteCount, EMPTY_SETS);
     this.portal = s.portal ? { ...s.portal } : null;
     this.copter = s.copter ? { ...s.copter } : null;
 
@@ -2388,11 +3114,18 @@ export class RunState {
         if (overlaps(pbox, box) && this.player.grounded) {
           if (!ob.used) {
             ob.used = true;
+            ob.hitT = BOOST_HIT_TAIL;   // the tick run keeps climbing from here
+            ob.tickT = 0.045;
+            ob.firedT = BOOST_FLARE_T;
+            this.player.boostT = BOOST_LEAN_T;
             this.speedBoost = Math.min(1.0, this.speedBoost + 0.5);
-            Audio.sfx('dash');
+            Audio.sfx('boost');
             this.score += 50;
             if (this.challenge && this.challenge.type === 'boosts') this.challenge.count++;
-            for (let i = 0; i < 8; i++) spawn(pbox.x - i * 4, GROUND_Y - 4, -60, -20, 0.4, '#f6d33c', 2, 0);
+            // The eight gold particles that used to trail back from here are
+            // gone: they were 2px squares, they read as loose dots rather than
+            // as anything the pad did, and the ground rush (game/boostFx.js)
+            // now carries the whole trail with marks that have a direction.
           }
         }
         continue;
@@ -2631,6 +3364,34 @@ export class RunState {
     this.endRun(true);
   }
 
+  // Warp to just before the tape so the finish marker's whole event can be
+  // watched without playing the stage that leads to it. The URL form (?finish=N)
+  // does this at launch; this is the same thing from inside a live run, because
+  // an art pass on the marker is a dozen looks at one four-second beat and
+  // reloading the page for each of them is the slow way to do it.
+  //
+  // Forces the mission on the way past: the finish only ARMS once the mission is
+  // satisfied, so warping without it just parks the run at the tape and lets it
+  // keep going. Obstacles and pickups beyond the new position are dropped rather
+  // than left to arrive all at once out of a region the spawner filled for a
+  // player who was never there.
+  devRunFinish(leadSeconds = 5) {
+    if (this.finished || this.finishing || this.overtime) return;
+    this.devForceMission = true;
+    const lead = Math.max(0, leadSeconds) * this.baseSpeed();
+    const target = Math.max(0, this.finishCameraX() - lead);
+    if (target <= this.distance) return;   // already past it; nothing to warp to
+    this.distance = target;
+    this.camX = target;
+    this.obstacles = this.obstacles.filter((ob) => ob.x > this.camX);
+    this.pickups = this.pickups.filter((p) => p.x > this.camX);
+    this.projectiles = [];
+    this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
+    for (let i = 0; i < this.checkpoints.length; i++) {
+      if (this.distance >= this.checkpoints[i]) this.checkpointHit[i] = true;
+    }
+  }
+
   // Drop an obstacle just ahead of the player for a close look at one hazard.
   devSpawn(type) {
     if (!OBSTACLES[type]) return null;
@@ -2766,125 +3527,37 @@ export class RunState {
     const ease = thrown * thrown * (3 - 2 * thrown);
     const live = !!flip && flip.band.bonus > 0;   // a clunk throws the lever but lights nothing
 
-    // Pole. Twelve segments, not ten: at 80px Lorenzo's 89px peak carried him
-    // clean off the top and into the HUD chips on a good flip, which reads as
-    // overshooting the goal rather than topping it out. 96 clears the tallest
-    // single jump in the cast, so a PERFECT always lands ON the pole. Mochi's
-    // second jump still goes over, which is Mochi being Mochi.
-    for (let i = 0; i < 12; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#f6d33c' : '#0b0b14';
-      ctx.fillRect(fx, gy - 96 + i * 8, 5, 8);
-    }
+    // The marker itself — pole, flag and switch — lives in finishMarker.js, so
+    // the gallery bake-off deciding it renders candidates through the exact code
+    // that ships them. What stays here is everything that is gameplay UI rather
+    // than art: the flip bracket below, and the signage at the bottom of this
+    // method. Both are placed off the pole's 5px column and the switch's top,
+    // which every candidate holds to.
+    drawFinishMarkerArt(ctx, fx, gy, {
+      t, thrown: ease, live, armed: this.finishing && !flip,
+      reducedMotion: !!this.save.settings.reducedMotion,
+    });
 
-    // Where PERFECT lives, marked in the only unit that matters: the height
-    // THIS hero can actually reach. The target sits at 32px under B-33P and
-    // 62px under Lorenzo, so it visibly moves with whoever is holding the
-    // baton — which is the rule teaching itself. You see it inside your own
-    // jump rather than being handed a number you would have to trust.
+    // NOTHING marks where PERFECT starts, and that is the decision, not an
+    // omission. Three versions were built and all three were wrong for the same
+    // reason: a white bracket in the sky, a collar on the shaft, and finally a
+    // single pale dot. Even the dot — a mark barely over a pixel, deliberately
+    // missable — was one object too many, because anything placed at that height
+    // ON PURPOSE is a diagram laid over the one shot in the stage that is trying
+    // to be a place.
     //
-    // A bracket in the sky BESIDE the pole, not a band painted on it. Painted
-    // on, it was pale yellow over a yellow-and-black checkered pole: invisible
-    // against the gold segments, muddy against the black, and it was the single
-    // most important thing the new verb had to say. Out here it has open sky
-    // behind it, on the side the hero is arriving from, and it carries its own
-    // dark backing so it survives the hills too.
-    //
-    // Only during the dash: on the approach it would be one more thing blinking
-    // over a stage that is still being played.
-    if (this.finishing && !flip) {
-      const peak = jumpHeightFor(HERO_BY_ID[this.relay.current]);
-      const top = Math.round(gy - peak);
-      const bot = Math.round(gy - peak * FLIP_BANDS[0].at);
-      const pulse = this.save.settings.reducedMotion ? 0.85 : 0.6 + 0.3 * Math.sin(t * 9);
-      // Stood off to fx-34 rather than tucked against the pole. The BREAKER and
-      // JUMP! plates hang off the box top and reach about 13px left of the
-      // pole, and a short hero's target sits at exactly that height — B-33P's
-      // bracket landed straight across both plates. Out here it clears them for
-      // the whole cast, and a tick at the band's midpoint keeps it tied to the
-      // pole so it still reads as a height rather than as loose furniture.
-      const mid = Math.round((top + bot) / 2);
-      const bracket = (col, o) => {
-        ctx.fillStyle = col;
-        ctx.fillRect(fx - 34 + o, top + o, 15, 2);
-        ctx.fillRect(fx - 34 + o, bot - 2 + o, 15, 2);
-        ctx.fillRect(fx - 34 + o, top + o, 2, bot - top);
-        ctx.fillRect(fx - 20 + o, mid + o, 20, 1);
-      };
-      bracket('rgba(11,11,20,0.7)', 1);
-      bracket(`rgba(255,255,255,${pulse.toFixed(3)})`, 0);
-    }
-
-    // Box. It used to be one flat rectangle, which read as a doorway with a
-    // yellow plank taped across it — nothing said "electrical". A recessed
-    // housing, four corner bolts and a sunken slot for the lever to sit in cost
-    // eight fills and make it an object with fixtures instead of a shape.
-    ctx.fillStyle = '#232f3c';
-    ctx.fillRect(fx + 6, gy - 36, 20, 36);
-    ctx.fillStyle = '#3a4a5a';
-    ctx.fillRect(fx + 7, gy - 34, 18, 33);
-    ctx.fillStyle = '#4d6172';                       // top bevel, so it has a lid
-    ctx.fillRect(fx + 7, gy - 34, 18, 2);
-    ctx.fillStyle = '#1a2430';                       // the slot the lever throws in
-    ctx.fillRect(fx + 11, gy - 30, 10, 20);
-    ctx.fillStyle = '#5d7385';                       // bolts
-    for (const [bx, by] of [[8, -32], [23, -32], [8, -4], [23, -4]]) ctx.fillRect(fx + bx, gy + by, 2, 2);
-    // The lit face. Dead grey until the lever lands, then warm — this is the
-    // smallest possible version of the power-restore payoff, and the thing the
-    // full one scales up into: the same `live`/`ease` pair drives how far back
-    // up the strip the lights come on.
-    if (live) {
-      // The SLOT lights, and a rim runs round the face — not a gold repaint of
-      // the whole box. Flooding the face read as a second door rather than as
-      // something switching on, and the lever lost its silhouette against it.
-      // Lighting the recess the lever sits in puts the glow where the contact
-      // just happened.
-      ctx.fillStyle = `rgba(246,211,60,${(0.2 + 0.6 * ease).toFixed(3)})`;
-      ctx.fillRect(fx + 11, gy - 30, 10, 20);
-      ctx.fillStyle = `rgba(255,240,160,${(0.55 * ease).toFixed(3)})`;
-      ctx.fillRect(fx + 7, gy - 34, 18, 1);
-      ctx.fillRect(fx + 7, gy - 2, 18, 1);
-      ctx.fillRect(fx + 7, gy - 34, 1, 33);
-      ctx.fillRect(fx + 24, gy - 34, 1, 33);
-    }
-
-    // The lever. Rest is cocked up and back; the throw sweeps it forward
-    // through its pivot, which is what the hero's weight is doing to it.
-    // Pivoted at the centre of the slot so the whole sweep stays on the box
-    // face, and stubbier than it was — at 12px long and 4 wide it read as a
-    // plank leaning on a door rather than as a switch you throw.
-    ctx.save();
-    ctx.translate(fx + 16, gy - 20);
-    ctx.rotate(-0.9 + 1.8 * ease);
-    ctx.fillStyle = '#0b0b14';
-    ctx.fillRect(-3, -10, 6, 11);       // dark backing, so it reads against the lit slot
-    ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(-2, -9, 4, 10);
-    ctx.fillStyle = '#fff0a0';
-    ctx.fillRect(-2, -9, 4, 3);         // the grip
-    ctx.restore();
-    ctx.fillStyle = '#5d7385';
-    ctx.fillRect(fx + 15, gy - 21, 2, 2);   // pivot pin
-
-    // Signage, drawn unscaled off the top of the BOX. Magnified with the
-    // world it read as a billboard, and hung off the pole instead it landed
-    // under the HUD — the pole now stands two thirds of the frame tall.
-    ctx.save();
-    ctx.translate(fx + 2, gy - 34);
-    ctx.scale(1 / z, 1 / z);
-    drawTextCentered(ctx, 'THE BREAKER', 0, -14, '#f6d33c', 1, 'ui', UI_PLATE);
-    // The call to act, on the object it acts on. The verb has no window and no
-    // penalty, so this is a nudge rather than a cue to hit — it says what the
-    // pole is for, and stops the moment the pole has been used.
-    //
-    // Steady, not blinking. The dash it lives on is about a second and a half;
-    // a blink spends a third of that switched off, and the two shots taken to
-    // check this prompt both caught it dark. It bobs instead, which reads as
-    // urgency without ever being absent, and needs no reduced-motion branch
-    // because there is nothing to miss if it holds still.
-    if (this.finishing && !flip) {
-      const bob = this.save.settings.reducedMotion ? 0 : Math.round(Math.sin(t * 9));
-      drawTextCentered(ctx, 'JUMP!', 0, -26 + bob, '#fff0a0', 1, 'ui', UI_PLATE);
-    }
+    // The band is discoverable without any of it. Catch higher and the ride is
+    // visibly longer, the payoff runs harder, the card says PERFECT and the
+    // coins are worth five times a scrape. That is the game teaching its own
+    // rule through its own payoff, which is the only teaching that survives a
+    // player who is not reading the screen furniture.
+    // No JUMP! plate. It was a yellow word on a grey slab bolted across the
+    // middle of the marker — the one place on screen where the art is trying to
+    // be an object in a world rather than a menu — and it beat every piece of
+    // that object for attention on the way in. The instruction survives without
+    // it: the height bracket above is the thing that actually teaches the verb,
+    // it teaches it in the only unit that matters (this hero's own jump), and
+    // the plunger's whole shape is already the word PUSH.
     ctx.restore();
   }
 
@@ -2941,7 +3614,61 @@ export class RunState {
     const drawActors = () => {
     const finishX = this.overtime ? Infinity : this.finishWorldX();
     for (const p of this.pickups) if (p.live && p.x < finishX) this.drawAtGround(ctx, p.x, () => drawWorldEntity(ctx, p, cam, renderT, this.style, renderSettings), p.w);
-    for (const ob of this.obstacles) if (ob.live && ob.x < finishX) this.drawAtGround(ctx, ob.x, () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings), ob.w, ob.def.ground && ob.alt === 0 ? 1.5 : 0);
+    // How far the world slid since the previous simulation step, which for a
+    // thing standing still in world space IS its screen motion — obstacles do
+    // not move, the camera does. Taken from the camera rather than from
+    // this.speed so it stays truthful for free wherever the two disagree: during
+    // a rewind it goes negative and the ghosts correctly trail the other way,
+    // and while the world is held still it is zero and nothing smears.
+    const camStep = Number.isFinite(this.prevCamX) ? this.camX - this.prevCamX : 0;
+    const smearPx = Math.max(-SMEAR_MAX_PX, Math.min(SMEAR_MAX_PX, camStep * SMEAR_SPAN));
+    // Below about a pixel a frame there is nothing to fuse and the ghosts would
+    // only soften the art for no reason.
+    const smearing = SMEAR_STEPS > 0 && SMEAR_ALPHA > 0 && Math.abs(smearPx) >= 1;
+    // How many ghosts this frame's travel actually needs, rather than a fixed
+    // count. Spacing is what decides whether a trail fuses into motion or reads
+    // as a row of copies, and the distance to cover changes with speed, with the
+    // ramp, and with the camera's zoom — a count that ignores all three is
+    // banded when the world is fast and wasteful when it is slow. One ghost per
+    // rendered pixel of travel is the target; SMEAR_STEPS is the ceiling on how
+    // many that is allowed to become, since each one is a full redraw of the
+    // entity. Zoom counts because these are world units being magnified onto the
+    // screen, and it is the on-screen gap the eye is trying to bridge.
+    const smearSteps = Math.max(1, Math.min(SMEAR_STEPS, Math.round(Math.abs(smearPx) * z)));
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.x >= finishX) continue;
+      // The boost pad is a marking on the floor, so it lies in the floor's
+      // plane and sinks a little further into it than a thing that merely
+      // rests there. Everything else keeps the old seating.
+      const boost = ob.def.isBoost;
+      const paint = () => this.drawAtGround(ctx, ob.x,
+        () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings),
+        ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0, boost ? cam : null);
+      if (smearing) {
+        // Furthest first, so nearer ghosts paint over further ones and the real
+        // sprite lands on top of the lot. Translating is enough: screen x is
+        // (world x - camera), so shifting the canvas forward along the travel is
+        // exactly the same picture one part-frame ago.
+        for (let k = smearSteps; k >= 1; k--) {
+          // back === 1 puts the furthest ghost exactly where the obstacle was
+          // drawn on the PREVIOUS frame, so the trail bridges the whole gap
+          // between one frame and the next. Anything shorter leaves the jump
+          // the eye is objecting to still visible with a faint smudge trailing
+          // it, which is the worst of both — it costs the draws without ever
+          // closing the gap they are there to close.
+          const back = k / smearSteps;
+          ctx.save();
+          // The furthest ghost keeps 40% of the peak rather than fading to
+          // nothing: a ghost at zero opacity is a draw call that paints air,
+          // and it is the far end of the trail that does the fusing.
+          ctx.globalAlpha *= SMEAR_ALPHA * (1 - back * 0.6);
+          ctx.translate(smearPx * back, 0);
+          paint();
+          ctx.restore();
+        }
+      }
+      paint();
+    }
     for (const bite of this.chompBites) {
       const ob = bite.ob;
       const q = Math.max(0, Math.min(1, bite.t / bite.duration));
@@ -3006,7 +3733,7 @@ export class RunState {
     }
     };
     if (!this.style.actorsAbovePost) drawActors();
-    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true));
+    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true, this.save.settings));
     if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, renderT, true));
     if (this.escapeWall != null) {
       const x = this.escapeWall - cam;
@@ -3023,7 +3750,9 @@ export class RunState {
     // tape stays put across the frame the two swap over.
     if (!this.overtime && Number.isFinite(this.totalDist)) {
       const fx = this.finishWorldX() - cam;
-      if (fx - PLAYER_X < 560) this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z, renderT);
+      if (fx - PLAYER_X < 560) {
+        this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z, this.markerT || renderT);
+      }
       // No FINISH AHEAD blink before this. It sat centre-screen in the dialog
       // band for about two seconds, warning about a pole that arrives labelled
       // moments later — the HUD progress bar warms to gold across that same
@@ -3046,9 +3775,42 @@ export class RunState {
     // Player. During the opening run-in this is off the left edge, so the hero
     // draws his way in from beyond the frame (and stays out of sight behind an
     // ACT card, which lifts before he moves).
-    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, renderT, cam, this.mission.type === 'fuse',
+    // Landed on the plunger, power coming back: he celebrates. Without this the
+    // held frame ends on whatever airborne pose the slide left him in — feet
+    // together, arms down, a picture of someone falling — held for two and a
+    // half seconds directly over the thing he just switched on. `grounded` is
+    // the fix as much as `kind` is: he IS standing, on the cap, so the pose
+    // needs to know that or it plays its own airborne variant regardless.
+    //
+    // Waits for the slide to finish rather than starting at contact, because a
+    // hero celebrating on the way down is celebrating something that has not
+    // happened yet.
+    const celebrating = !!this.flip && !this.flipSlide;
+    // The celebration runs off pose.time — which comes from this clock — and
+    // tRun stops the moment the hold starts. Handed renderT the hero struck his
+    // pose and then stood in it like a statue for two and a half seconds. Same
+    // root cause as the frozen flag, same fix: the marker's own clock, which
+    // advances on every path.
+    // The pole ride is on the same clock for the same reason: the cling's sway
+    // is what keeps the descent from reading as a decal sliding down a stick,
+    // and tRun has already stopped by the time he catches it.
+    const heroT = (celebrating || this.flipSlide) ? (this.markerT || renderT) : renderT;
+    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan,
+        // Every field the LAST live frame left behind has to be cleared, not
+        // just the kind. He arrives here mid-landing — squash from hitting the
+        // cap, lean from the run, and whatever duck state the slide left — and
+        // the sim is frozen from this point, so none of it ever decays. The
+        // result is a hero celebrating while permanently compressed. `kind`
+        // alone was not enough; the pose is a snapshot, so it needs a clean one.
+        pose: celebrating
+          ? { kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0,
+            ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
+          : undefined,
       groundY: this.groundYAt(cam + heroScreenX),
+        // How the terrain rises or falls either side of the hero, so a floor
+        // effect can lie IN the floor instead of on a level line through it.
+        groundDelta: (dx) => this.groundYAt(cam + heroScreenX + dx) - this.groundYAt(cam + heroScreenX),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 
@@ -3113,11 +3875,26 @@ export class RunState {
       // blackout overlay below already reads the same accessor for the same
       // reason.
       const heroX = heroScreenX * z;
+      // While the marker is on screen the cards have to stay off it — see
+      // keepLeftOf in drawFloatie. Only once it is actually drawn: for most of
+      // a stage there is no pole to avoid and the chatter belongs over the
+      // hero's own column.
+      const markerX = (!this.overtime && Number.isFinite(this.totalDist))
+        ? this.finishWorldX() - cam
+        : null;
+      // Not in mirror mode: that flips the whole floatie layout into a
+      // right-edged one, where the pole is on the other side of the card and
+      // "keep left" would be the wrong instruction rather than an unnecessary
+      // one.
+      const keepLeftOf = markerX != null && !this.mirror && markerX - PLAYER_X < 560
+        ? (markerX - 4) * z
+        : null;
       for (const f of this.floaties) {
         drawFloatie(d, f, {
           heroX,
           mirror: this.mirror,
           alpha: Math.max(0, Math.min(1, f.t / 0.25)),
+          keepLeftOf,
         });
       }
       if (this.speech) drawSpeech(d, this.speech);

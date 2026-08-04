@@ -1,5 +1,5 @@
 // Entity + hero drawing (logic-free; style packs may decorate).
-import { getSprite, buildSprite, scaled2x, tinted, drawTextCentered } from '../engine/sprites.js';
+import { getSprite, buildSprite, scaled2x, tinted } from '../engine/sprites.js';
 import { W, pushOverlayDraw } from '../engine/renderer.js';
 import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
@@ -7,18 +7,33 @@ import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import {
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
-  propVisualScale, propHazardRim, glowSprite, sparkSprite, drawProp,
+  propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
+  BATTERY_FOCUS,
+  PORTAL_SPRITE, PORTAL_ART_W, PORTAL_ART_H,
+  PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE,
+  PORTAL_SPEND_FRAMES, PORTAL_SPEND_TIME, PORTAL_WILT_FRAMES, PORTAL_WILT_TIME,
 } from '../sprites/props.js';
 
 const POWER_GLOW = {
   capShield: 'rgba(72,168,240,0.5)', capMagnet: 'rgba(224,72,72,0.45)', capStar: 'rgba(246,211,60,0.5)',
   capAirJump: 'rgba(114,216,240,0.5)', capSpeed: 'rgba(248,144,72,0.5)', capLowGrav: 'rgba(184,136,240,0.5)',
 };
+// The battery's halo. Not an entry in POWER_GLOW because that table is keyed by
+// capsule type and gated on def.power, and the battery is a heal. Green rather
+// than the panel's #74c947 so it separates from the HUD cells it refills instead
+// of reading as a stray one loose on the field.
+const HEAL_GLOW = 'rgba(96,232,104,0.45)';
+import { drawBoostFx } from './boostFx.js';
 import { GROUND_Y } from './run.js';
 import { PLAYER_X } from './player.js';
 
 export const HERO_DRAW_W = 18;
 export const HERO_DRAW_H = 24;
+// How long an incoming hero burns in for after a tag. Sits just inside the
+// portal's own discharge (PORTAL_SPEND_TIME) on purpose: the hero should have
+// finished arriving while the column is still visibly collapsing, so the two
+// read as one event with the doorway outlasting the person who came through it.
+export const TAG_FLASH_TIME = 0.16;
 
 let built = false;
 export function buildAllSprites() {
@@ -212,10 +227,25 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   const reducedMotion = !!(opts.settings && opts.settings.reducedMotion);
   const paint = (c) => {
     let starFade = 1;
+    // A boost variant paints the hero itself (ordering is the whole point of
+    // the effect), so the ordinary draw below stands down when one is running.
+    let boostPainted = false;
     if (starLeft > 0) starFade = drawStarAura(c, cx, feetY, HERO_DRAW_H, t, starLeft, reducedMotion);
     if (ghosts) {
       drawToon(c, heroId, pose, cx - 7, feetY, HERO_DRAW_H, { alpha: 0.35 });
       drawToon(c, heroId, pose, cx - 13, feetY, HERO_DRAW_H, { alpha: 0.35 });
+    }
+    // Boost pad kick — whichever treatment game/boostFx.js currently ships.
+    // The hero is painted BY the variant, because the difference between an
+    // afterimage and a foreground streak is entirely what order they land in.
+    if (player.boostT > 0 && !reducedMotion) {
+      boostPainted = true;
+      drawBoostFx(c, {
+        x: cx, groundY: feetY, t, q: Math.min(1, player.boostT / 0.5), w: W, h: 270,
+        groundDelta: opts.groundDelta || (() => 0),
+        drawHero: () => drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H),
+        drawHeroAt: (gx, gy, alpha) => drawToon(c, heroId, pose, gx, gy, HERO_DRAW_H, { alpha }),
+      });
     }
     // Afterimages: the hero smears like they are moving faster than they are.
     if (starLeft > 0 && !reducedMotion) {
@@ -223,7 +253,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
         drawToon(c, heroId, pose, cx - i * 5, feetY, HERO_DRAW_H, { alpha: 0.2 * starFade / i });
       }
     }
-    drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
+    if (!boostPainted) drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H);
     // opts.specialOrb false hides the readiness orb. A run always wants it —
     // every hero there has a power and the orb is how you know it is back — but
     // a scene that has not handed the player a power yet is showing a meter for
@@ -239,6 +269,27 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       c.save();
       c.globalCompositeOperation = 'lighter';
       drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H, { alpha: pulse * starFade });
+      c.restore();
+    }
+    // ARRIVAL. The relay swaps the hero on the frame they touch the portal, so
+    // before this the new one simply appeared, fully lit, standing in front of
+    // a portal that was still discharging — two things happening at once that
+    // did not look like one thing. This burns them in over the same beat the
+    // column blows out on: an additive pass of the hero over themself, brightest
+    // on the contact frame and gone a sixth of a second later. Same treatment
+    // star power uses to make the hero glow, and for the same reason — it is the
+    // hero's own silhouette, so nothing about the pose or the read changes.
+    if (player.tagFlashT > 0) {
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      // Squared falloff, and a peak short of white. At a linear 0.85 the hero
+      // was a white cut-out for the first two frames — which announces the
+      // arrival and then hides WHO arrived, and who arrived is the entire point
+      // of a tag. This keeps the palette and the yellow arm readable through
+      // the brightest frame and is gone twice as fast on the way out.
+      const q = Math.min(1, player.tagFlashT / TAG_FLASH_TIME);
+      drawToon(c, heroId, pose, cx, feetY, HERO_DRAW_H,
+        { alpha: q * q * (reducedMotion ? 0.3 : 0.62) });
       c.restore();
     }
     if (shield > 0) drawShieldOrb(c, heroId, cx, feetY, HERO_DRAW_H, t, shield);
@@ -295,7 +346,10 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (e.kind === 'pickup' && e.def.appliance) y += Math.round(Math.sin(t * 2.4 + e.bobPhase) * 3);
 
   if (e.def && e.def.isGap) return; // drawn by ground renderer
-  if (e.kind === 'obstacle' && e.def.ground) {
+  // The boost pad opts out: it is a hole in the floor, and a hole casts no
+  // contact shadow and takes no red danger tick. That ellipse under it was the
+  // one mark left saying "object sitting on the ground".
+  if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost) {
     ctx.fillStyle = 'rgba(8,6,12,0.28)';
     ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(224,72,72,0.32)';
@@ -360,12 +414,17 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // motion holds frame 0. ~11fps is fast enough to read as fire and slow enough
   // to stay a flicker rather than a strobe.
   const frameCount = propName ? propFrames(propName) : 1;
+  // A boost pad chases faster the nearer the hero gets — up to 2.6x by the
+  // time they are on it. It is the same eight frames either way, so the whole
+  // reaction costs one multiply and no extra cache.
+  const fps = propName ? propFps(propName) * (e.def && e.def.isBoost ? 1 + 1.6 * (e.arm || 0) : 1) : 0;
   const frame = frameCount > 1 && !settings.reducedMotion
-    ? Math.floor(t * propFps(propName) + e.bobPhase * 4) % frameCount
+    ? Math.floor(t * fps + e.bobPhase * 4) % frameCount
     : 0;
   const rimDark = danger ? (propName ? null : tinted(sprName, '#101018')) : null;
   const rimLite = danger ? (propName ? null : tinted(sprName, '#f0f0f8')) : null;
   const prevSmooth = ctx.imageSmoothingEnabled;
+  const healGlow = e.kind === 'pickup' && e.def.heal;
   // plain: natural size (stacked crates / pipes tile edge-to-edge);
   // anchor 'center' for rotating rollers, 'bottom' otherwise.
   const draw1 = (dx, dy, anchor = 'bottom', natural = false, sw = bw, sh = bh) => {
@@ -380,6 +439,16 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     const ox = dx - Math.floor((w0 - sw) / 2);
     const oy = anchor === 'center' ? dy - Math.floor((h0 - sh) / 2) : dy - (h0 - sh);
     ctx.imageSmoothingEnabled = true;
+    if (healGlow) {
+      // Drawn from in here rather than alongside the call so it reads the very
+      // same ox/oy/w0/h0 the art does — a halo computed from the def box drifts
+      // out of register the moment a scale or an anchor changes, which is
+      // exactly how it ended up radiating from beside the battery. BATTERY_FOCUS
+      // then moves it off the box centre and onto the cell itself.
+      const gr = 11 + Math.sin(t * 7 + e.bobPhase) * 3;
+      ctx.drawImage(glowSprite(HEAL_GLOW, 10),
+        ox + BATTERY_FOCUS.x * w0 - gr, oy + BATTERY_FOCUS.y * h0 - gr, gr * 2, gr * 2);
+    }
     if (danger && propName && propHazardRim(propName)) {
       // precomposed rim rings: one draw per color instead of two
       const rl = propRimPair(propName, sw, shT, '#f0f0f8', 'x', frame);
@@ -412,6 +481,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     ctx.drawImage(glow, x + e.w / 2 - gr, y + e.h / 2 - gr, gr * 2, gr * 2);
     ctx.imageSmoothingEnabled = false;
   }
+  // The heal halo is drawn inside draw1 (see healGlow there), not here: it has to
+  // sit on the art's own box to stay in register with it.
 
   if (e.def.stack && e.n > 1) {
     // Each box gets the same 4/3 inflation a lone crate does, so a stack reads
@@ -449,31 +520,159 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     draw1(-bw / 2, -bh / 2, 'center');
     ctx.restore();
   } else {
-    draw1(x, y);
+    draw1(x, y, propName && propBoxCentred(propName) ? 'center' : 'bottom');
   }
+  // The pad's payout, drawn over the pad itself: the trench fills with light
+  // and throws a short bar forward along the floor. It reads as the pad DOING
+  // something rather than as a particle burst that happens to be nearby, which
+  // is the difference between a confirmation and a decoration. Reduced motion
+  // keeps the fill and drops the throw.
+  if (e.def.isBoost && !settings.reducedMotion) drawBoostReaction(ctx, e, x, t, propName);
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }
 
-export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = false) {
+// Art is 14x44 (see PORTAL_ART_W/H) over the unchanged 12x40 pass-through box:
+// a pixel proud on each side and four tall, so the portal is very slightly
+// easier to hit than it looks, which is the direction to err in on the one
+// prop you are trying to run INTO. Which drawing that is lives in one place,
+// props.js's PORTAL_SPRITE, because four surfaces paint a portal.
+
+// Everything the boost pad does about the hero, before and after. It is the
+// only prop in the lane that GIVES you something, so it is the one prop worth
+// spending frames on acknowledging you — and both halves have to read with a
+// hero standing directly on top of the thing doing the acknowledging, which is
+// why almost nothing here is drawn inside the pad's own footprint.
+//
+// BEFORE: nothing drawn. The approach is told entirely by the pad's own
+// chevrons chasing faster, which lives in the frame index.
+// AFTER: the trench floods and the chevrons that were queued in the pad launch
+// out of it and spread. Everything else that used to be here — a forward gold
+// bar, an outward shockwave, a pre-glow on approach — has been deleted rather
+// than tuned. All three were loose rectangles a few pixels across, and at
+// gameplay size a loose rectangle is a dot or a square, not an effect.
+function drawBoostReaction(ctx, e, x, t, propName) {
+  const bw = Math.round(e.w * 4 / 3);
+  const bx = x - Math.floor((bw - e.w) / 2);
+  const bh = Math.round(e.h * propTall(propName) * 4 / 3);
+  const arm = e.arm || 0;
+  const fired = e.firedT || 0;
+
+  // NO PRE-GLOW. The approach used to paint a translucent gold rectangle over
+  // the floor around the pad, which is the single artefact that kept getting
+  // flagged: a yellow square sitting ahead of the hero, attached to nothing,
+  // reading as a UI element someone left on the field. The pad already
+  // telegraphs itself — its chevrons chase faster the nearer you get, and that
+  // is a mark that belongs to the pad rather than a wash laid over the ground.
+  // `arm` still drives the frame rate; it no longer draws anything of its own.
+  if (fired <= 0) return;
+
+  const q = Math.max(0, Math.min(1, fired / 0.3));   // 1 at the instant it fires
+  const age = 1 - q;
+  ctx.save();
+  // The trench floods. Not opaque: at full strength a solid fill whited the
+  // chevrons out and the pad read as a blank box for a tenth of a second.
+  ctx.globalAlpha = q * 0.7;
+  ctx.fillStyle = '#fff6d0';
+  ctx.fillRect(bx, GROUND_Y - bh, bw, bh);
+  // The gold bar that used to be thrown forward along the floor is gone. It
+  // was a rectangle, it was the same colour as the pad, and it was saying the
+  // same thing the hero-side treatment says — so it read as a stray HUD
+  // element parked on the floor. Speed is the runner's job now (game/boostFx.js);
+  // the pad's job is only to look like it fired.
+  // The queued chevrons launch. Three of them, leaving the lip together and
+  // spreading as they fade — the pad emptying itself into the hero. Cream, not
+  // the pad's gold: gold on the desert pack is gold on tan, and they blurred
+  // into the ground exactly where they most needed to be read.
+  ctx.fillStyle = '#fff6d0';
+  for (let i = 0; i < 3; i++) {
+    const lead = age * (30 + i * 9);
+    const cx = bx + bw * 0.6 + lead;
+    const cy = GROUND_Y - bh * 0.6 - i * 2 - age * 5;
+    const s = 3.6 - i * 0.5;
+    ctx.globalAlpha = q * (0.9 - i * 0.18);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s);
+    ctx.lineTo(cx + s * 1.6, cy);
+    ctx.lineTo(cx, cy + s);
+    ctx.lineTo(cx - s * 0.7, cy + s);
+    ctx.lineTo(cx + s * 0.9, cy);
+    ctx.lineTo(cx - s * 0.7, cy - s);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Ends flicking up.
+  const tick = Math.round(age * 7) + 2;
+  ctx.globalAlpha = q * 0.9;
+  ctx.fillStyle = '#fff6d0';
+  ctx.fillRect(bx, GROUND_Y - bh - tick, 1, tick);
+  ctx.fillRect(bx + bw - 1, GROUND_Y - bh - tick, 1, tick);
+  ctx.restore();
+}
+
+export function drawPortal(ctx, portal, camX, t, zoom = ZOOM, smoothMotion = false, settings = {}) {
   const x = smoothMotion ? portal.x - camX : Math.round(portal.x - camX);
-  const pulse = Math.round(Math.sin(t * 5) * 2);
-  drawProp(ctx, 'portal', x, GROUND_Y - 40 - pulse, 12, 40 + pulse);
+  // The old art was three static ellipses, so drawPortal breathed it 2px on a
+  // sine to give it any life at all. This art cuts its own edges every frame,
+  // and the pulse is no longer free: the raster cache keys on drawn size, so a
+  // height that varies would cache the whole twelve-frame set once per pixel
+  // of pulse. The motion moved inside the drawing.
+  const top = GROUND_Y - PORTAL_ART_H;
+  // A portal that has been used or missed stops being a loop and becomes a
+  // STRIP: `spent`/`wilt` are seconds since the event, and the frame is clamped
+  // to the end so the last frame — a dark plinth, a slumped column — is what
+  // rests on screen for the rest of the ride off the back of the frame.
+  //
+  // Reduced motion gets the LAST frame of the strip rather than the first. The
+  // first frame of a spend is the discharge, and holding a white blowout static
+  // for half a second is exactly the thing the setting exists to prevent; the
+  // last frame is the state, which is the part carrying the information.
+  const strip = portal.spent != null
+    ? { name: PORTAL_SPENT_SPRITE, t: portal.spent / PORTAL_SPEND_TIME, n: PORTAL_SPEND_FRAMES }
+    : portal.wilt != null
+      ? { name: PORTAL_WILT_SPRITE, t: portal.wilt / PORTAL_WILT_TIME, n: PORTAL_WILT_FRAMES }
+      : null;
+  if (strip) {
+    const f = settings.reducedMotion ? strip.n - 1
+      : Math.min(strip.n - 1, Math.max(0, Math.floor(strip.t * strip.n)));
+    drawProp(ctx, strip.name, x - 1, top, PORTAL_ART_W, PORTAL_ART_H, f);
+    // The floor glow goes out with the column. It is the portal's light on the
+    // ground, so it cannot outlive the light.
+    const lit = 1 - Math.min(1, strip.t);
+    if (lit > 0.02 && !settings.reducedMotion) {
+      ctx.globalAlpha = lit;
+      ctx.fillStyle = '#48e0c8';
+      ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
+      ctx.globalAlpha = 1;
+    }
+    // No signage on a spent portal: that hero is now the player. A wilted one
+    // keeps its face for as long as the column lasts, fading with it — the
+    // whole point of the wilt is that the player can see what they went past.
+    if (portal.spent == null) drawPortalFace(ctx, portal, x, top, zoom, lit);
+    return;
+  }
+  const frame = settings.reducedMotion ? 0
+    : Math.floor(t * propFps(PORTAL_SPRITE)) % propFrames(PORTAL_SPRITE);
+  drawProp(ctx, PORTAL_SPRITE, x - 1, top, PORTAL_ART_W, PORTAL_ART_H, frame);
   ctx.fillStyle = '#48e0c8';
   ctx.fillRect(x + 4, GROUND_Y - 2, 4, 2);
-  // Who you are about to become, and what they do. Signage, not scenery: hung
-  // off the top of the arch and then drawn unscaled, so both the type size and
-  // the gap above the arch stay as authored instead of being magnified with the
-  // world — magnified, the callout alone was wider than the frame.
+  drawPortalFace(ctx, portal, x, top, zoom, 1);
+}
+
+// Who you are about to become. The face alone is the signage — no name, no
+// callout — hung off the top of the arch and drawn unscaled, so its size and
+// the gap above the arch stay as authored instead of being magnified with
+// the world.
+function drawPortalFace(ctx, portal, x, top, zoom, alpha) {
+  if (alpha <= 0.02) return;
+  const face = toonFaceSprite(portal.hero, 24, 18);
+  if (!face) return;
   ctx.save();
-  ctx.translate(x + 6, GROUND_Y - 40 - pulse);
+  ctx.globalAlpha = alpha;
+  ctx.translate(x + 6, top);
   ctx.scale(1 / zoom, 1 / zoom);
-  const face = toonFaceSprite(portal.hero, 12, 9);
-  if (face) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, -6, -16, 12, 9);
-    ctx.imageSmoothingEnabled = false;
-  }
-  if (portal.label) drawTextCentered(ctx, portal.label, 0, -28, '#9db8d2');
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(face, -12, -25, 24, 18);
+  ctx.imageSmoothingEnabled = false;
   ctx.restore();
 }
 

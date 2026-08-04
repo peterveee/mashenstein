@@ -27,7 +27,7 @@ import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/
 import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf } from '../src/data/arrangements.js';
-import { writeSongFile, writableSongPath, snapshotSongFile } from './lib/song-file.js';
+import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
 import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
@@ -269,7 +269,18 @@ async function loadSnapshot(path) {
   try {
     return await freshImport(path);
   } catch (err) {
-    if (!/Cannot find module|ERR_MODULE_NOT_FOUND/.test(String(err && err.message))) throw err;
+    const message = String(err && err.message);
+    // A snapshot written before `notesImport` existed: its arrangement is in `seq(…)`
+    // shorthand and the header that promised "no imports" left the helper undefined,
+    // so the file throws on the way in. Repaired in place rather than worked around —
+    // the aim is a folder of backups that open, not a reader that copes.
+    if (/\b(seq|chordSeq|chord|n) is not defined\b/.test(message)) {
+      const text = readFileSync(path, 'utf8');
+      writeFileSync(path, notesImport(ROOT, dirname(path), text) + text);
+      console.log(`  (repaired ${path.split('/').pop()} — it was missing the note-shorthand import)`);
+      return freshImport(path);
+    }
+    if (!/Cannot find module|ERR_MODULE_NOT_FOUND/.test(message)) throw err;
     const text = readFileSync(path, 'utf8');
     // Whatever those imports BOUND has to keep existing, or the file throws instead:
     // the old mix.js and arrangements.js shims read `MIX_BY_ID` in their own bodies.

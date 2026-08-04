@@ -503,7 +503,11 @@ function runMenu(dev) {
         { label: `SEED LOCK: ${dev.seedLock ?? 'off'}`, adjust: (d) => { dev.seedLock = dev.seedLock == null ? r.seed : Math.max(0, dev.seedLock + d); } },
         { label: `BATTERY: ${r.battery}/${r.maxBattery()}`, adjust: (d) => { r.battery = Math.min(r.maxBattery(), Math.max(0, r.battery + d)); } },
         { label: 'REFILL BATTERY', act: () => { r.battery = r.maxBattery(); dev.say('BATTERY FULL'); } },
-        { label: 'WIN NOW', act: () => { dev.close(); r.devPerfect(); } },
+        // Distinct from WIN NOW, which calls endRun() and never draws the
+        // marker at all. This plays the real ending: the dash, the plunger, the
+        // flag. 5 seconds of lead so the approach is in shot too.
+        { label: 'RUN THE FINISH (5s)', act: () => { dev.close(); r.devRunFinish(5); } },
+        { label: 'WIN NOW (skips the finish)', act: () => { dev.close(); r.devPerfect(); } },
         { label: 'LOSE NOW', act: () => { dev.close(); r.endRun(false, 'DEV'); } },
         { label: 'SPAWN ▸', submenu: () => spawnMenu(dev) },
         { label: `HITS: ${r.devHits.length}  ${JSON.stringify(r.devHitTally())}`, act: null },

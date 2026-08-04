@@ -39,7 +39,15 @@ const DEFAULT_EXIT = {
   // band actually walks in on. `quantize: 2` is that, and it reads as what it is.
   quantize: 'bar',
   crossfadeBars: 1,
-  loopRelease: 'atTransition', // 'atTransition' | 'atLoopEnd'
+  // 'immediate' | 'atTransition' | 'atLoopEnd'.
+  //
+  // Letting the loop GO and landing the mix MUSICALLY are two questions, and tying them
+  // together costs the thing you notice. On a one-bar loop every beat boundary but one
+  // is inside the bar, and the exception is the wrap itself — so pressing in the last
+  // beat waits for a boundary that only arrives after the loop has gone round again.
+  // 'immediate' releases on the spot and lets the mix change keep its own boundary, so
+  // the song runs on at the next bar line whichever beat you happened to press in.
+  loopRelease: 'atTransition',
   // The reverb blooming into the handover and ringing out of it — an accent that adds
   // no new sound to the game, only more of the room the treatment is already in.
   // 0 bars, or no target level, means no swell.
@@ -224,6 +232,8 @@ export const MusicDirector = {
     // Latest request wins. Nothing is in the graph yet if the previous one never
     // reached its boundary; if it did, rampMix's cancelAndHoldAtTime takes its ramps
     // off every param this one touches, and this one touches all of them.
+    // Before the boundary, deliberately: this is the half that must not wait.
+    if (exit.loopRelease === 'immediate') Audio.setLoop();
     this.pending = p;
     if (exit.quantize === 'immediate') this._fire(p, Audio.ctx.currentTime + TOO_LATE);
     return true;
@@ -366,9 +376,17 @@ export const MusicDirector = {
       Audio.rampMix(p.mix, at, seconds);
     } catch (err) {
       // A pair of mixes that disagree on the SHAPE of an effect chain — see rampMix,
-      // which refuses before it moves anything. The treatment stays up rather than half
-      // applying; the desk is where that pair should have been caught.
-      console.warn('[music] treatment refused:', err.message);
+      // which refuses before it moves anything, so the presentation is left whole rather
+      // than half applied. The desk is where that pair should have been caught.
+      //
+      // But the LOOP still has to go. This used to return here, which meant a refused
+      // mix change also skipped the release below — and a cabinet screen looping four
+      // bars then looped them for the whole level, for ever, with no way out and nothing
+      // said. A missing mix change is a disappointment; a song that never moves on is a
+      // bug you cannot play through, so the two are unhooked from each other.
+      console.error('[music] treatment refused, releasing the loop anyway:', err.message);
+      if (!released) Audio.setLoop();
+      this.variantId = p.variantId;
       this.pending = null;
       return;
     }

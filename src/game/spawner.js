@@ -48,16 +48,30 @@ export class Spawner {
   }
 
   // Fill entities up to worldX + lookahead. Returns arrays of new entities.
-  fill(worldX, speed, obstacles, pickups, jumpHeightFn) {
-    const lookahead = worldX + 480 + 200;
+  //
+  // `stopX` is a hard wall the lane is not allowed to cross — the finish
+  // marker's clear approach. Nothing is placed on it, near it or past it: a
+  // pattern that would reach the wall is abandoned WHOLE rather than trimmed to
+  // fit, because half a pattern is a fairness hole (the half that got cut may
+  // have been the coins the jump was for, or the platform the spikes needed).
+  // The last thing the player sees before the flagpole is empty ground, which
+  // is the only thing that reads as a finishing straight.
+  fill(worldX, speed, obstacles, pickups, jumpHeightFn, stopX = Infinity) {
+    const lookahead = Math.min(worldX + 480 + 200, stopX);
     while (this.nextX < lookahead) {
       const pat = this.pickPattern();
       if (!pat) { this.nextX += 200; continue; }
       let baseX = this.nextX;
       let lastX = baseX;
+      // Staged, not pushed: the pattern only joins the world once it is known to
+      // fit inside the wall, so an over-running one leaves nothing behind.
+      const obs = [], picks = [];
+      // The fairness cursors move as cells are placed and must not be left
+      // advanced by a pattern that gets thrown away.
+      const actionX = this.lastActionX, actionKind = this.lastActionKind;
       for (const cell of pat.cells) {
         if (cell.t === 'coins') {
-          lastX = Math.max(lastX, baseX + cell.dx + this.spawnCoins(baseX + cell.dx, cell, pickups, jumpHeightFn));
+          lastX = Math.max(lastX, baseX + cell.dx + this.spawnCoins(baseX + cell.dx, cell, picks, jumpHeightFn));
           continue;
         }
         const def = OBSTACLES[cell.t];
@@ -74,9 +88,20 @@ export class Spawner {
         const ob = makeObstacle(cell.t, x, { n: cell.n });
         if (cell.t === 'gap') ob.w = cellW;
         if (!def.ground && def.alt == null) ob.alt = cell.y || 12;
-        obstacles.push(ob);
+        obs.push(ob);
         lastX = Math.max(lastX, x + ob.w);
       }
+      // The far edge of everything this pattern laid down, coins included.
+      let right = lastX;
+      for (const p of picks) right = Math.max(right, p.x + (p.w || 8));
+      if (right > stopX) {
+        this.lastActionX = actionX;
+        this.lastActionKind = actionKind;
+        this.nextX = stopX;      // the lane is closed from here to the marker
+        return;
+      }
+      for (const ob of obs) obstacles.push(ob);
+      for (const p of picks) pickups.push(p);
       // Gap to the next pattern: random but never below the fairness floor.
       // The next pattern may open with a duck obstacle, so budget for the worst case.
       const roll = this.rng.range(90, 220);

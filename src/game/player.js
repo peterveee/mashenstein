@@ -84,6 +84,10 @@ export class Player {
     this.anim = 0;
     this.stomping = false;
     this.dashT = 0;
+    // A boost pad's kick, for the ART only: it leans the runner into the
+    // acceleration and streaks the floor past them. It is not dashT — a dash
+    // grants i-frames and hero ghosts, and a floor pad grants neither.
+    this.boostT = 0;
     this.rollT = 0;
     this.compressT = 0;
     this.stumbleT = 0;
@@ -106,6 +110,10 @@ export class Player {
     this.grounded = true;
     this.slideT = 0;      // ice landing slide (visual/control feel)
     this.landedT = 0;     // landing squash timer (visual only)
+    // The incoming hero's arrival, set by whoever ran them through a portal.
+    // Visual only, and deliberately NOT cleared by setHero: setHero is the
+    // thing that starts it. See drawHeroSprite.
+    this.tagFlashT = 0;
   }
 
   setHero(heroId) {
@@ -113,6 +121,10 @@ export class Player {
     this.hero = HERO_BY_ID[heroId];
     this.stomping = false;
     this.dashT = 0;
+    // A boost pad's kick, for the ART only: it leans the runner into the
+    // acceleration and streaks the floor past them. It is not dashT — a dash
+    // grants i-frames and hero ghosts, and a floor pad grants neither.
+    this.boostT = 0;
     this.rollT = 0;
     this.compressT = 0;
     this.stumbleT = 0;
@@ -186,6 +198,7 @@ export class Player {
       this.abilityCooldowns[id] = Math.max(0, this.abilityCooldowns[id] - dt);
     }
     if (this.dashT > 0) this.dashT -= dt;
+    if (this.boostT > 0) this.boostT -= dt;
     if (this.rollT > 0) {
       this.rollT -= dt;
       // A charged roll ends clean: no ringing ears.
@@ -196,6 +209,7 @@ export class Player {
     if (this.stumbleT > 0) this.stumbleT -= dt;
     if (this.chargeFlashT > 0) this.chargeFlashT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
+    if (this.tagFlashT > 0) this.tagFlashT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;
     // During Lorenzo's spanner flurry, keep the swing animation looping.
     if (this.spannerFlurryT > 0 && this.powerPoseT <= 0) this.powerPoseT = 0.3;

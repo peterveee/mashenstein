@@ -100,16 +100,29 @@ const finishCam = run.camX;
 for (let i = 0; i < 30; i++) run.update(1 / 60);
 assert(run.finishing && run.camX === finishCam && run.finishPlayerX > PLAYER_X && !airborneFinish,
   'finish locks the camera while the playable hero run-in crosses the screen');
-for (let i = 0; i < 240 && !airborneFinish; i++) run.update(1 / 60);
+// Long enough for the whole finale, whatever length it currently is: the dash,
+// the pole ride, the payoff chain and the band's hold. This is a test that the
+// run RESOLVES, not a test of how long that takes — pinned at 240 ticks it
+// failed the moment the slide was slowed down, which is a timing change the
+// assertion has no opinion about.
+for (let i = 0; i < 900 && !airborneFinish; i++) run.update(1 / 60);
 assert(airborneFinish && airborneFinish.success, 'jumping cannot clear the stage finish plane');
 
 run = makeRun(); run.enter();
-const finalEnemy = makeObstacle('zombie', run.finishWorldX() - 24);
+// The final stretch keeps what the player can still fight and sweeps the rest.
+// "The rest" is now everything inside the marker's clear lane as well as
+// everything past the pole: an enemy standing against the flagpole is a hazard
+// using the goal as cover, and the approach to the finish is deliberately empty
+// ground. So the survivor is placed well back, and BOTH an in-lane enemy and a
+// past-the-pole one have to go.
+const finalEnemy = makeObstacle('zombie', run.finishWorldX() - 400);
+const laneEnemy = makeObstacle('zombie', run.finishWorldX() - 24);
 const postFinishEnemy = makeObstacle('zombie', run.finishWorldX() + 24);
-run.obstacles = [finalEnemy, postFinishEnemy];
+run.obstacles = [finalEnemy, laneEnemy, postFinishEnemy];
 run.startFinishRun();
-assert(run.obstacles.includes(finalEnemy) && !run.obstacles.includes(postFinishEnemy),
-  'the final stretch keeps enemies before the finish but clears anything beyond it');
+assert(run.obstacles.includes(finalEnemy)
+  && !run.obstacles.includes(laneEnemy) && !run.obstacles.includes(postFinishEnemy),
+  'the final stretch keeps enemies before the finish but clears the marker lane and beyond');
 
 run.player.iframes = 0;
 run.obstacles = [makeObstacle('zombie', run.playerWorldX())];
@@ -158,7 +171,10 @@ assert(!restoredFinish.dead && !restoredFinish.finishing && restoredFinish.camX 
   'checkpoint restore resets a death during the finish run');
 restoredFinish.camX = restoredFinish.finishCameraX();
 restoredFinish.obstacles = []; restoredFinish.pickups = [];
-for (let i = 0; i < 300 && !restoredFinishResult; i++) restoredFinish.update(1 / 60);
+// Same reasoning as the airborne finish above: this asserts the attempt
+// RESOLVES, so the budget has to outlast whatever the finale currently costs
+// rather than pin a tick count that every retiming breaks.
+for (let i = 0; i < 900 && !restoredFinishResult; i++) restoredFinish.update(1 / 60);
 assert(restoredFinishResult?.success, 'a restored finish attempt can complete normally');
 restoredFinish.endRun(true);
 assert(restoredFinishResult?.success && restoredFinishEnds === 1,

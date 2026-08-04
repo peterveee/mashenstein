@@ -218,6 +218,26 @@ let backend = null;
 // affordable one step at a time.
 const STANDARD_RUNGS = [5, 4, 3, 2.5, 2, 1.5, 1];
 const LADDER_EPS = 1e-6;
+// Ceiling on render density regardless of how dense the display is, written as
+// the backing store height it allows: never render above 1440p.
+//
+// This is a deliberate override of the seed-at-native policy documented further
+// down, and the reasoning there still stands — a fractional upscale is softer
+// than 1:1. What outweighs it is the cost of the alternative. The WebGL path
+// re-uploads the entire world canvas every frame, so native on a 5K panel means
+// moving 54MB per frame, 3.3GB/s, to present a game drawn at 480x270. Capping
+// at 1440p removes 73% of that and still keeps 78% more pixels than 1080p would.
+//
+// 1440p rather than 1080p for sharpness as well as arithmetic: on a 5K display
+// the canvas is 4920 device pixels wide, so this is a 1.92x upscale where 1080p
+// is 2.56x. A ratio near a clean integer resamples far more evenly — source
+// pixels land two-to-one almost everywhere instead of alternating two and three
+// — which is the difference between "soft" and the chunky unevenness the note
+// below is warning about.
+//
+// A ?density= pin is NOT bound by this: an explicit request for native is still
+// honoured, which is what keeps the two comparable side by side.
+const MAX_BACKING_H = 1440;
 const PHONE_SEED_DENSITY = 3;         // initial rung on iPhone/Android handsets
 // Desktops and tablets seed at rung 0 — native, the display's own resolution.
 // Adaptation stays armed underneath: a machine that genuinely cannot hold 60 FPS
@@ -394,10 +414,13 @@ function densityRequested() {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// The ladder is native (the ceiling) followed by every standard rung strictly
-// below it, so no device is ever asked to render above its own native density.
+// The ladder is its ceiling followed by every standard rung strictly below it,
+// so no device is ever asked to render above its own native density — or above
+// MAX_BACKING_H, whichever is lower. On a display below the cap the ceiling is
+// still native and nothing changes; only dense panels see a difference.
 function buildLadder(native) {
-  return [native, ...STANDARD_RUNGS.filter((v) => v < native - LADDER_EPS)];
+  const ceiling = Math.min(native, MAX_BACKING_H / H);
+  return [ceiling, ...STANDARD_RUNGS.filter((v) => v < ceiling - LADDER_EPS)];
 }
 
 // Nearest rung by value; ties break toward the lower density (higher index in

@@ -7,7 +7,7 @@ const { RunState } = await import('../src/game/run.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { PLAYER_X } = await import('../src/game/player.js');
-const { makeObstacle } = await import('../src/game/entities.js');
+const { makeObstacle, makePickup } = await import('../src/game/entities.js');
 
 save.load();
 save.newSlot(0, 0);
@@ -76,11 +76,25 @@ if (result) {
 const portalX = 500;
 const approachHazard = makeObstacle('cactus', 460);
 const overlappingGap = makeObstacle('gap', 480);
-const harmlessTarget = makeObstacle('target', 470);
-run.obstacles = [approachHazard, overlappingGap, harmlessTarget];
-run.clearPortalApproach(portalX);
+const distantTarget = makeObstacle('target', 400);
+const overheadBox = makeObstacle('qcrate', 498);
+const overheadBird = makeObstacle('buzzbird', 510);
+const columnCoin = makePickup('coin', 505, 40);
+const distantCoin = makePickup('coin', 420, 40);
+const appliance = makePickup('appliance', 502, 44);
+appliance._baseX = appliance.x;
+run.obstacles = [approachHazard, overlappingGap, distantTarget, overheadBox, overheadBird];
+run.pickups = [columnCoin, distantCoin, appliance];
+run.clearPortalLane(portalX);
 assert(!approachHazard.live, 'portal clears hazards from its left-side approach');
 assert(!overlappingGap.live, 'portal clears gaps that overlap its approach');
-assert(harmlessTarget.live, 'portal leaves non-hazard objects intact');
+assert(distantTarget.live, 'portal leaves harmless objects clear of it intact');
+assert(!overheadBox.live, 'nothing is rewarded on top of the portal');
+assert(!overheadBird.live, 'nothing threatens from on top of the portal');
+assert(!columnCoin.live, 'pickups in the portal column are cleared');
+assert(distantCoin.live, 'pickups clear of the portal survive');
+assert(appliance.live, 'the appliance is moved, never deleted');
+assert(appliance.x >= portalX + 32 && appliance._baseX === appliance.x,
+  `appliance pushed clear of the column (x=${appliance.x})`);
 console.log(failed ? 'RUN-COMPLETE: FAILED' : 'RUN-COMPLETE: PASSED');
 process.exit(failed ? 1 : 0);

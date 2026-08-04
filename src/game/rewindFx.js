@@ -81,13 +81,24 @@ export class TapeRewindEffect {
   // ---- internals -----------------------------------------------------------
   _drawNoise(ctx, w, h, alpha) {
     if (alpha <= 0) return;
+    if (this._noiseUnavailable) return;
     const N = 128;
     if (!this._noiseCanvas) {
-      this._noiseCanvas = document.createElement('canvas');
-      this._noiseCanvas.width = N;
-      this._noiseCanvas.height = N;
-      const nc = this._noiseCanvas.getContext('2d');
-      const img = nc.createImageData(N, N);
+      const canvas = document.createElement('canvas');
+      canvas.width = N;
+      canvas.height = N;
+      const nc = canvas.getContext('2d');
+      // Headless canvases (Node, the render tools) have no ImageData, and the
+      // grain is the only part of the tape effect that needs one. Skip it and
+      // keep the bars, wobble, OSD and vignette rather than taking the frame
+      // down — the same fallback ensureBuffers() makes in visualizers.js. The
+      // flag latches so this is one failed probe, not one per frame.
+      const img = nc.createImageData?.(N, N);
+      if (!img?.data || img.data.length !== N * N * 4) {
+        this._noiseUnavailable = true;
+        return;
+      }
+      this._noiseCanvas = canvas;
       for (let i = 0; i < img.data.length; i += 4) {
         const v = Math.random() * 255;
         img.data[i] = v;

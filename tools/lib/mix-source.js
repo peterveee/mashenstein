@@ -152,6 +152,7 @@ const PATCH_LANE_KEYS = new Set(['gain', 'pan', 'width', 'mute', 'send', 'eq', '
 const PATCH_AUX_KEYS = new Set(['level', 'pan', 'eq', 'effects']);
 const WHENS = ['level1', 'level2', 'level3', 'boss', 'cleared', 'always'];
 const QUANTIZE = ['immediate', 'beat', 'bar', 'phrase'];
+const LOOP_RELEASE = ['immediate', 'atTransition', 'atLoopEnd'];
 const EXIT_KEYS = ['quantize', 'crossfadeBars', 'loopRelease', 'swellBars', 'swellTo', 'treatBars'];
 
 /**
@@ -212,6 +213,10 @@ export function validateVariants(variants) {
       }
       if (t.exit?.swellTo != null && !(t.exit.swellTo >= 0 && t.exit.swellTo <= 8)) {
         errs.push(`${at}: a reverb return of ${t.exit.swellTo} at the peak of the swell is out of range`);
+      }
+      const lr = t.exit?.loopRelease;
+      if (lr != null && !LOOP_RELEASE.includes(lr)) {
+        errs.push(`${at}: "${lr}" is not a loop release — one of ${LOOP_RELEASE.join(', ')}`);
       }
       const q = t.exit?.quantize;
       if (q != null && !(QUANTIZE.includes(q) || (typeof q === 'number' && q > 0))) {

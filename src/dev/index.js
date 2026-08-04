@@ -287,6 +287,16 @@ export const Dev = {
         if (said) this.say(said);
         break;
       }
+      // Zoom gets its own pair of keys rather than a row you have to navigate
+      // to: it is the lever you want to sweep while watching how something else
+      // reads, and both the numpad and main-row spellings are accepted because
+      // which one a keyboard sends for "+" is not worth thinking about.
+      case 'Equal': case 'NumpadAdd': case 'Minus': case 'NumpadSubtract': {
+        const up = e.code === 'Equal' || e.code === 'NumpadAdd';
+        const said = TuneStrip.adjustNamed('ZOOM_NORMAL', up ? 1 : -1, e.shiftKey, run);
+        this.say(said || 'ZOOM_NORMAL not in this bundle — restart the watch build');
+        break;
+      }
       case 'KeyG': TuneStrip.cycleGroup(e.shiftKey ? -1 : 1); break;
       case 'KeyC': this.copyConstants(); break;
       case 'KeyR': {

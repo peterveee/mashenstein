@@ -7,11 +7,18 @@
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
 import { W, H } from '../src/engine/renderer.js';
+import { ZOOM, VIEW_W } from '../src/engine/camera.js';
 import { getSprite } from '../src/engine/sprites.js';
-import { buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, HERO_DRAW_W, HERO_DRAW_H } from '../src/game/draw.js';
+import {
+  buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, drawPortal,
+  HERO_DRAW_W, HERO_DRAW_H,
+} from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
-import { PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite } from '../src/sprites/props.js';
+import {
+  PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
+  PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
+} from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
@@ -20,6 +27,7 @@ import {
 import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE } from '../src/sprites/backwall.js';
 import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
+  setContour, setInkScale, setInkDensity,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
@@ -35,6 +43,15 @@ import {
 import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
+import {
+  drawCreditsSky, makeStars, makeDust, STAR_COUNT, DUST_COUNT, FLECK_WAS, FLECK_IS, hash01,
+} from '../src/game/credits.js';
+import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
+import {
+  FINISH_MARKER_BY_ID, drawFinishMarkerArt,
+  BREAKER_BOX_VARIANTS, plungerStandY,
+} from '../src/game/finishMarker.js';
+import { PLAYER_X } from '../src/game/player.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -44,11 +61,23 @@ buildAllSprites();
 const root = document.getElementById('root');
 const nav = document.getElementById('nav');
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
-let zoom = 3;
+// 2x, because world-scale tiles already carry the run's own WORLD_Z: a tile
+// lands at 4x world scale on screen, which is where the page sat before the
+// zoom was baked in. Keep this in step with the `selected` option in the shell.
+let zoom = 2;
 let renderScale = 3;
 let animate = true;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
-const smoothPreviewScale = (name) => name === 'dustdevil' || name === 'coin' ? 10 : 6;
+// Halved from 6/10 because world-scale tiles now bake WORLD_Z in: samples per
+// world unit are WORLD_Z * hires, so 3 and 5 land where 6 and 10 used to.
+const smoothPreviewScale = (name) => name === 'dustdevil' || name === 'coin' ? 5 : 3;
+
+// The camera magnification every world sprite is drawn through in the run —
+// applyWorld(ctx, ZOOM, pan). A tile that draws world units 1:1 is showing art
+// at half the density the game gives it, and any zoom-relative stroke floor
+// binds in the wrong place. World-scale tiles scale the CONTEXT by this, which
+// is what the run does, rather than resizing the art.
+const WORLD_Z = ZOOM;
 
 function section(id, title, note) {
   const s = document.createElement('section');
@@ -86,12 +115,15 @@ function navSeparator(label) {
 // the browser downsamples the backing store on the way to the screen, so
 // sub-pixel stroke differences survive as tone instead of snapping to whole
 // pixels. That is the only honest way to eyeball a 1.2px-vs-0.7px line.
-function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true, smooth = false } = {}) {
+// `pixel` opts a tile back into nearest-neighbour display. Reserve it for real
+// pre-rendered rasters (WORLD_SPRITES); vector art is smooth by default now
+// that the game itself presents its frame with imageRendering 'auto'.
+function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true, pixel = false } = {}) {
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
   card.dataset.search = (name + ' ' + (sub || '')).toLowerCase();
   const canvas = document.createElement('canvas');
-  if (smooth) canvas.classList.add('smooth-preview');
+  if (pixel) canvas.classList.add('pixel-preview');
   const logicalW = Math.max(1, Math.round(w));
   const logicalH = Math.max(1, Math.round(h));
   const rs = typeof hires === 'number' ? hires : hires ? renderScale : 1;
@@ -118,6 +150,10 @@ function paint(entry, t) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = false;
   ctx.setTransform(entry.renderScale, 0, 0, entry.renderScale, 0, 0);
+  // The tile is supersampled, not enlarged: say so, or the toon painter reads
+  // the transform as a camera push-in and relaxes its ink floors, and every
+  // hero in the gallery comes back thinner than the game draws them.
+  setInkDensity(entry.renderScale);
   try {
     entry.draw(ctx, t);
   } catch (err) {
@@ -125,6 +161,8 @@ function paint(entry, t) {
     entry.card.classList.add('err');
     entry.card.querySelector('.name').innerHTML = `<b>${entry.name}</b><br>${err.message}`;
     entry.draw = () => {}; // don't spam the same throw every frame
+  } finally {
+    setInkDensity();
   }
 }
 
@@ -208,20 +246,23 @@ function drawPowerupTile(ctx, id, hero, t, cx, feetY, hh) {
 
 // Entities always draw against the world's fixed GROUND_Y. To crop one into a
 // small tile: put it at x = pad via camX, then shift the context up so its top
-// edge lands at pad. Nothing about the entity's own drawing changes.
+// edge lands at pad. Nothing about the entity's own drawing changes — the tile
+// is sized in FRAME px (world units through WORLD_Z) and the context carries
+// the zoom, which is the same arrangement the run uses.
 function entityTile(grid, label, sub, e, style, pad = 12) {
-  const w = e.w + pad * 2;
-  const h = e.h + pad * 2;
+  const w = (e.w + pad * 2) * WORLD_Z;
+  const h = (e.h + pad * 2) * WORLD_Z;
   tile(grid, label, sub, w, h, (ctx, t) => {
+    // Scale first, then work in world units — the order applyWorld() uses, so
+    // anything zoom-relative inside the entity painters binds where it binds
+    // in the run. Every number below this line is a world unit, as before.
+    ctx.scale(WORLD_Z, WORLD_Z);
     ctx.translate(0, -(GROUND_Y - e.alt - e.h - pad));
     drawWorldEntity(ctx, e, e.x - pad, t, style, {});
   }, {
     animated: true,
-    // Selected small vector props render at twice their display density, then
-    // the browser downsamples them smoothly. Other world sprites retain the
-    // gallery's deliberately pixelated inspection mode.
+    // Selected small vector props render denser still, for silhouette work.
     hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? smoothPreviewScale(e.type) : true,
-    smooth: SMOOTH_PREVIEW_PROPS.has(e.type),
   });
 }
 
@@ -439,7 +480,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 {
   const grid = section('hero-run', 'Heroes — in-run render',
     'drawHeroSprite() with opts.flat — the gameplay path, shadow included. '
-    + 'Without flat it routes through pushOverlayDraw and paints nothing here.');
+    + 'Without flat it routes through pushOverlayDraw and paints nothing here. '
+    + `Drawn through the run's ${WORLD_Z}x world zoom, so a hero here is the same `
+    + 'number of frame pixels tall as one on screen.');
   // drawHeroSprite bakes cx = PLAYER_X + 6 (=70), so shift x rather than fight it.
   const HERO_CX = 70;
   const PAD = 6;
@@ -451,8 +494,8 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       compressT: 0, landedT: 0, dashT: 0, floating: false, stomping: false,
       headless: 0, fistThrown: false, y: 0, invuln: 0, powers: {},
     };
-    tile(grid, id, 'drawHeroSprite', tw * 3, th * 3, (ctx, t) => {
-      ctx.scale(3, 3);
+    tile(grid, id, 'drawHeroSprite', tw * WORLD_Z, th * WORLD_Z, (ctx, t) => {
+      ctx.scale(WORLD_Z, WORLD_Z);
       ctx.translate(tw / 2 - HERO_CX, 0);
       player.anim = t * 1.6;
       // groundY puts the feet inside the tile instead of at the world's GROUND_Y.
@@ -478,19 +521,36 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       deflectFlashT: 0, powerPoseT: 0,
     };
     const fit = toonEffectEllipse(id);
-    tile(grid, id, `rx ${fit.rx.toFixed(2)} · ry ${fit.ry.toFixed(2)}`, TW, TH, (ctx, t) => {
+    tile(grid, id, `rx ${fit.rx.toFixed(2)} · ry ${fit.ry.toFixed(2)}`, TW * WORLD_Z, TH * WORLD_Z, (ctx, t) => {
+      ctx.scale(WORLD_Z, WORLD_Z);
       ctx.translate(TW / 2 - HERO_CX, 0);
       player.anim = t * 1.6;
       drawHeroSprite(ctx, player, id, t, 0, false,
         { flat: true, groundY: FLOOR, shield: 1, settings: {} });
-    }, { animated: true, hires: 4 });
+    }, { animated: true, hires: 3 });
   }
 }
 
 // Reuse gameplay dimensions for the magnified source side of prop comparisons.
 // A painter may be shared by more than one definition; the first matching
 // obstacle/pickup is the same convention the original gallery used.
+// Bake-off candidates are not wired to an entity yet, so there is no def to
+// measure them by and the 16x16 fallback would show a floor pad as a square.
+// These are the boxes their own sections propose: the ramps inherit boostPad's
+// 14x4 (their height comes from PROP_TALL), the flags are authored square so
+// they can double as plug-row icons, and the portals match the 12x40 column
+// drawPortal already passes.
+const BAKEOFF_SIZES = {
+  rampChevron: { w: 14, h: 4 }, rampWedge: { w: 14, h: 4 },
+  rampTurbine: { w: 14, h: 4 }, rampGate: { w: 14, h: 4 },
+  flagWave: { w: 16, h: 16 }, flagPennant: { w: 16, h: 16 },
+  flagBeacon: { w: 16, h: 16 }, flagPlug: { w: 16, h: 16 },
+  portalArch: { w: 14, h: 44 }, portalRift: { w: 14, h: 44 },
+  portalRings: { w: 14, h: 44 }, portalTube: { w: 14, h: 44 },
+};
+
 function propNominalSize(name) {
+  if (BAKEOFF_SIZES[name]) return BAKEOFF_SIZES[name];
   const def = Object.values(OBSTACLES).find((d) => d.sprite === name)
     || Object.values(PICKUPS).find((d) => d.sprite === name);
   return def ? { w: def.w, h: def.h } : { w: 16, h: 16 };
@@ -539,7 +599,7 @@ function propNominalSize(name) {
 
         const rightX = PAD + COL_W + GAP + (COL_W - dw) / 2;
         drawProp(ctx, n, rightX, artY, dw, dh, f);
-      }, { animated: frames > 1, hires: 3, smooth: true });
+      }, { animated: frames > 1, hires: 3 });
   }
 }
 
@@ -579,8 +639,11 @@ function propNominalSize(name) {
   for (const k of [...keys, 'zombieWalk']) {
     const spr = getSprite(k);
     if (!spr) { tile(grid, k, 'not in cache', 16, 16, () => {}); continue; }
+    // The only genuinely pixel-quantised assets left in the gallery: these are
+    // pre-rendered rasters, so nearest-neighbour is the honest presentation and
+    // there is no point rendering them denser than 1:1.
     tile(grid, k, `${spr.width}x${spr.height}`, spr.width + 4, spr.height + 4,
-      (ctx) => ctx.drawImage(spr, 2, 2));
+      (ctx) => ctx.drawImage(spr, 2, 2), { hires: false, pixel: true });
   }
 }
 
@@ -622,34 +685,38 @@ function propNominalSize(name) {
   const OVERDRAW = 4 / 3 * 1.35;
   {
     const grid = section('fliers-size', 'Fliers — true size in the lane',
-      'Drawn at the real 12x7 box with the hazard overdraw and flier scale applied. '
+      'Drawn at the real 12x7 box with the hazard overdraw and flier scale applied, '
+      + `through the run's ${WORLD_Z}x world zoom. `
       + 'The bar at the left of each tile is 24px — the hero\'s drawn height — for scale.');
     for (const [name, label, note] of FLIERS) {
       const frames = propFrames(name);
       const dw = BOX.w * OVERDRAW;
       const dh = BOX.h * OVERDRAW;
-      tile(grid, label, `${name} · ${frames}f @ ${propFps(name)}fps`, 56, 30, (ctx, t) => {
+      tile(grid, label, `${name} · ${frames}f @ ${propFps(name)}fps`, 56 * WORLD_Z, 30 * WORLD_Z, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
         const f = frames > 1 ? Math.floor(t * propFps(name)) % frames : 0;
         ctx.fillStyle = 'rgba(120,130,160,0.45)';
         ctx.fillRect(5, 15 - 12, 1.5, 24);
         drawProp(ctx, name, 24, 15 - dh / 2, dw, dh, f);
-      }, { animated: frames > 1, hires: 6, smooth: true });
+      }, { animated: frames > 1, hires: 3 });
     }
   }
   {
     const grid = section('fliers-frames', 'Fliers — frame strips',
-      'Every pose, static. Animation hides a bad frame; this does not.');
+      'Every pose, static. Animation hides a bad frame; this does not. Same '
+      + 'in-lane size and world zoom as the row above, so a frame that only '
+      + 'reads at a flattering magnification is caught here.');
     for (const [name, label, note] of FLIERS) {
       const frames = propFrames(name);
       const CELL = 26;
-      tile(grid, label, note, CELL * frames + 4, 30, (ctx) => {
-        const scale = 1.7;
-        const dw = BOX.w * scale;
-        const dh = BOX.h * scale;
+      tile(grid, label, note, (CELL * frames + 4) * WORLD_Z, 30 * WORLD_Z, (ctx) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        const dw = BOX.w * OVERDRAW;
+        const dh = BOX.h * OVERDRAW;
         for (let f = 0; f < frames; f++) {
           drawProp(ctx, name, 2 + f * CELL + (CELL - dw) / 2, 15 - dh / 2, dw, dh, f);
         }
-      }, { animated: false, hires: 4, smooth: true, wide: frames > 4 });
+      }, { animated: false, hires: 3, wide: frames > 4 });
     }
   }
 }
@@ -905,7 +972,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.fillRect(0, FEET + 3, TW, TH - FEET - 3);
       drawToon(ctx, 'lorenzo', pose('run', t), HERO_X, FEET, HERO_H);
       drawSpecialMoveFollower(ctx, HERO_X - 43, FEET - HERO_H * FOLLOWER_CROWN.lorenzo, fill, t, opts);
-    }, { animated: true, hires: 4, smooth: true });
+    }, { animated: true, hires: 4 });
   }
   for (const heroId of Object.keys(HERO_BY_ID)) {
     tile(grid, heroId, 'SPECIAL READY · RUN SCALE', TW, TH, (ctx, t) => {
@@ -917,7 +984,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.fillRect(0, FEET + 3, TW, TH - FEET - 3);
       drawToon(ctx, heroId, pose('run', t), HERO_X, FEET, HERO_H);
       drawSpecialMoveFollower(ctx, HERO_X - 43, FEET - HERO_H * FOLLOWER_CROWN[heroId], 1, t, { ready: true });
-    }, { animated: true, hires: 4, smooth: true });
+    }, { animated: true, hires: 4 });
   }
 }
 
@@ -1479,7 +1546,9 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     for (const id of ids) {
       tile(grid, id, fname, TW, TH, (ctx, t) => {
         fn(ctx, heroSrc(id, t), TW, TH, t);
-      }, { animated: true, hires: false });
+      // Composited from a TWxTH offscreen raster, so there is nothing denser to
+      // render and nearest-neighbour is what the filter actually produced.
+      }, { animated: true, hires: false, pixel: true });
     }
   }
 }
@@ -1643,8 +1712,18 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     ctx.clip();
     ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
     ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    // feet at +anchor*h below the cell center puts the head center ON it
-    drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    // That scale is a MAGNIFYING GLASS, not a camera: it exists so a 0.009u
+    // difference survives the trip to your eye. Pin the ink to the zoom this
+    // row is actually about — the 60u row is a menu at 1:1, the 24u row is the
+    // in-run sprite at the world zoom — or the cell blows the stroke floors
+    // open by 5x and shows ink the game never draws at either size.
+    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
+    try {
+      // feet at +anchor*h below the cell center puts the head center ON it
+      drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    } finally {
+      setInkScale();
+    }
     ctx.restore();
   };
 
@@ -1690,8 +1769,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
 
   const POSE_W = Math.round(HH * 0.9), POSE_H = Math.round(HH * 1.3);
   const FACE = 34;
-  const RUN_Z = 2; // stand-in for the world zoom drawHeroSprite renders under
-  const RUN_W = (HERO_DRAW_W + 10) * RUN_Z, RUN_H = (HERO_DRAW_H + 8) * RUN_Z;
+  const RUN_W = (HERO_DRAW_W + 10) * WORLD_Z, RUN_H = (HERO_DRAW_H + 8) * WORLD_Z;
   const GAP = 6;
   const TW = POSE_W + GAP + FACE + GAP + RUN_W;
   const TH = Math.max(POSE_H, FACE, RUN_H);
@@ -1711,8 +1789,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
           // the game does, so the floors bind at 24 and magnify from there.
           ctx.save();
           ctx.translate(fx + FACE + GAP, 0);
-          ctx.scale(RUN_Z, RUN_Z);
-          drawToon(ctx, id, pose('run', t), (HERO_DRAW_W + 10) / 2, RUN_H / RUN_Z - 4, HERO_DRAW_H);
+          ctx.scale(WORLD_Z, WORLD_Z);
+          drawToon(ctx, id, pose('run', t), (HERO_DRAW_W + 10) / 2, RUN_H / WORLD_Z - 4, HERO_DRAW_H);
           ctx.restore();
         } finally {
           setInk(); // never leak a treatment into the next tile
@@ -1759,7 +1837,13 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     ctx.clip();
     ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
     ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    drawToon(ctx, 'lorenzo', p, 0, 0.76 * h, h);
+    // Magnifying glass, not a camera — see the ink bake-off's headCell.
+    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
+    try {
+      drawToon(ctx, 'lorenzo', p, 0, 0.76 * h, h);
+    } finally {
+      setInkScale();
+    }
     ctx.restore();
   };
   // Four rows that between them expose every failure the old geometry had: the
@@ -1901,7 +1985,13 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     if (bg) { ctx.fillStyle = bg; ctx.fillRect(cellX, cellY, CELL, CELL); }
     ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
     ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    // Magnifying glass, not a camera — see the ink bake-off's headCell.
+    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
+    try {
+      drawToon(ctx, id, pose('run', phase), 0, anchor * h, h);
+    } finally {
+      setInkScale();
+    }
     ctx.restore();
   };
 
@@ -2036,7 +2126,12 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
       ctx.translate(x + CELL / 2, y + CELL / 2);
       ctx.scale(CELL / (0.62 * 60), CELL / (0.62 * 60));
-      drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * 60, 60);
+      setInkScale(1);
+      try {
+        drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * 60, 60);
+      } finally {
+        setInkScale();
+      }
       ctx.restore();
     }],
     ['34u HUD face', (ctx, id, x, y) => {
@@ -2047,7 +2142,12 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
       ctx.translate(x, y);
       ctx.scale(CELL / 34, CELL / 34);
-      drawToonFace(ctx, id, 0, 0, 34, 34);
+      setInkScale(1);
+      try {
+        drawToonFace(ctx, id, 0, 0, 34, 34);
+      } finally {
+        setInkScale();
+      }
       ctx.restore();
     }],
     ['24u in-run', (ctx, id, x, y) => {
@@ -2055,7 +2155,12 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
       ctx.translate(x + CELL / 2, y + CELL / 2);
       ctx.scale(CELL / (0.62 * HERO_DRAW_H), CELL / (0.62 * HERO_DRAW_H));
-      drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * HERO_DRAW_H, HERO_DRAW_H);
+      setInkScale(WORLD_Z);
+      try {
+        drawToon(ctx, id, pose('run', BROW_T), 0, (TOON_SPECS[id].heavy ? 0.978 : 0.76) * HERO_DRAW_H, HERO_DRAW_H);
+      } finally {
+        setInkScale();
+      }
       ctx.restore();
     }],
   ];
@@ -2222,7 +2327,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
         ctx.fillText(`${size - 3}px · ${where}`, x + PLUG_ROW_W(size) / 2 - 2, 8 + size);
         x += PLUG_ROW_W(size) + 6;
       }
-    }, { animated: false, hires: 6, smooth: true, wide });
+    }, { animated: false, hires: 6, wide });
   }
 
   {
@@ -2304,7 +2409,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
           drawPlugRow(ctx, x, 6, [true, true, true], undefined, size, PLUG_ICONS, frame);
           x += PLUG_ROW_W(size) + 5;
         }
-      }, { animated: false, hires: 6, smooth: true, wide: true });
+      }, { animated: false, hires: 6, wide: true });
     }
   }
 
@@ -2396,7 +2501,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
           ctx.fillText(`${size - 3}px · ${where}`, x + PLUG_ROW_W(size) / 2 - 2, 8 + size);
           x += PLUG_ROW_W(size) + 6;
         }
-      }, { animated: false, hires: 6, smooth: true, wide: true });
+      }, { animated: false, hires: 6, wide: true });
     }
   }
 
@@ -2425,7 +2530,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
           ctx.fillText(tag, x + PLUG_ROW_W(11) / 2 - 2, 18);
           x += PLUG_ROW_W(11) + 5;
         });
-      }, { animated: false, hires: 6, smooth: true, wide: true });
+      }, { animated: false, hires: 6, wide: true });
     }
   }
 
@@ -2455,6 +2560,775 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
         x: 0, y: 0, w: 260, h: 48,
       });
     }, { animated: true, wide: true });
+  }
+}
+
+// ------------------------------------------------- credits sky background
+// The two background layers added to the crawl's sky, each shown against the
+// thing it replaced. Both were first cut too faint to find on screen, which is
+// the entire reason this section exists: "can you see it" is not a question
+// code can answer, and the numbers that decide it (a 0.2u circle, a 0.41 alpha
+// under a 0.34 scrim) all look reasonable written down.
+//
+// Every tile is drawSky itself at the crawl's own 480x270 with the crawl's own
+// seeded field — no preview path. What varies is passed in as a tuning.
+{
+  const SKY_W = 480, SKY_H = 270;
+  const stars = makeStars(STAR_COUNT);
+  // The three settings the dust was judged across, rebuilt from the same
+  // generator rather than transcribed. MID is what ships.
+  const dustLow = makeDust(120, 0.2, 0.3);
+  const dustMid = makeDust(DUST_COUNT);
+  const dustHigh = makeDust(160, 0.45, 0.35);
+
+  // A time at which a fleck of the given tuning is mid-flight, so a still can
+  // show one at all. Found by walking the same slot machinery drawFlecks reads,
+  // which is why hash01 is exported — a hand-picked t would go stale the moment
+  // either constant moved.
+  const fleckPeak = (s) => {
+    for (let slot = 0; slot < 200; slot++) {
+      if (hash01(slot, 11) <= s.chance) return slot * s.cycle + s.travel * 0.5;
+    }
+    return 0;
+  };
+
+  const skyTile = (grid, name, sub, opts, animated = false) =>
+    tile(grid, name, sub, SKY_W, SKY_H, (ctx, t) => {
+      drawCreditsSky(ctx, { stars, t: animated ? t : opts.t, ...opts });
+    }, { animated, wide: true, hires: 2 });
+
+  {
+    const grid = section('credits-sky-dust', 'Credits sky — the far dust plane',
+      'SETTLED at MID. The layer that is ALWAYS on screen and never moves: white specks between the real '
+      + 'stars, at 0.018 of the scroll. It is not an effect to catch — its whole job is to stop the gaps '
+      + 'between the stars being flat black, so the near ones have something to be in front of. Judge it in '
+      + 'the EMPTY areas, not on the stars, and judge the four tiles against each other rather than one at a '
+      + 'time: a far plane you can point at is too strong, and one you cannot find in a comparison is not '
+      + 'there. The crawl lays a 0.34 scrim over all of this so the names stay readable, which is the floor '
+      + 'anything back here has to clear — these tiles include it.');
+    skyTile(grid, 'off', 'No dust plane. The sky as it shipped before this — 150 stars over the two '
+      + 'nebulae, and flat black between them.', { dust: null, tune: { flecks: null, comet: false }, t: 3.2 });
+    skyTile(grid, 'low — 120 @ 0.2-0.5u, α 0.13', 'The first cut, and the one that could not be found. A 0.2u '
+      + 'circle is sub-pixel at every scale the game is played at, so the antialiaser halved it before the '
+      + 'scrim took a third of what was left. Compare against OFF: that is the whole difference it made.',
+    { dust: dustLow, tune: { dustAlpha: 0.13, flecks: null, comet: false }, t: 3.2 });
+    skyTile(grid, 'mid — 140 @ 0.32-0.65u, α 0.21 · SHIPS', 'Above the scrim, below the threshold at which '
+      + 'a mote can be picked out on its own. That second limit is the one that decided it: the instant you '
+      + 'can point at an individual speck, the far plane has stopped being the back of the room and joined '
+      + 'the star field in front of it.',
+    { dust: dustMid, tune: { flecks: null, comet: false }, t: 3.2 });
+    skyTile(grid, 'high — 160 @ 0.45-0.8u, α 0.30', 'The answer to the LOW cut, overshot. Legible, and that '
+      + 'is the complaint — the specks start reading as faint small stars, so the sky gains a fourth layer '
+      + 'of stars rather than a backdrop for the three it has.',
+    { dust: dustHigh, tune: { dustAlpha: 0.3, flecks: null, comet: false }, t: 3.2 });
+  }
+
+  {
+    const grid = section('credits-sky-flecks', 'Credits sky — micro-meteors (flecks)',
+      'The other layer, and the opposite kind of thing: an EVENT, one at a time, never in the middle band '
+      + 'where the names are brightest. The comet is deliberately rare — a slot every 17s at 60%, so roughly '
+      + 'one every 28 seconds — which leaves the sky doing nothing but twinkling for half a minute at a '
+      + 'stretch. These fill that gap. Frequency and visibility are separate dials and they were retuned in '
+      + 'that order: the first cut was too faint to find at all, the answer to that was too frequent to be '
+      + 'punctuation, and what ships keeps the size and brightness of the second while rationing it back to '
+      + 'roughly the frequency of the first. The live tiles are the honest test and are worth a full minute '
+      + 'each — the question is not whether you can see one, it is whether it pulls the eye off a name. The '
+      + 'stills are frozen at a fleck\'s brightest frame, found by walking the same slot machinery the '
+      + 'painter uses, because the FAINT cut is otherwise almost impossible to catch.');
+    skyTile(grid, 'faint + frequent — live', 'cycle 2.1s @ 55%, 0.62s travel, 9-16u, peak 0.41 alpha. The '
+      + 'cut that prompted "what am I looking for". On screen ~16% of the time and still hard to catch, '
+      + 'which is the proof that frequency was never the problem.',
+    { dust: dustMid, tune: { flecks: FLECK_WAS, comet: false } }, true);
+    skyTile(grid, 'bold + rationed — live · SHIPS', 'cycle 2.8s @ 50%, 0.95s travel, 20-34u, peak 0.86 alpha, '
+      + 'plus a bright head. One every ~5.6s, on screen ~17% of the time, never more than one at once. Same '
+      + 'share of the roll as the faint cut above — the difference is entirely that you can see it.',
+    { dust: dustMid, tune: { flecks: FLECK_IS, comet: false } }, true);
+    skyTile(grid, 'faint — frozen at peak', 'The same frame the live tile above is hard to catch. 9-16u is a '
+      + 'tenth of the screen and the taper eats most of that.',
+    { dust: dustMid, tune: { flecks: FLECK_WAS, comet: false }, t: fleckPeak(FLECK_WAS) });
+    skyTile(grid, 'bold — frozen at peak · SHIPS', 'Same moment, shipping tuning. The head is what makes it '
+      + 'read as a thing travelling rather than as a scratch on the lens — the comet earns its own halo the '
+      + 'same way, one size up.',
+    { dust: dustMid, tune: { flecks: FLECK_IS, comet: false }, t: fleckPeak(FLECK_IS) });
+    skyTile(grid, 'comet — for scale', 'The rare event the flecks are pitched under, and now 82-120u rather '
+      + 'than 66-98 with a heavier line and a bigger head. It grew because the fleck did: a 20-34u dash with '
+      + 'a lit head was a third of the old comet, and if the two can be confused at a glance the rare one '
+      + 'stops being an occasion. The gap between them is the whole point.',
+    { dust: dustMid, tune: { flecks: null } }, true);
+    skyTile(grid, 'everything · SHIPS', 'Dust, stars, nebulae, flecks and comet together, running. What the '
+      + 'crawl actually draws behind the names.', { dust: dustMid }, true);
+  }
+}
+
+// ======================================================================
+// THREE ASSETS, REDRAWN — speed ramp, objective flag, relay portal.
+// Every candidate is a real painter in sprites/props.js with real cached
+// frames (PROP_FRAMES / PROP_FPS / PROP_TALL), so these tiles are running
+// the shipping code path at the shipping frame rate, not a preview of one.
+// Nothing in src/ points at them yet: picking a winner is a one-line swap.
+// ======================================================================
+
+// A strip of a lane to judge against: floor line, dark below, and the hero
+// at his real 24px so nothing here can quietly flatter itself on scale.
+function laneStrip(ctx, w, h, groundY) {
+  ctx.fillStyle = '#202838';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#303b4d';
+  ctx.fillRect(0, groundY, w, 2);
+  ctx.fillStyle = '#17202d';
+  ctx.fillRect(0, groundY + 2, w, h - groundY - 2);
+}
+
+// The size drawWorldEntity would actually paint a prop at: the 4/3 inflation
+// every entity gets, times PROP_TALL, over the def box. Returned alongside the
+// box itself so a tile can report the overdraw honestly.
+function worldArtSize(boxW, boxH, name) {
+  const artH = boxH * propTall(name);
+  return {
+    boxW, boxH, artH,
+    w: Math.round(boxW * 4 / 3),
+    h: Math.round(artH * 4 / 3),
+  };
+}
+
+// Every frame of a candidate, side by side and static. Motion sells a bad
+// pose; a strip does not. Drawn at the SAME size as the section's live row on
+// purpose — a different size is a different raster, and a twelve-frame portal
+// cached twice is 4MB spent to look at the same drawing.
+function frameStrip(grid, name, label, note, w, h, cell) {
+  const n = propFrames(name);
+  tile(grid, label, note, cell * n + 4, h + 8, (ctx) => {
+    for (let f = 0; f < n; f++) {
+      drawProp(ctx, name, 2 + f * cell + (cell - w) / 2, 4, w, h, f);
+    }
+  }, { animated: false, hires: 5, wide: true });
+}
+
+// ------------------------------------------------- 1. speed ramp bake-off
+{
+  const RAMPS = [
+    ['boostPadLegacy', 'WAS — the pre-bake-off pad',
+      'A 14x4 lozenge with three static chevrons, drawn 19x5. At lane speed it is a yellow smear on the '
+      + 'floor: it does not announce itself on the approach and, because nothing about it moves, it never '
+      + 'confirms that it fired. This is the thing that was beaten.'],
+    ['rampChevron', 'A — black and gold · SHIPS',
+      'PICKED. The pad, done properly, and nothing above it: the whole thing is the pad and the whole '
+      + 'animation happens inside it. Black and gold is borrowed from D\'s marquee, and it is what fixed '
+      + 'the first pass — an orange chevron on a yellow deck is a two-step of the same hue, so at lane '
+      + 'speed the pad collapsed into one warm smear and the chase inside it disappeared. Gold on '
+      + 'near-black is the widest value gap in the palette, so the chevrons stay separate marks down to '
+      + 'the 5px they get on screen. The thrown darts are gone: they read well, but they were art OUTSIDE '
+      + 'the pad and above the floor line, on a prop that cannot hurt you. Art dropped 2.4x to 1.7x with '
+      + 'them, since that headroom was only ever there to hold them.'],
+    ['rampWedge', 'B — launch wedge',
+      'Stops being a decal and becomes a RAMP: the silhouette itself says up-and-forward, which is the one '
+      + 'thing a flat pad can never do. Treads climb the deck, a cream kick lip caps it, sparks leave the '
+      + 'top. The shape survives being seen for a sixth of a second, which is all it gets.'],
+    ['rampTurbine', 'C — floor turbine',
+      'A machine rather than a marking — it is doing something whether or not anyone is standing on it. '
+      + 'The fan turns behind slats and the plume gives it a silhouette ABOVE the floor, which is the part '
+      + 'that survives being scrolled past. Watch the fan for strobing: 8 blade positions at 20fps.'],
+    ['rampGate', 'D — boost gate',
+      'The loud one. Art as tall as the hero, so it is legible from the far edge of the screen and the '
+      + 'lane can be committed to early — a marquee, which is the arcade\'s own way of saying THIS WAY. '
+      + 'The objection is in the label: 24px of structure over a 4px hitbox is the biggest art-to-box gap '
+      + 'in the game. It is only defensible because a boost pad cannot hurt you.'],
+  ];
+
+  const grid = section('speed-ramp-bakeoff', 'Speed ramp — bake-off (A ships)',
+    'SETTLED: A ships as boostPad, in black and gold, with the darts dropped. The boost pad was the only '
+    + 'prop in the lane that GIVES you something and it read as less than a crate. Every candidate keeps '
+    + 'the 14x4 hitbox exactly as it is and buys presence on the one axis a floor pad has spare: HEIGHT, '
+    + 'through PROP_TALL\'s bottom-anchored overdraw, plus motion. The label on each tile states the art '
+    + 'size over that unchanged box. B, C and D are kept drawable as the record of the decision — the '
+    + 'gate in particular is the one to come back to if the pad still under-reads in a real run, since it '
+    + 'is the only candidate legible from the far edge of the screen.');
+
+  const TW = 122, TH = 54, GY = 44;
+  for (const [name, label, note] of RAMPS) {
+    const s = worldArtSize(14, 4, name);
+    tile(grid, label, `${name} · art ${s.w}x${s.h} over a 14x4 box · ${propFrames(name)}f @ ${propFps(name)}fps<br>${note}`,
+      TW, TH, (ctx, t) => {
+        laneStrip(ctx, TW, TH, GY);
+        const f = Math.floor(t * propFps(name)) % propFrames(name);
+        // Same placement drawWorldEntity uses: art centred on the box, bottom
+        // on the ground line, box left edge at x.
+        drawProp(ctx, name, 66 - (s.w - s.boxW) / 2, GY - s.h, s.w, s.h, f);
+        ctx.strokeStyle = 'rgba(246,211,60,0.35)';
+        ctx.lineWidth = 0.4;
+        ctx.strokeRect(66, GY - s.boxH, s.boxW, s.boxH); // the untouched hitbox
+        drawToon(ctx, 'lorenzo', pose('run', t), 30, GY, 24);
+      }, { animated: true, hires: 6, wide: true });
+  }
+  for (const [name, label] of RAMPS) {
+    const s = worldArtSize(14, 4, name);
+    frameStrip(grid, name, `${label} · frames`,
+      `${name} · every frame, static, at lane size. A chase that does not land on a whole cell stutters at the loop point.`,
+      s.w, s.h, 26);
+  }
+}
+
+
+// ------------------------------------------------- 3. relay portal bake-off
+{
+  const PORTALS = [
+    ['portal', 'WAS — the shipped portal',
+      'Three ellipses: a translucent teal blob, a ring, and a highlight arc. drawPortal() pulses the whole '
+      + 'thing 2px on a sine because the art itself does not move. This is the hinge of the entire run — '
+      + 'you change HERO through it — and it currently reads as a decal on the backdrop.'],
+    ['portalArch', 'A — the gate',
+      'A built object: posts, a dome, a real thickness in the reveal, with the energy as a membrane '
+      + 'climbing the opening. Reads as ARCHITECTURE — something the arcade installed — which is the most '
+      + 'legible thing to run at, and it gives the hero-face signage above it something to hang from.'],
+    ['portalRift', 'B — the rift · runner-up',
+      'Briefly shipped, then reconsidered. Kept whole because two fixes it forced are worth not losing: '
+      + 'its outline is now sampled at eleven points a side and joined by CURVES rather than straight '
+      + 'segments (facet length scales with the draw size, curvature does not — at credits scale it read '
+      + 'as a stack of slabs), and it carries a dark halo and a dark core surround so a white-hot shape '
+      + 'still has something to be seen against on the light packs. '
+      + 'No object at all: a tear. White-hot core, teal bleed, a magenta fringe down one edge, and a jagged '
+      + 'outline that re-cuts itself every frame. The most "this should not be here" of the four. Check it '
+      + 'against a busy background — the thing that makes it good is also what could make it noise.'],
+    ['portalRings', 'C — the ring column · SHIPS',
+      'PICKED. Live in the run, the tutorial, the credits hand-off and the menu legend. '
+      + 'Nine horizontal ellipses whose widths track one shared rotation, so the stack reads as a single '
+      + 'surface turning rather than as nine hoops. Pure effect, no housing, and the cheapest of the four '
+      + 'to read at true size. Watch the top and bottom rings for the phase wrapping badly.'],
+    ['portalTube', 'D — the arcade tube',
+      'The fiction, taken literally. MASHENSTEIN is an arcade and the mechanic is called plugging in, so '
+      + 'the way through is a screen on a plinth with a cable running out of it: vortex, scanlines, a live '
+      + 'LED. The only candidate that could not belong to any other game — and the only one that has to '
+      + 'survive a bezel eating a third of its width.'],
+  ];
+
+  const grid = section('relay-portal-bakeoff', 'Relay portal — bake-off (C ships)',
+    'SETTLED: C, the ring column, ships. See the read test below for how it holds up over every cabinet. '
+    + 'All four are drawn into the same narrow '
+    + 'column the player has already learned to aim at: the pass-through box stays 12 wide by 40 tall and '
+    + 'what changes is entirely what happens INSIDE it. Art is 14x44, a hair proud of the box on every '
+    + 'side, which errs toward the portal being slightly easier to hit than it looks. '
+    + 'NOTE none of them use drawPortal()\'s 2px height pulse: that pulse exists precisely because the '
+    + 'current art is static, and it is not free any more — varying the drawn height re-rasterizes the '
+    + 'whole frame set at each new size, so a twelve-frame portal would cache five copies of itself. These '
+    + 'move on their own instead. The hero-face plate and the callout the real portal hangs above itself '
+    + 'are not drawn here; this row is about the column.');
+
+  const TW = 118, TH = 58, GY = 52, PW = 14, PH = 44;
+  for (const [name, label, note] of PORTALS) {
+    const isOld = name === 'portal';
+    const w = isOld ? 12 : PW, h = isOld ? 40 : PH;
+    tile(grid, label, `${name} · ${w}x${h} · ${propFrames(name)}f @ ${propFps(name)}fps<br>${note}`,
+      TW, TH, (ctx, t) => {
+        laneStrip(ctx, TW, TH, GY);
+        const f = Math.floor(t * propFps(name)) % propFrames(name);
+        // The shipped portal has no frames of its own, so it keeps the 2px
+        // sine drawPortal() gives it — otherwise the control would be judged
+        // more still than it actually is.
+        const pulse = isOld ? Math.round(Math.sin(t * 5) * 2) : 0;
+        drawProp(ctx, name, 62, GY - h - pulse, w, h + pulse, f);
+        ctx.fillStyle = '#48e0c8';
+        ctx.fillRect(62 + w / 2 - 2, GY - 2, 4, 2); // the contact mark, as drawn in-run
+        drawToon(ctx, 'lorenzo', pose('run', t), 26, GY, 24);
+      }, { animated: true, hires: 5, wide: true });
+  }
+  for (const [name, label] of PORTALS) {
+    if (name === 'portal') continue; // one frame; the strip would be one cell
+    frameStrip(grid, name, `${label} · frames`,
+      `${name} · every frame, static. Look for a frame the loop jumps at.`, 14, 44, 22);
+  }
+}
+
+// ------------------------------------------- 3b. portal read test (ships: B)
+// The bake-off row judged the four drawings against each other on a flat grey
+// lane. That is the right way to compare them and the wrong way to accept one:
+// the rift is a white-hot shape with a magenta fringe, and the only question
+// left is whether it still reads as A WAY THROUGH over nine backgrounds it was
+// never drawn against — including the doodle sheet, which is nearly white.
+{
+  const grid = section('portal-read-test', 'Relay portal — read test (over every cabinet)',
+    'The shipped portal standing in every stage it can appear in, drawn by the same drawPortal() the run '
+    + 'calls, over each pack\'s real bg() + ground(). TOP the nine strips at 6x so the drawing is visible; '
+    + 'BOTTOM the same thing at TRUE SCREEN SIZE in a full 480x270 frame, which is the only view that '
+    + 'answers the question — a portal that needs magnifying to find is a portal that failed. '
+    + 'This row is why the rift grew a dark halo before it was set aside: over the doodle sheet and the '
+    + 'frost sky its white core simply disappeared. The ring column has the opposite risk — it is mostly '
+    + 'teal, and teal is the game\'s own accent, so watch whether it separates from the neon pack and from '
+    + 'anything else already using it.');
+
+  // A band of a real stage: the pack paints in world coordinates, so the tile
+  // shifts the world up rather than asking the pack to draw somewhere else.
+  const BAND_W = 150, BAND_H = 76, BAND_FLOOR = 60;
+  function stageBand(ctx, cab, t, portalX, heroX, w, h, floorY) {
+    const style = getStylePack(cab.style, {});
+    const obstacles = [makeObstacle('crate', 40), makeObstacle('barrel', 200)];
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
+    ctx.translate(0, floorY - GROUND_Y);
+    if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
+    if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
+    drawPortal(ctx, { x: portalX, hero: 'gnash' }, 0, t, 1, true, {});
+    drawToon(ctx, 'lorenzo', pose('run', t), heroX, GROUND_Y, 24);
+    if (style.post) style.post(ctx, t);
+    ctx.restore();
+  }
+
+  for (const cab of CABINETS) {
+    tile(grid, cab.id, `${cab.style} · ${PORTAL_SPRITE} at true size, 6x view`, BAND_W, BAND_H, (ctx, t) => {
+      stageBand(ctx, cab, t, 96, 46, BAND_W, BAND_H, BAND_FLOOR);
+    }, { animated: true, hires: 6, wide: true });
+  }
+
+  // True screen size. These tiles are pinned to 1x by the zoom control, which
+  // is the point: this is the portal at the size a player sees it.
+  for (const cab of CABINETS) {
+    tile(grid, `${cab.id} — full frame`, `${cab.style} · 480x270, true size. This is the real read.`,
+      W, H, (ctx, t) => {
+        stageBand(ctx, cab, t, 300, 92, W, H, GROUND_Y);
+      }, { animated: true });
+  }
+}
+
+// ------------------------------------------------ 3c. portal aftermath
+// What the portal does once it has been REACHED. Until now it did nothing: on
+// contact the entity was nulled and the whole column vanished between one frame
+// and the next, and a portal you jumped over scrolled away looking exactly like
+// one you could still take. Two strips fix both — see portalRingsArt.
+{
+  const grid = section('portal-aftermath', 'Relay portal — aftermath (spend + wilt)',
+    'TOP the two events at true size on a lane, looping: live column, the moment of contact, and what is '
+    + 'left afterwards. A SPEND opens on a one-frame white blowout and then drags the hoops down into the '
+    + 'slot, leaving the plinth dark — the hardware stays, the light is gone. The three hoops that come '
+    + 'FORWARD out of the stack in the run are particles thrown by RunState.portalDischarge and are not in '
+    + 'these tiles; a cached sprite cannot follow something that has left its own box. '
+    + 'A WILT is the miss: no flash, nothing discharges, the column just sags toward the plate and dims '
+    + 'while the plinth stays mostly lit. '
+    + 'The question for both is whether they read at speed and from the corner of the eye, and whether '
+    + 'they read as DIFFERENT from each other — a wilt that looks like a faint spend teaches that you '
+    + 'half-tagged. BOTTOM every frame of each strip, static, so the collapse can be checked for a step '
+    + 'that jumps. Note the wilt is a sixth of a second longer than the spend: a missed portal has about '
+    + 'half a second of screen time behind the hero, and it should still be moving for most of it.');
+
+  const TW = 118, TH = 58, GY = 52;
+  const EVENTS = [
+    ['spend', PORTAL_SPENT_SPRITE, PORTAL_SPEND_TIME, 'SPEND — a hero went through',
+      'Contact at t=0.9s of the loop. Watch the blowout frame: it is one frame, and it has to land ON the '
+      + 'crossing rather than after it, which is why the strip starts with it rather than building to it.'],
+    ['wilt', PORTAL_WILT_SPRITE, PORTAL_WILT_TIME, 'WILT — a hero went over the top',
+      'The hero clears it at t=0.9s. This is the only feedback a missed tag has ever had.'],
+  ];
+  const LOOP = 2.4;
+  for (const [key, sprite, time, label, note] of EVENTS) {
+    tile(grid, label, `${sprite} · ${propFrames(sprite)}f over ${time}s<br>${note}`, TW, TH, (ctx, t) => {
+      laneStrip(ctx, TW, TH, GY);
+      const loop = t % LOOP;
+      const since = loop - 0.9;
+      // drawPortal is given the same entity shape the run gives it, so the
+      // tile cannot drift from the game: the state IS the two fields.
+      const portal = { x: 0, hero: 'gnash' };
+      if (since >= 0) portal[key === 'spend' ? 'spent' : 'wilt'] = since;
+      ctx.save();
+      ctx.translate(0, GY - GROUND_Y);
+      drawPortal(ctx, { ...portal, x: 62 }, 0, t, 1, true, {});
+      ctx.restore();
+      // The hero, arriving on the same clock: through the column on a spend,
+      // over the top of it on a wilt.
+      const hx = 26 + (loop / LOOP) * 76;
+      const jump = key === 'wilt' ? Math.max(0, Math.sin((loop - 0.55) * 2.6) * 46) : 0;
+      drawToon(ctx, 'lorenzo', pose(jump > 1 ? 'jump' : 'run', t), hx, GY - jump, 24);
+    }, { animated: true, hires: 5, wide: true });
+  }
+  for (const [, sprite, , label] of EVENTS) {
+    frameStrip(grid, sprite, `${label} · frames`,
+      `${sprite} · every frame, static, left to right. The last frame is what rests on screen.`, 14, 44, 22);
+  }
+}
+
+// ------------------------------------------- 1b. "we are speeding up" bake-off
+{
+  const grid = section('boost-fx-bakeoff', 'Boost pad — "we are speeding up" bake-off',
+    `SETTLED: C+B with TAPERING chevrons ships — the ground rush carrying it, a quieter version of the `
+    + `trail underneath, and each chevron shrinking as it falls behind. `
+    + `${BOOST_FX_VARIANTS.length - 2} earlier candidates plus the control are kept drawable as the record. Each is drawn by the same `
+    + 'game/boostFx.js the run calls, at the same 24px hero and the same lane speed. The question is only '
+    + 'this: without the pad in shot, does the frame say YOU ARE GOING FASTER? '
+    + 'The control is the first tile and it is what shipped first — loose rectangles with no taper, no '
+    + 'vanishing point and nothing attached to them, which is why they read as HUD that escaped onto the '
+    + 'field rather than as motion. '
+    + 'Judge them at true size with the hero, and watch the pale marks against the LIGHT packs in the '
+    + 'row below: a cream streak over the doodle sheet has the same problem the portal had.');
+
+  const TW = 150, TH = 60, GY = 48, HX = 84;
+  const heroPose = (t) => pose('run', t, { lean: 0.17 });
+  for (const v of BOOST_FX_VARIANTS) {
+    tile(grid, v.name, `${v.id}<br>${v.note}`, TW, TH, (ctx, t) => {
+      laneStrip(ctx, TW, TH, GY);
+      // Loops the effect's own 0.5s life on a 1.4s cycle, so each tile shows
+      // the whole decay rather than freezing at full strength — an effect that
+      // only looks right at q=1 is an effect that flashes and vanishes.
+      const cycle = (t % 1.4) / 1.4;
+      const q = cycle < 0.36 ? 1 - cycle / 0.36 : 0;
+      if (q <= 0) {
+        drawToon(ctx, 'lorenzo', pose('run', t), HX, GY, 24);
+      } else {
+        v.draw(ctx, {
+          x: HX, groundY: GY, t, q, w: TW, h: TH,
+          drawHero: () => drawToon(ctx, 'lorenzo', heroPose(t), HX, GY, 24),
+          drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
+        });
+      }
+    }, { animated: true, hires: 5, smooth: true, wide: true });
+  }
+
+  // ON A SLOPE. A floor effect drawn on a level line through the hero's feet
+  // floats clean off a hill, which is the same failure the boost pad itself
+  // had before drawAtGround learned to conform. Each candidate is handed the
+  // real terrain contract — groundDelta(dx), how far the ground rises or falls
+  // dx pixels either side of the hero — so this row is the honest answer to
+  // "does it still work when the ground is slanted".
+  for (const [label, slope] of [['downhill', 0.28], ['uphill', -0.3]]) {
+    for (const v of BOOST_FX_VARIANTS) {
+      const gd = (dx) => dx * slope;
+      tile(grid, `${v.name} · ${label}`, `${v.id} on a ${label} grade. Only the floor-based marks can get this wrong.`,
+        TW, TH, (ctx, t) => {
+          // A lane whose ground follows the same delta the effect is given.
+          ctx.fillStyle = '#202838';
+          ctx.fillRect(0, 0, TW, TH);
+          ctx.fillStyle = '#303b4d';
+          ctx.beginPath();
+          ctx.moveTo(0, GY + gd(-HX));
+          ctx.lineTo(TW, GY + gd(TW - HX));
+          ctx.lineTo(TW, TH);
+          ctx.lineTo(0, TH);
+          ctx.closePath();
+          ctx.fill();
+          const cycle = (t % 1.4) / 1.4;
+          const q = cycle < 0.36 ? 1 - cycle / 0.36 : 0;
+          if (q <= 0) {
+            drawToon(ctx, 'lorenzo', pose('run', t), HX, GY, 24);
+          } else {
+            v.draw(ctx, {
+              x: HX, groundY: GY, t, q, w: TW, h: TH, groundDelta: gd,
+              drawHero: () => drawToon(ctx, 'lorenzo', heroPose(t), HX, GY, 24),
+              drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
+            });
+          }
+        }, { animated: true, hires: 5, smooth: true, wide: true });
+    }
+  }
+
+  // The same five over the two packs most likely to eat a pale streak. Cream
+  // on the doodle sheet is the exact failure the portal read test found.
+  for (const cabId of ['speed', 'office', 'frost']) {
+    const cab = CABINETS.find((c) => c.id === cabId);
+    if (!cab) continue;
+    for (const v of BOOST_FX_VARIANTS) {
+      tile(grid, `${v.name} · ${cab.id}`, `${v.id} over ${cab.style} — ${cab.id === 'speed' ? 'the DESERT check: gold on tan, and the pack with the most boost pads in it' : 'the light-pack check'}.`,
+        TW, TH, (ctx, t) => {
+          const style = getStylePack(cab.style, {});
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, TW, TH);
+          ctx.clip();
+          ctx.translate(0, GY - GROUND_Y);
+          if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
+          if (style.ground) style.ground(ctx, t * 60, cab, []);
+          const cycle = (t % 1.4) / 1.4;
+          const q = cycle < 0.36 ? 1 - cycle / 0.36 : 0;
+          const hy = GROUND_Y;
+          if (q <= 0) {
+            drawToon(ctx, 'lorenzo', pose('run', t), HX, hy, 24);
+          } else {
+            v.draw(ctx, {
+              x: HX, groundY: hy, t, q, w: TW, h: TH,
+              drawHero: () => drawToon(ctx, 'lorenzo', heroPose(t), HX, hy, 24),
+              drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
+            });
+          }
+          if (style.post) style.post(ctx, t);
+          ctx.restore();
+        }, { animated: true, hires: 5, smooth: true, wide: true });
+    }
+  }
+}
+
+// ------------------------------------------- 1c. finish marker
+// The end of every stage: the pole, the plunger and the box. SETTLED — the
+// bake-off that chose it is over and its scaffolding is gone with it. What is
+// left is the shipped marker, its two nearest alternates kept drawable, and the
+// one behaviour worth re-checking whenever the payoff is touched (CLUNK).
+{
+  const grid = section('finish-marker', 'Finish marker — shipped, plus the two alternates',
+    'D1b SHIPS: the trigger taken out of the box and stood at the foot of the pole as a plunger, the box '
+    + 'moved clear to the right with nothing on it to touch, and a cable joining them. '
+    + '<b>Row 1</b> is the marker running its full payoff — push, spark along the cable, lamps, current up '
+    + 'the pole, flag — with D1 and D2 beside it for comparison. '
+    + '<b>Row 2 (CLUNK)</b> is the player who never jumps and just runs into the pole: the stage still '
+    + 'clears, so the fiction still has to resolve, and only the amount of celebration changes. '
+    + '<br><br>Gone from this section, all decided: the jump-catch-slide mock (it is the real mechanic '
+    + 'now — see the cling sheet below), the framing study (72px of clear lane, in), and the first round '
+    + 'of candidates that flew the flag on the approach, which was the fiction problem that started this.');
+
+  // A full flip, looped. The approach is deliberately the long half — it is
+  // most of what a player actually sees of this object.
+  const CYCLE = 4;
+  const THROW_AT = 2.4;
+  const beat = (t) => {
+    const c = t % CYCLE;
+    const raw = c < THROW_AT ? 0 : Math.min(1, (c - THROW_AT) / 0.18);
+    return {
+      t, thrown: raw * raw * (3 - 2 * raw), live: true, armed: c < THROW_AT,
+      reducedMotion: false, phase: c,
+    };
+  };
+
+  const TW = 132, TH = 118, GY = 108, FX = 56;
+  const runIn = (ctx, t, s, toX) => {
+    const run = Math.min(1, (s.phase / THROW_AT) ** 1.4);
+    drawToon(ctx, 'lorenzo', pose('run', t, { lean: 0.14 }), 8 + run * toX, GY, 26);
+  };
+
+  // ---- the marker, running its payoff --------------------------------------
+  for (const id of ['plunger', 'panelWake', 'panelConduit']) {
+    const v = FINISH_MARKER_BY_ID[id];
+    if (!v) continue;
+    tile(grid, `${id === 'plunger' ? 'SHIPPED' : 'alternate'} · ${v.name}`, `${id}<br>${v.note}`, TW, TH, (ctx, t) => {
+      laneStrip(ctx, TW, TH, GY);
+      const s = beat(t);
+      v.draw(ctx, FX, GY, s);
+      if (s.armed) runIn(ctx, t, s, 34);
+      else drawToon(ctx, 'lorenzo', pose('jump', t), FX - 4, GY - 22, 26);
+    }, { animated: true, hires: 5, smooth: true, wide: true });
+  }
+
+  // ---- CLUNK ---------------------------------------------------------------
+  // Nothing forces the jump — the finish dash carries the hero to the pole under
+  // its own power — so a player who holds still runs into the base and shoulders
+  // the lever over. That is a CLUNK, worth zero points, and the stage clears.
+  //
+  // Which means the power came back, which means the flag has to fly. A cleared
+  // stage that leaves the flag dead would be the marker calling the player a
+  // failure for finishing the level. So the grade lives in HOW MUCH the payoff
+  // celebrates, never in whether the fiction resolves at all.
+  for (const id of ['panelWake', 'mast']) {
+    const v = FINISH_MARKER_BY_ID[id];
+    if (!v) continue;
+    tile(grid, `CLUNK · ${v.name.split('—')[0].trim()} — ran across, never jumped`,
+      `${id} with live=false. Power returns and the flag raises, plainly — no surge, no sparks, cloth two `
+      + 'thirds slower. Compare against the same tile in row 1: the difference has to read as "worth less", '
+      + 'never as "did not work".',
+      TW, TH, (ctx, t) => {
+        laneStrip(ctx, TW, TH, GY);
+        const s = beat(t);
+        v.draw(ctx, FX, GY, { ...s, live: false });
+        if (s.armed) runIn(ctx, t, s, 38);
+        else drawToon(ctx, 'lorenzo', pose('run', t, { lean: 0.2 }), FX - 14, GY, 26);
+      }, { animated: true, hires: 5, smooth: true, wide: true });
+  }
+
+}
+
+// ------------------------------------------- 1c-ii. the cling, per hero
+// The pose the whole finish mechanic rests on. It used to be the JUMP pose
+// standing in — a hero with nothing in his hands, sliding down a pole he was
+// visibly not holding — and it was the outstanding art debt on the marker.
+{
+  const grid = section('finish-cling', 'Finish cling — the pole ride, per hero',
+    'The catch, the ride and the landing, for every hero. This is a real pose now, not the jump pose: '
+    + 'hands on the pole above the head, feet clamped under, and the body swinging under a grip that does '
+    + 'not move. '
+    + '<b>Row 1</b> is each hero clinging, live, with the pole they are holding drawn behind them. '
+    + '<b>Row 2</b> is the blend, left to right: airborne, catching, clinging, letting go — the same '
+    + '0..1 the run drives, so an arm that pops on the way in pops here too. '
+    + '<br><br>Two decisions worth knowing before judging it. The figure stands BESIDE the pole rather '
+    + 'than on it: centred, both arms run up the centre line and cross the face, and two body-coloured '
+    + 'limbs over a 6px head merge into a slab. And the arms STRETCH — the shoulder sits at 0.5u with a '
+    + '0.29u arm, so a hand at full reach lands in the middle of the hero\'s own face; the bones lengthen '
+    + 'to put it above the crown instead. Per hero, because the cast does every other verb differently: '
+    + 'Gnash grips loose and staggered, B-33P hangs plumb, Gary has one hand on it and one arm out, '
+    + 'Fernwick is tucked up tight, Grumpos bear-hugs. Mochi squeezes, Raymn gathers his gloves, and '
+    + 'Chompo — who has no hands at all — bites it.');
+
+  const CW = 96, CH = 128, GY = 116;
+  const poleAt = (ctx, x, h) => {
+    ctx.fillStyle = '#3fb45e';
+    ctx.fillRect(x - 1, GY - h, 2, h);
+    ctx.fillStyle = 'rgba(10,40,20,0.5)';
+    ctx.fillRect(x - 1.4, GY - h, 0.5, h);
+  };
+  // Seated where the run seats him: feet a little above the plunger cap, which
+  // is what the slide is easing toward the whole way down.
+  const clingTile = (label, sub, id, amount) => {
+    tile(grid, label, sub, CW, CH, (ctx, t) => {
+      laneStrip(ctx, CW, CH, GY);
+      const x = CW / 2 - 6;
+      poleAt(ctx, x + 0.3 * 26, 104);
+      const a = typeof amount === 'function' ? amount(t) : amount;
+      drawToon(ctx, id, {
+        kind: 'jump', grounded: false, vy: 90, time: t, phase: 0, facing: 1, cling: a,
+      }, x, GY - 26, 26);
+    }, { animated: true, hires: 6, smooth: true });
+  };
+
+  for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'gary', 'dolores', 'grumpos', 'mochi', 'chompo', 'raymn']) {
+    clingTile(`${id} — clinging`, `cling: 1, live sway. The pole is drawn where the marker's mast stands relative to him.`, id, 1);
+  }
+  // The blend. Four fixed readings rather than a loop: a pose that only works
+  // at 1 is a pose that pops on, and the catch is the frame the player is
+  // actually looking at.
+  for (const [a, name] of [[0, 'airborne (cling 0)'], [0.35, 'catching (0.35)'], [1, 'clinging (1)'], [0.6, 'letting go (0.6)']]) {
+    clingTile(`blend · ${name}`, 'lorenzo, same pose data the slide drives, held at one value.', 'lorenzo', a);
+  }
+}
+
+// ------------------------------------------- 1d. breaker box bake-off
+// The cabinet only. The gauge and the red/green lamps are FIXED — they won on
+// sight — so every tile here differs in silhouette, materials and how it meets
+// the ground, and in nothing else.
+{
+  const grid = section('breaker-box-bakeoff', 'Breaker box — shape bake-off (gauge refined)',
+    'PICK A SILHOUETTE. The gauge and the lamp pair are shared code across every tile, so nothing below '
+    + 'differs in what it SAYS — only in what it looks like saying it. '
+    + '<b>Row 1</b> is the whole marker with each cabinet in place, running the full payoff on a loop: '
+    + 'judge it beside the flagpole and the plunger, because that is the only place it will ever be seen. '
+    + '<b>Row 2</b> is the refined gauge alone, big. The old one was a filled half-disc with square ticks '
+    + 'and a straight needle — a diagram of a gauge. What separates an instrument from a diagram is almost '
+    + 'entirely in the parts nobody looks at: the scale PRINTED on the face as a fine arc rather than '
+    + 'implied by the ticks, graded ticks (majors longer and brighter, minors hairline), a tapered needle '
+    + 'with a counterweight tail behind the pivot — the most recognisable thing about a real moving-iron '
+    + 'meter — and glass carrying one soft sweep that does NOT track the needle, because glass does not '
+    + 'know where the needle is.');
+
+  const CYCLE = 4, THROW_AT = 2.4;
+  const beat = (t) => {
+    const c = t % CYCLE;
+    const raw = c < THROW_AT ? 0 : Math.min(1, (c - THROW_AT) / 1.4);
+    return { t, thrown: raw, live: true, armed: c < THROW_AT, reducedMotion: false, phase: c };
+  };
+  const TW = 136, TH = 118, GY = 108, FX = 34;
+  for (const v of BREAKER_BOX_VARIANTS) {
+    tile(grid, `1. ${v.name}`, `${v.id} · ${v.w}px wide<br>${v.note}`, TW, TH, (ctx, t) => {
+      laneStrip(ctx, TW, TH, GY);
+      const s = beat(t);
+      drawFinishMarkerArt(ctx, FX, GY, s, v.id);
+      if (s.armed) {
+        drawToon(ctx, 'lorenzo', pose('run', t, { lean: 0.14 }), 8 + Math.min(1, (s.phase / THROW_AT) ** 1.4) * 18, GY, 24);
+      } else {
+        drawToon(ctx, 'lorenzo', pose('celebrate', t), FX + 1, GY - plungerStandY(s.thrown) - 1, 24);
+      }
+    }, { animated: true, hires: 5, smooth: true, wide: true });
+  }
+
+  // The gauge alone, at four times the size it ships at. Everything that makes
+  // it an instrument is sub-pixel in the lane, so this is where it is judged.
+  for (const [label, thrown] of [['idle, drifting', 0], ['mid-sweep', 0.55], ['pinned, settling', 1]]) {
+    tile(grid, `2. GAUGE — ${label}`,
+      'The shared gauge, drawn at 4x. Watch the needle tail behind the pivot, the danger band the needle '
+      + 'crosses ONTO rather than under, and the glass sweep holding still while the needle moves.',
+      86, 64, (ctx, t) => {
+        ctx.fillStyle = '#33445a';
+        ctx.fillRect(0, 0, 86, 64);
+        ctx.save();
+        ctx.translate(43, 52);
+        ctx.scale(4, 4);
+        BREAKER_BOX_VARIANTS[0].drawGauge(ctx, 0, 0, 10, { thrown, t, reducedMotion: false });
+        ctx.restore();
+      }, { animated: true, hires: 5, smooth: true });
+  }
+}
+
+// ------------------------------------------- contour taper bake-off (lab only)
+// The body contour is the one width in toons.js that is not a floor: `ow` is a
+// flat 0.016u, so it scales with the figure and stays exactly as heavy,
+// proportionally, at every camera. That is right for a HUD cell and wrong for a
+// push-in — the tutorial's intro frames Gary at 5.5x, where a flat fraction
+// means ~2 logical px of dark down each edge of every limb, and once the
+// scale-aware stroke floors landed it became the heaviest thing left in frame.
+//
+// So the contour thins as the figure grows, the way inked art does: nobody
+// re-inks a drawing with a 5x pen to blow it up to a poster. `taper` is the
+// exponent on that trade (CONTOUR in toons.js) — 0 is the old flat fraction,
+// 1 is a contour of constant finished width, which is a wire and loses the
+// silhouette against a dark room.
+//
+// Every cell is MAGNIFIED to fill its square, so read the ink and not the size:
+// the hero is drawn at the in-run 24u throughout and the ink is pinned to the
+// row's world zoom, which is the only thing separating the rows.
+{
+  const grid = section('contour-taper', 'Contour taper bake-off',
+    'One rig, four taper exponents, three cameras. The 2x row is an ordinary run — it is the '
+    + 'row that must not get worse. The 5.5x row is the tutorial intro, which is the complaint. '
+    + 'Judge the silhouette against the dark cell: the failure mode at the high end is a hero '
+    + 'who stops holding an edge and starts floating. 0.5 ships — the square root was the first '
+    + 'column where the intro stops reading as inked, and it still holds its edge.');
+
+  const TAPERS = [
+    ['0', 'flat 0.016u — the old contour', 0],
+    ['0.25', 'gentle', 0.25],
+    ['0.33', 'cube root', 1 / 3],
+    ['0.5', 'square root — shipped', 0.5],
+  ];
+  // 2x is the run; 3.5x is the dolly a tall jump reaches; 5.5x is the intro.
+  const ZOOMS = [['2x run', WORLD_Z], ['3.5x jump', 3.5], ['5.5x intro', 5.5]];
+  // gary and lorenzo are the two the intro actually frames. grumpos is the
+  // pale-fill heavy rig — the one with the most to lose when a contour thins,
+  // and the hero the ink bake-off next door already turns on.
+  const IDS = ['gary', 'lorenzo', 'grumpos'];
+
+  const CELL = 84, LABEL_W = 64, PHASE = 0.42;
+  const bodyCell = (ctx, id, cellX, cellY, zoom, taper) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cellX, cellY, CELL, CELL);
+    ctx.clip();
+    ctx.fillStyle = '#2f2c46'; // the intro's wall, which is what it is judged on
+    ctx.fillRect(cellX, cellY, CELL, CELL);
+    ctx.translate(cellX + CELL / 2, cellY + CELL - 5);
+    const fit = CELL / (HERO_DRAW_H * 1.24);
+    ctx.scale(fit, fit);
+    // The magnification is for the eye; the INK is the row's camera.
+    setInkScale(zoom);
+    setContour({ taper });
+    try {
+      drawToon(ctx, id, pose('idle', PHASE), 0, 0, HERO_DRAW_H);
+    } finally {
+      setInkScale();
+      setContour();
+    }
+    ctx.restore();
+  };
+
+  for (const id of IDS) {
+    const cmpW = LABEL_W + TAPERS.length * CELL;
+    const cmpH = 14 + ZOOMS.length * CELL;
+    tile(grid, `${id} — taper x camera`, 'ink pinned to the row, size magnified to match',
+      cmpW, cmpH, (ctx) => {
+        ctx.font = 'bold 7px ui-monospace, monospace';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#8a8a9a';
+        TAPERS.forEach(([name, note], i) => {
+          ctx.fillText(`${name} ${note}`.slice(0, 22), LABEL_W + i * CELL + 4, 9);
+        });
+        ZOOMS.forEach(([rowLabel, z], r) => {
+          const y = 14 + r * CELL;
+          ctx.fillStyle = '#8a8a9a';
+          ctx.fillText(rowLabel, 4, y + CELL / 2);
+          TAPERS.forEach(([, , taper], i) => bodyCell(ctx, id, LABEL_W + i * CELL, y, z, taper));
+        });
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 0.4;
+        ctx.beginPath();
+        for (let i = 0; i <= TAPERS.length; i++) {
+          ctx.moveTo(LABEL_W + i * CELL, 12);
+          ctx.lineTo(LABEL_W + i * CELL, cmpH);
+        }
+        for (let r = 0; r <= ZOOMS.length; r++) {
+          ctx.moveTo(LABEL_W, 14 + r * CELL);
+          ctx.lineTo(cmpW, 14 + r * CELL);
+        }
+        ctx.stroke();
+      }, { wide: true, hires: 6 });
   }
 }
 
@@ -2550,6 +3424,13 @@ function applyBackdrop(mode) {
 }
 const bdEl = document.getElementById('backdrop');
 bdEl.addEventListener('change', () => applyBackdrop(bdEl.value));
+
+// Nearest-neighbour across every tile. The game presents its frame smoothly, so
+// this is an inspection aid — "show me the samples" — not a preview of the run.
+const pixelateEl = document.getElementById('pixelate');
+pixelateEl.addEventListener('change', () => {
+  document.body.classList.toggle('pixelate', pixelateEl.checked);
+});
 
 const animEl = document.getElementById('animate');
 animEl.addEventListener('change', () => {

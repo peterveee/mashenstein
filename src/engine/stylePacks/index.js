@@ -21,6 +21,20 @@ import { glowSprite } from '../../sprites/props.js';
 // the groundline these layers hang off does not move at any zoom.
 const PLX = ZOOM;
 
+// Camera-derived positions in here are deliberately NOT rounded to whole
+// pixels. Rounding looks harmless per frame and is a stutter in motion: the
+// world scrolls a fractional number of pixels per tick (2.54 at a typical
+// speed), so a snapped element steps 3, then 2, then 3 while everything drawn
+// through drawWorldEntity glides. The ground draws inside the world transform
+// at ZOOM 2, so one world pixel of snap is two canvas pixels — about twenty
+// device pixels on a 5K panel — and it lands on the repeating ground pattern,
+// which is the worst possible carrier for it. A row of identical marks all
+// jumping together is read as flicker rather than as motion.
+//
+// Two places still round on purpose and must stay that way: the LCD pack
+// quantizes to its segment pitch because a segment display cannot scroll
+// smoothly, and the half-pixel strokeRect offsets exist to keep a 1px line
+// crisp rather than to position anything.
 function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
   ctx.fillStyle = colBody;
   ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
@@ -29,7 +43,7 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
   // carve gaps
   for (const ob of obstacles || []) {
     if (ob.live && ob.def && ob.def.isGap) {
-      const x = Math.round(ob.x - camX);
+      const x = ob.x - camX;
       ctx.fillStyle = '#08060c';
       ctx.fillRect(x, GROUND_Y, ob.w, H - GROUND_Y);
     }
@@ -1009,8 +1023,8 @@ function pixelPack(settings) {
         for (let i = 0; i < 5; i++) {
           const cx = ((i * 137 - camX * 0.2 * PLX) % (W + 60)) - 30;
           const cy = 30 + (i * 37) % 60;
-          ctx.fillRect(Math.round(cx), cy, 34, 8);
-          ctx.fillRect(Math.round(cx) + 6, cy - 5, 20, 5);
+          ctx.fillRect(cx, cy, 34, 8);
+          ctx.fillRect(cx + 6, cy - 5, 20, 5);
         }
       }
       if (cab.id === 'plumber') {
@@ -1030,7 +1044,7 @@ function pixelPack(settings) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
       // scrolling ground ticks
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(Math.round(x), GROUND_Y + 8, 10, 2);
+      for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(x, GROUND_Y + 8, 10, 2);
     },
     post() {},
   };
@@ -1065,13 +1079,13 @@ function faux3dPack(settings) {
         const off = (camX * (1 + row * 0.25)) % (size * 2);
         for (let x = -off; x < W; x += size * 2) {
           ctx.fillStyle = row % 2 === 0 ? cab.ground : cab.groundDark;
-          ctx.fillRect(Math.round(x), y, size, 8);
+          ctx.fillRect(x, y, size, 8);
         }
       }
       for (const ob of obstacles || []) {
         if (ob.live && ob.def && ob.def.isGap) {
           ctx.fillStyle = '#08060c';
-          ctx.fillRect(Math.round(ob.x - camX), GROUND_Y, ob.w, H - GROUND_Y);
+          ctx.fillRect(ob.x - camX, GROUND_Y, ob.w, H - GROUND_Y);
         }
       }
       ctx.fillStyle = '#f6d33c';
@@ -1086,8 +1100,11 @@ function faux3dPack(settings) {
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     },
     decorate(ctx, e, x, y) {
-      // fake drop shadow = instant pre-rendered look
-      if (e.def && (e.def.ground || e.alt < 20)) {
+      // fake drop shadow = instant pre-rendered look. Not on the boost pad:
+      // that one is a trench cut into the floor, and a bar of shadow under it
+      // puts it back in FRONT of the ground, which is the whole thing the
+      // sunken art is trying not to do.
+      if (e.def && !e.def.isBoost && (e.def.ground || e.alt < 20)) {
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         ctx.fillRect(x + 2, GROUND_Y + 2, e.w, 3);
       }
@@ -1135,7 +1152,7 @@ function neonPack(settings) {
       for (const ob of obstacles || []) {
         if (ob.live && ob.def && ob.def.isGap) {
           ctx.fillStyle = '#000';
-          ctx.fillRect(Math.round(ob.x - camX), GROUND_Y, ob.w, H - GROUND_Y);
+          ctx.fillRect(ob.x - camX, GROUND_Y, ob.w, H - GROUND_Y);
         }
       }
     },
@@ -1378,7 +1395,7 @@ function cardboardPack(settings) {
     ground(ctx, camX, cab, obstacles) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
       ctx.fillStyle = 'rgba(90,64,32,0.4)';
-      for (let x = -(camX % 10); x < W; x += 10) ctx.fillRect(Math.round(x), GROUND_Y + 4, 2, 5);
+      for (let x = -(camX % 10); x < W; x += 10) ctx.fillRect(x, GROUND_Y + 4, 2, 5);
     },
     post(ctx, t) {
       ctx.fillStyle = 'rgba(200,160,104,0.05)';
@@ -1498,7 +1515,7 @@ function doodlePack(settings) {
       ctx.lineWidth = 1;
       for (const ob of obstacles || []) {
         if (ob.live && ob.def && ob.def.isGap) {
-          const x = Math.round(ob.x - camX);
+          const x = ob.x - camX;
           ctx.fillStyle = '#eceadf';
           ctx.fillRect(x, GROUND_Y - 4, ob.w, 10);
           ctx.strokeStyle = '#3a3a58';

@@ -3,7 +3,7 @@ import {
   initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
   noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualizerFrame, setChromeOverlay,
 } from './engine/renderer.js';
-import { startLoop, frameRate } from './engine/loop.js';
+import { startLoop, frameRate, frameHealth } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
 import { VISUALIZER_NAMES, setMegamixAudition } from './engine/visualizers.js';
 import { Input } from './engine/input.js';
@@ -27,7 +27,7 @@ import { save } from './engine/save.js';
 import { setState, setStateFade, setStateNoCameo, updateState, drawState, currentState, setTransitionHero, isTransitioning } from './engine/states.js';
 import { Rng, dailySeed } from './engine/rng.js';
 import { buildAllSprites } from './game/draw.js';
-import { RunState } from './game/run.js';
+import { RunState, applyFraming } from './game/run.js';
 import { BossState } from './game/boss.js';
 import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
@@ -57,6 +57,10 @@ import { Dev } from './dev/index.js';
 
 save.load();
 setShakeScale(save.settings.screenShake);
+// Resolve the camera framing before anything draws. RunState re-resolves every
+// frame, but menus, the hub and the tutorial all read the camera's resting zoom
+// straight off the module, so it has to be right from the first frame.
+applyFraming(save.settings);
 
 // Idle attract cycle: meet the cast, then two playable demos, then round again.
 const ATTRACT_CYCLE = ['cast', 'demo', 'demo'];
@@ -96,9 +100,26 @@ function routeDevUrl(goto, p) {
     return Number.isFinite(t) && t > 0 ? t : 0;
   };
   // ?startAt=N — start the stage at N% progress (1–99)
-  const startAtFrom = (params) => {
+  //
+  // ?finish or ?finish=N — the shortcut for working on the END of a stage.
+  // startAt on its own is not enough: the finish only arms once the mission is
+  // satisfied, so a run dropped at 97% just keeps going past where the marker
+  // should be. This pairs the two — drop in near the tape AND force the mission
+  // — so the flag, the plunger and the whole payoff are a page load away
+  // instead of a played stage away. N is seconds of run before the finish arms
+  // (default 5); it is converted to a percentage against the stage's own
+  // length, so 5 means five seconds on a short stage and on a long one alike.
+  const finishFrom = (params, stage) => {
+    if (!params.has('finish')) return 0;
+    const want = parseFloat(params.get('finish'));
+    const lead = Number.isFinite(want) && want > 0 ? want : 5;
+    const dur = (stage && stage.durationSec) || 330;
+    return Math.max(0.01, Math.min(0.99, 1 - lead / dur));
+  };
+  const startAtFrom = (params, stage) => {
     const pct = parseFloat(params.get('startAt'));
-    return Number.isFinite(pct) && pct > 0 && pct < 100 ? pct / 100 : 0;
+    if (Number.isFinite(pct) && pct > 0 && pct < 100) return pct / 100;
+    return finishFrom(params, stage);
   };
 
   // Some targets need a valid save slot. Seed one if none exists.
@@ -176,7 +197,8 @@ function routeDevUrl(goto, p) {
       if (stageId) {
         const stage = STAGE_BY_ID[stageId];
         if (stage && stage.cabinet === cabId) {
-          Flow.launchStage(cab, stage, [], undefined, heroFrom(p), true, invulnFrom(p), autoExitFrom(p), timeFrom(p), startAtFrom(p));
+          Flow.launchStage(cab, stage, [], undefined, heroFrom(p), true, invulnFrom(p), autoExitFrom(p),
+            timeFrom(p), startAtFrom(p, stage), p.has('finish'));
         } else {
           Flow.toTitle();
         }
@@ -293,7 +315,7 @@ const Flow = {
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
   // (Rng uses named streams), so pinning it makes a spawn pattern replayable.
-  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0) {
+  launchStage(cab, stage, corrupted, seedOverride, initialHeroId, announceBench = true, devInvuln = false, devAutoExit = false, devMaxTime = 0, devStartPercent = 0, devForceMission = false) {
     // You walk into the cabinet as yourself. The dev menu still overrides.
     initialHeroId = initialHeroId || Flow.heroId();
     levelOpenCue();
@@ -307,7 +329,7 @@ const Flow = {
       difficulty: save.slot.difficulty,
       corrupted,
       initialHeroId,
-      devInvuln, devAutoExit, devMaxTime, devStartPercent,
+      devInvuln, devAutoExit, devMaxTime, devStartPercent, devForceMission,
       // The bench-upgrade parade is a once-per-visit thing; a retry has already
       // seen it (same as the briefing it also skips).
       announceBench,
@@ -417,6 +439,8 @@ function boot() {
   //   ?fps  or  ?start=fps   → show FPS counter
   //   ?mute                  → start muted
   //   ?bench                 → sweep the density ladder and report FPS per rung
+  //   ?norewind              → stop recording rewind snapshots (see run.js), to
+  //                            test whether scattered dropped frames are GC
   // The same three switches are also reachable without an address bar, from the
   // hidden panel on the portrait screen — the only way to turn them on inside an
   // installed PWA, which is the only way iPhone runs this game at all.
@@ -627,13 +651,32 @@ function boot() {
         // and something else entirely if it is 2D, and the two are
         // indistinguishable without it.
         const dens = `${r2(rd.density)}X/${r2(rd.native)}X ${rendererBackend()}${flags ? ' ' + flags : ''}`;
+        // Dropped vsyncs, which the averaged FPS cannot show: a run that hitches
+        // three times a second still reads a flat 60. "!3/34" is three drops in
+        // the last second, worst frame 34ms. Shown only when there is something
+        // to report, so a clean run keeps the short readout it has now. The
+        // session totals ride along once anything has happened at all, because
+        // the interesting hitch is usually the one that already scrolled out of
+        // the window while you were looking at the screen instead of the corner.
+        const fh = frameHealth();
+        const hitchNow = fh.hitches ? `!${fh.hitches}/${fh.worstMs}` : '';
+        // "D95in80/159" — 95 frames lost across 80 separate hitches, deepest
+        // 159ms. Both numbers earn their place: frames lost is what the player
+        // saw, while the gap between the two says whether it was even judder
+        // (the counts converge) or a handful of deep lurches (they diverge),
+        // and those do not have the same cause.
+        const hitchSum = (fh.hitchTotal || fh.stallTotal)
+          ? `${fh.hitchTotal}${fh.hitchEvents && fh.hitchEvents !== fh.hitchTotal ? 'in' + fh.hitchEvents : ''}`
+            + `${fh.sessionWorstMs ? '/' + fh.sessionWorstMs : ''}`
+            + `${fh.stallTotal ? '+' + fh.stallTotal + 's' : ''}`
+          : '';
         if (showChromeFps) {
           // #chrome is its own canvas in WINDOW CSS PIXELS, and it sits BEHIND
           // #game — so this painter has to place itself against the margin
           // geometry. The 480x270 game-space painter below cannot be reused
           // here: its coordinates land inside the area #game covers, where the
           // readout is faithfully painted every frame and never once seen.
-          setChromeOverlay(`fps|${fps}|${dens}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
+          setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
             // A landscape phone's side pillar is narrow but tall. Short,
             // single-stat rows let the lettering grow instead of shrinking one
             // long density/backend string to fit. A top/bottom band has width
@@ -643,9 +686,14 @@ function boot() {
             const state = flags || 'AUTO';
             const density = `${r2(rd.density)}X`;
             const native = `${r2(rd.native)}X`;
+            // The drops row only appears once there are drops, so a clean run
+            // keeps the compact box — and on a phone the row arriving IS the
+            // signal, without having to read the number.
+            const drops = [hitchNow, hitchSum && 'D' + hitchSum].filter(Boolean).join(' ');
             const lines = side
               ? [`FPS ${fps}`, `D ${density}`, `N ${native}`, backend, state]
               : [`FPS ${fps}  ${backend} ${state}`, `D ${density}  N ${native}`];
+            if (drops) lines.splice(1, 0, drops);
             const pad = 8;
             const widest = Math.max(...lines.map((l) => textWidth(l, 1, 'ui')));
             // Respect both dimensions: side mode is width-bound, while a thin
@@ -668,13 +716,14 @@ function boot() {
             ctx.fillRect(pad - 4, top - 4, widest * s + 12, boxH);
             for (let i = 0; i < lines.length; i++) {
               const ink = i === 0 ? '#f4f1fa'
-                : lines[i] === backend ? '#8ef0c0'
-                  : '#b9c9e3';
+                : lines[i] === drops ? '#f6b45c'
+                  : lines[i] === backend ? '#8ef0c0'
+                    : '#b9c9e3';
               drawText(ctx, lines[i], pad, top + i * lineH, ink, s, 'ui');
             }
           });
         } else if (!visualizerTitlesVisible) {
-          const label = `FPS ${fps} ${dens}`;
+          const label = `FPS ${fps}${hitchNow ? ' ' + hitchNow : ''}${hitchSum ? ' D' + hitchSum : ''} ${dens}`;
           // Keep the diagnostic above the visualizer surface. Once its titles
           // are gone, use their bottom-centre berth in both orientations.
           drawFpsReadout = (ctx) => {

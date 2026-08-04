@@ -42,6 +42,12 @@ const suites = [
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
   // sibling because it needs no browser and runs in a blink.
   'tests/voice-source.js',
+  // And the third thing a preset file has to be true about: that every key in it has a
+  // control, and every control has a key behind it. Reads the engine's own `v.<key>`
+  // accesses and the panel's row definitions and requires the two to agree per play path —
+  // the drift it was written for had hidden eight GameSynth lengths, five tap arrays and
+  // the whole shape of `clapEngine`. Source reading, so it also runs in a blink.
+  'tests/pot-coverage.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never
@@ -77,8 +83,12 @@ const suites = [
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
+  'tests/toon-ink-scale.js',
   'tests/renderer.js',
   'tests/density.js',
+  'tests/frame-health.js',
+  'tests/camera-framing.js',
+  'tests/rewind-pooling.js',
   'tests/title-sign.js',
   'tests/sfx-routing.js',
   'tests/title-toasters.js',
@@ -155,17 +165,28 @@ const withBrowser = process.argv.includes('--all') || process.env.MASH_ALL === '
 const selected = suites.filter((s) => withBrowser || !browserSuites.has(s));
 const skipped = suites.filter((s) => !selected.includes(s));
 
+// Exit 2 is the one status that is neither pass nor fail: "passed, but something in
+// here wants a human to look at it". So far that is tests/null-test.js reporting a mix
+// that no longer matches its baseline — a deliberate edit, not a regression, but not
+// something to discover three weeks later either. Collected here and repeated at the
+// very end, because a warning halfway up a run this long is a warning nobody reads.
 let failed = 0;
+const warned = [];
 for (const suite of selected) {
   console.log(`\n=== ${suite} ===`);
   const r = spawnSync('node', [join(root, suite)], { stdio: 'inherit', env: { ...process.env, SEEDS: process.env.SEEDS || '100' } });
-  if (r.status !== 0) failed++;
+  if (r.status === 2) warned.push(suite);
+  else if (r.status !== 0) failed++;
 }
 // Said out loud, every time. A gate that silently covers less than it looks like it
 // covers is worse than a slow one.
 if (skipped.length) {
   console.log(`\nskipped ${skipped.length} browser suite(s): ${skipped.join(', ')}`);
   console.log('  run them with:  npm run test:all   (needs: npx playwright install chromium)');
+}
+if (warned.length) {
+  console.log(`\n${warned.length} SUITE(S) PASSED WITH WARNINGS: ${warned.join(', ')}`);
+  console.log('  scroll up to that suite for the detail — it did not fail the run.');
 }
 console.log(failed ? `\n${failed} SUITE(S) FAILED` : '\nALL SUITES PASSED');
 process.exit(failed ? 1 : 0);

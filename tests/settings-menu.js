@@ -21,7 +21,14 @@ const save = {
 const settings = new SettingsState({ save, onDone: () => { returned++; } });
 settings.enter();
 
-assert(settings.options().length === 11, 'settings contains ten options and DONE');
+// Counted relative to the list rather than pinned to a number: this menu gains
+// an option every so often, and a hard-coded 11 turns "we added a setting" into
+// three unrelated-looking failures about scrolling and pointer hit-testing. What
+// actually matters is that DONE is last and the window follows the cursor.
+const N = settings.options().length;
+assert(N >= 2, `settings has options and a DONE row (${N})`);
+assert(/DONE|BACK/.test(settings.options()[N - 1].label),
+  'the last row is the way out');
 assert(settings.visibleRows === 6 && settings.listStart === 0,
   'six full-size settings rows scroll above the fixed DONE row');
 
@@ -31,11 +38,13 @@ function down() {
   Input.release('down');
   Input.endFrame();
 }
-for (let i = 0; i < 9; i++) down();
-assert(settings.idx === 9 && settings.listStart === 4,
-  'keyboard navigation scrolls to the last setting');
+const lastSetting = N - 2;              // everything but DONE
+const restingStart = lastSetting - settings.visibleRows + 1;
+for (let i = 0; i < lastSetting; i++) down();
+assert(settings.idx === lastSetting && settings.listStart === restingStart,
+  `keyboard navigation scrolls to the last setting (idx ${settings.idx}, start ${settings.listStart})`);
 down();
-assert(settings.idx === 10 && settings.listStart === 4,
+assert(settings.idx === N - 1 && settings.listStart === restingStart,
   'DONE is reached without moving the settings window');
 
 const ctx = document.createElement('canvas').getContext('2d');
@@ -50,7 +59,8 @@ settings.update(1 / 60);
 Input.pointer.down = false;
 Input.release('pointer');
 Input.endFrame();
-assert(settings.idx === 4, 'pointer selection maps to the first visible setting');
+assert(settings.idx === restingStart,
+  `pointer selection maps to the first visible setting (${settings.idx})`);
 
 // Touch waits for release, so a swipe cannot toggle the row beneath the finger.
 const touchSettings = new SettingsState({ save, onDone: () => { returned++; } });
