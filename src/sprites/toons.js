@@ -249,29 +249,39 @@ const pal = (id) => (id === 'lorenzo' && PANTS.hex
 // drawHumanoid. Grumpos's near arm crosses his back-slung axe on the forward
 // half of the cycle; the axe wants re-staging to clear the swing, but the arm
 // sides are right as they stand.
+// limbStyle: which entry of LOCO drives the knee fold, the foot roll and the
+// hip depth. It is a per-hero dial on ONE shared painter, not a per-hero rig:
+// `snap` is the reviewed reference, and the two retreats from it exist because
+// a tunic and a battle skirt each have something hanging over the leg that the
+// full-amplitude version puts a knee through. Anyone without the field renders
+// exactly as they did before the styles landed.
 export const TOON_SPECS = {
-  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true },
-  gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true },
-  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true },
+  lorenzo: { rig: 'humanoid', head: 'cap', nose: true, mustache: true, straps: true, plumber: true, stout: true, armDepth: true, pants: true, limbStyle: 'snap' },
+  gnash: { rig: 'humanoid', head: 'jackal', mouth: 'smirk', tail: true, armDepth: true, limbStyle: 'snap' },
+  // `tunic` is the SHIPPED leg swing plus the new foot and jump — his gait was
+  // judged better before the port and reverted, and the rest of it kept. Not a
+  // cloth problem: the tunic escape measured 0.003u either way. His legs simply
+  // read better on the old swing.
+  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true, limbStyle: 'tunic' },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
   // died right on his own silhouette edge with no gun sticking out of him. The
   // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
   // own width to 2.5x. Held short of 1.4, where the reach starts to read lanky
   // against his short legs.
-  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3 },
+  b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' },
   mochi: { rig: 'pika' },
   chompo: { rig: 'disc' },
-  gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true },
+  gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' },
   // The serving line's own staff. Stout and short-armed on purpose: she is only
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
   // has to work is shoulders-bun-apron and nothing below it. `flat` mouth is the
   // whole performance — she is not pleased to see you and she is not displeased.
-  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true },
-  raymn: { rig: 'ray' },
+  dolores: { rig: 'humanoid', head: 'hairnet', mouth: 'flat', apron: true, stout: true, armDepth: true, hands: true, limbStyle: 'snap' },
+  raymn: { rig: 'ray', limbStyle: 'float' },
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
   // cycle. Face streak and torso stripe are one marking and share the sign.
-  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1 },
+  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy' },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -763,8 +773,8 @@ function joint(x1, y1, x2, y2, seg, dir, seg2 = seg) {
 // segments before the color changes, or the second segment's fat outline
 // pass paints over the first one's fill. Round caps (set once in drawToon)
 // blend the two widths at the joint.
-function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false) {
-  const [jx, jy] = joint(x1, y1, x2, y2, seg, dir);
+function limb2(ctx, x1, y1, x2, y2, seg, dir, w, fill, ow, w2 = w, flushRoot = false, seg2 = seg) {
+  const [jx, jy] = joint(x1, y1, x2, y2, seg, dir, seg2);
   // Round caps bulge HALF A STROKE WIDTH past the point they are drawn from.
   // At the wrist and the elbow that is the point — it rounds the hand and
   // blends the two bone widths. At the shoulder it is a ball of limb sticking
@@ -930,6 +940,46 @@ function floatingFoot(p, stride, lift) {
   return [Math.cos(th) * stride, -(airborne * airborne) * lift];
 }
 
+// The styled foot path (see LOCO). gaitFoot runs the foot on a symmetric
+// ellipse, so its lift peaks mid-air at full leg extension — the leg scissors
+// instead of the knee coming up. This splits the cycle into a CONTACT pass,
+// sole flat on the ground for `contact` of the cycle, and a RECOVERY arc whose
+// lift is skewed EARLY so the knee folds up under the hip. That skew is the
+// single change that makes the cycle read as a run rather than a stride.
+//
+// Third return value is ANKLE ROTATION, which gaitFoot has no concept of: the
+// shoes were un-rotated ellipses, so there was neither a heel strike nor a
+// toe-off. The (1 - e*e) on the toe term HOLDS the toe-off angle through early
+// recovery instead of unwinding it linearly, so the shoe stays angled back and
+// down as it leaves the ground.
+// The ankle's own curve, split out from the path the foot travels because a
+// hero can want one without the other: fernwick keeps his shipped leg swing
+// and takes only the heel strike and the toe-off. `contact` lines the roll up
+// with whichever path is underneath — 0.5 matches gaitFoot's stance, which
+// runs from q 0 to 0.5 with the sole flat.
+function ankleRoll(p, L) {
+  const q = (p % 1 + 1) % 1;
+  if (q < L.contact) {
+    const t = q / L.contact;
+    return -L.heel * (1 - t) + L.toe * t * t;
+  }
+  const t = (q - L.contact) / (1 - L.contact);
+  const e = t * t * (3 - 2 * t);
+  return L.toe * (1 - e * e) - L.heel * e * e;
+}
+function locoFoot(p, stride, lift, L) {
+  const q = (p % 1 + 1) % 1;
+  const cf = L.contact;
+  if (q < cf) return [stride * (1 - 2 * (q / cf)), 0, ankleRoll(q, L)];
+  const t = (q - cf) / (1 - cf);
+  const e = t * t * (3 - 2 * t);
+  return [
+    -stride + 2 * stride * e,
+    -Math.sin(Math.pow(t, L.skew) * Math.PI) * lift,
+    ankleRoll(q, L),
+  ];
+}
+
 // ---------------------------------------------------------------- faces
 const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7 };
 
@@ -971,6 +1021,119 @@ const STRIDE_RUN = 0.55;
 const STRIDE_RUN_HEAVY = 0.36;
 const LIFT_RUN = 0.5;
 const LIFT_RUN_HEAVY = 0.3;
+
+// ---- limb style ---------------------------------------------------------
+// The gait above says how FAR a foot travels. This says how it travels, and
+// it is the one place the shared humanoid painter is allowed to differ per
+// hero: knee fold, foot roll, hip depth, the shape of the bob. Every value is
+// a multiplier on, or an addition to, the shipped rig — a hero with no style
+// resolves to null and renders bit-identical to the old painter.
+//
+// Same one-switch rollback as the celebration and locomotion styles above:
+// set this to 'legacy' and the whole cast reverts, while the gallery can still
+// ask for a named style (or 'legacy') per pose for its A/B columns.
+export const ACTIVE_LIMB_STYLE = 'snap';
+const LOCO = {
+  // Lorenzo's, and the reference every other entry is a retreat from. These
+  // thirteen numbers are the reviewed spec verbatim; armLag / jumpSeg / ankle
+  // are the same spec's implicit values pulled out so the tiers below have
+  // somewhere to sit, and at these settings they reproduce it exactly.
+  snap: {
+    stride: 1.15, lift: 1, contact: 0.46, skew: 0.58, toe: 0.84, heel: 0.28,
+    seg: 1, hold: 0.66, holdAt: 0.35, bob: 1.15, bobShape: 1.5, knee: 1, legLen: 1, hipSplit: 0.035,
+    // thigh 0.46: chosen BY EYE against the bake-off strip, overruling the
+    // anatomical rung (0.54) the chair metric preferred. The short thigh keeps
+    // the visible upper-leg segment compact — the very first note against this
+    // port was the thigh reading long — and its high peak (111deg vs 97
+    // shipped) lands in the TUCK, where the shin trails back and the pose
+    // reads as knee-lift, not lap; the chair count itself stays on shipped's
+    // own 8/32. It is also the cleanest rung on the knee-under-shoe artifact:
+    // 1 frame at a third of shipped's depth. Push it no lower — 0.42 measured
+    // 10/32 with the thigh whipping to 126deg.
+    armLag: 0.125, jumpSeg: 0.46, ankle: 1, extend: 0.9, hipDepth: 2, thigh: 0.46,
+  },
+  // The first cut of the port, kept ONLY so the gallery can show what the
+  // geometry change fixed. Its stride, lift and leg length ran 34/38/12 percent
+  // over shipped while seg took 24 percent off the bones, so the extension cap
+  // had to lengthen the thigh 17.5% to stop the shin stretching — and a long
+  // thigh plus a wide hip split swung it past horizontal for six frames of
+  // eight, with the knee above the hip at 6/8. That is a figure sitting down.
+  snapWide: {
+    stride: 1.34, lift: 1.38, contact: 0.46, skew: 0.58, toe: 0.84, heel: 0.28,
+    seg: 0.76, hold: 0.66, bob: 1.15, bobShape: 1.5, knee: 1, legLen: 1.12, hipSplit: 0.052,
+    armLag: 0.125, jumpSeg: 0.46, ankle: 1, extend: 0.9, hipDepth: 1,
+  },
+  // Fernwick: the shipped leg swing, and only the shipped leg swing. Every
+  // gait term below is neutral, `path` sends him back down gaitFoot, and what
+  // he keeps from the port is the FOOT — a real heel strike and toe-off in
+  // place of a flat oval — plus the rebuilt jump and the arm timing, neither
+  // of which is a leg. contact 0.5 because that is where gaitFoot's stance
+  // ends; at the spec's 0.46 the roll would unwind against his own footfall.
+  tunic: {
+    stride: 1, lift: 1, contact: 0.6, skew: 0.58, toe: 0.72, heel: 0.24,
+    seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
+    armLag: 0.125, jumpSeg: 0.44, ankle: 1, extend: 1, hipDepth: 0, path: 'gait',
+  },
+  // Grumpos, and the measurement that decided it: his battle-skirt hem sits at
+  // -0.1800u and his shipped knee's lowest point across the cycle is -0.1800u.
+  // The leather was cut to that knee. Any change to his leg geometry either
+  // lengthens the bone and puts the joint THROUGH the hem — the exact failure
+  // his own skirt comment warns about — or keeps the bone short and stretches
+  // the shin instead. There is no third option and no room to trade, so he
+  // takes the same deal fernwick does: shipped legs, new foot, new jump. The
+  // roll is damped hardest of anyone because his boots are a slab, not a shoe.
+  heavy: {
+    stride: 1, lift: 1, contact: 0.6, skew: 0.7, toe: 0.46, heel: 0.2,
+    seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
+    armLag: 0.125, jumpSeg: 0.42, ankle: 0.66, extend: 1, hipDepth: 0, path: 'gait',
+  },
+  // Damped hard against the humanoids' 0.84: his shoe is nearly twice as long
+  // as theirs and floats free, so the same angle swings its far edge a
+  // measured 0.029u below the standing sole — a shoe cutting into the floor
+  // with no leg to explain why. At 0.42 the deepest frame sits within 0.008u
+  // of where he already stands.
+  float: {
+    contact: 0.46, skew: 0.58, toe: 0.42, heel: 0.18, ankle: 0.82,
+  },
+};
+// Every style is completed against a neutral before anything reads it. `float`
+// carries only the four terms a legless rig can consume, and limbStyle is a
+// POSE field as well as a spec one — so a gallery column, or any future caller,
+// can hand a partial style to the humanoid painter. A missing key there is not
+// a fallback, it is `legL * undefined`: NaN geometry, silently, on one hero.
+// The neutral is the shipped rig, so completing an entry can never move it.
+const LOCO_NEUTRAL = {
+  stride: 1, lift: 1, contact: 0.5, skew: 1, toe: 0, heel: 0,
+  seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
+  armLag: 0, jumpSeg: 0.46, ankle: 1, extend: 1, hipDepth: 0, lean: 1, holdAt: 0, thigh: 0.5, path: 'loco',
+};
+for (const key of Object.keys(LOCO)) LOCO[key] = Object.freeze({ ...LOCO_NEUTRAL, ...LOCO[key] });
+// null for anyone without a style, which is what gates every branch below.
+// The pose wins over the spec so a gallery column can ask for 'legacy'.
+const locoStyle = (spec, pose) => {
+  const key = (pose && pose.limbStyle)
+    || (ACTIVE_LIMB_STYLE === 'legacy' ? null : (spec && spec.limbStyle));
+  return (key && LOCO[key]) || null;
+};
+// Odd-symmetric power curve. k < 1 pushes a value toward its extremes, so a
+// clock shaped by it lingers at the ends and snaps through the middle.
+const shaped = (v, k) => (k === 1 ? v : (v < 0 ? -1 : 1) * Math.pow(Math.abs(v), k));
+// The styled gait clock. `hold` shapes the cycle about its midpoint, so the
+// foot sits at the front of the stride and whips through the swing rather than
+// sweeping round at a constant rate. Both legs go through the same map, so
+// they stay exact half-cycle copies of each other.
+const gaitPhase = (p, L) => {
+  if (!L || L.hold === 1) return p;
+  // holdAt rotates WHERE the clock lingers. The power curve dwells at its two
+  // extremes and whips through its middle, and with no offset the dwell lands
+  // on the contact onset — which is the one pose in the cycle where the thigh
+  // is up with the shin plumb under it, i.e. a figure in a chair. Anchored at
+  // 0.25 the dwell moves to mid-stance and the mid-recovery tuck, both real
+  // running shapes, and the snap happens THROUGH the plant instead of on it.
+  const a = L.holdAt || 0;
+  const q = ((p - a) % 1 + 1) % 1;
+  return ((shaped(q * 2 - 1, L.hold) + 1) / 2 + a) % 1;
+};
 
 // ---- squash and stretch -------------------------------------------------
 // Velocity stretches the moving figure, but much less than the legacy 18%
@@ -1329,14 +1492,15 @@ function expressionFor(id, pose = {}) {
   const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate' || pose.stomp || pose.roll || pose.float;
   // The pole ride is the moment the stage is WON, and the face is the only part
   // of the hero that can say so — the body is busy holding on. It borrows the
-  // JUMP pose to hang off, though, and the jump face is `surprise`: the whole
-  // cast rode the finish marker down wearing the expression of someone who has
-  // just stepped off a ledge. Clinging takes the celebration face instead, held
-  // for the length of the slide.
+  // JUMP pose to hang off, though, and an ordinary jump wears one of a handful
+  // of jump faces (see the `jf` lookup below). Clinging overrides all of that
+  // with the celebration face instead, held for the length of the slide.
   const clinging = clingAmount(pose) > 0.35;
   // Face-only moods let a running cameo react without switching its body into
   // a celebration animation. Production poses do not set these flags.
-  const joy = pose.kind === 'celebrate' || !!pose.faceJoy || clinging;
+  // jumpFace 1 ("excited") also lands here — see the `jf` variant lookup below.
+  const joy = pose.kind === 'celebrate' || !!pose.faceJoy || clinging
+    || (pose.kind === 'jump' && !pose.stomp && !clinging && (pose.jumpFace | 0) === 1);
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
@@ -1403,6 +1567,11 @@ function expressionFor(id, pose = {}) {
   const annoyedAmt = Math.max(0, Math.min(1, +pose.annoyed || 0));
   const annoyed = annoyedAmt > 0.02;
   if (annoyed) browEase = annoyedAmt;
+  // Which jump face: 0 surprised, 1 excited, 2 determined, 3 startled, 4 neutral.
+  // The caller rolls one per hop so the same jump doesn't always land on the
+  // same face — see run.js's rollJumpFace. Excluded on the ground, mid-stomp,
+  // and while clinging (the pole ride keeps its own joyful face below).
+  const jf = (pose.kind === 'jump' && !pose.stomp && !clinging) ? (pose.jumpFace | 0) : -1;
   return {
     // A blink through the call or the glare would eat it, so those win.
     blink: !active && !calling && !annoyed && blinkPhase < (pose.menu ? 0.2 : 0.13),
@@ -1419,11 +1588,12 @@ function expressionFor(id, pose = {}) {
     // Carried so downstream marks can be keyed to the hero, not just the mood —
     // BROW_L_SCALE is the one that needs it.
     id,
-    focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll,
-    surprise: !clinging && ((pose.kind === 'jump' && !pose.stomp) || !!pose.faceSurprised),
-    // Opt-in startled brow. Nothing in the game sets it; see the branch it
-    // unlocks in drawEyes for why the surprise face needed its own shape.
-    browRaise: !!pose.browRaise,
+    focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll || jf === 2,
+    surprise: !clinging && (jf === 0 || jf === 3 || !!pose.faceSurprised),
+    // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
+    // jump face rolled the startled variant; see the branch it unlocks in
+    // drawEyes for why the surprise face needed its own shape.
+    browRaise: !!pose.browRaise || jf === 3,
     joy,
     cheer,
     // The narrowest window in the routine: a hit of the BIG move, held. The
@@ -2448,6 +2618,24 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
   const heavy = !!spec.heavy;
+  // This hero's limb style, or null for the shipped painter. Resolved up here
+  // rather than beside the gait because legL reads it, and legL is a body
+  // proportion that every pose is measured against — not a run-only term.
+  // pose.gaitTune lets the gallery sweep any single dial over the resolved
+  // style. Only keys the style already owns are taken, coerced through Number
+  // and dropped when non-finite — a garbage override must degrade to the
+  // table's own value, never reach the IK as NaN.
+  const L = (() => {
+    const base = locoStyle(spec, pose);
+    if (!base || !pose.gaitTune || typeof pose.gaitTune !== 'object') return base;
+    const t = { ...base };
+    for (const k of Object.keys(base)) {
+      if (pose.gaitTune[k] == null || typeof base[k] !== 'number') continue;
+      const v = Number(pose.gaitTune[k]);
+      if (Number.isFinite(v)) t[k] = v;
+    }
+    return t;
+  })();
   const cling = clingSettle(pose), clingStyle = CLING[id] || CLING_DEFAULT;
   const cm = pose.kind === 'celebrate'
     ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose))
@@ -2496,7 +2684,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // waist as a fraction of it, so <1 is the inverted taper that reads as
   // muscle where a straight barrel reads as belly.
   const waistHalf = torsoHalf * (spec.taper || 1) * (spec.waistScale || 1);
-  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u * (spec.legLength || 1);
+  // legLen is the one styled term that is NOT gated on the run: a hero's legs
+  // are the same length standing, ducking and airborne, so lengthening them
+  // for the gait alone would change his proportions the moment he stopped.
+  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u * (spec.legLength || 1) * (L ? L.legLen : 1);
   // Front-on hip half-separation, and how far outboard of it the crouch plants
   // its feet. Both in u; the crouch's leg length is solved against them.
   const HIP_HALF = 0.095;
@@ -2578,6 +2769,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const clung = clingAmount(pose) > 0.5;
   const run = !clung && pose.kind === 'run';
   const walk = run && !!pose.walk;
+  // A WALK is not a slow run: it keeps a foot on the ground at all times, and
+  // locoFoot's recovery arc is a flight phase. The spec is a run spec, and the
+  // one caller that sets the flag — the grumpos walk study — has named beats
+  // (contact / down / pass / up) that a re-shaped clock would slide off. So
+  // the gait terms below leave walks exactly as they were; only legLen, which
+  // is a body proportion rather than a gait, still applies.
+  const styledGait = !!L && run && !walk;
   const jump = !clung && pose.kind === 'jump';
   const duck = !clung && pose.kind === 'duck';
   const enhancedMotion = usesEnhancedLocomotion(pose);
@@ -2600,7 +2798,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // here with standing and the victory hop — only running and jumping are
   // profile gaits with one leg crossing the body.
   const frontLegs = stand || duck;
-  const bob = run ? -Math.abs(Math.cos(ph)) * (walk ? 0.014 : 0.03) * u
+  // A pure sine spends as long at the top of the bob as at the bottom, which
+  // is a float, not a footfall. bobShape > 1 sharpens the dip so the body
+  // drops onto each contact and rides up between them.
+  const bob = run ? -shaped(Math.abs(Math.cos(ph)), styledGait ? L.bobShape : 1) * (walk ? 0.014 : 0.03) * u * (styledGait ? L.bob : 1)
     : cm ? Math.sin((pose.time || 0) * 6 + 1.2) * 0.016 * u
     : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.012 * u : 0;
 
@@ -2654,7 +2855,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // receding one it read as slung off the bottom of the shoulder. Run only —
   // the standing pose's deltoid is already the shape the others are chasing.
   const armYF = armY - (depthArms && run && !turned ? (heavy ? 0.018 : 0.03) : 0) * u;
-  const leanX = run ? (walk ? 0.018 : 0.05) * u
+  const leanX = run ? (walk ? 0.018 : 0.05) * u * (styledGait ? L.lean : 1)
     : duck && enhancedMotion ? 0.025 * u : 0; // crouch puts weight over the toes
   // A yawed torso has a small shoulder-to-hip offset; the top of the body is
   // no longer a perfectly flat front-facing slab over the feet.
@@ -2679,15 +2880,64 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // move the bulge, because it points across the leg rather than along it.
   let legSeg = (duck ? 0.2 : heavy ? 0.42 : spec.tunic ? 0.44 : 0.56) * legL + 0.02 * u;
   if (walk && heavy) legSeg = 0.4 * legL + 0.005 * u;
-  const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN);
-  const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN);
+  const stride = legL * (walk ? (heavy ? 0.23 : 0.32) : heavy ? STRIDE_RUN_HEAVY : STRIDE_RUN)
+    * (styledGait ? L.stride : 1);
+  const lift = legL * (walk ? (heavy ? 0.15 : 0.22) : heavy ? LIFT_RUN_HEAVY : LIFT_RUN)
+    * (styledGait ? L.lift : 1);
   let footF, footB, kneeF = 1, kneeB = 1;
+  // Ankle rotation, in radians, positive = toe down. The shoes were un-rotated
+  // ellipses before the styles landed, so a hero without one keeps 0 here and
+  // draws exactly the same flat oval he always did.
+  let ankleF = 0, ankleB = 0;
   if (run) {
-    footF = gaitFoot(pose.phase || 0, stride, lift);
-    footB = gaitFoot((pose.phase || 0) + 0.5, stride, lift);
+    if (styledGait) {
+      // Shorter bones. The IK's knee bulge is the slack it has to throw out
+      // sideways, so a leg solved on two long segments hinges in the middle
+      // instead of folding — the joint has to read as a KNEE at 70px, and it
+      // only does that if there is a real angle at it.
+      legSeg *= L.seg;
+      kneeF = L.knee; kneeB = L.knee;
+      const pF = pose.phase || 0, pB = pF + 0.5;
+      if (L.path === 'gait') {
+        // Shipped swing, new foot. gaitFoot's stance runs q 0 to 0.5 with the
+        // sole flat, which is why this style's `contact` is 0.5: the roll has
+        // to unwind against the footfall it is actually standing on.
+        footF = gaitFoot(pF, stride, lift);
+        footB = gaitFoot(pB, stride, lift);
+        ankleF = ankleRoll(pF, L) * L.ankle;
+        ankleB = ankleRoll(pB, L) * L.ankle;
+      } else {
+        const fF = locoFoot(gaitPhase(pF, L), stride, lift, L);
+        const fB = locoFoot(gaitPhase(pB, L), stride, lift, L);
+        footF = [fF[0], fF[1]]; ankleF = fF[2] * L.ankle;
+        footB = [fB[0], fB[1]]; ankleB = fB[2] * L.ankle;
+      }
+    } else {
+      footF = gaitFoot(pose.phase || 0, stride, lift);
+      footB = gaitFoot((pose.phase || 0) + 0.5, stride, lift);
+    }
   } else if (jump) {
     if (pose.stomp) { footF = [0.06 * u, hipY + legL * 0.95]; footB = [-0.06 * u, hipY + legL * 0.95]; kneeB = -1; }
-    else if (enhancedMotion) {
+    else if (L) {
+      // The shipped jump holds ONE symmetric pose for the whole arc, which at
+      // any speed reads as a cut-out being lifted. Driven off the same
+      // rise/apex/fall terms it gets three beats instead: rise puts the front
+      // knee up with the rear leg extended back and the toe pointed, the apex
+      // tucks both, and the fall reaches the front leg down and forward with
+      // the heel dropping to meet the ground.
+      footF = [
+        (0.1 + 0.05 * airApex + 0.05 * airFall) * u,
+        hipY + legL * (0.3 + 0.1 * airRise - 0.06 * airApex + 0.46 * airFall),
+      ];
+      footB = [
+        (-0.2 - 0.04 * airApex + 0.04 * airFall) * u,
+        hipY + legL * (0.86 + 0.1 * airRise - 0.2 * airApex + 0.06 * airFall),
+      ];
+      ankleF = (0.5 * airRise + 0.4 * airApex - 0.55 * airFall) * L.ankle;
+      ankleB = (0.3 + 0.25 * airApex) * L.ankle;
+      // Short enough that the tuck FOLDS rather than hinging.
+      legSeg = L.jumpSeg * legL + 0.02 * u;
+    } else if (enhancedMotion) {
       // Launch trails one leg, the apex tucks both knees, and descent opens the
       // feet into a landing stance. The targets interpolate continuously from
       // velocity, so reversing at the apex cannot pop a knee between sides.
@@ -2768,12 +3018,35 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const tunicRake = spec.tunic && (run || jump) ? 0.03 * u : 0;
   const hipRun = (turned ? torsoCx : leanX * 0.3) - tunicRake;
   const hipSeparation = (walk ? 0.065 : 0.07) * u * turnDepth;
-  const hipNearX = hipRun + nearSign * hipSeparation;
-  const hipFarX = hipRun - nearSign * hipSeparation;
+  // Splitting the hip roots gives the pelvis mass the shipped rig lacks, where
+  // both thighs root on one centre line. But this is x, and in a PROFILE run x
+  // is the direction of travel — so the split puts one hip in FRONT of the
+  // other rather than out to the side, and past a point it drags the thigh
+  // toward horizontal and the figure reads as sitting. Measured on lorenzo the
+  // limit is real: the spec's 0.052 reads as sitting. 0.035 is where it landed,
+  // judged against renders — below it the leg roots too near the centre line to
+  // read as hanging off a hip, which is the whole reason the dial exists. What
+  // makes 0.035 affordable is the pair it ships with: the dwell anchored at
+  // 0.35 and the lift back at shipped's own 1.0 take the chair count BELOW
+  // shipped (6/32 vs 8/32) and the knee-under-shoe artifact to a third of
+  // shipped's depth, so the wider root spends its budget where it shows. See
+  // the pelvis bake-off in the gallery for the rungs either side.
+  // Both pelvis terms take a POSE override, same as armLag, so the gallery can
+  // sweep them without cloning the style table five times over.
+  const hipSplitAmt = pose.hipSplit == null ? L && L.hipSplit : Number(pose.hipSplit) || 0;
+  const hipDepthAmt = pose.hipDepth == null ? L && L.hipDepth : Number(pose.hipDepth) || 0;
+  const hipSplit = styledGait ? hipSplitAmt * u : 0;
+  const hipNearX = hipRun + nearSign * hipSeparation + sideF * hipSplit;
+  const hipFarX = hipRun - nearSign * hipSeparation + sideB * hipSplit;
   // Running thighs leave from the underside of the pelvis. Starting them at
   // hipY put their round caps over the belly, creating the giant crotch ball
   // exposed by the no-skirt anatomy view.
   const legRootY = turned && run ? hipY + 0.052 * u : hipY;
+  // ...and the pelvis has DEPTH as well as width: the near hip sits a little
+  // low and forward of the far one, which is the same receding-side cue the
+  // arms and torso already carry, finally reaching the legs.
+  const legRootYF = legRootY + (styledGait ? 0.006 * u * hipDepthAmt : 0);
+  const legRootYB = legRootY + (styledGait ? -0.014 * u * hipDepthAmt : 0);
   if (turned && run) {
     const footSpread = nearSign * turnDepth * (walk ? 0.006 : 0.04) * u;
     footF = [hipNearX + footF[0] * (walk ? 0.92 : 0.84) + footSpread, footF[1]];
@@ -2782,6 +3055,31 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // made one leg bow sideways merely because it was the receding leg.
     kneeF = 1;
     kneeB = 1;
+  }
+
+  // A running leg may straighten. It may not run out of leg.
+  //
+  // Past full extension the solver does not merely straighten: joint() clamps
+  // its along-axis term at `seg`, so the thigh holds its length and the SHIN
+  // stretches to cover the rest. The first cut of this port asked for 8% more
+  // span than two segments could reach and got exactly that — a rubber leg,
+  // dead straight, on three frames of eight.
+  //
+  // The amplitudes have since been pulled back to where the shipped bones can
+  // span them, so at the tabled values this never fires. It stays as the guard
+  // that made the diagnosis: raise `stride`, `lift` or `legLen` again and the
+  // bone grows to match instead of the shin quietly tearing. Sampled across the
+  // WHOLE cycle rather than this frame, or the correction would itself pump the
+  // bone longer and shorter as the leg swung.
+  if (styledGait && L.extend < 1) {
+    const span = (foot, hx, hy) => Math.hypot(foot[0] - hx, (foot[1] - ankleLift) - hy);
+    let worst = 0;
+    for (let i = 0; i < 16; i++) {
+      const q = i / 16;
+      const a = L.path === 'gait' ? gaitFoot(q, stride, lift) : locoFoot(gaitPhase(q, L), stride, lift, L);
+      worst = Math.max(worst, span(a, hipNearX, legRootYF), span(a, hipFarX, legRootYB));
+    }
+    legSeg = Math.max(legSeg, worst / (2 * L.extend));
   }
 
   // arms: bent at the elbow, counter-swinging the legs while running
@@ -3184,7 +3482,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
     handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
   } else if (run) {
-    const sw = -s; // opposite phase to the legs
+    // Opposite phase to the legs — but only roughly, and that is the point.
+    // The arms sample -sin(ph) while the foot's contact pass starts at
+    // +stride, a cosine, which leaves them a quarter cycle apart. armLag
+    // shifts the arm sample back toward opposition: 0 reproduces the shipped
+    // timing exactly, 0.25 is locked opposition, and an eighth lands close to
+    // it without the arms hitting the beat mechanically.
+    const armLag = styledGait ? (pose.armLag == null ? Number(L.armLag) || 0 : Number(pose.armLag) || 0) : 0;
+    const sw = armLag ? -Math.sin(ph - armLag * Math.PI * 2) : -s;
+    // One frame of the eight — 3/8, the deepest part of the near arm's
+    // backswing — sat with the elbow more bent than either neighbour. Reaching
+    // a little further from the shoulder opens the joint. The window is a
+    // raised cosine two frames wide either side, so 2/8 and 4/8 take half the
+    // correction and nothing pops on the frames outside it.
+    let openF = 0;
+    if (styledGait) {
+      let dp = ((pose.phase || 0) - 0.375) % 1;
+      if (dp > 0.5) dp -= 1;
+      if (dp < -0.5) dp += 1;
+      if (Math.abs(dp) < 0.25) openF = 0.5 + 0.5 * Math.cos(dp * Math.PI * 4);
+    }
     if (turned) {
       // A three-quarter runner swings along the direction of travel, not out
       // sideways from a front-facing chest. Keep each hand inside the arm's
@@ -3240,7 +3557,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // wing. A steeper chord turns that perpendicular outward instead, and the
       // elbow stays under the shoulder for the entire cycle.
       const hang = depthArms ? 0.72 : 0.5;
-      handF = [shF + lead + swing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
+      handF = [shF + lead + swing * sw, armY + armL * (hang + 0.075 * openF) - 0.04 * u * Math.abs(sw)];
       // The back arm swings shallower than the front: it lives behind the torso,
       // so its only visible contribution is the hand clearing the body's back
       // edge on the deep swing — which reads as a lump stuck to his back, not as
@@ -3262,7 +3579,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       handB = [shB + farLead - farSwing * sw, armY + armL * hang - 0.04 * u * Math.abs(sw)];
     }
   } else if (jump) {
-    if (enhancedMotion && !pose.stomp) {
+    if (L && !pose.stomp) {
+      // Asymmetric and keyed to the arc, like the legs: the forward-side arm
+      // drives up and the trailing one folds back as its counterweight.
+      // Anchored off sideF/sideB rather than raw screen angles — signed the
+      // wrong way this mirrors the whole pose and parks the raised hand on his
+      // own belly.
+      const total = (armSeg + armSegF) * (0.9 - 0.05 * airApex);
+      handB = [
+        shB + sideB * total * (0.72 + 0.1 * airApex - 0.24 * airFall),
+        armY - total * (0.5 + 0.25 * airApex - 0.95 * airFall),
+      ];
+      elbB = -sideB;
+      handF = [
+        shF + sideF * total * (0.4 + 0.12 * airFall),
+        armYF + total * (0.72 - 0.12 * airApex),
+      ];
+      elbF = sideF;
+    } else if (enhancedMotion && !pose.stomp) {
       // Arms counter the legs on launch, float higher through the apex, then
       // widen for balance on descent instead of freezing in one cheer pose.
       handF = reach(shF, armY, [
@@ -3506,9 +3840,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // Clinging comes through here as standing, so it takes the front-on branch
   // for free — which is also what the celebration it hands off to uses, so the
   // hero does not change bodies on the last frame of the slide.
+  // hipNearX/hipFarX both collapse to hipRun when neither the turn nor a limb
+  // style has separated them, so the unstyled front-on rig lands on exactly
+  // the shared centre line it always used.
   const hipAt = (side) => (frontLegs
     ? side * HIP_HALF * u
-    : turned ? (side > 0 ? hipNearX : hipFarX) : hipRun);
+    : side > 0 ? hipNearX : hipFarX);
   // In profile the shoe shifts toe-ward so the ankle sits back near the heel.
   const footDx = frontLegs ? 0 : 0.025 * u;
   // Shoe proportions: clearly longer than tall so it reads as a shoe, not a
@@ -3517,10 +3854,46 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const capR = legW * 0.5;
   const footRx = Math.max(frontLegs ? 0.075 * u : 0.095 * u, capR * 1.5);
   const footRy = capR + 0.008 * u;
+  // The rolled shoe is a RIGID FOOT: it pivots about the ankle the way a real
+  // shoe does, so the shoe's offset from the leg's endpoint rotates with it
+  // and the leg's round end cap stays buried at every angle — burial is the
+  // same geometric relationship the unrotated design always had. (Rotating
+  // the ellipse in place about its own centre uncovered the cap at the heel:
+  // a rotated ellipse's lower edge climbs on the ankle side, which is what
+  // put a leg-coloured blob under the shoe on the toe-off frames.)
+  //
+  // The ground CLAMP then keeps the pivoted shoe's lowest point from passing
+  // the line the flat sole sat on — a toe-down roll on the planted foot would
+  // otherwise drive the toe through the floor. A clamp and not a lift: it
+  // engages only when the rolled shoe would actually cross the sole line, so
+  // a foot in the air is left exactly on its authored path. (Lifting every
+  // rolled foot unconditionally pushed the tucked swing foot 0.04u closer to
+  // its own hip, handed the IK that much more slack, and swung the KNEE down
+  // below the lifted shoe — a leg-coloured blob under the heel, worst on the
+  // toe-off frames.) Zero at rot 0, so the unstyled cast renders untouched.
+  const shoeGeom = (rot) => {
+    const c = Math.cos(rot), sn = Math.sin(rot);
+    return {
+      dx: footDx * c - 0.01 * u * sn,
+      dy: footDx * sn + 0.01 * u * c,
+      hyp: Math.hypot(footRx * sn, footRy * c),
+    };
+  };
+  const shoeF = shoeGeom(ankleF), shoeB = shoeGeom(ankleB);
+  footF[1] = Math.min(footF[1], 0.01 * u + footRy - shoeF.dy - shoeF.hyp);
+  footB[1] = Math.min(footB[1], 0.01 * u + footRy - shoeB.dy - shoeB.hyp);
+  // Unequal leg bones for the styled gait: `thigh` is the thigh's share of
+  // the two-bone leg, 0.5 the shipped 1:1 split. The TOTAL is held constant,
+  // so the extension guard's reach arithmetic still stands; only where the
+  // knee sits along the leg moves. Run and the styled jump only — the crouch
+  // and stand solve their own segment against their own geometry.
+  const legBias = L && (styledGait || (jump && !pose.stomp)) ? L.thigh : 0.5;
+  const thighSeg = legSeg * 2 * legBias;
+  const shinSeg = legSeg * 2 - thighSeg;
 
   const drawFrontLeg = () => {
     const hipX = hipAt(1);
-    limb2(ctx, hipX, legRootY, footF[0], footF[1] - ankleLift, legSeg, kneeF, legWF, p.p, ow);
+    limb2(ctx, hipX, legRootYF, footF[0], footF[1] - ankleLift, thighSeg, kneeF, legWF, p.p, ow, legWF, false, shinSeg);
     if (turned && id !== 'grumpos') {
       const rx = legWF * 0.72, ry = legWF * 0.58;
       ctx.fillStyle = p.p;
@@ -3538,7 +3911,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       else ctx.ellipse(hipX, legRootY, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
     }
-    outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + footDx, footF[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+    outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) => c.ellipse(footF[0] + shoeF.dx, footF[1] - ankleLift + shoeF.dy, footRx, footRy, ankleF, 0, Math.PI * 2));
   };
   // How far the near arm seats INBOARD and BELOW the raw shoulder point. It is
   // applied as a translate around the whole limb — root, hand, glove and
@@ -3882,8 +4255,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // separate prop bolted to his chest rather than an arm attached to him.
     if (stand && !raisedArmStudyFront) drawFrontArm();
   }
-  limb2(ctx, hipAt(-1), legRootY, footB[0], footB[1] - ankleLift, legSeg, kneeB, legWB, recede(p.p, farShade), ow);
-  outlined(ctx, recede(footFill, farShade), hair(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + footDx, footB[1] - 0.01 * u, footRx, footRy, 0, 0, Math.PI * 2));
+  limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(p.p, farShade), ow, legWB, false, shinSeg);
+  outlined(ctx, recede(footFill, farShade), hair(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + shoeB.dx, footB[1] - ankleLift + shoeB.dy, footRx, footRy, ankleB, 0, Math.PI * 2));
   if (frontLegs) drawFrontLeg();
 
   // Grumpos needs an actual pelvis between torso and thighs. Previously each
@@ -5322,8 +5695,29 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   const clingSpread = 1 - 0.45 * clingRay;   // ankles draw together on the pole
   const backShoeX = -shoeSpread * clingSpread * u + footB[0], backShoeY = -0.04 * u + footB[1] - shoeLift;
   const frontShoeX = shoeSpread * clingSpread * u + footF[0], frontShoeY = -0.04 * u + footF[1] - shoeLift;
-  const backTilt = -0.08 - (run ? Math.sin(ph) * 0.1 : 0);
-  const frontTilt = 0.08 + (run ? Math.sin(ph) * 0.1 : 0);
+  // The one line of the humanoid limb spec that transfers to a rig with no
+  // legs. Raymn cannot fold a knee, split a pelvis or lengthen a thigh, but he
+  // already tilts his shoes — so that tilt becomes a real heel-strike and
+  // toe-off curve instead of a raw sine, which is the same read the rest of
+  // the cast now gets from locoFoot's third return. The PATH stays
+  // floatingFoot: locoFoot changes speed abruptly at the toe-off, and on a
+  // shoe with nothing attached to it that is a visible hitch.
+  const rayL = run ? locoStyle(TOON_SPECS[id], pose) : null;
+  // Each shoe rolls off its OWN phase here, where the shipped pair shared one
+  // sine mirrored between them — two shoes half a cycle apart in space but
+  // tilting as each other's reflection.
+  const shoeRoll = (phase) => {
+    const q = (phase % 1 + 1) % 1;
+    if (q < rayL.contact) {
+      const t = q / rayL.contact;
+      return (-rayL.heel * (1 - t) + rayL.toe * t * t) * rayL.ankle;
+    }
+    const t = (q - rayL.contact) / (1 - rayL.contact);
+    const e = t * t * (3 - 2 * t);
+    return (rayL.toe * (1 - e * e) - rayL.heel * e * e) * rayL.ankle;
+  };
+  const backTilt = -0.08 + (rayL ? shoeRoll((pose.phase || 0) + 0.5) : -(run ? Math.sin(ph) * 0.1 : 0));
+  const frontTilt = 0.08 + (rayL ? shoeRoll(pose.phase || 0) : (run ? Math.sin(ph) * 0.1 : 0));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(backShoeX - 0.015 * u, backShoeY - 0.04 * u, 0.07 * u, 0.04 * u, backTilt, 0, Math.PI * 2));
   outlined(ctx, p.f, ow, (c) => c.ellipse(backShoeX, backShoeY, 0.125 * u, 0.063 * u, backTilt, 0, Math.PI * 2));
   outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(frontShoeX - 0.015 * u, frontShoeY - 0.04 * u, 0.07 * u, 0.04 * u, frontTilt, 0, Math.PI * 2));

@@ -31,6 +31,7 @@
 import * as Tone from 'tone';
 import { LANES } from './lanes.js';
 import { createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
+import { EFFECT_PRESETS } from '../data/effect-presets.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
 export const gainToDb = (g) => 20 * Math.log10(Math.max(1e-6, g));
@@ -53,14 +54,28 @@ const EQ_HIGH_HZ = 4000;
 export const AUXES = [
   // defaultSend 0, like every other aux: a channel is on the delay because its mix
   // says so, not because of the family it belongs to.
-  { id: 'delay', name: 'Delay', type: 'delay', legacy: true, defaultSend: 0 },
-  { id: 'reverb', name: 'Reverb', type: 'reverb', defaultSend: 0 },
+  { id: 'delay', name: 'Delay', type: 'delay', legacy: true, defaultSend: 0,
+    presetParams: ['division', 'feedback', 'tone'] },
+  { id: 'reverb', name: 'Reverb', type: 'reverb', defaultSend: 0,
+    presetParams: ['decay', 'preDelay'] },
 ];
 
-export const AUX_DEFAULTS = {
+const AUX_FALLBACK_DEFAULTS = {
   delay: { division: 0.75, feedback: 0.35, tone: 4500, level: 1, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 } },
   reverb: { decay: 2.2, preDelay: 0.012, level: 1, pan: 0, mute: false, eq: { low: 0, mid: 0, high: 0 } },
 };
+
+// Return presets own only the effect-local controls. Routing state remains a mix
+// concern, so it stays on the fallback object and is never written by the preset
+// authoring route.
+export const AUX_DEFAULTS = Object.fromEntries(Object.entries(AUX_FALLBACK_DEFAULTS).map(([id, base]) => {
+  const saved = EFFECT_PRESETS.returns?.[id]?.default || {};
+  const keys = new Set(AUXES.find((a) => a.id === id)?.presetParams || []);
+  const local = Object.fromEntries([...keys]
+    .filter((key) => Object.prototype.hasOwnProperty.call(saved, key))
+    .map((key) => [key, saved[key]]));
+  return [id, { ...base, ...local }];
+}));
 
 const defaultSends = () => Object.fromEntries(AUXES.map((a) => [a.id, a.defaultSend]));
 
@@ -791,9 +806,22 @@ export function createMixer(ctx, {
       }
       return null;
     },
-    /** Retune every tempo-synced aux after a bank change. */
+    /** Retune every tempo-synced aux and insert after a bank or tempo change. */
     retune(bpm) {
       for (const a of auxes.values()) if (a.engine) a.engine.set(bpm, a.state);
+      // Native modulation effects own their LFO sources rather than delegating to
+      // Tone.Transport. Re-apply their current state with the new bpm so a synced
+      // Chorus 2, Flanger, or Ring Mod changes rate without rebuilding its chain.
+      const slots = [
+        ...[...strips.values()].map((s) => s._slot),
+        ...[...auxes.values()].map((a) => a.slot),
+        masterSlot, treatSlot,
+      ].filter(Boolean);
+      for (const slot of slots) {
+        for (const link of slot.chain || []) {
+          if (link.def?.params?.includes('rateSync')) link.set({}, bpm);
+        }
+      }
     },
 
     // ---- scheduled moves, for presentation variants --------------------------
@@ -865,6 +893,27 @@ export function createMixer(ctx, {
       const link = slot?.chain?.[index];
       if (!link) throw new Error(`mixer: no effect at ${target}[${index}] to ramp`);
       link.setAt(params, when, seconds, bpm);
+    },
+
+    /**
+     * Give effects that own a rhythmic envelope the sequencer's exact clock. This is
+     * deliberately a scheduler hook rather than a wall-clock timer: offline renders
+     * walk scheduleStep() ahead of startRendering(), and live playback already has the
+     * authoritative audio time in `nextTime`.
+     */
+    scheduleEffects(step, when, sixteenth, bpm = 120) {
+      const slots = [
+        ...[...strips.values()].map((s) => s._slot),
+        ...[...auxes.values()].map((a) => a.slot),
+        masterSlot, treatSlot,
+      ].filter(Boolean);
+      for (const slot of slots) {
+        for (const link of slot.chain || []) {
+          if (typeof link.scheduleRhythm === 'function') {
+            link.scheduleRhythm(step, when, sixteenth, bpm);
+          }
+        }
+      }
     },
 
     /**

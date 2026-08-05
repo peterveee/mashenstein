@@ -45,6 +45,7 @@ const suites = [
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
   // sibling because it needs no browser and runs in a blink.
   'tests/voice-source.js',
+  'tests/effect-presets.js',
   // And the third thing a preset file has to be true about: that every key in it has a
   // control, and every control has a key behind it. Reads the engine's own `v.<key>`
   // accesses and the panel's row definitions and requires the two to agree per play path —
@@ -131,6 +132,7 @@ const suites = [
   'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
+  'tests/new-effects.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
 ];
@@ -157,6 +159,7 @@ const browserSuites = new Set([
   'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
+  'tests/new-effects.js',
 ]);
 
 // A browser suite renamed out of the list above would quietly rejoin the fast gate and

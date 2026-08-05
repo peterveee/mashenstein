@@ -29,14 +29,13 @@ import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
-import { WALL_DRESSINGS, drawWallBay, shadeWall, wallLitAt, BAY_W, WALL_H, WALL_BASE, setPhoneDressing } from '../src/sprites/backwall.js';
+import { WALL_BASE } from '../src/sprites/backwall.js';
 import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
   setContour, setInkScale, setInkDensity,
-  ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE,
+  ACTIVE_CELEBRATION_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
-  LORENZO_FACES, setLorenzoFace, LORENZO_PANTS, setLorenzoPants,
 } from '../src/sprites/toons.js';
 import { getStylePack } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
@@ -48,13 +47,9 @@ import {
 import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
-import {
-  drawCreditsSky, makeStars, makeDust, STAR_COUNT, DUST_COUNT, FLECK_WAS, FLECK_IS, hash01,
-} from '../src/game/credits.js';
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
 import {
-  FINISH_MARKER_BY_ID, drawFinishMarkerArt,
-  BREAKER_BOX_VARIANTS, plungerStandY, PLUNGER_CX,
+  FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
 import { PLAYER_X } from '../src/game/player.js';
 
@@ -69,11 +64,20 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
 // min(winW/480, winH/270), which on any desktop is between about 3.1 (maximised
-// browser, 14" laptop) and 5 (maximised on a 1440p panel). So 3 is the floor of
-// this control and its default, and there is deliberately no rung below it: a
-// tile shown at 1x or 2x is art being judged at a third of the size anyone will
-// ever see it, which flatters everything. Keep in step with the shell's options.
-let zoom = 3;
+// browser, 14" laptop) and 5 (maximised on a 1440p panel). Every rung below 6 is
+// a device somebody actually plays on; there is deliberately none that is not.
+//
+// The default is the SMALLEST of them, the landscape iPhone. In landscape the
+// 16:9 frame letterboxes into the phone's short side, so the scale is 393/270 =
+// 1.46 on a 15 Pro and 375/270 = 1.39 on an SE — 1.4, the same figure hud.js
+// sizes its touch targets against. Judging at the tightest real presentation is
+// the opposite of the 1x/2x flattery this control used to forbid: nothing on
+// screen is bigger than the player will see it, and the phone is where a thin
+// stroke or a two-tone contrast fails first. World-scale tiles land close too —
+// the phone pulls its camera in to ZOOM_PHONE 2.2 against the WORLD_Z 2 these
+// tiles bake, so they read about a tenth under the handset rather than half.
+// Keep in step with the shell's options.
+let zoom = 1.4;
 let renderScale = 3;
 let animate = true;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
@@ -285,22 +289,6 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     // Selected small vector props render denser still, for silhouette work.
     hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? smoothPreviewScale(e.type) : true,
   });
-}
-
-// ---------------------------------------------------------------- 1. backgrounds
-{
-  const grid = section('backgrounds', 'Backgrounds',
-    `${CABINETS.length} cabinets, each with its own style pack. Full 480x270 scene: pack.bg() + pack.ground().`);
-  for (const cab of CABINETS) {
-    const style = getStylePack(cab.style, {});
-    // A few obstacles so ground renderers that cut gaps have something to chew on.
-    const obstacles = [makeObstacle('crate', 180), makeObstacle('barrel', 300)];
-    tile(grid, cab.name, `${cab.id} · style: ${cab.style} · act ${cab.act}`, W, H, (ctx, t) => {
-      if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
-      if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
-      if (style.post) style.post(ctx, t);
-    }, { animated: true });
-  }
 }
 
 // ---------------------------------------------------------------- 2. heroes
@@ -838,6 +826,28 @@ function propNominalSize(name) {
   }
 }
 
+// ---------------------------------------------------------------- 7b. backgrounds
+// Last of the world sections rather than first of the page. A background is the
+// thing everything above stands in front of, so it reads as context once you
+// know the cast and the props — and as wallpaper before you do. It is also the
+// only section whose tiles are whole 480x270 frames, which made the top of the
+// gallery a wall of scenery you had to scroll past to reach the art under
+// review.
+{
+  const grid = section('backgrounds', 'Backgrounds',
+    `${CABINETS.length} cabinets, each with its own style pack. Full 480x270 scene: pack.bg() + pack.ground().`);
+  for (const cab of CABINETS) {
+    const style = getStylePack(cab.style, {});
+    // A few obstacles so ground renderers that cut gaps have something to chew on.
+    const obstacles = [makeObstacle('crate', 180), makeObstacle('barrel', 300)];
+    tile(grid, cab.name, `${cab.id} · style: ${cab.style} · act ${cab.act}`, W, H, (ctx, t) => {
+      if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
+      if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
+      if (style.post) style.post(ctx, t);
+    }, { animated: true });
+  }
+}
+
 // ---------------------------------------------------------------- 8. effects + hud
 {
   const grid = section('effects', 'Effects & HUD bits', 'Glow/spark sprite factories and the plug row.');
@@ -880,12 +890,17 @@ function propNominalSize(name) {
   const CARD_Y = 128;         // FLOAT_BASE_Y
   const TILE_W = 300, TILE_H = 34;
 
+  // Not `wide`. A floatie card is 300x34 — a full-width row per tile turned a
+  // contrast check into eleven screens of scrolling with a metre of dead space
+  // beside each one, and comparing two inks meant remembering the first. At the
+  // default screen scale these flow several to a row and the whole palette is
+  // one glance.
   function floatieTile(label, text, color, solid = false) {
     tile(grid, text, label, TILE_W, TILE_H, (ctx) => {
       // Shift the world so the card's own screen position lands in the tile.
       ctx.translate(-(HERO_X - 8), -(CARD_Y - 8));
       drawFloatie(ctx, { text, color, y: CARD_Y, solid }, { heroX: HERO_X });
-    }, { wide: true });
+    });
   }
 
   for (const [label, text, color] of [
@@ -1181,47 +1196,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// ---------------------------------------------------- jump / duck comparison
-{
-  const grid = section('jump-duck-motion', 'Jump and duck — legacy / improved',
-    'The improved jump responds continuously to vertical velocity: launch stretch, an apex tuck, '
-    + 'then a wider landing preparation. The improved duck settles weight through bent knees or '
-    + 'character-specific feet and braces the hands/appendages around the lower silhouette. '
-    + 'Standing proportions are unchanged. Both columns use the same clock and jump velocity.');
-  const HH = 60, FEET = 84, CW = 66;
-  for (const id of Object.keys(TOON_SPECS)) {
-    tile(grid, `${id} — jump / duck before / after`, 'jump legacy · jump improved · duck legacy · duck improved',
-      CW * 4, 98, (ctx, t) => {
-        const vy = Math.sin(t * 2.1) * 460;
-        const duckCycle = t % 2;
-        const duckAmount = duckCycle < 0.14 ? duckCycle / 0.14
-          : duckCycle < 0.9 ? 1
-            : duckCycle < 1 ? 1 - (duckCycle - 0.9) / 0.1 : 0;
-        const duckDirection = duckCycle < 0.14 ? 1 : duckCycle < 0.9 ? 0 : -1;
-        const samples = [
-          ['jump', 'legacy', 'JUMP L'],
-          ['jump', ACTIVE_LOCOMOTION_STYLE, 'JUMP I'],
-          ['duck', 'legacy', 'DUCK L'],
-          ['duck', ACTIVE_LOCOMOTION_STYLE, 'DUCK I'],
-        ];
-        for (let i = 0; i < samples.length; i++) {
-          const [kind, motionStyle, label] = samples[i];
-          const x = i * CW + CW / 2;
-          drawToon(ctx, id, pose(kind, t, {
-            motionStyle,
-            vy: kind === 'jump' ? vy : 0,
-            grounded: kind !== 'jump',
-            duckAmount: kind === 'duck' && motionStyle !== 'legacy' ? duckAmount : 1,
-            duckDirection: kind === 'duck' && motionStyle !== 'legacy' ? duckDirection : 0,
-          }), x, FEET, HH);
-          ctx.fillStyle = '#8a8a9e';
-          ctx.font = '7px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(label, x, 96);
-        }
-      }, { animated: true, wide: true, hires: 4 });
-  }
-}
+// The jump/duck legacy-vs-improved comparison used to sit here. The improved
+// motion shipped as ACTIVE_LOCOMOTION_STYLE and the section came out.
 
 // ------------------------------------------------------- head yaw candidates
 // This is deliberately a pose field that production never supplies. Body turn
@@ -1349,70 +1325,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// -------------------------------------------------------------- 2a. turn sheet
-{
-  // Angle labels are measured INWARD FROM A RIGHT-FACING PROFILE, matching a
-  // character travelling left-to-right. Thus 25° here is a 65° yaw from the
-  // camera, not the almost-front-facing 25° interpretation used previously.
-  const IDS = [
-    ['grumpos', 'KRATOS / GRUMPOS'],
-    ['lorenzo', 'LORENZO'],
-    ['b33p', 'B-33P'],
-  ];
-  const ANGLES = [20, 25, 30];
-  const HH = 60;
-  const PAD = 12;
-  const phaseAt = (i) => i / 6;
-
-  function drawTurned(ctx, id, phase, profileTurn, cx, feetY, h = HH) {
-    const yawFromFront = 90 - profileTurn;
-    drawToon(ctx, id, pose('run', phase / 1.6, { time: phase, turn: yawFromFront }), cx, feetY, h);
-  }
-
-  const grid = section('angled-run', 'Turned run sheet — first pass',
-    'Kratos/Grumpos, Lorenzo and B-33P. Angles are measured toward camera from a '
-    + 'right-facing profile: the main 25° pose is therefore 65° from front. The arm '
-    + 'swing follows the left-to-right travel axis with bounded two-bone IK; screen-left '
-    + 'limbs are foreground and screen-right limbs recede behind the torso.');
-
-  // Angle comparison: each hero gets one row of the three candidate turns at
-  // the same mid-stride phase, so the silhouette choice is easy to compare.
-  const refW = IDS.length * 3 * 54 + PAD * 2;
-  const refH = IDS.length * 74 + PAD * 2;
-  tile(grid, 'ANGLE REFERENCE', 'same run phase · 20° / 25° / 30° inward from profile', refW, refH,
-    (ctx) => {
-      for (let row = 0; row < IDS.length; row++) {
-        const [id, label] = IDS[row];
-        const y = PAD + row * 74;
-        for (let col = 0; col < ANGLES.length; col++) {
-          const x = PAD + col * 54 + 27;
-          drawTurned(ctx, id, 0.25, ANGLES[col], x, y + 59, HH);
-          ctx.fillStyle = '#8a8a9e';
-          ctx.font = '10px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(`${label} · ${ANGLES[col]}° in`, x, y + 71);
-        }
-      }
-    }, { animated: false, wide: true });
-
-  // Filmstrips make the arm path legible: each strip is six evenly spaced
-  // samples across one run cycle, all sharing the same 25° turn.
-  const stripW = 6 * 54 + PAD * 2;
-  const stripH = 80;
-  for (const [id, label] of IDS) {
-    tile(grid, label, '25° inward from profile · six-frame contact strip', stripW, stripH,
-      (ctx) => {
-        for (let i = 0; i < 6; i++) {
-          const x = PAD + i * 54 + 27;
-          drawTurned(ctx, id, phaseAt(i), 25, x, stripH - 10, HH);
-          ctx.fillStyle = '#8a8a9e';
-          ctx.font = '10px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(String(i + 1), x, stripH - 1);
-        }
-      }, { animated: true, wide: true });
-  }
-}
+// The turned run sheet used to sit here. It came out of the gallery; the turn
+// itself is still in drawToon via pose({ turn }).
 
 // --------------------------------------------------------- 2b. grumpos walk cycle
 {
@@ -1454,6 +1368,268 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
         ctx.fillText(`${i + 1} ${FRAMES[i]}`, x, stripH - 2);
       }
     }, { animated: false, wide: true });
+}
+
+// ------------------------------------------- 2b2. limb style port (lab only)
+// The Lorenzo limb-motion spec — knee fold, heel/toe roll, hip depth, the three
+// -beat jump — carried across every hero who shares drawHumanoid, plus the one
+// line of it a legless rig can take. `limbStyle: 'legacy'` in the pose is the
+// painter's own rollback switch, so the left half of every pair below is the
+// real shipped painter and not a reconstruction of it.
+{
+  const STYLED = Object.keys(TOON_SPECS).filter((id) => TOON_SPECS[id].limbStyle);
+  const grid = section('limb-styles', 'Cast — limb style port',
+    'Lorenzo\'s reviewed run and jump spec ported to the whole shared humanoid painter. '
+    + 'Every pair is legacy on the left or above, styled on the right or below, at the same '
+    + 'phase and the same size. Fernwick and Grumpos keep their SHIPPED leg swing and take the '
+    + 'new foot and jump only — Grumpos because his skirt hem was cut to his shipped knee to the '
+    + '0.0001u and there is no room to move it. Raymn has no legs, so he takes the ankle roll '
+    + 'and nothing else. The bare-legged five carry the spec\'s cadence and feet on shipped leg '
+    + 'BONES — see the thigh bake-off at the end of this section for why the geometry came back.');
+
+  const legacy = (p) => ({ ...p, limbStyle: 'legacy' });
+
+  // Live A/B. Both halves take the same t, so any difference is the style.
+  for (const id of STYLED) {
+    const style = TOON_SPECS[id].limbStyle;
+    tile(grid, `${id} — run, before / after`, `legacy · ${style} — live cycle`,
+      150, 100, (ctx, t) => {
+        const p = pose('run', t);
+        drawToon(ctx, id, legacy(p), 39, 88, 60);
+        drawToon(ctx, id, p, 111, 88, 60);
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '8px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LEGACY', 39, 98);
+        ctx.fillText(style.toUpperCase(), 111, 98);
+      }, { animated: true, wide: true, hires: 4 });
+  }
+
+  // Eight frames is the resolution the spec was reviewed at, and a live loop
+  // cannot be checked against it — 3/8 is the elbow-open peak, 2/8 and 4/8 take
+  // half of it, and 4-5 are where the toe-off has to still be holding.
+  {
+    const FW = 54, PAD = 10, stripW = PAD * 2 + FW * 8;
+    for (const id of STYLED) {
+      tile(grid, `${id} — 8-frame run`, 'legacy above · styled below · 3/8 is the elbow-open peak',
+        stripW, 196, (ctx) => {
+          for (let i = 0; i < 8; i++) {
+            const p = pose('run', 0, { phase: i / 8, time: i / 8 });
+            const x = PAD + FW * i + FW / 2;
+            drawToon(ctx, id, legacy(p), x, 86, 54);
+            drawToon(ctx, id, p, x, 178, 54);
+            ctx.fillStyle = i === 3 ? '#d8b24a' : '#8a8a9e';
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${i}/8`, x, 94);
+            ctx.fillText(`${i}/8`, x, 186);
+          }
+        }, { wide: true, hires: 4 });
+    }
+  }
+
+  // The jump is the half of the spec that cannot be seen in a run strip: the
+  // shipped rig holds one symmetric pose for the whole arc, so the three beats
+  // only show up sampled against velocity.
+  {
+    const BEATS = [[380, 'RISE'], [120, ''], [0, 'APEX'], [-120, ''], [-380, 'FALL']];
+    const FW = 60, PAD = 10, stripW = PAD * 2 + FW * BEATS.length;
+    for (const id of STYLED.filter((x) => TOON_SPECS[x].rig === 'humanoid')) {
+      tile(grid, `${id} — jump arc`, 'legacy above · styled below · sampled across vy',
+        stripW, 210, (ctx) => {
+          BEATS.forEach(([vy, label], i) => {
+            const p = pose('jump', 0.3, { vy, phase: 0.25 });
+            const x = PAD + FW * i + FW / 2;
+            drawToon(ctx, id, legacy(p), x, 92, 58);
+            drawToon(ctx, id, p, x, 192, 58);
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            if (label) { ctx.fillText(label, x, 100); ctx.fillText(label, x, 200); }
+          });
+        }, { wide: true, hires: 4 });
+    }
+  }
+
+  // Size rungs. These pass the real h to drawToon rather than shrinking one big
+  // render, so each keeps the stroke floors and simplifications the game uses at
+  // that size — which is the whole point of the 24u rung: the silhouette has to
+  // still read as ONE figure there, not as two sticks under a body.
+  {
+    const RUNGS = [[24, 'in-run 24u'], [60, 'menu 60u'], [144, 'review 144u']];
+    for (const id of STYLED) {
+      const w = 40 + RUNGS.reduce((a, [h]) => a + h * 1.5 + 16, 0);
+      tile(grid, `${id} — size rungs`, 'phase 3/8 · legacy / styled at each real draw height',
+        w, 190, (ctx) => {
+          let x = 20;
+          for (const [h, label] of RUNGS) {
+            const p = pose('run', 0, { phase: 0.375, time: 0.375 });
+            drawToon(ctx, id, legacy(p), x + h * 0.36, 170, h);
+            drawToon(ctx, id, p, x + h * 1.1, 170, h);
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + h * 0.73, 184);
+            x += h * 1.5 + 16;
+          }
+        }, { wide: true, hires: 4 });
+    }
+  }
+
+  // The thigh, which is what the first cut of this port got wrong. Its stride,
+  // lift and leg length ran well over shipped while `seg` shortened the bones,
+  // so the extension cap had to lengthen the thigh 17.5% to stop the shin
+  // stretching — and a long thigh plus a hip split applied along the TRAVEL
+  // axis swung it past horizontal for six frames of eight, knee above the hip.
+  // A figure sitting down. Same cadence and the same feet in all three columns;
+  // only the leg geometry differs.
+  {
+    const RUNGS = [
+      ['legacy', 'shipped', 'thigh 0.171u · 4/8 flat · max 96°'],
+      ['snapWide', 'first port', 'thigh 0.201u · 6/8 flat · max 111°'],
+      ['snap', 'shipped now', 'thigh 0.171u · 4/8 flat · max 91°'],
+    ];
+    const CAPPED = ['lorenzo', 'gnash', 'b33p', 'gary', 'dolores'];
+    const CW = 92, PAD = 10;
+
+    // 6/8 is where the first port put the knee above the hip.
+    for (const id of CAPPED) {
+      tile(grid, `${id} — thigh, before / after`,
+        'phase 6/8 · the frame the knee climbed above the hip',
+        PAD * 2 + CW * RUNGS.length, 138, (ctx) => {
+          RUNGS.forEach(([limbStyle, label, note], i) => {
+            const x = PAD + CW * i + CW / 2;
+            drawToon(ctx, id, pose('run', 0, { phase: 0.75, time: 0.75, limbStyle }), x, 106, 62);
+            ctx.fillStyle = i === 1 ? '#c46a6a' : i === 2 ? '#d8b24a' : '#8a8a9e';
+            ctx.font = '9px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x, 120);
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '7px ui-monospace, monospace';
+            ctx.fillText(note, x, 131);
+          });
+        }, { wide: true, hires: 4 });
+    }
+
+    // Pelvis bake-off. Zeroing hipSplit was collateral from the thigh fix — it was
+  // the single biggest contributor to the sitting read, so it went to zero
+  // without checking whether a smaller value would have done. It would have.
+  //
+  // The two dials are NOT equivalent. hipSplit offsets in x, and in a profile
+  // run x is the direction of travel, so it puts one hip in front of the other
+  // and drags the thigh toward horizontal: past 0.015 it tips straight from
+  // four flat frames to six. hipDepth offsets in y and costs almost nothing —
+  // 0.060u of separation still reads at shipped's own 96 degrees. If the pelvis
+  // wants to look wider, depth is where the room is.
+  {
+    const FW = 54, GUT = 104, ROW = 86, PAD = 8;
+    const strip = (label, rows) => {
+      tile(grid, `lorenzo — pelvis, ${label}`, 'one row per setting · same eight frames · the other dial at its shipped value',
+        GUT + FW * 8 + PAD * 2, PAD * 2 + ROW * rows.length + 12, (ctx) => {
+          rows.forEach(([name, note, extra], r) => {
+            const y = PAD + ROW * r;
+            for (let i = 0; i < 8; i++) {
+              drawToon(ctx, 'lorenzo',
+                pose('run', 0, { phase: i / 8, time: i / 8, ...extra }),
+                GUT + FW * i + FW / 2, y + ROW - 14, 56);
+            }
+            ctx.textAlign = 'left';
+            ctx.fillStyle = extra.__hi ? '#d8b24a' : '#cfcfdb';
+            ctx.font = '10px ui-monospace, monospace';
+            ctx.fillText(name, PAD, y + ROW / 2 - 2);
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.fillText(note, PAD, y + ROW / 2 + 10);
+          });
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '8px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          for (let i = 0; i < 8; i++) ctx.fillText(`${i}/8`, GUT + FW * i + FW / 2, PAD + ROW * rows.length + 8);
+        }, { wide: true, hires: 4 });
+    };
+
+    strip('hipSplit (fore/aft)', [
+      ['shipped', 'one root · 4/8 flat · 96°', { limbStyle: 'legacy' }],
+      ['0.000', 'gap 0.000u · 4/8 flat · 91°', { hipSplit: 0 }],
+      ['0.015', 'gap 0.030u · roots too near centre', { hipSplit: 0.015 }],
+      ['0.026', 'gap 0.052u', { hipSplit: 0.026 }],
+      ['0.035  (shipped now)', 'gap 0.070u · reads off the hip', { hipSplit: 0.035, __hi: true }],
+      ['0.052  (spec)', 'gap 0.104u · 6/8 flat · 101°', { hipSplit: 0.052 }],
+    ]);
+
+    strip('hipDepth (near/far)', [
+      ['shipped', 'one root · 4/8 flat · 96°', { limbStyle: 'legacy' }],
+      ['0', 'gap 0.000u', { hipDepth: 0 }],
+      ['1', 'gap 0.020u', { hipDepth: 1 }],
+      ['2  (shipped now)', 'gap 0.040u · 4/8 flat · 97°', { hipDepth: 2, __hi: true }],
+      ['3', 'gap 0.060u · still 4/8 flat', { hipDepth: 3 }],
+    ]);
+
+    // The cadence anchor. `hold` makes the clock dwell at two points of the
+    // cycle and whip between them — the snap. With no anchor the dwell lands on
+    // the contact onset, which is the one pose where the thigh is up with the
+    // shin plumb under it: a figure in a chair, held for 13/32 of the cycle.
+    // Rotating the anchor to 0.3 parks the dwell on mid-stance and the
+    // mid-recovery tuck instead — both running shapes — and the plant becomes
+    // the thing the clock snaps THROUGH. Same hold, same hips, same feet.
+    strip('cadence anchor (holdAt)', [
+      ['shipped', 'no snap clock · 8/32 chair', { limbStyle: 'legacy' }],
+      ['anchor 0  (was)', 'dwell ON the plant · the sitting read', { gaitTune: { holdAt: 0 } }],
+      ['anchor .35  (shipped now)', 'dwell on stance + tuck · 6/32 chair', { gaitTune: { holdAt: 0.35 }, __hi: true }],
+      ['hold 1  (no snap at all)', 'linear clock', { gaitTune: { hold: 1 } }],
+    ]);
+
+    // The bone split. Both leg bones shipped equal, and a 1:1 fold is a lap:
+    // knee at the midpoint, thigh and shin mirror-symmetric about it. Giving
+    // the thigh the femur's larger share moves the knee down the leg and the
+    // raised-leg fold stops reading as sitting — the thigh peaks BELOW
+    // horizontal at 0.54 where 1:1 peaks past it. A shorter thigh does the
+    // opposite, violently. The trade is the knee riding lower through the
+    // swing, dipping under the lifted shoe on more frames (at a third of the
+    // depth the shipped 1:1 rig already dips).
+    strip('thigh : shin split', [
+      ['shipped 1:1', 'chair 8/32 · peak 97°', { limbStyle: 'legacy' }],
+      ['0.46  (shipped now)', 'chair 8/32 · peak 111° · compact thigh, judged by eye', { gaitTune: { thigh: 0.46 }, __hi: true }],
+      ['0.50 equal', 'chair 6/32 · peak 101°', { gaitTune: { thigh: 0.5 } }],
+      ['0.54 anatomical', 'chair 6/32 · peak 92° · the metric\'s pick', { gaitTune: { thigh: 0.54 } }],
+      ['0.58 longer still', 'chair 5/32 · peak 85° · knee dips more', { gaitTune: { thigh: 0.58 } }],
+    ]);
+
+    // The two most likely answers, moving, against shipped and against the spec.
+    const LIVE = [
+      ['shipped', { limbStyle: 'legacy' }],
+      ['anchor 0\n(the chair)', { gaitTune: { holdAt: 0 } }],
+      ['anchor .35\nSHIPPED NOW', {}],
+      ['hold 1\n(no snap)', { gaitTune: { hold: 1 } }],
+      ['spec .052 split', { hipSplit: 0.052 }],
+    ];
+    tile(grid, 'lorenzo — pelvis, live', 'same clock in every lane',
+      PAD * 2 + 78 * LIVE.length, 128, (ctx, t) => {
+        LIVE.forEach(([label, extra], i) => {
+          const x = PAD + 78 * i + 39;
+          drawToon(ctx, 'lorenzo', pose('run', t, extra), x, 100, 60);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '9px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          label.split('\n').forEach((ln, j) => ctx.fillText(ln, x, 114 + j * 10));
+        });
+      }, { animated: true, wide: true, hires: 4 });
+  }
+
+  // Live, because a stroll is something you see in motion and not in one frame.
+    tile(grid, 'thigh rework — live, all three',
+      'lorenzo · same clock in every lane', PAD * 2 + CW * RUNGS.length, 124,
+      (ctx, t) => {
+        RUNGS.forEach(([limbStyle, label], i) => {
+          const x = PAD + CW * i + CW / 2;
+          drawToon(ctx, 'lorenzo', pose('run', t, { limbStyle }), x, 106, 62);
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '9px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, x, 119);
+        });
+      }, { animated: true, wide: true, hires: 4 });
+  }
 }
 
 // ---------------------------------------------------------------- 2c. hero filter lab
@@ -1678,93 +1854,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// ------------------------------------------------- 3d. back wall bake-off
-// Five candidate dressings for the wall behind the cabinets, which is currently
-// one flat fill. Each is shown three ways: the bay lit, the bay dark, and the
-// bay as the concourse actually frames it — with a cabinet standing in front,
-// which is the only view that says how much of the art survives the occlusion.
-// The strip at the end is the real pitch: one painter, lit on the left, falling
-// off to nothing on the right as the ceiling lights run out.
-{
-  const grid = section('backwall', 'Back wall bake-off',
-    'Candidate dressings for the wall band behind the concourse (y 40..190, one '
-    + `${BAY_W}px ceiling-light bay each). Columns: fully lit, unlit, and with a `
-    + 'cabinet in front at hub scale. Lighting is wallLitAt() falloff, not a '
-    + 'per-bay on/off — so detail fades with distance from the nearest working light.');
-  const BW = BAY_W, BH = WALL_H;
-  const CS = cabinetStyle();
-  const litPal = cabinetPalette(CABINETS[0], true);
-
-  for (const [id, d] of Object.entries(WALL_DRESSINGS)) {
-    tile(grid, d.name, 'lit', BW, BH,
-      (ctx, t) => drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 1, pal: litPal }),
-      { animated: true });
-    tile(grid, d.name, 'unlit — same art, no power', BW, BH,
-      (ctx, t) => drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 0.12, pal: litPal }),
-      { animated: true });
-    tile(grid, d.name, 'in place, cabinet in front', BW, BH,
-      (ctx, t) => {
-        drawWallBay(ctx, 0, 0, BW, BH, id, { t, seed: 3, lit: 0.9, pal: litPal });
-        // Hub geometry: floor line at 190 within this band, cabinet standing on it.
-        const cy = BH - 2 - CS.h;
-        drawCabinetShell(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
-        const scr = drawCabinetScreen(ctx, BW / 2 - CS.w / 2, cy, CS.w, CS.h, litPal);
-        if (scr) drawScreenSweep(ctx, scr, t, litPal.seed);
-      }, { animated: true });
-  }
-
-  // The falloff itself: four bays of one dressing, lit only at the left end.
-  // Every machine is PLUGGED IN here — the ones on the right are dim because
-  // nothing is lighting them, not because they are locked. The shading pass is
-  // deliberately last and covers the cabinets too, so the darkness reads as the
-  // room running out of light rather than as the wall alone going out.
-  const falloff = (x) => wallLitAt(x, 2, BW);
-  for (const [id, d] of Object.entries(WALL_DRESSINGS)) {
-    tile(grid, `${d.name} — falloff`, '4 bays, 2 lights working, one lit gradient over the lot', BW * 4, BH,
-      (ctx, t) => {
-        for (let b = 0; b < 4; b++) {
-          drawWallBay(ctx, b * BW, 0, BW, BH, id, { t, seed: b, lit: 1, pal: litPal });
-        }
-        for (let b = 0; b < 4; b++) {
-          const bx = b * BW;
-          const pal = cabinetPalette(CABINETS[b % CABINETS.length], true);
-          const cy = BH - 2 - CS.h;
-          drawCabinetShell(ctx, bx + BW / 2 - CS.w / 2, cy, CS.w, CS.h, pal);
-          const scr = drawCabinetScreen(ctx, bx + BW / 2 - CS.w / 2, cy, CS.w, CS.h, pal);
-          if (scr) drawScreenSweep(ctx, scr, t, pal.seed);
-        }
-        shadeWall(ctx, 0, 0, BW * 4, BH, falloff);
-        // Fixtures last, at the hub's y 46 within the wall band: a dead tube
-        // should not be lit by its own glow, and a live one is the light source.
-        for (let b = 0; b < 4; b++) {
-          ctx.fillStyle = b < 2 ? '#f6d33c' : '#30303f';
-          ctx.fillRect(b * BW + BW / 2 - 13, 6, 26, 4);
-        }
-      }, { animated: true, wide: true });
-  }
-
-  // The menu board twice: what a monitor gets, and what a phone gets. Both are
-  // painted through HUB_ZOOM, because a 1:1 bay tile understates every size on
-  // this wall by a third and "can you read it" is not a question a lie about
-  // scale can answer. Hold a handset against the pair — the tiles are the width
-  // the board really is on screen — and the wide board's rows are the ones that
-  // vanish.
-  const PZ = 1.3;
-  const boardTile = (name, sub, phone) => tile(grid, name, sub, BAY_W * PZ, WALL_H * PZ,
-    (ctx, t) => {
-      ctx.save();
-      setPhoneDressing(phone);
-      try {
-        ctx.scale(PZ, PZ);
-        drawWallBay(ctx, 0, 0, BAY_W, WALL_H, 'menuboard', { t, seed: 3, lit: 1, pal: litPal });
-      } finally {
-        setPhoneDressing(null);
-        ctx.restore();
-      }
-    }, { animated: true });
-  boardTile('Menu board — wide', 'shipped: five rows, ~2px caps, marker corrections', false);
-  boardTile('Menu board — phone', 'two rows at the panel’s own measure, no marker hand', true);
-}
+// The back wall bake-off used to sit here. The dressing was chosen and the
+// section came out of the gallery; WALL_DRESSINGS still holds the candidates.
 
 // The eye ring is currently 0.02u wide on an eye 0.11u across, while the body
 // contour it sits inside is 0.016u — so the darkest, thinnest-looking line on
@@ -1916,129 +2007,9 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// ------------------------------------------------------ 2d. lorenzo cap: was/is
-// Settled 2026-07-23. The complaint: his cap hem was a flat chord at -0.12R
-// while his eyes top out at -0.38R, so the hat crossed 42% of the way down the
-// eye — and the focus brows, at -0.45R..-0.29R, were drawn entirely inside it,
-// showing only because the face paints after the hat. Eight candidates went
-// through this section to get here; what is left is the before and the after,
-// both rendered through the real drawHead path via setLorenzoFace, so this
-// cannot drift from what the game draws. See LORENZO_FACES in toons.js.
-{
-  const grid = section('lorenzo-face', 'Lorenzo — cap & face (was / is)',
-    'What changed, and why each piece had to. The band is flat across the brows and drops to the '
-    + 'ears only at the temples, so it clears the brow line without turning him into forehead. The '
-    + 'sides slope inward off the band, so the cap follows the skull rather than resting on it like '
-    + 'a dome on a sphere. The hat rocks back 12 deg about the HEAD CENTER — the one pivot that '
-    + 'leaves every point of it equidistant from the skull, so the raised side cannot lift away — '
-    + 'while the oval bill holds level against that rotation. Ink brow hairlines became brown '
-    + 'caterpillars in the mustache colour, and they move with the mood instead of holding a scowl '
-    + 'through a grin. A tufted fringe shows under the band, deepest at the temples and shallowest '
-    + 'at the nose, because that is where the brows are. And the face mask sits 0.067R lower, which '
-    + 'is what opens the forehead the fringe hangs into. Head proportions are otherwise unchanged: '
-    + 'an earlier pass moved the face twice as far AND raised the crown AND tapered the sides, and '
-    + 'the skull came out egg-shaped — the crown and the taper were the culprits.');
-
-  const HH = 60;
-  // Same crop machinery as the ink bake-off: each row keeps its OWN u and
-  // scales the context, so the stroke floors bind where the game binds them.
-  // Two columns now, so they can be big: this is a before/after, and the whole
-  // point is that the difference survives being looked at closely.
-  const CELL = 110, LABEL_W = 58;
-  const HEAD_SPAN = 0.62;
-  const headCell = (ctx, cellX, cellY, h, p) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cellX, cellY, CELL, CELL);
-    ctx.clip();
-    ctx.translate(cellX + CELL / 2, cellY + CELL / 2);
-    ctx.scale(CELL / (HEAD_SPAN * h), CELL / (HEAD_SPAN * h));
-    // Magnifying glass, not a camera — see the ink bake-off's headCell.
-    setInkScale(h === HERO_DRAW_H ? WORLD_Z : 1);
-    try {
-      drawToon(ctx, 'lorenzo', p, 0, 0.76 * h, h);
-    } finally {
-      setInkScale();
-    }
-    ctx.restore();
-  };
-  // Four rows that between them expose every failure the old geometry had: the
-  // idle face draws NO brows at all (they are keyed to focus), the running face
-  // is the one that put brows on the hat, the 24u row is what a real run draws,
-  // and the celebrate beat at t=0.5 is the squeezed-shut ^ ^ where a brow that
-  // does not move with the mood reads as two expressions on one face.
-  const ROWS = [
-    ['idle 60u', HH, () => pose('idle', 0.7)],
-    ['run 60u', HH, () => pose('run', 0.42)],
-    ['run 24u', HERO_DRAW_H, () => pose('run', 0.42)],
-    ['celebrate', HH, () => pose('celebrate', 0.5, { menu: true })],
-  ];
-  const cmpW = LABEL_W + LORENZO_FACES.length * CELL;
-  const cmpH = 14 + ROWS.length * CELL;
-  tile(grid, 'lorenzo — head to head', 'six variants, frozen, 6x supersampled', cmpW, cmpH, (ctx) => {
-    ctx.font = 'bold 7px ui-monospace, monospace';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#8a8a9a';
-    // Clip each header to its own cell: at ten columns the long labels ran into
-    // their neighbours, and a bake-off you cannot read the axis of is a mural.
-    LORENZO_FACES.forEach((v, i) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(LABEL_W + i * CELL, 0, CELL - 2, 12);
-      ctx.clip();
-      ctx.fillText(v.label, LABEL_W + i * CELL + 3, 9);
-      ctx.restore();
-    });
-    ROWS.forEach(([rowLabel, h, mk], r) => {
-      const y = 14 + r * CELL;
-      ctx.fillStyle = '#8a8a9a';
-      ctx.fillText(rowLabel, 4, y + CELL / 2);
-      LORENZO_FACES.forEach((v, i) => {
-        setLorenzoFace(v.id);
-        try {
-          headCell(ctx, LABEL_W + i * CELL, y, h, mk());
-        } finally {
-          setLorenzoFace();
-        }
-      });
-    });
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-    ctx.lineWidth = 0.4;
-    ctx.beginPath();
-    for (let i = 0; i <= LORENZO_FACES.length; i++) {
-      ctx.moveTo(LABEL_W + i * CELL, 12);
-      ctx.lineTo(LABEL_W + i * CELL, cmpH);
-    }
-    for (let r = 0; r <= ROWS.length; r++) {
-      ctx.moveTo(LABEL_W, 14 + r * CELL);
-      ctx.lineTo(cmpW, 14 + r * CELL);
-    }
-    ctx.stroke();
-  }, { wide: true, hires: 6 });
-
-  // Live strips: full body, HUD face crop, and the four poses whose expressions
-  // move the brow line (blink lives inside idle; celebrate opens the grin).
-  const POSE_W = Math.round(HH * 0.9), POSE_H = Math.round(HH * 1.35);
-  const FACE = 40;
-  const GAP = 6;
-  const KINDS = ['idle', 'run', 'jump', 'duck', 'celebrate'];
-  const TW = POSE_W + GAP + FACE + GAP + KINDS.length * POSE_W;
-  for (const v of LORENZO_FACES) {
-    tile(grid, `lorenzo — ${v.label}`, v.note, TW, POSE_H, (ctx, t) => {
-      setLorenzoFace(v.id);
-      try {
-        drawToon(ctx, 'lorenzo', pose('run', t), POSE_W / 2, POSE_H - HH * 0.05, HH);
-        drawToonFace(ctx, 'lorenzo', POSE_W + GAP, (POSE_H - FACE) / 2, FACE, FACE);
-        KINDS.forEach((kind, i) => {
-          const cx = POSE_W + GAP + FACE + GAP + i * POSE_W + POSE_W / 2;
-          drawToon(ctx, 'lorenzo', pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), cx, POSE_H - HH * 0.05, HH);
-        });
-      } finally {
-        setLorenzoFace(); // never leak a variant into the next tile
-      }
-    }, { animated: true, wide: true });
-  }
-}
+// The Lorenzo cap & face was/is section used to sit here. Settled 2026-07-23
+// and removed from the gallery on 2026-08-05; LORENZO_FACES and setLorenzoFace
+// in toons.js still hold the before and the after.
 
 // The bevel on grumpos's skull: is the lit-side rim reading as a raised edge,
 // and which lever fixes it. Laid out like the ink bake-off next door, with one
@@ -2318,49 +2289,9 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// --------------------------------------------------- 2e. lorenzo trouser colour
-// `p.p` is one garment — legs, trouser front and braces all read from it — so
-// each candidate is drawn as the whole lower body, not as a swatch. Judged on
-// THREE backdrops on purpose: a colour picked against the gallery's black can
-// behave completely differently on the wall he actually stands in front of.
-// Charcoal is the case in point, and the top row is where you can see it.
-{
-  const grid = section('lorenzo-pants', 'Lorenzo — trouser colour bake-off',
-    'Blue is shipped, and is also the most recognisable borrowed note left in the design: cap plus '
-    + 'mustache plus blue trousers is a silhouette everyone already knows. Each row is one candidate '
-    + 'on the hub wall (#241c30), a stage sky, and the gallery black, at the 60u gallery size and '
-    + 'again at the real in-run 24u. Judge the 24u panels and the hub-wall column — a trouser colour '
-    + 'that only works on a bright stage is not a trouser colour. See LORENZO_PANTS in toons.js; '
-    + 'setLorenzoPants drives the real draw path, so nothing here is a mock-up.');
-
-  const BACKS = [['hub wall', WALL_BASE], ['stage sky', '#8ed0f0'], ['gallery black', '#12121a']];
-  const HH = 74, PANEL = 96, PAD = 6;
-  const TW = BACKS.length * PANEL;
-  const TH = 116;
-  for (const cand of LORENZO_PANTS) {
-    tile(grid, cand.label, `${cand.hex} — ${cand.note}`, TW, TH, (ctx, t) => {
-      setLorenzoPants(cand.hex);
-      try {
-        BACKS.forEach(([, bg], i) => {
-          const x = i * PANEL;
-          ctx.fillStyle = bg;
-          ctx.fillRect(x, 0, PANEL - 2, TH);
-          // 60u on the left of the panel, the honest 24u on the right at 2x —
-          // scaling the CONTEXT, not the unit, so the stroke floors bind where
-          // the game binds them.
-          drawToon(ctx, 'lorenzo', pose('run', t), x + PANEL * 0.3, TH - PAD, HH);
-          ctx.save();
-          ctx.translate(x + PANEL * 0.62, TH - PAD - 30);
-          ctx.scale(2, 2);
-          drawToon(ctx, 'lorenzo', pose('run', t), 12, 15, HERO_DRAW_H);
-          ctx.restore();
-        });
-      } finally {
-        setLorenzoPants();   // never leak a candidate into the next tile
-      }
-    }, { animated: true, wide: true });
-  }
-}
+// The Lorenzo trouser-colour bake-off used to sit here. Blue shipped and the
+// section came out of the gallery; LORENZO_PANTS and setLorenzoPants are still
+// in toons.js if the question is ever reopened.
 
 // ------------------------------------------- Dolores girth bake-off (lab only)
 {
@@ -2419,14 +2350,15 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// ------------------------------------------------- plug row (was / is)
-// The CHALLENGE and TOASTER slots both changed; the MISSION slot is still
-// being decided in the bake-off below. These icons are never world props —
-// they are only ever drawn at size-3 of the plug box, which is 10x10 in the
-// stage-select list (PIP 13), 8x8 in the in-run HUD and 5x5 in the Trophy
-// Room's level records, and they spend most of their life at ALPHA_EMPTY.
+// ------------------------------------------------- plug frame & trophy shape
+// All three slots are settled — the was/is record, the parked plug head and the
+// MISSION bake-off have all come out of the gallery. What is left is the two
+// open questions about the frame and the trophy's handles. These icons are
+// never world props: they are only ever drawn at size-3 of the plug box, which
+// is 10x10 in the stage-select list (PIP 13), 8x8 in the in-run HUD and 5x5 in
+// the Trophy Room's level records, and they spend most of their life at
+// ALPHA_EMPTY.
 {
-  const OLD_ICONS = ['switch', 'plugTrophyLegacy', 'appliance'];
   // Every size drawPlugRow is ever called at, and where from.
   const PLUG_SIZES = [[13, 'stage select'], [11, 'in-run HUD'], [8, 'records']];
 
@@ -2446,28 +2378,6 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     }, { animated: false, hires: 6, wide });
   }
 
-  {
-    const grid = section('plug-row-was-is', 'Plug row — was / is',
-      'The real drawPlugRow at all three sizes it is called at, before and after. CHALLENGE: the old '
-      + 'trophy had no handles, so its silhouette was a tulip; a straight rim, so the top read as a lid; '
-      + 'and no contour on the stem or base, so against the tile\'s #181820 fill the foot dissolved. '
-      + 'TOASTER: the slot pointed at the `appliance` world prop, which reserves the top fifth of its box '
-      + 'for the toast launch and animates over 96 frames — drawn here with no frame argument it was a '
-      + 'squashed toaster stuck on frame 0 with a slice sticking out of the top. Its replacement is '
-      + 'HUD-only art that fills the box, the same split as hudCoin/coin. MISSION: the old icon spent '
-      + 'three colours on three unrelated ideas — a housing filling only the bottom two thirds of the box, '
-      + 'a 1px red lever, and a knob the same yellow as the trophy beside it. It went to a wall socket, and '
-      + 'then to a WORK ORDER — the socket read beautifully but drew the reward inside the column headed '
-      + 'PLUGS, so the row looked like one plug plus two other prizes instead of three plugs earned three '
-      + 'ways (see the MISSION bake-off below). '
-      + 'And the trophy went SILVER: the toaster is gold by name, and two warm metals in a three-slot row '
-      + 'smear together at 8px however different their silhouettes are. The row now runs cream / steel / '
-      + 'gold, which separates by hue before shape has to do any work.');
-    plugRowTile(grid, 'was', 'switch · plugTrophyLegacy · appliance — the shipped row before this pass.', OLD_ICONS);
-    plugRowTile(grid, 'then — socket', 'plugSocket · plugTrophy · plugToaster — the middle state, right art at 5px and the wrong noun.',
-      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    plugRowTile(grid, 'is', `${PLUG_ICONS.join(' · ')} — what ships now.`, PLUG_ICONS);
-  }
 
   // How far the handles reach. The bowl's half-width is 0.26, so this is really
   // a ratio question — at 0.44 the loops were the widest thing in the icon and
@@ -2549,107 +2459,6 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
         true, { ...PLUG_FRAME_COLORS, haloAlpha });
     }
   }
-
-  // Kept on purpose. The plug head was liked enough to be worth keeping drawable
-  // rather than rediscovering later from a screenshot — even though the question
-  // it lost has since been replaced by a different one it loses harder.
-  {
-    const grid = section('plug-head-parked', 'MISSION plug — parked alternative',
-      'NOT SHIPPED, NOT DEAD. A runner-up for the MISSION slot, kept whole so the drawing is not lost: '
-      + 'it is the mains plug the mechanic is named after, and the only option that put a cool teal in the '
-      + 'row. It lost to the SOCKET on small-size legibility — compare the 5px column, where the socket '
-      + 'still shows three separate marks and these prongs have merged into one bar. NOTE: the socket has '
-      + 'itself since been replaced by the work order, but that does NOT put the plug head back in — it '
-      + 'loses the newer question worse than the socket did, being even more literally the reward. It stays '
-      + 'here as the record of a legibility call, not as a candidate.');
-    plugRowTile(grid, 'socket', 'plugSocket · what the slot used to point at.',
-      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    plugRowTile(grid, 'parked — plug head', 'plugHead · prongs up, cord out of the bottom, teal body.',
-      ['plugHead', PLUG_ICONS[1], PLUG_ICONS[2]]);
-  }
-
-  // The MISSION slot, reopened and settled. Not a legibility complaint this time
-  // — the socket read fine. It drew the wrong noun.
-  {
-    const grid = section('mission-plug-bakeoff', 'MISSION plug — bake-off (A ships)',
-      'SETTLED: A, the work order, ships as PLUG_ICONS[0]. The column is headed PLUGS and the three icons '
-      + 'say how each plug was earned. Slot 0 being a WALL SOCKET broke that: the row read as one plug plus '
-      + 'two other prizes rather than as three plugs earned three ways, because the socket is the payout, '
-      + 'not the job. The replacement had to be the ASSIGNMENT — and had to be generic, since the mission is '
-      + '`reach` in only ten of the 27 stages (the rest are targets, cords, chase, rescue, onbeat, fuse, '
-      + 'escape, blackout), which is what rules out the obvious breaker switch. The trophy beside it already '
-      + 'worked this way: it stands for CHALLENGE, not for coins-or-no-damage. All three candidates hold a '
-      + 'cream or teal read so the row still separates cream / steel / gold by hue before shape has to work. '
-      + 'Judge the 5px column and the 22% row below it, not the big one.');
-    plugRowTile(grid, 'was — socket', 'plugSocket · read as the reward. This is the thing that was fixed.',
-      ['plugSocket', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    plugRowTile(grid, 'A — work order · SHIPS', 'plugOrder · cream board, teal clip proud of the top edge, two '
-      + 'ruled lines. The game\'s own fiction — you clock in for a SHIFT and the briefing hands you the job. '
-      + 'Same three-tier arrangement the socket won on. The ruled lines are deliberately THIN and mid-tone: '
-      + 'they merge at 5px whatever they weigh, so they are authored to merge into a soft grey texture on a '
-      + 'still-cream board rather than into a black bar that takes the tile over. A first pass had them thick '
-      + 'and near-black and the icon read as a device with a screen.',
-    ['plugOrder', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    plugRowTile(grid, 'B — finish flag · lost', 'plugFlag · 2x2 chequer on a teal pole. The most universal '
-      + '"this was the objective" mark, and the only asymmetric silhouette in the set. Watch the bottom '
-      + 'third going bare pole at 5px — the old switch icon\'s flaw upside down.',
-    ['plugFlag', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    plugRowTile(grid, 'C — objective marker · lost', 'plugTarget · teal disc, cream ring, dark pip. Safest at 5px '
-      + 'by construction: concentric rings have no thin gaps to lose. Costs flavour, and it is the only '
-      + 'round silhouette — check it against the trophy bowl at 5px, and against hudCoin.',
-    ['plugTarget', PLUG_ICONS[1], PLUG_ICONS[2]]);
-    // The state slot 0 is in for most of a run is EARNED, unlike the challenge
-    // and the toaster — a banked mission plug is what a cleared stage looks
-    // like. But an unplayed stage shows all three at 22%, and a whole locked
-    // cabinet is a list of those, so the empty read still has to hold up.
-    for (const [label, icon] of [['was — socket', 'plugSocket'], ['A — work order · SHIPS', 'plugOrder'],
-      ['B — finish flag', 'plugFlag'], ['C — objective marker', 'plugTarget']]) {
-      tile(grid, `${label} · not earned`, `${icon} at ALPHA_EMPTY 0.22, the three call sizes. An unplayed `
-        + 'stage row looks like this and a locked cabinet is nine of them.', 134, 26, (ctx) => {
-        let x = 6;
-        for (const [size, where] of PLUG_SIZES) {
-          drawPlugRow(ctx, x, 6, [false, false, false], undefined, size,
-            [icon, PLUG_ICONS[1], PLUG_ICONS[2]]);
-          ctx.fillStyle = 'rgba(120,130,160,0.5)';
-          ctx.font = '4px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          ctx.fillText(`${size - 3}px · ${where}`, x + PLUG_ROW_W(size) / 2 - 2, 8 + size);
-          x += PLUG_ROW_W(size) + 6;
-        }
-      }, { animated: false, hires: 6, wide: true });
-    }
-  }
-
-  // The state the CHALLENGE icon is in most of the time is NOT earned. If it
-  // does not survive 22% alpha at 5px it does not work, however good it looks
-  // at full strength.
-  {
-    const grid = section('plug-row-alpha', 'Plug row — banked / live / not earned',
-      'The three alphas drawPlugRow actually uses: ALPHA_BANKED 1.0, ALPHA_LIVE 0.5, ALPHA_EMPTY 0.22, '
-      + 'at HUD size. An unearned challenge and an ungrabbed toaster are the states these icons are in '
-      + 'for most of a run — frame colour does some of the work, and the question is how much is left '
-      + 'when the art is at 22%.');
-    for (const [label, icons] of [['was', OLD_ICONS], ['is', PLUG_ICONS]]) {
-      // 5 + three rows of 37 + gaps.
-      tile(grid, label, `${icons.join(' · ')}`, 131, 24, (ctx) => {
-        const states = [[[true, true, true], undefined, '1.0'],
-          [[false, false, false], [true, true, true], '0.5'],
-          [[false, false, false], undefined, '0.22']];
-        let x = 5;
-        states.forEach(([banked, live, tag]) => {
-          drawPlugRow(ctx, x, 5, banked, live, 11, icons);
-          ctx.fillStyle = 'rgba(120,130,160,0.5)';
-          ctx.font = '4px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          ctx.fillText(tag, x + PLUG_ROW_W(11) / 2 - 2, 18);
-          x += PLUG_ROW_W(11) + 5;
-        });
-      }, { animated: false, hires: 6, wide: true });
-    }
-  }
-
 }
 
 // ------------------------------------------- credits relay hand-off staging
@@ -2679,102 +2488,9 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// ------------------------------------------------- credits sky background
-// The two background layers added to the crawl's sky, each shown against the
-// thing it replaced. Both were first cut too faint to find on screen, which is
-// the entire reason this section exists: "can you see it" is not a question
-// code can answer, and the numbers that decide it (a 0.2u circle, a 0.41 alpha
-// under a 0.34 scrim) all look reasonable written down.
-//
-// Every tile is drawSky itself at the crawl's own 480x270 with the crawl's own
-// seeded field — no preview path. What varies is passed in as a tuning.
-{
-  const SKY_W = 480, SKY_H = 270;
-  const stars = makeStars(STAR_COUNT);
-  // The three settings the dust was judged across, rebuilt from the same
-  // generator rather than transcribed. MID is what ships.
-  const dustLow = makeDust(120, 0.2, 0.3);
-  const dustMid = makeDust(DUST_COUNT);
-  const dustHigh = makeDust(160, 0.45, 0.35);
-
-  // A time at which a fleck of the given tuning is mid-flight, so a still can
-  // show one at all. Found by walking the same slot machinery drawFlecks reads,
-  // which is why hash01 is exported — a hand-picked t would go stale the moment
-  // either constant moved.
-  const fleckPeak = (s) => {
-    for (let slot = 0; slot < 200; slot++) {
-      if (hash01(slot, 11) <= s.chance) return slot * s.cycle + s.travel * 0.5;
-    }
-    return 0;
-  };
-
-  const skyTile = (grid, name, sub, opts, animated = false) =>
-    tile(grid, name, sub, SKY_W, SKY_H, (ctx, t) => {
-      drawCreditsSky(ctx, { stars, t: animated ? t : opts.t, ...opts });
-    }, { animated, wide: true, hires: 2 });
-
-  {
-    const grid = section('credits-sky-dust', 'Credits sky — the far dust plane',
-      'SETTLED at MID. The layer that is ALWAYS on screen and never moves: white specks between the real '
-      + 'stars, at 0.018 of the scroll. It is not an effect to catch — its whole job is to stop the gaps '
-      + 'between the stars being flat black, so the near ones have something to be in front of. Judge it in '
-      + 'the EMPTY areas, not on the stars, and judge the four tiles against each other rather than one at a '
-      + 'time: a far plane you can point at is too strong, and one you cannot find in a comparison is not '
-      + 'there. The crawl lays a 0.34 scrim over all of this so the names stay readable, which is the floor '
-      + 'anything back here has to clear — these tiles include it.');
-    skyTile(grid, 'off', 'No dust plane. The sky as it shipped before this — 150 stars over the two '
-      + 'nebulae, and flat black between them.', { dust: null, tune: { flecks: null, comet: false }, t: 3.2 });
-    skyTile(grid, 'low — 120 @ 0.2-0.5u, α 0.13', 'The first cut, and the one that could not be found. A 0.2u '
-      + 'circle is sub-pixel at every scale the game is played at, so the antialiaser halved it before the '
-      + 'scrim took a third of what was left. Compare against OFF: that is the whole difference it made.',
-    { dust: dustLow, tune: { dustAlpha: 0.13, flecks: null, comet: false }, t: 3.2 });
-    skyTile(grid, 'mid — 140 @ 0.32-0.65u, α 0.21 · SHIPS', 'Above the scrim, below the threshold at which '
-      + 'a mote can be picked out on its own. That second limit is the one that decided it: the instant you '
-      + 'can point at an individual speck, the far plane has stopped being the back of the room and joined '
-      + 'the star field in front of it.',
-    { dust: dustMid, tune: { flecks: null, comet: false }, t: 3.2 });
-    skyTile(grid, 'high — 160 @ 0.45-0.8u, α 0.30', 'The answer to the LOW cut, overshot. Legible, and that '
-      + 'is the complaint — the specks start reading as faint small stars, so the sky gains a fourth layer '
-      + 'of stars rather than a backdrop for the three it has.',
-    { dust: dustHigh, tune: { dustAlpha: 0.3, flecks: null, comet: false }, t: 3.2 });
-  }
-
-  {
-    const grid = section('credits-sky-flecks', 'Credits sky — micro-meteors (flecks)',
-      'The other layer, and the opposite kind of thing: an EVENT, one at a time, never in the middle band '
-      + 'where the names are brightest. The comet is deliberately rare — a slot every 17s at 60%, so roughly '
-      + 'one every 28 seconds — which leaves the sky doing nothing but twinkling for half a minute at a '
-      + 'stretch. These fill that gap. Frequency and visibility are separate dials and they were retuned in '
-      + 'that order: the first cut was too faint to find at all, the answer to that was too frequent to be '
-      + 'punctuation, and what ships keeps the size and brightness of the second while rationing it back to '
-      + 'roughly the frequency of the first. The live tiles are the honest test and are worth a full minute '
-      + 'each — the question is not whether you can see one, it is whether it pulls the eye off a name. The '
-      + 'stills are frozen at a fleck\'s brightest frame, found by walking the same slot machinery the '
-      + 'painter uses, because the FAINT cut is otherwise almost impossible to catch.');
-    skyTile(grid, 'faint + frequent — live', 'cycle 2.1s @ 55%, 0.62s travel, 9-16u, peak 0.41 alpha. The '
-      + 'cut that prompted "what am I looking for". On screen ~16% of the time and still hard to catch, '
-      + 'which is the proof that frequency was never the problem.',
-    { dust: dustMid, tune: { flecks: FLECK_WAS, comet: false } }, true);
-    skyTile(grid, 'bold + rationed — live · SHIPS', 'cycle 2.8s @ 50%, 0.95s travel, 20-34u, peak 0.86 alpha, '
-      + 'plus a bright head. One every ~5.6s, on screen ~17% of the time, never more than one at once. Same '
-      + 'share of the roll as the faint cut above — the difference is entirely that you can see it.',
-    { dust: dustMid, tune: { flecks: FLECK_IS, comet: false } }, true);
-    skyTile(grid, 'faint — frozen at peak', 'The same frame the live tile above is hard to catch. 9-16u is a '
-      + 'tenth of the screen and the taper eats most of that.',
-    { dust: dustMid, tune: { flecks: FLECK_WAS, comet: false }, t: fleckPeak(FLECK_WAS) });
-    skyTile(grid, 'bold — frozen at peak · SHIPS', 'Same moment, shipping tuning. The head is what makes it '
-      + 'read as a thing travelling rather than as a scratch on the lens — the comet earns its own halo the '
-      + 'same way, one size up.',
-    { dust: dustMid, tune: { flecks: FLECK_IS, comet: false }, t: fleckPeak(FLECK_IS) });
-    skyTile(grid, 'comet — for scale', 'The rare event the flecks are pitched under, and now 82-120u rather '
-      + 'than 66-98 with a heavier line and a bigger head. It grew because the fleck did: a 20-34u dash with '
-      + 'a lit head was a third of the old comet, and if the two can be confused at a glance the rare one '
-      + 'stops being an occasion. The gap between them is the whole point.',
-    { dust: dustMid, tune: { flecks: null } }, true);
-    skyTile(grid, 'everything · SHIPS', 'Dust, stars, nebulae, flecks and comet together, running. What the '
-      + 'crawl actually draws behind the names.', { dust: dustMid }, true);
-  }
-}
+// The credits sky sections — the far dust plane and the micro-meteor flecks —
+// used to sit here. Both settled and came out of the gallery; drawCreditsSky
+// still paints what they chose.
 
 // ======================================================================
 // THREE ASSETS, REDRAWN — speed ramp, objective flag, relay portal.
@@ -3098,8 +2814,10 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     + 'The control is the first tile and it is what shipped first — loose rectangles with no taper, no '
     + 'vanishing point and nothing attached to them, which is why they read as HUD that escaped onto the '
     + 'field rather than as motion. '
-    + 'Judge them at true size with the hero, and watch the pale marks against the LIGHT packs in the '
-    + 'row below: a cream streak over the doodle sheet has the same problem the portal had.');
+    + 'Judge them at true size with the hero. '
+    + 'ONE ROW ONLY now that it is settled: the slope check and the three light-pack rows are gone — '
+    + 'they were the rows that decided it, and a decided question does not need 42 tiles standing over '
+    + 'it. What is left is the comparison itself, kept for reference.');
 
   const TW = 150, TH = 60, GY = 48, HX = 84;
   const heroPose = (t) => pose('run', t, { lean: 0.17 });
@@ -3123,94 +2841,24 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 
-  // ON A SLOPE. A floor effect drawn on a level line through the hero's feet
-  // floats clean off a hill, which is the same failure the boost pad itself
-  // had before drawAtGround learned to conform. Each candidate is handed the
-  // real terrain contract — groundDelta(dx), how far the ground rises or falls
-  // dx pixels either side of the hero — so this row is the honest answer to
-  // "does it still work when the ground is slanted".
-  for (const [label, slope] of [['downhill', 0.28], ['uphill', -0.3]]) {
-    for (const v of BOOST_FX_VARIANTS) {
-      const gd = (dx) => dx * slope;
-      tile(grid, `${v.name} · ${label}`, `${v.id} on a ${label} grade. Only the floor-based marks can get this wrong.`,
-        TW, TH, (ctx, t) => {
-          // A lane whose ground follows the same delta the effect is given.
-          ctx.fillStyle = '#202838';
-          ctx.fillRect(0, 0, TW, TH);
-          ctx.fillStyle = '#303b4d';
-          ctx.beginPath();
-          ctx.moveTo(0, GY + gd(-HX));
-          ctx.lineTo(TW, GY + gd(TW - HX));
-          ctx.lineTo(TW, TH);
-          ctx.lineTo(0, TH);
-          ctx.closePath();
-          ctx.fill();
-          const cycle = (t % 1.4) / 1.4;
-          const q = cycle < 0.36 ? 1 - cycle / 0.36 : 0;
-          if (q <= 0) {
-            drawToon(ctx, 'lorenzo', pose('run', t), HX, GY, 24);
-          } else {
-            v.draw(ctx, {
-              x: HX, groundY: GY, t, q, w: TW, h: TH, groundDelta: gd,
-              drawHero: () => drawToon(ctx, 'lorenzo', heroPose(t), HX, GY, 24),
-              drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
-            });
-          }
-        }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
-    }
-  }
-
-  // The same five over the two packs most likely to eat a pale streak. Cream
-  // on the doodle sheet is the exact failure the portal read test found.
-  for (const cabId of ['speed', 'office', 'frost']) {
-    const cab = CABINETS.find((c) => c.id === cabId);
-    if (!cab) continue;
-    for (const v of BOOST_FX_VARIANTS) {
-      tile(grid, `${v.name} · ${cab.id}`, `${v.id} over ${cab.style} — ${cab.id === 'speed' ? 'the DESERT check: gold on tan, and the pack with the most boost pads in it' : 'the light-pack check'}.`,
-        TW, TH, (ctx, t) => {
-          const style = getStylePack(cab.style, {});
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(0, 0, TW, TH);
-          ctx.clip();
-          ctx.translate(0, GY - GROUND_Y);
-          if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
-          if (style.ground) style.ground(ctx, t * 60, cab, []);
-          const cycle = (t % 1.4) / 1.4;
-          const q = cycle < 0.36 ? 1 - cycle / 0.36 : 0;
-          const hy = GROUND_Y;
-          if (q <= 0) {
-            drawToon(ctx, 'lorenzo', pose('run', t), HX, hy, 24);
-          } else {
-            v.draw(ctx, {
-              x: HX, groundY: hy, t, q, w: TW, h: TH,
-              drawHero: () => drawToon(ctx, 'lorenzo', heroPose(t), HX, hy, 24),
-              drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
-            });
-          }
-          if (style.post) style.post(ctx, t);
-          ctx.restore();
-        }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
-    }
-  }
 }
 
 // ------------------------------------------- 1c. finish marker
-// The end of every stage: the pole, the plunger and the box. SETTLED — the
-// bake-off that chose it is over and its scaffolding is gone with it. What is
-// left is the shipped marker, its two nearest alternates kept drawable, and the
-// one behaviour worth re-checking whenever the payoff is touched (CLUNK).
+// The end of every stage: the pole, the plunger and the box. SETTLED, and the
+// alternates are gone with the bake-off that rejected them — what is left is the
+// shipped marker and the one behaviour worth re-checking whenever the payoff is
+// touched (CLUNK). FINISH_MARKER_VARIANTS still holds the losers if the question
+// is ever reopened.
 {
-  const grid = section('finish-marker', 'Finish marker — shipped, plus the two alternates',
-    'D1b SHIPS: the trigger taken out of the box and stood at the foot of the pole as a plunger, the box '
-    + 'moved clear to the right with nothing on it to touch, and a cable joining them. '
+  const grid = section('finish-marker', 'Finish marker — the payoff, scored and clunked',
+    'D1b, what ships: the trigger taken out of the box and stood at the foot of the pole as a plunger, the '
+    + 'box moved clear to the right with nothing on it to touch, and a cable joining them. '
     + '<b>Row 1</b> is the marker running its full payoff — push, spark along the cable, lamps, current up '
-    + 'the pole, flag — with D1 and D2 beside it for comparison. '
+    + 'the pole, flag. '
     + '<b>Row 2 (CLUNK)</b> is the player who never jumps and just runs into the pole: the stage still '
-    + 'clears, so the fiction still has to resolve, and only the amount of celebration changes. '
-    + '<br><br>Gone from this section, all decided: the jump-catch-slide mock (it is the real mechanic '
-    + 'now — see the cling sheet below), the framing study (72px of clear lane, in), and the first round '
-    + 'of candidates that flew the flag on the approach, which was the fiction problem that started this.');
+    + 'clears, so the fiction still has to resolve, and only the amount of celebration changes. That pair '
+    + 'is the whole reason the section is still here — the difference has to read as "worth less", never '
+    + 'as "did not work".');
 
   // A full flip, looped. The approach is deliberately the long half — it is
   // most of what a player actually sees of this object.
@@ -3232,10 +2880,10 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   };
 
   // ---- the marker, running its payoff --------------------------------------
-  for (const id of ['plunger', 'panelWake', 'panelConduit']) {
+  for (const id of ['plunger']) {
     const v = FINISH_MARKER_BY_ID[id];
     if (!v) continue;
-    tile(grid, `${id === 'plunger' ? 'SHIPPED' : 'alternate'} · ${v.name}`, `${id}<br>${v.note}`, TW, TH, (ctx, t) => {
+    tile(grid, `SHIPPED · ${v.name}`, `${id}<br>${v.note}`, TW, TH, (ctx, t) => {
       laneStrip(ctx, TW, TH, GY);
       const s = beat(t);
       v.draw(ctx, FX, GY, s);
@@ -3253,7 +2901,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   // stage that leaves the flag dead would be the marker calling the player a
   // failure for finishing the level. So the grade lives in HOW MUCH the payoff
   // celebrates, never in whether the fiction resolves at all.
-  for (const id of ['panelWake', 'mast']) {
+  for (const id of ['plunger']) {
     const v = FINISH_MARKER_BY_ID[id];
     if (!v) continue;
     tile(grid, `CLUNK · ${v.name.split('—')[0].trim()} — ran across, never jumped`,
@@ -3345,155 +2993,11 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------------------- 1d. breaker box bake-off
-// The cabinet only. The gauge and the red/green lamps are FIXED — they won on
-// sight — so every tile here differs in silhouette, materials and how it meets
-// the ground, and in nothing else.
-{
-  const grid = section('breaker-box-bakeoff', 'Breaker box — shape bake-off (gauge refined)',
-    'PICK A SILHOUETTE. The gauge and the lamp pair are shared code across every tile, so nothing below '
-    + 'differs in what it SAYS — only in what it looks like saying it. '
-    + '<b>Row 1</b> is the whole marker with each cabinet in place, running the full payoff on a loop: '
-    + 'judge it beside the flagpole and the plunger, because that is the only place it will ever be seen. '
-    + '<b>Row 2</b> is the refined gauge alone, big. The old one was a filled half-disc with square ticks '
-    + 'and a straight needle — a diagram of a gauge. What separates an instrument from a diagram is almost '
-    + 'entirely in the parts nobody looks at: the scale PRINTED on the face as a fine arc rather than '
-    + 'implied by the ticks, graded ticks (majors longer and brighter, minors hairline), a tapered needle '
-    + 'with a counterweight tail behind the pivot — the most recognisable thing about a real moving-iron '
-    + 'meter — and glass carrying one soft sweep that does NOT track the needle, because glass does not '
-    + 'know where the needle is.');
+// The breaker box shape bake-off used to sit here. The shape was picked and
+// the section came out of the gallery; BREAKER_BOX_VARIANTS still holds them.
 
-  const CYCLE = 4, THROW_AT = 2.4;
-  const beat = (t) => {
-    const c = t % CYCLE;
-    const raw = c < THROW_AT ? 0 : Math.min(1, (c - THROW_AT) / 1.4);
-    return { t, thrown: raw, live: true, armed: c < THROW_AT, reducedMotion: false, phase: c };
-  };
-  const TW = 136, TH = 118, GY = 108, FX = 34;
-  for (const v of BREAKER_BOX_VARIANTS) {
-    tile(grid, `1. ${v.name}`, `${v.id} · ${v.w}px wide<br>${v.note}`, TW, TH, (ctx, t) => {
-      laneStrip(ctx, TW, TH, GY);
-      const s = beat(t);
-      drawFinishMarkerArt(ctx, FX, GY, s, v.id);
-      if (s.armed) {
-        drawToon(ctx, 'lorenzo', pose('run', t, { lean: 0.14 }), 8 + Math.min(1, (s.phase / THROW_AT) ** 1.4) * 18, GY, 24);
-      } else {
-        drawToon(ctx, 'lorenzo', pose('celebrate', t), FX + 1, GY - plungerStandY(s.thrown) - 1, 24);
-      }
-    }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
-  }
-
-  // The gauge alone, at four times the size it ships at. Everything that makes
-  // it an instrument is sub-pixel in the lane, so this is where it is judged.
-  for (const [label, thrown] of [['idle, drifting', 0], ['mid-sweep', 0.55], ['pinned, settling', 1]]) {
-    tile(grid, `2. GAUGE — ${label}`,
-      'The shared gauge, drawn at 4x. Watch the needle tail behind the pivot, the danger band the needle '
-      + 'crosses ONTO rather than under, and the glass sweep holding still while the needle moves.',
-      86, 64, (ctx, t) => {
-        ctx.fillStyle = '#33445a';
-        ctx.fillRect(0, 0, 86, 64);
-        ctx.save();
-        ctx.translate(43, 52);
-        ctx.scale(4, 4);
-        BREAKER_BOX_VARIANTS[0].drawGauge(ctx, 0, 0, 10, { thrown, t, reducedMotion: false });
-        ctx.restore();
-      }, { animated: true, hires: 5, smooth: true });
-  }
-}
-
-// ------------------------------------------- contour taper bake-off (lab only)
-// The body contour is the one width in toons.js that is not a floor: `ow` is a
-// flat 0.016u, so it scales with the figure and stays exactly as heavy,
-// proportionally, at every camera. That is right for a HUD cell and wrong for a
-// push-in — the tutorial's intro frames Gary at 5.5x, where a flat fraction
-// means ~2 logical px of dark down each edge of every limb, and once the
-// scale-aware stroke floors landed it became the heaviest thing left in frame.
-//
-// So the contour thins as the figure grows, the way inked art does: nobody
-// re-inks a drawing with a 5x pen to blow it up to a poster. `taper` is the
-// exponent on that trade (CONTOUR in toons.js) — 0 is the old flat fraction,
-// 1 is a contour of constant finished width, which is a wire and loses the
-// silhouette against a dark room.
-//
-// Every cell is MAGNIFIED to fill its square, so read the ink and not the size:
-// the hero is drawn at the in-run 24u throughout and the ink is pinned to the
-// row's world zoom, which is the only thing separating the rows.
-{
-  const grid = section('contour-taper', 'Contour taper bake-off',
-    'One rig, four taper exponents, three cameras. The 2x row is an ordinary run — it is the '
-    + 'row that must not get worse. The 5.5x row is the tutorial intro, which is the complaint. '
-    + 'Judge the silhouette against the dark cell: the failure mode at the high end is a hero '
-    + 'who stops holding an edge and starts floating. 0.5 ships — the square root was the first '
-    + 'column where the intro stops reading as inked, and it still holds its edge.');
-
-  const TAPERS = [
-    ['0', 'flat 0.016u — the old contour', 0],
-    ['0.25', 'gentle', 0.25],
-    ['0.33', 'cube root', 1 / 3],
-    ['0.5', 'square root — shipped', 0.5],
-  ];
-  // 2x is the run; 3.5x is the dolly a tall jump reaches; 5.5x is the intro.
-  const ZOOMS = [['2x run', WORLD_Z], ['3.5x jump', 3.5], ['5.5x intro', 5.5]];
-  // gary and lorenzo are the two the intro actually frames. grumpos is the
-  // pale-fill heavy rig — the one with the most to lose when a contour thins,
-  // and the hero the ink bake-off next door already turns on.
-  const IDS = ['gary', 'lorenzo', 'grumpos'];
-
-  const CELL = 84, LABEL_W = 64, PHASE = 0.42;
-  const bodyCell = (ctx, id, cellX, cellY, zoom, taper) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cellX, cellY, CELL, CELL);
-    ctx.clip();
-    ctx.fillStyle = '#2f2c46'; // the intro's wall, which is what it is judged on
-    ctx.fillRect(cellX, cellY, CELL, CELL);
-    ctx.translate(cellX + CELL / 2, cellY + CELL - 5);
-    const fit = CELL / (HERO_DRAW_H * 1.24);
-    ctx.scale(fit, fit);
-    // The magnification is for the eye; the INK is the row's camera.
-    setInkScale(zoom);
-    setContour({ taper });
-    try {
-      drawToon(ctx, id, pose('idle', PHASE), 0, 0, HERO_DRAW_H);
-    } finally {
-      setInkScale();
-      setContour();
-    }
-    ctx.restore();
-  };
-
-  for (const id of IDS) {
-    const cmpW = LABEL_W + TAPERS.length * CELL;
-    const cmpH = 14 + ZOOMS.length * CELL;
-    tile(grid, `${id} — taper x camera`, 'ink pinned to the row, size magnified to match',
-      cmpW, cmpH, (ctx) => {
-        ctx.font = 'bold 7px ui-monospace, monospace';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = '#8a8a9a';
-        TAPERS.forEach(([name, note], i) => {
-          ctx.fillText(`${name} ${note}`.slice(0, 22), LABEL_W + i * CELL + 4, 9);
-        });
-        ZOOMS.forEach(([rowLabel, z], r) => {
-          const y = 14 + r * CELL;
-          ctx.fillStyle = '#8a8a9a';
-          ctx.fillText(rowLabel, 4, y + CELL / 2);
-          TAPERS.forEach(([, , taper], i) => bodyCell(ctx, id, LABEL_W + i * CELL, y, z, taper));
-        });
-        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-        ctx.lineWidth = 0.4;
-        ctx.beginPath();
-        for (let i = 0; i <= TAPERS.length; i++) {
-          ctx.moveTo(LABEL_W + i * CELL, 12);
-          ctx.lineTo(LABEL_W + i * CELL, cmpH);
-        }
-        for (let r = 0; r <= ZOOMS.length; r++) {
-          ctx.moveTo(LABEL_W, 14 + r * CELL);
-          ctx.lineTo(cmpW, 14 + r * CELL);
-        }
-        ctx.stroke();
-      }, { wide: true, hires: 6 });
-  }
-}
+// The contour taper bake-off used to sit here. 0.5 shipped and the section
+// came out of the gallery; CONTOUR in toons.js still carries the exponent.
 
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.

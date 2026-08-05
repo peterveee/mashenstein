@@ -92,16 +92,21 @@
   <div class="controls">
     <label>screen scale
       <!-- Screen pixels per logical frame pixel — the same number the renderer
-           computes as min(winW/480, winH/270) when it presents the game. THE
-           LADDER STARTS AT A REAL DESKTOP and never goes below it: the game is
-           never presented at 1x or 2x anywhere, so showing art at those sizes
-           only ever flatters it. 3x is the floor because that is a maximised
-           browser on a 14" laptop (1512/480 = 3.15) — and, not by accident, the
-           largest scale at which a whole 480x270 frame still fits the page
-           without a horizontal scroll. Everything from 6x up is a magnifying
-           glass, not a preview. -->
+           computes as min(winW/480, winH/270) when it presents the game. EVERY
+           RUNG IS A REAL PRESENTATION or a stated magnifying glass; there is
+           nothing in between, and nothing below the smallest screen the game
+           ships to. That smallest screen is a landscape iPhone: the 16:9 frame
+           letterboxes into the phone's SHORT side, so 393/270 = 1.46 on a 15
+           Pro and 375/270 = 1.39 on an SE — 1.4 is the number hud.js already
+           sizes its touch targets against. It is the default because it is the
+           hardest test in the list: art that reads here reads everywhere.
+           3x is the desktop floor — a maximised browser on a 14" laptop
+           (1512/480 = 3.15), and the largest scale at which a whole 480x270
+           frame still fits the page without a horizontal scroll. Everything
+           from 6x up is a magnifying glass, not a preview. -->
       <select id="zoom">
-        <option value="3" selected>3x · 14" laptop</option>
+        <option value="1.4" selected>1.4x · iPhone landscape</option>
+        <option value="3">3x · 14" laptop</option>
         <option value="4">4x · 1080p full-screen</option>
         <option value="5">5x · 1440p</option>
         <option value="6">6x · inspect</option>

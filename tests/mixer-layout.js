@@ -542,8 +542,12 @@ assert(entry.includes("const SHED_ORDER = ['effects', 'sends', 'eq']")
   'the ladder sheds inserts, then sends, then EQ — named once, in the switches own ids');
 assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.shed-eq \.eqrow,\s*#rackwrap\.no-sends \.sendrow,\s*#rackwrap\.shed-sends \.sendrow,\s*#rackwrap\.no-fx \.fxbtns,\s*#rackwrap\.shed-fx \.fxbtns \{ display: none; \}/.test(shell),
   'shed-* hides exactly what no-* hides, as a separate set of classes');
-assert(/#rackwrap:is\(\.no-eq, \.shed-eq\):is\(\.no-sends, \.shed-sends\):is\(\.no-fx, \.shed-fx\)[\s\S]*?\.strip\[data-lane\]:not\(\.master\):not\(\.send\) \.stripbody \{ display: none; \}/.test(shell),
-  'channel strips collapse the empty former-selector body when all optional blocks are absent');
+// No strip collapses its body on its own any more. A channel body that vanished while
+// a send return still carried its device summary put those two faders on different
+// lines, which is the one thing --bodyh exists to prevent: the band is the same band on
+// every strip, and when every body is empty it measures ~0 and costs nothing.
+assert(!/\.stripbody \{ display: none; \}/.test(shell),
+  'no strip hides its body while another strip still has one — that is what put the faders off line');
 assert(!/#rackwrap\.(squeezed|compact)|\.stripsum/.test(shell)
   && !/compactStripHeight|summaryChip|paintSummary|openFullStrips|classList\.(add|toggle)\('(compact|squeezed)'/.test(entry),
   'nothing scrolls and no summary chip: a shed block is hidden outright, not squeezed');
@@ -575,12 +579,34 @@ assert(atShedFn.includes('wrap.classList.remove(...SHED_ORDER.map(shedClass))')
   && atShedFn.includes("wrap.style.setProperty('--faderh'")
   && atShedFn.includes('finally'),
   'measurements name the rung they want and always put the real one back');
-assert(/function measureChromeAt\(n\) \{\s*return atShed\(n,/.test(entry)
-  && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureChromeAt\(i\)\)/.test(entry)
+assert(/function measureRungAt\(n\) \{\s*return atShed\(n,/.test(entry)
+  && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureRungAt\(i\)\)/.test(entry)
+  && /const stripChromeAt = \(n\) => stripRungAt\(n\)\.chrome;/.test(entry)
   && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
   && shell.includes('#rackwrap.measuring .voicepair { height: auto; }'),
   'one chrome height per rung, measured off the ladder, and the floor is the last of them');
-assert(entry.includes('return [230, 190, 150, 110][n]')
+// ---- one line for every fader ------------------------------------------------------
+// The foot is bottom-anchored, so pan, mute/solo and the limiter always landed
+// together; the fader between them is the strip's shock absorber, so a master with an
+// empty body was handed the height the channels' send rows had already spent and its
+// fader stood taller than theirs. --bodyh is the tallest body in the rack, held on
+// every strip: same top, same length, same bottom.
+assert(/\.strip \.stripbody \{[^}]*height:\s*var\(--bodyh, auto\)/s.test(shell)
+  && /root\.setProperty\('--bodyh', `\$\{stripRungAt\(shed\)\.body\}px`\)/.test(entry)
+  && /body = Math\.max\(body, naturalHeight\(b\)\)/.test(entry)
+  && /return \{ body: Math\.ceil\(body\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry),
+  'every strip reserves the tallest body in the rack, so every fader starts on one line');
+// A body held at the last rung's height would report that height back and --bodyh would
+// only ever climb — the same latch --faderh is pinned to avoid.
+assert(shell.includes('#rackwrap.measuring .stripbody { height: auto; }'),
+  'the body is measured free of the height the last fit gave it');
+// The head is the other half of where a fader starts. A strip carries one caption or
+// the other — the preset's category, or BUS/SEND — and with different line boxes the
+// two kinds of head stood a pixel and a bit apart.
+assert(/\.strip \.stripsub \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell)
+  && /\.strip \.grp-tag \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell),
+  'the group tag and the preset category are the same box, so every strip head is one height');
+assert(entry.includes('return { chrome: [230, 190, 150, 110][n], body: 0 };')
   && !entry.includes('return [260, 220, 180, 140][n]')
   && !entry.includes('body.append(voiceRow(key))'),
   'the pre-build strip sizing estimate matches the selector-free channel layout');

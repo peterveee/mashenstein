@@ -24,7 +24,7 @@ import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/impor
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
 // src/data/imported/ as tracks, so an import is renderable without a restart.
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
-import { isDefaultMasterChain } from '../src/engine/effects.js';
+import { isDefaultMasterChain, EFFECT_BY_ID, paramRange } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
@@ -35,7 +35,10 @@ import { randomSongName } from './lib/song-names.js';
 // The sends' defaults, read from the engine rather than written out again here: a
 // value equal to its default is left out of the file, so a number that drifted apart
 // from the engine's would quietly stop being saved.
-import { AUX_DEFAULTS } from '../src/engine/mixer.js';
+import { AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
+import {
+  EFFECT_PRESETS_PATH, readEffectPresets, writeEffectPresetsAtomic, normalizeKnownDefaults,
+} from './lib/effect-presets-source.js';
 import {
   readVoicesSource, writeVoicesSource, upsertPreset, deletePreset, setMeasured,
   readMeasured, tableOf, TABLES, USER_TABLES,
@@ -460,6 +463,55 @@ const readJson = async (req) => {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 };
 
+function presetTarget(scope, id) {
+  if (scope === 'inserts') {
+    const def = EFFECT_BY_ID[id];
+    return def ? { params: def.params || [], fallback: def.defaults || {}, def } : null;
+  }
+  if (scope === 'returns') {
+    const aux = AUXES.find((a) => a.id === id);
+    if (!aux) return null;
+    return {
+      params: aux.presetParams || [],
+      fallback: Object.fromEntries((aux.presetParams || []).map((key) => [key, AUX_DEFAULTS[id][key]])),
+      aux,
+    };
+  }
+  return null;
+}
+
+function validatePresetValue(scope, id, key, value) {
+  if (scope === 'inserts') {
+    const range = paramRange(key, EFFECT_BY_ID[id]);
+    if (range.options) {
+      if (!range.options.includes(value)) throw new Error(`${id}.${key} must be one of ${range.options.join(', ')}`);
+      return;
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${id}.${key} must be a finite number`);
+    if (value < range.min || value > range.max) {
+      throw new Error(`${id}.${key} must be between ${range.min} and ${range.max}`);
+    }
+    return;
+  }
+  const range = paramRange(key);
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${id}.${key} must be a finite number`);
+  if (value < range.min || value > range.max) {
+    throw new Error(`${id}.${key} must be between ${range.min} and ${range.max}`);
+  }
+}
+
+function normalizePresetParams(scope, id, params) {
+  const target = presetTarget(scope, id);
+  if (!target) throw new Error(`unknown ${scope} effect "${id}"`);
+  const out = normalizeKnownDefaults(params, target.params, target.fallback);
+  for (const key of target.params) {
+    const value = out[key];
+    if (value === undefined) throw new Error(`${scope}.${id} has no fallback for "${key}"`);
+    validatePresetValue(scope, id, key, value);
+  }
+  return out;
+}
+
 // Render one track through the real engine with the mix applied, and measure it.
 async function renderTrack(trackId, mix, { repeat = 1, write = true } = {}) {
   const track = resolveTrack(trackId);
@@ -781,6 +833,56 @@ const server = createServer(async (req, res) => {
       }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ target: LOUDNESS_TARGET, rows }));
+      return;
+    }
+
+    // ---- effect defaults, DEV only ---------------------------------------
+    //
+    // The browser sends a complete snapshot of the effect-local controls. The
+    // server re-validates it against the catalogue, so a stale page cannot write a
+    // removed parameter or a value outside the control's range. The source module is
+    // rewritten atomically and the named-preset objects are carried through intact.
+    if (req.method === 'POST' && req.url === '/effect-default-save') {
+      if (!DEV_USER || req.headers['x-mixer-role'] !== 'dev') {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end('effect defaults can only be saved from DEV mode');
+        return;
+      }
+      const body = await readJson(req);
+      const scope = body?.scope;
+      const id = String(body?.id || '');
+      let params;
+      try {
+        params = normalizePresetParams(scope, id, body?.params);
+      } catch (err) {
+        res.writeHead(400, { 'content-type': 'text/plain' });
+        res.end(String(err.message || err));
+        return;
+      }
+
+      let presets;
+      try {
+        presets = await readEffectPresets(EFFECT_PRESETS_PATH);
+        const group = { ...(presets[scope] || {}) };
+        const current = { ...(group[id] || {}) };
+        group[id] = {
+          ...current,
+          default: params,
+          presets: current.presets && typeof current.presets === 'object' ? current.presets : {},
+        };
+        const next = { ...presets, [scope]: group };
+        await writeEffectPresetsAtomic(next, EFFECT_PRESETS_PATH);
+        // Read back through the cache-busting loader, not the in-memory catalogue.
+        // This proves the exact file the next build will bundle is valid.
+        await readEffectPresets(EFFECT_PRESETS_PATH);
+      } catch (err) {
+        res.writeHead(500, { 'content-type': 'text/plain' });
+        res.end(`could not save effect defaults: ${err.message || err}`);
+        return;
+      }
+      console.log(`saved ${scope}.${id} defaults to src/data/effect-presets.js`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, scope, id, params }));
       return;
     }
 

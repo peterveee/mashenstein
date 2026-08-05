@@ -2788,6 +2788,11 @@ class AudioSys {
     {
       if (!this.applyPendingStep()) this.applyPendingLoop();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
+      // Rhythmic insert effects share the sequencer's clock. Schedule their gain
+      // envelopes before the notes for this sixteenth, using the same audio timestamp
+      // that every voice below receives. This keeps straight, dotted and triplet gates
+      // aligned in offline renders and after live loop/jump changes.
+      this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo);
       // Song form: bank.sections is a list of partial banks (lane overrides) and
       // bank.order the sequence to play them in — so a track can progress
       // verse/lift/bridge instead of looping one 2-bar phrase.

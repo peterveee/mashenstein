@@ -8,7 +8,7 @@ const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const {
   TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
-  ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE,
+  ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   B33P_TITLE_WINDUP_T, b33pTitleShotPose,
 } = await import('../src/sprites/toons.js');
@@ -75,6 +75,80 @@ for (const hero of HEROES) {
 assert(Object.keys(TOON_SPECS).length === 10, 'head-yaw gallery roster still contains all ten toons');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
+assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');
+
+// The limb styles are ONE painter shared by seven heroes plus a pose-level
+// override, so the failure mode is not "the run looks wrong" — it is one hero,
+// in one pose, quietly solving its IK on undefined. These pin the seams.
+{
+  const humanoids = Object.keys(TOON_SPECS).filter((id) => TOON_SPECS[id].rig === 'humanoid');
+  assert(humanoids.every((id) => TOON_SPECS[id].limbStyle),
+    'every hero on the shared humanoid painter carries a limb style');
+  assert(!TOON_SPECS.mochi.limbStyle && !TOON_SPECS.chompo.limbStyle,
+    'the two non-humanoid rigs stay out of the limb-style port');
+
+  const KINDS = [
+    { kind: 'run', grounded: true, vy: 0 },
+    { kind: 'jump', grounded: false, vy: 380 },
+    { kind: 'jump', grounded: false, vy: -380 },
+    { kind: 'duck', grounded: true, vy: 0, duckAmount: 1 },
+    { kind: 'idle', grounded: true, vy: 0 },
+    { kind: 'celebrate', grounded: true, vy: 0 },
+    // gaitTune is a pose-level dial sweep for the gallery. Garbage in it must
+    // degrade to the table's own values — never reach the IK as NaN.
+    { kind: 'run', grounded: true, vy: 0, gaitTune: { hold: 'garbage', skew: {}, lean: '1.5', holdAt: 1e9, stride: null } },
+  ];
+  // 'legacy' is the painter's rollback and must stay reachable; 'float' is
+  // Raymn's partial entry and must be SAFE on a rig it was never meant for,
+  // because limbStyle is a pose field and nothing stops a caller passing it.
+  // snapWide is the gallery's before-column for the geometry rework: never on
+  // a spec, so nothing else would ever draw it.
+  const OVERRIDES = [undefined, 'legacy', 'float', 'snapWide', 'nonexistent-style'];
+
+  // The shared canvas stub swallows every call, so "it did not throw" proves
+  // nothing here: an incomplete style resolves to `legL * undefined` and paints
+  // a whole hero out of NaN without raising anything. This counts the numbers
+  // that actually reach the 2D API instead.
+  const grad = { addColorStop() {} };
+  const GEOM = new Set(['moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo', 'arc',
+    'arcTo', 'ellipse', 'rect', 'roundRect', 'translate', 'scale', 'rotate',
+    'transform', 'setTransform', 'fillRect', 'strokeRect']);
+  const tally = { n: 0, bad: 0 };
+  const record = (...args) => {
+    for (const v of args) if (typeof v === 'number') { tally.n++; if (!Number.isFinite(v)) tally.bad++; }
+  };
+  const probe = new Proxy({
+    canvas: { width: 480, height: 270 },
+    fillStyle: '#000', strokeStyle: '#000', globalAlpha: 1, lineWidth: 1, font: '',
+    createLinearGradient: () => grad, createRadialGradient: () => grad,
+    measureText: () => ({ width: 0 }),
+    getLineDash: () => [],
+    getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+  }, {
+    get(t, k) { return k in t ? t[k] : (GEOM.has(k) ? record : () => {}); },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+
+  let drew = 0;
+  const emptyFrames = [];
+  for (const id of Object.keys(TOON_SPECS)) {
+    for (const k of KINDS) for (const limbStyle of OVERRIDES) for (const facing of [1, -1]) {
+      for (const phase of [0, 0.375, 0.5]) {
+        const before = tally.n;
+        drawToon(probe, id, {
+          ...k, phase, time: 0.4, squash: 0, lean: 0, facing, limbStyle,
+        }, 40, 80, 60);
+        if (tally.n === before) emptyFrames.push(`${id}/${k.kind}/${limbStyle}`);
+        drew++;
+      }
+    }
+  }
+  assert(drew === 2100, `limb-style matrix covered every combination (drew ${drew})`);
+  assert(tally.bad === 0,
+    `every coordinate the limb styles paint is finite (${tally.bad} of ${tally.n} were not)`);
+  assert(emptyFrames.length === 0,
+    `no hero/style combination paints nothing at all (${emptyFrames.slice(0, 3).join(', ')})`);
+}
 assert(Object.keys(TITLE_PARADE_ACTIONS).length === HEROES.length,
   'title animation catalogue covers every playable hero');
 for (const hero of HEROES) {

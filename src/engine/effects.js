@@ -6,11 +6,10 @@
 // browser but renders silent would sound right while you mix it and then vanish
 // from everything you export — the worst kind of bug, because nothing errors.
 //
-// Measured silent offline, and therefore deliberately absent:
-//   BitCrusher, JCReverb, Freeverb
-// All three are built on AudioWorklet, which also needs a secure context — so they
-// would fail the render pipeline and the LAN dev server on a phone as well.
-// If Tone ever fixes them, re-run the sweep before adding them back.
+// Measured silent offline, and therefore deliberately absent from the Tone-backed
+// catalogue: JCReverb and Freeverb. The Bit Crusher is implemented below with native
+// WaveShaperNodes so it remains renderable in OfflineAudioContext and on the LAN dev
+// server; it intentionally does not expose sample-rate reduction.
 //
 // Rendering is not the only bar an effect has to clear: it also has to render the
 // SAME every time. Tone.Reverb did not — it fills its impulse response from
@@ -18,6 +17,7 @@
 // that generates a buffer needs checking for the same thing; two renders of a song
 // being different files breaks stems, baselines and the null test at once.
 import * as Tone from 'tone';
+import { EFFECT_PRESETS } from '../data/effect-presets.js';
 
 // Note divisions for tempo-synced effects, in beats — eight bars down to a 1/32,
 // with the dotted and triplet values in between. One table for delay times and for
@@ -143,6 +143,13 @@ const PARAM_RANGES = {
   spread: { min: 0, max: 360, step: 5 },
   sensitivity: { min: -40, max: 0, step: 1, unit: 'dB' },
   gain: { min: -24, max: 24, step: 0.5, unit: 'dB' },
+  bits: { min: 2, max: 16, step: 1 },
+  bias: { min: -1, max: 1, step: 0.01 },
+  density: { min: 0, max: 1, step: 0.01 },
+  gateLength: { min: 0.05, max: 0.95, step: 0.01 },
+  wow: { min: 0, max: 1, step: 0.01 },
+  flutter: { min: 0, max: 1, step: 0.01 },
+  waveform: { options: ['sine', 'triangle', 'square'] },
   f1: { min: 20, max: 500, step: 5, unit: 'Hz', log: true },
   f2: { min: 80, max: 2000, step: 10, unit: 'Hz', log: true },
   f3: { min: 400, max: 8000, step: 20, unit: 'Hz', log: true },
@@ -1263,6 +1270,420 @@ function makeDoubler(ctx, params) {
   return node;
 }
 
+// A small deterministic wavetable used by the native modulation effects. Buffer
+// sources are used instead of Math.random or worklets so live playback and offline
+// renders share the same phase and remain renderable in OfflineAudioContext.
+const MOD_TABLE_SIZE = 2048;
+function modulationTable(ctx, waveform = 'sine') {
+  const buf = ctx.createBuffer(1, MOD_TABLE_SIZE, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const p = i / data.length;
+    if (waveform === 'square') data[i] = p < 0.5 ? 1 : -1;
+    else if (waveform === 'triangle') data[i] = 1 - 4 * Math.abs(Math.round(p) - p);
+    else data[i] = Math.sin(p * Math.PI * 2);
+  }
+  return buf;
+}
+
+function modulationSource(ctx, table, phase = 0, rate = 1) {
+  const src = ctx.createBufferSource();
+  src.buffer = table;
+  src.loop = true;
+  src.loopStart = 0;
+  src.loopEnd = table.duration;
+  src.playbackRate.value = table.duration * rate;
+  src.start(0, Math.max(0, Math.min(0.999999, phase)) * table.duration);
+  return src;
+}
+
+// AudioParam is standardized with setTargetAtTime, but a few Web Audio wrappers
+// (and older Safari-native nodes) expose only the ramp methods. Keep live Mixer edits
+// working in those runtimes: use target smoothing when available, a short linear ramp
+// otherwise, and a direct value as the final safe fallback.
+function setAudioParam(ctx, param, value, running, seconds = 0.03) {
+  if (!param || (typeof param !== 'object' && typeof param !== 'function')) return;
+  if (!running) {
+    if ('value' in param) param.value = value;
+    return;
+  }
+  const now = ctx.currentTime;
+  if (typeof param.setTargetAtTime === 'function') {
+    param.setTargetAtTime(value, now, seconds);
+  } else if (typeof param.linearRampToValueAtTime === 'function') {
+    if (typeof param.cancelScheduledValues === 'function') param.cancelScheduledValues(now);
+    if (typeof param.setValueAtTime === 'function' && Number.isFinite(param.value)) {
+      param.setValueAtTime(param.value, now);
+    }
+    param.linearRampToValueAtTime(value, now + Math.max(0.001, seconds * 3));
+  } else if ('value' in param) {
+    param.value = value;
+  }
+}
+
+function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const wetBus = ctx.createGain();
+  const tone = ctx.createBiquadFilter();
+  tone.type = 'lowpass'; tone.Q.value = 0.7071;
+  input.connect(dry); dry.connect(output);
+  input.connect(wetBus); wetBus.connect(tone); tone.connect(wet); wet.connect(output);
+
+  const chorus = kind === 'chorus';
+  const count = chorus ? 4 : 2;
+  const phases = chorus ? [0, 0.25, 0.5, 0.75] : [0, 0.5];
+  const panShape = chorus ? [-1, -0.33, 0.33, 1] : [-1, 1];
+  const table = modulationTable(ctx, 'sine');
+  const taps = [];
+  for (let i = 0; i < count; i++) {
+    const delay = ctx.createDelay(0.1);
+    const modDepth = ctx.createGain();
+    const source = modulationSource(ctx, table, phases[i]);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7071;
+    const feedback = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+    const level = ctx.createGain();
+    source.connect(modDepth); modDepth.connect(delay.delayTime);
+    input.connect(delay); delay.connect(lp);
+    lp.connect(feedback); feedback.connect(delay);
+    lp.connect(panner); panner.connect(level); level.connect(wetBus);
+    taps.push({ delay, modDepth, source, lp, feedback, panner, level });
+  }
+
+  const state = chorus
+    ? { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55,
+      density: 0.75, width: 1, feedback: 0.12, tone: 9000, wet: 0.5, ...params }
+    : { rateSync: 0, rateDivision: 2, frequency: 0.25, delayMs: 2, depth: 0.7,
+      feedback: 0.45, spread: 180, tone: 8000, wet: 0.5, ...params };
+  let running = false;
+  const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
+  const apply = (bpm = 120) => {
+    const rate = rateHz(state, bpm);
+    const base = Math.max(0.0002, Math.min(0.06, (state.delayMs || 0) / 1000));
+    const maxSwing = Math.max(0.00005, Math.min(base * 0.8, chorus ? 0.006 : base * 0.9));
+    const swing = Math.max(0, Math.min(1, state.depth || 0)) * maxSwing;
+    const width = chorus ? Math.max(0, Math.min(1, state.width ?? 0))
+      : Math.max(0, Math.min(1, (state.spread ?? 180) / 180));
+    const feedback = Math.max(0, Math.min(chorus ? 0.6 : 0.85, state.feedback || 0));
+    const cutoff = Math.max(200, Math.min(20000, state.tone || 8000));
+    const density = chorus ? Math.max(0, Math.min(1, state.density ?? 0)) : 1;
+    const weights = chorus ? [1, 1, density, density] : [1, 1];
+    const norm = Math.sqrt(weights.reduce((sum, x) => sum + x * x, 0));
+    taps.forEach((q, i) => {
+      setParam(q.source.playbackRate, table.duration * rate, 0.04);
+      setParam(q.delay.delayTime, base, 0.03);
+      setParam(q.modDepth.gain, swing, 0.03);
+      setParam(q.feedback.gain, feedback, 0.03);
+      setParam(q.lp.frequency, cutoff, 0.04);
+      setParam(q.level.gain, (weights[i] / norm) * (1 / Math.SQRT2), 0.03);
+      setParam(q.panner.pan, panShape[i] * width, 0.03);
+    });
+    const w = Math.max(0, Math.min(1, state.wet || 0));
+    setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
+    setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
+    setParam(tone.frequency, cutoff, 0.04);
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch, bpm) => { Object.assign(state, patch); apply(bpm); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const q of taps) {
+      try { q.source.stop(); } catch { /* already stopped */ }
+      for (const n of [q.delay, q.modDepth, q.source, q.lp, q.feedback, q.panner, q.level]) {
+        try { n.disconnect(); } catch { /* fine */ }
+      }
+    }
+    for (const n of [input, dry, wetBus, tone, wet, output]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  return node;
+}
+
+const QUANT_CURVE_SIZE = 65537;
+function bitCrusherCurve(bits) {
+  const levels = 2 ** Math.max(2, Math.min(16, Math.round(bits)));
+  const curve = new Float32Array(QUANT_CURVE_SIZE);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.round(((x + 1) * 0.5) * (levels - 1)) / (levels - 1) * 2 - 1;
+  }
+  return curve;
+}
+
+function makeBitCrusher(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const pre = ctx.createGain();
+  const post = ctx.createGain();
+  const shapers = [ctx.createWaveShaper(), ctx.createWaveShaper()];
+  const fades = [ctx.createGain(), ctx.createGain()];
+  const sum = ctx.createGain();
+  const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.Q.value = 0.7071;
+  const wet = ctx.createGain();
+  input.connect(dry); dry.connect(output);
+  input.connect(pre);
+  pre.connect(shapers[0]); pre.connect(shapers[1]);
+  shapers[0].connect(fades[0]); shapers[1].connect(fades[1]);
+  fades[0].connect(sum); fades[1].connect(sum);
+  sum.connect(post); post.connect(tone); tone.connect(wet); wet.connect(output);
+  shapers.forEach((s) => { s.oversample = 'none'; });
+  const state = { bits: 8, drive: 6, tone: 12000, wet: 0.65, ...params };
+  let active = 0;
+  let running = false;
+  let lastBits = null;
+  const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
+  const reshape = (bits, crossfade) => {
+    const normalized = Math.max(2, Math.min(16, Math.round(bits)));
+    if (lastBits === normalized) return;
+    lastBits = normalized;
+    const next = 1 - active;
+    shapers[next].curve = bitCrusherCurve(normalized);
+    if (!crossfade) {
+      shapers[active].curve = shapers[next].curve;
+      fades[0].gain.value = active === 0 ? 1 : 0;
+      fades[1].gain.value = active === 1 ? 1 : 0;
+      return;
+    }
+    const t = ctx.currentTime;
+    fades[active].gain.cancelScheduledValues(t);
+    fades[next].gain.cancelScheduledValues(t);
+    fades[active].gain.setTargetAtTime(0, t, 0.0012);
+    fades[next].gain.setTargetAtTime(1, t, 0.0012);
+    active = next;
+  };
+  const apply = () => {
+    const drive = Math.max(0, Math.min(24, state.drive || 0));
+    setParam(pre.gain, 10 ** (drive / 20), 0.03);
+    setParam(post.gain, 10 ** (-drive / 20), 0.03);
+    setParam(tone.frequency, Math.max(500, Math.min(20000, state.tone || 12000)), 0.04);
+    const w = Math.max(0, Math.min(1, state.wet || 0));
+    setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
+    setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
+    reshape(state.bits, running);
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch) => { Object.assign(state, patch); apply(); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const n of [input, dry, pre, post, ...shapers, ...fades, sum, tone, wet, output]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  return node;
+}
+
+function makeRhythmicGate(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const gate = ctx.createGain();
+  input.connect(gate); gate.connect(output);
+  const state = { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1, ...params };
+  gate.gain.value = 1;
+  let lastStep = null;
+  let lastWhen = null;
+  let lastSixteenth = null;
+  let lastSignature = null;
+  const node = { input, output, _custom: true };
+  node.applyState = () => {
+    const floor = 1 - Math.max(0, Math.min(1, state.depth ?? 1));
+    gate.gain.setTargetAtTime(floor, ctx.currentTime, 0.004);
+  };
+  node.setState = (patch) => { Object.assign(state, patch); node.applyState(); };
+  node.scheduleRhythm = (step, when, sixteenth) => {
+    const periodBeats = Math.max(1 / 16, Number(state.division) || 0.5);
+    const beatSeconds = sixteenth * 4;
+    const startBeat = step / 4;
+    const endBeat = startBeat + 0.25;
+    const periodSeconds = periodBeats * beatSeconds;
+    const openSeconds = periodSeconds * Math.max(0.01, Math.min(1, state.gateLength ?? 0.5));
+    let attack = Math.max(0.001, Number(state.attack) || 0.003);
+    let decay = Math.max(0.001, Number(state.decay) || 0.035);
+    if (attack + decay > openSeconds) {
+      const scale = openSeconds / (attack + decay);
+      attack *= scale; decay *= scale;
+    }
+    const floor = 1 - Math.max(0, Math.min(1, state.depth ?? 1));
+    // The sequencer may jump, loop, insert a section, or change tempo while the
+    // look-ahead queue still contains old envelopes. Keep the ordinary contiguous
+    // sixteenths cheap, but invalidate queued events when the song clock is not the
+    // continuation we last scheduled.
+    const discontinuity = lastStep != null && (
+      step !== lastStep + 1
+      || when < lastWhen - 1e-6
+      || Math.abs(sixteenth - lastSixteenth) > 1e-6
+      || when > lastWhen + lastSixteenth * 1.5
+      || `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}` !== lastSignature
+    );
+    if (discontinuity) {
+      gate.gain.cancelScheduledValues(when);
+      gate.gain.setValueAtTime(floor, when);
+    }
+    lastStep = step;
+    lastWhen = when;
+    lastSixteenth = sixteenth;
+    lastSignature = `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}`;
+    const levelAt = (rel) => {
+      if (rel < 0 || rel >= openSeconds) return floor;
+      if (rel < attack) return floor + (1 - floor) * (rel / attack);
+      if (rel < openSeconds - decay) return 1;
+      return floor + (1 - floor) * ((openSeconds - rel) / decay);
+    };
+    const beatIndex = startBeat / periodBeats;
+    const nearestIndex = Math.round(beatIndex);
+    const currentIndex = Math.abs(beatIndex - nearestIndex) < 1e-7
+      ? nearestIndex : Math.floor(beatIndex);
+    const currentBoundary = currentIndex * periodBeats;
+    gate.gain.setValueAtTime(levelAt((startBeat - currentBoundary) * beatSeconds), when);
+    const schedulePulse = (boundary, t) => {
+      if (t < when - 1e-7 || t > when + sixteenth + 1e-7) return;
+      gate.gain.setValueAtTime(floor, t);
+      gate.gain.linearRampToValueAtTime(1, t + attack);
+      gate.gain.setValueAtTime(1, t + Math.max(attack, openSeconds - decay));
+      gate.gain.linearRampToValueAtTime(floor, t + openSeconds);
+    };
+    let index = currentIndex;
+    for (;;) {
+      const boundary = index * periodBeats;
+      const t = when + (boundary - startBeat) * beatSeconds;
+      if (t > when + sixteenth + 1e-7) break;
+      if (t >= when - 1e-7) schedulePulse(boundary, t);
+      index++;
+    }
+  };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => { node.disconnect(); for (const n of [input, gate, output]) { try { n.disconnect(); } catch { /* fine */ } } };
+  return node;
+}
+
+function makeRingMod(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const multiply = ctx.createGain();
+  const sum = ctx.createGain();
+  const mods = [ctx.createOscillator(), ctx.createOscillator()];
+  const modGains = [ctx.createGain(), ctx.createGain()];
+  input.connect(dry); dry.connect(output);
+  input.connect(multiply); multiply.connect(wet); wet.connect(output);
+  mods[0].connect(modGains[0]); mods[1].connect(modGains[1]);
+  modGains[0].connect(sum); modGains[1].connect(sum); sum.connect(multiply.gain);
+  mods.forEach((m) => m.start(0));
+  const state = { rateSync: 0, rateDivision: 0.5, frequency: 30, waveform: 'sine', wet: 0.5, ...params };
+  let active = 0;
+  let running = false;
+  let lastWaveform = null;
+  const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
+  const apply = (bpm = 120) => {
+    const rate = state.rateSync >= 0.5 ? rateHz(state, bpm) : Math.max(0.1, Math.min(2000, state.frequency || 30));
+    mods.forEach((m) => setParam(m.frequency, rate, 0.03));
+    const type = ['sine', 'triangle', 'square'].includes(state.waveform) ? state.waveform : 'sine';
+    if (lastWaveform !== type) {
+      const inactive = 1 - active;
+      mods[inactive].type = type;
+      if (!running) { mods[active].type = type; modGains[0].gain.value = 1; modGains[1].gain.value = 0; }
+      else {
+        modGains[active].gain.setTargetAtTime(0, ctx.currentTime, 0.0012);
+        modGains[inactive].gain.setTargetAtTime(1, ctx.currentTime, 0.0012);
+        active = inactive;
+      }
+      lastWaveform = type;
+    }
+    const w = Math.max(0, Math.min(1, state.wet || 0));
+    setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
+    setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch, bpm) => { Object.assign(state, patch); apply(bpm); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => { node.disconnect(); mods.forEach((m) => { try { m.stop(); } catch { /* fine */ } });
+    for (const n of [input, dry, wet, multiply, sum, ...mods, ...modGains, output]) { try { n.disconnect(); } catch { /* fine */ } } };
+  return node;
+}
+
+const TAPE_CURVE_SIZE = 8193;
+function tapeCurve(drive, bias) {
+  const c = new Float32Array(TAPE_CURVE_SIZE);
+  const d = 1 + Math.max(0, Math.min(24, drive)) / 8;
+  const b = Math.max(-1, Math.min(1, bias)) * 0.18;
+  for (let i = 0; i < c.length; i++) {
+    const x = (i / (c.length - 1)) * 2 - 1;
+    const y = Math.tanh((x + b) * d);
+    const centre = Math.tanh(b * d);
+    c[i] = (y - centre) / Math.max(0.0001, Math.tanh(d));
+  }
+  return c;
+}
+
+function makeTape(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const delay = ctx.createDelay(0.02); delay.delayTime.value = 0.004;
+  const pre = ctx.createGain(); const post = ctx.createGain();
+  const shapers = [ctx.createWaveShaper(), ctx.createWaveShaper()];
+  const fades = [ctx.createGain(), ctx.createGain()]; const sum = ctx.createGain();
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 20;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.7071;
+  const wowDepth = ctx.createGain(); const flutterDepth = ctx.createGain();
+  const wow = modulationSource(ctx, modulationTable(ctx, 'sine'), 0, 0.45);
+  const flutter = modulationSource(ctx, modulationTable(ctx, 'sine'), 0.17, 6);
+  input.connect(dry); dry.connect(output);
+  input.connect(delay); delay.connect(pre); pre.connect(shapers[0]); pre.connect(shapers[1]);
+  shapers[0].connect(fades[0]); shapers[1].connect(fades[1]); fades[0].connect(sum); fades[1].connect(sum);
+  sum.connect(post); post.connect(hp); hp.connect(lp); lp.connect(wet); wet.connect(output);
+  wow.connect(wowDepth); flutter.connect(flutterDepth); wowDepth.connect(delay.delayTime); flutterDepth.connect(delay.delayTime);
+  shapers.forEach((s) => { s.oversample = '4x'; });
+  const state = { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05, wet: 0.65, ...params };
+  let active = 0; let running = false;
+  let lastShape = null;
+  const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
+  const apply = () => {
+    const drive = Math.max(0, Math.min(24, state.drive || 0));
+    setParam(pre.gain, 10 ** (drive / 20), 0.03);
+    setParam(post.gain, 10 ** (-drive / 20), 0.03);
+    setParam(lp.frequency, Math.max(1000, Math.min(20000, state.tone || 10000)), 0.04);
+    setParam(wowDepth.gain, Math.max(0, Math.min(1, state.wow || 0)) * 0.003, 0.04);
+    setParam(flutterDepth.gain, Math.max(0, Math.min(1, state.flutter || 0)) * 0.00035, 0.04);
+    const shape = `${drive}|${Math.max(-1, Math.min(1, state.bias || 0))}`;
+    if (shape !== lastShape) {
+      const next = 1 - active; shapers[next].curve = tapeCurve(drive, state.bias);
+      if (!running) { shapers[active].curve = shapers[next].curve; fades[0].gain.value = 1; fades[1].gain.value = 0; }
+      else { fades[active].gain.setTargetAtTime(0, ctx.currentTime, 0.0012); fades[next].gain.setTargetAtTime(1, ctx.currentTime, 0.0012); active = next; }
+      lastShape = shape;
+    }
+    const w = Math.max(0, Math.min(1, state.wet || 0));
+    setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
+    setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply; node.setState = (patch) => { Object.assign(state, patch); apply(); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => { node.disconnect(); for (const s of [wow, flutter]) { try { s.stop(); } catch { /* fine */ } }
+    for (const n of [input, dry, wet, delay, pre, post, ...shapers, ...fades, sum, hp, lp, wowDepth, flutterDepth, wow, flutter, output]) { try { n.disconnect(); } catch { /* fine */ } } };
+  return node;
+}
+
 export const EFFECTS = [
   // 0.03 rather than the 0.02 it cost as a lone GainNode: BALANCE is a splitter, two
   // gains and a merger behind it. Re-measured by the same hand method as the rest of
@@ -1285,7 +1706,33 @@ export const EFFECTS = [
     params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
   { id: 'chorus', name: 'Chorus', cost: 0.28, tone: 'Chorus',
-    params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 1, frequency: 1.5, depth: 0.7, wet: 0.5 } },
+    params: ['rateSync', 'rateDivision', 'frequency', 'delayTime', 'depth', 'feedback', 'spread', 'type', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 1, frequency: 1.5, delayTime: 3.5, depth: 0.7, feedback: 0, spread: 180, type: 'sine', wet: 0.5 },
+    ranges: {
+      delayTime: { min: 2, max: 20, step: 0.1, unit: 'ms' },
+      feedback: { min: 0, max: 0.6, step: 0.01 },
+      spread: { min: 0, max: 180, step: 5, unit: '°' },
+      type: { options: ['sine', 'triangle', 'square', 'sawtooth'] },
+    },
+    labels: { delayTime: 'DELAY', feedback: 'FEEDBACK', spread: 'SPREAD', type: 'WAVEFORM' } },
+  { id: 'chorus2', name: 'Chorus 2', short: 'Chorus 2', cost: 0.60, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
+    params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'density', 'width', 'feedback', 'tone', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55, density: 0.75, width: 1, feedback: 0.12, tone: 9000, wet: 0.5 },
+    ranges: { frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz' }, delayMs: { min: 6, max: 30, step: 0.1, unit: 'ms' },
+      feedback: { min: 0, max: 0.6, step: 0.01 }, tone: { min: 800, max: 20000, step: 100, unit: 'Hz', log: true } },
+    labels: { delayMs: 'DELAY', tone: 'DAMPING' } },
+  { id: 'rhythmgate', name: 'Rhythmic Gate', short: 'Rhythm Gate', cost: 0.02, custom: makeRhythmicGate,
+    params: ['division', 'gateLength', 'attack', 'decay', 'depth'],
+    defaults: { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 },
+    ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.005, max: 1, step: 0.005, unit: 's', log: true } },
+    labels: { division: 'RATE', gateLength: 'GATE LENGTH', attack: 'ATTACK', decay: 'DECAY', depth: 'DEPTH' } },
+  { id: 'flanger', name: 'Flanger', cost: 0.32, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'flanger'),
+    params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'feedback', 'spread', 'tone', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 2, frequency: 0.25, delayMs: 2, depth: 0.7, feedback: 0.45, spread: 180, tone: 8000, wet: 0.5 },
+    ranges: { frequency: { min: 0.05, max: 5, step: 0.01, unit: 'Hz' }, delayMs: { min: 0.2, max: 10, step: 0.1, unit: 'ms' },
+      spread: { min: 0, max: 180, step: 5, unit: '°' },
+      feedback: { min: 0, max: 0.85, step: 0.01 }, tone: { min: 800, max: 20000, step: 100, unit: 'Hz', log: true } },
+    labels: { delayMs: 'DELAY', spread: 'SPREAD', tone: 'DAMPING' } },
   { id: 'phaser', name: 'Phaser', cost: 2.06, tone: 'Phaser',
     params: ['rateSync', 'rateDivision', 'frequency', 'octaves', 'baseFrequency', 'wet'], defaults: { rateSync: 0, rateDivision: 4, frequency: 0.5, octaves: 3, baseFrequency: 350, wet: 0.5 } },
   { id: 'tremolo', name: 'Tremolo', cost: 0.45, tone: 'Tremolo',
@@ -1300,6 +1747,18 @@ export const EFFECTS = [
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, wet: 1 }, start: true },
   { id: 'distortion', name: 'Distortion', cost: 0.08, tone: 'Distortion',
     params: ['distortion', 'wet'], defaults: { distortion: 0.4, wet: 0.5 } },
+  { id: 'bitcrusher', name: 'Bit Crusher', short: 'Bit Crush', cost: 0.09, custom: makeBitCrusher,
+    params: ['bits', 'drive', 'tone', 'wet'], defaults: { bits: 8, drive: 6, tone: 12000, wet: 0.65 },
+    ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 500, max: 20000, step: 100, unit: 'Hz', log: true } },
+    labels: { bits: 'BITS', drive: 'DRIVE', tone: 'TONE' } },
+  { id: 'tape', name: 'Tape Saturation', short: 'Tape', cost: 0.72, custom: makeTape,
+    params: ['drive', 'bias', 'tone', 'wow', 'flutter', 'wet'], defaults: { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05, wet: 0.65 },
+    ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 1000, max: 20000, step: 100, unit: 'Hz', log: true } },
+    labels: { drive: 'DRIVE', bias: 'BIAS', tone: 'TONE', wow: 'WOW', flutter: 'FLUTTER' } },
+  { id: 'ringmod', name: 'Ring Modulator', short: 'Ring Mod', cost: 0.08, custom: makeRingMod,
+    params: ['rateSync', 'rateDivision', 'frequency', 'waveform', 'wet'], defaults: { rateSync: 0, rateDivision: 0.5, frequency: 30, waveform: 'sine', wet: 0.5 },
+    ranges: { frequency: { min: 0.1, max: 2000, step: 0.1, unit: 'Hz', log: true } },
+    labels: { frequency: 'RATE', waveform: 'WAVEFORM' } },
   { id: 'chebyshev', name: 'Chebyshev', cost: 0.09, tone: 'Chebyshev',
     params: ['order', 'wet'], defaults: { order: 12, wet: 0.4 } },
   // The other two in this group shape the whole signal; this one only ever adds to the
@@ -1379,6 +1838,20 @@ export const EFFECTS = [
     params: ['type', 'frequency', 'Q'], defaults: { type: 'lowpass', frequency: 1000, Q: 1 },
     ranges: { frequency: { min: 20, max: 18000, step: 10, unit: 'Hz', log: true } } },
 ];
+
+// Keep the literals above as a safe fallback, then overlay the source-backed DEV
+// defaults. Only parameters the catalogue currently declares are accepted; a stale
+// key in the data file cannot reach Tone, and a newly declared key still gets its
+// code fallback until somebody saves it.
+for (const def of EFFECTS) {
+  const fallback = { ...(def.defaults || {}) };
+  const saved = EFFECT_PRESETS.inserts?.[def.id]?.default || {};
+  const known = Object.fromEntries((def.params || [])
+    .filter((name) => Object.prototype.hasOwnProperty.call(saved, name))
+    .map((name) => [name, saved[name]]));
+  def.fallbackDefaults = fallback;
+  def.defaults = { ...fallback, ...known };
+}
 
 // Six is a working limit, not a technical one: past that a chain is hard to reason
 // about by ear, and the strip's effect block has to reserve room for the longest
@@ -1470,7 +1943,10 @@ export function visibleParams(def, params = {}) {
   const synced = on('sync');
   const rateSynced = on('rateSync');
   return def.params.filter((p) => {
-    if (p === 'division') return synced;
+    // A rhythmic gate is permanently song-grid driven and therefore has a division
+    // without exposing a second tempo-mode switch. Ordinary delays still gate this
+    // row on their explicit `sync` control.
+    if (p === 'division') return synced || (!has('sync') && has('division'));
     if (p === 'delayMs') return !synced;
     if (p === 'rateDivision') return rateSynced;
     if (p === 'frequency') return !rateSynced;
@@ -1494,6 +1970,9 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
       def,
       node,
       set: (patch, b) => node.setState(patch, b ?? bpm),
+      scheduleRhythm: typeof node.scheduleRhythm === 'function'
+        ? (step, when, sixteenth, b) => node.scheduleRhythm(step, when, sixteenth, b ?? bpm)
+        : null,
       // A hand-written effect reaches its params through setState, which ramps them
       // from ctx.currentTime and takes no time argument. Rather than pretend, say so:
       // custom effects are not eligible for a scheduled transition, and the desk keeps

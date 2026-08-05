@@ -1264,17 +1264,19 @@
   #rackwrap.shed-sends .sendrow,
   #rackwrap.no-fx .fxbtns,
   #rackwrap.shed-fx .fxbtns { display: none; }
-  /* A channel body used to begin with the preset selector. Once that row moved into
-     the header, a body with all three optional blocks hidden became pure flex slack:
-     it still reserved a tall empty band above the fader. Only channel strips collapse
-     it; master and send returns may still carry a device summary in their body. */
-  #rackwrap:is(.no-eq, .shed-eq):is(.no-sends, .shed-sends):is(.no-fx, .shed-fx)
-    .strip[data-lane]:not(.master):not(.send) .stripbody { display: none; }
+  /* A channel body used to collapse outright once all three optional blocks were
+     hidden, so it would not reserve an empty band above the fader. It does not any
+     more: --bodyh is that band, and it is the same band on every strip. With the body
+     collapsed on channels while a send return still carried its device summary, the
+     returns' faders started lower than the channels' — the exact misalignment --bodyh
+     exists to remove. When every body is empty --bodyh measures ~0 and there is no
+     band to save. */
   /* Measuring a rung for real rather than adding its parts up — see stripChromeAt().
-     Both of these are given --striph explicitly, which is the number the measurement
-     is trying to produce. */
+     All three of these are given a height explicitly (--striph, --bodyh), which is
+     what the measurement is trying to produce. */
   #rackwrap.measuring .strip,
   #rackwrap.measuring .voicepair { height: auto; }
+  #rackwrap.measuring .stripbody { height: auto; }
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
   #rackwrap.collapsed { display: none; }
@@ -1394,9 +1396,17 @@
     min-height: 0; height: var(--striph, auto);
   }
   .strip .striphead { flex: none; }
-  /* The body owns only its actual control rows. The spare height belongs to the
-     fader below, not to an empty band between the header and the foot. */
-  .strip .stripbody { flex: 0 0 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  /* One height for every body in the rack: the tallest body's, measured per rung of
+     the shrink ladder and written to --bodyh by sizeStrips.
+     Natural height per strip was the one thing left that could move a fader off its
+     neighbours' line. The foot is bottom-anchored, so the pan pot, the buttons and
+     the dB readout already landed together — but the fader between them is the
+     strip's shock absorber, and a master with an empty body handed it sixty pixels
+     the channels' two send rows had already spent. Same top, same length, same
+     bottom, on every strip: the rows a strip does not have are the band above its
+     fader, not extra fader. */
+  .strip .stripbody { flex: 0 0 auto; min-height: 0; height: var(--bodyh, auto);
+                      overflow-y: auto; overflow-x: hidden;
                       display: flex; flex-direction: column; gap: 2px; padding-top: 2px;
                       scrollbar-width: none; -ms-overflow-style: none; }
   .strip .stripbody::-webkit-scrollbar { width: 0; height: 0; display: none; }
@@ -1472,10 +1482,16 @@
                      letter-spacing: .07em; text-transform: uppercase;
                      color: var(--lane, var(--dim)); opacity: .95; margin: 3px 0 3px; }
   /* The word on the strip, in the lane's own colour. The family MARK is on the
-     arrangement row instead — see groupIcon(). */
-  .strip .grp-tag { text-align: center; font-size: 8.5px; letter-spacing: .07em;
+     arrangement row instead — see groupIcon().
+     The same box as .stripsub above it, down to the line-height and the margins: a
+     strip carries one or the other — BUS and SEND here, the preset's category there —
+     and with `normal` line-height this one stood 1.3px shorter, which is 1.3px of the
+     master's head that the channels' heads did not have. Every head in the rack is
+     one line of 11.5px name over one line of 8.5px caption, and they are level. */
+  .strip .grp-tag { text-align: center; font-size: 8.5px; line-height: 1;
+                    letter-spacing: .07em;
                     text-transform: uppercase; color: var(--lane, var(--dim));
-                    opacity: .95; margin: 0 0 3px; }
+                    opacity: .95; margin: 3px 0 3px; }
   .grpicon { width: 13px; height: 13px; flex: none; fill: none; stroke: var(--lane, var(--dim));
              stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
   .grpfill { fill: var(--lane, var(--dim)); stroke: none; }

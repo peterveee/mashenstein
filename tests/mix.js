@@ -35,7 +35,7 @@ const renderMixFile = (mix) => {
 // "renderMixFile would write something different" — see the last section.
 import { mixSignature } from '../tools/lib/mix-signature.js';
 import { AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
-import { EFFECT_BY_ID, MAX_EFFECTS, DEFAULT_MASTER_CHAIN, visibleParams } from '../src/engine/effects.js';
+import { EFFECT_BY_ID, MAX_EFFECTS, DEFAULT_MASTER_CHAIN, visibleParams, paramRange } from '../src/engine/effects.js';
 import { LANE_KEYS } from '../src/engine/lanes.js';
 // The node-side registry, which is the one the desk saves against: a mix can be
 // dialled in on an imported song, and an entry for it is not a broken mix file.
@@ -149,6 +149,41 @@ for (const def of Object.values(EFFECT_BY_ID)) {
   }
 }
 
+// New cards must be reachable from the picker as well as from the catalogue. Read
+// the browser-side grouping source here because the picker is deliberately not a
+// Node-importable module.
+const groupBlock = deskSource.slice(deskSource.indexOf('const EFFECT_GROUPS = ['), deskSource.indexOf('function addEffect('));
+for (const id of ['chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape']) {
+  assert(groupBlock.includes(`'${id}'`), `${id}: appears in an effect-picker group`);
+}
+assert(/\['Modulation',[\s\S]*'chorus2'[\s\S]*'rhythmgate'[\s\S]*'flanger'[\s\S]*'ringmod'/.test(groupBlock),
+  'new modulation effects are grouped under Modulation');
+assert(/\['Drive',[\s\S]*'bitcrusher'[\s\S]*'tape'/.test(groupBlock),
+  'new drive effects are grouped under Drive');
+
+// The shared editor needs a meaningful range for every new non-default control;
+// otherwise its generic 0..1 fallback makes Hz, dB, and integer controls unusable.
+for (const [id, checks] of Object.entries({
+  chorus: { delayTime: [2, 20], feedback: [0, 0.6], spread: [0, 180] },
+  chorus2: { feedback: [0, 0.6], tone: [800, 20000] },
+  bitcrusher: { bits: [2, 16], drive: [0, 24] },
+  rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.005, 1] },
+  flanger: { feedback: [0, 0.85], delayMs: [0.2, 10] },
+  ringmod: { frequency: [0.1, 2000] },
+  tape: { bias: [-1, 1], wow: [0, 1], flutter: [0, 1] },
+})) {
+  const def = EFFECT_BY_ID[id];
+  for (const [name, [min, max]] of Object.entries(checks)) {
+    const range = paramRange(name, def);
+    assert(range.min === min && range.max === max,
+      `${id}.${name}: editor range is ${range.min}..${range.max}`);
+  }
+}
+for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM']) {
+  assert(Object.values(EFFECT_BY_ID).some((def) => Object.values(def.labels || {}).includes(label)),
+    `catalogue has the local ${label} label`);
+}
+
 // The trims that stop the songs clipping. These are measured values (see the peak
 // apportionment in the handoff notes); if they move, the render is expected to move
 // with them — but they should never quietly vanish.
@@ -196,7 +231,19 @@ const sample = {
           { id: 'mbComp', params: { lowFrequency: 180, 'low.threshold': -26, 'high.knee': 8 } },
         ],
       },
-      kick: { gain: 1 },
+      // Keep all six new ids in one saved channel fixture so the source serializer
+      // proves their arbitrary parameter objects and bypass flags survive a reload.
+      kick: {
+        gain: 1,
+        effects: [
+          { id: 'chorus2', params: { rateSync: 0, frequency: 0.65, density: 0.75 } },
+          { id: 'bitcrusher', params: { bits: 8, drive: 6 } },
+          { id: 'rhythmgate', bypass: true, params: { division: 0.5, attack: 0.003, decay: 0.035 } },
+          { id: 'flanger', params: { rateSync: 1, rateDivision: 0.5, feedback: 0.45 } },
+          { id: 'ringmod', params: { rateSync: 0, frequency: 30, waveform: 'triangle' } },
+          { id: 'tape', params: { drive: 6, bias: 0.1, wow: 0.12, flutter: 0.05 } },
+        ],
+      },
       // Stereo width: a real strip parameter with no desk control, so the only way
       // it gets into a mix is by hand — and the serialiser used to erase it on the
       // next Save. 0 is mono, and mono is a decision, so it has to survive a round
@@ -224,6 +271,8 @@ assert(JSON.stringify(wrote.masterEffects) === JSON.stringify(sent.masterEffects
   'round-trip: the master effect chain survives');
 assert(JSON.stringify(wrote.lanes.bass.effects) === JSON.stringify(sent.lanes.bass.effects),
   'round-trip: a channel effect chain survives, bypass flags and string params included');
+assert(JSON.stringify(wrote.lanes.kick.effects) === JSON.stringify(sent.lanes.kick.effects),
+  'round-trip: all six new effect ids and their custom params survive');
 assert(JSON.stringify(wrote.lanes.bass.eq) === JSON.stringify(sent.lanes.bass.eq)
   && JSON.stringify(wrote.lanes.bass.send) === JSON.stringify(sent.lanes.bass.send)
   && wrote.lanes.bass.pan === sent.lanes.bass.pan && wrote.lanes.bass.mute === true,

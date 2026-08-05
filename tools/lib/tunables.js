@@ -62,6 +62,12 @@ export const TUNABLES = [
   },
 
   // ---- gait: the run cycle ----------------------------------------------
+  // These four are the BASE of the stride, not the whole of it: each hero's
+  // limbStyle multiplies them (LOCO in toons.js), so a slider moves the cast by
+  // its own factor rather than by the number on screen — lorenzo lands 1.34x
+  // whatever STRIDE says, grumpos 1.15x his HVY row. The ratios between heroes
+  // live in that table and cannot be reached from here; drag these to move the
+  // whole cast together, and edit LOCO to change one hero against the others.
   { file: 'src/sprites/toons.js', name: 'STRIDE_RUN', short: 'STRIDE', group: GAIT, step: 0.01, coarse: 0.05, min: 0.05, max: 1.4, fmt: 3 },
   { file: 'src/sprites/toons.js', name: 'STRIDE_RUN_HEAVY', short: 'STRIDE_HVY', group: GAIT, step: 0.01, coarse: 0.05, min: 0.05, max: 1.4, fmt: 3 },
   { file: 'src/sprites/toons.js', name: 'LIFT_RUN', short: 'LIFT', group: GAIT, step: 0.01, coarse: 0.05, min: 0, max: 1.4, fmt: 3 },

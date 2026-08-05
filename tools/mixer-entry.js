@@ -1246,6 +1246,52 @@ const fxOf = (mix) => Object.fromEntries(AUXES.map((a) => [a.id, {
   eq: { ...AUX_DEFAULTS[a.id].eq, ...(mix.fx?.[a.id]?.eq || {}) },
 }]));
 
+function blankCardTarget(card, ev) {
+  // A double-click on a control is already meaningful (slider reset, select choice,
+  // button action). Only the card itself or a blank part of its grid is an authoring
+  // target; the empty add-effect card never receives this handler.
+  return ev.target === card || ev.target.classList?.contains('devgrid');
+}
+
+function bindDefaultSave(card, { scope, id, name, snapshot }) {
+  if (!DEV_USER) return;
+  card.addEventListener('dblclick', (ev) => {
+    if (!blankCardTarget(card, ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    saveEffectDefault(scope, id, name, snapshot);
+  });
+}
+
+async function saveEffectDefault(scope, id, name, snapshot) {
+  if (!DEV_USER || STATIC) return;
+  closeMenu();
+  const ok = await ask(
+    `Save new default settings for ${name}`,
+    '<p>This writes the current effect-local controls as the default used by future '
+      + 'or rebuilt instances. The current mix and live audio stay unchanged.</p>',
+    'Save default',
+  );
+  if (!ok) return;
+  let res;
+  try {
+    res = await fetch('/effect-default-save', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-mixer-role': 'dev' },
+      body: JSON.stringify({ scope, id, params: snapshot() }),
+    });
+  } catch (err) {
+    await tell('Could not save effect default', escapeHtml(err.message || err));
+    return;
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    await tell('Could not save effect default', escapeHtml(text));
+    return;
+  }
+  toast(`${name} default saved to src/data/effect-presets.js — reload to use it`, 5000);
+}
+
 /**
  * The bank as the engine would play it: layers materialised, voice overrides merged.
  *
@@ -4271,10 +4317,12 @@ const shedClass = (id) => STRIP_PARTS.find((p) => p.id === id).cls.replace('no-'
  * function of its own last answer — which is a latch, and a short window once meant a
  * short window forever.
  *
- * `measuring` also lifts --striph off .strip and .voicepair, which are given it
- * explicitly and would otherwise answer the question with the previous answer. The
- * fader is pinned for the same reason: left live, a strip measures taller on a tall
- * window than on a short one and the rack's floor ratchets up as the window grows.
+ * `measuring` also lifts --striph off .strip and .voicepair and --bodyh off .stripbody,
+ * all of which are given a height explicitly and would otherwise answer the question
+ * with the previous answer — the body worst of all, since a body held at last rung's
+ * height reports that height back and --bodyh would only ever climb. The fader is
+ * pinned for the same reason: left live, a strip measures taller on a tall window than
+ * on a short one and the rack's floor ratchets up as the window grows.
  */
 function atShed(n, fn) {
   const wrap = $('rackwrap');
@@ -4292,55 +4340,68 @@ function atShed(n, fn) {
 }
 
 /**
- * Everything in a strip whose height does not move with the fader — the header,
- * readout, pan and buttons are all fixed, so the fader is the only variable left.
- * `n` blocks into the ladder.
+ * Two numbers from one pass, `n` blocks into the ladder: the body height every strip
+ * is held to at this rung, and everything in a strip whose height does not move with
+ * the fader — header, body, inserts, readout, pan and buttons are all fixed, so the
+ * fader is the only variable left.
  *
- * Measured across EVERY strip, not off the first one: the insert buttons live in the
- * foot, so a channel with five effects on it stands a hundred pixels taller in the
- * fixed parts than a channel with none, and sizing the rack from the first strip gave
- * the busy ones a body too short for their own rows.
+ * The MAX of the bodies, not each strip's own — that is what --bodyh is: the rack
+ * reserves the tallest body on every strip, so a master with nothing in its body and a
+ * channel with three EQ rows and two sends start their faders on the same line.
+ *
+ * The rest is a max across EVERY strip too, not off the first one: the insert buttons
+ * live in the foot, so a channel with five effects on it stands a hundred pixels taller
+ * in the fixed parts than a channel with none, and sizing the rack from the first strip
+ * gave the busy ones a body too short for their own rows. The two maxes are added
+ * rather than the per-strip sums maxed: the tallest body and the tallest foot need not
+ * start out on the same strip, and after --bodyh they are on every strip.
  *
  * Rounded up: a strip half a pixel short cuts the last row it is showing.
  */
-function measureChromeAt(n) {
+function measureRungAt(n) {
   return atShed(n, () => {
-    let chrome = 0;
+    let body = 0, rest = 0;
     for (const s of document.querySelectorAll('.strip')) {
       const b = s.querySelector('.stripbody');
       if (!b) continue;
+      body = Math.max(body, naturalHeight(b));
       // Each strip's own fader comes out of its own total — that is the part this is
       // solving for, and a strip without one has none to subtract.
-      chrome = Math.max(chrome, Math.ceil(px(s, 'paddingTop') + px(s, 'paddingBottom')
-        + naturalHeight(b) + h(s.querySelector('.striphead'))
-        + h(s.querySelector('.stripfoot')) - h(s.querySelector('.faderwrap'))) + 2);
+      rest = Math.max(rest, px(s, 'paddingTop') + px(s, 'paddingBottom')
+        + h(s.querySelector('.striphead'))
+        + h(s.querySelector('.stripfoot')) - h(s.querySelector('.faderwrap')));
     }
-    return chrome;
+    return { body: Math.ceil(body), chrome: Math.ceil(body + rest) + 2 };
   });
 }
 
 /**
- * The four chrome heights, cached: one per rung of the ladder. Measuring all of them
- * costs four passes over the rack, so it is done once and thrown away by
- * forgetStripMetrics() when something that could move them moves — a rack rebuild, a
- * typeface change, or a part switch, since a block you have already hidden by hand
- * has no height for the ladder to save by hiding it again.
+ * The four rungs, cached: chrome and body height, one pair per rung of the ladder.
+ * Measuring all of them costs four passes over the rack, so it is done once and thrown
+ * away by forgetStripMetrics() when something that could move them moves — a rack
+ * rebuild, a typeface change, or a part switch, since a block you have already hidden
+ * by hand has no height for the ladder to save by hiding it again.
  */
 let chromeRungs = null;
 const forgetStripMetrics = () => { chromeRungs = null; };
-function stripChromeAt(n) {
+function stripRungAt(n) {
   if (!chromeRungs) {
     // Asked before the first buildRack — applyFont() and reserveDevices() both run at
     // load. Plausible numbers rather than a throw; the real ones arrive with the first
     // fit after the rack exists, and forgetStripMetrics() is what fetches them.
     // These are only a pre-build safety estimate. Keep them aligned with the current
     // selector-free strip: the preset now lives in the header and adds no body row.
-    if (!document.querySelector('.strip[data-lane]')) return [230, 190, 150, 110][n];
-    chromeRungs = SHED_ORDER.map((_, i) => measureChromeAt(i));
-    chromeRungs.push(measureChromeAt(SHED_ORDER.length));
+    // No body number to guess at: nothing is on screen for --bodyh to hold level, and
+    // the first real fit writes it before a strip exists to read it.
+    if (!document.querySelector('.strip[data-lane]')) {
+      return { chrome: [230, 190, 150, 110][n], body: 0 };
+    }
+    chromeRungs = SHED_ORDER.map((_, i) => measureRungAt(i));
+    chromeRungs.push(measureRungAt(SHED_ORDER.length));
   }
   return chromeRungs[n];
 }
+const stripChromeAt = (n) => stripRungAt(n).chrome;
 
 /** What a full strip needs, and what the last one standing needs. */
 const stripChrome = () => stripChromeAt(0);
@@ -4549,11 +4610,11 @@ function applyDesk({ arrOpen, rackOpen, notesOpen, arrH, notesH, fxH, chrome, ra
  * sight is a row you cannot read and cannot click, and it goes without saying that it
  * has gone. A hidden block says so on its header switch instead.
  *
- * The rung is a state of the whole rack rather than of one strip. --striph and
- * --faderh are root variables, the chrome measurement takes its MAX across every
- * strip precisely so they all stand level, and a per-strip ladder would put the
- * faders on three different lines. The precedent is the part switches themselves,
- * which hide a block on every strip at once for the same reason.
+ * The rung is a state of the whole rack rather than of one strip. --striph, --bodyh
+ * and --faderh are root variables, the measurement takes its MAX across every strip
+ * precisely so they all stand level, and a per-strip ladder would put the faders on
+ * three different lines. The precedent is the part switches themselves, which hide a
+ * block on every strip at once for the same reason.
  */
 function sizeStrips(strips) {
   // Called before the first buildRack, from applyFont() and from the fold restore.
@@ -4583,6 +4644,12 @@ function sizeStrips(strips) {
     toast('Preset editor closed — the rack is too short to hold it');
   }
 
+  // The band between the head and the foot, the same on every strip: the tallest body
+  // at this rung. Written here with --faderh and --striph and for the same reason —
+  // the three of them are one layout, and a rung that changed how long the fader is
+  // without fixing where it starts would put the master's back off its neighbours'
+  // line. The rows a strip does not have are this band, not extra fader.
+  root.setProperty('--bodyh', `${stripRungAt(shed).body}px`);
   // FADER_FLOOR, and the same number the shed loop above bargains with. They have to
   // be the one number: floored at FADER_MIN while the loop was letting the strip down
   // to chrome + FADER_FLOOR, a strip could be given fourteen pixels more content than
@@ -5795,6 +5862,8 @@ const PARAM_LABELS = {
   decay: 'DECAY', preDelay: 'PRE-DELAY', threshold: 'THRESHOLD', ratio: 'RATIO',
   attack: 'ATTACK', release: 'RELEASE', spread: 'SPREAD', sensitivity: 'SENSITIVITY',
   delayTime: 'TIME', Q: 'Q', knee: 'KNEE',
+  bits: 'BITS', bias: 'BIAS', density: 'DENSITY', gateLength: 'GATE LENGTH',
+  wow: 'WOW', flutter: 'FLUTTER', waveform: 'WAVEFORM',
   lowFrequency: 'LOW X-OVER', highFrequency: 'HIGH X-OVER',
   ceiling: 'OUT CEILING', lookahead: 'LOOKAHEAD', arc: 'Auto Release (ARC)',
 };
@@ -5804,7 +5873,7 @@ const PARAM_LABELS = {
  * reads LOW THRESHOLD — so the three bands of a multiband compressor need one entry
  * for THRESHOLD between them rather than one per band.
  */
-const paramLabel = (p) => PARAM_LABELS[p] || p.split('.')
+const paramLabel = (p, def = null) => def?.labels?.[p] || PARAM_LABELS[p] || p.split('.')
   .map((s) => PARAM_LABELS[s] || s.replace(/([A-Z])/g, ' $1').toUpperCase())
   .join(' ');
 
@@ -6305,6 +6374,13 @@ function pinnedCard(key) {
       + 'control is, and this reverb is a convolution so it has no other.';
     grid.append(note);
   }
+  bindDefaultSave(card, {
+    scope: 'returns', id: def.id, name: def.name,
+    snapshot: () => {
+      const current = fxOf(mixFor(trackId))[def.id] || {};
+      return Object.fromEntries((def.presetParams || []).map((key) => [key, current[key]]));
+    },
+  });
   return card;
 }
 
@@ -6412,6 +6488,15 @@ function buildDevices() {
     });
 
     const entryParams = { ...(def?.defaults || {}), ...(entry.params || {}) };
+    if (def) {
+      bindDefaultSave(card, {
+        scope: 'inserts', id: def.id, name: def.name,
+        snapshot: () => {
+          const current = { ...(def.defaults || {}), ...(list[i]?.params || {}) };
+          return Object.fromEntries((def.params || []).map((key) => [key, current[key]]));
+        },
+      });
+    }
     // Guarded on the effect actually HAVING a tempo switch, not just on the value of
     // one. `sync` defaults to on, so an effect with a free millisecond time and no
     // switch to sync it — the Doubler — read as "synced" and had its TIME row silently
@@ -6465,13 +6550,13 @@ function buildDevices() {
       // handled by name because they also decide which OTHER rows are drawn; this is
       // for the plain ones, where on and off is the whole of it.
       if (rng.toggle) {
-        grid.append(checkRow(paramLabel(pname),
+        grid.append(checkRow(paramLabel(pname, def),
           (entryParams[pname] ?? def.defaults?.[pname] ?? 0) >= 0.5,
           (on) => patch({ [pname]: on ? 1 : 0 }, null)));
         continue;
       }
       if (rng.options) {
-        grid.append(optionRow(paramLabel(pname), rng.options,
+        grid.append(optionRow(paramLabel(pname, def), rng.options,
           entryParams[pname] ?? rng.options[0],
           (v) => patch({ [pname]: v }, null)));
         continue;
@@ -6504,7 +6589,7 @@ function buildDevices() {
         // retrigger LFOs and click.
         onInput: (x) => patch({ [pname]: useLog ? logFromPos(x) : x }, `fx:${selectedLane}:${i}:${pname}`),
       });
-      row.label.textContent = paramLabel(pname);
+      row.label.textContent = paramLabel(pname, def);
       grid.append(row.wrap);
     }
 
@@ -6602,8 +6687,8 @@ function fitDevices() {
 const EFFECT_GROUPS = [
   ['Level & EQ', ['gain', 'peq', 'filter']],
   ['Delay', ['chandelay', 'delay', 'pingpong']],
-  ['Modulation', ['chorus', 'phaser', 'tremolo', 'vibrato', 'autofilter', 'autowah', 'autopanner']],
-  ['Drive', ['exciter', 'distortion', 'chebyshev']],
+  ['Modulation', ['chorus', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'phaser', 'tremolo', 'vibrato', 'autofilter', 'autowah', 'autopanner']],
+  ['Drive', ['exciter', 'distortion', 'bitcrusher', 'tape', 'chebyshev']],
   ['Space & stereo', ['reverb', 'doubler', 'widener', 'shifter', 'pitch']],
   ['Dynamics', ['l7', 'compressor', 'msComp', 'mbComp']],
 ];

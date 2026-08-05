@@ -1739,6 +1739,13 @@ export class RunState {
       // The frozen camera is deliberately short of the goal; the hero's
       // screen-space run completes the remaining distance.
       this.distance = this.totalDist;
+      // The pole ends UNPEELABLE with the stage, whatever is left on its clock.
+      // It is a survival power and there is nothing left to survive: from this
+      // frame the world holds and nothing can reach him. What would carry on is
+      // the star mix — the finale hold never calls updateInvincibility, so a
+      // capsule grabbed late ducked the music under the whole celebration and
+      // handed the results screen a warped bank.
+      this.endInvincibility();
       if (this.demo) { this.endRun(true); return; } // attract clips stay snappy
       // A beat on the finish frame, then results. Transient chatter would
       // clutter the held frame — clear it. The flip's own card is written
@@ -2733,6 +2740,19 @@ export class RunState {
         -50 - this.fxRng.float() * 60, -20 + this.fxRng.float() * 40,
         0.45, `hsl(${hue},95%,66%)`, 1.4, -25);
     }
+  }
+
+  // Cut the star short. Drops the power itself so the aura goes too — he
+  // celebrates as himself, not as a sparkling one — and takes the music edge
+  // down by hand, because the only caller that watches for that edge
+  // (updateInvincibility) stops running once the finale hold owns the frame.
+  // No starEnd chirp: the catch already has the slide whistle, the contact and
+  // the sparks, and a fourth sound on that frame is just noise.
+  endInvincibility() {
+    delete this.powerups.active.unpeel;
+    if (!this.invActive) return;
+    this.invActive = false;
+    Audio.setInvincible(false);
   }
 
   updateCoinMagnet(dt) {

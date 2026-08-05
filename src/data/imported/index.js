@@ -23,7 +23,6 @@ import * as AUDITION_MOTORIK from './audition-motorik.js';
 import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
-import * as BITTER_LULLABY from './bitter-lullaby.js';
 import * as BITTER_MARKET from './bitter-market.js';
 import * as BRAVE_COMET from './brave-comet.js';
 import * as BRAVE_DIVER from './brave-diver.js';
@@ -91,6 +90,7 @@ import * as SECRET_BALLOON from './secret-balloon.js';
 import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
+import * as SILENT_VOLCANO from './silent-volcano.js';
 import * as SILVER_PYLON from './silver-pylon.js';
 import * as SLEEPY_FALCON from './sleepy-falcon.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
@@ -109,7 +109,7 @@ import * as WICKED_SUNDAE from './wicked-sundae.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WILD_DOLPHIN from './wild-dolphin.js';
-import * as WILD_JUKEBOX from './wild-jukebox.js';
+import * as WILD_SUNDAE from './wild-sundae.js';
 
 export const IMPORTED_BY_ID = {
   "audition-bellbox": { bank: AUDITION_BELLBOX.bank, title: AUDITION_BELLBOX.title, group: "styleAudition", writable: true },
@@ -124,7 +124,6 @@ export const IMPORTED_BY_ID = {
   "audition-surf": { bank: AUDITION_SURF.bank, title: AUDITION_SURF.title, group: "styleAudition", writable: true },
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
-  "bitter-lullaby": { bank: BITTER_LULLABY.bank, title: BITTER_LULLABY.title, group: "scratch", writable: true },
   "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
   "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
@@ -192,6 +191,7 @@ export const IMPORTED_BY_ID = {
   "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
+  "silent-volcano": { bank: SILENT_VOLCANO.bank, title: SILENT_VOLCANO.title, group: "scratch", writable: true },
   "silver-pylon": { bank: SILVER_PYLON.bank, title: SILVER_PYLON.title, group: "scratch", writable: true },
   "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
@@ -210,7 +210,7 @@ export const IMPORTED_BY_ID = {
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
   "wild-dolphin": { bank: WILD_DOLPHIN.bank, title: WILD_DOLPHIN.title, group: "scratch", writable: true },
-  "wild-jukebox": { bank: WILD_JUKEBOX.bank, title: WILD_JUKEBOX.title, group: "scratch", writable: true },
+  "wild-sundae": { bank: WILD_SUNDAE.bank, title: WILD_SUNDAE.title, group: "scratch", writable: true },
 };
 
 for (const [id, entry] of Object.entries(IMPORTED_BY_ID)) registerTrack({ id, ...entry });
