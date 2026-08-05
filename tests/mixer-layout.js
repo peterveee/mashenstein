@@ -1937,7 +1937,7 @@ assert(/let locA = null[\s\S]*?let locB = null/.test(entry)
   'the loop uses the highlighted bar range before locator fallback, keeps song-relative'
   + ' bounds, and Play from start restores step 0 after arming so the intro is heard');
 assert(/function hideLoopUi\([\s\S]*?showLocatorUi\(\)/.test(entry)
-  && /function showLocatorUi\([\s\S]*?step == null \? 'none' : ''/.test(entry)
+  && /function showLocatorUi\([\s\S]*?step == null \? 'none' : '(?:block)?'/.test(entry)
   && /if \(e\.altKey\) \{[\s\S]*?toggleLocator\(at\)/.test(entry),
   'locator pins remain visible when looping is off and Alt-click is their placement gesture');
 assert(!/id="loopbars"/.test(shell)
