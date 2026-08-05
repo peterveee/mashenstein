@@ -1595,13 +1595,28 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       ['0.58 longer still', 'chair 5/32 · peak 85° · knee dips more', { gaitTune: { thigh: 0.58 } }],
     ]);
 
+    // Stance. The run was riding LOW: mean leg extension had fallen to 0.537
+    // against shipped's 0.620, so the knee stayed folded right through the
+    // cycle. Raising the hip stretches the hip-to-ankle span over unchanged
+    // bones — the leg straightens and the body lifts together, one dial. What
+    // it costs is torso: the shoulders do not move when the hip rises, so the
+    // body shortens by whatever the legs gain. That trade is why this dial is
+    // narrow, and why the rungs below stop at 1.12.
+    strip('stance (hip height)', [
+      ['shipped', 'hip 0.248 · meanExt 0.620 · torso 0.381', { limbStyle: 'legacy' }],
+      ['1.00  (was — the low read)', 'hip 0.236 · meanExt 0.537 · torso 0.381', { gaitTune: { stance: 1, extend: 0.9 } }],
+      ['1.04', 'hip 0.246 · meanExt 0.578', { gaitTune: { stance: 1.04 } }],
+      ['1.085  (shipped now)', 'hip 0.258 · meanExt 0.602 · torso 0.360', { gaitTune: { stance: 1.085 }, __hi: true }],
+      ['1.12 further still', 'hip 0.266 · shorter torso again', { gaitTune: { stance: 1.12 } }],
+    ]);
+
     // The two most likely answers, moving, against shipped and against the spec.
     const LIVE = [
       ['shipped', { limbStyle: 'legacy' }],
+      ['stance 1.0\n(the low read)', { gaitTune: { stance: 1, extend: 0.9 } }],
+      ['stance 1.085\nSHIPPED NOW', {}],
+      ['stance 1.12', { gaitTune: { stance: 1.12 } }],
       ['anchor 0\n(the chair)', { gaitTune: { holdAt: 0 } }],
-      ['anchor .35\nSHIPPED NOW', {}],
-      ['hold 1\n(no snap)', { gaitTune: { hold: 1 } }],
-      ['spec .052 split', { hipSplit: 0.052 }],
     ];
     tile(grid, 'lorenzo — pelvis, live', 'same clock in every lane',
       PAD * 2 + 78 * LIVE.length, 128, (ctx, t) => {
@@ -2286,6 +2301,58 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
       }
       ctx.stroke();
     }, { wide: true, hires: 6 });
+  }
+}
+
+// --------------------------------------------- Facial expressions (lab only)
+// Every hop currently wears the exact same surprised O-mouth — expressionFor's
+// `jf` lookup (toons.js) can now vary that per jump, but nothing in run.js
+// rolls a random one yet. This is the review gate before that gets wired up:
+// the whole cast across all 4 candidate jump faces, side by side, so a bad one
+// (or a hero it doesn't suit) shows up before it's live in a real run. A 5th,
+// neutral, was cut after review for reading too close to determined.
+{
+  const ids = Object.keys(TOON_SPECS);
+  const VARIANTS = [
+    ['Surprised', 0, "today's only jump face — the O-mouth"],
+    ['Excited', 1, 'happy-arc eyes + a modest grin — reuses the joy face'],
+    ['Determined', 2, 'brows-down, forward-look eyes — the same face heroes already wear mid-run'],
+    ['Startled', 3, 'O-mouth + lifted brows — the combo the Gary title cameo already ships'],
+  ];
+  const secId = 'facial-expressions';
+  const title = 'Facial expressions';
+  const s = document.createElement('section');
+  s.id = secId;
+  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
+    + `<p class="note">GALLERY ONLY — pose.jumpFace is not yet rolled by run.js; this drives it `
+    + 'directly to preview all 4 candidates before the random pick goes live. Frozen at the jump\'s '
+    + 'first frame (t=0) so blink/cheer timing doesn\'t add noise to the comparison.</p>';
+  root.appendChild(s);
+  const navLink = document.createElement('a');
+  navLink.href = `#h-${secId}`;
+  navLink.dataset.target = secId;
+  navLink.textContent = title;
+  nav.appendChild(navLink);
+
+  const HH = 60;
+  const th = HH * 1.3;
+  for (const [label, jumpFace, note] of VARIANTS) {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = label;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    for (const id of ids) {
+      tile(grid, id, label.toLowerCase(), HH * 0.9, th, (ctx) => {
+        drawToon(ctx, id, pose('jump', 0, { jumpFace }), (HH * 0.9) / 2, th - HH * 0.05, HH);
+      });
+    }
   }
 }
 

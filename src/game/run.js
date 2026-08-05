@@ -73,6 +73,17 @@ const ACT_BANNER_FADE = 0.3;
 // that dismissed the card BEFORE it from carrying through into this one.
 const ZONE_CARD_FADE = 0.25;
 const ZONE_CARD_ARM = 0.4;
+// Jump faces: expressionFor's `jf` lookup (toons.js) — 0 surprised, 1 excited,
+// 2 determined, 3 startled.
+const JUMP_FACE_COUNT = 4;
+// One reroll if the pick repeats the jump before it — the same once-only
+// reroll randomPowerPickup uses, so back-to-back hops don't keep landing on
+// the same expression. A strict === compare, not a truthy `avoid &&` check,
+// since 0 (surprised) is a valid — and the initial — face to avoid repeating.
+function rollJumpFace(rng, avoid) {
+  const first = rng.int(0, JUMP_FACE_COUNT - 1);
+  return first === avoid ? rng.int(0, JUMP_FACE_COUNT - 1) : first;
+}
 // Rewind: hold Left Arrow / A to reverse time, up to 10 seconds at ~30 fps.
 // Snapshots capture the full world state; popping them restores it.
 const REWIND_SECONDS = 10;
@@ -600,6 +611,44 @@ const CELEBRATE_DIP = {
 // It has to fit inside the held frame, which is FINALE_HOLD + the band's own
 // hold — see FLIP_BANDS, which were lengthened to match.
 const FLIP_THROW = 1.4;
+
+// ------------------------------------------------------------- the pole ride
+//
+// The descent is a FALL with friction, not a tween: one acceleration for every
+// catch, and the duration falls out of how far there is to come. That ordering
+// is the whole point. The first version picked a duration from the catch height
+// (height / 40, clamped) and eased position over it, which meant the taller the
+// catch the GENTLER the acceleration — every ride, high or low, topped out
+// around the same speed, so nothing read as gathering pace. Fix the accel and
+// solve for the time instead and both halves come right on their own: a low
+// catch is over in half the time, and a full-height catch is visibly quicker at
+// the cap than it was at the grip.
+//
+// A sixth of GRAVITY (900), because hands on a pole is a controlled descent —
+// an actual free-fall down 46px is a third of a second, gone before the eye has
+// registered he is holding anything. This is the second pass at the number: 75
+// gave a PERFECT a full second and that second was a beat too polite, a hero
+// lowering himself where the stage wants him DROPPING onto the switch. At 150
+// the longest ride is a bit over two thirds of a second and the shortest a bit
+// over a third — still three times slower than a real fall, still enough room
+// for the whistle, but the cap now comes up at you.
+const SLIDE_ACCEL = 150;
+// The grip's own speed. Starting from a dead stop puts a visible hitch at the
+// top — he catches the pole and hangs there while the quadratic gets going —
+// so he is already moving the moment his hands close. Small enough that the
+// ride is still mostly the acceleration.
+const SLIDE_V0 = 14;
+// Seconds the walk-up's hop takes. Fixed, because it is the same little jump
+// whatever the stage did: only the ride that follows scales. Trimmed with the
+// accel — against a third-of-a-second ride, a 0.3s wind-up was the longer half
+// of the gesture, which put the weight on the hop instead of the drop.
+const SLIDE_HOP_T = 0.22;
+
+// How long it takes to fall `dist` pixels down the pole — the positive root of
+// dist = v0 t + ½ a t².
+function slideTime(dist) {
+  return (Math.sqrt(SLIDE_V0 * SLIDE_V0 + 2 * SLIDE_ACCEL * Math.max(0, dist)) - SLIDE_V0) / SLIDE_ACCEL;
+}
 
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
@@ -1230,8 +1279,17 @@ export class RunState {
           // pole rather than a lift being lowered — and it ends on the CAP, not
           // on the floor. He finishes the stage standing on the thing he came
           // down to press.
+          //
+          // Integrated from SLIDE_ACCEL rather than eased across the ride, so
+          // the speed at any moment is the speed the fall has actually earned
+          // by then. sl.ride was solved from the same numbers, so the fall
+          // lands exactly on the cap as the clock runs out; the clamp is for
+          // the frame that steps a hair past it.
           const d = (p - sl.hop) / (1 - sl.hop);
-          this.player.y = PLUNGER_REST + (sl.from - PLUNGER_REST) * (1 - d * d);
+          const rt = d * sl.ride;
+          const fallen = Math.min(sl.from - PLUNGER_REST,
+            SLIDE_V0 * rt + 0.5 * SLIDE_ACCEL * rt * rt);
+          this.player.y = sl.from - fallen;
           // How far DOWN the pole he is, for the painter. `cling` says he is
           // holding it; this says where in the ride he is, and it is what lets
           // the pose develop — knees bending as the cap comes up, the grin
@@ -1446,6 +1504,7 @@ export class RunState {
     this.player.powerJumpBonus = this.powerups.bonusJumps();
     if (Input.pressed('jump')) {
       const ok = this.player.jumpPressed(Audio);
+      if (ok) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
       if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#ffa8b6', 1, 60, () => this.fxRng.float());
       if (this.mission.type && this.challenge && this.challenge.type === 'onbeat') this.checkOnBeat();
     }
@@ -1635,7 +1694,7 @@ export class RunState {
     // held jump gives its full arc and a duck reads through. sp is fed as the
     // run-cycle speed so the legs match the accelerating travel.
     this.player.powerJumpBonus = this.powerups.bonusJumps();
-    if (Input.pressed('jump')) this.player.jumpPressed(Audio);
+    if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
     if (Input.pressed('ability')) this.useAbility();
     const res = this.player.update(dt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
@@ -1704,7 +1763,7 @@ export class RunState {
     this.powerups.update(dt);
     this.updateInvincibility(dt);
     this.player.powerJumpBonus = this.powerups.bonusJumps();
-    if (Input.pressed('jump')) this.player.jumpPressed(Audio);
+    if (Input.pressed('jump') && this.player.jumpPressed(Audio)) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
     if (Input.pressed('ability')) this.useAbility();
     const res = this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
@@ -1777,35 +1836,28 @@ export class RunState {
       // The hop's own height, for the walk-up: enough above the cap to read as
       // a deliberate little jump onto it rather than a stumble.
       const from = this.player.grounded ? PLUNGER_REST + 16 : Math.max(caught, PLUNGER_REST + 6);
+      // The ride is the only part that is timed: it is a fall of a known
+      // distance at a known acceleration, so there is exactly one answer for
+      // how long it takes (see SLIDE_ACCEL). A catch happens between about 26
+      // and 57 pixels up — that is the whole range the cast can reach — which
+      // is 15 to 46 pixels of pole, and this turns that into a bit over a third
+      // of a second against a bit over two thirds. Nothing is clamped, because
+      // nothing needs to be: a short fall being short IS the read.
+      const ride = slideTime(from - PLUNGER_REST);
+      const hopT = this.player.grounded ? SLIDE_HOP_T : 0;
       this.flipSlide = {
         from,
         t: 0,
+        ride,
         // `hop` is the fraction of the move spent going UP. Zero when he is
         // already airborne — there is nothing to hop, he is holding the pole.
-        hop: this.player.grounded ? 0.36 : 0,
-        // Time scales with how far he has to come, so a PERFECT visibly takes
-        // longer to ride down than a scraped FLIP, floored so a low catch is
-        // still a slide rather than a snap.
-        //
-        // Slower than a fall, on purpose: hands on a pole is a CONTROLLED
-        // descent, and the first pass ran it at roughly free-fall speed — the
-        // hero arrived before the eye had registered he was holding anything,
-        // and the whistle over it was gone in a fifth of a second. At these
-        // numbers a PERFECT catch takes about a second to come down, which is
-        // long enough to watch and long enough to hear.
-        // The divisor is the part that was wrong, not the clamps. A catch
-        // happens between 26 and about 57 pixels up — that is the whole range
-        // the cast can reach — so dividing by 95 put every grade on the 0.45
-        // floor and the "scales with height" comment described nothing. At 40
-        // a PERFECT rides for a full second, a scraped FLIP for two thirds of
-        // one, and the two are visibly different lengths of hold.
-        dur: this.player.grounded ? 0.85 : Math.max(0.65, Math.min(1.45, from / 40)),
+        hop: hopT / (hopT + ride),
+        dur: hopT + ride,
       };
       // The whistle covers the DESCENT only, so it starts when he starts coming
       // down — on the hop path that is after the rise, or the sound describes a
       // fall that has not begun.
-      const ride = this.flipSlide.dur * (1 - this.flipSlide.hop);
-      Audio.sfx('slideWhistle', { dur: ride, when: this.flipSlide.dur * this.flipSlide.hop });
+      Audio.sfx('slideWhistle', { dur: ride, when: hopT });
       this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
         + (this.flipSlide ? this.flipSlide.dur : 0);
     }

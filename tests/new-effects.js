@@ -11,7 +11,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY = `
 import * as Tone from 'tone';
 import { createEffect } from ${JSON.stringify(join(ROOT, 'src/engine/effects.js'))};
-window.__renderEffect = async ({ id, params = {}, seconds = 1.2, wet0 = false, gate = false }) => {
+window.__renderEffect = async ({ id, params = {}, seconds = 1.2, wet0 = false, gate = false, inputGain = 0.35 }) => {
   const SR = 44100;
   const N = Math.ceil(seconds * SR);
   const ctx = new OfflineAudioContext(2, N, SR);
@@ -20,7 +20,7 @@ window.__renderEffect = async ({ id, params = {}, seconds = 1.2, wet0 = false, g
   src.type = 'sine'; src.frequency.value = 220;
   const harmonics = ctx.createOscillator();
   harmonics.type = 'triangle'; harmonics.frequency.value = 440;
-  const sum = ctx.createGain(); sum.gain.value = 0.35;
+  const sum = ctx.createGain(); sum.gain.value = inputGain;
   src.connect(sum); harmonics.connect(sum);
   let tail = sum;
   if (id) {
@@ -124,6 +124,10 @@ assert(diff(originalChorus, chorusVariant) > 1e-4,
 const lowBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 2, drive: 0, tone: 20000 } });
 const highBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 16, drive: 0, tone: 20000 } });
 assert(diff(lowBits, highBits) > 1e-3, 'bit depth changes the quantized signal');
+const crushedSilence = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'bitcrusher', params: { bits: 4, drive: 4, tone: 3945.696, wet: 0.55 }, inputGain: 0,
+});
+assert(peak(crushedSilence) < 1e-7, 'bit crusher keeps silence at zero instead of creating meter-only DC');
 
 const wideChorus = await page.evaluate((x) => window.__renderEffect(x), {
   id: 'chorus2', params: { rateSync: 0, frequency: 0.65, density: 1, width: 1, wet: 1 },

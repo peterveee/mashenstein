@@ -1209,6 +1209,17 @@ function laneOf(mix, key) {
 const LANE_KEY = 'mash-mixer-lane';
 let selectedLane = localStorage.getItem(LANE_KEY) || null;
 
+// The preset name on a strip is a two-step control: the first click selects the
+// channel, the second one opens the picker. What arms the second step is the NAME you
+// clicked, not the selection — a rebuild or a lane going away can move `selectedLane`
+// between two clicks of the same word, and when that happens the click you can see
+// yourself making has to still mean what it looked like it meant. selectLane disarms
+// it whenever the selection lands anywhere else, so a name is never hot on the first
+// click after you were somewhere else on the desk.
+let armedPresetLane = null;
+const armPreset = (key) => { armedPresetLane = key; };
+const presetArmed = (key) => armedPresetLane === key || selectedLane === key;
+
 /**
  * Which editor the Notes panel puts up for a channel — or neither.
  *
@@ -3116,9 +3127,10 @@ function placeVoiceEditor() {
   sharedTitle.title = stripTitle?.title || `Change the preset for ${targetLabel(laneKey)}`;
   sharedTitle.setAttribute('role', 'button');
   sharedTitle.tabIndex = 0;
+  // Same two-step as the strip's own name: select first, change the preset second.
   const choosePreset = (ev) => {
     ev.stopPropagation();
-    selectLane(laneKey);
+    if (!presetArmed(laneKey)) { selectLane(laneKey); armPreset(laneKey); return; }
     openVoicePicker(ev.clientX, ev.clientY, laneKey);
   };
   sharedTitle.addEventListener('click', choosePreset);
@@ -3790,12 +3802,18 @@ function channelStrip(lane, mix, slotRows, number) {
     presetName.classList.add('strippreset');
     presetName.setAttribute('role', 'button');
     presetName.tabIndex = 0;
-    presetName.title = preset
-      ? `Change ${preset.label} on ${lane.label}`
-      : `Choose a preset for ${lane.label}`;
+    // No title: markClipped() owns this element's title attribute — it puts the full
+    // name on only when the strip is too narrow to show it — so anything written here
+    // is wiped on the next fit. A "Change X on Y" title used to sit here and had been
+    // invisible for exactly that reason.
+    //
+    // One click, one job. Clicking the name of an unselected strip used to select the
+    // channel and open the picker in the same motion, so the selection you had just
+    // made was underneath the popup that came with it — you never got to see the strip
+    // you landed on. Now the first click selects, and the second one changes the preset.
     const choosePreset = (ev) => {
       ev.stopPropagation();
-      selectLane(key);
+      if (!presetArmed(key)) { selectLane(key); armPreset(key); return; }
       openVoicePicker(ev.clientX, ev.clientY, key);
     };
     presetName.addEventListener('click', choosePreset);
@@ -6815,6 +6833,8 @@ setDevicesFolded(localStorage.getItem(FX_FOLD_KEY) === '1', false);
 
 function selectLane(key) {
   selectedLane = key;
+  // The selection moving off a name puts that name back to its first click.
+  if (armedPresetLane !== key) armedPresetLane = null;
   localStorage.setItem(LANE_KEY, key);
   for (const el of document.querySelectorAll('.strip[data-lane]')) {
     el.classList.toggle('selected', el.dataset.lane === key);
@@ -8151,10 +8171,25 @@ function buildArrangement() {
     name.textContent = preset?.label || row.label;
     // No title here: markClipped() puts one on only if the name is actually cut off.
     //
-    // The name is not a button. Changing what plays a track is the row's right-click
-    // menu and nothing else — see the Sound section in openRegionEditor — because the
-    // name is the first thing you point at on a track, and pointing at a track has to
-    // stay safe.
+    // The name changes what plays the track — the same two-step the channel strip's
+    // name takes. Pointing at a track still has to stay safe, and it is: the first
+    // click on a row you are not on selects it and nothing more, so the library only
+    // ever opens on a track you are already looking at. (This used to be the row's
+    // right-click menu and nothing else, back when one click opened the picker
+    // outright and landing on a name you meant to point at cost you a sound.)
+    if (seamFor(row.key)) {
+      name.setAttribute('role', 'button');
+      name.addEventListener('click', (ev) => {
+        // Not armed yet: let the click through to the header, which selects the row —
+        // arming this name for the second click on the way past.
+        if (!presetArmed(row.key)) { armPreset(row.key); return; }
+        ev.stopPropagation();
+        openVoicePicker(ev.clientX, ev.clientY, row.key);
+      });
+      // Two clicks of the name are not a double-click gesture: the header's dblclick
+      // plays from where the lane comes in, which is not what the second click meant.
+      name.addEventListener('dblclick', (ev) => ev.stopPropagation());
+    }
     //
     // Selecting is what a plain click does, and it is the WHOLE header that does it: the
     // number, the family mark, the name, the type and the space around them are all the

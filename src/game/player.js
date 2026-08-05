@@ -75,6 +75,9 @@ export class Player {
     this.y = 0;           // height of feet above ground (positive = up)
     this.vy = 0;
     this.jumps = 0;
+    // Which jump face to wear while airborne (toons.js expressionFor's `jf`
+    // lookup) — rolled fresh per hop by run.js's rollJumpFace, not here.
+    this.jumpFace = 0;
     this.powerJumpBonus = 0;
     this.ducking = false;
     this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted

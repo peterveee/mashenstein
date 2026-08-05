@@ -1409,11 +1409,18 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
 
 const QUANT_CURVE_SIZE = 65537;
 function bitCrusherCurve(bits) {
-  const levels = 2 ** Math.max(2, Math.min(16, Math.round(bits)));
+  // Use a zero-centred (midtread) quantizer. Mapping the bipolar range into an
+  // even number of bins puts x=0 on the boundary between two bins; the old
+  // `((x + 1) / 2)` curve therefore turned silence into a small positive DC
+  // value at every even bit depth. That DC was visible on the channel meter but
+  // inaudible, which made a quiet lane appear to be playing. `steps` keeps a
+  // genuine zero code while retaining full-scale endpoints and progressively
+  // finer resolution as the bit depth rises.
+  const steps = 2 ** (Math.max(2, Math.min(16, Math.round(bits))) - 1);
   const curve = new Float32Array(QUANT_CURVE_SIZE);
   for (let i = 0; i < curve.length; i++) {
     const x = (i / (curve.length - 1)) * 2 - 1;
-    curve[i] = Math.round(((x + 1) * 0.5) * (levels - 1)) / (levels - 1) * 2 - 1;
+    curve[i] = Math.round(x * steps) / steps;
   }
   return curve;
 }

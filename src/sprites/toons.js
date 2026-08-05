@@ -1050,7 +1050,19 @@ const LOCO = {
     // own 8/32. It is also the cleanest rung on the knee-under-shoe artifact:
     // 1 frame at a third of shipped's depth. Push it no lower — 0.42 measured
     // 10/32 with the thigh whipping to 126deg.
-    armLag: 0.125, jumpSeg: 0.46, ankle: 1, extend: 0.9, hipDepth: 2, thigh: 0.46,
+    // stance 1.085 / extend 0.97: the run rode LOW — mean leg extension had
+    // fallen to 0.537 against shipped's 0.620, so the knee was folded through
+    // the whole cycle and the near hip sat 0.012u under shipped's besides.
+    // Raising the hip lengthens the hip-to-ankle span against unchanged bones,
+    // which straightens the leg and lifts the body in one move. `extend` had
+    // to come up with it: at 0.9 the guard simply GREW the bones to hold
+    // extension where it was, cancelling the lift — it was doing its job and
+    // defeating the point. At 0.97 the hip clears shipped's own height and
+    // mean extension lands on 0.602 against 0.620. The cost is a torso 0.021u
+    // shorter, since the shoulders do not move when the hip rises: this rig
+    // buys leg from body, and that trade is the whole reason the dial is
+    // narrow. Do not push past ~1.10.
+    armLag: 0.125, jumpSeg: 0.46, ankle: 1, extend: 0.97, hipDepth: 2, thigh: 0.46, stance: 1.085,
   },
   // The first cut of the port, kept ONLY so the gallery can show what the
   // geometry change fixed. Its stride, lift and leg length ran 34/38/12 percent
@@ -1105,7 +1117,7 @@ const LOCO = {
 const LOCO_NEUTRAL = {
   stride: 1, lift: 1, contact: 0.5, skew: 1, toe: 0, heel: 0,
   seg: 1, hold: 1, bob: 1, bobShape: 1, knee: 1, legLen: 1, hipSplit: 0,
-  armLag: 0, jumpSeg: 0.46, ankle: 1, extend: 1, hipDepth: 0, lean: 1, holdAt: 0, thigh: 0.5, path: 'loco',
+  armLag: 0, jumpSeg: 0.46, ankle: 1, extend: 1, hipDepth: 0, lean: 1, holdAt: 0, thigh: 0.5, stance: 1, path: 'loco',
 };
 for (const key of Object.keys(LOCO)) LOCO[key] = Object.freeze({ ...LOCO_NEUTRAL, ...LOCO[key] });
 // null for anyone without a style, which is what gates every branch below.
@@ -1567,10 +1579,11 @@ function expressionFor(id, pose = {}) {
   const annoyedAmt = Math.max(0, Math.min(1, +pose.annoyed || 0));
   const annoyed = annoyedAmt > 0.02;
   if (annoyed) browEase = annoyedAmt;
-  // Which jump face: 0 surprised, 1 excited, 2 determined, 3 startled, 4 neutral.
-  // The caller rolls one per hop so the same jump doesn't always land on the
-  // same face — see run.js's rollJumpFace. Excluded on the ground, mid-stomp,
-  // and while clinging (the pole ride keeps its own joyful face below).
+  // Which jump face: 0 surprised, 1 excited, 2 determined, 3 startled. (A 5th,
+  // neutral, was cut for reading too close to determined.) The caller rolls
+  // one per hop so the same jump doesn't always land on the same face — see
+  // run.js's rollJumpFace. Excluded on the ground, mid-stomp, and while
+  // clinging (the pole ride keeps its own joyful face below).
   const jf = (pose.kind === 'jump' && !pose.stomp && !clinging) ? (pose.jumpFace | 0) : -1;
   return {
     // A blink through the call or the glare would eat it, so those win.
@@ -2805,7 +2818,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     : cm ? Math.sin((pose.time || 0) * 6 + 1.2) * 0.016 * u
     : pose.kind === 'idle' ? Math.sin((pose.time || 0) * 2) * 0.012 * u : 0;
 
-  let hipY = -legL * 0.92;                 // knees carry a slight standing bend
+  // 0.92 of a leg length: the knees carry a slight standing bend. `stance`
+  // raises that toward a straighter leg for the styled run only, which does
+  // two things at once and is why it is one dial rather than two — the body
+  // rides higher off the ground, AND the hip-to-ankle span grows against
+  // unchanged bones, so the knee bends less to cover it. Left at 1 the whole
+  // cast stands exactly where it always did.
+  let hipY = -legL * 0.92 * (styledGait ? L.stance : 1);
   let torsoTop = -(heavy ? 0.768 : 0.56) * u + bob;
   let headY = -(heavy ? 0.978 : 0.76) * u + bob;
   let shoulderY = -(heavy ? 0.708 : 0.5) * u + bob;
@@ -6308,6 +6327,10 @@ export function poseFromPlayer(player, t) {
     clingRide: Math.max(0, Math.min(1, player.clingRide || 0)),
     float: !!player.floating,
     stomp: !!player.stomping,
+    // Which jump face — rolled once per hop by run.js's rollJumpFace and held
+    // on the player for the whole hang time, since `kind` stays 'jump' for
+    // every frame this pose is airborne. See expressionFor's `jf` lookup.
+    jumpFace: player.jumpFace | 0,
     headless: player.headless > 0 || player.fistThrown,
     axeThrown: !!player.axeThrown,
     axeReady: player.abilityCd <= 0,

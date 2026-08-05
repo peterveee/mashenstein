@@ -38,6 +38,7 @@ import * as CRIMSON_CAROUSEL from './crimson-carousel.js';
 import * as CRIMSON_DIVER from './crimson-diver.js';
 import * as CRIMSON_ENGINE from './crimson-engine.js';
 import * as CRIMSON_MIRROR from './crimson-mirror.js';
+import * as CRYSTAL_LADDER from './crystal-ladder.js';
 import * as DIZZY_LADDER from './dizzy-ladder.js';
 import * as DIZZY_MIRROR from './dizzy-mirror.js';
 import * as DIZZY_ROBOT from './dizzy-robot.js';
@@ -139,6 +140,7 @@ export const IMPORTED_BY_ID = {
   "crimson-diver": { bank: CRIMSON_DIVER.bank, title: CRIMSON_DIVER.title, group: "scratch", writable: true },
   "crimson-engine": { bank: CRIMSON_ENGINE.bank, title: CRIMSON_ENGINE.title, group: "scratch", writable: true },
   "crimson-mirror": { bank: CRIMSON_MIRROR.bank, title: CRIMSON_MIRROR.title, group: "scratch", writable: true },
+  "crystal-ladder": { bank: CRYSTAL_LADDER.bank, title: CRYSTAL_LADDER.title, group: "scratch", writable: true },
   "dizzy-ladder": { bank: DIZZY_LADDER.bank, title: DIZZY_LADDER.title, group: "scratch", writable: true },
   "dizzy-mirror": { bank: DIZZY_MIRROR.bank, title: DIZZY_MIRROR.title, group: "scratch", writable: true },
   "dizzy-robot": { bank: DIZZY_ROBOT.bank, title: DIZZY_ROBOT.title, group: "scratch", writable: true },

@@ -827,6 +827,13 @@
      which was which, and solo is the one you leave on by accident. */
   .solobtn.on { background: var(--solo); color: var(--on-solo); border-color: var(--solo); font-weight: 700; }
   .arrrow:hover .arrname { color: var(--ink); }
+  /* Only on the row you are already on does the name do anything of its own — the
+     second click there opens the preset library. On every other row it is part of the
+     header, and the header selects. */
+  .arrrow.sel .arrname[role="button"]:hover { text-decoration: underline;
+                                              text-underline-offset: 2px;
+                                              text-decoration-thickness: 1px;
+                                              text-decoration-color: color-mix(in srgb, var(--selected-ink) 45%, transparent); }
   /* The selected lane, outlined end to end in the same pale edge its strip carries,
      so the two halves of the desk agree on which channel you are on. */
   .arrrow.sel { z-index: 4; border-radius: 4px; }
@@ -1474,7 +1481,10 @@
               color: var(--ink); font-weight: 400; text-transform: capitalize; }
   .strip.selected h3 { color: var(--selected-ink); font-weight: 600; }
   .strip h3.strippreset { cursor: pointer; }
-  .strip h3.strippreset:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+  /* focus-VISIBLE, not focus: clicking the name is how you select the channel, and a
+     box drawn around the word on that click reads as "the preset is now the thing
+     selected" when the strip is. The outline is for the keyboard route only. */
+  .strip h3.strippreset:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   /* The preset name is the sound currently assigned to the lane; this line is its
      category/type, not the original track name. Give it a little separation so the two
      levels read as a hierarchy. */

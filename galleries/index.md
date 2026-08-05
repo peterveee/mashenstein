@@ -54,3 +54,4 @@ Do not edit by hand.
 | 2026-08-05 | `95ba639` | [2026-08-05-95ba639.html](2026-08-05-95ba639.html) | Add comprehensive tests for camera framing, frame health, pot coverage, rewind pooling, and toon ink scale |
 | 2026-08-05 | `81d966e` | [2026-08-05-81d966e.html](2026-08-05-81d966e.html) | Enhance audio mixing parameters and improve float behavior in game mechanics |
 | 2026-08-05 | `d44e002` | [2026-08-05-d44e002.html](2026-08-05-d44e002.html) | Fix regex in showLocatorUi function to correctly handle loop visibility |
+| 2026-08-05 | `f8ded45` | [2026-08-05-f8ded45.html](2026-08-05-f8ded45.html) | feat: add new effect presets and validation for effect parameters |
