@@ -17,6 +17,7 @@ import {
 } from '../sprites/props.js';
 import { burst, spawnShard, updateParticles, drawParticles, clearParticles } from '../engine/particles.js';
 import { readPlatform } from '../engine/platform.js';
+import { framingIsChosen } from './run.js';
 
 // Field-guide icon sizes (logical px) for vector props.
 const GUIDE_ICON_SIZES = {
@@ -4132,7 +4133,10 @@ export class SettingsState {
     const s = this.save.settings;
     return [
       { label: `MUTE: ${s.muted ? 'ON' : 'OFF'}`, act: () => { s.muted = !s.muted; Audio.setMuted(s.muted); } },
-      { label: `CAMERA: ${s.zoomIn ? 'ZOOM IN' : 'NORMAL'}`, act: () => { s.zoomIn = !s.zoomIn; } },
+      // Only where the choice is honoured: a handheld's framing is fixed.
+      ...(framingIsChosen()
+        ? [{ label: `CAMERA: ${s.zoomIn ? 'ZOOM IN' : 'NORMAL'}`, act: () => { s.zoomIn = !s.zoomIn; } }]
+        : []),
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
       { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },

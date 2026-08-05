@@ -212,11 +212,33 @@ class RewindRing {
 const REWIND_LOCKOUT = 3.0;
 
 // Floatie stack anchor: above the standing hero's head with clearance, below
-// the speech bubble's reach — risen text fades out before ~y 90. The camera put
-// that head at y 184 (24 drawn px at the resting zoom, off a groundline pinned
-// to 232), so the stack starts high enough that three cards can pile up before
-// the lowest one reaches it.
-const FLOAT_BASE_Y = 128;
+// the speech bubble's reach. It used to be a flat 128, tuned against the head
+// at y 184 (24 drawn px at a resting ZOOM of 2, off a groundline pinned to 232).
+//
+// A flat number stopped working when the camera pulled back. The groundline is
+// pinned but everything above it shrinks toward it, so the AIR LANE — the band
+// the appliance, the drones and the air coins ride in — slides DOWN the screen
+// as the zoom drops: the high appliance's crown sits at y 92 at ZOOM 2 and at
+// y 120 at 1.6, which is exactly where the card row was printing. The chatter
+// was landing on the one bonus a stage offers.
+//
+// So the row is measured off the lane rather than nailed to a pixel: it clears
+// the top of the tallest air spawn at whatever the frame's current
+// magnification is. FLOAT_AIR_TOP is the high appliance (alt 52 + h 18); at 1.6
+// that puts the row at 112, and at the close zooms the lane is high enough that
+// the clamp, not the lane, decides — 108, as high as the row may go before it
+// starts arguing with the speech bubble.
+const FLOAT_AIR_TOP = 70;   // world px above ground: crown of the highest air spawn
+const FLOAT_BASE_MIN = 108, FLOAT_BASE_MAX = 128;
+export function floatBaseY() {
+  return Math.max(FLOAT_BASE_MIN,
+    Math.min(FLOAT_BASE_MAX, Math.round(GROUND_Y - FLOAT_AIR_TOP * ZOOM - 8)));
+}
+// How fast a card drifts up, px/s. Trimmed from 18 when the row rose: the drift
+// is what carries a card out of the way, and against a higher start the old
+// speed pushed the oldest cards into the speech bubble's band rather than
+// fading below it. 13 keeps the top of the travel where it always was.
+const FLOAT_RISE = 13;
 
 // The paused screen's two ways out, as tappable plates. Wide and worded rather
 // than round and glyphed: these are read once and pressed once, which is the
@@ -332,6 +354,17 @@ function tier() {
  * sweep the zoom without leaving the frame's derived numbers describing a view
  * that is no longer on screen.
  */
+/**
+ * Does this device let the player choose its framing at all?
+ *
+ * Only a desktop does. A phone and a tablet each get one fixed zoom, chosen for
+ * how close the thing is held, and applyFraming below never looks at the
+ * setting on them — so the OPTIONS row that toggles it is a control wired to
+ * nothing, which is worse than an absent one. Settings asks this before
+ * offering it.
+ */
+export function framingIsChosen() { return tier() === 'desktop'; }
+
 export function applyFraming(settings) {
   const t = tier();
   const want = t === 'phone' ? ZOOM_PHONE
@@ -1224,7 +1257,7 @@ export class RunState {
       }
       this.updateFlipCoins(dt);
       updateParticles(dt);
-      for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
+      for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
       if (this.finaleT <= 0) this.endRun(true);
       Input.endFrame(); return;
     }
@@ -1457,7 +1490,7 @@ export class RunState {
     this.collide();
 
     if (this.coinComboT > 0) { this.coinComboT -= dt; if (this.coinComboT <= 0) this.coinCombo = 0; }
-    for (const f of this.floaties) { f.t -= dt; f.y -= 18 * dt; }
+    for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
     this.floaties = this.floaties.filter((f) => f.t > 0);
     this.updateChompBites(dt);
     if (this.goalToasts.length) {
@@ -3622,7 +3655,7 @@ export class RunState {
   // that card prints while the hero is standing AT the breaker, so at the
   // normal height it lands squarely on the pole's own signage — two plates,
   // same pixels. Everything else keeps the shared row.
-  floatText(text, color, { solid = false, base = FLOAT_BASE_Y } = {}) {
+  floatText(text, color, { solid = false, base = floatBaseY() } = {}) {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
     // Newest lands at the base; if a recent one is still near it, slot in below

@@ -45,7 +45,7 @@ import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 // The lane has to settle into the SAME resting frame a real stage does, or the
 // tutorial teaches a camera the game then changes. run.js owns that decision
 // because it owns the two framings; no cycle, run.js has never imported this.
-import { applyFraming } from './run.js';
+import { applyFraming, floatBaseY } from './run.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, TAG_FLASH_TIME } from './draw.js';
 import { drawToon } from '../sprites/toons.js';
 import { makeObstacle, makePickup, entityBox, overlaps, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
@@ -1566,7 +1566,9 @@ export class TutorialState {
   // section closed, and it competes with a speech panel for the same glance —
   // so it gets a couple more seconds to be noticed and read.
   floatText(text, color, solid = false) {
-    let y = 128;
+    // The same lane-derived row the run uses — the lesson that introduces the
+    // toaster is the one place a card most needs to stay off it.
+    let y = floatBaseY();
     for (const f of this.floaties) if (f.y + 19 > y) y = f.y + 19;
     this.floaties.push({ text, color, t: 3.2, y, solid });
     if (this.floaties.length > 5) this.floaties.shift();
