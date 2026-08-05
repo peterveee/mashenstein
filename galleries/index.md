@@ -56,3 +56,4 @@ Do not edit by hand.
 | 2026-08-05 | `d44e002` | [2026-08-05-d44e002.html](2026-08-05-d44e002.html) | Fix regex in showLocatorUi function to correctly handle loop visibility |
 | 2026-08-05 | `f8ded45` | [2026-08-05-f8ded45.html](2026-08-05-f8ded45.html) | feat: add new effect presets and validation for effect parameters |
 | 2026-08-05 | `08ed8cf` | [2026-08-05-08ed8cf.html](2026-08-05-08ed8cf.html) | feat: add crystal ladder song and update effect presets in gallery |
+| 2026-08-05 | `fd28b2e` | [2026-08-05-fd28b2e.html](2026-08-05-fd28b2e.html) | Add mixer voice editor enhancements and tutorial script |

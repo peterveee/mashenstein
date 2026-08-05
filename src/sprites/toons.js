@@ -1296,8 +1296,12 @@ const CLING_TUCK = 0.6;
 //            limbs happen to be (Mochi's nubs, Raymn's fins)
 //   tilt     radians of lean, for the rigs that ride the pole side-on
 const CLING_RIG = {
-  // A rice ball squeezed up the pole: tall, thin, nubs stretched over the top.
-  mochi:  { squeeze: 0.16, grab: 1, tilt: 0 },
+  // Mochi is not here either. She has no ARMS, but she has hands — the two nubs
+  // are hands, and a hand with no arm behind it can still close on a pole; it
+  // just cannot bend an elbow on the way, which is a constraint on the PATH and
+  // not on the grip. So she reaches like the cast does, one nub out to the
+  // column. See drawPika.
+  //
   // No arms and no legs — he has teeth. Chompo bites the pole and rides down
   // hanging off his own jaw, which is the only cling in the cast that is also
   // a threat. Tilted, because a disc gripping with its mouth cannot be level.
@@ -5130,12 +5134,16 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   // herself onto the pole and is riding it as one squeezed handful. The body
   // stretch itself comes from drawToon; what belongs here is where the nubs go
   // and the wobble of a soft thing hanging by two of them.
+  // Clinging: one nub goes to the pole and the rest of her is left alone — the
+  // same change the humanoids make, and for the same reason. She used to be in
+  // CLING_RIG, squeezed tall and rocking, with both nubs thrown over the top:
+  // that is a body wrapped round a pole, and it was written when the assumption
+  // was that she had nothing to hold on with. She has two hands. The lift is
+  // gone with the rest of it; a hero holding a pole hangs, she does not float.
   const clingPika = clingAmount(pose);
-  if (clingPika > 0) {
-    cy -= 0.05 * u * clingPika;
-    ctx.rotate(0.05 * Math.sin(t * 8) * clingPika);
-  }
-  const armsUp = pose.float || celebrate || enhancedJump || clingPika > 0.4;
+  // NOT armsUp. That throws BOTH nubs over the top, which is the old whole-body
+  // answer — only the pole-side one is going anywhere now.
+  const armsUp = pose.float || celebrate || enhancedJump;
 
   // tail: star-tipped stalk, drawn on the LEFT in rig space so it trails behind
   // (the drawToon wrapper mirrors the whole rig with facing, keeping it correct).
@@ -5241,8 +5249,18 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
 
   // arm nubs (rotate up while floating / celebrating)
   const nubY = armsUp ? cy - ry * 0.5 : cy + ry * (enhancedDuck ? 0.42 : 0.2);
-  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(-rx - 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
-  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(rx + 0.005 * u, nubY, 0.08 * u, 0, Math.PI * 2));
+  const nubR = 0.08 * u;
+  // The pole-side nub's target. Divided by the 0.9 the whole rig is scaled by
+  // above, so it lands on the column in WORLD space — where the mast actually
+  // is — rather than 10% short of it in her own.
+  const gripX = (CLING_POLE_X * u) / 0.9;
+  // Just clear of the crown, which is as far as a hand with no arm can
+  // plausibly be: her reach is the length of her own body, not of a limb.
+  const gripY = cy - ry * 1.02;
+  const nx = (rx + 0.005 * u) + (gripX - (rx + 0.005 * u)) * clingPika;
+  const ny = nubY + (gripY - nubY) * clingPika;
+  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(-rx - 0.005 * u, nubY, nubR, 0, Math.PI * 2));
+  outlined(ctx, p.b, hair(0.6, ow * 0.9), (c) => c.arc(nx, ny, nubR, 0, Math.PI * 2));
 
   // face — rides a small bounce on the run; cheeks lag + squash for a jiggle.
   // Kept subtle: the body already squashes at the same frequency, so a large
