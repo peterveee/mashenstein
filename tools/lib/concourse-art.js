@@ -266,7 +266,7 @@ export function paintConcourse(ctx, LW, LH, {
 
     if (poster) {
       drawPoster(ctx, cx, posterTop, POSTER_W, POSTER_H, {
-        pal, tilt: -0.035, torn: locked, lit: litAt(cx) * 0.92,
+        pal, tilt: -0.035, torn: locked, seed: cab.id, lit: litAt(cx) * 0.92,
       });
     }
 

@@ -1106,6 +1106,14 @@ const CLING = {
   // proportionally; a bear's grab, not a gymnast's.
   grumpos: { gripUp: 0.72 },
 };
+// How bent the legs are on the ride, as the celebrate hop's `air` term (1 is
+// the hop's full mid-air tuck). TOP is the catch — barely off the idle hang, a
+// hero who has just taken hold — and the bend deepens to CLING_TUCK as the cap
+// comes up, which is a person gathering their legs to meet the ground. Shared
+// across the cast: the ride's character lives in the grip (CLING) and the
+// smile, not in eight different knee angles nobody could tell apart at 24px.
+const CLING_TUCK_TOP = 0.15;
+const CLING_TUCK = 0.6;
 // The exotic rigs have no hands to grip with, so their cling is a whole-body
 // answer, applied in drawToon and read again inside each painter:
 //   squeeze  vertical stretch, as a fraction — the body elongates along the pole
@@ -1163,7 +1171,16 @@ function clingSettle(pose) {
 // hero on the cap he is going to land on for the whole descent, already centred
 // and already facing front when the celebration takes over. See POLE_STANDOFF
 // in finishMarker.js, which is this number in the marker's own pixels.
-export const CLING_POLE_X = 0.33;
+//
+// 7/24 rather than a round decimal, because 24 is the hero's draw height and 7
+// is where the plunger's right anchor bolt sits: at exactly this reach the mast
+// comes down through its own rivet and the pole and the base read as one bolted
+// assembly instead of two objects standing near each other. It was 0.33, which
+// landed the mast a pixel outboard of the bolt and hard against the edge of the
+// flange — close enough to look like a mistake rather than a join. The bolt is
+// drawn AT the mast (see plunger()), so the two cannot drift apart again; this
+// fraction is what decides where both of them go.
+export const CLING_POLE_X = 7 / 24;
 // Half the idle stance: how far out from centre a standing foot plants, as a
 // fraction of draw height. The cling measures its own stance against this, so
 // "how far apart are his feet on the pole" is answered in the units of the pose
@@ -1329,6 +1346,14 @@ function expressionFor(id, pose = {}) {
   // closed reads as asleep on it; `cheer` is the open-eyed, open-mouthed half,
   // which is the "wheeee" this pose wants and keeps the eyes in the face.
   const cheer = clinging || !!(cm && cm.peak);
+  // How MUCH of the grin, 0..1. A celebration owns the full thing; the pole
+  // ride grows into it — he catches with a smile and the whoop opens as the
+  // ground comes up (clingRide is descent progress, see run.js). The joy-mouth
+  // painters lerp their modest-smile → full-cheer sizes on this, so the face
+  // develops down the pole rather than switching on whole at the catch.
+  const joyAmt = clinging
+    ? 0.35 + 0.65 * Math.max(0, Math.min(1, pose.clingRide || 0))
+    : 1;
   // Dolores never breaks posture — no wave, no lean — so all her idle life has
   // to carry on the face. She rotates through a handful of micro-beats on a slot
   // cycle: a call to a queue that has not existed in years (brows up, eyes past
@@ -1337,7 +1362,15 @@ function expressionFor(id, pose = {}) {
   // and most windows are a plain rest, so it reads as a bored server, not a
   // twitch. The eye glances ease in and out; the call and brow-raise hard-cut,
   // matching the old call. Strictly id-gated — no other hero can reach any of it.
+  //
+  // Watching somebody cross the room overrides all of it. `gazeAmt` is a 0..1
+  // blend the caller ramps, not a flag, and the idle beats are weighted by what
+  // is left of it: a face that is tracking a customer half-way must not also be
+  // half-way through a glance down the empty line. The two hard-cut beats (the
+  // call and the brow-raise) drop out entirely once the gaze has taken over,
+  // since neither has a partial state to fade through.
   let calling = false, glanceX = 0, glanceY = 0, hmph = false, browEase = 1;
+  const gazeAmt = Math.max(0, Math.min(1, +pose.gazeAmt || 0));
   if (id === 'dolores' && !active && !joy && !pose.annoyed) {
     const cyc = 4.4, ph = (t + seed) % cyc, win = 0.9;
     const slotN = Math.floor((t + seed) / cyc) % 7;
@@ -1353,6 +1386,11 @@ function expressionFor(id, pose = {}) {
       else if (slotN === 5) { hmph = true; browEase = ease; } // a brow-raise at nothing
       // slots 1 & 6: a plain rest face, so the beats never crowd each other.
     }
+  }
+  if (gazeAmt > 0) {
+    glanceX = glanceX * (1 - gazeAmt) + (+pose.gazeX || 0) * gazeAmt;
+    glanceY = glanceY * (1 - gazeAmt) + (+pose.gazeY || 0) * gazeAmt;
+    if (gazeAmt > 0.35) { calling = false; hmph = false; browEase = 1; }
   }
   // Set briefly when someone jabs the button on a SOLD OUT tier: brows furrow,
   // eyes narrow to a glare, mouth turns down. She never breaks posture, so — as
@@ -1370,6 +1408,7 @@ function expressionFor(id, pose = {}) {
     blink: !active && !calling && !annoyed && blinkPhase < (pose.menu ? 0.2 : 0.13),
     calling,
     annoyed,
+    joyAmt,
     glanceX,
     glanceY,
     hmph,
@@ -1398,8 +1437,12 @@ function expressionFor(id, pose = {}) {
     // length: Grumpos's mouth is a gap in a beard with three states, and the
     // stern one under a pair of delighted eyes reads as a glitch rather than as
     // stoicism. Everywhere else the rare-grin rule stands.
+    // Clinging beams once the ride is properly under way, not from the first
+    // frame of the grip. Grumpos's grin is a fixed path with no size to lerp,
+    // so his version of "the smile develops" is that it STARTS partway down —
+    // the same threshold the sized mouths pass through joyAmt.
     beam: clinging
-      ? true
+      ? (pose.clingRide || 0) > 0.35
       : id === 'grumpos' && reworkedCelebration
         ? false
         : !!(cm && cm.peak && cm.move),
@@ -1578,7 +1621,11 @@ function drawMouth(ctx, spec, p, u, cx, cy, ow, ex = {}) {
   ctx.beginPath();
   if (ex.joy) {
     // An actual smile: a filled D-grin that widens into a whoop on the peaks.
-    const w = (ex.cheer ? 0.085 : 0.065) * u, d = (ex.cheer ? 0.075 : 0.038) * u;
+    // joyAmt lerps the modest smile toward the full cheer — on the pole ride it
+    // tracks the descent, so the grin OPENS on the way down instead of arriving
+    // at whoop size the frame the hero takes the grip.
+    const amt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0;
+    const w = (0.065 + 0.02 * amt) * u, d = (0.038 + 0.037 * amt) * u;
     ctx.stroke();
     outlined(ctx, p.m || p.e, hair(0.28, ow * 0.25) * INK.face, (c) => {
       c.moveTo(cx - w, cy - 0.012 * u);
@@ -2316,10 +2363,13 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // open grin with the top row of teeth showing, drawn BEFORE the mustache so
     // the lobes cover its upper rim and read as the lip above it. Widens into a
     // full whoop on the peaks of the hop, same beat as everyone else's cheer.
+    // Sized on joyAmt where the plain mouths lerp on it: down the pole the grin
+    // opens with the descent instead of arriving at whoop size on the catch.
+    const gAmt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0;
     const mx = hx + 0.015 * u;
-    const w = (ex.cheer ? 0.088 : 0.072) * u;
+    const w = (0.072 + 0.016 * gAmt) * u;
     const top = hy + 0.108 * u;
-    const d = (ex.cheer ? 0.078 : 0.052) * u;
+    const d = (0.052 + 0.026 * gAmt) * u;
     const grin = (c) => {
       c.moveTo(mx - w, top);
       c.quadraticCurveTo(mx, top + d * 1.9, mx + w, top);
@@ -2340,8 +2390,11 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // Two buoyant lobes give Lorenzo a readable expression instead of a flat
     // strip pasted beneath the nose. Mid-celebration the grin under them pushes
     // the whole thing up and flicks the tips higher, the way a real smile does.
-    const lift = ex.joy ? (ex.cheer ? 0.022 : 0.012) * u : 0;
-    const tip = ex.joy ? (ex.cheer ? 0.026 : 0.014) * u : 0;
+    // The lobes ride the same joyAmt as the grin under them, so the mustache
+    // lifts in step with the smile it is framing.
+    const mAmt = ex.joy ? (ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0) : 0;
+    const lift = ex.joy ? (0.012 + 0.01 * mAmt) * u : 0;
+    const tip = ex.joy ? (0.014 + 0.012 * mAmt) * u : 0;
     outlined(ctx, p.m, hair(0.33, ow * 0.33) * INK.face, (c) => {
       c.moveTo(hx + 0.015 * u, hy + 0.075 * u - lift);
       c.quadraticCurveTo(hx - 0.035 * u, hy + 0.035 * u - lift, hx - 0.13 * u, hy + 0.105 * u - lift - tip);
@@ -2660,10 +2713,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // the whole silhouette of a squat. Locked to the old flat 0.2*legL the leg
     // couldn't even reach the foot and straightened out again.
     legSeg = Math.hypot(DUCK_SPREAD * u - HIP_HALF * u, Math.abs(hipY) - ankleLift) / 2 * 1.3;
-  } else if (cm) {
+  } else if (cm || cling > 0) {
     // Feet mirror under their own hips and share one tuck height — uneven
     // lifts read as a one-legged kick, not a hop.
-    const air = Math.min(1, cm.lift / 0.1);
+    //
+    // The pole ride borrows this branch, and the borrowing is the point: a
+    // person sliding a pole toward the ground bends their knees to meet it, and
+    // the bent-knee shape this game already owns is the celebration hop's. The
+    // slide rides down IN the pose it is about to land in, so ride → land →
+    // celebrate is one continuous motion instead of three poses taking turns.
+    // The bend is not constant: he catches with his legs near the idle hang
+    // (CLING_TUCK_TOP) and draws them up as the cap approaches (clingRide → 1,
+    // see run.js), topping out at CLING_TUCK — still short of the hop's full
+    // tuck. The whole term is scaled by `cling`, which the run ramps out over
+    // the last of the ride, so the knees extend into the touchdown and the
+    // celebration's grounded beats pick up from the same near-straight legs.
+    const ride = Math.max(0, Math.min(1, pose.clingRide || 0));
+    const air = cm ? Math.min(1, cm.lift / 0.1)
+      : (CLING_TUCK_TOP + (CLING_TUCK - CLING_TUCK_TOP) * ride) * cling;
     footF = [(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
     footB = [-(0.1 + 0.07 * air) * u, -air * 0.4 * legL];
     kneeB = -1;
@@ -2680,10 +2747,10 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     footF = [STAND_FOOT_X * u, 0]; footB = [-STAND_FOOT_X * u, 0]; kneeB = -1;
     legSeg = Math.hypot(0.01 * u, Math.abs(hipY) - ankleLift) / 2 + 0.001 * u;
   }
-  // No cling branch here, and that is the point. `clung` sent the whole painter
-  // down the STAND path above, so the legs a hero rides the pole with are the
-  // legs he idles on — same targets, same knee signs, same near-straight bones,
-  // same front-facing shoes — and there is nothing left for a cling to adjust.
+  // `clung` sent the whole painter down the STAND path above — same hip roots,
+  // same front-facing shoes as idling — and the ride's legs live in the
+  // celebrate branch it shares, where they bend progressively toward the hop's
+  // shape as the cap comes up. There is nothing else for a cling to adjust.
 
   // In motion the near leg keeps a longer, clearer stride while the far leg
   // tucks behind the body. Their hip roots are separated instead of sharing
@@ -4554,8 +4621,10 @@ function drawBlob(ctx, id, p, pose, u, ow, lod) {
   const ex = expressionFor(id, pose);
   drawEyes(ctx, p, u, 0.01 * u, cy - ry * 0.15, lod, ex);
   if (ex.joy) {
-    // Mochi grins with her whole face; the grin widens on every peak.
-    const w = (ex.cheer ? 0.085 : 0.06) * u, d = (ex.cheer ? 0.08 : 0.04) * u;
+    // Mochi grins with her whole face; the grin widens on every peak — and on
+    // the pole ride it opens with the descent, same joyAmt as the humanoids.
+    const amt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0;
+    const w = (0.06 + 0.025 * amt) * u, d = (0.04 + 0.04 * amt) * u;
     outlined(ctx, p.m, hair(0.6, ow * 0.5), (c) => {
       c.moveTo(0.01 * u - w, cy + ry * 0.28);
       c.quadraticCurveTo(0.01 * u, cy + ry * 0.28 + d * 1.9, 0.01 * u + w, cy + ry * 0.28);
@@ -4809,7 +4878,9 @@ function drawPika(ctx, id, p, pose, u, ow, lod) {
   }
   if (!lod) dot(ctx, 0, faceY + 0.08 * u, 0.012 * u, p.e);
   if (ex.joy || ex.surprise) {
-    outlined(ctx, p.m, hair(0.6, 0.014 * u), (c) => c.ellipse(0, faceY + 0.15 * u, 0.05 * u, ex.cheer ? 0.06 * u : 0.04 * u, 0, 0, Math.PI * 2));
+    // The open O rides joyAmt on the pole so it grows with the descent.
+    const amt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt) : 0;
+    outlined(ctx, p.m, hair(0.6, 0.014 * u), (c) => c.ellipse(0, faceY + 0.15 * u, 0.05 * u, (0.04 + 0.02 * amt) * u, 0, 0, Math.PI * 2));
   } else {
     // the goofy-face tongue, flapping with the stride (see `loll` above)
     if (loll && !lod) {
@@ -5836,8 +5907,11 @@ export function poseFromPlayer(player, t) {
     ),
     roll: !!player.rolling,
     // The pole ride. A blend, not a flag: the run hands over how much of the
-    // grip has been taken so the arms travel into it.
+    // grip has been taken so the arms travel into it — and, separately, how far
+    // down the pole he is, so the pose can DEVELOP over the descent (knees
+    // bending as the cap comes up, the grin opening) instead of arriving whole.
     cling: Math.max(0, Math.min(1, player.cling || 0)),
+    clingRide: Math.max(0, Math.min(1, player.clingRide || 0)),
     float: !!player.floating,
     stomp: !!player.stomping,
     headless: player.headless > 0 || player.fistThrown,

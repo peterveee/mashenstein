@@ -180,7 +180,7 @@ window.paintPoster = (ctx, LW, LH, { cabId }) => {
   ctx.restore();
 
   // lit: 1 — a poster in a promo shot is a poster somebody pointed a light at.
-  drawPoster(ctx, LW / 2, topY, pw, ph, { pal, tilt, torn: cab.id === 'crypt', lit: 1 });
+  drawPoster(ctx, LW / 2, topY, pw, ph, { pal, tilt, torn: cab.id === 'crypt', seed: cab.id, lit: 1 });
 };
 
 // ================================================================= 2. styles

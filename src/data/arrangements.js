@@ -15,6 +15,7 @@
 //     order: [0, 0, { s: 1, bars: 1, off: ['snare', 'clap'] }, 1, 2, 3],
 //     sections: [ { base: 1, lead: [...] } ],   // appended AFTER the bank's own
 //     bpm: 104,                                 // the tempo it is played at
+//     loop: { startBar: 5, fromBar: 8, toBar: 12 },   // where it starts and repeats
 //   }
 //
 // `bpm` is optional and overrides the bank's own. It is here rather than in the bank
@@ -22,6 +23,20 @@
 // at the tempo it was written at, and the arrangement says what it is played at —
 // which is the same relationship `order` already has with the bank's own order.
 // Absent means "the tempo it was composed at", so deleting it reverts exactly.
+//
+// `loop` is optional and is the song's INTRO AND REPEAT, in bars, counted from 1 and
+// inclusive at both ends — the same way the desk's timeline counts and the same way
+// anyone says "bars one to four". Playback begins at `startBar`, plays through to
+// `toBar`, and then repeats `fromBar`–`toBar` for ever, so the bars between `startBar`
+// and `fromBar` are heard exactly once. That is the whole point: a cabinet screen can
+// arrive on a flourish without hearing it again every thirty seconds. All three parts
+// are optional — `startBar` defaults to 1, and a `loop` with no `fromBar`/`toBar` is a
+// skip-in with no repeat — and no `loop` at all is the whole form round and round,
+// which is what every song did before this existed.
+//
+// A cabinet screen or a level can override the song's own markers with the same shape
+// on its treatment (`variants[…].loop`, see src/data/mix.js) — so the select screen can
+// start at bar 5 while the level starts at bar 1 and hears the intro in full.
 //
 // An order entry is either a NUMBER — section n, both its bars, as it has always
 // been — or `{ s, bars, from, off }`:
@@ -89,6 +104,48 @@ export function orderOf(bank) {
 export function bpmOf(bank, id, table = ARRANGEMENTS) {
   const entry = id ? table[id] : null;
   return entry?.bpm ?? bank?.bpm ?? 112;
+}
+
+/**
+ * Where a song starts and what it repeats — `{ startBar, fromBar, toBar }` in 1-based
+ * inclusive bars, or null for the whole form round and round.
+ *
+ * Bars, not steps, and deliberately: this hands back what the file says, and the one
+ * place that turns bars into sixteenths is the engine, which is also the only place
+ * that knows how long the form actually is and can clamp against it. A second
+ * conversion somewhere else is a second chance to be a bar out.
+ */
+export function loopOf(bank, id, table = ARRANGEMENTS) {
+  const entry = id ? table[id] : null;
+  return entry?.loop || null;
+}
+
+/**
+ * A `{ startBar, fromBar, toBar }` as absolute 16th-steps, clamped to a song of `bars`
+ * bars — `{ start, loop: { start, end } | null }`, or null for no markers at all.
+ *
+ * The one place bars become steps, so the engine, the timeline and the render tools
+ * cannot disagree by a bar. The clamp is not politeness: the sequencer takes the bar
+ * index modulo the plan length, so a `toBar` past the end of a song would quietly hand
+ * the loop back to that modulo and the song would play whole with nothing to show for
+ * it. Bars deleted from under a loop are the ordinary way that happens.
+ *
+ * The start comes back separately from the region because they are separate questions:
+ * a song may come in late without repeating, and a region may be armed under a playhead
+ * that is not to be moved.
+ */
+export function loopSteps(loop, bars) {
+  if (!loop || !(bars > 0)) return null;
+  const at = Math.min(bars, Math.max(1, Math.floor(loop.startBar ?? 1)));
+  const start = (at - 1) * 16;
+  if (loop.fromBar == null || loop.toBar == null) return { start, loop: null };
+  const from = Math.min(bars, Math.max(at, Math.floor(loop.fromBar)));
+  const to = Math.min(bars, Math.floor(loop.toBar));
+  // The order was shortened under a loop that used to fit. Play the form from the start
+  // bar rather than a region that is no longer there; the desk says so where it can be
+  // fixed, and refusing to play at all would be a worse answer to a deleted bar.
+  if (to < from) return { start, loop: null };
+  return { start, loop: { start: (from - 1) * 16, end: to * 16 } };
 }
 
 /**
@@ -221,6 +278,27 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
   // millisecond value, say — and 20–400 is what a song can be played at.
   if (entry.bpm != null && !(Number.isFinite(entry.bpm) && entry.bpm >= 20 && entry.bpm <= 400)) {
     issues.push(`the tempo is ${entry.bpm} — a song plays between 20 and 400 bpm`);
+  }
+  if (entry.loop) {
+    // Counted with `expandOrder` rather than `barPlan`: lanes.js imports this file, so
+    // importing it back for one length would be a cycle. The two agree by construction —
+    // barPlan IS expandOrder over the same order.
+    const bars = expandOrder(order, !!sections.length).length;
+    const { startBar = 1, fromBar = null, toBar = null } = entry.loop;
+    const whole = [startBar, fromBar, toBar].filter((n) => n != null);
+    if (!whole.every((n) => Number.isInteger(n))) {
+      issues.push('the loop is not a set of bar numbers');
+    } else if (startBar < 1) {
+      issues.push(`the loop starts at bar ${startBar} — bars are counted from 1`);
+    } else if ((fromBar == null) !== (toBar == null)) {
+      issues.push('the loop names one end of itself and not the other');
+    } else if (fromBar != null && fromBar < startBar) {
+      issues.push(`the song starts at bar ${startBar} and loops back to bar ${fromBar}, which it never reaches`);
+    } else if (fromBar != null && toBar < fromBar) {
+      issues.push(`the loop plays bars ${fromBar} to ${toBar}, which is no bars at all`);
+    } else if (Math.max(startBar, toBar ?? 0) > bars) {
+      issues.push(`the loop ends at bar ${Math.max(startBar, toBar ?? 0)} and the song is ${bars} bars long`);
+    }
   }
   order.forEach((e, i) => {
     const s = typeof e === 'number' ? e : e?.s;

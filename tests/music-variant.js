@@ -418,7 +418,10 @@ async function main() {
     'a patched send replaces the authored one');
   assert(out.resolve.snareGainKept === out.resolve.baseSnareGain && out.resolve.kickGainKept === 3.2,
     'and naming one field leaves every other field of that lane alone — the merge is per field, not per lane');
-  assert(out.resolve.loop?.start === 0 && out.resolve.loop?.end === 64
+  // `resolve` hands the treatment's markers on in BARS and lets the engine turn them
+  // into steps — one conversion, in the one place that can also clamp them against the
+  // form the song is playing. What matters here is still what got armed.
+  assert(out.resolve.loop?.fromBar === 1 && out.resolve.loop?.toBar === 4
     && out.resolve.armedLoop.start === 0 && out.resolve.armedLoop.end === 64,
   'bars 1-4 arm the sequencer as steps 0-64');
 

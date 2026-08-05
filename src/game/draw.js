@@ -103,7 +103,7 @@ const SPECIAL_FOLLOWER_CROWN = {
   mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
 };
 
-function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, charged, reducedMotion) {
+function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, charged, reducedMotion, alpha = 1) {
   const ready = charged || cooldown <= 0;
   const fill = ready ? 1 : Math.max(0, Math.min(1, 1 - cooldown / cooldownMax));
   const r = h * 0.09;
@@ -113,15 +113,20 @@ function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownM
   const energy = specialMoveColor(fill, ready);
 
   c.save();
+  // `alpha` scales every pass, so a caller can FADE the orb rather than only
+  // hide it. The internal alphas are absolute assignments, which is why this
+  // multiplies inside the function instead of wrapping the call site — a
+  // wrapped globalAlpha would be clobbered by the pulse ring's own `= 0.3`.
+  c.globalAlpha = alpha;
   if (ready && !reducedMotion) {
     const pulse = 1 + 0.11 * (0.5 + 0.5 * Math.sin(t * 5.5));
-    c.globalAlpha = charged ? 0.5 : 0.3;
+    c.globalAlpha = (charged ? 0.5 : 0.3) * alpha;
     c.strokeStyle = energy;
     c.lineWidth = Math.max(0.75, h * 0.055);
     c.beginPath();
     c.arc(x, y, (r + h * 0.065) * pulse, 0, Math.PI * 2);
     c.stroke();
-    c.globalAlpha = 1;
+    c.globalAlpha = alpha;
   }
 
   // A dark shell keeps an empty orb visible on every world palette.
@@ -264,10 +269,14 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     // every hero there has a power and the orb is how you know it is back — but
     // a scene that has not handed the player a power yet is showing a meter for
     // a control they do not have, which is a question rather than a readout.
+    // opts.specialOrbAlpha (0..1) fades it instead: the finish uses this to
+    // dissolve the orb at the flag, where the readout's question — "can I
+    // attack yet?" — has stopped existing.
     const cooldownMax = player.hero?.ability?.cooldown || 1;
-    if (opts.specialOrb !== false) {
+    const orbAlpha = opts.specialOrbAlpha == null ? 1 : Math.max(0, Math.min(1, opts.specialOrbAlpha));
+    if (opts.specialOrb !== false && orbAlpha > 0) {
       drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
-        cooldownMax, player.relayCharge, reducedMotion);
+        cooldownMax, player.relayCharge, reducedMotion, orbAlpha);
     }
     // ...and the hero themself burns brighter, in time with the aura pulse.
     if (starLeft > 0) {

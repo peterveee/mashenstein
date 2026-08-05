@@ -137,11 +137,13 @@ function resolve(trackId, variantId, state) {
   return {
     mix: mergeMix(base, hit.patch),
     // Bars are 1-based and inclusive on the page, because that is how the desk's
-    // timeline counts and how anyone says "bars one to four". Steps are absolute
-    // sixteenths, because that is what the sequencer loops on.
-    loop: hit.loop
-      ? { start: (hit.loop.fromBar - 1) * STEPS_PER_BAR, end: hit.loop.toBar * STEPS_PER_BAR }
-      : null,
+    // timeline counts and how anyone says "bars one to four". They are handed on as
+    // bars rather than converted here: `Audio.loopSteps` is the one place bars become
+    // the absolute sixteenths the sequencer loops on, and the only place that can clamp
+    // them against the form the song is actually playing. A treatment's markers have
+    // the same shape as the song's own — `startBar` and all — so a cabinet screen can
+    // start at bar 5 while the level starts at bar 1 and hears the intro in full.
+    loop: hit.loop || null,
     // Effects that belong to THIS presentation and to no other — a high-pass across the
     // whole cabinet screen, say. Not part of `patch`: a mix's effect chains can only be
     // re-tuned at a boundary, never rebuilt, because rebuilding one disposes the slot.
@@ -197,7 +199,10 @@ export const MusicDirector = {
       Audio.mixer.setTreatment(r.treatment, bank.bpm || Audio.bpm);
       Audio.mixer.rampTreatment(1, Audio.ctx.currentTime, 0);
     }
-    if (r.loop) Audio.setLoop(r.loop.start, r.loop.end);
+    // The treatment's markers over the song's own, which setBank has just armed. Same
+    // arming as a song's: seek to the start bar, then arm the region WITHOUT jumping
+    // into it, so the bars between the two are heard once on the way in.
+    if (r.loop) Audio.armLoop(r.loop, { seek: true });
   },
 
   /**
@@ -233,7 +238,7 @@ export const MusicDirector = {
     // reached its boundary; if it did, rampMix's cancelAndHoldAtTime takes its ramps
     // off every param this one touches, and this one touches all of them.
     // Before the boundary, deliberately: this is the half that must not wait.
-    if (exit.loopRelease === 'immediate') Audio.setLoop();
+    if (exit.loopRelease === 'immediate') this.releaseLoop();
     this.pending = p;
     if (exit.quantize === 'immediate') this._fire(p, Audio.ctx.currentTime + TOO_LATE);
     return true;
@@ -284,6 +289,26 @@ export const MusicDirector = {
   cancel() { this.pending = null; },
 
   /**
+   * Let go of a treatment's loop — and land back on the SONG's own markers, not on the
+   * whole form.
+   *
+   * The difference matters because the level does not go through setBank when it takes
+   * over from a cabinet screen: `enterStage` keeps the clock and only moves the mix
+   * (see request()). So this is the only place a song's own intro-and-loop can be put
+   * back, and without it a theme that declares one would play its whole form for the
+   * rest of the level.
+   *
+   * Armed without a seek: there is music playing and this is a release, not an arrival.
+   * If the playhead is already past the song's region it wraps into it at the next
+   * step, which is what a tight loop means and is the rare case anyway — a treatment's
+   * bars almost always sit before the ones the song settles into.
+   */
+  releaseLoop() {
+    Audio.setLoop();
+    Audio.armSongLoop();
+  },
+
+  /**
    * The run is over — cleared, failed, or quit.
    *
    * A treatment that has not handed over yet has to hand over NOW, because the boundary
@@ -322,7 +347,7 @@ export const MusicDirector = {
     if (p.exit.loopRelease === 'atLoopEnd' && Audio.loopEnd != null) {
       const togo = Audio.loopEnd - step;
       if (togo <= 0 || togo > 4) return null;
-      Audio.setLoop();
+      this.releaseLoop();
       return { at: when + togo * this._spb(), released: true };
     }
     const q = p.exit.quantize;
@@ -385,7 +410,7 @@ export const MusicDirector = {
       // said. A missing mix change is a disappointment; a song that never moves on is a
       // bug you cannot play through, so the two are unhooked from each other.
       console.error('[music] treatment refused, releasing the loop anyway:', err.message);
-      if (!released) Audio.setLoop();
+      if (!released) this.releaseLoop();
       this.variantId = p.variantId;
       this.pending = null;
       return;
@@ -411,7 +436,7 @@ export const MusicDirector = {
         if (!this.treated && Audio.mixer) Audio.mixer.clearTreatment();
       }, done * 1000);
     }
-    if (!released) Audio.setLoop();
+    if (!released) this.releaseLoop();
     this.variantId = p.variantId;
     this.resolved = { mix: p.mix, loop: null, exit: p.exit };
     this.pending = null;

@@ -1093,9 +1093,15 @@ function plunger(ctx, fx, gy, { thrown, live }) {
   ctx.fillStyle = '#4d6172';
   ctx.fillRect(cx - 10, gy - FLANGE_TOP, 20, 1.6);
   ctx.restore();
-  // Anchor bolts through the flange, at ground level where they would be.
-  for (const bx2 of [cx - 8, cx + 6]) {
-    inked(ctx, '#8496a8', (c) => rr(c, bx2, gy - Math.min(4, FLANGE_TOP - 1.4), 2, 2, 0.9), { lw: 0.35 });
+  // Anchor bolts through the flange, at ground level where they would be. The
+  // RIGHT one is placed on the mast's own centre line rather than at a fixed
+  // offset: the pole comes down through it, so the two read as one bolted
+  // assembly rather than as a post standing next to a base. Derived, so that
+  // stays true if the hero's reach — which is what sets POLE_STANDOFF — is ever
+  // retuned; hardcoded at +6 it was a pixel adrift of the shaft and read as a
+  // near miss, which is worse than no rivet there at all.
+  for (const boltCx of [cx - 7, cx + POLE_STANDOFF]) {
+    inked(ctx, '#8496a8', (c) => rr(c, boltCx - 1, gy - Math.min(4, FLANGE_TOP - 1.4), 2, 2, 0.9), { lw: 0.35 });
   }
   // The cap. Red, domed, and proud of everything else on the marker: it is the
   // only thing here the player is meant to touch, so it is the only thing here

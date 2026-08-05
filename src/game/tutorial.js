@@ -112,7 +112,7 @@ const GARY_INTRO_H = 24;           // Same as epilogue — zoom makes him big
 const LORENZO_ENTRY_SPEED = 160;   // Lorenzo's run-in speed (world px/s)
 const LORENZO_ENTRY_H = 24;        // Matches HERO_DRAW_H — seamless toon→sprite switch
 const LORENZO_ENTRY_START = -50;   // Off-screen left (world px)
-const INTRO_ZOOM_START = 5.5;      // Tight on Gary — he fills the frame
+export const INTRO_ZOOM_START = 5.5; // Tight on Gary — he fills the frame
 // Sections Gary will re-open before he gives up and marks it satisfactory.
 // Nobody gets stuck in training.
 const CONCEDE_AFTER = 3;
@@ -689,7 +689,7 @@ const GARY_WALK_SPEED = 78;
 // wind down exactly as Gary arrives instead of a beat and a half beforehand.
 const OUTRO_STOP_T = 2.0;
 const GARY_H = 24;
-const OUTRO_ZOOM = 3.2;
+export const OUTRO_ZOOM = 3.2;
 
 const OPENING = 'HR ASSIGNED ME THE TRAINING MODULE. I AM DECEASED. THE FORM DID NOT ASK.';
 const CONCEDED = 'I AM MARKING THIS ONE SATISFACTORY. NOBODY AUDITS ME.';

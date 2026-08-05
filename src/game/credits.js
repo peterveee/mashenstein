@@ -1169,7 +1169,10 @@ export class CreditsState {
     this.reduced = !!this.settings.reducedMotion;
     this.stars = makeStars(STAR_COUNT);
     this.dust = makeDust(DUST_COUNT);
-    Audio.setBank(MEGAMIX_THEME);
+    // Whole form, whatever the song says. A theme may declare an intro and a loop for
+    // the screens that arrive on it and stay; the credits are the one place that plays
+    // a song from end to end and then stops, and a tight loop here would trap the roll.
+    Audio.setBank(MEGAMIX_THEME, undefined, undefined, { formLoop: false });
     Input.setMenuButtons();
     // Up/down here mean "scrub the crawl while held", not "move down a row". A
     // wheel tick presses without ever releasing, so one flick of the wheel put

@@ -2932,9 +2932,6 @@ export function voicesFor(laneKey) {
     // and — through `offeredVoices`'s `keep` — still shown as the thing a generated
     // song's lane is currently playing, which is the only place it needs to be seen.
     if (v.starter) return false;
-    // In the standalone static mixer there are no authored bank patterns for engine
-    // presets to fall back on — selecting one would label the strip but make no sound.
-    if (typeof __MASH_STATIC_MIXER__ !== 'undefined' && v.kind === 'engine') return false;
     // An ENGINE preset is a bundle of the bank keys the hand-written voice reads, and
     // a layer has no hand-written body to read them — choosing one would be a strip
     // that says it plays a filtered saw and makes no sound at all. Layers take the

@@ -11,7 +11,7 @@ import { VoiceRack } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
 import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
-import { applyArrangement, resolveSection } from '../data/arrangements.js';
+import { applyArrangement, resolveSection, loopOf, loopSteps } from '../data/arrangements.js';
 
 // The scheduler runs on the main thread, alongside panel builds and layout work. A
 // quarter-second of queued audio gives those unavoidable UI tasks room to finish
@@ -309,6 +309,11 @@ class AudioSys {
     // A locator loop can be armed while the transport is still playing the intro.
     // Keep songBeat() on that intro until the scheduler has actually wrapped once.
     this.loopHasWrapped = false;
+    // Whether the armed region is the SONG's own — its `arrangement.loop` — rather
+    // than a locator range or a cabinet treatment's. What is armed looks identical
+    // either way, and the difference decides who is allowed to re-arm it: a bar edit
+    // must refresh the song's loop and must not touch a range somebody selected.
+    this.formLoopArmed = false;
     this.delayDivision = 0.75;
     this.delayFeedback = 0.35;
     this.delayTone = 2800;
@@ -545,9 +550,12 @@ class AudioSys {
    * rather than a jump applied a frame late from the UI.
    * Pass no arguments to clear it.
    */
-  setLoop(startStep = null, endStep = null) {
+  setLoop(startStep = null, endStep = null, { jump = true } = {}) {
     this.pendingLoop = null;
     this.pendingStep = null;
+    // Whatever is armed after this call, it is not the song's own markers unless
+    // armLoop says so — it is the only thing that sets the flag.
+    this.formLoopArmed = false;
     if (startStep == null || endStep == null || endStep <= startStep) {
       this.loopStart = this.loopEnd = null;
       this.loopHasWrapped = false;
@@ -558,7 +566,59 @@ class AudioSys {
     this.loopHasWrapped = false;
     // Drop straight into the region if the playhead is outside it, so arming a loop
     // takes effect on this pass rather than after the song wanders back round.
-    if (this.step < this.loopStart || this.step >= this.loopEnd) this.step = this.loopStart;
+    //
+    // `jump: false` is how a song keeps an intro: the region is armed while the
+    // playhead is still short of it, the bars before it play once on the way in, and
+    // the wrap at the end of scheduleStep does the rest. Everything that arms a loop
+    // from the UI wants the jump; everything that arms a song's own markers does not.
+    if (jump && (this.step < this.loopStart || this.step >= this.loopEnd)) this.step = this.loopStart;
+  }
+
+  /** Markers as steps, against the form THIS engine is playing. See loopSteps. */
+  loopSteps(loop) {
+    if (!this.bank) return null;
+    return loopSteps(loop, barPlan(this.bank).length);
+  }
+
+  /**
+   * The markers the CURRENT song carries — the desk's unsaved arrangement when there
+   * is one, the file's otherwise. Same seam as applyMix reads the arrangement through,
+   * for the same reason: on the desk the draft is what you are listening to.
+   */
+  songLoop() {
+    if (!this.bank) return null;
+    const id = trackIdOf(this.sourceBank || this.bank);
+    if (!id) return null;
+    return loopOf(this.bank, id,
+      this.arrangement !== undefined ? { [id]: this.arrangement } : undefined);
+  }
+
+  /**
+   * Arm a song's markers: play from its start bar, then repeat its region for ever.
+   *
+   * `seek` moves the playhead to the start bar, and is for arriving at a song — only
+   * setBank passes it. Re-arming under a song that is already playing must never move
+   * the playhead, or every bar edit on the desk would jump the music.
+   */
+  armLoop(loop, { seek = false } = {}) {
+    const r = this.loopSteps(loop);
+    if (!r) { this.setLoop(); return false; }
+    if (seek) this.step = r.start;
+    if (!r.loop) { this.setLoop(); return false; }
+    this.setLoop(r.loop.start, r.loop.end, { jump: false });
+    return true;
+  }
+
+  /**
+   * The same, for the song's OWN markers — and the only thing that raises the flag
+   * saying so. A cabinet treatment's loop goes through armLoop and leaves the flag
+   * down, because a bar edit under an auditioned treatment must not quietly replace it
+   * with the song's.
+   */
+  armSongLoop({ seek = false } = {}) {
+    const armed = this.armLoop(this.songLoop(), { seek });
+    this.formLoopArmed = armed;
+    return armed;
   }
 
   /**
@@ -1861,7 +1921,7 @@ class AudioSys {
   // because the cabinet screen has a shutter closing over it — about 0.29s of it — and
   // whether the remainder is heard as a beat of silence or as a mistake is a thing to
   // decide by ear rather than by argument. See MusicDirector.play.
-  setBank(bank, mixOverride = undefined, arrangementOverride = undefined, { gap = 0.5 } = {}) {
+  setBank(bank, mixOverride = undefined, arrangementOverride = undefined, { gap = 0.5, formLoop = true } = {}) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
@@ -1924,6 +1984,13 @@ class AudioSys {
     // Takes the early branch in setLoop and returns without touching `step`.
     this.setLoop();
     this.step = 0; // songs start from the top (section order matters now)
+    // …unless the song says otherwise. `arrangement.loop` names the bar it starts on
+    // and the bars it repeats, and this is the one call every playback path in the
+    // game goes through — the title screen, the hub, a level, the jukebox and
+    // MusicDirector alike — so arming it here is what makes an intro work everywhere
+    // without a single call site knowing about it. `formLoop: false` is for the one
+    // screen that must not loop: the credits roll and then end.
+    if (formLoop) this.armSongLoop({ seek: true });
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
       // follows delayDivision, and grows the line if this bpm makes it a long one
@@ -2054,6 +2121,12 @@ class AudioSys {
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
     const steps = barPlan(next).length * 16;
     if (steps > 0 && this.step >= steps) this.step %= steps;
+    // And the song's own loop with it, for the same reason: an edit that shortens the
+    // form can leave the region hanging off the end of it, and `loopSteps` clamps
+    // against the plan this call has just changed. Only when the song's markers are
+    // what is armed — a range somebody selected on the desk is theirs, not ours — and
+    // never with a seek, because an edit must not jump the music.
+    if (this.formLoopArmed) this.armSongLoop();
   }
 
   // Push a song's saved mix onto the channel strips, and merge any voice overrides

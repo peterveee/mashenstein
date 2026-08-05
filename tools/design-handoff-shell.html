@@ -1,0 +1,101 @@
+<!-- @dsCard group="__GROUP__" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MASHENSTEIN — __NAME__</title>
+<style>
+  :root { --bg:#f4f4f6; --panel:#fff; --line:#d8d8e0; --ink:#16161c; --dim:#65656f; --accent:#7b4bd0; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--ink);
+              font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { padding:22px 24px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
+  h1 { margin:0; font-size:19px; letter-spacing:0.02em; }
+  h1 span { color:var(--dim); font-weight:normal; font-size:13px; margin-left:10px; }
+  .brief { max-width:74ch; margin:12px 0 0; color:var(--dim); font-size:12px; line-height:1.6; }
+  .brief b { color:var(--ink); }
+  .rules { max-width:74ch; margin:14px 0 0; padding:12px 14px; background:#fbf7ff;
+           border:1px solid #e0d2f5; border-radius:6px; font-size:12px; line-height:1.65; }
+  .rules ul { margin:6px 0 0; padding-left:18px; }
+  .rules li { margin:3px 0; }
+  .bar { display:flex; gap:8px; align-items:center; padding:10px 24px; border-bottom:1px solid var(--line);
+         background:var(--panel); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  .bar span { color:var(--dim); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; }
+  .bar button { font:inherit; font-size:12px; padding:3px 11px; border:1px solid var(--line);
+                background:var(--bg); color:var(--dim); border-radius:99px; cursor:pointer; }
+  .bar button.on { border-color:var(--accent); color:var(--accent); background:#f3ecff; }
+  main { padding:8px 24px 60px; }
+  section { margin:30px 0 0; }
+  section h2 { font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent);
+               border-bottom:1px solid var(--line); padding-bottom:6px; margin:0 0 8px; }
+  section h3 { font-size:11px; letter-spacing:0.06em; color:var(--dim); font-weight:600;
+               margin:22px 0 6px; }
+  p.note { color:var(--dim); margin:0 0 14px; max-width:76ch; font-size:12px; line-height:1.6; }
+  .grid { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:9px;
+          display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .card canvas { display:block; border-radius:3px; }
+  .lab { font-size:11px; color:var(--ink); }
+  .sub { font-size:10px; color:var(--dim); }
+  table { border-collapse:collapse; width:100%; max-width:900px; margin:0 0 6px; font-size:12px;
+          background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  th { text-align:left; font-size:10px; letter-spacing:0.09em; text-transform:uppercase; color:var(--dim);
+       padding:7px 10px; border-bottom:1px solid var(--line); font-weight:600; }
+  td { padding:6px 10px; border-bottom:1px solid #eeeef2; vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  td:first-child { color:var(--accent); white-space:nowrap; }
+  .swatch { display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px;
+            border:1px solid rgba(0,0,0,0.22); vertical-align:-1px; }
+  /* Backdrop swap: a palette reads differently on white than on the game's own
+     dark stage, and both are shipping contexts. */
+  body.mid { --bg:#8b8b93; --panel:#9a9aa2; --line:#76767e; --ink:#101014; --dim:#33333c; }
+  body.dark { --bg:#0b0b14; --panel:#15151f; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e; --accent:#f6d33c; }
+  body.dark .rules { background:#1a1428; border-color:#3a2a58; }
+  body.dark td { border-bottom-color:#22222e; }
+  @media (max-width:640px) { main, header, .bar { padding-left:14px; padding-right:14px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>__NAME__ <span>MASHENSTEIN · character spec</span></h1>
+  <p class="brief">
+    Every frame below is drawn by the game's real painter — <b>drawToon()</b> from
+    <b>src/sprites/toons.js</b>, bundled into this page. Nothing here is a mockup, so what you
+    see is exactly what ships.
+  </p>
+  <div class="rules">
+    <b>How to give notes that can be applied directly:</b>
+    <ul>
+      <li>Phrase every change as <b>name: current &rarr; proposed</b>, using a name from the
+        Parameters table at the bottom of this page.</li>
+      <li>If you want something no parameter can express, propose it as a <b>new name</b> and say
+        what it should control. That is a useful answer.</li>
+      <li>Check the <b>scope</b> column first. Rows marked <b>ALL 10 HEROES</b> are one shared
+        painter — a change there re-draws the whole cast, so it needs to be worth it.</li>
+      <li>Hard constraints: flat fills and a single outline pass only. No gradients, blurs,
+        shadows or offscreen buffers — the player's hero repaints every frame. The character
+        has to hold up across <b>__SIZE_RANGE__</b> tall, which is its full range of real
+        presented sizes (phone through desktop).</li>
+    </ul>
+  </div>
+</header>
+<div class="bar">
+  <span>Backdrop</span>
+  <button data-bg="" class="on">Light</button>
+  <button data-bg="mid">Mid grey</button>
+  <button data-bg="dark">Game dark</button>
+</div>
+<main></main>
+<script>window.__HERO_ID__ = "__ID__"; window.__GEOM__ = __GEOM_JSON__;</script>
+<script>
+  for (const b of document.querySelectorAll('.bar button')) {
+    b.onclick = () => {
+      document.body.className = b.dataset.bg;
+      for (const o of document.querySelectorAll('.bar button')) o.classList.toggle('on', o === b);
+    };
+  }
+</script>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

@@ -8,12 +8,12 @@ import { MusicDirector } from '../src/engine/music-director.js';
 import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
-import { ARRANGEMENTS, applyArrangement, arrangementIssues } from '../src/data/arrangements.js';
+import { ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, writeBarNotes, writeBarNotesShared, patternStarts,
-  barCount, removeLanes, setTempo, readBarLane, DRUM_LANES,
+  barCount, removeLanes, setTempo, setSongLoop, readBarLane, DRUM_LANES,
 } from './lib/arrangement-edit.js';
 // Recording: the fourth caller of the one-note seam the keyboard, the computer keys
 // and MIDI already share. It owns the clock and the buffer; the note semantics are
@@ -59,12 +59,28 @@ import { DELAY_DIVISIONS, AUXES, AUX_DEFAULTS, gainToDb, dbToGain } from '../src
 import { EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS, MAX_EFFECTS, ENGINE_BASE_COST, syncSeconds, DEFAULT_MASTER_CHAIN } from '../src/engine/effects.js';
 
 const $ = (id) => document.getElementById(id);
+// The deployed desk at /SongMixer/ has no server behind it: nothing can be written,
+// rendered or read back off disk. It ships ONE song — THE FOOD COURT — so a tester
+// has something real to mix rather than a blank sketch, and everything that would
+// need a server, or that is not theirs to touch, is taken off the drawer below.
+// It ships THE FOOD COURT, and whatever the tester has made since — both are theirs
+// to mix, save and throw away, and neither one leaves their browser.
+const STATIC = typeof __MASH_STATIC_MIXER__ !== 'undefined';
+const SHIPPED_SONG_IDS = new Set(['hub']);
+const deskSongIds = new Set();      // made here, restored from localStorage on boot
+const localSongIds = () => [...SHIPPED_SONG_IDS, ...deskSongIds];
 // Dev mode: the local server is DEV by default. Only an explicit `?dev=0` makes
 // this tab a regular user session; static builds emit a false server flag and stay
 // USER even if somebody adds an unrelated query parameter.
 const _urlDev = new URLSearchParams(location.search).get('dev');
 const DEV_USER = _urlDev === '0' ? false : globalThis.__MASH_MIXER_DEV_USER__ === true;
 const DEV_OVERRIDDEN = _urlDev === '0';
+// The earlier versions are the DESK's paper trail — snapshots it took of a file before
+// overwriting it, kept in work/mix-history/ on the machine that did the overwriting.
+// Not a user's business in either sense: there is no such history behind a mix that was
+// never written to a file, and the versions it lists are somebody else's afternoons.
+if (!DEV_USER) { const historyButton = $('history'); if (historyButton) historyButton.hidden = true; }
+
 const role = $('songrole');
 if (role) {
   role.textContent = DEV_USER ? 'DEV' : 'USER';
@@ -5189,6 +5205,52 @@ function currentLoopBounds() {
   return null;
 }
 
+// ---- the song's own start and loop ------------------------------------------------
+//
+// A different question from the locator loop above. That one is the range you are
+// working IN and belongs to the session; this is what the game hears for ever and
+// belongs to the song — `arrangement.loop`, saved with everything else the desk writes.
+//
+// The switch is desk-local and not saved with the song, for the same reason Solo is
+// not: it is a monitoring choice. On, the transport plays the song the way a cabinet
+// screen will; off, it plays the whole form from bar 1 so the intro can be edited like
+// any other bars.
+const FORM_LOOP_KEY = 'mash-mixer-form-loop';
+let formLoopOn = localStorage.getItem(FORM_LOOP_KEY) !== '0';
+
+/** The markers as the desk has them — the unsaved draft first, like everything else. */
+const songLoopOf = () => arrFor(trackId)?.loop || null;
+
+/**
+ * Songs the markers can actually affect: the ones the game plays for itself.
+ *
+ * Asked of `listTracks`, not of `track` — `resolveTrack` hands back a built-in song
+ * without a `group` at all, because the group is not IN the file. It is decided by
+ * which registry an id is in, and only the picker's list knows that. Which is also why
+ * this is a UI rule and not a saved-file rule: the same song is `scratch` before it is
+ * wired to a cabinet and `cabinet` after, so a file that was legal on Tuesday would
+ * stop being legal on Wednesday for a reason nothing about it had changed.
+ */
+const songLoopGate = () => {
+  // Not in user mode. Where a song starts and which bars it settles into is the game's
+  // own arrangement — it decides what a level and its cabinet screen sound like long
+  // after anyone is listening here, and it is the one control on the desk that mixing
+  // never touches. The transport still FOLLOWS it, so the song plays the way the game
+  // plays it; there is just nothing to move.
+  if (!DEV_USER) return false;
+  const group = listTracks().find((t) => t.id === trackId)?.group;
+  return group === 'cabinet' || group === 'theme';
+};
+
+/**
+ * Whether the song's own markers are what the transport is following right now.
+ *
+ * The locator loop wins whenever it is armed over a real range — that is someone
+ * pointing at bars they are working on, and it should not be quietly overruled by a
+ * property of the song.
+ */
+const songLoopGoverns = () => formLoopOn && !!songLoopOf() && !(loopOn && currentLoopBounds());
+
 function syncLoopButton() {
   const button = $('looptoggle');
   const bounds = currentLoopBounds();
@@ -5230,11 +5292,15 @@ function applyLoop(atStep = null) {
   syncLoopButton();
   if (!loopOn || !bounds) {
     Audio.setLoop();
+    // Nothing is picked out, so the song's own markers get the transport back. No seek:
+    // clearing a loop is not arriving at a song, and the playhead stays where it is.
+    if (formLoopOn) Audio.armSongLoop();
     hideLoopUi();
+    syncSongLoopUi();
     return;
   }
   const { start, end } = bounds;
-  if (end <= start) { Audio.setLoop(); hideLoopUi(); return; }
+  if (end <= start) { Audio.setLoop(); if (formLoopOn) Audio.armSongLoop(); hideLoopUi(); syncSongLoopUi(); return; }
   // Both selection bars and locator positions are relative to this song, not to
   // whichever whole-song cycle the scheduler happened to be in when Loop was pressed.
   // Keeping the engine bounds in that same coordinate space makes every re-arm land on
@@ -5242,6 +5308,7 @@ function applyLoop(atStep = null) {
   Audio.setLoop(start, end);
   loopAnchor = start;
   showLoopUi(start, end, totalSteps);
+  syncSongLoopUi();
 }
 
 function hideLoopUi() {
@@ -5252,7 +5319,9 @@ function hideLoopUi() {
 
 function showLoopUi(start, end, totalSteps) {
   const reg = $('loopregion');
-  reg.style.display = '';
+  // 'block', not '': these bands are `display: none` in the stylesheet, so clearing the
+  // inline style hides them again rather than showing them.
+  reg.style.display = 'block';
   reg.style.left = (start / totalSteps * 100) + '%';
   reg.style.width = ((end - start) / totalSteps * 100) + '%';
   showLocatorUi(totalSteps);
@@ -5265,7 +5334,7 @@ function showLocatorUi(totalSteps = songShape().totalSteps) {
   const span = Math.max(1, totalSteps);
   for (const [id, step] of [['locatorA', locA], ['locatorB', locB]]) {
     const pin = $(id);
-    pin.style.display = step == null ? 'none' : '';
+    pin.style.display = step == null ? 'none' : 'block';
     if (step != null) pin.style.left = (step / span * 100) + '%';
   }
 }
@@ -5304,7 +5373,10 @@ function applyLoopNoJump() {
   $('loopregion').classList.remove('pending');
   if (!loopOn || !bounds) {
     Audio.setLoop();
+    // Play from the top means the song's own top: the bar the game comes in on.
+    if (formLoopOn) Audio.armSongLoop({ seek: true });
     hideLoopUi();
+    syncSongLoopUi();
     return;
   }
   const { start, end } = bounds;
@@ -5317,6 +5389,131 @@ function applyLoopNoJump() {
   loopAnchor = start;
   showLoopUi(start, end, totalSteps);
 }
+
+/**
+ * Put the song's markers on screen: the three numbers, the switch, and the two bands
+ * on the timeline that say which bars the game hears once and which it hears for ever.
+ *
+ * Drawn from the DRAFT every time rather than kept in step by hand, so an undo, a
+ * discard, a snapshot restore and a bar delete all show up here without any of them
+ * knowing this exists.
+ */
+function syncSongLoopUi() {
+  const grp = $('songloopgrp');
+  grp.hidden = !songLoopGate();
+  const loop = songLoopOf();
+  const bars = Math.max(1, Math.round(songShape().totalSteps / 16));
+  const btn = $('formloop');
+  btn.classList.toggle('on', formLoopOn);
+  btn.setAttribute('aria-pressed', formLoopOn ? 'true' : 'false');
+  btn.textContent = formLoopOn ? 'Game Loop' : 'Whole Song';
+  for (const [id, value] of [
+    ['songloopstart', loop?.startBar ?? (loop ? 1 : null)],
+    ['songloopfrom', loop?.fromBar ?? null],
+    ['songloopto', loop?.toBar ?? null],
+  ]) {
+    const input = $(id);
+    if (document.activeElement !== input) input.value = value == null ? '' : String(value);
+    input.max = String(bars);
+    // A number the song is no longer long enough for. Flagged and left alone: the bars
+    // were deleted from under it, and which bar was meant is not this file's to guess.
+    input.setAttribute('aria-invalid', value != null && value > bars ? 'true' : 'false');
+  }
+  // The bands. Only while the markers are actually the thing playing — with a locator
+  // loop armed over them they are not what you are hearing, and drawing them anyway
+  // would be the timeline claiming otherwise.
+  const intro = $('formintro');
+  const region = $('formloopregion');
+  const show = songLoopGate() && formLoopOn && loop && !(loopOn && currentLoopBounds());
+  // Through the shared resolver rather than the engine's copy of it: the bands have to
+  // draw with the transport stopped, and a stopped desk has no bank in the engine.
+  const r = show ? loopSteps(loop, bars) : null;
+  const total = Math.max(1, songShape().totalSteps);
+  const pct = (step) => (step / total * 100) + '%';
+  // The bars before the loop: heard on the way in and never again. From the start bar,
+  // not from bar 1 — anything before the start bar is not heard at all, and the ruler
+  // says which bars those are well enough on its own.
+  if (r && r.loop && r.loop.start > r.start) {
+    intro.style.display = 'block';
+    intro.style.left = pct(r.start);
+    intro.style.width = pct(r.loop.start - r.start);
+  } else intro.style.display = 'none';
+  if (r && r.loop) {
+    region.style.display = 'block';
+    region.style.left = pct(r.loop.start);
+    region.style.width = pct(r.loop.end - r.loop.start);
+  } else region.style.display = 'none';
+}
+
+/** Read the three inputs back as a `{startBar, fromBar, toBar}`, or null for none. */
+function songLoopFromFields() {
+  const num = (id) => {
+    const raw = $(id).value.trim();
+    if (!raw) return null;
+    const n = Math.round(Number(raw));
+    return Number.isFinite(n) ? n : null;
+  };
+  const startBar = num('songloopstart');
+  const fromBar = num('songloopfrom');
+  const toBar = num('songloopto');
+  if (startBar == null && fromBar == null && toBar == null) return null;
+  // One end of a loop and not the other is half a thought, not an error: take the bar
+  // that IS named as both ends, which is the one-bar loop it looks like.
+  return { startBar: startBar ?? 1, fromBar: fromBar ?? toBar, toBar: toBar ?? fromBar };
+}
+
+/**
+ * Write the fields into the arrangement, through the same door every other bar edit
+ * goes through: `setSongLoop` clamps against the bars the song has, and
+ * `applyArrangementEdit` handles undo, validation, the engine and Save.
+ */
+function commitSongLoop(loop, what) {
+  const ok = applyArrangementEdit(setSongLoop(arrDraftOf(), loop), what, {
+    render: false, undoTag: 'songloop', rearmLoop: false,
+  });
+  if (!ok) { syncSongLoopUi(); return false; }
+  // Re-armed rather than left to applyLoop's usual re-arm, because the numbers can move
+  // while the song is playing and the region has to follow them from the next step —
+  // without moving the playhead, which is what `applyLoop` would do here.
+  if (formLoopOn) Audio.armSongLoop();
+  syncSongLoopUi();
+  // `render: false` above skips the whole repaint, and `updateStatus` rides with it —
+  // so without this the Save button goes on saying the song matches the file while the
+  // markers sit unsaved in the draft.
+  updateStatus();
+  return true;
+}
+
+for (const id of ['songloopstart', 'songloopfrom', 'songloopto']) {
+  // On `change` rather than `input`: these are three numbers that depend on each other,
+  // and clamping a half-typed "1" of "12" against the other two writes the wrong thing
+  // and then argues with the person still typing.
+  $(id).onchange = () => {
+    const wanted = songLoopFromFields();
+    commitSongLoop(wanted, null);
+    const got = songLoopOf();
+    if (!got) { toast('Game loop cleared — the whole song, round and round'); return; }
+    const from = got.fromBar ?? null;
+    toast(from == null
+      ? `Starts on bar ${got.startBar ?? 1}`
+      : `In on bar ${got.startBar ?? 1}, then bars ${from}-${got.toBar} for ever`);
+  };
+}
+
+$('songloopclear').onclick = () => {
+  if (!songLoopOf()) { toast('No game loop on this song'); return; }
+  commitSongLoop(null, 'Game loop cleared');
+};
+
+$('formloop').onclick = () => {
+  formLoopOn = !formLoopOn;
+  localStorage.setItem(FORM_LOOP_KEY, formLoopOn ? '1' : '0');
+  applyLoop(Audio.step);
+  const loop = songLoopOf();
+  if (!formLoopOn) toast('Playing the whole song — the game still hears the loop');
+  else if (!loop) toast('Game loop on — this song does not name one yet');
+  else toast(`Hearing it as the game does — in on bar ${loop.startBar ?? 1}`);
+};
 
 $('looptoggle').onclick = () => {
   loopOn = !loopOn;
@@ -8544,10 +8741,17 @@ function updateStatus() {
     arrDirty(trackId) ? 'the arrangement' : null,
     variantDirty(trackId) ? 'the cabinet screen' : null,
   ].filter(Boolean);
-  save.textContent = !writable ? 'Read-only MIDI import' : d ? 'Save song' : 'Saved — matches the file';
+  // On the deployed desk a save is a copy in this browser, not a file, and the button
+  // has to say which of the two it is — "Saved" against a mix that is one cleared
+  // browser from gone is the one reading nobody should have to guess at.
+  save.textContent = !writable ? 'Read-only MIDI import'
+    : STATIC ? (d ? 'Save my mix' : 'Saved — matches your copy')
+      : d ? 'Save song' : 'Saved — matches the file';
   save.disabled = !writable || !d;
   save.title = !writable ? 'This legacy MIDI import has no desk-owned file section to save'
-    : d ? `Write ${halves.join(' and ')} into src/data/songs/${trackId}.js`
+    : STATIC ? (d ? `Keep ${halves.join(' and ')} as your copy of this song, in this browser only`
+      : `${track.title} matches the copy you saved in this browser`)
+      : d ? `Write ${halves.join(' and ')} into src/data/songs/${trackId}.js`
       + (cabOnDesk[trackId] ? `\n\nWARNING: the desk is showing the "${cabOnDesk[trackId]}" cabinet`
         + ' mix, not the level mix. Capture it back to the cabinet screen first.' : '')
       : `${track.title} already matches its file`;
@@ -8556,9 +8760,21 @@ function updateStatus() {
     const scratch = isDeskSong(track) && track?.writable === true;
     deleteButton.hidden = !scratch;
     deleteButton.title = scratch
-      ? `Permanently remove ${track.title} from src/data/imported and discard its desk history`
+      ? (STATIC ? `Remove ${track.title} from this browser`
+        : `Permanently remove ${track.title} from src/data/imported and discard its desk history`)
       : 'Only scratch songs created in this desk can be deleted';
   }
+  // Only a song that SHIPPED has an original to go back to. One you made here has no
+  // other version of itself anywhere — Delete is the button for that.
+  const original = $('resetoriginal');
+  if (original) original.hidden = !STATIC || !SHIPPED_SONG_IDS.has(trackId);
+  // A game song has two ways back and a user needs one. "Back to the original mix" is
+  // the whole of it — the shipped song, whatever they have done to it since — and next
+  // to that, a Discard that only reaches their own last save is a second undo with a
+  // subtler meaning than anybody wants to work out. On their own songs it stays: there
+  // the saved copy IS the song, and going back to it is the ordinary thing to want.
+  const revertButton = $('revert');
+  if (revertButton) revertButton.hidden = !DEV_USER && !isDeskSong(track);
 }
 
 // The drawer is the one project-level surface. The song browser is rendered on every
@@ -8591,7 +8807,9 @@ function openDrawer() {
   drawer.setAttribute('aria-hidden', 'false');
   $('drawerbackdrop').setAttribute('aria-hidden', 'false');
   $('navbtn').setAttribute('aria-expanded', 'true');
-  requestAnimationFrame(() => $('songsearch').focus());
+  // Nothing to type into when the search box is off, and focusing a hidden field is a
+  // keyboard that answers nowhere.
+  if (!STATIC) requestAnimationFrame(() => $('songsearch').focus());
 }
 
 $('navbtn').onclick = (ev) => { ev.stopPropagation(); openDrawer(); };
@@ -10568,17 +10786,32 @@ const SONG_GROUPS = [
   // a pack's opening sounds can be heard and swapped rather than read off a list. They
   // are development scaffolding, so they sort under the material rather than over it.
   ['Style auditions', 'styleAudition'],
-].filter(([, group]) => (typeof __MASH_STATIC_MIXER__ === 'undefined')
-  || group === 'scratch' || group === 'imported');
+].filter(([, group]) => !STATIC || group === 'theme' || group === 'scratch');
+
+/** Which songs this desk is allowed to show. Everything, unless it is the deployed one. */
+const visibleTrack = (t) => !STATIC || SHIPPED_SONG_IDS.has(t.id) || deskSongIds.has(t.id);
 
 // In the static deployed mixer there is no server, so anything that fetches or
 // posts to one cannot work. Hide those buttons rather than leaving them to answer
-// every click with an error toast.
-if (typeof __MASH_STATIC_MIXER__ !== 'undefined') {
-  for (const id of ['save', 'revert', 'history', 'renderwav', 'auditionwav', 'midi', 'importmidi']) {
-    const el = document.getElementById(id);
-    if (el) el.hidden = true;
-  }
+// every click with an error toast. Discard stays: it is pure client state, and it is
+// what makes the one shipped song safe to pull apart.
+if (STATIC) {
+  // A few songs at most, all of them yours, and nothing to come back to that is not
+  // already on the list — so no search box and no most-recently-opened.
+  const recent = document.getElementById('recent');
+  if (recent) recent.hidden = true;
+  document.querySelector('.drawersearch')?.setAttribute('hidden', '');
+  // The cabinet screen is the game's business, not a tester's: it decides what a
+  // level's stage-select sounds like, and every control in it writes song data that
+  // this build cannot save anyway.
+  document.querySelector('[data-drawer-section="cabinet"]')?.setAttribute('hidden', '');
+  // Render and the file exports both need the server — headless Chromium for the WAV,
+  // a plugin host for the audition, a disk for the rest. The whole section goes.
+  document.querySelector('[data-drawer-section="files"]')?.setAttribute('hidden', '');
+  document.getElementById('opensectionhead')?.replaceChildren('Songs');
+  // Save keeps a copy in this browser instead of writing a file, so the way back to the
+  // shipped song is its own button — Discard now only reaches your copy. updateStatus
+  // is what shows it, because it is only ever offered on a song that shipped.
 }
 
 const RECENT_KEY = 'mash-mixer-recent-songs';
@@ -10588,7 +10821,7 @@ function recentSongIds() {
   let ids = [];
   try { ids = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { ids = []; }
   if (!Array.isArray(ids)) ids = [];
-  return ids.filter((id, i) => i < RECENT_LIMIT && resolveTrack(id));
+  return ids.filter((id, i) => i < RECENT_LIMIT && resolveTrack(id) && visibleTrack(resolveTrack(id)));
 }
 
 function rememberRecent(id) {
@@ -10624,7 +10857,7 @@ function songButton(t, { recent = false } = {}) {
 }
 
 function renderSongBrowser() {
-  const tracks = listTracks();
+  const tracks = listTracks().filter(visibleTrack);
   const byId = new Map(tracks.map((t) => [t.id, t]));
   const query = ($('songsearch').value || '').trim().toLowerCase();
   const matches = (t) => !query || `${t.title} ${t.id}`.toLowerCase().includes(query);
@@ -10643,11 +10876,18 @@ function renderSongBrowser() {
     const rows = tracks.filter((t) => t.group === group && matches(t));
     if (!rows.length) continue;
     any = true;
+    // A handful of songs, all of them yours: one flat list under the section's own
+    // heading, the shipped one first and whatever you have made after it. Shelves with
+    // a count of 1 on them are a filing system for a list that does not need filing.
+    if (STATIC) { list.append(...rows.map((t) => songButton(t))); continue; }
+    // Collapsed by default because the local desk has six shelves of songs; the
+    // deployed one has a single row, and a row you have to unfold is a row you miss.
+    const open = !!query || STATIC;
     const section = document.createElement('div');
-    section.className = `drawergroup${query ? '' : ' collapsed'}`;
+    section.className = `drawergroup${open ? '' : ' collapsed'}`;
     const h = document.createElement('button');
     h.className = 'drawergrouptoggle'; h.type = 'button';
-    h.setAttribute('aria-expanded', String(!!query));
+    h.setAttribute('aria-expanded', String(open));
     const label = document.createElement('span'); label.textContent = title;
     const count = document.createElement('span'); count.className = 'groupcount'; count.textContent = rows.length;
     h.append(label, count);
@@ -10769,9 +11009,9 @@ async function createNewSong() {
     } catch { res = null; }
   }
   if (!res) {
-    // No server — generate the song right here in the browser. It will not
-    // survive a reload (there is no file to read it back from), but the
-    // tester can play with it for the session.
+    // No server — generate the song right here in the browser, and keep it there.
+    // There is no file to read it back from, so the browser IS the file: the song and
+    // whatever gets saved onto it both live in localStorage. See LOCAL_SONGS_KEY.
     try {
       const seed = Math.floor(Math.random() * 0xffffffff);
       const plan = newSongPlan({ ...payload, seed });
@@ -10785,15 +11025,17 @@ async function createNewSong() {
         title: plan.spec.title,
         slug: id,
         group: 'scratch',
-        writable: false,            // no server → nothing to save back to
+        writable: true,             // saved into this browser rather than into a file
       };
       registerTrack(track);
+      deskSongIds.add(id);
       saved[id] = null;
       savedArr[id] = null;
+      persistLocalSongs();
       selectSong(id);
       if (playing) setPlaying(true, 0);
       toast(`Created ${track.title} — ${plan.style.label}, ${plan.key}, ${plan.spec.bpm} BPM`
-        + ' · stays until you reload', 5000);
+        + ' · kept in this browser', 5000);
     } catch (err) {
       await tell('Could not create the song', escapeHtml(err.message || err));
     }
@@ -10821,11 +11063,20 @@ async function deleteScratchSong() {
   const title = track.title;
   const ok = await ask(`Delete ${escapeHtml(title)}?`,
     `<b>This cannot be undone.</b><br>`
-    + `It removes <b>src/data/imported/${escapeHtml(id)}.js</b> and its saved desk history.`
-    + `<br><br>Any unsaved browser draft for this scratch song is discarded too.`, 'Delete');
+    + (STATIC
+      ? `It removes <b>${escapeHtml(title)}</b> from this browser — the song, the mix you saved`
+        + ' onto it, and anything unsaved on top of that.'
+      : `It removes <b>src/data/imported/${escapeHtml(id)}.js</b> and its saved desk history.`
+        + `<br><br>Any unsaved browser draft for this scratch song is discarded too.`), 'Delete');
   if (!ok) { toast('Delete cancelled'); return; }
   let res;
-  try {
+  if (STATIC) {
+    // Nothing on a disk to ask about — this browser holds the only copy, so taking it
+    // out of the two stores below IS the delete.
+    deskSongIds.delete(id);
+    delete variantSaved[id];
+    delete variantDraft[id];
+  } else try {
     res = await fetch('/delete-song', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
@@ -10834,14 +11085,14 @@ async function deleteScratchSong() {
     await tell('Could not delete the song', 'The mixer server did not answer.');
     return;
   }
-  if (!res.ok) {
+  if (res && !res.ok) {
     const body = await res.text();
     await tell('Could not delete the song', res.status === 404
       ? 'This mixer is running older code. Restart <b>npm run mixer</b> and try again.'
       : escapeHtml(body));
     return;
   }
-  const fallback = listTracks().find((t) => t.id !== id);
+  const fallback = listTracks().filter(visibleTrack).find((t) => t.id !== id);
   unregisterTrack(id);
   delete draft[id];
   delete saved[id];
@@ -10851,6 +11102,7 @@ async function deleteScratchSong() {
   forgetRecent(id);
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  if (STATIC) { persistLocalSongs(); persistLocalSave(); }
   saveSongLayouts();
   undoStack.length = 0;
   lastEditTag = null;
@@ -10941,6 +11193,9 @@ function setPlaying(on, fromStep = null) {
       applyLoopNoJump();
     } else {
       applyLoop(at);
+      // "From the start" of a song that names its own start bar is that bar, not bar 1.
+      // Only from the start: resuming from a park has a position of its own already.
+      if (fromStep === 0 && songLoopGoverns()) Audio.armSongLoop({ seek: true });
     }
     // The beat the take starts on, so the first boundary the playhead crosses is a real
     // crossing rather than a flush measured against a stale `-1`.
@@ -11023,6 +11278,9 @@ $('ab').addEventListener('mouseleave', abUp);
  * which is what the desk did before this existed.
  */
 async function refreshSaved() {
+  // Nothing to ask on the deployed desk: the bundled modules ARE the file, and the
+  // request would only put a failed fetch in the tester's console.
+  if (STATIC) return;
   try {
     const res = await fetch('/mix');
     if (!res.ok) throw new Error(String(res.status));
@@ -11042,19 +11300,37 @@ $('revert').onclick = async () => {
   delete cabOnDesk[trackId];
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
-  // Through the whole song-state path, not buildRack alone: either draft may have
-  // changed the lane list, bar count, timeline or notes the engine is playing.
-  bankCache.sig = null;
-  Audio.setArrangement(arrFor(trackId));
-  pushTempo();                 // the tempo is on the arrangement, so it went back too
-  buildTimeline();
-  rebuildForShape();
-  applyLoop(Audio.step);
-  stepSeq.refresh();
-  pianoRoll.refresh();
-  kitRoll.refresh();
-  updateStatus();
+  reloadSongState();
   toast(`Unsaved changes to ${track.title} discarded — ⌘Z to undo`);
+};
+
+// Deployed desk only — see the note over LOCAL_SAVE_KEY. Discard goes back to the
+// tester's own saved copy, so the way back to the song as it shipped is this, and it
+// says out loud that the copy goes with it.
+$('resetoriginal').onclick = async () => {
+  closeMenu();
+  const ok = await ask(
+    `Back to the original ${track.title}?`,
+    '<p>Throws away <b>your saved copy</b> of this song and everything unsaved on top of it, '
+    + 'and puts the desk back to the mix, arrangement and sounds it shipped with.</p>'
+    + '<p>⌘Z undoes the faders, not the copy.</p>',
+  );
+  if (!ok) { toast('Left as it is'); return; }
+  pushUndo(null);
+  // THIS song only. The desk saves one song at a time and this is the same promise
+  // read backwards — somebody else's saved copy is not what you were looking at.
+  const shipped = (source) => JSON.parse(JSON.stringify(source?.[trackId] ?? null));
+  saved[trackId] = shipped(MIX);
+  savedArr[trackId] = shipped(ARRANGEMENTS);
+  variantSaved[trackId] = shipped(VARIANTS);
+  discardSongDraft(draft, arrDraft, trackId);
+  delete variantDraft[trackId];
+  delete cabOnDesk[trackId];
+  persistLocalSave();
+  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  reloadSongState();
+  toast(`${track.title} is back to the original mix`);
 };
 
 
@@ -11396,9 +11672,103 @@ function freezeVoices(mix, trackId) {
   if (changed) mix.voiceParams = vp;
 }
 
+// ---- the deployed desk's idea of a saved file ------------------------------
+// There is no server behind /SongMixer/, so a tester's Save cannot write anything.
+// What it can do is keep their copy in the browser and make the desk believe it: it
+// becomes `saved`, which is what Discard goes back to, what A/B compares against and
+// what the dot on the menu is measured from. The song that SHIPPED is still in the
+// bundled MIX/ARRANGEMENTS/VARIANTS modules, untouched, which is what makes "Back to
+// the original mix" possible at all.
+const LOCAL_SAVE_KEY = 'mash-mixer-local-save';
+// A song made on the deployed desk has no file behind it either, so the song ITSELF —
+// its bank, its name, the parts it is built from — is kept next to the mixes. Without
+// this a new song was gone on the next reload, which is a strange thing to offer
+// somebody a Save button for.
+const LOCAL_SONGS_KEY = 'mash-mixer-local-songs';
+
+function persistLocalSongs() {
+  const songs = {};
+  for (const id of deskSongIds) {
+    const t = resolveTrack(id);
+    if (t) songs[id] = { id, title: t.title, slug: t.slug || id, group: t.group || 'scratch', bank: t.bank };
+  }
+  try { localStorage.setItem(LOCAL_SONGS_KEY, JSON.stringify(songs)); }
+  catch { toast('This browser is full — your new songs may not come back', 5000); }
+}
+
+function restoreLocalSongs() {
+  let songs = {};
+  try { songs = JSON.parse(localStorage.getItem(LOCAL_SONGS_KEY) || '{}') || {}; } catch { return; }
+  for (const [id, t] of Object.entries(songs)) {
+    if (!t || !t.bank || resolveTrack(id)) continue;
+    try {
+      registerTrack({ ...t, id, writable: true });
+      deskSongIds.add(id);
+    } catch { /* an id the build now ships under is the build's, not this copy's */ }
+  }
+}
+
+function persistLocalSave() {
+  const pick = (obj) => Object.fromEntries(
+    localSongIds().filter((id) => id in obj).map((id) => [id, obj[id] ?? null]),
+  );
+  try {
+    localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify({
+      mix: pick(saved), arr: pick(savedArr), variants: pick(variantSaved),
+    }));
+  } catch { /* a full or blocked store loses the copy, not the session */ }
+}
+
+function applyLocalSave() {
+  let store = {};
+  try { store = JSON.parse(localStorage.getItem(LOCAL_SAVE_KEY) || '{}') || {}; } catch { return; }
+  const mine = new Set(localSongIds());
+  for (const [key, target] of [['mix', saved], ['arr', savedArr], ['variants', variantSaved]]) {
+    for (const [id, value] of Object.entries(store[key] || {})) {
+      if (mine.has(id)) target[id] = value;
+    }
+  }
+}
+
+/**
+ * Put the whole song-state path behind whatever `saved`/`draft` now say — not
+ * buildRack alone, because either layer may have changed the lane list, the bar
+ * count, the timeline or the notes the engine is playing.
+ */
+function reloadSongState() {
+  bankCache.sig = null;
+  Audio.setArrangement(arrFor(trackId));
+  pushTempo();                 // the tempo is on the arrangement, so it moved too
+  buildTimeline();
+  rebuildForShape();
+  applyLoop(Audio.step);
+  stepSeq.refresh();
+  pianoRoll.refresh();
+  kitRoll.refresh();
+  updateStatus();
+}
+
 async function saveMix(id) {
   const mixDirty = draft[id] != null && mixChanged(draft[id], saved[id]);
   const arrangementDirty = arrDirty(id);
+  // No file to write and no server to write it: the tester's save is a copy of the
+  // three halves, kept in this browser and treated as the file from here on.
+  if (STATIC) {
+    if (!mixDirty && !arrDirty(id) && !variantDirty(id)) return true;
+    if (mixDirty) {
+      const mix = JSON.parse(JSON.stringify(draft[id]));
+      freezeVoices(mix, id);
+      saved[id] = mix;
+      delete draft[id];
+    }
+    if (arrangementDirty) { savedArr[id] = arrDraft[id] ?? null; delete arrDraft[id]; }
+    if (variantDirty(id)) { variantSaved[id] = variantDraft[id] ?? null; delete variantDraft[id]; }
+    persistLocalSave();
+    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+    localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+    updateStatus();
+    return true;
+  }
   const patch = {};
   if (mixDirty) {
     patch.mix = JSON.parse(JSON.stringify(draft[id]));
@@ -11604,7 +11974,15 @@ $('save').onclick = async () => {
     arrDirty(trackId) ? 'the arrangement' : null,
     variantDirty(trackId) ? 'the cabinet screen' : null,
   ].filter(Boolean);
-  const ok = await ask(
+  const ok = STATIC ? await ask(
+    `Save your ${track.title}?`,
+    `<p>Keeps <b>${halves.join('</b>, <b>')}</b> as <b>your copy</b> of this song.</p>`
+    + '<p>It lives in this browser, not in the game: it is here when you come back, and it '
+    + 'goes if you clear your browser.</p>'
+    + (SHIPPED_SONG_IDS.has(trackId)
+      ? '<p><b>Back to the original mix</b> throws it away and puts the song back as it shipped.</p>'
+      : '<p><b>Discard unsaved changes</b> comes back to this copy.</p>'),
+  ) : await ask(
     `Save ${track.title}?`,
     (cabOnDesk[trackId]
       ? `<p class="warn">The desk is showing the <b>${escapeHtml(cabOnDesk[trackId])}</b> cabinet mix, `
@@ -11624,7 +12002,7 @@ $('save').onclick = async () => {
   if (!ok) { toast('Save cancelled'); return; }
   // saveMix ran updateStatus, which is what turns the dot off and the menu item to
   // "saved" — the toast is the part that says it out loud.
-  if (await saveMix(trackId)) toast(`${track.title} saved`);
+  if (await saveMix(trackId)) toast(STATIC ? `Your ${track.title} is saved in this browser` : `${track.title} saved`);
 };
 
 // There is no "save every changed song". One Save, for the song you are on, named in
@@ -11804,7 +12182,8 @@ const cabSummary = ({ patch, refused, treatment }, loop, when) => {
   if (patch.fx) bits.push(`the ${escapeHtml(Object.keys(patch.fx).join(' and '))} return${Object.keys(patch.fx).length === 1 ? '' : 's'}`);
   if (patch.master != null || patch.masterPan != null) bits.push('the master trim');
   if (treatment?.length) bits.push(`<b>${treatment.length}</b> effect${treatment.length === 1 ? '' : 's'} across the whole mix, lifted on the way into the level`);
-  if (loop) bits.push(`a loop of bars <b>${loop.fromBar}–${loop.toBar}</b>`);
+  if (loop?.startBar > 1) bits.push(`a way in on bar <b>${loop.startBar}</b>`);
+  if (loop?.fromBar) bits.push(`a loop of bars <b>${loop.fromBar}–${loop.toBar}</b>`);
   return `<p>Plays <b>${escapeHtml(CAB_WHENS.find(([v]) => v === when)?.[1] || when)}</b>, carrying ${
     bits.length ? bits.join(', ') : 'nothing — the draft matches the saved mix'}.</p>`
     + (refused.length
@@ -11832,6 +12211,9 @@ function cabSyncControls() {
   fillSelect($('cablooprelease'), CAB_LOOP_RELEASE, x.loopRelease ?? 'atTransition');
   if ($('cabxfade')) $('cabxfade').value = x.crossfadeBars ?? 0;
   if ($('cabtreat')) $('cabtreat').value = x.treatBars ?? '';
+  // Blank rather than 1 when there is nothing stored: the field is showing whether this
+  // screen has an opinion about where it comes in, and a filled-in 1 says it does.
+  if ($('cabstartbar')) $('cabstartbar').value = e?.loop?.startBar ?? '';
   // Which conditions this song actually has something for — the only place the desk
   // says a treatment exists at all.
   const head = document.querySelector('[data-drawer-section="cabinet"] .drawersectionhead span');
@@ -11892,7 +12274,17 @@ $('applytocab').onclick = async () => {
   const base = saved[trackId] || emptyMix();
   const diff = cabDiff(cur, base);
   const bounds = currentLoopBounds();
-  const loop = bounds ? { fromBar: bounds.start / 16 + 1, toBar: Math.ceil(bounds.end / 16) } : null;
+  // The bar this screen comes in on, typed rather than captured: it is by definition
+  // somewhere the loop region is not, so there is nothing on the timeline to read it
+  // off. Clamped to the loop's own first bar — coming in after the bars you are looping
+  // means coming in somewhere the song then never returns to.
+  const startRaw = Math.round(Number($('cabstartbar')?.value));
+  const startBar = Number.isFinite(startRaw) && startRaw >= 1
+    ? Math.min(startRaw, bounds ? bounds.start / 16 + 1 : startRaw)
+    : null;
+  const loop = bounds
+    ? { ...(startBar && startBar > 1 ? { startBar } : {}), fromBar: bounds.start / 16 + 1, toBar: Math.ceil(bounds.end / 16) }
+    : (startBar && startBar > 1 ? { startBar } : null);
   const when = $('cabwhen').value;
   const exit = cabExitFromControls();
 
@@ -12093,33 +12485,20 @@ addEventListener('keydown', unlockAudio, { capture: true, once: true });
 void (async () => {
   Audio.ensure();
   await refreshSaved();
-  // In the static deployed mixer, if the desk would open on an authored game song,
-  // auto-create a blank scratch song instead so the tester lands on their own content.
-  if (typeof __MASH_STATIC_MIXER__ !== 'undefined') {
-    const resolved = resolveTrack(trackId);
-    if (!resolved || (resolved.group !== 'scratch' && resolved.group !== 'imported')) {
-      try {
-        const seed = Math.floor(Math.random() * 0xffffffff);
-        const plan = newSongPlan({ template: 'blank', title: 'Untitled', bars: 8, bpm: 120, style: 'auto', seed });
-        let id = slugForClient(plan.spec.title);
-        const taken = new Set(listTracks().map((t) => t.id));
-        for (let n = 2; taken.has(id); n++) id = `${slugForClient(plan.spec.title)}-${n}`;
-        const track = {
-          id,
-          bank: plan.bank,
-          title: plan.spec.title,
-          slug: id,
-          group: 'scratch',
-          writable: false,            // no server → nothing to save back to
-        };
-        registerTrack(track);
-        saved[id] = null;
-        savedArr[id] = null;
-        trackId = id;
-      } catch (err) {
-        // If auto-create fails, fall through to whatever trackId we already have.
-      }
-    }
+  // The deployed desk ships one song, so that is the one it opens on — first visit,
+  // and any later one where the remembered id is something this build does not carry.
+  // Before it plays anything, the tester's own saved copy becomes what "saved" means,
+  // so the drafts on top of it are measured from their mix rather than the shipped one.
+  if (STATIC) {
+    restoreLocalSongs();
+    // The remembered song is read again here, not just at the top of the file: a song
+    // made on this desk does not exist yet when that first read happens, so the tester
+    // who spent last night on their own song would have been handed the shipped one.
+    const remembered = localStorage.getItem(SONG_KEY);
+    const mine = (id) => !!id && (SHIPPED_SONG_IDS.has(id) || deskSongIds.has(id));
+    if (mine(remembered)) trackId = remembered;
+    else if (!mine(trackId)) trackId = 'hub';
+    applyLocalSave();
   }
   selectSong(trackId);
   // If the preset library was open last session, open it again.

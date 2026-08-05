@@ -26,7 +26,7 @@ import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/impor
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
 import { isDefaultMasterChain } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
-import { bpmOf } from '../src/data/arrangements.js';
+import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
 import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
@@ -649,6 +649,17 @@ const server = createServer(async (req, res) => {
           // away from the thing that caused it.
           res.writeHead(422, { 'content-type': 'text/plain' });
           res.end(`"${id}" cabinet treatments:\n  ${bad.join('\n  ')}`);
+          return;
+        }
+        // And the arrangement itself, for the same reason. Only the things a save can
+        // put wrong that the engine then has to guess about — a loop that ends past the
+        // end of the song is the one this exists for, because the bars can be deleted
+        // from under it long after it was set and nothing else would ever say so.
+        const track = resolveTrack(id);
+        const arrBad = track?.bank ? arrangementIssues(track.bank, arrangement) : [];
+        if (arrBad.length) {
+          res.writeHead(422, { 'content-type': 'text/plain' });
+          res.end(`"${id}" arrangement:\n  ${arrBad.join('\n  ')}`);
           return;
         }
         // Before the write, so the folder holds the version being replaced. Data

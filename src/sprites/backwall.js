@@ -428,7 +428,39 @@ function paintDecay(ctx, x, y, w, h, o) {
 // wall read as wallpaper, and the whole point of a poster is that it belongs to
 // the machine underneath it. Draws from `cx` (the sheet's horizontal centre, so
 // callers can line it up with a cabinet) down from `topY`.
-export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = false, lit = 1 } = {}) {
+// How one particular sheet came out of the box. Deterministic from the seed it
+// is hung under — the hub uses the station's own x — so the crease is a
+// property of THAT poster: it holds still on the wall, and it survives being
+// taken down and read full-screen, where a fold rolled per frame would crawl
+// across the sheet on the way up.
+//
+// The fold stays in the middle third or so of the measure. Out near an edge it
+// stops reading as a fold and starts reading as a trimmed margin, or worse, as
+// part of the torn corner — which the crease has to clear on the sheets that
+// have one, since neither line is clipped to the paper's silhouette.
+function posterFold(seed, pw, ph) {
+  // A number (the hub hangs these by station x) or a name (the render tools
+  // have the cabinet, not a wall to hang it on) — either identifies the sheet.
+  let h = typeof seed === 'string'
+    ? [...seed].reduce((a, ch) => ((a * 31 + ch.charCodeAt(0)) >>> 0), 2166136261)
+    : (Math.round(seed) * 2654435761) >>> 0;
+  h = (h * 2654435761) >>> 0;
+  const roll = () => {
+    h = ((h ^ (h >>> 15)) * 2246822519) >>> 0;
+    return (h >>> 8) / 0x1000000;
+  };
+  const at = 0.34 + roll() * 0.28;
+  const lean = (roll() - 0.5) * 0.09;
+  const crossed = roll() < 0.36;
+  const y = 0.38 + roll() * 0.18;
+  return {
+    x0: pw * (at + lean), x1: pw * (at - lean),
+    cross: crossed,
+    y0: ph * y, y1: ph * (y + (roll() - 0.5) * 0.04),
+  };
+}
+
+export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = false, lit = 1, seed = 0 } = {}) {
   const u = olU(pw * 3);
   const paper = pal.body || '#5a4a7a';   // the stock, from the cabinet's chassis
   const plate = pal.screen || '#101018'; // art plate: the one value that always contrasts it
@@ -551,8 +583,23 @@ export function drawPoster(ctx, cx, topY, pw, ph, { pal = {}, tilt = 0, torn = f
   // a box, and put up by hand" rather than rendered. Faint: it is texture, and
   // with the printed margin gone it is the only ruled line left on the sheet,
   // so it earns its place only by staying near the threshold of noticing.
+  //
+  // Where it falls comes off the sheet's own seed, because a wall of posters
+  // creased at an identical 0.62 read as one sheet printed nine times — the
+  // fold was the loudest thing they had in common, and a fold is exactly the
+  // detail that should differ from sheet to sheet. Every poster keeps a fold;
+  // some were folded in half the other way as well, which puts a cross-fold on
+  // roughly a third of them. Both lines still lean off vertical rather than
+  // ruling the sheet dead straight.
+  const fold = posterFold(seed, pw, ph);
   stroke(ctx, 'rgba(255,255,255,0.09)', Math.max(0.3, pw * 0.010),
-    (c) => { c.moveTo(pw * 0.62, 0); c.lineTo(pw * 0.58, ph); });
+    (c) => { c.moveTo(fold.x0, 0); c.lineTo(fold.x1, ph); });
+  if (fold.cross) {
+    // The cross-fold sits fainter than the long one: on a sheet folded twice,
+    // the second fold is the one that was pressed for less of its life.
+    stroke(ctx, 'rgba(255,255,255,0.065)', Math.max(0.3, pw * 0.009),
+      (c) => { c.moveTo(0, fold.y0); c.lineTo(pw, fold.y1); });
+  }
   // Bleached by whatever light still reaches it — but lightly. At 0.14 the wash
   // greyed the stock enough that nine differently-coloured cabinets all
   // advertised on the same beige, which cost the thing the palette was for.

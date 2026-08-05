@@ -7,7 +7,12 @@
 // world space (entities always draw relative to GROUND_Y) down to a tile by
 // translating the context, rather than by changing how entities draw.
 import { W, H } from '../src/engine/renderer.js';
-import { ZOOM, VIEW_W } from '../src/engine/camera.js';
+import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
+// The game's cameras, read from the modules that own them so the zoom-levels
+// section can never quote a number the game has stopped using.
+import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
+import { HUB_ZOOM } from '../src/game/hub/index.js';
+import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite } from '../src/engine/sprites.js';
 import {
   buildAllSprites, drawWorldEntity, drawHeroSprite, drawPowerPose, drawPortal,
@@ -61,10 +66,14 @@ buildAllSprites();
 const root = document.getElementById('root');
 const nav = document.getElementById('nav');
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
-// 2x, because world-scale tiles already carry the run's own WORLD_Z: a tile
-// lands at 4x world scale on screen, which is where the page sat before the
-// zoom was baked in. Keep this in step with the `selected` option in the shell.
-let zoom = 2;
+// SCREEN SCALE: screen px per logical frame px. The game is never presented at
+// 1:1 — renderer.js fits the 480x270 frame to the viewport at
+// min(winW/480, winH/270), which on any desktop is between about 3.1 (maximised
+// browser, 14" laptop) and 5 (maximised on a 1440p panel). So 3 is the floor of
+// this control and its default, and there is deliberately no rung below it: a
+// tile shown at 1x or 2x is art being judged at a third of the size anyone will
+// ever see it, which flatters everything. Keep in step with the shell's options.
+let zoom = 3;
 let renderScale = 3;
 let animate = true;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
@@ -109,16 +118,25 @@ function navSeparator(label) {
 // canvas can be rendered at a denser scale so saved PNGs match the smooth,
 // high-resolution treatment used by the Cast Roll.
 //
-// `hires` is true (follow the global resolution control), false (pin to 1x), or
-// a NUMBER pinning this tile to its own scale regardless of the control. A tile
-// pinned above the zoom renders denser than it displays, which supersamples it:
-// the browser downsamples the backing store on the way to the screen, so
-// sub-pixel stroke differences survive as tone instead of snapping to whole
-// pixels. That is the only honest way to eyeball a 1.2px-vs-0.7px line.
+// `hires` is true (follow the global resolution control), false (1:1 with the
+// source, for tiles whose content IS a raster and has nothing denser to give),
+// or a NUMBER pinning this tile to its own scale regardless of the control. A
+// tile pinned above the screen scale renders denser than it displays, which
+// supersamples it: the browser downsamples the backing store on the way to the
+// screen, so sub-pixel stroke differences survive as tone instead of snapping to
+// whole pixels. That is the only honest way to eyeball a 1.2px-vs-0.7px line.
 // `pixel` opts a tile back into nearest-neighbour display. Reserve it for real
 // pre-rendered rasters (WORLD_SPRITES); vector art is smooth by default now
 // that the game itself presents its frame with imageRendering 'auto'.
-function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hires = true, pixel = false } = {}) {
+//
+// `world` says this tile's logical box is measured in WORLD units rather than
+// frame pixels — a lane scene that draws the hero at his in-run 24u without
+// scaling the context by the camera. The run magnifies those units by ZOOM
+// before the frame is ever presented, so the tile has to as well or it shows the
+// scene at half size. Tiles that scale the context by WORLD_Z themselves are
+// already in frame pixels and must NOT set this.
+function tile(grid, name, sub, w, h, draw,
+  { animated = false, wide = false, hires = true, pixel = false, world = false } = {}) {
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
   card.dataset.search = (name + ' ' + (sub || '')).toLowerCase();
@@ -136,7 +154,10 @@ function tile(grid, name, sub, w, h, draw, { animated = false, wide = false, hir
   grid.appendChild(card);
 
   const ctx = canvas.getContext('2d');
-  const entry = { card, canvas, ctx, draw, animated, visible: true, w: logicalW, h: logicalH, name, hires, renderScale: rs };
+  const entry = {
+    card, canvas, ctx, draw, animated, visible: true,
+    w: logicalW, h: logicalH, name, hires, world, renderScale: rs,
+  };
   tiles.push(entry);
 
   canvas.title = `${name} — ${canvas.width}x${canvas.height} — click to save PNG`;
@@ -474,6 +495,79 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const grid = section('faces', 'Heroes — faces', 'drawToonFace(), as used for HUD cells and portal crops.');
   for (const id of ids) {
     tile(grid, id, 'face', 32, 32, (ctx) => drawToonFace(ctx, id, 0, 0, 32, 32));
+  }
+}
+
+// ------------------------------------------------------------- zoom levels
+// Every magnification the game actually puts a hero through, one hero, one
+// pose, one tile each — the answer to "how big is Lorenzo, really?", asked once
+// per device and once per scene instead of being averaged into a single
+// gallery-wide guess.
+//
+// The numbers are imported, never retyped: ZOOM_NORMAL/CLOSE/PHONE come out of
+// run.js's applyFraming, HUB_ZOOM out of the food court, and the two tutorial
+// cameras out of tutorial.js. Change one at the source and this section moves
+// with it.
+//
+// Each tile is a real crop of the 480x270 frame — the SAME crop every time, and
+// the same world x for the hero — so the only thing separating the tiles is the
+// camera. camYFor pins world GROUND_Y to frame y 232 at every zoom, which is why
+// the groundline sits on one line straight across the row and the figures grow
+// upward off it. The crop starts high enough to hold the 5.5x intro's crown.
+{
+  const CAMERAS = [
+    ['food court', HUB_ZOOM, 'hub/index.js HUB_ZOOM — the concourse, not a run'],
+    ['desktop / laptop', ZOOM_NORMAL, 'run.js ZOOM_NORMAL — the default framing on a desktop'],
+    ['desktop ZOOM IN · iPad', ZOOM_CLOSE, 'run.js ZOOM_CLOSE — the OPTIONS toggle, and what every tablet gets'],
+    ['phone', ZOOM_PHONE, 'run.js ZOOM_PHONE — iPhone and Android handsets'],
+    ['tutorial — outro', OUTRO_ZOOM, 'tutorial.js OUTRO_ZOOM — the push-in on the hand-off'],
+    ['tutorial — intro', INTRO_ZOOM_START, 'tutorial.js INTRO_ZOOM_START — tight on Gary, the biggest camera in the game'],
+  ];
+  // The crop: full frame width, and vertically from just above the intro's
+  // crown down through the ground apron. 5.5 * 24 = 132px of hero, so a top of
+  // 84 leaves 16px of air above the tallest one.
+  const CROP_TOP = 84;
+  const CROP_H = H - CROP_TOP;
+
+  const grid = section('zoom-levels', 'Zoom levels — one hero, every camera',
+    'Lorenzo at each magnification the game uses, drawn by the same drawToon() at the same in-run 24u, '
+    + `standing on the same mark (PLAYER_X = ${PLAYER_X} world px right of camX). Each tile is the full `
+    + `480px frame width cropped to its bottom ${CROP_H}px, presented at the screen scale — so these are `
+    + 'the sizes on a real display, not a diagram of them. '
+    + '<b>Read two things.</b> Vertically, how big the hero is: that is the whole argument for why a phone '
+    + 'pulls IN rather than out — a handheld shows a smaller picture in your vision than a monitor does, '
+    + 'so it can least afford a wide frame. Horizontally, how far right his column slides and how much '
+    + 'runway is left in front of him: that is the bill. The label states the world width each camera '
+    + 'shows, which is what decides when an enemy may fire and where the finish tape is planted. '
+    + `Two cameras are not tiles here because they land on numbers already shown: the dolly's floor `
+    + `(camera.js ZOOM_MIN = ${ZOOM_MIN}, what framingFor() falls to under a cape jump) is the food court's `
+    + 'framing, and the tutorial\'s own run body just uses whatever resting zoom the device gets.');
+
+  for (const [label, z, note] of CAMERAS) {
+    const viewW = W / z;
+    tile(grid, `${label} — ${z}x`,
+      `${note}<br>hero ${(HERO_DRAW_H * z).toFixed(0)}px tall · column x ${(PLAYER_X * z).toFixed(0)} · `
+      + `shows ${viewW.toFixed(0)} world px of lane`,
+      W, CROP_H, (ctx, t) => {
+        // The lane, in frame space: the groundline is pinned to 232 at every
+        // zoom, so it lands identically in every tile.
+        ctx.fillStyle = '#202838';
+        ctx.fillRect(0, 0, W, CROP_H);
+        ctx.fillStyle = '#303b4d';
+        ctx.fillRect(0, GROUND_Y - CROP_TOP, W, 2);
+        ctx.fillStyle = '#17202d';
+        ctx.fillRect(0, GROUND_Y - CROP_TOP + 2, W, CROP_H - (GROUND_Y - CROP_TOP) - 2);
+        // A tick every 24 world px, so the horizontal squeeze is countable
+        // rather than a feeling — the ticks bunch up as the camera pushes in.
+        ctx.fillStyle = 'rgba(246,211,60,0.16)';
+        for (let wx = 0; wx * z < W; wx += 24) ctx.fillRect(Math.round(wx * z), 0, 1, CROP_H);
+
+        ctx.save();
+        ctx.translate(0, -CROP_TOP);
+        applyWorld(ctx, z, 0);
+        drawToon(ctx, 'lorenzo', pose('run', t), PLAYER_X, GROUND_Y, HERO_DRAW_H);
+        ctx.restore();
+      }, { animated: true });
   }
 }
 
@@ -2690,8 +2784,15 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
 // Nothing in src/ points at them yet: picking a winner is a one-line swap.
 // ======================================================================
 
-// A strip of a lane to judge against: floor line, dark below, and the hero
-// at his real 24px so nothing here can quietly flatter itself on scale.
+// A strip of a lane to judge against: floor line, dark below, and the hero at
+// his real 24u so nothing here can quietly flatter itself on scale.
+//
+// The box a laneStrip fills is measured in WORLD units, not frame pixels — the
+// hero is 24 of them tall, the same 24 the run hands drawToon. Every tile built
+// on one therefore passes `world: true`, which is what puts the run's camera in
+// front of it on the way to the screen. Without that they were shown at half
+// the magnification the game gives them, and a floor effect judged at half size
+// is a floor effect judged on the wrong question.
 function laneStrip(ctx, w, h, groundY) {
   ctx.fillStyle = '#202838';
   ctx.fillRect(0, 0, w, h);
@@ -2723,7 +2824,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     for (let f = 0; f < n; f++) {
       drawProp(ctx, name, 2 + f * cell + (cell - w) / 2, 4, w, h, f);
     }
-  }, { animated: false, hires: 5, wide: true });
+  }, { animated: false, hires: 5, wide: true, world: true });
 }
 
 // ------------------------------------------------- 1. speed ramp bake-off
@@ -2780,7 +2881,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         ctx.lineWidth = 0.4;
         ctx.strokeRect(66, GY - s.boxH, s.boxW, s.boxH); // the untouched hitbox
         drawToon(ctx, 'lorenzo', pose('run', t), 30, GY, 24);
-      }, { animated: true, hires: 6, wide: true });
+      }, { animated: true, hires: 6, wide: true, world: true });
   }
   for (const [name, label] of RAMPS) {
     const s = worldArtSize(14, 4, name);
@@ -2851,7 +2952,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         ctx.fillStyle = '#48e0c8';
         ctx.fillRect(62 + w / 2 - 2, GY - 2, 4, 2); // the contact mark, as drawn in-run
         drawToon(ctx, 'lorenzo', pose('run', t), 26, GY, 24);
-      }, { animated: true, hires: 5, wide: true });
+      }, { animated: true, hires: 5, wide: true, world: true });
   }
   for (const [name, label] of PORTALS) {
     if (name === 'portal') continue; // one frame; the strip would be one cell
@@ -2869,45 +2970,64 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 {
   const grid = section('portal-read-test', 'Relay portal — read test (over every cabinet)',
     'The shipped portal standing in every stage it can appear in, drawn by the same drawPortal() the run '
-    + 'calls, over each pack\'s real bg() + ground(). TOP the nine strips at 6x so the drawing is visible; '
-    + 'BOTTOM the same thing at TRUE SCREEN SIZE in a full 480x270 frame, which is the only view that '
-    + 'answers the question — a portal that needs magnifying to find is a portal that failed. '
+    + 'calls, over each pack\'s real bg() + ground(). TOP a cropped band of the frame; BOTTOM the whole '
+    + '480x270 frame, both through the run camera and both presented at the screen scale, which is the '
+    + 'only view that answers the question — a portal that needs magnifying to find is a portal that '
+    + 'failed. '
     + 'This row is why the rift grew a dark halo before it was set aside: over the doodle sheet and the '
     + 'frost sky its white core simply disappeared. The ring column has the opposite risk — it is mostly '
     + 'teal, and teal is the game\'s own accent, so watch whether it separates from the neon pack and from '
     + 'anything else already using it.');
 
-  // A band of a real stage: the pack paints in world coordinates, so the tile
-  // shifts the world up rather than asking the pack to draw somewhere else.
+  // A band of a real stage, assembled the way run.js assembles a frame — which
+  // it did NOT used to be. bg() is a screen-space painter and goes down flat;
+  // ground(), the portal and the hero are world-space and go through
+  // applyWorld(), so the camera magnifies them by ZOOM exactly as the run does.
+  // Without that transform every one of these tiles drew the world at 1:1 and
+  // the "true size" claim on the full-frame row was out by a factor of two on
+  // top of the CSS pin — the portal was being judged at a quarter of its real
+  // area. applyWorld pins world GROUND_Y to frame y 232 at every zoom, so the
+  // band's floorY shift lands the groundline where the crop wants it.
+  //
+  // Positions are world px now (they were frame px), because that is what the
+  // painters take once the camera is in front of them.
   const BAND_W = 150, BAND_H = 76, BAND_FLOOR = 60;
   function stageBand(ctx, cab, t, portalX, heroX, w, h, floorY) {
     const style = getStylePack(cab.style, {});
-    const obstacles = [makeObstacle('crate', 40), makeObstacle('barrel', 200)];
+    // World x, spaced so nothing collides with the portal in EITHER crop: in
+    // the band the crate sits off the right edge, in the full frame it lands
+    // between the hero and the portal.
+    const obstacles = [makeObstacle('crate', 90), makeObstacle('barrel', 200)];
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
     ctx.clip();
     ctx.translate(0, floorY - GROUND_Y);
     if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
+    ctx.save();
+    applyWorld(ctx, WORLD_Z, 0);
     if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
     drawPortal(ctx, { x: portalX, hero: 'gnash' }, 0, t, 1, true, {});
     drawToon(ctx, 'lorenzo', pose('run', t), heroX, GROUND_Y, 24);
+    ctx.restore();
     if (style.post) style.post(ctx, t);
     ctx.restore();
   }
 
   for (const cab of CABINETS) {
-    tile(grid, cab.id, `${cab.style} · ${PORTAL_SPRITE} at true size, 6x view`, BAND_W, BAND_H, (ctx, t) => {
-      stageBand(ctx, cab, t, 96, 46, BAND_W, BAND_H, BAND_FLOOR);
-    }, { animated: true, hires: 6, wide: true });
+    tile(grid, cab.id, `${cab.style} · ${PORTAL_SPRITE} · ${BAND_W}x${BAND_H} crop of the frame`,
+      BAND_W, BAND_H, (ctx, t) => {
+        stageBand(ctx, cab, t, 50, 16, BAND_W, BAND_H, BAND_FLOOR);
+      }, { animated: true, hires: 6, wide: true });
   }
 
-  // True screen size. These tiles are pinned to 1x by the zoom control, which
-  // is the point: this is the portal at the size a player sees it.
+  // The whole frame, at the scale a desktop presents it. This is the real read:
+  // if the portal cannot be found here it has failed, and no amount of
+  // magnification in the row above changes that.
   for (const cab of CABINETS) {
-    tile(grid, `${cab.id} — full frame`, `${cab.style} · 480x270, true size. This is the real read.`,
+    tile(grid, `${cab.id} — full frame`, `${cab.style} · the whole 480x270 frame, hero on his real mark`,
       W, H, (ctx, t) => {
-        stageBand(ctx, cab, t, 300, 92, W, H, GROUND_Y);
+        stageBand(ctx, cab, t, 150, PLAYER_X, W, H, GROUND_Y);
       }, { animated: true });
   }
 }
@@ -2959,7 +3079,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       const hx = 26 + (loop / LOOP) * 76;
       const jump = key === 'wilt' ? Math.max(0, Math.sin((loop - 0.55) * 2.6) * 46) : 0;
       drawToon(ctx, 'lorenzo', pose(jump > 1 ? 'jump' : 'run', t), hx, GY - jump, 24);
-    }, { animated: true, hires: 5, wide: true });
+    }, { animated: true, hires: 5, wide: true, world: true });
   }
   for (const [, sprite, , label] of EVENTS) {
     frameStrip(grid, sprite, `${label} · frames`,
@@ -3000,7 +3120,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
         });
       }
-    }, { animated: true, hires: 5, smooth: true, wide: true });
+    }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 
   // ON A SLOPE. A floor effect drawn on a level line through the hero's feet
@@ -3036,7 +3156,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
               drawHeroAt: (gx, gy, alpha) => drawToon(ctx, 'lorenzo', heroPose(t), gx, gy, 24, { alpha }),
             });
           }
-        }, { animated: true, hires: 5, smooth: true, wide: true });
+        }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
     }
   }
 
@@ -3070,7 +3190,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           }
           if (style.post) style.post(ctx, t);
           ctx.restore();
-        }, { animated: true, hires: 5, smooth: true, wide: true });
+        }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
     }
   }
 }
@@ -3121,7 +3241,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       v.draw(ctx, FX, GY, s);
       if (s.armed) runIn(ctx, t, s, 34);
       else drawToon(ctx, 'lorenzo', pose('jump', t), FX - 4, GY - 22, 26);
-    }, { animated: true, hires: 5, smooth: true, wide: true });
+    }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 
   // ---- CLUNK ---------------------------------------------------------------
@@ -3146,7 +3266,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         v.draw(ctx, FX, GY, { ...s, live: false });
         if (s.armed) runIn(ctx, t, s, 38);
         else drawToon(ctx, 'lorenzo', pose('run', t, { lean: 0.2 }), FX - 14, GY, 26);
-      }, { animated: true, hires: 5, smooth: true, wide: true });
+      }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 
 }
@@ -3164,13 +3284,15 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     + 'have to land in the middle of the cap. '
     + 'Gary and Dolores are not here — they work the shop and the serving line, will never run a stage '
     + 'and so will never touch a finish marker. '
-    + '<br><br>The pose is the hero\'s own IDLE with exactly two changes: the pole-side arm reaches out '
-    + 'and takes the mast, and he is smiling. Three earlier cuts each invented a body for this — a tuck, '
-    + 'a lean, a bowed knee, a dangling counterweight arm, bones stretched to 2.4x — and every invention '
-    + 'was a way of not being the pose it claimed to be quoting. The idle is already a finished, '
-    + 'front-on, legible drawing the player has watched for hours; it needed one arm moved. Front-on also '
-    + 'settles the handoff: the celebration is front-on, so a hero who rides down in profile and lands '
-    + 'facing you would swap bodies on the last frame. '
+    + '<br><br>The pose starts as the hero\'s own IDLE with the pole-side arm reaching out to take the '
+    + 'mast — and then it DEVELOPS down the ride instead of switching on whole at the catch. The legs '
+    + 'borrow the celebration hop\'s bent-knee shape: near-straight at the catch, drawing up as the cap '
+    + 'approaches — a person gathering their legs to meet the ground — and extending into the touchdown, '
+    + 'so the ride lands in the very shape the celebration starts from. The smile grows the same way, '
+    + 'from a grin at the catch to the full whoop at the bottom (Grumpos\'s beard-grin, which has no size '
+    + 'to grow, starts partway down instead). Both ride one number: the run\'s own descent progress. '
+    + 'Front-on throughout, because the celebration is front-on — a hero who rides down in profile and '
+    + 'lands facing you would swap bodies on the last frame. '
     + '<br><br>And the MARKER wears the offset, not the hero. The mast stands one hero-reach right of the '
     + 'plunger, so he rides the whole way down already centred on the cap he is about to land on — where '
     + 'before, the two shared a centre line and he had to shuffle sideways between the ride and the '
@@ -3216,10 +3338,10 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           const y = s.armed ? seat - (1 - drop) * 46 : seat;
           drawToon(ctx, id, {
             kind: s.armed ? 'jump' : 'celebrate', grounded: !s.armed, vy: 90,
-            time: t, phase: 0, facing: 1, cling: s.cling,
+            time: t, phase: 0, facing: 1, cling: s.cling, clingRide: s.ride,
           }, CFX + PLUNGER_CX, y, 24);
         }
-      }, { animated: true, hires: 5, smooth: true, wide: true });
+      }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 }
 
@@ -3258,7 +3380,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       } else {
         drawToon(ctx, 'lorenzo', pose('celebrate', t), FX + 1, GY - plungerStandY(s.thrown) - 1, 24);
       }
-    }, { animated: true, hires: 5, smooth: true, wide: true });
+    }, { animated: true, hires: 5, smooth: true, wide: true, world: true });
   }
 
   // The gauge alone, at four times the size it ships at. Everything that makes
@@ -3443,10 +3565,15 @@ document.querySelector('h1 small').textContent =
   `dev build · click any tile to save a PNG · ${tiles.length} tiles across ${root.querySelectorAll('section').length} sections`;
 
 // ---------------------------------------------------------------- controls
+// A world-unit tile owes its content the run's camera on top of the screen
+// scale, because that is the order the game does it in: world units are
+// magnified by ZOOM into the 480x270 frame, and the frame is then presented at
+// the screen scale. Everything else is already in frame pixels.
 function applyZoom() {
   for (const t of tiles) {
-    t.canvas.style.width = (t.fixed ? t.w : t.w * zoom) + 'px';
-    t.canvas.style.height = (t.fixed ? t.h : t.h * zoom) + 'px';
+    const s = zoom * (t.world ? WORLD_Z : 1);
+    t.canvas.style.width = (t.w * s) + 'px';
+    t.canvas.style.height = (t.h * s) + 'px';
   }
 }
 const zoomEl = document.getElementById('zoom');
@@ -3491,11 +3618,9 @@ filterEl.addEventListener('input', () => {
 
 applyZoom();
 applyBackdrop(bdEl.value);
-// Scene tiles stay at 1x regardless of the zoom control.
-for (const t of tiles) {
-  if (t.w === W && t.h === H) {
-    t.canvas.style.width = W + 'px';
-    t.canvas.style.height = H + 'px';
-    t.fixed = true;
-  }
-}
+// Full-frame tiles used to be pinned here to 480x270 CSS px and called "true
+// screen size". They were nothing of the kind: nobody has ever played this game
+// at 1:1. A desktop presents that frame at three to five times the size, so a
+// pinned tile was showing the whole composition at a third of its real read —
+// which is exactly the flattery this page exists to avoid. They follow the
+// screen scale with everything else now.

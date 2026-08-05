@@ -22,7 +22,12 @@ import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { bpmOf } from '../src/data/arrangements.js';
 
-const [, , trackId = 'shop', repeatArg = '1', outArg = null] = process.argv;
+const argv = process.argv.filter((a) => !a.startsWith('--'));
+// The song's own start bar and loop, like render-track.js — so a folder of stems is a
+// folder of the thing the game plays. Passed to EVERY render below, mix and stems
+// alike: they are only allowed to sum if they are all the same shape.
+const SONG_LOOP = !process.argv.includes('--no-loop');
+const [, , trackId = 'shop', repeatArg = '1', outArg = null] = argv;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
 const DIR = outArg || `work/stems/${track.slug}`;
@@ -35,7 +40,7 @@ const renderer = await openRenderer();
 // The full mix first. Written at unity, like every stem: the balance IS the export,
 // and normalising to a peak would undo the mix that produced it.
 const norm = 1;
-const mix = await renderer.render(track.bank, { repeat: REPEAT, trackId: track.id });
+const mix = await renderer.render(track.bank, { repeat: REPEAT, trackId: track.id, songLoop: SONG_LOOP });
 const mixName = '00-full-mix.wav';
 writeFileSync(join(DIR, mixName), wavBuffer([mix.outL, mix.outR], norm));
 
@@ -45,7 +50,7 @@ const rows = [[mixName, dbfs(mix.peak * norm), dbfs(rmsOf(mix.outL, norm))]];
 const sum = new Float32Array(mix.outL.length);
 for (const [i, lane] of lanes.entries()) {
   const stem = await renderer.render(track.bank, {
-    repeat: REPEAT, trackId: track.id, lanes: new Set([lane.key]),
+    repeat: REPEAT, trackId: track.id, lanes: new Set([lane.key]), songLoop: SONG_LOOP,
   });
   for (let n = 0; n < sum.length; n++) sum[n] += stem.outL[n];
   const file = `${String(i + 1).padStart(2, '0')}-${lane.label}.wav`;

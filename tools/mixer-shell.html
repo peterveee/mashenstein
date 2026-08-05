@@ -427,6 +427,32 @@
               border-radius: 3px; background: none; color: var(--dim);
               font-size: 12px; line-height: 15px; cursor: pointer; }
   .selrange .selclear:hover { color: var(--hot); background: var(--hover); border-color: transparent; }
+  /* ---- the song's own start and loop -----------------------------------------------
+     The same two-halves-of-one-object treatment as the pair above, for the same reason:
+     a switch and the numbers it switches over. Its own seam from the locator control so
+     the two never read as one four-number thing — they answer different questions. The
+     numbers are captions rather than bare boxes because "5" beside "8 – 12" is three
+     numbers with no nouns; `start` and `loop` are the nouns. */
+  .songloop { display: flex; align-items: stretch; gap: 0; margin-left: 3px;
+              box-shadow: inset 1px 0 0 var(--line); padding-left: 3px; }
+  .songloop[hidden] { display: none; }
+  .songloopnum { display: flex; align-items: center; gap: 4px; padding: 0 3px 0 6px;
+                 color: var(--dim); font-size: 11px; letter-spacing: .04em;
+                 text-transform: uppercase; white-space: nowrap; }
+  .songloop input[type=number] { width: 4.2ch; padding: 3px 2px; text-align: center;
+                 background: var(--input); border-radius: 5px;
+                 color: var(--ink); font-variant-numeric: tabular-nums;
+                 font-size: 12px; text-transform: none; letter-spacing: 0; }
+  /* A stored value the song is no longer long enough for. Said rather than repaired —
+     the bars were deleted from under it and only the person who deleted them knows
+     which answer was meant. */
+  .songloop input[aria-invalid="true"] { border-color: var(--hot); color: var(--hot); }
+  .songloopdash { display: flex; align-items: center; color: var(--dim); padding: 0 1px; }
+  .songloop .selclear { width: 15px; height: 15px; flex: none; align-self: center;
+              padding: 0; border: 0; margin-left: 4px;
+              border-radius: 3px; background: none; color: var(--dim);
+              font-size: 12px; line-height: 15px; cursor: pointer; }
+  .songloop .selclear:hover { color: var(--hot); background: var(--hover); }
   select, button, input[type=number] {
     background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
     border-radius: 4px; padding: 5px 9px; font: inherit; cursor: pointer;
@@ -572,6 +598,19 @@
   #loopregion { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 9%, transparent);
                 border: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
                 pointer-events: none; display: none; }
+  /* The song's OWN loop, and the bars before it that the game hears only once. Drawn
+     under the locator region and quieter than it: this one is a property of the song
+     and is true all the time, where #loopregion is a range somebody is working in and
+     should stay the brighter of the two. The intro band is a hatch rather than a fill
+     so it reads as "passed through" rather than as another selection. */
+  #formloopregion, #formintro { position: absolute; top: 0; bottom: 0;
+                                pointer-events: none; display: none; }
+  #formloopregion { background: color-mix(in srgb, var(--ctl) 10%, transparent);
+                    border-left: 1px solid color-mix(in srgb, var(--ctl) 55%, transparent);
+                    border-right: 1px solid color-mix(in srgb, var(--ctl) 55%, transparent); }
+  #formintro { background: repeating-linear-gradient(45deg,
+                 color-mix(in srgb, var(--ctl) 13%, transparent) 0 5px,
+                 rgba(0,0,0,0) 5px 10px); }
   #loopregion.pending { background: color-mix(in srgb, var(--accent) 26%, transparent);
                         animation: loopPendingPulse .30s ease-in-out infinite alternate; }
   #selregion.pending { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--selected-ink) 25%, transparent) 0 4px,
@@ -1757,6 +1796,11 @@
   .drawersection button { display: flex; align-items: center; width: 100%; min-height: 30px;
                           text-align: left; border: 1px solid transparent; background: none;
                           padding: 5px 8px; font-size: 11.5px; color: var(--ink); }
+  /* `display: flex` above outranks the UA stylesheet's `[hidden] { display: none }`, so
+     every drawer button hidden in code — Delete on a song that is not yours, the whole
+     server half of the menu on the deployed desk — went on being drawn and clickable.
+     Same trap as #askbody's rows below, same one line. */
+  .drawersection button[hidden] { display: none; }
   .drawersection button:hover { background: var(--hover); color: var(--accent); }
   .drawersection button:disabled, .drawersection button:disabled:hover {
     background: none; color: var(--dim); font-size: 11px; }
@@ -4370,6 +4414,28 @@
                 aria-label="Clear the selection">×</button>
       </span>
     </span>
+    <!-- The song's OWN start and repeat, which is a different question from the one
+         above it: that is the range you are working in, this is what the game hears
+         for ever. Beside it rather than in a dialog because it is read far more often
+         than it is set — three numbers that say where a cabinet's music comes in and
+         which bars it settles into, visible while you edit the bars they name.
+         Shown only for the songs it can affect; see songLoopGate in mixer-entry.js. -->
+    <span class="songloop" id="songloopgrp" hidden>
+      <button id="formloop" class="on" aria-pressed="true"
+              title="Hear this song the way the game does: in at the start bar, then the loop for ever">Game Loop</button>
+      <label class="songloopnum" title="The bar the game starts this song on">start
+        <input id="songloopstart" type="number" min="1" step="1" inputmode="numeric">
+      </label>
+      <label class="songloopnum" title="First bar of the loop — everything before it is heard once">loop
+        <input id="songloopfrom" type="number" min="1" step="1" inputmode="numeric">
+      </label>
+      <span class="songloopdash">–</span>
+      <label class="songloopnum" title="Last bar of the loop, inclusive">
+        <input id="songloopto" type="number" min="1" step="1" inputmode="numeric">
+      </label>
+      <button id="songloopclear" class="selclear" title="No start bar and no loop — the whole song, round and round"
+              aria-label="Clear the game loop">×</button>
+    </span>
   </div>
 
   <div class="hdiv"></div>
@@ -4500,6 +4566,11 @@
   <div id="barsarea">
     <div id="ruler"></div>
     <div id="blocks"></div>
+    <!-- What the GAME hears: the bars it passes through once on the way in, and the
+         ones it settles into. Before the locator region, so a range being worked on
+         draws over the song's own. -->
+    <div id="formintro"></div>
+    <div id="formloopregion"></div>
     <div id="loopregion"></div>
     <div id="locatorA" class="locator"></div>
     <div id="locatorB" class="locator"></div>
@@ -4617,7 +4688,7 @@
   </div>
   <div id="drawerbody">
     <section class="drawersection">
-      <div class="drawersectionhead"><span>New / Open</span></div>
+      <div class="drawersectionhead"><span id="opensectionhead">New / Open</span></div>
       <button id="newsong" class="drawerprimary">＋ New song…</button>
       <div id="recent"></div>
       <label class="drawersearch"><span>Find a song</span>
@@ -4642,8 +4713,12 @@
        Loads into the draft, so it is audible and undoable before it is written — and
        only ever into THIS song's draft, whichever save the copy was taken for. -->
   <button id="history" title="Put this song back to an earlier saved version — this song only, no other is touched">Open an earlier version…</button>
+  <!-- Deployed desk only, where Save keeps a copy in the browser rather than writing a
+       file. Discard above goes back to that copy; this throws the copy away too and
+       puts the song back to the one that shipped. -->
+  <button id="resetoriginal" class="dangeraction" title="Throw away your saved copy as well, and put this song back exactly as it shipped" hidden>Back to the original mix</button>
   <button id="resetsong">Zero every channel</button>
-  <button id="deletesong" class="dangeraction" title="Permanently remove this scratch source and its desk history" hidden>Delete scratch song…</button>
+  <button id="deletesong" class="dangeraction" title="Permanently remove this scratch source and its desk history" hidden>Delete Song…</button>
   </section>
   <!-- The cabinet screen: what this song sounds like while the player is choosing a
        level, before it opens up into the level itself. The mix you are listening to
@@ -4657,6 +4732,15 @@
   <button id="loadcab" title="Put the stored cabinet mix back on the faders as a draft, so it can be heard, changed and captured again">Open the cabinet mix…</button>
   <button id="auditioncab" title="Play the cabinet mix, then hand over to the saved mix at the next boundary — what the player hears when they launch a level">Hear the change</button>
   <label class="drawerrow"><span>Plays when</span><select id="cabwhen" title="How far into the cabinet the player has to be for this treatment to be the one that plays"></select></label>
+  <!-- The screen's own way in. The loop it plays is captured from the timeline with the
+       mix; this is the bar it comes in ON, which cannot be read off a loop region — the
+       whole point is that it is somewhere else, before it. Blank means the top of the
+       song, which is what every treatment did before this existed. -->
+  <label class="drawerrow"><span>Comes in on</span>
+    <input id="cabstartbar" type="number" min="1" step="1" placeholder="1"
+           title="The bar the cabinet screen starts this song on. Bars between here and the loop are heard once, on the way in.">
+    <span class="unit">bar</span>
+  </label>
   <label class="drawerrow"><span>Change on</span><select id="cabquantize" title="Which musical boundary the level's mix arrives on"></select></label>
   <label class="drawerrow"><span>Band arrives</span>
     <input id="cabxfade" type="number" min="0" max="4" step="0.5" value="0"

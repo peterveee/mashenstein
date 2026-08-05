@@ -130,8 +130,11 @@ const OUT = resolve(ROOT, outArg || `work/video/${track.slug}-${visualSlug}.mp4`
 // ------------------------------------------------------------------- audio
 
 console.log(`track      ${track.title} (${track.id}), ${REPEAT}x form`);
-const { outL, outR, seconds, blocks, peak, percussion } = await renderBankBrowser(track.bank, {
-  repeat: REPEAT, trackId: track.id,
+// The song's own start bar and loop, like render-track.js, so the video's audio is
+// still byte-identical to the bounce. `--no-loop` walks the whole form instead.
+const SONG_LOOP = !process.argv.includes('--no-loop');
+const { outL, outR, seconds, blocks, peak, percussion, loop } = await renderBankBrowser(track.bank, {
+  repeat: REPEAT, trackId: track.id, songLoop: SONG_LOOP,
 });
 // The analyser downstream wants one channel, the way the game's own AnalyserNode
 // sees the master; the file itself stays stereo.
@@ -139,7 +142,10 @@ const pcm = new Float32Array(outL.length);
 for (let i = 0; i < pcm.length; i++) pcm[i] = (outL[i] + outR[i]) / 2;
 const norm = 1;                       // unity: the mix is the point — see render-track.js
 const FRAMES = Math.min(Math.ceil(seconds * FPS), Math.round(num('frames', Infinity)) || Infinity);
-console.log(`audio      ${seconds.toFixed(1)}s, peak ${peak.toFixed(3)}, ${blocks * 2} bars`);
+console.log(`audio      ${seconds.toFixed(1)}s, peak ${peak.toFixed(3)}, `
+  + (loop?.loop
+    ? `in on bar ${loop.start / 16 + 1}, then ${REPEAT} × bars ${loop.loop.start / 16 + 1}-${loop.loop.end / 16}`
+    : `${blocks * 2} bars`));
 console.log(`visualizer ${visualName} (#${visualIndex}), seed 0x${SEED.toString(16)}`);
 console.log(`video      ${FRAMES} frames @ ${FPS}fps, ${OUT_W}x${OUT_H}`
   + (PIXEL ? ' (480x270 nearest-upscaled)' : `, drawn at ${OUT_W * SS}x${OUT_H * SS}`)

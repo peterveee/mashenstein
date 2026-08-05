@@ -18,9 +18,9 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { readFileSync, unlinkSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { songBlocks, LANE_KEYS } from '../../src/engine/lanes.js';
+import { songBlocks, barPlan, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
-import { bpmOf } from '../../src/data/arrangements.js';
+import { bpmOf, loopOf, loopSteps } from '../../src/data/arrangements.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -52,7 +52,7 @@ const ENTRY = `
 import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
 import { MIX } from ${JSON.stringify(join(ROOT, 'src/data/mix.js'))};
 
-window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackId, arrangement, warp }) => {
+window.__renderBank = async ({ bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp }) => {
   // The bank arrives carrying the tempo it is PLAYED at — resolved in Node, where a
   // track id still means something, so a song the desk has retuned renders at the
   // tempo it was retuned to. See the note over \`render\`.
@@ -62,7 +62,11 @@ window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackI
   // game does to a song under a speed burst or a star. Rendering a warp as a bpm
   // change would re-time those echoes and hide the drift the render exists to audition.
   const spb = (60 / bank.bpm) / 4 / (warp ? warp.tempo : 1);   // seconds per 16th step
-  const steps = blocks * 32;
+  // \`steps\` when the caller asked for the song's own start-and-loop: the way in, once,
+  // plus however many passes of the loop were asked for. Resolved in Node with the rest
+  // of what needs a track id — see \`render\`. Otherwise the whole form, times repeat,
+  // exactly as every render did before this existed.
+  const steps = stepsIn || blocks * 32;
   const N = Math.ceil((steps * spb + tail) * sampleRate);
   const ctx = new OfflineAudioContext(2, N, sampleRate);
 
@@ -101,6 +105,16 @@ window.__renderBank = async ({ bank, blocks, tail, seed, sampleRate, mix, trackI
   Audio.nextTime = 0;
   Audio.songTrim.gain.cancelScheduledValues(0);
   Audio.songTrim.gain.setValueAtTime(Audio.musicTrim, 0);
+
+  // The song's own way in and repeat, when the caller asked for them. Armed here rather
+  // than left to setBank's own lookup: the bank crossed as JSON, so its identity — and
+  // with it the arrangement the markers live on — did not survive the trip. Steps, not
+  // bars, and already clamped: the same resolver the engine and the desk use ran in
+  // Node against the same bar count this buffer was sized from.
+  if (loop) {
+    Audio.step = loop.start;
+    if (loop.loop) Audio.setLoop(loop.loop.start, loop.loop.end, { jump: false });
+  }
 
   for (let i = 0; i < steps; i++) Audio.scheduleStep();
 
@@ -165,6 +179,7 @@ export async function openRenderer({ headless = true } = {}) {
 
   async function render(bank, {
     repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
+    songLoop = false,
   } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
@@ -184,6 +199,30 @@ export async function openRenderer({ headless = true } = {}) {
     const played = bpmOf(gated, id);
     const forPage = played === gated.bpm ? gated : { ...gated, bpm: played };
     const blocks = songBlocks(gated, repeat).length;
+
+    // The song's own start-and-loop, when the caller asked for it. Off by default, and
+    // deliberately: a reference render is a claim about the ENGINE — the null test
+    // compares one against a stored baseline — and giving a song markers should not be
+    // able to change what that claim renders. The tools that bounce a song to listen to
+    // it opt in; make-baselines does not.
+    //
+    // Resolved out here for the same reason the mix and the tempo are: the page holds a
+    // JSON copy of the bank, and `loopOf` needs the identity that copy does not have.
+    // Against the same bar count that sizes the buffer below, so the two cannot
+    // disagree — note that this is the COMPOSED form unless the caller passed an
+    // arrangement, which is the tempo-only gap described above and not a new one.
+    const loop = songLoop
+      ? loopSteps(loopOf(gated, id, arrangement !== undefined ? { [id]: arrangement } : undefined),
+        barPlan(gated).length)
+      : null;
+    // The way in once, then `repeat` passes of the loop — rather than `repeat` passes of
+    // the whole form. A song with markers but no region falls back to the form from its
+    // start bar, which is what it sounds like.
+    const steps = loop
+      ? (loop.loop
+        ? loop.loop.start - loop.start + repeat * (loop.loop.end - loop.loop.start)
+        : blocks * 32 - loop.start)
+      : 0;
 
     // A fresh page per render: Audio is a singleton and ensure() binds one context
     // for its lifetime, so contexts cannot be swapped in place. Re-evaluating the
@@ -205,6 +244,8 @@ export async function openRenderer({ headless = true } = {}) {
         // the page tests, and `undefined` does not reliably survive the crossing.
         {
           bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
+          ...(steps ? { steps } : {}),
+          ...(loop ? { loop } : {}),
           ...(arrangement !== undefined ? { arrangement } : {}),
           // Normalised here so the page never has to guess: a warp is always both
           // numbers, and pitch defaults to unity rather than to tempo — the game's
@@ -236,7 +277,13 @@ export async function openRenderer({ headless = true } = {}) {
     const outR = new Float32Array(meta.frames);
     for (let i = 0; i < meta.frames; i++) { outL[i] = inter[i * 2]; outR[i] = inter[i * 2 + 1]; }
 
-    return { outL, outR, seconds: meta.seconds, blocks, peak: meta.peak, percussion: meta.percussion || [] };
+    return {
+      outL, outR, seconds: meta.seconds, blocks, peak: meta.peak,
+      percussion: meta.percussion || [],
+      // What was actually laid down, so a caller can say so in words rather than
+      // reporting "2x form" over a render that is a way in and two passes of a loop.
+      loop, steps: steps || blocks * 32,
+    };
   }
 
   // isAlive because a long-lived caller keeps this handle warm for hours — see the

@@ -301,7 +301,7 @@ const SPEED_RAMP_CAP = 1.6;
 //
 // It also cuts how far anything crosses the eye per frame by 20%, which is the
 // one lever on strobing that costs framing rather than pace.
-const ZOOM_NORMAL = 1.6;
+export const ZOOM_NORMAL = 1.6;
 // CLOSE is the framing the game shipped with: the desktop ZOOM IN option, and
 // what a tablet always gets.
 //
@@ -313,7 +313,7 @@ const ZOOM_NORMAL = 1.6;
 // least afford to pull back, not the ones that should. A tablet counts as one
 // for the same reason: an iPad is held far closer than a desk monitor, so its
 // picture is not the wide angle its diagonal suggests.
-const ZOOM_CLOSE = 2;
+export const ZOOM_CLOSE = 2;
 // A phone goes closer still, and the arithmetic is not close.
 //
 // In landscape the 16:9 canvas is letterboxed into the phone's SHORT side, so
@@ -328,7 +328,7 @@ const ZOOM_CLOSE = 2;
 // what is coming, which on a touch device is the thing being spent. 2.2 is
 // chosen as the point where legibility is meaningfully better and that bill is
 // still small; going further starts buying size with reaction time.
-const ZOOM_PHONE = 2.2;
+export const ZOOM_PHONE = 2.2;
 
 // The platform read is cached — it cannot change within a session — while the
 // zoom values are re-read every time, so the dev strip can still move them live.
@@ -1224,6 +1224,7 @@ export class RunState {
           // Eased OUT, because a hop decelerates into its own peak.
           const h = p / sl.hop;
           this.player.y = PLUNGER_REST + (sl.from - PLUNGER_REST) * (1 - (1 - h) * (1 - h));
+          this.player.clingRide = 0;
         } else {
           // The ride down. Accelerating, because it is a fall with hands on the
           // pole rather than a lift being lowered — and it ends on the CAP, not
@@ -1231,11 +1232,17 @@ export class RunState {
           // down to press.
           const d = (p - sl.hop) / (1 - sl.hop);
           this.player.y = PLUNGER_REST + (sl.from - PLUNGER_REST) * (1 - d * d);
+          // How far DOWN the pole he is, for the painter. `cling` says he is
+          // holding it; this says where in the ride he is, and it is what lets
+          // the pose develop — knees bending as the cap comes up, the grin
+          // opening — instead of switching on whole at the catch.
+          this.player.clingRide = d;
         }
         if (p >= 1) {
           this.player.y = this.plungerSeat(0);
           this.flipSlide = null;
           this.player.cling = 0;   // hands off; the celebrate pose owns him now
+          this.player.clingRide = 0;
           Audio.sfx('land');
         }
       } else if (this.flip) {
@@ -3981,8 +3988,19 @@ export class RunState {
     // is what keeps the descent from reading as a decal sliding down a stick,
     // and tRun has already stopped by the time he catches it.
     const heroT = (celebrating || this.flipSlide) ? (this.markerT || renderT) : renderT;
+    // The cooldown orb dissolves the moment the finish run ARMS — the first
+    // frame we know the flag is being hit. It answers "can I attack yet?", and
+    // strictly attacks still work on the final stretch, but the stage is
+    // decided: the ending has started, and a HUD readout hovering beside the
+    // hero's head through the dash, the slide and the celebration is a meter
+    // photobombing the money shot. finishT is the dash's own clock, zeroed the
+    // frame the run arms and monotonic to the results card, so the fade starts
+    // exactly at "we know" and can never pop back — a death on the stretch
+    // resets finishing through the checkpoint restore, which is the one path
+    // where the question becomes real again and the orb should return.
+    const orbAlpha = this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan,
+      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, specialOrbAlpha: orbAlpha,
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
         // cap, lean from the run, and whatever duck state the slide left — and

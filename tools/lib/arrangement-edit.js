@@ -97,6 +97,11 @@ export function draftOf(bank, entry = null) {
     // composed" rather than 120: the bank's own tempo is not the draft's to restate,
     // and `entryOf` compares against it to decide whether there is anything to write.
     bpm: entry?.bpm ?? null,
+    // Where the song starts and what it repeats. Carried through untouched rather than
+    // edited here: no bar operation in this file has an opinion about it, and this
+    // draft is round-tripped through `entryOf` on EVERY edit — so anything not carried
+    // is not merely ignored, it is deleted by the next thing anyone does to a bar.
+    loop: entry?.loop ? clone(entry.loop) : null,
   };
 }
 
@@ -157,10 +162,19 @@ export function entryOf(bank, draft) {
   const order = planToOrder(compacted.plan);
   const bpm = draft.bpm != null && draft.bpm !== bank.bpm ? draft.bpm : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
-  if (same && !compacted.sections.length) return bpm == null ? null : { bpm };
+  const loop = draft.loop || null;
+  // A loop counts on its own, exactly as a tempo does: a song played from bar 5 and
+  // repeating bars 8-12 is arranged, even when it plays its sections in the order they
+  // were composed in. Without this the markers would be unwritable on the seven songs
+  // that are a bare two-bar loop with no order of their own.
+  if (same && !compacted.sections.length) {
+    if (bpm == null && !loop) return null;
+    return { ...(bpm == null ? {} : { bpm }), ...(loop ? { loop } : {}) };
+  }
   const out = { order };
   if (compacted.sections.length) out.sections = compacted.sections;
   if (bpm != null) out.bpm = bpm;
+  if (loop) out.loop = loop;
   return out;
 }
 
@@ -175,6 +189,34 @@ export function entryOf(bank, draft) {
 export function setTempo(draft, bpm) {
   const out = copy(draft);
   out.bpm = bpm == null ? null : Math.min(400, Math.max(20, Math.round(bpm)));
+  return out;
+}
+
+/**
+ * Where the song starts and what it repeats — `{ startBar, fromBar, toBar }` in 1-based
+ * inclusive bars, or null for the whole form round and round.
+ *
+ * Clamped to the bars the draft actually has, and in the order the three numbers depend
+ * on each other: the start cannot be past the end of the song, the loop cannot begin
+ * before the song does — it would never be reached — and it cannot end before it
+ * begins. A caller that hands in nonsense gets the nearest thing that plays rather than
+ * an exception, because the caller is a number input somebody is still typing in.
+ *
+ * An arrangement edit like any other: same draft, same ⌘Z, written by the same Save.
+ */
+export function setSongLoop(draft, loop) {
+  const out = copy(draft);
+  const bars = out.plan.length;
+  if (!loop || !bars) { out.loop = null; return out; }
+  const whole = (n, lo, hi) => Math.min(hi, Math.max(lo, Math.round(n)));
+  const startBar = whole(loop.startBar ?? 1, 1, bars);
+  if (loop.fromBar == null || loop.toBar == null) {
+    out.loop = startBar === 1 ? null : { startBar };
+    return out;
+  }
+  const fromBar = whole(loop.fromBar, startBar, bars);
+  const toBar = whole(loop.toBar, fromBar, bars);
+  out.loop = { ...(startBar === 1 ? {} : { startBar }), fromBar, toBar };
   return out;
 }
 
@@ -221,8 +263,14 @@ export function planToOrder(plan) {
 // Every edit below builds its result with this, which is why the tempo is carried
 // here rather than by each of them: a bar edit made after a tempo change must not
 // quietly put the song back to the tempo it was composed at.
+// Every edit in this file goes through here, and it rebuilds the draft from the keys it
+// knows rather than spreading — deliberately, so a stray key cannot ride along inside an
+// edit. That means anything genuinely part of a draft has to be named here as well as in
+// `draftOf`, or it survives being read and not being edited: set a loop, move a bar, and
+// the loop is gone.
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
+  loop: clone(draft.loop ?? null),
 });
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));

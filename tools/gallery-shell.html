@@ -48,8 +48,16 @@
                font-weight:normal; margin:16px 0 8px; }
   h3.subhead:first-of-type { margin-top:4px; }
   .grid { display:flex; flex-wrap:wrap; gap:10px; }
+  /* Honest sizes mean some comparison strips are simply wider than the window —
+     a 480px frame at the 3x screen scale is already 1440px. `safe center` keeps
+     them centred while they fit and switches to start-aligned once they do not,
+     so the left edge stays reachable; overflow-x scrolls the oversized ones
+     INSIDE their own card rather than dragging the whole page sideways. The
+     alternative — shrinking them to fit — is the flattery this page exists to
+     avoid. */
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px;
-          display:flex; flex-direction:column; align-items:center; gap:6px;
+          display:flex; flex-direction:column; align-items:safe center; gap:6px;
+          max-width:100%; overflow-x:auto;
           transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
   .card:hover { transform:translateY(-2px); border-color:#454564; box-shadow:0 8px 20px rgba(0,0,0,0.4); }
   .card canvas { display:block; image-rendering:auto; border-radius:3px; cursor:pointer; }
@@ -82,13 +90,21 @@
 <header>
   <h1>MASHENSTEIN — ASSET GALLERY <small>dev build · click any tile to save a PNG</small></h1>
   <div class="controls">
-    <label>zoom
+    <label>screen scale
+      <!-- Screen pixels per logical frame pixel — the same number the renderer
+           computes as min(winW/480, winH/270) when it presents the game. THE
+           LADDER STARTS AT A REAL DESKTOP and never goes below it: the game is
+           never presented at 1x or 2x anywhere, so showing art at those sizes
+           only ever flatters it. 3x is the floor because that is a maximised
+           browser on a 14" laptop (1512/480 = 3.15) — and, not by accident, the
+           largest scale at which a whole 480x270 frame still fits the page
+           without a horizontal scroll. Everything from 6x up is a magnifying
+           glass, not a preview. -->
       <select id="zoom">
-        <option value="1">1x</option>
-        <option value="2" selected>2x</option>
-        <option value="3">3x</option>
-        <option value="4">4x</option>
-        <option value="6">6x</option>
+        <option value="3" selected>3x · 14" laptop</option>
+        <option value="4">4x · 1080p full-screen</option>
+        <option value="5">5x · 1440p</option>
+        <option value="6">6x · inspect</option>
         <option value="8">8x</option>
         <option value="12">12x</option>
         <option value="16">16x</option>
@@ -97,17 +113,18 @@
       </select>
     </label>
     <label>render
-      <!-- Render density, which is NOT the zoom and NOT the world zoom either.
-           Zoom stretches the finished bitmap; this re-renders the vectors
-           denser. World-scale tiles already bake in the game's ZOOM of 2
-           (camera.js), so a render of 3 there means 6 samples per world unit —
-           in the neighbourhood of what the real frame resolves to on a retina
-           display. 6x costs 4x the canvas memory across ~460 tiles, so it is
-           opt-in rather than the default. -->
+      <!-- Render density, which is NOT the screen scale and NOT the world zoom
+           either. The screen scale stretches the finished bitmap; this
+           re-renders the vectors denser. World-scale tiles bake in the run's own
+           camera on top, so a render of 3 there is 6 samples per world unit — in
+           the neighbourhood of what the real frame resolves to on a retina
+           display, and the reason 3 is the default. 6x is 1:1 with a retina
+           panel at the 3x screen scale, but costs 4x the canvas memory across
+           ~470 tiles, so it stays opt-in. There is no 1x rung: nothing in the
+           game is ever rasterised that sparsely. -->
       <select id="resolution">
-        <option value="1">logical</option>
-        <option value="3" selected>high-res 3x</option>
-        <option value="6">high-res 6x</option>
+        <option value="3" selected>3x</option>
+        <option value="6">6x · retina 1:1</option>
       </select>
     </label>
     <label>backdrop

@@ -193,6 +193,15 @@ export function validateVariants(variants) {
       if (t.loop && !(t.loop.fromBar >= 1 && t.loop.toBar >= t.loop.fromBar)) {
         errs.push(`${at}: bars ${t.loop.fromBar}-${t.loop.toBar} are not a range`);
       }
+      // A treatment may start somewhere other than the top — the cabinet screen coming
+      // in on bar 5 while the level plays the song's own intro from bar 1. It cannot
+      // start AFTER the loop it is arming, or the bars it names are ones it will never
+      // reach. No upper bound here: how many bars the song has is not a question this
+      // file can answer, and the engine clamps what it is handed.
+      if (t.loop?.startBar != null
+        && !(t.loop.startBar >= 1 && (t.loop.fromBar == null || t.loop.startBar <= t.loop.fromBar))) {
+        errs.push(`${at}: starting at bar ${t.loop.startBar} never reaches the loop at bar ${t.loop.fromBar}`);
+      }
       if (t.treatment && !Array.isArray(t.treatment)) {
         errs.push(`${at}: "treatment" is a list of effects, not ${typeof t.treatment}`);
       }

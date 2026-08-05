@@ -133,6 +133,10 @@ export const arrangement = {
       hats: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . C1 . . . C1 . . . C1 . C1 C1 C1 C1').map((v) => !!v),
     },
   ],
+  loop: {
+    fromBar: 9,
+    toBar: 28,
+  },
 };
 
 export const variants = null;

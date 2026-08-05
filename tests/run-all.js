@@ -21,6 +21,9 @@ const suites = [
   'tests/mix.js',
   'tests/mixer-layout.js',
   'tests/mixer-loop.js',
+  // A song's own way in and repeat — `arrangement.loop`. Beside the locator loop above
+  // because they arm the same machinery and only one of them is saved with the song.
+  'tests/song-loop.js',
   // The arrangement layer, beside the mix layer it mirrors: that one is what a song
   // sounds like, this one is what plays when. Its first assertion is the one that
   // matters — an empty layer hands every song back the bank it always had — which is
@@ -144,6 +147,7 @@ const suites = [
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
   'tests/mixer-loop.js',
+  'tests/song-loop.js',
   'tests/voice-edit.js',
   'tests/pitch-curve.js',
   'tests/sfx-routing.js',

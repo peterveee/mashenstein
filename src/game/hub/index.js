@@ -106,7 +106,7 @@ export { CORRUPTED_MODIFIERS };
 // is pinned to the same screen y at every zoom, the same trick camera.js
 // uses to pin GROUND_Y for the run camera — so zooming in crops the ceiling
 // rather than sliding the ground out from under the player.
-const HUB_ZOOM = 1.3;
+export const HUB_ZOOM = 1.3;
 // The concourse is intentionally long enough to browse cabinet by cabinet, but
 // returning players also cross it end to end. At 90 that trip overstayed its
 // welcome; 120 keeps precise station approaches while cutting traversal time by
@@ -306,6 +306,23 @@ const NPC_TALK_R = NPC_STAND_OFF + 8;
 // their own deck — far enough to be seen moving, never far enough to leave the
 // unit they are drawn inside.
 const STAFF_ROAM = 13;
+// Counter staff watch the customer. While the player is walking the concourse
+// their eyes track him; the moment he stops they let go and the idle face —
+// Dolores' beats, Gary's blink — takes back over. Everything here is the EYES
+// only: they already turn to face whoever is at the counter (see updateNpcs),
+// so the pupils just have to say how far ahead of that he is.
+//
+// Separation is measured against a span rather than the room's full width so
+// the sweep happens where he is actually near them; past that the pupils are
+// simply parked at the corner. The x offset is in drawToon face units, held
+// just inside the eye white (pupil 0.026 in a 0.055 half-width) so a tracked
+// eye never reads as a pupil cut in half by its own rim, and the y is small
+// enough to survive the 0.012 downward bias the idle face already carries.
+const STAFF_GAZE_SPAN = 150;
+const STAFF_GAZE_X = 0.028, STAFF_GAZE_Y = 0.016;
+// Onto him faster than off him: catching a customer's eye is a snap, losing
+// interest is a drift. Both are per-second rates on the 0..1 blend.
+const STAFF_GAZE_IN = 6, STAFF_GAZE_OUT = 2.6;
 
 // THE DUST DEVIL's cameo. It is a stick vacuum, so it has to be touching
 // something: brush head down on the floor line, or brush head up on the ceiling
@@ -479,7 +496,10 @@ const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
 const OVERTIME_POSTER_PALETTE = { ...OVERTIME_PALETTE, motif: 'overtime', button: '#e04848' };
 function posterLook(x) {
   const k = Math.round(x / 64);
-  return { tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012), torn: k % 3 === 1 };
+  // `seed` is the station's own x rather than the bay index k: it is what tells
+  // drawPoster where this sheet was folded, and two posters that happen to
+  // round into the same k would otherwise be hung with the same crease.
+  return { tilt: (k % 2 ? 1 : -1) * (0.03 + (k % 3) * 0.012), torn: k % 3 === 1, seed: x };
 }
 
 function palFor(cab, unlocked) {
@@ -1680,6 +1700,11 @@ export class HubState {
     const access = this.stations().find((s) =>
       DOOR_PALETTES[s.type]
       && Math.abs(this.px - s.x) < STATION_R);
+    // Same reading of "walking" the player's own toon draws its run cycle from
+    // (see draw()), so the staff pick him up on the step he takes rather than on
+    // a frame's worth of displacement — which a wall clamp or the last inch of a
+    // tap-to-walk would flicker off and on.
+    const customerWalking = Input.held('left') || Input.held('right') || this.walkTarget != null;
     for (const n of this.npcs()) {
       // Counter staff do not wander the concourse — they are drawn inside their
       // own units, so a walk cycle on the hero rules would carry them out
@@ -1727,6 +1752,21 @@ export class HubState {
         // Facing still belongs to the customer: they turn to whoever is at the
         // counter no matter which way along it they happen to be working.
         n.facing = this.px < n.x ? -1 : 1;
+        // And so do the eyes, while he is on the move. The offsets are in the
+        // toon's own mirrored space, and the body above has just turned to him,
+        // so "toward the customer" is always forward — the further off he is the
+        // harder the pupils sit in the corner, and the closer he gets the more
+        // they drop to somebody standing right at the counter below their eye
+        // line. Held current even while the blend fades, so letting go is the
+        // pupils easing back to centre rather than the aim jumping first.
+        const reach = Math.min(1, Math.abs(this.px - n.x) / STAFF_GAZE_SPAN);
+        n.gazeX = STAFF_GAZE_X * reach;
+        n.gazeY = STAFF_GAZE_Y * (1 - reach);
+        const gazeWant = customerWalking ? 1 : 0;
+        const gazeRate = (customerWalking ? STAFF_GAZE_IN : STAFF_GAZE_OUT) * dt;
+        n.gazeAmt = gazeWant > (n.gazeAmt || 0)
+          ? Math.min(gazeWant, (n.gazeAmt || 0) + gazeRate)
+          : Math.max(gazeWant, (n.gazeAmt || 0) - gazeRate);
         continue;
       }
 
@@ -1948,6 +1988,7 @@ export class HubState {
         pal: posterPalFor(s),
         tilt: look.tilt,
         torn: look.torn,
+        seed: look.seed,
         lit: wallLit(sx),
       });
     }
@@ -2057,6 +2098,8 @@ export class HubState {
           server: staff ? (c) => drawToon(c, staff.id, {
             kind: 'idle', phase: (this.t * 0.5) % 1, time: this.t,
             grounded: true, facing: staff.facing || 1, vy: 0,
+            // Eyes on the customer while he crosses the room; see updateNpcs.
+            gazeX: staff.gazeX || 0, gazeY: staff.gazeY || 0, gazeAmt: staff.gazeAmt || 0,
           }, Math.round(staff.x - cam), HUB_FLOOR_PIN_Y, staff.staffH || NPC_H,
           { lit: castLit(Math.round(staff.x - cam)) }) : null,
         });
@@ -2305,7 +2348,7 @@ export class HubState {
     // it is tilted and half in shadow because it is a thing in a room; held up
     // to read, it is just the sheet.
     drawPoster(ctx, lerp(srcCx, W / 2), lerp(srcCy, 8 + DST_H / 2) - ph / 2, pw, ph, {
-      pal: posterPalFor(s), tilt: lerp(p.tilt, 0), torn: p.torn, lit: 1,
+      pal: posterPalFor(s), tilt: lerp(p.tilt, 0), torn: p.torn, seed: p.seed, lit: 1,
     });
     ctx.save();
     ctx.globalAlpha = e;
