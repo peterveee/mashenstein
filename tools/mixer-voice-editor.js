@@ -1241,6 +1241,11 @@ export function createVoiceEditor({
   onBlank = () => {},
   ask = null,
   isDevUser = () => false,
+  // Whether there is anywhere to file a preset. False on the deployed desk, which has no
+  // server behind it: the save and delete routes are the only two things in this panel
+  // that leave the page, and without them the footer is Revert. Everything else here —
+  // every pot, every pill, every bypass — is local and works exactly the same.
+  canFile = () => true,
   // Where an edit goes when the preset belongs to a SONG rather than to the library.
   // A library preset is edited in the catalogue and written to voices.js by the panel's
   // own Save; a song's copy lives in that song's mix, so every touch has to reach the
@@ -2075,29 +2080,39 @@ export function createVoiceEditor({
     save.onclick = () => openSaveSheet();
 
     bar.append(revert);
+    // Filing a preset needs a server to file it in, and the deployed desk has none: the
+    // POST comes back as somebody's 404 page, which is a perfectly successful fetch
+    // carrying an error, and the raw HTML used to land in a toast. Revert alone, then —
+    // which is the whole footer that still means anything there. Editing is untouched: a
+    // preset opened from a strip is copied into the song, and the song's own Save keeps
+    // it. Companion to the `if (STATIC)` block in mixer-entry.js, which hides the rest of
+    // the server-backed controls; this one lives here because the buttons are built here.
+    const filing = canFile();
     // A regular user's library copy is temporary editor state, not a user preset, so
     // it has no Delete action. Devs may delete library presets; both roles may delete
     // saved user presets. Song-local copies belong to their channel strip instead.
     const canDelete = !state.laneKey && !state.librarySource
       && (isUserPreset(v) || (isDevUser() && isLibraryPreset(v)));
-    if (canDelete) bar.append(del);
+    // Deleting posts as well, so it goes the same way as the saves do.
+    if (filing && canDelete) bar.append(del);
     const userLibraryEditor = !isDevUser() && !state.laneKey;
-    if (userLibraryEditor) {
+    const showUpdate = filing && userLibraryEditor && !state.isNew && isUserPreset(v)
+      && !state.librarySource;
+    if (filing && userLibraryEditor) {
       // USER library drafts can only be filed as a new user preset. Saved user
       // presets expose both choices: fork it, or update it in place.
       bar.append(saveNew);
-      if (!state.isNew && isUserPreset(v) && !state.librarySource) bar.append(update);
-    } else {
+      if (showUpdate) bar.append(update);
+    } else if (filing) {
       // DEV keeps the compact Revert / Save workflow; its save sheet offers Update
       // and Save as New where both are meaningful.
       bar.append(save);
     }
     el.append(bar);
     foot = {
-      saveBtn: userLibraryEditor ? null : save,
-      saveNewBtn: userLibraryEditor ? saveNew : null,
-      updateBtn: userLibraryEditor && !state.isNew && isUserPreset(v) && !state.librarySource
-        ? update : null,
+      saveBtn: filing && !userLibraryEditor ? save : null,
+      saveNewBtn: filing && userLibraryEditor ? saveNew : null,
+      updateBtn: showUpdate ? update : null,
       revertBtn: revert,
     };
     paintFoot();
@@ -2469,6 +2484,14 @@ export function createVoiceEditor({
 
   async function commit({ keepLane = false } = {}) {
     const v = state.voice;
+    // Backstop for the footer, which does not offer a save at all without somewhere to
+    // put it. Here as well as there because this is the function that leaves the page,
+    // and a future caller reaching it another way should not discover the 404 the hard
+    // way. See `canFile`.
+    if (!canFile()) {
+      toast('Presets are saved with the song here — this desk has no library to file them in.', 4000);
+      return;
+    }
     if (!v.label?.trim()) { toast('Give it a name first'); return; }
     // Library presets are read-only for regular users. A dev user may update one in
     // place; the server repeats this check so a stale or hand-written client cannot.
@@ -2605,6 +2628,9 @@ export function createVoiceEditor({
 
   async function remove() {
     const v = state.voice;
+    // Same backstop as `commit`: deleting reaches /voice-delete, and there is no server
+    // to answer it on the deployed desk. The footer already withholds the button.
+    if (!canFile()) return;
     const library = isLibraryPreset(v) && !state.librarySource;
     const devLibrary = isDevUser() && library;
     if (state.isNew && !devLibrary) {

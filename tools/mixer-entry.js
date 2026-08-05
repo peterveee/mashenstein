@@ -44,6 +44,9 @@ import { createStepSeq } from './mixer-step-seq.js';
 // The pitched half. Same window, same write path — see mixer-bar-grid.js.
 import { createPianoRoll, rollEditable, rollResizable } from './mixer-piano-roll.js';
 import { discardSongDraft, restoreSongDraft } from './lib/mixer-drafts.js';
+// The guided tour behind the ? in the toolbar. Its copy is kept in step with
+// mixertutorialscript.md at the repo root.
+import { createTutorial } from './mixer-tutorial.js';
 // Scratch songs are born named — the desk suggests one the drawer is not using yet.
 import { randomSongName } from './lib/song-names.js';
 // The style packs a new song can be generated in. Data only, so the dialog can list
@@ -396,6 +399,66 @@ function hideTip() {
   $('tip').classList.remove('show', 'in');
 }
 
+/**
+ * Put a floating card beside the thing it is about, and aim its arrow at that thing.
+ *
+ * Shared by the tooltip and the tour, because both have the same two problems and the
+ * same two answers. The card is sized by its own sentence, so whether it fits below the
+ * anchor cannot be known until it is in the page and measured — hence `show` before
+ * place, never after. And the card is clamped to the window while the anchor is not, so
+ * at the ends of a row the two stop agreeing about where the middle is: the arrow
+ * follows the ANCHOR, because a point aimed at the centre of a card that had to move is
+ * a point aimed at nothing.
+ *
+ * `prefer: 'side'` moves it out to the left or right instead. A tooltip never needs this
+ * — it is two lines under a toolbar button and gone again — but a card that stays up
+ * while you read four lines of it will lie straight over a channel strip, which is the
+ * one thing on the desk it was pointing at. Beside, the strip is still readable. It
+ * falls back to above/below when there is no room either side.
+ */
+function placeCard(card, el, arrow, { gap = 9, edge = 6, inset = 11, prefer = 'below' } = {}) {
+  const r = el.getBoundingClientRect();
+  const box = card.getBoundingClientRect();
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+
+  if (prefer === 'side') {
+    const right = r.right + gap;
+    const leftSide = r.left - gap - box.width;
+    const at = right + box.width <= innerWidth - edge ? right
+      : leftSide >= edge ? leftSide
+        : null;
+    if (at !== null) {
+      const top = clamp(r.top + r.height / 2 - box.height / 2, edge,
+        innerHeight - box.height - edge);
+      card.style.left = `${Math.round(at)}px`;
+      card.style.top = `${Math.round(top)}px`;
+      if (arrow) {
+        // The side arrows are the same rotated square wearing a different pair of the
+        // card's borders — see the `.tutarrow.beside` rules.
+        arrow.classList.remove('under');
+        arrow.classList.add('beside');
+        arrow.classList.toggle('after', at === leftSide);
+        arrow.style.left = '';
+        arrow.style.top = `${Math.round(
+          clamp(r.top + r.height / 2 - top, inset, box.height - inset) - 4.5)}px`;
+      }
+      return true;
+    }
+  }
+
+  const below = r.bottom + gap + box.height <= innerHeight - edge;
+  const left = clamp(r.left + r.width / 2 - box.width / 2, edge, innerWidth - box.width - edge);
+  card.style.left = `${Math.round(left)}px`;
+  card.style.top = `${Math.round(below ? r.bottom + gap : r.top - gap - box.height)}px`;
+  if (!arrow) return below;
+  arrow.classList.remove('beside', 'after');
+  arrow.style.top = '';
+  arrow.classList.toggle('under', !below);
+  const at = clamp(r.left + r.width / 2 - left, inset, box.width - inset);
+  arrow.style.left = `${Math.round(at - 4.5)}px`;
+  return below;
+}
+
 function showTip(el) {
   const tip = $('tip');
   tip.textContent = '';
@@ -422,24 +485,9 @@ function showTip(el) {
   arrow.className = 'tiparrow';
   tip.append(arrow);
 
-  // Shown first, then placed. The card is sized by its own sentence, so how much room it
-  // needs — and therefore whether it fits below the button — cannot be known until it is
-  // in the page and measured.
+  // Shown first, then placed — see placeCard for why the order matters.
   tip.classList.add('show');
-  const r = el.getBoundingClientRect();
-  const box = tip.getBoundingClientRect();
-  const gap = 9;
-  const below = r.bottom + gap + box.height <= innerHeight - 6;
-  const left = Math.max(6, Math.min(r.left + r.width / 2 - box.width / 2,
-    innerWidth - box.width - 6));
-  tip.style.left = `${Math.round(left)}px`;
-  tip.style.top = `${Math.round(below ? r.bottom + gap : r.top - gap - box.height)}px`;
-  // The card is clamped to the window and the button is not, so at the ends of a row the
-  // two stop agreeing about where the middle is. The arrow follows the BUTTON — a point
-  // aimed at the centre of a card that had to move is a point aimed at nothing.
-  arrow.classList.toggle('under', !below);
-  const at = Math.max(11, Math.min(r.left + r.width / 2 - left, box.width - 11));
-  arrow.style.left = `${Math.round(at - 4.5)}px`;
+  placeCard(tip, el, arrow);
   requestAnimationFrame(() => tip.classList.add('in'));
 }
 
@@ -1127,8 +1175,11 @@ const closeMenu = () => {
 };
 // Anything that is not the popup itself dismisses it.
 addEventListener('pointerdown', (e) => {
+  // The tour card counts as inside every one of these: three of its cards point AT the
+  // drawer or the effect catalogue, and a Next button that closed the thing it is
+  // describing would be a tour that cannot get past card 9.
   const inside = [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
-    $('voicepicker')]
+    $('voicepicker'), $('tut')]
     .some((el) => el.contains(e.target));
   const opener = [$('navbtn')].some((el) => el.contains(e.target))
     || (e.target.closest && e.target.closest('.devaddcard'));
@@ -2913,6 +2964,10 @@ const voiceEditor = createVoiceEditor({
   onBlank: () => voiceLibrary.clearPick(),
   ask,
   isDevUser: () => DEV_USER,
+  // No server on the deployed desk, so no library to file a preset into. See the
+  // `if (STATIC)` block below, which is the same rule applied to every other control
+  // that would post somewhere.
+  canFile: () => !STATIC,
   // A never-saved preset takes its id from its name at the moment it is saved, so the
   // lane holding the old id has to be repointed at the new one — see `commit`.
   assign: (laneKey, id) => { if (laneKey) setLaneVoice(laneKey, id, { redraw: false, autoCopy: false }); },
@@ -10932,6 +10987,12 @@ if (STATIC) {
   // Save keeps a copy in this browser instead of writing a file, so the way back to the
   // shipped song is its own button — Discard now only reaches your copy. updateStatus
   // is what shows it, because it is only ever offered on a song that shipped.
+  //
+  // The fourth thing this rule covers is not hidden here, because it is not in the
+  // shell: the voice editor's Save, Save as New, Update and Delete all post, and they
+  // are built in mixer-voice-editor.js. They come off through its `canFile` dependency,
+  // handed in where the editor is created. Editing a synth is untouched — a preset
+  // opened from a strip is copied into the song and kept by the song's own Save.
 }
 
 const RECENT_KEY = 'mash-mixer-recent-songs';
@@ -11368,6 +11429,55 @@ $('selclear').onclick = (ev) => { ev.stopPropagation(); markBar(null, null); };
 $('seqbtn').onclick = () => showStepSeq(!stepSeq.isOpen());
 $('rollbtn').onclick = () => showPianoRoll($('notes').classList.contains('collapsed'));
 $('pause').disabled = true;
+
+/**
+ * The guided tour. Everything it needs from the desk is handed to it, rather than the
+ * tour reaching in: it is a script with anchors, and the four things it can DO — select
+ * a channel, open the effect catalogue, open a synth, open the drawer — are the desk's
+ * own functions, so what a visitor is shown is what they would have got by clicking.
+ */
+const tutorial = createTutorial({
+  el: $('tut'),
+  placeCard,
+  // Which channel the middle third of the tour is about. It has to carry a preset — two
+  // of the cards open one, and a channel on the engine's own voice has nothing to open —
+  // and a MELODIC one for choice, because the card describing the synth editor talks
+  // about picking a construction and about oscillators, envelopes and filters, and a
+  // drum preset's editor has none of those: no class selector at all, and its sections
+  // are Noise, Ring, Metal and Taps. Pointing at one would be describing a panel that is
+  // not on the screen. Failing both, the first channel in the rack.
+  tourLane: () => {
+    const strips = [...document.querySelectorAll('#rack .strip[data-lane]')]
+      .filter((s) => !s.classList.contains('master') && !s.classList.contains('send'));
+    const melodic = (s) => LANES.find((l) => l.key === baseLane(s.dataset.lane))?.group === 'melodic';
+    const withPreset = strips.filter((s) => s.querySelector('.stripedit'));
+    return (withPreset.find(melodic) || withPreset[0] || strips[0])?.dataset.lane || null;
+  },
+  selectLane: (key) => { if (key) selectLane(key); },
+  openPicker,
+  editVoice: (key) => { if (key) editVoice(key); },
+  // Not `openDrawer`, which toggles: three consecutive cards live in the drawer and the
+  // second of them would shut it.
+  showDrawer: () => { if (!$('navdrawer').classList.contains('show')) openDrawer(); },
+  closePopups: closeMenu,
+  // Half the tour is about a channel strip, and on a desk with all its panels open the
+  // shrink ladder has usually taken the EQ, the sends and the insert slots off the
+  // strips before the visitor ever gets there — so those cards would be pointing at
+  // nothing and would leave themselves out. Folding the notes panel is what a person
+  // would do to get them back, it is one click, and card 2 has just said every header
+  // folds. `setNotesFolded` rather than `showPianoRoll`: no toast about a lane with no
+  // grid, and nothing written into the song's remembered layout for a fold the tour is
+  // going to undo.
+  makeRoomForStrips: () => {
+    const shedding = ['shed-eq', 'shed-sends', 'shed-fx']
+      .some((c) => $('rackwrap').classList.contains(c));
+    if (!shedding || $('notes').classList.contains('collapsed')) return false;
+    setNotesFolded(true);
+    return true;
+  },
+  restoreRoom: () => setNotesFolded(false),
+});
+$('helpbtn').onclick = () => tutorial.open();
 
 // Lives on the master's pinned card, not in the toolbar: it is a property of the
 // master strip, and the toolbar is for what you touch WHILE mixing.
@@ -12622,6 +12732,12 @@ void (async () => {
   }
   selectSong(trackId);
   // If the preset library was open last session, open it again.
-  if (localStorage.getItem('mash-mixer-library-open')) openPresetLibrary();
+  const libraryReopened = !!localStorage.getItem('mash-mixer-library-open');
+  if (libraryReopened) openPresetLibrary();
   tick();
+  // First visit gets the tour offered rather than hidden behind a button nobody has a
+  // reason to press yet. After `selectSong`, because half the cards anchor to a channel
+  // strip and there is no rack before it. Somebody who left the preset library open is
+  // not on their first visit in any useful sense, so they are left alone.
+  if (!libraryReopened) requestAnimationFrame(() => tutorial.offerOnce());
 })();

@@ -4090,9 +4090,14 @@
      Shaped like every other floating thing here — panel, hairline, the same shadow as the
      step grid and the keyboard — so it reads as part of the desk rather than as the
      browser interrupting. `pointer-events: none` throughout: a tooltip you can hover is a
-     tooltip that fights the button underneath it. */
+     tooltip that fights the button underneath it.
+
+     Set well above the desk's own type, like the tour card and for the same reason: the
+     desk is 10px telemetry you scan and this is a sentence you stopped to read. It went
+     wider with it — a 13px sentence in a 268px card is a five-line card, and the whole
+     point of a narrow one was that it stays short enough to read off a hover. */
   #tip { position: fixed; z-index: 50; left: 0; top: 0; display: none;
-         max-width: 268px; padding: 9px 11px 10px;
+         max-width: 330px; padding: 11px 14px 12px;
          background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
          box-shadow: 0 14px 34px color-mix(in srgb, var(--deep) 55%, transparent);
          pointer-events: none; opacity: 0; transform: translateY(-3px);
@@ -4102,20 +4107,20 @@
   /* The name and its key on one line: the key is an attribute OF the name, not a third
      thing to read, and putting it out on the right leaves the sentence a clean left edge. */
   #tip .tiphead { display: flex; align-items: baseline; gap: 12px; }
-  #tip .tipname { flex: 1; min-width: 0; font-size: 11px; font-weight: 700; color: var(--ink);
-                  letter-spacing: .05em; text-transform: uppercase; }
-  /* Long-hand rather than the `font` shorthand: `font: 700 9.5px/1.5 inherit` is invalid —
+  #tip .tipname { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink);
+                  letter-spacing: .04em; text-transform: uppercase; }
+  /* Long-hand rather than the `font` shorthand: `font: 700 11.5px/1.5 inherit` is invalid —
      the shorthand takes no `inherit` in the family slot — and the whole declaration would
      be dropped, leaving a <kbd> in the browser's default monospace. */
-  #tip .tipkey { flex: none; font-family: inherit; font-weight: 700; font-size: 9.5px;
+  #tip .tipkey { flex: none; font-family: inherit; font-weight: 700; font-size: 11.5px;
                  line-height: 1.5; letter-spacing: .07em;
-                 color: var(--accent); padding: 2px 6px; border-radius: 3px;
+                 color: var(--accent); padding: 3px 7px; border-radius: 4px;
                  background: color-mix(in srgb, var(--accent) 13%, transparent);
                  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
   /* The part that is actually worth stopping for. Dim, because the name above it is the
      label and this is the explanation — and set narrow, since a sentence you have to
      track across 400px is a sentence you will not read off a hover. */
-  #tip .tipsays { margin-top: 5px; font-size: 10.5px; line-height: 1.45; color: var(--dim); }
+  #tip .tipsays { margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--dim); }
   /* A rotated square wearing two of the card's own borders, so the point is the card's
      corner rather than a triangle parked near it. It is placed by `showTip` and not by
      the CSS: the card is clamped to the window and the button is not, so the two part
@@ -4128,6 +4133,100 @@
                          border-left: 0; border-top: 0;
                          border-right: 1px solid var(--line);
                          border-bottom: 1px solid var(--line); }
+
+  /* The tour card. Shaped like the tooltip on purpose — same panel, same hairline, same
+     shadow, same arrow — because it is doing the tooltip's job at length, and a second
+     visual language for "the desk is telling you something" would be one too many.
+     What it does NOT share is pointer-events: this one has buttons on it.
+
+     z-index 55 clears everything it has to stand over: the tooltip at 50, the ask modal
+     at 40, the nav drawer at 32, the voice picker at 31, the effect picker at 13. Cards
+     9, 14, 18 and 19 open one of those and then point at it.
+
+     Set BIGGER than everything around it, and deliberately. The desk is dense 10px
+     telemetry you scan; this is prose you read, from further back, once. At the tooltip's
+     size it looked like another readout and was skipped like one. The card widens with
+     the type so the line length stays readable rather than turning into a column of four
+     words. */
+  #tut { position: fixed; z-index: 55; left: 0; top: 0; width: 392px; max-width: calc(100vw - 16px);
+         padding: 14px 17px 12px;
+         background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+         box-shadow: 0 18px 44px color-mix(in srgb, var(--deep) 62%, transparent); }
+  #tut[hidden] { display: none; }
+  /* The cards with no subject — welcome, the layout, the sign-off. Parked low and centre
+     so the desk they are describing is the thing being looked at, not covered. */
+  #tut.centred { left: 50% !important; top: auto !important; bottom: 76px;
+                 transform: translateX(-50%); }
+  #tut.centred .tutarrow { display: none; }
+  #tut .tuthead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 9px; }
+  #tut .tutname { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--ink);
+                  letter-spacing: .04em; text-transform: uppercase; line-height: 1.25; }
+  /* Long-hand for the same reason the tooltip's key chip is: the `font` shorthand takes
+     no `inherit` in the family slot and the whole declaration would be dropped. */
+  #tut .tutkey { flex: none; font-family: inherit; font-weight: 700; font-size: 12px;
+                 line-height: 1.5; letter-spacing: .07em;
+                 color: var(--accent); padding: 3px 8px; border-radius: 4px;
+                 background: color-mix(in srgb, var(--accent) 13%, transparent);
+                 border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
+  /* Brighter than a tooltip's sentence. This one is being read on purpose rather than
+     glanced at on the way past, and it is three or four lines long. */
+  #tut .tutsays { font-size: 14px; line-height: 1.55; color: var(--dim); }
+  #tut .tutsays + .tutsays { margin-top: 10px; }
+  #tut .tutfoot { display: flex; align-items: center; gap: 7px; margin-top: 14px;
+                  padding-top: 10px; border-top: 1px solid var(--line); }
+  /* Left, and dim: it is the one thing on the row you are not being asked to press. */
+  #tut .tutcount { flex: 1; font-size: 12px; letter-spacing: .08em; color: var(--dim2, var(--dim));
+                   opacity: .75; }
+  /* Pushed left by the auto margin rather than stretched by a flex grow — a button as
+     wide as the card reads as a text field, which is what it looked like. */
+  #tut .tutskip { margin-right: auto; }
+  #tut .tutfoot button { font: inherit; font-size: 13px; letter-spacing: .04em;
+                         padding: 6px 15px; border-radius: 6px; cursor: pointer;
+                         color: var(--ink); background: var(--panel);
+                         border: 1px solid var(--line); }
+  #tut .tutfoot button:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  #tut .tutgo { background: var(--accent) !important; color: var(--deep) !important;
+                border-color: var(--accent) !important; font-weight: 700; }
+  #tut .tutskip, #tut .tutback { color: var(--dim) !important; }
+  /* The ✕ rides in the card's own corner rather than on the button row: closing is not
+     one of the choices being offered, it is the way out of all of them. */
+  #tut .tutclose { position: absolute; top: 6px; right: 8px; width: 23px; height: 23px;
+                   display: grid; place-items: center; font: inherit; font-size: 16px;
+                   line-height: 1; color: var(--dim); background: none; border: 0;
+                   border-radius: 4px; cursor: pointer; }
+  #tut .tutclose:hover { color: var(--ink); background: var(--panel); }
+  #tut .tutarrow { position: absolute; width: 9px; height: 9px; top: -5px;
+                   background: var(--panel2); border-radius: 1px 0 0 0;
+                   border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+                   transform: rotate(45deg); }
+  #tut .tutarrow.under { top: auto; bottom: -5px; border-radius: 0 0 1px 0;
+                         border-left: 0; border-top: 0;
+                         border-right: 1px solid var(--line);
+                         border-bottom: 1px solid var(--line); }
+  /* Sideways: the card is beside the strip rather than over it, so the point comes off
+     its left edge — or its right edge, when there was only room on the other side. Same
+     rotated square, two different borders of it. `top` is set by placeCard. */
+  #tut .tutarrow.beside { left: -5px; top: 0; border-radius: 0 0 0 1px;
+                          border-top: 0; border-right: 0;
+                          border-left: 1px solid var(--line);
+                          border-bottom: 1px solid var(--line); }
+  #tut .tutarrow.beside.after { left: auto; right: -5px; border-radius: 1px 0 0 0;
+                                border-left: 0; border-bottom: 0;
+                                border-top: 1px solid var(--line);
+                                border-right: 1px solid var(--line); }
+  /* A ring, not a spotlight. Dimming the rest would take the desk away while the tour
+     talks about it, and the whole point is that it is still yours to poke at. `outline`
+     rather than `border` so nothing reflows when a card lands on it. */
+  .tut-target { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+                animation: tutpulse 1.9s ease-in-out infinite; }
+  @keyframes tutpulse {
+    0%, 100% { outline-color: var(--accent); }
+    50% { outline-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+  }
+  @media (prefers-reduced-motion: reduce) { .tut-target { animation: none; } }
+  /* Hold a hover-only control visible for the length of the card that points at it —
+     the » on a strip head, which is display:none until the head is hovered. */
+  .tut-reveal .stripedit { display: grid !important; }
   /* Effects panel: sits at the bottom with its selected height. Border and background
      are on the panel itself since there's no wrapper row. */
   /* Same indent and same gap as every other panel header: the folds run down one
@@ -4576,6 +4675,12 @@
     <button id="undo" disabled
             data-tip="Undo" data-tipkey="⌘Z"
             data-tipsays="Back through mix and arrangement edits alike — a painted step, a moved fader, a bar dropped out of the song.">Undo</button>
+    <!-- Last in the row, and text rather than a picture like its two neighbours: a
+         question mark is the one glyph nobody has to be taught, and drawing it as an
+         icon would only make it look like something to decode. -->
+    <button id="helpbtn" aria-label="Tour"
+            data-tip="Tour"
+            data-tipsays="A walk round the desk — the strip, the effects, the synths, and how to start a song from nothing. Runs beside a live desk; you can click anything while it is up.">?</button>
   </div>
 
 </header>
@@ -4871,6 +4976,9 @@
 <!-- One card for every `data-tip` on the page, filled and moved as you hover. Built in
      mixer-entry.js. -->
 <div id="tip" role="tooltip" aria-hidden="true"></div>
+<!-- The guided tour's one card, moved from control to control. Built in
+     mixer-tutorial.js; the written source is mixertutorialscript.md. -->
+<div id="tut" role="dialog" aria-label="Tour" hidden></div>
 <div id="toast"></div>
 <pre id="err"></pre>
 

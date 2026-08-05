@@ -1302,9 +1302,12 @@ const CLING_RIG = {
   // hanging off his own jaw, which is the only cling in the cast that is also
   // a threat. Tilted, because a disc gripping with its mouth cannot be level.
   chompo: { squeeze: 0.06, grab: 0, tilt: -0.22 },
-  // Fins wrapped, body streaming upward — he is the one hero for whom sliding
-  // down a pole is just swimming with extra steps.
-  raymn:  { squeeze: 0.12, grab: 1, tilt: 0.08 },
+  // Raymn is NOT here, and that is the point. His gloves float, but a floating
+  // glove is still a hand: it can close on a pole exactly like the rest of the
+  // cast's, and his body can hang off it in the same place, over the cap. He
+  // therefore takes the humanoid grip — one hand out to the column, everything
+  // else left alone — rather than the whole-body squeeze the genuinely handless
+  // rigs need. See drawRay.
 };
 // How much of the pole ride the run has asked for, 0..1.
 function clingAmount(pose) {
@@ -5807,16 +5810,21 @@ function drawRay(ctx, id, p, pose, u, ow, lod) {
   } else {
     // Shipped celebration: both gloves rise and the front one waves.
     const backHandY = cheer ? cy - 0.5 * u : handY + handLift;
-    // The grip, taking priority over every other glove arrangement: both hands
-    // meet over his head on the pole's column, a glove-width apart so they read
-    // as two hands rather than one white lump. Blended in with the catch.
+    // THE GRIP, and it is the humanoid's, not a special case: the pole-side
+    // glove goes out and closes on the column while the other hand and the rest
+    // of the figure carry on exactly as they were. An unattached hand is still a
+    // hand — it can take hold of a stick, and once it has, the body hanging
+    // under it reads the same way everyone else's does. What he cannot do is
+    // bend an elbow, so the only thing to decide is where the glove lands: on
+    // the column, a little above his own head, which is where an arm at
+    // comfortable reach would put it.
     if (clingRay > 0 && !cheer && !pose.headless) {
-      const gx = 0.09 * u, gy = cy - 0.62 * u;
-      const bx = -handOut * u - handSwing, fx = handOut * u + handSwing;
-      const bxc = bx + (-gx - bx) * clingRay, byc = backHandY + (gy - backHandY) * clingRay;
-      const fxc = fx + (gx - fx) * clingRay, fyc = (handY - handLift) + (gy - (handY - handLift)) * clingRay;
-      outlined(ctx, p.w, ow, (c) => c.ellipse(bxc, byc, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
-      outlined(ctx, p.w, ow, (c) => c.ellipse(fxc, fyc, 0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
+      const gripX = CLING_POLE_X * u, gripY = cy - 0.58 * u;
+      const fx = handOut * u + handSwing, fy = handY - handLift;
+      outlined(ctx, p.w, ow, (c) => c.ellipse(-handOut * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
+      outlined(ctx, p.w, ow, (c) => c.ellipse(
+        fx + (gripX - fx) * clingRay, fy + (gripY - fy) * clingRay,
+        0.105 * u, 0.095 * u, 0.12, 0, Math.PI * 2));
     } else {
     outlined(ctx, p.w, ow, (c) => c.ellipse(-handOut * u - handSwing, backHandY, 0.105 * u, 0.095 * u, -0.12, 0, Math.PI * 2));
     if (cheer) {

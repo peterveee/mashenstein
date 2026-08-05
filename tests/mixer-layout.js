@@ -166,7 +166,10 @@ assert(/searchInput = search/.test(librarySource)
   && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
   'opening the preset library focuses the Search presets field');
 assert(/if \(voiceLibrary\.isCollapsed\('edit'\)\) voiceLibrary\.collapse\('edit', false\)/.test(entry)
-  && /if \(localStorage\.getItem\('mash-mixer-library-open'\)\) openPresetLibrary\(\)/.test(entry),
+  // The remembered flag is read into `libraryReopened` because the tour reads it too —
+  // somebody who left the library open is not on a first visit and is not offered one.
+  && /const libraryReopened = !!localStorage\.getItem\('mash-mixer-library-open'\)/.test(entry)
+  && /if \(libraryReopened\) openPresetLibrary\(\)/.test(entry),
   'opening or restoring the preset library reveals its blank editor workspace');
 assert(!shell.includes('id="panicbtn"') && !/#panicbtn/.test(shell)
   && !/\$\('panicbtn'\)/.test(entry),
@@ -258,7 +261,10 @@ assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && /state\.voice\?\.songLocal\n\s*\? 'Save this song-local copy/.test(editor)
   && /saveNew\.onclick = \(\) => openSaveSheet\('new'\)/.test(editor)
   && /update\.onclick = \(\) => openSaveSheet\('update'\)/.test(editor)
-  && /if \(userLibraryEditor\) \{[\s\S]*?bar\.append\(saveNew\)[\s\S]*?bar\.append\(update\)/.test(editor)
+  // `filing &&` is the no-server gate: the deployed desk has nowhere to file a preset,
+  // so its footer is Revert alone rather than four buttons that POST into a 404.
+  && /if \(filing && userLibraryEditor\) \{[\s\S]*?bar\.append\(saveNew\)[\s\S]*?bar\.append\(update\)/.test(editor)
+  && /const filing = canFile\(\)/.test(editor)
   && /async function openSaveSheet\(action = 'choose'\)/.test(editor)
   && /const showAsNew = offerFork/.test(editor)
   && /const showCommit = canSubmit/.test(editor)
@@ -1689,10 +1695,21 @@ assert(shell.includes('<div id="tip" role="tooltip"')
   && /#tip \.tiparrow \{[^}]*transform:\s*rotate\(45deg\)/s.test(shell)
   && /#tip \.tiparrow\.under \{/.test(shell),
   'one tooltip card, click-through, with an arrow that can point either way');
-assert(/function showTip\(el\)[\s\S]*?tip\.classList\.add\('show'\);[\s\S]*?getBoundingClientRect/.test(entry)
-  && /const below = r\.bottom \+ gap \+ box\.height <= innerHeight - 6/.test(entry)
+// The measuring lives in `placeCard` now, shared with the tour: the two have the same
+// two problems — a card sized by its own sentence, and a card clamped to a window the
+// anchor is not — and one copy of the answer is enough.
+assert(/function showTip\(el\)[\s\S]*?tip\.classList\.add\('show'\);\s*\n\s*placeCard\(tip, el, arrow\)/.test(entry)
+  && /function placeCard\(card, el, arrow[\s\S]*?getBoundingClientRect/.test(entry)
+  && /const below = r\.bottom \+ gap \+ box\.height <= innerHeight - edge/.test(entry)
   && /arrow\.style\.left/.test(entry),
   'the card is measured before it is placed, and the arrow tracks the button, not the card');
+// Beside, not over: a tour card stays up while four lines of it are read, and below a
+// channel strip it lies straight across the thing it is pointing at.
+assert(/prefer = 'below'/.test(entry)
+  && /if \(prefer === 'side'\)/.test(entry)
+  && /#tut \.tutarrow\.beside \{/.test(shell)
+  && /#tut \.tutarrow\.beside\.after \{/.test(shell),
+  'the tour card can sit beside its anchor instead of under it, and the arrow follows');
 assert(/addEventListener\('pointerdown', hideTip, true\)/.test(entry)
   && /addEventListener\('scroll', hideTip, true\)/.test(entry)
   && /addEventListener\('focusin'[\s\S]*?:focus-visible[\s\S]*?showTip\(el\)/.test(entry),
@@ -1817,18 +1834,30 @@ assert(/function setLaneVoice[\s\S]*?if \(independent\) buildArrangement\(\); el
   && /function refreshLaneIdentity\(laneKey\)[\s\S]*?\.arrname[\s\S]*?\.arrpresetcat[\s\S]*?delete name\.dataset\.full;[\s\S]*?markClipped\(row\);[\s\S]*?category\.textContent = preset\?\.category/
     .test(entry),
   'choosing a preset renames the arrangement row as well as the strip');
-// A click on a track selects it wherever it lands, and changing what plays the track is
-// the right-click menu — the name is not a button. Half a header that answered a click
+// A click on a track selects it wherever it lands. Half a header that answered a click
 // and half that did not read as a dead row.
+//
+// The name is the exception, and it is a TWO-step: the row and the strip are two copies
+// of one name, so both change what plays the track the same way. The safety is in the
+// arming — on a row you are not on, the first click only arms and falls through to the
+// header, which selects it, so the picker can only ever open on a track you are already
+// looking at. One click opening it outright is what this used to be, and landing on a
+// name you meant to point at cost you a sound.
 const arrangementFn = entry.slice(entry.indexOf('function buildArrangement'));
 assert(/header\.addEventListener\('click', \(\) => selectLane\(row\.key\)\)/.test(arrangementFn)
   && /header\.addEventListener\('dblclick'[\s\S]*?closest\('\.arrbtns, \.arrgain'\)[\s\S]*?playFromLaneStart\(row\.key\)/
     .test(arrangementFn)
-  && !/name\.addEventListener\('click'/.test(arrangementFn)
-  && !/openVoicePicker\([^)]*row\.key\)/.test(arrangementFn)
+  // Armed first, and the un-armed click returns WITHOUT stopping propagation — that
+  // fall-through is what lets the header underneath do the selecting.
+  && /name\.addEventListener\('click', \(ev\) => \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*if \(!presetArmed\(row\.key\)\) \{ armPreset\(row\.key\); return; \}\s*\n\s*ev\.stopPropagation\(\);\s*\n\s*openVoicePicker\(ev\.clientX, ev\.clientY, row\.key\);/
+    .test(arrangementFn)
+  && /name\.setAttribute\('role', 'button'\)/.test(arrangementFn)
+  // Two clicks of the name are not a double-click on the track, which would play from
+  // where the lane comes in — not what the second click meant.
+  && /name\.addEventListener\('dblclick', \(ev\) => ev\.stopPropagation\(\)\)/.test(arrangementFn)
   && /mute\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry)
   && /solo\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry),
-  'anywhere on a track header selects the track, M/S and the level opt out, and the name never opens the picker');
+  'anywhere on a track header selects the track, M/S and the level opt out, and the name opens the picker only on the second click');
 assert(entry.includes("const PARTS_KEY = 'mash-mixer-hidden-parts'")
   && entry.includes('localStorage.setItem(PARTS_KEY'),
   'which parts are hidden is remembered across reloads');
