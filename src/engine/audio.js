@@ -323,6 +323,17 @@ class AudioSys {
     // Built on the first note a lane with a Tone voice plays, and only then — see
     // playVoice. A game whose songs name no voices never constructs one.
     this.voices = null;
+    // Which layers of which LayerSynth preset are soloed on the desk — `voiceId → Set`.
+    //
+    // It lives HERE rather than on the rack because the rack does not survive: it is
+    // disposed with the context and rebuilt on demand, and solo held there would quietly
+    // empty itself while the desk still showed lit buttons. This object outlives every
+    // rack, and each new rack is handed a reference to it.
+    //
+    // Monitoring only. It is not part of any preset, so nothing here is ever saved to the
+    // library, written into a song, or seen by the offline measurement — which builds its
+    // own AudioSys-less rack. See VoiceRack.soloLayers.
+    this.soloLayers = new Map();
     // One pair of gain nodes per lane, standing between everything a song schedules
     // and the channel strip it plays through — see _laneGate. They exist so a song
     // can be STOPPED rather than merely muted: a source node is fire-and-forget once
@@ -2643,7 +2654,12 @@ class AudioSys {
     // is what a synth gets struck at.
     const freq = value === true ? (b[seam.noteKey] ?? seam.note) : value;
     if (freq != null) {
-      if (!this.voices) this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf);
+      if (!this.voices) {
+        this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf);
+        // The map, by reference — so a rack rebuilt after a context teardown comes back
+        // agreeing with the buttons the desk is still showing.
+        this.voices.soloLayers = this.soloLayers;
+      }
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
         // A bank's own length key still wins over the preset's — a song that has been
@@ -2680,6 +2696,39 @@ class AudioSys {
   /** Release a note sounded by previewNote — the note-off half of a key press. */
   releasePreviewNote(laneKey, freq) {
     if (this.voices) this.voices.releasePreview(laneKey, freq);
+  }
+
+  /**
+   * Solo one layer of a stack — the same idea as a channel's S, one level down.
+   *
+   * Three layers summed into one output is exactly the sound you cannot take apart by
+   * ear, so the panel needs a way to hear one at a time. Soloing several is additive,
+   * as it is on the strips: two lit buttons means those two, together.
+   *
+   * MONITORING, and monitoring is never saved. Nothing here touches the preset, so a
+   * solo cannot be written to the library, cannot reach a song, and cannot move a
+   * measured level. It is also not persisted anywhere: reopen the desk and it is gone,
+   * which is the correct behaviour for a switch you are meant to leave on for a minute.
+   */
+  setLayerSolo(voiceId, layerKey, on) {
+    if (!voiceId || !layerKey) return;
+    let set = this.soloLayers.get(voiceId);
+    if (on) {
+      if (!set) { set = new Set(); this.soloLayers.set(voiceId, set); }
+      set.add(layerKey);
+    } else if (set) {
+      set.delete(layerKey);
+      // An empty set removed rather than left behind, so the common case — nothing
+      // soloed anywhere — is a `get` that returns undefined and a play path that does
+      // no work at all.
+      if (!set.size) this.soloLayers.delete(voiceId);
+    }
+  }
+
+  /** Drop every layer solo, or one preset's. What closing the panel does. */
+  clearLayerSolo(voiceId = null) {
+    if (voiceId) this.soloLayers.delete(voiceId);
+    else this.soloLayers.clear();
   }
 
   /**

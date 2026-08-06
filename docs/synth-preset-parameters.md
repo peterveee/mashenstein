@@ -73,9 +73,11 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | `WAVE` | `$waveform` | — | — | square | — (sine/square/sawtooth/triangle/noise) |
 | `ATTACK` | `$attack` | 0.001 | 10 | 0.01 | s |
 | `RELEASE` | `$release` | 0 | 10 | 0.015 | s |
-| `SWEEP` | `$sweep` | -36 | 24 | 0 | st | Pitch sweep amount (semitones from note) |
-| `SWEEP TIME` | `$sweepTime` | 0.001 | 0.5 | 0.06 | s |
-| `SWEEP CURVE` | `$sweepCurve` | — | — | exp | — (exp/lin/snap) |
+| `AMOUNT` | `$pitch.semitones` | -48 | 48 | 0 | semi | How far from the written note the bend starts — the same row a LayerSynth layer's Pitch Env has |
+| `ATTACK` | `$pitch.attack` | 0 | 10 | 0 | s |
+| `DECAY` | `$pitch.decay` | 0 | 10 | 0.06 | s |
+| `SUSTAIN` | `$pitch.sustain` | 0 | 100 | 0 | % |
+| `RELEASE` | `$pitch.release` | 0 | 10 | 0.015 | s |
 
 #### Filter (optional section)
 | Label | Path | Min | Max | Default | Unit | ⚠️ |

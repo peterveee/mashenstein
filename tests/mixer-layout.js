@@ -2348,5 +2348,42 @@ assert(/function dropSolo\(\) \{[\s\S]*?soloed\.delete\(key\)[\s\S]*?soloedAux\.
 assert(/function clearAllSolo\(\) \{[\s\S]*?dropSolo\(\)[\s\S]*?toast\('Solo cleared'\)/.test(entry),
   'while the S button still reports, over the same one implementation');
 
+// ---- layer solo -------------------------------------------------------------------
+//
+// The same gesture one level down: S on a layer card plays that layer on its own. It is
+// monitoring, so the whole of its correctness is that it never becomes part of the
+// preset — and that it cannot outlive the panel that is showing it.
+const engineSource = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+const rackSource = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
+
+for (const i of [1, 2, 3]) {
+  assert(editor.includes(`solo: \`osc${i}\``) || editor.includes('solo: `osc${i}`'),
+    `layer ${i} offers a solo button — a stack you cannot take apart by ear needs one`);
+}
+// The map lives on the singleton, NOT on the rack. The rack is disposed with the context
+// and rebuilt on demand, so solo kept there would empty itself while the desk still
+// showed lit buttons — the whole reason this is stated in two files rather than one.
+assert(/this\.soloLayers = new Map\(\);/.test(engineSource),
+  'AudioSys owns the solo map, which outlives every rack it hands it to');
+assert(/this\.soloLayers = null;/.test(rackSource)
+  && /this\.voices\.soloLayers = this\.soloLayers;/.test(engineSource),
+  'and the rack only holds a REFERENCE to it, re-pointed each time one is built');
+// Never a preset key. `_playLayer` reads it off the rack, so nothing reaches `v.` — which
+// is what keeps tests/pot-coverage.js from seeing a hidden parameter, and what keeps a
+// solo out of every save, every song copy and every measured level.
+assert(!/v\.solo|voice\.solo/.test(rackSource),
+  'solo is never read off the preset — it is monitoring, not a parameter');
+// Clicking S has not changed the sound, only what you are hearing of it.
+const soloBtn = /if \(group\.solo\) \{[\s\S]*?bar\.append\(s\);/.exec(editor)?.[0] || '';
+assert(soloBtn && !soloBtn.includes('touched()'),
+  'soloing a layer does not mark the preset dirty — nothing about it has been edited');
+// One way out, and it drops solo on the way.
+assert(/const closePanel = \(\) => \{ dropSolo\(\); close\(\); \};/.test(editor),
+  'every exit from the panel goes through closePanel, which drops solo first');
+assert(!/[^a-zA-Z]close\(\);/.test(editor.replace('const closePanel = () => { dropSolo(); close(); };', '')),
+  'and nothing calls the raw close() around it, which would leave a solo ringing');
+assert(/if \(!id\) Audio\.clearLayerSolo\(\);/.test(entry),
+  'a null id from the panel clears every layer solo on the engine');
+
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

@@ -46,7 +46,7 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 // pitch envelope, glide and FM all still mean something. See `isNoise` in `_playLayer`.
 // The panel offers it (LAYER_WAVES in tools/mixer-voice-editor.js); this list is why a
 // preset using it can be saved.
-const LAYER_WAVES = [...NATIVE_WAVES, 'noise'];
+const LAYER_WAVES = [...NATIVE_WAVES, 'pulse', 'noise'];
 const DRAWBARS = 9;
 
 const all = Object.values(VOICES);
@@ -158,12 +158,23 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
     assert(!o.type || LAYER_WAVES.includes(o.type),
       `${v.id}: names a waveform a layer takes (${o.type})`);
     assert((o.ratio ?? 1) > 0, `${v.id}: every layer ratio is above zero`);
+    if (o.width != null) {
+      assert(o.type === 'pulse',
+        `${v.id}: only a pulse carries a WIDTH — on any other wave it is a dead key`);
+      assert(o.width >= 0.05 && o.width <= 0.95,
+        `${v.id}: its pulse width is inside what the pot can reach`);
+    }
     assert((o.len ?? 1) > 0, `${v.id}: every layer length multiplier is above zero`);
     assert((o.unison ?? 1) >= 1 && (o.unison ?? 1) <= 5,
       `${v.id}: unison stays within the engine's cap`);
     if (o.pitch) {
-      assert((o.pitch.from ?? 1) > 0 && (o.pitch.to ?? 1) > 0,
-        `${v.id}: bends between two real pitches — an exponential ramp cannot reach zero`);
+      // The bend is an ENVELOPE now, in semitones on `.detune`, so the old "both ends are
+      // real frequencies" rule is gone with the ratios that needed it. What is left is
+      // that the amount is reachable on the pot that sets it.
+      assert(Math.abs(o.pitch.semitones ?? 0) <= 48,
+        `${v.id}: its pitch envelope stays within the ±48 semitones the pot offers`);
+      assert(!('from' in o.pitch) && !('to' in o.pitch) && !('sweep' in o.pitch),
+        `${v.id}: carries no leftover from/to/sweep — keys no path reads any more`);
     }
     if (o.filter) assert((o.filter.freq ?? 0) > 0, `${v.id}: a filter has a cutoff`);
     if (o.fm) assert((o.fm.ratio ?? 1.4) > 0, `${v.id}: an FM ratio is above zero`);
@@ -171,6 +182,40 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
   if (L?.lfo) {
     assert(['filter', 'level'].includes(L.lfo.target ?? 'filter'),
       `${v.id}: the LFO points at filter or level — pitch wobble is the vibrato key`);
+  }
+  // The global stage the layers sum into. Both sections are optional and absent is the
+  // ordinary case — a preset with no `global` block is the parallel voice this synth
+  // shipped as — so every assertion here is guarded rather than required.
+  const G = v.global;
+  if (G?.filter) {
+    assert((G.filter.freq ?? 0) > 0, `${v.id}: the shared filter has a cutoff`);
+    // Bipolar and generous, but not unbounded: the panel's pot stops at ±10 octaves, and
+    // a preset carrying more than the control can reach is a value nobody can dial back.
+    assert(Math.abs(G.filter.env?.octaves ?? 0) <= 10,
+      `${v.id}: the shared filter envelope stays within the ±10 octaves the pot offers`);
+    assert((G.filter.track ?? 0) >= 0 && (G.filter.track ?? 0) <= 1,
+      `${v.id}: key follow is a fraction`);
+  }
+  if (G?.vca) {
+    const s = G.vca.sustain ?? 0;
+    // A VCA at sustain 0 with no decay is a note that dies the instant it is struck —
+    // silence that reads as a broken preset rather than as an envelope. The panel seeds
+    // this section at sustain 1 for exactly that reason.
+    assert(s > 0 || (G.vca.decay ?? 0) > 0,
+      `${v.id}: the shared envelope holds or falls over time — not instant silence`);
+    assert(s >= 0 && s <= 1, `${v.id}: the shared envelope's sustain is a level`);
+  }
+}
+
+// The game synth's pitch envelope — the same keys and the same units as a layer's, which
+// is the point of the rename. `sweep`/`sweepTime`/`sweepCurve` are read by nothing now, so
+// a preset still carrying one would be a bend that silently stopped happening.
+for (const v of tone.filter((x) => x.synth === 'GameSynth')) {
+  assert(!('sweep' in v) && !('sweepTime' in v) && !('sweepCurve' in v),
+    `${v.id}: states its bend as a pitch envelope, not as the old sweep trio`);
+  if (v.pitch) {
+    assert(Math.abs(v.pitch.semitones ?? 0) <= 48,
+      `${v.id}: its pitch envelope stays within the ±48 semitones the pot offers`);
   }
 }
 

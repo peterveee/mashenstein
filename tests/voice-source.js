@@ -179,6 +179,14 @@ const NEW_LAYER = {
     osc2: { type: 'sine', ratio: 0.5, gain: 0.22, len: 1.05, attack: 0.008, decay: 0 },
     lfo: { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
   },
+  // The stage the layers sum into — a second root key beside `layer`, nested two deep,
+  // with its own filter envelope. It rides the same `optionsBlock` path, and a preset
+  // that lost it on save would be a stack whose shared filter silently came off.
+  global: {
+    filter: { type: 'lowpass', freq: 900, Q: 1.4, track: 0.5,
+      env: { octaves: -2.5, attack: 0.004, decay: 0.2, sustain: 0.3 } },
+    vca: { attack: 0.01, decay: 0, sustain: 1, release: 0.08 },
+  },
 };
 
 let added = upsertPreset(SRC, 'testWobble', NEW_TONE, 'TONE');
@@ -224,6 +232,16 @@ assert(grown.VOICES.testStack?.layer?.osc1?.filter?.freq === 320
   && grown.VOICES.testStack?.layer?.osc1?.decay === 0
   && grown.VOICES.testStack?.layer?.lfo?.target === 'filter',
 'a layer preset’s nested filter, its envelope, the LFO and meaningful zeroes survive the trip');
+// The global stage is a SECOND root key on the same preset, and its ENV AMOUNT is
+// negative — a filter closing from above, which is exactly the value a "tidy up the
+// defaults" pass would be tempted to drop. A stack that came back without it would play
+// with its shared filter wide open and sound like a different preset.
+assert(grown.VOICES.testStack?.global?.filter?.freq === 900
+  && grown.VOICES.testStack?.global?.filter?.track === 0.5
+  && grown.VOICES.testStack?.global?.filter?.env?.octaves === -2.5
+  && grown.VOICES.testStack?.global?.vca?.decay === 0
+  && grown.VOICES.testStack?.global?.vca?.release === 0.08,
+'the global filter, its bipolar envelope and the VCA survive the trip beside the layers');
 // The measurement is the point of the whole save path: a preset whose level is the
 // placeholder is one that arrives at the wrong level on every lane. Both numbers,
 // because a save writes both and a save that wrote one would leave the two describing

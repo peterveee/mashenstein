@@ -877,7 +877,7 @@ const DRUM = {
   // they are built here now, where the repeat lives — the metal bank for the struck
   // ones, an FM operator on the oscillator for the dry one.
   snareFlam: { label: 'Flam Snare', category: 'Snare', dur: 1,
-    note: 'Two strikes 22ms apart — the drummer\u2019s flam, which reads as one hit with '
+    note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with '
       + 'a thicker front.',
     noise: { type: 'bandpass', freq: 1600, to: 1150, sweep: 0.1, Q: 1.3, decay: 0.14, gain: 1 },
     metal: { wave: 'square', freq: 760, spread: 1, count: 6, hp: 3200, Q: 0.8, decay: 0.12, gain: 0.55 },
@@ -2045,7 +2045,6 @@ const TONE = {
     mono: false,
     portamento: 0,
     starter: false,
-    sweep: 0,
     filter: { type: 'lowpass', slope: -12, freq: 10840, to: 1420, Q: 3.4, sweep: 0.12 } },
 
   // ---- requested 80s bass auditions --------------------------------------
@@ -2284,6 +2283,288 @@ const TONE = {
         release: 0.7 },
       lfo: { type: 'sine', rate: 0.5, depth: 0.35, target: 'filter', delay: 0.6 },
     } },
+  // The global stage's demonstrator, as `layerDreamPad` is unison and the filter LFO's.
+  // Three layers with no filters of their own arriving at ONE cutoff and ONE envelope is
+  // the thing this synth could not say before: a stack whose character is the filter over
+  // all of it rather than three sounds that happen to be playing together. Take the
+  // global filter out and it is three saws; put it back and it is an instrument.
+  //
+  // The blip on osc1 is the pitch envelope in its ordinary use — two semitones falling
+  // into the note over 40 ms, which is a brass player's attack and reads as articulation
+  // rather than as a pitch effect.
+  layerBrassStack: { label: 'Layer Brass Stack', category: 'Orch', synth: 'LayerSynth', dur: 2.4,
+    note: 'Three saws with no filters of their own, arriving at one shared lowpass that '
+      + 'opens across the note — the stack reads as one horn section rather than three '
+      + 'oscillators. A two-semitone blip gives it its attack.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.02, decay: 0.5, sustain: 0.8,
+        release: 0.12, unison: 2, spread: 11,
+        pitch: { semitones: 2, decay: 0.04 } },
+      osc2: { type: 'sawtooth', ratio: 2, gain: 0.3, len: 0.9, attack: 0.03, decay: 0.5,
+        sustain: 0.7, release: 0.1 },
+      osc3: { type: 'square', ratio: 0.5, gain: 0.28, attack: 0.02, decay: 0.6, sustain: 0.75,
+        release: 0.12 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 420, Q: 1.1, track: 0.35,
+        env: { octaves: 3.4, attack: 0.03, decay: 0.45, sustain: 0.3, release: 0.12 } },
+      vca: { attack: 0.02, decay: 0.4, sustain: 0.78, release: 0.14 },
+    },
+    drive: 0.18, shape: 'soft' },
+
+  // ---- BEST: what this synth can do that nothing else here can -----------------
+  //
+  // Ten patches built to show the stack off rather than to fill a lane. Most of them
+  // turn on one idea: a layer filter with KEY FOLLOW at zero does not track the note, so
+  // it is a FORMANT — a fixed resonance the pitch moves under. Three layers is three
+  // formants, which is a vowel, which is a voice. That is how a singer works and it is
+  // what no single-filter synth in this catalogue can say.
+  //
+  // The vowels below are the published formant tables: /a/ 800·1150·2900 Hz,
+  // /u/ 320·800·2250, /o/ 500·1000·2450. Sawtooth sources, because a vowel needs
+  // harmonics for the resonances to find.
+
+  bestChoirAah: { label: 'BEST Choir Aah', category: 'Orch', synth: 'LayerSynth', dur: 8,
+    note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with '
+      + 'the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: '
+      + 'this is how a voice works, not an impression of one.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.35, decay: 1.2, sustain: 0.85,
+        release: 0.9, attackCurve: 'lin', unison: 3, spread: 9,
+        filter: { type: 'bandpass', slope: -12, freq: 800, Q: 7, track: 0 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.55, detune: 6, attack: 0.42, decay: 1.4,
+        sustain: 0.8, release: 0.9, attackCurve: 'lin', unison: 2, spread: 13,
+        filter: { type: 'bandpass', slope: -12, freq: 1150, Q: 9, track: 0 } },
+      osc3: { type: 'sawtooth', ratio: 1, gain: 0.3, detune: -7, attack: 0.5, decay: 1.6,
+        sustain: 0.7, release: 1, attackCurve: 'lin',
+        filter: { type: 'bandpass', slope: -12, freq: 2900, Q: 11, track: 0 } },
+      lfo: { type: 'sine', rate: 0.7, depth: 0.14, target: 'level', delay: 0.9 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 3800, Q: 0.7, track: 0.3,
+        env: { octaves: 1.3, attack: 0.6, decay: 1.6, sustain: 0.55, release: 0.9 } },
+      vca: { attack: 0.45, decay: 1.6, sustain: 0.88, release: 1.2, attackCurve: 'lin' },
+    },
+    drive: 0.08, shape: 'soft',
+    vibrato: { depth: 0.18, rate: 5.2, delay: 0.6 } },
+
+  bestChoirOoh: { label: 'BEST Choir Ooh', category: 'Orch', synth: 'LayerSynth', dur: 8,
+    note: 'The /u/ vowel — 320, 800 and 2250 Hz — rounder and darker than the aah, with a '
+      + 'band of noise sitting where the breath is. Two singers, slightly out of tune with '
+      + 'each other, which is what makes a section sound like more than one person.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.5, decay: 1.5, sustain: 0.88,
+        release: 1.1, attackCurve: 'lin', unison: 3, spread: 11,
+        filter: { type: 'bandpass', slope: -12, freq: 320, Q: 6, track: 0 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.5, detune: -9, attack: 0.55, decay: 1.6,
+        sustain: 0.82, release: 1.1, attackCurve: 'lin', unison: 2, spread: 15,
+        filter: { type: 'bandpass', slope: -12, freq: 800, Q: 8, track: 0 } },
+      // The breath. A noise layer is a full member of the stack here — its band follows
+      // the note, so it sits with the voice rather than hissing across the top of it.
+      osc3: { type: 'noise', ratio: 4, gain: 0.1, attack: 0.7, decay: 2, sustain: 0.5,
+        release: 1.2, attackCurve: 'lin',
+        filter: { type: 'bandpass', slope: -12, freq: 2250, Q: 4, track: 0 } },
+      lfo: { type: 'sine', rate: 0.55, depth: 0.12, target: 'level', delay: 1.1 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 2600, Q: 0.8, track: 0.3,
+        env: { octaves: 1.1, attack: 0.8, decay: 2, sustain: 0.5, release: 1 } },
+      vca: { attack: 0.6, decay: 2, sustain: 0.9, release: 1.4, attackCurve: 'lin' },
+    },
+    drive: 0.06, shape: 'soft',
+    vibrato: { depth: 0.14, rate: 4.8, delay: 0.8 } },
+
+  bestVoiceBox70s: { label: 'BEST Voice Box 70s', category: 'Lead', synth: 'LayerSynth', dur: 2.2,
+    note: 'The tube-in-the-mouth lead off a 1976 record. Two formants moving in OPPOSITE '
+      + 'directions — one opening, one closing — is a mouth changing shape, and the LFO on '
+      + 'top is it doing that over and over. Mono with a short glide, because a talk box is '
+      + 'played one note at a time.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.008, decay: 0.5, sustain: 0.85,
+        release: 0.12,
+        filter: { type: 'bandpass', slope: -12, freq: 700, Q: 9, track: 0,
+          env: { octaves: 1.7, attack: 0.04, decay: 0.55, sustain: 0.35, release: 0.2 } } },
+      // Bipolar ENV AMOUNT earning its keep: this one CLOSES from above while the one
+      // above opens. Two resonances crossing is the whole sound.
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.75, detune: 5, attack: 0.012, decay: 0.6,
+        sustain: 0.8, release: 0.12,
+        filter: { type: 'bandpass', slope: -12, freq: 1900, Q: 13, track: 0,
+          env: { octaves: -1.3, attack: 0.06, decay: 0.65, sustain: 0.4, release: 0.2 } } },
+      // A narrow pulse rather than a square: the even harmonics a 22% duty brings back are
+      // most of what makes a talk box read as a REED rather than as a filtered synth.
+      osc3: { type: 'pulse', width: 0.22, ratio: 0.5, gain: 0.28, attack: 0.006, decay: 0.5,
+        sustain: 0.7, release: 0.1 },
+      lfo: { type: 'triangle', rate: 2.6, depth: 0.42, target: 'filter', delay: 0.12 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 2400, Q: 1.6, track: 0.4,
+        env: { octaves: 1.4, attack: 0.02, decay: 0.4, sustain: 0.45, release: 0.15 } },
+      vca: { attack: 0.01, decay: 0.4, sustain: 0.85, release: 0.16 },
+    },
+    drive: 0.42, shape: 'soft', tone: { freq: 7200 },
+    vibrato: { depth: 0.12, rate: 5.5, delay: 0.35 },
+    mono: true, portamento: 0.055 },
+
+  bestRobotVox: { label: 'BEST Robot Vox', category: 'FX', synth: 'LayerSynth', dur: 2,
+    note: 'A vocoder that never met a singer: square carrier, an FM operator buzzing the '
+      + 'formants, and the /o/ vowel held rigid over the top. The pitch envelope drops a '
+      + 'semitone into every note, which is the machine deciding what it meant to say.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, gain: 0.9, attack: 0.004, decay: 0.3, sustain: 0.9,
+        release: 0.08,
+        pitch: { semitones: -1, decay: 0.05 },
+        filter: { type: 'bandpass', slope: -12, freq: 500, Q: 10, track: 0 },
+        fm: { type: 'square', ratio: 2.01, index: 0.6, attack: 0.002, decay: 0.25 } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.6, detune: 8, attack: 0.005, decay: 0.35,
+        sustain: 0.85, release: 0.08,
+        filter: { type: 'bandpass', slope: -12, freq: 1000, Q: 12, track: 0 } },
+      osc3: { type: 'sawtooth', ratio: 1, gain: 0.35, detune: -6, attack: 0.006, decay: 0.4,
+        sustain: 0.75, release: 0.08,
+        filter: { type: 'bandpass', slope: -12, freq: 2450, Q: 14, track: 0 } },
+      lfo: { type: 'square', rate: 7.5, depth: 0.3, target: 'level', delay: 0.05 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 3000, Q: 1.2, track: 0.35,
+        env: { octaves: 1.2, attack: 0.01, decay: 0.3, sustain: 0.5, release: 0.1 } },
+      vca: { attack: 0.004, decay: 0.3, sustain: 0.88, release: 0.1 },
+    },
+    drive: 0.5, shape: 'fold', tone: { freq: 6400 } },
+
+  bestVowelPad: { label: 'BEST Vowel Pad', category: 'Pad', synth: 'LayerSynth', dur: 8,
+    note: 'A pad that keeps talking. Three formants with slow, deep filter movement under '
+      + 'one shared lowpass, so the vowel drifts between /o/ and /a/ across a held chord — '
+      + 'unison on every layer, which is nine oscillators wide.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 1.1, decay: 2.5, sustain: 0.85,
+        release: 1.8, attackCurve: 'lin', unison: 3, spread: 18,
+        filter: { type: 'bandpass', slope: -12, freq: 520, Q: 5, track: 0,
+          env: { octaves: 0.9, attack: 1.6, decay: 3, sustain: 0.6, release: 1.5 } } },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.5, detune: 11, attack: 1.3, decay: 2.8,
+        sustain: 0.8, release: 2, attackCurve: 'lin', unison: 3, spread: 24,
+        filter: { type: 'bandpass', slope: -12, freq: 1080, Q: 7, track: 0,
+          env: { octaves: -0.8, attack: 1.8, decay: 3.2, sustain: 0.5, release: 1.5 } } },
+      osc3: { type: 'triangle', ratio: 0.5, gain: 0.45, detune: -5, attack: 1, decay: 3,
+        sustain: 0.9, release: 2.2, attackCurve: 'lin', unison: 2, spread: 9 },
+      lfo: { type: 'sine', rate: 0.22, depth: 0.5, target: 'filter', delay: 1.5 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 1900, Q: 1.1, track: 0.3,
+        env: { octaves: 2.2, attack: 2, decay: 4, sustain: 0.55, release: 2 } },
+      vca: { attack: 1.2, decay: 3, sustain: 0.9, release: 2.4, attackCurve: 'lin' },
+    },
+    drive: 0.1, shape: 'soft',
+    vibrato: { depth: 0.08, rate: 3.4, delay: 1.8 } },
+
+  bestMegaSawLead: { label: 'BEST Mega Saw Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.6,
+    note: 'Eleven oscillators. Two unison saws a fifth apart, a sub under them, all through '
+      + 'one shared filter that opens across every note — the shared stage is the whole '
+      + 'point, because eleven separate filters would be eleven sounds instead of one.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.85, attack: 0.006, decay: 0.5, sustain: 0.8,
+        release: 0.18, unison: 5, spread: 26 },
+      osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5,
+        sustain: 0.7, release: 0.18, unison: 5, spread: 34 },
+      osc3: { type: 'square', ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6, sustain: 0.85,
+        release: 0.16 },
+      lfo: { type: 'sine', rate: 5.4, depth: 0.12, target: 'filter', delay: 0.4 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 380, Q: 2.2, track: 0.5,
+        env: { octaves: 4.6, attack: 0.012, decay: 0.55, sustain: 0.42, release: 0.22 } },
+      vca: { attack: 0.006, decay: 0.5, sustain: 0.85, release: 0.24 },
+    },
+    drive: 0.34, shape: 'soft', tone: { freq: 12000 },
+    vibrato: { depth: 0.1, rate: 5.6, delay: 0.5 } },
+
+  bestHeroLead: { label: 'BEST Hero Lead', category: 'Lead', synth: 'LayerSynth', dur: 2.4,
+    note: 'The one that plays the theme over the credits. Mono with a real glide, and a '
+      + 'two-semitone blip into every note — the pitch envelope and the portamento running '
+      + 'at once, which they could not do until they stopped sharing a parameter.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.02, decay: 0.6, sustain: 0.85,
+        release: 0.3, unison: 3, spread: 14,
+        pitch: { semitones: 2, decay: 0.055 } },
+      osc2: { type: 'triangle', ratio: 2, gain: 0.3, len: 0.85, attack: 0.03, decay: 0.5,
+        sustain: 0.6, release: 0.25,
+        fm: { type: 'sine', ratio: 3.01, index: 0.9, attack: 0.004, decay: 0.18 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.45, detune: -4, attack: 0.02, decay: 0.7,
+        sustain: 0.9, release: 0.3 },
+      lfo: { type: 'sine', rate: 0.35, depth: 0.25, target: 'filter', delay: 0.6 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 620, Q: 1.9, track: 0.55,
+        env: { octaves: 3.8, attack: 0.05, decay: 0.9, sustain: 0.5, release: 0.35 } },
+      vca: { attack: 0.02, decay: 0.8, sustain: 0.9, release: 0.4, attackCurve: 'lin' },
+    },
+    drive: 0.26, shape: 'soft', tone: { freq: 11000 },
+    vibrato: { depth: 0.16, rate: 5.1, delay: 0.45 },
+    mono: true, portamento: 0.07 },
+
+  bestScreamerLead: { label: 'BEST Screamer Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.4,
+    note: 'Cuts through anything. An FM operator at a deliberately inharmonic ratio puts a '
+      + 'metallic edge on the saw, the fold shaper turns level into a different sound '
+      + 'rather than a louder one, and the filter envelope snaps shut behind each note.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.95, attack: 0.003, decay: 0.35,
+        sustain: 0.72, release: 0.14, unison: 4, spread: 20,
+        fm: { type: 'square', ratio: 2.47, index: 1.4, attack: 0.001, decay: 0.12 } },
+      osc2: { type: 'square', ratio: 1, gain: 0.4, detune: 12, attack: 0.004, decay: 0.3,
+        sustain: 0.6, release: 0.12 },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.35, attack: 0.003, decay: 0.4,
+        sustain: 0.8, release: 0.14 },
+      lfo: { type: 'sine', rate: 6.2, depth: 0.18, target: 'filter', delay: 0.25 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 900, Q: 3.4, track: 0.45,
+        env: { octaves: 3.2, attack: 0.004, decay: 0.28, sustain: 0.3, release: 0.16 } },
+      vca: { attack: 0.003, decay: 0.35, sustain: 0.78, release: 0.18 },
+    },
+    drive: 0.62, shape: 'fold', tone: { freq: 9000 },
+    vibrato: { depth: 0.2, rate: 6.4, delay: 0.3 } },
+
+  bestMonsterBass: { label: 'BEST Monster Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+    note: 'A sine sub holding the floor, a saw doing the work and a square an octave up for '
+      + 'the teeth, all arriving at one filter that slams open and shut on every note. The '
+      + 'growl is the shared envelope, not three envelopes that happen to agree.',
+    layer: {
+      osc1: { type: 'sine', ratio: 0.5, gain: 1, attack: 0.004, decay: 0.9, sustain: 0.95,
+        release: 0.12 },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 0.004, decay: 0.7, sustain: 0.7,
+        release: 0.12, unison: 2, spread: 12 },
+      osc3: { type: 'square', ratio: 2, gain: 0.22, len: 0.55, attack: 0.003, decay: 0.25,
+        sustain: 0.3, release: 0.08 },
+      lfo: { type: 'sine', rate: 0.5, depth: 0.2, target: 'filter', delay: 0.2 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 90, Q: 3.8, track: 0.4,
+        env: { octaves: 4.2, attack: 0.008, decay: 0.42, sustain: 0.22, release: 0.14 } },
+      vca: { attack: 0.004, decay: 0.9, sustain: 0.92, release: 0.16 },
+    },
+    drive: 0.4, shape: 'soft', tone: { freq: 5200 },
+    mono: true, portamento: 0.035 },
+
+  bestReeseBass: { label: 'BEST Reese Bass', category: 'Bass', synth: 'LayerSynth', dur: 2,
+    note: 'Two saws detuned far enough to beat against each other — the 1988 Reese — with a '
+      + 'clean sine sub underneath so the low end survives the interference. The LFO walks '
+      + 'the shared filter, which is what turns a held note into a moving one.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, detune: 14, attack: 0.006, decay: 1,
+        sustain: 0.9, release: 0.2, unison: 2, spread: 8 },
+      osc2: { type: 'sawtooth', ratio: 1, gain: 0.9, detune: -14, attack: 0.006, decay: 1,
+        sustain: 0.9, release: 0.2, unison: 2, spread: 8 },
+      // Clean and undetuned: the beating belongs above it, and a sub that beats is a sub
+      // that disappears on a phone.
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.75, attack: 0.005, decay: 1.2, sustain: 0.95,
+        release: 0.18 },
+      lfo: { type: 'triangle', rate: 0.9, depth: 0.55, target: 'filter', delay: 0.1 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 160, Q: 4.5, track: 0.35,
+        env: { octaves: 3, attack: 0.02, decay: 0.8, sustain: 0.35, release: 0.25 } },
+      vca: { attack: 0.006, decay: 1.2, sustain: 0.94, release: 0.24 },
+    },
+    drive: 0.3, shape: 'soft', tone: { freq: 4800 },
+    mono: true, portamento: 0.05 },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -2457,7 +2738,11 @@ const LEVELS = {
   stAcidSquelch: 0.06367, stBreathPad: 0.119482, stTpLectric: 0.031326,
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
-  stAmHollow: 0.01455
+  stAmHollow: 0.01455, layerBrassStack: 0.111849, bestChoirAah: 0.028551,
+  bestChoirOoh: 0.047919, bestVoiceBox70s: 0.090772, bestRobotVox: 0.076267,
+  bestVowelPad: 0.089612, bestMegaSawLead: 0.149379, bestHeroLead: 0.161303,
+  bestScreamerLead: 0.132717, bestMonsterBass: 0.122239,
+  bestReeseBass: 0.151935
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -2544,7 +2829,11 @@ const PEAKS = {
   stClapTight: 0.1875, stMetalHatClosed: 1.4218, stCowbell: 3.0877,
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
-  stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073
+  stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
+  layerBrassStack: 0.7, bestChoirAah: 0.2291, bestChoirOoh: 0.2792,
+  bestVoiceBox70s: 0.6839, bestRobotVox: 0.6322, bestVowelPad: 0.5237,
+  bestMegaSawLead: 0.8648, bestHeroLead: 0.8382, bestScreamerLead: 0.9931,
+  bestMonsterBass: 0.7453, bestReeseBass: 0.856
 };
 
 /**
@@ -2841,7 +3130,7 @@ const STARTER = {
       modulationEnvelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.1 },
     } },
   stSnareFlam: { label: 'Flam Snare (starter)', category: 'Snare', kind: 'drum', dur: 1,
-    note: 'Two strikes 22ms apart — the drummer\u2019s flam, which reads as one hit with a thicker '
+    note: 'Two strikes 22ms apart — the drummer’s flam, which reads as one hit with a thicker '
       + 'front.',
     noise: { type: 'bandpass', freq: 1600, to: 1150, sweep: 0.1, Q: 1.3, decay: 0.14, gain: 1 },
     metal: { wave: 'square', freq: 760, spread: 1, count: 6, hp: 3200, Q: 0.8, decay: 0.12, gain: 0.55 },

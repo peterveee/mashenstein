@@ -107,17 +107,21 @@ async function main() {
       return buf.getChannelData(0);
     };
 
-    /** The same question on the melodic path: a game-synth note swept ONTO its pitch. */
-    const renderGame = async (v) => {
+    /** The same question on the melodic path: a game-synth note bent ONTO its pitch. */
+    const renderGame = async (pitch) => {
       const ctx = new OfflineAudioContext(1, Math.round(SR * 0.7), SR);
       const rack = new VoiceRack(ctx);
       const dry = ctx.createGain();
       dry.connect(ctx.destination);
       rack._playGame(
         // +36 semitones is three octaves above the written note, so the note starts at
-        // FROM and arrives at TO — the same sweep as the drum case, stated the way a
-        // melodic preset has to state it.
-        { synth: 'GameSynth', waveform: 'sine', sweep: 36, sweepTime: SWEEP, attack: 0.002, release: 0.05, ...v },
+        // FROM and arrives at TO — the same interval as the drum case, stated the way a
+        // melodic preset states it now: an envelope, in semitones, on `.detune`.
+        { synth: 'GameSynth',
+          waveform: 'sine',
+          attack: 0.002,
+          release: 0.05,
+          pitch: { semitones: 36, decay: SWEEP, sustain: 0, ...pitch } },
         { freq: TO, time: 0, dur: 0.6, gain: 1, dry, wet: null, echo: false },
       );
       const buf = await ctx.startRendering();
@@ -166,19 +170,32 @@ async function main() {
     say(near(nonsense, drum.exp, 0.02),
       'and so is a curve nobody implemented, rather than no sweep at all');
 
-    // ---- 4. the melodic path takes the same three ---------------------------------
-    const game = {};
-    for (const curve of ['exp', 'lin', 'snap']) {
-      const pcm = await renderGame({ sweepCurve: curve });
-      game[curve] = freqAt(pcm, mid);
-      say(near(game[curve], want[curve]),
-        `game synth ${curve}: ${Math.round(game[curve])} Hz halfway (want ~${Math.round(want[curve])})`);
-    }
-    say(game.snap < game.exp && game.exp < game.lin,
-      'the melodic sweep sorts the same way — it is one helper, not two implementations');
-    const bareGame = freqAt(await renderGame({}), mid);
-    say(near(bareGame, game.exp, 0.02),
-      'and a melodic preset that names no curve is exponential too');
+    // ---- 4. the melodic path's bend is an ENVELOPE, and still the exponential shape --
+    //
+    // The pitch envelope writes CENTS on `.detune`, and linear in cents is exponential in
+    // hertz — so the melodic bend has exactly one shape and it is the one every preset
+    // written before it rendered as. That equivalence is the whole claim of the rename:
+    // `sweep`/`sweepTime`/`sweepCurve` became `pitch.{semitones,decay,…}` without moving
+    // a sample of what the catalogue plays. The three-way pill is gone WITH the ramp, and
+    // the drum path above still owns all three for the pitch drops that need them.
+    const bent = freqAt(await renderGame({}), mid);
+    say(near(bent, want.exp),
+      `game synth: ${Math.round(bent)} Hz halfway through a ${FROM}→${TO} bend`
+      + ` (want ~${Math.round(want.exp)} — the exponential shape, in cents)`);
+    const landed = freqAt(await renderGame({}), SWEEP + 0.1);
+    say(near(landed, TO, 0.05),
+      `game synth: lands on its written ${TO} Hz once the envelope has fallen`
+      + ` (${Math.round(landed)} Hz)`);
+    // A sustain holds the bend OFF the note — an envelope can do what the old single ramp
+    // could not say at all, which is the reason for the shape rather than a side effect.
+    const held = freqAt(await renderGame({ sustain: 0.5 }), SWEEP + 0.1);
+    say(held > TO * 1.5,
+      `game synth: a sustaining pitch envelope stays off the note (${Math.round(held)} Hz`
+      + ` against ${TO})`);
+    // And no bend at all is the note, flat — the default every preset in the catalogue is.
+    const flat = freqAt(await renderGame({ semitones: 0 }), mid);
+    say(near(flat, TO, 0.05),
+      `game synth: no AMOUNT is the written note throughout (${Math.round(flat)} Hz)`);
 
     return said;
   }, { FROM, TO, SWEEP });

@@ -798,6 +798,29 @@ tool read. Three ways in, all on the strip:
 Not in the preset picker. Choosing a sound and shaping one are different jobs, and the
 panel that answers the first is the wrong place to hide the second.
 
+#### `S` on a layer — solo one oscillator
+
+A **LayerSynth** preset is up to three complete voices summed into one output, which is
+exactly the sound you cannot take apart by ear. Every `Osc` card carries an **`S`** beside
+its On/Off, and `Osc 1` has one even though it has no switch — "what is osc 1 doing under
+the other two" is the same question.
+
+It behaves like the channel solo it borrows its letter from:
+
+- **Additive.** Two lit buttons means those two, together.
+- **Monitoring, never saved.** The set lives on the engine, not on the preset, so it is
+  never written to the library, never reaches a song, and cannot move a measured level.
+  Clicking it does not mark the preset unsaved, because it has not changed the sound —
+  only what you are hearing of it.
+- **Gone when the panel closes**, or when it opens another preset. A solo that outlived
+  the panel showing it would be a stack playing with a layer missing and nothing on screen
+  to say why.
+- A layer that is **switched off stays silent**: solo removes the others, it does not turn
+  anything on. The global filter and VCA stay in circuit — you are hearing that layer
+  through the patch, not raw.
+
+LayerSynth only. No other synth has more than one source to take apart.
+
 Opening it does not put a panel next to a channel — it makes that channel **wider**.
 The strip and the editor become one container in the rack: one border, one background,
 one selected outline, and one header band running across both, so the channel's name and

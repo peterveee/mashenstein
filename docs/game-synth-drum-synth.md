@@ -41,7 +41,7 @@ Two rules every native pitched path shares, stated once:
 
 ### Pitch curves
 
-Two of those paths sweep a pitch — GameSynth onto the written note (`sweep`/`sweepTime`), the drum synth from `osc.from` down to `osc.to` over `osc.sweep` — and both write it through one helper, `pitchRamp` in `src/engine/voices.js`. The **shape** is a choice, because where the sweep spends its time is most of what the drop sounds like:
+The **drum** synth sweeps a pitch — from `osc.from` down to `osc.to` over `osc.sweep` — through `pitchRamp` in `src/engine/voices.js`, and its **shape** is a choice, because where the sweep spends its time is most of what the drop sounds like:
 
 | Curve | What it is | Halfway through 800→100 Hz | Sounds like |
 |-------|-----------|---------------------------|-------------|
@@ -50,6 +50,8 @@ Two of those paths sweep a pitch — GameSynth onto the written note (`sweep`/`s
 | `'snap'` | `setTargetAtTime` — an RC discharge, hardest at the very start, settling onto the target | 195 Hz | The analogue drum machine's own pitch envelope: the click, then the body. A kick that goes *thud* rather than *boing* |
 
 `setTargetAtTime` never arrives, so `'snap'` runs a **time constant of a quarter of the stated sweep** (98% of the way by the end) and then plants the value there. The `SWEEP` knob goes on meaning "it is over by here" whichever shape is on it.
+
+The **melodic** paths do not take these three. A pitch envelope is written in cents on `.detune`, and linear in cents *is* exponential in hertz — so a bend has exactly one shape, and it is `'exp'`, which is what every preset written before the envelope existed already rendered as. `tests/pitch-curve.js` measures that equivalence directly.
 
 **Default `'exp'` is load-bearing**: it is what every preset written before the curve existed rendered as, so a preset that names no curve is byte-identical to what the null test's baselines hold. `tests/pitch-curve.js` renders all three and counts zero crossings to prove each shape lands where this table says.
 
@@ -76,9 +78,9 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
   ── noise ──────────────────────────────────────┤     (optional, 1–4        │
   seeded buf (looped) ──→ BiquadFilter (bp, Q 2) ─┘      stages)             └──→ wet (echo)
 
-  pitch: note × pitchShift(v) × detune × 2^(sweep/12)  ──→  note × pitchShift(v) × detune
-         └──── over sweepTime, shaped by sweepCurve ────┘
-  (`pitch` is the oscillator's frequency, or the bandpass centre for noise)
+  frequency: note × pitchShift(v) × detune          (set once, and stays there)
+  detune:    +semitones×100 cents ──→ 0             (the pitch envelope, A/D/S/R)
+  (`.detune` is the oscillator's, or the tracking bandpass's — cents on either)
 ```
 
 - **One source** per note — from `v.waveform`:
@@ -88,8 +90,8 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
   1. Start at `0.0001`
   2. Attack: `exponentialRampToValueAtTime(gain, peakAt)` where `peakAt = t + min(attack, dur × 0.45)`
   3. Release: `exponentialRampToValueAtTime(0.0001, end)` then `linearRampToValueAtTime(0, end + release)`
-- **Pitch sweep** (`sweep`, default `0` = none): the note starts `sweep` semitones away from its written pitch and ramps **onto** it over `sweepTime`. That direction is deliberate — a voice that walks *off* its note can only be a sound effect, and these are lane presets. The ramp is clamped to arrive by note-off, so a 40 ms sixteenth still lands on the note it is written as
-- **Sweep curve** (`sweepCurve`, default `'exp'`): *where in `sweepTime` the pitch actually travels* — see [Pitch curves](#pitch-curves). On a melody lane it is mostly the difference between a slide you hear moving and a scoop that is at the note before you notice it left
+- **Pitch envelope** (`pitch.semitones`, default `0` = none): the note starts that many semitones away from its written pitch and the envelope brings it **onto** it. That direction is deliberate — a voice that walks *off* its note can only be a sound effect, and these are lane presets. Written as cents on `.detune`, so the frequency itself is never moved and the decay is clamped to the note: a 40 ms sixteenth still lands on the note it is written as. The **same five rows** a LayerSynth layer's Pitch Env card has, on the same keys
+- **Sustain and release**, which the old single ramp could not say at all: a sustaining pitch envelope holds the note *off* its written pitch for as long as it is held, and lets go on release. An attack — 0 by default — scoops out to the offset first instead of starting there
 - **Vibrato** (`vibrato.depth`, default `0` = none): one LFO per note-on. **One LFO for the whole chord** — per-note LFOs drift apart on rate rounding, and a chord whose notes wobble independently is a chorus. Built and stopped with the voices, unlike the Tone path's pool LFO which free-runs. Three stages, because the two waveform families need the same wobble in different units: the LFO stays at unit amplitude, `vibEnv` carries the onset, and the last gain scales it — **cents** into an oscillator's `detune` (shared), or **hertz** into the bandpass for noise, which depends on the note and so needs a gain per note (a semitone is 13 Hz at 220 and 105 Hz at 1760)
 - **Delayed vibrato** (`vibrato.delay`, default `0`): the depth grows from nothing to full over this many seconds from note-on — a chip lead holding a note and then leaning into it. A **fade, not a gate**: a wobble switching on at full depth mid-note reads as a fault. This is the one vibrato key the **Tone path cannot honour** — its LFO lives in the pool and free-runs across notes, so there is no note-on to measure an onset from
 - **Tone filter** (`filter`, default **absent** = none): an optional filter between the source and the AR gain, switched on as a section in the panel rather than dialled to a no-op. Absent, **not one node is built** and a preset written before it existed sounds identical — "no filter" and "a filter doing nothing" are different sounds. It is the **same `_filterChain`** the noise and drum voices use, so the keys mean the same thing: `type` and `slope` are the filter, `freq` is where it starts, and `to` over `sweep` is where it goes. That last pair is why it earns its place — a cutoff falling into a noise burst is an explosion and one climbing out of a square is a power-up, neither of which the pitch sweep alone can say. Resonance lands on the **first stage only**; the stages behind it carry the slope at `Q` 0.7071 and would multiply the peak if they resonated too. Built **per note**, because its sweep starts at note-on
@@ -105,9 +107,11 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 | `waveform` | `'square'` | `'square'`, `'sawtooth'`, `'triangle'`, `'sine'` — or `'noise'`, which swaps the oscillator for the seeded buffer through a note-tracking bandpass |
 | `attack` | `0.01` | Attack time in seconds (min `0.001`) |
 | `release` | `0.015` | Release time in seconds |
-| `sweep` | `0` | Semitones the note starts away from its pitch. `+24` over 60 ms is a coin, `−36` over 200 ms a laser |
-| `sweepTime` | `0.06` | Seconds to arrive at the written pitch — clamped to the note's own length |
-| `sweepCurve` | `'exp'` | The sweep's shape: `'exp'`, `'lin'` or `'snap'` — see [Pitch curves](#pitch-curves) |
+| `pitch.semitones` | `0` | Semitones the note starts away from its pitch. `+24` falling over 60 ms is a coin, `−36` a laser. Zero schedules nothing |
+| `pitch.attack` | `0` | Seconds out to the offset. Zero — the default — means the note is already there when it starts |
+| `pitch.decay` | `0` | Seconds to fall onto the written pitch, clamped to the note's own length |
+| `pitch.sustain` | `0` | Where the fall lands, as a fraction of AMOUNT. Above zero the note stays off its pitch |
+| `pitch.release` | `0.015` | Seconds back to the written pitch after note-off |
 | `vibrato.depth` | `0` | Vibrato depth in **semitones**, `1` = ±100 cents. `0` builds no LFO. The panel runs to **12** — a full octave of wobble — and the native paths honour all of it; a **Tone** preset is capped at `1` because `Tone.Vibrato.depth` is a NormalRange and would reject more |
 | `vibrato.rate` | `5` | Vibrato rate in Hz. The panel runs to **60**: past about 20 it stops being a wobble and becomes frequency modulation, where the sidebands are the sound |
 | `vibrato.delay` | `0` | Seconds for the wobble to fade in from note-on. **GameSynth-only** — see above |
@@ -224,10 +228,15 @@ numbers, shipped alongside the originals for A/B.
   [unison ×1–5 on .detune] OscillatorNode(s) ──→ [_filterChain] ──→ GainNode (adsr)
         │                        │ pitchRamp        │ + filter env  │ × 1/√count
         │                        │ (pitch env/glide) │  (cents on   ▼
-        │  [fm modulator, one per stack] ─→ freq     │   .detune)
-        │                                            └→ shaper → tone → trem → out
-  [vibrato LFO → every .detune]  [lfo → filter .detune | trem gains]      │
-                                                                    dry (+ wet)
+        │  [fm modulator, one per stack] ─→ freq     │   .detune)   │
+        │                                                           ▼
+  [vibrato LFO → every .detune]                    ┌─── the three layers sum here ───┐
+                                                   │  [global filter] → [global VCA] │  per NOTE, both optional
+                                                   └─────────────────┬───────────────┘
+                                                                     ▼
+                                                   shaper → tone → trem → out      per NOTE-ON
+  [lfo → EVERY filter's .detune | trem gains]                        │
+                                                                dry (+ wet)
 ```
 
 - **`len`** — this layer's own note length as a multiple of the drawn one. The control
@@ -254,12 +263,37 @@ numbers, shipped alongside the originals for A/B.
   identically.
 - Reuses the drum voice's `drive`/`shape`/`tone` entry keys — the two panels' DRIVE
   pots are provably one control. Honours chords, per-tone `dur`, `humanize`, `$vibrato`.
+- **`global: { filter, vca }`** — one filter and one amp envelope the three layers sum
+  into, before the drive. Both sections optional, and **both absent is the default**: a
+  preset with no `global` block builds not one extra node and renders the samples it
+  always did. Either present and the stack is one instrument rather than three sounds —
+  the difference between a layered patch and a synth voice.
+  - Built **per NOTE**, not per note-on, which is what makes it polyphonic rather than
+    paraphonic: KEY FOLLOW reads *that* note's frequency, each tone of a chord gets its
+    own filter and VCA, and a held chord releases note by note.
+  - The VCA's length is the **drawn note**, never a layer's `len` — `len` is what makes
+    one layer die inside another, and a layer at GATE 62% still ends where it did. Its
+    tail extends how long the modulators run; the oscillators still stop at their own
+    layer's end, because a VCA can only shape what is playing.
+  - The filter is a layer filter in every respect — same keys, same `_filterChain`, the
+    same bipolar `filterEnv` helper — so the two cannot drift apart. `lfo.target:
+    'filter'` breathes **every** filter in the patch, layer and global alike.
+
+### SOLO is not a preset key
+
+The panel's S buttons play one layer on its own. They are **monitoring**: the set lives on
+`AudioSys` (`soloLayers`, `voiceId → Set<'osc1'…>`), never on the voice, so a solo is never
+saved, never reaches a song, and is invisible to `tools/measure-voices.js` — which builds
+its own rack. `_playLayer` applies it at the same filter that drops a layer at gain 0, so a
+soloed audition builds exactly the nodes that layer builds alone rather than attenuating
+the others into the shared drive. It is LayerSynth's alone: no other panel has one.
 
 ### Parameters (per layer)
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `type` | osc1 `'square'`, others `'sine'` | `NATIVE_WAVES` **plus `noise`** — a band that follows the note, so every pot still means something |
+| `type` | osc1 `'square'`, others `'sine'` | `NATIVE_WAVES` **plus `pulse` and `noise`** — two waveforms an `OscillatorNode` does not have. `noise` is a band that follows the note; `pulse` is a `PeriodicWave` at any duty |
+| `width` | `0.5` | The pulse's duty, `0.05`–`0.95`. 50% **is** a square (its even harmonics null out exactly); narrower brings them back — 20% reedy, 10% nasal. Fixed for the note: a table cannot be swept |
 | `ratio` | 1 | × the note — 0.5 is the sub, 2 the octave. Drawn as INTERVAL, in semitones |
 | `detune` | 0 | Cents, static |
 | `gain` | 1 | Layer level. **Zero skips the layer entirely** |
@@ -267,10 +301,20 @@ numbers, shipped alongside the originals for A/B.
 | `attack/decay/sustain/release` | `adsr` defaults | Plain seconds, clamped to the note; `sustain` is where the fall lands |
 | `attackCurve` / `curve` / `releaseCurve` | `'exp'` | Per stage, `'exp'` or `'lin'`. `curve` is the decay's, and keeps its historical name |
 | `unison` / `spread` | 1 / 20 | 1–5 voices across `spread` cents, 1/√count normalised |
-| `pitch.{from,to,sweep,curve}` | — | Ratios of the note, via `pitchRamp` |
+| `pitch.{semitones,attack,decay,sustain,release}` | — | The bend, in semitones on `.detune` — so it COMPOSES with a glide instead of fighting it for `.frequency`. Attack defaults to 0: the note is already away when it starts |
 | `filter.{type,slope,freq,Q,track}` | — | `_filterChain`; `track` = key follow, referenced to A2 = 110 Hz. **No sweep pair** — the cutoff sits still and the envelope moves it |
 | `filter.env.{octaves,attack,decay,sustain,release}` | — | ENV AMOUNT ±10 octaves, **bipolar** — negative closes from above. Written in cents on the cascade's `.detune`, where it sums with the LFO. Zero schedules nothing |
 | `fm.{type,ratio,index,attack,decay}` | — | One operator per unison stack, index in Hz as a multiple of the carrier's start |
+
+### Parameters (the global stage, once per preset)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `global.filter.{type,slope,freq,Q,track}` | — | A layer filter in every respect, through the same `_filterChain`. `track` = key follow, A2 = 110 Hz. Absent builds nothing |
+| `global.filter.env.{octaves,attack,decay,sustain,release}` | — | The same bipolar ±10 octaves as a layer's, through the same `filterEnv` helper |
+| `global.vca.{attack,decay,sustain,release}` | — | The NOTE's own envelope, over all three layers. Peak is 1 — the level lives on the layers and the strip |
+| `global.vca.{attackCurve,curve,releaseCurve}` | `'exp'` | Per stage, as on a layer's amp envelope |
+
 
 ### Presets (24)
 
@@ -685,7 +729,7 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 |--------|-----------|-------|------------|
 | **Purpose** | Simple pitched tones | Filtered noise percussion | Full drum synthesis |
 | **Sound sources** | 1 oscillator, **or** noise through a note-tracking bandpass | 1 noise burst + optional pitched body | 4 independent sources (osc, noise, ring, metal), each optional |
-| **Pitch envelope** | `sweep` semitones → the note, over `sweepTime`, shaped by `sweepCurve` | Body: `from`→`to` Hz | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); Noise/ring/metal: filter sweeps |
+| **Pitch envelope** | `pitch.semitones` → the note, over its own A/D/S/R, in cents | Body: `from`→`to` Hz | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); Noise/ring/metal: filter sweeps |
 | **Filter** | One bandpass, on the `noise` waveform only, centred on the note | Biquad cascade on the burst (`slope`) | Biquad cascade per section, plus a tone filter after the shaper |
 | **Drive** | None | None | WaveShaper: `soft`, `fold` or `crush`, square-law scaled |
 | **Envelope** | AR only (attack, release) | Exponential decay only (instant attack) | Full AHD per section, `'exp'` or `'lin'` curve |

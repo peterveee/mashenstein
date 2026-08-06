@@ -105,6 +105,48 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? type : fallback);
 
 /**
+ * A PULSE of any width, as a PeriodicWave — the fifth waveform a layer can be.
+ *
+ * `OscillatorNode` has four types and none of them is this: a square is the one pulse it
+ * can make, at exactly 50%. Narrow the duty and the even harmonics come back in — 20% is
+ * the reedy, hollow tone a Juno makes, 10% is nasal and thin enough to cut through
+ * anything, and the walk between them is the sound this synth was missing.
+ *
+ * Built from the rectangle's own Fourier series rather than by subtracting two saws: one
+ * oscillator instead of two, no delay line to keep in tune, and the browser band-limits a
+ * PeriodicWave per octave so a narrow pulse at the top of the keyboard does not alias into
+ * a chorus of wrong notes. The DC term is dropped — a 20% pulse is asymmetric about zero,
+ * and its offset would ride through the filter and the drive as a click at note-on.
+ *
+ * The cost is that WIDTH is fixed for the life of a note: a table cannot be swept. That is
+ * the honest trade for one node, and a per-note width still reaches everything a preset
+ * would ask for it — the sweeping kind needs two saws and a delay, and can come later
+ * without moving this.
+ *
+ * Cached per rounded width: a stack of five unison voices asks for the identical table
+ * five times, and two renders of the same song must build the same one.
+ */
+const PULSE_HARMONICS = 64;
+const pulseWaves = new Map();
+function pulseWave(ctx, width = 0.5) {
+  const d = Math.min(0.95, Math.max(0.05, width));
+  const key = `${ctx.sampleRate}|${d.toFixed(3)}`;
+  const hit = pulseWaves.get(key);
+  if (hit) return hit;
+  const real = new Float32Array(PULSE_HARMONICS + 1);
+  const imag = new Float32Array(PULSE_HARMONICS + 1);
+  for (let n = 1; n <= PULSE_HARMONICS; n++) {
+    // The rectangle of duty d, bipolar and DC-free: 4/(nπ) · sin(nπd) on the cosine terms.
+    // At d = 0.5 every even term vanishes and this IS a square, which is the check that
+    // the arithmetic is right.
+    real[n] = (4 / (n * Math.PI)) * Math.sin(n * Math.PI * d);
+  }
+  const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  pulseWaves.set(key, wave);
+  return wave;
+}
+
+/**
  * How narrow the band is that gives GameSynth's `noise` waveform its pitch.
  *
  * Named because `_playGame` uses it twice and the two uses must agree: it sets the
@@ -240,6 +282,62 @@ function adsr(param, t, end, peak, e = {}) {
   return off + 0.005;
 }
 
+/**
+ * The filter envelope a native filtered voice schedules: ENV AMOUNT octaves up from the
+ * cutoff and back, over its own ADSR.
+ *
+ * Written in CENTS on `.detune` rather than in hertz on `.frequency`, which is what lets
+ * it SUM with the LFO instead of fighting it for the same param — and linear in cents is
+ * exponential in hertz, so the travel is musically even. Bipolar, which Tone's
+ * positive-only `octaves` cannot say: a negative amount is a pluck closing from above.
+ * Times are plain seconds and sustain rides them, exactly as `adsr` reads them.
+ *
+ * Zero octaves schedules NOTHING — which is why no filter envelope card needs an on/off
+ * switch: zero already is one, for free.
+ *
+ * Module-level beside `adsr` because a stack's per-layer filters and its global filter
+ * must move identically; two copies of this arithmetic would drift the first time one of
+ * them was tuned.
+ */
+function centsEnv(params, cents, e = {}, t, end, { base = 0, dfltAttack = 0.01 } = {}) {
+  if (!cents) return;
+  const a = Math.max(0, e.attack ?? dfltAttack);
+  const s = Math.min(1, Math.max(0, e.sustain ?? 0));
+  // An attack longer than the note never reaches its peak, the same clamp `adsr` takes.
+  // At zero the envelope is simply THERE at note-on — which is what a pitch bend that
+  // starts twenty-four semitones up and falls into the note is, and writing it as a
+  // one-millisecond ramp instead would be a glide nobody asked for.
+  const peakAt = a > 0 ? t + Math.min(Math.max(0.001, a), Math.max(0.001, (end - t) * 0.45)) : t;
+  const decayEnd = Math.min(end, peakAt + Math.max(0, e.decay ?? 0));
+  for (const p of params) {
+    // Every value is `base` PLUS the envelope, because the param usually already carries
+    // something — a layer's static DETUNE, its unison spread. Scheduling from zero would
+    // silently cancel it: automation events on an AudioParam replace its value outright,
+    // where a connected node (vibrato) sums with them.
+    if (a > 0) { p.setValueAtTime(base, t); p.linearRampToValueAtTime(base + cents, peakAt); }
+    else p.setValueAtTime(base + cents, t);
+    p.linearRampToValueAtTime(base + cents * s, decayEnd);
+    if (decayEnd < end) p.setValueAtTime(base + cents * s, end);
+    p.linearRampToValueAtTime(base, end + Math.max(0.001, e.release ?? 0.015));
+  }
+}
+
+/** ENV AMOUNT octaves on a filter cascade. Every stage moves together. */
+const filterEnv = (stages, fe, t, end) =>
+  centsEnv(stages.map((st) => st.detune), (fe?.octaves ?? 0) * 1200, fe || {}, t, end);
+
+/**
+ * The pitch envelope, in semitones, on `.detune`.
+ *
+ * On `.detune` rather than `.frequency` so it COMPOSES with a portamento instead of
+ * fighting it for one param — a glide sets where the note comes from, the envelope bends
+ * it on the way — and so a noise layer bends too, its band centre taking cents exactly as
+ * an oscillator does. Attack defaults to ZERO: the arcade shape is a note that starts
+ * away and arrives, not one that scoops out to the offset first.
+ */
+const pitchEnv = (params, pe, t, end, base = 0) =>
+  centsEnv(params, (pe?.semitones ?? 0) * 100, pe || {}, t, end, { base, dfltAttack: 0 });
+
 const SYNTHS = {
   Synth: Tone.Synth,
   MonoSynth: Tone.MonoSynth,
@@ -273,6 +371,18 @@ export class VoiceRack {
     // same song would not match, and stems would stop summing to the mix. The
     // engine solved this years ago for its own snare; a preset uses the same buffer.
     this.noiseBuf = noiseBuf;
+    // Which layers of which preset are SOLOED on the desk, as `voiceId → Set<'osc1'…>`.
+    //
+    // Monitoring, never a preset key: it is not on the voice, so it is never written to a
+    // song, never saved to the library, and never seen by tools/measure-voices.js — which
+    // builds its own rack, whose map is empty. A solo left on cannot move a calibrated
+    // level, and there is nothing here for pot-coverage to call a hidden parameter.
+    //
+    // Assigned BY AudioSys and owned by it, deliberately. This rack is disposed and
+    // rebuilt whenever the context goes away or the bank changes; state kept here would
+    // vanish under lit buttons. What is kept here is a reference to the map that outlives
+    // the rack.
+    this.soloLayers = null;
     // And the LONG one — AudioSys.crashBuf, 2.5 seconds of the same seeded stream.
     // The half-second buffer has to be looped for anything that outlasts it, and a
     // loop drops a seam at a fixed 0.5s offset that has nothing to do with the tempo,
@@ -498,23 +608,22 @@ export class VoiceRack {
     const attack = Math.max(0.001, v.attack ?? 0.01);
     const release = Math.max(0, v.release ?? 0.015);
     const shift = VoiceRack.pitchShift(v) * detune;
-    // The note starts `sweep` semitones AWAY and arrives at its written pitch, rather
-    // than starting on it and leaving. That direction is the whole of why this is
-    // usable on a melody lane: a voice that walks off its own note can only ever be a
-    // sound effect, and these are lane presets. +24 over 60ms is a coin, −36 over
-    // 200ms is a laser, and 0 schedules no ramp at all — so a preset that does not
-    // name it renders the same samples it did before this existed.
+    // The note starts AMOUNT semitones away and arrives at its written pitch, rather than
+    // starting on it and leaving. That direction is the whole of why this is usable on a
+    // melody lane: a voice that walks off its own note can only ever be a sound effect,
+    // and these are lane presets. +24 falling over 60ms is a coin, −36 over 200ms is a
+    // laser, and zero schedules nothing at all — so a preset that does not name it
+    // renders the same samples it did before this existed.
     //
     // Semitones, not hertz, because the offset is a RATIO: +12 is an octave up whether
     // the note is a bass D or a lead D, and it composes with the song warp and the
     // preset's own transpose for free, the way `pitchShift` already does.
-    const sweep = v.sweep || 0;
-    const from = sweep ? Math.pow(2, sweep / 12) : 1;
-    const sweepTime = Math.max(0.001, v.sweepTime ?? 0.06);
-    // The SHAPE of that arrival — see `pitchRamp`. On a melody lane it is mostly the
-    // difference between a slide and a scoop: `snap` is at the note almost at once and
-    // reads as an attack, where `exp` is heard as the pitch travelling.
-    const sweepCurve = v.sweepCurve || 'exp';
+    //
+    // One shape for both native paths: AMOUNT in semitones over its own A/D/S/R, written
+    // as cents on `.detune`. `sweep`/`sweepTime`/`sweepCurve` said the same thing in a
+    // dialect only this synth spoke — a single ramp, no sustain, no release — and two
+    // panels calling one idea by two names is what the desk exists not to do.
+    const pe = v.pitch && (v.pitch.semitones ?? 0) !== 0 ? v.pitch : null;
     // `vibrato.depth` is 0–1 here, the same as everywhere else in the rack — it is ONE
     // key with one control (`commonRows`' VIB DEPTH), and a preset carries it onto any
     // lane and any path. The Tone path hands it to `Tone.Vibrato`, which takes 0–1;
@@ -611,7 +720,7 @@ export class VoiceRack {
       // bandpass the noise runs through. Both are frequencies in hertz, so the sweep,
       // the note and the preset's tuning are written onto whichever one it is exactly
       // the same way below.
-      let o, pitch, makeup = 1;
+      let o, pitch, det, makeup = 1;
       if (isNoise) {
         o = this.ctx.createBufferSource();
         o.buffer = this.noiseBuf;
@@ -625,7 +734,7 @@ export class VoiceRack {
         // all. A control here would be the fourth knob on the simplest voice in the rack.
         bp.Q.setValueAtTime(NOISE_Q, t);
         o.connect(bp);
-        pitch = bp.frequency;
+        pitch = bp.frequency; det = bp.detune;
         into(bp);
         // A bandpass keeps only the slice of the noise inside its band, and that slice
         // NARROWS with the note: at Q 2 a 110 Hz note holds a 55 Hz-wide sliver of a
@@ -642,14 +751,19 @@ export class VoiceRack {
       } else {
         o = this.ctx.createOscillator();
         o.type = v.waveform || 'square';
-        pitch = o.frequency;
+        pitch = o.frequency; det = o.detune;
         into(o);
       }
-      pitch.setValueAtTime(f * shift * from, t);
-      // Arrives BY note-off however long the sweep asks for. A 40ms sixteenth carrying
-      // a 200ms sweep would otherwise never reach the pitch it is written as — the
-      // same clamp the attack above already takes against the note's own length.
-      if (sweep) pitchRamp(pitch, f * shift, t, Math.min(sweepTime, end - t), sweepCurve);
+      pitch.setValueAtTime(f * shift, t);
+      // The bend, in cents on `.detune` — the note sits at its written pitch and the
+      // envelope moves it, rather than the note being written away from itself and
+      // ramped back. Arrives BY note-off however long it asks for: `centsEnv` clamps its
+      // decay to the note, the same clamp the attack above already takes.
+      //
+      // On the bandpass for a noise waveform, whose `.detune` is cents like an
+      // oscillator's — so a filtered-noise voice bends exactly as a square does, which
+      // the hertz arithmetic below the vibrato needs and this no longer does.
+      if (pe) pitchEnv([det], pe, t, end);
       // Cents into `detune` for an oscillator; hertz into the filter for noise, and the
       // hertz depend on the note — a semitone at 220 Hz is 13 Hz and at 1760 it is 105.
       // Hence a gain per noise note where the oscillators share one.
@@ -1466,7 +1580,18 @@ export class VoiceRack {
     if (!L) return false;
     // A layer at gain 0 is a layer taken out — skipped entirely, not run at 1e-4, or
     // the save-time measurement would hear it.
-    const specs = [L.osc1, L.osc2, L.osc3].filter((s) => s && (s.gain ?? 1) > 0);
+    //
+    // SOLO rides the same filter, which is the whole of its implementation: a soloed
+    // audition builds exactly the nodes that layer builds on its own, rather than
+    // attenuating the others and leaving them to leak through the shared drive. Empty or
+    // absent means everything plays; a set with anything in it plays only what it names,
+    // and a layer switched OFF stays off — solo removes the others, it does not turn
+    // anything on.
+    const solo = this.soloLayers?.get(v.id) || null;
+    const heard = (key) => !solo || solo.size === 0 || solo.has(key);
+    const specs = [['osc1', L.osc1], ['osc2', L.osc2], ['osc3', L.osc3]]
+      .filter(([key, s]) => s && (s.gain ?? 1) > 0 && heard(key))
+      .map(([, s]) => s);
     if (!specs.length) return false;
     const all = Array.isArray(freq) ? freq : [freq];
     // A chord handed to a mono preset sounds its LAST note — the same answer the pool
@@ -1480,6 +1605,15 @@ export class VoiceRack {
     const nyquist = ctx.sampleRate * 0.5;
     const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0
       && (L.lfo.target === 'filter' || L.lfo.target === 'level') ? L.lfo : null;
+    // The global stage: one filter and one VCA the whole stack passes through, after
+    // the layers and before the drive. Both sections optional and BOTH ABSENT IS THE
+    // DEFAULT — a preset with no `global` block builds not one extra node and sums its
+    // layers straight into the chain exactly as it always did, which is what keeps
+    // every shipped preset sample-identical. Either one present is the summed voice:
+    // three layers arriving at one filter and one envelope, which is the difference
+    // between a stack of sounds and an instrument.
+    const gf = v.global?.filter || null;
+    const gv = v.global?.vca || null;
 
     // ---- the shared modulators, one of each per note-on ----------------------
     // Vibrato exactly as `_playAdditive` builds it: the same key, the same 0–1 depth,
@@ -1590,6 +1724,61 @@ export class VoiceRack {
         const base = f * shift * bend;
         lastBase = base;
 
+        // ---- the global stage, built PER NOTE -------------------------------
+        //
+        // Per note rather than per note-on, and that is the whole design rather than a
+        // detail: KEY FOLLOW has to read THIS note's frequency, and one filter shared
+        // by three sounding notes is a paraphonic synth. Inside the loop each chord
+        // tone gets its own filter and its own VCA, so per-note lengths work and a held
+        // chord releases note by note.
+        //
+        // Lazy for the same reason `chainFor` is: a note whose every layer is skipped —
+        // all above nyquist, or noise with no buffer — builds nothing at all.
+        //
+        // The VCA's length is the DRAWN note, never a layer's `len`. `len` is what makes
+        // one layer die inside another; this envelope belongs to the note over all of
+        // them, and a layer at GATE 62% still ends where it always did.
+        const gEnd = t + Math.max(0.001, noteDur || 0.001);
+        let stage = null;
+        const stageFor = () => {
+          if (stage) return stage;
+          // Built from the OUTPUT backwards, so the signal reads filter → VCA → drive.
+          // The VCA sits last because the shaper should hear an enveloped note, which
+          // is what every subtractive synth does and most of why drive sounds like
+          // playing rather than like a setting.
+          let head = chainFor().into;
+          if (gv) {
+            const vg = ctx.createGain();
+            // Peak 1: the level lives on the layers and on the note's own gain. A third
+            // control called LEVEL on one signal path is how two of them end up wrong.
+            const off = adsr(vg.gain, t, gEnd, 1, gv);
+            // The modulators have to outlive this tail — a global release longer than
+            // every layer's would otherwise have its LFO stopped out from under it.
+            // The oscillators still stop at their OWN layer's off: a VCA can only shape
+            // what is playing, and running them to the global tail would pay for silence.
+            lastOff = Math.max(lastOff, off);
+            vg.connect(head); head = vg;
+          }
+          if (gf) {
+            const track = gf.track > 0 ? (base / 110) ** Math.min(1, gf.track) : 1;
+            const chain = this._filterChain(
+              { type: gf.type, slope: gf.slope, freq: gf.freq, Q: gf.Q },
+              t, track * toneMul, 'lowpass', 1150,
+            );
+            chain.tail.connect(head);
+            // One target, every filter in the patch — the layers' and this one. A third
+            // pill value naming which filter to breathe would be a routing choice hiding
+            // on a modulation control.
+            if (lfoSpec && lfoSpec.target === 'filter') {
+              for (const st of chain.stages) lfoOut.connect(st.detune);
+            }
+            filterEnv(chain.stages, gf.env, t, gEnd);
+            head = chain.head;
+          }
+          stage = { head };
+          return stage;
+        };
+
         for (const spec of specs) {
           // The per-layer length: this layer's own note, as a fraction (or multiple)
           // of the drawn one. bass80s' octave tick lives and dies inside the note the
@@ -1607,7 +1796,9 @@ export class VoiceRack {
           // answer `_playGame` gives for the whole voice.
           const isNoise = spec.type === 'noise';
           if (isNoise && !this.noiseBuf) continue;
-          const into = chainFor().into;
+          // Where this layer sums: the global stage when the preset has one, the note-on
+          // chain when it does not. The null path is the old line unchanged.
+          const into = (gf || gv) ? stageFor().head : chainFor().into;
 
           // The layer's own gain, enveloped once and shared by its unison voices.
           const g = ctx.createGain();
@@ -1644,21 +1835,9 @@ export class VoiceRack {
             // even. Bipolar, which Tone's positive-only `octaves` could not say: a
             // negative amount is a pluck closing from above. Times are plain seconds and
             // sustain rides them, exactly as the amp envelope reads them.
-            const fe = fl.env;
-            if (fe && (fe.octaves ?? 0) !== 0) {
-              const cents = fe.octaves * 1200;
-              const fa = Math.max(0.001, fe.attack ?? 0.01);
-              const fs = Math.min(1, Math.max(0, fe.sustain ?? 0));
-              const peakAt = t + Math.min(fa, Math.max(0.001, (end - t) * 0.45));
-              const decayEnd = Math.min(end, peakAt + Math.max(0, fe.decay ?? 0));
-              for (const st of chain.stages) {
-                st.detune.setValueAtTime(0, t);
-                st.detune.linearRampToValueAtTime(cents, peakAt);
-                st.detune.linearRampToValueAtTime(cents * fs, decayEnd);
-                if (decayEnd < end) st.detune.setValueAtTime(cents * fs, end);
-                st.detune.linearRampToValueAtTime(0, end + Math.max(0.001, fe.release ?? 0.015));
-              }
-            }
+            //
+            // The same helper the global filter below uses, so the two move alike.
+            filterEnv(chain.stages, fl.env, t, end);
             dest = chain.head;
           }
           g.connect(into);
@@ -1695,27 +1874,34 @@ export class VoiceRack {
               out = bp; pitch = bp.frequency; det = bp.detune;
             } else {
               o = ctx.createOscillator();
-              o.type = nativeWave(spec.type, 'square');
+              // `pulse` is the fifth waveform: a table rather than a type, at whatever
+              // duty the layer asks for. Everything downstream — detune, unison, the
+              // pitch envelope, FM, the filter — is identical to an oscillator's,
+              // because it IS one.
+              if (spec.type === 'pulse') o.setPeriodicWave(pulseWave(ctx, spec.width ?? 0.5));
+              else o.type = nativeWave(spec.type, 'square');
               out = o; pitch = o.frequency; det = o.detune;
             }
             const cents = (spec.detune ?? 0)
               + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
-            if (cents) det.setValueAtTime(cents, t);
+            // The static offset is the pitch envelope's BASE when there is one, because
+            // both live on `.detune` and an envelope scheduled from zero would cancel a
+            // DETUNE written before it. Vibrato is a connected node, so it sums with
+            // either and needs no such care.
+            if (spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
+              pitchEnv([det], spec.pitch, t, end, cents);
+            } else if (cents) det.setValueAtTime(cents, t);
             if (vibCents) vibCents.connect(det);
 
-            // Pitch: glide beats the pitch envelope when both apply — a glide IS a
-            // pitch envelope, from the previous note, and two writers on one
-            // AudioParam is a fight the second one loses anyway.
+            // Pitch and glide no longer compete. The envelope is cents on `.detune` and
+            // the glide is hertz on `.frequency`, so a preset can do both: arrive from
+            // the previous note AND bend on the way, which is a portamento lead with a
+            // scoop and was unreachable while the two shared one param.
             if (glideFrom) {
               // A glide stays 'exp' — constant semitones per second is what a
-              // portamento IS; the pitch envelope's curve pill does not reach it.
+              // portamento IS.
               pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
               pitchRamp(pitch, target, t, Math.max(0.001, v.portamento));
-            } else if (spec.pitch && (spec.pitch.to ?? 1) !== (spec.pitch.from ?? 1)) {
-              const p = spec.pitch;
-              pitch.setValueAtTime(Math.max(1, target * (p.from ?? 1)), t);
-              pitchRamp(pitch, Math.max(1, target * (p.to ?? 1)), t,
-                p.sweep, p.curve);
             } else {
               pitch.setValueAtTime(target, t);
             }

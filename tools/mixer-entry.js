@@ -2949,6 +2949,13 @@ const voiceEditor = createVoiceEditor({
   // `VoiceRack.refresh`. Dropping the synths built from the old options is the whole
   // of what an edit needs, and the next note is already the new sound.
   refresh: (id) => Audio.refreshVoice(id),
+  // Layer solo lives on the engine, not on the panel: the panel forgets everything when
+  // it closes, and a solo that outlived it would be a stack playing with a layer missing
+  // and nothing on screen to explain why. A null id clears the lot — see setLayerSolo.
+  setLayerSolo: (id, key, on) => {
+    if (!id) Audio.clearLayerSolo();
+    else Audio.setLayerSolo(id, key, on);
+  },
   // For measuring a preset here in the page: the engine's SEEDED noise buffer, so a
   // noise preset is measured on the same bytes it will be played on, and the desk's
   // own sample rate, so the reference and the comparison are taken the same way.

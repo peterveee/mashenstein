@@ -2343,6 +2343,14 @@
   #voiceedit .veswitch { width: auto; flex: none; margin-left: auto; padding: 2px 8px;
                          font-size: 9px; letter-spacing: .06em; }
   #voiceedit .veswitch.on { background: var(--primary); color: var(--accent); border-color: var(--primary); }
+  /* Layer solo: one letter, square, in the strips' own solo colour so S means the same
+     thing on the desk and in this panel. `margin-left: auto` pushes it to the right of
+     the title; where an On/Off follows it, the pair sit together rather than splitting
+     the bar between them. */
+  #voiceedit .vesolo { width: auto; flex: none; margin-left: auto; padding: 2px 7px;
+                       font-size: 9px; letter-spacing: .06em; }
+  #voiceedit .vesolo + .veswitch { margin-left: 5px; }
+  #voiceedit .vesolo.on { background: var(--solo); color: var(--accent); border-color: var(--solo); }
   /* The tap stepper: a count with a button either side, on one row. */
   #voiceedit .veinline { display: flex; align-items: center; justify-content: space-between; }
   #voiceedit .vestep { display: flex; align-items: center; gap: 2px; }
@@ -2360,7 +2368,8 @@
                                 padding: 5px 6px; font-size: 10px; white-space: nowrap; }
   /* The caret on .devlink says "this opens a menu". Nothing in this row does. */
   #voiceedit .vefoot .devlink::after { content: none; }
-  #voiceedit .veclose::after, #voiceedit .veswitch::after, #voiceedit .vestep button::after { content: none; }
+  #voiceedit .veclose::after, #voiceedit .veswitch::after, #voiceedit .vesolo::after,
+  #voiceedit .vestep button::after { content: none; }
   #voiceedit .vedanger:hover { background: var(--hot-wash); color: color-mix(in srgb, var(--hot) 62%, var(--ink)); }
   #voiceedit .vesave { color: var(--accent); background: var(--primary); border: 1px solid var(--accent-line);
                        border-radius: 4px; }

@@ -66,6 +66,12 @@ export const EDITABLE_SYNTHS = [
   'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth',
 ];
 
+// The three the engine plays ITSELF, rather than handing to a pooled Tone class. What
+// they have in common that the panel cares about: their modulators are built per note-on,
+// so a key measured from the start of a note — `vibrato.delay` — means something on these
+// and nothing on the others, whose LFO free-runs in the pool.
+const NATIVE_SYNTHS = ['GameSynth', 'AdditiveSynth', 'LayerSynth'];
+
 // ---- measuring, in the page -------------------------------------------------
 
 // The same note tools/measure-voices.js measures at, held for the same length. It
@@ -245,7 +251,10 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 // seeded buffer through a bandpass that follows the note), as one layer of a stack:
 // breath on a flute, sizzle under a lead. Its own list because the FM operator and the
 // LFO draw from NATIVE_WAVES, and neither has a pitch a noise band could follow.
-const LAYER_WAVES = [...NATIVE_WAVES, 'noise'];
+// A layer takes two waveforms an OscillatorNode does not have: `noise` (the seeded buffer
+// through a band that follows the note) and `pulse` (a PeriodicWave at any duty, which is
+// the square's whole family rather than the one member of it the node can make).
+const LAYER_WAVES = [...NATIVE_WAVES, 'pulse', 'noise'];
 // Tone spells an oscillator's voicing as a PREFIX on its type: `fatsawtooth`,
 // `amsine`, `fmsquare`. Two pills that compose into one string beat one pill row of
 // every combination, which would be twenty-odd options in a control half a card wide.
@@ -454,11 +463,17 @@ const HUMANISE_GROUP = {
   rows: [
     n('$humanize.gain', 'LEVEL VAR', 0, 0.5, 0.01, fixed(2), 0, '',
       null, { scale: HUMANISE_SCALE }),
-    // Finer steps than its neighbours because it is heard finer: `vary` makes this a
-    // 1 ± amount multiplier, so 0.005 is already \u00b18.6 cents and the two or three
-    // cents that read as a PLAYER rather than a detune were below the smallest step.
-    n('$humanize.pitch', 'PITCH VAR', 0, 0.2, 0.001, fixed(3), 0, '',
-      null, { scale: HUMANISE_SCALE }),
+    // Stated in CENTS, the unit every other pitch on this desk is stated in — DETUNE,
+    // SPREAD, VIB DEPTH. Stored as the 1 ± amount multiplier `vary` applies, so the pot
+    // is a view of it the way GATE is a view of `len`. As a raw multiplier the useful
+    // settings were both unreadable and unreachable: 0.005 is already ±8.6 cents, so
+    // the two or three that read as a PLAYER rather than a detune sat below one step.
+    n('$humanize.pitch', 'PITCH VAR', 0, 300, 1, fixed(0), 0, 'ct', null,
+      { scale: HUMANISE_SCALE,
+        read: (a) => (a != null ? 1200 * Math.log2(1 + a) : undefined),
+        write: (c) => 2 ** (c / 1200) - 1,
+        tip: 'How far each hit’s pitch wanders either side of the note — a few cents '
+          + 'is a player, fifty is a fault' }),
     // FILTER, not TONE: what this varies is every filter CUTOFF in the voice — the
     // burst's, the body's, each layer's — through `_filterChain`'s per-hit `mul`.
     // TONE named one pot on the Drive card, which is the smallest thing it moves.
@@ -511,6 +526,33 @@ const drawbarRows = () => DRAWBAR_LABELS.map((label, i) => ({
  * No pitch-wobble target on the LFO and no vibrato rows here: `$vibrato` in the Note
  * card is the pitch wobble, one key with one meaning on every preset in the library.
  */
+/**
+ * The pitch envelope's five rows, for any path that has one.
+ *
+ * One helper because GameSynth and every layer of a LayerSynth now state the same idea
+ * with the same keys: how far from its written pitch the note starts, and how it gets
+ * there. AMOUNT is signed — the sign is the whole difference between a coin falling into
+ * the note and a power-up climbing into it — and zero schedules nothing at all, which is
+ * why there is no switch: zero already is one.
+ *
+ * ATTACK defaults to 0, unlike every other envelope here, because the arcade shape is a
+ * note that is ALREADY away when it starts. A non-zero attack scoops out to the offset
+ * first, which is a different and rarer gesture rather than the default one.
+ */
+const pitchEnvRows = (base) => [
+  n(`$${base}semitones`, 'AMOUNT', -48, 48, 1, semiSteps, 0, 'semi', null,
+    { origin: 0,
+      tip: 'How far from the written note this starts — +24 falls into the note like a '
+        + 'coin, -36 climbs into it like a laser. Zero is no bend at all' }),
+  envTime(`$${base}attack`, 'ATTACK', 0, 0.005, secs, 0, 's',
+    (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
+  envTime(`$${base}decay`, 'DECAY', 0, 0.005, secs, 0.06, 's',
+    (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
+  sustainPct(`$${base}sustain`, 0, (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
+  envTime(`$${base}release`, 'RELEASE', 0, 0.005, secs, 0.015, 's',
+    (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
+];
+
 const layerGroups = () => {
   const groups = [];
   for (let i = 1; i <= 3; i++) {
@@ -518,6 +560,11 @@ const layerGroups = () => {
     const on = i === 1 ? null : (v) => sectionOn(v, p);
     groups.push({
       title: `Osc ${i}`,
+      // Three layers summed into one output is the sound you cannot take apart by ear.
+      // S beside the switch plays this layer and nothing else — monitoring, never saved,
+      // and gone when the panel closes. Layer 1 has no On/Off (it is the voice) but it
+      // has this, because "what is osc 1 doing under the other two" is the same question.
+      solo: `osc${i}`,
       ...(i === 1 ? {} : {
         optional: p,
         onTip: 'Take this layer out',
@@ -526,6 +573,16 @@ const layerGroups = () => {
       }),
       rows: [
         pick(`$${p}.type`, 'WAVE', LAYER_WAVES, i === 1 ? 'square' : 'sine'),
+        // Only where it means something. A pulse is the one waveform with a shape to set:
+        // 50% IS the square, and everything under it walks the even harmonics back in —
+        // 20% reedy and hollow, 10% nasal and thin enough to cut through a full mix.
+        // Fixed for the life of a note (see `pulseWave`), so it is a timbre control rather
+        // than a modulation one.
+        n(`$${p}.width`, 'WIDTH', 5, 95, 1, fixed(0), 50, '%',
+          (v) => getAt(v, `$${p}.type`) === 'pulse',
+          { read: (w) => (w != null ? w * 100 : undefined), write: (w) => w / 100,
+            tip: 'The duty of the pulse — 50% is a square, and narrower is thinner and '
+              + 'more nasal. Set per note rather than swept' }),
         n(`$${p}.gain`, 'LEVEL', 0, 2, 0.01, fixed(2), i === 1 ? 1 : 0.3),
         // Stored as `ratio` — the multiplier the engine plays at — and shown in
         // semitones, the same deal AMOUNT makes with the drum's two frequencies: +12 is
@@ -555,28 +612,34 @@ const layerGroups = () => {
           { read: (v) => v != null ? v * 100 : undefined, write: (v) => v / 100,
             tip: 'How long this layer’s note is, against the drawn one — 62% dies '
               + 'inside the note, 100% is the note as written, 108% overhangs it. '
-              + 'The layer\u2019s own envelope times are measured against it.' }),
-        // `startRow`: see the note on `adsr`'s own ATTACK — this card stacks GATE and
-        // four other pots ahead of the envelope, so without it ATTACK would land
-        // wherever those left the grid cursor rather than at the start of a row.
-        envTime(`$${p}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01, 's', null, { startRow: true }),
-        envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1),
-        // Live at every DECAY: sustain is WHERE the fall lands, not something a short
-        // decay switches off. Zero reaches silence (struck, the default); 0.7 falls only
-        // that far and releases from there.
-        sustainPct(`$${p}.sustain`, 0),
-        envTime(`$${p}.release`, 'RELEASE', 0, 0.01, secs, 0.015),
-        // The same three pills every Tone envelope card ends on, in the native
-        // path's own two words. DEC CURVE keeps the `curve` key the engine has
-        // always read for the decay; the other two stages were exponential-only
-        // until these existed, so all three default there. `trio` puts them on one
-        // row — see the note on `adsr`'s own three.
-        pick(`$${p}.attackCurve`, 'ATK', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
-        pick(`$${p}.curve`, 'DEC', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
-        pick(`$${p}.releaseCurve`, 'REL', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+              + 'The layer’s own envelope times are measured against it.' }),
         n(`$${p}.unison`, 'UNISON', 1, 5, 1, fixed(0), 1),
         n(`$${p}.spread`, 'SPREAD', 0, 100, 1, fixed(0), 20, 'ct',
           (v) => (getAt(v, `$${p}.unison`) ?? 1) > 1),
+      ],
+    });
+    // Pitch and FM come before the filter because that is the order the signal takes:
+    // what the oscillator is doing, then what bends it, then what filters the result,
+    // then what shapes its level. The envelope is LAST for the same reason — it is the
+    // amplifier at the end, not the first thing you reach for.
+    groups.push({
+      // No switch, and no FROM/TO pair. The old card said "start at 0.5x and arrive at
+      // 1x over a sweep", which is an envelope written as two multipliers and a time;
+      // this is the same bend in the units the rest of the desk states pitch in, and
+      // AMOUNT 0 is the off position for free.
+      title: `Osc ${i} · Pitch Env`, when: on,
+      rows: pitchEnvRows(`${p}.pitch.`),
+    });
+    groups.push({
+      title: `Osc ${i} · FM`, optional: `${p}.fm`, when: on,
+      onTip: 'Take the modulator out',
+      offTip: 'Bend this layer with a second oscillator — brass, bells, growl',
+      rows: [
+        pick(`$${p}.fm.type`, 'WAVE', NATIVE_WAVES, 'sine'),
+        n(`$${p}.fm.ratio`, 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
+        n(`$${p}.fm.index`, 'INDEX', 0, 8, 0.05, fixed(2), 1),
+        envTime(`$${p}.fm.attack`, 'ATTACK', 0.001, 0.001, secs, 0.001),
+        envTime(`$${p}.fm.decay`, 'DECAY', 0, 0.01, secs, 1),
       ],
     });
     groups.push({
@@ -623,29 +686,88 @@ const layerGroups = () => {
       ],
     });
     groups.push({
-      title: `Osc ${i} · Pitch`, optional: `${p}.pitch`, when: on,
-      onTip: 'Take the bend out — the layer arrives at pitch',
-      offTip: 'Bend this layer into the note — a rise, a fall, a zap',
+      // The layer's own amplifier, on its own card at the END of its run — where an
+      // envelope belongs on a panel laid out by signal flow, and where MonoSynth's Amp
+      // Envelope sits too. Nothing moved but the card: every row keeps the key it has
+      // always written, so no preset changes and nothing is re-measured.
+      title: `Osc ${i} · Amp`, when: on,
       rows: [
-        pick(`$${p}.pitch.curve`, 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp'),
-        n(`$${p}.pitch.from`, 'FROM', 0.25, 4, 0.0001, fixed(4), 0.5, '×'),
-        n(`$${p}.pitch.to`, 'TO', 0.25, 4, 0.0001, fixed(4), 1, '×'),
-        envTime(`$${p}.pitch.sweep`, 'SWEEP TIME', 0.01, 0.01, secs, 0.1),
-      ],
-    });
-    groups.push({
-      title: `Osc ${i} · FM`, optional: `${p}.fm`, when: on,
-      onTip: 'Take the modulator out',
-      offTip: 'Bend this layer with a second oscillator — brass, bells, growl',
-      rows: [
-        pick(`$${p}.fm.type`, 'WAVE', NATIVE_WAVES, 'sine'),
-        n(`$${p}.fm.ratio`, 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
-        n(`$${p}.fm.index`, 'INDEX', 0, 8, 0.05, fixed(2), 1),
-        envTime(`$${p}.fm.attack`, 'ATTACK', 0.001, 0.001, secs, 0.001),
-        envTime(`$${p}.fm.decay`, 'DECAY', 0, 0.01, secs, 1),
+        envTime(`$${p}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01),
+        envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1),
+        // Live at every DECAY: sustain is WHERE the fall lands, not something a short
+        // decay switches off. Zero reaches silence (struck, the default); 0.7 falls only
+        // that far and releases from there.
+        sustainPct(`$${p}.sustain`, 0),
+        envTime(`$${p}.release`, 'RELEASE', 0, 0.01, secs, 0.015),
+        // The same three pills every Tone envelope card ends on, in the native
+        // path's own two words. DEC keeps the `curve` key the engine has
+        // always read for the decay; the other two stages were exponential-only
+        // until these existed, so all three default there. `trio` puts them on one
+        // row — see the note on `adsr`'s own three.
+        pick(`$${p}.attackCurve`, 'ATK', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+        pick(`$${p}.curve`, 'DEC', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+        pick(`$${p}.releaseCurve`, 'REL', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
       ],
     });
   }
+  // ---- the global stage ------------------------------------------------------
+  //
+  // One filter and one amp envelope the whole stack passes through, after the three
+  // layers and before Drive — where they sit on the panel is where they sit in the
+  // signal. Both cards are switched OFF by default, and off is not "a filter doing
+  // nothing": the engine builds no node at all, which is why every preset that shipped
+  // before this sounds identical.
+  //
+  // Every row is the layer card's row with the path changed — the same helpers, the
+  // same ranges, the same taper — so CUTOFF means one thing on this panel rather than
+  // two things that look alike.
+  groups.push({
+    title: 'Global · Filter', optional: 'global.filter',
+    onTip: 'Take the shared filter out',
+    offTip: 'One filter for the whole stack — three layers arriving at one cutoff',
+    rows: [
+      pick('$global.filter.type', 'TYPE', FILTER_TYPES, 'lowpass'),
+      pick('$global.filter.slope', 'SLOPE', SLOPES, -12),
+      cutoffHz('$global.filter.freq', 'CUTOFF', 1150),
+      resQ('$global.filter.Q', 1.15),
+      n('$global.filter.env.octaves', 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis,
+        0, 'oct', null,
+        { origin: 0, scale: ENV_OCT_SCALE,
+          tip: 'How far the envelope moves the shared cutoff, in octaves — up or down. '
+            + 'Centre is no envelope at all' }),
+      n('$global.filter.track', 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
+    ],
+  });
+  groups.push({
+    // The layer cards' split, exactly: the range on the Filter card, the four times
+    // here, present while the filter is. An envelope is scheduling rather than nodes,
+    // so there is nothing for a switch to save.
+    title: 'Global · Filter Env',
+    when: (v) => sectionOn(v, 'global.filter'),
+    rows: [
+      envTime('$global.filter.env.attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
+      envTime('$global.filter.env.decay', 'DECAY', 0, 0.01, secs, 1),
+      sustainPct('$global.filter.env.sustain', 0),
+      envTime('$global.filter.env.release', 'RELEASE', 0, 0.01, secs, 0.015),
+    ],
+  });
+  groups.push({
+    // The note's OWN envelope, over all three layers at once — where a layer's Amp card
+    // is that layer's alone and its GATE can end it early. No LEVEL row: the level is
+    // the layers' and the strip's, and a third one here is how two of them end up wrong.
+    title: 'Global · Amp', optional: 'global.vca',
+    onTip: 'Take the shared envelope out',
+    offTip: 'One amp envelope over the whole stack — the note, not the layers',
+    rows: [
+      envTime('$global.vca.attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
+      envTime('$global.vca.decay', 'DECAY', 0, 0.01, secs, 1),
+      sustainPct('$global.vca.sustain', 1),
+      envTime('$global.vca.release', 'RELEASE', 0, 0.01, secs, 0.015),
+      pick('$global.vca.attackCurve', 'ATK', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+      pick('$global.vca.curve', 'DEC', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+      pick('$global.vca.releaseCurve', 'REL', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
+    ],
+  });
   groups.push({
     title: 'LFO', optional: 'layer.lfo',
     onTip: 'Take the LFO out',
@@ -758,30 +880,19 @@ const SYNTH_GROUPS = {
     // What turns a waveform into an arcade cabinet: WHERE the note comes in from.
     // Defaults to off, so the presets that ship on this path are untouched.
     //
-    // SWEEP is signed on purpose — the sign is the entire difference between a coin
+    // AMOUNT is signed on purpose — the sign is the entire difference between a coin
     // (falling into the note) and a power-up (climbing into it), and a magnitude pot
     // beside a direction switch would be two controls saying one thing.
+    //
+    // The SAME five rows the layer cards' Pitch Env has, on the same key names, because
+    // it is the same idea: how far the note starts from where it is written, and how it
+    // gets there. This panel used to say SWEEP / SWEEP TIME / SWEEP CURVE, which was one
+    // ramp with no sustain and no release and a third name for an envelope.
     //
     // No DEPTH or RATE rows here: `commonRows` already has VIB DEPTH and VIB RATE on
     // these very keys, for every preset. `_playGame` now reads them like every other
     // path, so a preset's wobble means one thing wherever it is played.
-    //
-    // VIB DELAY is the exception and is here rather than there because it is the one
-    // vibrato key only this path can honour: the Tone path's LFO lives in the pool and
-    // free-runs across notes, so it has no note-on for an onset to be measured from.
-    // A row in `commonRows` would be a control that silently does nothing on 260 of
-    // the 267 presets.
-    { title: 'Pitch', rows: [
-      n('$sweep', 'SWEEP', -48, 48, 1, fixed(0), 0, 'semi'),
-      envTime('$sweepTime', 'SWEEP TIME', 0.005, 0.005, secs, 0.06, 's', (v) => !!v.sweep),
-      // WHERE the sweep spends its time, which is most of what it sounds like — an even
-      // glide, a hang-then-plunge, or a snap that is at the note before you hear it
-      // travel. See `pitchRamp` in the engine. Greyed with SWEEP TIME: with no sweep on
-      // the preset there is no ramp for either of them to shape.
-      pick('$sweepCurve', 'SWEEP CURVE', ['exp', 'lin', 'snap'], 'exp', (v) => !!v.sweep),
-      envTime('$vibrato.delay', 'VIB DELAY', 0, 0.01, secs, 0, 's',
-        (v) => (v?.vibrato?.depth ?? 0) > 0),
-    ] },
+    { title: 'Pitch Env', rows: pitchEnvRows('pitch.') },
     // A tone filter, between the source and the envelope. Switched OFF and absent by
     // default rather than present at a wide-open 20 kHz: an absent section builds no
     // node at all, so every preset that shipped before it is untouched, and "no filter"
@@ -1143,13 +1254,21 @@ const SECTION_DEFAULTS = {
   'layer.osc1.filter': { type: 'lowpass', freq: 1150, Q: 1.15 },
   'layer.osc2.filter': { type: 'lowpass', freq: 1150, Q: 1.15 },
   'layer.osc3.filter': { type: 'lowpass', freq: 1150, Q: 1.15 },
-  'layer.osc1.pitch': { from: 0.5, to: 1, sweep: 0.1 },
-  'layer.osc2.pitch': { from: 0.5, to: 1, sweep: 0.1 },
-  'layer.osc3.pitch': { from: 0.5, to: 1, sweep: 0.1 },
   'layer.osc1.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 1 },
   'layer.osc2.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 1 },
   'layer.osc3.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 1 },
   'layer.lfo': { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
+  // The global stage. The filter seeds as a layer filter does, for the same reasons and
+  // with the same two keys left out.
+  'global.filter': { type: 'lowpass', freq: 1150, Q: 1.15 },
+  // The VCA seeds NEUTRAL rather than from `adsr`'s own fallbacks, which is the one place
+  // that rule would do harm: those fallbacks are `sustain: 0` with `decay: 0`, so a stack
+  // whose VCA was switched on would fall silent the instant it was struck and read as a
+  // broken switch. `sustain: 1` holds the note at full through its length and lets go over
+  // 15ms — an envelope that changes nothing until you move it, which is what switching a
+  // section ON should sound like. Same principle as osc2/3 seeding a useful second layer
+  // rather than silence.
+  'global.vca': { attack: 0.01, decay: 0, sustain: 1, release: 0.015 },
 };
 
 // ---- optional sections -------------------------------------------------------
@@ -1254,7 +1373,7 @@ const isOneShot = (v) => v?.kind === 'noise' || v?.kind === 'drum';
  * (lane, voice) and chokes the previous note, which is what those controls promise.
  * On the other native paths they still cannot move a sample — see `commonRows`.
  */
-const POOLED_SYNTHS = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth' && s !== 'LayerSynth');
+const POOLED_SYNTHS = EDITABLE_SYNTHS.filter((s) => !NATIVE_SYNTHS.includes(s));
 const isPooled = (v) => !isOneShot(v) && POOLED_SYNTHS.includes(v?.synth);
 
 /**
@@ -1418,6 +1537,13 @@ const commonRows = (voice = {}) => [
       null, { scale: VIB_DEPTH_SCALE }),
     n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
       (v) => (v?.vibrato?.depth ?? 0) > 0, { scale: SLOW_END_SCALE }),
+    // The third of the three, beside the two it belongs with rather than stranded on one
+    // synth's own card. Every NATIVE path measures the onset from its own note-on and so
+    // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
+    // no note-on for a delay to be measured from — hence the `when`, which greys it there
+    // rather than offering a control that would silently do nothing.
+    envTime('$vibrato.delay', 'VIB DELAY', 0, 0.01, secs, 0, 's',
+      (v) => (v?.vibrato?.depth ?? 0) > 0 && NATIVE_SYNTHS.includes(v?.synth)),
   ]),
   // Mono holds one instance for the whole lane, so a new note cuts the last one off
   // — and, because that instance remembers what it was playing, GLIDE finally has a
@@ -1564,6 +1690,12 @@ function rawId(label) {
  */
 export function createVoiceEditor({
   el, knob, toast, refresh, noiseBuf, sampleRate, onChanged, assign, close,
+  // Solo one layer of a stack for listening — `(voiceId, layerKey, on) => void`, and
+  // `null` to drop them all. Monitoring state that belongs to the ENGINE rather than to
+  // this panel, because the panel forgets everything when it closes and a solo left
+  // ringing behind it would be a preset that plays wrong with no visible reason why.
+  // Defaulted to a no-op so a desk built without one still opens.
+  setLayerSolo = () => {},
   onBlank = () => {},
   ask = null,
   isDevUser = () => false,
@@ -1595,6 +1727,20 @@ export function createVoiceEditor({
   // reads at play time, which is the whole reason a change is audible before it is
   // saved — so the baseline is the only way back.
   let state = null;
+
+  // Which layers are soloed on the panel right now. Held here rather than on the preset
+  // for the reason every solo everywhere is held off to one side: it is a thing you are
+  // doing to LISTEN, not a thing the sound is. Dropped whenever the panel opens
+  // something else or closes, so it can never outlive the reason it was switched on.
+  const soloed = new Set();
+  const dropSolo = () => {
+    if (!soloed.size) return;
+    soloed.clear();
+    setLayerSolo(null, null, false);
+  };
+  // Every way out of the panel goes through here, so there is one place that guarantees
+  // no solo is left ringing behind a panel that is no longer on screen to show it.
+  const closePanel = () => { dropSolo(); close(); };
 
   const isOpen = () => !!state && el.classList.contains('show');
 
@@ -2088,6 +2234,26 @@ export function createVoiceEditor({
     const h = document.createElement('h4'); h.textContent = group.title;
     bar.append(h);
 
+    // S, beside the On/Off — the desk's own solo gesture one level down, and the same
+    // contract: monitoring, never written to the preset, gone when the panel closes.
+    // It does NOT mark the preset dirty, because it has not changed the sound: it has
+    // changed what you are listening to.
+    if (group.solo) {
+      const lit = soloed.has(group.solo);
+      const s = document.createElement('button');
+      s.className = `devlink vesolo${lit ? ' on' : ''}`;
+      s.textContent = 'S';
+      s.title = lit ? 'Stop soloing this layer'
+        : soloed.size ? 'Add this layer to what you are hearing'
+          : 'Hear this layer on its own — monitoring, never saved';
+      s.onclick = () => {
+        if (lit) soloed.delete(group.solo); else soloed.add(group.solo);
+        setLayerSolo(state?.voice?.id ?? null, group.solo, !lit);
+        build();
+      };
+      bar.append(s);
+    }
+
     // An optional group — the noise body — is switched on and off rather than always
     // present: a preset with `body: { gain: 0 }` still builds an oscillator per hit,
     // and "no body" is a different sound from "a body at zero".
@@ -2228,7 +2394,7 @@ export function createVoiceEditor({
       shut.className = folds ? 'veclose vefold' : 'veclose popclose';
       if (folds) shut.append(foldIcon('left')); else shut.textContent = '✕';
       shut.title = folds ? 'Hide the editor — the rail brings it back' : 'Close the editor';
-      shut.onclick = () => close();
+      shut.onclick = () => closePanel();
       head.append(title, tag, shut);
       const empty = document.createElement('div');
       empty.className = 'veblank';
@@ -2319,7 +2485,7 @@ export function createVoiceEditor({
       : folds
         ? 'Hide the editor — the rail down the side brings it back'
         : 'Close the editor — unsaved changes stay on the sound until you revert';
-    shut.onclick = () => close();
+    shut.onclick = () => closePanel();
     head.append(shut);
     el.append(head);
     // Only when it holds a control. An empty `.vesub` still costs its own margin, and
@@ -2407,7 +2573,7 @@ export function createVoiceEditor({
       }
       onChanged();
       if (closeAfter) {
-        if (state.laneKey) close();
+        if (state.laneKey) closePanel();
         else blank();
       } else {
         build();
@@ -3015,7 +3181,7 @@ export function createVoiceEditor({
       delete VOICES[state.id];
       refresh(id);
       if (libraryWindow) { blank(); onChanged(); }
-      else { close(); onChanged(); }
+      else { closePanel(); onChanged(); }
       toast(`${v.label} discarded`);
       return;
     }
@@ -3067,7 +3233,7 @@ export function createVoiceEditor({
     delete VOICES[id];
     refresh(id);
     if (libraryWindow) { blank(); onChanged(); }
-    else { close(); onChanged(); }
+    else { closePanel(); onChanged(); }
     toast(`${v.label} removed from ${library ? 'library' : 'user presets'}`);
   }
 
@@ -3124,6 +3290,10 @@ export function createVoiceEditor({
       // ever been saved. The `draft` marker keeps it out of the preset library.
       VOICES[id] = voice;
     }
+
+    // A solo belongs to the preset you were listening to. Opening another one takes it
+    // with it, or the new stack plays with a layer missing and nothing on screen says so.
+    dropSolo();
 
     state = {
       id, voice, laneKey, laneLabel, isNew,
