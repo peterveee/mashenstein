@@ -39,10 +39,27 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
 const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
 assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null \}\)/
   .test(entrySource)
-  && /Math\.pow\(clamp\(position, 0, 1\), curve\)/.test(entrySource)
-  && /setPosition\(position \+ \(px \/ 150\)/.test(entrySource)
+  && /const pos = clamp\(position, 0, 1\);/.test(entrySource)
+  && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(entrySource)
+  && /dragPos = clamp\(dragPos \+ \(px \/ 150\)/.test(entrySource)
+  && /setPosition\(dragPos\)/.test(entrySource)
   && /scale: row\.scale, origin: row\.origin/.test(editor),
   'all envelope controls use the shared non-linear knob response');
+
+// A tapered BIPOLAR pot curves about its origin rather than across its span. Applied to
+// the whole range instead, the centre detent slides off twelve o'clock — on -10..+10 at
+// curve 3 the middle of the travel reads -7.5 — which would make ENV AMOUNT's zero a
+// place you could not find by eye. Both halves taper, and only `scale` WITH `origin`
+// takes the branch: every pot that had one or neither keeps the arithmetic it had.
+assert(/const bipolar = Number\.isFinite\(origin\) && curve !== 1;/.test(entrySource)
+  && /const originFrac = /.test(entrySource)
+  && /return origin \+ \(max - origin\) \* Math\.pow\(f, curve\);/.test(entrySource)
+  && /return origin - \(origin - min\) \* Math\.pow\(f, curve\);/.test(entrySource)
+  && /const ENV_OCT_MAX = 10;/.test(editor)
+  && /const ENV_OCT_SCALE = 2;/.test(editor)
+  && /'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX/.test(editor)
+  && /origin: 0, scale: ENV_OCT_SCALE/.test(editor),
+  'a bipolar pot tapers about its origin, so ENV AMOUNT reaches ten octaves with zero still centred');
 
 // The drum oscillator states its pitch envelope the way the machine it models does:
 // a tuning, a signed DEPTH in semitones, and a time. The depth is a view of the two
@@ -55,9 +72,9 @@ assert(/oscHz\('\$osc\.from', 'FREQUENCY'/.test(editor)
   && /read: \(_to, v\) => amountOf\(v\)/.test(editor)
   && /write: \(x, v\) => toneAt\(oscFrom\(v\), x\)/.test(editor)
   && /setAt\(v, '\$osc\.to', toneAt\(now, 12 \* Math\.log2/.test(editor)
-  && /envTime\('\$osc\.sweep', 'RATE'/.test(editor)
+  && /envTime\('\$osc\.sweep', 'SWEEP TIME'/.test(editor)
   && /arcPath\(originDeg, deg\)/.test(entrySource),
-  'the drum oscillator is FREQUENCY / AMOUNT (±96 semi, centred) / RATE over the stored hertz');
+  'the drum oscillator is FREQUENCY / AMOUNT (±96 semi, centred) / SWEEP TIME over the stored hertz');
 
 // ---- Off is a bypass, not a delete -------------------------------------------
 //

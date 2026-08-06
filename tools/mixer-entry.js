@@ -6156,10 +6156,36 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   // stored range. Envelope times opt into this shared response; ordinary desk knobs
   // remain linear because their values do not represent elapsed time.
   const curve = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  const valueAt = (position) => min + (max - min) * Math.pow(clamp(position, 0, 1), curve);
+  // A BIPOLAR pot tapers about its origin, not across the span. Curving the whole range
+  // would drag the centre detent off twelve o'clock — on -10..+10 at curve 3 the middle
+  // of the travel reads -7.5 — so each side gets the response applied to its own distance
+  // from the origin instead, and zero stays where the eye expects it. Only the two
+  // together take this path: without an origin, or at curve 1, the arithmetic below is
+  // the linear one it has always been.
+  const bipolar = Number.isFinite(origin) && curve !== 1;
+  const originFrac = (max - min) ? clamp((origin - min) / (max - min), 0, 1) : 0;
+  const valueAt = (position) => {
+    const pos = clamp(position, 0, 1);
+    if (!bipolar) return min + (max - min) * Math.pow(pos, curve);
+    if (pos >= originFrac) {
+      const f = originFrac >= 1 ? 0 : (pos - originFrac) / (1 - originFrac);
+      return origin + (max - origin) * Math.pow(f, curve);
+    }
+    const f = originFrac <= 0 ? 0 : (originFrac - pos) / originFrac;
+    return origin - (origin - min) * Math.pow(f, curve);
+  };
   const positionAt = (x) => {
-    const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
-    return Math.pow(frac, 1 / curve);
+    if (!bipolar) {
+      const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
+      return Math.pow(frac, 1 / curve);
+    }
+    const v = clamp(x, min, max);
+    if (v >= origin) {
+      const span = max - origin;
+      return originFrac + (1 - originFrac) * Math.pow(span > 0 ? (v - origin) / span : 0, 1 / curve);
+    }
+    const span = origin - min;
+    return originFrac - originFrac * Math.pow(span > 0 ? (origin - v) / span : 0, 1 / curve);
   };
   // Where the arc grows FROM. Left stop for everything with a floor — an attack time,
   // a level — and the centre for a bipolar control, which is `panKnob`'s reading applied
@@ -6188,10 +6214,14 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   };
   const setPosition = (x) => set(valueAt(x));
 
-  let dragging = false, lastX = 0, lastY = 0, moved = 0, fromText = false;
+  // The drag accumulates in its own unstepped position, not in `position`: `set`
+  // rounds to the step and re-derives `position` from the result, so on a coarse pot
+  // (UNISON is four steps across the whole sweep) each few-pixel move would round
+  // back to where it started and the pot could never leave its value.
+  let dragging = false, lastX = 0, lastY = 0, moved = 0, fromText = false, dragPos = 0;
   svg.addEventListener('pointerdown', (e) => {
     if (holder.querySelector('.typein')) return;
-    dragging = true; moved = 0; fromText = e.target === text;
+    dragging = true; moved = 0; fromText = e.target === text; dragPos = position;
     lastX = e.clientX; lastY = e.clientY;
     svg.setPointerCapture(e.pointerId); e.preventDefault();
   });
@@ -6203,7 +6233,8 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
     // Whichever axis moved more wins, so neither grip feels wrong. A full sweep in
     // about 150px, a fifth of that with shift — the same feel as the desk's faders.
     const px = Math.abs(dx) > Math.abs(dy) ? dx : dy;
-    setPosition(position + (px / 150) * (e.shiftKey ? 0.2 : 1));
+    dragPos = clamp(dragPos + (px / 150) * (e.shiftKey ? 0.2 : 1), 0, 1);
+    setPosition(dragPos);
   });
   const stop = () => {
     if (dragging && fromText && moved < 3) openEditor();

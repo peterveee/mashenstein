@@ -81,6 +81,7 @@ import * as PLASTIC_OWL from './plastic-owl.js';
 import * as ROYAL_HARBOUR from './royal-harbour.js';
 import * as ROYAL_WALTZ from './royal-waltz.js';
 import * as RUBBER_PUPPET from './rubber-puppet.js';
+import * as RUBBER_PYLON from './rubber-pylon.js';
 import * as RUBBER_SUNDAE from './rubber-sundae.js';
 import * as RUSTY_COMET from './rusty-comet.js';
 import * as RUSTY_TYPHOON from './rusty-typhoon.js';
@@ -96,6 +97,7 @@ import * as SILVER_PYLON from './silver-pylon.js';
 import * as SLEEPY_FALCON from './sleepy-falcon.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
+import * as SUNKEN_PARADE from './sunken-parade.js';
 import * as THUNDER_JUKEBOX from './thunder-jukebox.js';
 import * as THUNDER_KITTEN from './thunder-kitten.js';
 import * as THUNDER_LANTERN from './thunder-lantern.js';
@@ -183,6 +185,7 @@ export const IMPORTED_BY_ID = {
   "royal-harbour": { bank: ROYAL_HARBOUR.bank, title: ROYAL_HARBOUR.title, group: "scratch", writable: true },
   "royal-waltz": { bank: ROYAL_WALTZ.bank, title: ROYAL_WALTZ.title, group: "scratch", writable: true },
   "rubber-puppet": { bank: RUBBER_PUPPET.bank, title: RUBBER_PUPPET.title, group: "scratch", writable: true },
+  "rubber-pylon": { bank: RUBBER_PYLON.bank, title: RUBBER_PYLON.title, group: "scratch", writable: true },
   "rubber-sundae": { bank: RUBBER_SUNDAE.bank, title: RUBBER_SUNDAE.title, group: "scratch", writable: true },
   "rusty-comet": { bank: RUSTY_COMET.bank, title: RUSTY_COMET.title, group: "scratch", writable: true },
   "rusty-typhoon": { bank: RUSTY_TYPHOON.bank, title: RUSTY_TYPHOON.title, group: "scratch", writable: true },
@@ -198,6 +201,7 @@ export const IMPORTED_BY_ID = {
   "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
+  "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },
   "thunder-jukebox": { bank: THUNDER_JUKEBOX.bank, title: THUNDER_JUKEBOX.title, group: "scratch", writable: true },
   "thunder-kitten": { bank: THUNDER_KITTEN.bank, title: THUNDER_KITTEN.title, group: "scratch", writable: true },
   "thunder-lantern": { bank: THUNDER_LANTERN.bank, title: THUNDER_LANTERN.title, group: "scratch", writable: true },

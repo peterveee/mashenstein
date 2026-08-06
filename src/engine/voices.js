@@ -185,11 +185,15 @@ function pitchRamp(param, target, t, dur, curve = 'exp') {
  * until the note ends, then release. Module-level rather than inside one play method
  * because every native pitched voice needs the identical one.
  *
- * `decay: 0` means "as long as the note". That is the shape every hand-written voice in
- * scheduleStep has — an exponential fall from the attack peak across the whole note, no
- * sustain at all — and it is the same "not stated" that `fixedLength: 0`, `drive: 0` and
- * `vibrato.depth: 0` already mean elsewhere in the catalogue. It WINS over `sustain`: the
- * two together are a contradiction, and struck is the reading the library needs.
+ * Every stage is a plain time in seconds. `decay` once carried a magic zero meaning "as
+ * long as the note", which put the LONGEST decay at the anticlockwise stop and made a
+ * zeroed control behave like a maxed one. It is gone: zero is now an instant fall, the way
+ * it reads on every other synth, and a decay that should span the note says so in seconds.
+ * The clamp to `end` below is what keeps a long decay from outliving a short note, so a
+ * preset written for a 1.8s note still behaves at 0.5s.
+ *
+ * `sustain` is WHERE that fall lands. At 0 the note reaches silence, which is the struck
+ * shape and the default; at 0.7 it falls only to seven tenths and releases from there.
  *
  * Returns when the tail is actually over, which is what the caller stops its oscillator on.
  */
@@ -203,13 +207,19 @@ function adsr(param, t, end, peak, e = {}) {
   const peakAt = t + Math.min(attack, Math.max(0.001, (end - t) * 0.45));
   // Clamped to the note, so a long decay on a short note cannot leave the release ramping
   // down from a level the envelope never actually reached.
-  const decayEnd = e.decay > 0 ? Math.min(end, peakAt + e.decay) : end;
+  const decayEnd = Math.min(end, peakAt + Math.max(0, e.decay ?? 0));
   // Everything is floored at 1e-4 until the very last ramp. An exponential ramp throws on a
   // target of exactly zero, and is a silent no-op when the value it starts FROM is zero —
   // so nothing here may be 0 while ramps are still being scheduled.
   const held = Math.max(1e-4, level * sustain);
   param.setValueAtTime(1e-4, t);
-  param.exponentialRampToValueAtTime(level, peakAt);
+  // Every stage takes the same exp/lin pair the decay has always taken — `curve`
+  // keeps its historical name and its decay meaning, so every preset on file reads
+  // back unchanged, and the two new keys default to the exponential shape every
+  // stage always had. Exponential from 1e-4 is a late-blooming attack; linear is
+  // the even fade-in, which is what Tone calls the default.
+  if (e.attackCurve === 'lin') param.linearRampToValueAtTime(level, peakAt);
+  else param.exponentialRampToValueAtTime(level, peakAt);
   if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
   else param.exponentialRampToValueAtTime(held, decayEnd);
   // The plateau — and the reason this is not `_playDrum`'s `env` with one stage bolted on.
@@ -219,7 +229,10 @@ function adsr(param, t, end, peak, e = {}) {
   // and two events at one instant are last-writer-wins.
   if (decayEnd < end) param.setValueAtTime(held, end);
   const off = end + release;
-  if (release > 0) param.exponentialRampToValueAtTime(1e-4, off);
+  if (release > 0) {
+    if (e.releaseCurve === 'lin') param.linearRampToValueAtTime(1e-4, off);
+    else param.exponentialRampToValueAtTime(1e-4, off);
+  }
   // ...and then to actual zero. An exponential ramp is aimed at 1e-4 and would sit there
   // until the oscillator stopped, which is a step to silence and an audible click on a
   // quiet lane — the same fix `play` in audio.js carries, for the same reason.
@@ -389,6 +402,9 @@ export class VoiceRack {
     if (v && v.synth === 'AdditiveSynth') {
       return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo });
     }
+    if (v && v.synth === 'LayerSynth') {
+      return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
+    }
     if (!v || !SYNTHS[v.synth]) return false;
     const notes = Array.isArray(freq) ? freq : [freq];
     // Polyphony is not a property of the preset — the same sound is one voice on a
@@ -396,12 +412,11 @@ export class VoiceRack {
     // could not be lane-agnostic. The pool grows to the widest chord it has been
     // asked for and stops there: one slot per note, plus one so the chord landing on
     // the next beat does not steal a slot that is still ringing.
-    // `taps` are the same hit repeated a few milliseconds apart, each quieter than
-    // the last — a clap, a flam, a buzz roll. It works on any preset, not just the
-    // noise ones: a clap is a shape, not a sound source, and a metallic clap is as
-    // reasonable as a noisy one. Each tap needs its own slot, or the second would
-    // cut the first off on a monophonic synth.
-    const taps = v.taps || [0];
+    // No `taps` on this path. A tap is one hit repeated milliseconds later — a clap, a
+    // flam, a buzz roll — which is a percussion idea, and percussion is what the drum
+    // and noise paths are for; both still read the key. A melodic class carrying it
+    // meant the pooled loop had to size the pool for repeats every preset but five
+    // never used, and those five were claps and flams filed under a synth class.
     // A mono preset is ONE instance, reused. Two things follow, and they are the two
     // things a hardware mono synth does: a new note cuts the one still ringing off
     // instead of stacking with it, and — because the instance remembers what it was
@@ -409,7 +424,7 @@ export class VoiceRack {
     // notes across slots, which is right for everything else here, defeats both.
     const mono = v.mono === true;
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
-      mono ? 1 : notes.length * taps.length + 1, preview);
+      mono ? 1 : notes.length + 1, preview);
     if (!pool) return false;
     // A chord arrives as an array of frequencies; a melody as one number. Nulls are
     // rests, and a bank writes plenty of them.
@@ -422,18 +437,18 @@ export class VoiceRack {
     notes.forEach((f, note) => {
       const noteDur = Array.isArray(dur) ? (dur[note] ?? dur[0]) : dur;
       if (f == null || !(f > 0)) return;
-      for (let i = 0; i < taps.length; i++) {
+      {
         // Mono holds slot 0 rather than advancing. A chord handed to a mono preset
         // therefore sounds its last note, which is what a mono synth does with one —
         // not a case to guard against, just the behaviour being asked for.
         const slot = mono ? pool.slots[0] : pool.slots[pool.next % pool.slots.length];
         if (!mono) pool.next++;
-        const t = time + taps[i];
+        const t = time;
         // Level is set on this slot's own gain, at this note's own time, rather than
         // on one shared node: two notes overlapping at different levels is ordinary
         // (a section changes `chordGain` mid-song) and a shared node would give the
         // ringing note the new one's level.
-        slot.out.gain.setValueAtTime(gain * ((v.tapFalloff ?? 1) ** i), t);
+        slot.out.gain.setValueAtTime(gain, t);
         // The preset's own tuning rides on top of the song warp. Both are ratios, so
         // they simply multiply — a preset an octave down stays an octave down through
         // a tempo/pitch warp instead of drifting against it.
@@ -466,7 +481,7 @@ export class VoiceRack {
           } else {
             slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
           }
-        } catch { continue; }
+        } catch { return; }
         // How far into the future this pool is committed. Notes are scheduled up to
         // a quarter-second ahead, so "is it playing" is not a question about now — and a pool
         // taken out of service has to outlive the ones already booked on it or they
@@ -856,6 +871,10 @@ export class VoiceRack {
     const stages = spec.slope === -48 ? 4 : spec.slope === -24 ? 2 : 1;
     const freq = Math.max(20, (spec.freq ?? dfltFreq) * mul);
     let head = null; let tail = null;
+    // Kept and returned so a caller can modulate the whole cascade — an LFO into one
+    // stage's `.detune` of a -48 chain would wobble a quarter of the slope. The existing
+    // callers read `head`/`tail` and ignore it.
+    const built = [];
     for (let k = 0; k < stages; k++) {
       const f = ctx.createBiquadFilter();
       f.type = spec.type || dfltType;
@@ -867,8 +886,9 @@ export class VoiceRack {
       f.Q.value = k === 0 ? (spec.Q ?? 0.7) : 0.7071;
       if (tail) tail.connect(f); else head = f;
       tail = f;
+      built.push(f);
     }
-    return { head, tail };
+    return { head, tail, stages: built };
   }
 
   /**
@@ -1256,7 +1276,6 @@ export class VoiceRack {
     const count = Math.min(a.count ?? bars.length, bars.length, ratios.length);
     const wave = nativeWave(a.type, 'sine');
     const notes = Array.isArray(freq) ? freq : [freq];
-    const taps = v.taps || [0];
     const hum = v.humanize || {};
     const shift = VoiceRack.pitchShift(v) * detune;
     const stretch = a.stretch ?? 0;
@@ -1303,10 +1322,12 @@ export class VoiceRack {
       lfo.connect(env); env.connect(vibCents);
     }
 
-    for (let i = 0; i < taps.length; i++) {
-      const t = time + taps[i];
-      const fade = (v.tapFalloff ?? 1) ** i * vary(hum.gain, time, i);
-      const bend = (v.tapDetune ?? 1) ** i * vary(hum.pitch, time, i + 16);
+    // Humanise only. NO TAPS on this path, for the reason `play` gives: a repeated hit
+    // is a percussion idea, and the drum and noise paths are where percussion lives.
+    {
+      const t = time;
+      const fade = vary(hum.gain, time, 0);
+      const bend = vary(hum.pitch, time, 16);
 
       // One summing point per hit: it carries the note's level, and it is the only thing
       // that decides whether this hit reaches the echo. Every partial lands inside it.
@@ -1347,20 +1368,19 @@ export class VoiceRack {
           o.frequency.setValueAtTime(partial * (p ? (p.from ?? 1) : 1), t);
           // The whole registration bends together, each partial keeping its ratio — which
           // is what `organSwoop` is, and what stops a glide sounding like a chord sliding
-          // apart. Zero sweep is "across the note", as zero decay is.
+          // apart. Through `pitchRamp`, so the bend speaks the same curve vocabulary as
+          // every other pitch move in the rack — exp glide, lin whip, snap thud.
           if (p && (p.to ?? 1) !== (p.from ?? 1)) {
-            o.frequency.exponentialRampToValueAtTime(
-              Math.max(1, partial * (p.to ?? 1)), t + (p.sweep > 0 ? p.sweep : end - t),
-            );
+            pitchRamp(o.frequency, Math.max(1, partial * (p.to ?? 1)), t,
+              p.sweep, p.curve);
           }
           const g = ctx.createGain();
           // `damp` tilts the decay across the stack. Ratios BELOW one — the sub-octave
           // bars — come out longer, which is what a real one does too.
-          const decay = damp > 0
-            ? (a.decay > 0 ? a.decay : end - t) * (r ** -damp)
-            : a.decay;
+          const decay = damp > 0 ? a.decay * (r ** -damp) : a.decay;
           const off = adsr(g.gain, t, end, level, {
-            attack: a.attack, decay, sustain: a.sustain, release: a.release, curve: a.curve,
+            attack: a.attack, decay, sustain: a.sustain, release: a.release,
+            attackCurve: a.attackCurve, curve: a.curve, releaseCurve: a.releaseCurve,
           });
           if (vibCents) vibCents.connect(o.detune);
           o.connect(g); g.connect(out);
@@ -1381,8 +1401,12 @@ export class VoiceRack {
             o.type = wave;
             o.frequency.setValueAtTime(pf, t);
             const g = ctx.createGain();
-            const off = adsr(g.gain, t, t + Math.max(0.005, pc.decay ?? 0.08), pc.gain ?? 0.72,
-              { attack: pc.attack ?? 0.002, decay: 0, sustain: 0, release: 0.01 });
+            // The strike falls across its OWN length — stated, now that `decay: 0` no
+            // longer means "as long as the note". Passing the span twice looks odd and
+            // is exactly right: it is the note, and it is how long the fall takes.
+            const percSpan = Math.max(0.005, pc.decay ?? 0.08);
+            const off = adsr(g.gain, t, t + percSpan, pc.gain ?? 0.72,
+              { attack: pc.attack ?? 0.002, decay: percSpan, sustain: 0, release: 0.01 });
             if (vibCents) vibCents.connect(o.detune);
             o.connect(g); g.connect(percBus());
             o.start(t); o.stop(off + 0.01);
@@ -1398,18 +1422,362 @@ export class VoiceRack {
   }
 
   /**
+   * A layered voice: up to three oscillator sections, each a COMPLETE voice — its own
+   * ratio, level, note-length multiplier, envelope, filter, pitch envelope, FM operator
+   * and unison — summed into the drum path's drive/tone. A section's waveform may also
+   * be `noise`: GameSynth's pitched noise, built in the unison loop below. This is what the hand-written
+   * melodic voices in scheduleStep are (a square, a sine an octave down, a triangle an
+   * octave up, each at its own level and its own length), and the one shape no Tone
+   * class in the allowlist can say.
+   *
+   * The per-layer `len` is the part with no commercial parallel and the part that makes
+   * the engine voices sound like themselves: bass80s' octave layer lasts 0.62 of the
+   * note where its sub lasts 1.08, which is a drum-machine idea (per-section decay)
+   * applied to a melodic voice. Everything else is a Roland partial by another name.
+   *
+   * One output chain per hit — every layer sums into the same drive, which is much of
+   * what makes a stack read as one instrument. Whether the echo bus hears the voice is
+   * the LANE's decision alone: a per-layer send/dry flag existed briefly and lost — a
+   * routing choice no synth offers, hiding on a synth panel. `wet` is tapped after the
+   * shaper, as `_playDrum` taps it: the echo bus hears the instrument, not its guts.
+   * Per-note level after the shaper too, and for the same reason (`voiceGain`
+   * linearity).
+   *
+   * The LFO is KEY-SYNCED — one oscillator per note-on, phase zero, faded in over
+   * `delay`. Deliberate, not a bug: a free-running rack-level LFO is order-dependent
+   * state a stem render would have to reproduce, and this file's whole discipline is
+   * that nothing here survives the note. Its targets are `filter` and `level` only;
+   * pitch wobble is `$vibrato`, the same key with the same meaning as on every other
+   * preset in the library.
+   *
+   * `mono` is the first native path to honour it: one sounding note per (lane, voice) —
+   * a new note chokes the last over 5 ms — and `portamento` finally glides, from the
+   * previous note's pitch, which per-note nodes remember via `_last`. Keyed with the
+   * preview flag, like `_pool`, so a desk keypress cannot move the song's glide origin.
+   * Stem-safe: a stem render deletes the OTHER lanes, so the kept lane sees the same
+   * note sequence and glides identically.
+   *
+   * Like every native path: one-shot nodes, never pooled, nothing memoised by voice id
+   * — which is exactly why live edits are audible on the next note.
+   */
+  _playLayer(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false }) {
+    const ctx = this.ctx;
+    const L = v.layer;
+    if (!L) return false;
+    // A layer at gain 0 is a layer taken out — skipped entirely, not run at 1e-4, or
+    // the save-time measurement would hear it.
+    const specs = [L.osc1, L.osc2, L.osc3].filter((s) => s && (s.gain ?? 1) > 0);
+    if (!specs.length) return false;
+    const all = Array.isArray(freq) ? freq : [freq];
+    // A chord handed to a mono preset sounds its LAST note — the same answer the pool
+    // gives (mono holds slot 0 and each chord tone restarts it), and what a hardware
+    // mono synth does with one. Stacking all of them here would make MONO mean two
+    // different things depending on which synth is behind the pill.
+    const monoLast = v.mono === true ? all.filter((f) => f > 0).slice(-1) : null;
+    const notes = monoLast && monoLast.length ? monoLast : all;
+    const hum = v.humanize || {};
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const nyquist = ctx.sampleRate * 0.5;
+    const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0
+      && (L.lfo.target === 'filter' || L.lfo.target === 'level') ? L.lfo : null;
+
+    // ---- the shared modulators, one of each per note-on ----------------------
+    // Vibrato exactly as `_playAdditive` builds it: the same key, the same 0–1 depth,
+    // ±100 cents at full travel, the same onset delay — a preset's wobble means one
+    // thing whichever synth plays it. Every oscillator of every layer takes it on
+    // `.detune`, where it SUMS with the unison spread rather than fighting it.
+    const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
+    let vibCents = null; let vlfo = null; let lastOff = 0;
+    if (vib) {
+      vlfo = ctx.createOscillator();
+      vlfo.type = nativeWave(vib.type, 'sine');
+      vlfo.frequency.setValueAtTime(Math.max(0.01, vib.rate ?? 5), time);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, time);
+      env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, vib.delay || 0.001));
+      vibCents = ctx.createGain();
+      vibCents.gain.setValueAtTime(Math.min(1, vib.depth) * 100, time);
+      vlfo.connect(env); env.connect(vibCents);
+    }
+    // The routable LFO. Unit-amplitude oscillator, onset fade, then one depth gain in
+    // the units its destination takes: cents for a filter's `.detune` (2400 at full —
+    // two octaves of movement), a plain modulation gain for tremolo.
+    let lfoOsc = null; let lfoOut = null;
+    if (lfoSpec) {
+      lfoOsc = ctx.createOscillator();
+      lfoOsc.type = nativeWave(lfoSpec.type, 'sine');
+      lfoOsc.frequency.setValueAtTime(Math.max(0.01, lfoSpec.rate ?? 4), time);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, time);
+      env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, lfoSpec.delay || 0.001));
+      lfoOut = ctx.createGain();
+      const depth = Math.min(1, lfoSpec.depth);
+      lfoOut.gain.setValueAtTime(lfoSpec.target === 'filter' ? depth * 2400 : depth / 2, time);
+      lfoOsc.connect(env); env.connect(lfoOut);
+    }
+
+    // ---- glide and choke ----------------------------------------------------
+    const mono = v.mono === true;
+    const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
+    this._last ||= new Map();
+    const prev = mono ? this._last.get(glideKey) : null;
+    const glideFrom = prev && v.portamento > 0 ? prev.freq : null;
+    // The choke: a hardware mono synth cuts the note still ringing. 5ms, on the OLD
+    // note's own output gains — its envelopes are already written, so this is a cancel
+    // and a fast fade rather than a fight over the same events.
+    if (mono && prev && prev.stopAt > time) {
+      for (const o of prev.outs) {
+        o.gain.cancelScheduledValues(time);
+        o.gain.setValueAtTime(o.gain.value, time);
+        o.gain.linearRampToValueAtTime(0, time + 0.005);
+      }
+    }
+
+    const allOuts = [];
+    let lastBase = 0;
+    {
+      const t = time;
+      // Humanise only. NO TAPS on this path: a tap is one hit repeated milliseconds
+      // later — a clap, a flam — which is a percussion idea, and every preset in the
+      // catalogue that uses one is a clap or a roll. On a melodic voice the slapback
+      // it would give you belongs on the strip's delay insert, which is exactly why
+      // the finale and walking basses had their written-in `bassRepeat` removed.
+      const fade = vary(hum.gain, time, 0);
+      const bend = vary(hum.pitch, time, 16);
+      const toneMul = vary(hum.filter, time, 32);
+
+      // One chain per note, built on demand: shaper → tone → trem → out. A note of
+      // nothing but rests builds none of it.
+      let chain = null;
+      const chainFor = () => {
+        if (chain) return chain;
+        const out = ctx.createGain();
+        out.gain.value = gain * fade;
+        out.connect(dry);
+        if (echo && wet) out.connect(wet);
+        allOuts.push(out);
+        let into = out;
+        if (lfoSpec && lfoSpec.target === 'level') {
+          // Tremolo between (1 - depth) and 1: the carrier gain sits at 1 - depth/2
+          // and the LFO adds ±depth/2 on top. In BOTH chains, from the one LFO.
+          const trem = ctx.createGain();
+          trem.gain.setValueAtTime(1 - Math.min(1, lfoSpec.depth) / 2, t);
+          lfoOut.connect(trem.gain);
+          trem.connect(into); into = trem;
+        }
+        if (v.tone) {
+          const tf = ctx.createBiquadFilter();
+          tf.type = v.tone.type || 'lowpass';
+          tf.frequency.value = Math.max(20, (v.tone.freq ?? 8000) * toneMul);
+          tf.Q.value = v.tone.Q ?? 0.7;
+          tf.connect(into); into = tf;
+        }
+        if (v.drive > 0) {
+          const shaper = ctx.createWaveShaper();
+          shaper.curve = this._driveCurve(v.drive, v.shape);
+          shaper.connect(into); into = shaper;
+        }
+        chain = { into };
+        return chain;
+      };
+
+      notes.forEach((f, n) => {
+        if (!(f > 0)) return;
+        // `dur` aligns with the ORIGINAL chord positionally — a mono preset that kept
+        // only the last tone must read that tone's own drawn length, not the first's.
+        const di = monoLast ? all.lastIndexOf(f) : n;
+        const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
+        const base = f * shift * bend;
+        lastBase = base;
+
+        for (const spec of specs) {
+          // The per-layer length: this layer's own note, as a fraction (or multiple)
+          // of the drawn one. bass80s' octave tick lives and dies inside the note the
+          // sub is still holding — that is the sound, not an approximation of it.
+          const end = t + Math.max(0.001, (noteDur || 0.001) * (spec.len ?? 1));
+          const ratio = spec.ratio ?? 1;
+          const target = base * ratio;
+          if (!(target > 0) || target >= nyquist) continue;
+          // `noise` is a waveform here exactly as it is on GameSynth: the seeded
+          // buffer through a bandpass that follows the note. Every pot still means
+          // something — RATIO, DETUNE, the pitch envelope, glide and FM all drive the
+          // band's centre the way they drive an oscillator's frequency — so a noise
+          // layer is a full member of the stack, not a special case with dead
+          // controls. A rack built without the buffer skips the layer, the same
+          // answer `_playGame` gives for the whole voice.
+          const isNoise = spec.type === 'noise';
+          if (isNoise && !this.noiseBuf) continue;
+          const into = chainFor().into;
+
+          // The layer's own gain, enveloped once and shared by its unison voices.
+          const g = ctx.createGain();
+          const off = adsr(g.gain, t, end, spec.gain ?? 1, spec);
+          lastOff = Math.max(lastOff, off);
+
+          // The filter, when the layer has one — per layer, not per unison voice: a
+          // fat stack through one filter is a synth voice, through five is a chorus
+          // of synths, and the engine voice being recreated had one.
+          let dest = g;
+          if (spec.filter) {
+            const fl = spec.filter;
+            const track = fl.track > 0 ? (base / 110) ** Math.min(1, fl.track) : 1;
+            // A static base — CUTOFF times KEY FOLLOW — with all the movement on the
+            // envelope and the LFO, which is how every software synth states it. The
+            // freq/to/sweep language the drums and the Game synth speak is deliberately
+            // NOT passed through here: the layer card dropped the sweep pair, and the
+            // shipped sweeps were rewritten as envelopes (CUTOFF at the floor, a
+            // positive ENV AMOUNT of log2(top/floor) octaves, decay across the note —
+            // the same exponential trajectory _filterChain used to schedule).
+            const chain = this._filterChain(
+              { type: fl.type, slope: fl.slope, freq: fl.freq, Q: fl.Q },
+              t, track * toneMul, 'lowpass', 1150,
+            );
+            chain.tail.connect(g);
+            if (lfoSpec && lfoSpec.target === 'filter') {
+              for (const st of chain.stages) lfoOut.connect(st.detune);
+            }
+            // The filter envelope — the MonoSynth card's model on the native path:
+            // ENV AMOUNT octaves up from CUTOFF and back, over its own ADSR. Written
+            // in cents on `.detune`, where it SUMS with the LFO's breathing and rides
+            // on top of whatever the sweep pair is doing to the base frequency.
+            // Linear in cents IS exponential in hertz, so the travel is musically
+            // even. Bipolar, which Tone's positive-only `octaves` could not say: a
+            // negative amount is a pluck closing from above. Times are plain seconds and
+            // sustain rides them, exactly as the amp envelope reads them.
+            const fe = fl.env;
+            if (fe && (fe.octaves ?? 0) !== 0) {
+              const cents = fe.octaves * 1200;
+              const fa = Math.max(0.001, fe.attack ?? 0.01);
+              const fs = Math.min(1, Math.max(0, fe.sustain ?? 0));
+              const peakAt = t + Math.min(fa, Math.max(0.001, (end - t) * 0.45));
+              const decayEnd = Math.min(end, peakAt + Math.max(0, fe.decay ?? 0));
+              for (const st of chain.stages) {
+                st.detune.setValueAtTime(0, t);
+                st.detune.linearRampToValueAtTime(cents, peakAt);
+                st.detune.linearRampToValueAtTime(cents * fs, decayEnd);
+                if (decayEnd < end) st.detune.setValueAtTime(cents * fs, end);
+                st.detune.linearRampToValueAtTime(0, end + Math.max(0.001, fe.release ?? 0.015));
+              }
+            }
+            dest = chain.head;
+          }
+          g.connect(into);
+
+          // Unison: free at 1 — no extra nodes, no detune arithmetic. Above 1 the
+          // voices sit symmetrically across `spread` cents on `.detune`, scaled by
+          // 1/√count so a stack arrives at the level one voice did.
+          const count = Math.max(1, Math.min(5, Math.round(spec.unison ?? 1)));
+          const norm = count > 1 ? 1 / Math.sqrt(count) : 1;
+          // The bandwidth makeup `_playGame` derives: a bandpass keeps only its
+          // slice of the noise, the slice narrows with the note, and the level goes
+          // as the square root of it. Same NOISE_Q, same formula, so a noise layer
+          // sits at the level of the oscillators beside it at every pitch.
+          const makeup = isNoise
+            ? Math.sqrt(nyquist / Math.max(20, target / NOISE_Q)) : 1;
+          let fmSpread = null;
+          for (let u = 0; u < count; u++) {
+            // The source and the params that carry its pitch and detune — an
+            // oscillator's own, or the bandpass that gives the noise its. A biquad's
+            // `.detune` is cents like an oscillator's, so the spread and the vibrato
+            // land on either without conversion.
+            let o, out, pitch, det;
+            if (isNoise) {
+              o = ctx.createBufferSource();
+              o.buffer = this.noiseBuf;
+              // Looped: the buffer is half a second and a held note is not. The
+              // band takes the edge off the seam, as it does everywhere this
+              // buffer plays.
+              o.loop = true;
+              const bp = ctx.createBiquadFilter();
+              bp.type = 'bandpass';
+              bp.Q.setValueAtTime(NOISE_Q, t);
+              o.connect(bp);
+              out = bp; pitch = bp.frequency; det = bp.detune;
+            } else {
+              o = ctx.createOscillator();
+              o.type = nativeWave(spec.type, 'square');
+              out = o; pitch = o.frequency; det = o.detune;
+            }
+            const cents = (spec.detune ?? 0)
+              + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
+            if (cents) det.setValueAtTime(cents, t);
+            if (vibCents) vibCents.connect(det);
+
+            // Pitch: glide beats the pitch envelope when both apply — a glide IS a
+            // pitch envelope, from the previous note, and two writers on one
+            // AudioParam is a fight the second one loses anyway.
+            if (glideFrom) {
+              // A glide stays 'exp' — constant semitones per second is what a
+              // portamento IS; the pitch envelope's curve pill does not reach it.
+              pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
+              pitchRamp(pitch, target, t, Math.max(0.001, v.portamento));
+            } else if (spec.pitch && (spec.pitch.to ?? 1) !== (spec.pitch.from ?? 1)) {
+              const p = spec.pitch;
+              pitch.setValueAtTime(Math.max(1, target * (p.from ?? 1)), t);
+              pitchRamp(pitch, Math.max(1, target * (p.to ?? 1)), t,
+                p.sweep, p.curve);
+            } else {
+              pitch.setValueAtTime(target, t);
+            }
+
+            // One modulator for the whole unison stack, mirroring `_playDrum`'s
+            // operator: pitch fixed at the carrier's STARTING frequency, depth in
+            // hertz as a multiple of it. Built with the first voice, fanned into the
+            // rest — five modulators would beat against each other.
+            if (spec.fm && (spec.fm.index ?? 1) > 0) {
+              if (!fmSpread) {
+                const mod = ctx.createOscillator();
+                mod.type = nativeWave(spec.fm.type, 'sine');
+                mod.frequency.setValueAtTime(target * (spec.fm.ratio ?? 1.4), t);
+                fmSpread = ctx.createGain();
+                // Its own envelope through the same helper — a long decay is the
+                // modulation swelling across the note, which is what brass is.
+                adsr(fmSpread.gain, t, end, target * (spec.fm.index ?? 1), {
+                  attack: spec.fm.attack, decay: spec.fm.decay, sustain: 0, release: 0,
+                });
+                mod.connect(fmSpread);
+                mod.start(t); mod.stop(off + 0.01);
+              }
+              fmSpread.connect(pitch);
+            }
+
+            if (norm * makeup !== 1) {
+              const ng = ctx.createGain(); ng.gain.value = norm * makeup;
+              out.connect(ng); ng.connect(dest);
+            } else out.connect(dest);
+            o.start(t); o.stop(off + 0.01);
+          }
+        }
+      });
+    }
+
+    // `adsr` returns ABSOLUTE times, so these are used as they are — adding `time`
+    // would double-count and leave modulator nodes running seconds past the note.
+    if (mono && lastBase > 0) {
+      this._last.set(glideKey, { freq: lastBase, outs: allOuts, stopAt: lastOff });
+    }
+    if (vlfo && lastOff) { vlfo.start(time); vlfo.stop(lastOff + 0.01); }
+    if (lfoOsc && lastOff) { lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01); }
+    return true;
+  }
+
+  /**
    * The drive's transfer curve, cached per amount and shape, normalised so the curve
    * always reaches full scale and the drive changes the KNEE rather than the level.
    * Deterministic — a formula, not noise — so it renders offline like everything else.
    *
    * Three shapes, and they are three different jobs rather than three flavours of the
-   * same one. `tanh` is a desk being pushed: it rounds the top of a transient and adds
+   * same one. `soft` is a desk being pushed: it rounds the top of a transient and adds
    * the harmonics above it. `fold` turns the peak back on itself, so past a point MORE
    * level makes a DIFFERENT sound instead of a louder one — ring-modulator territory,
    * where a kick's body turns to metal. `crush` throws away resolution, which is
    * quantisation noise riding the signal and the one that sounds like hardware.
+   *
+   * Only FOLD and CRUSH are named below; everything else falls through to the soft
+   * curve. That is what lets the shape be RENAMED without touching a preset — `soft`
+   * and the older `tanh` both land in the same branch and render identically.
    */
-  _driveCurve(amount, shape = 'tanh') {
+  _driveCurve(amount, shape = 'soft') {
     this._driveCurves ||= new Map();
     const key = `${shape}:${Math.round(amount * 100)}`;
     let curve = this._driveCurves.get(key);
@@ -1640,5 +2008,8 @@ export class VoiceRack {
     for (const pool of this.pools.values()) this._disposePool(pool);
     this.pools.clear();
     this._activePreviews.clear();
+    // The glide origins. The nodes they point at belong to the dying context; keeping
+    // the map would glide the next song's first note from the last song's last one.
+    if (this._last) this._last.clear();
   }
 }

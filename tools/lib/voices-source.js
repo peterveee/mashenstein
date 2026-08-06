@@ -195,7 +195,7 @@ const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 // Everything that gets a line of its own, in the order it is worth reading: what the
 // sound is for, where it came from, then how it is built. `taps` and `tapFalloff`
 // share a line — they are two halves of one idea and both are short.
-const BODY = ['note', 'origin', 'options', 'additive', 'osc', 'knock', 'noise', 'ring', 'metal', 'body',
+const BODY = ['note', 'origin', 'options', 'additive', 'layer', 'osc', 'knock', 'noise', 'ring', 'metal', 'body',
   'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
   'bypassed'];
 
@@ -228,6 +228,9 @@ export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak'
   // its envelope, and `flat` would run all of that into a single unreadable line in a file
   // whose whole point is that a saved preset looks like a typed one.
   if (has('additive')) lines.push(`    additive: ${optionsBlock(v.additive)},`);
+  // Same shape for the layer synth: one line per section, so three layers with their
+  // filters read as three layers rather than as one 400-character line.
+  if (has('layer')) lines.push(`    layer: ${optionsBlock(v.layer)},`);
   if (has('osc')) lines.push(`    osc: ${flat(v.osc)},`);
   if (has('knock')) lines.push(`    knock: ${flat(v.knock)},`);
   if (has('noise')) lines.push(`    noise: ${flat(v.noise)},`);

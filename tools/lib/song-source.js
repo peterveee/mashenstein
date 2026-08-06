@@ -13,6 +13,9 @@
 // song that reads beautifully and plays differently is worse than an ugly array.
 import { noteName, n, chord } from '../../src/engine/notes.js';
 import { isLenKey } from '../../src/engine/lanes.js';
+// The desk's own mix serialisers, so `deskTail` below is the ONE builder of the
+// desk-owned half of a song file. No cycle: mix-source imports only from the engine.
+import { mixEntrySource, variantsSource } from './mix-source.js';
 
 const NOTE_RE = /^[A-G]#?-?\d+$/;
 
@@ -132,6 +135,31 @@ export function bankSource(bank, indent = '') {
  * Below it is what the desk writes. The desk rewrites only that half, so a comment
  * anybody adds to the music stays where it was put.
  */
+/**
+ * THE desk-owned tail of a song file — the one and only builder of it.
+ *
+ * There used to be two: this module wrote one shape when a song was CREATED
+ * (import, migration, new-song) and `writeSongFile` wrote another on every SAVE —
+ * different comment, different mix serialiser, and only one of them knew about
+ * `variants`. The same information in two handwritings meant every save reformatted
+ * the whole block, so `git diff` lit up as if the entire mix had changed when
+ * nothing had — and a real change buried in that noise is a change nobody reviews.
+ * It cost a session's worth of mixes once, when the churn was mistaken for junk and
+ * reverted wholesale.
+ *
+ * The desk's own serialisers won because theirs is the shape every saved file
+ * already has: `mixEntrySource` writes decisions rather than defaults, and
+ * `bankSource` keeps an arrangement readable. Starts WITH the marker line, because
+ * `writeSongFile` splices at `indexOf(DESK_MARKER)`.
+ */
+export function deskTail({ mix = null, arrangement = null, variants = null } = {}) {
+  return `${DESK_MARKER} ----------------------------------------------\n`
+    + `// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.\n\n`
+    + `export const mix = ${(mix && mixEntrySource(mix)) || 'null'};\n\n`
+    + `export const arrangement = ${arrangement ? bankSource(arrangement) : 'null'};\n\n`
+    + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n`;
+}
+
 export function songFile({ id, title, slug, group, bank, mix, arrangement, note, seed }) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
@@ -148,13 +176,7 @@ export function songFile({ id, title, slug, group, bank, mix, arrangement, note,
     + `\n`
     + `export const bank = ${bankSource(bank)};\n\n`;
 
-  const tail = `// ---- THE DESK WRITES BELOW HERE ----------------------------------------------\n`
-    + `// Rewritten whole by the mixing desk. Nothing below this line is hand-edited,\n`
-    + `// and nothing above it is ever touched by the desk.\n\n`
-    + `export const mix = ${mix ? objectSource(mix, '') : 'null'};\n\n`
-    + `export const arrangement = ${arrangement ? objectSource(arrangement, '') : 'null'};\n`;
-
-  return head + tail;
+  return head + deskTail({ mix, arrangement });
 }
 
 export const DESK_MARKER = '// ---- THE DESK WRITES BELOW HERE';

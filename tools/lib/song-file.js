@@ -10,10 +10,10 @@
 // clobbering the other. A per-song file cannot have that problem.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, relative } from 'path';
-import { bankSource, DESK_MARKER } from './song-source.js';
-// A mix is written by its own rules — defaults left out, so the file holds decisions
-// and a save produces a diff of what changed. See mix-source.js.
-import { mixEntrySource, variantsSource } from './mix-source.js';
+// `deskTail` is THE builder of the desk-owned half — creation (`songFile`) and save
+// (here) write the identical shape, so neither can reformat the other's work. The mix
+// serialisers this file used to import live behind it now; see the note over deskTail.
+import { deskTail, DESK_MARKER } from './song-source.js';
 
 export const songPath = (root, id) => join(root, 'src/data/songs', `${id}.js`);
 export const scratchSongPath = (root, id) => join(root, 'src/data/imported', `${id}.js`);
@@ -63,11 +63,10 @@ export function writeSongFile(root, id, { mix = null, arrangement = null, varian
   // hand over is not preserved — it is deleted. That is why /save re-reads what the
   // file already holds for the exports the patch does not mention: saving a fader must
   // not take the cabinet treatment with it.
-  const body = `${DESK_MARKER} ----------------------------------------------\n`
-    + `// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.\n\n`
-    + `export const mix = ${(mix && mixEntrySource(mix)) || 'null'};\n\n`
-    + `export const arrangement = ${arrangement ? bankSource(arrangement) : 'null'};\n\n`
-    + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n`;
+  //
+  // `deskTail` is shared with `songFile` — creation and save write the identical
+  // shape, so the first save of a new song diffs as what changed, not as a reformat.
+  const body = deskTail({ mix, arrangement, variants });
 
   writeFileSync(path, src.slice(0, at) + body);
   return path;

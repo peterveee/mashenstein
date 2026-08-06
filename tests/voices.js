@@ -37,10 +37,16 @@ const assert = (cond, msg) => {
 // by name in `play()` before the Tone allowlist is reached, and they read `$` keys off the
 // entry rather than an `options` bag. They are in the same list because it is the same
 // question — what may a preset's `synth` say.
-const ALLOWED = ['GameSynth', 'AdditiveSynth', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+const ALLOWED = ['GameSynth', 'AdditiveSynth', 'LayerSynth', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
+// A LAYER takes one more: `noise` is a waveform on that path, not a special case — the
+// seeded buffer through a bandpass whose centre follows the note, so RATIO, DETUNE, the
+// pitch envelope, glide and FM all still mean something. See `isNoise` in `_playLayer`.
+// The panel offers it (LAYER_WAVES in tools/mixer-voice-editor.js); this list is why a
+// preset using it can be saved.
+const LAYER_WAVES = [...NATIVE_WAVES, 'noise'];
 const DRAWBARS = 9;
 
 const all = Object.values(VOICES);
@@ -134,9 +140,38 @@ for (const v of tone) {
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
-  assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth'
+  assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth' || v.synth === 'LayerSynth'
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
+}
+
+// The layer stack. As with the additive block above, every failure here is SILENCE
+// rather than a wrong sound: a preset with no layers, or every layer at gain 0, builds
+// nothing and `_playLayer` returns false without a word.
+for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
+  const L = v.layer;
+  assert(L && typeof L === 'object', `${v.id}: has a layer stack to build`);
+  const oscs = [L?.osc1, L?.osc2, L?.osc3].filter(Boolean);
+  assert(oscs.length > 0, `${v.id}: has at least one layer`);
+  assert(oscs.some((o) => (o.gain ?? 1) > 0), `${v.id}: at least one layer is audible`);
+  for (const o of oscs) {
+    assert(!o.type || LAYER_WAVES.includes(o.type),
+      `${v.id}: names a waveform a layer takes (${o.type})`);
+    assert((o.ratio ?? 1) > 0, `${v.id}: every layer ratio is above zero`);
+    assert((o.len ?? 1) > 0, `${v.id}: every layer length multiplier is above zero`);
+    assert((o.unison ?? 1) >= 1 && (o.unison ?? 1) <= 5,
+      `${v.id}: unison stays within the engine's cap`);
+    if (o.pitch) {
+      assert((o.pitch.from ?? 1) > 0 && (o.pitch.to ?? 1) > 0,
+        `${v.id}: bends between two real pitches — an exponential ramp cannot reach zero`);
+    }
+    if (o.filter) assert((o.filter.freq ?? 0) > 0, `${v.id}: a filter has a cutoff`);
+    if (o.fm) assert((o.fm.ratio ?? 1.4) > 0, `${v.id}: an FM ratio is above zero`);
+  }
+  if (L?.lfo) {
+    assert(['filter', 'level'].includes(L.lfo.target ?? 'filter'),
+      `${v.id}: the LFO points at filter or level — pitch wobble is the vibrato key`);
+  }
 }
 
 // The additive stack. Every one of these failures is silence rather than a wrong sound,

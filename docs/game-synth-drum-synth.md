@@ -1,22 +1,43 @@
-# Game Synth & Drum Synth Instruments
+# The Native Synths
 
-> How MASHENSTEIN's non-Tone.js, non-engine voice paths work — `_playGame`, `_playNoise`, and `_playDrum` in `src/engine/voices.js`.
+> How MASHENSTEIN's non-Tone.js, non-engine voice paths work — `_playGame`,
+> `_playAdditive`, `_playLayer`, `_playNoise` and `_playDrum` in `src/engine/voices.js`.
 
 ---
 
 ## 1. Architecture Overview
 
-The audio engine has **five** voice paths, dispatched by `kind` in `VoiceRack.play()`:
+The audio engine has **seven** voice paths, dispatched in `VoiceRack.play()`:
 
-| `kind` | Play method | Sounds like | Uses Tone.js? | Pooled? |
+| Path | Play method | Sounds like | Uses Tone.js? | Pooled? |
 |--------|------------|-------------|---------------|---------|
-| `'engine'` | (hand-written in `scheduleStep`) | Bass, lead, organ, chords, engine percussion | No | No |
-| `'tone'` | `VoiceRack.play()` → Tone pool | Full Tone.js synths (Synth, MonoSynth, FMSynth, etc.) | **Yes** | Yes |
-| `'tone'` via `synth: 'GameSynth'` | `_playGame()` | Simple square/saw/triangle/sine tones | **No** | No |
-| `'noise'` | `_playNoise()` | Filtered noise bursts (snares, claps, hats, shakers) | **No** | No |
-| `'drum'` | `_playDrum()` | Dual-source drum synthesis (kicks, toms, zaps, etc.) | **No** | No |
+| `kind: 'engine'` | (hand-written in `scheduleStep`) | Bass, lead, organ, chords, engine percussion | No | No |
+| `kind: 'tone'` + Tone class | `VoiceRack.play()` → Tone pool | Full Tone.js synths (Synth, MonoSynth, FMSynth, etc.) | **Yes** | Yes |
+| `synth: 'GameSynth'` | `_playGame()` | One oscillator or pitched noise — the chip channel | **No** | No |
+| `synth: 'AdditiveSynth'` | `_playAdditive()` | Stacked sine partials — drawbar organs, bells, glass | **No** | No |
+| `synth: 'LayerSynth'` | `_playLayer()` | Up to three complete voices summed — the engine's own layered voices, editable | **No** | No |
+| `kind: 'noise'` | `_playNoise()` | Filtered noise bursts (snares, claps, hats, shakers) | **No** | No |
+| `kind: 'drum'` | `_playDrum()` | Multi-source drum synthesis (kicks, toms, zaps, cymbals) | **No** | No |
 
-**This document covers GameSynth, Noise, and Drum** — the three paths that are built entirely from native Web Audio nodes and never touch `Tone.Synth` or its relatives.
+**This document covers the five native paths** — the ones built entirely from Web Audio
+nodes that never touch `Tone.Synth` or its relatives. The native synths are dispatched
+**by name before** the Tone allowlist is consulted; `SYNTHS[]` knowing nothing about
+them would otherwise return `false`, which looks exactly like a preset doing nothing.
+
+Two rules every native pitched path shares, stated once:
+
+- **The `adsr` helper** (`voices.js` ~196) is the one HELD envelope — attack (clamped
+  to 45% of the note), decay to sustain, an explicit plateau (a ramp interpolates from
+  the event *before* it — without the `setValueAtTime` the release starts falling the
+  moment decay ends), release, then a linear ramp to true zero. It returns the absolute
+  time the tail ends, which is what callers `stop()` on. Every stage is a plain time in
+  seconds — there is no magic zero — and a decay longer than the note is clamped to it,
+  so a preset written for a 1.8s note still behaves on a 0.5s one. `sustain` is where
+  the fall lands, not something a short decay switches off.
+- **`NATIVE_WAVES` only**: an `OscillatorNode` takes `sine | square | sawtooth |
+  triangle`. Tone's `pwm`, `pulse` and voicing prefixes (`fatsawtooth`) all THROW on
+  assignment — killing that note and every note after it on the lane — so every
+  waveform is coerced through `nativeWave()`.
 
 ### Pitch curves
 
@@ -103,7 +124,7 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 
 **Not read anywhere:** `minLength` and `maxLength` were listed here as parameters and are read by no code and declared by no preset. There is no such clamp — `fixedLength` is the only absolute length control.
 
-### Presets (4 total)
+### Presets (6 library + user copies)
 
 | ID | Label | Waveform | Category |
 |----|-------|----------|----------|
@@ -111,6 +132,10 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 | `toneSawtooth` | Sawtooth Tone | sawtooth | Lead |
 | `toneTriangle` | Triangle Tone | triangle | Lead |
 | `toneSine` | Sine Tone | sine | Keys |
+| `squareTone2` | Square Tone | square | Lead |
+| `squareOrgan` | Square Organ | square | Organ |
+
+(plus whatever `USER_TONE` holds — user saves land there, not here.)
 
 ### Why It Exists
 
@@ -118,7 +143,147 @@ The engine's hand-written square/saw/triangle/sine voices are baked into `schedu
 
 ---
 
-## 3. Noise Presets (`_playNoise`)
+## 3. AdditiveSynth (`_playAdditive`)
+
+### Purpose
+
+A stack of up to nine sine (or triangle) partials at drawbar ratios, each with its own
+level, under one `adsr` envelope. This is the engine's `organChords` voice — which is
+five sines and *nothing else* — made editable, then generalised past the organ with two
+knobs that are each one control where the honest version is nine.
+
+### Sound Generation
+
+```
+  per partial k with bars[k] > 0:
+  OscillatorNode ──→ GainNode (adsr, decay·r⁻ᵈᵃᵐᵖ) ──→ out ──→ dry (+ wet)
+   freq = note × ratio[k] × √(1 + stretch·r²)              │
+                                                            └─ perc partial → its own
+  [one vibrato LFO per note-on, cents into every .detune]      ALWAYS-DRY bus
+```
+
+- **`bars`** — nine levels in **console order** (16′ 5⅓′ 8′ 4′ 2⅔′ 2′ 1⅗′ 1⅓′ 1′ =
+  ratios 0.5, 1.5, 1, 2, 3, 4, 5, 6, 8), so any registration ever written down types
+  straight in. A bar at zero builds **no oscillator**. `ratios` may override the set;
+  `count` caps how many build; partials at or above Nyquist are culled.
+- **`stretch`** — inharmonicity, `r′ = r·√(1 + stretch·r²)`. Zero is a Hammond; wound
+  up it is a bell, a gong, a struck bar.
+- **`damp`** — partial *n* decays over `decay · r⁻ᵈᵃᵐᵖ`: the top of the stack falls
+  first, which is every struck sound there is. A bell needs BOTH — an inharmonic stack
+  with no damping is a siren, not a bell.
+- **`pitch`** `{from, to, sweep, curve}` — the whole registration bends together, each
+  partial keeping its ratio (this is `organSwoop`). Through `pitchRamp`, so the bend
+  speaks the same `exp | lin | snap` vocabulary as every other pitch move.
+- **`perc`** — the Hammond percussion register: one louder partial, struck and gone,
+  **always dry** so repeated off-beat stabs stay crisp. Its decay is in **seconds** —
+  a circuit constant, fast or slow whatever the player holds — not steps.
+- Honours chords, per-tone `dur` arrays, `taps`/`tapFalloff`/`tapDetune`, `humanize`,
+  and `$vibrato` (one LFO per note-on shared by every partial — nine independent LFOs
+  would drift, and a stack wobbling out of step with itself is a chorus).
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `additive.type` | `'sine'` | Partial waveform: `sine` or `triangle` (reedier) |
+| `additive.bars` | — | Nine levels 0–1 in console order. Zero builds nothing |
+| `additive.ratios` | `DRAWBAR_RATIOS` | Optional override — inharmonic clusters live here |
+| `additive.count` | 9 | How many partials build |
+| `additive.attack/decay/sustain/release/curve` | `adsr` defaults | Plain seconds; a decay longer than the note is clamped to it |
+| `additive.stretch` | 0 | Inharmonicity — see above |
+| `additive.damp` | 0 | Per-partial decay tilt — see above |
+| `additive.echo` | `true` | `false` keeps the stack off the wet send |
+| `additive.pitch.{from,to,sweep,curve}` | — | Registration bend, ratios of the note; `sweep` in seconds |
+| `additive.perc.{ratio,gain,attack,decay}` | ×3, 0.72 | The key-attack pip, always dry |
+
+### Presets (8)
+
+`addDrawbar`, `addDrawbarBright`, `addDrawbarPerc` — the engine organ's two
+registrations, transcribed. `addShopOrgan` — the shop's own (bright + perc, short,
+dry). `addSwoop` — the registration bending up a fourth into the note. `addBell` and
+`addGlassPad` — `stretch`/`damp` doing what the organ never could. Plus user saves.
+
+---
+
+## 4. LayerSynth (`_playLayer`)
+
+### Purpose
+
+Up to three oscillator layers, each a **complete voice** — its own ratio, level, note
+length, envelope, filter, pitch envelope, FM operator and unison — summed into the
+drum path's drive. This is the shape every hand-written melodic voice in
+`scheduleStep` is ("a square, a sine an octave down, a triangle an octave up, each at
+its own level and its own length"), which no Tone class can say. Structurally a Roland
+partial. The 24 `layer*` presets are the engine voices transcribed from their exact
+numbers, shipped alongside the originals for A/B.
+
+### Sound Generation
+
+```
+  per layer (osc1|osc2|osc3), per note:
+  [unison ×1–5 on .detune] OscillatorNode(s) ──→ [_filterChain] ──→ GainNode (adsr)
+        │                        │ pitchRamp        │ + filter env  │ × 1/√count
+        │                        │ (pitch env/glide) │  (cents on   ▼
+        │  [fm modulator, one per stack] ─→ freq     │   .detune)
+        │                                            └→ shaper → tone → trem → out
+  [vibrato LFO → every .detune]  [lfo → filter .detune | trem gains]      │
+                                                                    dry (+ wet)
+```
+
+- **`len`** — this layer's own note length as a multiple of the drawn one. The control
+  with no commercial parallel and the reason the engine voices sound like themselves:
+  `bass80s`' octave tick dies inside the note its sub is still holding.
+- **One output chain per note**, and every layer sums into it — which is much of what
+  makes a stack read as one instrument rather than three. `wet` taps after the shaper
+  (the echo bus hears the instrument, not its guts); the per-note level sits after it
+  too (`voiceGain` linearity). Whether the echo bus hears the voice is the LANE's
+  decision alone: a per-layer send/dry flag existed briefly and lost — a routing choice
+  no synth offers, hiding on a synth panel.
+- **No taps.** A tap is one hit repeated milliseconds later — a clap, a flam — which is
+  a percussion idea; on a melodic voice the slapback belongs on the strip's delay
+  insert. `taps`/`tapFalloff`/`tapDetune`/`tapTone` are not read here and the panel
+  draws no Taps card.
+- **`lfo`** `{type, rate, depth, target: 'filter'|'level', delay}` — key-synced per
+  note (deterministic, and `delay` means something). One 0–1 depth knob: 2400 cents of
+  filter movement or full tremolo. **No `pitch` target** — pitch wobble is `$vibrato`,
+  one key with one meaning on every preset.
+- **`mono` + `portamento`** — the first native path to honour them: one glide origin
+  per (lane, voice, preview), the previous note choked over 5 ms, and a chord sounds
+  its **last** note (the pool path's own semantics). Stem-safe: a stem render deletes
+  the *other* lanes, so the kept lane sees the identical note sequence and glides
+  identically.
+- Reuses the drum voice's `drive`/`shape`/`tone` entry keys — the two panels' DRIVE
+  pots are provably one control. Honours chords, per-tone `dur`, `humanize`, `$vibrato`.
+
+### Parameters (per layer)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `type` | osc1 `'square'`, others `'sine'` | `NATIVE_WAVES` **plus `noise`** — a band that follows the note, so every pot still means something |
+| `ratio` | 1 | × the note — 0.5 is the sub, 2 the octave. Drawn as INTERVAL, in semitones |
+| `detune` | 0 | Cents, static |
+| `gain` | 1 | Layer level. **Zero skips the layer entirely** |
+| `len` | 1 | × the drawn note length. Drawn as GATE, in per cent |
+| `attack/decay/sustain/release` | `adsr` defaults | Plain seconds, clamped to the note; `sustain` is where the fall lands |
+| `attackCurve` / `curve` / `releaseCurve` | `'exp'` | Per stage, `'exp'` or `'lin'`. `curve` is the decay's, and keeps its historical name |
+| `unison` / `spread` | 1 / 20 | 1–5 voices across `spread` cents, 1/√count normalised |
+| `pitch.{from,to,sweep,curve}` | — | Ratios of the note, via `pitchRamp` |
+| `filter.{type,slope,freq,Q,track}` | — | `_filterChain`; `track` = key follow, referenced to A2 = 110 Hz. **No sweep pair** — the cutoff sits still and the envelope moves it |
+| `filter.env.{octaves,attack,decay,sustain,release}` | — | ENV AMOUNT ±10 octaves, **bipolar** — negative closes from above. Written in cents on the cascade's `.detune`, where it sums with the LFO. Zero schedules nothing |
+| `fm.{type,ratio,index,attack,decay}` | — | One operator per unison stack, index in Hz as a multiple of the carrier's start |
+
+### Presets (24)
+
+The four core constructions — `layerBass80s`, `layerFilteredSaw`, `layerLeadBright`,
+`layerTwinkle` — then the songs' own voicings (`layerTitleBass`, `layerShopLead`,
+`layerFinaleStab`, …) minus the organs, which live on AdditiveSynth. The two that
+carried a written-in slapback are their base timbre; the strip's delay says it now.
+`layerDreamPad` demonstrates the two controls no engine recreation exercises: unison
+and the filter LFO.
+
+---
+
+## 5. Noise Presets (`_playNoise`)
 
 **File:** `src/engine/voices.js` lines ~390–430
 
@@ -193,7 +358,7 @@ Filtered noise bursts with an optional pitched body — the snare, clap, hat, an
 
 ---
 
-## 4. Drum Synth Presets (`_playDrum`)
+## 6. Drum Synth Presets (`_playDrum`)
 
 **File:** `src/engine/voices.js` lines ~444–550
 
@@ -219,7 +384,7 @@ The osc and noise sections are the original pair. The resonator and the cluster 
   │  6 × square @ inharmonic ratios ──→ Biquad×N ──→ Gain  │
   └────────────────────────────────┤                       │
                                    ↓                       │
-                        [Drive: tanh | fold | crush]       │
+                        [Drive: soft | fold | crush]       │
                                    ↓                       │
                         [Tone: lowpass after the shaper]   │
                                    ↓                       │
@@ -267,7 +432,7 @@ It takes a level and nothing else. Its shape is the engine's — 300 → 180 Hz 
 
 A `WaveShaperNode` applied to the summed sections, in one of three shapes (`v.shape`):
 
-- `'tanh'` (default) — a desk being pushed. **Square-law scaling**: `k = 1 + amount² × 24`, so the bottom half of the travel is warmth and near-square crunch lives in the top quarter
+- `'soft'` (default) — a desk being pushed. **Square-law scaling**: `k = 1 + amount² × 24`, so the bottom half of the travel is warmth and near-square crunch lives in the top quarter
 - `'fold'` — a sine folder: past full scale the transfer turns over rather than clipping, so more level makes a *different* sound instead of a louder one. Ring-modulator territory
 - `'crush'` — quantisation, 12 bits down to ~1.5 across the dial. Rounded rather than truncated so the curve stays odd-symmetric
 
@@ -354,7 +519,7 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 | `metal.filter` / `.Q` / `.slope` | `'highpass'` | Its shape, resonance and slope |
 | `metal.attack` / `.hold` / `.decay` / `.curve` / `.gain` | AHD | The cluster's own amp envelope |
 | `drive` | `0` | Drive amount, 0–1 |
-| `shape` | `'tanh'` | Shaper: `tanh` \| `fold` \| `crush` |
+| `shape` | `'soft'` | Shaper: `soft` \| `fold` \| `crush` |
 | `tone.freq` / `.type` / `.Q` | (none) | Filter after the shaper |
 | `humanize.gain` / `.pitch` / `.filter` | `0` | Per-hit variation, ± this fraction |
 | `taps[]` | `[0]` | Tap offsets in seconds |
@@ -423,7 +588,7 @@ That is why `= Engine Hat` says 93 ms where the engine block says 50, and why th
 
 ---
 
-## 5. How They're Dispatched
+## 7. How They're Dispatched
 
 The dispatch chain, from sequencer to speaker:
 
@@ -440,12 +605,20 @@ scheduleStep()                       audio.js ~line 1997
   │                │
   │                ├─ kind === 'noise'  → _playNoise(v, {...})
   │                ├─ kind === 'drum'   → _playDrum(v, {...})
-  │                ├─ synth === 'GameSynth' → _playGame(v, {...})
+  │                ├─ synth === 'GameSynth'     → _playGame(v, {...})
+  │                ├─ synth === 'AdditiveSynth' → _playAdditive(v, {...})
+  │                ├─ synth === 'LayerSynth'    → _playLayer(v, {...})
   │                └─ else → Tone pool (_pool() → triggerAttackRelease())
   │
   └─ If voiced() returned false → run the engine's hand-written
      oscillator code (bassFilteredSaw, drawbar organ, etc.)
 ```
+
+All **22 lanes** carry a voice seam — including `organSwoop`, `electroFx`, `vox`,
+`shout`, `gliss`, `sweeps`, and the two runs (`organGliss`, `keyGliss`), whose
+branches play a preset **eight times** at rising scale offsets, on the same per-call
+`delay` that `bassRepeat` has always used for its ghost note. A lane holding a marker
+rather than a pitch (`sweeps`, the kit) carries the note its voice is struck at.
 
 ### Gain Calculation
 
@@ -488,12 +661,12 @@ Each is **derived from the seeded buffer** rather than generated, so a colour is
 
 ---
 
-## 6. The Mixer Pipeline They Flow Through
+## 8. The Mixer Pipeline They Flow Through
 
-All three voice paths connect to the same channel strip nodes (`dry` and `wet`):
+All five native paths connect to the same channel strip nodes (`dry` and `wet`):
 
 ```
-GameSynth/Noise/Drum output ──→ dry (GainNode, stereo) ──→
+native synth output ──→ dry (GainNode, stereo) ──→
                                   vol (fader) →
                                   panner (StereoPanner) →
                                   EQ (3-band Biquad: lowshelf@250, peaking@1200, highshelf@4000) →
@@ -501,12 +674,12 @@ GameSynth/Noise/Drum output ──→ dry (GainNode, stereo) ──→
                                   stereo width (M/S matrix) →
                                   monitor → musicBus → songTrim → analyser → musicGain → master
 
-GameSynth/Noise/Drum output ──→ wet (GainNode) → delay send → echoBus → ... → songTrim
+native synth output ──→ wet (GainNode) → delay send → echoBus → ... → songTrim
 ```
 
 ---
 
-## 7. Comparison: GameSynth vs Noise vs Drum
+## 9. Comparison: GameSynth vs Noise vs Drum
 
 | Aspect | GameSynth | Noise | Drum Synth |
 |--------|-----------|-------|------------|
@@ -514,7 +687,7 @@ GameSynth/Noise/Drum output ──→ wet (GainNode) → delay send → echoBus 
 | **Sound sources** | 1 oscillator, **or** noise through a note-tracking bandpass | 1 noise burst + optional pitched body | 4 independent sources (osc, noise, ring, metal), each optional |
 | **Pitch envelope** | `sweep` semitones → the note, over `sweepTime`, shaped by `sweepCurve` | Body: `from`→`to` Hz | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); Noise/ring/metal: filter sweeps |
 | **Filter** | One bandpass, on the `noise` waveform only, centred on the note | Biquad cascade on the burst (`slope`) | Biquad cascade per section, plus a tone filter after the shaper |
-| **Drive** | None | None | WaveShaper: `tanh`, `fold` or `crush`, square-law scaled |
+| **Drive** | None | None | WaveShaper: `soft`, `fold` or `crush`, square-law scaled |
 | **Envelope** | AR only (attack, release) | Exponential decay only (instant attack) | Full AHD per section, `'exp'` or `'lin'` curve |
 | **Modulation** | Vibrato LFO shared by the chord, with an onset delay | None | None |
 | **Per-hit variation** | None | `humanize` + tap walks | `humanize` + tap walks |
@@ -523,6 +696,22 @@ GameSynth/Noise/Drum output ──→ wet (GainNode) → delay send → echoBus 
 | **Pooling** | Never | Never | Never |
 | **Preset count** | 4 | 15 | 13 |
 | **Location in `voices.js`** | `_playGame()` lines ~280 | `_playNoise()` lines ~390 | `_playDrum()` lines ~444 |
+
+### The pitched natives, side by side
+
+| Aspect | GameSynth | AdditiveSynth | LayerSynth |
+|--------|-----------|---------------|------------|
+| **Model** | one source | one stack of partials | up to three complete voices |
+| **The one thing it owns** | pitched noise + the arcade `sweep` | `stretch`/`damp` — organ to bell on two knobs | per-layer `len` — layers that outlive each other |
+| **Filter** | optional, one section | none (a partial IS a band) | optional per layer, with key follow |
+| **Pitch envelope** | `sweep` onto the note | whole registration bends together | per layer, plus glide |
+| **FM** | no | no | per layer |
+| **Unison** | no | no | 1–5 per layer |
+| **LFO** | vibrato only | vibrato only | vibrato + routable filter/level LFO |
+| **Drive** | no | no | the drum path's shaper |
+| **mono/glide** | ignored | ignored | **honoured** — the one native path |
+| **Taps / humanize** | no | yes | yes |
+| **Presets** | 6 + user | 8 | 24 |
 
 ### When to Use Which
 
@@ -534,16 +723,27 @@ GameSynth/Noise/Drum output ──→ wet (GainNode) → delay send → echoBus 
 
 - **Drum Synth**: When you want to design a drum from first principles — a kick with a sine drop and a noise click, a snare with a triangle knock and a noise band, a tom that's all pitch. The drive shaper adds warmth or crunch. This is the Microtonic model: two sources, each fully enveloped, summed and shaped.
 
+- **AdditiveSynth**: When the sound is a *spectrum you place by hand* — an organ
+  registration, a bell, glass. If you find yourself wanting a filter on it, you
+  probably wanted a partial pushed in instead; that is the additive move.
+
+- **LayerSynth**: When the sound is *parts stacked* — a body plus a sub plus an
+  octave, each with its own life. Every hand-written melodic voice in the engine is
+  this shape, and the `layer*` presets are those voices with the lid off. Reach for it
+  over a Tone class when the parts need different lengths, different filters, or a
+  dry sub under an echoed body.
+
 ---
 
-## 8. Key Files
+## 10. Key Files
 
 | File | Role |
 |------|------|
-| `src/engine/voices.js` | `VoiceRack` class — `_playGame()`, `_playNoise()`, `_playDrum()`, pool management, preset refresh/retire |
+| `src/engine/voices.js` | `VoiceRack` class — all five native play methods, `adsr`, `pitchRamp`, `_filterChain`, `_noise` colours, pool management, preset refresh/retire |
 | `src/engine/audio.js` | `AudioSys` class — sequencer, noise buffer creation, `playVoice()` dispatch, `previewNote()` |
-| `src/data/voices.js` | All preset catalogues: `NOISE`, `DRUM`, GameSynth entries in `TONE`, plus `VOICE_LANES`, `voiceGain()`, `laneTrim()` |
+| `src/data/voices.js` | All preset catalogues: `TONE` (Tone classes + the three native synths), `NOISE`, `DRUM`, the `USER_*` tables, `STARTER`, plus `VOICE_LANES` (22 seams), `voiceGain()`, `laneTrim()` |
 | `src/engine/mixer.js` | Channel strip construction — fader, pan, EQ, stereo width, effect chain, aux sends, master chain |
 | `tools/measure-voices.js` | Measures each preset at unity on its home lane — fills the `LEVELS` table used by `voiceGain()`, and `PEAKS` beside it |
 | `tools/lib/measure-voice.js` | The one definition of that measurement, shared with the desk's `/voice-save` |
 | `tools/mixer-entry.js` | The mixing desk UI — imports the engine, drives it via `createMixer`, `VoiceRack` |
+| `tests/pot-coverage.js` | No hidden parameters, no dead pots — the engine's `v.<key>` reads and the panel's controls must match, per path, both directions |

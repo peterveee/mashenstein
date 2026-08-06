@@ -167,6 +167,20 @@ assert(tableOf(userSource, 'testUserPreset') === 'USER_TONE'
   && !userLoaded.VOICES.testUserPreset?.factory,
   'a user preset is distinct from a library preset after it is loaded');
 
+// The layer stack: nested sections THREE deep (osc1.filter.env), which is the shape the
+// emitter's one-line-per-section rule has to keep readable — and survivable.
+const NEW_LAYER = {
+  label: 'Test Stack', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  note: 'A layered bass the test made up.',
+  layer: {
+    osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.006, decay: 0,
+      filter: { type: 'lowpass', freq: 320, Q: 1.15, track: 0,
+        env: { octaves: 1.845, attack: 0.001, decay: 0, sustain: 0 } } },
+    osc2: { type: 'sine', ratio: 0.5, gain: 0.22, len: 1.05, attack: 0.008, decay: 0 },
+    lfo: { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
+  },
+};
+
 let added = upsertPreset(SRC, 'testWobble', NEW_TONE, 'TONE');
 added = setMeasured(added, 'testWobble', { level: 0.0876543, peak: 0.876543 });
 added = upsertPreset(added, 'testClap', NEW_NOISE, 'NOISE');
@@ -175,6 +189,8 @@ added = upsertPreset(added, 'testThump', NEW_DRUM, 'DRUM');
 added = setMeasured(added, 'testThump', { level: 0.05, peak: 0.5 });
 added = upsertPreset(added, 'testOrgan', NEW_ADDITIVE, 'TONE');
 added = setMeasured(added, 'testOrgan', { level: 0.07, peak: 0.9 });
+added = upsertPreset(added, 'testStack', NEW_LAYER, 'TONE');
+added = setMeasured(added, 'testStack', { level: 0.06, peak: 0.6 });
 const grown = await load(added);
 
 assert(grown.VOICES.testWobble?.kind === 'tone' && grown.VOICES.testClap?.kind === 'noise'
@@ -199,6 +215,15 @@ assert(Array.isArray(grown.VOICES.testOrgan?.additive?.bars)
 assert(grown.VOICES.testOrgan?.additive?.perc?.ratio === 3
   && grown.VOICES.testOrgan?.additive?.stretch === 0.02,
 'an additive preset’s nested percussion and character controls survive the trip');
+// Three levels of nesting — a layer, the filter inside it, and that filter's envelope —
+// plus two zeroes that MEAN something (`track: 0` is key follow off, `decay: 0` is
+// "across the note"), so neither may be dropped as a default on the way through.
+assert(grown.VOICES.testStack?.layer?.osc1?.filter?.freq === 320
+  && grown.VOICES.testStack?.layer?.osc1?.filter?.track === 0
+  && grown.VOICES.testStack?.layer?.osc1?.filter?.env?.octaves === 1.845
+  && grown.VOICES.testStack?.layer?.osc1?.decay === 0
+  && grown.VOICES.testStack?.layer?.lfo?.target === 'filter',
+'a layer preset’s nested filter, its envelope, the LFO and meaningful zeroes survive the trip');
 // The measurement is the point of the whole save path: a preset whose level is the
 // placeholder is one that arrives at the wrong level on every lane. Both numbers,
 // because a save writes both and a save that wrote one would leave the two describing
@@ -215,7 +240,7 @@ assert(readMeasured(added, 'testClap').level === 0.02
 assert(readMeasured(added, 'noSuchPreset').level === 0
   && readMeasured(added, 'noSuchPreset').peak === 1,
 'and answers an unmeasured id with the defaults VOICES would have built it with');
-assert(Object.keys(grown.VOICES).length === Object.keys(VOICES).length + 4,
+assert(Object.keys(grown.VOICES).length === Object.keys(VOICES).length + 5,
   'and nothing else appeared or vanished');
 
 // Splicing one measurement must not disturb the other hundred — the blocks are
@@ -262,8 +287,8 @@ assert(Math.abs(editedLines) <= 2,
 // Round-tripping to byte identity is the strongest statement available: not "the
 // presets still load", but "the file is character-for-character the one we started
 // with", comments, blank lines, indentation and all.
-assert(deletePreset(deletePreset(deletePreset(deletePreset(added, 'testWobble'), 'testClap'), 'testThump'), 'testOrgan') === SRC,
-  'adding four presets and deleting them again restores the file byte for byte');
+assert(deletePreset(deletePreset(deletePreset(deletePreset(deletePreset(added, 'testWobble'), 'testClap'), 'testThump'), 'testOrgan'), 'testStack') === SRC,
+  'adding five presets and deleting them again restores the file byte for byte');
 
 // The last entry in a table is the case that catches a span starting at the id rather
 // than at the start of its line: the indentation left behind lands on the table's `};`.

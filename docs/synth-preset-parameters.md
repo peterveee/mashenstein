@@ -39,7 +39,6 @@ across every synth type and drum section:
 | **`TYPE`** | Every filter mode selector (LP/HP/BP/NOTCH) + drive shaper | TYPE / MODE |
 | **`SLOPE`** | Filter rolloff (-12/-24/-48 dB/oct) | SLOPE |
 | **`SWEEP TO`** | Every sweep destination frequency | (unified from FALLS TO / SWEEPS TO) |
-| **`CURVE`** | Filter envelope exponent (was CONTOUR) | CURVE |
 | **`TONE`** | Post-drive LPF frequency | TONE (TR-808/909 convention) |
 | **`STRIKE`** | Ring resonator excitation duration | (descriptive, no direct Roland equivalent) |
 
@@ -102,22 +101,17 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | Amp Env | `DECAY` | `envelope.decay` | 0.01 | 10 | 0.2 | s | |
 | Amp Env | `SUSTAIN` | `envelope.sustain` | 0 | 100 | 50 | % | |
 | Amp Env | `RELEASE` | `envelope.release` | 0.01 | 10 | 0.3 | s | |
-| Amp Env | `ATK CURVE` | `envelope.attackCurve` | — | — | linear | — | |
-| Amp Env | `DEC CURVE` | `envelope.decayCurve` | — | — | exponential | — | |
-| Amp Env | `REL CURVE` | `envelope.releaseCurve` | — | — | exponential | — | |
+| Amp Env | `ATK`/`DEC`/`REL` (one row) | `envelope.attackCurve`/`decayCurve`/`releaseCurve` | — | — | linear/exponential/exponential | — | linear or exponential only |
 | **Filter** | `TYPE` | `filter.type` | — | — | lowpass | — |
 | **Filter** | **`SLOPE`** | `filter.rolloff` | — | — | -12 | dB/oct | **⚠️ Should be ROLLOFF** |
 | **Filter** | `CUTOFF` | `filterEnvelope.baseFrequency` | 20 | 8000 | 200 | Hz |
 | **Filter** | `RESONANCE` | `filter.Q` | 0 | 20 | 1 | — | ✅ Standard |
 | **Filter** | `SWEEP` | `filterEnvelope.octaves` | 0 | 8 | 2 | oct | |
-| **Filter** | `CURVE` | `filterEnvelope.exponent` | 0.5 | 4 | 2 | — |
 | Filter Env | `ATTACK` | `filterEnvelope.attack` | 0.001 | 10 | 0.01 | s | |
 | Filter Env | `DECAY` | `filterEnvelope.decay` | 0.01 | 10 | 0.2 | s | |
 | Filter Env | `SUSTAIN` | `filterEnvelope.sustain` | 0 | 100 | 50 | % | |
 | Filter Env | `RELEASE` | `filterEnvelope.release` | 0.01 | 10 | 0.3 | s | |
-| Filter Env | `ATK CURVE` | `filterEnvelope.attackCurve` | — | — | linear | — | |
-| Filter Env | `DEC CURVE` | `filterEnvelope.decayCurve` | — | — | exponential | — | |
-| Filter Env | `REL CURVE` | `filterEnvelope.releaseCurve` | — | — | exponential | — | |
+| Filter Env | `ATK`/`DEC`/`REL` (one row) | `filterEnvelope.attackCurve`/`decayCurve`/`releaseCurve` | — | — | linear/exponential/exponential | — | linear or exponential only |
 
 ---
 
@@ -192,7 +186,8 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 | `STRETCH` | `$additive.stretch` | Inharmonic stretch |
 | `DAMP` | `$additive.damp` | High-frequency damping |
 | `PARTIALS` | `$additive.count` | |
-| `ATTACK`/`DECAY`/`SUSTAIN`/`RELEASE`/`CURVE` | `$additive.*` | |
+| `ATTACK`/`DECAY`/`SUSTAIN`/`RELEASE` | `$additive.*` | |
+| `ATK`/`DEC`/`REL` (one row) | `$additive.attackCurve`/`curve`/`releaseCurve` | linear or exponential only |
 | `FROM` | `$additive.pitch.from` | Pitch sweep start ratio |
 | `TO` | `$additive.pitch.to` | Pitch sweep end ratio |
 | `SWEEP` | `$additive.pitch.sweep` | Sweep duration |
@@ -311,7 +306,7 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 #### Drive Section
 | Label | Path | Min | Max | Default | Unit | ⚠️ |
 |---|---|---|---|---|---|---|
-| `TYPE` | `$shape` | — | — | tanh | — |
+| `SHAPE` | `$shape` | — | — | soft | — |
 | `DRIVE` | `$drive` | 0 | 1 | 0 | — | Drive amount |
 | `TONE` | `$tone.freq` | 200 | 16000 | 16000 | Hz |
 
@@ -382,7 +377,7 @@ All non-standard labels have been renamed to Roland/Korg conventions:
 | 4 | `FALLS TO` / `SWEEPS TO` (sweep destination) | **`SWEEP TO`** | Unified across all sections |
 | 5 | `FILTER` (metal HP cutoff) | **`CUTOFF`** | Same as every other filter frequency knob |
 | 6 | `FREQ` (filter frequency) | **`CUTOFF`** | Roland/Korg standard — applied to all filter freq knobs |
-| 7 | `CONTOUR` (filter envelope exponent) | **`CURVE`** | Standard term for envelope shape |
+| 7 | `CONTOUR` (filter envelope exponent) | **`CURVE`**, later dropped entirely | Non-standard control, unused by nearly every preset |
 | 8 | `SLOPE` | (kept) | Roland/Korg use SLOPE on digital gear (TR-8S, etc.) |
 | 9 | `TONE` (post-drive LPF) | (kept) | Roland TR-808/909 convention for post-drive filter |
 | 10 | `STRIKE` (ring excitation) | (kept) | Descriptive; no direct Roland equivalent |

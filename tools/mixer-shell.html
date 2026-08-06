@@ -2240,6 +2240,12 @@
      column of pots look like a wall. The knob's own -3px bottom margin was pulling the
      next row up into the same crowd, so it goes too. */
   #voiceedit .potrow { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  /* An explicit start line a partially-filled row cannot satisfy pushes the item to
+     the next row instead — the standard grid trick for "always begin a fresh row" —
+     so ATTACK, and the DECAY/SUSTAIN/RELEASE that auto-flow behind it, never split
+     2+2 across two rows with a gap down one side because an oscillator's own pots
+     left the cursor mid-row. See `numRow`'s `row.startRow`. */
+  #voiceedit .devgrid .potrow.rowstart { grid-column-start: 1; }
   #voiceedit .potrow .k { font-size: 9.5px; letter-spacing: .03em; color: var(--dim);
                           text-transform: uppercase; text-align: center; line-height: 1.15;
                           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2298,6 +2304,13 @@
      both classes so it out-specifies the centring rule above, which would otherwise
      park it in the middle two columns at half the width it needs. */
   #voiceedit .devgrid .segrow.segwide.segwave { grid-column: 1 / -1; }
+  /* Three picks sharing a `trio` tag (ATK/DEC/REL CURVE) — one full-width row, laid
+     out sideways instead of the usual label-over-pills column, so each third gets its
+     own mini label-over-pills stack rather than three rows stacked on top of each
+     other. */
+  #voiceedit .devgrid .segrow.segtrio { grid-column: 1 / -1; flex-direction: row; gap: 8px; }
+  #voiceedit .segtriocol { display: flex; flex-direction: column; align-items: stretch;
+                           gap: 5px; flex: 1; min-width: 0; }
   /* 9.5px AND 1.15, the same as a pot's name — both numbers, because both are part of the
      gap. A line-height of 1 gives the label no half-leading where the pot's 1.15 gives it
      0.7px top and bottom, so with the same `gap` the pills still sat closer to their name

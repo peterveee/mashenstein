@@ -7,7 +7,7 @@
 // the deployed current build remains split so a browser-only iPhone never
 // downloads or evaluates the game.
 import esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
@@ -124,6 +124,18 @@ const ICON_DIR = watch ? 'build/icons/dev' : 'build/icons';
 const iconFile = (size) => (watch ? `icon-dev-${size}.png` : `icon-${size}.png`);
 const MANIFEST = watch ? 'manifest-dev.webmanifest' : 'manifest.webmanifest';
 
+// Copy src over dest only when dest is missing or older, and say whether it did.
+// The finished things emit() carries along — icons, the manifest, the release
+// snapshots — change on the order of never, and a watch build re-emits on every
+// save. Writing them each time was harmless but LOOKED like the releases were
+// being touched; now the build only writes what is actually stale, and only
+// what was written gets a log line.
+function copyIfStale(src, dest) {
+  if (existsSync(dest) && statSync(dest).mtimeMs >= statSync(src).mtimeMs) return false;
+  copyFileSync(src, dest);
+  return true;
+}
+
 // Copy the served icon set into dist, returning the sizes that made it. A dev
 // build with no dev art falls back to the production render rather than
 // showing a broken image; a missing production size simply has no icon.
@@ -132,7 +144,7 @@ function copyIcons(dist) {
     let src = join(root, ICON_DIR, `icon-${size}.png`);
     if (watch && !existsSync(src)) src = join(root, `build/icons/icon-${size}.png`);
     if (!existsSync(src)) return false;
-    copyFileSync(src, join(dist, iconFile(size)));
+    copyIfStale(src, join(dist, iconFile(size)));
     return true;
   });
   if (icons.length < ICONS.length) {
@@ -144,7 +156,7 @@ function copyIcons(dist) {
 // What Android reads instead of the <meta> tags iOS reads. Written for dev
 // builds too, under its own name, so an installed dev copy gets the dev tile.
 function emitManifest(dist, icons) {
-  writeFileSync(join(dist, MANIFEST), JSON.stringify({
+  const body = JSON.stringify({
     name: 'MASHENSTEIN: The Unpluggening',
     short_name: 'MASHENSTEIN',
     description: 'A game stitched together from parts of other games.',
@@ -160,7 +172,12 @@ function emitManifest(dist, icons) {
       src: iconFile(size), sizes: `${size}x${size}`, type: 'image/png',
       purpose: size === 512 ? 'any maskable' : 'any',
     })),
-  }, null, 2));
+  }, null, 2);
+  // Content-compared rather than mtime-compared: the manifest is derived, so it
+  // has no source file to be older than. Same bytes, no write, no log line.
+  const dest = join(dist, MANIFEST);
+  if (existsSync(dest) && readFileSync(dest, 'utf8') === body) return;
+  writeFileSync(dest, body);
   console.log(`dist/${MANIFEST} written (${icons.map(iconFile).join(', ')})`);
 }
 
@@ -241,8 +258,11 @@ function emit(result) {
       }
       const destDir = join(root, 'dist', version);
       mkdirSync(destDir, { recursive: true });
-      copyFileSync(src, join(destDir, 'index.html'));
-      console.log(`dist/${version}/index.html written from releases/${filename}`);
+      // The snapshots are finished; a fresh dist gets them once and then the
+      // build has nothing to say about them. See copyIfStale.
+      if (copyIfStale(src, join(destDir, 'index.html'))) {
+        console.log(`dist/${version}/index.html written from releases/${filename}`);
+      }
     }
   }
 }

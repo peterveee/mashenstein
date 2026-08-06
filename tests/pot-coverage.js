@@ -101,7 +101,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 // LENGTH and FIXED LENGTH into the note, and scheduleStep folds TRIM into its gain.
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
-const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth');
+const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth' && s !== 'LayerSynth');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -117,11 +117,15 @@ const CASES = [
   { name: 'drum', voice: { kind: 'drum', noise: {}, osc: {}, taps: [0, 0.01] },
     methods: ['_playDrum'], oneShot: true },
   { name: 'GameSynth', voice: { synth: 'GameSynth', filter: {} }, methods: ['_playGame'] },
-  { name: 'AdditiveSynth', voice: { synth: 'AdditiveSynth', additive: {}, taps: [0, 0.01] },
+  { name: 'AdditiveSynth', voice: { synth: 'AdditiveSynth', additive: {} },
     methods: ['_playAdditive'] },
+  // No tap array: `_playLayer` has no tap loop, so there is no Taps card to gate into
+  // existence and a tap array here would only describe a panel that does not exist.
+  { name: 'LayerSynth', voice: { synth: 'LayerSynth', layer: {} },
+    methods: ['_playLayer'] },
   ...POOLED.map((synth) => ({
     name: synth,
-    voice: { synth, taps: [0, 0.01] },
+    voice: { synth },
     methods: ['play', '_pool', 'buildSpec', 'refresh'],
   })),
 ];
