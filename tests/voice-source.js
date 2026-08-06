@@ -177,6 +177,10 @@ const NEW_LAYER = {
       filter: { type: 'lowpass', freq: 320, Q: 1.15, track: 0,
         env: { octaves: 1.845, attack: 0.001, decay: 0, sustain: 0 } } },
     osc2: { type: 'sine', ratio: 0.5, gain: 0.22, len: 1.05, attack: 0.008, decay: 0 },
+    // A pulse with its width moving: a nested section three deep, on the layer that also
+    // carries a plain `width`, so the round trip has to keep both.
+    osc3: { type: 'pulse', width: 0.28, ratio: 2, gain: 0.3, attack: 0.01, decay: 0,
+      pwm: { type: 'triangle', rate: 0.37, depth: 0.62, delay: 0.2 } },
     lfo: { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
   },
   // The stage the layers sum into — a second root key beside `layer`, nested two deep,
@@ -236,6 +240,10 @@ assert(grown.VOICES.testStack?.layer?.osc1?.filter?.freq === 320
 // negative — a filter closing from above, which is exactly the value a "tidy up the
 // defaults" pass would be tempted to drop. A stack that came back without it would play
 // with its shared filter wide open and sound like a different preset.
+assert(grown.VOICES.testStack?.layer?.osc3?.width === 0.28
+  && grown.VOICES.testStack?.layer?.osc3?.pwm?.rate === 0.37
+  && grown.VOICES.testStack?.layer?.osc3?.pwm?.depth === 0.62,
+'a pulse keeps its width AND the section that moves it');
 assert(grown.VOICES.testStack?.global?.filter?.freq === 900
   && grown.VOICES.testStack?.global?.filter?.track === 0.5
   && grown.VOICES.testStack?.global?.filter?.env?.octaves === -2.5

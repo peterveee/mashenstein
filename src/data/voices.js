@@ -2297,12 +2297,12 @@ const TONE = {
       + 'opens across the note — the stack reads as one horn section rather than three '
       + 'oscillators. A two-semitone blip gives it its attack.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.7, attack: 0.02, decay: 0.5, sustain: 0.8,
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.46, attack: 0.02, decay: 0.5, sustain: 0.8,
         release: 0.12, unison: 2, spread: 11,
         pitch: { semitones: 2, decay: 0.04 } },
-      osc2: { type: 'sawtooth', ratio: 2, gain: 0.3, len: 0.9, attack: 0.03, decay: 0.5,
+      osc2: { type: 'sawtooth', ratio: 2, gain: 0.2, len: 0.9, attack: 0.03, decay: 0.5,
         sustain: 0.7, release: 0.1 },
-      osc3: { type: 'square', ratio: 0.5, gain: 0.28, attack: 0.02, decay: 0.6, sustain: 0.75,
+      osc3: { type: 'square', ratio: 0.5, gain: 0.19, attack: 0.02, decay: 0.6, sustain: 0.75,
         release: 0.12 },
     },
     global: {
@@ -2310,7 +2310,7 @@ const TONE = {
         env: { octaves: 3.4, attack: 0.03, decay: 0.45, sustain: 0.3, release: 0.12 } },
       vca: { attack: 0.02, decay: 0.4, sustain: 0.78, release: 0.14 },
     },
-    drive: 0.18, shape: 'soft' },
+    tone: { freq: 9500 } },
 
   // ---- BEST: what this synth can do that nothing else here can -----------------
   //
@@ -2393,7 +2393,10 @@ const TONE = {
       // A narrow pulse rather than a square: the even harmonics a 22% duty brings back are
       // most of what makes a talk box read as a REED rather than as a filtered synth.
       osc3: { type: 'pulse', width: 0.22, ratio: 0.5, gain: 0.28, attack: 0.006, decay: 0.5,
-        sustain: 0.7, release: 0.1 },
+        sustain: 0.7, release: 0.1,
+        // Slow and shallow: a talk box breathes because the player's mouth never holds
+        // still, and this is that, not an effect.
+        pwm: { type: 'sine', rate: 0.9, depth: 0.35, delay: 0.1 } },
       lfo: { type: 'triangle', rate: 2.6, depth: 0.42, target: 'filter', delay: 0.12 },
     },
     global: {
@@ -2435,12 +2438,14 @@ const TONE = {
       + 'one shared lowpass, so the vowel drifts between /o/ and /a/ across a held chord — '
       + 'unison on every layer, which is nine oscillators wide.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, attack: 1.1, decay: 2.5, sustain: 0.85,
-        release: 1.8, attackCurve: 'lin', unison: 3, spread: 18,
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.8, attack: 1.1, decay: 2.5,
+        sustain: 0.85, release: 1.8, attackCurve: 'lin', unison: 3, spread: 18,
+        pwm: { type: 'sine', rate: 0.21, depth: 0.6, delay: 0.8 },
         filter: { type: 'bandpass', slope: -12, freq: 520, Q: 5, track: 0,
           env: { octaves: 0.9, attack: 1.6, decay: 3, sustain: 0.6, release: 1.5 } } },
-      osc2: { type: 'sawtooth', ratio: 1, gain: 0.5, detune: 11, attack: 1.3, decay: 2.8,
-        sustain: 0.8, release: 2, attackCurve: 'lin', unison: 3, spread: 24,
+      osc2: { type: 'pulse', width: 0.43, ratio: 1, detune: 11, gain: 0.5, attack: 1.3,
+        decay: 2.8, sustain: 0.8, release: 2, attackCurve: 'lin', unison: 3, spread: 24,
+        pwm: { type: 'sine', rate: 0.32, depth: 0.55, delay: 0.8 },
         filter: { type: 'bandpass', slope: -12, freq: 1080, Q: 7, track: 0,
           env: { octaves: -0.8, attack: 1.8, decay: 3.2, sustain: 0.5, release: 1.5 } } },
       osc3: { type: 'triangle', ratio: 0.5, gain: 0.45, detune: -5, attack: 1, decay: 3,
@@ -2464,8 +2469,11 @@ const TONE = {
         release: 0.18, unison: 5, spread: 26 },
       osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5,
         sustain: 0.7, release: 0.18, unison: 5, spread: 34 },
-      osc3: { type: 'square', ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6, sustain: 0.85,
-        release: 0.16 },
+      osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6,
+        sustain: 0.85, release: 0.16,
+        // A square that drifts. Free width where a twelfth oscillator would have cost a
+        // whole voice, and under eleven saws it reads as depth rather than as movement.
+        pwm: { type: 'sine', rate: 0.42, depth: 0.5, delay: 0.1 } },
       lfo: { type: 'sine', rate: 5.4, depth: 0.12, target: 'filter', delay: 0.4 },
     },
     global: {
@@ -2565,6 +2573,243 @@ const TONE = {
     },
     drive: 0.3, shape: 'soft', tone: { freq: 4800 },
     mono: true, portamento: 0.05 },
+
+  // ---- BEST: the pulse-width family --------------------------------------------
+  //
+  // Ten more, all built on the one thing a table cannot do: a width that MOVES. Each
+  // layer carries its own PWM rate, which is the whole point — three widths drifting at
+  // 0.28, 0.37 and 0.19 Hz never line up, and that non-repeating interference is what a
+  // string machine is. Give all three the same rate and the stack breathes in lockstep,
+  // which sounds like one oscillator getting fatter rather than like a section.
+
+  bestPwmStrings: { label: 'BEST PWM Strings', category: 'Orch', synth: 'LayerSynth', dur: 8,
+    note: 'The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates '
+      + 'chosen not to line up — over a clean saw sub. The shimmer is the two widths '
+      + 'passing through each other, which is why they must never share a rate.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.5, attack: 0.5, decay: 2,
+        sustain: 0.85, release: 1.2, attackCurve: 'lin', unison: 2, spread: 9,
+        pwm: { type: 'sine', rate: 0.28, depth: 0.62, delay: 0 } },
+      osc2: { type: 'pulse', width: 0.46, ratio: 1, detune: -7, gain: 0.42, attack: 0.6,
+        decay: 2.2, sustain: 0.82, release: 1.3, attackCurve: 'lin', unison: 2, spread: 13,
+        pwm: { type: 'sine', rate: 0.37, depth: 0.58, delay: 0 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.2, attack: 0.45, decay: 2.4,
+        sustain: 0.9, release: 1.2, attackCurve: 'lin' },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 2400, Q: 0.8, track: 0.3,
+        env: { octaves: 1.4, attack: 0.8, decay: 2.4, sustain: 0.6, release: 1 } },
+      vca: { attack: 0.55, decay: 2.4, sustain: 0.9, release: 1.5, attackCurve: 'lin' },
+    },
+    vibrato: { depth: 0.07, rate: 4.2, delay: 1.4 } },
+
+  bestPwmBrass: { label: 'BEST PWM Brass', category: 'Orch', synth: 'LayerSynth', dur: 2.4,
+    note: 'The Jupiter brass stab: a pulse leaning on a saw, the width moving fast enough '
+      + 'to be heard inside a short note, and the shared filter opening three octaves as '
+      + 'the section leans in.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.42, ratio: 1, gain: 0.9, attack: 0.03, decay: 0.7,
+        sustain: 0.8, release: 0.25,
+        pwm: { type: 'sine', rate: 0.85, depth: 0.4, delay: 0.05 } },
+      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6, attack: 0.04, decay: 0.7,
+        sustain: 0.75, release: 0.25, unison: 2, spread: 11 },
+      osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.4, attack: 0.03, decay: 0.8,
+        sustain: 0.85, release: 0.22,
+        pwm: { type: 'sine', rate: 0.61, depth: 0.35, delay: 0.05 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 520, Q: 1.8, track: 0.5,
+        env: { octaves: 3.2, attack: 0.07, decay: 0.75, sustain: 0.45, release: 0.3 } },
+      vca: { attack: 0.025, decay: 0.8, sustain: 0.85, release: 0.32, attackCurve: 'lin' },
+    },
+    drive: 0.22, shape: 'soft', tone: { freq: 11000 },
+    vibrato: { depth: 0.11, rate: 5, delay: 0.5 } },
+
+  bestPwmPadWide: { label: 'BEST PWM Pad Wide', category: 'Pad', synth: 'LayerSynth', dur: 8,
+    note: 'Three pulses at three rates, all of them slow and deep, through one filter the '
+      + 'LFO also breathes. Nothing in it repeats inside a bar — the widest, least static '
+      + 'thing this synth can make.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.46, attack: 1.4, decay: 3,
+        sustain: 0.88, release: 2.2, attackCurve: 'lin', unison: 2, spread: 14,
+        pwm: { type: 'sine', rate: 0.19, depth: 0.7, delay: 0.4 } },
+      osc2: { type: 'pulse', width: 0.44, ratio: 1, detune: 9, gain: 0.36, attack: 1.6,
+        decay: 3.2, sustain: 0.85, release: 2.4, attackCurve: 'lin', unison: 2, spread: 22,
+        pwm: { type: 'triangle', rate: 0.27, depth: 0.66, delay: 0.6 } },
+      osc3: { type: 'pulse', width: 0.55, ratio: 0.5, detune: -6, gain: 0.29, attack: 1.2,
+        decay: 3.4, sustain: 0.9, release: 2.6, attackCurve: 'lin',
+        pwm: { type: 'sine', rate: 0.13, depth: 0.6, delay: 0.8 } },
+      lfo: { type: 'sine', rate: 0.16, depth: 0.4, target: 'filter', delay: 1.2 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 1600, Q: 1, track: 0.28,
+        env: { octaves: 2.4, attack: 2.2, decay: 4, sustain: 0.6, release: 2.2 } },
+      vca: { attack: 1.6, decay: 3.5, sustain: 0.92, release: 2.8, attackCurve: 'lin' },
+    },
+    vibrato: { depth: 0.06, rate: 3, delay: 2.2 } },
+
+  bestPwmBass: { label: 'BEST PWM Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+    note: 'A moving pulse body over a sine sub that is deliberately left ALONE — modulate '
+      + 'the sub and the weight goes with it. Everything above 100 Hz drifts; the bottom '
+      + 'octave does not move at all.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.38, ratio: 1, gain: 0.85, attack: 0.005, decay: 0.8,
+        sustain: 0.8, release: 0.14,
+        pwm: { type: 'sine', rate: 0.24, depth: 0.45, delay: 0 } },
+      osc2: { type: 'sine', ratio: 0.5, gain: 1, attack: 0.004, decay: 1, sustain: 0.95,
+        release: 0.14 },
+      osc3: { type: 'pulse', width: 0.28, ratio: 1, detune: -9, gain: 0.4, attack: 0.006,
+        decay: 0.7, sustain: 0.7, release: 0.12,
+        pwm: { type: 'sine', rate: 0.33, depth: 0.4, delay: 0 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 140, Q: 3.2, track: 0.4,
+        env: { octaves: 3.6, attack: 0.01, decay: 0.5, sustain: 0.3, release: 0.16 } },
+      vca: { attack: 0.005, decay: 1, sustain: 0.93, release: 0.18 },
+    },
+    drive: 0.3, shape: 'soft', tone: { freq: 5600 },
+    mono: true, portamento: 0.04 },
+
+  bestPwmGrowlBass: { label: 'BEST PWM Growl Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.6,
+    note: 'Fast, deep width modulation straight into the fold shaper. The width moving '
+      + 'under a folded signal is not a wobble on top of a sound, it is a different sound '
+      + 'every few milliseconds. Nasty on purpose.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.9, attack: 0.004, decay: 0.5,
+        sustain: 0.75, release: 0.12,
+        pwm: { type: 'triangle', rate: 5.2, depth: 0.75, delay: 0.02 } },
+      osc2: { type: 'pulse', width: 0.35, ratio: 1, detune: 11, gain: 0.6, attack: 0.005,
+        decay: 0.5, sustain: 0.7, release: 0.12,
+        pwm: { type: 'sine', rate: 3.7, depth: 0.6, delay: 0.02 } },
+      osc3: { type: 'sine', ratio: 0.5, gain: 0.85, attack: 0.004, decay: 0.8, sustain: 0.9,
+        release: 0.12 },
+      lfo: { type: 'sine', rate: 3.1, depth: 0.35, target: 'filter', delay: 0.05 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 160, Q: 4.6, track: 0.35,
+        env: { octaves: 3.8, attack: 0.006, decay: 0.35, sustain: 0.28, release: 0.14 } },
+      vca: { attack: 0.004, decay: 0.7, sustain: 0.88, release: 0.16 },
+    },
+    drive: 0.66, shape: 'fold', tone: { freq: 4200 },
+    mono: true, portamento: 0.03 },
+
+  bestPwmHollowLead: { label: 'BEST PWM Hollow Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.8,
+    note: 'The Oberheim hollow lead: two narrow pulses around a quarter duty, the width '
+      + 'moving just fast enough to shimmer without turning into a wobble. Mono with a '
+      + 'short glide, because this is a one-finger sound.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.26, ratio: 1, gain: 0.9, attack: 0.012, decay: 0.6,
+        sustain: 0.82, release: 0.2, unison: 2, spread: 10,
+        pwm: { type: 'sine', rate: 1.1, depth: 0.5, delay: 0.15 } },
+      osc2: { type: 'pulse', width: 0.3, ratio: 1, detune: -8, gain: 0.6, attack: 0.015,
+        decay: 0.6, sustain: 0.78, release: 0.2,
+        pwm: { type: 'sine', rate: 1.4, depth: 0.45, delay: 0.15 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.4, attack: 0.01, decay: 0.7,
+        sustain: 0.85, release: 0.2 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 800, Q: 2.4, track: 0.5,
+        env: { octaves: 3, attack: 0.02, decay: 0.6, sustain: 0.5, release: 0.25 } },
+      vca: { attack: 0.012, decay: 0.7, sustain: 0.88, release: 0.28 },
+    },
+    drive: 0.3, shape: 'soft', tone: { freq: 10000 },
+    vibrato: { depth: 0.15, rate: 5.4, delay: 0.4 },
+    mono: true, portamento: 0.06 },
+
+  bestPwmReedLead: { label: 'BEST PWM Reed Lead', category: 'Lead', synth: 'LayerSynth', dur: 2,
+    note: 'A 15% pulse through a static bandpass at 1.6 kHz — the formant trick and the '
+      + 'moving width in one patch. The resonance stays put while the duty walks under '
+      + 'it, which is what a double reed does.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.15, ratio: 1, gain: 1, attack: 0.02, decay: 0.6,
+        sustain: 0.85, release: 0.18,
+        pwm: { type: 'sine', rate: 0.75, depth: 0.5, delay: 0.2 },
+        filter: { type: 'bandpass', slope: -12, freq: 1600, Q: 8, track: 0,
+          env: { octaves: 0.8, attack: 0.04, decay: 0.6, sustain: 0.5, release: 0.2 } } },
+      osc2: { type: 'pulse', width: 0.22, ratio: 1, detune: 6, gain: 0.45, attack: 0.025,
+        decay: 0.6, sustain: 0.8, release: 0.18,
+        pwm: { type: 'sine', rate: 0.53, depth: 0.45, delay: 0.2 },
+        filter: { type: 'bandpass', slope: -12, freq: 700, Q: 6, track: 0 } },
+      osc3: { type: 'triangle', ratio: 0.5, gain: 0.3, attack: 0.02, decay: 0.7,
+        sustain: 0.8, release: 0.16 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 3200, Q: 0.9, track: 0.4,
+        env: { octaves: 1.6, attack: 0.05, decay: 0.7, sustain: 0.55, release: 0.2 } },
+      vca: { attack: 0.02, decay: 0.7, sustain: 0.88, release: 0.22 },
+    },
+    drive: 0.24, shape: 'soft', tone: { freq: 9000 },
+    vibrato: { depth: 0.17, rate: 5.6, delay: 0.35 } },
+
+  bestPwmClav: { label: 'BEST PWM Clav', category: 'Keys', synth: 'LayerSynth', dur: 1.2,
+    note: 'Percussive and narrow: a 15% pulse with a filter envelope that shuts almost as '
+      + 'fast as it opens. The PWM is shallow and quick — on a note this short it reads as '
+      + 'the string still ringing rather than as modulation.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.15, ratio: 1, gain: 1, attack: 0.002, decay: 0.28,
+        sustain: 0.25, release: 0.1,
+        pwm: { type: 'sine', rate: 2.4, depth: 0.3, delay: 0 } },
+      osc2: { type: 'pulse', width: 0.22, ratio: 2, len: 0.6, detune: 8, gain: 0.32,
+        attack: 0.002, decay: 0.18, sustain: 0.15, release: 0.08,
+        pwm: { type: 'sine', rate: 3.1, depth: 0.28, delay: 0 } },
+      osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.3, attack: 0.002, decay: 0.3,
+        sustain: 0.2, release: 0.08 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 700, Q: 3.6, track: 0.55,
+        env: { octaves: 3.4, attack: 0.003, decay: 0.22, sustain: 0.14, release: 0.1 } },
+      vca: { attack: 0.002, decay: 0.3, sustain: 0.3, release: 0.12 },
+    },
+    drive: 0.38, shape: 'soft', tone: { freq: 12000 } },
+
+  bestPwmChoir: { label: 'BEST PWM Choir', category: 'Orch', synth: 'LayerSynth', dur: 8,
+    note: 'The /a/ formants again, but over pulses whose widths drift instead of over '
+      + 'plain saws. The vowel is held by the filters; the moving source is what turns one '
+      + 'singer into a section, and it is doing the job the chorus pedal does on a Juno.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.9, attack: 0.4, decay: 1.4,
+        sustain: 0.85, release: 1, attackCurve: 'lin', unison: 2, spread: 8,
+        pwm: { type: 'sine', rate: 0.24, depth: 0.6, delay: 0.5 },
+        filter: { type: 'bandpass', slope: -12, freq: 800, Q: 7, track: 0 } },
+      osc2: { type: 'pulse', width: 0.44, ratio: 1, detune: 7, gain: 0.55, attack: 0.5,
+        decay: 1.6, sustain: 0.8, release: 1, attackCurve: 'lin',
+        pwm: { type: 'sine', rate: 0.35, depth: 0.55, delay: 0.5 },
+        filter: { type: 'bandpass', slope: -12, freq: 1150, Q: 9, track: 0 } },
+      osc3: { type: 'pulse', width: 0.55, ratio: 1, detune: -8, gain: 0.3, attack: 0.55,
+        decay: 1.8, sustain: 0.72, release: 1.1, attackCurve: 'lin',
+        pwm: { type: 'sine', rate: 0.17, depth: 0.5, delay: 0.5 },
+        filter: { type: 'bandpass', slope: -12, freq: 2900, Q: 11, track: 0 } },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 3600, Q: 0.7, track: 0.3,
+        env: { octaves: 1.2, attack: 0.7, decay: 1.8, sustain: 0.55, release: 1 } },
+      vca: { attack: 0.5, decay: 1.8, sustain: 0.88, release: 1.3, attackCurve: 'lin' },
+    },
+    drive: 0.08, shape: 'soft',
+    vibrato: { depth: 0.16, rate: 5, delay: 0.7 } },
+
+  bestPwmDrift: { label: 'BEST PWM Drift', category: 'FX', synth: 'LayerSynth', dur: 8,
+    note: 'Very slow, very deep, and detuned far enough that nothing in it lines up twice. '
+      + 'Three widths at 0.07, 0.11 and 0.05 Hz — periods of fourteen, nine and twenty '
+      + 'seconds — so the texture never repeats inside anything you would write.',
+    layer: {
+      osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.46, attack: 2, decay: 4,
+        sustain: 0.9, release: 3, attackCurve: 'lin', unison: 3, spread: 26,
+        pwm: { type: 'sine', rate: 0.07, depth: 0.8, delay: 0 } },
+      osc2: { type: 'pulse', width: 0.4, ratio: 1.5, detune: 14, gain: 0.29, attack: 2.4,
+        decay: 4.5, sustain: 0.85, release: 3.4, attackCurve: 'lin', unison: 2, spread: 34,
+        pwm: { type: 'triangle', rate: 0.11, depth: 0.75, delay: 0 } },
+      osc3: { type: 'pulse', width: 0.6, ratio: 0.5, detune: -17, gain: 0.32, attack: 1.8,
+        decay: 5, sustain: 0.92, release: 3.6, attackCurve: 'lin',
+        pwm: { type: 'sine', rate: 0.05, depth: 0.7, delay: 0 } },
+      lfo: { type: 'sine', rate: 0.09, depth: 0.55, target: 'filter', delay: 2 },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -12, freq: 1200, Q: 1.4, track: 0.25,
+        env: { octaves: 2.8, attack: 3, decay: 6, sustain: 0.6, release: 3 } },
+      vca: { attack: 2.2, decay: 5, sustain: 0.94, release: 3.6, attackCurve: 'lin' },
+    },
+    vibrato: { depth: 0.05, rate: 2.2, delay: 3 } },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -2738,11 +2983,14 @@ const LEVELS = {
   stAcidSquelch: 0.06367, stBreathPad: 0.119482, stTpLectric: 0.031326,
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
-  stAmHollow: 0.01455, layerBrassStack: 0.111849, bestChoirAah: 0.028551,
-  bestChoirOoh: 0.047919, bestVoiceBox70s: 0.090772, bestRobotVox: 0.076267,
-  bestVowelPad: 0.089612, bestMegaSawLead: 0.149379, bestHeroLead: 0.161303,
+  stAmHollow: 0.01455, layerBrassStack: 0.055873, bestChoirAah: 0.028551,
+  bestChoirOoh: 0.047919, bestVoiceBox70s: 0.112372, bestRobotVox: 0.076267,
+  bestVowelPad: 0.093127, bestMegaSawLead: 0.145406, bestHeroLead: 0.161303,
   bestScreamerLead: 0.132717, bestMonsterBass: 0.122239,
-  bestReeseBass: 0.151935
+  bestReeseBass: 0.151935, bestPwmStrings: 0.111146, bestPwmBrass: 0.175298,
+  bestPwmPadWide: 0.114587, bestPwmBass: 0.151505, bestPwmGrowlBass: 0.123668,
+  bestPwmHollowLead: 0.166614, bestPwmReedLead: 0.053483, bestPwmClav: 0.08838,
+  bestPwmChoir: 0.038426, bestPwmDrift: 0.123012
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -2830,10 +3078,13 @@ const PEAKS = {
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
-  layerBrassStack: 0.7, bestChoirAah: 0.2291, bestChoirOoh: 0.2792,
-  bestVoiceBox70s: 0.6839, bestRobotVox: 0.6322, bestVowelPad: 0.5237,
-  bestMegaSawLead: 0.8648, bestHeroLead: 0.8382, bestScreamerLead: 0.9931,
-  bestMonsterBass: 0.7453, bestReeseBass: 0.856
+  layerBrassStack: 0.7916, bestChoirAah: 0.2291, bestChoirOoh: 0.2792,
+  bestVoiceBox70s: 0.9051, bestRobotVox: 0.6322, bestVowelPad: 0.5769,
+  bestMegaSawLead: 0.8521, bestHeroLead: 0.8382, bestScreamerLead: 0.9931,
+  bestMonsterBass: 0.7453, bestReeseBass: 0.856, bestPwmStrings: 0.8356,
+  bestPwmBrass: 0.8444, bestPwmPadWide: 0.8127, bestPwmBass: 0.8703,
+  bestPwmGrowlBass: 0.9256, bestPwmHollowLead: 0.8795, bestPwmReedLead: 0.636,
+  bestPwmClav: 0.9564, bestPwmChoir: 0.2968, bestPwmDrift: 0.8443
 };
 
 /**

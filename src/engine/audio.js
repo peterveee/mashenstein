@@ -7,7 +7,7 @@ import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen,
 } from './lanes.js';
-import { VoiceRack } from './voices.js';
+import { VoiceRack, pulseTable } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
 import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
@@ -1218,15 +1218,10 @@ class AudioSys {
   // cached because a PeriodicWave is immutable and not cheap to build.
   pulseWave(duty = 0.25, harmonics = 24) {
     if (!this.ctx) return null;
-    const key = `p${duty}`;
-    this._waves = this._waves || {};
-    if (this._waves[key]) return this._waves[key];
-    const real = new Float32Array(harmonics + 1);
-    const imag = new Float32Array(harmonics + 1);
-    for (let n = 1; n <= harmonics; n++) imag[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
-    const w = this.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-    this._waves[key] = w;
-    return w;
+    // One implementation, in src/engine/voices.js, shared with the layer synth's `pulse`
+    // waveform. `sine: true` and 24 harmonics are what this cue was built on, and keeping
+    // both is what makes its render bit-identical to every WAV already on disk.
+    return pulseTable(this.ctx, duty, { harmonics, sine: true });
   }
 
   // The arcade death jingle: eleven rapid downward sweeps that each start and

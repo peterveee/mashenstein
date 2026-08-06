@@ -293,7 +293,9 @@ the others into the shared drive. It is LayerSynth's alone: no other panel has o
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `type` | osc1 `'square'`, others `'sine'` | `NATIVE_WAVES` **plus `pulse` and `noise`** — two waveforms an `OscillatorNode` does not have. `noise` is a band that follows the note; `pulse` is a `PeriodicWave` at any duty |
-| `width` | `0.5` | The pulse's duty, `0.05`–`0.95`. 50% **is** a square (its even harmonics null out exactly); narrower brings them back — 20% reedy, 10% nasal. Fixed for the note: a table cannot be swept |
+| `width` | `0.5` | The pulse's duty, `0.05`–`0.95`. 50% **is** a square (its even harmonics null out exactly); narrower brings them back — 20% reedy, 10% nasal |
+| `pwm.{type,rate,depth,delay}` | — | Moves `width`. Absent, the layer is one oscillator reading a table; present, it is **two sawtooths differenced through a delay line** — `pulse(t) = saw(t) − saw(t − duty/f)` — because a table cannot be swept. Zero DC by construction (both saws share a mean) and still band-limited. Depth is clamped to what the centre width leaves room for |
+| | | **Each layer has its own rate**, deliberately. One LFO driving three widths in lockstep is one oscillator getting fatter; three rates that never line up is a section. The panel seeds 0.4 / 0.53 / 0.31 Hz for exactly this reason |
 | `ratio` | 1 | × the note — 0.5 is the sub, 2 the octave. Drawn as INTERVAL, in semitones |
 | `detune` | 0 | Cents, static |
 | `gain` | 1 | Layer level. **Zero skips the layer entirely** |

@@ -164,6 +164,16 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
       assert(o.width >= 0.05 && o.width <= 0.95,
         `${v.id}: its pulse width is inside what the pot can reach`);
     }
+    if (o.pwm) {
+      // PWM builds a second oscillator and a delay per voice. On any wave but a pulse
+      // there is no width for it to move, so the section would be paid for and silent.
+      assert(o.type === 'pulse',
+        `${v.id}: only a pulse carries PWM — the width is the thing being modulated`);
+      assert((o.pwm.depth ?? 0) > 0 && (o.pwm.depth ?? 0) <= 1,
+        `${v.id}: its PWM depth is a fraction the pot can reach, and above zero`);
+      assert((o.pwm.rate ?? 0.4) >= 0.05 && (o.pwm.rate ?? 0.4) <= 12,
+        `${v.id}: its PWM rate is inside the pot's range`);
+    }
     assert((o.len ?? 1) > 0, `${v.id}: every layer length multiplier is above zero`);
     assert((o.unison ?? 1) >= 1 && (o.unison ?? 1) <= 5,
       `${v.id}: unison stays within the engine's cap`);
@@ -204,6 +214,18 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
     assert(s > 0 || (G.vca.decay ?? 0) > 0,
       `${v.id}: the shared envelope holds or falls over time — not instant silence`);
     assert(s >= 0 && s <= 1, `${v.id}: the shared envelope's sustain is a level`);
+  }
+}
+
+// A stack whose layers all modulate at the SAME rate is one oscillator getting fatter, not
+// a section. Every multi-PWM preset in the library has to disagree with itself.
+for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
+  const rates = ['osc1', 'osc2', 'osc3']
+    .map((k) => v.layer?.[k]?.pwm?.rate).filter((r) => r != null);
+  if (rates.length > 1) {
+    assert(new Set(rates).size === rates.length,
+      `${v.id}: its PWM rates are all different (${rates.join(', ')}) — matching rates`
+      + ' would make three widths move as one');
   }
 }
 

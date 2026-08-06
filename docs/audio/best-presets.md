@@ -42,6 +42,37 @@ per voice cannot say. The vowels below are the published formant tables.
 | **BEST Monster Bass** | bass | Sine sub, saw body, square an octave up for teeth — all arriving at one filter that slams 4.2 octaves open and shut per note. The growl is the **shared** envelope, not three that happen to agree |
 | **BEST Reese Bass** | bass | Two saws detuned ±14 cents so they beat against each other — the 1988 Reese — over a clean, undetuned sine sub, because a sub that beats is a sub that vanishes on a phone. The LFO walks the shared filter |
 
+## The PWM family
+
+Ten more, built on the one thing a wavetable cannot do: a width that **moves**. A
+`PeriodicWave` is immutable, so a modulated pulse is built the other way — `pulse(t) =
+saw(t) − saw(t − duty/f)`, two band-limited sawtooths differenced through a delay line
+whose time an LFO drives. Zero DC by construction, since both saws share a mean.
+
+**Each layer carries its own PWM rate**, and that is the whole design. One LFO driving
+three widths in lockstep is one oscillator getting fatter and thinner; three rates that
+never line up is a section. It is the Jupiter-8 answer rather than the Juno one — the Juno
+had a single DCO per voice and got its width from a chorus pedal instead.
+
+| Preset | Lane | What it is |
+| --- | --- | --- |
+| **BEST PWM Strings** | chords | The string machine. Two pulses drifting at 0.28 and 0.37 Hz over a clean saw sub — rates chosen not to line up |
+| **BEST PWM Brass** | chords | The Jupiter brass stab: pulse leaning on saw, width moving fast enough to hear inside a short note, filter opening three octaves |
+| **BEST PWM Pad Wide** | chords | Three pulses at three rates, all slow and deep, through a filter the LFO also breathes |
+| **BEST PWM Bass** | bass | A moving pulse body over a sine sub left deliberately **alone** — modulate the sub and the weight goes with it |
+| **BEST PWM Growl Bass** | bass | Fast deep width modulation into the fold shaper. A different sound every few milliseconds |
+| **BEST PWM Hollow Lead** | lead | The Oberheim hollow lead — two pulses near a quarter duty, shimmering rather than wobbling |
+| **BEST PWM Reed Lead** | lead | A 15% pulse through a static bandpass: the formant trick and the moving width in one patch |
+| **BEST PWM Clav** | lead | Percussive, narrow, with a filter envelope that shuts as fast as it opens |
+| **BEST PWM Choir** | chords | The /a/ formants over drifting pulses instead of plain saws — the source moving is what makes it a section |
+| **BEST PWM Drift** | lead | Periods of fourteen, nine and twenty seconds, so the texture never repeats inside anything you would write |
+
+Three of the original ten were revisited where PWM genuinely helped: **BEST Vowel Pad**
+(the formant source now drifts), **BEST Mega Saw Lead** (its square sub is a slow-PWM pulse
+— free width where a twelfth oscillator would have cost a voice), and **BEST Voice Box 70s**
+(slow PWM on the reed body, which is the breath a talk box has). The other seven are
+untouched.
+
 ## Notes
 
 - Every one is measured (`level`/`peak` in `src/data/voices.js`), so they arrive at the right
@@ -50,3 +81,11 @@ per voice cannot say. The vowels below are the published formant tables.
   reaching full scale by design, not clipping in play, where `voiceGain` scales it down.
 - The choirs measure quiet (level 0.029, 0.048) because bandpass formants throw most of a
   saw's energy away. That is what the measurement is for: they still arrive level.
+- **The pads carry no `drive`, on purpose.** A `WaveShaper` clamps at ±1, and the engine
+  normalises ENERGY — so a dense, low-crest stack needs enough gain to reach the lane's
+  target that its peaks run into the shaper and come back flat. The tell is a measured peak
+  pinned at exactly 0.7 (full scale through the 0.7 music bus). Lowering the layer gains
+  cannot fix it — the engine just turns it up again. Taking the drive off can, and did:
+  `BEST PWM Strings` went from a pinned 0.7 to an honest 0.836.
+  Nineteen **drum** presets sit on that same ceiling and are meant to: driving the shaper
+  is what an 808 kick IS. Do not "fix" those.

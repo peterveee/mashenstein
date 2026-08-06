@@ -618,6 +618,30 @@ const layerGroups = () => {
           (v) => (getAt(v, `$${p}.unison`) ?? 1) > 1),
       ],
     });
+    groups.push({
+      // Only a pulse has a width to move, so the card is not there on any other wave —
+      // the same rule the WIDTH pot itself follows. Four rows in the LFO card's order and
+      // the LFO card's units, because it IS an LFO; what makes it its own section rather
+      // than a third target on the shared one is that each layer gets its OWN rate and
+      // depth. Three widths breathing at three speeds is the Jupiter-8 answer, and it is
+      // most of the difference between a stack that shimmers and one that pulses in
+      // lockstep.
+      title: `Osc ${i} · PWM`, optional: `${p}.pwm`,
+      when: (v) => (i === 1 || sectionOn(v, p)) && getAt(v, `$${p}.type`) === 'pulse',
+      onTip: 'Hold the width still',
+      offTip: 'Move the width — the string-machine shimmer, and what a pulse is for',
+      rows: [
+        pick(`$${p}.pwm.type`, 'WAVE', NATIVE_WAVES, 'sine'),
+        n(`$${p}.pwm.rate`, 'RATE', 0.05, 12, 0.01, fixed(2), 0.4, 'Hz', null,
+          { scale: SLOW_END_SCALE,
+            tip: 'How fast the width moves. Under 1 Hz is the string-machine drift; give '
+              + 'each layer a slightly different rate and they never line up' }),
+        n(`$${p}.pwm.depth`, 'DEPTH', 0, 1, 0.01, fixed(2), 0.5, '', null,
+          { tip: 'How far the width swings either side of WIDTH — clamped to what the '
+              + 'centre leaves room for, so a 20% pulse cannot be driven to silence' }),
+        envTime(`$${p}.pwm.delay`, 'ONSET', 0, 0.01, secs, 0),
+      ],
+    });
     // Pitch and FM come before the filter because that is the order the signal takes:
     // what the oscillator is doing, then what bends it, then what filters the result,
     // then what shapes its level. The envelope is LAST for the same reason — it is the
@@ -1260,6 +1284,12 @@ const SECTION_DEFAULTS = {
   'layer.lfo': { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
   // The global stage. The filter seeds as a layer filter does, for the same reasons and
   // with the same two keys left out.
+  // Switching PWM on gives you the drift immediately: a slow rate and half depth is the
+  // string-machine setting, and a section that arrived at depth 0 would be a switch that
+  // appeared to do nothing.
+  'layer.osc1.pwm': { type: 'sine', rate: 0.4, depth: 0.5, delay: 0 },
+  'layer.osc2.pwm': { type: 'sine', rate: 0.53, depth: 0.5, delay: 0 },
+  'layer.osc3.pwm': { type: 'sine', rate: 0.31, depth: 0.5, delay: 0 },
   'global.filter': { type: 'lowpass', freq: 1150, Q: 1.15 },
   // The VCA seeds NEUTRAL rather than from `adsr`'s own fallbacks, which is the one place
   // that rule would do harm: those fallbacks are `sustain: 0` with `decay: 0`, so a stack

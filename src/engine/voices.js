@@ -105,7 +105,8 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? type : fallback);
 
 /**
- * A PULSE of any width, as a PeriodicWave — the fifth waveform a layer can be.
+ * A PULSE of any width, as a PeriodicWave — the fifth waveform a layer can be, and the
+ * arcade cue's 25% timbre, from one piece of arithmetic.
  *
  * `OscillatorNode` has four types and none of them is this: a square is the one pulse it
  * can make, at exactly 50%. Narrow the duty and the even harmonics come back in — 20% is
@@ -115,45 +116,41 @@ const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? t
  * Built from the rectangle's own Fourier series rather than by subtracting two saws: one
  * oscillator instead of two, no delay line to keep in tune, and the browser band-limits a
  * PeriodicWave per octave so a narrow pulse at the top of the keyboard does not alias into
- * a chorus of wrong notes. The DC term is dropped — a 20% pulse is asymmetric about zero,
- * and its offset would ride through the filter and the drive as a click at note-on.
+ * a chorus of wrong notes. At d = 0.5 every even term vanishes and this IS a square, which
+ * is the check that the arithmetic is right. The DC term is dropped — a 20% pulse is
+ * asymmetric about zero and its offset would ride through the drive as a click at note-on.
  *
- * The cost is that WIDTH is fixed for the life of a note: a table cannot be swept. That is
- * the honest trade for one node, and a per-note width still reaches everything a preset
- * would ask for it — the sweeping kind needs two saws and a delay, and can come later
- * without moving this.
+ * `sine` picks which phase convention the terms are written in. It exists for one reason:
+ * the arcade cue was built on the sine form and normalisation makes the two identical in
+ * amplitude but not in phase, so its call site keeps `sine: true` and its renders stay
+ * bit-identical. New callers take the cosine form.
  *
- * Cached per rounded width: a stack of five unison voices asks for the identical table
- * five times, and two renders of the same song must build the same one.
+ * The cost is that WIDTH is fixed for the life of a note: a table cannot be swept. Sweeping
+ * it is what `pwm` is for — see the two-saw build in `_playLayer` — and a layer with no
+ * `pwm` block still comes through here, for one node instead of three.
+ *
+ * Cached PER CONTEXT, not per sample rate: a PeriodicWave belongs to the context that made
+ * it, and an offline render sharing a live context's table is not a cache hit but a bug.
  */
-const PULSE_HARMONICS = 64;
-const pulseWaves = new Map();
-function pulseWave(ctx, width = 0.5) {
-  const d = Math.min(0.95, Math.max(0.05, width));
-  const key = `${ctx.sampleRate}|${d.toFixed(3)}`;
-  const hit = pulseWaves.get(key);
+const pulseTables = new WeakMap();
+export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {}) {
+  const d = Math.min(0.95, Math.max(0.05, duty));
+  let perCtx = pulseTables.get(ctx);
+  if (!perCtx) { perCtx = new Map(); pulseTables.set(ctx, perCtx); }
+  const key = `${d.toFixed(4)}|${harmonics}|${sine ? 's' : 'c'}`;
+  const hit = perCtx.get(key);
   if (hit) return hit;
-  const real = new Float32Array(PULSE_HARMONICS + 1);
-  const imag = new Float32Array(PULSE_HARMONICS + 1);
-  for (let n = 1; n <= PULSE_HARMONICS; n++) {
-    // The rectangle of duty d, bipolar and DC-free: 4/(nπ) · sin(nπd) on the cosine terms.
-    // At d = 0.5 every even term vanishes and this IS a square, which is the check that
-    // the arithmetic is right.
-    real[n] = (4 / (n * Math.PI)) * Math.sin(n * Math.PI * d);
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+  for (let n = 1; n <= harmonics; n++) {
+    const a = ((sine ? 2 : 4) / (n * Math.PI)) * Math.sin(n * Math.PI * d);
+    if (sine) imag[n] = a; else real[n] = a;
   }
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-  pulseWaves.set(key, wave);
+  perCtx.set(key, wave);
   return wave;
 }
 
-/**
- * How narrow the band is that gives GameSynth's `noise` waveform its pitch.
- *
- * Named because `_playGame` uses it twice and the two uses must agree: it sets the
- * filter, and it is also what the level makeup is derived from — a Q read from one
- * place and compensated for from another is a voice whose loudness drifts the moment
- * either moves.
- */
 const NOISE_Q = 2;
 
 /**
@@ -1854,12 +1851,53 @@ export class VoiceRack {
           const makeup = isNoise
             ? Math.sqrt(nyquist / Math.max(20, target / NOISE_Q)) : 1;
           let fmSpread = null;
+
+          // ---- pulse width modulation ------------------------------------------
+          //
+          // A PeriodicWave cannot be swept, so a MOVING width is built the other way:
+          // `pulse(t) = saw(t) − saw(t − Δ)` with `Δ = duty / frequency`. Delay time is
+          // an AudioParam, so an LFO reaches it — and two band-limited saws differenced
+          // are still band-limited, with EXACTLY zero DC because both have the same mean.
+          // Two oscillators instead of one is the price, and it is only paid by a layer
+          // that actually asks to move.
+          //
+          // The modulator is built per NOTE rather than per note-on, because its depth is
+          // in SECONDS and seconds-per-duty depends on the note — the same reason
+          // `_playGame` needs a gain per note to put vibrato in hertz on a tracking
+          // bandpass. Every one starts at the same instant with the same phase, so a
+          // chord's notes still breathe together: this costs nodes, not a sound.
+          const pwm = spec.type === 'pulse' && spec.pwm && (spec.pwm.depth ?? 0) > 0
+            ? spec.pwm : null;
+          const wCentre = Math.min(0.95, Math.max(0.05, spec.width ?? 0.5));
+          let pwmSecs = null;
+          if (pwm) {
+            const lfo = ctx.createOscillator();
+            lfo.type = nativeWave(pwm.type, 'sine');
+            lfo.frequency.setValueAtTime(Math.max(0.01, pwm.rate ?? 0.4), t);
+            const env = ctx.createGain();
+            env.gain.setValueAtTime(0, t);
+            env.gain.linearRampToValueAtTime(1, t + Math.max(0.001, pwm.delay || 0.001));
+            // How far the duty may swing before it would leave the range a pulse HAS: at
+            // a 20% centre it can fall no further than 15 points, and asking for more is
+            // asking for a duty of zero, which is silence rather than a wider sound.
+            const room = Math.min(wCentre - 0.05, 0.95 - wCentre);
+            const swing = Math.min(room, Math.min(1, pwm.depth) * 0.45);
+            pwmSecs = ctx.createGain();
+            pwmSecs.gain.setValueAtTime(swing / target, t);
+            lfo.connect(env); env.connect(pwmSecs);
+            lfo.start(t); lfo.stop(off + 0.01);
+          }
+
           for (let u = 0; u < count; u++) {
             // The source and the params that carry its pitch and detune — an
-            // oscillator's own, or the bandpass that gives the noise its. A biquad's
-            // `.detune` is cents like an oscillator's, so the spread and the vibrato
-            // land on either without conversion.
-            let o, out, pitch, det;
+            // oscillator's own, the bandpass that gives the noise its, or BOTH saws of a
+            // modulated pulse. A biquad's `.detune` is cents like an oscillator's, so the
+            // spread and the vibrato land on any of them without conversion.
+            let out;
+            const sources = [];        // everything that needs start() and stop()
+            const pitches = [];        // every frequency param the note must be written to
+            const dets = [];           // every detune param the spread and vibrato reach
+            let o;
             if (isNoise) {
               o = ctx.createBufferSource();
               o.buffer = this.noiseBuf;
@@ -1871,16 +1909,36 @@ export class VoiceRack {
               bp.type = 'bandpass';
               bp.Q.setValueAtTime(NOISE_Q, t);
               o.connect(bp);
-              out = bp; pitch = bp.frequency; det = bp.detune;
+              out = bp; sources.push(o);
+              pitches.push(bp.frequency); dets.push(bp.detune);
+            } else if (pwm) {
+              // Two saws, one delayed by the duty and subtracted. Both take the note, the
+              // detune, the spread, the pitch envelope and the FM together — they are one
+              // oscillator wearing two nodes, and anything written to only one of them
+              // would come out as a phasing artefact rather than as a pulse.
+              const a = ctx.createOscillator(); a.type = 'sawtooth';
+              const b = ctx.createOscillator(); b.type = 'sawtooth';
+              // 0.25s is four seconds' worth of headroom at the lowest note anything here
+              // can play; the delay only ever holds one cycle's fraction.
+              const line = ctx.createDelay(0.25);
+              const inv = ctx.createGain(); inv.gain.value = -1;
+              const sum = ctx.createGain();
+              a.connect(sum);
+              b.connect(line); line.connect(inv); inv.connect(sum);
+              line.delayTime.setValueAtTime(wCentre / target, t);
+              pwmSecs.connect(line.delayTime);
+              out = sum; sources.push(a, b);
+              pitches.push(a.frequency, b.frequency); dets.push(a.detune, b.detune);
             } else {
               o = ctx.createOscillator();
               // `pulse` is the fifth waveform: a table rather than a type, at whatever
               // duty the layer asks for. Everything downstream — detune, unison, the
               // pitch envelope, FM, the filter — is identical to an oscillator's,
               // because it IS one.
-              if (spec.type === 'pulse') o.setPeriodicWave(pulseWave(ctx, spec.width ?? 0.5));
+              if (spec.type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
               else o.type = nativeWave(spec.type, 'square');
-              out = o; pitch = o.frequency; det = o.detune;
+              out = o; sources.push(o);
+              pitches.push(o.frequency); dets.push(o.detune);
             }
             const cents = (spec.detune ?? 0)
               + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
@@ -1889,21 +1947,23 @@ export class VoiceRack {
             // DETUNE written before it. Vibrato is a connected node, so it sums with
             // either and needs no such care.
             if (spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
-              pitchEnv([det], spec.pitch, t, end, cents);
-            } else if (cents) det.setValueAtTime(cents, t);
-            if (vibCents) vibCents.connect(det);
+              pitchEnv(dets, spec.pitch, t, end, cents);
+            } else if (cents) for (const d of dets) d.setValueAtTime(cents, t);
+            if (vibCents) for (const d of dets) vibCents.connect(d);
 
             // Pitch and glide no longer compete. The envelope is cents on `.detune` and
             // the glide is hertz on `.frequency`, so a preset can do both: arrive from
             // the previous note AND bend on the way, which is a portamento lead with a
             // scoop and was unreachable while the two shared one param.
-            if (glideFrom) {
-              // A glide stays 'exp' — constant semitones per second is what a
-              // portamento IS.
-              pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
-              pitchRamp(pitch, target, t, Math.max(0.001, v.portamento));
-            } else {
-              pitch.setValueAtTime(target, t);
+            for (const pitch of pitches) {
+              if (glideFrom) {
+                // A glide stays 'exp' — constant semitones per second is what a
+                // portamento IS.
+                pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
+                pitchRamp(pitch, target, t, Math.max(0.001, v.portamento));
+              } else {
+                pitch.setValueAtTime(target, t);
+              }
             }
 
             // One modulator for the whole unison stack, mirroring `_playDrum`'s
@@ -1924,14 +1984,14 @@ export class VoiceRack {
                 mod.connect(fmSpread);
                 mod.start(t); mod.stop(off + 0.01);
               }
-              fmSpread.connect(pitch);
+              for (const pitch of pitches) fmSpread.connect(pitch);
             }
 
             if (norm * makeup !== 1) {
               const ng = ctx.createGain(); ng.gain.value = norm * makeup;
               out.connect(ng); ng.connect(dest);
             } else out.connect(dest);
-            o.start(t); o.stop(off + 0.01);
+            for (const src of sources) { src.start(t); src.stop(off + 0.01); }
           }
         }
       });
