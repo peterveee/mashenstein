@@ -17,12 +17,13 @@ import { listTracks, resolveTrack } from '../tools/lib/tracks.js';
 import { renderArrangementsFile } from '../tools/lib/arrangements-source.js';
 import {
   ARRANGEMENTS, applyArrangement, resolveSection, expandOrder, orderOf, arrangementIssues, bpmOf,
+  swingOf, SWING_MAX, SWING_STRAIGHT,
 } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
-  compactSections, patternStarts, barCount, setTempo,
+  compactSections, patternStarts, barCount, setTempo, setSwing,
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
@@ -735,6 +736,83 @@ assert(arrangementIssues(plumber, { bpm: 0 }, LANE_KEYS).length > 0
 
 survivesSave(plumber, 'plumber', setTempo(draftOf(plumber, null), 104),
   'a song played at a tempo it was not written at');
+
+// ---- swing: the feel a song is played with ------------------------------------
+//
+// The tempo's twin, and it rides the same rails, so the assertions are the same ones:
+// it must survive another edit, a save, and a reopen, and it must leave no trace at all
+// when the drag lands back on straight. What it adds over the tempo is a claim about the
+// ARITHMETIC — a swing that is a third of a sixteenth at 66.7% and nothing whatsoever at
+// 50 — because that number is the whole feature and a plausible-looking wrong one would
+// still sound like something.
+
+const swungOnly = entryOf(plumber, setSwing(draftOf(plumber, null), 62));
+assert(json(swungOnly) === json({ swing: 62 }),
+  'a song whose only change is its swing writes the swing alone');
+assert(applyArrangement(plumber, 'plumber', { plumber: swungOnly }).swing === 62,
+  'and the song plays with it');
+assert(applyArrangement(plumber, 'plumber', { plumber: swungOnly }).order === plumber.order,
+  'while its order is untouched — a shuffle is not an arrangement rewrite');
+assert(swingOf(plumber, 'plumber', { plumber: swungOnly }) === 62
+  && swingOf(plumber, 'plumber', {}) === SWING_STRAIGHT,
+  'swingOf answers for the callers that only hold one number — the MIDI export above all');
+
+assert(applyArrangement(plumber, 'plumber', { plumber: {} }) === plumber,
+  'an entry that says nothing hands back the very same bank — what makes an empty '
+  + 'ARRANGEMENTS provably a no-op, and the premise the null test rests on');
+
+assert(entryOf(plumber, setSwing(draftOf(plumber, null), SWING_STRAIGHT)) === null,
+  'a drag that lands back on straight is not a decision and leaves no entry');
+assert(entryOf(plumber, setSwing(draftOf(plumber, swungOnly), null)) === null,
+  'and clicking the readout to go back to straight clears it out again');
+
+// The same trap the tempo has: `copy` rebuilds a draft from the keys it names, so a
+// swing carried on the draft and not in `copy` would be dropped by the next mute.
+const swingAfterBarEdit = entryOf(plumber,
+  setLanesOff(draftOf(plumber, swungOnly), 2, 3, ['kick'], true));
+assert(swingAfterBarEdit.swing === 62 && swingAfterBarEdit.order.length,
+  'a bar edit made after a swing change keeps the swing AND the bars');
+const swingAfterNoteEdit = entryOf(plumber,
+  writeBarNotes(plumber, draftOf(plumber, swingAfterBarEdit), 3, 'kick', ON16));
+assert(swingAfterNoteEdit.swing === 62 && swingAfterNoteEdit.sections.length,
+  'and so does a note edit, which goes through compaction on the way out');
+
+const bothOnly = entryOf(plumber, setSwing(setTempo(draftOf(plumber, null), 104), 66));
+assert(json(bothOnly) === json({ bpm: 104, swing: 66 }),
+  'a tempo and a swing together are still one entry and still no order');
+
+assert(draftOf(plumber, swingAfterNoteEdit).swing === 62,
+  'reopening the song reads the swing back off the entry');
+assert(draftOf(plumber, null).swing === null,
+  'while a song nobody swung has no swing of its own to state — null, not 50, so '
+  + 'entryOf can tell it apart from one dragged back to straight');
+
+assert(arrangementIssues(plumber, { swing: 62 }, LANE_KEYS).length === 0,
+  'a swing-only entry is playable');
+assert(arrangementIssues(plumber, { swing: SWING_STRAIGHT }, LANE_KEYS).length === 0
+  && arrangementIssues(plumber, { swing: SWING_MAX }, LANE_KEYS).length === 0,
+  'and both ends of the range are in it');
+assert(arrangementIssues(plumber, { swing: 40 }, LANE_KEYS).length > 0
+  && arrangementIssues(plumber, { swing: 90 }, LANE_KEYS).length > 0
+  && arrangementIssues(plumber, { swing: 'shuffle' }, LANE_KEYS).length > 0,
+  'a swing before the beat or past the dotted shuffle is refused rather than played');
+
+assert(setSwing(draftOf(plumber, null), 20).swing === SWING_STRAIGHT
+  && setSwing(draftOf(plumber, null), 200).swing === SWING_MAX,
+  'a value restored from a snapshot or typed in arrives somewhere the engine can mean');
+
+// THE ARITHMETIC. `swing` is the on-grid sixteenth's share of its pair, so the odd one
+// moves by spb*(pct-50)/50 — a third of a sixteenth at the triplet shuffle, half of one
+// at the dotted, and exactly nothing at straight. This is the engine's expression, kept
+// here so a change to it has to be a deliberate one.
+const swingShift = (pct, spb) => spb * (pct - 50) / 50;
+assert(Math.abs(swingShift(200 / 3, 1) - 1 / 3) < 1e-12,
+  'at 66.7% the off-beat sixteenth is a third of a sixteenth late — a true 2:1 triplet');
+assert(swingShift(SWING_STRAIGHT, 1) === 0 && swingShift(SWING_MAX, 1) === 0.5,
+  'straight is exactly zero — not nearly — and the dotted shuffle is half a sixteenth');
+
+survivesSave(plumber, 'plumber', setSwing(draftOf(plumber, null), 62),
+  'a song played with a swing it was not written with');
 
 // ---- the file the desk writes ------------------------------------------------
 //

@@ -388,6 +388,7 @@ class AudioSys {
     this.launchBuffers = {};
     // sequencer
     this.bpm = 112;
+    this.swing = 0;        // 0 or 50 = straight; see the swing term in scheduleStep
     this.step = 0;
     this.nextTime = 0;
     this.timer = null;
@@ -2002,6 +2003,10 @@ class AudioSys {
       // follows delayDivision, and grows the line if this bpm makes it a long one
       if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
     }
+    // Unconditional, unlike the tempo above: a song with no swing has to REPLACE the
+    // swing of whatever was playing before it, and `0` would fail a truthiness guard and
+    // leave the shuffle on. Nothing tempo-synced follows it, so there is nothing to rebuild.
+    this.swing = bank?.swing || 0;
   }
 
   /**
@@ -2122,6 +2127,14 @@ class AudioSys {
         if (this.delay) this.growDelayLine(this.delayTimeSeconds()).delayTime.value = this.delayTimeSeconds();
       }
     }
+    // The swing the same way round, and the `??` matters as much as it does above: a
+    // patch that drops its swing key is a song dragged back to straight, and it has to
+    // fall through to the song's own rather than keep the last shuffle set on the desk.
+    // Seamless by construction — nothing here is tempo-synced and `step` and `nextTime`
+    // are untouched, so a drag across the range re-feels the music without a seam in it.
+    const swing = patch?.swing ?? source.swing ?? 0;
+    if (swing) next.swing = swing; else delete next.swing;
+    this.swing = swing;
     this.bank = next;
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
@@ -2832,10 +2845,42 @@ class AudioSys {
     {
       if (!this.applyPendingStep()) this.applyPendingLoop();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
+      // SWING. The song is written on the grid; this is how hard it is PLAYED off it.
+      // The number is the on-grid sixteenth's share of its pair, as a percentage: 50 is
+      // straight, ~58 is where most funk and hip-hop actually sits, 66.7 is the triplet
+      // shuffle (exactly 2:1), 75 the dotted one. A pair lasts 2*spb, so the second note
+      // of it lands at 2*spb*(pct/100) instead of at spb — a shift of spb*(pct-50)/50.
+      //
+      // Only the ODD sixteenth moves. The on-grid note stays exactly where it always
+      // was, which is the whole reason one number can be applied to every lane at once:
+      // downbeats, bar lines and any pad or chord sitting on a beat do not shift at all,
+      // and the groove is entirely in the notes between them.
+      //
+      // This is an offset on the NOTE, never on the clock. `nextTime` at the bottom of
+      // this method still advances by a flat spb, because the loop wrap, the bar plan,
+      // songBeat(), the beat listeners and the desk's playhead all count steps off it —
+      // a sequencer that swung its own clock would drag every one of them along with it,
+      // and the song would come apart rather than groove.
+      //
+      // `this.step` rather than `s`: swing follows the transport, not whichever half of
+      // whichever section this bar happens to name. The two agree — the section index
+      // differs from the transport by a multiple of 16 — but the transport means it.
+      //
+      // Zero when off, and zero is exact: `x + 0` is x for every finite float, so a song
+      // nobody has swung renders the samples it always did. tests/null-test.js checks
+      // that claim by comparing renders sample for sample.
+      const swingOffset = this.swing && (this.step % 2)
+        ? spb * (this.swing - 50) / 50
+        : 0;
       // Rhythmic insert effects share the sequencer's clock. Schedule their gain
       // envelopes before the notes for this sixteenth, using the same audio timestamp
       // that every voice below receives. This keeps straight, dotted and triplet gates
       // aligned in offline renders and after live loop/jump changes.
+      //
+      // `nextTime`, not the swung one, and on purpose: a gate is a rhythm laid OVER the
+      // song rather than a note in it, and a straight gate under a swung part is the
+      // arrangement anybody reaching for both actually wants. The tempo-synced delay
+      // (delayTimeSeconds) stays straight for the same reason.
       this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo);
       // Song form: bank.sections is a list of partial banks (lane overrides) and
       // bank.order the sequence to play them in — so a track can progress
@@ -2909,7 +2954,11 @@ class AudioSys {
           .map((L) => L.key),
       ];
       if (percussionKeys.some((key) => b[key] && b[key][s])) {
-        this._percPending.push(this.nextTime);
+        // Swung, so a shuffled hat FLASHES shuffled rather than on a grid the song is
+        // no longer playing to. The lane's own `offset` nudge is deliberately left out:
+        // this queue is one time for the whole kit, and swing is the only part of the
+        // answer that every percussion lane shares.
+        this._percPending.push(this.nextTime + swingOffset);
         // Only _readPercussion drains this, and it only runs while the jukebox
         // visualizer is up — where the sequencer runs for the whole game. Aged
         // out by playhead rather than capped by count, so gameplay stays bounded
@@ -2930,7 +2979,7 @@ class AudioSys {
       let dry = this.musicBus, wet = this.echoBus;
       let laneOffset = 0;
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
-      const scheduleAt = (delta = 0) => this.nextTime + laneOffset + delta;
+      const scheduleAt = (delta = 0) => this.nextTime + laneOffset + swingOffset + delta;
       const lane = (key) => {
         // Preview notes use their own synth timeline, but they still belong to the
         // selected channel. Keep them on that channel's live strip so its inserts,

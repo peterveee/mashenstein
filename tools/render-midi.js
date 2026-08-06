@@ -12,7 +12,7 @@ import { writeFileSync } from 'fs';
 import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { activeLanes } from '../src/engine/lanes.js';
 import { resolveOrExit } from './lib/tracks.js';
-import { bpmOf } from '../src/data/arrangements.js';
+import { bpmOf, swingOf, SWING_STRAIGHT } from '../src/data/arrangements.js';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const GM = process.argv.includes('--gm-channels');
@@ -26,9 +26,12 @@ const { buffer, trackNames, tracks, ppq, blocks, seconds, trimmed, deadPitches }
   midiBuffer(track.bank, {
     repeat: REPEAT, title: track.title, gmChannels: GM, patches: PATCHES,
     bpm: bpmOf(track.bank, track.id),
+    swing: swingOf(track.bank, track.id),
   });
 writeFileSync(OUT, buffer);
-console.log(`${OUT} — ${trackNames.length} instrument tracks, ${blocks} blocks (${seconds.toFixed(1)}s at ${bpmOf(track.bank, track.id)}bpm)`);
+const swing = swingOf(track.bank, track.id);
+console.log(`${OUT} — ${trackNames.length} instrument tracks, ${blocks} blocks (${seconds.toFixed(1)}s at ${bpmOf(track.bank, track.id)}bpm`
+  + `${swing > SWING_STRAIGHT ? `, ${Math.round(swing)}% swing` : ''})`);
 // Where each part actually plays. A lane that does not come in until section 3 is
 // silent over the first bars BY DESIGN, and looks like a broken export otherwise.
 const w = Math.max(...tracks.map((t) => t.name.length));

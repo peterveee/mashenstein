@@ -15,6 +15,7 @@
 //     order: [0, 0, { s: 1, bars: 1, off: ['snare', 'clap'] }, 1, 2, 3],
 //     sections: [ { base: 1, lead: [...] } ],   // appended AFTER the bank's own
 //     bpm: 104,                                 // the tempo it is played at
+//     swing: 62,                                // how far off the grid it is played
 //     loop: { startBar: 5, fromBar: 8, toBar: 12 },   // where it starts and repeats
 //   }
 //
@@ -23,6 +24,18 @@
 // at the tempo it was written at, and the arrangement says what it is played at —
 // which is the same relationship `order` already has with the bank's own order.
 // Absent means "the tempo it was composed at", so deleting it reverts exactly.
+//
+// `swing` is the same bargain about FEEL rather than speed. Every song here is written
+// as a grid of sixteenths; this says how far off that grid it is played. The number is
+// the on-grid sixteenth's share of its pair, as a percentage — 50 is the grid exactly,
+// ~58 is where most funk and hip-hop sits, 66.7 is the triplet shuffle (2:1), 75 the
+// dotted one. Only the ODD sixteenth moves, so downbeats, bar lines and anything sitting
+// on a beat stay where they were composed, which is what lets one number cover a whole
+// song. Absent — or 50 — means straight, so deleting it reverts exactly.
+//
+// It is a delay on the note and never on the clock: the sequencer still counts steps at
+// a flat tempo, and the loop wrap, the bar plan and the desk's playhead go on counting
+// with it. See the swing block in `scheduleStep`, src/engine/audio.js.
 //
 // `loop` is optional and is the song's INTRO AND REPEAT, in bars, counted from 1 and
 // inclusive at both ends — the same way the desk's timeline counts and the same way
@@ -104,6 +117,31 @@ export function orderOf(bank) {
 export function bpmOf(bank, id, table = ARRANGEMENTS) {
   const entry = id ? table[id] : null;
   return entry?.bpm ?? bank?.bpm ?? 112;
+}
+
+/** Swing at which a song is on the grid — the value that means "no swing at all". */
+export const SWING_STRAIGHT = 50;
+
+/** The hardest shuffle the desk will write: 3:1, the odd sixteenth halfway to the next. */
+export const SWING_MAX = 75;
+
+/**
+ * How hard a song is played off its own grid: its arrangement's swing, else the bank's
+ * own, else 50 — straight.
+ *
+ * The number is the on-grid sixteenth's share of its pair, as a percentage. 50 is the
+ * grid exactly; 66.7 is the triplet shuffle; 75 the dotted one. The engine reads it as
+ * a delay on every odd sixteenth (see `scheduleStep` in src/engine/audio.js), so only
+ * the notes BETWEEN the beats move and a song's downbeats never do.
+ *
+ * The counterpart of `bpmOf`, and here for the same callers: the ones holding a
+ * composition and a number rather than an arranged bank. The MIDI export is the one that
+ * needs it most — it walks raw step blocks and would otherwise write a shuffled song out
+ * dead straight.
+ */
+export function swingOf(bank, id, table = ARRANGEMENTS) {
+  const entry = id ? table[id] : null;
+  return entry?.swing ?? bank?.swing ?? SWING_STRAIGHT;
 }
 
 /**
@@ -246,10 +284,13 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   const order = entry.order;
   // A tempo counts on its own: an entry that says nothing but `bpm: 104` is a song
   // played ten faster than it was written, and returning the bank here would hand
-  // back the composed tempo and lose it.
-  if (!layer.length && !order && entry.bpm == null) return bank;
+  // back the composed tempo and lose it. A swing counts on its own for exactly the
+  // same reason — `{ swing: 62 }` is a song played with a shuffle it was not written
+  // with, and it is the only thing many of them will ever say.
+  if (!layer.length && !order && entry.bpm == null && entry.swing == null) return bank;
   const out = { ...bank };
   if (entry.bpm != null) out.bpm = entry.bpm;
+  if (entry.swing != null) out.swing = entry.swing;
   // Only when there is something to add: a bank with no sections must keep having
   // none, or `songBlocks` starts reading `sections[0]` of an empty list and every
   // block becomes the bare bank by accident rather than on purpose.
@@ -278,6 +319,14 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
   // millisecond value, say — and 20–400 is what a song can be played at.
   if (entry.bpm != null && !(Number.isFinite(entry.bpm) && entry.bpm >= 20 && entry.bpm <= 400)) {
     issues.push(`the tempo is ${entry.bpm} — a song plays between 20 and 400 bpm`);
+  }
+  // Below 50 the odd sixteenth would land BEFORE the beat it belongs to, which is not a
+  // swing but a lane offset written in the wrong field; at 100 it would land on the next
+  // beat exactly and the pair would collapse into one. 75 is the dotted shuffle and the
+  // far end of anything anyone plays.
+  if (entry.swing != null
+    && !(Number.isFinite(entry.swing) && entry.swing >= SWING_STRAIGHT && entry.swing <= SWING_MAX)) {
+    issues.push(`the swing is ${entry.swing} — a song swings between ${SWING_STRAIGHT} (straight) and ${SWING_MAX}`);
   }
   if (entry.loop) {
     // Counted with `expandOrder` rather than `barPlan`: lanes.js imports this file, so

@@ -180,12 +180,40 @@ loop armed, clicking the timeline *moves the loop* rather than escaping it. Defa
 | **Bar** | bar under the playhead, of the song's total |
 | **Time** | position / length of the song form |
 | **BPM** | **draggable.** The tempo the song is played at, 40–220. **Saved with the song**, on its `arrangement` — the bank keeps the tempo it was written at. Teal while it differs from that; click to go back to it. |
+| **Swing** | **draggable.** How far off its own grid the whole song is played, 50–75%. Saved the same way, on the same `arrangement`. Teal while it is not straight; click to go back to straight. |
 | **CPU** | rough load: the engine's own ~10% plus every active effect's measured cost. Red past 45%. Hover for what is running. |
 
 Tempo drags carry the tempo-synced delay and every division-based insert with them, so
 half-speed really is the same mix at half speed. The drag is an ordinary song edit —
 ⌘Z undoes it, the dot on the hamburger notices it, **Save song** writes it, and the game
 and every render tool then play the song at it.
+
+**Swing** is the same kind of edit about feel rather than speed, and travels the same
+way. Every song here is written as a grid of sixteenths; this is how far off that grid it
+is played. The number is the on-grid sixteenth's share of its pair:
+
+| | |
+| --- | --- |
+| **50%** | straight — the grid, and what every song is written as |
+| **54–62%** | where most funk, hip-hop and house actually sit |
+| **66%** | the triplet shuffle — a true 2:1 |
+| **75%** | dotted, hard shuffle — 3:1 |
+
+Only the **off-beat** sixteenth moves. The beats stay exactly where they were composed,
+which is why one number can cover a whole song: a pad or a chord on a downbeat does not
+shift at all, and the groove is entirely in the notes between the beats. A note keeps its
+written length and simply arrives later, so a swung off-beat on a legato lane runs a
+little further into the next beat — audible as slight legato, and nothing at all on a
+kit.
+
+Two things stay deliberately straight, and are not bugs: the tempo-synced **delay**, and
+rhythmic **gate** and tremolo inserts. A gate is a rhythm laid over the song rather than
+a note in it, and a straight gate under a swung part is the arrangement anyone reaching
+for both actually wants.
+
+The step grid and the piano roll stay evenly spaced through all of this. Swing is a feel,
+not a re-gridding — the notes are still on those steps, and moving the drawing would only
+make them harder to edit.
 
 ### The four panel buttons
 
@@ -1262,6 +1290,7 @@ reach for mid-take is the one with the modifier on it.
 | Gains, pans, EQ, sends, mutes, effect chains, master trim, limiter | the song's `mix` export, on **Save song** |
 | Which bars play, in what order, with what dropped out of them | the song's `arrangement` export, on the same button |
 | The tempo it is played at, when that is not the tempo it was written at | the same `arrangement` export, as `bpm` |
+| The swing it is played with, when that is not straight | the same `arrangement` export, as `swing` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
 | Every version of a writable song this desk has overwritten | `work/mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
 | Presets — user-created sounds and edits | `src/data/voices.js`, in the `USER_*` tables, on the editor's own **Save**. Library-wide, not per song, so it is separate from **Save song** |

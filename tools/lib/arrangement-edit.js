@@ -27,7 +27,9 @@
 //
 // Every function returns a NEW draft; none of them modify the one passed in, so the
 // desk's undo is a snapshot and nothing more.
-import { expandOrder, orderOf, resolveSection } from '../../src/data/arrangements.js';
+import {
+  expandOrder, orderOf, resolveSection, SWING_MAX, SWING_STRAIGHT,
+} from '../../src/data/arrangements.js';
 import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
@@ -97,6 +99,10 @@ export function draftOf(bank, entry = null) {
     // composed" rather than 120: the bank's own tempo is not the draft's to restate,
     // and `entryOf` compares against it to decide whether there is anything to write.
     bpm: entry?.bpm ?? null,
+    // How far off its own grid the song is played, on the same terms as the tempo: null
+    // means "as composed" — straight, for every song in the game so far — rather than 50,
+    // so `entryOf` can tell a song nobody has swung from one dragged back to straight.
+    swing: entry?.swing ?? null,
     // Where the song starts and what it repeats. Carried through untouched rather than
     // edited here: no bar operation in this file has an opinion about it, and this
     // draft is round-tripped through `entryOf` on EVERY edit — so anything not carried
@@ -146,8 +152,8 @@ export function readBarLane(bank, draft, barIndex, key) {
 }
 
 /**
- * The draft as a file entry — `{ order, sections, bpm }` — or **null** when it says
- * nothing the bank does not already say.
+ * The draft as a file entry — `{ order, sections, bpm, swing, loop }` — or **null**
+ * when it says nothing the bank does not already say.
  *
  * Null is the important half: an arrangement nobody changed leaves no entry, the
  * way a mix nobody changed leaves none, so `src/data/arrangements.js` holds
@@ -156,24 +162,35 @@ export function readBarLane(bank, draft, barIndex, key) {
  * A tempo equal to the bank's own is not a decision either — it is a drag that ended
  * back where it started — so it is dropped here, and a song whose ONLY change is its
  * tempo writes `{ bpm }` alone rather than restating an order identical to the bank's.
+ * A swing is dropped on the same test, against straight rather than against a written
+ * tempo, because straight is what every song here is composed as.
  */
 export function entryOf(bank, draft) {
   const compacted = compactSections(bank, draft);
   const order = planToOrder(compacted.plan);
   const bpm = draft.bpm != null && draft.bpm !== bank.bpm ? draft.bpm : null;
+  const composedSwing = bank.swing ?? SWING_STRAIGHT;
+  const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
   // A loop counts on its own, exactly as a tempo does: a song played from bar 5 and
   // repeating bars 8-12 is arranged, even when it plays its sections in the order they
   // were composed in. Without this the markers would be unwritable on the seven songs
-  // that are a bare two-bar loop with no order of their own.
+  // that are a bare two-bar loop with no order of their own. A swing is the same case
+  // and the commonest one of all: shuffling a song is usually the ONLY thing done to it,
+  // and `{ swing: 62 }` has to be a whole entry or the drag would not survive a save.
   if (same && !compacted.sections.length) {
-    if (bpm == null && !loop) return null;
-    return { ...(bpm == null ? {} : { bpm }), ...(loop ? { loop } : {}) };
+    if (bpm == null && swing == null && !loop) return null;
+    return {
+      ...(bpm == null ? {} : { bpm }),
+      ...(swing == null ? {} : { swing }),
+      ...(loop ? { loop } : {}),
+    };
   }
   const out = { order };
   if (compacted.sections.length) out.sections = compacted.sections;
   if (bpm != null) out.bpm = bpm;
+  if (swing != null) out.swing = swing;
   if (loop) out.loop = loop;
   return out;
 }
@@ -189,6 +206,25 @@ export function entryOf(bank, draft) {
 export function setTempo(draft, bpm) {
   const out = copy(draft);
   out.bpm = bpm == null ? null : Math.min(400, Math.max(20, Math.round(bpm)));
+  return out;
+}
+
+/**
+ * Play this song with `swing` — or, with null, straight, on the grid it was written on.
+ *
+ * The percentage the on-grid sixteenth takes of its pair: 50 is the grid, 66.7 the
+ * triplet shuffle, 75 the dotted one. The same kind of edit as the tempo above and it
+ * travels the same way — the same draft, the same ⌘Z, the same Save.
+ *
+ * The clamp is the range the ENGINE can mean, not the range the desk's drag offers.
+ * Below straight is a lane offset written in the wrong field, and above the dotted
+ * shuffle the odd sixteenth is closer to the next beat than to its own.
+ */
+export function setSwing(draft, swing) {
+  const out = copy(draft);
+  out.swing = swing == null
+    ? null
+    : Math.min(SWING_MAX, Math.max(SWING_STRAIGHT, Math.round(swing)));
   return out;
 }
 
@@ -270,7 +306,7 @@ export function planToOrder(plan) {
 // the loop is gone.
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
-  loop: clone(draft.loop ?? null),
+  swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
 });
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));

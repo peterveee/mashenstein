@@ -67,6 +67,10 @@ window.__renderBank = async ({ bank, blocks, steps: stepsIn, loop, tail, seed, s
   // of what needs a track id — see \`render\`. Otherwise the whole form, times repeat,
   // exactly as every render did before this existed.
   const steps = stepsIn || blocks * 32;
+  // Swing needs nothing here. It delays the odd sixteenth by at most half of one — 188ms
+  // at the slowest tempo a song can be played at, and a few tens of ms at any real one —
+  // and \`tail\` is two seconds of room for the last note's release. The step COUNT does
+  // not change: swing moves notes within the form, never past the end of it.
   const N = Math.ceil((steps * spb + tail) * sampleRate);
   const ctx = new OfflineAudioContext(2, N, sampleRate);
 

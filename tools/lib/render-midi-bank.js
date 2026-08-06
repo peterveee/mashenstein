@@ -4,6 +4,7 @@
 // note number on the way out. Timbre can't survive the trip: each lane gets the
 // GM program that comes closest to its oscillator, and percussion goes to ch10.
 import { songBlocks, stepLen, toneLen } from '../../src/engine/lanes.js';
+import { SWING_STRAIGHT } from '../../src/data/arrangements.js';
 
 const PPQ = 96;          // ticks per quarter note
 const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
@@ -149,8 +150,22 @@ export function midiBuffer(bank, {
   // arrangement (see bpmOf). Defaults to the composed tempo, so nothing changes for a
   // caller that has not thought about it.
   bpm = bank.bpm,
+  // And the feel, for the same reason and from the same place (see swingOf). This walks
+  // raw step blocks rather than driving the engine, so unlike a WAV bounce — which gets
+  // swing free, because it runs the real scheduler — a shuffled song would export dead
+  // straight unless the shift is applied here too.
+  swing = bank.swing ?? SWING_STRAIGHT,
 } = {}) {
   const blocks = songBlocks(bank, repeat);
+  // Swing, in ticks. A pair of sixteenths lasts 2*TPS, so the second of them lands at
+  // 2*TPS*(swing/100) instead of at TPS — a shift of TPS*(swing-50)/50 on odd steps
+  // only, exactly as the engine shifts them in seconds. At the triplet shuffle that is
+  // 8 of a sixteenth's 24 ticks: a true 2:1, with nothing lost to rounding.
+  //
+  // Onsets move and lengths do not, which is the engine's bargain as well — see the
+  // swing block in scheduleStep.
+  const swingTicks = Math.round((TPS * ((swing || SWING_STRAIGHT) - SWING_STRAIGHT)) / 50);
+  const tickAt = (bi, s) => (bi * 32 + s) * TPS + (s % 2 ? swingTicks : 0);
   const tracks = [];
   const trackNames = [];
   // What went into each track, so the CLI can say where a part actually starts. A
@@ -191,7 +206,7 @@ export function midiBuffer(bank, {
       for (let s = 0; s < 32; s++) {
         const v = lane[s];
         if (!v) continue;
-        const tick = (bi * 32 + s) * TPS;
+        const tick = tickAt(bi, s);
         // What the roll drew on this step, if anything: the note-off follows the
         // rectangle rather than the lane, and a chord's tones can differ.
         const len = stepLen(b, L.lane, s);
@@ -221,7 +236,7 @@ export function midiBuffer(bank, {
         const dt = (R.span(b) * TPS) / GLISS_STEPS.length;
         GLISS_STEPS.forEach((semi, k) => {
           const vel = Math.round(R.vel * (0.6 + 0.4 * ((k + 1) / GLISS_STEPS.length))); // cresc. into the target
-          note(notes, ch(R.ch), target + semi, (bi * 32 + s) * TPS + Math.round(k * dt), dt * 1.7, vel);
+          note(notes, ch(R.ch), target + semi, tickAt(bi, s) + Math.round(k * dt), dt * 1.7, vel);
         });
       }
     });
@@ -242,7 +257,7 @@ export function midiBuffer(bank, {
       if (!b[lane]) return;
       for (let s = 0; s < 32; s++) {
         if (!b[lane][s]) continue;
-        note(notes, 9, keyNum, (bi * 32 + s) * TPS, TPS * 0.5, DRUM_VEL[lane] ?? 90);
+        note(notes, 9, keyNum, tickAt(bi, s), TPS * 0.5, DRUM_VEL[lane] ?? 90);
       }
     });
     if (!notes.length) continue;

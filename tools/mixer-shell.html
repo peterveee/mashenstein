@@ -350,6 +350,7 @@
   header .readouts .stat > span + span { min-width: 3ch; }
   header .readouts #tnow { min-width: 9ch; }   /* 0:00/0:00 */
   header .readouts #cpu { min-width: 5ch; }    /* ~100% — the + past that is rare */
+  header .readouts #swing { min-width: 4ch; }  /* 50% … 75% */
   /* A tempo that is not the song's own — you are listening at it, not writing it. */
   header .readouts .stat > span + span.tweaked { color: var(--accent); }
   header .readouts .stat > span + span.draggy { cursor: ns-resize; }
@@ -4593,6 +4594,10 @@
     <span class="stat" title="Bar under the playhead"><span class="label">Bar</span><span id="barnow">1</span></span>
     <span class="stat" title="Position in the song"><span class="label">Time</span><span id="tnow">0:00</span></span>
     <span class="stat"><span class="label">BPM</span><span id="bpm">—</span></span>
+    <!-- Beside the tempo because it is the same kind of fact about the song: not what
+         the notes are, but how they are delivered. Both are dragged, both are saved on
+         the arrangement, both go teal when they leave what the song was written as. -->
+    <span class="stat"><span class="label">Swing</span><span id="swing">—</span></span>
     <span class="stat" title="Rough load estimate"><span class="label">CPU</span><span id="cpu">~10%</span></span>
   </div>
 

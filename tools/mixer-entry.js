@@ -8,12 +8,14 @@ import { MusicDirector } from '../src/engine/music-director.js';
 import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
-import { ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps } from '../src/data/arrangements.js';
+import {
+  ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps, SWING_MAX, SWING_STRAIGHT,
+} from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, writeBarNotes, writeBarNotesShared, patternStarts,
-  barCount, removeLanes, setTempo, setSongLoop, readBarLane, DRUM_LANES,
+  barCount, removeLanes, setTempo, setSwing, setSongLoop, readBarLane, DRUM_LANES,
 } from './lib/arrangement-edit.js';
 // Recording: the fourth caller of the one-note seam the keyboard, the computer keys
 // and MIDI already share. It owns the clock and the buffer; the note semantics are
@@ -584,8 +586,9 @@ function undo() {
     Audio.setArrangement(arrFor(trackId));
     // The tempo lives on the arrangement too, so undoing one is undoing the other —
     // and a readout still showing the tempo the song no longer plays at is the half
-    // of the undo you can see.
+    // of the undo you can see. The swing rides on the same entry and needs the same.
     pushTempo();
+    pushSwing();
     buildTimeline();
   }
   if (step.trackId !== trackId) { selectSong(step.trackId); }
@@ -1467,8 +1470,10 @@ function loadTrack(id) {
   if (playing) Audio.setBank(track.bank, mixFor(id), arrFor(id));
   applyToEngine(mixFor(id));
   // A new song brings its own tempo — its arrangement's, else the one it was written
-  // at. After applyToEngine, so the strips it retunes are this song's.
+  // at. After applyToEngine, so the strips it retunes are this song's. And its own
+  // feel with it, which is straight unless its arrangement says otherwise.
   pushTempo();
+  pushSwing();
   loopAnchor = 0;              // a different song means a different timeline
   pendingLoopAnchor = null;
   parkedAt = 0;
@@ -9293,6 +9298,79 @@ dragNumber($('bpm'), {
   },
 });
 
+// Swing you can drag — the tempo's twin, and it travels the whole way on the same rails:
+// the same arrangement entry, the same ⌘Z, the same Save, the same click-to-revert.
+//
+// Every song in this game is composed as a grid of sixteenths. This is how far off that
+// grid it is PLAYED: the number is the on-grid sixteenth's share of its pair, so 50 is
+// the grid exactly, around 58 is where most funk and hip-hop actually sits, 66 is the
+// triplet shuffle and 75 the dotted one. Only the odd sixteenth moves, which is what
+// lets one number cover a whole song — a pad on a downbeat does not shift at all, and
+// the groove is entirely in the notes between the beats.
+//
+// Straight is what every song here was written as, so the readout measures against 50
+// rather than against a value the bank supplies, and clicking it goes back there.
+const deskSwing = () => arrFor(trackId)?.swing ?? track?.bank?.swing ?? SWING_STRAIGHT;
+/** The swing the song is WRITTEN with — straight, unless a composition ever says otherwise. */
+const composedSwing = () => track?.bank?.swing ?? SWING_STRAIGHT;
+function showSwing() {
+  const el = $('swing');
+  const swing = Math.round(deskSwing());
+  const own = swing === Math.round(composedSwing());
+  el.textContent = `${swing}%`;
+  el.classList.toggle('tweaked', !own);
+  el.parentElement.title = own
+    ? 'Drag to swing the whole song — every off-beat sixteenth late, the beats where they are.'
+      + ' 66% is a triplet shuffle. Saved with the song.'
+    : `Played with ${swing}% swing, written ${
+      Math.round(composedSwing()) === SWING_STRAIGHT ? 'straight' : `at ${Math.round(composedSwing())}%`
+    } — click to go back to that. Saved with the song.`;
+}
+/**
+ * Put the swing in force onto the engine and the readout.
+ *
+ * `Audio.swing` is set here for the same reason `pushTempo` sets `Audio.bpm`: a stopped
+ * desk has no live bank for `setArrangement` to swap, and selecting a song while it is
+ * silent must still leave the engine agreeing with the number on the screen — otherwise
+ * the first bar after pressing Play is the last song's feel.
+ */
+function pushSwing() {
+  Audio.swing = deskSwing();
+  showSwing();
+}
+function setDeskSwing(v) {
+  const swing = clamp(Math.round(v), SWING_STRAIGHT, SWING_MAX);
+  if (swing === Math.round(deskSwing())) return;
+  // The same reasoning as the tempo above, and more so: swing moves no bars, no lanes
+  // and no bar LENGTHS, so there is not even a timeline to rebuild. One undo step per
+  // drag, coalesced on the tag.
+  pushUndo('swing');
+  const entry = entryOf(editBank(),
+    setSwing(arrDraftOf(), swing === Math.round(composedSwing()) ? null : swing));
+  arrDraft[trackId] = entry;
+  localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
+  // Seamless by construction: setArrangement leaves `step` and `nextTime` alone, and
+  // swing is read fresh on every sixteenth, so a drag across the range re-feels the
+  // music under the playhead without a seam or a reset.
+  Audio.setArrangement(entry);
+  pushSwing();
+  updateStatus();
+}
+dragNumber($('swing'), {
+  value: deskSwing,
+  set: setDeskSwing,
+  // A range of 25 across the drag, because the whole musical span is 50 to 75 — the same
+  // pixels the tempo spends on 80 bpm are spent here on the only 25 numbers there are.
+  range: 25, step: 1,
+  onClick: () => {
+    if (Math.round(deskSwing()) === Math.round(composedSwing())) return;
+    setDeskSwing(composedSwing());
+    toast(Math.round(composedSwing()) === SWING_STRAIGHT
+      ? 'Back to straight — on the grid this song is written on'
+      : `Back to ${Math.round(composedSwing())}% swing — what this song is written with`);
+  },
+});
+
 // ---- on-screen keyboard -----------------------------------------------------
 //
 // Play the selected channel. Everything else on this desk asks what a song already
@@ -12007,6 +12085,7 @@ function reloadSongState() {
   bankCache.sig = null;
   Audio.setArrangement(arrFor(trackId));
   pushTempo();                 // the tempo is on the arrangement, so it moved too
+  pushSwing();                 // and the swing beside it
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);
@@ -12137,6 +12216,7 @@ async function restoreFrom(file) {
   bankCache.sig = null;
   Audio.setArrangement(arrFor(trackId));
   pushTempo();                 // including the tempo that version was played at
+  pushSwing();                 // and the feel it was played with
   buildTimeline();
   rebuildForShape();
   applyLoop(Audio.step);
