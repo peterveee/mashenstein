@@ -164,6 +164,17 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
       assert(o.width >= 0.05 && o.width <= 0.95,
         `${v.id}: its pulse width is inside what the pot can reach`);
     }
+    if (o.vca != null) {
+      assert(o.vca === 'env' || o.vca === 'through',
+        `${v.id}: its layer amp is one of the two the pill offers (${o.vca})`);
+      // A bypassed layer hands its shaping downstream, so there has to be something down
+      // there to do it. Without a global VCA the note is a raw gate, which is a legitimate
+      // modular sound but never what a preset means to ship.
+      if (o.vca === 'through') {
+        assert(!!v.global?.vca,
+          `${v.id}: a bypassed layer amp has a Global Amp to hand the note to`);
+      }
+    }
     if (o.stereo != null) {
       assert(o.stereo >= 0 && o.stereo <= 1, `${v.id}: its stereo width is a fraction`);
       // A panner is only built above unison 1 — one voice has no field to spread across,

@@ -2792,6 +2792,27 @@ const TONE = {
     humanize: { entry: 0.02 },
     vibrato: { depth: 0.16, rate: 5, delay: 0.7, spread: 0.6 } },
 
+  bestClassicMono: { label: 'BEST Classic Mono', category: 'Lead', synth: 'LayerSynth', dur: 2,
+    note: 'Three oscillators into a mixer, one filter, one envelope — the architecture every '
+      + 'classic mono synth has and the one this stack could not describe until its layers '
+      + 'could give up their own amps. Every AMP reads THROUGH: the Global Amp is the only '
+      + 'envelope in the patch.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.8, vca: 'through' },
+      // The classic detuned second, and a square an octave down for the bottom — the two
+      // moves every three-oscillator patch starts from.
+      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.65, vca: 'through' },
+      osc3: { type: 'square', ratio: 0.5, gain: 0.5, vca: 'through' },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 320, Q: 2.6, track: 0.5,
+        env: { octaves: 3.6, attack: 0.01, decay: 0.55, sustain: 0.4, release: 0.2 } },
+      vca: { attack: 0.012, decay: 0.6, sustain: 0.8, release: 0.22 },
+    },
+    drive: 0.28, shape: 'soft', tone: { freq: 10000 },
+    vibrato: { depth: 0.12, rate: 5.2, delay: 0.4 },
+    mono: true, portamento: 0.05 },
+
   bestPwmDrift: { label: 'BEST PWM Drift', category: 'FX', synth: 'LayerSynth', dur: 8,
     note: 'Very slow, very deep, and detuned far enough that nothing in it lines up twice. '
       + 'Three widths at 0.07, 0.11 and 0.05 Hz — periods of fourteen, nine and twenty '
@@ -2994,7 +3015,7 @@ const LEVELS = {
   bestReeseBass: 0.151935, bestPwmStrings: 0.088856, bestPwmBrass: 0.175298,
   bestPwmPadWide: 0.096921, bestPwmBass: 0.151505, bestPwmGrowlBass: 0.123668,
   bestPwmHollowLead: 0.166614, bestPwmReedLead: 0.053483, bestPwmClav: 0.08838,
-  bestPwmChoir: 0.030764, bestPwmDrift: 0.115573
+  bestPwmChoir: 0.030764, bestPwmDrift: 0.115573, bestClassicMono: 0.15511
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -3088,7 +3109,8 @@ const PEAKS = {
   bestMonsterBass: 0.7453, bestReeseBass: 0.856, bestPwmStrings: 0.6256,
   bestPwmBrass: 0.8444, bestPwmPadWide: 0.7295, bestPwmBass: 0.8703,
   bestPwmGrowlBass: 0.9256, bestPwmHollowLead: 0.8795, bestPwmReedLead: 0.636,
-  bestPwmClav: 0.9564, bestPwmChoir: 0.2033, bestPwmDrift: 0.8248
+  bestPwmClav: 0.9564, bestPwmChoir: 0.2033, bestPwmDrift: 0.8248,
+  bestClassicMono: 0.8586
 };
 
 /**

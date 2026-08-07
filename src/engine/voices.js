@@ -1892,6 +1892,9 @@ export class VoiceRack {
         const heldParams = [];
         const heldSources = [];
         let stage = null;
+        // When the global VCA ends, for the layers that have handed their shaping to it.
+        let vcaOff = 0;
+        let heldVca = null;
         const stageFor = () => {
           if (stage) return stage;
           // Built from the OUTPUT backwards, so the signal reads filter → VCA → drive.
@@ -1911,7 +1914,9 @@ export class VoiceRack {
             // The oscillators still stop at their OWN layer's off: a VCA can only shape
             // what is playing, and running them to the global tail would pay for silence.
             lastOff = Math.max(lastOff, off);
+            vcaOff = off;
             vg.connect(head); head = vg;
+            if (vcaHolds) heldVca = vg;
           }
           if (gf) {
             const track = gf.track > 0 ? (base / 110) ** Math.min(1, gf.track) : 1;
@@ -1929,7 +1934,7 @@ export class VoiceRack {
             filterEnv(chain.stages, gf.env, t, gEnd);
             head = chain.head;
           }
-          stage = { head };
+          stage = { head, off: vcaOff };
           return stage;
         };
 
@@ -1966,9 +1971,34 @@ export class VoiceRack {
 
           // The layer's own gain, enveloped once and shared by its unison voices.
           const g = ctx.createGain();
-          const layerHolds = preview && (spec.sustain ?? 0) > 0;
-          const off = adsr(g.gain, t, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
-          if (layerHolds) heldParams.push({ param: g.gain, e: spec });
+          // ---- whose envelope shapes this layer ----------------------------
+          //
+          // `vca: 'through'` takes the layer's own amp OUT: its oscillators sum at their
+          // LEVEL and nothing else, and the global VCA downstream is what shapes them.
+          // That is the classic three-oscillator architecture — three VCOs into a mixer,
+          // one VCF, one VCA — which this synth could describe in every respect except
+          // this one, because a per-layer envelope was compulsory.
+          //
+          // What is left here is a GATE, not an envelope: the level is held flat and taken
+          // to zero over 4 ms at the end, which exists only so a stopped oscillator does
+          // not click. With a global VCA the gate closes when the VCA has finished, so it
+          // is inaudible under the release; with no global stage at all it closes at the
+          // note's own end, which is a modular's VCO straight to the output — a raw gate,
+          // and what asking for one should sound like.
+          const through = spec.vca === 'through';
+          const layerHolds = !through && preview && (spec.sustain ?? 0) > 0;
+          let off;
+          if (through) {
+            const gateEnd = Math.max(t + 0.002, stage?.off || end);
+            const lvl = Math.max(1e-4, spec.gain ?? 1);
+            g.gain.setValueAtTime(lvl, t);
+            g.gain.setValueAtTime(lvl, gateEnd);
+            g.gain.linearRampToValueAtTime(0, gateEnd + 0.004);
+            off = gateEnd + 0.006;
+          } else {
+            off = adsr(g.gain, t, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
+            if (layerHolds) heldParams.push({ param: g.gain, e: spec });
+          }
           lastOff = Math.max(lastOff, off);
 
           // The filter, when the layer has one — per layer, not per unison voice: a
@@ -2192,7 +2222,10 @@ export class VoiceRack {
             // than smearing one singer's formants apart in time.
             const late = entry > 0 ? hitRandom(t, 1013 + u) * entry : 0;
             for (const src of sources) { src.start(t + late); src.stop(off + 0.01); }
-            if (layerHolds) heldSources.push(...sources);
+            // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
+            // when that is — otherwise a key-up would release the envelope and leave the
+            // oscillators running underneath it.
+            if (layerHolds || (through && heldVca)) heldSources.push(...sources);
           }
         }
         registerHold();

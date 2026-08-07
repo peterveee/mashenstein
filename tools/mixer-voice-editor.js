@@ -581,18 +581,24 @@ const layerGroups = () => {
           : 'Add a third layer',
       }),
       rows: [
+        // LEVEL leads every oscillator section on this desk. It is the one row that is
+        // always there and always means the same thing — how much of this source is in
+        // the sound — and a card that opens on it reads as a mixer channel, which is what
+        // an oscillator section is.
+        n(`$${p}.gain`, 'LEVEL', 0, 2, 0.01, fixed(2), i === 1 ? 1 : 0.3),
         pick(`$${p}.type`, 'WAVE', LAYER_WAVES, i === 1 ? 'square' : 'sine'),
-        // Only where it means something. A pulse is the one waveform with a shape to set:
+        // After the wave rather than before it, because it only exists for one of them:
+        // a row that is greyed on four waveforms out of six should not be the second thing
+        // you read. PLS WIDTH, not WIDTH — with STEREO on the same card, an unqualified
+        // "width" is the stereo field on every other desk in the world.
+        //
         // 50% IS the square, and everything under it walks the even harmonics back in —
         // 20% reedy and hollow, 10% nasal and thin enough to cut through a full mix.
-        // Fixed for the life of a note (see `pulseWave`), so it is a timbre control rather
-        // than a modulation one.
-        n(`$${p}.width`, 'WIDTH', 5, 95, 1, fixed(0), 50, '%',
+        n(`$${p}.width`, 'PLS WIDTH', 5, 95, 1, fixed(0), 50, '%',
           (v) => getAt(v, `$${p}.type`) === 'pulse',
           { read: (w) => (w != null ? w * 100 : undefined), write: (w) => w / 100,
             tip: 'The duty of the pulse — 50% is a square, and narrower is thinner and '
-              + 'more nasal. Set per note rather than swept' }),
-        n(`$${p}.gain`, 'LEVEL', 0, 2, 0.01, fixed(2), i === 1 ? 1 : 0.3),
+              + 'more nasal. Static unless the PWM card is switched on' }),
         // Stored as `ratio` — the multiplier the engine plays at — and shown in
         // semitones, the same deal AMOUNT makes with the drum's two frequencies: +12 is
         // an octave up whichever key you think in, and a doubling layer reads as the
@@ -617,7 +623,8 @@ const layerGroups = () => {
         // that is the nearest thing on commercial gear to a control almost nothing
         // else has — and stored as the `len` multiplier the engine has always read,
         // shown ×100 the way SUSTAIN is.
-        n(`$${p}.len`, 'GATE', 10, 200, 1, fixed(0), 100, '%', null,
+        n(`$${p}.len`, 'GATE', 10, 200, 1, fixed(0), 100, '%',
+          (v) => getAt(v, `$${p}.vca`) !== 'through',
           { read: (v) => v != null ? v * 100 : undefined, write: (v) => v / 100,
             tip: 'How long this layer’s note is, against the drawn one — 62% dies '
               + 'inside the note, 100% is the note as written, 108% overhangs it. '
@@ -736,13 +743,28 @@ const layerGroups = () => {
       // always written, so no preset changes and nothing is re-measured.
       title: `Osc ${i} · Amp`, when: on,
       rows: [
-        envTime(`$${p}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01),
-        envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1),
+        // ENV or THROUGH. Through takes this layer's amp envelope out of the circuit and
+        // hands its shaping to the Global Amp downstream — three oscillators into a mixer,
+        // one filter, one envelope, which is the classic architecture and the one thing
+        // this synth could not say while a per-layer envelope was compulsory.
+        //
+        // A pill rather than an On/Off switch because the envelope's four times live on
+        // the layer itself rather than in a section of their own, and presence is what
+        // every other switch on this panel means. This says which envelope is doing the
+        // work, which is the actual question.
+        pick(`$${p}.vca`, 'AMP', ['env', 'through'], 'env', null,
+          { tip: 'ENV gives this layer its own amp envelope. THROUGH takes it out and lets '
+              + 'the Global Amp shape the whole stack — the classic single-VCA synth' }),
+        envTime(`$${p}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01,
+          's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
+        envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1,
+          's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
         // Live at every DECAY: sustain is WHERE the fall lands, not something a short
         // decay switches off. Zero reaches silence (struck, the default); 0.7 falls only
         // that far and releases from there.
-        sustainPct(`$${p}.sustain`, 0),
-        envTime(`$${p}.release`, 'RELEASE', 0, 0.01, secs, 0.015),
+        sustainPct(`$${p}.sustain`, 0, (v) => getAt(v, `$${p}.vca`) !== 'through'),
+        envTime(`$${p}.release`, 'RELEASE', 0, 0.01, secs, 0.015,
+          's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
         // The same three pills every Tone envelope card ends on, in the native
         // path's own two words. DEC keeps the `curve` key the engine has
         // always read for the decay; the other two stages were exponential-only
@@ -1067,14 +1089,19 @@ const SYNTH_GROUPS = {
  * the engine reads them — not inside `options`, which is the Tone constructors' bag.
  */
 const NOISE_GROUPS = [
-  // Same order as the drum panel's sections: the pills, then LEVEL, then the rest.
-  // Nothing is saved here — these groups are one pill and four knobs either way — but
-  // LEVEL is in the same place in both editors, which is the whole of the point.
+  // Same order as the drum panel's sections: LEVEL, then the pills, then the rest.
+  // Nothing is saved by it — these groups are one pill and four knobs either way — but
+  // LEVEL is in the same place in every editor, which is the whole of the point.
+  //
+  // It LEADS rather than following the pills because it is the row every oscillator
+  // section on this desk has, and the only one that means the same thing on all of them:
+  // how much of this source is in the sound. A card that opens on it reads as a mixer
+  // channel, which is what an oscillator section is.
   { title: 'Burst', rows: [
+    n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
     pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass'),
     pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
     pick('$noise.slope', 'SLOPE', SLOPES, -12),
-    n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
     cutoffHz('$noise.freq', 'CUTOFF', 2600),
     // Up to 40, where it used to stop at 8. A bandpass does not RING below about ten —
     // it only colours — and a ringing filter is what a rim, a clave and the body of a
@@ -1088,8 +1115,8 @@ const NOISE_GROUPS = [
     onTip: 'Take the body out — the burst on its own',
     offTip: 'Put a pitched thump under the burst',
     rows: [
-      pick('$body.type', 'WAVE', WAVES, 'triangle'),
       n('$body.gain', 'LEVEL', 0, 2, 0.005, fixed(3), 0.375),
+      pick('$body.type', 'WAVE', WAVES, 'triangle'),
       // Up to 4 kHz, where these stopped at 1200 and 1000. A body is not always a thump:
       // under a hat it is the metallic ping, and its harmonics have to land in the band
       // the burst occupies or it is a knock underneath rather than a part of the sound.
@@ -1128,6 +1155,7 @@ const DRUM_GROUPS = [
     onTip: 'Take the pitched half out — noise only',
     offTip: 'Put a pitched source under the noise',
     rows: [
+      n('$osc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$osc.type', 'WAVE', WAVES, 'sine'),
       pick('$osc.curve', 'CURVE', ['exp', 'lin'], 'exp'),
       // Named for the RATE knob it shapes rather than called a second CURVE: this one is
@@ -1135,7 +1163,6 @@ const DRUM_GROUPS = [
       // machine's own pitch envelope — hardest at the start, settled before the tail —
       // and it is the difference between a kick that clicks and one that goes boing.
       pick('$osc.pitchCurve', 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp'),
-      n('$osc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       // The engine kick's mid punch, as a level and nothing else — a fixed 300→180 Hz
       // triangle, up in 4ms and gone in 50. It is the second oscillator a kick needs
       // and the only one, so it is a pot rather than a section. Zero builds nothing.
@@ -1191,11 +1218,11 @@ const DRUM_GROUPS = [
     onTip: 'Take the noise half out — the oscillator on its own',
     offTip: 'Put the seeded noise source back in',
     rows: [
+      n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass'),
       pick('$noise.curve', 'CURVE', ['exp', 'lin'], 'exp'),
       pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
       pick('$noise.slope', 'SLOPE', SLOPES, -12),
-      n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       cutoffHz('$noise.freq', 'CUTOFF', 2600),
       cutoffHz('$noise.to', 'SWEEP TO', 2600),
       envTime('$noise.sweep', 'SWEEP TIME', 0.005, 0.005, secs, 0.12),
@@ -1212,9 +1239,9 @@ const DRUM_GROUPS = [
     onTip: 'Take the resonator out',
     offTip: 'Strike a resonant filter — rims, claves, shells',
     rows: [
+      n('$ring.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$ring.type', 'TYPE', FILTER_TYPES, 'bandpass'),
       pick('$ring.curve', 'CURVE', ['exp', 'lin'], 'exp'),
-      n('$ring.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       oscHz('$ring.freq', 'FREQUENCY', 400),
       oscHz('$ring.to', 'SWEEP TO', 400),
       // The one that changes what it IS rather than how it sounds: a couple of
@@ -1230,9 +1257,9 @@ const DRUM_GROUPS = [
     onTip: 'Take the cluster out',
     offTip: 'Add a cluster of inharmonic squares — hats, cowbells, cymbals',
     rows: [
+      n('$metal.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$metal.wave', 'WAVE', WAVES, 'square'),
       pick('$metal.filter', 'TYPE', FILTER_TYPES, 'highpass'),
-      n('$metal.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       oscHz('$metal.freq', 'FREQUENCY', 800),
       // 0 collapses the cluster onto one note and 2 pulls the partials twice as far
       // apart as the 808's. Everything between is a different metal.

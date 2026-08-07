@@ -311,6 +311,7 @@ the others into the shared drive. It is LayerSynth's alone: no other panel has o
 | `detune` | 0 | Cents, static |
 | `gain` | 1 | Layer level. **Zero skips the layer entirely** |
 | `len` | 1 | × the drawn note length. Drawn as GATE, in per cent |
+| `vca` | `'env'` | Which envelope shapes this layer. `'env'` is its own, as it always was; **`'through'` takes it out** and hands the shaping to the global VCA — three oscillators into a mixer, one filter, one envelope, which is the classic mono-synth architecture. Through, the layer contributes a flat gate at its LEVEL, closed over 4 ms when the global VCA has finished, and `len`/GATE stops meaning anything |
 | `attack/decay/sustain/release` | `adsr` defaults | Plain seconds, clamped to the note; `sustain` is where the fall lands |
 | `attackCurve` / `curve` / `releaseCurve` | `'exp'` | Per stage, `'exp'` or `'lin'`. `curve` is the decay's, and keeps its historical name |
 | `unison` / `spread` | 1 / 20 | 1–5 voices across `spread` cents, 1/√count normalised |
