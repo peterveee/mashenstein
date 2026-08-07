@@ -900,8 +900,14 @@ export function createMixer(ctx, {
      * deliberately a scheduler hook rather than a wall-clock timer: offline renders
      * walk scheduleStep() ahead of startRendering(), and live playback already has the
      * authoritative audio time in `nextTime`.
+     *
+     * `swing` rides along because an effect on this hook is the only kind that CAN
+     * follow the groove. It is handed the step number, so it knows which sixteenth each
+     * of its pulses falls on and can move the off-beat ones exactly as a note moves. A
+     * delay line cannot: it applies one interval to whatever arrives, and the interval
+     * a swung note needs depends on which side of the beat it started from.
      */
-    scheduleEffects(step, when, sixteenth, bpm = 120) {
+    scheduleEffects(step, when, sixteenth, bpm = 120, swing = 50) {
       const slots = [
         ...[...strips.values()].map((s) => s._slot),
         ...[...auxes.values()].map((a) => a.slot),
@@ -910,7 +916,7 @@ export function createMixer(ctx, {
       for (const slot of slots) {
         for (const link of slot.chain || []) {
           if (typeof link.scheduleRhythm === 'function') {
-            link.scheduleRhythm(step, when, sixteenth, bpm);
+            link.scheduleRhythm(step, when, sixteenth, bpm, swing);
           }
         }
       }

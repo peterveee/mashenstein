@@ -402,6 +402,30 @@ try {
     `${preset.id} plays it longer too — the preset path reads the same key`
     + ` (energy ${energy(heldVoice).toFixed(1)} against ${energy(plainVoice).toFixed(1)})`);
 
+  // WHEN a note sounds, through the same two paths. The lane block reaches the clock
+  // through `scheduleAt`; `playVoice` builds its own time from `nextTime` and an offset,
+  // and for a while that offset carried the per-bar lane nudge but not the song's swing.
+  // The lane went on shuffling and the identical lane with a preset on it played dead
+  // straight — invisible unless you had assigned a voice, which on hats everybody has.
+  const HATS = () => new Array(32).fill(true);
+  const hatPreset = voicesFor('hats').find((v) => v.kind === 'noise');
+  const straightPlain = await play({ hats: HATS() });
+  const swungPlain = await play({ hats: HATS(), swing: 200 / 3 });
+  assert(!same(straightPlain, swungPlain),
+    'swing moves the hand-written hats off the grid');
+
+  const straightVoiced = await play({ hats: HATS(), hatsVoice: hatPreset.id });
+  const swungVoiced = await play({ hats: HATS(), hatsVoice: hatPreset.id, swing: 200 / 3 });
+  assert(!same(straightVoiced, swungVoiced),
+    `and the same hats through ${hatPreset.id} — the preset path takes its own route to`
+    + ' the clock, and it has to arrive at the same time the lane block would');
+
+  // Straight is not "nearly straight": 50 is the grid, at the sample. This is the same
+  // claim the null test makes for the whole engine, made here where a failure names the
+  // path that broke it.
+  assert(same(straightVoiced, await play({ hats: HATS(), hatsVoice: hatPreset.id, swing: 50 })),
+    'a swing of 50 through the preset path is bit-identical to no swing at all');
+
   // Unequal lengths among simultaneous chord tones: the whole reason the lengths are per
   // tone rather than per onset.
   const chordLane = () => [[A2, third, fifth], ...new Array(31).fill(null)];

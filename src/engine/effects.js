@@ -1509,11 +1509,32 @@ function makeRhythmicGate(ctx, params = {}) {
     gate.gain.setTargetAtTime(floor, ctx.currentTime, 0.004);
   };
   node.setState = (patch) => { Object.assign(state, patch); node.applyState(); };
-  node.scheduleRhythm = (step, when, sixteenth) => {
+  node.scheduleRhythm = (step, when, sixteenth, bpm, swing = 50) => {
     const periodBeats = Math.max(1 / 16, Number(state.division) || 0.5);
     const beatSeconds = sixteenth * 4;
     const startBeat = step / 4;
     const endBeat = startBeat + 0.25;
+    // SWING, on the same terms as a note. A pulse belongs to a sixteenth, and the
+    // off-beat sixteenths of a swung song are late — so a pulse landing on one is late
+    // with them, and a gate stays locked to the groove instead of cutting across it.
+    //
+    // Only pulses that land ON the sixteenth grid can be swung at all, and this is
+    // exactly the parity rule that decides whether a tempo-synced division survives a
+    // shuffle. A division of an EVEN number of sixteenths (1/8, 1/4, 1/4 dotted, a bar)
+    // only ever lands on on-beat sixteenths and never moves. An ODD one (1/16, 1/8
+    // dotted) alternates, and following the swing is the whole point. A triplet or a
+    // 1/32 lands between sixteenths, where the grid has no opinion, so it is left alone
+    // rather than shoved at the nearest one.
+    //
+    // This is the thing a delay CANNOT do — see the note over scheduleEffects.
+    const swingShift = sixteenth * ((Number(swing) || 50) - 50) / 50;
+    const swungBy = (boundaryBeats) => {
+      if (!swingShift) return 0;
+      const s16 = boundaryBeats * 4;                 // the pulse, in sixteenths
+      const k = Math.round(s16);
+      if (Math.abs(s16 - k) > 1e-7) return 0;        // between sixteenths — not on the grid
+      return (((k % 2) + 2) % 2) === 1 ? swingShift : 0;
+    };
     const periodSeconds = periodBeats * beatSeconds;
     const openSeconds = periodSeconds * Math.max(0.01, Math.min(1, state.gateLength ?? 0.5));
     let attack = Math.max(0.001, Number(state.attack) || 0.003);
@@ -1532,7 +1553,7 @@ function makeRhythmicGate(ctx, params = {}) {
       || when < lastWhen - 1e-6
       || Math.abs(sixteenth - lastSixteenth) > 1e-6
       || when > lastWhen + lastSixteenth * 1.5
-      || `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}` !== lastSignature
+      || `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}|${swing}` !== lastSignature
     );
     if (discontinuity) {
       gate.gain.cancelScheduledValues(when);
@@ -1541,7 +1562,7 @@ function makeRhythmicGate(ctx, params = {}) {
     lastStep = step;
     lastWhen = when;
     lastSixteenth = sixteenth;
-    lastSignature = `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}`;
+    lastSignature = `${state.division}|${state.gateLength}|${state.attack}|${state.decay}|${state.depth}|${swing}`;
     const levelAt = (rel) => {
       if (rel < 0 || rel >= openSeconds) return floor;
       if (rel < attack) return floor + (1 - floor) * (rel / attack);
@@ -1553,7 +1574,12 @@ function makeRhythmicGate(ctx, params = {}) {
     const currentIndex = Math.abs(beatIndex - nearestIndex) < 1e-7
       ? nearestIndex : Math.floor(beatIndex);
     const currentBoundary = currentIndex * periodBeats;
-    gate.gain.setValueAtTime(levelAt((startBeat - currentBoundary) * beatSeconds), when);
+    // How far into the opening we already are, at this sixteenth's edge. Measured from
+    // where that opening ACTUALLY started, so a swung boundary is not treated as though
+    // it had opened early — a negative result means it has not opened yet, which
+    // `levelAt` already reads as the floor.
+    gate.gain.setValueAtTime(
+      levelAt((startBeat - currentBoundary) * beatSeconds - swungBy(currentBoundary)), when);
     const schedulePulse = (boundary, t) => {
       if (t < when - 1e-7 || t > when + sixteenth + 1e-7) return;
       gate.gain.setValueAtTime(floor, t);
@@ -1564,8 +1590,12 @@ function makeRhythmicGate(ctx, params = {}) {
     let index = currentIndex;
     for (;;) {
       const boundary = index * periodBeats;
-      const t = when + (boundary - startBeat) * beatSeconds;
-      if (t > when + sixteenth + 1e-7) break;
+      const t = when + (boundary - startBeat) * beatSeconds + swungBy(boundary);
+      // The break tests the UNSWUNG time, so a pulse pushed late by the shuffle still
+      // ends the walk on the sixteenth it belongs to rather than running the loop on.
+      // A swung pulse cannot leave its own sixteenth: the shift is at most half of one,
+      // and a pulse on the grid always starts at this window's own edge.
+      if (when + (boundary - startBeat) * beatSeconds > when + sixteenth + 1e-7) break;
       if (t >= when - 1e-7) schedulePulse(boundary, t);
       index++;
     }
@@ -1978,7 +2008,8 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
       node,
       set: (patch, b) => node.setState(patch, b ?? bpm),
       scheduleRhythm: typeof node.scheduleRhythm === 'function'
-        ? (step, when, sixteenth, b) => node.scheduleRhythm(step, when, sixteenth, b ?? bpm)
+        ? (step, when, sixteenth, b, swing) =>
+          node.scheduleRhythm(step, when, sixteenth, b ?? bpm, swing ?? 50)
         : null,
       // A hand-written effect reaches its params through setState, which ramps them
       // from ctx.currentTime and takes no time argument. Rather than pretend, say so:

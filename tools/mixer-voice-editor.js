@@ -474,6 +474,15 @@ const HUMANISE_GROUP = {
         write: (c) => 2 ** (c / 1200) - 1,
         tip: 'How far each hit’s pitch wanders either side of the note — a few cents '
           + 'is a player, fifty is a fault' }),
+    // Milliseconds of stagger between the UNISON voices of a note — the other half of an
+    // ensemble, and the cheaper half: people do not come in together. Seconds under the
+    // hood, shown in ms because the whole useful range is under fifty of them. Same seed
+    // as VIB SPREAD, so a voice that is late is late in every layer at once.
+    n('$humanize.entry', 'ENTRY', 0, 80, 1, fixed(0), 0, 'ms',
+      (v) => v?.synth === 'LayerSynth',
+      { read: (x) => (x != null ? x * 1000 : undefined), write: (x) => x / 1000,
+        tip: 'How far apart the unison voices come in. A few milliseconds is a section '
+          + 'breathing; fifty is a round' }),
     // FILTER, not TONE: what this varies is every filter CUTOFF in the voice — the
     // burst's, the body's, each layer's — through `_filterChain`'s per-hit `mul`.
     // TONE named one pot on the Drive card, which is the smallest thing it moves.
@@ -616,6 +625,17 @@ const layerGroups = () => {
         n(`$${p}.unison`, 'UNISON', 1, 5, 1, fixed(0), 1),
         n(`$${p}.spread`, 'SPREAD', 0, 100, 1, fixed(0), 20, 'ct',
           (v) => (getAt(v, `$${p}.unison`) ?? 1) > 1),
+        // The third member of the unison family: SPREAD detunes the voices, STEREO places
+        // them. Zero is where every preset written before this sits — one point in the
+        // middle — and the engine builds no panner at all there.
+        //
+        // Worth knowing on a bass: voices detuned AND panned comb-filter against each
+        // other when a phone folds them to mono. Spread the upper layers; leave the sub
+        // centred, which is what `BEST Reese Bass` already does with its detune.
+        n(`$${p}.stereo`, 'STEREO', 0, 1, 0.01, fixed(2), 0, '',
+          (v) => (getAt(v, `$${p}.unison`) ?? 1) > 1,
+          { tip: 'How far across the stereo field the unison voices stand — 0 is one '
+              + 'point in the middle, 1 is hard left to hard right' }),
       ],
     });
     groups.push({
@@ -1574,6 +1594,20 @@ const commonRows = (voice = {}) => [
     // rather than offering a control that would silently do nothing.
     envTime('$vibrato.delay', 'VIB DELAY', 0, 0.01, secs, 0, 's',
       (v) => (v?.vibrato?.depth ?? 0) > 0 && NATIVE_SYNTHS.includes(v?.synth)),
+    // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
+    // which is one singer through a chorus however many oscillators are running; wound up,
+    // each voice takes its own rate and its own starting phase and the stack becomes a
+    // SECTION. Scattered per unison index rather than per layer, deliberately — voice 2 is
+    // the same singer in every layer, because a person has one larynx feeding all of their
+    // formants, and scattering per layer pulls one voice apart instead of adding voices.
+    //
+    // LayerSynth only: it is the one path that builds a modulator per voice. The pooled
+    // classes share a single LFO in the pool and GameSynth has one oscillator to detune,
+    // so there is nothing there to de-correlate.
+    n('$vibrato.spread', 'VIB SPREAD', 0, 1, 0.01, fixed(2), 0, '',
+      (v) => (v?.vibrato?.depth ?? 0) > 0 && v?.synth === 'LayerSynth',
+      { tip: 'How far the unison voices drift apart in rate and phase — 0 is one wobble '
+          + 'on every voice, 1 is a room full of singers who are not counting together' }),
   ]),
   // Mono holds one instance for the whole lane, so a new note cuts the last one off
   // — and, because that instance remembers what it was playing, GLIDE finally has a
@@ -1664,6 +1698,31 @@ export function panelKeys(voice = {}) {
     (g.rows || []).flat(Infinity).forEach(add);
   }
   return keys;
+}
+
+/**
+ * THE PANEL'S STRUCTURE, as data — every card and every row, for one preset.
+ *
+ * Exported beside `panelKeys` and for the same reason: another file needs to know what
+ * this one draws, and the only honest way to tell it is to hand over the definition
+ * rather than a description of it. `tools/build-synth-design-handoff.js` turns this into
+ * the control inventory a UI is designed against, so a card added here arrives in that
+ * brief without anyone having to remember to write it down a second time.
+ *
+ * The common card is returned with the title `buildPanel` gives it, so a brief cannot
+ * call it Note where the desk calls it Level. `pillLabels` comes along for the same
+ * reason: a pick's OPTIONS are what it stores, and the two-to-five letters actually
+ * printed on the pill are what a layout has to leave room for.
+ */
+export function panelSpec(voice = {}) {
+  const groups = voice.kind === 'noise' ? NOISE_GROUPS
+    : voice.kind === 'drum' ? DRUM_GROUPS
+      : (SYNTH_GROUPS[voice.synth] || []);
+  return {
+    common: { title: isOneShot(voice) ? 'Level' : 'Note', rows: commonRows(voice) },
+    groups,
+    pillLabels: SHORT,
+  };
 }
 
 // ---- paths ------------------------------------------------------------------

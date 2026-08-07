@@ -206,10 +206,38 @@ written length and simply arrives later, so a swung off-beat on a legato lane ru
 little further into the next beat — audible as slight legato, and nothing at all on a
 kit.
 
-Two things stay deliberately straight, and are not bugs: the tempo-synced **delay**, and
-rhythmic **gate** and tremolo inserts. A gate is a rhythm laid over the song rather than
-a note in it, and a straight gate under a swung part is the arrangement anyone reaching
-for both actually wants.
+Swing reaches every lane the same way, whether it plays on the engine's own voice or one
+you assigned from the library — those are two code paths for the same note, and they are
+held to the same clock.
+
+**Rhythmic gate inserts follow the swing too.** A gate is handed the step number by the
+sequencer, so it knows which sixteenth each of its pulses lands on and moves the off-beat
+ones exactly as a note moves. At 1/16 it tracks the shuffle; at 1/8 dotted it alternates
+on-beat and off-beat, which is the pattern only something that knows the grid can play.
+
+**The delay cannot, and that is a real limit rather than an oversight.** A delay line
+applies one fixed interval to whatever arrives; swing is a grid that moves every other
+sixteenth. Whether the two agree comes down to **parity**:
+
+| Division | in sixteenths | Under swing |
+| --- | --- | --- |
+| 1 bar, 1/2, **1/4 dotted**, 1/4, 1/8 | 16, 8, **6**, 4, 2 | lands on the groove exactly |
+| **1/8 dotted** | 3 | flams — 42ms at 120bpm, 66% |
+| 1/16 | 1 | flams — 42ms |
+| 1/16 dotted, 1/32 | 1.5, 0.5 | flams — 63ms |
+| any triplet | 8/3, 4/3, 2/3 | flams — 83ms |
+
+An even number of sixteenths maps on-beat to on-beat and off-beat to off-beat, so the
+echo inherits the swing for nothing. Anything else crosses to the other side of the beat
+at its straight position, which is where the groove isn't. Note that dotted **quarter**
+is safe while dotted **eighth** — the familiar one — is the worst of the common choices.
+
+There is no fix inside a delay line: the interval a swung note needs depends on which
+side of the beat it started from, and a delay has no way to know. On a swung song, stay
+on the safe divisions, or use the flam on purpose.
+
+Continuous modulation — pan across a bar, filter sweeps, tremolo depth — is unaffected
+and wants nothing done to it. There is no attack for the ear to place against the grid.
 
 The step grid and the piano roll stay evenly spaced through all of this. Swing is a feel,
 not a re-gridding — the notes are still on those steps, and moving the drawing would only

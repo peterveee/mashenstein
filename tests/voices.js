@@ -164,6 +164,13 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
       assert(o.width >= 0.05 && o.width <= 0.95,
         `${v.id}: its pulse width is inside what the pot can reach`);
     }
+    if (o.stereo != null) {
+      assert(o.stereo >= 0 && o.stereo <= 1, `${v.id}: its stereo width is a fraction`);
+      // A panner is only built above unison 1 — one voice has no field to spread across,
+      // and placing a whole layer is the strip's job, not the preset's.
+      assert((o.unison ?? 1) > 1,
+        `${v.id}: stereo width sits on a layer with voices to spread (unison above 1)`);
+    }
     if (o.pwm) {
       // PWM builds a second oscillator and a delay per voice. On any wave but a pulse
       // there is no width for it to move, so the section would be paid for and silent.
@@ -214,6 +221,29 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
     assert(s > 0 || (G.vca.decay ?? 0) > 0,
       `${v.id}: the shared envelope holds or falls over time — not instant silence`);
     assert(s >= 0 && s <= 1, `${v.id}: the shared envelope's sustain is a level`);
+  }
+}
+
+// The ensemble controls. Both are LayerSynth's alone — it is the only path that builds a
+// modulator per unison voice — and both must be reachable on the pots that set them.
+for (const v of tone) {
+  const sp = v.vibrato?.spread;
+  if (sp != null) {
+    assert(v.synth === 'LayerSynth',
+      `${v.id}: VIB SPREAD is LayerSynth's — no other path has voices to de-correlate`);
+    assert(sp >= 0 && sp <= 1, `${v.id}: its vibrato spread is a fraction`);
+    assert((v.vibrato?.depth ?? 0) > 0,
+      `${v.id}: scattering a vibrato that is switched off would scatter nothing`);
+    // Scatter with nothing to scatter is a control that reads as broken. At least one
+    // layer has to be running more than one voice.
+    assert(['osc1', 'osc2', 'osc3'].some((k) => (v.layer?.[k]?.unison ?? 1) > 1),
+      `${v.id}: has a layer with unison above 1 for the spread to act on`);
+  }
+  if (v.humanize?.entry != null) {
+    assert(v.synth === 'LayerSynth',
+      `${v.id}: ENTRY staggers unison voices, which only LayerSynth builds`);
+    assert(v.humanize.entry >= 0 && v.humanize.entry <= 0.08,
+      `${v.id}: its entry stagger is inside what the pot can reach`);
   }
 }
 

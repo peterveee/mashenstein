@@ -151,6 +151,45 @@ export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {
   return wave;
 }
 
+/**
+ * One of the four native waveforms, rotated to start at an arbitrary PHASE.
+ *
+ * `OscillatorNode` always starts at phase zero, which is exactly right when there is one
+ * modulator and exactly wrong when there are several meant to be independent: five vibrato
+ * LFOs started together at the same rate are one LFO with extra nodes. Rotating a harmonic
+ * series by `n·φ` is the standard way to move phase without a delay line — no silence at
+ * the start, no node in the signal path, and the rotation is exact.
+ *
+ * The series are the textbook ones. Thirty-two harmonics is far more than a modulator at
+ * a few hertz can use, and the waves are cached per context beside the pulse tables.
+ */
+const phaseWaves = new WeakMap();
+function phasedWave(ctx, type, phase) {
+  const kind = nativeWave(type, 'sine');
+  let perCtx = phaseWaves.get(ctx);
+  if (!perCtx) { perCtx = new Map(); phaseWaves.set(ctx, perCtx); }
+  const key = `${kind}|${phase.toFixed(4)}`;
+  const hit = perCtx.get(key);
+  if (hit) return hit;
+  const H = 32;
+  const real = new Float32Array(H + 1);
+  const imag = new Float32Array(H + 1);
+  for (let n = 1; n <= H; n++) {
+    let b = 0;
+    if (kind === 'sine') b = n === 1 ? 1 : 0;
+    else if (kind === 'square') b = n % 2 ? 4 / (n * Math.PI) : 0;
+    else if (kind === 'sawtooth') b = (2 / (n * Math.PI)) * (n % 2 ? 1 : -1);
+    else if (n % 2) b = (8 / (n * n * Math.PI * Math.PI)) * (((n - 1) / 2) % 2 ? -1 : 1);
+    if (!b) continue;
+    // b·sin(nθ + nφ) = b·sin(nφ)·cos(nθ) + b·cos(nφ)·sin(nθ)
+    real[n] = b * Math.sin(n * phase);
+    imag[n] = b * Math.cos(n * phase);
+  }
+  const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  perCtx.set(key, wave);
+  return wave;
+}
+
 const NOISE_Q = 2;
 
 /**
@@ -236,7 +275,7 @@ function pitchRamp(param, target, t, dur, curve = 'exp') {
  *
  * Returns when the tail is actually over, which is what the caller stops its oscillator on.
  */
-function adsr(param, t, end, peak, e = {}) {
+function adsr(param, t, end, peak, e = {}, sustaining = false) {
   const level = Math.max(1e-4, peak);
   const attack = Math.max(0.001, e.attack ?? 0.01);
   const release = Math.max(0, e.release ?? 0.015);
@@ -261,6 +300,12 @@ function adsr(param, t, end, peak, e = {}) {
   else param.exponentialRampToValueAtTime(level, peakAt);
   if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
   else param.exponentialRampToValueAtTime(held, decayEnd);
+  // HELD: stop here. The note is being played by a finger rather than by a sequencer, so
+  // the envelope runs to its sustain level and STAYS there — an AudioParam holds its last
+  // value indefinitely — and `releaseNow` writes the rest when the key comes up. Nothing
+  // below is scheduled, which is exactly the difference between a note with a length and a
+  // note with a player.
+  if (sustaining) return end + release + 0.005;
   // The plateau — and the reason this is not `_playDrum`'s `env` with one stage bolted on.
   // A ramp interpolates from the time of the event BEFORE it, so without this the release
   // starts falling the instant the decay ends and there is no sustain at all. Only when the
@@ -335,6 +380,39 @@ const filterEnv = (stages, fe, t, end) =>
 const pitchEnv = (params, pe, t, end, base = 0) =>
   centsEnv(params, (pe?.semitones ?? 0) * 100, pe || {}, t, end, { base, dfltAttack: 0 });
 
+/**
+ * The other half of a HELD envelope: let go, from wherever the note happens to be.
+ *
+ * Reads the param's CURRENT value rather than assuming it reached sustain, because a key
+ * released during the attack must fall from where it got to — releasing from the sustain
+ * level would make a stab louder on the way out than it ever was on the way in.
+ *
+ * Returns when the tail is over, which is what the caller re-schedules `stop()` for.
+ */
+function releaseNow(param, at, e = {}) {
+  const rel = Math.max(0, e.release ?? 0.015);
+  const from = Math.max(1e-4, param.value);
+  param.cancelScheduledValues(at);
+  param.setValueAtTime(from, at);
+  const off = at + rel;
+  if (rel > 0) {
+    if (e.releaseCurve === 'lin') param.linearRampToValueAtTime(1e-4, off);
+    else param.exponentialRampToValueAtTime(1e-4, off);
+  }
+  param.linearRampToValueAtTime(0, off + 0.005);
+  return off + 0.005;
+}
+
+/**
+ * How long a held note may ring with nobody holding it.
+ *
+ * A note-off can go missing — a key released while the panel closes, a MIDI cable pulled,
+ * a page that lost focus mid-chord — and a native voice with no scheduled end would ring
+ * until the context died. Thirty seconds is far past any preset's release and far short of
+ * a nuisance.
+ */
+const HOLD_SECONDS = 30;
+
 const SYNTHS = {
   Synth: Tone.Synth,
   MonoSynth: Tone.MonoSynth,
@@ -399,6 +477,11 @@ export class VoiceRack {
     // and a released one decays through its envelope instead of ringing for a fixed
     // sequencer length.
     this._activePreviews = new Map();
+    // Held NATIVE notes, keyed the same way. The pooled classes above are released through
+    // Tone's own `triggerRelease`; a native voice is a heap of scheduled AudioParams with
+    // no synth object to ask, so what is kept here is the params to let go of and the
+    // sources to stop early. See `releaseNow`.
+    this._heldNative = new Map();
   }
 
   /**
@@ -501,13 +584,13 @@ export class VoiceRack {
       // A previewed note plays the full one-shot envelope — the decay needs room to
       // reach silence, and the preset's `dur` is a sequencer default, not a
       // sound-design parameter. 4 s is enough for any exponential ramp to hit -80 dB.
-      return this._playGame(v, { freq, time, dur: preview ? 4 : dur, gain, detune, dry, wet, echo });
+      return this._playGame(v, { freq, time, dur: preview ? 4 : dur, gain, detune, dry, wet, echo, laneKey, preview });
     }
     // Before the allowlist, not after: `SYNTHS` holds Tone classes, so a native synth that
     // reached that line would find nothing under its name and return false, which looks
     // exactly like a preset that does nothing.
     if (v && v.synth === 'AdditiveSynth') {
-      return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo });
+      return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
     }
     if (v && v.synth === 'LayerSynth') {
       return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
@@ -600,7 +683,7 @@ export class VoiceRack {
   }
 
   /** Native game oscillator: the simple voice path without Tone's ADSR layer. */
-  _playGame(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true }) {
+  _playGame(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false }) {
     const notes = Array.isArray(freq) ? freq : [freq];
     const attack = Math.max(0.001, v.attack ?? 0.01);
     const release = Math.max(0, v.release ?? 0.015);
@@ -781,6 +864,17 @@ export class VoiceRack {
       g.gain.exponentialRampToValueAtTime(gain * makeup, peakAt);
       g.gain.exponentialRampToValueAtTime(0.0001, end);
       g.gain.linearRampToValueAtTime(0, end + release);
+      // This path has no SUSTAIN to hold — its envelope is an arcade AR, attack then a
+      // fall across the note, and there is no level for a finger to sit on. So a held
+      // preview does not sustain; it gets a NOTE-OFF, which is the half that was missing.
+      // Before this, a previewed game note ran its full four seconds whatever the key did.
+      if (preview) {
+        const noteKey = `${laneKey}|${f.toFixed(2)}`;
+        this._releasePreview(noteKey);
+        this._heldNative.set(noteKey, {
+          params: [{ param: g.gain, e: { release } }], sources: [o],
+        });
+      }
       // The source is already wired into `g` by the branch above — through the bandpass
       // for noise, directly for an oscillator, and through the tone filter when the
       // preset has one. Connecting it again here would put raw unfiltered noise beside
@@ -1375,7 +1469,7 @@ export class VoiceRack {
    * Like `_playNoise` and `_playDrum`: native nodes, one-shot, never pooled. More
    * deterministic than either, in fact, because there is no noise in it at all.
    */
-  _playAdditive(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true }) {
+  _playAdditive(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false }) {
     const ctx = this.ctx;
     const a = v.additive;
     if (!a) return false;
@@ -1465,6 +1559,13 @@ export class VoiceRack {
         const noteDur = Array.isArray(dur) ? (dur[n] ?? dur[0]) : dur;
         const end = t + Math.max(0.001, noteDur || 0.001);
         const base = f * shift * bend;
+        // A drawbar stack under a finger holds, exactly as the organ it is modelled on
+        // does — one envelope shared by every partial, so they let go together. The
+        // percussion register below is deliberately NOT held: a Hammond's percussion is a
+        // circuit constant that strikes once and is gone however long the key is down.
+        const stackHolds = preview && (a.sustain ?? 0) > 0;
+        const heldParams = [];
+        const heldSources = [];
 
         for (let k = 0; k < count; k++) {
           const level = bars[k];
@@ -1489,14 +1590,21 @@ export class VoiceRack {
           // `damp` tilts the decay across the stack. Ratios BELOW one — the sub-octave
           // bars — come out longer, which is what a real one does too.
           const decay = damp > 0 ? a.decay * (r ** -damp) : a.decay;
-          const off = adsr(g.gain, t, end, level, {
+          const shape = {
             attack: a.attack, decay, sustain: a.sustain, release: a.release,
             attackCurve: a.attackCurve, curve: a.curve, releaseCurve: a.releaseCurve,
-          });
+          };
+          const off = adsr(g.gain, t, stackHolds ? t + HOLD_SECONDS : end, level, shape, stackHolds);
+          if (stackHolds) { heldParams.push({ param: g.gain, e: shape }); heldSources.push(o); }
           if (vibCents) vibCents.connect(o.detune);
           o.connect(g); g.connect(out);
           o.start(t); o.stop(off + 0.01);
           lastOff = Math.max(lastOff, off + 0.01);
+        }
+        if (stackHolds && heldParams.length) {
+          const noteKey = `${laneKey}|${f.toFixed(2)}`;
+          this._releasePreview(noteKey);
+          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources });
         }
 
         // Hammond percussion: one louder partial struck on the key attack and gone long
@@ -1618,18 +1726,51 @@ export class VoiceRack {
     // thing whichever synth plays it. Every oscillator of every layer takes it on
     // `.detune`, where it SUMS with the unison spread rather than fighting it.
     const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
-    let vibCents = null; let vlfo = null; let lastOff = 0;
-    if (vib) {
-      vlfo = ctx.createOscillator();
-      vlfo.type = nativeWave(vib.type, 'sine');
-      vlfo.frequency.setValueAtTime(Math.max(0.01, vib.rate ?? 5), time);
+    let lastOff = 0;
+    // ---- the ensemble ------------------------------------------------------
+    //
+    // SPREAD scatters the vibrato across the unison voices — each one its own rate and
+    // its own starting phase — which is the difference between a section and one singer
+    // through a chorus. Locked together (the default, and every preset written before
+    // this) they are one wobble arriving at nine oscillators, and the ear hears the lock.
+    //
+    // Seeded on the UNISON INDEX and nothing else, which is the whole design: voice 2 is
+    // the SAME singer in osc1, osc2 and osc3, because a person has one larynx feeding all
+    // of their formants. Seed it per (layer, index) instead and one singer's F1 and F3
+    // would wobble apart, which does not sound like a bigger choir — it sounds like the
+    // voice coming apart. The note's own time is in the seed too, so a second note is a
+    // slightly different section rather than a copy of the first.
+    const vibSpread = Math.min(1, Math.max(0, vib?.spread ?? 0));
+    const vibOscs = [];
+    const vibVoices = new Map();
+    const vibFor = (u) => {
+      if (!vib) return null;
+      // Locked: ONE modulator, shared, exactly the graph this path has always built. A
+      // preset that never touches SPREAD renders the identical samples it did before.
+      const key = vibSpread > 0 ? u : 0;
+      const held = vibVoices.get(key);
+      if (held) return held;
+      const lfo = ctx.createOscillator();
+      const rate = Math.max(0.01, vib.rate ?? 5);
+      if (vibSpread > 0) {
+        // ±10% of rate at full spread — the range a real section actually covers. Wider
+        // stops being an ensemble and starts being out of tune with itself.
+        lfo.frequency.setValueAtTime(rate * vary(vibSpread * 0.1, time, 911 + key), time);
+        lfo.setPeriodicWave(phasedWave(ctx, vib.type, hitRandom(time, 977 + key) * 2 * Math.PI * vibSpread));
+      } else {
+        lfo.type = nativeWave(vib.type, 'sine');
+        lfo.frequency.setValueAtTime(rate, time);
+      }
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, time);
       env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, vib.delay || 0.001));
-      vibCents = ctx.createGain();
-      vibCents.gain.setValueAtTime(Math.min(1, vib.depth) * 100, time);
-      vlfo.connect(env); env.connect(vibCents);
-    }
+      const cents = ctx.createGain();
+      cents.gain.setValueAtTime(Math.min(1, vib.depth) * 100, time);
+      lfo.connect(env); env.connect(cents);
+      vibOscs.push(lfo);
+      vibVoices.set(key, cents);
+      return cents;
+    };
     // The routable LFO. Unit-amplitude oscillator, onset fade, then one depth gain in
     // the units its destination takes: cents for a filter's `.detune` (2400 at full —
     // two octaves of movement), a plain modulation gain for tremolo.
@@ -1676,6 +1817,8 @@ export class VoiceRack {
       const fade = vary(hum.gain, time, 0);
       const bend = vary(hum.pitch, time, 16);
       const toneMul = vary(hum.filter, time, 32);
+      // Seconds, not a multiplier: how far apart the unison voices come in.
+      const entry = Math.max(0, Math.min(0.08, hum.entry ?? 0));
 
       // One chain per note, built on demand: shaper → tone → trem → out. A note of
       // nothing but rests builds none of it.
@@ -1736,6 +1879,18 @@ export class VoiceRack {
         // one layer die inside another; this envelope belongs to the note over all of
         // them, and a layer at GATE 62% still ends where it always did.
         const gEnd = t + Math.max(0.001, noteDur || 0.001);
+        // ---- held notes -------------------------------------------------------
+        //
+        // A previewed note is played by a FINGER, so it has no length until the finger
+        // says so. Anything with a sustain above zero runs to that level and waits there;
+        // anything at sustain 0 is a struck sound and dies exactly as written, because
+        // that is what a struck sound IS — `bestMonsterBass`' octave tick should not hang
+        // just because somebody is leaning on the key. GATE stops meaning anything on a
+        // sustaining layer under a held note, which is correct: 62% of "until I let go"
+        // is not a length.
+        const holdEnd = t + HOLD_SECONDS;
+        const heldParams = [];
+        const heldSources = [];
         let stage = null;
         const stageFor = () => {
           if (stage) return stage;
@@ -1748,7 +1903,9 @@ export class VoiceRack {
             const vg = ctx.createGain();
             // Peak 1: the level lives on the layers and on the note's own gain. A third
             // control called LEVEL on one signal path is how two of them end up wrong.
-            const off = adsr(vg.gain, t, gEnd, 1, gv);
+            const vcaHolds = preview && (gv.sustain ?? 0) > 0;
+            const off = adsr(vg.gain, t, vcaHolds ? holdEnd : gEnd, 1, gv, vcaHolds);
+            if (vcaHolds) heldParams.push({ param: vg.gain, e: gv });
             // The modulators have to outlive this tail — a global release longer than
             // every layer's would otherwise have its LFO stopped out from under it.
             // The oscillators still stop at their OWN layer's off: a VCA can only shape
@@ -1776,6 +1933,16 @@ export class VoiceRack {
           return stage;
         };
 
+        // eslint-disable-next-line no-loop-func
+        const registerHold = () => {
+          if (!preview || !heldParams.length) return;
+          const noteKey = `${laneKey}|${f.toFixed(2)}`;
+          // The same key pressed again restarts rather than stacking — the pooled path's
+          // own rule, applied here so both behave alike under a trill.
+          this._releasePreview(noteKey);
+          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources });
+        };
+
         for (const spec of specs) {
           // The per-layer length: this layer's own note, as a fraction (or multiple)
           // of the drawn one. bass80s' octave tick lives and dies inside the note the
@@ -1799,7 +1966,9 @@ export class VoiceRack {
 
           // The layer's own gain, enveloped once and shared by its unison voices.
           const g = ctx.createGain();
-          const off = adsr(g.gain, t, end, spec.gain ?? 1, spec);
+          const layerHolds = preview && (spec.sustain ?? 0) > 0;
+          const off = adsr(g.gain, t, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
+          if (layerHolds) heldParams.push({ param: g.gain, e: spec });
           lastOff = Math.max(lastOff, off);
 
           // The filter, when the layer has one — per layer, not per unison voice: a
@@ -1949,6 +2118,7 @@ export class VoiceRack {
             if (spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
               pitchEnv(dets, spec.pitch, t, end, cents);
             } else if (cents) for (const d of dets) d.setValueAtTime(cents, t);
+            const vibCents = vibFor(u);
             if (vibCents) for (const d of dets) vibCents.connect(d);
 
             // Pitch and glide no longer compete. The envelope is cents on `.detune` and
@@ -1987,13 +2157,45 @@ export class VoiceRack {
               for (const pitch of pitches) fmSpread.connect(pitch);
             }
 
+            // ---- where in the field this voice stands ---------------------
+            //
+            // A unison stack has always been detuned but never PLACED: five voices at
+            // five pitches arriving at one point. Spreading them across the field is what
+            // turns a thick mono sound into a wide one, and it is the cheap half of that
+            // — the oscillators are unchanged, one panner splits each into two channels.
+            //
+            // BEFORE the layer's filter, deliberately: the filter stays ONE node handling
+            // a stereo signal with the same cutoff on both sides, rather than becoming a
+            // filter per voice. That is the difference between costing a second channel
+            // and costing five filters.
+            //
+            // Skipped entirely at zero — no node, no stereo, the same graph and the same
+            // samples this path has always produced.
+            let sink = dest;
+            const width = Math.min(1, Math.max(0, spec.stereo ?? 0));
+            if (width > 0 && count > 1 && ctx.createStereoPanner) {
+              const pn = ctx.createStereoPanner();
+              // Symmetric about the centre, like the detune spread it sits beside: at
+              // full width the outer voices are hard left and hard right and the middle
+              // one stays put.
+              pn.pan.setValueAtTime((u / (count - 1) - 0.5) * 2 * width, t);
+              pn.connect(dest);
+              sink = pn;
+            }
             if (norm * makeup !== 1) {
               const ng = ctx.createGain(); ng.gain.value = norm * makeup;
-              out.connect(ng); ng.connect(dest);
-            } else out.connect(dest);
-            for (const src of sources) { src.start(t); src.stop(off + 0.01); }
+              out.connect(ng); ng.connect(sink);
+            } else out.connect(sink);
+            // ENTRY: singers do not come in together. A few milliseconds of stagger per
+            // unison voice is the cheapest human thing in the whole path — and it is the
+            // same seed as the vibrato, so voice 2 is late in every layer at once rather
+            // than smearing one singer's formants apart in time.
+            const late = entry > 0 ? hitRandom(t, 1013 + u) * entry : 0;
+            for (const src of sources) { src.start(t + late); src.stop(off + 0.01); }
+            if (layerHolds) heldSources.push(...sources);
           }
         }
+        registerHold();
       });
     }
 
@@ -2002,7 +2204,7 @@ export class VoiceRack {
     if (mono && lastBase > 0) {
       this._last.set(glideKey, { freq: lastBase, outs: allOuts, stopAt: lastOff });
     }
-    if (vlfo && lastOff) { vlfo.start(time); vlfo.stop(lastOff + 0.01); }
+    if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
     if (lfoOsc && lastOff) { lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01); }
     return true;
   }
@@ -2233,6 +2435,10 @@ export class VoiceRack {
       this._disposePool(pool);
     }
     this._activePreviews.clear();
+    for (const held of this._heldNative.values()) {
+      for (const src of held.sources) { try { src.stop(this.ctx.currentTime); } catch { /* ignore */ } }
+    }
+    this._heldNative.clear();
   }
 
   /** Release a previewed note — the other half of triggerAttack above. */
@@ -2243,9 +2449,22 @@ export class VoiceRack {
 
   _releasePreview(noteKey) {
     const entry = this._activePreviews.get(noteKey);
-    if (!entry) return;
-    try { entry.slot.synth.triggerRelease(this.ctx.currentTime); } catch { /* ignore */ }
-    this._activePreviews.delete(noteKey);
+    if (entry) {
+      try { entry.slot.synth.triggerRelease(this.ctx.currentTime); } catch { /* ignore */ }
+      this._activePreviews.delete(noteKey);
+    }
+    const held = this._heldNative.get(noteKey);
+    if (held) {
+      const at = this.ctx.currentTime;
+      let stopAt = at;
+      for (const h of held.params) {
+        try { stopAt = Math.max(stopAt, releaseNow(h.param, at, h.e)); } catch { /* ignore */ }
+      }
+      // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
+      // the one that takes effect, so this pulls the far-future stop back to the tail.
+      for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+      this._heldNative.delete(noteKey);
+    }
   }
 
   dispose() {
@@ -2254,6 +2473,7 @@ export class VoiceRack {
     for (const pool of this.pools.values()) this._disposePool(pool);
     this.pools.clear();
     this._activePreviews.clear();
+    this._heldNative.clear();
     // The glide origins. The nodes they point at belong to the dying context; keeping
     // the map would glide the next song's first note from the last song's last one.
     if (this._last) this._last.clear();

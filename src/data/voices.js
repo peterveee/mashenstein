@@ -2330,13 +2330,13 @@ const TONE = {
       + 'this is how a voice works, not an impression of one.',
     layer: {
       osc1: { type: 'sawtooth', ratio: 1, gain: 0.9, attack: 0.35, decay: 1.2, sustain: 0.85,
-        release: 0.9, attackCurve: 'lin', unison: 3, spread: 9,
+        release: 0.9, attackCurve: 'lin', unison: 3, spread: 9, stereo: 0.8,
         filter: { type: 'bandpass', slope: -12, freq: 800, Q: 7, track: 0 } },
       osc2: { type: 'sawtooth', ratio: 1, gain: 0.55, detune: 6, attack: 0.42, decay: 1.4,
-        sustain: 0.8, release: 0.9, attackCurve: 'lin', unison: 2, spread: 13,
+        sustain: 0.8, release: 0.9, attackCurve: 'lin', unison: 2, spread: 13, stereo: 0.7,
         filter: { type: 'bandpass', slope: -12, freq: 1150, Q: 9, track: 0 } },
       osc3: { type: 'sawtooth', ratio: 1, gain: 0.3, detune: -7, attack: 0.5, decay: 1.6,
-        sustain: 0.7, release: 1, attackCurve: 'lin',
+        sustain: 0.7, release: 1, attackCurve: 'lin', unison: 2, spread: 16, stereo: 0.9,
         filter: { type: 'bandpass', slope: -12, freq: 2900, Q: 11, track: 0 } },
       lfo: { type: 'sine', rate: 0.7, depth: 0.14, target: 'level', delay: 0.9 },
     },
@@ -2346,7 +2346,8 @@ const TONE = {
       vca: { attack: 0.45, decay: 1.6, sustain: 0.88, release: 1.2, attackCurve: 'lin' },
     },
     drive: 0.08, shape: 'soft',
-    vibrato: { depth: 0.18, rate: 5.2, delay: 0.6 } },
+    humanize: { entry: 0.022 },
+    vibrato: { depth: 0.18, rate: 5.2, delay: 0.6, spread: 0.75 } },
 
   bestChoirOoh: { label: 'BEST Choir Ooh', category: 'Orch', synth: 'LayerSynth', dur: 8,
     note: 'The /u/ vowel — 320, 800 and 2250 Hz — rounder and darker than the aah, with a '
@@ -2354,10 +2355,10 @@ const TONE = {
       + 'each other, which is what makes a section sound like more than one person.',
     layer: {
       osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.5, decay: 1.5, sustain: 0.88,
-        release: 1.1, attackCurve: 'lin', unison: 3, spread: 11,
+        release: 1.1, attackCurve: 'lin', unison: 3, spread: 11, stereo: 0.55,
         filter: { type: 'bandpass', slope: -12, freq: 320, Q: 6, track: 0 } },
       osc2: { type: 'sawtooth', ratio: 1, gain: 0.5, detune: -9, attack: 0.55, decay: 1.6,
-        sustain: 0.82, release: 1.1, attackCurve: 'lin', unison: 2, spread: 15,
+        sustain: 0.82, release: 1.1, attackCurve: 'lin', unison: 2, spread: 15, stereo: 0.8,
         filter: { type: 'bandpass', slope: -12, freq: 800, Q: 8, track: 0 } },
       // The breath. A noise layer is a full member of the stack here — its band follows
       // the note, so it sits with the voice rather than hissing across the top of it.
@@ -2372,7 +2373,8 @@ const TONE = {
       vca: { attack: 0.6, decay: 2, sustain: 0.9, release: 1.4, attackCurve: 'lin' },
     },
     drive: 0.06, shape: 'soft',
-    vibrato: { depth: 0.14, rate: 4.8, delay: 0.8 } },
+    humanize: { entry: 0.034 },
+    vibrato: { depth: 0.14, rate: 4.8, delay: 0.8, spread: 0.85 } },
 
   bestVoiceBox70s: { label: 'BEST Voice Box 70s', category: 'Lead', synth: 'LayerSynth', dur: 2.2,
     note: 'The tube-in-the-mouth lead off a 1976 record. Two formants moving in OPPOSITE '
@@ -2439,12 +2441,12 @@ const TONE = {
       + 'unison on every layer, which is nine oscillators wide.',
     layer: {
       osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.8, attack: 1.1, decay: 2.5,
-        sustain: 0.85, release: 1.8, attackCurve: 'lin', unison: 3, spread: 18,
+        sustain: 0.85, release: 1.8, attackCurve: 'lin', unison: 3, spread: 18, stereo: 0.75,
         pwm: { type: 'sine', rate: 0.21, depth: 0.6, delay: 0.8 },
         filter: { type: 'bandpass', slope: -12, freq: 520, Q: 5, track: 0,
           env: { octaves: 0.9, attack: 1.6, decay: 3, sustain: 0.6, release: 1.5 } } },
       osc2: { type: 'pulse', width: 0.43, ratio: 1, detune: 11, gain: 0.5, attack: 1.3,
-        decay: 2.8, sustain: 0.8, release: 2, attackCurve: 'lin', unison: 3, spread: 24,
+        decay: 2.8, sustain: 0.8, release: 2, attackCurve: 'lin', unison: 3, spread: 24, stereo: 0.65,
         pwm: { type: 'sine', rate: 0.32, depth: 0.55, delay: 0.8 },
         filter: { type: 'bandpass', slope: -12, freq: 1080, Q: 7, track: 0,
           env: { octaves: -0.8, attack: 1.8, decay: 3.2, sustain: 0.5, release: 1.5 } } },
@@ -2458,7 +2460,8 @@ const TONE = {
       vca: { attack: 1.2, decay: 3, sustain: 0.9, release: 2.4, attackCurve: 'lin' },
     },
     drive: 0.1, shape: 'soft',
-    vibrato: { depth: 0.08, rate: 3.4, delay: 1.8 } },
+    humanize: { entry: 0.03 },
+    vibrato: { depth: 0.08, rate: 3.4, delay: 1.8, spread: 0.5 } },
 
   bestMegaSawLead: { label: 'BEST Mega Saw Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.6,
     note: 'Eleven oscillators. Two unison saws a fifth apart, a sub under them, all through '
@@ -2466,9 +2469,9 @@ const TONE = {
       + 'point, because eleven separate filters would be eleven sounds instead of one.',
     layer: {
       osc1: { type: 'sawtooth', ratio: 1, gain: 0.85, attack: 0.006, decay: 0.5, sustain: 0.8,
-        release: 0.18, unison: 5, spread: 26 },
+        release: 0.18, unison: 5, spread: 26, stereo: 0.5 },
       osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5,
-        sustain: 0.7, release: 0.18, unison: 5, spread: 34 },
+        sustain: 0.7, release: 0.18, unison: 5, spread: 34, stereo: 0.65 },
       osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6,
         sustain: 0.85, release: 0.16,
         // A square that drifts. Free width where a twelfth oscillator would have cost a
@@ -2588,10 +2591,10 @@ const TONE = {
       + 'passing through each other, which is why they must never share a rate.',
     layer: {
       osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.5, attack: 0.5, decay: 2,
-        sustain: 0.85, release: 1.2, attackCurve: 'lin', unison: 2, spread: 9,
+        sustain: 0.85, release: 1.2, attackCurve: 'lin', unison: 2, spread: 9, stereo: 0.85,
         pwm: { type: 'sine', rate: 0.28, depth: 0.62, delay: 0 } },
       osc2: { type: 'pulse', width: 0.46, ratio: 1, detune: -7, gain: 0.42, attack: 0.6,
-        decay: 2.2, sustain: 0.82, release: 1.3, attackCurve: 'lin', unison: 2, spread: 13,
+        decay: 2.2, sustain: 0.82, release: 1.3, attackCurve: 'lin', unison: 2, spread: 13, stereo: 0.7,
         pwm: { type: 'sine', rate: 0.37, depth: 0.58, delay: 0 } },
       osc3: { type: 'sawtooth', ratio: 0.5, gain: 0.2, attack: 0.45, decay: 2.4,
         sustain: 0.9, release: 1.2, attackCurve: 'lin' },
@@ -2631,10 +2634,10 @@ const TONE = {
       + 'thing this synth can make.',
     layer: {
       osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.46, attack: 1.4, decay: 3,
-        sustain: 0.88, release: 2.2, attackCurve: 'lin', unison: 2, spread: 14,
+        sustain: 0.88, release: 2.2, attackCurve: 'lin', unison: 2, spread: 14, stereo: 0.9,
         pwm: { type: 'sine', rate: 0.19, depth: 0.7, delay: 0.4 } },
       osc2: { type: 'pulse', width: 0.44, ratio: 1, detune: 9, gain: 0.36, attack: 1.6,
-        decay: 3.2, sustain: 0.85, release: 2.4, attackCurve: 'lin', unison: 2, spread: 22,
+        decay: 3.2, sustain: 0.85, release: 2.4, attackCurve: 'lin', unison: 2, spread: 22, stereo: 0.8,
         pwm: { type: 'triangle', rate: 0.27, depth: 0.66, delay: 0.6 } },
       osc3: { type: 'pulse', width: 0.55, ratio: 0.5, detune: -6, gain: 0.29, attack: 1.2,
         decay: 3.4, sustain: 0.9, release: 2.6, attackCurve: 'lin',
@@ -2768,7 +2771,7 @@ const TONE = {
       + 'singer into a section, and it is doing the job the chorus pedal does on a Juno.',
     layer: {
       osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.9, attack: 0.4, decay: 1.4,
-        sustain: 0.85, release: 1, attackCurve: 'lin', unison: 2, spread: 8,
+        sustain: 0.85, release: 1, attackCurve: 'lin', unison: 2, spread: 8, stereo: 0.75,
         pwm: { type: 'sine', rate: 0.24, depth: 0.6, delay: 0.5 },
         filter: { type: 'bandpass', slope: -12, freq: 800, Q: 7, track: 0 } },
       osc2: { type: 'pulse', width: 0.44, ratio: 1, detune: 7, gain: 0.55, attack: 0.5,
@@ -2786,7 +2789,8 @@ const TONE = {
       vca: { attack: 0.5, decay: 1.8, sustain: 0.88, release: 1.3, attackCurve: 'lin' },
     },
     drive: 0.08, shape: 'soft',
-    vibrato: { depth: 0.16, rate: 5, delay: 0.7 } },
+    humanize: { entry: 0.02 },
+    vibrato: { depth: 0.16, rate: 5, delay: 0.7, spread: 0.6 } },
 
   bestPwmDrift: { label: 'BEST PWM Drift', category: 'FX', synth: 'LayerSynth', dur: 8,
     note: 'Very slow, very deep, and detuned far enough that nothing in it lines up twice. '
@@ -2794,7 +2798,7 @@ const TONE = {
       + 'seconds — so the texture never repeats inside anything you would write.',
     layer: {
       osc1: { type: 'pulse', width: 0.5, ratio: 1, gain: 0.46, attack: 2, decay: 4,
-        sustain: 0.9, release: 3, attackCurve: 'lin', unison: 3, spread: 26,
+        sustain: 0.9, release: 3, attackCurve: 'lin', unison: 3, spread: 26, stereo: 0.95,
         pwm: { type: 'sine', rate: 0.07, depth: 0.8, delay: 0 } },
       osc2: { type: 'pulse', width: 0.4, ratio: 1.5, detune: 14, gain: 0.29, attack: 2.4,
         decay: 4.5, sustain: 0.85, release: 3.4, attackCurve: 'lin', unison: 2, spread: 34,
@@ -2983,14 +2987,14 @@ const LEVELS = {
   stAcidSquelch: 0.06367, stBreathPad: 0.119482, stTpLectric: 0.031326,
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
-  stAmHollow: 0.01455, layerBrassStack: 0.055873, bestChoirAah: 0.028551,
-  bestChoirOoh: 0.047919, bestVoiceBox70s: 0.112372, bestRobotVox: 0.076267,
-  bestVowelPad: 0.093127, bestMegaSawLead: 0.145406, bestHeroLead: 0.161303,
+  stAmHollow: 0.01455, layerBrassStack: 0.055873, bestChoirAah: 0.018996,
+  bestChoirOoh: 0.040225, bestVoiceBox70s: 0.112372, bestRobotVox: 0.076267,
+  bestVowelPad: 0.049641, bestMegaSawLead: 0.135751, bestHeroLead: 0.161303,
   bestScreamerLead: 0.132717, bestMonsterBass: 0.122239,
-  bestReeseBass: 0.151935, bestPwmStrings: 0.111146, bestPwmBrass: 0.175298,
-  bestPwmPadWide: 0.114587, bestPwmBass: 0.151505, bestPwmGrowlBass: 0.123668,
+  bestReeseBass: 0.151935, bestPwmStrings: 0.088856, bestPwmBrass: 0.175298,
+  bestPwmPadWide: 0.096921, bestPwmBass: 0.151505, bestPwmGrowlBass: 0.123668,
   bestPwmHollowLead: 0.166614, bestPwmReedLead: 0.053483, bestPwmClav: 0.08838,
-  bestPwmChoir: 0.038426, bestPwmDrift: 0.123012
+  bestPwmChoir: 0.030764, bestPwmDrift: 0.115573
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -3078,13 +3082,13 @@ const PEAKS = {
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
-  layerBrassStack: 0.7916, bestChoirAah: 0.2291, bestChoirOoh: 0.2792,
-  bestVoiceBox70s: 0.9051, bestRobotVox: 0.6322, bestVowelPad: 0.5769,
-  bestMegaSawLead: 0.8521, bestHeroLead: 0.8382, bestScreamerLead: 0.9931,
-  bestMonsterBass: 0.7453, bestReeseBass: 0.856, bestPwmStrings: 0.8356,
-  bestPwmBrass: 0.8444, bestPwmPadWide: 0.8127, bestPwmBass: 0.8703,
+  layerBrassStack: 0.7916, bestChoirAah: 0.1507, bestChoirOoh: 0.2362,
+  bestVoiceBox70s: 0.9051, bestRobotVox: 0.6322, bestVowelPad: 0.3766,
+  bestMegaSawLead: 0.8528, bestHeroLead: 0.8382, bestScreamerLead: 0.9931,
+  bestMonsterBass: 0.7453, bestReeseBass: 0.856, bestPwmStrings: 0.6256,
+  bestPwmBrass: 0.8444, bestPwmPadWide: 0.7295, bestPwmBass: 0.8703,
   bestPwmGrowlBass: 0.9256, bestPwmHollowLead: 0.8795, bestPwmReedLead: 0.636,
-  bestPwmClav: 0.9564, bestPwmChoir: 0.2968, bestPwmDrift: 0.8443
+  bestPwmClav: 0.9564, bestPwmChoir: 0.2033, bestPwmDrift: 0.8248
 };
 
 /**

@@ -29,6 +29,11 @@ const suites = [
   // matters — an empty layer hands every song back the bank it always had — which is
   // tests/null-test.js's claim, made at the object rather than at the sample.
   'tests/arrangement.js',
+  // The other end of the same control: `arrangement.js` covers the desk's setSwing,
+  // which writes a number into a draft, and this covers the engine's, which moves it
+  // under a running transport. Cheap and browserless, which is itself the claim — a
+  // groove change builds nothing and disposes nothing.
+  'tests/swing.js',
   // Source-backed scratch creation: starter patterns, writable saves, history,
   // collision-safe ids, and a mixed legacy/scratch imported index.
   'tests/new-song.js',

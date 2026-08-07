@@ -256,6 +256,17 @@ numbers, shipped alongside the originals for A/B.
   note (deterministic, and `delay` means something). One 0–1 depth knob: 2400 cents of
   filter movement or full tremolo. **No `pitch` target** — pitch wobble is `$vibrato`,
   one key with one meaning on every preset.
+- **`$vibrato.spread` + `$humanize.entry` — the ensemble.** Spread gives every unison voice
+  its own vibrato RATE (±10% at full) and its own starting PHASE, built by rotating the
+  waveform's harmonic series by `n·φ` rather than by delaying it — no silence at the start
+  and no node in the path. Entry staggers when each voice comes in, up to 80 ms.
+  - Seeded on the **unison index alone**, which is the design rather than a detail: voice 2
+    is the same singer in osc1, osc2 and osc3, because a person has one larynx feeding all
+    of their formants. Seeded per (layer, index) it would pull one voice apart instead of
+    adding voices. The note's time is in the seed too, so the second note is a slightly
+    different section rather than a copy.
+  - At spread 0 the path builds ONE modulator shared by every voice — the graph it always
+    built — and renders bit-identical. Verified at 0.00e+0.
 - **`mono` + `portamento`** — the first native path to honour them: one glide origin
   per (lane, voice, preview), the previous note choked over 5 ms, and a chord sounds
   its **last** note (the pool path's own semantics). Stem-safe: a stem render deletes
@@ -303,6 +314,7 @@ the others into the shared drive. It is LayerSynth's alone: no other panel has o
 | `attack/decay/sustain/release` | `adsr` defaults | Plain seconds, clamped to the note; `sustain` is where the fall lands |
 | `attackCurve` / `curve` / `releaseCurve` | `'exp'` | Per stage, `'exp'` or `'lin'`. `curve` is the decay's, and keeps its historical name |
 | `unison` / `spread` | 1 / 20 | 1–5 voices across `spread` cents, 1/√count normalised |
+| `stereo` | `0` | Where those voices STAND. Zero builds no panner and is mono, exactly as this path always was; 1 puts the outer voices hard left and right. One `StereoPannerNode` per voice, placed BEFORE the layer's filter so the filter stays one node handling two channels rather than becoming a filter per voice. Costs ~29% CPU on a three-layer unison-5 patch and nothing at all at zero. Folding to mono loses ~2.9 dB — the equal-power pan law, not cancellation — which the measured level absorbs |
 | `pitch.{semitones,attack,decay,sustain,release}` | — | The bend, in semitones on `.detune` — so it COMPOSES with a glide instead of fighting it for `.frequency`. Attack defaults to 0: the note is already away when it starts |
 | `filter.{type,slope,freq,Q,track}` | — | `_filterChain`; `track` = key follow, referenced to A2 = 110 Hz. **No sweep pair** — the cutoff sits still and the envelope moves it |
 | `filter.env.{octaves,attack,decay,sustain,release}` | — | ENV AMOUNT ±10 octaves, **bipolar** — negative closes from above. Written in cents on the cascade's `.detune`, where it sums with the LFO. Zero schedules nothing |

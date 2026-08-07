@@ -11,7 +11,9 @@ import { VoiceRack, pulseTable } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
 import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
-import { applyArrangement, resolveSection, loopOf, loopSteps } from '../data/arrangements.js';
+import {
+  applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
+} from '../data/arrangements.js';
 
 // The scheduler runs on the main thread, alongside panel builds and layout work. A
 // quarter-second of queued audio gives those unavoidable UI tasks room to finish
@@ -389,6 +391,8 @@ class AudioSys {
     // sequencer
     this.bpm = 112;
     this.swing = 0;        // 0 or 50 = straight; see the swing term in scheduleStep
+    // A groove change waiting for a bar line, and the ramp into it. See setSwing.
+    this.pendingSwing = null;
     this.step = 0;
     this.nextTime = 0;
     this.timer = null;
@@ -686,6 +690,104 @@ class AudioSys {
     this.pendingStep = null;
     this.loopHasWrapped = false;
     return true;
+  }
+
+  // ---- swing ----------------------------------------------------------------
+
+  /**
+   * Change the GROOVE of the song that is playing, on a boundary, without a seam.
+   *
+   * The cheapest transition in the engine, and worth saying why: `this.swing` is one
+   * scalar that `scheduleStep` re-reads every sixteenth, applied as an offset on the
+   * NOTE and never on the clock. Nothing is disposed, nothing is rebuilt, no gain is
+   * moved and `nextTime` does not budge — so a held note rings out straight and the
+   * next one is swung, with no discontinuity anywhere in the graph. Compare `setBank`,
+   * which is the other way to hear a song differently and costs a half-second gap.
+   *
+   * `quantize` names the boundary, in MusicDirector's vocabulary — 'immediate',
+   * 'beat', 'bar', 'phrase', or a NUMBER OF BARS. The default is the bar line.
+   *
+   * `overBars` leans INTO the groove instead of flipping to it: the swing is
+   * interpolated a step at a time across that many bars, which is what a drummer
+   * settling into a pocket sounds like. Zero is the flip. Free, because the value is
+   * read per step anyway.
+   *
+   * One caveat that belongs here rather than in a comment nobody reads: the
+   * tempo-synced delay CANNOT follow a swing (see the note in scheduleStep). Divisions
+   * of an even number of sixteenths inherit it for nothing; the default dotted eighth
+   * is three sixteenths, and will flam against a swung song by up to a third of a
+   * sixteenth. Move the division to 1/8 or 1/4 for a swung section, or take the flam.
+   */
+  setSwing(pct, { quantize = 'bar', overBars = 0 } = {}) {
+    // The same clamp, spelling and range as the desk's own `setSwing` in
+    // tools/lib/arrangement-edit.js — one control, one meaning, both ends of the wire.
+    // `null` there is "no swing entry", which is this engine's 0.
+    //
+    // 0 and 50 both mean straight and both are exact (see the swing term in
+    // scheduleStep), and 0 is what a straight song is stored as, so that is what a
+    // request for straight lands on. Normalising it to 50 would change what reaches
+    // `scheduleEffects` for a song nobody has swung, and the null test compares those
+    // renders sample for sample.
+    const to = pct ? Math.min(SWING_MAX, Math.max(SWING_STRAIGHT, Math.round(pct))) : 0;
+    const steps = Math.max(0, Math.round((overBars || 0) * 16));
+    if (quantize === 'immediate' && steps === 0) {
+      this.pendingSwing = null;
+      this.swing = to;
+      return;
+    }
+    // Latest request wins, and it replaces a ramp already under way rather than
+    // queueing behind it: two grooves arriving at once is one groove, the newer.
+    this.pendingSwing = { to, steps, quantize, started: false, from: 0, done: 0 };
+  }
+
+  /** Is `step` the boundary a pending swing asked for? Mirrors MusicDirector._boundary. */
+  _swingBoundary(q, step) {
+    if (q === 'immediate') return true;
+    if (q === 'beat') return step % 4 === 0;
+    if (q === 'phrase' || (typeof q === 'number' && q > 0)) {
+      // From the MUSICAL ANCHOR, not from zero: a loop over bars 2-5 begins at step 16,
+      // and counting phrases from the top of the song steps over every boundary it has.
+      const anchor = this.loopStart ?? 0;
+      const len = typeof q === 'number'
+        ? Math.round(q * 16)
+        : ((this.loopEnd != null && this.loopStart != null) ? this.loopEnd - this.loopStart : 64);
+      if (!(len > 0)) return false;
+      return (((step - anchor) % len) + len) % len === 0;
+    }
+    return step % 16 === 0;
+  }
+
+  /**
+   * Move a pending swing along. Called at the top of scheduleStep, so `this.step` is
+   * the step ABOUT to be scheduled and the boundary tested is the one whose notes are
+   * next out of the door.
+   *
+   * A bar line cannot be missed, and it is worth knowing why nothing here has to race:
+   * the boundary that matters is an EVEN step, and even steps never swing. Landing on
+   * the downbeat and landing just after it are the same sound; the first note the
+   * change can touch is step 1, the first odd sixteenth of the bar.
+   *
+   * The ramp counts its own steps rather than measuring `this.step` against a start,
+   * because `step` is not monotonic — a loop wrap or a queued seek moves it backwards,
+   * and a ramp reading the difference would run backwards with it.
+   */
+  _applyPendingSwing() {
+    const p = this.pendingSwing;
+    if (!p) return;
+    if (!p.started) {
+      if (!this._swingBoundary(p.quantize, this.step)) return;
+      p.started = true;
+      if (p.steps === 0) { this.swing = p.to; this.pendingSwing = null; return; }
+      // Straight is 50 for the arithmetic whichever way it was spelled, so a ramp
+      // from an unswung song does not start by leaping from 0 to 50.
+      p.from = this.swing || SWING_STRAIGHT;
+    }
+    p.done++;
+    const t = Math.min(1, p.done / p.steps);
+    // The TARGET the same way. Landing is a plain assignment of what was asked for, so
+    // a ramp down to straight ends at 0 if that is what it was given, not at 50.
+    this.swing = p.from + ((p.to || SWING_STRAIGHT) - p.from) * t;
+    if (t >= 1) { this.swing = p.to; this.pendingSwing = null; }
   }
 
   // ---- shared delay controls ------------------------------------------------
@@ -2007,6 +2109,9 @@ class AudioSys {
     // swing of whatever was playing before it, and `0` would fail a truthiness guard and
     // leave the shuffle on. Nothing tempo-synced follows it, so there is nothing to rebuild.
     this.swing = bank?.swing || 0;
+    // A groove change belongs to the song that asked for it. Left standing, a swing
+    // queued in the last bar of one song would land on the downbeat of the next.
+    this.pendingSwing = null;
   }
 
   /**
@@ -2135,6 +2240,10 @@ class AudioSys {
     const swing = patch?.swing ?? source.swing ?? 0;
     if (swing) next.swing = swing; else delete next.swing;
     this.swing = swing;
+    // The desk setting a swing outright is an answer to the same question a queued one
+    // was asked, and it arrives later — so it wins, rather than being overwritten a bar
+    // afterwards by a change nothing on screen still refers to.
+    this.pendingSwing = null;
     this.bank = next;
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
@@ -2844,6 +2953,9 @@ class AudioSys {
   scheduleStep() {
     {
       if (!this.applyPendingStep()) this.applyPendingLoop();
+      // After those two, which can both move `this.step` — the boundary a pending
+      // groove change is waiting for is the step actually about to be scheduled.
+      this._applyPendingSwing();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       // SWING. The song is written on the grid; this is how hard it is PLAYED off it.
       // The number is the on-grid sixteenth's share of its pair, as a percentage: 50 is
@@ -2877,11 +2989,19 @@ class AudioSys {
       // that every voice below receives. This keeps straight, dotted and triplet gates
       // aligned in offline renders and after live loop/jump changes.
       //
-      // `nextTime`, not the swung one, and on purpose: a gate is a rhythm laid OVER the
-      // song rather than a note in it, and a straight gate under a swung part is the
-      // arrangement anybody reaching for both actually wants. The tempo-synced delay
-      // (delayTimeSeconds) stays straight for the same reason.
-      this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo);
+      // The swing goes with it, and `nextTime` stays unswung on purpose: this hook hands
+      // over the STEP and the edge of it, and an effect on the grid works out its own
+      // pulses from there. A gate at a division of an odd number of sixteenths lands on
+      // the off-beat every other pulse, and those pulses are late with the song — see
+      // the parity note in makeRhythmicGate.
+      //
+      // The tempo-synced delay (delayTimeSeconds) is the one that CANNOT follow: it is a
+      // fixed interval applied to whatever arrives, and the interval a swung note wants
+      // depends on which side of the beat it came from. Divisions of an even number of
+      // sixteenths (1/8, 1/4, 1/4 dotted, a bar) map on-beat to on-beat and inherit the
+      // swing for nothing; odd or triplet ones flam against it, by a third of a
+      // sixteenth at a full shuffle. That is a real limit, not an oversight.
+      this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo, this.swing);
       // Song form: bank.sections is a list of partial banks (lane overrides) and
       // bank.order the sequence to play them in — so a track can progress
       // verse/lift/bridge instead of looping one 2-bar phrase.
@@ -2980,6 +3100,17 @@ class AudioSys {
       let laneOffset = 0;
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + swingOffset + delta;
+      // The same instant, as an OFFSET from the step edge rather than an absolute time —
+      // `playVoice` adds it to `nextTime` itself, so it is the one path into the rack
+      // that does not come through `scheduleAt`.
+      //
+      // It exists so the two cannot drift apart. Every lane below is written twice: a
+      // hand-rolled body that goes through `play`/`scheduleAt`, and a `voiced` call that
+      // hands the same note to a library voice instead. When only the first of those
+      // knew about swing, a lane played it straight or shuffled depending on whether
+      // somebody had assigned it a voice on the desk — hats on sixteenths being exactly
+      // the case where that is loudest.
+      const voiceDelay = (delta = 0) => laneOffset + swingOffset + delta;
       const lane = (key) => {
         // Preview notes use their own synth timeline, but they still belong to the
         // selected channel. Keep them on that channel's live strip so its inserts,
@@ -3021,7 +3152,7 @@ class AudioSys {
       const voiced = (key, value, opts = {}) => {
         lane(key);
         return this.playVoice(key, b, value,
-          { spb, dry, wet, delay: laneOffset, len: lenOf(key), ...opts });
+          { spb, dry, wet, delay: voiceDelay(), len: lenOf(key), ...opts });
       };
       // Every oscillator voice on the desk goes through here — bass, lead, harmony,
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
@@ -3152,7 +3283,7 @@ class AudioSys {
             // The ghost is the same voice, quieter and shorter. Restating it on the
             // hand-rolled square instead would put two different basses in one lane.
             this.playVoice('bass', b, b.bass[s], {
-              spb, dry, wet, echo: false, delay: laneOffset + spb * b.bassRepeat,
+              spb, dry, wet, echo: false, delay: voiceDelay(spb * b.bassRepeat),
               durScale: b.bassRepeatDur ?? 0.8, gainScale: b.bassRepeatGain ?? 0.4,
               len: bassLen,
             });
@@ -3287,7 +3418,7 @@ class AudioSys {
         const runByVoice = steps.map((semi, i) => this.playVoice('keyGliss', b,
           b.keyGliss[s] * Math.pow(2, semi / 12),
           {
-            spb, dry, wet, echo: false, delay: laneOffset + i * dt,
+            spb, dry, wet, echo: false, delay: voiceDelay(i * dt),
             gainScale: 0.6 + 0.4 * ((i + 1) / steps.length),
           }))[0];
         if (!runByVoice) steps.forEach((semi, i) => {
@@ -3392,7 +3523,7 @@ class AudioSys {
         // partials rather than borrowing the three below.
         const runByVoice = steps.map((semi, i) => this.playVoice('organGliss', b,
           b.organGliss[s] * Math.pow(2, semi / 12),
-          { spb, dry, wet, echo: false, delay: laneOffset + i * dt }))[0];
+          { spb, dry, wet, echo: false, delay: voiceDelay(i * dt) }))[0];
         if (!runByVoice) steps.forEach((semi, i) => {
           const note = target * Math.pow(2, semi / 12);
           for (const [ratio, level] of partials) {
