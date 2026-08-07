@@ -1,6 +1,6 @@
 # The BEST presets — what each one is, and what it is showing off
 
-Ten LayerSynth patches written to demonstrate the stack rather than to fill a lane. Render
+Ten MRDR-3 patches written to demonstrate the stack rather than to fill a lane. Render
 them with `node tools/render-best-auditions.js`, which writes `work/auditions/best/<id>.wav`
 — one pass of a phrase that suits the patch, through the real offline engine.
 

@@ -325,7 +325,7 @@ class AudioSys {
     // Built on the first note a lane with a Tone voice plays, and only then — see
     // playVoice. A game whose songs name no voices never constructs one.
     this.voices = null;
-    // Which layers of which LayerSynth preset are soloed on the desk — `voiceId → Set`.
+    // Which layers of which MRDR-3 preset are soloed on the desk — `voiceId → Set`.
     //
     // It lives HERE rather than on the rack because the rack does not survive: it is
     // disposed with the context and rebuilt on demand, and solo held there would quietly

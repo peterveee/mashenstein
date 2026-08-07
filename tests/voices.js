@@ -37,7 +37,7 @@ const assert = (cond, msg) => {
 // by name in `play()` before the Tone allowlist is reached, and they read `$` keys off the
 // entry rather than an `options` bag. They are in the same list because it is the same
 // question — what may a preset's `synth` say.
-const ALLOWED = ['GameSynth', 'AdditiveSynth', 'LayerSynth', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+const ALLOWED = ['GameSynth', 'AdditiveSynth', 'MRDR-3', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -47,6 +47,10 @@ const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 // The panel offers it (LAYER_WAVES in tools/mixer-voice-editor.js); this list is why a
 // preset using it can be saved.
 const LAYER_WAVES = [...NATIVE_WAVES, 'pulse', 'noise'];
+// The tilts `_noise` will build a buffer for, in the order the COLOUR pick offers them.
+// One list on the desk (NOISE_COLORS in tools/mixer-voice-editor.js) and one filter in
+// the engine, so a pink layer and a pink drum are the same pink.
+const NOISE_COLORS = ['white', 'pink', 'brown', 'blue', 'violet'];
 const DRAWBARS = 9;
 
 const all = Object.values(VOICES);
@@ -140,7 +144,7 @@ for (const v of tone) {
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
-  assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth' || v.synth === 'LayerSynth'
+  assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth' || v.synth === 'MRDR-3'
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
 }
@@ -148,7 +152,7 @@ for (const v of tone) {
 // The layer stack. As with the additive block above, every failure here is SILENCE
 // rather than a wrong sound: a preset with no layers, or every layer at gain 0, builds
 // nothing and `_playLayer` returns false without a word.
-for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
+for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
   const L = v.layer;
   assert(L && typeof L === 'object', `${v.id}: has a layer stack to build`);
   const oscs = [L?.osc1, L?.osc2, L?.osc3].filter(Boolean);
@@ -163,6 +167,14 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
         `${v.id}: only a pulse carries a WIDTH — on any other wave it is a dead key`);
       assert(o.width >= 0.05 && o.width <= 0.95,
         `${v.id}: its pulse width is inside what the pot can reach`);
+    }
+    if (o.color != null) {
+      // The mirror of WIDTH's rule: COLOUR is the one extra control a noise layer needs,
+      // and on any other waveform it is a key the engine never reads.
+      assert(o.type === 'noise',
+        `${v.id}: only a noise layer carries a COLOUR — on any other wave it is a dead key`);
+      assert(NOISE_COLORS.includes(o.color),
+        `${v.id}: names a noise colour the engine filters for (${o.color})`);
     }
     if (o.vca != null) {
       assert(o.vca === 'env' || o.vca === 'through',
@@ -235,13 +247,13 @@ for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
   }
 }
 
-// The ensemble controls. Both are LayerSynth's alone — it is the only path that builds a
+// The ensemble controls. Both are MRDR-3's alone — it is the only path that builds a
 // modulator per unison voice — and both must be reachable on the pots that set them.
 for (const v of tone) {
   const sp = v.vibrato?.spread;
   if (sp != null) {
-    assert(v.synth === 'LayerSynth',
-      `${v.id}: VIB SPREAD is LayerSynth's — no other path has voices to de-correlate`);
+    assert(v.synth === 'MRDR-3',
+      `${v.id}: VIB SPREAD is MRDR-3's — no other path has voices to de-correlate`);
     assert(sp >= 0 && sp <= 1, `${v.id}: its vibrato spread is a fraction`);
     assert((v.vibrato?.depth ?? 0) > 0,
       `${v.id}: scattering a vibrato that is switched off would scatter nothing`);
@@ -251,8 +263,8 @@ for (const v of tone) {
       `${v.id}: has a layer with unison above 1 for the spread to act on`);
   }
   if (v.humanize?.entry != null) {
-    assert(v.synth === 'LayerSynth',
-      `${v.id}: ENTRY staggers unison voices, which only LayerSynth builds`);
+    assert(v.synth === 'MRDR-3',
+      `${v.id}: ENTRY staggers unison voices, which only MRDR-3 builds`);
     assert(v.humanize.entry >= 0 && v.humanize.entry <= 0.08,
       `${v.id}: its entry stagger is inside what the pot can reach`);
   }
@@ -260,7 +272,7 @@ for (const v of tone) {
 
 // A stack whose layers all modulate at the SAME rate is one oscillator getting fatter, not
 // a section. Every multi-PWM preset in the library has to disagree with itself.
-for (const v of tone.filter((x) => x.synth === 'LayerSynth')) {
+for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
   const rates = ['osc1', 'osc2', 'osc3']
     .map((k) => v.layer?.[k]?.pwm?.rate).filter((r) => r != null);
   if (rates.length > 1) {
@@ -814,6 +826,175 @@ try {
     + ` (rms ${secDup.toFixed(5)} → ${secEdited.toFixed(5)})`);
   assert(secGone < secBare * 0.01,
     'and a deleted track stays deleted through one, rather than coming back');
+
+  // ---- MRDR-3: the things a lower bound cannot see --------------------------
+  //
+  // Everything above this point asks "did it make a sound". These ask whether it made
+  // the RIGHT one, because the peak assertion in the sweep is a floor — it would pass a
+  // preset rendering three times too loud, a control that does nothing, or a held note
+  // looping the same half-second of noise forever. Each of these was written against a
+  // measured before-and-after, and each one fails on the engine as it stood.
+
+  // A control that does nothing is worse than a missing one: the pot travels to twelve
+  // semitones, so a preset at six must not render the samples a preset at one does.
+  // The clamp made every depth above 1 bit-identical, which is what this catches — a
+  // comparison rather than a pitch tracker, because "identical" is the actual symptom.
+  const vibTest = (depth) => ({
+    label: `VibDepth ${depth}`, category: 'Lead', synth: 'MRDR-3', kind: 'tone', dur: 2,
+    layer: { osc1: { type: 'sine', ratio: 1, gain: 1, vca: 'env', attack: 0.01, decay: 0.05, sustain: 1, release: 0.05 } },
+    global: { vca: { attack: 0.01, decay: 0.05, sustain: 1, release: 0.05 } },
+    vibrato: { depth, rate: 2, delay: 0.001 },
+    level: 0.2, peak: 1,
+  });
+  const oneLead = { bpm: 120, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) };
+  const atDepth = async (depth) => (await renderer.render(oneLead,
+    { repeat: 1, mix: { voiceParams: { leadVoice: vibTest(depth) } }, trackId: 'vibdepth' })).outL;
+  const [vd1, vd6, vd12] = [await atDepth(1), await atDepth(6), await atDepth(12)];
+  const diffOf = (a, b) => {
+    let d = 0;
+    for (let n = 0; n < Math.min(a.length, b.length); n++) d = Math.max(d, Math.abs(a[n] - b[n]));
+    return d;
+  };
+  const d16 = diffOf(vd1, vd6);
+  const d612 = diffOf(vd6, vd12);
+  assert(d16 > 1e-3 && d612 > 1e-3,
+    'MRDR-3 vibrato depth keeps scaling past one semitone — 1, 6 and 12 are three'
+    + ` different sounds (1↔6 ${d16.toExponential(2)}, 6↔12 ${d612.toExponential(2)})`);
+
+  // The mono choke cuts the note still ringing, so notes packed closer than their own
+  // length must not reach HIGHER than a note played on its own. Reading `gain.value` at
+  // a future time gave the dying note the wrong level to fade from — offline, where the
+  // whole schedule is written before a sample is rendered, that read is the param's
+  // resting value rather than anything the envelope was doing, and the old note stepped
+  // UP before it faded. Measured at 1.041 with that read, 0.961 with the hold.
+  const monoBank = (every) => ({
+    bpm: 120,
+    bass: Array.from({ length: 32 }, (_, i) => (i % every === 0 ? 110 : null)),
+    bassVoice: 'bestClassicMono',
+  });
+  const peakOf = (o) => { let p = 0; for (const x of o) p = Math.max(p, Math.abs(x)); return p; };
+  const overlap = peakOf((await renderer.render(monoBank(2), { repeat: 1, mix: null, trackId: null })).outL);
+  const alone = peakOf((await renderer.render(monoBank(8), { repeat: 1, mix: null, trackId: null })).outL);
+  assert(overlap < alone,
+    'a mono MRDR-3 choking itself never gets louder than one note of it'
+    + ` (${overlap.toFixed(5)} against ${alone.toFixed(5)})`);
+
+  // A held noise layer outlasts the short buffer, so it must not be looping it. The
+  // seam is periodic at exactly 0.5s, which is what correlating the signal against
+  // itself half a second later measures: 0.277 on the short buffer, 0.151 on the long.
+  const heldNoise = {
+    bpm: 120,
+    chords: Array.from({ length: 32 }, (_, i) => (i === 0 ? [220] : null)),
+    chordsVoice: 'bestChoirOoh',
+  };
+  const noiseOut = (await renderer.render(heldNoise, { repeat: 1, mix: null, trackId: null })).outL;
+  const lag = Math.round(SR * 0.5);
+  const from = Math.round(SR * 1.0);
+  const span = Math.round(SR * 0.25);
+  let dot = 0; let na = 0; let nb = 0;
+  for (let n = 0; n < span; n++) {
+    const x = noiseOut[from + n] || 0; const y = noiseOut[from + n + lag] || 0;
+    dot += x * y; na += x * x; nb += y * y;
+  }
+  const seam = na && nb ? dot / Math.sqrt(na * nb) : 0;
+  assert(seam < 0.2,
+    `a held noise layer does not repeat itself every half second (correlation ${seam.toFixed(3)})`);
+
+  // The upper bound the sweep has never had. Nothing else in this suite renders a
+  // CHORD, so the drive shaper sitting after the summed global VCA — one shaper for
+  // every tone at once — is otherwise never exercised at all. `bestVowelPad` is the
+  // heaviest preset in the library; five notes of it measure 1.23× one note.
+  const padChord = (notes) => ({
+    bpm: 120,
+    chords: Array.from({ length: 32 }, (_, i) => (i % 8 === 0 ? notes : null)),
+    chordsVoice: 'bestVowelPad',
+  });
+  const five = peakOf((await renderer.render(padChord([110, 138.6, 164.8, 220, 261.6]),
+    { repeat: 1, mix: null, trackId: null })).outL);
+  const single = peakOf((await renderer.render(padChord([110]),
+    { repeat: 1, mix: null, trackId: null })).outL);
+  assert(five < 1,
+    `the heaviest MRDR-3 preset does not clip on a five-note chord (peak ${five.toFixed(4)})`);
+  assert(five < single * 2,
+    'and a chord of it stays near the level one note of it reaches, rather than summing'
+    + ` straight through the drive (${(five / single).toFixed(2)}× one note)`);
+
+  // Vibrato SPREAD is the one control that builds a phase-rotated wave per note-on and
+  // per unison voice, so it is the one that fills the phase-wave cache. The cache is
+  // capped, and a cap is only safe if evicting an entry cannot change what comes out:
+  // the same phase must rebuild the same wave. Two renders, bit for bit.
+  const spreadBank = {
+    bpm: 120,
+    chords: Array.from({ length: 32 }, (_, i) => (i % 2 === 0 ? [220, 277.2] : null)),
+    chordsVoice: 'bestVowelPad',
+  };
+  const s1 = await renderer.render(spreadBank, { repeat: 1, mix: null, trackId: null });
+  const s2 = await renderer.render(spreadBank, { repeat: 1, mix: null, trackId: null });
+  const spreadDiff = diffOf(s1.outL, s2.outL);
+  assert(spreadDiff < 5e-6,
+    'a spread-vibrato preset renders identically twice — capping the phase-wave cache'
+    + ` evicts waves without changing one (max diff ${spreadDiff.toExponential(2)})`);
+
+  // A noise layer's COLOUR is a real control, not a key the panel draws and the engine
+  // drops on the floor. Brown is the far end of the tilt from white, so if any colour
+  // reaches `_noise` this pair does — and the fact that each is its own render rather
+  // than the same one is the whole assertion.
+  const noiseLayer = (color) => ({
+    label: `Noise ${color}`, category: 'Pad', synth: 'MRDR-3', kind: 'tone', dur: 2,
+    layer: { osc1: { type: 'noise', ratio: 1, gain: 1, vca: 'env', attack: 0.01, decay: 0.1, sustain: 1, release: 0.1, ...(color ? { color } : {}) } },
+    global: { vca: { attack: 0.01, decay: 0.1, sustain: 1, release: 0.1 } },
+    level: 0.2, peak: 1,
+  });
+  const colourTake = async (color) => (await renderer.render(
+    { bpm: 120, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) },
+    { repeat: 1, mix: { voiceParams: { leadVoice: noiseLayer(color) } }, trackId: 'noisecolour' })).outL;
+  const [plainNoise, whiteNoise, brownNoise] = [await colourTake(null), await colourTake('white'), await colourTake('brown')];
+  assert(diffOf(plainNoise, whiteNoise) < 5e-6,
+    'a noise layer with no COLOUR is the white one it always was');
+  assert(diffOf(whiteNoise, brownNoise) > 1e-4,
+    `and asking for brown gets a different buffer (max diff ${diffOf(whiteNoise, brownNoise).toExponential(2)})`);
+
+  // PWM duty against a glide. The duty is `delay × f`, so with the delay set once from
+  // the destination pitch a glided note swept its WIDTH across the portamento — from
+  // `width × interval` down to `width` — which is a PWM sweep nobody asked for, on top
+  // of the one the PWM card schedules. On `bestPwmGrowlBass` an octave drop starts that
+  // sweep at a duty of 1.000, where the delay is a whole period and the two saws null.
+  //
+  // Rendered as a leap into the SAME destination note from an octave above and from a
+  // step above. The note landed on is identical, so the interval is the only variable:
+  // a wider leap must not make the arrival LOUDER, which is what an accidental width
+  // sweep across it does. Measured 1.15 with the delay fixed, 0.92 with it tracking.
+  const leap = (fromHz) => ({
+    bpm: 120,
+    bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? fromHz : i === 4 ? 55 : null)),
+    bassVoice: 'bestPwmGrowlBass',
+  });
+  const fromOctave = (await renderer.render(leap(110), { repeat: 1, mix: null, trackId: null })).outL;
+  const fromStep = (await renderer.render(leap(61.7), { repeat: 1, mix: null, trackId: null })).outL;
+  const rmsIn = (o, a, b) => {
+    let s = 0; let c = 0;
+    for (let n = a; n < Math.min(o.length, b); n++) { s += o[n] * o[n]; c++; }
+    return c ? Math.sqrt(s / c) : 0;
+  };
+  // The second note lands on step 4 — half a second at 120 bpm — and portamento is 0.03s.
+  const noteOn = Math.round(SR * 0.5);
+  const glideWin = noteOn + Math.round(SR * 0.03);
+  const gOct = rmsIn(fromOctave, noteOn, glideWin);
+  const gStep = rmsIn(fromStep, noteOn, glideWin);
+  assert(gOct < gStep,
+    'a PWM note glided into from an octave away does not arrive louder than the same note'
+    + ` glided into from a step away (${(gOct / (gStep || 1)).toFixed(3)}× its energy)`);
+  // And the tail, well past the portamento, is the destination pulse either way — the
+  // ramp has to LAND on the value the fixed delay used to hold, not merely start better.
+  const settled = noteOn + Math.round(SR * 0.25);
+  const settledSpan = Math.round(SR * 0.15);
+  let settledDiff = 0;
+  for (let n = 0; n < settledSpan; n++) {
+    settledDiff = Math.max(settledDiff, Math.abs(fromOctave[settled + n] - fromStep[settled + n]));
+  }
+  assert(settledDiff < Math.max(peakOf(fromOctave), peakOf(fromStep)) * 0.2,
+    'and settles onto the same pulse the destination note asks for'
+    + ` (max diff ${settledDiff.toFixed(5)})`);
 } finally {
   await renderer.close();
 }

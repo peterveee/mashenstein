@@ -514,6 +514,11 @@ assert(/#desk\.cramped \{[^}]*overflow-y: auto/s.test(shell)
 assert(/footer \{[^}]*margin-top: auto/s.test(shell)
   && /#err \{[^}]*max-height: 30vh[^}]*overflow: auto/s.test(shell),
   'the footer cannot float even if the chain fails, and a stack trace cannot eat the desk');
+assert(!/id="(?:pos|section)"/.test(shell)
+  && !/\$\('(?:pos|section)'\)/.test(entry)
+  && /id="peakinfo"/.test(shell)
+  && /\$\('peakinfo'\)\.textContent/.test(entry),
+  'the footer keeps the master peak but omits live beat and selection readouts');
 
 // ---- one minimum table, not six constants in five functions ----------------------
 const minBody = /const MIN = \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
@@ -1962,11 +1967,18 @@ assert(/function releasePreview\(src\)[\s\S]{0,180}Audio\.releasePreviewNote\(he
   && /pads\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)\)/.test(entry)
   && /keys\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)/.test(entry),
   'mouse release closes both the recording token and the sounding preview note');
-// The note-off half, which did not exist at all until recording had a use for it.
-assert(/if \(kind === 0x80 \|\| \(kind === 0x90 && !vel\)\) \{[\s\S]*?oskRelease\(`m:\$\{note\}`\);[\s\S]*?return; \}/
-  .test(entry),
-  'a MIDI note-off is an actual 0x80 OR a note-on at velocity zero — most keyboards'
-  + ' send the second, and reading only the first loses every length');
+// The note-off half, which did not exist at all until recording had a use for it. Both
+// spellings of a note-off, and it must actually release — checked by slicing the branch
+// rather than by matching its exact wording, so that adding the damper to it (which
+// introduced a `src` local) does not read as the handler having been lost.
+{
+  const at = entry.indexOf('if (kind === 0x80 || (kind === 0x90 && !vel))');
+  const body = at < 0 ? '' : entry.slice(at, at + 700);
+  assert(at >= 0, 'a MIDI note-off is an actual 0x80 OR a note-on at velocity zero — most'
+    + ' keyboards send the second, and reading only the first loses every length');
+  assert(body.includes('oskRelease(src)') && body.includes('return;'),
+    'and it releases the note it names');
+}
 assert(/addEventListener\('keyup'[\s\S]{0,300}?oskRelease\(`k:\$\{key\}`\)/.test(entry),
   'a computer key gets its length from the keyup that already stopped auto-repeat');
 assert(/for \(const type of \['pointerup', 'pointercancel'\]\)/.test(entry),
@@ -2384,6 +2396,32 @@ assert(!/[^a-zA-Z]close\(\);/.test(editor.replace('const closePanel = () => { dr
   'and nothing calls the raw close() around it, which would leave a solo ringing');
 assert(/if \(!id\) Audio\.clearLayerSolo\(\);/.test(entry),
   'a null id from the panel clears every layer solo on the engine');
+
+// ---- the damper pedal ---------------------------------------------------------------
+//
+// CC 64 is the pedal under every MIDI keyboard, and its whole job is to stop note-offs
+// arriving. The rack can sustain now (see `_heldNative`), so a pedal that did nothing
+// would be the one part of the chain still pretending notes have fixed lengths.
+assert(/kind === 0xB0 && note === 64/.test(entry),
+  'the damper (CC 64) is read — a controller message is no longer dropped on the floor');
+assert(/vel >= 64/.test(entry),
+  'and it uses the MIDI convention for down: at or above 64');
+// Sliced by index rather than matched by a regex that would have to span braces and
+// newlines: the note-off branch is short, and 700 characters is comfortably all of it.
+const offAt = entry.indexOf('if (kind === 0x80 || (kind === 0x90 && !vel))');
+const offBody = offAt < 0 ? '' : entry.slice(offAt, offAt + 700);
+assert(offBody.includes('sustainDown') && offBody.includes('sustainHeld.add'),
+  'a note-off while the pedal is down is HELD rather than played out');
+assert(offBody.includes('recordOff') && offBody.includes('oskReleaseVisual'),
+  'while the key still lifts and the recorder still closes the note at the length played —'
+  + ' a part that grew because a foot was down is a part nobody played');
+assert(/sustainHeld\.delete\(`m:\$\{note\}`\)/.test(entry),
+  'and re-pressing a held key takes it back, as it does on a piano');
+const midiOffAt = entry.indexOf("for (const input of midiInputs()) input.onmidimessage = null;");
+const midiOffBody = midiOffAt < 0 ? '' : entry.slice(midiOffAt, midiOffAt + 900);
+assert(midiOffBody.includes('dropSustain()')
+  && midiOffBody.indexOf('dropSustain()') < midiOffBody.indexOf("releaseOskSources('m:')"),
+'switching MIDI off drops the pedal before releasing what it was holding');
 
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

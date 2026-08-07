@@ -62,7 +62,7 @@ const isUserPreset = (voice) => !!voice?.user && !voice?.songLocal;
  * make that unreachable.
  */
 export const EDITABLE_SYNTHS = [
-  'GameSynth', 'AdditiveSynth', 'LayerSynth',
+  'GameSynth', 'AdditiveSynth', 'MRDR-3',
   'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth',
 ];
 
@@ -70,7 +70,7 @@ export const EDITABLE_SYNTHS = [
 // they have in common that the panel cares about: their modulators are built per note-on,
 // so a key measured from the start of a note — `vibrato.delay` — means something on these
 // and nothing on the others, whose LFO free-runs in the pool.
-const NATIVE_SYNTHS = ['GameSynth', 'AdditiveSynth', 'LayerSynth'];
+const NATIVE_SYNTHS = ['GameSynth', 'AdditiveSynth', 'MRDR-3'];
 
 // ---- measuring, in the page -------------------------------------------------
 
@@ -401,7 +401,7 @@ const sustainPct = (path, def = 50, when = null) =>
 const adsr = (path, { sustain = true } = {}) => [
   // `startRow` so ATTACK — and the DECAY/SUSTAIN/RELEASE that auto-flow after it —
   // always lands as one clean row of four, whatever else the card put before it.
-  // Without it, an oscillator's own pots (LayerSynth) or a WAVE/VOICING pair
+  // Without it, an oscillator's own pots (MRDR-3) or a WAVE/VOICING pair
   // (DuoSynth's voices) can leave the grid mid-row, and ADSR ends up split 2+2 with
   // a gap down one side instead of reading as a single block.
   envTime(`${path}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01, 's', null, { startRow: true }),
@@ -479,7 +479,7 @@ const HUMANISE_GROUP = {
     // hood, shown in ms because the whole useful range is under fifty of them. Same seed
     // as VIB SPREAD, so a voice that is late is late in every layer at once.
     n('$humanize.entry', 'ENTRY', 0, 80, 1, fixed(0), 0, 'ms',
-      (v) => v?.synth === 'LayerSynth',
+      (v) => v?.synth === 'MRDR-3',
       { read: (x) => (x != null ? x * 1000 : undefined), write: (x) => x / 1000,
         tip: 'How far apart the unison voices come in. A few milliseconds is a section '
           + 'breathing; fifty is a round' }),
@@ -525,7 +525,7 @@ const drawbarRows = () => DRAWBAR_LABELS.map((label, i) => ({
 
 
 /**
- * One LayerSynth layer's cards: the main card, then Filter / Pitch / FM sub-cards.
+ * One MRDR-3 layer's cards: the main card, then Filter / Pitch / FM sub-cards.
  *
  * Sub-cards are titled with their OWNER — three cards all called "Filter" is a panel
  * where you cannot tell whose knob you are turning — and carry a group-level `when` so a
@@ -538,7 +538,7 @@ const drawbarRows = () => DRAWBAR_LABELS.map((label, i) => ({
 /**
  * The pitch envelope's five rows, for any path that has one.
  *
- * One helper because GameSynth and every layer of a LayerSynth now state the same idea
+ * One helper because GameSynth and every layer of a MRDR-3 now state the same idea
  * with the same keys: how far from its written pitch the note starts, and how it gets
  * there. AMOUNT is signed — the sign is the whole difference between a coin falling into
  * the note and a power-up climbing into it — and zero schedules nothing at all, which is
@@ -599,6 +599,15 @@ const layerGroups = () => {
           { read: (w) => (w != null ? w * 100 : undefined), write: (w) => w / 100,
             tip: 'The duty of the pulse — 50% is a square, and narrower is thinner and '
               + 'more nasal. Static unless the PWM card is switched on' }),
+        // Beside PLS WIDTH for the same reason it sits after WAVE: each is the one extra
+        // control its own waveform needs, and only one of them is ever live. Same label,
+        // same five colours, same default as the drum and noise panels' COLOUR — a
+        // pink layer and a pink drum have to mean the same filter.
+        pick(`$${p}.color`, 'COLOUR', NOISE_COLORS, 'white',
+          (v) => getAt(v, `$${p}.type`) === 'noise',
+          { tip: 'The tilt of the noise — white is flat, pink and brown lean to the '
+              + 'bottom, blue and violet to the top. The layer\'s bandpass still '
+              + 'follows the note on top of it' }),
         // Stored as `ratio` — the multiplier the engine plays at — and shown in
         // semitones, the same deal AMOUNT makes with the drum's two frequencies: +12 is
         // an octave up whichever key you think in, and a doubling layer reads as the
@@ -857,7 +866,7 @@ const SYNTH_GROUPS = {
    * Drive is the drum panel's card on the same entry keys, so the two panels' DRIVE
    * pots are provably one control rather than two that look alike.
    */
-  LayerSynth: [
+  'MRDR-3': [
     ...layerGroups(),
     { title: 'Drive', rows: [
       pick('$shape', 'SHAPE', DRIVE_SHAPES, 'soft'),
@@ -899,7 +908,7 @@ const SYNTH_GROUPS = {
       envTime('$additive.decay', 'DECAY', 0, 0.01, secs, 1),
       sustainPct('$additive.sustain', 0),
       envTime('$additive.release', 'RELEASE', 0, 0.01, secs, 0.015),
-      // The same three-pill trio LayerSynth and every Tone envelope end on. `curve`
+      // The same three-pill trio MRDR-3 and every Tone envelope end on. `curve`
       // keeps its historical name and its decay meaning — see the note over the
       // engine's own `adsr` — so every stack on file reads back unchanged; the other
       // two default to the exponential shape they always had before they were
@@ -1445,7 +1454,7 @@ const isOneShot = (v) => v?.kind === 'noise' || v?.kind === 'drum';
  * once and retriggered — or built from native nodes per note.
  *
  * The line `play()` itself draws: a noise or drum entry, GameSynth, AdditiveSynth and
- * LayerSynth all return before the pool is consulted. LayerSynth is nonetheless the
+ * MRDR-3 all return before the pool is consulted. MRDR-3 is nonetheless the
  * one NATIVE path where VOICING and GLIDE work — `_playLayer` keeps a glide origin per
  * (lane, voice) and chokes the previous note, which is what those controls promise.
  * On the other native paths they still cannot move a sample — see `commonRows`.
@@ -1473,9 +1482,9 @@ const isPooled = (v) => !isOneShot(v) && POOLED_SYNTHS.includes(v?.synth);
  *                   tapDetune
  *   AdditiveSynth + tapDetune                           `_playAdditive`
  *   GameSynth     none — no card at all                 `_playGame` has no tap loop
- *   LayerSynth    none — no card at all                 `_playLayer` has no tap loop
+ *   MRDR-3    none — no card at all                 `_playLayer` has no tap loop
  *
- * LayerSynth is deliberate rather than missing: a tap is one hit repeated milliseconds
+ * MRDR-3 is deliberate rather than missing: a tap is one hit repeated milliseconds
  * later — a clap, a flam — which is a percussion idea, and on a melodic voice the
  * slapback it gives you belongs on the strip's delay insert. Every preset in the
  * catalogue that uses taps is a clap, a snare flam or a buzz roll, including the five
@@ -1628,11 +1637,11 @@ const commonRows = (voice = {}) => [
     // the same singer in every layer, because a person has one larynx feeding all of their
     // formants, and scattering per layer pulls one voice apart instead of adding voices.
     //
-    // LayerSynth only: it is the one path that builds a modulator per voice. The pooled
+    // MRDR-3 only: it is the one path that builds a modulator per voice. The pooled
     // classes share a single LFO in the pool and GameSynth has one oscillator to detune,
     // so there is nothing there to de-correlate.
     n('$vibrato.spread', 'VIB SPREAD', 0, 1, 0.01, fixed(2), 0, '',
-      (v) => (v?.vibrato?.depth ?? 0) > 0 && v?.synth === 'LayerSynth',
+      (v) => (v?.vibrato?.depth ?? 0) > 0 && v?.synth === 'MRDR-3',
       { tip: 'How far the unison voices drift apart in rate and phase — 0 is one wobble '
           + 'on every voice, 1 is a room full of singers who are not counting together' }),
   ]),
@@ -1643,11 +1652,11 @@ const commonRows = (voice = {}) => [
   // to glide from, and the control does nothing at all.
   //
   // Both are absent, not greyed, on the paths that cannot honour them — a drum has no
-  // pool to hold one instance of and no Tone synth to carry a portamento. LayerSynth is
+  // pool to hold one instance of and no Tone synth to carry a portamento. MRDR-3 is
   // the one NATIVE path where they work: `_playLayer` keeps a glide origin per
   // (lane, voice) and chokes the note still ringing, which is exactly what the pills
   // promise. See `isPooled`.
-  ...(isPooled(voice) || voice?.synth === 'LayerSynth' ? [
+  ...(isPooled(voice) || voice?.synth === 'MRDR-3' ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
     pick('$mono', 'KEY MODE', [false, true], false),

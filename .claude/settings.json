@@ -14,7 +14,11 @@
       "Bash(sed -i '' '/for \\(const img of document.querySelectorAll/d; /^}, OUT\\);$/d' julia-variants.mjs)",
       "Bash(sed -i '' '/await sheet.evaluate\\(\\(dir\\) => {/d' julia-variants.mjs)",
       "Bash(node julia-variants.mjs)",
-      "Bash(curl -s -o /dev/null -w \"8010: %{http_code}\\\\n\" --max-time 3 http://127.0.0.1:8010/)"
+      "Bash(curl -s -o /dev/null -w \"8010: %{http_code}\\\\n\" --max-time 3 http://127.0.0.1:8010/)",
+      "Bash([ -s \"$f\" ])",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(grep -oE '\\\\b[A-Z0-9]{2,6}-[0-9]\\\\b' docs/synth-naming.md)",
+      "Bash(awk -F- '{ if \\(length\\($1\\)!=4\\) print \"NOT 4 CHARS: \" $0; else print \"ok  \" $0 }')"
     ]
   }
 }

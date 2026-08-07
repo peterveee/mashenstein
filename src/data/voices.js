@@ -2135,7 +2135,7 @@ const TONE = {
       filterEnvelope: { attack: 0.001, decay: 0.14, sustain: 0.1, release: 0.14, baseFrequency: 100, octaves: 4.2 },
     } },
 
-  // ---- LayerSynth ------------------------------------------------------------
+  // ---- MRDR-3 ------------------------------------------------------------
   //
   // Up to three oscillator layers, each a complete voice — see `_playLayer` in
   // src/engine/voices.js. These are the hand-written melodic voices of scheduleStep
@@ -2145,7 +2145,7 @@ const TONE = {
   //
   // No MELODIC_TRIM in any of them — the rack path never applies it and `voiceGain`
   // levels by measurement, so only the RATIOS between layers carry meaning.
-  layerBass80s: { label: 'Layer 80s Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  layerBass80s: { label: 'Layer 80s Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'The engine’s 80s bass as editable layers: square body, sine sub an octave '
       + 'down, and a short triangle octave above that carries it on phone speakers.',
     layer: {
@@ -2153,7 +2153,7 @@ const TONE = {
       osc2: { type: 'sine', ratio: 0.5, gain: 0.34, len: 1.08, attack: 0.006, decay: 1.944 },
       osc3: { type: 'triangle', ratio: 2, gain: 0.34, len: 0.62, attack: 0.003, decay: 1.116 },
     } },
-  layerFilteredSaw: { label: 'Layer Filtered Saw', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  layerFilteredSaw: { label: 'Layer Filtered Saw', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'The engine’s filtered saw as editable layers: the resonant lowpass shutting '
       + 'across the note is finally a knob, and the sine sub underneath is a layer.',
     layer: {
@@ -2166,14 +2166,14 @@ const TONE = {
           env: { octaves: 1.845, attack: 0.001, decay: 1.8, sustain: 0 } } },
       osc2: { type: 'sine', ratio: 0.5, gain: 0.22, len: 1.05, attack: 0.008, decay: 1.89 },
     } },
-  layerLeadBright: { label: 'Layer Bright Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.2,
+  layerLeadBright: { label: 'Layer Bright Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.2,
     note: 'The bright-octave lead as layers: the lane’s square with a quiet octave sine '
       + 'on top, adding air without changing the character underneath.',
     layer: {
       osc1: { type: 'square', ratio: 1, gain: 1, attack: 0.01, decay: 1.2 },
       osc2: { type: 'sine', ratio: 2, gain: 0.16, len: 0.68, attack: 0.004, decay: 0.816 },
     } },
-  layerTwinkle: { label: 'Layer Twinkle', category: 'Keys', synth: 'LayerSynth', dur: 6,
+  layerTwinkle: { label: 'Layer Twinkle', category: 'Keys', synth: 'MRDR-3', dur: 6,
     note: 'The twinkle lane’s own voice: a sine and its octave, the octave fading first.',
     layer: {
       osc1: { type: 'sine', ratio: 1, gain: 1, attack: 0.035, decay: 6 },
@@ -2184,22 +2184,22 @@ const TONE = {
   // AdditiveSynth already. The two that carried a written-in slapback (`bassRepeat`)
   // are their base timbre here: that ghost note was a stand-in from before the desk
   // had a delay, and the strip's delay insert is the tool for it now.
-  layerTitleBass: { label: 'Layer Title Bass', category: 'Bass', synth: 'LayerSynth', dur: 7.4,
+  layerTitleBass: { label: 'Layer Title Bass', category: 'Bass', synth: 'MRDR-3', dur: 7.4,
     note: 'The title theme’s nocturne bass: a sine so slow to arrive it is felt before '
       + 'it is heard, holding for most of two bars.',
     layer: { osc1: { type: 'sine', ratio: 1, gain: 1, attack: 0.18, decay: 7.4 } } },
-  layerFinaleBass: { label: 'Layer Finale Bass', category: 'Bass', synth: 'LayerSynth', dur: 0.95,
+  layerFinaleBass: { label: 'Layer Finale Bass', category: 'Bass', synth: 'MRDR-3', dur: 0.95,
     note: 'Short, hard and square — the house-arrangement bass, one note per step.',
     layer: { osc1: { type: 'square', ratio: 1, gain: 1, attack: 0.001, decay: 0.95 } } },
-  layerFinaleBassGhost: { label: 'Layer Finale Bass, Long', category: 'Bass', synth: 'LayerSynth', dur: 3.2,
+  layerFinaleBassGhost: { label: 'Layer Finale Bass, Long', category: 'Bass', synth: 'MRDR-3', dur: 3.2,
     note: 'The finale’s ghosted saw as its base timbre. The slapback it carried in the '
       + 'engine was a delay written into the notes — use the strip’s delay insert.',
     layer: { osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.01, decay: 3.2 } } },
-  layerWalkingBass: { label: 'Layer Walking Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.85,
+  layerWalkingBass: { label: 'Layer Walking Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.85,
     note: 'The pawn-shop walking sine as its base timbre — its shuffle ghost was a '
       + 'written-in delay; the strip’s delay insert says it better.',
     layer: { osc1: { type: 'sine', ratio: 1, gain: 1, attack: 0.01, decay: 1.85 } } },
-  layerMegamixBass: { label: 'Layer Megamix Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  layerMegamixBass: { label: 'Layer Megamix Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'The filtered saw dialled darker and rounder, sub brought up — what holds the '
       + 'megamix together under everything else.',
     layer: {
@@ -2208,7 +2208,7 @@ const TONE = {
           env: { octaves: 1.657, attack: 0.001, decay: 1.8, sustain: 0 } } },
       osc2: { type: 'sine', ratio: 0.5, gain: 0.21, len: 1.05, attack: 0.008, decay: 1.89 },
     } },
-  layerShopBass: { label: 'Layer Shop Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.08,
+  layerShopBass: { label: 'Layer Shop Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.08,
     note: 'The shop theme’s filtered saw: brighter and shorter than the megamix’s, so '
       + 'it bounces rather than sustains.',
     layer: {
@@ -2217,10 +2217,10 @@ const TONE = {
           env: { octaves: 1.827, attack: 0.001, decay: 1.08, sustain: 0 } } },
       osc2: { type: 'sine', ratio: 0.5, gain: 0.22, len: 1.05, attack: 0.008, decay: 1.134 },
     } },
-  layerLoungeBass: { label: 'Layer Lounge Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.25,
+  layerLoungeBass: { label: 'Layer Lounge Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.25,
     note: 'Soft triangle, no filter, one note per beat — Dolores’ counter music.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.01, decay: 1.25 } } },
-  layerBright80sBass: { label: 'Layer 80s Bass, Shop', category: 'Bass', synth: 'LayerSynth', dur: 0.94,
+  layerBright80sBass: { label: 'Layer 80s Bass, Shop', category: 'Bass', synth: 'MRDR-3', dur: 0.94,
     note: 'The 80s stack with a triangle body and a very short note — the bright-organ '
       + 'shop auditions.',
     layer: {
@@ -2228,51 +2228,51 @@ const TONE = {
       osc2: { type: 'sine', ratio: 0.5, gain: 0.34, len: 1.08, attack: 0.006, decay: 1.0152 },
       osc3: { type: 'triangle', ratio: 2, gain: 0.34, len: 0.62, attack: 0.003, decay: 0.5828 },
     } },
-  layerTitleLead: { label: 'Layer Title Lead', category: 'Lead', synth: 'LayerSynth', dur: 5.5,
+  layerTitleLead: { label: 'Layer Title Lead', category: 'Lead', synth: 'MRDR-3', dur: 5.5,
     note: 'A sine that swells in over a sixth of a second and holds — the title theme, '
       + 'remembered from an empty arcade.',
     layer: { osc1: { type: 'sine', ratio: 1, gain: 1, attack: 0.16, decay: 5.5 } } },
-  layerFinaleLead: { label: 'Layer Finale Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.7,
+  layerFinaleLead: { label: 'Layer Finale Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.7,
     note: 'Sawtooth, fast attack, overlapping notes — the finale’s hook.',
     layer: { osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.006, decay: 1.7 } } },
-  layerMegamixLead: { label: 'Layer Megamix Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.25,
+  layerMegamixLead: { label: 'Layer Megamix Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.25,
     note: 'Triangle with a little length on it — soft enough to sit inside a mix '
       + 'carrying every other cabinet at once.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.008, decay: 1.25 } } },
-  layerShopLead: { label: 'Layer Shop Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.55,
+  layerShopLead: { label: 'Layer Shop Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.55,
     note: 'Triangle with the octave-sine brightener on top: the shop’s lead, which '
       + 'needs air to read over the organ.',
     layer: {
       osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.012, decay: 1.55 },
       osc2: { type: 'sine', ratio: 2, gain: 0.16, len: 0.68, attack: 0.004, decay: 1.054 },
     } },
-  layerCounterLead: { label: 'Layer Counter Lead', category: 'Lead', synth: 'LayerSynth', dur: 0.82,
+  layerCounterLead: { label: 'Layer Counter Lead', category: 'Lead', synth: 'MRDR-3', dur: 0.82,
     note: 'Short triangle stabs — Dolores’ side of the shop auditions.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.006, decay: 0.82 } } },
-  layerTitleHarm: { label: 'Layer Title Harmony', category: 'Lead', synth: 'LayerSynth', dur: 6.2,
+  layerTitleHarm: { label: 'Layer Title Harmony', category: 'Lead', synth: 'MRDR-3', dur: 6.2,
     note: 'The slowest voice in the game: a triangle taking more than a quarter of a '
       + 'second to arrive, under the title lead.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.28, decay: 6.2 } } },
-  layerSineHarm: { label: 'Layer Sine Harmony', category: 'Lead', synth: 'LayerSynth', dur: 1.35,
+  layerSineHarm: { label: 'Layer Sine Harmony', category: 'Lead', synth: 'MRDR-3', dur: 1.35,
     note: 'A plain sine third — width for a lead without harmonics to fight it.',
     layer: { osc1: { type: 'sine', ratio: 1, gain: 1, attack: 0.01, decay: 1.35 } } },
-  layerTitleChords: { label: 'Layer Title Chords', category: 'Pad', synth: 'LayerSynth', dur: 7.6,
+  layerTitleChords: { label: 'Layer Title Chords', category: 'Pad', synth: 'MRDR-3', dur: 7.6,
     note: 'Held triangle chords with a third of a second of attack — a pad in all but '
       + 'name, and the title theme’s bed.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.35, decay: 7.6 } } },
-  layerFinaleStab: { label: 'Layer Finale Stab', category: 'Keys', synth: 'LayerSynth', dur: 0.32,
+  layerFinaleStab: { label: 'Layer Finale Stab', category: 'Keys', synth: 'MRDR-3', dur: 0.32,
     note: 'A square chord lasting a third of a step — the house stab.',
     layer: { osc1: { type: 'square', ratio: 1, gain: 1, attack: 0.005, decay: 0.32 } } },
-  layerFinaleSawStab: { label: 'Layer Finale Saw Stab', category: 'Keys', synth: 'LayerSynth', dur: 0.28,
+  layerFinaleSawStab: { label: 'Layer Finale Saw Stab', category: 'Keys', synth: 'MRDR-3', dur: 0.28,
     note: 'The same shape with a sawtooth — harder, and the brightest chord in the game.',
     layer: { osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.01, decay: 0.28 } } },
-  layerShopComp: { label: 'Layer Shop Comping', category: 'Keys', synth: 'LayerSynth', dur: 1.75,
+  layerShopComp: { label: 'Layer Shop Comping', category: 'Keys', synth: 'MRDR-3', dur: 1.75,
     note: 'Triangle chords with room to ring — retail-jazz comping under the shop themes.',
     layer: { osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.02, decay: 1.75 } } },
 
   // The demonstrator: the two controls no engine recreation exercises — unison and the
   // routable LFO — in one preset, so both have a sound in the library showing them.
-  layerDreamPad: { label: 'Layer Dream Pad', category: 'Pad', synth: 'LayerSynth', dur: 8,
+  layerDreamPad: { label: 'Layer Dream Pad', category: 'Pad', synth: 'MRDR-3', dur: 8,
     note: 'Three detuned saws through a lowpass the LFO breathes open and shut, with a '
       + 'sine sub holding the floor — nothing in the engine could say this.',
     layer: {
@@ -2292,7 +2292,7 @@ const TONE = {
   // The blip on osc1 is the pitch envelope in its ordinary use — two semitones falling
   // into the note over 40 ms, which is a brass player's attack and reads as articulation
   // rather than as a pitch effect.
-  layerBrassStack: { label: 'Layer Brass Stack', category: 'Orch', synth: 'LayerSynth', dur: 2.4,
+  layerBrassStack: { label: 'Layer Brass Stack', category: 'Orch', synth: 'MRDR-3', dur: 2.4,
     note: 'Three saws with no filters of their own, arriving at one shared lowpass that '
       + 'opens across the note — the stack reads as one horn section rather than three '
       + 'oscillators. A two-semitone blip gives it its attack.',
@@ -2324,7 +2324,7 @@ const TONE = {
   // /u/ 320·800·2250, /o/ 500·1000·2450. Sawtooth sources, because a vowel needs
   // harmonics for the resonances to find.
 
-  bestChoirAah: { label: 'BEST Choir Aah', category: 'Orch', synth: 'LayerSynth', dur: 8,
+  bestChoirAah: { label: 'BEST Choir Aah', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with '
       + 'the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: '
       + 'this is how a voice works, not an impression of one.',
@@ -2349,7 +2349,7 @@ const TONE = {
     humanize: { entry: 0.022 },
     vibrato: { depth: 0.18, rate: 5.2, delay: 0.6, spread: 0.75 } },
 
-  bestChoirOoh: { label: 'BEST Choir Ooh', category: 'Orch', synth: 'LayerSynth', dur: 8,
+  bestChoirOoh: { label: 'BEST Choir Ooh', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'The /u/ vowel — 320, 800 and 2250 Hz — rounder and darker than the aah, with a '
       + 'band of noise sitting where the breath is. Two singers, slightly out of tune with '
       + 'each other, which is what makes a section sound like more than one person.',
@@ -2376,7 +2376,7 @@ const TONE = {
     humanize: { entry: 0.034 },
     vibrato: { depth: 0.14, rate: 4.8, delay: 0.8, spread: 0.85 } },
 
-  bestVoiceBox70s: { label: 'BEST Voice Box 70s', category: 'Lead', synth: 'LayerSynth', dur: 2.2,
+  bestVoiceBox70s: { label: 'BEST Voice Box 70s', category: 'Lead', synth: 'MRDR-3', dur: 2.2,
     note: 'The tube-in-the-mouth lead off a 1976 record. Two formants moving in OPPOSITE '
       + 'directions — one opening, one closing — is a mouth changing shape, and the LFO on '
       + 'top is it doing that over and over. Mono with a short glide, because a talk box is '
@@ -2410,7 +2410,7 @@ const TONE = {
     vibrato: { depth: 0.12, rate: 5.5, delay: 0.35 },
     mono: true, portamento: 0.055 },
 
-  bestRobotVox: { label: 'BEST Robot Vox', category: 'FX', synth: 'LayerSynth', dur: 2,
+  bestRobotVox: { label: 'BEST Robot Vox', category: 'FX', synth: 'MRDR-3', dur: 2,
     note: 'A vocoder that never met a singer: square carrier, an FM operator buzzing the '
       + 'formants, and the /o/ vowel held rigid over the top. The pitch envelope drops a '
       + 'semitone into every note, which is the machine deciding what it meant to say.',
@@ -2435,7 +2435,7 @@ const TONE = {
     },
     drive: 0.5, shape: 'fold', tone: { freq: 6400 } },
 
-  bestVowelPad: { label: 'BEST Vowel Pad', category: 'Pad', synth: 'LayerSynth', dur: 8,
+  bestVowelPad: { label: 'BEST Vowel Pad', category: 'Pad', synth: 'MRDR-3', dur: 8,
     note: 'A pad that keeps talking. Three formants with slow, deep filter movement under '
       + 'one shared lowpass, so the vowel drifts between /o/ and /a/ across a held chord — '
       + 'unison on every layer, which is nine oscillators wide.',
@@ -2463,7 +2463,7 @@ const TONE = {
     humanize: { entry: 0.03 },
     vibrato: { depth: 0.08, rate: 3.4, delay: 1.8, spread: 0.5 } },
 
-  bestMegaSawLead: { label: 'BEST Mega Saw Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.6,
+  bestMegaSawLead: { label: 'BEST Mega Saw Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
     note: 'Eleven oscillators. Two unison saws a fifth apart, a sub under them, all through '
       + 'one shared filter that opens across every note — the shared stage is the whole '
       + 'point, because eleven separate filters would be eleven sounds instead of one.',
@@ -2487,7 +2487,7 @@ const TONE = {
     drive: 0.34, shape: 'soft', tone: { freq: 12000 },
     vibrato: { depth: 0.1, rate: 5.6, delay: 0.5 } },
 
-  bestHeroLead: { label: 'BEST Hero Lead', category: 'Lead', synth: 'LayerSynth', dur: 2.4,
+  bestHeroLead: { label: 'BEST Hero Lead', category: 'Lead', synth: 'MRDR-3', dur: 2.4,
     note: 'The one that plays the theme over the credits. Mono with a real glide, and a '
       + 'two-semitone blip into every note — the pitch envelope and the portamento running '
       + 'at once, which they could not do until they stopped sharing a parameter.',
@@ -2511,7 +2511,7 @@ const TONE = {
     vibrato: { depth: 0.16, rate: 5.1, delay: 0.45 },
     mono: true, portamento: 0.07 },
 
-  bestScreamerLead: { label: 'BEST Screamer Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.4,
+  bestScreamerLead: { label: 'BEST Screamer Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.4,
     note: 'Cuts through anything. An FM operator at a deliberately inharmonic ratio puts a '
       + 'metallic edge on the saw, the fold shaper turns level into a different sound '
       + 'rather than a louder one, and the filter envelope snaps shut behind each note.',
@@ -2533,7 +2533,7 @@ const TONE = {
     drive: 0.62, shape: 'fold', tone: { freq: 9000 },
     vibrato: { depth: 0.2, rate: 6.4, delay: 0.3 } },
 
-  bestMonsterBass: { label: 'BEST Monster Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  bestMonsterBass: { label: 'BEST Monster Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'A sine sub holding the floor, a saw doing the work and a square an octave up for '
       + 'the teeth, all arriving at one filter that slams open and shut on every note. The '
       + 'growl is the shared envelope, not three envelopes that happen to agree.',
@@ -2554,7 +2554,7 @@ const TONE = {
     drive: 0.4, shape: 'soft', tone: { freq: 5200 },
     mono: true, portamento: 0.035 },
 
-  bestReeseBass: { label: 'BEST Reese Bass', category: 'Bass', synth: 'LayerSynth', dur: 2,
+  bestReeseBass: { label: 'BEST Reese Bass', category: 'Bass', synth: 'MRDR-3', dur: 2,
     note: 'Two saws detuned far enough to beat against each other — the 1988 Reese — with a '
       + 'clean sine sub underneath so the low end survives the interference. The LFO walks '
       + 'the shared filter, which is what turns a held note into a moving one.',
@@ -2585,7 +2585,7 @@ const TONE = {
   // string machine is. Give all three the same rate and the stack breathes in lockstep,
   // which sounds like one oscillator getting fatter rather than like a section.
 
-  bestPwmStrings: { label: 'BEST PWM Strings', category: 'Orch', synth: 'LayerSynth', dur: 8,
+  bestPwmStrings: { label: 'BEST PWM Strings', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates '
       + 'chosen not to line up — over a clean saw sub. The shimmer is the two widths '
       + 'passing through each other, which is why they must never share a rate.',
@@ -2606,7 +2606,7 @@ const TONE = {
     },
     vibrato: { depth: 0.07, rate: 4.2, delay: 1.4 } },
 
-  bestPwmBrass: { label: 'BEST PWM Brass', category: 'Orch', synth: 'LayerSynth', dur: 2.4,
+  bestPwmBrass: { label: 'BEST PWM Brass', category: 'Orch', synth: 'MRDR-3', dur: 2.4,
     note: 'The Jupiter brass stab: a pulse leaning on a saw, the width moving fast enough '
       + 'to be heard inside a short note, and the shared filter opening three octaves as '
       + 'the section leans in.',
@@ -2628,7 +2628,7 @@ const TONE = {
     drive: 0.22, shape: 'soft', tone: { freq: 11000 },
     vibrato: { depth: 0.11, rate: 5, delay: 0.5 } },
 
-  bestPwmPadWide: { label: 'BEST PWM Pad Wide', category: 'Pad', synth: 'LayerSynth', dur: 8,
+  bestPwmPadWide: { label: 'BEST PWM Pad Wide', category: 'Pad', synth: 'MRDR-3', dur: 8,
     note: 'Three pulses at three rates, all of them slow and deep, through one filter the '
       + 'LFO also breathes. Nothing in it repeats inside a bar — the widest, least static '
       + 'thing this synth can make.',
@@ -2651,7 +2651,7 @@ const TONE = {
     },
     vibrato: { depth: 0.06, rate: 3, delay: 2.2 } },
 
-  bestPwmBass: { label: 'BEST PWM Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  bestPwmBass: { label: 'BEST PWM Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'A moving pulse body over a sine sub that is deliberately left ALONE — modulate '
       + 'the sub and the weight goes with it. Everything above 100 Hz drifts; the bottom '
       + 'octave does not move at all.',
@@ -2673,7 +2673,7 @@ const TONE = {
     drive: 0.3, shape: 'soft', tone: { freq: 5600 },
     mono: true, portamento: 0.04 },
 
-  bestPwmGrowlBass: { label: 'BEST PWM Growl Bass', category: 'Bass', synth: 'LayerSynth', dur: 1.6,
+  bestPwmGrowlBass: { label: 'BEST PWM Growl Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.6,
     note: 'Fast, deep width modulation straight into the fold shaper. The width moving '
       + 'under a folded signal is not a wobble on top of a sound, it is a different sound '
       + 'every few milliseconds. Nasty on purpose.',
@@ -2696,7 +2696,7 @@ const TONE = {
     drive: 0.66, shape: 'fold', tone: { freq: 4200 },
     mono: true, portamento: 0.03 },
 
-  bestPwmHollowLead: { label: 'BEST PWM Hollow Lead', category: 'Lead', synth: 'LayerSynth', dur: 1.8,
+  bestPwmHollowLead: { label: 'BEST PWM Hollow Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.8,
     note: 'The Oberheim hollow lead: two narrow pulses around a quarter duty, the width '
       + 'moving just fast enough to shimmer without turning into a wobble. Mono with a '
       + 'short glide, because this is a one-finger sound.',
@@ -2719,7 +2719,7 @@ const TONE = {
     vibrato: { depth: 0.15, rate: 5.4, delay: 0.4 },
     mono: true, portamento: 0.06 },
 
-  bestPwmReedLead: { label: 'BEST PWM Reed Lead', category: 'Lead', synth: 'LayerSynth', dur: 2,
+  bestPwmReedLead: { label: 'BEST PWM Reed Lead', category: 'Lead', synth: 'MRDR-3', dur: 2,
     note: 'A 15% pulse through a static bandpass at 1.6 kHz — the formant trick and the '
       + 'moving width in one patch. The resonance stays put while the duty walks under '
       + 'it, which is what a double reed does.',
@@ -2744,7 +2744,7 @@ const TONE = {
     drive: 0.24, shape: 'soft', tone: { freq: 9000 },
     vibrato: { depth: 0.17, rate: 5.6, delay: 0.35 } },
 
-  bestPwmClav: { label: 'BEST PWM Clav', category: 'Keys', synth: 'LayerSynth', dur: 1.2,
+  bestPwmClav: { label: 'BEST PWM Clav', category: 'Keys', synth: 'MRDR-3', dur: 1.2,
     note: 'Percussive and narrow: a 15% pulse with a filter envelope that shuts almost as '
       + 'fast as it opens. The PWM is shallow and quick — on a note this short it reads as '
       + 'the string still ringing rather than as modulation.',
@@ -2765,7 +2765,7 @@ const TONE = {
     },
     drive: 0.38, shape: 'soft', tone: { freq: 12000 } },
 
-  bestPwmChoir: { label: 'BEST PWM Choir', category: 'Orch', synth: 'LayerSynth', dur: 8,
+  bestPwmChoir: { label: 'BEST PWM Choir', category: 'Orch', synth: 'MRDR-3', dur: 8,
     note: 'The /a/ formants again, but over pulses whose widths drift instead of over '
       + 'plain saws. The vowel is held by the filters; the moving source is what turns one '
       + 'singer into a section, and it is doing the job the chorus pedal does on a Juno.',
@@ -2792,7 +2792,7 @@ const TONE = {
     humanize: { entry: 0.02 },
     vibrato: { depth: 0.16, rate: 5, delay: 0.7, spread: 0.6 } },
 
-  bestClassicMono: { label: 'BEST Classic Mono', category: 'Lead', synth: 'LayerSynth', dur: 2,
+  bestClassicMono: { label: 'BEST Classic Mono', category: 'Lead', synth: 'MRDR-3', dur: 2,
     note: 'Three oscillators into a mixer, one filter, one envelope — the architecture every '
       + 'classic mono synth has and the one this stack could not describe until its layers '
       + 'could give up their own amps. Every AMP reads THROUGH: the Global Amp is the only '
@@ -2813,7 +2813,7 @@ const TONE = {
     vibrato: { depth: 0.12, rate: 5.2, delay: 0.4 },
     mono: true, portamento: 0.05 },
 
-  bestPwmDrift: { label: 'BEST PWM Drift', category: 'FX', synth: 'LayerSynth', dur: 8,
+  bestPwmDrift: { label: 'BEST PWM Drift', category: 'FX', synth: 'MRDR-3', dur: 8,
     note: 'Very slow, very deep, and detuned far enough that nothing in it lines up twice. '
       + 'Three widths at 0.07, 0.11 and 0.05 Hz — periods of fourteen, nine and twenty '
       + 'seconds — so the texture never repeats inside anything you would write.',

@@ -162,7 +162,17 @@ export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {
  *
  * The series are the textbook ones. Thirty-two harmonics is far more than a modulator at
  * a few hertz can use, and the waves are cached per context beside the pulse tables.
+ *
+ * The cache is CAPPED, unlike the pulse tables beside it. A pulse table is keyed on a
+ * duty a preset wrote down, so there are as many as the library has; a phase is drawn
+ * fresh from the note's own start time for every note-on and every unison voice, so the
+ * key space is the four decimals it is rounded to — tens of thousands of `PeriodicWave`s
+ * per waveform over a long session, none of which is ever asked for twice. Oldest out
+ * when the cap is reached, which is insertion order because that is what a `Map` keeps.
+ * The cap only bounds memory: the wave built for a given phase is the same wave either
+ * way, so nothing renders differently for having been evicted.
  */
+const PHASE_WAVE_CACHE = 256;
 const phaseWaves = new WeakMap();
 function phasedWave(ctx, type, phase) {
   const kind = nativeWave(type, 'sine');
@@ -186,6 +196,7 @@ function phasedWave(ctx, type, phase) {
     imag[n] = b * Math.cos(n * phase);
   }
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  if (perCtx.size >= PHASE_WAVE_CACHE) perCtx.delete(perCtx.keys().next().value);
   perCtx.set(key, wave);
   return wave;
 }
@@ -413,6 +424,28 @@ function releaseNow(param, at, e = {}) {
  */
 const HOLD_SECONDS = 30;
 
+/**
+ * Did anything but a NUMBER change between two option bags?
+ *
+ * The question `_applyLive` has to answer before it writes: a number moving on a sounding
+ * synth is a cutoff being swept, and stepping it is inaudible. A string moving is a
+ * different waveform or a different filter, and stepping THAT is a click — the signal
+ * jumps from wherever the old shape was to wherever the new one starts.
+ *
+ * Missing on either side counts as changed, so switching a section on or off dips too:
+ * an option that has just appeared is a node that has just started.
+ */
+function shapeChanged(a, b) {
+  if (a === b) return false;
+  if (typeof a !== typeof b) return true;
+  if (a === null || b === null || typeof a !== 'object') {
+    return typeof a === 'number' && typeof b === 'number' ? false : a !== b;
+  }
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) if (shapeChanged(a[k], b[k])) return true;
+  return false;
+}
+
 const SYNTHS = {
   Synth: Tone.Synth,
   MonoSynth: Tone.MonoSynth,
@@ -592,7 +625,7 @@ export class VoiceRack {
     if (v && v.synth === 'AdditiveSynth') {
       return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
     }
-    if (v && v.synth === 'LayerSynth') {
+    if (v && v.synth === 'MRDR-3') {
       return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
     }
     if (!v || !SYNTHS[v.synth]) return false;
@@ -1503,6 +1536,9 @@ export class VoiceRack {
     // with itself is a chorus, not a vibrato.
     const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
     let vibCents = null; let lfo = null; let lastOff = 0;
+    // One LFO for the whole note-on, so a chord counts its held tones and stops it with
+    // the last of them — the same bookkeeping `_playLayer` does, for the same reason.
+    const sharedMods = { oscs: [], holds: 0 };
     if (vib) {
       lfo = ctx.createOscillator();
       lfo.type = nativeWave(vib.type, 'sine');
@@ -1604,7 +1640,8 @@ export class VoiceRack {
         if (stackHolds && heldParams.length) {
           const noteKey = `${laneKey}|${f.toFixed(2)}`;
           this._releasePreview(noteKey);
-          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources });
+          sharedMods.holds += 1;
+          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources, shared: sharedMods });
         }
 
         // Hammond percussion: one louder partial struck on the key attack and gone long
@@ -1636,7 +1673,7 @@ export class VoiceRack {
     }
     // Started once the last partial has said when it ends. An LFO left running past the
     // note it belongs to is a node nothing disposes.
-    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }
+    if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); sharedMods.oscs.push(lfo); }
     return true;
   }
 
@@ -1721,9 +1758,9 @@ export class VoiceRack {
     const gv = v.global?.vca || null;
 
     // ---- the shared modulators, one of each per note-on ----------------------
-    // Vibrato exactly as `_playAdditive` builds it: the same key, the same 0–1 depth,
-    // ±100 cents at full travel, the same onset delay — a preset's wobble means one
-    // thing whichever synth plays it. Every oscillator of every layer takes it on
+    // Vibrato exactly as `_playAdditive` builds it: the same key, the same semitones,
+    // 100 cents per unit and no ceiling, the same onset delay — a preset's wobble means
+    // one thing whichever synth plays it. Every oscillator of every layer takes it on
     // `.detune`, where it SUMS with the unison spread rather than fighting it.
     const vib = v.vibrato && v.vibrato.depth > 0 ? v.vibrato : null;
     let lastOff = 0;
@@ -1742,6 +1779,12 @@ export class VoiceRack {
     // slightly different section rather than a copy of the first.
     const vibSpread = Math.min(1, Math.max(0, vib?.spread ?? 0));
     const vibOscs = [];
+    // The modulators shared by every note in this note-on — the vibrato LFOs and the
+    // routable one. A chord registers one held record PER TONE, so these cannot simply
+    // be stopped with the first key released or the notes still down would lose their
+    // wobble. Counted instead, and stopped when the last of them lets go. Filled in
+    // after the notes are built, which is where these oscillators are started.
+    const sharedMods = { oscs: [], holds: 0 };
     const vibVoices = new Map();
     const vibFor = (u) => {
       if (!vib) return null;
@@ -1765,7 +1808,11 @@ export class VoiceRack {
       env.gain.setValueAtTime(0, time);
       env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, vib.delay || 0.001));
       const cents = ctx.createGain();
-      cents.gain.setValueAtTime(Math.min(1, vib.depth) * 100, time);
+      // Uncapped, as `_playGame` and `_playAdditive` are. The editor's pot travels to
+      // twelve semitones and the clamp that used to sit here made the top eleven
+      // twelfths of it inert — the same preset wobbling differently on two lanes,
+      // which is exactly what the comment above says this path does not do.
+      cents.gain.setValueAtTime(vib.depth * 100, time);
       lfo.connect(env); env.connect(cents);
       vibOscs.push(lfo);
       vibVoices.set(key, cents);
@@ -1799,8 +1846,13 @@ export class VoiceRack {
     // and a fast fade rather than a fight over the same events.
     if (mono && prev && prev.stopAt > time) {
       for (const o of prev.outs) {
-        o.gain.cancelScheduledValues(time);
-        o.gain.setValueAtTime(o.gain.value, time);
+        // `cancelAndHoldAtTime` is the whole point: `time` is up to a lookahead — a
+        // quarter of a second — in the FUTURE, and `gain.value` is the value NOW. Pinning
+        // the future gain to the present one steps a note still climbing its attack up or
+        // down before the fade, which is the click. Holding takes the value the
+        // automation would have reached, which is what "cut the note still ringing" means.
+        if (o.gain.cancelAndHoldAtTime) o.gain.cancelAndHoldAtTime(time);
+        else { o.gain.cancelScheduledValues(time); o.gain.setValueAtTime(o.gain.value, time); }
         o.gain.linearRampToValueAtTime(0, time + 0.005);
       }
     }
@@ -1891,6 +1943,15 @@ export class VoiceRack {
         const holdEnd = t + HOLD_SECONDS;
         const heldParams = [];
         const heldSources = [];
+        // What a live edit can still move on a note that is already SOUNDING. Only params
+        // that were set once rather than automated: a cutoff is written at note-on and
+        // sits there, so it can be walked under your hand; an envelope is a trajectory
+        // already booked, and rewriting it mid-flight fights what it has scheduled.
+        //
+        // The specs are held by REFERENCE, and that is the trick — the panel edits
+        // `VOICES[id]` in place, so the object recorded here IS the one the pot moves, and
+        // re-reading it later gives the current value with no lookup. See `refresh`.
+        const heldLive = [];
         let stage = null;
         // When the global VCA ends, for the layers that have handed their shaping to it.
         let vcaOff = 0;
@@ -1932,6 +1993,7 @@ export class VoiceRack {
               for (const st of chain.stages) lfoOut.connect(st.detune);
             }
             filterEnv(chain.stages, gf.env, t, gEnd);
+            if (preview) heldLive.push({ chain, spec: gf, mul: track * toneMul });
             head = chain.head;
           }
           stage = { head, off: vcaOff };
@@ -1945,7 +2007,11 @@ export class VoiceRack {
           // The same key pressed again restarts rather than stacking — the pooled path's
           // own rule, applied here so both behave alike under a trill.
           this._releasePreview(noteKey);
-          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources });
+          sharedMods.holds += 1;
+          this._heldNative.set(noteKey, {
+            params: heldParams, sources: heldSources, shared: sharedMods,
+            live: heldLive, voiceId: v.id,
+          });
         };
 
         for (const spec of specs) {
@@ -2034,6 +2100,7 @@ export class VoiceRack {
             //
             // The same helper the global filter below uses, so the two move alike.
             filterEnv(chain.stages, fl.env, t, end);
+            if (preview) heldLive.push({ chain, spec: fl, mul: track * toneMul });
             dest = chain.head;
           }
           g.connect(into);
@@ -2050,6 +2117,11 @@ export class VoiceRack {
           const makeup = isNoise
             ? Math.sqrt(nyquist / Math.max(20, target / NOISE_Q)) : 1;
           let fmSpread = null;
+          // This layer's own modulators. They are not in `sources` — nothing downstream
+          // of them is audible on its own — but a HELD preview note has to be able to
+          // pull their stops back with everything else, or a released key leaves them
+          // running silently to the 30-second safety stop.
+          const layerMods = [];
 
           // ---- pulse width modulation ------------------------------------------
           //
@@ -2068,6 +2140,28 @@ export class VoiceRack {
           const pwm = spec.type === 'pulse' && spec.pwm && (spec.pwm.depth ?? 0) > 0
             ? spec.pwm : null;
           const wCentre = Math.min(0.95, Math.max(0.05, spec.width ?? 0.5));
+          // ---- the duty is SECONDS, and a glide moves what a second is worth --------
+          //
+          // The pulse is `saw(t) − saw(t − Δ)`, so the duty the ear hears is `Δ · f(t)`,
+          // not Δ. Setting Δ once from the destination pitch made every glided note start
+          // at the WRONG width and slide into the right one: a whole tone is a 12% error
+          // for the length of the portamento, and an octave drop takes `bestPwmGrowlBass`
+          // to a duty of 1.000 — where the delay is exactly one period, the two saws
+          // cancel, and the layer drops out for the first thirty milliseconds of the note.
+          //
+          // Holding the duty still means Δ(t) = width / f(t). `pitchRamp` glides the pitch
+          // exponentially, and the reciprocal of an exponential ramp is an exponential
+          // ramp between the reciprocal endpoints — so this is the exact inverse, not an
+          // approximation of one, and it costs a ramp rather than an AudioWorklet.
+          //
+          // Vibrato and FM still move the duty, because they arrive as connections to
+          // `.detune` rather than as automation anything here can read. They are ±1.2% at
+          // the depths this library uses, against an octave here.
+          const glideEnd = t + Math.max(0.001, v.portamento || 0.001);
+          // The delay line is built with 0.25s of room, so a reciprocal off a very low
+          // starting note is clamped rather than silently pinned by the node.
+          const secsAt = (hz) => Math.min(0.249, wCentre / Math.max(1, hz));
+          const startHz = glideFrom ? Math.max(1, glideFrom * ratio) : target;
           let pwmSecs = null;
           if (pwm) {
             const lfo = ctx.createOscillator();
@@ -2082,9 +2176,18 @@ export class VoiceRack {
             const room = Math.min(wCentre - 0.05, 0.95 - wCentre);
             const swing = Math.min(room, Math.min(1, pwm.depth) * 0.45);
             pwmSecs = ctx.createGain();
-            pwmSecs.gain.setValueAtTime(swing / target, t);
+            // The SWING is seconds-per-duty too, so it tracks the glide by the same
+            // reciprocal — otherwise the centre would hold still while the modulation
+            // around it breathed wider and narrower on every glided note.
+            // A width sitting on either limit leaves no room to swing at all, and an
+            // exponential ramp cannot end on the zero that gives — it stays a flat zero.
+            pwmSecs.gain.setValueAtTime(swing / Math.max(1, startHz), t);
+            if (glideFrom && swing > 0) {
+              pwmSecs.gain.exponentialRampToValueAtTime(swing / Math.max(1, target), glideEnd);
+            }
             lfo.connect(env); env.connect(pwmSecs);
             lfo.start(t); lfo.stop(off + 0.01);
+            layerMods.push(lfo);
           }
 
           for (let u = 0; u < count; u++) {
@@ -2099,10 +2202,13 @@ export class VoiceRack {
             let o;
             if (isNoise) {
               o = ctx.createBufferSource();
-              o.buffer = this.noiseBuf;
-              // Looped: the buffer is half a second and a held note is not. The
-              // band takes the edge off the seam, as it does everywhere this
-              // buffer plays.
+              // Looped: the buffer is shorter than a held note. Which buffer follows
+              // `_bufFor`'s rule and its 5% margin — a layer that outlasts the short
+              // one gets the long one, so an eight-second pad does not drop the same
+              // seam at the same half-second offset sixteen times over. Short blips are
+              // untouched, and the band still takes the edge off whichever seam is left.
+              const long = (off - t) > (this.noiseBuf.duration || 0.5) * 1.05;
+              o.buffer = this._noise(spec.color, long);
               o.loop = true;
               const bp = ctx.createBiquadFilter();
               bp.type = 'bandpass';
@@ -2124,7 +2230,8 @@ export class VoiceRack {
               const sum = ctx.createGain();
               a.connect(sum);
               b.connect(line); line.connect(inv); inv.connect(sum);
-              line.delayTime.setValueAtTime(wCentre / target, t);
+              line.delayTime.setValueAtTime(secsAt(startHz), t);
+              if (glideFrom) line.delayTime.exponentialRampToValueAtTime(secsAt(target), glideEnd);
               pwmSecs.connect(line.delayTime);
               out = sum; sources.push(a, b);
               pitches.push(a.frequency, b.frequency); dets.push(a.detune, b.detune);
@@ -2183,6 +2290,7 @@ export class VoiceRack {
                 });
                 mod.connect(fmSpread);
                 mod.start(t); mod.stop(off + 0.01);
+                layerMods.push(mod);
               }
               for (const pitch of pitches) fmSpread.connect(pitch);
             }
@@ -2227,6 +2335,9 @@ export class VoiceRack {
             // oscillators running underneath it.
             if (layerHolds || (through && heldVca)) heldSources.push(...sources);
           }
+          // Once per layer rather than per unison voice: the PWM LFO is the layer's, and
+          // the FM operator is one modulator fanned across the whole stack.
+          if (layerHolds || (through && heldVca)) heldSources.push(...layerMods);
         }
         registerHold();
       });
@@ -2239,6 +2350,10 @@ export class VoiceRack {
     }
     if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
     if (lfoOsc && lastOff) { lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01); }
+    if (lastOff) {
+      sharedMods.oscs.push(...vibOscs);
+      if (lfoOsc) sharedMods.oscs.push(lfoOsc);
+    }
     return true;
   }
 
@@ -2335,7 +2450,27 @@ export class VoiceRack {
    * the caller falls back to building the pool again.
    */
   _applyLive(pool, spec) {
-    try {
+    // ---- the tick ----------------------------------------------------------
+    //
+    // `set` writes every option the instant it is called, on synths that are SOUNDING.
+    // A number moving is inaudible — a cutoff walking a few hertz per drag step is the
+    // whole point of live editing — but a STRING is a different waveform, a different
+    // filter type, a different curve, and swapping one of those mid-cycle steps the
+    // signal from wherever it was to wherever the new shape starts. That step is a
+    // click, and on a saw at full level it is a loud one.
+    //
+    // So: mute the output, change it inside the silence, and bring it back — and do the
+    // change SYNCHRONOUSLY, which is the part that matters. Web Audio renders in 128-sample
+    // quanta, so a mute scheduled at `currentTime` and a `set` called immediately after it
+    // both land in the same block: the new shape's first sample is already silent. Nothing
+    // is deferred, so "an edit lands on the synth that is playing" stays literally true and
+    // the panel's own tests can still read the value back on the next line.
+    //
+    // 12 ms of silence and 18 ms back up. Only for shape changes: a drag of a numeric pot
+    // takes the direct path and stays perfectly smooth, or every drag would stutter through
+    // thirty dips a second.
+    const shifted = shapeChanged(pool.spec?.opts, spec.opts);
+    const write = () => {
       for (const { synth, vib } of pool.slots) {
         synth.set(JSON.parse(JSON.stringify(spec.opts)));
         // `set` only writes the keys it is given, and `buildSpec` omits a glide of
@@ -2347,6 +2482,26 @@ export class VoiceRack {
           vib.depth.value = spec.vibrato.depth;
           vib.type = spec.vibrato.type;
         }
+      }
+    };
+    try {
+      // An offline render never edits a preset mid-play and has nobody listening, so it
+      // takes the plain path — and a dip there would be a level move baked into a WAV.
+      const live = shifted && typeof this.ctx.startRendering !== 'function';
+      const dipped = [];
+      if (live) {
+        const now = this.ctx.currentTime;
+        for (const { out } of pool.slots) {
+          if (!out?.gain) continue;
+          dipped.push({ gain: out.gain, level: out.gain.value, now });
+          out.gain.cancelScheduledValues(now);
+          out.gain.setValueAtTime(0, now);
+        }
+      }
+      write();
+      for (const { gain, level, now } of dipped) {
+        gain.setValueAtTime(0, now + 0.012);
+        gain.linearRampToValueAtTime(level, now + 0.03);
       }
       return true;
     } catch {
@@ -2425,6 +2580,40 @@ export class VoiceRack {
    */
   refresh(voiceId) {
     const v = VOICES[voiceId];
+    // ---- the native paths ---------------------------------------------------
+    //
+    // A pooled synth is an OBJECT that stands there between notes, so an edit can be
+    // pushed onto it. A native voice is not: every node is built per note from the values
+    // as they were at note-on, and the note you are hearing was built from the old ones.
+    // Which is why, until this, dragging a cutoff on a MRDR-3 did nothing until you
+    // played the next note, while the same drag on a MonoSynth moved the note under your
+    // hand — the same panel behaving two ways for a reason no player can see.
+    //
+    // What CAN be moved is what was set once and left: the filter cutoffs and their
+    // resonance. The envelopes cannot — they are already-scheduled trajectories, and a
+    // second writer on a booked AudioParam is a fight. So the cutoffs walk live, and
+    // everything else lands on the next note, which is what it always did.
+    //
+    // Ramped rather than set: `setTargetAtTime` over 8 ms turns a filter jump into a
+    // slide, which is the difference between a sweep and a tick.
+    for (const held of this._heldNative.values()) {
+      if (held.voiceId !== voiceId || !held.live?.length) continue;
+      const now = this.ctx.currentTime;
+      for (const { chain, spec, mul } of held.live) {
+        if (!spec) continue;
+        const freq = Math.max(20, (spec.freq ?? 1150) * mul);
+        for (const st of chain.stages) {
+          try { st.frequency.setTargetAtTime(freq, now, 0.008); } catch { /* gone with the note */ }
+        }
+        // Resonance is the FIRST stage's alone — the ones behind it carry the slope at a
+        // flat Q and would multiply the peak if they resonated too. The same rule
+        // `_filterChain` builds by.
+        const q = chain.stages[0]?.Q;
+        if (q && spec.Q != null) {
+          try { q.setTargetAtTime(spec.Q, now, 0.008); } catch { /* ditto */ }
+        }
+      }
+    }
     for (const [key, pool] of [...this.pools]) {
       if (pool.voiceId !== voiceId) continue;
       if (!v || !SYNTHS[v.synth]) { this._retire(key, pool); continue; }
@@ -2470,6 +2659,11 @@ export class VoiceRack {
     this._activePreviews.clear();
     for (const held of this._heldNative.values()) {
       for (const src of held.sources) { try { src.stop(this.ctx.currentTime); } catch { /* ignore */ } }
+      // Everything stops here, so the shared modulators go without counting.
+      if (held.shared) {
+        for (const m of held.shared.oscs) { try { m.stop(this.ctx.currentTime); } catch { /* ignore */ } }
+        held.shared.holds = 0;
+      }
     }
     this._heldNative.clear();
   }
@@ -2496,6 +2690,12 @@ export class VoiceRack {
       // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
       // the one that takes effect, so this pulls the far-future stop back to the tail.
       for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+      // The note-on's shared modulators go when its LAST tone does — a chord releases
+      // one key at a time and the rest are still wobbling.
+      const shared = held.shared;
+      if (shared && (shared.holds -= 1) <= 0) {
+        for (const m of shared.oscs) { try { m.stop(stopAt + 0.01); } catch { /* ignore */ } }
+      }
       this._heldNative.delete(noteKey);
     }
   }

@@ -101,7 +101,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 // LENGTH and FIXED LENGTH into the note, and scheduleStep folds TRIM into its gain.
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
-const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth' && s !== 'LayerSynth');
+const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth' && s !== 'MRDR-3');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -121,7 +121,7 @@ const CASES = [
     methods: ['_playAdditive'] },
   // No tap array: `_playLayer` has no tap loop, so there is no Taps card to gate into
   // existence and a tap array here would only describe a panel that does not exist.
-  { name: 'LayerSynth', voice: { synth: 'LayerSynth', layer: {} },
+  { name: 'MRDR-3', voice: { synth: 'MRDR-3', layer: {} },
     methods: ['_playLayer'] },
   ...POOLED.map((synth) => ({
     name: synth,

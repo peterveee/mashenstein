@@ -73,7 +73,7 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | `WAVE` | `$waveform` | — | — | square | — (sine/square/sawtooth/triangle/noise) |
 | `ATTACK` | `$attack` | 0.001 | 10 | 0.01 | s |
 | `RELEASE` | `$release` | 0 | 10 | 0.015 | s |
-| `AMOUNT` | `$pitch.semitones` | -48 | 48 | 0 | semi | How far from the written note the bend starts — the same row a LayerSynth layer's Pitch Env has |
+| `AMOUNT` | `$pitch.semitones` | -48 | 48 | 0 | semi | How far from the written note the bend starts — the same row a MRDR-3 layer's Pitch Env has |
 | `ATTACK` | `$pitch.attack` | 0 | 10 | 0 | s |
 | `DECAY` | `$pitch.decay` | 0 | 10 | 0.06 | s |
 | `SUSTAIN` | `$pitch.sustain` | 0 | 100 | 0 | % |

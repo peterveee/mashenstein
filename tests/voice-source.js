@@ -170,7 +170,7 @@ assert(tableOf(userSource, 'testUserPreset') === 'USER_TONE'
 // The layer stack: nested sections THREE deep (osc1.filter.env), which is the shape the
 // emitter's one-line-per-section rule has to keep readable — and survivable.
 const NEW_LAYER = {
-  label: 'Test Stack', category: 'Bass', synth: 'LayerSynth', dur: 1.8,
+  label: 'Test Stack', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
   note: 'A layered bass the test made up.',
   layer: {
     osc1: { type: 'sawtooth', ratio: 1, gain: 1, attack: 0.006, decay: 0,

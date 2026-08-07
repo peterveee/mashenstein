@@ -62,7 +62,7 @@ const themes = themeList.map(({ id, name }) => {
 });
 
 // ---- the panel, read off the panel ------------------------------------------
-const spec = panelSpec({ synth: 'LayerSynth' });
+const spec = panelSpec({ synth: 'MRDR-3' });
 const SHORT = spec.pillLabels;
 
 /**
@@ -287,7 +287,7 @@ ${Object.entries(t.vars).filter(([k]) => TOKENS.some(([n]) => n === k))
 <header>
   <h1>Layered Synth — editor<span>MASHENSTEIN · Song Mixer</span></h1>
   <p class="brief">
-    <b>LayerSynth</b> is the mixer's biggest instrument: three complete oscillator sections,
+    <b>MRDR-3</b> is the mixer's biggest instrument: three complete oscillator sections,
     each with its own waveform, pitch envelope, FM operator, filter, filter envelope and
     amplifier, summed into a shared filter, a shared amplifier, an LFO and a drive stage.
     Today its editor is drawn into a column <b>366&nbsp;px wide</b> — three channel strips

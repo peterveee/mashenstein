@@ -3,7 +3,7 @@
 > **Status: parked.** Not on the cards near-term. Written down so the shape of the job
 > and its gotchas are on record rather than re-derived from scratch later.
 
-Scope: turn `LayerSynth` (`_playLayer` in `src/engine/voices.js`) into a standalone
+Scope: turn `MRDR-3` (`_playLayer` in `src/engine/voices.js`) into a standalone
 instrument plus AU/VST3 plugin, playable from a MIDI keyboard in any DAW.
 
 ---
@@ -78,7 +78,7 @@ note-on, or expose an off switch.
 **The strip is not included.** `src/engine/effects.js` is 2138 lines of reverb, delay,
 parametric EQ, exciter, limiter and doubler — that's the mixer channel, not the synth.
 Several presets assume it (the finale and walking basses had their written-in slapback
-removed because the strip's delay says it now). A bare LayerSynth plugin leans on the
+removed because the strip's delay says it now). A bare MRDR-3 plugin leans on the
 host's effects unless the strip is ported too.
 
 **Sample rate.** Written against `ctx.sampleRate` with nyquist guards; hosts run 44.1k

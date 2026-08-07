@@ -198,5 +198,75 @@ the original track. Self-contained — no game, no music bank. **Full plan:**
 - **Art decision, not a technical one:** 14 of 17 presets are abstract and ship clean;
   ARCADE ART GALLERY and TOASTER SKY PARADE draw MASHENSTEIN heroes and appliances.
 
+### MRDR-3 leftovers from the 2026-08-07 review pass
+
+Six real findings from a review of `_playLayer` that were deliberately not taken, because
+each one either has no shipped preset that reaches it or can only be fixed by re-voicing
+the library. Kept because they are all still true, and the first one that gets a preset
+built on it stops being theoretical.
+
+- **PWM duty still drifts under vibrato and FM.** The glide half of this is fixed (see
+  Done). What is left is the modulation that arrives as a CONNECTION to `.detune` rather
+  than as automation the engine schedules: vibrato and FM move `f(t)` without anything
+  being able to mirror them onto `delayTime`. At the depths this library uses that is
+  ±1.2% of duty, against the octave the glide was worth, so it is genuinely small — but
+  it is the part that only an AudioWorklet oscillator can close properly.
+- **Unison normalization is not correlation-aware.** `norm = 1/√count` regardless of
+  detune or stereo spread. That is right for decorrelated voices and wrong for phase-aligned
+  ones, which sum as `count` — at spread 0 a five-voice stack lands ~7 dB hot and drives the
+  shaper that much harder. No layer ships `unison > 1` at spread 0, so this is editor
+  extremes only. Interpolating between `1/count` and `1/√count` means recalibrating every
+  preset that uses unison.
+- **Noise unison sums coherently.** Every unison voice of a noise layer reads the *same*
+  buffer at the *same* offset, with the detune applied to the bandpass rather than the
+  playback rate — so N voices are one noise N times louder through N slightly different
+  bands. Same recalibration problem as above; a per-voice `loopStart` offset would fix the
+  correlation for free, but changes the render.
+- **Noise Q is not a layer parameter.** COLOUR is done (see Done). `NOISE_Q` is still a
+  hard-coded `2` in `src/engine/voices.js`, so a pitched noise layer's bandpass is that
+  wide and no preset can say otherwise. One pot, one key, and the same schema / editor /
+  parity work COLOUR just had.
+- **The drive shaper is shared across the whole note-on.** `chainFor()` memoizes one
+  `WaveShaper` per `_playLayer` call and it sits *after* the summed global VCA, so a
+  four-note chord hits the drive roughly four times harder than the single note each preset
+  was tuned on. Real, and the reason a pad's drive character changes with chord density.
+  Moving it per-note re-voices all 18 drive presets.
+- **No voice budget and no audio diagnostics.** `_playLayer` returns before the pool is
+  consulted, so the only ceilings are unison ≤ 5 and the nyquist skip. `bestVowelPad` is
+  ~59 nodes per note plus ~14 shared, so a four-note chord allocates ~250 AudioNodes and
+  holds them ~10s. The renderer has `rendererDiagnostics()`; audio has no equivalent. First
+  step is counters — active notes, oscillators, filters, scheduled tails — not culling.
+  Any threshold has to come from real device profiling, not from a guess.
+
 ## Done
 <!-- move shipped items here with a date -->
+
+### 2026-08-07 — MRDR-3 review pass
+Renamed the layer synth to **MRDR-3**, and took the reachable half of a review of
+`_playLayer`. Everything below has a test in `tests/voices.js` that fails on the engine
+as it stood.
+
+- **Vibrato depth uncapped.** `_playLayer` clamped to one semitone while `_playGame` and
+  `_playAdditive` did not, so the editor's 0–12 pot rendered bit-identical audio above 1.
+- **Phase-wave cache capped** at 256 per context. It was keyed on a phase drawn fresh
+  from each note's start time, so it grew without limit; eviction rebuilds the identical
+  wave, and a two-render bit comparison proves it.
+- **Preview modulators stop on key-up.** PWM, FM, vibrato and the routable LFO were never
+  in the held record, so a released preview note left them running to the 30s safety stop.
+  Reference-counted, so releasing one key of a chord leaves the others' wobble alone.
+- **Mono choke holds the automated value.** `cancelScheduledValues` + `gain.value` read
+  the level NOW for a choke scheduled up to a lookahead ahead; overlapping notes peaked
+  1.041× a single note, where a choke should only ever remove energy. Now 0.961×.
+- **Noise layers take the long buffer** when they outlast the short one, through the
+  existing `_bufFor` rule. `bestChoirOoh` was looping 0.5s of noise sixteen times; the
+  seam correlation fell from 0.277 to 0.151.
+- **PWM duty holds through a glide.** The delay was set once from the destination pitch,
+  so a glided note swept its width from `width × interval` down to `width` — an
+  accidental PWM sweep on every note of `bestVoiceBox70s`, `bestPwmBass`,
+  `bestPwmGrowlBass` and `bestPwmHollowLead`, starting at a duty of 1.000 (delay = one
+  whole period, both saws nulling) on an octave drop. `delayTime` and the PWM swing gain
+  now take an exponential ramp between the reciprocal endpoints, which is the exact
+  inverse of `pitchRamp`'s exponential pitch glide rather than an approximation of one.
+- **Noise COLOUR is a layer parameter.** `_noise` already built white/pink/brown/blue/
+  violet buffers and the drum panels already had the pick; the layer card now has the
+  same one, with the same label, options and default.

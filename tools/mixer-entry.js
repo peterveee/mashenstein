@@ -8515,8 +8515,6 @@ function buildArrangement() {
         // Shift extends the selection from where it started, the way a list does.
         if (ev.shiftKey && selectedBar) markBar(selectedBar.key, selectedBar.from, bar);
         else markBar(row.key, bar);
-        $('section').textContent = `${where} — ${notes}`;
-        $('section').title = notes;
       };
       // Drag across the row to take a range. Held on the row rather than the cell so
       // the pointer can leave the bar it started in, which is the whole gesture.
@@ -8871,7 +8869,6 @@ function tick() {
     $('playhead').style.left = (frac * 100) + '%';
     $('tnow').textContent = `${fmtTime(heardStep * spb)}/${fmtTime(loopSecs)}`;
     $('barnow').textContent = `${Math.floor(heardStep / 16) + 1}/${totalSteps / 16}`;
-    $('pos').textContent = `Beat ${(beat % 4 + 1).toFixed(1)}`;
     const visualStep = arrangementVisualStep(heardStep);
     followArrangementVisual(visualStep);
     oskFollow(heardStep);
@@ -9790,8 +9787,13 @@ function oskRelease(src) {
 function releaseOskSources(prefix) {
   const sources = new Set([
     ...recOpen.keys(), ...previewHeld.keys(), ...oskHeldVisuals.keys(),
+    ...sustainHeld,
   ]);
-  for (const src of sources) if (src.startsWith(prefix)) oskRelease(src);
+  for (const src of sources) {
+    if (!src.startsWith(prefix)) continue;
+    sustainHeld.delete(src);
+    oskRelease(src);
+  }
 }
 
 /**
@@ -10950,13 +10952,19 @@ function oskFollow(heardStep) {
  * on it — a note-on becomes `oskPlay` or a pad hit and nothing else changes, which is
  * the whole reason previewNote takes a note rather than a gesture.
  *
- * Note-OFF is ignored, and that is not laziness: a preview is a fixed length, the
- * channel's own, because the note length is a property of the part the way its gain
- * and its voice are. Holding a key longer would need the rack to sustain, which the
- * hand-written voices cannot do at all. Velocity is ignored for the same reason —
- * the level is the lane's, and a preview at half of it is a preview of a mix
- * decision nobody made. Both are worth revisiting the day the desk plays notes INTO
- * a song rather than only out of one.
+ * Note-OFF is honoured: a held key sustains, because the rack learned how. Every path
+ * the desk can preview — the pooled Tone classes through `triggerRelease`, and the three
+ * native ones through `_heldNative` — runs its envelope to the sustain level and waits
+ * there for the key to come up. A layer at sustain 0 still dies as written, which is what
+ * a struck sound is.
+ *
+ * And the DAMPER (CC 64) does what a damper does: while it is down, note-offs are
+ * deferred rather than dropped, and lifting it releases everything still holding. Notes
+ * played while it is down sustain too, exactly as a piano's do.
+ *
+ * Velocity is still ignored, and that is not laziness: the level is the lane's, and a
+ * preview at half of it is a preview of a mix decision nobody made. Worth revisiting the
+ * day the desk plays notes INTO a song rather than only out of one.
  */
 let midiAccess = null;
 let midiOn = false;
@@ -10965,17 +10973,56 @@ function midiInputs() {
   return midiAccess ? [...midiAccess.inputs.values()] : [];
 }
 
+// The damper pedal, and what it is holding.
+//
+// CC 64 is the one controller worth reading here: it is the pedal under every keyboard,
+// and its whole job is to stop note-offs from arriving. Below 64 is up, at or above is
+// down — the MIDI convention, and what every half-pedal-less keyboard sends.
+let sustainDown = false;
+const sustainHeld = new Set();
+
+/** Lift or press the damper. Lifting releases everything it was holding, at once. */
+function setSustain(down) {
+  if (down === sustainDown) return;
+  sustainDown = down;
+  if (down) return;
+  for (const src of sustainHeld) releasePreview(src);
+  sustainHeld.clear();
+}
+
+/** Drop the pedal and its notes — the keyboard going away, or a panic. */
+function dropSustain() {
+  sustainDown = false;
+  for (const src of sustainHeld) releasePreview(src);
+  sustainHeld.clear();
+}
+
 function onMidiMessage(e) {
   const [status, note, vel] = e.data;
   const kind = status & 0xf0;
+  if (kind === 0xB0 && note === 64) { setSustain(vel >= 64); return; }
   // A note-off is either an actual 0x80 or a note-on at velocity zero, which is how
   // most keyboards send one. It was discarded outright until recording existed to have
   // a use for it; now it is the only thing that knows how long a note was.
   if (kind === 0x80 || (kind === 0x90 && !vel)) {
-    oskRelease(`m:${note}`);
+    const src = `m:${note}`;
+    if (sustainDown && previewHeld.has(src)) {
+      // The KEY is up — the drawn key unlights and the recorder closes the note at the
+      // length it was actually played. Only the sound is held over, which is the one
+      // thing a damper does. A recorded note that grew because a foot was down would be
+      // a part nobody played.
+      recordOff(src);
+      oskReleaseVisual(src);
+      sustainHeld.add(src);
+      return;
+    }
+    oskRelease(src);
     return;
   }
   if (kind !== 0x90) return;
+  // Re-pressing a key the pedal is holding takes it back: the note restarts, as it does
+  // on a piano and as `_releasePreview` already makes it do in the rack.
+  sustainHeld.delete(`m:${note}`);
   // No `oskShown()` any more. A MIDI keyboard is a real instrument sitting in front of
   // you: your eyes are on your hands or on the roll filling up, not on a drawn keyboard,
   // and requiring a window you are not looking at is a window in the way. What the gate
@@ -11019,7 +11066,10 @@ async function setMidi(on, { announce = true } = {}) {
     midiOn = false;
     localStorage.removeItem(MIDI_LS_KEY);
     // Anything still held loses its note-off with the port, so close it here rather than
-    // leaving the note open to take the length of whatever is played next.
+    // leaving the note open to take the length of whatever is played next. The pedal goes
+    // with it: a damper left down when the keyboard is unplugged would hold the next thing
+    // you played until you plugged the keyboard back in and pressed it again.
+    dropSustain();
     releaseOskSources('m:');
     $('midibtn')?.classList.toggle('on', false);
     if (announce) toast('MIDI off');
@@ -11792,7 +11842,18 @@ async function renderJob(btn, route, working, describe) {
     try {
       res = await fetch(route, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ trackId, mix: mixFor(trackId) }),
+        // The ARRANGEMENT as well as the mix, and the live draft of it rather than
+        // whatever the file last saw — for the same reason the mix is sent live. A
+        // bounce is "what I am hearing, written down", and half of what you are
+        // hearing is the shape: the tempo you dragged, the groove you dragged, the
+        // bars you muted, the loop you armed. Sending only the faders meant a swung,
+        // retuned, re-ordered song came back straight, at its written tempo, in its
+        // composed order — and only the faders sounded like the desk.
+        //
+        // `null` is a real answer here and means "no arrangement", so it must cross as
+        // itself rather than be dropped: a song whose arrangement you have just undone
+        // has to render as composed, not as it was before the undo.
+        body: JSON.stringify({ trackId, mix: mixFor(trackId), arrangement: arrFor(trackId) ?? null }),
       });
     } catch { res = null; }
     if (!res || !res.ok) {

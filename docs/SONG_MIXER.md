@@ -464,7 +464,7 @@ arrangement track's right-click menu, with `⌘Z` restoring a deleted track.
 | Discard unsaved changes | throws this song's complete draft away (undoable) |
 | Open an earlier version… | loads an earlier complete version of this song, ready to review before saving. See [Going back](#going-back) |
 | Zero every channel | zeroes every strip in this song (undoable) |
-| Render WAV | renders this song offline and reports LUFS and peak |
+| Render WAV | renders this song offline and reports LUFS and peak. **What you are hearing** — your unsaved mix *and* your unsaved arrangement: the tempo and swing you dragged, the bars you muted, the order, and the song's own start-and-loop |
 | Audition through a plugin… | the same song render, opened in [`tools/audition`](../tools/audition.py) — a real AU over it, previewed before you keep it |
 | Export MIDI | downloads `<slug>.mid` — the notes, with GM patch names |
 | Import MIDI… | turns a `.mid` into a song, and switches the desk to it |
@@ -856,7 +856,7 @@ panel that answers the first is the wrong place to hide the second.
 
 #### `S` on a layer — solo one oscillator
 
-A **LayerSynth** preset is up to three complete voices summed into one output, which is
+A **MRDR-3** preset is up to three complete voices summed into one output, which is
 exactly the sound you cannot take apart by ear. Every `Osc` card carries an **`S`** beside
 its On/Off, and `Osc 1` has one even though it has no switch — "what is osc 1 doing under
 the other two" is the same question.
@@ -875,7 +875,7 @@ It behaves like the channel solo it borrows its letter from:
   anything on. The global filter and VCA stay in circuit — you are hearing that layer
   through the patch, not raw.
 
-LayerSynth only. No other synth has more than one source to take apart.
+MRDR-3 only. No other synth has more than one source to take apart.
 
 Opening it does not put a panel next to a channel — it makes that channel **wider**.
 The strip and the editor become one container in the rack: one border, one background,

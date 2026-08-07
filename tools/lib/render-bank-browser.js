@@ -20,7 +20,7 @@ import { readFileSync, unlinkSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { songBlocks, barPlan, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
-import { bpmOf, loopOf, loopSteps } from '../../src/data/arrangements.js';
+import { bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT } from '../../src/data/arrangements.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -195,13 +195,24 @@ export async function openRenderer({ headless = true } = {}) {
     // resolved out here too. Sizing the buffer from the composed tempo while the
     // engine played the arranged one would cut a slowed-down song off before its end.
     //
-    // Tempo only. The rest of an arrangement — the order it plays its sections in, and
-    // any layer sections — is still NOT applied to an offline render, for the same
+    // The FEEL travels with the tempo, and for the same reason: both are one number the
+    // desk saves onto the arrangement, and both change when every note sounds. A render
+    // that applied the arranged tempo but not the arranged swing would be the same song
+    // at the right speed and the wrong groove — which is worse than either alone, because
+    // it sounds nearly right.
+    //
+    // Order still is NOT applied. The rest of an arrangement — the order it plays its
+    // sections in, and any layer sections — stays out of an offline render for the
     // bank-identity reason: `plumber` and `megamix` both render in their composed order
     // rather than the arranged one. That gap predates this and is deliberately left
-    // alone here; closing it changes what every existing render sounds like.
+    // alone HERE; closing it changes what every existing render sounds like. A caller
+    // that wants the arranged form passes `arrangement` explicitly, which the page hands
+    // to `setArrangement` — that is the door the desk's own bounce goes through.
     const played = bpmOf(gated, id);
-    const forPage = played === gated.bpm ? gated : { ...gated, bpm: played };
+    const swung = swingOf(gated, id);
+    const forPage = played === gated.bpm && swung === (gated.swing ?? SWING_STRAIGHT)
+      ? gated
+      : { ...gated, bpm: played, swing: swung };
     const blocks = songBlocks(gated, repeat).length;
 
     // The song's own start-and-loop, when the caller asked for it. Off by default, and

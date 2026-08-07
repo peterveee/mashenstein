@@ -513,10 +513,23 @@ function normalizePresetParams(scope, id, params) {
 }
 
 // Render one track through the real engine with the mix applied, and measure it.
-async function renderTrack(trackId, mix, { repeat = 1, write = true } = {}) {
+async function renderTrack(trackId, mix, { repeat = 1, write = true, arrangement } = {}) {
   const track = resolveTrack(trackId);
   if (!track) throw new Error(`unknown track ${trackId}`);
-  const out = await withRenderer((r) => r.render(track.bank, { repeat, mix, trackId }));
+  // The desk's own bounce is the one render that is supposed to BE the desk, so it is
+  // the one that passes the arrangement: `setArrangement` in the page then applies the
+  // order, the layer sections, the tempo and the swing together, and the song loop is
+  // armed the way the game arms it. Every other caller here still renders the composed
+  // form — see the note over `render` in render-bank-browser.js.
+  //
+  // `arrangement === undefined` means the caller has no opinion (the loudness sweep
+  // below); `null` means the desk says this song has no arrangement, which is a
+  // different statement and has to reach the page as one.
+  const named = arrangement !== undefined;
+  const out = await withRenderer((r) => r.render(track.bank, {
+    repeat, mix, trackId,
+    ...(named ? { arrangement, songLoop: true } : {}),
+  }));
   const m = loudness([out.outL, out.outR]);
   let file = null;
   if (write) {
@@ -778,8 +791,8 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === 'POST' && req.url === '/render') {
-      const { trackId, mix, repeat } = await readJson(req);
-      const info = await renderTrack(trackId, mix, { repeat: repeat || 1 });
+      const { trackId, mix, repeat, arrangement } = await readJson(req);
+      const info = await renderTrack(trackId, mix, { repeat: repeat || 1, arrangement });
       console.log(`rendered ${info.file}  ${info.lufs.toFixed(1)} LUFS  peak ${info.peakDb.toFixed(1)} dBFS`
         + (info.clipping ? '  ** CLIPPING **' : ''));
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -796,7 +809,7 @@ const server = createServer(async (req, res) => {
     // serving the page: a browser cannot open a plugin window, and a mixer being
     // driven from another machine over MASH_MIXER_HOST will open it on the host.
     if (req.method === 'POST' && req.url === '/audition') {
-      const { trackId, mix, repeat } = await readJson(req);
+      const { trackId, mix, repeat, arrangement } = await readJson(req);
       // Checked before the render rather than after: a minute of Chromium is a
       // poor way to arrive at "the venv was never created".
       if (!existsSync(join(ROOT, 'tools/.venv-audio/bin/python'))) {
@@ -806,7 +819,7 @@ const server = createServer(async (req, res) => {
           + '  tools/.venv-audio/bin/pip install pedalboard pyobjc-framework-Cocoa');
         return;
       }
-      const info = await renderTrack(trackId, mix, { repeat: repeat || 1 });
+      const info = await renderTrack(trackId, mix, { repeat: repeat || 1, arrangement });
       // Detached and unref'd: the plugin host outlives the request, and a mixer
       // restart must not take the window down with it.
       const child = spawn(join(ROOT, 'tools/audition'), ['--src', info.file], {

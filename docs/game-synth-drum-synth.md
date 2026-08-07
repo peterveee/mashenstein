@@ -15,7 +15,7 @@ The audio engine has **seven** voice paths, dispatched in `VoiceRack.play()`:
 | `kind: 'tone'` + Tone class | `VoiceRack.play()` → Tone pool | Full Tone.js synths (Synth, MonoSynth, FMSynth, etc.) | **Yes** | Yes |
 | `synth: 'GameSynth'` | `_playGame()` | One oscillator or pitched noise — the chip channel | **No** | No |
 | `synth: 'AdditiveSynth'` | `_playAdditive()` | Stacked sine partials — drawbar organs, bells, glass | **No** | No |
-| `synth: 'LayerSynth'` | `_playLayer()` | Up to three complete voices summed — the engine's own layered voices, editable | **No** | No |
+| `synth: 'MRDR-3'` | `_playLayer()` | Up to three complete voices summed — the engine's own layered voices, editable | **No** | No |
 | `kind: 'noise'` | `_playNoise()` | Filtered noise bursts (snares, claps, hats, shakers) | **No** | No |
 | `kind: 'drum'` | `_playDrum()` | Multi-source drum synthesis (kicks, toms, zaps, cymbals) | **No** | No |
 
@@ -90,7 +90,7 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
   1. Start at `0.0001`
   2. Attack: `exponentialRampToValueAtTime(gain, peakAt)` where `peakAt = t + min(attack, dur × 0.45)`
   3. Release: `exponentialRampToValueAtTime(0.0001, end)` then `linearRampToValueAtTime(0, end + release)`
-- **Pitch envelope** (`pitch.semitones`, default `0` = none): the note starts that many semitones away from its written pitch and the envelope brings it **onto** it. That direction is deliberate — a voice that walks *off* its note can only be a sound effect, and these are lane presets. Written as cents on `.detune`, so the frequency itself is never moved and the decay is clamped to the note: a 40 ms sixteenth still lands on the note it is written as. The **same five rows** a LayerSynth layer's Pitch Env card has, on the same keys
+- **Pitch envelope** (`pitch.semitones`, default `0` = none): the note starts that many semitones away from its written pitch and the envelope brings it **onto** it. That direction is deliberate — a voice that walks *off* its note can only be a sound effect, and these are lane presets. Written as cents on `.detune`, so the frequency itself is never moved and the decay is clamped to the note: a 40 ms sixteenth still lands on the note it is written as. The **same five rows** a MRDR-3 layer's Pitch Env card has, on the same keys
 - **Sustain and release**, which the old single ramp could not say at all: a sustaining pitch envelope holds the note *off* its written pitch for as long as it is held, and lets go on release. An attack — 0 by default — scoops out to the offset first instead of starting there
 - **Vibrato** (`vibrato.depth`, default `0` = none): one LFO per note-on. **One LFO for the whole chord** — per-note LFOs drift apart on rate rounding, and a chord whose notes wobble independently is a chorus. Built and stopped with the voices, unlike the Tone path's pool LFO which free-runs. Three stages, because the two waveform families need the same wobble in different units: the LFO stays at unit amplitude, `vibEnv` carries the onset, and the last gain scales it — **cents** into an oscillator's `detune` (shared), or **hertz** into the bandpass for noise, which depends on the note and so needs a gain per note (a semitone is 13 Hz at 220 and 105 Hz at 1760)
 - **Delayed vibrato** (`vibrato.delay`, default `0`): the depth grows from nothing to full over this many seconds from note-on — a chip lead holding a note and then leaning into it. A **fade, not a gate**: a wobble switching on at full depth mid-note reads as a fault. This is the one vibrato key the **Tone path cannot honour** — its LFO lives in the pool and free-runs across notes, so there is no note-on to measure an onset from
@@ -209,7 +209,7 @@ dry). `addSwoop` — the registration bending up a fourth into the note. `addBel
 
 ---
 
-## 4. LayerSynth (`_playLayer`)
+## 4. MRDR-3 (`_playLayer`)
 
 ### Purpose
 
@@ -297,7 +297,7 @@ The panel's S buttons play one layer on its own. They are **monitoring**: the se
 saved, never reaches a song, and is invisible to `tools/measure-voices.js` — which builds
 its own rack. `_playLayer` applies it at the same filter that drops a layer at gain 0, so a
 soloed audition builds exactly the nodes that layer builds alone rather than attenuating
-the others into the shared drive. It is LayerSynth's alone: no other panel has one.
+the others into the shared drive. It is MRDR-3's alone: no other panel has one.
 
 ### Parameters (per layer)
 
@@ -666,7 +666,7 @@ scheduleStep()                       audio.js ~line 1997
   │                ├─ kind === 'drum'   → _playDrum(v, {...})
   │                ├─ synth === 'GameSynth'     → _playGame(v, {...})
   │                ├─ synth === 'AdditiveSynth' → _playAdditive(v, {...})
-  │                ├─ synth === 'LayerSynth'    → _playLayer(v, {...})
+  │                ├─ synth === 'MRDR-3'    → _playLayer(v, {...})
   │                └─ else → Tone pool (_pool() → triggerAttackRelease())
   │
   └─ If voiced() returned false → run the engine's hand-written
@@ -758,7 +758,7 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 
 ### The pitched natives, side by side
 
-| Aspect | GameSynth | AdditiveSynth | LayerSynth |
+| Aspect | GameSynth | AdditiveSynth | MRDR-3 |
 |--------|-----------|---------------|------------|
 | **Model** | one source | one stack of partials | up to three complete voices |
 | **The one thing it owns** | pitched noise + the arcade `sweep` | `stretch`/`damp` — organ to bell on two knobs | per-layer `len` — layers that outlive each other |
@@ -786,7 +786,7 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
   registration, a bell, glass. If you find yourself wanting a filter on it, you
   probably wanted a partial pushed in instead; that is the additive move.
 
-- **LayerSynth**: When the sound is *parts stacked* — a body plus a sub plus an
+- **MRDR-3**: When the sound is *parts stacked* — a body plus a sub plus an
   octave, each with its own life. Every hand-written melodic voice in the engine is
   this shape, and the `layer*` presets are those voices with the lid off. Reach for it
   over a Tone class when the parts need different lengths, different filters, or a
