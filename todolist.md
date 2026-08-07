@@ -270,3 +270,14 @@ as it stood.
 - **Noise COLOUR is a layer parameter.** `_noise` already built white/pink/brown/blue/
   violet buffers and the drum panels already had the pick; the layer card now has the
   same one, with the same label, options and default.
+- **Layer DELAY, 0–500 ms, on all three oscillators.** The layer's whole schedule moves —
+  its envelope, its filter, its PWM and FM modulators, its sources — so a delayed layer is
+  silence and then the attack it was given, intact, and it runs past the others rather
+  than having its tail eaten. That is the thing a slow ATTACK cannot state: an attack is
+  already on its way in from the downbeat. `humanize.entry` is not this either — it
+  staggers unison voices by milliseconds and moves only `src.start`, leaving the envelope
+  behind, so a large value there clips the attack instead of delaying it. The two sum.
+
+  The glide is deliberately still written from the NOTE's start: a portamento is one
+  gesture the whole note makes, and because a param's automation runs whether or not a
+  source is playing it, a delayed layer picks up the pitch the glide has already reached.

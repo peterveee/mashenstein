@@ -822,7 +822,17 @@ const server = createServer(async (req, res) => {
       const info = await renderTrack(trackId, mix, { repeat: repeat || 1, arrangement });
       // Detached and unref'd: the plugin host outlives the request, and a mixer
       // restart must not take the window down with it.
-      const child = spawn(join(ROOT, 'tools/audition'), ['--src', info.file], {
+      // `--loops 1`, and it is load-bearing. Audition renders a TRACK at its loop count,
+      // so the repeats come out of the sequencer and the reverb and delay tails carry
+      // across each boundary. A file handed to it with `--src` cannot do that: it tiles
+      // the audio instead, which copies the render's own two-second tail into the middle
+      // of the song. The result is the song, a gap full of the last chord's echo, then
+      // the song again from bar 1 — the loop markers ignored, because a WAV has none.
+      //
+      // This render already IS the passes: `repeat` went to the sequencer above, which
+      // walks the intro once and the looped bars N times in a single continuous pass.
+      // So there is nothing left to tile, and tiling it would be the bug.
+      const child = spawn(join(ROOT, 'tools/audition'), ['--src', info.file, '--loops', '1'], {
         cwd: ROOT, detached: true, stdio: 'ignore',
       });
       child.unref();

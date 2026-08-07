@@ -168,6 +168,12 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
       assert(o.width >= 0.05 && o.width <= 0.95,
         `${v.id}: its pulse width is inside what the pot can reach`);
     }
+    if (o.delay != null) {
+      // Seconds, like every other time on a preset, and bounded by what the pot reaches.
+      // A negative one would ask a layer to start before the note it belongs to.
+      assert(o.delay >= 0 && o.delay <= 0.5,
+        `${v.id}: its layer DELAY is inside what the pot can reach (${o.delay})`);
+    }
     if (o.color != null) {
       // The mirror of WIDTH's rule: COLOUR is the one extra control a noise layer needs,
       // and on any other waveform it is a key the engine never reads.
@@ -195,12 +201,18 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
         `${v.id}: stereo width sits on a layer with voices to spread (unison above 1)`);
     }
     if (o.pwm) {
-      // PWM builds a second oscillator and a delay per voice. On any wave but a pulse
-      // there is no width for it to move, so the section would be paid for and silent.
-      assert(o.type === 'pulse',
-        `${v.id}: only a pulse carries PWM — the width is the thing being modulated`);
-      assert((o.pwm.depth ?? 0) > 0 && (o.pwm.depth ?? 0) <= 1,
-        `${v.id}: its PWM depth is a fraction the pot can reach, and above zero`);
+      // Depth is the switch — `_playLayer` builds nothing at zero, and the panel has no
+      // separate on/off any more. So a zeroed block is legal (it is what a preset that
+      // was auditioned and turned back down looks like) and the claims below are about
+      // the block that is actually DOING something.
+      assert((o.pwm.depth ?? 0) >= 0 && (o.pwm.depth ?? 0) <= 1,
+        `${v.id}: its PWM depth is a fraction the pot can reach`);
+      if ((o.pwm.depth ?? 0) > 0) {
+        // PWM builds a second oscillator and a delay per voice. On any wave but a pulse
+        // there is no width for it to move, so it would be paid for and silent.
+        assert(o.type === 'pulse',
+          `${v.id}: only a pulse carries live PWM — the width is the thing being modulated`);
+      }
       assert((o.pwm.rate ?? 0.4) >= 0.05 && (o.pwm.rate ?? 0.4) <= 12,
         `${v.id}: its PWM rate is inside the pot's range`);
     }
@@ -953,6 +965,48 @@ try {
     'a noise layer with no COLOUR is the white one it always was');
   assert(diffOf(whiteNoise, brownNoise) > 1e-4,
     `and asking for brown gets a different buffer (max diff ${diffOf(whiteNoise, brownNoise).toExponential(2)})`);
+
+  // A layer DELAY is silence and then the layer's own attack — which is the one thing a
+  // slow ATTACK cannot say, because an attack is already on its way in from the downbeat.
+  // Two layers: osc1 plays straight through as the reference, osc2 enters at 200 ms. The
+  // claim is that the window before it enters holds ONLY osc1, and the window after holds
+  // both, so the delay is a real gap rather than a quieter start.
+  // `dur` is in sixteenths, so 8 is a full second at 120 bpm — long enough to hold both
+  // the window before the delayed layer enters and the window after it.
+  const twoLayer = (delay) => ({
+    label: `Delay ${delay}`, category: 'Pad', synth: 'MRDR-3', kind: 'tone', dur: 8,
+    layer: {
+      osc1: { type: 'sine', ratio: 1, gain: 0.5, vca: 'env', attack: 0.005, decay: 0.05, sustain: 1, release: 0.05 },
+      osc2: { type: 'sine', ratio: 2, gain: 0.5, vca: 'env', attack: 0.005, decay: 0.05, sustain: 1, release: 0.05, ...(delay ? { delay } : {}) },
+    },
+    global: { vca: { attack: 0.005, decay: 0.05, sustain: 1, release: 0.05 } },
+    level: 0.2, peak: 1,
+  });
+  const delayTake = async (delay) => (await renderer.render(
+    { bpm: 120, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) },
+    { repeat: 1, mix: { voiceParams: { leadVoice: twoLayer(delay) } }, trackId: 'layerdelay' })).outL;
+  const together = await delayTake(0);
+  const late = await delayTake(0.2);
+  const win = (o, from, secs) => {
+    let s = 0; let c = 0;
+    for (let n = Math.round(SR * from); n < Math.round(SR * (from + secs)) && n < o.length; n++) { s += o[n] * o[n]; c++; }
+    return c ? Math.sqrt(s / c) : 0;
+  };
+  // Before osc2 enters: one layer instead of two, so audibly quieter than the take that
+  // starts them together — and still sounding, because osc1 never moved.
+  const beforeLate = win(late, 0.05, 0.1);
+  const beforeBoth = win(together, 0.05, 0.1);
+  assert(beforeLate > 0.0005 && beforeLate < beforeBoth * 0.9,
+    'a delayed layer is absent before it enters, while the layer beside it plays on'
+    + ` (${beforeLate.toFixed(5)} against ${beforeBoth.toFixed(5)} with both)`);
+  // After it enters, both layers are up and the two takes are back in the same territory.
+  const afterLate = win(late, 0.3, 0.1);
+  assert(afterLate > beforeLate * 1.2,
+    `and arrives when the DELAY says it does (${beforeLate.toFixed(5)} → ${afterLate.toFixed(5)})`);
+  // And a preset that never writes one renders exactly as it did before the key existed.
+  const noKey = await delayTake(0);
+  assert(diffOf(together, noKey) < 5e-6,
+    'while a layer with no DELAY is untouched by the key existing');
 
   // PWM duty against a glide. The duty is `delay × f`, so with the delay set once from
   // the destination pitch a glided note swept its WIDTH across the portamento — from

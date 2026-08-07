@@ -2389,10 +2389,14 @@ assert(!/v\.solo|voice\.solo/.test(rackSource),
 const soloBtn = /if \(group\.solo\) \{[\s\S]*?bar\.append\(s\);/.exec(editor)?.[0] || '';
 assert(soloBtn && !soloBtn.includes('touched()'),
   'soloing a layer does not mark the preset dirty — nothing about it has been edited');
-// One way out, and it drops solo on the way.
-assert(/const closePanel = \(\) => \{ dropSolo\(\); close\(\); \};/.test(editor),
-  'every exit from the panel goes through closePanel, which drops solo first');
-assert(!/[^a-zA-Z]close\(\);/.test(editor.replace('const closePanel = () => { dropSolo(); close(); };', '')),
+// One way out, and it drops solo on the way — and takes the full window with it, which
+// draws the same preset and would otherwise be a modal over a panel that is gone.
+assert(/const closePanel = \(\) => \{ full\?\.close\(\); dropSolo\(\); close\(\); \};/.test(editor),
+  'every exit from the panel goes through closePanel, which shuts the full window and'
+  + ' drops solo first');
+// And nothing calls the INJECTED close() around it. `full?.close()` is the overlay's own
+// and a different function, hence the dot in the excluded set.
+assert(!/[^a-zA-Z.?]close\(\);/.test(editor.replace(/const closePanel = [^\n]*\n/, '')),
   'and nothing calls the raw close() around it, which would leave a solo ringing');
 assert(/if \(!id\) Audio\.clearLayerSolo\(\);/.test(entry),
   'a null id from the panel clears every layer solo on the engine');
@@ -2422,6 +2426,80 @@ const midiOffBody = midiOffAt < 0 ? '' : entry.slice(midiOffAt, midiOffAt + 900)
 assert(midiOffBody.includes('dropSustain()')
   && midiOffBody.indexOf('dropSustain()') < midiOffBody.indexOf("releaseOskSources('m:')"),
 'switching MIDI off drops the pedal before releasing what it was holding');
+
+// ---- the full-window editor -----------------------------------------------------------
+//
+// Two claims about wiring that are invisible from inside either file, and both of which
+// fail SILENTLY — one at the ear and one at the eye.
+
+// 1. ⎋ order. The overlay's Escape listener calls `stopImmediatePropagation` so PANIC does
+// not also fire, and that only stops listeners registered AFTER it on the same target.
+// Registered the wrong way round, closing the editor also silences every voice.
+const escAt = entry.indexOf("voiceEditor.closeFull();");
+const panicAt = entry.indexOf('PANIC — what the red button');
+assert(escAt > 0 && panicAt > 0 && escAt < panicAt,
+  'the full editor takes ⎋ BEFORE the PANIC handler — stopImmediatePropagation only stops'
+  + ' listeners added after it, so registered the other way round Escape would also kill'
+  + ' every voice');
+
+// 1b. The overlay may never be shown-but-empty. `#synthfull.show` is full-screen with
+// `pointer-events: auto`, so an empty one sits invisibly over the desk and swallows every
+// click — on the strip panel too. The symptom reads as "the whole mixer stopped
+// responding", which points nowhere near this file. Two guards, both asserted here
+// because both were live bugs: the deferred `show` must re-check that it is still wanted,
+// and a `render()` that throws must tear the shell down rather than leave it up.
+const full = readFileSync(new URL('../tools/mixer-synth-full.js', import.meta.url), 'utf8');
+const shellCss = readFileSync(new URL('../tools/mixer-shell.html', import.meta.url), 'utf8');
+assert(/requestAnimationFrame\(\(\) => \{ if \(showing\) el\.classList\.add\('show'\); \}\)/.test(full),
+  'the deferred show re-checks that the window is still wanted — an open/close inside one'
+  + ' frame must not re-show an overlay that has already gone');
+assert(/try \{\s*render\(\);\s*\} catch/.test(full),
+  'a render() that throws closes the window rather than leaving an empty full-screen'
+  + ' element over the desk');
+
+// 1c. Folding is a class, not a rebuild, and the class has to actually win. A folded
+// card grows the instant its DEPTH leaves zero — which happens on the first pixel of the
+// drag doing it, so rebuilding there would drop the pot out from under the pointer. And
+// `.vehidden` competes with five row-layout rules at higher specificity: without the
+// `!important` the pots hid and the pills did not, which is how this first shipped.
+assert(/\.vehidden \{ display: none !important; \}/.test(shellCss),
+  'a folded row is hidden by a class that beats the row layout rules — .devgrid .segrow'
+  + ' sets display:flex at higher specificity');
+assert(/guards\.push\(wrap, \(v\) => !folding\(v\), true\)/.test(editor),
+  'folding registers a hide-guard, so the card opens on the next write rather than on the'
+  + ' next build — a rebuild would drop the drag that is opening it');
+
+// 2. One control, one rule. The pots and pills are styled once for both surfaces, against
+// `:is(#voiceedit, #synthfull)` — same specificity as the `#voiceedit` it replaced, so the
+// strip cannot have shifted. A control rule scoped to one surface is a control that can
+// drift into looking like two.
+const CONTROL_RULES = ['.devgrid', '.potrow', '.vepot', '.segbtn', '.seg ', '.segrow',
+  '.vedisabled', '.veswitch', '.vesolo'];
+for (const sel of CONTROL_RULES) {
+  const orphan = new RegExp(`#voiceedit \\${sel.trim()}[\\s{.:>,]`).test(shellCss);
+  assert(!orphan, `${sel.trim()} is styled for both surfaces, not just the strip`
+    + ' — see :is(#voiceedit, #synthfull)');
+}
+
+// 3. A flex container that also carries `row` must say which way it runs.
+//
+// THE BUG THIS PINS, because it is silent and it looks like nothing at all: every choice
+// row in the full window is built as `div('row sfchoice …')`, and the desk's own `.row` is
+// `display: flex; flex-direction: column`. So a rule that says `display: flex` and stops
+// there inherits COLUMN — the label lands above its options, and a pair of them meant to
+// sit side by side stacks instead. Nothing errors, nothing overflows, and the CSS comment
+// one line above says "the label left, the options right", so reading the file tells you
+// the opposite of what the browser is doing. It survived three rounds of "put them on one
+// line" before anyone thought to measure a bounding box.
+//
+// `.sfglyphrow` already had its `flex-direction: row` — it was the one row that looked
+// right, and that was the clue.
+for (const sel of ['.sfchoice', '.sfpair', '.sfwaverow']) {
+  const rule = new RegExp(`#synthfull \\${sel} \\{[^}]*\\}`).exec(shellCss)?.[0] || '';
+  assert(/display:\s*flex/.test(rule) && /flex-direction:\s*row/.test(rule),
+    `#synthfull ${sel} declares flex-direction — it carries the desk's .row class, which`
+    + ' is flex-direction: column, so an unstated direction stacks it');
+}
 
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

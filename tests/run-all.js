@@ -57,6 +57,11 @@ const suites = [
   // the drift it was written for had hidden eight GameSynth lengths, five tap arrays and
   // the whole shape of `clapEngine`. Source reading, so it also runs in a blink.
   'tests/pot-coverage.js',
+  // And the half of that claim pot-coverage cannot make. It agrees at ROOT-key
+  // granularity, so a leaf the full-window editor forgot to place hides behind the
+  // hundred siblings sharing its root. This one is leaf-exact: every control the panel
+  // defines appears in that layout, exactly once. Object walking, so it also blinks.
+  'tests/synth-full-layout.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never

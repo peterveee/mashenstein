@@ -35,6 +35,9 @@ import '../src/data/imported/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, DEFAULT_ADDED_PERCUSSION_VOICE, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor } from './mixer-voice-editor.js';
+// The same preset, in a window instead of a column. A layout over the editor's own
+// controls, not a second editor — see the note at the top of the file.
+import { createSynthFull } from './mixer-synth-full.js';
 // The preset library, and the bench a preset with no channel of its own is heard on.
 import {
   createVoiceLibrary, benchPlay, benchRoot, benchIsKit, benchLane, foldIcon,
@@ -2949,6 +2952,12 @@ const voiceEditor = createVoiceEditor({
   el: voiceEditEl,
   knob,
   toast,
+  // The full-window editor, built the first time EDIT is pressed and never otherwise.
+  // Its two elements are held for the same reason `voiceEditEl` is: they live outside the
+  // rack, so a rack repaint never touches them.
+  createFull: ({ kit }) => createSynthFull({
+    kit, el: $('synthfull'), backdrop: $('synthfullback'),
+  }),
   // Not `rebank`. A re-bank restarts the sequencer with a deliberate half-second gap,
   // which on a slider drag is half a second of silence per pixel — see
   // `VoiceRack.refresh`. Dropping the synths built from the old options is the whole
@@ -3002,6 +3011,25 @@ const voiceEditor = createVoiceEditor({
     dismissVoiceEditor();
     buildRack();
   },
+});
+
+/**
+ * ⎋ closes the full-window editor — and this listener HAS TO BE REGISTERED HERE.
+ *
+ * `stopImmediatePropagation` only stops listeners added AFTER it on the same target, and
+ * the PANIC handler is on `window` too, eight thousand lines further down. Registered
+ * after it, this would close the editor and silence every voice on the same keypress —
+ * a failure you hear rather than see, which is the worst kind to leave to chance. There
+ * is an assertion on that source ordering in tests/mixer-layout.js.
+ *
+ * Nothing needs to be done about `ask()`: its own Escape listener is capture-phase, so a
+ * confirm dialog over this window already wins whatever order they went on in.
+ */
+addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape' || !voiceEditor.fullOpen) return;
+  ev.preventDefault();
+  ev.stopImmediatePropagation();
+  voiceEditor.closeFull();
 });
 
 /** Take the panel down, without asking for the rack repaint that `close` does. */
@@ -11830,7 +11858,53 @@ addEventListener('keydown', (e) => {
 // a button that will not take a second job while the first is running. Everything
 // else on the desk keeps working meanwhile; the render happens over there.
 let rendering = false;
-async function renderJob(btn, route, working, describe) {
+// How many times a render plays the song's looped bars — the intro once, then this many
+// passes, then the tail. Remembered across sessions like the rest of the desk's own
+// preferences; it belongs to the person rendering rather than to the song.
+//
+// Two is `tools/render-track.js`'s default and `tools/audition`'s, and this matches them
+// on purpose: it is the same control, and a number that meant one thing on the desk and
+// another on the command line would be worse than no control at all.
+const RENDER_PASSES_KEY = 'mash.mixer.renderPasses';
+const clampPasses = (n) => (Number.isFinite(n) ? Math.min(16, Math.max(1, Math.round(n))) : 2);
+const rememberedPasses = () => clampPasses(Number(localStorage.getItem(RENDER_PASSES_KEY)) || 2);
+
+/**
+ * How many passes to render — asked before the WAV is made, because it is the one
+ * decision that cannot be undone afterwards.
+ *
+ * A render is minutes of Chromium, and the pass count is baked into the file: getting it
+ * wrong means rendering again, and it is the kind of thing you only notice once the
+ * plugin is open. So it is a question at the moment of asking rather than a field
+ * somewhere else that was set some other day and forgotten.
+ *
+ * The sentence says what the number will DO to this particular song, because "3" means
+ * two different shapes depending on whether the song has loop markers: with them, the
+ * intro is heard once and the looped bars three times; without them, the whole form
+ * three times. Returns null if cancelled.
+ */
+async function askRenderPasses(what) {
+  const bars = barCount(arrDraftOf());
+  const L = arrFor(trackId)?.loop;
+  const from = L?.fromBar, to = L?.toBar, at = L?.startBar ?? 1;
+  const looped = from != null && to != null;
+  const shape = looped
+    ? `Bars ${at}–${from - 1} play once, then bars ${from}–${to} repeat, then the echo rings out.`
+    : `This song has no loop markers, so its whole ${bars}-bar form plays this many times.`;
+  // Prose first, then the field — the shape #askbody is styled for. The sentence has to
+  // come before the number because it is what makes the number mean anything.
+  const ok = await ask(what,
+    `${shape} It is one continuous render, so the reverb and delay carry across each`
+    + ` repeat instead of restarting at it.`
+    + `<label class="askfield">Passes<input id="askpasses" type="number" min="1" max="16"`
+    + ` step="1" value="${rememberedPasses()}"></label>`,
+    what, { cancel: true });
+  if (!ok) return null;
+  const passes = clampPasses(Number($('askpasses')?.value));
+  localStorage.setItem(RENDER_PASSES_KEY, String(passes));
+  return passes;
+}
+async function renderJob(btn, route, working, describe, passes = rememberedPasses()) {
   if (rendering) { toast('A render is already running'); return; }
   rendering = true;
   const label = btn.textContent;
@@ -11853,7 +11927,10 @@ async function renderJob(btn, route, working, describe) {
         // `null` is a real answer here and means "no arrangement", so it must cross as
         // itself rather than be dropped: a song whose arrangement you have just undone
         // has to render as composed, not as it was before the undo.
-        body: JSON.stringify({ trackId, mix: mixFor(trackId), arrangement: arrFor(trackId) ?? null }),
+        body: JSON.stringify({
+          trackId, mix: mixFor(trackId), arrangement: arrFor(trackId) ?? null,
+          repeat: passes,
+        }),
       });
     } catch { res = null; }
     if (!res || !res.ok) {
@@ -11883,9 +11960,15 @@ const measured = (info) => `${info.lufs.toFixed(1)} LUFS `
   + `(${info.toTarget >= 0 ? '+' : ''}${info.toTarget.toFixed(1)} dB to target) · `
   + `peak ${info.peakDb.toFixed(1)} dBFS${info.clipping ? ' · ** CLIPPING **' : ''}`;
 
-$('renderwav').onclick = () => renderJob($('renderwav'), '/render',
-  `Rendering ${track.title} — offline, slower than real time…`,
-  (info) => `${info.file} · ${measured(info)}`);
+// Asked BEFORE the render, not read from somewhere else: the pass count is baked into
+// the WAV, a render is minutes of Chromium, and getting it wrong means doing it again.
+$('renderwav').onclick = async () => {
+  const passes = await askRenderPasses('Render WAV');
+  if (passes == null) return;                     // cancelled — nothing rendered
+  renderJob($('renderwav'), '/render',
+    `Rendering ${track.title} ×${passes} — offline, slower than real time…`,
+    (info) => `${info.file} · ${measured(info)}`, passes);
+};
 
 // The same render, straight into tools/audition: a real AU plugin over this mix,
 // its own GUI open, previewed before anything is kept. What the desk's effects
@@ -11894,9 +11977,13 @@ $('renderwav').onclick = () => renderJob($('renderwav'), '/render',
 //
 // The plugin window opens on the machine running the mixer, because that is the
 // machine the plugins are installed on.
-$('auditionwav').onclick = () => renderJob($('auditionwav'), '/audition',
-  `Rendering ${track.title} for Audition — the plugin window follows…`,
-  (info) => `Audition opening on ${info.file} · ${measured(info)}`);
+$('auditionwav').onclick = async () => {
+  const passes = await askRenderPasses('Audition');
+  if (passes == null) return;
+  renderJob($('auditionwav'), '/audition',
+    `Rendering ${track.title} ×${passes} for Audition — the plugin window follows…`,
+    (info) => `Audition opening on ${info.file} · ${measured(info)}`, passes);
+};
 
 // The notes, as MIDI. The server builds it from the same bank the desk is playing;
 // tools/import-midi.js reads the format back into a bank if it comes home edited.

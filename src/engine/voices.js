@@ -1745,8 +1745,19 @@ export class VoiceRack {
     const hum = v.humanize || {};
     const shift = VoiceRack.pitchShift(v) * detune;
     const nyquist = ctx.sampleRate * 0.5;
-    const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0
-      && (L.lfo.target === 'filter' || L.lfo.target === 'level') ? L.lfo : null;
+    // DEPTH is the switch. There is no `lfo.on` and there never was — an LFO at zero
+    // modulates nothing, so it builds nothing, and the panel's DEPTH pot at its stop is
+    // the whole of "off". (The editor used to wrap this in a section switch as well,
+    // which was two ways to say one thing.)
+    //
+    // The target defaults rather than gating. It used to be a third condition, so an
+    // `lfo` block carrying a depth and no target was silently inert — which is exactly
+    // what winding DEPTH up on a preset that had never had an LFO produced, once the
+    // section switch that used to seed the whole block went away: a pot that moved and
+    // did nothing. `filter` is what the panel offers first and what `SECTION_DEFAULTS`
+    // seeded, so it is what an unstated target means.
+    const lfoTarget = L.lfo?.target === 'level' ? 'level' : 'filter';
+    const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0 ? { ...L.lfo, target: lfoTarget } : null;
     // The global stage: one filter and one VCA the whole stack passes through, after
     // the layers and before the drive. Both sections optional and BOTH ABSENT IS THE
     // DEFAULT — a preset with no `global` block builds not one extra node and sums its
@@ -2015,10 +2026,32 @@ export class VoiceRack {
         };
 
         for (const spec of specs) {
+          // ---- DELAY: when this layer enters ---------------------------------
+          //
+          // The layer's whole schedule moves, which is the difference between a delay and
+          // a slow attack. An attack that opens over 100 ms is a layer already on its way
+          // in from the downbeat; this is silence and then the attack the layer was given,
+          // intact — the brass bloom, the sub that lands behind the transient, the bell
+          // partial that appears after the strike rather than fading up through it.
+          //
+          // `humanize.entry` is NOT this. It staggers unison voices by a few milliseconds
+          // and moves only `src.start`, leaving the envelope where it was, so a large
+          // value there clips the attack instead of delaying it. One is a humaniser, the
+          // other is a control, and they sum.
+          //
+          // Seconds rather than a fraction of the note: `len` already says note-relative,
+          // and a bloom that got faster because the part got busier is not one.
+          const lDelay = Math.min(0.5, Math.max(0, spec.delay ?? 0));
+          const lt = t + lDelay;
           // The per-layer length: this layer's own note, as a fraction (or multiple)
           // of the drawn one. bass80s' octave tick lives and dies inside the note the
           // sub is still holding — that is the sound, not an approximation of it.
-          const end = t + Math.max(0.001, (noteDur || 0.001) * (spec.len ?? 1));
+          //
+          // Measured from the layer's OWN start, so a delayed layer keeps the shape it was
+          // given and runs past the others rather than having its tail eaten. `lastOff`
+          // grows with it below, which is what carries the later end to the global VCA's
+          // tail and to the mono choke.
+          const end = lt + Math.max(0.001, (noteDur || 0.001) * (spec.len ?? 1));
           const ratio = spec.ratio ?? 1;
           const target = base * ratio;
           if (!(target > 0) || target >= nyquist) continue;
@@ -2055,14 +2088,20 @@ export class VoiceRack {
           const layerHolds = !through && preview && (spec.sustain ?? 0) > 0;
           let off;
           if (through) {
-            const gateEnd = Math.max(t + 0.002, stage?.off || end);
+            // The gate opens when the LAYER starts, not when the note does — a delayed
+            // layer handed to the global VCA is silent until it enters, then joins the
+            // envelope already in progress, which is what a late VCO into a shared VCA
+            // does. It is held at zero first so the delay is silence rather than level.
+            const gateEnd = Math.max(lt + 0.002, stage?.off || end);
             const lvl = Math.max(1e-4, spec.gain ?? 1);
-            g.gain.setValueAtTime(lvl, t);
+            if (lDelay > 0) g.gain.setValueAtTime(0, t);
+            g.gain.setValueAtTime(lvl, lt);
             g.gain.setValueAtTime(lvl, gateEnd);
             g.gain.linearRampToValueAtTime(0, gateEnd + 0.004);
             off = gateEnd + 0.006;
           } else {
-            off = adsr(g.gain, t, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
+            if (lDelay > 0) g.gain.setValueAtTime(0, t);
+            off = adsr(g.gain, lt, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
             if (layerHolds) heldParams.push({ param: g.gain, e: spec });
           }
           lastOff = Math.max(lastOff, off);
@@ -2083,7 +2122,7 @@ export class VoiceRack {
             // the same exponential trajectory _filterChain used to schedule).
             const chain = this._filterChain(
               { type: fl.type, slope: fl.slope, freq: fl.freq, Q: fl.Q },
-              t, track * toneMul, 'lowpass', 1150,
+              lt, track * toneMul, 'lowpass', 1150,
             );
             chain.tail.connect(g);
             if (lfoSpec && lfoSpec.target === 'filter') {
@@ -2099,7 +2138,7 @@ export class VoiceRack {
             // sustain rides them, exactly as the amp envelope reads them.
             //
             // The same helper the global filter below uses, so the two move alike.
-            filterEnv(chain.stages, fl.env, t, end);
+            filterEnv(chain.stages, fl.env, lt, end);
             if (preview) heldLive.push({ chain, spec: fl, mul: track * toneMul });
             dest = chain.head;
           }
@@ -2166,10 +2205,10 @@ export class VoiceRack {
           if (pwm) {
             const lfo = ctx.createOscillator();
             lfo.type = nativeWave(pwm.type, 'sine');
-            lfo.frequency.setValueAtTime(Math.max(0.01, pwm.rate ?? 0.4), t);
+            lfo.frequency.setValueAtTime(Math.max(0.01, pwm.rate ?? 0.4), lt);
             const env = ctx.createGain();
-            env.gain.setValueAtTime(0, t);
-            env.gain.linearRampToValueAtTime(1, t + Math.max(0.001, pwm.delay || 0.001));
+            env.gain.setValueAtTime(0, lt);
+            env.gain.linearRampToValueAtTime(1, lt + Math.max(0.001, pwm.delay || 0.001));
             // How far the duty may swing before it would leave the range a pulse HAS: at
             // a 20% centre it can fall no further than 15 points, and asking for more is
             // asking for a duty of zero, which is silence rather than a wider sound.
@@ -2186,7 +2225,7 @@ export class VoiceRack {
               pwmSecs.gain.exponentialRampToValueAtTime(swing / Math.max(1, target), glideEnd);
             }
             lfo.connect(env); env.connect(pwmSecs);
-            lfo.start(t); lfo.stop(off + 0.01);
+            lfo.start(lt); lfo.stop(off + 0.01);
             layerMods.push(lfo);
           }
 
@@ -2207,12 +2246,12 @@ export class VoiceRack {
               // one gets the long one, so an eight-second pad does not drop the same
               // seam at the same half-second offset sixteen times over. Short blips are
               // untouched, and the band still takes the edge off whichever seam is left.
-              const long = (off - t) > (this.noiseBuf.duration || 0.5) * 1.05;
+              const long = (off - lt) > (this.noiseBuf.duration || 0.5) * 1.05;
               o.buffer = this._noise(spec.color, long);
               o.loop = true;
               const bp = ctx.createBiquadFilter();
               bp.type = 'bandpass';
-              bp.Q.setValueAtTime(NOISE_Q, t);
+              bp.Q.setValueAtTime(NOISE_Q, lt);
               o.connect(bp);
               out = bp; sources.push(o);
               pitches.push(bp.frequency); dets.push(bp.detune);
@@ -2230,7 +2269,7 @@ export class VoiceRack {
               const sum = ctx.createGain();
               a.connect(sum);
               b.connect(line); line.connect(inv); inv.connect(sum);
-              line.delayTime.setValueAtTime(secsAt(startHz), t);
+              line.delayTime.setValueAtTime(secsAt(startHz), lt);
               if (glideFrom) line.delayTime.exponentialRampToValueAtTime(secsAt(target), glideEnd);
               pwmSecs.connect(line.delayTime);
               out = sum; sources.push(a, b);
@@ -2253,8 +2292,8 @@ export class VoiceRack {
             // DETUNE written before it. Vibrato is a connected node, so it sums with
             // either and needs no such care.
             if (spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
-              pitchEnv(dets, spec.pitch, t, end, cents);
-            } else if (cents) for (const d of dets) d.setValueAtTime(cents, t);
+              pitchEnv(dets, spec.pitch, lt, end, cents);
+            } else if (cents) for (const d of dets) d.setValueAtTime(cents, lt);
             const vibCents = vibFor(u);
             if (vibCents) for (const d of dets) vibCents.connect(d);
 
@@ -2264,6 +2303,13 @@ export class VoiceRack {
             // scoop and was unreachable while the two shared one param.
             for (const pitch of pitches) {
               if (glideFrom) {
+                // Written from the NOTE's start rather than the layer's, and that is not
+                // an oversight: a portamento is one gesture the whole note makes, not
+                // something each layer restarts on arrival. A param's automation runs
+                // whether or not a source is playing it, so a delayed layer starts on the
+                // pitch the glide has already reached and carries on with it — which is
+                // what a late VCO patched to the same glide would do.
+                //
                 // A glide stays 'exp' — constant semitones per second is what a
                 // portamento IS.
                 pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
@@ -2281,15 +2327,15 @@ export class VoiceRack {
               if (!fmSpread) {
                 const mod = ctx.createOscillator();
                 mod.type = nativeWave(spec.fm.type, 'sine');
-                mod.frequency.setValueAtTime(target * (spec.fm.ratio ?? 1.4), t);
+                mod.frequency.setValueAtTime(target * (spec.fm.ratio ?? 1.4), lt);
                 fmSpread = ctx.createGain();
                 // Its own envelope through the same helper — a long decay is the
                 // modulation swelling across the note, which is what brass is.
-                adsr(fmSpread.gain, t, end, target * (spec.fm.index ?? 1), {
+                adsr(fmSpread.gain, lt, end, target * (spec.fm.index ?? 1), {
                   attack: spec.fm.attack, decay: spec.fm.decay, sustain: 0, release: 0,
                 });
                 mod.connect(fmSpread);
-                mod.start(t); mod.stop(off + 0.01);
+                mod.start(lt); mod.stop(off + 0.01);
                 layerMods.push(mod);
               }
               for (const pitch of pitches) fmSpread.connect(pitch);
@@ -2316,7 +2362,7 @@ export class VoiceRack {
               // Symmetric about the centre, like the detune spread it sits beside: at
               // full width the outer voices are hard left and hard right and the middle
               // one stays put.
-              pn.pan.setValueAtTime((u / (count - 1) - 0.5) * 2 * width, t);
+              pn.pan.setValueAtTime((u / (count - 1) - 0.5) * 2 * width, lt);
               pn.connect(dest);
               sink = pn;
             }
@@ -2329,7 +2375,7 @@ export class VoiceRack {
             // same seed as the vibrato, so voice 2 is late in every layer at once rather
             // than smearing one singer's formants apart in time.
             const late = entry > 0 ? hitRandom(t, 1013 + u) * entry : 0;
-            for (const src of sources) { src.start(t + late); src.stop(off + 0.01); }
+            for (const src of sources) { src.start(lt + late); src.stop(off + 0.01); }
             // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
             // when that is — otherwise a key-up would release the envelope and leave the
             // oscillators running underneath it.
