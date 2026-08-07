@@ -175,7 +175,7 @@ function upsertStarter(src, id, preset) {
   if (!m) throw new Error('src/data/voices.js has no STARTER table to write into');
   const open = m.index + m[0].length - 1;
   const end = matchBrace(src, open);
-  const body = emitEntry(id, preset, { derived: ['id', 'level', 'peak'] });
+  const body = emitEntry(id, preset, { derived: ['id', 'level', 'peak', 'cost'] });
   const existing = new RegExp(`^  ${id}: \\{`, 'm').exec(src.slice(open, end));
   if (existing) {
     const from = open + existing.index;

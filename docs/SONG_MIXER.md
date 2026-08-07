@@ -181,7 +181,7 @@ loop armed, clicking the timeline *moves the loop* rather than escaping it. Defa
 | **Time** | position / length of the song form |
 | **BPM** | **draggable.** The tempo the song is played at, 40–220. **Saved with the song**, on its `arrangement` — the bank keeps the tempo it was written at. Teal while it differs from that; click to go back to it. |
 | **Swing** | **draggable.** How far off its own grid the whole song is played, 50–75%. Saved the same way, on the same `arrangement`. Teal while it is not straight; click to go back to straight. |
-| **CPU** | rough load: the engine's own ~10% plus every active effect's measured cost. Red past 45%. Hover for what is running. |
+| **CPU** | rough load: the engine's own ~10% plus every active effect's and library voice's measured cost. A `+` means a lane is on a song-local voice copy, which is not measured yet. Red past 45%. Hover for what is running. |
 
 Tempo drags carry the tempo-synced delay and every division-based insert with them, so
 half-speed really is the same mix at half speed. The drag is an ordinary song edit —
@@ -835,10 +835,13 @@ Points worth knowing:
 - Saved as a `voice` block in the song's source file, per song, like everything else here.
   **Engine default** is a real choice in the panel, not just the absence of one:
   putting a lane back writes nothing at all to the file.
-- **The CPU readout does not count them**, and says so: with any voice in use it reads
-  `~12%+` rather than `~12%`, and its tooltip names the lanes. The effects have all
-  been cost-measured; the voices have not, and a number that quietly leaves them out
-  is worse than a plus sign that admits it.
+- **The CPU readout counts a library preset**, the same way it counts an effect:
+  `tools/measure-voice-cost.js` times each one against the lane's own engine default
+  and stores the delta, so a preset lighter than what it replaced can subtract from
+  the total. What it still cannot count is a song-local voice copy — the batch tool
+  has never timed those — so a song carrying one still reads `~12%+`, and the tooltip
+  names which lane. A number that quietly left something out would be worse than a
+  plus sign that admits it.
 
 ### Editing a preset, and writing new ones
 

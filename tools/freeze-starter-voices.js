@@ -91,7 +91,7 @@ for (const id of fresh) {
   // `kind` is stated rather than derived: STARTER holds tone, noise and drum entries
   // together, so the table it sits in no longer says what builds it.
   entries.push(emitEntry(starterId(id), { ...v, label: starterLabel(v.label) },
-    { derived: ['id', 'level', 'peak'] }));
+    { derived: ['id', 'level', 'peak', 'cost'] }));
 }
 
 const table = `const STARTER = {\n${entries.join('\n')}\n};`;

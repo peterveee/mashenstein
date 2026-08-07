@@ -209,8 +209,12 @@ const BODY = ['note', 'origin', 'options', 'additive', 'layer', 'global', 'osc',
 // `factory` and `user` are derived from the table an entry lives in. Written into an
 // entry they would both appear in every desk diff and could disagree with the table,
 // so the loader stamps them instead. That is also what keeps the round-trip in
-// tests/voice-source.js comparing the same runtime shape.
-export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak', 'factory', 'user'] } = {}) {
+// tests/voice-source.js comparing the same runtime shape. `cost` joins `level`/`peak`
+// for the same reason: it comes from COSTS in tools/measure-voice-cost.js, not from
+// the entry, and the VOICES assembly always overrides it anyway — writing it here
+// would only pull it earlier in the reloaded object's key order and fail the
+// round-trip's key-order-sensitive comparison for no behavioural gain.
+export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak', 'cost', 'factory', 'user'] } = {}) {
   const v = { ...preset };
   // Derived at load — from the table an entry sits in, and from the measured blocks —
   // so none of it is written into the entry itself. The exception is `kind` in the

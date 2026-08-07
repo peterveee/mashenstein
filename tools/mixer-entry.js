@@ -8907,20 +8907,34 @@ function updateCpu() {
     }
   }
   if ((mix.lanes && Object.values(mix.lanes).some((L) => (L.send?.reverb ?? 0) > 0))) total += 0.73;
-  // Voices are NOT in this number. `ENGINE_BASE_COST` is the engine's own measured
-  // cost with its own hand-written voices in it, and a Tone voice replacing one costs
-  // something else again — nobody has measured what. Rather than quietly under-report,
-  // the readout says how many are running and admits the figure does not cover them.
-  const voiced = Object.entries(VOICE_LANES)
-    .filter(([, seam]) => VOICES[mix.voice?.[seam.voiceKey]] || mix.voiceParams?.[seam.voiceKey])
-    .map(([lane]) => lane);
+  // Voices, same treatment as effects now that tools/measure-voice-cost.js has run:
+  // a catalogue preset's `cost` is the delta it measured against that lane's own
+  // engine default, and it can be negative — a preset lighter than what it replaced.
+  // Only two things still land in `uncounted`, hence the +: an engine-kind swap
+  // reuses the lane's own hand-written path (already priced into ENGINE_BASE_COST,
+  // so it is a flat 0 rather than uncounted — see the VOICES assembly), and a
+  // song-local voiceParams copy, which the batch tool has never timed.
+  const voicedNames = [];
+  const uncounted = [];
+  for (const [lane, seam] of Object.entries(VOICE_LANES)) {
+    const presetId = mix.voice?.[seam.voiceKey];
+    const custom = mix.voiceParams?.[seam.voiceKey];
+    if (!presetId && !custom) continue;
+    voicedNames.push(lane);
+    const preset = presetId ? VOICES[presetId] : custom;
+    if (preset && typeof preset.cost === 'number') total += preset.cost;
+    else uncounted.push(lane);
+  }
   const el = $('cpu');
-  el.textContent = `~${total.toFixed(0)}%${voiced.length ? '+' : ''}`;   // the caption beside it says CPU
+  el.textContent = `~${total.toFixed(0)}%${uncounted.length ? '+' : ''}`;   // the caption beside it says CPU
   el.title = `${counts.length} active effect${counts.length === 1 ? '' : 's'}`
     + (counts.length ? `: ${counts.join(', ')}` : '')
-    + (voiced.length ? `\n${voiced.length} lane${voiced.length === 1 ? '' : 's'} on a synth voice`
-      + ` (${voiced.join(', ')}) — not counted here, hence the +. No voice has been`
-      + ' cost-measured the way the effects have.' : '')
+    + (uncounted.length ? `\n${uncounted.length} lane${uncounted.length === 1 ? '' : 's'} on an unmeasured voice`
+      + ` (${uncounted.join(', ')}) — not counted here, hence the +. A song-local voice`
+      + ' copy has no cost measurement yet; a library preset always does.' : '')
+    + (voicedNames.length > uncounted.length
+      ? `\n${voicedNames.length - uncounted.length} other voiced lane${voicedNames.length - uncounted.length === 1 ? '' : 's'}`
+        + ' counted above, from a measured preset.' : '')
     + `\nEngine alone is about ${ENGINE_BASE_COST}%. Rough estimate on a desktop; audio runs on its own thread.`;
   el.classList.toggle('dirty', total > 45);   // a readout, not a label — see the header CSS
 }

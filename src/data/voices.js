@@ -3091,6 +3091,109 @@ const PEAKS = {
   bestPwmClav: 0.9564, bestPwmChoir: 0.2033, bestPwmDrift: 0.8248
 };
 
+// Measured CPU cost, filled in by tools/measure-voice-cost.js. The desk's CPU readout
+// used to add every effect's measured cost but none of the voices' — the tooltip said
+// so outright: "a Tone voice replacing one costs something else again — nobody has
+// measured what". This is that measurement, same method as EFFECT_BY_ID's `cost` in
+// src/engine/effects.js: one note rendered offline against the preset's own lane,
+// timed against the SAME lane playing nothing but its engine default, both best of
+// three. What is stored is that delta, as a percentage of one core at realtime — so a
+// preset lighter than the lane's own voice can and does read negative.
+//
+// Engine-kind presets are not in this table: they run the lane's own hand-written
+// path, already inside ENGINE_BASE_COST's ballpark, so the desk treats them as a flat
+// 0 rather than "unmeasured" — see the VOICES assembly below.
+//
+// Five entries (stGlassLead, layerBass80s, bestPwmDrift, stClapRoom, tpAlienChorus)
+// were hand-corrected after the batch run: each landed far outside its own family —
+// stGlassLead's options are IDENTICAL to glassLead's, which measured 1.45%, not the
+// 36.59% the batch run gave it — traced to the measuring machine taking an unrelated
+// multi-second stall during exactly that render. Re-run individually at 7 reps with a
+// fresh baseline each, which is what these five numbers are; the other 304 were not
+// re-verified this way and are the batch run's own best-of-three.
+const COSTS = {
+  roundMono: 1.98, fmGrowl: 2.44, subSine: 1.49, acidSquelch: 2.3,
+  rubberBass: 2.56, clangBass: 3.01, detuneBass: 6.31, monoBright: 2.37,
+  amHollow: 0.77, duoDetune: 5.26, glassLead: 1.45, reedLead: 0.9,
+  screamLead: 0.28, vibratoLead: 4.66, fmKeys: 1.33, epiano: 0.53, clav: -0.34,
+  toyPiano: 1.03, softKeys: -1.88, padTriangle: -1.19, warmPad: 0.77,
+  glassPad: 1.45, breathPad: 4.84, amOrgan: 0.36, fullOrgan: 0.26,
+  reedOrgan: 0.88, fmBell: 1.6, celeste: 1.4, marimba: 1.13, tubularBell: 7.07,
+  musicBox: 1.12, synthPluck: 1.89, harpPluck: -0.74, koto: 1.8,
+  brassStab: -0.1, synthStrings: 4.17, hornSwell: 0.45, buzzSaw: 0.3,
+  metalHit: 7.24, drumTone: -0.74, ringMod: 0.57, hardFm: 3, kickDeep: 0.4,
+  kickPunch: 0.99, kickDirty: 0.05, kickThud: -0.18, snareFm: 2.89,
+  snareTrash: 8.18, hatTick: 10.71, hatSizzle: 9.82, conga: 1.22, taiko: 0.59,
+  clave: 2.81, agogo: 9.54, triangleDing: 10.02, kick808: -0.27,
+  kickTight: 0.56, kickClick: 0.88, tom: 0.65, metalSnare: 8.83,
+  metalHatClosed: 10.84, metalHatOpen: 11.68, hat808: 10.39, hat808Open: 9.65,
+  metalCrash: 9.91, cowbell: 8.8, woodBlock: 2.66, zap: -0.69, tpBah: 0.67,
+  tpBassGuitar: 3.28, tpBassy: 2.3, tpBrassCircuit: 1.89, tpCoolGuy: 2.76,
+  tpPianoetta: 1.8, tpPizz: 0.64, tpAlienChorus: 4.49, tpDelicateWind: 0.69,
+  tpDropPulse: 0.52, tpLectric: -0.71, tpMarimba: -0.99, tpSteelpan: 1.54,
+  tpSuperSaw: 1.04, tpTreeTrunk: -0.34, tpElectricCello: 1.29, tpKalimba: 1.29,
+  tpThinSaws: 1.31, tpHarmonics: 0.57, tpTiny: 3.48, roundMono2: -0.94,
+  toneSquare: -1.32, toneSawtooth: -1.86, toneTriangle: -2.35, toneSine: -2.13,
+  squareTone2: -1.87, fmGrowl2: 1.24, softKeys2: -1.37, kalimba: 1.2,
+  softKeys3: -0.85, addDrawbar: -1.78, addDrawbarBright: -1.53,
+  addDrawbarPerc: -1.17, addShopOrgan: -2.36, addSwoop: -1.96, addBell: 0.75,
+  addGlassPad: 0.93, shopOrgan2: -1.7, squareOrgan: -2.15, bass80sMono: 0.56,
+  bass80sFM: 0.93, bass80sDuo: 4.54, bass80sSynth: -1.52, bass303Squelch: 0.96,
+  bass303Rubber: 1.21, bass303DeepGlide: 0.76, bass303Bite: 1.36,
+  bass303Pulse: 2.26, layerBass80s: -2.56, layerFilteredSaw: 1.21,
+  layerLeadBright: 0.71, layerTwinkle: -0.2, layerTitleBass: -0.85,
+  layerFinaleBass: -1.81, layerFinaleBassGhost: -2.2, layerWalkingBass: -2.25,
+  layerMegamixBass: -1.37, layerShopBass: -1.94, layerLoungeBass: -2.45,
+  layerBright80sBass: -1.71, layerTitleLead: -2.09, layerFinaleLead: -1.59,
+  layerMegamixLead: -1.55, layerShopLead: -0.49, layerCounterLead: -1.9,
+  layerTitleHarm: -1.42, layerSineHarm: -1.04, layerTitleChords: -1.83,
+  layerFinaleStab: -1.53, layerFinaleSawStab: -1.78, layerShopComp: -1.89,
+  layerDreamPad: -1.01, layerBrassStack: -1.35, bestChoirAah: 1.73,
+  bestChoirOoh: 2.97, bestVoiceBox70s: -0.06, bestRobotVox: -1.4,
+  bestVowelPad: 3.99, bestMegaSawLead: -1.31, bestHeroLead: -0.61,
+  bestScreamerLead: -1.24, bestMonsterBass: 0.13, bestReeseBass: -1.05,
+  bestPwmStrings: 1.61, bestPwmBrass: -0.58, bestPwmPadWide: 2.52,
+  bestPwmBass: -0.12, bestPwmGrowlBass: -1.35, bestPwmHollowLead: -1.45,
+  bestPwmReedLead: -1.21, bestPwmClav: -0.01, bestPwmChoir: 1.14,
+  bestPwmDrift: 1.96, snareCrisp: -0.37, snareFat: -0.1, snareTight: -0.62,
+  snareBrush: -0.49, snareRim: -0.04, clap808: 0.09, clapTight: 0.32,
+  clapRoom: 1.4, hatClosed: 1.57, hatOpen: 0.74, hatPedal: 0.2, hatFoil: 1.01,
+  hatFoilOpen: 0.11, shaker: 0.33, tambourine: -0.03, noiseSweep: -0.65,
+  dsKick: -0.25, dsKickHard: -0.09, dsSnare: 1.12, dsSnareCrack: -0.15,
+  dsClap: 1.46, dsHatClosed: 0.94, dsHatOpen: 2.65, hatSnap: 2.48,
+  hatSnapOpen: 0.82, hatGrit: 1.55, hatGritOpen: 0.26, dsShaker: 0.7,
+  dsTom: -0.05, dsRim: -0.03, vl1Pi: -0.44, vl1Po: -0.3, vl1Sha: 0.64,
+  dsZap: -1.2, rimRing: 0.22, rimWood: 1.38, rimClang: -0.1, hatCluster: 0.57,
+  hatClusterOpen: 0.06, snarePink: -0.7, clapHands: -0.01, kickCrush: -1.37,
+  kickEngine: -1.61, kickShop: -1.5, kickMegamix: -1.12, snareEngine: -0.01,
+  clapEngine: 0.45, hatEngine: 1.27, ohatEngine: 0.83, tomEngine: 1.36,
+  rimEngine: 0.05, crashEngine: 0.31, crashFinale: -0.16, dsCrackSnare2: 0.69,
+  dsClosedHat2: 1.88, engineCrash: 0.52, ds909Kick: -0.3, ds909KickPunch: -1.47,
+  ds909Snare: -0.74, ds909SnareCrack: -0.24, ds909Clap: -0.2, ds909Hat: 1.1,
+  ds909OpenHat: 0.07, ds909Tom: -0.77, ds909Rim: 0.14, ds909Crash: 0.72,
+  dsCr78Kick: -0.11, dsCr78Snare: -0.53, dsCr78Hat: 0.15, dsCr78Clap: -0.37,
+  dsCr78Cowbell: -0.19, dsCr78Tom: -0.38, ds808Kick: -0.61, ds808Snare: 0.07,
+  ds808Clap: 0.24, ds808Hat: 1.1, ds808OpenHat: 0.11, ds808Cowbell: -0.37,
+  ds808Tom: -0.51, snareFlam: -0.89, clapMetal: 0.46, clapFm: 0.04,
+  buzzRoll: -0.09, amHollow2: 0.71, sawtoothTone2: -2.45, sintone: -2.56,
+  roundBass: 0.62, bigRoomClap: -0.02, vl1Pi2: 0.32, stKickPunch: 1.12,
+  stSnareCrisp: 0.28, stHatTick: 10.55, stRoundMono: 0.82, stFmKeys: 1.58,
+  stMonoBright: -0.42, stKickDeep: 0.27, stSnareBrush: -0.74, stTaiko: 1.88,
+  stSubSine: -0.53, stReedOrgan: -0.15, stVibratoLead: 6.05, stKickTight: 1.34,
+  stSnareRim: 0.25, stClave: 2.89, stTpBassGuitar: 1.85, stClav: 1.18,
+  stSynthPluck: 0.38, stKickThud: 0.85, stSnareFat: -0.83, stHatPedal: 1.43,
+  stDsRim: -0.43, stRubberBass: 0.51, stEpiano: 2.8, stCeleste: 1.94,
+  stHatClosed: 1.25, stHatOpen: 1.24, stDetuneBass: 5.53, stWarmPad: 2.06,
+  stDuoDetune: 5.18, stWoodBlock: 2.55, stTriangleDing: 9.13, stGlassPad: 1.79,
+  stMusicBox: 0.95, stSnareFlam: -0.54, stSynthStrings: 5.12, stReedLead: 1.03,
+  stHatSizzle: 11.09, stFmGrowl: 2.75, stAmOrgan: 4.52, stGlassLead: 0.1,
+  stClapRoom: -1.24, stTpBassy: 5.63, stTpPianoetta: 3.44, stTpBah: 1.99,
+  stKickDirty: 1.52, stClapTight: 1.61, stMetalHatClosed: 10.66,
+  stCowbell: 9.44, stAcidSquelch: 1.08, stBreathPad: 5.92, stTpLectric: -0.65,
+  stKickClick: 1.03, stClap808: 0.36, stDsHatClosed: 1.06, stZap: -0.96,
+  stPadTriangle: -0.86, stFmBell: 1.66, stAmHollow: 1.19
+};
+
 /**
  * The STARTER table — the sounds the New Song generator is written for, frozen.
  *
@@ -3596,29 +3699,32 @@ const STARTER = {
 };
 
 export const VOICES = {};
-for (const [id, v] of Object.entries(ENGINE)) VOICES[id] = { ...v, id, kind: 'engine', factory: true };
+// `cost: 0` here, not absent: an engine-kind preset runs the lane's own hand-written
+// path, which ENGINE_BASE_COST already prices in aggregate — flagging it as
+// unmeasured (the `+`) would nag about the one category that needs no measuring.
+for (const [id, v] of Object.entries(ENGINE)) VOICES[id] = { ...v, id, kind: 'engine', factory: true, cost: 0 };
 for (const [id, v] of Object.entries(TONE)) {
-  VOICES[id] = { ...v, id, kind: 'tone', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'tone', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 for (const [id, v] of Object.entries(NOISE)) {
-  VOICES[id] = { ...v, id, kind: 'noise', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'noise', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 for (const [id, v] of Object.entries(DRUM)) {
-  VOICES[id] = { ...v, id, kind: 'drum', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'drum', factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 for (const [id, v] of Object.entries(USER_TONE)) {
-  VOICES[id] = { ...v, id, kind: 'tone', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'tone', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 for (const [id, v] of Object.entries(USER_NOISE)) {
-  VOICES[id] = { ...v, id, kind: 'noise', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'noise', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 for (const [id, v] of Object.entries(USER_DRUM)) {
-  VOICES[id] = { ...v, id, kind: 'drum', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, kind: 'drum', user: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 // Last, and marked. `starter` is what every guard tests: the picker leaves them off the
 // menu, the editor refuses to open one, and the save route refuses to write one.
 for (const [id, v] of Object.entries(STARTER)) {
-  VOICES[id] = { ...v, id, starter: true, factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1 };
+  VOICES[id] = { ...v, id, starter: true, factory: true, level: LEVELS[id] ?? 0, peak: PEAKS[id] ?? 1, cost: COSTS[id] };
 }
 
 /**
