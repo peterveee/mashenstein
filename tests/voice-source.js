@@ -181,7 +181,7 @@ const NEW_LAYER = {
     // carries a plain `width`, so the round trip has to keep both.
     osc3: { type: 'pulse', width: 0.28, ratio: 2, gain: 0.3, attack: 0.01, decay: 0,
       pwm: { type: 'triangle', rate: 0.37, depth: 0.62, delay: 0.2 } },
-    lfo: { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', delay: 0 },
+    lfo: { type: 'sine', rate: 0.5, depth: 0.3, target: 'filter', sync: 'tempo', division: '1/8', delay: 0 },
   },
   // The stage the layers sum into — a second root key beside `layer`, nested two deep,
   // with its own filter envelope. It rides the same `optionsBlock` path, and a preset
@@ -234,7 +234,9 @@ assert(grown.VOICES.testStack?.layer?.osc1?.filter?.freq === 320
   && grown.VOICES.testStack?.layer?.osc1?.filter?.track === 0
   && grown.VOICES.testStack?.layer?.osc1?.filter?.env?.octaves === 1.845
   && grown.VOICES.testStack?.layer?.osc1?.decay === 0
-  && grown.VOICES.testStack?.layer?.lfo?.target === 'filter',
+  && grown.VOICES.testStack?.layer?.lfo?.target === 'filter'
+  && grown.VOICES.testStack?.layer?.lfo?.sync === 'tempo'
+  && grown.VOICES.testStack?.layer?.lfo?.division === '1/8',
 'a layer preset’s nested filter, its envelope, the LFO and meaningful zeroes survive the trip');
 // The global stage is a SECOND root key on the same preset, and its ENV AMOUNT is
 // negative — a filter closing from above, which is exactly the value a "tidy up the

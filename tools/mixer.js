@@ -28,6 +28,9 @@ import { isDefaultMasterChain, EFFECT_BY_ID, paramRange } from '../src/engine/ef
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
+// The same builder scratch songs are born through — an alternate is a song file like
+// any other, so it is written by the one function that knows that shape.
+import { songFile } from './lib/song-source.js';
 import { validateVariants } from './lib/mix-source.js';
 import { writeSongsIndex } from './lib/songs-index.js';
 import { newScratchSong } from './lib/new-song.js';
@@ -638,7 +641,12 @@ const server = createServer(async (req, res) => {
       const importedRoot = join(ROOT, IMPORTED_DIR) + '/';
       // A style audition is a scratch song under its own heading — same directory, same
       // marker, same disposability. See the group list in src/data/tracks.js.
-      const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition');
+      // Alternates too: a candidate you decided against is exactly the kind of file
+      // that should be removable from the desk that made it. Deleting one cannot reach
+      // the song it was an alternate of — that lives in src/data/songs, which the
+      // `importedRoot` guard below refuses outright.
+      const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition'
+        || track.group === 'alternate');
       if (!madeHere || track.writable !== true
         || !target || !target.startsWith(importedRoot)) {
         res.writeHead(404, { 'content-type': 'text/plain' });
@@ -657,6 +665,153 @@ const server = createServer(async (req, res) => {
       writeImportedIndex(ROOT);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, id }));
+      return;
+    }
+
+    // ---- alternates: a game song's music, somebody else's decisions on it ----------
+    //
+    // The desk saves one song at a time and a save writes over what was there. That is
+    // the right rule for mixing and the wrong one for the moment you have a version of
+    // NEON BLASTERS you like without being ready to say it is NEON BLASTERS. So an
+    // alternate is a whole song file of its own: the parent's music copied verbatim,
+    // the desk's current mix and arrangement on top, filed under its own name in
+    // src/data/imported and listed under its own heading. It renders, exports and
+    // saves like any other song, and the song it came from is untouched.
+    //
+    // What makes it an alternate rather than a scratch copy is `alternateOf`, written
+    // above the marker with the music. That one line is what /promote-alternate aims
+    // at — the ONLY route by which one song's decisions can land on another's file,
+    // and it can only ever go the one way the file already says.
+    if (req.method === 'POST' && req.url === '/save-alternate') {
+      const body = await readJson(req);
+      const sourceId = String(body?.sourceId || '');
+      const source = resolveTrack(sourceId);
+      if (!source?.bank) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`no song called "${sourceId}" to make an alternate of`);
+        return;
+      }
+      // An alternate of an alternate is an alternate of the same parent. Otherwise the
+      // chain grows a middle that promotion would have to walk, and a walk is a thing
+      // that can go one hop too far and write over a song nobody named.
+      const parentId = source.alternateOf || sourceId;
+      const parent = resolveTrack(parentId);
+      if (!parent?.bank) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`"${sourceId}" points at "${parentId}", and there is no such song`);
+        return;
+      }
+      const title = String(body?.title ?? '').trim() || `${source.title} alt`;
+      const mix = body?.mix ?? null;
+      const arrangement = body?.arrangement ?? null;
+      const variants = body?.variants ?? null;
+      const bad = validateVariants(variants);
+      if (bad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`cabinet treatments:\n  ${bad.join('\n  ')}`);
+        return;
+      }
+      // Against the PARENT's bank, which is the bank being copied — so an alternate is
+      // never born holding a loop the music it carries cannot reach.
+      const arrBad = arrangementIssues(parent.bank, arrangement);
+      if (arrBad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`arrangement:\n  ${arrBad.join('\n  ')}`);
+        return;
+      }
+      const id = newScratchId(title);
+      const source_ = songFile({
+        id,
+        title,
+        slug: id,
+        group: 'alternate',
+        alternateOf: parentId,
+        bank: parent.bank,
+        mix,
+        arrangement,
+        variants,
+        note: `An alternate of ${parent.title} (${parentId}), saved from the Song Mixer.\n`
+          + `The music below is ${parent.title}'s, copied as it stood. Nothing in the game\n`
+          + `plays this file — "Save over ${parent.title}" in the desk is what decides that.`,
+      });
+      const file = join(ROOT, IMPORTED_DIR, `${id}.js`);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, source_);
+      writeImportedIndex(ROOT);
+      // Read back off the file rather than echoing the request: what the desk then
+      // holds as "saved" is what is actually on disk, round-trip and all.
+      const mod = await freshImport(file);
+      const registered = registerTrack({
+        id, bank: mod.bank, title: mod.title, slug: mod.slug,
+        group: 'alternate', writable: true, alternateOf: parentId,
+      });
+      console.log(`saved alternate src/data/imported/${id}.js  (of ${parentId})`);
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        file: `${IMPORTED_DIR}/${id}.js`,
+        track: {
+          id: registered.id, title: registered.title, slug: registered.slug,
+          group: 'alternate', writable: true, alternateOf: parentId, bank: registered.bank,
+        },
+        mix: mod.mix ?? null,
+        arrangement: mod.arrangement ?? null,
+        variants: mod.variants ?? null,
+      }));
+      return;
+    }
+
+    // Make an alternate the song. Reads the alternate's own file — not the desk's
+    // drafts — and writes what it holds into the song it names as its parent, through
+    // the same writeSongFile every save goes through, snapshot included. The desk
+    // saves the alternate first, so the file is the version you were listening to.
+    if (req.method === 'POST' && req.url === '/promote-alternate') {
+      const body = await readJson(req);
+      const id = String(body?.id || '');
+      const alt = resolveTrack(id);
+      const parentId = alt?.alternateOf;
+      if (!alt || alt.group !== 'alternate' || !parentId) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`"${id}" is not an alternate of anything`);
+        return;
+      }
+      const altPath = writableSongPath(ROOT, id);
+      const target = writableSongPath(ROOT, parentId);
+      if (!altPath || !target) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`no writable file for ${!altPath ? id : parentId}`);
+        return;
+      }
+      const from = await freshImport(altPath);
+      const parent = resolveTrack(parentId);
+      const mix = from.mix ?? null;
+      const arrangement = from.arrangement ?? null;
+      const variants = from.variants ?? null;
+      const bad = validateVariants(variants);
+      if (bad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`"${id}" cabinet treatments:\n  ${bad.join('\n  ')}`);
+        return;
+      }
+      // Against the parent's bank as it stands NOW, not the copy the alternate carries:
+      // the music above a song's marker is hand-edited, and an alternate forked before
+      // an edit can be holding a loop the song no longer has.
+      const arrBad = parent?.bank ? arrangementIssues(parent.bank, arrangement) : [];
+      if (arrBad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`"${parentId}" arrangement:\n  ${arrBad.join('\n  ')}\n\n`
+          + `${alt.title} was forked before ${parent.title}'s music changed.`);
+        return;
+      }
+      const snap = snapshotSongFile(ROOT, parentId, HISTORY_DIR, stamp());
+      writeSongFile(ROOT, parentId, { mix, arrangement, variants });
+      writeSongsIndex(join(ROOT, 'src/data/songs'));
+      console.log(`promoted ${id} over ${parentId}`
+        + (snap ? `  (was: work/mix-history/${snap})` : ''));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true, id, into: parentId, snapshot: snap || null, variants,
+        mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
+      }));
       return;
     }
 

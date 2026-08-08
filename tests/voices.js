@@ -158,6 +158,16 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
   const oscs = [L?.osc1, L?.osc2, L?.osc3].filter(Boolean);
   assert(oscs.length > 0, `${v.id}: has at least one layer`);
   assert(oscs.some((o) => (o.gain ?? 1) > 0), `${v.id}: at least one layer is audible`);
+  if (v.sync != null) {
+    assert(['off', '1+2', '1+3', '1+2+3'].includes(v.sync),
+      `${v.id}: oscillator sync is one of the four modes the panel offers (${v.sync})`);
+    assert(!!L.osc1, `${v.id}: a synced stack has Osc 1 to act as its master`);
+    const slaves = v.sync === '1+2+3' ? [L.osc2, L.osc3]
+      : v.sync === '1+2' ? [L.osc2] : v.sync === '1+3' ? [L.osc3] : [];
+    assert(slaves.every(Boolean), `${v.id}: every selected sync slave exists in its stack`);
+    assert(slaves.every((o) => o.type !== 'noise'),
+      `${v.id}: every selected sync slave has a phase to reset`);
+  }
   for (const o of oscs) {
     assert(!o.type || LAYER_WAVES.includes(o.type),
       `${v.id}: names a waveform a layer takes (${o.type})`);
@@ -232,8 +242,8 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
     if (o.fm) assert((o.fm.ratio ?? 1.4) > 0, `${v.id}: an FM ratio is above zero`);
   }
   if (L?.lfo) {
-    assert(['filter', 'level'].includes(L.lfo.target ?? 'filter'),
-      `${v.id}: the LFO points at filter or level — pitch wobble is the vibrato key`);
+    assert(['filter', 'level', 'pitch'].includes(L.lfo.target ?? 'filter'),
+      `${v.id}: the LFO points at filter, level or pitch`);
   }
   // The global stage the layers sum into. Both sections are optional and absent is the
   // ordinary case — a preset with no `global` block is the parallel voice this synth
@@ -965,6 +975,42 @@ try {
     'a noise layer with no COLOUR is the white one it always was');
   assert(diffOf(whiteNoise, brownNoise) > 1e-4,
     `and asking for brown gets a different buffer (max diff ${diffOf(whiteNoise, brownNoise).toExponential(2)})`);
+
+  // MRDR-3 and AdditiveSynth are gate-driven melodic instruments. A short note that ends
+  // during a long Attack/Decay must leave an audible Release tail from the level reached at
+  // note-off; the old fixed-duration helper had already forced both voices to silence first.
+  const shortGateVoice = (synth, release) => synth === 'MRDR-3'
+    ? {
+      label: `MRDR gate ${release}`, category: 'Lead', synth, kind: 'tone', dur: 1,
+      layer: { osc1: { type: 'sine', ratio: 1, gain: 1, vca: 'env', attack: 0.4,
+        decay: 1, sustain: 0, release, attackCurve: 'lin', curve: 'lin' } },
+      level: 0.2, peak: 1,
+    }
+    : {
+      label: `Additive gate ${release}`, category: 'Organ', synth, kind: 'tone', dur: 1,
+      additive: { bars: [1], attack: 0.4, decay: 1, sustain: 0, release,
+        attackCurve: 'lin', curve: 'lin' },
+      level: 0.2, peak: 1,
+    };
+  const gateTake = async (synth, release) => (await renderer.render(
+    { bpm: 120, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) },
+    { repeat: 1, mix: { voiceParams: { leadVoice: shortGateVoice(synth, release) } },
+      trackId: `gate-${synth}-${release}` })).outL;
+  const tailRms = (o, from, seconds) => {
+    let sum = 0; let count = 0;
+    for (let n = Math.round(SR * from); n < Math.min(o.length, Math.round(SR * (from + seconds))); n++) {
+      sum += o[n] * o[n]; count++;
+    }
+    return count ? Math.sqrt(sum / count) : 0;
+  };
+  for (const synth of ['MRDR-3', 'AdditiveSynth']) {
+    const [noTail, withTail] = [await gateTake(synth, 0), await gateTake(synth, 0.5)];
+    const dryTail = tailRms(noTail, 0.16, 0.25);
+    const wetTail = tailRms(withTail, 0.16, 0.25);
+    assert(wetTail > dryTail * 4 && wetTail > 1e-4,
+      `${synth} releases a short note from its current attack/decay level`
+      + ` (${dryTail.toFixed(5)} → ${wetTail.toFixed(5)})`);
+  }
 
   // A layer DELAY is silence and then the layer's own attack — which is the one thing a
   // slow ATTACK cannot say, because an attack is already on its way in from the downbeat.

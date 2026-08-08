@@ -83,7 +83,9 @@ assert(barOfStep(0) === 0 && barOfStep(15) === 0 && barOfStep(16) === 1
 assert(heldLength(4, 8) === 4, 'four steps held is a length of four');
 assert(heldLength(4, 4) === 1,
   'a key pressed and released inside one sixteenth is still a note — never length zero');
-assert(heldLength(4, 400) === 32, 'and a held key is capped at the pattern');
+assert(heldLength(4, 400) === 396, 'and a held key keeps the whole musical length it measured');
+assert(heldLength(4, 400, { max: 32 }) === 32,
+  'a caller can still cap it explicitly when it is writing into a shorter span');
 assert(heldLength(4, 9, { grid: 2 }) === 6, 'the length snaps to the grid too');
 assert(heldLength(30, 2, { span: 32 }) === 4,
   'a key held through the turnaround measures forward across the wrap, not backwards');

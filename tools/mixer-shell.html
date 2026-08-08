@@ -1352,6 +1352,11 @@
                           letter-spacing: 0; min-width: 0; overflow: hidden;
                           text-overflow: ellipsis; white-space: nowrap; }
   #notehead #notepreset:empty { display: none; }
+  #notehead #notelenbtn { font: inherit; font-size: 10px; letter-spacing: .06em;
+                          padding: 2px 7px; color: var(--ink); background: var(--input);
+                          border: 1px solid var(--line); border-radius: 999px; }
+  #notehead #notelenbtn[hidden],
+  #notes.collapsed #notehead #notelenbtn { display: none; }
 
   /* The NOTES header carries the fold button and the panel's name, and nothing else.
      The roll's controls used to sit out here — a lane picker, an octave nudge, a root
@@ -1374,6 +1379,14 @@
                     background: transparent; }
   #devices.edge-resizable::before { pointer-events: auto; cursor: ns-resize; touch-action: none; }
   #devices.edge-dragging::before { background: color-mix(in srgb, var(--dim) 18%, transparent); }
+  /* The resize affordances deliberately reach six pixels into the panel above so
+     they are easy to catch. That band is also where a horizontal scroller paints
+     its scrollbar. Keep the scroll viewport above the affordance: its scrollbar
+     owns the bottom strip, while the splitter remains available in the fixed name
+     or gutter column beside it. Without this stacking boundary, dragging a mixer,
+     piano-roll, or pattern scrollbar starts a vertical panel resize instead. */
+  #rack,
+  :is(#stepseq, #pianoroll, #kitroll) .ssqscroll { position: relative; z-index: 4; }
   #devices.collapsed { flex: 0 0 auto; }
   #devices.collapsed #devrack { display: none; }
   /* The sends are the last two strips in the rack's own row. Same strips as the
@@ -2143,6 +2156,7 @@
   #voiceedit .vesublabel { flex: none; width: 74px; font-size: 9.5px; letter-spacing: .03em;
                            color: var(--dim); text-transform: uppercase; }
   #voiceedit .vesynth { flex: 1; width: auto; min-width: 0; font-size: 10.5px; padding: 4px 6px; }
+  #voiceedit .veclass { display: flex; align-items: center; color: var(--ink); }
   /* A preset is library-wide, so who else plays it is the first thing worth knowing —
      above the controls, not buried in a tooltip on the save button. */
   #voiceedit .veused { margin: 0 0 6px; padding: 4px 7px; font-size: 10px; line-height: 1.4;
@@ -2230,6 +2244,10 @@
                         grid-template-columns: repeat(4, 1fr);
                         grid-template-rows: none; grid-auto-columns: auto; gap: 11px 8px; }
   :is(#voiceedit, #synthfull) .devgrid .row { margin: 0; }
+  :is(#voiceedit, #synthfull) .velayercopyselect,
+  #synthfull .sfcopyselect { flex: none; width: auto; min-width: 48px; max-width: 54px;
+                             margin: 0; padding: 2px 4px; font-size: 8px;
+                             letter-spacing: .04em; color: var(--dim); }
 
   /* ---- pots -----------------------------------------------------------------
      The name over the knob and the reading inside its ring — the layout of every
@@ -2480,6 +2498,12 @@
                        color: var(--ink); background: var(--primary);
                        border: 1px solid var(--accent-line); border-radius: 4px; }
   #synthfull .sfshut:hover { border-color: var(--accent); }
+  #synthfull .sfundo { font: inherit; font-size: 10px; letter-spacing: .06em;
+                       padding: 4px 8px; white-space: nowrap; cursor: pointer;
+                       color: var(--ink); background: var(--input);
+                       border: 1px solid var(--line); border-radius: 4px; }
+  #synthfull .sfundo:hover:not(:disabled) { border-color: var(--accent); }
+  #synthfull .sfundo:disabled { opacity: .38; cursor: default; }
   /* The body: three bands, each a six-column grid. Rows 1 and 2 are fixed because their
      cards have a fixed shape; row 3 takes what is left, with a floor of one grid row of
      pots plus a choice row. Below that floor a card scrolls rather than clips. */
@@ -2522,8 +2546,14 @@
   /* A card fills its cell and never scrolls INSIDE itself. Seven independent scrollbars
      is not a layout, it is seven places to lose a control; when the window cannot hold
      everything the body below takes one honest scroll instead. */
+  /* 3px of side padding, down from 6. Every pixel of it is width the pot columns do not
+     have, and at four columns to a card the difference decides whether a name is read or
+     ellipsised — six pixels back is a character and a half per column. The knobs are
+     centred in their cells and never come near the frame, so the only thing the padding
+     was holding off the border was a label already too long for its cell. The header
+     spans the card, so its negative margin matches. */
   #synthfull .vegroup { height: 100%; min-height: 0; overflow: visible;
-                        padding: 5px 6px 6px;
+                        padding: 5px 3px 6px;
                         background: var(--panel); border: 1px solid var(--line);
                         border-radius: 5px; }
   #synthfull .vegroup + .vegroup { margin-top: 0; }
@@ -2531,7 +2561,7 @@
   #synthfull .vegroup .devbar { position: sticky; top: -5px; z-index: 1;
                                 display: flex; align-items: center; gap: 6px;
                                 height: 26px; box-sizing: border-box;
-                                margin: -5px -6px 6px; padding: 0 8px;
+                                margin: -5px -3px 6px; padding: 0 8px;
                                 background: var(--panel2);
                                 border-bottom: 1px solid var(--line);
                                 border-radius: 4px 4px 0 0; }
@@ -2598,7 +2628,14 @@
   #synthfull .sflit { width: 5px; height: 5px; border-radius: 99px;
                       background: var(--accent); }
   #synthfull .vegroup { position: relative; }
-  #synthfull .sfpop { position: absolute; top: 24px; right: -1px; z-index: 40; width: 290px;
+  /* NEVER WIDER THAN THE CARD IT HANGS OFF.
+     It was a flat 290px anchored to the card's right edge, which on a 229px card put 60px
+     of it out to the LEFT — and `.sfbody` is the window's one scroll container, so
+     anything past its padding box is clipped, not scrolled to. On the first column of a
+     band that ate the popover's left edge, switch and all: a control that is there, is
+     live, and cannot be seen or hit. Capped at the card, it can only ever grow inwards. */
+  #synthfull .sfpop { position: absolute; top: 24px; right: -1px; z-index: 40;
+                      width: 290px; max-width: 100%;
                       background: var(--panel2); border: 1px solid var(--accent);
                       border-radius: 5px;
                       box-shadow: 0 12px 32px color-mix(in srgb, var(--deep) 70%, transparent); }
@@ -2612,8 +2649,11 @@
   #synthfull .sfpopshut:hover { color: var(--ink); }
   #synthfull .sfpopnote { margin: 0; padding: 8px 10px 0; font-size: 10px; line-height: 1.6;
                           color: var(--dim); }
+  /* 51px, the same floor the OSC card's grid takes: the popover is the width of that card
+     now, and a modulator's four pots have to stay one row inside it as well as outside —
+     FM reads the same whether it is behind the door or under the rule. */
   #synthfull .sfpopgrid { padding: 7px 7px 9px; margin: 0;
-                          grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); }
+                          grid-template-columns: repeat(auto-fill, minmax(51px, 1fr)); }
   /* The curve toggles: each draws the shape it currently IS. Two ramps described in
      words are two words; drawn, they are the difference you are choosing between. */
   #synthfull .sfcurvegrid { display: flex; gap: 5px; padding: 7px 7px 9px; }
@@ -2630,11 +2670,16 @@
   #synthfull .sfcurvebtn .m { font-size: 9.5px; letter-spacing: .06em; color: var(--accent); }
   /* Four pots across a 259px card, which is the density the height budget assumes: three
      columns turns every four-pot envelope into two rows, and two rows times seven cards
-     is more than the window has. It only works because a label too long for 58px drops
-     its unit onto the tooltip — see `fitLabels`. Widening this without that is how the
-     cards first grew scrollbars. */
+     is more than the window has. It only works because a label too long for its column
+     drops its unit and then shortens its name, with the full one on the tooltip — see
+     `fitLabels`. Widening this without that is how the cards first grew scrollbars. */
   #synthfull .devgrid { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
                         gap: 7px 3px; }
+  /* The OSC card asks for four — a modulator's four pots are one row there, not 3+1. The
+     floor drops to 51px, which is the 46px pot plus air, and it is still auto-FILL: on a
+     window too narrow to seat four it falls back to three rather than clipping a knob,
+     which a fixed `repeat(4, …)` would do silently. See `grid` in `fullLayout`. */
+  #synthfull .sfgrid4 .devgrid { grid-template-columns: repeat(auto-fill, minmax(51px, 1fr)); }
   #synthfull .vepot { width: 46px; height: 46px; }
   #synthfull .vepot .pottext { font-size: 9px; }
   /* A card whose section is off dims its body and keeps its header lit, so the switch
@@ -2646,6 +2691,17 @@
      which is where this was caught. */
   #synthfull .vegroup.sfoff > *:not(.devbar) { opacity: .45; }
   #synthfull .vegroup.sfoff .vedisabled { opacity: .71; }
+  /* The same OFF state is also an input boundary, not just a visual treatment.  Keep
+     the header switch alive so the panel can be restored, but stop pointer input on
+     every body child — including graphs and controls appended after the card is built. */
+  :is(#voiceedit, #synthfull) .vegroup.vepaneloff > *:not(.devbar) {
+    opacity: .45; pointer-events: none;
+  }
+  :is(#voiceedit, #synthfull) .vegroup.vepaneloff > .devbar >
+  :not(.veswitch):not(.sfsw):not(h4) {
+    opacity: .32; pointer-events: none;
+  }
+  :is(#voiceedit, #synthfull) .vegroup.vepaneloff .vedisabled { opacity: .71; }
   /* Two sections sharing one slot, named in the title bar — no separate tab strip, which
      read as two different things. */
   #synthfull .sftabs { display: flex; gap: 14px; align-items: center; min-width: 0; }
@@ -2666,11 +2722,20 @@
                           background: var(--panel2); border-bottom: 1px solid var(--line); }
   #synthfull .sfmix.on .sfmixhead { background: var(--primary); }
   #synthfull .sfmixname { font-size: 11px; letter-spacing: .11em; color: var(--ink); }
+  /* The waveform, as a reading beside the layer's name — the picker is on the OSC card.
+     Quieter than the name and set off by a dot, so the header reads as one phrase
+     ("LAYER 1 · SQUARE") rather than as two labels that collided. */
+  #synthfull .sfmixwave { font-size: 10px; letter-spacing: .1em; color: var(--ink-dim); }
+  #synthfull .sfmixwave::before { content: '·'; margin-right: 6px; }
   /* Half the height it was: the five readings run ACROSS, and the level lies along the
      whole width underneath them. The band was mostly whitespace standing up, and the
      height it gives back is height the cards below wanted. */
+  /* 5px at the sides, down from 9, for the reason the cards' own padding came down to 3:
+     seven pots across one cell, and the side padding is the first thing that clips their
+     names. A little more than a card keeps, because a fader runs the full width here and
+     a fader does touch its ends. */
   #synthfull .sfmixbody { flex: 1; display: flex; flex-direction: column; gap: 5px;
-                          padding: 6px 9px 7px; min-height: 0; }
+                          padding: 6px 5px 7px; min-height: 0; }
   #synthfull .sfreads { flex: none; display: flex; gap: 10px; min-width: 0; }
   #synthfull .sfread { flex: 1; min-width: 0; display: flex; flex-direction: column;
                        gap: 1px; }
@@ -2724,26 +2789,22 @@
                                              border-left: 1px solid var(--line); }
   #synthfull .sfpair .sfopts { gap: 7px; flex-wrap: nowrap; }
   #synthfull .sfpair .sfopt { font-size: 10px; }
-  /* WAVE and COLOUR share one line in a mixer cell — the same question and its follow-up,
-     and the follow-up only exists on noise. One rule under the pair rather than one under
-     each, or a wave row on every non-noise layer would sit over a line to nowhere. */
-  #synthfull .sfwaverow { grid-column: 1 / -1; display: flex; flex-direction: row;
-                          align-items: center;
-                          gap: 12px; min-width: 0; padding: 1px 1px 3px;
-                          border-bottom: 1px solid var(--line); }
-  #synthfull .sfwaverow .sfchoice { grid-column: auto; min-width: 0; padding: 0;
-                                    border-bottom: 0; }
-  #synthfull .sfwaverow .sfglyphrow { flex: none; }
-  #synthfull .sfwaverow .sfnolabel { flex: 1; }
-  #synthfull .sfwaverow .sfnolabel .sfopts { justify-content: flex-end; gap: 10px; }
   /* Waveforms drawn rather than abbreviated — the shape IS the name. Label and icons on
      ONE line: the name is three letters and the icons are short, and stacking them cost a
      row for no reading gained. */
   #synthfull .sfchoice.sfglyphrow { flex-direction: row; align-items: center; gap: 8px; }
-  #synthfull .sfglyphrow .sfopts { justify-content: flex-start; gap: 3px; }
-  /* Its label is the row above it — see the COLOUR note in mixCell. */
-  #synthfull .sfchoice.sfnolabel > .k { display: none; }
-  #synthfull .sfchoice.sfnolabel { border-bottom: 0; padding-top: 0; }
+  /* ONE ROW, WHATEVER THE CARD IS WIDE.
+     Six waveforms at a fixed 26px wrapped onto a second line in a 1/6-wide card, and a
+     wrapped picker is the worst of both: it costs the row a drawn glyph was meant to save
+     AND the two lines do not read as one set. So the buttons SHARE the row instead —
+     `flex: 1 1 0` with `min-width: 0` and no wrapping, so they divide whatever is left of
+     the line and the drawing scales down with them. `max-width` keeps them from swelling
+     into lozenges on a four-option picker in a wide card, and the stroke is
+     `non-scaling-stroke`, so a shrunk waveform is thinner in nothing but width. */
+  #synthfull .sfglyphrow .sfopts { justify-content: flex-start; gap: 3px; flex-wrap: nowrap; }
+  #synthfull .sfglyphrow .sfglyph { flex: 1 1 0; min-width: 0; max-width: 38px;
+                                    justify-content: center; padding: 3px 2px; }
+  #synthfull .sfglyphrow .sfwave { width: 100%; min-width: 0; max-width: 26px; height: 14px; }
   #synthfull .sfglyph { display: flex; padding: 3px 4px; cursor: pointer;
                         border: 1px solid var(--line); border-radius: 3px;
                         background: var(--input); }
@@ -2797,18 +2858,38 @@
      window sizes to its content. Compact cards and one baseline are the same fix. */
   #synthfull .vegroup { display: flex; flex-direction: column; }
   #synthfull .vegroup > .devgrid { margin-top: auto; }
+  /* Except the OSC card, which reads downwards from its wave picker — see `top` in
+     `fullLayout`. `auto` would push the picker to the foot of the card and leave the air
+     above it, and there is nothing on the band for it to line up with anyway. */
+  #synthfull .vegroup.sftop > .devgrid { margin-top: 0; }
+  /* A modulator section is PINNED TO THE FOOT of its card, on a top-read card too: the
+     rows above it change with the wave (PWM's five, FM's five, one more on noise), and a
+     rule that slides up and down as you audition waveforms is a rule you have to find
+     again each time. The `auto` goes on the FIRST one only — `.sffoot`, set in the
+     renderer — because two of them sharing it would spread the slack between them instead
+     of banking it above both.
+     Both rules carry the same weight as the two above and come after them, so they win
+     on order rather than on a specificity race nobody can read. */
+  #synthfull .vegroup > .devgrid.sfsubgrid { margin-top: 0; }
+  #synthfull .vegroup > .devgrid.sffoot { margin-top: auto; }
   /* The TYPE/SLOPE pair is lifted out of the grid on a graph card so it sits against the
      curve instead of being carried to the bottom by the grid's `margin-top: auto`. As a
      flex child now, not a grid one — so it needs its own `flex: none` or it would stretch
      to fill the gap the grid is about to claim. */
   #synthfull .vegroup.sfhasgraph > .sfpair { flex: none; margin-bottom: 3px; }
-  /* PWM is the one section that is ABSENT rather than greyed when it does not apply —
-     there is no width to move on a wave that is not a pulse. It sits at the bottom of
-     the oscillator card, so nothing below it can move when it comes and goes. */
+  /* The modulation under the wave on the OSC card: PWM on a pulse, FM on everything else.
+     Whichever applies is the one drawn, so the section is never a rule over five dead
+     controls, and it sits at the bottom of the card, where nothing below it can move when
+     the wave changes under it. */
   #synthfull .sfsub { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px;
                       margin: 4px 0 0; min-width: 0; }
   #synthfull .sfsub .k { flex: none; font-size: 9px; letter-spacing: .12em; color: var(--accent); }
   #synthfull .sfsub .rule { flex: 1; height: 1px; background: var(--line); }
+  /* A section switched off is still drawn — the switch on its rule is the way back on, so
+     it may not hide the controls it governs. `.sfoff` greys a whole card; this is the same
+     grey applied per row, because a sub-section is rows in somebody else's grid. */
+  #synthfull .devgrid > .sfdim { opacity: .45; }
+  #synthfull .sfsub .sfsw { flex: none; }
   /* The way in, on the strip panel's SYNTH row. */
   #voiceedit .veopen { flex: none; width: auto; margin: 0; padding: 3px 9px;
                        font-size: 10px; letter-spacing: .06em; }
@@ -3026,8 +3107,8 @@
   #pianoroll .ssqdock::after { content: ''; position: absolute; z-index: 7;
                         left: var(--keys); top: 0; bottom: var(--rollbarh); width: var(--keyseam);
                         background: var(--deep); pointer-events: none; }
-  /* Zoom, and under it what the mouse does — the roll's whole control surface, stacked
-     in the blank half of the key column beside the field both act on. */
+  /* Note length, zoom, and under them what the mouse does — the roll's whole control
+     surface, stacked in the blank half of the key column beside the field they act on. */
   #pianoroll .rollzoom-panel { position: absolute; left: 0; top: 0; z-index: 11; display: flex;
                                flex-direction: column; align-items: flex-start;
                                gap: 3px; pointer-events: none;
@@ -3349,20 +3430,21 @@
      this one now stands under. The 13px line is the ruler numbers' own, so BAR sits on
      the same baseline as the number it names instead of on the strip's default leading. */
   #pianoroll .ssqruler-label { font-size: 9px; letter-spacing: .04em; line-height: 13px; }
-  /* The channel strip's `.row .k` exactly — 9.5px, --dim, .03em — because ZOOM and TOOL
-     name their control the way MID and DELAY SEND name theirs, and a second, smaller,
+  /* The channel strip's `.row .k` exactly — 9.5px, --dim, .03em — because LENGTH, ZOOM
+     and TOOL name their controls the way MID and DELAY SEND name theirs, and a second, smaller,
      bolder, wider-tracked label a few pixels away read as a different rank of thing.
      Capitals come from the text, not a transform, for the same reason they do there. */
   #pianoroll .rollzoom-label { flex: none; margin-left: 0; color: var(--dim);
                                font-size: 9.5px; font-weight: 400; letter-spacing: .03em;
                                line-height: 1.3; text-transform: none; }
   /* The panel's own 3px is the gap between a label and the control it names. Between
-     the two FIELDS it has to be visibly wider, or the four items read as one list of
-     four instead of two pairs. This is the only other vertical measurement here. */
+     the FIELDS it has to be visibly wider, or the six items read as one list instead
+     of three pairs. */
+  #pianoroll .rolltool + .rollzoom-label { margin-top: 14px; }
   #pianoroll .rollzoom + .rollzoom-label { margin-top: 14px; }
   /* The full width of the gutter, like the tool field under it, rather than a strip
-     sized by its own text: two controls of the same width stacked under their own
-     headings is what makes the pair read as placed rather than dropped. It is also what
+     sized by its own text: each of the three controls has the same width under its own
+     heading, which makes the stack read as placed rather than dropped. It is also what
      keeps a fourth factor from overflowing — the buttons divide the width they are
      given instead of adding theirs up (see .rollzoom-button's `flex`). */
   #pianoroll .rollzoom { pointer-events: auto; display: flex; flex: none; width: 100%;
@@ -3646,7 +3728,7 @@
   #pianoroll .ssqcell.on::before { content: ''; position: absolute;
                            inset: calc(2px + var(--roll-rowpad-top, 0px)) auto
                                   calc(2px + var(--roll-rowpad-bottom, 0px)) 1px;
-                           width: calc(var(--len, 1) * 100% - 2px);
+                           width: max(2px, calc(var(--len, 1) * 100% - 2px));
                            background: var(--lane); border-radius: 3px; }
   /* Which of the two gestures a press would begin. `move` on the body of a note,
      `ew-resize` within a few pixels of its right end — the same as every DAW, and the
@@ -3707,7 +3789,7 @@
   #pianoroll .ssqcell.on.atedge::after { content: ''; position: absolute;
                            top: calc(2px + var(--roll-rowpad-top, 0px));
                            bottom: calc(2px + var(--roll-rowpad-bottom, 0px));
-                           left: calc(var(--len, 1) * 100% - 2px); width: 2px; z-index: 3;
+                           left: max(0px, calc(var(--len, 1) * 100% - 2px)); width: 2px; z-index: 3;
                            background: color-mix(in srgb, var(--ink) 70%, transparent);
                            border-radius: 1px; pointer-events: none; }
   /* These lines come after the note cell's own shadow reset, so notes do not punch holes
@@ -5193,6 +5275,7 @@
     <!-- Which preset's part is on screen, in brackets. Empty on the kit, and on a
          channel with no editor at all. -->
     <span id="notepreset"></span>
+    <button id="notelenbtn" type="button" title="Adjust or quantise note lengths" hidden>Length</button>
   </div>
   <div id="pianoroll"></div>
   <!-- The same panel's other editor. A percussion channel has no pitch axis, so where
@@ -5277,6 +5360,14 @@
        deliberately no "save every changed song" — writing several mixes in one go
        writes most of them from memory rather than from listening. -->
   <button id="save">Save song</button>
+  <!-- The way to keep a version of a game song without saying it IS the game song.
+       Writes a whole song file of its own — the same music, this mix and arrangement,
+       its own name — and leaves the song it came from exactly as it was. -->
+  <button id="savealt" title="Keep what is on the desk as a named alternate of this song — its own file, its own entry under Alternate Game Songs, and this song untouched" hidden>Save as alternate…</button>
+  <!-- Only on an alternate, and it names the song it would write. This is the one
+       button on the desk that writes a file other than the one you are on, which is
+       why it says which, why it asks first, and why it is nowhere near Save. -->
+  <button id="promotealt" class="dangeraction" title="Make this alternate the song it was taken from" hidden>Save over the built-in song…</button>
   <button id="revert" title="Throw away everything unsaved for this song — faders, effects and bar edits alike">Discard unsaved changes</button>
   <!-- The way back into a version of mix.js that has already been overwritten.
        Revert above goes to what is on disk NOW; this goes to what was on disk before
@@ -5368,7 +5459,7 @@
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="drawerrow"><span>Playhead</span>
-    <input id="phoffset" type="number" min="-300" max="300" step="5" value="50"
+    <input id="phoffset" type="number" min="-300" max="300" step="5" value="70"
            title="Milliseconds to shift the playhead right — raise it if the line lags behind what you hear.
 [ and ] nudge it by 10 while the song plays, which is the easier way to find it.">
     <span class="unit">ms</span>

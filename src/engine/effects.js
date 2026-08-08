@@ -18,6 +18,7 @@
 // being different files breaks stems, baselines and the null test at once.
 import * as Tone from 'tone';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
+import { upperFormants, vowelAt } from './formants.js';
 
 // Note divisions for tempo-synced effects, in beats — eight bars down to a 1/32,
 // with the dotted and triplet values in between. One table for delay times and for
@@ -1492,6 +1493,354 @@ function makeBitCrusher(ctx, params = {}) {
   return node;
 }
 
+// A three-resonance vocal-tract insert.  The graph is deliberately native Web Audio:
+// it has to render in OfflineAudioContext as well as through the live Mixer, and the
+// catalogue's Tone worklet effects are not safe on the export path.
+function makeVowelFilter(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const body = ctx.createBiquadFilter();
+  const bodyGain = ctx.createGain();
+  const air = ctx.createBiquadFilter();
+  const airGain = ctx.createGain();
+  const presence = [0, 1].map(() => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'peaking';
+    return filter;
+  });
+  const bank = ctx.createGain();
+  const filters = [0, 1, 2].map(() => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    return filter;
+  });
+  const formantGains = filters.map(() => ctx.createGain());
+  const formantPans = filters.map(() => ctx.createStereoPanner());
+  // A second identical bank, fed from the first. Running the vowel through itself squares
+  // the response, which doubles every dB of formant contrast — the one lever that goes
+  // further than RESO, because narrowing the peaks cannot lower the floor between them
+  // and squaring can. INTENSITY crossfades between one pass and two.
+  const stage2 = [0, 1, 2].map(() => {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    return filter;
+  });
+  const stage2Gains = stage2.map(() => ctx.createGain());
+  const cascade = ctx.createGain();
+  const onePass = ctx.createGain();
+  const twoPass = ctx.createGain();
+
+  input.connect(dry); dry.connect(output);
+  // A vowel is a resonant shape over a voiced body, not three isolated whistles.
+  // Keep a low-passed copy in the wet path so high wet settings retain weight without
+  // restoring the whole dry signal that the formants are meant to replace. The corner
+  // follows F1, because that is where the vowel's own weight sits: a fixed 560 Hz put
+  // the corner above F1 for /i/ and /u/ and below it for /a/, which is why the low end
+  // measured 15 dB down no matter what vowel was selected.
+  body.type = 'lowpass';
+  body.frequency.value = 560;
+  body.Q.value = 0.45;
+  input.connect(body); body.connect(bodyGain); bodyGain.connect(output);
+  // Above F3 a vocal tract mostly passes what the source gives it, shaped by the
+  // singer's own F4/F5 — which barely move as the vowel does. Three bandpasses can pass
+  // nothing at all, so the old graph fell off a cliff at 3 kHz and every vowel arrived
+  // with no presence and no air.
+  //
+  // This is a series chain rather than two more bands in the parallel bank, and that is
+  // the whole point: bandpasses at F4/F5 summed alongside F3 put a cancellation notch
+  // exactly on F3 — measured, it buried alto /a/'s third formant by 7dB and moved the
+  // peak out of its own window. A high-passed tap with two peaking filters on it adds
+  // the same resonances with nothing to cancel against.
+  air.type = 'highpass';
+  air.frequency.value = 3200;
+  air.Q.value = 0.5;
+  input.connect(air);
+  air.connect(presence[0]); presence[0].connect(presence[1]);
+  presence[1].connect(airGain); airGain.connect(output);
+  filters.forEach((filter, i) => {
+    input.connect(filter);
+    filter.connect(formantGains[i]);
+    formantGains[i].connect(formantPans[i]);
+    formantPans[i].connect(bank);
+  });
+  // bank -> stage2 is connected on demand, see applyWet.
+  let cascadeLive = false;
+  stage2.forEach((filter, i) => {
+    filter.connect(stage2Gains[i]);
+    stage2Gains[i].connect(cascade);
+  });
+  bank.connect(onePass); onePass.connect(wet);
+  cascade.connect(twoPass); twoPass.connect(wet);
+  wet.connect(output);
+
+  const state = {
+    voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
+    frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9,
+    body: 0.5, air: 0.25, tilt: 0.45, intensity: 0, wet: 0.9, ...params,
+  };
+  let smooth = false;
+  let lastStep = null;
+  let lastWhen = null;
+  let lastSixteenth = null;
+  let lastSignature = null;
+  let nextSyncedOrdinal = null;
+  let currentOrdinal = 0;
+  let freeOrdinal = 0;
+  let freeNextAt = null;
+
+  const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const clamp01 = (value) => Math.max(0, Math.min(1, finite(value, 0)));
+  const periodBeats = () => Math.max(1 / 32, finite(state.rateDivision, 1));
+  const freeRate = () => Math.max(0.05, Math.min(8, finite(state.frequency, 0.5)));
+  const isSynced = () => finite(state.rateSync, 1) >= 0.5;
+  const motionSignature = (bpm, swing, sixteenth) => [
+    state.voice, state.stack, state.rateSync, state.rateDivision, state.frequency,
+    state.depth, state.glide, state.reso, state.tilt, bpm, swing, sixteenth,
+  ].join('|');
+
+  const targetValues = (ordinal) => {
+    const target = vowelAt(state.voice, state.stack, ordinal, clamp01(state.depth));
+    // The table's relative amplitudes are a *singer's*, and they are steep: alto /a/ puts
+    // F3 20 dB down and soprano /a/ 32 dB down. Applied whole to a synth that already has
+    // its own spectrum, that buries the two formants the ear uses to tell one vowel — and
+    // one VOICE — from another. Csound's rows for /a/ give alto and soprano the identical
+    // F1 and F2, so F3 is the ONLY thing separating them, and at -32 dB it is inaudible.
+    // TILT scales the rolloff: 1 is the published singer, 0 is flat like `robotic`.
+    const tilt = clamp01(state.tilt);
+    const amplitudes = target.dB.map((db) => 10 ** ((db * tilt) / 20));
+    // Unity makeup is technically polite but makes the insert disappear against a
+    // full-range synth. A controlled resonant lift gives the formant motion enough
+    // contrast to read as a vowel; the cap keeps extreme tables bounded.
+    const makeup = Math.min(1.8,
+      1.55 / Math.sqrt(amplitudes.reduce((sum, value) => sum + value * value, 0)));
+    const resonance = Math.max(0.3, Math.min(3, finite(state.reso, 1)));
+    const q = target.f.map((frequency, i) => Math.max(0.1,
+      Math.min(150, (frequency / Math.max(1, target.bw[i])) * resonance)));
+    return { f: target.f, q, gain: amplitudes, makeup, body: target.f[0] };
+  };
+
+  const write = (param, value, when, seconds, direct = false) => {
+    if (!param || !Number.isFinite(value)) return;
+    if (direct) {
+      param.value = value;
+      return;
+    }
+    const at = Math.max(ctx.currentTime, when);
+    const tc = Math.max(0.004, seconds || 0.004);
+    if (typeof param.setTargetAtTime === 'function') {
+      param.setTargetAtTime(value, at, tc);
+    } else if (typeof param.linearRampToValueAtTime === 'function') {
+      if (typeof param.setValueAtTime === 'function' && Number.isFinite(param.value)) {
+        param.setValueAtTime(param.value, at);
+      }
+      param.linearRampToValueAtTime(value, at + tc * 3);
+    } else {
+      param.value = value;
+    }
+  };
+
+  const applyWet = (direct = false) => {
+    const w = clamp01(state.wet);
+    write(dry.gain, Math.cos((w * Math.PI) / 2), ctx.currentTime, 0.03, direct);
+    write(wet.gain, Math.sin((w * Math.PI) / 2), ctx.currentTime, 0.03, direct);
+    write(bodyGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.body),
+      ctx.currentTime, 0.03, direct);
+    write(airGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.air),
+      ctx.currentTime, 0.03, direct);
+    const i = clamp01(state.intensity);
+    write(onePass.gain, Math.cos((i * Math.PI) / 2), ctx.currentTime, 0.03, direct);
+    write(twoPass.gain, Math.sin((i * Math.PI) / 2), ctx.currentTime, 0.03, direct);
+    // Three extra biquads run whether or not anyone is listening to them, and measured
+    // that doubled the insert's cost for a control that is off by default. Cutting the
+    // feed lets the second bank fall silent and be skipped until it is actually wanted.
+    const wanted = i > 0;
+    if (wanted !== cascadeLive) {
+      for (const filter of stage2) {
+        try { if (wanted) bank.connect(filter); else bank.disconnect(filter); } catch { /* fine */ }
+      }
+      cascadeLive = wanted;
+    }
+  };
+
+  // F4/F5 follow the VOICE, never the vowel, so this runs on a state change and not on
+  // every step of the walk.
+  const applyPresence = (direct = false) => {
+    const upper = upperFormants(state.voice);
+    presence.forEach((filter, i) => {
+      write(filter.frequency, upper.f[i], ctx.currentTime, 0.03, direct);
+      write(filter.Q, Math.max(0.1, upper.f[i] / Math.max(1, upper.bw[i])),
+        ctx.currentTime, 0.03, direct);
+      write(filter.gain, upper.dB[i], ctx.currentTime, 0.03, direct);
+    });
+  };
+
+  const applySpread = (direct = false) => {
+    const spread = clamp01(state.spread);
+    [-spread, 0, spread].forEach((pan, i) => {
+      write(formantPans[i].pan, pan, ctx.currentTime, 0.03, direct);
+    });
+  };
+
+  const applyTarget = (ordinal, when, period, direct = false) => {
+    const values = targetValues(ordinal);
+    const transition = Math.max(0.004,
+      clamp01(state.glide) * 0.45 * Math.max(0.001, period));
+    filters.forEach((filter, i) => {
+      write(filter.frequency, values.f[i], when, transition, direct);
+      write(filter.Q, values.q[i], when, transition, direct);
+      write(formantGains[i].gain, values.gain[i], when, transition, direct);
+      // Stage two is the same filter, so it takes the same targets.
+      write(stage2[i].frequency, values.f[i], when, transition, direct);
+      write(stage2[i].Q, values.q[i], when, transition, direct);
+      write(stage2Gains[i].gain, values.gain[i], when, transition, direct);
+    });
+    write(bank.gain, values.makeup, when, transition, direct);
+    write(cascade.gain, values.makeup, when, transition, direct);
+    write(body.frequency, values.body, when, transition, direct);
+    currentOrdinal = ordinal;
+  };
+
+  const cancelAt = (when) => {
+    const at = Math.max(ctx.currentTime, when);
+    for (const param of [
+      ...filters.flatMap((filter) => [filter.frequency, filter.Q]),
+      ...formantGains.map((gain) => gain.gain), bank.gain, body.frequency,
+      ...stage2.flatMap((filter) => [filter.frequency, filter.Q]),
+      ...stage2Gains.map((gain) => gain.gain), cascade.gain,
+    ]) {
+      try {
+        if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(at);
+        else {
+          param.cancelScheduledValues?.(at);
+          if (param.setValueAtTime && Number.isFinite(param.value)) param.setValueAtTime(param.value, at);
+        }
+      } catch { /* an old AudioParam implementation can omit the hold method */ }
+    }
+  };
+
+  const swingOffset = (boundaryBeats, sixteenth, swing) => {
+    const shift = sixteenth * (finite(swing, 50) - 50) / 50;
+    if (!shift) return 0;
+    const s16 = boundaryBeats * 4;
+    const nearest = Math.round(s16);
+    if (Math.abs(s16 - nearest) > 1e-7) return 0;
+    return (((nearest % 2) + 2) % 2) === 1 ? shift : 0;
+  };
+
+  const node = { input, output, _custom: true };
+  node.applyState = (bpm = 120) => {
+    const beatSeconds = 60 / Math.max(1, finite(bpm, 120));
+    const period = isSynced() ? periodBeats() * beatSeconds : 1 / freeRate();
+    applyTarget(0, ctx.currentTime, period, !smooth);
+    applyWet(!smooth);
+    applySpread(!smooth);
+    applyPresence(!smooth);
+    smooth = true;
+  };
+  node.setState = (patch, bpm = 120) => {
+    const before = JSON.stringify({
+      voice: state.voice, stack: state.stack, rateSync: state.rateSync,
+      rateDivision: state.rateDivision, frequency: state.frequency,
+      depth: state.depth, glide: state.glide, reso: state.reso, tilt: state.tilt,
+    });
+    Object.assign(state, patch);
+    const after = JSON.stringify({
+      voice: state.voice, stack: state.stack, rateSync: state.rateSync,
+      rateDivision: state.rateDivision, frequency: state.frequency,
+      depth: state.depth, glide: state.glide, reso: state.reso, tilt: state.tilt,
+    });
+    applyWet(false);
+    applySpread(false);
+    applyPresence(false);
+    if (!smooth || before === after) return;
+    cancelAt(ctx.currentTime);
+    nextSyncedOrdinal = null;
+    freeNextAt = null;
+    lastSignature = null;
+    const beatSeconds = 60 / Math.max(1, finite(bpm, 120));
+    applyTarget(currentOrdinal, ctx.currentTime,
+      isSynced() ? periodBeats() * beatSeconds : 1 / freeRate());
+  };
+
+  node.scheduleRhythm = (step, when, sixteenth, bpm = 120, swing = 50) => {
+    const beatSeconds = Math.max(0.000001, finite(sixteenth, 0.125) * 4);
+    const signature = motionSignature(bpm, swing, sixteenth);
+    const discontinuity = lastStep != null && (
+      step !== lastStep + 1
+      || when < lastWhen - 1e-6
+      || Math.abs(sixteenth - lastSixteenth) > 1e-6
+      || signature !== lastSignature
+    );
+    const reset = lastStep == null || discontinuity || lastSignature == null;
+    if (reset) {
+      cancelAt(when);
+      nextSyncedOrdinal = null;
+      freeNextAt = null;
+      lastSignature = signature;
+    }
+
+    if (isSynced()) {
+      const period = periodBeats();
+      const startBeat = step / 4;
+      const end = when + sixteenth + 1e-7;
+      const boundaryAt = (ordinal) => when + (ordinal * period - startBeat) * beatSeconds
+        + swingOffset(ordinal * period, sixteenth, swing);
+      if (nextSyncedOrdinal == null) {
+        let active = Math.floor(startBeat / period);
+        while (boundaryAt(active + 1) <= when + 1e-7) active++;
+        while (boundaryAt(active) > when + 1e-7) active--;
+        applyTarget(active, when, period * beatSeconds);
+        currentOrdinal = active;
+        nextSyncedOrdinal = active + 1;
+      }
+      while (boundaryAt(nextSyncedOrdinal) < when - 1e-7) nextSyncedOrdinal++;
+      while (boundaryAt(nextSyncedOrdinal) <= end) {
+        const boundary = boundaryAt(nextSyncedOrdinal);
+        if (boundary >= when - 1e-7) {
+          applyTarget(nextSyncedOrdinal, boundary, period * beatSeconds);
+        }
+        nextSyncedOrdinal++;
+      }
+    } else {
+      const period = 1 / freeRate();
+      if (freeNextAt == null) {
+        freeOrdinal = 0;
+        applyTarget(freeOrdinal, when, period);
+        freeNextAt = when + period;
+      }
+      if (freeNextAt < when - 1e-7) {
+        const skipped = Math.floor((when - freeNextAt) / period) + 1;
+        freeOrdinal += skipped;
+        freeNextAt += skipped * period;
+      }
+      const end = when + sixteenth + 1e-7;
+      while (freeNextAt <= end) {
+        freeOrdinal++;
+        applyTarget(freeOrdinal, freeNextAt, period);
+        freeNextAt += period;
+      }
+    }
+    lastStep = step;
+    lastWhen = when;
+    lastSixteenth = sixteenth;
+    lastSignature = signature;
+  };
+
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const n of [input, output, dry, wet, body, bodyGain, air, airGain, ...presence,
+      bank, ...stage2, ...stage2Gains, cascade, onePass, twoPass,
+      ...filters, ...formantGains, ...formantPans]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  return node;
+}
+
 function makeRhythmicGate(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
@@ -1733,6 +2082,35 @@ export const EFFECTS = [
   { id: 'peq', name: 'Parametric EQ', short: 'Param EQ', cost: 0.15, custom: makeParametricEq,
     params: ['f1', 'g1', 'f2', 'g2', 'q2', 'f3', 'g3', 'q3', 'f4', 'g4'],
     defaults: { f1: 120, g1: 0, f2: 500, g2: 0, q2: 1, f3: 2000, g3: 0, q3: 1, f4: 6000, g4: 0 } },
+  // Measured with the native three-band graph and its scheduler hook in the same
+  // OfflineAudioContext bench as the other custom effects.
+  { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.50, custom: makeVowelFilter,
+    params: ['voice', 'stack', 'rateSync', 'rateDivision', 'frequency',
+      'depth', 'glide', 'reso', 'spread', 'tilt', 'intensity', 'body', 'air', 'wet'],
+    defaults: {
+      voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
+      frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9,
+      body: 0.5, air: 0.25, tilt: 0.45, intensity: 0, wet: 0.9,
+    },
+    ranges: {
+      voice: { options: ['robotic', 'soprano', 'alto', 'countertenor', 'tenor', 'bass'] },
+      stack: { options: ['a', 'e', 'i', 'o', 'u',
+        'a e', 'a o', 'o u', 'i a', 'a e i', 'o a e', 'u o a',
+        'a e i o u', 'u o a e i'] },
+      frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz', log: true },
+      glide: { min: 0, max: 1, step: 0.01 },
+      reso: { min: 0.3, max: 3, step: 0.05 },
+      spread: { min: 0, max: 1, step: 0.01 },
+      body: { min: 0, max: 1, step: 0.01 },
+      air: { min: 0, max: 1, step: 0.01 },
+      tilt: { min: 0, max: 1, step: 0.01 },
+      intensity: { min: 0, max: 1, step: 0.01 },
+    },
+    labels: {
+      voice: 'VOICE', stack: 'VOWEL STACK', rateDivision: 'RATE',
+      frequency: 'RATE', depth: 'DEPTH', glide: 'GLIDE', reso: 'RESO', spread: 'SPREAD',
+      body: 'BODY', air: 'AIR', tilt: 'TILT', intensity: 'INTENSITY',
+    } },
   { id: 'chandelay', name: 'Advanced Delay', short: 'Adv. Delay', cost: 0.15, custom: makeChannelDelay, timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'tone', 'pan', 'mix'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, pan: 0, mix: 0.35 } },

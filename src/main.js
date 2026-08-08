@@ -33,6 +33,7 @@ import { MinigameState } from './game/minigames/index.js';
 import { POWER_DEFS } from './game/powerups.js';
 import { REWARDS, ARCADE_PLAY_COST } from './data/progression.js';
 import { CABINET_BY_ID } from './data/cabinets.js';
+import { gameAlternate, GAME_ALTERNATES } from './data/game-alternates.js';
 import { STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
@@ -121,6 +122,13 @@ function routeDevUrl(goto, p) {
     if (Number.isFinite(pct) && pct > 0 && pct < 100) return pct / 100;
     return finishFrom(params, stage);
   };
+  const alternateFrom = (params, parentId) => {
+    const id = params.get('alt');
+    const song = gameAlternate(id, parentId);
+    if (id && !song) return false;
+    Flow.setGameAlternate(song?.id || null);
+    return true;
+  };
 
   // Some targets need a valid save slot. Seed one if none exists.
   const anySlot = save.data.slots.some(Boolean);
@@ -141,6 +149,7 @@ function routeDevUrl(goto, p) {
       setState(new TutorialState({ save, onDone: () => Flow.toTitle() }));
       break;
     case 'hub': {
+      if (!alternateFrom(p, 'hub')) { Flow.toTitle(); break; }
       heroFrom(p); // validates and calls Flow.setHero if valid
       Flow.toHub();
       break;
@@ -194,6 +203,7 @@ function routeDevUrl(goto, p) {
       if (!cabId) { Flow.toTitle(); break; }
       const cab = CABINET_BY_ID[cabId];
       if (!cab) { Flow.toTitle(); break; }
+      if (!alternateFrom(p, cabId)) { Flow.toTitle(); break; }
       if (stageId) {
         const stage = STAGE_BY_ID[stageId];
         if (stage && stage.cabinet === cabId) {
@@ -233,6 +243,7 @@ const Flow = {
   pendingStage: null,
   pendingCorrupted: [],
   pendingBoss: false,
+  gameAlternate: null,
 
   // One answer to "who am I", used by the hub, by the stage launcher and by the
   // transition cameo. Without a single source these three drifted: the hub read
@@ -242,6 +253,13 @@ const Flow = {
   setHero(id) {
     if (id) Flow.hubAvatar = id;
     setTransitionHero(Flow.heroId());
+  },
+  setGameAlternate(id) {
+    this.gameAlternate = id ? GAME_ALTERNATES[id] || null : null;
+    return this.gameAlternate;
+  },
+  gameSongFor(parentId) {
+    return this.gameAlternate?.alternateOf === parentId ? this.gameAlternate : null;
   },
 
   toTitle(opts = {}) {
@@ -330,6 +348,7 @@ const Flow = {
       corrupted,
       initialHeroId,
       devInvuln, devAutoExit, devMaxTime, devStartPercent, devForceMission,
+      musicSong: this.gameSongFor(cab.id),
       // The bench-upgrade parade is a once-per-visit thing; a retry has already
       // seen it (same as the briefing it also skips).
       announceBench,

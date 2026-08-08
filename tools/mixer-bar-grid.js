@@ -239,13 +239,34 @@ export function movedNote({ bar, step, rowAt }, dStep, dRow, { bars, rows }) {
  * pointer became flattens that rhythm to one value, which is then yours to rebuild note
  * by note.
  *
- * One step is the floor. Pull a whole note back to a quarter and the sixteenths beside
- * it cannot follow that far, so they stop at a step and stay there — the same
- * compromise every editor makes at the bottom of the range, and better than refusing
- * the drag because one note in the set has run out of room.
+ * The generic helper defaults to one step as its floor. The freehand piano roll passes
+ * its own 64th-note floor, while other set edits can retain the safer one-step default.
+ * Either way, the whole set stops at the floor rather than refusing the drag because
+ * one note has run out of room.
  */
-export function stretched(lens, by) {
-  return lens.map((len) => Math.max(1, (len ?? 1) + by));
+export function stretched(lens, by, minimum = 1) {
+  const floor = Number(minimum);
+  const min = floor > 0 ? floor : 1;
+  return lens.map((len) => Math.max(min, (len ?? 1) + by));
+}
+
+// One piano-roll step is a sixteenth note, so a quarter of a step is a sixty-fourth.
+// Freehand shortening stops here: it remains visibly and audibly non-zero without
+// bringing back the old one-sixteenth floor.
+export const MIN_NOTE_LENGTH = 0.25;
+
+/**
+ * Snap a positive note length to a musical grid, in sequencer steps.
+ *
+ * One step is one sixteenth in the current bank format. This is deliberately an
+ * explicit edit helper rather than something the piano roll applies while drawing:
+ * freehand lengths remain continuous, and callers opt into a grid when they want it.
+ */
+export function quantiseLength(len, grid = 1) {
+  const value = Number(len);
+  const step = Number(grid);
+  if (!(value > 0) || !(step > 0)) return null;
+  return Number((Math.max(step, Math.round(value / step) * step)).toFixed(6));
 }
 
 export function clampDelta(notes, dStep, dRow, { bars, rows }) {
@@ -263,12 +284,16 @@ export function clampDelta(notes, dStep, dRow, { bars, rows }) {
 }
 
 export function drawnSpan(field, at, len) {
-  if (!(len > 1)) return 1;
-  let span = Math.min(Math.floor(len), field.length - at);
-  for (let k = 1; k < span; k++) {
-    if (field[at + k].on) { span = k; break; }
+  if (!(len > 0)) return 1;
+  const available = field.length - at;
+  if (!(available > 0)) return 1;
+  let span = Math.min(len, available);
+  // A later note on the same pitch is a visual boundary, but it must not quantise
+  // the note before it. Keep the real fractional length up to that boundary.
+  for (let k = 1; k < available; k++) {
+    if (field[at + k].on) { span = Math.min(span, k); break; }
   }
-  return Math.max(1, span);
+  return Math.max(Number.EPSILON, span);
 }
 
 /**
@@ -296,6 +321,9 @@ export function drawnSpan(field, at, len) {
  * @param preview     (row, value) => sound it. Called only on the way IN: a drag that
  *                    erases twelve steps should not play twelve notes.
  * @param previewRelease () => release every preview started by the current gesture.
+ * @param addLength   (row) => the explicit length for a new note, or null when this
+ *                    editor does not support per-note lengths. Existing notes never
+ *                    call for this value; their stored lengths are preserved.
  * @param title       (ctx) => the window's title line
  * @param headerExtra (ctx) => [HTMLElement] — buttons between the title and the ✕
  * @param rowHeader   (row, ctx) => [HTMLElement] — the sticky left cell's contents
@@ -311,7 +339,8 @@ export function createBarGrid({
   // off and a press on a filled cell begins an erase-drag as it always did. That is
   // the step grid, exactly — a drum hit has no length and dragging one to another
   // beat is not a gesture anybody performs on a kit.
-  withLen = () => null, cellLen = () => null, resizable = () => false, movable = false,
+  withLen = () => null, cellLen = () => null, addLength = () => null,
+  resizable = () => false, movable = false,
   // A panel whose rows are an INSTRUMENT rather than a track list: it shows all of
   // them and only draws the ones in view. `rowHeight` is the fallback pixel height
   // of one row; an instrument may provide `rowHeightOf(row)` for a deliberate,
@@ -442,6 +471,11 @@ export function createBarGrid({
   // or making the window taller all hand it more room without moving the scroll. See
   // `watchSize`.
   let sizeWatch = null;
+  // Keep the cheap desk layout live under a resize pointer, but hold the expensive
+  // virtual row replacement until the final size has landed. Rebuilding the visible
+  // roll while the audio scheduler is refilling its lookahead can create a gap.
+  let resizeDeferred = false;
+  let resizeDirty = false;
   // The notes picked out, as places — see `noteKey`. Survives a rebuild because it
   // holds strings rather than elements, and survives a move because whatever moves the
   // notes rebuilds the keys alongside them.
@@ -452,6 +486,7 @@ export function createBarGrid({
   let editedKey = null;
   let editScope = null;
   let marquee = null;       // the rubber band, while one is being drawn
+  let barViews = new Map();
 
   const isOpen = () => el.classList.contains('show');
   const barWords = (r) => (r.from === r.to
@@ -599,6 +634,23 @@ export function createBarGrid({
 
   /** The sixteen raw values a bar plays on one lane, pending edits included. */
   const readBar = (b, lane) => readPair(b, lane).notes;
+  const barView = (b) => {
+    const root = engineBank?.() || bank();
+    if (!root) return null;
+    const bar = plan[b];
+    if (!bar || bar.sec == null) return root;
+    if (barViews.has(bar.sec)) return barViews.get(bar.sec);
+    const section = resolveSection(root, bar.sec);
+    const merged = section ? { ...root, ...section } : root;
+    barViews.set(bar.sec, merged);
+    return merged;
+  };
+  const cellSpan = (row, value, len, b, step) => cellLen(row, value, len, {
+    bar: b,
+    step,
+    blockStep: ((plan[b]?.half ?? 0) * 16) + step,
+    view: barView(b),
+  });
 
   const mutedIn = (b, lane) => (plan[b]?.off || []).includes(lane);
 
@@ -840,6 +892,7 @@ export function createBarGrid({
     if (!bank()) return;
     const d = draft();
     if (!d?.plan) return;
+    barViews = new Map();
     plan = d.plan;
     if (wholeSong) {
       range = { from: 0, to: Math.max(0, plan.length - 1) };
@@ -1115,11 +1168,23 @@ export function createBarGrid({
     if (!sizeWatch) {
       sizeWatch = new ResizeObserver(([entry]) => {
         if (!(entry?.target?.clientHeight > 0)) return;
+        if (resizeDeferred) { resizeDirty = true; return; }
         renderRows(ctx());
       });
     }
     sizeWatch.disconnect();
     sizeWatch.observe(scroll);
+  }
+
+  function setResizeDeferred(on) {
+    resizeDeferred = !!on;
+    if (resizeDeferred || !resizeDirty) return;
+    resizeDirty = false;
+    requestAnimationFrame(() => {
+      if (resizeDeferred) { resizeDirty = true; return; }
+      const scroll = el.querySelector('.ssqscroll');
+      if (scroll?.clientHeight > 0) renderRows(ctx());
+    });
   }
 
   /**
@@ -1309,8 +1374,8 @@ export function createBarGrid({
         cell.setAttribute('aria-label',
           `${row.label}, bar ${f.b + 1}, beat ${Math.floor(f.i / 4) + 1}, sixteenth ${f.i % 4 + 1}`);
         if (f.on) {
-          const span = drawnSpan(field, at, cellLen(row, f.value, f.len));
-          if (span > 1) cell.style.setProperty('--len', String(span));
+          const span = drawnSpan(field, at, cellSpan(row, f.value, f.len, f.b, f.i));
+          if (Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
           if (resizable(row)) cell.classList.add('sizeable');
           // A selection is a set of PLACES, so it redraws from the same strings after
           // every rebuild — nothing about it is held in an element.
@@ -1605,10 +1670,21 @@ export function createBarGrid({
     if (!row) return;
     const b = Number(cell.dataset.bar);
     const i = Number(cell.dataset.step);
-    if (!setCell(row, b, i, paint)) return;
+    const value = readBar(b, row.lane)[i] ?? null;
+    // The length picker describes a NOTE BEING ADDED. A filled cell is either being
+    // erased or painted over as part of an existing note, so its stored phrasing must
+    // survive. `addLength` is deliberately a callback: the piano roll owns the picker,
+    // while the shared grid owns every way a tap can reach a new cell.
+    const drawn = paint && !isOn(row, value) ? addLength(row) : null;
+    if (!setCell(row, b, i, paint, drawn)) return;
     cell.classList.toggle('on', paint);
     cell.classList.toggle('edited', paint);
     cell.setAttribute('aria-pressed', paint ? 'true' : 'false');
+    // `setCell` stages the new note and its chosen length immediately, but this cell is
+    // already on screen. Refresh its rectangle in the same gesture so a 1/2 or 1/4 note
+    // does not flash as the legacy one-step width until the next rebuild.
+    const pair = readPair(b, row.lane);
+    showLen(cell, paint ? (cellSpan(row, pair.notes[i] ?? null, pair.lengths[i] ?? null, b, i) || 1) : 1);
     // Only on the way in. A drag that erases twelve steps should not play twelve
     // notes, and hearing the one you just added is the whole point of the preview.
     if (paint) preview(row, readBar(b, row.lane)[i]);
@@ -1714,7 +1790,7 @@ export function createBarGrid({
   };
 
   const showLen = (cell, span) => {
-    if (span > 1) cell.style.setProperty('--len', String(span));
+    if (span > 0 && Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
     else cell.style.removeProperty('--len');
   };
   const showOn = (cell, on) => {
@@ -1728,7 +1804,7 @@ export function createBarGrid({
     const pair = readPair(b, row.lane);
     const value = pair.notes[i] ?? null;
     showOn(cell, isOn(row, value));
-    showLen(cell, cellLen(row, value, pair.lengths[i] ?? null) || 1);
+    showLen(cell, cellSpan(row, value, pair.lengths[i] ?? null, b, i) || 1);
   };
 
   /**
@@ -1805,8 +1881,30 @@ export function createBarGrid({
       if (!isOn(row, value)) continue;
       out.push({
         bar, step, row, rowAt: rowAtOf(rowKey), value,
-        len: cellLen(row, value, pair.lengths[step] ?? null),
+        len: cellSpan(row, value, pair.lengths[step] ?? null, bar, step),
       });
+    }
+    return out;
+  }
+
+  function allNotes() {
+    const out = [];
+    for (let b = range.from; b <= range.to; b++) {
+      for (const row of rowList) {
+        const pair = readPair(b, row.lane);
+        for (let step = 0; step < 16; step++) {
+          const value = pair.notes[step] ?? null;
+          if (!isOn(row, value)) continue;
+          out.push({
+            bar: b,
+            step,
+            row,
+            rowAt: rowAtOf(row.key),
+            value,
+            len: cellSpan(row, value, pair.lengths[step] ?? null, b, step),
+          });
+        }
+      }
     }
     return out;
   }
@@ -1840,7 +1938,7 @@ export function createBarGrid({
       add: !!ev.shiftKey,
       // The length it has NOW, so a resize that ends where it started changes nothing
       // and a move carries the note's own length to wherever it lands.
-      len: cellLen(row, pair.notes[i] ?? null, pair.lengths[i] ?? null),
+      len: cellSpan(row, pair.notes[i] ?? null, pair.lengths[i] ?? null, b, i),
       x: ev.clientX, y: ev.clientY, moved: false,
       // `delta` is how far the set has been dragged so far, `shown` the cells the
       // preview has touched and owes a redraw to.
@@ -1887,7 +1985,10 @@ export function createBarGrid({
       // Measured off the note's own cell: in the roll every cell is exactly one step
       // wide with no gap, which is what makes this arithmetic rather than a search.
       const r = drag.cell.getBoundingClientRect();
-      const want = Math.max(1, Math.ceil((e.clientX - r.left) / r.width));
+      // Length is continuous in step units. Note starts remain on the bank's existing
+      // sixteenth grid, but the right edge may land between two starts. Stop at a 64th
+      // note rather than zero, without bringing the sixteenth floor back.
+      const want = Math.max(MIN_NOTE_LENGTH, Number(((e.clientX - r.left) / r.width).toFixed(6)));
       if (want === drag.span) return;
       drag.span = want;
       // The whole set stretches, and it has to LOOK like the whole set stretching —
@@ -1896,7 +1997,7 @@ export function createBarGrid({
       // resize was not reaching them, and there is no reason to trust a release over
       // your own eyes.
       const set = dragSet(drag);
-      const lens = stretched(set.map((nt) => nt.len), want - (drag.len ?? 1));
+      const lens = stretched(set.map((nt) => nt.len), want - (drag.len ?? 1), MIN_NOTE_LENGTH);
       set.forEach((nt, i) => {
         const cell = cellFor(rowList[nt.rowAt]?.key, nt.bar, nt.step);
         if (cell) showLen(cell, lens[i]);
@@ -1998,15 +2099,47 @@ export function createBarGrid({
    * pointer became flattens the rhythm of the phrase into one value — which is the
    * thing you would then have to undo by hand, note by note.
    *
-   * A note cannot go under one step, so a set pulled shorter than its shortest member
-   * allows keeps that member at one step while the rest come in. It is the same
-   * compromise every editor makes at the bottom of the range, and the alternative —
-   * refusing the whole drag because one note has run out of room — is worse.
+   * A freehand note cannot go below a 64th note, so a set pulled shorter than its
+   * shortest member allows keeps that member at the 0.25-step floor while the rest
+   * come in. The alternative — refusing the whole drag because one note has run out
+   * of room — is worse.
    */
   function resizeNotes(notes, by) {
     if (!by) return;
-    const lens = stretched(notes.map((nt) => nt.len), by);
+    const lens = stretched(notes.map((nt) => nt.len), by, MIN_NOTE_LENGTH);
     notes.forEach((nt, i) => setCell(nt.row, nt.bar, nt.step, true, lens[i]));
+  }
+
+  function adjustLengths(scopeKind, percent) {
+    const value = Number(percent);
+    if (!(value > 0) || Math.abs(value - 100) < 1e-9) return { count: 0, changed: 0 };
+    const notes = scopeKind === 'all' ? allNotes() : selected();
+    let changed = 0;
+    for (const nt of notes) {
+      const next = Math.max(MIN_NOTE_LENGTH,
+        Number((((nt.len || 1) * value) / 100).toFixed(6)));
+      if (setCell(nt.row, nt.bar, nt.step, true, next)) changed++;
+    }
+    if (changed) commit();
+    return { count: notes.length, changed };
+  }
+
+  function quantiseLengths(scopeKind, grid = 1) {
+    const step = Number(grid);
+    if (!(step > 0)) return { count: 0, changed: 0 };
+    const notes = scopeKind === 'all' ? allNotes() : selected();
+    let changed = 0;
+    for (const nt of notes) {
+      const next = quantiseLength(nt.len, step);
+      // If the effective length is already on the requested grid, leave an absent
+      // Len entry absent. This keeps quantising an already-quantised legacy part a
+      // no-op while still materialising a value when it actually overrides a voice
+      // default such as 1.8 steps.
+      if (next == null || Math.abs(next - nt.len) < 1e-9) continue;
+      if (setCell(nt.row, nt.bar, nt.step, true, next)) changed++;
+    }
+    if (changed) commit();
+    return { count: notes.length, changed };
   }
 
   /** Let the band go: what it is round is what is now picked out. */
@@ -2309,6 +2442,12 @@ export function createBarGrid({
     refresh: () => { autoBar = null; if (isOpen()) build(); },
     /** Repaint without clearing the auto-page — for a control inside the panel. */
     redraw: build,
+    setResizeDeferred,
+    selectedCount: () => selected().length,
+    adjustLengths: ({ scope: scopeKind = 'selection', percent } = {}) =>
+      adjustLengths(scopeKind === 'all' ? 'all' : 'selection', percent),
+    quantiseLengths: ({ scope: scopeKind = 'selection', grid = 1 } = {}) =>
+      quantiseLengths(scopeKind === 'all' ? 'all' : 'selection', grid),
     captureRowAnchor,
     restoreRowAnchor,
     /**
@@ -2363,6 +2502,7 @@ export function createBarGrid({
       autoLeftAt = null;
       rendered = null;
       plan = [];
+      barViews = new Map();
       range = { from: 0, to: 0 };
       cols = new Map();
       lit = [];

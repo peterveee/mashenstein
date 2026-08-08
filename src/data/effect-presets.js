@@ -24,6 +24,25 @@ export const EFFECT_PRESETS = {
       },
       "presets": {}
     },
+    "vowel": {
+      "default": {
+        "voice": "alto",
+        "stack": "a e i o u",
+        "rateSync": 1,
+        "rateDivision": 0.25,
+        "frequency": 0.5,
+        "depth": 1,
+        "glide": 0.08,
+        "reso": 2,
+        "spread": 0.9,
+        "body": 0.5,
+        "air": 0.25,
+        "tilt": 0.45,
+        "intensity": 0,
+        "wet": 0.9
+      },
+      "presets": {}
+    },
     "chandelay": {
       "default": {
         "sync": 1,

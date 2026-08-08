@@ -12,7 +12,7 @@
 //
 // The CLI is tools/import-midi.js; the desk posts files here through the mixer.
 import { parseMidi, tempoOf, notesOf } from './midi-parse.js';
-import { LANE_KEYS } from '../../src/engine/lanes.js';
+import { LANE_KEYS, lenKey, perNoteLengthLane } from '../../src/engine/lanes.js';
 
 const STEPS_PER_BLOCK = 32;                    // two bars of 4/4 in sixteenths
 const PERC = new Set(['kick', 'snare', 'clap', 'rim', 'hats', 'ohats', 'crash']);
@@ -119,16 +119,29 @@ if (!assignments.length) throw new Error('there are no notes in that file');
 
 // ---- quantise onto the sixteenth grid --------------------------------------
 const lanes = new Map();                       // lane -> step -> value
-const put = (lane, step, value) => {
-  if (!lanes.has(lane)) lanes.set(lane, new Map());
-  const at = lanes.get(lane);
+const lengths = new Map();                    // lane -> step -> length(s)
+const mapFor = (store, lane) => {
+  if (!store.has(lane)) store.set(lane, new Map());
+  return store.get(lane);
+};
+const put = (lane, step, value, len = null) => {
+  const at = mapFor(lanes, lane);
+  const lengthable = perNoteLengthLane(lane);
+  const lensAt = lengthable ? mapFor(lengths, lane) : null;
   if (CHORDAL.has(lane)) {
-    const held = at.get(step) || [];
-    if (!held.includes(value)) held.push(value);
-    at.set(step, held);
-  } else {
-    at.set(step, value);                       // last note on a step wins
+    const notes = at.get(step) || [];
+    const lens = lensAt?.get(step) || [];
+    const pairs = notes.map((note, i) => ({ note, len: lens[i] ?? 1 }));
+    const hit = pairs.find((p) => p.note === value);
+    if (hit) hit.len = Math.max(1, len ?? hit.len ?? 1);
+    else pairs.push({ note: value, len: Math.max(1, len ?? 1) });
+    pairs.sort((a, b) => a.note - b.note);
+    at.set(step, pairs.map((p) => p.note));
+    if (lensAt) lensAt.set(step, pairs.map((p) => p.len));
+    return;
   }
+  at.set(step, value);                       // last note on a step wins
+  if (lensAt) lensAt.set(step, Math.max(1, len ?? 1));
 };
 
 let lastStep = 0;
@@ -148,7 +161,8 @@ for (const a of assignments) {
       }
       put(lane, step, true);
     } else {
-      put(a.lane, step, nt.note);
+      const off = Math.round((nt.off ?? nt.on) / ticksPerStep);
+      put(a.lane, step, nt.note, Math.max(1, off - step));
     }
   }
 }
@@ -173,12 +187,28 @@ function tokens(lane, block) {
   return any ? out : null;
 }
 
+function blockLengths(lane, block) {
+  const at = lengths.get(lane);
+  if (!at) return null;
+  const out = [];
+  let any = false;
+  for (let i = 0; i < STEPS_PER_BLOCK; i++) {
+    const v = at.get(block * STEPS_PER_BLOCK + i);
+    out.push(v === undefined ? null : v);
+    if (v !== undefined) any = true;
+  }
+  return any ? out : null;
+}
+
 const blocks = [];
 for (let b = 0; b < blockCount; b++) {
   const section = {};
   for (const lane of laneKeys) {
     const t = tokens(lane, b);
-    if (t) section[lane] = t;
+    if (!t) continue;
+    section[lane] = t;
+    const lens = blockLengths(lane, b);
+    if (lens) section[lenKey(lane)] = lens;
   }
   blocks.push(section);
 }
@@ -211,7 +241,11 @@ const laneLine = (lane, t) => {
 };
 
 const body = sections.map((section, i) => {
-  const lines = Object.entries(section).map(([lane, t]) => laneLine(lane, t));
+  const lines = Object.entries(section).map(([lane, t]) => (
+    lane.endsWith('Len')
+      ? `      ${lane}: ${JSON.stringify(t)},`
+      : laneLine(lane, t)
+  ));
   return `    // section ${i}\n    {\n${lines.join('\n')}\n    },`;
 }).join('\n');
 

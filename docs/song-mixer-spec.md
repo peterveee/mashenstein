@@ -459,9 +459,11 @@ suggesting enhancements:
    `tools/lib/note-recorder.js` for the clock and the take buffer, and the roll's
    `noteCell`/`noteLength` for the note semantics it reuses. Constraints worth knowing
    before extending it:
-   - **Sixteenths are the storage floor** — 16 steps per bar, nothing between them, so
-     there is no quantise-off and no swing. The only sub-sixteenth expression anywhere
-     is the per-*bar* `offset` map in 1/32 units.
+   - **Note starts remain on the sixteenth storage grid** — 16 steps per bar, with no
+     note-on positions between them. Melodic note lengths live in per-note `${lane}Len`
+     arrays and may be fractional; the piano roll edits them continuously by default,
+     while its explicit Length menu can quantise selected notes or a whole track to
+     sixteenth intervals.
    - **Overdub only.** Recording adds notes; deletion stays with the grid and the roll.
    - **Writes are shared** (`writeBarNotesShared`), so a note played into a looping
      section changes every bar that plays that part.

@@ -295,7 +295,8 @@ export function createTutorial({
       says: 'The piano roll is the melodic view of whichever track is selected — drum tracks '
         + 'get a kit grid instead. The step grid is the same notes as a pattern, steps you '
         + 'toggle.\n\nBoth are windows: leave them open and they follow the selection while '
-        + 'the song runs. Sixteenths are the floor. There is nothing finer to draw.',
+        + 'the song runs. Note starts land on sixteenths, but the piano roll can draw '
+        + 'fractional note lengths; use Length when you want durations quantised again.',
     },
     {
       id: 'record',
@@ -306,7 +307,8 @@ export function createTutorial({
       says: 'Turn on MIDI and the desk listens to your controller. Without one, the keyboard '
         + 'button puts two octaves on screen — or the song’s own kit on a drum track — '
         + 'and the computer keys play it.\n\nRecord writes what you play into the selected '
-        + 'track, quantised to sixteenths and copied everywhere that part repeats. It only '
+        + 'track, with starts and held lengths quantised to sixteenths, and copies it '
+        + 'everywhere that part repeats. It only '
         + 'ever adds. ⌘Z takes back a phrase; Esc silences everything and drops whatever '
         + 'has not landed yet.',
     },

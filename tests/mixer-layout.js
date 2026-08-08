@@ -37,7 +37,7 @@ assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
   'all envelope time controls share a 10-second maximum and sustain is edited as 0–100%');
 
 const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
-assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null \}\)/
+assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,\s*onStart = null, onEnd = null \}\)/
   .test(entrySource)
   && /const pos = clamp\(position, 0, 1\);/.test(entrySource)
   && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(entrySource)
@@ -356,6 +356,9 @@ assert(/#timeline::after \{[^}]*pointer-events:\s*none/s.test(shell)
   && /#devices::before \{[^}]*pointer-events:\s*none/s.test(shell)
   && /#devices\.edge-resizable::before \{[^}]*pointer-events:\s*auto[^}]*cursor:\s*ns-resize[^}]*touch-action:\s*none/s.test(shell),
   'Timeline and Effects borders also have transparent, touch-safe resize hit areas');
+assert(/#rack,\s*\n\s*:is\(#stepseq, #pianoroll, #kitroll\) \.ssqscroll \{[^}]*position:\s*relative[^}]*z-index:\s*4/s.test(shell)
+  && /#devices::before \{[^}]*z-index:\s*3/s.test(shell),
+  'horizontal scrollbars stack above the overlapping splitter hit zones');
 
 // The three heights are written together, through one function, or the window stamp
 // they are scaled by on the next load describes only whichever one was dragged last.
@@ -424,10 +427,15 @@ assert(entry.includes('function syncPanelResizeEdges()')
   'resize hit areas follow the adjacent panels’ fold state');
 assert(/function scheduleDeskFit\([^)]*\)[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
   && /function scheduleDeskFit\([\s\S]*?deskFitSettle[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
+  && (entry.match(/pianoRoll\.setResizeDeferred\(true\)/g) || []).length === 3
+  && /scheduleDeskFit\(\);/.test(entry)
+  && /requestAnimationFrame\(\(\) => pianoRoll\.setResizeDeferred\(false\)\)/.test(entry)
+  && /function setResizeDeferred\(on\)[\s\S]*?resizeDirty/.test(barGrid)
+  && /if \(resizeDeferred\) \{ resizeDirty = true; return; \}/.test(barGrid)
   && /function setNotesFolded\([\s\S]*?syncPanelResizeEdges\(\);[\s\S]*?scheduleDeskFit\(true\)/.test(entry)
   && /function setDevicesFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry)
   && /function setMixerFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry),
-  'panel folds coalesce their refit and get one bounded settled measurement for strip height');
+  'panel folds and resizers coalesce layout work, deferring piano-roll rebuilds until settled');
 assert(/function fitStrips\(\)[\s\S]*?scheduleMarkClipped\(\)/.test(entry)
   && /function scheduleMarkClipped\(\)[\s\S]*?requestIdleCallback/.test(entry),
   'nonessential clipping reads are deferred out of the panel-fold task');
@@ -1142,9 +1150,9 @@ assert(!/ssqlane-pick|ssqoctbtn|ssqscalekind|ssqroot|Find the part/.test(rollSrc
 assert(/headerHost:\s*\(\)\s*=>\s*document\.getElementById\('notehead'\)/.test(rollSrc)
   && /if \(kids\.length\) \{/.test(barGrid),
   'and an empty host bar is never appended');
-// What is left — the zoom, and what the mouse does — sits in the blank left half of the
-// key column, beside the field both act on rather than at the far end of a header row.
-// The two fields themselves are pinned further down, with the rest of that gutter's rules;
+// What is left — note length, zoom, and what the mouse does — sits in the blank left half
+// of the key column, beside the field each control acts on rather than at the far end of
+// a header row. The fields themselves are pinned further down, with the rest of that gutter's rules;
 // this is the one measurement that keeps them OFF the keys: `.ssqkey` starts at 50% + 3px,
 // so that is where the panel has to stop.
 assert(/#pianoroll \.rollzoom-panel \{[^}]*width:\s*calc\(50% \+ 3px\)/s.test(shell),
@@ -1474,9 +1482,26 @@ assert(/<div id="mastertoolbar" class="grp"[^>]*aria-label="Master volume"><\/di
 // --roll-rowpad-bottom, which are zero on every row but the field's first and last —
 // those two are taller than their pitch by the keyboard's caps (see renderRows), and a
 // note in them must still be drawn the size of every other note.
-assert(/#pianoroll \.ssqcell\.on::before \{[\s\S]*?inset:\s*calc\(2px \+ var\(--roll-rowpad-top, 0px\)\) auto\s*calc\(2px \+ var\(--roll-rowpad-bottom, 0px\)\) 1px;[\s\S]*?width:\s*calc\(var\(--len, 1\) \* 100% - 2px\)/.test(shell)
+assert(/#pianoroll \.ssqcell\.on::before \{[\s\S]*?inset:\s*calc\(2px \+ var\(--roll-rowpad-top, 0px\)\) auto\s*calc\(2px \+ var\(--roll-rowpad-bottom, 0px\)\) 1px;[\s\S]*?width:\s*(?:max\(2px,\s*)?calc\(var\(--len, 1\) \* 100% - 2px\)\)?/.test(shell)
   && /#pianoroll \.ssqcell\.on\.atedge::after \{[\s\S]*?top:\s*calc\(2px \+ var\(--roll-rowpad-top, 0px\)\);[\s\S]*?bottom:\s*calc\(2px \+ var\(--roll-rowpad-bottom, 0px\)\)/.test(shell),
   'piano-roll note marks leave a clear vertical gap and a smaller horizontal gap');
+assert(/export function quantiseLength\(len, grid = 1\)/.test(barGrid)
+  && /export const MIN_NOTE_LENGTH = 0\.25/.test(barGrid)
+  && /const next = Math\.max\(MIN_NOTE_LENGTH,[\s\S]*?toFixed\(6\)\)\);/.test(barGrid)
+  && /function quantiseLengths\(scopeKind, grid = 1\)/.test(barGrid)
+  && /quantiseLengths: \(\{ scope = 'selection', grid: gridSize = 1 \}/.test(piano)
+  && /grid\.quantiseLengths\(\{ scope, grid: gridSize \}\)/.test(piano)
+  && /Quantise selected to 16ths/.test(entry)
+  && /Quantise all to 16ths/.test(entry)
+  && /title="Adjust or quantise note lengths"/.test(shell),
+  'piano-roll lengths stay freehand by default, with explicit selected/all 16th quantisation');
+assert(/const openNoteLengthAdjust = \(scopeKind, x, y\) => \{[\s\S]*?heading\.textContent = 'Adjust note lengths'[\s\S]*?range\.type = 'range'[\s\S]*?number\.type = 'number'[\s\S]*?Apply length[\s\S]*?closeMenu\(\);/.test(entry)
+  && /openNoteLengthAdjust\('selection', r\.left, r\.bottom \+ 4\)/.test(entry)
+  && /openNoteLengthAdjust\('all', r\.left, r\.bottom \+ 4\)/.test(entry)
+  && /number\.min = '1'; number\.step = '1'/.test(entry)
+  && !/\bprompt\(/.test(entry)
+  && /#regionedit/.test(shell),
+  'note-length adjustment uses the mixer inspector with exact numeric input and no browser prompt');
 // A row carrying a cap is taller than its pitch, so the nearest-row arbitration takes the
 // cap back off before it measures a centre — and the scroller keeps no air under the
 // field, or the rules stop short of the bar the field scrolls on.
@@ -1585,9 +1610,16 @@ assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.app
   && /if \(docked\) \{[\s\S]*?const track = document\.createElement\('div'\)[\s\S]*?track\.className = 'ssqruler-track'/.test(barGrid)
   && /rulerHeader:\s*\(\) =>/.test(piano)
   && /const fieldLabel = \(text\) => \{[\s\S]*?el\.className = 'rollzoom-label'[\s\S]*?el\.textContent = text/.test(piano)
-  && /return \[fieldLabel\('ZOOM'\), zoom, fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /return \[fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('ZOOM'\), zoom,[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: 0\.5, label: '1\/32' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
+  && /let noteAddLength = 1/.test(piano)
+  && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? noteAddLength : null\)/.test(piano)
+  && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) : null/.test(barGrid)
+  && /showLen\(cell, paint \? \(cellSpan\(row, pair\.notes\[i\] \?\? null, pair\.lengths\[i\] \?\? null, b, i\) \|\| 1\) : 1\)/.test(barGrid)
+  && /const noteDrawLength = \(row, value, len\) => \{[\s\S]*?if \(drawn != null \|\| !perNoteLengthLane\(row\.lane\)\) return drawn;[\s\S]*?return 1;/.test(piano)
+  && !/return effectiveToneLength\(/.test(piano)
   && /button\.dataset\.zoom = String\(factor\)/.test(piano),
-  'the zoom and the mouse mode are two separately titled fields in the fixed keyboard gutter');
+  'note length, zoom and mouse mode are separately titled fields in the fixed keyboard gutter');
 assert(/#pianoroll \.ssqruler-label \{[^}]*position:\s*relative[^}]*padding:\s*0/s.test(shell)
   // On the arrangement's own right-hand tag column, written as the variables that put it
   // there — the header cell's padding and the gap after it, less the roll's own trim.
@@ -1606,9 +1638,10 @@ assert(/#pianoroll \.ssqruler-label \{[^}]*position:\s*relative[^}]*padding:\s*0
   && /#pianoroll \.rollzoom-label \{[^}]*font-size:\s*9\.5px/s.test(shell)
   && /#pianoroll \.rollzoom-label \{[^}]*letter-spacing:\s*\.03em/s.test(shell)
   && /#pianoroll \.rollzoom-label \{[^}]*color:\s*var\(--dim\)/s.test(shell)
-  // A visibly wider gap between the two fields than between a label and its control.
+  // A visibly wider gap between the three fields than between a label and its control.
+  && /#pianoroll \.rolltool \+ \.rollzoom-label \{[^}]*margin-top:\s*14px/s.test(shell)
   && /#pianoroll \.rollzoom \+ \.rollzoom-label \{[^}]*margin-top:\s*14px/s.test(shell),
-  'the Bar and Beat labels sit flush against the field they name and the roll titles its two fields in the strip’s own label type');
+  'the piano-roll labels sit flush against their fields with clear gaps between the three controls');
 // The ruler names each strip once, in its corner, and the numbers below are bare — so a
 // bar number stacks on the `1` of its own first beat instead of being pushed four
 // characters right of the barline by a word the corner already said. The floating step
@@ -2254,6 +2287,9 @@ assert(/recordFollow\(heardStep\);/.test(entry),
 // One clock, hoisted, because two copies drift the moment anybody nudges [ or ].
 assert(/function heardStepNow\(\) \{[\s\S]*?phOffset \/ 1000/.test(entry),
   'the heard step is one function, phOffset trim included');
+assert(/const PH_DEFAULT = 70;/.test(entry)
+  && /id="phoffset" type="number"[^>]*value="70"/.test(shell),
+  'the default playhead correction gives the piano roll a modest visual lead');
 assert(/const ARRANGEMENT_PAINT_LEAD_MS = 24;/.test(entry)
   && /const NOTE_VISUAL_LEAD_MS = \{ solid: 0, pulse: 10, trail: 45 \};/.test(entry)
   && /function arrangementVisualLeadMs\(\) \{[\s\S]*?ARRANGEMENT_PAINT_LEAD_MS \+ \(NOTE_VISUAL_LEAD_MS\[noteVisualMode\] \?\? 0\)/.test(entry)
@@ -2450,7 +2486,10 @@ assert(escAt > 0 && panicAt > 0 && escAt < panicAt,
 // and a `render()` that throws must tear the shell down rather than leave it up.
 const full = readFileSync(new URL('../tools/mixer-synth-full.js', import.meta.url), 'utf8');
 const shellCss = readFileSync(new URL('../tools/mixer-shell.html', import.meta.url), 'utf8');
-assert(/requestAnimationFrame\(\(\) => \{ if \(showing\) el\.classList\.add\('show'\); \}\)/.test(full),
+// The callback does more than add the class now — it is also the first frame with real
+// column widths, so the label fit and the graphs run in it — so what is asserted is the
+// GUARD: nothing in that callback happens unless the window is still wanted.
+assert(/requestAnimationFrame\(\(\) => \{\s*if \(!showing\) return;\s*el\.classList\.add\('show'\);/.test(full),
   'the deferred show re-checks that the window is still wanted — an open/close inside one'
   + ' frame must not re-show an overlay that has already gone');
 assert(/try \{\s*render\(\);\s*\} catch/.test(full),
@@ -2494,12 +2533,69 @@ for (const sel of CONTROL_RULES) {
 //
 // `.sfglyphrow` already had its `flex-direction: row` — it was the one row that looked
 // right, and that was the clue.
-for (const sel of ['.sfchoice', '.sfpair', '.sfwaverow']) {
+for (const sel of ['.sfchoice', '.sfpair']) {
   const rule = new RegExp(`#synthfull \\${sel} \\{[^}]*\\}`).exec(shellCss)?.[0] || '';
   assert(/display:\s*flex/.test(rule) && /flex-direction:\s*row/.test(rule),
     `#synthfull ${sel} declares flex-direction — it carries the desk's .row class, which`
     + ' is flex-direction: column, so an unstated direction stacks it');
 }
+
+// 4. The strip panel reports the synth class; it does not choose it.
+//
+// The class dropdown reseeds the preset from that class's defaults — every card below the
+// head becomes a different card. That is a library act, done where the preset is built.
+// Beside a channel strip the panel is aimed at the sound the lane is playing RIGHT NOW,
+// and a dropdown one row under the preset's name is far too easy a way to replace it.
+assert(/if \(state\.laneKey\) \{[\s\S]{0,600}?vesynth veclass[\s\S]{0,400}?\} else \{[\s\S]{0,200}?fxsel vesynth/.test(editor),
+  'docked against a strip the SYNTH row is a badge, not a class dropdown — only the'
+  + ' library panel can change what a preset is built from');
+
+// A song-local copy is keyed by lane and song, so its id does NOT move when the lane is
+// put on another preset — `registerSongVoice` writes a new object under the same key. The
+// follow therefore has to compare the object the panel is holding, or picking MRDR-3 while
+// the editor is on a DuoSynth leaves DuoSynth's cards over an MRDR-3 lane.
+assert(/get voice\(\) \{ return state\?\.voice \|\| null; \}/.test(editor),
+  'the editor exposes the preset OBJECT it is drawing, not just its id');
+assert(/if \(chosen === voiceEditor\.editing && preset === voiceEditor\.voice\) return false;/.test(entry)
+  && /const choiceChanged = chosen !== voiceEditor\.editing \|\| preset !== voiceEditor\.voice;/.test(entry),
+  'the editor follows its lane by preset OBJECT — a song-local id stays put across a'
+  + ' change of preset, so an id comparison reads a new synth as the old one');
+
+// And the other half of the same rule: the lane can still change presets under the panel,
+// so the panel has to follow or go. A refused `open` leaves the OLD surface — MRDR-3's
+// Quick macros on a strip now playing a GameSynth — which is the state the badge above
+// makes unreachable from the panel and this makes unreachable from the lane.
+assert(/if \(!voiceEditor\.open\(chosen, \{ laneKey, laneLabel: targetLabel\(laneKey\) \}\)\) \{\s*\n\s*dismissVoiceEditor\(\);\s*\n\s*return true;/.test(entry),
+  'a lane whose preset the editor cannot open takes the panel down rather than leaving'
+  + ' the previous preset\'s surface attached to it');
+
+// ---- a generated song's own instruments are editable ---------------------------------
+//
+// A style pack writes its sounds into the COMPOSITION — `bassVoice: 'stRoundMono'` in the
+// bank — where a desk-chosen preset lands in the mix. The strip reads the bank back and
+// names the sound, so the pen is there and the picker shows it as the one in play; the pen
+// then answered "this lane is on the engine's own voice", because the mix names nothing.
+// Every lane of every new song was un-editable, and the sounds it names are frozen
+// starters that cannot be edited in the library either — so there was no way in at all.
+//
+// Asserted in two halves: the source takes the bank's name as the thing to fork, and the
+// fork really does produce an editable preset — a starter's copy is not a starter.
+assert(/const named = chosen \? null : defaultVoiceOf\(track\?\.bank, laneKey\);/.test(entry)
+  && /const source = chosen \? VOICES\[chosen\] : \(named\?\.kind === 'engine' \? null : named\);/.test(entry)
+  && /\[seam\.voiceKey\]: JSON\.parse\(JSON\.stringify\(source\)\)/.test(entry),
+  'the pen on a generated song forks the preset the BANK names, not only one the mix does');
+
+const { VOICES: CATALOGUE, defaultVoiceOf: defaultVoice, registerSongVoice: registerCopy } = await import('../src/data/voices.js');
+const generated = { kickVoice: 'stKickPunch', bassVoice: 'stRoundMono' };
+const bankNamed = defaultVoice(generated, 'bass');
+const copyId = bankNamed && registerCopy('bassVoice', 'a-new-song', JSON.parse(JSON.stringify(bankNamed)));
+const copy = copyId && CATALOGUE[copyId];
+assert(bankNamed?.id === 'stRoundMono' && bankNamed.starter === true
+  && !!copy && copy.starter === false && copy.songLocal === true
+  && copy.songOrigin === 'library' && CATALOGUE.stRoundMono.starter === true,
+  'a starter named by the bank forks into a song-local copy that is editable, and the'
+  + ' frozen starter itself is left alone');
+delete CATALOGUE[copyId];
 
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

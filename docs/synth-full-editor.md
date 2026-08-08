@@ -1,18 +1,19 @@
-# The full-window MRDR-3 editor
+# The full-window MRDR-3 and Drum Synth editor
 
 Handoff note. Written 2026-08-08, at the end of the session that built it.
 
 ## What it is
 
-MRDR-3's preset editor has two surfaces now. The **strip panel** (`#voiceedit`) is unchanged
-in kind — 366px, three channel strips wide, one long scroll — and an **EDIT** button on its
-SYNTH row opens a **full window** (`#synthfull`) holding the same 169 controls in a
-six-column grid where nothing scrolls.
+MRDR-3 and Drum Synth's preset editors have two surfaces now. The **strip panel** (`#voiceedit`) remains
+366px, three channel strips wide, and one long scroll; its pilot surfaces show Quick controls
+and an **ADVANCED** button. That button opens the shared **full window** (`#synthfull`): MRDR-3
+holds the same 169 controls in a six-column grid, while Drum Synth uses the same renderer for
+its own source cards.
 
 It came from a Claude Design handoff (`README.md` plus an interactive prototype, in Peter's
 Downloads). The design is followed closely but not slavishly; every departure is noted below.
 
-This is the first of twelve. Peter's plan is that every synth gets a simple face in the
+These are the first two of twelve. Peter's plan is that every synth gets a simple face in the
 channel strip and an Advanced/Edit button over a full interface — 82 cards and 495 controls
 across all of them. **Nothing here should be built in a way that only works for MRDR-3.**
 
@@ -37,7 +38,12 @@ cannot disagree about a value, because there is only one value.
 The kit gives it: `voice()`, `get()`, `read(row)`, `layout()`, `write(row, x)`,
 `writeMany(pairs)`, `pickWrite(row, o)`, `sectionOn()`, `toggleSection()`, the strip's own
 widget builders (`numRow`, `pickRow`, `groupCard`, `knob`), `guards()`, `repaint()`,
-`setSolo()`, `onFullClosed()`.
+`setSolo()`, `onFullClosed()`. Graphs are explicitly two-way: a graph gesture writes the
+shared rows and moves the sibling pot needles through `onLive`; a pot gesture re-reads and
+redraws the graph through a lightweight change callback, without rebuilding the card under
+the pointer. The same kit exposes `UNDO`: the history is held by the shared editor state,
+and continuous pot/graph drags are coalesced into one transaction. `Ctrl/Cmd+Z` and the
+Advanced header button use that same path.
 
 `writeMany` exists because a graph handle moves two parameters per gesture frame, and
 `touched()` re-banks the voice, tells the song, marks the desk dirty and schedules a
@@ -74,8 +80,9 @@ between cards.
    `hide` flag.
 
 Also: `numRow`'s `set` is display-only (does not fire `onInput`), which is what makes it safe
-for a graph to move a sibling pot's needle live. And the strip's DOM goes stale while the
-window is up — the two share the value, not the DOM — so `onFullClosed()` rebuilds it.
+for a graph to move a sibling pot's needle live. The graph refresh callback redraws only the
+SVGs, so a pot never drops out from under the pointer. And the strip's DOM goes stale while
+the window is up — the two share the value, not the DOM — so `onFullClosed()` rebuilds it.
 
 ## Decisions taken
 
@@ -96,22 +103,38 @@ lefts are identical).
 
 ```
 mixer   [ LAYER 1 (2) ] [ LAYER 2 (2) ] [ LAYER 3 (2) ]          168px
-layer   [Osc][Pitch Env][   Filter (2)  ][Filt Env][Amp]         auto
-shared  [Settings][Vib/Hum/Drive/LFO][ Global Filter (2)
+layer   [Osc][Pitch Env][Filter][Filt Env][Amp][Settings]        auto
+shared  [Settings][Vib/Hum/Drive/Mod LFO][ Global Filter (2)
                                      ][G.Filt Env][G.Amp]        1fr
 ```
 
-- **Layer cells** hold live controls, not readings: WAVE (glyphs) + COLOUR (unlabelled,
-  hidden unless noise), INTERVAL, DETUNE, GATE, and a full-width level fader.
-- **Osc card** is what is left: UNISON, SPREAD, STEREO, DELAY, AMOUNT, plus the PWM
-  sub-section (absent unless the wave is a pulse) and FM behind a header button.
+- **Layer cells** hold live controls, not readings: INTERVAL, DETUNE, GATE, UNISON,
+  SPREAD, STEREO, DELAY, and a full-width level fader. The header names the layer *and its
+  waveform* — `LAYER 1 · SQUARE` — which is a reading of the picker on the OSC card, not a
+  control; "sub, saw, noise" is how a three-layer stack is read at a glance.
+- **OSC card** (first cell of the layer band, still 1/6 wide) is the wave and whatever
+  modulates it: WAVE (glyphs), COLOUR (unlabelled, hidden unless noise), and then **one**
+  modulator sub-section, chosen by the wave —
+  - a **pulse** gets PWM in the grid (PLS WIDTH, DEPTH, WAVE, RATE, ONSET) and **FM behind
+    the header's FM button**;
+  - **any other wave** gets FM in the grid, with the FM section's own switch riding on the
+    `FM` rule line, and no PWM at all (there is no width to move).
+
+  A sub-section that is switched off is dimmed in place, never removed — the switch on its
+  rule is the way back on, so it may not hide the controls it governs.
 - **Graphs**: five draggable ADSR envelopes, two draggable filter responses. Each handle is
   bound to a ROW — reads through its `read`, writes through it, clamps to its range and
   step. A second grip on existing controls, never a new one.
 - **Header** on every card: 26px, capsule switch, title left, then solo / panel buttons.
   Solo is on the LAYER only.
 
-Counts today: **169 controls, 93 on screen at once, 38 per hidden layer.**
+Counts today: **167 controls, 97 on screen at once, 35 per hidden layer.** (Printed by
+`node tests/synth-full-layout.js`, which derives them — never type them here without
+running it.)
+
+Drum Synth uses the same renderer without MRDR's layer mixer: three six-column bands hold
+the oscillator/noise/ring sources, metal/FM/drive, and master/humanise/taps. Its Advanced
+layout currently contains 60 live controls, including Master Tune and Ring/Metal Attack.
 
 ## Open, in rough priority order
 
@@ -120,10 +143,9 @@ Counts today: **169 controls, 93 on screen at once, 38 per hidden layer.**
    *lowering* a maximum clamps any preset above it. **Next step: check what the 46 MRDR-3
    presets actually reach for, then propose a ceiling** (a guess: nothing goes near 120 and
    ~24 would give the whole musical range across the full sweep).
-2. **"Move the rest of the osc pots up."** Peter asked for this and it was not done. It is
-   five more entries in `MIXER_ROWS`, but it empties the Osc card down to a header and a
-   door — so it is really "delete the oscillator card and reassign its column", which is a
-   layout decision. Options were put to him; no answer yet.
+2. ~~**"Move the rest of the osc pots up."**~~ Done. They are all in `MIXER_ROWS`; the Osc
+   card did not empty out, it changed subject — it is the wave and its modulator now (see
+   the layout above), and WAVE/COLOUR came back DOWN to it to make that card whole.
 3. **Radio dots.** Present and rendering (21 of them, 7×7). Peter said "still wrong" against
    a pre-rebuild screenshot, so it may be resolved — or it may be the shape rather than the
    absence. Check before changing.

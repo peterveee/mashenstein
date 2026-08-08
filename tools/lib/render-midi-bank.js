@@ -3,7 +3,9 @@
 // stores pitches as Hz (seq/chordSeq), so every lane is converted back to a
 // note number on the way out. Timbre can't survive the trip: each lane gets the
 // GM program that comes closest to its oscillator, and percussion goes to ch10.
-import { songBlocks, stepLen, toneLen } from '../../src/engine/lanes.js';
+import {
+  songBlocks, stepLen, toneLen, perNoteLengthLane, effectiveToneLength,
+} from '../../src/engine/lanes.js';
 import { SWING_STRAIGHT } from '../../src/data/arrangements.js';
 
 const PPQ = 96;          // ticks per quarter note
@@ -12,10 +14,10 @@ const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
 const midiNote = (hz) => Math.round(69 + 12 * Math.log2(hz / 440));
 const clampNote = (n) => Math.max(0, Math.min(127, n));
 
-// One track per lane. `dur` reads the block's own length override so phrasing
-// survives the export; the fallback is the engine's default for that lane. It is
-// the LANE's length — a note drawn its own length in the piano roll carries a
-// `${lane}Len` entry, and that is read per note at the note itself, below.
+// One track per lane. The melodic lanes whose note length now lives on the note
+// itself read through the same compatibility resolver as live playback, so an
+// unedited legacy note still exports at its old phrasing and an edited one exports
+// at its explicit per-note length. Everything else keeps its lane-level timing.
 // Program bytes are GM number - 1 (the wire format is 0-based).
 const LANE_TRACKS = [
   { name: 'Bass', ch: 0, prog: 38, lane: 'bass', dur: (b) => b.bassDur || 1.8, vel: 96 },
@@ -213,7 +215,10 @@ export function midiBuffer(bank, {
         // chord lanes hold an array of simultaneous pitches; melodic lanes a scalar
         (Array.isArray(v) ? v : [v]).forEach((hz, i) => {
           if (!(hz > 0)) { deadPitches++; return; }
-          note(notes, ch(L.ch), midiNote(hz), tick, toneLen(len, L.dur(b), i) * TPS, L.vel);
+          const length = perNoteLengthLane(L.lane)
+            ? effectiveToneLength(b, L.lane, s, i)
+            : toneLen(len, L.dur(b), i);
+          note(notes, ch(L.ch), midiNote(hz), tick, length * TPS, L.vel);
         });
       }
     });

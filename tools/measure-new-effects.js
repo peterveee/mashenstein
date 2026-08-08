@@ -21,6 +21,12 @@ window.__bench = async ({ id, params, seconds, reps }) => {
     if (id) {
       const fx = createEffect(id, params, ctx, 120);
       sum.connect(fx.node.input || fx.node); tail = fx.node.output || fx.node;
+      if (fx.scheduleRhythm && (id === 'vowel' || id === 'rhythmgate')) {
+        const sixteenth = 60 / 120 / 4;
+        for (let step = 0; step < Math.ceil(seconds / sixteenth) + 2; step++) {
+          fx.scheduleRhythm(step, step * sixteenth, sixteenth, 120, 50);
+        }
+      }
     }
     tail.connect(ctx.destination); osc.start(0);
     const t0 = performance.now(); await ctx.startRendering();
@@ -45,6 +51,8 @@ const effects = [
   ['flanger', { rateSync: 0, frequency: 0.25 }],
   ['ringmod', { rateSync: 0, frequency: 30, waveform: 'sine' }],
   ['tape', { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05 }],
+  ['vowel', { voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
+    frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9, wet: 0.9 }],
 ];
 const base = await page.evaluate((x) => window.__bench(x), { id: null, params: {}, seconds: 1, reps: 3 });
 console.log(`bare oscillator: ${base.ms.toFixed(2)}ms over ${base.seconds.toFixed(2)}s`);

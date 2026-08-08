@@ -25,6 +25,7 @@ import {
 } from './lib/note-recorder.js';
 import { noteName } from '../src/engine/notes.js';
 import { listTracks, resolveTrack, registerTrack, unregisterTrack } from '../src/data/tracks.js';
+import { CABINET_BY_ID } from '../src/data/cabinets.js';
 // The picker's own list: the library, less the song quotations nothing in the game
 // plays any more. See src/data/voices-in-play.js.
 import { offeredVoices, offeredByCategory } from '../src/data/voices-in-play.js';
@@ -117,7 +118,12 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
  * separately because they are for different jobs. Asked as a question rather than
  * spelled out at each of the three gates, so a third heading is one line here.
  */
-const isDeskSong = (t) => t?.group === 'scratch' || t?.group === 'styleAudition';
+const isDeskSong = (t) => t?.group === 'scratch' || t?.group === 'styleAudition'
+  || t?.group === 'alternate';
+
+/** What this song's own file is called, in the drawer's words. */
+const deskSongKind = (t) => (t?.group === 'styleAudition' ? 'style audition'
+  : t?.group === 'alternate' ? 'alternate' : 'scratch song');
 
 // The engine writes its lane names in lower case, because there they are keys into
 // stem files and mix entries rather than words anyone reads. On the desk they ARE
@@ -2302,12 +2308,14 @@ function renderPresetHeading(el, laneKey) {
  * The exact numbers are settled in a batch, on purpose, by tools/measure-voices.js,
  * which is how the library has always worked too.
  */
-function writeSongVoice(id, preset) {
+// `undo: false` is the editor undoing itself — the mix still has to follow the preset
+// back, but the step that took it there is the editor's, not the desk's.
+function writeSongVoice(id, preset, { undo = true } = {}) {
   const key = songVoiceKey(id, trackId);
   if (!key) return;                     // a library preset: its home is voices.js
   editMix((m) => {
     m.voiceParams = { ...(m.voiceParams || {}), [key]: preset };
-  }, `voiceparams:${key}`);
+  }, `voiceparams:${key}`, { undo });
 }
 
 /**
@@ -3114,10 +3122,14 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
   let preset = chosen && VOICES[chosen];
   if (!preset || preset.kind === 'engine') { dismissVoiceEditor(); return true; }
   // Auto-copy a library preset into the song so the editor never mutates the shared
-  // catalogue through a lane strip. Skipped when the lane was just repointed at the
-  // library by a Save — that preset IS this sound, and copying it back
-  // would undo the save.
-  if (autoCopy && !preset.songLocal) {
+  // catalogue through a lane strip. A normal lane choice always copies; the explicit
+  // `autoCopy: false` exception is only safe when the lane already points at the editor's
+  // current PRESET (the Save-as-New handoff, where the panel is already holding the very
+  // object the lane was just put on). If the choice changed, copy it even in that mode,
+  // otherwise opening can be refused by the library guard and leave the old Quick surface
+  // attached to the new, detailed synth.
+  const choiceChanged = chosen !== voiceEditor.editing || preset !== voiceEditor.voice;
+  if (!preset.songLocal && (autoCopy || choiceChanged)) {
     const seam = seamFor(laneKey);
     if (seam) {
       editMix((m) => {
@@ -3129,8 +3141,32 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
       preset = VOICES[chosen];
     }
   }
-  if (chosen === voiceEditor.editing) return false;
-  voiceEditor.open(chosen, { laneKey, laneLabel: targetLabel(laneKey) });
+  // Still on it only if the panel is holding the very OBJECT the lane plays.
+  //
+  // THE BUG THIS PINS: a song-local copy is keyed by lane and song — `bassVoice@neon` —
+  // so the id does not move when you put the lane on a different preset. The copy of the
+  // new choice is registered under that same id, as a NEW object, and an id comparison
+  // read that as "already on it" and returned before the re-open. The panel went on
+  // drawing the object it was handed when it opened: pick MRDR-3 while the strip's editor
+  // was on a DuoSynth and you got DuoSynth's Note/detailed cards over an MRDR-3 lane, no
+  // Quick macros and no ADVANCED — and the same in reverse, MRDR-3's Quick surface over a
+  // DuoSynth. Both surfaces are resolved from `state.voice` at build time and were
+  // correct; nothing ever rebuilt. See the `voice` getter on the editor.
+  if (chosen === voiceEditor.editing && preset === voiceEditor.voice) return false;
+  // A REFUSED open is the state this whole function exists to prevent.
+  //
+  // `open` turns a preset away for reasons that have nothing to do with the lane — a
+  // library sound the copy above could not make song-local because the lane has no seam
+  // to hold one, an entry that has gone from the catalogue between the choice and here.
+  // Refused, the panel would keep drawing the preset you LEFT: MRDR-3's Quick macros on
+  // a strip now playing a GameSynth, an ADVANCED button onto a window with no layout
+  // behind it, and every pot aimed at a sound nothing is making. There is no surface to
+  // fall back to in that case, so the editor comes off the desk instead — and `forget`
+  // takes the full window with it. The caller repaints, which is what the `true` says.
+  if (!voiceEditor.open(chosen, { laneKey, laneLabel: targetLabel(laneKey) })) {
+    dismissVoiceEditor();
+    return true;
+  }
   return false;
 }
 
@@ -3256,7 +3292,29 @@ function placeVoiceEditor() {
  */
 function editVoice(laneKey) {
   let chosen = laneVoiceId(laneKey);
-  if (!chosen) {
+  // A GENERATED SONG NAMES ITS INSTRUMENTS IN THE BANK, NOT IN THE MIX.
+  //
+  // `bassVoice: 'stRoundMono'` is written into the composition by the style pack — see
+  // `resolveDefault` — so the desk reads it back for the strip's heading and the picker
+  // shows it as what the lane is on, but `laneVoiceId` has nothing to return: the mix
+  // names no preset and holds no copy. That made every lane of every new song answer
+  // the pen with "this lane is on the engine's own voice", which is both wrong and a
+  // dead end — the sound has a name on the strip, and there was no way to edit it short
+  // of picking some other preset first.
+  //
+  // The bank's own name is the answer, and the fork below turns it into the song's copy
+  // exactly as it does for one chosen from the picker. That is also what makes a FROZEN
+  // STARTER editable: it is immutable in the catalogue on purpose, and a song-local copy
+  // is not the catalogue — `registerSongVoice` clears the flag, and Save can only ever
+  // put it in the library under a new name.
+  const named = chosen ? null : defaultVoiceOf(track?.bank, laneKey);
+  // An ENGINE preset is the exception this message was written for, and stays it: it is
+  // a bundle of the bank keys the hand-written voice reads rather than a synth, so there
+  // is nothing for the editor to draw. See `open` in the editor, which refuses one too.
+  const source = chosen ? VOICES[chosen] : (named?.kind === 'engine' ? null : named);
+  // Only when the lane names nothing at all. A mix pointed at an id the catalogue no
+  // longer holds is a different failure, and `open` has the words for it.
+  if (!chosen && !source) {
     // Nothing to copy and nothing to edit. The engine's own voice is not a preset —
     // it is what plays when no preset is named — so there is no entry behind it.
     toast('This lane is on the engine’s own voice. Choose a preset first, then edit it'
@@ -3266,17 +3324,23 @@ function editVoice(laneKey) {
   // Opening the editor from a lane always works on a song-local copy. The library
   // preset is never mutated through a channel strip — edit it from the library
   // browser if you mean to change it for every song.
-  const v = VOICES[chosen];
-  if (v && !v.songLocal && v.kind !== 'engine') {
+  if (source && !source.songLocal && source.kind !== 'engine') {
     const seam = seamFor(laneKey);
     if (seam) {
       editMix((m) => {
-        m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: JSON.parse(JSON.stringify(v)) };
+        m.voiceParams = { ...(m.voiceParams || {}), [seam.voiceKey]: JSON.parse(JSON.stringify(source)) };
       });
       rebank();
       applyToEngine(mixFor(trackId));
       chosen = laneVoiceId(laneKey);  // now returns the song-local id
     }
+  }
+  // The fork is the only way a bank-named preset becomes something the editor can open,
+  // so a lane with no seam to hold the copy has to say so rather than open on nothing.
+  if (!chosen) {
+    toast(`${source?.label ?? 'That sound'} is named by the song itself, and this lane has`
+      + ' nowhere to keep its own copy — so there is nothing here to edit.');
+    return;
   }
   closeMenu();
   selectLane(laneKey);
@@ -4873,6 +4937,7 @@ function markClipped(root = document) {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     dragging = true;
+    pianoRoll.setResizeDeferred(true);
     from = e.clientY;
     startH = h($('arrange'));
     edge.classList.add('edge-dragging');
@@ -4896,13 +4961,15 @@ function markClipped(root = document) {
       setArrangeCollapsed(false);
       userArrH = arrangeSnap(asked);
     }
-    fitStrips();
+    scheduleDeskFit();
   });
   const stop = () => {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
     rememberDeskHeights();
+    scheduleDeskFit(true);
+    requestAnimationFrame(() => pianoRoll.setResizeDeferred(false));
   };
   edge.addEventListener('pointerup', stop);
   edge.addEventListener('pointercancel', stop);
@@ -4913,7 +4980,7 @@ function markClipped(root = document) {
         || e.target.closest?.('button')) return;
     userArrH = null;
     rememberDeskHeights();
-    fitStrips();
+    scheduleDeskFit(true);
     toast('Arrangement back to fitting itself');
   });
 })();
@@ -4926,7 +4993,7 @@ let fitPending = 0;
 addEventListener('resize', () => {
   cancelAnimationFrame(fitPending);
   fitPending = requestAnimationFrame(() => {
-    fitStrips();
+    scheduleDeskFit(true);
     updateArrangementNoteScale();
   });
 });
@@ -4948,6 +5015,7 @@ addEventListener('resize', () => {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     dragging = true;
+    pianoRoll.setResizeDeferred(true);
     from = e.clientY;
     startH = h(panel);
     startCollapsed = panel.classList.contains('collapsed');
@@ -4981,13 +5049,15 @@ addEventListener('resize', () => {
       userDevH = clampDeviceH(asked);
       if (mixerCollapsed && dy < 0) setMixerFolded(false, false);
     }
-    fitStrips();
+    scheduleDeskFit();
   });
   const stop = () => {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
     rememberDeskHeights();
+    scheduleDeskFit(true);
+    requestAnimationFrame(() => pianoRoll.setResizeDeferred(false));
     // The same drag folds and unfolds Notes as it crosses the panel's minimum, and
     // that fold belongs to the song, not to the desk.
     rememberSongLayout();
@@ -5002,7 +5072,7 @@ addEventListener('resize', () => {
     userDevH = null;
     rememberDeskHeights();
     reserveDevices();
-    fitStrips();
+    scheduleDeskFit(true);
     toast('Notes panel back to fitting itself');
   });
 })();
@@ -5019,6 +5089,7 @@ addEventListener('resize', () => {
         || e.clientY < r.top - 6 || e.clientY > r.top + 6
         || e.target.closest?.('button')) return;
     dragging = true;
+    pianoRoll.setResizeDeferred(true);
     from = e.clientY;
     startH = h(edge);
     startCollapsed = edge.classList.contains('collapsed');
@@ -5043,13 +5114,15 @@ addEventListener('resize', () => {
       setDevicesFolded(false, false);
       userFxH = clampEffectsH(bodyH);
     }
-    fitStrips();
+    scheduleDeskFit();
   });
   const stop = () => {
     if (!dragging) return;
     dragging = false;
     edge.classList.remove('edge-dragging');
     rememberDeskHeights();
+    scheduleDeskFit(true);
+    requestAnimationFrame(() => pianoRoll.setResizeDeferred(false));
   };
   edge.addEventListener('pointerup', stop);
   edge.addEventListener('pointercancel', stop);
@@ -5061,7 +5134,7 @@ addEventListener('resize', () => {
     userFxH = null;
     rememberDeskHeights();
     reserveDevices();
-    fitStrips();
+    scheduleDeskFit(true);
     toast('Effects panel back to fitting itself');
   });
 })();
@@ -5402,14 +5475,17 @@ let formLoopOn = localStorage.getItem(FORM_LOOP_KEY) !== '0';
 const songLoopOf = () => arrFor(trackId)?.loop || null;
 
 /**
- * Songs the markers can actually affect: the ones the game plays for itself.
+ * Songs the markers can actually affect: the ones the game plays for itself,
+ * plus saved alternates whose parent is one of those songs.
  *
  * Asked of `listTracks`, not of `track` — `resolveTrack` hands back a built-in song
  * without a `group` at all, because the group is not IN the file. It is decided by
  * which registry an id is in, and only the picker's list knows that. Which is also why
  * this is a UI rule and not a saved-file rule: the same song is `scratch` before it is
  * wired to a cabinet and `cabinet` after, so a file that was legal on Tuesday would
- * stop being legal on Wednesday for a reason nothing about it had changed.
+ * stop being legal on Wednesday for a reason nothing about it had changed. Alternates
+ * carry their parent explicitly, so they can use the same toolbar control without
+ * being mistaken for scratch songs.
  */
 const songLoopGate = () => {
   // Not in user mode. Where a song starts and which bars it settles into is the game's
@@ -5418,8 +5494,11 @@ const songLoopGate = () => {
   // never touches. The transport still FOLLOWS it, so the song plays the way the game
   // plays it; there is just nothing to move.
   if (!DEV_USER) return false;
-  const group = listTracks().find((t) => t.id === trackId)?.group;
-  return group === 'cabinet' || group === 'theme';
+  const song = listTracks().find((t) => t.id === trackId);
+  if (!song) return false;
+  if (song.group === 'cabinet' || song.group === 'theme') return true;
+  return song.group === 'alternate'
+    && (song.alternateOf === 'hub' || !!CABINET_BY_ID[song.alternateOf]);
 };
 
 /**
@@ -6154,7 +6233,8 @@ function panKnob({ value, onInput }) {
  * Returns the same shape `slider` does (`{ wrap, label, set }`), so a caller can swap
  * one for the other without knowing which it has.
  */
-function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null }) {
+function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,
+  onStart = null, onEnd = null }) {
   const NS = 'http://www.w3.org/2000/svg';
   const wrap = document.createElement('div');
   wrap.className = 'row potrow';
@@ -6246,11 +6326,23 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   draw();
 
   const set = (x) => {
+    onStart?.();
     const stepped = Math.round(x / step) * step;
-    val = clamp(Number(stepped.toFixed(6)), min, max);
+    const next = clamp(Number(stepped.toFixed(6)), min, max);
+    // A pot held against its stop still takes every pointer move — you are past the end
+    // of the travel and the hand keeps going — and each one was passed on as an edit of
+    // a value that had not moved. Dozens a second of re-writing the preset, rebuilding
+    // the rack and re-levelling it, for nothing anyone could hear.
+    //
+    // Only inside a DRAG. A click, a reset or a type-in still writes its value through
+    // even when it matches what is showing: those are a hand saying "this one", and a
+    // derived row can put a number somewhere the pot's own reading does not show.
+    if (dragging && next === val) return;
+    val = next;
     position = positionAt(val);
     draw();
     onInput(val);
+    if (!dragging) onEnd?.();
   };
   const setPosition = (x) => set(valueAt(x));
 
@@ -6279,6 +6371,7 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   const stop = () => {
     if (dragging && fromText && moved < 3) openEditor();
     dragging = false;
+    onEnd?.();
   };
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
@@ -6829,7 +6922,7 @@ function fitDevices() {
 // listed here still shows up, under Other — a new effect appearing nowhere would be
 // a worse bug than one appearing in the wrong column.
 const EFFECT_GROUPS = [
-  ['Level & EQ', ['gain', 'peq', 'filter']],
+  ['Level & EQ', ['gain', 'peq', 'vowel', 'filter']],
   ['Delay', ['chandelay', 'delay', 'pingpong']],
   ['Modulation', ['chorus', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'phaser', 'tremolo', 'vibrato', 'autofilter', 'autowah', 'autopanner']],
   ['Drive', ['exciter', 'distortion', 'bitcrusher', 'tape', 'chebyshev']],
@@ -7436,6 +7529,126 @@ const kitRoll = createStepSeq({
   onClose: () => rememberSongLayout(),
 });
 
+const noteLengthMenuButton = $('notelenbtn');
+const syncNoteLengthButton = () => {
+  const show = editorFor(selectedLane) === 'roll' && pianoRoll.supportsLengths();
+  noteLengthMenuButton.hidden = !show;
+};
+const openNoteLengthAdjust = (scopeKind, x, y) => {
+  if (scopeKind === 'selection' && !pianoRoll.selectedLengthCount()) {
+    toast('Select one or more notes first');
+    return;
+  }
+  closeMenu();
+  const el = $('regionedit');
+  el.textContent = '';
+
+  const head = document.createElement('div'); head.className = 'reghead';
+  const heading = document.createElement('div'); heading.className = 'regtitle';
+  heading.textContent = 'Adjust note lengths';
+  const target = document.createElement('div'); target.className = 'regtarget';
+  target.textContent = scopeKind === 'all' ? 'All notes in this track' : 'Selected notes';
+  heading.append(target);
+  const close = document.createElement('button'); close.className = 'regclose';
+  close.textContent = '×'; close.title = 'Close'; close.onclick = closeMenu;
+  head.append(heading, close); el.append(head);
+
+  const section = document.createElement('div'); section.className = 'regsection';
+  const caption = document.createElement('div'); caption.className = 'regcap';
+  caption.textContent = 'Scale current lengths';
+  const row = document.createElement('div'); row.className = 'regcontrol';
+  const label = document.createElement('span'); label.textContent = 'Percentage';
+  const range = document.createElement('input'); range.type = 'range';
+  range.min = '1'; range.max = '400'; range.step = '1';
+  range.setAttribute('aria-label', 'Note length percentage');
+  const number = document.createElement('input'); number.type = 'number';
+  number.min = '1'; number.step = '1'; number.inputMode = 'numeric';
+  number.setAttribute('aria-label', 'Note length percentage');
+  const reset = document.createElement('button'); reset.textContent = '100%';
+  reset.title = 'Return to the original note lengths';
+  const readout = document.createElement('div'); readout.className = 'regread';
+  const formatPercent = (value) => `${Number.isInteger(value) ? value : Number(value.toFixed(2))}%`;
+  let current = 100;
+  const setPercent = (raw) => {
+    if (!Number.isFinite(raw)) return;
+    current = Math.max(1, Math.round(raw));
+    range.value = Math.min(400, Math.max(1, current));
+    number.value = formatPercent(current).slice(0, -1);
+    readout.textContent = `${formatPercent(current)} of each note's current length`;
+    row.classList.add('changed');
+  };
+  setPercent(current);
+  range.oninput = () => setPercent(+range.value);
+  number.oninput = () => {
+    if (number.value !== '') setPercent(+number.value);
+  };
+  reset.onclick = () => setPercent(100);
+  row.append(label, range, number, reset, readout);
+  section.append(caption, row); el.append(section);
+
+  const foot = document.createElement('div'); foot.className = 'regfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.onclick = closeMenu;
+  const apply = document.createElement('button'); apply.className = 'regapply';
+  apply.textContent = 'Apply length';
+  apply.onclick = () => {
+    const percent = Number(number.value);
+    if (!(percent > 0)) {
+      toast('Enter a percentage above 0');
+      number.focus();
+      return;
+    }
+    const result = pianoRoll.adjustLengths({ scope: scopeKind, percent });
+    if (!result.count) {
+      closeMenu();
+      toast(scopeKind === 'all' ? 'There are no notes in this track' : 'Select one or more notes first');
+      return;
+    }
+    closeMenu();
+    if (!result.changed) {
+      toast('No note lengths changed');
+      return;
+    }
+    toast(scopeKind === 'all'
+      ? `Adjusted ${result.changed} note lengths in the track`
+      : `Adjusted ${result.changed} selected note lengths`);
+  };
+  foot.append(cancel, apply); el.append(foot);
+  el.onkeydown = (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(); }
+    if (event.key === 'Enter' && event.target === number) { event.preventDefault(); apply.click(); }
+  };
+
+  el.style.left = `${x}px`; el.style.top = `${y}px`; el.classList.add('show');
+  const rect = el.getBoundingClientRect();
+  el.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;
+  el.style.top = `${Math.max(6, Math.min(y, innerHeight - rect.height - 6))}px`;
+  requestAnimationFrame(() => number.focus({ preventScroll: true }));
+};
+const runNoteLengthQuantise = (scopeKind) => {
+  if (scopeKind === 'selection' && !pianoRoll.selectedLengthCount()) {
+    toast('Select one or more notes first');
+    return;
+  }
+  const result = pianoRoll.quantiseLengths({ scope: scopeKind, grid: 1 });
+  if (!result.count) {
+    toast(scopeKind === 'all' ? 'There are no notes in this track' : 'Select one or more notes first');
+    return;
+  }
+  toast(result.changed
+    ? `Quantised ${result.changed} note lengths to 16ths`
+    : 'All note lengths are already on 16ths');
+};
+noteLengthMenuButton.onclick = (ev) => {
+  if (noteLengthMenuButton.hidden) return;
+  const r = noteLengthMenuButton.getBoundingClientRect();
+  openMenu(r.left, r.bottom + 4, 'Adjust note lengths', [
+    { label: 'Selected notes…', run: () => openNoteLengthAdjust('selection', r.left, r.bottom + 4) },
+    { label: 'All notes in track…', run: () => openNoteLengthAdjust('all', r.left, r.bottom + 4) },
+    { label: 'Quantise selected to 16ths', run: () => runNoteLengthQuantise('selection') },
+    { label: 'Quantise all to 16ths', run: () => runNoteLengthQuantise('all') },
+  ]);
+};
+
 // ---- the bottom row's two panels ------------------------------------------------
 //
 // Effects and Notes are now independent, side-by-side panels. Each folds on its
@@ -7468,6 +7681,7 @@ function syncNotesPanel() {
   // is marked, so naming one of them there would be a caption that means nothing.
   $('notelabel').textContent = kind === 'kit' ? 'Drum editor' : 'Notes';
   $('notepreset').textContent = kind === 'roll' ? presetHeadingFor(rollShownLane()).name : '';
+  syncNoteLengthButton();
   if (kitChanged && kind === 'kit') {
     // The kit has no window into an instrument to lose — its scroll is time only, and
     // `build` puts that back itself — but it may never have been built at all, or was
@@ -8998,6 +9212,36 @@ function updateStatus() {
       + (cabOnDesk[trackId] ? `\n\nWARNING: the desk is showing the "${cabOnDesk[trackId]}" cabinet`
         + ' mix, not the level mix. Capture it back to the cabinet screen first.' : '')
       : `${track.title} already matches its file`;
+  // Saving an alternate needs a server to write the file and a bank to copy, so it is
+  // offered on the game's own songs and on alternates of them — not on scratch songs,
+  // where the saved song already IS yours and Save writes it.
+  const altButton = $('savealt');
+  if (altButton) {
+    // `writable` is the guard that matters: a legacy MIDI import has no desk-owned
+    // file section, so it could be forked and then never promoted back — an alternate
+    // of a song that can never become the song is a dead end wearing a live button.
+    const can = !STATIC && !!track?.bank && track.writable !== false
+      && (!isDeskSong(track) || track.group === 'alternate');
+    altButton.hidden = !can;
+    altButton.textContent = 'Save as alternate…';
+    altButton.title = can
+      ? `Keep what is on the desk now as a named alternate — its own file in`
+        + ` src/data/imported, listed under Alternate Game Songs. ${track.title} is not written.`
+      : '';
+  }
+  // The one button that writes a file other than the one on the desk. It names the
+  // song it would write, always, and it is only ever on an alternate.
+  const promote = $('promotealt');
+  if (promote) {
+    const parent = track?.alternateOf ? resolveTrack(track.alternateOf) : null;
+    promote.hidden = STATIC || !parent;
+    if (parent) {
+      promote.textContent = `Save over ${parent.title}…`;
+      promote.title = `Make this alternate the song: writes it into`
+        + ` src/data/songs/${track.alternateOf}.js. The version it replaces is kept,`
+        + ' so you can go back to it.';
+    }
+  }
   const deleteButton = $('deletesong');
   if (deleteButton) {
     const scratch = isDeskSong(track) && track?.writable === true;
@@ -9073,7 +9317,8 @@ $('navdrawer').addEventListener('click', (ev) => {
   if (!button || button.id === 'navbtn' || button.id === 'newsong') return;
   // Keep font and playhead controls live while the drawer is open; action buttons
   // leave the drawer before opening a modal, render job, or file chooser.
-  if (!['save', 'revert', 'history', 'resetsong', 'deletesong', 'renderwav', 'auditionwav', 'midi',
+  if (!['save', 'savealt', 'promotealt',
+    'revert', 'history', 'resetsong', 'deletesong', 'renderwav', 'auditionwav', 'midi',
     'importmidi', 'exportjson', 'voicelibbtn',
     'applytocab', 'auditioncab', 'clearcab', 'loadcab'].includes(button.id)) return;
   closeMenu();
@@ -9226,7 +9471,10 @@ noteAnimationInput.onchange = () => {
 // the glass. Set by eye against a kick, and it is a default rather than a constant —
 // a different screen or a different device wants a different number.
 const PH_KEY = 'mash-mixer-playhead-ms';
-const PH_DEFAULT = 50;
+// The roll and arrangement line were still a little behind the audible attack on the
+// current desk/browser combination. Keep this as a modest screen lead; an explicit
+// stored calibration still wins below, and [ / ] remain available for other displays.
+const PH_DEFAULT = 70;
 const storedPh = localStorage.getItem(PH_KEY);
 let phOffset = storedPh == null || storedPh === '' ? PH_DEFAULT : (Number(storedPh) || 0);
 const phInput = $('phoffset');
@@ -10242,9 +10490,9 @@ function buildOsk() {
   recBtn.textContent = 'Record';
   recBtn.classList.toggle('on', recArmed);
   recBtn.classList.toggle('live', recording());
-  recBtn.title = 'Play notes INTO this channel. Everything you play is quantised to '
-    + 'sixteenths — a bank holds sixteen steps to the bar and nothing between them — and '
-    + 'written into the bars the loop is playing, everywhere that part repeats.'
+  recBtn.title = 'Play notes INTO this channel. Starts and recorded held lengths are '
+    + 'quantised to sixteenths — a bank holds sixteen start steps to the bar — and written '
+    + 'into the bars the loop is playing, everywhere that part repeats.'
     + '\n\nHow long you hold a key becomes the note’s length. Recording only ADDS notes; '
     + 'taking one out is the piano roll’s job.'
     + '\n\nA bar’s worth of playing is one ⌘Z. ⎋ stops everything and drops whatever has '
@@ -11148,6 +11396,9 @@ addEventListener('resize', () => {
 const SONG_GROUPS = [
   ['Themes', 'theme'],
   ['Cabinets', 'cabinet'],
+  // Next to the songs they are alternates of, because that is the comparison anybody
+  // opening one is making: this version of NEON BLASTERS against the shipped one.
+  ['Alternate Game Songs', 'alternate'],
   ['Shop auditions', 'audition'],
   ['Scratch songs', 'scratch'],
   ['MIDI imports', 'imported'],
@@ -12487,7 +12738,7 @@ $('save').onclick = async () => {
       : '')
     + `<p>Writes <b>${halves.join('</b>, <b>')}</b>.</p>`
     + (isDeskSong(track)
-      ? `<b>This ${track.group === 'styleAudition' ? 'style audition' : 'scratch song'} stays `
+      ? `<b>This ${deskSongKind(track)} stays `
         + `outside the game catalogue.</b><br>`
         + `Into <b>src/data/imported/${trackId}.js</b>. The version it replaces is kept, `
         + `so you can go back to it.`
@@ -12505,6 +12756,126 @@ $('save').onclick = async () => {
 // the dialog — a sweep that wrote several songs at once wrote most of them from memory
 // rather than from listening, and a mix nobody was listening to is a mix nobody
 // checked. The other songs' drafts keep until you are on them; Save says so.
+
+// ---- alternates ---------------------------------------------------------------------
+//
+// A version of a game song you want to keep without saying it IS the game song yet.
+// Save writes over the song; this writes a song file of its own — the same music, the
+// mix and arrangement on the desk right now, its own name — and leaves the song it came
+// from exactly as it was. It shows up under "Alternate Game Songs" and behaves like any
+// other song from then on: mix it, render it, save it, delete it.
+//
+// The decision comes later, and it is one button: "Save over …", which is only ever on
+// an alternate and only ever names the song written above that alternate's own music.
+// That is the desk's single exception to one-song-at-a-time, and it is narrow on
+// purpose — the parent is read from the file, never chosen, so there is no way to land
+// one song's balance on another song's parts.
+
+async function saveAlternate() {
+  closeMenu();
+  if (STATIC || !track?.bank) return;
+  // An alternate of an alternate belongs to the same parent. The server enforces it;
+  // the dialog has to SAY it, or "Save as alternate" on an alternate reads as a chain.
+  const parentId = track.alternateOf || trackId;
+  const parent = resolveTrack(parentId) || track;
+  const taken = new Set(listTracks().map((t) => t.title));
+  let suggested = `${parent.title} ALT`;
+  for (let i = 2; taken.has(suggested); i++) suggested = `${parent.title} ALT ${i}`;
+  const parentWasDirty = isDirty(parentId);
+  const answered = ask(`Save an alternate of ${escapeHtml(parent.title)}`,
+    (cabOnDesk[trackId]
+      ? `<p class="warn">The desk is showing the <b>${escapeHtml(cabOnDesk[trackId])}</b> cabinet `
+        + 'mix, not the level mix — so that is what this alternate would be saved as.</p>'
+      : '')
+    + `<p>Keeps what is on the desk now as a song of its own: <b>${escapeHtml(parent.title)}</b>'s `
+    + 'music, your mix and arrangement on it. Written into <b>src/data/imported</b>, listed '
+    + 'under <b>Alternate Game Songs</b>.</p>'
+    + `<p><b>${escapeHtml(parent.title)} is not written.</b> When you decide this is the one, `
+    + `open it and <b>Save over ${escapeHtml(parent.title)}</b>.</p>`
+    + `<label class="askfield">Name<input id="altname" type="text" spellcheck="false" value="${escapeHtml(suggested)}"></label>`,
+    'Save alternate');
+  const nameField = $('altname');
+  nameField.focus(); nameField.select();
+  if (!await answered) { toast('Alternate not saved'); return; }
+  const mix = JSON.parse(JSON.stringify(mixFor(trackId)));
+  freezeVoices(mix, trackId);
+  let res;
+  try {
+    res = await fetch('/save-alternate', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceId: trackId,
+        title: nameField.value.trim(),
+        mix,
+        arrangement: arrFor(trackId) ?? null,
+        variants: variantFor(trackId),
+      }, null, 2),
+    });
+  } catch (err) {
+    await tell('Could not save the alternate', escapeHtml(String(err?.message || err)));
+    return;
+  }
+  const text = await res.text();
+  if (!res.ok) { await tell('Could not save the alternate', escapeHtml(text)); return; }
+  const out = JSON.parse(text);
+  registerTrack(out.track);
+  // What the FILE holds, read back by the server — so the alternate arrives saved
+  // rather than arriving dirty against a mix it was never compared to.
+  saved[out.track.id] = out.mix;
+  savedArr[out.track.id] = out.arrangement;
+  variantSaved[out.track.id] = out.variants;
+  selectSong(out.track.id);
+  toast(`Saved ${out.track.title} — an alternate of ${parent.title}, which is unchanged.`
+    // The draft that became this alternate is still sitting on the parent. Said out
+    // loud, because it is the one thing about this that surprises: the alternate is
+    // written and the song it was taken from still has a dot on its drawer.
+    + (parentWasDirty ? ` ${parent.title} still has its own unsaved changes.` : ''), 7000);
+}
+
+async function promoteAlternate() {
+  closeMenu();
+  const parentId = track?.alternateOf;
+  const parent = parentId ? resolveTrack(parentId) : null;
+  if (STATIC || !parent) return;
+  const ok = await ask(`Make ${escapeHtml(track.title)} the song?`,
+    `<p>Writes this alternate's mix and arrangement into <b>src/data/songs/${escapeHtml(parentId)}.js</b>. `
+    + `<b>The game plays it as ${escapeHtml(parent.title)} from now on.</b></p>`
+    + '<p>The version it replaces is kept in <b>work/mix-history/</b>, so you can go back to it. '
+    + `The music is not touched, and ${escapeHtml(track.title)} stays where it is.</p>`
+    + (isDirty(trackId)
+      ? `<p>The unsaved changes on ${escapeHtml(track.title)} are saved to it first.</p>` : '')
+    + (isDirty(parentId)
+      ? `<p class="warn">${escapeHtml(parent.title)} has unsaved changes of its own on this `
+        + 'desk. They are left alone — but saving them later would write over this.</p>' : ''),
+    `Save over ${parent.title}`);
+  if (!ok) { toast('Nothing written'); return; }
+  // The server promotes the FILE, not the desk, so the alternate has to be the file
+  // first. One rule, and it is the one that makes "what you were listening to" and
+  // "what got written" the same thing.
+  if (isDirty(trackId) && !await saveMix(trackId)) return;
+  let res;
+  try {
+    res = await fetch('/promote-alternate', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: trackId }),
+    });
+  } catch (err) {
+    await tell('That did not go through', escapeHtml(String(err?.message || err)));
+    return;
+  }
+  const text = await res.text();
+  if (!res.ok) { await tell('That did not go through', escapeHtml(text)); return; }
+  const out = JSON.parse(text);
+  if (out.mix) saved = out.mix;
+  if (out.arrangements) savedArr = out.arrangements;
+  variantSaved[parentId] = out.variants ?? null;
+  updateStatus();
+  toast(`${parent.title} is now ${track.title}`
+    + (out.snapshot ? ` — the version it replaced is work/mix-history/${out.snapshot}` : ''), 7000);
+}
+
+$('savealt').onclick = saveAlternate;
+$('promotealt').onclick = promoteAlternate;
 
 $('resetsong').onclick = () => {
   pushUndo(null);

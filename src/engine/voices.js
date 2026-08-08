@@ -104,6 +104,15 @@ export const DRAWBAR_RATIOS = [0.5, 1.5, 1, 2, 3, 4, 5, 6, 8];
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
 const nativeWave = (type, fallback = 'sine') => (NATIVE_WAVES.includes(type) ? type : fallback);
 
+// Musical lengths are measured in sixteenths because the sequencer's `spb` is the
+// seconds-per-sixteenth clock. The stored keys stay readable in the preset file while
+// the native path gets one exact period at the current song tempo.
+const LFO_TEMPO_STEPS = Object.freeze({
+  '1/64': 0.25, '1/32': 0.5, '1/16': 1, '1/8': 2, '1/4': 4, '1/2': 8,
+  // Keep old saved voices renderable even though the editor no longer offers these.
+  '1bar': 16, '2bar': 32,
+});
+
 /**
  * A PULSE of any width, as a PeriodicWave — the fifth waveform a layer can be, and the
  * arcade cue's 25% timbre, from one piece of arithmetic.
@@ -145,6 +154,64 @@ export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {
   for (let n = 1; n <= harmonics; n++) {
     const a = ((sine ? 2 : 4) / (n * Math.PI)) * Math.sin(n * Math.PI * d);
     if (sine) imag[n] = a; else real[n] = a;
+  }
+  const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  perCtx.set(key, wave);
+  return wave;
+}
+
+/**
+ * A slave oscillator whose phase is reset whenever Osc 1 completes a cycle.
+ *
+ * Web Audio has no hard-sync input on OscillatorNode. The reset waveform is nonetheless
+ * periodic at the MASTER frequency, so it can be stated exactly as one PeriodicWave:
+ * walk the slave waveform `ratio` times during one master cycle, then let the table's
+ * boundary perform the reset. Non-integer ratios leave the discontinuity that gives hard
+ * sync its bright, tearing spectrum; integer ratios collapse to an ordinary harmonic.
+ *
+ * The numerical Fourier projection keeps all six MRDR wave shapes on the native/offline
+ * path. Tables are cached per context and authored setting, so the projection is paid on
+ * the first note rather than on every note in a song.
+ */
+const syncTables = new WeakMap();
+export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
+  const kind = type === 'pulse' ? 'pulse' : nativeWave(type, 'square');
+  const r = Math.max(0.01, ratio);
+  const duty = Math.min(0.95, Math.max(0.05, width));
+  let perCtx = syncTables.get(ctx);
+  if (!perCtx) { perCtx = new Map(); syncTables.set(ctx, perCtx); }
+  const key = `${kind}|${r.toFixed(5)}|${duty.toFixed(4)}|${harmonics}`;
+  const hit = perCtx.get(key);
+  if (hit) return hit;
+  const samples = 1024;
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+  for (let i = 0; i < samples; i++) {
+    const master = (i + 0.5) / samples;
+    const phase = (master * r) % 1;
+    let value;
+    if (kind === 'sine') value = Math.sin(phase * Math.PI * 2);
+    else if (kind === 'square') value = phase < 0.5 ? 1 : -1;
+    else if (kind === 'sawtooth') value = phase * 2 - 1;
+    else if (kind === 'triangle') value = 1 - 4 * Math.abs(phase - 0.5);
+    else value = phase < duty ? 1 : -1;
+    const angle = master * Math.PI * 2;
+    const cosStep = Math.cos(angle);
+    const sinStep = Math.sin(angle);
+    let cosN = cosStep;
+    let sinN = sinStep;
+    for (let n = 1; n <= harmonics; n++) {
+      real[n] += value * cosN;
+      imag[n] += value * sinN;
+      const nextCos = cosN * cosStep - sinN * sinStep;
+      sinN = sinN * cosStep + cosN * sinStep;
+      cosN = nextCos;
+    }
+  }
+  const scale = 2 / samples;
+  for (let n = 1; n <= harmonics; n++) {
+    real[n] *= scale;
+    imag[n] *= scale;
   }
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
   perCtx.set(key, wave);
@@ -336,6 +403,78 @@ function adsr(param, t, end, peak, e = {}, sustaining = false) {
 }
 
 /**
+ * The gate-driven ADSR used by the native melodic synths.
+ *
+ * The older `adsr` helper is intentionally retained for struck/modulation envelopes. It
+ * schedules a complete note-shaped fall and then a release after the written note length.
+ * That is useful for one-shots, but it is not a standard synthesiser VCA: if a short note
+ * ends during attack or decay, its release must begin at the level the envelope has reached
+ * at note-off. MRDR-3 and AdditiveSynth are melodic instruments, so their note length is
+ * the gate, not an instruction to finish the decay before releasing.
+ *
+ * `sustaining` is the live-preview form. The gate is held at `end` as a safety horizon and
+ * `_releasePreview` later calls `releaseNow`, which reads the current AudioParam level. This
+ * deliberately includes sustain-zero envelopes: they may already be silent when released,
+ * but a key released during attack/decay still gets the standard tail.
+ */
+function gateAdsr(param, t, end, peak, e = {}, sustaining = false) {
+  const level = Math.max(1e-4, peak);
+  const attack = Math.max(0.001, e.attack ?? 0.01);
+  const decay = Math.max(0, e.decay ?? 0);
+  const release = Math.max(0, e.release ?? 0.015);
+  const sustain = Math.min(1, Math.max(0, e.sustain ?? 0));
+  const held = Math.max(1e-4, level * sustain);
+  const attackEnd = t + attack;
+  const decayEnd = attackEnd + decay;
+
+  const levelAt = (at) => {
+    const dt = Math.max(0, at - t);
+    if (dt < attack) {
+      const u = dt / attack;
+      if (e.attackCurve === 'lin') return 1e-4 + (level - 1e-4) * u;
+      return 1e-4 * Math.pow(level / 1e-4, u);
+    }
+    if (decay > 0 && dt < attack + decay) {
+      const u = (dt - attack) / decay;
+      if (e.curve === 'lin') return level + (held - level) * u;
+      return level * Math.pow(held / level, u);
+    }
+    return held;
+  };
+
+  param.setValueAtTime(1e-4, t);
+  if (e.attackCurve === 'lin') param.linearRampToValueAtTime(level, attackEnd);
+  else param.exponentialRampToValueAtTime(level, attackEnd);
+  if (decay > 0) {
+    if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
+    else param.exponentialRampToValueAtTime(held, decayEnd);
+  } else {
+    param.setValueAtTime(held, attackEnd);
+  }
+
+  if (sustaining) {
+    if (decayEnd < end) param.setValueAtTime(held, end);
+    return end + release + 0.005;
+  }
+
+  // Note-off may arrive before the attack or decay automation has reached its endpoint.
+  // Cancel those future events and pin the exact level at the gate edge before starting
+  // Release. Without this, a short note either releases from silence or leaves a future
+  // decay ramp fighting the release ramp.
+  const offAt = Math.max(t, end);
+  const current = levelAt(offAt);
+  param.cancelScheduledValues(offAt);
+  param.setValueAtTime(current, offAt);
+  const off = offAt + release;
+  if (release > 0) {
+    if (e.releaseCurve === 'lin') param.linearRampToValueAtTime(1e-4, off);
+    else param.exponentialRampToValueAtTime(1e-4, off);
+  }
+  param.linearRampToValueAtTime(0, off + 0.005);
+  return off + 0.005;
+}
+
+/**
  * The filter envelope a native filtered voice schedules: ENV AMOUNT octaves up from the
  * cutoff and back, over its own ADSR.
  *
@@ -391,6 +530,27 @@ const filterEnv = (stages, fe, t, end) =>
 const pitchEnv = (params, pe, t, end, base = 0) =>
   centsEnv(params, (pe?.semitones ?? 0) * 100, pe || {}, t, end, { base, dfltAttack: 0 });
 
+// The same envelope sampled at a sync-grain boundary. A hard-synced slave cannot put
+// this bend on `.detune`: that would move the whole already-shaped wavetable. Instead,
+// dynamic sync samples the envelope as a change in the slave/master ratio. Keep this
+// arithmetic beside `pitchEnv` so the panel's AMOUNT/ATTACK/DECAY/SUSTAIN values mean
+// exactly the same thing on an ordinary and a synced layer.
+function pitchEnvValue(pe, at, t, end) {
+  const amount = (pe?.semitones ?? 0) * 100;
+  if (!amount) return 0;
+  const span = Math.max(0.001, end - t);
+  const attack = Math.max(0, pe?.attack ?? 0);
+  const peakAt = attack > 0 ? t + Math.min(Math.max(0.001, attack), span * 0.45) : t;
+  const decay = Math.max(0, pe?.decay ?? 0);
+  const decayEnd = Math.min(end, peakAt + decay);
+  if (at < peakAt) return amount * Math.max(0, (at - t) / Math.max(0.001, peakAt - t));
+  if (decay > 0 && at < decayEnd) {
+    const u = Math.max(0, Math.min(1, (at - peakAt) / decay));
+    return amount * (1 + ((pe?.sustain ?? 0) - 1) * u);
+  }
+  return amount * (pe?.sustain ?? 0);
+}
+
 /**
  * The other half of a HELD envelope: let go, from wherever the note happens to be.
  *
@@ -425,6 +585,16 @@ function releaseNow(param, at, e = {}) {
 const HOLD_SECONDS = 30;
 
 /**
+ * The fade a preview gets when it is STOPPED rather than released.
+ *
+ * Twelve milliseconds is under a frame and over a cycle of anything above 80 Hz, which
+ * is the whole requirement: fast enough that the panel still reads as having gone
+ * quiet the instant you asked, slow enough that the waveform is walked to zero instead
+ * of being cut off wherever it happened to be.
+ */
+const STOP_FADE = 0.012;
+
+/**
  * Did anything but a NUMBER change between two option bags?
  *
  * The question `_applyLive` has to answer before it writes: a number moving on a sounding
@@ -446,6 +616,68 @@ function shapeChanged(a, b) {
   return false;
 }
 
+/**
+ * The options that are a LIVE PARAM rather than a stored number, and the glide they get.
+ *
+ * `synth.set` writes a value the instant it is called: for a plain property — an
+ * envelope time, a curve name, an oscillator count — that is right, because nothing is
+ * reading it until the next note. For an AudioParam it is a STEP, and a step on a
+ * sounding synth is zipper noise: drag a DETUNE and you hear the pitch climb in stairs
+ * rather than slide, because the desk sends sixty edits a second and every one of them
+ * jumps the param to its new value between two sample blocks.
+ *
+ * So these are pulled out of the bag before `set` sees it and rammped instead. 20 ms is
+ * short enough that the pot still feels attached to the sound and long enough that no
+ * single step is a click — and the ramps chain, because each one starts from wherever
+ * the last had reached (`rampTo` holds the current value first).
+ *
+ * A path is on this list only if it is BOTH a param and free of anything else writing
+ * it. `frequency` is deliberately absent from the top level: it is the note, written by
+ * `triggerAttack` and glided by portamento, and a second writer on it is a fight.
+ * `filter.frequency` is here because a MonoSynth's filter envelope CONNECTS to it — a
+ * summed signal, not a scheduled one — so a ramp of its own offset cannot collide.
+ */
+const SMOOTH_SECONDS = 0.02;
+const SMOOTH_PARAMS = [
+  ['detune'], ['volume'], ['harmonicity'], ['modulationIndex'], ['resonance'],
+  ['vibratoAmount'], ['vibratoRate'],
+  ['filter', 'Q'], ['filter', 'frequency'],
+  ['oscillator', 'detune'], ['modulation', 'detune'],
+  // DuoSynth keeps two whole MonoSynths under `voice0`/`voice1`, and their options
+  // nest the same way their objects do.
+  ['voice0', 'detune'], ['voice0', 'filter', 'Q'], ['voice0', 'filter', 'frequency'],
+  ['voice1', 'detune'], ['voice1', 'filter', 'Q'], ['voice1', 'filter', 'frequency'],
+];
+
+const atPath = (root, path) => path.reduce((node, k) => (node == null ? node : node[k]), root);
+
+/** A Tone `Param`/`Signal` — the thing that can be ramped, as opposed to a number. */
+const isParam = (x) => !!x && typeof x.rampTo === 'function' && typeof x.value === 'number';
+
+/**
+ * Take every live param out of an options bag, so `set` cannot step it.
+ *
+ * Returns what to ramp instead. The bag is mutated — it is already a private clone by
+ * the time this sees it — and a branch left empty is fine: `set` walks what it is given.
+ */
+function liftSmoothParams(synth, bag) {
+  const lifted = [];
+  for (const path of SMOOTH_PARAMS) {
+    const parent = atPath(bag, path.slice(0, -1));
+    if (!parent || typeof parent !== 'object') continue;
+    const leaf = path[path.length - 1];
+    const value = parent[leaf];
+    // Not a finite number is not something to glide to — a `-Infinity` volume, a note
+    // name, a missing key. Leave it in the bag and let Tone do whatever it does with it.
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    const param = atPath(synth, path);
+    if (!isParam(param)) continue;
+    delete parent[leaf];
+    lifted.push({ param, value });
+  }
+  return lifted;
+}
+
 const SYNTHS = {
   Synth: Tone.Synth,
   MonoSynth: Tone.MonoSynth,
@@ -454,6 +686,18 @@ const SYNTHS = {
   DuoSynth: Tone.DuoSynth,
   MembraneSynth: Tone.MembraneSynth,
   MetalSynth: Tone.MetalSynth,
+};
+
+/**
+ * How a pitched voice responds when another note arrives.
+ *
+ * `mono` was the original boolean. Keep reading it for old songs and user presets, but
+ * give the editor a name for the middle behaviour instead of making one flag carry both
+ * single-note allocation and envelope policy.
+ */
+const keyMode = (v) => {
+  if (v?.mode === 'poly' || v?.mode === 'legato' || v?.mode === 'mono') return v.mode;
+  return v?.mono === true ? 'mono' : 'poly';
 };
 
 /**
@@ -531,10 +775,8 @@ export class VoiceRack {
     // Cloned so a voice that Tone mutates in place cannot edit the catalogue.
     const opts = v.options ? JSON.parse(JSON.stringify(v.options)) : {};
     scrubOscTypes(opts);
-    // Glide is a constructor option on every Tone synth, and the rack has always
-    // passed the bag through — but it could never DO anything, because a note
-    // glides from the note its own instance played last and every note used to
-    // land on a fresh slot. `mono` in `play` is what gives it something to glide from.
+    // Glide is a constructor option on every Tone synth. It only becomes audible in a
+    // non-poly key mode because those modes keep one note on one instance.
     if (v.portamento) opts.portamento = v.portamento;
     return {
       synth: v.synth,
@@ -609,7 +851,7 @@ export class VoiceRack {
     return semis ? Math.pow(2, semis / 12) : 1;
   }
 
-  play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true, preview = false }) {
+  play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true, preview = false, spb = null }) {
     const v = VOICES[voiceId];
     if (v && v.kind === 'noise') return this._playNoise(v, { time, gain, dry, wet, echo });
     if (v && v.kind === 'drum') return this._playDrum(v, { time, gain, dry, wet, echo });
@@ -626,7 +868,7 @@ export class VoiceRack {
       return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
     }
     if (v && v.synth === 'MRDR-3') {
-      return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview });
+      return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, spb });
     }
     if (!v || !SYNTHS[v.synth]) return false;
     const notes = Array.isArray(freq) ? freq : [freq];
@@ -640,12 +882,12 @@ export class VoiceRack {
     // and noise paths are for; both still read the key. A melodic class carrying it
     // meant the pooled loop had to size the pool for repeats every preset but five
     // never used, and those five were claps and flams filed under a synth class.
-    // A mono preset is ONE instance, reused. Two things follow, and they are the two
-    // things a hardware mono synth does: a new note cuts the one still ringing off
-    // instead of stacking with it, and — because the instance remembers what it was
-    // last playing — `portamento` finally has a pitch to glide from. Round-robining
-    // notes across slots, which is right for everything else here, defeats both.
-    const mono = v.mono === true;
+    // LEGATO and MONO are one instance, reused. LEGATO keeps the current envelope alive
+    // when a note overlaps and moves that note's pitch; MONO starts the new envelope and
+    // cuts the old one. POLY keeps the existing round-robin pool.
+    const mode = v?.mode || keyMode(v);
+    const mono = mode !== 'poly';
+    const legato = mode === 'legato';
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
       mono ? 1 : notes.length + 1, preview);
     if (!pool) return false;
@@ -661,9 +903,9 @@ export class VoiceRack {
       const noteDur = Array.isArray(dur) ? (dur[note] ?? dur[0]) : dur;
       if (f == null || !(f > 0)) return;
       {
-        // Mono holds slot 0 rather than advancing. A chord handed to a mono preset
-        // therefore sounds its last note, which is what a mono synth does with one —
-        // not a case to guard against, just the behaviour being asked for.
+        // A non-poly mode holds slot 0 rather than advancing. A chord handed to it
+        // therefore sounds its last note, which is the only meaningful answer for one
+        // sounding voice.
         const slot = mono ? pool.slots[0] : pool.slots[pool.next % pool.slots.length];
         if (!mono) pool.next++;
         const t = time;
@@ -701,9 +943,27 @@ export class VoiceRack {
             this._releasePreview(noteKey);
             slot.synth.triggerAttack(f * detune * VoiceRack.pitchShift(v), t, 1);
             this._activePreviews.set(noteKey, { slot });
+          } else if (legato && (slot.activeUntil || 0) > t) {
+            // A later note owns the same gate. Cancel the previous note's scheduled
+            // release before moving the pitch, otherwise the old note-off would close
+            // the new note halfway through it. Tone's envelope cancel leaves its
+            // current level in place, which is the legato contract.
+            const cancel = (node) => {
+              if (node?.cancel) node.cancel(t);
+              else if (node?.gain?.cancel) node.gain.cancel(t);
+            };
+            cancel(slot.synth.envelope);
+            cancel(slot.synth.filterEnvelope);
+            cancel(slot.synth.voice0?.envelope);
+            cancel(slot.synth.voice0?.filterEnvelope);
+            cancel(slot.synth.voice1?.envelope);
+            cancel(slot.synth.voice1?.filterEnvelope);
+            slot.synth.setNote(f * detune * VoiceRack.pitchShift(v), t);
+            slot.synth.triggerRelease(t + noteDur);
           } else {
             slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
           }
+          if (mono) slot.activeUntil = t + Math.max(0.001, noteDur || 0.001);
         } catch { return; }
         // How far into the future this pool is committed. Notes are scheduled up to
         // a quarter-second ahead, so "is it playing" is not a question about now — and a pool
@@ -1226,6 +1486,11 @@ export class VoiceRack {
     const n = v.noise;
     const r = v.ring;
     const m = v.metal;
+    // A Drum Synth tune is a master pitch offset, not another pitch envelope.  Keep it
+    // outside the tap bend so +12 semitones doubles every pitched source while each tap
+    // still keeps its authored detune relationship.  Zero is deliberately neutral for
+    // every existing preset, which predates this optional key.
+    const tune = 2 ** ((v.tune ?? 0) / 12);
     if (!o && !n && !r && !m && !(v.knock > 0)) return false;
     if ((n || r) && !this.noiseBuf) return false;
     const taps = v.taps || [0];
@@ -1286,20 +1551,25 @@ export class VoiceRack {
       // The hit's output: note level applied AFTER the shaper — see above. The tone
       // filter sits between them, because what it is for is the fizz the shaper just
       // added and it would have nothing to do in front of it.
+      //
+      // Which is why BOTH nodes hang off `drive`, not just the shaper: TONE is the DRIVE's
+      // tone control and nothing else. With the shaper absent there is no fizz to tame, so
+      // a tone filter there would be a whole-voice EQ wearing the drive's label — which is
+      // exactly what it used to be, and what it sounded like with DRIVE at zero.
       const out = ctx.createGain();
       out.gain.value = gain * fade;
       out.connect(dry);
       if (echo && wet) out.connect(wet);
       let into = out;
-      if (v.tone) {
-        const tf = ctx.createBiquadFilter();
-        tf.type = v.tone.type || 'lowpass';
-        tf.frequency.value = Math.max(20, (v.tone.freq ?? 8000) * tone);
-        tf.Q.value = v.tone.Q ?? 0.7;
-        tf.connect(into);
-        into = tf;
-      }
       if (v.drive > 0) {
+        if (v.tone) {
+          const tf = ctx.createBiquadFilter();
+          tf.type = v.tone.type || 'lowpass';
+          tf.frequency.value = Math.max(20, (v.tone.freq ?? 8000) * tone);
+          tf.Q.value = v.tone.Q ?? 0.7;
+          tf.connect(into);
+          into = tf;
+        }
         const shaper = ctx.createWaveShaper();
         shaper.curve = this._driveCurve(v.drive, v.shape);
         shaper.connect(into);
@@ -1310,8 +1580,8 @@ export class VoiceRack {
       if (o) {
         const osc = ctx.createOscillator();
         osc.type = o.type || 'sine';
-        const from = (o.from ?? 190) * bend;
-        const to = (o.to ?? 52) * bend;
+        const from = (o.from ?? 190) * tune * bend;
+        const to = (o.to ?? 52) * tune * bend;
         osc.frequency.setValueAtTime(from, t);
         // `pitchCurve`, not `curve` — `curve` on this section is its AMP envelope's, and
         // the two are genuinely separate choices: a kick can snap in pitch while its
@@ -1358,8 +1628,8 @@ export class VoiceRack {
         const k = ctx.createOscillator();
         const kg = ctx.createGain();
         k.type = 'triangle';
-        k.frequency.setValueAtTime(300 * bend, t);
-        k.frequency.exponentialRampToValueAtTime(180 * bend, t + 0.04);
+        k.frequency.setValueAtTime(300 * tune * bend, t);
+        k.frequency.exponentialRampToValueAtTime(180 * tune * bend, t + 0.04);
         // 80ms rather than the engine's stated 50: the engine's knock ramps to an
         // ABSOLUTE 0.001 from 0.17, where `env` ramps to 0.0001 from the level asked
         // for — the same curve stated against a lower floor, so it needs the longer
@@ -1407,9 +1677,9 @@ export class VoiceRack {
         hit.gain.linearRampToValueAtTime(0, t + hitLen);
         const f = ctx.createBiquadFilter();
         f.type = r.type || 'bandpass';
-        f.frequency.setValueAtTime(Math.max(20, (r.freq ?? 400) * bend), t);
+        f.frequency.setValueAtTime(Math.max(20, (r.freq ?? 400) * tune * bend), t);
         if (r.to != null) {
-          f.frequency.exponentialRampToValueAtTime(Math.max(20, r.to * bend), t + (r.sweep ?? (r.decay ?? 0.25)));
+          f.frequency.exponentialRampToValueAtTime(Math.max(20, r.to * tune * bend), t + (r.sweep ?? (r.decay ?? 0.25)));
         }
         // Ring time is Q over pi-f, so this is the pitch's own decay and the envelope
         // below can only ever cut it shorter. A rim wants 40 and up; below about 10 a
@@ -1442,7 +1712,7 @@ export class VoiceRack {
       if (m) {
         const ratios = (Array.isArray(m.ratios) && m.ratios.length ? m.ratios : METAL_RATIOS)
           .slice(0, m.count ?? 6);
-        const base = Math.max(20, (m.freq ?? 800) * bend);
+        const base = Math.max(20, (m.freq ?? 800) * tune * bend);
         // `spread` stretches the cluster around its fundamental: at 0 every oscillator
         // lands on the base note and the cluster is a square wave, at 2 the partials are
         // twice as far apart as the 808's and it reads as broken glass.
@@ -1466,7 +1736,7 @@ export class VoiceRack {
           // and what stops a struck metal sounding like a held chord.
           if (m.to != null && m.to !== (m.freq ?? 800)) {
             osc.frequency.exponentialRampToValueAtTime(
-              Math.max(20, m.to * bend * at), t + (m.sweep ?? mlen),
+              Math.max(20, m.to * tune * bend * at), t + (m.sweep ?? mlen),
             );
           }
           osc.connect(chain.head);
@@ -1595,11 +1865,13 @@ export class VoiceRack {
         const noteDur = Array.isArray(dur) ? (dur[n] ?? dur[0]) : dur;
         const end = t + Math.max(0.001, noteDur || 0.001);
         const base = f * shift * bend;
-        // A drawbar stack under a finger holds, exactly as the organ it is modelled on
-        // does — one envelope shared by every partial, so they let go together. The
-        // percussion register below is deliberately NOT held: a Hammond's percussion is a
-        // circuit constant that strikes once and is gone however long the key is down.
-        const stackHolds = preview && (a.sustain ?? 0) > 0;
+        // A drawbar stack under a finger is gate-driven, exactly as the organ it is modelled
+        // on does — one envelope shared by every partial, so they let go together. Even a
+        // sustain-zero setting is still a real ADSR gate: if the finger lifts during attack
+        // or decay, Release starts from the level reached at that instant. The percussion
+        // register below is deliberately NOT held: a Hammond's percussion is a circuit
+        // constant that strikes once and is gone however long the key is down.
+        const stackHolds = preview;
         const heldParams = [];
         const heldSources = [];
 
@@ -1630,7 +1902,8 @@ export class VoiceRack {
             attack: a.attack, decay, sustain: a.sustain, release: a.release,
             attackCurve: a.attackCurve, curve: a.curve, releaseCurve: a.releaseCurve,
           };
-          const off = adsr(g.gain, t, stackHolds ? t + HOLD_SECONDS : end, level, shape, stackHolds);
+          const off = gateAdsr(g.gain, t, stackHolds ? t + HOLD_SECONDS : end,
+            level, shape, stackHolds);
           if (stackHolds) { heldParams.push({ param: g.gain, e: shape }); heldSources.push(o); }
           if (vibCents) vibCents.connect(o.detune);
           o.connect(g); g.connect(out);
@@ -1702,21 +1975,58 @@ export class VoiceRack {
    * The LFO is KEY-SYNCED — one oscillator per note-on, phase zero, faded in over
    * `delay`. Deliberate, not a bug: a free-running rack-level LFO is order-dependent
    * state a stem render would have to reproduce, and this file's whole discipline is
-   * that nothing here survives the note. Its targets are `filter` and `level` only;
-   * pitch wobble is `$vibrato`, the same key with the same meaning as on every other
-   * preset in the library.
+   * that nothing here survives the note. Its targets are `filter`, `level` and `pitch`;
+   * pitch LFO movement is separate from `$vibrato`, so a patch can combine a slow pitch
+   * sweep with the smaller, conventional vibrato control.
    *
-   * `mono` is the first native path to honour it: one sounding note per (lane, voice) —
-   * a new note chokes the last over 5 ms — and `portamento` finally glides, from the
-   * previous note's pitch, which per-note nodes remember via `_last`. Keyed with the
+   * `mode` is the native path's key policy: POLY makes one graph per note, LEGATO keeps
+   * the previous graph alive and retargets its pitch without starting its envelopes again,
+   * and MONO builds the new graph while fading the old one over 5 ms. Keyed with the
    * preview flag, like `_pool`, so a desk keypress cannot move the song's glide origin.
-   * Stem-safe: a stem render deletes the OTHER lanes, so the kept lane sees the same
-   * note sequence and glides identically.
    *
    * Like every native path: one-shot nodes, never pooled, nothing memoised by voice id
    * — which is exactly why live edits are audible on the next note.
    */
-  _playLayer(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false }) {
+  _retargetLayerLegato(prev, base, time, dur, v) {
+    const stopAt = time + Math.max(0.001, dur || 0.001);
+    const releaseValues = (prev.envelopes || [])
+      .map(({ e }) => e?.release ?? 0.015)
+      .filter(Number.isFinite);
+    const release = Math.max(0, ...releaseValues);
+    const finalStop = stopAt + release + 0.01;
+    const glide = Math.max(0.001, v.portamento || 0.001);
+    for (const { pitches, ratio } of prev.pitchSets || []) {
+      const target = base * ratio;
+      for (const pitch of pitches) {
+        try {
+          if (pitch.cancelAndHoldAtTime) pitch.cancelAndHoldAtTime(time);
+          else pitch.cancelScheduledValues(time);
+          if (v.portamento > 0) pitchRamp(pitch, target, time, glide);
+          else pitch.setValueAtTime(target, time);
+        } catch { /* the old graph may already have ended */ }
+      }
+    }
+    // Cancel the old note's release, hold its current level, and release the same gate
+    // at the new note's end. This is the envelope distinction between LEGATO and MONO.
+    for (const { param, e } of prev.envelopes || []) {
+      try {
+        if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(time);
+        else { param.cancelScheduledValues(time); param.setValueAtTime(param.value, time); }
+        const envelopeRelease = Math.max(0, e?.release ?? 0.015);
+        const off = stopAt + envelopeRelease;
+        if (envelopeRelease > 0) param.exponentialRampToValueAtTime(1e-4, off);
+        param.linearRampToValueAtTime(0, off + 0.005);
+      } catch { /* the old graph may already have ended */ }
+    }
+    for (const source of prev.sources || []) {
+      try { source.stop(finalStop); } catch { /* already stopped */ }
+    }
+    prev.freq = base;
+    prev.gateUntil = stopAt;
+    prev.stopAt = finalStop;
+  }
+
+  _playLayer(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, spb = null }) {
     const ctx = this.ctx;
     const L = v.layer;
     if (!L) return false;
@@ -1733,14 +2043,17 @@ export class VoiceRack {
     const heard = (key) => !solo || solo.size === 0 || solo.has(key);
     const specs = [['osc1', L.osc1], ['osc2', L.osc2], ['osc3', L.osc3]]
       .filter(([key, s]) => s && (s.gain ?? 1) > 0 && heard(key))
-      .map(([, s]) => s);
+      .map(([key, spec]) => ({ key, spec }));
     if (!specs.length) return false;
     const all = Array.isArray(freq) ? freq : [freq];
     // A chord handed to a mono preset sounds its LAST note — the same answer the pool
     // gives (mono holds slot 0 and each chord tone restarts it), and what a hardware
     // mono synth does with one. Stacking all of them here would make MONO mean two
     // different things depending on which synth is behind the pill.
-    const monoLast = v.mono === true ? all.filter((f) => f > 0).slice(-1) : null;
+    const mode = v?.mode || keyMode(v);
+    const mono = mode !== 'poly';
+    const legato = mode === 'legato';
+    const monoLast = mono ? all.filter((f) => f > 0).slice(-1) : null;
     const notes = monoLast && monoLast.length ? monoLast : all;
     const hum = v.humanize || {};
     const shift = VoiceRack.pitchShift(v) * detune;
@@ -1756,7 +2069,8 @@ export class VoiceRack {
     // section switch that used to seed the whole block went away: a pot that moved and
     // did nothing. `filter` is what the panel offers first and what `SECTION_DEFAULTS`
     // seeded, so it is what an unstated target means.
-    const lfoTarget = L.lfo?.target === 'level' ? 'level' : 'filter';
+    const lfoTarget = ['filter', 'level', 'pitch'].includes(L.lfo?.target)
+      ? L.lfo.target : 'filter';
     const lfoSpec = L.lfo && (L.lfo.depth ?? 0) > 0 ? { ...L.lfo, target: lfoTarget } : null;
     // The global stage: one filter and one VCA the whole stack passes through, after
     // the layers and before the drive. Both sections optional and BOTH ABSENT IS THE
@@ -1830,32 +2144,54 @@ export class VoiceRack {
       return cents;
     };
     // The routable LFO. Unit-amplitude oscillator, onset fade, then one depth gain in
-    // the units its destination takes: cents for a filter's `.detune` (2400 at full —
-    // two octaves of movement), a plain modulation gain for tremolo.
-    let lfoOsc = null; let lfoOut = null;
+    // the units its destination takes: cents for a filter's `.detune` (3600 at full —
+    // three octaves either side of centre), a bipolar modulation gain for tremolo.
+    const LFO_FILTER_CENTS = 3600;
+    const LFO_PITCH_CENTS = 1200;
+    let lfoOsc = null; let lfoOut = null; let lfoSampleHold = false;
     if (lfoSpec) {
-      lfoOsc = ctx.createOscillator();
-      lfoOsc.type = nativeWave(lfoSpec.type, 'sine');
-      lfoOsc.frequency.setValueAtTime(Math.max(0.01, lfoSpec.rate ?? 4), time);
+      lfoSampleHold = lfoSpec.type === 'samplehold';
+      lfoOsc = lfoSampleHold ? ctx.createConstantSource() : ctx.createOscillator();
+      if (lfoSampleHold) {
+        // Sample-and-hold is a stepped random LFO: one deterministic value per period,
+        // held until the next one. It is scheduled as ConstantSource automation rather
+        // than an AudioWorklet so it remains available to the offline renderer and stems.
+        lfoOsc.offset.setValueAtTime(hitRandom(time, 1907) * 2 - 1, time);
+      } else {
+        lfoOsc.type = nativeWave(lfoSpec.type, 'sine');
+        const freeRate = Math.max(0.01, lfoSpec.rate ?? 4);
+        const tempoSteps = LFO_TEMPO_STEPS[lfoSpec.division] ?? 4;
+        const rate = lfoSpec.sync === 'tempo' && Number.isFinite(spb) && spb > 0
+          ? 1 / (spb * tempoSteps) : freeRate;
+        lfoOsc.frequency.setValueAtTime(rate, time);
+      }
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, time);
       env.gain.linearRampToValueAtTime(1, time + Math.max(0.001, lfoSpec.delay || 0.001));
       lfoOut = ctx.createGain();
-      const depth = Math.min(1, lfoSpec.depth);
-      lfoOut.gain.setValueAtTime(lfoSpec.target === 'filter' ? depth * 2400 : depth / 2, time);
+      const depth = Math.min(1, Math.max(0, Number(lfoSpec.depth) || 0));
+      const amount = lfoSpec.target === 'filter' ? depth * LFO_FILTER_CENTS
+        : lfoSpec.target === 'pitch' ? depth * LFO_PITCH_CENTS : depth;
+      lfoOut.gain.setValueAtTime(amount, time);
       lfoOsc.connect(env); env.connect(lfoOut);
     }
 
     // ---- glide and choke ----------------------------------------------------
-    const mono = v.mono === true;
     const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
     this._last ||= new Map();
     const prev = mono ? this._last.get(glideKey) : null;
     const glideFrom = prev && v.portamento > 0 ? prev.freq : null;
+    if (legato && prev && prev.gateUntil > time && notes.length) {
+      const f = notes[0];
+      const di = monoLast ? all.lastIndexOf(f) : 0;
+      const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
+      this._retargetLayerLegato(prev, f * shift * vary((v.humanize || {}).pitch, time, 16), time, noteDur, v);
+      return true;
+    }
     // The choke: a hardware mono synth cuts the note still ringing. 5ms, on the OLD
     // note's own output gains — its envelopes are already written, so this is a cancel
     // and a fast fade rather than a fight over the same events.
-    if (mono && prev && prev.stopAt > time) {
+    if (mode === 'mono' && prev && prev.stopAt > time) {
       for (const o of prev.outs) {
         // `cancelAndHoldAtTime` is the whole point: `time` is up to a lookahead — a
         // quarter of a second — in the FUTURE, and `gain.value` is the value NOW. Pinning
@@ -1869,7 +2205,11 @@ export class VoiceRack {
     }
 
     const allOuts = [];
+    const pitchSets = [];
+    const legatoEnvelopes = [];
+    const legatoSources = [];
     let lastBase = 0;
+    let gateUntil = 0;
     {
       const t = time;
       // Humanise only. NO TAPS on this path: a tap is one hit repeated milliseconds
@@ -1895,21 +2235,27 @@ export class VoiceRack {
         allOuts.push(out);
         let into = out;
         if (lfoSpec && lfoSpec.target === 'level') {
-          // Tremolo between (1 - depth) and 1: the carrier gain sits at 1 - depth/2
-          // and the LFO adds ±depth/2 on top. In BOTH chains, from the one LFO.
+          // Proper bipolar tremolo around the authored level: depth 0.5 means a
+          // gain swing from .5 to 1.5, rather than only a shallow downward pull.
+          // In BOTH chains, from the one LFO.
           const trem = ctx.createGain();
-          trem.gain.setValueAtTime(1 - Math.min(1, lfoSpec.depth) / 2, t);
+          trem.gain.setValueAtTime(1, t);
           lfoOut.connect(trem.gain);
           trem.connect(into); into = trem;
         }
-        if (v.tone) {
-          const tf = ctx.createBiquadFilter();
-          tf.type = v.tone.type || 'lowpass';
-          tf.frequency.value = Math.max(20, (v.tone.freq ?? 8000) * toneMul);
-          tf.Q.value = v.tone.Q ?? 0.7;
-          tf.connect(into); into = tf;
-        }
+        // TONE is the DRIVE's tone control, so both nodes hang off `drive` together —
+        // see the same pairing in `_playDrum`. With no shaper there is no fizz to tame,
+        // and a tone filter left standing on its own would be a whole-voice EQ wearing
+        // the drive's label. The layer and Global Filter sections are where a voice's
+        // brightness is set; this one only ever shapes what the drive added.
         if (v.drive > 0) {
+          if (v.tone) {
+            const tf = ctx.createBiquadFilter();
+            tf.type = v.tone.type || 'lowpass';
+            tf.frequency.value = Math.max(20, (v.tone.freq ?? 8000) * toneMul);
+            tf.Q.value = v.tone.Q ?? 0.7;
+            tf.connect(into); into = tf;
+          }
           const shaper = ctx.createWaveShaper();
           shaper.curve = this._driveCurve(v.drive, v.shape);
           shaper.connect(into); into = shaper;
@@ -1942,15 +2288,14 @@ export class VoiceRack {
         // one layer die inside another; this envelope belongs to the note over all of
         // them, and a layer at GATE 62% still ends where it always did.
         const gEnd = t + Math.max(0.001, noteDur || 0.001);
+        gateUntil = Math.max(gateUntil, gEnd);
         // ---- held notes -------------------------------------------------------
         //
-        // A previewed note is played by a FINGER, so it has no length until the finger
-        // says so. Anything with a sustain above zero runs to that level and waits there;
-        // anything at sustain 0 is a struck sound and dies exactly as written, because
-        // that is what a struck sound IS — `bestMonsterBass`' octave tick should not hang
-        // just because somebody is leaning on the key. GATE stops meaning anything on a
-        // sustaining layer under a held note, which is correct: 62% of "until I let go"
-        // is not a length.
+        // A previewed note is played by a FINGER, so it has no length until the finger says
+        // so. Every MRDR VCA is therefore gate-driven, including sustain-zero envelopes:
+        // they may decay to silence while the key remains down, but releasing during attack
+        // or decay must still begin Release from the current level. A layer using `through`
+        // has no local VCA and is held only when the shared global VCA holds it.
         const holdEnd = t + HOLD_SECONDS;
         const heldParams = [];
         const heldSources = [];
@@ -1978,8 +2323,9 @@ export class VoiceRack {
             const vg = ctx.createGain();
             // Peak 1: the level lives on the layers and on the note's own gain. A third
             // control called LEVEL on one signal path is how two of them end up wrong.
-            const vcaHolds = preview && (gv.sustain ?? 0) > 0;
-            const off = adsr(vg.gain, t, vcaHolds ? holdEnd : gEnd, 1, gv, vcaHolds);
+            const vcaHolds = preview;
+            const off = gateAdsr(vg.gain, t, vcaHolds ? holdEnd : gEnd, 1, gv, vcaHolds);
+            if (!preview) legatoEnvelopes.push({ param: vg.gain, e: gv });
             if (vcaHolds) heldParams.push({ param: vg.gain, e: gv });
             // The modulators have to outlive this tail — a global release longer than
             // every layer's would otherwise have its LFO stopped out from under it.
@@ -2025,7 +2371,7 @@ export class VoiceRack {
           });
         };
 
-        for (const spec of specs) {
+        for (const { key: layerKey, spec } of specs) {
           // ---- DELAY: when this layer enters ---------------------------------
           //
           // The layer's whole schedule moves, which is the difference between a delay and
@@ -2064,6 +2410,13 @@ export class VoiceRack {
           // answer `_playGame` gives for the whole voice.
           const isNoise = spec.type === 'noise';
           if (isNoise && !this.noiseBuf) continue;
+          // Osc 1 is the hard-sync master. A synced slave is one periodic waveform at
+          // Osc 1's fundamental; its own interval/detune/unison spread decides how many
+          // slave cycles fit before every master reset. Noise has no phase to reset.
+          const syncSlaves = v.sync === '1+2+3' ? ['osc2', 'osc3']
+            : v.sync === '1+2' ? ['osc2'] : v.sync === '1+3' ? ['osc3'] : [];
+          const syncMaster = L.osc1;
+          const hardSynced = !isNoise && syncMaster && syncSlaves.includes(layerKey);
           // Where this layer sums: the global stage when the preset has one, the note-on
           // chain when it does not. The null path is the old line unchanged.
           const into = (gf || gv) ? stageFor().head : chainFor().into;
@@ -2085,7 +2438,7 @@ export class VoiceRack {
           // note's own end, which is a modular's VCO straight to the output — a raw gate,
           // and what asking for one should sound like.
           const through = spec.vca === 'through';
-          const layerHolds = !through && preview && (spec.sustain ?? 0) > 0;
+          const layerHolds = !through && preview;
           let off;
           if (through) {
             // The gate opens when the LAYER starts, not when the note does — a delayed
@@ -2101,7 +2454,9 @@ export class VoiceRack {
             off = gateEnd + 0.006;
           } else {
             if (lDelay > 0) g.gain.setValueAtTime(0, t);
-            off = adsr(g.gain, lt, layerHolds ? holdEnd : end, spec.gain ?? 1, spec, layerHolds);
+            off = gateAdsr(g.gain, lt, layerHolds ? holdEnd : end,
+              spec.gain ?? 1, spec, layerHolds);
+            if (!preview) legatoEnvelopes.push({ param: g.gain, e: spec });
             if (layerHolds) heldParams.push({ param: g.gain, e: spec });
           }
           lastOff = Math.max(lastOff, off);
@@ -2176,7 +2531,8 @@ export class VoiceRack {
           // `_playGame` needs a gain per note to put vibrato in hertz on a tracking
           // bandpass. Every one starts at the same instant with the same phase, so a
           // chord's notes still breathe together: this costs nodes, not a sound.
-          const pwm = spec.type === 'pulse' && spec.pwm && (spec.pwm.depth ?? 0) > 0
+          const pwm = !hardSynced && spec.type === 'pulse'
+            && spec.pwm && (spec.pwm.depth ?? 0) > 0
             ? spec.pwm : null;
           const wCentre = Math.min(0.95, Math.max(0.05, spec.width ?? 0.5));
           // ---- the duty is SECONDS, and a glide moves what a second is worth --------
@@ -2238,6 +2594,9 @@ export class VoiceRack {
             const sources = [];        // everything that needs start() and stop()
             const pitches = [];        // every frequency param the note must be written to
             const dets = [];           // every detune param the spread and vibrato reach
+            const sourceEnds = new Map();
+            const sourceStarts = new Map();
+            const grainStarts = new Map();
             let o;
             if (isNoise) {
               o = ctx.createBufferSource();
@@ -2275,33 +2634,85 @@ export class VoiceRack {
               out = sum; sources.push(a, b);
               pitches.push(a.frequency, b.frequency); dets.push(a.detune, b.detune);
             } else {
-              o = ctx.createOscillator();
-              // `pulse` is the fifth waveform: a table rather than a type, at whatever
-              // duty the layer asks for. Everything downstream — detune, unison, the
-              // pitch envelope, FM, the filter — is identical to an oscillator's,
-              // because it IS one.
-              if (spec.type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
-              else o.type = nativeWave(spec.type, 'square');
-              out = o; sources.push(o);
-              pitches.push(o.frequency); dets.push(o.detune);
+              // A static sync table is enough when the slave has no pitch envelope. When
+              // it does, refresh the table in short, crossfaded grains. Each grain is one
+              // master-frequency oscillator whose table contains the slave ratio sampled
+              // at that point in the envelope. This keeps the reset spectrum moving
+              // while staying native and OfflineAudioContext-renderable.
+              const syncBend = hardSynced && spec.pitch
+                && (spec.pitch.semitones ?? 0) !== 0;
+              const masterRatio = Math.max(0.01, syncMaster.ratio ?? 1);
+              const slaveCents = (spec.detune ?? 0)
+                + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
+              if (syncBend) {
+                out = ctx.createGain();
+                const grainSeconds = 0.032;
+                const grainCount = Math.max(1, Math.ceil((end - lt) / grainSeconds));
+                const span = (end - lt) / grainCount;
+                const crossfade = Math.min(0.004, span * 0.25);
+                for (let grain = 0; grain < grainCount; grain++) {
+                  const start = lt + grain * span;
+                  const stop = Math.min(end, start + span);
+                  const middle = start + (stop - start) * 0.5;
+                  const bend = pitchEnvValue(spec.pitch, middle, lt, end);
+                  const relative = (ratio / masterRatio)
+                    * (2 ** ((slaveCents + bend) / 1200));
+                  const part = ctx.createOscillator();
+                  part.setPeriodicWave(hardSyncTable(ctx, spec.type, relative, wCentre));
+                  const level = ctx.createGain();
+                  level.gain.setValueAtTime(grain === 0 ? 1 : 0, start);
+                  if (grain > 0) level.gain.linearRampToValueAtTime(1, start + crossfade);
+                  if (grain < grainCount - 1) {
+                    level.gain.setValueAtTime(1, stop - crossfade);
+                    level.gain.linearRampToValueAtTime(0, stop);
+                  }
+                  part.connect(level); level.connect(out);
+                  sources.push(part);
+                  pitches.push(part.frequency);
+                  dets.push(part.detune);
+                  grainStarts.set(part.frequency, start);
+                  sourceStarts.set(part, start);
+                  sourceEnds.set(part, stop + 0.006);
+                }
+              } else {
+                o = ctx.createOscillator();
+                // `pulse` is the fifth waveform: a table rather than a type, at whatever
+                // duty the layer asks for. Everything downstream — detune, unison, the
+                // pitch envelope, FM, the filter — is identical to an oscillator's,
+                // because it IS one.
+                if (hardSynced) {
+                  const relative = (ratio / masterRatio) * (2 ** (slaveCents / 1200));
+                  o.setPeriodicWave(hardSyncTable(ctx, spec.type, relative, wCentre));
+                } else if (spec.type === 'pulse') o.setPeriodicWave(pulseTable(ctx, wCentre));
+                else o.type = nativeWave(spec.type, 'square');
+                out = o; sources.push(o);
+                pitches.push(o.frequency); dets.push(o.detune);
+              }
             }
-            const cents = (spec.detune ?? 0)
+            const cents = hardSynced ? (syncMaster.detune ?? 0) : (spec.detune ?? 0)
               + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
             // The static offset is the pitch envelope's BASE when there is one, because
             // both live on `.detune` and an envelope scheduled from zero would cancel a
-            // DETUNE written before it. Vibrato is a connected node, so it sums with
-            // either and needs no such care.
-            if (spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
+            // DETUNE written before it. Dynamic sync puts the slave bend into each
+            // grain's table, so detune is reserved for master pitch and vibrato.
+            if (!hardSynced && spec.pitch && (spec.pitch.semitones ?? 0) !== 0) {
               pitchEnv(dets, spec.pitch, lt, end, cents);
             } else if (cents) for (const d of dets) d.setValueAtTime(cents, lt);
             const vibCents = vibFor(u);
             if (vibCents) for (const d of dets) vibCents.connect(d);
+            if (lfoSpec?.target === 'pitch') for (const d of dets) lfoOut.connect(d);
 
             // Pitch and glide no longer compete. The envelope is cents on `.detune` and
             // the glide is hertz on `.frequency`, so a preset can do both: arrive from
             // the previous note AND bend on the way, which is a portamento lead with a
             // scoop and was unreachable while the two shared one param.
             for (const pitch of pitches) {
+              const playedRatio = hardSynced ? Math.max(0.01, syncMaster.ratio ?? 1) : ratio;
+              const grainStart = grainStarts.get(pitch);
+              if (grainStart != null) {
+                pitch.setValueAtTime(base * playedRatio, grainStart);
+                continue;
+              }
               if (glideFrom) {
                 // Written from the NOTE's start rather than the layer's, and that is not
                 // an oversight: a portamento is one gesture the whole note makes, not
@@ -2312,18 +2723,20 @@ export class VoiceRack {
                 //
                 // A glide stays 'exp' — constant semitones per second is what a
                 // portamento IS.
-                pitch.setValueAtTime(Math.max(1, glideFrom * ratio), t);
-                pitchRamp(pitch, target, t, Math.max(0.001, v.portamento));
+                pitch.setValueAtTime(Math.max(1, glideFrom * playedRatio), t);
+                pitchRamp(pitch, base * playedRatio, t, Math.max(0.001, v.portamento));
               } else {
-                pitch.setValueAtTime(target, t);
+                pitch.setValueAtTime(base * playedRatio, t);
               }
             }
+            pitchSets.push({ pitches, ratio: hardSynced ? (syncMaster.ratio ?? 1) : ratio });
+            legatoSources.push(...sources);
 
             // One modulator for the whole unison stack, mirroring `_playDrum`'s
             // operator: pitch fixed at the carrier's STARTING frequency, depth in
             // hertz as a multiple of it. Built with the first voice, fanned into the
             // rest — five modulators would beat against each other.
-            if (spec.fm && (spec.fm.index ?? 1) > 0) {
+            if (!hardSynced && spec.fm && (spec.fm.index ?? 1) > 0) {
               if (!fmSpread) {
                 const mod = ctx.createOscillator();
                 mod.type = nativeWave(spec.fm.type, 'sine');
@@ -2375,7 +2788,12 @@ export class VoiceRack {
             // same seed as the vibrato, so voice 2 is late in every layer at once rather
             // than smearing one singer's formants apart in time.
             const late = entry > 0 ? hitRandom(t, 1013 + u) * entry : 0;
-            for (const src of sources) { src.start(lt + late); src.stop(off + 0.01); }
+            for (const src of sources) {
+              const ownStart = sourceStarts.get(src);
+              src.start(ownStart ?? (lt + late));
+              const ownEnd = sourceEnds.get(src);
+              src.stop(ownEnd ?? (off + 0.01));
+            }
             // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
             // when that is — otherwise a key-up would release the envelope and leave the
             // oscillators running underneath it.
@@ -2392,10 +2810,32 @@ export class VoiceRack {
     // `adsr` returns ABSOLUTE times, so these are used as they are — adding `time`
     // would double-count and leave modulator nodes running seconds past the note.
     if (mono && lastBase > 0) {
-      this._last.set(glideKey, { freq: lastBase, outs: allOuts, stopAt: lastOff });
+      this._last.set(glideKey, {
+        freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
+        sources: legatoSources, gateUntil, stopAt: lastOff,
+      });
     }
     if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
-    if (lfoOsc && lastOff) { lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01); }
+    if (lfoOsc && lastOff) {
+      if (lfoSampleHold) {
+        const freeRate = Math.max(0.01, lfoSpec.rate ?? 4);
+        const tempoSteps = LFO_TEMPO_STEPS[lfoSpec.division] ?? 4;
+        const rate = lfoSpec.sync === 'tempo' && Number.isFinite(spb) && spb > 0
+          ? 1 / (spb * tempoSteps) : freeRate;
+        const period = 1 / rate;
+        // A true instantaneous S&H step makes a filter or gain parameter jump. Keep
+        // the held values, but slew between them for a small fraction of each period.
+        const slew = Math.min(0.02, period * 0.2);
+        let held = hitRandom(time, 1907) * 2 - 1;
+        for (let at = time + period, i = 1; at < lastOff; at += period, i++) {
+          const next = hitRandom(at, 1907 + i) * 2 - 1;
+          lfoOsc.offset.setValueAtTime(held, at);
+          lfoOsc.offset.linearRampToValueAtTime(next, at + slew);
+          held = next;
+        }
+      }
+      lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01);
+    }
     if (lastOff) {
       sharedMods.oscs.push(...vibOscs);
       if (lfoOsc) sharedMods.oscs.push(lfoOsc);
@@ -2516,16 +2956,38 @@ export class VoiceRack {
     // takes the direct path and stays perfectly smooth, or every drag would stutter through
     // thirty dips a second.
     const shifted = shapeChanged(pool.spec?.opts, spec.opts);
+    // A render has nobody listening and every ramp in it would be baked into the file,
+    // so offline takes the plain path: the value it is given, at the sample it is given.
+    const offline = typeof this.ctx.startRendering === 'function';
+    const glide = (param, value) => {
+      if (offline) { param.value = value; return; }
+      if (param.value === value) return;      // a pot held against its stop
+      // From the CONTEXT's own clock, not Tone's `now()`. Tone offsets everything it
+      // schedules by its lookahead — a tenth of a second — which is right for a note
+      // being booked ahead of time and wrong for an edit that is meant to be the answer
+      // to the hand moving: the glide would not begin until long after the pot had
+      // stopped. This is the clock the dip below uses, for the same reason.
+      param.rampTo(value, SMOOTH_SECONDS, this.ctx.currentTime);
+    };
     const write = () => {
       for (const { synth, vib } of pool.slots) {
-        synth.set(JSON.parse(JSON.stringify(spec.opts)));
+        const bag = JSON.parse(JSON.stringify(spec.opts));
+        // Every live AudioParam comes out of the bag first and is glided below — see
+        // SMOOTH_PARAMS. What is left is the numbers and strings nothing is reading
+        // until the next note, which `set` may write as hard as it likes.
+        const smooth = offline ? [] : liftSmoothParams(synth, bag);
+        synth.set(bag);
+        for (const { param, value } of smooth) glide(param, value);
         // `set` only writes the keys it is given, and `buildSpec` omits a glide of
         // zero — so dragging GLIDE back down has to be said explicitly or the last
         // non-zero value would stay on the synth for good.
         if (typeof synth.portamento === 'number') synth.portamento = spec.opts.portamento ?? 0;
         if (vib && spec.vibrato) {
-          vib.frequency.value = spec.vibrato.rate;
-          vib.depth.value = spec.vibrato.depth;
+          // The two that are heard while they move: a rate step is a wobble that jumps
+          // phase-rate mid-cycle, and a depth step is a pitch jump the size of the
+          // change. `type` is a waveform, which is a shape change and dips instead.
+          glide(vib.frequency, spec.vibrato.rate);
+          glide(vib.depth, spec.vibrato.depth);
           vib.type = spec.vibrato.type;
         }
       }
@@ -2533,7 +2995,7 @@ export class VoiceRack {
     try {
       // An offline render never edits a preset mid-play and has nobody listening, so it
       // takes the plain path — and a dip there would be a level move baked into a WAV.
-      const live = shifted && typeof this.ctx.startRendering !== 'function';
+      const live = shifted && !offline;
       const dipped = [];
       if (live) {
         const now = this.ctx.currentTime;
@@ -2555,6 +3017,36 @@ export class VoiceRack {
       // rebuilt pool is always a valid answer, so this is a fallback rather than a bug.
       return false;
     }
+  }
+
+  /**
+   * Take a pool down without a click: fade its output, then dispose behind the fade.
+   *
+   * `_disposePool` on its own is right when the pool is already silent — a retirement
+   * that has waited out its own tail, a context being torn down. It is wrong the moment
+   * something is still sounding through it, which is exactly when a preview is stopped.
+   */
+  _fadeAndDispose(pool) {
+    if (pool.gone || typeof this.ctx.startRendering === 'function') {
+      this._disposePool(pool);
+      return;
+    }
+    const now = this.ctx.currentTime;
+    for (const { out } of pool.slots) {
+      if (!out?.gain) continue;
+      try {
+        out.gain.cancelScheduledValues(now);
+        out.gain.setValueAtTime(out.gain.value, now);
+        out.gain.linearRampToValueAtTime(0, now + STOP_FADE);
+      } catch { /* a param that has gone with its context */ }
+    }
+    const timer = setTimeout(() => {
+      this._retired.delete(timer);
+      this._disposePool(pool);
+    }, Math.ceil(STOP_FADE * 1000) + 5);
+    // Booked in `_retired` so `dispose()` still accounts for it — a rack torn down
+    // inside the fade must not leave the timer holding the last reference to a synth.
+    this._retired.set(timer, pool);
   }
 
   _disposePool(pool) {
@@ -2691,23 +3183,45 @@ export class VoiceRack {
    * the only ones this operation touches.
    */
   stopPreview() {
+    // Out of the books at once — nothing may find these again — but taken down
+    // GENTLY: a Tone synth disposed mid-note has its nodes pulled out from under a
+    // signal that was still moving, which is a click as surely as a hard `stop()` is.
+    // See `_fadeAndDispose`.
+    // Snapshotted BEFORE the live pools are taken down, because taking one down books
+    // its own timer in `_retired` — walking the map afterwards would find the pool that
+    // is already fading and start it fading again.
+    const waiting = [...this._retired];
     for (const [key, pool] of [...this.pools]) {
       if (!pool.preview) continue;
       this.pools.delete(key);
-      this._disposePool(pool);
+      this._fadeAndDispose(pool);
     }
-    for (const [timer, pool] of [...this._retired]) {
+    for (const [timer, pool] of waiting) {
       if (!pool.preview) continue;
       clearTimeout(timer);
       this._retired.delete(timer);
-      this._disposePool(pool);
+      this._fadeAndDispose(pool);
     }
     this._activePreviews.clear();
+    // A held native note is an oscillator running at whatever level its envelope had
+    // reached, so `stop()` at `now` is a step to silence mid-waveform — a click, and on
+    // a low note a thump. Take the envelope down first and stop behind it. This is the
+    // same shape as `_releasePreview` and deliberately shorter: this is a stop rather
+    // than a note-off, and it may not wait for a ten-second release.
+    const now = this.ctx.currentTime;
+    const off = now + STOP_FADE;
     for (const held of this._heldNative.values()) {
-      for (const src of held.sources) { try { src.stop(this.ctx.currentTime); } catch { /* ignore */ } }
+      for (const h of held.params) {
+        try {
+          h.param.cancelScheduledValues(now);
+          h.param.setValueAtTime(Math.max(1e-4, h.param.value), now);
+          h.param.linearRampToValueAtTime(0, off);
+        } catch { /* gone with the note */ }
+      }
+      for (const src of held.sources) { try { src.stop(off); } catch { /* ignore */ } }
       // Everything stops here, so the shared modulators go without counting.
       if (held.shared) {
-        for (const m of held.shared.oscs) { try { m.stop(this.ctx.currentTime); } catch { /* ignore */ } }
+        for (const m of held.shared.oscs) { try { m.stop(off); } catch { /* ignore */ } }
         held.shared.holds = 0;
       }
     }

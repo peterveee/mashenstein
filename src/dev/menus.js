@@ -9,6 +9,7 @@ import { drawText, drawTextCentered, drawPanel, textYForMid, textWidth } from '.
 import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
+import { GAME_ALTERNATES } from '../data/game-alternates.js';
 import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
@@ -256,6 +257,59 @@ function scenesMenu(dev) {
     ],
   });
   return { ...build(), rebuild: build };
+}
+
+function gameAlternatesMenu(dev) {
+  const { Flow } = dev.ctx;
+  const go = (fn) => () => { dev.close(); fn(); };
+  const launchMenu = (song) => {
+    // The food court is the game's hub, not a cabinet, but it is still a live
+    // game loop. There is no cabinet screen between START and that loop, so
+    // both entries land in the hub with the alternate selected.
+    if (song.alternateOf === 'hub') {
+      const enterHub = () => { Flow.setGameAlternate(song.id); Flow.toHub(); };
+      return {
+        title: song.title,
+        items: [
+          { label: 'START', act: go(enterHub) },
+          { label: 'GAME LOOP', act: go(enterHub) },
+        ],
+      };
+    }
+    const cab = CABINET_BY_ID[song.alternateOf];
+    if (!cab) {
+      return {
+        title: song.title,
+        items: [{ label: 'GAME LOOP', act: go(() => { Flow.setGameAlternate(song.id); Flow.toHub(); }) }],
+      };
+    }
+    const stages = stagesForCabinet(cab.id);
+    return {
+      title: song.title,
+      items: [
+        { label: 'START', act: go(() => { Flow.setGameAlternate(song.id); Flow.openCabinet(cab); }) },
+        {
+          label: 'GAME LOOP ▸',
+          submenu: () => ({
+            title: 'GAME LOOP',
+            items: stages.map((stage) => ({
+              label: stage.id.toUpperCase(),
+              act: go(() => { Flow.setGameAlternate(song.id); Flow.launchStage(cab, stage, []); }),
+            })),
+          }),
+        },
+      ],
+    };
+  };
+  return {
+    title: 'GAME ALTERNATES',
+    items: Object.values(GAME_ALTERNATES)
+      .filter((song) => song.alternateOf === 'hub' || CABINET_BY_ID[song.alternateOf])
+      .map((song) => ({
+      label: `${song.title}  (${song.alternateOf.toUpperCase()})`,
+      submenu: () => launchMenu(song),
+      })),
+  };
 }
 
 function visualizersMenu(dev) {
@@ -547,6 +601,11 @@ export function rootMenu(dev) {
     title: 'DEV MENU',
     items: [
       { label: 'STAGES ▸', submenu: () => stagesMenu(dev) },
+      // Keep the saved-song launcher in the first screenful. On a phone the
+      // root menu has fewer visible rows, and this overlay deliberately has no
+      // swipe-to-scroll gesture; a row below the fold is otherwise unreachable
+      // without a physical keyboard.
+      { label: 'GAME ALTERNATES ▸', submenu: () => gameAlternatesMenu(dev) },
       { label: 'BOSSES ▸', submenu: () => bossesMenu(dev) },
       { label: 'TROPHY ROOM', act: () => {
         dev.close();

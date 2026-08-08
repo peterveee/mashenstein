@@ -160,7 +160,9 @@ export function deskTail({ mix = null, arrangement = null, variants = null } = {
     + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n`;
 }
 
-export function songFile({ id, title, slug, group, bank, mix, arrangement, note, seed }) {
+export function songFile({
+  id, title, slug, group, bank, mix, arrangement, variants, note, seed, alternateOf,
+}) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
     + (note ? `${note.split('\n').map((l) => `// ${l}`).join('\n')}\n//\n` : '')
@@ -172,11 +174,15 @@ export function songFile({ id, title, slug, group, bank, mix, arrangement, note,
     + `export const title = ${JSON.stringify(title)};\n`
     + `export const slug = ${JSON.stringify(slug)};\n`
     + `export const group = ${JSON.stringify(group)};\n`
+    // Above the marker, with the rest of what this song IS: an alternate's parent is
+    // not a mixing decision that gets rewritten on every save, it is the fact that
+    // makes the file an alternate at all.
+    + (alternateOf ? `export const alternateOf = ${JSON.stringify(alternateOf)};\n` : '')
     + (seed == null ? '' : `export const seed = ${JSON.stringify(seed)};\n`)
     + `\n`
     + `export const bank = ${bankSource(bank)};\n\n`;
 
-  return head + deskTail({ mix, arrangement });
+  return head + deskTail({ mix, arrangement, variants });
 }
 
 export const DESK_MARKER = '// ---- THE DESK WRITES BELOW HERE';

@@ -16,6 +16,7 @@
 // edit it with the same editor, file it with the same Save.
 
 import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
+import { isVoiceUsed } from '../src/data/voices-used.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -624,6 +625,7 @@ export function createVoiceLibrary({
   let query = '';
   let kind = 'all';
   let source = 'all';
+  let usage = 'all';  // 'all' | 'used' | 'unused'
   let picked = null;
   let searchInput = null;
   // `picked` is the row the user chose. A library row opens as a hidden editor draft,
@@ -684,6 +686,11 @@ export function createVoiceLibrary({
     { id: 'library', label: 'Library', keep: (v) => !!v.factory },
     { id: 'user', label: 'My presets', keep: (v) => !!v.user },
   ];
+  const USAGE = [
+    { id: 'all', label: 'All', keep: () => true },
+    { id: 'used', label: 'Used', keep: (v) => isVoiceUsed(v.id) },
+    { id: 'unused', label: 'Unused', keep: (v) => !isVoiceUsed(v.id) },
+  ];
 
   // ---- what a preset is BUILT from -------------------------------------------
   //
@@ -742,6 +749,7 @@ export function createVoiceLibrary({
     const q = query.trim().toLowerCase();
     const keep = KINDS.find((k) => k.id === kind).keep;
     const keepSource = SOURCES.find((s) => s.id === source).keep;
+    const keepUsage = USAGE.find((u) => u.id === usage).keep;
     // The synth is searchable as well as filterable: typing "fm" should find the FM
     // presets, which is what anyone who knows the catalogue would expect it to do.
     const hit = (v) => !q
@@ -750,7 +758,7 @@ export function createVoiceLibrary({
     return VOICE_CATEGORIES
       .map((c) => [c, Object.values(VOICES).filter((v) => v.category === c
         && v.kind !== 'engine' && !v.songLocal && !v.draft && keep(v) && keepSource(v)
-        && bySynth(v) && hit(v))])
+        && keepUsage(v) && bySynth(v) && hit(v))])
       .filter(([, list]) => list.length);
   }
 
@@ -811,6 +819,21 @@ export function createVoiceLibrary({
       sources.append(c);
     }
 
+    const usageChips = document.createElement('div');
+    usageChips.className = 'voiceusage';
+    for (const u of USAGE) {
+      const c = document.createElement('button');
+      c.className = 'voicekind' + (u.id === usage ? ' on' : '');
+      c.textContent = u.label;
+      c.title = u.id === 'used'
+        ? 'Presets referenced by cabinet songs or style-pack starters'
+        : u.id === 'unused'
+          ? 'Presets no cabinet song or style pack names — safe to clean up'
+          : 'Every preset, regardless of usage';
+      c.onclick = () => { usage = u.id; build(); };
+      usageChips.append(c);
+    }
+
     const search = document.createElement('input');
     search.className = 'voicesearch';
     search.type = 'search';
@@ -857,7 +880,7 @@ export function createVoiceLibrary({
     // Keep the search with the library controls. It is the last field before the
     // close button, so the close stays at the far edge instead of looking like part
     // of the filter group.
-    head.append(title, sources, chips, syn, search, close);
+    head.append(title, sources, usageChips, chips, syn, search, close);
 
     const results = document.createElement('div');
     results.className = 'vlresults';
@@ -874,6 +897,7 @@ export function createVoiceLibrary({
           query.trim() ? `“${query.trim()}”` : null,
           synth !== 'any' ? synth : null,
           kind !== 'all' ? kind : null,
+          usage !== 'all' ? usage : null,
         ].filter(Boolean);
         none.textContent = why.length
           ? `Nothing matches ${why.join(' + ')}` : 'No presets in this view';

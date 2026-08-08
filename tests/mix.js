@@ -153,9 +153,11 @@ for (const def of Object.values(EFFECT_BY_ID)) {
 // the browser-side grouping source here because the picker is deliberately not a
 // Node-importable module.
 const groupBlock = deskSource.slice(deskSource.indexOf('const EFFECT_GROUPS = ['), deskSource.indexOf('function addEffect('));
-for (const id of ['chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape']) {
+for (const id of ['vowel', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape']) {
   assert(groupBlock.includes(`'${id}'`), `${id}: appears in an effect-picker group`);
 }
+assert(/\['Level & EQ',[\s\S]*'peq'[\s\S]*'vowel'[\s\S]*'filter'/.test(groupBlock),
+  'vowel is grouped under Level & EQ');
 assert(/\['Modulation',[\s\S]*'chorus2'[\s\S]*'rhythmgate'[\s\S]*'flanger'[\s\S]*'ringmod'/.test(groupBlock),
   'new modulation effects are grouped under Modulation');
 assert(/\['Drive',[\s\S]*'bitcrusher'[\s\S]*'tape'/.test(groupBlock),
@@ -165,6 +167,7 @@ assert(/\['Drive',[\s\S]*'bitcrusher'[\s\S]*'tape'/.test(groupBlock),
 // otherwise its generic 0..1 fallback makes Hz, dB, and integer controls unusable.
 for (const [id, checks] of Object.entries({
   chorus: { delayTime: [2, 20], feedback: [0, 0.6], spread: [0, 180] },
+  vowel: { frequency: [0.05, 8], glide: [0, 1], reso: [0.3, 3], spread: [0, 1], body: [0, 1], air: [0, 1] },
   chorus2: { feedback: [0, 0.6], tone: [800, 20000] },
   bitcrusher: { bits: [2, 16], drive: [0, 24] },
   rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.005, 1] },
@@ -179,7 +182,15 @@ for (const [id, checks] of Object.entries({
       `${id}.${name}: editor range is ${range.min}..${range.max}`);
   }
 }
-for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM']) {
+const vowelDefaults = EFFECT_BY_ID.vowel.defaults;
+assert(vowelDefaults.wet >= 0.85 && vowelDefaults.reso >= 2 && vowelDefaults.glide <= 0.1
+  && vowelDefaults.rateDivision <= 0.25 && vowelDefaults.spread > 0.8,
+  'vowel defaults expose a pronounced, audible formant walk rather than only thickening');
+// Three narrow bandpasses over silence is a reed, not a voice: the body return and the
+// air tap are what stop the default sounding thin, so they must not default to nothing.
+assert(vowelDefaults.body >= 0.35 && vowelDefaults.air > 0,
+  'vowel defaults keep a voiced body and an open top rather than three isolated bands');
+for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM', 'VOICE', 'VOWEL STACK', 'RESO', 'BODY', 'AIR']) {
   assert(Object.values(EFFECT_BY_ID).some((def) => Object.values(def.labels || {}).includes(label)),
     `catalogue has the local ${label} label`);
 }

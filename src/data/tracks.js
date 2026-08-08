@@ -36,7 +36,9 @@ const RUNTIME = new Map();
  * itself means. Registering an id a hand-written song already owns does nothing —
  * the built-in registries below always win, so an import cannot shadow the game.
  */
-export function registerTrack({ id, bank, title, slug, group = 'imported', writable = false }) {
+export function registerTrack({
+  id, bank, title, slug, group = 'imported', writable = false, alternateOf = null,
+}) {
   if (!id || !bank) return null;
   if (ALIASES[id] || SHOP_THEME_BY_ID[id] || CABINET_BY_ID[id]?.music) return null;
   RUNTIME.set(id, {
@@ -45,6 +47,11 @@ export function registerTrack({ id, bank, title, slug, group = 'imported', writa
     slug: slug || id,
     group,
     writable: !!writable,
+    // The song this one is an alternate OF: a copy of a game song's music, parked
+    // under its own name until somebody decides it is the version to ship. Carried
+    // through the registry because it is what the desk's "Save over …" aims at, and
+    // a parent guessed from a title is a parent that writes over the wrong song.
+    ...(alternateOf ? { alternateOf } : {}),
   });
   // Never over the id a built-in already gave this bank. The moment an imported bank
   // is put IN the game — `music: COOL_SONG` on a cabinet — the same object is both
@@ -93,6 +100,11 @@ export function listTracks() {
     ['audition', Object.keys(SHOP_THEME_BY_ID)],
     ['imported', [...RUNTIME.entries()].filter(([, t]) => (t.group || 'imported') === 'imported').map(([id]) => id)],
     ['scratch', [...RUNTIME.entries()].filter(([, t]) => t.group === 'scratch').map(([id]) => id)],
+    // A game song's music with somebody else's mix and arrangement on it, saved under
+    // its own name rather than over the song it came from. Its own heading because it
+    // is neither scratch material nor a shipped song: it is a candidate, and the whole
+    // point of it is that nothing has been decided yet.
+    ['alternate', [...RUNTIME.entries()].filter(([, t]) => t.group === 'alternate').map(([id]) => id)],
     // Scratch songs in every mechanical sense — same file shape, same writable desk
     // section — but they answer a question the others do not: what does a STYLE PACK
     // sound like. One per pack, written by tools/style-auditions.js at a fixed seed,

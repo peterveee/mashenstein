@@ -1,5 +1,5 @@
 import {
-  baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES,
+  baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES, voiceOf,
   DEFAULT_ADDED_PERCUSSION_VOICE,
 } from '../data/voices.js';
 import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
@@ -90,6 +90,56 @@ export function stepLen(bank, laneKey, step) {
 export function toneLen(len, fallback, i = 0) {
   const one = Array.isArray(len) ? len[i] : len;
   return validLen(one) ? one : fallback;
+}
+
+// The lanes whose note lengths now belong to the NOTES themselves. Gesture lanes,
+// vocals and drums keep their own timing model: a sweep step starts a shape, and a
+// drum hit is still a trigger rather than a gate.
+const PER_NOTE_LENGTH_BASES = new Set([
+  'bass', 'lead', 'leadHarm', 'twinkle', 'chords', 'organChords',
+]);
+
+export const perNoteLengthLane = (laneKey) => PER_NOTE_LENGTH_BASES.has(baseLane(laneKey));
+
+// The old defaults, still read as compatibility for notes that have never been given an
+// explicit length of their own.
+const LEGACY_LANE_DUR = {
+  bass: 1.8,
+  lead: 1.2,
+  leadHarm: 1.2,
+  twinkle: 6,
+  chords: 2.6,
+  organChords: 7.2,
+};
+
+export const fixedSecondsToSteps = (seconds, bpm) => {
+  if (!(seconds > 0) || !(bpm > 0)) return null;
+  return Number((seconds * bpm * 4 / 60).toFixed(6));
+};
+
+export function legacyLaneLength(view, laneKey, voice = voiceOf(view, laneKey)) {
+  if (!perNoteLengthLane(laneKey)) return null;
+  const base = baseLane(laneKey);
+  const seam = seamFor(base);
+  if (voice?.fixedLength > 0) {
+    const fixed = fixedSecondsToSteps(voice.fixedLength, view?.bpm);
+    if (validLen(fixed)) return fixed;
+  }
+  const bankDur = seam ? view?.[seam.durKey] : null;
+  if (validLen(bankDur)) return bankDur;
+  if (base === 'leadHarm' && validLen(view?.leadDur)) return view.leadDur;
+  if (validLen(voice?.dur)) return voice.dur;
+  return LEGACY_LANE_DUR[base] ?? 1;
+}
+
+export function effectiveToneLength(view, laneKey, step, i = 0) {
+  return toneLen(stepLen(view, laneKey, step), legacyLaneLength(view, laneKey), i);
+}
+
+export function effectiveStepLen(view, laneKey, step) {
+  const len = stepLen(view, laneKey, step);
+  if (Array.isArray(len)) return len.map((_, i) => effectiveToneLength(view, laneKey, step, i));
+  return effectiveToneLength(view, laneKey, step, 0);
 }
 
 // Desk order: the order the channel strips appear on the mixing desk, which is not

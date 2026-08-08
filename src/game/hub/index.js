@@ -1197,7 +1197,8 @@ export class HubState {
         swappable: false, pinned: true, roam: STAFF_ROAM,
       });
     }
-    Audio.setBank(HUB_THEME);
+    const musicSong = this.flow.gameSongFor('hub');
+    Audio.setBank(musicSong?.bank || HUB_THEME, musicSong?.mix, musicSong?.arrangement);
     // Tapping a station both walks to it and uses it (see update()), and the
     // EXIT sign at the left of the concourse is itself a station — the whole
     // hub is its own control surface, so it needs no buttons of its own.
@@ -3096,7 +3097,12 @@ export class StageSelectState {
     // This one IS a song change (the food court's theme is a different composition), so
     // it takes setBank's gap. It happens behind a fully closed shutter — states.js runs
     // enter() at the covered midpoint — which hides most but not all of it.
-    MusicDirector.play(this.cab.music, 'select', cabinetMusicState(this.save.slot, this.cab.id));
+    const musicSong = this.flow.gameSongFor(this.cab.id);
+    MusicDirector.play(musicSong?.bank || this.cab.music, 'select', cabinetMusicState(this.save.slot, this.cab.id), {
+      mixOverride: musicSong?.mix,
+      arrangementOverride: musicSong?.arrangement,
+      variants: musicSong?.variants,
+    });
     this.corrupt = null;
     const opts = this.options();
     this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));

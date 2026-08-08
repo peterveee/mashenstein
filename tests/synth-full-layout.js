@@ -4,7 +4,7 @@
  * The MRDR-3 panel is defined once, in `layerGroups()`, and drawn twice: down a 366px
  * column on the desk, and across a six-column window when you press EDIT. The strip needs
  * no layout — it stacks the cards in declaration order and scrolls — but the window has to
- * say which card goes where, and that is a second arrangement of the same 166 controls.
+ * say which card goes where, and that is a second arrangement of the same 169 controls.
  *
  * A second arrangement is a second list, and a second list drifts. Add a card to
  * `layerGroups()`, forget to place it, and the window is missing a control the engine
@@ -22,13 +22,52 @@
  * `checkFullLayout` does the walk and reports; `fullLayout` does the same walk and throws,
  * so a broken layout fails here first and in the browser second.
  */
-import { checkFullLayout, fullLayout, panelSpec } from '../tools/mixer-voice-editor.js';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  checkFullLayout, fullLayout, panelSpec, quickRows, stripPanelSpec,
+  copyLayerData,
+} from '../tools/mixer-voice-editor.js';
 
 let failed = 0;
 const fail = (msg) => { failed++; console.log(`FAIL: ${msg}`); };
 const ok = (msg) => console.log(`ok: ${msg}`);
 
 const VOICE = { synth: 'MRDR-3' };
+const DRUM = { kind: 'drum' };
+
+// Layer copying is a whole subtree operation: live values, nested optional sections,
+// and the bypassed values that make an Off layer reversible all travel together.
+const copyVoice = {
+  synth: 'MRDR-3',
+  layer: { osc1: { type: 'square', fm: { ratio: 2 }, gain: 0.72 }, osc2: { type: 'sine' } },
+  bypassed: {
+    'layer.osc1.filter': { type: 'highpass', freq: 880 },
+    'layer.osc2.fm': { ratio: 4 },
+  },
+};
+const copyBefore = structuredClone(copyVoice);
+copyLayerData(copyVoice, 1, 2);
+if (JSON.stringify(copyVoice.layer.osc2) !== JSON.stringify(copyBefore.layer.osc1)
+  || JSON.stringify(copyVoice.bypassed['layer.osc2.filter'])
+    !== JSON.stringify(copyBefore.bypassed['layer.osc1.filter'])
+  || copyVoice.bypassed['layer.osc2.fm'] !== undefined) {
+  fail('MRDR layer copy did not duplicate the live subtree and remap bypassed sections');
+} else ok('MRDR layer copy duplicates live and bypassed layer state exactly');
+
+// The strip surface must be resolved from the newly selected voice. In particular, a
+// GameSynth patch has no Quick macro surface and must not inherit MRDR-3's compact rack
+// when the lane changes presets while its editor is open.
+const mrdrStrip = stripPanelSpec({ kind: 'tone', synth: 'MRDR-3' });
+const gameStrip = stripPanelSpec({ kind: 'tone', synth: 'GameSynth' });
+if (mrdrStrip.mode !== 'quick' || mrdrStrip.groups[0]?.title !== 'Quick') {
+  fail('MRDR-3 strip did not select the Quick surface');
+} else if (gameStrip.mode !== 'detailed'
+  || !gameStrip.groups.some((g) => g.title === 'Game Synth')
+  || !gameStrip.groups.some((g) => g.title === 'Note')) {
+  fail('GameSynth strip did not select its detailed synth controls');
+} else {
+  ok('switching from MRDR-3 to GameSynth selects the correct strip surface');
+}
 
 // ---- the invariant ----------------------------------------------------------
 const problems = checkFullLayout(VOICE);
@@ -38,6 +77,13 @@ if (problems.length) {
   const { common, groups } = panelSpec(VOICE);
   const rows = common.rows.length + groups.reduce((n, g) => n + (g.rows || []).length, 0);
   ok(`MRDR-3 — ${rows} controls, every one placed exactly once`);
+  const sync = common.rows.find((r) => r.path === '$sync');
+  if (!sync || sync.label !== 'OSC SYNC'
+    || JSON.stringify(sync.options) !== JSON.stringify(['off', '1+2', '1+3', '1+2+3'])) {
+    fail('MRDR-3 Note card does not expose the four oscillator-sync states');
+  } else {
+    ok('MRDR-3 exposes OFF, 1+2, 1+3 and ALL as one compact Note-card control');
+  }
 }
 
 // ---- and the same walk from the throwing side -------------------------------
@@ -67,6 +113,255 @@ for (const layer of [1, 2, 3]) {
 }
 if (!failed) ok('all three layers build, and every band fills its own column count');
 
+// Drum Synth uses the same window renderer but has no layer/mixer band. Its source cards
+// still have to satisfy the same exactly-once invariant, including the new Master Tune
+// row and Ring/Metal Attack rows.
+const drumProblems = checkFullLayout(DRUM);
+if (drumProblems.length) {
+  for (const p of drumProblems) fail(`Drum Synth: ${p}`);
+} else {
+  const { common, groups } = panelSpec(DRUM);
+  const rows = common.rows.length + groups.reduce((n, g) => n + (g.rows || []).length, 0);
+  ok(`Drum Synth — ${rows} controls, every one placed exactly once`);
+}
+try {
+  const Ld = fullLayout(DRUM);
+  for (const b of Ld.bands) {
+    const span = b.cells.reduce((n, c) => n + (c.span || 1), 0);
+    if (span !== b.cols) fail(`Drum Synth: band '${b.name}' spans ${span}, not ${b.cols}`);
+  }
+  if (Ld.total !== panelSpec(DRUM).common.rows.length
+    + panelSpec(DRUM).groups.reduce((n, g) => n + (g.rows || []).length, 0)) {
+    fail(`Drum Synth: layout total ${Ld.total} does not match panel rows`);
+  }
+} catch (err) {
+  fail(`Drum Synth: fullLayout threw — ${err.message}`);
+}
+if (!failed) ok('Drum Synth builds three complete Advanced bands');
+
+// Quick is data too: its collective rows must preserve envelope ratios and its Hits row
+// must never flatten authored tap spacing just to change the count.
+const byLabel = (rows, label) => rows.find((r) => r.label === label);
+const mrdrQuick = {
+  synth: 'MRDR-3', layer: {
+    osc1: { vca: 'env', attack: 0.01, decay: 0.2, release: 0.03 },
+    osc2: { vca: 'env', attack: 0.02, decay: 0.4, release: 0.06 },
+    osc3: { vca: 'through', attack: 0.8, decay: 0.9, release: 0.8 },
+  }, global: { vca: { attack: 0.04, decay: 0.8, release: 0.12 } },
+};
+const mrdrAttack = byLabel(quickRows(mrdrQuick), 'ATTACK');
+const mrdrBefore = mrdrAttack.read(undefined, mrdrQuick);
+const mrdrAuthored = structuredClone(mrdrQuick);
+mrdrAttack.write(0.08, mrdrQuick);
+if (mrdrBefore !== 0.04 || mrdrQuick.layer.osc1.attack !== 0.02
+  || mrdrQuick.layer.osc2.attack !== 0.04 || mrdrQuick.global.vca.attack !== 0.08
+  || mrdrQuick.layer.osc3.attack !== 0.8) {
+  fail('MRDR Quick VCA aggregation does not preserve ratios or exclude THROUGH');
+} else ok('MRDR Quick VCA aggregation preserves ratios and excludes THROUGH');
+mrdrAttack.write(mrdrBefore, mrdrQuick);
+if (!isDeepStrictEqual(mrdrQuick, mrdrAuthored)) {
+  fail('MRDR Quick VCA aggregation did not restore the authored envelope on a round trip');
+} else ok('MRDR Quick VCA aggregation restores the authored envelope on a round trip');
+
+const sameAtZ = (authored, label, y, z) => {
+  const direct = structuredClone(authored);
+  const via = structuredClone(authored);
+  byLabel(quickRows(direct), label).write(z, direct);
+  const viaRow = byLabel(quickRows(via), label);
+  viaRow.write(y, via);
+  viaRow.write(z, via);
+  return isDeepStrictEqual(direct, via);
+};
+
+for (const label of ['ATTACK', 'DECAY', 'RELEASE']) {
+  if (!sameAtZ(mrdrAuthored, label, 0.091, 0.067)) {
+    fail(`MRDR Quick ${label} changes sound at z depending on the route to z`);
+  }
+}
+if (!failed) ok('MRDR Quick envelope positions are independent of the route taken');
+
+const drumQuick = {
+  kind: 'drum', noise: { attack: 0.002, decay: 0.1 },
+  taps: [0, 0.011, 0.029], tapDecays: [0.2, 0.4, 0.6],
+};
+const drumRows = quickRows(drumQuick);
+const drumDecay = byLabel(drumRows, 'DECAY');
+if (drumDecay.read(undefined, drumQuick) !== 0.6) fail('Drum Quick did not include tapDecays');
+const beforeDecay = structuredClone(drumQuick);
+drumDecay.write(1.2, drumQuick);
+if (!isDeepStrictEqual(drumQuick.tapDecays, [0.4, 0.8, 1.2])) {
+  fail('Drum Quick Decay did not scale authored per-hit decays');
+}
+drumDecay.write(0.6, drumQuick);
+if (!isDeepStrictEqual(drumQuick, beforeDecay)) {
+  fail('Drum Quick Decay did not restore the authored envelope on a round trip');
+} else ok('Drum Quick Decay restores the authored envelope on a round trip');
+for (const label of ['ATTACK', 'DECAY']) {
+  if (!sameAtZ(beforeDecay, label, 0.83, 0.47)) {
+    fail(`Drum Quick ${label} changes sound at z depending on the route to z`);
+  }
+}
+if (!failed) ok('Drum Quick envelope positions are independent of the route taken');
+const hits = byLabel(drumRows, 'HITS');
+const beforeHits = structuredClone(drumQuick);
+hits.write(2, drumQuick);
+hits.write(3, drumQuick);
+if (!isDeepStrictEqual(drumQuick, beforeHits)) {
+  fail('Drum Quick Hits did not restore authored spacing and falloff on a round trip');
+} else ok('Drum Quick Hits restores authored tap data exactly on a round trip');
+const fourHitDrum = {
+  kind: 'drum', noise: { decay: 0.1 }, taps: [0, 0.011, 0.029, 0.052], tapFalloff: 0.61,
+};
+if (!sameAtZ(fourHitDrum, 'HITS', 2, 3)) {
+  fail('Drum Quick Hits changes sound at z depending on the route to z');
+} else ok('Drum Quick Hits positions are independent of the route taken');
+
+// Advanced Global Filter cutoff keeps the final driven low-pass ceiling out of its way.
+// Quick BRIGHTNESS is a collective view of the active filter frequencies, rather than a
+// second alias of the Drive card's specific TONE parameter.
+const mrdrFilterVoice = {
+  synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 },
+  global: { filter: { freq: 1150 } },
+};
+const mrdrGlobalCutoff = panelSpec(VOICE).groups
+  .find((g) => g.key === 'global.filter').rows.find((r) => r.path === '$global.filter.freq');
+mrdrGlobalCutoff.after(2400, mrdrFilterVoice, 1150);
+mrdrGlobalCutoff.after(900, mrdrFilterVoice, 2400);
+if (mrdrFilterVoice.tone.freq !== 900) {
+  fail('MRDR Advanced Global Filter did not carry its final Tone ceiling');
+} else ok('MRDR Advanced Global Filter carries its final Tone ceiling in both directions');
+
+const mrdrQuickBrightnessVoice = {
+  synth: 'MRDR-3', drive: 0.5,
+  layer: {
+    osc1: { gain: 1, filter: { type: 'lowpass', freq: 600, Q: 1.2 } },
+    osc2: { gain: 1, filter: { type: 'lowpass', freq: 1200, Q: 2.4 } },
+  },
+  global: { filter: { freq: 3000, Q: 4 } },
+  tone: { type: 'lowpass', freq: 900, Q: 4 },
+};
+const mrdrBrightness = byLabel(quickRows(mrdrQuickBrightnessVoice), 'BRIGHTNESS');
+if (!mrdrBrightness || byLabel(quickRows(mrdrQuickBrightnessVoice), 'TONE')) {
+  fail('MRDR Quick still exposes TONE instead of BRIGHTNESS');
+} else if (mrdrBrightness.read(undefined, mrdrQuickBrightnessVoice) !== 600) {
+  fail('MRDR Quick BRIGHTNESS did not read the darkest active filter cutoff');
+}
+const beforeBrightness = structuredClone(mrdrQuickBrightnessVoice);
+mrdrBrightness.write(1200, mrdrQuickBrightnessVoice);
+if (mrdrQuickBrightnessVoice.layer.osc1.filter.freq !== 1200
+  || mrdrQuickBrightnessVoice.layer.osc2.filter.freq !== 2400
+  || mrdrQuickBrightnessVoice.global.filter.freq !== 6000
+  || mrdrQuickBrightnessVoice.tone.freq !== 1800
+  || mrdrQuickBrightnessVoice.layer.osc1.filter.Q !== 1.2
+  || mrdrQuickBrightnessVoice.tone.Q !== 4) {
+  fail('MRDR Quick BRIGHTNESS did not scale all active filter cutoffs together');
+}
+mrdrBrightness.write(600, mrdrQuickBrightnessVoice);
+if (!isDeepStrictEqual(mrdrQuickBrightnessVoice, beforeBrightness)) {
+  fail('MRDR Quick BRIGHTNESS did not restore the authored filter relationship');
+} else ok('MRDR Quick BRIGHTNESS scales and restores all MRDR filter cutoffs');
+if (!sameAtZ(beforeBrightness, 'BRIGHTNESS', 900, 750)) {
+  fail('MRDR Quick BRIGHTNESS changes sound at z depending on the route to z');
+} else ok('MRDR Quick BRIGHTNESS positions are independent of the route taken');
+
+// An Advanced cutoff edit is a new authored baseline for the collective macro. The Quick
+// reading must follow it, and a later round trip must not restore the stale pre-edit shape.
+mrdrQuickBrightnessVoice.layer.osc1.filter.freq = 450;
+if (mrdrBrightness.read(undefined, mrdrQuickBrightnessVoice) !== 450) {
+  fail('MRDR Advanced cutoff did not update the Quick BRIGHTNESS reading');
+}
+const afterMrdrAdvancedCutoff = structuredClone(mrdrQuickBrightnessVoice);
+mrdrBrightness.write(900, mrdrQuickBrightnessVoice);
+mrdrBrightness.write(450, mrdrQuickBrightnessVoice);
+if (!isDeepStrictEqual(mrdrQuickBrightnessVoice, afterMrdrAdvancedCutoff)) {
+  fail('MRDR Quick BRIGHTNESS overwrote an Advanced filter edit with a stale baseline');
+} else ok('MRDR Advanced filter edits stay synchronized with Quick BRIGHTNESS');
+
+const mrdrSweepVoice = {
+  synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 },
+  global: { filter: { freq: 1150, env: { octaves: 0 } } },
+};
+const mrdrSweep = byLabel(quickRows(mrdrSweepVoice), 'FILTER SWEEP');
+const beforeSweep = structuredClone(mrdrSweepVoice);
+mrdrSweep.write(1, mrdrSweepVoice);
+mrdrSweep.write(0, mrdrSweepVoice);
+const mrdrResVoice = { synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 } };
+const mrdrResonance = byLabel(quickRows(mrdrResVoice), 'RESONANCE');
+const beforeResonance = structuredClone(mrdrResVoice);
+mrdrResonance.write(8, mrdrResVoice);
+mrdrResonance.write(0.7, mrdrResVoice);
+if (!isDeepStrictEqual(mrdrSweepVoice, beforeSweep)
+  || !isDeepStrictEqual(mrdrResVoice, beforeResonance)) {
+  fail('MRDR Quick Sweep/Resonance left a filter or changed Tone after returning home');
+} else ok('MRDR Quick Sweep/Resonance round trips restore the exact authored sound');
+if (!sameAtZ(beforeSweep, 'FILTER SWEEP', 2, 1)
+  || !sameAtZ(beforeResonance, 'RESONANCE', 12, 8)) {
+  fail('MRDR Quick Sweep/Resonance changes sound at z depending on the route to z');
+} else ok('MRDR Quick Sweep/Resonance positions are independent of the route taken');
+
+// ...and with no drive there is no tone filter in the signal path, so nothing may touch
+// the stored cutoff — the panel must not rewrite the parameter it has greyed out.
+const mrdrDrylessVoice = {
+  synth: 'MRDR-3', tone: { freq: 700 },
+  global: { filter: { freq: 1150 } },
+};
+mrdrGlobalCutoff.after(9000, mrdrDrylessVoice, 1150);
+if (mrdrDrylessVoice.tone.freq !== 700) {
+  fail('MRDR Advanced filter rewrote Tone on a voice with no drive');
+} else ok('MRDR Tone is left alone when DRIVE is zero and the filter is not built');
+
+const drumFilterVoice = {
+  kind: 'drum', drive: 0.5, tone: { type: 'lowpass', freq: 700 },
+  noise: { freq: 2600, Q: 0.7 }, ring: { freq: 400, Q: 40 },
+  metal: { hp: 3000, Q: 0.7 },
+};
+const drumResVoice = {
+  kind: 'drum', drive: 0.5, tone: { type: 'lowpass', freq: 700 },
+  metal: { hp: 3000, Q: 0.7 },
+};
+const drumNoiseCutoff = panelSpec(DRUM).groups
+  .find((g) => g.key === 'noise').rows.find((r) => r.path === '$noise.freq');
+const drumMetalQ = panelSpec(DRUM).groups
+  .find((g) => g.key === 'metal').rows.find((r) => r.path === '$metal.Q');
+drumNoiseCutoff.after(4200, drumFilterVoice, 2600);
+drumMetalQ.after(8, drumResVoice, 0.7);
+if (drumFilterVoice.tone.freq !== 4200 || drumResVoice.tone.freq !== 3000) {
+  fail('Drum source filters did not synchronize the Advanced Drive Tone ceiling');
+} else ok('Drum source filters remain audible below the Advanced Drive Tone');
+
+const drumQuickBrightnessVoice = {
+  kind: 'drum', drive: 0.5,
+  noise: { type: 'lowpass', freq: 800, to: 400, Q: 2 },
+  ring: { type: 'bandpass', freq: 400, to: 300, Q: 40 },
+  metal: { freq: 700, hp: 2400, hpTo: 1200, Q: 0.8 },
+  tone: { type: 'lowpass', freq: 6000, Q: 3 },
+};
+const drumBrightness = byLabel(quickRows(drumQuickBrightnessVoice), 'BRIGHTNESS');
+if (!drumBrightness || byLabel(quickRows(drumQuickBrightnessVoice), 'TONE')) {
+  fail('Drum Quick still exposes TONE instead of BRIGHTNESS');
+} else if (drumBrightness.read(undefined, drumQuickBrightnessVoice) !== 800) {
+  fail('Drum Quick BRIGHTNESS did not read the darkest active filter cutoff');
+}
+const beforeDrumBrightness = structuredClone(drumQuickBrightnessVoice);
+drumBrightness.write(1600, drumQuickBrightnessVoice);
+if (drumQuickBrightnessVoice.noise.freq !== 1600
+  || drumQuickBrightnessVoice.noise.to !== 800
+  || drumQuickBrightnessVoice.metal.hp !== 4800
+  || drumQuickBrightnessVoice.metal.hpTo !== 2400
+  || drumQuickBrightnessVoice.tone.freq !== 12000
+  || drumQuickBrightnessVoice.ring.freq !== 400
+  || drumQuickBrightnessVoice.metal.freq !== 700) {
+  fail('Drum Quick BRIGHTNESS did not scale filter cutoffs while preserving pitch');
+}
+drumBrightness.write(800, drumQuickBrightnessVoice);
+if (!isDeepStrictEqual(drumQuickBrightnessVoice, beforeDrumBrightness)) {
+  fail('Drum Quick BRIGHTNESS did not restore authored filter and sweep values');
+} else ok('Drum Quick BRIGHTNESS scales filters, sweep destinations, and restores pitch');
+drumQuickBrightnessVoice.noise.freq = 500;
+if (drumBrightness.read(undefined, drumQuickBrightnessVoice) !== 500) {
+  fail('Drum Advanced cutoff did not update the Quick BRIGHTNESS reading');
+} else ok('Drum Advanced filter edits stay synchronized with Quick BRIGHTNESS');
+
 // ---- the counts the window prints -------------------------------------------
 // The per-card badges and the title bar's total are the invariant rendered. If they are
 // ever typed rather than derived, this is what catches it.
@@ -87,7 +382,7 @@ for (const band of L.bands) {
   }
 }
 // One layer on screen out of three, so the visible count is the total minus the two
-// layers that are not showing. 166 − 42 − 42 = 82.
+// layers that are not showing. 169 − 33 − 33 = 103.
 const perLayer = (L.total - onScreen) / 2;
 if (!Number.isInteger(perLayer)) {
   fail(`the two hidden layers do not account for ${L.total - onScreen} controls evenly`);

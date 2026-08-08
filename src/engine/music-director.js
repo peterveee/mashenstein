@@ -125,11 +125,11 @@ function mergeMix(base, patch) {
  * what every cabinet does until someone authors otherwise, and it is not a fallback so
  * much as the ordinary answer.
  */
-function resolve(trackId, variantId, state) {
-  const base = MIX[trackId] || null;
+function resolve(trackId, variantId, state, source = null) {
+  const base = source?.mix || MIX[trackId] || null;
   const plain = { mix: base, loop: null, exit: { ...DEFAULT_EXIT } };
-  if (!trackId || !variantId) return plain;
-  const list = VARIANTS[trackId]?.[variantId];
+  if ((!trackId && !source) || !variantId) return plain;
+  const list = source?.variants?.[variantId] || VARIANTS[trackId]?.[variantId];
   if (!list) return plain;
   const entries = Array.isArray(list) ? list : [list];
   const hit = entries.find((e) => e.when === 'always' || e.when === state);
@@ -168,6 +168,8 @@ export const MusicDirector = {
   resolved: null,
   pending: null,
   treated: false,
+  baseMix: null,
+  source: null,
 
   /**
    * Play a song in one of its treatments. A real song change, with setBank's gap and
@@ -178,19 +180,22 @@ export const MusicDirector = {
    * That is wanted: re-opening the cabinet screen must re-arm its treatment even when
    * the same song is somehow already up.
    */
-  play(bank, variantId = null, state = null, { gap } = {}) {
+  play(bank, variantId = null, state = null, { gap, mixOverride, arrangementOverride, variants } = {}) {
     this.cancel();
     this.bank = bank || null;
     this.trackId = bank ? trackIdOf(bank) : null;
     this.variantId = variantId;
     this.state = state;
+    this.source = { mix: mixOverride, variants };
+    this.baseMix = mixOverride;
     if (!bank) { this.resolved = null; Audio.setBank(null); return; }
-    const r = resolve(this.trackId, variantId, state);
+    const r = resolve(this.trackId, variantId, state, this.source);
     this.resolved = r;
     // The caller's gap wins over the treatment's, so a screen can override what a song
     // asks for; both absent means setBank's own half second.
     const g = gap ?? r.gap;
-    Audio.setBank(bank, r.mix || null, undefined, g == null ? undefined : { gap: g });
+    Audio.setBank(bank, r.mix || null, arrangementOverride,
+      g == null ? undefined : { gap: g });
     // After setBank, which resets the treatment leg along with everything else on the
     // desk. Built at full wet with no cross-fade because this is already a hard change:
     // there is a gap either side of it and nothing to be smooth about yet.
@@ -221,7 +226,8 @@ export const MusicDirector = {
     if (!this.bank || Audio.sourceBank !== this.bank) { this.cancel(); return false; }
     const target = overrides.mixOverride !== undefined
       ? { mix: overrides.mixOverride }
-      : resolve(this.trackId, variantId, this.state);
+      : (variantId ? resolve(this.trackId, variantId, this.state, this.source)
+        : { mix: this.baseMix || MIX[this.trackId] || null });
     // The exit policy belongs to the treatment being LEFT: it is that treatment's answer
     // to "how do I hand over". A level's mix has no opinion about how it was reached.
     const exit = { ...(this.resolved?.exit || DEFAULT_EXIT), ...pickExit(overrides) };
@@ -252,16 +258,18 @@ export const MusicDirector = {
    * any of this existed — a dev URL straight into a stage, or a retry from the results
    * screen, has no treatment to leave and should sound as it always has.
    */
-  enterStage(bank) {
+  enterStage(bank, { mixOverride, arrangementOverride, variants } = {}) {
     if (bank && this.bank === bank && Audio.sourceBank === bank && this.variantId) {
-      return this.request(null);
+      return this.request(null, { mixOverride: mixOverride ?? this.baseMix });
     }
     this.cancel();
     this.bank = bank || null;
     this.trackId = bank ? trackIdOf(bank) : null;
     this.variantId = null;
     this.resolved = null;
-    Audio.setBank(bank);
+    this.source = { mix: mixOverride, variants };
+    this.baseMix = mixOverride;
+    Audio.setBank(bank, mixOverride, arrangementOverride);
     return false;
   },
 

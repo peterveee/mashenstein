@@ -1004,7 +1004,12 @@ export class RunState {
     // the level's mix on the next bar line and keeps the clock: no gap, no restart, the
     // band simply arrives. When nothing was playing it (a dev ?stage= URL, a retry from
     // the results screen) it falls back to exactly the setBank this line used to be.
-    MusicDirector.enterStage(this.cabinet.music);
+    const musicSong = this.o.musicSong;
+    MusicDirector.enterStage(musicSong?.bank || this.cabinet.music, {
+      mixOverride: musicSong?.mix,
+      arrangementOverride: musicSong?.arrangement,
+      variants: musicSong?.variants,
+    });
     // No opening cue here — it fires at the PRESS instead. See levelOpenCue in main.js:
     // enter() runs at the shutter's covered midpoint, which is already a third of a
     // second after the button that caused it, and by the time the swoosh peaked from

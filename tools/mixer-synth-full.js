@@ -1,4 +1,4 @@
-// The full-window synth editor: MRDR-3's 166 controls on one screen.
+// The full-window synth editor: MRDR-3 and Drum Synth's Advanced controls on one screen.
 //
 // The strip panel is 366px wide — three channel strips — and everything about it is a
 // concession to that: 42px pots, 9.5px labels, four grid columns, and one long scroll.
@@ -28,7 +28,7 @@
 import { envelopeGraph, responseGraph } from './mixer-synth-graphs.js';
 
 /** The synth classes that have a full-window layout. The rest open the strip panel only. */
-export const FULL_EDITORS = ['MRDR-3'];
+export const FULL_EDITORS = ['MRDR-3', 'drum'];
 
 /** Find a card's rows by the label they carry, which is the name the desk calls them. */
 const byLabel = (rows, want) => {
@@ -59,9 +59,10 @@ const GLYPH = {
   triangle: 'M1,12 L6,2.5 L11,12 L16,2.5 L21,12',
   pulse: 'M1,12 L1,2.5 L5,2.5 L5,12 L12,12 L12,2.5 L16,2.5 L16,12 L22,12',
   noise: 'M1,7 L3,3 L5,11 L7,4.5 L9,12 L11,3.5 L13,9 L15,2.5 L17,10.5 L19,5 L21,11.5 L23,6.5',
-  // The LFO's two destinations, as what they DO: a corner coming down, and a swell.
+  // The LFO's three destinations, as what they DO: a corner coming down, a swell, and a bend.
   filter: 'M1,4 L10,4 C15,4 16,11 22,11',
   level: 'M1,11 C5,11 6,4 11,4 C16,4 17,11 22,11',
+  pitch: 'M1,10 C5,10 7,3 11,3 S17,11 22,5',
 };
 
 /** `osc2` → `LAYER 2`, for the solo readout and the mixer cells. */
@@ -75,6 +76,7 @@ export function createSynthFull({ kit, el, backdrop }) {
 
   let showing = false;
   let layer = 1;
+  let undoButton = null;
   // Which of a shared card's two sections is on top, per cell. Held here rather than on
   // the preset: it is which one you are LOOKING at, not anything the sound is.
   const tab = new Map();
@@ -97,12 +99,20 @@ export function createSynthFull({ kit, el, backdrop }) {
     const bar = div('sfhead');
     const v = kit.voice();
     bar.append(
-      span('sfsynth', v?.synth || ''),
+      span('sfsynth', v?.synth || (v?.kind === 'drum' ? 'DRUM SYNTH' : '')),
       span('sfpreset', kit.label()),
     );
     const solo = kit.soloText();
     if (solo) bar.append(span('sfsolotext', solo));
-    bar.append(span('sfspace'));
+    const undo = document.createElement('button');
+    undo.className = 'sfundo';
+    undo.type = 'button';
+    undo.textContent = 'UNDO';
+    undo.title = 'Undo the last Advanced Patch edit (Ctrl/Cmd+Z)';
+    undo.disabled = !kit.canUndo();
+    undo.onclick = () => kit.undo();
+    undoButton = undo;
+    bar.append(undo, span('sfspace'));
     const shut = document.createElement('button');
     shut.className = 'sfshut';
     shut.type = 'button';
@@ -141,8 +151,22 @@ export function createSynthFull({ kit, el, backdrop }) {
         dimOff: true,
         renderPick: choiceRow,
         onRow: (h) => { if (h.set) pots.set(h.row.path, h.set); },
+        // A pot must redraw the graph without rebuilding the card under the pointer.
+        // `redrawGraphs` only re-reads the shared voice, so the graph and the pot remain
+        // two views of the same value throughout a drag.
+        onChange: redrawGraphs,
       },
     );
+    // A card may ask for a denser grid than the window's default — see `grid` in
+    // `fullLayout`. It is a class rather than an inline style so the column floor stays in
+    // the stylesheet with the pot size it has to clear.
+    if (spec.grid === 4) c.classList.add('sfgrid4');
+    // Hung from the TOP instead of the bottom. Every other card bottom-aligns its grid so
+    // the pot rows across a band land on one baseline; a card whose first row is a picker
+    // and whose length changes with the value of that picker has nothing to align WITH,
+    // and bottom-aligning it just parks the wave you are choosing at the foot of a card
+    // full of air. See `top` in `fullLayout`.
+    if (spec.top) c.classList.add('sftop');
     fitLabels(c);
     pairTypeSlope(c);
     if (graph) addGraph(c, spec, graph, pots);
@@ -189,6 +213,30 @@ export function createSynthFull({ kit, el, backdrop }) {
         if (p.rows.length) right.append(sectionPanel(c, p));
       }
       if (curveRows.length) right.append(curvePanel(c, curveRows));
+      if (spec.group?.layerCopy) {
+        const select = document.createElement('select');
+        select.className = 'sfcopyselect';
+        select.title = 'Copy the entire layer from another layer';
+        const placeholder = document.createElement('option');
+        placeholder.textContent = 'COPY';
+        placeholder.value = '';
+        placeholder.selected = true;
+        select.append(placeholder);
+        for (const other of [1, 2, 3].filter((n) => n !== spec.group.layerCopy)) {
+          const option = document.createElement('option');
+          option.value = String(other);
+          option.textContent = `Copy from Layer ${other}`;
+          select.append(option);
+        }
+        select.onchange = (ev) => {
+          ev.stopPropagation();
+          const from = Number(select.value);
+          select.value = '';
+          if (from) kit.copyLayer(from, spec.group.layerCopy);
+        };
+        select.onclick = (ev) => ev.stopPropagation();
+        right.append(select);
+      }
       // No per-card count. It was the completeness invariant rendered, which was a good
       // reason to compute it and a bad reason to show it: eleven numbers down the right
       // of the window that nobody reads and that compete with the readings that matter.
@@ -203,17 +251,50 @@ export function createSynthFull({ kit, el, backdrop }) {
     // what they would say if the layer were on.
     if (spec.group?.when && !spec.group.when(kit.voice())) c.classList.add('sfoff');
     // The sub-section, if the layout gave the card one: a labelled rule and then the
-    // section's rows, in the same grid. PWM is the only one, and it is ABSENT rather
-    // than greyed when the wave is not a pulse — there is no width to move — which is
-    // why it sits last, where nothing below it can be pushed around.
+    // section's rows. A GRID OF ITS OWN, hung off the bottom of the card rather than
+    // running on from the rows above it in one grid.
+    //
+    // That is what pins it. The card is a flex column, and its own rows are read from the
+    // top; the sub-section takes `margin-top: auto`, so it sits against the foot of the
+    // card whatever is above it. Which matters because what is above it CHANGES — PWM's
+    // five rows or FM's five, and one row more when the wave is noise — and a section that
+    // rides up and down the card as you audition waveforms is a section you have to find
+    // again every time. Fixed at the bottom, the rule is always in the same place and the
+    // air opens up in the middle instead.
+    //
+    // It is still ABSENT rather than greyed when it does not apply — PWM on anything but a
+    // pulse has no width to move — and nothing above it moves when it goes.
+    let pinned = false;
     for (const sub of spec.sub || []) {
       if (sub.group?.when && !sub.group.when(kit.voice())) continue;
-      const grid = c.querySelector('.devgrid');
-      if (!grid) continue;
+      // `sffoot` is the one that takes the slack — the first section that actually drew.
+      // On the rest it would divide the gap between them rather than bank it above the
+      // group, which is the whole point of pinning them.
+      const grid = div(`devgrid sfsubgrid${pinned ? '' : ' sffoot'}`);
+      pinned = true;
+      c.append(grid);
       const rule = div('sfsub');
+      // A section with a switch of its own carries it on the rule, and the switch comes
+      // FIRST — before the name it governs, the way every card header on this window has
+      // it. A switch trailing its label reads as belonging to whatever comes next.
+      if (sub.group?.optional) {
+        const on = kit.sectionOn(sub.group.optional);
+        rule.append(capsule(on, {
+          title: on ? sub.group.onTip : sub.group.offTip,
+          onClick: () => kit.toggleSection(sub.group.optional),
+        }));
+      }
       rule.append(span('k', sub.rule), span('rule'));
       grid.append(rule);
-      for (const row of sub.rows) grid.append(rowEl(row));
+      // Off, and drawn anyway: the switch on the rule is the way back on, so the section
+      // cannot hide the controls it governs — the same rule the strip's folding cards
+      // follow. Dimmed, not removed, so nothing below moves when it is switched.
+      const dim = !!sub.group?.optional && !kit.sectionOn(sub.group.optional);
+      for (const row of sub.rows) {
+        const wrap = rowEl(row);
+        if (dim) wrap.classList.add('sfdim');
+        grid.append(wrap);
+      }
     }
     return c;
   };
@@ -403,7 +484,12 @@ export function createSynthFull({ kit, el, backdrop }) {
       opts.append(b);
     }
     wrap.append(opts);
-    if (row.when) guards.push(wrap, row.when);
+    // COLOUR is HIDDEN rather than greyed, unlike everything else in this window — it is
+    // the wave row's second half, live on noise and meaningless on the other five, and
+    // five dead words sitting under the waveforms on every patch that is not noise is
+    // clutter where a greyed pot at least says what it would be. Nothing moves when it
+    // comes and goes: it is directly under the picker that summons it.
+    if (row.when) guards.push(wrap, row.when, row.label === 'COLOUR');
     return wrap;
   };
 
@@ -434,34 +520,107 @@ export function createSynthFull({ kit, el, backdrop }) {
   /** One control. Pots are the strip's own; choices wear this window's clothes. */
   const rowEl = (row) => (row.kind === 'pick'
     ? choiceRow(row)
-    : kit.numRow(row, guards).wrap);
+    : kit.numRow(row, guards, redrawGraphs).wrap);
 
   /**
-   * The unit comes off a label that is too long for one line.
+   * A pot name shortened, but only where the column cannot hold the full one.
    *
    * The columns here are narrow on purpose — four pots across a card rather than three —
    * because that is a whole row of height saved on every card, and height is the budget
-   * that decides whether the window scrolls. `ENV AMOUNT oct` does not fit in 58px;
-   * `ENV AMOUNT` does, and the unit was never the part you read at a glance. Ten
-   * characters is where the two stop fitting together at 9px.
+   * that decides whether the window scrolls. So `ENV AMOUNT`, `KEY FOLLOW`, `RESONANCE`
+   * and `PLS WIDTH` all ran off the end of their cell and ellipsised, which is a control
+   * whose name you cannot read at all.
    *
-   * Never on the four envelope stages, which are the same four everywhere and read as a
-   * group. And nothing is LOST — the full name, the unit and the range go onto the
-   * tooltip, which is where the strip already puts anything that will not fit.
+   * These are DISPLAY names and nothing else. `row.label` is the identifier the layout,
+   * the graphs and the tests all look a control up by (see `byLabel`), so nothing here
+   * touches it — the substitution happens on the drawn span, after the card is built.
+   * A name is only swapped when the measurement says the real one does not fit, so the
+   * same pot reads RESONANCE on a wide card and RES on a narrow one rather than losing
+   * its name everywhere to make one card work.
    */
+  const SHORT_LABEL = {
+    RESONANCE: 'RES',
+    'ENV AMOUNT': 'ENV AMT',
+    'KEY FOLLOW': 'KEY FLW',
+    'PLS WIDTH': 'PLS WID',
+    'PARTIAL SPREAD': 'PART SPRD',
+    PARTIALS: 'PRTLS',
+    FREQUENCY: 'FREQ',
+    TRANSPOSE: 'TRANS',
+    'FILTER VAR': 'FILT VAR',
+    'LEVEL VAR': 'LVL VAR',
+    'PITCH VAR': 'PCH VAR',
+    'PITCH DROP': 'PCH DROP',
+    'DROP TIME': 'DRP TIME',
+    'SWEEP TIME': 'SWP TIME',
+    'SWEEP TO': 'SWP TO',
+    'RATE CURVE': 'RATE CRV',
+    'VIB SPREAD': 'VIB SPRD',
+    'VIB DEPTH': 'VIB DPTH',
+    'VIB DELAY': 'VIB DLY',
+    INTERVAL: 'INTVL',
+    HARMONIC: 'HARM',
+    MODULATOR: 'MOD',
+    CARRIER: 'CARR',
+    STRETCH: 'STRCH',
+    ATTACK: 'ATK',
+    DECAY: 'DEC',
+    SUSTAIN: 'SUS',
+    RELEASE: 'REL',
+  };
   const ADSR = new Set(['ATTACK', 'DECAY', 'SUSTAIN', 'RELEASE']);
-  const fitLabels = (c) => {
-    for (const k of c.querySelectorAll('.potrow .k')) {
-      const unit = k.querySelector('.kunit');
-      if (!unit) continue;
-      const name = k.textContent.replace(unit.textContent, '').trim();
-      // The four envelope stages ALWAYS drop theirs. They are the same four on nine
+
+  /** Draw a label from its parts. The unit is chrome after the name — see `.kunit`. */
+  const drawLabel = (k, name, unit) => {
+    k.textContent = name;
+    if (!unit) return;
+    const u = document.createElement('span');
+    u.className = 'kunit';
+    u.textContent = unit;
+    k.append(' ', u);
+  };
+  const overflows = (k) => k.scrollWidth > k.clientWidth + 0.5;
+
+  /**
+   * Fit every pot name in `root` to the width it actually has.
+   *
+   * Three steps, cheapest first, each one measured rather than guessed: the unit comes
+   * off, then the name is swapped for its short form, and only a name with no short form
+   * left is allowed to ellipsis. Nothing is lost either way — the full name and its unit
+   * go onto the label's own tooltip, so the knob keeps whatever `row.tip` it was given.
+   *
+   * Called twice: once as the card is built, where the window is still `display: none`
+   * and every width is zero, and again once it is up. The zero-width pass is not wasted —
+   * it does the envelope-stage unit drop, which is a rule and not a measurement, so the
+   * first painted frame is already right.
+   */
+  const fitLabels = (root) => {
+    for (const k of root.querySelectorAll('.potrow .k')) {
+      // Parsed once and kept, because every later pass has to start from the FULL name:
+      // a window widened after a fit would otherwise stay abbreviated for ever.
+      if (k.dataset.potname === undefined) {
+        const unit = k.querySelector('.kunit');
+        const text = unit ? k.textContent.replace(unit.textContent, '') : k.textContent;
+        // `* ` marks a stored value outside the pot's range — see `numRow`. It is a flag
+        // on the row, not part of the name, so it survives every substitution below.
+        const flagged = text.trimStart().startsWith('* ');
+        k.dataset.potflag = flagged ? '* ' : '';
+        k.dataset.potname = text.replace(/^\s*\*\s*/, '').trim();
+        k.dataset.potunit = unit ? unit.textContent : '';
+      }
+      const { potname: name, potunit: unit, potflag: flag } = k.dataset;
+      // The four envelope stages ALWAYS drop their unit. They are the same four on nine
       // cards, everyone knows attack is a time and sustain is a level, and `ATTACK s`
       // nine times over is the unit repeated ninety times to say nothing.
-      if (!ADSR.has(name) && `${name} ${unit.textContent}`.length <= 10) continue;
-      const wrap = k.closest('.potrow');
-      if (wrap && !wrap.title) wrap.title = `${name} (${unit.textContent})`;
-      unit.remove();
+      const wantUnit = unit && !ADSR.has(name) ? unit : '';
+      drawLabel(k, flag + name, wantUnit);
+      if (!k.clientWidth) continue;
+      if (wantUnit && overflows(k)) drawLabel(k, flag + name, '');
+      if (overflows(k) && SHORT_LABEL[name]) drawLabel(k, flag + SHORT_LABEL[name], '');
+      // Only where the drawn label is not the whole story. A pot marked RES needs the
+      // tooltip as much as one still ellipsising does, and CUTOFF needs neither.
+      const shown = k.textContent.trim() === (flag + name + (unit ? ` ${unit}` : '')).trim();
+      k.title = shown && !overflows(k) ? '' : (unit ? `${name} (${unit})` : name);
     }
   };
 
@@ -472,9 +631,9 @@ export function createSynthFull({ kit, el, backdrop }) {
    * writes through `kit.writeMany`, so it honours SUSTAIN's 0–100 view, every range and
    * every step. It is a second grip on controls that already exist, and adds none.
    *
-   * `onLive` moves the sibling pots as the handle drags. Without it the graph and the
-   * pots below it would disagree until the next repaint, which is the same staleness
-   * that had the strip showing SIN after the window said SAW.
+   * `onLive` moves the sibling pots as the handle drags. The inverse path is the card's
+   * `onChange`: a pot drag redraws the SVGs from the shared voice without rebuilding the
+   * card. Without both directions the graph and pots would disagree during a gesture.
    */
   const addGraph = (c, spec, kind, pots) => {
     const want = kind === 'filter' ? FILTER_ROWS : ENV_ROWS;
@@ -483,9 +642,13 @@ export function createSynthFull({ kit, el, backdrop }) {
     const onLive = (pairs) => {
       for (const [row, x] of pairs) pots.get(row.path)?.(x);
     };
+    const graphOptions = {
+      rows, read: kit.read, writeMany: kit.writeMany, onLive,
+      onStart: kit.beginUndo, onEnd: kit.endUndo,
+    };
     const g = kind === 'filter'
-      ? responseGraph({ rows, read: kit.read, writeMany: kit.writeMany, onLive })
-      : envelopeGraph({ rows, read: kit.read, writeMany: kit.writeMany, onLive });
+      ? responseGraph(graphOptions)
+      : envelopeGraph(graphOptions);
     // Before the grid, after the header. The grid then takes `margin-top: auto`, so the
     // knob rows across a band land on one baseline whatever height the graph came out.
     c.classList.add('sfhasgraph');
@@ -494,8 +657,13 @@ export function createSynthFull({ kit, el, backdrop }) {
     // curve is drawn across that width.
     graphsToDraw.push(g.draw);
   };
-  // Drawn once the cards are in the document — see the end of `render`.
+  // Drawn once the cards are in the document — see the end of `render`. Pot changes use
+  // the same callbacks without rebuilding the window, which keeps a live drag in place.
   let graphsToDraw = [];
+  const redrawGraphs = () => { for (const draw of graphsToDraw) draw(); };
+  const syncHistory = () => {
+    if (undoButton) undoButton.disabled = !kit.canUndo();
+  };
 
   // ---- the mixer band --------------------------------------------------------
   //
@@ -520,6 +688,21 @@ export function createSynthFull({ kit, el, backdrop }) {
       }));
     }
     bar.append(span('sfmixname', layerName(n)));
+    // WHAT THIS LAYER IS, in one word, where the picker used to be.
+    //
+    // The waveform moved down to the OSC card, beside the modulation that acts on it. But
+    // "sub, saw, noise" is how you read a three-layer stack at a glance, and that reading
+    // is the whole reason these three cells stand side by side — so the name stays, as a
+    // reading rather than a control. The full word, not the pill's abbreviation: there is
+    // room for it here, and SQUARE is a word where SQR is a thing you decode.
+    if (cell.wavePath) {
+      const w = kit.get(cell.wavePath);
+      if (w) {
+        const tag = span('sfmixwave', String(w).toUpperCase());
+        tag.title = `${String(w).toUpperCase()} — change it on this layer's OSC card below`;
+        bar.append(tag);
+      }
+    }
     if (cell.group?.solo) {
       const lit = kit.soloOn(cell.group.solo);
       const s = document.createElement('button');
@@ -542,32 +725,11 @@ export function createSynthFull({ kit, el, backdrop }) {
     const grid = div('devgrid sfmixgrid');
     grid.onclick = (ev) => ev.stopPropagation();
     grid.onpointerdown = (ev) => ev.stopPropagation();
-    const made = new Map();
-    for (const row of cell.rows) {
-      const wrap = rowEl(row);
-      // COLOUR rides alongside WAVE with no label of its own — it is the same question
-      // ("what is this oscillator making") continued, and only a noise wave has an
-      // answer. HIDDEN rather than greyed, unlike everything else in this window: five
-      // dead options sitting under the waveforms on every patch that is not noise is
-      // clutter where a greyed pot at least says what it would be.
-      if (row.label === 'COLOUR') {
-        wrap.classList.add('sfnolabel');
-        if (row.when) guards.push(wrap, row.when, true);
-      }
-      made.set(row.label, wrap);
-      grid.append(wrap);
-    }
-    // And on the SAME LINE as the waveforms, not under them. Six glyphs leave most of the
-    // row empty, the five colours are short words, and the cell is now carrying seven pots
-    // — so the line COLOUR used to have to itself is a line the pots needed. On every wave
-    // but noise it is simply not there, and the glyphs sit alone exactly as before.
-    const wave = made.get('WAVE');
-    const colour = made.get('COLOUR');
-    if (wave && colour) {
-      const line = div('row sfwaverow');
-      wave.before(line);
-      line.append(wave, colour);
-    }
+    // Seven pots and nothing else. WAVE and COLOUR went down to the OSC card, where the
+    // modulator that acts on the wave is — so this cell is now what it always claimed to
+    // be, the place three layers are balanced against each other: level, where each one
+    // sits, how wide it is and when it arrives.
+    for (const row of cell.rows) grid.append(rowEl(row));
     fitLabels(grid);
     // LEVEL at the TOP. It is the one control in the cell that is not a description of the
     // oscillator but a statement about the mix, it is the one you reach for most, and three
@@ -599,6 +761,10 @@ export function createSynthFull({ kit, el, backdrop }) {
     track.onpointerdown = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();   // the cell under it is the layer selector
+      // The other half of the `endUndo` below: without it the whole drag was recorded
+      // as one undo step per pointermove, and the level estimate fired into the middle
+      // of a held fader rather than waiting for it to be let go.
+      kit.beginUndo();
       const box = track.getBoundingClientRect();
       const move = (e) => {
         const f = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
@@ -612,9 +778,12 @@ export function createSynthFull({ kit, el, backdrop }) {
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        kit.endUndo();
       };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
     };
     wrap.append(track, num);
     return wrap;
@@ -692,7 +861,26 @@ export function createSynthFull({ kit, el, backdrop }) {
     // Now, and not before: a graph is drawn across the width of its box, and a box that
     // is not in the document yet has none.
     for (const draw of graphsToDraw) draw();
+    // The same reason, one step later: a name is fitted to the width of its column, and
+    // on the frame a closed window is being built there is no column yet. `open` books
+    // this again after `.show` goes on; a re-render of a window already up is measured
+    // here and needs no second frame.
+    fitLabels(el);
   }
+
+  /**
+   * Re-fit after a resize, because a fit is a measurement and the columns just moved.
+   *
+   * Coalesced onto a frame and skipped while the window is down — the same shape as the
+   * desk's own resize handler, and for the same reason: a drag of the window corner fires
+   * this a hundred times, and each pass walks every label on nine cards.
+   */
+  let fitPending = 0;
+  addEventListener('resize', () => {
+    if (!showing) return;
+    cancelAnimationFrame(fitPending);
+    fitPending = requestAnimationFrame(() => { if (showing) fitLabels(el); });
+  });
 
   // ---- open, close -----------------------------------------------------------
   //
@@ -709,11 +897,39 @@ export function createSynthFull({ kit, el, backdrop }) {
   //   · a throw in `render()` — `showing` is already true and the frame is already
   //     booked, so a bad layout left the empty shell up. Now it tears itself down.
   let pendingFrame = 0;
+  /**
+   * ⌘Z BELONGS TO THIS WINDOW WHILE IT IS UP, AND STOPS HERE.
+   *
+   * The desk has its own ⌘Z on `window` — whole-mix snapshots — and a song-local preset
+   * edit reaches it too, because `touched()` writes the parameters into the mix. So with
+   * both listeners live, one keypress undid the edit twice: the mix stepped back AND the
+   * editor stepped back, off by one for the rest of the session.
+   *
+   * Capture phase is what makes this winnable. `stopImmediatePropagation` only stops
+   * listeners registered after it on the same target, and this one is added on `open()` —
+   * long after the desk's, which goes on at module load. Capturing on `window` runs before
+   * every bubble-phase listener on it whatever order they went on in, which is the same
+   * trick `ask()`'s Escape uses to win over the panic key.
+   *
+   * Claimed whether or not there is anything to undo: this is a full-screen editor over a
+   * desk you cannot see, and a ⌘Z that fell through to the mix underneath would be an
+   * invisible edit to something else entirely.
+   */
+  const onKeyDown = (ev) => {
+    if (!showing || !(ev.metaKey || ev.ctrlKey) || String(ev.key).toLowerCase() !== 'z') return;
+    const tag = ev.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ev.target?.isContentEditable) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (!kit.canUndo()) { kit.toast('Nothing to undo on this preset'); return; }
+    kit.undo();
+  };
 
   function open(n = 1) {
     if (!kit.voice() || !kit.layout({ layer: 1 })) return;
     layer = Math.min(3, Math.max(1, n));
     showing = true;
+    window.addEventListener('keydown', onKeyDown, true);
     el.setAttribute('aria-hidden', 'false');
     try {
       render();
@@ -725,7 +941,14 @@ export function createSynthFull({ kit, el, backdrop }) {
       throw err;
     }
     cancelAnimationFrame(pendingFrame);
-    pendingFrame = requestAnimationFrame(() => { if (showing) el.classList.add('show'); });
+    pendingFrame = requestAnimationFrame(() => {
+      if (!showing) return;
+      el.classList.add('show');
+      // First frame with real widths: `render` ran against a `display: none` shell, where
+      // every column measures zero and no name can be fitted to one. See `fitLabels`.
+      fitLabels(el);
+      for (const draw of graphsToDraw) draw();
+    });
     // Nothing is made inert and nothing is dimmed: the desk stays live underneath. This
     // is a window over a running mixer, not a dialogue in front of a stopped one — you
     // play the song and move a fader while the sound changes under you, which is the
@@ -734,6 +957,7 @@ export function createSynthFull({ kit, el, backdrop }) {
 
   function close() {
     showing = false;
+    window.removeEventListener('keydown', onKeyDown, true);
     // Not guarded on `showing`: this is also the way OUT of a half-open state, and an
     // early return there would leave the shell up. Removing a class that is not on and
     // clearing a list that is empty both cost nothing.
@@ -764,5 +988,5 @@ export function createSynthFull({ kit, el, backdrop }) {
   }
 
 
-  return { open, close, render, onVoiceChanged, isOpen: () => showing };
+  return { open, close, render, onVoiceChanged, syncHistory, isOpen: () => showing };
 }

@@ -94,7 +94,7 @@ export function envShape({ rows, read, w, h }) {
  * gesture moved in ONE call: the decay handle moves DECAY and SUSTAIN together, and two
  * `touched()` per pointermove would re-bank the voice twice a frame.
  */
-export function envelopeGraph({ rows, read, writeMany, onLive, h = 94 }) {
+export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
   const box = document.createElement('div');
   box.className = 'sfgraph';
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
@@ -128,6 +128,7 @@ export function envelopeGraph({ rows, read, writeMany, onLive, h = 94 }) {
   const grab = (i) => (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
+    onStart?.();
     const rect = svg.getBoundingClientRect();
     const move = (e) => {
       const px = e.clientX - rect.left;
@@ -150,9 +151,12 @@ export function envelopeGraph({ rows, read, writeMany, onLive, h = 94 }) {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      onEnd?.();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
   dots.forEach((d, i) => { d.onpointerdown = grab(i); });
 
@@ -192,7 +196,7 @@ export function magnitudeDb(f, { cutoff, Q, type, slope }) {
  * filter actually wants — you are aiming at a corner, not setting two numbers — and it is
  * why `writeMany` exists.
  */
-export function responseGraph({ rows, read, writeMany, onLive, h = 94 }) {
+export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
   const box = document.createElement('div');
   box.className = 'sfgraph';
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
@@ -236,6 +240,7 @@ export function responseGraph({ rows, read, writeMany, onLive, h = 94 }) {
   svg.onpointerdown = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
+    onStart?.();
     const rect = svg.getBoundingClientRect();
     const move = (e) => {
       const pairs = [
@@ -250,9 +255,12 @@ export function responseGraph({ rows, read, writeMany, onLive, h = 94 }) {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      onEnd?.();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   return { box, draw };

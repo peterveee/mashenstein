@@ -107,6 +107,21 @@ async function main() {
       return buf.getChannelData(0);
     };
 
+    /** The new master tune belongs on the drum entry, outside each source section. */
+    const renderTunedDrum = async (tune) => {
+      const ctx = new OfflineAudioContext(1, Math.round(SR * 0.7), SR);
+      const rack = new VoiceRack(ctx);
+      const dry = ctx.createGain();
+      dry.connect(ctx.destination);
+      rack._playDrum(
+        { kind: 'drum', tune,
+          osc: { type: 'sine', from: FROM, to: TO, sweep: SWEEP, decay: 1.5, gain: 1 } },
+        { time: 0, gain: 1, dry, wet: null, echo: false },
+      );
+      const buf = await ctx.startRendering();
+      return buf.getChannelData(0);
+    };
+
     /** The same question on the melodic path: a game-synth note bent ONTO its pitch. */
     const renderGame = async (pitch) => {
       const ctx = new OfflineAudioContext(1, Math.round(SR * 0.7), SR);
@@ -170,7 +185,20 @@ async function main() {
     say(near(nonsense, drum.exp, 0.02),
       'and so is a curve nobody implemented, rather than no sweep at all');
 
-    // ---- 4. the melodic path's bend is an ENVELOPE, and still the exponential shape --
+    // ---- 4. master Drum Tune is neutral at zero and doubles pitched sources at +12 --
+    const legacy = await renderTunedDrum(undefined);
+    const zero = await renderTunedDrum(0);
+    let zeroDiff = 0;
+    for (let i = 0; i < legacy.length; i++) zeroDiff = Math.max(zeroDiff,
+      Math.abs(legacy[i] - zero[i]));
+    say(zeroDiff < 1e-7,
+      `Drum Tune 0 is render-identical to an omitted Tune (max diff ${zeroDiff.toExponential(2)})`);
+    const baseTune = freqAt(legacy, 0.04, 0.025);
+    const octave = freqAt(await renderTunedDrum(12), 0.04, 0.025);
+    say(near(octave, baseTune * 2, 0.08),
+      `Drum Tune +12 doubles the pitched source (${Math.round(baseTune)} → ${Math.round(octave)} Hz)`);
+
+    // ---- 5. the melodic path's bend is an ENVELOPE, and still the exponential shape --
     //
     // The pitch envelope writes CENTS on `.detune`, and linear in cents is exponential in
     // hertz — so the melodic bend has exactly one shape and it is the one every preset

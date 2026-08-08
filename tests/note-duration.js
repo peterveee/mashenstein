@@ -173,19 +173,9 @@ assert(rollResizable('bass') && rollResizable('chords') && rollResizable('organC
 assert(!rollResizable('vox') && !rollResizable('shout'),
   'vox and shout cannot: their envelopes are hand-timed in seconds and the word is chosen'
   + ' by step, so there is nowhere for a length to be written. They stay movable.');
-// ...and that is an answer about the BODY, not the lane, so it changes with the song.
-// Both lanes were given a voice seam of their own, which handed the roll a resize
-// handle on the one lane whose engine voice reads straight past what it would write.
-assert(!rollResizable('vox', { bpm: 120 }) && !rollResizable('vox', { voxVoice: 'nosuch' }),
-  'a bank that names no preset on vox is still the hand-timed "hey!" — no handle');
-assert(!rollResizable('vox', { voxVoice: 'engBright' }),
-  'and an ENGINE preset is that same body reading bank keys, so it gets none either');
-assert(rollResizable('vox', { voxVoice: 'roundMono' })
-  && rollResizable('shout', { shoutVoice: 'roundMono' }),
-  'but a preset on the lane IS the rack, which is handed the step’s length like any'
-  + ' other lane — so there the note can be pulled out');
-assert(rollResizable('vox2') && rollResizable('shout2'),
-  'and a layer of one is a preset and nothing else, so it never had the problem');
+assert(!rollResizable('vox2') && !rollResizable('shout2'),
+  'and layers of the word lanes stay out too — per-note length now belongs only to the'
+  + ' melodic note tracks, not to every pitched lane with a voice seam');
 
 // ---- the write path --------------------------------------------------------------------
 const bank = {

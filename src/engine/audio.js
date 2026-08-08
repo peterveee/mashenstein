@@ -5,7 +5,7 @@ import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
-  LANE_KEYS, stepLen, toneLen,
+  LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength,
 } from './lanes.js';
 import { VoiceRack, pulseTable } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
@@ -115,6 +115,10 @@ function withVoices(bank, entry, trackId = null) {
  * beat of the song — the visualisers would flash to it.
  */
 const PREVIEW_STEP = 1;
+
+// How long the audition bench takes to go quiet when a preview is stopped. See
+// `_cutBenchGates`: short enough to read as a stop, long enough not to click.
+const BENCH_FADE = 0.015;
 
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
@@ -2008,14 +2012,42 @@ class AudioSys {
     this._laneGates.clear();
   }
 
+  /**
+   * The same for the audition bench — but FADED, where the lane version slams.
+   *
+   * `_cutLaneGates` can be instant because the master trim is going to zero in the same
+   * call: there is nothing audible for it to click on. Nothing covers this one. It runs
+   * when a preview is stopped — a preset picked while the last one is still ringing, a
+   * panel closed mid-note — and a gain set to zero under a sounding note is a step from
+   * wherever the waveform happened to be to silence, which is exactly the click the ear
+   * is best at hearing.
+   *
+   * Fifteen milliseconds, then the disconnect, which is soon enough to still read as
+   * "stopped" and long enough that there is no edge in it.
+   */
   _cutBenchGates() {
-    for (const gate of this._benchGates.values()) {
-      gate.dry.gain.value = 0;
-      gate.wet.gain.value = 0;
-      try { gate.dry.disconnect(); } catch { /* already gone */ }
-      try { gate.wet.disconnect(); } catch { /* already gone */ }
-    }
+    const gates = [...this._benchGates.values()];
     this._benchGates.clear();
+    if (!gates.length) return;
+    const now = this.ctx?.currentTime ?? 0;
+    const drop = (param) => {
+      try {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(0, now + BENCH_FADE);
+      } catch { param.value = 0; }
+    };
+    const cut = () => {
+      for (const gate of gates) {
+        try { gate.dry.disconnect(); } catch { /* already gone */ }
+        try { gate.wet.disconnect(); } catch { /* already gone */ }
+      }
+    };
+    for (const gate of gates) { drop(gate.dry.gain); drop(gate.wet.gain); }
+    // An offline render has no wall clock to wait on, and nothing is listening to it:
+    // the fade is scheduled, and the graph comes apart at once.
+    if (typeof this.ctx?.startRendering === 'function') cut();
+    else setTimeout(cut, Math.ceil(BENCH_FADE * 1000) + 5);
   }
 
   /** Stop the preset-library audition without touching the song or its strips. */
@@ -2800,6 +2832,7 @@ class AudioSys {
         // It is 1 on every melodic lane and on any bank that names no trims.
         gain: (b[seam.gainKey] ?? voiceGain(v, key) * laneTrim(b, key)) * gainScale * dbToGain(v.trim ?? 0),
         detune: this.detune,
+        spb,
         dry,
         wet,
         echo,
@@ -3148,7 +3181,8 @@ class AudioSys {
       // or one per chord tone. Read once per lane and passed down, so a preset voice
       // and the hand-written body below it always agree about how long a note is —
       // they are two ways of playing the same drawn rectangle, not two lanes.
-      const lenOf = (key) => stepLen(b, key, s);
+      const lenOf = (key) => effectiveStepLen(b, key, s);
+      const toneLenOf = (key, i = 0) => effectiveToneLength(b, key, s, i);
       const voiced = (key, value, opts = {}) => {
         lane(key);
         return this.playVoice(key, b, value,
@@ -3216,7 +3250,7 @@ class AudioSys {
         // ramp, the 80s bass's three stacked oscillators, the ghost repeat — so the
         // drawn length reaches all of them by being read here and nowhere else.
         const bassLen = lenOf('bass');
-        const bassDur = spb * toneLen(bassLen, b.bassDur || 1.8);
+        const bassDur = spb * toneLenOf('bass');
         const bassGain = b.bassGain ?? 0.1;
         const bassEcho = !!b.bassEcho || !!b.echoEverything;
         // A Tone voice, if the bank names one, takes the lane whole — the three
@@ -3302,7 +3336,7 @@ class AudioSys {
       }
       if (b.lead) {
         lane('lead');
-        const leadDur = spb * toneLen(lenOf('lead'), b.leadDur || 1.2);
+        const leadDur = spb * toneLenOf('lead');
         const leadGain = b.leadGain ?? 0.06;
         // leadBright is an octave sine sitting ON the square lead — part of what the
         // hand-rolled lead IS, so it goes with it rather than doubling a Tone voice
@@ -3325,13 +3359,13 @@ class AudioSys {
         lane('leadHarm');
         if (!voiced('leadHarm', b.leadHarm[s])) {
           for (const f of tonesOf(b.leadHarm[s])) {
-            play(f, b.harmType || b.leadType || 'square', spb * toneLen(lenOf('leadHarm'), b.harmDur || b.leadDur || 1.2), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+            play(f, b.harmType || b.leadType || 'square', spb * toneLenOf('leadHarm'), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
           }
         }
       }
       if (b.twinkle && b.twinkle[s] && !voiced('twinkle', b.twinkle[s])) {
         lane('twinkle');
-        const twinkleDur = spb * toneLen(lenOf('twinkle'), b.twinkleDur || 6);
+        const twinkleDur = spb * toneLenOf('twinkle');
         for (const f of tonesOf(b.twinkle[s])) {
           play(f, 'sine', twinkleDur, b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
           play(f * 2, 'sine', twinkleDur * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
@@ -3476,7 +3510,7 @@ class AudioSys {
           // stab: all chord tones at once, short and punchy — and each as long as it
           // was drawn, which is why the length is read per tone rather than per step.
           const len = lenOf('chords');
-          b.chords[s].forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, b.chordDur || 2.6, i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
+          b.chords[s].forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, toneLenOf('chords', i), i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
         }
       }
       if (b.organChords && b.organChords[s] && !voiced('organChords', b.organChords[s], { echo: b.organEcho !== false })) {
@@ -3495,7 +3529,7 @@ class AudioSys {
         b.organChords[s].forEach((cf, i) => {
           // Per tone: a drawn length belongs to the note, and all five drawbars of one
           // note are that note. The pip below is an attack transient, not a length.
-          const dur = spb * toneLen(organLen, b.organDur || 7.2, i);
+          const dur = spb * toneLen(organLen, toneLenOf('organChords', i), i);
           for (const [ratio, level] of drawbars) play(cf * ratio, 'sine', dur, gain * level, attack, echo);
           // Hammond-style percussion: a short third-harmonic pip on the key
           // attack. Kept dry so repeated off-beat stabs stay crisp.

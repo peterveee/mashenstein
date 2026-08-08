@@ -16,8 +16,8 @@
 //   noteLength   the parallel length, with the per-tone chord array PAIRED with the
 //                frequencies, sorted together and split apart again. That positional
 //                alignment is the whole risk in the format and it is solved there.
-//   rollResizable  can this lane hold a length at all — `vox` and `shout` cannot, unless
-//                a preset has taken the lane off their hand-timed envelopes.
+//   rollResizable  can this lane hold a length at all. The answer now follows the
+//                melodic note lanes directly, so recording and the roll cannot disagree.
 //
 // Re-deriving any of those here would be a second opinion about the bank format, and
 // two opinions is one more than a format can survive.
@@ -78,9 +78,9 @@ export const stepInBar = (step) => step % 16;
  * and the downbeat is the top. Rounding forward over an ordinary bar line needs no
  * special case at all; it simply lands in the next bar.
  *
- * Sixteenths are the floor and there is no finer setting to offer: a bank holds
- * sixteen steps to the bar and nothing between them. That is the format, not this
- * function being coy.
+ * Sixteenths are the onset floor and there is no finer setting to offer here: a bank
+ * holds sixteen note-start steps to the bar. Melodic note lengths are a separate
+ * per-note field; this recorder still quantises the held length to the same grid.
  */
 export function quantiseStep(heardStep, { grid = 1, from = 0, span = 32 } = {}) {
   if (!Number.isFinite(heardStep)) return from;
@@ -127,7 +127,7 @@ export function chordAnchor(anchor, nowMs, step, { withinMs = 45 } = {}) {
  * Never zero: a key pressed and released inside one sixteenth is a note, and a note
  * of no length is a note that is not there.
  */
-export function heldLength(onStep, offStep, { grid = 1, max = 32, span = null } = {}) {
+export function heldLength(onStep, offStep, { grid = 1, max = Infinity, span = null } = {}) {
   if (!Number.isFinite(onStep) || !Number.isFinite(offStep)) return null;
   let held = offStep - onStep;
   if (held < 0 && span > 0) held += span;

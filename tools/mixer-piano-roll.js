@@ -35,14 +35,28 @@
 // A bare number on a chord lane throws inside scheduleStep and takes the whole render
 // page with it (see src/data/voices.js), which is why the array is built here rather
 // than left to whatever the last edit happened to leave behind.
-import { CHORD_LANES, PERCUSSION_LANES, baseLane, seamFor, voiceOf } from '../src/data/voices.js';
-import { LANES, validLen } from '../src/engine/lanes.js';
+import { CHORD_LANES, PERCUSSION_LANES, baseLane } from '../src/data/voices.js';
+import {
+  LANES, validLen, perNoteLengthLane,
+} from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
 
 const LABELS = Object.fromEntries(
   LANES.map((l) => [l.key, l.label.charAt(0).toUpperCase() + l.label.slice(1)]),
 );
+
+// One grid step is a sixteenth. These are the lengths a fresh tap can ask for; the
+// stored values stay in steps so the engine and the existing per-note editor share one
+// unit. A whole note is therefore sixteen steps, while a 32nd is half a step.
+export const NOTE_LENGTH_OPTIONS = [
+  { value: 0.5, label: '1/32' },
+  { value: 1, label: '1/16' },
+  { value: 2, label: '1/8' },
+  { value: 4, label: '1/4' },
+  { value: 8, label: '1/2' },
+  { value: 16, label: '1' },
+];
 
 /** MIDI semitone -> Hz, and back. The engine stores Hz; a keyboard thinks in steps. */
 export const midiFreq = (midi) => 440 * (2 ** ((midi - 69) / 12));
@@ -290,41 +304,33 @@ export function noteSpan({ chord, midi }, value, len) {
 }
 
 /**
- * The two lanes whose hand-written body ignores a length.
- *
- * `vox` and `shout` are the reason this is a question rather than an assumption: their
- * envelopes are hand-timed in absolute seconds ("hey!", "al-RIGHT"), the word is chosen
- * by step index and the formant trajectory is keyed to it, so there is nothing for a
- * length to override. They stay movable, because moving one is just another step.
- *
- * A LAYER of one is not on the list. A layer has no hand-written body — it is a preset
- * and nothing else, which is why voicesFor hides the engine presets from it — so a
- * length on `vox2` is honoured the way it is on any other lane.
- */
-const HAND_TIMED_LANES = new Set(['vox', 'shout']);
-
-/**
  * Can a note on this lane be given a length at all?
  *
- * Everything with a `*Dur` key can: the length overrides it. That used to be the whole
- * answer, because the two exceptions had no voice seam and so no `*Dur` — until they
- * were given one, which handed them a resize handle nobody asked for and let the
- * recorder write a `voxLen` the engine reads straight past.
- *
- * So the honest answer needs the bank, the same way `stacks` in tools/lib/note-recorder.js
- * does and for the same reason: WHICH of the two bodies plays a gesture lane is a
- * property of the song, not of the lane's name. `voiced()` in scheduleStep hands the
- * step's length to the rack, and the hand-written body only runs when the rack declined
- * it — so a preset on `vox` honours a length and the engine's own "hey!" does not. With
- * no bank the answer is the conservative one, which is what it always was.
+ * The editable model is now the melodic note lanes themselves. Gesture lanes, drums and
+ * the word lanes keep their own timing model, so the roll does not offer them a resize
+ * handle or write a length array the engine would ignore.
  */
-export const rollResizable = (key, bank = null) => {
-  if (!seamFor(baseLane(key))) return false;
-  if (!HAND_TIMED_LANES.has(key)) return true;
-  // An ENGINE preset is not the rack playing the lane — it is a bundle of the bank keys
-  // the hand-written body already reads, so the hand-timed envelope is still what sounds.
-  const v = voiceOf(bank, key);
-  return !!v && v.kind !== 'engine';
+export const rollResizable = (key) => perNoteLengthLane(key);
+
+const isChordValue = (laneKey, value) =>
+  CHORD_LANES.includes(baseLane(laneKey)) || Array.isArray(value);
+
+export const noteDrawLength = (row, value, len) => {
+  const chord = isChordValue(row.lane, value);
+  const drawn = noteSpan({ ...row, chord }, value, len);
+  if (drawn != null || !perNoteLengthLane(row.lane)) return drawn;
+  // A legacy note with no *Len entry is still a note in the roll, not a request to
+  // display the current synth patch's `dur` or `fixedLength`. Those patch values are
+  // precisely what changing presets changes. Keep the compatibility fallback at the
+  // roll's one-step default; once a note is resized or newly drawn, its explicit value
+  // above remains authoritative.
+  const tone = chord
+    ? (Array.isArray(value)
+      ? value.findIndex((f) => f > 0 && freqMidi(f) === row.midi)
+      : -1)
+    : (typeof value === 'number' && value > 0 && freqMidi(value) === row.midi ? 0 : -1);
+  if (tone < 0) return null;
+  return 1;
 };
 
 /**
@@ -492,6 +498,9 @@ export function createPianoRoll({
   let pitchUnit = Number.isFinite(Number(pitchSize)) && Number(pitchSize) > 0
     ? Number(pitchSize) : ROW_H;
   let rollPadding = { before: 0, after: 0 };
+  // Do not persist this: it is a drawing-session preference, and every new piano roll
+  // starts with the useful, least surprising sixteenth-note default.
+  let noteAddLength = 1;
   const applyPitchUnitStyle = () => {
     el.style.setProperty('--roll-pitch-unit', `${pitchUnit}px`);
   };
@@ -521,16 +530,16 @@ export function createPianoRoll({
     + 'Draw, Select, Paint and Erase each do one thing, with no modifier and no aiming.';
 
   /**
-   * What the mouse does — the roll's only control besides the zoom.
+   * What the mouse does — one of the roll's controls besides note length and zoom.
    *
    * `Auto` first and selected by default: it is the answer for most people most of the
    * time, with the others there for anyone who would rather not hold a key or aim at an
    * edge, which is a real requirement and not a preference. The title says the
    * modifiers, because a modifier nobody has been told about is a feature nobody has.
    *
-   * It sits under the zoom in the blank half of the key column rather than in the NOTES
-   * header, so the mode you are in is beside the field it applies to instead of at the
-   * far end of a row you are not looking at while you draw.
+   * It sits in the blank half of the key column rather than in the NOTES header, so the
+   * mode you are in is beside the field it applies to instead of at the far end of a row
+   * you are not looking at while you draw.
    *
    * Built rather than a `<select>`, and the reason is the LIST, not the closed field.
    * `appearance: none` styles the box and nothing else: the popup a select opens is the
@@ -691,6 +700,146 @@ export function createPianoRoll({
       else if (ev.key === 'Home') setActive(0);
       else if (ev.key === 'End') setActive(options.length - 1);
       else choose(options[active].dataset.tool);
+    };
+
+    paint();
+    return field;
+  };
+
+  // The note-length field follows the tool picker’s own listbox pattern. A native
+  // `<select>` would hand the open list to the operating system, which makes this one
+  // control look unlike the rest of the mixer and can let a tap fall through to the
+  // note field underneath. It also needs the same keyboard and dismissal behaviour as
+  // the tool picker because it lives in the piano roll’s gesture surface.
+  const lengthPicker = () => {
+    const field = document.createElement('button');
+    field.type = 'button';
+    field.className = 'rolltool';
+    field.title = 'Length for a new or drawn note';
+    field.setAttribute('role', 'combobox');
+    field.setAttribute('aria-haspopup', 'listbox');
+    field.setAttribute('aria-expanded', 'false');
+    field.setAttribute('aria-label', 'Note length for new notes');
+    const value = document.createElement('span');
+    value.className = 'rolltool-value';
+    field.append(value);
+
+    const menu = document.createElement('div');
+    menu.className = 'rolltool-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', 'Note length');
+    menu.hidden = true;
+
+    let open = false;
+    let active = 0;
+    const options = NOTE_LENGTH_OPTIONS.map((option, i) => {
+      const o = document.createElement('div');
+      o.className = 'rolltool-option';
+      o.id = `rolllength-opt-${String(option.value).replace('.', '-')}`;
+      o.setAttribute('role', 'option');
+      o.dataset.length = String(option.value);
+      o.textContent = option.label;
+      o.title = `${option.label} note`;
+      o.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        choose(option.value);
+      });
+      o.addEventListener('pointerenter', () => setActive(i));
+      return o;
+    });
+    menu.append(...options);
+
+    const paint = () => {
+      const selected = NOTE_LENGTH_OPTIONS.find((option) => option.value === noteAddLength)
+        || NOTE_LENGTH_OPTIONS[1];
+      value.textContent = selected.label;
+      for (const o of options) {
+        const on = Number(o.dataset.length) === selected.value;
+        o.classList.toggle('on', on);
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+    };
+
+    const setActive = (i) => {
+      active = (i + options.length) % options.length;
+      options.forEach((o, n) => o.classList.toggle('active', n === active));
+      field.setAttribute('aria-activedescendant', options[active].id);
+    };
+
+    const closeMenu = ({ focus = false } = {}) => {
+      if (!open) return;
+      open = false;
+      menu.hidden = true;
+      menu.remove();
+      field.setAttribute('aria-expanded', 'false');
+      field.removeAttribute('aria-activedescendant');
+      document.removeEventListener('pointerdown', onDocDown, true);
+      window.removeEventListener('resize', onDismiss, true);
+      window.removeEventListener('scroll', onDismiss, true);
+      if (focus) field.focus();
+    };
+
+    const onDocDown = (ev) => {
+      if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
+    };
+    const onDismiss = () => closeMenu();
+
+    const openMenu = () => {
+      if (open) return;
+      open = true;
+      document.body.append(menu);
+      menu.hidden = false;
+      field.setAttribute('aria-expanded', 'true');
+      setActive(Math.max(0, NOTE_LENGTH_OPTIONS.findIndex((option) =>
+        option.value === noteAddLength)));
+      const r = field.getBoundingClientRect();
+      menu.style.minWidth = `${Math.round(r.width)}px`;
+      menu.style.left = `${Math.round(r.left)}px`;
+      const height = menu.offsetHeight;
+      const below = window.innerHeight - r.bottom;
+      const flip = below < height + 8 && r.top > below;
+      menu.style.top = `${Math.round(flip ? r.top - height - 3 : r.bottom + 3)}px`;
+      field.classList.toggle('flipped', flip);
+      document.addEventListener('pointerdown', onDocDown, true);
+      window.addEventListener('resize', onDismiss, true);
+      window.addEventListener('scroll', onDismiss, true);
+    };
+
+    const choose = (length) => {
+      noteAddLength = Number(length);
+      paint();
+      closeMenu({ focus: true });
+    };
+
+    field.onclick = (ev) => {
+      ev.stopPropagation();
+      if (open) closeMenu({ focus: true }); else openMenu();
+    };
+    field.onkeydown = (ev) => {
+      if (ev.key === 'Tab') { closeMenu(); return; }
+      if (ev.key === 'Escape') {
+        if (!open) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeMenu({ focus: true });
+        return;
+      }
+      if (!open) {
+        if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openMenu();
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(ev.key)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.key === 'ArrowDown') setActive(active + 1);
+      else if (ev.key === 'ArrowUp') setActive(active - 1);
+      else if (ev.key === 'Home') setActive(0);
+      else if (ev.key === 'End') setActive(options.length - 1);
+      else choose(options[active].dataset.length);
     };
 
     paint();
@@ -881,8 +1030,8 @@ export function createPianoRoll({
     rulerHeader: () => {
       // Same word-in-caps in the same 9.5px the channel strip gives DELAY SEND and
       // MID, because these are the same kind of thing: the name of the control under
-      // it. Two of them now — the zoom and the mouse mode are separate fields, spaced
-      // apart rather than run together as one stack with a single heading.
+      // it. The three controls are separate fields, spaced apart rather than run
+      // together as one stack with a single heading.
       const fieldLabel = (text) => {
         const el = document.createElement('span');
         el.className = 'rollzoom-label';
@@ -914,12 +1063,14 @@ export function createPianoRoll({
         };
         zoom.append(button);
       }
-      return [fieldLabel('ZOOM'), zoom, fieldLabel('TOOL'), toolPicker()];
+      return [fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('ZOOM'), zoom,
+        fieldLabel('TOOL'), toolPicker()];
     },
     // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
-    // row of its own. There are none left to put there: the zoom and the mouse mode live
-    // in the blank half of the key column, beside the field they act on. Kept because it
-    // is also what stops the grid building a header of its own inside the scroll area.
+    // row of its own. There are none left to put there: note length, zoom and mouse mode
+    // live in the blank half of the key column, beside the field they act on. Kept
+    // because it is also what stops the grid building a header of its own inside the
+    // scroll area.
     headerHost: () => document.getElementById('notehead'),
     onClose,
 
@@ -978,10 +1129,13 @@ export function createPianoRoll({
     // length, and there is nothing to move a kick to.
     withLen: (row, value, len, on, drawn) =>
       noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn),
-    cellLen: (row, value, len) => noteSpan({ ...row, chord: isChord(value) }, value, len),
+    // Only a genuinely new note takes this value. The shared grid calls it for taps,
+    // paint trails and Draw mode, while existing notes keep their own lengths.
+    addLength: () => (rollResizable(lane()) ? noteAddLength : null),
+    cellLen: (row, value, len, meta) => noteDrawLength(row, value, len, meta),
     // Read fresh, like `preview` below: putting a preset on a gesture lane is what
     // gives its notes a length, so the handle has to appear the moment one is chosen.
-    resizable: () => rollResizable(lane(), engineBank()),
+    resizable: () => rollResizable(lane()),
     movable: true,
     tool: () => toolId,
     selectable: true,
@@ -1187,6 +1341,13 @@ export function createPianoRoll({
       syncPlayingKeys(step);
     },
     armFollow: grid.armFollow,
+    setResizeDeferred: grid.setResizeDeferred,
+    supportsLengths: () => rollResizable(lane()),
+    selectedLengthCount: () => grid.selectedCount(),
+    adjustLengths: ({ scope = 'selection', percent } = {}) =>
+      grid.adjustLengths({ scope, percent }),
+    quantiseLengths: ({ scope = 'selection', grid: gridSize = 1 } = {}) =>
+      grid.quantiseLengths({ scope, grid: gridSize }),
     /**
      * Forget which lane the window was fitted to, so the next refresh fits it again.
      *

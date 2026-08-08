@@ -34,6 +34,7 @@ import { VoiceRack } from '../src/engine/voices.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
 import { foldIcon } from './mixer-voice-library.js';
+import { createUndoHistory } from './mixer-undo.js';
 
 const userTableFor = (kind) => kind === 'noise' ? 'USER_NOISE'
   : kind === 'drum' ? 'USER_DRUM' : 'USER_TONE';
@@ -179,14 +180,116 @@ const CUTOFF_SCALE = 3;
 const cutoffHz = (path, label, def, when = null, opts = {}) =>
   n(path, label, 20, CUTOFF_MAX, 5, hz, def, 'Hz', when, { scale: CUTOFF_SCALE, ...opts });
 
+/**
+ * The drive's Tone filter is the last low-pass in the chain, so while the drive is ON it
+ * is a ceiling: upstream filter controls can move above it while remaining perfectly
+ * valid — and perfectly inaudible. Only a low-pass Tone is a ceiling; a hand-authored
+ * high-pass/band-pass Tone has a different job and must not be rewritten by this
+ * synchronisation.
+ *
+ * With DRIVE at zero the engine builds no tone filter at all, so there is no ceiling to
+ * lift and lifting one anyway would edit a stored number that nothing reads — the panel
+ * quietly rewriting a parameter it has just greyed out.
+ */
+const liftToneCeiling = (x, voice) => {
+  if (!(x > 0) || !voice?.tone || !((voice.drive ?? 0) > 0)) return;
+  if (voice.tone.type && voice.tone.type !== 'lowpass') return;
+  const current = voice.tone.freq ?? CUTOFF_MAX;
+  if (x > current) voice.tone.freq = Math.min(CUTOFF_MAX, x);
+};
+
+const liftMrdrToneCeiling = (x, voice) => {
+  if (voice?.synth !== 'MRDR-3') return;
+  liftToneCeiling(x, voice);
+};
+
+/** Keep an Advanced Global Filter move above the final driven low-pass ceiling. */
+const syncMrdrMasterTone = (x, voice) => {
+  if (voice?.synth !== 'MRDR-3' || !((voice.drive ?? 0) > 0)) return;
+  if (x >= CUTOFF_MAX) {
+    delete voice.tone;
+    return;
+  }
+  if (voice.tone?.type && voice.tone.type !== 'lowpass') return;
+  voice.tone ||= { type: 'lowpass', Q: 0.7 };
+  voice.tone.freq = Math.min(CUTOFF_MAX, Math.max(20, x));
+};
+
+const liftDrumTone = (x, voice) => {
+  if (voice?.kind !== 'drum') return;
+  liftToneCeiling(x, voice);
+};
+
+const mrdrFilterCutoff = (path, label, def, when = null) => cutoffHz(path, label, def, when, {
+  after: liftMrdrToneCeiling,
+});
+
+const mrdrMasterFilterCutoff = (path, label, def) => cutoffHz(path, label, def, null, {
+  after: syncMrdrMasterTone,
+});
+
+const mrdrFilterResonance = (path, freqPath, def) => resQ(path, def, null, {
+  after: (_q, voice) => liftMrdrToneCeiling(getAt(voice, freqPath) ?? 1150, voice),
+});
+
+const mrdrFilterEnvAmount = (path, freqPath) => n(path, 'ENV AMOUNT', -ENV_OCT_MAX,
+  ENV_OCT_MAX, 0.1, semis, 0, 'oct', null, {
+    origin: 0,
+    scale: ENV_OCT_SCALE,
+    tip: 'How far the envelope moves the cutoff, in octaves — up or down',
+    after: (x, voice) => liftMrdrToneCeiling(
+      (getAt(voice, freqPath) ?? 1150) * 2 ** Math.max(0, x), voice,
+    ),
+  });
+
+const drumFilterCutoff = (path, label, def) => cutoffHz(path, label, def, null, {
+  after: liftDrumTone,
+});
+
+const drumFilterFrequency = (path, label, def) => oscHz(path, label, def, {
+  after: liftDrumTone,
+});
+
+const drumFilterResonance = (path, freqPath, def) => resQ(path, def, null, {
+  after: (_q, voice) => liftDrumTone(getAt(voice, freqPath), voice),
+});
+
+const drumRingResonance = (path, freqPath, def) => ringQ(path, def, null, {
+  after: (_q, voice) => liftDrumTone(getAt(voice, freqPath), voice),
+});
+
 // RESONANCE is a Q wherever it appears — the one pot that was a FREQUENCY is now called
-// RES FREQ. The ceiling is the ring resonator's, which genuinely wants a Q of 110 where
-// a filter wants 1; cubed, the bottom sixth of the travel still owns everything up to
-// Q 2, and half of it covers the 0.1–15 a filter actually lives in.
-const RES_Q_MAX = 120;
+// RES FREQ. TWO ceilings, because there are two controls here wearing one name.
+//
+// A FILTER'S Q stops at 24. Every RESONANCE pot used to run to 120, which was the RING
+// resonator's number: a struck body wants a Q around 110 where a filter wants 1, and the
+// one range was stretched to cover both. Audited across the 358 library presets and every
+// song's own `voiceParams` overrides, the highest Q on any filter in the catalogue is 16 —
+// `bass303Bite`, which is the 303 squeal and the point of the control. So 24 is 1.5× the
+// most anything asks for: nothing clamps, no preset moves, and a lowered maximum cannot
+// quietly rewrite a stored value it can no longer represent.
+//
+// What it buys is the dial. Cubed against 120, Q 16 sat at 51% of the travel, so HALF the
+// sweep was above anything ever used and the whole musical range was crushed into the
+// bottom third — a pot you could not aim, which is what a lowpass whistling for the top
+// half of its rotation means. Against 24: Q 1 at 34%, Q 8 at 69%, Q 16 at 87%.
+//
+// Cubic stays. The median stored Q is 1.0, so the resolution is wanted at the BOTTOM; if
+// the top ever feels crushed the answer is `scale: 2`, and it is a one-character change.
+const RES_Q_MAX = 24;
 const RES_Q_SCALE = 3;
 const resQ = (path, def, when = null, opts = {}) =>
   n(path, 'RESONANCE', 0.1, RES_Q_MAX, 0.05, fixed(2), def, '', when,
+    { scale: RES_Q_SCALE, ...opts });
+
+// THE RING resonator keeps the old range, because it is the control that always needed it.
+// It is not a filter you sweep — it is the body a drum is struck on, and its Q IS the
+// material: 28 is a woodblock, 40 a rim, 95 the metal tube `rimRing` is made of. Six
+// presets use it and they span 28–110, so this ceiling is load-bearing rather than
+// generous. Same label, same taper, same units — a different instrument.
+const RING_Q_MAX = 120;
+const ringQ = (path, def, when = null, opts = {}) =>
+  n(path, 'RESONANCE', 0.1, RING_Q_MAX, 0.05, fixed(2), def, '', when,
     { scale: RES_Q_SCALE, ...opts });
 
 // Vibrato depth has the same shape of problem as the drum pitch pot, one range down:
@@ -204,6 +307,11 @@ const HUMANISE_SCALE = 3;
 // bottom: a 5 Hz vibrato on a 60 Hz pot, a 1.2-second note on a 16-second one. Squared
 // rather than cubed — these reach further up their range than an attack time does.
 const SLOW_END_SCALE = 2;
+
+// Sample-and-hold rates spend most of their useful musical range below 1 Hz. A cubic
+// response gives those slow settings physical room on the pot without changing the Hz
+// value stored in the preset or the rate used by the engine.
+const SAMPLE_HOLD_RATE_SCALE = 3;
 
 // A filter envelope's depth has to reach right across the cutoff range: from the 40 Hz
 // floor, opening the filter all the way is log2(20000/40) — nearly nine octaves — so the
@@ -242,15 +350,57 @@ const amountOf = (v) => 12 * Math.log2(clampHz(oscTo(v)) / Math.max(1e-6, oscFro
  *  a whole hertz is most of a semitone down at the bottom of the range. */
 const toneAt = (from, semis) => Math.round(clampHz(from * 2 ** (semis / 12)) * 100) / 100;
 
+/**
+ * The DRIVE's tone control: max is an actual bypass, not a filter at the ceiling.
+ *
+ * Gated on DRIVE at the helper rather than at each call site, because the gate is not a
+ * layout choice — `_playLayer` and `_playDrum` build this filter only alongside the
+ * shaper, so with DRIVE at zero the pot has no node to move and greying it out is the
+ * only honest thing the panel can draw. A call site cannot opt out of that, so it does
+ * not get the chance to. The Quick Cutoff macro is the broader control over those
+ * filter sections and the Drive Tone when it is part of the signal.
+ */
+const drivenTone = (v) => (getAt(v, '$drive') ?? 0) > 0;
+const writeTone = (x, voice) => {
+  if (x >= CUTOFF_MAX) {
+    // Bypass is reversible. A custom Q/type is part of the sound, so hold the whole
+    // section instead of deleting it and guessing those values when the pot comes back.
+    dropSection(voice, 'tone');
+    return;
+  }
+  if (!voice.tone) addSection(voice, 'tone');
+  voice.tone ||= {};
+  voice.tone.type ||= 'lowpass';
+  voice.tone.Q ??= 0.7;
+  voice.tone.freq = x;
+};
+const toneRow = (path = '$tone.freq', label = 'TONE') => cutoffHz(path, label, 16000, drivenTone, {
+  read: (raw, voice) => holdOn(voice, 'tone') !== undefined
+    ? CUTOFF_MAX : raw ?? CUTOFF_MAX,
+  write: (x, v) => {
+    writeTone(x, v);
+    return SKIP_WRITE;
+  },
+});
+
 const WAVES = ['sine', 'square', 'sawtooth', 'triangle', 'pwm', 'pulse'];
 // The four an `OscillatorNode` takes. `pwm`, `pulse` and the voicing prefixes are
 // Tone's vocabulary and THROW on a native oscillator, killing the note and every note
 // after it on that lane — so the native panels draw from this list and never WAVES.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
+const MOD_LFO_WAVES = [...NATIVE_WAVES, 'samplehold'];
+const LFO_TEMPO_DIVISIONS = ['1/64', '1/32', '1/16', '1/8', '1/4', '1/2'];
+// A two-beat hold is useful on a smooth LFO, but too slow for the stepped S&H
+// source. Keep the stored value compatible while removing that choice from its
+// editor row.
+const lfoTempoDivisions = (voice) => getAt(voice, '$layer.lfo.type') === 'samplehold'
+  ? LFO_TEMPO_DIVISIONS.filter((division) => division !== '1/2')
+  : LFO_TEMPO_DIVISIONS;
 // A layer oscillator additionally takes `noise` — the GameSynth's pitched noise (the
 // seeded buffer through a bandpass that follows the note), as one layer of a stack:
 // breath on a flute, sizzle under a lead. Its own list because the FM operator and the
-// LFO draw from NATIVE_WAVES, and neither has a pitch a noise band could follow.
+// ordinary LFO shapes draw from NATIVE_WAVES; the MRDR-3 Mod LFO adds `samplehold`
+// separately because it is a stepped random source, not an OscillatorNode waveform.
 // A layer takes two waveforms an OscillatorNode does not have: `noise` (the seeded buffer
 // through a band that follows the note) and `pulse` (a PeriodicWave at any duty, which is
 // the square's whole family rather than the one member of it the node can make).
@@ -319,13 +469,30 @@ const SHORT = {
   white: 'WHT', pink: 'PNK', brown: 'BRN', blue: 'BLU', violet: 'VIO',
   // SOFT, FOLD and CRUSH need no shortening — they fit as they are, and a pill that
   // reads the word the preset stores is one less thing to translate.
-  // The LFO's two destinations. TREM rather than LEVL because tremolo is what an LFO on
+  // The LFO's three destinations. TREM rather than LEVL because tremolo is what an LFO on
   // the level IS, and the pill is the one place the word fits.
-  filter: 'FILT', level: 'TREM',
-  // The mono pick stores a boolean, and `false`/`true` on a pill says nothing about
-  // what it does to the sound.
-  false: 'POLY', true: 'MONO',
+  filter: 'FILT', level: 'TREM', pitch: 'PITCH',
+  free: 'FREE', tempo: 'TEMPO',
+  '1/64': '64TH', '1/32': '32ND', '1/16': '16TH', '1/8': '8TH',
+  '1/4': 'BEAT', '1/2': '2BEAT',
+  '1bar': 'BAR', '2bar': '2BAR',
+  poly: 'POLY', legato: 'LEGATO', mono: 'MONO', samplehold: 'S&H',
+  off: 'OFF', '1+2': '1+2', '1+3': '1+3', '1+2+3': 'ALL',
 };
+
+const KEY_MODES = ['poly', 'legato', 'mono'];
+const OSC_SYNC_MODES = ['off', '1+2', '1+3', '1+2+3'];
+const isSyncedSlave = (voice, layer) => layer > 1 && (
+  voice?.sync === '1+2+3' || voice?.sync === `1+${layer}`);
+const keyMode = (voice) => KEY_MODES.includes(voice?.mode)
+  ? voice.mode : (voice?.mono === true ? 'mono' : 'poly');
+const writeKeyMode = (voice, mode) => {
+  delete voice.mono;
+  return mode;
+};
+const vibratoOn = (voice) => (voice?.vibrato?.depth ?? 0) > 0;
+const hasUnison = (voice) => voice?.synth === 'MRDR-3'
+  && ['osc1', 'osc2', 'osc3'].some((key) => (voice.layer?.[key]?.unison ?? 1) > 1);
 
 /**
  * A pot on a dotted path into `options`, with the default the engine would use.
@@ -336,6 +503,11 @@ const SHORT = {
  */
 const n = (path, label, min, max, step, fmt = fixed(2), def = min, unit = '', when = null, opts = {}) =>
   ({ kind: 'num', path, label, unit, min, max, step, fmt, def, when, ...opts });
+// A derived row can update or remove more than the leaf named by `path` — the pilot's
+// Tone control removes the optional filter at its top detent, and the collective Quick
+// controls rewrite several envelope leaves at once. Returning this sentinel keeps the
+// shared widget path intact without writing a stale leaf back afterward.
+const SKIP_WRITE = Symbol('skip-row-write');
 /** A row of pills on a dotted path — see `pickRow`. `opts.trio` groups it with its
  * siblings of the same name into one third-width row — see `trioRow`. */
 const pick = (path, label, options, def, when = null, opts = {}) =>
@@ -370,7 +542,10 @@ const osc = (path, def = 'sine', { voicings = true } = {}) => {
         write: (v, o) => joinOsc(o, readShape(v)) },
       // UNISON, the same word the layer cards use for the same idea — how many detuned
       // copies of the oscillator sound at once. STACK was this panel's private name for it.
-      n(`${path}.count`, 'UNISON', 1, 8, 1, fixed(0), 3, '', (v) => readVoicing(v) === 'fat'),
+      // To 12: Tone's FatOscillator takes any count, and `tpAlienChorus` is built on 10 of
+      // them. An 8 stop did not save the CPU — the preset already spends it — it only
+      // stopped the panel from admitting what the preset was.
+      n(`${path}.count`, 'UNISON', 1, 12, 1, fixed(0), 3, '', (v) => readVoicing(v) === 'fat'),
       n(`${path}.spread`, 'SPREAD', 0, 100, 1, fixed(0), 20, 'ct', (v) => readVoicing(v) === 'fat'),
     ] : []),
   ];
@@ -587,6 +762,7 @@ const layerGroups = () => {
   for (let i = 1; i <= 3; i++) {
     const p = `layer.osc${i}`;
     const on = i === 1 ? null : (v) => sectionOn(v, p);
+    const free = (v) => (i === 1 || sectionOn(v, p)) && !isSyncedSlave(v, i);
     groups.push({
       // `key` is the card's name to another layout — see `fullLayout`. The TITLE is prose
       // and has been rewritten twice; a second surface that addressed cards by it would
@@ -594,6 +770,7 @@ const layerGroups = () => {
       // to do. Every group in this table carries one.
       key: `osc${i}`,
       title: `Osc ${i}`,
+      layerCopy: i,
       // Three layers summed into one output is the sound you cannot take apart by ear.
       // S beside the switch plays this layer and nothing else — monitoring, never saved,
       // and gone when the panel closes. Layer 1 has no On/Off (it is the voice) but it
@@ -706,7 +883,7 @@ const layerGroups = () => {
       // the card keeps its setting there rather than being stashed and restored.
       key: `osc${i}.pwm`, seedless: true,
       title: `Osc ${i} · PWM`,
-      when: (v) => (i === 1 || sectionOn(v, p)) && getAt(v, `$${p}.type`) === 'pulse',
+      when: (v) => free(v) && getAt(v, `$${p}.type`) === 'pulse',
       // At depth zero the width holds still and no modulator is built, so on the strip
       // the card folds to DEPTH alone rather than showing three greyed rows. See the
       // note on `groupCard`.
@@ -752,7 +929,7 @@ const layerGroups = () => {
     });
     groups.push({
       key: `osc${i}.fm`,
-      title: `Osc ${i} · FM`, optional: `${p}.fm`, when: on,
+      title: `Osc ${i} · FM`, optional: `${p}.fm`, when: free,
       onTip: 'Take the modulator out',
       offTip: 'Bend this layer with a second oscillator — brass, bells, growl',
       rows: [
@@ -775,19 +952,14 @@ const layerGroups = () => {
       rows: [
         pick(`$${p}.filter.type`, 'TYPE', FILTER_TYPES, 'lowpass'),
         pick(`$${p}.filter.slope`, 'SLOPE', SLOPES, -12),
-        cutoffHz(`$${p}.filter.freq`, 'CUTOFF', 1150),
-        resQ(`$${p}.filter.Q`, 1.15),
+        mrdrFilterCutoff(`$${p}.filter.freq`, 'CUTOFF', 1150),
+        mrdrFilterResonance(`$${p}.filter.Q`, `$${p}.filter.freq`, 1.15),
         // MonoSynth's row in MonoSynth's position — the range the envelope moves the
         // cutoff across belongs beside the cutoff. Bipolar where Tone's is positive-
         // only (a Tone limit, not a choice): negative closes down from above. Zero is
         // no envelope AT ALL — the engine schedules nothing — which is why there is
         // no on/off switch on the Filter Env card: zero already is it, for free.
-        n(`$${p}.filter.env.octaves`, 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis,
-          0, 'oct', null,
-          { origin: 0, scale: ENV_OCT_SCALE,
-            tip: 'How far the envelope moves the cutoff, in octaves — up or down. '
-              + 'Centre is no envelope at all; the far end will open a cutoff parked '
-              + 'at the floor all the way' }),
+        mrdrFilterEnvAmount(`$${p}.filter.env.octaves`, `$${p}.filter.freq`),
         n(`$${p}.filter.track`, 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
       ],
     });
@@ -815,6 +987,9 @@ const layerGroups = () => {
       // always written, so no preset changes and nothing is re-measured.
       key: `osc${i}.amp`,
       title: `Osc ${i} · Amp`, when: on,
+      // THROUGH is the amp envelope's OFF state. Keep the AMP selector itself live, but
+      // make the stage controls, curves and full-window graph inert until ENV is chosen.
+      bodyWhen: (v) => getAt(v, `$${p}.vca`) !== 'through',
       rows: [
         // ENV or THROUGH. Through takes this layer's amp envelope out of the circuit and
         // hands its shaping to the Global Amp downstream — three oscillators into a mixer,
@@ -868,13 +1043,9 @@ const layerGroups = () => {
     rows: [
       pick('$global.filter.type', 'TYPE', FILTER_TYPES, 'lowpass'),
       pick('$global.filter.slope', 'SLOPE', SLOPES, -12),
-      cutoffHz('$global.filter.freq', 'CUTOFF', 1150),
-      resQ('$global.filter.Q', 1.15),
-      n('$global.filter.env.octaves', 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis,
-        0, 'oct', null,
-        { origin: 0, scale: ENV_OCT_SCALE,
-          tip: 'How far the envelope moves the shared cutoff, in octaves — up or down. '
-            + 'Centre is no envelope at all' }),
+      mrdrMasterFilterCutoff('$global.filter.freq', 'CUTOFF', 1150),
+      mrdrFilterResonance('$global.filter.Q', '$global.filter.freq', 1.15),
+      mrdrFilterEnvAmount('$global.filter.env.octaves', '$global.filter.freq'),
       n('$global.filter.track', 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
     ],
   });
@@ -915,16 +1086,22 @@ const layerGroups = () => {
     // therefore leads the card, because it is the control that decides whether the other
     // four mean anything, and they grey behind it.
     key: 'lfo', seedless: true,
-    title: 'LFO',
+    title: 'Mod LFO',
     fold: (v) => (getAt(v, '$layer.lfo.depth') ?? 0) === 0,
     foldKeep: ['$layer.lfo.depth'],
     rows: [
       // WAVE above TARGET: what the shape IS, then where it is pointed. It also matches
       // every other modulator card on the desk, all of which open on their waveform.
-      pick('$layer.lfo.type', 'WAVE', NATIVE_WAVES, 'sine',
+      pick('$layer.lfo.type', 'WAVE', MOD_LFO_WAVES, 'sine',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
-      pick('$layer.lfo.target', 'TARGET', ['filter', 'level'], 'filter',
+      pick('$layer.lfo.target', 'TARGET', ['filter', 'level', 'pitch'], 'filter',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
+      pick('$layer.lfo.sync', 'SYNC', ['free', 'tempo'], 'free',
+        (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
+      pick('$layer.lfo.division', 'DIV', LFO_TEMPO_DIVISIONS, '1/4',
+        (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0
+          && getAt(v, '$layer.lfo.sync') === 'tempo',
+        { optionsFor: lfoTempoDivisions }),
       // DEPTH sits with the pots it governs rather than above the two choice rows. It is
       // still the switch — zero builds no LFO — and it is still what `fold` keeps, so on
       // the strip a dead card shows this row and nothing else. What changed is only that
@@ -935,9 +1112,12 @@ const layerGroups = () => {
       n('$layer.lfo.depth', 'DEPTH', 0, 1, 0.01, fixed(2), 0, '', null,
         { startRow: true,
           tip: 'How far the LFO swings its target. Zero builds no LFO at all — pitch '
-            + 'wobble is a different control, VIB DEPTH, up in Note' }),
+            + 'LFO movement is separate from VIB DEPTH, up in Note' }),
       n('$layer.lfo.rate', 'RATE', 0.05, 12, 0.05, fixed(2), 0.5, 'Hz',
-        (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
+        (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0
+          && getAt(v, '$layer.lfo.sync') !== 'tempo',
+        { scale: (v) => getAt(v, '$layer.lfo.type') === 'samplehold'
+          ? SAMPLE_HOLD_RATE_SCALE : 1 }),
       envTime('$layer.lfo.delay', 'ONSET', 0, 0.01, secs, 0, 's',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
     ],
@@ -961,7 +1141,7 @@ const SYNTH_GROUPS = {
       // and leaves exactly one — into which DRIVE would fall, stranded beside a choice
       // row with TONE alone underneath it. The two pots belong together.
       n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
-      cutoffHz('$tone.freq', 'TONE', 16000),
+      toneRow('$tone.freq', 'TONE'),
     ] },
     // No Taps card. A tap is one HIT repeated milliseconds later — a clap, a flam —
     // and no software synth puts that on a melodic voice: the strip's delay insert is
@@ -1104,11 +1284,18 @@ const SYNTH_GROUPS = {
       resQ('filter.Q', 1),
       // Filter envelope depth — the Roland ENV AMOUNT, in octaves. Zero is no
       // modulation (the envelope does nothing and the filter stays at CUTOFF).
-      // Tone.js only sweeps UP from the cutoff, so this is positive-only
-      // where a Roland's ENV AMOUNT would be bipolar — and the same ten-octave
-      // reach and taper the layer card has, so the two pots read alike.
-      n('filterEnvelope.octaves', 'ENV AMOUNT', 0, ENV_OCT_MAX, 0.1, fixed(1), 0, 'oct',
-        null, { scale: ENV_OCT_SCALE }),
+      //
+      // BIPOLAR, exactly like the Global Filter's row, and for the same ten-octave reach
+      // and taper — so the two pots read alike, which is the whole rule for a control
+      // that appears twice. It was positive-only on the belief that Tone can only sweep
+      // UP from the cutoff. It cannot: `FrequencyEnvelope` sets its scale's top to
+      // `baseFrequency * 2 ** octaves`, so a NEGATIVE octaves puts the top below the base
+      // and the envelope closes the filter instead of opening it. `tpPizz` has been
+      // storing -1.2 all along — a plucked string whose filter shuts as the note starts,
+      // which is the sound — and this pot could not reach it: the panel showed 0 and
+      // would have written 0 the first time anyone touched the knob.
+      n('filterEnvelope.octaves', 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis, 0,
+        'oct', null, { origin: 0, scale: ENV_OCT_SCALE }),
     ] },
     // Left with what an envelope actually is: four times.
     { title: 'Filter Envelope', rows: adsr('filterEnvelope') },
@@ -1169,7 +1356,10 @@ const SYNTH_GROUPS = {
       n('modulationIndex', 'INDEX', 1, 60, 0.5, fixed(1), 32),
       // Tone's `resonance` is a FREQUENCY — where the metal body rings — not a Q. Every
       // other pot on the desk called RESONANCE is a Q, so this one says which it is.
-      n('resonance', 'RES FREQ', 200, 8000, 50, hz, 4000, 'Hz'),
+      // To 12k, not 8k. `triangleDing` and `stTriangleDing` both ring at 9000 — a ding is
+      // a high, thin body, which is the point of them — and at an 8000 ceiling the pot sat
+      // on its end stop showing them a number neither one holds.
+      n('resonance', 'RES FREQ', 200, 12000, 50, hz, 4000, 'Hz'),
       // The same `octaves` key MembraneSynth has, doing the same job: how far the
       // envelope drags the pitch. One key, one name, on both panels.
       n('octaves', 'PITCH DROP', 0.5, 4, 0.1, fixed(1), 1.5, 'oct', null,
@@ -1201,11 +1391,13 @@ const NOISE_GROUPS = [
     pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass'),
     pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
     pick('$noise.slope', 'SLOPE', SLOPES, -12),
-    cutoffHz('$noise.freq', 'CUTOFF', 2600),
-    // Up to 40, where it used to stop at 8. A bandpass does not RING below about ten —
+    drumFilterCutoff('$noise.freq', 'CUTOFF', 2600),
+    // Up to 24, where it once stopped at 8. A bandpass does not RING below about ten —
     // it only colours — and a ringing filter is what a rim, a clave and the body of a
-    // snare are made of. The pot could not reach the sound.
-    resQ('$noise.Q', 0.7),
+    // snare are made of. The pot could not reach the sound. The loudest thing here is
+    // `engineCrash` at 15.9, so 24 keeps that headroom without the dead half `resQ` had
+    // while it shared the ring resonator's range.
+    drumFilterResonance('$noise.Q', '$noise.freq', 0.7),
     envTime('$noise.decay', 'DECAY', 0.005, 0.005, secs, 0.09),
   ] },
   // The body is what tells a snare from a hiss, and plenty of presets genuinely have
@@ -1250,7 +1442,7 @@ const BODY_DEFAULT = { type: 'triangle', from: 210, to: 140, decay: 0.06, gain: 
 // seven into two. Rows saved off the panel, and LEVEL lands in the same place in every
 // section rather than wherever its group happened to leave it.
 const DRUM_GROUPS = [
-  { title: 'Oscillator', optional: 'osc',
+  { key: 'osc', title: 'Oscillator', optional: 'osc',
     onTip: 'Take the pitched half out — noise only',
     offTip: 'Put a pitched source under the noise',
     rows: [
@@ -1289,9 +1481,16 @@ const DRUM_GROUPS = [
       // time like any other, so it takes the shared ten-second ceiling and the shared
       // response. Past about a second it stops being a drum's drop and becomes a siren,
       // which is a sound this section could not previously make.
-      envTime('$osc.sweep', 'SWEEP TIME', 0.005, 0.005, secs, 0.07, 's', null,
+      // From zero, in milliseconds. The floor was 5ms in 5ms steps, and the two cowbells
+      // sweep in 4 — under the pot's bottom AND off its grid, so the panel could neither
+      // show what they hold nor put it back. `pitchRamp` reads whatever is stored, so the
+      // range was the only thing saying 4ms was impossible.
+      envTime('$osc.sweep', 'SWEEP TIME', 0, 0.001, secs, 0.07, 's', null,
         { tip: 'How long the pitch takes to travel the AMOUNT' }),
-      envTime('$osc.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
+      // Zero is a real setting here, not an absent one: `env()` reads `sec.attack ?? 0.001`,
+      // so a stored 0 is honoured and means no ramp at all — which is what the three VL-1
+      // pipe voices are. A 1ms floor made that unreachable and unshowable.
+      envTime('$osc.attack', 'ATTACK', 0, 0.001, secs, 0.001),
       envTime('$osc.hold', 'HOLD', 0, 0.001, secs, 0),
       envTime('$osc.decay', 'DECAY', 0.01, 0.005, secs, 0.35),
       // The two-stage decay, as one pot: the level the section drops to in the first
@@ -1303,7 +1502,7 @@ const DRUM_GROUPS = [
   // The modulator, and the reason one oscillator can be a cowbell or a rim: a second
   // oscillator bending the first one's pitch faster than the ear can follow, which is
   // heard as a timbre rather than as a wobble.
-  { title: 'FM', optional: 'osc.fm',
+  { key: 'osc.fm', title: 'FM', optional: 'osc.fm',
     onTip: 'Take the modulator out — the oscillator on its own',
     offTip: 'Bend the oscillator with a second one — clangs, bells, rims',
     rows: [
@@ -1313,7 +1512,7 @@ const DRUM_GROUPS = [
       envTime('$osc.fm.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
       envTime('$osc.fm.decay', 'DECAY', 0.005, 0.005, secs, 0.35),
     ] },
-  { title: 'Noise', optional: 'noise',
+  { key: 'noise', title: 'Noise', optional: 'noise',
     onTip: 'Take the noise half out — the oscillator on its own',
     offTip: 'Put the seeded noise source back in',
     rows: [
@@ -1322,10 +1521,10 @@ const DRUM_GROUPS = [
       pick('$noise.curve', 'CURVE', ['exp', 'lin'], 'exp'),
       pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
       pick('$noise.slope', 'SLOPE', SLOPES, -12),
-      cutoffHz('$noise.freq', 'CUTOFF', 2600),
-      cutoffHz('$noise.to', 'SWEEP TO', 2600),
+      drumFilterCutoff('$noise.freq', 'CUTOFF', 2600),
+      drumFilterCutoff('$noise.to', 'SWEEP TO', 2600),
       envTime('$noise.sweep', 'SWEEP TIME', 0.005, 0.005, secs, 0.12),
-      resQ('$noise.Q', 0.7),
+      drumFilterResonance('$noise.Q', '$noise.freq', 0.7),
       envTime('$noise.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
       envTime('$noise.hold', 'HOLD', 0, 0.001, secs, 0),
       envTime('$noise.decay', 'DECAY', 0.005, 0.005, secs, 0.12),
@@ -1334,51 +1533,55 @@ const DRUM_GROUPS = [
   // A click into a very narrow filter: struck, then ringing. Where the noise section
   // is a burst you shape, this is a PITCH that arrives already decaying — the rim, the
   // clave, the wood block, the shell under a snare.
-  { title: 'Ring', optional: 'ring',
+  { key: 'ring', title: 'Ring', optional: 'ring',
     onTip: 'Take the resonator out',
     offTip: 'Strike a resonant filter — rims, claves, shells',
     rows: [
       n('$ring.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$ring.type', 'TYPE', FILTER_TYPES, 'bandpass'),
       pick('$ring.curve', 'CURVE', ['exp', 'lin'], 'exp'),
-      oscHz('$ring.freq', 'FREQUENCY', 400),
-      oscHz('$ring.to', 'SWEEP TO', 400),
+      drumFilterFrequency('$ring.freq', 'FREQUENCY', 400),
+      drumFilterFrequency('$ring.to', 'SWEEP TO', 400),
       // The one that changes what it IS rather than how it sounds: a couple of
       // milliseconds is a stick, twenty is a mallet, past fifty it is a burst again.
       n('$ring.hit', 'STRIKE', 0.0005, 0.05, 0.0005, secs, 0.002, 's', null,
         { scale: ENV_TIME_SCALE }),
-      resQ('$ring.Q', 40),
+      // `ringQ`, not `resQ` — this is the one RESONANCE on the desk that runs to 120,
+      // because here the Q is the MATERIAL rather than a filter setting. See its note.
+      drumRingResonance('$ring.Q', '$ring.freq', 40),
+      envTime('$ring.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
       envTime('$ring.decay', 'DECAY', 0.005, 0.005, secs, 0.25),
       n('$ring.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
   // Six squares at inharmonic ratios through a highpass — the 808's cymbal circuit.
-  { title: 'Metal', optional: 'metal',
+  { key: 'metal', title: 'Metal', optional: 'metal',
     onTip: 'Take the cluster out',
     offTip: 'Add a cluster of inharmonic squares — hats, cowbells, cymbals',
     rows: [
       n('$metal.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$metal.wave', 'WAVE', WAVES, 'square'),
       pick('$metal.filter', 'TYPE', FILTER_TYPES, 'highpass'),
-      oscHz('$metal.freq', 'FREQUENCY', 800),
+      drumFilterFrequency('$metal.freq', 'FREQUENCY', 800),
       // 0 collapses the cluster onto one note and 2 pulls the partials twice as far
       // apart as the 808's. Everything between is a different metal.
       // PARTIAL SPREAD rather than SPREAD: everywhere else on the desk SPREAD is unison
       // detune in cents, and this pulls a bank of partials apart by a ratio.
       n('$metal.spread', 'PARTIAL SPREAD', 0, 2, 0.01, fixed(2), 1),
       n('$metal.count', 'PARTIALS', 1, 6, 1, fixed(0), 6),
-      cutoffHz('$metal.hp', 'CUTOFF', 3000),
-      resQ('$metal.Q', 0.7),
+      drumFilterCutoff('$metal.hp', 'CUTOFF', 3000),
+      drumFilterResonance('$metal.Q', '$metal.hp', 0.7),
+      envTime('$metal.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
       envTime('$metal.decay', 'DECAY', 0.005, 0.005, secs, 0.2),
       n('$metal.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
-  { title: 'Drive', rows: [
+  { key: 'drive', title: 'Drive', rows: [
     pick('$shape', 'SHAPE', DRIVE_SHAPES, 'soft'),
     n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
     // After the shaper, not before: what it is for is the fizz the drive just added.
-    cutoffHz('$tone.freq', 'TONE', 16000),
+      toneRow('$tone.freq', 'TONE'),
   ] },
   HUMANISE_GROUP,
-  { title: 'Taps', taps: true },
+  { key: 'taps', title: 'Taps', taps: true },
 ];
 
 // What an optional section starts as when it is switched on, per key. The osc and
@@ -1389,8 +1592,8 @@ const SECTION_DEFAULTS = {
   body: BODY_DEFAULT,
   osc: { type: 'sine', from: 190, to: 52, sweep: 0.07, decay: 0.35, curve: 'exp', gain: 1 },
   noise: { type: 'bandpass', freq: 2600, Q: 0.7, decay: 0.12, gain: 1 },
-  ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.002, decay: 0.25, curve: 'exp', gain: 1 },
-  metal: { wave: 'square', freq: 800, spread: 1, count: 6, hp: 3000, Q: 0.7, decay: 0.2, gain: 1 },
+  ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.002, attack: 0.001, decay: 0.25, curve: 'exp', gain: 1 },
+  metal: { wave: 'square', freq: 800, spread: 1, count: 6, hp: 3000, Q: 0.7, attack: 0.001, decay: 0.2, gain: 1 },
   // The modulator hangs off the oscillator rather than off the entry, which is the one
   // section here whose key is a path — see `addSection`.
   'osc.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 0.35 },
@@ -1504,6 +1707,33 @@ function dropSection(voice, key) {
   delete owner[leaf];
 }
 
+/** Copy one MRDR-3 oscillator, including optional sections currently bypassed. */
+export function copyLayerData(voice, from, to) {
+  if (!voice?.layer || from === to || ![1, 2, 3].includes(from)
+    || ![1, 2, 3].includes(to)) return false;
+  const sourceKey = `layer.osc${from}`;
+  const targetKey = `layer.osc${to}`;
+  const source = voice.layer[`osc${from}`];
+  const holds = voice[HELD] || {};
+  if (source === undefined && holds[sourceKey] === undefined) return false;
+
+  if (source === undefined) delete voice.layer[`osc${to}`];
+  else voice.layer[`osc${to}`] = copy(source);
+
+  const nextHolds = {};
+  for (const [key, value] of Object.entries(holds)) {
+    if (key === targetKey || key.startsWith(`${targetKey}.`)) continue;
+    if (key === sourceKey || key.startsWith(`${sourceKey}.`)) {
+      nextHolds[key.replace(sourceKey, targetKey)] = copy(value);
+    } else {
+      nextHolds[key] = value;
+    }
+  }
+  if (Object.keys(nextHolds).length) voice[HELD] = nextHolds;
+  else delete voice[HELD];
+  return true;
+}
+
 /** Drop one hold, and the whole bag with the last of them: a preset that has never used
  *  a switch carries no `bypassed` key, and one that has stopped using them stops too. */
 function releaseHold(voice, key) {
@@ -1597,7 +1827,7 @@ const TAP_KEYS = (v) => ({
  * "Common" used to mean every row here appeared on every panel, which is only honest
  * while every row reaches every path. Two groups do not:
  *
- *   VOICING and GLIDE      `play` reads `v.mono` after it has already dispatched noise,
+ *   KEY MODE and GLIDE      `play` reads `v.mode` after it has already dispatched noise,
  *                          drum, GameSynth and AdditiveSynth away, and `portamento` is
  *                          a Tone constructor option on paths that build no Tone
  *                          objects at all. Gated on `isPooled`.
@@ -1649,74 +1879,43 @@ const withParts = (rows) => rows.map((r) => (
   { ...r, part: VIBRATO_PART.has(r.path) ? 'vibrato' : 'settings' }));
 
 /**
- * The Note card's last three rows, and then its vibrato, in that order.
+ * The Note card's last two rows, and then its vibrato, in that order.
  *
- * The card reads in four blocks: what the note IS (length, trim, tuning), how it is PLAYED
- * (key mode, glide, and the absolute length that overrides all of it), and then the one
- * thing that is not a property of the note at all but something done TO it — vibrato.
+ * The card now reads in three blocks: level/tuning, then how a sustained note is played
+ * (key mode and glide), and then the one thing that is not a property of the note at all
+ * but something done TO it — vibrato. Note length moved to the piano roll, where it is
+ * edited per note instead of per preset.
  *
- * Ordered HERE rather than by moving the declarations, because these rows do not share a
- * condition: FIXED LENGTH is on every pitched preset, GLIDE and KEY MODE only on the paths
- * that can honour them. Moving FIXED LENGTH down beside GLIDE in the source would move it
- * inside GLIDE's `isPooled` test and quietly take it off half the catalogue. Re-ordering
- * the built list changes where a row sits and nothing about when it exists.
- *
- * It also keeps each declaration next to its own reasoning — the DEPTH taper, the SPREAD
- * note about one larynx, why the FIXED LENGTH ceiling is 4 — which is worth more beside
- * the pot than a hundred lines lower beside a pot it has nothing to do with.
+ * Ordered HERE rather than by moving the declarations, because GLIDE and KEY MODE do not
+ * share a condition with the vibrato rows that follow them. Re-ordering the built list
+ * changes where a row sits and nothing about when it exists.
  */
-const NOTE_TAIL = ['$mono', '$portamento', '$fixedLength'];
+const NOTE_TAIL = ['$mode', '$portamento', '$sync'];
 const noteOrder = (rows) => {
   const tail = [...NOTE_TAIL, ...rows.filter((r) => r.part === 'vibrato').map((r) => r.path)];
   const moved = new Set(tail);
   return [
     ...rows.filter((r) => !moved.has(r.path)),
-    // `filter(Boolean)`: a one-shot has no `$fixedLength` row and a non-pooled path has no
-    // GLIDE, so the tail names rows that are legitimately absent.
+    // `filter(Boolean)`: a non-pooled path has no GLIDE, so the tail names rows that are
+    // legitimately absent.
     ...tail.map((p) => rows.find((r) => r.path === p)).filter(Boolean),
   ];
 };
 
 const commonRows = (voice = {}) => noteOrder(withParts([
-  // Steps, not seconds: the engine multiplies by the song's seconds-per-16th, so a
-  // preset holds for the same musical length at any tempo.
-  // The hand-written engine voices use sub-quarter-step stabs, and Tone's release
-  // continues after the requested note length. Keep the editor below 0.25 steps so
-  // a preset can be made as short as those voices rather than sounding automatically
-  // longer just because it is a library preset. At 120 BPM, 0.05 steps is 6.25ms.
-  // GameSynth is not excluded, though a preview does ignore it: `_playGame` is handed a
-  // fixed 4 s so the decay has room to reach silence. In a SONG it reads `dur` like every
-  // other path, and eight presets on that path are in the catalogue — hiding the row made
-  // a length that governs them unreachable, which is a bigger lie than a pot you cannot
-  // hear while auditioning. See tests/pot-coverage.js.
-  ...(isOneShot(voice) ? [] : [n('$dur', 'LENGTH', 0.05, 16, 0.01, fixed(2), 1, 'steps', null,
-    { scale: SLOW_END_SCALE })]),
   // The one row here every path honours: `trim` is folded into the note's gain in
   // scheduleStep, BEFORE the rack is asked to play anything, so it lands on a hat
   // exactly as it lands on a lead. Which is why it is also the only thing left on a
-  // one-shot's Note card.
+  // one-shot's Note card (plus Drum Synth's sound-level TUNE directly below it).
   n('$trim', 'TRIM', -6, 6, 0.1, fixed(1), 0, 'dB'),
-  // Everything from here to the vibrato is about the NOTE — how long it lasts and what
-  // pitch it lands on — which is why a one-shot has none of it. See `isOneShot`.
-  // GameSynth is NOT excluded from this block, unlike LENGTH above, because `_playGame`
-  // reads every key in it: `fixedLength` in `noteSeconds` before dispatch, transpose and
-  // fine through `VoiceRack.pitchShift`, and vibrato depth/rate on its own LFO. All eight
-  // GameSynth presets in the catalogue carry a `fixedLength` — hiding the row hid a value
-  // that was already governing them in every song, and left the panel's own VIB DELAY row
-  // greyed forever behind a depth no control could set.
+  // Drum tuning is a property of the sound, not of the note that triggers it. It is
+  // optional and neutral at zero so existing drums remain source-identical until touched.
+  ...(voice.kind === 'drum'
+    ? [n('$tune', 'TUNE', -24, 24, 1, semiSteps, 0, 'st')]
+    : []),
+  // Everything from here to the vibrato is about the sustained note's pitch and entry,
+  // which is why a one-shot has none of it. See `isOneShot`.
   ...(isOneShot(voice) ? [] : [
-    // An absolute duration in seconds that overrides LENGTH and the tempo both — see
-    // `noteSeconds` in src/engine/audio.js, which returns it verbatim and stops. `0` is
-    // "not set" rather than "no length", which is why the pot bottoms out at nothing.
-    //
-    // The ceiling is 4 rather than 2 because a SOUND EFFECT is what this control is for
-    // once it is longer than a note — an explosion, a siren, a power-down — and those run
-    // past two seconds. `squareTone21` was already pinned at the old ceiling. Raising a
-    // maximum moves no preset: every stored value is what it was, there is simply more
-    // travel above it. Common to every PITCHED synth, because `fixedLength` is read in
-    // `noteSeconds` before the voice is dispatched and so has never been one path's.
-    n('$fixedLength', 'FIXED LENGTH', 0, 4, 0.001, fixed(3), 0, 'sec', null,
-      { scale: ENV_TIME_SCALE }),
     // Tuning. Two controls rather than one, because they are two jobs: TRANSPOSE moves
     // the instrument to where it belongs in the arrangement and wants to land exactly
     // on a semitone (a step of 1, so an octave is four detents of the wheel, not a
@@ -1756,14 +1955,14 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi',
       null, { scale: VIB_DEPTH_SCALE, startRow: true }),
     n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
-      (v) => (v?.vibrato?.depth ?? 0) > 0, { scale: SLOW_END_SCALE }),
+      vibratoOn, { scale: SLOW_END_SCALE }),
     // The third of the three, beside the two it belongs with rather than stranded on one
     // synth's own card. Every NATIVE path measures the onset from its own note-on and so
     // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
     // no note-on for a delay to be measured from — hence the `when`, which greys it there
     // rather than offering a control that would silently do nothing.
     envTime('$vibrato.delay', 'VIB DELAY', 0, 0.01, secs, 0, 's',
-      (v) => (v?.vibrato?.depth ?? 0) > 0 && NATIVE_SYNTHS.includes(v?.synth)),
+      (v) => vibratoOn(v) && NATIVE_SYNTHS.includes(v?.synth)),
     // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
     // which is one singer through a chorus however many oscillators are running; wound up,
     // each voice takes its own rate and its own starting phase and the stack becomes a
@@ -1771,19 +1970,18 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // the same singer in every layer, because a person has one larynx feeding all of their
     // formants, and scattering per layer pulls one voice apart instead of adding voices.
     //
-    // MRDR-3 only: it is the one path that builds a modulator per voice. The pooled
-    // classes share a single LFO in the pool and GameSynth has one oscillator to detune,
-    // so there is nothing there to de-correlate.
+    // MRDR-3 with unison: it is the only path that builds multiple vibrato voices to
+    // de-correlate. A single-voice MRDR-3 patch and the pooled classes have nothing for
+    // SPREAD to separate.
     n('$vibrato.spread', 'VIB SPREAD', 0, 1, 0.01, fixed(2), 0, '',
-      (v) => (v?.vibrato?.depth ?? 0) > 0 && v?.synth === 'MRDR-3',
+      (v) => vibratoOn(v) && hasUnison(v),
       { tip: 'How far the unison voices drift apart in rate and phase — 0 is one wobble '
           + 'on every voice, 1 is a room full of singers who are not counting together' }),
   ]),
-  // Mono holds one instance for the whole lane, so a new note cuts the last one off
-  // — and, because that instance remembers what it was playing, GLIDE finally has a
-  // pitch to slide from. Glide is greyed until mono is on for exactly that reason:
-  // set it on a polyphonic preset and every note lands on a fresh voice with nothing
-  // to glide from, and the control does nothing at all.
+  // LEGATO and MONO hold one instance for the whole lane, so GLIDE has a pitch to slide
+  // from. LEGATO keeps the current envelope running across an overlapping note; MONO
+  // starts the new envelope again. POLY gets a fresh pooled slot and has no legato
+  // origin, so GLIDE is absent there.
   //
   // Both are absent, not greyed, on the paths that cannot honour them — a drum has no
   // pool to hold one instance of and no Tone synth to carry a portamento. MRDR-3 is
@@ -1793,12 +1991,23 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   ...(isPooled(voice) || voice?.synth === 'MRDR-3' ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
-    pick('$mono', 'KEY MODE', [false, true], false),
+    pick('$mode', 'KEY MODE', KEY_MODES, 'poly', null, {
+      read: keyMode,
+      write: writeKeyMode,
+    }),
     // A fresh row, which is what leaves KEY MODE alone on its own. KEY MODE is a choice
     // row and takes three of the card's four columns, so without this GLIDE drops into
     // the one column left over and the played-how block starts halfway along a line.
-    n('$portamento', 'GLIDE', 0, 0.5, 0.005, secs, 0, '', (v) => v?.mono === true,
+    n('$portamento', 'GLIDE', 0, 0.5, 0.005, secs, 0, '', (v) => keyMode(v) !== 'poly',
       { scale: ENV_TIME_SCALE, startRow: true }),
+  ] : []),
+  ...(voice?.synth === 'MRDR-3' ? [
+    pick('$sync', 'OSC SYNC', OSC_SYNC_MODES, 'off', null, {
+      tip: 'Osc 1 is the master. 1+2 resets Osc 2 from Osc 1; 1+3 resets Osc 3; '
+        + 'ALL resets both slaves. A slave interval sets the hard-sync overtone shape; '
+        + 'Pitch Env remains available for animated sync sweeps, while FM and PWM are '
+        + 'unavailable on a synced slave.',
+    }),
   ] : []),
 ]));
 
@@ -1815,7 +2024,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
  * vibrato because you changed its oscillator class would be a change to the sound nobody
  * asked for.
  *
- * Asked for a POOLED preset, so `mono` and `portamento` count as common: they are shown
+ * Asked for a POOLED preset, so `mode` and `portamento` count as common: they are shown
  * on seven of the nine classes, and switching a MonoSynth to an FMSynth must not throw
  * away a voicing that means the same thing on both.
  */
@@ -1898,6 +2107,442 @@ export function panelSpec(voice = {}) {
   };
 }
 
+// ---- the pilot Quick surfaces ----------------------------------------------
+
+const QUICK_SYNTHS = new Set(['MRDR-3', 'drum']);
+const isQuickVoice = (voice) => QUICK_SYNTHS.has(voice?.kind === 'drum' ? 'drum' : voice?.synth);
+
+const stageDefault = (stage) => ({ attack: 0.01, decay: 1, release: 0.015 }[stage] ?? 0);
+
+/** The VCA stages that actually shape an enabled MRDR-3 layer or global stack. */
+const mrdrStagePaths = (voice, stage) => {
+  const out = [];
+  for (let i = 1; i <= 3; i++) {
+    const base = `$layer.osc${i}`;
+    if (!getAt(voice, base) || getAt(voice, `${base}.vca`) === 'through') continue;
+    out.push({ path: `${base}.${stage}`, def: stageDefault(stage) });
+  }
+  if (sectionOn(voice, 'global.vca')) {
+    out.push({ path: `$global.vca.${stage}`, def: stageDefault(stage) });
+  }
+  return out;
+};
+
+/** Drum source amplitude stages; FM and the fixed knock transient are intentionally out. */
+const drumStagePaths = (voice, stage) => {
+  const defs = { osc: 0.35, noise: 0.12, ring: 0.25, metal: 0.2 };
+  const out = [];
+  for (const key of Object.keys(defs)) {
+    if (!getAt(voice, `$${key}`)) continue;
+    out.push({ path: `$${key}.${stage}`, def: defs[key] });
+  }
+  if (stage === 'decay' && voice.noise && Array.isArray(voice.tapDecays)) {
+    voice.tapDecays.forEach((_, i) => out.push({
+      path: `$tapDecays.${i}`, def: voice.noise?.decay ?? defs.noise,
+    }));
+  }
+  return out;
+};
+
+const collectiveRead = (voice, paths) => paths.length
+  ? Math.max(...paths.map(({ path, def }) => getAt(voice, path) ?? def))
+  : 0;
+
+const collectiveRow = (path, label, stage, pathsOf, { min = 0, def = 0 } = {}) => {
+  // A macro position must describe one sound, independent of how the knob got there.
+  // Capture the authored envelope once and calculate every later position from that
+  // baseline. Rescaling the last result would accumulate rounding and make x -> y -> z
+  // differ from x -> z. The WeakMap keeps editor-only state out of saved voice data.
+  const baselines = new WeakMap();
+  const capture = (voice, paths) => {
+    const values = paths.map(({ path: itemPath, def: itemDef }) => {
+      const raw = getAt(voice, itemPath);
+      return { path: itemPath, present: raw !== undefined, value: raw ?? itemDef };
+    });
+    return {
+      anchor: values.length ? Math.max(...values.map((item) => item.value)) : 0,
+      values,
+      projected: null,
+    };
+  };
+  return envTime(path, label, min, min === 0 ? 0.01 : 0.001, secs, def, 's', null, {
+    read: (_raw, voice) => collectiveRead(voice, pathsOf(voice, stage)),
+    write: (x, voice) => {
+      const paths = pathsOf(voice, stage);
+      let baseline = baselines.get(voice);
+      // Advanced can remain open beside Quick. If it changed a constituent stage since
+      // this macro's last write, that new authored shape becomes the baseline instead of
+      // being overwritten by stale editor state.
+      const changedElsewhere = baseline?.projected && (
+        paths.length !== baseline.projected.length
+        || paths.some(({ path: itemPath }, i) => {
+          const expected = baseline.projected[i];
+          const raw = getAt(voice, itemPath);
+          return expected?.path !== itemPath || raw !== expected.value;
+        })
+      );
+      if (!baseline || changedElsewhere) {
+        baseline = capture(voice, paths);
+        baselines.set(voice, baseline);
+      }
+
+      if (Math.abs(x - baseline.anchor) < 1e-9) {
+        for (const item of baseline.values) {
+          if (item.present) setAt(voice, item.path, item.value);
+          else deleteAt(voice, item.path);
+        }
+        baselines.delete(voice);
+        return SKIP_WRITE;
+      }
+
+      const ratio = baseline.anchor > 0 ? x / baseline.anchor : 0;
+      const projected = [];
+      for (const item of baseline.values) {
+        const next = baseline.anchor > 0 ? item.value * ratio : x;
+        const value = Math.min(ENV_MAX_SECONDS, Math.max(0, next));
+        setAt(voice, item.path, value);
+        projected.push({ path: item.path, value });
+      }
+      baseline.projected = projected;
+      return SKIP_WRITE;
+    },
+  });
+};
+
+// ---- the Quick Cutoff macro ---------------------------------------------
+//
+// Cutoff is not another stored preset parameter. It is a view over the filter
+// frequencies that are actually in this native voice, just as the Quick envelope pots are
+// views over several VCA stages. A voice can have three layer filters, a Global Filter and
+// a Drive Tone; one of those being changed in Advanced must be reflected by the one pot.
+//
+// The aggregate is the lowest active cutoff. In a chain that is the effective ceiling, and
+// in a layered voice it is the darkest component the macro has to account for. Moving the
+// macro scales every included frequency by the same ratio, in octaves, so the filter
+// relationships stay intact. A drum filter's sweep destination travels with its cutoff;
+// filter-envelope amounts, Q, type and slope deliberately do not.
+const TONE_ENGINE_DEFAULT_FREQ = 8000;
+const brightnessTarget = (path, def, { companions = [], section = null } = {}) => ({
+  path, def, companions, section,
+});
+
+const mrdrBrightnessTargets = (voice) => {
+  const targets = [];
+  for (let i = 1; i <= 3; i++) {
+    const base = `layer.osc${i}`;
+    if (!sectionOn(voice, base) || (getAt(voice, `$${base}.gain`) ?? 1) <= 0) continue;
+    if (sectionOn(voice, `${base}.filter`)) {
+      targets.push(brightnessTarget(`$${base}.filter.freq`, 1150));
+    }
+  }
+  if (sectionOn(voice, 'global.filter')) {
+    targets.push(brightnessTarget('$global.filter.freq', 1150));
+  }
+  if (drivenTone(voice) && sectionOn(voice, 'tone')) {
+    targets.push(brightnessTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
+  }
+  // Keep the useful legacy capability for a driven, otherwise unfiltered patch: the first
+  // Brightness move can create the Drive Tone. Once any real
+  // filter is present, creating a new post-drive node behind the user's back would make a
+  // collective control unexpectedly change the signal topology.
+  if (!targets.length && drivenTone(voice)) {
+    targets.push(brightnessTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
+  }
+  return targets;
+};
+
+const drumBrightnessTargets = (voice) => {
+  const targets = [];
+  if (sectionOn(voice, 'noise')) {
+    targets.push(brightnessTarget('$noise.freq', 2600, {
+      companions: [{ path: '$noise.to', def: 2600 }],
+    }));
+  }
+  if (sectionOn(voice, 'metal')) {
+    targets.push(brightnessTarget('$metal.hp', 3000, {
+      companions: [{ path: '$metal.hpTo', def: 3000 }],
+    }));
+  }
+  // Ring FREQ and Metal FREQ are pitched resonators/oscillator bases, not brightness
+  // controls. Tune owns those values; Brightness owns only their actual filter cutoffs.
+  if (drivenTone(voice) && sectionOn(voice, 'tone')) {
+    targets.push(brightnessTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
+  }
+  if (!targets.length && drivenTone(voice)) {
+    targets.push(brightnessTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
+  }
+  return targets;
+};
+
+const brightnessTargets = (voice) => voice?.kind === 'drum'
+  ? drumBrightnessTargets(voice)
+  : voice?.synth === 'MRDR-3' ? mrdrBrightnessTargets(voice) : [];
+
+const brightnessValue = (voice, target) => {
+  const raw = getAt(voice, target.path);
+  const value = Number(raw ?? target.def);
+  return Number.isFinite(value) ? Math.min(CUTOFF_MAX, Math.max(20, value)) : target.def;
+};
+
+const brightnessRead = (voice, targets = brightnessTargets(voice)) => {
+  if (!targets.length) return CUTOFF_MAX;
+  return Math.min(...targets.map((target) => brightnessValue(voice, target)));
+};
+
+const brightnessItems = (voice, targets) => targets.flatMap((target) => {
+  const paths = [
+    { path: target.path, def: target.def, required: true },
+    ...target.companions.map((item) => ({ ...item, required: false })),
+  ];
+  return paths.map((item) => {
+    const raw = getAt(voice, item.path);
+    return {
+      path: item.path,
+      value: Number.isFinite(Number(raw))
+        ? Math.min(CUTOFF_MAX, Math.max(20, Number(raw))) : item.def,
+      raw,
+      present: raw !== undefined,
+      required: item.required,
+      section: target.section,
+    };
+  });
+});
+
+const brightnessProjection = (voice, targets) => brightnessItems(voice, targets)
+  .map(({ path, raw, present }) => ({ path, raw, present }));
+
+const sameBrightnessProjection = (voice, targets, projection) => {
+  const current = brightnessProjection(voice, targets);
+  return current.length === projection.length && current.every((item, i) => {
+    const expected = projection[i];
+    return item.path === expected.path && item.present === expected.present
+      && item.raw === expected.raw;
+  });
+};
+
+const brightnessRow = () => {
+  const baselines = new WeakMap();
+  const capture = (voice, targets) => ({
+    anchor: brightnessRead(voice, targets),
+    values: brightnessItems(voice, targets),
+    sections: targets.filter((target) => target.section).map((target) => ({
+      key: target.section,
+      present: sectionOn(voice, target.section),
+      held: holdOn(voice, target.section) ? copy(holdOn(voice, target.section)) : null,
+    })),
+    projected: null,
+  });
+  const restore = (voice, baseline) => {
+    for (const item of baseline.values) {
+      if (item.present) setAt(voice, item.path, item.raw);
+      else deleteAt(voice, item.path);
+    }
+    for (const section of baseline.sections) {
+      if (section.present) continue;
+      deleteAt(voice, `$${section.key}`);
+      if (section.held) (voice[HELD] ||= {})[section.key] = copy(section.held);
+      else releaseHold(voice, section.key);
+    }
+  };
+
+  return cutoffHz('$quick.brightness', 'CUTOFF', CUTOFF_MAX,
+    (voice) => brightnessTargets(voice).length > 0, {
+      read: (_raw, voice) => brightnessRead(voice),
+      write: (x, voice) => {
+        const targets = brightnessTargets(voice);
+        if (!targets.length) return SKIP_WRITE;
+        let baseline = baselines.get(voice);
+        const changedElsewhere = baseline?.projected
+          && !sameBrightnessProjection(voice, targets, baseline.projected);
+        if (!baseline || changedElsewhere) {
+          baseline = capture(voice, targets);
+          baselines.set(voice, baseline);
+        }
+
+        if (Math.abs(x - baseline.anchor) < 1e-9) {
+          restore(voice, baseline);
+          baselines.delete(voice);
+          return SKIP_WRITE;
+        }
+
+        const ratio = baseline.anchor > 0 ? x / baseline.anchor : 1;
+        for (const target of targets) {
+          if (target.section && !sectionOn(voice, target.section)) {
+            addSection(voice, target.section);
+            if (target.section === 'tone') {
+              voice.tone ||= {};
+              voice.tone.type ||= 'lowpass';
+              voice.tone.Q ??= 0.7;
+            }
+          }
+        }
+        for (const item of baseline.values) {
+          // A missing companion means the engine is not sweeping to a second point. Keep
+          // it absent; the primary cutoff is always written because it is the macro's
+          // actual target, even when the engine was using its default.
+          if (!item.required && !item.present) continue;
+          const next = Math.min(CUTOFF_MAX, Math.max(20, item.value * ratio));
+          setAt(voice, item.path, next);
+        }
+        baseline.projected = brightnessProjection(voice, targets);
+        return SKIP_WRITE;
+      },
+    });
+};
+
+const neutralGlobalFilter = (voice) => {
+  const tone = getAt(voice, '$tone.freq') ?? CUTOFF_MAX;
+  return {
+    type: 'lowpass', slope: -12, freq: Math.min(8000, Math.max(20, tone)), Q: 0.7,
+    env: { octaves: 0 },
+  };
+};
+
+// A Quick move may have to create the optional Global Filter before it can write Sweep
+// or Resonance. Remember the exact seed under the engine-ignored bypass bag; when both
+// macros return to neutral and the section is still that seed, remove it again. If the
+// user changed anything else in Advanced, it no longer matches and is kept.
+const QUICK_FILTER_HOLD = '$quick.global.filter';
+const ensureGlobalFilter = (voice) => {
+  if (!sectionOn(voice, 'global.filter')) {
+    const seed = neutralGlobalFilter(voice);
+    voice.global = { ...(voice.global || {}), filter: seed };
+    (voice[HELD] ||= {})[QUICK_FILTER_HOLD] = copy(seed);
+  }
+  voice.global.filter ||= neutralGlobalFilter(voice);
+  voice.global.filter.env ||= { octaves: 0 };
+  return voice.global.filter;
+};
+
+const releaseQuickFilterIfSeed = (voice) => {
+  const seed = holdOn(voice, QUICK_FILTER_HOLD);
+  const filter = voice.global?.filter;
+  if (!seed || !filter || JSON.stringify(filter) !== JSON.stringify(seed)) return;
+  delete voice.global.filter;
+  if (!Object.keys(voice.global).length) delete voice.global;
+  releaseHold(voice, QUICK_FILTER_HOLD);
+};
+
+const quickFilterSweep = () => n('$quick.filterSweep', 'ENV AMOUNT', -ENV_OCT_MAX,
+  ENV_OCT_MAX, 0.1, semis, 0, 'oct', null, {
+    origin: 0, scale: ENV_OCT_SCALE,
+    read: (_raw, voice) => voice.global?.filter?.env?.octaves ?? 0,
+    write: (x, voice) => {
+      if (x === 0 && !sectionOn(voice, 'global.filter')) return SKIP_WRITE;
+      const filter = ensureGlobalFilter(voice);
+      filter.env.octaves = x;
+      releaseQuickFilterIfSeed(voice);
+      return SKIP_WRITE;
+    },
+  });
+
+const quickResonance = () => resQ('$quick.resonance', 0.7, null, {
+  read: (_raw, voice) => voice.global?.filter?.Q ?? 0.7,
+  write: (x, voice) => {
+    if (x === 0.7 && !sectionOn(voice, 'global.filter')) return SKIP_WRITE;
+    const filter = ensureGlobalFilter(voice);
+    filter.Q = x;
+    releaseQuickFilterIfSeed(voice);
+    return SKIP_WRITE;
+  },
+});
+
+const tapCount = (voice) => Array.isArray(voice.taps) && voice.taps.length ? voice.taps.length : 1;
+const QUICK_TAPS_HOLD = '$quick.taps';
+const setTapCount = (voice, target) => {
+  const count = Math.max(1, Math.min(8, Math.round(target)));
+  const before = tapCount(voice);
+  if (count < before && !holdOn(voice, QUICK_TAPS_HOLD)) {
+    (voice[HELD] ||= {})[QUICK_TAPS_HOLD] = {
+      taps: copy(voice.taps || [0]),
+      tapFalloff: voice.tapFalloff,
+      hadTapFalloff: Object.hasOwn(voice, 'tapFalloff'),
+    };
+  }
+  const held = holdOn(voice, QUICK_TAPS_HOLD);
+  const list = (voice.taps || [0]).slice();
+  while (list.length < count) {
+    const authored = held?.taps?.[list.length];
+    if (authored != null) list.push(authored);
+    else {
+      const gap = list.length > 1 ? list.at(-1) - list.at(-2) : 0.012;
+      list.push(Number((list.at(-1) + gap).toFixed(4)));
+    }
+  }
+  list.length = count;
+  if (count === 1) {
+    delete voice.taps;
+    delete voice.tapFalloff;
+  } else {
+    voice.taps = list;
+    if (voice.tapFalloff == null) {
+      if (held?.hadTapFalloff) voice.tapFalloff = held.tapFalloff;
+      else voice.tapFalloff = 0.78;
+    }
+  }
+  if (held && count >= held.taps.length) {
+    if (held.hadTapFalloff) voice.tapFalloff = held.tapFalloff;
+    else delete voice.tapFalloff;
+    releaseHold(voice, QUICK_TAPS_HOLD);
+  }
+};
+
+export const quickRows = (voice) => {
+  if (voice.kind === 'drum') {
+    const rows = [
+      n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+      ...(getAt(voice, '$osc') || getAt(voice, '$ring') || getAt(voice, '$metal')
+        ? [n('$tune', 'TUNE', -24, 24, 1, semiSteps, 0, 'st')]
+        : []),
+      collectiveRow('$quick.attack', 'ATTACK', 'attack', drumStagePaths,
+        { min: 0.001, def: 0.001 }),
+      collectiveRow('$quick.decay', 'DECAY', 'decay', drumStagePaths,
+        { min: 0, def: 0.12 }),
+      brightnessRow(),
+      ...(getAt(voice, '$osc') ? [n('$knock', 'PUNCH', 0, 1, 0.01, fixed(2), 0)] : []),
+      n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
+      n('$quick.taps', 'HITS', 1, 8, 1, (x) => String(Math.round(x)), 1, '', null, {
+        read: (_raw, v) => tapCount(v),
+        write: (x, v) => { setTapCount(v, x); return SKIP_WRITE; },
+      }),
+    ];
+    return rows;
+  }
+
+  return [
+    n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+    collectiveRow('$quick.attack', 'ATTACK', 'attack', mrdrStagePaths,
+      { min: 0.001, def: 0.01 }),
+    collectiveRow('$quick.decay', 'DECAY', 'decay', mrdrStagePaths,
+      { min: 0, def: 1 }),
+    collectiveRow('$quick.release', 'RELEASE', 'release', mrdrStagePaths,
+      { min: 0, def: 0.015 }),
+    brightnessRow(),
+    quickFilterSweep(),
+    quickResonance(),
+    n('$vibrato.depth', 'VIBRATO', 0, 12, 0.01, fixed(2), 0, 'semi'),
+  ];
+};
+
+/**
+ * The strip surface for the current preset.
+ *
+ * This is deliberately resolved from the voice on every build. A lane can move from
+ * MRDR-3's compact Quick surface to a GameSynth/Tone surface without changing the
+ * editor element, so retaining the previous surface here would leave the old controls
+ * attached to the new sound.
+ */
+export function stripPanelSpec(voice = {}) {
+  const common = { title: isOneShot(voice) ? 'Level' : 'Note', rows: commonRows(voice) };
+  const groups = voice.kind === 'noise' ? NOISE_GROUPS
+    : voice.kind === 'drum' ? DRUM_GROUPS
+      : (SYNTH_GROUPS[voice.synth] || []);
+  if (isQuickVoice(voice)) {
+    return { mode: 'quick', groups: [{ title: 'Quick', rows: quickRows(voice) }] };
+  }
+  return { mode: 'detailed', groups: [common, ...groups] };
+}
+
 // ---- the full-window layout -------------------------------------------------
 
 /**
@@ -1905,7 +2550,7 @@ export function panelSpec(voice = {}) {
  *
  * The strip has no layout worth the name: it stacks the cards in declaration order down a
  * 366px column and scrolls. A window six columns wide has to say which card goes where,
- * and that is a second arrangement of the same 166 controls — which is exactly the kind of
+ * and that is a second arrangement of the same 169 controls — which is exactly the kind of
  * second list that drifts. A card added to `layerGroups()` and forgotten here would be a
  * control the engine reads and nothing draws, and `tests/pot-coverage.js` cannot see it:
  * that test works at ROOT-key granularity (`vibrato.rate` counts as `vibrato`), so a
@@ -1923,11 +2568,16 @@ export function panelSpec(voice = {}) {
  * The layout regroups the panel in four places, all deliberate, all recorded here rather
  * than in the renderer:
  *
- *   · the oscillator card is GONE — its rows are the layer's own cell at the top of the
- *     window, where all three layers stand side by side, and the column it used to take
- *     belongs to FM, which was behind a door on it
- *   · PWM becomes a sub-section inside that FM card
- *   · PLS WIDTH is PULLED out of the oscillator's rows into that sub-section — the one
+ *   · the oscillator card is SPLIT. Everything that balances one layer against the other
+ *     two — level, interval, detune, unison, gate, delay — goes up into the layer's own
+ *     cell at the top of the window, where all three stand side by side. WAVE and COLOUR
+ *     stay down in a card of their own, because they are the question the modulator
+ *     sections answer and they were being asked a row away from it.
+ *   · that card carries the modulator the wave actually has: PWM as a sub-section on a
+ *     pulse, FM as a sub-section on the other five. The one that does not apply is behind
+ *     the header's door (FM, on a pulse) or absent (PWM, on anything else) — never a rule
+ *     over five dead controls.
+ *   · PLS WIDTH is PULLED out of the oscillator's rows into the PWM sub-section — the one
  *     control that lives in a different card here than it does on the strip. Same key,
  *     same label, same range; only the neighbours change.
  *
@@ -1955,19 +2605,72 @@ const FULL_TITLES = {
  * side by side this is the row where you build the stack, and "what are these three doing
  * against each other" is a question you cannot ask a card that shows one layer at a time.
  *
- * Ordered by what they are, not by the panel's order: what it makes (WAVE, COLOUR), where
- * it sits (INTERVAL, DETUNE), how many of it there are (UNISON, SPREAD, STEREO), and when
- * it plays (GATE, DELAY). COLOUR rides ON the wave row rather than taking a column of its
- * own — see `mixCell`.
+ * Ordered by what they are, not by the panel's order: where it sits (INTERVAL, DETUNE),
+ * how many of it there are (UNISON, SPREAD, STEREO), and when it plays (GATE, DELAY).
+ *
+ * WAVE and COLOUR are NOT here. They went down to the OSC card, where the modulation that
+ * acts on the wave — PWM on a pulse, FM on everything else — now sits directly under them:
+ * choosing a waveform and shaping it is one question, and it was being asked in two cells.
+ * What the cell has instead is the wave's NAME in its header (`LAYER 1 · SQUARE`), so the
+ * three layers still compare at a glance without carrying the picker three times over.
  */
-const MIXER_ROWS = ['type', 'color', 'ratio', 'detune', 'unison', 'spread', 'stereo',
-  'len', 'delay'];
+const MIXER_ROWS = ['ratio', 'detune', 'unison', 'spread', 'stereo', 'len', 'delay'];
+
+function buildDrumFullLayout(voice, problems) {
+  const { common, groups } = panelSpec(voice);
+  const byKey = new Map(groups.map((g) => [g.key, g]));
+  const placed = new Map();
+  const seen = new Set();
+  for (const r of [...common.rows, ...groups.flatMap((g) => g.rows || [])]) seen.add(r.path);
+
+  const take = (key) => {
+    const g = key === 'note' ? common : byKey.get(key);
+    if (!g) {
+      problems.push(`no card keyed '${key}'`);
+      return { key, title: key, rows: [], group: { key, title: key } };
+    }
+    for (const r of g.rows || []) placed.set(r.path, [...(placed.get(r.path) || []), key]);
+    return { key, title: key === 'note' ? 'MASTER' : g.title, group: g, rows: g.rows || [] };
+  };
+
+  // Drum is a one-shot, so it does not need MRDR's layer selector or mixer projections.
+  // Three six-column bands keep the signal path readable while allowing the taller source
+  // cards to scroll inside the existing full-window body on smaller screens.
+  const bands = [
+    { name: 'sources', cols: 6, cells: [
+      { kind: 'card', span: 2, card: take('osc') },
+      { kind: 'card', span: 2, card: take('noise') },
+      { kind: 'card', span: 2, card: take('ring') },
+    ] },
+    { name: 'colour', cols: 6, cells: [
+      { kind: 'card', span: 2, card: take('metal') },
+      { kind: 'card', span: 2, card: take('osc.fm') },
+      { kind: 'card', span: 2, card: take('drive') },
+    ] },
+    { name: 'master', cols: 6, cells: [
+      { kind: 'card', span: 2, card: take('note') },
+      { kind: 'card', span: 2, card: take('humanise') },
+      { kind: 'card', span: 2, card: take('taps') },
+    ] },
+  ];
+
+  const label = (path) => [...common.rows, ...groups.flatMap((g) => g.rows || [])]
+    .find((r) => r.path === path)?.label ?? '?';
+  for (const path of seen) {
+    if (!placed.has(path)) problems.push(`UNPLACED  ${label(path)}  ${path}`);
+  }
+  for (const [path, where] of placed) {
+    if (where.length > 1) problems.push(`PLACED ${where.length}×  ${label(path)}  ${path}  (${where.join(', ')})`);
+    if (!seen.has(path)) problems.push(`PLACED BUT NOT A ROW  ${path}`);
+  }
+  return { synth: 'Drum Synth', kind: 'drum', layer: 1, total: seen.size, bands };
+}
 
 export function fullLayout(voice = {}, { layer = 1 } = {}) {
   const problems = [];
   const built = buildFullLayout(voice, layer, problems);
   if (problems.length) {
-    throw new Error(`fullLayout(${voice.synth}): ${problems.length} problem(s)\n  `
+    throw new Error(`fullLayout(${voice.synth || voice.kind}): ${problems.length} problem(s)\n  `
       + problems.join('\n  '));
   }
   return built;
@@ -1984,6 +2687,7 @@ export function checkFullLayout(voice = {}) {
 }
 
 function buildFullLayout(voice, layer, problems) {
+  if (voice.kind === 'drum') return buildDrumFullLayout(voice, problems);
   if (voice.synth !== 'MRDR-3') return null;
   const { common, groups } = panelSpec(voice);
   const byKey = new Map(groups.map((g) => [g.key, g]));
@@ -2015,28 +2719,83 @@ function buildFullLayout(voice, layer, problems) {
   // ---- one layer's five cells ------------------------------------------------
   const layerCells = (N) => {
     const p = `layer.osc${N}`;
-    const widthPath = `$${p}.width`;
-    const width = takeRow(`osc${N}`, widthPath, `osc${N}.pwm`);
-    const pwm = take(`osc${N}.pwm`);
+    const oscKey = `osc${N}`;
+    const width = takeRow(oscKey, `$${p}.width`, `${oscKey}.pwm`);
+    const wave = takeRow(oscKey, `$${p}.type`, oscKey);
+    const colour = takeRow(oscKey, `$${p}.color`, oscKey);
+    const pwm = take(`${oscKey}.pwm`);
+    const fm = take(`${oscKey}.fm`);
+    const osc = byKey.get(oscKey);
+    // WHICH MODULATOR THIS CARD IS ABOUT, decided by the wave you picked.
+    //
+    // A pulse is the only wave with a width to move, so PWM is real on exactly one of the
+    // six and dead on the other five. FM is real on all six. Rather than show both — one
+    // of them greyed most of the time — the card shows the one that applies IN THE GRID
+    // and puts the other behind the door:
+    //
+    //   pulse   → PWM's five controls under the wave, FM behind the header's FM button
+    //   anything else → FM's five under the wave, and no PWM at all
+    //
+    // Both are still TAKEN either way, so the exactly-once walk sees them whatever the
+    // preset's wave is — this decides where they are DRAWN, not whether they exist.
+    const isPulse = getAt(voice, `$${p}.type`) === 'pulse';
+    // `when` dropped: it is the layer's own on/off, and the card above already greys as a
+    // whole on an off layer. Left on, the section would vanish out of a card that is
+    // otherwise still standing there saying what it would say.
+    const fmSection = { rule: 'FM', ...fm,
+      group: { ...fm.group, when: (v) => !isSyncedSlave(v, N) } };
+    // PWM in FM's shape: the modulator's own WAVE first, then its four pots in one row.
+    // The pick came third in the panel's order, which put two pots above it and two below
+    // and cost the card a whole extra row of height for four controls — and the two
+    // sections sitting in the same place on the same card read as one thing when their
+    // rows are in the same order. PLS WIDTH leads the pots because it is what the other
+    // three move.
+    const pwmPick = pwm.rows.find((r) => r.kind === 'pick');
+    const pwmSection = { rule: 'PWM', ...pwm,
+      rows: [pwmPick, width, ...pwm.rows.filter((r) => r !== pwmPick)].filter(Boolean) };
     return [
-      // The oscillator card is GONE, and this is what took its column. Every row it held
-      // now lives in the layer's own cell at the top of the window — where all three
-      // layers are side by side — except PLS WIDTH, which belongs to the PWM sub-section
-      // below. That left a card with a header, a door and nothing between them, so the
-      // door was opened instead: FM is the card now.
+      // The oscillator card is what a layer IS: the wave, and the thing modulating it.
       //
-      // It keeps the modulator's own on/off in its header, because that is the FM group's
-      // switch and it always was; only the popover is gone.
+      // Everything else the strip's Osc card held — level, interval, detune, unison, gate,
+      // delay — is up in the layer's own cell, where all three layers stand side by side
+      // and you build the stack by comparing them. What could not go up is the pair of
+      // questions that only make sense against a WAVE: the wave itself, its noise colour,
+      // and whichever modulator applies to it. So they came down here together.
       { kind: 'card', span: 1, layer: N,
         card: {
-          ...take(`osc${N}.fm`),
-          // The one section that is ABSENT rather than greyed when it does not apply —
-          // a pulse is the only wave with a width, so on the other five there is nothing
-          // for the sub-section to be about. It sits at the BOTTOM of the card, so
-          // nothing below it can move when it comes and goes. It stays here rather than
-          // following the oscillator up: PWM is four pots and a wave, which is a card's
-          // worth of controls, and the cell above has no room for it.
-          sub: [{ rule: 'PWM', ...pwm, rows: [width, ...pwm.rows].filter(Boolean) }],
+          key: `${oscKey}.wave`,
+          title: `OSC ${N}`,
+          // FOUR POTS ACROSS, not the window's usual three.
+          //
+          // This is the only card that carries a modulator's whole set of four under a
+          // rule, and at three columns those four are 3+1 — a row and a half of pots for
+          // a section, twice over if the wave ever changed under you. The columns are
+          // narrower (a 46px pot in ~52px rather than ~58) which is a tighter fit for a
+          // label; every label in here is short enough for it, and the ones that are not
+          // ellipsis to a tooltip exactly as they do everywhere else. The rest of the
+          // window keeps its three: those cards hold envelopes, and ATTACK DECAY SUSTAIN
+          // RELEASE reads better as 3+1 than squeezed.
+          grid: 4,
+          // And read from the TOP. This card's height changes with the wave you pick —
+          // PWM's five rows, or FM's five, or neither on a layer that is off — so there is
+          // no fixed row of pots for the band's baseline to line up with, and bottom-
+          // aligning it left the wave picker sitting under a card's worth of air.
+          top: true,
+          // The osc group, minus its switch: the layer's on/off is already a capsule in
+          // the cell above, and the same state offered twice is how the two get out of
+          // step in your head. `when` stays, so an off layer greys the card out.
+          group: { ...osc, optional: null,
+            when: N === 1 ? null : (v) => sectionOn(v, p) },
+          rows: [wave, colour].filter(Boolean),
+          // FM in the grid on five waves out of six, behind the door on the sixth — where
+          // PWM has the room and FM is the second modulator rather than the only one.
+          panels: isPulse ? [{ label: 'FM', title: `Osc ${N} · FM`, ...fm }] : [],
+          // PWM is listed either way and drops itself: its group's `when` is "the wave is
+          // a pulse", which is the same test `isPulse` makes, so the renderer skips it on
+          // the other five waves. Listing it unconditionally keeps the card's row count
+          // equal to the controls it OWNS rather than to the ones it happens to be
+          // showing — which is what tests/synth-full-layout.js counts.
+          sub: isPulse ? [pwmSection] : [pwmSection, fmSection],
         } },
       // AMOUNT is back where the panel puts it. It was pulled onto the oscillator card as
       // "where this oscillator sits" — but that card is gone, and on a cell full of
@@ -2052,7 +2811,7 @@ function buildFullLayout(voice, layer, problems) {
     ];
   };
 
-  // Every layer is walked, so the check covers all 166 controls — but only the selected
+  // Every layer is walked, so the check covers all 169 controls — but only the selected
   // layer's cells are returned, because that is the band that is on screen.
   const perLayer = [1, 2, 3].map(layerCells);
 
@@ -2079,7 +2838,12 @@ function buildFullLayout(voice, layer, problems) {
       .map((leaf) => takeRow(`osc${N}`, `$layer.osc${N}.${leaf}`, `mixer${N}`))
       .filter(Boolean);
     if (!fader) problems.push(`mixer cell ${N} has no LEVEL row to drive`);
-    return { kind: 'mixer', span: 1, layer: N, group: g, fader, rows };
+    // The wave is a READING here, and not even a row — the picker is down on the OSC card
+    // now, and this is its name in the cell's header so the three layers still say what
+    // they are side by side. A path rather than a row because nothing in the cell writes
+    // it; naming the path keeps the renderer from hard-coding `layer.oscN.type` itself.
+    return { kind: 'mixer', span: 1, layer: N, group: g, fader, rows,
+      wavePath: `$layer.osc${N}.type` };
   });
 
   // ---- the shared stage ------------------------------------------------------
@@ -2158,6 +2922,16 @@ function setAt(preset, path, value) {
   // way that looks like the engine rather than like the editor.
   for (let i = 0; i < ks.length - 1; i++) o = (o[ks[i]] ||= (/^\d+$/.test(ks[i + 1]) ? [] : {}));
   o[ks[ks.length - 1]] = value;
+}
+
+function deleteAt(preset, path) {
+  const ks = keysOf(path);
+  let o = rootOf(preset, path);
+  for (let i = 0; i < ks.length - 1; i++) {
+    o = o?.[ks[i]];
+    if (o == null) return;
+  }
+  delete o[ks[ks.length - 1]];
 }
 
 /**
@@ -2312,6 +3086,42 @@ export function createVoiceEditor({
     ...(v.songSourceId ? { songSourceId: v.songSourceId } : {}),
   });
 
+  // Undo stores the editable sound plus its measured loudness. Runtime identity stays on
+  // the live object, while the level/peak travel with the snapshot so undo does not make a
+  // preset temporarily jump to the wrong gain while its next estimate is pending.
+  //
+  // AND THE HISTORY IS THE PRESET'S, NOT THE PANEL'S. It is dropped wherever the panel
+  // stops describing the same sound — a different preset opened, the panel blanked, the
+  // preset let go — so ⌘Z can never reach back past the thing on screen and step an
+  // earlier preset backwards behind your back. `open`, `blank` and `forget` are the three
+  // doors, and all three reset. Null snapshots are what a blank panel captures: there is
+  // no preset, so there is nothing to go back to.
+  const historySnapshot = () => (state?.voice ? {
+    voice: asPreset(state.voice),
+    level: state.voice.level,
+    peak: state.voice.peak,
+    measured: state.measured,
+    estimated: state.estimated,
+    silent: state.silent,
+  } : null);
+  const undoHistory = createUndoHistory({
+    capture: historySnapshot,
+    restore: (snapshot) => {
+      if (!snapshot || !state?.voice) return;
+      replaceVoiceContents(state.voice, snapshot.voice);
+      state.voice.level = snapshot.level;
+      state.voice.peak = snapshot.peak;
+      state.measured = snapshot.measured;
+      state.estimated = snapshot.estimated;
+      state.silent = snapshot.silent;
+    },
+  });
+  const historyChanged = () => full?.syncHistory();
+  const matchesBaseline = () => JSON.stringify(asPreset(state.voice))
+    === JSON.stringify(state.baseline)
+    && state.voice.level === state.levelBaseline
+    && state.voice.peak === state.peakBaseline;
+
   /**
    * An edit landed: make it audible, and start working out what it did to the level.
    *
@@ -2328,6 +3138,8 @@ export function createVoiceEditor({
   const touched = () => {
     state.dirty = true;
     state.measured = false;      // the level on file no longer describes this sound
+    undoHistory.touch();
+    historyChanged();
     // Applying a song mix re-registers its copy and may replace VOICES[state.id]
     // while this panel is still holding the previous object. Put the object being
     // edited back on the live id before refresh() reads it, or the controls move on
@@ -2348,10 +3160,44 @@ export function createVoiceEditor({
 
   let estimateTimer = null;
   let estimateSeq = 0;
+  // Whether a control is under the hand right now. Every pot brackets its gesture with
+  // `onStart`/`onEnd` (see `numRow`), so this is true from the pointer going down to it
+  // coming up — including the whole of a drag that is sitting still against a stop.
+  let gesturing = false;
 
+  /**
+   * Re-measure the level, once the hand is off the control.
+   *
+   * The 80 ms debounce alone was not enough, and the way it failed is the one the ear
+   * notices: a drag that has run a pot to its stop stops CHANGING while it is still
+   * being held — you are past the end of the travel, the value cannot move, and the
+   * pointer moves are no longer edits. The timer fired into the middle of the gesture,
+   * a fresh level landed under the hand, and the next note came out at a loudness
+   * nobody had asked for. At an ATTACK's ten-second stop, where one second of render
+   * reads as near-silence, that was tens of decibels of it. See MAX_LEVEL_BOOST in
+   * src/data/voices.js, which is the other half of this: the ceiling that means a bad
+   * measurement can no longer be dangerous, only wrong.
+   *
+   * So the estimate waits for the gesture to end. Nothing else changes: a pill, a type-in
+   * or a click still measures on its own 80 ms, because those have no hold to wait for.
+   */
+  let estimateDeferred = false;
   const scheduleEstimate = () => {
     clearTimeout(estimateTimer);
+    // `endGesture` schedules it on the way out — but only if an edit actually landed,
+    // so a pot that was grabbed and let go without moving costs no render.
+    if (gesturing) { estimateDeferred = true; return; }
     estimateTimer = setTimeout(runEstimate, 80);
+  };
+
+  const beginGesture = () => { gesturing = true; undoHistory.begin(); };
+  const endGesture = () => {
+    undoHistory.end();
+    if (!gesturing) return;
+    gesturing = false;
+    if (!estimateDeferred) return;
+    estimateDeferred = false;
+    scheduleEstimate();
   };
 
   /**
@@ -2395,6 +3241,8 @@ export function createVoiceEditor({
       // where you are standing, and now it is caught while you are still moving the
       // control that caused it.
       state.silent = true;
+      undoHistory.sync();
+      historyChanged();
       paintFoot();
       return;
     }
@@ -2405,6 +3253,8 @@ export function createVoiceEditor({
     state.voice.level = state.levelBaseline * (raw.level / state.rawBaseline.level);
     state.voice.peak = state.peakBaseline * (raw.peak / state.rawBaseline.peak);
     state.estimated = true;
+    undoHistory.sync();
+    historyChanged();
     // The level is part of the preset, so a song's copy has to carry the new one too —
     // this lands after `touched` wrote the shape, and the level is the slow half.
     onEdit(state.id, asSongPreset(state.voice));
@@ -2448,11 +3298,31 @@ export function createVoiceEditor({
     const list = [];
     const set = {
       push: (el, when, hide = false) => list.push({ el, when, hide }),
+      // A full-window card stays in the grid when its section is OFF.  Unlike a row
+      // guard, this has to cover controls added after the card body is built (graphs,
+      // sub-sections and popovers), while leaving only the card's own re-enable switch
+      // usable.  `panel` is deliberately separate from `push`: it must not re-enable a
+      // row that another guard has disabled when the panel itself is live again.
+      panel: (el, when, keep = () => false) => list.push({ el, when, panel: true, keep }),
       clear: () => { list.length = 0; },
       drop: () => { guardSets.delete(set); },
       sync: () => {
         for (const g of list) {
           const on = !!g.when(state.voice);
+          if (g.panel) {
+            g.el.classList.toggle('vepaneloff', !on);
+            for (const control of g.el.querySelectorAll('button, input, select, textarea')) {
+              const allowed = on || g.keep(control);
+              if (!allowed) {
+                control.disabled = true;
+                control.dataset.vePanelDisabled = '1';
+              } else if (control.dataset.vePanelDisabled === '1') {
+                control.disabled = false;
+                delete control.dataset.vePanelDisabled;
+              }
+            }
+            continue;
+          }
           g.el.classList.toggle(g.hide ? 'vehidden' : 'vedisabled', !on);
           // A hidden row's controls are out of the tab order too — `display: none` does
           // that on its own, so only the greyed ones need saying.
@@ -2474,21 +3344,25 @@ export function createVoiceEditor({
   // interval the user set on a different pot.
   // `guards` is which surface is asking — the strip's set by default, the full window's
   // when it builds. See `guardSet`.
-  const numRow = (row, guards = rowGuards) => {
+  const numRow = (row, guards = rowGuards, onChange = null) => {
     const raw = getAt(state.voice, row.path);
     const cur = row.read ? row.read(raw, state.voice) : raw;
     const value = typeof cur === 'number' ? Math.min(row.max, Math.max(row.min, cur)) : row.def;
+    const scale = typeof row.scale === 'function' ? row.scale(state.voice) : row.scale;
     const r = knob({
       min: row.min, max: row.max, step: row.step, value, reset: row.def, fmt: row.fmt,
-      scale: row.scale, origin: row.origin,
+      scale, origin: row.origin,
+      onStart: beginGesture, onEnd: endGesture,
       onInput: (x) => {
-        setAt(state.voice, row.path, row.write ? row.write(x, state.voice) : x);
+        const next = row.write ? row.write(x, state.voice) : x;
+        if (next !== SKIP_WRITE) setAt(state.voice, row.path, next);
         // `raw` is what the path held BEFORE this move: an `after` that has to keep a
         // RELATION intact needs both ends of the change, and by now the voice only
         // carries the new one.
         row.after?.(x, state.voice, raw);
         touched();
         syncRows();
+        onChange?.();
       },
     });
     r.label.textContent = row.label;
@@ -2532,13 +3406,14 @@ export function createVoiceEditor({
    */
   // The pill box itself — shared by a lone pick and by each third of a `trioRow`, so
   // the two only ever differ in what wraps them.
-  const buildSeg = (row, cur) => {
+  const buildSeg = (row, cur, onChange = null) => {
     const seg = document.createElement('div'); seg.className = 'seg';
     // The current value leads the list if it is one this editor does not offer. Tone
     // takes `fmsquare5`, `pwm` and `amsine2`, and the imported presets use them; a
     // control that dropped the current value would rewrite the sound on open.
-    const options = row.options.some((o) => String(o) === String(cur))
-      ? row.options : [cur, ...row.options];
+    const offered = row.optionsFor ? row.optionsFor(state.voice) : row.options;
+    const options = offered.some((o) => String(o) === String(cur))
+      ? offered : [cur, ...offered];
     for (const o of options) {
       const b = document.createElement('button');
       b.className = 'segbtn' + (String(o) === String(cur) ? ' on' : '');
@@ -2552,19 +3427,22 @@ export function createVoiceEditor({
       b.onclick = () => {
         // Kept as a number where the catalogue holds one: `rolloff: '-24'` is not a
         // rolloff Tone recognises.
+        undoHistory.begin();
         setAt(state.voice, row.path, row.write ? row.write(state.voice, o) : o);
         for (const other of seg.children) other.classList.toggle('on', other === b);
         touched();
         // A pick can be what decides whether other rows apply — fat voicing turns the
         // stack controls on — so the panel re-reads its guards after every change.
         syncRows();
+        onChange?.();
+        undoHistory.end();
       };
       seg.append(b);
     }
     return seg;
   };
 
-  const pickRow = (row, guards = rowGuards) => {
+  const pickRow = (row, guards = rowGuards, onChange = null) => {
     // `read`/`write` let two controls share one stored property. The oscillator needs
     // it: Tone spells voicing as a prefix on the type (`fatsawtooth`), so SHAPE and
     // VOICING are two pills over one string, and each has to change its own half
@@ -2590,8 +3468,9 @@ export function createVoiceEditor({
     // pair rather than as two unrelated rows.
     const wave = row.label === 'WAVE';
     wrap.className = 'row segrow' + (row.wide ? ' segwide' : '') + (wave ? ' segwave' : '');
+    if (row.tip) wrap.title = row.tip;
     const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
-    wrap.append(k, buildSeg(row, cur));
+    wrap.append(k, buildSeg(row, cur, onChange));
     if (row.when) guards.push(wrap, row.when);
     return { wrap, row };
   };
@@ -2603,14 +3482,14 @@ export function createVoiceEditor({
    * rather than three controls that happen to be adjacent, and it is a third the
    * height a `pickRow` per stage cost.
    */
-  const trioRow = (rows, guards = rowGuards) => {
+  const trioRow = (rows, guards = rowGuards, onChange = null) => {
     const wrap = document.createElement('div');
     wrap.className = 'row segrow segtrio';
     for (const row of rows) {
       const cur = row.read ? row.read(state.voice) : (getAt(state.voice, row.path) ?? row.def);
       const col = document.createElement('div'); col.className = 'segtriocol';
       const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
-      col.append(k, buildSeg(row, cur));
+      col.append(k, buildSeg(row, cur, onChange));
       wrap.append(col);
       if (row.when) guards.push(col, row.when);
     }
@@ -2657,6 +3536,7 @@ export function createVoiceEditor({
         list.push(Number((list[list.length - 1] + gap).toFixed(4)));
       } else if (list.length > 1) list.pop();
       else return;
+      undoHistory.begin();
       // One tap at zero is what every preset without a `taps` key already does, so it
       // is written as no key at all rather than as an array saying nothing.
       if (list.length <= 1) { delete state.voice.taps; delete state.voice.tapFalloff; }
@@ -2666,6 +3546,7 @@ export function createVoiceEditor({
       }
       touched();
       build();
+      undoHistory.end();
     };
     const btn = (text, d, title) => {
       const b = document.createElement('button');
@@ -2687,6 +3568,7 @@ export function createVoiceEditor({
         const r = knob({
           min: 0.002, max: 0.2, step: 0.001, value: t, reset: 0.012 * (i + 1),
           fmt: (x) => `${Math.round(x * 1000)}ms`,
+          onStart: beginGesture, onEnd: endGesture,
           onInput: (x) => { state.voice.taps[i + 1] = x; touched(); },
         });
         r.label.textContent = `HIT ${i + 2}`;
@@ -2695,6 +3577,7 @@ export function createVoiceEditor({
       const r = knob({
         min: 0.2, max: 1, step: 0.01, value: state.voice.tapFalloff ?? 0.78, reset: 0.78,
         fmt: fixed(2),
+        onStart: beginGesture, onEnd: endGesture,
         onInput: (x) => { state.voice.tapFalloff = x; syncLevels(); touched(); },
       });
       r.label.textContent = 'FALLOFF';
@@ -2720,6 +3603,7 @@ export function createVoiceEditor({
         const w = knob({
           min: walk.min, max: walk.max, step: walk.step, reset: 1, fmt: walk.fmt,
           value: state.voice[walk.key] ?? 1,
+          onStart: beginGesture, onEnd: endGesture,
           // Exactly 1 is no walk at all, and a preset that does not walk should not
           // carry a key saying so — same rule `taps` itself follows above.
           onInput: (x) => {
@@ -2781,6 +3665,7 @@ export function createVoiceEditor({
         const w = knob({
           min: ov.min, max: ov.max, step: ov.step, fmt: ov.fmt, reset: ov.dflt(i),
           value: state.voice[ov.key]?.[i] ?? ov.dflt(i),
+          onStart: beginGesture, onEnd: endGesture,
           onInput: (x) => {
             const list = Array.from({ length: taps.length },
               (_, j) => state.voice[ov.key]?.[j] ?? ov.dflt(j));
@@ -2841,6 +3726,7 @@ export function createVoiceEditor({
   // negotiable in the same way: one knob, one feel, everywhere.
   const groupCard = (group, {
     guards = rowGuards, repaint = build, dimOff = false, onRow = null, renderPick = null,
+    onChange = null,
   } = {}) => {
     const card = document.createElement('div');
     card.className = 'device vegroup';
@@ -2882,16 +3768,64 @@ export function createVoiceEditor({
       const held = !on && holdOn(state.voice, group.optional) !== undefined;
       sw.title = on ? group.onTip : held ? 'Put it back as you left it' : group.offTip;
       sw.onclick = () => {
+        undoHistory.begin();
         if (on) dropSection(state.voice, group.optional);
         else addSection(state.voice, group.optional);
         touched();
         repaint();
+        undoHistory.end();
       };
       bar.append(sw);
       card.append(bar);
       if (!on && !dimOff) return card;
       if (!on) card.classList.add('sfoff');
     } else card.append(bar);
+
+    // In a fixed window an OFF card remains visible for layout stability.  Its title and
+    // switch stay visible, but the body (including controls appended by the full-window
+    // renderer after this function returns) must be inert.  A parent GROUP condition is
+    // included so a child card of an OFF oscillator cannot be edited through its own
+    // optional switch while the oscillator itself is unavailable.
+    const panelOn = (v) => (!group.optional || sectionOn(v, group.optional))
+      && (!group.when || group.when(v))
+      && (!group.bodyWhen || group.bodyWhen(v));
+    const panelKeep = (control) => {
+      // The switch is the only way back.  When a parent group is OFF there is no local
+      // way back, so even a nested switch remains inert until its parent returns.
+      if (group.when && !group.when(state.voice)) return false;
+      if (control.classList.contains('veswitch') || control.classList.contains('sfsw')) {
+        return true;
+      }
+      return !!control.closest('[data-ve-panel-keep]');
+    };
+    if (dimOff) {
+      guards.panel(card, panelOn, panelKeep);
+    }
+
+    if (group.layerCopy) {
+      const select = document.createElement('select');
+      select.className = 'velayercopyselect';
+      select.title = 'Copy the entire layer from another layer';
+      const placeholder = document.createElement('option');
+      placeholder.textContent = 'COPY';
+      placeholder.value = '';
+      placeholder.selected = true;
+      select.append(placeholder);
+      for (const other of [1, 2, 3].filter((n) => n !== group.layerCopy)) {
+        const option = document.createElement('option');
+        option.value = String(other);
+        option.textContent = `Copy from Layer ${other}`;
+        select.append(option);
+      }
+      select.onchange = (ev) => {
+        ev.stopPropagation();
+        const from = Number(select.value);
+        select.value = '';
+        if (from) kit.copyLayer(from, group.layerCopy);
+      };
+      select.onclick = (ev) => ev.stopPropagation();
+      bar.append(select);
+    }
 
     if (group.taps) { card.append(tapsGroup()); return card; }
     // Folding, on the strip only. Every row is DRAWN; the ones that are not `foldKeep`
@@ -2912,13 +3846,16 @@ export function createVoiceEditor({
       if (row.kind === 'pick' && row.trio) {
         const batch = [row];
         while (rows[i + 1]?.trio === row.trio) batch.push(rows[++i]);
-        grid.append(trioRow(batch, guards));
+        grid.append(trioRow(batch, guards, onChange));
         continue;
       }
       const handle = row.kind === 'pick'
-        ? (renderPick ? { wrap: renderPick(row), row } : pickRow({ ...row, wide: picks < 2 }, guards))
-        : numRow(row, guards);
+        ? (renderPick
+          ? { wrap: renderPick(row), row }
+          : pickRow({ ...row, wide: picks < 2 }, guards, onChange))
+        : numRow(row, guards, onChange);
       const { wrap } = handle;
+      if (group.bodyWhen && row.label === 'AMP') wrap.dataset.vePanelKeep = '1';
       // Hand the row back to whoever asked for the card. The full window wants the pot's
       // `set` so a second grip on the same control — an envelope handle dragging DECAY —
       // can move the needle as it goes. Display-only, so there is no loop.
@@ -2929,6 +3866,14 @@ export function createVoiceEditor({
       grid.append(wrap);
     }
     card.append(grid);
+    if (!dimOff && group.bodyWhen) {
+      // The strip collapses optional cards, but an AMP card remains so its ENV/THROUGH
+      // selector can bring the envelope back. Guard each other body row instead of the
+      // whole card, keeping that selector interactive while the envelope is THROUGH.
+      for (const child of grid.children) {
+        if (!child.hasAttribute('data-ve-panel-keep')) guards.push(child, panelOn);
+      }
+    }
     return card;
   };
 
@@ -2992,6 +3937,10 @@ export function createVoiceEditor({
     estimateSeq++;
     onBlank();
     state = { blank: true, id: null, voice: null, laneKey: null, librarySource: null };
+    // Nothing is being edited now, so there is nothing to undo. Cleared AFTER `state`,
+    // so the empty snapshot it takes is the blank panel's rather than the preset's.
+    undoHistory.reset();
+    historyChanged();
     foot = null;
     el.classList.add('show');
     build({ keepScroll: false });
@@ -3061,28 +4010,47 @@ export function createVoiceEditor({
     head.append(title, tag);
 
     if (v.kind === 'tone') {
-      const syn = document.createElement('select'); syn.className = 'fxsel vesynth';
-      syn.title = 'The Tone class this preset is built from. Only the seven that have been'
-        + ' measured rendering offline are here — see src/engine/voices.js.';
-      for (const s of EDITABLE_SYNTHS) {
-        const o = document.createElement('option');
-        o.value = s; o.textContent = s;
-        if (s === v.synth) o.selected = true;
-        syn.append(o);
+      // Against a channel strip the class is a FACT, not a control.
+      //
+      // Changing it throws every card below the head away and seeds that class's
+      // defaults — a different sound in the lane, from a dropdown sitting one row under
+      // the preset's name. That is a library act: pick the construction when you build
+      // the preset. On the desk the strip is playing this preset in this song, and the
+      // panel there is for shaping what is already there. So beside a strip the class
+      // reads as the badge the drum kind already wears.
+      if (state.laneKey) {
+        const kind = document.createElement('span');
+        kind.className = 'vesynth veclass';
+        kind.textContent = v.synth;
+        kind.title = `${v.synth} — the Tone class this preset is built from. Change it in`
+          + ' the library, where the preset is built, not on the strip playing it.';
+        sub.append(synLabel('SYNTH'), kind);
+      } else {
+        const syn = document.createElement('select'); syn.className = 'fxsel vesynth';
+        syn.title = 'The Tone class this preset is built from. Only the seven that have been'
+          + ' measured rendering offline are here — see src/engine/voices.js.';
+        for (const s of EDITABLE_SYNTHS) {
+          const o = document.createElement('option');
+          o.value = s; o.textContent = s;
+          if (s === v.synth) o.selected = true;
+          syn.append(o);
+        }
+        syn.onchange = () => {
+          // The options of one class mean nothing to another — a MonoSynth's filter
+          // envelope is not a parameter an FMSynth has — so changing class starts from
+          // that class's defaults rather than carrying the old keys across, where they
+          // would sit in the file forever doing nothing.
+          undoHistory.begin();
+          v.synth = syn.value;
+          applyDefaults(v, syn.value);
+          touched();
+          undoHistory.end();
+          // Every card below the head is a different card now, so the old offset means
+          // nothing — back to the top with it.
+          build({ keepScroll: false });
+        };
+        sub.append(synLabel('SYNTH'), syn);
       }
-      syn.onchange = () => {
-        // The options of one class mean nothing to another — a MonoSynth's filter
-        // envelope is not a parameter an FMSynth has — so changing class starts from
-        // that class's defaults rather than carrying the old keys across, where they
-        // would sit in the file forever doing nothing.
-        v.synth = syn.value;
-        applyDefaults(v, syn.value);
-        touched();
-        // Every card below the head is a different card now, so the old offset means
-        // nothing — back to the top with it.
-        build({ keepScroll: false });
-      };
-      sub.append(synLabel('SYNTH'), syn);
       // The way into the full window, on the SYNTH row rather than in the header.
       //
       // The header is `display: block` with two centred lines and an absolutely
@@ -3091,14 +4059,26 @@ export function createVoiceEditor({
       // either invisible or fighting the close button. `.vesub` is a real flex row, it
       // renders for every `kind: 'tone'` preset, and it is hidden in none of the three
       // homes. It is also already the row that says what builds this sound.
-      if (createFull && fullLayout({ synth: v.synth })) {
+      if (createFull && isQuickVoice(v) && fullLayout(v)) {
         const open = document.createElement('button');
         open.className = 'devlink veopen';
-        open.textContent = 'EDIT';
+        open.textContent = 'ADVANCED';
         open.title = `Open the full-window ${v.synth} editor — every control on one screen`;
         open.onclick = () => openFull();
         sub.append(open);
       }
+    }
+    if (v.kind === 'drum' && createFull && fullLayout(v)) {
+      const kind = document.createElement('span');
+      kind.className = 'vesynth veclass';
+      kind.textContent = 'Drum Synth';
+      sub.append(synLabel('SYNTH'), kind);
+      const open = document.createElement('button');
+      open.className = 'devlink veopen';
+      open.textContent = 'ADVANCED';
+      open.title = 'Open the full-window Drum Synth editor — every control on one screen';
+      open.onclick = () => openFull();
+      sub.append(open);
     }
     // Nothing for the noise and drum kinds. There it was a label and a badge naming a
     // construction you cannot choose from here — a row of chrome at the top of a panel
@@ -3145,10 +4125,7 @@ export function createVoiceEditor({
     // "Note" is the wrong word for a card that no longer says anything about one. A
     // one-shot is left with TRIM, which is a level — so the heading says LEVEL, and the
     // panel stops implying there is a note length and a tuning somewhere further down.
-    const common = { title: isOneShot(v) ? 'Level' : 'Note', rows: commonRows(v) };
-    const groups = v.kind === 'noise' ? NOISE_GROUPS
-      : v.kind === 'drum' ? DRUM_GROUPS
-        : (SYNTH_GROUPS[v.synth] || []);
+    const surface = stripPanelSpec(v);
     // Guards belong to the panel being built, not to the one before it. The strip's set
     // only — the full window clears its own when it re-renders.
     rowGuards.clear();
@@ -3157,7 +4134,10 @@ export function createVoiceEditor({
     // with it, or the rack shows three orphaned title bars for a layer that is not
     // there. Per-ROW `when` greys; per-GROUP `when` removes, and `build` reruns on
     // every section toggle so the cards come back the moment the layer does.
-    for (const g of [common, ...groups]) {
+    if (surface.mode === 'quick') {
+      rack.classList.add('vequickrack');
+    }
+    for (const g of surface.groups) {
       if (g.when && !g.when(v)) continue;
       rack.append(groupCard(g));
     }
@@ -3181,6 +4161,8 @@ export function createVoiceEditor({
       state.measured = !state.isNew;
       state.estimated = false;
       state.silent = false;
+      undoHistory.reset();
+      historyChanged();
       // Put back is the other way to stop owing a save, and the desk's tally has to
       // hear about it or the reload guard goes on warning about a sound nobody changed.
       onDirty(state.id, false);
@@ -3331,9 +4313,10 @@ export function createVoiceEditor({
         // assertRange threw the moment the rack built a Synth from it. The pot's own
         // conversion is the one that belongs here, called the way each kind calls it:
         // numbers take (value, voice), pickers take (voice, option).
-        setAt(voice, row.path, row.write
+        const next = row.write
           ? (row.kind === 'pick' ? row.write(voice, row.def) : row.write(row.def, voice))
-          : row.def);
+          : row.def;
+        if (next !== SKIP_WRITE) setAt(voice, row.path, next);
       }
     }
   }
@@ -3948,6 +4931,7 @@ export function createVoiceEditor({
       peakBaseline: voice.peak,
       rawBaseline: null,
     };
+    undoHistory.reset();
     // A different preset opens at its top, not where the last one happened to be left.
     build({ keepScroll: false });
     el.classList.add('show');
@@ -3975,7 +4959,15 @@ export function createVoiceEditor({
    * is being taken down, and rebuilding it on the way out would be a panel drawn for
    * one frame and then removed.
    */
-  function forget() { state = null; foot = null; full?.close(); }
+  function forget() {
+    state = null;
+    // Before the window goes: `syncHistory` repaints its UNDO button, and a window that
+    // has already been emptied has no button to repaint.
+    undoHistory.reset();
+    historyChanged();
+    foot = null;
+    full?.close();
+  }
 
   // ---- the full window -------------------------------------------------------
 
@@ -3994,6 +4986,26 @@ export function createVoiceEditor({
    */
   let full = null;
   const repaintBoth = () => { build(); full?.render(); };
+  const undoEdit = () => {
+    if (!state?.voice || !undoHistory.undo()) return false;
+    state.dirty = !matchesBaseline();
+    if (state.voice?.songLocal) VOICES[state.id] = state.voice;
+    estimateSeq++;
+    clearTimeout(estimateTimer);
+    refresh(state.id);
+    // The song's copy has to follow the preset back — but SILENTLY. A song-local edit
+    // rides into the mix as a `voiceParams` write, which is an undoable desk step of its
+    // own; letting the undo push another one would leave the desk's history holding two
+    // entries for a change that netted zero, and a later desk ⌘Z re-applying the edit
+    // this one just took back. Undoing in the editor stays in the editor.
+    onEdit(state.id, asSongPreset(state.voice), { undo: false });
+    onDirty(state.id, state.dirty);
+    if (!state.measured) scheduleEstimate();
+    paintFoot();
+    repaintBoth();
+    toast('Undid the last edit');
+    return true;
+  };
   const kit = {
     // ---- reading -------------------------------------------------------------
     voice: () => state?.voice ?? null,
@@ -4007,6 +5019,23 @@ export function createVoiceEditor({
     },
     layout: (opts) => (state ? fullLayout(state.voice, opts) : null),
     sectionOn: (key) => sectionOn(state.voice, key),
+    // The full window's controls bracket their gestures through these, so a drag out
+    // there holds the level estimate off exactly the way the strip's own pots do.
+    beginUndo: beginGesture,
+    endUndo: endGesture,
+    canUndo: () => undoHistory.canUndo(),
+    undo: undoEdit,
+    copyLayer: (from, to) => {
+      undoHistory.begin();
+      if (from === to || !copyLayerData(state.voice, from, to)) {
+        undoHistory.end();
+        return false;
+      }
+      touched();
+      undoHistory.end();
+      repaintBoth();
+      return true;
+    },
     /**
      * Switch a section on or off — the same bypass-and-restore the strip's own switch
      * does, not a second implementation of it. Off stashes the subtree in
@@ -4014,23 +5043,31 @@ export function createVoiceEditor({
      * taking a part out to hear what it was doing.
      */
     toggleSection: (key) => {
+      undoHistory.begin();
       if (sectionOn(state.voice, key)) dropSection(state.voice, key);
       else addSection(state.voice, key);
       touched();
       repaintBoth();
+      undoHistory.end();
     },
 
     // ---- writing — this panel's own path, not a second one -------------------
     write: (row, x) => {
-      setAt(state.voice, row.path, row.write ? row.write(x, state.voice) : x);
+      undoHistory.begin();
+      const raw = getAt(state.voice, row.path);
+      const next = row.write ? row.write(x, state.voice) : x;
+      if (next !== SKIP_WRITE) setAt(state.voice, row.path, next);
+      row.after?.(x, state.voice, raw);
       touched();
       syncRows();
     },
     /** A pick's write, which takes its arguments the other way round — see `buildSeg`. */
     pickWrite: (row, option) => {
+      undoHistory.begin();
       setAt(state.voice, row.path, row.write ? row.write(state.voice, option) : option);
       touched();
       syncRows();
+      undoHistory.end();
     },
     /**
      * Two parameters in one gesture — an envelope handle moving DECAY and SUSTAIN, a
@@ -4039,9 +5076,13 @@ export function createVoiceEditor({
      * measurement, and doing all four twice per pointermove is a drag that stutters.
      */
     writeMany: (pairs) => {
-      for (const [row, x] of pairs) {
-        setAt(state.voice, row.path, row.write ? row.write(x, state.voice) : x);
-      }
+      undoHistory.begin();
+      const raws = pairs.map(([row]) => getAt(state.voice, row.path));
+      pairs.forEach(([row, x], i) => {
+        const next = row.write ? row.write(x, state.voice) : x;
+        if (next !== SKIP_WRITE) setAt(state.voice, row.path, next);
+        row.after?.(x, state.voice, raws[i]);
+      });
       touched();
       syncRows();
     },
@@ -4107,6 +5148,17 @@ export function createVoiceEditor({
      */
     saveSheet() { if (state) openSaveSheet(); },
     get editing() { return state?.id || null; },
+    /**
+     * The preset OBJECT the panel is drawing, not just its id.
+     *
+     * A song-local copy is keyed by lane and song — `bassVoice@neon` — so the id stays
+     * the same when the lane is put on a different preset, and `registerSongVoice` writes
+     * a brand-new object under it. An id comparison therefore reads "same preset" across
+     * a change of synth class entirely, and the panel goes on drawing an object nothing
+     * plays any more. The object is what the panel is actually holding, so the object is
+     * what tells you whether it is still current. See syncVoiceEditorToLane.
+     */
+    get voice() { return state?.voice || null; },
     get librarySource() { return state?.librarySource || null; },
     // Which strip the panel belongs beside — the desk re-places it there on every
     // rack repaint. See placeVoiceEditor. Null when it was opened from the library,

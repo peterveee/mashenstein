@@ -133,16 +133,20 @@ const CASES = [
 /**
  * FORWARD exceptions: keys a path reads that the panel deliberately does not draw.
  *
- * `dur` and `fixedLength` on the one-shots is the whole of it, and it is the dispatch that
- * says so: `play` computes a length and then hands `_playNoise`/`_playDrum` `{ time, gain,
- * dry, wet, echo }` — no `dur` at all. The keys are read for every voice and discarded by
- * these two, so a LENGTH pot on a hat would be a pot that cannot move a sample. How long
- * a one-shot rings is on its own panel: DECAY, HOLD and SWEEP.
+ * The one-shots still keep `dur` and `fixedLength` hidden because the dispatch computes a
+ * length and then hands `_playNoise`/`_playDrum` `{ time, gain, dry, wet, echo }` — no
+ * `dur` at all. How long a one-shot rings is on its own panel: DECAY, HOLD and SWEEP.
+ *
+ * The pitched synths now also keep `dur` and `fixedLength` hidden, but for the opposite
+ * reason: they still matter as compatibility fallback for old songs and presets, while the
+ * editable model moved to per-note lengths on the piano roll. A control here would be a
+ * second, conflicting place to state note length.
  */
 const HIDDEN_OK = {
   noise: ['dur', 'fixedLength'],
   drum: ['dur', 'fixedLength'],
 };
+const LEGACY_LENGTH_KEYS = new Set(['dur', 'fixedLength']);
 
 /**
  * REVERSE exceptions: controls the panel draws that the extraction does not see the path
@@ -163,7 +167,10 @@ for (const c of CASES) {
   for (const k of SHARED) if (!(c.oneShot && (k === 'dur' || k === 'fixedLength'))) engine.add(k);
 
   const panel = panelKeys(c.voice);
-  const allowHidden = new Set(HIDDEN_OK[c.name] || []);
+  const allowHidden = new Set([
+    ...(HIDDEN_OK[c.name] || []),
+    ...((!c.oneShot && c.name !== 'noise' && c.name !== 'drum') ? LEGACY_LENGTH_KEYS : []),
+  ]);
   const allowDrawn = new Set(DRAWN_OK[c.name] || []);
 
   const hidden = [...engine].filter((k) => !panel.has(k) && !allowHidden.has(k)).sort();
@@ -204,6 +211,85 @@ if (inert.size) {
     const shown = ids.slice(0, 3).join(', ') + (ids.length > 3 ? `, +${ids.length - 3} more` : '');
     console.log(`  ${String(ids.length).padStart(3)} × ${where.padEnd(24)} ${shown}`);
   }
+}
+
+// ---- NO POT THAT CANNOT REACH ITS OWN PRESETS -------------------------------
+//
+// The third direction, and the one that bites hardest. The two walks above ask whether a
+// control EXISTS for each key. This asks whether it can hold the VALUE.
+//
+// A pot's min and max are a promise about stored data, not decoration. A preset outside
+// them shows on the end stop, and the first touch of the knob writes the stop — so the
+// control rewrites the sound it was opened to inspect, silently, and only for the presets
+// unusual enough to have gone out there in the first place. Every one this found was a
+// preset doing something deliberate that the panel called impossible:
+//
+//   · `tpPizz` stores a filter envelope of -1.2 octaves — a pluck whose filter SHUTS as
+//     the note starts. The pot was positive-only, on the belief that Tone cannot sweep
+//     down. It can: FrequencyEnvelope scales to `baseFrequency * 2 ** octaves`, so a
+//     negative octaves puts the top below the base. The row is bipolar now, like the
+//     Global Filter's, which it should always have matched.
+//   · `triangleDing` and `stTriangleDing` ring at 9000 Hz against a RES FREQ ceiling of
+//     8000. A ding is a high thin body; that is the preset, not a typo.
+//   · the three VL-1 pipe voices store an attack of 0 — no ramp at all, which `env()`
+//     honours — under a floor of 1ms.
+//   · both CR-78/808 cowbells sweep in 4ms, under a floor of 5ms and off its 5ms grid.
+//   · `tpAlienChorus` is ten detuned oscillators against a UNISON stop of 8.
+//
+// Each preset's OWN panel is asked — `panelSpec(v)` gives the rows that preset would
+// really be drawn — so a MonoSynth is never measured against a drum's ranges. That
+// distinction matters: a union of every panel's rows reports two dozen phantom failures,
+// because `octaves` means PITCH DROP (to 12) on a MembraneSynth and something narrower
+// elsewhere. Rows that store one thing and show another are compared through their own
+// `read`, which is the number the pot is actually trying to represent.
+const { panelSpec: spec } = await import('../tools/mixer-voice-editor.js');
+const numericRows = (v) => {
+  const { common, groups } = spec(v);
+  const out = new Map();
+  for (const r of [...common.rows, ...groups.flatMap((g) => g.rows || [])]) {
+    if (r.kind === 'num' && typeof r.min === 'number' && typeof r.max === 'number') {
+      out.set(r.path, r);
+    }
+  }
+  return out;
+};
+const numbersIn = (obj, base, out = [], seen = new Set()) => {
+  if (!obj || typeof obj !== 'object' || seen.has(obj)) return out;
+  seen.add(obj);
+  for (const [k, val] of Object.entries(obj)) {
+    const p = base ? `${base}.${k}` : k;
+    if (typeof val === 'number') out.push([p, val]);
+    else if (val && typeof val === 'object') numbersIn(val, p, out, seen);
+  }
+  return out;
+};
+let unreachable = 0;
+let valuesChecked = 0;
+for (const [id, v] of Object.entries(VOICES)) {
+  let rows;
+  try { rows = numericRows(v); } catch { continue; }
+  const stored = [
+    ...numbersIn(v, '').filter(([p]) => !p.startsWith('options.')).map(([p, x]) => [`$${p}`, x]),
+    ...numbersIn(v.options || {}, '').map(([p, x]) => [p, x]),
+  ];
+  for (const [path, raw] of stored) {
+    const row = rows.get(path);
+    if (!row) continue;
+    let shown = raw;
+    if (row.read) { try { shown = row.read(raw, v); } catch { continue; } }
+    if (typeof shown !== 'number' || !Number.isFinite(shown)) continue;
+    valuesChecked++;
+    // A hair of float slop: 0.30000000000000004 is not an out-of-range value.
+    const eps = Math.max(Math.abs(row.max), 1) * 1e-9;
+    if (shown > row.max + eps || shown < row.min - eps) {
+      unreachable++; failed++;
+      console.log(`FAIL: ${id} stores ${path} = ${shown}, outside ${row.label}'s`
+        + ` ${row.min}…${row.max} — the knob would rewrite it on first touch`);
+    }
+  }
+}
+if (!unreachable) {
+  console.log(`ok: ${valuesChecked} stored values all sit inside the pot that edits them`);
 }
 
 console.log(failed ? `\nPOT COVERAGE: ${failed} FAILED` : '\nPOT COVERAGE: PASSED');

@@ -374,9 +374,10 @@ What it does and does not do:
   in every bar that plays that part, which is the same choice the step grid's "edit all
   repeats" makes. The alternative would put your note in bar 1 of a four-bar section and
   bring it back every fourth pass, which reads as dropped notes rather than as an edit.
-- **Sixteenths are the floor**, so there is no quantise to turn off and no swing: a
-  bank holds sixteen steps to the bar and nothing between them. That is the format
-  rather than the recorder being coy about it.
+- **Recorded starts and held lengths are quantised to sixteenths**, because a bank holds
+  sixteen note-start steps to the bar. Once a note is in the piano roll, its per-note
+  length is independent of that start grid and may be fractional; the **Length** menu
+  can explicitly quantise selected notes or the whole track back to 16ths.
 - **A drag is not a note.** A glide across the keys or a roll across the pads is a
   gesture for *finding* a note, so only the press is recorded. A roll is a real musical
   gesture and one day should be recordable; a glide never was.
@@ -460,6 +461,8 @@ arrangement track's right-click menu, with `⌘Z` restoring a deleted track.
 | Menu item | Does |
 | --- | --- |
 | Save song | writes this song into `src/data/songs/<id>.js`, or a scratch song into `src/data/imported/<id>.js`, after a confirm. Mix, arrangement and editable notes are written together. Scratch files remain outside the game. |
+| Save as alternate… | keeps what is on the desk as a *named* song of its own — this song's music, your mix and arrangement — and leaves this song alone. See [Alternates](#alternates) |
+| Save over *the song*… | only on an alternate, and it names the song it would write. Makes that alternate the game song. See [Alternates](#alternates) |
 | Delete scratch song… | appears for scratch songs only. After confirmation it removes the source module and its desk history, then clears that song's browser draft and recent entry. Built-in songs and legacy MIDI imports cannot be deleted here. |
 | Discard unsaved changes | throws this song's complete draft away (undoable) |
 | Open an earlier version… | loads an earlier complete version of this song, ready to review before saving. See [Going back](#going-back) |
@@ -1041,12 +1044,56 @@ Grouped, and **priced** with each effect's measured cost as a percentage of one 
 
 | Group | Effects |
 | --- | --- |
-| Level & EQ | Gain, Parametric EQ, Filter |
+| Level & EQ | Gain, Parametric EQ, Vowel Filter, Filter |
 | Delay | Advanced Delay, Delay, Ping-Pong Delay |
 | Modulation | Chorus, Phaser, Tremolo, Vibrato, Auto Filter, Auto Wah, Auto Panner |
 | Drive | Exciter, Distortion, Chebyshev |
 | Space & stereo | Reverb, Doubler, Stereo Widener, Frequency Shifter, Pitch Shift |
 | Dynamics | L7 Limiter, Compressor, Mid/Side Compressor, Multiband Compressor |
+
+#### Vowel Filter
+
+An insert made from three parallel native band-pass resonances. **VOICE** selects the
+formant table, **VOWEL STACK** chooses the fixed sequence, and **RATE** walks it either on
+the song grid or at a free rate. **DEPTH** controls how far each target travels from the
+first vowel; **GLIDE** changes the boundary from a stepped change into a continuous
+transition; **RESO** multiplies the bandwidth-derived Q; and **FX** is the equal-power wet
+blend. **SPREAD** places the low, middle, and high formants left, centre, and right for
+a wider vocal image. A one-vowel stack or zero depth is a static formant colour.
+
+Three band-passes on their own are a reed, not a voice: measured against its own input,
+the bank alone sits about 15 dB down under F1 and 35 dB down above 3 kHz, so every vowel
+arrives with no weight and no air. **BODY** and **AIR** are the two returns that fix
+that, and both scale with the wet blend. BODY is a low-pass return whose corner follows
+F1, so the vowel keeps the glottal weight it is supposed to have; AIR is a high-passed
+pass-through above F3 carrying the singer's F4/F5 as two peaking resonances, because
+above the third formant a vocal tract mostly passes what the source gives it. At their
+defaults the full-wet response runs about 6 dB under the input in the bass and 12–18 dB
+under it from 3 kHz up, rather than falling off a cliff. Set both to zero for the bare
+bank.
+
+**INTENSITY** runs the signal through the formant bank twice instead of once. Squaring the
+response doubles every dB of formant contrast — on the bare bank, 17.6 dB of peak-to-valley
+becomes 31.0 dB — and it is the only control that pushes past what RESO can do, because
+narrowing a peak cannot lower the floor between peaks. It defaults to 0, and at the default
+BODY and AIR settings it is quiet, because those two hold a floor well above where the
+squared bank's valleys land. Turn them down to hear it. The most pronounced setting the
+insert reaches is `INTENSITY 1, FX 1, BODY 0.2, AIR 0.08` — a hard talkbox that gives up
+most of the weight and air in exchange.
+
+**TILT** is how much of the table's *singer's* amplitude rolloff to keep — 1 is the
+published rolloff, 0 is flat like the `robotic` voice. It defaults to 0.45 because the
+published values put F3 20 to 32 dB down, which is inaudible, and F3 is exactly where the
+VOICE types differ from each other. Be warned that VOICE is a subtler control than VOWEL
+STACK and always will be: Csound's table gives alto and soprano the identical F1 and F2
+for /a/, so two vowels in one voice are about five times further apart than two voices on
+one vowel. It reads as a different singer, not as a different word.
+
+The table's human values are the first three formants from Csound's published Formant
+Table III; the `robotic` voice is an authored equal-amplitude variant. The effect is a
+native custom insert and therefore follows the current custom-effect boundary: live
+parameter edits and rhythmic scheduling are supported, while scheduled variant
+automation is not.
 
 The prices are not intuitive and are worth reading: a Phaser costs about 2% of a core
 — roughly 24× a Distortion, and more than twice anything else in the list.
@@ -1321,6 +1368,7 @@ reach for mid-take is the one with the modifier on it.
 | The swing it is played with, when that is not straight | the same `arrangement` export, as `swing` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
 | Every version of a writable song this desk has overwritten | `work/mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
+| A version of a game song you want to keep without shipping it | its own file in `src/data/imported/`, on **Save as alternate…** — tracked, so it survives. See [Alternates](#alternates) |
 | Presets — user-created sounds and edits | `src/data/voices.js`, in the `USER_*` tables, on the editor's own **Save**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
@@ -1377,6 +1425,46 @@ source file as it stands on disk. What comes back is re-read, which is what the 
 then believes — so **A/B saved** and the dirty dot on the hamburger tell the truth
 about the file even after another tab, or a hand, has been in it.
 
+### Alternates
+
+Save writes over the song. That is right while you are mixing one and wrong at the
+moment you have a version of NEON BLASTERS you like *without* being ready to say it is
+NEON BLASTERS.
+
+**Song Desk → Save as alternate…** is the other move. Name it, and the desk writes a
+whole song file of its own into `src/data/imported/<id>.js`: the parent's music copied
+verbatim, the mix and arrangement on the desk right now on top of it, and one line —
+`export const alternateOf` — saying which song it came from. It appears in the picker
+under **Alternate Game Songs**, next to the Cabinets, and from then on it behaves like
+any other song: mix it, render it, export it, Save it, delete it. **The song it was
+taken from is not written.** Saved alternates whose parent is the hub or a cabinet can
+also be run in local dev builds: open **DEV MENU → GAME ALTERNATES**, or use
+`?goto=hub&alt=<id>` for the hub loop and `?goto=stage&cab=<parent>&stage=<stage>&alt=<id>`
+for a stage. The alternate's bank, mix, arrangement and select treatment carry from
+the stage list through Start and into the game loop; ordinary builds keep the shipped
+cabinet music.
+
+Later, if it turns out to be the one: open it and press **Save over NEON BLASTERS…**,
+which is the only button on the desk that writes a file other than the one you are on.
+It saves the alternate first — so what gets written is what you were listening to —
+then writes that alternate's mix, arrangement and cabinet screen into the parent's
+source file, through the same writer and the same `work/mix-history/` snapshot every
+other save goes through. The music is not touched at either end, and the alternate
+stays exactly where it is.
+
+The parent is read out of the file, never chosen in the desk. That is what keeps this
+inside [one song, and only that song](#one-song-and-only-that-song): there is still no
+way to land one song's balance on another song's parts, because an alternate carries
+the other song's parts. An alternate of an alternate belongs to the same original, so
+the chain can never grow a middle for a promotion to walk past.
+
+Two things worth knowing:
+
+- The draft you forked from is still sitting on the song you forked it from — saving
+  the alternate does not clear it. The toast says so when it applies.
+- If the parent has unsaved changes of its own when you promote, they are left alone —
+  and saving them afterwards would write over the promotion. The confirm says that too.
+
 ---
 
 ## Server routes
@@ -1390,6 +1478,8 @@ buttons; `/measure` is there for the command line.
 | `POST /new-song` | accepts `{title, bpm, bars, template, style}` — template is `blank`, `beat` or `full-band`; style is `auto` or a pack id from `tools/lib/song-styles.js`; a null/absent `bpm` takes the style's own tempo. Writes a collision-safe, seeded source module under `src/data/imported/`, registers it as a writable scratch track, and returns `{file, style, key, bpm, track}` |
 | `POST /delete-song` | removes one writable scratch source and its desk-history snapshots; built-in and marker-less MIDI tracks are refused |
 | `POST /save` | snapshots and rewrites the selected built-in or scratch song source. It preserves the other desk-owned export when a patch omits it and answers with the files re-read |
+| `POST /save-alternate` | accepts `{sourceId, title, mix, arrangement, variants}`. Writes a new song file under `src/data/imported/` carrying the source song's music, `group: "alternate"` and `alternateOf`, registers it, and answers with the track plus what the file holds, read back. The source song is not written. An alternate of an alternate is filed under the same original |
+| `POST /promote-alternate` | accepts `{id}` and makes that alternate the song it names as its parent. Reads the alternate's *file* — not the desk — validates its arrangement against the parent's music as it stands now, snapshots the parent and rewrites it. The one route by which one song's decisions reach another's file, and it can only go the way the file already says |
 | `GET /history` | the snapshots, newest first |
 | `GET /history/<file>` | one of them, parsed. It is a module, so this is an `import()` — the name is matched against the pattern this process writes rather than merely checked for `..` |
 | `GET /midi?track=<id>&patches=1` | the song as a MIDI file |

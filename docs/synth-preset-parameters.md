@@ -58,8 +58,8 @@ across every synth type and drum section:
 | `VIB DEPTH` | `$vibrato.depth` | 0 | 12 | 0 | — | 0–12 (1 unit = 100 cents on GameSynth) |
 | `VIB RATE` | `$vibrato.rate` | 0.1 | 20 | 5 | Hz | |
 | `VIB DELAY` | `$vibrato.delay` | 0.001 | 1 | 0.001 | s | GameSynth only |
-| `VOICING` | `$mono` | — | — | POLY | — | POLY / MONO pill |
-| `GLIDE` | `$portamento` | 0 | 0.5 | 0 | s | Portamento time |
+| `KEY MODE` | `$mode` | — | — | POLY | — | POLY / LEGATO / MONO pill; legacy `$mono` opens as MONO |
+| `GLIDE` | `$portamento` | 0 | 0.5 | 0 | s | Portamento time; available in LEGATO and MONO |
 
 ---
 

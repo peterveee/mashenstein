@@ -17,10 +17,12 @@
 import {
   noteCell, noteOn, pitchRows, laneSpan, autoRange, keyboardRange, keyGeometry,
   pianoRowHeight, pianoKeyPhase, pianoLayout, noteActiveAt,
-  midiFreq, freqMidi, rollEditable, ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
+  midiFreq, freqMidi, rollEditable, noteDrawLength, ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
+  NOTE_LENGTH_OPTIONS,
 } from '../tools/mixer-piano-roll.js';
 import {
-  gestureFor, noteKey, movedNote, clampDelta, stretched, centeredRangeOffset,
+  gestureFor, noteKey, movedNote, clampDelta, stretched, MIN_NOTE_LENGTH, quantiseLength, drawnSpan,
+  centeredRangeOffset,
 } from '../tools/mixer-bar-grid.js';
 import { draftOf, writeBarNotes, entryOf } from '../tools/lib/arrangement-edit.js';
 import { seq, n } from '../src/engine/notes.js';
@@ -35,6 +37,15 @@ const json = (v) => JSON.stringify(v);
 const A2 = n('A2');
 const row = (midi) => ({ midi, freq: midiFreq(midi) });
 const A2ROW = row(freqMidi(A2));
+
+assert(JSON.stringify(NOTE_LENGTH_OPTIONS) === JSON.stringify([
+  { value: 0.5, label: '1/32' },
+  { value: 1, label: '1/16' },
+  { value: 2, label: '1/8' },
+  { value: 4, label: '1/4' },
+  { value: 8, label: '1/2' },
+  { value: 16, label: '1' },
+]), 'new piano-roll notes offer 32nd through whole-note lengths, defaulting to 16th');
 
 // ---- pitch <-> semitone --------------------------------------------------------
 assert(freqMidi(midiFreq(57)) === 57 && freqMidi(A2) === 45,
@@ -72,6 +83,8 @@ assert(noteCell({ ...A2ROW, chord: true }, [A2ROW.freq], false) === null,
 assert(noteCell({ ...A2ROW, chord: true }, null, true)[0] === A2ROW.freq,
   'drawing on a silent chord lane starts a chord — never a bare number, which throws'
   + ' inside scheduleStep');
+assert(noteDrawLength({ lane: 'chords', midi: freqMidi(A2) }, null, null) === null,
+  'an empty chord cell has no draw length and can start a drag safely');
 
 // ---- reading a step back ----------------------------------------------------------
 assert(noteOn(A2ROW, A2) && !noteOn(A2ROW, fifth), 'a melodic step lights its own row');
@@ -316,6 +329,19 @@ assert(json(stretched([null, null], 3)) === json([4, 4]),
   'notes with no length of their own are one step, so they end up alike — which is what'
   + ' you would expect from a set that all looked the same');
 assert(json(stretched([8, 2], 0)) === json([8, 2]), 'and a drag that ends where it began changes nothing');
+assert(MIN_NOTE_LENGTH === 0.25
+  && stretched([0.5], -10, MIN_NOTE_LENGTH)[0] === MIN_NOTE_LENGTH,
+  'freehand resizing allows sub-sixteenths but never reaches zero');
+assert(quantiseLength(1.49) === 1 && quantiseLength(1.5) === 2
+  && quantiseLength(0.2) === 1 && quantiseLength(0.74, 0.5) === 0.5
+  && quantiseLength(0.76, 0.5) === 1,
+  'length quantisation is explicit and snaps to one-sixteenth steps only when requested');
+const fractionalField = [{ on: true }, { on: false }, { on: true }, { on: false }];
+assert(drawnSpan(fractionalField, 0, 1.5) === 1.5
+  && drawnSpan(fractionalField, 0, 0.5) === 0.5,
+  'the roll keeps fractional note lengths in the drawn rectangle, including sub-sixteenths');
+assert(drawnSpan(fractionalField, 0, 4.5) === 2,
+  'a later note clips only the visible rectangle and does not quantise its stored length');
 assert(noteKey(3, 7, '48') === '3:7:48',
   'a selected note is a PLACE — bar, step and row — so it survives a rebuild as a string');
 

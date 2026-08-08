@@ -87,6 +87,11 @@ async function main() {
       return id;
     };
 
+    // Where a live param is HEADED, once its 20 ms glide has run. `p.value` is where it
+    // is right now, which during a ramp is still most of the way back at the old value —
+    // so anything asking "did the edit land" has to ask about the destination.
+    const settled = (p) => p.getValueAtTime(ctx.currentTime + 0.1);
+
     const dry = strip(), wet = strip();
     const rack = new VoiceRack(ctx);
     const poolOf = (laneKey, id) => rack.pools.get(`${laneKey}|${id}|1`);
@@ -126,11 +131,20 @@ async function main() {
       VOICES[id].options.filter.Q = 14;
       VOICES[id].options.oscillator.type = 'square';
       VOICES[id].options.filterEnvelope.baseFrequency = 900;
+      const t0 = ctx.currentTime;
       rack.refresh(id);
       say(poolOf('bass', id) === pool && pool.slots[0].synth === synth && !synth.disposed,
         'envelope/filter/waveform: nothing was rebuilt, so nothing was cut off');
       say(Math.abs(synth.envelope.release - 1.75) < 1e-6, '...and the release actually moved');
-      say(Math.abs(synth.filter.Q.value - 14) < 1e-3, '...and the resonance actually moved');
+      say(Math.abs(settled(synth.filter.Q) - 14) < 1e-3, '...and the resonance actually moved');
+      // A live param GLIDES to its new value rather than stepping to it — see
+      // SMOOTH_PARAMS. Sixty steps a second on a sounding filter is zipper noise, and
+      // this is the assertion that says the drag arrives as a slide instead: at the
+      // instant of the edit the filter is still where it was, and it is only 20 ms
+      // later that it has arrived. (`.value` cannot answer this — Tone's getter reads
+      // a lookahead ahead of the context, which is already past the end of the ramp.)
+      say(Math.abs(synth.filter.Q.getValueAtTime(t0) - 14) > 1e-3,
+        '...and it got there by ramping, not by jumping');
       say(synth.oscillator.type === 'square', '...and the waveform actually moved');
       say(Math.abs(synth.filterEnvelope.baseFrequency - 900) < 1e-3,
         '...and the filter envelope actually moved');
@@ -216,8 +230,8 @@ async function main() {
       rack.refresh(id);
       say(poolOf('bass', id) === rebuilt && rebuilt.slots[0].synth === vibbed,
         'moving an existing vibrato does not rebuild');
-      say(Math.abs(rebuilt.slots[0].vib.depth.value - 0.8) < 1e-3
-        && Math.abs(rebuilt.slots[0].vib.frequency.value - 3) < 1e-3,
+      say(Math.abs(settled(rebuilt.slots[0].vib.depth) - 0.8) < 1e-3
+        && Math.abs(settled(rebuilt.slots[0].vib.frequency) - 3) < 1e-3,
         '...and the wobble actually moved');
     }
 

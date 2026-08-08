@@ -37,6 +37,11 @@ const suites = [
   // Source-backed scratch creation: starter patterns, writable saves, history,
   // collision-safe ids, and a mixed legacy/scratch imported index.
   'tests/new-song.js',
+  // The other way a song file is born: a game song's music kept under another name
+  // until somebody decides it is the version to ship. Beside new-song.js because it is
+  // the same writer and the same folder — what it adds is the one line that makes an
+  // alternate an alternate, and the proof that an ordinary save does not eat it.
+  'tests/song-alternates.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
@@ -50,6 +55,7 @@ const suites = [
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
   // sibling because it needs no browser and runs in a blink.
   'tests/voice-source.js',
+  'tests/formants.js',
   'tests/effect-presets.js',
   // And the third thing a preset file has to be true about: that every key in it has a
   // control, and every control has a key behind it. Reads the engine's own `v.<key>`
@@ -57,11 +63,20 @@ const suites = [
   // the drift it was written for had hidden eight GameSynth lengths, five tap arrays and
   // the whole shape of `clapEngine`. Source reading, so it also runs in a blink.
   'tests/pot-coverage.js',
+  'tests/key-mode.js',
+  'tests/lfo.js',
+  'tests/osc-sync.js',
   // And the half of that claim pot-coverage cannot make. It agrees at ROOT-key
   // granularity, so a leaf the full-window editor forgot to place hides behind the
   // hundred siblings sharing its root. This one is leaf-exact: every control the panel
   // defines appears in that layout, exactly once. Object walking, so it also blinks.
   'tests/synth-full-layout.js',
+  // The graphs are a second grip on those controls: graph gestures move the pots, and pot
+  // gestures redraw the graphs without rebuilding the card under the pointer.
+  'tests/synth-graphs.js',
+  // Undo uses one snapshot per completed edit, with continuous pot/graph drags coalesced
+  // into one step rather than filling the stack with pointermove frames.
+  'tests/mixer-undo.js',
   // The same shape of claim for gameplay numbers: that the constants the dev
   // strip moves still exist, under those names, as plain numbers, in the files
   // the manifest names — and that the rewrite which makes them movable never
