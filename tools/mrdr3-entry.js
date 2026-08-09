@@ -7,18 +7,26 @@ import { createSynthFull } from './mixer-synth-full.js';
 import { createWebMidiRouter } from './mixer-synth-keyboard.js';
 import { createKnob } from './mrdr3-knob.js';
 import { createPerformancePanel } from './mrdr3-performance.js';
+import { createMasterMeter } from './mrdr3-master-meter.js';
+import { auditionLevel } from './mrdr3-level.js';
 import { createEffect } from '../src/engine/effects.js';
 import { encodePatch, decodePatch } from './mrdr3-patch.js';
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_PRESET = 'bestChoirAah';
 const midi = createWebMidiRouter({ storageKey: 'mash-mrdr3-midi-on' });
+const masterMeter = createMasterMeter({ Audio, storageKey: 'mash-mrdr3-master-db' });
 let basePresetId = DEFAULT_PRESET;
 let performancePanel;
 let patternPlayer;
 let previewFx = null;
 let previewFxState = null;
 let loadSerial = 0;
+// The pending impulse-response rebuild — see setPreviewEffect. Up here with the rest of
+// the module's state because disposePreviewFx clears it, and that runs before anything
+// below it has been reached.
+let irTimer = 0;
+let irPending = null;
 
 function toast(message, ms = 2600) {
   const el = $('toast');
@@ -53,6 +61,7 @@ function ask(title, body, okLabel = 'Discard') {
 }
 
 function disposePreviewFx() {
+  clearTimeout(irTimer); irTimer = 0; irPending = null;
   if (!previewFx) return;
   for (const effect of previewFx.effects || []) {
     try { effect.node?.dispose?.(); } catch { /* best effort: the context owns the nodes */ }
@@ -61,35 +70,80 @@ function disposePreviewFx() {
   previewFx = null;
 }
 
+// The reverb's DECAY and PRE-DELAY are the only audition controls whose change is not a
+// number but a whole new impulse response — up to eight seconds of stereo noise under an
+// exponential, generated in a loop, which measures 12 ms typical and 18 ms worst at
+// 48 kHz. One of those per pointer-move is a dropped frame per pixel and about 400 ms of
+// main thread for one drag across the range. So they land on a timer instead: at most one
+// room per 80 ms while the knob is moving, and the last value always arrives. A reverb
+// tail that follows the hand by a frame is not a thing anyone can hear; a UI that stutters
+// while you set it is.
+const IR_KEYS = ['decay', 'preDelay'];
+const IR_COALESCE_MS = 80;
+
+function setPreviewEffect(name, params, bpm) {
+  const effect = previewFx?.byName[name];
+  if (!effect) return;
+  if (name !== 'reverb') { effect.set(params, bpm); return; }
+  // Everything except the room itself goes through immediately — MIX is a pair of gains
+  // and has no business waiting behind an impulse response.
+  const cheap = { ...params };
+  for (const key of IR_KEYS) delete cheap[key];
+  effect.set(cheap, bpm);
+  irPending = { ...params };
+  if (irTimer) return;
+  irTimer = setTimeout(() => {
+    irTimer = 0;
+    const pending = irPending; irPending = null;
+    if (pending) previewFx?.byName.reverb?.set(pending, bpm);
+  }, IR_COALESCE_MS);
+}
+
 /**
  * Build the temporary audition chain from the same native effect definitions used by
  * Song Mixer inserts. The chain ends at musicBus, so the normal music fader and master
  * still apply; only bench notes are redirected into its input by setPreviewOutput().
  */
-function applyPreviewEffects(next = {}) {
+function applyPreviewEffects(next = {}, { rebuild = false } = {}) {
   previewFxState = next;
   if (!Audio.ctx || !Audio.musicBus) return;
-  Audio.setPreviewOutput(null);
-  disposePreviewFx();
   const active = [
     ['reverb', 'reverb'],
     ['delay', 'chandelay'],
   ].filter(([name]) => next[name]?.enabled);
+  const bpm = performancePanel?.state?.().bpm || 120;
+  const signature = active.map(([name]) => name).join('+');
+
+  // A knob is not a new chain. Turning one changes a number inside the effect that is
+  // already running: both of these are native effects with a live `set`, the reverb
+  // regenerates its impulse response only when the decay or the pre-delay actually
+  // moved, and its wet/dry is an equal-power pair of gains. Rebuilding instead — which
+  // is what this did on every `input` event — stopped every sounding note, threw away
+  // the convolver mid-tail and regenerated up to three quarters of a million samples,
+  // per pixel of the drag.
+  if (!rebuild && previewFx && previewFx.signature === signature) {
+    for (const [name] of active) setPreviewEffect(name, next[name].params || {}, bpm);
+    return;
+  }
+
+  Audio.setPreviewOutput(null);
+  disposePreviewFx();
   if (!active.length) return;
   const input = Audio.ctx.createGain();
   let tail = input;
   const effects = [];
-  const bpm = performancePanel?.state?.().bpm || 120;
+  const byName = {};
   for (const [name, id] of active) {
     const made = createEffect(id, next[name].params || {}, Audio.ctx, bpm);
     if (!made?.node) continue;
     tail.connect(made.node.input);
     tail = made.node;
     effects.push(made);
+    byName[name] = made;
   }
   if (!effects.length) { try { input.disconnect(); } catch {} return; }
   tail.connect(Audio.musicBus);
-  previewFx = { input, effects };
+  previewFx = { input, effects, byName, signature };
   Audio.setPreviewOutput({ input });
 }
 
@@ -103,7 +157,12 @@ function ensurePreviewAudio() {
   // A keyboard gesture may be the first thing that creates Audio. Build a pending
   // effects chain once for that new context, but never rebuild it for every keydown —
   // doing so would cut a reverb/delay tail on a held chord.
-  if (Audio.ctx && !hadContext && previewFxState) applyPreviewEffects(previewFxState);
+  if (Audio.ctx && !hadContext) {
+    // A fresh context owns none of the nodes the old chain was built from, so this one
+    // genuinely has to be rebuilt rather than re-set.
+    if (previewFxState) applyPreviewEffects(previewFxState, { rebuild: true });
+    masterMeter.applyStored();
+  }
   return !!Audio.ctx;
 }
 
@@ -153,6 +212,25 @@ async function normalizeSharedMeasurements(sourceId, baseId) {
   }
 }
 
+/**
+ * Run `open` with the source preset holding its audition level, then put the catalogue
+ * value back.
+ *
+ * The level has to be in place BEFORE the editor copies the preset into a session
+ * draft: the draft's level and the baseline that Revert restores are both taken at
+ * open, and a level written after that is one the first Revert would throw away. The
+ * draft then carries the leaned level as its own, and the catalogue entry is left
+ * exactly as measured — so switching back and forth cannot compound the lean.
+ */
+function withAuditionLevel(sourceId, open) {
+  const voice = VOICES[sourceId];
+  const next = voice ? auditionLevel(voice, benchLane(voice)) : null;
+  if (next == null) return open();
+  const was = voice.level;
+  voice.level = next;
+  try { return open(); } finally { voice.level = was; }
+}
+
 let voiceEditor;
 function removeSession() {
   const old = voiceEditor?.editing;
@@ -166,18 +244,25 @@ async function loadPreset(id, patch = null) {
   basePresetId = eligible(id);
   patternPlayer?.stop();
   performancePanel?.setPlaying(false);
-  removeSession();
   if (patch) {
     $('mrdr3status').textContent = 'MEASURING SHARED PATCH…';
     await normalizeSharedMeasurements(sourceId, basePresetId);
+    // Only now is this load still the current one. Tearing the session down before the
+    // measurement would leave the editor blank for the length of it, and would leave a
+    // superseded load having destroyed a session it is about to walk away from.
     if (serial !== loadSerial) {
       delete VOICES[sourceId];
       return;
     }
   }
-  const opened = voiceEditor.open(sourceId, { isNew: true });
+  removeSession();
+  const opened = withAuditionLevel(sourceId, () => voiceEditor.open(sourceId, { isNew: true }));
   if (!opened) {
     toast('That MRDR-3 preset could not be opened');
+    // The shared link's temporary source is this function's own, so it goes on the
+    // failure path too — nothing else will ever collect it, since it carries no
+    // `draft` marker for the editor's sweep to find.
+    if (patch) delete VOICES[sourceId];
     return;
   }
   if (patch) delete VOICES[sourceId];
@@ -263,7 +348,14 @@ voiceEditor = createVoiceEditor({
   liveCompensation: false,
   noiseBuf: () => Audio.noiseBuf,
   sampleRate: () => Audio.ctx?.sampleRate || 44100,
-  setLayerSolo: () => {},
+  // Layer solo lives on the engine rather than on the panel, exactly as it does on the
+  // desk: the panel forgets everything when it closes, and a solo that outlived it
+  // would be a stack playing with a layer missing and nothing on screen saying so.
+  // A null id clears the lot.
+  setLayerSolo: (id, key, on) => {
+    if (!id) Audio.clearLayerSolo();
+    else Audio.setLayerSolo(id, key, on);
+  },
   listPresets: () => offeredByEngine('MRDR-3'),
   selectPreset: (id) => loadPreset(id),
   sharePreset: copyShareLink,
@@ -291,7 +383,7 @@ voiceEditor = createVoiceEditor({
     // Reverb and delay are deliberately outside the voice graph. Rebuild their small
     // preview-only chain at the same boundary so a filtered note already in an effect
     // tail cannot make an OFF filter sound as though it is still active.
-    if (previewFxState && Audio.ctx) applyPreviewEffects(previewFxState);
+    if (previewFxState && Audio.ctx) applyPreviewEffects(previewFxState, { rebuild: true });
   },
   panicAudition: () => { patternPlayer?.stop(); performancePanel?.setPlaying(false); Audio.voices?.stopPreview?.(); Audio.panic(); },
   midiState: () => midi.state(),
@@ -303,6 +395,7 @@ voiceEditor = createVoiceEditor({
     // so the final B stays inside the MIDI 0–127 range.
     keyboard: { octaves: 7, initialOctave: 2, minOctave: 0, maxOctave: 2 },
     performance: performancePanel,
+    headExtra: () => masterMeter.root,
   }),
 });
 

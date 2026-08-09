@@ -1448,7 +1448,9 @@ export class HubState {
         swappable: false, pinned: true, roam: STAFF_ROAM,
       });
     }
-    const musicSong = this.flow.gameSongFor('hub');
+    // Optional, as it is at every other call site: a flow that names no game song
+    // simply has none, and the line below already falls back to the authored bank.
+    const musicSong = this.flow.gameSongFor?.('hub');
     const musicBank = musicSong?.bank || HUB_THEME;
     // Returning from the Trophy Room is not a new song. Re-banking here resets step,
     // nextTime and the song gap, which is why the Food Court used to restart at the
@@ -3360,7 +3362,7 @@ export class StageSelectState {
     // This one IS a song change (the food court's theme is a different composition), so
     // it takes setBank's gap. It happens behind a fully closed shutter — states.js runs
     // enter() at the covered midpoint — which hides most but not all of it.
-    const musicSong = this.flow.gameSongFor(this.cab.id);
+    const musicSong = this.flow.gameSongFor?.(this.cab.id);
     MusicDirector.play(musicSong?.bank || this.cab.music, 'select', cabinetMusicState(this.save.slot, this.cab.id), {
       mixOverride: musicSong?.mix,
       arrangementOverride: musicSong?.arrangement,

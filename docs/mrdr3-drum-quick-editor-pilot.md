@@ -49,11 +49,11 @@ Collective VCA rules:
 
 Filter rules:
 
-- Quick `CUTOFF` reads the lowest active filter cutoff across enabled layer filters, Global Filter and Drive Tone when present. It is greyed out when the voice has no applicable filter.
-- Moving `CUTOFF` scales every included cutoff by the same frequency ratio. It also scales Drum filter sweep destinations, so the authored filter relationships remain intact; it does not change filter type, slope, resonance or envelope amount.
-- Advanced cutoff edits immediately change the Quick `CUTOFF` reading. The macro captures that current shape when it is next moved, so returning to the starting value restores the current authored filter values rather than an older Quick baseline.
-- Drive Tone remains the specific Advanced Drive-card control. It is included in Cutoff only when it is part of the active signal, and is still built only alongside the shaper.
-- Env Amount and Resonance enable Global Filter when absent, creating a low-pass, −12 dB/octave section with neutral Q, zero envelope amount and a near-open cutoff derived from the current Drive Tone setting, capped at 8 kHz.
+- Quick `BRIGHTNESS` reads the lowest active filter cutoff across enabled layer filters, Global Filter and Drive Tone when present. It is greyed out when the voice has no applicable filter. It is deliberately NOT called `CUTOFF`: the naming standard reserves that for a knob that moves one filter's frequency, and this moves every active one at once.
+- Moving `BRIGHTNESS` scales every included cutoff by the same frequency ratio. It also scales Drum filter sweep destinations, so the authored filter relationships remain intact; it does not change filter type, slope, resonance or envelope amount.
+- Advanced cutoff edits immediately change the Quick `BRIGHTNESS` reading. The macro captures that current shape when it is next moved, so returning to the starting value restores the current authored filter values rather than an older Quick baseline.
+- Drive Tone remains the specific Advanced Drive-card control. It is included in Brightness only when it is part of the active signal, and is still built only alongside the shaper.
+- `FILTER SWEEP` and Resonance enable Global Filter when absent, creating a low-pass, −12 dB/octave section with neutral Q, zero envelope amount and a near-open cutoff derived from the current Drive Tone setting, capped at 8 kHz.
 - If a Quick-created Global Filter returns to neutral without any Advanced edits, it is removed again. Once changed in Advanced it remains an ordinary section.
 - The Advanced `LFO` card is named **Mod LFO**. Mod LFO and per-layer PWM remain Advanced-only.
 

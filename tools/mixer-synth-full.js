@@ -69,7 +69,16 @@ const GLYPH = {
 /** `osc2` → `LAYER 2`, for the solo readout and the mixer cells. */
 const layerName = (n) => `LAYER ${n}`;
 
-export function createSynthFull({ kit, el, backdrop, keyboard: keyboardOptions = {}, performance = null }) {
+/**
+ * `headExtra` is one element to sit in the title bar's right-hand group, for a surface
+ * that has something global to put there. The standalone playground passes its monitor
+ * fader; the Song Mixer passes nothing, because the desk already has a master strip and
+ * a header of its own. It is returned rather than built here so the element survives a
+ * title-bar rebuild — whatever is animating it keeps its references.
+ */
+export function createSynthFull({
+  kit, el, backdrop, keyboard: keyboardOptions = {}, performance = null, headExtra = null,
+}) {
   // Guards are per-surface: the strip clears its own on every repaint, and one shared
   // list would mean its next build wiped ours and left half this window stuck at
   // whatever it last looked like. See `guardSet` in the editor.
@@ -210,6 +219,8 @@ export function createSynthFull({ kit, el, backdrop, keyboard: keyboardOptions =
     undo.onclick = () => kit.undo();
     undoButton = undo;
     bar.append(undo, span('sfspace'));
+    const extra = headExtra?.();
+    if (extra) bar.append(extra);
     if (kit.shareEnabled?.() && kit.engine?.() === 'MRDR-3') {
       const share = document.createElement('button');
       share.className = 'sfshare';

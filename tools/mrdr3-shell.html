@@ -22,6 +22,12 @@
      keyboard are one vertical instrument, so let the document carry any short-viewport
      scroll instead of putting a bar beside the preset cards. */
   #synthfull .sfbody { flex: none; min-height: 0; overflow: visible; }
+  /* The monitor fader in the title bar is the desk's master control, reused whole —
+     every rule that draws it is already in the mixer stylesheet above, scoped to
+     `#mastertoolbar`. Only its width needs saying again: in the desk's header it is the
+     flexible thing between two groups, and here it has to hold a lane of its own beside
+     the preset picker rather than growing into whatever room is left. */
+  #synthfull #mastertoolbar { flex: 0 0 auto; width: 230px; min-width: 0; }
   /* Standalone performance strip: it lives immediately above the MIDI keyboard while
      the editor and keyboard remain one continuous document-flow instrument. */
   #synthfull .sfperformance { position: relative; flex: none; display: flex; align-items: center;
@@ -98,6 +104,7 @@
     #synthfull .sfsynth { font-size: 9px; }
     #synthfull .sfpresetselect { min-width: 0; max-width: 42vw; }
     #synthfull .sfundo { display: none; }
+    #synthfull #mastertoolbar { width: 108px; }
     #synthfull .sfkeyboard { min-height: 102px; }
     #synthfull .sfperformance { flex-wrap: wrap; gap: 4px; }
     #synthfull .sfptitle { width: 100%; }

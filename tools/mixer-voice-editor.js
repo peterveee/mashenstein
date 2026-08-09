@@ -2346,7 +2346,13 @@ const brightnessRow = () => {
     }
   };
 
-  return cutoffHz('$quick.brightness', 'CUTOFF', CUTOFF_MAX,
+  // BRIGHTNESS, not CUTOFF. The naming standard reserves CUTOFF for a knob that moves
+  // ONE filter's frequency, and this moves every active one at once — the layer filters,
+  // the global filter and the Drive Tone, by a shared ratio. Calling it CUTOFF put a
+  // control on Quick that looks like the one in Advanced and does something else, which
+  // is the one thing a shared name must never do. The path has said `brightness` all
+  // along; only the face of it lagged.
+  return cutoffHz('$quick.brightness', 'BRIGHTNESS', CUTOFF_MAX,
     (voice) => brightnessTargets(voice).length > 0, {
       read: (_raw, voice) => brightnessRead(voice),
       write: (x, voice) => {
@@ -2424,7 +2430,10 @@ const releaseQuickFilterIfSeed = (voice) => {
   releaseHold(voice, QUICK_FILTER_HOLD);
 };
 
-const quickFilterSweep = () => n('$quick.filterSweep', 'ENV AMOUNT', -ENV_OCT_MAX,
+// FILTER SWEEP rather than ENV AMOUNT: the naming standard already calls
+// `filterEnvelope.octaves` a SWEEP wherever else it appears (docs/synth-preset-parameters.md),
+// and the path here has said `filterSweep` all along. One control, one word for it.
+const quickFilterSweep = () => n('$quick.filterSweep', 'FILTER SWEEP', -ENV_OCT_MAX,
   ENV_OCT_MAX, 0.1, semis, 0, 'oct', null, {
     origin: 0, scale: ENV_OCT_SCALE,
     read: (_raw, voice) => voice.global?.filter?.env?.octaves ?? 0,
@@ -5018,9 +5027,17 @@ export function createVoiceEditor({
     // The reference measurement, taken once. Until it lands there is no ratio to
     // scale by, so `runEstimate` leaves the level alone rather than guessing — which
     // is why it is fired here rather than lazily on the first edit.
-    measureRaw(id, noiseBuf(), sampleRate())
-      .then((raw) => { if (state?.id === id && raw.level > 0) state.rawBaseline = raw; })
-      .catch(() => { /* no ratio; the level simply stays put until a save measures it */ });
+    //
+    // `rawBaseline` has exactly one reader, and `runEstimate` is the same gate: where
+    // live compensation is off — the MRDR-3 playground, which holds its level for the
+    // session because it auditions through a permanent limiter — nothing will ever
+    // consume this, and rendering the preset offline to seed it is seconds of silence
+    // on every preset the user opens.
+    if (liveCompensationOn()) {
+      measureRaw(id, noiseBuf(), sampleRate())
+        .then((raw) => { if (state?.id === id && raw.level > 0) state.rawBaseline = raw; })
+        .catch(() => { /* no ratio; the level simply stays put until a save measures it */ });
+    }
 
     return id;
   }

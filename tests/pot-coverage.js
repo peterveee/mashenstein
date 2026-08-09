@@ -146,6 +146,19 @@ const HIDDEN_OK = {
   noise: ['dur', 'fixedLength'],
   drum: ['dur', 'fixedLength'],
 };
+
+/**
+ * Read on every play path, drawn by no panel, and rightly so.
+ *
+ * `monoGroup` names a voice-stealing group that spans a whole KIT — "a new drum hit
+ * releases the previous one whatever lane made it", which is how the Food Court gets the
+ * single percussion channel a tiny console had. That makes it a property of how a kit was
+ * authored, not a knob on one preset: a pot on one voice has nothing to say, because the
+ * value only means anything when a SECOND voice names the same group. It is set in the
+ * song file and read by the rack, which is the one shape "every key gets a pot" was never
+ * about — see the note above, and `_monoGroups` in src/engine/voices.js.
+ */
+const HIDDEN_OK_EVERY = ['monoGroup'];
 const LEGACY_LENGTH_KEYS = new Set(['dur', 'fixedLength']);
 
 /**
@@ -168,6 +181,7 @@ for (const c of CASES) {
 
   const panel = panelKeys(c.voice);
   const allowHidden = new Set([
+    ...HIDDEN_OK_EVERY,
     ...(HIDDEN_OK[c.name] || []),
     ...((!c.oneShot && c.name !== 'noise' && c.name !== 'drum') ? LEGACY_LENGTH_KEYS : []),
   ]);

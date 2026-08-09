@@ -286,6 +286,18 @@ export function seamFor(laneKey) {
  * headroom than the lane it lands on, and it is the fallback for a saved song copy
  * from before levels existed. See LANE_TARGETS.
  */
+/**
+ * What one note of a lane's own hand-written voice reaches — `{ level, peak }`, or null.
+ *
+ * Read-only, and the same object `voiceGain` divides by. It is exported for the one
+ * caller that needs both halves of the ratio rather than the ratio: the MRDR-3
+ * playground weighs the energy answer against the peak answer before it auditions a
+ * preset. See `auditionLevel` in tools/mrdr3-entry.js.
+ */
+export function laneTarget(laneKey) {
+  return LANE_TARGETS[baseLane(laneKey)] || null;
+}
+
 export function voiceGain(voice, laneKey) {
   // A layer aims at the same place its source lane does — it is the same part, and
   // the point of the level being derived is that a new sound lands near where the

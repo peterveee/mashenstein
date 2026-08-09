@@ -43,7 +43,11 @@ assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1,
   && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(entrySource)
   && /dragPos = clamp\(dragPos \+ \(px \/ 150\)/.test(entrySource)
   && /setPosition\(dragPos\)/.test(entrySource)
-  && /scale: row\.scale, origin: row\.origin/.test(editor),
+  // A row's `scale` may be a function of the voice — a taper that depends on what the
+  // preset is — so what is pinned here is that whatever it resolves to is handed to the
+  // shared knob beside the row's own origin, not the literal shape of the expression.
+  && /typeof row\.scale === 'function' \? row\.scale\(state\.voice\) : row\.scale/.test(editor)
+  && /scale, origin: row\.origin/.test(editor),
   'all envelope controls use the shared non-linear knob response');
 
 // A tapered BIPOLAR pot curves about its origin rather than across its span. Applied to
@@ -173,7 +177,10 @@ assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.t
   && /className = 'vsource'/.test(
     librarySource),
   'the preset library distinguishes read-only Library sounds from editable My presets');
-assert(/head\.append\(title, sources, chips, syn, search, close\)/.test(
+// The claim is the ORDER of the last two, not the whole row: the header has gained
+// chips since (usage counts), and will gain more, but search stays the thing directly
+// before the close so the eye lands on it in the same place every time.
+assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
   librarySource)
   && /#voicelib \.vlclose \{ margin-left: auto; \}/.test(shell)
   && !/const searchRow = document\.createElement\('div'\)/.test(
@@ -937,8 +944,19 @@ assert(!/#navdrawer \{[^}]*box-shadow/s.test(rules)
 // desk is; the moulded fader cap, because it is a physical object rather than a
 // surface; and the dark ink on the mute and section badges, which is legible on a
 // saturated fill in any theme. Anything beyond that is a theme hardcoded again.
+//
+// The ceiling moved 42 → 43 when the Advanced window grew its own keyboard. Every one
+// of the 43 was accounted for at that point, and the count is the whole audit:
+//
+//   30  the keyboards — #synthfull .sfk*, #osk .oskkey*, #pianoroll .rollblack
+//   10  the moulded fader cap — its radial gradient and rim
+//    3  the badge inks — #0d1013, #5a101d, #230d0d
+//
+// A number is a poor guard on its own, so raise it only after doing that sum again. A
+// colour that does not land in one of those three rows is the thing this is here to
+// catch, and it will still trip on the next one.
 const strayHexes = (rules.match(/#[0-9a-fA-F]{6}\b/g) || []).length;
-assert(strayHexes <= 42, `the rules carry ${strayHexes} literal hexes; only the keyboards, the fader cap and the badge inks should be fixed`);
+assert(strayHexes <= 43, `the rules carry ${strayHexes} literal hexes; only the keyboards, the fader cap and the badge inks should be fixed`);
 assert(!/hsl\(\$\{laneHue\(key\)\} 3[02]% 1[25]%\)/.test(entry)
   && entry.includes('let panelIsLight = false')
   && /const arrangementBarColour = \(key, shade = 56\) => \{[\s\S]*?const themed = themeTrackColour\(key\)[\s\S]*?58%/.test(entry)
