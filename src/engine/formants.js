@@ -119,3 +119,40 @@ export function vowelAt(voice = 'alto', stack = 'a', position = 0, depth = 1) {
   return interpolateFormants(base, raw, depth);
 }
 
+/**
+ * Resolve the position a scheduled vowel slot should occupy.  RATE remains the
+ * duration of one stack slot; the shape changes the path between slots rather than
+ * redefining the clock.  The returned position is allowed to be fractional because
+ * vowelAt() already owns the table interpolation rules.
+ */
+export function vowelPosition(shape = 'step', stackLength = 1, ordinal = 0, seed = 0) {
+  const n = Math.max(1, Math.floor(Number(stackLength) || 1));
+  const o = Math.floor(Number(ordinal) || 0);
+  const valid = ['step', 'sine', 'triangle', 'saw up', 'saw down', 'square', 'random'];
+  const mode = valid.includes(shape) ? shape : 'step';
+  if (n === 1) return 0;
+  if (mode === 'step') return o;
+  if (mode === 'saw up') return o;
+  if (mode === 'saw down') return -o;
+  if (mode === 'square') return (Math.abs(o) % 2) ? n - 1 : 0;
+  if (mode === 'triangle') {
+    const span = n - 1;
+    const cycle = span * 2;
+    const p = ((o % cycle) + cycle) % cycle;
+    return p <= span ? p : cycle - p;
+  }
+  if (mode === 'sine') {
+    const span = n - 1;
+    const cycle = span * 2;
+    const p = ((o % cycle) + cycle) % cycle;
+    const phase = p / span;
+    return (1 - Math.cos(Math.PI * (phase <= 1 ? phase : 2 - phase))) * span / 2;
+  }
+  // Deterministic pseudo-random selection.  This is deliberately not Math.random():
+  // identical live/offline renders and transport resets must choose the same vowel.
+  let x = (Math.imul((o + 1) | 0, 0x45d9f3b) ^ Math.imul((seed + 1) | 0, 0x27d4eb2d)) | 0;
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+  x ^= x >>> 16;
+  return (x >>> 0) % n;
+}

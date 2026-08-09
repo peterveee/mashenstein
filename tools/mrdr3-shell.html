@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MASHENSTEIN — MRDR-3 Playground</title>
+<style>
+/*__MIXER_STYLE__*/
+  /* The standalone page is a document-flow instrument: the editor body is allowed to
+     take the height its cards need, and a short viewport scrolls the page as one piece.
+     Keeping the scroll here (rather than inside `.sfbody`) leaves the keyboard directly
+     beneath the preset editor instead of pinning it below a second scroll surface. */
+  html, body { width: 100%; min-height: 100%; margin: 0; overflow-x: hidden; overflow-y: auto; }
+  body { background: var(--bg); color: var(--ink); }
+  #voiceedit { display: none !important; }
+  /* The playground is a wide instrument: hold a 1400px minimum and 1600px ceiling
+     on desktop so the cards and seven-octave keyboard have a stable working scale. */
+  #synthfull { position: relative; left: 50%; top: 0; width: min(1600px, 100vw); min-width: 1400px;
+               max-width: 1600px; min-height: 100vh; height: auto; max-height: none;
+               overflow: visible; border-radius: 0;
+               transform: translateX(-50%); }
+  #synthfull.show { transform: translateX(-50%); }
+  /* The shared editor normally owns one scroll container. In this page the editor and
+     keyboard are one vertical instrument, so let the document carry any short-viewport
+     scroll instead of putting a bar beside the preset cards. */
+  #synthfull .sfbody { flex: none; min-height: 0; overflow: visible; }
+  /* Standalone performance strip: it lives immediately above the MIDI keyboard while
+     the editor and keyboard remain one continuous document-flow instrument. */
+  #synthfull .sfperformance { position: relative; flex: none; display: flex; align-items: center;
+                               gap: 7px; min-height: 43px; padding: 5px 8px;
+                               background: var(--panel); border-top: 1px solid var(--line); }
+  #synthfull .sfptitle { color: var(--accent); font-size: 10px; letter-spacing: .12em;
+                         margin-right: 2px; }
+  #synthfull .sfpcontrol { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  #synthfull .sfpcontrol-label { color: var(--dim); font-size: 8px; letter-spacing: .07em;
+                                 white-space: nowrap; }
+  #synthfull .sfpselect, #synthfull .sfpnumber { height: 25px; min-width: 0; padding: 3px 6px;
+                                                   background: var(--input); color: var(--ink);
+                                                   border: 1px solid var(--line); border-radius: 3px;
+                                                   font: inherit; font-size: 10px; }
+  #synthfull .sfpnumber { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+  #synthfull .sfpselect:focus, #synthfull .sfpnumber:focus { outline: none; border-color: var(--accent); }
+  #synthfull .sfpauto, #synthfull .sfpfx { height: 25px; padding: 3px 8px; color: var(--dim);
+                                            background: var(--input); border: 1px solid var(--line);
+                                            border-radius: 3px; font: inherit; font-size: 9px;
+                                            letter-spacing: .06em; white-space: nowrap; }
+  #synthfull .sfpauto.on, #synthfull .sfpfx:hover, #synthfull .sfpfx.on {
+    color: var(--accent); border-color: var(--accent);
+  }
+  #synthfull .sfpfpopup { position: absolute; z-index: 30; right: 8px; bottom: calc(100% + 5px);
+                           width: 360px; max-width: calc(100% - 16px); padding: 8px;
+                           background: var(--panel); border: 1px solid var(--accent-line);
+                           border-radius: 5px; box-shadow: 0 14px 32px #0009; }
+  #synthfull .sfpfpopup[hidden] { display: none; }
+  #synthfull .sfpfhead { display: flex; align-items: center; justify-content: space-between;
+                         color: var(--accent); font-size: 10px; letter-spacing: .1em; }
+  #synthfull .sfpfhead button { padding: 1px 5px; color: var(--dim); background: none;
+                                border: 1px solid transparent; font: inherit; }
+  #synthfull .sfpfhead button:hover { color: var(--hot); border-color: var(--hot); }
+  #synthfull .sfpfbody { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 7px; }
+  /* Effects use the same rack cards as Song Mixer. The popup supplies the shell;
+     `.sfpdevice` supplies a session-only card whose controls are still the shared
+     device/grid/row surface. */
+  #synthfull .sfpdevice { width: 100%; box-sizing: border-box; }
+  #synthfull .sfpdevice .devbar { padding: 0; margin-bottom: 4px; cursor: default; }
+  #synthfull .sfpdevice .devgrid { grid-template-columns: repeat(2, minmax(0, 1fr));
+                                    gap: 7px 8px; }
+  #synthfull .sfpdevice .row { margin: 0; min-width: 0; }
+  #synthfull .sfpdevice .checkrow { grid-column: 1 / -1; }
+  #synthfull .sfpeffect { min-width: 0; margin: 0; padding: 6px; border: 1px solid var(--line);
+                          border-radius: 4px; }
+  #synthfull .sfpeffect legend { padding: 0 3px; color: var(--dim); font-size: 8px; letter-spacing: .08em; }
+  #synthfull .sfpeffect .sfpcontrol { justify-content: space-between; margin-top: 4px; }
+  #synthfull .sfpeffect .sfpcontrol-label { font-size: 8px; }
+  #synthfull .sfpeffect .sfpnumber { width: 54px; height: 22px; }
+  #synthfull .sfptoggle { min-width: 37px; height: 21px; padding: 1px 4px; color: var(--dim);
+                           background: var(--input); border: 1px solid var(--line); border-radius: 3px;
+                           font: inherit; font-size: 8px; }
+  #synthfull .sfptoggle.on { color: var(--accent); border-color: var(--accent); }
+  #synthfull .sfpcheck { width: 16px; height: 16px; accent-color: var(--accent); }
+  #mrdr3brand { position: fixed; z-index: 20; left: 12px; bottom: 6px; color: var(--dim);
+                font: 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+                letter-spacing: .08em; pointer-events: none; }
+  #mrdr3status { position: fixed; z-index: 20; right: 12px; bottom: 6px; color: var(--dim);
+                 font: 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+                 letter-spacing: .08em; pointer-events: none; }
+  #ask { display: none; position: fixed; inset: 0; z-index: 60; align-items: center;
+         justify-content: center; background: #0008; }
+  #ask.show { display: flex; }
+  #askbox { width: min(360px, calc(100vw - 32px)); padding: 16px; background: var(--panel);
+            border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 16px 40px #0009; }
+  #asktitle { margin: 0 0 8px; color: var(--accent); font: 12px/1.2 inherit; letter-spacing: .08em; }
+  #askbody { margin: 0 0 14px; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  #askactions { display: flex; justify-content: flex-end; gap: 6px; }
+  #askactions button { font: inherit; font-size: 10px; padding: 5px 9px; color: var(--ink);
+                       background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
+  #askok { color: var(--accent); border-color: var(--accent-line); }
+  @media (max-width: 640px) {
+    #synthfull .sfhead { gap: 5px; padding: 0 7px; }
+    #synthfull .sfsynth { font-size: 9px; }
+    #synthfull .sfpresetselect { min-width: 0; max-width: 42vw; }
+    #synthfull .sfundo { display: none; }
+    #synthfull .sfkeyboard { min-height: 102px; }
+    #synthfull .sfperformance { flex-wrap: wrap; gap: 4px; }
+    #synthfull .sfptitle { width: 100%; }
+    #synthfull .sfpfbody { grid-template-columns: 1fr; }
+    #synthfull .sfpfpopup { right: 4px; width: 250px; }
+  }
+  @media (max-width: 1399px) {
+    /* Keep the editor usable in a constrained viewport; the requested desktop
+       minimum applies once there is room for it. */
+    #synthfull { left: 0; width: 100vw; min-width: 0; max-width: none; transform: none; }
+    #synthfull.show { transform: none; }
+  }
+</style>
+<div id="mrdr3brand">MRDR-3 PLAYGROUND</div>
+<div id="mrdr3status">SESSION ONLY</div>
+<div id="voiceedit"></div>
+<div id="synthfullback" aria-hidden="true"></div>
+<div id="synthfull" role="application" aria-label="MRDR-3 synth editor" aria-hidden="true"></div>
+<div id="ask" role="dialog" aria-modal="true">
+  <div id="askbox">
+    <h2 id="asktitle"></h2><p id="askbody"></p>
+    <div id="askactions"><button id="askcancel" type="button">CANCEL</button>
+      <button id="askok" type="button">DISCARD</button></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>/*__BUNDLE__*/</script>

@@ -86,7 +86,7 @@ generates itself from `params` / `ranges` / `labels`; no new widget or CSS is re
 but the explicit effect-picker group must include the new id.
 
 ```js
-{ id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.50,
+{ id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.80,
   custom: makeVowelFilter,
   params: ['voice', 'stack', 'rateSync', 'rateDivision', 'frequency',
            'depth', 'glide', 'reso', 'spread', 'tilt', 'intensity', 'body', 'air', 'wet'],
@@ -390,3 +390,37 @@ and lost ([voices.js:1881](../src/engine/voices.js#L1881)).
 The payoff is potentially concrete, but it is not a v1 promise: each candidate preset
 needs a sound-by-sound null/listening check before its per-layer formants are replaced by
 one post-sum insert.
+
+## 10. Vowel improvements — implemented extension
+
+The insert now also exposes four wet-source and motion controls:
+
+| Control | Key | Behaviour |
+| --- | --- | --- |
+| **WAVE SHAPE** | `waveform` | `step`, `sine`, `triangle`, `saw up`, `saw down`, `square`, or deterministic `random` traversal of the vowel stack. RATE remains the duration of one stack slot. |
+| **ARTICULATION** | `articulation` | Dips and reopens the complete wet vocal path at scheduled vowel boundaries, producing syllable-like attacks while leaving the dry path continuous. |
+| **EXCITE** | `excite` | Adds a symmetric native WaveShaper branch before the wet formant paths, so dark sources have harmonics for F2/F3 to shape. The dry path is untouched. |
+| **BREATH** | `breath` | Adds an input-derived high-passed transient at vowel boundaries. It is not a free-running noise source and stays silent with zero input. |
+
+`INTENSITY` now derives effective BODY/AIR leakage directly from its current value while
+crossfading the one-pass and two-pass banks. It remains path-independent: moving a control
+directly to a value produces the same result as arriving there through intermediate values.
+The existing `wet: 0` transparency and deterministic OfflineAudioContext contract still
+apply to every new control.
+
+## 11. Named effect presets
+
+The source-backed `EFFECT_PRESETS.inserts.vowel.presets` map contains the initial named
+starting points:
+
+- Talking Robot
+- Monster O-A
+- Breathy Choir
+- Chopped I-A
+- Hard Talkbox
+
+The Mixer displays these through a generic effect-card PRESET dropdown whenever an effect has
+named presets. Choosing one writes a complete parameter snapshot into the current effect
+instance, preserves id/order/bypass/routing, and does not create a live reference to future
+source-data changes. Any subsequent edit is displayed as Custom. Effects with no named
+presets do not receive an empty dropdown.

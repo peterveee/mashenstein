@@ -536,4 +536,29 @@ if (watch) {
     console.error('Song Mixer build failed (the game build is unaffected):');
     console.error(err.message || err);
   }
+
+  // The public MRDR-3 playground shares the editor, graph, preset and keyboard modules
+  // with Song Mixer but gets its own small shell and direct `/MRDR3/` deployment path.
+  try {
+    const mrdrResult = await esbuild.build({
+      entryPoints: [join(root, 'tools/mrdr3-entry.js')],
+      bundle: true, format: 'iife', target: ['es2020'], minify: false,
+      outdir: join(root, 'dist'), write: false, logLevel: 'warning',
+    });
+    const mrdrJs = mrdrResult.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+    const mixerSource = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
+    const styleStart = mixerSource.indexOf('<style>') + '<style>'.length;
+    const styleEnd = mixerSource.indexOf('</style>', styleStart);
+    const style = mixerSource.slice(styleStart, styleEnd);
+    const mrdrShell = readFileSync(join(root, 'tools/mrdr3-shell.html'), 'utf8');
+    const mrdrHtml = mrdrShell.replace('/*__MIXER_STYLE__*/', () => style)
+      .replace('/*__BUNDLE__*/', () => mrdrJs);
+    const mrdrDir = join(root, 'dist', 'MRDR3');
+    mkdirSync(mrdrDir, { recursive: true });
+    writeFileSync(join(mrdrDir, 'index.html'), mrdrHtml);
+    console.log(`dist/MRDR3/index.html written (${(mrdrHtml.length / 1024).toFixed(0)} KB playground)`);
+  } catch (err) {
+    console.error('MRDR-3 playground build failed:');
+    console.error(err.message || err);
+  }
 }

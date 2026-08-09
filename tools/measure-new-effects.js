@@ -1,4 +1,4 @@
-// Measure the six native Song Mixer effects against a bare oscillator. Usage:
+// Measure the native Song Mixer effects against a bare oscillator. Usage:
 //   node tools/measure-new-effects.js
 // The reported percentages are the catalogue's rough realtime CPU estimates, using
 // the same best-of-three method as the existing effect benches.
@@ -52,13 +52,21 @@ const effects = [
   ['ringmod', { rateSync: 0, frequency: 30, waveform: 'sine' }],
   ['tape', { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05 }],
   ['vowel', { voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
-    frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9, wet: 0.9 }],
+    frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
+    reso: 2, spread: 0.9, intensity: 0, excite: 0, breath: 0, wet: 0.9 }],
+  ['vowel dramatic', 'vowel', { voice: 'robotic', stack: 'a e i o u', rateSync: 1,
+    rateDivision: 0.25, frequency: 0.5, waveform: 'sine', depth: 1, glide: 0.35,
+    articulation: 0.7, reso: 2.8, spread: 0.8, intensity: 1, excite: 1,
+    breath: 0.5, body: 0.35, air: 0.12, wet: 1 }],
 ];
 const base = await page.evaluate((x) => window.__bench(x), { id: null, params: {}, seconds: 1, reps: 3 });
 console.log(`bare oscillator: ${base.ms.toFixed(2)}ms over ${base.seconds.toFixed(2)}s`);
-for (const [id, params] of effects) {
+for (const entry of effects) {
+  const [labelOrId, maybeId, maybeParams] = entry;
+  const id = maybeParams ? maybeId : labelOrId;
+  const params = maybeParams || maybeId;
   const one = await page.evaluate((x) => window.__bench(x), { id, params, seconds: 1, reps: 3 });
   const cost = ((one.ms - base.ms) / (one.seconds * 1000)) * 100;
-  console.log(`${id}: ${one.ms.toFixed(2)}ms, cost ${cost.toFixed(2)}%`);
+  console.log(`${maybeParams ? labelOrId : id}: ${one.ms.toFixed(2)}ms, cost ${cost.toFixed(2)}%`);
 }
 await browser.close();

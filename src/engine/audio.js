@@ -349,6 +349,10 @@ class AudioSys {
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
     this._benchGates = new Map();
+    // Optional destination used by session-only audition surfaces (the standalone
+    // MRDR-3 playground). Song lanes never set this, so the ordinary bench path keeps
+    // its music/echo buses and the mixer remains untouched.
+    this._previewOutput = null;
     this.songTrim = null;
     this.musicTrim = 1;
     this.pendingStartDelay = 0;
@@ -482,6 +486,7 @@ class AudioSys {
     // Lane gates belong to the context that made them; a rebuilt graph starts with none.
     this._laneGates.clear();
     this._benchGates.clear();
+    this._previewOutput = null;
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
     // YMCK-style space: tempo-synced dotted-eighth echo. echoBus is a parallel
     // wet send, and every channel reaches it through its own DELAY send on the
@@ -1986,11 +1991,29 @@ class AudioSys {
     if (!this.ctx || !this.musicBus || !this.echoBus) return null;
     let gate = this._benchGates.get(key);
     if (gate) return gate;
-    const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(this.musicBus);
-    const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(this.echoBus);
+    const output = this._previewOutput;
+    const dryDest = output?.dry || output?.input || this.musicBus;
+    const wetDest = output?.wet || output?.input || this.echoBus;
+    const dry = this.ctx.createGain(); dry.gain.value = 1; dry.connect(dryDest);
+    const wet = this.ctx.createGain(); wet.gain.value = 1; wet.connect(wetDest);
     gate = { dry, wet };
     this._benchGates.set(key, gate);
     return gate;
+  }
+
+  /**
+   * Route future preset-bench notes through an optional audition-only output.
+   *
+   * The destination is deliberately a pair of Web Audio nodes rather than a mixer
+   * insert: a standalone playground can put both preview sends through its temporary
+   * effect chain without changing a song's strips, while the normal `null` route keeps
+   * the historical music/echo buses. Existing bench gates are cut and rebuilt so a
+   * destination change cannot leave one preset half on the old graph.
+   */
+  setPreviewOutput(output = null) {
+    this.stopPreview();
+    this._previewOutput = output && (output.dry || output.wet || output.input) ? output : null;
+    return this._previewOutput;
   }
 
   /**
@@ -2182,8 +2205,9 @@ class AudioSys {
     // copies are scoped by it — see registerSongVoice.
     const id = trackIdOf(bank);
     this.mixEntry = entry || null;
+    const arrangementId = id || '__explicit__';
     const arranged = this.arrangement !== undefined
-      ? applyArrangement(bank, id, { [id]: this.arrangement })
+      ? applyArrangement(bank, arrangementId, { [arrangementId]: this.arrangement })
       : applyArrangement(bank, id);
     const merged = withVoices(deskBank(arranged, entry), entry, id);
     this.bank = merged;
@@ -2318,8 +2342,13 @@ class AudioSys {
     // file and quietly threw the edit away: the grid went on drawing bars that the
     // sequencer had stopped playing.
     const id = bank ? trackIdOf(bank) : null;
+    // A game alternate is deliberately not in the main track registry: it is a
+    // candidate song object passed directly by the game. Its explicit arrangement
+    // still has to apply, though — notably `arrangement.swing` — so give an
+    // arrangement override its own lookup key when there is no track id.
+    const arrangementId = id || '__explicit__';
     bank = this.arrangement !== undefined
-      ? applyArrangement(bank, id, { [id]: this.arrangement })
+      ? applyArrangement(bank, arrangementId, { [arrangementId]: this.arrangement })
       : applyArrangement(bank, id);
     // Then the song's SHAPE, before anything is pointed at a strip: a mix can add a
     // duplicated lane or take one out entirely, and both change which channels exist.

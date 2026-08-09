@@ -26,6 +26,7 @@
 // works at root-key granularity and cannot see a missing leaf.
 
 import { envelopeGraph, responseGraph } from './mixer-synth-graphs.js';
+import { createSynthKeyboard } from './mixer-synth-keyboard.js';
 
 /** The synth classes that have a full-window layout. The rest open the strip panel only. */
 export const FULL_EDITORS = ['MRDR-3', 'drum'];
@@ -68,7 +69,7 @@ const GLYPH = {
 /** `osc2` → `LAYER 2`, for the solo readout and the mixer cells. */
 const layerName = (n) => `LAYER ${n}`;
 
-export function createSynthFull({ kit, el, backdrop }) {
+export function createSynthFull({ kit, el, backdrop, keyboard: keyboardOptions = {}, performance = null }) {
   // Guards are per-surface: the strip clears its own on every repaint, and one shared
   // list would mean its next build wiped ours and left half this window stuck at
   // whatever it last looked like. See `guardSet` in the editor.
@@ -80,6 +81,16 @@ export function createSynthFull({ kit, el, backdrop }) {
   // Which of a shared card's two sections is on top, per cell. Held here rather than on
   // the preset: it is which one you are LOOKING at, not anything the sound is.
   const tab = new Map();
+  const keyboard = createSynthKeyboard({
+    ...keyboardOptions,
+    host: {
+      onNoteOn: (midi, source) => kit.audition?.(midi, { src: source, record: false }),
+      onNoteOff: (midi, source) => kit.releaseAudition?.({ midi, src: source }),
+      onPanic: () => kit.panicAudition?.(),
+      onMessage: (message) => kit.toast?.(message),
+    },
+    midi: kit.midiAdapter,
+  });
 
   const div = (cls, text) => {
     const d = document.createElement('div');
@@ -98,10 +109,96 @@ export function createSynthFull({ kit, el, backdrop }) {
   const head = () => {
     const bar = div('sfhead');
     const v = kit.voice();
+    const choices = [...(kit.presets?.() || [])];
+    const currentId = kit.id?.() || v?.id || '';
+    if (currentId && !choices.some((p) => p.id === currentId) && v) {
+      choices.push({ id: currentId, label: `${kit.label()} (current)`, category: v.category || '' });
+    }
+    choices.sort((a, b) => String(a.category || '').localeCompare(String(b.category || ''))
+      || String(a.label || a.id).localeCompare(String(b.label || b.id)));
     bar.append(
       span('sfsynth', v?.synth || (v?.kind === 'drum' ? 'DRUM SYNTH' : '')),
-      span('sfpreset', kit.label()),
     );
+    if (choices.length) {
+      // A native select is compact, but it cannot search a catalogue of several
+      // hundred sounds. `<details>` keeps the browser's built-in disclosure/focus
+      // behavior while the menu itself uses the desk's styled buttons and search field.
+      const picker = document.createElement('details');
+      picker.className = 'sfpresetpicker';
+      const summary = document.createElement('summary');
+      summary.className = 'sfpresetselect';
+      summary.title = 'Choose another preset for this synth engine';
+      const current = choices.find((p) => p.id === currentId);
+      summary.textContent = current
+        ? (current.category ? `${current.category} · ${current.label || current.id}` : (current.label || current.id))
+        : (kit.label() || currentId);
+      picker.append(summary);
+
+      const menu = div('sfpresetmenu');
+      const search = document.createElement('input');
+      search.type = 'search'; search.className = 'sfpresetsearch';
+      search.placeholder = 'Search presets…'; search.autocomplete = 'off'; search.spellcheck = false;
+      search.setAttribute('aria-label', 'Search compatible presets');
+      menu.append(search);
+      const results = div('sfpresetresults');
+      menu.append(results);
+      picker.append(menu);
+
+      const switchPreset = async (next) => {
+        if (!next || next === currentId) { picker.open = false; return; }
+        picker.open = false;
+        if (kit.dirty?.()) {
+          const ok = await kit.confirmDiscard?.();
+          if (!ok) return;
+          kit.discard?.();
+        }
+        kit.panicAudition?.();
+        kit.selectPreset?.(next);
+      };
+      const drawResults = () => {
+        results.textContent = '';
+        const q = search.value.trim().toLowerCase();
+        const matches = choices.filter((p) => !q
+          || `${p.label || ''} ${p.category || ''} ${p.id || ''}`.toLowerCase().includes(q));
+        if (!matches.length) {
+          results.append(Object.assign(document.createElement('div'), {
+            className: 'sfpresetnone', textContent: `Nothing matches “${search.value.trim()}”`,
+          }));
+          return;
+        }
+        let category = null;
+        for (const p of matches) {
+          const nextCategory = p.category || 'Other';
+          if (nextCategory !== category) {
+            category = nextCategory;
+            results.append(Object.assign(document.createElement('div'), {
+              className: 'sfpresetcategory', textContent: category,
+            }));
+          }
+          const button = document.createElement('button');
+          button.type = 'button'; button.className = `sfpresetoption${p.id === currentId ? ' on' : ''}`;
+          button.textContent = p.label || p.id;
+          button.title = p.id;
+          button.onclick = () => switchPreset(p.id);
+          results.append(button);
+        }
+      };
+      search.addEventListener('input', drawResults);
+      search.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        if (search.value) { search.value = ''; drawResults(); } else picker.open = false;
+      });
+      picker.addEventListener('toggle', () => {
+        if (!picker.open) return;
+        drawResults();
+        requestAnimationFrame(() => search.focus({ preventScroll: true }));
+      });
+      drawResults();
+      bar.append(picker);
+    } else {
+      bar.append(span('sfpreset', kit.label()));
+    }
     const solo = kit.soloText();
     if (solo) bar.append(span('sfsolotext', solo));
     const undo = document.createElement('button');
@@ -113,6 +210,15 @@ export function createSynthFull({ kit, el, backdrop }) {
     undo.onclick = () => kit.undo();
     undoButton = undo;
     bar.append(undo, span('sfspace'));
+    if (kit.shareEnabled?.() && kit.engine?.() === 'MRDR-3') {
+      const share = document.createElement('button');
+      share.className = 'sfshare';
+      share.type = 'button';
+      share.textContent = 'SHARE';
+      share.title = 'Copy a link to this MRDR-3 sound';
+      share.onclick = () => kit.share();
+      bar.append(share);
+    }
     const shut = document.createElement('button');
     shut.className = 'sfshut';
     shut.type = 'button';
@@ -857,7 +963,10 @@ export function createSynthFull({ kit, el, backdrop }) {
       body.append(row);
     }
     el.append(body);
+    if (performance?.root) el.append(performance.root);
+    el.append(keyboard.root);
     kit.sync();
+    keyboard.refresh();
     // Now, and not before: a graph is drawn across the width of its box, and a box that
     // is not in the document yet has none.
     for (const draw of graphsToDraw) draw();
@@ -929,6 +1038,7 @@ export function createSynthFull({ kit, el, backdrop }) {
     if (!kit.voice() || !kit.layout({ layer: 1 })) return;
     layer = Math.min(3, Math.max(1, n));
     showing = true;
+    keyboard.setActive(true);
     window.addEventListener('keydown', onKeyDown, true);
     el.setAttribute('aria-hidden', 'false');
     try {
@@ -957,6 +1067,7 @@ export function createSynthFull({ kit, el, backdrop }) {
 
   function close() {
     showing = false;
+    keyboard.setActive(false);
     window.removeEventListener('keydown', onKeyDown, true);
     // Not guarded on `showing`: this is also the way OUT of a half-open state, and an
     // early return there would leave the shell up. Removing a class that is not on and

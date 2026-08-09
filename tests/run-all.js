@@ -55,6 +55,7 @@ const suites = [
   // disturbing the 1200 hand-written lines around it. Up here rather than beside its
   // sibling because it needs no browser and runs in a blink.
   'tests/voice-source.js',
+  'tests/mrdr3-playground.js',
   'tests/formants.js',
   'tests/effect-presets.js',
   // And the third thing a preset file has to be true about: that every key in it has a

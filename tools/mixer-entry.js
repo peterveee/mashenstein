@@ -28,7 +28,7 @@ import { listTracks, resolveTrack, registerTrack, unregisterTrack } from '../src
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
 // The picker's own list: the library, less the song quotations nothing in the game
 // plays any more. See src/data/voices-in-play.js.
-import { offeredVoices, offeredByCategory } from '../src/data/voices-in-play.js';
+import { offeredVoices, offeredByCategory, offeredByEngine } from '../src/data/voices-in-play.js';
 // Side effect on purpose: this registers everything in src/data/imported/ as a track,
 // which is what puts an imported .mid in the song picker. The game does not import
 // it, so nothing in that folder ships.
@@ -65,7 +65,11 @@ import { newSongPlan } from './lib/new-song-plan.js';
 // Shared with the serialiser's tests, which hold the two to each other.
 import { mixChanged } from './lib/mix-signature.js';
 import { DELAY_DIVISIONS, AUXES, AUX_DEFAULTS, gainToDb, dbToGain } from '../src/engine/mixer.js';
-import { EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS, MAX_EFFECTS, ENGINE_BASE_COST, syncSeconds, DEFAULT_MASTER_CHAIN } from '../src/engine/effects.js';
+import {
+  EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS,
+  MAX_EFFECTS, ENGINE_BASE_COST, syncSeconds, DEFAULT_MASTER_CHAIN,
+  effectPresetNames, resolveEffectPreset, resolveEffectSnapshot, matchEffectPreset,
+} from '../src/engine/effects.js';
 
 const $ = (id) => document.getElementById(id);
 // The deployed desk at /SongMixer/ has no server behind it: nothing can be written,
@@ -2965,18 +2969,30 @@ const voiceEditor = createVoiceEditor({
   // rack, so a rack repaint never touches them.
   createFull: ({ kit }) => createSynthFull({
     kit, el: $('synthfull'), backdrop: $('synthfullback'),
+    // Keep the Song Mixer editor's compact keyboard as a real performance range too.
+    // Seven octaves fit the full-width board with the shared narrow-key styling; C2 is
+    // the highest safe base for MIDI 0–127, so the complete board stays playable.
+    keyboard: { octaves: 7, initialOctave: 2, minOctave: 0, maxOctave: 2 },
   }),
   // Not `rebank`. A re-bank restarts the sequencer with a deliberate half-second gap,
   // which on a slider drag is half a second of silence per pixel — see
   // `VoiceRack.refresh`. Dropping the synths built from the old options is the whole
   // of what an edit needs, and the next note is already the new sound.
   refresh: (id) => Audio.refreshVoice(id),
+  liveCompensation: () => !!Audio.mixer && !Audio.mixer.limiterOn,
   // Layer solo lives on the engine, not on the panel: the panel forgets everything when
   // it closes, and a solo that outlived it would be a stack playing with a layer missing
   // and nothing on screen to explain why. A null id clears the lot — see setLayerSolo.
   setLayerSolo: (id, key, on) => {
     if (!id) Audio.clearLayerSolo();
     else Audio.setLayerSolo(id, key, on);
+  },
+  // A filter/VCA bypass changes the native graph, not just a parameter. Clear only
+  // audition notes already queued on the bench so the next hit is the unmistakable
+  // bypassed sound; the song's own playback continues through its normal scheduler.
+  onSectionChange: () => {
+    releaseHeldPreviews();
+    Audio.stopPreview?.();
   },
   // For measuring a preset here in the page: the engine's SEEDED noise buffer, so a
   // noise preset is measured on the same bytes it will be played on, and the desk's
@@ -2992,6 +3008,17 @@ const voiceEditor = createVoiceEditor({
   onChanged: () => { buildRack(); voiceLibrary.refresh(); },
   onBlank: () => voiceLibrary.clearPick(),
   ask,
+  listPresets: ({ engine, laneKey, keep }) => offeredByEngine(engine, { laneKey, keep }),
+  selectPreset: (id, { laneKey }) => {
+    if (laneKey) setLaneVoice(laneKey, id);
+    else if (voiceEditor.open(id, { isNew: true })) voiceEditor.openFull();
+  },
+  auditionNote: (midi, opts) => oskPlay(midi, { ...opts, record: false }),
+  releaseAudition: ({ src }) => oskRelease(src),
+  panicAudition: () => releaseHeldPreviews(),
+  midiState: () => synthMidiAdapter.state(),
+  toggleMidi: (on) => setMidi(on),
+  midiAdapter: synthMidiAdapter,
   isDevUser: () => DEV_USER,
   // No server on the deployed desk, so no library to file a preset into. See the
   // `if (STATIC)` block below, which is the same rule applied to every other control
@@ -6484,16 +6511,19 @@ const optionLabel = (s) => String(s).replace(/\b[a-z]/g, (c) => c.toUpperCase())
  * A select row with a live readout, for parameters that are a note division rather
  * than a number — the delay's time, an LFO's rate.
  *
- * Label, select and readout on one line, unlike every other row. The readout used to
- * sit on a head line above the select, which stacked "1.24 Hz" directly on top of
- * "1/4 dotted": two spellings of the same number, one over the other, and a row twice
- * as tall for it. In tempo mode the division is the value, so it gets the line, and
- * what it works out to trails on the right as a reading rather than a second control.
+ * A division is still a select, but it occupies the same two-line footprint as every
+ * other effect control: label and derived readout on the head line, select underneath.
+ * The old one-line exception put RATE/TIME's select at the top of the card while the
+ * neighbouring sliders and named choices put their controls underneath their labels.
+ * Keeping the value in the head makes the row's rhythm legible without sacrificing the
+ * useful Hz/seconds readout.
  */
 function divisionRow(label, divisions, value, fmt, onChange) {
-  const row = document.createElement('div'); row.className = 'row divrow';
+  const row = document.createElement('div'); row.className = 'row';
+  const hd = document.createElement('div'); hd.className = 'head';
   const k = document.createElement('span'); k.className = 'k'; k.textContent = label;
   const v = document.createElement('span'); v.className = 'v';
+  hd.append(k, v);
   const sel = document.createElement('select'); sel.className = 'fxsel';
   for (const [name, beats] of Object.entries(divisions)) {
     const o = document.createElement('option');
@@ -6504,7 +6534,7 @@ function divisionRow(label, divisions, value, fmt, onChange) {
   const show = () => { v.textContent = fmt(+sel.value); };
   show();
   sel.onchange = () => { show(); onChange(+sel.value); };
-  row.append(k, sel, v);
+  row.append(hd, sel);
   return row;
 }
 
@@ -6522,6 +6552,7 @@ function optionRow(label, options, value, onChange) {
     sel.append(opt);
   }
   sel.onchange = () => onChange(sel.value);
+  row.select = sel;
   row.append(hd, sel);
   return row;
 }
@@ -6740,13 +6771,41 @@ function buildDevices() {
     // skipped, leaving a control that existed everywhere except on screen.
     const hasSync = (def?.params || []).includes('sync');
     const synced = hasSync && (entryParams.sync ?? 1) >= 0.5;
+    let presetSelect = null;
+    const presetNames = def ? effectPresetNames(def.id, 'inserts') : [];
     const patch = (p, tag) => {
       const next = list.map((e, j) => (j === i ? { ...e, params: { ...(e.params || {}), ...p } } : e));
       const link = liveChain(selectedLane)?.[i];
       if (link) link.set(p, deskTempo());
       editMix((m) => storeEffects(m, selectedLane, next), tag);
       list[i] = next[i];
+      if (presetSelect && def) {
+        presetSelect.value = matchEffectPreset(def.id,
+          { ...(def.defaults || {}), ...(next[i].params || {}) }) || 'Custom';
+      }
     };
+    const replaceParams = (snapshot, tag) => {
+      const resolved = resolveEffectSnapshot(def.id, snapshot);
+      if (!resolved) return;
+      const next = list.map((e, j) => (j === i ? { ...e, params: resolved } : e));
+      const link = liveChain(selectedLane)?.[i];
+      if (link) link.set(resolved, deskTempo());
+      editMix((m) => storeEffects(m, selectedLane, next), tag);
+      list[i] = next[i];
+    };
+
+    if (presetNames.length) {
+      const currentPreset = matchEffectPreset(def.id, entryParams, 'inserts') || 'Custom';
+      const row = optionRow('PRESET', ['Custom', 'Default', ...presetNames], currentPreset, (name) => {
+        if (name === 'Custom') return;
+        const resolved = resolveEffectPreset(def.id, name, 'inserts');
+        if (!resolved) return;
+        replaceParams(resolved, `fx:${selectedLane}:${i}:preset`);
+        buildDevices();
+      });
+      presetSelect = row.select;
+      grid.append(row);
+    }
 
     // Delay time is either a note division or free milliseconds, and a modulation rate
     // either a division or a free frequency; show whichever mode is active rather than
@@ -6853,10 +6912,9 @@ function buildDevices() {
  * constant would clip the tallest card in one font and waste a band of window in
  * another. The probe is the worst shape a card can take — a grid flows into a second
  * column past four rows, and the tallest row is the one stacking a full-width select
- * under its label. That is optionRow, not divisionRow: a division now puts its label,
- * select and readout on one line, so probing with it under-reserves by a row's worth
- * of height on every card and leaves fitDevices to grow the panel a step at a time,
- * which is the jumping this exists to stop.
+ * under its label. Named choices and tempo divisions use that same two-line footprint
+ * now, so the probe represents either kind of select and does not let fitDevices grow
+ * the panel a step at a time, which is the jumping this exists to stop.
  */
 function reserveDevices() {
   const probe = document.createElement('div');
@@ -11244,10 +11302,25 @@ function oskFollow(heardStep) {
  */
 let midiAccess = null;
 let midiOn = false;
+const synthMidiListeners = new Set();
+const synthMidiStateListeners = new Set();
 
 function midiInputs() {
   return midiAccess ? [...midiAccess.inputs.values()] : [];
 }
+
+const synthMidiAdapter = {
+  playback: false,
+  subscribe(listener) { synthMidiListeners.add(listener); return () => synthMidiListeners.delete(listener); },
+  onState(listener) { synthMidiStateListeners.add(listener); return () => synthMidiStateListeners.delete(listener); },
+  state: () => ({ on: midiOn, inputs: midiInputs().map((input) => input.name || 'MIDI input') }),
+  setEnabled: (on) => setMidi(on),
+};
+const emitSynthMidi = (event) => { for (const listener of synthMidiListeners) listener(event); };
+const emitSynthMidiState = () => {
+  const state = synthMidiAdapter.state();
+  for (const listener of synthMidiStateListeners) listener(state);
+};
 
 // The damper pedal, and what it is holding.
 //
@@ -11276,12 +11349,17 @@ function dropSustain() {
 function onMidiMessage(e) {
   const [status, note, vel] = e.data;
   const kind = status & 0xf0;
-  if (kind === 0xB0 && note === 64) { setSustain(vel >= 64); return; }
+  if (kind === 0xB0 && note === 64) {
+    const down = vel >= 64;
+    emitSynthMidi({ type: 'sustain', down });
+    setSustain(down); return;
+  }
   // A note-off is either an actual 0x80 or a note-on at velocity zero, which is how
   // most keyboards send one. It was discarded outright until recording existed to have
   // a use for it; now it is the only thing that knows how long a note was.
   if (kind === 0x80 || (kind === 0x90 && !vel)) {
     const src = `m:${note}`;
+    emitSynthMidi({ type: 'off', midi: note, source: src });
     if (sustainDown && previewHeld.has(src)) {
       // The KEY is up — the drawn key unlights and the recorder closes the note at the
       // length it was actually played. Only the sound is held over, which is the one
@@ -11323,6 +11401,7 @@ function onMidiMessage(e) {
     return;
   }
   const src = `m:${note}`;
+  emitSynthMidi({ type: 'on', midi: note, source: src });
   oskPlay(note, { src });
   if (!oskShown()) return;
   const k = oskKeyEl(note);
@@ -11347,6 +11426,8 @@ async function setMidi(on, { announce = true } = {}) {
     // you played until you plugged the keyboard back in and pressed it again.
     dropSustain();
     releaseOskSources('m:');
+    emitSynthMidi({ type: 'panic' });
+    emitSynthMidiState();
     $('midibtn')?.classList.toggle('on', false);
     if (announce) toast('MIDI off');
     if (oskShown()) buildOsk();
@@ -11367,10 +11448,21 @@ async function setMidi(on, { announce = true } = {}) {
   attachMidi();
   // A keyboard plugged in after the desk was opened is the ordinary case, not the
   // exception: the browser hands over the ports it has, and the rest arrive later.
-  midiAccess.onstatechange = () => { if (midiOn) { attachMidi(); if (oskShown()) refreshOsk(); } };
+  midiAccess.onstatechange = (event) => {
+    if (!midiOn) return;
+    // A removed port may never send its note-offs. Close every source at the
+    // disconnect edge even when another MIDI input remains available.
+    if (event?.port?.type === 'input' && event.port.state === 'disconnected') {
+      dropSustain();
+      releaseOskSources('m:');
+      emitSynthMidi({ type: 'panic' });
+    }
+    attachMidi(); if (oskShown()) refreshOsk(); emitSynthMidiState();
+  };
   const names = midiInputs().map((i) => i.name);
   toast(names.length ? `MIDI in: ${names.join(', ')}` : 'MIDI on — nothing plugged in yet');
   $('midibtn')?.classList.toggle('on', true);
+  emitSynthMidiState();
   if (oskShown()) buildOsk();
 }
 

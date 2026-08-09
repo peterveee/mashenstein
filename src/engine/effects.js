@@ -18,7 +18,7 @@
 // being different files breaks stems, baselines and the null test at once.
 import * as Tone from 'tone';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
-import { upperFormants, vowelAt } from './formants.js';
+import { upperFormants, vowelAt, parseStack, vowelPosition } from './formants.js';
 
 // Note divisions for tempo-synced effects, in beats — eight bars down to a 1/32,
 // with the dotted and triplet values in between. One table for delay times and for
@@ -1493,6 +1493,16 @@ function makeBitCrusher(ctx, params = {}) {
   return node;
 }
 
+const VOWEL_EXCITER_CURVE = (() => {
+  const curve = new Float32Array(4097);
+  const norm = Math.tanh(4);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.tanh(4 * x) / norm;
+  }
+  return curve;
+})();
+
 // A three-resonance vocal-tract insert.  The graph is deliberately native Web Audio:
 // it has to render in OfflineAudioContext as well as through the live Mixer, and the
 // catalogue's Tone worklet effects are not safe on the export path.
@@ -1501,6 +1511,23 @@ function makeVowelFilter(ctx, params = {}) {
   const output = ctx.createGain();
   const dry = ctx.createGain();
   const wet = ctx.createGain();
+  const vocalWetSum = ctx.createGain();
+  const articulationGain = ctx.createGain();
+  articulationGain.gain.value = 1;
+  const vocalSource = ctx.createGain();
+  const exciteInput = ctx.createGain();
+  const excitePre = ctx.createGain();
+  const exciteShaper = ctx.createWaveShaper();
+  exciteShaper.curve = VOWEL_EXCITER_CURVE;
+  exciteShaper.oversample = '2x';
+  const exciteMix = ctx.createGain();
+  const breathFilter = ctx.createBiquadFilter();
+  breathFilter.type = 'highpass';
+  breathFilter.frequency.value = 3200;
+  breathFilter.Q.value = 0.5;
+  const breathGain = ctx.createGain();
+  const breathVca = ctx.createGain();
+  breathVca.gain.value = 0;
   const body = ctx.createBiquadFilter();
   const bodyGain = ctx.createGain();
   const air = ctx.createBiquadFilter();
@@ -1533,6 +1560,12 @@ function makeVowelFilter(ctx, params = {}) {
   const twoPass = ctx.createGain();
 
   input.connect(dry); dry.connect(output);
+  input.connect(vocalSource);
+  input.connect(exciteInput);
+  exciteInput.connect(excitePre); excitePre.connect(exciteShaper);
+  exciteShaper.connect(exciteMix); exciteMix.connect(vocalSource);
+  vocalSource.connect(breathFilter); breathFilter.connect(breathGain);
+  breathGain.connect(breathVca); breathVca.connect(vocalWetSum);
   // A vowel is a resonant shape over a voiced body, not three isolated whistles.
   // Keep a low-passed copy in the wet path so high wet settings retain weight without
   // restoring the whole dry signal that the formants are meant to replace. The corner
@@ -1542,7 +1575,7 @@ function makeVowelFilter(ctx, params = {}) {
   body.type = 'lowpass';
   body.frequency.value = 560;
   body.Q.value = 0.45;
-  input.connect(body); body.connect(bodyGain); bodyGain.connect(output);
+  vocalSource.connect(body); body.connect(bodyGain); bodyGain.connect(vocalWetSum);
   // Above F3 a vocal tract mostly passes what the source gives it, shaped by the
   // singer's own F4/F5 — which barely move as the vowel does. Three bandpasses can pass
   // nothing at all, so the old graph fell off a cliff at 3 kHz and every vowel arrived
@@ -1556,11 +1589,11 @@ function makeVowelFilter(ctx, params = {}) {
   air.type = 'highpass';
   air.frequency.value = 3200;
   air.Q.value = 0.5;
-  input.connect(air);
+  vocalSource.connect(air);
   air.connect(presence[0]); presence[0].connect(presence[1]);
-  presence[1].connect(airGain); airGain.connect(output);
+  presence[1].connect(airGain); airGain.connect(vocalWetSum);
   filters.forEach((filter, i) => {
-    input.connect(filter);
+    vocalSource.connect(filter);
     filter.connect(formantGains[i]);
     formantGains[i].connect(formantPans[i]);
     formantPans[i].connect(bank);
@@ -1571,14 +1604,15 @@ function makeVowelFilter(ctx, params = {}) {
     filter.connect(stage2Gains[i]);
     stage2Gains[i].connect(cascade);
   });
-  bank.connect(onePass); onePass.connect(wet);
-  cascade.connect(twoPass); twoPass.connect(wet);
-  wet.connect(output);
+  bank.connect(onePass); onePass.connect(vocalWetSum);
+  cascade.connect(twoPass); twoPass.connect(vocalWetSum);
+  vocalWetSum.connect(articulationGain); articulationGain.connect(wet); wet.connect(output);
 
   const state = {
     voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
-    frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9,
-    body: 0.5, air: 0.25, tilt: 0.45, intensity: 0, wet: 0.9, ...params,
+    frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
+    reso: 2, spread: 0.9, body: 0.5, air: 0.25, tilt: 0.45, intensity: 0,
+    excite: 0, breath: 0, wet: 0.9, ...params,
   };
   let smooth = false;
   let lastStep = null;
@@ -1589,6 +1623,7 @@ function makeVowelFilter(ctx, params = {}) {
   let currentOrdinal = 0;
   let freeOrdinal = 0;
   let freeNextAt = null;
+  let motionSeed = 0;
 
   const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const clamp01 = (value) => Math.max(0, Math.min(1, finite(value, 0)));
@@ -1597,11 +1632,14 @@ function makeVowelFilter(ctx, params = {}) {
   const isSynced = () => finite(state.rateSync, 1) >= 0.5;
   const motionSignature = (bpm, swing, sixteenth) => [
     state.voice, state.stack, state.rateSync, state.rateDivision, state.frequency,
-    state.depth, state.glide, state.reso, state.tilt, bpm, swing, sixteenth,
+    state.waveform, state.depth, state.glide, state.articulation, state.breath,
+    state.reso, state.tilt, bpm, swing, sixteenth,
   ].join('|');
 
-  const targetValues = (ordinal) => {
-    const target = vowelAt(state.voice, state.stack, ordinal, clamp01(state.depth));
+  const shapeMode = () => ['step', 'sine', 'triangle', 'saw up', 'saw down', 'square', 'random']
+    .includes(state.waveform) ? state.waveform : 'step';
+  const targetValues = (position) => {
+    const target = vowelAt(state.voice, state.stack, position, clamp01(state.depth));
     // The table's relative amplitudes are a *singer's*, and they are steep: alto /a/ puts
     // F3 20 dB down and soprano /a/ 32 dB down. Applied whole to a synth that already has
     // its own spectrum, that buries the two formants the ear uses to tell one vowel — and
@@ -1619,6 +1657,11 @@ function makeVowelFilter(ctx, params = {}) {
     const q = target.f.map((frequency, i) => Math.max(0.1,
       Math.min(150, (frequency / Math.max(1, target.bw[i])) * resonance)));
     return { f: target.f, q, gain: amplitudes, makeup, body: target.f[0] };
+  };
+
+  const targetPosition = (ordinal) => {
+    const n = parseStack(state.stack).length;
+    return vowelPosition(shapeMode(), n, ordinal, motionSeed);
   };
 
   const write = (param, value, when, seconds, direct = false) => {
@@ -1641,17 +1684,41 @@ function makeVowelFilter(ctx, params = {}) {
     }
   };
 
+  const writeLinear = (param, value, when, seconds, direct = false) => {
+    if (!param || !Number.isFinite(value)) return;
+    if (direct) {
+      param.value = value;
+      return;
+    }
+    const at = Math.max(ctx.currentTime, when);
+    const duration = Math.max(0.004, seconds || 0.004);
+    if (typeof param.linearRampToValueAtTime === 'function') {
+      if (at <= ctx.currentTime + 1e-7 && typeof param.setValueAtTime === 'function') {
+        param.setValueAtTime(Number.isFinite(param.value) ? param.value : value, at);
+      }
+      param.linearRampToValueAtTime(value, at + duration);
+    } else {
+      write(param, value, at, duration, false);
+    }
+  };
+
   const applyWet = (direct = false) => {
     const w = clamp01(state.wet);
     write(dry.gain, Math.cos((w * Math.PI) / 2), ctx.currentTime, 0.03, direct);
     write(wet.gain, Math.sin((w * Math.PI) / 2), ctx.currentTime, 0.03, direct);
-    write(bodyGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.body),
-      ctx.currentTime, 0.03, direct);
-    write(airGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.air),
-      ctx.currentTime, 0.03, direct);
     const i = clamp01(state.intensity);
-    write(onePass.gain, Math.cos((i * Math.PI) / 2), ctx.currentTime, 0.03, direct);
-    write(twoPass.gain, Math.sin((i * Math.PI) / 2), ctx.currentTime, 0.03, direct);
+    const bodyKeep = 1 - (0.65 * i);
+    const airKeep = 1 - (0.50 * i);
+    write(bodyGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.body) * bodyKeep,
+      ctx.currentTime, 0.03, direct);
+    write(airGain.gain, Math.sin((w * Math.PI) / 2) * clamp01(state.air) * airKeep,
+      ctx.currentTime, 0.03, direct);
+    write(onePass.gain, 1 - i, ctx.currentTime, 0.03, direct);
+    write(twoPass.gain, i, ctx.currentTime, 0.03, direct);
+    write(excitePre.gain, 1 + (12 * clamp01(state.excite)), ctx.currentTime, 0.03, direct);
+    write(exciteMix.gain, 0.42 * clamp01(state.excite), ctx.currentTime, 0.03, direct);
+    write(breathGain.gain, 0.20 * clamp01(state.breath), ctx.currentTime, 0.03, direct);
+    if (direct) articulationGain.gain.value = 1;
     // Three extra biquads run whether or not anyone is listening to them, and measured
     // that doubled the insert's cost for a control that is off by default. Cutting the
     // feed lets the second bank fall silent and be skipped until it is actually wanted.
@@ -1684,22 +1751,40 @@ function makeVowelFilter(ctx, params = {}) {
   };
 
   const applyTarget = (ordinal, when, period, direct = false) => {
-    const values = targetValues(ordinal);
+    const values = targetValues(targetPosition(ordinal));
+    const continuous = ['sine', 'triangle', 'saw up', 'saw down'].includes(shapeMode());
     const transition = Math.max(0.004,
-      clamp01(state.glide) * 0.45 * Math.max(0.001, period));
+      (continuous ? Math.max(0.35, clamp01(state.glide)) : clamp01(state.glide))
+        * 0.45 * Math.max(0.001, period));
+    const set = continuous ? writeLinear : write;
     filters.forEach((filter, i) => {
-      write(filter.frequency, values.f[i], when, transition, direct);
-      write(filter.Q, values.q[i], when, transition, direct);
-      write(formantGains[i].gain, values.gain[i], when, transition, direct);
+      set(filter.frequency, values.f[i], when, continuous ? period : transition, direct);
+      set(filter.Q, values.q[i], when, continuous ? period : transition, direct);
+      set(formantGains[i].gain, values.gain[i], when, continuous ? period : transition, direct);
       // Stage two is the same filter, so it takes the same targets.
-      write(stage2[i].frequency, values.f[i], when, transition, direct);
-      write(stage2[i].Q, values.q[i], when, transition, direct);
-      write(stage2Gains[i].gain, values.gain[i], when, transition, direct);
+      set(stage2[i].frequency, values.f[i], when, continuous ? period : transition, direct);
+      set(stage2[i].Q, values.q[i], when, continuous ? period : transition, direct);
+      set(stage2Gains[i].gain, values.gain[i], when, continuous ? period : transition, direct);
     });
-    write(bank.gain, values.makeup, when, transition, direct);
-    write(cascade.gain, values.makeup, when, transition, direct);
-    write(body.frequency, values.body, when, transition, direct);
+    set(bank.gain, values.makeup, when, continuous ? period : transition, direct);
+    set(cascade.gain, values.makeup, when, continuous ? period : transition, direct);
+    set(body.frequency, values.body, when, continuous ? period : transition, direct);
     currentOrdinal = ordinal;
+  };
+
+  const articulateAt = (when, period) => {
+    const amount = clamp01(state.articulation);
+    const breath = clamp01(state.breath);
+    if (amount <= 0 && breath <= 0) return;
+    const floor = 1 - (0.88 * amount);
+    const close = Math.min(Math.max(0.001, period * 0.04), 0.004);
+    const open = Math.min(Math.max(0.004, period * (0.04 + amount * 0.12)), period * 0.22);
+    write(articulationGain.gain, floor, when, close, false);
+    write(articulationGain.gain, 1, when + close, open, false);
+    if (breath > 0) {
+      write(breathVca.gain, 0.85 * breath, when, close, false);
+      write(breathVca.gain, 0, when + close, Math.max(0.008, open * 1.5), false);
+    }
   };
 
   const cancelAt = (when) => {
@@ -1709,6 +1794,7 @@ function makeVowelFilter(ctx, params = {}) {
       ...formantGains.map((gain) => gain.gain), bank.gain, body.frequency,
       ...stage2.flatMap((filter) => [filter.frequency, filter.Q]),
       ...stage2Gains.map((gain) => gain.gain), cascade.gain,
+      articulationGain.gain, breathVca.gain,
     ]) {
       try {
         if (typeof param.cancelAndHoldAtTime === 'function') param.cancelAndHoldAtTime(at);
@@ -1729,6 +1815,12 @@ function makeVowelFilter(ctx, params = {}) {
     return (((nearest % 2) + 2) % 2) === 1 ? shift : 0;
   };
 
+  const seedFrom = (value) => {
+    let hash = 2166136261;
+    for (const ch of String(value)) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+    return hash | 0;
+  };
+
   const node = { input, output, _custom: true };
   node.applyState = (bpm = 120) => {
     const beatSeconds = 60 / Math.max(1, finite(bpm, 120));
@@ -1743,13 +1835,17 @@ function makeVowelFilter(ctx, params = {}) {
     const before = JSON.stringify({
       voice: state.voice, stack: state.stack, rateSync: state.rateSync,
       rateDivision: state.rateDivision, frequency: state.frequency,
-      depth: state.depth, glide: state.glide, reso: state.reso, tilt: state.tilt,
+      waveform: state.waveform, depth: state.depth, glide: state.glide,
+      articulation: state.articulation, breath: state.breath,
+      reso: state.reso, tilt: state.tilt,
     });
     Object.assign(state, patch);
     const after = JSON.stringify({
       voice: state.voice, stack: state.stack, rateSync: state.rateSync,
       rateDivision: state.rateDivision, frequency: state.frequency,
-      depth: state.depth, glide: state.glide, reso: state.reso, tilt: state.tilt,
+      waveform: state.waveform, depth: state.depth, glide: state.glide,
+      articulation: state.articulation, breath: state.breath,
+      reso: state.reso, tilt: state.tilt,
     });
     applyWet(false);
     applySpread(false);
@@ -1778,6 +1874,7 @@ function makeVowelFilter(ctx, params = {}) {
       cancelAt(when);
       nextSyncedOrdinal = null;
       freeNextAt = null;
+      motionSeed = seedFrom(signature);
       lastSignature = signature;
     }
 
@@ -1800,6 +1897,7 @@ function makeVowelFilter(ctx, params = {}) {
         const boundary = boundaryAt(nextSyncedOrdinal);
         if (boundary >= when - 1e-7) {
           applyTarget(nextSyncedOrdinal, boundary, period * beatSeconds);
+          articulateAt(boundary, period * beatSeconds);
         }
         nextSyncedOrdinal++;
       }
@@ -1819,6 +1917,7 @@ function makeVowelFilter(ctx, params = {}) {
       while (freeNextAt <= end) {
         freeOrdinal++;
         applyTarget(freeOrdinal, freeNextAt, period);
+        articulateAt(freeNextAt, period);
         freeNextAt += period;
       }
     }
@@ -1832,7 +1931,9 @@ function makeVowelFilter(ctx, params = {}) {
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
   node.dispose = () => {
     node.disconnect();
-    for (const n of [input, output, dry, wet, body, bodyGain, air, airGain, ...presence,
+    for (const n of [input, output, dry, wet, vocalWetSum, articulationGain, vocalSource,
+      exciteInput, excitePre, exciteShaper, exciteMix, breathFilter, breathGain, breathVca,
+      body, bodyGain, air, airGain, ...presence,
       bank, ...stage2, ...stage2Gains, cascade, onePass, twoPass,
       ...filters, ...formantGains, ...formantPans]) {
       try { n.disconnect(); } catch { /* fine */ }
@@ -2082,15 +2183,17 @@ export const EFFECTS = [
   { id: 'peq', name: 'Parametric EQ', short: 'Param EQ', cost: 0.15, custom: makeParametricEq,
     params: ['f1', 'g1', 'f2', 'g2', 'q2', 'f3', 'g3', 'q3', 'f4', 'g4'],
     defaults: { f1: 120, g1: 0, f2: 500, g2: 0, q2: 1, f3: 2000, g3: 0, q3: 1, f4: 6000, g4: 0 } },
-  // Measured with the native three-band graph and its scheduler hook in the same
-  // OfflineAudioContext bench as the other custom effects.
-  { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.50, custom: makeVowelFilter,
+  // Measured with the native formant graph, excitation front-end and scheduler hook in
+  // tools/measure-new-effects.js: 0.80% default, 0.94% dramatic mode on this bench.
+  { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.80, custom: makeVowelFilter,
     params: ['voice', 'stack', 'rateSync', 'rateDivision', 'frequency',
-      'depth', 'glide', 'reso', 'spread', 'tilt', 'intensity', 'body', 'air', 'wet'],
+      'waveform', 'depth', 'glide', 'articulation', 'reso', 'spread', 'tilt',
+      'intensity', 'excite', 'breath', 'body', 'air', 'wet'],
     defaults: {
       voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
-      frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9,
-      body: 0.5, air: 0.25, tilt: 0.45, intensity: 0, wet: 0.9,
+      frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
+      reso: 2, spread: 0.9, body: 0.5, air: 0.25, tilt: 0.45, intensity: 0,
+      excite: 0, breath: 0, wet: 0.9,
     },
     ranges: {
       voice: { options: ['robotic', 'soprano', 'alto', 'countertenor', 'tenor', 'bass'] },
@@ -2098,9 +2201,13 @@ export const EFFECTS = [
         'a e', 'a o', 'o u', 'i a', 'a e i', 'o a e', 'u o a',
         'a e i o u', 'u o a e i'] },
       frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz', log: true },
+      waveform: { options: ['step', 'sine', 'triangle', 'saw up', 'saw down', 'square', 'random'] },
       glide: { min: 0, max: 1, step: 0.01 },
+      articulation: { min: 0, max: 1, step: 0.01 },
       reso: { min: 0.3, max: 3, step: 0.05 },
       spread: { min: 0, max: 1, step: 0.01 },
+      excite: { min: 0, max: 1, step: 0.01 },
+      breath: { min: 0, max: 1, step: 0.01 },
       body: { min: 0, max: 1, step: 0.01 },
       air: { min: 0, max: 1, step: 0.01 },
       tilt: { min: 0, max: 1, step: 0.01 },
@@ -2108,8 +2215,10 @@ export const EFFECTS = [
     },
     labels: {
       voice: 'VOICE', stack: 'VOWEL STACK', rateDivision: 'RATE',
-      frequency: 'RATE', depth: 'DEPTH', glide: 'GLIDE', reso: 'RESO', spread: 'SPREAD',
+      frequency: 'RATE', waveform: 'WAVE SHAPE', depth: 'DEPTH', glide: 'GLIDE',
+      articulation: 'ARTICULATION', reso: 'RESO', spread: 'SPREAD',
       body: 'BODY', air: 'AIR', tilt: 'TILT', intensity: 'INTENSITY',
+      excite: 'EXCITE', breath: 'BREATH',
     } },
   { id: 'chandelay', name: 'Advanced Delay', short: 'Adv. Delay', cost: 0.15, custom: makeChannelDelay, timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'tone', 'pan', 'mix'],
@@ -2319,6 +2428,78 @@ export function isDefaultMasterChain(list = []) {
 }
 
 export const EFFECT_BY_ID = Object.fromEntries(EFFECTS.map((e) => [e.id, e]));
+
+const presetNumber = (value, fallback, range) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return range ? Math.max(range.min, Math.min(range.max, n)) : n;
+};
+
+/** Resolve a complete, validated effect snapshot from source-backed named presets. */
+export function resolveEffectPreset(id, name = 'Default', scope = 'inserts') {
+  const def = EFFECT_BY_ID[id];
+  if (!def) return null;
+  const raw = name === 'Default'
+    ? def.defaults
+    : EFFECT_PRESETS?.[scope]?.[id]?.presets?.[name];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of def.params || []) {
+    const range = paramRange(key, def);
+    const fallback = def.defaults?.[key];
+    const value = Object.prototype.hasOwnProperty.call(raw, key) ? raw[key] : fallback;
+    if (range.options) {
+      out[key] = range.options.includes(value) ? value : fallback;
+    } else if (typeof fallback === 'number' || typeof value === 'number') {
+      out[key] = presetNumber(value, fallback, range);
+    } else {
+      out[key] = value == null ? fallback : value;
+    }
+  }
+  return out;
+}
+
+export function effectPresetNames(id, scope = 'inserts') {
+  const presets = EFFECT_PRESETS?.[scope]?.[id]?.presets;
+  return presets && typeof presets === 'object' && !Array.isArray(presets)
+    ? Object.keys(presets) : [];
+}
+
+/** Return the named preset matching a complete current snapshot, or null for Custom. */
+export function matchEffectPreset(id, params = {}, scope = 'inserts') {
+  const def = EFFECT_BY_ID[id];
+  if (!def) return null;
+  const same = (a, b) => (def.params || []).every((key) => {
+    if (typeof a?.[key] === 'number' || typeof b?.[key] === 'number') {
+      return Math.abs(Number(a?.[key]) - Number(b?.[key]))
+        <= Math.max(1e-7, Number(paramRange(key, def).step || 0) * 0.51);
+    }
+    return a?.[key] === b?.[key];
+  });
+  const current = resolveEffectSnapshot(id, params);
+  if (same(current, resolveEffectPreset(id, 'Default', scope))) return 'Default';
+  for (const name of effectPresetNames(id, scope)) {
+    if (same(current, resolveEffectPreset(id, name, scope))) return name;
+  }
+  return null;
+}
+
+/** Normalize an arbitrary current parameter object without treating it as a named preset. */
+export function resolveEffectSnapshot(id, params = {}) {
+  const def = EFFECT_BY_ID[id];
+  if (!def) return null;
+  const raw = { ...def.defaults, ...(params || {}) };
+  const out = {};
+  for (const key of def.params || []) {
+    const range = paramRange(key, def);
+    const fallback = def.defaults?.[key];
+    const value = raw[key];
+    if (range.options) out[key] = range.options.includes(value) ? value : fallback;
+    else if (typeof fallback === 'number' || typeof value === 'number') out[key] = presetNumber(value, fallback, range);
+    else out[key] = value == null ? fallback : value;
+  }
+  return out;
+}
 
 /**
  * The range a parameter is edited over. An effect can override one: `frequency` is

@@ -96,6 +96,29 @@ async function buildPage() {
     .replace('/*__BUNDLE__*/', () => js);
 }
 
+// The standalone MRDR-3 playground shares the editor and keyboard bundle with the
+// desk, but has its own full-window shell. Keep it request-built in development so
+// edits to the editor, catalogue, or audio path are picked up without restarting the
+// server (the production builder emits the same shell into dist/MRDR3/).
+async function buildMrdr3Page() {
+  const out = await esbuild.build({
+    entryPoints: [join(ROOT, 'tools/mrdr3-entry.js')],
+    bundle: true, format: 'iife', target: ['es2020'],
+    minify: false, write: false, logLevel: 'warning', outdir: join(ROOT, 'dist'),
+  });
+  const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+  const mixerShell = readFileSync(join(ROOT, 'tools/mixer-shell.html'), 'utf8');
+  const styleStart = mixerShell.indexOf('<style>') + '<style>'.length;
+  const styleEnd = mixerShell.indexOf('</style>', styleStart);
+  if (styleStart < '<style>'.length || styleEnd < styleStart) {
+    throw new Error('mixer shell has no injectable style block');
+  }
+  const style = mixerShell.slice(styleStart, styleEnd);
+  const shell = readFileSync(join(ROOT, 'tools/mrdr3-shell.html'), 'utf8');
+  return shell.replace('/*__MIXER_STYLE__*/', () => style)
+    .replace('/*__BUNDLE__*/', () => js);
+}
+
 // `renderMixFile` used to live here: it rebuilt src/data/mix.js from all thirty-four
 // songs at once. It is deleted rather than merely unused, because while it existed a
 // desk or a server started before the songs moved could still call it — and it kept
@@ -1329,6 +1352,13 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({
         mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
       }));
+      return;
+    }
+
+    if (req.method === 'GET' && (req.url === '/MRDR3/' || req.url.startsWith('/MRDR3/?'))) {
+      const html = await buildMrdr3Page();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(html);
       return;
     }
 

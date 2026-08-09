@@ -17,7 +17,7 @@
 // nothing, which is what lets tools/lib/voices-source.js write a candidate copy of it
 // to a temp directory and import it back to prove the edit parses (tests/voice-source.js).
 // This module is the one that knows both halves — the catalogue and the song registry.
-import { VOICE_LANES, defaultVoiceOf, voicesFor, voicesByCategory } from './voices.js';
+import { VOICES, VOICE_LANES, defaultVoiceOf, voicesFor, voicesByCategory } from './voices.js';
 import { listTracks, resolveTrack } from './tracks.js';
 
 /**
@@ -95,4 +95,24 @@ export function offeredByCategory(laneKey, { keep = null } = {}) {
   return voicesByCategory(laneKey)
     .map(([category, list]) => [category, list.filter(ok)])
     .filter(([, list]) => list.length);
+}
+
+/**
+ * Presets for a full editor, filtered by the engine that will actually play them.
+ *
+ * A full-window editor has no reason to know about lane names when it is being used as
+ * an instrument on its own, but the Song Mixer still needs the lane-aware restrictions
+ * from `voicesFor`. Keeping that choice here means both surfaces apply the same rules:
+ * no engine bundles, starters, drafts, private song copies, or parked quotations.
+ */
+export function offeredByEngine(engine, { laneKey = null, keep = null } = {}) {
+  const list = laneKey
+    ? offeredVoices(laneKey, { keep })
+    : Object.values(VOICES).filter((v) =>
+      !v.songLocal && !v.nameOnly && !v.starter && !v.draft && v.kind !== 'engine'
+      && (!v.quoted || v.id === keep || quotesInPlay().has(v.id)));
+  return list.filter((v) => {
+    const key = v.kind === 'drum' ? 'drum' : v.synth;
+    return key === engine;
+  });
 }

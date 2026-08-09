@@ -210,6 +210,12 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
   p.setRate('16');
   p.setPattern('repeat');
   assert(p.rate.id === '16', 'a figure that is not a progression leaves the rate exactly where it was');
+  const kept = createPatternPlayer({
+    Audio: { ctx: null }, bpm: () => 120, root: () => 110, adjustSlowRate: false,
+  });
+  kept.setRate('16');
+  kept.setPattern('I-IV-V-IV');
+  assert(kept.rate.id === '16', 'a standalone-style player can keep the selected rate for a progression');
   p.reset();
   assert(p.pattern.id === 'repeat' && p.rate.id === '8' && !p.running(),
     'a song change resets the transient audition pattern and stops it');
@@ -281,6 +287,34 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
   assert(previewCuts === 1, 'switching an active audition cuts the old preset once');
   player.setVoice('kickDeep');
   assert(previewCuts === 1, 'pointing at the already-playing preset does not cut it again');
+  player.stop();
+
+  // A native control can cut the current audition without stopping the scheduler. This
+  // is the boundary used by the standalone BASE KEY, FIGURE, and RATE selectors.
+  times.length = 0;
+  benchReset();
+  previewCuts = 0;
+  now = 340;
+  player.setPattern('repeat');
+  player.setRate('16');
+  player.start('roundMono');
+  const wasRunning = player.running();
+  player.silence();
+  assert(wasRunning && player.running(),
+    'silencing a running figure keeps its scheduler playing');
+  assert(previewCuts === 1, 'silencing a running figure cuts its queued audition notes');
+  player.stop();
+
+  // The scheduler still supports an explicit prime for other native-control callers.
+  times.length = 0;
+  benchReset();
+  now = 340;
+  player.setPattern('repeat');
+  player.setRate('16');
+  player.start('roundMono');
+  player.prime(0.8);
+  assert(times.some((t) => t >= 340.6),
+    'a running pattern can prime audio ahead before a blocking native control opens');
   player.stop();
 
   // The catch-up: a tab that was away, so every overdue step wants the same "now".

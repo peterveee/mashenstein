@@ -85,6 +85,19 @@ async function main() {
 
     const r = {};
 
+    // Swing is a property of the song/arrangement, not of the channel treatment.
+    // Prove both entry points: a regular bank load takes its authored swing, and a
+    // same-bank treatment handover reapplies the level arrangement instead of leaving
+    // the cabinet's groove in force.
+    const SWING_BANK = { ...BANK, swing: 66 };
+    MusicDirector.play(SWING_BANK, 'select', 'always');
+    const regularSwing = Audio.swing;
+    const ALTERNATE_BANK = { ...BANK };
+    MusicDirector.play(ALTERNATE_BANK, 'select', 'always', { arrangementOverride: { swing: 66 } });
+    const alternateSwing = Audio.swing;
+    MusicDirector.enterStage(ALTERNATE_BANK, { arrangementOverride: { swing: 52 } });
+    r.swing = { regular: regularSwing, alternate: alternateSwing, handoff: Audio.swing };
+
     // ---- the transport is not touched -------------------------------------------
     // With the treatment's loop disarmed on both runs. Left armed, the run carrying a
     // change diverges for a real reason — the change releases the loop, so it stops
@@ -336,6 +349,8 @@ async function main() {
 
   assert(out.transportIdentical && out.firedOnce === 1,
     'a treatment change moves no step and no nextTime — 40 steps run identically with and without one');
+  assert(out.swing.regular === 66 && out.swing.alternate === 66 && out.swing.handoff === 52,
+    'regular playback, an unregistered alternate bank, and its gameplay handoff all load arrangement swing');
   assert(out.gap.after.delay === out.gap.before.delay && out.gap.after.trim === out.gap.before.trim,
     'and opens no gap: neither the start delay nor the song trim moves across it, unlike a bank change');
 

@@ -106,7 +106,7 @@ const MEASURE_TAIL = 11.5;                                 // 1s note + 10s rele
  * would leave the desk's Tone pointed at a dead offline context, and every note after
  * it silent.
  */
-async function measureRaw(voiceId, noiseBuf, sampleRate = 44100) {
+export async function measureRaw(voiceId, noiseBuf, sampleRate = 44100) {
   const ctx = new OfflineAudioContext(1, Math.ceil(sampleRate * MEASURE_TAIL), sampleRate);
   const live = Tone.getContext();
   let rendering;
@@ -203,16 +203,18 @@ const liftMrdrToneCeiling = (x, voice) => {
   liftToneCeiling(x, voice);
 };
 
-/** Keep an Advanced Global Filter move above the final driven low-pass ceiling. */
+/**
+ * Keep an Advanced Global Filter move above the final driven low-pass ceiling.
+ *
+ * The Drive/Tone filter is an independent section.  Lowering Global Filter must
+ * therefore never create or lower Tone: otherwise switching Global Filter off
+ * leaves a hidden low-pass at the muted cutoff and the sound cannot recover.
+ * Existing Tone may be lifted for an upward Global Filter move, but is otherwise
+ * left exactly as authored.
+ */
 const syncMrdrMasterTone = (x, voice) => {
   if (voice?.synth !== 'MRDR-3' || !((voice.drive ?? 0) > 0)) return;
-  if (x >= CUTOFF_MAX) {
-    delete voice.tone;
-    return;
-  }
-  if (voice.tone?.type && voice.tone.type !== 'lowpass') return;
-  voice.tone ||= { type: 'lowpass', Q: 0.7 };
-  voice.tone.freq = Math.min(CUTOFF_MAX, Math.max(20, x));
+  liftToneCeiling(x, voice);
 };
 
 const liftDrumTone = (x, voice) => {
@@ -972,7 +974,7 @@ const layerGroups = () => {
       title: `Osc ${i} · Filter Env`,
       when: (v) => (i === 1 || sectionOn(v, p)) && sectionOn(v, `${p}.filter`),
       rows: [
-        envTime(`$${p}.filter.env.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01),
+        envTime(`$${p}.filter.env.attack`, 'ATTACK', 0, 0.001, secs, 0.01),
         envTime(`$${p}.filter.env.decay`, 'DECAY', 0, 0.01, secs, 1),
         // Live at every DECAY, as on the amp envelope: the cutoff settles at
         // ENV AMOUNT × SUSTAIN rather than returning all the way to the cutoff.
@@ -1003,7 +1005,7 @@ const layerGroups = () => {
         pick(`$${p}.vca`, 'AMP', ['env', 'through'], 'env', null,
           { tip: 'ENV gives this layer its own amp envelope. THROUGH takes it out and lets '
               + 'the Global Amp shape the whole stack — the classic single-VCA synth' }),
-        envTime(`$${p}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01,
+        envTime(`$${p}.attack`, 'ATTACK', 0, 0.001, secs, 0.01,
           's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
         envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1,
           's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
@@ -1057,7 +1059,7 @@ const layerGroups = () => {
     title: 'Global · Filter Env',
     when: (v) => sectionOn(v, 'global.filter'),
     rows: [
-      envTime('$global.filter.env.attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
+      envTime('$global.filter.env.attack', 'ATTACK', 0, 0.001, secs, 0.01),
       envTime('$global.filter.env.decay', 'DECAY', 0, 0.01, secs, 1),
       sustainPct('$global.filter.env.sustain', 0),
       envTime('$global.filter.env.release', 'RELEASE', 0, 0.01, secs, 0.015),
@@ -1072,7 +1074,7 @@ const layerGroups = () => {
     onTip: 'Take the shared envelope out',
     offTip: 'One amp envelope over the whole stack — the note, not the layers',
     rows: [
-      envTime('$global.vca.attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
+      envTime('$global.vca.attack', 'ATTACK', 0, 0.001, secs, 0.01),
       envTime('$global.vca.decay', 'DECAY', 0, 0.01, secs, 1),
       sustainPct('$global.vca.sustain', 1),
       envTime('$global.vca.release', 'RELEASE', 0, 0.01, secs, 0.015),
@@ -1639,11 +1641,10 @@ const SECTION_DEFAULTS = {
   // The VCA seeds NEUTRAL rather than from `adsr`'s own fallbacks, which is the one place
   // that rule would do harm: those fallbacks are `sustain: 0` with `decay: 0`, so a stack
   // whose VCA was switched on would fall silent the instant it was struck and read as a
-  // broken switch. `sustain: 1` holds the note at full through its length and lets go over
-  // 15ms — an envelope that changes nothing until you move it, which is what switching a
-  // section ON should sound like. Same principle as osc2/3 seeding a useful second layer
-  // rather than silence.
-  'global.vca': { attack: 0.01, decay: 0, sustain: 1, release: 0.015 },
+  // broken switch. A newly enabled shared amp starts with instant attack, no decay or
+  // release, and full sustain. The engine can still be given a real envelope immediately
+  // after that, but merely enabling the card must not colour the sound.
+  'global.vca': { attack: 0, decay: 0, sustain: 1, release: 0 },
 };
 
 // ---- optional sections -------------------------------------------------------
@@ -3005,6 +3006,11 @@ export function createVoiceEditor({
   // ringing behind it would be a preset that plays wrong with no visible reason why.
   // Defaulted to a no-op so a desk built without one still opens.
   setLayerSolo = () => {},
+  // Optional-section toggles and filter-envelope zero crossings change the native MRDR
+  // graph/trajectory rather than a live Tone parameter. Hosts use this seam to clear
+  // already-queued audition notes so the next hit is an unmistakable read of the
+  // bypassed filter/VCA/envelope, without stopping the song or standalone scheduler.
+  onSectionChange = () => {},
   onBlank = () => {},
   ask = null,
   isDevUser = () => false,
@@ -3013,6 +3019,11 @@ export function createVoiceEditor({
   // that leave the page, and without them the footer is Revert. Everything else here —
   // every pot, every pill, every bypass — is local and works exactly the same.
   canFile = () => true,
+  // Live level compensation is useful when a desk has no safety limiter, but it is
+  // distracting in a protected audition path: every edit can otherwise rewrite the
+  // gain used by the next note. Hosts may supply a function so the policy follows the
+  // current master-limiter state rather than being copied into the editor.
+  liveCompensation = true,
   // Where an edit goes when the preset belongs to a SONG rather than to the library.
   // A library preset is edited in the catalogue and written to voices.js by the panel's
   // own Save; a song's copy lives in that song's mix, so every touch has to reach the
@@ -3035,12 +3046,26 @@ export function createVoiceEditor({
   // The desk keeps the tally, because the panel forgets everything when it closes and
   // the loss happens later — on the reload after it. See dirtyLibraryVoices.
   onDirty = () => {},
+  // The full-window header can move to another preset without importing the catalogue.
+  // These callbacks are deliberately supplied by the host: the Song Mixer needs lane
+  // rebinding, while the standalone page needs a session-only copy.
+  listPresets = () => [],
+  selectPreset = null,
+  sharePreset = null,
+  auditionNote = () => {},
+  releaseAudition = () => {},
+  panicAudition = () => {},
+  midiState = () => ({ on: false, inputs: [] }),
+  toggleMidi = async () => false,
+  midiAdapter = null,
 }) {
   // What is being edited: the live catalogue entry, plus what it looked like when the
   // panel opened. Edits go straight into VOICES[id] — that object IS what the engine
   // reads at play time, which is the whole reason a change is audible before it is
   // saved — so the baseline is the only way back.
   let state = null;
+  const liveCompensationOn = () => typeof liveCompensation === 'function'
+    ? !!liveCompensation() : !!liveCompensation;
 
   // Which layers are soloed on the panel right now. Held here rather than on the preset
   // for the reason every solo everywhere is held off to one side: it is a thing you are
@@ -3122,6 +3147,31 @@ export function createVoiceEditor({
     && state.voice.level === state.levelBaseline
     && state.voice.peak === state.peakBaseline;
 
+  /** Put the live sound back exactly where this editor opened it. */
+  const discardChanges = () => {
+    if (!state?.voice || matchesBaseline()) return false;
+    replaceVoiceContents(state.voice, state.baseline);
+    state.voice.level = state.levelBaseline;
+    state.voice.peak = state.peakBaseline;
+    state.dirty = false;
+    state.measured = !state.isNew;
+    state.estimated = false;
+    state.silent = false;
+    undoHistory.reset();
+    historyChanged();
+    estimateSeq++;
+    clearTimeout(estimateTimer);
+    if (state.voice.songLocal) VOICES[state.id] = state.voice;
+    refresh(state.id);
+    onEdit(state.id, asSongPreset(state.voice), { undo: false });
+    onDirty(state.id, false);
+    panicAudition();
+    onChanged();
+    build({ keepScroll: false });
+    full?.onVoiceChanged();
+    return true;
+  };
+
   /**
    * An edit landed: make it audible, and start working out what it did to the level.
    *
@@ -3184,6 +3234,7 @@ export function createVoiceEditor({
   let estimateDeferred = false;
   const scheduleEstimate = () => {
     clearTimeout(estimateTimer);
+    if (!liveCompensationOn()) { estimateDeferred = false; return; }
     // `endGesture` schedules it on the way out — but only if an edit actually landed,
     // so a pot that was grabbed and let go without moving costs no render.
     if (gesturing) { estimateDeferred = true; return; }
@@ -3225,7 +3276,7 @@ export function createVoiceEditor({
    * It is an estimate and it is labelled as one. Saving measures the real thing.
    */
   async function runEstimate() {
-    if (!state || state.rawBaseline == null) return;
+    if (!liveCompensationOn() || !state || state.rawBaseline == null) return;
     const seq = ++estimateSeq;
     const { id } = state;
     let raw = null;
@@ -3354,6 +3405,7 @@ export function createVoiceEditor({
       scale, origin: row.origin,
       onStart: beginGesture, onEnd: endGesture,
       onInput: (x) => {
+        const previous = getAt(state.voice, row.path);
         const next = row.write ? row.write(x, state.voice) : x;
         if (next !== SKIP_WRITE) setAt(state.voice, row.path, next);
         // `raw` is what the path held BEFORE this move: an `after` that has to keep a
@@ -3361,6 +3413,16 @@ export function createVoiceEditor({
         // carries the new one.
         row.after?.(x, state.voice, raw);
         touched();
+        // Filter ENV AMOUNT is the envelope's OFF state. Only crossing zero is a
+        // topology/audition boundary; ordinary bipolar amount drags remain live and do
+        // not repeatedly cut the note under the pointer. This applies equally to every
+        // layer filter and the shared global filter because they share this path shape.
+        const current = getAt(state.voice, row.path);
+        if (row.path?.endsWith('.filter.env.octaves')
+          && (Math.abs(Number(previous) || 0) > 1e-9)
+            !== (Math.abs(Number(current) || 0) > 1e-9)) {
+          onSectionChange(row.path);
+        }
         syncRows();
         onChange?.();
       },
@@ -3434,6 +3496,10 @@ export function createVoiceEditor({
         // A pick can be what decides whether other rows apply — fat voicing turns the
         // stack controls on — so the panel re-reads its guards after every change.
         syncRows();
+        // AMP is the per-layer VCA routing switch (ENV ↔ THROUGH). It rewires the
+        // native note graph just like an optional filter toggle, so do not leave an
+        // already-queued audition note speaking through the old topology.
+        if (row.path?.endsWith('.vca')) onSectionChange(row.path);
         onChange?.();
         undoHistory.end();
       };
@@ -3772,6 +3838,7 @@ export function createVoiceEditor({
         if (on) dropSection(state.voice, group.optional);
         else addSection(state.voice, group.optional);
         touched();
+        onSectionChange(group.optional);
         repaint();
         undoHistory.end();
       };
@@ -4885,6 +4952,12 @@ export function createVoiceEditor({
       return null;
     }
 
+    // A preset switch is a hard boundary for audition state. The keyboard may have
+    // notes whose physical release belongs to the old sound, and a MIDI port may never
+    // deliver that release after the lane is rebound; close both before changing the
+    // catalogue object so nothing from the old preset rings through the new one.
+    panicAudition();
+
     let id = voiceId;
     let voice = from;
     if (!laneKey) {
@@ -4986,6 +5059,22 @@ export function createVoiceEditor({
    */
   let full = null;
   const repaintBoth = () => { build(); full?.render(); };
+  // Optional sections are bypassed by moving their last live snapshot into `bypassed`.
+  // The engine correctly stops reading that snapshot, but the full editor's charts are
+  // read-only views and should still show the sound that will come back when the section
+  // is re-enabled rather than falling through to a factory default curve.
+  const heldValue = (voice, path) => {
+    const clean = String(path || '').replace(/^\$/, '');
+    const parts = clean.split('.').filter(Boolean);
+    const bag = voice?.bypassed;
+    for (let i = parts.length; i > 0; i--) {
+      let value = bag?.[parts.slice(0, i).join('.')];
+      if (value === undefined) continue;
+      for (const leaf of parts.slice(i)) value = value?.[leaf];
+      return value;
+    }
+    return undefined;
+  };
   const undoEdit = () => {
     if (!state?.voice || !undoHistory.undo()) return false;
     state.dirty = !matchesBaseline();
@@ -5011,11 +5100,44 @@ export function createVoiceEditor({
     voice: () => state?.voice ?? null,
     id: () => state?.id ?? null,
     label: () => state?.voice?.label || state?.id || '',
+    engine: () => {
+      const v = state?.voice;
+      return v?.kind === 'drum' ? 'drum' : v?.synth || null;
+    },
+    presets: () => listPresets({
+      engine: state?.voice?.kind === 'drum' ? 'drum' : state?.voice?.synth,
+      laneKey: state?.laneKey || null,
+      keep: state?.id || null,
+    }),
+    dirty: () => !!state?.dirty && !matchesBaseline(),
+    discard: discardChanges,
+    confirmDiscard: () => ask
+      ? ask('Discard preset edits?', '<p>This sound has unsaved changes. Discard them and switch presets?</p>', 'Discard')
+      : Promise.resolve(true),
+    selectPreset: (id) => selectPreset?.(id, {
+      dirty: !!state?.dirty && !matchesBaseline(),
+      current: state?.id || null,
+      engine: state?.voice?.kind === 'drum' ? 'drum' : state?.voice?.synth,
+      laneKey: state?.laneKey || null,
+    }),
+    share: () => sharePreset?.({
+      id: state?.id || null,
+      voice: state?.voice ? asPreset(state.voice) : null,
+      engine: state?.voice?.kind === 'drum' ? 'drum' : state?.voice?.synth,
+    }),
+    shareEnabled: () => typeof sharePreset === 'function',
+    audition: (midi, opts) => auditionNote(midi, opts),
+    releaseAudition: (opts) => releaseAudition(opts),
+    panicAudition,
+    midiState,
+    toggleMidi,
+    midiAdapter,
     get: (path) => (state ? getAt(state.voice, path) : undefined),
     /** A row's value in the POT's units, which is not always the stored one. */
     read: (row) => {
       const raw = getAt(state.voice, row.path);
-      return row.read ? row.read(raw, state.voice) : raw;
+      const value = raw === undefined ? heldValue(state.voice, row.path) : raw;
+      return row.read ? row.read(value, state.voice) : value;
     },
     layout: (opts) => (state ? fullLayout(state.voice, opts) : null),
     sectionOn: (key) => sectionOn(state.voice, key),
@@ -5047,6 +5169,7 @@ export function createVoiceEditor({
       if (sectionOn(state.voice, key)) dropSection(state.voice, key);
       else addSection(state.voice, key);
       touched();
+      onSectionChange(key);
       repaintBoth();
       undoHistory.end();
     },
@@ -5066,6 +5189,7 @@ export function createVoiceEditor({
       undoHistory.begin();
       setAt(state.voice, row.path, row.write ? row.write(state.voice, option) : option);
       touched();
+      if (row.path?.endsWith('.vca')) onSectionChange(row.path);
       syncRows();
       undoHistory.end();
     },
@@ -5148,6 +5272,7 @@ export function createVoiceEditor({
      */
     saveSheet() { if (state) openSaveSheet(); },
     get editing() { return state?.id || null; },
+    get dirty() { return !!state?.dirty && !matchesBaseline(); },
     /**
      * The preset OBJECT the panel is drawing, not just its id.
      *

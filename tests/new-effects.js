@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EFFECT_BY_ID } from '../src/engine/effects.js';
+import { EFFECT_PRESETS } from '../src/data/effect-presets.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,7 +79,8 @@ const params = {
   ringmod: { rateSync: 0, frequency: 30, waveform: 'sine' },
   tape: { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05 },
   vowel: { voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
-    frequency: 0.5, depth: 1, glide: 0.08, reso: 2, spread: 0.9, wet: 0.9 },
+    frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
+    reso: 2, spread: 0.9, intensity: 0, excite: 0, breath: 0, wet: 0.9 },
 };
 const assert = (ok, msg) => { if (!ok) throw new Error(msg); console.log(`ok: ${msg}`); };
 const finite = (x) => Number.isFinite(x);
@@ -204,6 +206,54 @@ const centeredVowel = await page.evaluate((x) => window.__renderEffect(x), {
   id: 'vowel', params: { ...params.vowel, spread: 0, wet: 1 }, seconds: 1.2,
 });
 assert(stereoDelta(centeredVowel) < 1e-5, 'zero vowel spread remains centered');
+
+const vowelExciteOff = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a', depth: 0, wet: 1, excite: 0 }, seconds: 1.2,
+});
+const vowelExciteOn = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a', depth: 0, wet: 1, excite: 1 }, seconds: 1.2,
+});
+assert(diff(vowelExciteOff, vowelExciteOn) > 1e-4, 'vowel EXCITE adds harmonic colour');
+
+const vowelArticulateOff = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a e', articulation: 0, breath: 0, wet: 1 }, seconds: 1.2,
+});
+const vowelArticulateOn = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a e', articulation: 1, breath: 1, wet: 1 }, seconds: 1.2,
+});
+assert(diff(vowelArticulateOff, vowelArticulateOn) > 1e-4, 'vowel ARTICULATION changes the wet envelope');
+assert(maxAdjacentStep(vowelArticulateOn[0]) < 0.12, 'vowel articulation remains click-safe');
+
+for (const waveform of ['sine', 'triangle', 'saw up', 'saw down', 'square', 'random']) {
+  const shaped = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'vowel', params: { ...params.vowel, stack: 'a e i', waveform, glide: 0.2, wet: 1 }, seconds: 1.2,
+  });
+  assert(shaped.every((ch) => ch.every(finite)) && peak(shaped) > 1e-5,
+    `vowel ${waveform} renders finite audible output`);
+}
+const sineShape = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a e i', waveform: 'sine', wet: 1 }, seconds: 1.2,
+});
+const sawShape = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', params: { ...params.vowel, stack: 'a e i', waveform: 'saw up', wet: 1 }, seconds: 1.2,
+});
+assert(diff(sineShape, sawShape) > 1e-5, 'vowel wave shapes follow different trajectories');
+
+const silentVowel = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'vowel', inputGain: 0, seconds: 1.2,
+  params: { ...params.vowel, waveform: 'random', articulation: 1, excite: 1, breath: 1,
+    intensity: 1, wet: 1 },
+});
+assert(peak(silentVowel) < 1e-7, 'vowel excitation and breath keep silence at zero');
+
+const presetNames = ['Talking Robot', 'Monster O-A', 'Breathy Choir', 'Chopped I-A', 'Hard Talkbox'];
+for (const preset of presetNames) {
+  const renderedPreset = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'vowel', params: { ...params.vowel, ...EFFECT_PRESETS.inserts.vowel.presets[preset] }, seconds: 1.2,
+  });
+  assert(renderedPreset.every((ch) => ch.every(finite)) && peak(renderedPreset) < 8,
+    `vowel preset ${preset} remains finite and bounded`);
+}
 for (const [id, fxParams] of [
   ['chorus2', { feedback: 0.6, density: 1, wet: 1 }],
   ['flanger', { feedback: 0.85, wet: 1 }],

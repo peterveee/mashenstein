@@ -216,9 +216,9 @@ if (!sameAtZ(fourHitDrum, 'HITS', 2, 3)) {
   fail('Drum Quick Hits changes sound at z depending on the route to z');
 } else ok('Drum Quick Hits positions are independent of the route taken');
 
-// Advanced Global Filter cutoff keeps the final driven low-pass ceiling out of its way.
-// Quick BRIGHTNESS is a collective view of the active filter frequencies, rather than a
-// second alias of the Drive card's specific TONE parameter.
+// Advanced Global Filter cutoff may lift, but never lowers, the independent final driven
+// low-pass ceiling. Quick BRIGHTNESS is a collective view of the active filter frequencies,
+// rather than a second alias of the Drive card's specific TONE parameter.
 const mrdrFilterVoice = {
   synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 },
   global: { filter: { freq: 1150 } },
@@ -227,9 +227,9 @@ const mrdrGlobalCutoff = panelSpec(VOICE).groups
   .find((g) => g.key === 'global.filter').rows.find((r) => r.path === '$global.filter.freq');
 mrdrGlobalCutoff.after(2400, mrdrFilterVoice, 1150);
 mrdrGlobalCutoff.after(900, mrdrFilterVoice, 2400);
-if (mrdrFilterVoice.tone.freq !== 900) {
-  fail('MRDR Advanced Global Filter did not carry its final Tone ceiling');
-} else ok('MRDR Advanced Global Filter carries its final Tone ceiling in both directions');
+if (mrdrFilterVoice.tone.freq !== 2400) {
+  fail('MRDR Advanced Global Filter changed the independent Drive Tone on a downward move');
+} else ok('MRDR Advanced Global Filter only lifts the independent Drive Tone ceiling');
 
 const mrdrQuickBrightnessVoice = {
   synth: 'MRDR-3', drive: 0.5,

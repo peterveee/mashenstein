@@ -167,7 +167,8 @@ assert(/\['Drive',[\s\S]*'bitcrusher'[\s\S]*'tape'/.test(groupBlock),
 // otherwise its generic 0..1 fallback makes Hz, dB, and integer controls unusable.
 for (const [id, checks] of Object.entries({
   chorus: { delayTime: [2, 20], feedback: [0, 0.6], spread: [0, 180] },
-  vowel: { frequency: [0.05, 8], glide: [0, 1], reso: [0.3, 3], spread: [0, 1], body: [0, 1], air: [0, 1] },
+  vowel: { frequency: [0.05, 8], glide: [0, 1], articulation: [0, 1], excite: [0, 1],
+    breath: [0, 1], reso: [0.3, 3], spread: [0, 1], body: [0, 1], air: [0, 1] },
   chorus2: { feedback: [0, 0.6], tone: [800, 20000] },
   bitcrusher: { bits: [2, 16], drive: [0, 24] },
   rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.005, 1] },
@@ -190,7 +191,8 @@ assert(vowelDefaults.wet >= 0.85 && vowelDefaults.reso >= 2 && vowelDefaults.gli
 // air tap are what stop the default sounding thin, so they must not default to nothing.
 assert(vowelDefaults.body >= 0.35 && vowelDefaults.air > 0,
   'vowel defaults keep a voiced body and an open top rather than three isolated bands');
-for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM', 'VOICE', 'VOWEL STACK', 'RESO', 'BODY', 'AIR']) {
+for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM',
+  'WAVE SHAPE', 'ARTICULATION', 'EXCITE', 'BREATH', 'VOICE', 'VOWEL STACK', 'RESO', 'BODY', 'AIR']) {
   assert(Object.values(EFFECT_BY_ID).some((def) => Object.values(def.labels || {}).includes(label)),
     `catalogue has the local ${label} label`);
 }

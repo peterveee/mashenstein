@@ -11,6 +11,7 @@
 // The game does not import this file. src/data/tracks.js resolves imported songs
 // through a runtime registry precisely so a scratch import never reaches the build.
 import { registerTrack } from '../tracks.js';
+import * as ARCADE_THEME from './arcade-theme.js';
 import * as AUDITION_BELLBOX from './audition-bellbox.js';
 import * as AUDITION_BOOMBAP from './audition-boombap.js';
 import * as AUDITION_DIRGE from './audition-dirge.js';
@@ -107,6 +108,7 @@ import * as SLEEPY_FALCON from './sleepy-falcon.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
 import * as SUNKEN_PARADE from './sunken-parade.js';
+import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import * as THUNDER_JUKEBOX from './thunder-jukebox.js';
 import * as THUNDER_KITTEN from './thunder-kitten.js';
@@ -125,6 +127,7 @@ import * as WILD_DOLPHIN from './wild-dolphin.js';
 import * as WILD_SUNDAE from './wild-sundae.js';
 
 export const IMPORTED_BY_ID = {
+  "arcade-theme": { bank: ARCADE_THEME.bank, title: ARCADE_THEME.title, group: "alternate", writable: true, alternateOf: "hub" },
   "audition-bellbox": { bank: AUDITION_BELLBOX.bank, title: AUDITION_BELLBOX.title, group: "styleAudition", writable: true },
   "audition-boombap": { bank: AUDITION_BOOMBAP.bank, title: AUDITION_BOOMBAP.title, group: "styleAudition", writable: true },
   "audition-dirge": { bank: AUDITION_DIRGE.bank, title: AUDITION_DIRGE.title, group: "styleAudition", writable: true },
@@ -221,6 +224,7 @@ export const IMPORTED_BY_ID = {
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },
+  "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "thunder-jukebox": { bank: THUNDER_JUKEBOX.bank, title: THUNDER_JUKEBOX.title, group: "scratch", writable: true },
   "thunder-kitten": { bank: THUNDER_KITTEN.bank, title: THUNDER_KITTEN.title, group: "scratch", writable: true },

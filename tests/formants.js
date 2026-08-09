@@ -1,7 +1,7 @@
 // Pure contract for the shared Vowel Filter formant tables and interpolation.
 import {
   FORMANTS, FORMANT_VOICES, VOWELS, parseStack, resolveFormant,
-  interpolateFormants, vowelAt,
+  interpolateFormants, vowelAt, vowelPosition,
 } from '../src/engine/formants.js';
 
 let failed = false;
@@ -40,6 +40,15 @@ assert(vowelAt('alto', 'a e', 1, 1).f.join(',') === e.f.join(','),
   'full-depth integer position reaches the selected vowel');
 const wrapped = vowelAt('alto', 'a e', 2, 1);
 assert(wrapped.f.join(',') === a.f.join(','), 'stack positions wrap at sequence length');
+assert(vowelPosition('step', 3, 4) === 4, 'step shape retains legacy ordinal positions');
+assert(vowelPosition('saw down', 3, 1) === -1, 'saw down reverses the stack');
+assert(vowelPosition('triangle', 3, 3) === 1, 'triangle shape returns down the stack');
+assert(vowelPosition('sine', 3, 1) > 0 && vowelPosition('sine', 3, 1) < 2,
+  'sine shape eases through fractional stack positions');
+assert(vowelPosition('square', 3, 0) === 0 && vowelPosition('square', 3, 1) === 2,
+  'square shape alternates stack endpoints');
+assert(vowelPosition('random', 3, 4, 9) === vowelPosition('random', 3, 4, 9),
+  'random shape is deterministic');
 
 if (failed) process.exit(1);
 console.log('FORMANTS: PASSED');

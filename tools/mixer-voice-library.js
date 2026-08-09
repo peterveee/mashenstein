@@ -369,6 +369,7 @@ const RATE_BY_ID = Object.fromEntries(PATTERN_RATES.map((r) => [r.id, r]));
  */
 export function createPatternPlayer({
   Audio, bpm, root, sync = () => null, scale = () => null, onStep = () => {},
+  adjustSlowRate = true,
 }) {
   // How far ahead notes are queued, and how often the queue is topped up.
   //
@@ -389,6 +390,10 @@ export function createPatternPlayer({
   let rate = RATE_BY_ID['8'];
   let next = 0;                 // ctx time of the next cell step
   let ix = 0;                   // which step of the cell
+  // A native select can briefly take the page's event loop while its menu is open.
+  // Keep the ordinary lookahead short so live keyboard notes stay responsive, but allow
+  // a caller to prime a little further ahead before opening a blocking control.
+  let primeUntil = 0;
 
   const running = () => timer != null;
 
@@ -396,20 +401,24 @@ export function createPatternPlayer({
     if (timer != null) clearInterval(timer);
     timer = null;
     ix = 0;
-    // Cut the notes already queued on the bench pool too — they were scheduled ahead
-    // of the clock, and a stop that only halts the scheduler still lets the lookahead
-    // play out. The pattern stops being heard the instant you ask it to.
-    Audio?.stopPreview?.();
-    // Nothing new must line up behind the stopped figure either, and the first key
-    // pressed after hitting stop should be immediate rather than held back by the
-    // tail of it. See benchReset.
-    benchReset();
+    primeUntil = 0;
+    silence();
     onStep(null);
+  }
+
+  // Cut notes already queued by the audition scheduler without touching its timer.
+  // This is the boundary used by BASE KEY/FIGURE/RATE changes: the old phrase goes
+  // quiet immediately, bench timing is rebased, and the next pump continues playing.
+  function silence() {
+    Audio?.stopPreview?.();
+    benchReset();
   }
 
   function pump() {
     const ctx = Audio?.ctx;
     if (!ctx || !voiceId) { stop(); return; }
+    const now = ctx.currentTime || 0;
+    const horizon = Math.max(now + LOOKAHEAD, primeUntil);
     // Seconds per cell step: a 16th, times how many 16ths this rate leaves between hits.
     //
     // Taken from the SEQUENCER while a song is playing, rather than worked out from the
@@ -418,12 +427,13 @@ export function createPatternPlayer({
     // including its warp multiplier, which the readout does not carry.
     const clock = sync();
     const step = (clock ? clock.spb : (60 / Math.max(20, bpm())) / 4) * rate.steps;
-    while (next < ctx.currentTime + LOOKAHEAD) {
+    while (next < horizon) {
       // A step that has fallen behind — a backgrounded tab, or the desk busy repainting
       // — is dragged up to now rather than played at its original time, which by then
       // is in the past: the rack cannot schedule backwards, so that is silence with an
       // exception behind it.
-      if (next < ctx.currentTime) next = ctx.currentTime + 0.02;
+      const current = ctx.currentTime || 0;
+      if (next < current) next = current + 0.02;
       const hit = pattern.cell[ix % pattern.cell.length];
       if (hit) {
         const base = root();
@@ -494,6 +504,7 @@ export function createPatternPlayer({
     running,
     start,
     stop,
+    silence,
     toggle: (id) => (running() ? stop() : start(id)),
     /** Point it at another preset, cutting the old bench before the next note. */
     setVoice: (id) => {
@@ -502,6 +513,14 @@ export function createPatternPlayer({
         benchReset();
       }
       voiceId = id;
+    },
+    /** Queue a little extra audio before a native control opens and pauses the page. */
+    prime: (seconds = 0.75) => {
+      if (!running() || !Audio?.ctx) return false;
+      const now = Audio.ctx.currentTime || 0;
+      primeUntil = Math.max(primeUntil, now + Math.max(LOOKAHEAD, Number(seconds) || 0));
+      pump();
+      return true;
     },
     get voice() { return voiceId; },
     get pattern() { return pattern; },
@@ -521,7 +540,7 @@ export function createPatternPlayer({
     setPattern: (id) => {
       pattern = PATTERN_BY_ID[id] || pattern;
       ix = 0;
-      if (pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
+      if (adjustSlowRate && pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
     /** Audition choices are transient and must not masquerade as song state. */

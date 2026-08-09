@@ -24,6 +24,7 @@ const result = await esbuild.build({
   outdir: join(root, 'dist'),
   write: false,
   logLevel: 'info',
+  define: { __MASH_STATIC_MIXER__: 'true' },
 });
 
 const js = result.outputFiles[0].text;

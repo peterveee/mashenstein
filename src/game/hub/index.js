@@ -15,6 +15,11 @@ import {
   MENU_PANEL_CENTRE, MENU_PANEL_W,
 } from '../../sprites/backwall.js';
 import { CABINETS, CABINET_BY_ID, HUB_THEME } from '../../data/cabinets.js';
+import { mix as HUB_MIX, arrangement as HUB_ARRANGEMENT } from '../../data/songs/hub.js';
+// The Mixer alternate is the editable source of truth for the Arcade Corner when it
+// exists. It is still a game alternate by design, so this direct import keeps the
+// corner responsive to a saved desk edit without requiring a dev URL or promotion.
+import * as ARCADE_THEME_SONG from '../../data/imported/arcade-theme.js';
 import { COUNTER_DANCE_MIX_THEME } from '../../data/shop-themes.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../../data/stages.js';
 import { HEROES, HERO_BY_ID } from '../../data/heroes.js';
@@ -31,6 +36,246 @@ import { makeObstacle, OBSTACLES } from '../entities.js';
 import { drawWorldEntity } from '../draw.js';
 import { hashStr } from '../../engine/rng.js';
 import { Player } from '../player.js';
+
+// Arcade Corner is the same Food Court composition, but its imaginary hardware has
+// four tiny channels and no patience for sustained synths. These song-local voices stay
+// out of the mixer catalogue: they are a presentation, not a new saved preset. The
+// mono Tone voices are important here — the Food Court chord lane becomes one bright
+// chip stab instead of a four-note pad, which is the main Game Boy-sized reduction in
+// polyphony.
+const gameBoyTone = (label, waveform, decay, category = 'Lead', trim = 0, transpose = 0) => ({
+  label, category, kind: 'tone', synth: 'Synth', mode: 'mono', dur: 0.5, trim,
+  ...(transpose ? { transpose } : {}),
+  options: {
+    oscillator: { type: waveform },
+    // A short but real attack eases the square/triangle edge without blunting the chip transient.
+    envelope: { attack: 0.006, decay, sustain: 0, release: 0.024 },
+  },
+});
+
+const gameBoyDrum = (label, waveform, decay, category, trim = 0) => ({
+  ...gameBoyTone(label, waveform, decay, category, trim),
+  // Unlike ordinary MONO, this group spans the whole kit: the tiny console has one
+  // percussion channel, so a new drum hit releases the previous drum whatever lane made it.
+  monoGroup: 'arcadeDrums',
+});
+
+const gameBoyNoiseDrum = (label, decay, category, trim = 0) => ({
+  label, category, kind: 'noise', dur: 0.5, trim, monoGroup: 'arcadeDrums',
+  noise: { type: 'bandpass', freq: 2500, Q: 0.7, decay },
+  body: { type: 'triangle', from: 190, to: 120, decay: Math.min(0.06, decay), gain: 0.24 },
+});
+
+// The Food Court bass lands once per beat. Arcade adds an eighth-note one octave above
+// each authored hit, giving a C2-C3-C2-C3-style chip pulse while keeping the note values
+// and ordinary song arrangement intact everywhere else. This is an arrangement overlay
+// rather than a bank edit so entering the corner can change density without restarting
+// the transport.
+const alternateOctaveBassLane = (lane) => {
+  if (!Array.isArray(lane)) return lane;
+  const out = [...lane];
+  for (let i = 0; i < lane.length - 2; i++) {
+    if (lane[i] != null && out[i + 2] == null) out[i + 2] = lane[i] * 2;
+  }
+  return out;
+};
+
+const resolveArrangementSection = (sections, index) => {
+  if (!Array.isArray(sections) || index == null || index < 0 || index >= sections.length) return {};
+  const chain = [];
+  const seen = new Set();
+  let current = index;
+  while (current != null && !seen.has(current) && current >= 0 && current < sections.length) {
+    seen.add(current);
+    const section = sections[current];
+    if (!section) break;
+    chain.push(section);
+    current = section.base;
+  }
+  return chain.reverse().reduce((merged, section) => ({ ...merged, ...section }), {});
+};
+
+const makeArcadeBassArrangement = (bank, arrangement = null) => {
+  const bankSections = Array.isArray(bank?.sections) ? bank.sections : [];
+  const arrangementSections = Array.isArray(arrangement?.sections) ? arrangement.sections : [];
+  const sourceSections = [...bankSections, ...arrangementSections];
+  if (!sourceSections.length) return arrangement;
+
+  const cloneOffset = sourceSections.length;
+  const bassSections = sourceSections.map((_, index) => {
+    const resolved = resolveArrangementSection(sourceSections, index);
+    const bass = Object.prototype.hasOwnProperty.call(resolved, 'bass')
+      ? resolved.bass : bank.bass;
+    return { base: index, bass: alternateOctaveBassLane(bass) };
+  });
+  const sourceOrder = arrangement?.order || bank.order || sourceSections.map((_, index) => index);
+  const order = sourceOrder.map((entry) => {
+    if (typeof entry === 'number') return cloneOffset + entry;
+    if (!entry || typeof entry.s !== 'number') return entry;
+    return { ...entry, s: cloneOffset + entry.s };
+  });
+  return { ...(arrangement || {}), order, sections: [...arrangementSections, ...bassSections] };
+};
+
+const ARCADE_GAMEBOY_VOICES = {
+  // Bass keeps the pulse-wave identity; upper parts use triangle so the presentation is
+  // louder without turning every overlapping chip lane into a hard digital wall.
+  bass: gameBoyTone('Game Boy Bass', 'square', 0.11, 'Bass', -6, 12),
+  lead: gameBoyTone('Game Boy Lead', 'triangle', 0.065),
+  mainLead: gameBoyTone('Game Boy Main Lead', 'triangle', 0.065, 'Lead', 0, 12),
+  chord: gameBoyTone('Game Boy Chord Blip', 'triangle', 0.045, 'Keys'),
+  fx: gameBoyTone('Game Boy FX Blip', 'triangle', 0.038, 'FX'),
+  // One simple pitched voice per drum colour. No noise/MetalSynth tails: the shared
+  // monoGroup below makes this a single Game Boy-style percussion channel.
+  kick: gameBoyDrum('Game Boy Kick', 'square', 0.085, 'Kick'),
+  snare: gameBoyNoiseDrum('Game Boy Noise Snare', 0.075, 'Snare', 3),
+  clap: gameBoyDrum('Game Boy Clap', 'sawtooth', 0.04, 'Clap'),
+  hat: gameBoyDrum('Game Boy Hat', 'square', 0.022, 'Hats'),
+  openHat: gameBoyDrum('Game Boy Open Hat', 'sawtooth', 0.04, 'Hats'),
+  rim: gameBoyDrum('Game Boy Rim', 'sawtooth', 0.03, 'Perc'),
+  tom: gameBoyDrum('Game Boy Tom', 'triangle', 0.06, 'Tom'),
+  crash: gameBoyDrum('Game Boy Crash', 'sawtooth', 0.065, 'Crash'),
+};
+
+const ARCADE_GAMEBOY_VOICE_MAP = {
+  bassVoice: 'arcadeBass', leadVoice: 'arcadeLead', leadHarmVoice: 'arcadeLead',
+  twinkleVoice: 'arcadeLead', chordsVoice: 'arcadeChord', organChordsVoice: 'arcadeChord',
+  organSwoopVoice: 'arcadeLead', electroFxVoice: 'arcadeFx', voxVoice: 'arcadeLead',
+  shoutVoice: 'arcadeLead', glissVoice: 'arcadeLead', organGlissVoice: 'arcadeLead',
+  keyGlissVoice: 'arcadeLead', sweepsVoice: 'arcadeFx',
+  kickVoice: 'arcadeKick', snareVoice: 'arcadeSnare', clapVoice: 'arcadeClap',
+  rimVoice: 'arcadeRim', hatsVoice: 'arcadeHat', ohatsVoice: 'arcadeOpenHat',
+  tomVoice: 'arcadeTom', crashVoice: 'arcadeCrash', crash2Voice: 'arcadeCrash',
+};
+
+const ARCADE_GAMEBOY_VOICE_PARAMS = {
+  bassVoice: ARCADE_GAMEBOY_VOICES.bass,
+  leadVoice: ARCADE_GAMEBOY_VOICES.mainLead,
+  leadHarmVoice: ARCADE_GAMEBOY_VOICES.lead,
+  twinkleVoice: ARCADE_GAMEBOY_VOICES.lead,
+  chordsVoice: ARCADE_GAMEBOY_VOICES.chord,
+  organChordsVoice: ARCADE_GAMEBOY_VOICES.chord,
+  organSwoopVoice: ARCADE_GAMEBOY_VOICES.lead,
+  electroFxVoice: ARCADE_GAMEBOY_VOICES.fx,
+  voxVoice: ARCADE_GAMEBOY_VOICES.lead,
+  shoutVoice: ARCADE_GAMEBOY_VOICES.lead,
+  glissVoice: ARCADE_GAMEBOY_VOICES.lead,
+  organGlissVoice: ARCADE_GAMEBOY_VOICES.lead,
+  keyGlissVoice: ARCADE_GAMEBOY_VOICES.lead,
+  sweepsVoice: ARCADE_GAMEBOY_VOICES.fx,
+  kickVoice: ARCADE_GAMEBOY_VOICES.kick,
+  snareVoice: ARCADE_GAMEBOY_VOICES.snare,
+  clapVoice: ARCADE_GAMEBOY_VOICES.clap,
+  rimVoice: ARCADE_GAMEBOY_VOICES.rim,
+  hatsVoice: ARCADE_GAMEBOY_VOICES.hat,
+  ohatsVoice: ARCADE_GAMEBOY_VOICES.openHat,
+  tomVoice: ARCADE_GAMEBOY_VOICES.tom,
+  crashVoice: ARCADE_GAMEBOY_VOICES.crash,
+  crash2Voice: ARCADE_GAMEBOY_VOICES.crash,
+};
+
+// The ordinary Food Court mix has room sends on several lanes, plus one chord-lane
+// reverb insert. Arcade keeps the same composition and voices, but its treatment is
+// deliberately dry apart from the small high-pass that clears sub-bass rumble.
+const ARCADE_NO_REVERB_LANES = {
+  kick: { send: { reverb: 0 } },
+  clap: { send: { reverb: 0 } },
+  bass: { send: { delay: 0, reverb: 0 } },
+  lead: { gain: 6, send: { reverb: 0 } },
+  leadHarm: { send: { reverb: 0 } },
+  chords: {
+    send: { reverb: 0 },
+    effects: [
+      { id: 'doubler', params: { delayMs: 11, depth: 0.11, dryPan: -0.72, wetPan: 0.52, wet: 0.33 } },
+      { id: 'reverb', params: { wet: 0 } },
+    ],
+  },
+  keyGliss: { send: { reverb: 0 } },
+  gliss: { send: { reverb: 0 } },
+  vox: { send: { reverb: 0 } },
+  snare: { send: { reverb: 0 } },
+  hats: { send: { reverb: 0 } },
+  ohats: { send: { reverb: 0 } },
+  crash2: { send: { reverb: 0 } },
+};
+
+export const ARCADE_FOOD_COURT_VARIANTS = {
+  arcade: [{
+    when: 'always',
+    patch: {
+      voice: ARCADE_GAMEBOY_VOICE_MAP,
+      voiceParams: ARCADE_GAMEBOY_VOICE_PARAMS,
+      lanes: ARCADE_NO_REVERB_LANES,
+      fx: { reverb: { level: 0 } },
+      master: -3,
+    },
+    // Arcade is a physical room change with one small density tweak: commit the voice
+    // swap and the bass overlay as soon as the menu opens, then let the short voices hide
+    // the seam.
+    exit: { quantize: 'immediate', crossfadeBars: 0, loopRelease: 'atTransition' },
+  }],
+};
+
+// The Trophy Room is still the Food Court's song, heard through the wall rather than
+// a second composition.  The treatment leg keeps this reversible: the actual song bus
+// and transport stay untouched, while this temporary path narrows the band like a closed
+// door and puts the already-muffled remainder in a longer, slightly wet room. The first
+// low-pass is important: the reverb must not be allowed to regenerate a bright room from
+// an otherwise filtered signal. The last one damps the return as well as the direct path.
+const TROPHY_ROOM_TREATMENT = [
+  { id: 'filter', params: { type: 'highpass', frequency: 180, Q: 0.7 } },
+  { id: 'filter', params: { type: 'lowpass', frequency: 1450, Q: 0.7 } },
+  { id: 'reverb', params: { decay: 2.8, preDelay: 0.035, wet: 0.5 } },
+  { id: 'filter', params: { type: 'lowpass', frequency: 1800, Q: 0.7 } },
+];
+const TROPHY_ROOM_TREAT_SECONDS = 0.18;
+// Gary's counter uses the ordinary unprocessed counter mix. Arcade gets only a gentle
+// high-pass here; the raised cutoff removes cabinet-sized low end so the whole mix
+// reads like it is coming through a small, tinny arcade speaker.
+const ARCADE_CORNER_TREATMENT = [
+  { id: 'filter', params: { type: 'highpass', frequency: 420, Q: 0.7 } },
+];
+const ARCADE_CORNER_TREAT_SECONDS = 0.04;
+// The Trophy Room treatment remains separate and only applies behind its door.
+let hubTreatmentToken = 0;
+
+function enterWholeMixTreatment(treatment, seconds) {
+  if (!Audio.mixer) return;
+  hubTreatmentToken++;
+  Audio.mixer.setTreatment(treatment, Audio.bank?.bpm || Audio.bpm || 120);
+  if (Audio.ctx) Audio.mixer.rampTreatment(1, Audio.ctx.currentTime, seconds);
+}
+
+function leaveWholeMixTreatment(seconds) {
+  if (!Audio.mixer) return;
+  const token = ++hubTreatmentToken;
+  const when = Audio.ctx?.currentTime ?? 0;
+  Audio.mixer.rampTreatment(0, when, seconds);
+  // The dry leg is being brought back above. Remove the wet chain only after it is
+  // silent; a quick return to the room gets a new token, so an old cleanup cannot tear
+  // down the newly installed treatment.
+  const clear = () => {
+    if (token === hubTreatmentToken) Audio.mixer?.clearTreatment();
+  };
+  if (!Audio.ctx || typeof Audio.ctx.startRendering === 'function') clear();
+  else setTimeout(clear, Math.ceil(seconds * 1000) + 20);
+}
+
+function enterTrophyRoomAudio() {
+  enterWholeMixTreatment(TROPHY_ROOM_TREATMENT, TROPHY_ROOM_TREAT_SECONDS);
+}
+
+function leaveTrophyRoomAudio() {
+  leaveWholeMixTreatment(TROPHY_ROOM_TREAT_SECONDS);
+}
+
+function enterArcadeCornerAudio() {
+  enterWholeMixTreatment(ARCADE_CORNER_TREATMENT, ARCADE_CORNER_TREAT_SECONDS);
+}
+
+function leaveArcadeCornerAudio() {
+  leaveWholeMixTreatment(ARCADE_CORNER_TREAT_SECONDS);
+}
 
 const CORRUPTED_MODIFIERS = [
   { id: 'nojump', name: 'NO JUMPING', desc: 'THE JUMP BUTTON IS ON STRIKE. CONTRACTUAL MINIMUM HOP.' },
@@ -337,6 +582,12 @@ const STAFF_GAZE_IN = 6, STAFF_GAZE_OUT = 2.6;
 // still read as a domestic toy once it shared a floor with the cast; Deep Clean
 // mode gets the full boss-sized escalation in boss.js.
 const DD_H = Math.round(NPC_H * 0.7), DD_W = Math.round(DD_H * 0.9);
+// How far the box sinks past the floor line so the BRUSH sits on it. Two things
+// stack: the painter ends the floor head at 0.96 of its box, and the cast's
+// contour overshoots feetY by ~2px at NPC_H. Pinning the box to the line left
+// the brush a few px clear of the floor the heroes stand on — not enough to
+// read as the ceiling gag, just enough to read as sloppy.
+const DD_SIT = Math.ceil(DD_H * 0.04) + 2;
 
 // Counter staff read as adults among mascots — a little over the player, well
 // under a cabinet. Dolores is the taller; Gary has never stood fully upright in
@@ -1198,7 +1449,16 @@ export class HubState {
       });
     }
     const musicSong = this.flow.gameSongFor('hub');
-    Audio.setBank(musicSong?.bank || HUB_THEME, musicSong?.mix, musicSong?.arrangement);
+    const musicBank = musicSong?.bank || HUB_THEME;
+    // Returning from the Trophy Room is not a new song. Re-banking here resets step,
+    // nextTime and the song gap, which is why the Food Court used to restart at the
+    // exact moment the player walked back through the door. A genuinely different bank
+    // still takes the ordinary setBank path; the same one keeps the transport alive.
+    if (Audio.sourceBank !== musicBank) {
+      Audio.setBank(musicBank, musicSong?.mix, musicSong?.arrangement);
+    } else {
+      leaveTrophyRoomAudio();
+    }
     // Tapping a station both walks to it and uses it (see update()), and the
     // EXIT sign at the left of the concourse is itself a station — the whole
     // hub is its own control surface, so it needs no buttons of its own.
@@ -2156,7 +2416,8 @@ export class HubState {
       // the top of the wall is a crop, not a plane, so hanging below it just
       // reads as floating again. The vertical flip puts the head at ddY and
       // leaves the handle dangling.
-      const ddY = pass.onCeiling ? HUB_CEIL_Y - 4 : HUB_FLOOR_PIN_Y + pass.depth - DD_H;
+      const ddY = pass.onCeiling ? HUB_CEIL_Y - 4
+        : HUB_FLOOR_PIN_Y + pass.depth + DD_SIT - DD_H;
       ctx.save();
       ctx.globalAlpha = Math.min(1, ddCyc * 1.5, (9 - ddCyc) * 1.5); // slips in, slips out
       if (!pass.onCeiling) {
@@ -2424,6 +2685,7 @@ export class TrophyRoomState {
     Input.setContext('workshop');
     Input.setButtons([]);
     Input.setChromeButtons([]);
+    enterTrophyRoomAudio();
     this.t = 0;
     this.px = 90;
     this.facing = 1;
@@ -2444,6 +2706,7 @@ export class TrophyRoomState {
   }
 
   exit() {
+    leaveTrophyRoomAudio();
     Input.setButtons([]);
     Input.setChromeButtons([]);
   }
@@ -3471,7 +3734,66 @@ export class ShopState {
 
 export class ArcadeState {
   constructor({ save, flow }) { this.save = save; this.flow = flow; this.listY = 60; this.rowH = MENU_ROW_MAX; }
-  enter() { this.idx = 0; fitRows(this, this.options().length); Input.setMenuButtons(); }
+  enter() {
+    this.idx = 0;
+    fitRows(this, this.options().length);
+    const musicSong = this.flow.gameSongFor?.('hub');
+    // A selected Arcade Theme alternate is authoritative. With no selected alternate,
+    // use the saved editable file as the default Arcade presentation while keeping the
+    // Food Court bank identity so the transport remains seamless on entry.
+    const savedArcadeSong = musicSong?.mix?.voiceParams
+      ? (musicSong.id === 'arcade-theme' ? musicSong : null)
+      : (!musicSong && ARCADE_THEME_SONG?.mix?.voiceParams ? ARCADE_THEME_SONG : null);
+    this.usesSavedArcadeMix = !!savedArcadeSong;
+    const musicBank = musicSong?.bank || HUB_THEME;
+    if (savedArcadeSong) {
+      MusicDirector.playPresentation(
+        musicSong?.bank || HUB_THEME,
+        null,
+        null,
+        {
+          mixOverride: savedArcadeSong.mix,
+          arrangementOverride: savedArcadeSong.arrangement,
+          variants: savedArcadeSong.variants || null,
+        },
+      );
+      MusicDirector.request(null, { quantize: 'immediate', crossfadeBars: 0 });
+      Input.setMenuButtons();
+      return;
+    }
+    const arcadeArrangement = makeArcadeBassArrangement(musicBank, musicSong?.arrangement);
+    enterArcadeCornerAudio();
+    // When the Arcade Corner opens from the concourse this is the SAME Food Court bank,
+    // so playPresentation swaps the voices in place without restarting the song. Coming
+    // back from a minigame has no bank, and the same call falls back to a clean start.
+    MusicDirector.playPresentation(musicBank, 'arcade', null, {
+      mixOverride: musicSong?.mix,
+      arrangementOverride: arcadeArrangement,
+      variants: { ...(musicSong?.variants || {}), ...ARCADE_FOOD_COURT_VARIANTS },
+    });
+    // playPresentation initially uses the outgoing presentation's policy. Arcade's
+    // entry is a room transition, so replace that pending bar handoff immediately
+    // while the shutter is fully closed; the reveal opens on the new sound.
+    MusicDirector.request('arcade', { quantize: 'immediate', crossfadeBars: 0 });
+    Input.setMenuButtons();
+  }
+  exit() {
+    // Restore the normal Food Court timbre immediately. If the next state is a minigame
+    // it will stop the song itself; if it is the hub, the handoff stays live.
+    const musicSong = this.flow.gameSongFor?.('hub');
+    if (this.usesSavedArcadeMix && !musicSong) {
+      MusicDirector.playPresentation(HUB_THEME, null, null, {
+        mixOverride: HUB_MIX,
+        arrangementOverride: HUB_ARRANGEMENT,
+        variants: null,
+      });
+      MusicDirector.request(null, { quantize: 'immediate', crossfadeBars: 0 });
+      return;
+    }
+    Audio.setArrangement(musicSong?.arrangement || null);
+    leaveArcadeCornerAudio();
+    MusicDirector.request(null, { quantize: 'immediate', crossfadeBars: 0 });
+  }
   options() {
     // Breaker-box games are keyboard-shaped; on touch the corner is shuttered.
     if (Input.isTouchDevice()) return [{ none: true }, { back: true }];

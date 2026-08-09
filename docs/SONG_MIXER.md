@@ -1061,6 +1061,12 @@ transition; **RESO** multiplies the bandwidth-derived Q; and **FX** is the equal
 blend. **SPREAD** places the low, middle, and high formants left, centre, and right for
 a wider vocal image. A one-vowel stack or zero depth is a static formant colour.
 
+**WAVE SHAPE** chooses the stack trajectory (`step`, `sine`, `triangle`, `saw up`, `saw
+down`, `square`, or deterministic `random`) without changing RATE's one-slot timing.
+**ARTICULATION** makes each scheduled target boundary speak as a syllable. **EXCITE** adds
+harmonics to the wet source before the formant bank, and **BREATH** adds an input-derived
+high-passed attack; neither touches the dry path, and both remain silent on zero input.
+
 Three band-passes on their own are a reed, not a voice: measured against its own input,
 the bank alone sits about 15 dB down under F1 and 35 dB down above 3 kHz, so every vowel
 arrives with no weight and no air. **BODY** and **AIR** are the two returns that fix
@@ -1072,14 +1078,19 @@ defaults the full-wet response runs about 6 dB under the input in the bass and 1
 under it from 3 kHz up, rather than falling off a cliff. Set both to zero for the bare
 bank.
 
-**INTENSITY** runs the signal through the formant bank twice instead of once. Squaring the
-response doubles every dB of formant contrast — on the bare bank, 17.6 dB of peak-to-valley
-becomes 31.0 dB — and it is the only control that pushes past what RESO can do, because
-narrowing a peak cannot lower the floor between peaks. It defaults to 0, and at the default
-BODY and AIR settings it is quiet, because those two hold a floor well above where the
-squared bank's valleys land. Turn them down to hear it. The most pronounced setting the
-insert reaches is `INTENSITY 1, FX 1, BODY 0.2, AIR 0.08` — a hard talkbox that gives up
-most of the weight and air in exchange.
+**INTENSITY** runs the signal through the formant bank twice instead of once while
+progressively reducing the unshaped BODY/AIR floor. Squaring the response doubles every dB
+of formant contrast — on the bare bank, 17.6 dB of peak-to-valley becomes 31.0 dB — and it
+is the only control that pushes past what RESO can do, because narrowing a peak cannot lower
+the floor between peaks. It now derives its effective leakage directly from the current
+state, so it is path-independent and does not require manually retuning BODY and AIR.
+
+The source-backed Vowel card also offers named starting points through the reusable effect
+PRESET dropdown: Talking Robot, Monster O-A, Breathy Choir, Chopped I-A, and Hard Talkbox.
+Selecting one stores a snapshot on the current effect; later edits become Custom.
+
+The expanded native graph measures about **0.80% of one core** at default settings and
+**0.94%** in dramatic excitation/articulation mode on the current desktop bench.
 
 **TILT** is how much of the table's *singer's* amplitude rolloff to keep — 1 is the
 published rolloff, 0 is flat like the `robotic` voice. It defaults to 0.45 because the

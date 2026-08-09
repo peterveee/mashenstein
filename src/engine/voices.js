@@ -419,7 +419,10 @@ function adsr(param, t, end, peak, e = {}, sustaining = false) {
  */
 function gateAdsr(param, t, end, peak, e = {}, sustaining = false) {
   const level = Math.max(1e-4, peak);
-  const attack = Math.max(0.001, e.attack ?? 0.01);
+  // Zero is a meaningful bypass value for an amp envelope: the signal should be at
+  // full level immediately, not hidden behind a scheduler-imposed fade-in. Positive
+  // attack values remain authored ramps; only the zero case skips the ramp entirely.
+  const attack = Math.max(0, e.attack ?? 0.01);
   const decay = Math.max(0, e.decay ?? 0);
   const release = Math.max(0, e.release ?? 0.015);
   const sustain = Math.min(1, Math.max(0, e.sustain ?? 0));
@@ -429,7 +432,7 @@ function gateAdsr(param, t, end, peak, e = {}, sustaining = false) {
 
   const levelAt = (at) => {
     const dt = Math.max(0, at - t);
-    if (dt < attack) {
+    if (attack > 0 && dt < attack) {
       const u = dt / attack;
       if (e.attackCurve === 'lin') return 1e-4 + (level - 1e-4) * u;
       return 1e-4 * Math.pow(level / 1e-4, u);
@@ -443,8 +446,12 @@ function gateAdsr(param, t, end, peak, e = {}, sustaining = false) {
   };
 
   param.setValueAtTime(1e-4, t);
-  if (e.attackCurve === 'lin') param.linearRampToValueAtTime(level, attackEnd);
-  else param.exponentialRampToValueAtTime(level, attackEnd);
+  if (attack > 0) {
+    if (e.attackCurve === 'lin') param.linearRampToValueAtTime(level, attackEnd);
+    else param.exponentialRampToValueAtTime(level, attackEnd);
+  } else {
+    param.setValueAtTime(level, t);
+  }
   if (decay > 0) {
     if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
     else param.exponentialRampToValueAtTime(held, decayEnd);
@@ -700,6 +707,21 @@ const keyMode = (v) => {
   return v?.mono === true ? 'mono' : 'poly';
 };
 
+// MRDR-3 optional sections have historically appeared in equivalent forms:
+// the editor's flat `bypassed['global.filter']` hold, a `$`-prefixed hold, and (for
+// hand-authored/user-imported patches) an explicit `bypass`/`enabled` flag on the live
+// section. Treat all of them as the same topology decision. This keeps a stale live
+// subtree from leaking back into the graph when a draft is rebound or a shared patch
+// was authored by an earlier editor build. Do not infer a nested parent hold from a
+// child hold: `bypassed.layer.osc1.filter` must not accidentally mute the whole layer.
+const hasOwn = (object, key) => !!object
+  && Object.prototype.hasOwnProperty.call(object, key);
+const sectionBypassed = (voice, key, section = null) => {
+  const bag = voice?.bypassed;
+  return hasOwn(bag, key) || hasOwn(bag, `$${key}`)
+    || section?.bypass === true || section?.enabled === false || section?.on === false;
+};
+
 /**
  * One rack per audio context, owned by AudioSys.
  *
@@ -746,6 +768,10 @@ export class VoiceRack {
     // able to stand up without one.
     Tone.setContext(ctx);
     this.pools = new Map();
+    // Presentation-specific groups can make several lanes share one physical channel.
+    // Arcade Corner uses this for its single percussion voice; preview groups are kept
+    // separate so auditioning a drum cannot cut the song's live drum.
+    this._monoGroups = new Map();
     // Pools taken out of service but still sounding — see `_retire`. Keyed by their
     // own disposal timer so `dispose` can cancel one that has not fired yet.
     this._retired = new Map();
@@ -853,7 +879,11 @@ export class VoiceRack {
 
   play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true, preview = false, spb = null }) {
     const v = VOICES[voiceId];
-    if (v && v.kind === 'noise') return this._playNoise(v, { time, gain, dry, wet, echo });
+    const monoGroup = v?.monoGroup
+      ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
+    if (v && v.kind === 'noise') {
+      return this._playNoise(v, { time, gain, dry, wet, echo, monoGroup });
+    }
     if (v && v.kind === 'drum') return this._playDrum(v, { time, gain, dry, wet, echo });
     if (v && v.synth === 'GameSynth') {
       // A previewed note plays the full one-shot envelope — the decay needs room to
@@ -909,6 +939,21 @@ export class VoiceRack {
         const slot = mono ? pool.slots[0] : pool.slots[pool.next % pool.slots.length];
         if (!mono) pool.next++;
         const t = time;
+        const monoGroup = v?.monoGroup
+          ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
+        if (monoGroup) {
+          const previous = this._monoGroups.get(monoGroup);
+          // Keep each lane's routing intact, but close the previous group's envelope at
+          // this note-on. With the Arcade drum release of a few milliseconds, this is
+          // one sound at a time without a hard stop/click.
+          if (previous && previous.slot !== slot) {
+            if (previous.release) previous.release(t);
+            else if (previous.pool && !previous.pool.gone) {
+              try { previous.slot.synth.triggerRelease(t); } catch { /* already quiet */ }
+            }
+          }
+          this._monoGroups.set(monoGroup, { pool, slot });
+        }
         // Level is set on this slot's own gain, at this note's own time, rather than
         // on one shared node: two notes overlapping at different levels is ordinary
         // (a section changes `chordGain` mid-song) and a shared node would give the
@@ -1402,14 +1447,23 @@ export class VoiceRack {
    * node per hit is what the engine has always done and it costs less than keeping
    * them alive between beats.
    */
-  _playNoise(v, { time, gain, dry, wet, echo }) {
+  _playNoise(v, { time, gain, dry, wet, echo, monoGroup = null }) {
     if (!this.noiseBuf) return false;
     const ctx = this.ctx;
     const n = v.noise || {};
+    const previous = monoGroup ? this._monoGroups.get(monoGroup) : null;
+    if (previous) {
+      if (previous.release) previous.release(time);
+      else if (previous.slot && previous.pool && !previous.pool.gone) {
+        try { previous.slot.synth.triggerRelease(time); } catch { /* already quiet */ }
+      }
+    }
     const level = gain * (n.gain ?? 1);
     const taps = v.taps || [0];
     const hum = v.humanize || {};
     const buf = this._bufFor(n, 0.09);
+    const sources = [];
+    const gains = [];
     for (let i = 0; i < taps.length; i++) {
       const t = time + taps[i];
       // Each tap is quieter than the one before it — a burst repeated at one level is
@@ -1433,6 +1487,7 @@ export class VoiceRack {
       src.connect(chain.head); chain.tail.connect(g); g.connect(dry);
       if (echo && wet) g.connect(wet);
       src.start(t); src.stop(t + decay + 0.02);
+      sources.push(src); gains.push(g);
     }
     // The body: a short pitched thump under the noise, which is what tells a snare
     // from a hiss and a kick from a click.
@@ -1450,6 +1505,23 @@ export class VoiceRack {
       o.connect(og); og.connect(dry);
       if (echo && wet) og.connect(wet);
       o.start(t); o.stop(t + (body.decay ?? 0.06) + 0.02);
+      sources.push(o); gains.push(og);
+    }
+    if (monoGroup) {
+      this._monoGroups.set(monoGroup, {
+        release: (at) => {
+          for (const g of gains) {
+            try {
+              if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(at);
+              else g.gain.cancelScheduledValues(at);
+              g.gain.setTargetAtTime(0, at, 0.002);
+            } catch { /* already quiet */ }
+          }
+          for (const src of sources) {
+            try { src.stop(at + 0.01); } catch { /* already stopped */ }
+          }
+        },
+      });
     }
     return true;
   }
@@ -2030,6 +2102,11 @@ export class VoiceRack {
     const ctx = this.ctx;
     const L = v.layer;
     if (!L) return false;
+    // `bypassed` is the editor's reversible OFF store. Normally dropSection removes the
+    // live subtree as well, but the marker is authoritative: a draft can be copied or
+    // rebound while a repaint is in flight, and an OFF section must never leak back into
+    // the audio graph just because a stale live value was retained alongside its hold.
+    const held = (key, section = null) => sectionBypassed(v, key, section);
     // A layer at gain 0 is a layer taken out — skipped entirely, not run at 1e-4, or
     // the save-time measurement would hear it.
     //
@@ -2042,7 +2119,7 @@ export class VoiceRack {
     const solo = this.soloLayers?.get(v.id) || null;
     const heard = (key) => !solo || solo.size === 0 || solo.has(key);
     const specs = [['osc1', L.osc1], ['osc2', L.osc2], ['osc3', L.osc3]]
-      .filter(([key, s]) => s && (s.gain ?? 1) > 0 && heard(key))
+      .filter(([key, s]) => s && !held(`layer.${key}`, s) && (s.gain ?? 1) > 0 && heard(key))
       .map(([key, spec]) => ({ key, spec }));
     if (!specs.length) return false;
     const all = Array.isArray(freq) ? freq : [freq];
@@ -2079,8 +2156,8 @@ export class VoiceRack {
     // every shipped preset sample-identical. Either one present is the summed voice:
     // three layers arriving at one filter and one envelope, which is the difference
     // between a stack of sounds and an instrument.
-    const gf = v.global?.filter || null;
-    const gv = v.global?.vca || null;
+    const gf = held('global.filter', v.global?.filter) ? null : (v.global?.filter || null);
+    const gv = held('global.vca', v.global?.vca) ? null : (v.global?.vca || null);
 
     // ---- the shared modulators, one of each per note-on ----------------------
     // Vibrato exactly as `_playAdditive` builds it: the same key, the same semitones,
@@ -2465,7 +2542,7 @@ export class VoiceRack {
           // fat stack through one filter is a synth voice, through five is a chorus
           // of synths, and the engine voice being recreated had one.
           let dest = g;
-          if (spec.filter) {
+          if (spec.filter && !held(`layer.${layerKey}.filter`, spec.filter)) {
             const fl = spec.filter;
             const track = fl.track > 0 ? (base / 110) ** Math.min(1, fl.track) : 1;
             // A static base — CUTOFF times KEY FOLLOW — with all the movement on the
@@ -3265,6 +3342,7 @@ export class VoiceRack {
     this._retired.clear();
     for (const pool of this.pools.values()) this._disposePool(pool);
     this.pools.clear();
+    this._monoGroups.clear();
     this._activePreviews.clear();
     this._heldNative.clear();
     // The glide origins. The nodes they point at belong to the dying context; keeping

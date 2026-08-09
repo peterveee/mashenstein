@@ -1534,29 +1534,11 @@
             line-height: var(--rowlh); padding-left: 4px; }
   .row .v.typable { cursor: ns-resize; }
   .row .v.typable:hover { color: var(--accent); text-decoration: underline dotted; }
-  /* A note division reads left to right instead, because the select IS the value:
-     stacking the readout over it showed the same setting twice, spelled two ways.
-     The select takes the slack so the label and the reading keep their width. */
-  /* The label sits on the row's FIRST line, exactly where a slider row's label sits,
-     so ticking Tempo Mode does not slide TIME down the card while FEEDBACK under it
-     stays put. Hence the grid: one track a text line tall, held to the top of a row
-     that is still a full --rowh, with the select centred on that line and free to
-     overflow into the space the slider would have occupied below it. Centring the
-     contents in the whole row instead — the obvious thing — is what dropped the
-     label by half a slider. */
-  .row.divrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-                grid-template-rows: var(--rowline); align-content: start;
-                align-items: center; gap: 0 4px; min-height: var(--rowh); }
-  /* Baseline, not centre, for the two bits of text: that is how .head sets them, and
-     matching it is what makes the label land on exactly the same pixel in both modes
-     rather than a third of one below. The select keeps its own centring — it is the
-     thing that overflows the line, and it has no business in their baseline group. */
-  .row.divrow .k, .row.divrow .v { flex: none; padding-left: 0; align-self: baseline; }
-  /* Tighter than a stacked select's padding, and every pixel of it is spoken for:
-     "1/16 triplet" against a two-decimal Hz reading leaves the control about 90px
-     of a 168px column, and a squeezed native select runs its text under the arrow
-     rather than eliding it. */
-  .row.divrow .fxsel { flex: 1; width: auto; min-width: 0; margin-top: 0; padding: 2px 2px; }
+  /* Every effect row shares the same two-line rhythm: the label/readout head, then
+     its control. A tempo checkbox is the one control without a second line; pin it to
+     the head instead of letting the grid stretch it into the middle of a slider row. */
+  .device .checkrow { align-self: start; height: var(--rowline); box-sizing: border-box;
+                       padding: 0; }
   .draggy { user-select: none; -webkit-user-select: none; touch-action: none; }
   input, textarea, .typein { user-select: text; -webkit-user-select: text; }
   .typein { width: 46px; background: var(--deep); color: var(--ink); border: 1px solid var(--accent);
@@ -2488,6 +2470,37 @@
   #synthfull .sfpreset { font-size: 12px; padding: 4px 11px; white-space: nowrap;
                          background: var(--input); border: 1px solid var(--line);
                          border-radius: 4px; }
+  #synthfull .sfpresetpicker { position: relative; flex: none; min-width: 150px;
+                               max-width: min(330px, 28vw); }
+  #synthfull .sfpresetpicker > summary { display: block; box-sizing: border-box;
+                                         width: 100%; overflow: hidden; text-overflow: ellipsis;
+                                         white-space: nowrap; list-style: none; cursor: pointer;
+                                         font: inherit; font-size: 11px; padding: 4px 24px 4px 8px;
+                                         color: var(--ink); background: var(--input);
+                                         border: 1px solid var(--line); border-radius: 4px; }
+  #synthfull .sfpresetpicker > summary::-webkit-details-marker { display: none; }
+  #synthfull .sfpresetpicker > summary::after { content: '▾'; position: absolute; right: 8px;
+                                                color: var(--dim); pointer-events: none; }
+  #synthfull .sfpresetpicker[open] > summary,
+  #synthfull .sfpresetpicker > summary:focus { border-color: var(--accent); outline: none; }
+  #synthfull .sfpresetmenu { position: absolute; z-index: 40; top: calc(100% + 5px); left: 0;
+                             width: min(390px, 50vw); max-height: min(55vh, 430px); overflow: auto;
+                             padding: 7px; background: var(--panel); border: 1px solid var(--accent-line);
+                             border-radius: 5px; box-shadow: 0 14px 34px #0009; }
+  #synthfull .sfpresetsearch { display: block; box-sizing: border-box; width: 100%; margin: 0 0 6px;
+                               padding: 5px 7px; font: inherit; font-size: 11px; color: var(--ink);
+                               background: var(--input); border: 1px solid var(--line); border-radius: 4px; }
+  #synthfull .sfpresetsearch:focus { outline: none; border-color: var(--accent); }
+  #synthfull .sfpresetsearch::placeholder { color: var(--dim); }
+  #synthfull .sfpresetcategory { margin: 6px 4px 2px; color: var(--dim); font-size: 8px;
+                                  letter-spacing: .08em; text-transform: uppercase; }
+  #synthfull .sfpresetoption { display: block; width: 100%; padding: 4px 6px; text-align: left;
+                               color: var(--ink); background: transparent; border: 1px solid transparent;
+                               border-radius: 3px; font: inherit; font-size: 10px; cursor: pointer; }
+  #synthfull .sfpresetoption:hover, #synthfull .sfpresetoption.on { color: var(--accent);
+                                                                     background: var(--primary);
+                                                                     border-color: var(--accent-line); }
+  #synthfull .sfpresetnone { padding: 8px 5px; color: var(--dim); font-size: 10px; }
   #synthfull .sfcount { font-size: 11px; letter-spacing: .06em; color: var(--dim);
                         white-space: nowrap; }
   #synthfull .sfsolo { font-size: 11px; letter-spacing: .06em; color: var(--solo);
@@ -2504,11 +2517,54 @@
                        border: 1px solid var(--line); border-radius: 4px; }
   #synthfull .sfundo:hover:not(:disabled) { border-color: var(--accent); }
   #synthfull .sfundo:disabled { opacity: .38; cursor: default; }
+  #synthfull .sfshare { font: inherit; font-size: 10px; letter-spacing: .06em;
+                        padding: 4px 8px; white-space: nowrap; cursor: pointer;
+                        color: var(--accent); background: var(--primary);
+                        border: 1px solid var(--accent-line); border-radius: 4px; }
+  #synthfull .sfshare:hover { border-color: var(--accent); }
   /* The body: three bands, each a six-column grid. Rows 1 and 2 are fixed because their
      cards have a fixed shape; row 3 takes what is left, with a floor of one grid row of
      pots plus a choice row. Below that floor a card scrolls rather than clips. */
   #synthfull .sfbody { flex: 1; min-height: 0; overflow: auto;
+                       scrollbar-width: none; -ms-overflow-style: none;
                        display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+  #synthfull .sfbody::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  #synthfull .sfkeyboard { flex: none; min-height: 116px; padding: 5px 8px 8px;
+                           background: var(--panel); border-top: 1px solid var(--line); }
+  #synthfull .sfkhead { height: 24px; display: flex; align-items: center; gap: 6px; }
+  #synthfull .sfktitle { font-size: 10px; letter-spacing: .12em; color: var(--accent); }
+  #synthfull .sfkspacer { flex: 1; min-width: 10px; }
+  #synthfull .sfkoct, #synthfull .sfkcomputer, #synthfull .sfkmidi, #synthfull .sfkpanic {
+    font: inherit; font-size: 9px; letter-spacing: .05em; padding: 3px 7px;
+    color: var(--dim); background: var(--input); border: 1px solid var(--line);
+    border-radius: 3px; cursor: pointer; }
+  #synthfull .sfkoctread { min-width: 22px; text-align: center; font-size: 10px;
+                           color: var(--accent); font-variant-numeric: tabular-nums; }
+  #synthfull .sfkoct.atend { opacity: .35; cursor: default; }
+  #synthfull .sfkcomputer.on, #synthfull .sfkmidi.on { color: var(--accent);
+                                                       border-color: var(--accent); }
+  #synthfull .sfkpanic { color: var(--solo); }
+  #synthfull .sfkpanic:hover { border-color: var(--solo); }
+  #synthfull .sfkkeys { position: relative; height: 78px; margin: 0 2px;
+                        border: 4px solid var(--deep); border-radius: 6px;
+                        background: var(--deep); overflow: hidden;
+                        touch-action: none; user-select: none; }
+  #synthfull .sfkkey { position: absolute; top: 0; display: flex; align-items: flex-end;
+                       justify-content: center; padding: 0 0 4px; cursor: pointer;
+                       box-sizing: border-box; }
+  #synthfull .sfkwhite { height: 100%; color: #737b8a; background: #e9ecf2;
+                         border: 1px solid var(--deep); border-top: 0;
+                         border-radius: 0 0 3px 3px; z-index: 1; }
+  #synthfull .sfkwhite:hover { background: #f2f4f8; }
+  #synthfull .sfkblack { height: 62%; color: #7d8695; background: #171b22;
+                         border: 0; border-radius: 0 0 3px 3px; z-index: 2;
+                         box-shadow: 0 2px 3px #0009; }
+  #synthfull .sfkblack:hover { background: #232833; }
+  #synthfull .sfkwhite.held { background: var(--accent); color: var(--on-accent); }
+  #synthfull .sfkblack.held { background: color-mix(in srgb, var(--accent) 78%, var(--panel));
+                               color: color-mix(in srgb, var(--accent) 14%, #fff); }
+  #synthfull .sfkname { font-size: 8px; line-height: 9px; pointer-events: none; }
+  #synthfull .sfkblack .sfkname { display: none; }
   #synthfull .sfband { display: grid; grid-template-columns: repeat(var(--sf-cols, 6), 1fr);
                        grid-template-rows: minmax(0, 1fr); gap: 6px; min-height: 0; }
   /* `flex-shrink: 0` on all three: a band that squeezed would clip its cards, which is
@@ -4801,7 +4857,7 @@
   .devclose { color: var(--dim); }
   .devclose .pwr { width: 16px; height: 16px; }
   .devclose:hover { border-color: var(--hot); color: var(--hot); }
-  .device .row { flex: none; margin-bottom: 3px; }
+  .device .row { flex: none; min-height: var(--rowh); margin-bottom: 3px; }
   .checkrow { display: flex; align-items: center; gap: 6px; flex: none;
               font-size: 9px; letter-spacing: .04em; color: var(--dim);
               cursor: pointer; padding: 2px 0 3px; text-transform: uppercase; }

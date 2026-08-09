@@ -3,6 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Input } = await import('../src/engine/input.js');
+const { Audio } = await import('../src/engine/audio.js');
 const { defaultSlot } = await import('../src/engine/save.js');
 const { STAGES } = await import('../src/data/stages.js');
 const { HubState, TrophyRoomState } = await import('../src/game/hub/index.js');
@@ -37,6 +38,7 @@ let hero = 'lorenzo', returned = 0, opened = 0;
 const flow = {
   heroId: () => hero,
   setHero: (id) => { hero = id; },
+  gameSongFor: () => null,
   toHub: () => { returned++; },
   openTrophyRoom: () => { opened++; },
 };
@@ -150,6 +152,42 @@ Input.press('left'); room.update(0.1); Input.release('left'); Input.endFrame();
 assert(returned === 2, 'walking through the trophy-room exit door returns to the food court');
 room.exit();
 Input.clearAll();
+
+// The Trophy Room shares the Food Court song. Re-entering the hub must not call a
+// second setBank for that same source, because setBank resets the transport.
+Audio.ctx = null;
+Audio.mixer = null;
+Audio.sourceBank = null;
+const musicHub = new HubState({ save: blankSave, flow });
+musicHub.enter();
+Audio.step = 23;
+const sameSongRoom = new TrophyRoomState({ save: blankSave, flow });
+sameSongRoom.enter(); sameSongRoom.exit(); musicHub.enter();
+assert(Audio.step === 23, 'returning from the Trophy Room keeps the Food Court transport position');
+
+// The room treatment is a temporary whole-mix leg, not a saved mix change.
+const treatmentCalls = [];
+Audio.ctx = { currentTime: 3, startRendering() {} };
+Audio.mixer = {
+  setTreatment(list, bpm) { treatmentCalls.push({ type: 'set', list, bpm }); },
+  rampTreatment(wet, when, seconds) { treatmentCalls.push({ type: 'ramp', wet, when, seconds }); },
+  clearTreatment() { treatmentCalls.push({ type: 'clear' }); },
+};
+const treatedRoom = new TrophyRoomState({ save: blankSave, flow });
+treatedRoom.enter(); treatedRoom.exit();
+const trophyTreatment = treatmentCalls.find((c) => c.type === 'set');
+const trophyTreatmentIds = trophyTreatment?.list.map((e) => e.id).join('>');
+assert(trophyTreatmentIds === 'filter>filter>reverb>filter'
+  && trophyTreatment.list[1]?.params?.type === 'lowpass'
+  && trophyTreatment.list[1]?.params?.frequency === 1450
+  && trophyTreatment.list[3]?.params?.type === 'lowpass'
+  && trophyTreatment.list[3]?.params?.frequency === 1800
+  && treatmentCalls.some((c) => c.type === 'ramp' && c.wet === 1)
+  && treatmentCalls.some((c) => c.type === 'ramp' && c.wet === 0)
+  && treatmentCalls.some((c) => c.type === 'clear'),
+  'entering applies a muffled pre/post-reverb treatment and exiting removes it');
+Audio.ctx = null;
+Audio.mixer = null;
 
 console.log(failed ? 'TROPHY WORKSHOP: FAILED' : 'TROPHY WORKSHOP: PASSED');
 process.exit(failed ? 1 : 0);

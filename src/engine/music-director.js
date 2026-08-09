@@ -85,10 +85,11 @@ function mergeLane(base = {}, patch = {}) {
  * A treatment's patch over the song's own mix, producing a WHOLE mix.
  *
  * Whole, not partial, because that is what Audio.rampMix needs: `mixEntry` is what
- * setArrangement re-shapes the song's sections through, and `layers`, `off` and `voice`
- * are read off it. A patch handed straight to the engine would quietly delete a
- * duplicated lane the next time the arrangement changed. Those three keys are also
- * exactly what a treatment may not carry, so merging over the base always keeps them.
+ * setArrangement re-shapes the song's sections through, and `layers` and `off` are read
+ * off it. A patch handed straight to the engine would quietly delete a duplicated lane
+ * the next time the arrangement changed. `voice` and `voiceParams` are the one special
+ * presentation addition: MusicDirector applies them through reapplyBank at a musical
+ * boundary, while the ordinary fader/effect half still goes through rampMix.
  */
 function mergeMix(base, patch) {
   if (!patch) return base || null;
@@ -211,6 +212,30 @@ export const MusicDirector = {
   },
 
   /**
+   * Enter a presentation of the song already playing without going through setBank.
+   *
+   * Arcade Corner uses this for a same-song re-voicing: the Food Court clock is already
+   * running, so a hard bank change would be exactly the wrong seam. If the song is not
+   * currently up (a minigame just stopped it, or a dev URL opened Arcade directly), fall
+   * back to play(), which supplies the ordinary clean start.
+   */
+  playPresentation(bank, variantId = null, state = null, { mixOverride, arrangementOverride, variants } = {}) {
+    if (!bank || Audio.sourceBank !== bank || !Audio.bank) {
+      return this.play(bank, variantId, state, { mixOverride, arrangementOverride, variants });
+    }
+    this.cancel();
+    this.bank = bank;
+    this.trackId = trackIdOf(bank);
+    this.variantId = null;
+    this.state = state;
+    this.source = { mix: mixOverride, variants };
+    this.baseMix = mixOverride;
+    this.resolved = { mix: mixOverride || MIX[this.trackId] || null, exit: { ...DEFAULT_EXIT } };
+    if (arrangementOverride !== undefined) Audio.setArrangement(arrangementOverride);
+    return this.request(variantId);
+  },
+
+  /**
    * Change treatment without changing song: land `variantId` at the next boundary its
    * exit policy allows, keeping the clock.
    *
@@ -260,6 +285,13 @@ export const MusicDirector = {
    */
   enterStage(bank, { mixOverride, arrangementOverride, variants } = {}) {
     if (bank && this.bank === bank && Audio.sourceBank === bank && this.variantId) {
+      // The cabinet treatment and the level can share a bank while carrying different
+      // arrangement overrides.  A treatment handover normally only ramps the mix, but
+      // swing belongs to the arrangement/bank and is therefore otherwise left at the
+      // treatment's value.  Re-apply the explicit level arrangement before requesting
+      // the handover so Audio.setArrangement updates both the live bank and Audio.swing.
+      // This is a no-op for the ordinary case where both screens use the same one.
+      if (arrangementOverride !== undefined) Audio.setArrangement(arrangementOverride);
       return this.request(null, { mixOverride: mixOverride ?? this.baseMix });
     }
     this.cancel();
@@ -406,6 +438,11 @@ export const MusicDirector = {
     const swell = this._swellPlan(p, at);
     if (swell) Audio.mixer.rampAux('reverb', { level: p.exit.swellTo }, swell.from, swell.rise);
     try {
+      // A presentation may change the bank's voice map while keeping the same song.
+      // Rebuild that lightweight bank view at the handoff boundary, before the next
+      // step is scheduled. VoiceRack retires old pools instead of cutting their notes,
+      // so the already-sounding voice finishes and the new one owns the next note.
+      Audio.reapplyBank(this.bank, p.mix);
       Audio.rampMix(p.mix, at, seconds);
     } catch (err) {
       // A pair of mixes that disagree on the SHAPE of an effect chain — see rampMix,

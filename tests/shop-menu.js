@@ -116,6 +116,30 @@ assert(Audio.sourceBank === HUB_THEME, 'leaving Dolores restores the Food Court 
 shop.exit();
 assert(Audio.sourceBank === HUB_THEME, 'leaving Gary restores the Food Court theme');
 
+// Gary's counter uses the ordinary unprocessed counter mix.
+const oldCtx = Audio.ctx;
+const oldMixer = Audio.mixer;
+const oldSetBank = Audio.setBank;
+const oldSourceBank = Audio.sourceBank;
+const treatmentCalls = [];
+Audio.ctx = { currentTime: 3, startRendering() {} };
+Audio.mixer = {
+  setTreatment(list, bpm) { treatmentCalls.push({ type: 'set', list, bpm }); },
+  rampTreatment(wet, when, seconds) { treatmentCalls.push({ type: 'ramp', wet, when, seconds }); },
+  clearTreatment() { treatmentCalls.push({ type: 'clear' }); },
+};
+Audio.setBank = (bank) => { treatmentCalls.push({ type: 'bank', bank }); };
+const treatedShop = new ShopState({ save, flow: { toHub() {} } });
+treatedShop.enter(); treatedShop.exit();
+assert(!treatmentCalls.some((call) => call.type === 'set'
+  || call.type === 'ramp' || call.type === 'clear')
+  && treatmentCalls.filter((call) => call.type === 'bank').length === 2,
+  'entering and exiting Gary leaves the counter mix unprocessed');
+Audio.ctx = oldCtx;
+Audio.mixer = oldMixer;
+Audio.setBank = oldSetBank;
+Audio.sourceBank = oldSourceBank;
+
 Input.clearAll();
 console.log(failed ? 'SHOP MENU: FAILED' : 'SHOP MENU: PASSED');
 process.exit(failed ? 1 : 0);

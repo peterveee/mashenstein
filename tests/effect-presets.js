@@ -3,7 +3,10 @@
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EFFECTS, EFFECT_BY_ID } from '../src/engine/effects.js';
+import {
+  EFFECTS, EFFECT_BY_ID, effectPresetNames, resolveEffectPreset,
+  resolveEffectSnapshot, matchEffectPreset,
+} from '../src/engine/effects.js';
 import { AUXES, AUX_DEFAULTS } from '../src/engine/mixer.js';
 import { EFFECT_PRESETS } from '../src/data/effect-presets.js';
 import {
@@ -39,6 +42,21 @@ const mixerSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.
 assert(mixerSource.includes("fetch('/effect-default-save'"), 'DEV card save posts to the effect-default route');
 assert(mixerSource.includes('Save new default settings for ${name}'), 'the dialog uses the requested title');
 assert(mixerSource.includes("scope: 'returns'"), 'pinned return cards use the return preset namespace');
+
+const vowelPresetNames = effectPresetNames('vowel');
+assert(vowelPresetNames.length === 5, 'vowel ships five named effect presets');
+for (const name of vowelPresetNames) {
+  const resolved = resolveEffectPreset('vowel', name);
+  assert(resolved && EFFECT_BY_ID.vowel.params.every((key) => Object.hasOwn(resolved, key)),
+    `vowel preset ${name} resolves every declared parameter`);
+  assert(matchEffectPreset('vowel', resolved) === name,
+    `vowel preset ${name} matches its resolved snapshot`);
+}
+const customVowel = resolveEffectSnapshot('vowel', { waveform: 'square', excite: 0.5 });
+assert(matchEffectPreset('vowel', customVowel) === null,
+  'a changed vowel snapshot is identified as Custom');
+assert(resolveEffectPreset('vowel', 'missing') === null,
+  'an unknown named preset resolves to null');
 
 const normalized = normalizeKnownDefaults({ wet: 0.25, removed: 99 }, ['wet', 'tone'], { wet: 0.5, tone: 12000 });
 assert(JSON.stringify(normalized) === JSON.stringify({ wet: 0.25, tone: 12000 }),
