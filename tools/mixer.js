@@ -754,8 +754,9 @@ const server = createServer(async (req, res) => {
         arrangement,
         variants,
         note: `An alternate of ${parent.title} (${parentId}), saved from the Song Mixer.\n`
-          + `The music below is ${parent.title}'s, copied as it stood. Nothing in the game\n`
-          + `plays this file — "Save over ${parent.title}" in the desk is what decides that.`,
+          + `The music below is ${parent.title}'s, copied as it stood. The game can play\n`
+          + `this file when the alternate is selected; "Save over ${parent.title}" in the desk\n`
+          + `is still the separate operation that replaces the parent song.`,
       });
       const file = join(ROOT, IMPORTED_DIR, `${id}.js`);
       mkdirSync(dirname(file), { recursive: true });

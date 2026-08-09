@@ -6,7 +6,8 @@ const { Audio } = await import('../src/engine/audio.js');
 const { MusicDirector } = await import('../src/engine/music-director.js');
 const { defaultSlot } = await import('../src/engine/save.js');
 const { HUB_THEME } = await import('../src/data/cabinets.js');
-const { arrangement: HUB_ARRANGEMENT } = await import('../src/data/songs/hub.js');
+const { mix: HUB_MIX, arrangement: HUB_ARRANGEMENT } = await import('../src/data/songs/hub.js');
+const ARCADE_THEME_SONG = await import('../src/data/imported/arcade-theme.js');
 const { ArcadeState } = await import('../src/game/hub/index.js');
 
 let failed = false;
@@ -112,6 +113,29 @@ arcade.exit();
 assert(requested?.[0] === null && requested?.[1]?.quantize === 'immediate'
   && requested[1].crossfadeBars === 0,
   'leaving Arcade Corner restores the regular Food Court palette immediately');
+
+entered = null;
+requested = null;
+const savedArcade = new ArcadeState({
+  save,
+  flow: { gameSongFor: () => null, toHub() {} },
+});
+savedArcade.enter();
+assert(savedArcade.usesSavedArcadeMix
+  && entered?.[0] === HUB_THEME
+  && entered?.[1] === null
+  && entered?.[3]?.mixOverride === ARCADE_THEME_SONG.mix
+  && entered?.[3]?.arrangementOverride === ARCADE_THEME_SONG.arrangement,
+  'the default Arcade Corner plays the saved Song Mixer alternate directly');
+assert(requested?.[0] === null
+  && requested?.[1]?.quantize === 'immediate'
+  && requested[1].crossfadeBars === 0,
+  'the saved Arcade Theme lands immediately during entry');
+savedArcade.exit();
+assert(entered?.[0] === HUB_THEME
+  && entered?.[3]?.mixOverride === HUB_MIX
+  && entered?.[3]?.arrangementOverride === HUB_ARRANGEMENT,
+  'leaving the saved Arcade Theme restores the normal Food Court mix');
 
 MusicDirector.playPresentation = oldPlayPresentation;
 MusicDirector.request = oldRequest;

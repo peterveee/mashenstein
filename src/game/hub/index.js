@@ -3741,9 +3741,9 @@ export class ArcadeState {
     // A selected Arcade Theme alternate is authoritative. With no selected alternate,
     // use the saved editable file as the default Arcade presentation while keeping the
     // Food Court bank identity so the transport remains seamless on entry.
-    const savedArcadeSong = musicSong?.mix?.voiceParams
+    const savedArcadeSong = musicSong?.mix
       ? (musicSong.id === 'arcade-theme' ? musicSong : null)
-      : (!musicSong && ARCADE_THEME_SONG?.mix?.voiceParams ? ARCADE_THEME_SONG : null);
+      : (!musicSong && ARCADE_THEME_SONG?.mix ? ARCADE_THEME_SONG : null);
     this.usesSavedArcadeMix = !!savedArcadeSong;
     const musicBank = musicSong?.bank || HUB_THEME;
     if (savedArcadeSong) {

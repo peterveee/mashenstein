@@ -1,8 +1,9 @@
 // Arcade Theme — one song: what it plays, how it is arranged, how it sounds.
 //
 // An alternate of THE FOOD COURT (hub), saved from the Song Mixer.
-// The music below is THE FOOD COURT's, copied as it stood. Nothing in the game
-// plays this file — "Save over THE FOOD COURT" in the desk is what decides that.
+// The music below is THE FOOD COURT's, copied as it stood. The game uses this
+// alternate as the default presentation inside Arcade Corner; "Save over THE FOOD
+// COURT" in the desk remains a separate operation that replaces the parent song.
 //
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
