@@ -51,6 +51,21 @@ async function main() {
     Audio.setNoiseSeed(1);
     Audio.ensure(ctx);
     if (Audio.mixer) await Audio.mixer.ready;
+
+    // The Mixer may widen the foreground scheduler margin live, while an unfocused
+    // page must retain at least the background safety window. This is intentionally
+    // tested on the real AudioSys rather than by matching source text alone.
+    const hasFocus = document.hasFocus;
+    document.hasFocus = () => true;
+    Audio.setSequencerLookahead(0.5);
+    const focusedAhead = Audio.lookahead();
+    Audio.setSequencerLookahead(1);
+    document.hasFocus = () => false;
+    const backgroundAhead = Audio.lookahead();
+    Audio.setSequencerLookahead('invalid');
+    document.hasFocus = hasFocus;
+    const invalidAhead = Audio.lookahead();
+    Audio.setSequencerLookahead(0.25);
     Audio.setBank(bank, null);
     Audio.nextTime = 0;
     Audio.songTrim.gain.cancelScheduledValues(0);
@@ -87,6 +102,7 @@ async function main() {
     Audio.scheduleStep();
     const afterPendingSeek = { step: Audio.step, pending: Audio.pendingStep };
     return {
+      focusedAhead, backgroundAhead, invalidAhead,
       armed, atLocatorA, ...locatorLoop,
       beforePendingBoundary, afterPendingBoundary,
       beforePendingSeek, afterPendingSeek,
@@ -95,6 +111,12 @@ async function main() {
   await browser.close();
 
   for (const error of errors) assert(false, `page error — ${error}`);
+  assert(out.focusedAhead === 0.5,
+    'the foreground sequencer read-ahead can widen live to 500ms');
+  assert(out.backgroundAhead === 1.5,
+    'an unfocused page keeps at least the 1.5s background safety margin');
+  assert(out.invalidAhead === 0.25,
+    'an invalid read-ahead request falls back to the responsive 250ms default');
   assert(out.armed.start === 8 && out.armed.end === 12,
     'the engine receives the two locator steps as the loop bounds');
   assert(out.atLocatorA === 8,

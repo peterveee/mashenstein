@@ -313,9 +313,12 @@ assert(/panic\(\)[\s\S]*?this\._cutLaneGates\(\)[\s\S]*?this\.voices\.dispose\(\
   && /previewNote\([^\n]*\)[\s\S]*?this\.resumeAfterPanic\(\)/.test(audio),
   'the audio engine cuts live buses and held voices, then restores on a deliberate preview');
 assert(/const SEQUENCER_LOOKAHEAD = 0\.25;/.test(audio)
+  && /const SEQUENCER_LOOKAHEAD_OPTIONS = Object\.freeze\(\[0\.25, 0\.5, 1\]\)/.test(audio)
+  && /this\.sequencerLookahead = SEQUENCER_LOOKAHEAD/.test(audio)
+  && /setSequencerLookahead\(seconds\)[\s\S]*?SEQUENCER_LOOKAHEAD_OPTIONS\.includes\(value\)/.test(audio)
   && /lookahead\(\) \{/.test(audio)
   && /const ahead = this\.lookahead\(\);[\s\S]{0,120}?while \(this\.nextTime < this\.ctx\.currentTime \+ ahead\)/.test(audio),
-  'the realtime scheduler keeps a quarter-second of audio queued while the desk lays out');
+  'the realtime scheduler keeps a configurable foreground safety margin while the desk lays out');
 // The other half of that bargain. A quarter-second is short because a seek has to be
 // heard, and that reasoning only holds for a window somebody is attending to. FOCUS is
 // the test, not visibility: switch to another app on a Mac and the Chrome window is
@@ -323,8 +326,8 @@ assert(/const SEQUENCER_LOOKAHEAD = 0\.25;/.test(audio)
 // already been demoted — gating on `hidden` alone covers the case nobody listens through
 // and misses the one the desk is actually used in.
 assert(/const BACKGROUND_LOOKAHEAD = 1\.5;/.test(audio)
-  && /document\.hidden \|\| !document\.hasFocus\(\)\s*\n?\s*\?\s*BACKGROUND_LOOKAHEAD\s*:\s*SEQUENCER_LOOKAHEAD/.test(audio),
-  'an unattended desk queues far enough ahead to survive being backgrounded');
+  && /document\.hidden \|\| !document\.hasFocus\(\)\s*\n?\s*\?\s*Math\.max\(BACKGROUND_LOOKAHEAD, foreground\)\s*:\s*foreground/.test(audio),
+  'an unattended desk queues at least the background safety margin');
 // And the desk stops DRAWING the audio when nobody is watching it. Meters, playhead,
 // clocks and the four following grids are a picture of the sound; sixty of those a
 // second on a twenty-lane song is real layout, and spending it on a window whose owner
@@ -337,17 +340,42 @@ assert(/syncLoopAnchor\(\);\s*\n\s*syncPendingSeek\(\);\s*\n\s*if \(typeof docum
 // small buffer is right for a jump sound and wrong for a desk that plays through a
 // twenty-lane section with another app in front of it.
 assert(/setLatencyHint\(hint\)/.test(audio)
+  && /setSequencerLookahead\(seconds\)/.test(audio)
   && /if \(this\.latencyHint\) opts\.latencyHint = this\.latencyHint;/.test(audio)
   && /if \(this\.sampleRateHint\) opts\.sampleRate = this\.sampleRateHint;/.test(audio)
   && /Object\.keys\(opts\)\.length \? new AC\(opts\) : new AC\(\)/.test(audio)
-  // The desk's default is still `playback`; it is now a localStorage override rather
-  // than a literal, because whether that buffer costs too much keyboard feel is a
-  // listening test and not a benchmark. See LATENCY_KEY.
+  // The desk's default is still `playback`; it now offers a visible localStorage
+  // preference plus a numeric maximum-safety request. See LATENCY_KEY.
   && /const LATENCY_KEY = 'mash-mixer-latency'/.test(entry)
-  && /if \(!raw\) return 'playback';/.test(entry)
-  && /Audio\.setLatencyHint\(latencyChoice\)/.test(entry)
+  && /const LOOKAHEAD_KEY = 'mash-mixer-lookahead'/.test(entry)
+  && /AUDIO_LATENCY_OPTIONS[\s\S]*?id: '0\.1'[\s\S]*?Maximum safety/.test(entry)
+  && /AUDIO_LATENCY_DEFAULT = 'playback'/.test(entry)
+  && /AUDIO_LOOKAHEAD_DEFAULT = 0\.25/.test(entry)
+  && /const normalizeLatency = \(raw\)/.test(entry)
+  && /const normalizeLookahead = \(raw\)[\s\S]*?AUDIO_LOOKAHEAD_DEFAULT/.test(entry)
+  && /Audio\.setLatencyHint\(selectedLatencyOption\.hint\)/.test(entry)
+  && /Audio\.setSequencerLookahead\(readAheadPreference\)/.test(entry)
+  && /id="audiosettingsopen"[^>]*aria-haspopup="dialog"/.test(shell)
+  && /id="audiosettingsdialog"[^>]*role="dialog"/.test(shell)
+  && /id="audiosettingsdialog"[\s\S]*id="audiolatency"/.test(shell)
+  && /id="audiosettingsdialog"[\s\S]*id="audioahead"/.test(shell)
+  && /Output stage\.[\s\S]*Scheduling stage\.[\s\S]*How they work together/.test(shell)
+  && !/<details class="draweradvanced">/.test(shell)
+  && /id="audiolatency"/.test(shell)
+  && /id="audioahead"/.test(shell)
+  && /id="audiosettingsstatus"[^>]*role="status"/.test(shell)
+  && /function openAudioSettings\(\)[\s\S]*showModal\(\)/.test(entry)
+  && /function closeAudioSettings[\s\S]*audioSettingsDialog\.close\(\)/.test(entry)
+  && /audioSettingsSummary\.textContent/.test(entry)
+  && /function applyAudioSettings\(\)[\s\S]*localStorage\.setItem\(LOOKAHEAD_KEY/.test(entry)
+  && /audioSettingsApply\.onclick = applyAudioSettings/.test(entry)
+  && /id="audiosettingsapply"/.test(shell)
+  && /id="audiosettingscancel"/.test(shell)
+  && /audioLatencySel\.onchange = updateAudioSettingsDraft/.test(entry)
+  && /audioAheadSel\.onchange = updateAudioSettingsDraft/.test(entry)
+  && /location\.reload\(\)/.test(entry)
   && !/setLatencyHint/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
-  'the desk asks for a playback-sized output buffer by default, and can be told otherwise to A/B it');
+  'the desk exposes saved output-buffer and read-ahead choices without changing game latency');
 // Both options are requests a browser may refuse, and a desk with no audio is worse
 // than a desk at the wrong rate.
 assert(/catch \(e\) \{\s*\n\s*console\.warn\('\[audio\] context options refused'/.test(audio)
@@ -500,7 +528,7 @@ assert(/if \(typeof ctx\.startRendering === 'function'\) return false;/.test(voi
 // and because it only bites once the cache is warm, it arrived AFTER the first
 // complete loop, in the busiest bars, which is precisely how it was reported.
 assert(/function trimSilence\(buffer\)/.test(voicesSrc)
-  && /entry\.buffer = trimSilence\(await ctx\.startRendering\(\)\)/.test(voicesSrc)
+  && /trimSilence\(await ctx\.startRendering\(\)\)/.test(voicesSrc)
   && /const CACHE_SILENCE_FLOOR = 1e-5;/.test(voicesSrc),
   'a rendered note is trimmed to where its sound ends, not to its retirement window');
 assert(/Math\.max\(128, last \+ 1 \+ Math\.ceil\(CACHE_TAIL_GUARD_S \* buffer\.sampleRate\)\)/.test(voicesSrc),
@@ -512,9 +540,67 @@ assert(/this\._specRev\.set\(voiceId, \(this\._specRev\.get\(voiceId\) \|\| 0\) 
 // Tone's context is global: building the throwaway rack redirects every Tone node
 // built afterwards, including the live pools the sequencer is still filling. Found
 // by playing the desk, not by reading the code.
-assert(/const prevToneCtx = Tone\.getContext\(\)/.test(voicesSrc)
-  && /Tone\.setContext\(prevToneCtx\);\s*\n\s*entry\.buffer = trimSilence\(await ctx\.startRendering\(\)\)/.test(voicesSrc),
-  'the note renderer puts Tone’s global context back before it yields');
+//
+// Checked as the INVARIANT rather than as one line's spelling: the borrow is put back
+// before the function yields, so no scheduling pass can run while Tone points at a
+// throwaway context. Both renderers are held to it — whatever sits between the two
+// (the layer one returns early on a preset that plays nothing) has to be synchronous.
+{
+  const renderers = voicesSrc.match(/async _render\w*Note\([\s\S]*?\n {2}\}/g) || [];
+  assert(renderers.length === 2, 'there are two offline note renderers to check');
+  for (const body of renderers) {
+    const restored = body.indexOf('Tone.setContext(prevToneCtx);');
+    const yields = body.indexOf('await ctx.startRendering()');
+    assert(body.includes('const prevToneCtx = Tone.getContext()')
+      && restored > 0 && yields > restored
+      && !body.slice(restored, yields).includes('await'),
+      'the note renderer puts Tone’s global context back before it yields');
+  }
+}
+
+// ---- and the same for MRDR-3, which is where this song's cost actually is --------
+//
+// Nine of the dense song's lanes are layer presets and its last bars measure at or
+// over the one core Web Audio gets. The gate is SEPARATE from the pooled one rather
+// than widened, because two of that one's exclusions do not mean the same thing here —
+// MRDR-3 builds its vibrato per note-on at phase zero, so a vibrato without SPREAD is
+// the same wobble every time, and the song's busiest lane is a lead with one.
+assert(/_cacheableLayer\(v, mode, preview, hold\)/.test(voicesSrc)
+  && /export function layerVariesWithTime\(v\)/.test(voicesSrc),
+  'the desk can play MRDR-3 notes from rendered notes too');
+// Each of these is a way for a note to depend on something other than its own pitch
+// and length. The humanise keys and the sample-and-hold LFO are seeded from the note's
+// TIME (`hitRandom`); a tempo-synced LFO reads `spb`, which is not in the key; a noise
+// layer would be silently DROPPED by a render rack that has no noise buffers; a lit
+// solo changes which oscillators exist at all.
+assert(/\(hum\.entry \?\? 0\) > 0/.test(voicesSrc)
+  && /\(v\?\.vibrato\?\.depth \?\? 0\) > 0 && \(v\.vibrato\.spread \?\? 0\) > 0/.test(voicesSrc)
+  && /lfo\.type === 'samplehold'/.test(voicesSrc)
+  && /lfo\.sync === 'tempo'/.test(voicesSrc)
+  && /v\.layer\[key\]\.type === 'noise'/.test(voicesSrc)
+  && /const solo = this\.soloLayers\?\.get\(v\.id\)/.test(voicesSrc),
+  'and it refuses every layer note that is not a pure function of (preset, pitch, length)');
+// A chord's tones sum into ONE drive shaper per note-on, and a shaper is not linear:
+// three separately-rendered tones added at replay would drop the intermodulation that
+// makes a driven stack read as one instrument.
+assert(/_layerCacheEntry\(v, voiceId, notes, dur, detune\)/.test(voicesSrc)
+  && /parts\.push\('r'\)/.test(voicesSrc),
+  'a layer note-on is cached whole, chord and rests together, never tone by tone');
+// The width IS the sound on the patches worth caching — a per-oscillator spread, a
+// chorus panned apart — and a mono render would collapse it without a sound to show
+// for it. Stored mono only when both channels came back identical.
+assert(/new OAC\(2, Math\.ceil\(seconds \* sr\), sr\)/.test(voicesSrc)
+  && /function collapseMono\(buffer\)/.test(voicesSrc),
+  'a layer note renders in stereo, and is kept in stereo when it is one');
+// `tailOf` reads `v.options`, which MRDR-3 presets do not have, so it returns its
+// one-second floor for all of them — and this song's string pad holds a 3.1s release.
+assert(/function layerNoteSeconds\(v, dur\)/.test(voicesSrc)
+  && /layerNoteSeconds\(v, longest\)/.test(voicesSrc),
+  'and for as long as its own release, not the floor tailOf would have given it');
+// A solo is monitoring, so it never reaches `refresh` — but it changes what a note IS.
+assert(/_forgetRenderedNotes\(voiceId\)/.test(audio)
+  && /setLayerSolo\(voiceId, layerKey, on\)[\s\S]*?_forgetRenderedNotes\(voiceId\)/.test(audio),
+  'lighting a layer solo makes the cache forget what it rendered without one');
 
 // ---- the native multiband compressor ----------------------------------------
 const fx = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');

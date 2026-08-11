@@ -122,6 +122,85 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const LS_KEY = 'mash-mixer-draft';
 const MIDI_LS_KEY = 'mash-mixer-midi-on';
 
+// Mixer-only audio safety preferences. These are deliberately desk state rather
+// than song data: the right buffer depends on the machine and the person's input
+// latency tolerance, while a song's mix must sound the same when opened elsewhere.
+const LATENCY_KEY = 'mash-mixer-latency';
+const LOOKAHEAD_KEY = 'mash-mixer-lookahead';
+const AUDIO_LATENCY_OPTIONS = Object.freeze([
+  { id: 'interactive', hint: 'interactive', label: 'Low latency' },
+  { id: 'balanced', hint: 'balanced', label: 'Balanced' },
+  { id: 'playback', hint: 'playback', label: 'Smooth playback' },
+  { id: '0.1', hint: 0.1, label: 'Maximum safety' },
+]);
+const AUDIO_LOOKAHEAD_OPTIONS = Object.freeze([
+  { value: 0.25, label: 'Responsive · 250 ms' },
+  { value: 0.5, label: 'Safe · 500 ms' },
+  { value: 1, label: 'Maximum · 1 second' },
+]);
+const AUDIO_LATENCY_DEFAULT = 'playback';
+const AUDIO_LOOKAHEAD_DEFAULT = 0.25;
+const latencyOption = (id) => AUDIO_LATENCY_OPTIONS.find((o) => o.id === id)
+  || AUDIO_LATENCY_OPTIONS.find((o) => o.id === AUDIO_LATENCY_DEFAULT);
+const normalizeLatency = (raw) => {
+  const text = String(raw ?? '');
+  if (AUDIO_LATENCY_OPTIONS.some((o) => o.id === text)) return text;
+  return AUDIO_LATENCY_DEFAULT;
+};
+const normalizeLookahead = (raw) => {
+  const value = Number(raw);
+  return AUDIO_LOOKAHEAD_OPTIONS.some((o) => o.value === value)
+    ? value : AUDIO_LOOKAHEAD_DEFAULT;
+};
+let latencyPreference = normalizeLatency(localStorage.getItem(LATENCY_KEY));
+let activeLatencyPreference = latencyPreference;
+let pendingLatencyPreference = null;
+let readAheadPreference = normalizeLookahead(localStorage.getItem(LOOKAHEAD_KEY));
+let audioSettingsStatus = null;
+let audioSettingsSummary = null;
+let audioSettingsDirty = false;
+let audioLatencySel = null;
+let audioAheadSel = null;
+
+function reportedAudioLatency(ctx = Audio.ctx) {
+  if (!ctx) return 'browser latency pending until audio starts';
+  const base = Number(ctx.baseLatency);
+  const output = Number(ctx.outputLatency);
+  const hasBase = Number.isFinite(base);
+  const hasOutput = Number.isFinite(output);
+  // `baseLatency` alone is not the end-to-end output figure the desk is trying to
+  // expose. If the browser omits `outputLatency`, keep the distinction explicit
+  // rather than presenting a partial number as if it were the whole path.
+  if (!hasOutput) return 'browser did not report output latency';
+  const total = Math.round(((hasBase ? base : 0) + (hasOutput ? output : 0)) * 1000);
+  const parts = [];
+  if (hasBase) parts.push(`${Math.round(base * 1000)} ms base`);
+  if (hasOutput) parts.push(`${Math.round(output * 1000)} ms output`);
+  return `reported ${total} ms (${parts.join(' + ')})`;
+}
+
+function syncAudioSettingsStatus() {
+  const active = latencyOption(activeLatencyPreference);
+  const pending = pendingLatencyPreference && latencyOption(pendingLatencyPreference);
+  const stagedLatency = !audioLatencySel
+    ? latencyPreference : normalizeLatency(audioLatencySel.value);
+  const stagedAhead = !audioAheadSel
+    ? readAheadPreference : normalizeLookahead(audioAheadSel.value);
+  const staged = audioSettingsDirty
+    ? `Unapplied: ${latencyOption(stagedLatency).label} · ${Math.round(stagedAhead * 1000)} ms read-ahead`
+    : null;
+  if (audioSettingsSummary) {
+    audioSettingsSummary.textContent = staged || `${pending ? `Pending · ${pending.label}` : active.label}`
+      + ` · ${Math.round(readAheadPreference * 1000)} ms read-ahead`;
+  }
+  if (!audioSettingsStatus) return;
+  audioSettingsStatus.textContent = (pending
+    ? `Pending: ${pending.label} · active: ${active.label} · `
+    : `Active: ${active.label} · `)
+    + `${reportedAudioLatency()} · read-ahead ${Math.round(readAheadPreference * 1000)} ms`
+    + (staged ? ` · ${staged}` : '');
+}
+
 /** A browser-safe filename slug — the same logic as tools/lib/imported-index.js. */
 const slugForClient = (name) => String(name)
   .replace(/\.midi?$/i, '').replace(/\.js$/i, '')
@@ -9475,6 +9554,13 @@ function updateCpu() {
   el.textContent = trouble || estimate;
 
   const heaviest = counts.length ? counts.slice(0, 4).join(', ') : 'none';
+  const requestedLatency = latencyPreference === '0.1'
+    ? '100 ms (Maximum safety)' : `${latencyPreference} (${latencyOption(latencyPreference).label})`;
+  const audioSafety = `Audio safety: buffer ${latencyOption(activeLatencyPreference).label}`
+    + (pendingLatencyPreference ? ` (pending ${latencyOption(pendingLatencyPreference).label})` : '')
+    + `; requested ${requestedLatency}`
+    + `; read-ahead ${Math.round((Audio.sequencerLookahead || AUDIO_LOOKAHEAD_DEFAULT) * 1000)} ms; `
+    + reportedAudioLatency(c) + '.';
   el.title = (health.audioBehind || health.audioStruggling
     ? (health.audioBehind
       ? 'THE AUDIO THREAD CANNOT RENDER THIS MIX IN REALTIME on this machine'
@@ -9488,7 +9574,8 @@ function updateCpu() {
     : health.uiStalled
       ? 'THE AUDIO IS FINE BUT THE BROWSER IS BUSY: the scheduler that feeds it ran'
         + ' out of queued notes, which is another app, a heavy panel or a bounce'
-        + ' taking the machine — not the mix. Nothing to change here; it passes.\n\n'
+        + ' taking the machine — not the mix. Increase Sequencer read-ahead if this'
+        + ' happens repeatedly.\n\n'
       : '')
     + `Estimate: ~${total.toFixed(0)}% of one core — the engine (${ENGINE_BASE_COST}%) plus`
     + ` ${counts.length} active effect${counts.length === 1 ? '' : 's'}`
@@ -9503,8 +9590,10 @@ function updateCpu() {
     + ' says nothing while the audio keeps up and tells you the cause when it does not.'
     + (health.dropouts ? `\n\n${health.dropouts} dropout${health.dropouts === 1 ? '' : 's'}`
       + ' since this song was loaded.' : '')
-    + (c ? `\nContext: ${c.sampleRate}Hz, buffer ${Math.round((c.baseLatency || 0) * 1000)}ms`
-      + `, output ${Math.round((c.outputLatency || 0) * 1000)}ms.` : '');
+    + `\n${audioSafety}`
+    + (health.audioBehind
+      ? '\nMaximum safety may absorb brief output spikes, but sustained overload still'
+        + ' requires muting, soloing, simplifying, or bouncing work.' : '');
   // Coloured only for measured trouble. An estimate never lights the lamp: it is a
   // guess about this machine, and a guess is not a reason to alarm anybody.
   el.classList.toggle('dirty', !!trouble);
@@ -10162,6 +10251,148 @@ noteAnimationInput.onchange = () => {
   applyNoteVisualPreferences({ render: false });
   toast(noteAnimation ? 'Note playback accents on' : 'Note playback accents off');
 };
+
+// Audio safety is a desk preference, not part of a song. The output-buffer choice is
+// a construction hint and therefore needs a reload once the live context exists;
+// read-ahead is only a scheduler margin and can move while the song plays.
+audioLatencySel = $('audiolatency');
+audioAheadSel = $('audioahead');
+audioSettingsStatus = $('audiosettingsstatus');
+audioSettingsSummary = $('audiosettingssummary');
+const audioSettingsOpen = $('audiosettingsopen');
+const audioSettingsDialog = $('audiosettingsdialog');
+const audioSettingsClose = $('audiosettingsclose');
+const audioSettingsCancel = $('audiosettingscancel');
+const audioSettingsApply = $('audiosettingsapply');
+audioLatencySel.value = latencyPreference;
+audioAheadSel.value = String(readAheadPreference);
+
+function updateAudioSettingsDraft() {
+  audioLatencySel.value = normalizeLatency(audioLatencySel.value);
+  audioAheadSel.value = String(normalizeLookahead(audioAheadSel.value));
+  audioSettingsDirty = normalizeLatency(audioLatencySel.value) !== latencyPreference
+    || normalizeLookahead(audioAheadSel.value) !== readAheadPreference;
+  audioSettingsApply.disabled = !audioSettingsDirty;
+  syncAudioSettingsStatus();
+}
+
+function discardAudioSettingsDraft() {
+  audioLatencySel.value = latencyPreference;
+  audioAheadSel.value = String(readAheadPreference);
+  audioSettingsDirty = false;
+  audioSettingsApply.disabled = true;
+  syncAudioSettingsStatus();
+}
+
+function closeAudioSettings({ discard = true } = {}) {
+  if (discard) discardAudioSettingsDraft();
+  if (audioSettingsDialog.open && typeof audioSettingsDialog.close === 'function') {
+    audioSettingsDialog.close();
+  } else {
+    audioSettingsDialog.removeAttribute('open');
+    audioSettingsOpen.setAttribute('aria-expanded', 'false');
+    audioSettingsOpen.focus();
+  }
+}
+
+function openAudioSettings() {
+  if (audioSettingsDialog.open) return;
+  discardAudioSettingsDraft();
+  audioSettingsOpen.setAttribute('aria-expanded', 'true');
+  if (typeof audioSettingsDialog.showModal === 'function') audioSettingsDialog.showModal();
+  else audioSettingsDialog.setAttribute('open', '');
+  audioLatencySel.focus();
+}
+
+audioSettingsOpen.onclick = openAudioSettings;
+audioSettingsClose.onclick = closeAudioSettings;
+audioSettingsCancel.onclick = closeAudioSettings;
+audioSettingsDialog.addEventListener('close', () => {
+  discardAudioSettingsDraft();
+  audioSettingsOpen.setAttribute('aria-expanded', 'false');
+  audioSettingsOpen.focus();
+});
+// The desk's global Escape shortcut is PANIC. A native dialog owns Escape while it
+// is open, so close this settings surface without stopping the song.
+addEventListener('keydown', (event) => {
+  if (!audioSettingsDialog.open || event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  closeAudioSettings();
+}, true);
+
+function applyAudioSettings() {
+  const nextLatency = normalizeLatency(audioLatencySel.value);
+  const nextAhead = normalizeLookahead(audioAheadSel.value);
+  const latencyChanged = nextLatency !== latencyPreference;
+  const aheadChanged = nextAhead !== readAheadPreference;
+  if (!latencyChanged && !aheadChanged) {
+    closeAudioSettings();
+    return;
+  }
+
+  // Commit both desk preferences from one Apply action. Read-ahead can take effect
+  // immediately; an output-buffer change still needs a new AudioContext, so it is
+  // recorded as pending until the user chooses Reload now or Later.
+  if (aheadChanged) {
+    readAheadPreference = nextAhead;
+    localStorage.setItem(LOOKAHEAD_KEY, String(nextAhead));
+    Audio.setSequencerLookahead(nextAhead);
+  }
+  audioSettingsDirty = false;
+  audioSettingsApply.disabled = true;
+
+  if (!latencyChanged) {
+    syncAudioSettingsStatus();
+    closeAudioSettings({ discard: false });
+    toast('Audio settings applied');
+    return;
+  }
+
+  const option = latencyOption(nextLatency);
+  latencyPreference = nextLatency;
+  localStorage.setItem(LATENCY_KEY, nextLatency);
+  // A context cannot be reconfigured after construction. Before that point the
+  // choice is safe to apply immediately; normally the Mixer has already created its
+  // context by the time a user can open this dialog.
+  if (!Audio.ctx) {
+    activeLatencyPreference = nextLatency;
+    pendingLatencyPreference = null;
+    Audio.setLatencyHint(option.hint);
+    syncAudioSettingsStatus();
+    closeAudioSettings({ discard: false });
+    toast('Audio settings applied');
+    return;
+  }
+  if (nextLatency === activeLatencyPreference) {
+    pendingLatencyPreference = null;
+    syncAudioSettingsStatus();
+    closeAudioSettings({ discard: false });
+    toast('Audio settings applied');
+    return;
+  }
+  pendingLatencyPreference = nextLatency;
+  syncAudioSettingsStatus();
+  closeAudioSettings({ discard: false });
+  ask('Reload audio buffer?',
+    `${option.label} will be used when the Mixer creates its next AudioContext. `
+    + (aheadChanged ? `Sequencer read-ahead is now ${Math.round(nextAhead * 1000)} ms. ` : '')
+    + 'Reloading preserves your saved song and arrangement drafts. Unsaved library '
+    + 'preset edits may still trigger the browser’s normal reload warning.',
+    'Reload now').then((reload) => {
+      if (reload) {
+        location.reload();
+      } else {
+        toast(`${option.label} will apply the next time the Mixer reloads`, 5000);
+      }
+      syncAudioSettingsStatus();
+    });
+}
+
+audioLatencySel.onchange = updateAudioSettingsDraft;
+audioAheadSel.onchange = updateAudioSettingsDraft;
+audioSettingsApply.onclick = applyAudioSettings;
+updateAudioSettingsDraft();
 
 // How far behind the graph the speakers actually are, beyond what the browser owns
 // up to. songBeat() subtracts ctx.outputLatency already; Bluetooth, an interface
@@ -14373,20 +14604,11 @@ Audio.setCaptureEnabled(false);
 //
 // ...and the desk is ALSO an instrument: the on-screen keyboard, the computer keyboard,
 // a MIDI controller and the preset bench all play notes you expect to hear under your
-// fingers. Whether `playback` costs too much of that is a question no benchmark can
-// settle — it is a listening test — so the choice is a switch rather than a constant.
-// Set `mash-mixer-latency` in localStorage to 'interactive', 'balanced', 'playback' or
-// a number of seconds; delete it to come back here. The boot log below prints what the
-// browser actually gave, which is the number to compare against, since a hint is a
-// request and the device answers it.
-const LATENCY_KEY = 'mash-mixer-latency';
-const latencyChoice = (() => {
-  const raw = localStorage.getItem(LATENCY_KEY);
-  if (!raw) return 'playback';
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : raw;
-})();
-Audio.setLatencyHint(latencyChoice);
+// fingers. Whether a larger buffer costs too much of that is a listening test, so the
+// selected request is a desk preference rather than a hard-coded engine policy.
+const selectedLatencyOption = latencyOption(latencyPreference);
+Audio.setLatencyHint(selectedLatencyOption.hint);
+Audio.setSequencerLookahead(readAheadPreference);
 
 // The rate the desk's bounces have always rendered at (tools/lib/wav.js). Monitoring
 // at the same rate means the mix being heard is the file being kept, sample rate and
@@ -14445,15 +14667,21 @@ function logAudioBoot() {
   if (audioBootLogged || !Audio.ctx) return;
   audioBootLogged = true;
   const c = Audio.ctx;
+  activeLatencyPreference = latencyPreference;
+  pendingLatencyPreference = null;
+  const latencyChoices = AUDIO_LATENCY_OPTIONS.map((o) => `'${o.id}'`).join(' | ');
   console.log('[audio] context:', JSON.stringify({
-    latencyRequested: latencyChoice,
+    latencyRequested: latencyPreference,
+    latencyLabel: latencyOption(latencyPreference).label,
     sampleRateRequested: 44100,
     sampleRate: c.sampleRate,
     baseLatency: c.baseLatency != null ? +c.baseLatency.toFixed(4) : null,
     outputLatency: c.outputLatency != null ? +c.outputLatency.toFixed(4) : null,
+    sequencerLookahead: readAheadPreference,
     state: c.state,
-  }), `— key-to-sound is roughly ${Math.round(((c.baseLatency || 0) + (c.outputLatency || 0)) * 1000)}ms.`
-    + ` Set localStorage['${LATENCY_KEY}'] to 'interactive' | 'balanced' | 'playback' | <seconds> and reload to A/B it.`);
+  }), `— ${reportedAudioLatency(c)}.`
+    + ` Set localStorage['${LATENCY_KEY}'] to ${latencyChoices} and reload to A/B it.`);
+  syncAudioSettingsStatus();
 }
 
 // Capture phase, so the unlock lands before the handler for the same click runs — press
@@ -14475,6 +14703,8 @@ addEventListener('keydown', unlockAudio, { capture: true, once: true });
 
 void (async () => {
   Audio.ensure();
+  activeLatencyPreference = latencyPreference;
+  syncAudioSettingsStatus();
   await refreshSaved();
   // The deployed desk ships one song, so that is the one it opens on — first visit,
   // and any later one where the remembered id is something this build does not carry.

@@ -312,6 +312,45 @@ function hitRandom(time, salt) {
 const vary = (amount, time, salt) => (amount > 0 ? 1 + (hitRandom(time, salt) - 0.5) * 2 * amount : 1);
 
 /**
+ * Does WHEN an MRDR-3 note is scheduled change WHAT it is?
+ *
+ * The question the note cache has to answer before it may stand in for a note, and the
+ * companion to `hitRandom` above — which is why it lives here rather than beside the
+ * cache. `hitRandom` is seeded from the note's own time and nothing else, so a preset
+ * that never reaches it renders the same samples at every time it could be played, and
+ * one buffer is the whole truth about that note.
+ *
+ * Every path in `_playLayer` that reaches it is guarded by one of these keys, and this
+ * is the complete list:
+ *
+ *   humanize.gain / .pitch / .filter   `vary` at the top of the note (the fade, the
+ *                                      bend and the drive's TONE multiplier)
+ *   humanize.entry                     the unison entry stagger, `hitRandom(t, 1013+u)`
+ *   vibrato.spread                     per-voice vibrato rate and starting PHASE
+ *   lfo.type 'samplehold'              a fresh value per period, seeded on each step
+ *
+ * KEEP THIS IN STEP WITH `hitRandom`'S CALLERS. A new humanised path with no key here
+ * would be cached as if it were still, which is the one failure this whole design is
+ * arranged to avoid — so it is not left to vigilance:
+ * `work/local/probe-layer-determinism.js` renders every shipped preset at two different
+ * times and fails if the measurement and this function disagree.
+ *
+ * `vary` returns exactly 1 at amount 0 without calling `hitRandom` at all, so "the key
+ * is absent or zero" and "the note does not vary" are the same statement.
+ */
+export function layerVariesWithTime(v) {
+  const hum = v?.humanize || {};
+  if ((hum.gain ?? 0) > 0 || (hum.pitch ?? 0) > 0
+    || (hum.filter ?? 0) > 0 || (hum.entry ?? 0) > 0) return true;
+  // Spread is what scatters the ensemble; a vibrato without it is one locked LFO
+  // started at phase zero on the note, which is the same wobble every time.
+  if ((v?.vibrato?.depth ?? 0) > 0 && (v.vibrato.spread ?? 0) > 0) return true;
+  const lfo = v?.layer?.lfo;
+  if (lfo && (lfo.depth ?? 0) > 0 && lfo.type === 'samplehold') return true;
+  return false;
+}
+
+/**
  * A pitch sweep onto `param`, in one of three SHAPES. `param` must already hold the
  * frequency the sweep starts from, set at `t`.
  *
@@ -716,20 +755,103 @@ function noteFilterWrite(entry) {
  */
 const CACHE_SILENCE_FLOOR = 1e-5;      // -100 dBFS
 const CACHE_TAIL_GUARD_S = 0.01;
+// The two bounds the note cache is held to — see `_trimNoteCache` for which one binds
+// when. 256 entries is several bars of the densest chord layer in the catalogue; 64MB
+// is about a minute and a half of stereo pad, and small enough that the desk never
+// trades a core problem for a memory one.
+const NOTE_CACHE_ENTRIES = 256;
+const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
 function trimSilence(buffer) {
-  const data = buffer.getChannelData(0);
+  const channels = buffer.numberOfChannels;
+  // EVERY channel, and the LATEST of them. A stereo patch can ring longer on one side
+  // than the other — a chorus is two delay lines drifting in antiphase, so the two
+  // sides do not fall silent together — and trimming to the left channel's tail would
+  // cut the right one's while measuring nothing.
   let last = -1;
-  for (let i = data.length - 1; i >= 0; i--) {
-    if (Math.abs(data[i]) > CACHE_SILENCE_FLOOR) { last = i; break; }
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = data.length - 1; i > last; i--) {
+      if (Math.abs(data[i]) > CACHE_SILENCE_FLOOR) { last = i; break; }
+    }
   }
   // A note that rendered to nothing at all is kept as one quantum rather than a
   // zero-length buffer, which Web Audio will not make.
-  const keep = Math.min(data.length,
+  const keep = Math.min(buffer.length,
     Math.max(128, last + 1 + Math.ceil(CACHE_TAIL_GUARD_S * buffer.sampleRate)));
-  if (keep >= data.length) return buffer;
-  const out = new AudioBuffer({ length: keep, sampleRate: buffer.sampleRate, numberOfChannels: 1 });
-  out.copyToChannel(data.subarray(0, keep), 0);
+  if (keep >= buffer.length) return buffer;
+  const out = new AudioBuffer({
+    length: keep, sampleRate: buffer.sampleRate, numberOfChannels: channels,
+  });
+  for (let ch = 0; ch < channels; ch++) {
+    out.copyToChannel(buffer.getChannelData(ch).subarray(0, keep), ch);
+  }
   return out;
+}
+
+/**
+ * Store a two-channel render as one channel when both sides came back identical.
+ *
+ * Most presets are mono — a layer's `stereo` spread does nothing at unison 1, and no
+ * shipped preset carries a chorus — so rendering in stereo to be safe would otherwise
+ * double the memory of the common case for no sound. Web Audio fans a mono buffer to
+ * both outputs, so the collapsed buffer plays as the same signal it replaced.
+ *
+ * Exact equality is the right test rather than a threshold: a genuinely mono graph
+ * reaches both channels through the same additions in the same order.
+ */
+function collapseMono(buffer) {
+  if (buffer.numberOfChannels !== 2) return buffer;
+  const l = buffer.getChannelData(0);
+  const r = buffer.getChannelData(1);
+  for (let i = 0; i < l.length; i++) if (l[i] !== r[i]) return buffer;
+  const out = new AudioBuffer({
+    length: buffer.length, sampleRate: buffer.sampleRate, numberOfChannels: 1,
+  });
+  out.copyToChannel(l, 0);
+  return out;
+}
+
+/**
+ * How many seconds of render one MRDR-3 note needs before it is over.
+ *
+ * `VoiceRack.tailOf` cannot answer this: it walks `spec.opts`, which `buildSpec` fills
+ * from `v.options` — a key MRDR-3 presets do not have — so it returns its one-second
+ * floor for every one of them. That is wrong in the direction that MATTERS: this song's
+ * string pad holds a 3.1s global release, and a note rendered for 1.1s would be a pad
+ * with its tail cut off, cached and replayed that way for ever.
+ *
+ * Deliberately generous, and it costs nothing to be: `trimSilence` cuts the render back
+ * to where the sound actually ended, so over-estimating spends render time while
+ * under-estimating loses the end of the note. For the same reason a bypassed layer is
+ * counted rather than skipped — the bypass state is not worth reading to save silence
+ * that is trimmed anyway.
+ */
+function layerNoteSeconds(v, dur) {
+  const L = v?.layer || {};
+  const gv = v?.global?.vca || null;
+  // The global VCA's own release, which can outlast every layer's — that is the whole
+  // point of a stage the summed voice passes through.
+  const globalOff = gv ? dur + Math.max(0, gv.release ?? 0.015) + 0.005 : 0;
+  let end = Math.max(dur, globalOff);
+  for (const key of ['osc1', 'osc2', 'osc3']) {
+    const s = L[key];
+    if (!s || (s.gain ?? 1) <= 0) continue;
+    const delay = Math.min(0.5, Math.max(0, s.delay ?? 0));
+    // A layer's own note: it enters at its DELAY and runs for its share of the drawn
+    // length, so `len` above 1 outlives the note rather than ending with it.
+    const own = delay + Math.max(0.001, dur * (s.len ?? 1));
+    // `vca: 'through'` has no envelope of its own — it is gated open until whatever
+    // shapes it downstream has finished, which is the global VCA when there is one.
+    const off = s.vca === 'through'
+      ? Math.max(delay + 0.002, globalOff || own) + 0.006
+      : own + Math.max(0, s.release ?? 0.015) + 0.005;
+    end = Math.max(end, off);
+  }
+  // The chorus modulator outlives the last envelope so the delay lines drain under a
+  // moving LFO — see CHORUS_TAIL_S — and what they drain is still sound.
+  if ((v?.chorus?.mix ?? 0) > 0) end += CHORUS_TAIL_S;
+  // The margin every source stop in `_playLayer` already carries.
+  return end + 0.02;
 }
 
 /**
@@ -997,6 +1119,9 @@ export class VoiceRack {
     // as they did.
     this.noteCache = false;
     this._noteCache = new Map();
+    // What the buffers in there cost, kept as a running total rather than recomputed:
+    // see `_trimNoteCache`, which spends it.
+    this._noteCacheBytes = 0;
     this._specRev = new Map();
     // Presentation-specific groups can make several lanes share one physical channel.
     // Arcade Corner uses this for its single percussion voice; preview groups are kept
@@ -1148,6 +1273,15 @@ export class VoiceRack {
       return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold });
     }
     if (v && v.synth === 'MRDR-3') {
+      // Rendered once, replayed after that — when this preset is the kind that can be.
+      // The gate and the replay both refuse everything they are unsure of, and then
+      // this is the line it always was. See `_cacheableLayer`.
+      if (this.noteCache
+        && this._cacheableLayer(v, v.mode || keyMode(v), preview, hold)
+        && this._playCachedLayer(v, voiceId, Array.isArray(freq) ? freq : [freq],
+          { time, dur, gain, detune, dry, wet, echo })) {
+        return true;
+      }
       return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb });
     }
     if (!v || !SYNTHS[v.synth]) return false;
@@ -1508,10 +1642,15 @@ export class VoiceRack {
   //     a note starts depends on every note before it.
   //   · previews and held notes — a finger decides the length, and the length is half
   //     the cache key.
-  //   · anything but the pooled Tone classes. MRDR-3, additive and the game synth
-  //     have their own paths with their own state; drums and noise are one-shots
-  //     whose cost the same measurement says is 4% of the graph, which is not worth
-  //     a cache's failure modes.
+  //   · additive and the game synth, which have their own paths with their own state;
+  //     drums and noise are one-shots whose cost the same measurement says is 4% of
+  //     the graph, which is not worth a cache's failure modes.
+  //
+  // MRDR-3 has its own gate and its own renderer below — see `_cacheableLayer`. It is
+  // where this song's cost actually is (nine layer lanes, and the last bars at or over
+  // one core), and it needs different answers to nearly every question here: a note-on
+  // is cached WHOLE rather than per chord tone, the render is in stereo, and the
+  // vibrato exclusion above does not apply to it.
   //
   // DESK ONLY, and off by default (see `setNoteCache`): the game never sets it, so
   // every game path is untouched by construction, and an offline render never sets
@@ -1523,6 +1662,71 @@ export class VoiceRack {
       && !!SYNTHS[v.synth]
       && !(v.vibrato && v.vibrato.depth > 0)
       && !v.portamento;
+  }
+
+  /**
+   * The same question for MRDR-3, which is the family the gate above refuses wholesale
+   * and the one the desk's dense song spends most of its core on: nine of its lanes are
+   * layer presets, and the last bars measure at or over the one core Web Audio gets.
+   *
+   * A SEPARATE gate rather than a widened one, because two of the pooled path's
+   * exclusions do not mean the same thing here:
+   *
+   *   VIBRATO is refused above because `Tone.Vibrato` lives on the pool and FREE-RUNS,
+   *   so where the wobble is when a note starts depends on every note before it. MRDR-3
+   *   builds its own LFO per note-on at phase zero, which is the same wobble every
+   *   time — unless SPREAD scatters it, which `layerVariesWithTime` is what asks. This
+   *   is not a nicety: this song's busiest lane is a lead with a vibrato on it, and
+   *   copying the pooled rule would refuse the one that costs the most.
+   *
+   *   The TONE CLASS test has no counterpart; what stands in for it is the list below.
+   *
+   * What is refused here, and why each one has to be:
+   *   · anything `layerVariesWithTime` names — the note is not a function of pitch and
+   *     length alone, and freezing one draw of it is what turns a choir into a machine.
+   *   · mono and legato, and any portamento — a note either RETARGETS the one still
+   *     sounding or glides from wherever it left off. Neither is an independent note,
+   *     and neither is visible in a render of one.
+   *   · a NOISE layer. The throwaway rack in `_renderLayerNote` is built without the
+   *     seeded noise buffers, exactly as `_renderNote` is, so the layer would be
+   *     skipped — and a note missing a layer renders and replays perfectly happily,
+   *     which is what makes this the dangerous one to leave out. Handing the live
+   *     buffers to the render would lift this, and nothing in this song needs it.
+   *   · a TEMPO-SYNCED LFO, whose rate comes from `spb` — the note then depends on the
+   *     tempo as well, and the tempo is not in the key. No shipped preset uses it.
+   *   · a lit layer SOLO. It is desk monitoring rather than a preset key, and it
+   *     changes which oscillators exist; see `setLayerSolo`, which bumps the revision
+   *     so anything already rendered under one is unreachable afterwards.
+   *   · previews and held notes, as above: a finger decides the length.
+   */
+  _cacheableLayer(v, mode, preview, hold) {
+    if (!v || v.synth !== 'MRDR-3' || !v.layer) return false;
+    if (preview || hold) return false;
+    if (mode !== 'poly' || v.portamento) return false;
+    if (layerVariesWithTime(v)) return false;
+    const lfo = v.layer.lfo;
+    if (lfo && (lfo.depth ?? 0) > 0 && lfo.sync === 'tempo') return false;
+    for (const key of ['osc1', 'osc2', 'osc3']) {
+      if (v.layer[key] && v.layer[key].type === 'noise') return false;
+    }
+    // A hard-synced slave with a PITCH ENVELOPE is not one oscillator: `_playLayer`
+    // refreshes its sync table in 32ms grains, each grain a fresh oscillator started at
+    // its own time. A Chrome oscillator takes its phase from the render quantum
+    // boundary rather than from `start()`, so where each grain lands in the grid — and
+    // therefore what the note sounds like — is not a function of pitch and length
+    // alone. The probe measures it at a fifth of the note's own peak, which is how this
+    // was found; `syncRazorLead` is the only preset in the catalogue that does it.
+    if (v.layer.osc1 && v.sync) {
+      const slaves = v.sync === '1+2+3' ? ['osc2', 'osc3']
+        : v.sync === '1+2' ? ['osc2'] : v.sync === '1+3' ? ['osc3'] : [];
+      for (const key of slaves) {
+        const s = v.layer[key];
+        if (s && s.type !== 'noise' && s.pitch && (s.pitch.semitones ?? 0) !== 0) return false;
+      }
+    }
+    const solo = this.soloLayers?.get(v.id);
+    if (solo && solo.size) return false;
+    return true;
   }
 
   /**
@@ -1587,13 +1791,43 @@ export class VoiceRack {
     }
     const entry = { buffer: null, rendering: true };
     this._noteCache.set(key, entry);
-    // Bounded, or a song that walks the keyboard would hold every note it ever
-    // played. 256 is several bars of the densest chord layer in the catalogue.
-    while (this._noteCache.size > 256) {
-      this._noteCache.delete(this._noteCache.keys().next().value);
-    }
+    this._trimNoteCache();
     this._renderNote(v, voiceId, freq, dur, entry);
     return entry;
+  }
+
+  /**
+   * Hold the cache to both of its bounds, oldest out first.
+   *
+   * A COUNT alone was enough while only pooled plucks were cached — 256 of those is a
+   * few megabytes. It is not enough now: an MRDR-3 pad renders in stereo and can ring
+   * for three seconds after a note that was drawn for one, so 256 of THOSE would be
+   * several hundred megabytes of buffers held against a desk that is already short of
+   * a core. The byte budget is what actually binds for pads; the count still binds for
+   * short notes, where 64MB would be thousands of entries and the LRU would stop
+   * meaning anything.
+   *
+   * Entries are evicted with a render possibly still in flight. That is harmless: the
+   * render completes into an object nothing can reach any more, and the next note that
+   * wants it starts a fresh one.
+   */
+  _trimNoteCache() {
+    while (this._noteCache.size > NOTE_CACHE_ENTRIES
+      || (this._noteCacheBytes > NOTE_CACHE_BYTES && this._noteCache.size > 1)) {
+      const oldest = this._noteCache.keys().next().value;
+      const going = this._noteCache.get(oldest);
+      this._noteCacheBytes -= going?.bytes || 0;
+      this._noteCache.delete(oldest);
+    }
+  }
+
+  /** Book a rendered buffer into an entry and into the byte total the LRU spends. */
+  _keepBuffer(entry, buffer) {
+    this._noteCacheBytes ||= 0;
+    entry.buffer = buffer;
+    entry.bytes = buffer.length * buffer.numberOfChannels * 4;
+    this._noteCacheBytes += entry.bytes;
+    this._trimNoteCache();
   }
 
   /**
@@ -1648,13 +1882,146 @@ export class VoiceRack {
           time: 0, dur, gain: 1, dry: out, wet: null, echo: false,
         });
         Tone.setContext(prevToneCtx);
-        entry.buffer = trimSilence(await ctx.startRendering());
+        this._keepBuffer(entry, trimSilence(await ctx.startRendering()));
       } catch (e) {
         Tone.setContext(prevToneCtx);
         // A voice that will not render offline simply stays uncached: `_playCached`
         // sees no buffer and the pool plays it live, for ever, which is the
         // behaviour without any of this.
         console.warn('[voices] note cache could not render', voiceId, e?.message);
+        entry.failed = true;
+      } finally {
+        entry.rendering = false;
+        this._rendering--;
+        const next = this._renderQueue.shift();
+        if (next) { this._rendering++; next(); }
+      }
+    };
+    if (this._rendering < 2) { this._rendering++; job(); } else this._renderQueue.push(job);
+  }
+
+  /**
+   * Replay a whole MRDR-3 NOTE-ON from one buffer, or say the cache could not help.
+   *
+   * ONE ENTRY FOR THE WHOLE NOTE-ON, where the pooled path above caches a buffer per
+   * chord tone. That is not a simplification, it is the only correct answer here: an
+   * MRDR-3 chord's tones sum into ONE drive shaper and one chorus per note-on (see
+   * `chainFor`), and a shaper is not linear — `shape(a+b)` is not `shape(a)+shape(b)`.
+   * Summing three separately-rendered tones at replay would drop exactly the
+   * intermodulation that makes a driven stack read as one instrument, and it would do
+   * it quietly. Keying on the whole chord also disposes of the pooled path's
+   * half-a-chord case: there is no half of one buffer.
+   *
+   * The chord repeats — songs are made of chords that come back — so the hit rate
+   * survives the wider key.
+   */
+  _playCachedLayer(v, voiceId, notes, { time, dur, gain, detune, dry, wet, echo }) {
+    const ctx = this.ctx;
+    // An offline render must synthesise, not replay: a bounce is the reference for
+    // what the song IS, and a cache miss inside one would put a rendered note beside
+    // a live one and call them the same file.
+    if (typeof ctx.startRendering === 'function') return false;
+    const entry = this._layerCacheEntry(v, voiceId, notes, dur, detune);
+    if (!entry?.buffer) return false;
+    const src = ctx.createBufferSource();
+    src.buffer = entry.buffer;
+    const g = ctx.createGain();
+    // Rendered at unity, scaled here: one buffer serves every level the song asks for.
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(dry);
+    if (echo && wet) g.connect(wet);
+    src.start(time);
+    src.stop(time + entry.buffer.duration + 0.01);
+    return true;
+  }
+
+  /** The cache slot for one whole layer note-on, rendering it in the background. */
+  _layerCacheEntry(v, voiceId, notes, dur, detune) {
+    this._noteCache ||= new Map();
+    const shift = VoiceRack.pitchShift(v) * detune;
+    // Every tone IN ITS PLACE, rests included. `_playLayer` reads per-tone lengths
+    // positionally against the chord it was handed, so a key that dropped the rests
+    // would pair the surviving tones with the wrong lengths — and two different chords
+    // would share a key.
+    const parts = [];
+    let sounded = false;
+    for (let i = 0; i < notes.length; i++) {
+      const f = notes[i];
+      if (f == null || !(f > 0)) { parts.push('r'); continue; }
+      const noteDur = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
+      const hz = f * shift;
+      if (!Number.isFinite(hz) || !Number.isFinite(noteDur) || noteDur <= 0) return null;
+      parts.push(`${hz.toFixed(2)}:${Math.round(noteDur * 1000)}`);
+      sounded = true;
+    }
+    if (!sounded) return null;
+    // `L|` because this shares the LRU with the pooled entries above and the two key
+    // shapes must not be able to collide. `specRev` does the same job it does there:
+    // `refresh` bumps it, so an edited preset simply has different keys.
+    const rev = this._specRev?.get(voiceId) || 0;
+    const key = `L|${voiceId}|${rev}|${parts.join(',')}|${this.ctx.sampleRate}`;
+    const hit = this._noteCache.get(key);
+    if (hit) {
+      this._noteCache.delete(key);
+      this._noteCache.set(key, hit);
+      return hit;
+    }
+    const entry = { buffer: null, rendering: true };
+    this._noteCache.set(key, entry);
+    this._trimNoteCache();
+    this._renderLayerNote(v, voiceId, notes, dur, detune, entry);
+    return entry;
+  }
+
+  /**
+   * Render one whole layer note-on offline, at unity, into `entry.buffer`.
+   *
+   * IN STEREO, and that is the difference from `_renderNote` that matters. A layer
+   * carries a per-oscillator `stereo` spread and a chorus is two delay lines panned
+   * apart — the width IS the sound on exactly the lush patches worth caching, and a
+   * mono render would collapse it silently. Most presets are mono all the same, so
+   * `collapseMono` puts the second channel back when it turns out to carry nothing.
+   *
+   * Sized by `layerNoteSeconds` rather than `VoiceRack.tailOf`, which cannot see an
+   * MRDR-3 release at all — see there.
+   *
+   * Everything `_renderNote` says about Tone's global context applies here word for
+   * word: the borrow is put back BEFORE the first `await`.
+   */
+  async _renderLayerNote(v, voiceId, notes, dur, detune, entry) {
+    const OAC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
+    if (!OAC) { entry.rendering = false; return; }
+    this._renderQueue ||= [];
+    this._rendering ||= 0;
+    const job = async () => {
+      const prevToneCtx = Tone.getContext();
+      try {
+        const sr = this.ctx.sampleRate;
+        const longest = Array.isArray(dur)
+          ? dur.reduce((m, d) => Math.max(m, Number.isFinite(d) ? d : 0), 0) : dur;
+        const seconds = Math.min(30, layerNoteSeconds(v, longest));
+        const ctx = new OAC(2, Math.ceil(seconds * sr), sr);
+        const rack = new VoiceRack(ctx);
+        const out = ctx.createGain();
+        out.connect(ctx.destination);
+        // The song warp folded in and the preset's own transpose left alone, because
+        // `play` applies `pitchShift` on the way in and would otherwise apply it twice.
+        // No `spb`: a tempo-synced LFO is refused by the gate, so there is no rate here
+        // that could want one.
+        const warped = notes.map((f) => (f > 0 ? f * detune : f));
+        const played = rack.play('bass', voiceId, warped, {
+          time: 0, dur, gain: 1, dry: out, wet: null, echo: false,
+        });
+        Tone.setContext(prevToneCtx);
+        // A preset whose every layer is off builds nothing and plays nothing. Caching
+        // the silence would be right but pointless, and it would hide the preset going
+        // quiet behind a cache hit.
+        if (!played) { entry.failed = true; return; }
+        this._keepBuffer(entry, collapseMono(trimSilence(await ctx.startRendering())));
+      } catch (e) {
+        Tone.setContext(prevToneCtx);
+        console.warn('[voices] note cache could not render layer', voiceId, e?.message);
         entry.failed = true;
       } finally {
         entry.rendering = false;

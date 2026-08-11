@@ -1862,6 +1862,40 @@
   .drawerrow select, .drawerrow input[type=number] { color: var(--ink); background: var(--input);
                                                        border-color: var(--line); }
   .drawerrow .unit { font-size: 10px; color: var(--dim); }
+  #audiosettingsopen { justify-content: space-between; gap: 8px; }
+  #audiosettingsopen > span:first-child { flex: none; }
+  #audiosettingssummary { min-width: 0; margin-left: auto; overflow: hidden; color: var(--dim);
+                          font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+  #audiosettingsopen::after { content: '↗'; flex: none; color: var(--dim); font-size: 12px; }
+  #audiosettingsopen:hover #audiosettingssummary, #audiosettingsopen:hover::after { color: var(--accent); }
+  #audiosettingsdialog { width: min(560px, calc(100vw - 28px)); max-width: none; max-height: min(82vh, 680px);
+                         box-sizing: border-box; padding: 0; overflow: auto; color: var(--ink);
+                         background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+                         box-shadow: 0 18px 50px color-mix(in srgb, var(--deep) 60%, transparent); }
+  #audiosettingsdialog::backdrop { background: rgba(10, 11, 14, .72); }
+  #audiosettingsform { padding: 20px 22px 16px; }
+  .audiosettingshead { display: flex; align-items: flex-start; gap: 14px; }
+  .audiosettingshead > div { min-width: 0; flex: 1; }
+  #audiosettingstitle { margin: 0 0 6px; color: var(--ink); font-size: 16px; font-weight: 600; }
+  .audiosettingsintro, .audioexplain, .audiorelationship { margin: 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
+  .audiosettingsclose { flex: none; min-width: 26px; min-height: 26px; padding: 0; color: var(--dim);
+                       font-size: 17px; line-height: 1; }
+  .audiosettingsclose:hover { color: var(--accent); }
+  .audiochoice { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--line); }
+  .audiochoice label { display: block; margin-bottom: 5px; color: var(--ink); font-size: 12px; font-weight: 600; }
+  .audiochoice select { width: 100%; box-sizing: border-box; padding: 7px 9px; color: var(--ink);
+                        background: var(--input); border-color: var(--line); font: inherit; font-size: 12px; }
+  .audiochoice select:focus { outline: none; border-color: var(--accent); }
+  .audioexplain { margin-top: 7px; }
+  .audioexplain strong, .audiorelationship strong { color: var(--ink); font-weight: 600; }
+  .drawersubstatus { min-height: 24px; margin-top: 15px; padding: 8px 10px; color: var(--dim); font-size: 10px;
+                     line-height: 1.4; font-variant-numeric: tabular-nums; background: var(--input);
+                     border: 1px solid var(--line); border-radius: 5px; }
+  .audiorelationship { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .audiosettingsfoot { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .audiosettingsfoot button { padding: 7px 16px; font-size: 12px; }
+  .audiosettingsfoot button.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .audiosettingsfoot button:disabled { opacity: .45; cursor: default; }
   #navbtn { position: relative; }
   #navbtn.unsaved::after { content: ''; position: absolute; top: -2px; right: -2px;
                             width: 6px; height: 6px; border-radius: 50%; background: var(--hot);
@@ -5757,6 +5791,10 @@
     <input id="noteanimation" type="checkbox" title="Animate note marks in time with playback and recording">
     <span class="unit">playback accents</span>
   </label>
+  <button id="audiosettingsopen" type="button" aria-haspopup="dialog" aria-controls="audiosettingsdialog" aria-expanded="false"
+          title="Configure the Mixer’s output buffer and sequencer read-ahead">
+    <span>Advanced audio</span><span id="audiosettingssummary">Smooth playback · 250 ms</span>
+  </button>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="drawerrow"><span>Playhead</span>
@@ -5779,6 +5817,39 @@
     </div>
   </div>
 </div>
+<dialog id="audiosettingsdialog" role="dialog" aria-labelledby="audiosettingstitle" aria-describedby="audiosettingsintro">
+  <form id="audiosettingsform" method="dialog">
+    <div class="audiosettingshead">
+      <div>
+        <h2 id="audiosettingstitle">Advanced audio</h2>
+        <p id="audiosettingsintro" class="audiosettingsintro">These are Mixer-only safety controls. They protect different parts of the playback path and do not change the song, export, synthesis, or game audio.</p>
+      </div>
+      <button id="audiosettingsclose" class="audiosettingsclose" type="button" aria-label="Close Advanced audio">×</button>
+    </div>
+    <div class="audiochoice">
+      <label for="audiolatency">Audio buffer</label>
+      <select id="audiolatency" title="Choose the output buffer requested when the Mixer creates its AudioContext">
+        <option value="interactive">Low latency</option>
+        <option value="balanced">Balanced</option>
+        <option value="playback">Smooth playback</option>
+        <option value="0.1">Maximum safety</option>
+      </select>
+      <p class="audioexplain"><strong>Output stage.</strong> This requests how much audio the browser keeps ready for the output callback. Larger buffers can absorb short output spikes, but add real key-to-sound latency and need a reload. The browser may ignore or approximate the request; the reported value below is what it actually exposes.</p>
+    </div>
+    <div class="audiochoice">
+      <label for="audioahead">Sequencer read-ahead</label>
+      <select id="audioahead" title="Queue more audio to survive browser stalls; larger values delay sequencer edits, loops and mutes, but keyboard and MIDI preview remains immediate">
+        <option value="0.25">Responsive · 250 ms</option>
+        <option value="0.5">Safe · 500 ms</option>
+        <option value="1">Maximum · 1 second</option>
+      </select>
+      <p class="audioexplain"><strong>Scheduling stage.</strong> This queues notes further ahead so a busy browser or heavy panel has more time to recover. Larger values make sequencer edits, loops, and mutes take longer to be heard. It applies immediately; computer-keyboard and MIDI preview remain on their separate immediate path.</p>
+    </div>
+    <div id="audiosettingsstatus" class="drawersubstatus" role="status" aria-live="polite"></div>
+    <p class="audiorelationship"><strong>How they work together.</strong> The Audio buffer protects delivery from the audio thread to the speakers; read-ahead protects the main-thread scheduler that feeds it. They are independent, so you can increase one without changing the other. For a busy song, try Smooth playback with 500 ms or 1 second read-ahead before using Maximum safety.</p>
+    <div class="audiosettingsfoot"><button id="audiosettingscancel" type="button">Cancel</button><button id="audiosettingsapply" class="primary" type="button">Apply changes</button></div>
+  </form>
+</dialog>
 <div id="ctxmenu"></div>
 <div id="regionedit"></div>
 <div id="fxpicker"></div>

@@ -20,6 +20,7 @@ import {
 // without reaching the audible edge; scheduled timestamps do not move, and preview
 // notes use their separate path below.
 const SEQUENCER_LOOKAHEAD = 0.25;
+const SEQUENCER_LOOKAHEAD_OPTIONS = Object.freeze([0.25, 0.5, 1]);
 /**
  * The same window, for a page the machine has stopped paying attention to.
  *
@@ -429,6 +430,10 @@ class AudioSys {
     this.step = 0;
     this.nextTime = 0;
     this.timer = null;
+    // Foreground scheduler safety margin. The game leaves this at the responsive
+    // quarter-second default; the Mixer may widen it while a user is willing to
+    // trade edit/seek latency for more room around a busy main thread.
+    this.sequencerLookahead = SEQUENCER_LOOKAHEAD;
     // Scheduler starvation telemetry — see schedule() and takeSchedulerHealth().
     this._schedMarginMin = Infinity;
     this._schedLate = 0;
@@ -991,6 +996,19 @@ class AudioSys {
    */
   setLatencyHint(hint) {
     this.latencyHint = hint || null;
+  }
+
+  /**
+   * Select the foreground scheduler safety margin. This is deliberately separate
+   * from the AudioContext output buffer: it protects against main-thread stalls,
+   * while latencyHint protects the realtime output callback. It is live-safe because
+   * already queued timestamps are never moved or unwound.
+   */
+  setSequencerLookahead(seconds) {
+    const value = Number(seconds);
+    this.sequencerLookahead = SEQUENCER_LOOKAHEAD_OPTIONS.includes(value)
+      ? value : SEQUENCER_LOOKAHEAD;
+    return this.sequencerLookahead;
   }
 
   /**
@@ -2927,7 +2945,8 @@ class AudioSys {
    * the notes that play.
    */
   lookahead() {
-    if (typeof document === 'undefined') return SEQUENCER_LOOKAHEAD;
+    const foreground = this.sequencerLookahead;
+    if (typeof document === 'undefined') return foreground;
     // Hidden OR merely unfocused. `document.hidden` only goes true for a tab behind
     // another tab, or a window minimised or fully covered — and none of those is what
     // working on this machine looks like. Switch to another app and the Chrome window
@@ -2942,7 +2961,7 @@ class AudioSys {
     // separate states, a browser is free to report them independently, and the cost of
     // asking twice is nothing next to the cost of guessing wrong.
     return document.hidden || !document.hasFocus()
-      ? BACKGROUND_LOOKAHEAD : SEQUENCER_LOOKAHEAD;
+      ? Math.max(BACKGROUND_LOOKAHEAD, foreground) : foreground;
   }
 
   schedule() {
@@ -3110,12 +3129,35 @@ class AudioSys {
       // no work at all.
       if (!set.size) this.soloLayers.delete(voiceId);
     }
+    this._forgetRenderedNotes(voiceId);
   }
 
   /** Drop every layer solo, or one preset's. What closing the panel does. */
   clearLayerSolo(voiceId = null) {
+    const had = voiceId ? [voiceId] : [...this.soloLayers.keys()];
     if (voiceId) this.soloLayers.delete(voiceId);
     else this.soloLayers.clear();
+    for (const id of had) this._forgetRenderedNotes(id);
+  }
+
+  /**
+   * Make the note cache forget one preset, because something changed that a rendered
+   * note cannot show.
+   *
+   * A solo is monitoring rather than a preset key, so it never reaches `refresh` — but
+   * it DOES change what a note is, by removing the layers it does not name. Without
+   * this, lighting a solo while the cache held that preset would keep replaying the
+   * full stack, and the button would look broken; clearing it would leave the soloed
+   * layer alone on its own for as long as the buffers survived.
+   *
+   * The revision counter is exactly the right lever: `_cacheableLayer` refuses to cache
+   * anything while a solo is lit, and bumping the revision makes what was rendered
+   * BEFORE it unreachable. Same two lines `refresh` uses, and no new concept.
+   */
+  _forgetRenderedNotes(voiceId) {
+    if (!voiceId || !this.voices) return;
+    this.voices._specRev ||= new Map();
+    this.voices._specRev.set(voiceId, (this.voices._specRev.get(voiceId) || 0) + 1);
   }
 
   /**
