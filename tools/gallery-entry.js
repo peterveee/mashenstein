@@ -54,7 +54,7 @@ import {
 import { PLAYER_X } from '../src/game/player.js';
 // Cast candidates — proposals with no entry in any production registry. See the
 // raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
-import { RAIDER_CANDIDATES } from '../src/dev/hero-candidates.js';
+import { RAIDER_CANDIDATES, FIGHTER_CANDIDATES } from '../src/dev/hero-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -3077,27 +3077,34 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // above enumerates. Pick one and it moves the other way: into TOON_SPECS, into
 // HERO_SPRITES with a pixel grid, into HEROES — and this section comes out.
 {
-  const grid = section('raider-bakeoff', 'New hero — raider heroine, three cuts',
-    'GALLERY ONLY. One character, three treatments, on the SHIPPED humanoid rig: same gait, same ink, '
+  const grid = section('raider-bakeoff', 'New hero — raider heroine, five cuts',
+    'GALLERY ONLY. One character, five treatments, on the SHIPPED humanoid rig: same gait, same ink, '
     + 'same light, same two-bone limbs as Lorenzo and Gary. Everything that differs is a flag the rig '
-    + 'already reads plus the gear pieces added beside them (long hair, bare arms, gloves, belt, '
-    + 'bandolier, harness, open jacket, thigh and hip holsters, boot shafts, and a pistol in the hand). '
-    + 'That is on purpose: a look bake-off can only answer "which look" if the answer is not also '
-    + 'contaminated by "which rig". '
-    + '<br><br>The reference wears a turquoise tank, brown shorts and twin thigh holsters. Two of those '
-    + 'three do not survive this cast. <b>The shorts</b>: nobody in MASHENSTEIN is dressed for the beach, '
-    + 'and at hero size a bare leg and a trouser leg differ by one colour — the lower silhouette simply '
-    + 'goes. All three wear full-length trousers into tall boots and buy the athleticism back from the '
-    + 'pose and the gear. <b>The turquoise</b>: it is the most recognisable note in the reference and '
-    + 'three heroes already carry it (Lorenzo #2ea8a0, Ray M\'n #28a8a0, Dolores #6fa89c) — a fourth is a '
-    + 'collision, not a homage, and in a relay the tag would read as a costume change. A takes it anyway, '
-    + 'pushed deep and cool; B gives it up for field olive; C goes oxblood under tan canvas. That '
-    + 'disagreement is part of what is being judged. '
-    + '<br><br>What all three keep, because this is one character in three cuts and not three characters: '
+    + 'already reads plus the gear pieces added beside them (three long-hair cuts, bare arms, gloves, '
+    + 'belt, bandolier, crossed harness, open jacket, cropped top, shorts, thigh and hip holsters, boot '
+    + 'shafts, and one or two pistols in the hands). A look bake-off can only answer "which look" if the '
+    + 'answer is not also contaminated by "which rig". '
+    + '<br><br>Two groups. <b>A / B / C are the COVERED reads</b> — full-length trousers into tall boots. '
+    + '<b>D and E come from the references</b>: D is the 3D chibi figurine taken head-on (turquoise crop '
+    + 'tank, bare midriff, brown shorts, bare thigh, plait, twin holsters, big brass buckle) with squat '
+    + '<code>stout</code> proportions and TWIN pistols on the power move; E is the 2D vector Lara '
+    + '(charcoal sleeveless tank, crossed harness straps, wide belt, olive cargo trousers, knee-high '
+    + 'boots, streaming ponytail) — sleeveless but covered, the middle ground. '
+    + '<br><br>What to watch on the skin builds: at hero size a bare leg and a trouser leg differ by one '
+    + 'colour, so D has to earn its lower silhouette from the boot line and the shorts hem, and the '
+    + 'buckle has to be big enough to break the column of skin down the middle — that is why it is at '
+    + '1.35x and the crop hem carries its own line. And the <b>turquoise</b>: three heroes already own it '
+    + '(Lorenzo #2ea8a0, Ray M\'n #28a8a0, Dolores #6fa89c), so a fourth is a collision rather than a '
+    + 'homage. A takes it deep and cool, D at reference strength, B goes field olive, C oxblood, E '
+    + 'charcoal. The "beside the cast" tile below is where that gets settled. '
+    + '<br><br>What all five keep, because this is one character in five cuts and not five characters: '
     + 'her face, her skin, her auburn hair, brass hardware, boots, and a gun on her hip.');
 
   const CANDS = RAIDER_CANDIDATES;
   const opts = (c) => ({ spec: c.spec, pal: c.pal });
+  // Shared with the fighter section below — same tiles, same clock, so the two
+  // proposals are looked at on identical terms.
+  window.__candidateTiles = { opts };
   // The power move, through the same poseFromPlayer fields a run would hand the
   // painter (powerupExtra), on useAbility's own 0.3s countdown — so this is
   // what a run shows and not a pose sheet.
@@ -3152,11 +3159,12 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   // this cast? Same size, same pose, same clock as four heroes who already
   // shipped — which is also where a palette collision shows up, since the teal
   // in A is one hero away from Lorenzo's here.
-  tile(grid, 'raider — beside the cast', 'Four shipped heroes and the three candidates, same size and pose. '
+  const CAST_ROW = ['lorenzo', 'gnash', 'fernwick', 'grumpos'];
+  tile(grid, 'raider — beside the cast', 'Four shipped heroes and every candidate, same size and pose. '
     + 'Watch for a candidate that reads as a different game, and for A\'s teal against Lorenzo\'s.',
-    RCOL * 7, RH * 1.62, (ctx, t) => {
+    RCOL * (CAST_ROW.length + CANDS.length), RH * 1.62, (ctx, t) => {
       const row = [
-        ...['lorenzo', 'gnash', 'fernwick', 'grumpos'].map((id) => [id, null, id]),
+        ...CAST_ROW.map((id) => [id, null, id]),
         ...CANDS.map((c) => [c.id, c, c.name]),
       ];
       row.forEach(([id, cand, label], i) => {
@@ -3172,7 +3180,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   // this is the tile that decides it. Real lane, real 24px hero, real camera
   // magnification — a look that only reads on the study row does not read.
   {
-    const LW = 200, LH = 62, LGY = 46;
+    const LW = 24 + CANDS.length * 62 + 40, LH = 62, LGY = 46;
     tile(grid, 'raider — in the lane, at size',
       `Real ${HERO_DRAW_H}px hero through the run's own camera. Running and firing, side by side.`,
       LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
@@ -3182,6 +3190,103 @@ function frameStrip(grid, name, label, note, w, h, cell) {
           const x = 24 + i * 62;
           drawToon(ctx, c.id, raiderPose('run', t), x, LGY, HERO_DRAW_H, opts(c));
           drawToon(ctx, c.id, raiderPose('power', t), x + 26, LGY, HERO_DRAW_H, opts(c));
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+  }
+  window.__candidateTiles.raiderPose = raiderPose;
+}
+
+// ------------------------------------- new hero: martial artist (lab only)
+// The second proposal, on the same terms as the first: a candidate, not cast,
+// drawn by the shipped painter through drawToon's spec/pal seam.
+{
+  const grid = section('fighter-bakeoff', 'New hero — martial artist, three cuts',
+    'GALLERY ONLY, and the same arrangement as the raider above: the shipped humanoid rig, with the '
+    + 'differences carried by flags and by gear pieces drawn beside them — ox-horn buns with ribbons, '
+    + 'a qipao with gold piping and a side slit, a sash, puffed sleeve caps, spiked bracers and dark '
+    + 'tights into white boots. '
+    + '<br><br>Her power move is the <b>KIKOKEN</b>: palms chambered at the hip, thrust forward, ball of '
+    + 'energy off the hands. That is why she fits this game at all — every other signature that '
+    + 'character has is a kick, and a kick is melee: it needs the hero to REACH a hazard, which a '
+    + 'runner never lets them do. A projectile is the same shape of ability B-33P already has, so she '
+    + 'lands on the existing <code>shoot</code> hook and the existing cooldown with nothing invented '
+    + 'for her. The orb is drawn additively in three rings off the palm position the IK actually '
+    + 'solved, so it cannot drift off her hands mid-thrust. '
+    + '<br><br>The two cuts differ on ONE thing, because there is only one open question about her: '
+    + 'the RIBBONS. They are most of what makes the silhouette hers, and they are also two long pale '
+    + 'streamers on a lane that already has portals, coins and fliers moving in it. F flies them; G '
+    + 'ties them short. Judge that on the in-the-lane tile and nowhere else — at study scale the '
+    + 'flying ribbons win every time. '
+    + '<br><br>H is F with the ANIME EYE instead of the cast\'s: iris nearly filling the sclera, a '
+    + 'sliver of white left along the top lid, a heavy lash cap, two highlights of very different '
+    + 'sizes, brows set close. It is not the shipped eye enlarged — that is a bigger white oval with '
+    + 'the same small pupil rattling inside it, and it reads as startled. The question it asks is not '
+    + 'about her: it is whether one hero can carry a different eye style than the other ten without '
+    + 'looking like she wandered in from another game.');
+
+  const { opts, raiderPose: candPose } = window.__candidateTiles;
+  const CANDS = FIGHTER_CANDIDATES;
+  const RH = 62, RCOL = 82, RFEET = 92;
+  for (const [kind, note] of [
+    ['idle', 'Standing. The buns are the whole silhouette — the one hairstyle on the roster that is symmetric and outboard.'],
+    ['run', 'The pose she is in for 95% of a stage.'],
+    ['power', 'KIKOKEN: chamber, thrust, release. The orb swells as the palms arrive, so the energy reads as pushed out of her rather than carried.'],
+    ['jump', 'Airborne.'],
+    ['duck', 'Crouched — where the ribbons have the least room and the skirt has to clear the tucked legs.'],
+  ]) {
+    tile(grid, `fighter — ${kind}`, note, RCOL * CANDS.length, RH * 1.62, (ctx, t) => {
+      CANDS.forEach((c, i) => {
+        drawToon(ctx, c.id, candPose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
+      });
+    }, { animated: true, wide: true, hires: 4 });
+  }
+
+  tile(grid, 'fighter — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use.',
+    RCOL * CANDS.length, 54, (ctx) => {
+      CANDS.forEach((c, i) => {
+        drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+      });
+    }, { animated: false, wide: true, hires: 6 });
+
+  const FCAST = ['lorenzo', 'gnash', 'fernwick', 'grumpos'];
+  tile(grid, 'fighter — beside the cast', 'Four shipped heroes and every cut, same size and pose. '
+    + 'Her blue is the one no cabinet or hero owns — check that here, not on the swatch. This is also '
+    + 'where the big-eye cut is decided: the question is not whether the eye is nice, it is whether '
+    + 'ONE hero can carry a different eye style than the other ten.',
+    RCOL * (FCAST.length + CANDS.length), RH * 1.62, (ctx, t) => {
+      const row = [
+        ...FCAST.map((id) => [id, null, id]),
+        ...CANDS.map((c) => [c.id, c, c.name]),
+      ];
+      row.forEach(([id, cand, label], i) => {
+        drawToon(ctx, id, pose('idle', t), RCOL * (i + 0.5), RFEET, RH, cand ? opts(cand) : {});
+        ctx.fillStyle = cand ? '#c8b98a' : '#7a7a8e';
+        ctx.font = '6px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
+      });
+    }, { animated: true, wide: true, hires: 4 });
+
+  {
+    const LW = 26 + CANDS.length * 62 + 44, LH = 62, LGY = 46;
+    tile(grid, 'fighter — in the lane, at size',
+      `Real ${HERO_DRAW_H}px hero through the run's own camera. Running and blasting, side by side — `
+      + 'this is the tile the ribbon question is settled on.',
+      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        laneStrip(ctx, LW, LH, LGY);
+        CANDS.forEach((c, i) => {
+          const x = 26 + i * 62;
+          drawToon(ctx, c.id, candPose('run', t), x, LGY, HERO_DRAW_H, opts(c));
+          drawToon(ctx, c.id, candPose('power', t), x + 28, LGY, HERO_DRAW_H, opts(c));
         });
       }, { animated: true, wide: true, world: true, hires: 5 });
   }

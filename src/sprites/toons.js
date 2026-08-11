@@ -756,9 +756,9 @@ function drawWrench(ctx, x, y, angle, u, ow) {
 // size a hero is actually seen the guard is the only thing that says "pistol"
 // rather than "block", which is why it survives the detail cut and the sight
 // does not.
-function drawPistol(ctx, x, y, angle, u, ow, p) {
-  const steel = p.gunmetal || '#4c5360';
-  const grip = p.gunGrip || p.w || '#6b4324';
+function drawPistol(ctx, x, y, angle, u, ow, p, back = 0) {
+  const steel = recede(p.gunmetal || '#4c5360', back);
+  const grip = recede(p.gunGrip || p.w || '#6b4324', back);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
@@ -1771,6 +1771,86 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     dot(ctx, eyeX(1), cy, 0.032 * u, p.e);
     return;
   }
+  if (ex.anime) {
+    // The drawn-eye build, in two sizes. What makes it this style rather than
+    // the shipped eye enlarged is never the SIZE — it is that the IRIS carries
+    // the eye instead of a small pupil rattling around inside a white oval,
+    // that a lash line caps it, and that a catchlight lights it. Scale the
+    // shipped eye up without those and you get a startled hero; put those in at
+    // modest size and you get this. Nothing here touches eye SHAPE: both builds
+    // are round, and the style is a drawing convention applied to the whole
+    // face rather than a marker of anything about the character.
+    //
+    // `big` is the full version. `soft` sits between it and the cast's own eye
+    // — barely larger than shipped — and spends its budget differently: MORE
+    // WHITE around a smaller iris, ONE gentle highlight instead of two, a
+    // hairline lash instead of a heavy cap, and a near-level brow. Those four
+    // are the whole difference between expressive and staring. The big build's
+    // dark mass, hard cap and down-angled brow are precisely the ingredients of
+    // a glare, which is why it reads as intense even at rest.
+    const soft = ex.anime === 'soft';
+    const A = soft
+      ? { rx: 0.058, ry: 0.07, sep: 0.082, iris: 0.66, pupil: 0.42, lash: 0.011,
+          hi: 0.3, browGap: 0.024, browW: 1.0, browTilt: 0.0035, browL: 0.7 }
+      : { rx: 0.07, ry: 0.088, sep: 0.094, iris: 0.92, pupil: 0.55, lash: 0.02,
+          hi: 0.34, browGap: 0.014, browW: 1.25, browTilt: 0.008, browL: 0.45 };
+    const rx = A.rx * u, ry = A.ry * u;
+    const ax = (side) => cx + side * A.sep * u * (turned && side !== nearSide ? 1 - 0.42 * turnDepth : 1);
+    const lookX = ((ex.calling ? 0.02 : ex.focus ? 0.01 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.03 * u;
+    const lookY = (ex.surprise || ex.cheer ? -0.006 : 0.006 + (ex.glanceY || 0)) * u;
+    const iris = p.iris || p.hairDark || p.e;
+    for (const sx of [-1, 1]) {
+      const ex0 = ax(sx);
+      outlined(ctx, '#fff', hair(0.4, 0.011 * u) * INK.face, (c) =>
+        c.ellipse(ex0, cy, rx, ry, 0, 0, Math.PI * 2));
+      // Iris sits LOW in the eye, leaving a sliver of white along the top lid.
+      // Centred, the eye reads as a stare; the sliver is what gives it a lid.
+      const ix = ex0 + lookX, iy = cy + lookY + ry * 0.08;
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(ex0, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.clip();
+      dot(ctx, ix, iy, rx * A.iris, iris);
+      dot(ctx, ix, iy + ry * 0.04, rx * A.iris * A.pupil, p.e);
+      // Highlights: one high and inboard, plus — on the big build only — a
+      // small opposed glint. That second mark exists to stop a big catchlight
+      // reading as a hole punched in the iris; at the soft size there is no
+      // hole to rescue and it is just clutter.
+      dot(ctx, ix - sx * rx * 0.3, iy - ry * 0.42, rx * A.hi, '#fff');
+      if (!soft) dot(ctx, ix + sx * rx * 0.38, iy + ry * 0.34, rx * 0.15, 'rgba(255,255,255,0.8)');
+      // The lash line: a cap over the top of the eye, clipped to it, so the eye
+      // is closed off above the way a drawn one is. Shorter and finer on the
+      // soft build — a heavy cap is a scowl's worth of weight on the lid.
+      ctx.strokeStyle = p.e;
+      ctx.lineWidth = hair(0.5, A.lash * u) * INK.face;
+      ctx.beginPath();
+      ctx.ellipse(ex0, cy, rx * 0.99, ry * 0.99, 0,
+        Math.PI * (soft ? 1.16 : 1.08), Math.PI * (soft ? 1.84 : 1.92));
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (!ex.brow) {
+      // Brows always: a drawn eye has them, and without one a pair of eyes this
+      // size has nothing above it. Darker and closer than the cast's hairline
+      // brows, which at the shared lightness came out as two grey bars floating
+      // over the face.
+      ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * A.browL);
+      ctx.lineWidth = hair(BROW_MIN, BROW_W * u * A.browW) * INK.face * INK.brow;
+      ctx.beginPath();
+      const by = cy - ry - A.browGap * u;
+      for (const sx of [-1, 1]) {
+        const bx = ax(sx);
+        // Angled down toward the nose — but only just, on the soft build. The
+        // tilt is most of what turns a brow into a scowl, and a resting face
+        // should not be wearing one.
+        const tilt = A.browTilt * (ex.annoyed ? 2 : 1) * u;
+        ctx.moveTo(bx - sx * rx * 0.85, by - tilt);
+        ctx.lineTo(bx + sx * rx * 0.8, by + tilt * 1.3);
+      }
+      ctx.stroke();
+    }
+    return;
+  }
   for (const sx of [-1, 1]) {
     // Annoyed narrows the eye to a glare — the white squashes and the pupil
     // stares straight out. Style 2 rolls the pupils up; style 3 squeezes to
@@ -2191,7 +2271,8 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // fringe on it, and only what hangs off the back changes. Named once here
   // because both halves of drawHead ask for it and they sit either side of the
   // skull's own fill.
-  const longHair = spec.head === 'braid' || spec.head === 'pony' || spec.head === 'bun';
+  const longHair = spec.head === 'braid' || spec.head === 'pony' || spec.head === 'bun'
+    || spec.head === 'buns';
   // hair/hat layers that sit BEHIND the head
   if (spec.head === 'jackal') {
     // A matched pair of tall ears, near-symmetric with just a touch of lean so
@@ -2310,15 +2391,28 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // and the crouch lifts the head to -0.42u while leaving that drop alone,
       // which put the tie on the floor and then through it. Tucked over the
       // shoulder instead, which is where a real one goes when you fold up.
-      const tipX = hx - R * (portrait ? 1.46 : motion ? 2.44 : tucked ? 1.62 : 1.34);
-      const tipY = hy + R * (portrait ? 1.34 : motion ? 0.52 : tucked ? 1.08 : 2.62) + wave;
-      const ctlX = hx - R * (portrait ? 1.3 : motion ? 1.62 : tucked ? 1.28 : 1.16);
-      const ctlY = hy + R * (portrait ? 0.62 : motion ? 0.04 : tucked ? 0.5 : 1.4) + wave * 0.4;
+      // Running it does NOT fly out level. A plait held horizontal behind the
+      // head is a stiff bar pointing at the camera-left edge of the frame — the
+      // pose reads as a prop, not as hair — and it is the single worst thing
+      // this shape can do. It hangs down her back the whole time and gets
+      // LONGER in motion (the run stretches it out behind her, it does not
+      // levitate it), leaning back a little and BOUNDING on the stride clock.
+      // `wave` is the bound, and it is worth twice as much here as anywhere
+      // else in this file: a heavy rope on a running body has real travel.
+      const bound = motion ? wave * 2.1 : wave;
+      const tipX = hx - R * (portrait ? 1.46 : motion ? 1.72 : tucked ? 1.62 : 1.34);
+      const tipY = hy + R * (portrait ? 1.34 : motion ? 3.0 : tucked ? 1.08 : 2.62) + bound;
+      const ctlX = hx - R * (portrait ? 1.3 : motion ? 1.6 : tucked ? 1.28 : 1.16);
+      const ctlY = hy + R * (portrait ? 0.62 : motion ? 1.5 : tucked ? 0.5 : 1.4) + bound * 0.4;
       const at = sampler(hx - R * 0.92, hy + R * 0.3, ctlX, ctlY, tipX, tipY);
-      // Half-width down the plait. It tapers hard — a plait that keeps its
-      // girth to the tip is a rope, and the taper is most of what says which.
-      const halfAt = (t) => R * (0.27 - 0.15 * t);
-      const CROSSINGS = 6;
+      // Half-width down the plait. Thin — a plait is a rope of three thin
+      // strands, and the first cut's girth was most of why the shape read the
+      // way it did. It also tapers hard: one that keeps its width to the tip is
+      // a tail, and the taper is most of what says which.
+      const halfAt = (t) => R * (0.185 - 0.1 * t);
+      // More crossings than the fat version had: on a thin rope the scallops are
+      // small, and too few of them over this length reads as a smooth cord.
+      const CROSSINGS = 8;
       const TUFT_AT = 0.86;
       outlined(ctx, p.hair, ow, (c) => {
         for (let i = 0; i < CROSSINGS; i++) {
@@ -2383,10 +2477,15 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // moving. Held up at shoulder height standing, it read as a tail stuck
       // out sideways rather than as long hair that happens to be tied.
       const gatherX = hx - R * 0.86, gatherY = hy - R * 0.72;
-      const tipX = hx - R * (portrait ? 1.62 : motion ? 2.66 : tucked ? 1.74 : 1.5);
-      const tipY = hy + R * (portrait ? 0.24 : motion ? -0.5 : tucked ? 0.42 : 2.3) + wave;
-      const ctlX = hx - R * (portrait ? 1.5 : motion ? 1.8 : 1.86);
-      const ctlY = hy - R * (portrait ? 0.66 : motion ? 1.16 : 0.5) + wave * 0.5;
+      // Same finding as the plait: it hangs and bounds rather than streaming out
+      // level. A tail lifts more than a plait does — it is lighter and it is
+      // tied higher — so it carries a real backward lean where the plait barely
+      // leaves the vertical, but it still ends up BELOW the shoulder.
+      const bound = motion ? wave * 1.8 : wave;
+      const tipX = hx - R * (portrait ? 1.62 : motion ? 2.24 : tucked ? 1.74 : 1.5);
+      const tipY = hy + R * (portrait ? 0.24 : motion ? 1.34 : tucked ? 0.42 : 2.3) + bound;
+      const ctlX = hx - R * (portrait ? 1.5 : motion ? 2.0 : 1.86);
+      const ctlY = hy - R * (portrait ? 0.66 : motion ? 0.66 : 0.5) + bound * 0.5;
       const at = sampler(gatherX, gatherY, ctlX, ctlY, tipX, tipY);
       const halfAt = (t) => R * (0.3 - 0.13 * t);
       outlined(ctx, p.hair, ow, (c) => {
@@ -2423,11 +2522,113 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       }
       outlined(ctx, p.a, hair(0.4, ow * 0.5), (c) =>
         c.ellipse(gatherX + R * 0.18, gatherY + R * 0.02, R * 0.1, R * 0.15, -0.5, 0, Math.PI * 2));
+    } else if (spec.head === 'buns') {
+      // Ox horns: a bun over each ear, wrapped in ribbon, with the tails
+      // trailing. The PAIR is the whole silhouette — it is the one hairstyle on
+      // the roster that is symmetric and outboard, so it survives being two
+      // pixels wide in a way a single tail never does, and it is the reason
+      // this character is recognisable from across a lane.
+      //
+      // Drawn in the behind-head pass so the skull crops their inner edge and
+      // they read as sitting ON the head rather than floating beside it.
+      const ribbon = p.ribbon || p.w;
+      const bunR = R * 0.46;
+      const bunY = hy - R * 0.82;
+      for (const sx of [-1, 1]) {
+        const bx = hx + sx * R * 1.02;
+        // The tails. The far one is shorter and pushed back — matched, the two
+        // read as one wide ribbon behind her head rather than as a pair.
+        const near = sx < 0;                       // -x is her back, as everywhere else
+        // `shortRibbons` ties them off at the bun instead of letting them fly.
+        const len = (near ? 1 : 0.62) * (spec.shortRibbons ? 0.36 : 1);
+        const tipX = bx + sx * R * (motion ? 1.5 : 0.5) * len;
+        const tipY = hy + R * (motion ? -0.25 : 1.35) * len + wave * (near ? 1.3 : 0.7);
+        const ctlX = bx + sx * R * (motion ? 1.0 : 0.66) * len;
+        const ctlY = hy + R * (motion ? -0.6 : 0.36) * len + wave * 0.5;
+        outlined(ctx, ribbon, hair(0.5, ow * 0.85), (c) => {
+          c.moveTo(bx + sx * R * 0.1, bunY + R * 0.2);
+          c.quadraticCurveTo(ctlX - sx * R * 0.16, ctlY, tipX - sx * R * 0.02, tipY);
+          // A forked end: a ribbon is cut, not rounded off.
+          c.lineTo(tipX + sx * R * 0.2, tipY - R * 0.12);
+          c.lineTo(tipX + sx * R * 0.16, tipY + R * 0.16);
+          c.quadraticCurveTo(ctlX + sx * R * 0.22, ctlY + R * 0.16, bx + sx * R * 0.34, bunY + R * 0.3);
+          c.closePath();
+        });
+        // Hair under the wrap, and the wrap OFF-CENTRE on it — up and outboard,
+        // so brown shows along the inner and lower edge of each bun. Two
+        // concentric circles instead read as a pair of pale ears, which is a
+        // different animal entirely.
+        outlined(ctx, p.hair, ow, (c) => c.arc(bx, bunY + R * 0.14, bunR * 1.06, 0, Math.PI * 2));
+        outlined(ctx, ribbon, ow, (c) =>
+          c.arc(bx + sx * bunR * 0.26, bunY - bunR * 0.12, bunR * 0.82, 0, Math.PI * 2));
+        if (!lod) {
+          // The gathered band at the base, in the accent — the mark that says
+          // the ribbon is tied round something.
+          outlined(ctx, p.a, hair(0.4, ow * 0.5), (c) =>
+            c.ellipse(bx - sx * R * 0.08, bunY + R * 0.4, bunR * 0.42, bunR * 0.26, sx * 0.5, 0, Math.PI * 2));
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(bx, bunY, bunR, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.globalAlpha *= 0.45;
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = hair(0.4, ow * 0.6);
+          ctx.beginPath();
+          ctx.arc(bx + sx * bunR * 0.5, bunY + bunR * 0.5, bunR * 0.8, -Math.PI, Math.PI * 0.2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     } else {
       // A knot at the nape, plus the two strands that always work loose out of
       // one. The bun sits LOW and BACK: worn on the crown it silhouettes as a
       // topknot, which is a different character.
       const bunX = hx - R * 1.16, bunY = hy - R * 0.66;
+      // The length. A knot on its own is a short cut, and this hero's hair is
+      // long — so it is a HALF-up: gathered at the crown, with the rest left to
+      // fall down her back past the shoulder blades. That fall is what carries
+      // the length, and the knot is what says it has been dealt with.
+      const fallTipX = hx - R * (portrait ? 1.16 : motion ? 1.62 : tucked ? 1.34 : 1.16);
+      const fallTipY = hy + R * (portrait ? 1.1 : motion ? 2.3 : tucked ? 0.92 : 2.14) + wave * 2;
+      const fallCtlX = hx - R * (motion ? 1.5 : 1.42);
+      const fallCtlY = hy + R * (motion ? 1.1 : 1.05) + wave * 0.8;
+      const fall = sampler(hx - R * 0.86, hy + R * 0.06, fallCtlX, fallCtlY, fallTipX, fallTipY);
+      const fallHalf = (t) => R * (0.34 - 0.19 * t);
+      outlined(ctx, p.hair, ow, (c) => {
+        const [ax, ay, aang] = fall(0);
+        const [mx, my, mang] = fall(0.52);
+        const [ex, ey, eang] = fall(1);
+        const an = [-Math.sin(aang), Math.cos(aang)];
+        const mn = [-Math.sin(mang), Math.cos(mang)];
+        const en = [-Math.sin(eang), Math.cos(eang)];
+        c.moveTo(ax + an[0] * fallHalf(0), ay + an[1] * fallHalf(0));
+        c.quadraticCurveTo(mx + mn[0] * fallHalf(0.52) * 1.25, my + mn[1] * fallHalf(0.52) * 1.25,
+          ex + en[0] * fallHalf(1), ey + en[1] * fallHalf(1));
+        // A soft point rather than a cap: loose hair thins out at the ends.
+        c.lineTo(ex + Math.cos(eang) * R * 0.24, ey + Math.sin(eang) * R * 0.24);
+        c.lineTo(ex - en[0] * fallHalf(1), ey - en[1] * fallHalf(1));
+        c.quadraticCurveTo(mx - mn[0] * fallHalf(0.52) * 1.05, my - mn[1] * fallHalf(0.52) * 1.05,
+          ax - an[0] * fallHalf(0) * 0.4, ay - an[1] * fallHalf(0) * 0.4);
+        c.closePath();
+      });
+      if (!lod) {
+        // Two lock lines down the fall, so a long flat shape reads as hair
+        // rather than as a cape.
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = hair(0.4, ow * 0.65);
+        ctx.beginPath();
+        for (const off of [-0.34, 0.24]) {
+          const [sx, sy, sang] = fall(0.14);
+          const [mx, my, mang] = fall(0.6);
+          const [ex, ey] = fall(0.94);
+          const sn = [-Math.sin(sang), Math.cos(sang)], mn = [-Math.sin(mang), Math.cos(mang)];
+          ctx.moveTo(sx + sn[0] * fallHalf(0.14) * off, sy + sn[1] * fallHalf(0.14) * off);
+          ctx.quadraticCurveTo(mx + mn[0] * fallHalf(0.6) * off, my + mn[1] * fallHalf(0.6) * off, ex, ey);
+        }
+        ctx.stroke();
+      }
+      // The knot lands ON the fall, last: painted under it, the fall's own
+      // outline runs straight across the front of the bun.
       outlined(ctx, p.hair, ow, (c) => c.arc(bunX, bunY, R * 0.52, 0, Math.PI * 2));
       if (!lod) {
         // Two wraps across the knot, so it reads as coiled hair and not a ball
@@ -2444,14 +2645,6 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         ctx.stroke();
         ctx.restore();
       }
-      // Loose strands at the nape, swinging with the run.
-      outlined(ctx, p.hair, hair(0.5, ow * 0.8), (c) => {
-        c.moveTo(hx - R * 0.9, hy + R * 0.06);
-        c.quadraticCurveTo(hx - R * 1.36, hy + R * 0.44 + wave, hx - R * 1.18, hy + R * 0.96 + wave * 1.4);
-        c.lineTo(hx - R * 0.94, hy + R * 0.86 + wave * 1.2);
-        c.quadraticCurveTo(hx - R * 1.06, hy + R * 0.44 + wave * 0.6, hx - R * 0.7, hy + R * 0.16);
-        c.closePath();
-      });
     }
   }
   if (spec.plumber) {
@@ -2843,7 +3036,12 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 
   // face
   const ex = expressionFor(id, pose, spec);
-  const faceEx = headTurn ? { ...ex, turn: headTurn } : ex;
+  // `anime` is 'big' | 'soft'; a bare true means the full-size build.
+  const faceEx = {
+    ...ex,
+    ...(headTurn ? { turn: headTurn } : {}),
+    anime: spec.anime === true ? 'big' : spec.anime || false,
+  };
   // Cap variants that reshape Lorenzo's brow line also move the face mask under
   // it and choose how the brows are drawn. Everyone else is untouched.
   const capV = spec.head === 'cap' ? lorenzoFace() : null;
@@ -3507,8 +3705,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   let wrenchAngle = null;
   // The sidearm's angle while it is OUT of the holster, or null while it is in
   // one. Same arrangement as wrenchAngle: the prop rides the hand, and this is
-  // the only thing the pose has to say about it.
-  let pistolAngle = null;
+  // the only thing the pose has to say about it. `pistolAngleB` is the off
+  // hand's, for a hero who carries two — it is a separate variable rather than
+  // a flag because the two hands are drawn in different PASSES (the far arm
+  // goes down behind the torso, the near one over it), so each has to be able
+  // to arm its own prop where its own limb lands.
+  let pistolAngle = null, pistolAngleB = null;
+  // Where the ki ball sits and how far into its throw it is, as [x, y, grow, q],
+  // or null when she is not throwing one.
+  let kiBlast = null;
   // Where Fernwick's shield rides while the victory routine has it off his
   // back, as [x, y]. Null the rest of the time, which is also the flag the
   // back-slung disc and the draw order below both test.
@@ -3834,6 +4039,28 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     elbF = sideF;
     // The free hand braces across the body instead of continuing its run pump.
     handB = [shB - sideB * 0.03 * u, armY + armL * 0.42]; elbB = sideB;
+  } else if (spec.kiblast && pose.menuAction === 'aim') {
+    // KIKOKEN. A projectile like B-33P's, so it lands on the same `shoot`
+    // ability and the same 0.3s pose budget — but the weapon is her, so the
+    // whole beat is in the ARMS rather than in a prop: chamber at the hip,
+    // thrust, and the ball leaves the palms.
+    //
+    // Three beats inside the 0.3s, because a thrust with no wind-up is just an
+    // arm that teleported forward. The chamber is short and the thrust is
+    // fast; the rest of the window is the hold, which is the frame that reads.
+    const q = Math.max(0, Math.min(1, (pose.actionTime || 0) / 0.3));
+    const ease = (v) => v * v * (3 - 2 * v);
+    const chamber = [shF - 0.09 * u, armY + armL * 0.62];
+    const thrust = [shF + 0.28 * u, armY + 0.05 * u];
+    const v = q < 0.3 ? 0 : q < 0.52 ? ease((q - 0.3) / 0.22) : 1;
+    // Both palms travel together and land a hair apart — the two-handed press
+    // is the signature, and hands at different heights read as a punch.
+    handF = [chamber[0] + (thrust[0] - chamber[0]) * v, chamber[1] + (thrust[1] - chamber[1]) * v];
+    handB = [handF[0] - 0.05 * u, handF[1] + 0.06 * u];
+    elbF = -1; elbB = -1;
+    // The orb is born at the palms and swells as they arrive, so the energy
+    // reads as pushed out of her rather than as an object she was holding.
+    if (v > 0.02) kiBlast = [handF[0] + 0.05 * u, handF[1] - 0.01 * u, v, q];
   } else if (spec.pistol && pose.menuAction === 'aim') {
     // The shot. B-33P's version of this is a whole articulated gun-ARM, which
     // is his character; hers is a hand holding a thing, so it is posed the way
@@ -3858,10 +4085,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // puts the joint above the shoulder, which is the chicken wing.
     elbF = -1;
     pistolAngle = -0.1 - 0.42 * kick;
-    // The free hand comes across the body to brace, rather than carrying on
-    // with its half of the run pump. Two arms doing unrelated things is what
-    // made every early cut of this read as "jogging while holding a gun".
-    handB = [shB + 0.12 * u, armY + armL * 0.34]; elbB = sideB;
+    if (spec.pistol === 'twin') {
+      // Both barrels. The off hand reaches SHORTER and lower — matched, the two
+      // arms overlap into one thick limb with two guns growing out of the end
+      // of it, and the whole point of carrying two is that you can see two.
+      // It also recoils on its own beat, a hair behind the near one, so the
+      // pair reads as two shots rather than one wide one.
+      const kickB = Math.max(0, 1 - Math.max(0, q - 0.08) / 0.34);
+      handB = [shB + (0.2 - 0.035 * kickB) * u, armY + (0.14 + 0.03 * kickB) * u];
+      elbB = -1;
+      pistolAngleB = -0.06 - 0.38 * kickB;
+    } else {
+      // The free hand comes across the body to brace, rather than carrying on
+      // with its half of the run pump. Two arms doing unrelated things is what
+      // made every early cut of this read as "jogging while holding a gun".
+      handB = [shB + 0.12 * u, armY + armL * 0.34]; elbB = sideB;
+    }
   } else if (pose.headless || pose.stomp) {
     handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
     handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
@@ -4086,6 +4325,24 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       dot(ctx, x, y, 0.028 * u, recede(p.s, back));
     } else if (spec.plumber) {
       outlined(ctx, recede(p.w, back), hair(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+    } else if (spec.bracers) {
+      // A wide studded cuff with the hand small inside it. The spikes are three
+      // stubs and no more: at hero size a full ring of them fills in solid and
+      // the bracer goes back to being a disc.
+      const br = armW * 0.95;
+      if (!lod) {
+        ctx.fillStyle = recede(p.a, back);
+        for (const a of [-0.9, 0, 0.9]) {
+          ctx.beginPath();
+          ctx.moveTo(x + Math.cos(a) * br, y + Math.sin(a) * br);
+          ctx.lineTo(x + Math.cos(a - 0.3) * br * 0.8, y + Math.sin(a - 0.3) * br * 0.8);
+          ctx.lineTo(x + Math.cos(a + 0.3) * br * 0.8, y + Math.sin(a + 0.3) * br * 0.8);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      outlined(ctx, recede(p.ribbon || p.w, back), hair(0.5, ow * 0.6), (c) => c.arc(x, y, br, 0, Math.PI * 2));
+      outlined(ctx, recede(p.hand || p.s, back), hair(0.45, ow * 0.5), (c) => c.arc(x, y, armW * 0.5, 0, Math.PI * 2));
     } else if (spec.gloves) {
       // Fingerless gloves: a leather cuff with the hand still skin on top of
       // it. Drawn as two concentric discs rather than as a band across the
@@ -4291,6 +4548,22 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // of a stride — that is why neither of them is authored in body coordinates.
   const kneeAt = (hipX, rootY, foot, kneeDir) =>
     joint(hipX, rootY, foot[0], foot[1] - ankleLift, thighSeg, kneeDir, shinSeg);
+  // What a LEG is made of, and where the garment on it stops. Trousers are the
+  // default — the limb is drawn in p.p from hip to ankle and that is the whole
+  // lower body. `shorts` is the other build: the limb is drawn in SKIN, and a
+  // short second stroke down the top of the thigh puts the garment back on.
+  // Same arrangement as the boot at the other end, and for the same reason —
+  // the clothing is the limb in a different colour rather than a shape laid
+  // over it, so it cannot slide off the leg when the knee folds.
+  const legFill = spec.shorts ? p.s : p.p;
+  const shortsLeg = (hipX, rootY, foot, kneeDir, w, fill) => {
+    if (!spec.shorts) return;
+    const [kx, ky] = kneeAt(hipX, rootY, foot, kneeDir);
+    const t = Math.max(0, Math.min(1, spec.shorts));
+    // A touch wider than the leg: shorts hang off a thigh rather than shrink-
+    // wrapping it, and the flare is what stops the hem reading as a knee-sock.
+    limb(ctx, hipX, rootY, hipX + (kx - hipX) * t, rootY + (ky - rootY) * t, w * 1.12, fill, ow);
+  };
   // `boots` is how much of the SHIN the leather covers, as a fraction. The
   // shaft is the same limb stroke in the shoe's own colour, so boot and shoe
   // read as one object and the shaft can never part company with the leg.
@@ -4353,7 +4626,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
 
   const drawFrontLeg = () => {
     const hipX = hipAt(1);
-    limb2(ctx, hipX, legRootYF, footF[0], footF[1] - ankleLift, thighSeg, kneeF, legWF, p.p, ow, legWF, false, shinSeg);
+    limb2(ctx, hipX, legRootYF, footF[0], footF[1] - ankleLift, thighSeg, kneeF, legWF, legFill, ow, legWF, false, shinSeg);
+    shortsLeg(hipX, legRootYF, footF, kneeF, legWF, p.p);
     bootShaft(hipX, legRootYF, footF, kneeF, legWF, footFill);
     if (turned && id !== 'grumpos') {
       const rx = legWF * 0.72, ry = legWF * 0.58;
@@ -4647,6 +4921,32 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
           dot(ctx, mx + ca * 0.04 * u, my + sa * 0.04 * u, 0.025 * u, p.a);
         }
       }
+      if (kiBlast) {
+        // Concentric and additive: a hot white core, a saturated body, and a
+        // soft corona that carries most of the size. One flat disc reads as a
+        // ball she is holding; the falloff is what makes it light.
+        const [kx, ky, grow, kq] = kiBlast;
+        const r = (0.07 + 0.075 * grow) * u;
+        const core = p.ki || '#bfefff';
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.34 * grow * (1 - kq * 0.35);
+        dot(ctx, kx, ky, r * 1.9, core);
+        ctx.globalAlpha = 0.7 * grow;
+        dot(ctx, kx, ky, r * 1.15, core);
+        ctx.globalAlpha = 0.95 * grow;
+        dot(ctx, kx, ky, r * 0.6, '#ffffff');
+        ctx.restore();
+        if (!lod) {
+          // Two motes trailing back off it, so the ball is travelling rather
+          // than parked on her hands.
+          ctx.save();
+          ctx.globalAlpha = 0.5 * grow;
+          dot(ctx, kx - r * 1.8, ky + r * 0.5, r * 0.22, core);
+          dot(ctx, kx - r * 2.5, ky - r * 0.4, r * 0.14, core);
+          ctx.restore();
+        }
+      }
       shoulderCap(shF, armYF);
     }
     ctx.restore();
@@ -4748,6 +5048,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // borrowed swing, which is the tangle this replaces.
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
     handDeco(handB[0], handB[1], farShade);
     // Standing, the cannon now hides behind the torso here same as every
     // other hero's front arm does — only the hip-height muzzle tip clears the
@@ -4756,7 +5057,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // separate prop bolted to his chest rather than an arm attached to him.
     if (stand && !raisedArmStudyFront) drawFrontArm();
   }
-  limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(p.p, farShade), ow, legWB, false, shinSeg);
+  limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(legFill, farShade), ow, legWB, false, shinSeg);
+  shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
   bootShaft(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(footFill, farShade));
   outlined(ctx, recede(footFill, farShade), hair(0.6, ow * 0.8), (c) => c.ellipse(footB[0] + shoeB.dx, footB[1] - ankleLift + shoeB.dy, footRx, footRy, ankleB, 0, Math.PI * 2));
   // The far holster recedes with the leg it is on, like every other far-side
@@ -4804,6 +5106,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       outlined(ctx, p.b, ow * 0.65, (c) => c.arc(torsoCx + sgn * torsoHalf * 0.86, torsoTop + dr * 0.75, dr, 0, Math.PI * 2), 'rgba(26,16,40,0.15)');
     }
   }
+  if (spec.puffs) {
+    // Puffed sleeve caps. Same idea as `delts` — a disc at each shoulder drawn
+    // UNDER the torso so only its outer arc clears the silhouette — but rounder
+    // and rimmed in the trim colour, which is what turns a shoulder into a
+    // sleeve. Under the torso and not over it: over, the cap covers the collar
+    // and the figure grows a pair of epaulettes.
+    const pr = torsoHalf * 0.52;
+    for (const sgn of [-1, 1]) {
+      outlined(ctx, p.b, ow * 0.8, (c) =>
+        c.arc(torsoCx + sgn * torsoHalf * 0.9, torsoTop + pr * 0.7, pr, 0, Math.PI * 2));
+      if (!lod) {
+        ctx.strokeStyle = p.a;
+        ctx.lineWidth = hair(0.45, ow * 0.9);
+        ctx.beginPath();
+        ctx.arc(torsoCx + sgn * torsoHalf * 0.9, torsoTop + pr * 0.7, pr * 0.86,
+          sgn < 0 ? Math.PI * 0.5 : -Math.PI * 0.5, sgn < 0 ? Math.PI * 1.4 : Math.PI * 0.4);
+        ctx.stroke();
+      }
+    }
+  }
   // The heavy torso is bare skin: thinner and fainter still than the arms'
   // SKIN_OUTLINE — it is the biggest uninterrupted shape on him, and at full
   // weight its rim dominates the sprite the way no limb's can.
@@ -4812,7 +5134,38 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // like the torso does — pinned to a static hipY it detaches from a bobbing
   // body — so trousers and belt have to share one number or the colour seam
   // and the strap that is meant to cover it drift apart mid-stride.
-  const beltY = hipY - 0.085 * u + bob;
+  // `beltDrop` lowers it, in u. A belt worn on the hips rather than the waist
+  // is what opens a sliver of midriff under a top that has not moved — and it
+  // moves the TROUSER FILL with it, because they are one seam: the belt exists
+  // to sit on that colour change and hide it, so anything that separates the
+  // two puts a line of shirt colour under the leather.
+  const beltY = hipY - (0.085 - (spec.beltDrop || 0)) * u + bob;
+  if (spec.crop && !duck) {
+    // A cropped top: bare midriff between the hem and the waistband. Painted
+    // as skin over the torso and then overwritten from the belt down by the
+    // trouser fill below, so the three bands come out of two fills and the
+    // silhouette never moves. `crop` is where the hem sits between the
+    // shoulders and the belt — 0.6 is a short top, 0.85 a sliver.
+    //
+    // Two colours meeting with no line between them is the whole risk here: at
+    // hero size a skin-to-khaki seam has barely a value step across it, so the
+    // hem gets a hairline of its own or the top just fades into the shorts.
+    const hemY = torsoTop + (beltY - torsoTop) * Math.max(0, Math.min(1, spec.crop));
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.fillStyle = p.s;
+    ctx.fillRect(torsoCx - torsoHalf * 1.2, hemY, torsoHalf * 2.4, torsoBot - hemY + 0.1 * u);
+    if (!lod) {
+      ctx.globalAlpha *= 0.35;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = hair(0.45, ow * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(torsoCx - torsoHalf, hemY);
+      ctx.lineTo(torsoCx + torsoHalf, hemY);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (spec.pants) {
     // Below the waist in the LEG colour, so the lower body reads as trousers
     // rather than as a shirt worn long. Clipped to the torso, so the silhouette
@@ -4845,6 +5198,40 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.lineTo(inner, torsoBot - torsoHalf * 0.08);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+  }
+  if (spec.bust && !lod) {
+    // Chest, at the same whisper weight Grumpos's pecs are drawn at and clipped
+    // to the torso the same way. TWO SEPARATE ROUNDED CUPS with a gap at the
+    // sternum, and no vertical seam between them.
+    //
+    // That arrangement is the whole note. The first cut ran one continuous
+    // stroke across the chest and drove a sternum line down into the middle of
+    // it, so the two curves met at a hard vertex and the shape came to a POINT
+    // — twice, once at each outer end and once in the centre. A pointed chest
+    // is a cartoon of one. Two shallow crescents that never touch, each convex
+    // down and dying out at both ends on a round cap, read as roundness and as
+    // nothing else; there is no vertex anywhere in them to sharpen.
+    //
+    // Lighter than the pecs too (0.15 against 0.22, on a thinner line). This is
+    // a shape cue and not a drawing of anatomy: the figure reads female from
+    // the waist, the hair and this together, not from any one of them, so the
+    // line only has to be present — it does not have to be seen.
+    const px = torsoCx;
+    const bustY = torsoTop + (torsoBot - torsoTop) * 0.3;
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.globalAlpha *= 0.15;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = hair(0.5, ow * 0.6);
+    ctx.lineCap = 'round';
+    for (const sgn of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(px + sgn * torsoHalf * 0.16, bustY - 0.014 * u);
+      ctx.quadraticCurveTo(px + sgn * torsoHalf * 0.48, bustY + 0.046 * u,
+        px + sgn * torsoHalf * 0.78, bustY - 0.026 * u);
+      ctx.stroke();
+    }
     ctx.restore();
   }
   if (spec.pecs && !lod) {
@@ -5129,18 +5516,34 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // One strap, near shoulder to far hip. Signed off sideF rather than screen
     // x so it crosses the chest the same way whichever shoulder the depth rig
     // has put in front.
-    const x0 = gearX + sideF * torsoHalf * 0.8, y0 = torsoTop - 0.01 * u;
-    const x1 = gearX - sideF * torsoHalf * 0.88, y1 = beltY;
+    // 'cross' is the pair of harness straps the 2D reference wears — an X over
+    // the chest — rather than one ammunition belt. Same stroke, mirrored, and
+    // no cartridges on it: rounds on both straps is a bandolier costume, and
+    // the X is a harness.
+    const crossed = spec.bandolier === 'cross';
+    const y0 = torsoTop - 0.01 * u;
     onTorso(() => {
       ctx.strokeStyle = p.w;
-      ctx.lineWidth = 0.05 * u;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
-      ctx.stroke();
-      // Three rounds, not a full row: a real bandolier's worth samples down to
-      // a dotted line and then to a smear.
-      if (!lod) for (const t of [0.3, 0.5, 0.7]) dot(ctx, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 0.017 * u, p.a);
+      ctx.lineWidth = (crossed ? 0.042 : 0.05) * u;
+      for (const sgn of crossed ? [1, -1] : [sideF]) {
+        const x0 = gearX + sgn * torsoHalf * 0.8;
+        const x1 = gearX - sgn * torsoHalf * 0.88;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0); ctx.lineTo(x1, beltY);
+        ctx.stroke();
+        // Three rounds, not a full row: a real bandolier's worth samples down
+        // to a dotted line and then to a smear.
+        if (!lod && !crossed) {
+          for (const t of [0.3, 0.5, 0.7]) dot(ctx, x0 + (x1 - x0) * t, y0 + (beltY - y0) * t, 0.017 * u, p.a);
+        }
+      }
     });
+    // The buckle where they cross, which is the mark that says harness.
+    if (crossed && !lod) {
+      outlined(ctx, p.a, hair(0.4, ow * 0.45), (c) =>
+        roundRectPath(c, gearX - 0.026 * u, torsoTop + (beltY - torsoTop) * 0.42 - 0.02 * u,
+          0.052 * u, 0.04 * u, 0.01 * u));
+    }
   }
   if (spec.gearBelt && !duck) {
     // The belt everything else hangs off. Stroked to just inside the body edge
@@ -5153,8 +5556,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.moveTo(gearX - torsoHalf * 0.9, beltY);
     ctx.lineTo(gearX + torsoHalf * 0.9, beltY);
     ctx.stroke();
+    // `buckle` scales it. The 3D reference's whole waist is one big brass
+    // plate, and at hero size that plate is the only thing separating a bare
+    // midriff from bare thighs — without it the figure has a continuous column
+    // of skin down its middle.
+    const bk = spec.buckle || 1;
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) =>
-      roundRectPath(c, gearX - 0.031 * u, beltY - 0.029 * u, 0.062 * u, 0.055 * u, 0.012 * u));
+      roundRectPath(c, gearX - 0.031 * u * bk, beltY - 0.029 * u * bk,
+        0.062 * u * bk, 0.055 * u * bk, 0.012 * u * bk));
     if (!lod) {
       // One pouch. Two is clutter at 24px and three is a tool belt, which is
       // Lorenzo's read and not hers.
@@ -5354,6 +5763,62 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.p, hair(0.5, ow * 0.6), (c) => roundRectPath(c, px - torsoHalf, beltY - 0.028 * u, torsoHalf * 2, 0.058 * u, 0.02 * u));
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
+  if (spec.dress && !duck) {
+    // A qipao. Same construction as Fernwick's tunic — the torso's flat hem
+    // flares into a short skirt over the thighs, drawn after the legs so it
+    // drapes over the thigh roots — with the three marks that make it this
+    // garment instead of that one: gold piping round the hem, a sash at the
+    // waist in its own colour, and a SLIT up the near side. The slit is the
+    // one that earns its pixels: a flared trapezoid with no break in it is a
+    // dress on anybody, and the split panel is what says whose.
+    const px = torsoCx;
+    const sway = jump ? 0.02 * u : 0;
+    const dressBeltY = hipY - 0.05 * u + bob;
+    const top = dressBeltY + 0.02 * u;
+    const hemY = hipY + legL * 0.42 + bob * 0.5;
+    const wTop = torsoHalf * 0.98;
+    // Flares wider than the tunic: front-on the legs root at ±0.095u and this
+    // hem has to clear both of them, or the thighs show past the cloth.
+    const wHem = torsoHalf * (frontLegs ? 1.52 : 1.34);
+    const skirt = (c) => {
+      c.moveTo(px - wTop, top);
+      c.lineTo(px + wTop, top);
+      c.lineTo(px + wHem + sway, hemY);
+      c.quadraticCurveTo(px + sway, hemY + 0.05 * u, px - wHem + sway, hemY);
+      c.closePath();
+    };
+    outlined(ctx, p.b, ow, skirt);
+    if (!lod) {
+      // Gold piping, traced just inside the hem so it can never spill past the
+      // silhouette, and the slit running up from it.
+      ctx.save();
+      ctx.beginPath(); skirt(ctx); ctx.clip();
+      ctx.strokeStyle = p.a;
+      ctx.lineWidth = hair(0.5, 0.022 * u);
+      ctx.beginPath();
+      ctx.moveTo(px - wHem + sway, hemY - 0.012 * u);
+      ctx.quadraticCurveTo(px + sway, hemY + 0.038 * u, px + wHem + sway, hemY - 0.012 * u);
+      ctx.stroke();
+      ctx.strokeStyle = OUTLINE;
+      ctx.globalAlpha *= 0.5;
+      ctx.lineWidth = hair(0.45, ow * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(px + wHem * 0.44 + sway, hemY);
+      ctx.lineTo(px + wTop * 0.34, top + 0.02 * u);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Sash over the waist, covering the skirt's top seam. Its own colour: a
+    // sash in the dress colour is a fold, and in the trim colour it is a belt.
+    outlined(ctx, p.sash || p.p, hair(0.5, ow * 0.6), (c) =>
+      roundRectPath(c, px - torsoHalf * 1.02, dressBeltY - 0.032 * u, torsoHalf * 2.04, 0.066 * u, 0.018 * u));
+    if (!lod) {
+      // The knot, off-centre, with a short tail — a sash tied rather than a
+      // band pulled on.
+      outlined(ctx, p.sash || p.p, hair(0.4, ow * 0.5), (c) =>
+        c.ellipse(px - torsoHalf * 0.36, dressBeltY + 0.004 * u, 0.032 * u, 0.026 * u, 0, 0, Math.PI * 2));
+    }
+  }
   if (spec.apron && !duck) {
     // A bib apron, which is one shape and not two: bib, waist and skirt are cut
     // as a single panel so the join never shows a seam of uniform through it at
@@ -5503,6 +5968,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const drawFarArm = () => {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
     handDeco(handB[0], handB[1]);
   };
 
