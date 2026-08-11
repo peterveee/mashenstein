@@ -127,6 +127,7 @@ const MIDI_LS_KEY = 'mash-mixer-midi-on';
 // latency tolerance, while a song's mix must sound the same when opened elsewhere.
 const LATENCY_KEY = 'mash-mixer-latency';
 const LOOKAHEAD_KEY = 'mash-mixer-lookahead';
+const NOTE_CACHE_KEY = 'mash-mixer-note-cache';
 const AUDIO_LATENCY_OPTIONS = Object.freeze([
   { id: 'interactive', hint: 'interactive', label: 'Low latency' },
   { id: 'balanced', hint: 'balanced', label: 'Balanced' },
@@ -156,6 +157,7 @@ let latencyPreference = normalizeLatency(localStorage.getItem(LATENCY_KEY));
 let activeLatencyPreference = latencyPreference;
 let pendingLatencyPreference = null;
 let readAheadPreference = normalizeLookahead(localStorage.getItem(LOOKAHEAD_KEY));
+let noteCacheEnabled = localStorage.getItem(NOTE_CACHE_KEY) !== '0';
 let audioSettingsStatus = null;
 let audioSettingsSummary = null;
 let audioSettingsDirty = false;
@@ -9561,6 +9563,12 @@ function updateCpu() {
     + `; requested ${requestedLatency}`
     + `; read-ahead ${Math.round((Audio.sequencerLookahead || AUDIO_LOOKAHEAD_DEFAULT) * 1000)} ms; `
     + reportedAudioLatency(c) + '.';
+  const cache = Audio.noteCacheHealth?.();
+  const cacheLine = cache?.enabled
+    ? `\nNote cache: ${cache.buffers} buffers / ${(cache.bytes / (1024 * 1024)).toFixed(1)} MB; `
+      + `${cache.queued} queued, ${cache.rendering} rendering; ${cache.hits} hits, `
+      + `${cache.misses} misses, ${cache.stale} stale discarded`
+      + (cache.playbackActive ? '; preparation paused during playback.' : '.') : '';
   el.title = (health.audioBehind || health.audioStruggling
     ? (health.audioBehind
       ? 'THE AUDIO THREAD CANNOT RENDER THIS MIX IN REALTIME on this machine'
@@ -9591,6 +9599,7 @@ function updateCpu() {
     + (health.dropouts ? `\n\n${health.dropouts} dropout${health.dropouts === 1 ? '' : 's'}`
       + ' since this song was loaded.' : '')
     + `\n${audioSafety}`
+    + cacheLine
     + (health.audioBehind
       ? '\nMaximum safety may absorb brief output spikes, but sustained overload still'
         + ' requires muting, soloing, simplifying, or bouncing work.' : '');
@@ -10264,6 +10273,7 @@ const audioSettingsDialog = $('audiosettingsdialog');
 const audioSettingsClose = $('audiosettingsclose');
 const audioSettingsCancel = $('audiosettingscancel');
 const audioSettingsApply = $('audiosettingsapply');
+const noteCacheToggle = $('notecachetoggle');
 audioLatencySel.value = latencyPreference;
 audioAheadSel.value = String(readAheadPreference);
 
@@ -10393,6 +10403,26 @@ audioLatencySel.onchange = updateAudioSettingsDraft;
 audioAheadSel.onchange = updateAudioSettingsDraft;
 audioSettingsApply.onclick = applyAudioSettings;
 updateAudioSettingsDraft();
+
+function syncNoteCacheToggle() {
+  if (!noteCacheToggle) return;
+  noteCacheToggle.hidden = !DEV_USER;
+  noteCacheToggle.textContent = `Note cache: ${noteCacheEnabled ? 'On' : 'Off'}`;
+  noteCacheToggle.setAttribute('aria-pressed', String(noteCacheEnabled));
+}
+
+if (noteCacheToggle) {
+  noteCacheToggle.onclick = () => {
+    noteCacheEnabled = !noteCacheEnabled;
+    localStorage.setItem(NOTE_CACHE_KEY, noteCacheEnabled ? '1' : '0');
+    Audio.setNoteCache(noteCacheEnabled);
+    syncNoteCacheToggle();
+    toast(noteCacheEnabled
+      ? 'Note cache on — preparation starts cold'
+      : 'Note cache off — using live synths');
+  };
+}
+syncNoteCacheToggle();
 
 // How far behind the graph the speakers actually are, beyond what the browser owns
 // up to. songBeat() subtracts ctx.outputLatency already; Bluetooth, an interface
@@ -14639,8 +14669,9 @@ Audio.setSilentLaneSkip(true);
 // Desk-only and deliberately: the game names few pooled voices and none densely, and
 // an offline bounce refuses to replay at all — a rendered file has to be the
 // synthesis, not a recording of it. Set `mash-mixer-note-cache` to '0' in
-// localStorage to A/B it by ear against the pool.
-Audio.setNoteCache(localStorage.getItem('mash-mixer-note-cache') !== '0');
+// localStorage to A/B it by ear against the pool. DEV exposes the same preference as
+// a drawer toggle so a listening comparison does not require the console.
+Audio.setNoteCache(noteCacheEnabled);
 
 // The engine, reachable from the console. Everything on this desk is a module, so
 // there has never been a way to ask the running graph a question — which turns every

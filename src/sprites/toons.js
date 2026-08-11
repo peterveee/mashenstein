@@ -2399,10 +2399,15 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // levitate it), leaning back a little and BOUNDING on the stride clock.
       // `wave` is the bound, and it is worth twice as much here as anywhere
       // else in this file: a heavy rope on a running body has real travel.
+      // Held CLOSE to her back rather than swung out beside her. The torso's
+      // own edge is at 0.7R on the slim rig, so a tip at ~1.05R runs the plait
+      // down just outside her own outline — near enough to read as lying
+      // against her, far enough that it never disappears into the arm. Out at
+      // 1.34R it was a separate object hanging in the air next to the hero.
       const bound = motion ? wave * 2.1 : wave;
-      const tipX = hx - R * (portrait ? 1.46 : motion ? 1.72 : tucked ? 1.62 : 1.34);
+      const tipX = hx - R * (portrait ? 1.32 : motion ? 1.3 : tucked ? 1.42 : 1.05);
       const tipY = hy + R * (portrait ? 1.34 : motion ? 3.0 : tucked ? 1.08 : 2.62) + bound;
-      const ctlX = hx - R * (portrait ? 1.3 : motion ? 1.6 : tucked ? 1.28 : 1.16);
+      const ctlX = hx - R * (portrait ? 1.22 : motion ? 1.3 : tucked ? 1.16 : 1.02);
       const ctlY = hy + R * (portrait ? 0.62 : motion ? 1.5 : tucked ? 0.5 : 1.4) + bound * 0.4;
       const at = sampler(hx - R * 0.92, hy + R * 0.3, ctlX, ctlY, tipX, tipY);
       // Half-width down the plait. Thin — a plait is a rope of three thin
@@ -2540,18 +2545,53 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         // read as one wide ribbon behind her head rather than as a pair.
         const near = sx < 0;                       // -x is her back, as everywhere else
         // `shortRibbons` ties them off at the bun instead of letting them fly.
-        const len = (near ? 1 : 0.62) * (spec.shortRibbons ? 0.36 : 1);
-        const tipX = bx + sx * R * (motion ? 1.5 : 0.5) * len;
-        const tipY = hy + R * (motion ? -0.25 : 1.35) * len + wave * (near ? 1.3 : 0.7);
-        const ctlX = bx + sx * R * (motion ? 1.0 : 0.66) * len;
-        const ctlY = hy + R * (motion ? -0.6 : 0.36) * len + wave * 0.5;
-        outlined(ctx, ribbon, hair(0.5, ow * 0.85), (c) => {
-          c.moveTo(bx + sx * R * 0.1, bunY + R * 0.2);
-          c.quadraticCurveTo(ctlX - sx * R * 0.16, ctlY, tipX - sx * R * 0.02, tipY);
+        // Its multiplier is small because the flying length below is now long:
+        // the compact cut has to stay where it always was, or the A/B it exists
+        // to run stops being a comparison and becomes two lengths of the same
+        // thing.
+        const len = (near ? 1 : 0.66) * (spec.shortRibbons ? 0.3 : 1);
+        // They HANG, always, and running only leans them back. Two things were
+        // wrong with the version that swept them out level: a pair of arcs
+        // rising symmetrically off both sides of the head is the silhouette of
+        // a cornette, not of hair ribbons — and the shape changed so much
+        // between standing and running that the two poses did not read as the
+        // same object. So the tip stays well below the bun in both states and
+        // motion adds one thing only: a backward lean, the SAME direction on
+        // both sides, because they are being blown by her own travel rather
+        // than flung outward by nothing.
+        //
+        // The width offsets below are horizontal, which is the other half of
+        // it: they set a sensible width on a ribbon that hangs and a thin blade
+        // on one that lies level. Keeping it vertical keeps it a ribbon.
+        // The BOW is what keeps it cloth. With the control point in line
+        // between root and tip the ribbon draws as a straight bar — two of them
+        // read as crossed swords, which is a different wrong answer from the
+        // wings but no better. Putting the control further OUT than the tip
+        // bows it away from the head and back in, and running the flutter
+        // through control and tip in OPPOSITE directions makes that bow
+        // undulate instead of swinging as one rigid piece.
+        // Running, it tucks IN toward the head rather than swinging wide: the
+        // bow closes up and the backward lean is small. A ribbon streaming out
+        // on a long arc is the thing that kept turning into a wing, and the
+        // cure is the same at every length — keep it near her.
+        const trail = motion ? -R * 0.46 * len : 0;
+        const tipX = bx + sx * R * 0.4 * len + trail + wave * 0.45;
+        const tipY = hy + R * (motion ? 1.62 : 1.85) * len + wave * (near ? 0.45 : 0.28);
+        const ctlX = bx + sx * R * (motion ? 0.62 : 0.9) * len + trail * 0.3 - wave * 0.38;
+        const ctlY = hy + R * (motion ? 0.76 : 0.82) * len;
+        // Ribbon width, as a fraction of the head. One number for the whole
+        // shape so the root, the waist and the fork stay in proportion when it
+        // moves — a ribbon that tapers at a different rate than it narrows
+        // reads as a leaf.
+        const rw = 0.62;
+        outlined(ctx, ribbon, hair(0.5, ow * 0.75), (c) => {
+          c.moveTo(bx + sx * R * 0.12 * rw, bunY + R * 0.2);
+          c.quadraticCurveTo(ctlX - sx * R * 0.16 * rw, ctlY, tipX - sx * R * 0.02 * rw, tipY);
           // A forked end: a ribbon is cut, not rounded off.
-          c.lineTo(tipX + sx * R * 0.2, tipY - R * 0.12);
-          c.lineTo(tipX + sx * R * 0.16, tipY + R * 0.16);
-          c.quadraticCurveTo(ctlX + sx * R * 0.22, ctlY + R * 0.16, bx + sx * R * 0.34, bunY + R * 0.3);
+          c.lineTo(tipX + sx * R * 0.2 * rw, tipY - R * 0.12 * rw);
+          c.lineTo(tipX + sx * R * 0.16 * rw, tipY + R * 0.16 * rw);
+          c.quadraticCurveTo(ctlX + sx * R * 0.22 * rw, ctlY + R * 0.16 * rw,
+            bx + sx * R * 0.34 * rw, bunY + R * 0.3);
           c.closePath();
         });
         // Hair under the wrap, and the wrap OFF-CENTRE on it — up and outboard,
@@ -3225,7 +3265,8 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // legLen is the one styled term that is NOT gated on the run: a hero's legs
   // are the same length standing, ducking and airborne, so lengthening them
   // for the gait alone would change his proportions the moment he stopped.
-  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u * (spec.legLength || 1) * (L ? L.legLen : 1);
+  const legL = (heavy ? 0.4 : spec.stout ? 0.27 : 0.3) * u
+    * (spec.legLength || 1) * (spec.tall || 1) * (L ? L.legLen : 1);
   // Front-on hip half-separation, and how far outboard of it the crouch plants
   // its feet. Both in u; the crouch's leg length is solved against them.
   const HIP_HALF = 0.095;
@@ -3355,10 +3396,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // rides higher off the ground, AND the hip-to-ankle span grows against
   // unchanged bones, so the knee bends less to cover it. Left at 1 the whole
   // cast stands exactly where it always did.
+  // `tall` raises the whole figure off the feet: every vertical landmark and
+  // the legs together, so the proportions hold and only the HEIGHT changes.
+  // The head is deliberately NOT in it — headR stays 0.21u — which is the
+  // strongest lever there is on perceived height, and the reason a 7% dial
+  // reads as more than 7%: the same head on a longer body is what the eye
+  // actually measures. Applied to the crouch's own landmarks too, so a taller
+  // hero gives up the same FRACTION of her height ducking that everyone else
+  // does rather than folding to a shared absolute.
+  const tall = spec.tall || 1;
   let hipY = -legL * 0.92 * (styledGait ? L.stance : 1);
-  let torsoTop = -(heavy ? 0.768 : 0.56) * u + bob;
-  let headY = -(heavy ? 0.978 : 0.76) * u + bob;
-  let shoulderY = -(heavy ? 0.708 : 0.5) * u + bob;
+  let torsoTop = -(heavy ? 0.768 : 0.56) * tall * u + bob;
+  let headY = -(heavy ? 0.978 : 0.76) * tall * u + bob;
+  let shoulderY = -(heavy ? 0.708 : 0.5) * tall * u + bob;
   if (duck) {
     // The crouch used to drop every hero to the same flat height, which is not
     // the same thing as every hero crouching by the same amount: grumpos stands
@@ -3370,7 +3420,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // 1.36 is solved, not eyeballed: it puts his crouched crown at the same
     // fraction of his standing crown (0.65) that the stout heroes fold to, so
     // he gives up exactly as much height as everyone else and no more.
-    const crouch = heavy ? 1.36 : 1;
+    const crouch = (heavy ? 1.36 : 1) * tall;
     hipY = -0.16 * u * crouch; torsoTop = -0.32 * u * crouch;
     headY = -0.42 * u * crouch; shoulderY = -0.27 * u * crouch;
     if (enhancedMotion) {

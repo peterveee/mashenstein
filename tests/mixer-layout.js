@@ -508,6 +508,12 @@ assert(/_cacheablePool\(v, mode, preview, hold\)/.test(voicesSrc)
   && /Audio\.setNoteCache\(/.test(entry)
   && !/setNoteCache/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
   'the desk can play pooled Tone voices from rendered notes; the game never does');
+assert(/id="notecachetoggle"[^>]*aria-pressed="true"[^>]*hidden/.test(shell)
+  && /const NOTE_CACHE_KEY = 'mash-mixer-note-cache'/.test(entry)
+  && /noteCacheToggle\.hidden = !DEV_USER/.test(entry)
+  && /Audio\.setNoteCache\(noteCacheEnabled\)/.test(entry)
+  && /localStorage\.setItem\(NOTE_CACHE_KEY, noteCacheEnabled \? '1' : '0'\)/.test(entry),
+  'DEV exposes a saved hamburger toggle for live-synth versus note-cache playback');
 // Each exclusion is load-bearing: a mono/legato note retargets the one still
 // sounding, a vibrato pool's LFO free-runs across notes, and a held note has no
 // length until a finger says so — none of those is a pure function of (preset,
@@ -533,6 +539,22 @@ assert(/function trimSilence\(buffer\)/.test(voicesSrc)
   'a rendered note is trimmed to where its sound ends, not to its retirement window');
 assert(/Math\.max\(128, last \+ 1 \+ Math\.ceil\(CACHE_TAIL_GUARD_S \* buffer\.sampleRate\)\)/.test(voicesSrc),
   'with a guard past the last audible sample, and never a zero-length buffer');
+assert(/const entries = \[\];/.test(voicesSrc)
+  && /if \(!entry\?\.buffer\) return false;/.test(voicesSrc)
+  && /for \(const entry of entries\)/.test(voicesSrc),
+  'a partially cached chord falls back before starting any cached tone');
+assert(/const NOTE_RENDER_JOBS = 1;/.test(voicesSrc)
+  && /state\.playbackActive/.test(voicesSrc)
+  && /setNoteCachePlaybackActive\(state, active\)/.test(voicesSrc),
+  'offline cache preparation is single-filed and paused during transport playback');
+assert(/createNoteCacheState\(\)/.test(voicesSrc)
+  && /new VoiceRack\(this\.ctx, this\.noiseBuf, this\.crashBuf, this\.noteCacheState\)/.test(audio)
+  && /setNoteCachePlaybackActive\(noteCacheState, !!bank\)/.test(audio),
+  'the desk cache survives rack replacement and follows the transport state');
+assert(/cacheEntryCurrent\(state, job\)/.test(voicesSrc)
+  && /state\.bytes = Math\.max\(0, state\.bytes -/.test(voicesSrc)
+  && /entry\.evicted = true/.test(voicesSrc),
+  'stale renders cannot commit or inflate the cache byte total');
 // The panel edits VOICES[id] in place, so the cache has to be told; `refresh` is the
 // one door every edit comes through.
 assert(/this\._specRev\.set\(voiceId, \(this\._specRev\.get\(voiceId\) \|\| 0\) \+ 1\)/.test(voicesSrc),

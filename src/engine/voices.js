@@ -761,9 +761,10 @@ const CACHE_TAIL_GUARD_S = 0.01;
 // trades a core problem for a memory one.
 const NOTE_CACHE_ENTRIES = 256;
 const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
-// How many renders may be in flight. Two keeps a cold section warming at a useful rate
-// without putting a queue of them in front of the scheduler.
-const NOTE_RENDER_JOBS = 2;
+// A render creates a complete throwaway graph and asks the browser to run it. One at a
+// time is deliberate: the live AudioContext and an OfflineAudioContext are both asking
+// the same device for work, so two background renders are a poor trade for a cache hit.
+const NOTE_RENDER_JOBS = 1;
 
 /**
  * Run a render when the main thread has room — and NEVER inside the scheduling pass.
@@ -783,8 +784,105 @@ const NOTE_RENDER_JOBS = 2;
  * is enough there — nothing is competing for the thread.
  */
 function whenIdle(fn) {
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: 400 });
-  else setTimeout(fn, 0);
+  if (typeof requestIdleCallback === 'function') {
+    const id = requestIdleCallback(() => fn(), { timeout: 400 });
+    return () => { try { cancelIdleCallback(id); } catch { /* browser owns it */ } };
+  }
+  const id = setTimeout(fn, 0);
+  return () => clearTimeout(id);
+}
+
+/** Shared desk-only state for rendered notes. It deliberately outlives VoiceRack. */
+export function createNoteCacheState() {
+  return {
+    entries: new Map(),
+    revisions: new Map(),
+    bytes: 0,
+    queue: [],
+    rendering: 0,
+    playbackActive: false,
+    idlePending: false,
+    cancelIdle: null,
+    generation: 0,
+    stats: {
+      hits: 0, misses: 0, queued: 0, started: 0, completed: 0,
+      failed: 0, stale: 0,
+    },
+  };
+}
+
+function cacheEntryCurrent(state, job) {
+  return !!state && !!job && state.generation === job.generation
+    && state.entries.get(job.key) === job.entry
+    && (state.revisions.get(job.voiceId) || 0) === job.revision;
+}
+
+function purgeNoteCacheEntries(state, voiceId) {
+  if (!state || !voiceId) return;
+  for (const [key, entry] of state.entries) {
+    if (entry.voiceId !== voiceId) continue;
+    state.bytes = Math.max(0, state.bytes - (entry.bytes || 0));
+    entry.evicted = true;
+    state.entries.delete(key);
+  }
+  const before = state.queue.length;
+  state.queue = state.queue.filter((job) => job.voiceId !== voiceId);
+  state.stats.stale += before - state.queue.length;
+}
+
+/** Invalidate one voice when there is no live rack to perform the purge. */
+export function invalidateNoteCacheState(state, voiceId) {
+  if (!state || !voiceId) return;
+  state.revisions.set(voiceId, (state.revisions.get(voiceId) || 0) + 1);
+  purgeNoteCacheEntries(state, voiceId);
+}
+
+function pumpCache(state) {
+  if (!state || state.playbackActive || state.rendering >= NOTE_RENDER_JOBS
+    || state.idlePending || !state.queue.length) return;
+  state.idlePending = true;
+  state.cancelIdle = whenIdle(() => {
+    state.idlePending = false;
+    state.cancelIdle = null;
+    // Play may have started while the callback was waiting. Leave the job queued so
+    // no new OfflineAudioContext render can begin during transport playback.
+    if (state.playbackActive) return;
+    let job = null;
+    while (state.queue.length && !job) {
+      const candidate = state.queue.shift();
+      if (cacheEntryCurrent(state, candidate)) job = candidate;
+      else state.stats.stale++;
+    }
+    if (!job) { pumpCache(state); return; }
+    state.rendering++;
+    state.stats.started++;
+    Promise.resolve().then(() => job.run()).catch((error) => {
+      state.stats.failed++;
+      console.warn('[voices] note cache job failed', error?.message || error);
+    }).finally(() => {
+      state.rendering = Math.max(0, state.rendering - 1);
+      pumpCache(state);
+    });
+  });
+}
+
+export function setNoteCachePlaybackActive(state, active) {
+  if (!state) return;
+  state.playbackActive = !!active;
+  if (!state.playbackActive) pumpCache(state);
+}
+
+export function clearNoteCacheState(state) {
+  if (!state) return;
+  if (state.cancelIdle) state.cancelIdle();
+  state.cancelIdle = null;
+  state.idlePending = false;
+  state.queue.length = 0;
+  state.generation++;
+  state.bytes = 0;
+  state.entries.clear();
+  state.revisions.clear();
+  state.rendering = 0;
 }
 function trimSilence(buffer) {
   const channels = buffer.numberOfChannels;
@@ -1107,7 +1205,7 @@ const sectionBypassed = (voice, key, section = null) => {
  * a playing song, and a cache that is dropped mid-note is a note that stops.
  */
 export class VoiceRack {
-  constructor(ctx, noiseBuf = null, longBuf = null) {
+  constructor(ctx, noiseBuf = null, longBuf = null, noteCacheState = null) {
     this.ctx = ctx;
     // The engine's own SEEDED noise buffer (AudioSys.noiseBuf, mulberry32 via
     // setNoiseSeed). Noise presets are built on it rather than on `Tone.Noise`,
@@ -1139,15 +1237,18 @@ export class VoiceRack {
     Tone.setContext(ctx);
     this.pools = new Map();
     // Rendered notes, and the revision counter that lets an edited preset invalidate
-    // them — see the note cache above `_cacheablePool`. Off unless a caller turns it
-    // on (`Audio.setNoteCache`), so the game and every offline render behave exactly
-    // as they did.
+    // them — see the note cache above `_cacheablePool`. Desk racks share this state so
+    // a Mixer pause/re-bank does not throw away buffers that were prepared while stopped.
+    // A throwaway offline rack gets its own state and never enables the cache.
     this.noteCache = false;
-    this._noteCache = new Map();
-    // What the buffers in there cost, kept as a running total rather than recomputed:
-    // see `_trimNoteCache`, which spends it.
-    this._noteCacheBytes = 0;
-    this._specRev = new Map();
+    this._cacheState = noteCacheState || createNoteCacheState();
+    this._noteCache = this._cacheState.entries;
+    this._specRev = this._cacheState.revisions;
+    Object.defineProperty(this, '_noteCacheBytes', {
+      configurable: true,
+      get: () => this._cacheState.bytes,
+      set: (value) => { this._cacheState.bytes = Number(value) || 0; },
+    });
     // Presentation-specific groups can make several lanes share one physical channel.
     // Arcade Corner uses this for its single percussion voice; preview groups are kept
     // separate so auditioning a drum cannot cut the song's live drum.
@@ -1768,8 +1869,7 @@ export class VoiceRack {
     // a live one and call them the same file.
     if (typeof ctx.startRendering === 'function') return false;
     const list = Array.isArray(notes) ? notes : [notes];
-    let anyPlayed = false;
-    let anyMissing = false;
+    const entries = [];
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
       if (f == null || !(f > 0)) continue;
@@ -1777,7 +1877,13 @@ export class VoiceRack {
       const freq = f * detune * VoiceRack.pitchShift(v);
       if (!Number.isFinite(freq) || !Number.isFinite(noteDur) || noteDur <= 0) return false;
       const entry = this._cacheEntry(v, voiceId, freq, noteDur);
-      if (!entry?.buffer) { anyMissing = true; continue; }
+      if (!entry?.buffer) return false;
+      entries.push(entry);
+    }
+    if (!entries.length) return false;
+    // Preflight the entire chord before creating a source. A partial cache hit must
+    // fall back to one complete live chord, never cached tones plus a second live chord.
+    for (const entry of entries) {
       const src = ctx.createBufferSource();
       src.buffer = entry.buffer;
       const g = ctx.createGain();
@@ -1789,18 +1895,14 @@ export class VoiceRack {
       if (echo && wet) g.connect(wet);
       src.start(time);
       src.stop(time + entry.buffer.duration + 0.01);
-      anyPlayed = true;
     }
-    // All or nothing per note-on: half a chord from buffers and half from the pool
-    // would be two instruments playing one chord, and they do not arrive at exactly
-    // the same level (the pool's slot gain ramps; a buffer's does not).
-    if (anyMissing && anyPlayed) return false;
-    return anyPlayed;
+    return true;
   }
 
   /** The cache slot for one note, rendering it in the background on a miss. */
   _cacheEntry(v, voiceId, freq, dur) {
-    this._noteCache ||= new Map();
+    const state = this._cacheState;
+    this._noteCache ||= state.entries;
     // `specRev` is what makes an editor change land: `refresh` bumps it, so an edited
     // preset simply has different keys and the old buffers age out. Rounded coarsely
     // — a hundredth of a hertz and a millisecond are far below what anyone can hear,
@@ -1812,10 +1914,13 @@ export class VoiceRack {
       // LRU by re-insertion: the note played most recently is the one worth keeping.
       this._noteCache.delete(key);
       this._noteCache.set(key, hit);
+      if (hit.buffer) state.stats.hits++;
       return hit;
     }
-    const entry = { buffer: null, rendering: true };
+    const entry = { key, voiceId, revision: rev, generation: state.generation,
+      buffer: null, rendering: true };
     this._noteCache.set(key, entry);
+    state.stats.misses++;
     this._trimNoteCache();
     this._renderNote(v, voiceId, freq, dur, entry);
     return entry;
@@ -1837,11 +1942,13 @@ export class VoiceRack {
    * wants it starts a fresh one.
    */
   _trimNoteCache() {
+    const state = this._cacheState;
     while (this._noteCache.size > NOTE_CACHE_ENTRIES
-      || (this._noteCacheBytes > NOTE_CACHE_BYTES && this._noteCache.size > 1)) {
+      || (state.bytes > NOTE_CACHE_BYTES && this._noteCache.size > 1)) {
       const oldest = this._noteCache.keys().next().value;
       const going = this._noteCache.get(oldest);
-      this._noteCacheBytes -= going?.bytes || 0;
+      state.bytes = Math.max(0, state.bytes - (going?.bytes || 0));
+      if (going) going.evicted = true;
       this._noteCache.delete(oldest);
     }
   }
@@ -1857,29 +1964,32 @@ export class VoiceRack {
    * instead of one. Missing is free: the note plays live meanwhile.
    */
   _queueRender(job) {
-    this._renderQueue ||= [];
-    this._rendering ||= 0;
-    this._renderQueue.push(job);
-    this._pumpRenders();
+    const state = this._cacheState;
+    state.queue.push(job);
+    state.stats.queued++;
+    pumpCache(state);
   }
 
   /** Start the next queued render if a slot is free. */
   _pumpRenders() {
-    this._renderQueue ||= [];
-    this._rendering ||= 0;
-    if (this._rendering >= NOTE_RENDER_JOBS || !this._renderQueue.length) return;
-    const job = this._renderQueue.shift();
-    this._rendering++;
-    whenIdle(job);
+    pumpCache(this._cacheState);
   }
 
   /** Book a rendered buffer into an entry and into the byte total the LRU spends. */
   _keepBuffer(entry, buffer) {
-    this._noteCacheBytes ||= 0;
+    const state = this._cacheState;
+    const job = { key: entry.key, entry, voiceId: entry.voiceId,
+      revision: entry.revision, generation: entry.generation };
+    if (!cacheEntryCurrent(state, job)) {
+      state.stats.stale++;
+      return false;
+    }
     entry.buffer = buffer;
     entry.bytes = buffer.length * buffer.numberOfChannels * 4;
-    this._noteCacheBytes += entry.bytes;
+    state.bytes += entry.bytes;
+    state.stats.completed++;
     this._trimNoteCache();
+    return true;
   }
 
   /**
@@ -1897,9 +2007,7 @@ export class VoiceRack {
    */
   async _renderNote(v, voiceId, freq, dur, entry) {
     const OAC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
-    if (!OAC) { entry.rendering = false; return; }
-    this._renderQueue ||= [];
-    this._rendering ||= 0;
+    if (!OAC) { entry.rendering = false; entry.failed = true; return; }
     const job = async () => {
       // TONE'S CONTEXT IS GLOBAL, and that is the whole hazard in this function.
       //
@@ -1937,13 +2045,13 @@ export class VoiceRack {
         // behaviour without any of this.
         console.warn('[voices] note cache could not render', voiceId, e?.message);
         entry.failed = true;
+        this._cacheState.stats.failed++;
       } finally {
         entry.rendering = false;
-        this._rendering--;
-        this._pumpRenders();
       }
     };
-    this._queueRender(job);
+    this._queueRender({ key: entry.key, entry, voiceId, revision: entry.revision,
+      generation: entry.generation, run: job });
   }
 
   /**
@@ -1984,7 +2092,8 @@ export class VoiceRack {
 
   /** The cache slot for one whole layer note-on, rendering it in the background. */
   _layerCacheEntry(v, voiceId, notes, dur, detune) {
-    this._noteCache ||= new Map();
+    const state = this._cacheState;
+    this._noteCache ||= state.entries;
     const shift = VoiceRack.pitchShift(v) * detune;
     // Every tone IN ITS PLACE, rests included. `_playLayer` reads per-tone lengths
     // positionally against the chord it was handed, so a key that dropped the rests
@@ -2011,10 +2120,13 @@ export class VoiceRack {
     if (hit) {
       this._noteCache.delete(key);
       this._noteCache.set(key, hit);
+      if (hit.buffer) state.stats.hits++;
       return hit;
     }
-    const entry = { buffer: null, rendering: true };
+    const entry = { key, voiceId, revision: rev, generation: state.generation,
+      buffer: null, rendering: true };
     this._noteCache.set(key, entry);
+    state.stats.misses++;
     this._trimNoteCache();
     this._renderLayerNote(v, voiceId, notes, dur, detune, entry);
     return entry;
@@ -2037,9 +2149,7 @@ export class VoiceRack {
    */
   async _renderLayerNote(v, voiceId, notes, dur, detune, entry) {
     const OAC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
-    if (!OAC) { entry.rendering = false; return; }
-    this._renderQueue ||= [];
-    this._rendering ||= 0;
+    if (!OAC) { entry.rendering = false; entry.failed = true; return; }
     const job = async () => {
       const prevToneCtx = Tone.getContext();
       try {
@@ -2063,19 +2173,23 @@ export class VoiceRack {
         // A preset whose every layer is off builds nothing and plays nothing. Caching
         // the silence would be right but pointless, and it would hide the preset going
         // quiet behind a cache hit.
-        if (!played) { entry.failed = true; return; }
+        if (!played) {
+          entry.failed = true;
+          this._cacheState.stats.failed++;
+          return;
+        }
         this._keepBuffer(entry, collapseMono(trimSilence(await ctx.startRendering())));
       } catch (e) {
         Tone.setContext(prevToneCtx);
         console.warn('[voices] note cache could not render layer', voiceId, e?.message);
         entry.failed = true;
+        this._cacheState.stats.failed++;
       } finally {
         entry.rendering = false;
-        this._rendering--;
-        this._pumpRenders();
       }
     };
-    this._queueRender(job);
+    this._queueRender({ key: entry.key, entry, voiceId, revision: entry.revision,
+      generation: entry.generation, run: job });
   }
 
   /**
@@ -4219,6 +4333,7 @@ export class VoiceRack {
     // voice to be editable at all. See `_cacheEntry`.
     this._specRev ||= new Map();
     this._specRev.set(voiceId, (this._specRev.get(voiceId) || 0) + 1);
+    this._invalidateCacheEntries(voiceId);
     // ---- the native paths ---------------------------------------------------
     //
     // A pooled synth is an OBJECT that stands there between notes, so an edit can be
@@ -4267,6 +4382,46 @@ export class VoiceRack {
       if (!rewires && this._applyLive(pool, spec)) { pool.spec = spec; continue; }
       this._retire(key, pool);
     }
+  }
+
+  /** Remove queued and completed cache work for one changed voice. */
+  _invalidateCacheEntries(voiceId) {
+    purgeNoteCacheEntries(this._cacheState, voiceId);
+  }
+
+  /** Public invalidation door for monitoring changes such as layer solo. */
+  invalidateNoteCache(voiceId) {
+    if (!voiceId) return;
+    this._specRev ||= this._cacheState.revisions;
+    this._specRev.set(voiceId, (this._specRev.get(voiceId) || 0) + 1);
+    this._invalidateCacheEntries(voiceId);
+  }
+
+  setNoteCachePlaybackActive(active) {
+    setNoteCachePlaybackActive(this._cacheState, active);
+  }
+
+  setNoteCacheState(state) {
+    if (!state || state === this._cacheState) return;
+    this._cacheState = state;
+    this._noteCache = state.entries;
+    this._specRev = state.revisions;
+  }
+
+  noteCacheHealth() {
+    const state = this._cacheState;
+    let buffers = 0;
+    for (const entry of state.entries.values()) if (entry.buffer) buffers++;
+    return {
+      enabled: !!this.noteCache,
+      playbackActive: !!state.playbackActive,
+      entries: state.entries.size,
+      buffers,
+      bytes: state.bytes,
+      queued: state.queue.length,
+      rendering: state.rendering,
+      ...state.stats,
+    };
   }
 
   /**

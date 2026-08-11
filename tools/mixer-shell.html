@@ -5795,6 +5795,10 @@
           title="Configure the Mixer’s output buffer and sequencer read-ahead">
     <span>Advanced audio</span><span id="audiosettingssummary">Smooth playback · 250 ms</span>
   </button>
+  <!-- Diagnostic A/B switch, deliberately local-development only. The deployed desk
+       is not asked to choose an engine implementation, and the song never stores it. -->
+  <button id="notecachetoggle" type="button" aria-pressed="true" hidden
+          title="Developer diagnostic: compare rendered-note caching with the original live-synth path. Turning it off clears prepared notes; turning it back on starts with a cold cache.">Note cache: On</button>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="drawerrow"><span>Playhead</span>

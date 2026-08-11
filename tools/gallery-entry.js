@@ -3200,7 +3200,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // The second proposal, on the same terms as the first: a candidate, not cast,
 // drawn by the shipped painter through drawToon's spec/pal seam.
 {
-  const grid = section('fighter-bakeoff', 'New hero — martial artist, three cuts',
+  const grid = section('fighter-bakeoff', 'New hero — martial artist, four colourways',
     'GALLERY ONLY, and the same arrangement as the raider above: the shipped humanoid rig, with the '
     + 'differences carried by flags and by gear pieces drawn beside them — ox-horn buns with ribbons, '
     + 'a qipao with gold piping and a side slit, a sash, puffed sleeve caps, spiked bracers and dark '
@@ -3212,17 +3212,25 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     + 'lands on the existing <code>shoot</code> hook and the existing cooldown with nothing invented '
     + 'for her. The orb is drawn additively in three rings off the palm position the IK actually '
     + 'solved, so it cannot drift off her hands mid-thrust. '
-    + '<br><br>The two cuts differ on ONE thing, because there is only one open question about her: '
-    + 'the RIBBONS. They are most of what makes the silhouette hers, and they are also two long pale '
-    + 'streamers on a lane that already has portals, coins and fliers moving in it. F flies them; G '
-    + 'ties them short. Judge that on the in-the-lane tile and nowhere else — at study scale the '
-    + 'flying ribbons win every time. '
-    + '<br><br>H is F with the ANIME EYE instead of the cast\'s: iris nearly filling the sclera, a '
-    + 'sliver of white left along the top lid, a heavy lash cap, two highlights of very different '
-    + 'sizes, brows set close. It is not the shipped eye enlarged — that is a bigger white oval with '
-    + 'the same small pupil rattling inside it, and it reads as startled. The question it asks is not '
-    + 'about her: it is whether one hero can carry a different eye style than the other ten without '
-    + 'looking like she wandered in from another game.');
+    + '<br><br>Four COLOURWAYS and one eye study. <b>F</b> is the reference blue, <b>G</b> the same in '
+    + 'two pinks, <b>L</b> a deep petrol — blue with green in it — and <b>M</b> ink-and-gold. <b>J</b> is not a colourway — it is F wearing '
+    + 'the softer drawn eye, on its own axis because that question is still open. '
+    + '<br><br>The extra colourways are picked against the ROSTER rather than for her, and Mochi is '
+    + 'excluded from that check on purpose: that slot is likely to be replaced, so reserving coral and '
+    + '<b>L</b> is aimed at the gap between two heroes: 40 degrees of hue off Gnash\'s '
+    + 'indigo-violet (#4a50d2), and both bluer and much darker than the light teal Lorenzo and Ray '
+    + 'M\'n share (#2ea8a0) — neither the blue hero\'s blue nor the teal heroes\' teal. (A jade cut '
+    + 'sat here first and came out: green is already spoken for twice, by Fernwick and by the '
+    + 'raider\'s field olive.) <b>M</b> does not compete '
+    + 'on hue at all: it is unique by VALUE. Every hero wears a mid-to-light saturated body and nobody '
+    + 'is dark, so an ink qipao makes her the only dark silhouette in a line-up — a bigger separation '
+    + 'than any hue buys, and the gold piping stops being trim and becomes the drawing. Check M on a '
+    + 'DARK backdrop before believing it. '
+    + '<br><br>RETIRED: a short-ribbon cut and a full-size big-eye cut. The ribbons settled on their '
+    + 'own once they were made to hang thin and close instead of streaming out level, so the question '
+    + 'the short version existed to ask stopped being one; and the big eye lost every time it was '
+    + 'looked at — a near-black iris filling the sclera, a heavy lash cap and a down-angled brow are '
+    + 'the ingredients of a glare, and she wore one standing still.');
 
   const { opts, raiderPose: candPose } = window.__candidateTiles;
   const CANDS = FIGHTER_CANDIDATES;

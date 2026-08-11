@@ -58,3 +58,4 @@ Do not edit by hand.
 | 2026-08-05 | `08ed8cf` | [2026-08-05-08ed8cf.html](2026-08-05-08ed8cf.html) | feat: add crystal ladder song and update effect presets in gallery |
 | 2026-08-05 | `fd28b2e` | [2026-08-05-fd28b2e.html](2026-08-05-fd28b2e.html) | Add mixer voice editor enhancements and tutorial script |
 | 2026-08-11 | `548b46c` | [2026-08-11-548b46c.html](2026-08-11-548b46c.html) | feat: add sound test suite and audio-related tests |
+| 2026-08-11 | `c46ef2f` | [2026-08-11-c46ef2f.html](2026-08-11-c46ef2f.html) | Add new hero proposals: raider heroine and martial artist |

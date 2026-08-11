@@ -7,7 +7,10 @@ import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
   LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength,
 } from './lanes.js';
-import { VoiceRack, pulseTable } from './voices.js';
+import {
+  VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
+  clearNoteCacheState, invalidateNoteCacheState,
+} from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
 import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
 import { trackIdOf } from '../data/tracks.js';
@@ -463,6 +466,7 @@ class AudioSys {
     // Play pooled Tone voices from rendered notes where that is safe — see
     // setNoteCache and the cache itself in voices.js. Desk-only, off by default.
     this.noteCache = false;
+    this.noteCacheState = null;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
     // channel solo. OFF by default and never set by the game: a cabinet treatment
     // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
@@ -1045,7 +1049,31 @@ class AudioSys {
    */
   setNoteCache(on) {
     this.noteCache = !!on;
-    if (this.voices) this.voices.noteCache = this.noteCache;
+    if (this.noteCache && !this.noteCacheState) this.noteCacheState = createNoteCacheState();
+    if (this.noteCacheState) setNoteCachePlaybackActive(this.noteCacheState, !!this.bank);
+    if (!this.noteCache && this.noteCacheState) {
+      clearNoteCacheState(this.noteCacheState);
+      this.noteCacheState = null;
+    }
+    if (this.voices) {
+      this.voices.noteCache = this.noteCache;
+      if (this.noteCacheState) this.voices.setNoteCacheState(this.noteCacheState);
+    }
+  }
+
+  noteCacheHealth() {
+    if (!this.noteCacheState) return {
+      enabled: false, playbackActive: !!this.bank, entries: 0, buffers: 0,
+      bytes: 0, queued: 0, rendering: 0, hits: 0, misses: 0, started: 0,
+      completed: 0, failed: 0, stale: 0,
+    };
+    if (this.voices?.noteCacheHealth) return this.voices.noteCacheHealth();
+    const state = this.noteCacheState;
+    let buffers = 0;
+    for (const entry of state.entries.values()) if (entry.buffer) buffers++;
+    return { enabled: this.noteCache, playbackActive: !!state.playbackActive,
+      entries: state.entries.size, buffers, bytes: state.bytes,
+      queued: state.queue.length, rendering: state.rendering, ...state.stats };
   }
 
   setCaptureEnabled(enabled) {
@@ -1089,6 +1117,7 @@ class AudioSys {
     cut(this._rewindOut);
     this._cutLaneGates();
     if (this.voices) { this.voices.dispose(); this.voices = null; }
+    setNoteCachePlaybackActive(this.noteCacheState, false);
     this._percPending.length = 0;
     this._percHeard.length = 0;
     if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
@@ -2243,6 +2272,7 @@ class AudioSys {
     this.resumeAfterPanic();
     this.stopPreview();
     this.sourceBank = bank;
+    const noteCacheState = this.noteCacheState;
     // A new song has its own arrangement, or none. `undefined` means the ordinary
     // game path should read the arrangement file; the desk passes its draft (or an
     // explicit null) so applyMix builds the live bank from exactly what its grid is
@@ -2263,6 +2293,7 @@ class AudioSys {
     if (this.bank) this._cutLaneGates();
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
+    setNoteCachePlaybackActive(noteCacheState, !!bank);
     this.musicTrim = bank?.musicTrim ?? 1;
     this.pendingStartDelay = bank ? gap : 0;
     if (this.songTrim) {
@@ -3054,12 +3085,13 @@ class AudioSys {
     const freq = value === true ? (b[seam.noteKey] ?? seam.note) : value;
     if (freq != null) {
       if (!this.voices) {
-        this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf);
+        this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
         // The map, by reference — so a rack rebuilt after a context teardown comes back
         // agreeing with the buttons the desk is still showing.
         this.voices.soloLayers = this.soloLayers;
         // ...and the desk's note cache, which outlives racks the same way.
         this.voices.noteCache = !!this.noteCache;
+        this.voices.setNoteCachePlaybackActive(!!this.bank);
       }
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
@@ -3155,9 +3187,14 @@ class AudioSys {
    * BEFORE it unreachable. Same two lines `refresh` uses, and no new concept.
    */
   _forgetRenderedNotes(voiceId) {
-    if (!voiceId || !this.voices) return;
-    this.voices._specRev ||= new Map();
-    this.voices._specRev.set(voiceId, (this.voices._specRev.get(voiceId) || 0) + 1);
+    if (!voiceId) return;
+    if (this.voices) {
+      this.voices._specRev ||= new Map();
+      this.voices._specRev.set(voiceId, (this.voices._specRev.get(voiceId) || 0) + 1);
+      this.voices._invalidateCacheEntries?.(voiceId);
+    } else if (this.noteCacheState) {
+      invalidateNoteCacheState(this.noteCacheState, voiceId);
+    }
   }
 
   /**
