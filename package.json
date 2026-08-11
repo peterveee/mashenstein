@@ -10,6 +10,7 @@
     "dev:once": "node build/build.js --watch",
     "test": "node tests/run-all.js",
     "test:all": "node tests/run-all.js --all",
+    "test:sound": "node tests/run-all.js --sound",
     "gallery": "node tools/build-gallery.js",
     "archive": "node tools/archive-release.js",
     "archive:gallery": "node tools/archive-gallery.js",

@@ -3498,8 +3498,15 @@ export class SoundTestState {
   // the rotate overlay stays down here.
   static portraitMode = 'stretch';
 
-  constructor({ onDone, initialTrack = -1, startVisualizer = false, startVisualizerIndex = null }) {
+  // `tracks` defaults to the shipped jukebox, so every production route is the list it
+  // always was. The dev menu passes a longer one to audition a song that lives on the
+  // mixing desk rather than in the game — see src/dev/desk-songs.js.
+  constructor({
+    onDone, initialTrack = -1, startVisualizer = false, startVisualizerIndex = null,
+    tracks = JUKEBOX,
+  }) {
     this.onDone = onDone;
+    this.tracks = tracks && tracks.length ? tracks : JUKEBOX;
     this.initialTrack = initialTrack;
     this.startVisualizerOnEnter = startVisualizer;
     this.startVisualizerIndex = Number.isInteger(startVisualizerIndex) ? startVisualizerIndex : null;
@@ -3533,7 +3540,7 @@ export class SoundTestState {
   enter() {
     setJukeboxPortrait(true);
     this.layout();
-    const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < JUKEBOX.length
+    const initial = Number.isInteger(this.initialTrack) && this.initialTrack >= 0 && this.initialTrack < this.tracks.length
       ? this.initialTrack : -1;
     this.idx = initial >= 0 ? initial : 0;
     this.playing = initial;
@@ -3554,7 +3561,7 @@ export class SoundTestState {
     this.actTok = Input.activity;
     Audio.setBank(null);
     if (this.playing >= 0) {
-      Audio.setBank(JUKEBOX[this.playing].bank);
+      this.openTrack(this.playing);
       this.resetIdle();
       if (this.startVisualizerOnEnter) this.startVisualizer();
     }
@@ -3592,7 +3599,7 @@ export class SoundTestState {
       : ((requested % VISUALIZER_NAMES.length) + VISUALIZER_NAMES.length) % VISUALIZER_NAMES.length;
     this.lastVisualizerIndex = this.visualizerIndex;
     const seed = ((Math.random() * 0xffffffff) ^ (this.visualizerIndex * 0x9e3779b9)) >>> 0;
-    this.visualizer = createVisualizer(this.visualizerIndex, seed, JUKEBOX[this.playing].bank);
+    this.visualizer = createVisualizer(this.visualizerIndex, seed, this.tracks[this.playing].bank);
     this.previousVisualizer = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
@@ -3619,7 +3626,7 @@ export class SoundTestState {
     this.previousVisualizer = this.visualizer;
     this.visualizerIndex = next;
     const seed = ((Math.random() * 0xffffffff) ^ (next * 0x9e3779b9) ^ this.t * 1000) >>> 0;
-    this.visualizer = createVisualizer(next, seed, JUKEBOX[this.playing]?.bank);
+    this.visualizer = createVisualizer(next, seed, this.tracks[this.playing]?.bank);
     this.visualSwitchT = 0.35;
     this.labelT = 0;
     this.actTok = Input.activity;
@@ -3702,19 +3709,34 @@ export class SoundTestState {
     this.rowH = Math.min(JUKEBOX_ROW, Math.max(JUKEBOX_ROW_MIN,
       (this.backY - JUKEBOX_LIST_GAP - this.listY) / this.visibleRows));
   }
-  maxListStart() { return Math.max(0, JUKEBOX.length - this.visibleRows); }
+  /**
+   * Put one track on the transport.
+   *
+   * A GAME track carries no mix and no arrangement of its own: `undefined` is exactly
+   * what `setBank`'s own registry lookup means, so those rows behave as they always
+   * did. A DESK song keeps both in its module rather than in `MIX`/`ARRANGEMENTS`, so
+   * they are handed over explicitly — without them the game would play the right notes
+   * with none of the balance and none of the section order.
+   */
+  openTrack(i) {
+    const tr = this.tracks[i];
+    if (!tr) { Audio.setBank(null); return; }
+    Audio.setBank(tr.bank, tr.mix, tr.arrangement);
+  }
+
+  maxListStart() { return Math.max(0, this.tracks.length - this.visibleRows); }
   trackCounter(i) { return `${i + 1}.`; }
   keepSelectionVisible() {
-    if (this.idx >= JUKEBOX.length) return;
+    if (this.idx >= this.tracks.length) return;
     if (this.idx < this.listStart) this.listStart = this.idx;
     else if (this.idx >= this.listStart + this.visibleRows) this.listStart = this.idx - this.visibleRows + 1;
     this.listStart = Math.max(0, Math.min(this.maxListStart(), this.listStart));
   }
   pointerIndex(y) {
-    if (y >= this.backY && y < this.backY + this.backH) return JUKEBOX.length;
+    if (y >= this.backY && y < this.backY + this.backH) return this.tracks.length;
     if (y < this.listY || y >= this.listY + this.visibleRows * this.rowH) return -1;
     const i = this.listStart + Math.floor((y - this.listY) / this.rowH);
-    return i < JUKEBOX.length ? i : -1;
+    return i < this.tracks.length ? i : -1;
   }
   toggle(i) {
     if (this.playing === i) {
@@ -3722,7 +3744,7 @@ export class SoundTestState {
       Audio.setBank(null);
     } else {
       this.playing = i;
-      Audio.setBank(JUKEBOX[i].bank);
+      this.openTrack(i);
     }
     this.resetIdle();
     Audio.sfx('uiConfirm');
@@ -3738,7 +3760,7 @@ export class SoundTestState {
     // Rotating the phone or opening it in portrait moves every row, and taps are
     // resolved against these same numbers — re-measure before reading a pointer.
     this.layout();
-    const n = JUKEBOX.length;
+    const n = this.tracks.length;
     const total = n + 1; // +1 for the trailing BACK row
     if (this.visualState !== 'list') {
       const swipeHandled = this.handleVisualizerSwipe();
@@ -3878,11 +3900,11 @@ export class SoundTestState {
     };
     ctx.fillStyle = '#0b0b14';
     ctx.fillRect(0, 0, W, H);
-    const band = leftBand(JUKEBOX.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`), itemScale);
+    const band = leftBand(this.tracks.map((tr, i) => `${this.trackCounter(i)} ${tr.name}  (${jukeboxBpm(tr)} BPM)`), itemScale);
     menuText('SOUND TEST', band.textX, this.titleY, '#fff', 2, 'title');
-    const status = this.playing >= 0 ? `NOW PLAYING: ${JUKEBOX[this.playing].name}` : 'STOPPED';
+    const status = this.playing >= 0 ? `NOW PLAYING: ${this.tracks[this.playing].name}` : 'STOPPED';
     menuText(status, band.textX, this.statusY, this.playing >= 0 ? '#48e0c8' : '#5a5a68');
-    JUKEBOX.forEach((tr, i) => {
+    this.tracks.forEach((tr, i) => {
       if (i < this.listStart || i >= this.listStart + this.visibleRows) return;
       const sel = i === this.idx;
       const on = i === this.playing;
@@ -3919,17 +3941,17 @@ export class SoundTestState {
           textY, on ? '#48e0c8' : sel ? '#c9a0ff' : '#c8c8d8', LEFT_MENU_ITEM_S);
       }
     });
-    if (JUKEBOX.length > this.visibleRows) {
+    if (this.tracks.length > this.visibleRows) {
       const trackY = this.listY + 4;
       const trackH = this.visibleRows * this.rowH - 8;
-      const thumbH = Math.max(18, trackH * this.visibleRows / JUKEBOX.length);
+      const thumbH = Math.max(18, trackH * this.visibleRows / this.tracks.length);
       const thumbY = trackY + (trackH - thumbH) * this.listStart / this.maxListStart();
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(W - 17, trackY, 2, trackH);
       ctx.fillStyle = 'rgba(72,224,200,0.55)';
       ctx.fillRect(W - 18, thumbY, 4, thumbH);
     }
-    const backSelected = this.idx === JUKEBOX.length;
+    const backSelected = this.idx === this.tracks.length;
     if (backSelected) drawMenuRow(ctx, band.x, this.backY + 1, band.w, this.backH - 2);
     const backTextY = textYForMid(this.backY + this.backH / 2);
     if (backSelected) menuText('>', band.textX - 16, backTextY, '#c9a0ff', LEFT_MENU_ITEM_S);
@@ -4004,7 +4026,7 @@ export class SoundTestState {
         > (visualizerFrame.right - visualizerFrame.left) * 1.35;
       const labelScale = portraitLabels ? 0.9 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
-      const trackLabel = JUKEBOX[this.playing]?.name || 'NOW PLAYING';
+      const trackLabel = this.tracks[this.playing]?.name || 'NOW PLAYING';
       const visualLabel = this.visualizer.label || this.visualizer.name;
       const safeLeft = visualizerFrame.left + labelInset + screen.safeLeft;
       const safeRight = visualizerFrame.right - labelInset - screen.safeRight;

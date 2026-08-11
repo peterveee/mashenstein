@@ -10,6 +10,7 @@ import { setState, currentState } from '../engine/states.js';
 import { STAGES, stagesForCabinet, UNLOCKS } from '../data/stages.js';
 import { CABINETS, CABINET_BY_ID } from '../data/cabinets.js';
 import { GAME_ALTERNATES } from '../data/game-alternates.js';
+import { DESK_SONGS } from './desk-songs.js';
 import { BOSSES } from '../game/boss.js';
 import { OBSTACLES } from '../game/entities.js';
 import { MODS, BENCH_UPGRADES } from '../data/progression.js';
@@ -245,6 +246,26 @@ function scenesMenu(dev) {
       { label: 'ATTRACT (real)', act: go(() => Flow.startAttract()) },
       { label: 'FIELD GUIDE', act: go(() => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toHub() }))) },
       { label: 'SOUND TEST', act: go(() => setState(new SoundTestState({ onDone: () => Flow.toHub() }))) },
+      // The desk's own songs, heard on the game's jukebox rather than through the
+      // mixing desk — the game's master chain, the game's visualisers, the game's
+      // speakers. There is no production route to these and there is not meant to be:
+      // see src/dev/desk-songs.js for what is in the list and what it costs.
+      ...(DESK_SONGS.length ? [{
+        label: 'DESK SONGS (JUKEBOX) ▸',
+        submenu: () => ({
+          title: 'DESK SONGS',
+          items: DESK_SONGS.map((song, i) => ({
+            label: song.name,
+            // Opened on the row it names, already playing, with the whole jukebox
+            // behind it — so the game's own tracks are one press away for a comparison.
+            act: go(() => setState(new SoundTestState({
+              onDone: () => Flow.toHub(),
+              tracks: [...JUKEBOX, ...DESK_SONGS],
+              initialTrack: JUKEBOX.length + i,
+            }))),
+          })),
+        }),
+      }] : []),
       { label: 'HOW TO PLAY', act: go(() => setState(new HowToPlayState({ onDone: () => Flow.toHub() }))) },
       { label: 'OVERTIME', act: go(() => Flow.startOvertime(dev.seedLock ?? undefined)) },
       {

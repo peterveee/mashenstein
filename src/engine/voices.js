@@ -761,6 +761,31 @@ const CACHE_TAIL_GUARD_S = 0.01;
 // trades a core problem for a memory one.
 const NOTE_CACHE_ENTRIES = 256;
 const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
+// How many renders may be in flight. Two keeps a cold section warming at a useful rate
+// without putting a queue of them in front of the scheduler.
+const NOTE_RENDER_JOBS = 2;
+
+/**
+ * Run a render when the main thread has room — and NEVER inside the scheduling pass.
+ *
+ * This is the difference between a cache that helps and a cache you can hear arriving.
+ * A miss builds its whole graph synchronously before it can `await` anything: a context,
+ * a rack, and every oscillator, filter and envelope of the note. Started inline, that
+ * lands in the middle of `Audio.schedule()` — the pass that is FEEDING Web Audio its
+ * lookahead — so a cold bar spends its scheduling budget rendering the notes it is
+ * simultaneously trying to queue. Measured on the desk's dense bars: the worst
+ * scheduling pass went from 37ms with the cache off to 55ms with it on, while the
+ * steady state was already 40% cheaper. The saving was real and the way in was audible.
+ *
+ * `requestIdleCallback` rather than a bare timeout so a render waits for a gap instead
+ * of merely waiting its turn; the timeout is the promise that a busy desk still warms
+ * up, just later. Neither exists in a bare offline render, and a `setTimeout` fallback
+ * is enough there — nothing is competing for the thread.
+ */
+function whenIdle(fn) {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: 400 });
+  else setTimeout(fn, 0);
+}
 function trimSilence(buffer) {
   const channels = buffer.numberOfChannels;
   // EVERY channel, and the LATEST of them. A stereo patch can ring longer on one side
@@ -1821,6 +1846,33 @@ export class VoiceRack {
     }
   }
 
+  /**
+   * Take a render job, and start it when the thread has room. See `whenIdle`.
+   *
+   * QUEUED, at most `NOTE_RENDER_JOBS` at a time. A cold section is a burst of misses —
+   * the dense song's chord layer alone is some thirty distinct note-ons — and each miss
+   * costs a context, a rack and a graph on the MAIN THREAD, which is the thread the
+   * sequencer lives on. A couple at a time keeps that burst under the queue the
+   * scheduler is holding, at the price of the cache warming over a couple of bars
+   * instead of one. Missing is free: the note plays live meanwhile.
+   */
+  _queueRender(job) {
+    this._renderQueue ||= [];
+    this._rendering ||= 0;
+    this._renderQueue.push(job);
+    this._pumpRenders();
+  }
+
+  /** Start the next queued render if a slot is free. */
+  _pumpRenders() {
+    this._renderQueue ||= [];
+    this._rendering ||= 0;
+    if (this._rendering >= NOTE_RENDER_JOBS || !this._renderQueue.length) return;
+    const job = this._renderQueue.shift();
+    this._rendering++;
+    whenIdle(job);
+  }
+
   /** Book a rendered buffer into an entry and into the byte total the LRU spends. */
   _keepBuffer(entry, buffer) {
     this._noteCacheBytes ||= 0;
@@ -1841,12 +1893,7 @@ export class VoiceRack {
    * is seeded from `Math.random` once per session and a replay that made its own
    * would not be the sound the pool would have played.
    *
-   * QUEUED, at most two at a time. A cold section is a burst of misses — the dense
-   * song's chord layer alone is some thirty distinct (pitch, length) pairs — and each
-   * miss costs a context, a rack and a render setup ON THE MAIN THREAD, which is the
-   * thread the sequencer lives on. Two at a time keeps that burst under the queue the
-   * scheduler is holding, at the price of the cache warming over a couple of bars
-   * instead of one. Missing is free: the pool plays the note meanwhile.
+   * Queued and started off the scheduling pass — see `_queueRender` and `whenIdle`.
    */
   async _renderNote(v, voiceId, freq, dur, entry) {
     const OAC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
@@ -1893,11 +1940,10 @@ export class VoiceRack {
       } finally {
         entry.rendering = false;
         this._rendering--;
-        const next = this._renderQueue.shift();
-        if (next) { this._rendering++; next(); }
+        this._pumpRenders();
       }
     };
-    if (this._rendering < 2) { this._rendering++; job(); } else this._renderQueue.push(job);
+    this._queueRender(job);
   }
 
   /**
@@ -2026,11 +2072,10 @@ export class VoiceRack {
       } finally {
         entry.rendering = false;
         this._rendering--;
-        const next = this._renderQueue.shift();
-        if (next) { this._rendering++; next(); }
+        this._pumpRenders();
       }
     };
-    if (this._rendering < 2) { this._rendering++; job(); } else this._renderQueue.push(job);
+    this._queueRender(job);
   }
 
   /**

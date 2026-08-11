@@ -210,9 +210,50 @@ for (const s of browserSuites) {
   if (!suites.includes(s)) throw new Error(`browserSuites lists ${s}, which is not in suites`);
 }
 
-const withBrowser = process.argv.includes('--all') || process.env.MASH_ALL === '1';
-const selected = suites.filter((s) => withBrowser || !browserSuites.has(s));
-const skipped = suites.filter((s) => !selected.includes(s));
+// ---- the SOUND group -------------------------------------------------------
+//
+// Everything whose subject is audio: the engine, the desk, the synth, the songs. It
+// exists because the full run is minutes long and most of it is about characters,
+// physics and pixels — none of which an afternoon on MRDR-3 or the mixing desk can
+// reach. `npm run test:sound` is the gate to run between edits down there.
+//
+// It INCLUDES the browser suites, because the claims that actually matter about audio
+// are claims about samples, and a browserless subset of them would be a gate that
+// passes while the sound is wrong. It excludes exactly one: `tests/voices.js` renders
+// every preset in the catalogue and takes longer than everything else here put
+// together, and it is a catalogue-wide sweep rather than a regression gate.
+//
+// `tests/null-test.js` is deliberately IN. It is the one suite that says the engine
+// still renders what it always did, so an audio change that moved it is the single
+// most important thing to find out about — and it is the reason this group is not
+// simply "the fast ones".
+const soundSuites = [
+  'tests/sound-test-menu.js', 'tests/visualizers.js', 'tests/megamix.js', 'tests/mix.js',
+  'tests/mixer-layout.js', 'tests/mixer-export.js', 'tests/midi-import.js',
+  'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
+  'tests/song-copies.js', 'tests/song-alternates.js',
+  'tests/arrangement.js', 'tests/swing.js', 'tests/piano-roll.js', 'tests/note-recorder.js',
+  'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/lfo.js',
+  'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js',
+  'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',
+  'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
+  'tests/sfx-routing.js', 'tests/pitch-curve.js',
+  'tests/note-duration.js', 'tests/song-switch.js', 'tests/music-variant.js',
+  'tests/music-variant-render.js', 'tests/null-test.js', 'tests/new-effects.js',
+];
+// A suite renamed out of `suites` would silently vanish from this group too, and a
+// gate that covers less than it looks like it covers is the failure this file already
+// refuses elsewhere. Cheaper to notice here than after shipping a broken sound.
+for (const s of soundSuites) {
+  if (!suites.includes(s)) throw new Error(`soundSuites lists ${s}, which is not in suites`);
+}
+
+const soundOnly = process.argv.includes('--sound') || process.env.MASH_SOUND === '1';
+const withBrowser = soundOnly
+  || process.argv.includes('--all') || process.env.MASH_ALL === '1';
+const pool = soundOnly ? suites.filter((s) => soundSuites.includes(s)) : suites;
+const selected = pool.filter((s) => withBrowser || !browserSuites.has(s));
+const skipped = pool.filter((s) => !selected.includes(s));
 
 // Exit 2 is the one status that is neither pass nor fail: "passed, but something in
 // here wants a human to look at it". So far that is tests/null-test.js reporting a mix
@@ -232,6 +273,14 @@ for (const suite of selected) {
 if (skipped.length) {
   console.log(`\nskipped ${skipped.length} browser suite(s): ${skipped.join(', ')}`);
   console.log('  run them with:  npm run test:all   (needs: npx playwright install chromium)');
+}
+// Said out loud for the same reason: this group is a subset by choice, and the choice
+// has to be visible from the run rather than from the source.
+if (soundOnly) {
+  const left = suites.filter((s) => !soundSuites.includes(s));
+  console.log(`\nSOUND ONLY: ran ${selected.length} audio suite(s); skipped ${left.length}`
+    + ' non-audio suite(s) and tests/voices.js (the catalogue-wide preset render).');
+  console.log('  before pushing anything that touches the engine:  npm run test:all');
 }
 if (warned.length) {
   console.log(`\n${warned.length} SUITE(S) PASSED WITH WARNINGS: ${warned.join(', ')}`);
